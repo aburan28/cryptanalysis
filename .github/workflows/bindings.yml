@@ -149,13 +149,14 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           # Installed rather than taken from cargo-deny-action, whose pinned
-          # binary is old enough that --config is not an option of `check`
-          # and that it cannot parse CVSS 4.0 advisory entries.
-          tool: cargo-deny
+          # binary cannot parse CVSS 4.0 advisory entries.  Pinned, because
+          # --config moved from `check` to the top level in 0.20.
+          tool: cargo-deny@0.20.2
       - name: cargo-deny
-        run: |
-          cargo deny --manifest-path bindings/rust/Cargo.toml \
-                check --config bindings/rust/deny.toml --show-stats
+        # No --config: cargo-deny reads deny.toml from the working directory,
+        # which is the same in every version and needs no flag at all.
+        run: cargo deny check --show-stats
+        working-directory: bindings/rust
 
   # -------------------------------------------------------------------- Go --
 
@@ -212,7 +213,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          # Pinned to the Go that golangci-lint 2.5.0 was built with.  A
+          # linter cannot read export data from a newer toolchain than its
+          # own: against the runner's default Go it dies with "export data
+          # version 4 is greater than maximum supported version 2".  Bump
+          # this and the linter version together.
+          go-version: "1.25"
           cache: false
       - uses: golangci/golangci-lint-action@v8
         with:

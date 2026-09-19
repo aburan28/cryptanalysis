@@ -193,8 +193,18 @@ mod tests {
         assert!(src.contains("ca_dev_rho_thread"));
         assert!(src.contains("struct ca_gpu_rho_args"));
         assert!(src.contains("__global__ void ca_rho_walk_kernel_c"));
-        // the header itself is untouched apart from the include line
-        assert!(src.contains("#define CA_GPU_AUX 8"));
+        // the header itself is untouched apart from the include line.
+        // Matched token by token: clang-format aligns consecutive macros, so
+        // the run of spaces before the value is not stable.
+        assert!(
+            src.lines().any(|l| {
+                let mut t = l.split_whitespace();
+                t.next() == Some("#define")
+                    && t.next() == Some("CA_GPU_AUX")
+                    && t.next() == Some("8")
+            }),
+            "CA_GPU_AUX is defined as 8 in the assembled source"
+        );
         assert!(src.contains("__umul64hi"));
     }
 
