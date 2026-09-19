@@ -1,10 +1,13 @@
-prefix=@CMAKE_INSTALL_PREFIX@
+# Relocatable: the prefix is derived from this file's own location, so
+# `cmake --install --prefix DIR` produces correct paths even when DIR
+# differs from the prefix used at configure time.
+prefix=${pcfiledir}/@CA_PC_REL_PREFIX@
 exec_prefix=${prefix}
-libdir=${exec_prefix}/@CMAKE_INSTALL_LIBDIR@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
 includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
 
 Name: cryptanalysis
-Description: Discrete-logarithm cryptanalysis toolkit (rho, BSGS, kangaroo, grumpy giants, Cheon, index calculus)
+Description: Discrete-logarithm cryptanalysis toolkit (rho, BSGS, kangaroo, grumpy giants, Cheon, index calculus, CUDA rho)
 Version: @PROJECT_VERSION@
 Libs: -L${libdir} -lcryptanalysis -lpthread -lm
 Cflags: -I${includedir}

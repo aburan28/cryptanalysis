@@ -15,6 +15,8 @@ option(CA_BUILD_TESTS "Build the C test-suite" ON)
 option(CA_NATIVE "Compile with -march=native" OFF)
 option(CA_SANITIZE "Enable ASan/UBSan" OFF)
 option(CA_WERROR "Treat warnings as errors" OFF)
+option(CA_CUDA "Build the CUDA backend for the GPU solvers (needs nvcc or clang with CUDA)" OFF)
+set(CA_CUDA_ARCHITECTURES "70;80;89;90" CACHE STRING "CUDA architectures for CA_CUDA")
 
 find_package(Threads REQUIRED)
 
@@ -33,6 +35,8 @@ set(CA_SOURCES
   src/linalg.c
   src/indexcalc.c
   src/ffi.c
+  src/gpu_rho.c
+  src/gpu_emulate.c
 )
 
 set(CA_WARNINGS -Wall -Wextra -Wshadow -Wpointer-arith -Wcast-qual -Wstrict-prototypes
@@ -41,12 +45,27 @@ if(CA_WERROR)
   list(APPEND CA_WARNINGS -Werror)
 endif()
 
+if(CA_CUDA)
+  enable_language(CUDA)
+  set(CMAKE_CUDA_STANDARD 17)
+  set(CMAKE_CUDA_ARCHITECTURES ${CA_CUDA_ARCHITECTURES})
+  find_package(CUDAToolkit REQUIRED)
+  list(APPEND CA_SOURCES cuda/rho_kernel.cu cuda/gpu_cuda.c)
+else()
+  list(APPEND CA_SOURCES src/gpu_cuda_stub.c)
+endif()
+
 function(ca_configure_target tgt)
   target_include_directories(${tgt} PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-  target_include_directories(${tgt} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-  target_compile_options(${tgt} PRIVATE ${CA_WARNINGS})
+  target_include_directories(${tgt} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/cuda)
+  if(CA_CUDA)
+    target_compile_definitions(${tgt} PRIVATE CA_HAVE_CUDA=1)
+    target_link_libraries(${tgt} PUBLIC CUDA::cudart)
+    set_target_properties(${tgt} PROPERTIES CUDA_SEPARABLE_COMPILATION OFF)
+  endif()
+  target_compile_options(${tgt} PRIVATE $<$<COMPILE_LANGUAGE:C>:${CA_WARNINGS}>)
   target_compile_definitions(${tgt} PRIVATE CA_BUILDING _GNU_SOURCE)
   target_link_libraries(${tgt} PUBLIC Threads::Threads m)
   if(CA_NATIVE)
@@ -91,7 +110,7 @@ endif()
 if(CA_BUILD_TOOLS)
   add_executable(ca tools/ca_cli.c)
   target_link_libraries(ca PRIVATE ${CA_LINK_TARGET})
-  target_include_directories(ca PRIVATE src)
+  target_include_directories(ca PRIVATE src cuda)
   target_compile_options(ca PRIVATE ${CA_WARNINGS})
   if(CA_SANITIZE)
     target_compile_options(ca PRIVATE -fsanitize=address,undefined)
@@ -99,7 +118,7 @@ if(CA_BUILD_TOOLS)
   endif()
   add_executable(ca_bench tools/ca_bench.c)
   target_link_libraries(ca_bench PRIVATE ${CA_LINK_TARGET})
-  target_include_directories(ca_bench PRIVATE src)
+  target_include_directories(ca_bench PRIVATE src cuda)
   target_compile_options(ca_bench PRIVATE ${CA_WARNINGS})
   if(CA_SANITIZE)
     target_compile_options(ca_bench PRIVATE -fsanitize=address,undefined)
@@ -109,12 +128,12 @@ endif()
 
 if(CA_BUILD_TESTS)
   enable_testing()
-  set(CA_TESTS modarith group bsgs rho kangaroo grumpy pohlig cheon linalg indexcalc ffi)
+  set(CA_TESTS modarith group bsgs rho kangaroo grumpy pohlig cheon linalg indexcalc ffi gpu)
   foreach(t ${CA_TESTS})
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${t}.c)
       add_executable(test_${t} tests/test_${t}.c)
       target_link_libraries(test_${t} PRIVATE ${CA_LINK_TARGET})
-      target_include_directories(test_${t} PRIVATE src tests)
+      target_include_directories(test_${t} PRIVATE src tests cuda)
       target_compile_options(test_${t} PRIVATE ${CA_WARNINGS} -Wno-missing-prototypes)
       if(CA_SANITIZE)
         target_compile_options(test_${t} PRIVATE -fsanitize=address,undefined)
@@ -140,6 +159,15 @@ if(CA_BUILD_STATIC)
 endif()
 if(CA_BUILD_TOOLS)
   install(TARGETS ca RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+# Path from <prefix>/<libdir>/pkgconfig back to <prefix>, so the .pc file can
+# locate the install tree relative to itself.
+if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+  set(CA_PC_REL_PREFIX "${CMAKE_INSTALL_PREFIX}")
+else()
+  file(RELATIVE_PATH CA_PC_REL_PREFIX
+       "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/pkgconfig" "${CMAKE_INSTALL_PREFIX}")
+  string(REGEX REPLACE "/+$" "" CA_PC_REL_PREFIX "${CA_PC_REL_PREFIX}")
 endif()
 configure_file(cmake/cryptanalysis.pc.in ${CMAKE_CURRENT_BINARY_DIR}/cryptanalysis.pc @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cryptanalysis.pc

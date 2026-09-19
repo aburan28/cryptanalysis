@@ -72,7 +72,7 @@ impl Elem {
     }
 
     #[inline]
-    fn as_ptr(&self) -> *const u64 {
+    pub(crate) fn as_ptr(&self) -> *const u64 {
         self.0.as_ptr()
     }
 }
@@ -204,7 +204,7 @@ impl Group {
     }
 
     #[inline]
-    fn raw(&self) -> *const sys::CaCtx {
+    pub(crate) fn raw(&self) -> *const sys::CaCtx {
         self.ptr.as_ptr()
     }
 

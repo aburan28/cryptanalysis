@@ -23,6 +23,13 @@ const SOURCES: &[&str] = &[
     "linalg.c",
     "indexcalc.c",
     "ffi.c",
+    // GPU rho: the backend-independent driver, the host emulator backend and
+    // the no-CUDA stub.  The CUDA backend itself (cuda/gpu_cuda.c and
+    // cuda/rho_kernel.cu) is not built here -- see the cryptanalysis-cuda
+    // crate, which drives the kernel through the CUDA driver API.
+    "gpu_rho.c",
+    "gpu_emulate.c",
+    "gpu_cuda_stub.c",
 ];
 
 fn main() {

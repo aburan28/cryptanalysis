@@ -12,6 +12,7 @@
  *   ca_pohlig.h     Pohlig-Hellman reduction and the ca_dlog driver
  *   ca_cheon.h      Cheon's attack on the strong Diffie-Hellman problem
  *   ca_indexcalc.h  index calculus in (Z/pZ)^* (linear sieve, Lanczos)
+ *   ca_gpu.h        CUDA Pollard rho (with a host emulator backend)
  *   ca_ffi.h        flat C ABI used by the Rust, Go and Python bindings
  */
 #ifndef CRYPTANALYSIS_H
@@ -27,6 +28,7 @@
 #include "ca_pohlig.h"
 #include "ca_cheon.h"
 #include "ca_indexcalc.h"
+#include "ca_gpu.h"
 #include "ca_ffi.h"
 
 #endif /* CRYPTANALYSIS_H */

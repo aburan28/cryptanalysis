@@ -210,6 +210,40 @@ pub struct CaIcStats {
     pub threads: u32,
 }
 
+/// Backends for the GPU solver (`ca_gpu_backend`).
+pub const CA_GPU_BACKEND_AUTO: i32 = 0;
+/// Require CUDA; fails with `CA_ERR_UNSUPPORTED` when it is unavailable.
+pub const CA_GPU_BACKEND_CUDA: i32 = 1;
+/// Force the host emulator, which runs the same kernel body on the CPU.
+pub const CA_GPU_BACKEND_EMULATE: i32 = 2;
+
+/// Options for the GPU (CUDA) Pollard rho solver; mirrors
+/// `ca_ffi_gpu_options` from `ca_ffi.h`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CaFfiGpuOptions {
+    /// 0 = auto, 1 = require CUDA, 2 = force the host emulator.
+    pub backend: i32,
+    /// CUDA device ordinal.
+    pub device: i32,
+    /// Threads per block (0 => 128).
+    pub threads_per_block: u32,
+    /// Blocks per launch (0 => chosen from the group size).
+    pub blocks: u32,
+    /// Walk steps per launch (0 => auto).
+    pub steps_per_launch: u32,
+    /// Number of adding-walk multipliers (0 => auto).
+    pub r: u32,
+    /// Distinguished-point bits (-1 => auto).
+    pub dp_bits: i32,
+    /// Use the negation map on curves.
+    pub negation_map: i32,
+    /// RNG seed (0 => random).
+    pub seed: u64,
+    /// Work limit in group operations (0 => unlimited).
+    pub max_ops: u64,
+}
+
 extern "C" {
     // ---- ca_types.h --------------------------------------------------------
 
@@ -435,6 +469,31 @@ extern "C" {
     /// Factor `n` into up to `cap` (prime, exponent) pairs; returns the total
     /// count (which may exceed `cap`, in which case only `cap` were written).
     pub fn ca_ffi_factorize(n: u64, primes: *mut u64, exps: *mut c_uint, cap: c_uint) -> c_uint;
+
+    // ---- GPU (CUDA) Pollard rho ------------------------------------------
+    // These drive the CUDA kernel, or its host emulator, through the C
+    // library.  To launch the same kernel from Rust directly, see the
+    // `cryptanalysis-cuda` crate.
+
+    /// Fill `o` with the default GPU solver options.
+    pub fn ca_ffi_gpu_options_default(o: *mut CaFfiGpuOptions);
+    /// Size of `ca_ffi_gpu_options` as the library was compiled.
+    pub fn ca_ffi_gpu_options_size() -> usize;
+    /// GPU Pollard rho over the whole group (requires a known group order).
+    pub fn ca_ffi_gpu_rho(
+        ctx: *const CaCtx,
+        base: *const u64,
+        target: *const u64,
+        o: *const CaFfiGpuOptions,
+        x: *mut u64,
+        st: *mut CaStats,
+    ) -> c_int;
+    /// 1 if the library was built with the CUDA backend.
+    pub fn ca_ffi_gpu_cuda_compiled() -> c_int;
+    /// Number of usable CUDA devices (0 when not compiled in or no driver).
+    pub fn ca_ffi_gpu_device_count() -> c_int;
+    /// Device description into `buf`; returns 0 on success.
+    pub fn ca_ffi_gpu_device_name(device: c_int, buf: *mut c_char, len: usize) -> c_int;
 }
 
 #[cfg(test)]
@@ -449,6 +508,7 @@ mod tests {
             assert_eq!(size_of::<CaStats>(), ca_stats_size());
             assert_eq!(size_of::<CaIcParams>(), ca_ic_params_size());
             assert_eq!(size_of::<CaIcStats>(), ca_ic_stats_size());
+            assert_eq!(size_of::<CaFfiGpuOptions>(), ca_ffi_gpu_options_size());
         }
     }
 

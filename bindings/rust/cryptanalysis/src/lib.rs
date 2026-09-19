@@ -48,6 +48,7 @@
 
 mod error;
 mod group;
+pub mod gpu;
 pub mod index_calculus;
 mod nt;
 mod options;
@@ -55,6 +56,7 @@ mod options;
 pub use cryptanalysis_sys as sys;
 
 pub use error::{Error, Result};
+pub use gpu::{GpuBackend, GpuOptions};
 pub use group::{cheon_best_divisor, Elem, Group, Kind};
 pub use nt::{factorize, invmod, is_prime, next_prime, powmod, primitive_root};
 pub use options::{Options, Solver, Stats};

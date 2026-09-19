@@ -298,6 +298,56 @@ uint64_t ca_ffi_cheon_best_divisor(uint64_t p, double *cost_exps)
     return ca_cheon_best_divisor(p, cost_exps);
 }
 
+void ca_ffi_gpu_options_default(ca_ffi_gpu_options *o)
+{
+    ca_gpu_rho_params p;
+    ca_gpu_rho_params_default(&p);
+    memset(o, 0, sizeof(*o));
+    o->backend = (int32_t)p.backend;
+    o->device = p.device;
+    o->threads_per_block = p.threads_per_block;
+    o->blocks = p.blocks;
+    o->steps_per_launch = p.steps_per_launch;
+    o->r = p.r;
+    o->dp_bits = p.dp_bits;
+    o->negation_map = p.negation_map;
+    o->seed = p.seed;
+    o->max_ops = p.max_ops;
+}
+
+size_t ca_ffi_gpu_options_size(void) { return sizeof(ca_ffi_gpu_options); }
+
+int ca_ffi_gpu_rho(const ca_ctx *ctx, const uint64_t base[4], const uint64_t target[4],
+                   const ca_ffi_gpu_options *o, uint64_t *x, ca_stats *st)
+{
+    ca_clear_error();
+    ca_elem b, t;
+    ENC(ctx, b, base);
+    ENC(ctx, t, target);
+    ca_gpu_rho_params p;
+    ca_gpu_rho_params_default(&p);
+    if (o) {
+        p.backend = (ca_gpu_backend)o->backend;
+        p.device = o->device;
+        p.threads_per_block = o->threads_per_block;
+        p.blocks = o->blocks;
+        p.steps_per_launch = o->steps_per_launch;
+        p.r = o->r;
+        p.dp_bits = o->dp_bits;
+        p.negation_map = o->negation_map;
+        p.seed = o->seed;
+        p.max_ops = o->max_ops;
+    }
+    return ca_gpu_rho_solve(&ctx->g, &b, &t, &p, x, st);
+}
+
+int ca_ffi_gpu_cuda_compiled(void) { return ca_gpu_cuda_compiled(); }
+int ca_ffi_gpu_device_count(void) { return ca_gpu_device_count(); }
+int ca_ffi_gpu_device_name(int device, char *buf, size_t len)
+{
+    return ca_gpu_device_name(device, buf, len);
+}
+
 int ca_ffi_ic_solve(uint64_t p, uint64_t g, uint64_t h, const ca_ic_params *params, uint64_t *x,
                     ca_ic_stats *st)
 {

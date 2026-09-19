@@ -51,6 +51,28 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 
+  cuda-kernel:
+    name: CUDA kernel (compile + register report)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile the kernel for sm_70/80/89/90
+        run: ./scripts/build_cuda_kernel.sh --fetch
+      - name: Compile the kernel with 4 and 16 walks per thread
+        run: |
+          ./scripts/build_cuda_kernel.sh --arch sm_80 --walks 4 \
+              --cuda-path build-cuda-kernel/cuda-toolkit
+          ./scripts/build_cuda_kernel.sh --arch sm_80 --walks 16 \
+              --cuda-path build-cuda-kernel/cuda-toolkit
+      - name: Check the host CUDA backend compiles as C
+        run: |
+          cc -c -O2 -std=gnu11 -D_GNU_SOURCE -DCA_BUILDING -Wall -Wextra -Werror \
+             -Iinclude -Isrc -Icuda -Ibuild-cuda-kernel/cuda-toolkit/include \
+             -o /tmp/gpu_cuda.o cuda/gpu_cuda.c
+
   rust:
     name: Rust bindings
     runs-on: ubuntu-latest
@@ -65,6 +87,11 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
         working-directory: bindings/rust
+      - name: Build the CUDA driver crate with PTX embedded
+        run: |
+          ./scripts/build_cuda_kernel.sh --fetch --arch sm_70
+          CUDA_PATH=$PWD/build-cuda-kernel/cuda-toolkit \
+            cargo build -p cryptanalysis-cuda --manifest-path bindings/rust/Cargo.toml
 
   go:
     name: Go bindings

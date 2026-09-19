@@ -13,9 +13,13 @@
  *   ca_bench cheon    [--bits 32,40,48]
  *       Cheon vs generic sqrt(p) cost in group operations.
  *   ca_bench ops      raw group operation throughput.
+ *   ca_bench gpu      [--bits 24,28,32] [--reps 3] [--group zp|ec|both]
+ *       CPU rho vs the GPU rho kernel (CUDA when a device is present,
+ *       otherwise the host emulator) in S = group ops / sqrt(n).
  */
 #include "cryptanalysis/cryptanalysis.h"
 #include "ca_internal.h"
+#include "ca_device.cuh"
 
 #include <inttypes.h>
 #include <math.h>
@@ -255,6 +259,64 @@ static void run_cheon(unsigned bits)
            (double)sr.group_ops / (double)st.group_ops, (rc == CA_OK && got == alpha) ? "ok" : "FAIL");
 }
 
+static void run_gpu(unsigned bits, unsigned reps, int ec)
+{
+    ca_group g;
+    ca_elem gen;
+    uint64_t n;
+    if (!ec) {
+        uint64_t p;
+        n = find_safe_prime(bits, &p);
+        ca_group_zp_init(&g, p, n);
+    } else {
+        uint64_t p, a, b;
+        find_prime_order_curve(bits, &p, &a, &b, &n);
+        ca_group_ec_init(&g, p, a, b, n);
+        g.cofactor = 1;
+    }
+    ca_group_find_generator(&g, &gen, 1);
+    double sq = sqrt((double)n);
+    int have_dev = ca_gpu_cuda_compiled() && ca_gpu_device_count() > 0;
+    const char *names[2] = {"cpu-rho", have_dev ? "gpu-rho (cuda)" : "gpu-rho (emulate)"};
+    double ops[2] = {0}, secs[2] = {0};
+    uint64_t walks[2] = {0}, launches = 0;
+    int ok[2] = {0};
+    ca_rng rng;
+    ca_rng_seed(&rng, 777 + bits);
+    for (unsigned r = 0; r < reps; r++) {
+        uint64_t x = ca_rng_below(&rng, n);
+        ca_elem h;
+        ca_group_mul(&g, &h, &gen, x, NULL);
+        for (int which = 0; which < 2; which++) {
+            ca_stats st = {0};
+            uint64_t got = 0;
+            ca_status rc;
+            if (which == 0) {
+                ca_rho_params rp;
+                ca_rho_params_default(&rp);
+                rp.seed = 200 + r;
+                rc = ca_rho_solve(&g, &gen, &h, &rp, &got, &st);
+                walks[0] = st.threads;
+            } else {
+                ca_gpu_rho_params gp;
+                ca_gpu_rho_params_default(&gp);
+                gp.seed = 200 + r;
+                rc = ca_gpu_rho_solve(&g, &gen, &h, &gp, &got, &st);
+                walks[1] = (uint64_t)st.threads * CA_GPU_W;
+                launches += st.reserved;
+            }
+            ops[which] += (double)st.group_ops;
+            secs[which] += st.seconds;
+            ok[which] += (rc == CA_OK && got == x);
+        }
+    }
+    for (int which = 0; which < 2; which++) {
+        printf("| %-4s | %3u | %-18s | %8.3f | %10.4f | %7" PRIu64 " | %8.1f | %u/%u |\n",
+               ec ? "ec" : "zp", bits, names[which], ops[which] / reps / sq, secs[which] / reps,
+               walks[which], which == 0 ? 0.0 : (double)launches / reps, ok[which], reps);
+    }
+}
+
 static void run_ops(void)
 {
     uint64_t p;
@@ -299,7 +361,7 @@ int main(int argc, char **argv)
     argv_g = argv;
     const char *cmd = argc > 1 ? argv[1] : "generic";
     unsigned bits[16];
-    unsigned reps = (unsigned)strtoul(opt("--reps", "5"), NULL, 10);
+    unsigned reps = (unsigned)strtoul(opt("--reps", strcmp(cmd, "gpu") ? "5" : "3"), NULL, 10);
     unsigned threads = (unsigned)strtoul(opt("--threads", "4"), NULL, 10);
     const char *group = opt("--group", "both");
     printf("libcryptanalysis %s benchmark: %s\n\n", ca_version(), cmd);
@@ -333,6 +395,24 @@ int main(int argc, char **argv)
         printf("| bits | p | d | cheon exps | cheon ops | cheon s | rho ops | rho s | speedup | ok |\n");
         printf("|------|---|---|------------|-----------|---------|---------|-------|---------|----|\n");
         for (int i = 0; i < nb; i++) run_cheon(bits[i]);
+    } else if (!strcmp(cmd, "gpu")) {
+        int nb = parse_list(opt("--bits", "24,28,32"), bits, 16);
+        printf("GPU rho kernel vs the CPU solver.  S = group ops / sqrt(n); \"walks\" is the\n"
+               "number of concurrent walks (CPU: threads; GPU: threads x %d).\n", CA_GPU_W);
+        printf("CUDA compiled: %s, devices: %d\n", ca_gpu_cuda_compiled() ? "yes" : "no",
+               ca_gpu_device_count());
+        for (int i = 0; i < ca_gpu_device_count(); i++) {
+            char name[256] = "";
+            if (ca_gpu_device_name(i, name, sizeof(name)) == 0) printf("  device %d: %s\n", i, name);
+        }
+        printf("\n| grp | bits | solver             | S=ops/√n | seconds    |   walks | launches | ok  |\n");
+        printf("|-----|------|--------------------|----------|------------|---------|----------|-----|\n");
+        for (int i = 0; i < nb; i++) {
+            if (strcmp(group, "ec")) run_gpu(bits[i], reps, 0);
+            if (strcmp(group, "zp")) run_gpu(bits[i], reps, 1);
+        }
+        printf("\nThe emulator runs the kernel body one thread at a time on the CPU, so its\n"
+               "seconds column is not a GPU measurement; the operation counts are.\n");
     } else if (!strcmp(cmd, "ops")) {
         run_ops();
     } else {

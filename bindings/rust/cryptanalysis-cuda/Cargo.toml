@@ -1,0 +1,24 @@
+[package]
+name = "cryptanalysis-cuda"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CUDA host driver for the libcryptanalysis Pollard rho GPU kernel (cuda/rho_kernel.cu) through the CUDA driver API"
+publish = false
+build = "build.rs"
+
+[dependencies]
+cryptanalysis = { path = "../cryptanalysis" }
+# `dynamic-loading` means libcuda / libnvrtc are dlopen'd on first use, so the
+# crate links and its tests run on machines without an NVIDIA driver.
+cudarc = { version = "0.16", default-features = false, features = [
+    "driver",
+    "nvrtc",
+    "dynamic-loading",
+    "cuda-12030",
+    "std",
+] }
+# Used to probe for libcuda / libnvrtc before cudarc's loader (which panics
+# when the library is absent) is ever touched.
+libloading = "0.8"

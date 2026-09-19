@@ -88,6 +88,38 @@ int main(void)
     CHECK(Q[0] == P[0] && (Q[1] == P[1] || Q[1] == 1000003 - P[1]));
     ca_ctx_free(e);
 
+    /* GPU rho through the FFI (emulator backend: always available) */
+    CHECK(ca_ffi_gpu_options_size() == sizeof(ca_ffi_gpu_options));
+    z = ca_ctx_new_zp(2000000579ULL, 1000000289ULL);
+    CHECK(z != NULL);
+    CHECK(ca_ctx_find_generator(z, g, 1) == CA_OK);
+    CHECK(ca_ctx_mul(z, h, g, 123456789) == CA_OK);
+    ca_ffi_gpu_options go;
+    ca_ffi_gpu_options_default(&go);
+    go.backend = 2; /* emulate */
+    go.seed = 5;
+    x = 0;
+    ca_stats gst = {0};
+    CHECK(ca_ffi_gpu_rho(z, g, h, &go, &x, &gst) == CA_OK);
+    CHECK_EQ_U64(x, 123456789);
+    CHECK(gst.group_ops > 0);
+    CHECK(gst.threads > 0);
+    go.max_ops = 500;
+    CHECK(ca_ffi_gpu_rho(z, g, h, &go, &x, NULL) == CA_ERR_LIMIT);
+    /* the CUDA backend reports unsupported when not compiled in or absent */
+    go.backend = 1;
+    go.max_ops = 0;
+    if (!ca_ffi_gpu_cuda_compiled() || ca_ffi_gpu_device_count() == 0) {
+        CHECK(ca_ffi_gpu_rho(z, g, h, &go, &x, NULL) == CA_ERR_UNSUPPORTED);
+    } else {
+        CHECK(ca_ffi_gpu_rho(z, g, h, &go, &x, NULL) == CA_OK);
+        CHECK_EQ_U64(x, 123456789);
+        char dn[256];
+        CHECK(ca_ffi_gpu_device_name(0, dn, sizeof(dn)) == 0);
+    }
+    CHECK(ca_ffi_gpu_device_count() >= 0);
+    ca_ctx_free(z);
+
     /* index calculus + helpers */
     ca_ic_params ip;
     ca_ic_params_default(&ip);

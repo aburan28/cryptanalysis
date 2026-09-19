@@ -133,6 +133,54 @@ operations, about 1.5 s at the `Z_p^*` rate above, so the crossover with
 rho on this machine is near 56 bits and index calculus wins clearly above
 it.  Individual logarithms are negligible (a few hundred trial divisions).
 
+## GPU rho kernel (`ca_bench gpu`)
+
+There is no GPU in the machine these numbers come from, so the rows below
+are the **host emulator**: the identical kernel body executed one thread at
+a time on one CPU core.  The operation counts are therefore meaningful and
+portable, the seconds column is not a GPU measurement, and no row here says
+anything about device throughput.
+
+| grp | bits | solver | S = ops/√n | walks | launches | ok |
+|-----|-----:|--------|-----------:|------:|---------:|----|
+| zp | 24 | cpu-rho | 1.849 | 1 | - | 3/3 |
+| zp | 24 | gpu-rho (emulate) | 1.895 | 8 | 3.7 | 3/3 |
+| ec | 24 | cpu-rho | 1.707 | 1 | - | 3/3 |
+| ec | 24 | gpu-rho (emulate) | 1.844 | 8 | 6.3 | 3/3 |
+| zp | 28 | cpu-rho | 2.578 | 1 | - | 3/3 |
+| zp | 28 | gpu-rho (emulate) | 1.990 | 8 | 18.0 | 3/3 |
+| ec | 28 | cpu-rho | 2.033 | 1 | - | 3/3 |
+| ec | 28 | gpu-rho (emulate) | 1.504 | 16 | 7.3 | 3/3 |
+| zp | 32 | cpu-rho | 2.045 | 1 | - | 3/3 |
+| zp | 32 | gpu-rho (emulate) | 1.262 | 40 | 14.0 | 3/3 |
+| ec | 32 | cpu-rho | 0.873 | 1 | - | 3/3 |
+| ec | 32 | gpu-rho (emulate) | 1.857 | 56 | 11.3 | 3/3 |
+
+What this table is for: it shows that spreading the same search over many
+more concurrent walks does not change the constant in front of `sqrt(n)`.
+Both solvers sit at `S ~ 1.3 - 2.6` at every size (3 instances per row, so
+roughly +-30 % noise), which is the expected result: van Oorschot-Wiener
+parallelisation is linear in the number of walkers, so `M` walks each doing
+`1/M` of the work cost the same total, and a GPU buys wall-clock time rather
+than operations. A regression here (an `S` that grows with the walk count)
+would mean the distinguished-point density or the restart policy is wrong,
+which is exactly what this row is watching for.
+
+"walks" grows with the group because the driver caps walk start-up cost at
+`sqrt(n)/8`; on a real device the cap is lifted by the size of the problem,
+not the hardware, so 2^48 and above is where a GPU has enough walks to fill
+it.
+
+Kernel cost from `scripts/build_cuda_kernel.sh --fetch` (clang 18 + ptxas
+12.9, no GPU required):
+
+| arch | registers | local memory/thread | spills |
+|------|----------:|--------------------:|-------:|
+| sm_70 | 72 | 736 B | 0 |
+| sm_80 | 64 | 736 B | 0 |
+| sm_89 | 64 | 736 B | 0 |
+| sm_90 | 64 | 736 B | 0 |
+
 ## Cheon's attack (`ca_bench cheon`)
 
 Groups of prime order `p` where `p - 1` has a divisor `d ~ sqrt(p)`,
