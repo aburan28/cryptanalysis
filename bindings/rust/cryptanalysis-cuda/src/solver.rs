@@ -296,8 +296,9 @@ impl CudaRho {
             }
             dps_total += u64::from(count);
 
-            for rec in h_dp[..words].chunks_exact(4) {
-                let (h, da, db, wid) = (rec[0], rec[1], rec[2], rec[3] as u32);
+            // Four words per distinguished point: hash, a, b, walk id.
+            for &[h, da, db, walk] in h_dp[..words].as_chunks::<4>().0 {
+                let wid = walk as u32;
                 match table.entry(h) {
                     std::collections::hash_map::Entry::Vacant(slot) => {
                         slot.insert((da, db));
