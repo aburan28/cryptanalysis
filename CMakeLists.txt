@@ -160,14 +160,25 @@ endif()
 if(CA_BUILD_TOOLS)
   install(TARGETS ca RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-# Path from <prefix>/<libdir>/pkgconfig back to <prefix>, so the .pc file can
-# locate the install tree relative to itself.
+# The .pc file locates the install tree relative to itself, so that
+# `cmake --install --prefix DIR` is correct even when DIR differs from the
+# prefix used at configure time.  That only works when the directories are
+# relative to the prefix, which is the GNUInstallDirs default; an absolute
+# libdir or includedir is emitted as the absolute path it is.
 if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
-  set(CA_PC_REL_PREFIX "${CMAKE_INSTALL_PREFIX}")
+  set(CA_PC_PREFIX "${CMAKE_INSTALL_PREFIX}")
+  set(CA_PC_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
 else()
   file(RELATIVE_PATH CA_PC_REL_PREFIX
        "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/pkgconfig" "${CMAKE_INSTALL_PREFIX}")
   string(REGEX REPLACE "/+$" "" CA_PC_REL_PREFIX "${CA_PC_REL_PREFIX}")
+  set(CA_PC_PREFIX "\${pcfiledir}/${CA_PC_REL_PREFIX}")
+  set(CA_PC_LIBDIR "\${prefix}/${CMAKE_INSTALL_LIBDIR}")
+endif()
+if(IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}")
+  set(CA_PC_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}")
+else()
+  set(CA_PC_INCLUDEDIR "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
 endif()
 configure_file(cmake/cryptanalysis.pc.in ${CMAKE_CURRENT_BINARY_DIR}/cryptanalysis.pc @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cryptanalysis.pc

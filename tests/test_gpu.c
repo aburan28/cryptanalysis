@@ -241,6 +241,26 @@ int main(void)
     uint64_t w[4] = {2, 0, 0, 0};
     CHECK(ca_group_encode(&g, &gen, w));
     run_solver(&g, &gen, CA_GPU_BACKEND_EMULATE, 3, 1, "zp composite emulate");
+    /* An out-of-range dp_bits must be clamped, not shifted by 64 or more
+     * (undefined).  Distinguished points then essentially never occur, so the
+     * run is bounded by max_ops; the point of the test is that it terminates
+     * cleanly, and that UBSan sees no bad shift. */
+    {
+        fx_zp_safe(&g, &gen, 2000000579ULL);
+        ca_elem h;
+        fx_instance(&g, &gen, 4242, &h);
+        for (int32_t bits = 63; bits <= 200; bits += 37) {
+            ca_gpu_rho_params p;
+            ca_gpu_rho_params_default(&p);
+            p.backend = CA_GPU_BACKEND_EMULATE;
+            p.dp_bits = bits;
+            p.max_ops = 20000;
+            p.seed = 2;
+            uint64_t got = 0;
+            CHECK(ca_gpu_rho_solve(&g, &gen, &h, &p, &got, NULL) == CA_ERR_LIMIT);
+        }
+    }
+
     /* A tiny group is answered on the host, but an explicit CUDA request is
      * still refused when CUDA is unavailable rather than answered quietly. */
     {

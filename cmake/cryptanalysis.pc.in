@@ -1,10 +1,12 @@
-# Relocatable: the prefix is derived from this file's own location, so
-# `cmake --install --prefix DIR` produces correct paths even when DIR
-# differs from the prefix used at configure time.
-prefix=${pcfiledir}/@CA_PC_REL_PREFIX@
+# Where the paths come from: with the usual prefix-relative install
+# directories, prefix is derived from this file's own location so that
+# `cmake --install --prefix DIR` produces correct paths even when DIR differs
+# from the prefix used at configure time.  An absolute libdir or includedir is
+# emitted verbatim instead.  See CMakeLists.txt.
+prefix=@CA_PC_PREFIX@
 exec_prefix=${prefix}
-libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
-includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+libdir=@CA_PC_LIBDIR@
+includedir=@CA_PC_INCLUDEDIR@
 
 Name: cryptanalysis
 Description: Discrete-logarithm cryptanalysis toolkit (rho, BSGS, kangaroo, grumpy giants, Cheon, index calculus, CUDA rho)

@@ -174,14 +174,33 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
         if (dp < 0) dp = 0;
         if (dp > 48) dp = 48;
     }
+    /* An explicitly requested dp_bits is honoured, but a shift of 64 or more
+     * is undefined, so clamp it.  (Anything near this makes distinguished
+     * points so rare that a work limit is essential; see ca_gpu.h.) */
+    if (dp > 63) dp = 63;
     a.dp_mask = dp ? ((1ULL << dp) - 1) : 0;
     a.abandon_shift = (uint32_t)dp;
     uint32_t steps = params->steps_per_launch;
     if (steps == 0) {
-        /* each launch does ~1/16 of the expected work, at least 2^dp steps */
+        /* Aim at about 1/16 of the expected work per launch, but run at least
+         * long enough that the herd is likely to report a distinguished point
+         * (one per 2^dp steps, spread over nwalks walks). */
         double per = expected / (16.0 * (double)nwalks);
-        steps = per < 64 ? 64 : (uint32_t)(per > 1e7 ? 1e7 : per);
-        if (steps < (1u << (dp > 20 ? 20 : dp))) steps = 1u << (dp > 20 ? 20 : dp);
+        double dp_floor = (double)(1ULL << (dp > 40 ? 40 : dp)) / (double)nwalks;
+        if (per < dp_floor) per = dp_floor;
+        if (per < 64) per = 64;
+        /* A launch is not interruptible and max_ops is only checked between
+         * launches, so never put more than the whole expected run - or the
+         * whole work limit - into one of them.  Without this an unusual
+         * dp_bits makes a single launch dwarf the entire search. */
+        double whole_run = expected / (double)nwalks + 64;
+        if (per > whole_run) per = whole_run;
+        if (params->max_ops) {
+            double limit = (double)params->max_ops / (double)nwalks + 1;
+            if (per > limit) per = limit;
+        }
+        if (per > 1e7) per = 1e7;
+        steps = per < 1 ? 1 : (uint32_t)per;
     }
     a.steps = steps;
     /* DP buffer for one launch: twice the expected count plus slack, and

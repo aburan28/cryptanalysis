@@ -39,7 +39,11 @@ typedef struct ca_gpu_rho_params {
     uint32_t blocks;             /* 0 => auto from the group size (and the device) */
     uint32_t steps_per_launch;   /* 0 => auto */
     uint32_t r;                  /* adding-walk multipliers, 0 => auto */
-    int32_t  dp_bits;            /* -1 => auto */
+    /* Distinguished-point bits; -1 chooses automatically (never above 48).
+     * An explicit value is honoured but clamped to 63, and a value anywhere
+     * near that makes distinguished points so rare that max_ops should be
+     * set, or the search will not terminate in practice. */
+    int32_t  dp_bits;
     int32_t  negation_map;       /* 1 => use on curves */
     uint64_t seed;               /* 0 => random */
     uint64_t max_ops;            /* 0 => unlimited */
