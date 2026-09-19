@@ -1,0 +1,115 @@
+#include "cryptanalysis/ca_modarith.h"
+#include "ca_internal.h"
+#include "test_util.h"
+
+int main(void)
+{
+    /* powmod / invmod against brute force on small moduli */
+    for (uint64_t m = 3; m < 200; m += 2) {
+        for (uint64_t a = 1; a < m; a++) {
+            uint64_t inv = ca_invmod(a, m);
+            if (ca_gcd(a, m) == 1) CHECK_EQ_U64(ca_mulmod(a, inv, m), 1);
+            else CHECK_EQ_U64(inv, 0);
+        }
+    }
+    /* large modulus near 2^64 */
+    uint64_t p = 18446744073709551557ULL; /* largest 64-bit prime */
+    CHECK(ca_is_prime(p));
+    CHECK(!ca_is_prime(p - 2));
+    CHECK(ca_is_prime(2) && ca_is_prime(3) && !ca_is_prime(1) && !ca_is_prime(0));
+    CHECK(!ca_is_prime(3215031751ULL)); /* strong pseudoprime to bases 2,3,5,7 */
+    CHECK(!ca_is_prime(341550071728321ULL)); /* psp to first 7 bases */
+    for (uint64_t a = 2; a < 50; a++) {
+        CHECK_EQ_U64(ca_mulmod(a, ca_invmod(a, p), p), 1);
+        CHECK_EQ_U64(ca_powmod(a, p - 1, p), 1);
+    }
+    /* Montgomery vs plain */
+    ca_mont mo;
+    CHECK(ca_mont_init(&mo, p));
+    uint64_t x = 0x123456789abcdef0ULL, y = 0xfedcba9876543210ULL;
+    uint64_t xm = ca_mont_to(&mo, x), ym = ca_mont_to(&mo, y);
+    CHECK_EQ_U64(ca_mont_from(&mo, ca_mont_mul(&mo, xm, ym)), ca_mulmod(x, y, p));
+    CHECK_EQ_U64(ca_mont_from(&mo, ca_mont_pow(&mo, xm, 12345)), ca_powmod(x, 12345, p));
+    CHECK_EQ_U64(ca_mont_from(&mo, ca_mont_inv(&mo, xm)), ca_invmod(x, p));
+    CHECK_EQ_U64(ca_mont_from(&mo, xm), x);
+    CHECK_EQ_U64(ca_mont_from(&mo, mo.r1), 1);
+    /* random Montgomery checks on several moduli */
+    ca_rng rng;
+    ca_rng_seed(&rng, 42);
+    uint64_t mods[] = {1000003, 4294967311ULL, 1099511627791ULL, 9223372036854775837ULL, p};
+    for (size_t i = 0; i < sizeof(mods) / sizeof(mods[0]); i++) {
+        ca_mont m2;
+        CHECK(ca_mont_init(&m2, mods[i]));
+        for (int k = 0; k < 2000; k++) {
+            uint64_t a = ca_rng_below(&rng, mods[i]), b = ca_rng_below(&rng, mods[i]);
+            uint64_t am = ca_mont_to(&m2, a), bm = ca_mont_to(&m2, b);
+            CHECK_EQ_U64(ca_mont_from(&m2, ca_mont_mul(&m2, am, bm)), ca_mulmod(a, b, mods[i]));
+            if (a) CHECK_EQ_U64(ca_mont_from(&m2, ca_mont_inv(&m2, am)), ca_invmod(a, mods[i]));
+        }
+    }
+    /* isqrt / iroot */
+    CHECK_EQ_U64(ca_isqrt(0), 0);
+    CHECK_EQ_U64(ca_isqrt(1), 1);
+    CHECK_EQ_U64(ca_isqrt(15), 3);
+    CHECK_EQ_U64(ca_isqrt(16), 4);
+    CHECK_EQ_U64(ca_isqrt(UINT64_MAX), 4294967295ULL);
+    CHECK_EQ_U64(ca_iroot(1000, 3), 10);
+    CHECK_EQ_U64(ca_iroot(999, 3), 9);
+    CHECK_EQ_U64(ca_iroot(UINT64_MAX, 4), 65535);
+    /* sqrt mod prime */
+    uint64_t ps[] = {7, 13, 17, 41, 97, 1000003, 4294967291ULL, 1000000000000000003ULL};
+    for (size_t i = 0; i < sizeof(ps) / sizeof(ps[0]); i++) {
+        for (int k = 0; k < 200; k++) {
+            uint64_t a = ca_rng_below(&rng, ps[i]);
+            uint64_t sq = ca_mulmod(a, a, ps[i]), r;
+            CHECK(ca_sqrtmod_prime(sq, ps[i], &r));
+            CHECK_EQ_U64(ca_mulmod(r, r, ps[i]), sq);
+        }
+    }
+    /* factoring */
+    ca_factorization f;
+    CHECK(ca_factorize(2 * 2 * 3 * 7 * 7 * 1000003ULL * 999983ULL, &f) == CA_OK);
+    CHECK_EQ_U64(f.count, 5);
+    CHECK_EQ_U64(f.f[0].p, 2); CHECK_EQ_U64(f.f[0].e, 2);
+    CHECK_EQ_U64(f.f[1].p, 3); CHECK_EQ_U64(f.f[1].e, 1);
+    CHECK_EQ_U64(f.f[2].p, 7); CHECK_EQ_U64(f.f[2].e, 2);
+    CHECK_EQ_U64(f.f[3].p, 999983); CHECK_EQ_U64(f.f[3].e, 1);
+    CHECK_EQ_U64(f.f[4].p, 1000003); CHECK_EQ_U64(f.f[4].e, 1);
+    CHECK(ca_factorize(999983ULL * 1000003ULL, &f) == CA_OK);
+    CHECK_EQ_U64(f.count, 2);
+    CHECK(ca_factorize(4294967291ULL * 4294967279ULL, &f) == CA_OK); /* two 32-bit primes */
+    CHECK_EQ_U64(f.count, 2);
+    CHECK_EQ_U64(f.f[0].p, 4294967279ULL);
+    CHECK_EQ_U64(f.f[1].p, 4294967291ULL);
+    CHECK(ca_factorize(p, &f) == CA_OK);
+    CHECK_EQ_U64(f.count, 1);
+    CHECK_EQ_U64(f.f[0].p, p);
+    CHECK(ca_factorize(1ULL << 63, &f) == CA_OK);
+    CHECK_EQ_U64(f.f[0].e, 63);
+    /* random products */
+    for (int k = 0; k < 200; k++) {
+        uint64_t n = 1 + ca_rng_below(&rng, UINT64_MAX);
+        CHECK(ca_factorize(n, &f) == CA_OK);
+        uint64_t prod = 1;
+        for (unsigned i = 0; i < f.count; i++) {
+            CHECK(ca_is_prime(f.f[i].p));
+            for (unsigned e = 0; e < f.f[i].e; e++) prod *= f.f[i].p;
+        }
+        CHECK_EQ_U64(prod, n);
+    }
+    /* primitive roots and orders */
+    CHECK_EQ_U64(ca_primitive_root(7), 3);
+    CHECK_EQ_U64(ca_primitive_root(1000003), 2);
+    CHECK_EQ_U64(ca_mult_order(2, 7), 3);
+    CHECK_EQ_U64(ca_mult_order(3, 7), 6);
+    CHECK_EQ_U64(ca_next_prime(1000000), 1000003);
+    /* CRT */
+    CHECK_EQ_U64(ca_crt2(2, 3, 3, 5), 8);
+    CHECK_EQ_U64(ca_crt2(1, 1000003, 5, 999983) % 1000003, 1);
+    CHECK_EQ_U64(ca_crt2(1, 1000003, 5, 999983) % 999983, 5);
+    /* sieve */
+    uint32_t pr[200];
+    CHECK_EQ_U64(ca_sieve_primes(100, pr, 200), 25);
+    CHECK_EQ_U64(pr[24], 97);
+    TEST_MAIN_END();
+}
