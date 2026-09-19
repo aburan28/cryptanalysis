@@ -163,8 +163,17 @@ scripts/build_cuda_kernel.sh --fetch --walks 4  # a different walk count
 ```
 
 `--fetch` assembles the headers, `libdevice` and `ptxas` from NVIDIA's pip
-wheels into a scratch directory, compiles with clang, and prints the
-register and local-memory table above.  This is what CI runs.
+wheels into a scratch directory, compiles with `nvcc` if it finds one and
+otherwise with clang, and prints the register and local-memory table above.
+This is what CI runs.
+
+One wrinkle when clang does the compiling: clang force-includes its own CUDA
+wrapper header, which pulls in libstdc++'s `<cmath>` and so `<limits>`, and
+from GCC 14 on that declares `numeric_limits<__float128>` — a type the NVPTX
+target does not have.  The compile then fails with a dozen errors that have
+nothing to do with the kernel.  The script detects this and retries against
+each installed GCC's headers, oldest first, reporting which one it used;
+`--host-gcc DIR` picks one explicitly.  `nvcc` is unaffected.
 
 ## How this is tested
 

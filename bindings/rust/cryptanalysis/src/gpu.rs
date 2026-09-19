@@ -87,7 +87,11 @@ impl Default for GpuOptions {
             blocks: raw.blocks,
             steps_per_launch: raw.steps_per_launch,
             r: raw.r,
-            dp_bits: if raw.dp_bits < 0 { None } else { Some(raw.dp_bits as u32) },
+            dp_bits: if raw.dp_bits < 0 {
+                None
+            } else {
+                Some(raw.dp_bits as u32)
+            },
             negation_map: raw.negation_map != 0,
             seed: raw.seed,
             max_ops: raw.max_ops,
@@ -136,7 +140,14 @@ impl Group {
         let mut st = sys::CaStats::default();
         // SAFETY: all pointers are valid for the duration of the call.
         check(unsafe {
-            sys::ca_ffi_gpu_rho(self.raw(), base.as_ptr(), target.as_ptr(), &raw, &mut x, &mut st)
+            sys::ca_ffi_gpu_rho(
+                self.raw(),
+                base.as_ptr(),
+                target.as_ptr(),
+                &raw,
+                &mut x,
+                &mut st,
+            )
         })?;
         Ok((x, Stats::from_raw(&st)))
     }
@@ -163,7 +174,11 @@ pub fn device_name(device: i32) -> Option<String> {
     if rc != 0 {
         return None;
     }
-    let bytes: Vec<u8> = buf.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
+    let bytes: Vec<u8> = buf
+        .iter()
+        .take_while(|&&c| c != 0)
+        .map(|&c| c as u8)
+        .collect();
     String::from_utf8(bytes).ok()
 }
 
@@ -176,7 +191,11 @@ mod tests {
         let g = Group::zp(2_000_000_579, 1_000_000_289).unwrap();
         let gen = g.find_generator(1).unwrap();
         let h = g.mul(&gen, 4242).unwrap();
-        let opts = GpuOptions { backend: GpuBackend::Emulate, seed: 3, ..Default::default() };
+        let opts = GpuOptions {
+            backend: GpuBackend::Emulate,
+            seed: 3,
+            ..Default::default()
+        };
         let (x, stats) = g.gpu_rho(&gen, &h, &opts).unwrap();
         assert_eq!(x, 4242);
         assert!(stats.group_ops > 0);
@@ -191,7 +210,11 @@ mod tests {
         let ord = g.elem_order(&p).unwrap();
         g.set_order(ord, n / ord);
         let q = g.mul(&p, 1234 % ord).unwrap();
-        let opts = GpuOptions { backend: GpuBackend::Emulate, seed: 5, ..Default::default() };
+        let opts = GpuOptions {
+            backend: GpuBackend::Emulate,
+            seed: 5,
+            ..Default::default()
+        };
         let (x, _) = g.gpu_rho(&p, &q, &opts).unwrap();
         assert_eq!(x, 1234 % ord);
     }
@@ -202,7 +225,11 @@ mod tests {
         assert_eq!(d.backend, GpuBackend::Auto);
         assert_eq!(d.dp_bits, None);
         assert!(d.negation_map);
-        let o = GpuOptions { dp_bits: Some(4), backend: GpuBackend::Cuda, ..Default::default() };
+        let o = GpuOptions {
+            dp_bits: Some(4),
+            backend: GpuBackend::Cuda,
+            ..Default::default()
+        };
         let raw = o.to_raw();
         assert_eq!(raw.dp_bits, 4);
         assert_eq!(raw.backend, sys::CA_GPU_BACKEND_CUDA);
@@ -213,7 +240,10 @@ mod tests {
         let g = Group::zp(2_000_000_579, 1_000_000_289).unwrap();
         let gen = g.find_generator(1).unwrap();
         let h = g.mul(&gen, 99).unwrap();
-        let opts = GpuOptions { backend: GpuBackend::Cuda, ..Default::default() };
+        let opts = GpuOptions {
+            backend: GpuBackend::Cuda,
+            ..Default::default()
+        };
         let got = g.gpu_rho(&gen, &h, &opts);
         if cuda_compiled() && device_count() > 0 {
             assert_eq!(got.unwrap().0, 99);

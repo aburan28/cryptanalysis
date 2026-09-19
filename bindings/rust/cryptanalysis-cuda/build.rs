@@ -142,7 +142,46 @@ impl Candidate {
         }
     }
 
+    /// Compile the kernel to PTX, validating the result.
+    ///
+    /// For clang this may take several attempts: clang compiling CUDA
+    /// force-includes its own wrapper header, which pulls in libstdc++'s
+    /// `<cmath>` and so `<limits>`, and from GCC 14 on that declares
+    /// `numeric_limits<__float128>` - a type the NVPTX target does not have.
+    /// Pointing clang at an older GCC's headers with `--gcc-install-dir`
+    /// avoids it, so the default host GCC is tried first and then each
+    /// installed one, oldest first.  `nvcc` is unaffected and is tried once.
     fn compile(&self, repo: &Path, kernel: &Path, ptx: &Path, arch: &str) -> Result<(), String> {
+        if matches!(self, Candidate::Nvcc(_)) {
+            return self.compile_with(repo, kernel, ptx, arch, None);
+        }
+        let first_err = match self.compile_with(repo, kernel, ptx, arch, None) {
+            Ok(()) => return Ok(()),
+            Err(e) => e,
+        };
+        for gcc in gcc_install_dirs() {
+            if self
+                .compile_with(repo, kernel, ptx, arch, Some(&gcc))
+                .is_ok()
+            {
+                println!(
+                    "cargo:warning=using host GCC headers from {}",
+                    gcc.display()
+                );
+                return Ok(());
+            }
+        }
+        Err(first_err)
+    }
+
+    fn compile_with(
+        &self,
+        repo: &Path,
+        kernel: &Path,
+        ptx: &Path,
+        arch: &str,
+        gcc_install_dir: Option<&Path>,
+    ) -> Result<(), String> {
         let mut cmd = match self {
             Candidate::Nvcc(exe) => {
                 let mut c = Command::new(exe);
@@ -159,6 +198,9 @@ impl Candidate {
                     .arg("-O3")
                     .arg("-Wno-unknown-cuda-version")
                     .arg("-S");
+                if let Some(g) = gcc_install_dir {
+                    c.arg(format!("--gcc-install-dir={}", g.display()));
+                }
                 c
             }
         };
@@ -189,6 +231,37 @@ impl Candidate {
         }
         Ok(())
     }
+}
+
+/// Installed GCC header directories (`/usr/lib/gcc/<triple>/<version>`),
+/// oldest major version first.  Used to work around the `__float128`
+/// incompatibility described on [`Candidate::compile`]; an empty list on
+/// platforms that do not lay GCC out this way simply means no retry.
+fn gcc_install_dirs() -> Vec<PathBuf> {
+    fn major(p: &Path) -> u32 {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.split('.').next())
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0)
+    }
+    let mut dirs = Vec::new();
+    let Ok(triples) = fs::read_dir("/usr/lib/gcc") else {
+        return dirs;
+    };
+    for triple in triples.flatten() {
+        let Ok(versions) = fs::read_dir(triple.path()) else {
+            continue;
+        };
+        for version in versions.flatten() {
+            let path = version.path();
+            if path.is_dir() && major(&path) > 0 {
+                dirs.push(path);
+            }
+        }
+    }
+    dirs.sort_by_key(|p| major(p));
+    dirs
 }
 
 /// `nvcc` first (it is the vendor compiler), then `clang -x cuda`.  Each

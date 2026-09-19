@@ -11,6 +11,7 @@
 # Usage:
 #   scripts/build_cuda_kernel.sh [--fetch] [--arch sm_70[,sm_80,...]]
 #                               [--walks N] [--out DIR] [--cuda-path DIR]
+#                               [--host-gcc DIR]
 #
 # With a real CUDA toolkit installed, point --cuda-path at it (or set
 # CUDA_PATH) and omit --fetch; nvcc is used when available, else clang.
@@ -20,6 +21,7 @@ ARCHES="sm_70,sm_80,sm_89,sm_90"
 WALKS=""
 OUT="${OUT:-build-cuda-kernel}"
 CUDA_PATH="${CUDA_PATH:-}"
+HOST_GCC="${HOST_GCC:-}"
 FETCH=0
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
@@ -30,6 +32,7 @@ while [ $# -gt 0 ]; do
         --walks) WALKS="$2"; shift ;;
         --out) OUT="$2"; shift ;;
         --cuda-path) CUDA_PATH="$2"; shift ;;
+        --host-gcc) HOST_GCC="$2"; shift ;;
         -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
@@ -79,6 +82,43 @@ NVCC="$CUDA_PATH/bin/nvcc"
 DEFS=""
 [ -n "$WALKS" ] && DEFS="-DCA_GPU_W=$WALKS"
 
+# Compile the kernel to PTX with clang.  $1 = arch, $2 = output, $3 = extra
+# flags (may be empty).
+clang_ptx() {
+    # shellcheck disable=SC2086  # $DEFS and $3 are deliberately word-split
+    clang -x cuda --cuda-device-only --cuda-path="$CUDA_PATH" \
+        --cuda-gpu-arch="$1" -O3 $DEFS -Wno-unknown-cuda-version $3 \
+        -I"$REPO/include" -I"$REPO/cuda" -I"$REPO/src" \
+        -S -o "$2" "$REPO/cuda/rho_kernel.cu" 2>&1
+}
+
+# clang compiling CUDA force-includes its own wrapper header, which pulls in
+# libstdc++'s <cmath> and hence <limits>.  From GCC 14 on that declares
+# numeric_limits<__float128>, and __float128 does not exist on the NVPTX
+# target, so the compile fails with errors that have nothing to do with this
+# kernel.  Pointing clang at an older GCC's headers avoids it, so when the
+# default host GCC fails we retry against each installed one, oldest first.
+# (--host-gcc DIR picks one explicitly; nvcc is unaffected by all of this.)
+pick_host_gcc() {
+    arch="$1"
+    if [ -n "$HOST_GCC" ]; then
+        echo "--gcc-install-dir=$HOST_GCC"
+        return 0
+    fi
+    if clang_ptx "$arch" /dev/null "" >/dev/null 2>&1; then
+        echo ""
+        return 0
+    fi
+    for d in $(ls -d /usr/lib/gcc/*/[0-9]* 2>/dev/null | sort -V); do
+        if clang_ptx "$arch" /dev/null "--gcc-install-dir=$d" >/dev/null 2>&1; then
+            echo "--gcc-install-dir=$d"
+            return 0
+        fi
+    done
+    echo ""
+    return 1
+}
+
 echo "== checking cuda/gpu_cuda.c compiles as C against the CUDA headers"
 cc -fsyntax-only -std=gnu11 -D_GNU_SOURCE -DCA_BUILDING -Wall -Wextra -Werror \
     -I"$REPO/include" -I"$REPO/src" -I"$REPO/cuda" -I"$CUDA_PATH/include" \
@@ -86,18 +126,30 @@ cc -fsyntax-only -std=gnu11 -D_GNU_SOURCE -DCA_BUILDING -Wall -Wextra -Werror \
 
 echo "== compiling cuda/rho_kernel.cu (walks per thread: ${WALKS:-default})"
 status=0
+GCC_FLAG=""
+GCC_FLAG_SET=0
 for ARCH in $(echo "$ARCHES" | tr ',' ' '); do
     PTX="$OUT/rho_kernel.$ARCH.ptx"
     CUBIN="$OUT/rho_kernel.$ARCH.cubin"
     if [ -n "$NVCC" ]; then
+        # shellcheck disable=SC2086
         "$NVCC" -ptx -arch="$ARCH" -O3 $DEFS \
             -I"$REPO/include" -I"$REPO/cuda" -I"$REPO/src" \
             -o "$PTX" "$REPO/cuda/rho_kernel.cu"
     else
-        clang -x cuda --cuda-device-only --cuda-path="$CUDA_PATH" \
-            --cuda-gpu-arch="$ARCH" -O3 $DEFS -Wno-unknown-cuda-version \
-            -I"$REPO/include" -I"$REPO/cuda" -I"$REPO/src" \
-            -S -o "$PTX" "$REPO/cuda/rho_kernel.cu"
+        if [ "$GCC_FLAG_SET" = 0 ]; then
+            GCC_FLAG=$(pick_host_gcc "$ARCH") || true
+            GCC_FLAG_SET=1
+            case "$GCC_FLAG" in
+                --gcc-install-dir=*) echo "   (host GCC headers: ${GCC_FLAG#--gcc-install-dir=})" ;;
+            esac
+        fi
+        if ! out=$(clang_ptx "$ARCH" "$PTX" "$GCC_FLAG"); then
+            echo "$ARCH: clang failed"
+            echo "$out" | head -20
+            status=1
+            continue
+        fi
     fi
     if ! info=$("$PTXAS" -arch="$ARCH" -v -o "$CUBIN" "$PTX" 2>&1); then
         echo "$ARCH: FAILED"
