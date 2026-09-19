@@ -145,11 +145,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
         with:
-          manifest-path: bindings/rust/Cargo.toml
-          command: check
-          command-arguments: --config bindings/rust/deny.toml --show-stats
+          # Installed rather than taken from cargo-deny-action, whose pinned
+          # binary is old enough that --config is not an option of `check`
+          # and that it cannot parse CVSS 4.0 advisory entries.
+          tool: cargo-deny
+      - name: cargo-deny
+        run: |
+          cargo deny --manifest-path bindings/rust/Cargo.toml \
+                check --config bindings/rust/deny.toml --show-stats
 
   # -------------------------------------------------------------------- Go --
 
@@ -208,12 +214,17 @@ jobs:
         with:
           go-version: stable
           cache: false
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
         with:
-          # v6 of the action drives golangci-lint v1.x, which is the schema
-          # bindings/go/.golangci.yml is written against.
-          version: v1.64
+          # v2 of the linter.  v1 cannot read the export data produced by
+          # current Go toolchains: it dies with "export data version 4 is
+          # greater than maximum supported version 2".
+          version: v2.5.0
           working-directory: bindings/go
+      - name: Formatters
+        # In v2 the formatters are a separate command from the linters.
+        run: golangci-lint fmt --diff
+        working-directory: bindings/go
 
   # ---------------------------------------------------------------- Python --
 

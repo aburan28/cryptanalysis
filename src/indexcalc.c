@@ -146,7 +146,7 @@ typedef struct sieve_shared {
     const uint32_t *fb;
     uint32_t nfb;
     const uint8_t *fb_log2;       /* rounded log2 of each prime */
-    uint32_t col_prime0, col_h0; /* column layout: factor base, then H+c */
+    uint32_t col_prime0, col_h0;  /* column layout: factor base, then H+c */
     uint32_t ncols;
     uint32_t target_rels;
     atomic_int next_c1;           /* c1 = -C + index */
@@ -173,8 +173,8 @@ static void *sieve_thread(void *arg)
     int64_t C = s->C;
     size_t len = (size_t)(2 * C + 1);
     uint8_t *arr = malloc(len);
-    uint64_t *hmod = malloc(nfb * sizeof(uint64_t));   /* H mod q */
-    uint64_t *jmod = malloc(nfb * sizeof(uint64_t));   /* J mod q */
+    uint64_t *hmod = malloc(nfb * sizeof(uint64_t)); /* H mod q */
+    uint64_t *jmod = malloc(nfb * sizeof(uint64_t)); /* J mod q */
     rel_list local = {0};
     if (!arr || !hmod || !jmod) {
         free(arr); free(hmod); free(jmod);
@@ -397,7 +397,10 @@ static ca_status large_part_logs(const ca_spmat *A, const uint64_t *b, uint64_t 
                 uint32_t j = A->col[kk];
                 /* j < A->cols by construction; the bound is checked anyway so
                  * that a malformed matrix cannot index out of the solution. */
-                if (j >= A->cols || !known[j]) { acc = 0; break; }
+                if (j >= A->cols || !known[j]) {
+                    acc = 0;
+                    break;
+                }
                 acc -= (ca_i128)A->val[kk] * (ca_i128)x[j];
             }
             ca_i128 m = (ca_i128)qk1;

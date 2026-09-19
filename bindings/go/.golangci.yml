@@ -1,28 +1,18 @@
-# golangci-lint configuration for the cgo bindings.
+# golangci-lint v2 schema (migrated from v1 with `golangci-lint migrate`).
+# v1 cannot read the export data produced by current Go toolchains, which is
+# why the action and this file are both on v2.
 #
-# Schema: golangci-lint v1.x (the version .github/workflows/bindings.yml pins
-# through golangci/golangci-lint-action@v6).
-#
-# The package is a single cgo package that compiles ../../src itself, so a few
-# checks have to be relaxed where they misread cgo-generated code or where the
-# Go types deliberately mirror the C ABI.  Every relaxation is justified below.
-
+# Every disabled check below corresponds to a finding actually seen in this
+# package, with the reason next to it.
+version: "2"
 run:
-  timeout: 5m
-  # cgo must stay on: the package is nothing but a cgo wrapper, and with
-  # CGO_ENABLED=0 every linter would collapse into "could not import C".
   tests: true
-
 linters:
-  # NB: copyloopvar is deliberately absent - it needs `go >= 1.22` in go.mod
-  # and this module still declares `go 1.21` (the CI matrix floor).
   enable:
     - durationcheck
     - errname
     - errorlint
     - gocritic
-    - gofmt
-    - goimports
     - gosec
     - makezero
     - misspell
@@ -35,53 +25,69 @@ linters:
     - usestdlibvars
     - wastedassign
     - whitespace
-
-linters-settings:
-  govet:
-    enable-all: true
-    disable:
-      # `Options`, `Stats`, `ICParams` and `ICStats` are field-for-field
-      # mirrors of the C structs in ca_ffi.h / ca_indexcalc.h.  Reordering
-      # their fields to save padding would destroy that correspondence (and
-      # the conversion functions' readability) for a handful of bytes.
-      - fieldalignment
-      # `if _, err := f(); err != nil` inside a function that already has an
-      # `err` is the normal Go idiom; the tests use it throughout.
-      - shadow
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-      - performance
-    disabled-checks:
-      # cgo's pseudo-package "C" is counted as a second import of the real
-      # "unsafe" import, so every cgo file trips this.
-      - dupImport
-      # False positive on cgo call sites: gocritic inspects the rewritten
-      # _Cfunc_* expansion and reports an identical LHS/RHS at a column past
-      # the end of the original line (cgo.go, ca_ic_precompute).
-      - dupSubExpr
-      # Reports `// p = 2*order + 1` style explanatory comments next to
-      # constants as commented-out code.
-      - commentedOutCode
-      # Naming the results of small two-value helpers adds noise here.
-      - unnamedResult
-  revive:
+  settings:
+    gocritic:
+      disabled-checks:
+        # cgo false positive: the pseudo-package "C" counts as a second
+        # import alongside "unsafe", so every cgo file trips this.
+        - dupImport
+        # cgo false positive: gocritic inspects the rewritten
+        # _Cfunc_ca_ic_precompute expansion and reports an identical
+        # left- and right-hand side past the end of the real source line.
+        - dupSubExpr
+        # Flags the explanatory `// p = 2*order + 1` next to a const.
+        - commentedOutCode
+        # Style only, and the two helpers it hits are three lines each.
+        - unnamedResult
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    govet:
+      disable:
+        # Options, Stats, ICParams and ICStats are field-for-field mirrors of
+        # the C structs.  Reordering them to save eight bytes would destroy
+        # the correspondence the conversion functions rely on.
+        - fieldalignment
+        # Three hits, all `if _, err := f(); ...` inside a function that
+        # already has an err.  That is ordinary Go.
+        - shadow
+      enable-all: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    revive:
+      rules:
+        - name: exported
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: exported
-  nolintlint:
-    require-explanation: true
-    require-specific: true
-    allow-unused: false
-
+      # Runnable godoc examples use the documented log.Fatal(err) plus
+      # defer x.Close() shape.
+      - linters:
+          - gocritic
+        path: example_test\.go
+        text: exitAfterDefer
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    # Runnable godoc examples use the documented `if err != nil { log.Fatal }`
-    # shape together with `defer x.Close()`; that is the idiom readers expect
-    # even though log.Fatal would skip the deferred call.
-    - path: example_test\.go
-      linters:
-        - gocritic
-      text: "exitAfterDefer"
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

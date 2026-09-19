@@ -247,9 +247,8 @@ void ca_ec_random_point(const ca_group *g, ca_elem *r, uint64_t seed)
 
 /* All k in [lo, lo+width) with k*P == T, appended to out (up to cap).
  * Returns the number found (may exceed cap; only cap are stored). */
-static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem *T,
-                              uint64_t lo, uint64_t width, uint64_t *out, size_t cap,
-                              ca_stats *st)
+static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem *T, uint64_t lo,
+                              uint64_t width, uint64_t *out, size_t cap, ca_stats *st)
 {
     uint64_t m = ca_isqrt(width) + 1;
     ca_htab tab;
@@ -273,7 +272,10 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
         ec_identity(g, &cur);
         uint64_t k0 = small_order;
         for (uint64_t j = 0; j < small_order; j++) {
-            if (ec_equal(g, &cur, T)) { k0 = j; break; }
+            if (ec_equal(g, &cur, T)) {
+                k0 = j;
+                break;
+            }
             ec_op(g, &cur, &cur, P);
         }
         if (k0 < small_order) {
@@ -359,7 +361,11 @@ static ca_status ec_count_once(const ca_group *g, uint64_t *order, ca_stats *st,
             }
             ncand = w;
         }
-        if (ncand == 1) { *order = cands[0]; rc = CA_OK; break; }
+        if (ncand == 1) {
+            *order = cands[0];
+            rc = CA_OK;
+            break;
+        }
         if (ncand == 0) { rc = CA_ERR_INTERNAL; break; }
     }
     if (rc != CA_OK && have && ncand > 1) *ambiguous = 1;

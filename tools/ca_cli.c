@@ -93,14 +93,17 @@ static _Noreturn void die_status(ca_status rc)
 
 static _Noreturn void usage(void)
 {
-    fprintf(stderr,
-            "usage: ca <command> [options]\n"
-            "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
-            "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
-            "  solve --alg bsgs|rho|kangaroo|grumpy|dlog|gpu-rho --group zp|ec --p P [--a A --b B]\n"
-            "        --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S] ...\n"
-            "  cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D (--ga GA --gad GAD | --alpha X)\n"
-            "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] [--verbose]\n");
+    fprintf(
+        stderr,
+        "usage: ca <command> [options]\n"
+        "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
+        "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
+        "  solve --alg bsgs|rho|kangaroo|grumpy|dlog|gpu-rho --group zp|ec --p P [--a A --b B]\n"
+        "        --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S] ...\n"
+        "  cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D (--ga GA --gad GAD | "
+        "--alpha X)\n"
+        "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] "
+        "[--verbose]\n");
     exit(2);
 }
 
@@ -222,10 +225,14 @@ static int cmd_solve(void)
         ca_gpu_rho_params_default(&gp);
         const char *be = opt("--backend");
         if (be) {
-            if (!strcmp(be, "auto")) gp.backend = CA_GPU_BACKEND_AUTO;
-            else if (!strcmp(be, "cuda")) gp.backend = CA_GPU_BACKEND_CUDA;
-            else if (!strcmp(be, "emulate")) gp.backend = CA_GPU_BACKEND_EMULATE;
-            else die("--backend must be auto, cuda or emulate");
+            if (!strcmp(be, "auto"))
+                gp.backend = CA_GPU_BACKEND_AUTO;
+            else if (!strcmp(be, "cuda"))
+                gp.backend = CA_GPU_BACKEND_CUDA;
+            else if (!strcmp(be, "emulate"))
+                gp.backend = CA_GPU_BACKEND_EMULATE;
+            else
+                die("--backend must be auto, cuda or emulate");
         }
         gp.device = (int32_t)opt_u64("--device", 0);
         gp.threads_per_block = (uint32_t)opt_u64("--tpb", 0);
@@ -378,7 +385,8 @@ int main(int argc, char **argv)
                ca_gpu_cuda_compiled() ? "true" : "false", n, CA_GPU_W);
         for (int i = 0; i < n; i++) {
             char name[256] = "";
-            ca_gpu_device_name(i, name, sizeof(name));
+            if (ca_gpu_device_name(i, name, sizeof(name)) != 0)
+                snprintf(name, sizeof(name), "unknown");
             printf("%s\"%s\"", i ? "," : "", name);
         }
         printf("]}\n");

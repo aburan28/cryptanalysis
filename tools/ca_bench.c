@@ -400,15 +400,19 @@ int main(int argc, char **argv)
     } else if (!strcmp(cmd, "gpu")) {
         int nb = parse_list(opt("--bits", "24,28,32"), bits, 16);
         printf("GPU rho kernel vs the CPU solver.  S = group ops / sqrt(n); \"walks\" is the\n"
-               "number of concurrent walks (CPU: threads; GPU: threads x %d).\n", CA_GPU_W);
+               "number of concurrent walks (CPU: threads; GPU: threads x %d).\n",
+               CA_GPU_W);
         printf("CUDA compiled: %s, devices: %d\n", ca_gpu_cuda_compiled() ? "yes" : "no",
                ca_gpu_device_count());
         for (int i = 0; i < ca_gpu_device_count(); i++) {
             char name[256] = "";
-            if (ca_gpu_device_name(i, name, sizeof(name)) == 0) printf("  device %d: %s\n", i, name);
+            if (ca_gpu_device_name(i, name, sizeof(name)) == 0)
+                printf("  device %d: %s\n", i, name);
         }
-        printf("\n| grp | bits | solver             | S=ops/√n | seconds    |   walks | launches | ok  |\n");
-        printf("|-----|------|--------------------|----------|------------|---------|----------|-----|\n");
+        printf("\n| grp | bits | solver             | S=ops/√n | seconds    |   walks | launches | "
+               "ok  |\n");
+        printf("|-----|------|--------------------|----------|------------|---------|----------|---"
+               "--|\n");
         for (int i = 0; i < nb; i++) {
             if (strcmp(group, "ec")) run_gpu(bits[i], reps, 0);
             if (strcmp(group, "zp")) run_gpu(bits[i], reps, 1);

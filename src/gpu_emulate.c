@@ -29,7 +29,12 @@ static ca_status emu_create(const ca_gpu_rho_args *a, uint32_t tpb, int device, 
     c->dp = calloc((size_t)a->dp_cap * 4, sizeof(uint64_t));
     c->restart = malloc(nwalks);
     if (!c->mult || !c->state || !c->aux || !c->dp || !c->restart) {
-        free(c->mult); free(c->state); free(c->aux); free(c->dp); free(c->restart); free(c);
+        free(c->mult);
+        free(c->state);
+        free(c->aux);
+        free(c->dp);
+        free(c->restart);
+        free(c);
         return CA_ERR_NOMEM;
     }
     memcpy(c->mult, a->mult, (size_t)a->r * 4 * sizeof(uint64_t));
@@ -64,8 +69,13 @@ static void emu_destroy(void *ctx)
 {
     emu_ctx *c = ctx;
     if (!c) return;
-    free(c->mult); free(c->state); free(c->aux); free(c->dp); free(c->restart);
+    free(c->mult);
+    free(c->state);
+    free(c->aux);
+    free(c->dp);
+    free(c->restart);
     free(c);
 }
 
-const ca_gpu_backend_ops ca_gpu_emulate_ops = {"emulate", emu_create, emu_launch, emu_restart, emu_destroy};
+const ca_gpu_backend_ops ca_gpu_emulate_ops = {"emulate", emu_create, emu_launch, emu_restart,
+                                               emu_destroy};

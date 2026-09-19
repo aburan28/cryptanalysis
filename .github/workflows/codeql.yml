@@ -46,7 +46,11 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          queries: security-and-quality
+          # security-extended, not security-and-quality: the quality pack adds
+          # style queries (undocumented function, "include header files only"
+          # for the .cuh device header) that clang-tidy and cppcheck already
+          # cover properly, and that would make this check permanently amber.
+          queries: security-extended
 
       - name: Build the C library
         if: matrix.language == 'c-cpp'

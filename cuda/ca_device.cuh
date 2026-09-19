@@ -22,26 +22,26 @@
 #include <stdint.h>
 
 #if defined(__CUDACC__) || defined(__CUDA__)
-#  define CA_DEV __device__ __forceinline__
-#  define CA_DEV_CUDA 1
+#    define CA_DEV      __device__ __forceinline__
+#    define CA_DEV_CUDA 1
 #else
-#  define CA_DEV static inline
-#  define CA_DEV_CUDA 0
+#    define CA_DEV      static inline
+#    define CA_DEV_CUDA 0
 #endif
 
 #ifndef CA_GPU_W
-#  define CA_GPU_W 8            /* walks per thread (compile-time) */
+#    define CA_GPU_W 8 /* walks per thread (compile-time) */
 #endif
-#define CA_GPU_AUX 8            /* aux words per walk */
-#define CA_AUX_CTL 0            /* bit 63: retry pending, low 32 bits: pending idx */
-#define CA_AUX_WIN 1            /* cycle-detection window countdown */
-#define CA_AUX_SAVEX 2
-#define CA_AUX_SAVEY 3
-#define CA_AUX_SINCEDP 4
-#define CA_AUX_RESTARTS 5       /* restart counter (RNG stream selector) */
-#define CA_GPU_WINDOW 64
-#define CA_GPU_KIND_ZP 1
-#define CA_GPU_KIND_EC 2
+#define CA_GPU_AUX      8 /* aux words per walk */
+#define CA_AUX_CTL      0 /* bit 63: retry pending, low 32 bits: pending idx */
+#define CA_AUX_WIN      1 /* cycle-detection window countdown */
+#define CA_AUX_SAVEX    2
+#define CA_AUX_SAVEY    3
+#define CA_AUX_SINCEDP  4
+#define CA_AUX_RESTARTS 5 /* restart counter (RNG stream selector) */
+#define CA_GPU_WINDOW   64
+#define CA_GPU_KIND_ZP  1
+#define CA_GPU_KIND_EC  2
 
 typedef struct ca_gpu_rho_args {
     uint64_t p, pinv, one, a_mont, n;
@@ -49,14 +49,14 @@ typedef struct ca_gpu_rho_args {
     uint64_t seed;
     uint64_t base_x, base_y, target_x, target_y;
     uint32_t kind, negmap, r, steps, nthreads, dp_cap;
-    uint32_t abandon_shift;       /* abandon a walk after 24 << abandon_shift steps w/o DP */
+    uint32_t abandon_shift; /* abandon a walk after 24 << abandon_shift steps w/o DP */
     uint32_t pad;
     const uint64_t *mult;
     uint64_t *state;
     uint64_t *aux;
     uint64_t *dp_out;
     uint32_t *dp_count;
-    uint8_t *restart;             /* per walk: 1 => re-seed at the start of the next launch */
+    uint8_t *restart; /* per walk: 1 => re-seed at the start of the next launch */
 } ca_gpu_rho_args;
 
 /* ---- 64-bit Montgomery arithmetic ------------------------------------- */
@@ -151,11 +151,19 @@ CA_DEV void ca_dev_op(const ca_gpu_rho_args *g, uint64_t *x, uint64_t *y, uint64
         *x = ca_dev_mont_mul(*x, bx, p, pinv);
         return;
     }
-    if (*x == p) { *x = bx; *y = by; return; }
+    if (*x == p) {
+        *x = bx;
+        *y = by;
+        return;
+    }
     if (bx == p) return;
     uint64_t lam;
     if (*x == bx) {
-        if (*y != by || *y == 0) { *x = p; *y = 0; return; }
+        if (*y != by || *y == 0) {
+            *x = p;
+            *y = 0;
+            return;
+        }
         uint64_t x2 = ca_dev_mont_mul(*x, *x, p, pinv);
         uint64_t num = ca_dev_addmod(ca_dev_addmod(ca_dev_addmod(x2, x2, p), x2, p), g->a_mont, p);
         uint64_t den = ca_dev_addmod(*y, *y, p);
@@ -177,12 +185,17 @@ CA_DEV void ca_dev_dbl(const ca_gpu_rho_args *g, uint64_t *x, uint64_t *y)
 }
 
 /* Scalar multiplication k*(bx,by) by double-and-add (used for restarts). */
-CA_DEV void ca_dev_mul(const ca_gpu_rho_args *g, uint64_t *rx, uint64_t *ry, uint64_t bx, uint64_t by,
-                       uint64_t k)
+CA_DEV void ca_dev_mul(const ca_gpu_rho_args *g, uint64_t *rx, uint64_t *ry, uint64_t bx,
+                       uint64_t by, uint64_t k)
 {
     uint64_t ax, ay;
-    if (g->kind == CA_GPU_KIND_ZP) { ax = g->one; ay = 0; }
-    else { ax = g->p; ay = 0; }
+    if (g->kind == CA_GPU_KIND_ZP) {
+        ax = g->one;
+        ay = 0;
+    } else {
+        ax = g->p;
+        ay = 0;
+    }
     uint64_t px = bx, py = by;
     while (k) {
         if (k & 1) ca_dev_op(g, &ax, &ay, px, py);
@@ -198,7 +211,10 @@ CA_DEV int ca_dev_canon(const ca_gpu_rho_args *g, uint64_t x, uint64_t *y)
 {
     if (!g->negmap || g->kind != CA_GPU_KIND_EC || x == g->p || *y == 0) return 0;
     uint64_t ny = g->p - *y;
-    if (ny < *y) { *y = ny; return 1; }
+    if (ny < *y) {
+        *y = ny;
+        return 1;
+    }
     return 0;
 }
 
@@ -224,9 +240,11 @@ CA_DEV void ca_dev_walk_negate_exps(const ca_gpu_rho_args *g, ca_dev_walk *w)
 }
 
 /* Fresh random start Y = a*G + b*H for walk `wid` (restart counter `ctr`). */
-CA_DEV void ca_dev_walk_restart(const ca_gpu_rho_args *g, ca_dev_walk *w, uint32_t wid, uint64_t ctr)
+CA_DEV void ca_dev_walk_restart(const ca_gpu_rho_args *g, ca_dev_walk *w, uint32_t wid,
+                                uint64_t ctr)
 {
-    uint64_t s = g->seed ^ (0x9E3779B97F4A7C15ULL * (uint64_t)(wid + 1)) ^ (ctr * 0xD1B54A32D192ED03ULL);
+    uint64_t s =
+        g->seed ^ (0x9E3779B97F4A7C15ULL * (uint64_t)(wid + 1)) ^ (ctr * 0xD1B54A32D192ED03ULL);
     ca_dev_splitmix(&s);
     w->a = ca_dev_splitmix(&s) % g->n;
     w->b = ca_dev_splitmix(&s) % g->n;
@@ -276,7 +294,10 @@ CA_DEV void ca_dev_walk_escape(const ca_gpu_rho_args *g, ca_dev_walk *w)
         ca_dev_walk_step_single(g, &cur);
         if (cur.x == w->x && cur.y == w->y) break;
         uint64_t h = ca_dev_hash(g->kind, cur.x, cur.y, g->p);
-        if (h < besth) { besth = h; best = cur; }
+        if (h < besth) {
+            besth = h;
+            best = cur;
+        }
     }
     w->x = best.x;
     w->y = best.y;
@@ -292,7 +313,10 @@ CA_DEV void ca_dev_walk_load(const ca_gpu_rho_args *g, ca_dev_walk *w, uint32_t 
 {
     const uint64_t *s = g->state + 4 * (size_t)wid;
     const uint64_t *a = g->aux + CA_GPU_AUX * (size_t)wid;
-    w->x = s[0]; w->y = s[1]; w->a = s[2]; w->b = s[3];
+    w->x = s[0];
+    w->y = s[1];
+    w->a = s[2];
+    w->b = s[3];
     w->pend = (uint32_t)a[CA_AUX_CTL];
     w->retry = (uint32_t)(a[CA_AUX_CTL] >> 63);
     w->win = (uint32_t)a[CA_AUX_WIN];
@@ -305,7 +329,10 @@ CA_DEV void ca_dev_walk_store(const ca_gpu_rho_args *g, const ca_dev_walk *w, ui
 {
     uint64_t *s = g->state + 4 * (size_t)wid;
     uint64_t *a = g->aux + CA_GPU_AUX * (size_t)wid;
-    s[0] = w->x; s[1] = w->y; s[2] = w->a; s[3] = w->b;
+    s[0] = w->x;
+    s[1] = w->y;
+    s[2] = w->a;
+    s[3] = w->b;
     a[CA_AUX_CTL] = ((uint64_t)w->retry << 63) | w->pend;
     a[CA_AUX_WIN] = w->win;
     a[CA_AUX_SAVEX] = w->savex;
@@ -352,8 +379,8 @@ CA_DEV void ca_dev_rho_thread(const ca_gpu_rho_args *g, uint32_t tid)
     for (uint32_t step = 0; step < g->steps; step++) {
         /* choose multipliers */
         for (int k = 0; k < CA_GPU_W; k++) {
-            idx[k] = w[k].retry ? w[k].pend
-                                : ca_dev_index(g, ca_dev_hash(g->kind, w[k].x, w[k].y, p));
+            idx[k] =
+                w[k].retry ? w[k].pend : ca_dev_index(g, ca_dev_hash(g->kind, w[k].x, w[k].y, p));
         }
         if (g->kind == CA_GPU_KIND_ZP) {
             for (int k = 0; k < CA_GPU_W; k++) {
@@ -386,9 +413,12 @@ CA_DEV void ca_dev_rho_thread(const ca_gpu_rho_args *g, uint32_t tid)
             uint32_t i = idx[k];
             uint64_t bx = g->mult[4 * (size_t)i], by = g->mult[4 * (size_t)i + 1];
             uint64_t d;
-            if (w[k].x == p || bx == p) d = one;
-            else if (w[k].x == bx) d = (w[k].y == by && w[k].y != 0) ? ca_dev_addmod(w[k].y, w[k].y, p) : one;
-            else d = ca_dev_submod(bx, w[k].x, p);
+            if (w[k].x == p || bx == p)
+                d = one;
+            else if (w[k].x == bx)
+                d = (w[k].y == by && w[k].y != 0) ? ca_dev_addmod(w[k].y, w[k].y, p) : one;
+            else
+                d = ca_dev_submod(bx, w[k].x, p);
             den[k] = d;
             pre[k] = k ? ca_dev_mont_mul(pre[k - 1], d, p, pinv) : d;
         }
@@ -399,20 +429,32 @@ CA_DEV void ca_dev_rho_thread(const ca_gpu_rho_args *g, uint32_t tid)
             uint32_t i = idx[k];
             uint64_t bx = g->mult[4 * (size_t)i], by = g->mult[4 * (size_t)i + 1];
             uint64_t nx, ny;
-            if (w[k].x == p) { nx = bx; ny = by; }
-            else if (bx == p) { nx = w[k].x; ny = w[k].y; }
-            else if (w[k].x == bx) {
+            if (w[k].x == p) {
+                nx = bx;
+                ny = by;
+            } else if (bx == p) {
+                nx = w[k].x;
+                ny = w[k].y;
+            } else if (w[k].x == bx) {
                 if (w[k].y == by && w[k].y != 0) {
                     uint64_t x2 = ca_dev_mont_mul(w[k].x, w[k].x, p, pinv);
-                    uint64_t num = ca_dev_addmod(ca_dev_addmod(ca_dev_addmod(x2, x2, p), x2, p), g->a_mont, p);
+                    uint64_t num =
+                        ca_dev_addmod(ca_dev_addmod(ca_dev_addmod(x2, x2, p), x2, p), g->a_mont, p);
                     uint64_t lam = ca_dev_mont_mul(num, di, p, pinv);
-                    nx = ca_dev_submod(ca_dev_submod(ca_dev_mont_mul(lam, lam, p, pinv), w[k].x, p), bx, p);
-                    ny = ca_dev_submod(ca_dev_mont_mul(lam, ca_dev_submod(w[k].x, nx, p), p, pinv), w[k].y, p);
-                } else { nx = p; ny = 0; }
+                    nx = ca_dev_submod(ca_dev_submod(ca_dev_mont_mul(lam, lam, p, pinv), w[k].x, p),
+                                       bx, p);
+                    ny = ca_dev_submod(ca_dev_mont_mul(lam, ca_dev_submod(w[k].x, nx, p), p, pinv),
+                                       w[k].y, p);
+                } else {
+                    nx = p;
+                    ny = 0;
+                }
             } else {
                 uint64_t lam = ca_dev_mont_mul(ca_dev_submod(by, w[k].y, p), di, p, pinv);
-                nx = ca_dev_submod(ca_dev_submod(ca_dev_mont_mul(lam, lam, p, pinv), w[k].x, p), bx, p);
-                ny = ca_dev_submod(ca_dev_mont_mul(lam, ca_dev_submod(w[k].x, nx, p), p, pinv), w[k].y, p);
+                nx = ca_dev_submod(ca_dev_submod(ca_dev_mont_mul(lam, lam, p, pinv), w[k].x, p), bx,
+                                   p);
+                ny = ca_dev_submod(ca_dev_mont_mul(lam, ca_dev_submod(w[k].x, nx, p), p, pinv),
+                                   w[k].y, p);
             }
             int neg = ca_dev_canon(g, nx, &ny);
             uint64_t h = ca_dev_hash(g->kind, nx, ny, p);

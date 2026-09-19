@@ -36,7 +36,15 @@ int ca_gpu_device_name(int device, char *buf, size_t len)
     return ca_gpu_cuda_device_name_impl(device, buf, len);
 }
 
-static int ilog2u(uint64_t v) { int l = -1; while (v) { v >>= 1; l++; } return l; }
+static int ilog2u(uint64_t v)
+{
+    int l = -1;
+    while (v) {
+        v >>= 1;
+        l++;
+    }
+    return l;
+}
 
 /* Solve from a collision between (a1,b1) and (a2,b2) at one canonical point. */
 static int gpu_try_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
@@ -46,8 +54,10 @@ static int gpu_try_solve(const ca_group *g, const ca_elem *base, const ca_elem *
     uint64_t n = g->order;
     for (unsigned sign = 0; sign < (negmap ? 2u : 1u); sign++) {
         uint64_t c, d;
-        if (sign == 0) { c = ca_submod(b1, b2, n); d = ca_submod(a2, a1, n); }
-        else {
+        if (sign == 0) {
+            c = ca_submod(b1, b2, n);
+            d = ca_submod(a2, a1, n);
+        } else {
             c = ca_addmod(b1, b2, n);
             d = n - ca_addmod(a1, a2, n);
             if (d == n) d = 0;
@@ -61,7 +71,10 @@ static int gpu_try_solve(const ca_group *g, const ca_elem *base, const ca_elem *
         for (uint64_t k = 0; k < gg; k++) {
             uint64_t cand = x0 + k * nn;
             if (cand >= n) break;
-            if (ca_verify_log(g, base, target, cand)) { *x = cand; return 1; }
+            if (ca_verify_log(g, base, target, cand)) {
+                *x = cand;
+                return 1;
+            }
         }
     }
     return 0;
@@ -71,7 +84,10 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
                            const ca_gpu_rho_params *params, uint64_t *x, ca_stats *st)
 {
     ca_gpu_rho_params def;
-    if (!params) { ca_gpu_rho_params_default(&def); params = &def; }
+    if (!params) {
+        ca_gpu_rho_params_default(&def);
+        params = &def;
+    }
     if (g->order == 0) {
         ca_set_error("GPU rho requires a known group order");
         return CA_ERR_INVALID;
@@ -85,21 +101,29 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
     const ca_gpu_backend_ops *ops;
     switch (params->backend) {
     case CA_GPU_BACKEND_CUDA:
-        if (!ca_gpu_cuda_compiled()) { ca_set_error("CUDA backend not compiled in (CA_CUDA=OFF)"); return CA_ERR_UNSUPPORTED; }
-        if (ca_gpu_device_count() <= params->device) { ca_set_error("no CUDA device %d", params->device); return CA_ERR_UNSUPPORTED; }
+        if (!ca_gpu_cuda_compiled()) {
+            ca_set_error("CUDA backend not compiled in (CA_CUDA=OFF)");
+            return CA_ERR_UNSUPPORTED;
+        }
+        if (ca_gpu_device_count() <= params->device) {
+            ca_set_error("no CUDA device %d", params->device);
+            return CA_ERR_UNSUPPORTED;
+        }
         ops = &ca_gpu_cuda_ops;
         break;
-    case CA_GPU_BACKEND_EMULATE:
-        ops = &ca_gpu_emulate_ops;
-        break;
+    case CA_GPU_BACKEND_EMULATE: ops = &ca_gpu_emulate_ops; break;
     default:
-        ops = (ca_gpu_cuda_compiled() && ca_gpu_device_count() > params->device) ? &ca_gpu_cuda_ops
-                                                                                   : &ca_gpu_emulate_ops;
+        ops = (ca_gpu_cuda_compiled() && ca_gpu_device_count() > params->device)
+                  ? &ca_gpu_cuda_ops
+                  : &ca_gpu_emulate_ops;
         break;
     }
     int on_gpu = ops == &ca_gpu_cuda_ops;
 
-    if (ca_group_is_identity(g, target)) { *x = 0; return CA_OK; }
+    if (ca_group_is_identity(g, target)) {
+        *x = 0;
+        return CA_OK;
+    }
     if (n < 4096) {
         /* smaller than one launch is worth: brute force on the host */
         ca_elem cur;
@@ -107,7 +131,10 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
         for (uint64_t k = 0; k < n; k++) {
             if (ca_group_equal(g, &cur, target)) {
                 *x = k;
-                if (st) { st->group_ops += k; st->seconds += ca_now() - t0; }
+                if (st) {
+                    st->group_ops += k;
+                    st->seconds += ca_now() - t0;
+                }
                 return CA_OK;
             }
             ca_group_op(g, &cur, &cur, base);
@@ -138,7 +165,8 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
     /* multiplier count: the table is built on the host (cheap), so use the
      * large tables that keep fruitless cycles rare whenever the group is
      * big enough for them to matter (r <= sqrt(n)/64). */
-    if (params->r) a.r = params->r;
+    if (params->r)
+        a.r = params->r;
     else {
         uint64_t budget = sqrt_n / 64;
         uint32_t r = 8, cap = a.negmap ? 1024u : 64u;
@@ -236,7 +264,10 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
 
     void *ctx = NULL;
     ca_status rc = ops->create(&a, tpb, params->device, &ctx);
-    if (rc != CA_OK) { free(mult); return rc; }
+    if (rc != CA_OK) {
+        free(mult);
+        return rc;
+    }
     ca_htab tab;
     if (ca_htab_init(&tab, (size_t)(expected / (double)(1ULL << dp)) + 4096) != CA_OK) {
         ops->destroy(ctx);
@@ -249,7 +280,10 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
         const uint64_t *dps;
         uint32_t count;
         ca_status lrc = ops->launch(ctx, &dps, &count);
-        if (lrc != CA_OK) { rc = lrc; break; }
+        if (lrc != CA_OK) {
+            rc = lrc;
+            break;
+        }
         launches++;
         /* One walk step is one group operation.  Retried steps (negation-map
          * look-ahead) really do perform an operation, so they belong here;
@@ -264,7 +298,11 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
             uint32_t wid = (uint32_t)rec[3];
             uint64_t oa, ob;
             int ir = ca_htab_insert(&tab, h, da, db, &oa, &ob);
-            if (ir < 0) { rc = CA_ERR_NOMEM; done = 1; break; }
+            if (ir < 0) {
+                rc = CA_ERR_NOMEM;
+                done = 1;
+                break;
+            }
             if (ir == 1) {
                 /* Identical (a, b) means the walk rediscovered its own trail;
                  * a different pair that yields no logarithm is an unusable
@@ -280,14 +318,18 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
             }
         }
         if (done) break;
-        if (params->max_ops && total_ops > params->max_ops) { rc = CA_ERR_LIMIT; break; }
+        if (params->max_ops && total_ops > params->max_ops) {
+            rc = CA_ERR_LIMIT;
+            break;
+        }
     }
     if (st) {
         st->group_ops += total_ops;
         st->iterations += dps_total;
         st->collisions += restarts;
         st->table_entries = ca_max_u64(st->table_entries, tab.count);
-        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&tab) + nwalks * 96 + (uint64_t)a.dp_cap * 32);
+        st->bytes_peak =
+            ca_max_u64(st->bytes_peak, ca_htab_bytes(&tab) + nwalks * 96 + (uint64_t)a.dp_cap * 32);
         st->threads = a.nthreads;
         st->reserved = (uint32_t)launches;
         st->seconds += ca_now() - t0;

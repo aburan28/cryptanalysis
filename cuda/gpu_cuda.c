@@ -21,7 +21,7 @@ ca_status ca_gpu_cuda_launch_kernel(const ca_gpu_rho_args *args, unsigned blocks
                                     unsigned threads_per_block);
 
 typedef struct cuda_ctx {
-    ca_gpu_rho_args args;     /* with device pointers */
+    ca_gpu_rho_args args; /* with device pointers */
     uint32_t tpb, blocks;
     size_t nwalks;
     uint64_t *d_mult, *d_state, *d_aux, *d_dp;
@@ -33,13 +33,13 @@ typedef struct cuda_ctx {
 
 static void cuda_destroy(void *vctx);
 
-#define CUDA_TRY(expr)                                                      \
-    do {                                                                    \
-        cudaError_t _e = (expr);                                            \
-        if (_e != cudaSuccess) {                                            \
-            ca_set_error("CUDA: %s (%s)", cudaGetErrorString(_e), #expr);   \
-            return CA_ERR_INTERNAL;                                         \
-        }                                                                   \
+#define CUDA_TRY(expr)                                                                             \
+    do {                                                                                           \
+        cudaError_t _e = (expr);                                                                   \
+        if (_e != cudaSuccess) {                                                                   \
+            ca_set_error("CUDA: %s (%s)", cudaGetErrorString(_e), #expr);                          \
+            return CA_ERR_INTERNAL;                                                                \
+        }                                                                                          \
     } while (0)
 
 static ca_status cuda_create(const ca_gpu_rho_args *a, uint32_t tpb, int device, void **out)
@@ -58,18 +58,23 @@ static ca_status cuda_create(const ca_gpu_rho_args *a, uint32_t tpb, int device,
     size_t dp_bytes = (size_t)a->dp_cap * 4 * sizeof(uint64_t);
     c->h_restart = malloc(c->nwalks);
     c->h_dp = malloc(dp_bytes);
-    if (!c->h_restart || !c->h_dp) { cuda_destroy(c); return CA_ERR_NOMEM; }
+    if (!c->h_restart || !c->h_dp) {
+        cuda_destroy(c);
+        return CA_ERR_NOMEM;
+    }
     memset(c->h_restart, 1, c->nwalks); /* seed every walk on the first launch */
     c->restart_dirty = 1;
     cudaError_t e = cudaSuccess;
     if (e == cudaSuccess) e = cudaMalloc((void **)&c->d_mult, mult_bytes);
     if (e == cudaSuccess) e = cudaMalloc((void **)&c->d_state, c->nwalks * 4 * sizeof(uint64_t));
-    if (e == cudaSuccess) e = cudaMalloc((void **)&c->d_aux, c->nwalks * CA_GPU_AUX * sizeof(uint64_t));
+    if (e == cudaSuccess)
+        e = cudaMalloc((void **)&c->d_aux, c->nwalks * CA_GPU_AUX * sizeof(uint64_t));
     if (e == cudaSuccess) e = cudaMalloc((void **)&c->d_dp, dp_bytes);
     if (e == cudaSuccess) e = cudaMalloc((void **)&c->d_count, sizeof(uint32_t));
     if (e == cudaSuccess) e = cudaMalloc((void **)&c->d_restart, c->nwalks);
     if (e != cudaSuccess) {
-        ca_set_error("CUDA: allocation failed (%s) for %zu walks", cudaGetErrorString(e), c->nwalks);
+        ca_set_error("CUDA: allocation failed (%s) for %zu walks", cudaGetErrorString(e),
+                     c->nwalks);
         cuda_destroy(c);
         return CA_ERR_NOMEM;
     }
@@ -105,7 +110,9 @@ static ca_status cuda_launch(void *vctx, const uint64_t **dps, uint32_t *count)
     uint32_t n = 0;
     CUDA_TRY(cudaMemcpy(&n, c->d_count, sizeof(uint32_t), cudaMemcpyDeviceToHost));
     if (n > c->args.dp_cap) n = c->args.dp_cap; /* the kernel clamps its writes */
-    if (n) CUDA_TRY(cudaMemcpy(c->h_dp, c->d_dp, (size_t)n * 4 * sizeof(uint64_t), cudaMemcpyDeviceToHost));
+    if (n)
+        CUDA_TRY(
+            cudaMemcpy(c->h_dp, c->d_dp, (size_t)n * 4 * sizeof(uint64_t), cudaMemcpyDeviceToHost));
     *dps = c->h_dp;
     *count = n;
     return CA_OK;

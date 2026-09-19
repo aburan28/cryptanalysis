@@ -449,7 +449,9 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
     rho_thread *ths = calloc(threads, sizeof(rho_thread));
     uint8_t *created = calloc(threads, 1);
     if (!tids || !ths || !created) {
-        free(tids); free(ths); free(created);
+        free(tids);
+        free(ths);
+        free(created);
         ca_htab_free(&sh.tab);
         free(sh.M); free(sh.alpha); free(sh.beta);
         pthread_mutex_destroy(&sh.lock);
@@ -484,7 +486,9 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         st->threads = threads;
         st->seconds += ca_now() - t0;
     }
-    free(tids); free(ths); free(created);
+    free(tids);
+    free(ths);
+    free(created);
     ca_htab_free(&sh.tab);
     free(sh.M); free(sh.alpha); free(sh.beta);
     pthread_mutex_destroy(&sh.lock);

@@ -114,14 +114,14 @@ CA_API uint64_t ca_ffi_cheon_best_divisor(uint64_t p, double *cost_exps);
 /* backend: 0 auto, 1 cuda, 2 emulate (ca_gpu_backend).  Pass 0 for any
  * numeric field to take the automatic choice. */
 typedef struct ca_ffi_gpu_options {
-    int32_t  backend;
-    int32_t  device;
+    int32_t backend;
+    int32_t device;
     uint32_t threads_per_block;
     uint32_t blocks;
     uint32_t steps_per_launch;
     uint32_t r;
-    int32_t  dp_bits;            /* -1 => auto */
-    int32_t  negation_map;
+    int32_t dp_bits; /* -1 => auto */
+    int32_t negation_map;
     uint64_t seed;
     uint64_t max_ops;
 } ca_ffi_gpu_options;

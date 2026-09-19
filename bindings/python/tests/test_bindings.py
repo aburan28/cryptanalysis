@@ -13,7 +13,9 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import cryptanalysis as ca
-from cryptanalysis import _lib
+
+# The package re-exports the private module, so one import form covers both.
+_lib = ca._lib
 
 # Same instances as tests/test_ffi.c
 ZP_P = 2000000579

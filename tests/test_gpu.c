@@ -32,31 +32,47 @@ static void test_device_arith(void)
     fx_ec(&g, &gen, 1000000007ULL, 3, 11);
     ca_gpu_rho_args a;
     memset(&a, 0, sizeof(a));
-    a.p = g.p; a.pinv = g.mont.pinv; a.one = g.mont.r1; a.a_mont = g.a_mont; a.n = g.order;
+    a.p = g.p;
+    a.pinv = g.mont.pinv;
+    a.one = g.mont.r1;
+    a.a_mont = g.a_mont;
+    a.n = g.order;
     a.kind = CA_GPU_KIND_EC;
     for (int k = 0; k < 200; k++) {
         ca_elem P, Q, R;
         ca_ec_random_point(&g, &P, 50 + k);
         ca_ec_random_point(&g, &Q, 900 + k);
-        if (k % 7 == 0) Q = P;                    /* doubling */
+        if (k % 7 == 0) Q = P;                     /* doubling */
         if (k % 11 == 0) ca_group_inv(&g, &Q, &P); /* inverse pair -> infinity */
         ca_group_op(&g, &R, &P, &Q);
         uint64_t x = P.w[0], y = P.w[1];
         ca_dev_op(&a, &x, &y, Q.w[0], Q.w[1]);
-        if (R.w[2]) CHECK_EQ_U64(x, g.p);
-        else { CHECK_EQ_U64(x, R.w[0]); CHECK_EQ_U64(y, R.w[1]); }
+        if (R.w[2])
+            CHECK_EQ_U64(x, g.p);
+        else {
+            CHECK_EQ_U64(x, R.w[0]);
+            CHECK_EQ_U64(y, R.w[1]);
+        }
         uint64_t kk = ca_rng_below(&rng, g.order);
         ca_group_mul(&g, &R, &P, kk, NULL);
         ca_dev_mul(&a, &x, &y, P.w[0], P.w[1], kk);
-        if (R.w[2]) CHECK_EQ_U64(x, g.p);
-        else { CHECK_EQ_U64(x, R.w[0]); CHECK_EQ_U64(y, R.w[1]); }
+        if (R.w[2])
+            CHECK_EQ_U64(x, g.p);
+        else {
+            CHECK_EQ_U64(x, R.w[0]);
+            CHECK_EQ_U64(y, R.w[1]);
+        }
         CHECK_EQ_U64(ca_dev_hash(CA_GPU_KIND_EC, P.w[0], P.w[1], g.p), ca_group_hash(&g, &P));
     }
     /* Z_p^* hash and op */
     ca_group z;
     ca_elem zg;
     fx_zp_safe(&z, &zg, 2000000579ULL);
-    a.p = z.p; a.pinv = z.mont.pinv; a.one = z.mont.r1; a.kind = CA_GPU_KIND_ZP; a.n = z.order;
+    a.p = z.p;
+    a.pinv = z.mont.pinv;
+    a.one = z.mont.r1;
+    a.kind = CA_GPU_KIND_ZP;
+    a.n = z.order;
     ca_elem h;
     ca_group_mul(&z, &h, &zg, 777, NULL);
     uint64_t x = zg.w[0], y = 0;
@@ -88,7 +104,7 @@ static void test_walk_invariant(const ca_group *g, const ca_elem *base, const ca
     a.r = 32;
     a.steps = steps;
     a.nthreads = nthreads;
-    a.dp_mask = 0xff;        /* plenty of distinguished points */
+    a.dp_mask = 0xff; /* plenty of distinguished points */
     a.abandon_shift = 8;
     a.base_x = base->w[0];
     a.base_y = base->w[1];
@@ -169,11 +185,15 @@ static void test_walk_invariant(const ca_group *g, const ca_elem *base, const ca
      * the walk spins until the abandon rule re-seeds it, so this is checked
      * over all launches rather than per launch. */
     CHECK(dps_total > 0);
-    free(mult); free(state); free(aux); free(dp); free(restart);
+    free(mult);
+    free(state);
+    free(aux);
+    free(dp);
+    free(restart);
 }
 
-static void run_solver(const ca_group *g, const ca_elem *gen, ca_gpu_backend be, int reps, int negmap,
-                       const char *label)
+static void run_solver(const ca_group *g, const ca_elem *gen, ca_gpu_backend be, int reps,
+                       int negmap, const char *label)
 {
     ca_rng rng;
     ca_rng_seed(&rng, 31);
@@ -193,7 +213,8 @@ static void run_solver(const ca_group *g, const ca_elem *gen, ca_gpu_backend be,
         CHECK(rc == CA_OK);
         CHECK_EQ_U64(got, xx);
         tot += (double)st.group_ops;
-        if (rc != CA_OK) fprintf(stderr, "  %s failed: %s %s\n", label, ca_status_string(rc), ca_last_error());
+        if (rc != CA_OK)
+            fprintf(stderr, "  %s failed: %s %s\n", label, ca_status_string(rc), ca_last_error());
     }
     printf("%-28s ops/sqrt(n) = %.2f\n", label, tot / reps / sqrt((double)g->order));
 }
@@ -283,8 +304,8 @@ int main(void)
         CHECK(ca_gpu_rho_solve(&tiny, &tg, &th, &p, &got, NULL) == CA_OK);
         CHECK_EQ_U64(got, 123);
         p.backend = CA_GPU_BACKEND_CUDA;
-        ca_status want = (ca_gpu_cuda_compiled() && ca_gpu_device_count() > 0) ? CA_OK
-                                                                              : CA_ERR_UNSUPPORTED;
+        ca_status want =
+            (ca_gpu_cuda_compiled() && ca_gpu_device_count() > 0) ? CA_OK : CA_ERR_UNSUPPORTED;
         CHECK(ca_gpu_rho_solve(&tiny, &tg, &th, &p, &got, NULL) == want);
     }
 
