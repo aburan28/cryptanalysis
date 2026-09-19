@@ -535,7 +535,7 @@ func (s *Server) handlePoints(w http.ResponseWriter, r *http.Request) {
 		s.cfg.Logger.Info("campaign solved", "campaign", campaignName, "x", resp.X, "unit", unit)
 	}
 	if resp.Rejected > 0 {
-		s.cfg.Logger.Warn("points rejected", "campaign", campaignName, "agent", agent,
+		s.cfg.Logger.Warn("points rejected", "campaign", campaignName, "agent", logSafe(agent),
 			"unit", unit, "rejected", resp.Rejected)
 	}
 	s.mu.Lock()
@@ -583,7 +583,7 @@ func (s *Server) handleComplete(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Failed {
 		s.cfg.Logger.Warn("unit failed", "campaign", c.def.Name, "unit", unit,
-			"agent", req.AgentID, "reason", req.Reason)
+			"agent", logSafe(req.AgentID), "reason", logSafe(req.Reason))
 	}
 	s.mu.Lock()
 	if a, ok := s.agents[req.AgentID]; ok {
@@ -677,6 +677,17 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---- helpers --------------------------------------------------------------
+
+// logSafe is applied to every agent-derived string at the point where it
+// enters a log line, rather than only where it entered the server.
+//
+// The values reaching these sinks are already constrained -- an agent id has
+// been matched against a strict pattern, a failure reason was cleaned at the
+// boundary -- so this is belt and braces.  It is worth having anyway: a
+// sanitiser at the sink holds whether or not the caller remembered to
+// validate, which is the property that survives somebody adding a new log
+// line in six months.  For a valid agent id it changes nothing.
+func logSafe(v string) string { return api.CleanText(v) }
 
 func (s *Server) campaign(name string) *campaign {
 	s.mu.RLock()
