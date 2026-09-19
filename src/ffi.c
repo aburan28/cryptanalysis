@@ -135,7 +135,7 @@ int ca_ctx_random_element(const ca_ctx *ctx, uint64_t out[4], uint64_t seed)
     } else {
         ca_rng rng;
         ca_rng_seed(&rng, ca_seed_or_random(seed));
-        uint64_t w[4] = {1 + ca_rng_below(&rng, ctx->g.p - 1), 0, 0, 0};
+        const uint64_t w[4] = {1 + ca_rng_below(&rng, ctx->g.p - 1), 0, 0, 0};
         ca_group_encode(&ctx->g, &e, w);
         if (ctx->g.cofactor > 1) ca_group_mul(&ctx->g, &e, &e, ctx->g.cofactor, NULL);
     }

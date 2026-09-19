@@ -52,7 +52,7 @@ int main(void)
     CHECK_EQ_U64(got, 0);
     /* even group order (full Z_p^*) exercises the 2x' = v branch */
     CHECK(ca_group_zp_init(&g, 1000003, 0) == CA_OK);
-    uint64_t w[4] = {2, 0, 0, 0};
+    const uint64_t w[4] = {2, 0, 0, 0};
     CHECK(ca_group_encode(&g, &gen, w));
     run(&g, &gen, 1ULL << 18, 20, 0.5, NULL);
     /* unknown group order: interval-only mode */

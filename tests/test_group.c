@@ -124,7 +124,7 @@ static void test_count_points_larger(void)
 static void test_count_points_64bit(void)
 {
     /* Primes above 2^63: the Hasse interval must not overflow. */
-    uint64_t ps[2] = {ca_next_prime(1ULL << 63), 18446744073709551557ULL};
+    const uint64_t ps[2] = {ca_next_prime(1ULL << 63), 18446744073709551557ULL};
     for (int i = 0; i < 2; i++) {
         uint64_t p = ps[i], n;
         CHECK(ca_ec_count_points(p, 2, 3, &n, NULL) == CA_OK);

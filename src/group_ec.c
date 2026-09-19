@@ -226,7 +226,7 @@ int ca_ec_lift_x(const ca_group *g, ca_elem *r, uint64_t x)
     uint64_t y;
     if (!ca_sqrtmod_prime(rhs, g->p, &y)) return 0;
     if (y > g->p - y) y = g->p - y;
-    uint64_t w[4] = {x, y, 0, 0};
+    const uint64_t w[4] = {x, y, 0, 0};
     return ec_encode(g, r, w);
 }
 

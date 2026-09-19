@@ -70,12 +70,6 @@ static void find_prime_order_curve(unsigned bits, uint64_t *p, uint64_t *a, uint
     }
 }
 
-typedef struct row {
-    const char *name;
-    double ops, secs;
-    int ok;
-} row;
-
 static void run_generic(unsigned bits, unsigned reps, unsigned threads, int ec)
 {
     ca_group g;
@@ -96,7 +90,7 @@ static void run_generic(unsigned bits, unsigned reps, unsigned threads, int ec)
     enum { NALG = 5 };
     const char *names[NALG] = {"bsgs", "rho-1", "rho-T", "kangaroo", "grumpy"};
     double ops[NALG] = {0}, secs[NALG] = {0};
-    int ok[NALG] = {0};
+    unsigned ok[NALG] = {0};
     ca_rng rng;
     ca_rng_seed(&rng, 1234 + bits);
     for (unsigned r = 0; r < reps; r++) {
@@ -151,7 +145,7 @@ static void run_interval(unsigned wbits, unsigned reps, int ec)
     enum { NALG = 3 };
     const char *names[NALG] = {"bsgs", "kangaroo", "grumpy"};
     double ops[NALG] = {0}, secs[NALG] = {0};
-    int ok[NALG] = {0};
+    unsigned ok[NALG] = {0};
     ca_rng rng;
     ca_rng_seed(&rng, 99 + wbits);
     for (unsigned r = 0; r < reps; r++) {
@@ -280,7 +274,7 @@ static void run_gpu(unsigned bits, unsigned reps, int ec)
     const char *names[2] = {"cpu-rho", have_dev ? "gpu-rho (cuda)" : "gpu-rho (emulate)"};
     double ops[2] = {0}, secs[2] = {0};
     uint64_t walks[2] = {0}, launches = 0;
-    int ok[2] = {0};
+    unsigned ok[2] = {0};
     ca_rng rng;
     ca_rng_seed(&rng, 777 + bits);
     for (unsigned r = 0; r < reps; r++) {

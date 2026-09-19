@@ -69,7 +69,7 @@ ca_status ca_group_find_generator(const ca_group *g, ca_elem *gen, uint64_t seed
         ca_elem cand;
         if (g->kind == CA_GROUP_ZP) {
             uint64_t x = 2 + ca_rng_below(&rng, g->p - 3);
-            uint64_t words[4] = {x, 0, 0, 0};
+            const uint64_t words[4] = {x, 0, 0, 0};
             ca_group_encode(g, &cand, words);
             if (g->cofactor > 1) ca_group_mul(g, &cand, &cand, g->cofactor, NULL);
         } else {

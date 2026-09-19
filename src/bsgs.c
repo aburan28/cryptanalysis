@@ -122,8 +122,7 @@ ca_status ca_bsgs_solve(const ca_group *g, const ca_elem *base, const ca_elem *t
     uint64_t width_m1 = hi - lo;
     uint64_t m = params->table_size;
     if (m == 0) {
-        m = ca_isqrt(width_m1) + 1;
-        if (m < 1) m = 1;
+        m = ca_isqrt(width_m1) + 1; /* >= 1 for every width, including 0 */
     }
     if (params->max_ops && m + width_m1 / m > params->max_ops) return CA_ERR_LIMIT;
     ca_bsgs_table *t;

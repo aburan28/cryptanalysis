@@ -105,7 +105,7 @@ static void walk_restart(rho_shared *sh, rho_walk *w, ca_rng *rng, uint64_t *ops
 }
 
 /* Apply the exponent update for a step with multiplier i and sign flag. */
-static inline void walk_apply(rho_shared *sh, rho_walk *w, uint32_t i, int negated)
+static inline void walk_apply(const rho_shared *sh, rho_walk *w, uint32_t i, int negated)
 {
     exp_add(sh->n, &w->a, sh->alpha[i]);
     exp_add(sh->n, &w->b, sh->beta[i]);

@@ -74,7 +74,7 @@ int main(void)
 
     /* composite order (full Z_p^*) */
     CHECK(ca_group_zp_init(&g, 1000003, 0) == CA_OK);
-    uint64_t w[4] = {2, 0, 0, 0};
+    const uint64_t w[4] = {2, 0, 0, 0};
     CHECK(ca_group_encode(&g, &gen, w));
     ca_rho_params_default(&p);
     run_rho(&g, &gen, &p, 5, NULL);

@@ -23,7 +23,7 @@ OUT="${OUT:-build-cuda-kernel}"
 CUDA_PATH="${CUDA_PATH:-}"
 HOST_GCC="${HOST_GCC:-}"
 FETCH=0
-REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+REPO=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -40,7 +40,7 @@ while [ $# -gt 0 ]; do
 done
 
 mkdir -p "$OUT"
-OUT=$(CDPATH= cd -- "$OUT" && pwd)
+OUT=$(CDPATH='' cd -- "$OUT" && pwd)
 
 if [ "$FETCH" = 1 ] && [ -z "$CUDA_PATH" ]; then
     CUDA_PATH="$OUT/cuda-toolkit"
@@ -109,12 +109,17 @@ pick_host_gcc() {
         echo ""
         return 0
     fi
-    for d in $(ls -d /usr/lib/gcc/*/[0-9]* 2>/dev/null | sort -V); do
+    # Oldest GCC first: newer libstdc++ headers are the ones that declare
+    # numeric_limits<__float128>, which NVPTX has no type for.
+    while IFS= read -r d; do
+        [ -d "$d" ] || continue
         if clang_ptx "$arch" /dev/null "--gcc-install-dir=$d" >/dev/null 2>&1; then
             echo "--gcc-install-dir=$d"
             return 0
         fi
-    done
+    done <<EOF
+$(find /usr/lib/gcc -mindepth 2 -maxdepth 2 -type d 2>/dev/null | sort -V)
+EOF
     echo ""
     return 1
 }

@@ -79,8 +79,14 @@ static int rel_push(rel_list *l, const relation *r)
 {
     if (l->n == l->cap) {
         uint32_t nc = l->cap ? l->cap * 2 : 1024;
-        relation *nr = realloc(l->r, (size_t)nc * sizeof(relation));
+        /* malloc/copy/free rather than realloc: the growth is amortised and
+         * rare, and the explicit handover keeps the old buffer's lifetime
+         * unambiguous; calloc so a partly filled buffer is never copied from
+         * uninitialised storage. */
+        relation *nr = calloc(nc, sizeof(relation));
         if (!nr) return -1;
+        if (l->n) memcpy(nr, l->r, (size_t)l->n * sizeof(relation));
+        free(l->r);
         l->r = nr;
         l->cap = nc;
     }
@@ -140,7 +146,7 @@ typedef struct sieve_shared {
     const uint32_t *fb;
     uint32_t nfb;
     const uint8_t *fb_log2;       /* rounded log2 of each prime */
-    uint32_t col_minus1, col_prime0, col_h0; /* column layout */
+    uint32_t col_prime0, col_h0; /* column layout: factor base, then H+c */
     uint32_t ncols;
     uint32_t target_rels;
     atomic_int next_c1;           /* c1 = -C + index */
@@ -323,7 +329,7 @@ static void *rexp_thread(void *arg)
 /* ---- solving ------------------------------------------------------------ */
 
 /* Logs of the factor base modulo the "small" part of p-1 via Pohlig-Hellman. */
-static ca_status small_part_logs(ca_ic_ctx *ctx, uint64_t m_small, uint64_t *out)
+static ca_status small_part_logs(const ca_ic_ctx *ctx, uint64_t m_small, uint64_t *out)
 {
     if (m_small == 1) { memset(out, 0, ctx->nfb * sizeof(uint64_t)); return CA_OK; }
     uint64_t p = ctx->p;

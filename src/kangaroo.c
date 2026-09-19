@@ -107,7 +107,8 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
     uint64_t spacing = (uint64_t)(mean_target / (double)herd) + 1;
     for (uint32_t i = 0; i < total; i++) {
         roo *r = &roos[i];
-        uint64_t off = (uint64_t)(i / 2) * spacing + ca_rng_below(&rng, spacing ? spacing : 1);
+        /* spacing >= 1 by construction, so ca_rng_below never sees 0 */
+        uint64_t off = (uint64_t)(i / 2) * spacing + ca_rng_below(&rng, spacing);
         if ((i & 1) == 0) {
             r->dist = mid + off;
             ca_group_mul(g, &r->Y, base, r->dist, &ops);

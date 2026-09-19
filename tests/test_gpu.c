@@ -238,7 +238,7 @@ int main(void)
     }
     /* composite order */
     CHECK(ca_group_zp_init(&g, 1000003, 0) == CA_OK);
-    uint64_t w[4] = {2, 0, 0, 0};
+    const uint64_t w[4] = {2, 0, 0, 0};
     CHECK(ca_group_encode(&g, &gen, w));
     run_solver(&g, &gen, CA_GPU_BACKEND_EMULATE, 3, 1, "zp composite emulate");
     /* An out-of-range dp_bits must be clamped, not shifted by 64 or more

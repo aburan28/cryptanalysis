@@ -49,7 +49,7 @@ int main(void)
         free(M); free(rhs); free(xt); free(x);
     }
     /* sparse: various sizes, big prime modulus */
-    uint64_t qs[] = {4294967311ULL, 1000000000000000003ULL, 18446744073709551557ULL};
+    const uint64_t qs[] = {4294967311ULL, 1000000000000000003ULL, 18446744073709551557ULL};
     for (size_t qi = 0; qi < 3; qi++) {
         uint64_t q = qs[qi];
         uint32_t sizes[][2] = {{60, 40}, {700, 500}, {2600, 2000}};
@@ -84,15 +84,16 @@ int main(void)
         uint64_t q = 1000000007ULL;
         ca_spmat A;
         CHECK(ca_spmat_init(&A, 4, 4, 16) == CA_OK);
-        uint32_t c0[] = {0, 1}; int32_t v0[] = {1, 1};     /* x0 + x1 = 5 */
-        uint32_t c1[] = {1, 2}; int32_t v1[] = {2, -1};    /* 2x1 - x2 = 1 */
-        uint32_t c2[] = {1};    int32_t v2[] = {3};        /* 3x1 = 9 -> x1 = 3 */
-        uint32_t c3[] = {2, 3}; int32_t v3[] = {1, 1};     /* x2 + x3 = 12 */
+        const uint32_t c0[] = {0, 1}; const int32_t v0[] = {1, 1};     /* x0 + x1 = 5 */
+        const uint32_t c1[] = {1, 2}; const int32_t v1[] = {2, -1};    /* 2x1 - x2 = 1 */
+        const uint32_t c2[] = {1};    const int32_t v2[] = {3};        /* 3x1 = 9 -> x1 = 3 */
+        const uint32_t c3[] = {2, 3}; const int32_t v3[] = {1, 1};     /* x2 + x3 = 12 */
         ca_spmat_add_row(&A, c0, v0, 2);
         ca_spmat_add_row(&A, c1, v1, 2);
         ca_spmat_add_row(&A, c2, v2, 1);
         ca_spmat_add_row(&A, c3, v3, 2);
-        uint64_t b[4] = {5, 1, 9, 12}, x[4];
+        const uint64_t b[4] = {5, 1, 9, 12};
+        uint64_t x[4];
         uint8_t known[4];
         CHECK(ca_linsolve_mod_prime(&A, b, q, x, known, 1, NULL) == CA_OK);
         CHECK(known[0] && known[1] && known[2] && known[3]);
