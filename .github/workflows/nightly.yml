@@ -1,0 +1,148 @@
+name: nightly
+
+# The checks that are too slow for a pull request.  Nothing here is a merge
+# gate; a failure is a bug report against the default branch.
+on:
+  schedule:
+    # 02:23 UTC, before the fuzz soak at 03:17 so the two do not compete.
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+    inputs:
+      bits:
+        description: "Comma-separated bit sizes for the benchmarks"
+        required: false
+        default: "24,28,32,36,40"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ------------------------------------------------- slow tests, memcheck --
+  valgrind-slow:
+    name: Valgrind on the slow suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install valgrind
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCA_BUILD_SHARED=OFF
+          cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: linalg and indexcalc under memcheck
+        # ci.yml runs the other ten; these two take upwards of an hour each
+        # under valgrind, which is why they live here.
+        run: |
+          set -eu
+          for t in linalg indexcalc; do
+            echo "== $t"
+            valgrind -q --error-exitcode=9 --leak-check=full \
+                     --errors-for-leak-kinds=definite \
+                     "./build/test_$t" > /dev/null
+          done
+
+  # ----------------------------------------------------- sanitized soak ----
+  sanitized-soak:
+    name: ${{ matrix.sanitize }} over the benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitize: ["address,undefined", "thread"]
+    env:
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      TSAN_OPTIONS: halt_on_error=1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCA_SANITIZE=${{ matrix.sanitize }} -DCA_BUILD_SHARED=OFF
+          cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: Drive every solver
+        # The benchmarks run each algorithm over many random instances, which
+        # reaches walk restarts, fruitless cycles and Lanczos restarts that a
+        # single unit test does not.
+        run: |
+          set -eux
+          ./build/ca_bench generic  --bits 24,28,32 --reps 5 --threads 4
+          ./build/ca_bench interval --bits 24,28,32 --reps 5
+          ./build/ca_bench cheon    --bits 32,40
+          ./build/ca_bench ic       --bits 32,40 --threads 4
+          ./build/ca_bench gpu      --bits 24,28 --reps 3
+
+  # --------------------------------------------------------- benchmarks ----
+  benchmarks:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build optimized
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCA_NATIVE=ON
+          cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: Run and record
+        env:
+          CA_BENCH_BITS: ${{ inputs.bits || '24,28,32,36,40' }}
+        run: |
+          set -eu
+          {
+            echo "## Benchmarks"
+            echo
+            echo '```'
+            ./build/ca_bench ops
+            ./build/ca_bench generic  --bits "$CA_BENCH_BITS" --reps 9 --threads 4
+            ./build/ca_bench interval --bits "$CA_BENCH_BITS" --reps 9
+            ./build/ca_bench cheon    --bits 32,40,48
+            ./build/ca_bench ic       --bits 32,40,48,56 --threads 4
+            echo '```'
+          } | tee benchmarks.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks
+          path: benchmarks.md
+          retention-days: 90
+
+  # ---------------------------------------------- portability spot check ----
+  portability:
+    name: ${{ matrix.os }} / ${{ matrix.cc }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14,        cc: clang }
+          - { os: macos-15,        cc: clang }
+          - { os: ubuntu-24.04-arm, cc: clang }
+          - { os: ubuntu-22.04,    cc: gcc }
+    env:
+      CC: ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCA_WERROR=ON
+          cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+          ctest --test-dir build --output-on-failure

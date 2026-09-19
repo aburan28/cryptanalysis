@@ -68,7 +68,7 @@ int main(void)
     }
     /* factoring */
     ca_factorization f;
-    CHECK(ca_factorize(2 * 2 * 3 * 7 * 7 * 1000003ULL * 999983ULL, &f) == CA_OK);
+    CHECK(ca_factorize(2ULL * 2 * 3 * 7 * 7 * 1000003ULL * 999983ULL, &f) == CA_OK);
     CHECK_EQ_U64(f.count, 5);
     CHECK_EQ_U64(f.f[0].p, 2); CHECK_EQ_U64(f.f[0].e, 2);
     CHECK_EQ_U64(f.f[1].p, 3); CHECK_EQ_U64(f.f[1].e, 1);

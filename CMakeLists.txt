@@ -13,12 +13,36 @@ option(CA_BUILD_STATIC "Build the static library" ON)
 option(CA_BUILD_TOOLS "Build the ca CLI and benchmark" ON)
 option(CA_BUILD_TESTS "Build the C test-suite" ON)
 option(CA_NATIVE "Compile with -march=native" OFF)
-option(CA_SANITIZE "Enable ASan/UBSan" OFF)
+# OFF, ON (= address,undefined), or an explicit -fsanitize= list such as
+# "thread" or "memory".  ON is kept so existing invocations keep working.
+set(CA_SANITIZE OFF CACHE STRING "Sanitizers: OFF, ON (address,undefined), or a -fsanitize= list")
 option(CA_WERROR "Treat warnings as errors" OFF)
 option(CA_CUDA "Build the CUDA backend for the GPU solvers (needs nvcc or clang with CUDA)" OFF)
+option(CA_FUZZ "Build the libFuzzer harnesses in fuzz/ (needs clang)" OFF)
 set(CA_CUDA_ARCHITECTURES "70;80;89;90" CACHE STRING "CUDA architectures for CA_CUDA")
 
 find_package(Threads REQUIRED)
+
+set(CA_SANITIZE_FLAGS "")
+if(CA_SANITIZE)
+  if(CA_SANITIZE MATCHES "^(ON|on|ON|TRUE|true|YES|yes|1)$")
+    set(CA_SANITIZE_LIST "address,undefined")
+  else()
+    set(CA_SANITIZE_LIST "${CA_SANITIZE}")
+  endif()
+  set(CA_SANITIZE_FLAGS -fsanitize=${CA_SANITIZE_LIST} -fno-omit-frame-pointer -g)
+  message(STATUS "cryptanalysis: sanitizers ${CA_SANITIZE_LIST}")
+endif()
+
+# Apply the selected sanitizers to one target.  Every executable needs them,
+# not just the library: linking a sanitized library into an unsanitized binary
+# leaves the runtime's own symbols undefined.
+function(ca_sanitize tgt)
+  if(CA_SANITIZE_FLAGS)
+    target_compile_options(${tgt} PRIVATE ${CA_SANITIZE_FLAGS})
+    target_link_options(${tgt} PRIVATE ${CA_SANITIZE_FLAGS})
+  endif()
+endfunction()
 
 set(CA_SOURCES
   src/modarith.c
@@ -71,10 +95,7 @@ function(ca_configure_target tgt)
   if(CA_NATIVE)
     target_compile_options(${tgt} PRIVATE -march=native)
   endif()
-  if(CA_SANITIZE)
-    target_compile_options(${tgt} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
-    target_link_options(${tgt} PRIVATE -fsanitize=address,undefined)
-  endif()
+  ca_sanitize(${tgt})
   set_target_properties(${tgt} PROPERTIES C_VISIBILITY_PRESET hidden
                                           OUTPUT_NAME cryptanalysis)
 endfunction()
@@ -112,18 +133,12 @@ if(CA_BUILD_TOOLS)
   target_link_libraries(ca PRIVATE ${CA_LINK_TARGET})
   target_include_directories(ca PRIVATE src cuda)
   target_compile_options(ca PRIVATE ${CA_WARNINGS})
-  if(CA_SANITIZE)
-    target_compile_options(ca PRIVATE -fsanitize=address,undefined)
-    target_link_options(ca PRIVATE -fsanitize=address,undefined)
-  endif()
+  ca_sanitize(ca)
   add_executable(ca_bench tools/ca_bench.c)
   target_link_libraries(ca_bench PRIVATE ${CA_LINK_TARGET})
   target_include_directories(ca_bench PRIVATE src cuda)
   target_compile_options(ca_bench PRIVATE ${CA_WARNINGS})
-  if(CA_SANITIZE)
-    target_compile_options(ca_bench PRIVATE -fsanitize=address,undefined)
-    target_link_options(ca_bench PRIVATE -fsanitize=address,undefined)
-  endif()
+  ca_sanitize(ca_bench)
 endif()
 
 if(CA_BUILD_TESTS)
@@ -135,13 +150,30 @@ if(CA_BUILD_TESTS)
       target_link_libraries(test_${t} PRIVATE ${CA_LINK_TARGET})
       target_include_directories(test_${t} PRIVATE src tests cuda)
       target_compile_options(test_${t} PRIVATE ${CA_WARNINGS} -Wno-missing-prototypes)
-      if(CA_SANITIZE)
-        target_compile_options(test_${t} PRIVATE -fsanitize=address,undefined)
-        target_link_options(test_${t} PRIVATE -fsanitize=address,undefined)
-      endif()
+      ca_sanitize(test_${t})
       add_test(NAME ${t} COMMAND test_${t})
     endif()
   endforeach()
+endif()
+
+# ---- fuzzing ---------------------------------------------------------------
+# One libFuzzer binary per fuzz/*.c, so a new harness needs no CMake edit.
+if(CA_FUZZ)
+  if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "CA_FUZZ needs clang (libFuzzer); set CC=clang")
+  endif()
+  file(GLOB CA_FUZZ_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/*.c)
+  foreach(fz ${CA_FUZZ_SOURCES})
+    get_filename_component(fz_name ${fz} NAME_WE)
+    add_executable(${fz_name} ${fz})
+    target_link_libraries(${fz_name} PRIVATE ${CA_LINK_TARGET})
+    target_include_directories(${fz_name} PRIVATE src cuda)
+    target_compile_options(${fz_name} PRIVATE ${CA_WARNINGS}
+                           -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+    target_link_options(${fz_name} PRIVATE -fsanitize=fuzzer,address,undefined)
+  endforeach()
+  list(LENGTH CA_FUZZ_SOURCES CA_FUZZ_COUNT)
+  message(STATUS "cryptanalysis: ${CA_FUZZ_COUNT} fuzz harness(es)")
 endif()
 
 # ---- install ---------------------------------------------------------------
@@ -183,3 +215,23 @@ endif()
 configure_file(cmake/cryptanalysis.pc.in ${CMAKE_CURRENT_BINARY_DIR}/cryptanalysis.pc @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cryptanalysis.pc
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+
+# The CMake package, so that consumers can find_package(cryptanalysis).  The
+# targets above join the export set; without installing it they would be
+# exported nowhere and only pkg-config would work.
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+  ${CMAKE_CURRENT_BINARY_DIR}/cryptanalysisConfigVersion.cmake
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion)
+configure_package_config_file(
+  cmake/cryptanalysisConfig.cmake.in
+  ${CMAKE_CURRENT_BINARY_DIR}/cryptanalysisConfig.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cryptanalysis)
+install(EXPORT cryptanalysisTargets
+        FILE cryptanalysisTargets.cmake
+        NAMESPACE cryptanalysis::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cryptanalysis)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cryptanalysisConfig.cmake
+              ${CMAKE_CURRENT_BINARY_DIR}/cryptanalysisConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cryptanalysis)

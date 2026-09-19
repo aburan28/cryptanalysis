@@ -101,11 +101,18 @@ static void test_walk_invariant(const ca_group *g, const ca_elem *base, const ca
     uint64_t *mult = calloc((size_t)a.r * 4, sizeof(uint64_t));
     uint64_t *state = calloc(nwalks * 4, sizeof(uint64_t));
     uint64_t *aux = calloc(nwalks * CA_GPU_AUX, sizeof(uint64_t));
-    uint64_t *dp = calloc(4096 * 4, sizeof(uint64_t));
+    uint64_t *dp = calloc((size_t)4096 * 4, sizeof(uint64_t));
     uint8_t *restart = malloc(nwalks);
     uint32_t dp_count = 0;
     CHECK(mult && state && aux && dp && restart);
-    if (!mult || !state || !aux || !dp || !restart) return;
+    if (!mult || !state || !aux || !dp || !restart) {
+        free(mult);
+        free(state);
+        free(aux);
+        free(dp);
+        free(restart);
+        return;
+    }
     memset(restart, 1, nwalks);
     ca_rng rng;
     ca_rng_seed(&rng, 4242);
@@ -115,10 +122,10 @@ static void test_walk_invariant(const ca_group *g, const ca_elem *base, const ca
         ca_group_mul(g, &t1, base, al, NULL);
         ca_group_mul(g, &t2, target, be, NULL);
         ca_group_op(g, &m, &t1, &t2);
-        mult[4 * i] = (a.kind == CA_GPU_KIND_EC && m.w[2]) ? g->p : m.w[0];
-        mult[4 * i + 1] = m.w[1];
-        mult[4 * i + 2] = al;
-        mult[4 * i + 3] = be;
+        mult[4 * (size_t)i] = (a.kind == CA_GPU_KIND_EC && m.w[2]) ? g->p : m.w[0];
+        mult[4 * (size_t)i + 1] = m.w[1];
+        mult[4 * (size_t)i + 2] = al;
+        mult[4 * (size_t)i + 3] = be;
     }
     a.mult = mult;
     a.state = state;

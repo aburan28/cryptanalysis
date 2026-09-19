@@ -35,7 +35,7 @@ int main(void)
     {
         uint64_t q = 1000003;
         uint32_t n = 40;
-        uint64_t *M = calloc(n * n, sizeof(uint64_t)), *rhs = calloc(n, sizeof(uint64_t));
+        uint64_t *M = calloc((size_t)n * n, sizeof(uint64_t)), *rhs = calloc(n, sizeof(uint64_t));
         uint64_t *xt = calloc(n, sizeof(uint64_t)), *x = calloc(n, sizeof(uint64_t));
         for (uint32_t j = 0; j < n; j++) xt[j] = ca_rng_below(&rng, q);
         for (uint32_t i = 0; i < n; i++) {

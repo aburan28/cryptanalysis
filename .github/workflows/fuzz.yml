@@ -1,0 +1,160 @@
+name: fuzz
+
+# Owned by the fuzzing harnesses in fuzz/.  The regular build/test matrix
+# lives in ci.yml; this workflow only builds the libFuzzer targets and runs
+# them, so the two never touch the same files.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  schedule:
+    # 03:17 UTC nightly - the long soak.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The harnesses assert with __builtin_trap(), but a UBSan finding inside
+  # the library is a crash too: make it fatal instead of a printed warning.
+  UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+  ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:symbolize=1
+  # CMake only adds -fsanitize=fuzzer,... to the harness translation unit.
+  # Passing the flags through CFLAGS instruments the library as well, which
+  # is what gives the fuzzer coverage feedback and UBSan checks inside it.
+  # (A plain `CC=clang cmake -DCA_FUZZ=ON` build also works, it is just
+  # blind past the harness.)
+  CA_FUZZ_CFLAGS: '-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer'
+
+jobs:
+  # ---------------------------------------------------------------- smoke --
+  # Pull requests and pushes: build everything, replay the committed corpus,
+  # then fuzz each harness for a minute.  Budget is ~8 minutes in total.
+  smoke:
+    name: build and short fuzz
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang and the sanitizer runtimes
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang
+          major=$(clang -dumpversion | cut -d. -f1)
+          sudo apt-get install -y --no-install-recommends "libclang-rt-${major}-dev" || true
+          clang --version
+
+      - name: Configure
+        run: |
+          set -eux
+          CC=clang CFLAGS="$CA_FUZZ_CFLAGS" cmake -S . -B build-fuzz \
+            -DCA_FUZZ=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCA_BUILD_TESTS=OFF -DCA_BUILD_TOOLS=OFF -DCA_BUILD_SHARED=OFF
+
+      - name: Build the harnesses
+        run: cmake --build build-fuzz -j"$(nproc)"
+
+      - name: Replay the committed corpus
+        run: |
+          set -eux
+          mkdir -p artifacts
+          for src in fuzz/*.c; do
+            name=$(basename "$src" .c)
+            ./build-fuzz/"$name" fuzz/corpus/"$name"/*
+          done
+
+      - name: Fuzz each harness for 60 seconds
+        run: |
+          set -eux
+          mkdir -p artifacts
+          for src in fuzz/*.c; do
+            name=$(basename "$src" .c)
+            ./build-fuzz/"$name" fuzz/corpus/"$name" \
+              -dict=fuzz/cryptanalysis.dict \
+              -max_total_time=60 -rss_limit_mb=2048 -timeout=25 \
+              -print_final_stats=1 \
+              -artifact_prefix=artifacts/"$name"-
+          done
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-smoke-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # -------------------------------------------------------------- nightly --
+  # One harness per matrix job so a slow target cannot starve the others and
+  # a single crash does not hide the rest.
+  nightly:
+    name: soak ${{ matrix.harness }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        harness:
+          - fuzz_group
+          - fuzz_modarith
+          - fuzz_dlog
+          - fuzz_gpu
+          - fuzz_indexcalc
+          - fuzz_ffi
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang and the sanitizer runtimes
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang
+          major=$(clang -dumpversion | cut -d. -f1)
+          sudo apt-get install -y --no-install-recommends "libclang-rt-${major}-dev" || true
+
+      - name: Configure and build
+        run: |
+          set -eux
+          CC=clang CFLAGS="$CA_FUZZ_CFLAGS" cmake -S . -B build-fuzz \
+            -DCA_FUZZ=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCA_BUILD_TESTS=OFF -DCA_BUILD_TOOLS=OFF -DCA_BUILD_SHARED=OFF
+          cmake --build build-fuzz -j"$(nproc)" --target "${{ matrix.harness }}"
+
+      - name: Soak ${{ matrix.harness }} for 10 minutes
+        run: |
+          set -eux
+          mkdir -p artifacts corpus-work
+          cp -a fuzz/corpus/"${{ matrix.harness }}"/. corpus-work/
+          ./build-fuzz/"${{ matrix.harness }}" corpus-work \
+            -dict=fuzz/cryptanalysis.dict \
+            -max_total_time=600 -rss_limit_mb=2048 -timeout=25 \
+            -print_final_stats=1 \
+            -artifact_prefix=artifacts/"${{ matrix.harness }}"-
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-nightly-${{ matrix.harness }}-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload the grown corpus
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-nightly-${{ matrix.harness }}-corpus
+          path: corpus-work/
+          if-no-files-found: ignore
+          retention-days: 7

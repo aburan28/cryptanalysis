@@ -1,134 +1,250 @@
 name: ci
 
+# Build, test, sanitize and install the C library.  The language bindings are
+# in bindings.yml, the static analysers in analysis.yml and the fuzzers in
+# fuzz.yml, so no two workflows compile the same thing twice.
 on:
   push:
     branches: ["**"]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  c-library:
-    name: C library (${{ matrix.cc }}, ${{ matrix.os }})
+  # ------------------------------------------------------------- build ----
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.cc }} / ${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            cc: gcc
-          - os: ubuntu-latest
-            cc: clang
-          - os: macos-latest
-            cc: clang
+          - { os: ubuntu-latest,  cc: gcc,   build_type: Release }
+          - { os: ubuntu-latest,  cc: gcc,   build_type: Debug }
+          - { os: ubuntu-latest,  cc: clang, build_type: Release }
+          - { os: ubuntu-24.04-arm, cc: gcc, build_type: Release }
+          - { os: macos-latest,   cc: clang, build_type: Release }
     env:
       CC: ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCA_WERROR=ON
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCA_WERROR=ON
+
       - name: Build
-        run: cmake --build build -j 4
+        run: cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+
       - name: Test
-        run: ctest --test-dir build --output-on-failure -j 2
+        run: ctest --test-dir build --output-on-failure -j2
+
       - name: CLI smoke test
         run: |
+          set -eux
           ./build/ca version
           ./build/ca gen --group zp --p 2000000579 --order 1000000289 --x 123456789 --seed 1
-          ./build/ca solve --alg dlog --group zp --p 2000000579 --order 1000000289 --g 1422302461 --h 1216411080 --seed 1
+          ./build/ca solve --alg dlog --group zp --p 2000000579 --order 1000000289 \
+                           --g 1422302461 --h 1216411080 --seed 1
           ./build/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 2
+          ./build/ca gpu-info
 
+      - name: Reject a malformed numeric option
+        # ca_cli parses with strtoull/strtod and must refuse junk rather than
+        # silently solving for 0.
+        run: |
+          if ./build/ca solve --alg dlog --group zp --p 12x34 2>/dev/null; then
+            echo "expected a non-zero exit for --p 12x34" >&2
+            exit 1
+          fi
+
+  # -------------------------------------------------------- sanitizers ----
   sanitizers:
-    name: ASan + UBSan
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: AddressSanitizer + UndefinedBehaviorSanitizer
+            sanitize: address,undefined
+            build_type: Debug
+          - name: ThreadSanitizer
+            # The rho and index-calculus solvers are pthreads plus C11
+            # atomics; TSan is the only check that looks at them.
+            sanitize: thread
+            build_type: RelWithDebInfo
+    env:
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
     steps:
       - uses: actions/checkout@v4
+
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=ON -DCA_BUILD_SHARED=OFF
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCA_SANITIZE=${{ matrix.sanitize }} \
+            -DCA_BUILD_SHARED=OFF -DCA_WERROR=ON
+
       - name: Build
-        run: cmake --build build -j 4
+        run: cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+
       - name: Test
         run: ctest --test-dir build --output-on-failure
-        env:
-          ASAN_OPTIONS: detect_leaks=1
-          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 
+      - name: Exercise the threaded solvers
+        # ctest runs each solver single-threaded by default; these two drive
+        # the worker pools that TSan is here for.
+        run: |
+          set -eux
+          ./build/ca solve --alg dlog --group zp --p 2000000579 --order 1000000289 \
+                           --g 1422302461 --h 1216411080 --seed 1 --solver rho --threads 4
+          ./build/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 4
+
+  # ---------------------------------------------------------- valgrind ----
+  valgrind:
+    name: Valgrind memcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install valgrind
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCA_BUILD_SHARED=OFF -DCA_WERROR=ON
+          cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: Run the fast tests under memcheck
+        # linalg and indexcalc take minutes under valgrind; nightly.yml runs
+        # those two so this job stays inside a pull request's patience.
+        run: |
+          set -eu
+          status=0
+          for t in modarith group bsgs rho kangaroo grumpy pohlig cheon ffi gpu; do
+            echo "== $t"
+            valgrind -q --error-exitcode=9 --leak-check=full \
+                     --errors-for-leak-kinds=definite --track-origins=yes \
+                     "./build/test_$t" > /dev/null || status=1
+          done
+          exit $status
+
+  # ----------------------------------------------------------- install ----
+  install:
+    name: Install and consume
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and install into a prefix
+        run: |
+          set -eux
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/prefix" -DCA_BUILD_TESTS=OFF
+          cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+          cmake --install build
+
+      - name: Consume it with find_package
+        run: |
+          set -eux
+          mkdir -p "$RUNNER_TEMP/consumer"
+          cd "$RUNNER_TEMP/consumer"
+          cat > main.c <<'EOF'
+          #include <cryptanalysis/ca_modarith.h>
+          #include <stdio.h>
+          int main(void)
+          {
+              unsigned long long r = ca_powmod(3, 100, 1000000007ULL);
+              printf("%llu\n", r);
+              return r != 886041711ULL;
+          }
+          EOF
+          cat > CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.16)
+          project(consumer LANGUAGES C)
+          find_package(cryptanalysis REQUIRED)
+          add_executable(consumer main.c)
+          target_link_libraries(consumer PRIVATE cryptanalysis::cryptanalysis)
+          EOF
+          cmake -S . -B b -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/prefix"
+          cmake --build b
+          ./b/consumer
+
+      - name: Consume it with pkg-config, from a moved prefix
+        # The .pc file locates the tree relative to itself, so moving the
+        # prefix must not break it.  This is the only check of that claim.
+        run: |
+          set -eux
+          mv "$RUNNER_TEMP/prefix" "$RUNNER_TEMP/moved"
+          cd "$RUNNER_TEMP/consumer"
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/moved/lib/pkgconfig"
+          pkg-config --exists cryptanalysis
+          pkg-config --cflags --libs cryptanalysis
+          # shellcheck disable=SC2046
+          cc main.c $(pkg-config --cflags --libs cryptanalysis) -o pc-consumer
+          LD_LIBRARY_PATH="$RUNNER_TEMP/moved/lib" ./pc-consumer
+
+  # ------------------------------------------------------- cuda kernel ----
   cuda-kernel:
     name: CUDA kernel (compile + register report)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Make an older GCC available for clang's CUDA mode
         # clang compiling CUDA force-includes libstdc++'s <limits>, which from
-        # GCC 14 on declares numeric_limits<__float128> - a type NVPTX does not
-        # have.  The script retries against older installed GCCs; this makes
-        # sure one exists on the runner.
+        # GCC 14 on declares numeric_limits<__float128> - a type NVPTX does
+        # not have.  The script retries against older installed GCCs; this
+        # makes sure one exists on the runner.
         run: sudo apt-get install -y -q g++-13 || true
+
       - name: Compile the kernel for sm_70/80/89/90
         run: ./scripts/build_cuda_kernel.sh --fetch
+
       - name: Compile the kernel with 4 and 16 walks per thread
         run: |
+          set -eux
           ./scripts/build_cuda_kernel.sh --arch sm_80 --walks 4 \
               --cuda-path build-cuda-kernel/cuda-toolkit
           ./scripts/build_cuda_kernel.sh --arch sm_80 --walks 16 \
               --cuda-path build-cuda-kernel/cuda-toolkit
+
       - name: Check the host CUDA backend compiles as C
         run: |
           cc -c -O2 -std=gnu11 -D_GNU_SOURCE -DCA_BUILDING -Wall -Wextra -Werror \
              -Iinclude -Isrc -Icuda -Ibuild-cuda-kernel/cuda-toolkit/include \
-             -o /tmp/gpu_cuda.o cuda/gpu_cuda.c
+             -o "$RUNNER_TEMP/gpu_cuda.o" cuda/gpu_cuda.c
 
-  rust:
-    name: Rust bindings
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Upload the PTX and cubins
+        uses: actions/upload-artifact@v4
         with:
-          components: clippy
-      - name: Test
-        run: cargo test --workspace
-        working-directory: bindings/rust
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-        working-directory: bindings/rust
-      - name: Build the CUDA driver crate with PTX embedded
-        run: |
-          sudo apt-get install -y -q g++-13 || true
-          ./scripts/build_cuda_kernel.sh --fetch --arch sm_70
-          CUDA_PATH=$PWD/build-cuda-kernel/cuda-toolkit \
-            cargo build -p cryptanalysis-cuda --manifest-path bindings/rust/Cargo.toml \
-            -vv 2>&1 | tee /tmp/cuda-build.log
-          # The build deliberately succeeds without a CUDA compiler, so assert
-          # that the PTX really was embedded rather than silently skipped.
-          grep -q 'cargo:rustc-cfg=ca_embedded_ptx' /tmp/cuda-build.log
-
-  go:
-    name: Go bindings
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-      - name: Vet
-        run: go vet ./...
-        working-directory: bindings/go
-      - name: Test
-        run: go test ./...
-        working-directory: bindings/go
-
-  python:
-    name: Python bindings
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Build C library
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCA_BUILD_TOOLS=OFF -DCA_BUILD_TESTS=OFF && cmake --build build -j 4
-      - name: Test
-        run: python3 -m unittest discover -s tests -v
-        working-directory: bindings/python
+          name: cuda-kernel
+          path: |
+            build-cuda-kernel/*.ptx
+            build-cuda-kernel/*.cubin
+          if-no-files-found: error
+          retention-days: 14

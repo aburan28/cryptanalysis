@@ -3,7 +3,8 @@ BUILD ?= build
 CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release
 JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
-.PHONY: all lib test bench asan rust go python bindings clean install format cuda cuda-kernel
+.PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
+        shellcheck format checks rust go python bindings clean install cuda cuda-kernel
 
 all: lib
 
@@ -35,9 +36,62 @@ cuda-kernel:
 	./scripts/build_cuda_kernel.sh --fetch
 
 asan:
-	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=ON -DCA_BUILD_SHARED=OFF
+	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \
+	      -DCA_BUILD_SHARED=OFF
 	cmake --build build-asan -j$(JOBS)
 	ctest --test-dir build-asan --output-on-failure
+
+# The rho and index-calculus solvers are pthreads plus C11 atomics.
+tsan:
+	cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCA_SANITIZE=thread \
+	      -DCA_BUILD_SHARED=OFF
+	cmake --build build-tsan -j$(JOBS)
+	ctest --test-dir build-tsan --output-on-failure
+	TSAN_OPTIONS=halt_on_error=1 build-tsan/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 4
+
+# The fast suites only; linalg and indexcalc take about an hour each here.
+valgrind:
+	cmake -S . -B build-vg -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCA_BUILD_SHARED=OFF
+	cmake --build build-vg -j$(JOBS)
+	for t in modarith group bsgs rho kangaroo grumpy pohlig cheon ffi gpu; do \
+	  echo "== $$t"; \
+	  valgrind -q --error-exitcode=9 --leak-check=full \
+	           --errors-for-leak-kinds=definite build-vg/test_$$t >/dev/null || exit 1; \
+	done
+
+coverage:
+	cmake -S . -B build-cov -DCMAKE_BUILD_TYPE=Debug -DCA_BUILD_SHARED=OFF \
+	      -DCMAKE_C_FLAGS="--coverage -O0 -g" -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+	cmake --build build-cov -j$(JOBS)
+	ctest --test-dir build-cov --output-on-failure
+	gcovr --root . --filter 'src/' --exclude 'src/gpu_cuda_stub.c' \
+	      --gcov-ignore-parse-errors negative_hits.warn_once_per_file --print-summary \
+	      --fail-under-line 85 --fail-under-function 88
+
+# ---- static analysis -------------------------------------------------------
+# Each of these is a CI gate; the tree is clean under all of them.
+
+tidy:
+	cmake -S . -B build-tidy -DCMAKE_BUILD_TYPE=Debug \
+	      -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCA_BUILD_SHARED=OFF
+	clang-tidy -p build-tidy --quiet src/*.c tools/*.c tests/*.c
+
+cppcheck:
+	cppcheck --enable=warning,performance,portability,style --inline-suppr --std=c11 \
+	         --error-exitcode=1 --suppress=missingIncludeSystem \
+	         -Iinclude -Isrc -Icuda --quiet src tools tests
+
+analyzer:
+	cmake -S . -B build-analyzer -DCMAKE_BUILD_TYPE=Debug -DCA_BUILD_TESTS=OFF \
+	      -DCA_BUILD_SHARED=OFF -DCMAKE_C_COMPILER=gcc \
+	      -DCMAKE_C_FLAGS="-fanalyzer -Wall -Wextra -Werror"
+	cmake --build build-analyzer -j$(JOBS)
+
+shellcheck:
+	shellcheck scripts/*.sh
+
+# Everything a pull request is gated on, in the order that fails fastest.
+checks: format cppcheck shellcheck tidy analyzer test asan tsan
 
 rust:
 	cd bindings/rust && cargo test
@@ -53,8 +107,13 @@ bindings: rust go python
 install: lib
 	cmake --install $(BUILD)
 
+# Only the lines this branch touches.  The sources predate .clang-format and
+# a wholesale reformat would bury every future diff; new code still matches.
+FORMAT_BASE ?= HEAD
+
 format:
-	clang-format -i include/cryptanalysis/*.h src/*.c src/*.h tests/*.c tests/*.h tools/*.c
+	git-clang-format --diff --extensions c,h,cu,cuh $(FORMAT_BASE)
 
 clean:
-	rm -rf $(BUILD) build-asan build-cuda build-cuda-kernel bindings/rust/target
+	rm -rf $(BUILD) build-asan build-tsan build-vg build-cov build-tidy \
+	       build-analyzer build-cuda build-cuda-kernel bindings/rust/target

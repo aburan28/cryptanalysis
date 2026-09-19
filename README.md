@@ -186,8 +186,29 @@ tools/                   ca (CLI) and ca_bench
 scripts/                 build_cuda_kernel.sh (compile the kernel, no GPU needed)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md
-.github/workflows/ci.yml gcc/clang/macOS builds, sanitizers, CUDA kernel, bindings
+fuzz/                    libFuzzer harnesses and their seed corpora
+.github/workflows/       ci, analysis, bindings, fuzz, codeql, nightly
 ```
+
+## Checks
+
+Everything below is a gate: the tree is clean under all of it, so a finding
+means new code rather than a backlog.  `make checks` runs the pull-request
+set locally, in the order that fails fastest.
+
+| Workflow | What it gates |
+|---|---|
+| `ci` | gcc, clang, macOS and arm64 builds with `-Werror`; ctest; AddressSanitizer plus UndefinedBehaviorSanitizer; ThreadSanitizer over the pthreads solvers; valgrind memcheck on the fast suites; install and consume through both `find_package` and a relocated `pkg-config` prefix; the CUDA kernel compiled for sm_70 to sm_90 with a register report |
+| `analysis` | clang-tidy (warnings are errors), cppcheck, `gcc -fanalyzer`, clang-format on the lines a change touches, shellcheck, actionlint, and coverage with a floor |
+| `bindings` | Rust fmt/clippy/doc/tests and a measured MSRV floor, cargo-deny, Go across three toolchains with the race detector and golangci-lint, Python 3.8 to 3.13 plus an installed-package run, ruff and mypy |
+| `fuzz` | six libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
+| `codeql` | C, Go and Python, with the `security-and-quality` query pack |
+| `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
+
+Individual targets: `make tidy cppcheck analyzer format shellcheck asan tsan
+valgrind coverage`.  Formatting is enforced only on changed lines, because the
+sources predate `.clang-format` and a wholesale reformat would bury every
+future diff; `make format FORMAT_BASE=origin/main` shows what a branch owes.
 
 ## Status and roadmap
 
