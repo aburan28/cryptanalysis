@@ -248,7 +248,7 @@ void ca_ec_random_point(const ca_group *g, ca_elem *r, uint64_t seed)
 /* All k in [lo, lo+width) with k*P == T, appended to out (up to cap).
  * Returns the number found (may exceed cap; only cap are stored). */
 static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem *T,
-                              int64_t lo, uint64_t width, int64_t *out, size_t cap,
+                              uint64_t lo, uint64_t width, uint64_t *out, size_t cap,
                               ca_stats *st)
 {
     uint64_t m = ca_isqrt(width) + 1;
@@ -271,18 +271,17 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
     if (small_order) {
         /* k*P == T: find k0 < small_order with k0*P == T then enumerate. */
         ec_identity(g, &cur);
-        int64_t k0 = -1;
+        uint64_t k0 = small_order;
         for (uint64_t j = 0; j < small_order; j++) {
-            if (ec_equal(g, &cur, T)) { k0 = (int64_t)j; break; }
+            if (ec_equal(g, &cur, T)) { k0 = j; break; }
             ec_op(g, &cur, &cur, P);
         }
-        if (k0 >= 0) {
-            int64_t k = k0;
-            /* move k into [lo, ...) */
-            int64_t so = (int64_t)small_order;
-            k = lo + ((k - lo) % so + so) % so;
-            for (; k < lo + (int64_t)width; k += so) {
-                if (found < cap) out[found] = k;
+        if (k0 < small_order) {
+            /* smallest k >= lo with k == k0 (mod small_order) */
+            uint64_t so = small_order;
+            ca_u128 k = (ca_u128)lo + (k0 + so - lo % so) % so;
+            for (; k < (ca_u128)lo + width; k += so) {
+                if (found < cap) out[found] = (uint64_t)k;
                 found++;
             }
         }
@@ -293,12 +292,8 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
     ca_elem mP, negmP, base, R;
     ca_group_mul(g, &mP, P, m, st ? &st->group_ops : NULL);
     ec_inv(g, &negmP, &mP);
-    /* base = lo * P (lo may be negative) */
-    if (lo >= 0) ca_group_mul(g, &base, P, (uint64_t)lo, NULL);
-    else {
-        ca_group_mul(g, &base, P, (uint64_t)(-lo), NULL);
-        ec_inv(g, &base, &base);
-    }
+    /* base = -lo * P */
+    ca_group_mul(g, &base, P, lo, NULL);
     ec_inv(g, &base, &base);
     ec_op(g, &R, T, &base); /* T - lo P */
     uint64_t steps = width / m + 1;
@@ -309,9 +304,9 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
             ca_elem chk;
             ca_group_mul(g, &chk, P, j, NULL);
             if (ec_equal(g, &chk, &R)) {
-                int64_t k = lo + (int64_t)(i * m) + (int64_t)j;
-                if (k < lo + (int64_t)width) {
-                    if (found < cap) out[found] = k;
+                ca_u128 k = (ca_u128)lo + (ca_u128)i * m + j;
+                if (k < (ca_u128)lo + width) {
+                    if (found < cap) out[found] = (uint64_t)k;
                     found++;
                 }
             }
@@ -326,17 +321,20 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
 static ca_status ec_count_once(const ca_group *g, uint64_t *order, ca_stats *st,
                                uint64_t seed, int *ambiguous)
 {
+    /* Hasse interval [p + 1 - 2 sqrt(p), p + 1 + 2 sqrt(p)], computed in
+     * 128 bits so that primes up to 2^64 - 59 (whose p + 1 still fits a
+     * uint64_t) are handled without overflow. */
     uint64_t p = g->p;
     uint64_t s = ca_isqrt(p);
     while ((ca_u128)s * s < p) s++; /* ceil(sqrt(p)) */
-    int64_t lo = (int64_t)(p + 1) - 2 * (int64_t)s;
+    ca_u128 lo128 = (ca_u128)p + 1 - 2 * (ca_u128)s;
+    uint64_t lo = lo128 < 1 ? 1 : (uint64_t)lo128;
     uint64_t width = 4 * s + 1;
-    if (lo < 1) lo = 1;
     ca_rng rng;
     ca_rng_seed(&rng, seed);
     enum { CAP = 4096 };
-    int64_t *cands = malloc(CAP * sizeof(int64_t));
-    int64_t *cur = malloc(CAP * sizeof(int64_t));
+    uint64_t *cands = malloc(CAP * sizeof(uint64_t));
+    uint64_t *cur = malloc(CAP * sizeof(uint64_t));
     if (!cands || !cur) { free(cands); free(cur); return CA_ERR_NOMEM; }
     size_t ncand = 0;
     int have = 0;
@@ -349,7 +347,7 @@ static ca_status ec_count_once(const ca_group *g, uint64_t *order, ca_stats *st,
         size_t n = ec_interval_all(g, &P, &T, lo, width, cur, CAP, st);
         if (n == 0 || n > CAP) continue;
         if (!have) {
-            memcpy(cands, cur, n * sizeof(int64_t));
+            memcpy(cands, cur, n * sizeof(uint64_t));
             ncand = n;
             have = 1;
         } else {
@@ -361,7 +359,7 @@ static ca_status ec_count_once(const ca_group *g, uint64_t *order, ca_stats *st,
             }
             ncand = w;
         }
-        if (ncand == 1) { *order = (uint64_t)cands[0]; rc = CA_OK; break; }
+        if (ncand == 1) { *order = cands[0]; rc = CA_OK; break; }
         if (ncand == 0) { rc = CA_ERR_INTERNAL; break; }
     }
     if (rc != CA_OK && have && ncand > 1) *ambiguous = 1;
@@ -402,7 +400,8 @@ ca_status ca_ec_count_points(uint64_t p, uint64_t a, uint64_t b, uint64_t *order
             uint64_t ot;
             int amb2 = 0;
             if (ec_count_once(&tw, &ot, st, 0x7715ULL ^ p, &amb2) == CA_OK) {
-                *order = 2 * p + 2 - ot;
+                /* #E + #E' = 2p + 2; 128-bit so p > 2^63 does not wrap */
+                *order = (uint64_t)((ca_u128)2 * p + 2 - ot);
                 rc = CA_OK;
             }
         }

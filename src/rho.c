@@ -447,8 +447,9 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
 
     pthread_t *tids = calloc(threads, sizeof(pthread_t));
     rho_thread *ths = calloc(threads, sizeof(rho_thread));
-    if (!tids || !ths) {
-        free(tids); free(ths);
+    uint8_t *created = calloc(threads, 1);
+    if (!tids || !ths || !created) {
+        free(tids); free(ths); free(created);
         ca_htab_free(&sh.tab);
         free(sh.M); free(sh.alpha); free(sh.beta);
         pthread_mutex_destroy(&sh.lock);
@@ -461,6 +462,7 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         if (threads == 1) {
             rho_thread_main(&ths[t]);
         } else if (pthread_create(&tids[t], NULL, rho_thread_main, &ths[t]) == 0) {
+            created[t] = 1;
             started++;
         }
     }
@@ -468,7 +470,8 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         /* could not spawn: run inline */
         rho_thread_main(&ths[0]);
     }
-    for (uint32_t t = 0; t < started; t++) pthread_join(tids[t], NULL);
+    for (uint32_t t = 0; t < threads; t++)
+        if (created[t]) pthread_join(tids[t], NULL);
 
     ca_status rc = sh.status;
     if (rc == CA_OK) *x = sh.result;
@@ -481,7 +484,7 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         st->threads = threads;
         st->seconds += ca_now() - t0;
     }
-    free(tids); free(ths);
+    free(tids); free(ths); free(created);
     ca_htab_free(&sh.tab);
     free(sh.M); free(sh.alpha); free(sh.beta);
     pthread_mutex_destroy(&sh.lock);

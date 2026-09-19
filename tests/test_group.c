@@ -121,10 +121,33 @@ static void test_count_points_larger(void)
     }
 }
 
+static void test_count_points_64bit(void)
+{
+    /* Primes above 2^63: the Hasse interval must not overflow. */
+    uint64_t ps[2] = {ca_next_prime(1ULL << 63), 18446744073709551557ULL};
+    for (int i = 0; i < 2; i++) {
+        uint64_t p = ps[i], n;
+        CHECK(ca_ec_count_points(p, 2, 3, &n, NULL) == CA_OK);
+        uint64_t s = ca_isqrt(p) + 1;
+        /* |n - (p+1)| <= 2 sqrt(p), evaluated without overflow */
+        ca_u128 lo = (ca_u128)p + 1 - 2 * (ca_u128)s, hi = (ca_u128)p + 1 + 2 * (ca_u128)s;
+        CHECK((ca_u128)n >= lo && (ca_u128)n <= hi);
+        ca_group g;
+        CHECK(ca_group_ec_init(&g, p, 2, 3, n) == CA_OK);
+        for (int k = 0; k < 3; k++) {
+            ca_elem P, R;
+            ca_ec_random_point(&g, &P, 21 + k);
+            ca_group_mul(&g, &R, &P, n, NULL);
+            CHECK(ca_group_is_identity(&g, &R));
+        }
+    }
+}
+
 int main(void)
 {
     test_zp();
     test_ec();
     test_count_points_larger();
+    test_count_points_64bit();
     TEST_MAIN_END();
 }
