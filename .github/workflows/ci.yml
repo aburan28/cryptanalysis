@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  c-library:
+    name: C library (${{ matrix.cc }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cc: gcc
+          - os: ubuntu-latest
+            cc: clang
+          - os: macos-latest
+            cc: clang
+    env:
+      CC: ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCA_WERROR=ON
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -j 2
+      - name: CLI smoke test
+        run: |
+          ./build/ca version
+          ./build/ca gen --group zp --p 2000000579 --order 1000000289 --x 123456789 --seed 1
+          ./build/ca solve --alg dlog --group zp --p 2000000579 --order 1000000289 --g 1422302461 --h 1216411080 --seed 1
+          ./build/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 2
+
+  sanitizers:
+    name: ASan + UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=ON -DCA_BUILD_SHARED=OFF
+      - name: Build
+        run: cmake --build build -j 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+
+  rust:
+    name: Rust bindings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Test
+        run: cargo test --workspace
+        working-directory: bindings/rust
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+        working-directory: bindings/rust
+
+  go:
+    name: Go bindings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Vet
+        run: go vet ./...
+        working-directory: bindings/go
+      - name: Test
+        run: go test ./...
+        working-directory: bindings/go
+
+  python:
+    name: Python bindings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build C library
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCA_BUILD_TOOLS=OFF -DCA_BUILD_TESTS=OFF && cmake --build build -j 4
+      - name: Test
+        run: python3 -m unittest discover -s tests -v
+        working-directory: bindings/python
