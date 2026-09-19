@@ -1,0 +1,48 @@
+Undefined behaviour: dp_bits >= 64 shifts a 64-bit value by >= 64
+=================================================================
+
+Harness   : fuzz_dlog, built with -DCA_FUZZ_WILD_PARAMS
+Input     : rho_kangaroo_dp_bits_shift.bin
+Reproduce : see fuzz/crashes/README.md, then
+            UBSAN_OPTIONS=halt_on_error=1 \
+              ./build-wild/fuzz_dlog fuzz/crashes/rho_kangaroo_dp_bits_shift.bin
+
+ca_rho_params.dp_bits and ca_kangaroo_params.dp_bits are documented as
+"distinguished point bits, -1 => auto", with no stated upper bound.  An
+explicit value of 64 or more is used unclamped as a shift count:
+
+    src/rho.c:417      sh.dp_mask = dp ? ((1ULL << dp) - 1) : 0;
+    src/rho.c:439      expected_dps = 1.25 * sqrt_n / (double)(1ULL << dp) + 1024;
+    src/rho.c:225      const uint64_t abandon = (uint64_t)24 << sh->dp_bits;
+    src/kangaroo.c:82  uint64_t dp_mask = dp ? ((1ULL << dp) - 1) : 0;
+    src/kangaroo.c:124 uint64_t abandon = (uint64_t)32 << dp;
+
+UBSan output (dp_bits = 70):
+
+    src/rho.c:417:30: runtime error: shift exponent 70 is too large for
+                      64-bit type 'long long unsigned int'
+    src/rho.c:439:65: runtime error: shift exponent 70 is too large ...
+    src/rho.c:225:43: runtime error: shift exponent 70 is too large ...
+    src/kangaroo.c:82:36: runtime error: shift exponent 70 is too large ...
+    src/kangaroo.c:124:37: runtime error: shift exponent 70 is too large ...
+
+Deterministic C reproducer:
+
+    ca_group g; ca_group_zp_init(&g, 1000003, 0);
+    ca_elem base, target; uint64_t w[4] = {5,0,0,0};
+    ca_group_encode(&g, &base, w);
+    ca_group_mul(&g, &target, &base, 12345, NULL);
+    ca_rho_params p; ca_rho_params_default(&p);
+    p.threads = 1; p.seed = 1; p.max_ops = 100000; p.dp_bits = 70;
+    uint64_t x; ca_rho_solve(&g, &base, &target, &p, &x, NULL);
+
+The GPU driver already does the right thing - src/gpu_rho.c clamps with
+"if (dp > 63) dp = 63;" and ca_gpu.h documents it - so the same two-line
+clamp in ca_rho_solve and ca_kangaroo_solve would close this.
+
+Harness note
+------------
+fuzz_dlog and fuzz_ffi keep dp_bits in [-1, 63] unless built with
+-DCA_FUZZ_WILD_PARAMS, so the fuzzer explores the solver logic instead of
+rediscovering this one input shape over and over.  fuzz_gpu fuzzes the
+whole int32 range, because there the clamp is documented behaviour.
