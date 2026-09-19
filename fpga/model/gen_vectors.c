@@ -77,20 +77,26 @@ int main(int argc, char **argv)
             ec2k_fe_zero(&b);
             b.w[j >> 6] = (uint64_t)1 << (j & 63);
             ec2k_fe_mul(&y, &a, &b);
-            put_fe(f, &a); fputc(' ', f);
-            put_fe(f, &b); fputc(' ', f);
-            put_fe(f, &y); fputc('\n', f);
+            put_fe(f, &a);
+            fputc(' ', f);
+            put_fe(f, &b);
+            fputc(' ', f);
+            put_fe(f, &y);
+            fputc('\n', f);
         }
     }
     for (int i = 0; i < count; i++) {
         rnd_fe(&a);
         rnd_fe(&b);
-        if (i == 0) b = one;   /* a * 1 == a */
+        if (i == 0) b = one; /* a * 1 == a */
         if (i == 1) ec2k_fe_zero(&b);
         ec2k_fe_mul(&y, &a, &b);
-        put_fe(f, &a); fputc(' ', f);
-        put_fe(f, &b); fputc(' ', f);
-        put_fe(f, &y); fputc('\n', f);
+        put_fe(f, &a);
+        fputc(' ', f);
+        put_fe(f, &b);
+        fputc(' ', f);
+        put_fe(f, &y);
+        fputc('\n', f);
     }
     fclose(f);
 
@@ -115,8 +121,10 @@ int main(int argc, char **argv)
         if (ec2k_fe_is_zero(&a)) continue;
         if (i == 0) a = one;
         ec2k_fe_inv(&y, &a);
-        put_fe(f, &a); fputc(' ', f);
-        put_fe(f, &y); fputc('\n', f);
+        put_fe(f, &a);
+        fputc(' ', f);
+        put_fe(f, &y);
+        fputc('\n', f);
     }
     fclose(f);
 
@@ -129,15 +137,18 @@ int main(int argc, char **argv)
         ec2k_point_from_seed(&p, rnd());
         unsigned j = ec2k_step_j(&p.x);
         int ok = ec2k_step(&q, &p);
-        put_fe(f, &p.x); fputc(' ', f);
+        put_fe(f, &p.x);
+        fputc(' ', f);
         put_fe(f, &p.y);
         fprintf(f, " %u %d ", j, ok ? 0 : 1);
         if (ok) {
-            put_fe(f, &q.x); fputc(' ', f);
+            put_fe(f, &q.x);
+            fputc(' ', f);
             put_fe(f, &q.y);
             fprintf(f, " %d", ec2k_is_distinguished_w(&q.x, dpw) ? 1 : 0);
         } else {
-            put_fe(f, &p.x); fputc(' ', f);
+            put_fe(f, &p.x);
+            fputc(' ', f);
             put_fe(f, &p.y);
             fprintf(f, " 0");
         }
@@ -151,12 +162,15 @@ int main(int argc, char **argv)
     {
         ec2k_pt p;
         ec2k_point_from_seed(&p, 20260919);
-        put_fe(f, &p.x); fputc(' ', f);
-        put_fe(f, &p.y); fputc('\n', f);
+        put_fe(f, &p.x);
+        fputc(' ', f);
+        put_fe(f, &p.y);
+        fputc('\n', f);
         for (int i = 0; i < count * 4; i++) {
             ec2k_pt q;
             if (!ec2k_step(&q, &p)) break;
-            put_fe(f, &q.x); fputc(' ', f);
+            put_fe(f, &q.x);
+            fputc(' ', f);
             put_fe(f, &q.y);
             fprintf(f, " %d\n", ec2k_is_distinguished_w(&q.x, dpw) ? 1 : 0);
             p = q;

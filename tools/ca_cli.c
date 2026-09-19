@@ -347,7 +347,6 @@ static int cmd_ic(void)
     return 0;
 }
 
-
 /* ---- the distributed protocol ------------------------------------------ */
 
 /* The campaign as the fleet sees it.  --campaign-seed is required rather
@@ -419,7 +418,7 @@ static int cmd_dist_walk(void)
     }
     if (sink.failed || !flushed) die("writing points failed");
     if (rc != CA_OK && rc != CA_ERR_LIMIT) die_status(rc);
-    FILE *report = path ? stdout : stderr;   /* records own stdout when there is no --out */
+    FILE *report = path ? stdout : stderr; /* records own stdout when there is no --out */
     fprintf(report,
             "{\"status\":\"ok\",\"campaign\":%" PRIu64 ",\"unit\":%" PRIu64 ",\"points\":%" PRIu64
             ",\"bytes\":%" PRIu64 ",\"dp_bits\":%d,\"r\":%u,\"steps\":%" PRIu64 "}\n",
@@ -448,12 +447,17 @@ static int merge_file(ca_dist_merger *m, const char *path, uint64_t *acc, uint64
         for (size_t i = 0; i < whole; i++)
             ca_dist_point_decode(&pts[i], buf + i * CA_DIST_POINT_BYTES);
         size_t a = 0, d = 0, r = 0;
-        if (ca_dist_merger_add(m, pts, whole, &a, &d, &r) != CA_OK) { rc = -2; break; }
-        *acc += a; *dup += d; *rej += r;
+        if (ca_dist_merger_add(m, pts, whole, &a, &d, &r) != CA_OK) {
+            rc = -2;
+            break;
+        }
+        *acc += a;
+        *dup += d;
+        *rej += r;
         carry = have - whole * CA_DIST_POINT_BYTES;
         memmove(buf, buf + whole * CA_DIST_POINT_BYTES, carry);
     }
-    if (carry) rc = 1;      /* truncated tail */
+    if (carry) rc = 1; /* truncated tail */
     if (in != stdin) fclose(in);
     return rc;
 }
@@ -477,21 +481,34 @@ static int cmd_dist_merge(void)
     int truncated = 0, files = 0;
     for (int i = 2; i < argc_g; i++) {
         const char *a = argv_g[i];
-        if (a[0] == '-' && a[1] == '-') { i++; continue; }   /* skip option pairs */
+        if (a[0] == '-' && a[1] == '-') {
+            i++;
+            continue;
+        } /* skip option pairs */
         if (a[0] == '-' && a[1] != '\0' && strcmp(a, "-") != 0) continue;
         files++;
         int r = merge_file(m, a, &acc, &dup, &rej);
-        if (r == -1) { ca_dist_merger_free(m); die("cannot open input file"); }
-        if (r == -2) { ca_dist_merger_free(m); die_status(CA_ERR_NOMEM); }
+        if (r == -1) {
+            ca_dist_merger_free(m);
+            die("cannot open input file");
+        }
+        if (r == -2) {
+            ca_dist_merger_free(m);
+            die_status(CA_ERR_NOMEM);
+        }
         if (r == 1) truncated++;
     }
-    if (!files) { ca_dist_merger_free(m); die("no input files (use - for stdin)"); }
+    if (!files) {
+        ca_dist_merger_free(m);
+        die("no input files (use - for stdin)");
+    }
 
     uint64_t x = 0;
     int solved = ca_dist_merger_solved(m, &x);
     printf("{\"status\":\"ok\",\"campaign\":%" PRIu64 ",\"files\":%d,\"accepted\":%" PRIu64
            ",\"duplicates\":%" PRIu64 ",\"rejected\":%" PRIu64 ",\"stored\":%zu,\"truncated\":%d,"
-           "\"solved\":%s", ca_dist_campaign_id(&g, &base, &target, &c), files, acc, dup, rej,
+           "\"solved\":%s",
+           ca_dist_campaign_id(&g, &base, &target, &c), files, acc, dup, rej,
            ca_dist_merger_size(m), truncated, solved ? "true" : "false");
     if (solved) printf(",\"x\":%" PRIu64, x);
     printf("}\n");

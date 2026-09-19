@@ -44,13 +44,16 @@ typedef struct dist_walk {
     ca_elem Y;
     uint64_t a, b;
     uint64_t since_point;
-    uint64_t restart;   /* which deterministic start this walk is on */
+    uint64_t restart; /* which deterministic start this walk is on */
 } dist_walk;
 
 static int dist_ilog2(uint64_t v)
 {
     int l = -1;
-    while (v) { v >>= 1; l++; }
+    while (v) {
+        v >>= 1;
+        l++;
+    }
     return l;
 }
 
@@ -104,9 +107,17 @@ uint64_t ca_dist_campaign_id(const ca_group *g, const ca_elem *base, const ca_el
 {
     uint64_t h = 0x243F6A8885A308D3ULL;
     const uint64_t mix[] = {
-        (uint64_t)g->kind, g->p, g->a, g->b, g->order, g->cofactor,
-        ca_group_hash(g, base), ca_group_hash(g, target),
-        c->seed, (uint64_t)c->r, (uint64_t)(int64_t)c->dp_bits,
+        (uint64_t)g->kind,
+        g->p,
+        g->a,
+        g->b,
+        g->order,
+        g->cofactor,
+        ca_group_hash(g, base),
+        ca_group_hash(g, target),
+        c->seed,
+        (uint64_t)c->r,
+        (uint64_t)(int64_t)c->dp_bits,
     };
     for (size_t i = 0; i < sizeof(mix) / sizeof(mix[0]); i++)
         h = ca_mix64(h ^ (mix[i] + 0x9E3779B97F4A7C15ULL + (h << 6) + (h >> 2)));
@@ -124,16 +135,14 @@ void ca_dist_point_encode(unsigned char out[CA_DIST_POINT_BYTES], const ca_dist_
 {
     const uint64_t words[4] = {p->w0, p->w1, p->a, p->b};
     for (int i = 0; i < 4; i++)
-        for (int j = 0; j < 8; j++)
-            out[i * 8 + j] = (unsigned char)(words[i] >> (8 * j));
+        for (int j = 0; j < 8; j++) out[i * 8 + j] = (unsigned char)(words[i] >> (8 * j));
 }
 
 void ca_dist_point_decode(ca_dist_point *p, const unsigned char in[CA_DIST_POINT_BYTES])
 {
     uint64_t words[4] = {0, 0, 0, 0};
     for (int i = 0; i < 4; i++)
-        for (int j = 0; j < 8; j++)
-            words[i] |= (uint64_t)in[i * 8 + j] << (8 * j);
+        for (int j = 0; j < 8; j++) words[i] |= (uint64_t)in[i * 8 + j] << (8 * j);
     p->w0 = words[0];
     p->w1 = words[1];
     p->a = words[2];
@@ -274,7 +283,11 @@ ca_status ca_dist_walk(const ca_group *g, const ca_elem *base, const ca_elem *ta
     uint64_t *scratch = calloc(2 * (size_t)W, sizeof(uint64_t));
     uint32_t *idxs = calloc(W, sizeof(uint32_t));
     if (!walks || !Yn || !B || !scratch || !idxs) {
-        free(walks); free(Yn); free(B); free(scratch); free(idxs);
+        free(walks);
+        free(Yn);
+        free(B);
+        free(scratch);
+        free(idxs);
         dist_free_ctx(&d);
         return CA_ERR_NOMEM;
     }
@@ -326,8 +339,15 @@ ca_status ca_dist_walk(const ca_group *g, const ca_elem *base, const ca_elem *ta
                 points++;
                 wk->since_point = 0;
                 ca_status src = sink(ctx, &pt);
-                if (src != CA_OK) { out = src; stop = 1; break; }
-                if (u->max_points && points >= u->max_points) { stop = 1; break; }
+                if (src != CA_OK) {
+                    out = src;
+                    stop = 1;
+                    break;
+                }
+                if (u->max_points && points >= u->max_points) {
+                    stop = 1;
+                    break;
+                }
             } else if (wk->since_point > abandon) {
                 /* Almost certainly a cycle: a walk that has gone 24 mean
                  * inter-point distances without a point is not going to
@@ -344,11 +364,15 @@ ca_status ca_dist_walk(const ca_group *g, const ca_elem *base, const ca_elem *ta
         st->group_ops += ops;
         st->iterations += points;
         st->seconds += ca_now() - start_time;
-        st->bytes_peak = ca_max_u64(st->bytes_peak,
-                                    (uint64_t)W * (uint64_t)(sizeof(dist_walk) + 2 * sizeof(ca_elem))
-                                        + (uint64_t)d.r * sizeof(ca_elem));
+        st->bytes_peak = ca_max_u64(
+            st->bytes_peak, (uint64_t)W * (uint64_t)(sizeof(dist_walk) + 2 * sizeof(ca_elem)) +
+                                (uint64_t)d.r * sizeof(ca_elem));
     }
-    free(walks); free(Yn); free(B); free(scratch); free(idxs);
+    free(walks);
+    free(Yn);
+    free(B);
+    free(scratch);
+    free(idxs);
     dist_free_ctx(&d);
     return out;
 }
@@ -370,9 +394,9 @@ struct ca_dist_merger {
     int verify;
 
     dist_entry *e;
-    size_t cap;      /* power of two */
+    size_t cap; /* power of two */
     size_t count;
-    size_t limit;    /* resize threshold */
+    size_t limit; /* resize threshold */
 
     int solved;
     uint64_t result;
@@ -392,7 +416,7 @@ static ca_status dist_table_init(ca_dist_merger *m, size_t expect)
     if (!m->e) return CA_ERR_NOMEM;
     m->cap = cap;
     m->count = 0;
-    m->limit = cap - cap / 4;   /* 75% load */
+    m->limit = cap - cap / 4; /* 75% load */
     return CA_OK;
 }
 
@@ -489,7 +513,7 @@ static int dist_admissible(ca_dist_merger *m, const ca_dist_point *pt)
     if (pt->a >= m->n || pt->b >= m->n) return 0;
     uint64_t words[4] = {pt->w0, pt->w1, 0, 0};
     ca_elem Y;
-    if (!ca_group_encode(g, &Y, words)) return 0;   /* encode: 1 = ok, 0 = not a point */
+    if (!ca_group_encode(g, &Y, words)) return 0; /* encode: 1 = ok, 0 = not a point */
     if (!ca_group_is_valid(g, &Y)) return 0;
     if ((ca_group_hash(g, &Y) & m->dp_mask) != 0) return 0;
     ca_elem t1, t2, sum;
@@ -561,10 +585,7 @@ int ca_dist_merger_solved(const ca_dist_merger *m, uint64_t *x)
     return 1;
 }
 
-size_t ca_dist_merger_size(const ca_dist_merger *m)
-{
-    return m ? m->count : 0;
-}
+size_t ca_dist_merger_size(const ca_dist_merger *m) { return m ? m->count : 0; }
 
 void ca_dist_merger_stats(const ca_dist_merger *m, ca_stats *st)
 {

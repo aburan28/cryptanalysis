@@ -51,12 +51,11 @@ static uint64_t opt_u64(int argc, char **argv, const char *name, uint64_t def)
 
 static int usage(void)
 {
-    fprintf(stderr,
-            "usage: ec2k <command> [options]\n"
-            "  walk   --seed S --steps N [--dp-weight W] [--out FILE]\n"
-            "  verify --seed S --steps N [--dp-weight W] FILE...\n"
-            "  merge  FILE...\n"
-            "  start  --seed S\n");
+    fprintf(stderr, "usage: ec2k <command> [options]\n"
+                    "  walk   --seed S --steps N [--dp-weight W] [--out FILE]\n"
+                    "  verify --seed S --steps N [--dp-weight W] FILE...\n"
+                    "  merge  FILE...\n"
+                    "  start  --seed S\n");
     return 2;
 }
 
@@ -85,8 +84,8 @@ static void write_record(void *ctx, const ec2k_record *rec)
  * appears about once in 2^25 steps, so anything interactive wants a looser
  * one.  The cutoff is part of the campaign, not of the tool: two machines
  * walking at different weights produce corpora that cannot be compared. */
-static uint64_t walk_weight(uint64_t seed, uint64_t steps, unsigned weight,
-                            ec2k_sink sink, void *ctx, uint64_t *dps, uint64_t *restarts)
+static uint64_t walk_weight(uint64_t seed, uint64_t steps, unsigned weight, ec2k_sink sink,
+                            void *ctx, uint64_t *dps, uint64_t *restarts)
 {
     ec2k_pt r;
     ec2k_point_from_seed(&r, seed);
@@ -171,7 +170,10 @@ static int cmd_verify(int argc, char **argv)
 
     uint64_t checked = 0, matched = 0, wrong_seed = 0, unknown = 0, malformed = 0;
     for (int i = 2; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] == '-') { i++; continue; }
+        if (argv[i][0] == '-' && argv[i][1] == '-') {
+            i++;
+            continue;
+        }
         FILE *f = fopen(argv[i], "rb");
         if (!f) {
             fprintf(stderr, "cannot read %s\n", argv[i]);
@@ -192,12 +194,13 @@ static int cmd_verify(int argc, char **argv)
                 continue;
             }
             int found = 0;
-            for (size_t k = 0; k < exp.n && !found; k++)
-                found = ec2k_fe_equal(&exp.xs[k], &rec.x);
-            if (found) matched++;
-            else unknown++;
+            for (size_t k = 0; k < exp.n && !found; k++) found = ec2k_fe_equal(&exp.xs[k], &rec.x);
+            if (found)
+                matched++;
+            else
+                unknown++;
         }
-        if (got != 0) malformed++;   /* a partial trailing record */
+        if (got != 0) malformed++; /* a partial trailing record */
         fclose(f);
     }
     free(exp.xs);
@@ -207,8 +210,8 @@ static int cmd_verify(int argc, char **argv)
     printf("{\"status\":\"%s\",\"seed\":%" PRIu64 ",\"steps\":%" PRIu64 ",\"expected\":%zu,"
            "\"checked\":%" PRIu64 ",\"matched\":%" PRIu64 ",\"unknown\":%" PRIu64
            ",\"wrongSeed\":%" PRIu64 ",\"malformed\":%" PRIu64 ",\"dpWeight\":%u}\n",
-           (unknown || malformed || wrong_seed) ? "mismatch" : "ok",
-           seed, steps, exp.n, checked, matched, unknown, wrong_seed, malformed, weight);
+           (unknown || malformed || wrong_seed) ? "mismatch" : "ok", seed, steps, exp.n, checked,
+           matched, unknown, wrong_seed, malformed, weight);
     return (unknown || malformed || wrong_seed) ? 1 : 0;
 }
 
@@ -257,7 +260,11 @@ static int cmd_merge(int argc, char **argv)
             if (distinct * 2 >= cap) {
                 size_t ncap = cap * 2;
                 entry *nt = calloc(ncap, sizeof(*nt));
-                if (!nt) { fclose(f); free(tab); return 1; }
+                if (!nt) {
+                    fclose(f);
+                    free(tab);
+                    return 1;
+                }
                 for (size_t k = 0; k < cap; k++) {
                     if (!tab[k].used) continue;
                     size_t j = (size_t)fe_hash(&tab[k].rec.x) & (ncap - 1);
@@ -269,8 +276,7 @@ static int cmd_merge(int argc, char **argv)
                 cap = ncap;
             }
             size_t j = (size_t)fe_hash(&rec.x) & (cap - 1);
-            while (tab[j].used && !ec2k_fe_equal(&tab[j].rec.x, &rec.x))
-                j = (j + 1) & (cap - 1);
+            while (tab[j].used && !ec2k_fe_equal(&tab[j].rec.x, &rec.x)) j = (j + 1) & (cap - 1);
             if (!tab[j].used) {
                 tab[j].used = 1;
                 tab[j].rec = rec;
@@ -295,8 +301,8 @@ static int cmd_merge(int argc, char **argv)
            records, distinct, duplicates, malformed, collisions);
     if (collisions) {
         ec2k_fe_to_hex(hex, &hit_a.x);
-        printf(",\"collision\":{\"x\":\"%s\",\"seeds\":[%" PRIu64 ",%" PRIu64 "]}",
-               hex, hit_a.seed, hit_b.seed);
+        printf(",\"collision\":{\"x\":\"%s\",\"seeds\":[%" PRIu64 ",%" PRIu64 "]}", hex, hit_a.seed,
+               hit_b.seed);
     }
     printf("}\n");
     free(tab);
@@ -317,7 +323,8 @@ static int cmd_start(int argc, char **argv)
     ec2k_fe_to_hex(hx, &p.x);
     ec2k_fe_to_hex(hy, &p.y);
     printf("{\"status\":\"ok\",\"seed\":%" PRIu64 ",\"onCurve\":%s,\"x\":\"%s\",\"y\":\"%s\","
-           "\"xWords\":[", seed, ec2k_on_curve(&p) ? "true" : "false", hx, hy);
+           "\"xWords\":[",
+           seed, ec2k_on_curve(&p) ? "true" : "false", hx, hy);
     for (int i = 0; i < 5; i++) {
         uint32_t w = 0;
         for (int b = 0; b < 32; b++) {

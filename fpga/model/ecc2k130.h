@@ -61,12 +61,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define EC2K_M 131          /* field degree */
-#define EC2K_N 263          /* 2m+1, the root of unity order */
-#define EC2K_WORDS 3        /* 131 bits in three 64-bit words */
-#define EC2K_DP_WEIGHT 34   /* distinguished when HW(x) <= this */
-#define EC2K_J_MIN 3        /* j ranges over [3, 10] */
-#define EC2K_J_COUNT 8
+#define EC2K_M         131 /* field degree */
+#define EC2K_N         263 /* 2m+1, the root of unity order */
+#define EC2K_WORDS     3   /* 131 bits in three 64-bit words */
+#define EC2K_DP_WEIGHT 34  /* distinguished when HW(x) <= this */
+#define EC2K_J_MIN     3   /* j ranges over [3, 10] */
+#define EC2K_J_COUNT   8
 
 /* A field element: coefficient i (1-based) of beta_i lives in bit i-1. */
 typedef struct ec2k_fe {
@@ -83,26 +83,26 @@ typedef struct ec2k_pt {
 
 void ec2k_fe_zero(ec2k_fe *r);
 void ec2k_fe_one(ec2k_fe *r);
-int  ec2k_fe_is_zero(const ec2k_fe *a);
-int  ec2k_fe_equal(const ec2k_fe *a, const ec2k_fe *b);
+int ec2k_fe_is_zero(const ec2k_fe *a);
+int ec2k_fe_equal(const ec2k_fe *a, const ec2k_fe *b);
 void ec2k_fe_add(ec2k_fe *r, const ec2k_fe *a, const ec2k_fe *b); /* xor */
 void ec2k_fe_mul(ec2k_fe *r, const ec2k_fe *a, const ec2k_fe *b);
 void ec2k_fe_sqr(ec2k_fe *r, const ec2k_fe *a);
 /* r = a^(2^j), the j-th Frobenius power; a permutation, any j >= 0. */
 void ec2k_fe_frob(ec2k_fe *r, const ec2k_fe *a, unsigned j);
 /* Inverse by Itoh-Tsujii; a must be nonzero (returns 0 and zeroes r if not). */
-int  ec2k_fe_inv(ec2k_fe *r, const ec2k_fe *a);
+int ec2k_fe_inv(ec2k_fe *r, const ec2k_fe *a);
 unsigned ec2k_fe_weight(const ec2k_fe *a);
 /* Little-endian bytes, 17 bytes (131 bits, top 5 bits zero). */
 void ec2k_fe_to_bytes(uint8_t out[17], const ec2k_fe *a);
-int  ec2k_fe_from_bytes(ec2k_fe *r, const uint8_t in[17]);
+int ec2k_fe_from_bytes(ec2k_fe *r, const uint8_t in[17]);
 /* Hex, most significant nibble first; 33 characters plus a terminator. */
 void ec2k_fe_to_hex(char out[34], const ec2k_fe *a);
-int  ec2k_fe_from_hex(ec2k_fe *r, const char *hex);
+int ec2k_fe_from_hex(ec2k_fe *r, const char *hex);
 
 /* ---- curve ------------------------------------------------------------- */
 
-int  ec2k_on_curve(const ec2k_pt *p);
+int ec2k_on_curve(const ec2k_pt *p);
 void ec2k_pt_neg(ec2k_pt *r, const ec2k_pt *p);
 void ec2k_pt_add(ec2k_pt *r, const ec2k_pt *p, const ec2k_pt *q);
 void ec2k_pt_dbl(ec2k_pt *r, const ec2k_pt *p);
@@ -118,13 +118,13 @@ unsigned ec2k_step_j(const ec2k_fe *x);
 /* One iteration: R' = sigma^j(R) + R.  Returns 0 on the exceptional case
  * sigma^j(R) == +-R, where the sum is not an ordinary addition; the caller
  * restarts the walk, which is what the hardware does too. */
-int  ec2k_step(ec2k_pt *r, const ec2k_pt *p);
-int  ec2k_is_distinguished(const ec2k_fe *x);
+int ec2k_step(ec2k_pt *r, const ec2k_pt *p);
+int ec2k_is_distinguished(const ec2k_fe *x);
 /* The same test at a different cutoff.  At the campaign's weight 34 a point
  * turns up about once in 2^25 steps, which no simulation is going to see, so
  * the testbenches run the model and the RTL together at a relaxed weight.
  * The cutoff is a parameter in both, never a different rule. */
-int  ec2k_is_distinguished_w(const ec2k_fe *x, unsigned weight);
+int ec2k_is_distinguished_w(const ec2k_fe *x, unsigned weight);
 /* The Frobenius-orbit representative of x: the smallest of the 131 values
  * x^(2^k).  Host-side normalisation of a reported point. */
 void ec2k_orbit_min(ec2k_fe *r, const ec2k_fe *x);
@@ -142,13 +142,13 @@ typedef struct ec2k_record {
 } ec2k_record;
 
 void ec2k_record_encode(uint8_t out[EC2K_RECORD_BYTES], const ec2k_record *r);
-int  ec2k_record_decode(ec2k_record *r, const uint8_t in[EC2K_RECORD_BYTES]);
+int ec2k_record_decode(ec2k_record *r, const uint8_t in[EC2K_RECORD_BYTES]);
 
 /* Walk a seed for at most `steps` iterations, calling `sink` for every
  * distinguished point.  Returns the number of steps actually taken; `*dps`
  * receives the count of points, `*restarts` the exceptional cases. */
 typedef void (*ec2k_sink)(void *ctx, const ec2k_record *rec);
-uint64_t ec2k_walk(uint64_t seed, uint64_t steps, ec2k_sink sink, void *ctx,
-                   uint64_t *dps, uint64_t *restarts);
+uint64_t ec2k_walk(uint64_t seed, uint64_t steps, ec2k_sink sink, void *ctx, uint64_t *dps,
+                   uint64_t *restarts);
 
 #endif /* ECC2K130_H */

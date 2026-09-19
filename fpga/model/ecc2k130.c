@@ -24,10 +24,7 @@ static inline int fe_bit(const ec2k_fe *a, unsigned i)
     return (int)((a->w[i >> 6] >> (i & 63)) & 1);
 }
 
-static inline void fe_setbit(ec2k_fe *a, unsigned i)
-{
-    a->w[i >> 6] |= (uint64_t)1 << (i & 63);
-}
+static inline void fe_setbit(ec2k_fe *a, unsigned i) { a->w[i >> 6] |= (uint64_t)1 << (i & 63); }
 
 void ec2k_fe_zero(ec2k_fe *r) { memset(r, 0, sizeof(*r)); }
 
@@ -71,17 +68,16 @@ unsigned ec2k_fe_weight(const ec2k_fe *a)
 
 /* The 263-bit symmetric expansion of a coefficient vector: index i and index
  * 263-i both carry coefficient i, index 0 is zero.  Kept in five words. */
-typedef struct sym { uint64_t w[5]; } sym;
+typedef struct sym {
+    uint64_t w[5];
+} sym;
 
 static inline int sym_bit(const sym *s, unsigned i)
 {
     return (int)((s->w[i >> 6] >> (i & 63)) & 1);
 }
 
-static inline void sym_setbit(sym *s, unsigned i)
-{
-    s->w[i >> 6] |= (uint64_t)1 << (i & 63);
-}
+static inline void sym_setbit(sym *s, unsigned i) { s->w[i >> 6] |= (uint64_t)1 << (i & 63); }
 
 static void sym_expand(sym *s, const ec2k_fe *a)
 {
@@ -254,10 +250,14 @@ int ec2k_fe_from_hex(ec2k_fe *r, const char *hex)
     for (size_t i = 0; i < len; i++) {
         char c = hex[len - 1 - i];
         unsigned v;
-        if (c >= '0' && c <= '9') v = (unsigned)(c - '0');
-        else if (c >= 'a' && c <= 'f') v = (unsigned)(c - 'a' + 10);
-        else if (c >= 'A' && c <= 'F') v = (unsigned)(c - 'A' + 10);
-        else return 0;
+        if (c >= '0' && c <= '9')
+            v = (unsigned)(c - '0');
+        else if (c >= 'a' && c <= 'f')
+            v = (unsigned)(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F')
+            v = (unsigned)(c - 'A' + 10);
+        else
+            return 0;
         for (int k = 0; k < 4; k++) {
             if (!((v >> k) & 1)) continue;
             unsigned bit = (unsigned)i * 4 + (unsigned)k;
@@ -319,8 +319,14 @@ void ec2k_pt_dbl(ec2k_pt *r, const ec2k_pt *p)
 
 void ec2k_pt_add(ec2k_pt *r, const ec2k_pt *p, const ec2k_pt *q)
 {
-    if (p->inf) { *r = *q; return; }
-    if (q->inf) { *r = *p; return; }
+    if (p->inf) {
+        *r = *q;
+        return;
+    }
+    if (q->inf) {
+        *r = *p;
+        return;
+    }
     if (ec2k_fe_equal(&p->x, &q->x)) {
         ec2k_fe sum;
         ec2k_fe_add(&sum, &p->y, &q->y);
@@ -473,10 +479,7 @@ int ec2k_step(ec2k_pt *r, const ec2k_pt *p)
     return !r->inf;
 }
 
-int ec2k_is_distinguished(const ec2k_fe *x)
-{
-    return ec2k_is_distinguished_w(x, EC2K_DP_WEIGHT);
-}
+int ec2k_is_distinguished(const ec2k_fe *x) { return ec2k_is_distinguished_w(x, EC2K_DP_WEIGHT); }
 
 int ec2k_is_distinguished_w(const ec2k_fe *x, unsigned weight)
 {
@@ -520,8 +523,8 @@ int ec2k_record_decode(ec2k_record *rec, const uint8_t in[EC2K_RECORD_BYTES])
     return 1;
 }
 
-uint64_t ec2k_walk(uint64_t seed, uint64_t steps, ec2k_sink sink, void *ctx,
-                   uint64_t *dps, uint64_t *restarts)
+uint64_t ec2k_walk(uint64_t seed, uint64_t steps, ec2k_sink sink, void *ctx, uint64_t *dps,
+                   uint64_t *restarts)
 {
     ec2k_pt r;
     ec2k_point_from_seed(&r, seed);

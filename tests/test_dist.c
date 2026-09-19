@@ -12,7 +12,7 @@
 typedef struct collector {
     ca_dist_point *pts;
     size_t count, cap;
-    size_t limit;      /* stop the walk after this many (0 = no limit) */
+    size_t limit; /* stop the walk after this many (0 = no limit) */
 } collector;
 
 static ca_status collect(void *ctx, const ca_dist_point *pt)
@@ -38,8 +38,8 @@ static void collector_free(collector *c)
 
 /* Walk one unit to completion, returning its points. */
 static ca_status walk_unit(const ca_group *g, const ca_elem *base, const ca_elem *target,
-                           const ca_dist_campaign *c, uint64_t id, uint64_t steps,
-                           uint32_t walks, collector *out)
+                           const ca_dist_campaign *c, uint64_t id, uint64_t steps, uint32_t walks,
+                           collector *out)
 {
     ca_dist_unit u = {0};
     u.id = id;
@@ -123,14 +123,14 @@ static void test_units_merge_into_a_solution(const ca_group *g, const ca_elem *g
         CHECK(walk_unit(g, gen, &h, &c, id, unitSteps, 16, &pts) == CA_OK);
         size_t acc = 0, dup = 0, rej = 0;
         CHECK(ca_dist_merger_add(m, pts.pts, pts.count, &acc, &dup, &rej) == CA_OK);
-        CHECK_EQ_U64(rej, 0);      /* the walker's own points always verify */
+        CHECK_EQ_U64(rej, 0); /* the walker's own points always verify */
         totalPoints += pts.count;
         solvedAfter = (int)id + 1;
         collector_free(&pts);
     }
     CHECK(ca_dist_merger_solved(m, &got));
     CHECK_EQ_U64(got, x);
-    CHECK(solvedAfter > 1);        /* a cross-unit collision, not a local one */
+    CHECK(solvedAfter > 1); /* a cross-unit collision, not a local one */
     printf("merge:  solved after %d units x %" PRIu64 " steps, %zu points, %zu stored\n",
            solvedAfter, unitSteps, totalPoints, ca_dist_merger_size(m));
     ca_dist_merger_free(m);
@@ -320,7 +320,7 @@ static void test_point_budget(const ca_group *g, const ca_elem *gen)
     collector pts = {0};
     ca_stats st = {0};
     CHECK(ca_dist_walk(g, gen, &h, &c, &u, collect, &pts, &st) == CA_OK);
-    CHECK(pts.count >= 20);        /* the batch in flight finishes */
+    CHECK(pts.count >= 20); /* the batch in flight finishes */
     CHECK(pts.count < 20 + 8 + 1);
     CHECK_EQ_U64(st.iterations, pts.count);
     collector_free(&pts);

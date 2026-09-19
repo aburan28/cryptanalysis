@@ -17,13 +17,13 @@
 
 static int failures = 0, checks = 0;
 
-#define CHECK(cond)                                                                    \
-    do {                                                                               \
-        checks++;                                                                      \
-        if (!(cond)) {                                                                 \
-            failures++;                                                                \
-            fprintf(stderr, "%s:%d: failed: %s\n", __FILE__, __LINE__, #cond);         \
-        }                                                                              \
+#define CHECK(cond)                                                                                \
+    do {                                                                                           \
+        checks++;                                                                                  \
+        if (!(cond)) {                                                                             \
+            failures++;                                                                            \
+            fprintf(stderr, "%s:%d: failed: %s\n", __FILE__, __LINE__, #cond);                     \
+        }                                                                                          \
     } while (0)
 
 static uint64_t rng_state = 0x243F6A8885A308D3ULL;
@@ -204,7 +204,9 @@ static void test_koblitz_structure(void)
     /* n = 680564733841876926932320129493409985129, from #E = 4n and the
      * Koblitz recursion; see README.md. */
     static const uint64_t n[3] = {
-        0x4D4FDD5703A3F269ULL, 0x0000000000000000ULL, 0x0000000000000002ULL,
+        0x4D4FDD5703A3F269ULL,
+        0x0000000000000000ULL,
+        0x0000000000000002ULL,
     };
     for (int t = 0; t < 4; t++) {
         ec2k_pt p, sp, ssp, dp, sum;

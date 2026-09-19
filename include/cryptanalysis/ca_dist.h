@@ -71,9 +71,9 @@ typedef struct ca_dist_point {
  * quietly stops finding collisions.  ca_rho_solve keeps the negation map
  * for the single-process case, where that risk does not arise. */
 typedef struct ca_dist_campaign {
-    uint64_t seed;     /* derives the multipliers; identical fleet-wide */
-    uint32_t r;        /* number of multipliers; 0 => resolve from the order */
-    int32_t dp_bits;   /* distinguished-point bits; -1 => resolve */
+    uint64_t seed;   /* derives the multipliers; identical fleet-wide */
+    uint32_t r;      /* number of multipliers; 0 => resolve from the order */
+    int32_t dp_bits; /* distinguished-point bits; -1 => resolve */
 } ca_dist_campaign;
 
 /* One unit of work.  A unit is identified by its id, and the id is what
@@ -104,8 +104,8 @@ CA_API ca_status ca_dist_resolve(const ca_group *g, ca_dist_campaign *c);
 /* A 64-bit id for a resolved campaign: group, base, target and campaign
  * fields.  Two agents agree on the walk function if and only if they
  * agree on this (up to the 2^-64 of a hash collision). */
-CA_API uint64_t ca_dist_campaign_id(const ca_group *g, const ca_elem *base,
-                                    const ca_elem *target, const ca_dist_campaign *c);
+CA_API uint64_t ca_dist_campaign_id(const ca_group *g, const ca_elem *base, const ca_elem *target,
+                                    const ca_dist_campaign *c);
 
 /* Expected number of distinguished points in a full search: about
  * 1.25*sqrt(n) steps at one point per 2^dp_bits steps.  What a control
@@ -119,8 +119,8 @@ CA_API double ca_dist_expected_points(const ca_group *g, const ca_dist_campaign 
  * status when it failed.  Never solves anything: solving is the merger's
  * job, and a worker that could solve would need the whole corpus. */
 CA_API ca_status ca_dist_walk(const ca_group *g, const ca_elem *base, const ca_elem *target,
-                              const ca_dist_campaign *c, const ca_dist_unit *u,
-                              ca_dist_sink sink, void *ctx, ca_stats *st);
+                              const ca_dist_campaign *c, const ca_dist_unit *u, ca_dist_sink sink,
+                              void *ctx, ca_stats *st);
 
 /* ---- the merger -------------------------------------------------------- */
 
