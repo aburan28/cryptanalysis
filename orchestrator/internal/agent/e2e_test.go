@@ -230,3 +230,41 @@ func TestAnAgentStopsWhenItsLeaseIsTaken(t *testing.T) {
 		t.Fatalf("expected one attempted unit, got %+v", s)
 	}
 }
+
+// A lease arrives over the network and the agent acts on it: the campaign's
+// parameters become a subprocess command line and its name goes into every
+// log line about the unit.  An agent that takes that on trust is one that a
+// misconfigured CA_SERVER -- or a server somebody else is running -- can
+// steer, so a malformed lease is refused rather than walked.
+func TestAnAgentRefusesAMalformedLease(t *testing.T) {
+	lease := &api.Lease{
+		Campaign: api.Campaign{
+			Name:  "no spaces allowed\nagent=forged",
+			Group: api.Group{Kind: api.GroupZp, P: 2000000579, Order: 1000000289, Base: "9", Target: "81"},
+			Seed:  1, R: 32, DPBits: 8, UnitSteps: 1000,
+		},
+		Unit:  api.Unit{ID: 1, MaxSteps: 1000},
+		Fence: 1,
+	}
+	if err := lease.Campaign.Validate(); err == nil {
+		t.Fatal("the campaign used for this test is not actually malformed")
+	}
+
+	a := agent.New(agent.Config{Server: "http://127.0.0.1:1", ID: "picky", Logger: quiet()},
+		api.NewClient("http://127.0.0.1:1", ""),
+		&refusingWalker{t: t})
+	if err := a.RunUnitForTest(context.Background(), lease); err == nil {
+		t.Fatal("the agent walked a lease it should have refused")
+	}
+}
+
+// A walker that fails the test if it is ever asked to walk: reaching it means
+// the lease check above did not happen.
+type refusingWalker struct{ t *testing.T }
+
+func (w *refusingWalker) Describe() string { return "refusing walker" }
+
+func (w *refusingWalker) Walk(ctx context.Context, lease *api.Lease) (agent.WalkResult, error) {
+	w.t.Error("the walker was invoked for a malformed lease")
+	return agent.WalkResult{}, nil
+}

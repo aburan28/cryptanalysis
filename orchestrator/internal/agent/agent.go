@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"os"
@@ -148,8 +149,19 @@ func (a *Agent) Run(ctx context.Context) error {
 
 // runUnit walks one lease and reports it.
 func (a *Agent) runUnit(ctx context.Context, lease *api.Lease) error {
-	log := a.cfg.Logger.With("campaign", lease.Campaign.Name, "unit", lease.Unit.ID,
-		"fence", lease.Fence)
+	// A lease arrives over the network, and an agent acts on it in two ways
+	// that deserve a check first: it puts the campaign's parameters on a
+	// subprocess command line, and it puts the campaign's name in every log
+	// line about this unit.  The server validated all of it on the way in,
+	// but "the server said so" is a thin argument when CA_SERVER is a flag,
+	// DNS is a thing, and the only authentication is a shared token.  The
+	// same rule the server applied is cheap to apply again here.
+	if err := lease.Campaign.Validate(); err != nil {
+		a.cfg.Logger.Error("refusing a malformed lease", "unit", lease.Unit.ID, "error", err)
+		return fmt.Errorf("malformed lease: %w", err)
+	}
+	log := a.cfg.Logger.With("campaign", api.CleanText(lease.Campaign.Name),
+		"unit", lease.Unit.ID, "fence", lease.Fence)
 	log.Info("unit started", "steps", lease.Unit.MaxSteps)
 
 	// The walk runs under a context the heartbeat can cancel: if the lease
