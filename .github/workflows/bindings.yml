@@ -1,0 +1,314 @@
+name: bindings
+
+# Everything that is specific to the Rust, Go and Python bindings lives here;
+# ci.yml keeps the checks for the C library itself.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+# One run per ref per workflow; a new push supersedes the one in flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ------------------------------------------------------------------ Rust --
+
+  rust:
+    name: Rust (stable)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: bindings/rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bindings/rust
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Test (debug)
+        run: cargo test --workspace
+      - name: Test (release)
+        run: cargo test --workspace --release
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Docs
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  rust-msrv:
+    # The workspace has two floors: cryptanalysis-sys / cryptanalysis build on
+    # 1.78 (the oldest Cargo that understands the committed v4 Cargo.lock),
+    # while cryptanalysis-cuda needs 1.88 for slice::as_chunks.  Both numbers
+    # are declared in the manifests and re-checked here.
+    name: Rust MSRV ${{ matrix.rust }} (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rust: "1.78.0"
+            declared: "1.78"
+            label: core crates
+            packages: -p cryptanalysis-sys -p cryptanalysis
+            manifest-crates: cryptanalysis-sys cryptanalysis
+          - rust: "1.88.0"
+            declared: "1.88"
+            label: full workspace
+            packages: --workspace
+            manifest-crates: cryptanalysis-cuda
+    defaults:
+      run:
+        working-directory: bindings/rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bindings/rust
+          key: msrv-${{ matrix.rust }}
+      - name: The manifests must declare the version this job tests
+        run: |
+          for pkg in ${{ matrix.manifest-crates }}; do
+            got=$(cargo metadata --no-deps --format-version 1 \
+                  | jq -r --arg p "$pkg" '.packages[] | select(.name == $p) | .rust_version')
+            if [ "$got" != "${{ matrix.declared }}" ]; then
+              echo "::error::$pkg declares rust-version=$got, but this job builds it with ${{ matrix.declared }}"
+              exit 1
+            fi
+          done
+      - name: Check
+        run: cargo check ${{ matrix.packages }} --all-targets
+      - name: Test
+        run: cargo test ${{ matrix.packages }}
+
+  rust-cuda-ptx:
+    name: Rust CUDA driver (PTX embedded)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bindings/rust
+          key: cuda-ptx
+      - name: Make an older GCC available for clang's CUDA mode
+        # clang compiling CUDA force-includes libstdc++'s <limits>, which from
+        # GCC 14 on declares numeric_limits<__float128> - a type NVPTX does not
+        # have.  The script retries against older installed GCCs; this makes
+        # sure one exists on the runner.
+        run: sudo apt-get install -y -q g++-13 || true
+      - name: Fetch the CUDA pieces and compile the kernel
+        run: ./scripts/build_cuda_kernel.sh --fetch --arch sm_70
+      - name: Build cryptanalysis-cuda with the PTX embedded
+        run: |
+          # cargo replays a cached build script's output at -vv, so force the
+          # build script to actually run: otherwise the assertion below could
+          # be satisfied by a line left over from an earlier, cached build.
+          cargo clean -p cryptanalysis-cuda --manifest-path bindings/rust/Cargo.toml
+          CUDA_PATH=$PWD/build-cuda-kernel/cuda-toolkit \
+            cargo build -p cryptanalysis-cuda --manifest-path bindings/rust/Cargo.toml \
+            -vv 2>&1 | tee cuda-build.log
+          # The build deliberately succeeds without a CUDA compiler, so assert
+          # that the PTX really was embedded rather than silently skipped.
+          grep -q 'cargo:rustc-cfg=ca_embedded_ptx' cuda-build.log
+
+  rust-supply-chain:
+    name: Rust supply chain (cargo-deny)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: bindings/rust/Cargo.toml
+          command: check
+          command-arguments: --config bindings/rust/deny.toml --show-stats
+
+  # -------------------------------------------------------------------- Go --
+
+  go:
+    name: Go ${{ matrix.go }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.21 is the floor declared by bindings/go/go.mod; oldstable/stable
+        # track the two supported releases.
+        go: ["1.21.x", "oldstable", "stable"]
+    defaults:
+      run:
+        working-directory: bindings/go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          # The module has no third-party dependencies and therefore no
+          # go.sum, which setup-go's built-in cache keys on.  The build cache
+          # that actually matters here (the compiled cgo objects) is handled
+          # by the actions/cache step below.
+          cache: false
+      - name: Cache the Go build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+          key: go-${{ matrix.go }}-${{ hashFiles('bindings/go/**', 'src/**', 'include/**') }}
+          restore-keys: go-${{ matrix.go }}-
+      - name: Build
+        run: go build ./...
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite:"; echo "$unformatted"; exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Test (race detector)
+        run: go test -race ./...
+
+  go-lint:
+    name: Go lint (golangci-lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          # v6 of the action drives golangci-lint v1.x, which is the schema
+          # bindings/go/.golangci.yml is written against.
+          version: v1.64
+          working-directory: bindings/go
+
+  # ---------------------------------------------------------------- Python --
+
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          # 3.8 is what pyproject.toml advertises and the suite really does
+          # pass on it, but setup-python no longer ships a 3.8 build for the
+          # current ubuntu-latest image, so it runs on 22.04.
+          - os: ubuntu-22.04
+            python: "3.8"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Build the C library
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+                -DCA_BUILD_TOOLS=OFF -DCA_BUILD_TESTS=OFF
+          cmake --build build -j 4
+      - name: Test against the developer build
+        run: python -m unittest discover -s tests -v
+        working-directory: bindings/python
+
+  python-package:
+    name: Python packaging (pip install .)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the package (setup.py compiles the C sources into it)
+        run: python -m pip install --verbose .
+        working-directory: bindings/python
+      - name: Import the installed package and run the suite against it
+        run: |
+          # Run from outside the checkout: tests/test_bindings.py prepends its
+          # own grandparent to sys.path, which would otherwise shadow the
+          # installed package with the developer tree.
+          work="$RUNNER_TEMP/installed-package"
+          mkdir -p "$work"
+          cp -r bindings/python/tests "$work/tests"
+          cd "$work"
+          # CRYPTANALYSIS_LIB must stay unset so that the loader has to find
+          # the shared object shipped inside the installed package.
+          python - <<'PY'
+          import pathlib
+          import cryptanalysis
+          from cryptanalysis import _lib
+
+          pkg = pathlib.Path(cryptanalysis.__file__).resolve()
+          lib = pathlib.Path(_lib.library_path).resolve()
+          print("package:", pkg)
+          print("library:", lib)
+          print("version:", cryptanalysis.version())
+          assert "site-packages" in pkg.parts, f"imported the checkout, not the install: {pkg}"
+          assert lib.parent == pkg.parent, f"loaded {lib}, not the library inside the package"
+          PY
+          python -m unittest discover -s tests -v
+
+  python-lint:
+    name: Python lint (ruff + mypy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUFF_VERSION: "0.15.8"
+      MYPY_VERSION: "1.19.1"
+    defaults:
+      run:
+        working-directory: bindings/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cache the pip download cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-lint-ruff${{ env.RUFF_VERSION }}-mypy${{ env.MYPY_VERSION }}
+      - name: Install the linters
+        run: python -m pip install "ruff==$RUFF_VERSION" "mypy==$MYPY_VERSION"
+      - name: ruff check
+        run: ruff check --output-format github .
+      - name: ruff format
+        run: ruff format --check .
+      - name: mypy
+        run: mypy

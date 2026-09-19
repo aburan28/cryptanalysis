@@ -47,8 +47,8 @@
 #![warn(rust_2018_idioms)]
 
 mod error;
-mod group;
 pub mod gpu;
+mod group;
 pub mod index_calculus;
 mod nt;
 mod options;

@@ -67,9 +67,9 @@ pub fn factorize(n: u64) -> Vec<(u64, u32)> {
     let mut primes = [0u64; CAP];
     let mut exps = [0u32; CAP];
     // SAFETY: both buffers hold CAP entries and CAP is passed as the cap.
-    let count = unsafe {
-        sys::ca_ffi_factorize(n, primes.as_mut_ptr(), exps.as_mut_ptr(), CAP as u32)
-    } as usize;
+    let count =
+        unsafe { sys::ca_ffi_factorize(n, primes.as_mut_ptr(), exps.as_mut_ptr(), CAP as u32) }
+            as usize;
     primes
         .iter()
         .zip(exps.iter())

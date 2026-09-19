@@ -254,7 +254,8 @@ impl IcContext {
         let mut prime = 0u32;
         let mut known = 0i32;
         // SAFETY: valid context and out pointers.
-        let log = unsafe { sys::ca_ic_factor_base_log(self.ptr.as_ptr(), i, &mut prime, &mut known) };
+        let log =
+            unsafe { sys::ca_ic_factor_base_log(self.ptr.as_ptr(), i, &mut prime, &mut known) };
         (known != 0).then_some((prime, log))
     }
 }

@@ -2,6 +2,7 @@
 
 Run with:  cd bindings/python && python3 -m unittest discover -s tests -v
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -11,8 +12,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import cryptanalysis as ca  # noqa: E402
-from cryptanalysis import _lib  # noqa: E402
+import cryptanalysis as ca
+from cryptanalysis import _lib
 
 # Same instances as tests/test_ffi.c
 ZP_P = 2000000579
@@ -222,7 +223,7 @@ class EcTests(unittest.TestCase):
         self.assertEqual((E.p, E.a, E.b), (EC_P, EC_A, EC_B))
         self.assertEqual(E.order, self.n)
         # Hasse bound
-        self.assertLess(abs(self.n - (EC_P + 1)), 2 * int(EC_P ** 0.5) + 2)
+        self.assertLess(abs(self.n - (EC_P + 1)), 2 * int(EC_P**0.5) + 2)
 
     def test_points_and_dlog(self):
         E = self.E
@@ -236,7 +237,7 @@ class EcTests(unittest.TestCase):
         self.assertEqual(E.order, ord_P)
         self.assertEqual(E.cofactor, self.n // ord_P)
         Q = E.mul(P, 4242)
-        x, st = E.dlog(P, Q)
+        x, _st = E.dlog(P, Q)
         self.assertEqual(x, 4242 % ord_P)
         self.assertEqual(E.bsgs(P, Q)[0], 4242 % ord_P)
         self.assertEqual(E.rho(P, Q, ca.Options(seed=7))[0], 4242 % ord_P)
@@ -318,7 +319,7 @@ class NumberTheoryTests(unittest.TestCase):
         self.assertEqual(ca.powmod(2, 20, 1000003), pow(2, 20, 1000003))
         self.assertEqual(ca.invmod(3, 1000003), pow(3, -1, 1000003))
         self.assertEqual(ca.factorize(1000002), [(2, 1), (3, 1), (166667, 1)])
-        self.assertEqual(ca.factorize(2 ** 10 * 3 ** 3), [(2, 10), (3, 3)])
+        self.assertEqual(ca.factorize(2**10 * 3**3), [(2, 10), (3, 3)])
         self.assertEqual(ca.factorize(1), [])
 
     def test_64bit_range(self):

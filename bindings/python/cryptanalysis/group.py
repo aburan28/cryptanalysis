@@ -1,18 +1,20 @@
 """The :class:`Group` handle: Z_p^* and elliptic-curve groups with their solvers."""
+
 from __future__ import annotations
 
 import ctypes
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from . import _lib
-from ._lib import CStats, Words, lib
+from ._lib import CStats, WordArray, Words, lib
 from ._types import Elem, ElemLike, GroupKind, Options, Stats, from_words, to_words
 from .errors import InvalidError, Status
 
-_OptsPtr = Optional[ctypes.pointer]
+if TYPE_CHECKING:
+    from ctypes import _CArgObject  # only exists for type checkers
 
 
-def _opts(options: Optional[Options]):
+def _opts(options: Optional[Options]) -> Optional[_CArgObject]:
     """``ca_ffi_options *`` for the call (NULL => library defaults)."""
     if options is None:
         return None
@@ -38,7 +40,7 @@ class Group:
     # ---- construction --------------------------------------------------
 
     @classmethod
-    def zp(cls, p: int, order: int = 0) -> "Group":
+    def zp(cls, p: int, order: int = 0) -> Group:
         """The multiplicative group Z_p^* (``p`` an odd prime < 2^64).
 
         ``order`` is the order of the subgroup you intend to work in (it must
@@ -53,7 +55,7 @@ class Group:
         return cls(handle, GroupKind.ZP)
 
     @classmethod
-    def ec(cls, p: int, a: int, b: int, order: int = 0) -> "Group":
+    def ec(cls, p: int, a: int, b: int, order: int = 0) -> Group:
         """The curve y^2 = x^3 + a x + b over F_p (``p`` a prime > 3).
 
         ``order`` is the (sub)group order if known; see :meth:`ec_count_points`
@@ -87,15 +89,18 @@ class Group:
             lib.ca_ctx_free(handle)
 
     def __del__(self) -> None:
-        try:
+        # contextlib.suppress() is deliberately not used here: __del__ can run
+        # during interpreter shutdown, when module globals (including the
+        # contextlib module object) may already have been torn down.
+        try:  # noqa: SIM105
             self.close()
         except Exception:  # pragma: no cover - interpreter shutdown
             pass
 
-    def __enter__(self) -> "Group":
+    def __enter__(self) -> Group:
         return self
 
-    def __exit__(self, *exc) -> None:
+    def __exit__(self, *exc: object) -> None:
         self.close()
 
     @property
@@ -150,7 +155,7 @@ class Group:
 
     # ---- element helpers ------------------------------------------------
 
-    def _w(self, value: ElemLike, name: str = "element") -> Words:
+    def _w(self, value: ElemLike, name: str = "element") -> WordArray:
         return to_words(value, self._kind, name)
 
     def elem(self, value: ElemLike) -> Elem:
@@ -203,8 +208,10 @@ class Group:
         """The order of ``a`` (requires the group order to be known / factorable)."""
         n = ctypes.c_uint64(0)
         _lib.arm()
-        _lib.check(lib.ca_ctx_elem_order(self._ctx, self._w(a), ctypes.byref(n)),
-                   "could not determine the element order")
+        _lib.check(
+            lib.ca_ctx_elem_order(self._ctx, self._w(a), ctypes.byref(n)),
+            "could not determine the element order",
+        )
         return n.value
 
     def find_generator(self, seed: int = 0) -> Elem:
@@ -225,35 +232,63 @@ class Group:
         """A curve point with the given x-coordinate (EC only; NotFoundError if none)."""
         out = Words()
         _lib.arm()
-        _lib.check(lib.ca_ctx_lift_x(self._ctx, out, _lib.u64(x, "x")),
-                   f"no point with x={x} on the curve")
+        _lib.check(
+            lib.ca_ctx_lift_x(self._ctx, out, _lib.u64(x, "x")), f"no point with x={x} on the curve"
+        )
         return from_words(out)
 
     # ---- solvers ----------------------------------------------------------
 
-    def _interval(self, fn: Callable, base: ElemLike, target: ElemLike, lo: int, hi: int,
-                  options: Optional[Options]) -> tuple[int, Stats]:
+    def _interval(
+        self,
+        fn: Callable,
+        base: ElemLike,
+        target: ElemLike,
+        lo: int,
+        hi: int,
+        options: Optional[Options],
+    ) -> tuple[int, Stats]:
         x = ctypes.c_uint64(0)
         st = CStats()
         _lib.arm()
-        rc = fn(self._ctx, self._w(base, "base"), self._w(target, "target"),
-                _lib.u64(lo, "lo"), _lib.u64(hi, "hi"), _opts(options),
-                ctypes.byref(x), ctypes.byref(st))
+        rc = fn(
+            self._ctx,
+            self._w(base, "base"),
+            self._w(target, "target"),
+            _lib.u64(lo, "lo"),
+            _lib.u64(hi, "hi"),
+            _opts(options),
+            ctypes.byref(x),
+            ctypes.byref(st),
+        )
         _lib.check(rc)
         return x.value, Stats.from_c(st)
 
-    def _whole(self, fn: Callable, base: ElemLike, target: ElemLike,
-               options: Optional[Options]) -> tuple[int, Stats]:
+    def _whole(
+        self, fn: Callable, base: ElemLike, target: ElemLike, options: Optional[Options]
+    ) -> tuple[int, Stats]:
         x = ctypes.c_uint64(0)
         st = CStats()
         _lib.arm()
-        rc = fn(self._ctx, self._w(base, "base"), self._w(target, "target"),
-                _opts(options), ctypes.byref(x), ctypes.byref(st))
+        rc = fn(
+            self._ctx,
+            self._w(base, "base"),
+            self._w(target, "target"),
+            _opts(options),
+            ctypes.byref(x),
+            ctypes.byref(st),
+        )
         _lib.check(rc)
         return x.value, Stats.from_c(st)
 
-    def bsgs(self, base: ElemLike, target: ElemLike, lo: int = 0, hi: int = 0,
-             options: Optional[Options] = None) -> tuple[int, Stats]:
+    def bsgs(
+        self,
+        base: ElemLike,
+        target: ElemLike,
+        lo: int = 0,
+        hi: int = 0,
+        options: Optional[Options] = None,
+    ) -> tuple[int, Stats]:
         """Baby-step giant-step for x in [lo, hi] with base^x == target.
 
         ``lo == hi == 0`` searches the whole group.  Raises NotFoundError when
@@ -261,30 +296,45 @@ class Group:
         """
         return self._interval(lib.ca_ffi_bsgs, base, target, lo, hi, options)
 
-    def kangaroo(self, base: ElemLike, target: ElemLike, lo: int = 0, hi: int = 0,
-                 options: Optional[Options] = None) -> tuple[int, Stats]:
+    def kangaroo(
+        self,
+        base: ElemLike,
+        target: ElemLike,
+        lo: int = 0,
+        hi: int = 0,
+        options: Optional[Options] = None,
+    ) -> tuple[int, Stats]:
         """Pollard's kangaroo (lambda) method on the interval [lo, hi]."""
         return self._interval(lib.ca_ffi_kangaroo, base, target, lo, hi, options)
 
-    def grumpy(self, base: ElemLike, target: ElemLike, lo: int = 0, hi: int = 0,
-               options: Optional[Options] = None) -> tuple[int, Stats]:
+    def grumpy(
+        self,
+        base: ElemLike,
+        target: ElemLike,
+        lo: int = 0,
+        hi: int = 0,
+        options: Optional[Options] = None,
+    ) -> tuple[int, Stats]:
         """Grumpy-giants (Bernstein-Lange) interval algorithm on [lo, hi]."""
         return self._interval(lib.ca_ffi_grumpy, base, target, lo, hi, options)
 
-    def rho(self, base: ElemLike, target: ElemLike,
-            options: Optional[Options] = None) -> tuple[int, Stats]:
+    def rho(
+        self, base: ElemLike, target: ElemLike, options: Optional[Options] = None
+    ) -> tuple[int, Stats]:
         """Pollard rho over the whole group (needs :attr:`order`)."""
         return self._whole(lib.ca_ffi_rho, base, target, options)
 
-    def dlog(self, base: ElemLike, target: ElemLike,
-             options: Optional[Options] = None) -> tuple[int, Stats]:
+    def dlog(
+        self, base: ElemLike, target: ElemLike, options: Optional[Options] = None
+    ) -> tuple[int, Stats]:
         """Pohlig-Hellman driver using the solver selected in ``options.solver``."""
         return self._whole(lib.ca_ffi_dlog, base, target, options)
 
     # ---- Cheon ------------------------------------------------------------
 
-    def cheon(self, gen: ElemLike, g_alpha: ElemLike, g_alpha_d: ElemLike, d: int,
-              max_exps: int = 0) -> tuple[int, Stats]:
+    def cheon(
+        self, gen: ElemLike, g_alpha: ElemLike, g_alpha_d: ElemLike, d: int, max_exps: int = 0
+    ) -> tuple[int, Stats]:
         """Cheon's attack: recover alpha from g, g^alpha and g^(alpha^d).
 
         ``d`` must divide ``order - 1`` (see :func:`cheon_best_divisor`).
@@ -293,10 +343,16 @@ class Group:
         alpha = ctypes.c_uint64(0)
         st = CStats()
         _lib.arm()
-        rc = lib.ca_ffi_cheon(self._ctx, self._w(gen, "gen"), self._w(g_alpha, "g_alpha"),
-                              self._w(g_alpha_d, "g_alpha_d"), _lib.u64(d, "d"),
-                              _lib.u64(max_exps, "max_exps"), ctypes.byref(alpha),
-                              ctypes.byref(st))
+        rc = lib.ca_ffi_cheon(
+            self._ctx,
+            self._w(gen, "gen"),
+            self._w(g_alpha, "g_alpha"),
+            self._w(g_alpha_d, "g_alpha_d"),
+            _lib.u64(d, "d"),
+            _lib.u64(max_exps, "max_exps"),
+            ctypes.byref(alpha),
+            ctypes.byref(st),
+        )
         _lib.check(rc)
         return alpha.value, Stats.from_c(st)
 
@@ -304,8 +360,9 @@ class Group:
         """Build a Cheon instance ``(g^alpha, g^(alpha^d))`` for testing."""
         ga, gad = Words(), Words()
         _lib.arm()
-        rc = lib.ca_ffi_cheon_instance(self._ctx, self._w(gen, "gen"), _lib.u64(alpha, "alpha"),
-                                       _lib.u64(d, "d"), ga, gad)
+        rc = lib.ca_ffi_cheon_instance(
+            self._ctx, self._w(gen, "gen"), _lib.u64(alpha, "alpha"), _lib.u64(d, "d"), ga, gad
+        )
         _lib.check(rc)
         return from_words(ga), from_words(gad)
 

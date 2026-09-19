@@ -140,7 +140,9 @@ impl fmt::Debug for Group {
         if self.kind() == Kind::Ec {
             d.field("a", &self.curve_a()).field("b", &self.curve_b());
         }
-        d.field("order", &self.order()).field("cofactor", &self.cofactor()).finish()
+        d.field("order", &self.order())
+            .field("cofactor", &self.cofactor())
+            .finish()
     }
 }
 
@@ -374,7 +376,16 @@ impl Group {
         let mut st = sys::CaStats::default();
         // SAFETY: all pointers are valid for the duration of the call.
         check(unsafe {
-            sys::ca_ffi_bsgs(self.raw(), base.as_ptr(), target.as_ptr(), lo, hi, &raw, &mut x, &mut st)
+            sys::ca_ffi_bsgs(
+                self.raw(),
+                base.as_ptr(),
+                target.as_ptr(),
+                lo,
+                hi,
+                &raw,
+                &mut x,
+                &mut st,
+            )
         })?;
         Ok((x, Stats::from_raw(&st)))
     }
@@ -445,7 +456,14 @@ impl Group {
         let mut st = sys::CaStats::default();
         // SAFETY: all pointers are valid for the duration of the call.
         check(unsafe {
-            sys::ca_ffi_rho(self.raw(), base.as_ptr(), target.as_ptr(), &raw, &mut x, &mut st)
+            sys::ca_ffi_rho(
+                self.raw(),
+                base.as_ptr(),
+                target.as_ptr(),
+                &raw,
+                &mut x,
+                &mut st,
+            )
         })?;
         Ok((x, Stats::from_raw(&st)))
     }
@@ -469,7 +487,14 @@ impl Group {
         let mut st = sys::CaStats::default();
         // SAFETY: all pointers are valid for the duration of the call.
         check(unsafe {
-            sys::ca_ffi_dlog(self.raw(), base.as_ptr(), target.as_ptr(), &raw, &mut x, &mut st)
+            sys::ca_ffi_dlog(
+                self.raw(),
+                base.as_ptr(),
+                target.as_ptr(),
+                &raw,
+                &mut x,
+                &mut st,
+            )
         })?;
         Ok((x, Stats::from_raw(&st)))
     }

@@ -99,7 +99,9 @@ fn zp_rho_single_and_multi_thread() {
 #[test]
 fn zp_kangaroo_interval() {
     let (g, gen, h) = zp_instance();
-    let (x, st) = g.kangaroo(&gen, &h, 123_000_000, 124_000_000, &seeded()).unwrap();
+    let (x, st) = g
+        .kangaroo(&gen, &h, 123_000_000, 124_000_000, &seeded())
+        .unwrap();
     assert_eq!(x, X);
     assert!(st.group_ops > 0);
 }
@@ -107,7 +109,9 @@ fn zp_kangaroo_interval() {
 #[test]
 fn zp_grumpy_interval() {
     let (g, gen, h) = zp_instance();
-    let (x, st) = g.grumpy(&gen, &h, 123_000_000, 124_000_000, &seeded()).unwrap();
+    let (x, st) = g
+        .grumpy(&gen, &h, 123_000_000, 124_000_000, &seeded())
+        .unwrap();
     assert_eq!(x, X);
     assert!(st.group_ops > 0);
 }
@@ -115,12 +119,17 @@ fn zp_grumpy_interval() {
 #[test]
 fn zp_dlog_every_solver() {
     let (g, gen, h) = zp_instance();
-    for solver in [Solver::Auto, Solver::Bsgs, Solver::Rho, Solver::Kangaroo, Solver::Grumpy] {
-        let opts = Options {
-            solver,
-            ..seeded()
-        };
-        let (x, st) = g.dlog(&gen, &h, &opts).unwrap_or_else(|e| panic!("{solver:?}: {e}"));
+    for solver in [
+        Solver::Auto,
+        Solver::Bsgs,
+        Solver::Rho,
+        Solver::Kangaroo,
+        Solver::Grumpy,
+    ] {
+        let opts = Options { solver, ..seeded() };
+        let (x, st) = g
+            .dlog(&gen, &h, &opts)
+            .unwrap_or_else(|e| panic!("{solver:?}: {e}"));
         assert_eq!(x, X, "{solver:?}");
         assert!(st.group_ops > 0, "{solver:?}");
     }
@@ -210,11 +219,22 @@ fn ec_curve_end_to_end() {
     // The whole-group and interval solvers work on curves as well.
     let (x, _) = e.bsgs(&pt, &q, 0, 0, &Options::default()).unwrap();
     assert_eq!(x, 4242 % ord);
-    let (x, _) = e.kangaroo(&pt, &q, 4000, 5000, &Options::default()).unwrap();
+    let (x, _) = e
+        .kangaroo(&pt, &q, 4000, 5000, &Options::default())
+        .unwrap();
     assert_eq!(x, 4242);
     let (x, _) = e.grumpy(&pt, &q, 4000, 5000, &Options::default()).unwrap();
     assert_eq!(x, 4242);
-    let (x, _) = e.rho(&pt, &q, &Options { seed: 5, ..Options::default() }).unwrap();
+    let (x, _) = e
+        .rho(
+            &pt,
+            &q,
+            &Options {
+                seed: 5,
+                ..Options::default()
+            },
+        )
+        .unwrap();
     assert_eq!(x, 4242 % ord);
 }
 
@@ -257,7 +277,10 @@ fn index_calculus_context_reuse() {
     // Every factor-base log is verified, so each must be known and correct.
     for i in 0..ctx.factor_base_size() {
         let (prime, log) = ctx.factor_base_log(i).expect("known log");
-        assert_eq!(powmod(ctx.primitive_root(), log, 1_000_003), u64::from(prime));
+        assert_eq!(
+            powmod(ctx.primitive_root(), log, 1_000_003),
+            u64::from(prime)
+        );
     }
     assert!(ctx.factor_base_log(ctx.factor_base_size()).is_none());
     for h in [424_242u64, 3, 999_999, 500_000] {

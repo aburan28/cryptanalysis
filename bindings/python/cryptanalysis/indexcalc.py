@@ -1,15 +1,19 @@
 """Index calculus in (Z/pZ)^*: one-shot :func:`ic_solve` and reusable :class:`ICContext`."""
+
 from __future__ import annotations
 
 import ctypes
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from . import _lib
 from ._lib import CICStats, CStats, lib
 from ._types import ICParams, ICStats, Stats
 
+if TYPE_CHECKING:
+    from ctypes import _CArgObject  # only exists for type checkers
 
-def _params(params: Optional[ICParams]):
+
+def _params(params: Optional[ICParams]) -> Optional[_CArgObject]:
     if params is None:
         return None
     if not isinstance(params, ICParams):
@@ -48,8 +52,9 @@ class ICContext:
         handle = ctypes.c_void_p(None)
         st = CICStats()
         _lib.arm()
-        _lib.check(lib.ca_ic_precompute(p, g, _params(params), ctypes.byref(handle),
-                                        ctypes.byref(st)))
+        _lib.check(
+            lib.ca_ic_precompute(p, g, _params(params), ctypes.byref(handle), ctypes.byref(st))
+        )
         self._handle = handle.value
         self._p = p
         self._g = g
@@ -63,15 +68,18 @@ class ICContext:
             lib.ca_ic_free(handle)
 
     def __del__(self) -> None:
-        try:
+        # contextlib.suppress() is deliberately not used here: __del__ can run
+        # during interpreter shutdown, when module globals (including the
+        # contextlib module object) may already have been torn down.
+        try:  # noqa: SIM105
             self.close()
         except Exception:  # pragma: no cover
             pass
 
-    def __enter__(self) -> "ICContext":
+    def __enter__(self) -> ICContext:
         return self
 
-    def __exit__(self, *exc) -> None:
+    def __exit__(self, *exc: object) -> None:
         self.close()
 
     @property
@@ -105,8 +113,10 @@ class ICContext:
         return lib.ca_ic_primitive_root(self._ctx)
 
     def factor_base_logs(self) -> list[tuple[int, Optional[int]]]:
-        """``(prime, log)`` for every factor-base prime (log is None if unknown),
-        with logarithms relative to :attr:`primitive_root`."""
+        """``(prime, log)`` for every factor-base prime (log is None if unknown).
+
+        The logarithms are relative to :attr:`primitive_root`.
+        """
         out = []
         prime, known = ctypes.c_uint32(0), ctypes.c_int(0)
         for i in range(self.factor_base_size):

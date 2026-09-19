@@ -1,4 +1,5 @@
 """Public value types: group elements, enums and the option/statistics records."""
+
 from __future__ import annotations
 
 import ctypes
@@ -7,7 +8,7 @@ from enum import IntEnum
 from typing import NamedTuple, Sequence, Union
 
 from . import _lib
-from ._lib import CICParams, CICStats, COptions, CStats, Words
+from ._lib import CICParams, CICStats, COptions, CStats, WordArray, Words
 
 
 class GroupKind(IntEnum):
@@ -56,7 +57,7 @@ class Elem(NamedTuple):
     inf: bool = False
 
     @classmethod
-    def from_words(cls, words: Sequence[int]) -> "Elem":
+    def from_words(cls, words: Sequence[int]) -> Elem:
         """Build an element from ``uint64_t[4]`` words."""
         return cls(int(words[0]), int(words[1]), bool(words[2]))
 
@@ -79,8 +80,9 @@ class Elem(NamedTuple):
 ElemLike = Union[Elem, int, Sequence[int]]
 
 
-def to_words(value: ElemLike, kind: GroupKind, name: str = "element") -> Words:
+def to_words(value: ElemLike, kind: GroupKind, name: str = "element") -> WordArray:
     """Convert any accepted element representation to a ctypes ``uint64_t[4]``."""
+    w: tuple[int, ...]
     if isinstance(value, Elem):
         w = value.words()
     elif isinstance(value, bool):
@@ -105,7 +107,7 @@ def to_words(value: ElemLike, kind: GroupKind, name: str = "element") -> Words:
     return Words(*(_lib.u64(v, f"{name}[{i}]") for i, v in enumerate(w)))
 
 
-def from_words(w: Words) -> Elem:
+def from_words(w: WordArray) -> Elem:
     return Elem(int(w[0]), int(w[1]), bool(w[2]))
 
 
@@ -139,14 +141,14 @@ class Options:
     bsgs_max_prime: int = 0  # auto: BSGS for prime factors <= this (0 => 2^36)
 
     @classmethod
-    def library_defaults(cls) -> "Options":
+    def library_defaults(cls) -> Options:
         """The defaults as reported by the C library (``ca_ffi_options_default``)."""
         c = COptions()
         _lib.lib.ca_ffi_options_default(ctypes.byref(c))
         return cls.from_c(c)
 
     @classmethod
-    def from_c(cls, c: COptions) -> "Options":
+    def from_c(cls, c: COptions) -> Options:
         return cls(
             threads=c.threads,
             seed=c.seed,
@@ -167,8 +169,11 @@ class Options:
         )
 
     def to_c(self) -> COptions:
-        """Convert to the C struct (starting from the library defaults so that
-        reserved fields keep whatever the library expects)."""
+        """Convert to the C struct.
+
+        Starts from the library defaults so that reserved fields keep
+        whatever the library expects.
+        """
         c = COptions()
         _lib.lib.ca_ffi_options_default(ctypes.byref(c))
         c.threads = _lib.u32(self.threads, "threads")
@@ -203,7 +208,7 @@ class Stats:
     threads: int = 0  # threads used
 
     @classmethod
-    def from_c(cls, c: CStats) -> "Stats":
+    def from_c(cls, c: CStats) -> Stats:
         return cls(
             group_ops=c.group_ops,
             iterations=c.iterations,
@@ -234,13 +239,13 @@ class ICParams:
     verbose: bool = False  # stage reports on stderr
 
     @classmethod
-    def library_defaults(cls) -> "ICParams":
+    def library_defaults(cls) -> ICParams:
         c = CICParams()
         _lib.lib.ca_ic_params_default(ctypes.byref(c))
         return cls.from_c(c)
 
     @classmethod
-    def from_c(cls, c: CICParams) -> "ICParams":
+    def from_c(cls, c: CICParams) -> ICParams:
         return cls(
             method=ICMethod(c.method),
             factor_base_bound=c.factor_base_bound,
@@ -283,7 +288,7 @@ class ICStats:
     threads: int = 0
 
     @classmethod
-    def from_c(cls, c: CICStats) -> "ICStats":
+    def from_c(cls, c: CICStats) -> ICStats:
         return cls(**{f.name: getattr(c, f.name) for f in fields(cls)})
 
 

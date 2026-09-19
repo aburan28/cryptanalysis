@@ -1,4 +1,5 @@
 """Exception hierarchy mirroring the ``ca_status`` codes of libcryptanalysis."""
+
 from __future__ import annotations
 
 from enum import IntEnum

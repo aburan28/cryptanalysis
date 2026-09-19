@@ -11,6 +11,7 @@ Search order for the shared library:
    ``../../build`` relative to ``bindings/python`` (this package's parent),
 4. ``ctypes.util.find_library("cryptanalysis")`` (system-wide install).
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -30,7 +31,7 @@ from ctypes import (
     c_uint64,
     c_void_p,
 )
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
 from .errors import CryptanalysisError, Status, exception_for_status
 
@@ -118,6 +119,14 @@ class CICStats(Structure):
 
 Words = c_uint64 * 4  # uint64_t[4] element words
 P64 = POINTER(c_uint64)
+
+if TYPE_CHECKING:
+    # `Words` is a ctypes array *class* built by multiplication, which type
+    # checkers cannot use in an annotation.  `WordArray` is the same thing
+    # spelled in a way they understand; at run time it is just `Words`.
+    WordArray = ctypes.Array[c_uint64]
+else:
+    WordArray = Words
 
 # --------------------------------------------------------------------------
 # Locating the shared library
@@ -226,9 +235,18 @@ _PROTOTYPES: dict[str, tuple[object, list]] = {
     "ca_ic_params_size": (c_size_t, []),
     "ca_ic_stats_size": (c_size_t, []),
     # solvers
-    "ca_ffi_bsgs": (c_int, [_CTX, P64, P64, c_uint64, c_uint64, POINTER(COptions), P64, POINTER(CStats)]),
-    "ca_ffi_kangaroo": (c_int, [_CTX, P64, P64, c_uint64, c_uint64, POINTER(COptions), P64, POINTER(CStats)]),
-    "ca_ffi_grumpy": (c_int, [_CTX, P64, P64, c_uint64, c_uint64, POINTER(COptions), P64, POINTER(CStats)]),
+    "ca_ffi_bsgs": (
+        c_int,
+        [_CTX, P64, P64, c_uint64, c_uint64, POINTER(COptions), P64, POINTER(CStats)],
+    ),
+    "ca_ffi_kangaroo": (
+        c_int,
+        [_CTX, P64, P64, c_uint64, c_uint64, POINTER(COptions), P64, POINTER(CStats)],
+    ),
+    "ca_ffi_grumpy": (
+        c_int,
+        [_CTX, P64, P64, c_uint64, c_uint64, POINTER(COptions), P64, POINTER(CStats)],
+    ),
     "ca_ffi_rho": (c_int, [_CTX, P64, P64, POINTER(COptions), P64, POINTER(CStats)]),
     "ca_ffi_dlog": (c_int, [_CTX, P64, P64, POINTER(COptions), P64, POINTER(CStats)]),
     # Cheon
@@ -236,10 +254,16 @@ _PROTOTYPES: dict[str, tuple[object, list]] = {
     "ca_ffi_cheon_instance": (c_int, [_CTX, P64, c_uint64, c_uint64, P64, P64]),
     "ca_ffi_cheon_best_divisor": (c_uint64, [c_uint64, POINTER(c_double)]),
     # index calculus
-    "ca_ffi_ic_solve": (c_int, [c_uint64, c_uint64, c_uint64, POINTER(CICParams), P64, POINTER(CICStats)]),
+    "ca_ffi_ic_solve": (
+        c_int,
+        [c_uint64, c_uint64, c_uint64, POINTER(CICParams), P64, POINTER(CICStats)],
+    ),
     "ca_ic_params_default": (None, [POINTER(CICParams)]),
     "ca_ic_auto_params": (None, [c_uint, POINTER(c_uint32), POINTER(c_uint32)]),
-    "ca_ic_precompute": (c_int, [c_uint64, c_uint64, POINTER(CICParams), POINTER(_ICCTX), POINTER(CICStats)]),
+    "ca_ic_precompute": (
+        c_int,
+        [c_uint64, c_uint64, POINTER(CICParams), POINTER(_ICCTX), POINTER(CICStats)],
+    ),
     "ca_ic_free": (None, [_ICCTX]),
     "ca_ic_log": (c_int, [_ICCTX, c_uint64, P64, POINTER(CStats)]),
     "ca_ic_modulus": (c_uint64, [_ICCTX]),
@@ -398,12 +422,13 @@ def u32(value: int, name: str = "value") -> int:
 
 
 __all__ = [
+    "ENV_VAR",
+    "P64",
     "CICParams",
     "CICStats",
     "COptions",
     "CStats",
-    "ENV_VAR",
-    "P64",
+    "WordArray",
     "Words",
     "arm",
     "check",
