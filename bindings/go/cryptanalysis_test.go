@@ -347,7 +347,8 @@ func TestClose(t *testing.T) {
 	z.Close()
 	z.Close() // idempotent
 	defer func() {
-		if r := recover(); r != ErrClosed {
+		r := recover()
+		if err, ok := r.(error); !ok || !errors.Is(err, ErrClosed) {
 			t.Fatalf("use after Close: recovered %v, want ErrClosed", r)
 		}
 	}()

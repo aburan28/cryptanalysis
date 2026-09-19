@@ -95,6 +95,18 @@ Measured (whole group, prime order, one thread): `S = 1.26` (`Z_p^*`,
 spread at 5 repetitions is statistical, the standard deviation of a single
 rho run is about half its mean).
 
+### On a GPU (`ca_gpu.h`)
+
+The same walk, with tens of thousands of walks instead of a few hundred, as
+a CUDA kernel.  The device code is shared verbatim with a host emulator, so
+the algorithm is testable without a GPU; one thread owns eight walks that
+share a single modular inversion, and the host only ever sees distinguished
+points.  The parallel speed-up is linear in the number of walkers
+(van Oorschot-Wiener), so this is a constant-factor win over the CPU
+solver, not an asymptotic one.  See [GPU.md](GPU.md) for the kernel's
+register budget, the distinguished-point protocol, and what has and has not
+been verified on hardware.
+
 ## Pollard kangaroo / lambda (`ca_kangaroo.h`)
 
 Interval logarithm `x` in `[lo, hi]` without the `O(sqrt(width))` memory of

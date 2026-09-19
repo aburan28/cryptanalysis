@@ -102,7 +102,7 @@ CA_API uint64_t ca_mont_inv(const ca_mont *m, uint64_t a);
 /* ---- primes and factoring --------------------------------------------- */
 
 CA_API int ca_is_prime(uint64_t n);          /* deterministic for 64-bit */
-CA_API uint64_t ca_next_prime(uint64_t n);   /* smallest prime > n */
+CA_API uint64_t ca_next_prime(uint64_t n);   /* smallest prime > n; 0 if none fits in 64 bits */
 
 #define CA_MAX_FACTORS 16
 

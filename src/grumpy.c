@@ -66,8 +66,10 @@ static int grumpy_candidate(grumpy_ctx *c, ca_i128 xprime_times, int doubled, ui
             xx = (uint64_t)full;
         }
         if (ca_verify_log(c->g, c->base, c->target, xx)) {
-            uint64_t fit = xx;
-            if (ca_fit_interval(n, &fit, c->lo, c->hi)) xx = fit;
+            /* The header promises x in [lo, hi].  A verified logarithm that
+             * cannot be shifted into the interval is not the answer that was
+             * asked for, so keep looking rather than return it. */
+            if (!ca_fit_interval_base(c->g, c->base, &xx, c->lo, c->hi)) continue;
             *x = xx;
             return 1;
         }
@@ -134,7 +136,6 @@ ca_status ca_grumpy_solve(const ca_group *g, const ca_elem *base, const ca_elem 
     ca_elem B = {{0}}, U = Hp, V = H2;
     ca_group_identity(g, &B);
     uint64_t i = 0;
-    rc = CA_ERR_INTERNAL;
     /* Upper bound on iterations: the baby walk alone finds x' in at most
      * width+1 steps (it meets U_0 = H'). */
     uint64_t max_iter = width + 2;

@@ -45,22 +45,21 @@ void ca_clear_error(void) { ca_errbuf[0] = 0; }
 uint64_t ca_seed_or_random(uint64_t seed)
 {
     if (seed != 0) return seed;
-    uint64_t s = 0;
 #if defined(__unix__) || defined(__APPLE__)
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0) {
-        ssize_t n = read(fd, &s, sizeof(s));
-        (void)n;
+        uint64_t r = 0;
+        int full = read(fd, &r, sizeof(r)) == (ssize_t)sizeof(r);
         close(fd);
+        if (full && r != 0) return r;
     }
 #endif
-    if (s == 0) {
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        s = (uint64_t)ts.tv_nsec ^ ((uint64_t)ts.tv_sec << 32) ^ (uint64_t)(uintptr_t)&s;
-    }
-    if (s == 0) s = 0x1234567887654321ULL;
-    return s;
+    /* No /dev/urandom, a short read, or the vanishing all-zero draw: fall back
+     * to the clock mixed with a stack address. */
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    uint64_t s = (uint64_t)ts.tv_nsec ^ ((uint64_t)ts.tv_sec << 32) ^ (uint64_t)(uintptr_t)&ts;
+    return s ? s : 0x1234567887654321ULL;
 }
 
 /* ---- hash table -------------------------------------------------------- */
@@ -93,8 +92,16 @@ static int htab_grow(ca_htab *t)
     t->cap = old.cap * 2;
     t->count = 0;
     t->max_count = t->cap / 2 + t->cap / 4;
+    /* Reinsert inline rather than through ca_htab_insert: the table was just
+     * doubled, so no entry can trigger another grow, and not recursing keeps
+     * the ownership of the two buffers obvious to both readers and analysers. */
+    const size_t mask = t->cap - 1;
     for (size_t i = 0; i < old.cap; i++) {
-        if (old.e[i].key) ca_htab_insert(t, old.e[i].key, old.e[i].v0, old.e[i].v1, NULL, NULL);
+        if (!old.e[i].key) continue;
+        size_t j = (size_t)ca_mix64(old.e[i].key) & mask;
+        while (t->e[j].key) j = (j + 1) & mask;
+        t->e[j] = old.e[i];
+        t->count++;
     }
     free(old.e);
     return 0;

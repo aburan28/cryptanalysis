@@ -12,6 +12,7 @@ Rust, Go and Python bindings.
 | Pohlig-Hellman + solver dispatch (`ca_dlog`) | `ca_pohlig.h` | composite order | sum over prime factors |
 | Cheon's attack on the strong Diffie-Hellman problem (`d \| p-1`) | `ca_cheon.h` | recover `alpha` from `g, g^alpha, g^(alpha^d)` | `2 sqrt((p-1)/d) + 2 sqrt(d)` exponentiations |
 | Index calculus in `(Z/pZ)^*`: linear sieve, Pohlig-Hellman for small factors, structured elimination + Lanczos, Hensel lifting, verified logs | `ca_indexcalc.h` | `Z_p^*`, `p < 2^63` | `L_p[1/2, 1]`; 56-bit `p` in 1.3 s |
+| **GPU Pollard rho**: a CUDA kernel (CUDA C) with 8 walks per thread sharing one modular inversion, atomic distinguished-point output, plus a host emulator that runs the same code | `ca_gpu.h` | whole group | same `sqrt(n)` with tens of thousands of concurrent walks |
 
 Everything is written against one generic cyclic-group interface
 (`ca_group.h`) with two concrete groups: subgroups of `(Z/pZ)^*` and of
@@ -42,9 +43,14 @@ sudo cmake --install build        # headers, libcryptanalysis.{a,so}, ca, pkg-co
 ```
 
 Useful options: `-DCA_NATIVE=ON` (`-march=native`), `-DCA_SANITIZE=ON`
-(ASan + UBSan), `-DCA_WERROR=ON`, `-DCA_BUILD_SHARED/STATIC/TOOLS/TESTS`.
-`make test`, `make bench`, `make asan`, `make bindings` wrap the common
-invocations.
+(ASan + UBSan), `-DCA_WERROR=ON`, `-DCA_BUILD_SHARED/STATIC/TOOLS/TESTS`,
+and `-DCA_CUDA=ON` for the GPU backend (see [docs/GPU.md](docs/GPU.md)).
+`make test`, `make bench`, `make asan`, `make cuda`, `make cuda-kernel`,
+`make bindings` wrap the common invocations.
+
+The GPU kernel can be compiled and measured without a GPU or a CUDA
+install: `scripts/build_cuda_kernel.sh --fetch` builds it for sm_70 through
+sm_90 and reports registers, local memory and spills.
 
 ## Command line
 
@@ -68,13 +74,20 @@ $ ./build/ca solve --alg dlog --group ec --p 1000003 --a 1 --b 7 --order 2777 \
 $ ./build/ca cheon --group zp --p 2000000579 --order 1000000289 --g 1422302461 --alpha 987654321
 {"status":"ok","alpha":987654321,"d":30512,"exponentiations":552,"ops":22606,...}
 
+$ ./build/ca gpu-info
+{"cuda_compiled":false,"devices":0,"walks_per_thread":8,"names":[]}
+
+$ ./build/ca solve --alg gpu-rho --group zp --p 2000000579 --order 1000000289 \
+      --g 1422302461 --h 1216411080 --backend emulate --seed 3
+{"status":"ok","alg":"gpu-rho","x":123456789,"launches":5,"ops":18307,...}
+
 $ ./build/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 4
 {"status":"ok","x":240852468320,"check":123456789,"factor_base":143,"unknowns":1094,
  "relations":1505,"verified_logs":143,"sieve_seconds":0.001,"linalg_seconds":0.049,...}
 ```
 
 Other commands: `ca factor N`, `ca prime N`, `ca solve --alg bsgs|kangaroo|grumpy
-... --lo L --hi U` for interval problems, `ca_bench generic|interval|ic|cheon|ops`
+... --lo L --hi U` for interval problems, `ca_bench generic|interval|ic|cheon|gpu|ops`
 for the benchmark tables.
 
 ## C API in one screen
@@ -133,6 +146,20 @@ x, stats, err := g.Dlog(gen, h, nil)
 y, _, _ := cryptanalysis.ICSolve(1099511627791, 3, 123456789, nil)
 ```
 
+**Rust, on the GPU.** Two routes, both running the same kernel source.
+Through the C library:
+
+```rust
+use cryptanalysis::{Group, GpuBackend, GpuOptions};
+let (x, stats) = g.gpu_rho(&gen, &h, &GpuOptions::default())?;   // CUDA if present
+let (x, _) = g.gpu_rho(&gen, &h, &GpuOptions { backend: GpuBackend::Emulate, ..Default::default() })?;
+```
+
+Or driving the device from Rust directly with `cryptanalysis-cuda`, which
+compiles `cuda/rho_kernel.cu` to PTX at build time (or with NVRTC at run
+time) and launches it through the CUDA driver API, so the kernel is shared
+with the C library rather than reimplemented.
+
 **Python** (`bindings/python`, ctypes, no compile step beyond building the
 shared library):
 
@@ -153,17 +180,47 @@ each binding's README).
 ```
 include/cryptanalysis/   public headers (cryptanalysis.h is the umbrella)
 src/                     library sources (+ internal linalg.h, ca_internal.h)
+cuda/                    the CUDA kernel (ca_device.cuh is shared C11/CUDA code)
 tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
-bindings/{rust,go,python}
-docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md
-.github/workflows/ci.yml gcc/clang/macOS builds, sanitizers, all bindings
+scripts/                 build_cuda_kernel.sh (compile the kernel, no GPU needed)
+bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
+docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md
+fuzz/                    libFuzzer harnesses and their seed corpora
+.github/workflows/       ci, analysis, bindings, fuzz, codeql, nightly
 ```
+
+## Checks
+
+Everything below is a gate: the tree is clean under all of it, so a finding
+means new code rather than a backlog.  `make checks` runs the pull-request
+set locally, in the order that fails fastest.
+
+| Workflow | What it gates |
+|---|---|
+| `ci` | gcc, clang, macOS and arm64 builds with `-Werror`; ctest; AddressSanitizer plus UndefinedBehaviorSanitizer; ThreadSanitizer over the pthreads solvers; valgrind memcheck on the fast suites; install and consume through both `find_package` and a relocated `pkg-config` prefix; the CUDA kernel compiled for sm_70 to sm_90 with a register report |
+| `analysis` | clang-tidy (warnings are errors), cppcheck, `gcc -fanalyzer`, clang-format on the lines a change touches, shellcheck, actionlint, and coverage with a floor |
+| `bindings` | Rust fmt/clippy/doc/tests and a measured MSRV floor, cargo-deny, Go across three toolchains with the race detector and golangci-lint, Python 3.8 to 3.13 plus an installed-package run, ruff and mypy |
+| `fuzz` | six libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
+| `codeql` | C, Go and Python, with the `security-and-quality` query pack |
+| `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
+
+Individual targets: `make tidy cppcheck analyzer format shellcheck asan tsan
+valgrind coverage`.  Formatting is enforced only on changed lines, because the
+sources predate `.clang-format` and a wholesale reformat would bury every
+future diff; `make format FORMAT_BASE=origin/main` shows what a branch owes.
 
 ## Status and roadmap
 
 Implemented and tested: everything in the table above, for groups of order
 below `2^64`.  Every solver verifies its answer before returning it.
+
+The GPU backend ships the kernel, the host driver, the CLI and benchmark
+integration, and a Rust driver. It is verified by compiling to a real cubin
+for sm_70 through sm_90 and by running the identical kernel body through the
+host emulator; **it has not yet been run on a physical GPU**, because this
+development container has neither a device nor a complete CUDA toolkit. See
+the end of [docs/GPU.md](docs/GPU.md) for exactly what that means.
 
 Not implemented (documented in `docs/ALGORITHMS.md`): the number field
 sieve (the state of the art for `F_p` above ~100 bits), index calculus on

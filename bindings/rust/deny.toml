@@ -1,0 +1,55 @@
+# cargo-deny configuration for the libcryptanalysis Rust workspace.
+# Run with:  cargo deny --manifest-path bindings/rust/Cargo.toml check
+#
+# The dependency tree is deliberately tiny (cc + shlex + find-msvc-tools for
+# the -sys build script, cudarc + libloading + cfg-if + windows-link for the
+# CUDA driver crate), so everything below can be strict.
+
+[graph]
+# Only the targets we actually build and test in CI.  Without this, cargo-deny
+# pulls Windows/macOS-only dependencies into the graph and reports duplicate
+# versions that no CI job could ever link.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+
+[advisories]
+version = 2
+# Fail on anything RustSec knows about, including crates that have been
+# yanked from crates.io.
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+# Exactly the licences present in the resolved graph today:
+#   MIT           - this workspace, cc, cfg-if, cudarc, find-msvc-tools,
+#                   shlex, windows-link
+#   Apache-2.0    - the "OR Apache-2.0" half of the same dual-licensed crates
+#   ISC           - libloading
+# A new dependency under any other licence has to be added here consciously.
+allow = ["MIT", "Apache-2.0", "ISC"]
+confidence-threshold = 0.93
+# No per-crate licence exceptions are needed.
+exceptions = []
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+# The three workspace members depend on each other by path and intentionally
+# carry no version requirement; that is not the `version = "*"` sloppiness the
+# wildcards check is aimed at.
+allow-wildcard-paths = true
+allow = []
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

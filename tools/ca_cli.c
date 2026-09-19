@@ -6,10 +6,13 @@
  *   ca prime N
  *   ca ec-order --p P --a A --b B
  *   ca gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]
- *   ca solve --alg bsgs|rho|kangaroo|grumpy|dlog --group zp|ec --p P [--a A --b B]
+ *   ca gpu-info
+ *   ca solve --alg bsgs|rho|kangaroo|grumpy|dlog|gpu-rho --group zp|ec --p P [--a A --b B]
  *            --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S]
  *            [--dp-bits D] [--r R] [--walks W] [--no-negation] [--m M] [--alpha F]
  *            [--solver auto|bsgs|rho|kangaroo|grumpy] [--max-ops K]
+ *            gpu-rho also takes [--backend auto|cuda|emulate] [--device D]
+ *            [--tpb T] [--blocks B] [--steps S]
  *   ca cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D
  *            (--ga GA --gad GAD | --alpha X)
  *   ca ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C]
@@ -19,6 +22,7 @@
  * on stdout; errors go to stderr with a non-zero exit status.
  */
 #include "cryptanalysis/cryptanalysis.h"
+#include "ca_device.cuh"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -28,30 +32,49 @@
 static int argc_g;
 static char **argv_g;
 
+static _Noreturn void die(const char *msg);
+
+/* C11 5.1.2.2.1p2 guarantees argv[0]..argv[argc-1] are non-null, but a static
+ * analyser only sees a char ** of unknown provenance.  Say it once, here. */
+static int arg_is(int i, const char *name)
+{
+    const char *a = argv_g[i];
+    return a != NULL && strcmp(a, name) == 0;
+}
+
 static const char *opt(const char *name)
 {
     for (int i = 2; i + 1 < argc_g; i++)
-        if (strcmp(argv_g[i], name) == 0) return argv_g[i + 1];
+        if (arg_is(i, name)) return argv_g[i + 1];
     return NULL;
 }
 
 static int flag(const char *name)
 {
     for (int i = 2; i < argc_g; i++)
-        if (strcmp(argv_g[i], name) == 0) return 1;
+        if (arg_is(i, name)) return 1;
     return 0;
 }
 
 static uint64_t opt_u64(const char *name, uint64_t def)
 {
     const char *v = opt(name);
-    return v ? strtoull(v, NULL, 0) : def;
+    if (!v) return def;
+    char *end = NULL;
+    unsigned long long u = strtoull(v, &end, 0);
+    if (end == v || *end != '\0') die("option value is not an integer");
+    return (uint64_t)u;
 }
 
+/* strtod, not atof: atof cannot report a malformed value (cert-err34-c). */
 static double opt_f(const char *name, double def)
 {
     const char *v = opt(name);
-    return v ? atof(v) : def;
+    if (!v) return def;
+    char *end = NULL;
+    double d = strtod(v, &end);
+    if (end == v || *end != '\0') die("option value is not a number");
+    return d;
 }
 
 static _Noreturn void die(const char *msg)
@@ -70,14 +93,17 @@ static _Noreturn void die_status(ca_status rc)
 
 static _Noreturn void usage(void)
 {
-    fprintf(stderr,
-            "usage: ca <command> [options]\n"
-            "  version | factor N | prime N | ec-order --p P --a A --b B\n"
-            "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
-            "  solve --alg bsgs|rho|kangaroo|grumpy|dlog --group zp|ec --p P [--a A --b B]\n"
-            "        --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S] ...\n"
-            "  cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D (--ga GA --gad GAD | --alpha X)\n"
-            "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] [--verbose]\n");
+    fprintf(
+        stderr,
+        "usage: ca <command> [options]\n"
+        "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
+        "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
+        "  solve --alg bsgs|rho|kangaroo|grumpy|dlog|gpu-rho --group zp|ec --p P [--a A --b B]\n"
+        "        --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S] ...\n"
+        "  cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D (--ga GA --gad GAD | "
+        "--alpha X)\n"
+        "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] "
+        "[--verbose]\n");
     exit(2);
 }
 
@@ -194,6 +220,43 @@ static int cmd_solve(void)
     uint64_t x = 0;
     ca_stats st = {0};
     ca_status rc;
+    if (!strcmp(alg, "gpu-rho")) {
+        ca_gpu_rho_params gp;
+        ca_gpu_rho_params_default(&gp);
+        const char *be = opt("--backend");
+        if (be) {
+            if (!strcmp(be, "auto"))
+                gp.backend = CA_GPU_BACKEND_AUTO;
+            else if (!strcmp(be, "cuda"))
+                gp.backend = CA_GPU_BACKEND_CUDA;
+            else if (!strcmp(be, "emulate"))
+                gp.backend = CA_GPU_BACKEND_EMULATE;
+            else
+                die("--backend must be auto, cuda or emulate");
+        }
+        gp.device = (int32_t)opt_u64("--device", 0);
+        gp.threads_per_block = (uint32_t)opt_u64("--tpb", 0);
+        gp.blocks = (uint32_t)opt_u64("--blocks", 0);
+        gp.steps_per_launch = (uint32_t)opt_u64("--steps", 0);
+        gp.r = (uint32_t)opt_u64("--r", 0);
+        gp.dp_bits = (int32_t)opt_u64("--dp-bits", (uint64_t)-1);
+        gp.negation_map = !flag("--no-negation");
+        gp.seed = opt_u64("--seed", 0);
+        gp.max_ops = opt_u64("--max-ops", 0);
+        rc = ca_gpu_rho_solve(&g, &base, &target, &gp, &x, &st);
+        if (rc == CA_OK) {
+            printf("{\"status\":\"ok\",\"alg\":\"gpu-rho\",\"x\":%" PRIu64 ",\"launches\":%u,", x,
+                   st.reserved);
+            print_stats(&st);
+            printf("}\n");
+            return 0;
+        }
+        printf("{\"status\":\"%s\",\"alg\":\"gpu-rho\",", ca_status_string(rc));
+        print_stats(&st);
+        printf("}\n");
+        fprintf(stderr, "error: %s %s\n", ca_status_string(rc), ca_last_error());
+        return 1;
+    }
     if (!strcmp(alg, "bsgs")) rc = ca_bsgs_solve(&g, &base, &target, lo, hi, &dp.bsgs, &x, &st);
     else if (!strcmp(alg, "rho")) rc = ca_rho_solve(&g, &base, &target, &dp.rho, &x, &st);
     else if (!strcmp(alg, "kangaroo")) rc = ca_kangaroo_solve(&g, &base, &target, lo, hi, &dp.kangaroo, &x, &st);
@@ -314,6 +377,19 @@ int main(int argc, char **argv)
         for (unsigned i = 0; i < f.count; i++)
             printf("%s[%" PRIu64 ",%u]", i ? "," : "", f.f[i].p, f.f[i].e);
         printf("],\"ops\":%" PRIu64 ",\"seconds\":%.6f}\n", st.group_ops, st.seconds);
+        return 0;
+    }
+    if (!strcmp(cmd, "gpu-info")) {
+        int n = ca_gpu_device_count();
+        printf("{\"cuda_compiled\":%s,\"devices\":%d,\"walks_per_thread\":%d,\"names\":[",
+               ca_gpu_cuda_compiled() ? "true" : "false", n, CA_GPU_W);
+        for (int i = 0; i < n; i++) {
+            char name[256] = "";
+            if (ca_gpu_device_name(i, name, sizeof(name)) != 0)
+                snprintf(name, sizeof(name), "unknown");
+            printf("%s\"%s\"", i ? "," : "", name);
+        }
+        printf("]}\n");
         return 0;
     }
     if (!strcmp(cmd, "gen")) return cmd_gen();

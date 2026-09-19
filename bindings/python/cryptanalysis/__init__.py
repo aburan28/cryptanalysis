@@ -7,12 +7,13 @@ Quick start::
     G = ca.Group.zp(2000000579, order=1000000289)
     g = G.find_generator(seed=1)
     h = G.mul(g, 123456789)
-    x, stats = G.dlog(g, h)          # Pohlig-Hellman + auto solver
+    x, stats = G.dlog(g, h)  # Pohlig-Hellman + auto solver
     assert x == 123456789
 
 All integers cross the FFI as 64-bit unsigned values: moduli, orders,
 exponents and coordinates must lie in ``[0, 2**64)``.
 """
+
 from __future__ import annotations
 
 from . import _lib
@@ -52,8 +53,8 @@ def version() -> str:
 
 
 __all__ = [
-    "CryptanalysisError",
     "ENV_VAR",
+    "CryptanalysisError",
     "Elem",
     "ElemLike",
     "Group",
@@ -73,6 +74,7 @@ __all__ = [
     "Stats",
     "Status",
     "UnsupportedError",
+    "__version__",
     "cheon_best_divisor",
     "factorize",
     "ic_auto_params",
@@ -85,5 +87,4 @@ __all__ = [
     "primitive_root",
     "status_string",
     "version",
-    "__version__",
 ]

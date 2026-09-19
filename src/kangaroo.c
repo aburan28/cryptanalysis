@@ -52,6 +52,9 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
 
     uint64_t sqrt_w = ca_isqrt(width) + 1;
     uint32_t herd = params->herd_size;
+    /* 2 * herd must not wrap, and the herd arrays are allocated up front:
+     * CA_KANGAROO_MAX_HERD kangaroos per herd is already 64 MB of state. */
+    if (herd > CA_KANGAROO_MAX_HERD) herd = CA_KANGAROO_MAX_HERD;
     if (herd == 0) {
         /* each kangaroo start costs ~1.5 log2(n) operations; keep the total
          * start-up under sqrt(width)/8 */
@@ -73,6 +76,7 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
     }
     if (nj > 62) nj = 62;
     int dp = params->dp_bits;
+    if (dp > 62) dp = 62; /* dp is a shift count for a 64-bit mask */
     if (dp < 0) {
         double expected = 2.0 * (double)sqrt_w; /* total jumps */
         double per_roo = expected / (32.0 * total);
@@ -107,7 +111,8 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
     uint64_t spacing = (uint64_t)(mean_target / (double)herd) + 1;
     for (uint32_t i = 0; i < total; i++) {
         roo *r = &roos[i];
-        uint64_t off = (uint64_t)(i / 2) * spacing + ca_rng_below(&rng, spacing ? spacing : 1);
+        /* spacing >= 1 by construction, so ca_rng_below never sees 0 */
+        uint64_t off = (uint64_t)(i / 2) * spacing + ca_rng_below(&rng, spacing);
         if ((i & 1) == 0) {
             r->dist = mid + off;
             ca_group_mul(g, &r->Y, base, r->dist, &ops);
@@ -168,10 +173,13 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
                         uint64_t cand = T - D;
                         if (n) cand = (uint64_t)(((ca_i128)T - (ca_i128)D) % (ca_i128)n);
                         if (n && (ca_i128)T - (ca_i128)D < 0) cand = (cand + n) % n;
-                        if (ca_verify_log(g, base, target, cand)) {
-                            uint64_t fit = cand;
-                            if (!ca_fit_interval(n, &fit, lo, hi)) fit = cand;
-                            *x = fit;
+                        if (ca_verify_log(g, base, target, cand) &&
+                            ca_fit_interval_base(g, base, &cand, lo, hi)) {
+                            /* The header promises x in [lo, hi].  A verified
+                             * logarithm that cannot be shifted into the
+                             * interval is not the answer that was asked for,
+                             * so keep hopping rather than return it. */
+                            *x = cand;
                             rc = CA_OK;
                             running = 0;
                             break;

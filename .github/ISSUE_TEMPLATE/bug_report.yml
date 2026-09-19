@@ -1,0 +1,64 @@
+name: Bug report
+description: A wrong answer, a crash, or a build failure.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: >
+        The exact command line, ideally through the ca CLI so the inputs are
+        unambiguous.  A wrong answer needs the group parameters and the seed.
+      render: shell
+      placeholder: |
+        ./build/ca solve --alg dlog --group zp --p 2000000579 --order 1000000289 \
+                         --g 1422302461 --h 1216411080 --seed 1
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `./build/ca version`, or the commit hash.
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and compiler
+      placeholder: "Ubuntu 24.04, gcc 13.2, x86_64"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface
+      multiple: true
+      options:
+        - C library
+        - ca CLI
+        - Rust bindings
+        - Go bindings
+        - Python bindings
+        - CUDA / GPU
+        - Build system
+    validations:
+      required: true
+
+  - type: textarea
+    id: sanitizers
+    attributes:
+      label: Sanitizer or valgrind output
+      description: If you have it. Leave blank otherwise.
+      render: text

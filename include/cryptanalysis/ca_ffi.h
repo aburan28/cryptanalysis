@@ -19,6 +19,7 @@
 
 #include "ca_types.h"
 #include "ca_indexcalc.h"
+#include "ca_gpu.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -108,6 +109,31 @@ CA_API int ca_ffi_cheon(const ca_ctx *ctx, const uint64_t gen[4], const uint64_t
 CA_API int ca_ffi_cheon_instance(const ca_ctx *ctx, const uint64_t gen[4], uint64_t alpha,
                                  uint64_t d, uint64_t g_alpha[4], uint64_t g_alpha_d[4]);
 CA_API uint64_t ca_ffi_cheon_best_divisor(uint64_t p, double *cost_exps);
+
+/* ---- GPU (CUDA) Pollard rho ---------------------------------------------- */
+/* backend: 0 auto, 1 cuda, 2 emulate (ca_gpu_backend).  Pass 0 for any
+ * numeric field to take the automatic choice. */
+typedef struct ca_ffi_gpu_options {
+    int32_t backend;
+    int32_t device;
+    uint32_t threads_per_block;
+    uint32_t blocks;
+    uint32_t steps_per_launch;
+    uint32_t r;
+    int32_t dp_bits; /* -1 => auto */
+    int32_t negation_map;
+    uint64_t seed;
+    uint64_t max_ops;
+} ca_ffi_gpu_options;
+
+CA_API void ca_ffi_gpu_options_default(ca_ffi_gpu_options *o);
+CA_API size_t ca_ffi_gpu_options_size(void);
+CA_API int ca_ffi_gpu_rho(const ca_ctx *ctx, const uint64_t base[4], const uint64_t target[4],
+                          const ca_ffi_gpu_options *o, uint64_t *x, ca_stats *st);
+/* 1 if the CUDA backend was compiled in; device count and names. */
+CA_API int ca_ffi_gpu_cuda_compiled(void);
+CA_API int ca_ffi_gpu_device_count(void);
+CA_API int ca_ffi_gpu_device_name(int device, char *buf, size_t len);
 
 /* ---- index calculus (the ca_ic_* API in ca_indexcalc.h is already flat) --- */
 CA_API int ca_ffi_ic_solve(uint64_t p, uint64_t g, uint64_t h, const ca_ic_params *params,

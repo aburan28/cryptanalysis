@@ -68,7 +68,7 @@ int main(void)
     CHECK(ca_bsgs_solve(&g, &gen, &h, 0, 0, &p, &got, NULL) == CA_ERR_LIMIT);
     /* full multiplicative group of Z_p^* (composite order) */
     CHECK(ca_group_zp_init(&g, 1000003, 0) == CA_OK);
-    uint64_t w[4] = {2, 0, 0, 0};
+    const uint64_t w[4] = {2, 0, 0, 0};
     CHECK(ca_group_encode(&g, &gen, w));
     fx_instance(&g, &gen, 999999, &h);
     CHECK(ca_bsgs_solve(&g, &gen, &h, 0, 0, NULL, &got, NULL) == CA_OK);

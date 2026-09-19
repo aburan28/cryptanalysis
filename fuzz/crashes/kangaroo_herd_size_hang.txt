@@ -1,0 +1,51 @@
+ca_kangaroo_solve never returns when 2 * herd_size overflows uint32_t
+=====================================================================
+
+STATUS: FIXED.  herd_size is clamped to CA_KANGAROO_MAX_HERD (2^20), declared
+in ca_kangaroo.h, so 2*herd cannot wrap and the allocation stays bounded.
+Regression test: tests/test_kangaroo.c.
+
+Harness   : fuzz_dlog, built with -DCA_FUZZ_WILD_PARAMS
+Input     : kangaroo_herd_size_hang.bin
+Reproduce : see fuzz/crashes/README.md, then
+            timeout 5 ./build-wild/fuzz_dlog fuzz/crashes/kangaroo_herd_size_hang.bin
+            -> exit status 124 (killed by timeout), never returns on its own
+
+src/kangaroo.c takes the caller's herd_size verbatim:
+
+    uint32_t herd  = params->herd_size;     /* only defaulted when 0 */
+    ...
+    uint32_t total = 2 * herd;              /* wraps for herd >= 2^31 */
+
+With herd_size = 0x80000000 the product wraps to total == 0, so the herd
+is empty.  The main loop
+
+    while (running) {
+        for (uint32_t i = 0; i < total; i++) { ... }      /* no iterations */
+        ops += total;                                     /* += 0 */
+        if (params->max_ops && ops > params->max_ops) { ... }
+    }
+
+never advances `ops` past the jump-table setup cost, so the max_ops escape
+hatch never fires either: the call spins forever even with max_ops set.
+Verified with max_ops = 0 and max_ops = 1000.
+
+Deterministic C reproducer:
+
+    ca_group g; ca_group_zp_init(&g, 1000003, 0);
+    ca_elem base, target; uint64_t w[4] = {5,0,0,0};
+    ca_group_encode(&g, &base, w);
+    ca_group_mul(&g, &target, &base, 12345, NULL);
+    ca_kangaroo_params p; ca_kangaroo_params_default(&p);
+    p.seed = 1; p.max_ops = 1000; p.herd_size = 0x80000000u;
+    uint64_t x; ca_kangaroo_solve(&g, &base, &target, 0, 0, &p, &x, NULL);
+    /* does not return */
+
+Nearby values are bad in a different way: herd_size just under 2^31 asks
+for calloc(2 * herd * sizeof(ca_elem)) ~ 137 GB, which ASan reports as an
+allocation-size error rather than the CA_ERR_NOMEM the code expects.
+
+Harness note
+------------
+fuzz_dlog masks herd_size to 10 bits (and fuzz_ffi to the same range)
+unless built with -DCA_FUZZ_WILD_PARAMS, so that CI does not hang.

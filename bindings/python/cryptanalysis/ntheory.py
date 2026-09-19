@@ -1,4 +1,5 @@
 """Number-theory helpers exported by the library (all arguments are < 2^64)."""
+
 from __future__ import annotations
 
 import ctypes

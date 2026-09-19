@@ -11,6 +11,7 @@ Environment overrides:
     CRYPTANALYSIS_SRC   repository root holding ``include/`` and ``src/``
                         (default: two directories above this file)
 """
+
 from __future__ import annotations
 
 import glob
@@ -28,7 +29,9 @@ PACKAGE = "cryptanalysis"
 
 def _repo_root() -> str:
     root = os.environ.get("CRYPTANALYSIS_SRC") or os.path.normpath(os.path.join(HERE, "..", ".."))
-    if not os.path.isdir(os.path.join(root, "src")) or not os.path.isdir(os.path.join(root, "include")):
+    if not os.path.isdir(os.path.join(root, "src")) or not os.path.isdir(
+        os.path.join(root, "include")
+    ):
         raise SystemExit(
             f"setup.py: C sources not found under {root!r} (expected src/ and include/).\n"
             "Install from a checkout of the cryptanalysis repository, or set "
@@ -61,15 +64,24 @@ class build_ext(_build_ext):
             return os.path.join(HERE, PACKAGE)
         return os.path.join(self.build_lib, PACKAGE)
 
-    def get_source_files(self):
+    def _c_sources(self) -> list:
         return sorted(glob.glob(os.path.join(_repo_root(), "src", "*.c")))
+
+    def get_source_files(self):
+        # Deliberately empty.  The C sources live outside this project
+        # directory (../../src), so they cannot be expressed as setup.py
+        # relative paths; returning the absolute names here puts them into
+        # egg-info's SOURCES.txt, and setuptools' build_py then aborts with
+        # "setup script specifies an absolute path".  Use _c_sources()
+        # internally instead.
+        return []
 
     def get_outputs(self):
         return [os.path.join(self._output_dir(), _lib_filename())]
 
     def run(self) -> None:
         root = _repo_root()
-        sources = self.get_source_files()
+        sources = self._c_sources()
         if not sources:
             raise SystemExit(f"setup.py: no C sources in {os.path.join(root, 'src')}")
         out_dir = self._output_dir()
@@ -78,16 +90,22 @@ class build_ext(_build_ext):
 
         cc = shlex.split(os.environ.get("CC", "cc"))
         cflags = [
-            "-O3", "-std=gnu11", "-fPIC", "-fvisibility=hidden",
-            "-D_GNU_SOURCE", "-DCA_BUILDING", "-DCA_SHARED",
+            "-O3",
+            "-std=gnu11",
+            "-fPIC",
+            "-fvisibility=hidden",
+            "-D_GNU_SOURCE",
+            "-DCA_BUILDING",
+            "-DCA_SHARED",
             "-I" + os.path.join(root, "include"),
             "-I" + os.path.join(root, "src"),
-        ] + shlex.split(os.environ.get("CFLAGS", ""))
+            *shlex.split(os.environ.get("CFLAGS", "")),
+        ]
         if sys.platform == "darwin":
             link = ["-dynamiclib", "-install_name", "@rpath/" + _lib_filename()]
         else:
             link = ["-shared"]
-        ldflags = ["-lpthread", "-lm"] + shlex.split(os.environ.get("LDFLAGS", ""))
+        ldflags = ["-lpthread", "-lm", *shlex.split(os.environ.get("LDFLAGS", ""))]
 
         cmd = cc + cflags + link + ["-o", output] + sources + ldflags
         self.announce("building " + output, level=2)
@@ -99,7 +117,7 @@ class build_ext(_build_ext):
 class BinaryDistribution(Distribution):
     """Mark the wheel as platform-specific and make ``build`` run ``build_ext``."""
 
-    def has_ext_modules(self) -> bool:  # noqa: D401
+    def has_ext_modules(self) -> bool:
         return True
 
 

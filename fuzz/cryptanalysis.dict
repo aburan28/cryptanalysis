@@ -1,0 +1,62 @@
+# libFuzzer dictionary for the libcryptanalysis harnesses.
+#
+# Every harness decodes its input as a little-endian struct of u8/u32/u64
+# fields (see the comment at the top of each fuzz/*.c), so the useful
+# tokens are the byte encodings of interesting scalars: small primes and
+# prime-ish moduli, powers of two and the boundary values of the tuning
+# parameters (distinguished-point bits, table sizes, thread counts).
+#
+# Use with:  ./build-fuzz/<harness> fuzz/corpus/<harness> -dict=fuzz/cryptanalysis.dict
+
+# --- u64 little-endian: small values that make a group degenerate --------
+u64_0="\x00\x00\x00\x00\x00\x00\x00\x00"
+u64_1="\x01\x00\x00\x00\x00\x00\x00\x00"
+u64_2="\x02\x00\x00\x00\x00\x00\x00\x00"
+u64_3="\x03\x00\x00\x00\x00\x00\x00\x00"
+u64_4="\x04\x00\x00\x00\x00\x00\x00\x00"
+u64_5="\x05\x00\x00\x00\x00\x00\x00\x00"
+u64_7="\x07\x00\x00\x00\x00\x00\x00\x00"
+u64_max="\xff\xff\xff\xff\xff\xff\xff\xff"
+
+# --- u64: primes and near-primes the library special-cases ----------------
+u64_257="\x01\x01\x00\x00\x00\x00\x00\x00"
+u64_65537="\x01\x00\x01\x00\x00\x00\x00\x00"
+u64_1000003="\x03\x42\x0f\x00\x00\x00\x00\x00"
+u64_1048573="\xfd\xff\x0f\x00\x00\x00\x00\x00"
+u64_2000000579="\x43\x7a\x36\x77\x00\x00\x00\x00"
+u64_mersenne31="\xff\xff\xff\x7f\x00\x00\x00\x00"
+
+# --- u64: powers of two (group orders, table sizes, max_ops) --------------
+u64_2p12="\x00\x10\x00\x00\x00\x00\x00\x00"
+u64_2p16="\x00\x00\x01\x00\x00\x00\x00\x00"
+u64_2p20="\x00\x00\x10\x00\x00\x00\x00\x00"
+u64_2p32="\x00\x00\x00\x00\x01\x00\x00\x00"
+u64_2p63="\x00\x00\x00\x00\x00\x00\x00\x80"
+
+# --- i32: distinguished-point bits, including the interesting boundaries --
+i32_minus1="\xff\xff\xff\xff"
+i32_0="\x00\x00\x00\x00"
+i32_1="\x01\x00\x00\x00"
+i32_40="\x28\x00\x00\x00"
+i32_48="\x30\x00\x00\x00"
+i32_63="\x3f\x00\x00\x00"
+i32_64="\x40\x00\x00\x00"
+i32_65="\x41\x00\x00\x00"
+i32_intmax="\xff\xff\xff\x7f"
+i32_intmin="\x00\x00\x00\x80"
+
+# --- u32: thread / block / herd / walk counts -----------------------------
+u32_1="\x01\x00\x00\x00"
+u32_8="\x08\x00\x00\x00"
+u32_32="\x20\x00\x00\x00"
+u32_128="\x80\x00\x00\x00"
+u32_1024="\x00\x04\x00\x00"
+u32_2p31="\x00\x00\x00\x80"
+u32_max="\xff\xff\xff\xff"
+
+# --- single flag bytes ----------------------------------------------------
+flag_zp="\x00"
+flag_ec="\x01"
+flag_ec_count="\x03"
+flag_generator="\x07"
+flag_batch8="\x70"

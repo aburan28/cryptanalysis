@@ -68,7 +68,7 @@ int main(void)
     }
     /* factoring */
     ca_factorization f;
-    CHECK(ca_factorize(2 * 2 * 3 * 7 * 7 * 1000003ULL * 999983ULL, &f) == CA_OK);
+    CHECK(ca_factorize(2ULL * 2 * 3 * 7 * 7 * 1000003ULL * 999983ULL, &f) == CA_OK);
     CHECK_EQ_U64(f.count, 5);
     CHECK_EQ_U64(f.f[0].p, 2); CHECK_EQ_U64(f.f[0].e, 2);
     CHECK_EQ_U64(f.f[1].p, 3); CHECK_EQ_U64(f.f[1].e, 1);
@@ -103,6 +103,9 @@ int main(void)
     CHECK_EQ_U64(ca_mult_order(2, 7), 3);
     CHECK_EQ_U64(ca_mult_order(3, 7), 6);
     CHECK_EQ_U64(ca_next_prime(1000000), 1000003);
+    CHECK_EQ_U64(ca_next_prime(18446744073709551556ULL), 18446744073709551557ULL);
+    CHECK_EQ_U64(ca_next_prime(18446744073709551557ULL), 0); /* no larger 64-bit prime */
+    CHECK_EQ_U64(ca_next_prime(UINT64_MAX), 0);
     /* CRT */
     CHECK_EQ_U64(ca_crt2(2, 3, 3, 5), 8);
     CHECK_EQ_U64(ca_crt2(1, 1000003, 5, 999983) % 1000003, 1);

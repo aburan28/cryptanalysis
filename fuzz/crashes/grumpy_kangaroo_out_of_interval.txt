@@ -1,0 +1,64 @@
+ca_grumpy_solve / ca_kangaroo_solve return a logarithm outside [lo, hi]
+=======================================================================
+
+STATUS: FIXED.  ca_fit_interval_base in src/dlog_internal.h now retries the
+fit modulo ord(base), and both solvers keep searching instead of returning a
+value they could not fit.  Regression tests: tests/test_grumpy.c and
+tests/test_kangaroo.c.  fuzz_dlog asserts the interval for every solver again.
+
+Harness   : fuzz_dlog  (found by the harness itself, no special build needed)
+Input     : grumpy_kangaroo_out_of_interval.bin  (35 bytes, libFuzzer-minimised)
+Reproduce : ./build-fuzz/fuzz_dlog fuzz/crashes/grumpy_kangaroo_out_of_interval.bin
+            (the harness no longer asserts this, see the note below)
+
+ca_grumpy.h and ca_kangaroo.h both document the interval contract as
+"finds x in [lo, hi] with x * base == target".  Both solvers can return
+CA_OK with an x that verifies but lies outside [lo, hi].
+
+Mechanism
+---------
+src/grumpy.c:grumpy_candidate() (and the identical shape in
+src/kangaroo.c, around the tame/wild collision) does:
+
+        if (ca_verify_log(c->g, c->base, c->target, xx)) {
+            uint64_t fit = xx;
+            if (ca_fit_interval(n, &fit, c->lo, c->hi)) xx = fit;
+            *x = xx;                 /* <-- kept even when the fit failed */
+            return 1;
+        }
+
+ca_fit_interval() shifts the candidate by multiples of n = g->order.  When
+the base generates a *proper* subgroup of order d | n, the solutions form
+a class modulo d, not modulo n, so a representative inside [lo, hi] may
+exist while no representative of the found value modulo n does.  The fit
+then fails and the out-of-range value is returned anyway.
+
+Minimal deterministic reproducer (no fuzzer involved)
+-----------------------------------------------------
+    ca_group g;
+    ca_group_zp_init(&g, 7, 0);            /* Z_7^*, order 6          */
+    ca_elem base, target;
+    uint64_t w[4] = {2, 0, 0, 0};
+    ca_group_encode(&g, &base, w);         /* 2 has order 3, not 6    */
+    ca_group_mul(&g, &target, &base, 2, NULL);   /* target = 2^2 = 4  */
+    uint64_t x;
+    ca_grumpy_params p; ca_grumpy_params_default(&p); p.max_ops = 100000;
+    ca_grumpy_solve(&g, &base, &target, 0, 2, &p, &x, NULL);
+    /* returns CA_OK with x = 5, although x = 2 is in [0, 2] */
+
+The minimised fuzz input hits the same thing on a curve: E(F_5) with
+#E = 6, a base of order 2, x0 = 1, interval [0, 1], answer 3.
+
+Impact
+------
+Callers that use the interval solvers to search a bounded range (the whole
+point of kangaroo and grumpy giants) can get an answer they then index
+with, or compare against the range, and be wrong.  The value does satisfy
+x*base == target, so it is not a soundness failure of the logarithm
+itself.  ca_bsgs_solve does not have the bug: it checks `cand <= hi`.
+
+Harness note
+------------
+fuzz_dlog therefore asserts only soundness for kangaroo and grumpy; the
+"x in [lo, hi]" half of the contract is asserted for BSGS only.  Re-enable
+it by restoring the `CHK(x >= eff_lo && x <= eff_hi)` lines once fixed.

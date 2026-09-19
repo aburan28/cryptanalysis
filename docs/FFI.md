@@ -70,20 +70,40 @@ cmake --build build -j
 Alternatively `cmake --install build` installs headers, libraries and a
 `cryptanalysis.pc` pkg-config file.
 
+## GPU entry points
+
+`ca_ffi_gpu_rho` runs the CUDA rho solver (or its host emulator) through
+the same opaque-handle conventions, with options in `ca_ffi_gpu_options`
+(`ca_ffi_gpu_options_default`, size checked by `ca_ffi_gpu_options_size`).
+`ca_ffi_gpu_cuda_compiled`, `ca_ffi_gpu_device_count` and
+`ca_ffi_gpu_device_name` describe what the build and the machine can do.
+`backend` is 0 for automatic, 1 to require CUDA (returns
+`CA_ERR_UNSUPPORTED` when it is unavailable) and 2 to force the emulator.
+See [GPU.md](GPU.md).
+
 ## Rust (`bindings/rust`)
 
-Two crates: `cryptanalysis-sys` compiles the C sources with the `cc` crate
-(no separate CMake step) and exposes the raw `extern "C"` declarations;
-`cryptanalysis` is the safe wrapper (`Group`, `Elem`, `Options`, `Stats`,
-solver methods returning `Result`).  `cargo test` in `bindings/rust` runs
-the tests.
+Three crates.  `cryptanalysis-sys` compiles the C sources with the `cc`
+crate (no separate CMake step) and exposes the raw `extern "C"`
+declarations; `cryptanalysis` is the safe wrapper (`Group`, `Elem`,
+`Options`, `Stats`, `GpuOptions`, solver methods returning `Result`); and
+`cryptanalysis-cuda` launches the CUDA kernel from Rust through the CUDA
+driver API, without going through the C library.  `cargo test` in
+`bindings/rust` runs the tests for all three.
+
+Note that `cryptanalysis-sys` builds the CPU library plus the GPU driver,
+the emulator backend and the no-CUDA stub.  The CUDA backend of the C
+library (`cuda/gpu_cuda.c` and the kernel) is not part of that crate; Rust
+reaches the device through `cryptanalysis-cuda` instead.
 
 ## Go (`bindings/go`)
 
 Module `github.com/aburan28/cryptanalysis/bindings/go`, package
 `cryptanalysis`.  It is cgo based and compiles the C sources itself (one
 wrapper `.c` per source file), so `go build` needs only a C compiler.
-`go test ./...` runs the tests.
+`go test ./...` runs the tests.  The GPU entry points are reachable from C
+and Rust but are not wrapped in Go yet; a Go program that needs them can
+call them through cgo directly.
 
 ## Python (`bindings/python`)
 
@@ -91,7 +111,9 @@ Pure-Python `ctypes` package `cryptanalysis`.  The loader looks for the
 shared library in `CRYPTANALYSIS_LIB`, inside the package, in the
 developer checkout's `build/` directory, and finally on the system path.
 `python3 -m unittest discover -s tests` runs the tests; `pip install .`
-compiles the shared library into the package.
+compiles the shared library into the package (from `src/*.c`, which never
+needs CUDA headers).  As with Go, the GPU entry points are not wrapped in
+Python yet.
 
 ## Adding a binding for another language
 

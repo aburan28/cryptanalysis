@@ -1,0 +1,52 @@
+# Ruff configuration for the ctypes bindings (`ruff check` + `ruff format`).
+#
+# Run from bindings/python:
+#     ruff check .
+#     ruff format --check .
+
+line-length = 100                # the house style of this package; 88 would rewrap most of it
+target-version = "py38"          # matches requires-python = ">=3.8" in pyproject.toml
+src = ["."]
+extend-exclude = ["build", "dist"]
+
+[lint]
+select = [
+    "F",      # pyflakes
+    "E", "W", # pycodestyle
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+    "RET",    # flake8-return
+    "PIE",    # flake8-pie
+    "RSE",    # flake8-raise
+    "TID",    # flake8-tidy-imports
+    "PGH",    # pygrep-hooks: no blanket `# noqa` / `# type: ignore`
+    "RUF",    # ruff-specific
+    "D",      # pydocstyle
+]
+ignore = [
+    # D1xx (missing docstrings): the package documents every public function,
+    # but `__enter__`/`__exit__`/`__repr__` and the one-line ctypes accessors
+    # do not benefit from boilerplate, and unittest methods document
+    # themselves through their names.
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+    # D401 (imperative mood): most docstrings here describe properties and
+    # accessors ("The curve coefficient a"), for which a noun phrase is the
+    # right form.
+    "D401",
+    # UP007 / UP045 (PEP 604 unions): the package supports Python 3.8, where
+    # `X | None` is only legal inside string annotations.  `typing.Optional`
+    # is used deliberately and consistently.
+    "UP007", "UP045",
+]
+
+[lint.pydocstyle]
+convention = "pep257"
+
+[lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[format]
+docstring-code-format = true

@@ -1,0 +1,93 @@
+# golangci-lint v2 schema (migrated from v1 with `golangci-lint migrate`).
+# v1 cannot read the export data produced by current Go toolchains, which is
+# why the action and this file are both on v2.
+#
+# Every disabled check below corresponds to a finding actually seen in this
+# package, with the reason next to it.
+version: "2"
+run:
+  tests: true
+linters:
+  enable:
+    - durationcheck
+    - errname
+    - errorlint
+    - gocritic
+    - gosec
+    - makezero
+    - misspell
+    - nilerr
+    - nolintlint
+    - predeclared
+    - revive
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+  settings:
+    gocritic:
+      disabled-checks:
+        # cgo false positive: the pseudo-package "C" counts as a second
+        # import alongside "unsafe", so every cgo file trips this.
+        - dupImport
+        # cgo false positive: gocritic inspects the rewritten
+        # _Cfunc_ca_ic_precompute expansion and reports an identical
+        # left- and right-hand side past the end of the real source line.
+        - dupSubExpr
+        # Flags the explanatory `// p = 2*order + 1` next to a const.
+        - commentedOutCode
+        # Style only, and the two helpers it hits are three lines each.
+        - unnamedResult
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    govet:
+      disable:
+        # Options, Stats, ICParams and ICStats are field-for-field mirrors of
+        # the C structs.  Reordering them to save eight bytes would destroy
+        # the correspondence the conversion functions rely on.
+        - fieldalignment
+        # Three hits, all `if _, err := f(); ...` inside a function that
+        # already has an err.  That is ordinary Go.
+        - shadow
+      enable-all: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    revive:
+      rules:
+        - name: exported
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Runnable godoc examples use the documented log.Fatal(err) plus
+      # defer x.Close() shape.
+      - linters:
+          - gocritic
+        path: example_test\.go
+        text: exitAfterDefer
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

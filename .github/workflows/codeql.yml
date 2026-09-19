@@ -1,0 +1,64 @@
+name: codeql
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    # 04:41 UTC on Mondays, so a new query pack is seen even on a quiet week.
+    - cron: '41 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      # Required to upload the SARIF results to the security tab.
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: c-cpp
+            build-mode: manual
+          - language: go
+            build-mode: autobuild
+          - language: python
+            build-mode: none
+          # The Rust analysis is still in public preview upstream; it is left
+          # out so a preview regression cannot block a pull request.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # security-extended, not security-and-quality: the quality pack adds
+          # style queries (undocumented function, "include header files only"
+          # for the .cuh device header) that clang-tidy and cppcheck already
+          # cover properly, and that would make this check permanently amber.
+          queries: security-extended
+
+      - name: Build the C library
+        if: matrix.language == 'c-cpp'
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}

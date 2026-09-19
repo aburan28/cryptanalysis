@@ -105,7 +105,7 @@ static void walk_restart(rho_shared *sh, rho_walk *w, ca_rng *rng, uint64_t *ops
 }
 
 /* Apply the exponent update for a step with multiplier i and sign flag. */
-static inline void walk_apply(rho_shared *sh, rho_walk *w, uint32_t i, int negated)
+static inline void walk_apply(const rho_shared *sh, rho_walk *w, uint32_t i, int negated)
 {
     exp_add(sh->n, &w->a, sh->alpha[i]);
     exp_add(sh->n, &w->b, sh->beta[i]);
@@ -376,10 +376,10 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
          * the whole table under sqrt(n)/16 operations so that the setup
          * never dominates, within [8, 1024] (negation map) or [8, 32]. */
         int lg = ilog2_u64(n) + 1;
-        uint64_t budget = sqrt_n / (16u * 3u * (uint64_t)lg);
+        uint64_t budget = sqrt_n / (48u * (uint64_t)lg);
         uint32_t r = 8;
         uint32_t cap = sh.negmap ? 1024u : 32u;
-        while (r * 2 <= budget && r * 2 <= cap) r *= 2;
+        while ((uint64_t)r * 2 <= budget && r * 2 <= cap) r *= 2;
         sh.r = r;
     }
     if (sh.r < 4) sh.r = 4;
@@ -402,6 +402,8 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
     if (W > RHO_MAX_WALKS) W = RHO_MAX_WALKS;
     sh.walks = W;
     int dp = params->dp_bits;
+    /* dp is a shift count for a 64-bit mask, and `24 << dp` must not wrap. */
+    if (dp > 58) dp = 58;
     if (dp < 0) {
         double expected = 1.25 * (double)sqrt_n / (sh.negmap ? 1.4142 : 1.0);
         double total_walks = (double)threads * W;
@@ -447,8 +449,11 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
 
     pthread_t *tids = calloc(threads, sizeof(pthread_t));
     rho_thread *ths = calloc(threads, sizeof(rho_thread));
-    if (!tids || !ths) {
-        free(tids); free(ths);
+    uint8_t *created = calloc(threads, 1);
+    if (!tids || !ths || !created) {
+        free(tids);
+        free(ths);
+        free(created);
         ca_htab_free(&sh.tab);
         free(sh.M); free(sh.alpha); free(sh.beta);
         pthread_mutex_destroy(&sh.lock);
@@ -461,6 +466,7 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         if (threads == 1) {
             rho_thread_main(&ths[t]);
         } else if (pthread_create(&tids[t], NULL, rho_thread_main, &ths[t]) == 0) {
+            created[t] = 1;
             started++;
         }
     }
@@ -468,7 +474,8 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         /* could not spawn: run inline */
         rho_thread_main(&ths[0]);
     }
-    for (uint32_t t = 0; t < started; t++) pthread_join(tids[t], NULL);
+    for (uint32_t t = 0; t < threads; t++)
+        if (created[t]) pthread_join(tids[t], NULL);
 
     ca_status rc = sh.status;
     if (rc == CA_OK) *x = sh.result;
@@ -477,11 +484,13 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         st->iterations += atomic_load(&sh.total_dps);
         st->collisions += atomic_load(&sh.restarts);
         st->table_entries = ca_max_u64(st->table_entries, sh.tab.count);
-        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&sh.tab) + sh.r * 48);
+        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&sh.tab) + (uint64_t)sh.r * 48);
         st->threads = threads;
         st->seconds += ca_now() - t0;
     }
-    free(tids); free(ths);
+    free(tids);
+    free(ths);
+    free(created);
     ca_htab_free(&sh.tab);
     free(sh.M); free(sh.alpha); free(sh.beta);
     pthread_mutex_destroy(&sh.lock);

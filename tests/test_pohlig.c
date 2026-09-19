@@ -18,7 +18,7 @@ int main(void)
     }
     /* prime power factors: p = 2^16 * 3^4 * 5 + 1? find a prime with such structure */
     uint64_t q = 256ULL * 81 * 25 * 49 * 11 * 13 + 1; /* check primality below */
-    while (!ca_is_prime(q)) q += 2 * 3 * 5 * 7 * 11 * 13 * 2;
+    while (!ca_is_prime(q)) q += 2ULL * 3 * 5 * 7 * 11 * 13 * 2;
     CHECK(ca_group_zp_init(&g, q, 0) == CA_OK);
     w[0] = ca_primitive_root(q);
     CHECK(ca_group_encode(&g, &gen, w));
