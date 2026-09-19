@@ -1,6 +1,10 @@
 Undefined behaviour: dp_bits >= 64 shifts a 64-bit value by >= 64
 =================================================================
 
+STATUS: FIXED.  ca_rho_solve clamps dp_bits to 58 and ca_kangaroo_solve to 62,
+both documented in the headers.  Regression tests: tests/test_rho.c and
+tests/test_kangaroo.c.  fuzz_dlog fuzzes the whole int32 range again.
+
 Harness   : fuzz_dlog, built with -DCA_FUZZ_WILD_PARAMS
 Input     : rho_kangaroo_dp_bits_shift.bin
 Reproduce : see fuzz/crashes/README.md, then

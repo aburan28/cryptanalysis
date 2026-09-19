@@ -53,6 +53,23 @@ static inline int ca_fit_interval(uint64_t n, uint64_t *x, uint64_t lo, uint64_t
     return 1;
 }
 
+/* Reduce x into [lo, hi] modulo the order of `base`, if possible.
+ *
+ * ca_fit_interval shifts by multiples of the group order n, but the solutions
+ * of x*base == target form a class modulo d = ord(base), and d may properly
+ * divide n when base generates a subgroup.  A representative inside [lo, hi]
+ * can then exist with no representative modulo n, so the coarse fit has to be
+ * retried modulo d before the caller concludes there is none.  ord(base) is
+ * only computed on that path, which is the rare one. */
+static inline int ca_fit_interval_base(const ca_group *g, const ca_elem *base, uint64_t *x,
+                                       uint64_t lo, uint64_t hi)
+{
+    if (ca_fit_interval(g->order, x, lo, hi)) return 1;
+    uint64_t d = ca_group_elem_order(g, base);
+    if (d == 0 || d == g->order) return 0;
+    return ca_fit_interval(d, x, lo, hi);
+}
+
 static inline void ca_stats_begin(ca_stats *st) { (void)st; }
 
 #endif

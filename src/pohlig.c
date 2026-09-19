@@ -75,7 +75,9 @@ ca_status ca_dlog_prime_order(const ca_group *g, const ca_elem *base, const ca_e
         if (g->order == 0) return CA_ERR_INVALID;
         rc = ca_rho_solve(g, base, target, &params->rho, x, st);
         if (rc != CA_OK) return rc;
-        if (!ca_fit_interval(g->order, x, lo, hi)) return CA_ERR_NOT_FOUND;
+        /* modulo ord(base), not just modulo the group order: see the comment
+         * on ca_fit_interval_base */
+        if (!ca_fit_interval_base(g, base, x, lo, hi)) return CA_ERR_NOT_FOUND;
         return CA_OK;
     }
     default:

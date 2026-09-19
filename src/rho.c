@@ -402,6 +402,8 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
     if (W > RHO_MAX_WALKS) W = RHO_MAX_WALKS;
     sh.walks = W;
     int dp = params->dp_bits;
+    /* dp is a shift count for a 64-bit mask, and `24 << dp` must not wrap. */
+    if (dp > 58) dp = 58;
     if (dp < 0) {
         double expected = 1.25 * (double)sqrt_n / (sh.negmap ? 1.4142 : 1.0);
         double total_walks = (double)threads * W;

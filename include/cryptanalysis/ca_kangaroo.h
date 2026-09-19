@@ -16,9 +16,15 @@
 extern "C" {
 #endif
 
+/* Largest herd the solver will build.  A larger request is clamped to this
+ * rather than rejected: two herds of this size are already 64 MB of state,
+ * and 2 * herd_size must not overflow the 32-bit count. */
+#define CA_KANGAROO_MAX_HERD 1048576u
+
 typedef struct ca_kangaroo_params {
-    uint32_t herd_size;   /* kangaroos per herd (tame and wild each), 0 => auto */
-    int32_t  dp_bits;     /* distinguished point bits, -1 => auto */
+    uint32_t herd_size;   /* kangaroos per herd (tame and wild each), 0 => auto,
+                             clamped to CA_KANGAROO_MAX_HERD */
+    int32_t dp_bits;      /* distinguished point bits, -1 => auto, clamped to 62 */
     uint32_t jumps;       /* number of jump sizes (powers of two), 0 => auto */
     uint64_t seed;        /* 0 => random */
     uint64_t max_ops;     /* 0 => none */

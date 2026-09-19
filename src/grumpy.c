@@ -66,8 +66,10 @@ static int grumpy_candidate(grumpy_ctx *c, ca_i128 xprime_times, int doubled, ui
             xx = (uint64_t)full;
         }
         if (ca_verify_log(c->g, c->base, c->target, xx)) {
-            uint64_t fit = xx;
-            if (ca_fit_interval(n, &fit, c->lo, c->hi)) xx = fit;
+            /* The header promises x in [lo, hi].  A verified logarithm that
+             * cannot be shifted into the interval is not the answer that was
+             * asked for, so keep looking rather than return it. */
+            if (!ca_fit_interval_base(c->g, c->base, &xx, c->lo, c->hi)) continue;
             *x = xx;
             return 1;
         }

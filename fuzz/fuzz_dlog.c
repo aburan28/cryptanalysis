@@ -17,16 +17,13 @@
  * Bounding: the group is tiny and every solver gets a max_ops budget, so
  * one input costs well under a millisecond.
  *
- * Deliberate restriction - dp_bits is kept in [-1, 63].  The library does
- * not clamp it (unlike the GPU driver, which documents a clamp to 63), so
- * dp_bits >= 64 shifts a 64-bit value by >= 64 in src/rho.c and
- * src/kangaroo.c; see fuzz/crashes/rho_kangaroo_dp_bits_shift.txt.
- * Build with -DCA_FUZZ_WILD_PARAMS to let the harness reach it again.
- * herd_size is likewise capped: ca_kangaroo_solve loops forever when
- * 2*herd_size overflows uint32_t (fuzz/crashes/kangaroo_herd_size_hang.txt).
- * And the "x lies in [lo, hi]" half of the interval contract is asserted
- * only for BSGS: kangaroo and grumpy violate it for a base that generates a
- * proper subgroup (fuzz/crashes/grumpy_kangaroo_out_of_interval.txt).
+ * dp_bits is fuzzed over the whole int32 range and the interval half of the
+ * contract is asserted for every solver: both used to be restricted here to
+ * work around library defects, which are fixed (see fuzz/crashes/).
+ *
+ * herd_size is still bounded unless -DCA_FUZZ_WILD_PARAMS is set, but only
+ * for cost: the library clamps it, and a herd near the clamp allocates
+ * hundreds of megabytes.
  */
 #include "cryptanalysis/cryptanalysis.h"
 
@@ -58,21 +55,17 @@ static uint64_t fz_u64(fz *f)
     return v;
 }
 
-static int32_t pick_dp_bits(fz *f)
-{
-    int32_t dp = (int32_t)fz_u32(f);
-#ifndef CA_FUZZ_WILD_PARAMS
-    if (dp > 63) dp = dp % 64;
-    if (dp < -1) dp = -1;
-#endif
-    return dp;
-}
+/* The whole int32 range: the solvers clamp dp_bits, as their headers say. */
+static int32_t pick_dp_bits(fz *f) { return (int32_t)fz_u32(f); }
 
 static uint32_t pick_herd(fz *f)
 {
     uint32_t h = fz_u32(f);
 #ifndef CA_FUZZ_WILD_PARAMS
-    h &= 0x3FF; /* 2*herd must not overflow uint32_t */
+    /* Bounded for cost, not for correctness: the library clamps herd_size to
+     * CA_KANGAROO_MAX_HERD, but a herd near that bound allocates hundreds of
+     * megabytes and would dominate the fuzzer's time budget. */
+    h &= 0x3FF;
 #endif
     return h;
 }
@@ -221,11 +214,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         memset(&st, 0, sizeof(st));
         x = ~0ULL;
         ca_status rc = ca_kangaroo_solve(&g, &base, &target, ilo, ihi, &kp, &x, &st);
-        /* Soundness only.  The interval is NOT asserted here: when the base
-         * generates a proper subgroup, ca_kangaroo_solve and ca_grumpy_solve
-         * can return a verifying logarithm outside [lo, hi] - see
-         * fuzz/crashes/grumpy_kangaroo_out_of_interval.txt. */
-        if (rc == CA_OK) CHK(verifies(&g, &base, &target, x));
+        if (rc == CA_OK) {
+            CHK(verifies(&g, &base, &target, x));
+            CHK(x >= eff_lo && x <= eff_hi);
+        }
     }
 
     /* ---- grumpy giants -------------------------------------------------- */
@@ -240,8 +232,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         memset(&st, 0, sizeof(st));
         x = ~0ULL;
         ca_status rc = ca_grumpy_solve(&g, &base, &target, ilo, ihi, &gp, &x, &st);
-        /* Soundness only; see the note on ca_kangaroo_solve above. */
-        if (rc == CA_OK) CHK(verifies(&g, &base, &target, x));
+        if (rc == CA_OK) {
+            CHK(verifies(&g, &base, &target, x));
+            CHK(x >= eff_lo && x <= eff_hi);
+        }
     }
 
     /* ---- Pollard rho (whole group) --------------------------------------- */

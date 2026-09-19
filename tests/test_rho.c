@@ -86,5 +86,23 @@ int main(void)
     uint64_t got;
     fx_instance(&g, &gen, 424242, &h);
     CHECK(ca_rho_solve(&g, &gen, &h, &p, &got, NULL) == CA_ERR_LIMIT);
+    /* Regression, fuzz/crashes/rho_kangaroo_dp_bits_shift: dp_bits at or above
+     * the width of the mask used to shift a 64-bit value by >= 64. */
+    for (int32_t dpb = 58; dpb <= 200; dpb += 27) {
+        ca_rho_params dp;
+        ca_rho_params_default(&dp);
+        dp.seed = 7;
+        dp.threads = 1;
+        dp.dp_bits = dpb;
+        dp.max_ops = 200000;
+        uint64_t any = 0;
+        ca_status r = ca_rho_solve(&g, &gen, &h, &dp, &any, NULL);
+        CHECK(r == CA_OK || r == CA_ERR_LIMIT || r == CA_ERR_NOT_FOUND);
+        if (r == CA_OK) {
+            ca_elem chk;
+            ca_group_mul(&g, &chk, &gen, any, NULL);
+            CHECK(ca_group_equal(&g, &chk, &h));
+        }
+    }
     TEST_MAIN_END();
 }

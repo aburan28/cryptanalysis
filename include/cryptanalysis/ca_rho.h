@@ -24,7 +24,7 @@ extern "C" {
 typedef struct ca_rho_params {
     uint32_t threads;          /* worker threads, 0 => 1 */
     uint32_t r;                /* adding-walk multipliers, 0 => auto (32 / 1024 with negation) */
-    int32_t  dp_bits;          /* distinguished-point bits, -1 => auto */
+    int32_t dp_bits;           /* distinguished-point bits, -1 => auto, clamped to 58 */
     uint32_t walks_per_thread; /* simultaneous walks per thread (batched inversion), 0 => auto */
     int      negation_map;     /* 1 to use the negation map when the group supports it */
     uint64_t seed;             /* 0 => random */

@@ -58,5 +58,24 @@ int main(void)
     /* unknown group order: interval-only mode */
     g.order = 0;
     run(&g, &gen, 1ULL << 16, 5, 0.5, NULL);
+
+    /* Regression, fuzz/crashes/grumpy_kangaroo_out_of_interval: a base that
+     * generates a proper subgroup.  The solutions are a class modulo
+     * ord(base), not modulo the group order, so shifting the found value by
+     * multiples of the group order is not enough to land it in [lo, hi].
+     * The answer 2 is in [0, 2]; the solver used to return 5. */
+    CHECK(ca_group_zp_init(&g, 7, 0) == CA_OK); /* Z_7^*, order 6 */
+    const uint64_t w2[4] = {2, 0, 0, 0};        /* 2 has order 3 */
+    CHECK(ca_group_encode(&g, &gen, w2));
+    ca_elem h2;
+    ca_group_mul(&g, &h2, &gen, 2, NULL);
+    ca_grumpy_params gp;
+    ca_grumpy_params_default(&gp);
+    gp.max_ops = 100000;
+    uint64_t sub;
+    CHECK(ca_grumpy_solve(&g, &gen, &h2, 0, 2, &gp, &sub, NULL) == CA_OK);
+    CHECK_EQ_U64(sub, 2);
+    /* and the contract itself: whatever comes back is inside the interval */
+    CHECK(sub <= 2);
     TEST_MAIN_END();
 }

@@ -1,6 +1,11 @@
 ca_grumpy_solve / ca_kangaroo_solve return a logarithm outside [lo, hi]
 =======================================================================
 
+STATUS: FIXED.  ca_fit_interval_base in src/dlog_internal.h now retries the
+fit modulo ord(base), and both solvers keep searching instead of returning a
+value they could not fit.  Regression tests: tests/test_grumpy.c and
+tests/test_kangaroo.c.  fuzz_dlog asserts the interval for every solver again.
+
 Harness   : fuzz_dlog  (found by the harness itself, no special build needed)
 Input     : grumpy_kangaroo_out_of_interval.bin  (35 bytes, libFuzzer-minimised)
 Reproduce : ./build-fuzz/fuzz_dlog fuzz/crashes/grumpy_kangaroo_out_of_interval.bin

@@ -4,6 +4,10 @@ Reproducers for library defects the harnesses (or a targeted probe built from
 them) hit.  Nothing in this directory is part of the seed corpus, so the CI
 job never replays it - the workflow only reads `fuzz/corpus/`.
 
+**All three are fixed.**  Each `.txt` opens with the fix and the regression
+test that pins it.  The files stay because the reproducers are worth keeping
+and because they record what the harnesses' restrictions used to be for.
+
 Each `.bin` is a raw input for the harness named in the matching `.txt`.
 Two of the three need the harness's guard rails removed:
 

@@ -1,6 +1,10 @@
 ca_kangaroo_solve never returns when 2 * herd_size overflows uint32_t
 =====================================================================
 
+STATUS: FIXED.  herd_size is clamped to CA_KANGAROO_MAX_HERD (2^20), declared
+in ca_kangaroo.h, so 2*herd cannot wrap and the allocation stays bounded.
+Regression test: tests/test_kangaroo.c.
+
 Harness   : fuzz_dlog, built with -DCA_FUZZ_WILD_PARAMS
 Input     : kangaroo_herd_size_hang.bin
 Reproduce : see fuzz/crashes/README.md, then
