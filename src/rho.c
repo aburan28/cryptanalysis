@@ -454,21 +454,21 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         pthread_mutex_destroy(&sh.lock);
         return CA_ERR_NOMEM;
     }
-    uint32_t started = 0;
+    uint32_t nstarted = 0;
     for (uint32_t t = 0; t < threads; t++) {
         ths[t].sh = &sh;
         ths[t].id = t;
         if (threads == 1) {
             rho_thread_main(&ths[t]);
-        } else if (pthread_create(&tids[t], NULL, rho_thread_main, &ths[t]) == 0) {
-            started++;
+        } else if (pthread_create(&tids[nstarted], NULL, rho_thread_main, &ths[t]) == 0) {
+            nstarted++;
         }
     }
-    if (threads > 1 && started == 0) {
+    if (threads > 1 && nstarted == 0) {
         /* could not spawn: run inline */
         rho_thread_main(&ths[0]);
     }
-    for (uint32_t t = 0; t < started; t++) pthread_join(tids[t], NULL);
+    for (uint32_t t = 0; t < nstarted; t++) pthread_join(tids[t], NULL);
 
     ca_status rc = sh.status;
     if (rc == CA_OK) *x = sh.result;

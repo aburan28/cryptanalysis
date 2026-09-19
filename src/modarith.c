@@ -226,9 +226,13 @@ int ca_is_prime(uint64_t n)
 uint64_t ca_next_prime(uint64_t n)
 {
     if (n < 2) return 2;
+    if (n >= 18446744073709551557ULL) return 0; /* no 64-bit prime > n */
     n++;
     if ((n & 1) == 0) n++;
-    while (!ca_is_prime(n)) n += 2;
+    while (!ca_is_prime(n)) {
+        if (n > UINT64_MAX - 2) return 0;
+        n += 2;
+    }
     return n;
 }
 
