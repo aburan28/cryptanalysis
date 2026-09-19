@@ -4,7 +4,8 @@ CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release
 JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
-        shellcheck format checks rust go python bindings clean install cuda cuda-kernel
+        shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
+        orchestrator orchestrator-test smoke
 
 all: lib
 
@@ -34,6 +35,21 @@ cuda:
 # and no CUDA install (--fetch pulls the pieces from NVIDIA's pip wheels).
 cuda-kernel:
 	./scripts/build_cuda_kernel.sh --fetch
+
+# ---- the orchestration layer (Go; control plane + agents) -----------------
+# The Go tests take the library's own `ca` as their reference implementation
+# and skip without it, so the library is built first.
+orchestrator: lib
+	cd orchestrator && CGO_ENABLED=0 go build -trimpath -o ../$(BUILD)/ca-control ./cmd/ca-control
+	cd orchestrator && CGO_ENABLED=0 go build -trimpath -o ../$(BUILD)/ca-agent ./cmd/ca-agent
+
+orchestrator-test: lib
+	cd orchestrator && go vet ./... && CA_BIN=$(CURDIR)/$(BUILD)/ca go test -race ./...
+
+# One control plane, two agents, one instance, one real answer -- as separate
+# processes over a socket, which is where deployment bugs live.
+smoke: orchestrator
+	orchestrator/scripts/smoke.sh $(BUILD)
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \
