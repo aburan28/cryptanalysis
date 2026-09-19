@@ -42,12 +42,16 @@ static uint64_t zp_hash(const ca_group *g, const ca_elem *a)
     return ca_mix64(a->w[0] ^ 0x5bd1e995ULL);
 }
 
+/* The scratch pointer is non-const because the vtable slot is shared with the
+ * elliptic-curve implementation, which writes into the scratch space. */
+/* NOLINTBEGIN(readability-non-const-parameter) */
 static void zp_batch_op(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_elem *b,
                         size_t n, uint64_t *scratch)
 {
     (void)scratch;
     for (size_t i = 0; i < n; i++) r[i].w[0] = ca_mont_mul(&g->mont, a[i].w[0], b[i].w[0]);
 }
+/* NOLINTEND(readability-non-const-parameter) */
 
 static int zp_encode(const ca_group *g, ca_elem *r, const uint64_t *words)
 {

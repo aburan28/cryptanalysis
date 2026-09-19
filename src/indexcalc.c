@@ -160,11 +160,15 @@ static inline ca_i128 sieve_value(const sieve_shared *s, int64_t c1, int64_t c2)
 static void *sieve_thread(void *arg)
 {
     sieve_shared *s = arg;
+    /* The shared setup is written once before the threads start; copy the
+     * values this thread indexes with so that the bounds are provably the
+     * ones the buffers were sized for. */
+    const uint32_t nfb = s->nfb;
     int64_t C = s->C;
     size_t len = (size_t)(2 * C + 1);
     uint8_t *arr = malloc(len);
-    uint64_t *hmod = malloc(s->nfb * sizeof(uint64_t));   /* H mod q */
-    uint64_t *jmod = malloc(s->nfb * sizeof(uint64_t));   /* J mod q */
+    uint64_t *hmod = malloc(nfb * sizeof(uint64_t));   /* H mod q */
+    uint64_t *jmod = malloc(nfb * sizeof(uint64_t));   /* J mod q */
     rel_list local = {0};
     if (!arr || !hmod || !jmod) {
         free(arr); free(hmod); free(jmod);
@@ -174,7 +178,7 @@ static void *sieve_thread(void *arg)
         pthread_mutex_unlock(&s->lock);
         return NULL;
     }
-    for (uint32_t i = 0; i < s->nfb; i++) {
+    for (uint32_t i = 0; i < nfb; i++) {
         hmod[i] = s->H % s->fb[i];
         jmod[i] = s->J % s->fb[i];
     }
@@ -187,7 +191,7 @@ static void *sieve_thread(void *arg)
         int64_t c2lo = c1, c2hi = C;
         size_t n = (size_t)(c2hi - c2lo + 1);
         memset(arr, 0, n);
-        for (uint32_t i = 0; i < s->nfb; i++) {
+        for (uint32_t i = 0; i < nfb; i++) {
             uint64_t q = s->fb[i];
             /* a = (H + c1) mod q, b = (J + c1 H) mod q ; root: c2 = -b / a */
             uint64_t c1m = (uint64_t)(((c1 % (int64_t)q) + (int64_t)q) % (int64_t)q);
@@ -349,7 +353,10 @@ static ca_status build_matrix(const rel_list *rels, uint32_t ncols, uint64_t pm1
 {
     ca_status rc = ca_spmat_init(A, ncols, rels->n, rels->n * 16);
     if (rc != CA_OK) return rc;
-    uint64_t *b = malloc((rels->n ? rels->n : 1) * sizeof(uint64_t));
+    /* calloc: A->rows tracks the rows actually added below, so every entry the
+     * solver reads has been written -- but a zero rhs is the harmless value if
+     * a future caller ever hands us a matrix with more rows than relations. */
+    uint64_t *b = calloc(rels->n ? rels->n : 1, sizeof(uint64_t));
     if (!b) { ca_spmat_free(A); return CA_ERR_NOMEM; }
     for (uint32_t i = 0; i < rels->n; i++) {
         const relation *r = &rels->r[i];
@@ -371,16 +378,20 @@ static ca_status large_part_logs(const ca_spmat *A, const uint64_t *b, uint64_t 
     uint64_t qk = q;
     for (unsigned k = 1; k < e; k++) {
         /* residual r_i = (b_i - A_i x) / q^k  (exact integer division) */
-        uint64_t *r = malloc(A->rows * sizeof(uint64_t));
-        uint64_t *x1 = malloc(A->cols * sizeof(uint64_t));
-        uint8_t *kn1 = malloc(A->cols);
+        /* calloc, not malloc: nothing may read an entry the solver leaves
+         * untouched, and zero is the harmless value if one ever did. */
+        uint64_t *r = calloc(A->rows, sizeof(uint64_t));
+        uint64_t *x1 = calloc(A->cols, sizeof(uint64_t));
+        uint8_t *kn1 = calloc(A->cols, 1);
         if (!r || !x1 || !kn1) { free(r); free(x1); free(kn1); return CA_ERR_NOMEM; }
         uint64_t qk1 = qk * q;
         for (uint32_t i = 0; i < A->rows; i++) {
             ca_i128 acc = (ca_i128)(b[i] % qk1);
             for (uint32_t kk = A->row_ptr[i]; kk < A->row_ptr[i + 1]; kk++) {
                 uint32_t j = A->col[kk];
-                if (!known[j]) { acc = 0; break; }
+                /* j < A->cols by construction; the bound is checked anyway so
+                 * that a malformed matrix cannot index out of the solution. */
+                if (j >= A->cols || !known[j]) { acc = 0; break; }
                 acc -= (ca_i128)A->val[kk] * (ca_i128)x[j];
             }
             ca_i128 m = (ca_i128)qk1;
@@ -404,10 +415,11 @@ static ca_status large_part_logs(const ca_spmat *A, const uint64_t *b, uint64_t 
 
 static void vlog(const ca_ic_params *pr, const char *fmt, ...)
 {
-    if (!pr->verbose) return;
+    /* va_start unconditionally, so the list is always started and ended on
+     * every path (and the static analyser can see that it is). */
     va_list ap;
     va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
+    if (pr->verbose) vfprintf(stderr, fmt, ap);
     va_end(ap);
 }
 

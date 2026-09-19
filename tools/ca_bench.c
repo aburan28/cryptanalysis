@@ -330,7 +330,9 @@ static void run_ops(void)
     double t0 = ca_now();
     for (uint64_t i = 0; i < N; i++) ca_group_op(&g, &b, &b, &a);
     double t = ca_now() - t0;
-    printf("| zp 61-bit mulmod (Montgomery)      | %7.1f Mops/s | %6.1f ns/op |\n", N / t / 1e6, t / N * 1e9);
+    const double n_ops = (double)N;
+    printf("| zp 61-bit mulmod (Montgomery)      | %7.1f Mops/s | %6.1f ns/op |\n", n_ops / t / 1e6,
+           t / n_ops * 1e9);
     uint64_t ep, ea, eb, en;
     find_prime_order_curve(60, &ep, &ea, &eb, &en);
     ca_group_ec_init(&g, ep, ea, eb, en);
@@ -340,7 +342,9 @@ static void run_ops(void)
     t0 = ca_now();
     for (uint64_t i = 0; i < M; i++) ca_group_op(&g, &b, &b, &a);
     t = ca_now() - t0;
-    printf("| ec 60-bit affine add (1 inversion) | %7.2f Mops/s | %6.1f ns/op |\n", M / t / 1e6, t / M * 1e9);
+    const double m_ops = (double)M;
+    printf("| ec 60-bit affine add (1 inversion) | %7.2f Mops/s | %6.1f ns/op |\n", m_ops / t / 1e6,
+           t / m_ops * 1e9);
     /* batched */
     enum { W = 256 };
     ca_elem A[W], B[W], R[W];
@@ -352,7 +356,11 @@ static void run_ops(void)
         memcpy(A, R, sizeof(A));
     }
     t = ca_now() - t0;
-    printf("| ec 60-bit affine add (batch 256)   | %7.2f Mops/s | %6.1f ns/op |\n", (M / W * W) / t / 1e6, t / (M / W * W) * 1e9);
+    /* M is rounded down to a whole number of batches, so count what really ran. */
+    const uint64_t batched = M / W * W;
+    const double b_ops = (double)batched;
+    printf("| ec 60-bit affine add (batch 256)   | %7.2f Mops/s | %6.1f ns/op |\n", b_ops / t / 1e6,
+           t / b_ops * 1e9);
 }
 
 int main(int argc, char **argv)

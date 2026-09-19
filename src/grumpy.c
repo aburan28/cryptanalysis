@@ -134,7 +134,6 @@ ca_status ca_grumpy_solve(const ca_group *g, const ca_elem *base, const ca_elem 
     ca_elem B = {{0}}, U = Hp, V = H2;
     ca_group_identity(g, &B);
     uint64_t i = 0;
-    rc = CA_ERR_INTERNAL;
     /* Upper bound on iterations: the baby walk alone finds x' in at most
      * width+1 steps (it meets U_0 = H'). */
     uint64_t max_iter = width + 2;

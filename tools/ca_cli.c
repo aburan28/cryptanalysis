@@ -32,30 +32,49 @@
 static int argc_g;
 static char **argv_g;
 
+static _Noreturn void die(const char *msg);
+
+/* C11 5.1.2.2.1p2 guarantees argv[0]..argv[argc-1] are non-null, but a static
+ * analyser only sees a char ** of unknown provenance.  Say it once, here. */
+static int arg_is(int i, const char *name)
+{
+    const char *a = argv_g[i];
+    return a != NULL && strcmp(a, name) == 0;
+}
+
 static const char *opt(const char *name)
 {
     for (int i = 2; i + 1 < argc_g; i++)
-        if (strcmp(argv_g[i], name) == 0) return argv_g[i + 1];
+        if (arg_is(i, name)) return argv_g[i + 1];
     return NULL;
 }
 
 static int flag(const char *name)
 {
     for (int i = 2; i < argc_g; i++)
-        if (strcmp(argv_g[i], name) == 0) return 1;
+        if (arg_is(i, name)) return 1;
     return 0;
 }
 
 static uint64_t opt_u64(const char *name, uint64_t def)
 {
     const char *v = opt(name);
-    return v ? strtoull(v, NULL, 0) : def;
+    if (!v) return def;
+    char *end = NULL;
+    unsigned long long u = strtoull(v, &end, 0);
+    if (end == v || *end != '\0') die("option value is not an integer");
+    return (uint64_t)u;
 }
 
+/* strtod, not atof: atof cannot report a malformed value (cert-err34-c). */
 static double opt_f(const char *name, double def)
 {
     const char *v = opt(name);
-    return v ? atof(v) : def;
+    if (!v) return def;
+    char *end = NULL;
+    double d = strtod(v, &end);
+    if (end == v || *end != '\0') die("option value is not a number");
+    return d;
 }
 
 static _Noreturn void die(const char *msg)

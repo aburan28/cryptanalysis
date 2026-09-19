@@ -296,7 +296,7 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
     ca_group_mul(g, &base, P, lo, NULL);
     ec_inv(g, &base, &base);
     ec_op(g, &R, T, &base); /* T - lo P */
-    uint64_t steps = width / m + 1;
+    uint64_t steps = m ? width / m + 1 : 1;
     for (uint64_t i = 0; i < steps; i++) {
         uint64_t j;
         if (ca_htab_find(&tab, ec_hash(g, &R), &j, NULL)) {

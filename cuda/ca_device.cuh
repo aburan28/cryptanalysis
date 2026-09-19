@@ -249,7 +249,7 @@ CA_DEV void ca_dev_walk_step_single(const ca_gpu_rho_args *g, ca_dev_walk *w)
     uint32_t i = w->retry ? w->pend : ca_dev_index(g, ca_dev_hash(g->kind, w->x, w->y, g->p));
     for (;;) {
         uint64_t nx = w->x, ny = w->y;
-        ca_dev_op(g, &nx, &ny, g->mult[4 * i], g->mult[4 * i + 1]);
+        ca_dev_op(g, &nx, &ny, g->mult[4 * (size_t)i], g->mult[4 * (size_t)i + 1]);
         int neg = ca_dev_canon(g, nx, &ny);
         if (g->negmap && ca_dev_index(g, ca_dev_hash(g->kind, nx, ny, g->p)) == i) {
             i = (i + 1) % g->r;
@@ -257,8 +257,8 @@ CA_DEV void ca_dev_walk_step_single(const ca_gpu_rho_args *g, ca_dev_walk *w)
         }
         w->x = nx;
         w->y = ny;
-        w->a = ca_dev_addmod(w->a, g->mult[4 * i + 2], g->n);
-        w->b = ca_dev_addmod(w->b, g->mult[4 * i + 3], g->n);
+        w->a = ca_dev_addmod(w->a, g->mult[4 * (size_t)i + 2], g->n);
+        w->b = ca_dev_addmod(w->b, g->mult[4 * (size_t)i + 3], g->n);
         if (neg) ca_dev_walk_negate_exps(g, w);
         w->retry = 0;
         return;
@@ -358,19 +358,19 @@ CA_DEV void ca_dev_rho_thread(const ca_gpu_rho_args *g, uint32_t tid)
         if (g->kind == CA_GPU_KIND_ZP) {
             for (int k = 0; k < CA_GPU_W; k++) {
                 uint32_t i = idx[k];
-                uint64_t nx = ca_dev_mont_mul(w[k].x, g->mult[4 * i], p, pinv);
+                uint64_t nx = ca_dev_mont_mul(w[k].x, g->mult[4 * (size_t)i], p, pinv);
                 w[k].x = nx;
-                w[k].a = ca_dev_addmod(w[k].a, g->mult[4 * i + 2], g->n);
-                w[k].b = ca_dev_addmod(w[k].b, g->mult[4 * i + 3], g->n);
+                w[k].a = ca_dev_addmod(w[k].a, g->mult[4 * (size_t)i + 2], g->n);
+                w[k].b = ca_dev_addmod(w[k].b, g->mult[4 * (size_t)i + 3], g->n);
                 w[k].since_dp++;
                 uint64_t h = ca_dev_hash(g->kind, nx, 0, p);
                 if ((h & g->dp_mask) == 0) {
                     uint32_t slot = ca_dev_dp_reserve(g->dp_count);
                     if (slot < g->dp_cap) {
-                        g->dp_out[4 * slot] = h;
-                        g->dp_out[4 * slot + 1] = w[k].a;
-                        g->dp_out[4 * slot + 2] = w[k].b;
-                        g->dp_out[4 * slot + 3] = wid0 + k;
+                        g->dp_out[4 * (size_t)slot] = h;
+                        g->dp_out[4 * (size_t)slot + 1] = w[k].a;
+                        g->dp_out[4 * (size_t)slot + 2] = w[k].b;
+                        g->dp_out[4 * (size_t)slot + 3] = wid0 + k;
                     }
                     w[k].since_dp = 0;
                 } else if (w[k].since_dp > abandon) {
@@ -384,7 +384,7 @@ CA_DEV void ca_dev_rho_thread(const ca_gpu_rho_args *g, uint32_t tid)
         /* elliptic curve: batched affine addition */
         for (int k = 0; k < CA_GPU_W; k++) {
             uint32_t i = idx[k];
-            uint64_t bx = g->mult[4 * i], by = g->mult[4 * i + 1];
+            uint64_t bx = g->mult[4 * (size_t)i], by = g->mult[4 * (size_t)i + 1];
             uint64_t d;
             if (w[k].x == p || bx == p) d = one;
             else if (w[k].x == bx) d = (w[k].y == by && w[k].y != 0) ? ca_dev_addmod(w[k].y, w[k].y, p) : one;
@@ -397,7 +397,7 @@ CA_DEV void ca_dev_rho_thread(const ca_gpu_rho_args *g, uint32_t tid)
             uint64_t di = k ? ca_dev_mont_mul(inv, pre[k - 1], p, pinv) : inv;
             inv = ca_dev_mont_mul(inv, den[k], p, pinv);
             uint32_t i = idx[k];
-            uint64_t bx = g->mult[4 * i], by = g->mult[4 * i + 1];
+            uint64_t bx = g->mult[4 * (size_t)i], by = g->mult[4 * (size_t)i + 1];
             uint64_t nx, ny;
             if (w[k].x == p) { nx = bx; ny = by; }
             else if (bx == p) { nx = w[k].x; ny = w[k].y; }
@@ -424,8 +424,8 @@ CA_DEV void ca_dev_rho_thread(const ca_gpu_rho_args *g, uint32_t tid)
             w[k].retry = 0;
             w[k].x = nx;
             w[k].y = ny;
-            w[k].a = ca_dev_addmod(w[k].a, g->mult[4 * i + 2], g->n);
-            w[k].b = ca_dev_addmod(w[k].b, g->mult[4 * i + 3], g->n);
+            w[k].a = ca_dev_addmod(w[k].a, g->mult[4 * (size_t)i + 2], g->n);
+            w[k].b = ca_dev_addmod(w[k].b, g->mult[4 * (size_t)i + 3], g->n);
             if (neg) ca_dev_walk_negate_exps(g, &w[k]);
             w[k].since_dp++;
             if (g->negmap) {
@@ -444,10 +444,10 @@ CA_DEV void ca_dev_rho_thread(const ca_gpu_rho_args *g, uint32_t tid)
             if ((h & g->dp_mask) == 0) {
                 uint32_t slot = ca_dev_dp_reserve(g->dp_count);
                 if (slot < g->dp_cap) {
-                    g->dp_out[4 * slot] = h;
-                    g->dp_out[4 * slot + 1] = w[k].a;
-                    g->dp_out[4 * slot + 2] = w[k].b;
-                    g->dp_out[4 * slot + 3] = wid0 + k;
+                    g->dp_out[4 * (size_t)slot] = h;
+                    g->dp_out[4 * (size_t)slot + 1] = w[k].a;
+                    g->dp_out[4 * (size_t)slot + 2] = w[k].b;
+                    g->dp_out[4 * (size_t)slot + 3] = wid0 + k;
                 }
                 w[k].since_dp = 0;
             } else if (w[k].since_dp > abandon) {

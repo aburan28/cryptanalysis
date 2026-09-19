@@ -376,10 +376,10 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
          * the whole table under sqrt(n)/16 operations so that the setup
          * never dominates, within [8, 1024] (negation map) or [8, 32]. */
         int lg = ilog2_u64(n) + 1;
-        uint64_t budget = sqrt_n / (16u * 3u * (uint64_t)lg);
+        uint64_t budget = sqrt_n / (48u * (uint64_t)lg);
         uint32_t r = 8;
         uint32_t cap = sh.negmap ? 1024u : 32u;
-        while (r * 2 <= budget && r * 2 <= cap) r *= 2;
+        while ((uint64_t)r * 2 <= budget && r * 2 <= cap) r *= 2;
         sh.r = r;
     }
     if (sh.r < 4) sh.r = 4;
@@ -480,7 +480,7 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         st->iterations += atomic_load(&sh.total_dps);
         st->collisions += atomic_load(&sh.restarts);
         st->table_entries = ca_max_u64(st->table_entries, sh.tab.count);
-        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&sh.tab) + sh.r * 48);
+        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&sh.tab) + (uint64_t)sh.r * 48);
         st->threads = threads;
         st->seconds += ca_now() - t0;
     }

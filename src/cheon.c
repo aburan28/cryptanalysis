@@ -53,7 +53,9 @@ uint64_t ca_cheon_best_divisor(uint64_t p, double *cost_exps)
         uint64_t d = 1;
         for (unsigned i = 0; i < f.count; i++)
             for (unsigned e = 0; e < idx[i]; e++) d *= f.f[i].p;
-        double cost = 2.0 * (sqrt((double)((p - 1) / d)) + sqrt((double)d));
+        /* d divides p-1 exactly here, so the division loses nothing. */
+        uint64_t cofactor = (p - 1) / d;
+        double cost = 2.0 * (sqrt((double)cofactor) + sqrt((double)d));
         if (cost < best_cost) { best_cost = cost; best = d; }
         unsigned i = 0;
         while (i < f.count) {
@@ -76,6 +78,7 @@ static ca_status orbit_bsgs(const ca_group *g, const ca_elem *base, const ca_ele
                             uint64_t eta, uint64_t ord, uint64_t p, uint64_t max_exps,
                             uint64_t *u, ca_stats *st)
 {
+    if (ord == 0) return CA_ERR_INVALID; /* callers pass a divisor of p-1 */
     uint64_t m = ca_isqrt(ord - 1) + 1;
     if (m > ord) m = ord;
     ca_htab tab;
@@ -94,7 +97,7 @@ static ca_status orbit_bsgs(const ca_group *g, const ca_elem *base, const ca_ele
     /* giant steps: gt = target^(eta^(-m i)) */
     uint64_t eta_inv_m = ca_powmod(ca_invmod(eta, p), m, p);
     ca_elem gt = *target;
-    uint64_t steps = (ord - 1) / m + 1;
+    uint64_t steps = m ? (ord - 1) / m + 1 : 1;
     ca_status rc = CA_ERR_NOT_FOUND;
     for (uint64_t i = 0; i < steps; i++) {
         uint64_t j;

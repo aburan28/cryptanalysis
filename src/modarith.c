@@ -242,7 +242,8 @@ static uint64_t pollard_brent(uint64_t n, uint64_t c, uint64_t seed)
     ca_mont m;
     if (!ca_mont_init(&m, n)) return 0;
     uint64_t cm = ca_mont_to(&m, c);
-    uint64_t y = ca_mont_to(&m, seed), x = y, ys = y, q = m.r1, g = 1;
+    uint64_t y = ca_mont_to(&m, seed), q = m.r1, g = 1;
+    uint64_t x, ys; /* both are set before first use inside the loop */
     uint64_t r = 1;
     const uint64_t batch = 128;
     do {

@@ -39,11 +39,12 @@ int ca_gpu_device_name(int device, char *buf, size_t len)
 static int ilog2u(uint64_t v) { int l = -1; while (v) { v >>= 1; l++; } return l; }
 
 /* Solve from a collision between (a1,b1) and (a2,b2) at one canonical point. */
-static int gpu_try_solve(const ca_group *g, const ca_elem *base, const ca_elem *target, int negmap,
-                         uint64_t a1, uint64_t b1, uint64_t a2, uint64_t b2, uint64_t *x)
+static int gpu_try_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
+                         uint32_t negmap, uint64_t a1, uint64_t b1, uint64_t a2, uint64_t b2,
+                         uint64_t *x)
 {
     uint64_t n = g->order;
-    for (int sign = 0; sign < (negmap ? 2 : 1); sign++) {
+    for (unsigned sign = 0; sign < (negmap ? 2u : 1u); sign++) {
         uint64_t c, d;
         if (sign == 0) { c = ca_submod(b1, b2, n); d = ca_submod(a2, a1, n); }
         else {
@@ -141,25 +142,25 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
     else {
         uint64_t budget = sqrt_n / 64;
         uint32_t r = 8, cap = a.negmap ? 1024u : 64u;
-        while (r * 2 <= budget && r * 2 <= cap) r *= 2;
+        while ((uint64_t)r * 2 <= budget && r * 2 <= cap) r *= 2;
         a.r = r;
     }
     if (a.r < 4) a.r = 4;
     /* thread count: every walk start costs ~3 log2(n) operations; keep the
      * total under sqrt(n)/8.  Threads beyond nthreads in the last block
      * exit immediately, so small groups do not pay for a full block. */
+    /* Only the thread count is chosen here; each backend derives its own
+     * block count from it and from threads_per_block. */
     uint32_t tpb = params->threads_per_block ? params->threads_per_block : 128;
-    uint32_t blocks = params->blocks;
     uint64_t nthreads;
-    if (blocks == 0) {
+    if (params->blocks == 0) {
         uint64_t walks_cap = sqrt_n / (24u * (uint64_t)lg);
         uint64_t threads_cap = walks_cap / CA_GPU_W;
         if (threads_cap < 1) threads_cap = 1;
         uint64_t want = on_gpu ? (uint64_t)tpb * 1024 : (uint64_t)tpb * 4;
         nthreads = want > threads_cap ? threads_cap : want;
-        blocks = (uint32_t)((nthreads + tpb - 1) / tpb);
     } else {
-        nthreads = (uint64_t)blocks * tpb;
+        nthreads = (uint64_t)params->blocks * tpb;
     }
     a.nthreads = (uint32_t)nthreads;
     uint64_t nwalks = (uint64_t)a.nthreads * CA_GPU_W;
@@ -225,10 +226,11 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
         ca_group_mul(g, &t1, base, al, &setup_ops);
         ca_group_mul(g, &t2, target, be, &setup_ops);
         ca_group_op(g, &m, &t1, &t2);
-        mult[4 * i] = (a.kind == CA_GPU_KIND_EC && m.w[2]) ? g->p : m.w[0];
-        mult[4 * i + 1] = m.w[1];
-        mult[4 * i + 2] = al;
-        mult[4 * i + 3] = be;
+        uint64_t *slot = mult + 4 * (size_t)i;
+        slot[0] = (a.kind == CA_GPU_KIND_EC && m.w[2]) ? g->p : m.w[0];
+        slot[1] = m.w[1];
+        slot[2] = al;
+        slot[3] = be;
     }
     a.mult = mult;
 
@@ -257,16 +259,18 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
         dps_total += count;
         int done = 0;
         for (uint32_t i = 0; i < count && !done; i++) {
-            uint64_t h = dps[4 * i], da = dps[4 * i + 1], db = dps[4 * i + 2];
-            uint32_t wid = (uint32_t)dps[4 * i + 3];
+            const uint64_t *rec = dps + 4 * (size_t)i;
+            uint64_t h = rec[0], da = rec[1], db = rec[2];
+            uint32_t wid = (uint32_t)rec[3];
             uint64_t oa, ob;
             int ir = ca_htab_insert(&tab, h, da, db, &oa, &ob);
             if (ir < 0) { rc = CA_ERR_NOMEM; done = 1; break; }
             if (ir == 1) {
-                if (oa == da && ob == db) {
-                    ops->restart(ctx, wid);
-                    restarts++;
-                } else if (gpu_try_solve(g, base, target, a.negmap, oa, ob, da, db, x)) {
+                /* Identical (a, b) means the walk rediscovered its own trail;
+                 * a different pair that yields no logarithm is an unusable
+                 * relation.  Either way the walk is re-seeded. */
+                int same_trail = oa == da && ob == db;
+                if (!same_trail && gpu_try_solve(g, base, target, a.negmap, oa, ob, da, db, x)) {
                     rc = CA_OK;
                     done = 1;
                 } else {

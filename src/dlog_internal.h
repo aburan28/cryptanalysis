@@ -10,7 +10,7 @@
 /* Resolve [lo, hi] into (lo, width-1) where width-1 = hi - lo. Returns
  * CA_ERR_INVALID if the interval is empty or the group order is needed
  * but unknown. */
-static inline ca_status ca_resolve_interval(const ca_group *g, uint64_t *lo, uint64_t *hi)
+static inline ca_status ca_resolve_interval(const ca_group *g, const uint64_t *lo, uint64_t *hi)
 {
     if (*lo == 0 && *hi == 0) {
         if (g->order == 0) {
