@@ -163,22 +163,25 @@ impl Plan {
             0
         };
 
-        // Each launch does ~1/16 of the expected work, and at least 2^dp steps
-        // so that a distinguished point is likely within one launch.
+        // Aim at about 1/16 of the expected work per launch, but run at least
+        // long enough that the herd is likely to report a distinguished point
+        // (one per 2^dp steps, spread over nwalks walks).  A launch is not
+        // interruptible and max_ops is only checked between launches, so it is
+        // capped at the whole expected run, and at the work limit when one is
+        // set; without that an unusual dp_bits makes a single launch dwarf the
+        // entire search.
         let steps = if p.steps_per_launch != 0 {
             p.steps_per_launch
         } else {
-            let per = expected / (16.0 * nwalks as f64);
-            let mut steps = if per < 64.0 {
-                64u32
-            } else {
-                per.min(1e7) as u32
-            };
-            let floor = 1u32 << dp_bits.min(20);
-            if steps < floor {
-                steps = floor;
+            let mut per = expected / (16.0 * nwalks as f64);
+            let dp_floor = (1u64 << dp_bits.min(40)) as f64 / nwalks as f64;
+            per = per.max(dp_floor).max(64.0);
+            let whole_run = expected / nwalks as f64 + 64.0;
+            per = per.min(whole_run);
+            if p.max_ops != 0 {
+                per = per.min(p.max_ops as f64 / nwalks as f64 + 1.0);
             }
-            steps
+            per.clamp(1.0, 1e7) as u32
         };
 
         // DP buffer for one launch: twice the expected count plus slack, hard
@@ -289,11 +292,128 @@ mod tests {
             dp_bits: 99,
             ..Params::default()
         };
-        let plan = Plan::new(1_000_000_289, false, &params, true);
+        let plan = Plan::new(1_000_000_289, false, &params, false);
         assert_eq!(plan.r, 4);
         assert_eq!(plan.dp_bits, 63);
-        // 2^63 steps floor is clamped to 2^20
-        assert_eq!(plan.steps, 1 << 20);
+        // A launch never exceeds the whole expected run, so an absurd dp_bits
+        // no longer forces an enormous one (see matches_c_driver below).
+        assert_eq!(plan.steps, 1052);
+    }
+
+    /// One row of [`matches_c_driver`]: the inputs, then what the C driver
+    /// chose for them.
+    struct Row {
+        dp_bits_in: i32,
+        r_in: u32,
+        blocks_in: u32,
+        tpb_in: u32,
+        nthreads: u32,
+        dp_bits: u32,
+        steps: u32,
+        dp_cap: u32,
+    }
+
+    /// The C driver is the reference: this crate promises to pick the same
+    /// launch geometry, and nothing in Rust can check that by itself.  Every
+    /// row below was read out of `ca_gpu_rho_solve` for the same inputs, so a
+    /// change on either side that is not mirrored in the other fails here.
+    ///
+    /// Group of order 1000000289, negation map off, no work limit, and the
+    /// emulator's `on_gpu = false` (at this size the thread cap binds either
+    /// way, so the choice does not affect the result).
+    #[test]
+    fn matches_c_driver() {
+        const ROWS: &[Row] = &[
+            // An absurd dp_bits is clamped, and the launch is bounded by the
+            // whole expected run rather than 2^20 steps per walk.
+            Row {
+                dp_bits_in: 99,
+                r_in: 1,
+                blocks_in: 0,
+                tpb_in: 0,
+                nthreads: 5,
+                dp_bits: 63,
+                steps: 1052,
+                dp_cap: 4096,
+            },
+            // The ordinary automatic choice.
+            Row {
+                dp_bits_in: -1,
+                r_in: 0,
+                blocks_in: 0,
+                tpb_in: 0,
+                nthreads: 5,
+                dp_bits: 4,
+                steps: 64,
+                dp_cap: 4416,
+            },
+            Row {
+                dp_bits_in: 30,
+                r_in: 0,
+                blocks_in: 0,
+                tpb_in: 0,
+                nthreads: 5,
+                dp_bits: 30,
+                steps: 1052,
+                dp_cap: 4096,
+            },
+            Row {
+                dp_bits_in: 63,
+                r_in: 0,
+                blocks_in: 0,
+                tpb_in: 0,
+                nthreads: 5,
+                dp_bits: 63,
+                steps: 1052,
+                dp_cap: 4096,
+            },
+            Row {
+                dp_bits_in: 20,
+                r_in: 0,
+                blocks_in: 0,
+                tpb_in: 0,
+                nthreads: 5,
+                dp_bits: 20,
+                steps: 1052,
+                dp_cap: 4096,
+            },
+            // Every point distinguished: the DP buffer is sized up instead.
+            Row {
+                dp_bits_in: 0,
+                r_in: 0,
+                blocks_in: 0,
+                tpb_in: 0,
+                nthreads: 5,
+                dp_bits: 0,
+                steps: 64,
+                dp_cap: 9216,
+            },
+            // An explicit 1 block of 4 threads.
+            Row {
+                dp_bits_in: -1,
+                r_in: 4,
+                blocks_in: 1,
+                tpb_in: 4,
+                nthreads: 4,
+                dp_bits: 5,
+                steps: 77,
+                dp_cap: 4250,
+            },
+        ];
+        for row in ROWS {
+            let params = Params {
+                dp_bits: row.dp_bits_in,
+                r: row.r_in,
+                blocks: row.blocks_in,
+                threads_per_block: row.tpb_in,
+                negation_map: false,
+                ..Params::default()
+            };
+            let plan = Plan::new(1_000_000_289, false, &params, false);
+            let got = (plan.nthreads, plan.dp_bits, plan.steps, plan.dp_cap);
+            let want = (row.nthreads, row.dp_bits, row.steps, row.dp_cap);
+            assert_eq!(got, want, "dp_bits in = {}", row.dp_bits_in);
+        }
     }
 
     #[test]
