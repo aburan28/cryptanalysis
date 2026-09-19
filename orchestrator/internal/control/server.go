@@ -352,7 +352,7 @@ func (s *Server) handleCampaign(w http.ResponseWriter, r *http.Request) {
 	name = strings.Trim(name, "/")
 	c := s.campaign(name)
 	if c == nil {
-		writeErr(w, http.StatusNotFound, "no such campaign", name)
+		writeErr(w, http.StatusNotFound, "no such campaign", "")
 		return
 	}
 	writeJSON(w, http.StatusOK, c.status())
@@ -364,10 +364,17 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := strings.TrimSpace(req.Info.ID)
-	if id == "" {
-		writeErr(w, http.StatusBadRequest, "agent id is required", "")
+	if err := api.ValidateAgentID(id); err != nil {
+		// Refused at the edge rather than sanitised later: this id becomes a
+		// registry key, an owner check on every write, and a field in every
+		// log line about this agent.
+		writeErr(w, http.StatusBadRequest, "invalid agent id", err.Error())
 		return
 	}
+	req.Info.ID = id
+	req.Info.Hostname = api.CleanText(req.Info.Hostname)
+	req.Info.Version = api.CleanText(req.Info.Version)
+	req.Info.Platform = api.CleanText(req.Info.Platform)
 	now := s.cfg.Now()
 	s.mu.Lock()
 	a, ok := s.agents[id]
@@ -386,6 +393,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var req api.HeartbeatRequest
 	if !readJSON(w, r, &req, 1<<16) {
+		return
+	}
+	if err := api.ValidateAgentID(req.AgentID); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid agent id", err.Error())
 		return
 	}
 	now := s.cfg.Now()
@@ -425,8 +436,8 @@ func (s *Server) handleLease(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req, 1<<16) {
 		return
 	}
-	if req.AgentID == "" {
-		writeErr(w, http.StatusBadRequest, "agent id is required", "")
+	if err := api.ValidateAgentID(req.AgentID); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid agent id", err.Error())
 		return
 	}
 	s.mu.RLock()
@@ -473,15 +484,23 @@ func (s *Server) handlePoints(w http.ResponseWriter, r *http.Request) {
 	agent := q.Get("agent")
 	unit, err1 := strconv.ParseUint(q.Get("unit"), 10, 64)
 	fence, err2 := strconv.ParseUint(q.Get("fence"), 10, 64)
-	if name == "" || agent == "" || err1 != nil || err2 != nil {
+	if name == "" || err1 != nil || err2 != nil {
 		writeErr(w, http.StatusBadRequest, "campaign, agent, unit and fence are required", "")
+		return
+	}
+	if err := api.ValidateAgentID(agent); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid agent id", err.Error())
 		return
 	}
 	c := s.campaign(name)
 	if c == nil {
-		writeErr(w, http.StatusNotFound, "no such campaign", name)
+		writeErr(w, http.StatusNotFound, "no such campaign", "")
 		return
 	}
+	// From here on the campaign is named by the record the server holds, not
+	// by the query string that found it: one is a validated name this server
+	// created, the other is whatever arrived on the wire.
+	campaignName := c.def.Name
 	body := http.MaxBytesReader(w, r.Body, s.cfg.MaxUploadBytes)
 	data, err := io.ReadAll(body)
 	if err != nil {
@@ -513,11 +532,11 @@ func (s *Server) handlePoints(w http.ResponseWriter, r *http.Request) {
 	s.metrics.points.add(resp.Accepted)
 	s.metrics.rejects.add(resp.Rejected)
 	if resp.Solved {
-		s.cfg.Logger.Info("campaign solved", "campaign", name, "x", resp.X, "unit", unit)
+		s.cfg.Logger.Info("campaign solved", "campaign", campaignName, "x", resp.X, "unit", unit)
 	}
 	if resp.Rejected > 0 {
-		s.cfg.Logger.Warn("points rejected", "campaign", name, "agent", agent, "unit", unit,
-			"rejected", resp.Rejected)
+		s.cfg.Logger.Warn("points rejected", "campaign", campaignName, "agent", agent,
+			"unit", unit, "rejected", resp.Rejected)
 	}
 	s.mu.Lock()
 	if a, ok := s.agents[agent]; ok {
@@ -540,9 +559,16 @@ func (s *Server) handleComplete(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req, 1<<16) {
 		return
 	}
+	if err := api.ValidateAgentID(req.AgentID); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid agent id", err.Error())
+		return
+	}
+	// The one free-text field in the protocol, cleaned once here so that
+	// neither the ledger nor the log ever holds a newline an agent chose.
+	req.Reason = api.CleanText(req.Reason)
 	c := s.campaign(name)
 	if c == nil {
-		writeErr(w, http.StatusNotFound, "no such campaign", name)
+		writeErr(w, http.StatusNotFound, "no such campaign", "")
 		return
 	}
 	if err := c.complete(unit, req.AgentID, req.Fence, req.Steps, req.Points, req.Failed,
@@ -556,8 +582,8 @@ func (s *Server) handleComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Failed {
-		s.cfg.Logger.Warn("unit failed", "campaign", name, "unit", unit, "agent", req.AgentID,
-			"reason", req.Reason)
+		s.cfg.Logger.Warn("unit failed", "campaign", c.def.Name, "unit", unit,
+			"agent", req.AgentID, "reason", req.Reason)
 	}
 	s.mu.Lock()
 	if a, ok := s.agents[req.AgentID]; ok {
@@ -713,8 +739,13 @@ func logging(l *slog.Logger, next http.Handler) http.Handler {
 		} else if rec.code >= 400 {
 			level = slog.LevelWarn
 		}
-		l.Log(r.Context(), level, "request", "method", r.Method, "path", r.URL.Path,
-			"status", rec.code, "bytes", rec.bytes,
+		// The method and path come from the request line, so they are cleaned
+		// before they reach a log that an operator reads and a collector
+		// parses.  slog's JSON handler escapes them anyway; this is for the
+		// text handler a laptop run uses, and for anything that tails the
+		// file.
+		l.Log(r.Context(), level, "request", "method", api.CleanText(r.Method),
+			"path", api.CleanText(r.URL.Path), "status", rec.code, "bytes", rec.bytes,
 			"ms", time.Since(start).Milliseconds(), "remote", r.RemoteAddr)
 	})
 }

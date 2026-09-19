@@ -40,6 +40,21 @@
 
 #define CA_DIST_MAX_WALKS 4096
 
+/* The distinguished-point mask for a resolved campaign.
+ *
+ * ca_dist_resolve leaves dp_bits in [0, 58], but a shift by a negative count
+ * is undefined behaviour and the two call sites below are reached from public
+ * entry points, so the clamp is made here once rather than argued about at
+ * each of them.  A campaign that arrives with dp_bits < 0 has not been
+ * resolved, and treating it as 0 (every point distinguished) is the safe
+ * reading: it produces too many points, never too few. */
+static uint64_t dist_dp_mask(int32_t dp_bits)
+{
+    if (dp_bits <= 0) return 0;
+    if (dp_bits > 58) dp_bits = 58;
+    return (((uint64_t)1 << (unsigned)dp_bits) - 1);
+}
+
 typedef struct dist_walk {
     ca_elem Y;
     uint64_t a, b;
@@ -253,7 +268,7 @@ ca_status ca_dist_walk(const ca_group *g, const ca_elem *base, const ca_elem *ta
     d.target = *target;
     d.n = g->order;
     d.r = cc.r;
-    d.dp_mask = cc.dp_bits ? (((uint64_t)1 << cc.dp_bits) - 1) : 0;
+    d.dp_mask = dist_dp_mask(cc.dp_bits);
 
     uint64_t ops = 0;
     double start_time = ca_now();
@@ -452,7 +467,7 @@ ca_status ca_dist_merger_new(ca_dist_merger **out, const ca_group *g, const ca_e
     m->target = *target;
     m->c = cc;
     m->n = g->order;
-    m->dp_mask = cc.dp_bits ? (((uint64_t)1 << cc.dp_bits) - 1) : 0;
+    m->dp_mask = dist_dp_mask(cc.dp_bits);
     m->verify = 1;
     if (expect == 0) {
         double e = ca_dist_expected_points(g, &cc);
@@ -511,7 +526,7 @@ static int dist_admissible(ca_dist_merger *m, const ca_dist_point *pt)
 {
     const ca_group *g = m->g;
     if (pt->a >= m->n || pt->b >= m->n) return 0;
-    uint64_t words[4] = {pt->w0, pt->w1, 0, 0};
+    const uint64_t words[4] = {pt->w0, pt->w1, 0, 0};
     ca_elem Y;
     if (!ca_group_encode(g, &Y, words)) return 0; /* encode: 1 = ok, 0 = not a point */
     if (!ca_group_is_valid(g, &Y)) return 0;

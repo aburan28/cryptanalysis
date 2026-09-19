@@ -33,10 +33,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 )
+
+// campaignNamePattern mirrors api's campaign-name rule; the two are checked
+// against each other in the tests.
+var campaignNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
 // Blobs is where corpus files live.  The control plane only ever appends
 // immutable, content-addressed objects, which is what makes an object store
@@ -100,6 +105,12 @@ func (s *Store) Close() error {
 func (s *Store) SaveCampaign(name string, v any) error {
 	if err := safeName(name); err != nil {
 		return err
+	}
+	// safeName has already rejected separators and dots, so the join below
+	// cannot leave the campaigns directory; stating it with IsLocal keeps
+	// that true if safeName is ever loosened.
+	if !filepath.IsLocal(name + ".json") {
+		return fmt.Errorf("unsafe campaign name %q", name)
 	}
 	blob, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -243,12 +254,27 @@ type fsBlobs struct {
 	mu   sync.Mutex
 }
 
+// blobKey is the only shape a corpus key may have: a campaign name, a
+// zero-padded unit number and a content hash.  Every key this package writes
+// is built by PutCorpus from values it validated, so the pattern is not a
+// second line of defence against the caller -- it is the line of defence
+// against a key that came back from somewhere else (a listing of a directory
+// somebody edited, a future object-store backend, a request parameter that
+// reached further than it should).  A path is derived from a name, and a
+// name is data.
+var blobKey = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}/[0-9]{20}-[0-9a-f]{16}\.bin$`)
+
 func (b *fsBlobs) path(key string) (string, error) {
-	clean := filepath.Clean("/" + key)
-	if strings.Contains(clean, "..") {
-		return "", errors.New("bad blob key")
+	if !blobKey.MatchString(key) {
+		return "", fmt.Errorf("bad blob key %q", key)
 	}
-	return filepath.Join(b.root, clean), nil
+	// Belt and braces: the pattern above already excludes "..", a leading
+	// slash and anything but one separator, and filepath.IsLocal states the
+	// property the pattern is there to guarantee.
+	if !filepath.IsLocal(key) {
+		return "", fmt.Errorf("blob key %q escapes the store", key)
+	}
+	return filepath.Join(b.root, filepath.FromSlash(key)), nil
 }
 
 func (b *fsBlobs) Put(key string, data []byte) error {
@@ -278,6 +304,10 @@ func (b *fsBlobs) Get(key string) ([]byte, error) {
 	return os.ReadFile(p)
 }
 
+// List walks the store and returns the keys under a prefix.  It reads the
+// directory rather than trusting the prefix as a path: the prefix is only
+// ever compared against keys that were found on disk, so a caller cannot use
+// it to reach anywhere.
 func (b *fsBlobs) List(prefix string) ([]string, error) {
 	var out []string
 	root := b.root
@@ -345,8 +375,12 @@ func writeFileAtomic(path string, data []byte) error {
 	return d.Sync()
 }
 
+// safeName is the campaign-name gate for every path this store builds.  It
+// matches api.Campaign's own rule rather than merely excluding separators,
+// because a name that reaches a filesystem should be a name the rest of the
+// system would also accept.
 func safeName(name string) error {
-	if name == "" || strings.ContainsAny(name, "/\\.") {
+	if !campaignNamePattern.MatchString(name) {
 		return fmt.Errorf("unsafe name %q", name)
 	}
 	return nil

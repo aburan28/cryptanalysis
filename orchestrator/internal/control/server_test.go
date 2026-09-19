@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -468,4 +469,78 @@ func TestStateDirectoryIsSelfContained(t *testing.T) {
 		}
 	}
 	_ = strconv.Itoa
+}
+
+// An agent id is a registry key, an owner check and a log field, so the
+// server decides what one may look like rather than accepting whatever
+// arrives.  The rejected shapes below are the ones that actually cause
+// trouble: a newline forges a log line, a slash reaches for a path, and an
+// unbounded id is an unbounded map key.
+func TestAgentIdentityIsValidatedAtTheEdge(t *testing.T) {
+	s, _, _ := testServer(t)
+	testCampaign(t, s, "ids")
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	bad := []string{
+		"",
+		"agent one",
+		"agent/../../etc",
+		"agent\ninfo msg=\"forged log line\"",
+		strings.Repeat("a", 65),
+	}
+	for _, id := range bad {
+		body, _ := json.Marshal(api.RegisterRequest{Info: api.AgentInfo{ID: id}})
+		resp, err := http.Post(srv.URL+"/v1/agents/register", "application/json",
+			bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("register accepted agent id %q with status %d", id, resp.StatusCode)
+		}
+
+		body, _ = json.Marshal(api.LeaseRequest{AgentID: id})
+		resp, err = http.Post(srv.URL+"/v1/units/lease", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("lease accepted agent id %q with status %d", id, resp.StatusCode)
+		}
+	}
+
+	// And the shapes a real deployment produces are accepted: a Kubernetes
+	// pod name and the hostname-plus-suffix the agent builds for itself.
+	for _, id := range []string{"ca-agent-6d4b8c7f9-x2k4p", "ip-10-0-1-23.ec2.internal-a1b2c3"} {
+		body, _ := json.Marshal(api.RegisterRequest{Info: api.AgentInfo{ID: id}})
+		resp, err := http.Post(srv.URL+"/v1/agents/register", "application/json",
+			bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("register refused a legitimate agent id %q (%d)", id, resp.StatusCode)
+		}
+	}
+}
+
+// The free-text field an agent may set is cleaned once, at the boundary, so
+// that neither the ledger nor the log ever holds a line break somebody else
+// chose.
+func TestAgentTextIsCleanedBeforeItIsStored(t *testing.T) {
+	got := api.CleanText("boom\ninfo msg=\"unit finished\"\r\x00")
+	if strings.ContainsAny(got, "\n\r\x00") {
+		t.Fatalf("CleanText left a control character in %q", got)
+	}
+	if !strings.Contains(got, "boom") {
+		t.Fatalf("CleanText destroyed the message: %q", got)
+	}
+	long := api.CleanText(strings.Repeat("x", api.MaxReasonBytes*3))
+	if len(long) != api.MaxReasonBytes {
+		t.Fatalf("CleanText returned %d bytes, expected %d", len(long), api.MaxReasonBytes)
+	}
 }

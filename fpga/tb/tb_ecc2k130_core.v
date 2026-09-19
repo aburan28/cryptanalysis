@@ -86,20 +86,37 @@ module tb_ecc2k130_core;
                 end
                 if (wdp != 0) begin
                     dp_seen = dp_seen + 1;
-                    // Every tenth point, refuse to take it for a while and
-                    // check that the walk waits rather than moving on.
+                    // Every tenth point, refuse to take it and check that the
+                    // walk waits rather than moving on.
+                    //
+                    // The deassert is a blocking assignment on purpose.  A
+                    // non-blocking one lands after this edge, so the core's
+                    // very next edge still samples dp_ready high, takes the
+                    // point, and walks on -- and the check then reports a
+                    // core that "kept walking while a point was unread" when
+                    // in fact the point had been read.  That is exactly what
+                    // happened in CI at DIGIT=16, where the walk is fast
+                    // enough for the handshake to win the race; at DIGIT=4 it
+                    // passed and hid the bug.
                     if (dp_seen % 10 == 3) begin
-                        dp_ready <= 1'b0;
+                        dp_ready = 1'b0;
+                        // Wait for the core to present the point it just
+                        // produced, then confirm it stays presented and the
+                        // step counter stops.
+                        while (!dp_valid) @(posedge clk);
                         held = steps;
                         repeat (200) @(posedge clk);
                         if (steps != held) begin
                             $display("FAIL: the core kept walking while a point was unread (%0d -> %0d)",
                                      held, steps);
                             fails = fails + 1;
+                        end else if (!dp_valid) begin
+                            $display("FAIL: the core dropped a point the collector had not taken");
+                            fails = fails + 1;
                         end else begin
                             saw_backpressure = 1'b1;
                         end
-                        dp_ready <= 1'b1;
+                        dp_ready = 1'b1;
                         @(posedge clk);
                     end
                 end

@@ -196,9 +196,9 @@ func TestAnAgentStopsWhenItsLeaseIsTaken(t *testing.T) {
 	defer http.Close()
 
 	if _, err := srv.CreateCampaign(api.Campaign{
-		Name:      "steal",
-		Group:     api.Group{Kind: api.GroupZp, P: inst.P, Order: inst.Order, Base: inst.G, Target: inst.H},
-		Seed:      42, R: 32, DPBits: 20,
+		Name:  "steal",
+		Group: api.Group{Kind: api.GroupZp, P: inst.P, Order: inst.Order, Base: inst.G, Target: inst.H},
+		Seed:  42, R: 32, DPBits: 20,
 		UnitSteps: 200_000_000, // long enough that the lease expires first
 		UnitWalks: 16,
 	}); err != nil {

@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -78,6 +79,52 @@ func (g Group) Validate() error {
 }
 
 var campaignName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+
+// agentName is what an agent may call itself.  Agent ids are not cosmetic:
+// they are map keys in the registry, they appear in the status output an
+// operator reads, they go into log lines, and they are compared against a
+// unit's owner to decide who may write to it.  A free-form string in all of
+// those places is how a broken agent becomes an unreadable log and a hostile
+// one becomes a forged log line, so the shape is fixed here, once, at the
+// edge -- a Kubernetes pod name and an EC2 instance id both fit it.
+var agentName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+// ValidateAgentID reports whether an agent may use this id.
+func ValidateAgentID(id string) error {
+	if !agentName.MatchString(id) {
+		return errors.New("agent id must match [A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+	}
+	return nil
+}
+
+// MaxReasonBytes bounds the free text an agent may attach to a failed unit.
+const MaxReasonBytes = 512
+
+// CleanText makes a string from an agent safe to store and to log: control
+// characters (newlines above all, which is what forges a log line) become
+// spaces, and the result is truncated.  It is applied to the one free-text
+// field in the protocol; everything else an agent sends is a number or a
+// validated identifier.
+func CleanText(s string) string {
+	if len(s) > MaxReasonBytes {
+		s = s[:MaxReasonBytes]
+	}
+	// The line breaks first and by name: they are what turns one log entry
+	// into two, and a reader of this function should not have to work out
+	// that the general pass below happens to cover them.
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	// Then everything else that is not printable: NUL, escape sequences, and
+	// the terminal control characters that make a log file lie about what it
+	// contains.  Tabs survive because they are only ever cosmetic here.
+	return strings.Map(func(r rune) rune {
+		if r == '\t' || (r >= 0x20 && r != 0x7f) {
+			return r
+		}
+		return ' '
+	}, s)
+}
 
 // Campaign is the unit of work distribution: one instance, one walk
 // function, one corpus.  Its fields are immutable once created.

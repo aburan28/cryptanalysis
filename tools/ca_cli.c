@@ -30,10 +30,13 @@
 #include "cryptanalysis/ca_dist.h"
 #include "ca_device.cuh"
 
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static int argc_g;
 static char **argv_g;
@@ -404,8 +407,19 @@ static int cmd_dist_walk(void)
     const char *path = opt("--out");
     walk_sink sink = {stdout, 0, 0};
     if (path) {
-        sink.out = fopen(path, "wb");
-        if (!sink.out) die("cannot open --out for writing");
+        /* open() with an explicit mode rather than fopen(): a corpus is the
+         * output of machine time and there is no reason for it to be
+         * world-readable by default, which is what fopen's 0666 leaves after
+         * a permissive umask.  O_EXCL is deliberately absent: a unit that is
+         * re-walked rewrites its own file, and refusing that would make a
+         * retry an error. */
+        int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+        if (fd < 0) die("cannot open --out for writing");
+        sink.out = fdopen(fd, "wb");
+        if (!sink.out) {
+            close(fd);
+            die("cannot open --out for writing");
+        }
     }
     ca_stats st = {0};
     ca_status rc = ca_dist_walk(&g, &base, &target, &c, &u, walk_write, &sink, &st);

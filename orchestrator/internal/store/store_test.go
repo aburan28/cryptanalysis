@@ -3,6 +3,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -147,5 +148,66 @@ func TestLedgerSurvivesAReopen(t *testing.T) {
 	}
 	if len(units) != 2 || units[0] != 42 || units[1] != 43 {
 		t.Fatalf("reopening the ledger lost or reordered records: %v", units)
+	}
+}
+
+// A path built from a name is a path built from data, so the key that names
+// a blob is checked against the one shape this store writes.  The cases
+// below are the ones that matter: a key that climbs out of the store, one
+// that is absolute, and one whose campaign part would not be a legal
+// campaign name anywhere else in the system.
+func TestBlobKeysAreCheckedAgainstTheOneShapeTheStoreWrites(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	key, err := s.PutCorpus("demo", 3, []byte("a unit's worth of points, 32 by"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !blobKey.MatchString(key) {
+		t.Fatalf("the store wrote a key it would refuse to read: %q", key)
+	}
+
+	for _, bad := range []string{
+		"../escape/00000000000000000003-0011223344556677.bin",
+		"/demo/00000000000000000003-0011223344556677.bin",
+		"demo/../../etc/passwd",
+		"demo/00000000000000000003-0011223344556677.bin/extra",
+		"DEMO/00000000000000000003-0011223344556677.bin",
+		"demo/not-a-unit.bin",
+	} {
+		if _, err := s.GetCorpus(bad); err == nil {
+			t.Fatalf("reading blob key %q was allowed", bad)
+		}
+		if err := s.blobs.Put(bad, []byte("x")); err == nil {
+			t.Fatalf("writing blob key %q was allowed", bad)
+		}
+	}
+
+	// Nothing was created outside the corpus directory by any of that.
+	if _, err := os.Stat(filepath.Join(dir, "..", "escape")); err == nil {
+		t.Fatal("a rejected key still created a directory outside the store")
+	}
+}
+
+// The store's idea of a campaign name and the API's must not drift: one
+// builds paths, the other validates requests, and a name that is legal to
+// one and not the other is a campaign that cannot be saved or a path that
+// nobody checked.
+func TestCampaignNameRuleMatchesTheApi(t *testing.T) {
+	for _, ok := range []string{"demo", "ecc2k-130", "c1", "a"} {
+		if err := safeName(ok); err != nil {
+			t.Fatalf("store refused the legal campaign name %q: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "-lead", "Upper", "with space", "dot.name", "a/b", "..",
+		strings.Repeat("x", 64)} {
+		if err := safeName(bad); err == nil {
+			t.Fatalf("store accepted the illegal campaign name %q", bad)
+		}
 	}
 }
