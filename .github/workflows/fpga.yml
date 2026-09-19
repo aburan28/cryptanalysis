@@ -1,0 +1,94 @@
+name: fpga
+
+# The ECC2K-130 core: the golden model's own checks, then every testbench
+# against the vectors that model produces, then lint and a synthesis run.
+#
+# The order is the point.  The model is checked first and on its own terms --
+# field axioms, the Frobenius relation sigma^2 + sigma + 2 = 0, the subgroup
+# order -- and only then is the RTL compared against it.  A job that ran the
+# testbenches without the model's own suite would be checking that two things
+# agree without establishing that either is right.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "fpga/**"
+      - ".github/workflows/fpga.yml"
+  pull_request:
+    paths:
+      - "fpga/**"
+      - ".github/workflows/fpga.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: fpga
+
+jobs:
+  simulate:
+    name: model and testbenches (DIGIT=${{ matrix.digit }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # The narrow and the wide ends of the digit-serial multiplier: they
+        # exercise different rotation networks and different loop counts, and
+        # a bug in the folding shows up in one before the other.
+        digit: [1, 4, 16]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Icarus Verilog
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends iverilog
+
+      - name: Model, vectors, testbenches, host tooling
+        # The distinguished-point weight is relaxed from the campaign's 34:
+        # at 34 a point appears about once in 2^25 steps and no simulation
+        # would ever exercise the reporting path.  Both sides take the cutoff
+        # as a parameter, so the comparison is still of the same rule.
+        run: scripts/run_sim.sh ${{ matrix.digit }} 60 48
+
+  lint:
+    name: verilator
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install verilator
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends verilator
+      - name: Lint
+        # -Wall with no waivers: every warning in this tree has been fixed
+        # rather than suppressed, so a new one means new code.
+        run: verilator --lint-only -Wall -Irtl --top-module ecc2k130_top rtl/*.v
+
+  synthesise:
+    name: yosys area report
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yosys
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends yosys
+      - name: Synthesise one core and four
+        # Technology-independent synthesis mapped to LUT4s.  This is not a
+        # vendor place-and-route: there is no timing and no device here, and
+        # README.md says so where it quotes these numbers.
+        run: |
+          scripts/synth.sh 1 4
+          scripts/synth.sh 4 4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synth-logs
+          path: fpga/build/synth/*.log
+          if-no-files-found: ignore

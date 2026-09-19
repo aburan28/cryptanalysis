@@ -5,7 +5,7 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
-        orchestrator orchestrator-test smoke
+        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth
 
 all: lib
 
@@ -50,6 +50,20 @@ orchestrator-test: lib
 # processes over a socket, which is where deployment bugs live.
 smoke: orchestrator
 	orchestrator/scripts/smoke.sh $(BUILD)
+
+# ---- the ECC2K-130 FPGA core (fpga/) ---------------------------------------
+# A separate tree with its own toolchain: a golden C model, synthesisable
+# Verilog, testbenches that compare the two, and a host tool.  It is not part
+# of the library build -- the library works over 64-bit groups and ECC2K-130
+# is a 131-bit field -- so it has its own Makefile and its own CI workflow.
+fpga:
+	$(MAKE) -C fpga sim
+
+fpga-lint:
+	$(MAKE) -C fpga lint
+
+fpga-synth:
+	$(MAKE) -C fpga synth CORES=1 DIGIT=4
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \
