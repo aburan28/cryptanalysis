@@ -35,9 +35,9 @@ FIELDS = [
 ]
 
 
-def done_keys(path: Path) -> set[tuple]:
+def done_keys(path: Path) -> dict[tuple, str]:
     if not path.exists():
-        return set()
+        return {}
     with path.open() as fh:
         return {
             (
@@ -47,7 +47,7 @@ def done_keys(path: Path) -> set[tuple]:
                 int(r["n"]),
                 int(r["l"]),
                 int(r["seed"]),
-            )
+            ): r["status"]
             for r in csv.DictReader(fh)
         }
 
@@ -86,6 +86,8 @@ def main() -> None:
                 for seed in range(1, a.seeds + 1):
                     key = (a.engine, curve, a.m, n, l, seed)
                     if key in seen:
+                        if seen[key] in ("timeout", "error"):
+                            timed_out = True
                         continue
                     cmd = [
                         sys.executable,
