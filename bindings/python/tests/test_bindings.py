@@ -144,6 +144,13 @@ class ZpTests(unittest.TestCase):
         x, _ = self.G.grumpy(self.g, self.h, 123000000, 124000000, self.opts)
         self.assertEqual(x, ZP_X)
 
+    def test_precomp(self):
+        # Defaults (dp_bits=-1, auto table/coverage) with a threaded build.
+        x, st = self.G.precomp(self.g, self.h, threads=4, seed=7)
+        self.assertEqual(x, ZP_X)
+        self.assertGreater(st.group_ops, 0)
+        self.assertGreater(st.table_entries, 0)
+
     def test_dlog_auto_and_each_solver(self):
         x, _ = self.G.dlog(self.g, self.h, self.opts)
         self.assertEqual(x, ZP_X)
