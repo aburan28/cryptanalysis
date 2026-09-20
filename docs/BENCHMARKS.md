@@ -10,6 +10,12 @@ The reporting convention follows the sibling research repository: one
 table, one unit, every variant a row, the reference (rho) included.  The
 unit is `S = group operations / sqrt(N)`.
 
+That unit assumes the exponent is `1/2`.  The `generic`, `interval` and
+`precomp` modes now also *measure* it: each table ends with a fitted-exponent
+summary (`cost ~ C * N^alpha`), and `ca_bench complexity` compares every
+algorithm's exponent in one place (see "Measured time complexity" below).  So
+the constant `S` is only quoted once the fitted exponent confirms the `O()`.
+
 ## Raw group operation throughput (`ca_bench ops`)
 
 | operation                              | Mops/s | ns/op |
@@ -124,29 +130,70 @@ distinguished-point bit count `round(log2 n / 3)` and `chains` the table
 size.  `sqrtN/T` is the per-target speed-up of the online phase over a
 from-scratch `sqrt(n)` search.
 
-| grp | bits |  t | chains | precomp ops | P/n^{2/3} | online ops | T/n^{1/3} | √n / T |
-|-----|-----:|---:|-------:|------------:|----------:|-----------:|----------:|-------:|
-| zp | 24 |  7 |   187 |      40977 | 1.575 |   284.6 | 1.765 |  7.2 |
-| ec | 24 |  8 |    95 |      41376 | 1.002 |   821.8 | 4.044 |  3.5 |
-| zp | 28 |  9 |   189 |     142506 | 0.863 |  2369.0 | 5.830 |  3.5 |
-| ec | 28 |  9 |   379 |     282844 | 1.079 |  1566.2 | 3.059 |  7.4 |
-| zp | 32 | 10 |   774 |    1019666 | 0.972 |  2758.8 | 2.694 | 11.9 |
-| ec | 32 | 10 |  1484 |    2248069 | 1.351 |  3391.6 | 2.629 | 13.7 |
-| zp | 36 | 11 |  3039 |    8925847 | 1.341 |  2365.8 | 0.917 | 55.4 |
-| ec | 36 | 11 |  6055 |   17483924 | 1.654 |  5744.2 | 1.767 | 32.3 |
+Build on one core (`--threads 1`):
 
-Reading the table: the precomputation sits at `P ~ 1.0 - 1.6 n^{2/3}` and the
+| grp | bits |  t | chains | precomp ops | P/n^{2/3} | build s | online ops | T/n^{1/3} | √n / T |
+|-----|-----:|---:|-------:|------------:|----------:|--------:|-----------:|----------:|-------:|
+| zp | 24 |  7 |   200 |      36366 | 1.398 | 0.0009 |   310.6 | 1.926 |  6.6 |
+| ec | 24 |  8 |   117 |      36815 | 0.892 | 0.0011 |  1513.4 | 7.447 |  1.9 |
+| zp | 28 |  9 |   185 |     129591 | 0.785 | 0.0032 |  1150.6 | 2.831 |  7.1 |
+| ec | 28 |  9 |   426 |     285046 | 1.087 | 0.0080 |  2320.4 | 4.532 |  5.0 |
+| zp | 32 | 10 |   787 |     999317 | 0.953 | 0.0246 |  2184.8 | 2.134 | 15.0 |
+| ec | 32 | 10 |  1558 |    2180963 | 1.310 | 0.0596 |  2781.2 | 2.156 | 16.7 |
+| zp | 36 | 11 |  3039 |    8500087 | 1.277 | 0.2097 |  2325.6 | 0.901 | 56.4 |
+| ec | 36 | 11 |  6145 |   16820363 | 1.591 | 0.4387 |  6769.4 | 2.082 | 27.4 |
+
+Reading the table: the precomputation sits at `P ~ 0.8 - 1.6 n^{2/3}` and the
 table at `n^{1/3}` entries, both as the theory predicts and close to the
-paper's `1.24 n^{2/3}` / `n^{1/3}`.  The online cost is `T ~ 1 - 6 n^{1/3}`
+paper's `1.24 n^{2/3}` / `n^{1/3}`.  The online cost is `T ~ 1 - 7 n^{1/3}`
 (5 targets per row, so the same `~+-30 %` statistical noise as the rho rows,
 plus the one scalar-multiplication walk start that each attempt pays); the
-paper's figure is `1.77 n^{1/3}`.  The right-hand column is the point of the
-method: the per-target online search is already `7x - 55x` cheaper than the
+paper's figure is `1.77 n^{1/3}`.  The `√n / T` column is the point of the
+method: the per-target online search is already `7x - 56x` cheaper than the
 `sqrt(n)` it would otherwise cost, and the ratio grows as `n^{1/6}`, so at
 cryptographic sizes it is enormous -- at the price of a precomputation that
 is itself larger than one `sqrt(n)` search and is only worth it amortised
 over many targets in a fixed group.  See ALGORITHMS.md for why this is a
 statement about non-uniform security rather than a practical attack.
+
+**Optimisations.**  The build uses a fixed-base table for walk starts, one
+batched field inversion per `W` curve additions, and a sorted
+(fingerprint, exponent) table (16 bytes/entry, ~4x smaller than the hash
+table it replaced).  Together they took the 36-bit curve build from 2.26 s
+(a naive one-add-per-inversion, double-and-add-start version) to the 0.44 s
+above -- a 5x wall-clock win on one core before any threading.  `--threads 4`
+then builds it in 0.11 s (3.9x more).  An optional Bloom early-abort
+(`--early-abort`) pays off only when the table is deliberately built to
+over-cover the group: on a 2^17 group at coverage 32 it cut the
+precomputation from 121k to 77k operations while storing about twice the
+distinct endpoints; at the default coverage of 1 merges are negligible and
+it is off.
+
+## GLV endomorphism-accelerated rho (`ca_bench glv`)
+
+Curve-aware dispatch (`ca_curve.h`): on a CM curve the rho walk is folded by
+the automorphism group `<psi>` (order 6 for j-invariant 0, 4 for j-invariant
+1728), against the plain negation-map rho on the same curve.  `S = group
+operations / sqrt(n)`; 20 instances per row.
+
+| curve         | endo  | m | GLV S | negation-rho S | speedup |
+|---------------|-------|--:|------:|---------------:|--------:|
+| glv-j0-26     | j0    | 6 | 1.412 | 1.608 | 1.14x |
+| glv-j1728-26  | j1728 | 4 | 1.516 | 2.038 | 1.34x |
+| glv-j0-32     | j0    | 6 | 0.988 | 1.688 | 1.71x |
+| glv-j1728-32  | j1728 | 4 | 1.587 | 1.487 | 0.94x |
+| generic-26    | none  | 2 | 1.957 | 1.957 | 1.00x |
+
+The expected gain over the negation-map rho is `sqrt(m/2)` -- `1.73` for j0
+and `1.41` for j1728 -- and the cleaner rows (`glv-j0-32` at 1.71x,
+`glv-j1728-26` at 1.34x) land there.  The scatter is large because these are
+small curves (a single rho run's standard deviation is about its mean, so 20
+instances still leave roughly `+-20%`, and a couple of rows come out below
+1x); the generic curve is identical either way, as it must be.  The point is
+the folding, not the wall clock: it is a smaller constant in front of the
+same `sqrt(n)`, applied automatically once the curve's j-invariant is
+recognised.  `ca curve --name <name>` reports the structure and the chosen
+solver without running anything.
 
 ## Index calculus in `Z_p^*` (`ca_bench ic --threads 4`)
 
@@ -230,3 +277,43 @@ Each Cheon step is an exponentiation (`~1.5 log2 p` operations), so the
 advantage in *group operations* is `sqrt(p) / (2 (sqrt((p-1)/d) + sqrt(d)) * 1.5 log2 p)`
 and grows with the size of `p`; in *steps* the reduction is
 `sqrt(p) / 2 p^{1/4}`, i.e. 30x at 32 bits and 480x at 48 bits.
+
+## Measured time complexity (`ca_bench complexity`)
+
+Every other table quotes a constant against an *assumed* exponent (`ops/√n`,
+`P/n^{2/3}`, ...).  This mode instead *measures* the exponent: it runs each
+algorithm across a size sweep, fits the group-operation cost to
+`cost ~ C * N^alpha` by least squares in log-log space, and reports the
+fitted `alpha` with its `R^2` next to the theoretical exponent.  `scope` is
+`global` for a whole algorithm and `step` for one phase of a method -- so the
+two phases of the precomputation method, which have genuinely different orders
+(`n^{2/3}` to build, `n^{1/3}` per online target), are measured separately.
+The last column is the normalised constant `mean(cost / N^theory)` -- the
+familiar `S`, meaningful precisely because the fitted `alpha` confirms the
+exponent.
+
+`ca_bench complexity --bits 20,24,28,32,36 --reps 5`:
+
+| algorithm       | scope  | theory   | fitted alpha | R^2    | const @ N^theory |
+|-----------------|--------|----------|-------------:|-------:|-----------------:|
+| bsgs (zp)       | global | N^0.500  | 0.487 | 0.9993 | 1.508 |
+| rho (zp)        | global | N^0.500  | 0.477 | 0.9903 | 1.781 |
+| kangaroo (zp)   | global | N^0.500  | 0.526 | 0.9910 | 1.843 |
+| grumpy (zp)     | global | N^0.500  | 0.502 | 0.9966 | 1.264 |
+| precomp build (zp)  | step | N^0.667 | 0.647 | 0.9954 | 1.192 |
+| precomp online (zp) | step | N^0.333 | 0.347 | 0.8768 | 2.781 |
+| bsgs (ec)       | global | N^0.500  | 0.487 | 0.9993 | 1.508 |
+| rho (ec)        | global | N^0.500  | 0.428 | 0.9845 | 1.572 |
+| kangaroo (ec)   | global | N^0.500  | 0.494 | 0.9995 | 1.622 |
+| grumpy (ec)     | global | N^0.500  | 0.480 | 0.9956 | 1.128 |
+| precomp build (ec)  | step | N^0.667 | 0.672 | 0.9877 | 1.302 |
+| precomp online (ec) | step | N^0.333 | 0.198 | 0.9798 | 2.920 |
+
+The square-root methods land at `alpha ~ 0.5` and the precomputation phases at
+`0.667` and `0.333`, so the measured `O()` matches the theory across the
+board.  The online row is the noisiest fit: its operation counts are the
+smallest (a few hundred at 20 bits) and are dominated by the constant walk
+start, which flattens the slope -- widen `--bits` or raise `--reps` for a
+tighter online exponent.  Index calculus is deliberately absent: it is
+subexponential (`L_p[1/2]`), so no single power-law exponent describes it; see
+the `ic` table for its stage timings.

@@ -131,10 +131,38 @@ int main(void)
     ca_precomp_table *smalltab = NULL;
     CHECK(ca_precomp_table_new(&g, &gen, &capped, &smalltab, &cst) == CA_OK);
     CHECK(smalltab != NULL);
-    uint64_t capped_ops = 0;
-    ca_precomp_table_info(smalltab, NULL, NULL, NULL, &capped_ops);
-    CHECK(capped_ops > 0);
-    ca_precomp_table_free(smalltab);
+    if (smalltab) {
+        uint64_t capped_ops = 0;
+        ca_precomp_table_info(smalltab, NULL, NULL, NULL, &capped_ops);
+        CHECK(capped_ops > 0);
+        ca_precomp_table_free(smalltab);
+    }
+
+    /* Threaded, batched build: many workers, a batch width for the inversion,
+     * still every answer correct. */
+    ca_precomp_params thr = def;
+    thr.threads = 4;
+    thr.walks = 64;
+    run(&g, &gen, &thr, 8, NULL, NULL);
+
+    /* Forced Bloom early-abort on an over-covered table: exercises the
+     * filter and the merge accounting, and must not change any answer. */
+    ca_precomp_params ea = def;
+    ea.early_abort = 1;
+    ea.coverage = 4.0;
+    ea.threads = 2;
+    ca_stats east = {0};
+    ca_precomp_table *eatab = NULL;
+    CHECK(ca_precomp_table_new(&g, &gen, &ea, &eatab, &east) == CA_OK);
+    CHECK(eatab != NULL);
+    if (eatab) {
+        for (uint64_t xx = 1; xx <= 8; xx++) {
+            ca_group_mul(&g, &h, &gen, xx * 1000 % q, NULL);
+            CHECK(ca_precomp_table_solve(eatab, &h, &got, NULL) == CA_OK);
+            CHECK_EQ_U64(got, xx * 1000 % q);
+        }
+        ca_precomp_table_free(eatab);
+    }
 
     /* A known order is required. */
     ca_group g0 = g;
