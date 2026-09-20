@@ -372,12 +372,18 @@ static int cmd_solve(void)
         ca_precomp_table_free(ptab);
         return 1;
     }
-    if (!strcmp(alg, "bsgs")) rc = ca_bsgs_solve(&g, &base, &target, lo, hi, &dp.bsgs, &x, &st);
-    else if (!strcmp(alg, "rho")) rc = ca_rho_solve(&g, &base, &target, &dp.rho, &x, &st);
-    else if (!strcmp(alg, "kangaroo")) rc = ca_kangaroo_solve(&g, &base, &target, lo, hi, &dp.kangaroo, &x, &st);
-    else if (!strcmp(alg, "grumpy")) rc = ca_grumpy_solve(&g, &base, &target, lo, hi, &dp.grumpy, &x, &st);
-    else if (!strcmp(alg, "dlog")) rc = ca_pohlig_hellman(&g, &base, &target, &dp, &x, &st);
-    else die("unknown --alg");
+    if (!strcmp(alg, "bsgs"))
+        rc = ca_bsgs_solve(&g, &base, &target, lo, hi, &dp.bsgs, &x, &st);
+    else if (!strcmp(alg, "rho"))
+        rc = ca_rho_solve(&g, &base, &target, &dp.rho, &x, &st);
+    else if (!strcmp(alg, "kangaroo"))
+        rc = ca_kangaroo_solve(&g, &base, &target, lo, hi, &dp.kangaroo, &x, &st);
+    else if (!strcmp(alg, "grumpy"))
+        rc = ca_grumpy_solve(&g, &base, &target, lo, hi, &dp.grumpy, &x, &st);
+    else if (!strcmp(alg, "dlog"))
+        rc = ca_pohlig_hellman(&g, &base, &target, &dp, &x, &st);
+    else
+        die("unknown --alg");
     if (rc != CA_OK) {
         printf("{\"status\":\"%s\",\"alg\":\"%s\",", ca_status_string(rc), alg);
         print_stats(&st);
