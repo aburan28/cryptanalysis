@@ -17,17 +17,26 @@
  *            (--ga GA --gad GAD | --alpha X)
  *   ca ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C]
  *            [--threads T] [--seed S] [--verbose]
+ *   ca dist-walk  --group ... --order N --g G --h H --campaign-seed S --unit U
+ *            --steps K [--dp-bits D] [--r R] [--walks W] [--max-points P]
+ *            [--out FILE]            one work unit; 32-byte records to FILE
+ *   ca dist-merge --group ... --order N --g G --h H --campaign-seed S
+ *            [--dp-bits D] [--r R] [--no-verify] FILE...   (- reads stdin)
  *
  * Elements: Z_p^* "123"; E(F_p) "x,y" or "inf".  Output is one JSON object
  * on stdout; errors go to stderr with a non-zero exit status.
  */
 #include "cryptanalysis/cryptanalysis.h"
+#include "cryptanalysis/ca_dist.h"
 #include "ca_device.cuh"
 
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static int argc_g;
 static char **argv_g;
@@ -103,7 +112,11 @@ static _Noreturn void usage(void)
         "  cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D (--ga GA --gad GAD | "
         "--alpha X)\n"
         "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] "
-        "[--verbose]\n");
+        "[--verbose]\n"
+        "  dist-walk  --group ... --order N --g G --h H --campaign-seed S --unit U --steps K\n"
+        "             [--dp-bits D] [--r R] [--walks W] [--max-points P] [--out FILE]\n"
+        "  dist-merge --group ... --order N --g G --h H --campaign-seed S [--dp-bits D]\n"
+        "             [--r R] [--no-verify] FILE...\n");
     exit(2);
 }
 
@@ -337,6 +350,189 @@ static int cmd_ic(void)
     return 0;
 }
 
+/* ---- the distributed protocol ------------------------------------------ */
+
+/* The campaign as the fleet sees it.  --campaign-seed is required rather
+ * than defaulted: a walker that invents its own seed produces points that
+ * merge with nobody, and it would do it silently. */
+static void make_campaign(const ca_group *g, ca_dist_campaign *c)
+{
+    ca_dist_campaign_default(c);
+    if (!opt("--campaign-seed")) die("--campaign-seed is required (the fleet must share it)");
+    c->seed = opt_u64("--campaign-seed", 0);
+    if (c->seed == 0) die("--campaign-seed must not be 0");
+    c->r = (uint32_t)opt_u64("--r", 0);
+    c->dp_bits = opt("--dp-bits") ? (int32_t)opt_u64("--dp-bits", 0) : -1;
+    ca_status rc = ca_dist_resolve(g, c);
+    if (rc != CA_OK) die_status(rc);
+}
+
+typedef struct walk_sink {
+    FILE *out;
+    uint64_t points;
+    int failed;
+} walk_sink;
+
+static ca_status walk_write(void *ctx, const ca_dist_point *pt)
+{
+    walk_sink *w = ctx;
+    unsigned char rec[CA_DIST_POINT_BYTES];
+    ca_dist_point_encode(rec, pt);
+    if (fwrite(rec, 1, sizeof(rec), w->out) != sizeof(rec)) {
+        w->failed = 1;
+        return CA_ERR_INTERNAL;
+    }
+    w->points++;
+    return CA_OK;
+}
+
+static int cmd_dist_walk(void)
+{
+    ca_group g;
+    make_group(&g);
+    ca_elem base, target;
+    parse_elem(&g, opt("--g"), &base);
+    parse_elem(&g, opt("--h"), &target);
+    ca_dist_campaign c;
+    make_campaign(&g, &c);
+
+    ca_dist_unit u = {0};
+    u.id = opt_u64("--unit", 0);
+    u.walks = (uint32_t)opt_u64("--walks", 0);
+    u.max_steps = opt_u64("--steps", 0);
+    u.max_points = opt_u64("--max-points", 0);
+    if (!u.max_steps && !u.max_points)
+        die("--steps or --max-points is required (a unit is a budget)");
+
+    const char *path = opt("--out");
+    walk_sink sink = {stdout, 0, 0};
+    if (path) {
+        /* open() with an explicit mode rather than fopen(): a corpus is the
+         * output of machine time and there is no reason for it to be
+         * world-readable by default, which is what fopen's 0666 leaves after
+         * a permissive umask.  O_EXCL is deliberately absent: a unit that is
+         * re-walked rewrites its own file, and refusing that would make a
+         * retry an error. */
+        int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+        if (fd < 0) die("cannot open --out for writing");
+        sink.out = fdopen(fd, "wb");
+        if (!sink.out) {
+            close(fd);
+            die("cannot open --out for writing");
+        }
+    }
+    ca_stats st = {0};
+    ca_status rc = ca_dist_walk(&g, &base, &target, &c, &u, walk_write, &sink, &st);
+    /* Points already written stay written: a unit that dies half way is a
+     * shorter unit, not a corrupt one, because every record is complete and
+     * the merger does not care how many a unit produced. */
+    int flushed = fflush(sink.out) == 0;
+    if (path) {
+        if (fclose(sink.out) != 0) flushed = 0;
+    }
+    if (sink.failed || !flushed) die("writing points failed");
+    if (rc != CA_OK && rc != CA_ERR_LIMIT) die_status(rc);
+    FILE *report = path ? stdout : stderr; /* records own stdout when there is no --out */
+    fprintf(report,
+            "{\"status\":\"ok\",\"campaign\":%" PRIu64 ",\"unit\":%" PRIu64 ",\"points\":%" PRIu64
+            ",\"bytes\":%" PRIu64 ",\"dp_bits\":%d,\"r\":%u,\"steps\":%" PRIu64 "}\n",
+            ca_dist_campaign_id(&g, &base, &target, &c), u.id, sink.points,
+            sink.points * (uint64_t)CA_DIST_POINT_BYTES, c.dp_bits, c.r, st.group_ops);
+    return 0;
+}
+
+static int merge_file(ca_dist_merger *m, const char *path, uint64_t *acc, uint64_t *dup,
+                      uint64_t *rej)
+{
+    FILE *in = strcmp(path, "-") == 0 ? stdin : fopen(path, "rb");
+    if (!in) return -1;
+    /* A partial record at the end of a file is a truncated upload, which is
+     * what a killed agent leaves behind.  Read whole records and report the
+     * remainder rather than guessing at it. */
+    unsigned char buf[CA_DIST_POINT_BYTES * 256];
+    ca_dist_point pts[256];
+    size_t carry = 0;
+    int rc = 0;
+    for (;;) {
+        size_t got = fread(buf + carry, 1, sizeof(buf) - carry, in);
+        if (got == 0) break;
+        size_t have = carry + got;
+        size_t whole = have / CA_DIST_POINT_BYTES;
+        for (size_t i = 0; i < whole; i++)
+            ca_dist_point_decode(&pts[i], buf + i * CA_DIST_POINT_BYTES);
+        size_t a = 0, d = 0, r = 0;
+        if (ca_dist_merger_add(m, pts, whole, &a, &d, &r) != CA_OK) {
+            rc = -2;
+            break;
+        }
+        *acc += a;
+        *dup += d;
+        *rej += r;
+        carry = have - whole * CA_DIST_POINT_BYTES;
+        memmove(buf, buf + whole * CA_DIST_POINT_BYTES, carry);
+    }
+    if (carry) rc = 1; /* truncated tail */
+    if (in != stdin) fclose(in);
+    return rc;
+}
+
+static int cmd_dist_merge(void)
+{
+    ca_group g;
+    make_group(&g);
+    ca_elem base, target;
+    parse_elem(&g, opt("--g"), &base);
+    parse_elem(&g, opt("--h"), &target);
+    ca_dist_campaign c;
+    make_campaign(&g, &c);
+
+    ca_dist_merger *m = NULL;
+    ca_status rc = ca_dist_merger_new(&m, &g, &base, &target, &c, 0);
+    if (rc != CA_OK) die_status(rc);
+    if (flag("--no-verify")) ca_dist_merger_set_verify(m, 0);
+
+    uint64_t acc = 0, dup = 0, rej = 0;
+    int truncated = 0, files = 0;
+    for (int i = 2; i < argc_g; i++) {
+        const char *a = argv_g[i];
+        if (a[0] == '-' && a[1] == '-') {
+            i++;
+            continue;
+        } /* skip option pairs */
+        if (a[0] == '-' && a[1] != '\0' && strcmp(a, "-") != 0) continue;
+        files++;
+        int r = merge_file(m, a, &acc, &dup, &rej);
+        if (r == -1) {
+            ca_dist_merger_free(m);
+            die("cannot open input file");
+        }
+        if (r == -2) {
+            ca_dist_merger_free(m);
+            die_status(CA_ERR_NOMEM);
+        }
+        if (r == 1) truncated++;
+    }
+    if (!files) {
+        ca_dist_merger_free(m);
+        die("no input files (use - for stdin)");
+    }
+
+    uint64_t x = 0;
+    int solved = ca_dist_merger_solved(m, &x);
+    printf("{\"status\":\"ok\",\"campaign\":%" PRIu64 ",\"files\":%d,\"accepted\":%" PRIu64
+           ",\"duplicates\":%" PRIu64 ",\"rejected\":%" PRIu64 ",\"stored\":%zu,\"truncated\":%d,"
+           "\"solved\":%s",
+           ca_dist_campaign_id(&g, &base, &target, &c), files, acc, dup, rej,
+           ca_dist_merger_size(m), truncated, solved ? "true" : "false");
+    if (solved) printf(",\"x\":%" PRIu64, x);
+    printf("}\n");
+    ca_dist_merger_free(m);
+    /* Exit 0 whether or not it solved: "no collision yet" is the normal
+     * state of a campaign, and a scheduler that read it as failure would
+     * retry the whole corpus every pass. */
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     argc_g = argc;
@@ -396,6 +592,8 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "solve")) return cmd_solve();
     if (!strcmp(cmd, "cheon")) return cmd_cheon();
     if (!strcmp(cmd, "ic")) return cmd_ic();
+    if (!strcmp(cmd, "dist-walk")) return cmd_dist_walk();
+    if (!strcmp(cmd, "dist-merge")) return cmd_dist_merge();
     usage();
     return 2;
 }

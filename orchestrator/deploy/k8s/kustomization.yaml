@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cryptanalysis
+resources:
+  - 00-namespace.yaml
+  - 10-secret.yaml
+  - 20-control.yaml
+  - 30-agents.yaml
+  - 40-networkpolicy.yaml
+# The campaign Job is not applied by default: it is a deliberate one-shot
+# act, and re-applying a kustomization must not try to redefine a campaign.
+#  - 50-campaign-job.yaml

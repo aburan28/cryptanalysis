@@ -90,6 +90,63 @@ Other commands: `ca factor N`, `ca prime N`, `ca solve --alg bsgs|kangaroo|grump
 ... --lo L --hi U` for interval problems, `ca_bench generic|interval|ic|cheon|gpu|ops`
 for the benchmark tables.
 
+## Many machines
+
+One process solving one instance is `ca solve`.  A *fleet* needs the
+van Oorschot-Wiener protocol, where every walker iterates the same function
+and reports only its distinguished points, so that P machines finish in
+expected `1/P` of the time for the same total work -- rather than running P
+independent searches, which is what P copies of `ca solve` are.
+
+```sh
+$ ./build/ca dist-walk  --group zp --p 2000000579 --order 1000000289 --g G --h H \
+      --campaign-seed 12345 --dp-bits 6 --unit 3 --steps 20000 --out unit-3.bin
+{"status":"ok","campaign":3904165131322950742,"unit":3,"points":333,...}
+
+$ ./build/ca dist-merge --group zp --p 2000000579 --order 1000000289 --g G --h H \
+      --campaign-seed 12345 --dp-bits 6 unit-*.bin
+{"status":"ok","accepted":2513,"duplicates":0,"rejected":0,"stored":2449,"solved":true,"x":821034685}
+```
+
+A unit is replayable (its points are a function of the campaign seed and the
+unit id) and the merger verifies every point before storing it and every
+answer before reporting it, so the two halves survive a scheduler that
+delivers at least once and agents that are not trusted.  See
+[docs/DISTRIBUTED.md](docs/DISTRIBUTED.md) for the protocol and
+[orchestrator/](orchestrator/README.md) for the control plane and agents that
+run it on Kubernetes or on EC2 with systemd:
+
+```sh
+make orchestrator && make smoke     # one control plane, two agents, a real answer
+```
+
+## Hardware
+
+`fpga/` is a synthesisable Pollard rho core for the Certicom **ECC2K-130**
+challenge -- the Koblitz curve `y^2 + xy = x^3 + 1` over `F_2^131` -- with a
+golden C model, testbenches that compare the two value by value, and measured
+area and cycle counts.
+
+The field is carried in a type-II optimal normal basis, which makes squaring
+(and therefore the Frobenius the attack is built on) a permutation of the
+coefficients -- free in hardware -- and turns multiplication into a cyclic
+convolution that a digit-serial unit computes shift-and-xor.  One step of the
+walk is one affine addition: an Itoh-Tsujii inversion, two multiplications and
+a squaring.
+
+```sh
+cd fpga && scripts/run_sim.sh     # model checks, vectors, every testbench, host tools
+make fpga-lint fpga-synth         # verilator -Wall, and a yosys area report
+```
+
+Measured here: 362 cycles per walk step and 7,941 LUT4 for one core at
+`DIGIT=4`, scaling linearly to 31,437 LUT4 for four.  Deliberately *not*
+quoted: fmax, device utilisation or points per second, all of which need a
+vendor place-and-route this flow does not run.  See
+[fpga/README.md](fpga/README.md) for the derivation of the curve's group
+order, what each testbench establishes, and what the next improvement is
+(batched inversion, ~3x).
+
 ## C API in one screen
 
 ```c
@@ -183,11 +240,13 @@ src/                     library sources (+ internal linalg.h, ca_internal.h)
 cuda/                    the CUDA kernel (ca_device.cuh is shared C11/CUDA code)
 tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
+orchestrator/            Go control plane and agents (deploy/{k8s,systemd,docker})
+fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
 scripts/                 build_cuda_kernel.sh (compile the kernel, no GPU needed)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
-docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md
+docs/                    ALGORITHMS.md, BENCHMARKS.md, DISTRIBUTED.md, FFI.md, GPU.md
 fuzz/                    libFuzzer harnesses and their seed corpora
-.github/workflows/       ci, analysis, bindings, fuzz, codeql, nightly
+.github/workflows/       ci, analysis, bindings, orchestrator, fpga, fuzz, codeql, nightly
 ```
 
 ## Checks
@@ -202,6 +261,8 @@ set locally, in the order that fails fastest.
 | `analysis` | clang-tidy (warnings are errors), cppcheck, `gcc -fanalyzer`, clang-format on the lines a change touches, shellcheck, actionlint, and coverage with a floor |
 | `bindings` | Rust fmt/clippy/doc/tests and a measured MSRV floor, cargo-deny, Go across three toolchains with the race detector and golangci-lint, Python 3.8 to 3.13 plus an installed-package run, ruff and mypy |
 | `fuzz` | six libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
+| `orchestrator` | the Go control plane and agents: vet, gofmt, no third-party dependencies, `go test -race` (including the cross-checks against the C library), and an end-to-end smoke run of a real fleet |
+| `fpga` | the ECC2K-130 core: the golden model's own checks, then every testbench against the vectors it produces, at three multiplier widths; verilator `-Wall`; a yosys area report |
 | `codeql` | C, Go and Python, with the `security-and-quality` query pack |
 | `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
 

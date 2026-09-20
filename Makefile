@@ -4,7 +4,8 @@ CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release
 JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
-        shellcheck format checks rust go python bindings clean install cuda cuda-kernel
+        shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
+        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth
 
 all: lib
 
@@ -34,6 +35,35 @@ cuda:
 # and no CUDA install (--fetch pulls the pieces from NVIDIA's pip wheels).
 cuda-kernel:
 	./scripts/build_cuda_kernel.sh --fetch
+
+# ---- the orchestration layer (Go; control plane + agents) -----------------
+# The Go tests take the library's own `ca` as their reference implementation
+# and skip without it, so the library is built first.
+orchestrator: lib
+	cd orchestrator && CGO_ENABLED=0 go build -trimpath -o ../$(BUILD)/ca-control ./cmd/ca-control
+	cd orchestrator && CGO_ENABLED=0 go build -trimpath -o ../$(BUILD)/ca-agent ./cmd/ca-agent
+
+orchestrator-test: lib
+	cd orchestrator && go vet ./... && CA_BIN=$(CURDIR)/$(BUILD)/ca go test -race ./...
+
+# One control plane, two agents, one instance, one real answer -- as separate
+# processes over a socket, which is where deployment bugs live.
+smoke: orchestrator
+	orchestrator/scripts/smoke.sh $(BUILD)
+
+# ---- the ECC2K-130 FPGA core (fpga/) ---------------------------------------
+# A separate tree with its own toolchain: a golden C model, synthesisable
+# Verilog, testbenches that compare the two, and a host tool.  It is not part
+# of the library build -- the library works over 64-bit groups and ECC2K-130
+# is a 131-bit field -- so it has its own Makefile and its own CI workflow.
+fpga:
+	$(MAKE) -C fpga sim
+
+fpga-lint:
+	$(MAKE) -C fpga lint
+
+fpga-synth:
+	$(MAKE) -C fpga synth CORES=1 DIGIT=4
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \
