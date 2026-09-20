@@ -31,8 +31,8 @@ The script will:
 1. Resolve the pod with `runpodctl pod list --name …`
 2. Ensure an SSH key is registered (`runpodctl ssh add-key`)
 3. Install the Cursor CLI on the pod
-4. Clone/update `cryptanalysis` under `/workspace/cryptanalysis`
-5. Start `agent worker --name <pod> --idle-release-timeout 0` in tmux
+4. Clone/update `cryptanalysis` under `/root/cryptanalysis` (avoids geesefs `/workspace` chmod issues)
+5. Start `agent worker --name <pod> --idle-release-timeout 0` in tmux (API key via `/root/.cursor-worker/api-key`)
 
 ## Using the worker
 
@@ -48,14 +48,13 @@ tmux attach -t cursor-worker
 
 ## Manual install (on the pod)
 
+Prefer the scripts above. Manual equivalent:
+
 ```sh
 curl -fsS https://cursor.com/install | bash
-export CURSOR_API_KEY=...   # personal user key
-git clone https://github.com/aburan28/cryptanalysis.git /workspace/cryptanalysis
-cd /workspace/cryptanalysis
-agent worker --name solar_ivory_canidae --worker-dir "$PWD" \
-  --idle-release-timeout 0 start
+git -c core.filemode=false clone https://github.com/aburan28/cryptanalysis.git /root/cryptanalysis
+# then run scripts/runpod_cursor_worker_remote.sh with CURSOR_API_KEY set
 ```
 
-Keep that process running (systemd/tmux/supervisor). Docs:
+Keep the tmux/`agent worker` process running. Docs:
 [My Machines](https://cursor.com/docs/cloud-agent/self-hosted-guides/my-machines).

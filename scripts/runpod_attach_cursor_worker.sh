@@ -19,7 +19,7 @@ set -euo pipefail
 POD_NAME="${POD_NAME:-solar_ivory_canidae}"
 WORKER_NAME="${WORKER_NAME:-$POD_NAME}"
 REPO_URL="${REPO_URL:-https://github.com/aburan28/cryptanalysis.git}"
-WORKER_DIR="${WORKER_DIR:-/workspace/cryptanalysis}"
+WORKER_DIR="${WORKER_DIR:-/root/cryptanalysis}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REMOTE_SCRIPT="${SCRIPT_DIR}/runpod_cursor_worker_remote.sh"
