@@ -9,6 +9,7 @@ Rust, Go and Python bindings.
 | Pollard rho: r-adding walks, distinguished points, multi-threaded, negation map with fruitless-cycle handling | `ca_rho.h` | whole group | `~1.25 sqrt(n)` ops (`/sqrt 2` on curves), tiny memory |
 | Pollard kangaroo / lambda (van Oorschot-Wiener herds) | `ca_kangaroo.h` | interval | `~2 sqrt(N)` ops, tiny memory |
 | Two grumpy giants and a baby (Bernstein-Lange) | `ca_grumpy.h` | interval / whole group | `1.18 sqrt(n)` whole group, `1.78 sqrt(N)` interval |
+| Discrete logs with precomputation (Bernstein-Lange free precomputation) | `ca_precomp.h` | whole group, amortised over many targets in a fixed group | `~n^{2/3}` precompute once, `~n^{1/3}` per target, `~n^{1/3}` memory |
 | Pohlig-Hellman + solver dispatch (`ca_dlog`) | `ca_pohlig.h` | composite order | sum over prime factors |
 | Cheon's attack on the strong Diffie-Hellman problem (`d \| p-1`) | `ca_cheon.h` | recover `alpha` from `g, g^alpha, g^(alpha^d)` | `2 sqrt((p-1)/d) + 2 sqrt(d)` exponentiations |
 | Index calculus in `(Z/pZ)^*`: linear sieve, Pohlig-Hellman for small factors, structured elimination + Lanczos, Hensel lifting, verified logs | `ca_indexcalc.h` | `Z_p^*`, `p < 2^63` | `L_p[1/2, 1]`; 56-bit `p` in 1.3 s |
@@ -82,6 +83,13 @@ $ ./build/ca solve --alg gpu-rho --group zp --p 2000000579 --order 1000000289 \
       --g 1422302461 --h 1216411080 --backend emulate --seed 3
 {"status":"ok","alg":"gpu-rho","x":123456789,"launches":5,"ops":18307,...}
 
+# Precomputation (Bernstein-Lange): build a table once, solve each target in
+# ~n^{1/3} online operations; "ops" is the online cost, "precomp_ops" the
+# one-time build.
+$ ./build/ca solve --alg precomp --group zp --p 2000000579 --order 1000000289 \
+      --g 1422302461 --h 1216411080 --seed 1
+{"status":"ok","alg":"precomp","x":123456789,"precomp_ops":1058260,"chains":694,"dp_bits":10,"r":20,"ops":1410,...}
+
 $ ./build/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 4
 {"status":"ok","x":240852468320,"check":123456789,"factor_base":143,"unknowns":1094,
  "relations":1505,"verified_logs":143,"sieve_seconds":0.001,"linalg_seconds":0.049,...}
@@ -136,7 +144,7 @@ parsing the JSON:
 | 2 | a malformed invocation — unknown command, missing or unparseable option |
 
 `scripts/cli_smoke.sh` runs every subcommand and checks the answers that are
-known in closed form (53 assertions). It is the guard on the claim in this
+known in closed form (59 assertions). It is the guard on the claim in this
 section's title: a newly exported function that no command reaches shows up
 there, and `make cli` runs it.
 
