@@ -16,6 +16,12 @@ lib:
 test: lib
 	ctest --test-dir $(BUILD) --output-on-failure -j$(JOBS)
 
+# Every `ca` subcommand, with the answers checked where they are known in
+# closed form. This is the guard on "every public header is reachable from the
+# command line": a newly exported function that no command calls shows up here.
+cli: lib
+	./scripts/cli_smoke.sh $(BUILD)/ca
+
 bench: lib
 	$(BUILD)/ca_bench ops
 	$(BUILD)/ca_bench generic --bits 24,28,32,36 --reps 3
@@ -121,7 +127,7 @@ shellcheck:
 	shellcheck scripts/*.sh
 
 # Everything a pull request is gated on, in the order that fails fastest.
-checks: format cppcheck shellcheck tidy analyzer test asan tsan
+checks: format cppcheck shellcheck tidy analyzer test cli asan tsan
 
 rust:
 	cd bindings/rust && cargo test
