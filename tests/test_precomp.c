@@ -131,10 +131,12 @@ int main(void)
     ca_precomp_table *smalltab = NULL;
     CHECK(ca_precomp_table_new(&g, &gen, &capped, &smalltab, &cst) == CA_OK);
     CHECK(smalltab != NULL);
-    uint64_t capped_ops = 0;
-    ca_precomp_table_info(smalltab, NULL, NULL, NULL, &capped_ops);
-    CHECK(capped_ops > 0);
-    ca_precomp_table_free(smalltab);
+    if (smalltab) {
+        uint64_t capped_ops = 0;
+        ca_precomp_table_info(smalltab, NULL, NULL, NULL, &capped_ops);
+        CHECK(capped_ops > 0);
+        ca_precomp_table_free(smalltab);
+    }
 
     /* Threaded, batched build: many workers, a batch width for the inversion,
      * still every answer correct. */
@@ -153,12 +155,14 @@ int main(void)
     ca_precomp_table *eatab = NULL;
     CHECK(ca_precomp_table_new(&g, &gen, &ea, &eatab, &east) == CA_OK);
     CHECK(eatab != NULL);
-    for (uint64_t xx = 1; xx <= 8; xx++) {
-        ca_group_mul(&g, &h, &gen, xx * 1000 % q, NULL);
-        CHECK(ca_precomp_table_solve(eatab, &h, &got, NULL) == CA_OK);
-        CHECK_EQ_U64(got, xx * 1000 % q);
+    if (eatab) {
+        for (uint64_t xx = 1; xx <= 8; xx++) {
+            ca_group_mul(&g, &h, &gen, xx * 1000 % q, NULL);
+            CHECK(ca_precomp_table_solve(eatab, &h, &got, NULL) == CA_OK);
+            CHECK_EQ_U64(got, xx * 1000 % q);
+        }
+        ca_precomp_table_free(eatab);
     }
-    ca_precomp_table_free(eatab);
 
     /* A known order is required. */
     ca_group g0 = g;
