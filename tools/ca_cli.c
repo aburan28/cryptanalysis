@@ -551,7 +551,8 @@ static int cmd_dist_walk(void)
 static int merge_file(ca_dist_merger *m, const char *path, uint64_t *acc, uint64_t *dup,
                       uint64_t *rej)
 {
-    FILE *in = strcmp(path, "-") == 0 ? stdin : fopen(path, "rb");
+    int owned = strcmp(path, "-") != 0;
+    FILE *in = owned ? fopen(path, "rb") : stdin;
     if (!in) return -1;
     /* A partial record at the end of a file is a truncated upload, which is
      * what a killed agent leaves behind.  Read whole records and report the
@@ -561,7 +562,8 @@ static int merge_file(ca_dist_merger *m, const char *path, uint64_t *acc, uint64
     size_t carry = 0;
     int rc = 0;
     for (;;) {
-        size_t got = fread(buf + carry, 1, sizeof(buf) - carry, in);
+        size_t want = sizeof(buf) - carry;
+        size_t got = fread(buf + carry, 1, want, in);
         if (got == 0) break;
         size_t have = carry + got;
         size_t whole = have / CA_DIST_POINT_BYTES;
@@ -577,9 +579,18 @@ static int merge_file(ca_dist_merger *m, const char *path, uint64_t *acc, uint64
         *rej += r;
         carry = have - whole * CA_DIST_POINT_BYTES;
         memmove(buf, buf + whole * CA_DIST_POINT_BYTES, carry);
+        /* fread only comes back short at end-of-file or on an error, and
+         * after an error the stream position is indeterminate: stop here
+         * rather than read again. */
+        if (got < want) break;
     }
-    if (carry) rc = 1; /* truncated tail */
-    if (in != stdin) fclose(in);
+    if (rc == 0) {
+        if (ferror(in))
+            rc = -3; /* an I/O error is not an end-of-file */
+        else if (carry)
+            rc = 1; /* truncated tail */
+    }
+    if (owned) fclose(in);
     return rc;
 }
 
@@ -616,6 +627,10 @@ static int cmd_dist_merge(void)
         if (r == -2) {
             ca_dist_merger_free(m);
             die_status(CA_ERR_NOMEM);
+        }
+        if (r == -3) {
+            ca_dist_merger_free(m);
+            die("reading input file failed");
         }
         if (r == 1) truncated++;
     }
