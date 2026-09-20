@@ -22,6 +22,9 @@
  *       (global for a whole algorithm, per-step for a method's phases such as
  *       precomputation build vs online) with its R^2 and the normalised
  *       constant, so the O() is measured rather than assumed.
+ *   ca_bench glv      GLV endomorphism-accelerated rho vs the negation-map rho
+ *       on the registry's CM curves (j=0, j=1728) and a generic curve, in
+ *       S = group ops / sqrt(n), with the measured speedup.
  *   ca_bench ops      raw group operation throughput.
  *   ca_bench gpu      [--bits 24,28,32] [--reps 3] [--group zp|ec|both]
  *       CPU rho vs the GPU rho kernel (CUDA when a device is present,
@@ -574,6 +577,56 @@ static void run_complexity(const unsigned *bits, int nb, unsigned reps, int ec)
     }
 }
 
+static void run_glv(void)
+{
+    const char *names[16];
+    size_t nc = ca_curve_list(names, 16);
+    printf("| curve         | endo  | m | GLV S=ops/sqrtn |  rho S | speedup | ok  |\n");
+    printf("|---------------|-------|---|-----------------|-------:|--------:|-----|\n");
+    for (size_t i = 0; i < nc; i++) {
+        uint64_t p, a, b, order;
+        if (ca_curve_by_name(names[i], &p, &a, &b, &order) != CA_OK) continue;
+        ca_group g;
+        ca_curve_info info;
+        if (ca_curve_group(&g, p, a, b, order, &info) != CA_OK) continue;
+        ca_elem gen;
+        if (ca_group_find_generator(&g, &gen, 1) != CA_OK) continue;
+        double sq = sqrt((double)order);
+        ca_rng rng;
+        ca_rng_seed(&rng, 123 + (unsigned)i);
+        const unsigned reps = 20;
+        double glv_ops = 0, rho_ops = 0;
+        unsigned ok = 0;
+        for (unsigned r = 0; r < reps; r++) {
+            uint64_t x = ca_rng_below(&rng, order);
+            ca_elem h;
+            ca_group_mul(&g, &h, &gen, x, NULL);
+            uint64_t got = 0;
+            ca_stats s1 = {0};
+            ca_curve_solve(&g, &gen, &h, 7 + r, &got, NULL, &s1);
+            glv_ops += (double)s1.group_ops;
+            ok += (got == x);
+            /* plain negation-map rho on the same curve for comparison */
+            ca_group pg;
+            ca_group_ec_init(&pg, p, a, b, order);
+            pg.cofactor = g.cofactor;
+            uint64_t got2 = 0;
+            ca_stats s2 = {0};
+            ca_rho_params rp;
+            ca_rho_params_default(&rp);
+            rp.seed = 7 + r;
+            ca_rho_solve(&pg, &gen, &h, &rp, &got2, &s2);
+            rho_ops += (double)s2.group_ops;
+        }
+        const char *ek = info.endo == CA_CURVE_ENDO_J0      ? "j0"
+                         : info.endo == CA_CURVE_ENDO_J1728 ? "j1728"
+                                                            : "none";
+        double gs = glv_ops / reps / sq, rs = rho_ops / reps / sq;
+        printf("| %-13s | %-5s | %u | %15.3f | %6.3f | %6.2fx | %u/%u |\n", names[i], ek,
+               info.aut_order, gs, rs, gs > 0 ? rs / gs : 0.0, ok, reps);
+    }
+}
+
 static void run_ops(void)
 {
     uint64_t p;
@@ -698,6 +751,11 @@ int main(int argc, char **argv)
         if (strcmp(group, "zp")) run_complexity(bits, nb, reps, 1);
         printf("\nIndex calculus in Z_p^* is omitted here: it is subexponential (L_p[1/2]),\n"
                "not a power law, so no single exponent describes it (see the ic mode).\n");
+    } else if (!strcmp(cmd, "glv")) {
+        printf("GLV endomorphism-accelerated rho vs the plain negation-map rho on the same\n"
+               "curve (S = group ops / sqrt(n)).  CM curves fold the walk by the automorphism\n"
+               "group order m (6 for j=0, 4 for j=1728); a generic curve has only negation.\n\n");
+        run_glv();
     } else if (!strcmp(cmd, "ops")) {
         run_ops();
     } else {
