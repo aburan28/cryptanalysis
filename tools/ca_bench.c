@@ -315,7 +315,7 @@ static void run_gpu(unsigned bits, unsigned reps, int ec)
     }
 }
 
-static void run_precomp(unsigned bits, unsigned reps, int ec)
+static void run_precomp(unsigned bits, unsigned reps, unsigned threads, int ec)
 {
     ca_group g;
     ca_elem gen;
@@ -334,6 +334,7 @@ static void run_precomp(unsigned bits, unsigned reps, int ec)
     ca_precomp_params pp;
     ca_precomp_params_default(&pp);
     pp.seed = 1234 + bits;
+    pp.threads = threads;
     ca_stats build = {0};
     ca_precomp_table *tab = NULL;
     ca_status rc = ca_precomp_table_new(&g, &gen, &pp, &tab, &build);
@@ -481,7 +482,8 @@ int main(int argc, char **argv)
         printf(
             "Discrete logs with precomputation (Bernstein-Lange).  One table per (group, base);\n"
             "P = precomputation ops (paid once), T = per-target online ops over --reps "
-            "targets.\n\n");
+            "targets.\n");
+        printf("Build threads: %u.\n\n", threads);
         printf("| grp | bits |  t |   chains | precomp ops | P/n^2/3 | build s | online ops | "
                "T/n^1/3 |"
                " sqrtN/T | ok  |\n");
@@ -489,8 +491,8 @@ int main(int argc, char **argv)
                "--:|"
                "--------:|-----|\n");
         for (int i = 0; i < nb; i++) {
-            if (strcmp(group, "ec")) run_precomp(bits[i], reps, 0);
-            if (strcmp(group, "zp")) run_precomp(bits[i], reps, 1);
+            if (strcmp(group, "ec")) run_precomp(bits[i], reps, threads, 0);
+            if (strcmp(group, "zp")) run_precomp(bits[i], reps, threads, 1);
         }
     } else if (!strcmp(cmd, "ops")) {
         run_ops();
