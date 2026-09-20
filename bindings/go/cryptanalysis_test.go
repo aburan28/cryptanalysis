@@ -140,6 +140,14 @@ func TestSolversZp(t *testing.T) {
 	if x, _, err = z.Dlog(g, h, nil); err != nil || x != zpX {
 		t.Fatalf("Dlog(nil) = %d, %v", x, err)
 	}
+	// Precomputation: defaults (dpBits=-1, auto table/coverage), threaded build.
+	x, pst, err := z.Precomp(g, h, -1, 0, 0, 4, 7)
+	if err != nil || x != zpX {
+		t.Fatalf("Precomp = %d, %v", x, err)
+	}
+	if pst.GroupOps == 0 {
+		t.Fatal("Precomp stats: group_ops should be > 0")
+	}
 }
 
 func TestSolverErrors(t *testing.T) {
