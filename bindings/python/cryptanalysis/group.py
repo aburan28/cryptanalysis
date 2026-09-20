@@ -330,6 +330,43 @@ class Group:
         """Pohlig-Hellman driver using the solver selected in ``options.solver``."""
         return self._whole(lib.ca_ffi_dlog, base, target, options)
 
+    def precomp(
+        self,
+        base: ElemLike,
+        target: ElemLike,
+        dp_bits: int = -1,
+        table_size: int = 0,
+        coverage: float = 0.0,
+        threads: int = 1,
+        seed: int = 0,
+    ) -> tuple[int, Stats]:
+        """Discrete log with precomputation (Bernstein-Lange free precomputation).
+
+        Builds a one-time distinguished-point table for ``base`` (with
+        ``threads`` build workers), solves this ``target`` online, and frees the
+        table; the returned :class:`Stats` therefore cover the whole ~n^(2/3)
+        build plus the ~n^(1/3) online phase.  ``dp_bits < 0``, ``table_size ==
+        0`` and ``coverage == 0.0`` select the defaults; ``seed`` 0 is random.
+        ``base`` must generate the whole group of order :attr:`order`.
+        """
+        x = ctypes.c_uint64(0)
+        st = CStats()
+        _lib.arm()
+        rc = lib.ca_ffi_precomp(
+            self._ctx,
+            self._w(base, "base"),
+            self._w(target, "target"),
+            _lib.i32(dp_bits, "dp_bits"),
+            _lib.u64(table_size, "table_size"),
+            float(coverage),
+            _lib.u32(threads, "threads"),
+            _lib.u64(seed, "seed"),
+            ctypes.byref(x),
+            ctypes.byref(st),
+        )
+        _lib.check(rc)
+        return x.value, Stats.from_c(st)
+
     # ---- Cheon ------------------------------------------------------------
 
     def cheon(

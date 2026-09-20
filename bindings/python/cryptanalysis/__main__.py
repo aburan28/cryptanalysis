@@ -118,7 +118,11 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--seed", type=lambda s: int(s, 0), default=0)
 
     q = subs.add_parser("solve", help="discrete logarithm")
-    q.add_argument("--alg", choices=("bsgs", "rho", "kangaroo", "grumpy", "dlog"), default="dlog")
+    q.add_argument(
+        "--alg",
+        choices=("bsgs", "rho", "kangaroo", "grumpy", "precomp", "dlog"),
+        default="dlog",
+    )
     _add_group_args(q)
     q.add_argument("--g", required=True)
     q.add_argument("--h", required=True)
@@ -126,6 +130,9 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--hi", type=lambda s: int(s, 0), default=0)
     q.add_argument("--threads", type=int, default=1)
     q.add_argument("--seed", type=lambda s: int(s, 0), default=0)
+    q.add_argument("--dp-bits", type=int, default=-1, help="precomp: distinguished-point bits")
+    q.add_argument("--table", type=lambda s: int(s, 0), default=0, help="precomp: chains to build")
+    q.add_argument("--coverage", type=float, default=0.0, help="precomp: coverage factor")
 
     q = subs.add_parser("ic", help="index calculus in Z_p^*")
     q.add_argument("--p", type=lambda s: int(s, 0), required=True)
@@ -224,6 +231,16 @@ def main(argv: list[str] | None = None) -> int:
                     x, st = g.grumpy(base, target, args.lo, args.hi, opts)
                 elif args.alg == "rho":
                     x, st = g.rho(base, target, opts)
+                elif args.alg == "precomp":
+                    x, st = g.precomp(
+                        base,
+                        target,
+                        dp_bits=args.dp_bits,
+                        table_size=args.table,
+                        coverage=args.coverage,
+                        threads=args.threads,
+                        seed=args.seed,
+                    )
                 else:
                     x, st = g.dlog(base, target, opts)
             except ca.NotFoundError:

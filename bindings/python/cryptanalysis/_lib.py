@@ -249,6 +249,10 @@ _PROTOTYPES: dict[str, tuple[object, list]] = {
     ),
     "ca_ffi_rho": (c_int, [_CTX, P64, P64, POINTER(COptions), P64, POINTER(CStats)]),
     "ca_ffi_dlog": (c_int, [_CTX, P64, P64, POINTER(COptions), P64, POINTER(CStats)]),
+    "ca_ffi_precomp": (
+        c_int,
+        [_CTX, P64, P64, c_int32, c_uint64, c_double, c_uint32, c_uint64, P64, POINTER(CStats)],
+    ),
     # Cheon
     "ca_ffi_cheon": (c_int, [_CTX, P64, P64, P64, c_uint64, c_uint64, P64, POINTER(CStats)]),
     "ca_ffi_cheon_instance": (c_int, [_CTX, P64, c_uint64, c_uint64, P64, P64]),

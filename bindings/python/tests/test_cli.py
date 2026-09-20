@@ -141,7 +141,7 @@ class SolverTests(unittest.TestCase):
         self.h = h["result"]
 
     def test_every_algorithm_finds_the_planted_log(self):
-        for alg in ("bsgs", "rho", "kangaroo", "grumpy", "dlog"):
+        for alg in ("bsgs", "rho", "kangaroo", "grumpy", "precomp", "dlog"):
             with self.subTest(alg=alg):
                 rc, out = run(
                     "solve",
