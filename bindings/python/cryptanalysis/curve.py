@@ -66,9 +66,7 @@ def curve_by_name(name: str) -> tuple[int, int, int, int]:
     """Look up a registry curve, returning ``(p, a, b, order)``."""
     p, a, b, order = c_uint64(0), c_uint64(0), c_uint64(0), c_uint64(0)
     _lib.arm()
-    rc = lib.ca_ffi_curve_by_name(
-        name.encode("utf-8"), byref(p), byref(a), byref(b), byref(order)
-    )
+    rc = lib.ca_ffi_curve_by_name(name.encode("utf-8"), byref(p), byref(a), byref(b), byref(order))
     _lib.check(rc)
     return p.value, a.value, b.value, order.value
 

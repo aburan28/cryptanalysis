@@ -256,8 +256,17 @@ _PROTOTYPES: dict[str, tuple[object, list]] = {
     # curve dispatch (GLV endomorphism)
     "ca_ffi_curve_detect": (
         c_int,
-        [c_uint64, c_uint64, c_uint64, c_uint64, POINTER(c_int32), POINTER(c_uint32), P64, P64,
-         POINTER(c_double)],
+        [
+            c_uint64,
+            c_uint64,
+            c_uint64,
+            c_uint64,
+            POINTER(c_int32),
+            POINTER(c_uint32),
+            P64,
+            P64,
+            POINTER(c_double),
+        ],
     ),
     "ca_ffi_curve_by_name": (c_int, [c_char_p, P64, P64, P64, P64]),
     "ca_ffi_curve_name": (c_char_p, [c_size_t]),
