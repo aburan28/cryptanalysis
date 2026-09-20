@@ -79,15 +79,11 @@ jobs:
           ECC2K130_TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:5432/ecc2k130
           ECC2K130_TEST_REDIS_URL: redis://127.0.0.1:6379/0
         run: python -m unittest discover -s usecases/ecc2k130/tests -v
-      - name: Lint and render the coordinator chart
-        run: |
-          chart=usecases/ecc2k130/deploy/helm/ecc2k130-coordinator
-          helm lint "$chart"
-          helm template ecc2k130 "$chart" --namespace cryptanalysis >/dev/null
-          helm template ecc2k130 "$chart" --namespace cryptanalysis \
-            --set existingSecret.runtimeDatabaseUrlKey=database-url \
-            --set rds.host= >/dev/null
-          if helm template invalid "$chart" --set queue.backend=standalone >/dev/null 2>&1; then
-            echo "chart accepted a non-durable queue backend" >&2
-            exit 1
-          fi
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Install kubeconform
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
+      - name: Lint, render and validate the coordinator chart
+        run: usecases/ecc2k130/deploy/helm/check.sh

@@ -78,9 +78,7 @@ ecc2k130-usecase:
 	python3 -m unittest discover -s usecases/ecc2k130/tests -v
 
 ecc2k130-helm:
-	helm lint usecases/ecc2k130/deploy/helm/ecc2k130-coordinator
-	helm template ecc2k130 usecases/ecc2k130/deploy/helm/ecc2k130-coordinator \
-	  --namespace cryptanalysis >/dev/null
+	usecases/ecc2k130/deploy/helm/check.sh
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \
