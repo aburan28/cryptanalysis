@@ -42,6 +42,10 @@ int main(void)
     x = 0;
     CHECK(ca_ffi_dlog(z, g, h, &o, &x, NULL) == CA_OK);
     CHECK_EQ_U64(x, 123456789);
+    /* precomputation solver through the FFI (one-shot, threaded build) */
+    x = 0;
+    CHECK(ca_ffi_precomp(z, g, h, -1, 0, 0.0, 4, 7, &x, &st) == CA_OK);
+    CHECK_EQ_U64(x, 123456789);
     /* element ops */
     CHECK(ca_ctx_op(z, t, g, g) == CA_OK);
     uint64_t g2[4];
@@ -80,6 +84,9 @@ int main(void)
     CHECK(ca_ctx_mul(e, Q, P, 4242) == CA_OK);
     x = 0;
     CHECK(ca_ffi_dlog(e, P, Q, NULL, &x, NULL) == CA_OK);
+    CHECK_EQ_U64(x, 4242 % ord);
+    x = 0;
+    CHECK(ca_ffi_precomp(e, P, Q, -1, 0, 0.0, 1, 7, &x, NULL) == CA_OK);
     CHECK_EQ_U64(x, 4242 % ord);
     uint64_t inf[4];
     CHECK(ca_ctx_identity(e, inf) == CA_OK);
