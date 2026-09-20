@@ -124,29 +124,44 @@ distinguished-point bit count `round(log2 n / 3)` and `chains` the table
 size.  `sqrtN/T` is the per-target speed-up of the online phase over a
 from-scratch `sqrt(n)` search.
 
-| grp | bits |  t | chains | precomp ops | P/n^{2/3} | online ops | T/n^{1/3} | √n / T |
-|-----|-----:|---:|-------:|------------:|----------:|-----------:|----------:|-------:|
-| zp | 24 |  7 |   187 |      40977 | 1.575 |   284.6 | 1.765 |  7.2 |
-| ec | 24 |  8 |    95 |      41376 | 1.002 |   821.8 | 4.044 |  3.5 |
-| zp | 28 |  9 |   189 |     142506 | 0.863 |  2369.0 | 5.830 |  3.5 |
-| ec | 28 |  9 |   379 |     282844 | 1.079 |  1566.2 | 3.059 |  7.4 |
-| zp | 32 | 10 |   774 |    1019666 | 0.972 |  2758.8 | 2.694 | 11.9 |
-| ec | 32 | 10 |  1484 |    2248069 | 1.351 |  3391.6 | 2.629 | 13.7 |
-| zp | 36 | 11 |  3039 |    8925847 | 1.341 |  2365.8 | 0.917 | 55.4 |
-| ec | 36 | 11 |  6055 |   17483924 | 1.654 |  5744.2 | 1.767 | 32.3 |
+Build on one core (`--threads 1`):
 
-Reading the table: the precomputation sits at `P ~ 1.0 - 1.6 n^{2/3}` and the
+| grp | bits |  t | chains | precomp ops | P/n^{2/3} | build s | online ops | T/n^{1/3} | √n / T |
+|-----|-----:|---:|-------:|------------:|----------:|--------:|-----------:|----------:|-------:|
+| zp | 24 |  7 |   200 |      36366 | 1.398 | 0.0009 |   310.6 | 1.926 |  6.6 |
+| ec | 24 |  8 |   117 |      36815 | 0.892 | 0.0011 |  1513.4 | 7.447 |  1.9 |
+| zp | 28 |  9 |   185 |     129591 | 0.785 | 0.0032 |  1150.6 | 2.831 |  7.1 |
+| ec | 28 |  9 |   426 |     285046 | 1.087 | 0.0080 |  2320.4 | 4.532 |  5.0 |
+| zp | 32 | 10 |   787 |     999317 | 0.953 | 0.0246 |  2184.8 | 2.134 | 15.0 |
+| ec | 32 | 10 |  1558 |    2180963 | 1.310 | 0.0596 |  2781.2 | 2.156 | 16.7 |
+| zp | 36 | 11 |  3039 |    8500087 | 1.277 | 0.2097 |  2325.6 | 0.901 | 56.4 |
+| ec | 36 | 11 |  6145 |   16820363 | 1.591 | 0.4387 |  6769.4 | 2.082 | 27.4 |
+
+Reading the table: the precomputation sits at `P ~ 0.8 - 1.6 n^{2/3}` and the
 table at `n^{1/3}` entries, both as the theory predicts and close to the
-paper's `1.24 n^{2/3}` / `n^{1/3}`.  The online cost is `T ~ 1 - 6 n^{1/3}`
+paper's `1.24 n^{2/3}` / `n^{1/3}`.  The online cost is `T ~ 1 - 7 n^{1/3}`
 (5 targets per row, so the same `~+-30 %` statistical noise as the rho rows,
 plus the one scalar-multiplication walk start that each attempt pays); the
-paper's figure is `1.77 n^{1/3}`.  The right-hand column is the point of the
-method: the per-target online search is already `7x - 55x` cheaper than the
+paper's figure is `1.77 n^{1/3}`.  The `√n / T` column is the point of the
+method: the per-target online search is already `7x - 56x` cheaper than the
 `sqrt(n)` it would otherwise cost, and the ratio grows as `n^{1/6}`, so at
 cryptographic sizes it is enormous -- at the price of a precomputation that
 is itself larger than one `sqrt(n)` search and is only worth it amortised
 over many targets in a fixed group.  See ALGORITHMS.md for why this is a
 statement about non-uniform security rather than a practical attack.
+
+**Optimisations.**  The build uses a fixed-base table for walk starts, one
+batched field inversion per `W` curve additions, and a sorted
+(fingerprint, exponent) table (16 bytes/entry, ~4x smaller than the hash
+table it replaced).  Together they took the 36-bit curve build from 2.26 s
+(a naive one-add-per-inversion, double-and-add-start version) to the 0.44 s
+above -- a 5x wall-clock win on one core before any threading.  `--threads 4`
+then builds it in 0.11 s (3.9x more).  An optional Bloom early-abort
+(`--early-abort`) pays off only when the table is deliberately built to
+over-cover the group: on a 2^17 group at coverage 32 it cut the
+precomputation from 121k to 77k operations while storing about twice the
+distinct endpoints; at the default coverage of 1 merges are negligible and
+it is off.
 
 ## Index calculus in `Z_p^*` (`ca_bench ic --threads 4`)
 

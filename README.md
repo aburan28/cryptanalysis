@@ -86,8 +86,8 @@ $ ./build/ca solve --alg gpu-rho --group zp --p 2000000579 --order 1000000289 \
 # ~n^{1/3} online operations; "ops" is the online cost, "precomp_ops" the
 # one-time build.
 $ ./build/ca solve --alg precomp --group zp --p 2000000579 --order 1000000289 \
-      --g 1422302461 --h 1216411080 --seed 1
-{"status":"ok","alg":"precomp","x":123456789,"precomp_ops":1058260,"chains":694,"dp_bits":10,"r":20,"ops":1410,...}
+      --g 1422302461 --h 1216411080 --seed 1 --threads 4
+{"status":"ok","alg":"precomp","x":123456789,"precomp_ops":995774,"chains":710,"dp_bits":10,"r":20,"ops":1324,...}
 
 $ ./build/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 4
 {"status":"ok","x":240852468320,"check":123456789,"factor_base":143,"unknowns":1094,
