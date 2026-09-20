@@ -26,6 +26,7 @@ bench: lib
 	$(BUILD)/ca_bench ops
 	$(BUILD)/ca_bench generic --bits 24,28,32,36 --reps 3
 	$(BUILD)/ca_bench interval --bits 24,28,32 --reps 3
+	$(BUILD)/ca_bench precomp --bits 24,28,32,36 --reps 5
 	$(BUILD)/ca_bench ic --bits 32,40,48
 	$(BUILD)/ca_bench cheon --bits 32,40
 	$(BUILD)/ca_bench gpu --bits 24,28,32

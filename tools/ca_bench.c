@@ -12,6 +12,10 @@
  *       index calculus in Z_p^*: stage timings.
  *   ca_bench cheon    [--bits 32,40,48]
  *       Cheon vs generic sqrt(p) cost in group operations.
+ *   ca_bench precomp  [--bits 24,28,32,36] [--reps 5] [--group zp|ec|both]
+ *       discrete logs with precomputation (Bernstein-Lange): the one-time
+ *       precomputation cost in n^{2/3}, the table size, and the per-target
+ *       online cost in n^{1/3}, with the per-target speedup over sqrt(n).
  *   ca_bench ops      raw group operation throughput.
  *   ca_bench gpu      [--bits 24,28,32] [--reps 3] [--group zp|ec|both]
  *       CPU rho vs the GPU rho kernel (CUDA when a device is present,
@@ -311,6 +315,59 @@ static void run_gpu(unsigned bits, unsigned reps, int ec)
     }
 }
 
+static void run_precomp(unsigned bits, unsigned reps, int ec)
+{
+    ca_group g;
+    ca_elem gen;
+    uint64_t n;
+    if (!ec) {
+        uint64_t p;
+        n = find_safe_prime(bits, &p);
+        ca_group_zp_init(&g, p, n);
+    } else {
+        uint64_t p, a, b;
+        find_prime_order_curve(bits, &p, &a, &b, &n);
+        ca_group_ec_init(&g, p, a, b, n);
+        g.cofactor = 1;
+    }
+    ca_group_find_generator(&g, &gen, 1);
+    ca_precomp_params pp;
+    ca_precomp_params_default(&pp);
+    pp.seed = 1234 + bits;
+    ca_stats build = {0};
+    ca_precomp_table *tab = NULL;
+    ca_status rc = ca_precomp_table_new(&g, &gen, &pp, &tab, &build);
+    if (rc != CA_OK || !tab) {
+        printf("| %-4s | %3u | build failed: %s |\n", ec ? "ec" : "zp", bits, ca_status_string(rc));
+        return;
+    }
+    int32_t dpb = 0;
+    uint64_t chains = 0, precomp_ops = 0;
+    uint32_t rr = 0;
+    ca_precomp_table_info(tab, &dpb, &chains, &rr, &precomp_ops);
+    double sq = sqrt((double)n), c23 = pow((double)n, 2.0 / 3.0), c13 = cbrt((double)n);
+    ca_rng rng;
+    ca_rng_seed(&rng, 55 + bits);
+    double on_ops = 0;
+    unsigned ok = 0;
+    for (unsigned r = 0; r < reps; r++) {
+        uint64_t x = ca_rng_below(&rng, n);
+        ca_elem h;
+        ca_group_mul(&g, &h, &gen, x, NULL);
+        uint64_t got = 0;
+        ca_stats s = {0};
+        ca_status sc = ca_precomp_table_solve(tab, &h, &got, &s);
+        on_ops += (double)s.group_ops;
+        ok += (sc == CA_OK && got == x);
+    }
+    ca_precomp_table_free(tab);
+    double online = on_ops / reps;
+    printf("| %-4s | %3u | %2d | %8" PRIu64 " | %11" PRIu64
+           " | %7.3f | %8.4f | %10.1f | %7.3f | %7.1f | %u/%u |\n",
+           ec ? "ec" : "zp", bits, dpb, chains, precomp_ops, (double)precomp_ops / c23,
+           build.seconds, online, online / c13, sq / online, ok, reps);
+}
+
 static void run_ops(void)
 {
     uint64_t p;
@@ -419,6 +476,22 @@ int main(int argc, char **argv)
         }
         printf("\nThe emulator runs the kernel body one thread at a time on the CPU, so its\n"
                "seconds column is not a GPU measurement; the operation counts are.\n");
+    } else if (!strcmp(cmd, "precomp")) {
+        int nb = parse_list(opt("--bits", "24,28,32,36"), bits, 16);
+        printf(
+            "Discrete logs with precomputation (Bernstein-Lange).  One table per (group, base);\n"
+            "P = precomputation ops (paid once), T = per-target online ops over --reps "
+            "targets.\n\n");
+        printf("| grp | bits |  t |   chains | precomp ops | P/n^2/3 | build s | online ops | "
+               "T/n^1/3 |"
+               " sqrtN/T | ok  |\n");
+        printf("|-----|-----:|---:|---------:|------------:|--------:|--------:|-----------:|------"
+               "--:|"
+               "--------:|-----|\n");
+        for (int i = 0; i < nb; i++) {
+            if (strcmp(group, "ec")) run_precomp(bits[i], reps, 0);
+            if (strcmp(group, "zp")) run_precomp(bits[i], reps, 1);
+        }
     } else if (!strcmp(cmd, "ops")) {
         run_ops();
     } else {
