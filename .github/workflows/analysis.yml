@@ -30,7 +30,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install clang-tidy
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-tidy
+        # The runner image ships a packages.microsoft.com apt source that
+        # intermittently 403s; that is unrelated to clang-tidy (an Ubuntu
+        # package), so tolerate a failing third-party repo on update and let
+        # the install be the real gate.
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends clang-tidy
 
       - name: Generate the compilation database
         run: |
@@ -51,7 +57,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install cppcheck
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cppcheck
+        # See the clang-tidy job: a flaky bundled apt repo must not fail update.
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends cppcheck
 
       - name: Run cppcheck
         run: |
@@ -90,7 +99,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-format
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends clang-format
 
       - name: Check the lines this change touches
         # Only the touched lines, not the whole tree: the sources predate
@@ -125,7 +136,8 @@ jobs:
 
       - name: shellcheck
         run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends shellcheck
           shellcheck scripts/*.sh deploy/*/*.sh
 
       - name: actionlint
@@ -143,7 +155,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install gcovr
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcovr
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends gcovr
 
       - name: Build instrumented and run the suite
         run: |

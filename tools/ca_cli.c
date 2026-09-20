@@ -7,13 +7,17 @@
  *   ca ec-order --p P --a A --b B
  *   ca gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]
  *   ca gpu-info
- *   ca solve --alg bsgs|rho|kangaroo|grumpy|precomp|dlog|gpu-rho --group zp|ec --p P [--a A --b B]
+ *   ca curve --name NAME | (--group ec --p P --a A --b B [--order N]) | --list
+ *            report a curve's endomorphism structure (GLV) and chosen solver
+ *   ca solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a A --b
+ * B]
  *            --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S]
  *            [--dp-bits D] [--r R] [--walks W] [--no-negation] [--m M] [--alpha F]
  *            [--solver auto|bsgs|rho|kangaroo|grumpy] [--max-ops K]
  *            gpu-rho also takes [--backend auto|cuda|emulate] [--device D]
  *            [--tpb T] [--blocks B] [--steps S]
- *            precomp also takes [--table CHAINS] [--coverage F]
+ *            precomp also takes [--table CHAINS] [--coverage F] [--threads T]
+ *            [--walks W] [--early-abort|--no-early-abort]
  *            [--max-precomp-ops K] [--max-online-ops K]
  *   ca cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D
  *            (--ga GA --gad GAD | --alpha X)
@@ -146,9 +150,11 @@ static _Noreturn void usage(void)
         "usage: ca <command> [options]\n"
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
-        "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|dlog|gpu-rho --group zp|ec --p P [--a A "
+        "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a "
+        "A "
         "--b B]\n"
         "        --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S] ...\n"
+        "  curve --name NAME | (--group ec --p P --a A --b B [--order N]) | --list\n"
         "  cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D (--ga GA --gad GAD | "
         "--alpha X)\n"
         "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] "
@@ -331,6 +337,32 @@ static int cmd_solve(void)
         fprintf(stderr, "error: %s %s\n", ca_status_string(rc), ca_last_error());
         return 1;
     }
+    if (!strcmp(alg, "glv")) {
+        if (g.kind != CA_GROUP_EC) die("--alg glv needs --group ec");
+        ca_group cg;
+        ca_curve_info info;
+        rc = ca_curve_group(&cg, g.p, g.a, g.b, g.order, &info);
+        if (rc != CA_OK) die_status(rc);
+        /* base/target are valid in cg: identical curve and Montgomery domain. */
+        rc = ca_curve_solve(&cg, &base, &target, opt_u64("--seed", 0), &x, &info, &st);
+        const char *ek = info.endo == CA_CURVE_ENDO_J0      ? "j0"
+                         : info.endo == CA_CURVE_ENDO_J1728 ? "j1728"
+                                                            : "none";
+        if (rc == CA_OK) {
+            printf("{\"status\":\"ok\",\"alg\":\"glv\",\"x\":%" PRIu64
+                   ",\"endomorphism\":\"%s\",\"aut_order\":%u,\"lambda\":%" PRIu64
+                   ",\"rho_speedup\":%.4f,",
+                   x, ek, info.aut_order, info.lambda, info.rho_speedup);
+            print_stats(&st);
+            printf("}\n");
+            return 0;
+        }
+        printf("{\"status\":\"%s\",\"alg\":\"glv\",", ca_status_string(rc));
+        print_stats(&st);
+        printf("}\n");
+        fprintf(stderr, "error: %s %s\n", ca_status_string(rc), ca_last_error());
+        return 1;
+    }
     if (!strcmp(alg, "precomp")) {
         ca_precomp_params pp;
         ca_precomp_params_default(&pp);
@@ -339,6 +371,9 @@ static int cmd_solve(void)
         pp.r = (uint32_t)opt_u64("--r", 0);
         pp.table_size = opt_u64("--table", 0);
         pp.coverage = opt_f("--coverage", 0);
+        pp.threads = (uint32_t)opt_u64("--threads", 1);
+        pp.walks = (uint32_t)opt_u64("--walks", 0);
+        pp.early_abort = flag("--early-abort") ? 1 : (flag("--no-early-abort") ? 0 : -1);
         pp.max_precomp_ops = opt_u64("--max-precomp-ops", 0);
         pp.max_online_ops = opt_u64("--max-online-ops", 0);
         ca_stats build = {0}, online = {0};
@@ -989,6 +1024,47 @@ static int cmd_coord_status(void)
     return 0;
 }
 
+/* ------------------------------------------------------------- curve ----
+ * Curve-aware dispatch: report the endomorphism structure of a curve (given
+ * by --name from the registry or by explicit parameters) and the solver the
+ * library would pick for it.
+ */
+static int cmd_curve(void)
+{
+    if (flag("--list")) {
+        const char *names[32];
+        size_t n = ca_curve_list(names, 32);
+        printf("{\"curves\":[");
+        for (size_t i = 0; i < n && i < 32; i++) printf("%s\"%s\"", i ? "," : "", names[i]);
+        printf("]}\n");
+        return 0;
+    }
+    uint64_t p = 0, a = 0, b = 0, order = 0;
+    const char *name = opt("--name");
+    if (name) {
+        ca_status rc = ca_curve_by_name(name, &p, &a, &b, &order);
+        if (rc != CA_OK) die_status(rc);
+    } else {
+        p = opt_u64("--p", 0);
+        a = opt_u64("--a", 0);
+        b = opt_u64("--b", 0);
+        order = opt_u64("--order", 0);
+        if (!p) die("curve needs --name or --p [--a --b --order]");
+    }
+    ca_curve_info info;
+    ca_status rc = ca_curve_detect(p, a, b, order, &info);
+    if (rc != CA_OK) die_status(rc);
+    const char *ek = info.endo == CA_CURVE_ENDO_J0      ? "j0"
+                     : info.endo == CA_CURVE_ENDO_J1728 ? "j1728"
+                                                        : "none";
+    printf("{\"status\":\"ok\",\"p\":%" PRIu64 ",\"a\":%" PRIu64 ",\"b\":%" PRIu64
+           ",\"order\":%" PRIu64 ",\"endomorphism\":\"%s\",\"aut_order\":%u,\"beta\":%" PRIu64
+           ",\"lambda\":%" PRIu64 ",\"rho_speedup\":%.4f,\"solver\":\"%s\"}\n",
+           p, a, b, order, ek, info.aut_order, info.beta, info.lambda, info.rho_speedup,
+           info.endo != CA_CURVE_ENDO_NONE ? "glv-rho" : "rho");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     argc_g = argc;
@@ -1053,6 +1129,7 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "coord-status")) return cmd_coord_status();
     if (!strcmp(cmd, "num")) return cmd_num();
     if (!strcmp(cmd, "group")) return cmd_group();
+    if (!strcmp(cmd, "curve")) return cmd_curve();
     usage();
     return 2;
 }

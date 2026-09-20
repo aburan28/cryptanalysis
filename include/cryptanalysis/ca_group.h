@@ -62,6 +62,17 @@ struct ca_group {
     ca_mont mont;         /* Montgomery context for F_p */
     uint64_t a_mont, b_mont;
     uint64_t cofactor;    /* #E / n or (p-1)/n when known, else 0 */
+
+    /* Optional efficiently-computable endomorphism psi(P) = endo_lambda * P
+     * on a CM curve, enabled by ca_curve_group (see ca_curve.h) when the
+     * subgroup order is compatible.  endo_kind: 0 none, 1 j-invariant 0
+     * (psi(x,y) = (c*x, -y)), 2 j-invariant 1728 (psi(x,y) = (-x, c*y)).
+     * aut_order is the size of <psi> (4 or 6); the rho walk folds the search
+     * space by it.  c is endo_c_mont (Montgomery form). */
+    uint32_t endo_kind;
+    uint32_t aut_order;
+    uint64_t endo_lambda;
+    uint64_t endo_c_mont;
 };
 
 /* ---- constructors ------------------------------------------------------ */
@@ -132,6 +143,8 @@ CA_API void ca_group_format(const ca_group *g, const ca_elem *a, char *buf, size
 
 /* Lift x to a point on the curve if possible (chooses the smaller y). */
 CA_API int ca_ec_lift_x(const ca_group *g, ca_elem *r, uint64_t x);
+/* Apply the curve's endomorphism psi once (a copy when none is enabled). */
+CA_API void ca_ec_endo(const ca_group *g, ca_elem *r, const ca_elem *a);
 /* Random point on the curve. */
 CA_API void ca_ec_random_point(const ca_group *g, ca_elem *r, uint64_t seed);
 /* Count points on E(F_p) using Mestre's baby-step giant-step method.

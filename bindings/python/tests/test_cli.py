@@ -141,7 +141,7 @@ class SolverTests(unittest.TestCase):
         self.h = h["result"]
 
     def test_every_algorithm_finds_the_planted_log(self):
-        for alg in ("bsgs", "rho", "kangaroo", "grumpy", "dlog"):
+        for alg in ("bsgs", "rho", "kangaroo", "grumpy", "precomp", "dlog"):
             with self.subTest(alg=alg):
                 rc, out = run(
                     "solve",
@@ -179,6 +179,33 @@ class SolverTests(unittest.TestCase):
             "100",
         )
         self.assertEqual((rc, out["found"]), (1, False))
+
+
+class CurveTests(unittest.TestCase):
+    EC = ("--group", "ec", "--p", "67108933", "--a", "0", "--b", "7", "--order", "16773703")
+
+    def test_curve_reports_the_endomorphism(self):
+        rc, out = run("curve", "--name", "glv-j0-26")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(out["endomorphism"], "j0")
+        self.assertEqual(out["aut_order"], 6)
+        self.assertEqual(out["solver"], "glv-rho")
+        rc, out = run("curve", "--p", "67108879", "--a", "2", "--b", "3", "--order", "3355777")
+        self.assertEqual(out["endomorphism"], "none")
+
+    def test_curve_list(self):
+        rc, out = run("curve", "--list")
+        self.assertEqual(rc, 0)
+        self.assertIn("glv-j0-26", out["curves"])
+
+    def test_glv_solve_finds_the_planted_log(self):
+        gen = run("group", "generator", *self.EC)[1]["generator"]
+        x = 424242 % 16773703
+        h = run("group", "exp", *self.EC, "--elem", gen, "--k", str(x))[1]["result"]
+        rc, out = run("solve", "--alg", "glv", *self.EC, "--g", gen, "--h", h, "--seed", "5")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(int(out["x"]), x)
+        self.assertEqual(out["endomorphism"], "j0")
 
 
 class IndexCalculusTests(unittest.TestCase):

@@ -49,7 +49,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Icarus Verilog
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends iverilog
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends iverilog
 
       - name: Model, vectors, testbenches, host tooling
         # The distinguished-point weight is relaxed from the campaign's 34:
@@ -65,7 +67,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install verilator
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends verilator
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends verilator
       - name: Lint
         # -Wall with no waivers: every warning in this tree has been fixed
         # rather than suppressed, so a new one means new code.
@@ -78,7 +82,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install yosys
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends yosys
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends yosys
       - name: Synthesise one core and four
         # Technology-independent synthesis mapped to LUT4s.  This is not a
         # vendor place-and-route: there is no timing and no device here, and
