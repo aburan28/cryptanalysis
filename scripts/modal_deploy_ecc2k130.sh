@@ -19,7 +19,38 @@ CRYPTO_DIR="${CRYPTO_DIR:-$HOME/src/crypto}"
 ECC_GPU="${ECC_GPU:-RTX-PRO-6000}"
 ECC_HOURS="${ECC_HOURS:-1}"
 ECC_FANOUT="${ECC_FANOUT:-4}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="${HOME}/.local/bin:${PATH}"
+
+# ONE-BLOCK-GEOMETRY.md / make gpu-rtx-pro6000-20b — must match the RunPod binary.
+export ECC_CUDA_VERSION="${ECC_CUDA_VERSION:-13.3.1}"
+export ECC_PACKED_SINGLE_PRODUCT=1
+export ECC_PACKED_CACHE_DENOM=1
+export ECC_PACKED_BY_VALUE=1
+export ECC_PACKED_PERM_SIGMA=3
+export ECC_PACKED_POLY_CHAIN=1
+export ECC_PACKED_UNROLL_INV=1
+export ECC_PACKED_PAIR_PRODUCTS=1
+export ECC_PACKED_POLY_STATE=1
+export ECC_PACKED_DIRECT_REDUCE=1
+export ECC_PACKED_GENERATED_PRODUCT=1
+export ECC_PACKED_CLMAD=1
+export ECC_PACKED_STATE_TILE=256
+export ECC_PACKED_WEIGHTED_PREFIX=2
+export ECC_PACKED_COMPACT_STATE=1
+export ECC_PACKED_SHARED_SIGMA=1
+export ECC_WALK_TABLE=1
+export ECC_TABLE_PIVOT_BYTES=1
+export ECC_TABLE_TAG_DENOM=1
+export ECC_TABLE_PIPE_SELECT=1
+export ECC_PACKED_CHAIN_FIRST=1
+export ECC_PACKED_INLINE_POLY=3
+export ECC_PACKED_PAIR_ILP=1
+export ECC_PACKED_L2_PERSIST=1
+export ECC_PACKED_ALU_SQUARE=1
+export ECC_PACKED_FROM_REDUCED=1
+export ECC_UNROLL_SLOTS=1
+export ECC_GPU
 
 need_modal() {
   command -v modal >/dev/null || pip install -q 'modal>=0.72'
@@ -43,17 +74,19 @@ ensure_crypto() {
   git -C "$CRYPTO_DIR" log -1 --oneline
   # Sanity: 20 B/s target must exist (#507).
   grep -q 'gpu-rtx-pro6000-20b' "$CRYPTO_DIR/ecc2k130/Makefile"
+  # Stock modal_app.py cannot bake the 20 B/s knobs; overlay locally.
+  python3 "$SCRIPT_DIR/patch_modal_app_20b.py" "$CRYPTO_DIR/ecc2k130/modal_app.py"
 }
 
 run_in_ecc() {
-  ( cd "$CRYPTO_DIR/ecc2k130" && ECC_GPU="$ECC_GPU" "$@" )
+  ( cd "$CRYPTO_DIR/ecc2k130" && "$@" )
 }
 
 case "$CMD" in
   setup)
     need_modal
     ensure_crypto
-    echo "ready: crypto=$CRYPTO_DIR gpu=$ECC_GPU"
+    echo "ready: crypto=$CRYPTO_DIR gpu=$ECC_GPU geometry=20b"
     ;;
   deploy)
     need_modal
@@ -63,14 +96,14 @@ case "$CMD" in
   bench)
     need_modal
     ensure_crypto
-    # Use the one-block / tag-denom geometry via env knobs the Makefile target sets;
-    # Modal rebuilds inside the image. Prefer packed bench matching RunPod.
     run_in_ecc modal run modal_app.py::bench --gpu "$ECC_GPU" --packed \
-      --batch 16 --threads 512
+      --batch 16 --threads 512 --min-blocks 1 \
+      --steps 1024 --launches 32 --repeats 3
     ;;
   search)
     need_modal
     ensure_crypto
+    # search has no --min-blocks CLI; overlay forces MINBLOCKS=1 via TABLE_TAG_DENOM.
     run_in_ecc modal run modal_app.py::search --gpu "$ECC_GPU" \
       --curve 131 --packed --hours "$ECC_HOURS" \
       --batch 16 --threads 512 --verify 0 --run-id 1
