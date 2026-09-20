@@ -368,6 +368,18 @@ func ffiDlog(h ctxHandle, base, target Elem, o *Options) (uint64, Stats, error) 
 	}, h, base, target, o)
 }
 
+func ffiPrecomp(h ctxHandle, base, target Elem, dpBits int32, tableSize uint64, coverage float64,
+	threads uint32, seed uint64) (x uint64, st Stats, err error) {
+	var cx C.uint64_t
+	var cst C.ca_stats
+	withThread(func() {
+		err = statusErr(C.ca_ffi_precomp(h, ep(&base), ep(&target), C.int32_t(dpBits),
+			C.uint64_t(tableSize), C.double(coverage), C.uint32_t(threads), C.uint64_t(seed),
+			&cx, &cst))
+	})
+	return uint64(cx), statsFromC(&cst), err
+}
+
 // ---- Cheon ----------------------------------------------------------------
 
 func ffiCheon(h ctxHandle, gen, gAlpha, gAlphaD Elem, d, maxExps uint64) (alpha uint64, st Stats, err error) {
