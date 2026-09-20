@@ -3,7 +3,7 @@
 Pure-Python `ctypes` bindings for **libcryptanalysis**, a C library of
 discrete-logarithm algorithms: baby-step giant-step, parallel Pollard rho,
 kangaroo, Bernstein-Lange grumpy giants, discrete logs with precomputation,
-Pohlig-Hellman, Cheon's attack on
+GLV endomorphism-accelerated rho, Pohlig-Hellman, Cheon's attack on
 the strong Diffie-Hellman problem and index calculus in `(Z/pZ)^*`.  All
 moduli are 64-bit (`p < 2^64`), so pass Python ints in range.
 
@@ -50,6 +50,13 @@ x, stats = g.grumpy(gen, h, 123_000_000, 124_000_000)
 x, stats = g.bsgs(gen, h)
 x, stats = g.precomp(gen, h, threads=4)        # ~n^2/3 precompute, ~n^1/3 online
 print(x, stats.group_ops, stats.seconds)
+
+# Curve-aware dispatch: give a curve name (or params) and get the endomorphism
+# it carries; on a CM curve, curve_solve folds the rho walk (GLV).
+info = ca.curve_detect(*ca.curve_by_name("glv-j0-26"))   # -> CurveEndo.J0, order 6
+E = ca.Group.ec(*ca.curve_by_name("glv-j0-26"))
+P = E.find_generator(1); Q = E.mul(P, 424242)
+x, info, stats = E.curve_solve(P, Q)           # GLV-accelerated rho
 
 # elliptic curve y^2 = x^3 + x + 7 over F_1000003
 n = ca.Group.ec_count_points(1000003, 1, 7)

@@ -13,6 +13,8 @@ from .errors import InvalidError, Status
 if TYPE_CHECKING:
     from ctypes import _CArgObject  # only exists for type checkers
 
+    from .curve import CurveInfo
+
 
 def _opts(options: Optional[Options]) -> Optional[_CArgObject]:
     """``ca_ffi_options *`` for the call (NULL => library defaults)."""
@@ -366,6 +368,42 @@ class Group:
         )
         _lib.check(rc)
         return x.value, Stats.from_c(st)
+
+    def curve_solve(
+        self, base: ElemLike, target: ElemLike, seed: int = 0
+    ) -> tuple[int, CurveInfo, Stats]:
+        """Solve base^x == target with the GLV endomorphism-accelerated rho.
+
+        Folds the Pollard rho walk by the curve's endomorphism when it has one,
+        else the negation-map rho.  Returns ``(x, info, stats)``; ``info``
+        reports which path ran (its ``beta`` is 0 -- use
+        :func:`cryptanalysis.curve_detect`).  Elliptic curves only (raises
+        UnsupportedError for Z_p^*).
+        """
+        from .curve import CurveEndo, CurveInfo
+
+        x = ctypes.c_uint64(0)
+        st = CStats()
+        endo = ctypes.c_int32(0)
+        aut_order = ctypes.c_uint32(0)
+        lam = ctypes.c_uint64(0)
+        _lib.arm()
+        rc = lib.ca_ffi_curve_solve(
+            self._ctx,
+            self._w(base, "base"),
+            self._w(target, "target"),
+            _lib.u64(seed, "seed"),
+            ctypes.byref(x),
+            ctypes.byref(endo),
+            ctypes.byref(aut_order),
+            ctypes.byref(lam),
+            ctypes.byref(st),
+        )
+        _lib.check(rc)
+        info = CurveInfo(
+            CurveEndo(endo.value), aut_order.value, 0, lam.value, float(aut_order.value) ** 0.5
+        )
+        return x.value, info, Stats.from_c(st)
 
     # ---- Cheon ------------------------------------------------------------
 

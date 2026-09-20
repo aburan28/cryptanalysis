@@ -151,6 +151,30 @@ class ZpTests(unittest.TestCase):
         self.assertGreater(st.group_ops, 0)
         self.assertGreater(st.table_entries, 0)
 
+    def test_curve_dispatch(self):
+        info = ca.curve_detect(67108933, 0, 7, 16773703)
+        self.assertEqual(info.endo, ca.CurveEndo.J0)
+        self.assertEqual(info.aut_order, 6)
+        self.assertGreater(info.lambda_, 1)
+        self.assertEqual(str(info.endo), "j0")
+        g1728 = ca.curve_detect(67108933, 6, 0, 6712457)
+        self.assertEqual(g1728.endo, ca.CurveEndo.J1728)
+        self.assertEqual(ca.curve_detect(67108879, 2, 3, 0).endo, ca.CurveEndo.NONE)
+        p, a, b, order = ca.curve_by_name("glv-j0-26")
+        self.assertEqual((p, order), (67108933, 16773703))
+        with self.assertRaises(ca.NotFoundError):
+            ca.curve_by_name("no-such-curve")
+        self.assertIn("glv-j0-26", ca.curve_names())
+        E = ca.Group.ec(p, a, b, order)
+        gen = E.find_generator(1)
+        x = 424242 % order
+        h = E.mul(gen, x)
+        got, si, st = E.curve_solve(gen, h, seed=5)
+        self.assertEqual(got, x)
+        self.assertEqual(si.endo, ca.CurveEndo.J0)
+        self.assertEqual(si.aut_order, 6)
+        self.assertGreater(st.group_ops, 0)
+
     def test_dlog_auto_and_each_solver(self):
         x, _ = self.G.dlog(self.g, self.h, self.opts)
         self.assertEqual(x, ZP_X)
