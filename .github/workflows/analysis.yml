@@ -132,8 +132,11 @@ jobs:
 
       - name: shellcheck
         run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
-          shellcheck scripts/*.sh
+          sudo apt-get update \
+            -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources \
+            -o Dir::Etc::sourceparts=-
+          sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck scripts/*.sh usecases/ecc2k130/deploy/helm/check.sh
 
       - name: actionlint
         # Also runs shellcheck over every `run:` block in these workflows.
