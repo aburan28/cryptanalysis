@@ -75,7 +75,12 @@ def measured_tables(rows: list[dict], groups: dict) -> str:
         cells: dict[tuple[int, int], list[float]] = defaultdict(list)
         attempted: dict[tuple[int, int], int] = defaultdict(int)
         for r in rows:
-            if r["engine"] == engine and int(r["m"]) == m and r["curve"] == "koblitz":
+            if (
+                r["engine"] == engine
+                and int(r["m"]) == m
+                and r["curve"] == "koblitz"
+                and r["status"] not in ("unsupported", "error")
+            ):
                 attempted[(int(r["n"]), int(r["l"]))] += 1
         for r in rs:
             cells[(int(r["n"]), int(r["l"]))].append(float(r["seconds"]))
@@ -97,6 +102,31 @@ def measured_tables(rows: list[dict], groups: dict) -> str:
                     line.append(f"timeout (0/{attempted[(n, l)]})")
             out.append(f"| {n} | " + " | ".join(line) + " |")
         out.append("")
+        if engine == "wdsat":
+            import json
+
+            conflicts: dict[tuple[int, int], list[int]] = defaultdict(list)
+            for r in rs:
+                d = json.loads(r["detail"]) if r["detail"].startswith("{") else {}
+                if "conflicts" in d:
+                    conflicts[(int(r["n"]), int(r["l"]))].append(int(d["conflicts"]))
+            out.append(
+                f"**{engine}, m = {m}: median conflicts** (the search-tree leaves; the paper's bound is `2^(3l)/3!`)\n"
+            )
+            out.append("| n \\ l | " + " | ".join(str(l) for l in ls) + " |")
+            out.append("|---|" + "---|" * len(ls))
+            for n in ns:
+                line = []
+                for l in ls:
+                    v = sorted(conflicts.get((n, l), []))
+                    line.append(f"{v[len(v) // 2]:,}" if v else "")
+                out.append(f"| {n} | " + " | ".join(line) + " |")
+            out.append(
+                "| `2^(3l)/6` | "
+                + " | ".join(f"{2 ** (3 * l) // 6:,}" for l in ls)
+                + " |"
+            )
+            out.append("")
     return "\n".join(out)
 
 

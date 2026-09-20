@@ -269,7 +269,162 @@ def solve_mitm(inst: Instance, timeout: float, threads: int) -> dict:
     }
 
 
-ENGINES = {"sat": solve_sat, "msolve": solve_msolve, "mitm": solve_mitm}
+WDSAT_CONFIG = """
+#define __XG_ENHANCED__
+#define __MAX_ANF_ID__ {anf_id}
+#define __MAX_DEGREE__ {degree}
+#define __MAX_ID__ {max_id}
+#define __MAX_BUFFER_SIZE__ {buffer}
+#define __MAX_EQ__ {max_eq}
+#define __MAX_EQ_SIZE__ {eq_size}
+#define __MAX_XEQ__ {xeq}
+#define __MAX_XEQ_SIZE__ {xeq_size}
+"""
+
+
+def wdsat_binary(params: dict) -> str:
+    """WDSat sizes its tables statically, so build one binary per size class.
+
+    WDSAT_SRC points at a checkout of https://github.com/mtrimoska/WDSat.
+    """
+    import hashlib
+    import shutil
+
+    src = os.environ.get("WDSAT_SRC", "/tmp/WDSat")
+    key = hashlib.sha1(repr(sorted(params.items())).encode()).hexdigest()[:12]
+    build = os.path.join(os.environ.get("WDSAT_BUILDS", "/tmp/wdsat-builds"), key)
+    exe = os.path.join(build, "wdsat_solver")
+    if os.path.exists(exe):
+        return exe
+    os.makedirs(build, exist_ok=True)
+    for f in os.listdir(os.path.join(src, "src")):
+        if f.endswith((".c", ".h")) and f != "config.h":
+            shutil.copy(os.path.join(src, "src", f), build)
+    with open(os.path.join(build, "config.h"), "w") as fh:
+        fh.write(WDSAT_CONFIG.format(**params))
+    # The upstream reader holds one input line in a 30 kB stack buffer; the
+    # direct (non-symmetrised) model has equations far longer than that.
+    for fname, old, new in (
+        (
+            "wdsat_utils.h",
+            "#define __STATIC_CLAUSE_STRING_SIZE__ 30000",
+            "#define __STATIC_CLAUSE_STRING_SIZE__ (1 << 27)",
+        ),
+        (
+            "dimacs.c",
+            "char str_clause[__STATIC_CLAUSE_STRING_SIZE__] = {0};",
+            "static char str_clause[__STATIC_CLAUSE_STRING_SIZE__];",
+        ),
+    ):
+        p = os.path.join(build, fname)
+        with open(p) as fh:
+            text = fh.read()
+        if old not in text:
+            raise RuntimeError(
+                f"WDSat source at {src} does not match the expected {fname}"
+            )
+        with open(p, "w") as fh:
+            fh.write(text.replace(old, new))
+    srcs = [f for f in os.listdir(build) if f.endswith(".c")]
+    subprocess.run(["gcc", "-O3", "-w", "-o", exe, *srcs, "-lm"], cwd=build, check=True)
+    return exe
+
+
+def solve_wdsat(inst: Instance, timeout: float, threads: int) -> dict:
+    """WDSat on the symmetrised model of Trimoska–Ionica–Dequen (m = 3 only).
+
+    WDSat's ANF front end is only correct for monomials of degree <= 3 (the
+    upstream code returns wrong models on degree >= 4 inputs), so the direct
+    descended S_4 (degree 6) cannot be fed to it; the symmetrised model has
+    degree 3 by construction and is the one the paper measured.
+    """
+    if inst.m != 3:
+        return {
+            "status": "unsupported",
+            "seconds": 0.0,
+            "detail": "wdsat engine implements the m = 3 model only",
+        }
+    if 3 * inst.l - 2 > inst.n:
+        return {
+            "status": "unsupported",
+            "seconds": 0.0,
+            "detail": "symmetrised model needs 3l - 2 <= n (e3 must not wrap)",
+        }
+    import symmodel
+
+    lines, info = symmodel.build_model(inst)
+    nv = info["core"]
+    params = {
+        "anf_id": info["nvars"] + 1,
+        "degree": info["maxdeg"] + 1,
+        "max_id": info["nvars"] + info["nonlinear"],
+        "buffer": max(200000, 8 * (info["or_clauses"] + info["max_terms"] * inst.n)),
+        "max_eq": info["or_clauses"] + 16,
+        "eq_size": info["maxdeg"] + 2,
+        "xeq": len(lines) + 1,
+        "xeq_size": info["max_terms"] + 2,
+    }
+    exe = wdsat_binary(params)
+    with tempfile.TemporaryDirectory() as d:
+        inp = os.path.join(d, "in.anf")
+        with open(inp, "w") as fh:
+            fh.write("\n".join(lines) + "\n")
+        t0 = time.time()
+        try:
+            r = subprocess.run(
+                [
+                    exe,
+                    "-i",
+                    inp,
+                    "-n",
+                    str(inst.n),
+                    "-l",
+                    str(inst.l),
+                    "-m",
+                    str(inst.m),
+                    "-b",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return {"status": "timeout", "seconds": time.time() - t0}
+        dt = time.time() - t0
+    lines = [
+        ln.strip()
+        for ln in r.stdout.splitlines()
+        if ln.strip() and not ln.startswith("!!!")
+    ]
+    if r.returncode != 0 or not lines:
+        return {
+            "status": "error",
+            "seconds": dt,
+            "stderr": (r.stderr + r.stdout)[-500:],
+        }
+    if lines[-2:-1] == ["UNSAT"] or lines[0] == "UNSAT":
+        return {"status": "unsat", "seconds": dt, "conflicts": int(lines[-1])}
+    bits, conflicts = lines[-2], int(lines[-1])
+    v = sum(1 << j for j, ch in enumerate(bits[:nv]) if ch == "1")
+    return {
+        "status": "sat",
+        "seconds": dt,
+        "conflicts": conflicts,
+        "model_vars": info["nvars"],
+        "model_monomials": info["nonlinear"],
+        "assignment": v,
+        "verified": verify_solution(inst, v),
+        "is_planted": same_points(inst, v),
+    }
+
+
+ENGINES = {
+    "sat": solve_sat,
+    "msolve": solve_msolve,
+    "mitm": solve_mitm,
+    "wdsat": solve_wdsat,
+}
 
 
 def main() -> None:

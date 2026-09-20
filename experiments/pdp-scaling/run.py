@@ -141,6 +141,9 @@ def main() -> None:
                             "basis_size",
                             "free_vars",
                             "is_planted",
+                            "conflicts",
+                            "model_vars",
+                            "model_monomials",
                         )
                         if k in res
                     }
