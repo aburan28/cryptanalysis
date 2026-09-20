@@ -129,3 +129,8 @@ per-step cost is `rho.c`'s, measured in [BENCHMARKS.md](BENCHMARKS.md). What
 it changes is the *shape* of the search — from N independent searches to one
 search on N machines — and that is a statement about the algorithm, not a
 measurement of this code.
+
+## Running Cloud Agents on a GPU pod
+
+To put a Cursor My Machines worker on a RunPod (so Cloud Agent tool calls and
+GPU builds execute there), see [RUNPOD_CURSOR_WORKER.md](RUNPOD_CURSOR_WORKER.md).
