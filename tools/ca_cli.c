@@ -13,7 +13,8 @@
  *            [--solver auto|bsgs|rho|kangaroo|grumpy] [--max-ops K]
  *            gpu-rho also takes [--backend auto|cuda|emulate] [--device D]
  *            [--tpb T] [--blocks B] [--steps S]
- *            precomp also takes [--table CHAINS] [--coverage F]
+ *            precomp also takes [--table CHAINS] [--coverage F] [--threads T]
+ *            [--walks W] [--early-abort|--no-early-abort]
  *            [--max-precomp-ops K] [--max-online-ops K]
  *   ca cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D
  *            (--ga GA --gad GAD | --alpha X)
@@ -309,6 +310,9 @@ static int cmd_solve(void)
         pp.r = (uint32_t)opt_u64("--r", 0);
         pp.table_size = opt_u64("--table", 0);
         pp.coverage = opt_f("--coverage", 0);
+        pp.threads = (uint32_t)opt_u64("--threads", 1);
+        pp.walks = (uint32_t)opt_u64("--walks", 0);
+        pp.early_abort = flag("--early-abort") ? 1 : (flag("--no-early-abort") ? 0 : -1);
         pp.max_precomp_ops = opt_u64("--max-precomp-ops", 0);
         pp.max_online_ops = opt_u64("--max-online-ops", 0);
         ca_stats build = {0}, online = {0};
