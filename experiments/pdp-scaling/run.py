@@ -30,6 +30,7 @@ FIELDS = [
     "build_seconds",
     "status",
     "seconds",
+    "wall_seconds",
     "verified",
     "detail",
 ]
@@ -166,6 +167,9 @@ def main() -> None:
                         "seconds": f"{res['seconds']:.4f}"
                         if isinstance(res.get("seconds"), (int, float))
                         else res.get("seconds", ""),
+                        "wall_seconds": f"{res['wall_seconds']:.4f}"
+                        if isinstance(res.get("wall_seconds"), (int, float))
+                        else "",
                         "verified": res.get("verified", ""),
                         "detail": res.get(
                             "detail", json.dumps(detail, separators=(",", ":"))

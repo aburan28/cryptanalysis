@@ -32,6 +32,41 @@ from descend import Instance, make_instance, verify_solution
 from gf2n import Curve, GF2n, Point
 
 
+class Stopwatch:
+    """CPU seconds (the reported time) and monotonic wall seconds.
+
+    CPU time is the process's own for in-process engines and the children's
+    (RUSAGE_CHILDREN delta) for engines that run a solver binary.  Wall time
+    uses CLOCK_MONOTONIC, which does not advance while the VM is paused, so
+    limits and reported durations are immune to host pauses; the wall-clock
+    time.time() is not, which is why it is not used for measurement.
+    """
+
+    def __init__(self, children: bool):
+        import resource
+
+        self.children = children
+        self._rusage = resource.getrusage
+        self._who = resource.RUSAGE_CHILDREN
+        self.t0 = time.monotonic()
+        self.c0 = self._cpu()
+
+    def _cpu(self) -> float:
+        if self.children:
+            r = self._rusage(self._who)
+            return r.ru_utime + r.ru_stime
+        return time.process_time()
+
+    def cpu(self) -> float:
+        return self._cpu() - self.c0
+
+    def wall(self) -> float:
+        return time.monotonic() - self.t0
+
+    def report(self) -> dict:
+        return {"seconds": self.cpu(), "wall_seconds": self.wall()}
+
+
 def solve_sat(inst: Instance, timeout: float, threads: int) -> dict:
     import pycryptosat
 
@@ -65,20 +100,19 @@ def solve_sat(inst: Instance, timeout: float, threads: int) -> dict:
             s.add_xor_clause(xs, rhs)
         elif rhs:
             return {"status": "unsat-constant", "seconds": 0.0}
-    t0 = time.time()
+    sw = Stopwatch(children=False)
     sat, model = s.solve()
-    dt = time.time() - t0
     if sat is None:
-        return {"status": "timeout", "seconds": dt, "aux_vars": len(aux)}
+        return {"status": "timeout", **sw.report(), "aux_vars": len(aux)}
     if not sat:
-        return {"status": "unsat", "seconds": dt, "aux_vars": len(aux)}
+        return {"status": "unsat", **sw.report(), "aux_vars": len(aux)}
     v = 0
     for j in range(nv):
         if model[j + 1]:
             v |= 1 << j
     return {
         "status": "sat",
-        "seconds": dt,
+        **sw.report(),
         "aux_vars": len(aux),
         "assignment": v,
         "verified": verify_solution(inst, v),
@@ -114,7 +148,7 @@ def solve_msolve(inst: Instance, timeout: float, threads: int) -> dict:
             polys += [f"v{j}^2+v{j}" for j in range(nv)]
             fh.write(",\n".join(polys) + "\n")
         size = os.path.getsize(inp)
-        t0 = time.time()
+        sw = Stopwatch(children=True)
         try:
             r = subprocess.run(
                 [exe, "-g", "2", "-t", str(threads), "-f", inp, "-o", out],
@@ -126,14 +160,14 @@ def solve_msolve(inst: Instance, timeout: float, threads: int) -> dict:
         except subprocess.TimeoutExpired:
             return {
                 "status": "timeout",
-                "seconds": time.time() - t0,
+                **sw.report(),
                 "input_bytes": size,
             }
-        dt = time.time() - t0
+        timing = sw.report()
         if r.returncode != 0:
             return {
                 "status": "error",
-                "seconds": dt,
+                **timing,
                 "stderr": r.stderr[-500:],
                 "input_bytes": size,
             }
@@ -141,7 +175,7 @@ def solve_msolve(inst: Instance, timeout: float, threads: int) -> dict:
             text = fh.read()
     basis = _parse_msolve_basis(text)
     if basis == ["1"]:
-        return {"status": "unsat", "seconds": dt, "input_bytes": size}
+        return {"status": "unsat", **timing, "input_bytes": size}
     # read v_j = c off the linear basis elements; brute-force any leftovers
     fixed: dict[int, int] = {}
     for p in basis:
@@ -154,7 +188,7 @@ def solve_msolve(inst: Instance, timeout: float, threads: int) -> dict:
     free = [j for j in range(nv) if j not in fixed]
     res = {
         "status": "gb",
-        "seconds": dt,
+        **timing,
         "basis_size": len(basis),
         "free_vars": len(free),
         "input_bytes": size,
@@ -190,7 +224,7 @@ def solve_mitm(inst: Instance, timeout: float, threads: int) -> dict:
     F = GF2n(inst.n, inst.mod)
     E = Curve(F, inst.b)
     R = E.sum(inst.points)
-    t0 = time.time()
+    sw = Stopwatch(children=False)
     fb: list[Point] = []
     for x in range(1 << inst.l):
         P = E.lift_x(x)
@@ -213,7 +247,7 @@ def solve_mitm(inst: Instance, timeout: float, threads: int) -> dict:
             for i in range(lo, len(fb)):
                 ops += 1
                 rec(depth + 1, i, E.add(acc, fb[i]), chosen + (i,))
-                if time.time() - t0 > timeout:
+                if sw.wall() > timeout:
                     raise TimeoutError
 
         rec(0, 0, start, ())
@@ -240,18 +274,18 @@ def solve_mitm(inst: Instance, timeout: float, threads: int) -> dict:
                 if rec_right(depth + 1, i, E.add(acc, fb[i])):
                     return True
                 idx_stack.pop()
-                if time.time() - t0 > timeout:
+                if sw.wall() > timeout:
                     raise TimeoutError
             return False
 
         rec_right(0, 0, Point(0, 0, True))
     except TimeoutError:
-        return {"status": "timeout", "seconds": time.time() - t0, "group_ops": ops}
-    dt = time.time() - t0
+        return {"status": "timeout", **sw.report(), "group_ops": ops}
+    timing = sw.report()
     if found is None:
         return {
             "status": "not-found",
-            "seconds": dt,
+            **timing,
             "group_ops": ops,
             "factor_base": len(fb),
         }
@@ -261,7 +295,7 @@ def solve_mitm(inst: Instance, timeout: float, threads: int) -> dict:
         v |= P.x << (i * inst.l)
     return {
         "status": "solved",
-        "seconds": dt,
+        **timing,
         "group_ops": ops,
         "factor_base": len(fb),
         "assignment": v,
@@ -282,16 +316,17 @@ WDSAT_CONFIG = """
 """
 
 
-def wdsat_binary(params: dict) -> str:
+def wdsat_binary(params: dict, src: str | None = None) -> str:
     """WDSat sizes its tables statically, so build one binary per size class.
 
-    WDSAT_SRC points at a checkout of https://github.com/mtrimoska/WDSat.
+    WDSAT_SRC points at a checkout of https://github.com/mtrimoska/WDSat (or a
+    fork with the same sources and config.h macro names).
     """
     import hashlib
     import shutil
 
-    src = os.environ.get("WDSAT_SRC", "/tmp/WDSat")
-    key = hashlib.sha1(repr(sorted(params.items())).encode()).hexdigest()[:12]
+    src = src or os.environ.get("WDSAT_SRC", "/tmp/WDSat")
+    key = hashlib.sha1((src + repr(sorted(params.items()))).encode()).hexdigest()[:12]
     build = os.path.join(os.environ.get("WDSAT_BUILDS", "/tmp/wdsat-builds"), key)
     exe = os.path.join(build, "wdsat_solver")
     if os.path.exists(exe):
@@ -330,13 +365,24 @@ def wdsat_binary(params: dict) -> str:
     return exe
 
 
-def solve_wdsat(inst: Instance, timeout: float, threads: int) -> dict:
+def solve_wdsat(
+    inst: Instance,
+    timeout: float,
+    threads: int,
+    src_env: str = "WDSAT_SRC",
+    src_default: str = "/tmp/WDSat",
+    gauss: bool = False,
+) -> dict:
     """WDSat on the symmetrised model of Trimoska–Ionica–Dequen (m = 3 only).
 
     WDSat's ANF front end is only correct for monomials of degree <= 3 (the
     upstream code returns wrong models on degree >= 4 inputs), so the direct
     descended S_4 (degree 6) cannot be fed to it; the symmetrised model has
     degree 3 by construction and is the one the paper measured.
+
+    src_env names the environment variable holding the source checkout (so a
+    fork can be measured next to upstream); gauss adds -x (the XORGAUSS module,
+    off by default as in the paper).
     """
     if inst.m != 3:
         return {
@@ -364,12 +410,12 @@ def solve_wdsat(inst: Instance, timeout: float, threads: int) -> dict:
         "xeq": len(lines) + 1,
         "xeq_size": info["max_terms"] + 2,
     }
-    exe = wdsat_binary(params)
+    exe = wdsat_binary(params, os.environ.get(src_env, src_default))
     with tempfile.TemporaryDirectory() as d:
         inp = os.path.join(d, "in.anf")
         with open(inp, "w") as fh:
             fh.write("\n".join(lines) + "\n")
-        t0 = time.time()
+        sw = Stopwatch(children=True)
         try:
             r = subprocess.run(
                 [
@@ -383,15 +429,16 @@ def solve_wdsat(inst: Instance, timeout: float, threads: int) -> dict:
                     "-m",
                     str(inst.m),
                     "-b",
-                ],
+                ]
+                + (["-x"] if gauss else []),
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 check=False,
             )
         except subprocess.TimeoutExpired:
-            return {"status": "timeout", "seconds": time.time() - t0}
-        dt = time.time() - t0
+            return {"status": "timeout", **sw.report()}
+        timing = sw.report()
     lines = [
         ln.strip()
         for ln in r.stdout.splitlines()
@@ -400,16 +447,16 @@ def solve_wdsat(inst: Instance, timeout: float, threads: int) -> dict:
     if r.returncode != 0 or not lines:
         return {
             "status": "error",
-            "seconds": dt,
+            **timing,
             "stderr": (r.stderr + r.stdout)[-500:],
         }
     if lines[-2:-1] == ["UNSAT"] or lines[0] == "UNSAT":
-        return {"status": "unsat", "seconds": dt, "conflicts": int(lines[-1])}
+        return {"status": "unsat", **timing, "conflicts": int(lines[-1])}
     bits, conflicts = lines[-2], int(lines[-1])
     v = sum(1 << j for j, ch in enumerate(bits[:nv]) if ch == "1")
     return {
         "status": "sat",
-        "seconds": dt,
+        **timing,
         "conflicts": conflicts,
         "model_vars": info["nvars"],
         "model_monomials": info["nonlinear"],
@@ -419,11 +466,23 @@ def solve_wdsat(inst: Instance, timeout: float, threads: int) -> dict:
     }
 
 
+def _wdsat_variant(**kw):
+    return lambda inst, timeout, threads: solve_wdsat(inst, timeout, threads, **kw)
+
+
 ENGINES = {
     "sat": solve_sat,
     "msolve": solve_msolve,
     "mitm": solve_mitm,
     "wdsat": solve_wdsat,
+    "wdsat-xg": _wdsat_variant(gauss=True),
+    # the same model through a fork: WDSAT_FORK_SRC points at its checkout
+    "wdsat-fork": _wdsat_variant(
+        src_env="WDSAT_FORK_SRC", src_default="/tmp/WDSat-fork"
+    ),
+    "wdsat-fork-xg": _wdsat_variant(
+        src_env="WDSAT_FORK_SRC", src_default="/tmp/WDSat-fork", gauss=True
+    ),
 }
 
 
@@ -442,7 +501,7 @@ def main() -> None:
         help="random b instead of the Koblitz b = 1",
     )
     a = ap.parse_args()
-    t0 = time.time()
+    t0 = time.monotonic()
     inst = make_instance(
         a.n,
         a.m,
@@ -451,7 +510,7 @@ def main() -> None:
         b=None if a.random_curve else 1,
         build_anf=a.engine != "mitm",
     )
-    build = time.time() - t0
+    build = time.monotonic() - t0
     res = ENGINES[a.engine](inst, a.timeout, a.threads)
     res.update(
         {

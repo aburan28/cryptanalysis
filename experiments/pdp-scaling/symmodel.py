@@ -25,7 +25,7 @@ from collections import defaultdict
 
 import sumpoly
 from descend import Instance, MulTable
-from gf2n import Curve, GF2n
+from gf2n import GF2n
 
 
 def symmetrize_s4() -> dict[tuple[int, int, int, int, int], int]:
@@ -85,12 +85,23 @@ def symmetrize_s4() -> dict[tuple[int, int, int, int, int], int]:
     return out
 
 
-def build_model(inst: Instance) -> tuple[list[str], dict]:
-    """WDSat ANF lines for the symmetrised model of a planted m = 3 instance, plus size info."""
-    assert inst.m == 3
-    F = GF2n(inst.n, inst.mod)
-    E = Curve(F, inst.b)
-    l, n = inst.l, inst.n
+_PREPARED: dict[tuple, dict] = {}
+
+
+def prepare(n: int, mod: int, b: int, l: int) -> dict:
+    """Everything in the model that does not depend on the target point R.
+
+    The definitions of the E variables depend only on l, and the descended
+    main equations are sum_{(a,b,c)} coef_abc(x_R) * D_abc where the twelve
+    D_abc (the descents of e1^a e2^b e3^c) depend only on (n, l).  A
+    relation-collection loop therefore prepares once per factor base and pays
+    twelve field powers and about 12 * |D| field multiplications per target,
+    instead of redoing the descent.
+    """
+    key = (n, mod, b, l)
+    if key in _PREPARED:
+        return _PREPARED[key]
+    F = GF2n(n, mod)
     assert 3 * l - 2 <= n, "e3 must not wrap around the field polynomial"
     sizes = [l, 2 * l - 1, 3 * l - 2]
     base = [3 * l, 4 * l, 6 * l - 1]  # first variable index (0-based) of E1, E2, E3
@@ -119,30 +130,22 @@ def build_model(inst: Instance) -> tuple[list[str], dict]:
         for i in range(3):
             for j in range(i + 1, 3):
                 for a in range(l):
-                    b = k - a
-                    if 0 <= b < l:
-                        mono = tuple(sorted((v(i, a), v(j, b))))
+                    bb = k - a
+                    if 0 <= bb < l:
+                        mono = tuple(sorted((v(i, a), v(j, bb))))
                         nonlinear.add(mono)
                         terms.append(".2 " + " ".join(var(t) for t in mono))
         lines.append("x T " + var(base[1] + k) + " " + " ".join(terms) + " 0")
     for k in range(3 * l - 2):
         terms = []
         for a in range(l):
-            for b in range(l):
-                c = k - a - b
+            for bb in range(l):
+                c = k - a - bb
                 if 0 <= c < l:
-                    mono = tuple(sorted((v(0, a), v(1, b), v(2, c))))
+                    mono = tuple(sorted((v(0, a), v(1, bb), v(2, c))))
                     nonlinear.add(mono)
                     terms.append(".3 " + " ".join(var(t) for t in mono))
         lines.append("x T " + var(base[2] + k) + " " + " ".join(terms) + " 0")
-
-    # main equations: descend S4(e1, e2, e3, xR) in the E variables
-    sym = symmetrize_s4()
-    coef: dict[tuple[int, int, int], int] = {}
-    for a, b, c, ex4, eb in sym:
-        val = F.mul(F.pow(inst.xR, ex4), F.pow(E.b, eb))
-        coef[(a, b, c)] = coef.get((a, b, c), 0) ^ val
-    coef = {k: c for k, c in coef.items() if c}
 
     def block(e: int, size: int, offset: int) -> dict[int, int]:
         """Descent of e^e for e = sum_{k<size} E_k z^k, as {mask over global variable indices: coeff}."""
@@ -162,27 +165,63 @@ def build_model(inst: Instance) -> tuple[list[str], dict]:
             k += 1
         return poly
 
-    maxe = [max(k[i] for k in coef) for i in range(3)]
-    blocks = [
-        {e: block(e, sizes[i], base[i]) for e in range(maxe[i] + 1)} for i in range(3)
-    ]
-    tables = [
-        {
-            e: {mk: MulTable(F, cc) for mk, cc in blk.items()}
-            for e, blk in blocks[i].items()
-        }
-        for i in range(3)
-    ]
-    A: dict[tuple[int, tuple[int, ...]], int] = {(0, k): c for k, c in coef.items()}
+    sym = symmetrize_s4()
+    exps = sorted({(a, bb, c) for a, bb, c, _, _ in sym})
+    blocks = [{} for _ in range(3)]
     for i in range(3):
-        nxt: dict[tuple[int, tuple[int, ...]], int] = {}
-        for (mask, rest), val in A.items():
-            e, rest2 = rest[0], rest[1:]
-            for bm, tab in tables[i][e].items():
-                key = (mask | bm, rest2)
-                nxt[key] = nxt.get(key, 0) ^ tab(val)
-        A = {k: c for k, c in nxt.items() if c}
-    anf = {mask: val for (mask, _), val in A.items()}
+        for e in {t[i] for t in exps}:
+            blocks[i][e] = block(e, sizes[i], base[i])
+    pieces: dict[tuple[int, int, int], dict[int, int]] = {}
+    for a, bb, c in exps:
+        d: dict[int, int] = {}
+        for m1, c1 in blocks[0][a].items():
+            for m2, c2 in blocks[1][bb].items():
+                c12 = F.mul(c1, c2)
+                for m3, c3 in blocks[2][c].items():
+                    d[m1 | m2 | m3] = F.mul(c12, c3)  # disjoint blocks: no collisions
+        pieces[(a, bb, c)] = d
+
+    prepared = {
+        "F": F,
+        "b": b,
+        "l": l,
+        "n": n,
+        "nvars": nvars,
+        "definitions": lines,
+        "nonlinear_defs": nonlinear,
+        "sym": sym,
+        "pieces": pieces,
+    }
+    _PREPARED[key] = prepared
+    return prepared
+
+
+def build_model(inst: Instance) -> tuple[list[str], dict]:
+    """WDSat ANF lines for the symmetrised model of a planted m = 3 instance, plus size info."""
+    assert inst.m == 3
+    prep = prepare(inst.n, inst.mod, inst.b, inst.l)
+    F = prep["F"]
+    l, n = inst.l, inst.n
+    nvars = prep["nvars"]
+    lines: list[str] = list(prep["definitions"])
+    nonlinear: set[tuple[int, ...]] = set(prep["nonlinear_defs"])
+
+    def var(idx: int) -> str:
+        return str(idx + 1)
+
+    # main equations: sum over the twelve pieces with the target-dependent coefficients
+    coef: dict[tuple[int, int, int], int] = {}
+    for a, bb, c, ex4, eb in prep["sym"]:
+        val = F.mul(F.pow(inst.xR, ex4), F.pow(inst.b, eb))
+        coef[(a, bb, c)] = coef.get((a, bb, c), 0) ^ val
+    anf: dict[int, int] = {}
+    for key, cc in coef.items():
+        if not cc:
+            continue
+        tab = MulTable(F, cc)
+        for mask, val in prep["pieces"][key].items():
+            anf[mask] = anf.get(mask, 0) ^ tab(val)
+    anf = {mk: val for mk, val in anf.items() if val}
 
     eqs: list[set[int]] = [set() for _ in range(n)]
     for mask, cc in anf.items():
