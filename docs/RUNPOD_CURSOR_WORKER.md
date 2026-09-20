@@ -70,3 +70,16 @@ git -c core.filemode=false clone https://github.com/aburan28/cryptanalysis.git /
 
 Keep the tmux/`agent worker` process running. Docs:
 [My Machines](https://cursor.com/docs/cloud-agent/self-hosted-guides/my-machines).
+
+## Deploy GLV / faster rho on the GPU pod
+
+After the GLV curve dispatch is on the branch you want (usually `main`):
+
+```sh
+export RUNPOD_API_KEY=...
+./scripts/runpod_deploy_glv.sh
+# optional: REF=origin/some-branch POD_NAME=solar_ivory_canidae
+```
+
+That pulls the ref under `/root/cryptanalysis`, builds with CUDA when
+`nvcc` is present, runs `ca_bench glv`, and the curve/rho/precomp/gpu tests.
