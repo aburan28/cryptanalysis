@@ -5,7 +5,8 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
-        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth
+        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth \
+        ecc2k130-usecase ecc2k130-helm
 
 all: lib
 
@@ -70,6 +71,14 @@ fpga-lint:
 
 fpga-synth:
 	$(MAKE) -C fpga synth CORES=1 DIGIT=4
+
+# The live ECC2K-130 S3/SQS/RDS integration. Its unit tests use only the
+# standard library; boto3 and psycopg are deployment dependencies loaded lazily.
+ecc2k130-usecase:
+	python3 -m unittest discover -s usecases/ecc2k130/tests -v
+
+ecc2k130-helm:
+	usecases/ecc2k130/deploy/helm/check.sh
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \

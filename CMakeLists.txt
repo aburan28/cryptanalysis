@@ -155,6 +155,16 @@ if(CA_BUILD_TESTS)
       add_test(NAME ${t} COMMAND test_${t})
     endif()
   endforeach()
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(
+      NAME ecc2k130-usecase
+      COMMAND ${Python3_EXECUTABLE} -m unittest discover
+              -s usecases/ecc2k130/tests -v)
+    set_tests_properties(
+      ecc2k130-usecase
+      PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  endif()
 endif()
 
 # ---- fuzzing ---------------------------------------------------------------

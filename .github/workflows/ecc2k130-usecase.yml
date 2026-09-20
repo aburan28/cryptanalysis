@@ -1,0 +1,89 @@
+name: ecc2k130-usecase
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "usecases/ecc2k130/**"
+      - "CMakeLists.txt"
+      - "Makefile"
+      - ".github/workflows/ecc2k130-usecase.yml"
+  pull_request:
+    paths:
+      - "usecases/ecc2k130/**"
+      - "CMakeLists.txt"
+      - "Makefile"
+      - ".github/workflows/ecc2k130-usecase.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  protocol:
+    name: protocol and event path (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ecc2k130
+          POSTGRES_PASSWORD: test
+          POSTGRES_USER: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d ecc2k130"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7.4
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: usecases/ecc2k130/requirements.txt
+      - uses: azure/setup-helm@v4
+      - name: Install deployment dependencies
+        run: pip install -r usecases/ecc2k130/requirements.txt
+      - name: Compile
+        run: >-
+          python -m py_compile
+          usecases/ecc2k130/handler.py
+          usecases/ecc2k130/migrate.py
+          usecases/ecc2k130/publish.py
+          usecases/ecc2k130/publish_api.py
+          usecases/ecc2k130/reconcile.py
+          usecases/ecc2k130/service.py
+          usecases/ecc2k130/stream.py
+      - name: Test
+        env:
+          ECC2K130_TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:5432/ecc2k130
+          ECC2K130_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+        run: python -m unittest discover -s usecases/ecc2k130/tests -v
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Install kubeconform
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
+      - name: Lint, render and validate the coordinator chart
+        run: usecases/ecc2k130/deploy/helm/check.sh

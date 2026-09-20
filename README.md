@@ -196,6 +196,34 @@ vendor place-and-route this flow does not run.  See
 order, what each testbench establishes, and what the next improvement is
 (batched inversion, ~3x).
 
+## First use case: the live ECC2K-130 campaign
+
+[`usecases/ecc2k130/`](usecases/ecc2k130/README.md) connects the live
+ECC2K-130 run to its AWS corpus and status store:
+
+```text
+s3://ecc2k130-590183823895/dp/
+  ── object ref ─▶ durable Redis Stream ─▶ RDS rho-dp
+                                           └▶ s3://ecc2k130-status-590183823895/status.json
+```
+
+The integration removes the long-running importer that repeatedly listed the
+whole S3 prefix. S3 remains the authoritative immutable corpus; a persistent,
+`noeviction` Redis-compatible service carries object references through a
+consumer group; and one idempotent RDS transaction verifies and indexes each
+object before its stream entry is atomically acknowledged and deleted.
+
+Queue depth, bytes, oldest-entry age and Redis memory pressure drive explicit
+green/yellow/red backpressure. At red, producers retain their local spool and
+retry instead of dropping DPs or filling Redis. The queue is deliberately
+separate from the fail-open Redis cache used for disposable fleet hints.
+The coordinator ships as a Helm chart with publisher and consumer Deployments,
+guarded schema-migration init containers and an S3 reconciliation CronJob.
+
+```sh
+make ecc2k130-usecase ecc2k130-helm
+```
+
 ## C API in one screen
 
 ```c
@@ -311,6 +339,7 @@ tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
 orchestrator/            Go control plane and agents (deploy/{k8s,systemd,docker})
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
+usecases/ecc2k130/        live ECC2K-130 S3/Redis Streams/RDS integration
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, DISTRIBUTED.md, FFI.md, GPU.md,
@@ -333,6 +362,7 @@ set locally, in the order that fails fastest.
 | `fuzz` | six libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
 | `orchestrator` | the Go control plane and agents: vet, gofmt, no third-party dependencies, `go test -race` (including the cross-checks against the C library), and an end-to-end smoke run of a real fleet |
 | `fpga` | the ECC2K-130 core: the golden model's own checks, then every testbench against the vectors it produces, at three multiplier widths; verilator `-Wall`; a yosys area report |
+| `ecc2k130-usecase` | packed-record/key/manifest compatibility, durable Redis consumer groups, pending recovery, dead-lettering, producer backpressure, transactional PostgreSQL indexing, and status publication |
 | `codeql` | C, Go and Python, with the `security-and-quality` query pack |
 | `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
 
