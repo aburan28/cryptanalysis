@@ -19,6 +19,7 @@ CRYPTO_DIR="${CRYPTO_DIR:-$HOME/src/crypto}"
 ECC_GPU="${ECC_GPU:-RTX-PRO-6000}"
 ECC_HOURS="${ECC_HOURS:-1}"
 ECC_FANOUT="${ECC_FANOUT:-4}"
+ECC_RUN_ID="${ECC_RUN_ID:-4242}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="${HOME}/.local/bin:${PATH}"
 
@@ -104,9 +105,10 @@ case "$CMD" in
     need_modal
     ensure_crypto
     # search has no --min-blocks CLI; overlay forces MINBLOCKS=1 via TABLE_TAG_DENOM.
+    # Use a dedicated run-id so we do not resume an incompatible volume checkpoint.
     run_in_ecc modal run modal_app.py::search --gpu "$ECC_GPU" \
       --curve 131 --packed --hours "$ECC_HOURS" \
-      --batch 16 --threads 512 --verify 0 --run-id 1
+      --batch 16 --threads 512 --verify 0 --run-id "$ECC_RUN_ID"
     ;;
   fanout)
     need_modal
