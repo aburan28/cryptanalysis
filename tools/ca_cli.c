@@ -899,6 +899,50 @@ static void *work_lane_main(void *arg)
     return NULL;
 }
 
+/*
+ * Compose a lane's peer id, "<node>.<lane>", so that the lane part
+ * always survives.
+ *
+ * The chart passes $(POD_NAME) as --node, and Kubernetes pod names run
+ * long: a plain snprintf into CA_COORD_PEER_MAX drops the suffix first,
+ * which gives every lane on the host the same identity.  Their sequence
+ * numbers then collide and the CRDT discards the later check-ins as
+ * duplicates -- silently, and only on the machines with long names.
+ *
+ * When the node name does not fit, it is cut and a hash of the *whole*
+ * name is appended, so two pods sharing a long prefix stay distinct.
+ */
+static void lane_peer(char *out, size_t cap, const char *node, uint64_t lane)
+{
+    char suffix[32];
+    int sn = snprintf(suffix, sizeof(suffix), ".%" PRIu64, lane);
+    if (sn < 0 || (size_t)sn + 2 >= cap) { /* nothing sensible fits */
+        snprintf(out, cap, "%" PRIu64, lane);
+        return;
+    }
+    size_t room = cap - 1 - (size_t)sn;
+    size_t n = strlen(node);
+    if (n <= room) {
+        snprintf(out, cap, "%s%s", node, suffix);
+        return;
+    }
+    uint64_t h = 1469598103934665603ULL;
+    for (size_t i = 0; i < n; i++) {
+        h ^= (unsigned char)node[i];
+        h *= 1099511628211ULL;
+    }
+    char tag[18];
+    int tn = snprintf(tag, sizeof(tag), "~%016" PRIx64, h);
+    if (tn < 0 || (size_t)tn >= room) {
+        snprintf(out, cap, "%016" PRIx64 "%s", h, suffix);
+        return;
+    }
+    size_t keep = room - (size_t)tn;
+    memcpy(out, node, keep);
+    memcpy(out + keep, tag, (size_t)tn);
+    memcpy(out + keep + (size_t)tn, suffix, (size_t)sn + 1);
+}
+
 static int cmd_work(void)
 {
     ca_coord_ctx *ctx = coord_load(1);
@@ -948,7 +992,7 @@ static int cmd_work(void)
         lanes[i].max_walkers = max_walkers;
         lanes[i].checkin_every = checkin_every;
         lanes[i].lease_secs = lease_secs;
-        snprintf(lanes[i].peer, sizeof(lanes[i].peer), "%s.%" PRIu64, node, i);
+        lane_peer(lanes[i].peer, sizeof(lanes[i].peer), node, i);
         if (pthread_create(&lanes[i].thread, NULL, work_lane_main, &lanes[i]) != 0)
             die("cannot start a lane");
     }

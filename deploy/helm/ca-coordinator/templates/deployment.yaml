@@ -109,7 +109,7 @@ spec:
         {{- if .Values.coordinator.persistence.enabled }}
         - name: data
           persistentVolumeClaim:
-            claimName: {{ include "ca-coordinator.fullname" . }}-data
+            claimName: {{ include "ca-coordinator.suffixed" (list . "data") }}
         {{- end }}
       {{- with .Values.coordinator.nodeSelector }}
       nodeSelector:

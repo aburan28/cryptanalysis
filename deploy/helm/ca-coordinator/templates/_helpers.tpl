@@ -42,6 +42,22 @@ The helm test pod's own identity.  It needs one because the coordinator's
 NetworkPolicy selects on the component label, and a probe that the policy
 does not admit fails the hook rather than the deployment.
 */}}
+{{/*
+A name with a suffix, truncated so the *result* is a legal DNS label.
+
+fullname is already cut to 63 characters, so appending "-agent" or
+"-token" to it pushes the metadata name over the limit and the API
+server rejects the install.  CI renders with the release name `rho` and
+would never see it.  Call as: include "ca-coordinator.suffixed" (list .
+"agent")
+*/}}
+{{- define "ca-coordinator.suffixed" -}}
+{{- $top := index . 0 -}}
+{{- $suffix := index . 1 -}}
+{{- $room := int (sub 62 (len $suffix)) -}}
+{{- printf "%s-%s" (include "ca-coordinator.fullname" $top | trunc $room | trimSuffix "-") $suffix -}}
+{{- end -}}
+
 {{- define "ca-coordinator.testSelectorLabels" -}}
 app.kubernetes.io/name: {{ include "ca-coordinator.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}

@@ -590,6 +590,7 @@ typedef enum server_script {
     SCRIPT_JOB_401,         /* GET /v1/job -> 401 */
     SCRIPT_JOB_GARBAGE,     /* GET /v1/job -> 200 with something that is not a job */
     SCRIPT_SYNC,            /* POST /v1/sync -> our vector and our lines */
+    SCRIPT_SYNC_CHUNKED,    /* the same, sent with Transfer-Encoding: chunked */
     SCRIPT_CHANNEL,         /* GET /v1/channel -> 101, then push lines */
     SCRIPT_CHANNEL_REFUSED, /* GET /v1/channel -> 426 */
     SCRIPT_HANGUP,          /* accept and close, to exercise the redial path */
@@ -663,6 +664,31 @@ static int server_read_line(int fd, char *out, size_t cap)
 
 static void server_write(int fd, const char *s) { (void)!send(fd, s, strlen(s), MSG_NOSIGNAL); }
 
+/* The same answer, framed the way Go frames a streamed body once it
+ * outgrows its write buffer -- and the way a proxy may re-frame it
+ * whatever the hub did.  Deliberately split small, so the client has to
+ * reassemble across chunk boundaries rather than get one lucky read. */
+static void server_respond_chunked(int fd, int status, const char *body)
+{
+    char head[256];
+    snprintf(head, sizeof(head),
+             "HTTP/1.1 %d X\r\nContent-Type: text/plain\r\n"
+             "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n",
+             status);
+    server_write(fd, head);
+    size_t len = strlen(body), off = 0;
+    while (off < len) {
+        size_t n = len - off < 17 ? len - off : 17;
+        char sz[32];
+        snprintf(sz, sizeof(sz), "%zx\r\n", n);
+        server_write(fd, sz);
+        (void)!send(fd, body + off, n, MSG_NOSIGNAL);
+        server_write(fd, "\r\n");
+        off += n;
+    }
+    server_write(fd, "0\r\n\r\n");
+}
+
 static void server_respond(int fd, int status, const char *body)
 {
     char head[256];
@@ -692,6 +718,7 @@ static void server_handle(test_server *s, int fd)
     case SCRIPT_JOB: server_respond(fd, 200, s->push_count ? s->push[0] : ""); break;
     case SCRIPT_JOB_401: server_respond(fd, 401, "no\n"); break;
     case SCRIPT_JOB_GARBAGE: server_respond(fd, 200, "not a job document at all\n"); break;
+    case SCRIPT_SYNC_CHUNKED:
     case SCRIPT_SYNC: {
         /* Read the body the client pushed, then answer with ours. */
         char *body = calloc(content_length + 1, 1);
@@ -711,7 +738,10 @@ static void server_handle(test_server *s, int fd)
         size_t off = (size_t)snprintf(reply, sizeof(reply), "vv\n");
         for (int i = 0; i < s->push_count && off < sizeof(reply); i++)
             off += (size_t)snprintf(reply + off, sizeof(reply) - off, "%s\n", s->push[i]);
-        server_respond(fd, 200, reply);
+        if (s->script == SCRIPT_SYNC_CHUNKED)
+            server_respond_chunked(fd, 200, reply);
+        else
+            server_respond(fd, 200, reply);
         break;
     }
     case SCRIPT_CHANNEL_REFUSED: server_respond(fd, 426, "upgrade\n"); break;
@@ -1000,6 +1030,39 @@ static void test_agent_requeues_unsent(void)
     ca_coord_ctx_close(ctx);
 }
 
+/* A chunked answer carries exactly the same facts.  The hub sets a
+ * Content-Length now, but it is not the only thing on the wire: Go
+ * chunks any streamed body past its write buffer, and the nginx in
+ * deploy/ can re-frame whatever the hub decided.  Read as payload, the
+ * size lines corrupt or drop check-ins. */
+static void test_sync_reads_chunked(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 31337, 0, NULL);
+    static char lines[8][CA_COORD_LINE_MAX];
+    int n = lane_lines(ctx, "peer.0", lines, 8);
+    CHECK(n > 0);
+
+    test_server *s = server_start(SCRIPT_SYNC_CHUNKED);
+    if (s) {
+        for (int i = 0; i < n && i < 4; i++) server_push_line(s, lines[i]);
+        char url[64];
+        server_url(s, url, sizeof(url));
+        ca_coord_state *mine = NULL;
+        CHECK(ca_coord_state_init(&mine, ctx) == CA_OK);
+        uint64_t received = 0, rejected = 0;
+        CHECK(ca_coord_sync_once(url, "tok", ctx, mine, &received, &rejected) == CA_OK);
+        /* Every line, and none of them mangled into a rejection. */
+        CHECK_EQ_U64(received, (uint64_t)s->push_count);
+        CHECK_EQ_U64(rejected, 0);
+        CHECK_EQ_U64((uint64_t)ca_coord_log_count(mine), (uint64_t)s->push_count);
+        ca_coord_state_free(mine);
+        server_stop(s);
+    }
+    ca_coord_ctx_close(ctx);
+}
+
 /* The reverse channel, from the agent's end. */
 static void test_agent_channel(void)
 {
@@ -1164,6 +1227,7 @@ int main(void)
     test_url_parsing();
     test_fetch_job_over_http();
     test_sync_once_client();
+    test_sync_reads_chunked();
     test_agent_channel();
     test_agent_requeues_unsent();
     test_agent_redials();

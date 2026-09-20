@@ -104,6 +104,36 @@ jobs:
           assert agent_np["spec"]["ingress"] == [], agent_np["spec"]["ingress"]
           PY
 
+      - name: Every name is a legal DNS label, even with a long release name
+        run: |
+          # The bug this catches: fullname is cut to 63 characters and the
+          # templates then append "-agent", "-token", "-data", "-job".
+          # Rendering as `rho` never shows it, so render as something a
+          # real operator might type.
+          # 53 characters, which is the longest release name Helm itself
+          # accepts -- so this is the worst case an operator can create.
+          long=rho-production-west-2-campaign-secp256k1-run-seventee
+          helm template "$long" deploy/helm/ca-coordinator \
+              --set-file job.document=job.txt \
+              --set auth.token=0123456789abcdef0123456789abcdef \
+              --set ingress.enabled=true \
+              --set coordinator.persistence.enabled=true \
+              --set networkPolicy.enabled=true \
+              --set agents.replicaCount=2 > long.yaml
+          python3 - <<'PY'
+          import re, sys, yaml
+          label = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+          bad = []
+          for d in (d for d in yaml.safe_load_all(open("long.yaml")) if d):
+              name = d["metadata"]["name"]
+              if len(name) > 63 or not label.match(name):
+                  bad.append((d["kind"], name, len(name)))
+          for kind, name, n in bad:
+              print(f"{kind}: {name!r} is {n} characters", file=sys.stderr)
+          assert not bad, f"{len(bad)} invalid metadata names"
+          print("every metadata name is a legal DNS label")
+          PY
+
       - name: The configurations the chart must refuse
         run: |
           refuses() {

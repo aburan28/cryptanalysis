@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "ca-coordinator.fullname" . }}-agent
+  name: {{ include "ca-coordinator.suffixed" (list . "agent") }}
   labels:
     {{- include "ca-coordinator.labels" . | nindent 4 }}
     app.kubernetes.io/component: agent

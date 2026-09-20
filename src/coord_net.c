@@ -377,7 +377,11 @@ static int buf_collect_checkin(void *user, const ca_coord_checkin *ci)
 struct ca_coord_agent {
     char host_port[256];
     char prefix[128];
-    char token[256];
+    /* Heap, not a fixed field: a bearer token has no length the caller
+     * owes us, and silently keeping the first 256 bytes of one would
+     * authenticate the job fetch and then fail every channel upgrade --
+     * an agent that walks alone and shares nothing. */
+    char *token;
     int have_token;
     char peer[CA_COORD_PEER_MAX];
     const ca_coord_ctx *ctx;
@@ -522,9 +526,10 @@ static int agent_session(ca_coord_agent *ag)
         return -1;
     }
     if (ag->have_token) {
-        char hdr[512];
-        snprintf(hdr, sizeof(hdr), "Authorization: Bearer %s\r\n", ag->token);
-        if (conn_puts(&conn, req) < 0 || conn_puts(&conn, hdr) < 0) {
+        /* Written in pieces rather than formatted into a buffer, so the
+         * token's length is the token's business. */
+        if (conn_puts(&conn, req) < 0 || conn_puts(&conn, "Authorization: Bearer ") < 0 ||
+            conn_puts(&conn, ag->token) < 0 || conn_puts(&conn, "\r\n") < 0) {
             close(fd);
             return -1;
         }
@@ -661,17 +666,23 @@ ca_status ca_coord_agent_start(ca_coord_agent **out, const char *url, const char
     }
     snprintf(ag->peer, sizeof(ag->peer), "%s", peer);
     if (token && token[0]) {
-        snprintf(ag->token, sizeof(ag->token), "%s", token);
+        ag->token = strdup(token);
+        if (!ag->token) {
+            free(ag);
+            return CA_ERR_NOMEM;
+        }
         ag->have_token = 1;
     }
     ag->ctx = ctx;
     ag->st = st;
     if (pthread_mutex_init(&ag->lock, NULL) != 0) {
+        free(ag->token);
         free(ag);
         return CA_ERR_INTERNAL;
     }
     if (pthread_create(&ag->thread, NULL, agent_main, ag) != 0) {
         pthread_mutex_destroy(&ag->lock);
+        free(ag->token);
         free(ag);
         return CA_ERR_INTERNAL;
     }
@@ -686,6 +697,7 @@ void ca_coord_agent_stop(ca_coord_agent *ag)
     pthread_join(ag->thread, NULL);
     for (size_t i = 0; i < ag->out_count; i++) free(ag->outbox[i]);
     free(ag->outbox);
+    free(ag->token);
     pthread_mutex_destroy(&ag->lock);
     free(ag);
 }
@@ -714,8 +726,14 @@ static ca_status coord_request(const char *url, const char *token, const char *m
     char head[1024];
     buf_add_fmt(&req, head, sizeof(head), "%s %s%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n",
                 method, prefix, route, host_port);
-    if (token && token[0])
-        buf_add_fmt(&req, head, sizeof(head), "Authorization: Bearer %s\r\n", token);
+    if (token && token[0]) {
+        /* In pieces, for the same reason: buf_add_fmt would refuse a
+         * token longer than the scratch buffer, and the length of a
+         * bearer token is not ours to cap. */
+        buf_add(&req, "Authorization: Bearer ", 22);
+        buf_add(&req, token, strlen(token));
+        buf_add(&req, "\r\n", 2);
+    }
     if (req_body)
         buf_add_fmt(&req, head, sizeof(head), "Content-Type: text/plain\r\nContent-Length: %zu\r\n",
                     strlen(req_body));
@@ -741,7 +759,7 @@ static ca_status coord_request(const char *url, const char *token, const char *m
         if (sp) *status = (int)strtol(sp + 1, NULL, 10);
     }
     size_t length = 0;
-    int have_length = 0;
+    int have_length = 0, chunked = 0;
     for (;;) {
         int r = conn_read_line(&conn, line, sizeof(line), 30000);
         if (r != 1) {
@@ -752,6 +770,8 @@ static ca_status coord_request(const char *url, const char *token, const char *m
         if (!strncasecmp(line, "content-length:", 15)) {
             length = strtoul(line + 15, NULL, 10);
             have_length = 1;
+        } else if (!strncasecmp(line, "transfer-encoding:", 18) && strstr(line, "chunked")) {
+            chunked = 1;
         }
     }
     coord_buf out;
@@ -773,8 +793,44 @@ static ca_status coord_request(const char *url, const char *token, const char *m
         }
         out.p = buf;
         out.len = length;
+    } else if (chunked) {
+        /*
+         * HTTP/1.1 chunked.  Not optional to support: Go sets no
+         * Content-Length on a streamed body and switches to chunked once
+         * it outgrows its write buffer, which a sync delta does as soon
+         * as the log is more than a handful of check-ins -- and the
+         * nginx in deploy/ can re-chunk whatever the hub decided.  Read
+         * as payload, the size lines corrupt or drop check-in lines.
+         */
+        for (;;) {
+            if (conn_read_line(&conn, line, sizeof(line), 30000) != 1) break;
+            char *end = NULL;
+            unsigned long n = strtoul(line, &end, 16);
+            if (end == line) break; /* not a size line: give up on the body */
+            if (n == 0) break;      /* the last chunk; trailers are ignored */
+            if (n >= 1u << 24 || out.len + n >= 1u << 24) {
+                free(out.p);
+                close(fd);
+                return CA_ERR_LIMIT;
+            }
+            char *chunk = malloc(n);
+            if (!chunk) {
+                free(out.p);
+                close(fd);
+                return CA_ERR_NOMEM;
+            }
+            if (conn_read_exact(&conn, chunk, n, 30000) < 0) {
+                free(chunk);
+                break;
+            }
+            int bad = buf_add(&out, chunk, n) < 0;
+            free(chunk);
+            if (bad) break;
+            /* The CRLF that closes the chunk. */
+            if (conn_read_line(&conn, line, sizeof(line), 30000) != 1) break;
+        }
     } else {
-        /* No length: read to EOF. */
+        /* No length and no encoding: read to EOF. */
         for (;;) {
             int r = conn_read_line(&conn, line, sizeof(line), 30000);
             if (r != 1) break;

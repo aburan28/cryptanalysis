@@ -34,6 +34,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -268,11 +269,19 @@ func (h *Hub) handleSync(w http.ResponseWriter, r *http.Request) {
 			known = ca.ParseVersionVector(line)
 		}
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintf(w, "vv%s\n", h.state.VersionVector())
+	// Built first and sent with a length, rather than streamed: a
+	// streamed body outgrows net/http's write buffer and goes out
+	// chunked, and every byte of this is meant for a client that has to
+	// parse it.  A proxy may still chunk it, which the C client handles,
+	// but the hub should not be the one introducing it.
+	var body strings.Builder
+	fmt.Fprintf(&body, "vv%s\n", h.state.VersionVector())
 	for _, line := range h.state.DeltaFrom(known) {
-		fmt.Fprintln(w, line)
+		fmt.Fprintln(&body, line)
 	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(body.Len()))
+	_, _ = io.WriteString(w, body.String())
 }
 
 // handleMetrics is Prometheus text format, so the chart's ServiceMonitor
