@@ -437,3 +437,97 @@ func TestAgentsConvergeThroughTheHub(t *testing.T) {
 		t.Errorf("the hub rejected %d genuine records", hs.Rejected)
 	}
 }
+
+// A hub published under a path prefix answers the same as one at the root.
+// An ingress that routes /rho to this service forwards /rho/v1/sync
+// unchanged unless told to rewrite, and the C agent sends whatever prefix
+// its coordinator URL carried.
+func TestRoutesMatchUnderAPrefix(t *testing.T) {
+	ctx, _ := testFixture(t, 31337)
+	_, _, srv := newTestHub(t, ctx, Config{})
+
+	for _, path := range []string{
+		"/healthz",
+		"/rho/healthz",
+		"/deep/nested/prefix/healthz",
+	} {
+		resp, err := srv.Client().Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", path, resp.StatusCode)
+		}
+	}
+
+	// A path that matches no route still 404s rather than falling through
+	// to some other handler.
+	resp, err := srv.Client().Get(srv.URL + "/rho/v1/nonesuch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown route: status %d, want 404", resp.StatusCode)
+	}
+}
+
+// A delta and the version vector it delivers have to be taken together.
+// A vector read separately afterwards also covers records that landed
+// while the delta was being sent, and crediting an agent with a record it
+// was never sent strands that record until its socket drops.
+func TestDeltaSinceCreditsOnlyWhatItSends(t *testing.T) {
+	ctx, _ := testFixture(t, 4242)
+
+	// One lane's worth of check-ins, held aside as raw lines so they can
+	// be applied to the hub's state one at a time.
+	src, err := ca.NewState(ctx)
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	t.Cleanup(src.Close)
+	if _, err := ca.RunLane(ctx, src, ca.LaneParams{Peer: "a.0", MaxWalkers: 16, CheckinEvery: 2}); err != nil {
+		t.Fatalf("lane: %v", err)
+	}
+	var lines []string
+	for i := 0; i < src.LogLen(); i++ {
+		if e, ok := src.LogAt(i); ok {
+			lines = append(lines, e.Line)
+		}
+	}
+	if len(lines) < 2 {
+		t.Fatalf("lane produced %d check-ins, need 2", len(lines))
+	}
+
+	hub, err := ca.NewState(ctx)
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	t.Cleanup(hub.Close)
+	for _, l := range lines[:len(lines)-1] {
+		if _, err := hub.ApplyLine(l); err != nil {
+			t.Fatalf("apply: %v", err)
+		}
+	}
+
+	// The hub computes what to push...
+	delta, reached := hub.DeltaSince(ca.VersionVector{})
+	if len(delta) == 0 {
+		t.Fatal("no delta from an empty vector")
+	}
+	// ...and a check-in lands while it is being sent.
+	if _, err := hub.ApplyLine(lines[len(lines)-1]); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	// The agent is credited with the delta only, so the late record is
+	// offered on the next turn.
+	if late, _ := hub.DeltaSince(reached); len(late) != 1 {
+		t.Errorf("the record that arrived during the send is offered %d times, want 1", len(late))
+	}
+	// Reading the vector afresh after the send is what stranded it.
+	if late, _ := hub.DeltaSince(hub.VersionVector()); len(late) != 0 {
+		t.Errorf("a freshly read vector covers everything, including the %d unsent", len(late))
+	}
+}

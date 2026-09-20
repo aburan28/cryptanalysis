@@ -161,7 +161,45 @@ func (h *Hub) Handler() http.Handler {
 	mux.Handle("/v1/sync", h.auth(http.HandlerFunc(h.handleSync)))
 	mux.Handle("/v1/channel", h.auth(http.HandlerFunc(h.handleChannel)))
 	mux.Handle("/metrics", h.auth(http.HandlerFunc(h.handleMetrics)))
-	return mux
+	return routeOnTail(mux)
+}
+
+// hubRoutes are the paths the mux answers, and the tails routeOnTail
+// recognises under a prefix.
+var hubRoutes = []string{
+	"/healthz", "/readyz",
+	"/v1/job", "/v1/status", "/v1/sync", "/v1/channel",
+	"/metrics",
+}
+
+// routeOnTail lets a hub published under a prefix answer the same as one
+// at the root.  An ingress that routes `/rho` to this service forwards
+// `/rho/v1/channel` unchanged unless it is configured to rewrite, and the
+// C agent sends whatever prefix its coordinator URL carried -- so the
+// tail is what identifies the route.  Every route begins with a slash, so
+// a suffix match cannot split a path segment, and a request that matches
+// nothing reaches the mux unchanged and 404s there.
+//
+// This widens no access: the token still guards the same handlers.
+func routeOnTail(mux http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := strings.TrimSuffix(r.URL.Path, "/")
+		for _, route := range hubRoutes {
+			if p == route {
+				mux.ServeHTTP(w, r)
+				return
+			}
+			if strings.HasSuffix(p, route) {
+				r2 := r.Clone(r.Context())
+				u := *r.URL
+				u.Path = route
+				r2.URL = &u
+				mux.ServeHTTP(w, r2)
+				return
+			}
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 // auth checks the bearer token in constant time.  It is access control,
@@ -412,7 +450,7 @@ func (h *Hub) pushLoop(ctx context.Context, ch *channel) {
 		case <-tick.C:
 		}
 		known := *ch.known.Load()
-		delta := h.state.DeltaFrom(known)
+		delta, reached := h.state.DeltaSince(known)
 		if len(delta) == 0 {
 			if time.Since(lastWrite) >= ping {
 				if err := ch.send("ping"); err != nil {
@@ -431,10 +469,11 @@ func (h *Hub) pushLoop(ctx context.Context, ch *channel) {
 			h.pushed.Add(1)
 		}
 		lastWrite = time.Now()
-		// The agent now holds at least what we just sent.  Its own pull
-		// can still lower this, which costs one resend and nothing else.
-		next := h.state.VersionVector()
-		ch.known.Store(&next)
+		// Credit the agent with exactly the lines that went out, not with
+		// the hub's state as it stands now: a check-in that arrived while
+		// the delta was being sent was not in it, and marking it known
+		// would hold it back until this socket drops.
+		ch.known.Store(&reached)
 	}
 }
 

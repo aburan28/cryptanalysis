@@ -405,6 +405,24 @@ void ca_coord_agent_publish(ca_coord_agent *ag, const ca_coord_checkin *ci)
     pthread_mutex_unlock(&ag->lock);
 }
 
+/* Put a line that failed to go out back at the head of the outbox, so the
+ * next session sends it before anything newer.  The slot it came from is
+ * still spare, so this cannot fail; if the queue grew while the write was
+ * in flight the line is simply freed rather than lost track of, which only
+ * happens when a reallocation already took every slot. */
+static void agent_requeue_front(ca_coord_agent *ag, char *line)
+{
+    pthread_mutex_lock(&ag->lock);
+    if (ag->out_count < ag->out_cap) {
+        memmove(ag->outbox + 1, ag->outbox, ag->out_count * sizeof(*ag->outbox));
+        ag->outbox[0] = line;
+        ag->out_count++;
+        line = NULL;
+    }
+    pthread_mutex_unlock(&ag->lock);
+    free(line);
+}
+
 int ca_coord_agent_flush(ca_coord_agent *ag, uint64_t timeout_ms)
 {
     if (!ag) return 1;
@@ -542,8 +560,17 @@ static int agent_session(ca_coord_agent *ag)
         pthread_mutex_unlock(&ag->lock);
         if (pending) {
             int wrc = conn_line(&conn, pending);
+            if (wrc < 0) {
+                /* The hub never saw this line.  Nothing else will offer it
+                 * again: the hello on the next connection says what this
+                 * agent *has*, so the hub pushes down and never asks up,
+                 * and a later check-in carries a higher unit cursor rather
+                 * than these points.  So it goes back at the head of the
+                 * queue, in order, and the next session sends it. */
+                agent_requeue_front(ag, pending);
+                break;
+            }
             free(pending);
-            if (wrc < 0) break;
             pthread_mutex_lock(&ag->lock);
             ag->stats.sent++;
             pthread_mutex_unlock(&ag->lock);

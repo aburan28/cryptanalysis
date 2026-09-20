@@ -547,7 +547,8 @@ typedef enum server_script {
     SCRIPT_SYNC,            /* POST /v1/sync -> our vector and our lines */
     SCRIPT_CHANNEL,         /* GET /v1/channel -> 101, then push lines */
     SCRIPT_CHANNEL_REFUSED, /* GET /v1/channel -> 426 */
-    SCRIPT_HANGUP           /* accept and close, to exercise the redial path */
+    SCRIPT_HANGUP,          /* accept and close, to exercise the redial path */
+    SCRIPT_CHANNEL_RESET    /* upgrade, then reset the first connection */
 } server_script;
 
 typedef struct test_server {
@@ -562,7 +563,7 @@ typedef struct test_server {
     char push[4][CA_COORD_LINE_MAX];
     int push_count;
     pthread_mutex_t lock;
-    char heard[8][CA_COORD_LINE_MAX];
+    char heard[32][CA_COORD_LINE_MAX];
     int heard_count;
     int connections;
 } test_server;
@@ -690,6 +691,34 @@ static void server_handle(test_server *s, int fd)
         break;
     }
     case SCRIPT_HANGUP: break;
+    case SCRIPT_CHANNEL_RESET: {
+        /* Upgrade, then abort the first connection with an RST so the
+         * agent's next write genuinely fails rather than being buffered
+         * into a socket that merely closed politely.  Later connections
+         * behave like SCRIPT_CHANNEL, so whatever the agent kept goes up
+         * when it redials. */
+        server_write(fd, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: " CA_COORD_PROTOCOL
+                         "\r\nConnection: Upgrade\r\n\r\n");
+        pthread_mutex_lock(&s->lock);
+        int first = (s->connections == 1);
+        pthread_mutex_unlock(&s->lock);
+        if (first) {
+            struct linger lg = {1, 0};
+            setsockopt(fd, SOL_SOCKET, SO_LINGER, &lg, sizeof(lg));
+            break;
+        }
+        struct timeval tv = {0, (suseconds_t)200 * 1000};
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        while (!atomic_load(&s->stop)) {
+            char in[CA_COORD_LINE_MAX];
+            if (!server_read_line(fd, in, sizeof(in))) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+                break;
+            }
+            if (in[0]) server_note(s, in);
+        }
+        break;
+    }
     }
 }
 
@@ -858,6 +887,68 @@ static void test_sync_once_client(void)
     ca_coord_ctx_close(ctx);
 }
 
+/* Nothing published around a reset is lost: the agent redials and every
+ * check-in still arrives.  Note what this does *not* pin down.  The bug it
+ * accompanies is a line that was dequeued and then failed to write, and
+ * this test does not fail without that fix, because the session loop reads
+ * after it writes and so usually sees the reset before a write can fail.
+ * The invariant below is the one a user cares about and is worth holding;
+ * the narrow window itself is argued in the code, not caught here. */
+static void test_agent_requeues_unsent(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 8080, 0, NULL);
+    static char lines[8][CA_COORD_LINE_MAX];
+    int n = lane_lines(ctx, "other.0", lines, 8);
+    CHECK(n > 0);
+
+    test_server *s = server_start(SCRIPT_CHANNEL_RESET);
+    if (!s) return;
+    char url[64];
+    server_url(s, url, sizeof(url));
+
+    ca_coord_state *st = NULL;
+    CHECK(ca_coord_state_init(&st, ctx) == CA_OK);
+    ca_coord_agent *ag = NULL;
+    CHECK(ca_coord_agent_start(&ag, url, "tok", "me.0", ctx, st) == CA_OK);
+
+    /* Wait for the first connection, which is the one that gets reset. */
+    for (int i = 0; i < 100; i++) {
+        pthread_mutex_lock(&s->lock);
+        int c = s->connections;
+        pthread_mutex_unlock(&s->lock);
+        if (c >= 1) break;
+        struct timespec ts = {0, 20 * 1000000L};
+        nanosleep(&ts, NULL);
+    }
+
+    /* Publish while that connection is dying.  Whichever of these the
+     * agent fails to write, it must still deliver after the redial. */
+    const int published = 4;
+    for (int i = 0; i < published; i++) {
+        ca_coord_checkin ci;
+        CHECK(ca_coord_checkin_decode(&ci, lines[0]) == CA_OK);
+        snprintf(ci.peer, sizeof(ci.peer), "me.0");
+        ci.seq = (uint64_t)(100 + i);
+        ca_coord_agent_publish(ag, &ci);
+    }
+
+    /* The agent redials and the queue drains, in order and in full. */
+    int heard = 0;
+    for (int i = 0; i < 300 && heard < published; i++) {
+        struct timespec ts = {0, 20 * 1000000L};
+        nanosleep(&ts, NULL);
+        heard = server_heard(s, "ci ");
+    }
+    CHECK_EQ_U64((uint64_t)heard, (uint64_t)published);
+
+    ca_coord_agent_stop(ag);
+    ca_coord_state_free(st);
+    server_stop(s);
+    ca_coord_ctx_close(ctx);
+}
+
 /* The reverse channel, from the agent's end. */
 static void test_agent_channel(void)
 {
@@ -1022,6 +1113,7 @@ int main(void)
     test_fetch_job_over_http();
     test_sync_once_client();
     test_agent_channel();
+    test_agent_requeues_unsent();
     test_agent_redials();
     TEST_MAIN_END();
 }

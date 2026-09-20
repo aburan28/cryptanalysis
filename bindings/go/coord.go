@@ -337,6 +337,35 @@ func (s *State) VersionVector() VersionVector {
 	return vv
 }
 
+// DeltaSince returns the check-in lines the holder of vv lacks, oldest
+// first, together with the version vector that holder reaches once it has
+// applied all of them.  The two are computed in one pass on purpose: a
+// vector read separately afterwards would also cover records that arrived
+// during the send, and crediting an agent with a record it was never sent
+// strands that record until its socket drops.
+func (s *State) DeltaSince(vv VersionVector) ([]string, VersionVector) {
+	var out []string
+	reached := VersionVector{}
+	for peer, seq := range vv {
+		reached[peer] = seq
+	}
+	n := s.LogLen()
+	for i := 0; i < n; i++ {
+		e, ok := s.LogAt(i)
+		if !ok {
+			continue
+		}
+		if e.Seq <= vv[e.Peer] {
+			continue
+		}
+		out = append(out, e.Line)
+		if e.Seq > reached[e.Peer] {
+			reached[e.Peer] = e.Seq
+		}
+	}
+	return out, reached
+}
+
 // DeltaFrom returns the check-in lines the holder of vv lacks, oldest
 // first.
 func (s *State) DeltaFrom(vv VersionVector) []string {
