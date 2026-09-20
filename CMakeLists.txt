@@ -56,6 +56,7 @@ set(CA_SOURCES
   src/kangaroo.c
   src/grumpy.c
   src/precomp.c
+  src/curve.c
   src/pohlig.c
   src/cheon.c
   src/linalg.c
@@ -145,7 +146,7 @@ endif()
 
 if(CA_BUILD_TESTS)
   enable_testing()
-  set(CA_TESTS modarith group bsgs rho dist kangaroo grumpy precomp pohlig cheon linalg indexcalc ffi gpu)
+  set(CA_TESTS modarith group bsgs rho dist kangaroo grumpy precomp curve pohlig cheon linalg indexcalc ffi gpu)
   foreach(t ${CA_TESTS})
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${t}.c)
       add_executable(test_${t} tests/test_${t}.c)
