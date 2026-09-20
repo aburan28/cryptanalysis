@@ -254,6 +254,24 @@ ca_status ca_coord_job_decode(ca_coord_job *job, const char *line)
     }
     job->kind = (ca_group_kind)kind;
     job->r = (uint32_t)r;
+    /* The same bounds ca_coord_job_init enforces.  The id is a hash of
+     * the document's own body, so it proves the line was not altered in
+     * transit and nothing else: anyone can mint a consistent document.
+     * Without these, r=0 divides by zero in coord_index and a negative
+     * dp_bits shifts by a negative amount, so a job line -- from /v1/job
+     * or from --job -- would decide whether the agent lives. */
+    if (job->r < 4 || job->r > 4096) {
+        ca_set_error("r must be in [4, 4096]");
+        return CA_ERR_INVALID;
+    }
+    if (job->dp_bits < 0 || job->dp_bits > 58) {
+        ca_set_error("dp must be in [0, 58]");
+        return CA_ERR_INVALID;
+    }
+    if (job->unit_size == 0) {
+        ca_set_error("unit must not be 0");
+        return CA_ERR_INVALID;
+    }
     {
         char *end = NULL;
         id = strtoull(idp, &end, 16);
@@ -435,9 +453,19 @@ static void coord_step(const ca_coord_ctx *ctx, coord_walk *w, uint64_t *ops)
      * rather than spin.  Deterministic, so trails still merge. */
     ca_group_op(g, &w->y, &w->y, &ctx->M[0]);
     if (ops) (*ops)++;
-    if (ctx->job.negation_map) ca_group_canonicalize(g, &w->y);
+    int neg0 = ctx->job.negation_map ? ca_group_canonicalize(g, &w->y) : 0;
     w->a = ca_addmod(w->a, ctx->alpha[0], ctx->n);
     w->b = ca_addmod(w->b, ctx->beta[0], ctx->n);
+    /* Mirror the coefficients exactly as the ordinary path does.  They
+     * describe the point that is stored, and canonicalize may have
+     * replaced it with its negation; leaving them alone makes the record
+     * fail a*G + b*H == point at every other participant, so a genuine
+     * distinguished point is thrown away and a real collision on this
+     * trail is missed. */
+    if (neg0) {
+        w->a = w->a ? ctx->n - w->a : 0;
+        w->b = w->b ? ctx->n - w->b : 0;
+    }
 }
 
 /*

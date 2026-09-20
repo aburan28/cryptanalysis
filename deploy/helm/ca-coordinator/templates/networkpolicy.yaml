@@ -17,6 +17,13 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "ca-coordinator.agentSelectorLabels" . | nindent 14 }}
+        # `helm test` runs `ca coord-status` against this Service, so the
+        # probe pod has to be admitted too -- otherwise enabling the
+        # policy turns the chart's own test red while the deployment is
+        # perfectly healthy.
+        - podSelector:
+            matchLabels:
+              {{- include "ca-coordinator.testSelectorLabels" . | nindent 14 }}
         {{- with .Values.networkPolicy.extraIngressFrom }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

@@ -37,6 +37,17 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: agent
 {{- end -}}
 
+{{/*
+The helm test pod's own identity.  It needs one because the coordinator's
+NetworkPolicy selects on the component label, and a probe that the policy
+does not admit fails the hook rather than the deployment.
+*/}}
+{{- define "ca-coordinator.testSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "ca-coordinator.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: test
+{{- end -}}
+
 {{- define "ca-coordinator.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
 {{- default (include "ca-coordinator.fullname" .) .Values.serviceAccount.name -}}

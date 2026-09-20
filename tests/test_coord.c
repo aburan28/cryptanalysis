@@ -69,6 +69,51 @@ static void test_negation_needs_a_curve(void)
 
 /* ---- the job ------------------------------------------------------------ */
 
+/* A job document is not a credential.  Its id is a hash of its own body,
+ * so it proves only that the line was not altered in transit -- anybody
+ * can mint a consistent one.  So the bounds the constructor enforces have
+ * to be enforced again on the way in, or a crafted line decides whether
+ * the agent lives: r=0 divides by zero when picking a branch, and a
+ * negative dp shifts by a negative amount. */
+static void test_job_decode_bounds(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 4242, 0, NULL);
+    char line[CA_COORD_LINE_MAX];
+    CHECK(ca_coord_job_encode(ca_coord_ctx_job(ctx), line, sizeof(line)) > 0);
+
+    /* These are refused before the id is even recomputed, so the error
+     * says which bound was broken rather than "document was altered" --
+     * which is what tells us the check is the one doing the work. */
+    struct {
+        const char *field;
+        const char *value;
+        const char *want;
+    } cases[] = {
+        {" r=", " r=0 ", "r must be"},       {" r=", " r=99999 ", "r must be"},
+        {" dp=", " dp=-1 ", "dp must be"},   {" dp=", " dp=63 ", "dp must be"},
+        {" unit=", " unit=0 ", "unit must"},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        char bad[CA_COORD_LINE_MAX];
+        snprintf(bad, sizeof(bad), "%s", line);
+        const char *at = strstr(bad, cases[i].field);
+        CHECK(at != NULL);
+        if (!at) continue;
+        char tail[CA_COORD_LINE_MAX];
+        const char *sp = strchr(at + 1, ' ');
+        snprintf(tail, sizeof(tail), "%s", sp ? sp : "");
+        size_t head = (size_t)(at - bad);
+        snprintf(bad + head, sizeof(bad) - head, "%s%s", cases[i].value, sp ? tail + 1 : "");
+
+        ca_coord_job job;
+        CHECK(ca_coord_job_decode(&job, bad) == CA_ERR_INVALID);
+        CHECK(strstr(ca_last_error(), cases[i].want) != NULL);
+    }
+    ca_coord_ctx_close(ctx);
+}
+
 static void test_job_roundtrip(void)
 {
     ca_group g;
@@ -1105,6 +1150,7 @@ int main(void)
 {
     signal(SIGPIPE, SIG_IGN);
     test_job_roundtrip();
+    test_job_decode_bounds();
     test_negation_needs_a_curve();
     test_derivation_is_deterministic();
     test_walk_produces_verifiable_points();

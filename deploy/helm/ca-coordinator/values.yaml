@@ -141,6 +141,11 @@ networkPolicy:
   enabled: false
   # Extra sources allowed to reach the coordinator (the ingress
   # controller's namespace, a bastion, another namespace's agents).
+  #
+  # Kubelet probes are deliberately not listed.  Most CNIs exempt the
+  # node's own probe traffic from NetworkPolicy, so /healthz and /readyz
+  # keep working; on a CNI that does not, add the node CIDR here, since
+  # only the cluster operator knows it.
   extraIngressFrom: []
 
 serviceMonitor:

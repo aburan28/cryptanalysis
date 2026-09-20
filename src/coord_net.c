@@ -35,6 +35,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <stdatomic.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -286,6 +287,36 @@ static int buf_add(coord_buf *b, const char *s, size_t n)
     b->len += n;
     b->p[b->len] = 0;
     return 0;
+}
+
+/*
+ * Append a formatted header line, failing the buffer rather than
+ * truncating or over-reading.
+ *
+ * snprintf returns the length it *would* have written.  Passing that to
+ * buf_add copies past the end of the stack buffer and sends whatever
+ * followed it, which for the Authorization header means a token longer
+ * than the buffer leaks stack memory to the coordinator.  Truncating
+ * instead would be quieter and just as wrong: a half-written bearer
+ * token is not the credential the caller asked us to present.  So a
+ * request that does not fit is refused.
+ */
+#if defined(__GNUC__)
+__attribute__((format(printf, 4, 5)))
+#endif
+static int
+buf_add_fmt(coord_buf *b, char *scratch, size_t cap, const char *fmt, ...)
+{
+    if (b->failed) return -1;
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(scratch, cap, fmt, ap);
+    va_end(ap);
+    if (n < 0 || (size_t)n >= cap) {
+        b->failed = 1;
+        return -1;
+    }
+    return buf_add(b, scratch, (size_t)n);
 }
 
 /*
@@ -681,18 +712,13 @@ static ca_status coord_request(const char *url, const char *token, const char *m
     coord_buf req;
     memset(&req, 0, sizeof(req));
     char head[1024];
-    int n = snprintf(head, sizeof(head), "%s %s%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n",
-                     method, prefix, route, host_port);
-    if (n > 0) buf_add(&req, head, (size_t)n);
-    if (token && token[0]) {
-        n = snprintf(head, sizeof(head), "Authorization: Bearer %s\r\n", token);
-        if (n > 0) buf_add(&req, head, (size_t)n);
-    }
-    if (req_body) {
-        n = snprintf(head, sizeof(head), "Content-Type: text/plain\r\nContent-Length: %zu\r\n",
-                     strlen(req_body));
-        if (n > 0) buf_add(&req, head, (size_t)n);
-    }
+    buf_add_fmt(&req, head, sizeof(head), "%s %s%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n",
+                method, prefix, route, host_port);
+    if (token && token[0])
+        buf_add_fmt(&req, head, sizeof(head), "Authorization: Bearer %s\r\n", token);
+    if (req_body)
+        buf_add_fmt(&req, head, sizeof(head), "Content-Type: text/plain\r\nContent-Length: %zu\r\n",
+                    strlen(req_body));
     buf_add(&req, "\r\n", 2);
     if (req_body) buf_add(&req, req_body, strlen(req_body));
     int wrc = req.failed ? -1 : conn_write(&conn, req.p, req.len);

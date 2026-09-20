@@ -95,8 +95,21 @@ ci <job-id> <peer> <seq> <time> U:unit,walkers,steps,dps,dead,done;… D:walker,
   so every receiver verifies every record it accepts.  A forged record
   is dropped and counted.
 * A **unit report** is cumulative for `(peer, unit)`; the later `seq`
-  wins.  A forged one can only make a unit look further along than it
-  is, which the lease below turns into re-work, not corruption.
+  wins.  Unlike a distinguished point, it is *not* self-verifying, and
+  it is worth being exact about what that costs.  A claim in progress is
+  held only by its lease, so a forged one frees itself again after
+  `lease_secs`.  A `completed` flag is not leased: it retires the unit
+  for good, and a peer holding the token can therefore retire units it
+  never walked.
+  What that costs is parallelism, not the answer.  A unit is a range of
+  *start points*, and the solution comes from a collision between any
+  two trails; skipping a range means those particular starts are never
+  walked, not that the collision is missed or that a wrong answer can be
+  reached.  The DP table -- where correctness actually lives -- is
+  untouched, because every record in it is verified individually.
+  Making completion expire too would close this, and break the thing it
+  is for: every finished unit would come back around and lanes would
+  re-walk the low units forever instead of advancing.
 * A lane checks in when it claims a unit, every `checkin_every` walkers,
   when the unit completes, and once more with `S:` set when its merge
   produced the answer.
@@ -215,7 +228,8 @@ multiplications, and hands out no work.  Therefore:
 | message duplicated or reordered | idempotent, order-independent merge |
 | agent on a different job | refused by job id |
 | forged DP | refused on verification, counted per state |
-| forged progress | at worst a unit is skipped until its lease expires; the DP table is unaffected |
+| forged progress (in flight) | the claim frees itself after `lease_secs` |
+| forged progress (`completed`) | that unit's start points are never walked; costs parallelism, not the answer, and the DP table is unaffected |
 | network partition | each side keeps working its own units (index ranges are disjoint by construction); the tables merge when it heals, and any cross-partition collision is found then |
 
 ## 9. Cost and tuning
