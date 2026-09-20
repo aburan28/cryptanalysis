@@ -185,9 +185,8 @@ want '"aut_order":6' curve --group ec --p 67108933 --a 0 --b 7 --order 16773703
 want '"curves"' curve --list
 want_no '"status":"not found"' curve --name no-such-curve
 CJ0=(--group ec --p 67108933 --a 0 --b 7 --order 16773703)
-GENJ0=$("$CA" gen "${CJ0[@]}" --x 424242 --seed 1)
-GJ0=$(echo "$GENJ0" | sed 's/.*"g":"\([^"]*\)".*/\1/')
-HJ0=$(echo "$GENJ0" | sed 's/.*"h":"\([^"]*\)".*/\1/')
+GJ0=$("$CA" group generator "${CJ0[@]}" | sed 's/.*"generator":"\([^"]*\)".*/\1/')
+HJ0=$("$CA" group exp "${CJ0[@]}" --elem "$GJ0" --k 424242 | sed 's/.*"result":"\([^"]*\)".*/\1/')
 want '"x":424242' solve --alg glv "${CJ0[@]}" --g "$GJ0" --h "$HJ0" --seed 3
 want '"endomorphism":"j0"' solve --alg glv "${CJ0[@]}" --g "$GJ0" --h "$HJ0" --seed 3
 
