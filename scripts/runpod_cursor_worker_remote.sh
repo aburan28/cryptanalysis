@@ -35,17 +35,16 @@ if ! command -v agent >/dev/null 2>&1; then
 fi
 
 command -v agent >/dev/null
-command -v git >/dev/null
-command -v tmux >/dev/null || {
+if ! command -v git >/dev/null || ! command -v tmux >/dev/null; then
   if command -v apt-get >/dev/null; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
     apt-get install -y -qq tmux git curl ca-certificates
   else
-    echo "tmux is required but not installed" >&2
+    echo "git and tmux are required but not installed" >&2
     exit 1
   fi
-}
+fi
 
 mkdir -p "$(dirname "$WORKER_DIR")"
 if [[ -d "$WORKER_DIR/.git" ]]; then
