@@ -1,0 +1,66 @@
+name: ecc2k130-usecase
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "usecases/ecc2k130/**"
+      - "CMakeLists.txt"
+      - "Makefile"
+      - ".github/workflows/ecc2k130-usecase.yml"
+  pull_request:
+    paths:
+      - "usecases/ecc2k130/**"
+      - "CMakeLists.txt"
+      - "Makefile"
+      - ".github/workflows/ecc2k130-usecase.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  protocol:
+    name: protocol and event path (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ecc2k130
+          POSTGRES_PASSWORD: test
+          POSTGRES_USER: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d ecc2k130"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: usecases/ecc2k130/requirements.txt
+      - name: Install deployment dependencies
+        run: pip install -r usecases/ecc2k130/requirements.txt
+      - name: Compile
+        run: >-
+          python -m py_compile
+          usecases/ecc2k130/handler.py
+          usecases/ecc2k130/configure_notification.py
+          usecases/ecc2k130/replay_checkpoints.py
+      - name: Test
+        env:
+          ECC2K130_TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:5432/ecc2k130
+        run: python -m unittest discover -s usecases/ecc2k130/tests -v

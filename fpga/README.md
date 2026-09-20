@@ -192,16 +192,19 @@ not automated: it happens once, and it is worth a person watching.
 
 ## Where this fits with the rest of the repository
 
-The library's [distributed protocol](../docs/DISTRIBUTED.md) and the
-[orchestration layer](../orchestrator/README.md) schedule work for groups of
-order below 2⁶⁴ — that is the library's own limit, and ECC2K-130 is a 131-bit
-field. So these are *not* wired together, and pretending otherwise would mean
-a control plane that cannot represent the campaign it is scheduling. What
-they share is the shape: a replayable unit identified by a seed, a fixed-width
-record with no framing, verification before anything enters a corpus, and a
-merge that is the only place a collision becomes an answer. `ec2k walk`
-produces 32-byte records for the same reason `ca dist-walk` does, and an agent
-that drove a board instead of a CPU would report them the same way.
+The generic [distributed protocol](../docs/DISTRIBUTED.md) still schedules
+only groups of order below 2⁶⁴; ECC2K-130 does not pretend to fit that API.
+Its production boundary is instead the
+[ECC2K-130 use-case integration](../usecases/ecc2k130/README.md): the same
+32-byte seed/orbit records are written as immutable, content-addressed S3
+objects, delivered through SQS, and indexed in RDS. This wires the campaign's
+storage and status path into the repository without misrepresenting a 131-bit
+field as a 64-bit `ca_group`.
+
+The two protocols still share the important shape: a replayable unit
+identified by a seed, a fixed-width record with no framing, verification
+before anything enters an index, and a merge that is the only place a
+collision becomes an answer.
 
 ## What is not here
 
