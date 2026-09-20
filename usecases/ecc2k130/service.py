@@ -143,6 +143,7 @@ def main():
         try:
             if service is None:
                 service = dependencies()
+                mark_ready(True)
             service.run_once()
             mark_ready(True)
             delay = 1.0
