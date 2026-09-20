@@ -12,6 +12,36 @@
   ],
   "properties": {
     "rolloutNonce": { "type": "string" },
+    "identity": {
+      "type": "object",
+      "required": ["mode", "aws", "gcp"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["irsa", "gke", "web-identity", "none"]
+        },
+        "aws": {
+          "type": "object",
+          "required": ["audience", "tokenExpirationSeconds", "stsRegionalEndpoints", "tokenMountPath"],
+          "additionalProperties": false,
+          "properties": {
+            "audience": { "type": "string", "minLength": 1 },
+            "tokenExpirationSeconds": { "type": "integer", "minimum": 600, "maximum": 86400 },
+            "stsRegionalEndpoints": { "type": "boolean" },
+            "tokenMountPath": { "type": "string", "pattern": "^/[^\\s]+[^/\\s]$" }
+          }
+        },
+        "gcp": {
+          "type": "object",
+          "required": ["requireMetadataServer"],
+          "additionalProperties": false,
+          "properties": {
+            "requireMetadataServer": { "type": "boolean" }
+          }
+        }
+      }
+    },
     "image": {
       "type": "object",
       "required": ["repository", "pullPolicy"],
@@ -107,10 +137,41 @@
     },
     "publisher": {
       "type": "object",
-      "required": ["replicaCount", "port", "service"],
+      "required": ["kind", "replicaCount", "port", "hostPort", "daemonSet", "service"],
       "properties": {
+        "kind": { "type": "string", "enum": ["Deployment", "DaemonSet"] },
         "replicaCount": { "type": "integer", "minimum": 1 },
         "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "hostPort": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "daemonSet": {
+          "type": "object",
+          "required": ["updateStrategy"],
+          "properties": {
+            "updateStrategy": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": { "type": "string", "enum": ["RollingUpdate", "OnDelete"] },
+                "rollingUpdate": {
+                  "type": "object",
+                  "properties": {
+                    "maxUnavailable": { "type": ["integer", "string"] },
+                    "maxSurge": { "type": ["integer", "string"] }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "required": ["type", "port"],
+          "properties": {
+            "type": { "type": "string", "enum": ["ClusterIP"] },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "internalTrafficPolicy": { "type": "string", "enum": ["", "Cluster", "Local"] }
+          }
+        },
         "terminationGracePeriodSeconds": { "type": "integer", "minimum": 1 }
       }
     },
@@ -150,7 +211,8 @@
   "definitions": {
     "serviceAccount": {
       "type": "object",
-      "required": ["create", "name", "annotations", "automountServiceAccountToken"],
+      "required": ["create", "name", "annotations", "automountServiceAccountToken", "awsRoleArn", "gcpServiceAccount"],
+      "additionalProperties": false,
       "properties": {
         "create": { "type": "boolean" },
         "name": { "type": "string" },
@@ -158,7 +220,15 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
-        "automountServiceAccountToken": { "type": "boolean" }
+        "automountServiceAccountToken": { "type": "boolean" },
+        "awsRoleArn": {
+          "type": "string",
+          "pattern": "^(|arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+)$"
+        },
+        "gcpServiceAccount": {
+          "type": "string",
+          "pattern": "^(|[a-z][a-z0-9-]{4,29}@[a-z0-9.-]+\\.iam\\.gserviceaccount\\.com)$"
+        }
       }
     }
   }

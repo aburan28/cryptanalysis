@@ -24,7 +24,7 @@ spec:
         {{- end }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        checksum/external-config: {{ printf "%s|%s|%s" .Values.rolloutNonce (toJson .Values.existingSecret) (toJson .Values.serviceAccounts.consumer.annotations) | sha256sum }}
+        checksum/external-config: {{ printf "%s|%s|%s" .Values.rolloutNonce (toJson .Values.existingSecret) (include "ecc2k130-coordinator.serviceAccountAnnotations" (dict "root" . "component" "consumer")) | sha256sum }}
         {{- with .Values.consumer.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -67,6 +67,7 @@ spec:
                 name: {{ include "ecc2k130-coordinator.fullname" . }}
           env:
             {{- include "ecc2k130-coordinator.secretEnv" . | nindent 12 }}
+            {{- include "ecc2k130-coordinator.identityEnv" (dict "root" . "component" "consumer") | nindent 12 }}
             - name: RHO_READY_FILE
               value: /run/cryptanalysis/ready
           startupProbe:
@@ -87,12 +88,13 @@ spec:
           volumeMounts:
             - name: runtime
               mountPath: /run/cryptanalysis
+            {{- include "ecc2k130-coordinator.identityVolumeMount" . | nindent 12 }}
       volumes:
         - name: runtime
           emptyDir: {}
-      {{- with .Values.consumer.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
+        {{- include "ecc2k130-coordinator.identityVolume" . | nindent 8 }}
+      {{- with (include "ecc2k130-coordinator.nodeSelector" (dict "root" . "component" "consumer")) }}
+      {{- . | nindent 6 }}
       {{- end }}
       {{- with .Values.consumer.affinity }}
       affinity:

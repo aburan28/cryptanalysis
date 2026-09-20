@@ -164,7 +164,9 @@ helm upgrade --install ecc2k130 \
 ```
 
 See the [chart README](deploy/helm/ecc2k130-coordinator/README.md) for the
-required existing Secret, IAM roles, NetworkPolicy and worker endpoint.
+required existing Secret, cloud identity (EKS IRSA, GKE Workload Identity with
+AWS federation, or any OIDC-issuing cluster), the optional node-local
+publisher DaemonSet, NetworkPolicy and worker endpoint.
 
 ```sh
 cd usecases/ecc2k130

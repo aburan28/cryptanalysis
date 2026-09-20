@@ -12,8 +12,10 @@ Consumer pods run an advisory-lock-protected migration init container before
 touching RDS. The migration receives a dedicated DDL-capable database URL that
 is not exposed to the runtime container.
 
-MemoryDB, RDS, S3 buckets, IAM roles and the Kubernetes Secret remain external
-managed resources.
+MemoryDB, RDS, S3 buckets, IAM roles, OIDC providers and the Kubernetes Secret
+remain external managed resources. The chart runs on EKS (IRSA or Pod
+Identity), GKE (Workload Identity plus AWS federation) and any cluster with a
+public OIDC issuer; see [Cloud identity](#cloud-identity).
 
 ## Required Secret
 
@@ -35,21 +37,97 @@ existingSecret:
 ```
 
 Otherwise the runtime consumer and reconciler resolve `rds.secretId` through
-Secrets Manager. Annotate their service accounts with the appropriate EKS IAM
-roles:
+Secrets Manager using the pod's AWS identity.
+
+## Cloud identity
+
+The data plane is AWS, so every pod needs AWS credentials whichever cloud
+hosts the cluster. `identity.mode` selects how they arrive; the per-component
+IAM roles are always declared the same way:
 
 ```yaml
 serviceAccounts:
   publisher:
-    annotations:
-      eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/ecc2k-publisher
+    awsRoleArn: arn:aws:iam::<account>:role/ecc2k-publisher
   consumer:
-    annotations:
-      eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/ecc2k-consumer
+    awsRoleArn: arn:aws:iam::<account>:role/ecc2k-consumer
   reconciler:
-    annotations:
-      eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/ecc2k-reconciler
+    awsRoleArn: arn:aws:iam::<account>:role/ecc2k-reconciler
 ```
+
+| `identity.mode` | cluster | what the chart renders |
+|---|---|---|
+| `irsa` (default) | Amazon EKS | `eks.amazonaws.com/role-arn`, `audience`, `token-expiration` and `sts-regional-endpoints` annotations; the EKS pod identity webhook injects the token and `AWS_*` environment |
+| `gke` | GKE Standard or Autopilot | `iam.gke.io/gcp-service-account` when `gcpServiceAccount` is set, the `iam.gke.io/gke-metadata-server-enabled` node selector, and a projected token federated into the AWS roles |
+| `web-identity` | AKS, on-prem, any cluster with a public OIDC issuer | the projected token federation only |
+| `none` | anything | only `serviceAccounts.*.annotations`; use with EKS Pod Identity associations, instance profiles, or externally injected credentials |
+
+Changing a role rolls the affected pods: the rendered annotations feed the
+`checksum/external-config` pod annotation.
+
+### EKS with IRSA
+
+Each role's trust policy must accept the cluster's OIDC provider and the exact
+service-account subject:
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": { "Federated": "arn:aws:iam::<account>:oidc-provider/oidc.eks.<region>.amazonaws.com/id/<id>" },
+  "Action": "sts:AssumeRoleWithWebIdentity",
+  "Condition": {
+    "StringEquals": {
+      "oidc.eks.<region>.amazonaws.com/id/<id>:aud": "sts.amazonaws.com",
+      "oidc.eks.<region>.amazonaws.com/id/<id>:sub": "system:serviceaccount:cryptanalysis:ecc2k130-ecc2k130-coordinator-publisher"
+    }
+  }
+}
+```
+
+The default `podSecurityContext.fsGroup` is what lets the non-root containers
+read the projected token; keep it. Components without an `awsRoleArn` fall
+back to the node instance role. For EKS Pod Identity, set `identity.mode:
+none` and create the pod identity associations against the rendered service
+account names.
+
+### GKE
+
+GKE Workload Identity Federation only issues Google credentials, so AWS access
+is federated directly: pods mount a Kubernetes token with audience
+`sts.amazonaws.com` and boto3 exchanges it through
+`AssumeRoleWithWebIdentity`. Register the cluster's issuer once in AWS:
+
+```sh
+aws iam create-open-id-connect-provider \
+  --url https://container.googleapis.com/v1/projects/<project>/locations/<location>/clusters/<cluster> \
+  --client-id-list sts.amazonaws.com
+```
+
+and trust it in each role with the same `aud`/`sub` conditions as above, using
+`container.googleapis.com/v1/projects/<project>/locations/<location>/clusters/<cluster>`
+as the condition key prefix. Then install with:
+
+```yaml
+identity:
+  mode: gke
+  gcp:
+    requireMetadataServer: true   # false on Autopilot
+serviceAccounts:
+  publisher:
+    awsRoleArn: arn:aws:iam::<account>:role/ecc2k-publisher
+    gcpServiceAccount: ecc2k-publisher@<project>.iam.gserviceaccount.com   # optional
+```
+
+`gcpServiceAccount` is only needed when a component must also call Google
+APIs; direct IAM bindings on the Kubernetes principal work without it.
+Networking to MemoryDB and RDS from GKE (VPN, Interconnect, or PrivateLink
+equivalents) is outside the chart.
+
+### Other clusters
+
+`identity.mode: web-identity` renders the same projected token and `AWS_*`
+environment for any cluster whose OIDC issuer AWS can reach (AKS with
+`--enable-oidc-issuer`, kubeadm with a published issuer, and so on).
 
 Minimum AWS access:
 
@@ -114,6 +192,33 @@ In-cluster workers use:
 RHO_QUEUE_PUBLISH_URL=http://ecc2k130-ecc2k130-coordinator-publisher.cryptanalysis.svc
 RHO_QUEUE_PUBLISH_TOKEN=<publish-token>
 ```
+
+## Node-local publisher (DaemonSet)
+
+When walkers run in the same cluster, a publisher on every walker node keeps
+admission and backpressure decisions local and removes a cross-node hop from
+the hot path:
+
+```yaml
+publisher:
+  kind: DaemonSet
+  nodeSelector:
+    cryptanalysis.io/walker-pool: "true"   # Kubernetes selects by label, not annotation
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+```
+
+In this mode the Service defaults to `internalTrafficPolicy: Local`, so the
+unchanged `RHO_QUEUE_PUBLISH_URL` reaches the publisher on the walker's own
+node and fails fast (retryable, spool retained) on nodes without one. The
+publisher PodDisruptionBudget is skipped because drains ignore DaemonSet pods.
+Set `publisher.hostPort` to additionally expose `http://$(HOST_IP):<port>`;
+Kubernetes rejects DaemonSet `maxSurge` with a hostPort, and hostPort traffic
+bypasses the pod NetworkPolicy on some CNIs, so allow the node CIDR under
+`networkPolicy.additionalPublisherIngress` if you use it. The consumer stays
+a Deployment: its scale is bounded by RDS connections and stream batch size,
+not by node count.
 
 Workers never receive Redis credentials. HTTP 429 and 5xx responses are
 retryable and mean retain the local spool. The coordinator will not accept an

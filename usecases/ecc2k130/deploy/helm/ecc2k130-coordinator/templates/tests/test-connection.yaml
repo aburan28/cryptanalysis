@@ -38,4 +38,18 @@ spec:
           memory: 32Mi
         limits:
           memory: 64Mi
+  {{- /* Node-local routing only answers on nodes that run a publisher. */ -}}
+  {{- if eq (include "ecc2k130-coordinator.publisherTrafficPolicy" .) "Local" }}
+  {{- with (include "ecc2k130-coordinator.nodeSelector" (dict "root" . "component" "publisher")) }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  {{- with .Values.publisher.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.publisher.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
 {{- end }}

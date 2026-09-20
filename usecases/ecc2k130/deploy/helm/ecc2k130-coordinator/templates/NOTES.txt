@@ -1,18 +1,47 @@
 ECC2K-130 coordinator deployed.
 
-Publisher service:
+Publisher ({{ .Values.publisher.kind }}):
   http://{{ include "ecc2k130-coordinator.fullname" . }}-publisher.{{ .Release.Namespace }}.svc:{{ .Values.publisher.service.port }}
+{{- if eq (include "ecc2k130-coordinator.publisherTrafficPolicy" .) "Local" }}
+  internalTrafficPolicy=Local: the Service only answers on nodes that run a
+  publisher pod. Schedule walkers onto the same nodes; requests from other
+  nodes fail fast and publish.py treats that as a retryable spool-retain.
+{{- end }}
+{{- if gt (int .Values.publisher.hostPort) 0 }}
+  hostPort {{ .Values.publisher.hostPort }}: walkers may also use
+  http://$(HOST_IP):{{ .Values.publisher.hostPort }} with the downward API.
+{{- end }}
 
 Worker configuration:
   RHO_QUEUE_PUBLISH_URL=http://{{ include "ecc2k130-coordinator.fullname" . }}-publisher.{{ .Release.Namespace }}.svc:{{ .Values.publisher.service.port }}
   RHO_QUEUE_PUBLISH_TOKEN=<the {{ .Values.existingSecret.publishTokenKey }} value from {{ include "ecc2k130-coordinator.secretName" . }}>
 
+Cloud identity ({{ .Values.identity.mode }}):
+{{- range $component := list "publisher" "consumer" "reconciler" }}
+{{- $account := index $.Values.serviceAccounts $component }}
+  {{ $component }}: {{ include "ecc2k130-coordinator.serviceAccountName" (dict "root" $ "component" $component) }}
+  {{- if $account.awsRoleArn }} -> {{ $account.awsRoleArn }}{{ end }}
+  {{- if $account.gcpServiceAccount }} (GCP {{ $account.gcpServiceAccount }}){{ end }}
+{{- end }}
+{{- if eq .Values.identity.mode "irsa" }}
+  The EKS pod identity webhook injects the AWS token. Components without an
+  awsRoleArn use the node instance role.
+{{- else if include "ecc2k130-coordinator.federatedIdentity" . }}
+  Pods present a projected Kubernetes token (audience
+  {{ .Values.identity.aws.audience }}) to sts:AssumeRoleWithWebIdentity. Each
+  role's trust policy must accept this cluster's OIDC issuer and the subjects
+  system:serviceaccount:{{ .Release.Namespace }}:<service account name>.
+{{- else }}
+  Only serviceAccounts.*.annotations were rendered; supply credentials through
+  EKS Pod Identity, instance profiles, or an external mechanism.
+{{- end }}
+
 Run the connection test:
   helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
 
 Watch the coordinator:
-  kubectl get deploy,cronjob -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl get deploy,ds,cronjob -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
   kubectl logs -n {{ .Release.Namespace }} deploy/{{ include "ecc2k130-coordinator.fullname" . }}-consumer -f
 
-The chart does not create MemoryDB, RDS, S3 buckets, IAM roles, or the
-existing Secret. They must exist before installation.
+The chart does not create MemoryDB, RDS, S3 buckets, IAM roles, OIDC
+providers, or the existing Secret. They must exist before installation.

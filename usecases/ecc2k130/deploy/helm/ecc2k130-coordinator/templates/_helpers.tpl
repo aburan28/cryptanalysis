@@ -52,6 +52,108 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 {{- end -}}
 
+{{/*
+Identity modes that federate a projected Kubernetes token into AWS IAM
+directly, without the EKS pod identity webhook.
+*/}}
+{{- define "ecc2k130-coordinator.federatedIdentity" -}}
+{{- if has .Values.identity.mode (list "gke" "web-identity") -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+Complete annotation map for a component's ServiceAccount: mode-specific
+identity bindings merged over the verbatim serviceAccounts.<component>.annotations.
+Usage: include "ecc2k130-coordinator.serviceAccountAnnotations" (dict "root" $ "component" "publisher")
+*/}}
+{{- define "ecc2k130-coordinator.serviceAccountAnnotations" -}}
+{{- $root := .root -}}
+{{- $account := index $root.Values.serviceAccounts .component -}}
+{{- $annotations := merge (dict) $account.annotations -}}
+{{- if and (eq $root.Values.identity.mode "irsa") $account.awsRoleArn -}}
+{{- $_ := set $annotations "eks.amazonaws.com/role-arn" $account.awsRoleArn -}}
+{{- $_ := set $annotations "eks.amazonaws.com/audience" $root.Values.identity.aws.audience -}}
+{{- $_ := set $annotations "eks.amazonaws.com/token-expiration" (toString $root.Values.identity.aws.tokenExpirationSeconds) -}}
+{{- $_ := set $annotations "eks.amazonaws.com/sts-regional-endpoints" (ternary "true" "false" $root.Values.identity.aws.stsRegionalEndpoints) -}}
+{{- end -}}
+{{- if and (eq $root.Values.identity.mode "gke") $account.gcpServiceAccount -}}
+{{- $_ := set $annotations "iam.gke.io/gcp-service-account" $account.gcpServiceAccount -}}
+{{- end -}}
+{{- toYaml $annotations -}}
+{{- end -}}
+
+{{/*
+AWS SDK environment for federated identity modes. boto3 reads the projected
+token and calls sts:AssumeRoleWithWebIdentity itself, refreshing as needed.
+*/}}
+{{- define "ecc2k130-coordinator.identityEnv" -}}
+{{- $root := .root -}}
+{{- $account := index $root.Values.serviceAccounts .component -}}
+{{- if and (include "ecc2k130-coordinator.federatedIdentity" $root) $account.awsRoleArn -}}
+- name: AWS_ROLE_ARN
+  value: {{ $account.awsRoleArn | quote }}
+- name: AWS_WEB_IDENTITY_TOKEN_FILE
+  value: {{ printf "%s/token" $root.Values.identity.aws.tokenMountPath | quote }}
+- name: AWS_ROLE_SESSION_NAME
+  value: {{ printf "%s-%s" (include "ecc2k130-coordinator.fullname" $root) .component | trunc 64 | trimSuffix "-" | quote }}
+{{- if $root.Values.identity.aws.stsRegionalEndpoints }}
+- name: AWS_STS_REGIONAL_ENDPOINTS
+  value: regional
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "ecc2k130-coordinator.identityVolume" -}}
+{{- if include "ecc2k130-coordinator.federatedIdentity" . -}}
+- name: aws-web-identity-token
+  projected:
+    sources:
+      - serviceAccountToken:
+          audience: {{ .Values.identity.aws.audience | quote }}
+          expirationSeconds: {{ .Values.identity.aws.tokenExpirationSeconds }}
+          path: token
+{{- end }}
+{{- end -}}
+
+{{- define "ecc2k130-coordinator.identityVolumeMount" -}}
+{{- if include "ecc2k130-coordinator.federatedIdentity" . -}}
+- name: aws-web-identity-token
+  mountPath: {{ .Values.identity.aws.tokenMountPath }}
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{/*
+Node selector for a workload: the user's selector plus the GKE metadata server
+pin when Workload Identity is in use.
+Usage: include "ecc2k130-coordinator.nodeSelector" (dict "root" $ "component" "publisher")
+*/}}
+{{- define "ecc2k130-coordinator.nodeSelector" -}}
+{{- $root := .root -}}
+{{- $workload := index $root.Values .component -}}
+{{- $selector := dict -}}
+{{- range $key, $value := $workload.nodeSelector -}}
+{{- /* Label values must be strings; --set and YAML booleans would be rejected by the API. */ -}}
+{{- $_ := set $selector $key (toString $value) -}}
+{{- end -}}
+{{- if and (eq $root.Values.identity.mode "gke") $root.Values.identity.gcp.requireMetadataServer -}}
+{{- $_ := set $selector "iam.gke.io/gke-metadata-server-enabled" "true" -}}
+{{- end -}}
+{{- with $selector -}}
+nodeSelector:
+  {{- toYaml . | nindent 2 }}
+{{- end -}}
+{{- end -}}
+
+{{- define "ecc2k130-coordinator.publisherTrafficPolicy" -}}
+{{- if .Values.publisher.service.internalTrafficPolicy -}}
+{{- .Values.publisher.service.internalTrafficPolicy -}}
+{{- else if eq .Values.publisher.kind "DaemonSet" -}}
+Local
+{{- else -}}
+Cluster
+{{- end -}}
+{{- end -}}
+
 {{- define "ecc2k130-coordinator.producerQueueSecretEnv" -}}
 - name: RHO_QUEUE_REDIS_URL
   valueFrom:
@@ -99,8 +201,32 @@ app.kubernetes.io/component: {{ .component }}
 {{- if not .Values.queue.cluster -}}
 {{- fail "queue.cluster must be true for AWS MemoryDB" -}}
 {{- end -}}
-{{- if lt (int .Values.publisher.replicaCount) 1 -}}
+{{- if and (eq .Values.publisher.kind "Deployment") (lt (int .Values.publisher.replicaCount) 1) -}}
 {{- fail "publisher.replicaCount must be at least 1" -}}
+{{- end -}}
+{{- if and (ne .Values.publisher.kind "DaemonSet") (gt (int .Values.publisher.hostPort) 0) -}}
+{{- fail "publisher.hostPort requires publisher.kind=DaemonSet" -}}
+{{- end -}}
+{{- if and (gt (int .Values.publisher.hostPort) 0) (ne (toString (dig "rollingUpdate" "maxSurge" 0 .Values.publisher.daemonSet.updateStrategy)) "0") -}}
+{{- fail "publisher.daemonSet.updateStrategy.rollingUpdate.maxSurge must be 0 when publisher.hostPort is set" -}}
+{{- end -}}
+{{- $mode := .Values.identity.mode -}}
+{{- $federated := include "ecc2k130-coordinator.federatedIdentity" . -}}
+{{- range $component := list "publisher" "consumer" "reconciler" -}}
+{{- $account := index $.Values.serviceAccounts $component -}}
+{{- $active := or (ne $component "reconciler") $.Values.reconciler.enabled -}}
+{{- if and (eq $mode "none") (or $account.awsRoleArn $account.gcpServiceAccount) -}}
+{{- fail (printf "serviceAccounts.%s sets a cloud identity but identity.mode is none" $component) -}}
+{{- end -}}
+{{- if and (ne $mode "gke") $account.gcpServiceAccount -}}
+{{- fail (printf "serviceAccounts.%s.gcpServiceAccount requires identity.mode=gke" $component) -}}
+{{- end -}}
+{{- if and $federated $active (not $account.awsRoleArn) -}}
+{{- fail (printf "serviceAccounts.%s.awsRoleArn is required in identity.mode=%s: the coordinator's data plane is AWS and the projected token has no role to assume" $component $mode) -}}
+{{- end -}}
+{{- end -}}
+{{- if and $federated (not (hasKey .Values.podSecurityContext "fsGroup")) -}}
+{{- fail "podSecurityContext.fsGroup is required so the non-root containers can read the projected AWS token" -}}
 {{- end -}}
 {{- if lt (int .Values.consumer.replicaCount) 1 -}}
 {{- fail "consumer.replicaCount must be at least 1" -}}

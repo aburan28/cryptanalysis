@@ -21,6 +21,8 @@ spec:
         metadata:
           labels:
             {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "reconciler") | nindent 12 }}
+          annotations:
+            checksum/external-config: {{ printf "%s|%s|%s" .Values.rolloutNonce (toJson .Values.existingSecret) (include "ecc2k130-coordinator.serviceAccountAnnotations" (dict "root" . "component" "reconciler")) | sha256sum }}
         spec:
           serviceAccountName: {{ include "ecc2k130-coordinator.serviceAccountName" (dict "root" . "component" "reconciler") }}
           automountServiceAccountToken: {{ .Values.serviceAccounts.reconciler.automountServiceAccountToken }}
@@ -61,13 +63,21 @@ spec:
               env:
                 {{- include "ecc2k130-coordinator.producerQueueSecretEnv" . | nindent 16 }}
                 {{- include "ecc2k130-coordinator.databaseSecretEnv" . | nindent 16 }}
+                {{- include "ecc2k130-coordinator.identityEnv" (dict "root" . "component" "reconciler") | nindent 16 }}
               securityContext:
                 {{- toYaml .Values.containerSecurityContext | nindent 16 }}
               resources:
                 {{- toYaml .Values.reconciler.resources | nindent 16 }}
-          {{- with .Values.reconciler.nodeSelector }}
-          nodeSelector:
-            {{- toYaml . | nindent 12 }}
+              {{- with (include "ecc2k130-coordinator.identityVolumeMount" .) }}
+              volumeMounts:
+                {{- . | nindent 16 }}
+              {{- end }}
+          {{- with (include "ecc2k130-coordinator.identityVolume" .) }}
+          volumes:
+            {{- . | nindent 12 }}
+          {{- end }}
+          {{- with (include "ecc2k130-coordinator.nodeSelector" (dict "root" . "component" "reconciler")) }}
+          {{- . | nindent 10 }}
           {{- end }}
           {{- with .Values.reconciler.affinity }}
           affinity:

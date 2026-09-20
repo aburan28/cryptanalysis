@@ -1,4 +1,5 @@
 {{- if .Values.podDisruptionBudget.enabled }}
+{{- if eq .Values.publisher.kind "Deployment" }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -12,6 +13,7 @@ spec:
     matchLabels:
       {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "publisher") | nindent 6 }}
 ---
+{{- end }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

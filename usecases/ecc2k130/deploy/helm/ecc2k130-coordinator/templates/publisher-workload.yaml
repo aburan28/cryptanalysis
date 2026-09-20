@@ -1,20 +1,26 @@
+{{- $kind := .Values.publisher.kind -}}
 apiVersion: apps/v1
-kind: Deployment
+kind: {{ $kind }}
 metadata:
   name: {{ include "ecc2k130-coordinator.fullname" . }}-publisher
   labels:
     {{- include "ecc2k130-coordinator.labels" . | nindent 4 }}
     app.kubernetes.io/component: publisher
 spec:
+  {{- if eq $kind "Deployment" }}
   replicas: {{ .Values.publisher.replicaCount }}
-  selector:
-    matchLabels:
-      {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "publisher") | nindent 6 }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
+  {{- else }}
+  updateStrategy:
+    {{- toYaml .Values.publisher.daemonSet.updateStrategy | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "publisher") | nindent 6 }}
   template:
     metadata:
       labels:
@@ -24,7 +30,7 @@ spec:
         {{- end }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        checksum/external-config: {{ printf "%s|%s|%s" .Values.rolloutNonce (toJson .Values.existingSecret) (toJson .Values.serviceAccounts.publisher.annotations) | sha256sum }}
+        checksum/external-config: {{ printf "%s|%s|%s" .Values.rolloutNonce (toJson .Values.existingSecret) (include "ecc2k130-coordinator.serviceAccountAnnotations" (dict "root" . "component" "publisher")) | sha256sum }}
         {{- with .Values.publisher.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -49,6 +55,9 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.publisher.port }}
+              {{- if gt (int .Values.publisher.hostPort) 0 }}
+              hostPort: {{ .Values.publisher.hostPort }}
+              {{- end }}
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -60,6 +69,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "ecc2k130-coordinator.secretName" . }}
                   key: {{ required "existingSecret.publishTokenKey is required" .Values.existingSecret.publishTokenKey }}
+            {{- include "ecc2k130-coordinator.identityEnv" (dict "root" . "component" "publisher") | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /healthz
@@ -79,9 +89,16 @@ spec:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           resources:
             {{- toYaml .Values.publisher.resources | nindent 12 }}
-      {{- with .Values.publisher.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
+          {{- with (include "ecc2k130-coordinator.identityVolumeMount" .) }}
+          volumeMounts:
+            {{- . | nindent 12 }}
+          {{- end }}
+      {{- with (include "ecc2k130-coordinator.identityVolume" .) }}
+      volumes:
+        {{- . | nindent 8 }}
+      {{- end }}
+      {{- with (include "ecc2k130-coordinator.nodeSelector" (dict "root" . "component" "publisher")) }}
+      {{- . | nindent 6 }}
       {{- end }}
       {{- with .Values.publisher.affinity }}
       affinity:
@@ -91,7 +108,9 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if eq $kind "Deployment" }}
       {{- with .Values.publisher.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- end }}
