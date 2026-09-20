@@ -2,8 +2,9 @@
 
 Go bindings for libcryptanalysis, a toolkit of discrete-logarithm algorithms
 over 64-bit prime-field groups: baby-step giant-step, Pollard rho, Pollard
-kangaroo, Bernstein-Lange grumpy giants, Pohlig-Hellman, Cheon's attack on
-strong Diffie-Hellman and index calculus in (Z/pZ)^*.
+kangaroo, Bernstein-Lange grumpy giants, discrete logs with precomputation,
+Pohlig-Hellman, Cheon's attack on strong Diffie-Hellman and index calculus in
+(Z/pZ)^*.
 
 The package binds the flat C ABI in `include/cryptanalysis/ca_ffi.h`.
 
@@ -95,6 +96,7 @@ func main() {
 | `Elem` (`[4]uint64`) and `Group.Op/Inv/Mul/Identity/IsIdentity/Equal/Validate/ElemOrder/FindGenerator/RandomElement/LiftX` | element functions |
 | `Options`, `DefaultOptions`, `Solver`, `Stats` | `ca_ffi_options`, `ca_stats` |
 | `Group.BSGS/Kangaroo/Grumpy/Rho/Dlog` | `ca_ffi_bsgs/kangaroo/grumpy/rho/dlog` |
+| `Group.Precomp` | `ca_ffi_precomp` |
 | `Group.Cheon`, `Group.CheonInstance`, `CheonBestDivisor` | `ca_ffi_cheon*` |
 | `ICParams`, `ICStats`, `ICSolve`, `ICContext` | `ca_ic_*` |
 | `IsPrime`, `NextPrime`, `PrimitiveRoot`, `PowMod`, `InvMod`, `Factorize` | `ca_ffi_*` helpers |

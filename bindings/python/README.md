@@ -2,7 +2,8 @@
 
 Pure-Python `ctypes` bindings for **libcryptanalysis**, a C library of
 discrete-logarithm algorithms: baby-step giant-step, parallel Pollard rho,
-kangaroo, Bernstein-Lange grumpy giants, Pohlig-Hellman, Cheon's attack on
+kangaroo, Bernstein-Lange grumpy giants, discrete logs with precomputation,
+Pohlig-Hellman, Cheon's attack on
 the strong Diffie-Hellman problem and index calculus in `(Z/pZ)^*`.  All
 moduli are 64-bit (`p < 2^64`), so pass Python ints in range.
 
@@ -47,6 +48,7 @@ x, stats = g.rho(gen, h, ca.Options(threads=4)) # parallel Pollard rho
 x, stats = g.kangaroo(gen, h, 123_000_000, 124_000_000)   # interval solvers
 x, stats = g.grumpy(gen, h, 123_000_000, 124_000_000)
 x, stats = g.bsgs(gen, h)
+x, stats = g.precomp(gen, h, threads=4)        # ~n^2/3 precompute, ~n^1/3 online
 print(x, stats.group_ops, stats.seconds)
 
 # elliptic curve y^2 = x^3 + x + 7 over F_1000003
