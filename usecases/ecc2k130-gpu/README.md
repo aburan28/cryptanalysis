@@ -67,6 +67,10 @@ export RUNPOD_API_KEY=...
 Needs Modal tokens. Stock `modal_app.py` does not bake the 20 B/s knobs; the
 deploy script applies `patch_modal_app_20b.py` to a local crypto checkout.
 
+Verified on Modal RTX PRO 6000: **20.05 B it/s** packed bench; search at
+`ECC_RUN_ID=4242` stores DPs on the `ecc2k130` volume (avoid run-id 1 — stale
+checkpoint).
+
 ```sh
 export MODAL_TOKEN_ID=...
 export MODAL_TOKEN_SECRET=...
