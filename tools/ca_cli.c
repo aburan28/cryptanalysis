@@ -7,12 +7,18 @@
  *   ca ec-order --p P --a A --b B
  *   ca gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]
  *   ca gpu-info
- *   ca solve --alg bsgs|rho|kangaroo|grumpy|dlog|gpu-rho --group zp|ec --p P [--a A --b B]
+ *   ca curve --name NAME | (--group ec --p P --a A --b B [--order N]) | --list
+ *            report a curve's endomorphism structure (GLV) and chosen solver
+ *   ca solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a A --b
+ * B]
  *            --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S]
  *            [--dp-bits D] [--r R] [--walks W] [--no-negation] [--m M] [--alpha F]
  *            [--solver auto|bsgs|rho|kangaroo|grumpy] [--max-ops K]
  *            gpu-rho also takes [--backend auto|cuda|emulate] [--device D]
  *            [--tpb T] [--blocks B] [--steps S]
+ *            precomp also takes [--table CHAINS] [--coverage F] [--threads T]
+ *            [--walks W] [--early-abort|--no-early-abort]
+ *            [--max-precomp-ops K] [--max-online-ops K]
  *   ca cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D
  *            (--ga GA --gad GAD | --alpha X)
  *   ca ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C]
@@ -131,8 +137,11 @@ static _Noreturn void usage(void)
         "usage: ca <command> [options]\n"
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
-        "  solve --alg bsgs|rho|kangaroo|grumpy|dlog|gpu-rho --group zp|ec --p P [--a A --b B]\n"
+        "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a "
+        "A "
+        "--b B]\n"
         "        --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S] ...\n"
+        "  curve --name NAME | (--group ec --p P --a A --b B [--order N]) | --list\n"
         "  cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D (--ga GA --gad GAD | "
         "--alpha X)\n"
         "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] "
@@ -296,6 +305,76 @@ static int cmd_solve(void)
         print_stats(&st);
         printf("}\n");
         fprintf(stderr, "error: %s %s\n", ca_status_string(rc), ca_last_error());
+        return 1;
+    }
+    if (!strcmp(alg, "glv")) {
+        if (g.kind != CA_GROUP_EC) die("--alg glv needs --group ec");
+        ca_group cg;
+        ca_curve_info info;
+        rc = ca_curve_group(&cg, g.p, g.a, g.b, g.order, &info);
+        if (rc != CA_OK) die_status(rc);
+        /* base/target are valid in cg: identical curve and Montgomery domain. */
+        rc = ca_curve_solve(&cg, &base, &target, opt_u64("--seed", 0), &x, &info, &st);
+        const char *ek = info.endo == CA_CURVE_ENDO_J0      ? "j0"
+                         : info.endo == CA_CURVE_ENDO_J1728 ? "j1728"
+                                                            : "none";
+        if (rc == CA_OK) {
+            printf("{\"status\":\"ok\",\"alg\":\"glv\",\"x\":%" PRIu64
+                   ",\"endomorphism\":\"%s\",\"aut_order\":%u,\"lambda\":%" PRIu64
+                   ",\"rho_speedup\":%.4f,",
+                   x, ek, info.aut_order, info.lambda, info.rho_speedup);
+            print_stats(&st);
+            printf("}\n");
+            return 0;
+        }
+        printf("{\"status\":\"%s\",\"alg\":\"glv\",", ca_status_string(rc));
+        print_stats(&st);
+        printf("}\n");
+        fprintf(stderr, "error: %s %s\n", ca_status_string(rc), ca_last_error());
+        return 1;
+    }
+    if (!strcmp(alg, "precomp")) {
+        ca_precomp_params pp;
+        ca_precomp_params_default(&pp);
+        pp.seed = opt_u64("--seed", 0);
+        pp.dp_bits = (int32_t)opt_u64("--dp-bits", (uint64_t)-1);
+        pp.r = (uint32_t)opt_u64("--r", 0);
+        pp.table_size = opt_u64("--table", 0);
+        pp.coverage = opt_f("--coverage", 0);
+        pp.threads = (uint32_t)opt_u64("--threads", 1);
+        pp.walks = (uint32_t)opt_u64("--walks", 0);
+        pp.early_abort = flag("--early-abort") ? 1 : (flag("--no-early-abort") ? 0 : -1);
+        pp.max_precomp_ops = opt_u64("--max-precomp-ops", 0);
+        pp.max_online_ops = opt_u64("--max-online-ops", 0);
+        ca_stats build = {0}, online = {0};
+        ca_precomp_table *ptab = NULL;
+        rc = ca_precomp_table_new(&g, &base, &pp, &ptab, &build);
+        if (rc != CA_OK) {
+            printf("{\"status\":\"%s\",\"alg\":\"precomp\"}\n", ca_status_string(rc));
+            fprintf(stderr, "error: %s %s\n", ca_status_string(rc), ca_last_error());
+            return 1;
+        }
+        int32_t dp_bits = 0;
+        uint64_t chains = 0, precomp_ops = 0;
+        uint32_t rr = 0;
+        ca_precomp_table_info(ptab, &dp_bits, &chains, &rr, &precomp_ops);
+        rc = ca_precomp_table_solve(ptab, &target, &x, &online);
+        if (rc == CA_OK) {
+            printf("{\"status\":\"ok\",\"alg\":\"precomp\",\"x\":%" PRIu64
+                   ",\"precomp_ops\":%" PRIu64 ",\"chains\":%" PRIu64 ",\"dp_bits\":%" PRId32
+                   ",\"r\":%u,",
+                   x, precomp_ops, chains, dp_bits, rr);
+            print_stats(&online);
+            printf("}\n");
+            ca_precomp_table_free(ptab);
+            return 0;
+        }
+        printf("{\"status\":\"%s\",\"alg\":\"precomp\",\"precomp_ops\":%" PRIu64 ",",
+               ca_status_string(rc), precomp_ops);
+        print_stats(&online);
+        printf("}\n");
+        fprintf(stderr, "error: %s %s\n", ca_status_string(rc), ca_last_error());
+        ca_precomp_table_free(ptab);
         return 1;
     }
     if (!strcmp(alg, "bsgs")) rc = ca_bsgs_solve(&g, &base, &target, lo, hi, &dp.bsgs, &x, &st);
@@ -472,7 +551,8 @@ static int cmd_dist_walk(void)
 static int merge_file(ca_dist_merger *m, const char *path, uint64_t *acc, uint64_t *dup,
                       uint64_t *rej)
 {
-    FILE *in = strcmp(path, "-") == 0 ? stdin : fopen(path, "rb");
+    int owned = strcmp(path, "-") != 0;
+    FILE *in = owned ? fopen(path, "rb") : stdin;
     if (!in) return -1;
     /* A partial record at the end of a file is a truncated upload, which is
      * what a killed agent leaves behind.  Read whole records and report the
@@ -482,7 +562,8 @@ static int merge_file(ca_dist_merger *m, const char *path, uint64_t *acc, uint64
     size_t carry = 0;
     int rc = 0;
     for (;;) {
-        size_t got = fread(buf + carry, 1, sizeof(buf) - carry, in);
+        size_t want = sizeof(buf) - carry;
+        size_t got = fread(buf + carry, 1, want, in);
         if (got == 0) break;
         size_t have = carry + got;
         size_t whole = have / CA_DIST_POINT_BYTES;
@@ -498,9 +579,18 @@ static int merge_file(ca_dist_merger *m, const char *path, uint64_t *acc, uint64
         *rej += r;
         carry = have - whole * CA_DIST_POINT_BYTES;
         memmove(buf, buf + whole * CA_DIST_POINT_BYTES, carry);
+        /* fread only comes back short at end-of-file or on an error, and
+         * after an error the stream position is indeterminate: stop here
+         * rather than read again. */
+        if (got < want) break;
     }
-    if (carry) rc = 1; /* truncated tail */
-    if (in != stdin) fclose(in);
+    if (rc == 0) {
+        if (ferror(in))
+            rc = -3; /* an I/O error is not an end-of-file */
+        else if (carry)
+            rc = 1; /* truncated tail */
+    }
+    if (owned) fclose(in);
     return rc;
 }
 
@@ -537,6 +627,10 @@ static int cmd_dist_merge(void)
         if (r == -2) {
             ca_dist_merger_free(m);
             die_status(CA_ERR_NOMEM);
+        }
+        if (r == -3) {
+            ca_dist_merger_free(m);
+            die("reading input file failed");
         }
         if (r == 1) truncated++;
     }
@@ -815,6 +909,47 @@ static int cmd_dist_info(void)
     return 0;
 }
 
+/* ------------------------------------------------------------- curve ----
+ * Curve-aware dispatch: report the endomorphism structure of a curve (given
+ * by --name from the registry or by explicit parameters) and the solver the
+ * library would pick for it.
+ */
+static int cmd_curve(void)
+{
+    if (flag("--list")) {
+        const char *names[32];
+        size_t n = ca_curve_list(names, 32);
+        printf("{\"curves\":[");
+        for (size_t i = 0; i < n && i < 32; i++) printf("%s\"%s\"", i ? "," : "", names[i]);
+        printf("]}\n");
+        return 0;
+    }
+    uint64_t p = 0, a = 0, b = 0, order = 0;
+    const char *name = opt("--name");
+    if (name) {
+        ca_status rc = ca_curve_by_name(name, &p, &a, &b, &order);
+        if (rc != CA_OK) die_status(rc);
+    } else {
+        p = opt_u64("--p", 0);
+        a = opt_u64("--a", 0);
+        b = opt_u64("--b", 0);
+        order = opt_u64("--order", 0);
+        if (!p) die("curve needs --name or --p [--a --b --order]");
+    }
+    ca_curve_info info;
+    ca_status rc = ca_curve_detect(p, a, b, order, &info);
+    if (rc != CA_OK) die_status(rc);
+    const char *ek = info.endo == CA_CURVE_ENDO_J0      ? "j0"
+                     : info.endo == CA_CURVE_ENDO_J1728 ? "j1728"
+                                                        : "none";
+    printf("{\"status\":\"ok\",\"p\":%" PRIu64 ",\"a\":%" PRIu64 ",\"b\":%" PRIu64
+           ",\"order\":%" PRIu64 ",\"endomorphism\":\"%s\",\"aut_order\":%u,\"beta\":%" PRIu64
+           ",\"lambda\":%" PRIu64 ",\"rho_speedup\":%.4f,\"solver\":\"%s\"}\n",
+           p, a, b, order, ek, info.aut_order, info.beta, info.lambda, info.rho_speedup,
+           info.endo != CA_CURVE_ENDO_NONE ? "glv-rho" : "rho");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     argc_g = argc;
@@ -879,6 +1014,7 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "dist-info")) return cmd_dist_info();
     if (!strcmp(cmd, "num")) return cmd_num();
     if (!strcmp(cmd, "group")) return cmd_group();
+    if (!strcmp(cmd, "curve")) return cmd_curve();
     usage();
     return 2;
 }

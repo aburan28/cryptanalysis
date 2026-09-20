@@ -13,6 +13,14 @@ where `N` is the group order (whole-group problems) or the interval width
 size, so "is this better than rho" is one column.  See
 [BENCHMARKS.md](BENCHMARKS.md) for the tables.
 
+`S` fixes the exponent at `1/2` and reports the constant.  To compare
+algorithms whose exponents differ -- or to *check* that an exponent is what
+theory claims -- `ca_bench complexity` fits the measured cost to
+`C * N^alpha` across a size sweep and reports the fitted `alpha` (globally for
+a whole algorithm, and per step for a method's phases, e.g. the `n^{2/3}`
+build and `n^{1/3}` online of the precomputation solver) alongside the
+normalised constant.  This measures the `O()` rather than assuming it.
+
 ## Setting and scope
 
 Everything is written against a generic cyclic group interface
@@ -158,6 +166,147 @@ than kangaroo (about 2) at the price of `O(sqrt(N))` memory.  The paper's
 success probability after `1.5 sqrt(n)` operations is `0.71875`; our
 simulation gives `0.70` at `n = 4093`.
 
+## Discrete logarithms with precomputation (`ca_precomp.h`)
+
+Bernstein and Lange, *Computing small discrete logarithms faster*
+(INDOCRYPT 2012) and *Non-uniform cracks in the concrete: the power of
+free precomputation* (ASIACRYPT 2013).  A one-time, group- and
+base-specific precomputation lets every subsequent logarithm to the same
+base be solved in far fewer operations than a from-scratch square-root
+search.
+
+The walk is a deterministic function of the current point alone: with `r`
+precomputed steps `S_i = s_i * base` (`s_i` random, `r = 20` by default),
+
+```
+i = mix(hash(Y)) mod r      Y <- Y + S_i
+```
+
+and a point is *distinguished* when the low `t` bits of `hash(Y)` are zero
+(`t = round(log2 n / 3)` by default).  Because the step depends on nothing
+but the point, two walks that ever meet stay merged and reach the same
+distinguished point.
+
+* **Precomputation** builds a table of chains.  Each chain starts at
+  `a_0 * base` for a random `a_0`, walks to a distinguished point
+  `D = e * base`, and stores `hash(D) -> e`.  With `C` chains of expected
+  length `2^t`, the table covers about `C * 2^t` points and stores `C`
+  endpoints.
+* **Online**, a target `Q = x * base` is attacked by starting one walk at
+  `a * base + Q = (a + x) * base` for a random `a`.  The steps only add
+  multiples of `base`, so the walk stays on `(· + x) * base` and ends at
+  `(a' + x) * base`.  If that endpoint is a stored `e * base` then
+  `e = a' + x (mod n)` and `x = e - a'`.  If the walk instead reaches an
+  unknown distinguished point (or exceeds the chain limit, a fruitless
+  cycle), the attempt restarts with a fresh `a`.
+
+Balancing the coverage `C * 2^t` against the whole group, one online walk of
+length `~2^t` hits a precomputed point with constant probability when
+`C ~ n / 2^{2t}`; with `t = round(log2 n / 3)` this is
+
+```
+table size          ~ n^{1/3} chains
+precomputation      ~ n^{2/3} group operations
+per-target online   ~ n^{1/3} group operations.
+```
+
+Every recovered `x` is verified (`x * base == target`) before it is
+returned, so a 64-bit endpoint-hash collision can only cost a retry, never
+a wrong answer.  `ca_precomp_table_new` builds the table once;
+`ca_precomp_table_solve` reuses it for each target, and `ca_precomp_solve`
+is the one-shot (build, solve one, free).  The base must generate the
+order-`n` group (the `x = e - a'` recovery is modulo `n`); a target with no
+logarithm to that base is reported `CA_ERR_NOT_FOUND` after the attempt
+budget, not guessed.
+
+**Implementation.**  Four optimisations keep the constants near the theory
+and the wall-clock low:
+
+* *Fixed-base walk starts.*  Every walk start is a scalar multiple `a * base`;
+  the table keeps a doubling table `G[b] = 2^b * base` and forms `a * base` as
+  the sum over the set bits of `a`, cheaper than a generic double-and-add.
+* *Batched inversion.*  Precomputation walks `W` chains in lockstep and takes
+  one step of all of them through `ca_group_batch_op` — one field inversion
+  per `W` curve additions (Montgomery's trick, the same one rho uses).  On
+  curves this is the dominant win; measured, it took the 36-bit curve build
+  from 2.26 s to 0.44 s on one core.
+* *Threads.*  The build runs across `threads` workers over a shared, lock-free
+  Bloom filter and per-thread endpoint buffers merged at the end; measured
+  3.4x - 3.9x on four cores.
+* *Early abort.*  An optional Bloom filter over covered points lets a chain
+  stop the instant it re-enters covered ground, so a merging chain is
+  discarded before its redundant tail is walked.  This matters only when the
+  table is deliberately built to over-cover the group (a large coverage
+  factor); at coverage 32 on a 2^17 group it cut the precomputation from
+  121k to 77k operations while storing about twice as many distinct
+  endpoints.  At the natural operating point (table `~ n^{1/3}`) merges are
+  negligible, so it is off by default.
+* *Compact table.*  Endpoints are a sorted array of (64-bit fingerprint,
+  exponent) pairs looked up by binary search: 16 bytes per entry, about a
+  quarter of the open-addressed hash table it replaced.
+
+**What this is and is not.**  This is a *time/precomputation trade-off*, not
+a break of the discrete-log problem.  It does not lower the cost of a single
+isolated logarithm below the `1.25 sqrt(n)` of Pollard rho: the
+precomputation alone is `n^{2/3} > sqrt(n)`.  Its point is exactly the one
+Bernstein and Lange make about "non-uniform" security: the `n^{2/3}` is paid
+once and then amortised over many targets in a *fixed* group, so a single
+standardised curve of order `n` does not offer `sqrt(n)` security *per
+target* against an attacker who has done the precomputation.  For a 256-bit
+prime-order curve the online exponent `n^{1/3} ~ 2^{85}` against the
+`n^{1/2} ~ 2^{128}` of a generic attack is the gap this construction makes
+concrete; the caveat is that the precomputation and the storage are
+themselves `~2^{170}` and `~2^{85}`, which is why it is a statement about
+security *definitions* rather than a practical attack (Koblitz and Menezes,
+*A riddle wrapped in an enigma*, discuss the same point for NIST P-256).
+The measured constants at the sizes this library runs are in
+[BENCHMARKS.md](BENCHMARKS.md).
+
+## Curve endomorphisms: GLV-accelerated rho (`ca_curve.h`)
+
+Some curves over `F_p` carry an efficiently computable endomorphism `psi`
+beyond the negation `P -> -P`, and folding the rho walk by the automorphism
+group it generates shrinks the search space and so the operation count.  The
+module recognises the two prime-field families and dispatches to the
+accelerated walk automatically from a curve name or its parameters.
+
+* **j-invariant 0** (`y^2 = x^3 + b`, `p = 1 mod 3`): `psi(x, y) = (beta x, -y)`
+  with `beta` a cube root of unity mod `p`; `<psi>` has order 6.
+* **j-invariant 1728** (`y^2 = x^3 + a x`, `p = 1 mod 4`):
+  `psi(x, y) = (-x, i y)` with `i^2 = -1`; `<psi>` has order 4.
+
+On the prime-order-`n` subgroup `psi` acts as multiplication by a root of
+unity `lambda` (a root of `x^2 - x + 1` for j0, `x^2 + 1` for j1728); the
+module fixes the sign branch empirically by testing `psi(P) == lambda P` on a
+subgroup point, so it can never pick the wrong eigenvalue.  This is the
+Gallant-Lambert-Vanstone endomorphism; the rho speed-up from it is the
+Wiener-Zuccherato / Duursma-Gaudry-Morain automorphism-class idea, and the
+Frobenius speed-up on binary Koblitz curves (the `fpga/` ECC2K-130 core) is
+the same idea over an extension field, out of scope for this `F_p` core.
+
+**The walk.**  `glv_rho_solve` walks canonical representatives of the
+automorphism classes `{Y, psi(Y), ..., psi^{m-1}(Y)}`: it reduces to the
+minimum-hash member, tracking the power `k` of `psi` applied so the exponents
+`(a, b)` in `Y = a G + b H` are multiplied by `lambda^k`.  The step is a
+function of the class (index and distinguished-point test read the canonical
+hash, and multipliers are always added to the canonical point), so walks that
+meet stay merged.  Folding by `m` costs a few field multiplications per step
+(applying `psi`) but shrinks the space by `m`, for `sqrt(m)` fewer
+operations.  Automorphism walks fall into fruitless cycles far more often
+than a plain walk, so the same 2-cycle look-ahead the negation map uses is
+carried over (if the reduced point would pick the multiplier just used,
+advance to the next one); without it the cycles dominate and erase the gain.
+
+`ca_curve_detect` reports the structure from parameters, `ca_curve_group`
+builds a group with the endomorphism enabled, and `ca_curve_solve` dispatches
+to the GLV walk or, for a generic curve, the negation-map rho.  The reported
+`rho_speedup` is `sqrt(m)` against a plain `sqrt(n)` search; against the
+library's default rho, which already uses the negation map (`m = 2`), the
+gain is `sqrt(m/2)` -- `sqrt 3 ~ 1.73` for j0 and `sqrt 2 ~ 1.41` for j1728.
+See [BENCHMARKS.md](BENCHMARKS.md) for the measured constants, and note the
+constant is folded in operation count, not a change of exponent: this is a
+`sqrt(n)` algorithm with a smaller constant, not a sub-`sqrt(n)` attack.
+
 ## Pohlig-Hellman (`ca_pohlig.h`)
 
 Splits a logarithm in a group of order `n = prod q^e` into `e` logarithms
@@ -285,6 +434,20 @@ around 56 bits, and the gap widens quickly above it.
 * D. J. Bernstein, T. Lange, P. Schwabe, *On the correct use of the
   negation map in the Pollard rho method*, PKC 2011.
 * D. J. Bernstein, T. Lange, *Two grumpy giants and a baby*, ANTS X 2012.
+* D. J. Bernstein, T. Lange, *Computing small discrete logarithms faster*,
+  INDOCRYPT 2012 (precomputation trade-off).
+* D. J. Bernstein, T. Lange, *Non-uniform cracks in the concrete: the power
+  of free precomputation*, ASIACRYPT 2013.
+* N. Koblitz, A. Menezes, *A riddle wrapped in an enigma*, IEEE Security &
+  Privacy 2016 (the `n^{1/3}` online cost after precomputation for
+  NIST P-256).
+* R. Gallant, R. Lambert, S. Vanstone, *Faster point multiplication on
+  elliptic curves with efficient endomorphisms*, CRYPTO 2001 (the GLV
+  endomorphism).
+* M. Wiener, R. Zuccherato, *Faster attacks on elliptic curve
+  cryptosystems*, SAC 1998; I. Duursma, P. Gaudry, F. Morain, *Speeding up
+  the discrete log computation on curves with automorphisms*, ASIACRYPT 1999
+  (rho on automorphism classes, and its fruitless cycles).
 * S. Galbraith, P. Wang, F. Zhang, *Computing elliptic curve discrete
   logarithms with improved baby-step giant-step algorithm*, AMC 2017.
 * J. H. Cheon, *Security analysis of the strong Diffie-Hellman problem*,
