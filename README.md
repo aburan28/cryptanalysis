@@ -218,7 +218,8 @@ ca_group_mul(&g, &h, &gen, 123456789, NULL);          /* h = 123456789 * gen */
 uint64_t x;
 ca_stats st = {0};
 ca_status rc = ca_dlog(&g, &gen, &h, &x, &st);        /* Pohlig-Hellman + auto solver */
-/* or: ca_rho_solve, ca_bsgs_solve, ca_kangaroo_solve, ca_grumpy_solve, ca_cheon_solve */
+/* or: ca_rho_solve, ca_bsgs_solve, ca_kangaroo_solve, ca_grumpy_solve,
+       ca_cheon_solve, ca_precomp_solve (and the reusable ca_precomp_table_*) */
 
 uint64_t y;
 ca_ic_solve(1099511627791ULL, 3, 123456789, NULL, &y, NULL);   /* index calculus */
@@ -302,7 +303,7 @@ $ python3 -m cryptanalysis solve --alg dlog --p 1000003 --order 1000002 \
 
 Subcommands: `version`, `prime`, `factor`, `powmod`, `invmod`,
 `primitive-root`, `group {info,generator,exp,order,random,lift-x,count-points}`,
-`solve --alg {bsgs,rho,kangaroo,grumpy,dlog}`, `ic`, `cheon`,
+`solve --alg {bsgs,rho,kangaroo,grumpy,precomp,dlog}`, `ic`, `cheon`,
 `cheon-divisor`. Same exit-status convention as `ca`, and the same
 one-JSON-object-per-invocation output.
 
