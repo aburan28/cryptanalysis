@@ -154,10 +154,17 @@ jobs:
             echo "$help" | grep -q "Routes:"
           else
             docker run --rm ca-agent:ci version
-            # `ca` with no arguments prints its usage and exits 2, which
-            # is the contract; capture it rather than pipe it, because
-            # the shell here runs with pipefail.
-            usage=$(docker run --rm ca-agent:ci 2>&1 || true)
+            # The image's CMD is `work`, so a bare `docker run` starts an
+            # agent; ask for the usage explicitly.  An unknown command
+            # prints it and exits 2, which is the contract, so capture
+            # rather than pipe: this shell runs with pipefail.
+            usage=$(docker run --rm ca-agent:ci not-a-command 2>&1 || true)
             echo "$usage"
             echo "$usage" | grep -q "coord-job"
+            # And do real work with it, so this proves the binary runs
+            # rather than only that it prints.
+            job=$(docker run --rm ca-agent:ci coord-job --group zp --p 2000303 \
+                --order 1000151 --g 5995 --h 1428864 --dp-bits 5 2>/dev/null)
+            echo "$job"
+            echo "$job" | grep -q '"job_id"'
           fi
