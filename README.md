@@ -91,6 +91,134 @@ Other commands: `ca factor N`, `ca prime N`, `ca solve --alg bsgs|kangaroo|grump
 ... --lo L --hi U` for interval problems, `ca_bench generic|interval|ic|cheon|gpu|ops`
 for the benchmark tables.
 
+### Every public header is reachable
+
+`ca num` and `ca group` expose the primitives the solvers are built from — the
+whole of `ca_modarith.h` and `ca_group.h` — because a solver that misbehaves is
+only debuggable by hand if its parts are callable by hand.
+
+```sh
+$ ./build/ca num powmod --base 3 --exp 100 --mod 1000003
+{"result":"189751"}
+
+$ ./build/ca num primitive-root --p 1000003
+{"found":true,"generator":"2","order":"1000002"}
+
+$ ./build/ca num sieve --bound 1000
+{"bound":"1000","count":168,"first":2,"last":997}
+
+# The Montgomery domain, checked against schoolbook arithmetic in the same call
+$ ./build/ca num mont --p 1000003 --a 12345 --b 67890
+{"product":"99536","product_ref":"99536",...,"agree":true}
+
+$ ./build/ca group exp --group zp --p 1000003 --order 1000002 --elem 2 --k 100
+{"result":"253109"}
+
+$ ./build/ca group order --group zp --p 1000003 --order 1000002 --elem 2
+{"order":"1000002","divides_group_order":true}
+
+# A job's identity and expected cost, before spending a fleet's time on it
+$ ./build/ca coord-job --group zp --p 1000003 --order 1000002 --g 858101 --h 57332 \
+      --dp-bits 5 --seed 42
+{"status":"ok","job_id":"...","order":1000002,"dp_bits":5,"r":32,...}
+```
+
+Full list: `num powmod|invmod|gcd|isqrt|iroot|sqrtmod|legendre|crt|next-prime|
+order|primitive-root|sieve|mont` and `group exp|div|order|generator|random|lift-x`.
+
+Exit status distinguishes three outcomes, so a shell caller can branch without
+parsing the JSON:
+
+| status | meaning |
+|---|---|
+| 0 | an answer |
+| 1 | a well-posed question whose answer is that there is none — not invertible, not a square, not on the curve, log not found |
+| 2 | a malformed invocation — unknown command, missing or unparseable option |
+
+`scripts/cli_smoke.sh` runs every subcommand and checks the answers that are
+known in closed form (53 assertions). It is the guard on the claim in this
+section's title: a newly exported function that no command reaches shows up
+there, and `make cli` runs it.
+
+## Many machines
+
+One process solving one instance is `ca solve`.  A *fleet* needs the van
+Oorschot-Wiener protocol, where every walker iterates the same function and
+reports only its distinguished points, so that P machines finish in expected
+`1/P` of the time for the same total work -- rather than running P independent
+searches, which is what P copies of `ca solve` are.
+
+The shape that deploys is a hub: on a cloud fleet the workers sit in private
+subnets, behind NAT or on spot instances and cannot accept connections, while
+one host is reachable by all of them.  So agents **dial out**, and the
+coordinator answers on the same socket -- the *reverse channel* -- pushing
+everyone else's points and the solution to a machine it could never have
+dialled.
+
+```sh
+# Anywhere: the job document every participant shares.
+$ ./build/ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
+      --g 1456600859624672 --h 4047005209878851 --dp-bits 16 --out job.txt
+
+# On the reachable host: the coordinator.  It is a Go service -- deployed,
+# fronted and restarted by a scheduler -- and it reuses this library through
+# cgo rather than reimplementing any of it.
+$ make coordinator && ./build/ca-coordinator -job job.txt -listen :8080 \
+      -token-file /etc/ca/token
+
+# On every agent, anywhere.  The URL is the whole configuration: no inbound
+# rule, no address of its own, not even a copy of the job document.
+$ export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=...
+$ ./build/ca work --node "$(hostname)" --threads "$(nproc)"
+$ ./build/ca coord-status
+```
+
+On Kubernetes that is one command:
+
+```sh
+helm install rho deploy/helm/ca-coordinator \
+    --set-file job.document=job.txt \
+    --set auth.token="$(openssl rand -hex 32)" --set agents.replicaCount=10
+```
+
+The coordinator is a rendezvous, not an authority: it holds the same CRDT
+every agent holds, verifies every point the way an agent does, assigns no
+work, and losing it costs only reachability -- agents keep walking and
+reconverge when it returns.  Every check-in is self-certifying
+(`a*G + b*H == point`, two scalar multiplications to check work worth
+`2^dp_bits` steps), so a participant who lies can only waste their own time.
+See [docs/COORDINATOR.md](docs/COORDINATOR.md) for the protocol, the CRDT and
+the trust model, [deploy/helm/ca-coordinator/](deploy/helm/ca-coordinator/)
+for the chart, and [deploy/ca-coordinator/](deploy/ca-coordinator/) for
+systemd units on a plain VM.
+
+## Hardware
+
+`fpga/` is a synthesisable Pollard rho core for the Certicom **ECC2K-130**
+challenge -- the Koblitz curve `y^2 + xy = x^3 + 1` over `F_2^131` -- with a
+golden C model, testbenches that compare the two value by value, and measured
+area and cycle counts.
+
+The field is carried in a type-II optimal normal basis, which makes squaring
+(and therefore the Frobenius the attack is built on) a permutation of the
+coefficients -- free in hardware -- and turns multiplication into a cyclic
+convolution that a digit-serial unit computes shift-and-xor.  One step of the
+walk is one affine addition: an Itoh-Tsujii inversion, two multiplications and
+a squaring.
+
+```sh
+cd fpga && scripts/run_sim.sh     # model checks, vectors, every testbench, host tools
+make fpga-lint fpga-synth         # verilator -Wall, and a yosys area report
+```
+
+Measured here: 362 cycles per walk step and 7,941 LUT4 for one core at
+`DIGIT=4`, scaling linearly to 31,437 LUT4 for four.  Deliberately *not*
+quoted: fmax, device utilisation or points per second, all of which need a
+vendor place-and-route this flow does not run.  See
+[fpga/README.md](fpga/README.md) for the derivation of the curve's group
+order, what each testbench establishes, and what the next improvement is
+(batched inversion, ~3x).
+
 ## Running it across machines
 
 `ca_rho_solve` divides one instance across the threads of one process.
@@ -221,6 +349,26 @@ x, stats = g.dlog(gen, h)
 y, ic_stats = ca.ic_solve(1099511627791, 3, 123456789)
 ```
 
+The Python binding also has its own command line, `python -m cryptanalysis`,
+which is the cheapest way to check that the shared library it found actually
+works — loading, symbol resolution and the ABI, in one command — and saves a
+Python pipeline from shelling out to `ca` and parsing its JSON:
+
+```sh
+$ python3 -m cryptanalysis version
+{"version": "0.1.0", "library": "/path/to/libcryptanalysis.so"}
+
+$ python3 -m cryptanalysis solve --alg dlog --p 1000003 --order 1000002 \
+      --g 164623 --h 57332
+{"found": true, "x": "123456", "stats": {...}}
+```
+
+Subcommands: `version`, `prime`, `factor`, `powmod`, `invmod`,
+`primitive-root`, `group {info,generator,exp,order,random,lift-x,count-points}`,
+`solve --alg {bsgs,rho,kangaroo,grumpy,dlog}`, `ic`, `cheon`,
+`cheon-divisor`. Same exit-status convention as `ca`, and the same
+one-JSON-object-per-invocation output.
+
 Run the binding tests with `make rust`, `make go`, `make python` (or see
 each binding's README).
 
@@ -232,7 +380,8 @@ src/                     library sources (+ internal linalg.h, ca_internal.h)
 cuda/                    the CUDA kernel (ca_device.cuh is shared C11/CUDA code)
 tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
-scripts/                 build_cuda_kernel.sh (compile the kernel, no GPU needed)
+fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
+scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md
 bindings/go/cmd/ca-coordinator  the coordinator service (Go, cgo onto this library)
@@ -240,7 +389,7 @@ deploy/helm/ca-coordinator      Helm chart: the coordinator and its agents
 deploy/docker/                  one Dockerfile, two images (coordinator, agent)
 deploy/ca-coordinator/          systemd units and EC2 user-data for a plain VM
 fuzz/                    libFuzzer harnesses and their seed corpora
-.github/workflows/       ci, analysis, bindings, fuzz, codeql, nightly
+.github/workflows/       ci, analysis, bindings, fpga, fuzz, codeql, nightly
 ```
 
 ## Checks
@@ -251,14 +400,15 @@ set locally, in the order that fails fastest.
 
 | Workflow | What it gates |
 |---|---|
-| `ci` | gcc, clang, macOS and arm64 builds with `-Werror`; ctest; AddressSanitizer plus UndefinedBehaviorSanitizer; ThreadSanitizer over the pthreads solvers; valgrind memcheck on the fast suites; install and consume through both `find_package` and a relocated `pkg-config` prefix; the CUDA kernel compiled for sm_70 to sm_90 with a register report |
+| `ci` | gcc, clang, macOS and arm64 builds with `-Werror`; ctest; every `ca` subcommand via `scripts/cli_smoke.sh`, with the answers checked where they are known in closed form; AddressSanitizer plus UndefinedBehaviorSanitizer; ThreadSanitizer over the pthreads solvers; valgrind memcheck on the fast suites; install and consume through both `find_package` and a relocated `pkg-config` prefix; the CUDA kernel compiled for sm_70 to sm_90 with a register report |
 | `analysis` | clang-tidy (warnings are errors), cppcheck, `gcc -fanalyzer`, clang-format on the lines a change touches, shellcheck, actionlint, and coverage with a floor |
 | `bindings` | Rust fmt/clippy/doc/tests and a measured MSRV floor, cargo-deny, Go across three toolchains with the race detector and golangci-lint, Python 3.8 to 3.13 plus an installed-package run, ruff and mypy |
 | `fuzz` | seven libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
+| `fpga` | the ECC2K-130 core: the golden model's own checks, then every testbench against the vectors it produces, at three multiplier widths; verilator `-Wall`; a yosys area report |
 | `codeql` | C, Go and Python, with the `security-and-quality` query pack |
 | `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
 
-Individual targets: `make tidy cppcheck analyzer format shellcheck asan tsan
+Individual targets: `make tidy cppcheck analyzer format shellcheck cli asan tsan
 valgrind coverage`.  Formatting is enforced only on changed lines, because the
 sources predate `.clang-format` and a wholesale reformat would bury every
 future diff; `make format FORMAT_BASE=origin/main` shows what a branch owes.

@@ -4,7 +4,8 @@ CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release
 JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
-        shellcheck format checks rust go python bindings clean install cuda cuda-kernel
+        shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
+        coordinator coordinator-test fpga fpga-lint fpga-synth
 
 all: lib
 
@@ -14,6 +15,12 @@ lib:
 
 test: lib
 	ctest --test-dir $(BUILD) --output-on-failure -j$(JOBS)
+
+# Every `ca` subcommand, with the answers checked where they are known in
+# closed form. This is the guard on "every public header is reachable from the
+# command line": a newly exported function that no command calls shows up here.
+cli: lib
+	./scripts/cli_smoke.sh $(BUILD)/ca
 
 bench: lib
 	$(BUILD)/ca_bench ops
@@ -34,6 +41,29 @@ cuda:
 # and no CUDA install (--fetch pulls the pieces from NVIDIA's pip wheels).
 cuda-kernel:
 	./scripts/build_cuda_kernel.sh --fetch
+
+# ---- the coordinator (Go; the service agents dial out to) ------------------
+# The Go package compiles the C sources itself through cgo, so there is no
+# prior cmake step; `lib` is built anyway because the tests exercise both.
+coordinator: lib
+	cd bindings/go && go build -trimpath -o ../../$(BUILD)/ca-coordinator ./cmd/ca-coordinator
+
+coordinator-test:
+	cd bindings/go && go vet ./... && go test -race ./...
+
+# ---- the ECC2K-130 FPGA core (fpga/) ---------------------------------------
+# A separate tree with its own toolchain: a golden C model, synthesisable
+# Verilog, testbenches that compare the two, and a host tool.  It is not part
+# of the library build -- the library works over 64-bit groups and ECC2K-130
+# is a 131-bit field -- so it has its own Makefile and its own CI workflow.
+fpga:
+	$(MAKE) -C fpga sim
+
+fpga-lint:
+	$(MAKE) -C fpga lint
+
+fpga-synth:
+	$(MAKE) -C fpga synth CORES=1 DIGIT=4
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \
@@ -91,7 +121,7 @@ shellcheck:
 	shellcheck scripts/*.sh
 
 # Everything a pull request is gated on, in the order that fails fastest.
-checks: format cppcheck shellcheck tidy analyzer test asan tsan
+checks: format cppcheck shellcheck tidy analyzer test cli asan tsan
 
 rust:
 	cd bindings/rust && cargo test
