@@ -17,7 +17,7 @@ set -euo pipefail
 CMD="${1:-bench}"
 CRYPTO_DIR="${CRYPTO_DIR:-$HOME/src/crypto}"
 ECC_GPU="${ECC_GPU:-RTX-PRO-6000}"
-ECC_HOURS="${ECC_HOURS:-1}"
+ECC_HOURS="${ECC_HOURS:-24}"
 ECC_FANOUT="${ECC_FANOUT:-4}"
 ECC_RUN_ID="${ECC_RUN_ID:-4242}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -113,12 +113,21 @@ case "$CMD" in
   fanout)
     need_modal
     ensure_crypto
+    # base_run_id avoids stale volume run-id 1; workers get ECC_RUN_ID..+count-1.
     run_in_ecc modal run modal_app.py::fanout --gpu "$ECC_GPU" \
       --curve 131 --packed --hours "$ECC_HOURS" --count "$ECC_FANOUT" \
-      --batch 16 --threads 512 --verify 0
+      --batch 16 --threads 512 --verify 0 --base-run-id "$ECC_RUN_ID"
+    ;;
+  long)
+    # Convenience: 24h x 4-GPU fanout on the 20 B/s geometry.
+    need_modal
+    ensure_crypto
+    run_in_ecc modal run modal_app.py::fanout --gpu "$ECC_GPU" \
+      --curve 131 --packed --hours "${ECC_HOURS:-24}" --count "${ECC_FANOUT:-4}" \
+      --batch 16 --threads 512 --verify 0 --base-run-id "$ECC_RUN_ID"
     ;;
   *)
-    echo "usage: $0 [setup|deploy|bench|search|fanout]" >&2
+    echo "usage: $0 [setup|deploy|bench|search|fanout|long]" >&2
     exit 2
     ;;
 esac

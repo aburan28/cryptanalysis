@@ -141,6 +141,40 @@ def patch(path: pathlib.Path) -> None:
         raise SystemExit("runSearch buildFor call not found")
     text = text.replace(old_search_build, new_search_build, 1)
 
+    # fanout hardcodes runId=i+1, which hits the stale run-1 checkpoint on the
+    # shared volume. Offset from base_run_id (CLI) instead.
+    old_fanout = (
+        "@app.local_entrypoint()\n"
+        "def fanout(gpu: str = \"\", count: int = 4, hours: float = 1.0, curve: int = 97,\n"
+        "           batch: int = 8, threads: int = 128, leaf: int = 0, dp_weight: int = -1,\n"
+        "           walks: int = 4000000, load_max: int = 50000000, packed: bool = False,\n"
+        "           verify: int = 0, checkpoint_every: int = 60):\n"
+        "    \"\"\"Run `count` independent searchers, each with its own run id so their\n"
+        "    seeds never collide, then merge what they produced.\"\"\"\n"
+        "    fn = onGpu(runSearch, gpu)\n"
+        "    calls = [fn.spawn(hours=hours, curve=curve, batch=batch, threads=threads, leaf=leaf,\n"
+        "                      dpWeight=dp_weight, runId=i + 1, walksTarget=walks, loadMax=load_max,\n"
+        "                      packed=packed, verify=verify, checkpointEvery=checkpoint_every)\n"
+        "             for i in range(count)]"
+    )
+    new_fanout = (
+        "@app.local_entrypoint()\n"
+        "def fanout(gpu: str = \"\", count: int = 4, hours: float = 1.0, curve: int = 97,\n"
+        "           batch: int = 8, threads: int = 128, leaf: int = 0, dp_weight: int = -1,\n"
+        "           walks: int = 4000000, load_max: int = 50000000, packed: bool = False,\n"
+        "           verify: int = 0, checkpoint_every: int = 60, base_run_id: int = 4242):\n"
+        "    \"\"\"Run `count` independent searchers, each with its own run id so their\n"
+        "    seeds never collide, then merge what they produced.\"\"\"\n"
+        "    fn = onGpu(runSearch, gpu)\n"
+        "    calls = [fn.spawn(hours=hours, curve=curve, batch=batch, threads=threads, leaf=leaf,\n"
+        "                      dpWeight=dp_weight, runId=int(base_run_id) + i, walksTarget=walks, loadMax=load_max,\n"
+        "                      packed=packed, verify=verify, checkpointEvery=checkpoint_every)\n"
+        "             for i in range(count)]"
+    )
+    if old_fanout not in text:
+        raise SystemExit("fanout entrypoint not found for base_run_id overlay")
+    text = text.replace(old_fanout, new_fanout, 1)
+
     path.write_text(text)
     print(f"patched: {path}")
 
