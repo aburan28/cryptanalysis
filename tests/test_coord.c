@@ -930,7 +930,7 @@ static void test_agent_requeues_unsent(void)
         ca_coord_checkin ci;
         CHECK(ca_coord_checkin_decode(&ci, lines[0]) == CA_OK);
         snprintf(ci.peer, sizeof(ci.peer), "me.0");
-        ci.seq = (uint64_t)(100 + i);
+        ci.seq = 100 + (uint64_t)i;
         ca_coord_agent_publish(ag, &ci);
     }
 
