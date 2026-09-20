@@ -10,6 +10,10 @@ The reporting convention follows the sibling research repository: one
 table, one unit, every variant a row, the reference (rho) included.  The
 unit is `S = group operations / sqrt(N)`.
 
+That unit assumes the exponent is `1/2`; `ca_bench complexity` instead
+*measures* the exponent (see "Measured time complexity" below), so the
+constant `S` is only quoted once the fitted exponent confirms the `O()`.
+
 ## Raw group operation throughput (`ca_bench ops`)
 
 | operation                              | Mops/s | ns/op |
@@ -245,3 +249,43 @@ Each Cheon step is an exponentiation (`~1.5 log2 p` operations), so the
 advantage in *group operations* is `sqrt(p) / (2 (sqrt((p-1)/d) + sqrt(d)) * 1.5 log2 p)`
 and grows with the size of `p`; in *steps* the reduction is
 `sqrt(p) / 2 p^{1/4}`, i.e. 30x at 32 bits and 480x at 48 bits.
+
+## Measured time complexity (`ca_bench complexity`)
+
+Every other table quotes a constant against an *assumed* exponent (`ops/√n`,
+`P/n^{2/3}`, ...).  This mode instead *measures* the exponent: it runs each
+algorithm across a size sweep, fits the group-operation cost to
+`cost ~ C * N^alpha` by least squares in log-log space, and reports the
+fitted `alpha` with its `R^2` next to the theoretical exponent.  `scope` is
+`global` for a whole algorithm and `step` for one phase of a method -- so the
+two phases of the precomputation method, which have genuinely different orders
+(`n^{2/3}` to build, `n^{1/3}` per online target), are measured separately.
+The last column is the normalised constant `mean(cost / N^theory)` -- the
+familiar `S`, meaningful precisely because the fitted `alpha` confirms the
+exponent.
+
+`ca_bench complexity --bits 20,24,28,32,36 --reps 5`:
+
+| algorithm       | scope  | theory   | fitted alpha | R^2    | const @ N^theory |
+|-----------------|--------|----------|-------------:|-------:|-----------------:|
+| bsgs (zp)       | global | N^0.500  | 0.487 | 0.9993 | 1.508 |
+| rho (zp)        | global | N^0.500  | 0.477 | 0.9903 | 1.781 |
+| kangaroo (zp)   | global | N^0.500  | 0.526 | 0.9910 | 1.843 |
+| grumpy (zp)     | global | N^0.500  | 0.502 | 0.9966 | 1.264 |
+| precomp build (zp)  | step | N^0.667 | 0.647 | 0.9954 | 1.192 |
+| precomp online (zp) | step | N^0.333 | 0.347 | 0.8768 | 2.781 |
+| bsgs (ec)       | global | N^0.500  | 0.487 | 0.9993 | 1.508 |
+| rho (ec)        | global | N^0.500  | 0.428 | 0.9845 | 1.572 |
+| kangaroo (ec)   | global | N^0.500  | 0.494 | 0.9995 | 1.622 |
+| grumpy (ec)     | global | N^0.500  | 0.480 | 0.9956 | 1.128 |
+| precomp build (ec)  | step | N^0.667 | 0.672 | 0.9877 | 1.302 |
+| precomp online (ec) | step | N^0.333 | 0.198 | 0.9798 | 2.920 |
+
+The square-root methods land at `alpha ~ 0.5` and the precomputation phases at
+`0.667` and `0.333`, so the measured `O()` matches the theory across the
+board.  The online row is the noisiest fit: its operation counts are the
+smallest (a few hundred at 20 bits) and are dominated by the constant walk
+start, which flattens the slope -- widen `--bits` or raise `--reps` for a
+tighter online exponent.  Index calculus is deliberately absent: it is
+subexponential (`L_p[1/2]`), so no single power-law exponent describes it; see
+the `ic` table for its stage timings.
