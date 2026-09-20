@@ -22,9 +22,33 @@
  *            [--out FILE]            one work unit; 32-byte records to FILE
  *   ca dist-merge --group ... --order N --g G --h H --campaign-seed S
  *            [--dp-bits D] [--r R] [--no-verify] FILE...   (- reads stdin)
+ *   ca dist-info  --group ... --order N --g G --h H --campaign-seed S
+ *            [--dp-bits D] [--r R]   campaign id and expected point count
+ *   ca num <op>   the number-theory surface of ca_modarith.h:
+ *            powmod --base B --exp E --mod M | invmod --a A --mod M
+ *            gcd --a A --b B | isqrt --n N | iroot --n N --k K
+ *            sqrtmod --a A --p P | legendre --a A --p P
+ *            crt --r1 R --m1 M --r2 R --m2 M | next-prime --n N
+ *            order --a A --p P | primitive-root --p P | sieve --bound B
+ *            mont --p P --a A --b B
+ *   ca group <op> --group zp|ec --p P [--a A --b B] [--order N] ... :
+ *            exp --elem X --k K | div --a A --b B | order --elem X
+ *            generator [--seed S] | random [--seed S] | lift-x --x X
  *
  * Elements: Z_p^* "123"; E(F_p) "x,y" or "inf".  Output is one JSON object
- * on stdout; errors go to stderr with a non-zero exit status.
+ * on stdout; errors go to stderr.
+ *
+ * Exit status distinguishes three outcomes, so a shell caller can branch on
+ * them without parsing the JSON:
+ *
+ *   0  an answer
+ *   1  a well-posed question whose answer is that there is none: the element
+ *      is not invertible, the residue is not a square, the x does not lift to
+ *      a curve point, the search found no generator, the log was not found
+ *   2  a malformed invocation: unknown command, missing or unparseable option
+ *
+ * Coverage of the public headers is checked by scripts/cli_smoke.sh, which is
+ * where a newly exported function that no command reaches will show up.
  */
 #include "cryptanalysis/cryptanalysis.h"
 #include "cryptanalysis/ca_dist.h"
@@ -116,7 +140,11 @@ static _Noreturn void usage(void)
         "  dist-walk  --group ... --order N --g G --h H --campaign-seed S --unit U --steps K\n"
         "             [--dp-bits D] [--r R] [--walks W] [--max-points P] [--out FILE]\n"
         "  dist-merge --group ... --order N --g G --h H --campaign-seed S [--dp-bits D]\n"
-        "             [--r R] [--no-verify] FILE...\n");
+        "             [--r R] [--no-verify] FILE...\n"
+        "  dist-info  --group ... --order N --g G --h H --campaign-seed S [--dp-bits D]\n"
+        "  num   powmod|invmod|gcd|isqrt|iroot|sqrtmod|legendre|crt|next-prime|order|\n"
+        "        primitive-root|sieve|mont  (see the header comment for each op's options)\n"
+        "  group exp|div|order|generator|random|lift-x --group zp|ec --p P [--a A --b B] ...\n");
     exit(2);
 }
 
@@ -533,6 +561,247 @@ static int cmd_dist_merge(void)
     return 0;
 }
 
+/* ---------------------------------------------------------------- num ----
+ * The contents of ca_modarith.h, one subcommand each.  These are the
+ * primitives every solver in the library is built from; having them on the
+ * command line is what makes a failing solver debuggable by hand.
+ */
+static const char *sub(void) { return argc_g > 2 ? argv_g[2] : NULL; }
+
+static int cmd_num(void)
+{
+    const char *op = sub();
+    if (!op) die("num needs an operation");
+
+    if (!strcmp(op, "powmod")) {
+        uint64_t m = opt_u64("--mod", 0);
+        if (m < 2) die("--mod must be at least 2");
+        printf("{\"result\":\"%" PRIu64 "\"}\n",
+               ca_powmod(opt_u64("--base", 0), opt_u64("--exp", 0), m));
+        return 0;
+    }
+    if (!strcmp(op, "invmod")) {
+        uint64_t m = opt_u64("--mod", 0);
+        if (m < 2) die("--mod must be at least 2");
+        uint64_t a = opt_u64("--a", 0);
+        uint64_t inv = ca_invmod(a, m);
+        /* ca_invmod returns 0 when a is not invertible; 0 is never a unit for
+         * m >= 2, so the encoding is unambiguous. */
+        if (inv == 0) {
+            printf("{\"invertible\":false,\"gcd\":\"%" PRIu64 "\"}\n", ca_gcd(a % m, m));
+            return 1;
+        }
+        printf("{\"invertible\":true,\"result\":\"%" PRIu64 "\"}\n", inv);
+        return 0;
+    }
+    if (!strcmp(op, "gcd")) {
+        printf("{\"result\":\"%" PRIu64 "\"}\n", ca_gcd(opt_u64("--a", 0), opt_u64("--b", 0)));
+        return 0;
+    }
+    if (!strcmp(op, "isqrt")) {
+        uint64_t n = opt_u64("--n", 0);
+        uint64_t r = ca_isqrt(n);
+        printf("{\"result\":\"%" PRIu64 "\",\"exact\":%s}\n", r, r * r == n ? "true" : "false");
+        return 0;
+    }
+    if (!strcmp(op, "iroot")) {
+        unsigned k = (unsigned)opt_u64("--k", 2);
+        if (k == 0) die("--k must be positive");
+        printf("{\"result\":\"%" PRIu64 "\"}\n", ca_iroot(opt_u64("--n", 0), k));
+        return 0;
+    }
+    if (!strcmp(op, "sqrtmod")) {
+        uint64_t p = opt_u64("--p", 0), a = opt_u64("--a", 0), root = 0;
+        if (p < 2) die("--p must be a prime at least 2");
+        if (!ca_sqrtmod_prime(a, p, &root)) {
+            printf("{\"square\":false}\n");
+            return 1;
+        }
+        printf("{\"square\":true,\"root\":\"%" PRIu64 "\"}\n", root);
+        return 0;
+    }
+    if (!strcmp(op, "legendre")) {
+        uint64_t p = opt_u64("--p", 0);
+        if (p < 3) die("--p must be an odd prime");
+        printf("{\"result\":%d}\n", ca_legendre(opt_u64("--a", 0), p));
+        return 0;
+    }
+    if (!strcmp(op, "crt")) {
+        uint64_t m1 = opt_u64("--m1", 0), m2 = opt_u64("--m2", 0);
+        if (m1 == 0 || m2 == 0) die("--m1 and --m2 are required");
+        if (ca_gcd(m1, m2) != 1) die("moduli must be coprime");
+        printf("{\"result\":\"%" PRIu64 "\",\"modulus\":\"%" PRIu64 "\"}\n",
+               ca_crt2(opt_u64("--r1", 0), m1, opt_u64("--r2", 0), m2), m1 * m2);
+        return 0;
+    }
+    if (!strcmp(op, "next-prime")) {
+        uint64_t q = ca_next_prime(opt_u64("--n", 0));
+        if (q == 0) {
+            printf("{\"found\":false}\n");
+            return 1;
+        }
+        printf("{\"found\":true,\"result\":\"%" PRIu64 "\"}\n", q);
+        return 0;
+    }
+    if (!strcmp(op, "order")) {
+        uint64_t p = opt_u64("--p", 0);
+        if (p < 2) die("--p must be a prime at least 2");
+        uint64_t o = ca_mult_order(opt_u64("--a", 0), p);
+        if (o == 0) {
+            printf("{\"defined\":false}\n");
+            return 1;
+        }
+        printf("{\"defined\":true,\"order\":\"%" PRIu64 "\"}\n", o);
+        return 0;
+    }
+    if (!strcmp(op, "primitive-root")) {
+        uint64_t p = opt_u64("--p", 0);
+        if (p < 2) die("--p must be a prime at least 2");
+        uint64_t g = ca_primitive_root(p);
+        if (g == 0) {
+            printf("{\"found\":false}\n");
+            return 1;
+        }
+        printf("{\"found\":true,\"generator\":\"%" PRIu64 "\",\"order\":\"%" PRIu64 "\"}\n", g,
+               p - 1);
+        return 0;
+    }
+    if (!strcmp(op, "sieve")) {
+        uint64_t bound = opt_u64("--bound", 100);
+        /* pi(x) < 1.3 x / ln x for x >= 17, and the +16 covers the small cases
+         * where that bound has not kicked in yet. */
+        size_t cap = (size_t)(bound / 2) + 16;
+        uint32_t *primes = calloc(cap, sizeof *primes);
+        if (!primes) die("out of memory");
+        size_t n = ca_sieve_primes(bound, primes, cap);
+        printf("{\"bound\":\"%" PRIu64 "\",\"count\":%zu", bound, n);
+        if (n) printf(",\"first\":%" PRIu32 ",\"last\":%" PRIu32, primes[0], primes[n - 1]);
+        printf("}\n");
+        free(primes);
+        return 0;
+    }
+    if (!strcmp(op, "mont")) {
+        uint64_t p = opt_u64("--p", 0);
+        ca_mont m;
+        if (!ca_mont_init(&m, p)) die("--p must be odd and at least 3");
+        uint64_t a = opt_u64("--a", 0) % p, b = opt_u64("--b", 0) % p;
+        uint64_t am = ca_mont_to(&m, a), bm = ca_mont_to(&m, b);
+        uint64_t prod = ca_mont_from(&m, ca_mont_mul(&m, am, bm));
+        uint64_t sq = ca_mont_from(&m, ca_mont_sqr(&m, am));
+        uint64_t pw = ca_mont_from(&m, ca_mont_pow(&m, am, b));
+        uint64_t iv = a ? ca_mont_from(&m, ca_mont_inv(&m, am)) : 0;
+        /* Print the schoolbook answers alongside, so the command doubles as a
+         * self-check of the Montgomery domain rather than only a calculator. */
+        printf("{\"product\":\"%" PRIu64 "\",\"product_ref\":\"%" PRIu64 "\","
+               "\"square\":\"%" PRIu64 "\",\"square_ref\":\"%" PRIu64 "\","
+               "\"power\":\"%" PRIu64 "\",\"power_ref\":\"%" PRIu64 "\","
+               "\"inverse\":\"%" PRIu64 "\",\"agree\":%s}\n",
+               prod, ca_mulmod(a, b, p), sq, ca_mulmod(a, a, p), pw, ca_powmod(a, b, p), iv,
+               (prod == ca_mulmod(a, b, p) && sq == ca_mulmod(a, a, p) &&
+                pw == ca_powmod(a, b, p) && (!a || ca_mulmod(a, iv, p) == 1 % p))
+                   ? "true"
+                   : "false");
+        return 0;
+    }
+    die("unknown num operation");
+}
+
+/* -------------------------------------------------------------- group ----
+ * The group abstraction itself: scalar multiples, division, element order,
+ * generator search, and the EC-specific x-coordinate lift.  `gen` and `solve`
+ * use these internally; exposing them lets a user check a group by hand
+ * before trusting a discrete-log run on it.
+ */
+static int cmd_group(void)
+{
+    const char *op = sub();
+    if (!op) die("group needs an operation");
+    ca_group g;
+    make_group(&g);
+
+    if (!strcmp(op, "exp")) {
+        ca_elem x, r;
+        parse_elem(&g, opt("--elem"), &x);
+        ca_group_mul(&g, &r, &x, opt_u64("--k", 1), NULL);
+        printf("{\"result\":");
+        print_elem(&g, &r);
+        printf("}\n");
+        return 0;
+    }
+    if (!strcmp(op, "div")) {
+        ca_elem a, b, r;
+        parse_elem(&g, opt("--a"), &a);
+        parse_elem(&g, opt("--b"), &b);
+        ca_group_div(&g, &r, &a, &b);
+        printf("{\"result\":");
+        print_elem(&g, &r);
+        printf("}\n");
+        return 0;
+    }
+    if (!strcmp(op, "order")) {
+        ca_elem x;
+        parse_elem(&g, opt("--elem"), &x);
+        uint64_t o = ca_group_elem_order(&g, &x);
+        printf("{\"order\":\"%" PRIu64 "\",\"divides_group_order\":%s}\n", o,
+               (o && g.order && g.order % o == 0) ? "true" : "false");
+        return o ? 0 : 1;
+    }
+    if (!strcmp(op, "generator")) {
+        ca_elem gen;
+        ca_status rc = ca_group_find_generator(&g, &gen, opt_u64("--seed", 0));
+        if (rc != CA_OK) die_status(rc);
+        printf("{\"generator\":");
+        print_elem(&g, &gen);
+        printf(",\"order\":\"%" PRIu64 "\"}\n", ca_group_elem_order(&g, &gen));
+        return 0;
+    }
+    if (!strcmp(op, "random")) {
+        ca_elem gen, r;
+        ca_status rc = ca_group_find_generator(&g, &gen, opt_u64("--seed", 0));
+        if (rc != CA_OK) die_status(rc);
+        uint64_t k = 0;
+        ca_group_random_power(&g, &r, &gen, opt_u64("--seed", 0) ^ 0x9e3779b9u, &k);
+        printf("{\"element\":");
+        print_elem(&g, &r);
+        printf(",\"exponent\":\"%" PRIu64 "\"}\n", k);
+        return 0;
+    }
+    if (!strcmp(op, "lift-x")) {
+        if (g.kind != CA_GROUP_EC) die("lift-x needs --group ec");
+        ca_elem r;
+        if (!ca_ec_lift_x(&g, &r, opt_u64("--x", 0))) {
+            printf("{\"on_curve\":false}\n");
+            return 1;
+        }
+        printf("{\"on_curve\":true,\"point\":");
+        print_elem(&g, &r);
+        printf("}\n");
+        return 0;
+    }
+    die("unknown group operation");
+}
+
+/* ----------------------------------------------------------- dist-info ----
+ * The campaign's identity and its expected cost, without doing any work.  A
+ * distributed run that gets this wrong wastes every worker's time, so it is
+ * worth being able to print it.
+ */
+static int cmd_dist_info(void)
+{
+    ca_group g;
+    make_group(&g);
+    ca_elem base, target;
+    parse_elem(&g, opt("--g"), &base);
+    parse_elem(&g, opt("--h"), &target);
+    ca_dist_campaign c;
+    make_campaign(&g, &c);
+    printf("{\"campaign_id\":\"%" PRIu64 "\",\"dp_bits\":%" PRId32 ",\"r\":%" PRIu32
+           ",\"expected_points\":%.3f}\n",
+           ca_dist_campaign_id(&g, &base, &target, &c), c.dp_bits, c.r,
+           ca_dist_expected_points(&g, &c));
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     argc_g = argc;
@@ -594,6 +863,9 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "ic")) return cmd_ic();
     if (!strcmp(cmd, "dist-walk")) return cmd_dist_walk();
     if (!strcmp(cmd, "dist-merge")) return cmd_dist_merge();
+    if (!strcmp(cmd, "dist-info")) return cmd_dist_info();
+    if (!strcmp(cmd, "num")) return cmd_num();
+    if (!strcmp(cmd, "group")) return cmd_group();
     usage();
     return 2;
 }

@@ -90,6 +90,55 @@ Other commands: `ca factor N`, `ca prime N`, `ca solve --alg bsgs|kangaroo|grump
 ... --lo L --hi U` for interval problems, `ca_bench generic|interval|ic|cheon|gpu|ops`
 for the benchmark tables.
 
+### Every public header is reachable
+
+`ca num` and `ca group` expose the primitives the solvers are built from — the
+whole of `ca_modarith.h` and `ca_group.h` — because a solver that misbehaves is
+only debuggable by hand if its parts are callable by hand.
+
+```sh
+$ ./build/ca num powmod --base 3 --exp 100 --mod 1000003
+{"result":"189751"}
+
+$ ./build/ca num primitive-root --p 1000003
+{"found":true,"generator":"2","order":"1000002"}
+
+$ ./build/ca num sieve --bound 1000
+{"bound":"1000","count":168,"first":2,"last":997}
+
+# The Montgomery domain, checked against schoolbook arithmetic in the same call
+$ ./build/ca num mont --p 1000003 --a 12345 --b 67890
+{"product":"99536","product_ref":"99536",...,"agree":true}
+
+$ ./build/ca group exp --group zp --p 1000003 --order 1000002 --elem 2 --k 100
+{"result":"253109"}
+
+$ ./build/ca group order --group zp --p 1000003 --order 1000002 --elem 2
+{"order":"1000002","divides_group_order":true}
+
+# A campaign's identity and expected cost, before spending a fleet's time on it
+$ ./build/ca dist-info --group zp --p 1000003 --order 1000002 --g 858101 --h 57332 \
+      --campaign-seed 42
+{"campaign_id":"3264688662440439473","dp_bits":0,"r":32,"expected_points":1250.000}
+```
+
+Full list: `num powmod|invmod|gcd|isqrt|iroot|sqrtmod|legendre|crt|next-prime|
+order|primitive-root|sieve|mont` and `group exp|div|order|generator|random|lift-x`.
+
+Exit status distinguishes three outcomes, so a shell caller can branch without
+parsing the JSON:
+
+| status | meaning |
+|---|---|
+| 0 | an answer |
+| 1 | a well-posed question whose answer is that there is none — not invertible, not a square, not on the curve, log not found |
+| 2 | a malformed invocation — unknown command, missing or unparseable option |
+
+`scripts/cli_smoke.sh` runs every subcommand and checks the answers that are
+known in closed form (53 assertions). It is the guard on the claim in this
+section's title: a newly exported function that no command reaches shows up
+there, and `make cli` runs it.
+
 ## Many machines
 
 One process solving one instance is `ca solve`.  A *fleet* needs the
@@ -229,6 +278,26 @@ x, stats = g.dlog(gen, h)
 y, ic_stats = ca.ic_solve(1099511627791, 3, 123456789)
 ```
 
+The Python binding also has its own command line, `python -m cryptanalysis`,
+which is the cheapest way to check that the shared library it found actually
+works — loading, symbol resolution and the ABI, in one command — and saves a
+Python pipeline from shelling out to `ca` and parsing its JSON:
+
+```sh
+$ python3 -m cryptanalysis version
+{"version": "0.1.0", "library": "/path/to/libcryptanalysis.so"}
+
+$ python3 -m cryptanalysis solve --alg dlog --p 1000003 --order 1000002 \
+      --g 164623 --h 57332
+{"found": true, "x": "123456", "stats": {...}}
+```
+
+Subcommands: `version`, `prime`, `factor`, `powmod`, `invmod`,
+`primitive-root`, `group {info,generator,exp,order,random,lift-x,count-points}`,
+`solve --alg {bsgs,rho,kangaroo,grumpy,dlog}`, `ic`, `cheon`,
+`cheon-divisor`. Same exit-status convention as `ca`, and the same
+one-JSON-object-per-invocation output.
+
 Run the binding tests with `make rust`, `make go`, `make python` (or see
 each binding's README).
 
@@ -242,7 +311,7 @@ tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
 orchestrator/            Go control plane and agents (deploy/{k8s,systemd,docker})
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
-scripts/                 build_cuda_kernel.sh (compile the kernel, no GPU needed)
+scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, DISTRIBUTED.md, FFI.md, GPU.md
 fuzz/                    libFuzzer harnesses and their seed corpora
@@ -257,7 +326,7 @@ set locally, in the order that fails fastest.
 
 | Workflow | What it gates |
 |---|---|
-| `ci` | gcc, clang, macOS and arm64 builds with `-Werror`; ctest; AddressSanitizer plus UndefinedBehaviorSanitizer; ThreadSanitizer over the pthreads solvers; valgrind memcheck on the fast suites; install and consume through both `find_package` and a relocated `pkg-config` prefix; the CUDA kernel compiled for sm_70 to sm_90 with a register report |
+| `ci` | gcc, clang, macOS and arm64 builds with `-Werror`; ctest; every `ca` subcommand via `scripts/cli_smoke.sh`, with the answers checked where they are known in closed form; AddressSanitizer plus UndefinedBehaviorSanitizer; ThreadSanitizer over the pthreads solvers; valgrind memcheck on the fast suites; install and consume through both `find_package` and a relocated `pkg-config` prefix; the CUDA kernel compiled for sm_70 to sm_90 with a register report |
 | `analysis` | clang-tidy (warnings are errors), cppcheck, `gcc -fanalyzer`, clang-format on the lines a change touches, shellcheck, actionlint, and coverage with a floor |
 | `bindings` | Rust fmt/clippy/doc/tests and a measured MSRV floor, cargo-deny, Go across three toolchains with the race detector and golangci-lint, Python 3.8 to 3.13 plus an installed-package run, ruff and mypy |
 | `fuzz` | six libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
@@ -266,7 +335,7 @@ set locally, in the order that fails fastest.
 | `codeql` | C, Go and Python, with the `security-and-quality` query pack |
 | `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
 
-Individual targets: `make tidy cppcheck analyzer format shellcheck asan tsan
+Individual targets: `make tidy cppcheck analyzer format shellcheck cli asan tsan
 valgrind coverage`.  Formatting is enforced only on changed lines, because the
 sources predate `.clang-format` and a wholesale reformat would bury every
 future diff; `make format FORMAT_BASE=origin/main` shows what a branch owes.

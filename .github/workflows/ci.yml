@@ -53,14 +53,18 @@ jobs:
         run: ctest --test-dir build --output-on-failure -j2
 
       - name: CLI smoke test
+        # Every subcommand, with the answers checked where they are known in
+        # closed form. The script is the guard on "every public header is
+        # reachable from the command line".
+        run: ./scripts/cli_smoke.sh ./build/ca
+
+      - name: CLI spot checks on a larger modulus
         run: |
           set -eux
-          ./build/ca version
           ./build/ca gen --group zp --p 2000000579 --order 1000000289 --x 123456789 --seed 1
           ./build/ca solve --alg dlog --group zp --p 2000000579 --order 1000000289 \
                            --g 1422302461 --h 1216411080 --seed 1
           ./build/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 2
-          ./build/ca gpu-info
 
       - name: Reject a malformed numeric option
         # ca_cli parses with strtoull/strtod and must refuse junk rather than
