@@ -80,6 +80,7 @@ static void curve_enable(ca_group *g, ca_curve_info *info)
     if (n == 0) return; /* structure only; no lambda without an order */
     if ((kind == CA_CURVE_ENDO_J0 && n % 3 != 1) || (kind == CA_CURVE_ENDO_J1728 && n % 4 != 1)) {
         info->endo = CA_CURVE_ENDO_NONE;
+        info->beta = 0;
         info->aut_order = 2;
         info->rho_speedup = sqrt(2.0);
         return;
@@ -97,6 +98,7 @@ static void curve_enable(ca_group *g, ca_curve_info *info)
             g->endo_kind = 0;
             g->aut_order = 0;
             info->endo = CA_CURVE_ENDO_NONE;
+            info->beta = 0;
             info->aut_order = 2;
             info->rho_speedup = sqrt(2.0);
             return;
@@ -108,6 +110,7 @@ static void curve_enable(ca_group *g, ca_curve_info *info)
         g->endo_kind = 0;
         g->aut_order = 0;
         info->endo = CA_CURVE_ENDO_NONE;
+        info->beta = 0;
         info->aut_order = 2;
         info->rho_speedup = sqrt(2.0);
         return;
@@ -145,6 +148,7 @@ static void curve_enable(ca_group *g, ca_curve_info *info)
         g->endo_kind = 0;
         g->aut_order = 0;
         info->endo = CA_CURVE_ENDO_NONE;
+        info->beta = 0;
         info->aut_order = 2;
         info->rho_speedup = sqrt(2.0);
         return;

@@ -222,15 +222,37 @@ static int pc_worker_push(pc_worker *wk, uint64_t fp, uint64_t exp)
     return 0;
 }
 
+/* Atomically charge nops against the shared build budget. Returns 0 if over max_ops. */
+static int pc_charge_ops(pc_build *bd, uint64_t nops)
+{
+    if (!nops) return 1;
+    if (!bd->max_ops) {
+        atomic_fetch_add_explicit(&bd->total_ops, nops, memory_order_relaxed);
+        return 1;
+    }
+    for (;;) {
+        uint64_t cur = atomic_load_explicit(&bd->total_ops, memory_order_relaxed);
+        if (cur + nops > bd->max_ops) {
+            atomic_store(&bd->done, 1);
+            return 0;
+        }
+        if (atomic_compare_exchange_weak_explicit(&bd->total_ops, &cur, cur + nops,
+                                                  memory_order_relaxed, memory_order_relaxed))
+            return 1;
+    }
+}
+
 /* Restart one lane at a fresh random multiple of base. */
-static void pc_lane_restart(const ca_precomp_table *t, ca_rng *rng, ca_elem *Y, uint64_t *a,
-                            uint64_t *stepc, uint8_t *stall, uint64_t *ops, pc_build *bd)
+static int pc_lane_restart(const ca_precomp_table *t, ca_rng *rng, ca_elem *Y, uint64_t *a,
+                           uint64_t *stepc, uint8_t *stall, pc_build *bd)
 {
     *a = ca_rng_below(rng, t->n);
-    pc_base_mul(t, Y, *a, ops);
+    uint64_t nops = 0;
+    pc_base_mul(t, Y, *a, &nops);
     *stepc = 0;
     *stall = 1;
     atomic_fetch_add_explicit(&bd->starts, 1, memory_order_relaxed);
+    return pc_charge_ops(bd, nops);
 }
 
 static void *pc_build_worker(void *arg)
@@ -258,10 +280,11 @@ static void *pc_build_worker(void *arg)
     ca_group_identity(g, &idelem);
     ca_rng rng;
     ca_rng_seed(&rng, t->seed ^ (0x9E3779B97F4A7C15ULL * (wk->id + 1)));
-    uint64_t ops = 0;
     for (uint32_t i = 0; i < W; i++) {
         a[i] = ca_rng_below(&rng, t->n);
-        pc_base_mul(t, &Y[i], a[i], &ops);
+        uint64_t nops = 0;
+        pc_base_mul(t, &Y[i], a[i], &nops);
+        if (!pc_charge_ops(bd, nops)) goto cleanup;
         stepc[i] = 0;
         stall[i] = 0;
         atomic_fetch_add_explicit(&bd->starts, 1, memory_order_relaxed);
@@ -276,7 +299,7 @@ static void *pc_build_worker(void *arg)
             int terminal = ((h & t->dp_mask) == 0);
             if (!terminal && bd->bloom && pc_bloom_test_and_add(bd->bloom, h, 0)) {
                 wk->merges++;
-                pc_lane_restart(t, &rng, &Y[i], &a[i], &stepc[i], &stall[i], &ops, bd);
+                if (!pc_lane_restart(t, &rng, &Y[i], &a[i], &stepc[i], &stall[i], bd)) break;
                 continue;
             }
             if (terminal) {
@@ -287,11 +310,11 @@ static void *pc_build_worker(void *arg)
                 }
                 atomic_fetch_add_explicit(&bd->stored, 1, memory_order_relaxed);
                 if (bd->bloom) pc_bloom_test_and_add(bd->bloom, h, 1);
-                pc_lane_restart(t, &rng, &Y[i], &a[i], &stepc[i], &stall[i], &ops, bd);
+                if (!pc_lane_restart(t, &rng, &Y[i], &a[i], &stepc[i], &stall[i], bd)) break;
                 continue;
             }
             if (stepc[i] >= t->chain_limit) {
-                pc_lane_restart(t, &rng, &Y[i], &a[i], &stepc[i], &stall[i], &ops, bd);
+                if (!pc_lane_restart(t, &rng, &Y[i], &a[i], &stepc[i], &stall[i], bd)) break;
                 continue;
             }
             if (bd->bloom) pc_bloom_test_and_add(bd->bloom, h, 1);
@@ -309,8 +332,8 @@ static void *pc_build_worker(void *arg)
             else
                 active++;
         }
+        if (!pc_charge_ops(bd, active)) break;
         ca_group_batch_op(g, Yn, Y, B, W, scratch);
-        ops += active;
         for (uint32_t i = 0; i < W; i++) {
             Y[i] = Yn[i];
             if (stall[i]) {
@@ -320,16 +343,7 @@ static void *pc_build_worker(void *arg)
                 stepc[i]++;
             }
         }
-        if (bd->max_ops) {
-            uint64_t tot = atomic_load_explicit(&bd->total_ops, memory_order_relaxed) + ops;
-            if (tot > bd->max_ops) atomic_store(&bd->done, 1);
-        }
-        if (ops >= 65536) {
-            atomic_fetch_add_explicit(&bd->total_ops, ops, memory_order_relaxed);
-            ops = 0;
-        }
     }
-    atomic_fetch_add_explicit(&bd->total_ops, ops, memory_order_relaxed);
 
 cleanup:
     free(Y);
