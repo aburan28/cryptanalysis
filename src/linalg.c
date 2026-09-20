@@ -10,15 +10,14 @@ ca_status ca_spmat_init(ca_spmat *m, uint32_t cols, uint32_t expected_rows, uint
 {
     memset(m, 0, sizeof(*m));
     m->cols = cols;
-    m->row_ptr = malloc(((size_t)expected_rows + 1) * sizeof(uint32_t));
+    m->row_cap = (size_t)expected_rows + 1;
+    m->row_ptr = malloc(m->row_cap * sizeof(uint32_t));
     m->cap = expected_nnz ? expected_nnz : 1024;
     m->col = malloc(m->cap * sizeof(uint32_t));
     m->val = malloc(m->cap * sizeof(int32_t));
     if (!m->row_ptr || !m->col || !m->val) { ca_spmat_free(m); return CA_ERR_NOMEM; }
     m->row_ptr[0] = 0;
     m->rows = 0;
-    /* remember capacity of row_ptr in the unused high half: keep it simple
-     * and track separately */
     m->nnz = 0;
     return CA_OK;
 }
@@ -31,21 +30,19 @@ void ca_spmat_free(ca_spmat *m)
     memset(m, 0, sizeof(*m));
 }
 
-static size_t rowptr_cap = 0; /* not thread safe but only used by single builder */
-
 ca_status ca_spmat_add_row(ca_spmat *m, const uint32_t *cols, const int32_t *vals, uint32_t n)
 {
-    /* grow row_ptr geometrically; we do not store its capacity in the
-     * struct, so re-derive from rows (allocate rows+1 slots, doubling). */
+    /* row_ptr needs rows + 2 slots once this row is appended.  The capacity
+     * is per matrix: expected_rows at init is a hint, not a limit, and a
+     * matrix must never grow into another matrix's bookkeeping. */
     size_t need = (size_t)m->rows + 2;
-    size_t cap = rowptr_cap;
-    if (cap < need) {
-        size_t ncap = cap ? cap : 1024;
+    if (m->row_cap < need) {
+        size_t ncap = m->row_cap ? m->row_cap : 1024;
         while (ncap < need) ncap *= 2;
         uint32_t *np = realloc(m->row_ptr, ncap * sizeof(uint32_t));
         if (!np) return CA_ERR_NOMEM;
         m->row_ptr = np;
-        rowptr_cap = ncap;
+        m->row_cap = ncap;
     }
     if ((size_t)m->nnz + n > m->cap) {
         uint32_t ncap = m->cap;
