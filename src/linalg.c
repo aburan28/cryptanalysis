@@ -264,8 +264,12 @@ ca_status ca_linsolve_mod_prime(const ca_spmat *A, const uint64_t *b, uint64_t q
     ca_rng rng;
     ca_rng_seed(&rng, ca_seed_or_random(seed));
 
-    for (uint32_t i = 0; i < R; i++)
+    uint32_t maxlen = 0; /* longest row: bounds the per-row scratch below */
+    for (uint32_t i = 0; i < R; i++) {
+        uint32_t len = A->row_ptr[i + 1] - A->row_ptr[i];
+        if (len > maxlen) maxlen = len;
         for (uint32_t k = A->row_ptr[i]; k < A->row_ptr[i + 1]; k++) colw[A->col[k]]++;
+    }
     /* iterate singleton removal to a fixed point */
     int changed = 1;
     while (changed) {
@@ -301,8 +305,8 @@ ca_status ca_linsolve_mod_prime(const ca_spmat *A, const uint64_t *b, uint64_t q
     for (uint32_t i = 0; i < R; i++) nr += row_alive[i];
     if (ca_spmat_init(&Ared, nc, nr, A->nnz) != CA_OK) { free(cmap); rc = CA_ERR_NOMEM; goto out; }
     uint64_t *bred = malloc((nr ? nr : 1) * sizeof(uint64_t));
-    uint32_t *tc = malloc((C ? C : 1) * sizeof(uint32_t));
-    int32_t *tv = malloc((C ? C : 1) * sizeof(int32_t));
+    uint32_t *tc = malloc((maxlen ? maxlen : 1) * sizeof(uint32_t));
+    int32_t *tv = malloc((maxlen ? maxlen : 1) * sizeof(int32_t));
     uint64_t *xred = calloc(nc ? nc : 1, sizeof(uint64_t));
     if (!bred || !tc || !tv || !xred) { rc = CA_ERR_NOMEM; goto out2; }
     {
@@ -312,6 +316,12 @@ ca_status ca_linsolve_mod_prime(const ca_spmat *A, const uint64_t *b, uint64_t q
             uint32_t n = 0;
             for (uint32_t k = A->row_ptr[i]; k < A->row_ptr[i + 1]; k++) {
                 if (cmap[A->col[k]] == UINT32_MAX) continue; /* cannot happen: dropped cols only in dropped rows */
+                /* n < maxlen by construction; checked anyway so an
+                 * inconsistent row_ptr cannot run off the scratch row. */
+                if (n >= maxlen) {
+                    rc = CA_ERR_INTERNAL;
+                    goto out2;
+                }
                 tc[n] = cmap[A->col[k]];
                 tv[n] = A->val[k];
                 n++;
