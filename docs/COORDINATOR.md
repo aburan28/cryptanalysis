@@ -3,10 +3,23 @@
 `ca_rho_solve` divides one instance across the threads of one process.
 This divides it across machines that cannot reach each other.
 
-Header: [`ca_coord.h`](../include/cryptanalysis/ca_coord.h).
-Sources: `src/coord.c` (job, walk, CRDT, wire) and `src/coord_net.c`
-(sockets).  Commands: `ca coord-job`, `ca coord`, `ca work`,
-`ca coord-status`.  Deployment files: [`deploy/ca-coordinator/`](../deploy/ca-coordinator/).
+**Where each piece lives.**  The parts that decide what is *true* are in
+C, in one implementation, because an agent and a coordinator that
+disagree about whether a point is genuine have no shared table at all:
+`include/cryptanalysis/ca_coord.h` with `src/coord.c` (job, walk, CRDT,
+wire) and `src/coord_net.c` (the agent's side of the connection).
+
+The coordinator itself is a **network service** -- it has to be
+deployed, fronted by a load balancer, scaled to zero and restarted by a
+scheduler -- so it is written in Go and reuses all of the above through
+cgo: [`bindings/go/cmd/ca-coordinator`](../bindings/go/cmd/ca-coordinator),
+with a Helm chart in [`deploy/helm/ca-coordinator`](../deploy/helm/ca-coordinator)
+and images from [`deploy/docker/Dockerfile`](../deploy/docker/Dockerfile).
+It reimplements none of the cryptography: it parses the job, verifies
+points and merges check-ins by calling this library.
+
+Commands: `ca coord-job` (mint a job), `ca work` (an agent),
+`ca coord-status` (look), `ca-coordinator` (the service).
 
 ## 1. The shape the deployment actually has
 
@@ -144,7 +157,9 @@ and merge as no-ops.
 ## 6. The transport
 
 HTTP/1.1, because what is reachable from everywhere is a URL on port 443
-behind somebody's load balancer.
+behind somebody's load balancer.  It is `net/http` on the serving side:
+the routes below are ordinary handlers, and the channel is a hijacked
+connection after the upgrade.
 
 | route | method | purpose |
 |---|---|---|
@@ -177,9 +192,11 @@ multiplications, and hands out no work.  Therefore:
   and keep their own DP tables; when it returns they reconverge, exactly
   as after a network partition.  It is a single point of *reachability*,
   not of truth.
-* **A restarted hub need not be an empty hub.** `ca_coord_hub_params.on_checkin`
-  fires for every check-in it accepts; point it at durable storage and
-  replay at start.
+* **A restarted hub need not be an empty hub.** `-log FILE` appends every
+  accepted check-in and replays the file at start.  The wire form is the
+  storage form, so the file is greppable text, and replay is safe at any
+  time because the merge is idempotent.  In the chart this is
+  `coordinator.persistence.enabled`.
 * **The token is access control, not integrity.** It keeps an
   unauthenticated stranger from flooding the log; every record in the
   log is still self-verifying, so a credentialled liar can still only
@@ -256,9 +273,10 @@ ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
     --g 1456600859624672 --h 4047005209878851 --dp-bits 16 --unit-size 64 \
     --seed 21 --out job.txt
 
-# 2. On the reachable host: the hub.
-ca coord --job job.txt --listen 127.0.0.1:8080 --token-file /etc/ca/token \
-    --require-token
+# 2. On the reachable host: the coordinator (a Go binary; build it with
+#    `go build ./cmd/ca-coordinator` from bindings/go).
+ca-coordinator -job job.txt -listen :8080 -token-file /etc/ca/token \
+    -require-token -log /var/lib/ca/checkins.log
 
 # 3. On every agent, anywhere.  The URL is the whole configuration.
 export CA_COORDINATOR_URL=https://rho.example.com
@@ -268,6 +286,9 @@ ca work --node "$(hostname)" --threads "$(nproc)"
 # 4. From anywhere with the token.
 ca coord-status
 ```
+
+On Kubernetes that is one `helm install`; see
+[`deploy/helm/ca-coordinator`](../deploy/helm/ca-coordinator).
 
 Step 3 takes no `--job`, no listening port and no peer list: the agent
 fetches the job from the hub, so a fleet image is baked once and aimed
@@ -281,7 +302,7 @@ to processes that never listened on anything.
 
 ## 12. Tests
 
-`ctest -R coord` (506 checks) covers: job encode/decode and the id's
+`ctest -R coord` (464 checks) covers: job encode/decode and the id's
 sensitivity to every field that changes the walk; refusal of an altered
 document; determinism of the derivations across two contexts, and the
 `a·G + b·H = R` invariant; DP verification accepting genuine records and

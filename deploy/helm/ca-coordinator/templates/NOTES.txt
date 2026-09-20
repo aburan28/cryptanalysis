@@ -1,0 +1,47 @@
+{{ .Chart.Name }} is installed.
+
+  job           {{ if .Values.job.existingConfigMap }}from ConfigMap {{ .Values.job.existingConfigMap }}{{ else }}{{ .Values.job.document | trim | regexFind "id=[0-9a-f]+" | default "(no id found -- is this a job document?)" }}{{ end }}
+  coordinator   {{ include "ca-coordinator.internalURL" . }}
+  agents        {{ if .Values.agents.enabled }}{{ .Values.agents.replicaCount }} pod(s), {{ .Values.agents.threads }} lane(s) each{{ else }}none (agents.enabled=false){{ end }}
+  token         {{ if include "ca-coordinator.hasToken" . }}required{{ else }}NONE -- anyone who can reach the Service can read the job and write to the log{{ end }}
+
+Watch it work:
+
+  kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ include "ca-coordinator.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ca-coordinator.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  curl -s localhost:{{ .Values.service.port }}/healthz
+{{- if include "ca-coordinator.hasToken" . }}
+  curl -s -H "Authorization: Bearer $TOKEN" localhost:{{ .Values.service.port }}/v1/status
+{{- else }}
+  curl -s localhost:{{ .Values.service.port }}/v1/status
+{{- end }}
+
+Scale the fleet:
+
+  kubectl -n {{ .Release.Namespace }} scale deploy/{{ include "ca-coordinator.fullname" . }}-agent --replicas=20
+
+Three things worth knowing before you rely on this:
+
+  1. The coordinator is a rendezvous, not an authority.  It assigns no
+     work and stores nothing the agents cannot rebuild, so losing the pod
+     loses no work: agents keep walking their claimed units and
+     reconverge when it comes back.
+  2. It runs as exactly one replica on purpose.  Two would each hold half
+     the distinguished-point table and miss every collision that spans
+     them, which is the one thing the shared table is for.
+  3. Agents open every connection.  Nothing needs to reach *them*, which
+     is why they can sit on spot capacity, behind NAT, or in a namespace
+     that allows no inbound traffic at all (networkPolicy.enabled=true
+     writes that down).
+{{- if not .Values.coordinator.persistence.enabled }}
+
+Progress is held in memory.  A restart re-learns it from the agents'
+next check-ins, which costs a few seconds and no work; set
+coordinator.persistence.enabled=true to have a replacement pod start
+from where the last one stopped instead.
+{{- end }}
+{{- if and .Values.ingress.enabled (not .Values.ingress.tls.enabled) }}
+
+WARNING: the ingress is enabled without TLS.  The bearer token would
+cross the network in the clear; set ingress.tls.enabled=true.
+{{- end }}

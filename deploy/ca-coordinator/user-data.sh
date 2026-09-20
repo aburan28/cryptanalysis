@@ -14,16 +14,18 @@ JOB_S3="${JOB_S3:-s3://my-bucket/rho/job.txt}"
 TOKEN_SECRET="${TOKEN_SECRET:-ca/coordinator-token}"
 REGION="${REGION:-us-east-1}"
 
-# 1. Toolchain and build.  C11, CMake, pthreads -- no other dependency.
+# 1. Toolchain and build.  The agent is C (CMake, pthreads); the
+#    coordinator is Go and links the same C sources through cgo.
 if command -v dnf >/dev/null; then
-    dnf install -y git gcc cmake make awscli
+    dnf install -y git gcc cmake make golang awscli
 else
-    apt-get update && apt-get install -y git build-essential cmake awscli curl
+    apt-get update && apt-get install -y git build-essential cmake golang-go awscli curl
 fi
 git clone --depth 1 "$REPO_URL" /opt/cryptanalysis
 cmake -S /opt/cryptanalysis -B /opt/cryptanalysis/build -DCMAKE_BUILD_TYPE=Release
-cmake --build /opt/cryptanalysis/build -j"$(nproc)"
+cmake --build /opt/cryptanalysis/build -j"$(nproc)" --target ca
 install -m 0755 /opt/cryptanalysis/build/ca /usr/local/bin/ca
+( cd /opt/cryptanalysis/bindings/go && CGO_ENABLED=1 go build -o /usr/local/bin/ca-coordinator ./cmd/ca-coordinator )
 
 # 2. Identity and directories.
 useradd --system --home /var/lib/ca --create-home ca || true

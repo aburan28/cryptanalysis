@@ -1,0 +1,15 @@
+{{- include "ca-coordinator.validate" . -}}
+{{- if not .Values.job.existingConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ca-coordinator.fullname" . }}-job
+  labels:
+    {{- include "ca-coordinator.labels" . | nindent 4 }}
+data:
+  # The job document: the one line every participant agrees on.  Its
+  # hash is the job id, so a coordinator and an agent are working on the
+  # same thing exactly when this file matches.
+  {{ .Values.job.key }}: |
+    {{ .Values.job.document | trim }}
+{{- end }}

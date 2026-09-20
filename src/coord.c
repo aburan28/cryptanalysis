@@ -135,6 +135,31 @@ ca_status ca_coord_job_init(ca_coord_job *job, const ca_group *g, const ca_elem 
     return CA_OK;
 }
 
+ca_status ca_coord_job_init_raw(ca_coord_job *job, ca_group_kind kind, uint64_t p, uint64_t a,
+                                uint64_t b, uint64_t order, const uint64_t base[4],
+                                const uint64_t target[4], int32_t dp_bits, uint32_t r,
+                                int negation_map, uint64_t unit_size, uint64_t seed)
+{
+    if (!job || !base || !target) return CA_ERR_INVALID;
+    ca_group g;
+    ca_status rc;
+    if (kind == CA_GROUP_ZP)
+        rc = ca_group_zp_init(&g, p, order);
+    else if (kind == CA_GROUP_EC)
+        rc = ca_group_ec_init(&g, p, a, b, order);
+    else {
+        ca_set_error("unknown group kind");
+        return CA_ERR_INVALID;
+    }
+    if (rc != CA_OK) return rc;
+    ca_elem be, te;
+    if (ca_group_encode(&g, &be, base) != 1 || ca_group_encode(&g, &te, target) != 1) {
+        ca_set_error("base or target is not a group element");
+        return CA_ERR_INVALID;
+    }
+    return ca_coord_job_init(job, &g, &be, &te, dp_bits, r, negation_map, unit_size, seed);
+}
+
 size_t ca_coord_job_encode(const ca_coord_job *job, char *buf, size_t cap)
 {
     if (!job || !buf) return 0;
@@ -1104,6 +1129,35 @@ int ca_coord_delta_for(ca_coord_state *st, const ca_coord_vv *known,
     }
     pthread_mutex_unlock(&st->lock);
     return rc;
+}
+
+size_t ca_coord_log_count(ca_coord_state *st)
+{
+    if (!st) return 0;
+    pthread_mutex_lock(&st->lock);
+    size_t n = st->log_count;
+    pthread_mutex_unlock(&st->lock);
+    return n;
+}
+
+int ca_coord_log_get(ca_coord_state *st, size_t index, char *line, size_t cap, char *peer,
+                     size_t peer_cap, uint64_t *seq)
+{
+    if (!st || !line || !cap) return 0;
+    pthread_mutex_lock(&st->lock);
+    int ok = 0;
+    if (index < st->log_count) {
+        const coord_log_entry *e = &st->log[index];
+        size_t n = strlen(e->line);
+        if (n < cap) {
+            memcpy(line, e->line, n + 1);
+            if (peer && peer_cap) snprintf(peer, peer_cap, "%s", st->peers[e->peer].name);
+            if (seq) *seq = e->seq;
+            ok = 1;
+        }
+    }
+    pthread_mutex_unlock(&st->lock);
+    return ok;
 }
 
 uint64_t ca_coord_next_seq(ca_coord_state *st, const char *peer)

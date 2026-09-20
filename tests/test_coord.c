@@ -520,189 +520,14 @@ static void test_url_parsing(void)
           CA_ERR_UNSUPPORTED);
 }
 
-typedef struct agent_thread {
-    pthread_t t;
-    ca_coord_ctx *ctx;
-    ca_coord_state *st;
-    ca_coord_agent *ag;
-    char name[CA_COORD_PEER_MAX];
-    volatile int stop;
-} agent_thread;
-
-static void agent_publish_hook(void *user, const ca_coord_checkin *ci)
-{
-    ca_coord_agent_publish((ca_coord_agent *)user, ci);
-}
-
-static int agent_should_stop(void *user)
-{
-    agent_thread *at = user;
-    return at->stop || ca_coord_solution(at->st, NULL);
-}
-
-static void *agent_main_thread(void *arg)
-{
-    agent_thread *at = arg;
-    ca_coord_lane_params p;
-    ca_coord_lane_params_default(&p, at->name);
-    p.checkin_every = 4;
-    p.claim_window = 1;
-    ca_coord_lane_result res;
-    ca_coord_lane_run(at->ctx, at->st, &p, agent_publish_hook, at->ag, agent_should_stop, at, &res);
-    return NULL;
-}
-
-/* Count what the hub's durability hook saw. */
-static pthread_mutex_t hook_lock = PTHREAD_MUTEX_INITIALIZER;
-static uint64_t hook_calls;
-
-static void hub_hook(void *user, const ca_coord_checkin *ci)
-{
-    (void)user;
-    (void)ci;
-    pthread_mutex_lock(&hook_lock);
-    hook_calls++;
-    pthread_mutex_unlock(&hook_lock);
-}
-
 /*
- * The property the module exists for: two agents that never listen on
- * anything, each dialling out to one hub, converge -- and the solution
- * reaches the agent that did not find it, over a socket that agent
- * opened.
+ * The tests that need a coordinator live with the coordinator, in
+ * bindings/go/cmd/ca-coordinator: an end-to-end there starts the real
+ * hub and runs real agents through this library's cgo binding, which
+ * tests the pairing that actually ships rather than a C hub that does
+ * not exist.  What stays here is everything that decides what is true,
+ * none of which needs a socket.
  */
-static void test_agents_converge_through_the_hub(void)
-{
-    ca_group g;
-    ca_elem gen;
-    uint64_t secret = 0;
-    ca_coord_ctx *ctx = make_ctx(&g, &gen, 246813, 0, &secret);
-
-    ca_coord_state *hub_state = NULL;
-    CHECK(ca_coord_state_init(&hub_state, ctx) == CA_OK);
-    ca_coord_hub_params hp;
-    ca_coord_hub_params_default(&hp);
-    hp.bind = "127.0.0.1:0";
-    hp.token = "s3cret";
-    hp.push_ms = 20;
-    hp.on_checkin = hub_hook;
-    ca_coord_hub *hub = NULL;
-    CHECK(ca_coord_hub_start(&hub, ctx, hub_state, &hp) == CA_OK);
-    char url[160];
-    snprintf(url, sizeof(url), "http://%s", ca_coord_hub_address(hub));
-
-    /* An agent needs only the URL: the job comes down it. */
-    ca_coord_job fetched;
-    CHECK(ca_coord_fetch_job(url, "s3cret", &fetched) == CA_OK);
-    CHECK_EQ_U64(fetched.id, ca_coord_ctx_job(ctx)->id);
-    /* Without the token, nothing. */
-    CHECK(ca_coord_fetch_job(url, NULL, &fetched) != CA_OK);
-    CHECK(ca_coord_fetch_job(url, "wrong", &fetched) != CA_OK);
-
-    agent_thread at[2];
-    memset(at, 0, sizeof(at));
-    for (int i = 0; i < 2; i++) {
-        snprintf(at[i].name, sizeof(at[i].name), "a%d.0", i);
-        at[i].ctx = ctx;
-        CHECK(ca_coord_state_init(&at[i].st, ctx) == CA_OK);
-        CHECK(ca_coord_agent_start(&at[i].ag, url, "s3cret", at[i].name, ctx, at[i].st) == CA_OK);
-    }
-    for (int i = 0; i < 2; i++)
-        CHECK(pthread_create(&at[i].t, NULL, agent_main_thread, &at[i]) == 0);
-
-    /* Both agents must learn the answer, whichever one found it. */
-    int ok = 0;
-    for (int waited = 0; waited < 600 && !ok; waited++) {
-        usleep(100000);
-        ok = ca_coord_solution(at[0].st, NULL) && ca_coord_solution(at[1].st, NULL);
-    }
-    for (int i = 0; i < 2; i++) at[i].stop = 1;
-    for (int i = 0; i < 2; i++) pthread_join(at[i].t, NULL);
-
-    CHECK(ok == 1);
-    for (int i = 0; i < 2; i++) {
-        uint64_t x = 0;
-        CHECK(ca_coord_solution(at[i].st, &x) == 1);
-        CHECK_EQ_U64(x, secret);
-        ca_coord_agent_stats ast;
-        ca_coord_agent_stats_get(at[i].ag, &ast);
-        CHECK(ast.connects > 0);
-        CHECK(ast.sent > 0);
-        CHECK_EQ_U64(ast.rejected, 0);
-    }
-    /* At least one of them got its answer from the hub rather than its
-     * own walking -- that is the reverse channel doing its job. */
-    ca_coord_agent_stats a0, a1;
-    ca_coord_agent_stats_get(at[0].ag, &a0);
-    ca_coord_agent_stats_get(at[1].ag, &a1);
-    CHECK(a0.received > 0 || a1.received > 0);
-
-    ca_coord_hub_stats hs;
-    ca_coord_hub_stats_get(hub, &hs);
-    CHECK(hs.accepted > 0);
-    CHECK(hs.pushed > 0);
-    CHECK(hs.unauthorized >= 2);
-    pthread_mutex_lock(&hook_lock);
-    CHECK(hook_calls > 0); /* the durability hook ran */
-    pthread_mutex_unlock(&hook_lock);
-
-    for (int i = 0; i < 2; i++) {
-        ca_coord_agent_stop(at[i].ag);
-        ca_coord_state_free(at[i].st);
-    }
-    ca_coord_hub_stop(hub);
-    ca_coord_state_free(hub_state);
-    ca_coord_ctx_close(ctx);
-}
-
-/* The pollable fallback carries the same facts as the channel. */
-static void test_sync_once_moves_checkins_both_ways(void)
-{
-    ca_group g;
-    ca_elem gen;
-    ca_coord_ctx *ctx = make_ctx(&g, &gen, 9991, 0, NULL);
-    ca_coord_state *hub_state = NULL, *a = NULL, *b = NULL;
-    CHECK(ca_coord_state_init(&hub_state, ctx) == CA_OK);
-    CHECK(ca_coord_state_init(&a, ctx) == CA_OK);
-    CHECK(ca_coord_state_init(&b, ctx) == CA_OK);
-
-    ca_coord_hub_params hp;
-    ca_coord_hub_params_default(&hp);
-    hp.bind = "127.0.0.1:0";
-    ca_coord_hub *hub = NULL;
-    CHECK(ca_coord_hub_start(&hub, ctx, hub_state, &hp) == CA_OK);
-    char url[160];
-    snprintf(url, sizeof(url), "http://%s", ca_coord_hub_address(hub));
-
-    ca_coord_lane_params p;
-    ca_coord_lane_params_default(&p, "a.0");
-    p.max_walkers = 16;
-    p.checkin_every = 4;
-    ca_coord_lane_result res;
-    CHECK(ca_coord_lane_run(ctx, a, &p, NULL, NULL, NULL, NULL, &res) == CA_OK);
-
-    uint64_t recv = 0, rej = 0;
-    CHECK(ca_coord_sync_once(url, NULL, ctx, a, &recv, &rej) == CA_OK);
-    CHECK_EQ_U64(rej, 0);
-    CHECK(ca_coord_sync_once(url, NULL, ctx, b, &recv, &rej) == CA_OK);
-    CHECK(recv > 0); /* b learned a's work through the hub */
-    CHECK_EQ_U64(rej, 0);
-
-    ca_coord_vv *va = NULL, *vb = NULL;
-    CHECK(ca_coord_vv_new(&va) == CA_OK);
-    CHECK(ca_coord_vv_new(&vb) == CA_OK);
-    ca_coord_state_vv(a, va);
-    ca_coord_state_vv(b, vb);
-    CHECK_EQ_U64(ca_coord_vv_get(va, "a.0"), ca_coord_vv_get(vb, "a.0"));
-    ca_coord_vv_free(va);
-    ca_coord_vv_free(vb);
-
-    ca_coord_hub_stop(hub);
-    ca_coord_state_free(hub_state);
-    ca_coord_state_free(a);
-    ca_coord_state_free(b);
-    ca_coord_ctx_close(ctx);
-}
 
 int main(void)
 {
@@ -719,7 +544,5 @@ int main(void)
     test_sequence_numbers_and_deltas();
     test_two_lanes_merge_to_a_solution();
     test_url_parsing();
-    test_sync_once_moves_checkins_both_ways();
-    test_agents_converge_through_the_hub();
     TEST_MAIN_END();
 }

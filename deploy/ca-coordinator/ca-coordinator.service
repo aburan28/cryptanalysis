@@ -1,6 +1,10 @@
-# The hub.  One instance, one job document, one URL for the fleet.
+# The hub, for a plain VM.  One instance, one job document, one URL for
+# the fleet.  (On Kubernetes use the chart in deploy/helm instead.)
 #
-#   install -m 0755 build/ca /usr/local/bin/ca
+# The coordinator is a Go binary: build it with
+#   cd bindings/go && go build -o ca-coordinator ./cmd/ca-coordinator
+#
+#   install -m 0755 bindings/go/ca-coordinator /usr/local/bin/ca-coordinator
 #   useradd --system --home /var/lib/ca --create-home ca
 #   install -d -m 0750 -o root -g ca /etc/ca
 #   install -m 0640 -o root -g ca token /etc/ca/token
@@ -18,12 +22,13 @@ Wants=network-online.target
 User=ca
 Group=ca
 WorkingDirectory=/var/lib/ca
-ExecStart=/usr/local/bin/ca coord \
-    --job /var/lib/ca/job.txt \
-    --listen 127.0.0.1:8080 \
-    --token-file /etc/ca/token \
-    --require-token \
-    --report-secs 30
+ExecStart=/usr/local/bin/ca-coordinator \
+    -job /var/lib/ca/job.txt \
+    -listen 127.0.0.1:8080 \
+    -token-file /etc/ca/token \
+    -require-token \
+    -log /var/lib/ca/checkins.log \
+    -report-interval 30s
 Restart=always
 RestartSec=5
 StateDirectory=ca

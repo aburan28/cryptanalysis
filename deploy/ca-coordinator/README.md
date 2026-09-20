@@ -1,4 +1,8 @@
-# Running the distributed rho from one coordinator on EC2
+# Running the distributed rho from one coordinator on a VM
+
+**On Kubernetes, use [`deploy/helm/ca-coordinator`](../helm/ca-coordinator)
+instead** -- it is the same two processes with the topology written down.
+This directory is the plain-VM (EC2) version.
 
 **This directory makes no performance claim.** It is plumbing: no row in
 [`docs/BENCHMARKS.md`](../../docs/BENCHMARKS.md) moves because of it.
@@ -36,9 +40,9 @@ run it.
 ca coord-job --group zp --p P --order N --g G --h H \
     --dp-bits 16 --unit-size 64 --seed 21 --out job.txt
 
-# 2. On the EC2 instance: the hub (bind loopback, TLS in front).
-ca coord --job job.txt --listen 127.0.0.1:8080 \
-    --token-file /etc/ca/token --require-token
+# 2. On the EC2 instance: the hub (a Go binary; bind loopback, TLS in front).
+ca-coordinator -job job.txt -listen 127.0.0.1:8080 \
+    -token-file /etc/ca/token -require-token -log /var/lib/ca/checkins.log
 
 # 3. On every agent, anywhere: one URL is the whole configuration.
 export CA_COORDINATOR_URL=https://rho.example.com
@@ -59,7 +63,7 @@ and an autoscaling group can carry them instead.
 
 | file | what it is |
 |---|---|
-| `ca-coordinator.service` | the hub unit: loopback bind, token file, `Restart=always`, hardened |
+| `ca-coordinator.service` | the hub unit (the Go binary): loopback bind, token file, `Restart=always`, hardened |
 | `ca-agent.service` | the agent unit: environment file, no inbound anything |
 | `nginx.conf` | TLS in front, **with the upgrade headers the reverse channel needs** |
 | `user-data.sh` | EC2 user-data: build, job from S3, token from Secrets Manager, start the unit |
@@ -104,10 +108,10 @@ a legitimate configuration.
 **Durability.** The hub's state is in memory, and an EC2 instance is
 replaceable by design. Losing the hub costs no work — agents keep
 walking and reconverge when it returns — but it does cost the hub's view
-of the DP table until they re-push. For a campaign worth checkpointing,
-use `ca_coord_hub_params.on_checkin` (see `ca_coord.h`) to mirror every
-accepted check-in to durable storage and replay it at start; the merge
-is idempotent, so replay is always safe.
+of the DP table until they re-push. `-log FILE` appends every accepted
+check-in and replays the file at start, so a replacement starts where
+the last one stopped; the merge is idempotent, so replay is always safe
+and the file is ordinary greppable text.
 
 **Instance sizing.** The hub does two scalar multiplications per
 distinguished point it accepts and holds the DP table in memory: at the
@@ -131,7 +135,7 @@ ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
     --dp-bits 16 --unit-size 64 --seed 21 --out job.txt
 
 echo "$(openssl rand -hex 16)" > token
-ca coord --job job.txt --listen 127.0.0.1:8080 --token-file token &
+ca-coordinator -job job.txt -listen 127.0.0.1:8080 -token-file token &
 
 export CA_COORDINATOR_URL=http://127.0.0.1:8080 CA_COORDINATOR_TOKEN="$(cat token)"
 for n in alice bob carol; do ca work --node $n --threads 2 & done

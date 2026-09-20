@@ -46,6 +46,9 @@
  *
  * Portability: the networking here is POSIX (sockets, pthreads).  The
  * job, state, walk and wire format are plain C11 and build anywhere.
+ *
+ * The hub is deliberately not in this library: see the note above
+ * ca_coord_agent_start.
  */
 #ifndef CA_COORD_H
 #define CA_COORD_H
@@ -106,6 +109,18 @@ typedef struct ca_coord_job {
 CA_API ca_status ca_coord_job_init(ca_coord_job *job, const ca_group *g, const ca_elem *base,
                                    const ca_elem *target, int32_t dp_bits, uint32_t r,
                                    int negation_map, uint64_t unit_size, uint64_t seed);
+
+/*
+ * The same, from raw parameters rather than a live ca_group.  This is
+ * what a binding calls: it keeps ca_group, which is not part of the flat
+ * ABI, out of the FFI boundary.  The group is built internally, so the
+ * base and target are validated exactly as above.
+ */
+CA_API ca_status ca_coord_job_init_raw(ca_coord_job *job, ca_group_kind kind, uint64_t p,
+                                       uint64_t a, uint64_t b, uint64_t order,
+                                       const uint64_t base[4], const uint64_t target[4],
+                                       int32_t dp_bits, uint32_t r, int negation_map,
+                                       uint64_t unit_size, uint64_t seed);
 
 /* Write the canonical one-line encoding (the id's preimage, and what
  * GET /v1/job serves).  Returns the length written, or 0 if cap is too
@@ -249,6 +264,22 @@ CA_API void ca_coord_state_vv(ca_coord_state *st, ca_coord_vv *out);
 CA_API int ca_coord_delta_for(ca_coord_state *st, const ca_coord_vv *known,
                               int (*fn)(void *user, const ca_coord_checkin *ci), void *user);
 
+/*
+ * The log by index, which is what a delta is computed from.  The log is
+ * append-only and kept in its wire form, so this is a copy of one line
+ * and nothing more.  `index` runs over [0, ca_coord_log_count); `peer`
+ * and `seq` name the entry, and a caller compares `seq` against its own
+ * version vector to decide whether to send it.
+ *
+ * This exists so that a coordinator written in another language -- the
+ * one in bindings/go/cmd/ca-coordinator -- can serve deltas without
+ * calling back into itself across the FFI boundary.  It takes the same
+ * lock as everything else here.
+ */
+CA_API size_t ca_coord_log_count(ca_coord_state *st);
+CA_API int ca_coord_log_get(ca_coord_state *st, size_t index, char *line, size_t cap, char *peer,
+                            size_t peer_cap, uint64_t *seq);
+
 /* ---- claiming and walking ---------------------------------------------- */
 
 /* Tuning for one lane (one thread's worth of sequential walking). */
@@ -295,41 +326,15 @@ CA_API ca_status ca_coord_lane_run(const ca_coord_ctx *ctx, ca_coord_state *st,
 CA_API size_t ca_coord_checkin_encode(const ca_coord_checkin *ci, char *buf, size_t cap);
 CA_API ca_status ca_coord_checkin_decode(ca_coord_checkin *ci, const char *line);
 
-/* ---- the hub ----------------------------------------------------------- */
-
-typedef struct ca_coord_hub ca_coord_hub;
-
-typedef struct ca_coord_hub_params {
-    const char *bind;    /* "0.0.0.0:8080"; ":0" or "…:0" for an ephemeral port */
-    const char *token;   /* required bearer token; NULL disables auth */
-    uint64_t lease_secs; /* lease length used for reporting (0 => 120) */
-    uint32_t push_ms;    /* how often an idle channel is examined (0 => 500) */
-    uint32_t idle_secs;  /* drop a channel silent this long (0 => 300) */
-    /* Called with every check-in newly accepted from an agent, after it
-     * is merged: the durability hook.  Runs on the connection's thread
-     * and must be thread-safe. */
-    void (*on_checkin)(void *user, const ca_coord_checkin *ci);
-    void *on_checkin_user;
-} ca_coord_hub_params;
-
-typedef struct ca_coord_hub_stats {
-    uint64_t agents; /* channels open now */
-    uint64_t channels_total;
-    uint64_t accepted;     /* check-ins merged from agents */
-    uint64_t rejected;     /* refused: bad job, forged point, bad line */
-    uint64_t pushed;       /* check-ins sent down reverse channels */
-    uint64_t unauthorized; /* requests refused for a bad or missing token */
-} ca_coord_hub_stats;
-
-CA_API void ca_coord_hub_params_default(ca_coord_hub_params *p);
-CA_API ca_status ca_coord_hub_start(ca_coord_hub **out, const ca_coord_ctx *ctx, ca_coord_state *st,
-                                    const ca_coord_hub_params *p);
-/* The bound address as "host:port" -- read it when you asked for port 0. */
-CA_API const char *ca_coord_hub_address(const ca_coord_hub *hub);
-CA_API void ca_coord_hub_stats_get(const ca_coord_hub *hub, ca_coord_hub_stats *out);
-CA_API void ca_coord_hub_stop(ca_coord_hub *hub);
-
 /* ---- the agent --------------------------------------------------------- */
+/*
+ * The coordinator itself is not in this header.  It is a network service
+ * that has to be deployed and scaled, so it lives in Go
+ * (bindings/go/cmd/ca-coordinator, with a Helm chart in
+ * deploy/helm/ca-coordinator) and reuses this library through cgo: the
+ * job, the walk, the verification and the merge below are what decide
+ * what is true, in one implementation, whoever is serving the socket.
+ */
 
 /*
  * The agent's end of the reverse channel: one outbound connection, held

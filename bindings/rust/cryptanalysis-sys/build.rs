@@ -22,6 +22,11 @@ const SOURCES: &[&str] = &[
     "cheon.c",
     "linalg.c",
     "indexcalc.c",
+    // Distributed rho: the job, walk, CRDT and wire format, plus the
+    // agent's side of the connection.  The coordinator itself is a
+    // separate Go service (bindings/go/cmd/ca-coordinator).
+    "coord.c",
+    "coord_net.c",
     "ffi.c",
     // GPU rho: the backend-independent driver, the host emulator backend and
     // the no-CUDA stub.  The CUDA backend itself (cuda/gpu_cuda.c and

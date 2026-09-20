@@ -108,13 +108,24 @@ copy of the job document:
 ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
     --g 1456600859624672 --h 4047005209878851 --dp-bits 16 --out job.txt
 
-# On the reachable host (an EC2 instance; bind loopback, TLS in front).
-ca coord --job job.txt --listen 127.0.0.1:8080 --token-file /etc/ca/token
+# On the reachable host: the coordinator.  It is a Go service -- it has
+# to be deployed, fronted and restarted by a scheduler -- and it reuses
+# this library through cgo rather than reimplementing any of it.
+cd bindings/go && go build ./cmd/ca-coordinator
+./ca-coordinator -job ../../job.txt -listen :8080 -token-file /etc/ca/token
 
 # On every agent, anywhere.  The URL is the whole configuration.
 export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=…
 ca work --node "$(hostname)" --threads "$(nproc)"
 ca coord-status
+```
+
+On Kubernetes that is one command:
+
+```sh
+helm install rho deploy/helm/ca-coordinator \
+    --set-file job.document=job.txt \
+    --set auth.token="$(openssl rand -hex 32)" --set agents.replicaCount=10
 ```
 
 The hub is a rendezvous, not an authority: it holds the same CRDT every
@@ -124,7 +135,8 @@ reconverge when it returns.  Every check-in is self-certifying
 (`a*G + b*H == point`, two scalar multiplications to check work worth
 `2^dp_bits` steps), so a participant who lies can only waste their own
 time.  Design notes: [docs/COORDINATOR.md](./docs/COORDINATOR.md);
-systemd units, nginx configuration and EC2 user-data:
+Helm chart: [deploy/helm/ca-coordinator/](./deploy/helm/ca-coordinator/);
+images: [deploy/docker/](./deploy/docker/); systemd units for a plain VM:
 [deploy/ca-coordinator/](./deploy/ca-coordinator/).
 
 ## C API in one screen
@@ -223,7 +235,10 @@ tools/                   ca (CLI) and ca_bench
 scripts/                 build_cuda_kernel.sh (compile the kernel, no GPU needed)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md
-deploy/ca-coordinator/   systemd units, nginx TLS config and EC2 user-data for the hub
+bindings/go/cmd/ca-coordinator  the coordinator service (Go, cgo onto this library)
+deploy/helm/ca-coordinator      Helm chart: the coordinator and its agents
+deploy/docker/                  one Dockerfile, two images (coordinator, agent)
+deploy/ca-coordinator/          systemd units and EC2 user-data for a plain VM
 fuzz/                    libFuzzer harnesses and their seed corpora
 .github/workflows/       ci, analysis, bindings, fuzz, codeql, nightly
 ```

@@ -20,17 +20,19 @@
  *   ca coord-job  --group zp|ec --p P [--a A --b B] --order N --g G --h H
  *                 [--dp-bits D] [--r R] [--negation] [--unit-size U] [--seed S]
  *                 [--out FILE]
- *   ca coord      [--job FILE] [--listen HOST:PORT] [--token T | --token-file F]
- *                 [--require-token] [--report-secs S] [--max-seconds S]
  *   ca work       [--job FILE] [--coordinator URL] [--token T | --token-file F]
  *                 [--node NAME] [--threads T] [--max-seconds S] [--max-walkers W]
+ *                 [--checkin-every N] [--lease-secs S] [--idle-when-solved]
  *   ca coord-status [--coordinator URL] [--token T | --token-file F]
  *
  * The distributed commands: `coord-job` writes the document every
- * participant shares, `coord` is the hub that runs on a reachable host
- * (an EC2 instance), and `work` is an agent that dials out to it and
- * needs no inbound reachability of its own.  --coordinator and --token
- * fall back to $CA_COORDINATOR_URL and $CA_COORDINATOR_TOKEN.
+ * participant shares and `work` is an agent that dials out to a
+ * coordinator and needs no inbound reachability of its own.
+ * --coordinator and --token fall back to $CA_COORDINATOR_URL and
+ * $CA_COORDINATOR_TOKEN.
+ *
+ * The coordinator itself is a separate service, in Go:
+ * bindings/go/cmd/ca-coordinator (Helm chart in deploy/helm).
  *
  * Elements: Z_p^* "123"; E(F_p) "x,y" or "inf".  Output is one JSON object
  * on stdout; errors go to stderr with a non-zero exit status.
@@ -126,8 +128,9 @@ static _Noreturn void usage(void)
         "[--verbose]\n"
         "  coord-job --group zp|ec --p P --order N --g G --h H [--dp-bits D] [--r R]\n"
         "            [--negation] [--unit-size U] [--seed S] [--out FILE]\n"
-        "  coord     [--job FILE] [--listen HOST:PORT] [--token-file F] [--require-token]\n"
         "  work      [--coordinator URL] [--token-file F] [--node NAME] [--threads T]\n"
+        "            [--max-seconds S] [--max-walkers W] [--checkin-every N]\n"
+        "            [--lease-secs S] [--idle-when-solved]\n"
         "  coord-status [--coordinator URL] [--token-file F]\n");
     exit(2);
 }
@@ -479,92 +482,13 @@ static ca_coord_ctx *coord_load(int allow_remote)
     return ctx;
 }
 
+/* Interrupt handling, shared by `work` (the agent) and anything else
+ * that runs until told to stop. */
 static volatile sig_atomic_t coord_interrupted;
 static void coord_on_signal(int sig)
 {
     (void)sig;
     coord_interrupted = 1;
-}
-
-static int cmd_coord(void)
-{
-    ca_coord_ctx *ctx = coord_load(0);
-    ca_coord_state *st = NULL;
-    if (ca_coord_state_init(&st, ctx) != CA_OK) die("out of memory");
-
-    ca_coord_hub_params hp;
-    ca_coord_hub_params_default(&hp);
-    const char *listen = opt("--listen");
-    if (listen) hp.bind = listen;
-    hp.token = coord_token();
-    hp.lease_secs = opt_u64("--lease-secs", 120);
-    if (!hp.token && flag("--require-token")) die("--require-token was set but no token was given");
-    if (!hp.token && hp.bind && strncmp(hp.bind, "127.", 4) != 0)
-        fprintf(stderr,
-                "warning: binding %s with no token; anyone who can reach it can read the "
-                "job and write to the log\n",
-                hp.bind);
-
-    ca_coord_hub *hub = NULL;
-    ca_status rc = ca_coord_hub_start(&hub, ctx, st, &hp);
-    if (rc != CA_OK) die_status(rc);
-
-    printf("{\"status\":\"ok\",\"job_id\":\"%016" PRIx64 "\",\"listening\":\"%s\","
-           "\"url\":\"http://%s\",\"token\":%s,"
-           "\"routes\":[\"/healthz\",\"/v1/job\",\"/v1/status\",\"/v1/sync\",\"/v1/channel\"]}\n",
-           ca_coord_ctx_job(ctx)->id, ca_coord_hub_address(hub), ca_coord_hub_address(hub),
-           hp.token ? "true" : "false");
-    fflush(stdout);
-
-    signal(SIGINT, coord_on_signal);
-    signal(SIGTERM, coord_on_signal);
-    uint64_t report = opt_u64("--report-secs", 15);
-    uint64_t max_seconds = opt_u64("--max-seconds", 0);
-    time_t start = time(NULL);
-    time_t last = 0;
-    for (;;) {
-        struct timespec ts = {0, 200 * 1000000L};
-        nanosleep(&ts, NULL);
-        int solved = ca_coord_solution(st, NULL);
-        int timed_out = max_seconds && (uint64_t)(time(NULL) - start) >= max_seconds;
-        if ((uint64_t)(time(NULL) - last) >= report || solved || timed_out || coord_interrupted) {
-            last = time(NULL);
-            ca_coord_progress pr;
-            ca_coord_progress_get(st, ctx, (uint64_t)time(NULL), hp.lease_secs, &pr);
-            ca_coord_hub_stats hs;
-            ca_coord_hub_stats_get(hub, &hs);
-            fprintf(stderr,
-                    "[hub] %6llds  agents %3" PRIu64 "  steps %12" PRIu64 " (%5.1f%%)  "
-                    "dps %8" PRIu64 "  units done %" PRIu64 "  accepted %" PRIu64
-                    "  pushed %" PRIu64 "  rejected %" PRIu64 "  401s %" PRIu64 "\n",
-                    (long long)(time(NULL) - start), hs.agents, pr.steps, 100.0 * pr.fraction,
-                    pr.dps_stored, pr.units_completed, hs.accepted, hs.pushed, hs.rejected,
-                    hs.unauthorized);
-        }
-        if (solved || timed_out || coord_interrupted) break;
-    }
-
-    uint64_t x = 0;
-    int have = ca_coord_solution(st, &x);
-    if (have) {
-        /* Stay up briefly so agents still walking learn it from the
-         * channel they are holding open. */
-        struct timespec ts = {3, 0};
-        nanosleep(&ts, NULL);
-    }
-    ca_coord_progress pr;
-    ca_coord_progress_get(st, ctx, (uint64_t)time(NULL), hp.lease_secs, &pr);
-    ca_coord_hub_stats hs;
-    ca_coord_hub_stats_get(hub, &hs);
-    printf("{\"status\":\"ok\",\"solved\":%s,\"x\":%" PRIu64 ",\"steps\":%" PRIu64
-           ",\"dps\":%" PRIu64 ",\"checkins\":%" PRIu64 ",\"peers\":%" PRIu64
-           ",\"accepted\":%" PRIu64 ",\"pushed\":%" PRIu64 ",\"rejected\":%" PRIu64 "}\n",
-           have ? "true" : "false", x, pr.steps, pr.dps_stored, pr.checkins, pr.peers, hs.accepted,
-           hs.pushed, hs.rejected);
-    ca_coord_hub_stop(hub);
-    ca_coord_state_free(st);
-    ca_coord_ctx_close(ctx);
-    return have ? 0 : 3;
 }
 
 /* One worker lane in its own thread. */
@@ -575,6 +499,8 @@ typedef struct work_lane {
     ca_coord_agent *agent;
     char peer[CA_COORD_PEER_MAX];
     uint64_t max_walkers;
+    uint64_t checkin_every;
+    uint64_t lease_secs;
     ca_coord_lane_result res;
 } work_lane;
 
@@ -597,6 +523,8 @@ static void *work_lane_main(void *arg)
     ca_coord_lane_params p;
     ca_coord_lane_params_default(&p, w->peer);
     p.max_walkers = w->max_walkers;
+    if (w->checkin_every) p.checkin_every = w->checkin_every;
+    if (w->lease_secs) p.lease_secs = w->lease_secs;
     ca_coord_lane_run(w->ctx, w->st, &p, w->agent ? work_publish : NULL, w->agent, work_should_stop,
                       NULL, &w->res);
     return NULL;
@@ -615,6 +543,17 @@ static int cmd_work(void)
     if (threads > 256) threads = 256;
     uint64_t max_seconds = opt_u64("--max-seconds", 0);
     uint64_t max_walkers = opt_u64("--max-walkers", 0);
+    /* An agent normally exits once the instance is solved.  Under a
+     * process supervisor that restarts it -- systemd, a Kubernetes
+     * Deployment -- exiting is a restart loop: it comes back, is pushed
+     * the answer it already had, and exits again.  With this flag it
+     * stays up instead, holding its channel, until it is told to stop. */
+    int idle_when_solved = flag("--idle-when-solved");
+    /* Walkers between check-ins: how much work is at risk if this pod
+     * dies, and how promptly the fleet sees what it found. */
+    uint64_t checkin_every = opt_u64("--checkin-every", 0);
+    /* How long this lane's claim stays live without a fresh check-in. */
+    uint64_t lease_secs = opt_u64("--lease-secs", 0);
 
     /* The reverse channel.  Started before the lanes, so the first
      * check-in already has somewhere to go; it connects in the
@@ -638,6 +577,8 @@ static int cmd_work(void)
         lanes[i].st = st;
         lanes[i].agent = agent;
         lanes[i].max_walkers = max_walkers;
+        lanes[i].checkin_every = checkin_every;
+        lanes[i].lease_secs = lease_secs;
         snprintf(lanes[i].peer, sizeof(lanes[i].peer), "%s.%" PRIu64, node, i);
         if (pthread_create(&lanes[i].thread, NULL, work_lane_main, &lanes[i]) != 0)
             die("cannot start a lane");
@@ -654,6 +595,13 @@ static int cmd_work(void)
     }
     work_stop = 1;
     for (uint64_t i = 0; i < threads; i++) pthread_join(lanes[i].thread, NULL);
+    if (idle_when_solved && !coord_interrupted && ca_coord_solution(st, NULL)) {
+        fprintf(stderr, "[agent] solved; idling (--idle-when-solved) until stopped\n");
+        while (!coord_interrupted) {
+            struct timespec ts = {1, 0};
+            nanosleep(&ts, NULL);
+        }
+    }
 
     /* Drain before exiting: the queue lives in this process, and the
      * last check-in is the one carrying the solution. */
@@ -767,7 +715,6 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "cheon")) return cmd_cheon();
     if (!strcmp(cmd, "ic")) return cmd_ic();
     if (!strcmp(cmd, "coord-job")) return cmd_coord_job();
-    if (!strcmp(cmd, "coord")) return cmd_coord();
     if (!strcmp(cmd, "work")) return cmd_work();
     if (!strcmp(cmd, "coord-status")) return cmd_coord_status();
     usage();

@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "ca-coordinator.fullname" . }}-test
+  labels:
+    {{- include "ca-coordinator.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: {{ include "ca-coordinator.agentImage" . | quote }}
+      # `coord-status` is the one-shot client: it fetches the job from
+      # the URL and merges a delta, so a pass means the whole path works
+      # -- routing, the token, the job document and /v1/sync -- and not
+      # merely that a port is open.
+      args:
+        - coord-status
+      env:
+        - name: CA_COORDINATOR_URL
+          value: {{ include "ca-coordinator.internalURL" . | quote }}
+        {{- if include "ca-coordinator.hasToken" . }}
+        - name: CA_COORDINATOR_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "ca-coordinator.tokenSecret" . }}
+              key: {{ .Values.auth.key }}
+        {{- end }}
