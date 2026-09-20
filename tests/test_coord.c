@@ -577,6 +577,19 @@ static void server_note(test_server *s, const char *line)
     pthread_mutex_unlock(&s->lock);
 }
 
+/* Queue a line for the server to replay, bounded explicitly: gcc cannot
+ * see the row length of a decayed `char [N][LINE_MAX]` argument, and at
+ * -O2 it says so. */
+static void server_push_line(test_server *s, const char *line)
+{
+    int cap = (int)(sizeof(s->push) / sizeof(s->push[0]));
+    if (s->push_count >= cap) return;
+    size_t n = strnlen(line, CA_COORD_LINE_MAX - 1);
+    memcpy(s->push[s->push_count], line, n);
+    s->push[s->push_count][n] = 0;
+    s->push_count++;
+}
+
 static int server_heard(test_server *s, const char *prefix)
 {
     int n = 0;
@@ -772,8 +785,9 @@ static void test_fetch_job_over_http(void)
 
     test_server *s = server_start(SCRIPT_JOB);
     if (s) {
-        CHECK(ca_coord_job_encode(ca_coord_ctx_job(ctx), s->push[0], CA_COORD_LINE_MAX) > 0);
-        s->push_count = 1;
+        char doc[CA_COORD_LINE_MAX];
+        CHECK(ca_coord_job_encode(ca_coord_ctx_job(ctx), doc, sizeof(doc)) > 0);
+        server_push_line(s, doc);
         server_url(s, url, sizeof(url));
         ca_coord_job got;
         CHECK(ca_coord_fetch_job(url, "tok", &got) == CA_OK);
@@ -819,10 +833,7 @@ static void test_sync_once_client(void)
 
     test_server *s = server_start(SCRIPT_SYNC);
     if (s) {
-        for (int i = 0; i < n && i < 4; i++) {
-            snprintf(s->push[i], CA_COORD_LINE_MAX, "%s", lines[i]);
-            s->push_count = i + 1;
-        }
+        for (int i = 0; i < n && i < 4; i++) server_push_line(s, lines[i]);
         char url[64];
         server_url(s, url, sizeof(url));
 
@@ -859,10 +870,7 @@ static void test_agent_channel(void)
 
     test_server *s = server_start(SCRIPT_CHANNEL);
     if (s) {
-        for (int i = 0; i < n && i < 4; i++) {
-            snprintf(s->push[i], CA_COORD_LINE_MAX, "%s", lines[i]);
-            s->push_count = i + 1;
-        }
+        for (int i = 0; i < n && i < 4; i++) server_push_line(s, lines[i]);
         char url[64];
         server_url(s, url, sizeof(url));
 
