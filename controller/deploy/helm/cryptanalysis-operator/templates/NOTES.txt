@@ -1,0 +1,19 @@
+cryptanalysis campaign controller deployed.
+
+Scope: {{ if .Values.watchNamespace }}namespace {{ .Values.watchNamespace }}{{ else }}all namespaces{{ end }}
+
+Kueue must be installed in this cluster, and each Campaign namespace needs a
+LocalQueue. For multi-cluster dispatch, point the LocalQueue at a ClusterQueue
+with a MultiKueue admission check and enable ElasticJobsViaWorkloadSlices in
+Kueue so backpressure can resize admitted Jobs in place.
+
+Create a Campaign:
+  kubectl apply -f https://raw.githubusercontent.com/aburan28/cryptanalysis/main/controller/deploy/examples/campaign-ecc2k130.yaml
+
+Watch it:
+  kubectl get campaigns -A
+  kubectl describe campaign <name> -n <namespace>
+  kubectl get jobs,workloads -n <namespace> -l cryptanalysis.io/campaign=<name>
+
+Helm installs the CRD from crds/ once and never upgrades it. On chart upgrades run:
+  kubectl apply --server-side -f controller/deploy/helm/cryptanalysis-operator/crds/

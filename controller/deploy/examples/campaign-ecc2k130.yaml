@@ -1,0 +1,54 @@
+# The live ECC2K-130 campaign scheduled through Kueue. Requires:
+#   - the coordinator chart (usecases/ecc2k130/deploy/helm/ecc2k130-coordinator)
+#   - a Secret "ecc2k130-walker" with key publish-token in this namespace on
+#     every cluster that runs walkers (MultiKueue does not copy Secrets)
+#   - the LocalQueue from kueue-queues.yaml
+apiVersion: cryptanalysis.io/v1alpha1
+kind: Campaign
+metadata:
+  name: ecc2k-130
+  namespace: cryptanalysis
+spec:
+  target:
+    curve: certicom-ecc2k-130
+    campaignId: ecc2k-130
+    contractId: ""
+  coordinator:
+    publishURL: http://ecc2k130-ecc2k130-coordinator-publisher.cryptanalysis.svc
+    tokenSecretRef:
+      name: ecc2k130-walker
+      key: publish-token
+    bucket: ecc2k130-590183823895
+    awsRegion: us-west-2
+    statusURL: https://ecc2k130-status-590183823895.s3.us-west-2.amazonaws.com/status.json
+  workers:
+    image: ghcr.io/aburan28/ecc2k130-walker:0.1.0
+    parallelism: 32
+    slotCount: 256
+    slotBase: 1024
+    resources:
+      requests:
+        cpu: "2"
+        memory: 4Gi
+      limits:
+        nvidia.com/gpu: "1"
+        memory: 4Gi
+    serviceAccountName: ecc2k130-walker   # IRSA-annotated on EKS
+    spool:
+      sizeLimit: 20Gi
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+    terminationGracePeriodSeconds: 180
+  scheduling:
+    queueName: gpu-campaigns
+    workloadPriorityClass: campaign-normal
+    elastic: true
+  backpressure:
+    pollIntervalSeconds: 60
+    redParallelism: 0
+    yellowParallelism: 16
+    recoverySeconds: 300
+    staleAfterSeconds: 900
+  onCollision: Continue

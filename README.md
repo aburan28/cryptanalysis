@@ -220,8 +220,14 @@ separate from the fail-open Redis cache used for disposable fleet hints.
 The coordinator ships as a Helm chart with publisher and consumer Deployments,
 guarded schema-migration init containers and an S3 reconciliation CronJob.
 
+The compute side is scheduled by the [campaign controller](controller/README.md):
+a `Campaign` custom resource becomes a suspended Indexed Job that Kueue admits
+(and MultiKueue dispatches across GPU clusters), each walker owning one slot,
+with the coordinator's green/yellow/red queue pressure feeding back into how
+many walkers run.
+
 ```sh
-make ecc2k130-usecase ecc2k130-helm
+make ecc2k130-usecase ecc2k130-helm controller-test controller-helm
 ```
 
 ## C API in one screen
@@ -340,6 +346,7 @@ tools/                   ca (CLI) and ca_bench
 orchestrator/            Go control plane and agents (deploy/{k8s,systemd,docker})
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
 usecases/ecc2k130/        live ECC2K-130 S3/Redis Streams/RDS integration
+controller/              Campaign CRD + Kueue/MultiKueue scheduling controller
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, DISTRIBUTED.md, FFI.md, GPU.md,

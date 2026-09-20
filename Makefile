@@ -6,7 +6,7 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
         orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth \
-        ecc2k130-usecase ecc2k130-helm
+        ecc2k130-usecase ecc2k130-helm controller controller-test controller-helm
 
 all: lib
 
@@ -79,6 +79,15 @@ ecc2k130-usecase:
 
 ecc2k130-helm:
 	usecases/ecc2k130/deploy/helm/check.sh
+
+controller:
+	$(MAKE) -C controller generate build
+
+controller-test:
+	$(MAKE) -C controller verify-generate fmt-check vet test
+
+controller-helm:
+	$(MAKE) -C controller helm
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \

@@ -1,0 +1,69 @@
+name: controller
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "controller/**"
+      - "Makefile"
+      - ".github/workflows/controller.yml"
+  pull_request:
+    paths:
+      - "controller/**"
+      - "Makefile"
+      - ".github/workflows/controller.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: generate, vet and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: controller/go.mod
+          cache-dependency-path: controller/go.sum
+      - name: Generated files are current
+        run: make -C controller verify-generate
+      - name: gofmt and vet
+        run: make -C controller fmt-check vet
+      - name: Test
+        run: make -C controller test
+
+  chart:
+    name: operator chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - name: Install kubeconform
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
+      - name: Lint, render and validate
+        run: make -C controller helm
+
+  image:
+    name: container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (no push)
+        run: docker build -t campaign-controller:ci controller
+      - name: Binary runs as non-root and answers --help
+        run: |
+          docker run --rm campaign-controller:ci --help 2>&1 | grep -q 'leader-elect'
+          test "$(docker inspect -f '{{.Config.User}}' campaign-controller:ci)" = "65532:65532"
