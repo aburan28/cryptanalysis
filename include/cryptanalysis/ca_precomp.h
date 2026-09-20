@@ -22,11 +22,19 @@
  * The walk is a function of the current point only, adding one of r
  * precomputed steps s_i * base.  Precomputation walks start at a_0 * base
  * (a known multiple of base) and store (endpoint, a_0 + accumulated).  An
- * online walk starts at a * base + b * target and follows the same walk; if
- * it lands on a stored endpoint e * base then e == a' + b*x (mod ord(base))
- * and x is recovered.  Every recovered x is verified before it is returned,
- * so a 64-bit endpoint-hash collision can only cost a retry, never a wrong
- * answer.
+ * online walk starts at a * base + target and follows the same walk; if it
+ * lands on a stored endpoint e * base then e == a' + x (mod ord(base)) and
+ * x = e - a' is recovered.  Every recovered x is verified before it is
+ * returned, so a 64-bit endpoint-hash collision can only cost a retry, never
+ * a wrong answer.
+ *
+ * Implementation: walk starts use a fixed-base table for `base` (cheaper than
+ * generic double-and-add); the precomputation walks W chains at once through
+ * one batched field inversion (ca_group_batch_op, a large win on curves) and
+ * runs across `threads` workers; an optional Bloom filter aborts a chain the
+ * moment it re-enters already-covered ground (paying off when the table is
+ * built to over-cover the group); and the table is a sorted array of
+ * (fingerprint, exponent) pairs looked up by binary search.
  *
  * References:
  *   D. J. Bernstein, T. Lange, "Computing small discrete logarithms
@@ -52,6 +60,10 @@ typedef struct ca_precomp_params {
     uint64_t chain_limit;     /* abandon a chain after this many steps; 0 => auto (~20 * 2^t) */
     uint64_t max_precomp_ops; /* abort building after this many group ops; 0 => none */
     uint64_t max_online_ops;  /* abort a single solve after this many group ops; 0 => none */
+    uint32_t threads;         /* build worker threads; 0 => 1 */
+    uint32_t walks;           /* build batch width per thread (batched inversion); 0 => auto */
+    int32_t early_abort;      /* Bloom early-abort of merging chains: -1 auto, 0 off, 1 on */
+    int32_t reserved;         /* keep the struct 8-byte aligned; unused */
     uint64_t seed;            /* 0 => random */
 } ca_precomp_params;
 
