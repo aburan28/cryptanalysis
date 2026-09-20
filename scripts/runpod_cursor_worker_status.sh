@@ -20,7 +20,7 @@ command -v runpodctl >/dev/null || {
   exit 1
 }
 
-POD_JSON="$(runpodctl pod list --name "$POD_NAME" -a -o json)"
+POD_JSON="$(runpodctl pod list --name "$POD_NAME" --all -o json)"
 POD_ID=""
 DESIRED=""
 RUNTIME=""

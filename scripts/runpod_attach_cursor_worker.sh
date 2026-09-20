@@ -131,10 +131,6 @@ PY
 }
 
 refresh_ssh_info
-if [[ -z "$SSH_HOST" ]]; then
-  echo "ssh info missing host for pod ${POD_ID}: ${INFO_JSON}" >&2
-  exit 1
-fi
 
 ssh_ok() {
   [[ -n "${SSH_HOST:-}" && -n "${SSH_PORT:-}" ]] || return 1
