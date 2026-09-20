@@ -313,7 +313,8 @@ orchestrator/            Go control plane and agents (deploy/{k8s,systemd,docker
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
-docs/                    ALGORITHMS.md, BENCHMARKS.md, DISTRIBUTED.md, FFI.md, GPU.md
+docs/                    ALGORITHMS.md, BENCHMARKS.md, DISTRIBUTED.md, FFI.md, GPU.md,
+                         RUNPOD_CURSOR_WORKER.md (Cursor My Machines on a RunPod)
 fuzz/                    libFuzzer harnesses and their seed corpora
 .github/workflows/       ci, analysis, bindings, orchestrator, fpga, fuzz, codeql, nightly
 ```
