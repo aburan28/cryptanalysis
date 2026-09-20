@@ -120,7 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
     q = subs.add_parser("solve", help="discrete logarithm")
     q.add_argument(
         "--alg",
-        choices=("bsgs", "rho", "kangaroo", "grumpy", "precomp", "dlog"),
+        choices=("bsgs", "rho", "kangaroo", "grumpy", "precomp", "glv", "dlog"),
         default="dlog",
     )
     _add_group_args(q)
@@ -149,6 +149,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     q = subs.add_parser("cheon-divisor", help="the divisor of p-1 Cheon does best with")
     q.add_argument("--p", type=lambda s: int(s, 0), required=True)
+
+    q = subs.add_parser("curve", help="curve endomorphism (GLV) structure and chosen solver")
+    q.add_argument("--name")
+    q.add_argument("--p", type=lambda s: int(s, 0), default=0)
+    q.add_argument("--a", type=lambda s: int(s, 0), default=0)
+    q.add_argument("--b", type=lambda s: int(s, 0), default=0)
+    q.add_argument("--order", type=lambda s: int(s, 0), default=0)
+    q.add_argument("--list", action="store_true", help="list the registry curves")
 
     return p
 
@@ -222,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         with _group(args) as g:
             opts = ca.Options(threads=args.threads, seed=args.seed)
             base, target = _elem(args.g), _elem(args.h)
+            info = None
             try:
                 if args.alg == "bsgs":
                     x, st = g.bsgs(base, target, args.lo, args.hi, opts)
@@ -241,12 +250,17 @@ def main(argv: list[str] | None = None) -> int:
                         threads=args.threads,
                         seed=args.seed,
                     )
+                elif args.alg == "glv":
+                    x, info, st = g.curve_solve(base, target, seed=args.seed)
                 else:
                     x, st = g.dlog(base, target, opts)
             except ca.NotFoundError:
                 print(json.dumps({"found": False}))
                 return 1
             out = {"found": True, "x": str(x), "stats": _stats(st)}
+            if info is not None:
+                out["endomorphism"] = str(info.endo)
+                out["aut_order"] = info.aut_order
 
     elif args.cmd == "ic":
         params = ca.ICParams(threads=args.threads, factor_base_bound=args.bound)
@@ -277,9 +291,33 @@ def main(argv: list[str] | None = None) -> int:
                 "stats": _stats(st),
             }
 
-    else:  # cheon-divisor
+    elif args.cmd == "cheon-divisor":
         d, cost = ca.cheon_best_divisor(args.p)
         out = {"divisor": str(d), "relative_cost": round(cost, 6)}
+
+    else:  # curve
+        if args.list:
+            out = {"curves": ca.curve_names()}
+        else:
+            if args.name:
+                p_, a_, b_, order_ = ca.curve_by_name(args.name)
+            elif args.p:
+                p_, a_, b_, order_ = args.p, args.a, args.b, args.order
+            else:
+                raise SystemExit("curve needs --name, --p, or --list")
+            ci = ca.curve_detect(p_, a_, b_, order_)
+            out = {
+                "p": str(p_),
+                "a": str(a_),
+                "b": str(b_),
+                "order": str(order_),
+                "endomorphism": str(ci.endo),
+                "aut_order": ci.aut_order,
+                "beta": str(ci.beta),
+                "lambda": str(ci.lambda_),
+                "rho_speedup": round(ci.rho_speedup, 4),
+                "solver": "glv-rho" if ci.endo != ca.CurveEndo.NONE else "rho",
+            }
 
     print(json.dumps(out))
     return 0
