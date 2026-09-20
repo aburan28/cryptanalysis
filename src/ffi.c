@@ -264,6 +264,24 @@ int ca_ffi_dlog(const ca_ctx *ctx, const uint64_t base[4], const uint64_t target
     return ca_pohlig_hellman(&ctx->g, &b, &t, &d, x, st);
 }
 
+int ca_ffi_precomp(const ca_ctx *ctx, const uint64_t base[4], const uint64_t target[4],
+                   int32_t dp_bits, uint64_t table_size, double coverage, uint32_t threads,
+                   uint64_t seed, uint64_t *x, ca_stats *st)
+{
+    ca_clear_error();
+    ca_elem b, t;
+    ENC(ctx, b, base);
+    ENC(ctx, t, target);
+    ca_precomp_params p;
+    ca_precomp_params_default(&p);
+    p.dp_bits = dp_bits;
+    p.table_size = table_size;
+    p.coverage = coverage;
+    p.threads = threads;
+    p.seed = seed;
+    return ca_precomp_solve(&ctx->g, &b, &t, &p, x, st);
+}
+
 int ca_ffi_cheon(const ca_ctx *ctx, const uint64_t gen[4], const uint64_t g_alpha[4],
                  const uint64_t g_alpha_d[4], uint64_t d, uint64_t max_exps, uint64_t *alpha,
                  ca_stats *st)
