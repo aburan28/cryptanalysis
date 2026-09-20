@@ -93,7 +93,7 @@ static void test_job_decode_bounds(void)
     } cases[] = {
         {" r=", " r=0 ", "r must be"},       {" r=", " r=99999 ", "r must be"},
         {" dp=", " dp=-1 ", "dp must be"},   {" dp=", " dp=63 ", "dp must be"},
-        {" unit=", " unit=0 ", "unit must"},
+        {" unit=", " unit=0 ", "unit must"}, {" n=", " n=0 ", "n must be"},
     };
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         char bad[CA_COORD_LINE_MAX];

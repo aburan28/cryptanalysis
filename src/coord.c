@@ -86,6 +86,38 @@ static uint64_t coord_job_hash(const char *body, size_t len)
     return ca_mix64(h);
 }
 
+/*
+ * The bounds a job has to satisfy before a context is derived from it.
+ * ca_coord_job_init produces jobs inside them; decode and ctx_open
+ * re-check them, because a document's id is a hash of its own body and
+ * proves only that the line was not altered in transit -- anyone can
+ * mint a consistent one, and a hand-built struct has no id at all.
+ * Without these, r=0 divides by zero in coord_index, a negative dp_bits
+ * shifts by a negative amount, and n < 2 makes every coefficient
+ * reduce by zero and every record fail verification, so a job line --
+ * from /v1/job or from --job -- would decide whether the agent lives.
+ */
+static ca_status coord_job_check_bounds(const ca_coord_job *job)
+{
+    if (job->r < 4 || job->r > 4096) {
+        ca_set_error("r must be in [4, 4096]");
+        return CA_ERR_INVALID;
+    }
+    if (job->dp_bits < 0 || job->dp_bits > 58) {
+        ca_set_error("dp must be in [0, 58]");
+        return CA_ERR_INVALID;
+    }
+    if (job->unit_size == 0) {
+        ca_set_error("unit must not be 0");
+        return CA_ERR_INVALID;
+    }
+    if (job->order < 2) {
+        ca_set_error("n must be at least 2");
+        return CA_ERR_INVALID;
+    }
+    return CA_OK;
+}
+
 ca_status ca_coord_job_init(ca_coord_job *job, const ca_group *g, const ca_elem *base,
                             const ca_elem *target, int32_t dp_bits, uint32_t r, int negation_map,
                             uint64_t unit_size, uint64_t seed)
@@ -120,10 +152,8 @@ ca_status ca_coord_job_init(ca_coord_job *job, const ca_group *g, const ca_elem 
     job->negation_map = negation_map ? 1 : 0;
     job->unit_size = unit_size ? unit_size : 256;
     job->seed = seed;
-    if (job->r < 4 || job->r > 4096) {
-        ca_set_error("r must be in [4, 4096]");
-        return CA_ERR_INVALID;
-    }
+    ca_status rc = coord_job_check_bounds(job);
+    if (rc != CA_OK) return rc;
 
     char body[CA_COORD_LINE_MAX];
     size_t len = coord_job_body(job, body, sizeof(body));
@@ -254,24 +284,10 @@ ca_status ca_coord_job_decode(ca_coord_job *job, const char *line)
     }
     job->kind = (ca_group_kind)kind;
     job->r = (uint32_t)r;
-    /* The same bounds ca_coord_job_init enforces.  The id is a hash of
-     * the document's own body, so it proves the line was not altered in
-     * transit and nothing else: anyone can mint a consistent document.
-     * Without these, r=0 divides by zero in coord_index and a negative
-     * dp_bits shifts by a negative amount, so a job line -- from /v1/job
-     * or from --job -- would decide whether the agent lives. */
-    if (job->r < 4 || job->r > 4096) {
-        ca_set_error("r must be in [4, 4096]");
-        return CA_ERR_INVALID;
-    }
-    if (job->dp_bits < 0 || job->dp_bits > 58) {
-        ca_set_error("dp must be in [0, 58]");
-        return CA_ERR_INVALID;
-    }
-    if (job->unit_size == 0) {
-        ca_set_error("unit must not be 0");
-        return CA_ERR_INVALID;
-    }
+    /* Checked before the id is recomputed, so the error names the bound
+     * that was broken rather than blaming transit. */
+    ca_status rc = coord_job_check_bounds(job);
+    if (rc != CA_OK) return rc;
     {
         char *end = NULL;
         id = strtoull(idp, &end, 16);
@@ -317,7 +333,9 @@ ca_status ca_coord_ctx_open(ca_coord_ctx **out, const ca_coord_job *job)
     ca_coord_ctx *ctx = calloc(1, sizeof(*ctx));
     if (!ctx) return CA_ERR_NOMEM;
     ctx->job = *job;
-    ca_status rc = ca_coord_job_group(&ctx->job, &ctx->g);
+    /* A struct filled in by hand has had none of decode's checks. */
+    ca_status rc = coord_job_check_bounds(&ctx->job);
+    if (rc == CA_OK) rc = ca_coord_job_group(&ctx->job, &ctx->g);
     if (rc != CA_OK) {
         free(ctx);
         return rc;
