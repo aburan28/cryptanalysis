@@ -73,6 +73,10 @@ fi
 echo "found pod id=${POD_ID}"
 
 INFO_JSON="$(runpodctl ssh info "$POD_ID" -o json)"
+# Pre-declare so shellcheck sees the assignments (values come from eval below).
+SSH_HOST=""
+SSH_PORT=""
+SSH_USER=""
 eval "$(INFO_JSON="$INFO_JSON" python3 - <<'PY'
 import json, os, shlex
 info = json.loads(os.environ["INFO_JSON"])
@@ -93,7 +97,7 @@ print(f"SSH_USER={shlex.quote(str(user))}")
 PY
 )"
 
-if [[ -z "${SSH_HOST:-}" ]]; then
+if [[ -z "$SSH_HOST" ]]; then
   echo "ssh info missing host for pod ${POD_ID}: ${INFO_JSON}" >&2
   exit 1
 fi
