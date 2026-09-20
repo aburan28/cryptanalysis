@@ -46,6 +46,7 @@
 #![deny(missing_docs)]
 #![warn(rust_2018_idioms)]
 
+pub mod curve;
 mod error;
 pub mod gpu;
 mod group;
@@ -55,6 +56,7 @@ mod options;
 
 pub use cryptanalysis_sys as sys;
 
+pub use curve::{CurveInfo, Endo};
 pub use error::{Error, Result};
 pub use gpu::{GpuBackend, GpuOptions};
 pub use group::{cheon_best_divisor, Elem, Group, Kind};

@@ -391,6 +391,45 @@ extern "C" {
         st: *mut CaStats,
     ) -> c_int;
 
+    // ---- curve-aware dispatch (GLV endomorphism) --------------------------
+
+    /// Detect a curve's endomorphism structure; out pointers may be null.
+    /// `endo`: 0 none, 1 j-invariant 0, 2 j-invariant 1728.
+    pub fn ca_ffi_curve_detect(
+        p: u64,
+        a: u64,
+        b: u64,
+        order: u64,
+        endo: *mut i32,
+        aut_order: *mut u32,
+        beta: *mut u64,
+        lambda: *mut u64,
+        rho_speedup: *mut c_double,
+    ) -> c_int;
+    /// Registry lookup; fills the non-null outputs.
+    pub fn ca_ffi_curve_by_name(
+        name: *const c_char,
+        p: *mut u64,
+        a: *mut u64,
+        b: *mut u64,
+        order: *mut u64,
+    ) -> c_int;
+    /// The `index`-th registry name, or null past the end.
+    pub fn ca_ffi_curve_name(index: usize) -> *const c_char;
+    /// Solve folding the rho walk by the EC context's endomorphism (else the
+    /// negation-map rho); the endo outputs report which path ran.
+    pub fn ca_ffi_curve_solve(
+        ctx: *const CaCtx,
+        base: *const u64,
+        target: *const u64,
+        seed: u64,
+        x: *mut u64,
+        endo: *mut i32,
+        aut_order: *mut u32,
+        lambda: *mut u64,
+        st: *mut CaStats,
+    ) -> c_int;
+
     // ---- Cheon -------------------------------------------------------------
 
     /// Cheon's attack: recover `alpha` from `g`, `g^alpha`, `g^(alpha^d)` with `d | order - 1`.
