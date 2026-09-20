@@ -37,7 +37,10 @@ def main(argv=None):
         response = urllib.request.urlopen(request, timeout=20)
         result = json.loads(response.read())
     except urllib.error.HTTPError as exc:
-        result = json.loads(exc.read() or b"{}")
+        try:
+            result = json.loads(exc.read() or b"{}")
+        except json.JSONDecodeError:
+            result = {"error": f"HTTP {exc.code}"}
         print(json.dumps(result, sort_keys=True))
         return TEMPFAIL if exc.code == 429 or exc.code >= 500 else 1
     except (OSError, urllib.error.URLError) as exc:
