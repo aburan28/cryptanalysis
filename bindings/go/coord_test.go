@@ -28,7 +28,7 @@ func testJob(t *testing.T, secret uint64) (ca.Job, *ca.Ctx, uint64) {
 	if err != nil {
 		t.Fatalf("mul: %v", err)
 	}
-	job, err := ca.NewJob(ca.JobParams{
+	job, err := ca.NewJob(&ca.JobParams{
 		Kind: ca.GroupZp, P: g.P(), Order: g.Order(),
 		Base: gen, Target: h,
 		DPBits: 5, Branches: 16, UnitSize: 32, Seed: 7,

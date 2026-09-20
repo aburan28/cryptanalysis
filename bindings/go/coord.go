@@ -436,7 +436,7 @@ type JobParams struct {
 // NewJob mints a job document.  Everything that changes the walk is
 // hashed into the id, so two participants agree on the id exactly when
 // they agree on the walk.
-func NewJob(p JobParams) (Job, error) {
+func NewJob(p *JobParams) (Job, error) {
 	var base, target [4]C.uint64_t
 	for i := 0; i < 4 && i < len(p.Base); i++ {
 		base[i] = C.uint64_t(p.Base[i])

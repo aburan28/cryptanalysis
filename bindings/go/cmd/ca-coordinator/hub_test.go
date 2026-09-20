@@ -33,7 +33,7 @@ func testFixture(t *testing.T, secret uint64) (*ca.Ctx, uint64) {
 	if err != nil {
 		t.Fatalf("mul: %v", err)
 	}
-	job, err := ca.NewJob(ca.JobParams{
+	job, err := ca.NewJob(&ca.JobParams{
 		Kind: ca.GroupZp, P: g.P(), Order: g.Order(),
 		Base: gen, Target: h, DPBits: 5, Branches: 16, UnitSize: 32, Seed: 7,
 	})
@@ -66,7 +66,7 @@ func newTestHub(t *testing.T, ctx *ca.Ctx, cfg Config) (*Hub, *ca.State, *httpte
 
 func get(t *testing.T, url, token string) (int, string) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,26 +335,29 @@ func TestAgentsConvergeThroughTheHub(t *testing.T) {
 		conn  *ca.Agent
 	}
 	agents := make([]*agent, 2)
+	// Cleanup is registered with t.Cleanup rather than deferred inside
+	// the loop: the connections must be stopped before the states they
+	// merge into are freed, and t.Cleanup runs last-in-first-out.
 	for i := range agents {
 		st, err := ca.NewState(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer st.Close()
+		t.Cleanup(st.Close)
 		name := fmt.Sprintf("a%d", i)
 		conn, err := ca.Dial(srv.URL, "tok", name, ctx, st)
 		if err != nil {
 			t.Fatalf("dial: %v", err)
 		}
-		defer conn.Stop()
+		t.Cleanup(conn.Stop)
 		agents[i] = &agent{name: name, state: st, conn: conn}
 	}
 
 	var wg sync.WaitGroup
 	done := make(chan struct{})
-	for i, a := range agents {
+	for _, a := range agents {
 		wg.Add(1)
-		go func(i int, a *agent) {
+		go func(a *agent) {
 			defer wg.Done()
 			sent := 0
 			for {
@@ -385,7 +388,7 @@ func TestAgentsConvergeThroughTheHub(t *testing.T) {
 				}
 				time.Sleep(10 * time.Millisecond)
 			}
-		}(i, a)
+		}(a)
 	}
 
 	deadline := time.After(60 * time.Second)

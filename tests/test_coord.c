@@ -83,9 +83,11 @@ static void test_job_roundtrip(void)
      * on different branch tables would silently stop colliding. */
     char *dp = strstr(line, " dp=");
     CHECK(dp != NULL);
-    dp[4] = dp[4] == '5' ? '6' : '5';
-    ca_coord_job tampered;
-    CHECK(ca_coord_job_decode(&tampered, line) == CA_ERR_INVALID);
+    if (dp) {
+        dp[4] = dp[4] == '5' ? '6' : '5';
+        ca_coord_job tampered;
+        CHECK(ca_coord_job_decode(&tampered, line) == CA_ERR_INVALID);
+    }
 
     /* And every field that changes the walk changes the id, so two
      * agents cannot agree on an id while disagreeing on the walk. */

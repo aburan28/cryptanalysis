@@ -22,19 +22,37 @@ import (
 
 func jsonEncoder(w io.Writer) *json.Encoder { return json.NewEncoder(w) }
 
+// options are the flag values, parsed by main and used by run.
+//
+// The split exists because os.Exit does not run deferred functions: main
+// parses and exits, run acquires things and releases them on the way
+// out, and nothing that has to be closed is acquired next to an
+// os.Exit.
+type options struct {
+	jobPath   string
+	listen    string
+	tokenFile string
+	requireTk bool
+	logPath   string
+	leaseSecs uint64
+	pushEvery time.Duration
+	idle      time.Duration
+	report    time.Duration
+	logFormat string
+}
+
 func main() {
-	var (
-		jobPath   = flag.String("job", "", "job document to serve (a file written by `ca coord-job`)")
-		listen    = flag.String("listen", ":8080", "address to serve on")
-		tokenFile = flag.String("token-file", "", "file whose first line is the required bearer token")
-		requireTk = flag.Bool("require-token", false, "refuse to start without a token")
-		logPath   = flag.String("log", "", "append every accepted check-in to this file, and replay it at start")
-		leaseSecs = flag.Uint64("lease-secs", 120, "seconds a silent claim counts as active (reporting only)")
-		pushEvery = flag.Duration("push-interval", 500*time.Millisecond, "how often an idle channel is examined")
-		idle      = flag.Duration("idle-timeout", 5*time.Minute, "drop a channel silent this long; pings go at a third of it")
-		report    = flag.Duration("report-interval", 30*time.Second, "how often to log a progress line (0 disables)")
-		logFormat = flag.String("log-format", "json", "log format: json or text")
-	)
+	var o options
+	flag.StringVar(&o.jobPath, "job", "", "job document to serve (a file written by `ca coord-job`)")
+	flag.StringVar(&o.listen, "listen", ":8080", "address to serve on")
+	flag.StringVar(&o.tokenFile, "token-file", "", "file whose first line is the required bearer token")
+	flag.BoolVar(&o.requireTk, "require-token", false, "refuse to start without a token")
+	flag.StringVar(&o.logPath, "log", "", "append every accepted check-in to this file, and replay it at start")
+	flag.Uint64Var(&o.leaseSecs, "lease-secs", 120, "seconds a silent claim counts as active (reporting only)")
+	flag.DurationVar(&o.pushEvery, "push-interval", 500*time.Millisecond, "how often an idle channel is examined")
+	flag.DurationVar(&o.idle, "idle-timeout", 5*time.Minute, "drop a channel silent this long; pings go at a third of it")
+	flag.DurationVar(&o.report, "report-interval", 30*time.Second, "how often to log a progress line (0 disables)")
+	flag.StringVar(&o.logFormat, "log-format", "json", "log format: json or text")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(),
 			"ca-coordinator: the rendezvous a distributed-rho fleet dials out to.\n\n"+
@@ -48,42 +66,46 @@ func main() {
 	}
 	flag.Parse()
 
-	log := newLogger(*logFormat)
+	log := newLogger(o.logFormat)
 	slog.SetDefault(log)
 
-	if *jobPath == "" {
-		log.Error("no -job given; the coordinator serves exactly one job document")
-		os.Exit(2)
-	}
-	job, err := loadJob(*jobPath)
+	code, err := run(&o, log)
 	if err != nil {
-		log.Error("cannot load the job", "path", *jobPath, "err", err)
-		os.Exit(1)
+		log.Error("coordinator failed", "err", err)
 	}
-	token, err := loadToken(*tokenFile)
+	os.Exit(code)
+}
+
+// run does the work and returns the process's exit status.  Everything
+// it acquires is released before it returns.
+func run(o *options, log *slog.Logger) (int, error) {
+	if o.jobPath == "" {
+		return 2, errors.New("no -job given; the coordinator serves exactly one job document")
+	}
+	job, err := loadJob(o.jobPath)
 	if err != nil {
-		log.Error("cannot read the token", "err", err)
-		os.Exit(1)
+		return 1, fmt.Errorf("cannot load the job from %s: %w", o.jobPath, err)
 	}
-	if token == "" && *requireTk {
-		log.Error("-require-token was set but no token was given (-token-file or " + ca.TokenEnv + ")")
-		os.Exit(2)
+	token, err := loadToken(o.tokenFile)
+	if err != nil {
+		return 1, fmt.Errorf("cannot read the token: %w", err)
 	}
-	if token == "" && !strings.HasPrefix(*listen, "127.0.0.1") && !strings.HasPrefix(*listen, "localhost") {
+	if token == "" && o.requireTk {
+		return 2, errors.New("-require-token was set but no token was given (-token-file or " + ca.TokenEnv + ")")
+	}
+	if token == "" && !strings.HasPrefix(o.listen, "127.0.0.1") && !strings.HasPrefix(o.listen, "localhost") {
 		log.Warn("serving with no token: anyone who can reach this can read the job and write to the log",
-			"listen", *listen)
+			"listen", o.listen)
 	}
 
 	ctx, err := ca.OpenCtx(job)
 	if err != nil {
-		log.Error("cannot derive the job context", "err", err)
-		os.Exit(1)
+		return 1, fmt.Errorf("cannot derive the job context: %w", err)
 	}
 	defer ctx.Close()
 	state, err := ca.NewState(ctx)
 	if err != nil {
-		log.Error("cannot create the state", "err", err)
-		os.Exit(1)
+		return 1, fmt.Errorf("cannot create the state: %w", err)
 	}
 	defer state.Close()
 
@@ -94,26 +116,24 @@ func main() {
 	// for the fleet to refill it.  Replay is safe at any time: the merge
 	// is idempotent.
 	var sink *checkinLog
-	if *logPath != "" {
-		sink, err = openCheckinLog(*logPath)
+	if o.logPath != "" {
+		sink, err = openCheckinLog(o.logPath)
 		if err != nil {
-			log.Error("cannot open the check-in log", "path", *logPath, "err", err)
-			os.Exit(1)
+			return 1, fmt.Errorf("cannot open the check-in log %s: %w", o.logPath, err)
 		}
 		defer sink.Close()
 		n, bad, err := sink.Replay(state)
 		if err != nil {
-			log.Error("cannot replay the check-in log", "err", err)
-			os.Exit(1)
+			return 1, fmt.Errorf("cannot replay the check-in log: %w", err)
 		}
-		log.Info("check-in log replayed", "path", *logPath, "merged", n, "rejected", bad)
+		log.Info("check-in log replayed", "path", o.logPath, "merged", n, "rejected", bad)
 	}
 
 	hub := NewHub(ctx, state, Config{
 		Token:        token,
-		PushInterval: *pushEvery,
-		IdleTimeout:  *idle,
-		LeaseSecs:    *leaseSecs,
+		PushInterval: o.pushEvery,
+		IdleTimeout:  o.idle,
+		LeaseSecs:    o.leaseSecs,
 		OnCheckIn: func(line string) {
 			if sink != nil {
 				sink.Append(line)
@@ -123,19 +143,18 @@ func main() {
 	})
 
 	srv := &http.Server{
-		Addr:    *listen,
+		Addr:    o.listen,
 		Handler: hub.Handler(),
 		// No write timeout: a reverse channel is a long-lived hijacked
 		// connection and a deadline would cut it.  ReadHeaderTimeout
 		// still bounds a client that opens a socket and says nothing.
 		ReadHeaderTimeout: 15 * time.Second,
-		IdleTimeout:       *idle,
-		ErrorLog:          nil,
+		IdleTimeout:       o.idle,
 	}
 
 	log.Info("serving",
 		"job", job.IDString(),
-		"listen", *listen,
+		"listen", o.listen,
 		"token", token != "",
 		"expected_steps", ctx.ExpectedSteps(),
 		"expected_dps", ctx.ExpectedDPs(),
@@ -144,8 +163,8 @@ func main() {
 	root, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if *report > 0 {
-		go reportLoop(root, hub, state, *leaseSecs, *report, log)
+	if o.report > 0 {
+		go reportLoop(root, hub, state, o.leaseSecs, o.report, log)
 	}
 
 	errCh := make(chan error, 1)
@@ -157,8 +176,7 @@ func main() {
 
 	select {
 	case err := <-errCh:
-		log.Error("server failed", "err", err)
-		os.Exit(1)
+		return 1, fmt.Errorf("server failed: %w", err)
 	case <-root.Done():
 		log.Info("shutting down")
 	}
@@ -171,9 +189,10 @@ func main() {
 	if err := srv.Shutdown(shutCtx); err != nil {
 		log.Warn("shutdown was not clean", "err", err)
 	}
-	p := state.Progress(*leaseSecs)
+	p := state.Progress(o.leaseSecs)
 	log.Info("stopped", "steps", p.Steps, "dps", p.DPsStored, "checkins", p.Checkins,
 		"solved", p.Solved, "solution", p.Solution)
+	return 0, nil
 }
 
 func newLogger(format string) *slog.Logger {
@@ -244,6 +263,9 @@ func openCheckinLog(path string) (*checkinLog, error) {
 			return nil, err
 		}
 	}
+	// 0640: the log carries the fleet's distinguished points, which are
+	// public facts about the job, but it is still operational data and
+	// there is no reason for it to be world-readable.
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o640)
 	if err != nil {
 		return nil, err

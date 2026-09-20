@@ -42,9 +42,12 @@
 
 #include "ca_internal.h" /* ca_now: the CLI already links the static library */
 
+#include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -385,11 +388,9 @@ static const char *coord_token(void)
         static char buf[256];
         FILE *f = fopen(path, "r");
         if (!f) die("cannot read --token-file");
-        if (!fgets(buf, sizeof(buf), f)) {
-            fclose(f);
-            die("--token-file is empty");
-        }
+        const char *got = fgets(buf, sizeof(buf), f);
         fclose(f);
+        if (!got) die("--token-file is empty");
         buf[strcspn(buf, "\r\n")] = 0;
         if (!buf[0]) die("--token-file is empty");
         return buf;
@@ -440,8 +441,17 @@ static int cmd_coord_job(void)
     if (!ca_coord_job_encode(&job, line, sizeof(line))) die("job does not encode");
     const char *out = opt("--out");
     if (out) {
-        FILE *f = fopen(out, "w");
-        if (!f) die("cannot write --out");
+        /* Created with an explicit mode rather than through fopen, whose
+         * 0666-and-umask depends on the caller's environment.  The job
+         * document is public -- it is what every participant is handed --
+         * but a file this program creates should still say what it means. */
+        int fd = open(out, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+        if (fd < 0) die("cannot write --out");
+        FILE *f = fdopen(fd, "w");
+        if (!f) {
+            close(fd);
+            die("cannot write --out");
+        }
         fprintf(f, "%s\n", line);
         fclose(f);
     } else {
@@ -462,11 +472,9 @@ static ca_coord_ctx *coord_load(int allow_remote)
         FILE *f = fopen(path, "r");
         if (!f) die("cannot read --job");
         char line[CA_COORD_LINE_MAX];
-        if (!fgets(line, sizeof(line), f)) {
-            fclose(f);
-            die("--job is empty");
-        }
+        const char *got = fgets(line, sizeof(line), f);
         fclose(f);
+        if (!got) die("--job is empty");
         line[strcspn(line, "\r\n")] = 0;
         ca_status rc = ca_coord_job_decode(&job, line);
         if (rc != CA_OK) die_status(rc);

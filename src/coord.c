@@ -812,7 +812,7 @@ static int coord_dp_insert(ca_coord_state *st, const ca_coord_ctx *ctx, const ca
     uint64_t key = ca_group_hash(&ctx->g, y);
     size_t j = key & (st->dp_cap - 1);
     while (st->dp[j].used) {
-        coord_dp_entry *e = &st->dp[j];
+        const coord_dp_entry *e = &st->dp[j];
         if (e->key == key) {
             ca_elem stored;
             if (ca_group_encode(&ctx->g, &stored, e->point) == 1 &&
@@ -890,7 +890,7 @@ static int coord_log_append(ca_coord_state *st, uint32_t peer, uint64_t seq, con
     return 1;
 }
 
-static int coord_seen(ca_coord_state *st, uint32_t peer, uint64_t seq)
+static int coord_seen(const ca_coord_state *st, uint32_t peer, uint64_t seq)
 {
     for (size_t i = 0; i < st->log_count; i++)
         if (st->log[i].peer == peer && st->log[i].seq == seq) return 1;

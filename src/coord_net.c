@@ -45,9 +45,8 @@
 typedef struct coord_conn {
     int fd;
     char buf[CA_COORD_LINE_MAX];
-    size_t len;   /* bytes buffered */
-    size_t pos;   /* bytes consumed */
-    int overflow; /* a line longer than the buffer was seen */
+    size_t len; /* bytes buffered */
+    size_t pos; /* bytes consumed */
 } coord_conn;
 
 static void conn_init(coord_conn *c, int fd)
