@@ -106,7 +106,13 @@ want '"last":997' num sieve --bound 1000
 want '"agree":true' num mont --p 1000003 --a 12345 --b 67890
 want '"agree":true' num mont --p 2147483647 --a 123456789 --b 987654321
 want_fail num mont --p 1000004                   # even modulus
+want_fail num mont --p 1                          # below the Montgomery floor
+want_fail num mont --p 0                          # would divide by zero
 want_fail num powmod --base 3 --exp 4 --mod 1     # degenerate modulus
+# m1 * m2 must not wrap: the result is reduced against it, so a wrapped modulus
+# would be printed alongside an answer not taken modulo it.
+want_fail num crt --r1 1 --m1 18446744073709551557 --r2 1 --m2 3
+want_fail num sieve --bound 99999999999           # would be an absurd allocation
 want_fail num nonsense
 
 # ── factorisation and primality ─────────────────────────────────────────────

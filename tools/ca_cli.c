@@ -630,6 +630,10 @@ static int cmd_num(void)
         uint64_t m1 = opt_u64("--m1", 0), m2 = opt_u64("--m2", 0);
         if (m1 == 0 || m2 == 0) die("--m1 and --m2 are required");
         if (ca_gcd(m1, m2) != 1) die("moduli must be coprime");
+        /* The combined modulus is what the result is reduced against, so a
+         * product that wraps would print a modulus the answer is not taken
+         * modulo.  Refuse rather than report a smaller one. */
+        if (m1 > UINT64_MAX / m2) die("--m1 * --m2 overflows 64 bits");
         printf("{\"result\":\"%" PRIu64 "\",\"modulus\":\"%" PRIu64 "\"}\n",
                ca_crt2(opt_u64("--r1", 0), m1, opt_u64("--r2", 0), m2), m1 * m2);
         return 0;
@@ -668,6 +672,9 @@ static int cmd_num(void)
     }
     if (!strcmp(op, "sieve")) {
         uint64_t bound = opt_u64("--bound", 100);
+        /* The table is sized from the bound, so an absurd bound becomes an
+         * absurd allocation.  Refusing with a message beats a failing calloc. */
+        if (bound > (1ULL << 32)) die("--bound above 2^32 needs a segmented sieve");
         /* pi(x) < 1.3 x / ln x for x >= 17, and the +16 covers the small cases
          * where that bound has not kicked in yet. */
         size_t cap = (size_t)(bound / 2) + 16;
@@ -681,9 +688,15 @@ static int cmd_num(void)
         return 0;
     }
     if (!strcmp(op, "mont")) {
+        /* Check the modulus here rather than leaning on ca_mont_init's return.
+         * It does reject p < 3 and even p, but that is in another translation
+         * unit, so nothing at this call site proves p != 0 before the reductions
+         * below -- and clang-analyzer is right to say so.  Every other command
+         * in this file states its own modulus contract; this one now does too. */
         uint64_t p = opt_u64("--p", 0);
+        if (p < 3 || p % 2 == 0) die("--p must be odd and at least 3");
         ca_mont m;
-        if (!ca_mont_init(&m, p)) die("--p must be odd and at least 3");
+        if (!ca_mont_init(&m, p)) die("ca_mont_init rejected the modulus");
         uint64_t a = opt_u64("--a", 0) % p, b = opt_u64("--b", 0) % p;
         uint64_t am = ca_mont_to(&m, a), bm = ca_mont_to(&m, b);
         uint64_t prod = ca_mont_from(&m, ca_mont_mul(&m, am, bm));
