@@ -360,9 +360,10 @@ CA_API ca_status ca_coord_agent_start(ca_coord_agent **out, const char *url, con
                                       ca_coord_state *st);
 /* Queue a check-in for the hub.  Non-blocking and safe from any lane. */
 CA_API void ca_coord_agent_publish(ca_coord_agent *ag, const ca_coord_checkin *ci);
-/* Wait until the queue has drained, or `timeout_ms` passes.  Returns 1
- * if it drained.  Call it before exiting: the queue lives in this
- * process, and the last check-in is the one carrying the solution. */
+/* Wait until the queue has drained -- every queued check-in acked by the
+ * hub -- or `timeout_ms` passes.  Returns 1 if it drained.  Call it
+ * before exiting: the queue lives in this process, and the last check-in
+ * is the one carrying the solution. */
 CA_API int ca_coord_agent_flush(ca_coord_agent *ag, uint64_t timeout_ms);
 CA_API void ca_coord_agent_stats_get(ca_coord_agent *ag, ca_coord_agent_stats *out);
 CA_API void ca_coord_agent_stop(ca_coord_agent *ag);

@@ -687,22 +687,28 @@ static void server_handle(test_server *s, int fd)
                 break;
             }
             if (in[0]) server_note(s, in);
+            /* The hub acks every check-in; the agent keeps it until then. */
+            if (!strncmp(in, "ci ", 3)) server_write(fd, "ack 0 0\n");
         }
         break;
     }
     case SCRIPT_HANGUP: break;
     case SCRIPT_CHANNEL_RESET: {
-        /* Upgrade, then abort the first connection with an RST so the
-         * agent's next write genuinely fails rather than being buffered
-         * into a socket that merely closed politely.  Later connections
-         * behave like SCRIPT_CHANNEL, so whatever the agent kept goes up
-         * when it redials. */
+        /* Upgrade, take one check-in off the wire without acking it, then
+         * abort the first connection with an RST.  The agent's write of
+         * that line succeeded, so only keeping it until the ack can bring
+         * it back.  Later connections behave like SCRIPT_CHANNEL, so
+         * whatever the agent kept goes up when it redials. */
         server_write(fd, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: " CA_COORD_PROTOCOL
                          "\r\nConnection: Upgrade\r\n\r\n");
         pthread_mutex_lock(&s->lock);
         int first = (s->connections == 1);
         pthread_mutex_unlock(&s->lock);
         if (first) {
+            struct timeval tv = {2, 0};
+            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            char in[CA_COORD_LINE_MAX];
+            while (server_read_line(fd, in, sizeof(in)) && strncmp(in, "ci ", 3) != 0) {}
             struct linger lg = {1, 0};
             setsockopt(fd, SOL_SOCKET, SO_LINGER, &lg, sizeof(lg));
             break;
@@ -716,6 +722,7 @@ static void server_handle(test_server *s, int fd)
                 break;
             }
             if (in[0]) server_note(s, in);
+            if (!strncmp(in, "ci ", 3)) server_write(fd, "ack 0 0\n");
         }
         break;
     }
@@ -888,12 +895,11 @@ static void test_sync_once_client(void)
 }
 
 /* Nothing published around a reset is lost: the agent redials and every
- * check-in still arrives.  Note what this does *not* pin down.  The bug it
- * accompanies is a line that was dequeued and then failed to write, and
- * this test does not fail without that fix, because the session loop reads
- * after it writes and so usually sees the reset before a write can fail.
- * The invariant below is the one a user cares about and is worth holding;
- * the narrow window itself is argued in the code, not caught here. */
+ * check-in still arrives.  The first connection reads a check-in and then
+ * resets without acking it, which is the case a failed write does not
+ * cover -- the bytes left this process, and the hub never merged them --
+ * so an agent that lets go of a line on the write, rather than on the
+ * ack, fails this. */
 static void test_agent_requeues_unsent(void)
 {
     ca_group g;

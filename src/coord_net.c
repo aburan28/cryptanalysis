@@ -355,6 +355,11 @@ struct ca_coord_agent {
     pthread_mutex_t lock; /* the outbox and the stats */
     char **outbox;        /* encoded check-in lines, oldest first */
     size_t out_count, out_cap;
+    /* The first out_sent lines are on the wire and not yet acked.  A
+     * line leaves the outbox on the hub's ack, not on the write: a send
+     * that fails, or a socket that drops with bytes still in flight,
+     * would otherwise leave the record only in this process's table. */
+    size_t out_sent;
     ca_coord_agent_stats stats;
 
     atomic_int stop;
@@ -405,22 +410,18 @@ void ca_coord_agent_publish(ca_coord_agent *ag, const ca_coord_checkin *ci)
     pthread_mutex_unlock(&ag->lock);
 }
 
-/* Put a line that failed to go out back at the head of the outbox, so the
- * next session sends it before anything newer.  The slot it came from is
- * still spare, so this cannot fail; if the queue grew while the write was
- * in flight the line is simply freed rather than lost track of, which only
- * happens when a reallocation already took every slot. */
-static void agent_requeue_front(ca_coord_agent *ag, char *line)
+/* The hub acks check-ins in the order it read them, so an ack retires
+ * the oldest line in flight. */
+static void agent_acked(ca_coord_agent *ag)
 {
     pthread_mutex_lock(&ag->lock);
-    if (ag->out_count < ag->out_cap) {
-        memmove(ag->outbox + 1, ag->outbox, ag->out_count * sizeof(*ag->outbox));
-        ag->outbox[0] = line;
-        ag->out_count++;
-        line = NULL;
+    if (ag->out_sent) {
+        free(ag->outbox[0]);
+        memmove(ag->outbox, ag->outbox + 1, (ag->out_count - 1) * sizeof(*ag->outbox));
+        ag->out_count--;
+        ag->out_sent--;
     }
     pthread_mutex_unlock(&ag->lock);
-    free(line);
 }
 
 int ca_coord_agent_flush(ca_coord_agent *ag, uint64_t timeout_ms)
@@ -549,29 +550,21 @@ static int agent_session(ca_coord_agent *ag)
 
     uint64_t last_out = (uint64_t)time(NULL);
     while (!atomic_load(&ag->stop)) {
-        /* Everything the lanes produced since the last turn goes up. */
-        char *pending = NULL;
+        /* Everything the lanes produced since the last turn goes up.
+         * The line stays in the outbox until the hub acks it: nothing
+         * else would offer it again, because the hello on the next
+         * connection says what this agent *has*, so the hub pushes down
+         * and never asks up, and a later check-in carries a higher unit
+         * cursor rather than these points.  Only this thread retires
+         * lines, so the pointer is safe to use unlocked. */
+        const char *pending = NULL;
         pthread_mutex_lock(&ag->lock);
-        if (ag->out_count) {
-            pending = ag->outbox[0];
-            memmove(ag->outbox, ag->outbox + 1, (ag->out_count - 1) * sizeof(*ag->outbox));
-            ag->out_count--;
-        }
+        if (ag->out_sent < ag->out_count) pending = ag->outbox[ag->out_sent];
         pthread_mutex_unlock(&ag->lock);
         if (pending) {
-            int wrc = conn_line(&conn, pending);
-            if (wrc < 0) {
-                /* The hub never saw this line.  Nothing else will offer it
-                 * again: the hello on the next connection says what this
-                 * agent *has*, so the hub pushes down and never asks up,
-                 * and a later check-in carries a higher unit cursor rather
-                 * than these points.  So it goes back at the head of the
-                 * queue, in order, and the next session sends it. */
-                agent_requeue_front(ag, pending);
-                break;
-            }
-            free(pending);
+            if (conn_line(&conn, pending) < 0) break;
             pthread_mutex_lock(&ag->lock);
+            ag->out_sent++;
             ag->stats.sent++;
             pthread_mutex_unlock(&ag->lock);
             last_out = (uint64_t)time(NULL);
@@ -585,12 +578,14 @@ static int agent_session(ca_coord_agent *ag)
         if (r == 0) continue;
         if (!strncmp(line, "ci ", 3))
             agent_merge_line(ag, line);
+        else if (!strncmp(line, "ack ", 4))
+            agent_acked(ag);
         else if (!strncmp(line, "err ", 4)) {
             agent_note_error(ag, line + 4);
             close(fd);
             return -1;
         }
-        /* "ack" and "ping" need no action. */
+        /* "ping" needs no action. */
     }
     close(fd);
     return 0;
@@ -605,6 +600,8 @@ static void *agent_main(void *arg)
         pthread_mutex_lock(&ag->lock);
         ag->stats.connected = 0;
         ag->stats.reconnects++;
+        /* Whatever the hub did not ack goes again on the next connection. */
+        ag->out_sent = 0;
         pthread_mutex_unlock(&ag->lock);
         if (rc == 0)
             backoff_ms = 1000;
