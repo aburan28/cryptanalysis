@@ -13,6 +13,14 @@ where `N` is the group order (whole-group problems) or the interval width
 size, so "is this better than rho" is one column.  See
 [BENCHMARKS.md](BENCHMARKS.md) for the tables.
 
+`S` fixes the exponent at `1/2` and reports the constant.  To compare
+algorithms whose exponents differ -- or to *check* that an exponent is what
+theory claims -- `ca_bench complexity` fits the measured cost to
+`C * N^alpha` across a size sweep and reports the fitted `alpha` (globally for
+a whole algorithm, and per step for a method's phases, e.g. the `n^{2/3}`
+build and `n^{1/3}` online of the precomputation solver) alongside the
+normalised constant.  This measures the `O()` rather than assuming it.
+
 ## Setting and scope
 
 Everything is written against a generic cyclic group interface
