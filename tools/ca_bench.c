@@ -80,62 +80,104 @@ static void find_prime_order_curve(unsigned bits, uint64_t *p, uint64_t *a, uint
     }
 }
 
-static void run_generic(unsigned bits, unsigned reps, unsigned threads, int ec)
+/* Empirical time complexity.  fit_power_law (defined below) fits measured
+ * cost ~ C * N^alpha; cx_summary prints the fitted exponent for a table's
+ * algorithms, so every mode reports the measured O(), not an assumed one. */
+typedef struct cx_fit {
+    double alpha;
+    double c_fit;
+    double r2;
+    double c_theory;
+    int npts;
+} cx_fit;
+
+static cx_fit fit_power_law(const double *N, const double *cost, int m, double theory);
+
+static void cx_summary(const char *label, const char *var, const char **names, const double *theory,
+                       const double *Nv, double (*cost)[16], int nalg, int nb)
 {
-    ca_group g;
-    ca_elem gen;
-    uint64_t n;
-    if (!ec) {
-        uint64_t p;
-        n = find_safe_prime(bits, &p);
-        ca_group_zp_init(&g, p, n);
-    } else {
-        uint64_t p, a, b;
-        find_prime_order_curve(bits, &p, &a, &b, &n);
-        ca_group_ec_init(&g, p, a, b, n);
-        g.cofactor = 1;
-    }
-    ca_group_find_generator(&g, &gen, 1);
-    double sq = sqrt((double)n);
-    enum { NALG = 5 };
-    const char *names[NALG] = {"bsgs", "rho-1", "rho-T", "kangaroo", "grumpy"};
-    double ops[NALG] = {0}, secs[NALG] = {0};
-    unsigned ok[NALG] = {0};
-    ca_rng rng;
-    ca_rng_seed(&rng, 1234 + bits);
-    for (unsigned r = 0; r < reps; r++) {
-        uint64_t x = ca_rng_below(&rng, n);
-        ca_elem h;
-        ca_group_mul(&g, &h, &gen, x, NULL);
-        for (int a = 0; a < NALG; a++) {
-            ca_stats st = {0};
-            uint64_t got = 0;
-            ca_status rc;
-            ca_dlog_params dp;
-            ca_dlog_params_default(&dp);
-            dp.rho.seed = 100 + r;
-            dp.kangaroo.seed = 100 + r;
-            switch (a) {
-            case 0: rc = ca_bsgs_solve(&g, &gen, &h, 0, 0, &dp.bsgs, &got, &st); break;
-            case 1: rc = ca_rho_solve(&g, &gen, &h, &dp.rho, &got, &st); break;
-            case 2: dp.rho.threads = threads; rc = ca_rho_solve(&g, &gen, &h, &dp.rho, &got, &st); break;
-            case 3: rc = ca_kangaroo_solve(&g, &gen, &h, 0, 0, &dp.kangaroo, &got, &st); break;
-            default: rc = ca_grumpy_solve(&g, &gen, &h, 0, 0, &dp.grumpy, &got, &st); break;
-            }
-            ops[a] += (double)st.group_ops;
-            secs[a] += st.seconds;
-            ok[a] += (rc == CA_OK && got == x);
-        }
-    }
-    for (int a = 0; a < NALG; a++) {
-        printf("| %-4s | %3u | %-9s | %8.3f | %10.4f | %8.0f | %u/%u |\n", ec ? "ec" : "zp", bits, names[a],
-               ops[a] / reps / sq, secs[a] / reps, ops[a] / reps / (secs[a] / reps + 1e-12) / 1e6,
-               ok[a], reps);
+    printf("  %s: fitted cost ~ C * %s^alpha (the measured exponent)\n", label, var);
+    printf("  | algorithm      | theory  | fitted alpha |  R^2   | const @ %s^theory |\n", var);
+    printf("  |----------------|---------|--------------|--------|------------------|\n");
+    for (int a = 0; a < nalg; a++) {
+        cx_fit f = fit_power_law(Nv, cost[a], nb, theory[a]);
+        printf("  | %-14s | %s^%.3f | %12.3f | %6.4f | %16.3f |\n", names[a], var, theory[a],
+               f.alpha, f.r2, f.c_theory);
     }
 }
 
-static void run_interval(unsigned wbits, unsigned reps, int ec)
+static void run_generic(const unsigned *bits, int nb, unsigned reps, unsigned threads, int ec)
 {
+    enum { NALG = 5 };
+    static const char *names[NALG] = {"bsgs", "rho-1", "rho-T", "kangaroo", "grumpy"};
+    static const double theory[NALG] = {0.5, 0.5, 0.5, 0.5, 0.5};
+    double Nv[16], cost[NALG][16];
+    if (nb > 16) nb = 16;
+    printf("| grp | bits | algorithm | S=ops/sqrtn | seconds    | Mops/s   | ok  |\n");
+    printf("|-----|------|-----------|-------------|------------|----------|-----|\n");
+    for (int si = 0; si < nb; si++) {
+        ca_group g;
+        ca_elem gen;
+        uint64_t n;
+        if (!ec) {
+            uint64_t p;
+            n = find_safe_prime(bits[si], &p);
+            ca_group_zp_init(&g, p, n);
+        } else {
+            uint64_t p, a, b;
+            find_prime_order_curve(bits[si], &p, &a, &b, &n);
+            ca_group_ec_init(&g, p, a, b, n);
+            g.cofactor = 1;
+        }
+        ca_group_find_generator(&g, &gen, 1);
+        Nv[si] = (double)n;
+        double sq = sqrt((double)n);
+        double ops[NALG] = {0}, secs[NALG] = {0};
+        unsigned ok[NALG] = {0};
+        ca_rng rng;
+        ca_rng_seed(&rng, 1234 + bits[si]);
+        for (unsigned r = 0; r < reps; r++) {
+            uint64_t x = ca_rng_below(&rng, n);
+            ca_elem h;
+            ca_group_mul(&g, &h, &gen, x, NULL);
+            for (int a = 0; a < NALG; a++) {
+                ca_stats st = {0};
+                uint64_t got = 0;
+                ca_status rc;
+                ca_dlog_params dp;
+                ca_dlog_params_default(&dp);
+                dp.rho.seed = 100 + r;
+                dp.kangaroo.seed = 100 + r;
+                switch (a) {
+                case 0: rc = ca_bsgs_solve(&g, &gen, &h, 0, 0, &dp.bsgs, &got, &st); break;
+                case 1: rc = ca_rho_solve(&g, &gen, &h, &dp.rho, &got, &st); break;
+                case 2:
+                    dp.rho.threads = threads;
+                    rc = ca_rho_solve(&g, &gen, &h, &dp.rho, &got, &st);
+                    break;
+                case 3: rc = ca_kangaroo_solve(&g, &gen, &h, 0, 0, &dp.kangaroo, &got, &st); break;
+                default: rc = ca_grumpy_solve(&g, &gen, &h, 0, 0, &dp.grumpy, &got, &st); break;
+                }
+                ops[a] += (double)st.group_ops;
+                secs[a] += st.seconds;
+                ok[a] += (rc == CA_OK && got == x);
+            }
+        }
+        for (int a = 0; a < NALG; a++) {
+            printf("| %-4s | %3u | %-9s | %8.3f | %10.4f | %8.0f | %u/%u |\n", ec ? "ec" : "zp",
+                   bits[si], names[a], ops[a] / reps / sq, secs[a] / reps,
+                   ops[a] / reps / (secs[a] / reps + 1e-12) / 1e6, ok[a], reps);
+            cost[a][si] = ops[a] / reps;
+        }
+    }
+    cx_summary(ec ? "ec" : "zp", "n", names, theory, Nv, cost, NALG, nb);
+}
+
+static void run_interval(const unsigned *bits, int nb, unsigned reps, int ec)
+{
+    enum { NALG = 3 };
+    static const char *names[NALG] = {"bsgs", "kangaroo", "grumpy"};
+    static const double theory[NALG] = {0.5, 0.5, 0.5};
     ca_group g;
     ca_elem gen;
     uint64_t n;
@@ -150,40 +192,55 @@ static void run_interval(unsigned wbits, unsigned reps, int ec)
         g.cofactor = 1;
     }
     ca_group_find_generator(&g, &gen, 1);
-    uint64_t width = 1ULL << wbits;
-    double sq = sqrt((double)width);
-    enum { NALG = 3 };
-    const char *names[NALG] = {"bsgs", "kangaroo", "grumpy"};
-    double ops[NALG] = {0}, secs[NALG] = {0};
-    unsigned ok[NALG] = {0};
-    ca_rng rng;
-    ca_rng_seed(&rng, 99 + wbits);
-    for (unsigned r = 0; r < reps; r++) {
-        uint64_t lo = ca_rng_below(&rng, n - width);
-        uint64_t x = lo + ca_rng_below(&rng, width);
-        ca_elem h;
-        ca_group_mul(&g, &h, &gen, x, NULL);
-        for (int a = 0; a < NALG; a++) {
-            ca_stats st = {0};
-            uint64_t got = 0;
-            ca_status rc;
-            ca_dlog_params dp;
-            ca_dlog_params_default(&dp);
-            dp.kangaroo.seed = 100 + r;
-            switch (a) {
-            case 0: rc = ca_bsgs_solve(&g, &gen, &h, lo, lo + width - 1, &dp.bsgs, &got, &st); break;
-            case 1: rc = ca_kangaroo_solve(&g, &gen, &h, lo, lo + width - 1, &dp.kangaroo, &got, &st); break;
-            default: rc = ca_grumpy_solve(&g, &gen, &h, lo, lo + width - 1, &dp.grumpy, &got, &st); break;
+    double Nv[16], cost[NALG][16];
+    if (nb > 16) nb = 16;
+    printf("| grp | width | algorithm | S=ops/sqrtw | seconds    | ok  |\n");
+    printf("|-----|-------|-----------|-------------|------------|-----|\n");
+    for (int si = 0; si < nb; si++) {
+        unsigned wbits = bits[si];
+        uint64_t width = 1ULL << wbits;
+        double sq = sqrt((double)width);
+        Nv[si] = (double)width;
+        double ops[NALG] = {0}, secs[NALG] = {0};
+        unsigned ok[NALG] = {0};
+        ca_rng rng;
+        ca_rng_seed(&rng, 99 + wbits);
+        for (unsigned r = 0; r < reps; r++) {
+            uint64_t lo = ca_rng_below(&rng, n - width);
+            uint64_t x = lo + ca_rng_below(&rng, width);
+            ca_elem h;
+            ca_group_mul(&g, &h, &gen, x, NULL);
+            for (int a = 0; a < NALG; a++) {
+                ca_stats st = {0};
+                uint64_t got = 0;
+                ca_status rc;
+                ca_dlog_params dp;
+                ca_dlog_params_default(&dp);
+                dp.kangaroo.seed = 100 + r;
+                switch (a) {
+                case 0:
+                    rc = ca_bsgs_solve(&g, &gen, &h, lo, lo + width - 1, &dp.bsgs, &got, &st);
+                    break;
+                case 1:
+                    rc = ca_kangaroo_solve(&g, &gen, &h, lo, lo + width - 1, &dp.kangaroo, &got,
+                                           &st);
+                    break;
+                default:
+                    rc = ca_grumpy_solve(&g, &gen, &h, lo, lo + width - 1, &dp.grumpy, &got, &st);
+                    break;
+                }
+                ops[a] += (double)st.group_ops;
+                secs[a] += st.seconds;
+                ok[a] += (rc == CA_OK && got == x);
             }
-            ops[a] += (double)st.group_ops;
-            secs[a] += st.seconds;
-            ok[a] += (rc == CA_OK && got == x);
+        }
+        for (int a = 0; a < NALG; a++) {
+            printf("| %-4s | 2^%-3u | %-9s | %8.3f | %10.4f | %u/%u |\n", ec ? "ec" : "zp", wbits,
+                   names[a], ops[a] / reps / sq, secs[a] / reps, ok[a], reps);
+            cost[a][si] = ops[a] / reps;
         }
     }
-    for (int a = 0; a < NALG; a++) {
-        printf("| %-4s | 2^%-3u | %-9s | %8.3f | %10.4f | %u/%u |\n", ec ? "ec" : "zp", wbits, names[a],
-               ops[a] / reps / sq, secs[a] / reps, ok[a], reps);
-    }
+    cx_summary(ec ? "ec" : "zp", "w", names, theory, Nv, cost, NALG, nb);
 }
 
 static void run_ic(unsigned bits, unsigned threads)
@@ -321,58 +378,75 @@ static void run_gpu(unsigned bits, unsigned reps, int ec)
     }
 }
 
-static void run_precomp(unsigned bits, unsigned reps, unsigned threads, int ec)
+static void run_precomp(const unsigned *bits, int nb, unsigned reps, unsigned threads, int ec)
 {
-    ca_group g;
-    ca_elem gen;
-    uint64_t n;
-    if (!ec) {
-        uint64_t p;
-        n = find_safe_prime(bits, &p);
-        ca_group_zp_init(&g, p, n);
-    } else {
-        uint64_t p, a, b;
-        find_prime_order_curve(bits, &p, &a, &b, &n);
-        ca_group_ec_init(&g, p, a, b, n);
-        g.cofactor = 1;
+    static const char *names[2] = {"precomp build", "precomp online"};
+    static const double theory[2] = {2.0 / 3.0, 1.0 / 3.0};
+    double Nv[16], cost[2][16];
+    if (nb > 16) nb = 16;
+    printf("| grp | bits |  t |   chains | precomp ops | P/n^2/3 | build s | online ops | T/n^1/3 |"
+           " sqrtN/T | ok  |\n");
+    printf("|-----|-----:|---:|---------:|------------:|--------:|--------:|-----------:|--------:|"
+           "--------:|-----|\n");
+    for (int si = 0; si < nb; si++) {
+        ca_group g;
+        ca_elem gen;
+        uint64_t n;
+        if (!ec) {
+            uint64_t p;
+            n = find_safe_prime(bits[si], &p);
+            ca_group_zp_init(&g, p, n);
+        } else {
+            uint64_t p, a, b;
+            find_prime_order_curve(bits[si], &p, &a, &b, &n);
+            ca_group_ec_init(&g, p, a, b, n);
+            g.cofactor = 1;
+        }
+        ca_group_find_generator(&g, &gen, 1);
+        Nv[si] = (double)n;
+        cost[0][si] = 0;
+        cost[1][si] = 0;
+        ca_precomp_params pp;
+        ca_precomp_params_default(&pp);
+        pp.seed = 1234 + bits[si];
+        pp.threads = threads;
+        ca_stats build = {0};
+        ca_precomp_table *tab = NULL;
+        ca_status rc = ca_precomp_table_new(&g, &gen, &pp, &tab, &build);
+        if (rc != CA_OK || !tab) {
+            printf("| %-4s | %3u | build failed: %s |\n", ec ? "ec" : "zp", bits[si],
+                   ca_status_string(rc));
+            continue;
+        }
+        int32_t dpb = 0;
+        uint64_t chains = 0, precomp_ops = 0;
+        uint32_t rr = 0;
+        ca_precomp_table_info(tab, &dpb, &chains, &rr, &precomp_ops);
+        double sq = sqrt((double)n), c23 = pow((double)n, 2.0 / 3.0), c13 = cbrt((double)n);
+        ca_rng rng;
+        ca_rng_seed(&rng, 55 + bits[si]);
+        double on_ops = 0;
+        unsigned ok = 0;
+        for (unsigned r = 0; r < reps; r++) {
+            uint64_t x = ca_rng_below(&rng, n);
+            ca_elem h;
+            ca_group_mul(&g, &h, &gen, x, NULL);
+            uint64_t got = 0;
+            ca_stats s = {0};
+            ca_status sc = ca_precomp_table_solve(tab, &h, &got, &s);
+            on_ops += (double)s.group_ops;
+            ok += (sc == CA_OK && got == x);
+        }
+        ca_precomp_table_free(tab);
+        double online = on_ops / reps;
+        printf("| %-4s | %3u | %2d | %8" PRIu64 " | %11" PRIu64
+               " | %7.3f | %8.4f | %10.1f | %7.3f | %7.1f | %u/%u |\n",
+               ec ? "ec" : "zp", bits[si], dpb, chains, precomp_ops, (double)precomp_ops / c23,
+               build.seconds, online, online / c13, sq / online, ok, reps);
+        cost[0][si] = (double)precomp_ops;
+        cost[1][si] = online;
     }
-    ca_group_find_generator(&g, &gen, 1);
-    ca_precomp_params pp;
-    ca_precomp_params_default(&pp);
-    pp.seed = 1234 + bits;
-    pp.threads = threads;
-    ca_stats build = {0};
-    ca_precomp_table *tab = NULL;
-    ca_status rc = ca_precomp_table_new(&g, &gen, &pp, &tab, &build);
-    if (rc != CA_OK || !tab) {
-        printf("| %-4s | %3u | build failed: %s |\n", ec ? "ec" : "zp", bits, ca_status_string(rc));
-        return;
-    }
-    int32_t dpb = 0;
-    uint64_t chains = 0, precomp_ops = 0;
-    uint32_t rr = 0;
-    ca_precomp_table_info(tab, &dpb, &chains, &rr, &precomp_ops);
-    double sq = sqrt((double)n), c23 = pow((double)n, 2.0 / 3.0), c13 = cbrt((double)n);
-    ca_rng rng;
-    ca_rng_seed(&rng, 55 + bits);
-    double on_ops = 0;
-    unsigned ok = 0;
-    for (unsigned r = 0; r < reps; r++) {
-        uint64_t x = ca_rng_below(&rng, n);
-        ca_elem h;
-        ca_group_mul(&g, &h, &gen, x, NULL);
-        uint64_t got = 0;
-        ca_stats s = {0};
-        ca_status sc = ca_precomp_table_solve(tab, &h, &got, &s);
-        on_ops += (double)s.group_ops;
-        ok += (sc == CA_OK && got == x);
-    }
-    ca_precomp_table_free(tab);
-    double online = on_ops / reps;
-    printf("| %-4s | %3u | %2d | %8" PRIu64 " | %11" PRIu64
-           " | %7.3f | %8.4f | %10.1f | %7.3f | %7.1f | %u/%u |\n",
-           ec ? "ec" : "zp", bits, dpb, chains, precomp_ops, (double)precomp_ops / c23,
-           build.seconds, online, online / c13, sq / online, ok, reps);
+    cx_summary(ec ? "ec" : "zp", "n", names, theory, Nv, cost, 2, nb);
 }
 
 /* ---- empirical time complexity ---------------------------------------- */
@@ -381,14 +455,6 @@ static void run_precomp(unsigned bits, unsigned reps, unsigned threads, int ec)
  * of cost / N^theory: the familiar normalised constant (rho's ops/sqrt(n),
  * precomp's T/n^{1/3}, ...) that only makes sense once the exponent is known
  * to match, which the fitted alpha and R^2 confirm. */
-typedef struct cx_fit {
-    double alpha;
-    double c_fit;
-    double r2;
-    double c_theory;
-    int npts;
-} cx_fit;
-
 static cx_fit fit_power_law(const double *N, const double *cost, int m, double theory)
 {
     cx_fit f;
@@ -566,22 +632,17 @@ int main(int argc, char **argv)
     printf("libcryptanalysis %s benchmark: %s\n\n", ca_version(), cmd);
     if (!strcmp(cmd, "generic")) {
         int nb = parse_list(opt("--bits", "24,28,32,36"), bits, 16);
-        printf("Whole-group DLP, prime order n.  S = group ops / sqrt(n) (rho reference ~1.3).\n\n");
-        printf("| grp | bits | algorithm | S=ops/√n | seconds    | Mops/s   | ok  |\n");
-        printf("|-----|------|-----------|----------|------------|----------|-----|\n");
-        for (int i = 0; i < nb; i++) {
-            if (strcmp(group, "ec")) run_generic(bits[i], reps, threads, 0);
-            if (strcmp(group, "zp")) run_generic(bits[i], reps, threads, 1);
-        }
+        printf("Whole-group DLP, prime order n.  S = group ops / sqrt(n) (rho reference ~1.3).\n"
+               "Each table ends with the measured exponent (fitted cost ~ C n^alpha).\n\n");
+        if (strcmp(group, "ec")) run_generic(bits, nb, reps, threads, 0);
+        if (strcmp(group, "zp")) run_generic(bits, nb, reps, threads, 1);
     } else if (!strcmp(cmd, "interval")) {
         int nb = parse_list(opt("--bits", "24,28,32,36"), bits, 16);
-        printf("Interval DLP of width 2^w inside a large prime-order group.  S = group ops / sqrt(width).\n\n");
-        printf("| grp | width | algorithm | S=ops/√w | seconds    | ok  |\n");
-        printf("|-----|-------|-----------|----------|------------|-----|\n");
-        for (int i = 0; i < nb; i++) {
-            if (strcmp(group, "ec")) run_interval(bits[i], reps, 0);
-            if (strcmp(group, "zp")) run_interval(bits[i], reps, 1);
-        }
+        printf("Interval DLP of width 2^w inside a large prime-order group.  S = group ops / "
+               "sqrt(width).\nEach table ends with the measured exponent (fitted cost ~ C w^alpha)."
+               "\n\n");
+        if (strcmp(group, "ec")) run_interval(bits, nb, reps, 0);
+        if (strcmp(group, "zp")) run_interval(bits, nb, reps, 1);
     } else if (!strcmp(cmd, "ic")) {
         int nb = parse_list(opt("--bits", "32,40,48,56"), bits, 16);
         printf("Index calculus in Z_p^* (safe primes), linear sieve, %u threads.\n\n", threads);
@@ -622,17 +683,11 @@ int main(int argc, char **argv)
             "Discrete logs with precomputation (Bernstein-Lange).  One table per (group, base);\n"
             "P = precomputation ops (paid once), T = per-target online ops over --reps "
             "targets.\n");
-        printf("Build threads: %u.\n\n", threads);
-        printf("| grp | bits |  t |   chains | precomp ops | P/n^2/3 | build s | online ops | "
-               "T/n^1/3 |"
-               " sqrtN/T | ok  |\n");
-        printf("|-----|-----:|---:|---------:|------------:|--------:|--------:|-----------:|------"
-               "--:|"
-               "--------:|-----|\n");
-        for (int i = 0; i < nb; i++) {
-            if (strcmp(group, "ec")) run_precomp(bits[i], reps, threads, 0);
-            if (strcmp(group, "zp")) run_precomp(bits[i], reps, threads, 1);
-        }
+        printf("Build threads: %u.  Each table ends with the measured build (n^2/3) and online\n"
+               "(n^1/3) exponents.\n\n",
+               threads);
+        if (strcmp(group, "ec")) run_precomp(bits, nb, reps, threads, 0);
+        if (strcmp(group, "zp")) run_precomp(bits, nb, reps, threads, 1);
     } else if (!strcmp(cmd, "complexity")) {
         int nb = parse_list(opt("--bits", "20,24,28,32,36"), bits, 16);
         printf("Empirical time complexity.  The measured group-operation cost of each\n"
