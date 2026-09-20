@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["image", "replicaCount", "leaderElection", "serviceAccount", "rbac", "metrics"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "required": ["repository", "pullPolicy"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "digest": { "type": "string", "pattern": "^(|sha256:[0-9a-f]{64})$" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "replicaCount": { "type": "integer", "minimum": 1, "maximum": 3 },
+    "leaderElection": { "type": "boolean" },
+    "watchNamespace": { "type": "string", "pattern": "^(|[a-z0-9]([-a-z0-9]*[a-z0-9])?)$" },
+    "statusFeedTimeout": { "type": "string", "pattern": "^[0-9]+(ms|s|m)$" },
+    "logLevel": { "type": "string", "enum": ["debug", "info", "error"] },
+    "serviceAccount": {
+      "type": "object",
+      "required": ["create", "name", "annotations"],
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "required": ["create"],
+      "properties": { "create": { "type": "boolean" } }
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["enabled", "port"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "metricsIngress": { "type": "array" },
+        "egress": { "type": "array" }
+      }
+    }
+  }
+}
