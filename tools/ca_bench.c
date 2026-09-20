@@ -16,6 +16,12 @@
  *       discrete logs with precomputation (Bernstein-Lange): the one-time
  *       precomputation cost in n^{2/3}, the table size, and the per-target
  *       online cost in n^{1/3}, with the per-target speedup over sqrt(n).
+ *   ca_bench complexity [--bits 20,24,28,32,36] [--reps 5] [--group zp|ec|both]
+ *       measured time complexity: fits each algorithm's group-operation cost
+ *       to C * N^alpha across the size sweep, reporting the fitted exponent
+ *       (global for a whole algorithm, per-step for a method's phases such as
+ *       precomputation build vs online) with its R^2 and the normalised
+ *       constant, so the O() is measured rather than assumed.
  *   ca_bench ops      raw group operation throughput.
  *   ca_bench gpu      [--bits 24,28,32] [--reps 3] [--group zp|ec|both]
  *       CPU rho vs the GPU rho kernel (CUDA when a device is present,
@@ -369,6 +375,139 @@ static void run_precomp(unsigned bits, unsigned reps, unsigned threads, int ec)
            build.seconds, online, online / c13, sq / online, ok, reps);
 }
 
+/* ---- empirical time complexity ---------------------------------------- */
+/* Fit measured cost ~ C * N^alpha by least squares in log-log space, so the
+ * exponent (the O()) is measured rather than assumed.  c_theory is the mean
+ * of cost / N^theory: the familiar normalised constant (rho's ops/sqrt(n),
+ * precomp's T/n^{1/3}, ...) that only makes sense once the exponent is known
+ * to match, which the fitted alpha and R^2 confirm. */
+typedef struct cx_fit {
+    double alpha;
+    double c_fit;
+    double r2;
+    double c_theory;
+    int npts;
+} cx_fit;
+
+static cx_fit fit_power_law(const double *N, const double *cost, int m, double theory)
+{
+    cx_fit f;
+    memset(&f, 0, sizeof f);
+    double sx = 0, sy = 0, sxx = 0, sxy = 0, ct = 0;
+    int used = 0;
+    for (int i = 0; i < m; i++) {
+        if (N[i] <= 0 || cost[i] <= 0) continue;
+        double x = log(N[i]), y = log(cost[i]);
+        sx += x;
+        sy += y;
+        sxx += x * x;
+        sxy += x * y;
+        ct += cost[i] / pow(N[i], theory);
+        used++;
+    }
+    f.npts = used;
+    f.c_theory = used ? ct / used : 0;
+    if (used < 2) return f;
+    double denom = (double)used * sxx - sx * sx;
+    if (denom == 0) return f;
+    f.alpha = ((double)used * sxy - sx * sy) / denom;
+    double b = (sy - f.alpha * sx) / used;
+    f.c_fit = exp(b);
+    double ybar = sy / used, ss_res = 0, ss_tot = 0;
+    for (int i = 0; i < m; i++) {
+        if (N[i] <= 0 || cost[i] <= 0) continue;
+        double x = log(N[i]), y = log(cost[i]);
+        double yh = f.alpha * x + b;
+        ss_res += (y - yh) * (y - yh);
+        ss_tot += (y - ybar) * (y - ybar);
+    }
+    f.r2 = ss_tot > 0 ? 1.0 - ss_res / ss_tot : 1.0;
+    return f;
+}
+
+enum { CX_BSGS, CX_RHO, CX_KANG, CX_GRUMPY, CX_PBUILD, CX_PONLINE, CX_NALG };
+
+static void run_complexity(const unsigned *bits, int nb, unsigned reps, int ec)
+{
+    static const char *names[CX_NALG] = {"bsgs",   "rho",           "kangaroo",
+                                         "grumpy", "precomp build", "precomp online"};
+    static const char *scope[CX_NALG] = {"global", "global", "global", "global", "step", "step"};
+    static const double theory[CX_NALG] = {0.5, 0.5, 0.5, 0.5, 2.0 / 3.0, 1.0 / 3.0};
+    double Nv[16];
+    double cost[CX_NALG][16];
+    if (nb > 16) nb = 16;
+
+    for (int si = 0; si < nb; si++) {
+        ca_group g;
+        ca_elem gen;
+        uint64_t n;
+        if (!ec) {
+            uint64_t p;
+            n = find_safe_prime(bits[si], &p);
+            ca_group_zp_init(&g, p, n);
+        } else {
+            uint64_t p, a, b;
+            find_prime_order_curve(bits[si], &p, &a, &b, &n);
+            ca_group_ec_init(&g, p, a, b, n);
+            g.cofactor = 1;
+        }
+        ca_group_find_generator(&g, &gen, 1);
+        Nv[si] = (double)n;
+
+        ca_precomp_params pp;
+        ca_precomp_params_default(&pp);
+        pp.seed = 99 + bits[si];
+        ca_stats pbuild = {0};
+        ca_precomp_table *tab = NULL;
+        ca_precomp_table_new(&g, &gen, &pp, &tab, &pbuild);
+        cost[CX_PBUILD][si] = (double)pbuild.group_ops;
+
+        double acc[CX_NALG] = {0};
+        ca_rng rng;
+        ca_rng_seed(&rng, 7 + bits[si]);
+        for (unsigned r = 0; r < reps; r++) {
+            uint64_t x = ca_rng_below(&rng, n), got = 0;
+            ca_elem h;
+            ca_group_mul(&g, &h, &gen, x, NULL);
+            ca_dlog_params dp;
+            ca_dlog_params_default(&dp);
+            dp.rho.seed = dp.kangaroo.seed = 100 + r;
+            ca_stats st;
+            st = (ca_stats){0};
+            if (ca_bsgs_solve(&g, &gen, &h, 0, 0, &dp.bsgs, &got, &st) == CA_OK)
+                acc[CX_BSGS] += (double)st.group_ops;
+            st = (ca_stats){0};
+            if (ca_rho_solve(&g, &gen, &h, &dp.rho, &got, &st) == CA_OK)
+                acc[CX_RHO] += (double)st.group_ops;
+            st = (ca_stats){0};
+            if (ca_kangaroo_solve(&g, &gen, &h, 0, 0, &dp.kangaroo, &got, &st) == CA_OK)
+                acc[CX_KANG] += (double)st.group_ops;
+            st = (ca_stats){0};
+            if (ca_grumpy_solve(&g, &gen, &h, 0, 0, &dp.grumpy, &got, &st) == CA_OK)
+                acc[CX_GRUMPY] += (double)st.group_ops;
+            st = (ca_stats){0};
+            if (tab && ca_precomp_table_solve(tab, &h, &got, &st) == CA_OK)
+                acc[CX_PONLINE] += (double)st.group_ops;
+        }
+        cost[CX_BSGS][si] = acc[CX_BSGS] / reps;
+        cost[CX_RHO][si] = acc[CX_RHO] / reps;
+        cost[CX_KANG][si] = acc[CX_KANG] / reps;
+        cost[CX_GRUMPY][si] = acc[CX_GRUMPY] / reps;
+        cost[CX_PONLINE][si] = acc[CX_PONLINE] / reps;
+        ca_precomp_table_free(tab);
+    }
+
+    printf("\n%s:  cost ~ C * N^alpha, fitted over %d sizes (N = group order).\n",
+           ec ? "E(F_p)" : "Z_p^*", nb);
+    printf("| algorithm       | scope  | theory   | fitted alpha | R^2    | const @ N^theory |\n");
+    printf("|-----------------|--------|----------|--------------|--------|------------------|\n");
+    for (int a = 0; a < CX_NALG; a++) {
+        cx_fit f = fit_power_law(Nv, cost[a], nb, theory[a]);
+        printf("| %-15s | %-6s | N^%.3f | %12.3f | %6.4f | %16.3f |\n", names[a], scope[a],
+               theory[a], f.alpha, f.r2, f.c_theory);
+    }
+}
+
 static void run_ops(void)
 {
     uint64_t p;
@@ -494,6 +633,16 @@ int main(int argc, char **argv)
             if (strcmp(group, "ec")) run_precomp(bits[i], reps, threads, 0);
             if (strcmp(group, "zp")) run_precomp(bits[i], reps, threads, 1);
         }
+    } else if (!strcmp(cmd, "complexity")) {
+        int nb = parse_list(opt("--bits", "20,24,28,32,36"), bits, 16);
+        printf("Empirical time complexity.  The measured group-operation cost of each\n"
+               "algorithm is fitted to C * N^alpha, so the exponent (the O()) is measured\n"
+               "rather than assumed and the constant is comparable across algorithms.\n"
+               "scope: global = whole algorithm, step = one phase of a method.\n");
+        if (strcmp(group, "ec")) run_complexity(bits, nb, reps, 0);
+        if (strcmp(group, "zp")) run_complexity(bits, nb, reps, 1);
+        printf("\nIndex calculus in Z_p^* is omitted here: it is subexponential (L_p[1/2]),\n"
+               "not a power law, so no single exponent describes it (see the ic mode).\n");
     } else if (!strcmp(cmd, "ops")) {
         run_ops();
     } else {
