@@ -10,9 +10,11 @@ The reporting convention follows the sibling research repository: one
 table, one unit, every variant a row, the reference (rho) included.  The
 unit is `S = group operations / sqrt(N)`.
 
-That unit assumes the exponent is `1/2`; `ca_bench complexity` instead
-*measures* the exponent (see "Measured time complexity" below), so the
-constant `S` is only quoted once the fitted exponent confirms the `O()`.
+That unit assumes the exponent is `1/2`.  The `generic`, `interval` and
+`precomp` modes now also *measure* it: each table ends with a fitted-exponent
+summary (`cost ~ C * N^alpha`), and `ca_bench complexity` compares every
+algorithm's exponent in one place (see "Measured time complexity" below).  So
+the constant `S` is only quoted once the fitted exponent confirms the `O()`.
 
 ## Raw group operation throughput (`ca_bench ops`)
 
