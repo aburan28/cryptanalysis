@@ -169,6 +169,32 @@ precomputation from 121k to 77k operations while storing about twice the
 distinct endpoints; at the default coverage of 1 merges are negligible and
 it is off.
 
+## GLV endomorphism-accelerated rho (`ca_bench glv`)
+
+Curve-aware dispatch (`ca_curve.h`): on a CM curve the rho walk is folded by
+the automorphism group `<psi>` (order 6 for j-invariant 0, 4 for j-invariant
+1728), against the plain negation-map rho on the same curve.  `S = group
+operations / sqrt(n)`; 20 instances per row.
+
+| curve         | endo  | m | GLV S | negation-rho S | speedup |
+|---------------|-------|--:|------:|---------------:|--------:|
+| glv-j0-26     | j0    | 6 | 1.412 | 1.608 | 1.14x |
+| glv-j1728-26  | j1728 | 4 | 1.516 | 2.038 | 1.34x |
+| glv-j0-32     | j0    | 6 | 0.988 | 1.688 | 1.71x |
+| glv-j1728-32  | j1728 | 4 | 1.587 | 1.487 | 0.94x |
+| generic-26    | none  | 2 | 1.957 | 1.957 | 1.00x |
+
+The expected gain over the negation-map rho is `sqrt(m/2)` -- `1.73` for j0
+and `1.41` for j1728 -- and the cleaner rows (`glv-j0-32` at 1.71x,
+`glv-j1728-26` at 1.34x) land there.  The scatter is large because these are
+small curves (a single rho run's standard deviation is about its mean, so 20
+instances still leave roughly `+-20%`, and a couple of rows come out below
+1x); the generic curve is identical either way, as it must be.  The point is
+the folding, not the wall clock: it is a smaller constant in front of the
+same `sqrt(n)`, applied automatically once the curve's j-invariant is
+recognised.  `ca curve --name <name>` reports the structure and the chosen
+solver without running anything.
+
 ## Index calculus in `Z_p^*` (`ca_bench ic --threads 4`)
 
 Safe primes `p = 2q + 1`, linear sieve, default `(B, C)`.  "rho ops ref"
