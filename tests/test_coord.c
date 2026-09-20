@@ -1,4 +1,10 @@
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <stdatomic.h>
 #include <signal.h>
+#include <sys/socket.h>
 /*
  * test_coord.c - distributed rho: the job, the CRDT, the wire, and the
  * property the whole module exists for -- agents that never listen on
@@ -522,6 +528,465 @@ static void test_url_parsing(void)
           CA_ERR_UNSUPPORTED);
 }
 
+/* ---- the agent's side of the wire --------------------------------------- */
+
+/*
+ * A scripted server: it speaks just enough HTTP to answer the client
+ * calls in coord_net.c, and replays canned lines.  It is a test double,
+ * not a second coordinator -- the real one is in Go, and the end-to-end
+ * against it lives there.  What is tested here is the *client*: that it
+ * frames requests correctly, refuses what it should, merges what comes
+ * back, and reconnects when the socket goes away, all of which a
+ * scripted peer pins down far more precisely than a live one.
+ */
+
+typedef enum server_script {
+    SCRIPT_JOB,             /* GET /v1/job -> 200 with the job document */
+    SCRIPT_JOB_401,         /* GET /v1/job -> 401 */
+    SCRIPT_JOB_GARBAGE,     /* GET /v1/job -> 200 with something that is not a job */
+    SCRIPT_SYNC,            /* POST /v1/sync -> our vector and our lines */
+    SCRIPT_CHANNEL,         /* GET /v1/channel -> 101, then push lines */
+    SCRIPT_CHANNEL_REFUSED, /* GET /v1/channel -> 426 */
+    SCRIPT_HANGUP           /* accept and close, to exercise the redial path */
+} server_script;
+
+typedef struct test_server {
+    int fd;
+    int port;
+    server_script script;
+    pthread_t thread;
+    /* Crosses threads, so it is an atomic and not merely volatile --
+     * which is what ThreadSanitizer says if you try the latter. */
+    atomic_int stop;
+    /* What the server should say, and what it heard. */
+    char push[4][CA_COORD_LINE_MAX];
+    int push_count;
+    pthread_mutex_t lock;
+    char heard[8][CA_COORD_LINE_MAX];
+    int heard_count;
+    int connections;
+} test_server;
+
+static void server_note(test_server *s, const char *line)
+{
+    pthread_mutex_lock(&s->lock);
+    if (s->heard_count < (int)(sizeof(s->heard) / sizeof(s->heard[0]))) {
+        snprintf(s->heard[s->heard_count], CA_COORD_LINE_MAX, "%s", line);
+        s->heard_count++;
+    }
+    pthread_mutex_unlock(&s->lock);
+}
+
+static int server_heard(test_server *s, const char *prefix)
+{
+    int n = 0;
+    pthread_mutex_lock(&s->lock);
+    for (int i = 0; i < s->heard_count; i++)
+        if (strncmp(s->heard[i], prefix, strlen(prefix)) == 0) n++;
+    pthread_mutex_unlock(&s->lock);
+    return n;
+}
+
+/* Read one \n-terminated line; returns 0 at EOF or on error. */
+static int server_read_line(int fd, char *out, size_t cap)
+{
+    size_t n = 0;
+    while (n + 1 < cap) {
+        char c;
+        ssize_t r = recv(fd, &c, 1, 0);
+        if (r <= 0) return 0;
+        if (c == '\n') break;
+        if (c != '\r') out[n++] = c;
+    }
+    out[n] = 0;
+    return 1;
+}
+
+static void server_write(int fd, const char *s) { (void)!send(fd, s, strlen(s), MSG_NOSIGNAL); }
+
+static void server_respond(int fd, int status, const char *body)
+{
+    char head[256];
+    snprintf(head, sizeof(head),
+             "HTTP/1.1 %d X\r\nContent-Type: text/plain\r\nContent-Length: %zu\r\n"
+             "Connection: close\r\n\r\n",
+             status, strlen(body));
+    server_write(fd, head);
+    server_write(fd, body);
+}
+
+static void server_handle(test_server *s, int fd)
+{
+    char line[CA_COORD_LINE_MAX];
+    if (!server_read_line(fd, line, sizeof(line))) return;
+    server_note(s, line);
+    size_t content_length = 0;
+    for (;;) {
+        char h[CA_COORD_LINE_MAX];
+        if (!server_read_line(fd, h, sizeof(h))) return;
+        if (!h[0]) break;
+        if (!strncasecmp(h, "content-length:", 15)) content_length = strtoul(h + 15, NULL, 10);
+        if (!strncasecmp(h, "authorization:", 14)) server_note(s, h);
+    }
+
+    switch (s->script) {
+    case SCRIPT_JOB: server_respond(fd, 200, s->push_count ? s->push[0] : ""); break;
+    case SCRIPT_JOB_401: server_respond(fd, 401, "no\n"); break;
+    case SCRIPT_JOB_GARBAGE: server_respond(fd, 200, "not a job document at all\n"); break;
+    case SCRIPT_SYNC: {
+        /* Read the body the client pushed, then answer with ours. */
+        char *body = calloc(content_length + 1, 1);
+        if (body && content_length) {
+            size_t got = 0;
+            while (got < content_length) {
+                ssize_t r = recv(fd, body + got, content_length - got, 0);
+                if (r <= 0) break;
+                got += (size_t)r;
+            }
+            for (char *save = NULL, *tok = strtok_r(body, "\n", &save); tok;
+                 tok = strtok_r(NULL, "\n", &save))
+                server_note(s, tok);
+        }
+        free(body);
+        char reply[8 * CA_COORD_LINE_MAX];
+        size_t off = (size_t)snprintf(reply, sizeof(reply), "vv\n");
+        for (int i = 0; i < s->push_count && off < sizeof(reply); i++)
+            off += (size_t)snprintf(reply + off, sizeof(reply) - off, "%s\n", s->push[i]);
+        server_respond(fd, 200, reply);
+        break;
+    }
+    case SCRIPT_CHANNEL_REFUSED: server_respond(fd, 426, "upgrade\n"); break;
+    case SCRIPT_CHANNEL: {
+        server_write(fd, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: " CA_COORD_PROTOCOL
+                         "\r\nConnection: Upgrade\r\n\r\n");
+        for (int i = 0; i < s->push_count; i++) {
+            server_write(fd, s->push[i]);
+            server_write(fd, "\n");
+        }
+        /* Then listen until the client goes away or the test stops. */
+        struct timeval tv = {0, (suseconds_t)200 * 1000};
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        while (!atomic_load(&s->stop)) {
+            char in[CA_COORD_LINE_MAX];
+            if (!server_read_line(fd, in, sizeof(in))) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+                break;
+            }
+            if (in[0]) server_note(s, in);
+        }
+        break;
+    }
+    case SCRIPT_HANGUP: break;
+    }
+}
+
+static void *server_main(void *arg)
+{
+    test_server *s = arg;
+    while (!atomic_load(&s->stop)) {
+        struct pollfd pf = {.fd = s->fd, .events = POLLIN};
+        if (poll(&pf, 1, 100) <= 0) continue;
+        int fd = accept(s->fd, NULL, NULL);
+        if (fd < 0) continue;
+        pthread_mutex_lock(&s->lock);
+        s->connections++;
+        pthread_mutex_unlock(&s->lock);
+        server_handle(s, fd);
+        close(fd);
+    }
+    return NULL;
+}
+
+static test_server *server_start(server_script script)
+{
+    test_server *s = calloc(1, sizeof(*s));
+    CHECK(s != NULL);
+    if (!s) return NULL;
+    s->script = script;
+    pthread_mutex_init(&s->lock, NULL);
+    s->fd = socket(AF_INET, SOCK_STREAM, 0);
+    CHECK(s->fd >= 0);
+    int one = 1;
+    setsockopt(s->fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    struct sockaddr_in sin;
+    memset(&sin, 0, sizeof(sin));
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    sin.sin_port = 0;
+    CHECK(bind(s->fd, (struct sockaddr *)&sin, sizeof(sin)) == 0);
+    CHECK(listen(s->fd, 8) == 0);
+    socklen_t slen = sizeof(sin);
+    CHECK(getsockname(s->fd, (struct sockaddr *)&sin, &slen) == 0);
+    s->port = ntohs(sin.sin_port);
+    CHECK(pthread_create(&s->thread, NULL, server_main, s) == 0);
+    return s;
+}
+
+static void server_stop(test_server *s)
+{
+    if (!s) return;
+    atomic_store(&s->stop, 1);
+    shutdown(s->fd, SHUT_RDWR);
+    pthread_join(s->thread, NULL);
+    close(s->fd);
+    pthread_mutex_destroy(&s->lock);
+    free(s);
+}
+
+static void server_url(const test_server *s, char *out, size_t cap)
+{
+    snprintf(out, cap, "http://127.0.0.1:%d", s->port);
+}
+
+/* Produce real check-in lines for the server to replay. */
+static int lane_lines(const ca_coord_ctx *ctx, const char *peer, char out[][CA_COORD_LINE_MAX],
+                      int cap)
+{
+    ca_coord_state *st = NULL;
+    CHECK(ca_coord_state_init(&st, ctx) == CA_OK);
+    if (!st) return 0;
+    ca_coord_lane_params p;
+    ca_coord_lane_params_default(&p, peer);
+    p.max_walkers = 8;
+    p.checkin_every = 4;
+    ca_coord_lane_result res;
+    CHECK(ca_coord_lane_run(ctx, st, &p, NULL, NULL, NULL, NULL, &res) == CA_OK);
+    int n = 0;
+    size_t count = ca_coord_log_count(st);
+    for (size_t i = 0; i < count && n < cap; i++) {
+        uint64_t seq = 0;
+        char who[CA_COORD_PEER_MAX];
+        if (ca_coord_log_get(st, i, out[n], CA_COORD_LINE_MAX, who, sizeof(who), &seq)) n++;
+    }
+    ca_coord_state_free(st);
+    return n;
+}
+
+/* An agent needs only a URL: the job comes down it. */
+static void test_fetch_job_over_http(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 4242, 0, NULL);
+    char url[64];
+
+    test_server *s = server_start(SCRIPT_JOB);
+    if (s) {
+        CHECK(ca_coord_job_encode(ca_coord_ctx_job(ctx), s->push[0], CA_COORD_LINE_MAX) > 0);
+        s->push_count = 1;
+        server_url(s, url, sizeof(url));
+        ca_coord_job got;
+        CHECK(ca_coord_fetch_job(url, "tok", &got) == CA_OK);
+        CHECK_EQ_U64(got.id, ca_coord_ctx_job(ctx)->id);
+        /* The token really went out as a bearer header. */
+        CHECK(server_heard(s, "Authorization: Bearer tok") == 1);
+        CHECK(server_heard(s, "GET /v1/job") == 1);
+        server_stop(s);
+    }
+
+    /* A refusal is an error, not a silent empty job. */
+    s = server_start(SCRIPT_JOB_401);
+    if (s) {
+        server_url(s, url, sizeof(url));
+        ca_coord_job got;
+        CHECK(ca_coord_fetch_job(url, NULL, &got) == CA_ERR_INVALID);
+        server_stop(s);
+    }
+    /* So is a 200 that does not carry a job document. */
+    s = server_start(SCRIPT_JOB_GARBAGE);
+    if (s) {
+        server_url(s, url, sizeof(url));
+        ca_coord_job got;
+        CHECK(ca_coord_fetch_job(url, NULL, &got) == CA_ERR_INVALID);
+        server_stop(s);
+    }
+    /* And a coordinator that is not there at all. */
+    ca_coord_job got;
+    CHECK(ca_coord_fetch_job("http://127.0.0.1:1", NULL, &got) != CA_OK);
+    CHECK(ca_coord_fetch_job("https://example.com", NULL, &got) == CA_ERR_UNSUPPORTED);
+    ca_coord_ctx_close(ctx);
+}
+
+/* The one-shot path: push what we hold, merge what comes back. */
+static void test_sync_once_client(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 31337, 0, NULL);
+    static char lines[8][CA_COORD_LINE_MAX];
+    int n = lane_lines(ctx, "peer.0", lines, 8);
+    CHECK(n > 0);
+
+    test_server *s = server_start(SCRIPT_SYNC);
+    if (s) {
+        for (int i = 0; i < n && i < 4; i++) {
+            snprintf(s->push[i], CA_COORD_LINE_MAX, "%s", lines[i]);
+            s->push_count = i + 1;
+        }
+        char url[64];
+        server_url(s, url, sizeof(url));
+
+        ca_coord_state *mine = NULL;
+        CHECK(ca_coord_state_init(&mine, ctx) == CA_OK);
+        uint64_t received = 0, rejected = 0;
+        CHECK(ca_coord_sync_once(url, "tok", ctx, mine, &received, &rejected) == CA_OK);
+        CHECK_EQ_U64(received, (uint64_t)s->push_count);
+        CHECK_EQ_U64(rejected, 0);
+        /* We sent our vector, and the request was a POST. */
+        CHECK(server_heard(s, "POST /v1/sync") == 1);
+        CHECK(server_heard(s, "vv") >= 1);
+
+        /* Now that we hold those lines, a second sync pushes them. */
+        received = 0;
+        CHECK(ca_coord_sync_once(url, "tok", ctx, mine, &received, &rejected) == CA_OK);
+        CHECK_EQ_U64(received, 0); /* nothing new: the merge is idempotent */
+        CHECK(server_heard(s, "ci ") >= 1);
+        ca_coord_state_free(mine);
+        server_stop(s);
+    }
+    ca_coord_ctx_close(ctx);
+}
+
+/* The reverse channel, from the agent's end. */
+static void test_agent_channel(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 8080, 0, NULL);
+    static char lines[8][CA_COORD_LINE_MAX];
+    int n = lane_lines(ctx, "other.0", lines, 8);
+    CHECK(n > 0);
+
+    test_server *s = server_start(SCRIPT_CHANNEL);
+    if (s) {
+        for (int i = 0; i < n && i < 4; i++) {
+            snprintf(s->push[i], CA_COORD_LINE_MAX, "%s", lines[i]);
+            s->push_count = i + 1;
+        }
+        char url[64];
+        server_url(s, url, sizeof(url));
+
+        ca_coord_state *st = NULL;
+        CHECK(ca_coord_state_init(&st, ctx) == CA_OK);
+        ca_coord_agent *ag = NULL;
+        CHECK(ca_coord_agent_start(&ag, url, "tok", "me.0", ctx, st) == CA_OK);
+
+        /* What the coordinator pushes is merged without being asked for:
+         * that is the whole point of the channel. */
+        int merged = 0;
+        for (int i = 0; i < 100 && !merged; i++) {
+            struct timespec ts = {0, 50 * 1000000L};
+            nanosleep(&ts, NULL);
+            ca_coord_agent_stats as;
+            ca_coord_agent_stats_get(ag, &as);
+            merged = as.received >= (uint64_t)s->push_count;
+        }
+        CHECK(merged == 1);
+        CHECK_EQ_U64((uint64_t)ca_coord_log_count(st), (uint64_t)s->push_count);
+
+        /* And what we publish goes up. */
+        ca_coord_checkin ci;
+        CHECK(ca_coord_checkin_decode(&ci, lines[0]) == CA_OK);
+        snprintf(ci.peer, sizeof(ci.peer), "me.0");
+        ci.seq = 99;
+        ca_coord_agent_publish(ag, &ci);
+        CHECK(ca_coord_agent_flush(ag, 5000) == 1);
+        int heard = 0;
+        for (int i = 0; i < 100 && !heard; i++) {
+            struct timespec ts = {0, 50 * 1000000L};
+            nanosleep(&ts, NULL);
+            heard = server_heard(s, "ci ") >= 1;
+        }
+        CHECK(heard == 1);
+        CHECK(server_heard(s, "hello ") == 1);
+
+        ca_coord_agent_stats as;
+        ca_coord_agent_stats_get(ag, &as);
+        CHECK(as.connected == 1);
+        CHECK(as.connects >= 1);
+        CHECK(as.sent >= 1);
+        CHECK_EQ_U64(as.rejected, 0);
+
+        ca_coord_agent_stop(ag);
+        ca_coord_state_free(st);
+        server_stop(s);
+    }
+    ca_coord_ctx_close(ctx);
+}
+
+/*
+ * A coordinator that goes away is an ordinary event -- a pod eviction, a
+ * rolling restart -- so the agent redials instead of dying, and keeps
+ * whatever it was told to publish meanwhile.
+ */
+static void test_agent_redials(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 555, 0, NULL);
+
+    test_server *s = server_start(SCRIPT_HANGUP);
+    if (s) {
+        char url[64];
+        server_url(s, url, sizeof(url));
+        ca_coord_state *st = NULL;
+        CHECK(ca_coord_state_init(&st, ctx) == CA_OK);
+        ca_coord_agent *ag = NULL;
+        CHECK(ca_coord_agent_start(&ag, url, NULL, "me.0", ctx, st) == CA_OK);
+        int tries = 0;
+        for (int i = 0; i < 60 && tries < 2; i++) {
+            struct timespec ts = {0, 100 * 1000000L};
+            nanosleep(&ts, NULL);
+            pthread_mutex_lock(&s->lock);
+            tries = s->connections;
+            pthread_mutex_unlock(&s->lock);
+        }
+        CHECK(tries >= 2); /* it came back rather than giving up */
+        ca_coord_agent_stats as;
+        ca_coord_agent_stats_get(ag, &as);
+        CHECK(as.connected == 0);
+        CHECK(as.reconnects >= 1);
+        CHECK(as.last_error[0] != 0); /* and said why */
+        ca_coord_agent_stop(ag);
+        ca_coord_state_free(st);
+        server_stop(s);
+    }
+
+    /* A coordinator that refuses the upgrade is reported, not retried
+     * into a hot loop. */
+    s = server_start(SCRIPT_CHANNEL_REFUSED);
+    if (s) {
+        char url[64];
+        server_url(s, url, sizeof(url));
+        ca_coord_state *st = NULL;
+        CHECK(ca_coord_state_init(&st, ctx) == CA_OK);
+        ca_coord_agent *ag = NULL;
+        CHECK(ca_coord_agent_start(&ag, url, NULL, "me.0", ctx, st) == CA_OK);
+        int reported = 0;
+        for (int i = 0; i < 60 && !reported; i++) {
+            struct timespec ts = {0, 100 * 1000000L};
+            nanosleep(&ts, NULL);
+            ca_coord_agent_stats as;
+            ca_coord_agent_stats_get(ag, &as);
+            reported = as.last_error[0] != 0;
+        }
+        CHECK(reported == 1);
+        ca_coord_agent_stop(ag);
+        ca_coord_state_free(st);
+        server_stop(s);
+    }
+
+    /* An https:// URL is refused at the door: there is no TLS here. */
+    ca_coord_state *st = NULL;
+    CHECK(ca_coord_state_init(&st, ctx) == CA_OK);
+    ca_coord_agent *ag = NULL;
+    CHECK(ca_coord_agent_start(&ag, "https://example.com", NULL, "me.0", ctx, st) ==
+          CA_ERR_UNSUPPORTED);
+    CHECK(ag == NULL);
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+}
+
 /*
  * The tests that need a coordinator live with the coordinator, in
  * bindings/go/cmd/ca-coordinator: an end-to-end there starts the real
@@ -546,5 +1011,9 @@ int main(void)
     test_sequence_numbers_and_deltas();
     test_two_lanes_merge_to_a_solution();
     test_url_parsing();
+    test_fetch_job_over_http();
+    test_sync_once_client();
+    test_agent_channel();
+    test_agent_redials();
     TEST_MAIN_END();
 }
