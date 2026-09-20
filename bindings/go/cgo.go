@@ -8,12 +8,14 @@ package cryptanalysis
 /*
 #cgo CFLAGS: -O3 -std=gnu11 -D_GNU_SOURCE -DCA_BUILDING -I${SRCDIR}/../../include -I${SRCDIR}/../../src
 #cgo LDFLAGS: -lpthread -lm
+#include <stdlib.h>
 #include <cryptanalysis/cryptanalysis.h>
 */
 import "C"
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"unsafe"
 )
@@ -404,6 +406,66 @@ func ffiCheonBestDivisor(p uint64) (uint64, float64) {
 	var cost C.double
 	d := C.ca_ffi_cheon_best_divisor(C.uint64_t(p), &cost)
 	return uint64(d), float64(cost)
+}
+
+// ---- curve dispatch (GLV endomorphism) ------------------------------------
+
+func ffiCurveDetect(p, a, b, order uint64) (info CurveInfo, err error) {
+	var ce C.int32_t
+	var ca C.uint32_t
+	var cb, cl C.uint64_t
+	var cs C.double
+	withThread(func() {
+		err = statusErr(C.ca_ffi_curve_detect(C.uint64_t(p), C.uint64_t(a), C.uint64_t(b),
+			C.uint64_t(order), &ce, &ca, &cb, &cl, &cs))
+	})
+	if err != nil {
+		return CurveInfo{}, err
+	}
+	return CurveInfo{
+		Endo:       CurveEndo(ce),
+		AutOrder:   uint32(ca),
+		Beta:       uint64(cb),
+		Lambda:     uint64(cl),
+		RhoSpeedup: float64(cs),
+	}, nil
+}
+
+func ffiCurveByName(name string) (p, a, b, order uint64, err error) {
+	cn := C.CString(name)
+	defer C.free(unsafe.Pointer(cn))
+	var cp, ca, cb, co C.uint64_t
+	withThread(func() {
+		err = statusErr(C.ca_ffi_curve_by_name(cn, &cp, &ca, &cb, &co))
+	})
+	return uint64(cp), uint64(ca), uint64(cb), uint64(co), err
+}
+
+func ffiCurveName(i int) string {
+	p := C.ca_ffi_curve_name(C.size_t(i))
+	if p == nil {
+		return ""
+	}
+	return C.GoString(p)
+}
+
+func ffiCurveSolve(h ctxHandle, base, target Elem, seed uint64) (uint64, CurveInfo, Stats, error) {
+	var cx, cl C.uint64_t
+	var ce C.int32_t
+	var ca C.uint32_t
+	var cst C.ca_stats
+	var err error
+	withThread(func() {
+		err = statusErr(C.ca_ffi_curve_solve(h, ep(&base), ep(&target), C.uint64_t(seed), &cx, &ce,
+			&ca, &cl, &cst))
+	})
+	info := CurveInfo{
+		Endo:       CurveEndo(ce),
+		AutOrder:   uint32(ca),
+		Lambda:     uint64(cl),
+		RhoSpeedup: math.Sqrt(float64(ca)),
+	}
+	return uint64(cx), info, statsFromC(&cst), err
 }
 
 // ---- index calculus -------------------------------------------------------
