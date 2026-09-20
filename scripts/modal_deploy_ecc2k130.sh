@@ -55,7 +55,7 @@ export ECC_GPU
 need_modal() {
   command -v modal >/dev/null || pip install -q 'modal>=0.72'
   if [[ -n "${MODAL_TOKEN_ID:-}" && -n "${MODAL_TOKEN_SECRET:-}" ]]; then
-    modal token set --id "$MODAL_TOKEN_ID" --secret "$MODAL_TOKEN_SECRET" --no-verify >/dev/null
+    modal token set --token-id "$MODAL_TOKEN_ID" --token-secret "$MODAL_TOKEN_SECRET" --no-verify >/dev/null
   fi
   modal profile current >/dev/null 2>&1 || {
     echo "Modal is not authenticated." >&2
