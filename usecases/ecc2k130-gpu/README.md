@@ -56,4 +56,22 @@ export RUNPOD_API_KEY=...
 ./scripts/runpod_deploy_ecc2k130.sh stop
 ```
 
-`--run-id` must fit in 16 bits (0..65535).
+`--run-id` must fit in 16 bits (0..65535). Fresh walks (no giant `--load`) keep
+the GPU saturated near 19 B/s; archive old `dps.bin` before reloading millions
+of orbits or the host stalls at 0% GPU.
+
+## Deploy on Modal
+
+Source of truth is `aburan28/crypto` `main` (PR #507). Needs Modal tokens:
+
+```sh
+export MODAL_TOKEN_ID=...
+export MODAL_TOKEN_SECRET=...
+./scripts/modal_deploy_ecc2k130.sh setup
+./scripts/modal_deploy_ecc2k130.sh deploy
+./scripts/modal_deploy_ecc2k130.sh bench     # packed throughput on RTX-PRO-6000
+ECC_HOURS=4 ./scripts/modal_deploy_ecc2k130.sh search
+ECC_FANOUT=8 ECC_HOURS=4 ./scripts/modal_deploy_ecc2k130.sh fanout
+```
+
+Tokens: https://modal.com/settings/tokens
