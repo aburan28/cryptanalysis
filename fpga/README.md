@@ -197,9 +197,9 @@ only groups of order below 2⁶⁴; ECC2K-130 does not pretend to fit that API.
 Its production boundary is instead the
 [ECC2K-130 use-case integration](../usecases/ecc2k130/README.md): the same
 32-byte seed/orbit records are written as immutable, content-addressed S3
-objects, delivered through SQS, and indexed in RDS. This wires the campaign's
-storage and status path into the repository without misrepresenting a 131-bit
-field as a 64-bit `ca_group`.
+objects, queued by reference in a durable Redis Stream, and indexed in RDS.
+This wires the campaign's storage and status path into the repository without
+misrepresenting a 131-bit field as a 64-bit `ca_group`.
 
 The two protocols still share the important shape: a replayable unit
 identified by a seed, a fixed-width record with no framing, verification

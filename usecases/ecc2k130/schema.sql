@@ -111,6 +111,16 @@ CREATE TABLE IF NOT EXISTS ecc2k130_checkpoints (
 CREATE INDEX IF NOT EXISTS ecc2k130_checkpoints_produced
     ON ecc2k130_checkpoints (campaign_id, produced_at);
 
+CREATE TABLE IF NOT EXISTS ecc2k130_checkpoint_objects (
+    campaign_id   text        NOT NULL,
+    object_key    text        NOT NULL,
+    version_id    text        NOT NULL DEFAULT '',
+    slot          integer     NOT NULL CHECK (slot BETWEEN 0 AND 65534),
+    iteration_base bigint     NOT NULL CHECK (iteration_base >= 0),
+    processed_at  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (campaign_id, object_key, version_id)
+);
+
 -- Fleet status is read from the same fenced slot table used by the existing
 -- ECC2K-130 control plane. The worker/control-plane migration may already
 -- have created it; this definition is intentionally compatible.

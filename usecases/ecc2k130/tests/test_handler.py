@@ -5,14 +5,11 @@ import struct
 import sys
 import unittest
 from pathlib import Path
-from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import configure_notification
 import handler
-import replay_checkpoints
 
 
 class FakeS3:
@@ -20,7 +17,7 @@ class FakeS3:
         self.objects = dict(objects or {})
         self.puts = []
 
-    def get_object(self, Bucket, Key):
+    def get_object(self, Bucket, Key, VersionId=None, Range=None):
         if Key not in self.objects:
             raise KeyError(Key)
         return {"Body": io.BytesIO(self.objects[Key])}
@@ -62,49 +59,13 @@ class FakeIndex:
         }
 
 
-class FakeSQS:
-    def get_queue_attributes(self, **_kwargs):
-        return {
-            "Attributes": {
-                "ApproximateNumberOfMessages": "2",
-                "ApproximateNumberOfMessagesNotVisible": "1",
-            }
-        }
-
-
-class ReplayS3:
-    def list_objects_v2(self, **kwargs):
-        if kwargs.get("ContinuationToken"):
-            return {
-                "Contents": [{"Key": checkpoint_fixture()[1]}],
-                "IsTruncated": False,
-            }
-        return {
-            "Contents": [
-                {"Key": "ckpt/retired/slot-00139.ck"},
-                {"Key": "ckpt/slot-00140.ck"},
-            ],
-            "IsTruncated": True,
-            "NextContinuationToken": "page-2",
-        }
-
-
-class ReplaySQS:
-    def __init__(self):
-        self.entries = []
-
-    def send_message_batch(self, QueueUrl, Entries):
-        self.entries.extend(Entries)
-        return {"Successful": [{"Id": entry["Id"]} for entry in Entries]}
-
-
 def config(campaign_id=""):
     return handler.Config(
         campaign="ecc2k-130",
         campaign_id=campaign_id,
         bucket="ecc2k130-test",
         status_bucket="ecc2k130-status-test",
-        queue_url="https://sqs.example/queue",
+        redis_url="rediss://memorydb.example:6379",
         db_url="postgresql://example/db",
         db_host="",
         db_secret="rho/dp-rds",
@@ -154,6 +115,11 @@ class ProtocolTests(unittest.TestCase):
                 "dp/slot-00002/1789311001-0000000000000000.bin"
             )
 
+    def test_rejects_slot_outside_run_id_space(self):
+        key = "dp/slot-65535/" + "a" * 32 + "-" + "0" * 16 + "-" + "b" * 64 + ".bin"
+        with self.assertRaisesRegex(ValueError, "run-id"):
+            handler.parse_object_key(key)
+
     def test_decodes_the_packed_record_contract(self):
         body, _, _ = fixture()
         rows = handler.decode_records(body)
@@ -175,6 +141,30 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(checkpoint.slot, 140)
         self.assertEqual(checkpoint.walks, 128 * 16)
         self.assertEqual(checkpoint.iterations, 1000 * 128 * 16)
+
+    def test_hashed_checkpoint_stream_is_verified(self):
+        body, key = checkpoint_fixture()
+        corrupted = body[:-1] + bytes([body[-1] ^ 1])
+        with self.assertRaisesRegex(ValueError, "key hash"):
+            handler.load_checkpoint(
+                FakeS3({key: corrupted}), config(""), "ecc2k130-test", key
+            )
+
+    def test_mutable_checkpoint_is_bound_to_an_s3_version(self):
+        body, _ = checkpoint_fixture()
+        key = "ckpt/slot-00140.ck"
+        with self.assertRaisesRegex(ValueError, "VersionId"):
+            handler.load_checkpoint(
+                FakeS3({key: body}), config(""), "ecc2k130-test", key
+            )
+        checkpoint = handler.load_checkpoint(
+            FakeS3({key: body}),
+            config(""),
+            "ecc2k130-test",
+            key,
+            version_id="version-7",
+        )
+        self.assertEqual(checkpoint.version_id, "version-7")
 
 
 class BatchTests(unittest.TestCase):
@@ -250,7 +240,7 @@ class EventTests(unittest.TestCase):
         }
         self.assertEqual(
             list(handler._event_jobs(event)),
-            [("ecc2k130-test", key, "2026-09-20T13:00:00Z")],
+            [("ecc2k130-test", key, "2026-09-20T13:00:00Z", "")],
         )
 
     def test_checkpoint_message_updates_the_work_index(self):
@@ -280,86 +270,20 @@ class EventTests(unittest.TestCase):
         self.assertEqual(results[0]["records"], 2)
         self.assertEqual(len(index.batches), 1)
 
-    def test_lambda_reports_only_the_failed_sqs_item(self):
-        body, key, _ = fixture()
-        s3 = FakeS3({key: body})
-        index = FakeIndex()
-        event = {
-            "Records": [
-                {
-                    "messageId": "good",
-                    "body": json.dumps(
-                        {"bucket": "ecc2k130-test", "manifestKey": key}
-                    ),
-                },
-                {"messageId": "bad", "body": "{}"},
-            ]
-        }
-        with mock.patch.object(
-            handler, "_dependencies", return_value=(config(""), s3, FakeSQS(), index)
-        ):
-            result = handler.lambda_handler(event, None)
-        self.assertEqual(result, {"batchItemFailures": [{"itemIdentifier": "bad"}]})
-        self.assertEqual(len(index.batches), 1)
-
-    def test_scheduled_status_includes_queue_depth(self):
+    def test_status_includes_redis_queue_pressure(self):
         s3 = FakeS3()
-        status = handler.publish_status(config(""), s3, FakeIndex(), FakeSQS())
+        queue = {
+            "messages": 3,
+            "pending": 1,
+            "bytes": 64,
+            "records": 2,
+            "state": "yellow",
+        }
+        status = handler.publish_status(config(""), s3, FakeIndex(), queue)
         self.assertEqual(status["ingest"]["outstanding_objects"], 3)
         self.assertEqual(status["state"], "INGEST_BEHIND")
+        self.assertEqual(status["queue"]["state"], "yellow")
         self.assertEqual(s3.puts[0]["Key"], "status.json")
-
-
-class NotificationTests(unittest.TestCase):
-    def test_notification_merge_preserves_other_routes_and_is_idempotent(self):
-        current = {
-            "ResponseMetadata": {"RequestId": "ignored"},
-            "TopicConfigurations": [{"Id": "other", "TopicArn": "arn:topic"}],
-            "QueueConfigurations": [
-                {
-                    "Id": configure_notification.NOTIFICATION_ID,
-                    "QueueArn": "arn:old",
-                },
-                {"Id": "another", "QueueArn": "arn:another"},
-            ],
-        }
-        merged = configure_notification.merged_configuration(current, "arn:new")
-        self.assertEqual(merged["TopicConfigurations"], current["TopicConfigurations"])
-        self.assertEqual(
-            [q["Id"] for q in merged["QueueConfigurations"]].count(
-                configure_notification.NOTIFICATION_ID
-            ),
-            1,
-        )
-        ours = next(
-            q
-            for q in merged["QueueConfigurations"]
-            if q["Id"] == configure_notification.NOTIFICATION_ID
-        )
-        self.assertEqual(ours["QueueArn"], "arn:new")
-        self.assertIn(
-            {"Name": "suffix", "Value": ".bin"},
-            ours["Filter"]["Key"]["FilterRules"],
-        )
-        checkpoints = next(
-            q
-            for q in merged["QueueConfigurations"]
-            if q["Id"] == configure_notification.CHECKPOINT_NOTIFICATION_ID
-        )
-        self.assertIn(
-            {"Name": "suffix", "Value": ".ck"},
-            checkpoints["Filter"]["Key"]["FilterRules"],
-        )
-
-    def test_checkpoint_replay_is_paginated_and_skips_retired_keys(self):
-        sqs = ReplaySQS()
-        sent = replay_checkpoints.enqueue(
-            ReplayS3(), sqs, "ecc2k130-test", "https://sqs.example/queue"
-        )
-        self.assertEqual(sent, 2)
-        bodies = [json.loads(entry["MessageBody"]) for entry in sqs.entries]
-        self.assertEqual(bodies[0]["manifestKey"], "ckpt/slot-00140.ck")
-        self.assertTrue(bodies[1]["manifestKey"].startswith("ckpt/slot-00140/"))
 
 
 if __name__ == "__main__":

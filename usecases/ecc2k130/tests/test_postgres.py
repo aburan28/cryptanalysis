@@ -49,9 +49,11 @@ class PostgresIndexTests(unittest.TestCase):
     def setUp(self):
         self.campaign = "test-" + uuid.uuid4().hex
         self.index = handler.PostgresIndex(self.connection, self.campaign)
+        self.assertTrue(self.index.assert_schema())
 
     def tearDown(self):
         tables = (
+            "ecc2k130_checkpoint_objects",
             "ecc2k130_checkpoints",
             "rho_objects",
             "ecc2k130_commits",
@@ -96,7 +98,8 @@ class PostgresIndexTests(unittest.TestCase):
         now = dt.datetime.now(tz=dt.timezone.utc)
         newer = handler.Checkpoint(
             bucket="test",
-            object_key="ckpt/slot-00140/new.ck",
+            object_key="ckpt/slot-00140.ck",
+            version_id="version-2",
             slot=140,
             sha256="a" * 64,
             iteration_base=100,
@@ -106,7 +109,8 @@ class PostgresIndexTests(unittest.TestCase):
         )
         older = handler.Checkpoint(
             bucket="test",
-            object_key="ckpt/slot-00140/old.ck",
+            object_key="ckpt/slot-00140.ck",
+            version_id="version-1",
             slot=140,
             sha256="b" * 64,
             iteration_base=90,
@@ -117,6 +121,9 @@ class PostgresIndexTests(unittest.TestCase):
         self.assertEqual(self.index.commit_checkpoint(newer)["status"], "checkpoint")
         self.assertEqual(
             self.index.commit_checkpoint(older)["status"], "older-checkpoint"
+        )
+        self.assertEqual(
+            self.index.commit_checkpoint(newer)["status"], "duplicate-checkpoint"
         )
         status = self.index.status()
         self.assertEqual(status["work"]["iterations"], 204800)

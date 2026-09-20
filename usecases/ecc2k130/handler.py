@@ -1,13 +1,13 @@
 """Event-driven ECC2K-130 corpus indexing.
 
 Workers write immutable, content-addressed payloads to S3 and may write
-``<payload>.json`` last as the strict campaign commit marker. S3 sends payload
-notifications to SQS. This module verifies the key, payload, and marker when
-the campaign has one, then updates the existing RDS point index in one
-transaction.
+``<payload>.json`` last as the strict campaign commit marker. Workers enqueue
+the S3 object reference in a durable Redis Stream. This module verifies the
+key, payload, and marker when the campaign has one, then updates the existing
+RDS point index in one transaction.
 
-S3 remains the corpus authority.  SQS is durable delivery, and RDS is the
-query/index view.  Every operation is idempotent because the object key is
+S3 remains the corpus authority. Redis is durable delivery, and RDS is the
+query/index view. Every operation is idempotent because the object key is
 content-addressed and is also the database commit key.
 """
 
@@ -25,6 +25,9 @@ from dataclasses import dataclass
 
 PROTOCOL = "ecc2k-seed-orbit-v1"
 RECORD_BYTES = 32
+MAX_SLOT = 65534
+MAX_DP_OBJECT_BYTES = 8 * 1024 * 1024
+MAX_CHECKPOINT_OBJECT_BYTES = 16 * 1024**3
 ORBIT_KEY_RE = re.compile(
     r"^dp/slot-(\d{5})/([0-9a-f]{32})-(\d{16})-([0-9a-f]{64})\.bin$"
 )
@@ -40,7 +43,7 @@ class Config:
     campaign_id: str
     bucket: str
     status_bucket: str
-    queue_url: str
+    redis_url: str
     db_url: str
     db_host: str
     db_secret: str
@@ -59,7 +62,7 @@ class Config:
             campaign_id=get("ECC2K130_CAMPAIGN_ID"),
             bucket=get("ECC_BUCKET"),
             status_bucket=get("ECC_STATUS_BUCKET"),
-            queue_url=get("ECC_INGEST_QUEUE_URL"),
+            redis_url=get("RHO_QUEUE_REDIS_URL"),
             db_url=get("DATABASE_URL"),
             db_host=get("RHO_DB_HOST"),
             db_secret=get("RHO_DB_SECRET", "rho/dp-rds"),
@@ -72,6 +75,8 @@ class Config:
             raise ValueError("ECC_BUCKET is required")
         if not self.status_bucket:
             raise ValueError("ECC_STATUS_BUCKET is required")
+        if not self.redis_url:
+            raise ValueError("RHO_QUEUE_REDIS_URL is required")
         if not self.db_url and not self.db_host:
             raise ValueError("set DATABASE_URL, or RHO_DB_HOST plus RHO_DB_SECRET")
 
@@ -108,6 +113,7 @@ class Batch:
 class Checkpoint:
     bucket: str
     object_key: str
+    version_id: str
     slot: int
     sha256: str
     iteration_base: int
@@ -121,9 +127,12 @@ def parse_object_key(key):
     match = ORBIT_KEY_RE.fullmatch(key)
     if not match:
         raise ValueError(f"not an ECC2K-130 strict DP object: {key}")
+    slot = int(match.group(1))
+    if slot > MAX_SLOT:
+        raise ValueError(f"slot {slot} exceeds the 16-bit run-id space")
     return ObjectKey(
         key=key,
-        slot=int(match.group(1)),
+        slot=slot,
         stream_id=match.group(2),
         offset=int(match.group(3)),
         sha256=match.group(4),
@@ -206,7 +215,17 @@ def load_batch(s3, config, bucket, notified_key, event_time=None):
         # campaign id is configured, the envelope becomes mandatory.
         if config.campaign_id:
             raise ValueError(f"{payload_key} is missing its campaign commit marker")
-    body = _read_body(s3.get_object(Bucket=bucket, Key=payload_key))
+    response = s3.get_object(Bucket=bucket, Key=payload_key)
+    content_length = int(response.get("ContentLength") or 0)
+    if content_length > MAX_DP_OBJECT_BYTES:
+        raise ValueError(
+            f"{payload_key}: payload exceeds {MAX_DP_OBJECT_BYTES} byte limit"
+        )
+    body = _read_body(response)
+    if len(body) > MAX_DP_OBJECT_BYTES:
+        raise ValueError(
+            f"{payload_key}: payload exceeds {MAX_DP_OBJECT_BYTES} byte limit"
+        )
     digest = hashlib.sha256(body).hexdigest()
 
     if manifest is not None:
@@ -243,7 +262,7 @@ def load_batch(s3, config, bucket, notified_key, event_time=None):
     )
 
 
-def load_checkpoint(s3, config, bucket, key, event_time=None):
+def load_checkpoint(s3, config, bucket, key, event_time=None, version_id=""):
     """Read enough checkpoint state to publish cumulative campaign work."""
     if bucket != config.bucket:
         raise ValueError(f"event bucket {bucket!r} does not match ECC_BUCKET")
@@ -251,12 +270,51 @@ def load_checkpoint(s3, config, bucket, key, event_time=None):
     if not match:
         raise ValueError(f"not an ECC2K-130 checkpoint object: {key}")
     slot = int(match.group(1))
-    body = _read_body(s3.get_object(Bucket=bucket, Key=key))
-    if len(body) < CHECKPOINT_HEADER.size:
+    if slot > MAX_SLOT:
+        raise ValueError(f"slot {slot} exceeds the 16-bit run-id space")
+    if match.group(2) is None and (not version_id or version_id == "null"):
+        raise ValueError("mutable checkpoint keys require an S3 VersionId")
+    if match.group(2) is not None:
+        version_id = ""
+    request = {"Bucket": bucket, "Key": key}
+    if version_id:
+        request["VersionId"] = version_id
+    if match.group(2) is not None:
+        response = s3.get_object(**request)
+        content_length = int(response.get("ContentLength") or 0)
+        if content_length > MAX_CHECKPOINT_OBJECT_BYTES:
+            raise ValueError(
+                f"{key}: checkpoint exceeds {MAX_CHECKPOINT_OBJECT_BYTES} byte limit"
+            )
+        source = response["Body"]
+        chunks = (
+            source.iter_chunks(chunk_size=1024 * 1024)
+            if hasattr(source, "iter_chunks")
+            else iter(lambda: source.read(1024 * 1024), b"")
+        )
+        hasher = hashlib.sha256()
+        header = bytearray()
+        total = 0
+        for chunk in chunks:
+            if not chunk:
+                continue
+            hasher.update(chunk)
+            total += len(chunk)
+            if len(header) < CHECKPOINT_HEADER.size:
+                need = CHECKPOINT_HEADER.size - len(header)
+                header.extend(chunk[:need])
+        body = bytes(header)
+        digest = hasher.hexdigest()
+        if digest != match.group(2):
+            raise ValueError(f"{key}: checkpoint key hash does not match payload")
+        if content_length and total != content_length:
+            raise ValueError(f"{key}: checkpoint body is truncated")
+    else:
+        request["Range"] = f"bytes=0-{CHECKPOINT_HEADER.size - 1}"
+        body = _read_body(s3.get_object(**request))
+        digest = hashlib.sha256(body).hexdigest()
+    if len(body) != CHECKPOINT_HEADER.size:
         raise ValueError(f"{key}: checkpoint header is truncated")
-    digest = hashlib.sha256(body).hexdigest()
-    if match.group(2) and digest != match.group(2):
-        raise ValueError(f"{key}: checkpoint key hash does not match payload")
     magic, version, curve, threads, batch, lanes, run_id, iteration_base = (
         CHECKPOINT_HEADER.unpack_from(body)
     )
@@ -267,14 +325,20 @@ def load_checkpoint(s3, config, bucket, key, event_time=None):
     if not threads or not batch or not lanes:
         raise ValueError(f"{key}: invalid zero walk geometry")
     walks = int(threads) * int(batch) * int(lanes)
+    iterations = int(iteration_base) * walks
+    if walks > 2**63 - 1 or int(iteration_base) > 2**63 - 1:
+        raise ValueError(f"{key}: checkpoint counters exceed bigint")
+    if iterations >= 10**40:
+        raise ValueError(f"{key}: checkpoint work exceeds numeric(40)")
     return Checkpoint(
         bucket=bucket,
         object_key=key,
+        version_id=version_id,
         slot=slot,
         sha256=digest,
         iteration_base=int(iteration_base),
         walks=walks,
-        iterations=int(iteration_base) * walks,
+        iterations=iterations,
         produced_at=_timestamp(None, event_time),
     )
 
@@ -286,7 +350,7 @@ def _event_jobs(payload):
     if payload.get("Event") == "s3:TestEvent":
         return
 
-    # Native S3 notification, normally wrapped in an SQS message.
+    # Native S3 notification remains accepted for migration/replay tooling.
     if isinstance(payload.get("Records"), list):
         for record in payload["Records"]:
             if record.get("eventSource") != "aws:s3":
@@ -297,7 +361,12 @@ def _event_jobs(payload):
                 raise ValueError("malformed S3 notification")
             key = urllib.parse.unquote_plus(key)
             if key.endswith((".bin", ".bin.json", ".ck")):
-                yield bucket, key, record.get("eventTime")
+                yield (
+                    bucket,
+                    key,
+                    record.get("eventTime"),
+                    record.get("s3", {}).get("object", {}).get("versionId") or "",
+                )
         return
 
     # EventBridge S3 Object Created event.
@@ -306,7 +375,12 @@ def _event_jobs(payload):
         bucket = detail.get("bucket", {}).get("name")
         key = detail.get("object", {}).get("key")
         if bucket and key and key.endswith((".bin", ".bin.json", ".ck")):
-            yield bucket, urllib.parse.unquote_plus(key), payload.get("time")
+            yield (
+                bucket,
+                urllib.parse.unquote_plus(key),
+                payload.get("time"),
+                detail.get("object", {}).get("version-id") or "",
+            )
         return
 
     # Explicit message accepted for replay and operator recovery.
@@ -314,7 +388,12 @@ def _event_jobs(payload):
         key = urllib.parse.unquote_plus(str(payload["manifestKey"]))
         if not key.endswith((".bin", ".bin.json", ".ck")):
             raise ValueError("manifestKey must end in .bin, .bin.json, or .ck")
-        yield str(payload["bucket"]), key, payload.get("eventTime")
+        yield (
+            str(payload["bucket"]),
+            key,
+            payload.get("eventTime"),
+            str(payload.get("versionId") or ""),
+        )
         return
 
     raise ValueError("queue body is not an S3, EventBridge, or replay event")
@@ -326,6 +405,54 @@ class PostgresIndex:
     def __init__(self, connection, campaign="ecc2k-130"):
         self.connection = connection
         self.campaign = campaign
+
+    def assert_schema(self):
+        required = {
+            "distinguished_points": {
+                "campaign_id",
+                "point_key",
+                "a",
+                "b",
+                "walk_seed",
+                "worker_id",
+                "found_at",
+            },
+            "ecc2k130_commits": {"campaign_id", "object_key", "committed_at"},
+            "ecc2k130_checkpoints": {
+                "campaign_id",
+                "slot",
+                "object_key",
+                "iterations",
+            },
+            "ecc2k130_checkpoint_objects": {
+                "campaign_id",
+                "object_key",
+                "version_id",
+                "iteration_base",
+            },
+        }
+        tables = list(required)
+        with self.connection.transaction(), self.connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_schema = ANY(current_schemas(false))
+                  AND table_name = ANY(%s)
+                """,
+                (tables,),
+            )
+            present = {table: set() for table in tables}
+            for table, column in cur.fetchall():
+                present[table].add(column)
+        missing = {
+            table: sorted(columns - present[table])
+            for table, columns in required.items()
+            if columns - present[table]
+        }
+        if missing:
+            raise RuntimeError(f"ECC2K-130 schema is incomplete: {missing}")
+        return True
 
     def commit(self, batch):
         key = batch.object_key
@@ -504,6 +631,29 @@ class PostgresIndex:
         with self.connection.transaction(), self.connection.cursor() as cur:
             cur.execute(
                 """
+                INSERT INTO ecc2k130_checkpoint_objects
+                  (campaign_id, object_key, version_id, slot, iteration_base)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (campaign_id, object_key, version_id) DO NOTHING
+                RETURNING object_key
+                """,
+                (
+                    self.campaign,
+                    checkpoint.object_key,
+                    checkpoint.version_id,
+                    checkpoint.slot,
+                    checkpoint.iteration_base,
+                ),
+            )
+            if cur.fetchone() is None:
+                return {
+                    "status": "duplicate-checkpoint",
+                    "objectKey": checkpoint.object_key,
+                    "slot": checkpoint.slot,
+                    "iterations": checkpoint.iterations,
+                }
+            cur.execute(
+                """
                 INSERT INTO ecc2k130_checkpoints
                   (campaign_id, slot, object_key, sha256, iteration_base,
                    walks, iterations, produced_at)
@@ -635,9 +785,11 @@ class PostgresIndex:
 
 def process_message(payload, config, s3, index):
     results = []
-    for bucket, key, event_time in _event_jobs(payload):
+    for bucket, key, event_time, version_id in _event_jobs(payload):
         if key.endswith(".ck"):
-            checkpoint = load_checkpoint(s3, config, bucket, key, event_time)
+            checkpoint = load_checkpoint(
+                s3, config, bucket, key, event_time, version_id
+            )
             results.append(index.commit_checkpoint(checkpoint))
         else:
             batch = load_batch(s3, config, bucket, key, event_time)
@@ -655,26 +807,17 @@ def _iso(value):
     return value.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def publish_status(config, s3, index, sqs=None):
+def publish_status(config, s3, index, queue_status=None):
     """Publish the dashboard feed from RDS without listing the S3 corpus."""
     status = index.status()
     now = dt.datetime.now(tz=dt.timezone.utc)
-    backlog = 0
-    if sqs is not None and config.queue_url:
-        attrs = sqs.get_queue_attributes(
-            QueueUrl=config.queue_url,
-            AttributeNames=[
-                "ApproximateNumberOfMessages",
-                "ApproximateNumberOfMessagesNotVisible",
-            ],
-        ).get("Attributes", {})
-        backlog = int(attrs.get("ApproximateNumberOfMessages", 0)) + int(
-            attrs.get("ApproximateNumberOfMessagesNotVisible", 0)
-        )
+    queue_status = dict(queue_status or {})
+    backlog = int(queue_status.get("messages") or 0)
     status["ingest"]["outstanding_objects"] = backlog
+    status["queue"] = queue_status
     if status["collisions"]:
         state = "COLLISION_RECORDED"
-    elif backlog:
+    elif backlog or queue_status.get("state") in ("yellow", "red"):
         state = "INGEST_BEHIND"
     elif status["walkers"]:
         state = "COLLECTING"
@@ -686,7 +829,7 @@ def publish_status(config, s3, index, sqs=None):
         schema_version=2,
         generated_at=_iso(now),
         published_at=_iso(now),
-        source="cryptanalysis ECC2K-130 S3/SQS/RDS integration",
+        source="cryptanalysis ECC2K-130 S3/Redis Streams/RDS integration",
         state=state,
     )
     body = (json.dumps(status, indent=2, sort_keys=True) + "\n").encode()
@@ -700,7 +843,7 @@ def publish_status(config, s3, index, sqs=None):
     return status
 
 
-def _database_url(config, secrets):
+def database_url(config, secrets):
     if config.db_url:
         return config.db_url
     value = secrets.get_secret_value(SecretId=config.db_secret)["SecretString"]
@@ -717,56 +860,5 @@ def _database_url(config, secrets):
     )
 
 
-_runtime = {}
-
-
-def _dependencies():
-    config = Config.from_env()
-    config.validate()
-    index = _runtime.get("index")
-    if index is not None and not index.connection.closed:
-        return config, _runtime["s3"], _runtime["sqs"], index
-
-    import boto3
-    import psycopg
-
-    s3 = boto3.client("s3")
-    sqs = boto3.client("sqs")
-    secrets = boto3.client("secretsmanager")
-    connection = psycopg.connect(
-        _database_url(config, secrets),
-        connect_timeout=30,
-        autocommit=False,
-    )
-    _runtime.update(s3=s3, sqs=sqs, index=PostgresIndex(connection, config.campaign))
-    return config, s3, sqs, _runtime["index"]
-
-
-def lambda_handler(event, _context):
-    """SQS partial-batch handler: only failed messages become visible again."""
-    config, s3, sqs, index = _dependencies()
-    if event.get("action") == "publish-status":
-        status = publish_status(config, s3, index, sqs)
-        print(json.dumps({"published": status}, sort_keys=True))
-        return {"published": True}
-    failures = []
-    results = []
-    for message in event.get("Records", []):
-        ident = message.get("messageId") or message.get("messageID") or "unknown"
-        try:
-            payload = json.loads(message["body"])
-            results.extend(process_message(payload, config, s3, index))
-        except Exception as exc:  # noqa: BLE001 - SQS retry/DLQ is the policy
-            print(
-                json.dumps(
-                    {"level": "error", "messageId": ident, "error": str(exc)},
-                    sort_keys=True,
-                )
-            )
-            failures.append({"itemIdentifier": ident})
-    print(json.dumps({"processed": results, "failures": len(failures)}, sort_keys=True))
-    return {"batchItemFailures": failures}
-
-
 if __name__ == "__main__":
-    raise SystemExit("deploy as a Lambda SQS handler; see README.md")
+    raise SystemExit("run service.py for the Redis Streams consumer; see README.md")
