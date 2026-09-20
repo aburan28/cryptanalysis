@@ -46,7 +46,7 @@ if [[ ! -f "$SSH_KEY" ]]; then
   ssh-keygen -t ed25519 -N "" -f "$SSH_KEY" -C "cursor-cloud-agent@$(hostname)"
 fi
 
-# Ensure RunPod knows this key (idempotent).
+# Ensure RunPod account knows this key (idempotent).
 runpodctl ssh add-key --key-file "${SSH_KEY}.pub" >/dev/null 2>&1 || \
   runpodctl ssh add-key --key-file "${SSH_KEY}.pub" || true
 
@@ -72,12 +72,44 @@ if [[ -z "$POD_ID" ]]; then
 fi
 echo "found pod id=${POD_ID}"
 
-INFO_JSON="$(runpodctl ssh info "$POD_ID" -o json)"
-# Pre-declare so shellcheck sees the assignments (values come from eval below).
-SSH_HOST=""
-SSH_PORT=""
-SSH_USER=""
-eval "$(INFO_JSON="$INFO_JSON" python3 - <<'PY'
+# Official templates inject authorized_keys from the pod's PUBLIC_KEY env at
+# boot. Account-level `ssh add-key` alone is not enough for an already-rented
+# pod — merge our pubkey into PUBLIC_KEY and restart when missing.
+OUR_PUB="$(tr -d '\n' <"${SSH_KEY}.pub")"
+NEED_RESTART=0
+POD_GET="$(runpodctl pod get "$POD_ID" -o json)"
+UPDATED_ENV="$(POD_GET="$POD_GET" OUR_PUB="$OUR_PUB" python3 - <<'PY'
+import json, os, sys
+pod = json.loads(os.environ["POD_GET"])
+our = os.environ["OUR_PUB"].strip()
+env = dict(pod.get("env") or {})
+existing = env.get("PUBLIC_KEY") or ""
+lines = [ln.strip() for ln in existing.splitlines() if ln.strip()]
+# Match by key body (ignore trailing comment).
+bodies = {" ".join(ln.split()[:2]) for ln in lines}
+our_body = " ".join(our.split()[:2])
+changed = our_body not in bodies
+if changed:
+    lines.append(our)
+    env["PUBLIC_KEY"] = "\n".join(lines) + "\n"
+print(json.dumps({"changed": changed, "env": env}))
+PY
+)"
+CHANGED="$(UPDATED_ENV="$UPDATED_ENV" python3 -c 'import json,os; print(json.loads(os.environ["UPDATED_ENV"])["changed"])')"
+if [[ "$CHANGED" == "True" ]]; then
+  echo "merging SSH pubkey into pod PUBLIC_KEY env ..."
+  ENV_JSON="$(UPDATED_ENV="$UPDATED_ENV" python3 -c 'import json,os; print(json.dumps(json.loads(os.environ["UPDATED_ENV"])["env"]))')"
+  runpodctl pod update "$POD_ID" --env "$ENV_JSON" >/dev/null
+  NEED_RESTART=1
+fi
+
+refresh_ssh_info() {
+  INFO_JSON="$(runpodctl ssh info "$POD_ID" -o json)"
+  # Pre-declare so shellcheck sees the assignments (values come from eval below).
+  SSH_HOST=""
+  SSH_PORT=""
+  SSH_USER=""
+  eval "$(INFO_JSON="$INFO_JSON" python3 - <<'PY'
 import json, os, shlex
 info = json.loads(os.environ["INFO_JSON"])
 host = info.get("ip") or info.get("host") or info.get("hostname") or ""
@@ -96,39 +128,53 @@ print(f"SSH_PORT={shlex.quote(str(port))}")
 print(f"SSH_USER={shlex.quote(str(user))}")
 PY
 )"
+}
 
+refresh_ssh_info
 if [[ -z "$SSH_HOST" ]]; then
   echo "ssh info missing host for pod ${POD_ID}: ${INFO_JSON}" >&2
   exit 1
 fi
 
-echo "ssh ${SSH_USER}@${SSH_HOST} -p ${SSH_PORT}"
+ssh_ok() {
+  [[ -n "${SSH_HOST:-}" && -n "${SSH_PORT:-}" ]] || return 1
+  ssh -i "$SSH_KEY" -p "$SSH_PORT" \
+    -o StrictHostKeyChecking=accept-new \
+    -o UserKnownHostsFile="${HOME}/.ssh/known_hosts_runpod" \
+    -o IdentitiesOnly=yes \
+    -o BatchMode=yes \
+    -o ConnectTimeout=10 \
+    "${SSH_USER}@${SSH_HOST}" "true" 2>/dev/null
+}
 
-SSH_OPTS=(
-  -i "$SSH_KEY"
-  -p "$SSH_PORT"
-  -o StrictHostKeyChecking=accept-new
-  -o UserKnownHostsFile="${HOME}/.ssh/known_hosts_runpod"
-  -o IdentitiesOnly=yes
-  -o ConnectTimeout=20
-)
-
-# Fresh pods may need a restart after add-key before authorized_keys is injected.
-if ! ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" "true" 2>/dev/null; then
-  echo "ssh failed; restarting pod so authorized_keys refreshes ..."
+if [[ "$NEED_RESTART" -eq 1 ]] || ! ssh_ok; then
+  echo "restarting pod ${POD_ID} so authorized_keys picks up PUBLIC_KEY ..."
   runpodctl pod restart "$POD_ID" >/dev/null || true
-  for _ in $(seq 1 36); do
+  for _ in $(seq 1 48); do
     sleep 5
-    if ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" "true" 2>/dev/null; then
+    refresh_ssh_info
+    if [[ -n "$SSH_HOST" ]] && ssh_ok; then
+      echo "ssh ready on ${SSH_USER}@${SSH_HOST}:${SSH_PORT}"
       break
     fi
+    echo "waiting for ssh ..."
   done
 fi
 
-ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" "true"
+if ! ssh_ok; then
+  echo "ssh still failing for ${SSH_USER}@${SSH_HOST}:${SSH_PORT}" >&2
+  exit 1
+fi
+
+echo "ssh ${SSH_USER}@${SSH_HOST} -p ${SSH_PORT}"
 
 # Stream the remote bootstrap script with required env.
-ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" \
+ssh -i "$SSH_KEY" -p "$SSH_PORT" \
+  -o StrictHostKeyChecking=accept-new \
+  -o UserKnownHostsFile="${HOME}/.ssh/known_hosts_runpod" \
+  -o IdentitiesOnly=yes \
+  -o BatchMode=yes \
+  "${SSH_USER}@${SSH_HOST}" \
   env \
     CURSOR_API_KEY="$CURSOR_API_KEY" \
     WORKER_NAME="$WORKER_NAME" \
@@ -140,3 +186,4 @@ ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" \
 echo
 echo "Next: open https://cursor.com/agents and pick worker=${WORKER_NAME}"
 echo "Or start a Cloud Agent with worker=${WORKER_NAME} for this repo."
+echo "Status: ./scripts/runpod_cursor_worker_status.sh"

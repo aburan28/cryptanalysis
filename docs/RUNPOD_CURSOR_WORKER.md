@@ -29,10 +29,22 @@ Optional overrides: `POD_NAME`, `WORKER_NAME`, `REPO_URL`, `WORKER_DIR`.
 The script will:
 
 1. Resolve the pod with `runpodctl pod list --name …`
-2. Ensure an SSH key is registered (`runpodctl ssh add-key`)
+2. Register the local SSH pubkey and **merge it into the pod's `PUBLIC_KEY` env**
+   (account-level `ssh add-key` alone does not update an already-rented pod;
+   a restart follows when the key was missing)
 3. Install the Cursor CLI on the pod
 4. Clone/update `cryptanalysis` under `/root/cryptanalysis` (avoids geesefs `/workspace` chmod issues)
 5. Start `agent worker --name <pod> --idle-release-timeout 0` in tmux (API key via `/root/.cursor-worker/api-key`)
+
+## Status check
+
+```sh
+export RUNPOD_API_KEY=...
+./scripts/runpod_cursor_worker_status.sh
+```
+
+Exits non-zero if the pod is stopped, SSH fails, or the `cursor-worker` tmux
+session / `agent worker` process is missing.
 
 ## Using the worker
 
