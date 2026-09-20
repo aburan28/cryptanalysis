@@ -615,7 +615,8 @@ class StreamConsumer:
                 result = process(values)
             except Exception as exc:  # noqa: BLE001 - pending retry/DLQ is the policy
                 deliveries = self.queue.delivery_count(message_id)
-                if permanent(exc) and deliveries >= self.queue.config.max_deliveries:
+                is_permanent = permanent(exc)
+                if is_permanent and deliveries >= self.queue.config.max_deliveries:
                     dead = self.queue.dead_letter(message_id, values, exc)
                     status = "dead-letter" if dead["acked"] else "stale-owner"
                     results.append(
@@ -632,6 +633,7 @@ class StreamConsumer:
                             "id": message_id,
                             "status": "retry",
                             "deliveries": deliveries,
+                            "permanent": is_permanent,
                             "error": str(exc),
                         }
                     )

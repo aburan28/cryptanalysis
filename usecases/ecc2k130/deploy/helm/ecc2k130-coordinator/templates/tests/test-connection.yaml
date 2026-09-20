@@ -1,0 +1,41 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "ecc2k130-coordinator.fullname" . }}-test
+  labels:
+    {{- include "ecc2k130-coordinator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+    cryptanalysis.io/ecc2k130-publisher-client: "true"
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  containers:
+    - name: connection
+      image: {{ include "ecc2k130-coordinator.image" . }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command:
+        - python
+        - -c
+        - |
+          import json
+          import urllib.request
+          url = "http://{{ include "ecc2k130-coordinator.fullname" . }}-publisher:{{ .Values.publisher.service.port }}/healthz"
+          with urllib.request.urlopen(url, timeout=10) as response:
+              body = json.load(response)
+          if body != {"ok": True}:
+              raise SystemExit("publisher is not healthy: %r" % body)
+      securityContext:
+        {{- toYaml .Values.containerSecurityContext | nindent 8 }}
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 64Mi
+{{- end }}

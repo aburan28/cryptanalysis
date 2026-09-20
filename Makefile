@@ -5,7 +5,8 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
-        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth ecc2k130-usecase
+        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth \
+        ecc2k130-usecase ecc2k130-helm
 
 all: lib
 
@@ -75,6 +76,11 @@ fpga-synth:
 # standard library; boto3 and psycopg are deployment dependencies loaded lazily.
 ecc2k130-usecase:
 	python3 -m unittest discover -s usecases/ecc2k130/tests -v
+
+ecc2k130-helm:
+	helm lint usecases/ecc2k130/deploy/helm/ecc2k130-coordinator
+	helm template ecc2k130 usecases/ecc2k130/deploy/helm/ecc2k130-coordinator \
+	  --namespace cryptanalysis >/dev/null
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \

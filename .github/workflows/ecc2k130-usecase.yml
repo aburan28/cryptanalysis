@@ -61,12 +61,14 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: usecases/ecc2k130/requirements.txt
+      - uses: azure/setup-helm@v4
       - name: Install deployment dependencies
         run: pip install -r usecases/ecc2k130/requirements.txt
       - name: Compile
         run: >-
           python -m py_compile
           usecases/ecc2k130/handler.py
+          usecases/ecc2k130/migrate.py
           usecases/ecc2k130/publish.py
           usecases/ecc2k130/publish_api.py
           usecases/ecc2k130/reconcile.py
@@ -77,3 +79,15 @@ jobs:
           ECC2K130_TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:5432/ecc2k130
           ECC2K130_TEST_REDIS_URL: redis://127.0.0.1:6379/0
         run: python -m unittest discover -s usecases/ecc2k130/tests -v
+      - name: Lint and render the coordinator chart
+        run: |
+          chart=usecases/ecc2k130/deploy/helm/ecc2k130-coordinator
+          helm lint "$chart"
+          helm template ecc2k130 "$chart" --namespace cryptanalysis >/dev/null
+          helm template ecc2k130 "$chart" --namespace cryptanalysis \
+            --set existingSecret.runtimeDatabaseUrlKey=database-url \
+            --set rds.host= >/dev/null
+          if helm template invalid "$chart" --set queue.backend=standalone >/dev/null 2>&1; then
+            echo "chart accepted a non-durable queue backend" >&2
+            exit 1
+          fi

@@ -217,9 +217,11 @@ Queue depth, bytes, oldest-entry age and Redis memory pressure drive explicit
 green/yellow/red backpressure. At red, producers retain their local spool and
 retry instead of dropping DPs or filling Redis. The queue is deliberately
 separate from the fail-open Redis cache used for disposable fleet hints.
+The coordinator ships as a Helm chart with publisher and consumer Deployments,
+guarded schema-migration init containers and an S3 reconciliation CronJob.
 
 ```sh
-make ecc2k130-usecase
+make ecc2k130-usecase ecc2k130-helm
 ```
 
 ## C API in one screen

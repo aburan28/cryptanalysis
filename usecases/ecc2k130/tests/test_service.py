@@ -4,6 +4,7 @@ import io
 import os
 import struct
 import sys
+import tempfile
 import time
 import unittest
 import uuid
@@ -53,6 +54,46 @@ class FakeS3:
 
     def list_object_versions(self, **_kwargs):
         return {"Versions": [], "IsTruncated": False}
+
+
+class ReadinessTests(unittest.TestCase):
+    def test_readiness_file_is_created_and_removed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ready"
+            previous = os.environ.get("RHO_READY_FILE")
+            os.environ["RHO_READY_FILE"] = str(path)
+            try:
+                service.mark_ready(True)
+                self.assertEqual(path.read_text(encoding="utf-8"), "ready\n")
+                service.mark_ready(False)
+                self.assertFalse(path.exists())
+            finally:
+                if previous is None:
+                    os.environ.pop("RHO_READY_FILE", None)
+                else:
+                    os.environ["RHO_READY_FILE"] = previous
+
+    def test_infrastructure_retry_makes_run_once_fail_readiness(self):
+        class Consumer:
+            def consume_once(self, _process):
+                return {
+                    "messages": [
+                        {
+                            "status": "retry",
+                            "permanent": False,
+                            "error": "RDS down",
+                        }
+                    ],
+                    "pressure": {},
+                }
+
+        app = object.__new__(service.IndexService)
+        app.consumer = Consumer()
+        app.process = lambda _fields: None
+        app.last_status = time.monotonic()
+        app.status_every = 3600
+        with self.assertRaisesRegex(RuntimeError, "blocked by dependencies"):
+            app.run_once()
 
 
 @unittest.skipUnless(

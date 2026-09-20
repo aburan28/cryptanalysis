@@ -1,0 +1,80 @@
+{{- if .Values.reconciler.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "ecc2k130-coordinator.fullname" . }}-reconciler
+  labels:
+    {{- include "ecc2k130-coordinator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: reconciler
+spec:
+  schedule: {{ .Values.reconciler.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.reconciler.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.reconciler.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.reconciler.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.reconciler.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.reconciler.activeDeadlineSeconds }}
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "reconciler") | nindent 12 }}
+        spec:
+          serviceAccountName: {{ include "ecc2k130-coordinator.serviceAccountName" (dict "root" . "component" "reconciler") }}
+          automountServiceAccountToken: {{ .Values.serviceAccounts.reconciler.automountServiceAccountToken }}
+          restartPolicy: Never
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.priorityClassName }}
+          priorityClassName: {{ . }}
+          {{- end }}
+          {{- if and .Values.migration.enabled .Values.migration.runOnReconciler }}
+          initContainers:
+            - name: migration
+              image: {{ include "ecc2k130-coordinator.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["python", "migrate.py"]
+              envFrom:
+                - configMapRef:
+                    name: {{ include "ecc2k130-coordinator.fullname" . }}
+              env:
+                {{- include "ecc2k130-coordinator.migrationDatabaseSecretEnv" . | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              resources:
+                {{- toYaml .Values.migration.resources | nindent 16 }}
+          {{- end }}
+          containers:
+            - name: reconciler
+              image: {{ include "ecc2k130-coordinator.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["python", "reconcile.py"]
+              envFrom:
+                - configMapRef:
+                    name: {{ include "ecc2k130-coordinator.fullname" . }}
+              env:
+                {{- include "ecc2k130-coordinator.producerQueueSecretEnv" . | nindent 16 }}
+                {{- include "ecc2k130-coordinator.databaseSecretEnv" . | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              resources:
+                {{- toYaml .Values.reconciler.resources | nindent 16 }}
+          {{- with .Values.reconciler.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.reconciler.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.reconciler.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

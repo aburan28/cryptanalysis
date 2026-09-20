@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import time
+from pathlib import Path
 
 from handler import (
     Config,
@@ -73,9 +74,18 @@ class IndexService:
 
     def run_once(self):
         result = self.consumer.consume_once(self.process)
+        infrastructure_failures = [
+            row
+            for row in result["messages"]
+            if row["status"] == "retry" and not row.get("permanent")
+        ]
+        print(json.dumps(result, sort_keys=True))
+        if infrastructure_failures:
+            raise RuntimeError(
+                f"{len(infrastructure_failures)} queue item(s) blocked by dependencies"
+            )
         if time.monotonic() - self.last_status >= self.status_every:
             self.publish()
-        print(json.dumps(result, sort_keys=True))
         return result
 
 
@@ -105,8 +115,19 @@ def dependencies():
     )
 
 
+def mark_ready(ready):
+    raw = os.environ.get("RHO_READY_FILE", "")
+    if not raw:
+        return
+    path = Path(raw)
+    if ready:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("ready\n", encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)
+
+
 def main():
-    service = dependencies()
     stopping = False
 
     def stop(_signum, _frame):
@@ -115,12 +136,18 @@ def main():
 
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
+    mark_ready(False)
+    service = None
     delay = 1.0
     while not stopping:
         try:
+            if service is None:
+                service = dependencies()
             service.run_once()
+            mark_ready(True)
             delay = 1.0
         except Exception as exc:  # noqa: BLE001 - service dependency retry loop
+            mark_ready(False)
             print(
                 json.dumps(
                     {
@@ -133,6 +160,7 @@ def main():
             )
             time.sleep(delay)
             delay = min(30.0, delay * 2.0)
+    mark_ready(False)
     return 0
 
 

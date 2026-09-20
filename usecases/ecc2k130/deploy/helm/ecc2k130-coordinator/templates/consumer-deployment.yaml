@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ecc2k130-coordinator.fullname" . }}-consumer
+  labels:
+    {{- include "ecc2k130-coordinator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: consumer
+spec:
+  replicas: {{ .Values.consumer.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "consumer") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "consumer") | nindent 8 }}
+        {{- with .Values.consumer.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/external-config: {{ printf "%s|%s|%s" .Values.rolloutNonce (toJson .Values.existingSecret) (toJson .Values.serviceAccounts.consumer.annotations) | sha256sum }}
+        {{- with .Values.consumer.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "ecc2k130-coordinator.serviceAccountName" (dict "root" . "component" "consumer") }}
+      automountServiceAccountToken: {{ .Values.serviceAccounts.consumer.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.consumer.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- if .Values.migration.enabled }}
+      initContainers:
+        - name: migration
+          image: {{ include "ecc2k130-coordinator.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "migrate.py"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "ecc2k130-coordinator.fullname" . }}
+          env:
+            {{- include "ecc2k130-coordinator.migrationDatabaseSecretEnv" . | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migration.resources | nindent 12 }}
+      {{- end }}
+      containers:
+        - name: consumer
+          image: {{ include "ecc2k130-coordinator.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "service.py"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "ecc2k130-coordinator.fullname" . }}
+          env:
+            {{- include "ecc2k130-coordinator.secretEnv" . | nindent 12 }}
+            - name: RHO_READY_FILE
+              value: /run/cryptanalysis/ready
+          startupProbe:
+            exec:
+              command: ["test", "-f", "/run/cryptanalysis/ready"]
+            initialDelaySeconds: 1
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            exec:
+              command: ["test", "-f", "/run/cryptanalysis/ready"]
+            periodSeconds: 5
+            failureThreshold: 2
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.consumer.resources | nindent 12 }}
+          volumeMounts:
+            - name: runtime
+              mountPath: /run/cryptanalysis
+      volumes:
+        - name: runtime
+          emptyDir: {}
+      {{- with .Values.consumer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.consumer.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.consumer.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.consumer.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -417,41 +417,239 @@ class PostgresIndex:
                 "worker_id",
                 "found_at",
             },
-            "ecc2k130_commits": {"campaign_id", "object_key", "committed_at"},
+            "ecc2k130_commits": {
+                "campaign_id",
+                "object_key",
+                "manifest_key",
+                "sha256",
+                "bytes",
+                "records",
+                "slot",
+                "stream_id",
+                "byte_offset",
+                "produced_at",
+                "added",
+                "collisions",
+                "committed_at",
+            },
             "ecc2k130_checkpoints": {
                 "campaign_id",
                 "slot",
                 "object_key",
+                "sha256",
+                "iteration_base",
+                "walks",
                 "iterations",
+                "produced_at",
+                "updated_at",
             },
             "ecc2k130_checkpoint_objects": {
                 "campaign_id",
                 "object_key",
                 "version_id",
+                "slot",
                 "iteration_base",
+                "processed_at",
             },
+            "dp_ingest_progress": {
+                "campaign_id",
+                "object_key",
+                "records",
+                "ingested_at",
+            },
+            "dp_ingest_totals": {
+                "campaign_id",
+                "dps",
+                "first_dp_at",
+                "last_dp_at",
+            },
+            "dp_ingest_hourly": {"campaign_id", "hour", "dps"},
+            "rho_collisions": {"campaign_id", "point_key", "detected_at"},
+            "rho_objects": {
+                "campaign_id",
+                "object_key",
+                "slot",
+                "stream_id",
+                "byte_offset",
+                "bytes",
+                "records",
+                "sha256",
+                "fence",
+                "uploaded_at",
+            },
+            "rho_slots": {
+                "campaign_id",
+                "slot",
+                "owner",
+                "lease_until",
+                "fence",
+                "state",
+                "instance",
+                "gpu",
+                "gpu_name",
+                "gpu_family",
+                "instance_type",
+                "iters",
+                "points",
+                "reason",
+                "created_at",
+                "claimed_at",
+                "updated_at",
+            },
+        }
+        required_types = {
+            ("distinguished_points", "campaign_id"): "text",
+            ("distinguished_points", "point_key"): "bytea",
+            ("distinguished_points", "a"): "bytea",
+            ("distinguished_points", "b"): "bytea",
+            ("distinguished_points", "walk_seed"): "bytea",
+            ("distinguished_points", "worker_id"): "text",
+            ("distinguished_points", "found_at"): "timestamp with time zone",
+            ("ecc2k130_commits", "campaign_id"): "text",
+            ("ecc2k130_commits", "object_key"): "text",
+            ("ecc2k130_commits", "manifest_key"): "text",
+            ("ecc2k130_commits", "sha256"): "text",
+            ("ecc2k130_commits", "bytes"): "bigint",
+            ("ecc2k130_commits", "records"): "bigint",
+            ("ecc2k130_commits", "slot"): "integer",
+            ("ecc2k130_commits", "stream_id"): "text",
+            ("ecc2k130_commits", "byte_offset"): "bigint",
+            ("ecc2k130_commits", "produced_at"): "timestamp with time zone",
+            ("ecc2k130_commits", "added"): "bigint",
+            ("ecc2k130_commits", "collisions"): "bigint",
+            ("ecc2k130_commits", "committed_at"): "timestamp with time zone",
+            ("ecc2k130_checkpoints", "campaign_id"): "text",
+            ("ecc2k130_checkpoints", "slot"): "integer",
+            ("ecc2k130_checkpoints", "object_key"): "text",
+            ("ecc2k130_checkpoints", "sha256"): "text",
+            ("ecc2k130_checkpoints", "iteration_base"): "bigint",
+            ("ecc2k130_checkpoints", "walks"): "bigint",
+            ("ecc2k130_checkpoints", "iterations"): "numeric",
+            ("ecc2k130_checkpoints", "produced_at"): "timestamp with time zone",
+            ("ecc2k130_checkpoints", "updated_at"): "timestamp with time zone",
+            ("ecc2k130_checkpoint_objects", "campaign_id"): "text",
+            ("ecc2k130_checkpoint_objects", "object_key"): "text",
+            ("ecc2k130_checkpoint_objects", "version_id"): "text",
+            ("ecc2k130_checkpoint_objects", "slot"): "integer",
+            ("ecc2k130_checkpoint_objects", "iteration_base"): "bigint",
+            ("ecc2k130_checkpoint_objects", "processed_at"): "timestamp with time zone",
+            ("dp_ingest_progress", "campaign_id"): "text",
+            ("dp_ingest_progress", "object_key"): "text",
+            ("dp_ingest_progress", "records"): "bigint",
+            ("dp_ingest_progress", "ingested_at"): "timestamp with time zone",
+            ("dp_ingest_totals", "campaign_id"): "text",
+            ("dp_ingest_totals", "dps"): "bigint",
+            ("dp_ingest_totals", "first_dp_at"): "timestamp with time zone",
+            ("dp_ingest_totals", "last_dp_at"): "timestamp with time zone",
+            ("dp_ingest_hourly", "campaign_id"): "text",
+            ("dp_ingest_hourly", "hour"): "timestamp with time zone",
+            ("dp_ingest_hourly", "dps"): "bigint",
+            ("rho_collisions", "campaign_id"): "text",
+            ("rho_collisions", "point_key"): "bytea",
+            ("rho_collisions", "detected_at"): "timestamp with time zone",
+            ("rho_objects", "campaign_id"): "text",
+            ("rho_objects", "object_key"): "text",
+            ("rho_objects", "slot"): "integer",
+            ("rho_objects", "stream_id"): "text",
+            ("rho_objects", "byte_offset"): "bigint",
+            ("rho_objects", "bytes"): "bigint",
+            ("rho_objects", "records"): "bigint",
+            ("rho_objects", "sha256"): "text",
+            ("rho_objects", "fence"): "bigint",
+            ("rho_objects", "uploaded_at"): "bigint",
+            ("rho_slots", "campaign_id"): "text",
+            ("rho_slots", "slot"): "integer",
+            ("rho_slots", "owner"): "text",
+            ("rho_slots", "lease_until"): "bigint",
+            ("rho_slots", "fence"): "bigint",
+            ("rho_slots", "state"): "text",
+            ("rho_slots", "instance"): "text",
+            ("rho_slots", "gpu"): "integer",
+            ("rho_slots", "gpu_name"): "text",
+            ("rho_slots", "gpu_family"): "text",
+            ("rho_slots", "instance_type"): "text",
+            ("rho_slots", "iters"): "bigint",
+            ("rho_slots", "points"): "bigint",
+            ("rho_slots", "reason"): "text",
+            ("rho_slots", "created_at"): "bigint",
+            ("rho_slots", "claimed_at"): "bigint",
+            ("rho_slots", "updated_at"): "bigint",
+        }
+        required_keys = {
+            "distinguished_points": ("campaign_id", "point_key"),
+            "ecc2k130_commits": ("campaign_id", "object_key"),
+            "ecc2k130_checkpoints": ("campaign_id", "slot"),
+            "ecc2k130_checkpoint_objects": (
+                "campaign_id",
+                "object_key",
+                "version_id",
+            ),
+            "dp_ingest_progress": ("campaign_id", "object_key"),
+            "dp_ingest_totals": ("campaign_id",),
+            "dp_ingest_hourly": ("campaign_id", "hour"),
+            "rho_collisions": ("campaign_id", "point_key"),
+            "rho_objects": ("campaign_id", "object_key"),
+            "rho_slots": ("campaign_id", "slot"),
         }
         tables = list(required)
         with self.connection.transaction(), self.connection.cursor() as cur:
             cur.execute(
                 """
-                SELECT table_name, column_name
+                SELECT table_name, column_name, data_type
                 FROM information_schema.columns
                 WHERE table_schema = ANY(current_schemas(false))
                   AND table_name = ANY(%s)
                 """,
                 (tables,),
             )
-            present = {table: set() for table in tables}
-            for table, column in cur.fetchall():
-                present[table].add(column)
+            present = {table: {} for table in tables}
+            for table, column, data_type in cur.fetchall():
+                present[table][column] = data_type
+            cur.execute(
+                """
+                SELECT tc.table_name,
+                       array_agg(kcu.column_name::text ORDER BY kcu.ordinal_position)
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON kcu.constraint_schema = tc.constraint_schema
+                 AND kcu.constraint_name = tc.constraint_name
+                 AND kcu.table_name = tc.table_name
+                WHERE tc.table_schema = ANY(current_schemas(false))
+                  AND tc.table_name = ANY(%s)
+                  AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
+                GROUP BY tc.table_name, tc.constraint_name
+                """,
+                (tables,),
+            )
+            keys = {table: [] for table in tables}
+            for table, columns in cur.fetchall():
+                keys[table].append(tuple(columns))
         missing = {
-            table: sorted(columns - present[table])
+            table: sorted(columns - set(present[table]))
             for table, columns in required.items()
-            if columns - present[table]
+            if columns - set(present[table])
         }
         if missing:
             raise RuntimeError(f"ECC2K-130 schema is incomplete: {missing}")
+        wrong_types = {
+            f"{table}.{column}": {
+                "expected": expected,
+                "actual": present[table].get(column),
+            }
+            for (table, column), expected in required_types.items()
+            if present[table].get(column) != expected
+        }
+        if wrong_types:
+            raise RuntimeError(f"ECC2K-130 schema has incompatible types: {wrong_types}")
+        missing_keys = {
+            table: columns
+            for table, columns in required_keys.items()
+            if columns not in keys[table]
+        }
+        if missing_keys:
+            raise RuntimeError(
+                f"ECC2K-130 schema is missing unique keys: {missing_keys}"
+            )
         return True
 
     def commit(self, batch):

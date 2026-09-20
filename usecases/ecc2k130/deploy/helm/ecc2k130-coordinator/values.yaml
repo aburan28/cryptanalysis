@@ -1,0 +1,179 @@
+image:
+  repository: ghcr.io/aburan28/cryptanalysis-ecc2k130
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+campaign:
+  name: ecc2k-130
+  contractId: ""
+  awsRegion: us-west-2
+  bucket: ecc2k130-590183823895
+  statusBucket: ecc2k130-status-590183823895
+
+rds:
+  host: rho-dp.cxqyicswioh8.us-west-2.rds.amazonaws.com
+  secretId: rho/dp-rds
+  databaseName: ""
+  sslMode: require
+
+existingSecret:
+  name: ecc2k130-coordinator
+  producerRedisUrlKey: producer-redis-url
+  consumerRedisUrlKey: consumer-redis-url
+  publishTokenKey: publish-token
+  # Set to use a complete libpq URL instead of rds.host + Secrets Manager.
+  runtimeDatabaseUrlKey: ""
+  # Required when migration.enabled=true. Use a DDL-capable principal that is
+  # not exposed to the runtime containers.
+  migrationDatabaseUrlKey: migration-database-url
+
+# Change when rotating values in existingSecret or IRSA annotations.
+rolloutNonce: ""
+
+queue:
+  backend: memorydb
+  cluster: true
+  blockMilliseconds: 5000
+  batchSize: 8
+  claimIdleMilliseconds: 60000
+  maxDeliveries: 8
+  maxDpBytes: 8388608
+  maxCheckpointBytes: 17179869184
+  highMessages: 10000
+  criticalMessages: 50000
+  highBytes: 2147483648
+  criticalBytes: 6442450944
+  highAgeSeconds: 300
+  criticalAgeSeconds: 1800
+  highMemoryRatio: "0.70"
+  criticalMemoryRatio: "0.85"
+
+status:
+  publishEverySeconds: 180
+
+publisher:
+  replicaCount: 2
+  port: 8080
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  terminationGracePeriodSeconds: 30
+
+consumer:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 4Gi
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  terminationGracePeriodSeconds: 45
+
+reconciler:
+  enabled: true
+  schedule: "*/10 * * * *"
+  startingDeadlineSeconds: 300
+  activeDeadlineSeconds: 1800
+  backoffLimit: 3
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 5
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+migration:
+  enabled: true
+  runOnReconciler: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+serviceAccounts:
+  publisher:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: true
+  consumer:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: true
+  reconciler:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: true
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+networkPolicy:
+  enabled: true
+  # Add TLS gateway namespace/pod selectors when exposing the ClusterIP.
+  allowSameNamespace: false
+  publisherClientPodSelector:
+    matchLabels:
+      cryptanalysis.io/ecc2k130-publisher-client: "true"
+  additionalPublisherIngress: []
+  # Optional egress rules for namespaces with default-deny egress. Kubernetes
+  # NetworkPolicy cannot express S3/MemoryDB/RDS DNS names, so supply the
+  # environment-specific CIDR/ipBlock rules here.
+  egress: []
+
+podDisruptionBudget:
+  enabled: true
+  publisher:
+    minAvailable: 1
+  consumer:
+    minAvailable: 1
+
+priorityClassName: ""
+
+tests:
+  enabled: true

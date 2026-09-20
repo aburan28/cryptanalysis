@@ -148,9 +148,23 @@ internal service in `publish_api.py`; that service validates the configured
 bucket with S3 `HeadObject`, derives bytes/records itself, and alone holds the
 producer ACL. Its Redis command set is `EVALSHA`/`SCRIPT LOAD`, `INFO`, `TIME`,
 `INCR`, `XLEN`, `XRANGE`, `XPENDING`, `HGET`, `HGETALL`, `HSET`, `HDEL`,
-`HINCRBY`, `XADD`, and cluster discovery. The consumer additionally needs `XGROUP`, `XREADGROUP`,
-`XAUTOCLAIM`, `XACK` and `XDEL`. Restrict both service users to
+`HINCRBY`, `XADD`, and cluster discovery. The consumer additionally needs
+`XGROUP`, `XREADGROUP`, `XAUTOCLAIM`, `XACK` and `XDEL`. Restrict both users to
 `~rho:{ecc2k-130}:dp:*`.
+
+Kubernetes deployments should use the coordinator chart, which installs the
+publisher, consumer group, guarded migration init containers and reconciliation
+CronJob:
+
+```sh
+helm upgrade --install ecc2k130 \
+  usecases/ecc2k130/deploy/helm/ecc2k130-coordinator \
+  --namespace cryptanalysis --create-namespace \
+  -f production-values.yaml
+```
+
+See the [chart README](deploy/helm/ecc2k130-coordinator/README.md) for the
+required existing Secret, IAM roles, NetworkPolicy and worker endpoint.
 
 ```sh
 cd usecases/ecc2k130

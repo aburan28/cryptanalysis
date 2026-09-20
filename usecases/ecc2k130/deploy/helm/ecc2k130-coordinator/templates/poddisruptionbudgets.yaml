@@ -1,0 +1,27 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ecc2k130-coordinator.fullname" . }}-publisher
+  labels:
+    {{- include "ecc2k130-coordinator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: publisher
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.publisher.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "publisher") | nindent 6 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ecc2k130-coordinator.fullname" . }}-consumer
+  labels:
+    {{- include "ecc2k130-coordinator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: consumer
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.consumer.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "consumer") | nindent 6 }}
+{{- end }}

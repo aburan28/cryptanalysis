@@ -1,0 +1,18 @@
+ECC2K-130 coordinator deployed.
+
+Publisher service:
+  http://{{ include "ecc2k130-coordinator.fullname" . }}-publisher.{{ .Release.Namespace }}.svc:{{ .Values.publisher.service.port }}
+
+Worker configuration:
+  RHO_QUEUE_PUBLISH_URL=http://{{ include "ecc2k130-coordinator.fullname" . }}-publisher.{{ .Release.Namespace }}.svc:{{ .Values.publisher.service.port }}
+  RHO_QUEUE_PUBLISH_TOKEN=<the {{ .Values.existingSecret.publishTokenKey }} value from {{ include "ecc2k130-coordinator.secretName" . }}>
+
+Run the connection test:
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+Watch the coordinator:
+  kubectl get deploy,cronjob -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl logs -n {{ .Release.Namespace }} deploy/{{ include "ecc2k130-coordinator.fullname" . }}-consumer -f
+
+The chart does not create MemoryDB, RDS, S3 buckets, IAM roles, or the
+existing Secret. They must exist before installation.
