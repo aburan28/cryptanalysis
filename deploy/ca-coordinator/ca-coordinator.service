@@ -1,0 +1,42 @@
+# The hub.  One instance, one job document, one URL for the fleet.
+#
+#   install -m 0755 build/ca /usr/local/bin/ca
+#   useradd --system --home /var/lib/ca --create-home ca
+#   install -d -m 0750 -o root -g ca /etc/ca
+#   install -m 0640 -o root -g ca token /etc/ca/token
+#   cp ca-coordinator.service /etc/systemd/system/
+#   systemctl enable --now ca-coordinator
+#
+# It binds loopback: TLS and the public port belong to the terminator in
+# front (nginx.conf here, or an ALB with a target group on 8080).
+[Unit]
+Description=libcryptanalysis distributed rho coordinator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ca
+Group=ca
+WorkingDirectory=/var/lib/ca
+ExecStart=/usr/local/bin/ca coord \
+    --job /var/lib/ca/job.txt \
+    --listen 127.0.0.1:8080 \
+    --token-file /etc/ca/token \
+    --require-token \
+    --report-secs 30
+Restart=always
+RestartSec=5
+StateDirectory=ca
+# Hardening: it needs one port, one token file and one directory.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/ca
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+MemoryMax=4G
+
+[Install]
+WantedBy=multi-user.target

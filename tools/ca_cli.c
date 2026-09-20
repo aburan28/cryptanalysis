@@ -17,12 +17,32 @@
  *            (--ga GA --gad GAD | --alpha X)
  *   ca ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C]
  *            [--threads T] [--seed S] [--verbose]
+ *   ca coord-job  --group zp|ec --p P [--a A --b B] --order N --g G --h H
+ *                 [--dp-bits D] [--r R] [--negation] [--unit-size U] [--seed S]
+ *                 [--out FILE]
+ *   ca coord      [--job FILE] [--listen HOST:PORT] [--token T | --token-file F]
+ *                 [--require-token] [--report-secs S] [--max-seconds S]
+ *   ca work       [--job FILE] [--coordinator URL] [--token T | --token-file F]
+ *                 [--node NAME] [--threads T] [--max-seconds S] [--max-walkers W]
+ *   ca coord-status [--coordinator URL] [--token T | --token-file F]
+ *
+ * The distributed commands: `coord-job` writes the document every
+ * participant shares, `coord` is the hub that runs on a reachable host
+ * (an EC2 instance), and `work` is an agent that dials out to it and
+ * needs no inbound reachability of its own.  --coordinator and --token
+ * fall back to $CA_COORDINATOR_URL and $CA_COORDINATOR_TOKEN.
  *
  * Elements: Z_p^* "123"; E(F_p) "x,y" or "inf".  Output is one JSON object
  * on stdout; errors go to stderr with a non-zero exit status.
  */
 #include "cryptanalysis/cryptanalysis.h"
 #include "ca_device.cuh"
+
+#include "ca_internal.h" /* ca_now: the CLI already links the static library */
+
+#include <pthread.h>
+#include <signal.h>
+#include <time.h>
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -103,7 +123,12 @@ static _Noreturn void usage(void)
         "  cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D (--ga GA --gad GAD | "
         "--alpha X)\n"
         "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] "
-        "[--verbose]\n");
+        "[--verbose]\n"
+        "  coord-job --group zp|ec --p P --order N --g G --h H [--dp-bits D] [--r R]\n"
+        "            [--negation] [--unit-size U] [--seed S] [--out FILE]\n"
+        "  coord     [--job FILE] [--listen HOST:PORT] [--token-file F] [--require-token]\n"
+        "  work      [--coordinator URL] [--token-file F] [--node NAME] [--threads T]\n"
+        "  coord-status [--coordinator URL] [--token-file F]\n");
     exit(2);
 }
 
@@ -337,6 +362,351 @@ static int cmd_ic(void)
     return 0;
 }
 
+/* ---- distributed rho ------------------------------------------------------
+ *
+ * Three processes and one URL: `coord-job` writes what everyone agrees
+ * on, `coord` is the hub on the reachable host, `work` is an agent
+ * anywhere.  The agent opens the connection and the hub answers on it,
+ * so an agent behind NAT needs no address of its own.
+ */
+
+/* The token: --token, then --token-file, then the environment.  A
+ * command line is world-readable on a shared box, so the file and the
+ * environment are the ones a deployment should use. */
+static const char *coord_token(void)
+{
+    const char *t = opt("--token");
+    if (t) return t;
+    const char *path = opt("--token-file");
+    if (path) {
+        static char buf[256];
+        FILE *f = fopen(path, "r");
+        if (!f) die("cannot read --token-file");
+        if (!fgets(buf, sizeof(buf), f)) {
+            fclose(f);
+            die("--token-file is empty");
+        }
+        fclose(f);
+        buf[strcspn(buf, "\r\n")] = 0;
+        if (!buf[0]) die("--token-file is empty");
+        return buf;
+    }
+    const char *env = getenv(CA_COORD_TOKEN_ENV);
+    return env && *env ? env : NULL;
+}
+
+static const char *coord_url(void)
+{
+    const char *u = opt("--coordinator");
+    if (u) return u;
+    const char *env = getenv(CA_COORD_URL_ENV);
+    return env && *env ? env : NULL;
+}
+
+static void coord_print_job(const ca_coord_job *job, const ca_coord_ctx *ctx, const char *out)
+{
+    printf("{\"status\":\"ok\",\"job_id\":\"%016" PRIx64 "\",\"order\":%" PRIu64
+           ",\"dp_bits\":%d,\"r\":%u,\"negation\":%d,\"unit_size\":%" PRIu64
+           ",\"expected_steps\":%.6e,\"expected_dps\":%.6e",
+           job->id, job->order, (int)job->dp_bits, job->r, (int)job->negation_map, job->unit_size,
+           ca_coord_expected_steps(ctx), ca_coord_expected_dps(ctx));
+    if (out) printf(",\"written\":\"%s\"", out);
+    printf("}\n");
+}
+
+static int cmd_coord_job(void)
+{
+    ca_group g;
+    make_group(&g);
+    ca_elem base, target;
+    parse_elem(&g, opt("--g"), &base);
+    parse_elem(&g, opt("--h"), &target);
+
+    ca_coord_job job;
+    ca_status rc = ca_coord_job_init(
+        &job, &g, &base, &target,
+        (int32_t)opt_u64("--dp-bits", (uint64_t)-1) == -1 ? -1 : (int32_t)opt_u64("--dp-bits", 0),
+        (uint32_t)opt_u64("--r", 0), flag("--negation"), opt_u64("--unit-size", 0),
+        opt_u64("--seed", 0));
+    if (rc != CA_OK) die_status(rc);
+    ca_coord_ctx *ctx = NULL;
+    rc = ca_coord_ctx_open(&ctx, &job);
+    if (rc != CA_OK) die_status(rc);
+
+    char line[CA_COORD_LINE_MAX];
+    if (!ca_coord_job_encode(&job, line, sizeof(line))) die("job does not encode");
+    const char *out = opt("--out");
+    if (out) {
+        FILE *f = fopen(out, "w");
+        if (!f) die("cannot write --out");
+        fprintf(f, "%s\n", line);
+        fclose(f);
+    } else {
+        fprintf(stderr, "%s\n", line);
+    }
+    coord_print_job(&job, ctx, out);
+    ca_coord_ctx_close(ctx);
+    return 0;
+}
+
+/* Load the job: from --job, or from the hub named by --coordinator.  An
+ * agent given a URL needs nothing on disk. */
+static ca_coord_ctx *coord_load(int allow_remote)
+{
+    ca_coord_job job;
+    const char *path = opt("--job");
+    if (path) {
+        FILE *f = fopen(path, "r");
+        if (!f) die("cannot read --job");
+        char line[CA_COORD_LINE_MAX];
+        if (!fgets(line, sizeof(line), f)) {
+            fclose(f);
+            die("--job is empty");
+        }
+        fclose(f);
+        line[strcspn(line, "\r\n")] = 0;
+        ca_status rc = ca_coord_job_decode(&job, line);
+        if (rc != CA_OK) die_status(rc);
+    } else if (allow_remote && coord_url()) {
+        ca_status rc = ca_coord_fetch_job(coord_url(), coord_token(), &job);
+        if (rc != CA_OK) die_status(rc);
+    } else {
+        die("pass --job FILE (or --coordinator URL to fetch it)");
+    }
+    ca_coord_ctx *ctx = NULL;
+    ca_status rc = ca_coord_ctx_open(&ctx, &job);
+    if (rc != CA_OK) die_status(rc);
+    return ctx;
+}
+
+static volatile sig_atomic_t coord_interrupted;
+static void coord_on_signal(int sig)
+{
+    (void)sig;
+    coord_interrupted = 1;
+}
+
+static int cmd_coord(void)
+{
+    ca_coord_ctx *ctx = coord_load(0);
+    ca_coord_state *st = NULL;
+    if (ca_coord_state_init(&st, ctx) != CA_OK) die("out of memory");
+
+    ca_coord_hub_params hp;
+    ca_coord_hub_params_default(&hp);
+    const char *listen = opt("--listen");
+    if (listen) hp.bind = listen;
+    hp.token = coord_token();
+    hp.lease_secs = opt_u64("--lease-secs", 120);
+    if (!hp.token && flag("--require-token")) die("--require-token was set but no token was given");
+    if (!hp.token && hp.bind && strncmp(hp.bind, "127.", 4) != 0)
+        fprintf(stderr,
+                "warning: binding %s with no token; anyone who can reach it can read the "
+                "job and write to the log\n",
+                hp.bind);
+
+    ca_coord_hub *hub = NULL;
+    ca_status rc = ca_coord_hub_start(&hub, ctx, st, &hp);
+    if (rc != CA_OK) die_status(rc);
+
+    printf("{\"status\":\"ok\",\"job_id\":\"%016" PRIx64 "\",\"listening\":\"%s\","
+           "\"url\":\"http://%s\",\"token\":%s,"
+           "\"routes\":[\"/healthz\",\"/v1/job\",\"/v1/status\",\"/v1/sync\",\"/v1/channel\"]}\n",
+           ca_coord_ctx_job(ctx)->id, ca_coord_hub_address(hub), ca_coord_hub_address(hub),
+           hp.token ? "true" : "false");
+    fflush(stdout);
+
+    signal(SIGINT, coord_on_signal);
+    signal(SIGTERM, coord_on_signal);
+    uint64_t report = opt_u64("--report-secs", 15);
+    uint64_t max_seconds = opt_u64("--max-seconds", 0);
+    time_t start = time(NULL);
+    time_t last = 0;
+    for (;;) {
+        struct timespec ts = {0, 200 * 1000000L};
+        nanosleep(&ts, NULL);
+        int solved = ca_coord_solution(st, NULL);
+        int timed_out = max_seconds && (uint64_t)(time(NULL) - start) >= max_seconds;
+        if ((uint64_t)(time(NULL) - last) >= report || solved || timed_out || coord_interrupted) {
+            last = time(NULL);
+            ca_coord_progress pr;
+            ca_coord_progress_get(st, ctx, (uint64_t)time(NULL), hp.lease_secs, &pr);
+            ca_coord_hub_stats hs;
+            ca_coord_hub_stats_get(hub, &hs);
+            fprintf(stderr,
+                    "[hub] %6llds  agents %3" PRIu64 "  steps %12" PRIu64 " (%5.1f%%)  "
+                    "dps %8" PRIu64 "  units done %" PRIu64 "  accepted %" PRIu64
+                    "  pushed %" PRIu64 "  rejected %" PRIu64 "  401s %" PRIu64 "\n",
+                    (long long)(time(NULL) - start), hs.agents, pr.steps, 100.0 * pr.fraction,
+                    pr.dps_stored, pr.units_completed, hs.accepted, hs.pushed, hs.rejected,
+                    hs.unauthorized);
+        }
+        if (solved || timed_out || coord_interrupted) break;
+    }
+
+    uint64_t x = 0;
+    int have = ca_coord_solution(st, &x);
+    if (have) {
+        /* Stay up briefly so agents still walking learn it from the
+         * channel they are holding open. */
+        struct timespec ts = {3, 0};
+        nanosleep(&ts, NULL);
+    }
+    ca_coord_progress pr;
+    ca_coord_progress_get(st, ctx, (uint64_t)time(NULL), hp.lease_secs, &pr);
+    ca_coord_hub_stats hs;
+    ca_coord_hub_stats_get(hub, &hs);
+    printf("{\"status\":\"ok\",\"solved\":%s,\"x\":%" PRIu64 ",\"steps\":%" PRIu64
+           ",\"dps\":%" PRIu64 ",\"checkins\":%" PRIu64 ",\"peers\":%" PRIu64
+           ",\"accepted\":%" PRIu64 ",\"pushed\":%" PRIu64 ",\"rejected\":%" PRIu64 "}\n",
+           have ? "true" : "false", x, pr.steps, pr.dps_stored, pr.checkins, pr.peers, hs.accepted,
+           hs.pushed, hs.rejected);
+    ca_coord_hub_stop(hub);
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+    return have ? 0 : 3;
+}
+
+/* One worker lane in its own thread. */
+typedef struct work_lane {
+    pthread_t thread;
+    const ca_coord_ctx *ctx;
+    ca_coord_state *st;
+    ca_coord_agent *agent;
+    char peer[CA_COORD_PEER_MAX];
+    uint64_t max_walkers;
+    ca_coord_lane_result res;
+} work_lane;
+
+static volatile sig_atomic_t work_stop;
+
+static void work_publish(void *user, const ca_coord_checkin *ci)
+{
+    if (user) ca_coord_agent_publish((ca_coord_agent *)user, ci);
+}
+
+static int work_should_stop(void *user)
+{
+    (void)user;
+    return work_stop;
+}
+
+static void *work_lane_main(void *arg)
+{
+    work_lane *w = arg;
+    ca_coord_lane_params p;
+    ca_coord_lane_params_default(&p, w->peer);
+    p.max_walkers = w->max_walkers;
+    ca_coord_lane_run(w->ctx, w->st, &p, w->agent ? work_publish : NULL, w->agent, work_should_stop,
+                      NULL, &w->res);
+    return NULL;
+}
+
+static int cmd_work(void)
+{
+    ca_coord_ctx *ctx = coord_load(1);
+    ca_coord_state *st = NULL;
+    if (ca_coord_state_init(&st, ctx) != CA_OK) die("out of memory");
+
+    const char *node = opt("--node");
+    if (!node) node = "node";
+    uint64_t threads = opt_u64("--threads", 1);
+    if (threads < 1) threads = 1;
+    if (threads > 256) threads = 256;
+    uint64_t max_seconds = opt_u64("--max-seconds", 0);
+    uint64_t max_walkers = opt_u64("--max-walkers", 0);
+
+    /* The reverse channel.  Started before the lanes, so the first
+     * check-in already has somewhere to go; it connects in the
+     * background, so an unreachable hub delays no walking. */
+    ca_coord_agent *agent = NULL;
+    if (coord_url()) {
+        ca_status rc = ca_coord_agent_start(&agent, coord_url(), coord_token(), node, ctx, st);
+        if (rc != CA_OK) die_status(rc);
+        fprintf(stderr, "[agent] dialling %s as %s%s\n", coord_url(), node,
+                coord_token() ? "" : " (no token)");
+    } else {
+        fprintf(stderr, "[agent] no --coordinator: walking alone\n");
+    }
+
+    signal(SIGINT, coord_on_signal);
+    signal(SIGTERM, coord_on_signal);
+    work_lane *lanes = calloc(threads, sizeof(*lanes));
+    if (!lanes) die("out of memory");
+    for (uint64_t i = 0; i < threads; i++) {
+        lanes[i].ctx = ctx;
+        lanes[i].st = st;
+        lanes[i].agent = agent;
+        lanes[i].max_walkers = max_walkers;
+        snprintf(lanes[i].peer, sizeof(lanes[i].peer), "%s.%" PRIu64, node, i);
+        if (pthread_create(&lanes[i].thread, NULL, work_lane_main, &lanes[i]) != 0)
+            die("cannot start a lane");
+    }
+
+    double start = ca_now();
+    for (;;) {
+        struct timespec ts = {0, 200 * 1000000L};
+        nanosleep(&ts, NULL);
+        if (coord_interrupted) work_stop = 1;
+        if (max_seconds && ca_now() - start >= (double)max_seconds) work_stop = 1;
+        if (ca_coord_solution(st, NULL)) work_stop = 1;
+        if (work_stop) break;
+    }
+    work_stop = 1;
+    for (uint64_t i = 0; i < threads; i++) pthread_join(lanes[i].thread, NULL);
+
+    /* Drain before exiting: the queue lives in this process, and the
+     * last check-in is the one carrying the solution. */
+    int flushed = 1;
+    if (agent) flushed = ca_coord_agent_flush(agent, 10000);
+
+    uint64_t steps = 0, dps = 0, walkers = 0;
+    for (uint64_t i = 0; i < threads; i++) {
+        steps += lanes[i].res.steps;
+        dps += lanes[i].res.dps;
+        walkers += lanes[i].res.walkers;
+    }
+    uint64_t x = 0;
+    int have = ca_coord_solution(st, &x);
+    ca_coord_agent_stats as;
+    memset(&as, 0, sizeof(as));
+    if (agent) ca_coord_agent_stats_get(agent, &as);
+    printf("{\"status\":\"ok\",\"solved\":%s,\"x\":%" PRIu64 ",\"node\":\"%s\",\"lanes\":%" PRIu64
+           ",\"walkers\":%" PRIu64 ",\"steps\":%" PRIu64 ",\"dps\":%" PRIu64
+           ",\"seconds\":%.3f,\"received\":%" PRIu64 ",\"sent\":%" PRIu64 ",\"connects\":%" PRIu64
+           ",\"flushed\":%s}\n",
+           have ? "true" : "false", x, node, threads, walkers, steps, dps, ca_now() - start,
+           as.received, as.sent, as.connects, flushed ? "true" : "false");
+    if (agent) ca_coord_agent_stop(agent);
+    free(lanes);
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+    return have ? 0 : 3;
+}
+
+static int cmd_coord_status(void)
+{
+    if (!coord_url()) die("pass --coordinator URL (or set " CA_COORD_URL_ENV ")");
+    ca_coord_ctx *ctx = coord_load(1);
+    ca_coord_state *st = NULL;
+    if (ca_coord_state_init(&st, ctx) != CA_OK) die("out of memory");
+    uint64_t received = 0, rejected = 0;
+    ca_status rc = ca_coord_sync_once(coord_url(), coord_token(), ctx, st, &received, &rejected);
+    if (rc != CA_OK) die_status(rc);
+    ca_coord_progress pr;
+    ca_coord_progress_get(st, ctx, (uint64_t)time(NULL), opt_u64("--lease-secs", 120), &pr);
+    printf("{\"status\":\"ok\",\"job_id\":\"%016" PRIx64 "\",\"steps\":%" PRIu64
+           ",\"fraction\":%.6f,\"dps\":%" PRIu64 ",\"units_completed\":%" PRIu64
+           ",\"units_active\":%" PRIu64 ",\"peers\":%" PRIu64 ",\"checkins\":%" PRIu64
+           ",\"rejected_dps\":%" PRIu64 ",\"solved\":%s,\"x\":%" PRIu64 "}\n",
+           ca_coord_ctx_job(ctx)->id, pr.steps, pr.fraction, pr.dps_stored, pr.units_completed,
+           pr.units_active, pr.peers, pr.checkins, pr.rejected_dps,
+           pr.have_solution ? "true" : "false", pr.solution);
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     argc_g = argc;
@@ -396,6 +766,10 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "solve")) return cmd_solve();
     if (!strcmp(cmd, "cheon")) return cmd_cheon();
     if (!strcmp(cmd, "ic")) return cmd_ic();
+    if (!strcmp(cmd, "coord-job")) return cmd_coord_job();
+    if (!strcmp(cmd, "coord")) return cmd_coord();
+    if (!strcmp(cmd, "work")) return cmd_work();
+    if (!strcmp(cmd, "coord-status")) return cmd_coord_status();
     usage();
     return 2;
 }

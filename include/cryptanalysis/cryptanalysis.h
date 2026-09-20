@@ -13,6 +13,8 @@
  *   ca_cheon.h      Cheon's attack on the strong Diffie-Hellman problem
  *   ca_indexcalc.h  index calculus in (Z/pZ)^* (linear sieve, Lanczos)
  *   ca_gpu.h        CUDA Pollard rho (with a host emulator backend)
+ *   ca_coord.h      distributed rho: a coordinator with a URL, agents that
+ *                   dial out to it and are pushed to over the same socket
  *   ca_ffi.h        flat C ABI used by the Rust, Go and Python bindings
  */
 #ifndef CRYPTANALYSIS_H
@@ -29,6 +31,7 @@
 #include "ca_cheon.h"
 #include "ca_indexcalc.h"
 #include "ca_gpu.h"
+#include "ca_coord.h"
 #include "ca_ffi.h"
 
 #endif /* CRYPTANALYSIS_H */

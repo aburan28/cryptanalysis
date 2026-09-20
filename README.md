@@ -12,6 +12,7 @@ Rust, Go and Python bindings.
 | Pohlig-Hellman + solver dispatch (`ca_dlog`) | `ca_pohlig.h` | composite order | sum over prime factors |
 | Cheon's attack on the strong Diffie-Hellman problem (`d \| p-1`) | `ca_cheon.h` | recover `alpha` from `g, g^alpha, g^(alpha^d)` | `2 sqrt((p-1)/d) + 2 sqrt(d)` exponentiations |
 | Index calculus in `(Z/pZ)^*`: linear sieve, Pohlig-Hellman for small factors, structured elimination + Lanczos, Hensel lifting, verified logs | `ca_indexcalc.h` | `Z_p^*`, `p < 2^63` | `L_p[1/2, 1]`; 56-bit `p` in 1.3 s |
+| **Distributed Pollard rho**: one coordinator with a URL, agents that dial out to it and are pushed to over the same socket (van Oorschot-Wiener check-ins, a CRDT over self-verifying distinguished points) | `ca_coord.h` | whole group, many machines | the same `sqrt(n)` split `m` ways across machines that cannot reach each other |
 | **GPU Pollard rho**: a CUDA kernel (CUDA C) with 8 walks per thread sharing one modular inversion, atomic distinguished-point output, plus a host emulator that runs the same code | `ca_gpu.h` | whole group | same `sqrt(n)` with tens of thousands of concurrent walks |
 
 Everything is written against one generic cyclic-group interface
@@ -89,6 +90,42 @@ $ ./build/ca ic --p 1099511627791 --g 3 --h 123456789 --threads 4
 Other commands: `ca factor N`, `ca prime N`, `ca solve --alg bsgs|kangaroo|grumpy
 ... --lo L --hi U` for interval problems, `ca_bench generic|interval|ic|cheon|gpu|ops`
 for the benchmark tables.
+
+## Running it across machines
+
+`ca_rho_solve` divides one instance across the threads of one process.
+`ca_coord.h` divides it across machines that cannot reach each other —
+the usual cloud case, where the workers are in private subnets or behind
+NAT and only one host is reachable by all of them.  Agents **dial out**
+to that host and it pushes everyone else's distinguished points and the
+solution back down the connection each agent opened (a *reverse
+channel*, opened with an HTTP upgrade so it passes through an ALB or
+nginx), so no agent needs an inbound rule, a public address, or even a
+copy of the job document:
+
+```sh
+# Anywhere: the job document everyone shares.
+ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
+    --g 1456600859624672 --h 4047005209878851 --dp-bits 16 --out job.txt
+
+# On the reachable host (an EC2 instance; bind loopback, TLS in front).
+ca coord --job job.txt --listen 127.0.0.1:8080 --token-file /etc/ca/token
+
+# On every agent, anywhere.  The URL is the whole configuration.
+export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=…
+ca work --node "$(hostname)" --threads "$(nproc)"
+ca coord-status
+```
+
+The hub is a rendezvous, not an authority: it holds the same CRDT every
+agent holds, verifies every point the way an agent does, assigns no
+work, and losing it costs only reachability — agents keep walking and
+reconverge when it returns.  Every check-in is self-certifying
+(`a*G + b*H == point`, two scalar multiplications to check work worth
+`2^dp_bits` steps), so a participant who lies can only waste their own
+time.  Design notes: [docs/COORDINATOR.md](./docs/COORDINATOR.md);
+systemd units, nginx configuration and EC2 user-data:
+[deploy/ca-coordinator/](./deploy/ca-coordinator/).
 
 ## C API in one screen
 
@@ -185,7 +222,8 @@ tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
 scripts/                 build_cuda_kernel.sh (compile the kernel, no GPU needed)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
-docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md
+docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md
+deploy/ca-coordinator/   systemd units, nginx TLS config and EC2 user-data for the hub
 fuzz/                    libFuzzer harnesses and their seed corpora
 .github/workflows/       ci, analysis, bindings, fuzz, codeql, nightly
 ```
@@ -201,7 +239,7 @@ set locally, in the order that fails fastest.
 | `ci` | gcc, clang, macOS and arm64 builds with `-Werror`; ctest; AddressSanitizer plus UndefinedBehaviorSanitizer; ThreadSanitizer over the pthreads solvers; valgrind memcheck on the fast suites; install and consume through both `find_package` and a relocated `pkg-config` prefix; the CUDA kernel compiled for sm_70 to sm_90 with a register report |
 | `analysis` | clang-tidy (warnings are errors), cppcheck, `gcc -fanalyzer`, clang-format on the lines a change touches, shellcheck, actionlint, and coverage with a floor |
 | `bindings` | Rust fmt/clippy/doc/tests and a measured MSRV floor, cargo-deny, Go across three toolchains with the race detector and golangci-lint, Python 3.8 to 3.13 plus an installed-package run, ruff and mypy |
-| `fuzz` | six libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
+| `fuzz` | seven libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
 | `codeql` | C, Go and Python, with the `security-and-quality` query pack |
 | `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
 

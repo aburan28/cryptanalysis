@@ -58,6 +58,8 @@ set(CA_SOURCES
   src/cheon.c
   src/linalg.c
   src/indexcalc.c
+  src/coord.c
+  src/coord_net.c
   src/ffi.c
   src/gpu_rho.c
   src/gpu_emulate.c
@@ -143,7 +145,7 @@ endif()
 
 if(CA_BUILD_TESTS)
   enable_testing()
-  set(CA_TESTS modarith group bsgs rho kangaroo grumpy pohlig cheon linalg indexcalc ffi gpu)
+  set(CA_TESTS modarith group bsgs rho kangaroo grumpy pohlig cheon linalg indexcalc ffi gpu coord)
   foreach(t ${CA_TESTS})
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${t}.c)
       add_executable(test_${t} tests/test_${t}.c)
