@@ -187,6 +187,63 @@ func TestCheon(t *testing.T) {
 	}
 }
 
+func TestCurveDispatch(t *testing.T) {
+	// Detection from parameters and by name (glv-j0-26).
+	info, err := CurveDetect(67108933, 0, 7, 16773703)
+	if err != nil || info.Endo != EndoJ0 || info.AutOrder != 6 || info.Lambda <= 1 {
+		t.Fatalf("CurveDetect j0 = %+v, %v", info, err)
+	}
+	if info.Endo.String() != "j0" {
+		t.Fatalf("Endo.String = %q", info.Endo.String())
+	}
+	if g1728, _ := CurveDetect(67108933, 6, 0, 6712457); g1728.Endo != EndoJ1728 || g1728.AutOrder != 4 {
+		t.Fatalf("CurveDetect j1728 = %+v", g1728)
+	}
+	if gen, _ := CurveDetect(67108879, 2, 3, 0); gen.Endo != EndoNone {
+		t.Fatalf("generic curve should have no endomorphism: %+v", gen)
+	}
+	p, a, b, order, err := CurveByName("glv-j0-26")
+	if err != nil || p != 67108933 || order != 16773703 {
+		t.Fatalf("CurveByName = %d/%d/%d/%d, %v", p, a, b, order, err)
+	}
+	if _, _, _, _, err := CurveByName("no-such-curve"); err == nil {
+		t.Fatal("CurveByName(unknown) should fail")
+	}
+	names := CurveNames()
+	found := false
+	for _, n := range names {
+		if n == "glv-j0-26" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("CurveNames missing glv-j0-26: %v", names)
+	}
+
+	// GLV-accelerated solve on the named curve.
+	e, err := NewEC(p, a, b, order)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	gen, err := e.FindGenerator(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x := uint64(424242) % order
+	h, err := e.Mul(gen, x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, si, st, err := e.CurveSolve(gen, h, 5)
+	if err != nil || got != x {
+		t.Fatalf("CurveSolve = %d, %v; want %d", got, err, x)
+	}
+	if si.Endo != EndoJ0 || si.AutOrder != 6 || st.GroupOps == 0 {
+		t.Fatalf("CurveSolve info = %+v, stats %+v", si, st)
+	}
+}
+
 func TestEC(t *testing.T) {
 	n, err := ECCountPoints(ecP, ecA, ecB)
 	if err != nil {
