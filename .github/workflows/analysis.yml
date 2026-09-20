@@ -90,7 +90,14 @@ jobs:
           fetch-depth: 0
 
       - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-format
+        # Hosted runners add third-party apt sources that this job does not use.
+        # Restrict updates to Ubuntu's archive so an outage in one of those
+        # unrelated repositories cannot prevent the format check from running.
+        run: |
+          sudo apt-get update \
+            -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources \
+            -o Dir::Etc::sourceparts=-
+          sudo apt-get install -y --no-install-recommends clang-format
 
       - name: Check the lines this change touches
         # Only the touched lines, not the whole tree: the sources predate
