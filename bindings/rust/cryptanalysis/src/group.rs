@@ -6,7 +6,7 @@ use std::ptr::NonNull;
 use cryptanalysis_sys as sys;
 
 use crate::error::{check, last_error_message, Error, Result};
-use crate::options::{Options, Stats};
+use crate::options::{Options, PrecompOptions, Stats};
 
 /// The kind of group a [`Group`] represents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -492,6 +492,40 @@ impl Group {
                 base.as_ptr(),
                 target.as_ptr(),
                 &raw,
+                &mut x,
+                &mut st,
+            )
+        })?;
+        Ok((x, Stats::from_raw(&st)))
+    }
+
+    /// Discrete logarithm with precomputation (Bernstein-Lange free
+    /// precomputation): a one-time table for `base` (built with
+    /// `opts.threads` workers), then this `target` solved online.
+    ///
+    /// One-shot — it builds the table, solves once and frees it — so the
+    /// returned [`Stats`] cover the whole `n^{2/3}` build plus the `n^{1/3}`
+    /// online phase; the reusable-table API is C-only.  `base` must generate
+    /// the group of order [`Group::order`].
+    pub fn precomp(
+        &self,
+        base: &Elem,
+        target: &Elem,
+        opts: &PrecompOptions,
+    ) -> Result<(u64, Stats)> {
+        let mut x = 0u64;
+        let mut st = sys::CaStats::default();
+        // SAFETY: all pointers are valid for the duration of the call.
+        check(unsafe {
+            sys::ca_ffi_precomp(
+                self.raw(),
+                base.as_ptr(),
+                target.as_ptr(),
+                opts.dp_bits,
+                opts.table_size,
+                opts.coverage,
+                opts.threads,
+                opts.seed,
                 &mut x,
                 &mut st,
             )

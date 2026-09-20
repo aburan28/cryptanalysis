@@ -375,6 +375,21 @@ extern "C" {
         x: *mut u64,
         st: *mut CaStats,
     ) -> c_int;
+    /// Discrete logs with precomputation (Bernstein-Lange): one-shot build,
+    /// solve, free.  `dp_bits < 0`, `table_size == 0`, `coverage == 0` and
+    /// `threads == 0` take the defaults; `seed` 0 => random.
+    pub fn ca_ffi_precomp(
+        ctx: *const CaCtx,
+        base: *const u64,
+        target: *const u64,
+        dp_bits: i32,
+        table_size: u64,
+        coverage: c_double,
+        threads: u32,
+        seed: u64,
+        x: *mut u64,
+        st: *mut CaStats,
+    ) -> c_int;
 
     // ---- Cheon -------------------------------------------------------------
 

@@ -4,7 +4,7 @@
 use cryptanalysis::index_calculus::{self, IcContext, IcMethod, IcParams};
 use cryptanalysis::{
     cheon_best_divisor, factorize, invmod, is_prime, next_prime, powmod, primitive_root, Elem,
-    Error, Group, Kind, Options, Solver,
+    Error, Group, Kind, Options, PrecompOptions, Solver,
 };
 
 const P: u64 = 2_000_000_579;
@@ -175,6 +175,21 @@ fn zp_cheon() {
 }
 
 #[test]
+fn zp_precomp() {
+    let (g, gen, h) = zp_instance();
+    let opts = PrecompOptions {
+        threads: 4,
+        seed: 7,
+        ..PrecompOptions::default()
+    };
+    let (x, st) = g.precomp(&gen, &h, &opts).unwrap();
+    assert_eq!(x, X);
+    // Stats cover the n^{2/3} build, so far more than one online walk.
+    assert!(st.group_ops > 0);
+    assert!(st.table_entries > 0);
+}
+
+#[test]
 fn ec_curve_end_to_end() {
     let p = 1_000_003;
     let n = Group::ec_count_points(p, 1, 7).unwrap();
@@ -232,6 +247,17 @@ fn ec_curve_end_to_end() {
             &Options {
                 seed: 5,
                 ..Options::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(x, 4242 % ord);
+    let (x, _) = e
+        .precomp(
+            &pt,
+            &q,
+            &PrecompOptions {
+                seed: 5,
+                ..PrecompOptions::default()
             },
         )
         .unwrap();

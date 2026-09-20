@@ -59,7 +59,7 @@ pub use error::{Error, Result};
 pub use gpu::{GpuBackend, GpuOptions};
 pub use group::{cheon_best_divisor, Elem, Group, Kind};
 pub use nt::{factorize, invmod, is_prime, next_prime, powmod, primitive_root};
-pub use options::{Options, Solver, Stats};
+pub use options::{Options, PrecompOptions, Solver, Stats};
 
 /// The C library's version string (e.g. `"0.1.0"`).
 pub fn version() -> &'static str {
