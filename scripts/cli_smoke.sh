@@ -166,6 +166,16 @@ want '"x":123456' solve --alg gpu-rho "${ZP[@]}" --g 858101 \
   --seed 1
 want_fail solve --alg dlog --group zp --p 12x34    # malformed number
 
+# Bernstein-Lange precomputation (ca_precomp.h).  The method needs a base that
+# generates the whole group, so work in the prime-order subgroup (order 166667,
+# where 1000002 = 2 * 3 * 166667): g^6 is such a base.  Plant x = 12345 and
+# solve it online against the precomputed table.
+PSUB=(--group zp --p 1000003 --order 166667)
+PBASE=$("$CA" group exp "${ZP[@]}" --elem 858101 --k 6 | sed 's/.*"\([0-9]*\)".*/\1/')
+PH=$("$CA" group exp "${PSUB[@]}" --elem "$PBASE" --k 12345 | sed 's/.*"\([0-9]*\)".*/\1/')
+want '"precomp_ops"' solve --alg precomp "${PSUB[@]}" --g "$PBASE" --h "$PH" --seed 1
+want '"x":12345' solve --alg precomp "${PSUB[@]}" --g "$PBASE" --h "$PH" --seed 1
+
 # ── index calculus ──────────────────────────────────────────────────────────
 want '"status":"ok"' ic --p 1099511627791 --g 3 --h 123456789 --threads 2
 

@@ -7,12 +7,14 @@
  *   ca ec-order --p P --a A --b B
  *   ca gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]
  *   ca gpu-info
- *   ca solve --alg bsgs|rho|kangaroo|grumpy|dlog|gpu-rho --group zp|ec --p P [--a A --b B]
+ *   ca solve --alg bsgs|rho|kangaroo|grumpy|precomp|dlog|gpu-rho --group zp|ec --p P [--a A --b B]
  *            --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S]
  *            [--dp-bits D] [--r R] [--walks W] [--no-negation] [--m M] [--alpha F]
  *            [--solver auto|bsgs|rho|kangaroo|grumpy] [--max-ops K]
  *            gpu-rho also takes [--backend auto|cuda|emulate] [--device D]
  *            [--tpb T] [--blocks B] [--steps S]
+ *            precomp also takes [--table CHAINS] [--coverage F]
+ *            [--max-precomp-ops K] [--max-online-ops K]
  *   ca cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D
  *            (--ga GA --gad GAD | --alpha X)
  *   ca ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C]
@@ -131,7 +133,8 @@ static _Noreturn void usage(void)
         "usage: ca <command> [options]\n"
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
-        "  solve --alg bsgs|rho|kangaroo|grumpy|dlog|gpu-rho --group zp|ec --p P [--a A --b B]\n"
+        "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|dlog|gpu-rho --group zp|ec --p P [--a A "
+        "--b B]\n"
         "        --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S] ...\n"
         "  cheon --group zp|ec --p P [--a A --b B] --order Q --g G --d D (--ga GA --gad GAD | "
         "--alpha X)\n"
@@ -296,6 +299,47 @@ static int cmd_solve(void)
         print_stats(&st);
         printf("}\n");
         fprintf(stderr, "error: %s %s\n", ca_status_string(rc), ca_last_error());
+        return 1;
+    }
+    if (!strcmp(alg, "precomp")) {
+        ca_precomp_params pp;
+        ca_precomp_params_default(&pp);
+        pp.seed = opt_u64("--seed", 0);
+        pp.dp_bits = (int32_t)opt_u64("--dp-bits", (uint64_t)-1);
+        pp.r = (uint32_t)opt_u64("--r", 0);
+        pp.table_size = opt_u64("--table", 0);
+        pp.coverage = opt_f("--coverage", 0);
+        pp.max_precomp_ops = opt_u64("--max-precomp-ops", 0);
+        pp.max_online_ops = opt_u64("--max-online-ops", 0);
+        ca_stats build = {0}, online = {0};
+        ca_precomp_table *ptab = NULL;
+        rc = ca_precomp_table_new(&g, &base, &pp, &ptab, &build);
+        if (rc != CA_OK) {
+            printf("{\"status\":\"%s\",\"alg\":\"precomp\"}\n", ca_status_string(rc));
+            fprintf(stderr, "error: %s %s\n", ca_status_string(rc), ca_last_error());
+            return 1;
+        }
+        int32_t dp_bits = 0;
+        uint64_t chains = 0, precomp_ops = 0;
+        uint32_t rr = 0;
+        ca_precomp_table_info(ptab, &dp_bits, &chains, &rr, &precomp_ops);
+        rc = ca_precomp_table_solve(ptab, &target, &x, &online);
+        if (rc == CA_OK) {
+            printf("{\"status\":\"ok\",\"alg\":\"precomp\",\"x\":%" PRIu64
+                   ",\"precomp_ops\":%" PRIu64 ",\"chains\":%" PRIu64 ",\"dp_bits\":%" PRId32
+                   ",\"r\":%u,",
+                   x, precomp_ops, chains, dp_bits, rr);
+            print_stats(&online);
+            printf("}\n");
+            ca_precomp_table_free(ptab);
+            return 0;
+        }
+        printf("{\"status\":\"%s\",\"alg\":\"precomp\",\"precomp_ops\":%" PRIu64 ",",
+               ca_status_string(rc), precomp_ops);
+        print_stats(&online);
+        printf("}\n");
+        fprintf(stderr, "error: %s %s\n", ca_status_string(rc), ca_last_error());
+        ca_precomp_table_free(ptab);
         return 1;
     }
     if (!strcmp(alg, "bsgs")) rc = ca_bsgs_solve(&g, &base, &target, lo, hi, &dp.bsgs, &x, &st);
