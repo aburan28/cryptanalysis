@@ -123,6 +123,26 @@ APIs; direct IAM bindings on the Kubernetes principal work without it.
 Networking to MemoryDB and RDS from GKE (VPN, Interconnect, or PrivateLink
 equivalents) is outside the chart.
 
+### Publisher-only walker clusters
+
+A cluster that only hosts walkers can run just the admission tier and publish
+into the shared MemoryDB stream, leaving the RDS index to the primary release:
+
+```yaml
+consumer:
+  enabled: false
+reconciler:
+  enabled: false
+rds:
+  host: ""
+existingSecret:
+  consumerRedisUrlKey: ""
+  migrationDatabaseUrlKey: ""
+```
+
+The Secret then only needs `producer-redis-url` and `publish-token`. Combine
+with `publisher.kind: DaemonSet` for node-local publishing.
+
 ### Other clusters
 
 `identity.mode: web-identity` renders the same projected token and `AWS_*`

@@ -68,6 +68,12 @@ validate "daemonset publisher" --set publisher.kind=DaemonSet \
   --set 'publisher.nodeSelector.cryptanalysis\.io/walker-pool=true'
 validate "daemonset publisher on gke" --set publisher.kind=DaemonSet \
   --set identity.mode=gke "${roles[@]}"
+validate "publisher-only walker cluster" --set consumer.enabled=false \
+  --set reconciler.enabled=false --set rds.host= \
+  --set existingSecret.consumerRedisUrlKey= \
+  --set existingSecret.migrationDatabaseUrlKey= \
+  --set identity.mode=web-identity \
+  --set serviceAccounts.publisher.awsRoleArn=arn:aws:iam::123456789012:role/ecc2k-publisher
 
 expect_failure "non-durable queue backend" --set queue.backend=standalone
 expect_failure "gke without AWS roles" --set identity.mode=gke
@@ -90,5 +96,9 @@ expect_failure "hostPort with DaemonSet maxSurge" --set publisher.kind=DaemonSet
   --set publisher.daemonSet.updateStrategy.rollingUpdate.maxUnavailable=0
 expect_failure "reserved pod label override" \
   --set 'publisher.podLabels.app\.kubernetes\.io/name=other'
+expect_failure "consumer without a Redis credential key" \
+  --set existingSecret.consumerRedisUrlKey=
+expect_failure "migration without a DDL credential key" \
+  --set existingSecret.migrationDatabaseUrlKey=
 
 echo "coordinator chart checks passed"

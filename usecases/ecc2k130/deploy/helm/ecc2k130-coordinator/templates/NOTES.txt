@@ -19,9 +19,11 @@ Worker configuration:
 Cloud identity ({{ .Values.identity.mode }}):
 {{- range $component := list "publisher" "consumer" "reconciler" }}
 {{- $account := index $.Values.serviceAccounts $component }}
+{{- if include "ecc2k130-coordinator.componentEnabled" (dict "root" $ "component" $component) }}
   {{ $component }}: {{ include "ecc2k130-coordinator.serviceAccountName" (dict "root" $ "component" $component) }}
   {{- if $account.awsRoleArn }} -> {{ $account.awsRoleArn }}{{ end }}
   {{- if $account.gcpServiceAccount }} (GCP {{ $account.gcpServiceAccount }}){{ end }}
+{{- end }}
 {{- end }}
 {{- if eq .Values.identity.mode "irsa" }}
   The EKS pod identity webhook injects the AWS token. Components without an
@@ -41,7 +43,11 @@ Run the connection test:
 
 Watch the coordinator:
   kubectl get deploy,ds,cronjob -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+{{- if .Values.consumer.enabled }}
   kubectl logs -n {{ .Release.Namespace }} deploy/{{ include "ecc2k130-coordinator.fullname" . }}-consumer -f
+{{- else }}
+  Publisher-only install: the RDS index is maintained by another release.
+{{- end }}
 
 The chart does not create MemoryDB, RDS, S3 buckets, IAM roles, OIDC
 providers, or the existing Secret. They must exist before installation.

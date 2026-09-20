@@ -12,8 +12,9 @@ spec:
   selector:
     matchLabels:
       {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "publisher") | nindent 6 }}
----
 {{- end }}
+{{- if .Values.consumer.enabled }}
+---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -26,4 +27,5 @@ spec:
   selector:
     matchLabels:
       {{- include "ecc2k130-coordinator.selectorLabels" (dict "root" . "component" "consumer") | nindent 6 }}
+{{- end }}
 {{- end }}

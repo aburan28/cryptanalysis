@@ -53,6 +53,17 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 
 {{/*
+Whether a component is part of this release. The publisher always is.
+Usage: include "ecc2k130-coordinator.componentEnabled" (dict "root" $ "component" "consumer")
+*/}}
+{{- define "ecc2k130-coordinator.componentEnabled" -}}
+{{- if eq .component "publisher" -}}true
+{{- else if and (eq .component "consumer") .root.Values.consumer.enabled -}}true
+{{- else if and (eq .component "reconciler") .root.Values.reconciler.enabled -}}true
+{{- end -}}
+{{- end -}}
+
+{{/*
 Identity modes that federate a projected Kubernetes token into AWS IAM
 directly, without the EKS pod identity webhook.
 */}}
@@ -214,7 +225,7 @@ Cluster
 {{- $federated := include "ecc2k130-coordinator.federatedIdentity" . -}}
 {{- range $component := list "publisher" "consumer" "reconciler" -}}
 {{- $account := index $.Values.serviceAccounts $component -}}
-{{- $active := or (ne $component "reconciler") $.Values.reconciler.enabled -}}
+{{- $active := include "ecc2k130-coordinator.componentEnabled" (dict "root" $ "component" $component) -}}
 {{- if and (eq $mode "none") (or $account.awsRoleArn $account.gcpServiceAccount) -}}
 {{- fail (printf "serviceAccounts.%s sets a cloud identity but identity.mode is none" $component) -}}
 {{- end -}}
@@ -228,7 +239,7 @@ Cluster
 {{- if and $federated (not (hasKey .Values.podSecurityContext "fsGroup")) -}}
 {{- fail "podSecurityContext.fsGroup is required so the non-root containers can read the projected AWS token" -}}
 {{- end -}}
-{{- if lt (int .Values.consumer.replicaCount) 1 -}}
+{{- if and .Values.consumer.enabled (lt (int .Values.consumer.replicaCount) 1) -}}
 {{- fail "consumer.replicaCount must be at least 1" -}}
 {{- end -}}
 {{- if ge (int64 .Values.queue.highMessages) (int64 .Values.queue.criticalMessages) -}}
@@ -243,11 +254,16 @@ Cluster
 {{- if ge (float64 .Values.queue.highMemoryRatio) (float64 .Values.queue.criticalMemoryRatio) -}}
 {{- fail "queue.highMemoryRatio must be less than queue.criticalMemoryRatio" -}}
 {{- end -}}
-{{- if and (not .Values.existingSecret.runtimeDatabaseUrlKey) (not .Values.rds.host) -}}
+{{- $needsDatabase := or .Values.consumer.enabled .Values.reconciler.enabled -}}
+{{- $runsMigration := and .Values.migration.enabled (or .Values.consumer.enabled (and .Values.reconciler.enabled .Values.migration.runOnReconciler)) -}}
+{{- if and $needsDatabase (not .Values.existingSecret.runtimeDatabaseUrlKey) (not .Values.rds.host) -}}
 {{- fail "set rds.host or existingSecret.runtimeDatabaseUrlKey" -}}
 {{- end -}}
-{{- if and .Values.migration.enabled (not .Values.existingSecret.migrationDatabaseUrlKey) -}}
-{{- fail "existingSecret.migrationDatabaseUrlKey is required when migration.enabled=true" -}}
+{{- if and .Values.consumer.enabled (not .Values.existingSecret.consumerRedisUrlKey) -}}
+{{- fail "existingSecret.consumerRedisUrlKey is required when consumer.enabled=true" -}}
+{{- end -}}
+{{- if and $runsMigration (not .Values.existingSecret.migrationDatabaseUrlKey) -}}
+{{- fail "existingSecret.migrationDatabaseUrlKey is required when the migration init container runs" -}}
 {{- end -}}
 {{- range $component := list "publisher" "consumer" -}}
 {{- $workload := index $.Values $component -}}

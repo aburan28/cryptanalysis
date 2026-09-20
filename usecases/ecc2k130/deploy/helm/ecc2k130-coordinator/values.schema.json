@@ -94,10 +94,10 @@
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "producerRedisUrlKey": { "type": "string", "minLength": 1 },
-        "consumerRedisUrlKey": { "type": "string", "minLength": 1 },
+        "consumerRedisUrlKey": { "type": "string" },
         "publishTokenKey": { "type": "string", "minLength": 1 },
         "runtimeDatabaseUrlKey": { "type": "string" },
-        "migrationDatabaseUrlKey": { "type": "string", "minLength": 1 }
+        "migrationDatabaseUrlKey": { "type": "string" }
       }
     },
     "queue": {
@@ -177,8 +177,9 @@
     },
     "consumer": {
       "type": "object",
-      "required": ["replicaCount"],
+      "required": ["enabled", "replicaCount"],
       "properties": {
+        "enabled": { "type": "boolean" },
         "replicaCount": { "type": "integer", "minimum": 1 },
         "terminationGracePeriodSeconds": { "type": "integer", "minimum": 1 }
       }
