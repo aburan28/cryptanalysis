@@ -29,6 +29,9 @@ auth:
 
 coordinator:
   image:
+    # Nothing publishes this yet: build and push it (deploy/docker/Dockerfile,
+    # target `coordinator`) or point this at a registry you control, or the
+    # pod will sit in ImagePullBackOff.
     repository: ghcr.io/aburan28/ca-coordinator
     tag: ""            # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent
@@ -101,6 +104,8 @@ agents:
   enabled: true
   replicaCount: 3
   image:
+    # As above: built by deploy/docker/Dockerfile, target `agent`, and not
+    # published by anything yet.
     repository: ghcr.io/aburan28/ca-agent
     tag: ""
     pullPolicy: IfNotPresent

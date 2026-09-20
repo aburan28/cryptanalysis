@@ -122,6 +122,26 @@ reported. That is the whole reason spot capacity is fine here.
 
 ## Images
 
+**Nothing publishes these yet.** `coordinator.image.repository` and
+`agents.image.repository` default to `ghcr.io/aburan28/ca-coordinator`
+and `ghcr.io/aburan28/ca-agent`, which are where they *would* live; until
+something pushes them, `helm install` with the defaults gets an
+`ImagePullBackOff`. Build and push them first, or point the values at a
+registry you control:
+
+```sh
+helm install rho deploy/helm/ca-coordinator \
+    --set coordinator.image.repository=your-registry/ca-coordinator \
+    --set agents.image.repository=your-registry/ca-agent \
+    --set coordinator.image.tag=dev --set agents.image.tag=dev \
+    --set-file job.document=job.txt --set auth.token="$(openssl rand -hex 32)"
+```
+
+CI builds both targets on every change under `deploy/` (see
+`.github/workflows/deploy.yml`) and runs each image once, so the
+Dockerfile cannot rot — but it deliberately does not push, because
+publishing is a release decision rather than a CI one.
+
 `deploy/docker/Dockerfile` builds both from the repository root:
 
 ```sh

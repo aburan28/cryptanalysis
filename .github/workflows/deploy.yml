@@ -1,0 +1,163 @@
+name: deploy
+
+# The deployment artifacts: the Helm chart and the two container images.
+#
+# These are the parts of the tree that no other job compiles, so without
+# this workflow they rot silently -- a chart that stopped rendering or a
+# Dockerfile that stopped building would be found by whoever next tried
+# to deploy, which is the worst time to find it.
+#
+# The chart job does not merely lint.  It renders with real values and
+# parses the result, and it asserts that the three configurations the
+# chart is supposed to refuse really are refused: a missing job document,
+# more than one coordinator replica (two would each hold half the
+# distinguished-point table and miss every collision that spans them),
+# and auth.required with no token.  A guard that is not tested is a
+# comment.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "deploy/**"
+      - "bindings/go/cmd/ca-coordinator/**"
+      - "bindings/go/coord.go"
+      - "src/coord*.c"
+      - "include/cryptanalysis/ca_coord.h"
+      - ".github/workflows/deploy.yml"
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "bindings/go/cmd/ca-coordinator/**"
+      - "bindings/go/coord.go"
+      - "src/coord*.c"
+      - "include/cryptanalysis/ca_coord.h"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  chart:
+    name: Helm chart (lint, render, guard rails)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      # A real job document, so the chart is rendered with the shape it
+      # will actually be given rather than a placeholder.
+      - name: Build the CLI and mint a job document
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCA_BUILD_TESTS=OFF
+          cmake --build build -j"$(nproc)" --target ca
+          ./build/ca coord-job --group zp --p 4503599627372423 \
+              --order 2251799813686211 --g 1456600859624672 --h 4047005209878851 \
+              --dp-bits 16 --unit-size 64 --seed 21 --out job.txt
+          cat job.txt
+
+      - name: helm lint
+        run: |
+          helm lint deploy/helm/ca-coordinator \
+              --set-file job.document=job.txt \
+              --set auth.token=0123456789abcdef0123456789abcdef
+
+      - name: Render every optional piece, and check the manifests parse
+        run: |
+          helm template rho deploy/helm/ca-coordinator \
+              --set-file job.document=job.txt \
+              --set auth.token=0123456789abcdef0123456789abcdef \
+              --set ingress.enabled=true \
+              --set coordinator.persistence.enabled=true \
+              --set networkPolicy.enabled=true \
+              --set serviceMonitor.enabled=true \
+              --set agents.replicaCount=5 > rendered.yaml
+          python3 - <<'PY'
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(open("rendered.yaml")) if d]
+          for d in docs:
+              assert d.get("apiVersion") and d.get("kind"), d
+              assert d["metadata"].get("name"), d
+          kinds = sorted(d["kind"] for d in docs)
+          print(len(docs), "manifests:", ", ".join(kinds))
+          # The coordinator is single-replica by construction.
+          dep = [d for d in docs if d["kind"] == "Deployment"
+                 and d["metadata"]["name"].endswith("ca-coordinator")][0]
+          assert dep["spec"]["replicas"] == 1, dep["spec"]["replicas"]
+          assert dep["spec"]["strategy"]["type"] == "Recreate"
+          # Nothing may open a connection to an agent: that is the
+          # constraint the reverse channel exists to satisfy.
+          agent_np = [d for d in docs if d["kind"] == "NetworkPolicy"
+                      and d["metadata"]["name"].endswith("-agent")][0]
+          assert agent_np["spec"]["ingress"] == [], agent_np["spec"]["ingress"]
+          PY
+
+      - name: The configurations the chart must refuse
+        run: |
+          refuses() {
+            local why="$1"; shift
+            if helm template rho deploy/helm/ca-coordinator "$@" >/dev/null 2>&1; then
+              echo "FAIL: the chart accepted $why"
+              exit 1
+            fi
+            echo "ok: refused $why"
+          }
+          refuses "a missing job document" --set auth.required=false
+          refuses "two coordinator replicas" --set-file job.document=job.txt \
+              --set auth.token=abc --set coordinator.replicaCount=2
+          refuses "auth.required with no token" --set-file job.document=job.txt
+
+  images:
+    name: images (coordinator, agent)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [coordinator, agent]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      # Built, not pushed: this job is here to prove the Dockerfile still
+      # works, and publishing is a release decision.
+      - name: docker build --target ${{ matrix.target }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: ${{ matrix.target }}
+          push: false
+          load: true
+          tags: ca-${{ matrix.target }}:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # A binary that does not start is not an image.
+      - name: The image runs
+        run: |
+          if [ "${{ matrix.target }}" = "coordinator" ]; then
+            help=$(docker run --rm ca-coordinator:ci -help 2>&1 || true)
+            echo "$help"
+            echo "$help" | grep -q "Routes:"
+          else
+            docker run --rm ca-agent:ci version
+            # `ca` with no arguments prints its usage and exits 2, which
+            # is the contract; capture it rather than pipe it, because
+            # the shell here runs with pipefail.
+            usage=$(docker run --rm ca-agent:ci 2>&1 || true)
+            echo "$usage"
+            echo "$usage" | grep -q "coord-job"
+          fi

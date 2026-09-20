@@ -118,7 +118,7 @@ analyzer:
 	cmake --build build-analyzer -j$(JOBS)
 
 shellcheck:
-	shellcheck scripts/*.sh
+	shellcheck scripts/*.sh deploy/*/*.sh
 
 # Everything a pull request is gated on, in the order that fails fastest.
 checks: format cppcheck shellcheck tidy analyzer test cli asan tsan
