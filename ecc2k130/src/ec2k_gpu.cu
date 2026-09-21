@@ -197,7 +197,7 @@ struct Engine {
                "bytes/block, batch %d, block %d x %d\n",
                attrs.numRegs, attrs.localSizeBytes, eccPacked131::TW_SHARED_BYTES, ECC_BATCH,
                ECC_THREADS, ECC_MINBLOCKS);
-        init(false);
+        init(false, 0);
     }
 
     // Keep the walk state resident in L2: on the RTX PRO 6000 the persisting
@@ -227,8 +227,11 @@ struct Engine {
                maxPersist);
     }
 
-    void init(bool reseed)
+    // (Re)seed the lanes for walks that begin at global step `iterBase`, the
+    // base of the next launch: a report's iteration count is measured from it.
+    void init(bool reseed, unsigned long long iterBase)
     {
+        P.iterBase = iterBase;
         const int blocks = int((laneCount() + ECC_THREADS - 1) / ECC_THREADS);
         eccPacked131::init<<<blocks, ECC_THREADS>>>(P, reseed);
         CUDA_CHECK(cudaGetLastError());
@@ -372,7 +375,7 @@ int cmdRun(Options o, const HostTable &table, bool bench)
             }
         }
         if (!bench) corpus.append(recs);
-        if (!recs.empty() || counts[1]) e.init(true);
+        if (!recs.empty() || counts[1]) e.init(true, iterations / e.laneCount());
         const double dt = now() - t0;
         if (bench || (l & 7) == 7 || (o.launches && l + 1 == o.launches))
             printf("  %7.1f s  %10.3f M it/s  %llu iterations  %llu dp  %llu restarts  %llu "
