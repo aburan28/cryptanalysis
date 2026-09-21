@@ -205,6 +205,12 @@ struct HostWalk {
 #endif
 };
 
+#if ECC_WALK_TABLE
+// The CPU and Metal clients (client.h, cpuwalk.h, metalwalk.h) walk only the
+// table walk, and know this struct by that walk's name.
+using HostTable = HostWalk;
+#endif
+
 // ---- the walk on the golden model ------------------------------------------
 
 // The start point of a lane: Q + sum of sigma^i(P) over the 128 bits of the

@@ -239,25 +239,41 @@ order, what each testbench establishes, and what the next improvement is
 
 ## GPU client for ECC2K-130
 
-`ecc2k130/` is a rho walker for the same challenge on a CUDA device: the
-packed GF(2^131) table walk from
-[aburan28/crypto](https://github.com/aburan28/crypto), one walk per
+`ecc2k130/` is a rho walker for the same challenge on a CUDA device, over the
+packed GF(2^131) arithmetic from
+[aburan28/crypto](https://github.com/aburan28/crypto): one walk per
 thread-slot, products on the carry-less multiplier (`clmad`, sm_80+, CUDA
-13.3), one batched inversion per 16 slots.  (A different iteration function
-from the FPGA core's `sigma^j(R) + R`, so the two do not share a corpus; they
-share the field, the model and the record format.)  Measured on one RTX PRO 6000
-Blackwell: **20.08 billion iterations per second**, 0.90 of the carry-less
-unit's ceiling for the 33 `clmad` an iteration costs.  The arithmetic is
-checked against the golden model in `fpga/model` -- the same field, two
-implementations, compared bit for bit -- and every report the device makes
-can be re-walked on that model:
+13.3), one batched inversion per 16 slots.  Its default build walks what the
+live [ecc2k-130 campaign](https://aburan28.github.io/crypto/status/) walks --
+the FPGA core's `sigma^j(R) + R` from Certicom's challenge points,
+distinguished at weight 32 -- so its points are that campaign's, record for
+record; `make test` proves it on 48 records the campaign's own client wrote.
+`WALK=table` builds an r-adding table walk instead, measured on one RTX PRO
+6000 Blackwell at **20.08 billion iterations per second**, 0.90 of the
+carry-less unit's ceiling for the 33 `clmad` an iteration costs; it is a
+different iteration function, so its points do not meet the campaign's.  The
+arithmetic is checked against the golden model in `fpga/model` -- the same
+field, two implementations, compared bit for bit -- and every report the
+device makes can be re-walked on that model:
 
 ```sh
 make ecc2k130                   # host test against the golden model, no CUDA needed
 make ecc2k130-gpu               # with nvcc >= 13.3 on PATH, or:
 make ecc2k130-gpu NVCC=$(ecc2k130/scripts/fetch_cuda.sh)/bin/nvcc   # CUDA 13.3 from pip wheels
+ecc2k130/build/ec2k-gpu walk --run-id R --dp-file dps.bin --checkpoint state.ck   # collect
 ecc2k130/build/ec2k-gpu bench                                         # iterations per second
-ecc2k130/build/ec2k-gpu walk --run-id 7 --dp-file dps.bin --verify 300   # collect; re-walk 300
+```
+
+Two more clients run the table walk from the same headers and write the same
+reports, for developing and testing a campaign's pipeline without renting a
+card: `ec2k-cpu` on host cores, its products on PMULL (AArch64) or PCLMULQDQ
+(x86-64), and `ec2k-metal` on an Apple GPU, the kernel rewritten as Metal
+Shading Language and compiled at start-up.  Measured on an M4 Pro: 145 M
+iterations per second on its 14 cores, 390 M on its 20-core GPU.
+
+```sh
+make ecc2k130-cpu   && ecc2k130/build/ec2k-cpu bench
+make ecc2k130-metal && ecc2k130/build/ec2k-metal bench       # macOS
 ```
 
 See [ecc2k130/README.md](ecc2k130/README.md) for the measurement, the
@@ -426,7 +442,7 @@ cuda/                    the CUDA kernel (ca_device.cuh is shared C11/CUDA code)
 tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
-ecc2k130/                ECC2K-130 GPU client: packed GF(2^131) table walk (CUDA), host test vs the model
+ecc2k130/                ECC2K-130 clients: packed GF(2^131) table walk (CUDA, CPU, Metal), host tests vs the model
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md
