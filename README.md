@@ -241,7 +241,7 @@ Two more clients run the same walk from the same headers and write the same
 reports, for developing and testing a campaign's pipeline without renting a
 card: `ec2k-cpu` on host cores, its products on PMULL (AArch64) or PCLMULQDQ
 (x86-64), and `ec2k-metal` on an Apple GPU, the kernel rewritten as Metal
-Shading Language and compiled at start-up.  Measured on an M4 Pro: 78 M
+Shading Language and compiled at start-up.  Measured on an M4 Pro: 145 M
 iterations per second on its 14 cores, 390 M on its 20-core GPU.
 
 ```sh

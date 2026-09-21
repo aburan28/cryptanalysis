@@ -6,11 +6,13 @@
 // a carry-less multiplier on the host (hostclmul.h: PMULL, PCLMULQDQ) the
 // multiplier is no longer the scarce unit the device treats it as: the 3-bit
 // top-word correction and the polynomial squaring both go to it
-// (ECC_PACKED_TOP_CLMAD=1, ECC_PACKED_ALU_SQUARE=0).  One worker on an M4 Pro
-// core: 127 ns an iteration with these two, 163 with the device's choices over
-// the same PMULL, 261 on the software product.  Without a multiplier the same
-// two knobs would route small products through the masked-multiply software
-// clmul, so they stay on the ALU.
+// (ECC_PACKED_TOP_CLMAD=1, ECC_PACKED_ALU_SQUARE=0).  Measured with the whole
+// walk on these routines, one worker on an M4 Pro core: 127 ns an iteration
+// with these two, 163 with the device's choices over the same PMULL, 261 on
+// the software product.  Without a multiplier the same two knobs would route
+// small products through the masked-multiply software clmul, so they stay on
+// the ALU.  (The walk's step has since moved to src/f131.h; what runs on the
+// packed routines now is the inversion, the start points and the tests.)
 //
 // Force-included (-include) into every translation unit of the CPU client and
 // of its tests, so the arithmetic the tests hold to the golden model is the

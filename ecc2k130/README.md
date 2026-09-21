@@ -166,8 +166,8 @@ campaign is the card's.
 
 | client | engine | measured on an M4 Pro (10P + 4E cores, 20-core GPU) |
 |---|---|---:|
-| `ec2k-cpu` | worker threads, products on PMULL | 76-79 M it/s, 14 workers |
-| `ec2k-cpu`, one worker | | 8.0 M it/s |
+| `ec2k-cpu` | worker threads, 64-bit limbs, products on PMULL | 139-159 M it/s, 14 workers |
+| `ec2k-cpu`, one worker | | 18.6 M it/s (53.5 ns an iteration) |
 | `ec2k-metal` | Metal compute, generated software product | 389-390 M it/s (3 x 4.3 G iterations) |
 | for scale: `ec2k-gpu` on an RTX PRO 6000 | | 20,080 M it/s |
 
@@ -177,22 +177,46 @@ x86-64, selected by what the compiler is targeting, the software product
 otherwise -- at the three places the device uses `clmad`: `clmul64`,
 `clmadLo64`, `spread32p`.  `src/cpuknobs.h` is the kernel's knob set for a
 host: with a multiplier the 3-bit top-word correction and the polynomial
-squaring go to it too.  One worker on an M4 Pro core runs an iteration in
-127 ns that way, 163 ns with the device's knobs over the same PMULL, and
-261 ns on the software product.
-`src/cpuwalk.h` is the engine: 512 lanes per batched inversion, as four
-interleaved chains, because a core has L1 where the device has registers; a
-lane that reports restarts in the same step; work is handed out in 64-step
-slices of one batch so efficiency cores do not gate a launch.  The reports of
-a run do not depend on the batch size or the worker count, which
-`src/cputest.cpp` checks along with the multiplier against a bit-serial
-product, start points against the model's, and every lane and every report of
-a run with restarts re-walked on the model (4,142 checks, and again with the
-software product).  What bounds it is instruction count -- five 32-bit words
-per element is the device's layout, and the compiler emits about 100
-instructions for a product, 95 for its reduction and 290 for the selection --
-so a 64-bit-limb product and selection for the host is the known next step,
-and is not done.
+squaring go to it too.  On those routines one worker on an M4 Pro core ran an
+iteration in 127 ns (163 ns with the device's knobs over the same PMULL,
+261 ns on the software product), bound by instruction count: five 32-bit
+words per element is the device's layout, and the compiler emits about 100
+instructions for a product, 95 for its reduction and 290 for the selection.
+
+`src/f131.h` is the step on three 64-bit limbs instead -- the same Karatsuba
+product (vector-resident on PMULL: eight multiplies, the partial sums folded
+before anything crosses to the integer registers), the same direct reduction
+with its shifts written across limbs, the same conversion network and the
+same byte-table selection -- and `src/cpuwalk.h` is the engine around it:
+**53.5 ns an iteration** on the same core, 153 ns on the software product.
+Where the time went, in order of what it bought:
+
+| | ns an iteration, one worker |
+|---|---:|
+| the packed routines over PMULL | 127 |
+| + 64-bit limbs for product, reduction, squaring, conversion, selection, addend | 76.5 |
+| + the step as loops over the batch, the selection in its three dependent stages | 62 |
+| + the four inversion chains' accumulators in locals, not an array indexed `i % 4` | 53.5 |
+
+The last two are the same observation: a lane's selection (phase, then mask,
+then pivot, then sign: some 90 cycles for 240 instructions) and its link in
+the prefix-product chain are dependency chains far longer than their
+instruction counts, and a core only stays full when neighbouring lanes'
+chains overlap.  A product is now 6 ns, of which the reduction is 3.2 and the
+multiplies 1.4; the reduction is the next thing to look at.  The engine keeps
+512 lanes per batched inversion, as four interleaved chains, because a core
+has L1 where the device has registers; a lane that reports restarts in the
+same step; work is handed out in 64-step slices of one batch so efficiency
+cores do not gate a launch.  All 14 cores give 139-159 M it/s, which is the
+package's limit rather than the scheduler's (ten workers give 136).
+
+The reports of a run do not depend on the batch size or the worker count,
+which `src/cputest.cpp` checks along with: the multiplier against a
+bit-serial product; every `f131.h` routine against its packed counterpart on
+4,000 random operands and 1,500 curve points with histories that fire the
+cycle rule, the reduction also on limbs no product produces; start points
+against the model's; and every lane and every report of a run with restarts
+re-walked on the model (28,641 checks, and again with the software product).
 
 **`ec2k-metal`.** Metal Shading Language is C++14 with address spaces, so the
 kernel is not a port: `scripts/mslgen.py` inlines the headers and applies four

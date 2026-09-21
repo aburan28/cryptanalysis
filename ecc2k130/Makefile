@@ -86,7 +86,7 @@ CPUNATIVE := $(if $(filter arm64 aarch64,$(shell uname -m)),-mcpu=native,-march=
 CPUARCH   ?= $(shell $(CXX) $(CPUNATIVE) -x c++ -E /dev/null >/dev/null 2>&1 && echo $(CPUNATIVE))
 CPUFLAGS := -O3 -std=c++17 -Wall -Wextra -Wno-unknown-pragmas -Wno-unused-function \
             -Wno-unused-parameter -pthread -include src/cpuknobs.h
-CPUHDRS  := $(HDRS) src/client.h src/cpuwalk.h src/cpuknobs.h
+CPUHDRS  := $(HDRS) src/client.h src/cpuwalk.h src/cpuknobs.h src/f131.h
 
 $(BUILD)/hostcheck-cpu.o: src/hostcheck.cpp $(CPUHDRS) | $(BUILD)
 	$(CXX) $(CPUFLAGS) $(CPUARCH) -c src/hostcheck.cpp -o $@

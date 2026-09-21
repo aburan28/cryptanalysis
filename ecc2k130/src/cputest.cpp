@@ -8,6 +8,9 @@
  *
  *   - the host multiplier against a bit-serial product, on the operands a
  *     table-driven or masked implementation gets wrong first;
+ *   - the 64-bit-limb hot path (f131.h) against the packed routines: product,
+ *     squaring, reduction, conversion, selection with histories that fire
+ *     the cycle rule, addend;
  *   - the engine's start points against the model's;
  *   - after a run with reports, --max-iters restarts and several workers,
  *     every lane where a re-walk from its seed on the model puts it, and
@@ -16,6 +19,7 @@
  *     batches, nor on how many workers advanced them.
  */
 #include "cpuwalk.h"
+#include "f131.h"
 
 #include <algorithm>
 
@@ -61,6 +65,63 @@ void checkClmul(CheckResult *cr)
         eccPacked131::clmul64(r, aw, bw);
         cr->note((r[0] | (uint64_t(r[1]) << 32)) == lo && (r[2] | (uint64_t(r[3]) << 32)) == hi,
                  "clmul64 == bit-serial carry-less product");
+    }
+}
+
+// The 64-bit-limb hot path (f131.h) against the packed routines it restates,
+// which hostcheck.cpp holds to the golden model.
+void checkF131(const HostTable &table, CheckResult *cr)
+{
+    using namespace eccPacked131;
+    const std::vector<uint32_t> consts = table.deviceConsts();
+    uint64_t rng = 0x082EFA98EC4E6C89ULL;
+    for (int i = 0; i < 4000; ++i) {
+        ec2k_fe fa, fb;
+        randomFe(&fa, &rng);
+        randomFe(&fb, &rng);
+        if (i < 3) fa.w[0] = fa.w[1] = fa.w[2] = (i == 1) ? 0 : ~0ull, fa.w[2] &= 7u;
+        const P131 a = toPacked(fa), b = toPacked(fb);
+        const f131::F131 A = f131::fromPacked(a), B = f131::fromPacked(b);
+        const auto eq = [](const f131::F131 &x, const P131 &y) {
+            const P131 t = f131::toPacked(x);
+            return memcmp(t.v, y.v, sizeof(y.v)) == 0 && x.w[2] < 8;
+        };
+        cr->note(eq(f131::mul(A, B), mulPolynomial131(a, b)), "f131 mul == packed product");
+        cr->note(eq(f131::sqr(A), squarePolynomial131(a)), "f131 sqr == packed squaring");
+        cr->note(eq(f131::fromPolynomial(A), fromPolynomial131(a)), "f131 conversion == packed");
+        cr->note(f131::weight(A) == weight131(a), "f131 weight == packed");
+        // the reduction alone, on limbs no product would produce
+        uint32_t h[9];
+        uint64_t H[5];
+        for (int k = 0; k < 9; ++k) h[k] = uint32_t(splitmix(&rng));
+        for (int k = 0; k < 5; ++k) H[k] = h[2 * k] | (k < 4 ? uint64_t(h[2 * k + 1]) << 32 : 0);
+        cr->note(eq(f131::reduce(H), reducePolynomial131(h)), "f131 reduce == packed reduction");
+    }
+    for (int i = 0; i < 1500; ++i) {
+        ec2k_pt pt;
+        ec2k_point_from_seed(&pt, 9000 + (uint64_t)i);
+        const P131 xn = toPacked(pt.x), xp = toPolynomial131(xn),
+                   yp = toPolynomial131(toPacked(pt.y));
+        const unsigned flipped = referenceTag(table, pt, ECC_HIST_EMPTY) ^ ECC_TAG_EPS;
+        unsigned long long hist =
+            i % 3 == 0 ? ECC_HIST_EMPTY
+            : i % 3 == 1
+                ? eccHistPush(ECC_HIST_EMPTY, flipped)
+                : eccHistPush(eccHistPush(eccHistPush(ECC_HIST_EMPTY, 0x1123u), flipped), 0x0123u);
+        unsigned long long h1 = hist, h2 = hist;
+        const int hw = weight131(xn);
+        const unsigned want = twSelect(xn, yp, hw, &h1, consts.data());
+        const unsigned got =
+            f131::select(f131::fromPacked(xn), f131::fromPacked(yp), hw, &h2, consts.data());
+        cr->note(got == want && h1 == h2, "f131 select == twSelect");
+        cr->note(want == referenceTag(table, pt, hist), "and both == the reference tag");
+        P131 d, e;
+        f131::F131 D, E;
+        twAddend(want, xp, yp, consts.data(), &d, &e);
+        f131::addend(want, f131::fromPacked(xp), f131::fromPacked(yp), consts.data(), &D, &E);
+        const P131 dd = f131::toPacked(D), ee = f131::toPacked(E);
+        cr->note(memcmp(dd.v, d.v, 20) == 0 && memcmp(ee.v, e.v, 20) == 0,
+                 "f131 addend == twAddend");
     }
 }
 
@@ -169,6 +230,7 @@ int main(int argc, char **argv)
 
     CheckResult cr = crossCheck(*table, rounds, 0x243F6A8885A308D3ULL);
     checkClmul(&cr);
+    checkF131(*table, &cr);
     checkStartPoints(*table, &cr);
     checkEngine(*table, &cr);
     checkGeometryIndependence(*table, &cr);
