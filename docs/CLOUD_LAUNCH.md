@@ -152,15 +152,27 @@ Workflow: [`.github/workflows/cloud-ecc2k130.yml`](../.github/workflows/cloud-ec
 
 ## Status page visibility
 
-Two hops put Modal (and RunPod) work on the dashboard:
+Three durable syncers keep S3 (and then ingest) fed:
 
-1. **Modal volume → S3** (optional if workers already write S3):
-   `./scripts/cloud_launch.sh modal sync-loop`
-2. **S3 → Postgres + status.json** on the MiG ingest pod:
+1. **Modal volume → S3** (must stay up — Modal workers are invisible without it):
+   ```sh
+   ./scripts/cloud_launch.sh sync ensure    # tmux ecc2k130-modal-sync + autorestart
+   ./scripts/cloud_launch.sh sync status
+   make modal-sync-ensure
+   ```
+2. **RunPod dps.bin → S3** (ostrich fanout + solar campaign):
+   ```sh
+   POD_NAME=marginal_chocolate_ostrich CAMP_ROOT=/root/ecc2k130-fanout \
+     WORKERS=8 BASE_RUN_ID=5000 ./scripts/cloud_launch.sh sync runpod
+   POD_NAME=solar_ivory_canidae CAMP_ROOT=/root/ecc2k130-campaign \
+     WORKERS=1 BASE_RUN_ID=4242 ./scripts/cloud_launch.sh sync runpod
+   ```
+3. **S3 → Postgres + status.json** on the MiG ingest pod:
    `./scripts/cloud_launch.sh ingest start`
 
 `sync` expands `ECC_RUN_ID` across `ECC_FANOUT` so run-ids `4242–4245` all
-publish when you launched with the defaults.
+publish when you launched with the defaults. The ensure wrapper kills any
+loose `modal_sync --watch` process so only one syncer runs.
 
 ## What “all” does
 

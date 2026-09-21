@@ -9,6 +9,7 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
         cloud-doctor cloud-all modal-setup modal-bench modal-long modal-sync \
         modal-sync-loop runpod-start runpod-status runpod-stop \
         fanout-start fanout-status fanout-stop \
+        modal-sync-ensure modal-sync-status \
         ingest-start ingest-status ingest-stop
 
 all: lib
@@ -152,6 +153,12 @@ modal-sync:
 
 modal-sync-loop:
 	./scripts/cloud_launch.sh modal sync-loop
+
+modal-sync-ensure:
+	./scripts/cloud_launch.sh sync ensure
+
+modal-sync-status:
+	./scripts/cloud_launch.sh sync status
 
 runpod-start:
 	./scripts/cloud_launch.sh runpod start

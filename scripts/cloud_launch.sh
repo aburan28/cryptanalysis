@@ -6,6 +6,7 @@
 #   ./scripts/cloud_launch.sh modal bench
 #   ./scripts/cloud_launch.sh modal sync      # volume → S3 (status page)
 #   ./scripts/cloud_launch.sh runpod start|status|stop
+#   ./scripts/cloud_launch.sh sync ensure|status|stop   # Modal→S3 durable syncer
 #   ./scripts/cloud_launch.sh fanout start|status|stop   # 8× on marginal_chocolate_ostrich
 #   ./scripts/cloud_launch.sh ingest start|status|stop   # MiG pod "ingest" → Postgres/status
 #   ./scripts/cloud_launch.sh all             # doctor + ingest + runpod + modal long
@@ -154,6 +155,24 @@ fanout_cmd() {
   exec "$SCRIPT_DIR/runpod_fanout_ecc2k130.sh" "$sub" "$@"
 }
 
+sync_cmd() {
+  local sub="${1:-ensure}"
+  shift || true
+  case "$sub" in
+    ensure|start|status|stop|restart)
+      exec "$SCRIPT_DIR/ensure_modal_sync.sh" "$sub" "$@"
+      ;;
+    runpod)
+      # POD_NAME / CAMP_ROOT / WORKERS via env
+      exec "$SCRIPT_DIR/runpod_s3_sync_ecc2k130.sh" "${1:-start}"
+      ;;
+    *)
+      echo "usage: $0 sync [ensure|status|stop|restart|runpod]" >&2
+      exit 2
+      ;;
+  esac
+}
+
 ingest_cmd() {
   local sub="${1:-status}"
   shift || true
@@ -195,13 +214,15 @@ Usage:
   $0 modal <setup|deploy|bench|search|fanout|long|sync|sync-loop>
   $0 runpod <start|status|stop>          # GPU campaign (solar_ivory_canidae)
   $0 fanout <start|status|stop>          # N workers on marginal_chocolate_ostrich (8 MIG)
+  $0 sync <ensure|status|stop|restart>   # Modal volume → S3 (must stay up)
+  $0 sync runpod                         # RunPod dps.bin → S3 (POD_NAME/CAMP_ROOT)
   $0 ingest <start|status|stop>          # MiG pod "ingest" → Postgres/status.json
   $0 all                                 # doctor, ingest+runpod status, modal long
 
 Make aliases:
   make cloud-doctor
   make modal-long
-  make runpod-status
+  make modal-sync-ensure
   make fanout-start
   make ingest-start
   make modal-sync
@@ -225,6 +246,7 @@ case "$CMD" in
   modal) modal_cmd "$@" ;;
   runpod) runpod_cmd "$@" ;;
   fanout) fanout_cmd "$@" ;;
+  sync) sync_cmd "$@" ;;
   ingest) ingest_cmd "$@" ;;
   all) all_cmd ;;
   help|-h|--help|"") usage ;;
