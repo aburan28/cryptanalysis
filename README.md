@@ -279,6 +279,12 @@ make ecc2k130-metal && ecc2k130/build/ec2k-metal bench       # macOS
 See [ecc2k130/README.md](ecc2k130/README.md) for the measurement, the
 boundary it is measured against, and how the last 15% was found.
 
+The [ECC2K-130 cloud runner](ecc2k130/runner/README.md) packages the deployed
+120,320-worker Frobenius profile with Modal/Runpod launch support, durable S3
+checkpoints, and direct reporting to the existing RDS collision pool. Its
+source, DP32 compatibility checks, and four-GPU deployment receipts live in
+`ecc2k130/runner/` alongside the standalone clients above.
+
 ## Running it across machines
 
 `ca_rho_solve` divides one instance across the threads of one process.

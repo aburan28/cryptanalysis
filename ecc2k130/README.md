@@ -1,5 +1,9 @@
 # A GPU Pollard rho client for ECC2K-130
 
+For managed Modal/Runpod collection, see the separate [cloud runner](runner/README.md).
+It includes the deployed 120,320-worker Frobenius profile, S3 recovery, direct
+RDS reporting, and measured DP32 compatibility and deployment receipts.
+
 A CUDA walker for the Certicom ECC2K-130 challenge -- the Koblitz curve
 `y² + xy = x³ + 1` over `F_{2¹³¹}` -- with a host test that holds its
 arithmetic to this repository's golden model and a re-walk that checks what
