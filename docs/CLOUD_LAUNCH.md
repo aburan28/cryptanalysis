@@ -70,12 +70,28 @@ Useful env knobs:
 Make aliases: `make modal-setup`, `make modal-bench`, `make modal-long`,
 `make modal-sync`, `make modal-sync-loop`.
 
-## RunPod GPU campaign
+## RunPod multi-GPU fanout (`marginal_chocolate_ostrich`)
 
-Expects a **running** pod that already has the 20 B/s binary (default name
-`solar_ivory_canidae`, binary at
+The 8-GPU pod exposes **8× MIG `1g.24gb`** slices. Launch one packed worker
+per slice (~4.9 B it/s each, ~39 B it/s aggregate):
+
+```sh
+export RUNPOD_API_KEY=…
+./scripts/cloud_launch.sh fanout start    # WORKERS=8, BASE_RUN_ID=5000
+./scripts/cloud_launch.sh fanout status
+./scripts/cloud_launch.sh fanout stop
+```
+
+Overrides: `POD_NAME`, `WORKERS`, `BASE_RUN_ID`, `BIN_HOST` (copy
+`ecc2k130-rtx-pro6000-20b` onto the pod first if missing). Make:
+`make fanout-start`, `make fanout-status`, `make fanout-stop`.
+
+## RunPod GPU campaign (`solar_ivory_canidae`)
+
+Expects a **running** full-GPU pod that already has the 20 B/s binary (default
+name `solar_ivory_canidae`, binary at
 `/root/ecc2k130-20b/bins/ecc2k130-rtx-pro6000-20b`). This path starts or
-stops the campaign in tmux; it does not provision a new pod or compile CUDA.
+stops a single campaign in tmux.
 
 ```sh
 export RUNPOD_API_KEY=…

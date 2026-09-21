@@ -8,6 +8,7 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
         orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth \
         cloud-doctor cloud-all modal-setup modal-bench modal-long modal-sync \
         modal-sync-loop runpod-start runpod-status runpod-stop \
+        fanout-start fanout-status fanout-stop \
         ingest-start ingest-status ingest-stop
 
 all: lib
@@ -160,6 +161,15 @@ runpod-status:
 
 runpod-stop:
 	./scripts/cloud_launch.sh runpod stop
+
+fanout-start:
+	./scripts/cloud_launch.sh fanout start
+
+fanout-status:
+	./scripts/cloud_launch.sh fanout status
+
+fanout-stop:
+	./scripts/cloud_launch.sh fanout stop
 
 ingest-start:
 	./scripts/cloud_launch.sh ingest start

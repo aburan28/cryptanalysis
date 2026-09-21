@@ -6,6 +6,7 @@
 #   ./scripts/cloud_launch.sh modal bench
 #   ./scripts/cloud_launch.sh modal sync      # volume → S3 (status page)
 #   ./scripts/cloud_launch.sh runpod start|status|stop
+#   ./scripts/cloud_launch.sh fanout start|status|stop   # 8× on marginal_chocolate_ostrich
 #   ./scripts/cloud_launch.sh ingest start|status|stop   # MiG pod "ingest" → Postgres/status
 #   ./scripts/cloud_launch.sh all             # doctor + ingest + runpod + modal long
 #
@@ -147,6 +148,12 @@ runpod_cmd() {
   exec "$SCRIPT_DIR/runpod_deploy_ecc2k130.sh" "$sub" "$@"
 }
 
+fanout_cmd() {
+  local sub="${1:-status}"
+  shift || true
+  exec "$SCRIPT_DIR/runpod_fanout_ecc2k130.sh" "$sub" "$@"
+}
+
 ingest_cmd() {
   local sub="${1:-status}"
   shift || true
@@ -187,6 +194,7 @@ Usage:
   $0 doctor
   $0 modal <setup|deploy|bench|search|fanout|long|sync|sync-loop>
   $0 runpod <start|status|stop>          # GPU campaign (solar_ivory_canidae)
+  $0 fanout <start|status|stop>          # N workers on marginal_chocolate_ostrich (8 MIG)
   $0 ingest <start|status|stop>          # MiG pod "ingest" → Postgres/status.json
   $0 all                                 # doctor, ingest+runpod status, modal long
 
@@ -194,6 +202,7 @@ Make aliases:
   make cloud-doctor
   make modal-long
   make runpod-status
+  make fanout-start
   make ingest-start
   make modal-sync
 
@@ -205,7 +214,7 @@ Docs: docs/CLOUD_LAUNCH.md
 
 Env knobs: ECC_HOURS (default 24), ECC_FANOUT (4), ECC_RUN_ID (4242),
            ECC_GPU (RTX-PRO-6000), POD_NAME (solar_ivory_canidae),
-           INGEST_POD_NAME (ingest), ECC_BUCKET
+           INGEST_POD_NAME (ingest), WORKERS (8), BASE_RUN_ID (5000), ECC_BUCKET
 EOF
 }
 
@@ -215,6 +224,7 @@ case "$CMD" in
   doctor) doctor ;;
   modal) modal_cmd "$@" ;;
   runpod) runpod_cmd "$@" ;;
+  fanout) fanout_cmd "$@" ;;
   ingest) ingest_cmd "$@" ;;
   all) all_cmd ;;
   help|-h|--help|"") usage ;;
