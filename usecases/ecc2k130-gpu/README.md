@@ -12,9 +12,12 @@ and bundle below are kept for replay onto older checkouts.
 | `patches/0001-*.patch`, `0002-*.patch` | `git am` onto `aburan28/crypto` @ `c6d2a10` |
 | `ecc2k130-20b.bundle` | the same two commits as a git bundle |
 | `ONE-BLOCK-GEOMETRY.md` | measurement note (L1 geometry + tag denominators) |
-| `scripts/runpod_deploy_ecc2k130.sh` | start/status/stop on a named RunPod |
-| `scripts/modal_deploy_ecc2k130.sh` | Modal deploy/bench/search (20 B/s overlay) |
+| `scripts/cloud_launch.sh` | **one entrypoint** — Modal / RunPod GPU / ingest MiG |
+| `scripts/runpod_deploy_ecc2k130.sh` | start/status/stop on a named RunPod GPU |
+| `scripts/runpod_ingest_ecc2k130.sh` | `dp_ingest` on the MiG pod named `ingest` |
+| `scripts/modal_deploy_ecc2k130.sh` | Modal deploy/bench/search/sync (20 B/s overlay) |
 | `scripts/patch_modal_app_20b.py` | local overlay so Modal bakes the 20 B/s knobs |
+| `docs/CLOUD_LAUNCH.md` | credentials, Make targets, GitHub Actions one-click |
 
 ## Measured on `solar_ivory_canidae` (live)
 
@@ -51,16 +54,41 @@ PATH=/opt/cuda133/cuda/bin:$PATH make gpu-rtx-pro6000-20b
 ./ecc2k130 --curve 131 --packed --bench --steps 1024 --launches 64 --verify 0
 ```
 
-## Campaign on RunPod
+## One-click (preferred)
+
+```sh
+./scripts/cloud_launch.sh doctor
+./scripts/cloud_launch.sh ingest start   # MiG pod "ingest" → Postgres/status.json
+./scripts/cloud_launch.sh modal long     # 24h × 4 GPUs
+./scripts/cloud_launch.sh runpod status  # solar_ivory_canidae GPU campaign
+```
+
+See [docs/CLOUD_LAUNCH.md](../../docs/CLOUD_LAUNCH.md) for Make targets and
+the GitHub Actions “Cloud ECC2K-130” workflow.
+
+## Campaign on RunPod (GPU)
 
 ```sh
 export RUNPOD_API_KEY=...
-./scripts/runpod_deploy_ecc2k130.sh          # start (default pod solar_ivory_canidae)
-./scripts/runpod_deploy_ecc2k130.sh status
-./scripts/runpod_deploy_ecc2k130.sh stop
+./scripts/cloud_launch.sh runpod start   # default pod solar_ivory_canidae
+./scripts/cloud_launch.sh runpod status
+./scripts/cloud_launch.sh runpod stop
 ```
 
 `--run-id` must fit in 16 bits (0..65535).
+
+## Ingest on RunPod (MiG)
+
+The pod named `ingest` is a MIG `1g.24gb` slice — use it for
+`aws/ingest.sh` / `dp_ingest.py` so the status page sees S3 DPs without
+burning a full GPU:
+
+```sh
+export RUNPOD_API_KEY=...
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
+./scripts/cloud_launch.sh ingest start
+./scripts/cloud_launch.sh ingest status
+```
 
 ## Deploy on Modal
 
@@ -74,11 +102,10 @@ checkpoint).
 ```sh
 export MODAL_TOKEN_ID=...
 export MODAL_TOKEN_SECRET=...
-./scripts/modal_deploy_ecc2k130.sh setup
-./scripts/modal_deploy_ecc2k130.sh deploy
-./scripts/modal_deploy_ecc2k130.sh bench     # --threads 512 --min-blocks 1
-ECC_HOURS=4 ./scripts/modal_deploy_ecc2k130.sh search
-ECC_FANOUT=8 ECC_HOURS=4 ./scripts/modal_deploy_ecc2k130.sh fanout
+./scripts/cloud_launch.sh modal setup
+./scripts/cloud_launch.sh modal bench
+./scripts/cloud_launch.sh modal long
+./scripts/cloud_launch.sh modal sync-loop   # volume → S3 (pair with ingest)
 ```
 
 Tokens: https://modal.com/settings/tokens

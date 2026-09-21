@@ -169,6 +169,22 @@ run it on Kubernetes or on EC2 with systemd:
 make orchestrator && make smoke     # one control plane, two agents, a real answer
 ```
 
+## Cloud GPU (ECC2K-130)
+
+One entrypoint for Modal fanout, the RunPod GPU campaign, and the MiG ingest
+host that feeds the status page:
+
+```sh
+./scripts/cloud_launch.sh doctor
+./scripts/cloud_launch.sh ingest start   # RunPod MiG pod "ingest"
+./scripts/cloud_launch.sh modal long     # 24h × 4 × RTX PRO 6000
+make runpod-status
+```
+
+Docs: [docs/CLOUD_LAUNCH.md](docs/CLOUD_LAUNCH.md). Usecase notes and the
+20 B/s geometry: [usecases/ecc2k130-gpu/](usecases/ecc2k130-gpu/). GitHub
+one-click: Actions → **Cloud ECC2K-130** → Run workflow.
+
 ## Hardware
 
 `fpga/` is a synthesisable Pollard rho core for the Certicom **ECC2K-130**
@@ -314,9 +330,12 @@ fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenche
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, DISTRIBUTED.md, FFI.md, GPU.md,
+                         CLOUD_LAUNCH.md (Modal + RunPod + ingest MiG),
                          RUNPOD_CURSOR_WORKER.md (Cursor My Machines on a RunPod)
+usecases/ecc2k130-gpu/   ECC2K-130 20 B/s GPU rho notes and patches
 fuzz/                    libFuzzer harnesses and their seed corpora
-.github/workflows/       ci, analysis, bindings, orchestrator, fpga, fuzz, codeql, nightly
+.github/workflows/       ci, analysis, bindings, orchestrator, fpga, fuzz, codeql,
+                         nightly, cloud-ecc2k130 (manual Modal/RunPod launch)
 ```
 
 ## Checks
