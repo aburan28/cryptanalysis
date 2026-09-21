@@ -103,7 +103,7 @@ class Reference:
             return record
         if state['mode'] == 0:
             p = state['point']
-            weight = 0 if p is None else pack.linear(p[0], self.toOnb).bit_count()
+            weight = 0 if p is None else table.popcount(pack.linear(p[0], self.toOnb))
             if weight in (0, 131):
                 state['mode'] = 2
                 return record

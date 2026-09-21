@@ -39,6 +39,8 @@ class ArtifactReferenceTests(unittest.TestCase):
         return None if point is None else (point[0], point[0] ^ point[1])
 
     def testSelectorConstantsAndDirections(self):
+        for value in (0, 1, 3, (1 << 131) - 1, 0x123456789abcdef):
+            self.assertEqual(reference.table.popcount(value), bin(value).count('1'))
         self.assertEqual(len(self.walk.constants()), 13708)
         self.assertEqual(len(self.walk.points), 2 * 131 * 8)
         for direction in range(0, len(self.walk.points), 71):

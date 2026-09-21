@@ -117,7 +117,8 @@ The checked-in receipts are
 [the 256-branch control](evidence/walk256-control.json). A fourth
 [control](evidence/walk128-public-download.json) fetched its directions and
 coefficients anonymously from the public catalog before replaying all lanes.
-They bind source and
+[The macOS Python 3.9 control](evidence/walk128-python39.json) runs the full
+documented 128-lane command with the compatibility popcount path. They bind source and
 binary hashes, complete state/report digests, counts, and raw Metal timings.
 
 The runner splits launches into bounded Metal command buffers, measures each

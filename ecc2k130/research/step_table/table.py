@@ -21,6 +21,15 @@ from field import Onb
 MASK64 = (1 << 64) - 1
 KNOWN = 65537
 
+try:
+    _nativeBitCount = int.bit_count
+except AttributeError:  # Python 3.8/3.9
+    def popcount(value):
+        return bin(value).count('1')
+else:
+    def popcount(value):
+        return _nativeBitCount(value)
+
 
 def mix64(value):
     value = ((value ^ (value >> 30)) * 0xbf58476d1ce4e5b9) & MASK64
@@ -53,7 +62,7 @@ class Selector:
 
     def orient(self, x, y):
         xx, yy = self.cyclic(x), self.cyclic(y)
-        weight = xx.bit_count()
+        weight = popcount(xx)
         if weight == 0 or weight == self.m:
             raise ValueError('phase undefined: reject infinity/subfield inputs')
         phase = sum(t for t in range(self.m) if (xx >> t) & 1)
