@@ -319,7 +319,11 @@ class S3Slots:
     two workers racing for one slot cannot both win; a new slot is a PutObject
     with If-None-Match: *.  S3 reads are strongly consistent, which is what
     makes the read-modify-write safe.  Needs only s3:GetObject/PutObject/
-    ListBucket, so the instance role stays minimal."""
+    ListBucket, so the instance role stays minimal.
+
+    The aws CLI runs in its own session: a terminal Ctrl-C aimed at the
+    supervising process must not abort an in-flight lease request, which
+    would otherwise read as a lost lease."""
 
     def __init__(self, bucket, prefix=""):
         self.bucket = bucket
@@ -332,9 +336,12 @@ class S3Slots:
     def _prefix(self):
         return self.prefix + "/slots/" if self.prefix else "slots/"
 
+    def _run(self, cmd):
+        return subprocess.run(cmd, capture_output=True, text=True, start_new_session=True)
+
     def _get(self, slot):
-        r = subprocess.run(["aws", "s3api", "get-object", "--bucket", self.bucket, "--key", self._key(slot),
-                            self.tmp, "--output", "json"], capture_output=True, text=True)
+        r = self._run(["aws", "s3api", "get-object", "--bucket", self.bucket, "--key", self._key(slot),
+                       self.tmp, "--output", "json"])
         if r.returncode != 0:
             if "NoSuchKey" in r.stderr or "404" in r.stderr or "Not Found" in r.stderr:
                 return None, None
@@ -351,7 +358,7 @@ class S3Slots:
             cmd += ["--if-none-match", "*"]
         elif ifMatch:
             cmd += ["--if-match", ifMatch]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = self._run(cmd)
         if r.returncode == 0:
             return True
         if "PreconditionFailed" in r.stderr or "412" in r.stderr or "ConditionalRequestConflict" in r.stderr:
@@ -359,8 +366,8 @@ class S3Slots:
         raise RuntimeError("s3 put-object failed: " + r.stderr.strip())
 
     def scan(self):
-        r = subprocess.run(["aws", "s3api", "list-objects-v2", "--bucket", self.bucket, "--prefix", self._prefix(),
-                            "--query", "Contents[].Key", "--output", "json"], capture_output=True, text=True)
+        r = self._run(["aws", "s3api", "list-objects-v2", "--bucket", self.bucket, "--prefix", self._prefix(),
+                       "--query", "Contents[].Key", "--output", "json"])
         if r.returncode != 0:
             raise RuntimeError("s3 list failed: " + r.stderr.strip())
         keys = json.loads(r.stdout) or []

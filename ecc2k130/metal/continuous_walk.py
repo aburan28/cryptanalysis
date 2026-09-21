@@ -111,6 +111,9 @@ class S3RunLease:
         self.done = threading.Event()
         self.thread = None
         self.acquired = False
+        # S3Slots reuses one temp file per process, so the heartbeat thread
+        # and the main thread must never touch the slot concurrently.
+        self.lock = threading.Lock()
 
     def acquire(self):
         for _ in range(8):
@@ -131,20 +134,34 @@ class S3RunLease:
                 return
         raise RuntimeError('could not acquire the S3 run lease')
 
+    def _renew(self):
+        """Conditionally extend the lease; any failure marks it lost."""
+        try:
+            now = int(time.time())
+            ok = self.slots._modify(0, self.owner, lambda item: item.update(
+                updatedAt=now, leaseUntil=now + LEASE_SECONDS))
+            if not ok:
+                raise RuntimeError('conditional heartbeat was rejected')
+        except Exception as exc:
+            self.error = exc
+            self.lost = True
+
     def _heartbeat(self):
         while not self.done.wait(HEARTBEAT_SECONDS):
-            try:
-                now = int(time.time())
-                ok = self.slots._modify(0, self.owner, lambda item: item.update(
-                    updatedAt=now, leaseUntil=now + LEASE_SECONDS))
-                if not ok:
-                    raise RuntimeError('conditional heartbeat was rejected')
-            except Exception as exc:
-                self.error = exc
-                self.lost = True
+            with self.lock:
+                if self.done.is_set():
+                    return
+                self._renew()
+            if self.lost:
                 return
 
     def ensure(self):
+        # Revalidate ownership on S3 itself right before publishing: a process
+        # that was frozen past LEASE_SECONDS must not trust a heartbeat flag
+        # that has not had the chance to observe the loss.
+        with self.lock:
+            if not self.lost:
+                self._renew()
         if self.lost:
             raise RuntimeError('S3 run lease lost; refusing to publish: %s' %
                                type(self.error).__name__)
@@ -153,15 +170,14 @@ class S3RunLease:
         if not self.acquired:
             return
         self.done.set()
-        if self.thread:
-            self.thread.join(timeout=2)
-        if self.lost:
-            return
-        try:
-            self.slots._modify(0, self.owner, lambda item: item.update(
-                state='idle', leaseUntil=0, updatedAt=int(time.time())))
-        except Exception as exc:
-            log('lease release failed: %s' % type(exc).__name__)
+        with self.lock:
+            if self.lost:
+                return
+            try:
+                self.slots._modify(0, self.owner, lambda item: item.update(
+                    state='idle', leaseUntil=0, updatedAt=int(time.time())))
+            except Exception as exc:
+                log('lease release failed: %s' % type(exc).__name__)
 
 
 class StopState:
