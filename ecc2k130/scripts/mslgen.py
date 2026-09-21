@@ -48,9 +48,11 @@ using namespace metal;
 
 # Headers whose pointers are all into the walk's tables.
 TABLE_HEADERS = {"packedtablewalk.cuh"}
-# Included only under knobs the prologue leaves off: the host multiplier, the
-# Frobenius permutation networks (150 KB of masks) and the two-stage reduction.
-SKIPPED_HEADERS = {"hostclmul.h", "packedsigma131.h", "packedpolyreduce131.h"}
+# Included only under knobs the prologue leaves off: the host multiplier and the
+# two-stage reduction.  The Frobenius permutation networks (packedsigma131.h)
+# are inlined, masks in the constant address space, so that
+# ECC_PACKED_PERM_SIGMA can be tried on a Mac; the prologue still leaves it off.
+SKIPPED_HEADERS = {"hostclmul.h", "packedpolyreduce131.h"}
 
 
 def inline_includes(path, include_dir, seen):
@@ -90,6 +92,8 @@ def transform(path, include_dir, seen):
     text = re.sub(r"(?<!thread )\b(const\s+)?(uint32_t|uint8_t)\s*\*", rf"\1{space} \2 *", text)
     # namespace-scope constants live in the constant address space
     text = re.sub(r"(?m)^static const (int|size_t) ", r"constant \1 ", text)
+    # the permutation networks' mask tables
+    text = text.replace("alignas(32) static const", "constant")
     text = text.replace("unsigned long long", "ulong")
     text = text.replace("__builtin_popcount", "popcount")
     return text

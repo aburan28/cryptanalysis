@@ -135,6 +135,10 @@ $(BUILD)/metaltest: src/metaltest.mm $(METALHDRS) $(BUILD)/model.o $(BUILD)/host
 	$(CXX) $(METALFLAGS) $(CPUARCH) src/metaltest.mm $(BUILD)/hostcheck-cpu.o $(BUILD)/model.o \
 	    $(METALLIBS) -o $@
 
+$(BUILD)/metalprof: src/metalprof.mm $(METALHDRS) $(BUILD)/model.o $(BUILD)/hostcheck-cpu.o
+	$(CXX) $(METALFLAGS) $(CPUARCH) src/metalprof.mm $(BUILD)/hostcheck-cpu.o $(BUILD)/model.o \
+	    $(METALLIBS) -o $@
+
 metal: $(BUILD)/ec2k-metal
 
 metal-test: $(BUILD)/metaltest
