@@ -1,0 +1,155 @@
+{
+  "checked_at": "2026-09-21T15:11:00Z",
+  "checks": [
+    {
+      "command": [
+        "make",
+        "check-production-gpu"
+      ],
+      "returncode": 0,
+      "output": "make test-packed-cuda test-packed-storage-cuda test-shared-sigma-cuda \\\n    'ARCH=-gencode arch=compute_120,code=sm_120' BATCH=16 THREADS=256 MINBLOCKS=2 PACKED_SINGLE_PRODUCT=1 PACKED_CACHE_DENOM=1 PACKED_BY_VALUE=1 PACKED_PERM_SIGMA=3 PACKED_POLY_CHAIN=1 PACKED_UNROLL_INV=1 PACKED_PAIR_PRODUCTS=1 PACKED_POLY_STATE=1 PACKED_DIRECT_REDUCE=1 PACKED_GENERATED_PRODUCT=1 PACKED_CLMAD=1 PACKED_STATE_TILE=256 PACKED_WEIGHTED_PREFIX=2 PACKED_COMPACT_STATE=1 PACKED_SHARED_SIGMA=1 WALK_TABLE=0\nmake[1]: Entering directory '/opt/ecc2k130'\nmkdir -p build\nnvcc -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 -DECC_BATCH=16 -DECC_THREADS=256 -DECC_MINBLOCKS=2 -DECC_STREAM_KARAT=0 -DECC_SMEM_SPILL=0 -DECC_PACKED_SINGLE_PRODUCT=1 -DECC_PACKED_CACHE_DENOM=1 -DECC_PACKED_BY_VALUE=1 -DECC_PACKED_PERM_SIGMA=3 -DECC_PACKED_POLY_CHAIN=1 -DECC_PACKED_UNROLL_INV=1 -DECC_PACKED_PAIR_PRODUCTS=1 -DECC_PACKED_POLY_STATE=1 -DECC_PACKED_DIRECT_REDUCE=1 -DECC_PACKED_GENERATED_PRODUCT=1 -DECC_PACKED_INLINE_POLY=0 -DECC_PACKED_CLMAD=1 -DECC_PACKED_CLMAD_SQUARE=0 -DECC_PACKED_KARAT3=0 -DECC_PACKED_WEIGHTED_PREFIX=2 -DECC_PACKED_COMPACT_STATE=1 -DECC_PACKED_SHARED_SIGMA=1 -DECC_PACKED_TOP_CLMAD=0 -DECC_PACKED_STATE_TILE=256 -DECC_PACKED_ADD_COMBINE=0 -DECC_PACKED_PAIR_ILP=0 -DECC_UNROLL_SLOTS=1 -DECC_PACKED_SLOT_PREFETCH=0 -DECC_PACKED_SLOT_PIPELINE=0 -DECC_PACKED_L2_PERSIST=0 -DECC_PACKED_TOP_HOIST=0 -DECC_PACKED_ONB_INV=0 -DECC_PACKED_FROM_REDUCED=0 -DECC_PACKED_CLMUL_FLAT=0 -DECC_PACKED_PAIR_CLMUL=0 -DECC_PACKED_ALU_SQR=0 -DECC_WALK_TABLE=0 -DECC_TABLE_BRANCHES=8 -DECC_TABLE_PIVOT_BYTES=0 -DECC_TABLE_TAG_DENOM=0 -DECC_TABLE_FUSED=0 -DECC_TABLE_FUSED_PIPE=0 -DECC_PHASE_PROFILE=0 -DECC_TABLE_PIPE_SELECT=0 -DECC_PACKED_CHAIN_FIRST=0 -DECC_TABLE_GLOBAL=0 -DECC_TABLE_ADDEND_GLOBAL=0 -DECC_PACKED_ALU_SQUARE=0 src/testpackedcuda.cu -o build/test-packed-cuda\n./build/test-packed-cuda\npacked arithmetic direct reduction: 1\npacked arithmetic generated product: 1\npacked arithmetic native carryless multiply: 1\npacked arithmetic top clmad: 0\npacked arithmetic native carryless square: 0\npacked arithmetic three-limb Karatsuba: 0\npacked arithmetic weighted prefix: 2\nPASS: 3120 GPU Frobenius vectors, every field basis vector for all selected powers plus dense cases\nPASS: 2526 GPU polynomial reductions against long division, including ignored upper-word bits and canonical outputs\nPASS: 18194 GPU polynomial products, including all 17161 basis pairs\nPASS: 18194 GPU paired polynomial products against independent multiplication\nPASS: 1157 GPU polynomial squares against independent multiplication and long division\nPASS: 6240 GPU paired Frobenius vectors, both inputs against independent routing\nmkdir -p build\nnvcc -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 -DECC_BATCH=16 -DECC_THREADS=256 -DECC_MINBLOCKS=2 -DECC_STREAM_KARAT=0 -DECC_SMEM_SPILL=0 -DECC_PACKED_SINGLE_PRODUCT=1 -DECC_PACKED_CACHE_DENOM=1 -DECC_PACKED_BY_VALUE=1 -DECC_PACKED_PERM_SIGMA=3 -DECC_PACKED_POLY_CHAIN=1 -DECC_PACKED_UNROLL_INV=1 -DECC_PACKED_PAIR_PRODUCTS=1 -DECC_PACKED_POLY_STATE=1 -DECC_PACKED_DIRECT_REDUCE=1 -DECC_PACKED_GENERATED_PRODUCT=1 -DECC_PACKED_INLINE_POLY=0 -DECC_PACKED_CLMAD=1 -DECC_PACKED_CLMAD_SQUARE=0 -DECC_PACKED_KARAT3=0 -DECC_PACKED_WEIGHTED_PREFIX=2 -DECC_PACKED_COMPACT_STATE=1 -DECC_PACKED_SHARED_SIGMA=1 -DECC_PACKED_TOP_CLMAD=0 -DECC_PACKED_STATE_TILE=256 -DECC_PACKED_ADD_COMBINE=0 -DECC_PACKED_PAIR_ILP=0 -DECC_UNROLL_SLOTS=1 -DECC_PACKED_SLOT_PREFETCH=0 -DECC_PACKED_SLOT_PIPELINE=0 -DECC_PACKED_L2_PERSIST=0 -DECC_PACKED_TOP_HOIST=0 -DECC_PACKED_ONB_INV=0 -DECC_PACKED_FROM_REDUCED=0 -DECC_PACKED_CLMUL_FLAT=0 -DECC_PACKED_PAIR_CLMUL=0 -DECC_PACKED_ALU_SQR=0 -DECC_WALK_TABLE=0 -DECC_TABLE_BRANCHES=8 -DECC_TABLE_PIVOT_BYTES=0 -DECC_TABLE_TAG_DENOM=0 -DECC_TABLE_FUSED=0 -DECC_TABLE_FUSED_PIPE=0 -DECC_PHASE_PROFILE=0 -DECC_TABLE_PIPE_SELECT=0 -DECC_PACKED_CHAIN_FIRST=0 -DECC_TABLE_GLOBAL=0 -DECC_TABLE_ADDEND_GLOBAL=0 -DECC_PACKED_ALU_SQUARE=0 src/testpackedstatecuda.cu -o build/test-packed-storage-cuda\n./build/test-packed-storage-cuda\npacked storage compact state: 1\npacked storage batch: 16\nPASS: 128 GPU storage cases, 297344 records, independent physical images and logical reads with canaries\nmkdir -p build\nnvcc -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 -DECC_BATCH=16 -DECC_THREADS=256 -DECC_MINBLOCKS=2 -DECC_STREAM_KARAT=0 -DECC_SMEM_SPILL=0 -DECC_PACKED_SINGLE_PRODUCT=1 -DECC_PACKED_CACHE_DENOM=1 -DECC_PACKED_BY_VALUE=1 -DECC_PACKED_PERM_SIGMA=3 -DECC_PACKED_POLY_CHAIN=1 -DECC_PACKED_UNROLL_INV=1 -DECC_PACKED_PAIR_PRODUCTS=1 -DECC_PACKED_POLY_STATE=1 -DECC_PACKED_DIRECT_REDUCE=1 -DECC_PACKED_GENERATED_PRODUCT=1 -DECC_PACKED_INLINE_POLY=0 -DECC_PACKED_CLMAD=1 -DECC_PACKED_CLMAD_SQUARE=0 -DECC_PACKED_KARAT3=0 -DECC_PACKED_WEIGHTED_PREFIX=2 -DECC_PACKED_COMPACT_STATE=1 -DECC_PACKED_SHARED_SIGMA=1 -DECC_PACKED_TOP_CLMAD=0 -DECC_PACKED_STATE_TILE=256 -DECC_PACKED_ADD_COMBINE=0 -DECC_PACKED_PAIR_ILP=0 -DECC_UNROLL_SLOTS=1 -DECC_PACKED_SLOT_PREFETCH=0 -DECC_PACKED_SLOT_PIPELINE=0 -DECC_PACKED_L2_PERSIST=0 -DECC_PACKED_TOP_HOIST=0 -DECC_PACKED_ONB_INV=0 -DECC_PACKED_FROM_REDUCED=0 -DECC_PACKED_CLMUL_FLAT=0 -DECC_PACKED_PAIR_CLMUL=0 -DECC_PACKED_ALU_SQR=0 -DECC_WALK_TABLE=0 -DECC_TABLE_BRANCHES=8 -DECC_TABLE_PIVOT_BYTES=0 -DECC_TABLE_TAG_DENOM=0 -DECC_TABLE_FUSED=0 -DECC_TABLE_FUSED_PIPE=0 -DECC_PHASE_PROFILE=0 -DECC_TABLE_PIPE_SELECT=0 -DECC_PACKED_CHAIN_FIRST=0 -DECC_TABLE_GLOBAL=0 -DECC_TABLE_ADDEND_GLOBAL=0 -DECC_PACKED_ALU_SQUARE=0 src/testsharedsigmacuda.cu -o build/test-shared-sigma-cuda\n./build/test-shared-sigma-cuda\npacked shared sigma probe: 1\nPASS: 21 GPU sigma scenarios, 21036 input pairs, global and selected helpers against independent routing\nPASS: 114 complete block mask snapshots, 51072 words, output guards and inactive blocks\nmake[1]: Leaving directory '/opt/ecc2k130'\npython3 codegen/testpackedclient.py ./ecc2k130\nPASS: DP replay across launch boundaries, restart and checkpoint resume\nPASS: byte-identical resume, scalar iteration count, incompatible checkpoint preserved\nPASS: overdue walks restart without false distinguished-point reports\n"
+    },
+    {
+      "command": [
+        "/tmp/tmp35nu8r1y/legacy",
+        "--packed",
+        "--curve",
+        "131",
+        "--threads",
+        "256",
+        "--steps",
+        "32",
+        "--launches",
+        "2",
+        "--run-id",
+        "11000",
+        "--dp-weight",
+        "0",
+        "--verify",
+        "0",
+        "--checkpoint",
+        "/tmp/tmp35nu8r1y/legacy-0.ck",
+        "--dp-file",
+        "/tmp/tmp35nu8r1y/legacy-0.bin"
+      ],
+      "returncode": 0,
+      "output": "packed kernel: 91 registers/thread, 0 local bytes/thread, 1792 shared bytes/block, single-product multiplier\npacked driver reserved shared bytes/block: 1024, device 0\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\npacked polynomial state: 1\npacked unrolled inversion: 1\npacked paired products: 1\npacked pair ilp: 0\npacked pair clmul: 0\npacked clmul flat: 0\npacked top hoist: 0\npacked onb inv: 0\npacked from reduced: 0\npacked slot unroll: 1\npacked slot prefetch: 0\npacked slot pipeline: 0\npacked selection pipeline: 0\npacked L2 persist: 0\npacked direct reduction: 1\npacked reduction CLMAD t: 0\npacked generated product: 1\npacked inline onb multiply: 0\npacked native carryless multiply: 1\npacked native carryless square: 0\npacked three-limb Karatsuba: 0\npacked weighted prefix: 2\npacked compact state: 1\npacked shared sigma: 1\npacked top clmad: 0\npacked half top clmad: 0\npacked state tile: 256\npacked add combine: 0\npacked alu square: 0\npacked alu onb square: 0\npacked profile ranges: 0\npacked table walk: 0 (0 branches, 0 shared bytes)\nbackend cuda-packed131: 256 threads x 16 slots x 1 lanes = 4096 walks, dp weight 0, 32 steps per launch\nno checkpoint at /tmp/tmp35nu8r1y/legacy-0.ck, starting fresh\n       0.0 s      63.700 M it/s      262144 iterations         0 dp         0 stored         0 dropped\n  finished: 39.871 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n"
+    },
+    {
+      "command": [
+        "/opt/ecc2k130/ecc2k130",
+        "--packed",
+        "--curve",
+        "131",
+        "--threads",
+        "256",
+        "--steps",
+        "32",
+        "--launches",
+        "2",
+        "--run-id",
+        "11000",
+        "--dp-weight",
+        "0",
+        "--verify",
+        "0",
+        "--checkpoint",
+        "/tmp/tmp35nu8r1y/candidate-0.ck",
+        "--dp-file",
+        "/tmp/tmp35nu8r1y/candidate-0.bin"
+      ],
+      "returncode": 0,
+      "output": "packed kernel: 109 registers/thread, 0 local bytes/thread, 6912 shared bytes/block, single-product multiplier\npacked driver reserved shared bytes/block: 1024, device 0\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\npacked polynomial state: 1\npacked unrolled inversion: 1\npacked paired products: 1\npacked pair ilp: 0\npacked pair clmul: 0\npacked clmul flat: 0\npacked top hoist: 0\npacked onb inv: 0\npacked from reduced: 0\npacked slot unroll: 1\npacked slot prefetch: 0\npacked slot pipeline: 0\npacked L2 persist: 0\npacked direct reduction: 1\npacked generated product: 1\npacked native carryless multiply: 1\npacked native carryless square: 0\npacked three-limb Karatsuba: 0\npacked weighted prefix: 2\npacked compact state: 1\npacked shared sigma: 1\npacked top clmad: 0\npacked state tile: 256\npacked add combine: 0\npacked alu square: 0\npacked alu onb square: 0\npacked profile ranges: 0\npacked table walk: 0 (0 branches, 0 shared bytes)\nbackend cuda-packed131: 256 threads x 16 slots x 1 lanes = 4096 walks, dp weight 0, 32 steps per launch\nno checkpoint at /tmp/tmp35nu8r1y/candidate-0.ck, starting fresh\n       0.0 s      58.659 M it/s      262144 iterations         0 dp         0 stored         0 dropped\n  finished: 43.913 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n"
+    },
+    {
+      "command": [
+        "/tmp/tmp35nu8r1y/legacy",
+        "--packed",
+        "--curve",
+        "131",
+        "--threads",
+        "256",
+        "--steps",
+        "32",
+        "--launches",
+        "2",
+        "--run-id",
+        "11000",
+        "--dp-weight",
+        "50",
+        "--verify",
+        "4096",
+        "--checkpoint",
+        "/tmp/tmp35nu8r1y/legacy-50.ck",
+        "--dp-file",
+        "/tmp/tmp35nu8r1y/legacy-50.bin"
+      ],
+      "returncode": 0,
+      "output": "packed kernel: 91 registers/thread, 0 local bytes/thread, 1792 shared bytes/block, single-product multiplier\npacked driver reserved shared bytes/block: 1024, device 0\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\npacked polynomial state: 1\npacked unrolled inversion: 1\npacked paired products: 1\npacked pair ilp: 0\npacked pair clmul: 0\npacked clmul flat: 0\npacked top hoist: 0\npacked onb inv: 0\npacked from reduced: 0\npacked slot unroll: 1\npacked slot prefetch: 0\npacked slot pipeline: 0\npacked selection pipeline: 0\npacked L2 persist: 0\npacked direct reduction: 1\npacked reduction CLMAD t: 0\npacked generated product: 1\npacked inline onb multiply: 0\npacked native carryless multiply: 1\npacked native carryless square: 0\npacked three-limb Karatsuba: 0\npacked weighted prefix: 2\npacked compact state: 1\npacked shared sigma: 1\npacked top clmad: 0\npacked half top clmad: 0\npacked state tile: 256\npacked add combine: 0\npacked alu square: 0\npacked alu onb square: 0\npacked profile ranges: 0\npacked table walk: 0 (0 branches, 0 shared bytes)\nbackend cuda-packed131: 256 threads x 16 slots x 1 lanes = 4096 walks, dp weight 50, 32 steps per launch\nno checkpoint at /tmp/tmp35nu8r1y/legacy-50.ck, starting fresh\n      24.5 s       0.005 M it/s      131072 iterations       641 dp       641 stored         0 dropped\n      58.2 s       0.005 M it/s      262144 iterations      1291 dp      1291 stored         0 dropped\n  finished: 0.005 M it/s, 1291 distinguished points (1291 verified against the reference, 0 dropped)\n"
+    },
+    {
+      "command": [
+        "/opt/ecc2k130/ecc2k130",
+        "--packed",
+        "--curve",
+        "131",
+        "--threads",
+        "256",
+        "--steps",
+        "32",
+        "--launches",
+        "2",
+        "--run-id",
+        "11000",
+        "--dp-weight",
+        "50",
+        "--verify",
+        "4096",
+        "--checkpoint",
+        "/tmp/tmp35nu8r1y/candidate-50.ck",
+        "--dp-file",
+        "/tmp/tmp35nu8r1y/candidate-50.bin"
+      ],
+      "returncode": 0,
+      "output": "packed kernel: 109 registers/thread, 0 local bytes/thread, 6912 shared bytes/block, single-product multiplier\npacked driver reserved shared bytes/block: 1024, device 0\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\npacked polynomial state: 1\npacked unrolled inversion: 1\npacked paired products: 1\npacked pair ilp: 0\npacked pair clmul: 0\npacked clmul flat: 0\npacked top hoist: 0\npacked onb inv: 0\npacked from reduced: 0\npacked slot unroll: 1\npacked slot prefetch: 0\npacked slot pipeline: 0\npacked L2 persist: 0\npacked direct reduction: 1\npacked generated product: 1\npacked native carryless multiply: 1\npacked native carryless square: 0\npacked three-limb Karatsuba: 0\npacked weighted prefix: 2\npacked compact state: 1\npacked shared sigma: 1\npacked top clmad: 0\npacked state tile: 256\npacked add combine: 0\npacked alu square: 0\npacked alu onb square: 0\npacked profile ranges: 0\npacked table walk: 0 (0 branches, 0 shared bytes)\nbackend cuda-packed131: 256 threads x 16 slots x 1 lanes = 4096 walks, dp weight 50, 32 steps per launch\nno checkpoint at /tmp/tmp35nu8r1y/candidate-50.ck, starting fresh\n      25.6 s       0.005 M it/s      131072 iterations       641 dp       641 stored         0 dropped\n      65.0 s       0.004 M it/s      262144 iterations      1291 dp      1291 stored         0 dropped\n  finished: 0.004 M it/s, 1291 distinguished points (1291 verified against the reference, 0 dropped)\n"
+    },
+    {
+      "command": [
+        "/opt/ecc2k130/ecc2k130",
+        "--packed",
+        "--curve",
+        "131",
+        "--threads",
+        "385024",
+        "--steps",
+        "1024",
+        "--launches",
+        "32",
+        "--run-id",
+        "11000",
+        "--dp-weight",
+        "32",
+        "--verify",
+        "0",
+        "--dp-file",
+        "/tmp/tmp35nu8r1y/dp32.bin"
+      ],
+      "returncode": 0,
+      "output": "packed kernel: 109 registers/thread, 0 local bytes/thread, 6912 shared bytes/block, single-product multiplier\npacked driver reserved shared bytes/block: 1024, device 0\npacked denominator cache: 1\npacked multiply by value: 1\npacked Frobenius network: 3\npacked polynomial chain: 1\npacked polynomial state: 1\npacked unrolled inversion: 1\npacked paired products: 1\npacked pair ilp: 0\npacked pair clmul: 0\npacked clmul flat: 0\npacked top hoist: 0\npacked onb inv: 0\npacked from reduced: 0\npacked slot unroll: 1\npacked slot prefetch: 0\npacked slot pipeline: 0\npacked L2 persist: 0\npacked direct reduction: 1\npacked generated product: 1\npacked native carryless multiply: 1\npacked native carryless square: 0\npacked three-limb Karatsuba: 0\npacked weighted prefix: 2\npacked compact state: 1\npacked shared sigma: 1\npacked top clmad: 0\npacked state tile: 256\npacked add combine: 0\npacked alu square: 0\npacked alu onb square: 0\npacked profile ranges: 0\npacked table walk: 0 (0 branches, 0 shared bytes)\nbackend cuda-packed131: 385024 threads x 16 slots x 1 lanes = 6160384 walks, dp weight 32, 1024 steps per launch\n       2.2 s   11310.082 M it/s  25232932864 iterations        60 dp        60 stored         0 dropped\n       4.5 s   11321.750 M it/s  50465865728 iterations       114 dp       114 stored         0 dropped\n       6.7 s   11320.534 M it/s  75698798592 iterations       191 dp       191 stored         0 dropped\n       8.9 s   11323.801 M it/s  100931731456 iterations       252 dp       252 stored         0 dropped\n      11.1 s   11324.660 M it/s  126164664320 iterations       318 dp       318 stored         0 dropped\n      13.4 s   11324.189 M it/s  151397597184 iterations       392 dp       392 stored         0 dropped\n      15.6 s   11324.771 M it/s  176630530048 iterations       468 dp       468 stored         0 dropped\n      17.8 s   11323.722 M it/s  201863462912 iterations       540 dp       540 stored         0 dropped\n  finished: 11323.631 M it/s, 540 distinguished points (0 verified against the reference, 0 dropped)\n"
+    }
+  ],
+  "legacy_binary_sha256": "0c02a3cfec9553a5def6e9df530c027a246648f6a6b8b7fef39c67e582aae9f4",
+  "dp0_compatibility": {
+    "checkpoint_identical": true,
+    "records_identical": true,
+    "records": 0
+  },
+  "dp50_compatibility": {
+    "checkpoint_identical": true,
+    "records_identical": true,
+    "records": 1291
+  },
+  "dp32_records": 540,
+  "candidate_binary_sha256": "3b6f657a29eacda5221d910ea3ff0ac22a77d561ed0609a28a3afc2712096840",
+  "ok": true
+}
