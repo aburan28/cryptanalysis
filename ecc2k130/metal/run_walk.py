@@ -7,6 +7,7 @@ pair-sum payload. All selectors are evaluated from the current point.
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import random
 import shutil
@@ -99,6 +100,25 @@ def verify(root, reference, config, selected):
             'stateSha256': hashlib.sha256(states).hexdigest(), 'reportSha256': hashlib.sha256(data).hexdigest(), **totals}
 
 
+def validateRates(report):
+    for name in ('gpuSeconds', 'dispatchWallSeconds', 'iterationsPerSecond',
+                 'millionIterationsPerSecond', 'chargedGroupOperationsPerSecond',
+                 'wallIterationsPerSecond'):
+        value = report.get(name)
+        if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            raise ValueError('invalid native throughput field: ' + name)
+    gpu = report['gpuSeconds']
+    wall = report['dispatchWallSeconds']
+    expected = report['walkUpdates'] / gpu if gpu else 0
+    charged = report['groupOperations'] / gpu if gpu else 0
+    wallRate = report['walkUpdates'] / wall if wall else 0
+    if (not math.isclose(report['iterationsPerSecond'], expected, rel_tol=1e-12) or
+            not math.isclose(report['millionIterationsPerSecond'], expected / 1e6, rel_tol=1e-12) or
+            not math.isclose(report['chargedGroupOperationsPerSecond'], charged, rel_tol=1e-12) or
+            not math.isclose(report['wallIterationsPerSecond'], wallRate, rel_tol=1e-12)):
+        raise ValueError('native throughput accounting mismatch')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
@@ -113,14 +133,18 @@ def main():
     parser.add_argument('--dp-cap', type=int, default=65536)
     parser.add_argument('--seed', type=int, default=20260921)
     parser.add_argument('--verify-lanes', type=int, default=16)
+    parser.add_argument('--progress-every', type=int, default=1,
+                        help='print live throughput after this many launches')
     parser.add_argument('--prepare-only', action='store_true')
     args = parser.parse_args()
     if (not 1 <= args.lanes <= 65536 or not 1 <= args.cycles <= 128 or not 1 <= args.launches <= 10000 or
             not -1 <= args.dp_weight <= 130 or not 1 <= args.dp_cap <= 1000000 or
-            not 0 <= args.seed <= MASK - args.lanes + 1 or not 1 <= args.verify_lanes <= args.lanes):
+            not 0 <= args.seed <= MASK - args.lanes + 1 or not 1 <= args.verify_lanes <= args.lanes or
+            args.progress_every < 1):
         parser.error('invalid workload/seed bounds')
     config = {'lanes': args.lanes, 'cycles': args.cycles, 'launches': args.launches, 'branches': args.branches,
-              'dpCap': args.dp_cap, 'batch': args.batch, 'dpWeight': args.dp_weight, 'seed': args.seed}
+              'dpCap': args.dp_cap, 'batch': args.batch, 'dpWeight': args.dp_weight,
+              'seed': args.seed, 'progressEvery': args.progress_every}
     catalog, base = table_store.load_catalog(args.catalog)
     entry = next(e for e in catalog['artifacts'] if e['branches'] == args.branches)
     start = time.perf_counter()
@@ -130,10 +154,18 @@ def main():
     executable = ROOT / 'build/metal-artifact-walk'
     if not executable.is_file(): raise ValueError('build first: make -C %s' % (ROOT / 'metal'))
     command = [str(executable), str(args.out.resolve()), str(args.out.resolve())]
-    result = subprocess.run(command, text=True, capture_output=True)
-    (args.out / 'native.log').write_text(result.stdout + result.stderr)
-    if result.returncode: raise RuntimeError(result.stdout + result.stderr)
-    report = json.loads(result.stdout)
+    with (args.out / 'native.log').open('w') as log:
+        process = subprocess.Popen(command, text=True, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, bufsize=1)
+        for line in process.stderr:
+            print(line, end='', file=sys.stderr, flush=True)
+            log.write(line); log.flush()
+        output = process.stdout.read()
+        code = process.wait()
+        log.write(output)
+    if code: raise RuntimeError(output)
+    report = json.loads(output)
+    validateRates(report)
     selected = sorted(set([0, args.lanes - 1] + random.Random(8191).sample(range(args.lanes), args.verify_lanes)))
     checks = verify(args.out, reference, config, selected)
     for key in ('walkUpdates', 'seedAdditions', 'dpRecords', 'haltedLanes', 'exhaustedLanes'):

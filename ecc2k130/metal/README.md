@@ -98,6 +98,25 @@ python3 /Volumes/SSD990/cryptanalysis/ecc2k130/metal/run_walk.py \
   --branches 128 --lanes 128 --cycles 64 --launches 4 --verify-lanes 32
 ```
 
+While the kernel runs, the wrapper streams one line per launch, for example:
+
+```text
+progress launch 2/4: 8192 walk iterations, 0.244 M iterations/s, 0 seed additions, 0.244 M charged group ops/s, 0.033571 GPU s
+```
+
+`iterationsPerSecond` counts completed point-dependent walk updates divided by
+Metal GPU command time. Reseed additions are reported separately and included
+in `chargedGroupOperationsPerSecond`. `wallIterationsPerSecond` also includes
+host dispatch and report-copy overhead. Use `--progress-every N` to print less
+frequently during long runs.
+
+The bounded 128-lane control measured 0.231 million iterations/s overall;
+steady launches measured 0.247--0.250 million iterations/s. Its
+[throughput receipt](evidence/walk128-throughput.json) binds the final state,
+binary, source inputs, GPU time, wall time, and rate arithmetic. This is the
+synthetic correctness kernel's finite rate, not the optimized production
+client's throughput.
+
 Omit `--artifact-dir` to download only `directions.bin` and
 `coefficients.json` from the public catalog. The 20 or 81 GB pair payload is
 not needed by this recurrence. Output paths must be new.

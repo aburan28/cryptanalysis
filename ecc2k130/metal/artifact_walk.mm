@@ -58,10 +58,12 @@ int main(int argc,char **argv) {
             const uint32_t lanes=[config[@"lanes"] unsignedIntValue],cycles=[config[@"cycles"] unsignedIntValue];
             const uint32_t launches=[config[@"launches"] unsignedIntValue],branches=[config[@"branches"] unsignedIntValue];
             const uint32_t cap=[config[@"dpCap"] unsignedIntValue],batch=[config[@"batch"] unsignedIntValue];
+            const uint32_t progressEvery=config[@"progressEvery"]?[config[@"progressEvery"] unsignedIntValue]:1;
             const int dpWeight=[config[@"dpWeight"] intValue];
             need(lanes>0&&lanes<=65536&&cycles>0&&cycles<=128&&launches>0&&launches<=10000,"invalid workload bounds");
             need((branches==128||branches==256)&&cap>0&&cap<=1000000&&dpWeight>=-1&&dpWeight<=130,"invalid table/report bounds");
-            need(batch==1||batch==4||batch==8||batch==16||batch==32,"invalid batch");
+            need((batch==1||batch==4||batch==8||batch==16||batch==32)&&progressEvery>0,
+                 "invalid batch/progress interval");
             id<MTLDevice> device=MTLCreateSystemDefaultDevice();
             if(!device){printJson(@{@"status":@"unavailable",@"error":@"No Metal GPU; run natively outside the sandbox"});return 77;}
             need(device.hasUnifiedMemory,"the artifact driver requires unified-memory Metal");
@@ -94,11 +96,13 @@ int main(int argc,char **argv) {
             NSString *recordPath=[output stringByAppendingPathComponent:@"reports.bin"];
             FILE *reportFile=fopen(recordPath.fileSystemRepresentation,"wb");need(reportFile!=nullptr,"cannot create report file");
             struct Close {FILE *f;~Close(){fclose(f);}} close{reportFile};
-            uint64_t totalReports=0,dispatches=0;double gpuSeconds=0,maxDispatch=0;
+            uint64_t totalReports=0,dispatches=0,previousUpdates=0,previousSeeds=0;
+            double gpuSeconds=0,maxDispatch=0;
             uint32_t chunkLimit=1;
             const auto started=std::chrono::steady_clock::now();
             for(uint32_t launch=0;launch<launches;++launch) {
                 memset(counts.contents,0,8);
+                double launchGpuSeconds=0;
                 for(uint32_t done=0;done<cycles;) {
                     const uint32_t chunk=std::min(chunkLimit,cycles-done);
                     Args args{lanes,chunk,branches,cap,dpWeight,0};
@@ -111,7 +115,7 @@ int main(int argc,char **argv) {
                     [encoder endEncoding];finish(command);done+=chunk;++dispatches;
                     double seconds=command.GPUEndTime-command.GPUStartTime;
                     need(std::isfinite(seconds)&&seconds>=0,"invalid GPU event timing");
-                    gpuSeconds+=seconds;maxDispatch=std::max(maxDispatch,seconds);
+                    gpuSeconds+=seconds;launchGpuSeconds+=seconds;maxDispatch=std::max(maxDispatch,seconds);
                     // Aim below 50 ms; retain a factor-four margin for the
                     // selector cost when the first dispatch only seeds lanes.
                     if(seconds>0)chunkLimit=std::max(1u,std::min(128u,uint32_t(0.0125*chunk/seconds)));
@@ -120,6 +124,25 @@ int main(int argc,char **argv) {
                 need(count[1]==0&&count[0]<=cap,"DP buffer overflow; increase dpCap");
                 need(fwrite(records.contents,sizeof(Dp),count[0],reportFile)==count[0],"report write failed");
                 totalReports+=count[0];
+                uint64_t cumulativeUpdates=0,cumulativeSeeds=0;
+                const State *progress=static_cast<const State *>(states.contents);
+                for(uint32_t lane=0;lane<lanes;++lane) {
+                    cumulativeUpdates+=progress[lane].walkSteps;
+                    cumulativeSeeds+=progress[lane].reseeds;
+                }
+                const uint64_t launchUpdates=cumulativeUpdates-previousUpdates;
+                const uint64_t launchSeeds=cumulativeSeeds-previousSeeds;
+                previousUpdates=cumulativeUpdates;previousSeeds=cumulativeSeeds;
+                if((launch+1)%progressEvery==0||launch+1==launches) {
+                    const double ips=launchGpuSeconds>0?double(launchUpdates)/launchGpuSeconds:0;
+                    const double charged=launchGpuSeconds>0?double(launchUpdates+launchSeeds)/launchGpuSeconds:0;
+                    fprintf(stderr,
+                            "progress launch %u/%u: %llu walk iterations, %.3f M iterations/s, "
+                            "%llu seed additions, %.3f M charged group ops/s, %.6f GPU s\n",
+                            launch+1,launches,(unsigned long long)launchUpdates,ips/1e6,
+                            (unsigned long long)launchSeeds,charged/1e6,launchGpuSeconds);
+                    fflush(stderr);
+                }
             }
             need(fflush(reportFile)==0,"report flush failed");
             uint64_t updates=0,reseedAdds=0,halted=0,exhausted=0,dpCount=0;
@@ -128,12 +151,17 @@ int main(int argc,char **argv) {
             need(dpCount==totalReports,"report count/state count disagree");
             writeFile(output,@"state.bin",states.contents,initial.length);
             const double wall=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
+            const double iterationsPerSecond=gpuSeconds>0?double(updates)/gpuSeconds:0;
+            const double chargedPerSecond=gpuSeconds>0?double(updates+reseedAdds)/gpuSeconds:0;
+            const double wallIterationsPerSecond=wall>0?double(updates)/wall:0;
             printJson(@{@"status":@"ok",@"scope":@"synthetic signed-Frobenius artifact walk",
                 @"device":device.name,@"branches":@(branches),@"lanes":@(lanes),@"batch":@(batch),
                 @"cyclesPerLaunch":@(cycles),@"launches":@(launches),@"dispatches":@(dispatches),
                 @"walkUpdates":@(updates),@"seedAdditions":@(reseedAdds),@"groupOperations":@(updates+reseedAdds),
                 @"dpRecords":@(totalReports),@"droppedRecords":@0,@"haltedLanes":@(halted),@"exhaustedLanes":@(exhausted),
                 @"gpuSeconds":@(gpuSeconds),@"maximumDispatchSeconds":@(maxDispatch),@"dispatchWallSeconds":@(wall),
+                @"iterationsPerSecond":@(iterationsPerSecond),@"millionIterationsPerSecond":@(iterationsPerSecond/1e6),
+                @"chargedGroupOperationsPerSecond":@(chargedPerSecond),@"wallIterationsPerSecond":@(wallIterationsPerSecond),
                 @"independentArithmeticCases":@(cases),@"pairTableLoaded":@NO,
                 @"residentDataBytes":@(states.length+dirs.length+consts.length+records.length+counts.length)});
         } catch(const std::exception &error) {

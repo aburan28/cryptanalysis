@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'metal'))
 sys.path.insert(0, str(ROOT / 'research' / 'step_table'))
 import artifact_reference as reference
+import run_walk
 import pack
 
 
@@ -73,6 +74,16 @@ class ArtifactReferenceTests(unittest.TestCase):
         # First cycle seeds; the next reports and cannot allocate seed+lanes.
         self.walk.cycle(state, 0, 8, 130)
         self.assertEqual(state['mode'], 3)
+
+    def testThroughputAccounting(self):
+        report = {'gpuSeconds': 2.0, 'dispatchWallSeconds': 4.0,
+                  'walkUpdates': 1_000, 'groupOperations': 1_200,
+                  'iterationsPerSecond': 500.0, 'millionIterationsPerSecond': 0.0005,
+                  'chargedGroupOperationsPerSecond': 600.0, 'wallIterationsPerSecond': 250.0}
+        run_walk.validateRates(report)
+        report['iterationsPerSecond'] = 501.0
+        with self.assertRaisesRegex(ValueError, 'accounting mismatch'):
+            run_walk.validateRates(report)
 
 
 if __name__ == '__main__':
