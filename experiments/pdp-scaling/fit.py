@@ -137,7 +137,8 @@ def fit_table(groups: dict) -> tuple[str, dict[tuple[str, int], np.ndarray]]:
     ]
     fits: dict[tuple[str, int], np.ndarray] = {}
     for (engine, m), rs in sorted(groups.items()):
-        if len({(r["l"], r["n"]) for r in rs}) < 4:
+        # d is only identifiable with at least two field degrees, c with at least three l
+        if len({r["n"] for r in rs}) < 2 or len({r["l"] for r in rs}) < 3:
             continue
         coef, se, cnt = fit(rs)
         fits[(engine, m)] = coef

@@ -97,8 +97,14 @@ as they would be in an attack.
   reader returns wrong models for monomials of degree 4 and above (checked
   on random planted systems: correct at degree <= 3, wrong at degree >= 4),
   and the direct `S_4` descent has degree 6.  The build is per size class
-  (WDSat allocates statically); `WDSAT_SRC` points at the checkout, so a
-  modified WDSat with the same command line can be dropped in.
+  (WDSat allocates statically); `WDSAT_SRC` points at the checkout.  Three
+  variants run the same model: `wdsat-xg` adds `-x` (the XORGAUSS module,
+  off by default as in the paper); `wdsat-fork` and `wdsat-fork-xg` build
+  from `WDSAT_FORK_SRC`, so a modified solver with the same command line
+  is measured on identical instances next to upstream.  The fork measured
+  here is `aburan28/WDSat`, branch `factor-base-yield-sat-reviewed`, whose
+  solver change is a copy-on-write journal for the XORGAUSS undo (only the
+  `-x` path); its ANF reader has the same degree-4 defect as upstream.
 * `mitm` — the combinatorial reference: no algebra, meet-in-the-middle on
   the factor base itself, `P_1 + ... + P_k = R - P_{k+1} - ... - P_m` with
   `k = ceil(m/2)`, matched on the abscissa.  It costs exactly
@@ -106,13 +112,29 @@ as they would be in an attack.
   beat.  It is written in Python, so its *time* carries a large constant;
   its exponent is what matters and is known.
 
+**Timing.**  The reported seconds are the solver's CPU time (process time
+for the in-process engines, the child's user+system time for the solver
+binaries); a monotonic wall time is recorded beside it in the CSVs.  The
+machine these run on is paused while idle, so wall-clock durations are not
+trustworthy across a pause, and an earlier wall-clock run of this grid
+(archived off the branch) had several cells inflated by exactly that.
+Wall-clock limits still bound each run.
+
 **Grid.**  `n in {17, 31, 61}`; `m = 3` with `l = 3..7` (`sat`, `msolve`
-to 6), `l = 3..10` (`wdsat`, three seeds) and `l = 3..10` (`mitm`); `m = 4`
-with `l = 3..5` (`sat`), `3..4` (`msolve`), `3..8` (`mitm`); `m = 5` with
-`l = 3..4` (`sat`), `3..6` (`mitm`).  Two seeds per cell unless stated; the
-`l` sweep for an `n` stops after the first timeout (1500 s for `sat`, 1800 s
-for `msolve` and `wdsat`).  One 4-core x86-64 container, four jobs at a
-time, one thread each.
+to 6), `l = 3..10` (`wdsat`, three seeds; the variants `l = 5..9` at
+`n in {31, 61}`) and `l = 3..10` (`mitm`); `m = 4` with `l = 3..5` (`sat`),
+`3..4` (`msolve`), `3..8` (`mitm`); `m = 5` with `l = 3..4` (`sat`), `3..6`
+(`mitm`).  Two seeds per cell unless stated; the `l` sweep for an `n` stops
+after the first timeout (1500 s for `sat`, 1800 s for `msolve` and
+`wdsat`).  One 4-core x86-64 container, four jobs at a time, one thread
+each.  Cells missing from the tables below have not finished the CPU-time
+re-run yet; `fit.py --update-readme results/*.csv` refreshes them.
+* `mitm` — the combinatorial reference: no algebra, meet-in-the-middle on
+  the factor base itself, `P_1 + ... + P_k = R - P_{k+1} - ... - P_m` with
+  `k = ceil(m/2)`, matched on the abscissa.  It costs exactly
+  `2^(l ceil(m/2))` group additions and is what any algebraic method must
+  beat.  It is written in Python, so its *time* carries a large constant;
+  its exponent is what matters and is known.
 
 ## Results
 
@@ -125,54 +147,74 @@ limit.
 
 | n \ l | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
 |---|---|---|---|---|---|---|---|---|
-| 17 | 0.0036 (2/2) | 0.0126 (2/2) | 0.0333 (2/2) | 0.112 (2/2) | 0.445 (2/2) | 1.92 (2/2) | 7.12 (2/2) | 30.8 (2/2) |
-| 31 | 0.0054 (2/2) | 0.0165 (2/2) | 0.0669 (2/2) | 0.307 (2/2) | 1.53 (2/2) | 6.03 (2/2) | 23.1 (2/2) | 111 (2/2) |
-| 61 | 0.054 (2/2) | 0.142 (2/2) | 0.506 (2/2) | 1.9 (2/2) | 8.57 (2/2) | 31.6 (2/2) | 98.3 (2/2) | 683 (2/2) |
+| 17 | 0.0037 (2/2) | 0.0124 (2/2) | 0.0335 (2/2) | 0.112 (2/2) | 0.451 (2/2) | 1.93 (2/2) | 7.21 (2/2) | 29.7 (2/2) |
+| 31 | 0.0053 (2/2) | 0.0164 (2/2) | 0.0666 (2/2) | 0.308 (2/2) | 1.14 (2/2) | 5.17 (2/2) | 23.3 (2/2) | 85.8 (2/2) |
+| 61 | 0.054 (2/2) | 0.14 (2/2) | 0.384 (2/2) | 1.39 (2/2) | 6.49 (2/2) | 24.2 (2/2) | 93.9 (2/2) | 415 (2/2) |
 
 **mitm, m = 4**
 
 | n \ l | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|
-| 17 | 0.0076 (2/2) | 0.0213 (2/2) | 0.0536 (2/2) | 0.161 (2/2) | 0.484 (2/2) | 1.9 (2/2) |
-| 31 | 0.0057 (2/2) | 0.0191 (2/2) | 0.156 (2/2) | 1.13 (2/2) | 1.97 (2/2) | 12.2 (2/2) |
-| 61 | 0.0895 (2/2) | 0.268 (2/2) | 0.557 (2/2) | 2.47 (2/2) | 9.87 (2/2) | 36.5 (2/2) |
+| 17 | 0.0073 (2/2) | 0.0202 (2/2) | 0.0507 (2/2) | 0.146 (2/2) | 0.443 (2/2) | 1.9 (2/2) |
+| 31 | 0.0052 (2/2) | 0.0174 (2/2) | 0.144 (2/2) | 0.996 (2/2) | 1.76 (2/2) | 12.3 (2/2) |
+| 61 | 0.0888 (2/2) | 0.26 (2/2) | 0.509 (2/2) | 2.31 (2/2) | 8.99 (2/2) | 36.3 (2/2) |
 
 **mitm, m = 5**
 
 | n \ l | 3 | 4 | 5 | 6 |
 |---|---|---|---|---|
-| 17 | 0.019 (2/2) | 0.127 (2/2) | 0.49 (2/2) | 2.77 (2/2) |
-| 31 | 0.0324 (2/2) | 0.153 (2/2) | 1.57 (2/2) | 12.7 (2/2) |
-| 61 | 0.345 (2/2) | 1.02 (2/2) | 4.49 (2/2) | 30.7 (2/2) |
+| 17 | 0.019 (2/2) | 0.126 (2/2) | 0.479 (2/2) | 2.78 (2/2) |
+| 31 | 0.033 (2/2) | 0.153 (2/2) | 1.49 (2/2) | 12.7 (2/2) |
+| 61 | 0.346 (2/2) | 1 (2/2) | 4.51 (2/2) | 30.7 (2/2) |
 
 **msolve, m = 3**
 
-| n \ l | 3 | 4 | 5 | 6 |
-|---|---|---|---|---|
-| 17 | 0.0308 (2/2) | 0.89 (2/2) | 184 (2/2) | timeout (0/2) |
-| 31 | 0.0672 (2/2) | 0.307 (2/2) | 21 (2/2) |  |
+| n \ l | 3 | 4 | 5 |
+|---|---|---|---|
+| 17 | 0.026 (2/2) | 0.856 (2/2) | 187 (2/2) |
 
 **sat, m = 3**
 
 | n \ l | 3 | 4 | 5 | 6 | 7 |
 |---|---|---|---|---|---|
-| 17 | 0.0072 (2/2) | 0.0083 (2/2) | 0.811 (2/2) | 9.01 (2/2) | 701 (2/2) |
-| 31 | 0.006 (2/2) | 0.0066 (2/2) | 0.267 (2/2) | 34.5 (2/2) | 226 (2/2) |
-| 61 | 0.0052 (2/2) | 0.0144 (2/2) | 0.548 (2/2) | 30.1 (2/2) | 1.55e+03 (2/2) |
+| 17 | 0.0056 (2/2) | 0.0078 (2/2) | 0.673 (2/2) | 16.1 (2/2) | 188 (2/2) |
+| 31 | 0.0058 (2/2) | 0.0066 (2/2) | 0.569 (2/2) | 22.8 (2/2) | 66.1 (2/2) |
+| 61 | 0.0053 (2/2) | 0.0065 (2/2) | 0.518 (2/2) | 23.8 (2/2) | 1.24e+03 (2/2) |
 
 **sat, m = 4**
 
 | n \ l | 3 | 4 | 5 |
 |---|---|---|---|
-| 17 | 0.19 (2/2) | 9.14 (2/2) | 1.37e+03 (1/2) |
-| 31 | 0.0115 (2/2) | 2.54 (2/2) | 197 (1/2) |
-| 61 | 0.0331 (2/2) | 4.53 (2/2) |  |
+| 17 | 0.19 (2/2) | 9.26 (2/2) | 1.34e+03 (1/1) |
 
 **sat, m = 5**
 
 | n \ l | 3 | 4 |
 |---|---|---|
-| 17 | 0.934 (2/2) | 153 (1/1) |
+| 17 | 0.936 (2/2) | 164 (1/1) |
+
+**wdsat, m = 3**
+
+| n \ l | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|
+| 17 | 0.0006 (3/3) | 0.002 (3/3) | 0.0098 (3/3) | 0.0918 (3/3) |  |  |  |
+| 31 | 0.0008 (3/3) | 0.001 (3/3) | 0.0093 (3/3) | 0.22 (3/3) | 0.266 (3/3) | 18.3 (3/3) | 303 (3/3) |
+| 61 | 0.0009 (3/3) | 0.0042 (3/3) | 0.0434 (3/3) | 0.0748 (3/3) | 3.96 (3/3) | 30.7 (3/3) | 180 (3/3) |
+
+**wdsat, m = 3: median conflicts** (the search-tree leaves; the paper's bound is `2^(3l)/3!`)
+
+| n \ l | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|
+| 17 | 14 | 248 | 1,851 | 13,839 |  |  |  |
+| 31 | 15 | 12 | 1,508 | 23,973 | 30,067 | 1,257,589 | 14,756,497 |
+| 61 | 9 | 506 | 4,720 | 7,689 | 239,279 | 1,484,465 | 7,065,125 |
+| `2^(3l)/6` | 85 | 682 | 5,461 | 43,690 | 349,525 | 2,796,202 | 22,369,621 |
+
+**wdsat-fork, m = 3**
+
+| n \ l | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|
+| 31 | 0.01 (3/3) | 0.234 (3/3) | 0.288 (3/3) | 19.1 (3/3) | 150 (1/1) |
 
 <!-- END MEASURED -->
 
@@ -185,12 +227,11 @@ is exact.
 <!-- BEGIN FITS -->
 | engine | m | rows | a | c (bits per l) | d (bits per n) | MITM c |
 |---|--:|--:|--:|--:|--:|--:|
-| mitm | 3 | 48 | -16.0 | 1.94 ± 0.02 | 0.089 ± 0.002 | 2 |
-| mitm | 4 | 36 | -15.1 | 1.89 ± 0.06 | 0.085 ± 0.005 | 2 |
-| mitm | 5 | 24 | -14.5 | 2.49 ± 0.08 | 0.078 ± 0.005 | 3 |
-| msolve | 3 | 12 | -19.7 | 5.55 ± 0.43 | -0.109 ± 0.050 | 2 |
-| sat | 3 | 30 | -21.9 | 4.05 ± 0.31 | 0.010 ± 0.024 | 2 |
-| sat | 4 | 14 | -24.1 | 6.72 ± 0.80 | -0.046 ± 0.032 | 2 |
+| mitm | 3 | 48 | -15.8 | 1.93 ± 0.02 | 0.084 ± 0.002 | 2 |
+| mitm | 4 | 36 | -15.3 | 1.89 ± 0.06 | 0.086 ± 0.005 | 2 |
+| mitm | 5 | 24 | -14.5 | 2.48 ± 0.08 | 0.078 ± 0.005 | 3 |
+| sat | 3 | 30 | -21.6 | 3.95 ± 0.28 | 0.010 ± 0.022 | 2 |
+| wdsat | 3 | 54 | -21.3 | 3.02 ± 0.10 | 0.020 ± 0.011 | 2 |
 <!-- END FITS -->
 
 The `mitm` rows are a check on the fitting procedure: the measured exponent
@@ -214,11 +255,11 @@ excess over the per-PDP budget.  Because the `n`-trend `d` is measured over
 `n <= 61` only, each fit is also shown with `n` held at 61.
 
 <!-- BEGIN EXTRAPOLATION -->
-| m | l | PDP calls | budget per PDP | MITM (exact) | msolve (fit) | msolve (fit, n = 61) | sat (fit) | sat (fit, n = 61) |
+| m | l | PDP calls | budget per PDP | MITM (exact) | sat (fit) | sat (fit, n = 61) | wdsat (fit) | wdsat (fit, n = 61) |
 |--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| 3 | 44 | — | none: LA alone exceeds rho | 2^88 | 2^234 | 2^241 | 2^181 | 2^180 |
-| 4 | 29 | 2^48.6 | 2^12.2 | 2^58 (gap +46) | — | — | 2^188 (gap +176) | 2^191 (gap +179) |
-| 4 | 33 | 2^36.6 | none: LA alone exceeds rho | 2^66 | — | — | 2^215 | 2^218 |
+| 3 | 44 | — | none: LA alone exceeds rho | 2^88 | 2^177 | 2^176 | 2^137 | 2^136 |
+| 4 | 29 | 2^48.6 | 2^12.2 | 2^58 (gap +46) | — | — | — | — |
+| 4 | 33 | 2^36.6 | none: LA alone exceeds rho | 2^66 | — | — | — | — |
 | 5 | 28 | 2^28.0 | 2^32.8 | 2^84 (gap +51) | — | — | — | — |
 | 6 | 24 | 2^24.0 | 2^36.8 | 2^72 (gap +35) | — | — | — | — |
 
@@ -233,10 +274,10 @@ Pollard rho on the `<-1, tau>` orbits: `2^60.81` iterations, about 6,417 core-ye
    `2^7` for `m = 4`; msolve's F4 grows faster still and drops out at
    `l = 6` for `m = 3`.  The meet-in-the-middle baseline grows by
    `2^ceil(m/2)`, i.e. `2^2` for `m = 3, 4`.  In absolute terms, at
-   `l = 5` a SAT solve already costs the equivalent of `2^23` (`m = 3`) to
-   `2^31` (`m = 4`) rho iterations against `2^10` group additions for
+   `l = 5` a SAT solve already costs the equivalent of `2^22` (`m = 3`) to
+   `2^34` (`m = 4`) rho iterations against `2^10` group additions for
    meet-in-the-middle, and the Python meet-in-the-middle overtakes the C++
-   SAT solver in wall-clock time from `l = 5` on.  In this formulation,
+   SAT solver in CPU time from `l = 5` on.  In this formulation,
    with these engines, algebra never catches up with enumeration; it falls
    further behind with every unit of `l`.
 
@@ -247,8 +288,12 @@ Pollard rho on the `<-1, tau>` orbits: `2^60.81` iterations, about 6,417 core-ye
    count multiplies by 8 per unit of `l` (see the table; the paper's Table 3
    shows the same factor from `l = 6` to `l = 11`), which is `2^(3l)/3!`
    exactly: it enumerates the `3l` core bits with symmetry breaking and good
-   propagation, and nothing more.  Its time slope is `c ~ 3.4` bits per unit
-   of `l` against `2` for meet-in-the-middle.  Gray-code exhaustive search
+   propagation, and nothing more.  Its time slope is `c ~ 3.0` bits per unit
+   of `l` (the conflict count's exact 3, less the shortening of satisfiable
+   searches) against `2` for meet-in-the-middle.  The fork's XORGAUSS
+   journal makes `-x` about 15 % cheaper, and `-x` still loses: eight times
+   fewer conflicts, each more than eight times as expensive, as the paper
+   found.  Gray-code exhaustive search
    (Bouillaguet et al.'s FES, `libfes`) is the same enumeration of the
    `m*l` Boolean variables at a few bit operations per candidate instead of
    a SAT conflict: a smaller constant by perhaps `2^8`, the same exponent
