@@ -52,7 +52,7 @@ ssh -i "$SSH_KEY" -p "$SSH_PORT" \
 set -euo pipefail
 export PATH="/usr/local/cuda/bin:${HOME}/.local/bin:${PATH}"
 export DEBIAN_FRONTEND=noninteractive
-command -v cmake >/dev/null || apt-get update -qq && apt-get install -y -qq cmake g++ ninja-build pkg-config
+command -v cmake >/dev/null || { apt-get update -qq && apt-get install -y -qq cmake g++ ninja-build pkg-config; }
 command -v ninja >/dev/null || apt-get install -y -qq ninja-build
 cd "$REPO_DIR"
 git -c core.filemode=false fetch --prune origin
