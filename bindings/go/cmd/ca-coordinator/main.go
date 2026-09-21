@@ -39,6 +39,49 @@ type options struct {
 	idle      time.Duration
 	report    time.Duration
 	logFormat string
+	peers     peerList
+	peerEvery time.Duration
+}
+
+// peerList collects repeated -peer flags.  Each is name=url, or just a url
+// (the host then names it), and the peer's token comes from -peer-token-file
+// or falls back to this hub's own token, which is the usual case: one
+// campaign, one shared secret.
+type peerList []string
+
+func (p *peerList) String() string { return strings.Join(*p, ",") }
+func (p *peerList) Set(v string) error {
+	if strings.TrimSpace(v) == "" {
+		return errors.New("empty -peer")
+	}
+	*p = append(*p, v)
+	return nil
+}
+
+// parsePeers turns the flags into Peers, refusing anything that would
+// silently not federate.
+func parsePeers(raw []string, token string) ([]Peer, error) {
+	out := make([]Peer, 0, len(raw))
+	seen := map[string]bool{}
+	for _, item := range raw {
+		name, url := "", strings.TrimSpace(item)
+		if i := strings.Index(item, "="); i > 0 {
+			name = strings.TrimSpace(item[:i])
+			url = strings.TrimSpace(item[i+1:])
+		}
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			return nil, fmt.Errorf("peer %q: need an http:// or https:// URL", item)
+		}
+		if name == "" {
+			name = url
+		}
+		if seen[url] {
+			return nil, fmt.Errorf("peer %q: listed twice", url)
+		}
+		seen[url] = true
+		out = append(out, Peer{Name: name, URL: url, Token: token})
+	}
+	return out, nil
 }
 
 func main() {
@@ -53,6 +96,8 @@ func main() {
 	flag.DurationVar(&o.idle, "idle-timeout", 5*time.Minute, "drop a channel silent this long; pings go at a third of it")
 	flag.DurationVar(&o.report, "report-interval", 30*time.Second, "how often to log a progress line (0 disables)")
 	flag.StringVar(&o.logFormat, "log-format", "json", "log format: json or text")
+	flag.Var(&o.peers, "peer", "another coordinator to gossip with, as name=url or url (repeatable)")
+	flag.DurationVar(&o.peerEvery, "peer-interval", 5*time.Second, "how often each peer is synced")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(),
 			"ca-coordinator: the rendezvous a distributed-rho fleet dials out to.\n\n"+
@@ -129,11 +174,17 @@ func run(o *options, log *slog.Logger) (int, error) {
 		log.Info("check-in log replayed", "path", o.logPath, "merged", n, "rejected", bad)
 	}
 
-	hub := NewHub(ctx, state, Config{
+	peers, err := parsePeers(o.peers, token)
+	if err != nil {
+		return 2, err
+	}
+	hub := NewHub(ctx, state, &Config{
 		Token:        token,
 		PushInterval: o.pushEvery,
 		IdleTimeout:  o.idle,
 		LeaseSecs:    o.leaseSecs,
+		Peers:        peers,
+		PeerInterval: o.peerEvery,
 		OnCheckIn: func(line string) {
 			if sink != nil {
 				sink.Append(line)
@@ -156,6 +207,7 @@ func run(o *options, log *slog.Logger) (int, error) {
 		"job", job.IDString(),
 		"listen", o.listen,
 		"token", token != "",
+		"peers", len(peers),
 		"expected_steps", ctx.ExpectedSteps(),
 		"expected_dps", ctx.ExpectedDPs(),
 	)
@@ -165,6 +217,12 @@ func run(o *options, log *slog.Logger) (int, error) {
 
 	if o.report > 0 {
 		go reportLoop(root, hub, state, o.leaseSecs, o.report, log)
+	}
+	// Federation starts with the server and stops with it.  A hub with no
+	// peers starts nothing.
+	hub.StartPeering(root)
+	for _, p := range peers {
+		log.Info("peering", "peer", p.Name, "url", p.URL, "every", o.peerEvery)
 	}
 
 	errCh := make(chan error, 1)

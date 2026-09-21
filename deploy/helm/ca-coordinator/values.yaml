@@ -137,6 +137,29 @@ agents:
 
 # A NetworkPolicy that writes the topology down: the coordinator accepts
 # connections, agents only make them.
+# Other coordinators this one gossips with.
+#
+# Federation is multi-leader and needs no protocol of its own: /v1/sync is
+# already a symmetric anti-entropy exchange, the merge is commutative and
+# idempotent, and every record carries its own proof.  So peers are simply
+# listed, in any shape -- a pair, a ring, a full mesh -- with no leader to
+# elect and no quorum to lose.  A hub that cannot reach a peer keeps
+# working and keeps retrying.
+#
+# Each entry is {name, url}.  Peers share this release's auth.token, which
+# is the usual case: one campaign, one secret.  Point these at the other
+# clusters' coordinator Services or Ingresses:
+#
+#   federation:
+#     peers:
+#       - name: eu-west-1
+#         url: http://rho.eu-west-1.internal:8080
+#       - name: us-east-1
+#         url: https://rho.us-east-1.example.com
+federation:
+  peers: []
+  interval: 5s
+
 networkPolicy:
   enabled: false
   # Extra sources allowed to reach the coordinator (the ingress

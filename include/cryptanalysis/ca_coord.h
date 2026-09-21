@@ -226,7 +226,62 @@ typedef struct ca_coord_progress {
     uint64_t solution;
 } ca_coord_progress;
 
+/* ---- where distinguished points are remembered ---------------------------
+ *
+ * The table of distinguished points is the one part of the state whose size
+ * is set by the campaign rather than by the code: a run large enough to be
+ * worth distributing will outgrow the memory of any single machine long
+ * before it outgrows the protocol.  So it sits behind this interface, and a
+ * backend may keep points wherever it likes -- in this process, on a disk,
+ * in a database, on one shard of many.
+ *
+ * Two rules a backend must honour, because correctness rests on them:
+ *
+ *   Identity is the *point*, never the key.  `key` is a hash, offered as a
+ *   bucketing and routing hint; two records are the same point when their
+ *   `point` words are equal and not otherwise.  Those words come from
+ *   ca_group_decode, which is canonical for every group here -- equal words
+ *   mean an equal element, so a backend can compare them byte for byte
+ *   without knowing anything about the group.  This is also what makes
+ *   sharding by `key` safe: a collision is two equal points, so both copies
+ *   hash alike and land wherever the same key lands.
+ *
+ *   Never decide what is true.  A backend remembers points and reports what
+ *   it already held; it does not verify them and does not solve.  Callers
+ *   verify before offering a record, and the coefficients that come back
+ *   from a collision are solved here.  A backend that lies can waste work
+ *   and cannot forge an answer.
+ */
+typedef enum ca_coord_dp_status {
+    CA_COORD_DP_FRESH = 0,     /* nothing was there; the record is now stored */
+    CA_COORD_DP_DUPLICATE = 1, /* same point, same coefficients: one trail, twice */
+    CA_COORD_DP_COLLISION = 2, /* same point, different coefficients: `prior` is filled */
+    CA_COORD_DP_ERROR = -1     /* the backend could not store it; counted, not fatal */
+} ca_coord_dp_status;
+
+typedef struct ca_coord_dp_record {
+    uint64_t key;      /* ca_group_hash of the canonical point: a hint, not identity */
+    uint64_t point[4]; /* ca_group_decode of the point: this *is* identity */
+    uint64_t a, b;     /* the claim that a*G + b*H == point */
+    uint64_t walker;
+    uint32_t peer; /* index into the state's peer table */
+} ca_coord_dp_record;
+
+typedef struct ca_coord_dp_store {
+    void *self;
+    /* Store `rec`, or report what is already held for the same point.  On
+     * CA_COORD_DP_COLLISION, `prior` receives the stored record. */
+    ca_coord_dp_status (*put)(void *self, const ca_coord_dp_record *rec, ca_coord_dp_record *prior);
+    uint64_t (*count)(void *self);
+    void (*close)(void *self); /* may be NULL */
+} ca_coord_dp_store;
+
 CA_API ca_status ca_coord_state_init(ca_coord_state **out, const ca_coord_ctx *ctx);
+
+/* As ca_coord_state_init, but points are remembered by `store` rather than
+ * in this process.  The state takes ownership: `close` runs on free. */
+CA_API ca_status ca_coord_state_init_store(ca_coord_state **out, const ca_coord_ctx *ctx,
+                                           const ca_coord_dp_store *store);
 CA_API void ca_coord_state_free(ca_coord_state *st);
 
 /*

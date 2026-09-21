@@ -552,6 +552,137 @@ static void test_two_lanes_merge_to_a_solution(void)
     ca_coord_ctx_close(ctx);
 }
 
+/* ---- the distinguished-point backend ------------------------------------ */
+
+/*
+ * A backend that keeps points in a flat array and counts what it was asked
+ * to do.  Deliberately not a hash table: if the library leaned on the
+ * default backend's probing, or on its key, this would fail.
+ */
+typedef struct fake_store {
+    ca_coord_dp_record rec[4096];
+    size_t n;
+    uint64_t puts, fresh, dups, collisions;
+    int refuse; /* when set, every put fails */
+} fake_store;
+
+static ca_coord_dp_status fake_put(void *self, const ca_coord_dp_record *rec,
+                                   ca_coord_dp_record *prior)
+{
+    fake_store *f = self;
+    f->puts++;
+    if (f->refuse) return CA_COORD_DP_ERROR;
+    for (size_t i = 0; i < f->n; i++) {
+        /* Identity is the point, exactly as the header says. */
+        if (memcmp(f->rec[i].point, rec->point, sizeof(rec->point)) != 0) continue;
+        if (f->rec[i].a == rec->a && f->rec[i].b == rec->b) {
+            f->dups++;
+            return CA_COORD_DP_DUPLICATE;
+        }
+        if (prior) *prior = f->rec[i];
+        f->collisions++;
+        return CA_COORD_DP_COLLISION;
+    }
+    if (f->n == sizeof(f->rec) / sizeof(f->rec[0])) return CA_COORD_DP_ERROR;
+    f->rec[f->n++] = *rec;
+    f->fresh++;
+    return CA_COORD_DP_FRESH;
+}
+
+static uint64_t fake_count(void *self) { return (uint64_t)((fake_store *)self)->n; }
+
+/* A campaign solved through a backend the library has never seen: the walk,
+ * the verification and the solving are unchanged, only the remembering
+ * moved.  This is the seam a sharded or on-disk backend hangs from. */
+static void test_solves_through_a_foreign_store(void)
+{
+    ca_group g;
+    ca_elem gen;
+    uint64_t secret = 0;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 133337, 0, &secret);
+
+    static fake_store f;
+    memset(&f, 0, sizeof(f));
+    ca_coord_dp_store store = {&f, fake_put, fake_count, NULL};
+    ca_coord_state *st = NULL;
+    CHECK(ca_coord_state_init_store(&st, ctx, &store) == CA_OK);
+
+    int solved = 0;
+    for (int round = 0; round < 200 && !solved; round++) {
+        for (int lane = 0; lane < 2; lane++) {
+            char name[CA_COORD_PEER_MAX];
+            snprintf(name, sizeof(name), "n%d.0", lane);
+            ca_coord_lane_params p;
+            ca_coord_lane_params_default(&p, name);
+            p.max_walkers = 8;
+            p.checkin_every = 4;
+            p.claim_window = 1;
+            ca_coord_lane_result res;
+            CHECK(ca_coord_lane_run(ctx, st, &p, NULL, NULL, NULL, NULL, &res) == CA_OK);
+        }
+        solved = ca_coord_solution(st, NULL);
+    }
+    uint64_t x = 0;
+    CHECK(ca_coord_solution(st, &x) == 1);
+    CHECK_EQ_U64(x, secret);
+    /* The backend did the remembering, and the state reports its count. */
+    CHECK(f.puts > 0);
+    CHECK(f.collisions > 0);
+    ca_coord_progress pr;
+    ca_coord_progress_get(st, ctx, 0, 120, &pr);
+    CHECK_EQ_U64(pr.dps_stored, fake_count(&f));
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+}
+
+/* A backend that cannot store is counted, not fatal, and never invents an
+ * answer: with nothing remembered there is no collision to find. */
+static void test_refusing_store_is_counted(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 4242, 0, NULL);
+    static fake_store f;
+    memset(&f, 0, sizeof(f));
+    f.refuse = 1;
+    ca_coord_dp_store store = {&f, fake_put, fake_count, NULL};
+    ca_coord_state *st = NULL;
+    CHECK(ca_coord_state_init_store(&st, ctx, &store) == CA_OK);
+
+    ca_coord_lane_params p;
+    ca_coord_lane_params_default(&p, "n0.0");
+    p.max_walkers = 16;
+    p.checkin_every = 4;
+    ca_coord_lane_result res;
+    CHECK(ca_coord_lane_run(ctx, st, &p, NULL, NULL, NULL, NULL, &res) == CA_OK);
+
+    ca_coord_progress pr;
+    ca_coord_progress_get(st, ctx, 0, 120, &pr);
+    CHECK(f.puts > 0);
+    CHECK_EQ_U64(pr.dps_stored, 0);
+    CHECK(pr.rejected_dps > 0);
+    CHECK_EQ_U64((uint64_t)ca_coord_solution(st, NULL), 0);
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+}
+
+/* A null or half-built backend is refused rather than crashed on. */
+static void test_store_must_be_complete(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 7, 0, NULL);
+    static fake_store f;
+    memset(&f, 0, sizeof(f));
+    ca_coord_state *st = NULL;
+    ca_coord_dp_store no_put = {&f, NULL, fake_count, NULL};
+    ca_coord_dp_store no_count = {&f, fake_put, NULL, NULL};
+    CHECK(ca_coord_state_init_store(&st, ctx, NULL) == CA_ERR_INVALID);
+    CHECK(ca_coord_state_init_store(&st, ctx, &no_put) == CA_ERR_INVALID);
+    CHECK(ca_coord_state_init_store(&st, ctx, &no_count) == CA_ERR_INVALID);
+    ca_coord_ctx_close(ctx);
+}
+
 /* ---- the network -------------------------------------------------------- */
 
 static void test_url_parsing(void)
@@ -1224,6 +1355,9 @@ int main(void)
     test_leases_expire_and_units_resume();
     test_sequence_numbers_and_deltas();
     test_two_lanes_merge_to_a_solution();
+    test_solves_through_a_foreign_store();
+    test_refusing_store_is_counted();
+    test_store_must_be_complete();
     test_url_parsing();
     test_fetch_job_over_http();
     test_sync_once_client();

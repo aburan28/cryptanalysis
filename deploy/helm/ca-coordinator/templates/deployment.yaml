@@ -58,6 +58,12 @@ spec:
             {{- if .Values.coordinator.persistence.enabled }}
             - -log={{ .Values.coordinator.persistence.path }}
             {{- end }}
+            {{- range .Values.federation.peers }}
+            - -peer={{ .name }}={{ .url }}
+            {{- end }}
+            {{- if .Values.federation.peers }}
+            - -peer-interval={{ $.Values.federation.interval }}
+            {{- end }}
             {{- with .Values.coordinator.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

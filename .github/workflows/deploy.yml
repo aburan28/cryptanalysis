@@ -148,6 +148,38 @@ jobs:
           refuses "two coordinator replicas" --set-file job.document=job.txt \
               --set auth.token=abc --set coordinator.replicaCount=2
           refuses "auth.required with no token" --set-file job.document=job.txt
+          refuses "peers a NetworkPolicy would silently block" --set-file job.document=job.txt \
+              --set auth.token=abc --set networkPolicy.enabled=true \
+              --set 'federation.peers[0].name=eu' --set 'federation.peers[0].url=http://eu:8080'
+          refuses "a peer with no url" --set-file job.document=job.txt \
+              --set auth.token=abc --set 'federation.peers[0].name=eu'
+
+      - name: Federation reaches the coordinator's argv
+        run: |
+          # A peer that is configured but never passed to the binary is the
+          # failure this catches: the chart would look federated and the
+          # hubs would never speak.
+          helm template rho deploy/helm/ca-coordinator \
+              --set-file job.document=job.txt \
+              --set auth.token=0123456789abcdef0123456789abcdef \
+              --set networkPolicy.enabled=true \
+              --set 'networkPolicy.extraIngressFrom[0].ipBlock.cidr=10.0.0.0/8' \
+              --set 'federation.peers[0].name=eu-west-1' \
+              --set 'federation.peers[0].url=http://rho.eu:8080' \
+              --set 'federation.peers[1].name=us-east-1' \
+              --set 'federation.peers[1].url=http://rho.us:8080' > fed.yaml
+          python3 - <<'PY'
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(open("fed.yaml")) if d]
+          dep = [d for d in docs if d["kind"] == "Deployment"
+                 and d["metadata"]["name"].endswith("ca-coordinator")][0]
+          args = dep["spec"]["template"]["spec"]["containers"][0]["args"]
+          want = ["-peer=eu-west-1=http://rho.eu:8080", "-peer=us-east-1=http://rho.us:8080"]
+          for w in want:
+              assert w in args, f"{w!r} missing from {args}"
+          assert any(a.startswith("-peer-interval=") for a in args), args
+          print("federation reaches argv:", [a for a in args if a.startswith("-peer")])
+          PY
 
   images:
     name: images (coordinator, agent)
