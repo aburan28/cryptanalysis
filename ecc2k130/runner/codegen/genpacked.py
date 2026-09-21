@@ -52,10 +52,45 @@ def check(n, inverse):
             raise ValueError(('packed transform mismatch', n, inverse, x))
 
 
-def emitStages(n, inverse):
+def wordTail(tail):
+    """Compose the final word-aligned stages as a triangular linear map."""
+    if any(shift % 32 for shift, _ in tail):
+        raise ValueError('non-word transform tail')
+    coeff = [[0xffffffff if i == j else 0 for j in range(5)] for i in range(5)]
+    for shift, mask in tail:
+        offset = shift // 32
+        for i in range(5-offset):
+            wordmask = (mask >> (32*i)) & 0xffffffff
+            for j in range(5):
+                coeff[i][j] ^= coeff[i+offset][j] & wordmask
+    for bit in range(160):
+        x = 1 << bit
+        for shift, mask in tail:
+            x ^= (x >> shift) & mask
+        words = [(1 << (bit % 32)) if bit // 32 == i else 0 for i in range(5)]
+        out = [0] * 5
+        for i in range(5):
+            for j in range(5):
+                out[i] ^= words[j] & coeff[i][j]
+        if sum(v << (32*i) for i, v in enumerate(out)) != x:
+            raise ValueError('composed transform tail differs')
+    lines = ['    // Compose the word-aligned triangular transform stages.']
+    for i in range(5):
+        parts = ['(v%d & 0x%08xu)' % (j, coeff[i][j])
+                 for j in range(i+1,5) if coeff[i][j]]
+        if parts:
+            lines.append('    v%d ^= ' % i + ' ^ '.join(parts) + ';')
+    return lines
+
+
+def emitStages(n, inverse, combineTail=False):
     words = (n+31)//32
     lines = []
-    for shift,mask in stages(n,inverse):
+    allStages = stages(n,inverse)
+    for stage, (shift,mask) in enumerate(allStages):
+        if combineTail and n == 131 and inverse and shift >= 32:
+            lines += wordTail(allStages[stage:])
+            break
         offset, bits = divmod(shift,32)
         lines.append('    // shift %d' % shift)
         # Increasing destinations preserve all higher source words in-place.
@@ -88,7 +123,8 @@ def generate():
         if i == 4:
             expr = '(%s) & 7u' % expr
         lines.append('    uint32_t v%d = %s;' % (i,expr))
-    lines += emitStages(131,True)
+    lines += ['#if ECC_FROBENIUS_FUSED'] + emitStages(131,True,True)
+    lines += ['#else'] + emitStages(131,True) + ['#endif']
     lines += ['    return P131{{v0,v1,v2,v3,v4}};', '}',
               'ECC_HD P131 fromPolynomialProduct131(const uint32_t *h) {']
     for i in range(9):

@@ -237,6 +237,7 @@ generate:
 	cd codegen && python3 gen.py --out ../generated --regs $(REGS)
 	cd codegen && python3 genpacked.py
 	cd codegen && python3 gensigma.py
+	cd codegen && python3 genshiftedsigma.py
 	cd codegen && python3 genpolyreduce.py
 	cd codegen && python3 gendirectreduce.py
 	python3 codegen/genpackedproduct.py
@@ -269,6 +270,7 @@ ecc2k130: src/main.cu $(HDRS) $(GEN)
 check-cli:
 	python3 codegen/genpacked.py --check --out include/packedtransform131.h
 	python3 codegen/gensigma.py --check --out include/packedsigma131.h
+	python3 codegen/genshiftedsigma.py --check --out include/packedshiftedsigma131.h
 	python3 codegen/genpolyreduce.py --check --out include/packedpolyreduce131.h
 	python3 codegen/gendirectreduce.py --check --out include/packeddirectreduce131.h
 	python3 codegen/checkcli.py modal_app.py
@@ -809,7 +811,7 @@ FROBENIUS_FAST_FLAGS = $(LEGACY_PRODUCTION_FLAGS) PACKED_FROM_REDUCED=1 \
 FROBENIUS_120K_FLAGS = $(filter-out THREADS=% MINBLOCKS=% COLLECTIVE_WARPS=%,$(LEGACY_PRODUCTION_FLAGS)) \
     THREADS=640 MINBLOCKS=1 COLLECTIVE_WARPS=4 PACKED_FROM_REDUCED=1 \
     PACKED_INLINE_POLY=3 PACKED_L2_PERSIST=1 PACKED_ALU_SQUARE=1 PACKED_CHAIN_FIRST=1 \
-    FROBENIUS_FUSED=1 PACKED_INLINE_SIGMA=1
+    FROBENIUS_FUSED=1 PACKED_INLINE_SIGMA=1 PACKED_ONB_INV=1
 
 .PHONY: gpu-frobenius32-fast gpu-frobenius32-120k check-frobenius32-fast-gpu
 gpu-frobenius32-fast:

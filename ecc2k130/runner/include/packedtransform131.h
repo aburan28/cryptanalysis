@@ -7,6 +7,43 @@ ECC_HD P131 toPolynomial131(const P131 &a) {
     uint32_t v2 = ((a.v[2] << 1) | (a.v[1] >> 31)) ^ sign;
     uint32_t v3 = ((a.v[3] << 1) | (a.v[2] >> 31)) ^ sign;
     uint32_t v4 = (((a.v[4] << 1) | (a.v[3] >> 31)) ^ sign) & 7u;
+#if ECC_FROBENIUS_FUSED
+    // shift 2
+    v0 ^= ((v0 >> 2) | (v1 << 30)) & 0xaaaaaaaau;
+    v1 ^= ((v1 >> 2) | (v2 << 30)) & 0xaaaaaaaau;
+    v2 ^= ((v2 >> 2) | (v3 << 30)) & 0xaaaaaaaau;
+    v3 ^= ((v3 >> 2) | (v4 << 30)) & 0xaaaaaaaau;
+    // shift 4
+    v0 ^= ((v0 >> 4) | (v1 << 28)) & 0x66666666u;
+    v1 ^= ((v1 >> 4) | (v2 << 28)) & 0x66666666u;
+    v2 ^= ((v2 >> 4) | (v3 << 28)) & 0x66666666u;
+    v3 ^= ((v3 >> 4) | (v4 << 28)) & 0x66666666u;
+    // shift 8
+    v0 ^= ((v0 >> 8) | (v1 << 24)) & 0x88888888u;
+    v1 ^= ((v1 >> 8) | (v2 << 24)) & 0x88888888u;
+    v2 ^= ((v2 >> 8) | (v3 << 24)) & 0x88888888u;
+    v3 ^= ((v3 >> 8) | (v4 << 24)) & 0x00888888u;
+    // shift 8
+    v0 ^= ((v0 >> 8) | (v1 << 24)) & 0x96969696u;
+    v1 ^= ((v1 >> 8) | (v2 << 24)) & 0x96969696u;
+    v2 ^= ((v2 >> 8) | (v3 << 24)) & 0x96969696u;
+    v3 ^= ((v3 >> 8) | (v4 << 24)) & 0x06969696u;
+    // shift 16
+    v0 ^= ((v0 >> 16) | (v1 << 16)) & 0xe8e8e8e8u;
+    v1 ^= ((v1 >> 16) | (v2 << 16)) & 0xe8e8e8e8u;
+    v2 ^= ((v2 >> 16) | (v3 << 16)) & 0xe8e8e8e8u;
+    v3 ^= ((v3 >> 16) | (v4 << 16)) & 0x0000e8e8u;
+    // shift 16
+    v0 ^= ((v0 >> 16) | (v1 << 16)) & 0x69966996u;
+    v1 ^= ((v1 >> 16) | (v2 << 16)) & 0x69966996u;
+    v2 ^= ((v2 >> 16) | (v3 << 16)) & 0x69966996u;
+    v3 ^= ((v3 >> 16) | (v4 << 16)) & 0x00066996u;
+    // Compose the word-aligned triangular transform stages.
+    v0 ^= (v1 & 0xe881177eu) ^ (v2 & 0x177ffffeu) ^ (v3 & 0x0001177eu) ^ (v4 & 0x00000006u);
+    v1 ^= (v2 & 0xe881177eu) ^ (v3 & 0xe8800001u);
+    v2 ^= (v3 & 0xe881177eu) ^ (v4 & 0x00000006u);
+    v3 ^= (v4 & 0x00000006u);
+#else
     // shift 2
     v0 ^= ((v0 >> 2) | (v1 << 30)) & 0xaaaaaaaau;
     v1 ^= ((v1 >> 2) | (v2 << 30)) & 0xaaaaaaaau;
@@ -58,6 +95,7 @@ ECC_HD P131 toPolynomial131(const P131 &a) {
     v2 ^= (v4) & 0x00000006u;
     // shift 128
     v0 ^= (v4) & 0x00000006u;
+#endif
     return P131{{v0,v1,v2,v3,v4}};
 }
 ECC_HD P131 fromPolynomialProduct131(const uint32_t *h) {
