@@ -15,7 +15,6 @@
 #   ./scripts/ensure_modal_sync.sh restart
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="${HOME}/.local/bin:${PATH}"
 
 if [[ -z "${AWS_ACCESS_KEY_ID:-}" && -n "${Awskeyid:-}" ]]; then
@@ -83,18 +82,18 @@ start_sync() {
       SYNC_RUN_IDS="$SYNC_RUN_IDS" \
       SYNC_INTERVAL="$SYNC_INTERVAL" \
       LOG="$LOG" \
-      bash -c '
+      bash -c "
         set -uo pipefail
-        echo "modal-sync start $(date -u +%Y-%m-%dT%H:%M:%SZ) runs=$SYNC_RUN_IDS interval=$SYNC_INTERVAL" | tee -a "$LOG"
+        echo \"modal-sync start \$(date -u +%Y-%m-%dT%H:%M:%SZ) runs=\$SYNC_RUN_IDS interval=\$SYNC_INTERVAL\" | tee -a \"\$LOG\"
         while true; do
-          python3 modal_sync.py --curve 131 --run-ids "$SYNC_RUN_IDS" --all-runs \
-            --bucket "$ECC_BUCKET" --watch "$SYNC_INTERVAL" \
-            --state-dir "$ECC_MODAL_SYNC_STATE" \
-            2>&1 | tee -a "$LOG"
-          echo "modal-sync exited $? at $(date -u +%Y-%m-%dT%H:%M:%SZ); restarting in 5s" | tee -a "$LOG"
+          python3 modal_sync.py --curve 131 --run-ids \"\$SYNC_RUN_IDS\" --all-runs \\
+            --bucket \"\$ECC_BUCKET\" --watch \"\$SYNC_INTERVAL\" \\
+            --state-dir \"\$ECC_MODAL_SYNC_STATE\" \\
+            2>&1 | tee -a \"\$LOG\"
+          echo \"modal-sync exited \$? at \$(date -u +%Y-%m-%dT%H:%M:%SZ); restarting in 5s\" | tee -a \"\$LOG\"
           sleep 5
         done
-      '
+      "
   sleep 3
   if is_up; then
     echo "tmux=$TMUX_SESSION up (runs $SYNC_RUN_IDS → s3://$ECC_BUCKET/dp/)"
