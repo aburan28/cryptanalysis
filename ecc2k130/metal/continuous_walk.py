@@ -135,15 +135,17 @@ class S3RunLease:
         raise RuntimeError('could not acquire the S3 run lease')
 
     def _renew(self):
-        """Conditionally extend the lease; any failure marks it lost."""
-        try:
-            now = int(time.time())
-            ok = self.slots._modify(0, self.owner, lambda item: item.update(
-                updatedAt=now, leaseUntil=now + LEASE_SECONDS))
-            if not ok:
-                raise RuntimeError('conditional heartbeat was rejected')
-        except Exception as exc:
-            self.error = exc
+        """Conditionally extend the lease.
+
+        Only a rejected conditional write proves another owner and marks the
+        lease lost. An S3 error does not, so it propagates for the caller to
+        retry rather than abandoning a lease that is probably still held.
+        """
+        now = int(time.time())
+        ok = self.slots._modify(0, self.owner, lambda item: item.update(
+            updatedAt=now, leaseUntil=now + LEASE_SECONDS))
+        if not ok:
+            self.error = RuntimeError('conditional heartbeat was rejected')
             self.lost = True
 
     def _heartbeat(self):
@@ -151,7 +153,10 @@ class S3RunLease:
             with self.lock:
                 if self.done.is_set():
                     return
-                self._renew()
+                try:
+                    self._renew()
+                except Exception as exc:
+                    log('lease heartbeat failed: %s' % type(exc).__name__)
             if self.lost:
                 return
 
@@ -675,7 +680,8 @@ def run(args):
                                           storeUrl, stop)
         completed = 0
         while not stop.stopping and (not args.max_chunks or completed < args.max_chunks):
-            lease.ensure()
+            if lease.lost:
+                raise RuntimeError('S3 run lease lost; refusing to launch more work')
             pending = makePending(args, inputRoot, reference, campaign, sequence)
             sequence, latest = publishWithRetry(
                 store, lease, pending, inputRoot, campaign, args, storeUrl, stop)
