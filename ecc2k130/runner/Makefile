@@ -71,6 +71,8 @@ PACKED_KARAT3 ?= 0
 PACKED_WEIGHTED_PREFIX ?= 0
 PACKED_COMPACT_STATE ?= 0
 PACKED_SHARED_SIGMA ?= 0
+# Inline the shared walk transform; validated with the fused 120k profile.
+PACKED_INLINE_SIGMA ?= 0
 PACKED_TOP_CLMAD ?= 0
 PACKED_STATE_TILE ?= 0
 PACKED_ADD_COMBINE ?= 0
@@ -189,6 +191,7 @@ DEFS = -DECC_COLLECTIVE_WARPS=$(COLLECTIVE_WARPS) -DECC_BATCH=$(BATCH) -DECC_THR
        -DECC_PACKED_WEIGHTED_PREFIX=$(PACKED_WEIGHTED_PREFIX) \
        -DECC_PACKED_COMPACT_STATE=$(PACKED_COMPACT_STATE) \
        -DECC_PACKED_SHARED_SIGMA=$(PACKED_SHARED_SIGMA) \
+       -DECC_PACKED_INLINE_SIGMA=$(PACKED_INLINE_SIGMA) \
        -DECC_PACKED_TOP_CLMAD=$(PACKED_TOP_CLMAD) \
        -DECC_PACKED_STATE_TILE=$(PACKED_STATE_TILE) \
        -DECC_PACKED_ADD_COMBINE=$(PACKED_ADD_COMBINE) \
@@ -272,6 +275,7 @@ check-cli:
 	python3 codegen/checkcli.py profile_diagnostic.py
 	python3 codegen/checkcli.py packed_audit.py
 	python3 codegen/checkcli.py polystate_audit.py
+	python3 codegen/checkcli.py tune_frobenius_v3.py
 	python3 codegen/autolab.py --self-test
 	python3 -m unittest discover -s codegen -p 'test*report.py'
 	python3 -m unittest discover -s codegen -p 'testautotune*.py'
@@ -801,10 +805,11 @@ FROBENIUS_FAST_FLAGS = $(LEGACY_PRODUCTION_FLAGS) PACKED_FROM_REDUCED=1 \
 # It preserves the walk, but must not load 385,024-worker checkpoints.
 # Reuse updated coordinates to prepare the following step, and issue the
 # reverse chain product first. The DP32 walk and checkpoint bytes are unchanged.
+# Inline the shared Frobenius transform in this measured profile only.
 FROBENIUS_120K_FLAGS = $(filter-out THREADS=% MINBLOCKS=% COLLECTIVE_WARPS=%,$(LEGACY_PRODUCTION_FLAGS)) \
     THREADS=640 MINBLOCKS=1 COLLECTIVE_WARPS=4 PACKED_FROM_REDUCED=1 \
     PACKED_INLINE_POLY=3 PACKED_L2_PERSIST=1 PACKED_ALU_SQUARE=1 PACKED_CHAIN_FIRST=1 \
-    FROBENIUS_FUSED=1
+    FROBENIUS_FUSED=1 PACKED_INLINE_SIGMA=1
 
 .PHONY: gpu-frobenius32-fast gpu-frobenius32-120k check-frobenius32-fast-gpu
 gpu-frobenius32-fast:
