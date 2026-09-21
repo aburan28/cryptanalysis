@@ -82,7 +82,7 @@ check: $(PDF)
 	else \
 	  echo "All references resolved."; \
 	fi
-	@if grep -q 'LaTeX Warning: There were undefined citations' $(TEX:.tex=.log); then \
+	@if grep -qE '(LaTeX|Package natbib) Warning: There were undefined citations' $(TEX:.tex=.log); then \
 	  echo "FAIL: unresolved citations"; \
 	  exit 1; \
 	fi
