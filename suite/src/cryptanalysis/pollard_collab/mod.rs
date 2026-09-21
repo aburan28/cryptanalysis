@@ -56,11 +56,11 @@
 //! ## CLI
 //!
 //! ```text
-//! crypto cryptanalysis rho-collab init  --curve demo-mid --secret 1234 --out job.json
-//! crypto cryptanalysis rho-collab work  --job job.json --node alice --mailbox ./shared
-//! crypto cryptanalysis rho-collab work  --job job.json --node bob --listen 0.0.0.0:7000 --peer alice:7000
-//! crypto cryptanalysis rho-collab status --job job.json --mailbox ./shared
-//! crypto cryptanalysis rho-collab work  --job nums-50-rho.json --node carol \
+//! ca-suite rho-collab init  --curve demo-mid --secret 1234 --out job.json
+//! ca-suite rho-collab work  --job job.json --node alice --mailbox ./shared
+//! ca-suite rho-collab work  --job job.json --node bob --listen 0.0.0.0:7000 --peer alice:7000
+//! ca-suite rho-collab status --job job.json --mailbox ./shared
+//! ca-suite rho-collab work  --job nums-50-rho.json --node carol \
 //!     --cairn http://127.0.0.1:8080 --objective sha256:… --submitter carol
 //! ```
 

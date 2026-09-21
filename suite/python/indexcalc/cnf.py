@@ -39,12 +39,12 @@ class Cnf:
     def addXor(self, lits, rhs):
         """XOR of `lits` equals `rhs` (a bool)."""
         pos = []
-        for l in lits:
-            if l < 0:
+        for lit in lits:
+            if lit < 0:
                 rhs = not rhs
-                pos.append(-l)
+                pos.append(-lit)
             else:
-                pos.append(l)
+                pos.append(lit)
         self.xors.append((pos, rhs))
 
     # ---- gates, with constant folding ---------------------------------
@@ -114,8 +114,8 @@ class Cnf:
         if k >= n:
             return
         if k == 0:
-            for l in lits:
-                self.addClause([-l])
+            for lit in lits:
+                self.addClause([-lit])
             return
         s = []
         for i in range(n - 1):
@@ -151,11 +151,11 @@ class Cnf:
         fh = open(path, 'w')
         fh.write('p cnf %d %d\n' % (self.nVars, len(self.clauses) + len(self.xors)))
         for c in self.clauses:
-            fh.write(' '.join(str(l) for l in c) + ' 0\n')
+            fh.write(' '.join(str(lit) for lit in c) + ' 0\n')
         for lits, rhs in self.xors:
             head = 'x' if rhs else 'x-'
             fh.write(head + str(lits[0]) + ' '
-                     + ' '.join(str(l) for l in lits[1:]) + ' 0\n')
+                     + ' '.join(str(lit) for lit in lits[1:]) + ' 0\n')
         fh.close()
 
     def stats(self):

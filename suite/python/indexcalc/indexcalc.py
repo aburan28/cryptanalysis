@@ -102,18 +102,18 @@ def solveCnf(c, maxConflicts=0, timeout=0):
     if not ok:
         return None, 'unsat'
     val = {}
-    for l in model:
-        val[abs(l)] = 1 if l > 0 else 0
+    for lit in model:
+        val[abs(lit)] = 1 if lit > 0 else 0
     return val, 'sat'
 
 
-def litValue(val, l, c):
-    if l == c.true:
+def litValue(val, lit, c):
+    if lit == c.true:
         return 1
-    if l == c.false:
+    if lit == c.false:
         return 0
-    v = val.get(abs(l), 0)
-    return v if l > 0 else 1 - v
+    v = val.get(abs(lit), 0)
+    return v if lit > 0 else 1 - v
 
 
 def liftAndCheck(onb, curve, coords, target):

@@ -5,7 +5,7 @@
 //! Each `demo_*` function takes no arguments, runs the underlying
 //! attack on a small representative input, and returns the rendered
 //! Markdown / ASCII output.  Run any one of them via the CLI
-//! (`crypto cryptanalysis visual-demo --target X`) or in tests with
+//! (`ca-suite visual-all --target X`) or in tests with
 //! `cargo test --release demo_* -- --ignored --nocapture`.
 //!
 //! ## Demos shipped

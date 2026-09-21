@@ -1,7 +1,7 @@
 # Collaborative (peer-to-peer) Pollard rho — design
 
 Module: `src/cryptanalysis/pollard_collab/`.
-CLI: `crypto cryptanalysis rho-collab {init, work, status}`.
+CLI: `ca-suite rho-collab {init, work, status}`.
 
 ## 1. Goal
 
@@ -288,14 +288,14 @@ Not implemented, and how it would slot in:
 
 ```bash
 # 1. Someone writes the job (planting a secret here so the run is checkable).
-crypto cryptanalysis rho-collab init --curve demo-40 --secret 1badc0de --out job.json
+ca-suite rho-collab init --curve demo-40 --secret 1badc0de --out job.json
 # 2. Alice listens; Bob and Carol gossip with her; Carol also bridges a directory.
-crypto cryptanalysis rho-collab work --job job.json --node alice --threads 4 --listen 0.0.0.0:7000
-crypto cryptanalysis rho-collab work --job job.json --node bob   --threads 4 --peer alice:7000
-crypto cryptanalysis rho-collab work --job job.json --node carol --threads 2 --peer alice:7000 --mailbox /nfs/collab
+ca-suite rho-collab work --job job.json --node alice --threads 4 --listen 0.0.0.0:7000
+ca-suite rho-collab work --job job.json --node bob   --threads 4 --peer alice:7000
+ca-suite rho-collab work --job job.json --node carol --threads 2 --peer alice:7000 --mailbox /nfs/collab
 # 3. Anyone can look.
-crypto cryptanalysis rho-collab status --job job.json --peer alice:7000
-crypto cryptanalysis rho-collab status --mailbox /nfs/collab --json
+ca-suite rho-collab status --job job.json --peer alice:7000
+ca-suite rho-collab status --mailbox /nfs/collab --json
 ```
 
 On the 40-bit demo curve (`√n ≈ 2²⁰`) three nodes with two lanes each solve

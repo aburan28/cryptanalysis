@@ -1,7 +1,9 @@
 # cryptanalysis
 
 A fast, self-contained C11 library of discrete-logarithm algorithms with
-Rust, Go and Python bindings.
+Rust, Go and Python bindings, and, in [`suite/`](suite/README.md), the Rust
+attack suite (symmetric, hash, ECDLP, nonce, lattice and post-quantum
+cryptanalysis) that grew up alongside it.
 
 | algorithm | header | problem | cost |
 |-----------|--------|---------|------|
@@ -214,6 +216,33 @@ vendor place-and-route this flow does not run.  See
 order, what each testbench establishes, and what the next improvement is
 (batched inversion, ~3x).
 
+## The attack suite
+
+The C library is the narrow, fast end: one group interface, a handful of
+solvers, 64-bit groups, measured constants.  [`suite/`](suite/README.md) is
+the wide end -- a Rust crate of 126 attack modules with the primitives they
+target, moved here from the [crypto](https://github.com/aburan28/crypto)
+study repository and put under this repository's checks: S-box, Boolean
+and statistical primitives; the reduced-round AES catalogue and the
+boomerang / rectangle framework; MD5 and SHA-1 differentials and the
+hash-attack runner; Pollard rho variants, index calculus on prime-field,
+`F_{p^3}`, binary Koblitz and hyperelliptic curves, Weil descent, the
+Smart attack and its p-adic relatives; hidden-number-problem and
+Bleichenbacher nonce attacks; and lattice estimators plus working
+key-recovery attacks against ML-KEM and ML-DSA.
+
+```sh
+cd suite && cargo build --release
+./target/release/ca-suite auto --cipher aes-2r          # every applicable attack, as a report
+./target/release/ca-suite mlwe margins                  # ML-KEM / ML-DSA against the NIST floors
+./target/release/ca-suite rho-collab init --curve demo-32 --secret 0x1234567 --out job.json
+./target/release/ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate
+```
+
+`make suite` runs its gates (fmt, clippy `-D warnings`, rustdoc `-D
+warnings`, cargo-deny, the release test suite, the Python engine's lint and
+tests).  The two halves do not depend on each other.
+
 ## C API in one screen
 
 ```c
@@ -332,9 +361,10 @@ orchestrator/            Go control plane and agents (deploy/{k8s,systemd,docker
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
+suite/                   the attack suite: Rust crate cryptanalysis-suite, ca-suite / ca-ic CLIs, Python engine
 docs/                    ALGORITHMS.md, BENCHMARKS.md, DISTRIBUTED.md, FFI.md, GPU.md
 fuzz/                    libFuzzer harnesses and their seed corpora
-.github/workflows/       ci, analysis, bindings, orchestrator, fpga, fuzz, codeql, nightly
+.github/workflows/       ci, analysis, bindings, suite, orchestrator, fpga, fuzz, codeql, nightly
 ```
 
 ## Checks
@@ -348,6 +378,7 @@ set locally, in the order that fails fastest.
 | `ci` | gcc, clang, macOS and arm64 builds with `-Werror`; ctest; every `ca` subcommand via `scripts/cli_smoke.sh`, with the answers checked where they are known in closed form; AddressSanitizer plus UndefinedBehaviorSanitizer; ThreadSanitizer over the pthreads solvers; valgrind memcheck on the fast suites; install and consume through both `find_package` and a relocated `pkg-config` prefix; the CUDA kernel compiled for sm_70 to sm_90 with a register report |
 | `analysis` | clang-tidy (warnings are errors), cppcheck, `gcc -fanalyzer`, clang-format on the lines a change touches, shellcheck, actionlint, and coverage with a floor |
 | `bindings` | Rust fmt/clippy/doc/tests and a measured MSRV floor, cargo-deny, Go across three toolchains with the race detector and golangci-lint, Python 3.8 to 3.13 plus an installed-package run, ruff and mypy |
+| `suite` | the attack suite: fmt, clippy `-D warnings` over every target, rustdoc `-D warnings`, the release test suite (2,395 unit and 31 integration tests), a checked answer from each tool, the declared MSRV rebuilt and tested, cargo-deny, and the Python engine's ruff and unit tests on three interpreters |
 | `fuzz` | six libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
 | `orchestrator` | the Go control plane and agents: vet, gofmt, no third-party dependencies, `go test -race` (including the cross-checks against the C library), and an end-to-end smoke run of a real fleet |
 | `fpga` | the ECC2K-130 core: the golden model's own checks, then every testbench against the vectors it produces, at three multiplier widths; verilator `-Wall`; a yosys area report |

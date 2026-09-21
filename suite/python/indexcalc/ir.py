@@ -141,7 +141,6 @@ class Prog:
         will use.  This is what decides whether a routine fits the register
         file: past it the compiler starts spilling, and a spilled value costs
         two memory instructions every time it is touched."""
-        rc = self.refCounts(roots)
         order = self.emitOrder(roots)
         inOrder = set(order)
         rootSet = set(r for r in roots if r is not None)
