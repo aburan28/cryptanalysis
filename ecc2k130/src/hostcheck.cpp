@@ -4,22 +4,17 @@
 namespace ec2k_gpu
 {
 
-// Every packed routine the walk uses against the golden model, on random
-// inputs: the normal-basis multiply (which converts to the polynomial basis
-// and back), squaring, inversion, the Frobenius powers the walk and the
-// inversion chain take through the generated networks, the polynomial-basis
-// product and squaring through the conversions, and the selection primitives
-// of the table walk against the reference coordinate functions.
-CheckResult crossCheck(const HostTable &t, int rounds, uint64_t seed)
+namespace
+{
+
+// The field routines on random inputs.
+void checkField(CheckResult &cr, int rounds, uint64_t *rng)
 {
     using namespace eccPacked131;
-    CheckResult cr;
-    uint64_t rng = seed;
-    const std::vector<uint32_t> consts = t.deviceConsts();
     for (int i = 0; i < rounds; ++i) {
         ec2k_fe a, b, m, s, inv;
-        randomFe(&a, &rng);
-        randomFe(&b, &rng);
+        randomFe(&a, rng);
+        randomFe(&b, rng);
         if (ec2k_fe_is_zero(&a)) continue;
         const P131 pa = toPacked(a), pb = toPacked(b);
 
@@ -52,13 +47,19 @@ CheckResult crossCheck(const HostTable &t, int rounds, uint64_t seed)
                        }()),
                 "polynomial addition == golden addition");
     }
+}
 
-    // The selection on a subgroup point: the device's table lookups
-    // (twSelect on packed coordinates, host-compiled) against the reference
-    // coordinate functions on the model's limbs, with the same history.
+#if ECC_WALK_TABLE
+// The selection on a subgroup point: the device's table lookups (twSelect on
+// packed coordinates, host-compiled) against the reference coordinate
+// functions on the model's limbs, with the same history.
+void checkSelection(CheckResult &cr, const HostWalk &t, int rounds, uint64_t *rng)
+{
+    using namespace eccPacked131;
+    const std::vector<uint32_t> consts = t.deviceConsts();
     for (int i = 0; i < rounds; ++i) {
         ec2k_pt p;
-        ec2k_point_from_seed(&p, rng++);
+        ec2k_point_from_seed(&p, (*rng)++);
         const int hw = (int)ec2k_fe_weight(&p.x);
         unsigned long long hist = (i & 1) ? ECC_HIST_EMPTY : (0xFFFFFFFFull << 32) | 0x12340000ull;
         const unsigned want = referenceTag(t, p, hist);
@@ -86,28 +87,100 @@ CheckResult crossCheck(const HostTable &t, int rounds, uint64_t seed)
         twDenominator(got, toPolynomial131(toPacked(p.x)), consts.data(), &d2);
         cr.note(memcmp(d2.v, d.v, sizeof(d.v)) == 0, "twDenominator == twAddend's d");
     }
+}
+
+// One packed step as the device takes it: selection on the normal-basis x,
+// the addend from the table, the addition in the polynomial basis.
+void packedStep(const HostWalk &t, const std::vector<uint32_t> &consts, P131 *x, P131 *y,
+                unsigned long long *hist)
+{
+    using namespace eccPacked131;
+    const P131 xn = fromPolynomial131(*x);
+    const int hw = weightOf(xn);
+    const unsigned tag = twSelect(xn, *y, hw, hist, consts.data());
+    P131 d, e;
+    twAddend(tag, *x, *y, consts.data(), &d, &e);
+    const P131 lambda = mulPolynomial131(e, toPolynomial131(inv131(fromPolynomial131(d))));
+    const P131 nx = add131(add131(squarePolynomial131(lambda), lambda), d);
+    const P131 ny = add131(add131(mulPolynomial131(lambda, add131(*x, nx)), nx), *y);
+    *x = nx;
+    *y = ny;
+    (void)t;
+}
+#else
+// The two Frobenius networks the sigma walk's forward pass takes, sigma^j of x
+// and y together for j = 3..10, against the model's Frobenius: the global-mask
+// network and the shared-memory copy the campaign build reads (on the host
+// both read the same immutable masks, which is what makes this a check of the
+// network rather than of the copy).
+void checkSelection(CheckResult &cr, const HostWalk &, int rounds, uint64_t *rng)
+{
+    using namespace eccPacked131;
+    for (int i = 0; i < rounds; ++i) {
+        ec2k_fe a, b;
+        randomFe(&a, rng);
+        randomFe(&b, rng);
+        for (int j = EC2K_J_MIN; j < EC2K_J_MIN + EC2K_J_COUNT; ++j) {
+            ec2k_fe fa, fb;
+            ec2k_fe_frob(&fa, &a, (unsigned)j);
+            ec2k_fe_frob(&fb, &b, (unsigned)j);
+            const SigmaWalkPair131 g = sigmaWalkNetworkPair131(toPacked(a), toPacked(b), j - 3);
+            cr.note(sameFe(fromPacked(g.first), fa) && sameFe(fromPacked(g.second), fb),
+                    "sigmaWalkNetworkPair131 == golden Frobenius");
+            const SigmaWalkPair131 s =
+                sigmaWalkNetworkPairShared131(toPacked(a), toPacked(b), j - 3);
+            cr.note(sameFe(fromPacked(s.first), fa) && sameFe(fromPacked(s.second), fb),
+                    "sigmaWalkNetworkPairShared131 == golden Frobenius");
+        }
+    }
+}
+
+// One packed step as the device's weighted-prefix forward and reverse passes
+// take it for a single slot: j from the normal-basis weight, d = x + sigma^j x
+// and e = y + sigma^j y from the shared network, the addition in the
+// polynomial basis.
+void packedStep(const HostWalk &, const std::vector<uint32_t> &, P131 *x, P131 *y,
+                unsigned long long *)
+{
+    using namespace eccPacked131;
+    const P131 xn = fromPolynomial131(*x), yn = fromPolynomial131(*y);
+    const int j = 3 + ((weightOf(xn) >> 1) & 7);
+    const SigmaWalkPair131 sigmas = sigmaWalkNetworkPairShared131(xn, yn, j - 3);
+    const P131 d = toPolynomial131(add131(xn, sigmas.first));
+    const P131 e = toPolynomial131(add131(yn, sigmas.second));
+    const P131 lambda = mulPolynomial131(e, toPolynomial131(inv131(fromPolynomial131(d))));
+    const P131 nx = add131(add131(squarePolynomial131(lambda), lambda), d);
+    const P131 ny = add131(add131(mulPolynomial131(lambda, add131(*x, nx)), nx), *y);
+    *x = nx;
+    *y = ny;
+}
+#endif
+
+} // namespace
+
+CheckResult crossCheck(const HostWalk &t, int rounds, uint64_t seed)
+{
+    using namespace eccPacked131;
+    CheckResult cr;
+    uint64_t rng = seed;
+    checkField(cr, rounds, &rng);
+    checkSelection(cr, t, rounds, &rng);
 
     // The walk itself, a few steps from a seeded start, on the golden model
-    // and on the packed arithmetic driven by the device selection code.
+    // and on the packed arithmetic driven by the device's selection code.
+#if ECC_WALK_TABLE
+    const std::vector<uint32_t> consts = t.deviceConsts();
+#else
+    const std::vector<uint32_t> consts;
+#endif
     for (int i = 0; i < 4; ++i) {
         ec2k_pt r;
         if (!startPoint(t, eccSeedFor(7u, (unsigned long long)i), &r)) continue;
         cr.note(ec2k_on_curve(&r) != 0, "start point is on the curve");
-        unsigned long long hist = ECC_HIST_EMPTY, hist2 = ECC_HIST_EMPTY;
+        unsigned long long hist = HIST_START, hist2 = HIST_START;
         P131 x = toPolynomial131(toPacked(r.x)), y = toPolynomial131(toPacked(r.y));
         for (int step = 0; step < 24; ++step) {
-            // packed step, as the device does it
-            const P131 xn = fromPolynomial131(x);
-            const int hw = weightOf(xn);
-            const unsigned tag = twSelect(xn, y, hw, &hist2, consts.data());
-            P131 d, e;
-            twAddend(tag, x, y, consts.data(), &d, &e);
-            const P131 lambda = mulPolynomial131(e, toPolynomial131(inv131(fromPolynomial131(d))));
-            const P131 nx = add131(add131(squarePolynomial131(lambda), lambda), d);
-            const P131 ny = add131(add131(mulPolynomial131(lambda, add131(x, nx)), nx), y);
-            x = nx;
-            y = ny;
-            // golden step
+            packedStep(t, consts, &x, &y, &hist2);
             if (!referenceStep(t, &r, &hist)) break;
             cr.note(sameFe(fromPacked(fromPolynomial131(x)), r.x) &&
                         sameFe(fromPacked(fromPolynomial131(y)), r.y),

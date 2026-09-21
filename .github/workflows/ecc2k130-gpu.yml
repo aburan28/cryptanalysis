@@ -1,0 +1,77 @@
+name: ecc2k130-gpu
+
+# The ECC2K-130 GPU client: its host test on gcc and clang for both walks,
+# then both kernels compiled with the pinned CUDA 13.3 from NVIDIA's pip
+# wheels, reporting registers and spills.
+#
+# The host test is the part that says something about correctness: every
+# packed routine against fpga/model, the walk against the model's step, and
+# for the campaign's sigma walk the 48 known answers that the campaign's own
+# client wrote (ecc2k130/tests/campaign-kat.hex).  The compile says only that
+# the kernel still builds and what it costs; no runner has a GPU, so no rate
+# and no device re-walk comes from here.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "ecc2k130/**"
+      - "fpga/model/**"
+      - ".github/workflows/ecc2k130-gpu.yml"
+  pull_request:
+    paths:
+      - "ecc2k130/**"
+      - "fpga/model/**"
+      - ".github/workflows/ecc2k130-gpu.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: ecc2k130
+
+jobs:
+  host:
+    name: host test (${{ matrix.cxx }}, WALK=${{ matrix.walk }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx: [g++, clang++]
+        walk: [sigma, table]
+    steps:
+      - uses: actions/checkout@v4
+      - name: make test
+        run: make test WALK=${{ matrix.walk }} CXX=${{ matrix.cxx }} CC=${{ matrix.cxx == 'g++' && 'gcc' || 'clang' }}
+
+  cuda:
+    name: kernel compile (WALK=${{ matrix.walk }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        walk: [sigma, table]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ecc2k130/build/cuda
+          key: cuda-wheels-${{ hashFiles('ecc2k130/scripts/fetch_cuda.sh') }}
+      - name: Fetch CUDA 13.3
+        run: echo "NVCC=$(scripts/fetch_cuda.sh)/bin/nvcc" >> "$GITHUB_ENV"
+      - name: make gpu
+        # The recipe prints ptxas's register, shared-memory and spill lines
+        # and fails if no binary came out.
+        run: make gpu WALK=${{ matrix.walk }} NVCC="$NVCC"

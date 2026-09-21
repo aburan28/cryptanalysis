@@ -1,5 +1,5 @@
-// hostcheck.h - the packed GF(2^131) arithmetic and the table walk held to
-// this repository's golden model (fpga/model/ecc2k130.c).
+// hostcheck.h - the packed GF(2^131) arithmetic and the walk held to this
+// repository's golden model (fpga/model/ecc2k130.c).
 //
 // Two independent implementations of the same field meet here.  The golden
 // model is the reference the FPGA core is checked against: shift-and-xor
@@ -12,10 +12,11 @@
 //
 // The re-walk is the other job: given a device report (seed, iterations, x,
 // y), rebuild the start point from the seed and step it forward on the golden
-// model, with the walk's selection computed from the model's coordinates by
-// the tablewalk.h reference functions rather than by the device's lookup
-// tables.  A report that re-walks was computed correctly; a corpus in which
-// every sampled report re-walks was produced by a correct kernel.
+// model.  For the sigma walk the step is the model's own ec2k_step; for the
+// table walk the selection is computed from the model's coordinates by the
+// tablewalk.h reference functions rather than by the device's lookup tables.
+// A report that re-walks was computed correctly; a corpus in which every
+// sampled report re-walks was produced by a correct kernel.
 #pragma once
 
 #include <stdint.h>
@@ -30,12 +31,44 @@ extern "C" {
 
 #include "../include/kernel.h"
 #include "../include/packed131.h"
-#include "../include/packedtablewalk.cuh"
+#if ECC_WALK_TABLE
+#    include "../include/packedtablewalk.cuh"
+#endif
 
 namespace ec2k_gpu
 {
 
 using eccPacked131::P131;
+
+// ---- the campaign ----------------------------------------------------------
+
+// The distinguished-point cutoff of the live ecc2k-130 campaign.  A walk
+// stops at its first point of weight <= the cutoff, so points collected at
+// another weight end most trails somewhere else and mostly cannot collide
+// with the campaign's table.
+static const int CAMPAIGN_DP_WEIGHT = 32;
+// The campaign restarts a lane that has walked this many steps without a
+// report (about 2^1.6 times the expected 2^28.41 at weight 32).
+static const unsigned long long CAMPAIGN_MAX_ITERS = 1ull << 30;
+
+// Certicom's published ECC2K-130 base point P and target Q, in the model's
+// representation (coefficient of beta_i at bit i-1).  The limbs are those of
+// github.com/aburan28/crypto ecc2k130/generated/eccF131.h, the constants its
+// campaign walks from; hosttest checks that both are on the curve and of order
+// n, and that walks from them reproduce records that campaign's own client
+// wrote (tests/campaign-kat.hex).
+inline void challengePoints(ec2k_pt *P, ec2k_pt *Q)
+{
+    *P = ec2k_pt{{{0x83e0790d2530939full, 0xcdd9d226e6977edbull, 0x5ull}},
+                 {{0x415d9bb8bbf0d331ull, 0x4fd41d580ce1af22ull, 0x7ull}},
+                 0};
+    *Q = ec2k_pt{{{0x1df1f53c9de44e94ull, 0x441132bb7aa42480ull, 0x1ull}},
+                 {{0x18ca143c048e8bf0ull, 0x4055f79a09e58061ull, 0x0ull}},
+                 0};
+}
+
+// n = 680564733841876926932320129493409985129, the prime order of P.
+static const uint64_t SUBGROUP_ORDER[3] = {0x4d4fdd5703a3f269ull, 0x0ull, 0x2ull};
 
 // ---- representation bridge -------------------------------------------------
 
@@ -66,6 +99,15 @@ inline void toLimbs(const ec2k_fe &a, unsigned long long out[3])
     out[2] = a.w[2];
 }
 
+inline ec2k_fe feOf(const unsigned long long v[3])
+{
+    ec2k_fe r;
+    r.w[0] = v[0];
+    r.w[1] = v[1];
+    r.w[2] = v[2];
+    return r;
+}
+
 inline bool sameFe(const ec2k_fe &a, const ec2k_fe &b) { return ec2k_fe_equal(&a, &b) != 0; }
 
 // The model stores its words as uint64_t, tablewalk.h reads unsigned long long;
@@ -88,14 +130,32 @@ inline void randomFe(ec2k_fe *a, uint64_t *state)
     a->w[2] = next() & 7u;
 }
 
-// ---- the table -------------------------------------------------------------
+// The campaign's 32-byte record of a report: the seed, then the smallest x
+// over the point's Frobenius orbit.  This is fpga/model's record and, byte
+// for byte, the DpFileRecord the campaign's corpus and store hold (u64 seed,
+// three u64 limbs of the orbit-minimum x, the top limb's unused bytes zero).
+inline void campaignRecord(uint8_t out[EC2K_RECORD_BYTES], const DpRecord &r)
+{
+    ec2k_record rec;
+    rec.seed = r.seed;
+    const ec2k_fe x = feOf(r.x);
+    ec2k_orbit_min(&rec.x, &x);
+    ec2k_record_encode(out, &rec);
+}
 
-// The table walk's data, in the shape packedtablewalk.cuh's twFillConsts reads
-// (table[h][k].x.v as three limbs, consts as TableWalkConsts<131>).  T_h =
-// [a_h]P + [b_h]Q with 128-bit coefficients derived from the branch index by
-// the same PRF as the seeds, so every client that agrees on P and Q agrees on
-// the table; table[h][k] = sigma^k(T_h).
-struct HostTable {
+// ---- the walk's data -------------------------------------------------------
+
+// Everything the device and the re-walk need from P and Q: the start-point
+// terms sigma^i(P), and for the table walk its table.  In the table walk's
+// shape packedtablewalk.cuh's twFillConsts reads (table[h][k].x.v as three
+// limbs, consts as TableWalkConsts<131>): T_h = [a_h]P + [b_h]Q with 128-bit
+// coefficients derived from the branch index by the same PRF as the seeds, so
+// every client that agrees on P and Q agrees on the table; table[h][k] =
+// sigma^k(T_h).
+struct HostWalk {
+    ec2k_pt P, Q;
+    ec2k_pt orbitP[128]; // sigma^i(P), the start-point terms
+#if ECC_WALK_TABLE
     struct Limbs {
         unsigned long long v[3];
     };
@@ -107,15 +167,15 @@ struct HostTable {
     Entry table[H][131];
     ec2k_pt point[H][131];
     uint64_t a[H][2], b[H][2];
-    ec2k_pt P, Q;
-    ec2k_pt orbitP[128]; // sigma^i(P), the start-point terms
+#endif
 
     void build(const ec2k_pt &basis, const ec2k_pt &target)
     {
         P = basis;
         Q = target;
-        consts.build();
         for (int i = 0; i < 128; ++i) ec2k_pt_frob(&orbitP[i], &P, (unsigned)i);
+#if ECC_WALK_TABLE
+        consts.build();
         for (int h = 0; h < H; ++h) {
             for (int w = 0; w < 2; ++w) {
                 a[h][w] = eccPrf(0x7ab1e0000000ull + 2ull * (uint64_t)h, w);
@@ -131,8 +191,10 @@ struct HostTable {
                 toLimbs(point[h][k].y, table[h][k].y.v);
             }
         }
+#endif
     }
 
+#if ECC_WALK_TABLE
     // The device's flat constant buffer, built by the imported host routine.
     std::vector<uint32_t> deviceConsts() const
     {
@@ -140,6 +202,7 @@ struct HostTable {
         eccPacked131::twFillConsts(*this, out.data());
         return out;
     }
+#endif
 };
 
 // ---- the walk on the golden model ------------------------------------------
@@ -148,7 +211,7 @@ struct HostTable {
 // seed's PRF output, as the init kernel computes it.  Returns false on the
 // degenerate abscissa coincidence, which the kernel does not special-case
 // either (probability 2^-131 per term).
-inline bool startPoint(const HostTable &t, unsigned long long seed, ec2k_pt *r)
+inline bool startPoint(const HostWalk &t, unsigned long long seed, ec2k_pt *r)
 {
     const unsigned long long c0 = eccPrf(seed, 0), c1 = eccPrf(seed, 1);
     *r = t.Q;
@@ -163,22 +226,26 @@ inline bool startPoint(const HostTable &t, unsigned long long seed, ec2k_pt *r)
     return !r->inf;
 }
 
+#if ECC_WALK_TABLE
 // The tag a point selects, from the reference coordinate functions of
 // tablewalk.h (bit-plane popcounts on the golden model's limbs), after the
 // cycle rule against `hist`.  Independent of the device's byte tables.
-inline unsigned referenceTag(const HostTable &t, const ec2k_pt &p, unsigned long long hist)
+inline unsigned referenceTag(const HostWalk &t, const ec2k_pt &p, unsigned long long hist)
 {
     const int hw = (int)ec2k_fe_weight(&p.x);
     const int k = t.consts.phase(limbs(p.x), hw);
     const int eps = t.consts.negationBit(limbs(p.x), limbs(p.y), k);
-    unsigned tag = eccTag((hw >> 1) & (HostTable::H - 1), k, eps);
-    for (int i = 0; i < HostTable::H && eccTagFruitless(tag, hist); ++i)
-        tag = eccTag((eccTagH(tag) + 1) & (HostTable::H - 1), eccTagK(tag), eccTagEps(tag));
+    unsigned tag = eccTag((hw >> 1) & (HostWalk::H - 1), k, eps);
+    for (int i = 0; i < HostWalk::H && eccTagFruitless(tag, hist); ++i)
+        tag = eccTag((eccTagH(tag) + 1) & (HostWalk::H - 1), eccTagK(tag), eccTagEps(tag));
     return tag;
 }
 
+// A lane's history before its first step.
+static const unsigned long long HIST_START = ECC_HIST_EMPTY;
+
 // One step, R' = R + (-1)^eps sigma^k(T_h), on the golden model.
-inline bool referenceStep(const HostTable &t, ec2k_pt *r, unsigned long long *hist)
+inline bool referenceStep(const HostWalk &t, ec2k_pt *r, unsigned long long *hist)
 {
     const unsigned tag = referenceTag(t, *r, *hist);
     *hist = eccHistPush(*hist, tag);
@@ -194,28 +261,56 @@ inline bool referenceStep(const HostTable &t, ec2k_pt *r, unsigned long long *hi
     *r = s;
     return !r->inf;
 }
+#else
+// The sigma walk keeps no history.
+static const unsigned long long HIST_START = 0;
+
+// One step, R' = R + sigma^j(R), on the golden model: its own ec2k_step.
+inline bool referenceStep(const HostWalk &, ec2k_pt *r, unsigned long long *)
+{
+    ec2k_pt s;
+    if (!ec2k_step(&s, r)) return false; // sigma^j(R) = +-R, never special-cased on the device
+    *r = s;
+    return !r->inf;
+}
+#endif
 
 // Re-walk a report from its seed and compare.  `stepsOut` receives the number
 // of steps taken (the record's iteration count, or fewer on a degeneracy).
-inline bool rewalk(const HostTable &t, const DpRecord &rec, unsigned long long *stepsOut)
+inline bool rewalk(const HostWalk &t, const DpRecord &rec, unsigned long long *stepsOut)
 {
     ec2k_pt r;
     if (!startPoint(t, rec.seed, &r)) return false;
-    unsigned long long hist = ECC_HIST_EMPTY;
+    unsigned long long hist = HIST_START;
     for (unsigned long long i = 0; i < rec.iters; ++i)
         if (!referenceStep(t, &r, &hist)) {
             if (stepsOut) *stepsOut = i;
             return false;
         }
     if (stepsOut) *stepsOut = rec.iters;
-    ec2k_fe x, y;
-    x.w[0] = rec.x[0];
-    x.w[1] = rec.x[1];
-    x.w[2] = rec.x[2];
-    y.w[0] = rec.y[0];
-    y.w[1] = rec.y[1];
-    y.w[2] = rec.y[2];
-    return sameFe(r.x, x) && sameFe(r.y, y);
+    return sameFe(r.x, feOf(rec.x)) && sameFe(r.y, feOf(rec.y));
+}
+
+// Walk a seed to its first point of weight <= dpWeight and write the report,
+// giving up after maxIters steps.  This is what the device computes for a
+// lane, one step at a time on the model.
+inline bool referenceReport(const HostWalk &t, unsigned long long seed, int dpWeight,
+                            unsigned long long maxIters, DpRecord *out)
+{
+    ec2k_pt r;
+    if (!startPoint(t, seed, &r)) return false;
+    unsigned long long hist = HIST_START;
+    for (unsigned long long i = 0; i <= maxIters; ++i) {
+        if ((int)ec2k_fe_weight(&r.x) <= dpWeight) {
+            out->seed = seed;
+            out->iters = i;
+            toLimbs(r.x, out->x);
+            toLimbs(r.y, out->y);
+            return true;
+        }
+        if (!referenceStep(t, &r, &hist)) return false;
+    }
+    return false;
 }
 
 // ---- arithmetic cross-check ------------------------------------------------
@@ -243,10 +338,10 @@ struct CheckResult {
 // inputs: the normal-basis multiply (which converts to the polynomial basis
 // and back), squaring, inversion, the Frobenius powers the walk and the
 // inversion chain take through the generated networks, the polynomial-basis
-// product and squaring through the conversions, the selection primitives of
-// the table walk against the reference coordinate functions, and the walk
-// itself for a few dozen steps.  Defined in hostcheck.cpp, which g++ compiles:
-// the selection primitives are __device__ functions under nvcc.
-CheckResult crossCheck(const HostTable &t, int rounds, uint64_t seed);
+// product and squaring through the conversions, the walk's selection
+// primitives, and the walk itself for a few dozen steps.  Defined in
+// hostcheck.cpp, which g++ compiles: the selection primitives are __device__
+// functions under nvcc.
+CheckResult crossCheck(const HostWalk &t, int rounds, uint64_t seed);
 
 } // namespace ec2k_gpu
