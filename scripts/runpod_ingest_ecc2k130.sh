@@ -107,8 +107,8 @@ print(f"SSH_USER={shlex.quote(str(info.get('user') or 'root'))}")
 PY
 )"
   [[ -n "$SSH_HOST" && "$SSH_HOST" != "None" ]] || {
-    echo "no SSH endpoint yet for $INGEST_POD_NAME ($POD_ID); is it running?" >&2
-    exit 1
+    echo "no SSH endpoint yet for $INGEST_POD_NAME ($POD_ID); waiting..." >&2
+    return 1
   }
 }
 
@@ -124,8 +124,7 @@ wait_ssh() {
   local i
   local _try
   for _try in $(seq 1 36); do
-    refresh_ssh
-    if ssh_pod 'true' 2>/dev/null; then
+    if refresh_ssh && ssh_pod 'true' 2>/dev/null; then
       return 0
     fi
     sleep 5
@@ -141,7 +140,7 @@ case "$CMD" in
     echo "SSH ok: ${SSH_USER}@${SSH_HOST}:${SSH_PORT} ($INGEST_POD_NAME / $POD_ID)"
     ;;
   status)
-    ensure_ssh
+    # Read-only: never merge keys / restart here (that would kill live ingest).
     wait_ssh
     ssh_pod bash -s <<EOS
 set -euo pipefail

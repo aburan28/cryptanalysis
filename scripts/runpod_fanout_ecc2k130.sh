@@ -119,7 +119,7 @@ wait_ssh() {
 
 case "$CMD" in
   status)
-    ensure_ssh
+    # Read-only: never merge keys / restart here (that would kill live workers).
     wait_ssh
     ssh_pod env CAMP_ROOT="$CAMP_ROOT" WORKERS="$WORKERS" BASE_RUN_ID="$BASE_RUN_ID" bash -s <<'EOS'
 set -euo pipefail

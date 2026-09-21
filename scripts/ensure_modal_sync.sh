@@ -30,10 +30,13 @@ CRYPTO_DIR="${CRYPTO_DIR:-$HOME/src/crypto}"
 ECC_RUN_ID="${ECC_RUN_ID:-4242}"
 ECC_FANOUT="${ECC_FANOUT:-4}"
 SYNC_INTERVAL="${SYNC_INTERVAL:-120}"
-ECC_BUCKET="${ECC_BUCKET:-ecc2k130-590183823895}"
+# Empty → modal_sync.py resolves ecc2k130-<account> via STS, same as the
+# RunPod uploader and `modal sync`, so every path publishes to one bucket.
+ECC_BUCKET="${ECC_BUCKET:-}"
 TMUX_SESSION="${TMUX_SESSION:-ecc2k130-modal-sync}"
-LOG="${LOG:-/opt/cursor/artifacts/modal-sync-watch.log}"
-STATE_DIR="${ECC_MODAL_SYNC_STATE:-/opt/cursor/artifacts/ecc2k130-modal-sync-state}"
+SYNC_HOME="${SYNC_HOME:-$HOME/.local/state/ecc2k130-modal-sync}"
+LOG="${LOG:-$SYNC_HOME/modal-sync-watch.log}"
+STATE_DIR="${ECC_MODAL_SYNC_STATE:-$SYNC_HOME/state}"
 CMD="${1:-start}"
 
 ids=()
@@ -85,10 +88,12 @@ start_sync() {
       LOG="$LOG" \
       bash -c '
         set -uo pipefail
-        echo "modal-sync start $(date -u +%Y-%m-%dT%H:%M:%SZ) runs=$SYNC_RUN_IDS interval=$SYNC_INTERVAL" | tee -a "$LOG"
+        bucket_args=()
+        [[ -n "${ECC_BUCKET:-}" ]] && bucket_args=(--bucket "$ECC_BUCKET")
+        echo "modal-sync start $(date -u +%Y-%m-%dT%H:%M:%SZ) runs=$SYNC_RUN_IDS interval=$SYNC_INTERVAL bucket=${ECC_BUCKET:-<account default>}" | tee -a "$LOG"
         while true; do
           python3 modal_sync.py --curve 131 --run-ids "$SYNC_RUN_IDS" --all-runs \
-            --bucket "$ECC_BUCKET" --watch "$SYNC_INTERVAL" \
+            "${bucket_args[@]}" --watch "$SYNC_INTERVAL" \
             --state-dir "$ECC_MODAL_SYNC_STATE" \
             2>&1 | tee -a "$LOG"
           echo "modal-sync exited $? at $(date -u +%Y-%m-%dT%H:%M:%SZ); restarting in 5s" | tee -a "$LOG"
@@ -97,7 +102,7 @@ start_sync() {
       '
   sleep 3
   if is_up; then
-    echo "tmux=$TMUX_SESSION up (runs $SYNC_RUN_IDS → s3://$ECC_BUCKET/dp/)"
+    echo "tmux=$TMUX_SESSION up (runs $SYNC_RUN_IDS → s3://${ECC_BUCKET:-ecc2k130-<account>}/dp/)"
     tmux capture-pane -t "$TMUX_SESSION" -p -S -15 | tail -12
   else
     echo "failed to start $TMUX_SESSION" >&2

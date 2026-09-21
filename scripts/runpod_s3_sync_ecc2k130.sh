@@ -224,12 +224,12 @@ def main():
         for i in range(workers):
             run_id = base + i
             slot = slot_base + run_id
+            # Single-campaign layout only when WORKERS=1; with N workers a missing
+            # wN/dps.bin stays skipped (never fan one corpus out under N run-ids).
             if workers == 1 and os.path.isfile(os.path.join(camp, "dps.bin")):
                 dps = os.path.join(camp, "dps.bin")
             else:
                 dps = os.path.join(camp, "w%d" % i, "dps.bin")
-                if not os.path.isfile(dps) and os.path.isfile(os.path.join(camp, "dps.bin")):
-                    dps = os.path.join(camp, "dps.bin")
             try:
                 r = sync_one(s3, bucket, dps, run_id, slot, state_dir)
                 if r.get("uploaded_records"):

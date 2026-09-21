@@ -111,8 +111,10 @@ jobs:
             printf '%s\n' "${{ secrets.RUNPOD_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/id_ed25519"
             chmod 600 "$HOME/.ssh/id_ed25519"
             ssh-keygen -y -f "$HOME/.ssh/id_ed25519" > "$HOME/.ssh/id_ed25519.pub"
-          elif [[ ! -f "$HOME/.ssh/id_ed25519" ]]; then
+          elif [[ "${{ inputs.action }}" == "doctor" && ! -f "$HOME/.ssh/id_ed25519" ]]; then
             # doctor only — generate a disposable key so the check path works.
+            # Never for ingest/runpod: an unknown key would merge into PUBLIC_KEY
+            # and restart the pod.
             ssh-keygen -t ed25519 -N "" -f "$HOME/.ssh/id_ed25519" -q
           fi
 
