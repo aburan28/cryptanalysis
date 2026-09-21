@@ -217,6 +217,111 @@ multiplications, and hands out no work.  Therefore:
   plain HTTP, so TLS belongs in a terminator in front — an `https://`
   URL is refused rather than silently downgraded.
 
+## 7a. More than one hub: federation
+
+A campaign that spans clusters does not want one hub in one of them.  It
+wants a hub in each, and they have to agree.
+
+**This needs no new protocol, and no leader.**  `/v1/sync` is already a
+symmetric anti-entropy exchange — post what you hold and a version vector
+describing it, receive what you lack — so a hub federates by being a
+client of the endpoint it already serves.  Each peer is synced on its own
+goroutine, on a timer:
+
+```
+  eu-west-1  ◄────── /v1/sync ──────►  us-east-1
+      ▲                                    ▲
+      │ agents dial their own              │
+      │ regional hub, as before            │
+```
+
+What makes this safe rather than merely convenient is the merge.  It is
+commutative, associative and idempotent, and every record carries its own
+proof, checked on arrival by whoever receives it.  So:
+
+* **Any shape works.** A pair, a ring, a full mesh, a hub-and-spoke.
+  There is no order the exchanges must happen in and no partition that
+  needs healing in a particular direction.
+* **There is nothing to elect.** No leader, no quorum, no split brain —
+  because no hub is ever the authority about anything.
+* **A peer cannot lie you into a wrong answer.** Records from a peer go
+  through `absorb`, the same path an agent's check-in takes: a foreign
+  job, a forged point or a bogus solution is refused identically.
+  Peering grants a hub no authority it did not already have; a broken or
+  hostile peer costs bandwidth.
+* **An unreachable peer is not an outage.** It is counted
+  (`carho_peer_errors_total`, labelled by peer) and retried; the hub and
+  its own agents carry on.  Every exchange is bounded by
+  `-peer-timeout` (`federation.timeout`), because the failure that
+  matters is not a peer that is *down* — that one errors immediately —
+  but a peer that accepts the connection and then never answers.
+  Unbounded, that one holds its loop forever: never retried, never
+  counted, and so invisible to whoever is watching the fleet.
+
+The first exchange with a peer sends only a version vector, no check-ins.
+We have no idea what it holds, and the alternative — assuming it holds
+nothing — would dump the whole log at it after every restart.  Its reply
+says where it stands, and from then on each round sends exactly the
+difference.
+
+Configure it with `-peer name=url` (repeatable) or, in the chart:
+
+```yaml
+federation:
+  peers:
+    - name: eu-west-1
+      url: http://rho.eu-west-1.internal:8080
+    - name: us-east-1
+      url: https://rho.us-east-1.example.com
+  interval: 5s
+```
+
+Two things the chart refuses at template time rather than at 3 a.m.: a
+peer with no URL, and peers configured alongside `networkPolicy.enabled`
+with no `extraIngressFrom` — a peer hub is not an agent pod, so the
+policy would refuse it and the federation would look configured while
+exchanging nothing.
+
+`replicaCount` is still one **per release**, and the message now says
+why: the replicas of a Deployment do not gossip with each other, so a
+second would keep its own half of the table.  More than one hub means a
+release per cluster, listed in each other's `federation.peers`.
+
+**What this does not do is raise the memory ceiling.** Every hub still
+ends up holding every point, so federation buys reachability, locality
+and survival — not capacity.  Capacity is what the distinguished-point
+backend below is for.
+
+## 7b. Where distinguished points are remembered
+
+The DP table is the one part of the state whose size is set by the
+campaign rather than by the code.  It is an open-addressed hash table of
+roughly 80 bytes an entry, so a hub holds order 10⁸ points comfortably
+and 10¹⁰ not at all.
+
+So it sits behind `ca_coord_dp_store` (in `ca_coord.h`): `put` a record,
+and learn whether it was fresh, a duplicate trail, or a collision — with
+the stored coefficients handed back.  The in-process table is now just
+the default implementation of that interface.
+
+Two rules a backend must honour, because correctness rests on them:
+
+* **Identity is the point, never the key.** `key` is a hash, offered as a
+  bucketing and routing hint.  Two records are the same point when their
+  `point` words are equal and not otherwise.  Those words come from
+  `ca_group_decode`, which is canonical for every group here, so a
+  backend can compare them byte for byte while knowing nothing about the
+  group.  This is also what makes sharding by `key` safe: **a collision
+  is two equal points, so both copies hash alike and land on the same
+  shard.**  Partitioning cannot hide a collision.
+* **Never decide what is true.** A backend remembers points and reports
+  what it held.  It does not verify, and it does not solve — callers
+  verify before offering a record, and the coefficients that come back
+  are solved by the library.  A backend that lies can waste work and
+  cannot forge an answer.
+
+A backend that cannot store is counted (`rejected_dps`) and is not fatal.
+
 ## 8. Failure handling
 
 | event | effect |

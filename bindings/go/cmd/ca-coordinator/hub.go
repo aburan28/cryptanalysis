@@ -60,6 +60,21 @@ type Config struct {
 	// goroutine and must be safe for concurrent use.
 	OnCheckIn func(line string)
 	Log       *slog.Logger
+
+	// Other coordinators to gossip with.  Empty is the single-hub case
+	// and costs nothing.  See peer.go for why this needs no protocol of
+	// its own and no leader among hubs.
+	Peers []Peer
+	// How often each peer is synced.  Defaults to 5s.
+	PeerInterval time.Duration
+	// How long one exchange may take before it is abandoned and counted
+	// as an error.  Defaults to 30s.  Without it a peer that accepts the
+	// connection and then says nothing holds its loop forever, which is
+	// worse than one that is plainly down: it is never retried and never
+	// counted, so the region silently stops contributing.
+	PeerTimeout time.Duration
+	// Client used for peer requests; nil means http.DefaultClient.
+	PeerClient *http.Client
 }
 
 // Stats are the counters /v1/status and /metrics report.
@@ -86,11 +101,20 @@ type Hub struct {
 	pushed        atomic.Int64
 	unauthorized  atomic.Int64
 
+	peers      []*peerCounters
+	httpClient *http.Client
+
 	started time.Time
 }
 
-// NewHub builds a hub over an existing state.
-func NewHub(ctx *ca.Ctx, state *ca.State, cfg Config) *Hub {
+// NewHub builds a hub over an existing state.  The config is taken by
+// pointer and copied: it carries the peer list now, and copying it at every
+// call site is waste the linter is right to object to.
+func NewHub(ctx *ca.Ctx, state *ca.State, in *Config) *Hub {
+	var cfg Config
+	if in != nil {
+		cfg = *in
+	}
 	if cfg.PushInterval <= 0 {
 		cfg.PushInterval = 500 * time.Millisecond
 	}
@@ -100,10 +124,22 @@ func NewHub(ctx *ca.Ctx, state *ca.State, cfg Config) *Hub {
 	if cfg.LeaseSecs == 0 {
 		cfg.LeaseSecs = 120
 	}
+	if cfg.PeerInterval <= 0 {
+		cfg.PeerInterval = 5 * time.Second
+	}
+	if cfg.PeerTimeout <= 0 {
+		cfg.PeerTimeout = 30 * time.Second
+	}
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	return &Hub{ctx: ctx, state: state, cfg: cfg, log: cfg.Log, started: time.Now()}
+	h := &Hub{ctx: ctx, state: state, cfg: cfg, log: cfg.Log, httpClient: cfg.PeerClient,
+		started: time.Now()}
+	h.peers = make([]*peerCounters, len(cfg.Peers))
+	for i := range h.peers {
+		h.peers[i] = &peerCounters{}
+	}
+	return h
 }
 
 // Stats snapshots the counters.
@@ -239,12 +275,14 @@ func (h *Hub) handleStatus(w http.ResponseWriter, r *http.Request) {
 		JobID string  `json:"job_id"`
 		Up    float64 `json:"uptime_seconds"`
 		ca.Progress
-		Hub Stats `json:"hub"`
+		Hub   Stats       `json:"hub"`
+		Peers []PeerStats `json:"peers,omitempty"`
 	}{
 		JobID:    h.ctx.Job().IDString(),
 		Up:       time.Since(h.started).Seconds(),
 		Progress: p,
 		Hub:      h.Stats(),
+		Peers:    h.PeerStats(),
 	})
 }
 
@@ -311,6 +349,36 @@ func (h *Hub) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, e := range m {
 		fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s %s\n%s %g\n", e.name, e.help, e.name, e.typ, e.name, e.value)
+	}
+	// Federation, labelled by peer.  Worth scraping on its own: a peer
+	// whose errors climb is a region that has stopped contributing, and
+	// the aggregate counters above cannot show that.
+	peers := h.PeerStats()
+	if len(peers) == 0 {
+		return
+	}
+	pm := []struct {
+		name, help, typ string
+		pick            func(PeerStats) float64
+	}{
+		{"carho_peer_syncs_total", "Anti-entropy exchanges completed with a peer hub.", "counter",
+			func(s PeerStats) float64 { return float64(s.Syncs) }},
+		{"carho_peer_checkins_out_total", "Check-ins handed to a peer hub.", "counter",
+			func(s PeerStats) float64 { return float64(s.CheckinsOut) }},
+		{"carho_peer_checkins_in_total", "Check-ins taken from a peer hub.", "counter",
+			func(s PeerStats) float64 { return float64(s.CheckinsIn) }},
+		{"carho_peer_dps_accepted_total", "Distinguished points accepted from a peer hub.", "counter",
+			func(s PeerStats) float64 { return float64(s.DPsAccepted) }},
+		{"carho_peer_dps_rejected_total", "Records from a peer hub that failed verification.", "counter",
+			func(s PeerStats) float64 { return float64(s.DPsRejected) }},
+		{"carho_peer_errors_total", "Failed exchanges with a peer hub.", "counter",
+			func(s PeerStats) float64 { return float64(s.Errors) }},
+	}
+	for _, e := range pm {
+		fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s %s\n", e.name, e.help, e.name, e.typ)
+		for _, s := range peers {
+			fmt.Fprintf(w, "%s{peer=%q} %g\n", e.name, s.Name, e.pick(s))
+		}
 	}
 }
 
