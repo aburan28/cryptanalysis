@@ -119,6 +119,29 @@ def validateRates(report):
         raise ValueError('native throughput accounting mismatch')
 
 
+def runNative(executable, inputRoot, outputRoot, logPath, shieldSignals=False):
+    """Run the native driver while preserving its live progress stream."""
+    command = [str(executable), str(inputRoot.resolve()), str(outputRoot.resolve())]
+    with logPath.open('w') as log:
+        process = subprocess.Popen(command, text=True, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, bufsize=1,
+                                   start_new_session=shieldSignals)
+        for line in process.stderr:
+            print(line, end='', file=sys.stderr, flush=True)
+            log.write(line)
+            log.flush()
+        output = process.stdout.read()
+        code = process.wait()
+        log.write(output)
+    if code:
+        raise RuntimeError(output or 'native walk exited %d' % code)
+    report = json.loads(output)
+    if report.get('status') != 'ok':
+        raise RuntimeError(report.get('error', 'native walk failed'))
+    validateRates(report)
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
@@ -153,19 +176,7 @@ def main():
         print(json.dumps({'prepared': str(args.out), 'config': config})); return
     executable = ROOT / 'build/metal-artifact-walk'
     if not executable.is_file(): raise ValueError('build first: make -C %s' % (ROOT / 'metal'))
-    command = [str(executable), str(args.out.resolve()), str(args.out.resolve())]
-    with (args.out / 'native.log').open('w') as log:
-        process = subprocess.Popen(command, text=True, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, bufsize=1)
-        for line in process.stderr:
-            print(line, end='', file=sys.stderr, flush=True)
-            log.write(line); log.flush()
-        output = process.stdout.read()
-        code = process.wait()
-        log.write(output)
-    if code: raise RuntimeError(output)
-    report = json.loads(output)
-    validateRates(report)
+    report = runNative(executable, args.out, args.out, args.out / 'native.log')
     selected = sorted(set([0, args.lanes - 1] + random.Random(8191).sample(range(args.lanes), args.verify_lanes)))
     checks = verify(args.out, reference, config, selected)
     for key in ('walkUpdates', 'seedAdditions', 'dpRecords', 'haltedLanes', 'exhaustedLanes'):
