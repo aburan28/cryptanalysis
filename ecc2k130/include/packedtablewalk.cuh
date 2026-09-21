@@ -292,6 +292,7 @@ TW_FN void twDenominator(unsigned tag, const P131 &xp, const uint32_t *shared, P
 }
 
 // Host: fill the flat constant buffer from the reference walk.
+#ifndef __METAL_VERSION__
 template <class TW> inline void twFillConsts(const TW &walk, uint32_t *out)
 {
     auto pack = [](const unsigned long long *v, uint32_t *w) {
@@ -371,5 +372,6 @@ template <class TW> inline void twFillConsts(const TW &walk, uint32_t *out)
 #endif
     for (int bit = 0; bit < 131; ++bit) linv[L(bit)] = uint8_t(bit);
 }
+#endif // __METAL_VERSION__
 
 } // namespace eccPacked131

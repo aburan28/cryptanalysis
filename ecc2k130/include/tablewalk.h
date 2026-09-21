@@ -67,7 +67,9 @@ ECC_HD unsigned long long eccHistPush(unsigned long long hist, unsigned t)
 { return (hist << 16) | (unsigned long long)(t & 0xFFFFu); }
 
 // Coordinate tables for GF(2^M) in the permuted type-II ONB, coordinate i in
-// 1..M stored at bit i-1.  Host-side construction; the device gets copies.
+// 1..M stored at bit i-1.  Host-side construction; the device gets copies
+// (and the Metal shader, which takes this header as source, none of it).
+#ifndef __METAL_VERSION__
 template <int M> struct TableWalkConsts {
     static const int N = 2 * M + 1;
     static const int NL = (M + 63) / 64;
@@ -163,3 +165,4 @@ template <int M> struct TableWalkConsts {
         return c & 1;
     }
 };
+#endif // __METAL_VERSION__

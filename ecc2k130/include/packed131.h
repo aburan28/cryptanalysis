@@ -116,6 +116,7 @@
 #    error "ECC_PACKED_KARAT3 requires ECC_PACKED_CLMAD"
 #endif
 #include "bitslice.h"
+#include "hostclmul.h"
 namespace eccPacked131
 {
 #ifndef ECC_PACKED_ADD_COMBINE
@@ -187,6 +188,15 @@ ECC_HD void clmul64(uint32_t r[4], const uint32_t a[2], const uint32_t b[2])
     uint64_t lo, hi;
     asm("clmad.lo.u64 %0, %1, %2, 0;" : "=l"(lo) : "l"(aa), "l"(bb));
     asm("clmad.hi.u64 %0, %1, %2, 0;" : "=l"(hi) : "l"(aa), "l"(bb));
+    r[0] = uint32_t(lo);
+    r[1] = uint32_t(lo >> 32);
+    r[2] = uint32_t(hi);
+    r[3] = uint32_t(hi >> 32);
+#elif ECC_HOST_CLMUL
+    /* The host's own carry-less multiplier (hostclmul.h): PMULL or PCLMULQDQ. */
+    uint64_t lo, hi;
+    eccHostClmul64(uint64_t(a[0]) | (uint64_t(a[1]) << 32), uint64_t(b[0]) | (uint64_t(b[1]) << 32),
+                   &lo, &hi);
     r[0] = uint32_t(lo);
     r[1] = uint32_t(lo >> 32);
     r[2] = uint32_t(hi);
@@ -282,6 +292,8 @@ ECC_HD uint64_t clmadLo64(uint64_t x, uint64_t y, uint64_t add)
     uint64_t r;
     asm("clmad.lo.u64 %0, %1, %2, %3;" : "=l"(r) : "l"(x), "l"(y), "l"(add));
     return r;
+#    elif ECC_HOST_CLMUL
+    return eccHostClmulLo64(x, y) ^ add;
 #    else
     uint32_t r[4], a[2] = {uint32_t(x), uint32_t(x >> 32)}, b[2] = {uint32_t(y), uint32_t(y >> 32)};
     clmul64(r, a, b);
@@ -789,6 +801,8 @@ ECC_HD uint64_t spread32p(uint32_t x)
     uint64_t r;
     asm("clmad.lo.u64 %0, %1, %1, 0;" : "=l"(r) : "l"((uint64_t)x));
     return r;
+#elif ECC_HOST_CLMUL
+    return eccHostClmulLo64(x, x);
 #else
     uint64_t r = x;
     r = (r | (r << 16)) & 0x0000ffff0000ffffull;

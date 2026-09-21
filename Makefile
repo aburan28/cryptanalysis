@@ -5,7 +5,8 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
-        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth ecc2k130 ecc2k130-gpu
+        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth ecc2k130 ecc2k130-gpu \
+        ecc2k130-cpu ecc2k130-metal
 
 all: lib
 
@@ -84,6 +85,14 @@ ecc2k130:
 
 ecc2k130-gpu:
 	$(MAKE) -C ecc2k130 gpu
+
+# The same walk and reports without a CUDA device: on host cores over PMULL or
+# PCLMULQDQ, and on an Apple GPU through Metal (macOS; shader built at start-up).
+ecc2k130-cpu:
+	$(MAKE) -C ecc2k130 cpu
+
+ecc2k130-metal:
+	$(MAKE) -C ecc2k130 metal
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \
