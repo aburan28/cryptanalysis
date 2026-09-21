@@ -522,9 +522,27 @@ mod tests {
 
     #[test]
     fn wrong_message_rejected() {
-        let (pk, sk) = sqisign_keygen();
-        let sig = sqisign_sign(&pk, &sk, b"original message");
-        assert!(!sqisign_verify(&pk, b"tampered message", &sig));
+        // The toy graph has about p/12 ≈ 36 vertices, so the challenge walks
+        // of two different messages end at the same vertex a few percent of
+        // the time, and then the response path is a genuine path for both.
+        // A verifier that rejected it anyway would be wrong; the property to
+        // check is that verification agrees with the endpoint comparison,
+        // and that the rejecting case actually occurred.
+        const ORIGINAL: &[u8] = b"original message";
+        const TAMPERED: &[u8] = b"tampered message";
+        let mut rejected = false;
+        for _ in 0..16 {
+            let (pk, sk) = sqisign_keygen();
+            let sig = sqisign_sign(&pk, &sk, ORIGINAL);
+            let same_endpoint = challenge_walk(&pk.j, &sig.commitment, TAMPERED).last()
+                == challenge_walk(&pk.j, &sig.commitment, ORIGINAL).last();
+            assert_eq!(sqisign_verify(&pk, TAMPERED, &sig), same_endpoint);
+            rejected |= !same_endpoint;
+        }
+        assert!(
+            rejected,
+            "sixteen independent signatures all collided on the challenge endpoint"
+        );
     }
 
     #[test]
