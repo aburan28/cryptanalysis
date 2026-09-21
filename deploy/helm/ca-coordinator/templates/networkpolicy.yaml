@@ -1,0 +1,64 @@
+{{- if .Values.networkPolicy.enabled }}
+# The topology, written down: the coordinator accepts connections and
+# the agents only make them.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ca-coordinator.fullname" . }}
+  labels:
+    {{- include "ca-coordinator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ca-coordinator.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "ca-coordinator.agentSelectorLabels" . | nindent 14 }}
+        # `helm test` runs `ca coord-status` against this Service, so the
+        # probe pod has to be admitted too -- otherwise enabling the
+        # policy turns the chart's own test red while the deployment is
+        # perfectly healthy.
+        - podSelector:
+            matchLabels:
+              {{- include "ca-coordinator.testSelectorLabels" . | nindent 14 }}
+        {{- with .Values.networkPolicy.extraIngressFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - port: http
+          protocol: TCP
+{{- if .Values.agents.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ca-coordinator.suffixed" (list . "agent") }}
+  labels:
+    {{- include "ca-coordinator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ca-coordinator.agentSelectorLabels" . | nindent 6 }}
+  # Ingress with no rules: nothing may open a connection to an agent,
+  # which is exactly the constraint the reverse channel exists to
+  # satisfy.  Egress to the coordinator, and DNS to find it.
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "ca-coordinator.selectorLabels" . | nindent 14 }}
+      ports:
+        - port: http
+          protocol: TCP
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+{{- end }}
+{{- end }}
