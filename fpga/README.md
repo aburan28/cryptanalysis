@@ -192,7 +192,7 @@ not automated: it happens once, and it is worth a person watching.
 
 ## Where this fits with the rest of the repository
 
-The library's [distributed protocol](../docs/DISTRIBUTED.md) and the
+The library's [distributed protocol](../docs/COORDINATOR.md) and the
 [orchestration layer](../orchestrator/README.md) schedule work for groups of
 order below 2⁶⁴ — that is the library's own limit, and ECC2K-130 is a 131-bit
 field. So these are *not* wired together, and pretending otherwise would mean

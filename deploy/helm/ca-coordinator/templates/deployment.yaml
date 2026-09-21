@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ca-coordinator.fullname" . }}
+  labels:
+    {{- include "ca-coordinator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: coordinator
+spec:
+  # Exactly one: see the note in values.yaml.  Recreate rather than
+  # RollingUpdate for the same reason -- two coordinators alive at once,
+  # even briefly, is two halves of one table.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ca-coordinator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ca-coordinator.labels" . | nindent 8 }}
+        app.kubernetes.io/component: coordinator
+      annotations:
+        # Roll the pod when the job document changes: a coordinator
+        # serving a stale job would hand agents a different walk.
+        checksum/job: {{ toYaml .Values.job | sha256sum }}
+        {{- with .Values.coordinator.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ca-coordinator.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: coordinator
+          image: {{ include "ca-coordinator.coordinatorImage" . | quote }}
+          imagePullPolicy: {{ .Values.coordinator.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          args:
+            - -job=/etc/ca/job/{{ .Values.job.key }}
+            - -listen=:{{ .Values.service.port }}
+            - -push-interval={{ .Values.coordinator.pushInterval }}
+            - -idle-timeout={{ .Values.coordinator.idleTimeout }}
+            - -lease-secs={{ .Values.coordinator.leaseSecs }}
+            - -report-interval={{ .Values.coordinator.reportInterval }}
+            - -log-format={{ .Values.coordinator.logFormat }}
+            {{- if include "ca-coordinator.hasToken" . }}
+            - -token-file=/etc/ca/token/{{ .Values.auth.key }}
+            {{- end }}
+            {{- if .Values.auth.required }}
+            - -require-token
+            {{- end }}
+            {{- if .Values.coordinator.persistence.enabled }}
+            - -log={{ .Values.coordinator.persistence.path }}
+            {{- end }}
+            {{- with .Values.coordinator.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          # /healthz is outside the token precisely so a probe can reach
+          # it without holding a credential.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.coordinator.resources | nindent 12 }}
+          volumeMounts:
+            - name: job
+              mountPath: /etc/ca/job
+              readOnly: true
+            {{- if include "ca-coordinator.hasToken" . }}
+            - name: token
+              mountPath: /etc/ca/token
+              readOnly: true
+            {{- end }}
+            {{- if .Values.coordinator.persistence.enabled }}
+            - name: data
+              mountPath: {{ dir .Values.coordinator.persistence.path }}
+            {{- end }}
+      # Agents reconnect with exponential backoff, so a slow drain costs
+      # nothing; give in-flight pushes a moment to land all the same.
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - name: job
+          configMap:
+            name: {{ include "ca-coordinator.jobConfigMap" . }}
+        {{- if include "ca-coordinator.hasToken" . }}
+        - name: token
+          secret:
+            secretName: {{ include "ca-coordinator.tokenSecret" . }}
+        {{- end }}
+        {{- if .Values.coordinator.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "ca-coordinator.suffixed" (list . "data") }}
+        {{- end }}
+      {{- with .Values.coordinator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.coordinator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.coordinator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -5,7 +5,7 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
-        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth ecc2k130 ecc2k130-gpu
+        coordinator coordinator-test fpga fpga-lint fpga-synth ecc2k130 ecc2k130-gpu
 
 all: lib
 
@@ -45,20 +45,14 @@ cuda:
 cuda-kernel:
 	./scripts/build_cuda_kernel.sh --fetch
 
-# ---- the orchestration layer (Go; control plane + agents) -----------------
-# The Go tests take the library's own `ca` as their reference implementation
-# and skip without it, so the library is built first.
-orchestrator: lib
-	cd orchestrator && CGO_ENABLED=0 go build -trimpath -o ../$(BUILD)/ca-control ./cmd/ca-control
-	cd orchestrator && CGO_ENABLED=0 go build -trimpath -o ../$(BUILD)/ca-agent ./cmd/ca-agent
+# ---- the coordinator (Go; the service agents dial out to) ------------------
+# The Go package compiles the C sources itself through cgo, so there is no
+# prior cmake step; `lib` is built anyway because the tests exercise both.
+coordinator: lib
+	cd bindings/go && go build -trimpath -o ../../$(BUILD)/ca-coordinator ./cmd/ca-coordinator
 
-orchestrator-test: lib
-	cd orchestrator && go vet ./... && CA_BIN=$(CURDIR)/$(BUILD)/ca go test -race ./...
-
-# One control plane, two agents, one instance, one real answer -- as separate
-# processes over a socket, which is where deployment bugs live.
-smoke: orchestrator
-	orchestrator/scripts/smoke.sh $(BUILD)
+coordinator-test:
+	cd bindings/go && go vet ./... && go test -race ./...
 
 # ---- the ECC2K-130 FPGA core (fpga/) ---------------------------------------
 # A separate tree with its own toolchain: a golden C model, synthesisable
@@ -138,7 +132,7 @@ analyzer:
 	cmake --build build-analyzer -j$(JOBS)
 
 shellcheck:
-	shellcheck scripts/*.sh
+	shellcheck scripts/*.sh deploy/*/*.sh
 
 # Everything a pull request is gated on, in the order that fails fastest.
 checks: format cppcheck shellcheck tidy analyzer test cli asan tsan

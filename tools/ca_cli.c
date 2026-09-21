@@ -23,13 +23,6 @@
  *            (--ga GA --gad GAD | --alpha X)
  *   ca ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C]
  *            [--threads T] [--seed S] [--verbose]
- *   ca dist-walk  --group ... --order N --g G --h H --campaign-seed S --unit U
- *            --steps K [--dp-bits D] [--r R] [--walks W] [--max-points P]
- *            [--out FILE]            one work unit; 32-byte records to FILE
- *   ca dist-merge --group ... --order N --g G --h H --campaign-seed S
- *            [--dp-bits D] [--r R] [--no-verify] FILE...   (- reads stdin)
- *   ca dist-info  --group ... --order N --g G --h H --campaign-seed S
- *            [--dp-bits D] [--r R]   campaign id and expected point count
  *   ca num <op>   the number-theory surface of ca_modarith.h:
  *            powmod --base B --exp E --mod M | invmod --a A --mod M
  *            gcd --a A --b B | isqrt --n N | iroot --n N --k K
@@ -40,6 +33,23 @@
  *   ca group <op> --group zp|ec --p P [--a A --b B] [--order N] ... :
  *            exp --elem X --k K | div --a A --b B | order --elem X
  *            generator [--seed S] | random [--seed S] | lift-x --x X
+ *
+ *   ca coord-job  --group zp|ec --p P [--a A --b B] --order N --g G --h H
+ *                 [--dp-bits D] [--r R] [--negation] [--unit-size U] [--seed S]
+ *                 [--out FILE]
+ *   ca work       [--job FILE] [--coordinator URL] [--token T | --token-file F]
+ *                 [--node NAME] [--threads T] [--max-seconds S] [--max-walkers W]
+ *                 [--checkin-every N] [--lease-secs S] [--idle-when-solved]
+ *   ca coord-status [--coordinator URL] [--token T | --token-file F]
+ *
+ * The distributed commands: `coord-job` writes the document every
+ * participant shares and `work` is an agent that dials out to a
+ * coordinator and needs no inbound reachability of its own.
+ * --coordinator and --token fall back to $CA_COORDINATOR_URL and
+ * $CA_COORDINATOR_TOKEN.
+ *
+ * The coordinator itself is a separate service, in Go:
+ * bindings/go/cmd/ca-coordinator (Helm chart in deploy/helm).
  *
  * Elements: Z_p^* "123"; E(F_p) "x,y" or "inf".  Output is one JSON object
  * on stdout; errors go to stderr.
@@ -57,10 +67,13 @@
  * where a newly exported function that no command reaches will show up.
  */
 #include "cryptanalysis/cryptanalysis.h"
-#include "cryptanalysis/ca_dist.h"
 #include "ca_device.cuh"
+#include "ca_internal.h" /* ca_now: the CLI already links the static library */
 
 #include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
+#include <time.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -146,14 +159,15 @@ static _Noreturn void usage(void)
         "--alpha X)\n"
         "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] "
         "[--verbose]\n"
-        "  dist-walk  --group ... --order N --g G --h H --campaign-seed S --unit U --steps K\n"
-        "             [--dp-bits D] [--r R] [--walks W] [--max-points P] [--out FILE]\n"
-        "  dist-merge --group ... --order N --g G --h H --campaign-seed S [--dp-bits D]\n"
-        "             [--r R] [--no-verify] FILE...\n"
-        "  dist-info  --group ... --order N --g G --h H --campaign-seed S [--dp-bits D]\n"
         "  num   powmod|invmod|gcd|isqrt|iroot|sqrtmod|legendre|crt|next-prime|order|\n"
         "        primitive-root|sieve|mont  (see the header comment for each op's options)\n"
-        "  group exp|div|order|generator|random|lift-x --group zp|ec --p P [--a A --b B] ...\n");
+        "  group exp|div|order|generator|random|lift-x --group zp|ec --p P [--a A --b B] ...\n"
+        "  coord-job --group zp|ec --p P --order N --g G --h H [--dp-bits D] [--r R]\n"
+        "            [--negation] [--unit-size U] [--seed S] [--out FILE]\n"
+        "  work      [--coordinator URL] [--token-file F] [--node NAME] [--threads T]\n"
+        "            [--max-seconds S] [--max-walkers W] [--checkin-every N]\n"
+        "            [--lease-secs S] [--idle-when-solved]\n"
+        "  coord-status [--coordinator URL] [--token-file F]\n");
     exit(2);
 }
 
@@ -164,9 +178,12 @@ static void make_group(ca_group *g)
     uint64_t order = opt_u64("--order", 0);
     if (!kind || !p) die("--group and --p are required");
     ca_status rc;
-    if (strcmp(kind, "zp") == 0) rc = ca_group_zp_init(g, p, order);
-    else if (strcmp(kind, "ec") == 0) rc = ca_group_ec_init(g, p, opt_u64("--a", 0), opt_u64("--b", 0), order);
-    else die("--group must be zp or ec");
+    if (strcmp(kind, "zp") == 0)
+        rc = ca_group_zp_init(g, p, order);
+    else if (strcmp(kind, "ec") == 0)
+        rc = ca_group_ec_init(g, p, opt_u64("--a", 0), opt_u64("--b", 0), order);
+    else
+        die("--group must be zp or ec");
     if (rc != CA_OK) die_status(rc);
 }
 
@@ -191,9 +208,12 @@ static void print_elem(const ca_group *g, const ca_elem *e)
 {
     uint64_t w[4];
     ca_group_decode(g, w, e);
-    if (g->kind == CA_GROUP_ZP) printf("\"%" PRIu64 "\"", w[0]);
-    else if (w[2]) printf("\"inf\"");
-    else printf("\"%" PRIu64 ",%" PRIu64 "\"", w[0], w[1]);
+    if (g->kind == CA_GROUP_ZP)
+        printf("\"%" PRIu64 "\"", w[0]);
+    else if (w[2])
+        printf("\"inf\"");
+    else
+        printf("\"%" PRIu64 ",%" PRIu64 "\"", w[0], w[1]);
 }
 
 static void print_stats(const ca_stats *st)
@@ -222,9 +242,12 @@ static int cmd_gen(void)
     ca_status rc = ca_group_find_generator(&g, &gen, seed);
     if (rc != CA_OK) die_status(rc);
     uint64_t x = opt("--x") ? opt_u64("--x", 0) : 0;
-    if (!opt("--x")) ca_group_random_power(&g, &h, &gen, seed ? seed + 1 : 0, &x);
-    else ca_group_mul(&g, &h, &gen, x, NULL);
-    printf("{\"status\":\"ok\",\"group\":\"%s\",\"p\":%" PRIu64 ",", g.kind == CA_GROUP_ZP ? "zp" : "ec", g.p);
+    if (!opt("--x"))
+        ca_group_random_power(&g, &h, &gen, seed ? seed + 1 : 0, &x);
+    else
+        ca_group_mul(&g, &h, &gen, x, NULL);
+    printf("{\"status\":\"ok\",\"group\":\"%s\",\"p\":%" PRIu64 ",",
+           g.kind == CA_GROUP_ZP ? "zp" : "ec", g.p);
     if (g.kind == CA_GROUP_EC) printf("\"a\":%" PRIu64 ",\"b\":%" PRIu64 ",", g.a, g.b);
     printf("\"order\":%" PRIu64 ",\"cofactor\":%" PRIu64 ",\"g\":", g.order, g.cofactor);
     print_elem(&g, &gen);
@@ -252,7 +275,8 @@ static int cmd_solve(void)
     dp.rho.r = (uint32_t)opt_u64("--r", 0);
     dp.rho.walks_per_thread = (uint32_t)opt_u64("--walks", 0);
     dp.rho.negation_map = !flag("--no-negation");
-    dp.rho.max_ops = dp.bsgs.max_ops = dp.kangaroo.max_ops = dp.grumpy.max_ops = opt_u64("--max-ops", 0);
+    dp.rho.max_ops = dp.bsgs.max_ops = dp.kangaroo.max_ops = dp.grumpy.max_ops =
+        opt_u64("--max-ops", 0);
     dp.bsgs.table_size = opt_u64("--table", 0);
     dp.kangaroo.dp_bits = (int32_t)opt_u64("--dp-bits", (uint64_t)-1);
     dp.kangaroo.herd_size = (uint32_t)opt_u64("--herd", 0);
@@ -260,12 +284,18 @@ static int cmd_solve(void)
     dp.grumpy.alpha = opt_f("--alpha", 0.7);
     const char *solver = opt("--solver");
     if (solver) {
-        if (!strcmp(solver, "auto")) dp.solver = CA_SOLVER_AUTO;
-        else if (!strcmp(solver, "bsgs")) dp.solver = CA_SOLVER_BSGS;
-        else if (!strcmp(solver, "rho")) dp.solver = CA_SOLVER_RHO;
-        else if (!strcmp(solver, "kangaroo")) dp.solver = CA_SOLVER_KANGAROO;
-        else if (!strcmp(solver, "grumpy")) dp.solver = CA_SOLVER_GRUMPY;
-        else die("unknown --solver");
+        if (!strcmp(solver, "auto"))
+            dp.solver = CA_SOLVER_AUTO;
+        else if (!strcmp(solver, "bsgs"))
+            dp.solver = CA_SOLVER_BSGS;
+        else if (!strcmp(solver, "rho"))
+            dp.solver = CA_SOLVER_RHO;
+        else if (!strcmp(solver, "kangaroo"))
+            dp.solver = CA_SOLVER_KANGAROO;
+        else if (!strcmp(solver, "grumpy"))
+            dp.solver = CA_SOLVER_GRUMPY;
+        else
+            die("unknown --solver");
     }
     uint64_t x = 0;
     ca_stats st = {0};
@@ -377,12 +407,18 @@ static int cmd_solve(void)
         ca_precomp_table_free(ptab);
         return 1;
     }
-    if (!strcmp(alg, "bsgs")) rc = ca_bsgs_solve(&g, &base, &target, lo, hi, &dp.bsgs, &x, &st);
-    else if (!strcmp(alg, "rho")) rc = ca_rho_solve(&g, &base, &target, &dp.rho, &x, &st);
-    else if (!strcmp(alg, "kangaroo")) rc = ca_kangaroo_solve(&g, &base, &target, lo, hi, &dp.kangaroo, &x, &st);
-    else if (!strcmp(alg, "grumpy")) rc = ca_grumpy_solve(&g, &base, &target, lo, hi, &dp.grumpy, &x, &st);
-    else if (!strcmp(alg, "dlog")) rc = ca_pohlig_hellman(&g, &base, &target, &dp, &x, &st);
-    else die("unknown --alg");
+    if (!strcmp(alg, "bsgs"))
+        rc = ca_bsgs_solve(&g, &base, &target, lo, hi, &dp.bsgs, &x, &st);
+    else if (!strcmp(alg, "rho"))
+        rc = ca_rho_solve(&g, &base, &target, &dp.rho, &x, &st);
+    else if (!strcmp(alg, "kangaroo"))
+        rc = ca_kangaroo_solve(&g, &base, &target, lo, hi, &dp.kangaroo, &x, &st);
+    else if (!strcmp(alg, "grumpy"))
+        rc = ca_grumpy_solve(&g, &base, &target, lo, hi, &dp.grumpy, &x, &st);
+    else if (!strcmp(alg, "dlog"))
+        rc = ca_pohlig_hellman(&g, &base, &target, &dp, &x, &st);
+    else
+        die("unknown --alg");
     if (rc != CA_OK) {
         printf("{\"status\":\"%s\",\"alg\":\"%s\",", ca_status_string(rc), alg);
         print_stats(&st);
@@ -421,7 +457,8 @@ static int cmd_cheon(void)
     cp.max_exps = opt_u64("--max-exps", 0);
     ca_status rc = ca_cheon_solve(&g, &gen, &ga, &gad, d, &cp, &alpha, &st);
     if (rc != CA_OK) die_status(rc);
-    printf("{\"status\":\"ok\",\"alpha\":%" PRIu64 ",\"d\":%" PRIu64 ",\"exponentiations\":%" PRIu64 ",",
+    printf("{\"status\":\"ok\",\"alpha\":%" PRIu64 ",\"d\":%" PRIu64 ",\"exponentiations\":%" PRIu64
+           ",",
            alpha, d, st.iterations);
     print_stats(&st);
     printf(",\"g_alpha\":");
@@ -449,209 +486,13 @@ static int cmd_ic(void)
     ca_ic_stats st;
     ca_status rc = ca_ic_solve(p, gg, h, &pr, &x, &st);
     if (rc != CA_OK) die_status(rc);
-    printf("{\"status\":\"ok\",\"x\":%" PRIu64 ",\"check\":%" PRIu64 ",\"factor_base\":%u,\"unknowns\":%u,"
+    printf("{\"status\":\"ok\",\"x\":%" PRIu64 ",\"check\":%" PRIu64
+           ",\"factor_base\":%u,\"unknowns\":%u,"
            "\"relations\":%u,\"verified_logs\":%u,\"sieve_seconds\":%.3f,\"linalg_seconds\":%.3f,"
            "\"total_seconds\":%.3f,\"lanczos_iterations\":%u,\"threads\":%u}\n",
            x, ca_powmod(gg, x, p), st.factor_base_size, st.unknowns, st.relations, st.verified_logs,
-           st.sieve_seconds, st.linalg_seconds, st.total_seconds, st.lanczos_iterations, st.threads);
-    return 0;
-}
-
-/* ---- the distributed protocol ------------------------------------------ */
-
-/* The campaign as the fleet sees it.  --campaign-seed is required rather
- * than defaulted: a walker that invents its own seed produces points that
- * merge with nobody, and it would do it silently. */
-static void make_campaign(const ca_group *g, ca_dist_campaign *c)
-{
-    ca_dist_campaign_default(c);
-    if (!opt("--campaign-seed")) die("--campaign-seed is required (the fleet must share it)");
-    c->seed = opt_u64("--campaign-seed", 0);
-    if (c->seed == 0) die("--campaign-seed must not be 0");
-    c->r = (uint32_t)opt_u64("--r", 0);
-    c->dp_bits = opt("--dp-bits") ? (int32_t)opt_u64("--dp-bits", 0) : -1;
-    ca_status rc = ca_dist_resolve(g, c);
-    if (rc != CA_OK) die_status(rc);
-}
-
-typedef struct walk_sink {
-    FILE *out;
-    uint64_t points;
-    int failed;
-} walk_sink;
-
-static ca_status walk_write(void *ctx, const ca_dist_point *pt)
-{
-    walk_sink *w = ctx;
-    unsigned char rec[CA_DIST_POINT_BYTES];
-    ca_dist_point_encode(rec, pt);
-    if (fwrite(rec, 1, sizeof(rec), w->out) != sizeof(rec)) {
-        w->failed = 1;
-        return CA_ERR_INTERNAL;
-    }
-    w->points++;
-    return CA_OK;
-}
-
-static int cmd_dist_walk(void)
-{
-    ca_group g;
-    make_group(&g);
-    ca_elem base, target;
-    parse_elem(&g, opt("--g"), &base);
-    parse_elem(&g, opt("--h"), &target);
-    ca_dist_campaign c;
-    make_campaign(&g, &c);
-
-    ca_dist_unit u = {0};
-    u.id = opt_u64("--unit", 0);
-    u.walks = (uint32_t)opt_u64("--walks", 0);
-    u.max_steps = opt_u64("--steps", 0);
-    u.max_points = opt_u64("--max-points", 0);
-    if (!u.max_steps && !u.max_points)
-        die("--steps or --max-points is required (a unit is a budget)");
-
-    const char *path = opt("--out");
-    walk_sink sink = {stdout, 0, 0};
-    if (path) {
-        /* open() with an explicit mode rather than fopen(): a corpus is the
-         * output of machine time and there is no reason for it to be
-         * world-readable by default, which is what fopen's 0666 leaves after
-         * a permissive umask.  O_EXCL is deliberately absent: a unit that is
-         * re-walked rewrites its own file, and refusing that would make a
-         * retry an error. */
-        int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-        if (fd < 0) die("cannot open --out for writing");
-        sink.out = fdopen(fd, "wb");
-        if (!sink.out) {
-            close(fd);
-            die("cannot open --out for writing");
-        }
-    }
-    ca_stats st = {0};
-    ca_status rc = ca_dist_walk(&g, &base, &target, &c, &u, walk_write, &sink, &st);
-    /* Points already written stay written: a unit that dies half way is a
-     * shorter unit, not a corrupt one, because every record is complete and
-     * the merger does not care how many a unit produced. */
-    int flushed = fflush(sink.out) == 0;
-    if (path) {
-        if (fclose(sink.out) != 0) flushed = 0;
-    }
-    if (sink.failed || !flushed) die("writing points failed");
-    if (rc != CA_OK && rc != CA_ERR_LIMIT) die_status(rc);
-    FILE *report = path ? stdout : stderr; /* records own stdout when there is no --out */
-    fprintf(report,
-            "{\"status\":\"ok\",\"campaign\":%" PRIu64 ",\"unit\":%" PRIu64 ",\"points\":%" PRIu64
-            ",\"bytes\":%" PRIu64 ",\"dp_bits\":%d,\"r\":%u,\"steps\":%" PRIu64 "}\n",
-            ca_dist_campaign_id(&g, &base, &target, &c), u.id, sink.points,
-            sink.points * (uint64_t)CA_DIST_POINT_BYTES, c.dp_bits, c.r, st.group_ops);
-    return 0;
-}
-
-static int merge_file(ca_dist_merger *m, const char *path, uint64_t *acc, uint64_t *dup,
-                      uint64_t *rej)
-{
-    int owned = strcmp(path, "-") != 0;
-    FILE *in = owned ? fopen(path, "rb") : stdin;
-    if (!in) return -1;
-    /* A partial record at the end of a file is a truncated upload, which is
-     * what a killed agent leaves behind.  Read whole records and report the
-     * remainder rather than guessing at it. */
-    unsigned char buf[CA_DIST_POINT_BYTES * 256];
-    ca_dist_point pts[256];
-    size_t carry = 0;
-    int rc = 0;
-    for (;;) {
-        size_t want = sizeof(buf) - carry;
-        size_t got = fread(buf + carry, 1, want, in);
-        if (got == 0) break;
-        size_t have = carry + got;
-        size_t whole = have / CA_DIST_POINT_BYTES;
-        for (size_t i = 0; i < whole; i++)
-            ca_dist_point_decode(&pts[i], buf + i * CA_DIST_POINT_BYTES);
-        size_t a = 0, d = 0, r = 0;
-        if (ca_dist_merger_add(m, pts, whole, &a, &d, &r) != CA_OK) {
-            rc = -2;
-            break;
-        }
-        *acc += a;
-        *dup += d;
-        *rej += r;
-        carry = have - whole * CA_DIST_POINT_BYTES;
-        memmove(buf, buf + whole * CA_DIST_POINT_BYTES, carry);
-        /* fread only comes back short at end-of-file or on an error, and
-         * after an error the stream position is indeterminate: stop here
-         * rather than read again. */
-        if (got < want) break;
-    }
-    if (rc == 0) {
-        if (ferror(in))
-            rc = -3; /* an I/O error is not an end-of-file */
-        else if (carry)
-            rc = 1; /* truncated tail */
-    }
-    if (owned) fclose(in);
-    return rc;
-}
-
-static int cmd_dist_merge(void)
-{
-    ca_group g;
-    make_group(&g);
-    ca_elem base, target;
-    parse_elem(&g, opt("--g"), &base);
-    parse_elem(&g, opt("--h"), &target);
-    ca_dist_campaign c;
-    make_campaign(&g, &c);
-
-    ca_dist_merger *m = NULL;
-    ca_status rc = ca_dist_merger_new(&m, &g, &base, &target, &c, 0);
-    if (rc != CA_OK) die_status(rc);
-    if (flag("--no-verify")) ca_dist_merger_set_verify(m, 0);
-
-    uint64_t acc = 0, dup = 0, rej = 0;
-    int truncated = 0, files = 0;
-    for (int i = 2; i < argc_g; i++) {
-        const char *a = argv_g[i];
-        if (a[0] == '-' && a[1] == '-') {
-            i++;
-            continue;
-        } /* skip option pairs */
-        if (a[0] == '-' && a[1] != '\0' && strcmp(a, "-") != 0) continue;
-        files++;
-        int r = merge_file(m, a, &acc, &dup, &rej);
-        if (r == -1) {
-            ca_dist_merger_free(m);
-            die("cannot open input file");
-        }
-        if (r == -2) {
-            ca_dist_merger_free(m);
-            die_status(CA_ERR_NOMEM);
-        }
-        if (r == -3) {
-            ca_dist_merger_free(m);
-            die("reading input file failed");
-        }
-        if (r == 1) truncated++;
-    }
-    if (!files) {
-        ca_dist_merger_free(m);
-        die("no input files (use - for stdin)");
-    }
-
-    uint64_t x = 0;
-    int solved = ca_dist_merger_solved(m, &x);
-    printf("{\"status\":\"ok\",\"campaign\":%" PRIu64 ",\"files\":%d,\"accepted\":%" PRIu64
-           ",\"duplicates\":%" PRIu64 ",\"rejected\":%" PRIu64 ",\"stored\":%zu,\"truncated\":%d,"
-           "\"solved\":%s",
-           ca_dist_campaign_id(&g, &base, &target, &c), files, acc, dup, rej,
-           ca_dist_merger_size(m), truncated, solved ? "true" : "false");
-    if (solved) printf(",\"x\":%" PRIu64, x);
-    printf("}\n");
-    ca_dist_merger_free(m);
-    /* Exit 0 whether or not it solved: "no collision yet" is the normal
-     * state of a campaign, and a scheduler that read it as failure would
-     * retry the whole corpus every pass. */
+           st.sieve_seconds, st.linalg_seconds, st.total_seconds, st.lanczos_iterations,
+           st.threads);
     return 0;
 }
 
@@ -888,24 +729,342 @@ static int cmd_group(void)
     die("unknown group operation");
 }
 
-/* ----------------------------------------------------------- dist-info ----
- * The campaign's identity and its expected cost, without doing any work.  A
- * distributed run that gets this wrong wastes every worker's time, so it is
- * worth being able to print it.
+/* ---- distributed rho ------------------------------------------------------
+ *
+ * Three processes and one URL: `coord-job` writes what everyone agrees
+ * on, `coord` is the hub on the reachable host, `work` is an agent
+ * anywhere.  The agent opens the connection and the hub answers on it,
+ * so an agent behind NAT needs no address of its own.
  */
-static int cmd_dist_info(void)
+
+/* The token: --token, then --token-file, then the environment.  A
+ * command line is world-readable on a shared box, so the file and the
+ * environment are the ones a deployment should use. */
+static const char *coord_token(void)
+{
+    const char *t = opt("--token");
+    if (t) return t;
+    const char *path = opt("--token-file");
+    if (path) {
+        static char buf[256];
+        FILE *f = fopen(path, "r");
+        if (!f) die("cannot read --token-file");
+        const char *got = fgets(buf, sizeof(buf), f);
+        fclose(f);
+        if (!got) die("--token-file is empty");
+        buf[strcspn(buf, "\r\n")] = 0;
+        if (!buf[0]) die("--token-file is empty");
+        return buf;
+    }
+    const char *env = getenv(CA_COORD_TOKEN_ENV);
+    return env && *env ? env : NULL;
+}
+
+static const char *coord_url(void)
+{
+    const char *u = opt("--coordinator");
+    if (u) return u;
+    const char *env = getenv(CA_COORD_URL_ENV);
+    return env && *env ? env : NULL;
+}
+
+static void coord_print_job(const ca_coord_job *job, const ca_coord_ctx *ctx, const char *out)
+{
+    printf("{\"status\":\"ok\",\"job_id\":\"%016" PRIx64 "\",\"order\":%" PRIu64
+           ",\"dp_bits\":%d,\"r\":%u,\"negation\":%d,\"unit_size\":%" PRIu64
+           ",\"expected_steps\":%.6e,\"expected_dps\":%.6e",
+           job->id, job->order, (int)job->dp_bits, job->r, (int)job->negation_map, job->unit_size,
+           ca_coord_expected_steps(ctx), ca_coord_expected_dps(ctx));
+    if (out) printf(",\"written\":\"%s\"", out);
+    printf("}\n");
+}
+
+static int cmd_coord_job(void)
 {
     ca_group g;
     make_group(&g);
     ca_elem base, target;
     parse_elem(&g, opt("--g"), &base);
     parse_elem(&g, opt("--h"), &target);
-    ca_dist_campaign c;
-    make_campaign(&g, &c);
-    printf("{\"campaign_id\":\"%" PRIu64 "\",\"dp_bits\":%" PRId32 ",\"r\":%" PRIu32
-           ",\"expected_points\":%.3f}\n",
-           ca_dist_campaign_id(&g, &base, &target, &c), c.dp_bits, c.r,
-           ca_dist_expected_points(&g, &c));
+
+    ca_coord_job job;
+    ca_status rc = ca_coord_job_init(
+        &job, &g, &base, &target,
+        (int32_t)opt_u64("--dp-bits", (uint64_t)-1) == -1 ? -1 : (int32_t)opt_u64("--dp-bits", 0),
+        (uint32_t)opt_u64("--r", 0), flag("--negation"), opt_u64("--unit-size", 0),
+        opt_u64("--seed", 0));
+    if (rc != CA_OK) die_status(rc);
+    ca_coord_ctx *ctx = NULL;
+    rc = ca_coord_ctx_open(&ctx, &job);
+    if (rc != CA_OK) die_status(rc);
+
+    char line[CA_COORD_LINE_MAX];
+    if (!ca_coord_job_encode(&job, line, sizeof(line))) die("job does not encode");
+    const char *out = opt("--out");
+    if (out) {
+        /* Created with an explicit mode rather than through fopen, whose
+         * 0666-and-umask depends on the caller's environment.  The job
+         * document is public -- it is what every participant is handed --
+         * but a file this program creates should still say what it means. */
+        int fd = open(out, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+        if (fd < 0) die("cannot write --out");
+        FILE *f = fdopen(fd, "w");
+        if (!f) {
+            close(fd);
+            die("cannot write --out");
+        }
+        fprintf(f, "%s\n", line);
+        fclose(f);
+    } else {
+        fprintf(stderr, "%s\n", line);
+    }
+    coord_print_job(&job, ctx, out);
+    ca_coord_ctx_close(ctx);
+    return 0;
+}
+
+/* Load the job: from --job, or from the hub named by --coordinator.  An
+ * agent given a URL needs nothing on disk. */
+static ca_coord_ctx *coord_load(int allow_remote)
+{
+    ca_coord_job job;
+    const char *path = opt("--job");
+    if (path) {
+        FILE *f = fopen(path, "r");
+        if (!f) die("cannot read --job");
+        char line[CA_COORD_LINE_MAX];
+        const char *got = fgets(line, sizeof(line), f);
+        fclose(f);
+        if (!got) die("--job is empty");
+        line[strcspn(line, "\r\n")] = 0;
+        ca_status rc = ca_coord_job_decode(&job, line);
+        if (rc != CA_OK) die_status(rc);
+    } else if (allow_remote && coord_url()) {
+        ca_status rc = ca_coord_fetch_job(coord_url(), coord_token(), &job);
+        if (rc != CA_OK) die_status(rc);
+    } else {
+        die("pass --job FILE (or --coordinator URL to fetch it)");
+    }
+    ca_coord_ctx *ctx = NULL;
+    ca_status rc = ca_coord_ctx_open(&ctx, &job);
+    if (rc != CA_OK) die_status(rc);
+    return ctx;
+}
+
+/* Interrupt handling, shared by `work` (the agent) and anything else
+ * that runs until told to stop. */
+static volatile sig_atomic_t coord_interrupted;
+static void coord_on_signal(int sig)
+{
+    (void)sig;
+    coord_interrupted = 1;
+}
+
+/* One worker lane in its own thread. */
+typedef struct work_lane {
+    pthread_t thread;
+    const ca_coord_ctx *ctx;
+    ca_coord_state *st;
+    ca_coord_agent *agent;
+    char peer[CA_COORD_PEER_MAX];
+    uint64_t max_walkers;
+    uint64_t checkin_every;
+    uint64_t lease_secs;
+    ca_coord_lane_result res;
+} work_lane;
+
+static volatile sig_atomic_t work_stop;
+
+static void work_publish(void *user, const ca_coord_checkin *ci)
+{
+    if (user) ca_coord_agent_publish((ca_coord_agent *)user, ci);
+}
+
+static int work_should_stop(void *user)
+{
+    (void)user;
+    return work_stop;
+}
+
+static void *work_lane_main(void *arg)
+{
+    work_lane *w = arg;
+    ca_coord_lane_params p;
+    ca_coord_lane_params_default(&p, w->peer);
+    p.max_walkers = w->max_walkers;
+    if (w->checkin_every) p.checkin_every = w->checkin_every;
+    if (w->lease_secs) p.lease_secs = w->lease_secs;
+    ca_coord_lane_run(w->ctx, w->st, &p, w->agent ? work_publish : NULL, w->agent, work_should_stop,
+                      NULL, &w->res);
+    return NULL;
+}
+
+/*
+ * Compose a lane's peer id, "<node>.<lane>", so that the lane part
+ * always survives.
+ *
+ * The chart passes $(POD_NAME) as --node, and Kubernetes pod names run
+ * long: a plain snprintf into CA_COORD_PEER_MAX drops the suffix first,
+ * which gives every lane on the host the same identity.  Their sequence
+ * numbers then collide and the CRDT discards the later check-ins as
+ * duplicates -- silently, and only on the machines with long names.
+ *
+ * When the node name does not fit, it is cut and a hash of the *whole*
+ * name is appended, so two pods sharing a long prefix stay distinct.
+ */
+static void lane_peer(char *out, size_t cap, const char *node, uint64_t lane)
+{
+    char suffix[32];
+    int sn = snprintf(suffix, sizeof(suffix), ".%" PRIu64, lane);
+    if (sn < 0 || (size_t)sn + 2 >= cap) { /* nothing sensible fits */
+        snprintf(out, cap, "%" PRIu64, lane);
+        return;
+    }
+    size_t room = cap - 1 - (size_t)sn;
+    size_t n = strlen(node);
+    if (n <= room) {
+        snprintf(out, cap, "%s%s", node, suffix);
+        return;
+    }
+    uint64_t h = 1469598103934665603ULL;
+    for (size_t i = 0; i < n; i++) {
+        h ^= (unsigned char)node[i];
+        h *= 1099511628211ULL;
+    }
+    char tag[18];
+    int tn = snprintf(tag, sizeof(tag), "~%016" PRIx64, h);
+    if (tn < 0 || (size_t)tn >= room) {
+        snprintf(out, cap, "%016" PRIx64 "%s", h, suffix);
+        return;
+    }
+    size_t keep = room - (size_t)tn;
+    memcpy(out, node, keep);
+    memcpy(out + keep, tag, (size_t)tn);
+    memcpy(out + keep + (size_t)tn, suffix, (size_t)sn + 1);
+}
+
+static int cmd_work(void)
+{
+    ca_coord_ctx *ctx = coord_load(1);
+    ca_coord_state *st = NULL;
+    if (ca_coord_state_init(&st, ctx) != CA_OK) die("out of memory");
+
+    const char *node = opt("--node");
+    if (!node) node = "node";
+    uint64_t threads = opt_u64("--threads", 1);
+    if (threads < 1) threads = 1;
+    if (threads > 256) threads = 256;
+    uint64_t max_seconds = opt_u64("--max-seconds", 0);
+    uint64_t max_walkers = opt_u64("--max-walkers", 0);
+    /* An agent normally exits once the instance is solved.  Under a
+     * process supervisor that restarts it -- systemd, a Kubernetes
+     * Deployment -- exiting is a restart loop: it comes back, is pushed
+     * the answer it already had, and exits again.  With this flag it
+     * stays up instead, holding its channel, until it is told to stop. */
+    int idle_when_solved = flag("--idle-when-solved");
+    /* Walkers between check-ins: how much work is at risk if this pod
+     * dies, and how promptly the fleet sees what it found. */
+    uint64_t checkin_every = opt_u64("--checkin-every", 0);
+    /* How long this lane's claim stays live without a fresh check-in. */
+    uint64_t lease_secs = opt_u64("--lease-secs", 0);
+
+    /* The reverse channel.  Started before the lanes, so the first
+     * check-in already has somewhere to go; it connects in the
+     * background, so an unreachable hub delays no walking. */
+    ca_coord_agent *agent = NULL;
+    if (coord_url()) {
+        ca_status rc = ca_coord_agent_start(&agent, coord_url(), coord_token(), node, ctx, st);
+        if (rc != CA_OK) die_status(rc);
+        fprintf(stderr, "[agent] dialling %s as %s%s\n", coord_url(), node,
+                coord_token() ? "" : " (no token)");
+    } else {
+        fprintf(stderr, "[agent] no --coordinator: walking alone\n");
+    }
+
+    signal(SIGINT, coord_on_signal);
+    signal(SIGTERM, coord_on_signal);
+    work_lane *lanes = calloc(threads, sizeof(*lanes));
+    if (!lanes) die("out of memory");
+    for (uint64_t i = 0; i < threads; i++) {
+        lanes[i].ctx = ctx;
+        lanes[i].st = st;
+        lanes[i].agent = agent;
+        lanes[i].max_walkers = max_walkers;
+        lanes[i].checkin_every = checkin_every;
+        lanes[i].lease_secs = lease_secs;
+        lane_peer(lanes[i].peer, sizeof(lanes[i].peer), node, i);
+        if (pthread_create(&lanes[i].thread, NULL, work_lane_main, &lanes[i]) != 0)
+            die("cannot start a lane");
+    }
+
+    double start = ca_now();
+    for (;;) {
+        struct timespec ts = {0, 200 * 1000000L};
+        nanosleep(&ts, NULL);
+        if (coord_interrupted) work_stop = 1;
+        if (max_seconds && ca_now() - start >= (double)max_seconds) work_stop = 1;
+        if (ca_coord_solution(st, NULL)) work_stop = 1;
+        if (work_stop) break;
+    }
+    work_stop = 1;
+    for (uint64_t i = 0; i < threads; i++) pthread_join(lanes[i].thread, NULL);
+    if (idle_when_solved && !coord_interrupted && ca_coord_solution(st, NULL)) {
+        fprintf(stderr, "[agent] solved; idling (--idle-when-solved) until stopped\n");
+        while (!coord_interrupted) {
+            struct timespec ts = {1, 0};
+            nanosleep(&ts, NULL);
+        }
+    }
+
+    /* Drain before exiting: the queue lives in this process, and the
+     * last check-in is the one carrying the solution. */
+    int flushed = 1;
+    if (agent) flushed = ca_coord_agent_flush(agent, 10000);
+
+    uint64_t steps = 0, dps = 0, walkers = 0;
+    for (uint64_t i = 0; i < threads; i++) {
+        steps += lanes[i].res.steps;
+        dps += lanes[i].res.dps;
+        walkers += lanes[i].res.walkers;
+    }
+    uint64_t x = 0;
+    int have = ca_coord_solution(st, &x);
+    ca_coord_agent_stats as;
+    memset(&as, 0, sizeof(as));
+    if (agent) ca_coord_agent_stats_get(agent, &as);
+    printf("{\"status\":\"ok\",\"solved\":%s,\"x\":%" PRIu64 ",\"node\":\"%s\",\"lanes\":%" PRIu64
+           ",\"walkers\":%" PRIu64 ",\"steps\":%" PRIu64 ",\"dps\":%" PRIu64
+           ",\"seconds\":%.3f,\"received\":%" PRIu64 ",\"sent\":%" PRIu64 ",\"connects\":%" PRIu64
+           ",\"flushed\":%s}\n",
+           have ? "true" : "false", x, node, threads, walkers, steps, dps, ca_now() - start,
+           as.received, as.sent, as.connects, flushed ? "true" : "false");
+    if (agent) ca_coord_agent_stop(agent);
+    free(lanes);
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+    return have ? 0 : 3;
+}
+
+static int cmd_coord_status(void)
+{
+    if (!coord_url()) die("pass --coordinator URL (or set " CA_COORD_URL_ENV ")");
+    ca_coord_ctx *ctx = coord_load(1);
+    ca_coord_state *st = NULL;
+    if (ca_coord_state_init(&st, ctx) != CA_OK) die("out of memory");
+    uint64_t received = 0, rejected = 0;
+    ca_status rc = ca_coord_sync_once(coord_url(), coord_token(), ctx, st, &received, &rejected);
+    if (rc != CA_OK) die_status(rc);
+    ca_coord_progress pr;
+    ca_coord_progress_get(st, ctx, (uint64_t)time(NULL), opt_u64("--lease-secs", 120), &pr);
+    printf("{\"status\":\"ok\",\"job_id\":\"%016" PRIx64 "\",\"steps\":%" PRIu64
+           ",\"fraction\":%.6f,\"dps\":%" PRIu64 ",\"units_completed\":%" PRIu64
+           ",\"units_active\":%" PRIu64 ",\"peers\":%" PRIu64 ",\"checkins\":%" PRIu64
+           ",\"rejected_dps\":%" PRIu64 ",\"solved\":%s,\"x\":%" PRIu64 "}\n",
+           ca_coord_ctx_job(ctx)->id, pr.steps, pr.fraction, pr.dps_stored, pr.units_completed,
+           pr.units_active, pr.peers, pr.checkins, pr.rejected_dps,
+           pr.have_solution ? "true" : "false", pr.solution);
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
     return 0;
 }
 
@@ -1009,9 +1168,9 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "solve")) return cmd_solve();
     if (!strcmp(cmd, "cheon")) return cmd_cheon();
     if (!strcmp(cmd, "ic")) return cmd_ic();
-    if (!strcmp(cmd, "dist-walk")) return cmd_dist_walk();
-    if (!strcmp(cmd, "dist-merge")) return cmd_dist_merge();
-    if (!strcmp(cmd, "dist-info")) return cmd_dist_info();
+    if (!strcmp(cmd, "coord-job")) return cmd_coord_job();
+    if (!strcmp(cmd, "work")) return cmd_work();
+    if (!strcmp(cmd, "coord-status")) return cmd_coord_status();
     if (!strcmp(cmd, "num")) return cmd_num();
     if (!strcmp(cmd, "group")) return cmd_group();
     if (!strcmp(cmd, "curve")) return cmd_curve();
