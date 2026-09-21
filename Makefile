@@ -5,7 +5,12 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
-        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth
+        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth \
+        cloud-doctor cloud-all modal-setup modal-bench modal-long modal-sync \
+        modal-sync-loop runpod-start runpod-status runpod-stop \
+        fanout-start fanout-status fanout-stop \
+        modal-sync-ensure modal-sync-status \
+        ingest-start ingest-status ingest-stop
 
 all: lib
 
@@ -125,6 +130,62 @@ analyzer:
 
 shellcheck:
 	shellcheck scripts/*.sh
+
+# ---- cloud ECC2K-130 (Modal + RunPod + ingest MiG) -----------------------
+# See docs/CLOUD_LAUNCH.md. GPU time is billed; these are not CI gates.
+cloud-doctor:
+	./scripts/cloud_launch.sh doctor
+
+cloud-all:
+	./scripts/cloud_launch.sh all
+
+modal-setup:
+	./scripts/cloud_launch.sh modal setup
+
+modal-bench:
+	./scripts/cloud_launch.sh modal bench
+
+modal-long:
+	./scripts/cloud_launch.sh modal long
+
+modal-sync:
+	./scripts/cloud_launch.sh modal sync
+
+modal-sync-loop:
+	./scripts/cloud_launch.sh modal sync-loop
+
+modal-sync-ensure:
+	./scripts/cloud_launch.sh sync ensure
+
+modal-sync-status:
+	./scripts/cloud_launch.sh sync status
+
+runpod-start:
+	./scripts/cloud_launch.sh runpod start
+
+runpod-status:
+	./scripts/cloud_launch.sh runpod status
+
+runpod-stop:
+	./scripts/cloud_launch.sh runpod stop
+
+fanout-start:
+	./scripts/cloud_launch.sh fanout start
+
+fanout-status:
+	./scripts/cloud_launch.sh fanout status
+
+fanout-stop:
+	./scripts/cloud_launch.sh fanout stop
+
+ingest-start:
+	./scripts/cloud_launch.sh ingest start
+
+ingest-status:
+	./scripts/cloud_launch.sh ingest status
+
+ingest-stop:
+	./scripts/cloud_launch.sh ingest stop
 
 # Everything a pull request is gated on, in the order that fails fastest.
 checks: format cppcheck shellcheck tidy analyzer test cli asan tsan
