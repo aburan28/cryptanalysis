@@ -71,7 +71,9 @@ inline bool sameFe(const ec2k_fe &a, const ec2k_fe &b) { return ec2k_fe_equal(&a
 // The model stores its words as uint64_t, tablewalk.h reads unsigned long long;
 // the same 64 bits, but not the same type on LP64.
 inline const unsigned long long *limbs(const ec2k_fe &a)
-{ return reinterpret_cast<const unsigned long long *>(a.w); }
+{
+    return reinterpret_cast<const unsigned long long *>(a.w);
+}
 
 inline void randomFe(ec2k_fe *a, uint64_t *state)
 {

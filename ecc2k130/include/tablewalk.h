@@ -48,7 +48,9 @@
 #define ECC_HIST_EMPTY 0xFFFFFFFFFFFFFFFFull
 
 ECC_HD unsigned eccTag(int h, int k, int eps)
-{ return unsigned(h) | (unsigned(k) << 4) | (unsigned(eps) << 12); }
+{
+    return unsigned(h) | (unsigned(k) << 4) | (unsigned(eps) << 12);
+}
 ECC_HD int eccTagH(unsigned t) { return int(t & 15u); }
 ECC_HD int eccTagK(unsigned t) { return int((t >> 4) & 255u); }
 ECC_HD int eccTagEps(unsigned t) { return int((t >> 12) & 1u); }
@@ -64,7 +66,9 @@ ECC_HD bool eccTagFruitless(unsigned t, unsigned long long hist)
     return ((t ^ t1) == ECC_TAG_EPS) || (((t ^ t2) == ECC_TAG_EPS) && ((t1 ^ t3) == ECC_TAG_EPS));
 }
 ECC_HD unsigned long long eccHistPush(unsigned long long hist, unsigned t)
-{ return (hist << 16) | (unsigned long long)(t & 0xFFFFu); }
+{
+    return (hist << 16) | (unsigned long long)(t & 0xFFFFu);
+}
 
 // Coordinate tables for GF(2^M) in the permuted type-II ONB, coordinate i in
 // 1..M stored at bit i-1.  Host-side construction; the device gets copies.

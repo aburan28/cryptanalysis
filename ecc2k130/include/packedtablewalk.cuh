@@ -139,7 +139,9 @@ __device__ __forceinline__ void twLoadShared(uint32_t *shared, const uint32_t *g
 }
 // Byte t of a word into the low byte, zeros above: one PRMT.
 __device__ __forceinline__ uint32_t twByte(uint32_t w, int t)
-{ return __byte_perm(w, 0u, 0x4440u | unsigned(t)); }
+{
+    return __byte_perm(w, 0u, 0x4440u | unsigned(t));
+}
 __device__ __forceinline__ unsigned twMax(unsigned a, unsigned b) { return max(a, b); }
 __device__ __forceinline__ int twParity(uint32_t t) { return int(__popc(t) & 1u); }
 #else
