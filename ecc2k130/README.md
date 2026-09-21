@@ -168,7 +168,7 @@ campaign is the card's.
 |---|---|---:|
 | `ec2k-cpu` | worker threads, 64-bit limbs, products on PMULL | 139-159 M it/s, 14 workers |
 | `ec2k-cpu`, one worker | | 18.6 M it/s (53.5 ns an iteration) |
-| `ec2k-metal` | Metal compute, generated software product | 389-390 M it/s (3 x 4.3 G iterations) |
+| `ec2k-metal` | Metal compute, generated software product | 432-435 M it/s (8.6 G iterations), was 357 before the profile below |
 | for scale: `ec2k-gpu` on an RTX PRO 6000 | | 20,080 M it/s |
 
 **`ec2k-cpu`.** `include/hostclmul.h` gives `packed131.h`'s host paths the
@@ -231,8 +231,21 @@ Turing).  Memory is unified: the state buffers are shared, the host seeds and
 revives lanes directly with the CPU client's `startPoint`, and there is no
 init kernel.  A launch is cut into dispatches of about a quarter second,
 sized from the measured step time, to stay under the GPU watchdog.  32 lanes
-per thread measured best (16: 294, 32: 390, 64: 359 M it/s at comparable lane
-counts); 65,536 threads gives 420 M it/s for twice the lanes in flight.
+per thread measured best; the default is 65,536 threads, two million lanes.
+
+`build/metalprof` times a shader file's walk (or any kernel, `--per-thread`)
+on the GPU clock, with variants behind `-D` macros; a dispatch under ~200 ms
+reads low because the GPU has not reached its clock.  Its profile of the walk
+on an M4 Pro: the five polynomial products are 0.38 ns each chip-wide and
+~76% of a step -- each is half widening 32x32->64 multiplies (~5 logic-op
+slots apiece) and half logic -- the inversion ~17%, selection ~6%.  Four
+changes came of it, 2.70 -> ~2.3 ns an iteration on the GPU clock: inv131's
+long Frobenius powers through the permutation networks (`PERM_SIGMA=3`,
+13.4 -> 5.0 ns an inversion, 130 squarings having been 10.8 ns of it);
+slot-major state in word planes, so a SIMD group's loads are consecutive;
+the 14 KB of selection tables in threadgroup memory (`ADDEND_GLOBAL=1`); and
+65,536 threads.  Metal's `reverse_bits` for `reverse32` adds a few percent.
+What is left is the product.
 `src/metaltest.mm` runs every routine the kernel calls on the GPU against the
 host, word for word -- normal-basis multiply, square and inverse, both
 conversions, the polynomial product, pair and squaring, the selection with

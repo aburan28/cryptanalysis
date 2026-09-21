@@ -357,6 +357,8 @@ ECC_HD uint32_t reverse32(uint32_t x)
 {
 #ifdef __CUDA_ARCH__
     return __brev(x);
+#elif defined(__METAL_VERSION__)
+    return reverse_bits(x);
 #else
     x = ((x & 0x55555555u) << 1) | ((x >> 1) & 0x55555555u);
     x = ((x & 0x33333333u) << 2) | ((x >> 2) & 0x33333333u);

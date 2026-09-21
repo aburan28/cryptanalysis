@@ -98,12 +98,13 @@ class MetalEngine
                 unsigned guardPeriod = ECC_GUARD_PERIOD)
         : seeder_(table, o, bench, seederGeometry())
     {
-        // Measured on an M4 Pro (20-core GPU), M it/s at batch x threads:
-        // 16 x 16384 294, 32 x 8192 319, 32 x 32768 390, 32 x 65536 420,
-        // 64 x 16384 359.  More lanes keep paying a little, at the price of
-        // more unreported trail in flight; the default stops at a million.
+        // Measured on an M4 Pro (20-core GPU) with build/metalprof, GPU-clock
+        // M it/s at batch x threads: 32 x 32768 436, 32 x 65536 464,
+        // 32 x 131072 about the same.  Batch 16, 24 and 48 were slower at the
+        // same lane count.  Two million lanes is 200 MB of state and more
+        // unreported trail in flight; the default stops there.
         batch_ = batch > 0 ? batch : (o.batch > 0 ? o.batch : 32);
-        threads_ = o.threads > 0 ? o.threads : 32768;
+        threads_ = o.threads > 0 ? o.threads : 65536;
         args_.threads = (uint32_t)threads_;
         args_.dpWeight = bench ? -1 : o.dpWeight;
         args_.dpCap = o.dpCap;
@@ -202,8 +203,8 @@ class MetalEngine
     {
         using namespace eccPacked131;
         P131 x, y;
-        memcpy(x.v, (const uint32_t *)x_.contents + lane * 5, sizeof(x.v));
-        memcpy(y.v, (const uint32_t *)y_.contents + lane * 5, sizeof(y.v));
+        getLane((const uint32_t *)x_.contents, lane, &x);
+        getLane((const uint32_t *)y_.contents, lane, &y);
         DpRecord rec;
         rec.seed = ((const uint64_t *)seed_.contents)[lane];
         rec.iters = args_.iterBase - ((const uint64_t *)start_.contents)[lane];
@@ -218,6 +219,17 @@ class MetalEngine
         ec2k_cpu::Geometry g;
         g.workers = g.batch = g.chunks = 1;
         return g;
+    }
+
+    // A coordinate is five word planes (metal/walk.metal): word i of lane l
+    // at [i * lanes + l].
+    void putLane(uint32_t *plane, size_t lane, const P131 &a) const
+    {
+        for (size_t i = 0; i < 5; ++i) plane[i * laneCount() + lane] = a.v[i];
+    }
+    void getLane(const uint32_t *plane, size_t lane, P131 *a) const
+    {
+        for (size_t i = 0; i < 5; ++i) a->v[i] = plane[i * laneCount() + lane];
     }
 
     id<MTLBuffer> shared(size_t bytes)
@@ -264,8 +276,8 @@ class MetalEngine
                 seed[lane] = revive ? seed[lane] + 1 : eccSeedFor(runId_, lane);
                 P131 xp, yp;
                 seeder_.startPoint(seed[lane], &xp, &yp);
-                memcpy(x + lane * 5, xp.v, sizeof(xp.v));
-                memcpy(y + lane * 5, yp.v, sizeof(yp.v));
+                putLane(x, lane, xp);
+                putLane(y, lane, yp);
                 start[lane] = nowIter;
                 hist[lane] = ECC_HIST_EMPTY;
                 dead[lane] = 0;

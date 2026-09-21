@@ -23,7 +23,7 @@ int usage()
 {
     fprintf(stderr,
             "usage: ec2k-metal <bench|walk|check> [options]\n%s"
-            "  --threads T      GPU threads, each owning one batch of lanes (default 32768)\n"
+            "  --threads T      GPU threads, each owning one batch of lanes (default 65536)\n"
             "  --batch B        lanes per thread and per inversion (default 32)\n"
             "  --dp-cap N       report buffer capacity per launch (default 262144)\n"
             "  --device D       index into MTLCopyAllDevices (default: the system default)\n",

@@ -10,8 +10,13 @@
 // host revives dead lanes between launches.  Apple GPUs have no carry-less
 // multiplier, so products are the generated masked-multiply form.
 //
-// State is lane-major (lane = thread * ECC_BATCH + slot): five words per
-// coordinate, in the polynomial basis.
+// State is slot-major, lane = slot * threads + thread, so that a SIMD group's
+// loads of one slot are consecutive words; a coordinate is five word planes,
+// word i of lane l at [i * lanes + l], in the polynomial basis.  The
+// selection tables are copied into threadgroup memory at the start of each
+// dispatch (mslgen.py gives the selection primitives threadgroup pointers);
+// the addend table stays in device memory.  On an M4 Pro these two layouts
+// are worth 4% and 6% over lane-major state and device-memory selection.
 
 using namespace eccPacked131;
 
@@ -33,15 +38,15 @@ struct WalkArgs {
     uint pad;
 };
 
-static inline P131 loadLane(const device uint *p, uint lane)
+static inline P131 loadLane(const device uint *p, uint lane, uint lanes)
 {
     P131 a;
-    for (int i = 0; i < 5; ++i) a.v[i] = p[lane * 5u + uint(i)];
+    for (int i = 0; i < 5; ++i) a.v[i] = p[uint(i) * lanes + lane];
     return a;
 }
-static inline void storeLane(device uint *p, uint lane, P131 a)
+static inline void storeLane(device uint *p, uint lane, uint lanes, P131 a)
 {
-    for (int i = 0; i < 5; ++i) p[lane * 5u + uint(i)] = a.v[i];
+    for (int i = 0; i < 5; ++i) p[uint(i) * lanes + lane] = a.v[i];
 }
 static inline int weight131(P131 a)
 {
@@ -60,10 +65,15 @@ kernel void walk(constant WalkArgs &a [[buffer(0)]], device uint *X [[buffer(1)]
                  const device ulong *seed [[buffer(4)]],
                  const device ulong *startIter [[buffer(5)]], device uint *dead [[buffer(6)]],
                  device DpRecord *dp [[buffer(7)]], device atomic_uint *counts [[buffer(8)]],
-                 const device uint *tw [[buffer(9)]], uint tid [[thread_position_in_grid]])
+                 const device uint *tw [[buffer(9)]], uint tid [[thread_position_in_grid]],
+                 uint ltid [[thread_position_in_threadgroup]],
+                 uint tgSize [[threads_per_threadgroup]])
 {
+    threadgroup uint sel[TW_SEL_WORDS];
+    for (uint i = ltid; i < uint(TW_SEL_WORDS); i += tgSize) sel[i] = tw[uint(TW_SEL0) + i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
     if (tid >= a.threads) return;
-    const uint base = tid * uint(ECC_BATCH);
+    const uint lanes = a.threads * uint(ECC_BATCH);
     P131 W[ECC_BATCH], D[ECC_BATCH];
     for (uint step = 0; step < a.steps; ++step) {
         const ulong now = a.iterBase + ulong(step);
@@ -71,8 +81,8 @@ kernel void walk(constant WalkArgs &a [[buffer(0)]], device uint *X [[buffer(1)]
         // Forward pass: report, select the addend, multiply the denominators up.
         P131 prod;
         for (uint slot = 0; slot < uint(ECC_BATCH); ++slot) {
-            const uint lane = base + slot;
-            const P131 xp = loadLane(X, lane), yp = loadLane(Y, lane);
+            const uint lane = slot * a.threads + tid;
+            const P131 xp = loadLane(X, lane, lanes), yp = loadLane(Y, lane, lanes);
             const P131 xn = fromPolynomial131(xp);
             const int hw = weight131(xn);
             if (!dead[lane]) {
@@ -97,7 +107,7 @@ kernel void walk(constant WalkArgs &a [[buffer(0)]], device uint *X [[buffer(1)]
                 }
             }
             ulong h = hist[lane];
-            const uint tag = twSelectHist(xn, yp, hw, &h, tw);
+            const uint tag = twSelectHist(xn, yp, hw, &h, sel);
             hist[lane] = h;
             P131 d, e;
             twAddend(tag, xp, yp, tw, &d, &e);
@@ -114,8 +124,8 @@ kernel void walk(constant WalkArgs &a [[buffer(0)]], device uint *X [[buffer(1)]
         P131 inv = toPolynomial131(inv131(fromPolynomial131(prod)));
         // Reverse pass: lambda = e / d, then the affine addition.
         for (int slot = ECC_BATCH - 1; slot >= 0; --slot) {
-            const uint lane = base + uint(slot);
-            const P131 x = loadLane(X, lane), y = loadLane(Y, lane), d = D[slot];
+            const uint lane = uint(slot) * a.threads + tid;
+            const P131 x = loadLane(X, lane, lanes), y = loadLane(Y, lane, lanes), d = D[slot];
             P131 lambda;
             if (slot) {
                 const PolynomialPair pair = mulPolynomialPair131(inv, d, W[slot]);
@@ -126,8 +136,8 @@ kernel void walk(constant WalkArgs &a [[buffer(0)]], device uint *X [[buffer(1)]
             }
             const P131 nx = add131(add131(squarePolynomial131(lambda), lambda), d);
             const P131 ny = add131(add131(mulPolynomial131(lambda, add131(x, nx)), nx), y);
-            storeLane(X, lane, nx);
-            storeLane(Y, lane, ny);
+            storeLane(X, lane, lanes, nx);
+            storeLane(Y, lane, lanes, ny);
         }
     }
 }
@@ -141,8 +151,13 @@ kernel void walk(constant WalkArgs &a [[buffer(0)]], device uint *X [[buffer(1)]
 #define SELF_OUT 53u
 kernel void selftest(const device uint *in [[buffer(0)]], device uint *out [[buffer(1)]],
                      const device uint *tw [[buffer(2)]], constant uint &cases [[buffer(3)]],
-                     uint id [[thread_position_in_grid]])
+                     uint id [[thread_position_in_grid]],
+                     uint ltid [[thread_position_in_threadgroup]],
+                     uint tgSize [[threads_per_threadgroup]])
 {
+    threadgroup uint sel[TW_SEL_WORDS];
+    for (uint i = ltid; i < uint(TW_SEL_WORDS); i += tgSize) sel[i] = tw[uint(TW_SEL0) + i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
     if (id >= cases) return;
     const device uint *c = in + id * SELF_IN;
     device uint *o = out + id * SELF_OUT;
@@ -166,7 +181,7 @@ kernel void selftest(const device uint *in [[buffer(0)]], device uint *out [[buf
     for (int k = 0; k < 8; ++k)
         for (int i = 0; i < 5; ++i) o[k * 5 + i] = r[k].v[i];
     const P131 xp = toPolynomial131(px), yp = toPolynomial131(py);
-    const uint tag = twSelectHist(px, yp, weight131(px), &h, tw);
+    const uint tag = twSelectHist(px, yp, weight131(px), &h, sel);
     P131 d, e;
     twAddend(tag, xp, yp, tw, &d, &e);
     o[40] = tag;

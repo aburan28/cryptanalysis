@@ -11,6 +11,9 @@ mechanical, and this script is the whole list:
   - Every pointer and reference needs an address space.  Operands passed as
     `const P131 &` go by value; the walk's tables are `device` memory; every
     other pointer in these headers is to a local, `thread`.
+  - The selection tables live in threadgroup memory (the walk kernel copies
+    them in), the addend table in device memory, so the selection
+    primitives' pointers are `threadgroup` and the addend's `device`.
   - `unsigned long long` is `ulong`, __builtin_popcount is popcount,
     namespace-scope constants are `constant`, and `#pragma unroll` means
     nothing to this compiler.
@@ -28,6 +31,11 @@ from pathlib import Path
 # The kernel's configuration on a GPU with no carry-less multiplier: the
 # generated masked-multiply product, the direct reduction, the reduced
 # conversion, and the byte-table selection layout every client shares.
+# PERM_SIGMA=3 takes inv131's long Frobenius powers through the permutation
+# networks: 130 squarings were 10.8 of its 13.4 ns on an M4 Pro, and the
+# inversion is then 5.0 ns.  ADDEND_GLOBAL=1 is the split that puts the
+# 14 KB of selection tables in threadgroup memory (Apple GPUs have 32 KB);
+# the 34 KB addend table stays in device memory.
 PROLOGUE = """#include <metal_stdlib>
 using namespace metal;
 #define ECC_HOST_CLMUL 0
@@ -41,17 +49,17 @@ using namespace metal;
 #define ECC_PACKED_ALU_SQUARE 1
 #define ECC_PACKED_ALU_SQR 1
 #define ECC_PACKED_INLINE_POLY 3
-#define ECC_PACKED_PERM_SIGMA 0
+#define ECC_PACKED_PERM_SIGMA 3
 #define ECC_WALK_TABLE 1
 #define ECC_TABLE_PIVOT_BYTES 1
+#define ECC_TABLE_ADDEND_GLOBAL 1
 """
 
 # Headers whose pointers are all into the walk's tables.
 TABLE_HEADERS = {"packedtablewalk.cuh"}
 # Included only under knobs the prologue leaves off: the host multiplier and the
 # two-stage reduction.  The Frobenius permutation networks (packedsigma131.h)
-# are inlined, masks in the constant address space, so that
-# ECC_PACKED_PERM_SIGMA can be tried on a Mac; the prologue still leaves it off.
+# are inlined with their masks in the constant address space.
 SKIPPED_HEADERS = {"hostclmul.h", "packedpolyreduce131.h"}
 
 
@@ -94,6 +102,11 @@ def transform(path, include_dir, seen):
     text = re.sub(r"(?m)^static const (int|size_t) ", r"constant \1 ", text)
     # the permutation networks' mask tables
     text = text.replace("alignas(32) static const", "constant")
+    if path.name in TABLE_HEADERS:
+        # the selection primitives, from the phase to twSelect, read threadgroup memory
+        start = text.index("// Frobenius phase k(x)")
+        end = text.index("// d = x + x_T and e = y + y_T")
+        text = text[:start] + text[start:end].replace("device ", "threadgroup ") + text[end:]
     text = text.replace("unsigned long long", "ulong")
     text = text.replace("__builtin_popcount", "popcount")
     return text
