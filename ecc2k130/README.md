@@ -129,7 +129,7 @@ did not pay.
 ## Running it
 
 ```sh
-make                         # host test against the golden model (no CUDA)
+make                         # host tests against the golden model (no CUDA): kernel and CPU walker
 make gpu                     # needs nvcc >= 13.3 for clmad; ARCH defaults to sm_120
 make gpu NVCC=$(scripts/fetch_cuda.sh)/bin/nvcc     # CUDA 13.3 from NVIDIA's pip wheels
 make bench                   # bench --steps 1024 --launches 64
@@ -153,6 +153,106 @@ belong in a campaign definition and are passed in the same way.
 default is one wave of resident blocks. The GPU is shared fairly between
 processes, so a benchmark on a card that is also collecting measures half of
 it -- the A/B row above was taken that way, against the source binary.
+
+## The same walk without the card: `ec2k-cpu` and `ec2k-metal`
+
+Two clients run this walk where there is no CUDA device.  They are built from
+the same headers, take their start points from the same seeds and their
+addends from the same table, and write the same 64- and 32-byte records, so a
+report from any client re-walks on the model and merges with any other's.
+They exist to develop and test a campaign's pipeline -- reports, `--verify`,
+`ec2k merge`, ingest -- on the machine in front of you; the throughput of the
+campaign is the card's.
+
+| client | engine | measured on an M4 Pro (10P + 4E cores, 20-core GPU) |
+|---|---|---:|
+| `ec2k-cpu` | worker threads, 64-bit limbs, products on PMULL | 139-159 M it/s, 14 workers |
+| `ec2k-cpu`, one worker | | 18.6 M it/s (53.5 ns an iteration) |
+| `ec2k-metal` | Metal compute, generated software product | 389-390 M it/s (3 x 4.3 G iterations) |
+| for scale: `ec2k-gpu` on an RTX PRO 6000 | | 20,080 M it/s |
+
+**`ec2k-cpu`.** `include/hostclmul.h` gives `packed131.h`'s host paths the
+host's carry-less multiplier -- `vmull_p64` (PMULL) on AArch64, PCLMULQDQ on
+x86-64, selected by what the compiler is targeting, the software product
+otherwise -- at the three places the device uses `clmad`: `clmul64`,
+`clmadLo64`, `spread32p`.  `src/cpuknobs.h` is the kernel's knob set for a
+host: with a multiplier the 3-bit top-word correction and the polynomial
+squaring go to it too.  On those routines one worker on an M4 Pro core ran an
+iteration in 127 ns (163 ns with the device's knobs over the same PMULL,
+261 ns on the software product), bound by instruction count: five 32-bit
+words per element is the device's layout, and the compiler emits about 100
+instructions for a product, 95 for its reduction and 290 for the selection.
+
+`src/f131.h` is the step on three 64-bit limbs instead -- the same Karatsuba
+product (vector-resident on PMULL: eight multiplies, the partial sums folded
+before anything crosses to the integer registers), the same direct reduction
+with its shifts written across limbs, the same conversion network and the
+same byte-table selection -- and `src/cpuwalk.h` is the engine around it:
+**53.5 ns an iteration** on the same core, 153 ns on the software product.
+Where the time went, in order of what it bought:
+
+| | ns an iteration, one worker |
+|---|---:|
+| the packed routines over PMULL | 127 |
+| + 64-bit limbs for product, reduction, squaring, conversion, selection, addend | 76.5 |
+| + the step as loops over the batch, the selection in its three dependent stages | 62 |
+| + the four inversion chains' accumulators in locals, not an array indexed `i % 4` | 53.5 |
+
+The last two are the same observation: a lane's selection (phase, then mask,
+then pivot, then sign: some 90 cycles for 240 instructions) and its link in
+the prefix-product chain are dependency chains far longer than their
+instruction counts, and a core only stays full when neighbouring lanes'
+chains overlap.  A product is now 6 ns, of which the reduction is 3.2 and the
+multiplies 1.4; the reduction is the next thing to look at.  The engine keeps
+512 lanes per batched inversion, as four interleaved chains, because a core
+has L1 where the device has registers; a lane that reports restarts in the
+same step; work is handed out in 64-step slices of one batch so efficiency
+cores do not gate a launch.  All 14 cores give 139-159 M it/s, which is the
+package's limit rather than the scheduler's (ten workers give 136).
+
+The reports of a run do not depend on the batch size or the worker count,
+which `src/cputest.cpp` checks along with: the multiplier against a
+bit-serial product; every `f131.h` routine against its packed counterpart on
+4,000 random operands and 1,500 curve points with histories that fire the
+cycle rule, the reduction also on limbs no product produces; start points
+against the model's; and every lane and every report of a run with restarts
+re-walked on the model (28,641 checks, and again with the software product).
+
+**`ec2k-metal`.** Metal Shading Language is C++14 with address spaces, so the
+kernel is not a port: `scripts/mslgen.py` inlines the headers and applies four
+mechanical rewrites (operands by value, `thread`/`device` on the remaining
+pointers, `ulong`, `constant` on namespace-scope constants), `metal/walk.metal`
+adds the two-pass loop of `packedkernels.cuh`, and the client compiles the
+result with `newLibraryWithSource` when it starts -- the Command Line Tools are
+enough, no offline Metal toolchain.  An Apple GPU has no carry-less multiply,
+so this is the kernel's `ECC_PACKED_CLMAD=0` configuration
+(`generatedProduct131`, the masked-multiply product the source tree keeps for
+Turing).  Memory is unified: the state buffers are shared, the host seeds and
+revives lanes directly with the CPU client's `startPoint`, and there is no
+init kernel.  A launch is cut into dispatches of about a quarter second,
+sized from the measured step time, to stay under the GPU watchdog.  32 lanes
+per thread measured best (16: 294, 32: 390, 64: 359 M it/s at comparable lane
+counts); 65,536 threads gives 420 M it/s for twice the lanes in flight.
+`src/metaltest.mm` runs every routine the kernel calls on the GPU against the
+host, word for word -- normal-basis multiply, square and inverse, both
+conversions, the polynomial product, pair and squaring, the selection with
+histories that fire the cycle rule, the addend -- and then the engine with
+reports, `--max-iters` restarts and revived lanes, every report and every
+lane re-walked on the model (1,066 checks).  `make metal-verify` at the default
+geometry re-walked 300 of 300.  Without a Metal device the test says so and
+passes; a sandbox that hides the GPU looks like that.
+
+```sh
+make cpu   && build/ec2k-cpu bench            # make cpu-bench, make cpu-verify
+make metal && build/ec2k-metal bench          # make metal-test, metal-bench, metal-verify
+build/ec2k-metal walk --run-id 9 --dp-file dps.bin --dp-file32 dps32.bin --verify 100
+EC2K_METAL_SOURCE=build/walk_metal.metal build/ec2k-metal bench   # shader development
+```
+
+Neither client checkpoints, and at the campaign's weight a lane reports about
+once in 2^25 steps: a million lanes at 390 M it/s are a day from their first
+reports, so a short session at weight 34 yields nothing.  That is what
+`--dp-weight` is for on these clients.
 
 ## What is not here
 

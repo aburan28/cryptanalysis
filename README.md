@@ -260,6 +260,18 @@ ecc2k130/build/ec2k-gpu bench                                         # iteratio
 ecc2k130/build/ec2k-gpu walk --run-id 7 --dp-file dps.bin --verify 300   # collect; re-walk 300
 ```
 
+Two more clients run the same walk from the same headers and write the same
+reports, for developing and testing a campaign's pipeline without renting a
+card: `ec2k-cpu` on host cores, its products on PMULL (AArch64) or PCLMULQDQ
+(x86-64), and `ec2k-metal` on an Apple GPU, the kernel rewritten as Metal
+Shading Language and compiled at start-up.  Measured on an M4 Pro: 145 M
+iterations per second on its 14 cores, 390 M on its 20-core GPU.
+
+```sh
+make ecc2k130-cpu   && ecc2k130/build/ec2k-cpu bench
+make ecc2k130-metal && ecc2k130/build/ec2k-metal bench       # macOS
+```
+
 See [ecc2k130/README.md](ecc2k130/README.md) for the measurement, the
 boundary it is measured against, and how the last 15% was found.
 
@@ -426,7 +438,7 @@ cuda/                    the CUDA kernel (ca_device.cuh is shared C11/CUDA code)
 tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
-ecc2k130/                ECC2K-130 GPU client: packed GF(2^131) table walk (CUDA), host test vs the model
+ecc2k130/                ECC2K-130 clients: packed GF(2^131) table walk (CUDA, CPU, Metal), host tests vs the model
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md
