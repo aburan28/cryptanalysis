@@ -50,7 +50,9 @@ ECC_HD unsigned long long eccPrf(unsigned long long seed, int idx)
 // Seed of lane `walkIndex` of run `runId`: the low 16 bits count restarts of
 // that lane, so two runs with different ids never share a trail.
 ECC_HD unsigned long long eccSeedFor(unsigned runId, unsigned long long walkIndex)
-{ return ((unsigned long long)runId << 48) | ((walkIndex & 0xFFFFFFFFull) << 16); }
+{
+    return ((unsigned long long)runId << 48) | ((walkIndex & 0xFFFFFFFFull) << 16);
+}
 
 template <class W> struct WalkParams {
     int threads;

@@ -139,7 +139,9 @@ __device__ __forceinline__ void twLoadShared(uint32_t *shared, const uint32_t *g
 }
 // Byte t of a word into the low byte, zeros above: one PRMT.
 __device__ __forceinline__ uint32_t twByte(uint32_t w, int t)
-{ return __byte_perm(w, 0u, 0x4440u | unsigned(t)); }
+{
+    return __byte_perm(w, 0u, 0x4440u | unsigned(t));
+}
 __device__ __forceinline__ unsigned twMax(unsigned a, unsigned b) { return max(a, b); }
 __device__ __forceinline__ int twParity(uint32_t t) { return int(__popc(t) & 1u); }
 #else
@@ -306,7 +308,7 @@ template <class TW> inline void twFillConsts(const TW &walk, uint32_t *out)
             pack(walk.table[h][k].y.v, y.v);
             x = toPolynomial131(x);
             y = toPolynomial131(y);
-#if ECC_TABLE_PIVOT_BYTES
+#    if ECC_TABLE_PIVOT_BYTES
             uint32_t *t = out + k * TW_KWORDS + h * TW_ENTRY;
             for (int i = 0; i < 4; ++i) {
                 t[i] = x.v[i];
@@ -314,14 +316,14 @@ template <class TW> inline void twFillConsts(const TW &walk, uint32_t *out)
             }
             out[k * TW_KWORDS + TW_H * TW_ENTRY + (h >> 2)] |=
                 ((x.v[4] & 7u) | ((y.v[4] & 7u) << 3)) << ((h & 3) * 8);
-#else
+#    else
             uint32_t *t = out + (k * TW_H + h) * TW_ENTRY;
             for (int i = 0; i < 4; ++i) {
                 t[i] = x.v[i];
                 t[4 + i] = y.v[i];
             }
             t[8] = (x.v[4] & 7u) | ((y.v[4] & 7u) << 3);
-#endif
+#    endif
         }
     for (int k = 0; k < 131; ++k) pack(walk.consts.maskLt[k], out + TW_MASK_OFF + k * 5);
     for (int j = 0; j < 131; ++j) {
@@ -330,14 +332,14 @@ template <class TW> inline void twFillConsts(const TW &walk, uint32_t *out)
         const P131 n = fromPolynomial131(e);
         for (int p = 0; p < 131; ++p)
             if ((n.v[p >> 5] >> (p & 31)) & 1u) {
-#if ECC_TABLE_PIVOT_BYTES
+#    if ECC_TABLE_PIVOT_BYTES
                 if (j < 128)
                     out[TW_ROW_OFF + p * 4 + (j >> 5)] |= 1u << (j & 31);
                 else
                     out[TW_ROWTOP_OFF + (p >> 3)] |= 1u << ((j - 128) + (p & 7) * 4);
-#else
+#    else
                 out[TW_ROW_OFF + p * 5 + (j >> 5)] |= 1u << (j & 31);
-#endif
+#    endif
             }
     }
     for (int w = 0; w < 132; ++w) out[TW_INV_OFF + w] = uint32_t(walk.consts.inv[w]);
@@ -353,7 +355,7 @@ template <class TW> inline void twFillConsts(const TW &walk, uint32_t *out)
                 if ((v >> t) & 1) s += unsigned(L(8 * i + t) < 0 ? 0 : L(8 * i + t));
             phase[i * 256 + v] = uint8_t(s % 131u);
         }
-#if ECC_TABLE_PIVOT_BYTES
+#    if ECC_TABLE_PIVOT_BYTES
     for (int i = 0; i < 17; ++i)
         for (int v = 0; v < 256; ++v) {
             int best = -1;
@@ -361,7 +363,7 @@ template <class TW> inline void twFillConsts(const TW &walk, uint32_t *out)
                 if ((v >> t) & 1) best = L(8 * i + t) > best ? L(8 * i + t) : best;
             maxL[i * 256 + v] = uint8_t(best + 1);
         }
-#else
+#    else
     for (int i = 0; i < 33; ++i)
         for (int v = 0; v < 16; ++v) {
             int best = -1;
@@ -369,7 +371,7 @@ template <class TW> inline void twFillConsts(const TW &walk, uint32_t *out)
                 if ((v >> t) & 1) best = L(4 * i + t) > best ? L(4 * i + t) : best;
             maxL[i * 16 + v] = uint8_t(best + 1);
         }
-#endif
+#    endif
     for (int bit = 0; bit < 131; ++bit) linv[L(bit)] = uint8_t(bit);
 }
 #endif // __METAL_VERSION__

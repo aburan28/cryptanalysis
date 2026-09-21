@@ -230,7 +230,9 @@ __device__ __forceinline__ void toLimbs(P131 a, unsigned long long *out)
     out[2] = a.v[4];
 }
 __device__ __forceinline__ int weight(P131 a)
-{ return __popc(a.v[0]) + __popc(a.v[1]) + __popc(a.v[2]) + __popc(a.v[3]) + __popc(a.v[4]); }
+{
+    return __popc(a.v[0]) + __popc(a.v[1]) + __popc(a.v[2]) + __popc(a.v[3]) + __popc(a.v[4]);
+}
 
 static __global__ void ECC_BOUNDS init(WalkParams<unsigned> p, bool reseed)
 {

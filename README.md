@@ -14,6 +14,7 @@ Rust, Go and Python bindings.
 | Pohlig-Hellman + solver dispatch (`ca_dlog`) | `ca_pohlig.h` | composite order | sum over prime factors |
 | Cheon's attack on the strong Diffie-Hellman problem (`d \| p-1`) | `ca_cheon.h` | recover `alpha` from `g, g^alpha, g^(alpha^d)` | `2 sqrt((p-1)/d) + 2 sqrt(d)` exponentiations |
 | Index calculus in `(Z/pZ)^*`: linear sieve, Pohlig-Hellman for small factors, structured elimination + Lanczos, Hensel lifting, verified logs | `ca_indexcalc.h` | `Z_p^*`, `p < 2^63` | `L_p[1/2, 1]`; 56-bit `p` in 1.3 s |
+| **Distributed Pollard rho**: one coordinator with a URL, agents that dial out to it and are pushed to over the same socket (van Oorschot-Wiener check-ins, a CRDT over self-verifying distinguished points) | `ca_coord.h` | whole group, many machines | the same `sqrt(n)` split `m` ways across machines that cannot reach each other |
 | **GPU Pollard rho**: a CUDA kernel (CUDA C) with 8 walks per thread sharing one modular inversion, atomic distinguished-point output, plus a host emulator that runs the same code | `ca_gpu.h` | whole group | same `sqrt(n)` with tens of thousands of concurrent walks |
 
 Everything is written against one generic cyclic-group interface
@@ -134,10 +135,10 @@ $ ./build/ca group exp --group zp --p 1000003 --order 1000002 --elem 2 --k 100
 $ ./build/ca group order --group zp --p 1000003 --order 1000002 --elem 2
 {"order":"1000002","divides_group_order":true}
 
-# A campaign's identity and expected cost, before spending a fleet's time on it
-$ ./build/ca dist-info --group zp --p 1000003 --order 1000002 --g 858101 --h 57332 \
-      --campaign-seed 42
-{"campaign_id":"3264688662440439473","dp_bits":0,"r":32,"expected_points":1250.000}
+# A job's identity and expected cost, before spending a fleet's time on it
+$ ./build/ca coord-job --group zp --p 1000003 --order 1000002 --g 858101 --h 57332 \
+      --dp-bits 5 --seed 42
+{"status":"ok","job_id":"...","order":1000002,"dp_bits":5,"r":32,...}
 ```
 
 Full list: `num powmod|invmod|gcd|isqrt|iroot|sqrtmod|legendre|crt|next-prime|
@@ -159,33 +160,55 @@ there, and `make cli` runs it.
 
 ## Many machines
 
-One process solving one instance is `ca solve`.  A *fleet* needs the
-van Oorschot-Wiener protocol, where every walker iterates the same function
-and reports only its distinguished points, so that P machines finish in
-expected `1/P` of the time for the same total work -- rather than running P
-independent searches, which is what P copies of `ca solve` are.
+One process solving one instance is `ca solve`.  A *fleet* needs the van
+Oorschot-Wiener protocol, where every walker iterates the same function and
+reports only its distinguished points, so that P machines finish in expected
+`1/P` of the time for the same total work -- rather than running P independent
+searches, which is what P copies of `ca solve` are.
+
+The shape that deploys is a hub: on a cloud fleet the workers sit in private
+subnets, behind NAT or on spot instances and cannot accept connections, while
+one host is reachable by all of them.  So agents **dial out**, and the
+coordinator answers on the same socket -- the *reverse channel* -- pushing
+everyone else's points and the solution to a machine it could never have
+dialled.
 
 ```sh
-$ ./build/ca dist-walk  --group zp --p 2000000579 --order 1000000289 --g G --h H \
-      --campaign-seed 12345 --dp-bits 6 --unit 3 --steps 20000 --out unit-3.bin
-{"status":"ok","campaign":3904165131322950742,"unit":3,"points":333,...}
+# Anywhere: the job document every participant shares.
+$ ./build/ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
+      --g 1456600859624672 --h 4047005209878851 --dp-bits 16 --out job.txt
 
-$ ./build/ca dist-merge --group zp --p 2000000579 --order 1000000289 --g G --h H \
-      --campaign-seed 12345 --dp-bits 6 unit-*.bin
-{"status":"ok","accepted":2513,"duplicates":0,"rejected":0,"stored":2449,"solved":true,"x":821034685}
+# On the reachable host: the coordinator.  It is a Go service -- deployed,
+# fronted and restarted by a scheduler -- and it reuses this library through
+# cgo rather than reimplementing any of it.
+$ make coordinator && ./build/ca-coordinator -job job.txt -listen :8080 \
+      -token-file /etc/ca/token
+
+# On every agent, anywhere.  The URL is the whole configuration: no inbound
+# rule, no address of its own, not even a copy of the job document.
+$ export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=...
+$ ./build/ca work --node "$(hostname)" --threads "$(nproc)"
+$ ./build/ca coord-status
 ```
 
-A unit is replayable (its points are a function of the campaign seed and the
-unit id) and the merger verifies every point before storing it and every
-answer before reporting it, so the two halves survive a scheduler that
-delivers at least once and agents that are not trusted.  See
-[docs/DISTRIBUTED.md](docs/DISTRIBUTED.md) for the protocol and
-[orchestrator/](orchestrator/README.md) for the control plane and agents that
-run it on Kubernetes or on EC2 with systemd:
+On Kubernetes that is one command:
 
 ```sh
-make orchestrator && make smoke     # one control plane, two agents, a real answer
+helm install rho deploy/helm/ca-coordinator \
+    --set-file job.document=job.txt \
+    --set auth.token="$(openssl rand -hex 32)" --set agents.replicaCount=10
 ```
+
+The coordinator is a rendezvous, not an authority: it holds the same CRDT
+every agent holds, verifies every point the way an agent does, assigns no
+work, and losing it costs only reachability -- agents keep walking and
+reconverge when it returns.  Every check-in is self-certifying
+(`a*G + b*H == point`, two scalar multiplications to check work worth
+`2^dp_bits` steps), so a participant who lies can only waste their own time.
+See [docs/COORDINATOR.md](docs/COORDINATOR.md) for the protocol, the CRDT and
+the trust model, [deploy/helm/ca-coordinator/](deploy/helm/ca-coordinator/)
+for the chart, and [deploy/ca-coordinator/](deploy/ca-coordinator/) for
+systemd units on a plain VM.
 
 ## Hardware
 
@@ -251,6 +274,54 @@ make ecc2k130-metal && ecc2k130/build/ec2k-metal bench       # macOS
 
 See [ecc2k130/README.md](ecc2k130/README.md) for the measurement, the
 boundary it is measured against, and how the last 15% was found.
+
+## Running it across machines
+
+`ca_rho_solve` divides one instance across the threads of one process.
+`ca_coord.h` divides it across machines that cannot reach each other —
+the usual cloud case, where the workers are in private subnets or behind
+NAT and only one host is reachable by all of them.  Agents **dial out**
+to that host and it pushes everyone else's distinguished points and the
+solution back down the connection each agent opened (a *reverse
+channel*, opened with an HTTP upgrade so it passes through an ALB or
+nginx), so no agent needs an inbound rule, a public address, or even a
+copy of the job document:
+
+```sh
+# Anywhere: the job document everyone shares.
+ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
+    --g 1456600859624672 --h 4047005209878851 --dp-bits 16 --out job.txt
+
+# On the reachable host: the coordinator.  It is a Go service -- it has
+# to be deployed, fronted and restarted by a scheduler -- and it reuses
+# this library through cgo rather than reimplementing any of it.
+cd bindings/go && go build ./cmd/ca-coordinator
+./ca-coordinator -job ../../job.txt -listen :8080 -token-file /etc/ca/token
+
+# On every agent, anywhere.  The URL is the whole configuration.
+export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=…
+ca work --node "$(hostname)" --threads "$(nproc)"
+ca coord-status
+```
+
+On Kubernetes that is one command:
+
+```sh
+helm install rho deploy/helm/ca-coordinator \
+    --set-file job.document=job.txt \
+    --set auth.token="$(openssl rand -hex 32)" --set agents.replicaCount=10
+```
+
+The hub is a rendezvous, not an authority: it holds the same CRDT every
+agent holds, verifies every point the way an agent does, assigns no
+work, and losing it costs only reachability — agents keep walking and
+reconverge when it returns.  Every check-in is self-certifying
+(`a*G + b*H == point`, two scalar multiplications to check work worth
+`2^dp_bits` steps), so a participant who lies can only waste their own
+time.  Design notes: [docs/COORDINATOR.md](./docs/COORDINATOR.md);
+Helm chart: [deploy/helm/ca-coordinator/](./deploy/helm/ca-coordinator/);
+images: [deploy/docker/](./deploy/docker/); systemd units for a plain VM:
+[deploy/ca-coordinator/](./deploy/ca-coordinator/).
 
 ## C API in one screen
 
@@ -366,14 +437,17 @@ src/                     library sources (+ internal linalg.h, ca_internal.h)
 cuda/                    the CUDA kernel (ca_device.cuh is shared C11/CUDA code)
 tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
-orchestrator/            Go control plane and agents (deploy/{k8s,systemd,docker})
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
 ecc2k130/                ECC2K-130 clients: packed GF(2^131) table walk (CUDA, CPU, Metal), host tests vs the model
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
-docs/                    ALGORITHMS.md, BENCHMARKS.md, DISTRIBUTED.md, FFI.md, GPU.md
+docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md
+bindings/go/cmd/ca-coordinator  the coordinator service (Go, cgo onto this library)
+deploy/helm/ca-coordinator      Helm chart: the coordinator and its agents
+deploy/docker/                  one Dockerfile, two images (coordinator, agent)
+deploy/ca-coordinator/          systemd units and EC2 user-data for a plain VM
 fuzz/                    libFuzzer harnesses and their seed corpora
-.github/workflows/       ci, analysis, bindings, orchestrator, fpga, ecc2k130, fuzz, codeql, nightly
+.github/workflows/       ci, analysis, bindings, deploy, fpga, ecc2k130, fuzz, codeql, nightly
 ```
 
 ## Checks
@@ -387,10 +461,10 @@ set locally, in the order that fails fastest.
 | `ci` | gcc, clang, macOS and arm64 builds with `-Werror`; ctest; every `ca` subcommand via `scripts/cli_smoke.sh`, with the answers checked where they are known in closed form; AddressSanitizer plus UndefinedBehaviorSanitizer; ThreadSanitizer over the pthreads solvers; valgrind memcheck on the fast suites; install and consume through both `find_package` and a relocated `pkg-config` prefix; the CUDA kernel compiled for sm_70 to sm_90 with a register report |
 | `analysis` | clang-tidy (warnings are errors), cppcheck, `gcc -fanalyzer`, clang-format on the lines a change touches, shellcheck, actionlint, and coverage with a floor |
 | `bindings` | Rust fmt/clippy/doc/tests and a measured MSRV floor, cargo-deny, Go across three toolchains with the race detector and golangci-lint, Python 3.8 to 3.13 plus an installed-package run, ruff and mypy |
-| `fuzz` | six libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
-| `orchestrator` | the Go control plane and agents: vet, gofmt, no third-party dependencies, `go test -race` (including the cross-checks against the C library), and an end-to-end smoke run of a real fleet |
+| `fuzz` | seven libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
 | `fpga` | the ECC2K-130 core: the golden model's own checks, then every testbench against the vectors it produces, at three multiplier widths; verilator `-Wall`; a yosys area report |
 | `ecc2k130` | the GPU client: the packed arithmetic, the table walk's selection and the walk itself against `fpga/model` on gcc and clang; the kernel compiled for sm_120 with CUDA 13.3 from pip wheels, with its register and spill report |
+| `deploy` | the Helm chart and the container images: `helm lint`, a render with every optional piece enabled whose manifests are parsed and asserted (one coordinator replica, `Recreate`, and an agent NetworkPolicy that allows no ingress at all), the three configurations the chart must refuse, and a build of both image targets that then runs each one |
 | `codeql` | C, Go and Python, with the `security-and-quality` query pack |
 | `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
 
