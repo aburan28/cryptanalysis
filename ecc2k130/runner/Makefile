@@ -109,6 +109,7 @@ PHASE_PROFILE ?= 0
 TABLE_PIPE_SELECT ?= 0
 # Reverse pass issues the chain product before lambda's.
 PACKED_CHAIN_FIRST ?= 0
+FROBENIUS_FUSED ?= 0
 # Polynomial squaring on the logic pipe instead of the carryless one.
 PACKED_ALU_SQUARE ?= 0
 # Keep experimental tuning independent: one change per comparison initially.
@@ -168,6 +169,7 @@ CLANGARCH ?= sm_90
 SMARCH  ?= sm_90
 
 HDRS = include/durable.h include/bitslice.h include/fieldbs.h include/fieldpb.h include/walk.h \
+       include/packedfrobeniusfused.cuh \
        include/kernel.h include/ref.h include/solver.h include/bigmod.h include/tablewalk.h \
        include/curveparams.h include/packed131.h include/packedtransform131.h include/packedsigma131.h include/packedpolyreduce131.h include/packeddirectreduce131.h include/packedgeneratedproduct131.h include/packedcompactstate.cuh include/packedkernels.cuh include/packedengine.cuh
 GEN  = generated/eccF131.h generated/eccF83.h generated/eccF41.h generated/eccF23.h \
@@ -204,6 +206,7 @@ DEFS = -DECC_COLLECTIVE_WARPS=$(COLLECTIVE_WARPS) -DECC_BATCH=$(BATCH) -DECC_THR
        -DECC_WALK_TABLE=$(WALK_TABLE) -DECC_TABLE_BRANCHES=$(TABLE_BRANCHES) \
        -DECC_TABLE_PIVOT_BYTES=$(TABLE_PIVOT_BYTES) \
        -DECC_TABLE_TAG_DENOM=$(TABLE_TAG_DENOM) -DECC_TABLE_FUSED=$(TABLE_FUSED) -DECC_TABLE_FUSED_PIPE=$(TABLE_FUSED_PIPE) -DECC_PHASE_PROFILE=$(PHASE_PROFILE) -DECC_TABLE_PIPE_SELECT=$(TABLE_PIPE_SELECT) -DECC_PACKED_CHAIN_FIRST=$(PACKED_CHAIN_FIRST) \
+       -DECC_FROBENIUS_FUSED=$(FROBENIUS_FUSED) \
        -DECC_TABLE_GLOBAL=$(TABLE_GLOBAL) \
        -DECC_TABLE_ADDEND_GLOBAL=$(TABLE_ADDEND_GLOBAL) \
        -DECC_PACKED_ALU_SQUARE=$(PACKED_ALU_SQUARE)
@@ -796,9 +799,12 @@ FROBENIUS_FAST_FLAGS = $(LEGACY_PRODUCTION_FLAGS) PACKED_FROM_REDUCED=1 \
 
 # Selected production profile for a fresh 120,320-worker population.
 # It preserves the walk, but must not load 385,024-worker checkpoints.
+# Reuse updated coordinates to prepare the following step, and issue the
+# reverse chain product first. The DP32 walk and checkpoint bytes are unchanged.
 FROBENIUS_120K_FLAGS = $(filter-out THREADS=% MINBLOCKS=% COLLECTIVE_WARPS=%,$(LEGACY_PRODUCTION_FLAGS)) \
     THREADS=640 MINBLOCKS=1 COLLECTIVE_WARPS=4 PACKED_FROM_REDUCED=1 \
-    PACKED_INLINE_POLY=3 PACKED_L2_PERSIST=1 PACKED_ALU_SQUARE=1
+    PACKED_INLINE_POLY=3 PACKED_L2_PERSIST=1 PACKED_ALU_SQUARE=1 PACKED_CHAIN_FIRST=1 \
+    FROBENIUS_FUSED=1
 
 .PHONY: gpu-frobenius32-fast gpu-frobenius32-120k check-frobenius32-fast-gpu
 gpu-frobenius32-fast:
