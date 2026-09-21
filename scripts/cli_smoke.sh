@@ -166,6 +166,30 @@ want '"x":123456' solve --alg gpu-rho "${ZP[@]}" --g 858101 \
   --seed 1
 want_fail solve --alg dlog --group zp --p 12x34    # malformed number
 
+# Bernstein-Lange precomputation (ca_precomp.h).  The method needs a base that
+# generates the whole group, so work in the prime-order subgroup (order 166667,
+# where 1000002 = 2 * 3 * 166667): g^6 is such a base.  Plant x = 12345 and
+# solve it online against the precomputed table.
+PSUB=(--group zp --p 1000003 --order 166667)
+PBASE=$("$CA" group exp "${ZP[@]}" --elem 858101 --k 6 | sed 's/.*"\([0-9]*\)".*/\1/')
+PH=$("$CA" group exp "${PSUB[@]}" --elem "$PBASE" --k 12345 | sed 's/.*"\([0-9]*\)".*/\1/')
+want '"precomp_ops"' solve --alg precomp "${PSUB[@]}" --g "$PBASE" --h "$PH" --seed 1
+want '"x":12345' solve --alg precomp "${PSUB[@]}" --g "$PBASE" --h "$PH" --seed 1
+
+# Curve-aware dispatch (ca_curve.h): the GLV endomorphism families are
+# detected from name or parameters, and solve --alg glv folds the rho walk.
+want '"endomorphism":"j0"' curve --name glv-j0-26
+want '"endomorphism":"j1728"' curve --name glv-j1728-26
+want '"endomorphism":"none"' curve --name generic-26
+want '"aut_order":6' curve --group ec --p 67108933 --a 0 --b 7 --order 16773703
+want '"curves"' curve --list
+want_no '"status":"not found"' curve --name no-such-curve
+CJ0=(--group ec --p 67108933 --a 0 --b 7 --order 16773703)
+GJ0=$("$CA" group generator "${CJ0[@]}" | sed 's/.*"generator":"\([^"]*\)".*/\1/')
+HJ0=$("$CA" group exp "${CJ0[@]}" --elem "$GJ0" --k 424242 | sed 's/.*"result":"\([^"]*\)".*/\1/')
+want '"x":424242' solve --alg glv "${CJ0[@]}" --g "$GJ0" --h "$HJ0" --seed 3
+want '"endomorphism":"j0"' solve --alg glv "${CJ0[@]}" --g "$GJ0" --h "$HJ0" --seed 3
+
 # ── index calculus ──────────────────────────────────────────────────────────
 want '"status":"ok"' ic --p 1099511627791 --g 3 --h 123456789 --threads 2
 

@@ -218,6 +218,25 @@ ca_status ca_group_ec_init(ca_group *g, uint64_t p, uint64_t a, uint64_t b, uint
     return CA_OK;
 }
 
+void ca_ec_endo(const ca_group *g, ca_elem *r, const ca_elem *a)
+{
+    if (g->endo_kind == 0 || FINF(a)) {
+        *r = *a;
+        return;
+    }
+    if (g->endo_kind == 1) {
+        /* j = 0: psi(x, y) = (beta * x, -y), beta a cube root of unity */
+        FX(r) = fmul(g, g->endo_c_mont, FX(a));
+        FY(r) = FY(a) ? g->p - FY(a) : 0;
+    } else {
+        /* j = 1728: psi(x, y) = (-x, i * y), i = sqrt(-1) */
+        FX(r) = FX(a) ? g->p - FX(a) : 0;
+        FY(r) = fmul(g, g->endo_c_mont, FY(a));
+    }
+    FINF(r) = 0;
+    r->w[3] = 0;
+}
+
 int ca_ec_lift_x(const ca_group *g, ca_elem *r, uint64_t x)
 {
     x %= g->p;

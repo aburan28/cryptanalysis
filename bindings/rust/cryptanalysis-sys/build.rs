@@ -18,6 +18,8 @@ const SOURCES: &[&str] = &[
     "rho.c",
     "kangaroo.c",
     "grumpy.c",
+    "precomp.c",
+    "curve.c",
     "pohlig.c",
     "cheon.c",
     "linalg.c",
