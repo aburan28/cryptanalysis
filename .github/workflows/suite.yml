@@ -1,0 +1,157 @@
+name: suite
+
+# The attack suite in suite/: the Rust crate cryptanalysis-suite, its three
+# binaries, and the Python index-calculus engine behind `ca-ic fixed`.
+# Everything that is specific to it lives here; ci.yml keeps the checks for
+# the C library and bindings.yml those for the language bindings.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+# One run per ref per workflow; a new push supersedes the one in flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust:
+    name: Rust (stable)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: suite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: suite
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        # The three lints allowed in Cargo.toml are the whole allow list;
+        # everything else is an error.
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Docs
+        run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: Build
+        run: cargo build --release
+      - name: Test
+        # Release, as the suite's own convention: the attacks are arithmetic
+        # over num-bigint and the unit tests take ten times longer unoptimised.
+        run: cargo test --release
+      - name: Every binary answers --help
+        run: |
+          for bin in ca-suite ca-ic ca-koblitz-pdp-prepare; do
+            ./target/release/$bin --help > /dev/null
+          done
+      - name: Smoke the tools
+        # One real answer from each tool, checked, so that a subcommand that
+        # panics or drifts shows up here and not in someone's terminal.
+        run: |
+          ./target/release/ca-suite list-ciphers | grep -q '^  aes-4r'
+          ./target/release/ca-suite auto --cipher toyspn-2r | grep -q 'distinguishes from random (10×)\*\*: ✓'
+          ./target/release/ca-suite hash-auto --hash md5 | grep -q 'attack succeeds\*\*: ✓'
+          ./target/release/ca-suite mlwe margins | grep -q '^ML-KEM-768 '
+          ./target/release/ca-suite rho-collab init --curve demo-32 --secret 0x1234567 --out job.json
+          ./target/release/ca-suite rho-collab work --job job.json --threads 2 --max-seconds 120 | grep -q '^verified: true'
+          ./target/release/ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate --json \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin)["result"]; assert r["verified"] is True, r'
+
+  rust-msrv:
+    # The floor declared in suite/Cargo.toml, re-checked here so that it
+    # cannot drift from what actually compiles.
+    name: Rust MSRV 1.87
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: suite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.87.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: suite
+          key: msrv-1.87
+      - name: The manifest must declare the version this job tests
+        run: |
+          got=$(cargo metadata --no-deps --format-version 1 \
+                | jq -r '.packages[] | select(.name == "cryptanalysis-suite") | .rust_version')
+          if [ "$got" != "1.87" ]; then
+            echo "::error::cryptanalysis-suite declares rust-version=$got, but this job builds it with 1.87"
+            exit 1
+          fi
+      - name: Check
+        run: cargo check --all-targets
+      - name: Test
+        run: cargo test --release --lib
+
+  rust-supply-chain:
+    name: Rust supply chain (cargo-deny)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          # Pinned, because --config moved from `check` to the top level in
+          # 0.20; the same version bindings.yml uses.
+          tool: cargo-deny@0.20.2
+      - name: cargo-deny
+        # No --config: cargo-deny reads deny.toml from the working directory.
+        run: cargo deny check --show-stats
+        working-directory: suite
+
+  python-engine:
+    # The stdlib-only engine `ca-ic fixed` drives, with the optional SAT back
+    # ends installed so that the tests covering that path run too.
+    name: Python engine ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    env:
+      RUFF_VERSION: "0.15.8"
+    defaults:
+      run:
+        working-directory: suite/python/indexcalc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Cache the pip download cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-engine-${{ matrix.python }}-${{ hashFiles('suite/python/indexcalc/requirements-sat.txt') }}-ruff${{ env.RUFF_VERSION }}
+      - name: Install the SAT back ends and the linter
+        run: python -m pip install -r requirements-sat.txt "ruff==$RUFF_VERSION"
+      - name: ruff check
+        run: ruff check --output-format github .
+      - name: Unit tests
+        run: python -m unittest test_indexcalc_e2e test_indexcalc_fixed test_indexcalc_selector testirschedule -v

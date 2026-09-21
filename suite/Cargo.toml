@@ -1,0 +1,79 @@
+[package]
+name = "cryptanalysis-suite"
+version = "0.1.0"
+edition = "2021"
+# Verified floor, re-checked by the `suite` workflow's MSRV job: the tree
+# uses `u64::is_multiple_of` (1.87); clap 4.6 needs 1.85.
+rust-version = "1.87"
+license = "MIT"
+repository = "https://github.com/aburan28/cryptanalysis"
+description = "Attack library and command-line tools: symmetric, hash, ECDLP, lattice and post-quantum cryptanalysis"
+readme = "README.md"
+default-run = "ca-suite"
+publish = false
+
+[lib]
+name = "cryptanalysis_suite"
+path = "src/lib.rs"
+
+# The attack CLI: auto-attack, boomerang / rectangle / S-box analysis, hash
+# attacks, ML-KEM / ML-DSA cryptanalysis, and the collaborative Pollard rho.
+[[bin]]
+name = "ca-suite"
+path = "src/main.rs"
+
+# Curve inspection and bounded known-answer index-calculus experiments.
+[[bin]]
+name = "ca-ic"
+path = "src/bin/ic.rs"
+
+# Sealed-oracle / blind-bundle Phase-A point-decomposition artifact sets.
+[[bin]]
+name = "ca-koblitz-pdp-prepare"
+path = "src/bin/koblitz_pdp_prepare.rs"
+
+[features]
+default = []
+# Back the algebra cache with a Redis server instead of the local directory.
+redis-cache = ["dep:redis"]
+
+[dependencies]
+redis = { version = "0.32", optional = true, default-features = false, features = ["tls-rustls"] }
+# Portable CPU-time and peak-RSS measurements for the ic reports.
+libc = "0.2"
+num-bigint = { version = "0.4", features = ["rand"] }
+num-traits = "0.2"
+num-integer = "0.1"
+# Also the source of OS randomness (`rand::rngs::OsRng`).
+rand = { version = "0.8", features = ["small_rng"] }
+# Constant-time equality for MAC/tag verification.
+subtle = "2.5"
+hex = "0.4"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Data-parallel sweeps in the F4 engine and the isogeny harnesses.
+rayon = "1.10"
+# BLAKE3 is a dependency rather than a reimplementation: its Merkle-tree
+# construction is not what any attack here studies.
+blake3 = "1.5"
+
+[lints.rust]
+# md5_hashclash_ffi links the external HashClash library only when a build
+# script sets this cfg; the default build compiles the fallback path.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(hashclash_linked)"] }
+
+[lints.clippy]
+# The tree is clean under `clippy --all-targets -- -D warnings` with exactly
+# these three lints allowed, each for a stated reason; do not widen the list.
+#
+# Field and linear-algebra code indexes several arrays with one loop variable
+# (a[i] * b[i] -> c[i]); iterator rewrites of a few hundred such loops buy
+# nothing and are where transcription errors creep in.
+needless_range_loop = "allow"
+# Attack entry points take the whole problem instance as parameters, and the
+# option structs that would replace them exist where a caller needs them.
+too_many_arguments = "allow"
+# Relation tables and oracle return values are nested tuples by construction;
+# a type alias for each would name a shape that appears exactly once.
+type_complexity = "allow"

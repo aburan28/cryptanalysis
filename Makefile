@@ -6,7 +6,8 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
         coordinator coordinator-test fpga fpga-lint fpga-synth ecc2k130 ecc2k130-gpu \
-        ecc2k130-cpu ecc2k130-metal
+        ecc2k130-cpu ecc2k130-metal \
+        suite suite-build suite-test suite-lint suite-python
 
 all: lib
 
@@ -87,6 +88,32 @@ ecc2k130-cpu:
 
 ecc2k130-metal:
 	$(MAKE) -C ecc2k130 metal
+
+# ---- the attack suite (suite/) ---------------------------------------------
+# The Rust cryptanalysis library and its tools (ca-suite, ca-ic,
+# ca-koblitz-pdp-prepare), independent of the C library.  `make suite` is
+# what the suite workflow gates a pull request on, in the order that fails
+# fastest; the tests run in release because they are arithmetic over
+# num-bigint and take ten times longer unoptimised.
+suite: suite-lint suite-test suite-python
+
+suite-build:
+	cd suite && cargo build --release
+
+suite-lint:
+	cd suite && cargo fmt --all --check
+	cd suite && cargo clippy --all-targets -- -D warnings
+	cd suite && RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+	cd suite && cargo deny check
+
+suite-test:
+	cd suite && cargo test --release
+
+# The stdlib-only engine behind `ca-ic fixed`; the SAT back ends it can use
+# are in suite/python/indexcalc/requirements-sat.txt.
+suite-python:
+	cd suite/python/indexcalc && ruff check . && \
+	  python3 -m unittest test_indexcalc_e2e test_indexcalc_fixed test_indexcalc_selector testirschedule
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \
@@ -169,4 +196,4 @@ format:
 
 clean:
 	rm -rf $(BUILD) build-asan build-tsan build-vg build-cov build-tidy \
-	       build-analyzer build-cuda build-cuda-kernel bindings/rust/target
+	       build-analyzer build-cuda build-cuda-kernel bindings/rust/target suite/target
