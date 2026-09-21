@@ -223,7 +223,15 @@ def prepareInput(args):
     entry = next(value for value in catalog['artifacts'] if value['branches'] == args.branches)
     root = args.work / 'input'
     if not root.exists():
-        reference = run_walk.prepare(root, entry, catalog, base, args.artifact_dir, config)
+        staging = args.work / ('.input-preparing-' + uuid.uuid4().hex)
+        try:
+            reference = run_walk.prepare(staging, entry, catalog, base,
+                                         args.artifact_dir, config)
+            os.replace(str(staging), str(root))
+        except Exception:
+            if staging.exists():
+                shutil.rmtree(staging)
+            raise
     else:
         expected = {item['name']: item for item in entry['files']}
         for name in ('directions.bin', 'coefficients.json'):

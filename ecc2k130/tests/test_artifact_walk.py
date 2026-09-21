@@ -240,6 +240,28 @@ class ContinuousPublicationTests(unittest.TestCase):
         self.assertTrue(store.exists(self.manifest['distinguishedPoints']['key']))
         self.assertTrue(store.exists(self.manifest['state']['key']))
 
+    def testFailedInitialPreparationCannotPoisonInputDirectory(self):
+        prepareWork = self.work / 'prepare-fixture'
+        prepareWork.mkdir()
+        args = SimpleNamespace(
+            work=prepareWork, catalog=None, artifact_dir=None, branches=128,
+            lanes=1, cycles=1, chunk_launches=1, dp_cap=1, batch=1,
+            dp_weight=32, seed=1, shard_count=1, progress_every=1)
+        catalog = {'artifacts': [{'branches': 128}]}
+
+        def fail(root, entry, value, base, artifactDir, config):
+            root.mkdir()
+            (root / 'directions.bin').write_bytes(b'partial')
+            raise OSError('download interrupted')
+
+        with patch.object(continuous_walk.table_store, 'load_catalog',
+                          return_value=(catalog, 'https://example.test/')), \
+                patch.object(continuous_walk.run_walk, 'prepare', side_effect=fail):
+            with self.assertRaisesRegex(OSError, 'interrupted'):
+                continuous_walk.prepareInput(args)
+        self.assertFalse((prepareWork / 'input').exists())
+        self.assertEqual(list(prepareWork.glob('.input-preparing-*')), [])
+
 
 class ContinuousLeaseTests(unittest.TestCase):
     class Slots:
