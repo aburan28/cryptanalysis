@@ -36,6 +36,23 @@ FIELDS = [
 ]
 
 
+def migrate(path: Path) -> None:
+    """Rewrite an existing CSV under the current FIELDS if its header differs.
+
+    Columns added since the file was started are empty for the old rows;
+    without this, appended rows would be misaligned with the stale header.
+    """
+    with path.open(newline="") as fh:
+        rd = csv.DictReader(fh)
+        if rd.fieldnames == FIELDS:
+            return
+        rows = list(rd)
+    with path.open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+
+
 def done_keys(path: Path) -> dict[tuple, str]:
     if not path.exists():
         return {}
@@ -70,8 +87,10 @@ def main() -> None:
 
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    seen = done_keys(out)
     new_file = not out.exists()
+    if not new_file:
+        migrate(out)
+    seen = done_keys(out)
     curve = "random" if a.random_curve else "koblitz"
     here = Path(__file__).parent
 
