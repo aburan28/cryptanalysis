@@ -5,7 +5,7 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
-        coordinator coordinator-test fpga fpga-lint fpga-synth
+        coordinator coordinator-test fpga fpga-lint fpga-synth ecc2k130 ecc2k130-gpu
 
 all: lib
 
@@ -67,6 +67,17 @@ fpga-lint:
 
 fpga-synth:
 	$(MAKE) -C fpga synth CORES=1 DIGIT=4
+
+# ---- the ECC2K-130 GPU client (ecc2k130/) ----------------------------------
+# The packed GF(2^131) table walk for CUDA devices with a carry-less
+# multiplier, held to fpga/model's golden model.  `ecc2k130` is the host test
+# (no CUDA needed); `ecc2k130-gpu` builds the client with nvcc >= 13.3, which
+# ecc2k130/scripts/fetch_cuda.sh can supply from NVIDIA's pip wheels.
+ecc2k130:
+	$(MAKE) -C ecc2k130 test
+
+ecc2k130-gpu:
+	$(MAKE) -C ecc2k130 gpu
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \

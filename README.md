@@ -237,6 +237,32 @@ vendor place-and-route this flow does not run.  See
 order, what each testbench establishes, and what the next improvement is
 (batched inversion, ~3x).
 
+## GPU client for ECC2K-130
+
+`ecc2k130/` is a rho walker for the same challenge on a CUDA device: the
+packed GF(2^131) table walk from
+[aburan28/crypto](https://github.com/aburan28/crypto), one walk per
+thread-slot, products on the carry-less multiplier (`clmad`, sm_80+, CUDA
+13.3), one batched inversion per 16 slots.  (A different iteration function
+from the FPGA core's `sigma^j(R) + R`, so the two do not share a corpus; they
+share the field, the model and the record format.)  Measured on one RTX PRO 6000
+Blackwell: **20.08 billion iterations per second**, 0.90 of the carry-less
+unit's ceiling for the 33 `clmad` an iteration costs.  The arithmetic is
+checked against the golden model in `fpga/model` -- the same field, two
+implementations, compared bit for bit -- and every report the device makes
+can be re-walked on that model:
+
+```sh
+make ecc2k130                   # host test against the golden model, no CUDA needed
+make ecc2k130-gpu               # with nvcc >= 13.3 on PATH, or:
+make ecc2k130-gpu NVCC=$(ecc2k130/scripts/fetch_cuda.sh)/bin/nvcc   # CUDA 13.3 from pip wheels
+ecc2k130/build/ec2k-gpu bench                                         # iterations per second
+ecc2k130/build/ec2k-gpu walk --run-id 7 --dp-file dps.bin --verify 300   # collect; re-walk 300
+```
+
+See [ecc2k130/README.md](ecc2k130/README.md) for the measurement, the
+boundary it is measured against, and how the last 15% was found.
+
 ## Running it across machines
 
 `ca_rho_solve` divides one instance across the threads of one process.
@@ -400,6 +426,7 @@ cuda/                    the CUDA kernel (ca_device.cuh is shared C11/CUDA code)
 tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
+ecc2k130/                ECC2K-130 GPU client: packed GF(2^131) table walk (CUDA), host test vs the model
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md
@@ -408,7 +435,7 @@ deploy/helm/ca-coordinator      Helm chart: the coordinator and its agents
 deploy/docker/                  one Dockerfile, two images (coordinator, agent)
 deploy/ca-coordinator/          systemd units and EC2 user-data for a plain VM
 fuzz/                    libFuzzer harnesses and their seed corpora
-.github/workflows/       ci, analysis, bindings, deploy, fpga, fuzz, codeql, nightly
+.github/workflows/       ci, analysis, bindings, deploy, fpga, ecc2k130, fuzz, codeql, nightly
 ```
 
 ## Checks
@@ -424,6 +451,7 @@ set locally, in the order that fails fastest.
 | `bindings` | Rust fmt/clippy/doc/tests and a measured MSRV floor, cargo-deny, Go across three toolchains with the race detector and golangci-lint, Python 3.8 to 3.13 plus an installed-package run, ruff and mypy |
 | `fuzz` | seven libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
 | `fpga` | the ECC2K-130 core: the golden model's own checks, then every testbench against the vectors it produces, at three multiplier widths; verilator `-Wall`; a yosys area report |
+| `ecc2k130` | the GPU client: the packed arithmetic, the table walk's selection and the walk itself against `fpga/model` on gcc and clang; the kernel compiled for sm_120 with CUDA 13.3 from pip wheels, with its register and spill report |
 | `deploy` | the Helm chart and the container images: `helm lint`, a render with every optional piece enabled whose manifests are parsed and asserted (one coordinator replica, `Recreate`, and an agent NetworkPolicy that allows no ingress at all), the three configurations the chart must refuse, and a build of both image targets that then runs each one |
 | `codeql` | C, Go and Python, with the `security-and-quality` query pack |
 | `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
