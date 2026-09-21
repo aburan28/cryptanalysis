@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -22,7 +23,11 @@ func newPeeredHub(t *testing.T, ctx *ca.Ctx, name string, peers ...string) (*Hub
 	for i, u := range peers {
 		ps = append(ps, Peer{Name: fmt.Sprintf("%s-peer%d", name, i), URL: u})
 	}
-	h := NewHub(ctx, state, &Config{PeerInterval: 10 * time.Millisecond, Peers: ps})
+	h := NewHub(ctx, state, &Config{
+		PeerInterval: 10 * time.Millisecond,
+		PeerTimeout:  2 * time.Second,
+		Peers:        ps,
+	})
 	srv := httptest.NewServer(h.Handler())
 	t.Cleanup(srv.Close)
 	return h, state, srv
@@ -182,5 +187,53 @@ func TestParsePeers(t *testing.T) {
 	}
 	if _, err := parsePeers([]string{"http://x:1", "a=http://x:1"}, ""); err == nil {
 		t.Error("the same peer listed twice was accepted")
+	}
+}
+
+// The peer that matters is not the one that is down -- that errors at once
+// -- but the one that accepts the connection and then says nothing.
+// Unbounded, it holds its loop forever: never retried, never counted, and
+// so invisible to whoever is watching the fleet.
+func TestHungPeerIsAbandonedAndCounted(t *testing.T) {
+	ctx, _ := testFixture(t, 1234)
+
+	release := make(chan struct{})
+	hung := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(func() {
+		close(release)
+		hung.Close()
+	})
+
+	state, err := ca.NewState(ctx)
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	t.Cleanup(state.Close)
+	hub := NewHub(ctx, state, &Config{
+		PeerInterval: 10 * time.Millisecond,
+		PeerTimeout:  150 * time.Millisecond,
+		Peers:        []Peer{{Name: "hung", URL: hung.URL}},
+	})
+	pctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	hub.StartPeering(pctx)
+
+	// Two errors means it gave up on the first exchange and came back for
+	// another: the retry the docs promise.
+	deadline := time.Now().Add(5 * time.Second)
+	for hub.PeerStats()[0].Errors < 2 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	st := hub.PeerStats()[0]
+	if st.Errors < 2 {
+		t.Fatalf("a hung peer produced %d errors in 5s; the loop is stuck", st.Errors)
+	}
+	if st.LastError == "" {
+		t.Error("nothing recorded for an operator to see")
 	}
 }

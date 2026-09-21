@@ -67,6 +67,12 @@ type Config struct {
 	Peers []Peer
 	// How often each peer is synced.  Defaults to 5s.
 	PeerInterval time.Duration
+	// How long one exchange may take before it is abandoned and counted
+	// as an error.  Defaults to 30s.  Without it a peer that accepts the
+	// connection and then says nothing holds its loop forever, which is
+	// worse than one that is plainly down: it is never retried and never
+	// counted, so the region silently stops contributing.
+	PeerTimeout time.Duration
 	// Client used for peer requests; nil means http.DefaultClient.
 	PeerClient *http.Client
 }
@@ -117,6 +123,12 @@ func NewHub(ctx *ca.Ctx, state *ca.State, in *Config) *Hub {
 	}
 	if cfg.LeaseSecs == 0 {
 		cfg.LeaseSecs = 120
+	}
+	if cfg.PeerInterval <= 0 {
+		cfg.PeerInterval = 5 * time.Second
+	}
+	if cfg.PeerTimeout <= 0 {
+		cfg.PeerTimeout = 30 * time.Second
 	}
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()

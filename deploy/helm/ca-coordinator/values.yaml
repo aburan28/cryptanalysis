@@ -159,6 +159,11 @@ agents:
 federation:
   peers: []
   interval: 5s
+  # How long one exchange may take before it is abandoned and counted as
+  # an error.  This bounds the peer that accepts the connection and then
+  # never answers -- the one failure mode that would otherwise stall a
+  # peer loop silently, rather than showing up as an error to retry.
+  timeout: 30s
 
 networkPolicy:
   enabled: false

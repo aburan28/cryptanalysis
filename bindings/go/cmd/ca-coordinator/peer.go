@@ -65,11 +65,8 @@ type peerCounters struct {
 // its own goroutine: a peer that is unreachable delays nobody else, which is
 // the point of having several.
 func (h *Hub) peerLoop(ctx context.Context, p Peer, c *peerCounters) {
-	interval := h.cfg.PeerInterval
-	if interval <= 0 {
-		interval = 5 * time.Second
-	}
 	st := &peerState{peer: p, known: ca.VersionVector{}}
+	interval := h.cfg.PeerInterval
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	for {
@@ -95,7 +92,14 @@ func (h *Hub) peerLoop(ctx context.Context, p Peer, c *peerCounters) {
 // holds nothing -- would dump the whole log at it after every restart of
 // this process.  Its reply tells us where it stands, and from then on each
 // round sends exactly the difference.
-func (h *Hub) syncPeer(ctx context.Context, st *peerState, c *peerCounters) error {
+func (h *Hub) syncPeer(parent context.Context, st *peerState, c *peerCounters) error {
+	// Bounded, because the failure that matters is not a peer that is
+	// down -- that one errors at once -- but a peer that accepts the
+	// connection and then never answers.  Unbounded, it would hold this
+	// loop forever: never retried, never counted, and invisible.
+	ctx, cancel := context.WithTimeout(parent, h.cfg.PeerTimeout)
+	defer cancel()
+
 	var body strings.Builder
 	fmt.Fprintf(&body, "vv%s\n", h.state.VersionVector())
 	sent := 0

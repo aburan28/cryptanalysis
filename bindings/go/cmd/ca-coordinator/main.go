@@ -41,6 +41,7 @@ type options struct {
 	logFormat string
 	peers     peerList
 	peerEvery time.Duration
+	peerTmout time.Duration
 }
 
 // peerList collects repeated -peer flags.  Each is name=url, or just a url
@@ -98,6 +99,7 @@ func main() {
 	flag.StringVar(&o.logFormat, "log-format", "json", "log format: json or text")
 	flag.Var(&o.peers, "peer", "another coordinator to gossip with, as name=url or url (repeatable)")
 	flag.DurationVar(&o.peerEvery, "peer-interval", 5*time.Second, "how often each peer is synced")
+	flag.DurationVar(&o.peerTmout, "peer-timeout", 30*time.Second, "how long one peer exchange may take before it is abandoned")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(),
 			"ca-coordinator: the rendezvous a distributed-rho fleet dials out to.\n\n"+
@@ -185,6 +187,7 @@ func run(o *options, log *slog.Logger) (int, error) {
 		LeaseSecs:    o.leaseSecs,
 		Peers:        peers,
 		PeerInterval: o.peerEvery,
+		PeerTimeout:  o.peerTmout,
 		OnCheckIn: func(line string) {
 			if sink != nil {
 				sink.Append(line)

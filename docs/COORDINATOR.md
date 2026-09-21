@@ -251,7 +251,12 @@ proof, checked on arrival by whoever receives it.  So:
   hostile peer costs bandwidth.
 * **An unreachable peer is not an outage.** It is counted
   (`carho_peer_errors_total`, labelled by peer) and retried; the hub and
-  its own agents carry on.
+  its own agents carry on.  Every exchange is bounded by
+  `-peer-timeout` (`federation.timeout`), because the failure that
+  matters is not a peer that is *down* — that one errors immediately —
+  but a peer that accepts the connection and then never answers.
+  Unbounded, that one holds its loop forever: never retried, never
+  counted, and so invisible to whoever is watching the fleet.
 
 The first exchange with a peer sends only a version vector, no check-ins.
 We have no idea what it holds, and the alternative — assuming it holds
