@@ -24,74 +24,6 @@
 
 using namespace ec2k_gpu;
 
-#if !ECC_WALK_TABLE
-namespace
-{
-
-int hexNibble(char c)
-{
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    return -1;
-}
-
-// P and Q are Certicom's points: on the curve, of prime order n, and distinct
-// from the points the tests below would otherwise be built from.
-void checkChallenge(CheckResult &cr)
-{
-    ec2k_pt P, Q, z;
-    challengePoints(&P, &Q);
-    cr.note(ec2k_on_curve(&P) && ec2k_on_curve(&Q), "challenge points are on the curve");
-    ec2k_pt_mul(&z, &P, SUBGROUP_ORDER, 3);
-    cr.note(z.inf != 0, "[n]P = O");
-    ec2k_pt_mul(&z, &Q, SUBGROUP_ORDER, 3);
-    cr.note(z.inf != 0, "[n]Q = O");
-}
-
-// Walk every known answer's seed from the challenge points to its first point
-// of weight <= 46 and compare the 32-byte record.
-void checkKnownAnswers(CheckResult &cr, const char *path)
-{
-    FILE *f = fopen(path, "r");
-    cr.note(f != nullptr, "known-answer file opens");
-    if (!f) return;
-    ec2k_pt P, Q;
-    challengePoints(&P, &Q);
-    HostWalk *walk = new HostWalk;
-    walk->build(P, Q);
-    char line[256];
-    int records = 0, matched = 0;
-    while (fgets(line, sizeof(line), f)) {
-        if (line[0] == '#' || line[0] == '\n') continue;
-        uint8_t want[EC2K_RECORD_BYTES];
-        bool parsed = true;
-        for (int i = 0; i < EC2K_RECORD_BYTES && parsed; ++i) {
-            const int hi = hexNibble(line[2 * i]), lo = hexNibble(line[2 * i + 1]);
-            parsed = hi >= 0 && lo >= 0;
-            want[i] = (uint8_t)(hi << 4 | lo);
-        }
-        cr.note(parsed, "known answer parses");
-        if (!parsed) continue;
-        unsigned long long seed = 0;
-        for (int i = 0; i < 8; ++i) seed |= (unsigned long long)want[i] << (8 * i);
-        DpRecord rec;
-        uint8_t got[EC2K_RECORD_BYTES];
-        const bool walked = referenceReport(*walk, seed, 46, 1ull << 24, &rec);
-        if (walked) campaignRecord(got, rec);
-        const bool same = walked && memcmp(got, want, sizeof(got)) == 0;
-        cr.note(same, "known answer: the model walks the seed to the campaign client's record");
-        records++;
-        matched += same;
-    }
-    fclose(f);
-    delete walk;
-    cr.note(records >= 32, "known-answer file has its records");
-    printf("known answers: %d of %d records reproduced from the challenge points\n", matched,
-           records);
-}
-
-} // namespace
-#endif
 
 int main(int argc, char **argv)
 {
@@ -131,9 +63,8 @@ int main(int argc, char **argv)
     delete walk;
 
 #if !ECC_WALK_TABLE
-    checkChallenge(cr);
     if (argc > 2)
-        checkKnownAnswers(cr, argv[2]);
+        campaignCheck(cr, argv[2]);
     else
         cr.note(false, "the sigma walk's test needs the known-answer file (hosttest ROUNDS KAT)");
 #endif

@@ -57,6 +57,21 @@ and every check is equality, not equivalence up to a basis change -- and
 
 ## Collecting for the ecc2k-130 campaign
 
+Each [release](https://github.com/aburan28/cryptanalysis/releases) tagged
+`ec2k-gpu-v*` ships `ec2k-gpu` for Linux x86_64 and aarch64. Each binary is
+built for sm_80, 86, 89, 90, 100 and 120, with the CUDA runtime linked in, and
+needs only an NVIDIA driver recent enough for CUDA 13.3:
+
+```sh
+tar xzf ec2k-gpu-VERSION-linux-x86_64.tar.gz && cd ec2k-gpu-VERSION-linux-x86_64
+./ec2k-gpu check --kat campaign-kat.hex   # the campaign's known answers, on this CPU
+./ec2k-gpu walk --run-id R --dp-file dps.bin --checkpoint state.ck
+```
+
+`scripts/package.sh` builds that tarball, and
+`.github/workflows/ec2k-gpu-release.yml` runs it on the tag. Before packing,
+the binary it builds must pass `check --kat`. From source:
+
 ```sh
 make test                  # the host test, including the campaign's known answers
 make gpu                   # needs nvcc >= 13.3; ARCH defaults to sm_120
