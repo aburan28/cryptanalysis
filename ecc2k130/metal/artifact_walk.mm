@@ -15,7 +15,7 @@ static const char shader[] =
 ;
 struct State { uint32_t xy[10],history[3],mode; uint64_t seed,trailSteps,walkSteps,reseeds,trace,dpHash,dpCount; };
 struct Dp { uint64_t seed,steps,lane; uint32_t xy[10],history[3],pad; };
-struct Args { uint32_t lanes,cycles,branches,dpCap; int32_t dpWeight; uint32_t pad; };
+struct Args { uint32_t lanes,cycles,branches,dpCap; int32_t dpWeight; uint32_t seedStride; };
 static_assert(sizeof(State)==112 && sizeof(Dp)==80 && sizeof(Args)==24,"host/shader layout differs");
 static void need(bool ok,const char *text) { if(!ok)throw std::runtime_error(text); }
 static NSData *readFile(NSString *root,NSString *name) {
@@ -58,10 +58,14 @@ int main(int argc,char **argv) {
             const uint32_t lanes=[config[@"lanes"] unsignedIntValue],cycles=[config[@"cycles"] unsignedIntValue];
             const uint32_t launches=[config[@"launches"] unsignedIntValue],branches=[config[@"branches"] unsignedIntValue];
             const uint32_t cap=[config[@"dpCap"] unsignedIntValue],batch=[config[@"batch"] unsignedIntValue];
+            const uint32_t progressEvery=config[@"progressEvery"]?[config[@"progressEvery"] unsignedIntValue]:1;
+            const uint32_t seedStride=config[@"seedStride"]?[config[@"seedStride"] unsignedIntValue]:lanes;
             const int dpWeight=[config[@"dpWeight"] intValue];
             need(lanes>0&&lanes<=65536&&cycles>0&&cycles<=128&&launches>0&&launches<=10000,"invalid workload bounds");
             need((branches==128||branches==256)&&cap>0&&cap<=1000000&&dpWeight>=-1&&dpWeight<=130,"invalid table/report bounds");
-            need(batch==1||batch==4||batch==8||batch==16||batch==32,"invalid batch");
+            need((batch==1||batch==4||batch==8||batch==16||batch==32)&&progressEvery>0,
+                 "invalid batch/progress interval");
+            need(seedStride>=lanes&&seedStride%lanes==0,"invalid seed stride");
             id<MTLDevice> device=MTLCreateSystemDefaultDevice();
             if(!device){printJson(@{@"status":@"unavailable",@"error":@"No Metal GPU; run natively outside the sandbox"});return 77;}
             need(device.hasUnifiedMemory,"the artifact driver requires unified-memory Metal");
@@ -86,6 +90,13 @@ int main(int argc,char **argv) {
             NSData *initial=readFile(input,@"initial.bin"),*directions=readFile(input,@"directions.bin"),*constants=readFile(input,@"selector.bin");
             need(initial.length==size_t(lanes)*sizeof(State),"bad initial state size");
             need(directions.length==size_t(262)*branches*36&&constants.length==13708,"bad table/selector sizes");
+            uint64_t baseUpdates=0,baseSeeds=0,baseDpCount=0;
+            const State *starting=static_cast<const State *>(initial.bytes);
+            for(uint32_t lane=0;lane<lanes;++lane) {
+                baseUpdates+=starting[lane].walkSteps;
+                baseSeeds+=starting[lane].reseeds;
+                baseDpCount+=starting[lane].dpCount;
+            }
             auto make=[&](NSData *data){return [device newBufferWithBytes:data.bytes length:data.length options:MTLResourceStorageModeShared];};
             id<MTLBuffer> states=make(initial),dirs=make(directions),consts=make(constants);
             id<MTLBuffer> records=[device newBufferWithLength:size_t(cap)*sizeof(Dp) options:MTLResourceStorageModeShared];
@@ -94,14 +105,16 @@ int main(int argc,char **argv) {
             NSString *recordPath=[output stringByAppendingPathComponent:@"reports.bin"];
             FILE *reportFile=fopen(recordPath.fileSystemRepresentation,"wb");need(reportFile!=nullptr,"cannot create report file");
             struct Close {FILE *f;~Close(){fclose(f);}} close{reportFile};
-            uint64_t totalReports=0,dispatches=0;double gpuSeconds=0,maxDispatch=0;
+            uint64_t totalReports=0,dispatches=0,previousUpdates=baseUpdates,previousSeeds=baseSeeds;
+            double gpuSeconds=0,maxDispatch=0;
             uint32_t chunkLimit=1;
             const auto started=std::chrono::steady_clock::now();
             for(uint32_t launch=0;launch<launches;++launch) {
                 memset(counts.contents,0,8);
+                double launchGpuSeconds=0;
                 for(uint32_t done=0;done<cycles;) {
                     const uint32_t chunk=std::min(chunkLimit,cycles-done);
-                    Args args{lanes,chunk,branches,cap,dpWeight,0};
+                    Args args{lanes,chunk,branches,cap,dpWeight,seedStride};
                     id<MTLCommandBuffer> command=[queue commandBuffer];auto encoder=[command computeCommandEncoder];
                     [encoder setComputePipelineState:walk];[encoder setBuffer:states offset:0 atIndex:0];
                     [encoder setBuffer:dirs offset:0 atIndex:1];[encoder setBuffer:consts offset:0 atIndex:2];
@@ -111,7 +124,7 @@ int main(int argc,char **argv) {
                     [encoder endEncoding];finish(command);done+=chunk;++dispatches;
                     double seconds=command.GPUEndTime-command.GPUStartTime;
                     need(std::isfinite(seconds)&&seconds>=0,"invalid GPU event timing");
-                    gpuSeconds+=seconds;maxDispatch=std::max(maxDispatch,seconds);
+                    gpuSeconds+=seconds;launchGpuSeconds+=seconds;maxDispatch=std::max(maxDispatch,seconds);
                     // Aim below 50 ms; retain a factor-four margin for the
                     // selector cost when the first dispatch only seeds lanes.
                     if(seconds>0)chunkLimit=std::max(1u,std::min(128u,uint32_t(0.0125*chunk/seconds)));
@@ -120,20 +133,48 @@ int main(int argc,char **argv) {
                 need(count[1]==0&&count[0]<=cap,"DP buffer overflow; increase dpCap");
                 need(fwrite(records.contents,sizeof(Dp),count[0],reportFile)==count[0],"report write failed");
                 totalReports+=count[0];
+                uint64_t cumulativeUpdates=0,cumulativeSeeds=0;
+                const State *progress=static_cast<const State *>(states.contents);
+                for(uint32_t lane=0;lane<lanes;++lane) {
+                    cumulativeUpdates+=progress[lane].walkSteps;
+                    cumulativeSeeds+=progress[lane].reseeds;
+                }
+                const uint64_t launchUpdates=cumulativeUpdates-previousUpdates;
+                const uint64_t launchSeeds=cumulativeSeeds-previousSeeds;
+                previousUpdates=cumulativeUpdates;previousSeeds=cumulativeSeeds;
+                if((launch+1)%progressEvery==0||launch+1==launches) {
+                    const double ips=launchGpuSeconds>0?double(launchUpdates)/launchGpuSeconds:0;
+                    const double charged=launchGpuSeconds>0?double(launchUpdates+launchSeeds)/launchGpuSeconds:0;
+                    fprintf(stderr,
+                            "progress launch %u/%u: %llu walk iterations, %.3f M iterations/s, "
+                            "%llu seed additions, %.3f M charged group ops/s, %.6f GPU s\n",
+                            launch+1,launches,(unsigned long long)launchUpdates,ips/1e6,
+                            (unsigned long long)launchSeeds,charged/1e6,launchGpuSeconds);
+                    fflush(stderr);
+                }
             }
             need(fflush(reportFile)==0,"report flush failed");
-            uint64_t updates=0,reseedAdds=0,halted=0,exhausted=0,dpCount=0;
+            uint64_t cumulativeUpdates=0,cumulativeSeeds=0,halted=0,exhausted=0,cumulativeDpCount=0;
             const State *final=static_cast<const State *>(states.contents);
-            for(uint32_t i=0;i<lanes;++i){updates+=final[i].walkSteps;reseedAdds+=final[i].reseeds;dpCount+=final[i].dpCount;halted+=final[i].mode==2;exhausted+=final[i].mode==3;}
+            for(uint32_t i=0;i<lanes;++i){cumulativeUpdates+=final[i].walkSteps;cumulativeSeeds+=final[i].reseeds;cumulativeDpCount+=final[i].dpCount;halted+=final[i].mode==2;exhausted+=final[i].mode==3;}
+            need(cumulativeUpdates>=baseUpdates&&cumulativeSeeds>=baseSeeds&&cumulativeDpCount>=baseDpCount,
+                 "state counters moved backwards");
+            const uint64_t updates=cumulativeUpdates-baseUpdates,reseedAdds=cumulativeSeeds-baseSeeds;
+            const uint64_t dpCount=cumulativeDpCount-baseDpCount;
             need(dpCount==totalReports,"report count/state count disagree");
             writeFile(output,@"state.bin",states.contents,initial.length);
             const double wall=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
+            const double iterationsPerSecond=gpuSeconds>0?double(updates)/gpuSeconds:0;
+            const double chargedPerSecond=gpuSeconds>0?double(updates+reseedAdds)/gpuSeconds:0;
+            const double wallIterationsPerSecond=wall>0?double(updates)/wall:0;
             printJson(@{@"status":@"ok",@"scope":@"synthetic signed-Frobenius artifact walk",
                 @"device":device.name,@"branches":@(branches),@"lanes":@(lanes),@"batch":@(batch),
                 @"cyclesPerLaunch":@(cycles),@"launches":@(launches),@"dispatches":@(dispatches),
                 @"walkUpdates":@(updates),@"seedAdditions":@(reseedAdds),@"groupOperations":@(updates+reseedAdds),
                 @"dpRecords":@(totalReports),@"droppedRecords":@0,@"haltedLanes":@(halted),@"exhaustedLanes":@(exhausted),
                 @"gpuSeconds":@(gpuSeconds),@"maximumDispatchSeconds":@(maxDispatch),@"dispatchWallSeconds":@(wall),
+                @"iterationsPerSecond":@(iterationsPerSecond),@"millionIterationsPerSecond":@(iterationsPerSecond/1e6),
+                @"chargedGroupOperationsPerSecond":@(chargedPerSecond),@"wallIterationsPerSecond":@(wallIterationsPerSecond),
                 @"independentArithmeticCases":@(cases),@"pairTableLoaded":@NO,
                 @"residentDataBytes":@(states.length+dirs.length+consts.length+records.length+counts.length)});
         } catch(const std::exception &error) {

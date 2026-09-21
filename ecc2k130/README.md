@@ -369,7 +369,10 @@ basis. It downloads only compact directions and coefficient metadata, evaluates
 every point-dependent selector on the GPU, and independently replays selected
 lanes and reports in Python. It is a new synthetic walk identity and never
 joins the campaign above. The giant pair-sum payload remains disabled until an
-exact intermediate selector improves complete charged work.
+exact intermediate selector improves complete charged work. Its continuous
+supervisor uploads content-addressed DP deltas and resumable checkpoints to an
+isolated S3 prefix; see the Metal guide for the macOS command and failure
+ordering.
 
 Neither client checkpoints, and at the campaign's weight a lane reports about
 once in 2^25 steps: a million lanes at 390 M it/s are a day from their first
