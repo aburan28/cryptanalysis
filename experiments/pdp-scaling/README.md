@@ -129,12 +129,6 @@ after the first timeout (1500 s for `sat`, 1800 s for `msolve` and
 `wdsat`).  One 4-core x86-64 container, four jobs at a time, one thread
 each.  Cells missing from the tables below have not finished the CPU-time
 re-run yet; `fit.py --update-readme results/*.csv` refreshes them.
-* `mitm` — the combinatorial reference: no algebra, meet-in-the-middle on
-  the factor base itself, `P_1 + ... + P_k = R - P_{k+1} - ... - P_m` with
-  `k = ceil(m/2)`, matched on the abscissa.  It costs exactly
-  `2^(l ceil(m/2))` group additions and is what any algebraic method must
-  beat.  It is written in Python, so its *time* carries a large constant;
-  its exponent is what matters and is known.
 
 ## Results
 
