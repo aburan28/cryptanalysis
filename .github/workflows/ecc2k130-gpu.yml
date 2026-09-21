@@ -75,3 +75,25 @@ jobs:
         # The recipe prints ptxas's register, shared-memory and spill lines
         # and fails if no binary came out.
         run: make gpu WALK=${{ matrix.walk }} NVCC="$NVCC"
+
+  metal:
+    name: Metal compile and reference tests
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build existing and artifact Metal clients
+        run: |
+          make metal-test
+          make -C metal
+          clang++ -O3 -std=c++17 -pthread -Wall -Wextra \
+            research/step_table/large_pairs.cpp -o /tmp/ecc2k-large-pairs
+      - name: Pair-table and walk reference tests
+        run: |
+          python3 -m unittest discover -s tests -p 'test_table_store.py' -v
+          python3 -m unittest discover -s tests -p 'test_publish_tables.py' -v
+          python3 -m unittest discover -s tests -p 'test_artifact_walk.py' -v
+          python3 -m unittest discover -s research/step_table -p 'test_*.py' -v
