@@ -6,8 +6,8 @@ name: ec2k-gpu-release
 # x86_64 and aarch64 with the pinned CUDA 13.3 from NVIDIA's pip wheels, for
 # sm_80 through sm_120 plus compute_120 PTX, and publishes the tarballs and
 # their .sha256 as a GitHub release.  A tag with -rc or -pre in it is a
-# prerelease.  Run by hand (workflow_dispatch) it builds and uploads the
-# tarballs as workflow artifacts and publishes nothing.
+# prerelease.  On a pull request, or run by hand (workflow_dispatch), it
+# builds and uploads the tarballs as workflow artifacts and publishes nothing.
 #
 # Every binary checks itself before it is packed: `ec2k-gpu check --kat`
 # replays the campaign's known answers on the runner's CPU (scripts/package.sh).
@@ -17,6 +17,13 @@ name: ec2k-gpu-release
 on:
   push:
     tags: ["ec2k-gpu-v*"]
+  # A pull request that touches the client builds and self-checks both
+  # tarballs, so a tag never runs a packaging path for the first time.
+  pull_request:
+    paths:
+      - "ecc2k130/**"
+      - "fpga/model/**"
+      - ".github/workflows/ec2k-gpu-release.yml"
   workflow_dispatch:
 
 permissions:
