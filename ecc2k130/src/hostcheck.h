@@ -350,4 +350,12 @@ struct CheckResult {
 // functions under nvcc.
 CheckResult crossCheck(const HostWalk &t, int rounds, uint64_t seed);
 
+#if !ECC_WALK_TABLE
+// The campaign's own checks, on top of crossCheck: Certicom's P and Q are on
+// the curve and of order n, and every record in the known-answer file (the
+// campaign client's own reports, tests/campaign-kat.hex) comes back byte for
+// byte when its seed is walked from them on the model.
+CheckResult &campaignCheck(CheckResult &cr, const char *katPath);
+#endif
+
 } // namespace ec2k_gpu

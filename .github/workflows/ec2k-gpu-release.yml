@@ -1,0 +1,110 @@
+name: ec2k-gpu-release
+
+# Release binaries of the ECC2K-130 campaign client, ec2k-gpu.
+#
+# A tag ec2k-gpu-vX.Y.Z builds the campaign build (WALK=sigma) on Linux
+# x86_64 and aarch64 with the pinned CUDA 13.3 from NVIDIA's pip wheels, for
+# sm_80 through sm_120 plus compute_120 PTX, and publishes the tarballs and
+# their .sha256 as a GitHub release.  A tag with -rc or -pre in it is a
+# prerelease.  Run by hand (workflow_dispatch) it builds and uploads the
+# tarballs as workflow artifacts and publishes nothing.
+#
+# Every binary checks itself before it is packed: `ec2k-gpu check --kat`
+# replays the campaign's known answers on the runner's CPU (scripts/package.sh).
+# No runner has a GPU, so what a release says about the device kernel is only
+# that it compiled; ecc2k130/scripts/device_check.sh is the check on a card.
+
+on:
+  push:
+    tags: ["ec2k-gpu-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+    working-directory: ecc2k130
+
+jobs:
+  build:
+    name: build (linux-${{ matrix.machine }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # 22.04's glibc 2.35 is the oldest the binaries then need.
+          - machine: x86_64
+            runner: ubuntu-22.04
+          - machine: aarch64
+            runner: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ecc2k130/build/cuda
+          key: cuda-wheels-${{ matrix.machine }}-${{ hashFiles('ecc2k130/scripts/fetch_cuda.sh') }}
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/ec2k-gpu-v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#ec2k-gpu-v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=0.0.0-dev.${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+          fi
+      - name: Build, self-check and pack
+        run: scripts/package.sh "$VERSION" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ec2k-gpu-linux-${{ matrix.machine }}
+          path: ecc2k130/dist/*
+          if-no-files-found: error
+
+  release:
+    name: publish
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/ec2k-gpu-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          flags=()
+          case "$TAG" in *-rc* | *-pre*) flags+=(--prerelease) ;; esac
+          version=${TAG#ec2k-gpu-v}
+          cat > notes.md <<EOF
+          ec2k-gpu $version: the ECC2K-130 campaign client, built for NVIDIA GPUs from Ampere (sm_80) onward on Linux.
+
+          \`\`\`sh
+          curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/ec2k-gpu-$version-linux-x86_64.tar.gz
+          curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/ec2k-gpu-$version-linux-x86_64.tar.gz.sha256
+          sha256sum -c ec2k-gpu-$version-linux-x86_64.tar.gz.sha256
+          tar xzf ec2k-gpu-$version-linux-x86_64.tar.gz && cd ec2k-gpu-$version-linux-x86_64
+          ./ec2k-gpu check --kat campaign-kat.hex
+          ./ec2k-gpu walk --run-id R --dp-file dps.bin --checkpoint state.ck
+          \`\`\`
+
+          Pick \`R\` at random in 10000-65534, one per GPU. The checksum comes from the same host as the tarball; it catches a damaged download, not a substituted one. See README.md in the tarball for what makes a point the campaign's, and ecc2k130/scripts/device_check.sh for the checks on a card.
+          EOF
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "ec2k-gpu $version" --notes-file notes.md "${flags[@]}"

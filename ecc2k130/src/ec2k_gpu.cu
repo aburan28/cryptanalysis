@@ -3,7 +3,8 @@
  *
  *   ec2k-gpu walk    --run-id R --dp-file F --checkpoint C [options]
  *   ec2k-gpu bench   [--steps S] [--launches L] [--threads T]
- *   ec2k-gpu check   [--rounds N]          (host only: arithmetic vs the model)
+ *   ec2k-gpu check   [--rounds N] [--kat F]   (host only: arithmetic vs the model,
+ *                                             and the campaign's known answers)
  *
  * One process drives one device.  The kernel (include/packedkernels.cuh) is
  * the packed GF(2^131) walk imported from github.com/aburan28/crypto: one walk
@@ -91,7 +92,7 @@ struct Options {
     int device = 0;
     bool testPoints = false; // --p-seed / --q-seed given: not the challenge
     uint64_t pSeed = 1, qSeed = 2;
-    std::string dpFile, dpFile64, checkpoint;
+    std::string dpFile, dpFile64, checkpoint, kat;
     int checkpointEvery = 600;
 };
 
@@ -115,6 +116,8 @@ int usage()
             "                   the campaign's weight: a report is ~2^28 steps on the CPU)\n"
             "  --p-seed S, --q-seed S   test points from seeds instead of the challenge's\n"
             "  --rounds N       check: random inputs per routine (default 64)\n"
+            "  --kat F          check: also replay the campaign's known answers in F\n"
+            "                   (campaign-kat.hex, shipped beside the binary)\n"
             "  --device D       CUDA device index\n"
             "walk: %s\n",
             DEFAULT_DP_WEIGHT, DEFAULT_MAX_ITERS, WALK_NAME);
@@ -538,14 +541,25 @@ struct Corpus {
 
 /* ---- commands ------------------------------------------------------------ */
 
+// The host checks, from the binary itself: the arithmetic against the model
+// and, with --kat, the campaign's known answers.  A downloaded binary that
+// passes both walks the campaign's walk on this machine's CPU; the device
+// kernel is checked by `walk --verify`.
 int cmdCheck(const Options &o, const HostWalk &walk)
 {
-    const CheckResult cr = crossCheck(walk, o.rounds, 0x243F6A8885A308D3ULL);
+    CheckResult cr = crossCheck(walk, o.rounds, 0x243F6A8885A308D3ULL);
+#if !ECC_WALK_TABLE
+    if (!o.kat.empty())
+        campaignCheck(cr, o.kat.c_str());
+    else
+        printf("note: no --kat file; the campaign's known answers were not checked\n");
+#endif
     if (cr.failures) {
         fprintf(stderr, "FAILED: %d of %d checks\n", cr.failures, cr.checks);
         return 1;
     }
-    printf("{\"status\":\"ok\",\"checks\":%d,\"rounds\":%d}\n", cr.checks, o.rounds);
+    printf("{\"status\":\"ok\",\"walk\":\"%s\",\"checks\":%d,\"rounds\":%d,\"knownAnswers\":%s}\n",
+           WALK_NAME, cr.checks, o.rounds, !ECC_WALK_TABLE && !o.kat.empty() ? "true" : "false");
     return 0;
 }
 
@@ -713,6 +727,7 @@ int main(int argc, char **argv)
     if (const char *v = opt(argc, argv, "--dp-file")) o.dpFile = v;
     if (const char *v = opt(argc, argv, "--dp-file64")) o.dpFile64 = v;
     if (const char *v = opt(argc, argv, "--checkpoint")) o.checkpoint = v;
+    if (const char *v = opt(argc, argv, "--kat")) o.kat = v;
     if (o.steps <= 0 || o.dpCap == 0 || o.checkpointEvery <= 0) return usage();
     if (runId > 0xFFFFu) {
         fprintf(stderr, "--run-id is 16 bits: at most 65535\n");
