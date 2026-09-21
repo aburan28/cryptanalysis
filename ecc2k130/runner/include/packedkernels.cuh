@@ -112,6 +112,18 @@ namespace eccPacked131 {
 #if ECC_TABLE_FUSED && (!ECC_WALK_TABLE || !ECC_TABLE_TAG_DENOM || !ECC_PACKED_POLY_STATE || ECC_PACKED_WEIGHTED_PREFIX != 2)
 #error "ECC_TABLE_FUSED requires the table walk with ECC_TABLE_TAG_DENOM, polynomial state and weighted prefix 2"
 #endif
+// Frobenius fusion uses the same alternating prefix/inverse traversal, with
+// cached Frobenius denominators instead of table tags. Each launch finishes
+// at the same point and reporting boundary as the ordinary two-pass walk.
+#ifndef ECC_FROBENIUS_FUSED
+#define ECC_FROBENIUS_FUSED 0
+#endif
+#if ECC_FROBENIUS_FUSED != 0 && ECC_FROBENIUS_FUSED != 1
+#error "ECC_FROBENIUS_FUSED must be 0 or 1"
+#endif
+#if ECC_FROBENIUS_FUSED && (ECC_PACKED_SLOT_PIPELINE || ECC_PACKED_SLOT_PREFETCH || ECC_PHASE_PROFILE || ECC_UNROLL_SLOTS != 1)
+#error "ECC_FROBENIUS_FUSED requires the plain slot loop without phase profiling"
+#endif
 // ECC_TABLE_FUSED_PIPE=1: the fused pass loads the next slot's x, y, W and
 // hist one iteration ahead of their use (17 more live registers).
 #ifndef ECC_TABLE_FUSED_PIPE
@@ -303,7 +315,9 @@ __device__ __forceinline__ void tableSelectSlot(const WalkParams<unsigned> &p, u
 }
 #endif
 
-#if ECC_TABLE_FUSED
+#if ECC_FROBENIUS_FUSED
+#include "packedfrobeniusfused.cuh"
+#elif ECC_TABLE_FUSED
 // The forward-pass work for one point of one slot: the normal-basis weight and
 // distinguished-point test, the table-walk selection with its history update,
 // the addend, and this slot's contribution to the running prefix chain.

@@ -1,9 +1,14 @@
 # DP32 / DP34 reconciliation
 
+The build targets now select the compatible v2 kernel described in
+[Frobenius pass fusion](FROBENIUS-FUSION.md). Its warmed five-pair confirmation
+measured a **2.7734%** median gain over the v1 binary deployed below. The v2
+change preserves the 120k checkpoint geometry; the deployment receipts in this
+document describe the original v1 rollout.
+
 The deployment choice made after this investigation is the compatible
 **120,320-worker, 640-thread, four-warp inverse** profile, whose three-run
-screening median is **17.453024 billion updates/s**. `make gpu-production`
-and `make gpu-frobenius32-120k` select it. It uses DP32 and checkpoint v2,
+screening median is **17.453024 billion updates/s**. It uses DP32 and checkpoint v2,
 with fresh run IDs 12,000–12,003 under
 `campaigns/ecc2k130-frobenius32-120k-v1`; older checkpoints retain their original
 geometry and location. The measurements below distinguish this fresh population

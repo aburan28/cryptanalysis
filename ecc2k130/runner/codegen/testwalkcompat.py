@@ -21,16 +21,19 @@ def corpus(path):
     return sorted(data[i:i + 32] for i in range(0, len(data), 32))
 
 
-def compare(legacy, candidate, workers=(1280, 1281, 256)):
+def compare(legacy, candidate, workers=(1280, 1281, 256), *, steps=8,
+            weights=(0, 50), max_iters=0):
     checks = []
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
 
         def run(binary, checkpoint, reports, population, weight):
             command = [str(binary), "--packed", "--curve", "131", "--threads", str(population),
-                       "--steps", "8", "--launches", "2", "--run-id", "11000",
+                       "--steps", str(steps), "--launches", "2", "--run-id", "11000",
                        "--dp-weight", str(weight), "--verify", "65536" if weight else "0",
                        "--dp-cap", "65536", "--checkpoint", str(checkpoint), "--dp-file", str(reports)]
+            if max_iters:
+                command += ["--max-iters", str(max_iters)]
             p = subprocess.run(command, capture_output=True, text=True, timeout=300)
             output = p.stdout + p.stderr
             if p.returncode or "MISMATCH" in output or "stopping:" in output:
@@ -45,7 +48,7 @@ def compare(legacy, candidate, workers=(1280, 1281, 256)):
             return {"command": command, "output": output, "verified": int(match[2])}
 
         for population in workers:
-            for weight in (0, 50):
+            for weight in weights:
                 prefix = root / f"{population}-{weight}"
                 a, b = Path(str(prefix) + "-a.ck"), Path(str(prefix) + "-b.ck")
                 da, db = a.with_suffix(".bin"), b.with_suffix(".bin")
@@ -69,6 +72,7 @@ def compare(legacy, candidate, workers=(1280, 1281, 256)):
                 if any(corpus(path) != records for path in (da, db)):
                     raise AssertionError("cross-binary resume changed DP records")
                 checks.append({"workers": population, "dp_weight": weight,
+                               "steps": steps, "max_iters": max_iters,
                                "checkpoint_identical": True, "corpus_identical": True,
                                "resume_both_directions": True, "records": len(records),
                                "checkpoint_sha256": hashlib.sha256(state).hexdigest(),
