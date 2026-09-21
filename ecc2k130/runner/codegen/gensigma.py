@@ -163,6 +163,11 @@ def emitSharedWalkPair(nets):
     shared = original[2:-1]
     shared = [line.replace('sigmaWalkNetworkPair131(', 'sigmaWalkNetworkPairShared131(')
               for line in shared]
+    declaration = shared[0]
+    assert declaration.startswith('static ECC_BIG SigmaWalkPair131 ')
+    shared = ['#if ECC_PACKED_INLINE_SIGMA',
+              declaration.replace('ECC_BIG', 'ECC_HD'), '#else',
+              declaration, '#endif'] + shared[1:]
     shared = [re.sub(r'__ldg\(&sigmaWalkNetwork131Masks\[(\d+)\]\[index\]\)',
                      r'sigmaWalkShared131Masks[\1][index]', line) for line in shared]
     walk, _ = emitGroup(nets, 'sigmaWalkNetwork131', list(range(3,11)), 8)
