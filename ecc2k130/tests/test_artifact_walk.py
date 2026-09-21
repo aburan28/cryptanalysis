@@ -5,6 +5,7 @@ from pathlib import Path
 import struct
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -86,6 +87,18 @@ class ArtifactReferenceTests(unittest.TestCase):
             if state['seed'] != 1234:
                 break
         self.assertEqual(state['seed'], 1246)
+
+    def testResidueShardsStayDisjointWithDifferentLaneCounts(self):
+        streams = []
+        for shard, lanes in ((0, 3), (1, 5)):
+            args = SimpleNamespace(seed=1000, shard_index=shard,
+                                   shard_count=2, lanes=lanes)
+            stride = lanes * args.shard_count
+            streams.append({continuous_walk.laneSeed(args, lane) + round_ * stride
+                            for lane in range(lanes) for round_ in range(20)})
+        self.assertFalse(streams[0] & streams[1])
+        self.assertEqual({seed % 2 for seed in streams[0]}, {0})
+        self.assertEqual({seed % 2 for seed in streams[1]}, {1})
 
     def testThroughputAccounting(self):
         report = {'gpuSeconds': 2.0, 'dispatchWallSeconds': 4.0,

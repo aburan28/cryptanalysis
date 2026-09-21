@@ -223,9 +223,11 @@ continues to report GPU iterations per second.
 For multiple Macs, choose one fixed shard count and assign each process a
 different zero-based shard index as well as a different run ID and work path.
 For example, four processes use `--shard-count 4` with `--shard-index 0`, `1`,
-`2`, and `3`. Lane seeds then advance by `lanes * shard-count`; the four jobs
-cover disjoint blocks instead of repeating one another. Shard geometry is bound
-into each checkpoint identity and cannot change on resume.
+`2`, and `3`. Initial lane seeds are `base + shard-index + lane * shard-count`,
+then advance by `lanes * shard-count`. Each job owns one residue class modulo
+the shard count, so the streams remain disjoint even when the Macs use different
+lane counts. Shard geometry is bound into each checkpoint identity and cannot
+change on resume.
 [The two-shard M4 Pro receipt](evidence/continuous-shard-control.json) records
 65 DP reports with zero seed overlap; two lanes in each bounded shard matched
 independent replay. It uses the directory-backed store and does not claim an

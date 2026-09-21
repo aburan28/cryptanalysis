@@ -192,6 +192,10 @@ def runtimeConfig(args):
             'progressEvery': args.progress_every}
 
 
+def laneSeed(args, lane):
+    return args.seed + args.shard_index + lane * args.shard_count
+
+
 def prepareInput(args):
     config = runtimeConfig(args)
     catalog, base = table_store.load_catalog(args.catalog)
@@ -222,9 +226,9 @@ def prepareInput(args):
         (root / 'config.json').write_text(json.dumps(config, indent=2) + '\n')
     # Always reconstruct the fresh boundary before considering remote state.
     # This prevents an unacknowledged local chunk from becoming a checkpoint.
-    firstSeed = args.seed + args.shard_index * args.lanes
-    initial = b''.join(reference.serialize(reference.initial(firstSeed + lane))
-                       for lane in range(args.lanes))
+    initial = b''.join(
+        reference.serialize(reference.initial(laneSeed(args, lane)))
+        for lane in range(args.lanes))
     (root / 'initial.bin').write_bytes(initial)
     (root / 'config.json').write_text(json.dumps(config, indent=2) + '\n')
     return root, reference, catalog, entry
@@ -250,7 +254,9 @@ def campaignDescription(args, inputRoot, catalog, entry):
     run = {'walkIdentity': walkIdentity, 'runId': args.run_id,
            'seedBase': args.seed, 'shardCount': args.shard_count,
            'shardIndex': args.shard_index,
-           'initialSeed': args.seed + args.shard_index * args.lanes,
+           'seedLayout': 'residue-v1',
+           'initialSeed': laneSeed(args, 0),
+           'initialStateSha256': table_store.digest(inputRoot / 'initial.bin'),
            'lanes': args.lanes, 'seedStride': args.lanes * args.shard_count,
            'batch': args.batch,
            'binarySha256': table_store.digest(executable),
@@ -709,10 +715,10 @@ def parseArgs():
     if (not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,63}', args.run_id) or
             not 1 <= args.lanes <= 65536 or not 1 <= args.cycles <= 128 or
             not 1 <= args.chunk_launches <= 10000 or not -1 <= args.dp_weight <= 130 or
-            not 1 <= args.dp_cap <= 1000000 or not 0 <= args.seed <= MASK - args.lanes + 1 or
+            not 1 <= args.dp_cap <= 1000000 or not 0 <= args.seed <= MASK or
             not 1 <= args.shard_count or not 0 <= args.shard_index < args.shard_count or
             args.lanes * args.shard_count > 0xffffffff or
-            args.seed + (args.shard_index + 1) * args.lanes - 1 > MASK or
+            laneSeed(args, args.lanes - 1) > MASK or
             not 0 <= args.verify_lanes <= args.lanes or args.progress_every < 1 or
             args.dp_cap * args.chunk_launches * REPORT.size > 4 * 1024 ** 3 or
             args.max_chunks < 0 or args.upload_retries < 0):
