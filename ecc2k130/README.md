@@ -363,6 +363,14 @@ build/ec2k-metal walk --run-id 9 --dp-file dps.bin --dp-file32 dps32.bin --verif
 EC2K_METAL_SOURCE=build/walk_metal.metal build/ec2k-metal bench   # shader development
 ```
 
+The separate [synthetic artifact walker](metal/README.md) runs the public
+128/256-branch signed-Frobenius recurrence in its recorded sparse polynomial
+basis. It downloads only compact directions and coefficient metadata, evaluates
+every point-dependent selector on the GPU, and independently replays selected
+lanes and reports in Python. It is a new synthetic walk identity and never
+joins the campaign above. The giant pair-sum payload remains disabled until an
+exact intermediate selector improves complete charged work.
+
 Neither client checkpoints, and at the campaign's weight a lane reports about
 once in 2^25 steps: a million lanes at 390 M it/s are a day from their first
 reports, so a short session at weight 34 yields nothing.  That is what
