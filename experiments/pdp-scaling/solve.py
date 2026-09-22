@@ -372,6 +372,7 @@ def solve_wdsat(
     src_env: str = "WDSAT_SRC",
     src_default: str = "/tmp/WDSat",
     gauss: bool = False,
+    trace: bool = False,
 ) -> dict:
     """WDSat on the symmetrised model of Trimoska–Ionica–Dequen (m = 3 only).
 
@@ -382,7 +383,8 @@ def solve_wdsat(
 
     src_env names the environment variable holding the source checkout (so a
     fork can be measured next to upstream); gauss adds -x (the XORGAUSS module,
-    off by default as in the paper).
+    off by default as in the paper); trace appends the Tr(x) homomorphism
+    constraint (symmodel.trace_line), which every rational relation obeys.
     """
     if inst.m != 3:
         return {
@@ -399,6 +401,11 @@ def solve_wdsat(
     import symmodel
 
     lines, info = symmodel.build_model(inst)
+    if trace:
+        body = lines[1:] + [
+            symmodel.trace_line(GF2n(inst.n, inst.mod), inst.l, inst.xR)
+        ]
+        lines = [f"p cnf {info['nvars']} {len(body)}", *body]
     nv = info["core"]
     params = {
         "anf_id": info["nvars"] + 1,
@@ -476,6 +483,7 @@ ENGINES = {
     "mitm": solve_mitm,
     "wdsat": solve_wdsat,
     "wdsat-xg": _wdsat_variant(gauss=True),
+    "wdsat-trace": _wdsat_variant(trace=True),
     # the same model through a fork: WDSAT_FORK_SRC points at its checkout
     "wdsat-fork": _wdsat_variant(
         src_env="WDSAT_FORK_SRC", src_default="/tmp/WDSat-fork"
