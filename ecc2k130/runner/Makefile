@@ -172,6 +172,7 @@ SMARCH  ?= sm_90
 
 HDRS = include/durable.h include/bitslice.h include/fieldbs.h include/fieldpb.h include/walk.h \
        include/packedfrobeniusfused.cuh \
+       include/collective_inverse.cuh include/packedshiftedsigma131.h include/packedsquareraw131.h \
        include/kernel.h include/ref.h include/solver.h include/bigmod.h include/tablewalk.h \
        include/curveparams.h include/packed131.h include/packedtransform131.h include/packedsigma131.h include/packedpolyreduce131.h include/packeddirectreduce131.h include/packedgeneratedproduct131.h include/packedcompactstate.cuh include/packedkernels.cuh include/packedengine.cuh
 GEN  = generated/eccF131.h generated/eccF83.h generated/eccF41.h generated/eccF23.h \
