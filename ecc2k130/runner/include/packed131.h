@@ -537,6 +537,8 @@ ECC_HD P131 add131(const P131 &a,const P131 &b) {
 }
 // The generated linear transforms convert to/from the polynomial basis used
 // by codegen/build.py, allowing a single product while retaining ONB storage.
+// The implementation is shared with the square's byte permutations below.
+ECC_HD uint32_t goal22BytePerm(uint32_t, uint32_t, unsigned);
 #include "packedtransform131.h"
 #ifndef ECC_PACKED_DIRECT_REDUCE
 #define ECC_PACKED_DIRECT_REDUCE 0

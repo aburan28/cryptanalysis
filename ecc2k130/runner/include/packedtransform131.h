@@ -19,25 +19,25 @@ ECC_HD P131 toPolynomial131(const P131 &a) {
     v2 ^= ((v2 >> 4) | (v3 << 28)) & 0x66666666u;
     v3 ^= ((v3 >> 4) | (v4 << 28)) & 0x66666666u;
     // shift 8
-    v0 ^= ((v0 >> 8) | (v1 << 24)) & 0x88888888u;
-    v1 ^= ((v1 >> 8) | (v2 << 24)) & 0x88888888u;
-    v2 ^= ((v2 >> 8) | (v3 << 24)) & 0x88888888u;
-    v3 ^= ((v3 >> 8) | (v4 << 24)) & 0x00888888u;
+    v0 ^= (goal22BytePerm(v0,v1,0x4321u)) & 0x88888888u;
+    v1 ^= (goal22BytePerm(v1,v2,0x4321u)) & 0x88888888u;
+    v2 ^= (goal22BytePerm(v2,v3,0x4321u)) & 0x88888888u;
+    v3 ^= (goal22BytePerm(v3,v4,0x4321u)) & 0x00888888u;
     // shift 8
-    v0 ^= ((v0 >> 8) | (v1 << 24)) & 0x96969696u;
-    v1 ^= ((v1 >> 8) | (v2 << 24)) & 0x96969696u;
-    v2 ^= ((v2 >> 8) | (v3 << 24)) & 0x96969696u;
-    v3 ^= ((v3 >> 8) | (v4 << 24)) & 0x06969696u;
+    v0 ^= (goal22BytePerm(v0,v1,0x4321u)) & 0x96969696u;
+    v1 ^= (goal22BytePerm(v1,v2,0x4321u)) & 0x96969696u;
+    v2 ^= (goal22BytePerm(v2,v3,0x4321u)) & 0x96969696u;
+    v3 ^= (goal22BytePerm(v3,v4,0x4321u)) & 0x06969696u;
     // shift 16
-    v0 ^= ((v0 >> 16) | (v1 << 16)) & 0xe8e8e8e8u;
-    v1 ^= ((v1 >> 16) | (v2 << 16)) & 0xe8e8e8e8u;
-    v2 ^= ((v2 >> 16) | (v3 << 16)) & 0xe8e8e8e8u;
-    v3 ^= ((v3 >> 16) | (v4 << 16)) & 0x0000e8e8u;
+    v0 ^= (goal22BytePerm(v0,v1,0x5432u)) & 0xe8e8e8e8u;
+    v1 ^= (goal22BytePerm(v1,v2,0x5432u)) & 0xe8e8e8e8u;
+    v2 ^= (goal22BytePerm(v2,v3,0x5432u)) & 0xe8e8e8e8u;
+    v3 ^= (goal22BytePerm(v3,v4,0x5432u)) & 0x0000e8e8u;
     // shift 16
-    v0 ^= ((v0 >> 16) | (v1 << 16)) & 0x69966996u;
-    v1 ^= ((v1 >> 16) | (v2 << 16)) & 0x69966996u;
-    v2 ^= ((v2 >> 16) | (v3 << 16)) & 0x69966996u;
-    v3 ^= ((v3 >> 16) | (v4 << 16)) & 0x00066996u;
+    v0 ^= (goal22BytePerm(v0,v1,0x5432u)) & 0x69966996u;
+    v1 ^= (goal22BytePerm(v1,v2,0x5432u)) & 0x69966996u;
+    v2 ^= (goal22BytePerm(v2,v3,0x5432u)) & 0x69966996u;
+    v3 ^= (goal22BytePerm(v3,v4,0x5432u)) & 0x00066996u;
     // Compose the word-aligned triangular transform stages.
     v0 ^= (v1 & 0xe881177eu) ^ (v2 & 0x177ffffeu) ^ (v3 & 0x0001177eu) ^ (v4 & 0x00000006u);
     v1 ^= (v2 & 0xe881177eu) ^ (v3 & 0xe8800001u);
@@ -108,6 +108,60 @@ ECC_HD P131 fromPolynomialProduct131(const uint32_t *h) {
     uint32_t v6 = h[6];
     uint32_t v7 = h[7];
     uint32_t v8 = h[8];
+#if ECC_FROBENIUS_FUSED
+    // shift 128
+    v2 ^= v6;
+    v3 ^= v7;
+    // shift 64
+    v1 ^= v3;
+    v3 ^= v5;
+    v5 ^= v7;
+    // shift 32
+    v0 ^= (v1) & 0xffff0000u;
+    v1 ^= (v2) & 0xffff0000u;
+    v2 ^= (v3) & 0xffff0000u;
+    v3 ^= (v4) & 0xffff0000u;
+    v4 ^= (v5) & 0xffff0000u;
+    v5 ^= (v6) & 0xffff0000u;
+    v6 ^= (v7) & 0xffff0000u;
+    // shift 16
+    v0 ^= (goal22BytePerm(v0,v1,0x5432u)) & 0xff00ff00u;
+    v1 ^= (goal22BytePerm(v1,v2,0x5432u)) & 0xff00ff00u;
+    v2 ^= (goal22BytePerm(v2,v3,0x5432u)) & 0xff00ff00u;
+    v3 ^= (goal22BytePerm(v3,v4,0x5432u)) & 0xff00ff00u;
+    v4 ^= (goal22BytePerm(v4,v5,0x5432u)) & 0xff00ff00u;
+    v5 ^= (goal22BytePerm(v5,v6,0x5432u)) & 0xff00ff00u;
+    v6 ^= (goal22BytePerm(v6,v7,0x5432u)) & 0xff00ff00u;
+    v7 ^= (goal22BytePerm(v7,v8,0x5432u)) & 0x0000ff00u;
+    // shift 8
+    v0 ^= (goal22BytePerm(v0,v1,0x4321u)) & 0xf0f0f0f0u;
+    v1 ^= (goal22BytePerm(v1,v2,0x4321u)) & 0xf0f0f0f0u;
+    v2 ^= (goal22BytePerm(v2,v3,0x4321u)) & 0xf0f0f0f0u;
+    v3 ^= (goal22BytePerm(v3,v4,0x4321u)) & 0xf0f0f0f0u;
+    v4 ^= (goal22BytePerm(v4,v5,0x4321u)) & 0xf0f0f0f0u;
+    v5 ^= (goal22BytePerm(v5,v6,0x4321u)) & 0xf0f0f0f0u;
+    v6 ^= (goal22BytePerm(v6,v7,0x4321u)) & 0xf0f0f0f0u;
+    v7 ^= (goal22BytePerm(v7,v8,0x4321u)) & 0x10f0f0f0u;
+    // shift 4
+    v0 ^= ((v0 >> 4) | (v1 << 28)) & 0xccccccccu;
+    v1 ^= ((v1 >> 4) | (v2 << 28)) & 0xccccccccu;
+    v2 ^= ((v2 >> 4) | (v3 << 28)) & 0xccccccccu;
+    v3 ^= ((v3 >> 4) | (v4 << 28)) & 0xccccccccu;
+    v4 ^= ((v4 >> 4) | (v5 << 28)) & 0xccccccccu;
+    v5 ^= ((v5 >> 4) | (v6 << 28)) & 0xccccccccu;
+    v6 ^= ((v6 >> 4) | (v7 << 28)) & 0xccccccccu;
+    v7 ^= ((v7 >> 4) | (v8 << 28)) & 0xccccccccu;
+    // shift 2
+    v0 ^= ((v0 >> 2) | (v1 << 30)) & 0xaaaaaaaau;
+    v1 ^= ((v1 >> 2) | (v2 << 30)) & 0xaaaaaaaau;
+    v2 ^= ((v2 >> 2) | (v3 << 30)) & 0xaaaaaaaau;
+    v3 ^= ((v3 >> 2) | (v4 << 30)) & 0xaaaaaaaau;
+    v4 ^= ((v4 >> 2) | (v5 << 30)) & 0xaaaaaaaau;
+    v5 ^= ((v5 >> 2) | (v6 << 30)) & 0xaaaaaaaau;
+    v6 ^= ((v6 >> 2) | (v7 << 30)) & 0xaaaaaaaau;
+    v7 ^= ((v7 >> 2) | (v8 << 30)) & 0xaaaaaaaau;
+    v8 ^= (v8 >> 2) & 0x00000002u;
+#else
     // shift 128
     v2 ^= v6;
     v3 ^= v7;
@@ -160,6 +214,7 @@ ECC_HD P131 fromPolynomialProduct131(const uint32_t *h) {
     v6 ^= ((v6 >> 2) | (v7 << 30)) & 0xaaaaaaaau;
     v7 ^= ((v7 >> 2) | (v8 << 30)) & 0xaaaaaaaau;
     v8 ^= (v8 >> 2) & 0x00000002u;
+#endif
     const uint32_t sign = 0u - (v0 & 1u);
     P131 out;
     out.v[0] = ((v0 >> 1) | (v1 << 31)) ^ ((reverse32(v8) >> 25) | (reverse32(v7) << 7)) ^ sign;

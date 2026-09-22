@@ -91,15 +91,15 @@ ECC_HD P131 expandedPolynomial131(const P131 &a) {
     v1 ^= (v2) & 0xffff0000u;
     v2 ^= (v3) & 0xffff0000u;
     // shift 16
-    v0 ^= ((v0 >> 16) | (v1 << 16)) & 0xff00ff00u;
-    v1 ^= ((v1 >> 16) | (v2 << 16)) & 0xff00ff00u;
-    v2 ^= ((v2 >> 16) | (v3 << 16)) & 0xff00ff00u;
-    v3 ^= ((v3 >> 16) | (v4 << 16)) & 0x0000ff00u;
+    v0 ^= (goal22BytePerm(v0,v1,0x5432u)) & 0xff00ff00u;
+    v1 ^= (goal22BytePerm(v1,v2,0x5432u)) & 0xff00ff00u;
+    v2 ^= (goal22BytePerm(v2,v3,0x5432u)) & 0xff00ff00u;
+    v3 ^= (goal22BytePerm(v3,v4,0x5432u)) & 0x0000ff00u;
     // shift 8
-    v0 ^= ((v0 >> 8) | (v1 << 24)) & 0xf0f0f0f0u;
-    v1 ^= ((v1 >> 8) | (v2 << 24)) & 0xf0f0f0f0u;
-    v2 ^= ((v2 >> 8) | (v3 << 24)) & 0xf0f0f0f0u;
-    v3 ^= ((v3 >> 8) | (v4 << 24)) & 0x00f0f0f0u;
+    v0 ^= (goal22BytePerm(v0,v1,0x4321u)) & 0xf0f0f0f0u;
+    v1 ^= (goal22BytePerm(v1,v2,0x4321u)) & 0xf0f0f0f0u;
+    v2 ^= (goal22BytePerm(v2,v3,0x4321u)) & 0xf0f0f0f0u;
+    v3 ^= (goal22BytePerm(v3,v4,0x4321u)) & 0x00f0f0f0u;
     // shift 4
     v0 ^= ((v0 >> 4) | (v1 << 28)) & 0xccccccccu;
     v1 ^= ((v1 >> 4) | (v2 << 28)) & 0xccccccccu;
@@ -140,25 +140,25 @@ ECC_HD P131 polynomialFromShiftedDifference131(const P131 &a) {
     v2 ^= ((v2 >> 4) | (v3 << 28)) & 0x66666666u;
     v3 ^= ((v3 >> 4) | (v4 << 28)) & 0x66666666u;
     // shift 8
-    v0 ^= ((v0 >> 8) | (v1 << 24)) & 0x88888888u;
-    v1 ^= ((v1 >> 8) | (v2 << 24)) & 0x88888888u;
-    v2 ^= ((v2 >> 8) | (v3 << 24)) & 0x88888888u;
-    v3 ^= ((v3 >> 8) | (v4 << 24)) & 0x00888888u;
+    v0 ^= (goal22BytePerm(v0,v1,0x4321u)) & 0x88888888u;
+    v1 ^= (goal22BytePerm(v1,v2,0x4321u)) & 0x88888888u;
+    v2 ^= (goal22BytePerm(v2,v3,0x4321u)) & 0x88888888u;
+    v3 ^= (goal22BytePerm(v3,v4,0x4321u)) & 0x00888888u;
     // shift 8
-    v0 ^= ((v0 >> 8) | (v1 << 24)) & 0x96969696u;
-    v1 ^= ((v1 >> 8) | (v2 << 24)) & 0x96969696u;
-    v2 ^= ((v2 >> 8) | (v3 << 24)) & 0x96969696u;
-    v3 ^= ((v3 >> 8) | (v4 << 24)) & 0x06969696u;
+    v0 ^= (goal22BytePerm(v0,v1,0x4321u)) & 0x96969696u;
+    v1 ^= (goal22BytePerm(v1,v2,0x4321u)) & 0x96969696u;
+    v2 ^= (goal22BytePerm(v2,v3,0x4321u)) & 0x96969696u;
+    v3 ^= (goal22BytePerm(v3,v4,0x4321u)) & 0x06969696u;
     // shift 16
-    v0 ^= ((v0 >> 16) | (v1 << 16)) & 0xe8e8e8e8u;
-    v1 ^= ((v1 >> 16) | (v2 << 16)) & 0xe8e8e8e8u;
-    v2 ^= ((v2 >> 16) | (v3 << 16)) & 0xe8e8e8e8u;
-    v3 ^= ((v3 >> 16) | (v4 << 16)) & 0x0000e8e8u;
+    v0 ^= (goal22BytePerm(v0,v1,0x5432u)) & 0xe8e8e8e8u;
+    v1 ^= (goal22BytePerm(v1,v2,0x5432u)) & 0xe8e8e8e8u;
+    v2 ^= (goal22BytePerm(v2,v3,0x5432u)) & 0xe8e8e8e8u;
+    v3 ^= (goal22BytePerm(v3,v4,0x5432u)) & 0x0000e8e8u;
     // shift 16
-    v0 ^= ((v0 >> 16) | (v1 << 16)) & 0x69966996u;
-    v1 ^= ((v1 >> 16) | (v2 << 16)) & 0x69966996u;
-    v2 ^= ((v2 >> 16) | (v3 << 16)) & 0x69966996u;
-    v3 ^= ((v3 >> 16) | (v4 << 16)) & 0x00066996u;
+    v0 ^= (goal22BytePerm(v0,v1,0x5432u)) & 0x69966996u;
+    v1 ^= (goal22BytePerm(v1,v2,0x5432u)) & 0x69966996u;
+    v2 ^= (goal22BytePerm(v2,v3,0x5432u)) & 0x69966996u;
+    v3 ^= (goal22BytePerm(v3,v4,0x5432u)) & 0x00066996u;
     // Compose the word-aligned triangular transform stages.
     v0 ^= (v1 & 0xe881177eu) ^ (v2 & 0x177ffffeu) ^ (v3 & 0x0001177eu) ^ (v4 & 0x00000006u);
     v1 ^= (v2 & 0xe881177eu) ^ (v3 & 0xe8800001u);

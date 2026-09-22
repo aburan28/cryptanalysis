@@ -66,7 +66,7 @@ def generate(nets):
               '    __syncthreads();', '#endif', '}',
               'ECC_HD P131 expandedPolynomial131(const P131 &a) {']
     lines += [f'    uint32_t v{i}=a.v[{i}];' for i in range(5)]
-    lines += genpacked.emitStages(131, False)
+    lines += genpacked.emitStages(131, False, byteFunnels=True)
     lines += ['    return P131{{v0,v1,v2,v3,v4}};', '}',
               'ECC_HD P131 normalFromExpanded131(const P131 &a) {',
               '    const uint32_t sign = 0u - (a.v[0] & 1u);', '    P131 out;']
@@ -78,7 +78,7 @@ def generate(nets):
               '    uint32_t v0 = (a.v[0] & ~1u) ^ sign;']
     lines += [f'    uint32_t v{i} = a.v[{i}] ^ sign;' for i in range(1, 4)]
     lines += ['    uint32_t v4 = (a.v[4] ^ sign) & 7u;']
-    lines += genpacked.emitStages(131, True, combineTail=True)
+    lines += genpacked.emitStages(131, True, combineTail=True, byteFunnels=True)
     lines += ['    return P131{{v0,v1,v2,v3,v4}};', '}',
               'ECC_HD SigmaWalkPair131 sigmaShiftedWalkPair131(P131 a, P131 b, int index) {',
               '#if defined(__CUDACC__) && !defined(__CUDA_ARCH__)',
