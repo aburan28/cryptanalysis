@@ -478,10 +478,9 @@ pub fn quintic_discriminant(f: &FpPoly) -> BigUint {
         FpPoly::from_coeffs(coeffs, p.clone())
     };
     // Resultant Res(f, f') via Euclidean GCD trace.
-    let res = sylvester_resultant(f, &fp);
     // Δ = (-1)^{n(n-1)/2} · Res(f, f') / lc(f).
     // For n=5: (-1)^10 = 1, lc(f) = 1 (monic).
-    res
+    sylvester_resultant(f, &fp)
 }
 
 /// Sylvester resultant `Res(a, b)` via the **subresultant Euclidean
@@ -1717,7 +1716,7 @@ mod tests {
         let mut bins = [0u64; 10];
         for (ell, a) in &samples {
             let x = *a as f64 / (2.0 * (*ell as f64).sqrt());
-            if x < -1.0 || x > 1.0 {
+            if !(-1.0..=1.0).contains(&x) {
                 continue;
             }
             let idx = (((x + 1.0) / 2.0) * 10.0).floor() as usize;
