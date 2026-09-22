@@ -8,6 +8,13 @@ ECC2K-130 would need.  Everything here is Python plus external solvers; the
 C library is not involved.  `results/*.csv` are the measurements this
 document is built from, and `fit.py` regenerates every table below from them.
 
+## Fixed-phase reuse follow-up
+
+[FIXED_PHASE.md](FIXED_PHASE.md) tracks a matched direct-S4/chained-S3
+experiment with external Frobenius phases, reusable XOR circuits, hybrid
+payload guesses, and independent subgroup-point verification. It is a PDP
+stage diagnostic; the original scaling results below are unchanged.
+
 ## The question
 
 An index calculus on `E(F_2^131)` writes random points as sums of `m` points
