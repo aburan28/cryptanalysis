@@ -1,4 +1,6 @@
 //! Research CLI: read-only curve inspection and bounded known-answer experiments.
+#[path = "ic/budget.rs"]
+mod budget;
 #[path = "ic/experiment.rs"]
 mod experiment;
 #[path = "ic/fixed.rs"]
@@ -63,6 +65,8 @@ enum Action {
     Workflow(workflow::WorkflowArgs),
     /// Persist and resume index calculus on fixed K_0 parameters through degree 131.
     Fixed(fixed::FixedArgs),
+    /// Charge index calculus against rho analytically: what one decomposition may cost.
+    Budget(budget::BudgetArgs),
 }
 #[derive(Args)]
 #[group(required = true, multiple = false)]
@@ -108,6 +112,7 @@ fn execute(cli: &Cli) -> Result<Value, String> {
         Some(Action::Solve(args)) => experiment::solve(args.clone(), cli.json),
         Some(Action::Workflow(args)) => workflow::run(args.clone(), cli.json),
         Some(Action::Fixed(args)) => fixed::run(args.clone()),
+        Some(Action::Budget(args)) => budget::run(args.clone(), cli.json),
         Some(Action::Run(args)) => experiment::run(args.clone(), cli.json),
         None => {
             if let Some(name) = &cli.profile {
@@ -189,6 +194,53 @@ fn display(report: &Value) {
                 "Counts: {}\nResources: {}",
                 report["counts"], report["resources"]
             );
+        }
+        Some("budget") => {
+            println!(
+                "Budget: {}; Frobenius orbit quotient {}",
+                report["status"].as_str().unwrap_or("?"),
+                if report["frobenius_orbit_quotient_credited"].as_bool() == Some(true) {
+                    "credited"
+                } else {
+                    "not credited"
+                }
+            );
+            for degree in report["degrees"].as_array().into_iter().flatten() {
+                println!(
+                    "  n = {}: rho 2^{:.1}; smallest arity with a budget: {}",
+                    degree["degree"],
+                    degree["log2_rho"].as_f64().unwrap_or(f64::NAN),
+                    degree["minimum_viable_arity"]
+                );
+                for cell in degree["cells"].as_array().into_iter().flatten() {
+                    let budget = cell["log2_budget"].as_f64();
+                    let deficit = cell["log2_anf_deficit"].as_f64();
+                    println!(
+                        "    m = {} l = {}: budget {}; system 2^{:.1} monomials, degree {} ({}); {}",
+                        cell["summands"],
+                        cell["dimension"],
+                        match budget {
+                            Some(b) => format!("2^{b:.1}"),
+                            None => "none — linear algebra alone exceeds rho".into(),
+                        },
+                        cell["log2_anf_monomials"].as_f64().unwrap_or(f64::NAN),
+                        cell["boolean_degree"],
+                        match deficit {
+                            Some(d) if d > 0.0 =>
+                                format!("{d:.1} bits too large to build inside the budget"),
+                            Some(_) => "fits inside the budget".into(),
+                            None => "not reached".into(),
+                        },
+                        if cell["viable"].as_bool() == Some(true) {
+                            "worth attempting"
+                        } else if cell["free_oracle_loses"].as_bool() == Some(true) {
+                            "loses to rho even with a free decomposition oracle"
+                        } else {
+                            "blocked by the size of the system, whatever solves it"
+                        }
+                    );
+                }
+            }
         }
         Some("compare") => {
             println!(

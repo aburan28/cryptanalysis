@@ -146,6 +146,7 @@ pub mod hilbert_class_poly;
 pub mod hnp_ecdsa;
 pub mod hyperelliptic_ic_bench;
 pub mod hyperelliptic_index_calculus;
+pub mod index_calculus_budget;
 pub mod invalid_curve_attack;
 pub mod isogeny_class_search;
 pub mod isogeny_degree_search;
