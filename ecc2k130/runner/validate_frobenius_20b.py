@@ -1,8 +1,8 @@
 """Validate the compatible Frobenius production profile against a pinned control.
 
-The frozen v1 image supplies the compiler. The control sources are pinned to
-a validated v3 or v5 commit, independently of local
-candidate edits. Experiments use temporary files and require no secrets.
+The frozen benchmark image contains CUDA 13.3 and 13.4. Controls use CUDA 13.3
+and pinned v3, v5 or v6 sources; the current candidate uses CUDA 13.4.
+Experiments use temporary files and require no secrets.
 """
 import hashlib
 import json
@@ -18,10 +18,12 @@ CONTROLS = {
     "v3": {"commit": BASELINE_COMMIT, "settings": {}},
     "v5": {"commit": "afd9ba7fbd529b55a5372b30209f5961bbf49c9b",
            "settings": {"PACKED_ONB_INV": 1, "PACKED_TOP_HOIST": 1}},
+    "v6": {"commit": "69f5e687e937d04902f195eca5228d029c4d29cd",
+           "settings": {"PACKED_ONB_INV": 1, "PACKED_TOP_HOIST": 1}},
 }
+BENCH_IMAGE_ID = os.environ.get("ECC_BENCH_IMAGE", "im-vZ6bOy9hMYSLXvtmTF7CiD")
 if modal.is_local():
-    bench_image = modal.Image.from_id(os.environ.get(
-        "ECC_BENCH_IMAGE", "im-LEaik53IOCmWvHm1O2UUPQ"))
+    bench_image = modal.Image.from_id(BENCH_IMAGE_ID)
 else:
     bench_image = None
 
@@ -37,7 +39,11 @@ BASE = dict(BATCH=16, THREADS=640, MINBLOCKS=1, PACKED_SINGLE_PRODUCT=1,
     PACKED_L2_PERSIST=1, PACKED_ALU_SQUARE=1,
     FROBENIUS_FUSED=1, PACKED_CHAIN_FIRST=1, PACKED_INLINE_SIGMA=1)
 
-CASES = {"production_onb": ({"PACKED_ONB_INV": 1, "PACKED_TOP_HOIST": 1}, "")}
+CASES = {
+    "production_onb": ({"PACKED_ONB_INV": 1, "PACKED_TOP_HOIST": 1,
+                        "NVCC": "/usr/local/cuda-13.4/bin/nvcc"}, ""),
+    "production_cuda133": ({"PACKED_ONB_INV": 1, "PACKED_TOP_HOIST": 1}, ""),
+}
 
 
 @app.function(image=bench_image, gpu="RTX-PRO-6000", cpu=4, memory=8192,
@@ -66,6 +72,7 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
     saved_sources = {name: (root / name).read_text() if (root / name).exists() else None
                      for name in candidate_sources}
     result = {"started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "benchmark_image_id": control["benchmark_image_id"],
               "mode": mode, "population": 120320, "base_settings": BASE,
               "baseline_commit": control["commit"], "control_name": control["name"],
               "variants": []}
@@ -103,13 +110,14 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
             "        CUDA_CHECK(cudaFuncGetAttributes(&attrs, eccPacked131::walk));\n" + diagnostic)
         header.write_text(source)
         kernels.write_text(kernel_source)
-        settings = {**BASE, **overrides}
+        settings = {**BASE, "NVCC": "/usr/local/cuda-13.3/bin/nvcc", **overrides}
         command = ["make", "-B", "ecc2k130", "ARCH=-gencode arch=compute_120,code=sm_120",
                    *[f"{key}={value}" for key, value in settings.items()]]
         started = time.monotonic()
         output = run(command)
         shutil.copy2(root / "ecc2k130", destination)
-        return {"settings": settings,
+        return {"compiler_version": run([settings["NVCC"], "--version"]),
+                "settings": settings,
                 "cache_policy": policy if policy in ("normal", "streaming") else "prefix",
                 "source_variant": policy or name,
                 "build_seconds": time.monotonic() - started, "build_command": command,
@@ -192,7 +200,7 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
             result["cpu_models"] = sorted({line.split(":", 1)[1].strip()
                 for line in Path("/proc/cpuinfo").read_text().splitlines()
                 if line.startswith("model name")})
-            result["compiler"] = run(["nvcc", "--version"])
+            result["compiler"] = result["baseline_build"]["compiler_version"]
             result["source_sha256"] = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
                 for folder in ("include", "src", "generated", "codegen")
                 for path in sorted((root / folder).rglob("*"))
@@ -273,9 +281,9 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
 def main(mode: str = "confirm", selected: str = "production_onb", output: str = "",
          control: str = "v3"):
     if control not in CONTROLS:
-        raise ValueError("control must be v3 or v5")
-    reference = {"name": control, **CONTROLS[control]}
-    path = LOCAL / (output or f"research/production/2026-09-21-frobenius-20b-{mode}.json")
+        raise ValueError("control must be v3, v5 or v6")
+    reference = {"name": control, "benchmark_image_id": BENCH_IMAGE_ID, **CONTROLS[control]}
+    path = LOCAL / (output or f"research/production/2026-09-22-frobenius-20b-{mode}.json")
     path.parent.mkdir(parents=True, exist_ok=True)
     tree = f"{reference['commit']}:ecc2k130/runner"
     names = subprocess.check_output(

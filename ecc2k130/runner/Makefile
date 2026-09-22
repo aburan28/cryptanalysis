@@ -817,12 +817,24 @@ FROBENIUS_120K_FLAGS = $(filter-out THREADS=% MINBLOCKS=% COLLECTIVE_WARPS=%,$(L
     PACKED_INLINE_POLY=3 PACKED_L2_PERSIST=1 PACKED_ALU_SQUARE=1 PACKED_CHAIN_FIRST=1 \
     FROBENIUS_FUSED=1 PACKED_INLINE_SIGMA=1 PACKED_ONB_INV=1 PACKED_TOP_HOIST=1
 
-.PHONY: gpu-frobenius32-fast gpu-frobenius32-120k check-frobenius32-fast-gpu
+# CUDA 13.4.92 produced the confirmed >20 B/s build. Keep the compiler explicit
+# so this target cannot silently benchmark the older compiler on PATH.
+FROBENIUS_20B_NVCC ?= /usr/local/cuda-13.4/bin/nvcc
+
+.PHONY: gpu-frobenius32-fast gpu-frobenius32-120k check-frobenius32-fast-gpu gpu-frobenius32-20b check-frobenius32-20b-gpu
 gpu-frobenius32-fast:
 	$(MAKE) -B ecc2k130 'ARCH=-gencode arch=compute_120,code=sm_120' $(FROBENIUS_FAST_FLAGS)
 
 gpu-frobenius32-120k:
 	$(MAKE) -B ecc2k130 'ARCH=-gencode arch=compute_120,code=sm_120' $(FROBENIUS_120K_FLAGS)
+
+gpu-frobenius32-20b:
+	$(MAKE) -B ecc2k130 'NVCC=$(FROBENIUS_20B_NVCC)' 'ARCH=-gencode arch=compute_120,code=sm_120' $(FROBENIUS_120K_FLAGS)
+
+check-frobenius32-20b-gpu: gpu-frobenius32-20b
+	$(MAKE) -B test-packed-cuda test-packed-storage-cuda test-shared-sigma-cuda \
+	    'NVCC=$(FROBENIUS_20B_NVCC)' 'ARCH=-gencode arch=compute_120,code=sm_120' $(FROBENIUS_120K_FLAGS)
+	python3 codegen/testpackedclient.py ./ecc2k130
 
 check-frobenius32-fast-gpu: gpu-frobenius32-fast
 	$(MAKE) test-packed-cuda test-packed-storage-cuda test-shared-sigma-cuda \

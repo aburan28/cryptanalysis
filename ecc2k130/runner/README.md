@@ -62,13 +62,24 @@ shared configuration requires a new compatibility check.
 
 The production build uses four-warp collective inversion and the validated
 Frobenius arithmetic settings. Build it with `make -C ecc2k130/runner gpu-production`
-(or `gpu-frobenius32-120k`). Its three-run screening median was **17.453024
+(or `gpu-frobenius32-120k`). The original rollout's three-run screening median was **17.453024
 billion updates/s** at 120,320 workers, excluding cloud reporting overhead.
 It starts a fresh population in the new namespace; larger checkpoints remain
 archived in their original locations. The separate `gpu-frobenius32-fast`
 target retains scalar inversion for 385,024-worker populations. Measurements and
 checkpoint compatibility receipts are in
 [the reconciliation report](research/DP-RECONCILIATION.md).
+
+The optimized branch has since reached **20.214524 billion updates/s** in a
+five-pair warmed confirmation using CUDA **13.4.92**, with all five samples above
+20 B/s on the measured RTX PRO 6000. Build that version with
+`make gpu-frobenius32-20b` and verify it with `make check-frobenius32-20b-gpu`.
+Both targets select `/usr/local/cuda-13.4/bin/nvcc`; override
+`FROBENIUS_20B_NVCC` for another installation path. The measured compiler gain
+is 1.074554% over the same source built with CUDA 13.3 on the same GPU. See the
+[confirmation and reproduction report](research/production/2026-09-22-frobenius-20b.md)
+for the compatibility evidence and limits of the measurement. This build target
+does not change the deployed fleet.
 
 The 2026-09-21 rollout runs four RTX PRO 6000 workers for 23 hours in
 [Modal app ap-89OUG2uEQpkkKtdd1WO8ru](https://modal.com/apps/a-buran28/main/ap-89OUG2uEQpkkKtdd1WO8ru).
