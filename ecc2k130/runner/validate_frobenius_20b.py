@@ -1,7 +1,7 @@
-"""Validate the compatible Frobenius production profile against v3.
+"""Validate the compatible Frobenius production profile against a pinned control.
 
-The frozen v1 image supplies the compiler; v3 is rebuilt as the control.
-The control sources are pinned to the validated v3 commit, independently of local
+The frozen v1 image supplies the compiler. The control sources are pinned to
+a validated v3 or v5 commit, independently of local
 candidate edits. Experiments use temporary files and require no secrets.
 """
 import hashlib
@@ -14,6 +14,11 @@ import modal
 
 LOCAL = Path(__file__).resolve().parent
 BASELINE_COMMIT = "fabf83100654f531e6501ad703dbd103549d9c34"
+CONTROLS = {
+    "v3": {"commit": BASELINE_COMMIT, "settings": {}},
+    "v5": {"commit": "afd9ba7fbd529b55a5372b30209f5961bbf49c9b",
+           "settings": {"PACKED_ONB_INV": 1, "PACKED_TOP_HOIST": 1}},
+}
 if modal.is_local():
     bench_image = modal.Image.from_id(os.environ.get(
         "ECC_BENCH_IMAGE", "im-LEaik53IOCmWvHm1O2UUPQ"))
@@ -37,7 +42,8 @@ CASES = {"production_onb": ({"PACKED_ONB_INV": 1, "PACKED_TOP_HOIST": 1}, "")}
 
 @app.function(image=bench_image, gpu="RTX-PRO-6000", cpu=4, memory=8192,
               timeout=2700, max_containers=1)
-def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sources: dict):
+def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sources: dict,
+               control: dict):
     import datetime
     import hashlib
     import re
@@ -61,7 +67,8 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
                      for name in candidate_sources}
     result = {"started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "mode": mode, "population": 120320, "base_settings": BASE,
-              "baseline_commit": BASELINE_COMMIT, "variants": []}
+              "baseline_commit": control["commit"], "control_name": control["name"],
+              "variants": []}
 
     def run(command, timeout=600):
         process = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=timeout)
@@ -73,9 +80,9 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
 
     def build(name, destination):
         print(json.dumps({"building": name}), flush=True)
-        overrides, policy = ({}, "") if name == "baseline" else CASES[name]
-        # Prototype screens always start from v3. Only production measures
-        # the current working tree, without rewriting its candidate sources.
+        overrides, policy = (control["settings"], "") if name == "baseline" else CASES[name]
+        # The control is pinned independently; production measures the current
+        # working tree without rewriting its candidate arithmetic.
         sources = candidate_sources if name.startswith("production") else baseline_sources
         for relative, content in sources.items():
             (root / relative).write_text(content)
@@ -263,24 +270,28 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
 
 
 @app.local_entrypoint()
-def main(mode: str = "confirm", selected: str = "production_onb", output: str = ""):
+def main(mode: str = "confirm", selected: str = "production_onb", output: str = "",
+         control: str = "v3"):
+    if control not in CONTROLS:
+        raise ValueError("control must be v3 or v5")
+    reference = {"name": control, **CONTROLS[control]}
     path = LOCAL / (output or f"research/production/2026-09-21-frobenius-20b-{mode}.json")
     path.parent.mkdir(parents=True, exist_ok=True)
-    tree = f"{BASELINE_COMMIT}:ecc2k130/runner"
+    tree = f"{reference['commit']}:ecc2k130/runner"
     names = subprocess.check_output(
         ["git", "ls-tree", "-r", "--full-tree", "--name-only", tree, "--",
          "Makefile", "include", "src", "generated", "codegen"], cwd=LOCAL, text=True).splitlines()
     if "Makefile" not in names or "include/packedfrobeniusfused.cuh" not in names:
-        raise ValueError("pinned v3 sources are missing; fetch the baseline commit")
+        raise ValueError("pinned control sources are missing; fetch the baseline commit")
     baseline_sources = {name: subprocess.check_output(
         ["git", "show", f"{tree}/{name}"], cwd=LOCAL, text=True) for name in names}
     sources = {name: (LOCAL / name).read_text() for name in names}
-    for name in ("codegen/genshiftedsigma.py", "codegen/shifted_sigma_routes.json", "include/packedshiftedsigma131.h",
+    for name in ("codegen/inverse_sigma_routes.json", "codegen/genshiftedsigma.py", "codegen/shifted_sigma_routes.json", "include/packedshiftedsigma131.h",
                  "codegen/gensquareraw.py", "include/packedsquareraw131.h",
                  "include/canonical131.h", "src/testcanonical131.cpp"):
         sources[name] = (LOCAL / name).read_text()
     driver_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    result = experiment.remote(mode, selected, sources, baseline_sources)
+    result = experiment.remote(mode, selected, sources, baseline_sources, reference)
     result["driver_sha256"] = driver_sha256
     path.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps({"receipt": str(path), "winner": result["winner"], "ok": result["ok"]}))
