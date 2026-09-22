@@ -323,8 +323,8 @@ pub fn inspect(p: Parameters, source: String) -> Result<Value, String> {
             degree,
             polynomial_terms,
         } => {
-            if !(2..=571).contains(degree) {
-                return Err("binary inspection degrees must be 2..=571".into());
+            if !(2..=768).contains(degree) {
+                return Err("binary inspection degrees must be 2..=768".into());
             }
             q = BigUint::one() << *degree as usize;
             let canonical = a < q && b < q;
@@ -437,8 +437,8 @@ pub fn inspect(p: Parameters, source: String) -> Result<Value, String> {
             degree,
             representation,
         } => {
-            if !(2..=571).contains(degree) {
-                return Err("binary inspection degrees must be 2..=571".into());
+            if !(2..=768).contains(degree) {
+                return Err("binary inspection degrees must be 2..=768".into());
             }
             if representation.len() > 200 || representation.chars().any(char::is_control) {
                 return Err("invalid representation description".into());
@@ -479,8 +479,8 @@ pub fn inspect(p: Parameters, source: String) -> Result<Value, String> {
         }
         Field::Prime { modulus } => {
             q = number(modulus)?;
-            if q.bits() > 512 || q < BigUint::from(5u8) {
-                return Err("prime-field modulus must be >=5 and at most 512 bits".into());
+            if q.bits() > 1024 || q < BigUint::from(5u8) {
+                return Err("prime-field modulus must be >=5 and at most 1024 bits".into());
             }
             let prime = probable_prime(&q);
             check(

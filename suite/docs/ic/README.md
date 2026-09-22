@@ -675,9 +675,10 @@ missing points, and unsupported coordinate representations are reported
 as not_checked. The aggregate checks_passed status means none of the
 performed checks failed, not that all possible properties were proved.
 
-Binary inspection supports degrees 2 through 571. Prime-field inspection
-supports moduli at most 512 bits. Curve names are descriptive; they do
-not change these validation rules.
+Binary inspection supports degrees 2 through 768. Prime-field inspection
+supports moduli at most 1024 bits. Curve names are descriptive; they do
+not change these validation rules. The challenge corpus in
+`challenges/ecc/` publishes parameters up to those limits.
 
 ## Comparing factor bases
 

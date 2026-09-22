@@ -13,7 +13,7 @@ the wide end: many attacks, arbitrary precision (`num-bigint`), and
 Markdown reports.  The two do not depend on each other.
 
 ```sh
-cargo build --release                 # ca-suite, ca-ic, ca-koblitz-pdp-prepare
+cargo build --release                 # ca-suite, ca-ic, ca-curves, ca-koblitz-pdp-prepare
 cargo test --release                  # 2395 unit + 31 integration tests, ~3 min on 4 cores
 ./target/release/ca-suite --help
 ```
@@ -88,6 +88,16 @@ $ ca-ic ecc2k-130                                   # inspection only
 $ ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate --json
 $ ca-ic compare --degree 7 --curve-a 1 --samples 3 --holdout 2 --json
 $ ca-ic fixed --params docs/ic/params/k0n9-fixed.json --dir runs/k0n9 --attempts 256 --json
+```
+
+`ca-curves` lists the challenge corpus in [`../challenges/ecc/`](../challenges/ecc/README.md)
+and can emit a collaborative Pollard-rho job for a prime-field curve:
+
+```sh
+$ ca-curves list --family binary-koblitz --max-bits 64
+$ ca-curves show fp-j0-b32
+$ ca-curves rho-job fp-j0-b32 --seed 1 > job.json
+$ ca-suite rho-collab work --job job.json --node local --threads 2
 ```
 
 `ca-koblitz-pdp-prepare` plans and prepares the sealed-oracle / blind-bundle

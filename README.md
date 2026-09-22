@@ -480,7 +480,8 @@ fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenche
 ecc2k130/                ECC2K-130 clients: packed GF(2^131) table walk (CUDA, CPU, Metal), host tests vs the model
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
-suite/                   the attack suite: Rust crate cryptanalysis-suite, ca-suite / ca-ic CLIs, Python engine
+suite/                   the attack suite: Rust crate cryptanalysis-suite, ca-suite / ca-ic / ca-curves CLIs, Python engine
+challenges/ecc/          elliptic-curve challenge corpus (Koblitz, CM, char 3, extensions, volcanoes)
 docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md
 bindings/go/cmd/ca-coordinator  the coordinator service (Go, cgo onto this library)
 deploy/helm/ca-coordinator      Helm chart: the coordinator and its agents
