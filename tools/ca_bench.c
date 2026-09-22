@@ -579,11 +579,12 @@ static void run_complexity(const unsigned *bits, int nb, unsigned reps, int ec)
 
 static void run_glv(void)
 {
-    const char *names[16];
-    size_t nc = ca_curve_list(names, 16);
-    printf("| curve         | endo  | m | GLV S=ops/sqrtn |  rho S | speedup | ok  |\n");
-    printf("|---------------|-------|---|-----------------|-------:|--------:|-----|\n");
-    for (size_t i = 0; i < nc; i++) {
+    const char *names[32];
+    size_t nc = ca_curve_list(names, 32);
+    size_t nuse = nc < 32 ? nc : 32;
+    printf("| curve                        | endo  | m | GLV S=ops/sqrtn |  rho S | speedup | ok  |\n");
+    printf("|------------------------------|-------|---|-----------------|-------:|--------:|-----|\n");
+    for (size_t i = 0; i < nuse; i++) {
         uint64_t p, a, b, order;
         if (ca_curve_by_name(names[i], &p, &a, &b, &order) != CA_OK) continue;
         ca_group g;
@@ -622,7 +623,7 @@ static void run_glv(void)
                          : info.endo == CA_CURVE_ENDO_J1728 ? "j1728"
                                                             : "none";
         double gs = glv_ops / reps / sq, rs = rho_ops / reps / sq;
-        printf("| %-13s | %-5s | %u | %15.3f | %6.3f | %6.2fx | %u/%u |\n", names[i], ek,
+        printf("| %-28s | %-5s | %u | %15.3f | %6.3f | %6.2fx | %u/%u |\n", names[i], ek,
                info.aut_order, gs, rs, gs > 0 ? rs / gs : 0.0, ok, reps);
     }
 }
