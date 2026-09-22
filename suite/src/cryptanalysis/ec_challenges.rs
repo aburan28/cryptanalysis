@@ -617,8 +617,17 @@ fn check_prime_field(inst: &Instance, order: &BigUint) -> Result<(), String> {
         }
     }
     if let Some(rel) = &inst.relation {
-        if let (Some(base), Some(target), Some(scalar)) = (&rel.base, &rel.target, &rel.scalar) {
+        if let (Some(base), Some(scalar)) = (&rel.base, &rel.scalar) {
             let k = parse_uint(scalar).ok_or("scalar")?;
+            // A missing target is the point at infinity.  [k]P = O is not a
+            // discrete-log challenge, and the published scalar is then only
+            // determined modulo the (smaller) order of P.
+            let target = match &rel.target {
+                Some(target) => target,
+                None => {
+                    return Err(format!("{}: relation target is the identity", inst.id));
+                }
+            };
             check_mul(base, &k, Some(target))?;
             // Full order annihilation stays cheap through 160-bit fields and
             // is the check that the published order really kills the base.

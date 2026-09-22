@@ -529,6 +529,20 @@ class Corpus:
         self.instances.append(inst)
 
 
+def point_has_order(p: int, A: int, P, n: int, primes: list[int]) -> bool:
+    """True when ``P`` has order exactly ``n``.
+
+    ``primes`` is the set of prime factors of ``n``.  ``[n]P = O`` is not
+    enough: every point of a curve of order ``n`` satisfies it.
+    """
+    if P is INF or n <= 1 or ec_mul(p, A, n, P) is not INF:
+        return False
+    for q in primes:
+        if ec_mul(p, A, n // q, P) is INF:
+            return False
+    return True
+
+
 def prime_instance(
     corpus: Corpus,
     rng: random.Random,
@@ -584,27 +598,50 @@ def prime_instance(
     if factored and largest:
         subgroup = largest
         cofactor = N // largest
-        # Lift P into the large subgroup.
+        # Lift P into the large subgroup.  A point killed by N is not a
+        # generator of that subgroup: the first rational point is often
+        # proper torsion, and [cofactor]P is then O.
         P = ec_mul(p, A, cofactor, P)
-        if P is INF or ec_mul(p, A, subgroup, P) is not INF:
-            # cofactor multiple landed on O; fall back to the full group.
-            P = find_point(p, A, B, rng)
-            subgroup = N
-            cofactor = 1
+        if not point_has_order(p, A, P, subgroup, [subgroup]):
+            found = None
+            for _ in range(64):
+                cand = find_point(p, A, B, rng, skip=rng.randrange(p))
+                lifted = ec_mul(p, A, cofactor, cand)
+                if point_has_order(p, A, lifted, subgroup, [subgroup]):
+                    found = lifted
+                    break
+            if found is not None:
+                P = found
+            else:
+                # Full group only when some point really has order N.
+                primes = [q for q, _ in fac]
+                gen = None
+                for _ in range(64):
+                    cand = find_point(p, A, B, rng, skip=rng.randrange(p))
+                    if point_has_order(p, A, cand, N, primes):
+                        gen = cand
+                        break
+                if gen is None:
+                    raise RuntimeError(f"{ident}: no point of order {subgroup} or {N}")
+                P = gen
+                subgroup = N
+                cofactor = 1
     k_witness = witness_k % subgroup
     if k_witness == 0:
         k_witness = 3
     W = ec_mul(p, A, k_witness, P)
-    if tier == "shape":
-        secret = rng.randrange(2, subgroup)
-        Q = ec_mul(p, A, secret, P)
-        if ec_mul(p, A, subgroup, Q) is not INF and cofactor == 1:
-            pass
-        relation = relation_json(ident, P, Q, None, secret)
-    else:
-        secret = rng.randrange(2, subgroup)
-        Q = ec_mul(p, A, secret, P)
-        relation = relation_json(ident, P, Q, secret, secret)
+    if W is INF:
+        raise RuntimeError(f"{ident}: witness is the identity")
+
+    def planted(hide: bool) -> dict:
+        for _ in range(48):
+            secret = rng.randrange(2, subgroup)
+            Q = ec_mul(p, A, secret, P)
+            if Q is not INF:
+                return relation_json(ident, P, Q, None if hide else secret, secret)
+        raise RuntimeError(f"{ident}: relation target is the identity")
+
+    relation = planted(tier == "shape")
     card_bits = p.bit_length() - 1
     emb = None
     if largest and factored and largest > 2 and largest.bit_length() <= 40:
@@ -655,16 +692,16 @@ def embedding_degree(q: int, r: int) -> int | None:
     fac, cof = factor(r - 1)
     if cof != 1:
         return None
-    # k is the lcm of the orders, computed by removing prime powers.
+    # Order of q mod r: divide out one prime at a time.  Testing the full
+    # power p^e in one step keeps every factor of p when a smaller
+    # valuation is the one that still satisfies q^{k/p} ≡ 1.
     k = r - 1
-    for p, e in fac:
-        pe = p**e
-        k_try = k // pe
-        if pow(q, k_try, r) == 1:
-            k = k_try
-            # remove further powers
-            while k % p == 0 and pow(q, k // p, r) == 1:
-                k //= p
+    for prime, e in fac:
+        for _ in range(e):
+            if pow(q, k // prime, r) == 1:
+                k //= prime
+            else:
+                break
     return k
 
 
