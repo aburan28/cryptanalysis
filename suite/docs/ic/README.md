@@ -679,6 +679,77 @@ Binary inspection supports degrees 2 through 571. Prime-field inspection
 supports moduli at most 512 bits. Curve names are descriptive; they do
 not change these validation rules.
 
+## Deciding whether a cell is worth running at all
+
+    ./target/release/ca-ic budget --degree 131
+    ./target/release/ca-ic budget --degree 233 --summands 4
+    ./target/release/ca-ic budget --standard --summands 4 --json
+    ./target/release/ca-ic budget --degree 113 --no-frobenius
+
+Every other cost figure this tool produces is measured after the fact: the
+`vs_rho` block below times a run that already happened, and it is reachable
+only from inside a workflow with `baseline.rho` set. `budget` answers the
+question asked *before* spending anything — at this degree and arity, how many
+operations may a single point decomposition take?
+
+It charges relation collection **and** sparse linear algebra against the same
+rho budget and inverts for what is left. With factor base `F_V` of dimension
+`l`, `m` summands, and `R` the mean Frobenius orbit size on `V`:
+
+- `|F| = 2^l`, and the linear-algebra dimension is `D = |F| / R`;
+- a random target decomposes with probability `min(1, 2^(ml−n) / m!)`, so
+  relation collection makes `D / p` attempts;
+- sparse linear algebra costs `m · D²`, and holds `D` entries;
+- rho is `√(πr/2) / √(2n)`, the same formula as `rho_expected_steps`, evaluated
+  in logarithms so degrees past 63 stay representable.
+
+Then `log2 budget = log2(rho − linear algebra) − log2(attempts)`. Linear algebra
+does not depend on the solver, so a cell whose linear algebra alone exceeds rho
+is lost before anything is attempted, and **a non-positive budget means the cell
+loses to rho even with a decomposition oracle that is free** — reported as
+`free_oracle_loses`, because no solver engineering can rescue it.
+
+A second gate is charged separately. A decomposition must first *build* its
+Weil-descended system. Every Frobenius power is `F_2`-linear, so a `K`-monomial
+`x^e` costs Boolean degree equal to the Hamming weight of `e`, not `e`; the
+descended degree is `m · min(m−1, l)` and the system has about
+`Σ_{i ≤ D} C(ml, i)` monomials. When that count exceeds the whole budget —
+`anf_blocks` — the obstruction is the **size of the system, not the difficulty
+of solving it**, and the cell is blocked whatever solves it. A cell is `viable`
+only when the budget is positive *and* the system fits inside it.
+
+Options:
+
+- `--degree N`: the extension degree. Not capped at 63 like the run commands,
+  because nothing is constructed — only charged.
+- `--standard`: charge the nine standardised binary degrees instead of one.
+- `--summands M` (2–16): a single arity; omit to table every arity.
+- `--dimension L`: charge this exact dimension rather than the best one.
+- `--max-arity K` (default 6): largest arity tabled.
+- `--no-frobenius`: withhold the orbit quotient, which isolates exactly what it
+  buys. Crediting it may only widen what a cell is worth, never narrow which
+  dimensions may be chosen: a subspace that is not Frobenius-stable is a
+  perfectly legal factor base, it simply forfeits the quotient and is charged
+  with `R = 1`.
+
+Limits, refused loudly rather than silently worked around. A dimension at or
+above the degree is rejected — a factor base spanning the whole field is not
+one. Orbit reduction is computed for odd prime degrees only, where Frobenius
+fixes exactly the subfield and every other orbit has length `n`; a composite
+degree is charged with no quotient rather than with a wrong mean, because a
+number that does not describe the run is worse than no number.
+
+Status is `complete` whenever the arithmetic ran; it says nothing about whether
+any cell was viable. The result is a verdict under a declared cost model, not
+an attack and not a lower bound on ECDLP. Two charges are load-bearing and are
+listed in the report's `limitations` so they can be argued with: sparse linear
+algebra at `m · D²`, where a method with a materially lower exponent would
+relax the gate on `l` and could revive arity 3; and one operation per ANF
+monomial, which binds every method that *materialises* the system — Gröbner,
+WDSat, CNF-SAT, crossbred, msolve — but not one that never materialises it.
+Polylog factors are dropped on both sides, so the comparison is fair to within
+them but not to within constants.
+
 ## Comparing factor bases
 
     ./target/release/ca-ic compare --degree 7 --curve-a 1 --samples 3 --holdout 2 --seed 42 --out comparison.json

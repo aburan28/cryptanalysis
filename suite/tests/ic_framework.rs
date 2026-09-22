@@ -941,3 +941,99 @@ fn subfield_curves_run_precompute_and_descend_with_bound_documents() {
     ]);
     assert!(!ok);
 }
+
+#[test]
+fn budget_charges_a_degree_far_past_the_curve_constructors_reach() {
+    // Nothing is constructed, so the 63 cap on the run commands does not apply.
+    let (ok, v) = command(&["budget", "--degree", "571", "--max-arity", "5"]);
+    assert!(ok, "{v}");
+    assert_eq!(v["operation"], "budget");
+    assert_eq!(v["status"], "complete");
+    assert_eq!(v["evidence_scope"], "analytic_cost_model");
+    let degrees = v["degrees"].as_array().unwrap();
+    assert_eq!(degrees.len(), 1);
+    assert_eq!(degrees[0]["degree"], 571);
+    assert!(!degrees[0]["cells"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn budget_reports_arity_two_as_losing_even_to_a_free_decomposition_oracle() {
+    let (ok, v) = command(&["budget", "--standard", "--summands", "2"]);
+    assert!(ok, "{v}");
+    for degree in v["degrees"].as_array().unwrap() {
+        let cell = &degree["cells"].as_array().unwrap()[0];
+        assert_eq!(
+            cell["free_oracle_loses"], true,
+            "degree {} unexpectedly left an arity-2 budget",
+            degree["degree"]
+        );
+        assert!(cell["log2_budget"].as_f64().unwrap() < 0.0);
+    }
+}
+
+#[test]
+fn budget_separates_a_system_too_large_to_build_from_one_merely_hard_to_solve() {
+    // ECC2K-130's degree: arity 4 has a positive budget and is still blocked,
+    // because forming the descended system already exceeds it.
+    let (ok, v) = command(&["budget", "--degree", "131", "--summands", "4"]);
+    assert!(ok, "{v}");
+    let cell = &v["degrees"].as_array().unwrap()[0]["cells"]
+        .as_array()
+        .unwrap()[0];
+    assert!(cell["log2_budget"].as_f64().unwrap() > 0.0);
+    assert_eq!(cell["free_oracle_loses"], false);
+    assert_eq!(cell["anf_blocks"], true);
+    assert_eq!(cell["viable"], false);
+    assert!(cell["log2_anf_deficit"].as_f64().unwrap() > 0.0);
+}
+
+#[test]
+fn budget_finds_the_two_degrees_where_the_system_fits_inside_the_budget() {
+    let (ok, v) = command(&["budget", "--standard", "--summands", "4"]);
+    assert!(ok, "{v}");
+    let fitting: Vec<u64> = v["degrees"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["cells"].as_array().unwrap()[0]["viable"] == true)
+        .map(|d| d["degree"].as_u64().unwrap())
+        .collect();
+    assert_eq!(fitting, vec![409, 571]);
+}
+
+#[test]
+fn budget_shows_what_the_orbit_quotient_buys_by_withholding_it() {
+    // Crediting the quotient may only help; at 113 it is what moves the
+    // smallest viable arity from 4 down to 3.
+    let (ok, with) = command(&["budget", "--degree", "113"]);
+    assert!(ok, "{with}");
+    let (ok, without) = command(&["budget", "--degree", "113", "--no-frobenius"]);
+    assert!(ok, "{without}");
+    assert_eq!(with["frobenius_orbit_quotient_credited"], true);
+    assert_eq!(without["frobenius_orbit_quotient_credited"], false);
+    assert_eq!(with["degrees"][0]["minimum_viable_arity"], 3);
+    assert_eq!(without["degrees"][0]["minimum_viable_arity"], 4);
+}
+
+#[test]
+fn budget_refuses_a_factor_base_spanning_the_whole_field() {
+    let (ok, v) = command(&[
+        "budget",
+        "--degree",
+        "131",
+        "--summands",
+        "4",
+        "--dimension",
+        "131",
+    ]);
+    assert!(!ok);
+    assert_eq!(v["operation"], "error");
+}
+
+#[test]
+fn budget_refuses_a_degree_it_was_not_given() {
+    let (ok, v) = command(&["budget", "--summands", "4"]);
+    assert!(!ok);
+    assert_eq!(v["operation"], "error");
+    assert!(v["message"].as_str().unwrap().contains("--degree"));
+}
