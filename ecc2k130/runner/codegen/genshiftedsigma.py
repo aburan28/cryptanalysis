@@ -91,9 +91,12 @@ def generate(nets):
         lines += [f'    {v}{v}.v[{i}] = ({v}.v[{i}] << 1) | ({v}.v[{i-1}] >> 31);'
                   for i in range(1, 5)]
     lines += ['    return SigmaWalkPair131{aa,bb};', '#else']
+    lastWord = max(word + (distance // 32 if distance >= 32 else 0)
+                   for distance, word, _ in ops)
     for v in ('a', 'b'):
         lines.append(f'    uint32_t {v}0={v}.v[0]&~1u, ' + ', '.join(f'{v}{i}={v}.v[{i}]' for i in range(1, 5)) + ';')
-        lines.append(f'    uint32_t {v}5=0, {v}6=0, {v}7=0;')
+        if lastWord >= 5:
+            lines.append('    uint32_t ' + ', '.join(f'{v}{i}=0' for i in range(5,lastWord+1)) + ';')
     lines.append('    uint32_t t, mask;')
     for distance, word, row in ops:
         index = rows.index(row)

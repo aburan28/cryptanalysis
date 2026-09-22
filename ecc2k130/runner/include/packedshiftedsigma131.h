@@ -185,9 +185,9 @@ ECC_HD SigmaWalkPair131 sigmaShiftedWalkPair131(P131 a, P131 b, int index) {
     return SigmaWalkPair131{aa,bb};
 #else
     uint32_t a0=a.v[0]&~1u, a1=a.v[1], a2=a.v[2], a3=a.v[3], a4=a.v[4];
-    uint32_t a5=0, a6=0, a7=0;
+    uint32_t a5=0;
     uint32_t b0=b.v[0]&~1u, b1=b.v[1], b2=b.v[2], b3=b.v[3], b4=b.v[4];
-    uint32_t b5=0, b6=0, b7=0;
+    uint32_t b5=0;
     uint32_t t, mask;
 #ifdef __CUDA_ARCH__
     mask=sigmaShiftedWalkShared131[0][index];

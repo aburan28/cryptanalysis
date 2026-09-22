@@ -32,7 +32,7 @@ BASE = dict(BATCH=16, THREADS=640, MINBLOCKS=1, PACKED_SINGLE_PRODUCT=1,
     PACKED_L2_PERSIST=1, PACKED_ALU_SQUARE=1,
     FROBENIUS_FUSED=1, PACKED_CHAIN_FIRST=1, PACKED_INLINE_SIGMA=1)
 
-CASES = {"production_onb": ({"PACKED_ONB_INV": 1}, "")}
+CASES = {"production_onb": ({"PACKED_ONB_INV": 1, "PACKED_TOP_HOIST": 1}, "")}
 
 
 @app.function(image=bench_image, gpu="RTX-PRO-6000", cpu=4, memory=8192,
@@ -242,7 +242,8 @@ def main(mode: str = "confirm", selected: str = "production_onb", output: str = 
     baseline_sources = {name: subprocess.check_output(
         ["git", "show", f"{tree}/{name}"], cwd=LOCAL, text=True) for name in names}
     sources = {name: (LOCAL / name).read_text() for name in names}
-    for name in ("codegen/genshiftedsigma.py", "codegen/shifted_sigma_routes.json", "include/packedshiftedsigma131.h"):
+    for name in ("codegen/genshiftedsigma.py", "codegen/shifted_sigma_routes.json", "include/packedshiftedsigma131.h",
+                 "codegen/gensquareraw.py", "include/packedsquareraw131.h"):
         sources[name] = (LOCAL / name).read_text()
     driver_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     result = experiment.remote(mode, selected, sources, baseline_sources)

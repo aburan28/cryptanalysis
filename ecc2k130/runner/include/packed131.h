@@ -761,7 +761,11 @@ ECC_HD uint64_t spread32p(uint32_t x){
 }
 // Polynomial coefficients square into the even positions of a degree-260
 // product. This is distinct from sqr131's normal-basis permutation.
+#if ECC_FROBENIUS_FUSED
+#include "packedsquareraw131.h"
+#else
 #include "square_reduce.h"
+#endif
 ECC_HD P131 squarePolynomial131(P131 a) { return goal22SquareReduced(a); }
 ECC_HD P131 sqr131(const P131 &a){
  P131 rev=reverse131(a),r;
