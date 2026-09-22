@@ -168,10 +168,15 @@ pub fn orbit_reduction(n: u32, l: u32) -> Option<f64> {
     if l == a {
         return Some(1.0); // the fixed line, or nothing
     }
-    let elements = exp2(f64::from(l));
-    let fixed = exp2(f64::from(a));
-    let orbits = fixed + (elements - fixed) / f64::from(n);
-    Some(elements / orbits)
+    // R = 2^l / (2^a + (2^l - 2^a) / n) = n / (1 + (n - 1) * 2^(a - l)).
+    // Writing 2^l in f64 overflows at l >= 1024, which the budget command
+    // accepts, and inf/inf is NaN. That NaN passes the linear-algebra gate
+    // (`NaN >= rho` is false) and then wins `best_cell`, because the stable
+    // hyperplane l = n - 1 is inspected last and a failed `partial_cmp` is
+    // treated as equality. The rewritten form is the same quantity and stays
+    // finite: 2^(a-l) underflows to 0 and R rounds to n.
+    let nf = f64::from(n);
+    Some(nf / (1.0 + (nf - 1.0) * exp2(f64::from(a) - f64::from(l))))
 }
 
 /// Boolean degree of the Weil-descended system: `m · min(m−1, l)`.
@@ -358,6 +363,20 @@ mod tests {
         assert!(close(orbit_reduction(43, 14).unwrap(), 42.8901, 1e-3));
         assert!(close(orbit_reduction(43, 15).unwrap(), 42.8901, 1e-3));
         assert!(close(orbit_reduction(131, 130).unwrap(), 131.0, 1e-6));
+        // 2^1024 is not a finite f64. Every odd prime has a stable hyperplane
+        // of dimension n - 1, so this is the cell best_cell inspects last.
+        let r = orbit_reduction(1031, 1030).unwrap();
+        assert!(r.is_finite(), "{r}");
+        assert!(close(r, 1031.0, 1e-6));
+        let hyperplane = evaluate(1031, 2, 1030, true);
+        assert!(
+            hyperplane.log2_budget.is_none(),
+            "linear algebra at l = n - 1 must lose the gate, got {:?}",
+            hyperplane.log2_budget
+        );
+        let best = best_cell(1031, 2, true).expect("a smaller dimension passes the gate");
+        let budget = best.log2_budget.expect("filtered to cells with a budget");
+        assert!(budget.is_finite(), "{budget}");
     }
 
     #[test]
