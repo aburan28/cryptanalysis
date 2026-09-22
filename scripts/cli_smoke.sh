@@ -225,6 +225,26 @@ if [ "$first" != "$second" ]; then
 fi
 
 want '"x":123456' work --job "$tmp/job.txt" --node solo --threads 2 --max-seconds 60
+
+# Sharding: the count rides in the document, so it changes the id, and a
+# document that declares it says so.
+sharded=$("$CA" coord-job "${ZP[@]}" --g 858101 --h "$H" --dp-bits 4 --unit-size 64 --seed 42 --shards 4)
+checks=$((checks + 1))
+if [ "$sharded" = "$first" ]; then
+  printf 'FAIL: --shards did not change the job id\n' >&2
+  fail=$((fail + 1))
+fi
+want 'sh=4' coord-job "${ZP[@]}" --g 858101 --h "$H" --dp-bits 4 --unit-size 64 --seed 42 --shards 4
+want_fail coord-job "${ZP[@]}" --g 858101 --h "$H" --shards 0
+want_fail coord-job "${ZP[@]}" --g 858101 --h "$H" --shards 99999
+# A sharded job needs one coordinator URL per shard, in shard order; one
+# URL for four shards is refused rather than silently under-split.
+"$CA" coord-job "${ZP[@]}" --g 858101 --h "$H" --dp-bits 4 --unit-size 64 --seed 42 \
+    --shards 4 --out "$tmp/sharded.txt" >/dev/null 2>&1
+want_fail work --job "$tmp/sharded.txt" --coordinator http://127.0.0.1:1 --max-seconds 1
+# And with no coordinator at all it still walks: sharding is about where
+# points are sent, not whether they are found.
+want '"shards":4' work --job "$tmp/sharded.txt" --node solo --threads 2 --max-seconds 60
 want_fail coord-status --coordinator http://127.0.0.1:1   # nothing is listening
 
 # ── usage and unknown commands ──────────────────────────────────────────────

@@ -67,6 +67,10 @@ extern "C" {
 #define CA_COORD_DPS_MAX 64
 /* Unit reports carried by one check-in. */
 #define CA_COORD_UNITS_MAX 8
+
+/* Most shards a campaign may be split across.  The bound is not physics,
+ * only a limit small enough that a mistyped number is caught. */
+#define CA_COORD_SHARDS_MAX 1024
 /* Longest wire line, including the terminator. */
 #define CA_COORD_LINE_MAX 8192
 /* The protocol token in the channel's Upgrade: header. */
@@ -98,6 +102,7 @@ typedef struct ca_coord_job {
     int32_t negation_map; /* 1 to walk on {Y, -Y} classes */
     uint64_t unit_size;   /* walkers per work unit */
     uint64_t seed;        /* mixed into every derivation */
+    uint32_t shards;      /* how many hubs the point space is split across */
     uint64_t id;          /* derived; set by init/decode, not by you */
 } ca_coord_job;
 
@@ -275,6 +280,28 @@ typedef struct ca_coord_dp_store {
     uint64_t (*count)(void *self);
     void (*close)(void *self); /* may be NULL */
 } ca_coord_dp_store;
+
+/* ---- sharding ------------------------------------------------------------
+ *
+ * One hub holds every point, and a campaign large enough to be worth
+ * distributing will outgrow any single machine.  So the point space can be
+ * split across `job.shards` hubs, and this is the function that splits it.
+ *
+ * It is safe for one reason, and the reason is worth stating: a collision
+ * is two *equal* points.  Equal points hash alike, so both copies route to
+ * the same shard, and no partitioning can put the two halves of a collision
+ * on different machines.  Sharding costs coverage of nothing.
+ *
+ * The count lives in the job document and is therefore covered by the job
+ * id: two agents cannot disagree about the topology while agreeing they are
+ * working the same campaign.  It defaults to 1, and a document written
+ * before this existed decodes as 1 with its id unchanged.
+ */
+CA_API uint32_t ca_coord_shard_of(const ca_coord_ctx *ctx, const ca_coord_dp *dp);
+
+/* Set the shard count and re-derive the job id.  Refuses 0 or more than
+ * CA_COORD_SHARDS_MAX. */
+CA_API ca_status ca_coord_job_set_shards(ca_coord_job *job, uint32_t shards);
 
 CA_API ca_status ca_coord_state_init(ca_coord_state **out, const ca_coord_ctx *ctx);
 

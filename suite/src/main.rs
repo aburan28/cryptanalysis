@@ -174,6 +174,35 @@ enum Cmd {
         #[command(subcommand)]
         op: cli_mlwe::MlweOp,
     },
+    /// Elliptic-curve challenge corpus: field shapes, j-invariants,
+    /// endomorphisms and isogeny volcanoes from a few bits up to 768.
+    EcChallenges {
+        #[command(subcommand)]
+        op: EcChallengesOp,
+    },
+}
+
+#[derive(Subcommand)]
+enum EcChallengesOp {
+    /// Print how many instances sit in each family and tier.
+    Summary,
+    /// List instances. Filters are exact matches on family, tier and tag.
+    List {
+        #[arg(long)]
+        family: Option<String>,
+        #[arg(long)]
+        tier: Option<String>,
+        #[arg(long)]
+        tag: Option<String>,
+        /// Keep instances whose field has at most this many bits.
+        #[arg(long)]
+        max_bits: Option<u32>,
+    },
+    /// Print one instance, including the note and the known-answer relation.
+    Show {
+        #[arg(long)]
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -299,6 +328,36 @@ enum RhoCollabOp {
         #[arg(long, default_value_t = 120)]
         lease_secs: u64,
     },
+}
+
+fn cmd_ec_challenges(op: EcChallengesOp) {
+    use cryptanalysis_suite::cryptanalysis::ec_challenges::{self, corpus};
+    let corpus = corpus();
+    match op {
+        EcChallengesOp::Summary => print!("{}", ec_challenges::format_summary(corpus)),
+        EcChallengesOp::List {
+            family,
+            tier,
+            tag,
+            max_bits,
+        } => {
+            let rows = ec_challenges::select(
+                corpus,
+                family.as_deref(),
+                tier.as_deref(),
+                tag.as_deref(),
+                max_bits,
+            );
+            print!("{}", ec_challenges::format_list(&rows));
+        }
+        EcChallengesOp::Show { id } => match ec_challenges::find(corpus, &id) {
+            Some(inst) => print!("{}", ec_challenges::format_instance(inst)),
+            None => {
+                eprintln!("no challenge named {id}");
+                std::process::exit(1);
+            }
+        },
+    }
 }
 
 fn main() {
@@ -486,6 +545,7 @@ fn run(op: Cmd) {
         }
         Cmd::RhoCollab { op } => cmd_rho_collab(*op),
         Cmd::Mlwe { op } => cli_mlwe::run(op),
+        Cmd::EcChallenges { op } => cmd_ec_challenges(op),
         Cmd::HashAuto { hash } => {
             use cryptanalysis_suite::cryptanalysis::hash_attacks::auto_hash_attack;
             match auto_hash_attack(&hash) {

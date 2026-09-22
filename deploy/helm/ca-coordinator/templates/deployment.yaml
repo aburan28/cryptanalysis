@@ -58,6 +58,9 @@ spec:
             {{- if .Values.coordinator.persistence.enabled }}
             - -log={{ .Values.coordinator.persistence.path }}
             {{- end }}
+            {{- if gt (int .Values.sharding.count) 1 }}
+            - -shard={{ .Values.sharding.index }}
+            {{- end }}
             {{- range .Values.federation.peers }}
             - -peer={{ .name }}={{ .url }}
             {{- end }}

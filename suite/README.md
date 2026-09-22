@@ -125,6 +125,7 @@ the targets and the arithmetic they stand on.
 | module | attack |
 |---|---|
 | `pollard_rho`, `preprocessing_rho`, `ml_rho_walks`, `aut_folded_rho`, `bsgs_fast`, `ecdlp_variants` | Pollard rho (multi-shard, distinguished points), Bernstein-Lange precomputation, learned partition walks, automorphism-folded rho on CM curves, BSGS and Gaudry-Schost variants |
+| `ec_challenges` | the elliptic-curve challenge corpus ([challenges/elliptic](../challenges/elliptic/README.md)): prime, binary, ternary and odd-extension fields from a few bits to 768, Koblitz and subfield curves, j = 0 / 1728 / generic, supersingular, anomalous, twist pairs, and multi-level isogeny volcanoes, each tagged with the solver that should be fastest |
 | `pollard_collab` | the collaborative rho: indexed work units, self-verifying DP check-ins, CRDT merge, mailbox / TCP gossip / cairn transports ([design](docs/POLLARD_COLLAB_DESIGN.md)) |
 | `pohlig_hellman`, `cheon_attack`, `ecm`, `shor`, `quantum_estimator` | Pohlig-Hellman, Cheon's strong-DH attack, ECM factoring, Shor's order finding, quantum resource estimates |
 | `ec_index_calculus`, `ec_index_calculus_j0`, `residual_walk`, `gaudry_cubic`, `semaev_*`, `symmetrized_semaev`, `diem_descent`, `descent_*`, `degree_reduction*`, `coordinate_*` | Semaev index calculus on prime-field curves and `E(F_{p^3})`, residual walks, Diem descent, and the summation-polynomial machinery they share |

@@ -552,6 +552,234 @@ static void test_two_lanes_merge_to_a_solution(void)
     ca_coord_ctx_close(ctx);
 }
 
+/* ---- sharding ----------------------------------------------------------- */
+
+/* The count travels in the job document, so it is covered by the id and
+ * two agents cannot disagree about the topology while agreeing on the
+ * campaign.  A document written before sharding existed still decodes,
+ * with its id unchanged -- which is why `sh` is written only when it says
+ * something. */
+static void test_shards_ride_in_the_job_id(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 4242, 0, NULL);
+    ca_coord_job job = *ca_coord_ctx_job(ctx);
+    CHECK_EQ_U64((uint64_t)job.shards, 1);
+
+    char plain[CA_COORD_LINE_MAX];
+    CHECK(ca_coord_job_encode(&job, plain, sizeof(plain)) > 0);
+    CHECK(strstr(plain, " sh=") == NULL); /* unsharded documents are unchanged */
+    uint64_t was = job.id;
+
+    CHECK(ca_coord_job_set_shards(&job, 8) == CA_OK);
+    CHECK(job.id != was);
+    char sharded[CA_COORD_LINE_MAX];
+    CHECK(ca_coord_job_encode(&job, sharded, sizeof(sharded)) > 0);
+    CHECK(strstr(sharded, " sh=8") != NULL);
+
+    ca_coord_job back;
+    CHECK(ca_coord_job_decode(&back, sharded) == CA_OK);
+    CHECK_EQ_U64((uint64_t)back.shards, 8);
+    CHECK_EQ_U64(back.id, job.id);
+
+    /* Back to one and the id returns to what it was: the field is not a
+     * one-way door. */
+    CHECK(ca_coord_job_set_shards(&job, 1) == CA_OK);
+    CHECK_EQ_U64(job.id, was);
+
+    CHECK(ca_coord_job_set_shards(&job, 0) == CA_ERR_INVALID);
+    CHECK(ca_coord_job_set_shards(&job, CA_COORD_SHARDS_MAX + 1) == CA_ERR_INVALID);
+    ca_coord_ctx_close(ctx);
+}
+
+/*
+ * Route a point twice and it lands in the same place -- the property the
+ * whole scheme rests on, since a collision is two equal points -- and the
+ * routing actually spreads.
+ *
+ * The shard count here is a power of two on purpose, because that is the
+ * case that can fail.  A point is distinguished exactly when the low
+ * dp_bits of its group hash are zero, so every record shares those bits;
+ * routing on the raw hash modulo any power of two therefore sends the
+ * whole campaign to shard 0.  An odd count like 7 hides the bug
+ * completely, which is why this test does not use one.
+ */
+static void test_routing_is_a_function_of_the_point(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_job job;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 999, 0, NULL);
+    job = *ca_coord_ctx_job(ctx);
+    ca_coord_ctx_close(ctx);
+    CHECK(ca_coord_job_set_shards(&job, 8) == CA_OK);
+    CHECK(ca_coord_ctx_open(&ctx, &job) == CA_OK);
+
+    int seen[8];
+    memset(seen, 0, sizeof(seen));
+    int got = 0;
+    for (uint64_t i = 0; i < 256 && got < 40; i++) {
+        ca_coord_dp dp;
+        uint64_t steps = 0;
+        if (!ca_coord_walk_one(ctx, i, 20u << 5, &dp, &steps)) continue;
+        got++;
+        uint32_t sh = ca_coord_shard_of(ctx, &dp);
+        CHECK(sh < 8);
+        if (sh >= 8) continue; /* CHECK counts, it does not stop */
+        seen[sh]++;
+        /* The same point, offered again with different coefficients --
+         * which is exactly what a collision looks like -- routes to the
+         * same shard. */
+        ca_coord_dp twin = dp;
+        twin.a = (twin.a + 1) % ctx->n;
+        twin.b = (twin.b + 3) % ctx->n;
+        twin.walker = dp.walker + 1000;
+        CHECK_EQ_U64((uint64_t)ca_coord_shard_of(ctx, &twin), (uint64_t)sh);
+    }
+    CHECK(got > 0);
+    /* And it spreads: a routing function that sent everything to one hub
+     * would be correct and useless. */
+    int used = 0;
+    for (int i = 0; i < 8; i++)
+        if (seen[i]) used++;
+    CHECK(used >= 4);
+    ca_coord_ctx_close(ctx);
+}
+
+/* The real thing: run a campaign with four shards kept genuinely apart --
+ * each check-in merged only into the state of the shard it was addressed
+ * to -- and it still solves, with the same answer an unsharded run gives.
+ *
+ * This is the claim sharding has to earn.  If any collision could be
+ * split across two hubs, this test is where it would show up as a
+ * campaign that walks forever. */
+static void test_four_shards_still_solve(void)
+{
+    enum { SHARDS = 4 };
+    ca_group g;
+    ca_elem gen;
+    uint64_t secret = 0;
+    ca_coord_ctx *ctx1 = make_ctx(&g, &gen, 133337, 0, &secret);
+    ca_coord_job job = *ca_coord_ctx_job(ctx1);
+    ca_coord_ctx_close(ctx1);
+
+    CHECK(ca_coord_job_set_shards(&job, SHARDS) == CA_OK);
+    ca_coord_ctx *ctx = NULL;
+    CHECK(ca_coord_ctx_open(&ctx, &job) == CA_OK);
+
+    /* One state per shard, and nothing else merges them. */
+    ca_coord_state *shard[SHARDS];
+    for (int i = 0; i < SHARDS; i++) {
+        shard[i] = NULL;
+        CHECK(ca_coord_state_init(&shard[i], ctx) == CA_OK);
+    }
+    /* The lane's own view, which holds everything it produced. */
+    ca_coord_state *lane = NULL;
+    CHECK(ca_coord_state_init(&lane, ctx) == CA_OK);
+
+    uint64_t dps_routed = 0;
+    int solved_in = -1;
+    for (int round = 0; round < 400 && solved_in < 0; round++) {
+        for (int l = 0; l < 2; l++) {
+            char name[CA_COORD_PEER_MAX];
+            snprintf(name, sizeof(name), "n%d.0", l);
+            collector c;
+            memset(&c, 0, sizeof(c));
+            ca_coord_lane_params p;
+            ca_coord_lane_params_default(&p, name);
+            p.max_walkers = 8;
+            p.checkin_every = 4;
+            p.claim_window = 1;
+            ca_coord_lane_result res;
+            CHECK(ca_coord_lane_run(ctx, lane, &p, collect, &c, NULL, NULL, &res) == CA_OK);
+
+            for (size_t k = 0; k < c.count; k++) {
+                /* Deliver each check-in only to the shard it is addressed
+                 * to, read off the peer name the library built. */
+                const char *hash = strrchr(c.ci[k].peer, '#');
+                CHECK(hash != NULL);
+                if (!hash) continue;
+                char *shend = NULL;
+                long shl = strtol(hash + 1, &shend, 10);
+                CHECK(shend != NULL && *shend == 0);
+                int sh = (int)shl;
+                CHECK(sh >= 0 && sh < SHARDS);
+                if (sh < 0 || sh >= SHARDS) continue;
+                /* Every point in it belongs to that shard, and to no other. */
+                for (uint32_t d = 0; d < c.ci[k].num_dps; d++) {
+                    CHECK_EQ_U64((uint64_t)ca_coord_shard_of(ctx, &c.ci[k].dps[d]), (uint64_t)sh);
+                    dps_routed++;
+                }
+                CHECK(ca_coord_apply(shard[sh], ctx, &c.ci[k], 0, 1, NULL) == CA_OK);
+            }
+            free(c.ci);
+        }
+        for (int i = 0; i < SHARDS && solved_in < 0; i++)
+            if (ca_coord_solution(shard[i], NULL)) solved_in = i;
+    }
+
+    CHECK(dps_routed > 0);
+    CHECK(solved_in >= 0);
+    if (solved_in >= 0) {
+        uint64_t x = 0;
+        CHECK(ca_coord_solution(shard[solved_in], &x) == 1);
+        CHECK_EQ_U64(x, secret);
+    }
+    /* Nobody was handed a record they should have refused. */
+    for (int i = 0; i < SHARDS; i++) {
+        ca_coord_progress pr;
+        ca_coord_progress_get(shard[i], ctx, 0, 120, &pr);
+        CHECK_EQ_U64(pr.rejected_dps, 0);
+    }
+    /* And the split was real: the points did not all end up in one hub. */
+    int holding = 0;
+    for (int i = 0; i < SHARDS; i++) {
+        ca_coord_progress pr;
+        ca_coord_progress_get(shard[i], ctx, 0, 120, &pr);
+        if (pr.dps_stored) holding++;
+    }
+    CHECK(holding >= 2);
+
+    for (int i = 0; i < SHARDS; i++) ca_coord_state_free(shard[i]);
+    ca_coord_state_free(lane);
+    ca_coord_ctx_close(ctx);
+}
+
+/* A lane name with no room for "#<shard>" is refused rather than
+ * truncated: two shards' streams sharing one identity would collide on
+ * sequence numbers and lose check-ins as duplicates. */
+static void test_lane_name_must_leave_room_for_the_shard(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx1 = make_ctx(&g, &gen, 7, 0, NULL);
+    ca_coord_job job = *ca_coord_ctx_job(ctx1);
+    ca_coord_ctx_close(ctx1);
+    CHECK(ca_coord_job_set_shards(&job, 16) == CA_OK);
+    ca_coord_ctx *ctx = NULL;
+    CHECK(ca_coord_ctx_open(&ctx, &job) == CA_OK);
+    ca_coord_state *st = NULL;
+    CHECK(ca_coord_state_init(&st, ctx) == CA_OK);
+
+    char brim[CA_COORD_PEER_MAX];
+    memset(brim, 'x', sizeof(brim) - 1);
+    brim[sizeof(brim) - 1] = 0;
+    ca_coord_lane_params p;
+    ca_coord_lane_params_default(&p, brim);
+    p.max_walkers = 1;
+    ca_coord_lane_result res;
+    CHECK(ca_coord_lane_run(ctx, st, &p, NULL, NULL, NULL, NULL, &res) == CA_ERR_INVALID);
+
+    /* One that leaves room runs. */
+    ca_coord_lane_params_default(&p, "n0.0");
+    p.max_walkers = 4;
+    CHECK(ca_coord_lane_run(ctx, st, &p, NULL, NULL, NULL, NULL, &res) == CA_OK);
+
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+}
+
 /* ---- the distinguished-point backend ------------------------------------ */
 
 /*
@@ -702,6 +930,26 @@ static void test_url_parsing(void)
     /* https is refused loudly rather than downgraded silently. */
     CHECK(ca_coord_parse_url("https://hub.example.com", hp, sizeof(hp), pfx, sizeof(pfx)) ==
           CA_ERR_UNSUPPORTED);
+}
+
+/* A URL with credentials in it is refused rather than carried around.
+ * This client ignores userinfo and authenticates with a bearer token, so
+ * such a URL cannot work -- and on its way to failing it would take the
+ * secret through the Host header, an error message and the agent's log
+ * line.  The refusal names none of it. */
+static void test_url_with_credentials_is_refused(void)
+{
+    char hp[256], pfx[128];
+    CHECK(ca_coord_parse_url("http://user:secret@host:8080", hp, sizeof(hp), pfx, sizeof(pfx)) ==
+          CA_ERR_INVALID);
+    CHECK(strstr(ca_last_error(), "secret") == NULL);
+    CHECK(ca_coord_parse_url("http://tok@host:8080/rho", hp, sizeof(hp), pfx, sizeof(pfx)) ==
+          CA_ERR_INVALID);
+    /* An @ after the host is part of the path and says nothing about
+     * credentials, so it is left alone. */
+    CHECK(ca_coord_parse_url("http://host:8080/a@b", hp, sizeof(hp), pfx, sizeof(pfx)) == CA_OK);
+    CHECK(strcmp(hp, "host:8080") == 0);
+    CHECK(strcmp(pfx, "/a@b") == 0);
 }
 
 /* ---- the agent's side of the wire --------------------------------------- */
@@ -1355,10 +1603,15 @@ int main(void)
     test_leases_expire_and_units_resume();
     test_sequence_numbers_and_deltas();
     test_two_lanes_merge_to_a_solution();
+    test_shards_ride_in_the_job_id();
+    test_routing_is_a_function_of_the_point();
+    test_four_shards_still_solve();
+    test_lane_name_must_leave_room_for_the_shard();
     test_solves_through_a_foreign_store();
     test_refusing_store_is_counted();
     test_store_must_be_complete();
     test_url_parsing();
+    test_url_with_credentials_is_refused();
     test_fetch_job_over_http();
     test_sync_once_client();
     test_sync_reads_chunked();
