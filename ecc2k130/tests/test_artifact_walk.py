@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / 'metal'))
 sys.path.insert(0, str(ROOT / 'research' / 'step_table'))
 import artifact_reference as reference
 import continuous_walk
+import fused_reference
 import run_walk
 import pack
 
@@ -99,6 +100,46 @@ class ArtifactReferenceTests(unittest.TestCase):
         self.assertFalse(streams[0] & streams[1])
         self.assertEqual({seed % 2 for seed in streams[0]}, {0})
         self.assertEqual({seed % 2 for seed in streams[1]}, {1})
+
+    def testExactPairEndpointMatchesTwoOrdinaryUpdates(self):
+        checked = 0
+        for seed in range(2000, 2032):
+            state = self.walk.initial(seed)
+            self.walk.cycle(state, 0, 1, -1)
+            for _ in range(seed & 15):
+                self.walk.cycle(state, 0, 1, -1)
+            if state['mode'] != 0:
+                continue
+            outcome = fused_reference.exactPair(
+                self.walk, self.walk.serialize(state),
+                lambda u, v: self.walk.curve.add(
+                    self.walk.points[u], self.walk.points[v]))
+            if not outcome['fused']:
+                continue
+            self.assertEqual(outcome['runtimeAdditions'], 2)
+            self.assertEqual(outcome['pairLookups'], 1)
+            self.assertEqual(outcome['pairIndex'], fused_reference.pairIndex(
+                outcome['first'], outcome['second']))
+            checked += 1
+        self.assertGreaterEqual(checked, 24)
+
+    def testIntermediateDistinguishedPointCannotBeSkipped(self):
+        found = None
+        for seed in range(4000, 5000):
+            state = self.walk.initial(seed)
+            self.walk.cycle(state, 0, 1, -1)
+            if state['mode'] != 0:
+                continue
+            calls = []
+            outcome = fused_reference.exactPair(
+                self.walk, self.walk.serialize(state),
+                lambda u, v: calls.append((u, v)), dpWeight=64)
+            if outcome['reason'] == 'distinguished-intermediate':
+                found = outcome
+                self.assertEqual(calls, [])
+                self.assertEqual(len(outcome['reports']), 1)
+                break
+        self.assertIsNotNone(found)
 
     def testThroughputAccounting(self):
         report = {'gpuSeconds': 2.0, 'dispatchWallSeconds': 4.0,
