@@ -238,6 +238,60 @@ join the production Certicom campaign and its checkpoints are a new format.
 The current implementation is a correctness path, not an optimized throughput
 claim.
 
+## Exact intermediate-selector pair benchmark
+
+The exact two-step oracle now computes the first ordinary update, evaluates the
+second selector and cycle history on that intermediate point, then checks that
+`R + pair[first,second]` equals the two ordinary updates byte-for-byte. An
+intermediate distinguished point is not fusible: the oracle falls back so that
+the report cannot be skipped. This establishes the algorithmic boundary—the
+exact selector still requires the first complete point addition.
+
+`metal-fused-benchmark` maps the full 20,244,542,976-byte h128 payload into one
+shared Metal buffer and compares matched paths:
+
+* baseline: two selectors and two small-direction point additions;
+* pair candidate: the same selectors, the first direction addition, one random
+  pair lookup, and a second addition from the original point.
+
+Both paths therefore charge two runtime additions for two logical updates. The
+benchmark uses 4,096 independently replayed inputs per case seed and repeats
+each workload 64 times inside a command buffer so timed samples are about 15 ms
+instead of sub-millisecond events.
+
+| Case seed | Exact cases | Paired samples | Fused / baseline median time |
+| --- | ---: | ---: | ---: |
+| 20260921 | 4,096 | 9 | 1.035139 |
+| 20261021 | 4,096 | 9 | 1.035391 |
+| Combined | 8,192 | 18 | **1.035749** |
+
+All 18 fused samples were slower; the observed range was 1.031817–1.038018.
+The pair path is rejected for collection: it does not reduce group operations
+and is about 3.5% slower in this matched warm microbenchmark. This is not a
+complete-walk timing or an asymptotic result. The benchmark-only S3 namespace
+sets `collectionEnabled: false`, and no fused DP campaign is launched.
+
+Reproduce with:
+
+```sh
+python3 metal/prepare_fused_benchmark.py \
+  --out /private/tmp/fused-input --artifact-dir research/step_table/pair128-24gb-20260921 \
+  --cases 4096 --seed 20260921 --repeats 9 --warmups 2 --inner-iterations 64
+make -C metal
+python3 metal/run_fused_benchmark.py \
+  --input /private/tmp/fused-input \
+  --pairs research/step_table/pair128-24gb-20260921/pairs.bin \
+  --out metal/evidence/fused-selector-reproduction.json
+```
+
+The checked-in receipts are
+[seed 20260921](evidence/fused-selector-seed1.json),
+[seed 20261021](evidence/fused-selector-seed2.json), and the
+[combined decision](evidence/fused-selector-summary.json).
+The immutable [public S3 manifest](https://ecc2k130-status-590183823895.s3.us-west-2.amazonaws.com/public/ecc2k130/synthetic-fused-selector/v1/840ec3787f2e0d06c82fcee32b3b2ec574752213d44499044a5223b07b6f26c4/manifest.json)
+publishes those receipts, the exact sources, and the arm64 benchmark binary in
+a separate benchmark-only namespace.
+
 ## Pair acceleration remains disabled
 
 The artifact walk includes Metal Shading Language GF(2^131) multiplication,
