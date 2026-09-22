@@ -1375,6 +1375,30 @@ uint64_t ca_coord_next_seq(ca_coord_state *st, const char *peer)
 
 /* ---- claiming ----------------------------------------------------------- */
 
+/* True when `name` is this lane.  The bare id is what a lane claims
+ * under.  Once the campaign is split, coord_emit logs that same lane as
+ * "<lane>#<shard>" -- decimal, no leading zero, and only a shard this
+ * job has.  Both are the same worker. */
+static int coord_peer_is_lane(const char *name, const char *lane, uint32_t shards)
+{
+    if (strcmp(name, lane) == 0) return 1;
+    if (shards <= 1) return 0;
+    size_t n = strlen(lane);
+    if (strncmp(name, lane, n) != 0 || name[n] != '#') return 0;
+    const char *s = name + n + 1;
+    if (*s < '0' || *s > '9') return 0;
+    if (*s == '0') return s[1] == '\0';
+    uint32_t sh = 0;
+    for (; *s; s++) {
+        if (*s < '0' || *s > '9') return 0;
+        /* Another digit would meet or pass `shards`. */
+        if (sh > (shards - 1) / 10) return 0;
+        sh = sh * 10u + (uint32_t)(*s - '0');
+        if (sh >= shards) return 0;
+    }
+    return 1;
+}
+
 /*
  * There is no assignment.  A lane picks from its own merged view: the
  * lowest-numbered units that are neither completed nor live-leased by
@@ -1385,22 +1409,26 @@ uint64_t ca_coord_next_seq(ca_coord_state *st, const char *peer)
  * Two lanes working one unit is only waste, never corruption: the trails
  * are deterministic, so the duplicate points arrive with identical
  * coefficients and merge as no-ops.
+ *
+ * "Somebody else" does not include this lane's own reports, including
+ * the "<lane>#<shard>" names a split campaign stores them under.  A
+ * restart resumes those units instead of waiting out its own lease.  A
+ * reconnect replays the log and stamps seen_local with "now", so the
+ * lease looks freshly taken even after a long outage.
  */
 uint64_t ca_coord_claim_unit(ca_coord_state *st, const ca_coord_ctx *ctx, const char *peer,
                              uint64_t now, uint64_t lease_secs, uint32_t claim_window,
                              uint64_t *resume_from)
 {
-    (void)ctx;
     if (!claim_window) claim_window = 4;
     if (!lease_secs) lease_secs = 120;
     uint64_t candidates[64];
     uint64_t cursors[64];
     uint32_t found = 0;
     if (claim_window > 64) claim_window = 64;
+    uint32_t shards = (ctx && ctx->job.shards > 1) ? ctx->job.shards : 1;
 
     pthread_mutex_lock(&st->lock);
-    uint32_t self;
-    int have_self = coord_peer_index(st, peer, &self, 0);
     for (uint64_t u = 0; found < claim_window; u++) {
         int completed = 0, leased = 0;
         uint64_t cursor = 0;
@@ -1411,7 +1439,7 @@ uint64_t ca_coord_claim_unit(ca_coord_state *st, const ca_coord_ctx *ctx, const 
                 completed = 1;
                 break;
             }
-            int mine = have_self && st->units[i].peer == self;
+            int mine = coord_peer_is_lane(st->peers[st->units[i].peer].name, peer, shards);
             if (!mine && now < st->units[i].seen_local + lease_secs) leased = 1;
         }
         if (completed || leased) continue;

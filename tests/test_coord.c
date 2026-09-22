@@ -461,6 +461,82 @@ static void test_leases_expire_and_units_resume(void)
     ca_coord_ctx_close(ctx);
 }
 
+/* A sharded lane logs unit progress as "<lane>#<shard>", but claims under
+ * the bare lane name.  Those reports are still its own: a restart must
+ * resume them.  Replaying the log on reconnect stamps seen_local with
+ * "now", so the lease looks freshly taken even when the outage was long,
+ * and a lane that does not recognise itself waits out a whole new lease
+ * while starting other work. */
+static void test_sharded_lane_resumes_its_own_lease(void)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx1 = make_ctx(&g, &gen, 4711, 0, NULL);
+    ca_coord_job job = *ca_coord_ctx_job(ctx1);
+    ca_coord_ctx_close(ctx1);
+    CHECK(ca_coord_job_set_shards(&job, 4) == CA_OK);
+    ca_coord_ctx *ctx = NULL;
+    CHECK(ca_coord_ctx_open(&ctx, &job) == CA_OK);
+    ca_coord_state *st = NULL;
+    CHECK(ca_coord_state_init(&st, ctx) == CA_OK);
+
+    /* Received at 9000, whatever clock the sender claimed.  That is the
+     * replay a reconnect performs. */
+    const uint64_t now = 9000;
+    struct {
+        const char *peer;
+        uint64_t unit;
+        uint64_t walkers;
+    } reps[] = {
+        {"alice.0#0", 0, 10}, /* this lane, shard 0 */
+        {"alice.00", 1, 4},   /* shares a prefix, is not this lane */
+        {"alice.0#2", 2, 7},  /* this lane, a non-zero shard */
+        {"alice.0#4", 3, 6},  /* shard index this job does not have */
+        {"alice.0#02", 4, 1}, /* leading zero: not the spelling we emit */
+    };
+    for (size_t i = 0; i < sizeof(reps) / sizeof(reps[0]); i++) {
+        ca_coord_checkin ci;
+        memset(&ci, 0, sizeof(ci));
+        ci.job_id = ca_coord_ctx_job(ctx)->id;
+        snprintf(ci.peer, sizeof(ci.peer), "%s", reps[i].peer);
+        ci.seq = 1;
+        ci.time = 1000; /* long before `now`; the lease clock ignores it */
+        ci.num_units = 1;
+        ci.units[0].unit = reps[i].unit;
+        ci.units[0].walkers_done = reps[i].walkers;
+        CHECK(ca_coord_apply(st, ctx, &ci, now, 1, NULL) == CA_OK);
+    }
+
+    uint64_t resume = 0;
+    uint64_t u = ca_coord_claim_unit(st, ctx, "alice.0", now, 120, 1, &resume);
+    CHECK_EQ_U64(u, 0);
+    CHECK_EQ_U64(resume, 10);
+
+    /* bob, in the same instant, still sees live leases and walks past
+     * every one of them. */
+    u = ca_coord_claim_unit(st, ctx, "bob.0", now, 120, 1, &resume);
+    CHECK_EQ_U64(u, 5);
+
+    /* With unit 0 finished, alice resumes the other shard of her own
+     * work rather than either lookalike. */
+    ca_coord_checkin done;
+    memset(&done, 0, sizeof(done));
+    done.job_id = ca_coord_ctx_job(ctx)->id;
+    snprintf(done.peer, sizeof(done.peer), "alice.0#0");
+    done.seq = 2;
+    done.num_units = 1;
+    done.units[0].unit = 0;
+    done.units[0].completed = 1;
+    done.units[0].walkers_done = ca_coord_ctx_job(ctx)->unit_size;
+    CHECK(ca_coord_apply(st, ctx, &done, now, 1, NULL) == CA_OK);
+    u = ca_coord_claim_unit(st, ctx, "alice.0", now, 120, 1, &resume);
+    CHECK_EQ_U64(u, 2);
+    CHECK_EQ_U64(resume, 7);
+
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+}
+
 static void test_sequence_numbers_and_deltas(void)
 {
     ca_group g;
@@ -1601,6 +1677,7 @@ int main(void)
     test_merge_is_order_independent_and_idempotent();
     test_foreign_and_forged_are_refused();
     test_leases_expire_and_units_resume();
+    test_sharded_lane_resumes_its_own_lease();
     test_sequence_numbers_and_deltas();
     test_two_lanes_merge_to_a_solution();
     test_shards_ride_in_the_job_id();
