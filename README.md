@@ -355,8 +355,18 @@ cd suite && cargo build --release
 ./target/release/ca-suite auto --cipher aes-2r          # every applicable attack, as a report
 ./target/release/ca-suite mlwe margins                  # ML-KEM / ML-DSA against the NIST floors
 ./target/release/ca-suite rho-collab init --curve demo-32 --secret 0x1234567 --out job.json
+./target/release/ca-suite ec-challenges summary         # curve corpus: shapes, j, endomorphisms, volcanoes
 ./target/release/ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate
 ```
+
+The curve corpus is [`challenges/elliptic/`](challenges/elliptic/README.md):
+known-answer discrete logs, and order-known parameter sets up to 768 bits,
+across prime fields, `F_{2^m}` (prime and composite `m`, Koblitz and proper
+subfields), `F_{3^m}`, and odd extensions `F_{p^n}`.  j-invariants 0, 1728
+and generic; supersingular, anomalous and twist-insecure pairs; isogeny
+volcanoes with more than one level.  `open` instances are there to be
+solved, `bench` instances to time a faster implementation of the same
+solver, `shape` instances to check field arithmetic at the large end.
 
 `make suite` runs its gates (fmt, clippy `-D warnings`, rustdoc `-D
 warnings`, cargo-deny, the release test suite, the Python engine's lint and
