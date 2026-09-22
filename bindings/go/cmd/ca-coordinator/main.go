@@ -42,6 +42,7 @@ type options struct {
 	peers     peerList
 	peerEvery time.Duration
 	peerTmout time.Duration
+	shard     int
 }
 
 // peerList collects repeated -peer flags.  Each is name=url, or just a url
@@ -100,6 +101,7 @@ func main() {
 	flag.Var(&o.peers, "peer", "another coordinator to gossip with, as name=url or url (repeatable)")
 	flag.DurationVar(&o.peerEvery, "peer-interval", 5*time.Second, "how often each peer is synced")
 	flag.DurationVar(&o.peerTmout, "peer-timeout", 30*time.Second, "how long one peer exchange may take before it is abandoned")
+	flag.IntVar(&o.shard, "shard", -1, "which shard of the point space this hub holds (-1: not a sharded campaign)")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(),
 			"ca-coordinator: the rendezvous a distributed-rho fleet dials out to.\n\n"+
@@ -180,6 +182,17 @@ func run(o *options, log *slog.Logger) (int, error) {
 	if err != nil {
 		return 2, err
 	}
+	var shard *int
+	if o.shard >= 0 {
+		// Compared as int: o.shard is known non-negative here, and
+		// converting it to uint32 to compare would be a widening the
+		// linter is right to distrust in general.
+		if o.shard >= int(job.Shards()) {
+			return 2, fmt.Errorf("-shard %d but this job has %d shard(s)", o.shard, job.Shards())
+		}
+		s := o.shard
+		shard = &s
+	}
 	hub := NewHub(ctx, state, &Config{
 		Token:        token,
 		PushInterval: o.pushEvery,
@@ -188,6 +201,7 @@ func run(o *options, log *slog.Logger) (int, error) {
 		Peers:        peers,
 		PeerInterval: o.peerEvery,
 		PeerTimeout:  o.peerTmout,
+		Shard:        shard,
 		OnCheckIn: func(line string) {
 			if sink != nil {
 				sink.Append(line)

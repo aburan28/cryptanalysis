@@ -292,7 +292,73 @@ ends up holding every point, so federation buys reachability, locality
 and survival — not capacity.  Capacity is what the distinguished-point
 backend below is for.
 
-## 7b. Where distinguished points are remembered
+## 7b. Sharding: splitting the point space
+
+Federation gives you hubs in several places; it does not give you more
+memory, because every hub still ends up holding every point.  Sharding
+is the part that raises the ceiling: the point space is split `sh` ways
+and each hub holds one share.
+
+**Why it is safe.** A collision is two *equal* points.  Equal points hash
+alike, so both copies route to the same shard.  No partitioning can put
+the two halves of a collision on different machines — sharding costs
+coverage of nothing, only bookkeeping.
+
+**One subtlety that will bite you if you reimplement this.**  A point is
+distinguished exactly when the low `dp_bits` of its group hash are zero
+(`ca_coord_is_dp`).  So *every* record shares those bits, and routing on
+the raw hash modulo a power of two sends the entire campaign to shard 0
+while looking perfectly configured.  The key is therefore re-mixed
+(`ca_mix64`) before anything reads its low bits — for the shard number
+and for the table's bucket index alike.  `ca_mix64` is a bijection, so no
+identity and no collision probability changes; the entropy simply moves
+to where the low bits can see it.
+
+**What travels where.** Three kinds of fact move differently:
+
+| | goes to |
+|---|---|
+| a distinguished point | the shard that owns it, and nowhere else |
+| unit progress | the shard that owns the *unit* (`unit % sh`) |
+| a solution | every shard |
+
+Unit bookkeeping is sharded by unit so that no hub is special, and an
+agent — which is connected to every shard — still sees the whole unit
+picture in what is pushed back to it, and still claims against a
+complete view.  A solution is one number and write-once, and anyone
+still walking deserves to be told to stop.
+
+**Identity per shard.**  A lane's check-in to shard 3 and its check-in
+to shard 7 carry different records, so they must not claim to be the
+same `(peer, seq)` — the log is a set keyed on exactly that.  Each shard
+therefore gets its own peer name, `<lane>#<shard>`, and its own sequence
+numbers.  A lane name with no room for the suffix is refused rather than
+truncated.
+
+**Running it.**
+
+```sh
+ca coord-job ... --shards 4 --out job.txt
+ca work --job job.txt --coordinator http://s0:8080,http://s1:8080,http://s2:8080,http://s3:8080
+```
+
+The URLs are positional: the Nth is shard N.  **This is the one thing
+worth checking twice.**  If two agents disagree about which URL is shard
+2, their points go to different hubs and their collisions are parted,
+with everything still looking healthy.  Give a hub `-shard i`
+(`sharding.index` in the chart) and it counts what arrives addressed
+elsewhere as `carho_misrouted_checkins_total` — misrouted records are
+kept, never refused, because they are verified and real and a
+configuration mistake should not also cost work.
+
+The count lives in the job document, so it is covered by the job id: a
+fleet cannot half-agree about its own topology.  The chart cross-checks
+`sharding.count` against the `sh=` in the document and refuses the pair
+if they disagree.  A document written before sharding existed decodes as
+one shard with its id unchanged, which is why `sh=` is written only when
+it says something.
+
+## 7c. Where distinguished points are remembered
 
 The DP table is the one part of the state whose size is set by the
 campaign rather than by the code.  It is an open-addressed hash table of

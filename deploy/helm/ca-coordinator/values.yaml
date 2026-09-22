@@ -137,6 +137,36 @@ agents:
 
 # A NetworkPolicy that writes the topology down: the coordinator accepts
 # connections, agents only make them.
+# Splitting the point space across several hubs.
+#
+# A hub holds every point it is told about, so one machine's memory is the
+# ceiling on a campaign.  Sharding raises it: the point space is split
+# `count` ways, and this release's coordinator holds shard `index`.
+#
+# Install one release per shard, each with its own index, and give every
+# one of them the same `urls` list -- the agents in each release dial all
+# of the shards, and the Nth URL must be shard N in every release.  Get
+# that order wrong in one release and its points go to the wrong hubs,
+# where their collision partners will never look; the coordinator counts
+# that as carho_misrouted_checkins_total, which is the only sign.
+#
+# `count` must match the `sh=` in the job document, which the chart
+# checks: the number rides inside the job id, so a fleet cannot
+# half-agree about its own topology.
+#
+#   sharding:
+#     count: 4
+#     index: 2
+#     urls:
+#       - http://rho-shard-0:8080
+#       - http://rho-shard-1:8080
+#       - http://rho-shard-2:8080
+#       - http://rho-shard-3:8080
+sharding:
+  count: 1
+  index: 0
+  urls: []
+
 # Other coordinators this one gossips with.
 #
 # Federation is multi-leader and needs no protocol of its own: /v1/sync is
