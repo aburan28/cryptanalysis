@@ -416,7 +416,29 @@ ECC_HD void topCrossHoist131(const P131 &a, const P131 &b, uint32_t *c) {
     for (int i = 0; i < 5; ++i) c[4 + i] ^= extra[i];
 }
 ECC_HD void product131(const P131 &a,const P131 &b,uint32_t *c) {
-#if ECC_PACKED_KARAT3
+#if ECC_FROBENIUS_FUSED && ECC_USE_CLMAD_INSN && ECC_PACKED_TOP_HOIST && !ECC_PACKED_KARAT3
+    const uint64_t a0=uint64_t(a.v[0])|(uint64_t(a.v[1])<<32), a1=uint64_t(a.v[2])|(uint64_t(a.v[3])<<32);
+    const uint64_t b0=uint64_t(b.v[0])|(uint64_t(b.v[1])<<32), b1=uint64_t(b.v[2])|(uint64_t(b.v[3])<<32);
+    uint64_t l0,l1,h0,h1,c1,c2;
+    asm("clmad.lo.u64 %0,%1,%2,0;" : "=l"(l0) : "l"(a0),"l"(b0));
+    asm("clmad.hi.u64 %0,%1,%2,0;" : "=l"(l1) : "l"(a0),"l"(b0));
+    asm("clmad.lo.u64 %0,%1,%2,0;" : "=l"(h0) : "l"(a1),"l"(b1));
+    uint32_t extra[5]; topCrossInto131(a,b,extra);
+    const uint64_t el=uint64_t(extra[0])|(uint64_t(extra[1])<<32);
+    const uint64_t eh=uint64_t(extra[2])|(uint64_t(extra[3])<<32);
+    // Fold the lower correction into the high diagonal product. It then
+    // enters c2 through the Karatsuba sum; c3 cancels it and adds eh.
+    // This shortens the dependency chain feeding the modular reducer.
+    asm("clmad.hi.u64 %0,%1,%2,%3;" : "=l"(h1) : "l"(a1),"l"(b1),"l"(el));
+    const uint64_t as=a0^a1, bs=b0^b1;
+    const uint64_t add1=l1^l0^h0, add2=h0^l1^h1;
+    asm("clmad.lo.u64 %0,%1,%2,%3;" : "=l"(c1) : "l"(as),"l"(bs),"l"(add1));
+    asm("clmad.hi.u64 %0,%1,%2,%3;" : "=l"(c2) : "l"(as),"l"(bs),"l"(add2));
+    c[0]=uint32_t(l0); c[1]=uint32_t(l0>>32);
+    c[2]=uint32_t(c1); c[3]=uint32_t(c1>>32);
+    c[4]=uint32_t(c2); c[5]=uint32_t(c2>>32);
+    c[6]=uint32_t(h1^el^eh); c[7]=uint32_t((h1^el^eh)>>32); c[8]=extra[4];
+#elif ECC_PACKED_KARAT3
     product131Karat3(a, b, c);
 #else
 #if ECC_PACKED_TOP_HOIST
