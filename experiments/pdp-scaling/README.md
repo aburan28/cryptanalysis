@@ -169,9 +169,11 @@ limit.
 
 **msolve, m = 3**
 
-| n \ l | 3 | 4 | 5 |
-|---|---|---|---|
-| 17 | 0.026 (2/2) | 0.856 (2/2) | 187 (2/2) |
+| n \ l | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|
+| 17 | 0.026 (2/2) | 0.856 (2/2) | 187 (2/2) | timeout (0/2) |
+| 31 | 0.0186 (2/2) | 0.303 (2/2) | 20.7 (2/2) | timeout (0/2) |
+| 61 | 0.018 (2/2) | 0.0363 (2/2) | 4.86 (2/2) |  |
 
 **sat, m = 3**
 
@@ -185,13 +187,17 @@ limit.
 
 | n \ l | 3 | 4 | 5 |
 |---|---|---|---|
-| 17 | 0.19 (2/2) | 9.26 (2/2) | 1.34e+03 (1/1) |
+| 17 | 0.19 (2/2) | 9.26 (2/2) | 1.34e+03 (1/2) |
+| 31 | 0.0108 (2/2) | 2.41 (2/2) | 194 (1/2) |
+| 61 | 0.0329 (2/2) | 4.38 (2/2) | 319 (1/2) |
 
 **sat, m = 5**
 
 | n \ l | 3 | 4 |
 |---|---|---|
-| 17 | 0.936 (2/2) | 164 (1/1) |
+| 17 | 0.936 (2/2) | 164 (1/2) |
+| 31 | 1.33 (2/2) | 641 (2/2) |
+| 61 | 2.93 (2/2) | timeout (0/2) |
 
 **wdsat, m = 3**
 
@@ -214,7 +220,29 @@ limit.
 
 | n \ l | 5 | 6 | 7 | 8 | 9 |
 |---|---|---|---|---|---|
-| 31 | 0.01 (3/3) | 0.234 (3/3) | 0.288 (3/3) | 19.1 (3/3) | 150 (1/1) |
+| 31 | 0.01 (3/3) | 0.234 (3/3) | 0.288 (3/3) | 19.1 (3/3) | 316 (3/3) |
+| 61 | 0.0448 (3/3) | 0.0797 (3/3) | 4.14 (3/3) | 32.6 (3/3) | 187 (3/3) |
+
+**wdsat-fork-xg, m = 3**
+
+| n \ l | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|
+| 31 | 0.0303 (3/3) | 1.15 (3/3) | 1.72 (3/3) | 304 (3/3) |
+| 61 | 0.0502 (3/3) | 0.0816 (3/3) | 13 (3/3) | 215 (3/3) |
+
+**wdsat-trace, m = 3**
+
+| n \ l | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|
+| 17 | 0.0009 (3/3) | 0.0013 (3/3) | 0.0058 (3/3) | 0.0476 (3/3) |  |  |
+| 31 | 0.0008 (3/3) | 0.0012 (3/3) | 0.0058 (3/3) | 0.121 (3/3) | 0.165 (3/3) | 8.83 (3/3) |
+
+**wdsat-xg, m = 3**
+
+| n \ l | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|
+| 31 | 0.0267 (3/3) | 1.06 (3/3) | 2.07 (3/3) | 240 (3/3) |
+| 61 | 0.0438 (3/3) | 0.0733 (3/3) | 15.2 (3/3) | 174 (3/3) |
 
 <!-- END MEASURED -->
 
@@ -230,8 +258,14 @@ is exact.
 | mitm | 3 | 48 | -15.8 | 1.93 ± 0.02 | 0.084 ± 0.002 | 2 |
 | mitm | 4 | 36 | -15.3 | 1.89 ± 0.06 | 0.086 ± 0.005 | 2 |
 | mitm | 5 | 24 | -14.5 | 2.48 ± 0.08 | 0.078 ± 0.005 | 3 |
+| msolve | 3 | 18 | -19.4 | 5.25 ± 0.40 | -0.074 ± 0.018 | 2 |
 | sat | 3 | 30 | -21.6 | 3.95 ± 0.28 | 0.010 ± 0.022 | 2 |
+| sat | 4 | 15 | -25.3 | 6.97 ± 0.70 | -0.037 ± 0.029 | 2 |
 | wdsat | 3 | 54 | -21.3 | 3.02 ± 0.10 | 0.020 ± 0.011 | 2 |
+| wdsat-fork | 3 | 30 | -23.9 | 3.40 ± 0.20 | 0.017 ± 0.019 | 2 |
+| wdsat-fork-xg | 3 | 24 | -25.3 | 4.18 ± 0.31 | -0.021 ± 0.023 | 2 |
+| wdsat-trace | 3 | 30 | -19.7 | 2.51 ± 0.16 | 0.028 ± 0.036 | 2 |
+| wdsat-xg | 3 | 24 | -25.4 | 4.17 ± 0.30 | -0.018 ± 0.022 | 2 |
 <!-- END FITS -->
 
 The `mitm` rows are a check on the fitting procedure: the measured exponent
@@ -255,13 +289,13 @@ excess over the per-PDP budget.  Because the `n`-trend `d` is measured over
 `n <= 61` only, each fit is also shown with `n` held at 61.
 
 <!-- BEGIN EXTRAPOLATION -->
-| m | l | PDP calls | budget per PDP | MITM (exact) | sat (fit) | sat (fit, n = 61) | wdsat (fit) | wdsat (fit, n = 61) |
-|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| 3 | 44 | — | none: LA alone exceeds rho | 2^88 | 2^177 | 2^176 | 2^137 | 2^136 |
-| 4 | 29 | 2^48.6 | 2^12.2 | 2^58 (gap +46) | — | — | — | — |
-| 4 | 33 | 2^36.6 | none: LA alone exceeds rho | 2^66 | — | — | — | — |
-| 5 | 28 | 2^28.0 | 2^32.8 | 2^84 (gap +51) | — | — | — | — |
-| 6 | 24 | 2^24.0 | 2^36.8 | 2^72 (gap +35) | — | — | — | — |
+| m | l | PDP calls | budget per PDP | MITM (exact) | msolve (fit) | msolve (fit, n = 61) | sat (fit) | sat (fit, n = 61) | wdsat (fit) | wdsat (fit, n = 61) | wdsat-fork (fit) | wdsat-fork (fit, n = 61) | wdsat-fork-xg (fit) | wdsat-fork-xg (fit, n = 61) | wdsat-trace (fit) | wdsat-trace (fit, n = 61) | wdsat-xg (fit) | wdsat-xg (fit, n = 61) |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 3 | 44 | — | none: LA alone exceeds rho | 2^88 | 2^225 | 2^230 | 2^177 | 2^176 | 2^137 | 2^136 | 2^151 | 2^150 | 2^179 | 2^181 | 2^118 | 2^116 | 2^179 | 2^180 |
+| 4 | 29 | 2^48.6 | 2^12.2 | 2^58 (gap +46) | — | — | 2^195 (gap +183) | 2^198 (gap +186) | — | — | — | — | — | — | — | — | — | — |
+| 4 | 33 | 2^36.6 | none: LA alone exceeds rho | 2^66 | — | — | 2^223 | 2^226 | — | — | — | — | — | — | — | — | — | — |
+| 5 | 28 | 2^28.0 | 2^32.8 | 2^84 (gap +51) | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| 6 | 24 | 2^24.0 | 2^36.8 | 2^72 (gap +35) | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 
 Pollard rho on the `<-1, tau>` orbits: `2^60.81` iterations, about 6,417 core-years at the assumed rate.  The budget for `m = 4, l = 29` is `2^12.2` iterations, about 0.5 ms; for `m = 5, l = 28` it is `2^32.8`, about 12 minutes.
 <!-- END EXTRAPOLATION -->
@@ -338,6 +372,148 @@ Pollard rho on the `<-1, tau>` orbits: `2^60.81` iterations, about 6,417 core-ye
    not offer.  That is the same obstruction that stops Wagner's k-tree
    algorithm from applying to elliptic curves, and it is the whole question.
 
+## Relation-collection throughput, and a 2x from the curve's 2-torsion
+
+### Why a second instrument
+
+Every table above times one decomposition of a *planted* target, which is
+satisfiable by construction.  Relation collection is not like that: a random
+target decomposes into three factor-base points with probability about
+`2^(3l) / (6 * 2^n)`, so almost every call is a non-relation, and a
+non-relation costs a full unsatisfiable search (about twice the conflicts of a
+satisfiable one, since a satisfiable search stops at its first solution).  At
+`n = 17, l = 5` the unsatisfiable searches are 95 % of the solver's CPU time.
+`collect.py` measures that workload directly: it draws random curve points,
+runs WDSat on the symmetrised model for each, counts conflicts and CPU time
+separately for SAT and UNSAT calls, lifts and re-adds every claimed relation,
+and — with `--oracle` — checks every answer against an exhaustive enumeration
+of `F + F + F`, so a configuration that silently loses relations is caught.
+`collect_sweep.sh` runs several configurations on the *same* targets (same
+seed), so every ratio below is paired.
+
+### The improvement: the trace homomorphism as one extra XOR clause
+
+On `E : y^2 + xy = x^3 + 1` over `F_2^n` with `n` odd, `E(F_2)` is cyclic of
+order 4 and an ordinary binary curve has a single 2-torsion point, so the
+2-Sylow subgroup of `E(F_2^n)` is cyclic and `E/2E = Z/2`.  The classical
+halving criterion (`P in 2E` iff `Tr(x(P)) = Tr(a2) = 0`) then says that
+
+    phi(P) = Tr(x(P)),   phi(O) = 0,
+
+is the homomorphism `E -> E/2E`, and it is even under negation.  Every rational
+relation `R = +-P1 +-P2 +-P3` therefore satisfies
+
+    Tr(x1) + Tr(x2) + Tr(x3) = Tr(x_R),
+
+and because `x_i = sum_j v_ij z^j`, the left side is `sum v_ij Tr(z^j)`:
+**one XOR clause, linear in the core variables**, whose right side is known
+per target.  `symmodel.trace_line` appends it (`--trace` in `collect.py`, engine
+`wdsat-trace` in `solve.py`).  It is implied by the rational relation but not
+by the descended `S_4` system under propagation (Kosters and Yeo show the
+corresponding linear polynomial appears only at Gröbner degree 2, and `S_4`
+also vanishes on decompositions that are not rational), so WDSat cannot find
+it itself; given explicitly, it forces one of the `3l` branching bits.
+
+Soundness evidence: the homomorphism was checked on 300 random pairs of
+points for each of `n = 17, 19, 23, 31, 61, 131` with no exception, and on
+every cell of the paired sweep the constraint finds exactly the oracle's
+relations (missed = 0).
+
+### Results
+
+Paired runs, same targets per cell; baseline is upstream WDSat with `-b`,
+default branching order, no trace constraint.  Regenerated with
+`python3 collect_report.py --update-readme results/collect_*.jsonl`.
+
+<!-- BEGIN COLLECT -->
+| n | l | configuration | attempts | relations (verified / oracle, missed) | UNSAT conflicts | UNSAT CPU ms | CPU ms / attempt | rel / CPU-s | speedup vs baseline (CPU) | UNSAT conflicts vs baseline |
+|--:|--:|---|--:|--:|--:|--:|--:|--:|--:|--:|
+| 17 | 4 | wdsat | 800 | 7 / 7, 0 | 681 | 4.0 | 4.0 | 2.20 | 1.00x | 1.00x |
+| 17 | 4 | wdsat+interleave+trace | 800 | 7 / 7, 0 | 369 | 2.5 | 2.5 | 3.54 | 1.61x | 1.84x |
+| 17 | 4 | wdsat+trace | 800 | 7 / 7, 0 | 418 | 2.5 | 2.5 | 3.52 | 1.60x | 1.63x |
+| 17 | 4 | wdsat-fork-xg+trace | 800 | 7 / 7, 0 | 237 | 10.8 | 10.8 | 0.81 | 0.37x | 2.88x |
+| 17 | 4 | wdsat-xg | 800 | 7 / 7, 0 | 314 | 16.8 | 16.7 | 0.52 | 0.24x | 2.17x |
+| 17 | 4 | wdsat-xg+trace | 800 | 7 / 7, 0 | 237 | 9.9 | 9.8 | 0.89 | 0.40x | 2.88x |
+| 17 | 5 | wdsat | 800 | 37 / 37, 0 | 5,492 | 35.5 | 34.4 | 1.34 | 1.00x | 1.00x |
+| 17 | 5 | wdsat+interleave | 800 | 16 / 37, 21 | 5,716 | 35.9 | 35.5 | 0.56 | 0.97x (UNSOUND: misses relations) | 0.96x |
+| 17 | 5 | wdsat+interleave+trace | 800 | 16 / 37, 21 | 2,863 | 18.6 | 18.3 | 1.09 | 1.88x (UNSOUND: misses relations) | 1.92x |
+| 17 | 5 | wdsat+trace | 800 | 37 / 37, 0 | 3,077 | 18.5 | 18.0 | 2.57 | 1.91x | 1.78x |
+| 17 | 5 | wdsat-xg | 800 | 37 / 37, 0 | 3,176 | 216.7 | 209.7 | 0.22 | 0.16x | 1.73x |
+| 17 | 5 | wdsat-xg+trace | 800 | 37 / 37, 0 | 1,994 | 114.2 | 110.5 | 0.42 | 0.31x | 2.75x |
+| 19 | 5 | wdsat | 800 | 9 / 9, 0 | 5,502 | 36.7 | 36.4 | 0.31 | 1.00x | 1.00x |
+| 19 | 5 | wdsat+interleave | 800 | 1 / 9, 8 | 5,716 | 37.3 | 37.3 | 0.03 | 0.98x (UNSOUND: misses relations) | 0.96x |
+| 19 | 5 | wdsat+interleave+trace | 800 | 1 / 9, 8 | 2,863 | 19.5 | 19.5 | 0.06 | 1.87x (UNSOUND: misses relations) | 1.92x |
+| 19 | 5 | wdsat+trace | 800 | 9 / 9, 0 | 3,072 | 19.1 | 19.0 | 0.59 | 1.92x | 1.79x |
+| 19 | 6 | wdsat | 600 | 55 / 55, 0 | 43,992 | 388.2 | 367.8 | 0.25 | 1.00x | 1.00x |
+| 19 | 6 | wdsat+interleave+trace | 600 | 16 / 55, 39 | 22,434 | 196.5 | 192.9 | 0.14 | 1.91x (UNSOUND: misses relations) | 1.96x |
+| 19 | 6 | wdsat+trace | 600 | 55 / 55, 0 | 23,307 | 195.3 | 185.1 | 0.50 | 1.99x | 1.89x |
+| 23 | 6 | wdsat | 600 | 6 / 6, 0 | 43,826 | 405.6 | 403.7 | 0.02 | 1.00x | 1.00x |
+| 23 | 6 | wdsat+trace | 600 | 6 / 6, 0 | 23,251 | 205.0 | 204.0 | 0.05 | 1.98x | 1.88x |
+<!-- END COLLECT -->
+
+Scaling of the unsatisfiable-search cost, `log2(conflicts) = a + c*l + d*n`,
+and the mean paired gain over the baseline in bits:
+
+<!-- BEGIN COLLECT_SCALING -->
+| configuration | cells | c = d log2(UNSAT conflicts) / d l | d log2 / d n | mean paired gain over baseline (bits) | spread (bits) |
+|---|--:|--:|--:|--:|--:|
+| wdsat | 5 | 3.01 | -0.001 | 0 |  |
+| wdsat+interleave+trace | 4 | 2.96 | +0.000 | +0.93 | 0.09 |
+| wdsat+trace | 5 | 2.90 | +0.001 | +0.84 | 0.21 |
+| wdsat-xg | 2 | 3.34 | -0.296 | +0.95 | 0.33 |
+| wdsat-xg+trace | 2 | 3.07 | -0.258 | +1.49 | 0.06 |
+<!-- END COLLECT_SCALING -->
+
+On planted instances the same constraint (`wdsat-trace` in the grid above,
+same seeds as `wdsat`) halves the conflicts on the larger instances too: at
+`n = 61, l = 7`, 60,325 conflicts and 0.74 s become 30,177 and 0.37 s.  Its
+rows are in the measured and fit tables above.
+
+### What else was tried, and why it is not claimed
+
+* **XORGAUSS (`-x`), upstream and the fork's journalled version.**  On the
+  realistic UNSAT-dominated workload it still cuts conflicts (1.7–2.9x) but
+  costs 4–6x more CPU per search, so it loses end to end, on satisfiable and
+  unsatisfiable targets alike.  With the trace constraint it keeps losing
+  (`wdsat-xg+trace` 0.40x the baseline's CPU throughput at `n = 17, l = 4`).
+* **An interleaved branching order (`-g`) is unsound with `-b`.**  Its
+  conflict counts look better, but it misses 21 of 37, 8 of 9 and 39 of 55
+  oracle-confirmed relations at `(n, l) = (17, 5), (19, 5), (19, 6)`: WDSat's
+  symmetry pruning assumes the canonical block bit order (the fork's README
+  warns of exactly this).  Without the oracle this would have been reported
+  as a speedup.
+* **Choosing the factor-base subspace.**  Relation yield tracks `|F|^3`, and
+  `|F|` is twice the number of liftable `x` in `V` (`Tr(x) = Tr(1/x)` for
+  `b = 1`).  Measured exact yields (`fb_yield.py`, oracle on random targets):
+
+  | n | l | V = span(1..z^(l-1)) | three random subspaces | subspace of ker Tr |
+  |--:|--:|--:|--:|--:|
+  | 17 | 5 | 0.052 (56 % liftable) | 0.112, 0.032, 0.044 | 0.015 |
+  | 19 | 6 | 0.083 (52 %) | 0.066, 0.073, 0.077 | 0.078 |
+  | 23 | 7 | 0.059 (59 %) | 0.039, 0.050, 0.047 | 0.049 |
+
+  Picking a lucky subspace is worth up to 2x at `l = 5`, but the liftable
+  fraction is binomial around 1/2 with spread about `2^(-l/2)`, so at the
+  `l ~ 25-30` an attack needs, any feasible search over subspaces buys well
+  under 1 %.  A subspace of `ker Tr` puts every factor-base point in `2E`:
+  odd-trace targets then cannot decompose and are rejected without solving,
+  and even-trace targets decompose twice as often — the same single bit of
+  2-torsion information as the trace constraint, so the two do not stack.
+
+### What it is worth at ECC2K-130
+
+The constraint removes exactly one of the `3l` bits WDSat branches on, so its
+gain is a constant factor of 2 in the limit: the measured paired gain climbs
+from 0.7 bits at `l = 4` toward 1 bit (1.89x fewer UNSAT conflicts and 1.99x
+more verified relations per CPU-second at `l = 6`), and the slope in `l` is
+unchanged within noise.  It does not depend on `n` (the homomorphism exists
+for every odd `n`, including 131) and it applies to any `m`, since
+`sum_i Tr(x_i) = Tr(x_R)` holds for any number of summands.  In the cost model
+of this experiment it takes one bit off every WDSat row — relation collection
+`2^(n+l)` becomes `2^(n+l-1)` — and leaves every conclusion above intact: it is
+the whole of the 2-power torsion (`E/2E` has order 2, so there is no second
+linear constraint of this kind), and it is a constant, not an exponent.
+
 ## Caveats
 
 * The extrapolation runs from `l <= 7` to `l = 29` and from `n <= 61` to
@@ -377,6 +553,13 @@ python3 descend.py 61 3 8                     # one instance: size and build tim
 python3 solve.py --engine sat --n 61 --m 3 --l 6 --seed 1 --timeout 600
 python3 run.py --engine sat --m 3 --ns 17,31,61 --ls 3,4,5,6,7 --seeds 2 --timeout 1500 --out results/sat_m3.csv
 python3 fit.py results/*.csv                  # the tables above
+
+# relation collection: one configuration, with the exhaustive oracle
+python3 collect.py --n 17 --l 5 --calls 800 --seed 21 --oracle --trace
+# the paired sweep behind the relation-collection tables (CONFIG = engine:order:trace)
+./collect_sweep.sh results/collect_a.jsonl wdsat:default:0 wdsat:default:1
+python3 collect_report.py --update-readme results/collect_*.jsonl
+python3 fb_yield.py 17 5 4000                 # factor-base subspace yields
 ```
 
 `run.py` resumes: rows already in the CSV are skipped.
