@@ -16,7 +16,7 @@ __device__ __forceinline__ void goal22GroupBarrier() {
     asm volatile("barrier.sync %0, %1;" :: "r"(id), "n"(32 * WARPS) : "memory");
 }
 template<int WARPS>
-__device__ __noinline__ P131 goal22CollectiveInverse(P131 input) {
+__device__ __noinline__ P131 goal22CollectiveInverse(P131 input, int phase) {
     static_assert(WARPS == 2 || WARPS == 4 || WARPS == 8 || WARPS == 16);
     static_assert(ECC_THREADS % (32 * WARPS) == 0);
     constexpr int LEVELS = WARPS == 2 ? 1 : WARPS == 4 ? 2 : WARPS == 8 ? 3 : 4;
@@ -27,7 +27,13 @@ __device__ __noinline__ P131 goal22CollectiveInverse(P131 input) {
     const int group = physicalWarp / WARPS;
     // With two-warp groups, rotate every pair of groups so roots visit
     // all four relative warp positions rather than alternating two of them.
-    const int rotation = group / (WARPS < 4 ? 4 / WARPS : 1);
+    const int rotation = group / (WARPS < 4 ? 4 / WARPS : 1)
+#if ECC_FROBENIUS_FUSED
+        // Vary the root placement between steps as well as between groups.
+        + (phase & 3)
+#endif
+        ;
+    (void)phase;
     const int logicalWarp = (physicalWarp % WARPS + rotation) % WARPS;
     const int warp = group * WARPS + logicalWarp;
     const int tid = warp * 32 + int(threadIdx.x) % 32;
@@ -83,10 +89,10 @@ __device__ __noinline__ P131 goal22CollectiveInverse(P131 input) {
     goal22GroupBarrier<WARPS>();
     return zero ? P131{{0, 0, 0, 0, 0}} : out;
 }
-__device__ __forceinline__ P131 batchInverse131(P131 input, int workers) {
+__device__ __forceinline__ P131 batchInverse131(P131 input, int workers, int phase = 0) {
 #if ECC_COLLECTIVE_WARPS
     if ((blockIdx.x + 1) * blockDim.x <= workers)
-        return goal22CollectiveInverse<ECC_COLLECTIVE_WARPS>(input);
+        return goal22CollectiveInverse<ECC_COLLECTIVE_WARPS>(input, phase);
 #endif
     return toPolynomial131(inv131(fromPolynomial131(input)));
 }

@@ -13,6 +13,8 @@
 #include <string>
 #include "bigmod.h"
 #include "tablewalk.h"
+#include "canonical131.h"
+#include <type_traits>
 
 typedef unsigned long long u64;
 
@@ -410,6 +412,11 @@ struct RefT {
 
     // canonical representative of the orbit under sigma (negation leaves x fixed)
     static Elem canonical(const Elem &x) {
+        if constexpr (M == 131 && std::is_same<SF, ScalarOnb<Cfg>>::value) {
+            // Keep the reference behavior for callers carrying unused high bits.
+            if ((x.v[2] & ~7ull) == 0)
+                return eccHost::canonicalOnb131<RefT<Cfg, SF>>(x);
+        }
         Elem best = x, cur = x;
         for (int k = 1; k < M; ++k) {
             cur = sqr(cur);

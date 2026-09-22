@@ -21,5 +21,9 @@ jobs:
         run: |
           make -C ecc2k130/runner cpu
           ./ecc2k130/runner/ecc2k130-cpu --test
+      - name: Check canonical coordinates and report persistence
+        run: |
+          make -C ecc2k130/runner test-canonical131 build/test-production
+          ./ecc2k130/runner/build/test-production
       - name: Rehearse shutdown and remote checkpoint recovery
         run: bash ecc2k130/runner/aws/rehearse_worker.sh
