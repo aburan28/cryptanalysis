@@ -709,6 +709,11 @@ class Worker:
 
     # ---- one client run ---------------------------------------------------
     def runClient(self, slot):
+        from seed_registry import worker_guard
+        with worker_guard(self, slot, self.runId(slot)):
+            return self._runClient(slot)
+
+    def _runClient(self, slot):
         """Run the client until it exits or a stop/restart is due.
 
         Returns (returncode, solvedLine)."""

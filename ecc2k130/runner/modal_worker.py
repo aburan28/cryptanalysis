@@ -12,10 +12,19 @@ GPU = os.environ.get("ECC_MODAL_GPU", "RTX-PRO-6000")
 ARCH = os.environ.get("ECC_CUDA_ARCH", "120")
 SECRET = os.environ.get("ECC_MODAL_SECRET", "ecc2k130-cloud")
 NETWORK = {"ECC_RDS_SECURITY_GROUP": os.environ["ECC_RDS_SECURITY_GROUP"]} if os.environ.get("ECC_RDS_SECURITY_GROUP") else {}
-image = modal.Image.from_dockerfile(
-    LOCAL / "deploy" / "Dockerfile", context_dir=LOCAL,
-    build_args={"CUDA_ARCH": ARCH},
-).entrypoint([]).env(NETWORK)
+SEED_BASE_IMAGE = os.environ.get("ECC_SEED_BASE_IMAGE", "")
+if SEED_BASE_IMAGE:
+    # Apply supervisor checks while retaining the exact production client.
+    image = (modal.Image.from_id(SEED_BASE_IMAGE)
+        .env({"ECC_SEED_BASE_IMAGE": SEED_BASE_IMAGE, **NETWORK})
+        .add_local_file(LOCAL / "aws" / "worker.py", "/opt/ecc2k130/aws/worker.py", copy=True)
+        .add_local_file(LOCAL / "aws" / "seed_registry.py", "/opt/ecc2k130/aws/seed_registry.py", copy=True)
+        .add_local_file(LOCAL / "cloud.py", "/opt/ecc2k130/cloud.py", copy=True))
+else:
+    image = modal.Image.from_dockerfile(
+        LOCAL / "deploy" / "Dockerfile", context_dir=LOCAL,
+        build_args={"CUDA_ARCH": ARCH},
+    ).entrypoint([]).env(NETWORK)
 check_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("curl", "ca-certificates")
@@ -26,6 +35,7 @@ check_image = (
     .add_local_file(LOCAL / "cloud.py", "/opt/ecc2k130/cloud.py")
     .add_local_file(LOCAL / "build.json", "/opt/ecc2k130/build.json")
     .add_local_file(LOCAL / "aws" / "worker.py", "/opt/ecc2k130/aws/worker.py")
+    .add_local_file(LOCAL / "aws" / "seed_registry.py", "/opt/ecc2k130/aws/seed_registry.py")
     .add_local_file(LOCAL / "aws" / "rds_gpu.py", "/opt/ecc2k130/aws/rds_gpu.py")
     .add_local_file(LOCAL / "aws" / "rds_network.py", "/opt/ecc2k130/aws/rds_network.py")
     .add_local_file(LOCAL / "aws" / "campaign.json", "/opt/ecc2k130/aws/campaign.json")

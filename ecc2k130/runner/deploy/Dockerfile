@@ -19,7 +19,7 @@ COPY codegen/ codegen/
 # Preserve the legacy Frobenius walk used by the shared ecc2k-130 campaign.
 ARG CUDA_ARCH=120
 RUN test "$CUDA_ARCH" = "120" && make gpu-production
-COPY aws/worker.py aws/rds_gpu.py aws/rds_network.py aws/
+COPY aws/worker.py aws/rds_gpu.py aws/rds_network.py aws/seed_registry.py aws/
 COPY cloud.py build.json ./
 COPY aws/campaign.json aws/campaign.json
 ENV ECC_ROOT=/workspace/ecc2k130 ECC_CLIENT=/opt/ecc2k130/ecc2k130

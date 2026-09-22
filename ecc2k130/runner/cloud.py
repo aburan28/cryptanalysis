@@ -63,6 +63,9 @@ def preflight(worker, *, s3_only=False, check_client=True):
         raise ConfigurationError("build manifest missing; use the runner container image")
     manifest = json.loads(manifest_path.read_text())
     validate_config(worker.cfg, manifest)
+    if worker.cfg.get("curve") == 131 and isinstance(worker.store, S3Store):
+        from seed_registry import SeedRegistry, S3Json
+        SeedRegistry(S3Json(worker.store.bucket)).ready()
     if worker.cfg.get("campaignId") == "ecc2k-130" and isinstance(worker.store, S3Store):
         # The historical RDS row has no walk identity. Bind this compatibility
         # decision to the actual legacy S3 configuration verified on the GPU.
