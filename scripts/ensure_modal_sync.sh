@@ -15,7 +15,6 @@
 #   ./scripts/ensure_modal_sync.sh restart
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="${HOME}/.local/bin:${PATH}"
 
 if [[ -z "${AWS_ACCESS_KEY_ID:-}" && -n "${Awskeyid:-}" ]]; then
@@ -34,11 +33,26 @@ ECC_BUCKET="${ECC_BUCKET:-ecc2k130-590183823895}"
 TMUX_SESSION="${TMUX_SESSION:-ecc2k130-modal-sync}"
 LOG="${LOG:-/opt/cursor/artifacts/modal-sync-watch.log}"
 STATE_DIR="${ECC_MODAL_SYNC_STATE:-/opt/cursor/artifacts/ecc2k130-modal-sync-state}"
+# Current modal_sync.py refuses run-ids outside 8000-9999 and refuses
+# weight-34/35 corpora against the campaign weight-32 cutoff. The long
+# 20b fanout uses 4242-4245 at the kernel's own dp weight; keep syncing it.
+ALLOW_LEGACY_RUN_IDS="${ALLOW_LEGACY_RUN_IDS:-1}"
+ALLOW_DP_WEIGHT_MISMATCH="${ALLOW_DP_WEIGHT_MISMATCH:-1}"
 CMD="${1:-start}"
 
 ids=()
 for ((i = 0; i < ECC_FANOUT; i++)); do ids+=("$((ECC_RUN_ID + i))"); done
 IFS=,; SYNC_RUN_IDS="${ids[*]}"; unset IFS
+
+SYNC_EXTRA_FLAGS=()
+if [[ "$ALLOW_LEGACY_RUN_IDS" == "1" || "$ALLOW_LEGACY_RUN_IDS" == "true" ]]; then
+  SYNC_EXTRA_FLAGS+=(--allow-legacy-run-ids)
+fi
+if [[ "$ALLOW_DP_WEIGHT_MISMATCH" == "1" || "$ALLOW_DP_WEIGHT_MISMATCH" == "true" ]]; then
+  SYNC_EXTRA_FLAGS+=(--allow-dp-weight-mismatch)
+fi
+# Join for the tmux bash -c string (empty when both allows are off).
+SYNC_EXTRA_FLAGS_STR="${SYNC_EXTRA_FLAGS[*]-}"
 
 need_creds() {
   [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]] \
@@ -82,19 +96,22 @@ start_sync() {
       ECC_MODAL_SYNC_STATE="$STATE_DIR" \
       SYNC_RUN_IDS="$SYNC_RUN_IDS" \
       SYNC_INTERVAL="$SYNC_INTERVAL" \
+      SYNC_EXTRA_FLAGS_STR="$SYNC_EXTRA_FLAGS_STR" \
       LOG="$LOG" \
-      bash -c '
+      bash -c "
         set -uo pipefail
-        echo "modal-sync start $(date -u +%Y-%m-%dT%H:%M:%SZ) runs=$SYNC_RUN_IDS interval=$SYNC_INTERVAL" | tee -a "$LOG"
+        echo \"modal-sync start \$(date -u +%Y-%m-%dT%H:%M:%SZ) runs=\$SYNC_RUN_IDS interval=\$SYNC_INTERVAL flags=\$SYNC_EXTRA_FLAGS_STR\" | tee -a \"\$LOG\"
         while true; do
-          python3 modal_sync.py --curve 131 --run-ids "$SYNC_RUN_IDS" --all-runs \
-            --bucket "$ECC_BUCKET" --watch "$SYNC_INTERVAL" \
-            --state-dir "$ECC_MODAL_SYNC_STATE" \
-            2>&1 | tee -a "$LOG"
-          echo "modal-sync exited $? at $(date -u +%Y-%m-%dT%H:%M:%SZ); restarting in 5s" | tee -a "$LOG"
+          # shellcheck disable=SC2086 # intentional word-split of optional flags
+          python3 modal_sync.py --curve 131 --run-ids \"\$SYNC_RUN_IDS\" --all-runs \\
+            --bucket \"\$ECC_BUCKET\" --watch \"\$SYNC_INTERVAL\" \\
+            --state-dir \"\$ECC_MODAL_SYNC_STATE\" \\
+            \$SYNC_EXTRA_FLAGS_STR \\
+            2>&1 | tee -a \"\$LOG\"
+          echo \"modal-sync exited \$? at \$(date -u +%Y-%m-%dT%H:%M:%SZ); restarting in 5s\" | tee -a \"\$LOG\"
           sleep 5
         done
-      '
+      "
   sleep 3
   if is_up; then
     echo "tmux=$TMUX_SESSION up (runs $SYNC_RUN_IDS → s3://$ECC_BUCKET/dp/)"

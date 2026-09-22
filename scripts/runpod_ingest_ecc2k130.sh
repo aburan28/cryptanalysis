@@ -121,7 +121,6 @@ ssh_pod() {
 }
 
 wait_ssh() {
-  local i
   local _try
   for _try in $(seq 1 36); do
     refresh_ssh

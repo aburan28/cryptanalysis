@@ -129,8 +129,9 @@ case "$CMD" in
   fanout)
     need_modal
     ensure_crypto
-    # base_run_id avoids stale volume run-id 1; workers get ECC_RUN_ID..+count-1.
-    run_in_ecc modal run modal_app.py::fanout --gpu "$ECC_GPU" \
+    # --detach keeps workers alive if the local client disconnects (watchdog-
+    # friendly). base_run_id avoids stale volume run-id 1.
+    run_in_ecc modal run --detach modal_app.py::fanout --gpu "$ECC_GPU" \
       --curve 131 --packed --hours "$ECC_HOURS" --count "$ECC_FANOUT" \
       --batch 16 --threads 512 --verify 0 --base-run-id "$ECC_RUN_ID"
     ;;
@@ -138,7 +139,7 @@ case "$CMD" in
     # Convenience: 24h x 4-GPU fanout on the 20 B/s geometry.
     need_modal
     ensure_crypto
-    run_in_ecc modal run modal_app.py::fanout --gpu "$ECC_GPU" \
+    run_in_ecc modal run --detach modal_app.py::fanout --gpu "$ECC_GPU" \
       --curve 131 --packed --hours "${ECC_HOURS:-24}" --count "${ECC_FANOUT:-4}" \
       --batch 16 --threads 512 --verify 0 --base-run-id "$ECC_RUN_ID"
     ;;
