@@ -2549,7 +2549,7 @@ def _emit_binary(id, family, m, a, b, order, tags, certificate, notes, endomorph
         G = find_binary_point(a, b, m, id + ":gen")
     sub_bits = parts["subgroup_int"].bit_length()
     known = None
-    if verified and n > 1 and sub_bits <= 40:
+    if verified and n > 1 and sub_bits <= 48:
         known = 1 + (m * 17 + a + b) % (n - 1)
         target = bin_mul_point(known, G, a, b, m)
         # The published subgroup need not be prime, so this multiple can be 0.
@@ -2975,6 +2975,9 @@ def _emit_char3(n, A, B, order, model, field, mod, base_trace):
         verified = True
         gen_json = {"x": hx(G[0]), "y": hx(G[1])}
         target_json = gen_json
+        # Target is the generator, so the discrete log is 1.
+        if parts["subgroup_int"] > 1 and parts["subgroup_int"].bit_length() <= 48:
+            known = 1
     else:
         AA = field.const(A)
         BB = field.const(B)
@@ -2991,7 +2994,7 @@ def _emit_char3(n, A, B, order, model, field, mod, base_trace):
                 gen = G
             G = gen
             verified = True
-            if parts["subgroup_int"] > 1 and parts["subgroup_int"].bit_length() <= 40:
+            if parts["subgroup_int"] > 1 and parts["subgroup_int"].bit_length() <= 48:
                 known = 1 + n
                 if known >= parts["subgroup_int"]:
                     known = 1
@@ -3154,7 +3157,7 @@ def _emit_extension(p, a, b, t, base_order, k, shape):
     degree_kind = "prime" if _is_prime(k) else "composite"
     known = None
     target = G
-    if verified and parts["subgroup_int"] > 1 and parts["subgroup_int"].bit_length() <= 36:
+    if verified and parts["subgroup_int"] > 1 and parts["subgroup_int"].bit_length() <= 48:
         known = 1 + (k % (parts["subgroup_int"] - 1))
         target = ext_ec_mul(field, known, G, AA)
         if target is INF:
