@@ -44,6 +44,18 @@
 //! structural correctness of the QC-MDPC framework; the
 //! bit-flipping decoder is a simplified hard-decision majority-vote
 //! version.
+//!
+//! **These parameters are not uniquely decodable, and that is not a
+//! bug in the decoder.**  The code is far too short for weight-`t`
+//! error patterns to have distinct syndromes: on roughly **1.6%** of
+//! random keys and errors a second `(e0, e1)` of weight `<= t` gives
+//! the same `s'` (measured 81 collisions in 5000 draws, with 2 to 62
+//! preimages on a colliding draw).  Decapsulation then recovers *a*
+//! valid error, not necessarily the one encapsulation injected, and
+//! the shared secrets differ.  Production parameters are chosen so
+//! that this probability is cryptographically negligible; a test over
+//! these parameters must state the qualifier rather than assume it
+//! away — see `bike_kem_shared_secret_matches_unless_the_syndrome_is_ambiguous`.
 
 use crate::hash::sha256::sha256;
 use rand::{rngs::OsRng, Rng};
@@ -404,15 +416,105 @@ mod tests {
         assert_eq!(c.get(5), 1);
     }
 
-    /// **BIKE end-to-end**: encap → decap → same shared secret.
-    /// The brute-force decoder handles errors up to weight T,
-    /// which is exactly what encapsulation injects.
+    /// Every `(e0, e1)` of total weight `<= T` whose syndrome is `target`.
+    ///
+    /// Deliberately a second implementation rather than a call into
+    /// [`brute_force_decode`]: the point is to check that decoder's answer
+    /// against an independent count, so sharing its enumeration would make the
+    /// check vacuous.
+    fn weight_t_preimages(target: &R2Poly, h0: &R2Poly, h1: &R2Poly) -> usize {
+        fn walk(
+            start: usize,
+            remaining: usize,
+            chosen: &mut Vec<usize>,
+            target: &R2Poly,
+            h0: &R2Poly,
+            h1: &R2Poly,
+            found: &mut usize,
+        ) {
+            if remaining == 0 {
+                let (mut e0, mut e1) = (R2Poly::zero(), R2Poly::zero());
+                for &p in chosen.iter() {
+                    if p < R {
+                        e0.set(p, 1);
+                    } else {
+                        e1.set(p - R, 1);
+                    }
+                }
+                if e0.mul(h0).add(&e1.mul(h1)) == *target {
+                    *found += 1;
+                }
+                return;
+            }
+            for p in start..(2 * R - remaining + 1) {
+                chosen.push(p);
+                walk(p + 1, remaining - 1, chosen, target, h0, h1, found);
+                chosen.pop();
+            }
+        }
+        let mut found = 0;
+        for weight in 0..=T {
+            walk(0, weight, &mut Vec::new(), target, h0, h1, &mut found);
+        }
+        found
+    }
+
+    /// **BIKE end-to-end**: encap → decap → same shared secret, *whenever the
+    /// syndrome determines the error*.
+    ///
+    /// The qualifier is not a hedge, it is the contract these parameters
+    /// actually support. At `R = 31`, `W = 6`, `T = 3` the code's minimum
+    /// distance is too small to decode uniquely: on about 1.6% of draws the
+    /// syndrome has a second weight-`<= T` preimage — measured 81 collisions in
+    /// 5000 draws, with 2 to 62 preimages on a colliding draw — and
+    /// [`brute_force_decode`] returns the lexicographically first, which need
+    /// not be the error encapsulation injected. The shared secrets then differ
+    /// for a reason that is a property of the toy parameters, not a fault in
+    /// the decoder.
+    ///
+    /// Asserting `k_enc == k_dec` on a single draw therefore asserts something
+    /// false 1.6% of the time, which is exactly how often this test used to
+    /// fail in CI while passing locally. What is true, and what is asserted
+    /// here, is the conjunction: the secrets agree unless the syndrome is
+    /// genuinely ambiguous, and ambiguity stays near its measured rate. A
+    /// decoder that returned the wrong answer on a *uniquely* decodable
+    /// syndrome fails the first assertion; one that started failing to decode
+    /// at all fails the second.
+    ///
+    /// `preimages >= 2` is exactly "ambiguous", with no slack: the error
+    /// encapsulation injected has weight `<= T` and maps to this syndrome, so
+    /// it is itself a preimage and the count is never below 1. That also means
+    /// a well-formed ciphertext can never reach the decoder's decode-failure
+    /// path, so an outright decoding failure is not among the causes this test
+    /// has to distinguish.
     #[test]
-    fn bike_kem_shared_secret_matches() {
-        let kp = bike_keygen();
-        let (ct, k_enc) = bike_encapsulate(&kp.pk);
-        let k_dec = bike_decapsulate(&ct, &kp.sk);
-        assert_eq!(k_enc, k_dec);
+    fn bike_kem_shared_secret_matches_unless_the_syndrome_is_ambiguous() {
+        let trials = 200;
+        let mut ambiguous = 0;
+        for _ in 0..trials {
+            let kp = bike_keygen();
+            let (ct, k_enc) = bike_encapsulate(&kp.pk);
+            let k_dec = bike_decapsulate(&ct, &kp.sk);
+            if k_enc == k_dec {
+                continue;
+            }
+            let s_prime = ct.s.mul(&kp.sk.h0);
+            let preimages = weight_t_preimages(&s_prime, &kp.sk.h0, &kp.sk.h1);
+            assert!(
+                preimages >= 2,
+                "decapsulation disagreed on a syndrome with {preimages} \
+                 weight-<=T preimage(s); with a unique preimage the decoder \
+                 must return it"
+            );
+            ambiguous += 1;
+        }
+        // ~1.6% measured; 15% leaves room for the sampler without letting a
+        // real collapse in decoding pass unnoticed.
+        assert!(
+            ambiguous * 100 < trials * 15,
+            "{ambiguous}/{trials} draws had an ambiguous syndrome, far above \
+             the ~1.6% these parameters give"
+        );
     }
 
     #[test]
