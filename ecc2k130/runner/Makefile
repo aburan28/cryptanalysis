@@ -170,7 +170,7 @@ ARCH    ?= -gencode arch=compute_80,code=sm_80 \
 CLANGARCH ?= sm_90
 SMARCH  ?= sm_90
 
-HDRS = include/durable.h include/bitslice.h include/fieldbs.h include/fieldpb.h include/walk.h \
+HDRS = include/durable.h include/bitslice.h include/fieldbs.h include/fieldpb.h include/walk.h include/canonical131.h \
        include/packedfrobeniusfused.cuh \
        include/collective_inverse.cuh include/packedshiftedsigma131.h include/packedsquareraw131.h \
        include/kernel.h include/ref.h include/solver.h include/bigmod.h include/tablewalk.h \
@@ -327,17 +327,18 @@ build/trailforest: src/trailforest.cpp $(HDRS) $(GEN)
 
 trailforest: build/trailforest
 
-test-production: ecc2k130-cpu build/test-production
+build/test-canonical131: src/testcanonical131.cpp $(HDRS) $(GEN)
+	@mkdir -p build
+	$(CXX) -O2 -std=c++17 -Wno-unknown-pragmas src/testcanonical131.cpp -o $@
+
+.PHONY: test-canonical131
+test-canonical131: build/test-canonical131
+	./build/test-canonical131
+
+test-production: ecc2k130-cpu build/test-production build/test-canonical131
 	./build/test-production
-	python3 -m unittest discover -s aws -p test_certification.py -v
-	python3 -m unittest discover -s aws -p test_bootstrap_contract.py -v
-	python3 -m unittest discover -s aws -p test_worker_family.py -v
-	python3 -m unittest discover -s aws -p test_status_walks.py -v
-	python3 -m unittest discover -s aws -p test_fleet_roll.py -v
-	python3 -m unittest discover -s aws -p test_rollout.py -v
-	python3 -m unittest discover -s aws -p test_dp_ingest.py -v
-	python3 -m unittest discover -s aws -p test_worker_spool.py -v
-	python3 -m unittest discover -s aws -p test_controlplane.py -v
+	./build/test-canonical131
+	$(MAKE) check-cloud
 
 # The control plane against real Postgres, Redis and S3 rather than SQLite, a
 # fake and a directory.  `services.sh` brings the three up (docker compose

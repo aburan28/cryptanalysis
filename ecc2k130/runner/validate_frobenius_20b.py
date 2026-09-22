@@ -121,7 +121,35 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
         command = [str(binary), "--packed", "--curve", "131", "--threads", str(workers),
                    "--steps", "1024", "--launches", str(launches), "--run-id", "11000",
                    "--dp-weight", "32", "--verify", "0", "--dp-file", str(path)]
-        output = run(command, timeout=180)
+        telemetry_path = temporary / f"telemetry-{counter}.csv"
+        with telemetry_path.open("w") as telemetry_file:
+            sampler = subprocess.Popen([
+                "nvidia-smi", "--query-gpu=clocks.sm,power.draw,temperature.gpu",
+                "--format=csv,noheader,nounits", "-lms", "500"],
+                stdout=telemetry_file, stderr=subprocess.STDOUT, text=True)
+            try:
+                output = run(command, timeout=180)
+            finally:
+                sampler.terminate()
+                try:
+                    sampler.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    sampler.kill()
+                    sampler.wait(timeout=5)
+        telemetry_rows = []
+        for line in telemetry_path.read_text().splitlines():
+            try:
+                row = [float(value.strip()) for value in line.split(",")]
+            except ValueError:
+                continue
+            if len(row) == 3:
+                telemetry_rows.append(row)
+        active = [row for row in telemetry_rows if row[0] >= 2000]
+        telemetry = {"columns": ["sm_clock_MHz", "power_W", "temperature_C"],
+                     "samples": telemetry_rows, "active_samples": len(active)}
+        if active:
+            telemetry["active_medians"] = [statistics.median(row[i] for row in active)
+                                           for i in range(3)]
         if "0 dropped)" not in output:
             raise AssertionError(output)
         blob = path.read_bytes()
@@ -141,6 +169,7 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
         if launches == 128 and (len(original_records) != 705 or original_digest != "530de6e2e95f910cb8ce89e9db3ad681917296817650c4a5a5492d75e6d18e4e"):
             raise AssertionError("candidate changed the confirmed v3 DP32 corpus")
         return {"command": command, "output": output, "records": len(records),
+                "gpu_telemetry": telemetry,
                 "sorted_sha256": digest, "original_corpus_sha256": original_digest,
                 "billions_per_second": float(re.search(r"finished: ([0-9.]+) M it/s", output)[1]) / 1000}
 
@@ -152,6 +181,10 @@ def experiment(mode: str, selected: str, candidate_sources: dict, baseline_sourc
             result["baseline_build"] = build("baseline", baseline)
             result["baseline_binary_sha256"] = hashlib.sha256(baseline.read_bytes()).hexdigest()
             result["gpu"] = run(["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"]).strip()
+            result["gpu_uuid"] = run(["nvidia-smi", "--query-gpu=uuid", "--format=csv,noheader"]).strip()
+            result["cpu_models"] = sorted({line.split(":", 1)[1].strip()
+                for line in Path("/proc/cpuinfo").read_text().splitlines()
+                if line.startswith("model name")})
             result["compiler"] = run(["nvcc", "--version"])
             result["source_sha256"] = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
                 for folder in ("include", "src", "generated", "codegen")
@@ -243,7 +276,8 @@ def main(mode: str = "confirm", selected: str = "production_onb", output: str = 
         ["git", "show", f"{tree}/{name}"], cwd=LOCAL, text=True) for name in names}
     sources = {name: (LOCAL / name).read_text() for name in names}
     for name in ("codegen/genshiftedsigma.py", "codegen/shifted_sigma_routes.json", "include/packedshiftedsigma131.h",
-                 "codegen/gensquareraw.py", "include/packedsquareraw131.h"):
+                 "codegen/gensquareraw.py", "include/packedsquareraw131.h",
+                 "include/canonical131.h", "src/testcanonical131.cpp"):
         sources[name] = (LOCAL / name).read_text()
     driver_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     result = experiment.remote(mode, selected, sources, baseline_sources)
