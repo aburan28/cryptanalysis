@@ -932,6 +932,26 @@ static void test_url_parsing(void)
           CA_ERR_UNSUPPORTED);
 }
 
+/* A URL with credentials in it is refused rather than carried around.
+ * This client ignores userinfo and authenticates with a bearer token, so
+ * such a URL cannot work -- and on its way to failing it would take the
+ * secret through the Host header, an error message and the agent's log
+ * line.  The refusal names none of it. */
+static void test_url_with_credentials_is_refused(void)
+{
+    char hp[256], pfx[128];
+    CHECK(ca_coord_parse_url("http://user:secret@host:8080", hp, sizeof(hp), pfx, sizeof(pfx)) ==
+          CA_ERR_INVALID);
+    CHECK(strstr(ca_last_error(), "secret") == NULL);
+    CHECK(ca_coord_parse_url("http://tok@host:8080/rho", hp, sizeof(hp), pfx, sizeof(pfx)) ==
+          CA_ERR_INVALID);
+    /* An @ after the host is part of the path and says nothing about
+     * credentials, so it is left alone. */
+    CHECK(ca_coord_parse_url("http://host:8080/a@b", hp, sizeof(hp), pfx, sizeof(pfx)) == CA_OK);
+    CHECK(strcmp(hp, "host:8080") == 0);
+    CHECK(strcmp(pfx, "/a@b") == 0);
+}
+
 /* ---- the agent's side of the wire --------------------------------------- */
 
 /*
@@ -1591,6 +1611,7 @@ int main(void)
     test_refusing_store_is_counted();
     test_store_must_be_complete();
     test_url_parsing();
+    test_url_with_credentials_is_refused();
     test_fetch_job_over_http();
     test_sync_once_client();
     test_sync_reads_chunked();
