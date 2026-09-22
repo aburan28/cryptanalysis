@@ -124,6 +124,26 @@ Refuse configurations that cannot work, at template time rather than at
 {{- if and .Values.federation.peers .Values.networkPolicy.enabled (not .Values.networkPolicy.extraIngressFrom) -}}
 {{- fail "ca-coordinator: federation.peers is set and networkPolicy.enabled is on, but networkPolicy.extraIngressFrom is empty -- a peer hub is not an agent pod and the policy would refuse it, so the peers would look configured and never exchange anything. Add the peers' sources (an ipBlock, or a namespaceSelector for a peer in this cluster), or turn the policy off." -}}
 {{- end -}}
+{{- $count := int .Values.sharding.count -}}
+{{- if or (lt $count 1) (gt $count 1024) -}}
+{{- fail "ca-coordinator: sharding.count must be between 1 and 1024" -}}
+{{- end -}}
+{{- if ge (int .Values.sharding.index) $count -}}
+{{- fail (printf "ca-coordinator: sharding.index %d is not a shard of %d" (int .Values.sharding.index) $count) -}}
+{{- end -}}
+{{- if gt $count 1 -}}
+{{- if ne (len .Values.sharding.urls) $count -}}
+{{- fail (printf "ca-coordinator: sharding.count is %d, so sharding.urls needs %d entries in shard order -- the agents here dial every shard, and a short list silently sends their points to the wrong hubs" $count $count) -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.job.document -}}
+{{- $declared := regexFind "sh=[0-9]+" .Values.job.document -}}
+{{- $want := 1 -}}
+{{- if $declared -}}{{- $want = atoi (trimPrefix "sh=" $declared) -}}{{- end -}}
+{{- if ne $want $count -}}
+{{- fail (printf "ca-coordinator: the job document declares %d shard(s) but sharding.count is %d -- the count rides inside the job id, so these cannot both be right" $want $count) -}}
+{{- end -}}
+{{- end -}}
 {{- range .Values.federation.peers -}}
 {{- if or (not .name) (not .url) -}}
 {{- fail "ca-coordinator: every federation.peers entry needs a name and a url" -}}

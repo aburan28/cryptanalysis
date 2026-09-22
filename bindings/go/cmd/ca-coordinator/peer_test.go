@@ -237,3 +237,68 @@ func TestHungPeerIsAbandonedAndCounted(t *testing.T) {
 		t.Error("nothing recorded for an operator to see")
 	}
 }
+
+// A hub told which shard it is notices records meant for another one.
+// This is the only warning of a mistake that is otherwise silent and
+// expensive: agents disagreeing about the URL order send the two halves
+// of a collision to different hubs, and everything still looks healthy.
+func TestMisroutedCheckinsAreCounted(t *testing.T) {
+	ctx, _ := testFixture(t, 555)
+	mine := 1
+	state, err := ca.NewState(ctx)
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	t.Cleanup(state.Close)
+	hub := NewHub(ctx, state, &Config{Shard: &mine})
+
+	src, err := ca.NewState(ctx)
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	t.Cleanup(src.Close)
+	if _, err := ca.RunLane(ctx, src, ca.LaneParams{Peer: "a.0#1", MaxWalkers: 8, CheckinEvery: 2}); err != nil {
+		t.Fatalf("lane: %v", err)
+	}
+	if _, err := ca.RunLane(ctx, src, ca.LaneParams{Peer: "b.0#3", MaxWalkers: 8, CheckinEvery: 2}); err != nil {
+		t.Fatalf("lane: %v", err)
+	}
+
+	want := 0
+	for i := 0; i < src.LogLen(); i++ {
+		e, ok := src.LogAt(i)
+		if !ok {
+			continue
+		}
+		if checkinShard(e.Line) != mine {
+			want++
+		}
+		hub.absorb(e.Line)
+	}
+	if want == 0 {
+		t.Skip("the fixture produced nothing for the other shard")
+	}
+	if got := hub.Stats().Misrouted; got != int64(want) {
+		t.Errorf("counted %d misrouted, want %d", got, want)
+	}
+	// Kept, not refused: a configuration mistake must not cost work.
+	if state.LogLen() != src.LogLen() {
+		t.Errorf("hub holds %d of %d records; misrouted ones were dropped",
+			state.LogLen(), src.LogLen())
+	}
+}
+
+func TestCheckinShardReadsThePeerName(t *testing.T) {
+	cases := map[string]int{
+		"ci 1 lane#7 3 4 U: D: S:-": 7,
+		"ci 1 lane 3 4 U: D: S:-":   -1,
+		"ci 1 lane#x 3 4":           -1,
+		"ci 1 a.b.c#0 1 2":          0,
+		"short":                     -1,
+	}
+	for line, want := range cases {
+		if got := checkinShard(line); got != want {
+			t.Errorf("checkinShard(%q) = %d, want %d", line, got, want)
+		}
+	}
+}

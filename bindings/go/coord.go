@@ -61,6 +61,19 @@ type Job struct {
 	Negation bool
 	UnitSize uint64
 	Seed     uint64
+
+	shards uint32
+}
+
+// Shards is how many hubs the point space is split across; 1 when the
+// campaign is not sharded.  It rides in the job document and therefore in
+// the id, so participants cannot disagree about the topology while
+// agreeing on the campaign.
+func (j Job) Shards() uint32 {
+	if j.shards == 0 {
+		return 1
+	}
+	return j.shards
 }
 
 // ID is the job id: the 64-bit hash of the canonical text.  It is an
@@ -96,6 +109,7 @@ func ParseJob(text string) (Job, error) {
 		Negation: cj.negation_map != 0,
 		UnitSize: uint64(cj.unit_size),
 		Seed:     uint64(cj.seed),
+		shards:   uint32(cj.shards),
 	}, nil
 }
 
