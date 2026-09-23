@@ -108,6 +108,51 @@ def buildSystem(m, nring, points, leaf):
     return prog, roots
 
 
+def buildSystemPb(m, taps, rowsNbToPb, points, leaf, block=4):
+    """buildSystem for a field with no type-II optimal normal basis.
+
+    The point inputs stay normal-basis coordinates, so the weight bound in
+    encode() means what it means on the ONB path; one linear map per point
+    (curves.NormalView.rowsNbToPb) takes them to the polynomial basis, where
+    S_3 runs on pbMulIr.  What this costs over the ONB system is that map and
+    the squaring, which is now a reduction rather than a free permutation, so
+    its timings are a separate series, not more points on the ONB one.  The
+    intermediates and the target are polynomial-basis coordinates, and only
+    ('one', 0) is read: 1 is z^0 here."""
+    prog = ir.Prog()
+    p = []
+    for i in range(points):
+        nb = [prog.addInput('p%d' % i, j) for j in range(m)]
+        p.append(build.linearMapIr(prog, nb, rowsNbToPb, block))
+    t = []
+    for j in range(points - 2):
+        t.append([prog.addInput('t%d' % j, k) for k in range(m)])
+    r = [prog.addInput('r', j) for j in range(m)]
+    one = prog.addInput('one', 0)
+
+    def link(u, v, w):
+        uv = build.pbMulIr(prog, u, v, m, taps, leaf)
+        uw = build.pbMulIr(prog, u, w, m, taps, leaf)
+        vw = build.pbMulIr(prog, v, w, m, taps, leaf)
+        s = []
+        for i in range(m):
+            s.append(prog.xorList([uv[i], uw[i], vw[i]]))
+        sq = build.pbSqrIr(prog, s, m, taps)
+        uvw = build.pbMulIr(prog, uv, w, m, taps, leaf)
+        out = []
+        for i in range(m):
+            out.append(prog.xorList([sq[i], uvw[i], one if i == 0 else None]))
+        return out
+
+    chain = list(t) + [r]
+    roots = []
+    left = p[0]
+    for i in range(points - 1):
+        roots.extend(link(left, p[i + 1], chain[i]))
+        left = chain[i]
+    return prog, roots
+
+
 def encode(prog, roots, m, points, weight, xrBits, cnf, orderPoints=True):
     """Tseitin the system into `cnf` and add the factor base constraints.
 

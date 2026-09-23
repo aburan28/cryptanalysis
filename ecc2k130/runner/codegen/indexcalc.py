@@ -145,21 +145,31 @@ def liftAndCheck(onb, curve, coords, target):
     return None
 
 
-def runTrials(m, points, weight, trials, seed, leaf, verbose, maxConflicts=0, timeout=0):
+def runTrials(m, points, weight, trials, seed, leaf, verbose, maxConflicts=0, timeout=0,
+              basis='onb'):
     # Recovering y from x solves z^2 + z = c by half-trace, which is only valid
     # for odd m; on even m curves.pointFromX asserts deep inside instead of
     # saying why, so refuse here.
     if m % 2 == 0:
         raise ValueError('m must be odd: recovering y from x uses the half-trace')
-    onb = field.Onb(m)
-    curve = curves.Curve(onb)
+    if basis == 'onb':
+        onb = field.Onb(m)
+        curve = curves.Curve(onb)
+    else:
+        # normal-basis coordinates over a polynomial-basis field: same factor
+        # base definition, any odd m
+        onb = curves.NormalView(m)
+        curve = curves.CurvePb(onb.pb)
     rng = random.Random(seed)
     base, orbits = factorBase(onb, curve, weight)
     if verbose:
         print('m=%d  factor base %d points in %d Frobenius orbits '
               '(relations a full run would need: %d)'
               % (m, len(base), len(orbits), len(orbits)), flush=True)
-    prog, roots = decomp.buildSystem(m, onb.n, points, leaf)
+    if basis == 'onb':
+        prog, roots = decomp.buildSystem(m, onb.n, points, leaf)
+    else:
+        prog, roots = decomp.buildSystemPb(m, onb.taps, onb.rowsNbToPb, points, leaf)
     gates = prog.bitOpCount(roots)
     if verbose:
         print('system: %d points, %d S_3 links, %d gates'
@@ -179,7 +189,7 @@ def runTrials(m, points, weight, trials, seed, leaf, verbose, maxConflicts=0, ti
             continue
         c = cnfmod.Cnf()
         pvars = decomp.encode(prog, roots, m, points, weight,
-                              onb.toCoords(target[0]), c)
+                              onb.toCoords(target[0]) if basis == 'onb' else target[0], c)
         for v in pvars:
             # x=0 has weight 0, so the cardinality bound admits it, but it is
             # the 2-torsion point (0,1) and not in the factor base; without
@@ -220,7 +230,7 @@ def runTrials(m, points, weight, trials, seed, leaf, verbose, maxConflicts=0, ti
                      st['vars'], st['clauses'], st['xors']), flush=True)
     times.sort()
     med = times[len(times) // 2] if times else 0.0
-    return {'m': m, 'points': points, 'weight': weight, 'gates': gates,
+    return {'m': m, 'basis': basis, 'points': points, 'weight': weight, 'gates': gates,
             'base': len(base), 'orbits': len(orbits), 'solved': solved,
             'spurious': spurious, 'unsat': unsat, 'budget': budget,
             'median': med, 'total': sum(times)}
@@ -234,6 +244,9 @@ def main():
     ap.add_argument('--trials', type=int, default=5)
     ap.add_argument('--seed', type=int, default=1)
     ap.add_argument('--leaf', type=int, default=12)
+    ap.add_argument('--basis', choices=['onb', 'pb'], default='onb',
+                    help='onb: type-II optimal normal basis (m in 3,5,9,11,23,29,...); '
+                         'pb: polynomial basis with the weight taken in a normal basis, any odd m')
     ap.add_argument('--max-conflicts', type=int, default=0,
                     help='solver conflict budget; 0 = run to completion')
     ap.add_argument('--timeout', type=float, default=0,
@@ -241,10 +254,11 @@ def main():
     ap.add_argument('--quiet', action='store_true')
     args = ap.parse_args()
     r = runTrials(args.m, args.points, args.weight, args.trials, args.seed,
-                  args.leaf, not args.quiet, args.max_conflicts, args.timeout)
-    print('m=%d points=%d weight=%d: solved %d, spurious %d, unsat %d, budget %d, '
+                  args.leaf, not args.quiet, args.max_conflicts, args.timeout,
+                  args.basis)
+    print('m=%d basis=%s points=%d weight=%d: solved %d, spurious %d, unsat %d, budget %d, '
           'median %.2fs, gates %d, orbits %d'
-          % (r['m'], r['points'], r['weight'], r['solved'], r['spurious'],
+          % (r['m'], r['basis'], r['points'], r['weight'], r['solved'], r['spurious'],
              r['unsat'], r['budget'], r['median'], r['gates'], r['orbits']))
     return 0 if r['unsat'] == 0 else 1
 
