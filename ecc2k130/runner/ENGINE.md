@@ -773,8 +773,36 @@ Rerunning m=11 w=3 on the same machine gives a median of 0.35 s over 40
 instances, not 2.64 s, so the 2^2.3 per bit above leans on one slow
 measurement; 9 to 11 is nearer 2^1 per bit. The weight barely matters at m=11.
 Between 11 and 23 there is no ONB degree to measure (odd type II: 3, 5, 9, 11,
-23, 29), so where in that range the cost leaves the sub-second regime is
-still open.
+23, 29).
+
+`--basis pb` fills the gap. The point variables stay normal-basis coordinates,
+so the factor base is still `{HW(x) <= w}` and still Frobenius stable, but the
+normal basis is an arbitrary one (`curves.NormalView`: the sparsest of 400
+random normal elements, seeded by m) over a polynomial basis `F_2[z]/(F)`, and
+one linear map per point takes the variables there for S_3. Squaring is a
+reduction instead of a permutation, and the factor base at a given m is a
+different set of the same size class, so this is its own series. At m=9 and 11,
+where both exist, it has fewer gates and solves within 1.7x of the ONB system.
+Same k=3, w=2, machine and budget:
+
+| m | gates | orbits | instances | median solve |
+|---|---|---|---|---|
+| 9  | 1403 | 3 | 20 | 0.18 s, all solved |
+| 11 | 2086 | 4 | 20 | 0.49 s, all solved |
+| 13 | 2786 | 3 | 20 | 2.05 s, all solved |
+| 15 | 3344 | 3 | 20 | 27.1 s, all solved |
+| 17 | 4178 | 4 | 10 | 113 s, all solved (21-249 s) |
+| 19 | 5573 | 5 | 10 | over budget: 2 solved (36 s, 272 s), 8 hit the budget |
+
+From m=11 the median grows about 2^1.3 per bit, and the spread within one m
+is an order of magnitude (m=17: 21 s to 249 s), so the step from 13 to 15 is
+not by itself a bend. The same rate predicts about 680 s at m=19, and indeed
+the median instance there no longer finishes in ten minutes. Extrapolating
+2^1.3 per bit from m=17 puts one m=131 decomposition
+near 2^156 s. That is a straight line through four medians with an untuned
+encoding, not a bound, but it is more than 2^120 times rho's whole expected
+2^60.9-iteration run at this repo's measured GPU rates: for this encoding it
+is the decomposition, not the linear algebra, that rules index calculus out.
 
 **The trace constraint does not pay here.** For n odd, `E/2E ≅ Z/2` and
 `P ↦ Tr(x(P))` is the quotient map, so any relation forces
