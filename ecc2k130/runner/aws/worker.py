@@ -32,6 +32,9 @@ Environment (written to /etc/ecc2k130.env by bootstrap.sh):
   ECC_ROOT       directory holding campaign.json, the client, per-GPU work dirs
   ECC_CLIENT     client binary (default ECC_ROOT/ecc2k130)
   ECC_LOCAL_STORE  directory that stands in for S3 and DynamoDB (rehearsals)
+  ECC_METRICS_DIR  optional node_exporter textfile-collector directory; each
+                 heartbeat rewrites ecc2k130-gpuN.prom there with the walk's
+                 throughput, which gpueff/ scores against DCGM
 
 No type hints, camelCase identifiers (project convention).
 """
@@ -68,6 +71,24 @@ MAX_SLOT = 65534           # run id = slot + 1 must fit in 16 bits
 
 def log(msg):
     print(time.strftime("%Y-%m-%dT%H:%M:%SZ ", time.gmtime()) + msg, flush=True)
+
+
+def writeMetrics(directory, gpu, last):
+    """Publish walk progress for Prometheus through node_exporter's textfile
+    collector.  The iteration count restarts with each client run; rate()
+    treats that as a counter reset.  Written to a temporary name and renamed
+    so the collector never reads half a file."""
+    path = os.path.join(directory, "ecc2k130-gpu%d.prom" % gpu)
+    body = ("# HELP ecc2k130_walk_iterations_total Walk iterations completed by the current client run.\n"
+            "# TYPE ecc2k130_walk_iterations_total counter\n"
+            "ecc2k130_walk_iterations_total{gpu=\"%d\"} %d\n"
+            "# HELP ecc2k130_walk_rate Walk iterations per second reported by the client.\n"
+            "# TYPE ecc2k130_walk_rate gauge\n"
+            "ecc2k130_walk_rate{gpu=\"%d\"} %r\n" % (gpu, last["iters"], gpu, float(last["rate"])))
+    with open(path + ".tmp", "w") as f:
+        f.write(body)
+    os.replace(path + ".tmp", path)
+    return path
 
 
 def sh(cmd, check=True):
@@ -780,6 +801,11 @@ class Worker:
                           "binary": self.cfg.get("binaryKey", "")}
                 if last:
                     fields.update(rate=last["rate"], iters=last["iters"], dp=last["dp"], dropped=last["dropped"])
+                    if os.environ.get("ECC_METRICS_DIR"):
+                        try:
+                            writeMetrics(os.environ["ECC_METRICS_DIR"], self.gpu, last)
+                        except OSError as e:
+                            log("metrics export failed: %s" % e)
                 try:
                     self.renewLease(slot, force=True)
                     if not self.slots.heartbeat(slot, self.owner, fields):
