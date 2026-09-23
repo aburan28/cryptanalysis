@@ -759,6 +759,23 @@ Roughly 2^2.3 per bit of field over that range. Three points is not a fit, and
 the encoding has not been tuned, but the shape is already clear enough to say
 what the instrument is for: finding where the curve bends, if it does.
 
+**The trace constraint does not pay here.** For n odd, `E/2E ≅ Z/2` and
+`P ↦ Tr(x(P))` is the quotient map, so any relation forces
+`Σ Tr(x_i) = Tr(x_R)` -- in the normal basis one XOR over every point bit. It
+can only reject solutions whose x-coordinates are not all on E, and the chain
+over F_q already excludes almost all of those: the Frobenius acts as -1 on the
+twist, so the twist points of a relation sum to O or to T2 = (0,1). The only
+case the parity catches is a twist pair with `x·x' = 1` (sum T2), whose two
+coordinates must both be low weight. Enumerating every solution at m=9 found
+none; at m=11 it was 1 in 40. A paired A/B (same targets, time to first
+solution) put the XOR at 1.14x, 1.02x and 1.13x the baseline for m=9 k=3 w=3,
+m=11 k=3 w=3 and m=11 k=4 w=2, faster on under half the targets each time. What
+the enumeration did turn up was x = 0: it has weight 0, so the cardinality
+bound admits it, and every relation through T2 came back "spurious" until
+`indexcalc.py` forbade it. `indexcalc_e2e.py` targets the odd subgroup and
+uses the stronger per-point form, `Tr(x_i) = 0`, since every such point is a
+double.
+
 ## What is not done
 
 * Throughput on real hardware is unmeasured. The client has now run on an

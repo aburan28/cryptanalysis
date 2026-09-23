@@ -180,6 +180,11 @@ def runTrials(m, points, weight, trials, seed, leaf, verbose, maxConflicts=0, ti
         c = cnfmod.Cnf()
         pvars = decomp.encode(prog, roots, m, points, weight,
                               onb.toCoords(target[0]), c)
+        for v in pvars:
+            # x=0 has weight 0, so the cardinality bound admits it, but it is
+            # the 2-torsion point (0,1) and not in the factor base; without
+            # this every relation through it comes back as "spurious"
+            c.addClause(v)
         t0 = time.time()
         val, status = solveCnf(c, maxConflicts, timeout)
         dt = time.time() - t0
