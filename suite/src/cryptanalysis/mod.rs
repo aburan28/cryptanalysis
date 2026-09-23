@@ -137,6 +137,7 @@ pub mod eds_tate;
 pub mod f4_fp;
 pub mod ffd_harness;
 pub mod fght_snfs;
+pub(crate) mod fx_hash;
 pub mod gaudry_cubic;
 pub mod ghs_descent;
 pub mod ghs_full_attack;
