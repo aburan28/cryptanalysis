@@ -915,6 +915,42 @@ assumed paid. The width curve says which width is cheapest for `T`
 targets at fixed `r`, where precompute is most of the bill. Memory sets
 the reach; the target count sets how much of that memory is worth using.
 
+## The n = 53 crossover, against a batched rho
+
+The selected `n = 53` direct route (`koblitz_rank_fixture`, Stage 106/108
+flags: four-shard `signed_expanded` support, `pair_pair_parallel_4096`)
+passed its online-wall gate against `koblitz_rho_fixture`. That control
+inverts once per step, canonicalises both coordinates by 52 squarings
+each, stores every point, and runs on one thread: about 9.5 µs a step.
+`examples/koblitz_batched_rho.rs` is the same signed-Frobenius walk with
+one inversion shared across 64 walks, the orbit named by `FrobeniusCanon`,
+and only distinguished points stored. Same target, same host, every run
+recovering the scalar and checking `[d]G = Q`:
+
+| arm | runs | median wall |
+|---|---|---|
+| IC direct, selected stack, 4 threads | 3 | 17.3 s (≈16 s CPU) |
+| `koblitz_rho_fixture`, 1 thread | 5 | 3.03 s |
+| `koblitz_batched_rho`, 1 thread | 7 | 0.49 s |
+| `koblitz_batched_rho`, 4 threads | 7 | 0.20 s |
+
+The host is an M4 Pro, which has none of the x86 PCLMUL paths both
+fixtures specialise, so these are not the gate host's ratios. The counts
+carry over: 46.3M support queries against ≈0.56M rho steps, about 80×.
+The walk leaves one cost in, in index calculus's favour: `y` is moved onto
+the representative by up to `n − 1` squarings, not a basis rotation.
+
+**It does not scale toward 131.** A run spends about `r/(n·|F|)` queries
+(40M predicted at `n = 53`, 46.3M measured), and the base rule
+`|F|³ ≈ 6r·η` makes that `∝ r^{2/3}` against rho's `r^{1/2}`. At
+ECC2K-130 it is ≈2^80.6 queries against ≈2^60.9 rho steps. Closing the
+gap by width needs `|F| ≈ 2^61` and a folded pair table of ≈2^114
+entries: the orbit fold divides memory by `2n ≈ 2^8`, and changes no
+exponent. Folding the support table (738 MB → ≈15 MB) would pass the
+memory gate and leave both verdicts as they are.
+
+`docs/ic/runs/koblitz-n53-rho-control-20260922.json` records every run.
+
 ## Persistent fixed parameters through degree 131
 
 `ic fixed --params docs/ic/params/ecc2k130-fixed.json --dir runs/ecc2k130-fixed --stage select`
