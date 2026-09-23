@@ -243,6 +243,14 @@ impl F2mElement {
         out
     }
 
+    /// `self += other` in place (XOR), without allocating.
+    pub fn add_assign(&mut self, other: &Self) {
+        debug_assert_eq!(self.m, other.m);
+        for (a, b) in self.bits.iter_mut().zip(&other.bits) {
+            *a ^= *b;
+        }
+    }
+
     /// Subtraction in `F_2` is the same as addition.
     pub fn sub(&self, other: &Self) -> Self {
         self.add(other)
@@ -266,7 +274,7 @@ impl F2mElement {
                 add_shifted(&mut prod, &other.bits, i);
             }
         }
-        reduce(&mut prod, irreducible);
+        reduce_bitwise(&mut prod, irreducible);
         let mut out = Self::zero(m);
         for (i, w) in prod.iter().enumerate().take(out.bits.len()) {
             out.bits[i] = *w;
@@ -285,7 +293,7 @@ impl F2mElement {
     ///
     /// For binary fields, subtraction is XOR, so the "middle" term
     /// simplifies to `P_M ⊕ P_L ⊕ P_H`.  Reduction happens once at
-    /// the end via `reduce`.
+    /// the end via `reduce_words`.
     pub fn karatsuba_mul(&self, other: &Self, irreducible: &IrreduciblePoly) -> Self {
         let m = self.m;
         // Threshold below which schoolbook is faster.
@@ -321,7 +329,7 @@ impl F2mElement {
         add_shifted(&mut combined, &mid, k);
         add_shifted(&mut combined, &p_hi_bits, 2 * k);
 
-        reduce(&mut combined, irreducible);
+        reduce_words(&mut combined, irreducible);
         let mut out = Self::zero(m);
         for (i, w) in combined.iter().enumerate().take(out.bits.len()) {
             out.bits[i] = *w;
@@ -330,9 +338,29 @@ impl F2mElement {
         out
     }
 
-    /// Convenience wrapper picking schoolbook or Karatsuba based on `m`.
+    /// `self · other (mod m(z))`.
+    ///
+    /// Word-level schoolbook over 64-bit limbs, each limb product one
+    /// carry-less multiply (`pclmulqdq` where the CPU has it, a 4-bit
+    /// windowed comb otherwise), then the word-level sparse reduction
+    /// `reduce_words`.  At `m ≤ 576` the whole product lives on the
+    /// stack; the only allocation is the returned element.
+    ///
+    /// Bit-for-bit equal to [`Self::schoolbook_mul`] and
+    /// [`Self::karatsuba_mul`], which are kept as independent references.
     pub fn mul(&self, other: &Self, irreducible: &IrreduciblePoly) -> Self {
-        self.karatsuba_mul(other, irreducible)
+        debug_assert_eq!(self.m, other.m);
+        let m = self.m;
+        let nw = self.bits.len().max(other.bits.len());
+        let mut out = Self::zero(m);
+        with_scratch(2 * nw + 1, |prod| {
+            mul_words_into(&self.bits, &other.bits, prod);
+            reduce_words(prod, irreducible);
+            let k = out.bits.len();
+            out.bits.copy_from_slice(&prod[..k]);
+        });
+        out.mask_in_place();
+        out
     }
 
     /// `self²`.  In `F_{2^m}` squaring is linear: bit `i` of `self`
@@ -340,25 +368,17 @@ impl F2mElement {
     /// reduce mod `m(z)`.
     pub fn square(&self, irreducible: &IrreduciblePoly) -> Self {
         let m = self.m;
-        let n_words = (2 * m).div_ceil(64) as usize + 1;
-        let mut sq = vec![0u64; n_words];
-        for i in 0..m {
-            let w_i = (i / 64) as usize;
-            let b_i = i % 64;
-            if w_i < self.bits.len() && (self.bits[w_i] >> b_i) & 1 == 1 {
-                let pos = 2 * i;
-                let w_o = (pos / 64) as usize;
-                let b_o = pos % 64;
-                if w_o < sq.len() {
-                    sq[w_o] ^= 1u64 << b_o;
-                }
-            }
-        }
-        reduce(&mut sq, irreducible);
+        let nw = self.bits.len();
         let mut out = Self::zero(m);
-        for (i, w) in sq.iter().enumerate().take(out.bits.len()) {
-            out.bits[i] = *w;
-        }
+        with_scratch(2 * nw + 1, |sq| {
+            for (i, &w) in self.bits.iter().enumerate() {
+                sq[2 * i] = spread32(w);
+                sq[2 * i + 1] = spread32(w >> 32);
+            }
+            reduce_words(sq, irreducible);
+            let k = out.bits.len();
+            out.bits.copy_from_slice(&sq[..k]);
+        });
         out.mask_in_place();
         out
     }
@@ -366,9 +386,22 @@ impl F2mElement {
     /// `self^(2^k)` — `k` repeated squarings.
     pub fn square_k_times(&self, k: u32, irreducible: &IrreduciblePoly) -> Self {
         let mut acc = self.clone();
-        for _ in 0..k {
-            acc = acc.square(irreducible);
+        if k == 0 {
+            return acc;
         }
+        let nw = acc.bits.len();
+        with_scratch(2 * nw + 1, |sq| {
+            for _ in 0..k {
+                sq.iter_mut().for_each(|w| *w = 0);
+                for (i, &w) in acc.bits.iter().enumerate() {
+                    sq[2 * i] = spread32(w);
+                    sq[2 * i + 1] = spread32(w >> 32);
+                }
+                reduce_words(sq, irreducible);
+                acc.bits.copy_from_slice(&sq[..nw]);
+            }
+        });
+        acc.mask_in_place();
         acc
     }
 
@@ -458,15 +491,8 @@ fn xor_bits(a: &[u64], b: &[u64]) -> Vec<u64> {
 /// Unreduced schoolbook multiplication of two bit-vectors.  Returns
 /// a bit-vector of length `len(a) + len(b)` words.
 fn unreduced_mul(a: &[u64], b: &[u64]) -> Vec<u64> {
-    let n = a.len() + b.len();
-    let mut out = vec![0u64; n];
-    for (i, a_w) in a.iter().enumerate() {
-        for bit in 0..64u32 {
-            if (a_w >> bit) & 1 == 1 {
-                add_shifted(&mut out, b, (i as u32) * 64 + bit);
-            }
-        }
-    }
+    let mut out = vec![0u64; a.len() + b.len()];
+    mul_words_into(a, b, &mut out);
     out
 }
 
@@ -554,7 +580,11 @@ fn split_at(bits: &[u64], at: u32) -> (Vec<u64>, Vec<u64>) {
 /// Reduce a polynomial (bit-vector) modulo the irreducible
 /// polynomial `m(z)`.  In place: high bits get folded down into
 /// positions `< m`.
-fn reduce(value: &mut [u64], irreducible: &IrreduciblePoly) {
+///
+/// One bit at a time.  Kept only as the independent reference behind
+/// [`F2mElement::schoolbook_mul`]; everything else uses
+/// `reduce_words`.
+fn reduce_bitwise(value: &mut [u64], irreducible: &IrreduciblePoly) {
     let m = irreducible.degree;
     // Total bit length of `value`.
     let total_bits = (value.len() as u32) * 64;
@@ -581,6 +611,203 @@ fn reduce(value: &mut [u64], irreducible: &IrreduciblePoly) {
                 }
             }
         }
+    }
+}
+
+// ── Word-level kernels ────────────────────────────────────────────
+
+/// Spread the low 32 bits of `x` so that bit `i` lands at bit `2i`:
+/// squaring in characteristic 2 before reduction.
+#[inline(always)]
+fn spread32(x: u64) -> u64 {
+    let mut x = x & 0xFFFF_FFFF;
+    x = (x | (x << 16)) & 0x0000_FFFF_0000_FFFF;
+    x = (x | (x << 8)) & 0x00FF_00FF_00FF_00FF;
+    x = (x | (x << 4)) & 0x0F0F_0F0F_0F0F_0F0F;
+    x = (x | (x << 2)) & 0x3333_3333_3333_3333;
+    x = (x | (x << 1)) & 0x5555_5555_5555_5555;
+    x
+}
+
+/// Run `f` on a zeroed scratch buffer of `len` words: on the stack up
+/// to 20 words (a product of two `m ≤ 576`-bit operands), on the heap
+/// beyond that.
+#[inline(always)]
+fn with_scratch<R>(len: usize, f: impl FnOnce(&mut [u64]) -> R) -> R {
+    const STACK: usize = 20;
+    if len <= STACK {
+        let mut buf = [0u64; STACK];
+        f(&mut buf[..len])
+    } else {
+        let mut buf = vec![0u64; len];
+        f(&mut buf)
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "pclmulqdq")]
+unsafe fn clmul64_hw(a: u64, b: u64) -> (u64, u64) {
+    use std::arch::x86_64::*;
+    let z = _mm_clmulepi64_si128::<0x00>(_mm_set_epi64x(0, a as i64), _mm_set_epi64x(0, b as i64));
+    (
+        _mm_cvtsi128_si64(z) as u64,
+        _mm_cvtsi128_si64(_mm_srli_si128::<8>(z)) as u64,
+    )
+}
+
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "aes")]
+unsafe fn clmul64_hw(a: u64, b: u64) -> (u64, u64) {
+    let p = std::arch::aarch64::vmull_p64(a, b);
+    (p as u64, (p >> 64) as u64)
+}
+
+/// Carry-less `64 × 64 → 128` without hardware support: a 4-bit
+/// window over `a`, sixteen table lookups instead of sixty-four
+/// data-dependent branches.
+#[inline]
+fn clmul64_soft(a: u64, b: u64) -> (u64, u64) {
+    let mut tab = [0u128; 16];
+    let b128 = b as u128;
+    for i in 1..16usize {
+        tab[i] = if i & 1 == 1 {
+            tab[i - 1] ^ b128
+        } else {
+            tab[i >> 1] << 1
+        };
+    }
+    let mut acc = 0u128;
+    for k in (0..16).rev() {
+        acc = (acc << 4) ^ tab[((a >> (4 * k)) & 0xF) as usize];
+    }
+    (acc as u64, (acc >> 64) as u64)
+}
+
+#[inline(always)]
+fn has_hw_clmul() -> bool {
+    #[cfg(target_arch = "x86_64")]
+    {
+        std::arch::is_x86_feature_detected!("pclmulqdq")
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        std::arch::is_aarch64_feature_detected!("aes")
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    {
+        false
+    }
+}
+
+/// `out ^= a · b` over `F_2[z]`, word-level schoolbook with one
+/// carry-less multiply per pair of limbs.  `out` must hold at least
+/// `a.len() + b.len()` words.
+fn mul_words_into(a: &[u64], b: &[u64], out: &mut [u64]) {
+    debug_assert!(out.len() >= a.len() + b.len());
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    if has_hw_clmul() {
+        // SAFETY: the required CPU feature was detected at runtime.
+        unsafe { mul_words_hw(a, b, out) };
+        return;
+    }
+    for (i, &ai) in a.iter().enumerate() {
+        if ai == 0 {
+            continue;
+        }
+        for (j, &bj) in b.iter().enumerate() {
+            let (lo, hi) = clmul64_soft(ai, bj);
+            out[i + j] ^= lo;
+            out[i + j + 1] ^= hi;
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "pclmulqdq")]
+unsafe fn mul_words_hw(a: &[u64], b: &[u64], out: &mut [u64]) {
+    for (i, &ai) in a.iter().enumerate() {
+        for (j, &bj) in b.iter().enumerate() {
+            let (lo, hi) = clmul64_hw(ai, bj);
+            out[i + j] ^= lo;
+            out[i + j + 1] ^= hi;
+        }
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "aes")]
+unsafe fn mul_words_hw(a: &[u64], b: &[u64], out: &mut [u64]) {
+    for (i, &ai) in a.iter().enumerate() {
+        for (j, &bj) in b.iter().enumerate() {
+            let (lo, hi) = clmul64_hw(ai, bj);
+            out[i + j] ^= lo;
+            out[i + j + 1] ^= hi;
+        }
+    }
+}
+
+/// Bits `[pos, pos + len)` of `v` as an integer, `len ≤ 64`.
+#[inline(always)]
+fn get_bits(v: &[u64], pos: u32, len: u32) -> u64 {
+    let w = (pos / 64) as usize;
+    let b = pos % 64;
+    let mut x = v[w] >> b;
+    if b != 0 && b + len > 64 && w + 1 < v.len() {
+        x |= v[w + 1] << (64 - b);
+    }
+    if len < 64 {
+        x &= (1u64 << len) - 1;
+    }
+    x
+}
+
+/// `v ^= x << pos`, dropping anything past the end of `v`.
+#[inline(always)]
+fn xor_bits_at(v: &mut [u64], pos: u32, x: u64) {
+    let w = (pos / 64) as usize;
+    let b = pos % 64;
+    if w < v.len() {
+        v[w] ^= x << b;
+    }
+    if b != 0 && w + 1 < v.len() {
+        v[w + 1] ^= x >> (64 - b);
+    }
+}
+
+/// Reduce `value` modulo `m(z)` in place, a chunk of up to 64 bits at
+/// a time rather than one bit at a time.
+///
+/// Walking down from the top, the chunk `[lo, hi)` above `z^m` is
+/// cleared and folded back as `Σ_t x · z^{lo − m + t}` over the
+/// irreducible's low terms `t`.  The chunk width is capped at
+/// `m − t_max`, so a fold always lands strictly below `lo` and never
+/// re-dirties the chunk it came from; the bits it lands in `[m, lo)`
+/// are picked up by later chunks.  For a trinomial or pentanomial
+/// that is a handful of shift-XORs per word of excess, independent of
+/// how many bits are set.
+fn reduce_words(value: &mut [u64], irreducible: &IrreduciblePoly) {
+    let m = irreducible.degree;
+    let t_max = irreducible.low_terms.iter().copied().max().unwrap_or(0);
+    debug_assert!(t_max < m);
+    let width = (m - t_max).min(64);
+    // Highest possibly-set bit + 1, trimmed past trailing zero words.
+    let mut top_word = value.len();
+    while top_word > 0 && value[top_word - 1] == 0 {
+        top_word -= 1;
+    }
+    let mut hi = (top_word as u32) * 64;
+    while hi > m {
+        let lo = hi.saturating_sub(width).max(m);
+        let len = hi - lo;
+        let x = get_bits(value, lo, len);
+        if x != 0 {
+            xor_bits_at(value, lo, x); // clear
+            let base = lo - m;
+            for &t in &irreducible.low_terms {
+                xor_bits_at(value, base + t, x);
+            }
+        }
+        hi = lo;
     }
 }
 
@@ -671,6 +898,130 @@ mod tests {
             let inv = a.flt_inverse(&irr).unwrap();
             let prod = a.mul(&inv, &irr);
             assert_eq!(prod, F2mElement::one(16), "a·a⁻¹ ≠ 1 for a = {}", v);
+        }
+    }
+
+    fn xorshift(s: &mut u64) -> u64 {
+        *s ^= *s << 13;
+        *s ^= *s >> 7;
+        *s ^= *s << 17;
+        *s
+    }
+
+    fn random_elem(s: &mut u64, m: u32) -> F2mElement {
+        let n_words = m.div_ceil(64) as usize;
+        let words: Vec<u64> = (0..n_words).map(|_| xorshift(s)).collect();
+        F2mElement::from_words(&words, m)
+    }
+
+    fn all_fields() -> Vec<IrreduciblePoly> {
+        vec![
+            IrreduciblePoly::deg_8(),
+            IrreduciblePoly::deg_16(),
+            IrreduciblePoly::deg_113(),
+            IrreduciblePoly::deg_127(),
+            IrreduciblePoly::deg_131(),
+            IrreduciblePoly::deg_155_oakley_group3(),
+            IrreduciblePoly::deg_163(),
+            IrreduciblePoly::deg_233(),
+            // z^64 + z^4 + z^3 + z + 1: exactly one word.
+            IrreduciblePoly {
+                degree: 64,
+                low_terms: vec![0, 1, 3, 4],
+            },
+            // z^571 + z^10 + z^5 + z^2 + 1 (NIST B-571): beyond the
+            // stack scratch, exercises the heap path.
+            IrreduciblePoly {
+                degree: 571,
+                low_terms: vec![0, 2, 5, 10],
+            },
+        ]
+    }
+
+    /// The word-level carry-less `mul` agrees bit for bit with the
+    /// bit-at-a-time schoolbook reference and with Karatsuba, at every
+    /// field size including ones whose reduction chunk is narrower than
+    /// a word (`m − t_max < 64`).
+    #[test]
+    fn word_mul_matches_bitwise_reference() {
+        let mut s = 0x0123_4567_89AB_CDEFu64;
+        for irr in all_fields() {
+            let m = irr.degree;
+            for _ in 0..40 {
+                let a = random_elem(&mut s, m);
+                let b = random_elem(&mut s, m);
+                let r = a.schoolbook_mul(&b, &irr);
+                assert_eq!(a.mul(&b, &irr), r, "mul, m = {m}");
+                assert_eq!(a.karatsuba_mul(&b, &irr), r, "karatsuba, m = {m}");
+            }
+            // Extremes: all-ones operands carry the most reduction work.
+            let ones: Vec<u32> = (0..m).collect();
+            let a = F2mElement::from_bit_positions(&ones, m);
+            assert_eq!(
+                a.mul(&a, &irr),
+                a.schoolbook_mul(&a, &irr),
+                "all-ones, m = {m}"
+            );
+        }
+    }
+
+    /// Spread-and-reduce squaring equals self-multiplication, and
+    /// `square_k_times` equals repeated squaring.
+    #[test]
+    fn word_square_matches_mul() {
+        let mut s = 0xFEED_FACE_CAFE_BEEFu64;
+        for irr in all_fields() {
+            let m = irr.degree;
+            for _ in 0..40 {
+                let a = random_elem(&mut s, m);
+                let sq = a.square(&irr);
+                assert_eq!(sq, a.schoolbook_mul(&a, &irr), "square, m = {m}");
+                let mut rep = a.clone();
+                for _ in 0..5 {
+                    rep = rep.square(&irr);
+                }
+                assert_eq!(a.square_k_times(5, &irr), rep, "square_k, m = {m}");
+            }
+            assert_eq!(
+                F2mElement::one(m).square_k_times(0, &irr),
+                F2mElement::one(m)
+            );
+        }
+    }
+
+    /// Inversion round-trips at every field size.
+    #[test]
+    fn inverse_roundtrip_all_fields() {
+        let mut s = 0xDEAD_BEEF_0BAD_F00Du64;
+        for irr in all_fields() {
+            let m = irr.degree;
+            for _ in 0..5 {
+                let a = random_elem(&mut s, m);
+                if a.is_zero() {
+                    continue;
+                }
+                let inv = a.flt_inverse(&irr).unwrap();
+                assert_eq!(a.mul(&inv, &irr), F2mElement::one(m), "m = {m}");
+            }
+        }
+    }
+
+    /// The software carry-less multiply (the fallback on CPUs without
+    /// `pclmulqdq`) is a correct `64 × 64 → 128` product.
+    #[test]
+    fn soft_clmul_matches_shift_xor() {
+        let mut s = 0x1357_9BDF_2468_ACE0u64;
+        for _ in 0..2000 {
+            let a = xorshift(&mut s);
+            let b = xorshift(&mut s);
+            let mut want = 0u128;
+            for i in 0..64 {
+                if (a >> i) & 1 == 1 {
+                    want ^= (b as u128) << i;
+                }
+            }
+            let (lo, hi) = clmul64_soft(a, b);
+            assert_eq!(((hi as u128) << 64) | lo as u128, want);
         }
     }
 
