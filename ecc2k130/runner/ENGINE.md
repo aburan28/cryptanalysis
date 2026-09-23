@@ -759,6 +759,23 @@ Roughly 2^2.3 per bit of field over that range. Three points is not a fit, and
 the encoding has not been tuned, but the shape is already clear enough to say
 what the instrument is for: finding where the curve bends, if it does.
 
+The same k=3 at w=2, which is the smallest factor base that still has a point
+at m=23, run on an M4 Pro with x = 0 excluded (below) and a 600 s budget per
+instance:
+
+| m | gates | orbits | instances | median solve |
+|---|---|---|---|---|
+| 9  | 1587 | 3 | 19 | 0.11 s, all solved |
+| 11 | 2311 | 2 | 20 | 0.40 s, all solved |
+| 23 | 8029 | 7 | 3  | none solved; all hit the budget (624, 761, 739 s -- the solver checks it lazily) |
+
+Rerunning m=11 w=3 on the same machine gives a median of 0.35 s over 40
+instances, not 2.64 s, so the 2^2.3 per bit above leans on one slow
+measurement; 9 to 11 is nearer 2^1 per bit. The weight barely matters at m=11.
+Between 11 and 23 there is no ONB degree to measure (odd type II: 3, 5, 9, 11,
+23, 29), so where in that range the cost leaves the sub-second regime is
+still open.
+
 **The trace constraint does not pay here.** For n odd, `E/2E ≅ Z/2` and
 `P ↦ Tr(x(P))` is the quotient map, so any relation forces
 `Σ Tr(x_i) = Tr(x_R)` -- in the normal basis one XOR over every point bit. It
