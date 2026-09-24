@@ -75,7 +75,11 @@ class Onb:
 
     def toCoords(self, u):
         u = self.normalize(u)
-        return (u >> 1) & ((1 << self.m) - 1)
+        a = 0
+        for i in range(1, self.m + 1):
+            if (u >> i) & 1:
+                a |= 1 << (i - 1)
+        return a
 
     def normalize(self, u):
         if u & 1:
