@@ -5,10 +5,12 @@ It is stacked after the ONB Frobenius change in PR #81. The candidate uses
 set-bit iteration for multipliers with at most 12 bits, and a four-bit
 rotation window for denser multipliers. Inputs with bits above the field's
 `2m+1`-bit representation retain the original path, including its exact
-noncanonical behavior.
+noncanonical behavior. The sparse/window threshold uses `int.bit_count` when
+available and the existing `popcount` helper on Python 3.9. Small fields take
+the sparse path directly.
 
-`baseline/field.py` is the tracked source before this change. `field-v1.py`
-is the held window-only candidate. Intent files were frozen before each
+`baseline/field.py` is the tracked source before this change. `field-v1.py`,
+`field-v2.py`, and `field-v3.py` preserve held candidates. Intent files were frozen before each
 candidate or measurement revision. The accepted source is the tracked field
 file in this branch. `point_ops.py` measures curve construction, addition,
 doubling, scalar multiplication, and an unchanged Frobenius control with the
