@@ -322,6 +322,8 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
             "combined_relations": logs.combined_relations,
             "distinct_large_primes": logs.distinct_large_primes,
             "known_large_primes": logs.known_large_primes,
+            "collection_rounds": logs.collection_rounds,
+            "walk_restarts": logs.walk_restarts,
             "rejected_relations": logs.rejected_relations,
             "oracle_ops": logs.oracle_ops,
             "probe_ops": logs.probe_ops,

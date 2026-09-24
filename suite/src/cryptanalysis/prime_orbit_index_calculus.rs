@@ -99,6 +99,10 @@ pub const MIN_FIELD_BITS: u32 = 8;
 /// Representatives per batched inversion in the decomposition sweep.  The
 /// sweep stops at the first hit, so a block bounds the wasted work.
 const SWEEP_BLOCK: usize = 256;
+/// The most rounds of relations a large-prime collection gathers while
+/// fewer than three quarters of the base certify.  Each round asks for
+/// another `relations_per_orbit · m`.
+const MAX_COLLECTION_ROUNDS: u32 = 4;
 /// The descent's first block; each next one doubles, up to
 /// [`SWEEP_BLOCK`].  With a large-prime database a descent often hits
 /// within a few dozen differences, and a whole block is paid for (its
@@ -1431,6 +1435,12 @@ pub struct LogsReport {
     /// their first occurrence lying on a certified orbit.  These extend
     /// the base a descent looks up at no further cost.
     pub known_large_primes: u64,
+    /// Rounds of relations gathered: more than one when too few columns
+    /// certified after the first.
+    pub collection_rounds: u32,
+    /// With large primes: times the collection's walk returned to a probe
+    /// it had made and started again.
+    pub walk_restarts: u64,
     /// Differences the oracle evaluated.
     pub oracle_ops: u64,
     /// Group additions spent advancing probes.
@@ -1658,101 +1668,174 @@ impl<'t> AddingWalk<'t> {
     }
 }
 
-/// Relations for [`solve_logs`] by the single-large-prime variation: every
-/// probe is peeled once by every representative, and a leftover that is not
-/// a base point waits, keyed by its orbit, for a second probe to meet it.
-/// Returns the relations and every large prime's first occurrence.
-fn collect_large_primes(
-    c: &OrbitCurve,
-    fb: &OrbitFactorBase,
-    opts: &OrbitIcOptions,
-    want: usize,
-    rep: &mut LogsReport,
-) -> (Vec<Relation>, FxMap<u64, Anchor>) {
-    let f = &c.fast.f;
-    let r = c.r;
-    let m = fb.len();
-    let mut rng = StdRng::seed_from_u64(opts.seed ^ 0x6c6f_6773_5f70_7262);
-    let table = RhoJumps::new(c, opts.seed ^ 0x6c61_7267_655f_7072);
-    let mut walk = AddingWalk::new(c, &mut rng, &table);
-    rep.probe_ops += table.ops + scalar_mul_ops(r);
-    let mut rows: Vec<Relation> = Vec::with_capacity(want);
-    let mut anchors: FxMap<u64, Anchor> = FxMap::default();
-    let (mut den, mut scratch) = (vec![0u64; SWEEP_BLOCK], vec![0u64; SWEEP_BLOCK]);
-    'probes: while m > 0 && rows.len() < want && rep.oracle_ops < opts.max_ops {
-        rep.trials += 1;
-        let (pt, a) = (walk.point, walk.a);
-        if !pt.infinity {
-            for start in (0..m).step_by(SWEEP_BLOCK) {
-                let block = &fb.reps[start..(start + SWEEP_BLOCK).min(m)];
-                for (i, q) in block.iter().enumerate() {
-                    let d = f.sub(pt.x, q.x);
-                    den[i] = if d == 0 { f.one() } else { d };
-                }
-                f.batch_inv(&mut den[..block.len()], &mut scratch[..block.len()]);
-                rep.oracle_ops += block.len() as u64;
-                for (i, q) in block.iter().enumerate() {
-                    let o = (start + i) as u32;
-                    if q.x == pt.x {
-                        // R = ±P_o: a one-term relation.
-                        let e = if q.y == pt.y { 1 } else { r - 1 };
-                        rows.push(Relation {
-                            terms: vec![(o, e)],
-                            rhs: a,
-                        });
-                        continue;
+/// The single-large-prime collection for [`solve_logs`]: every probe is
+/// peeled once by every representative, and a leftover that is not a base
+/// point waits, keyed by its orbit, for a second probe to meet it.
+///
+/// It is resumable: [`Self::collect`] probes, a whole probe at a time,
+/// until it holds some number of relations, and a later call asking for
+/// more goes on with the same walk and the same large primes.
+struct LargePrimeCollector<'t> {
+    table: &'t RhoJumps,
+    rng: StdRng,
+    walk: AddingWalk<'t>,
+    rows: Vec<Relation>,
+    /// Every large prime's first occurrence.
+    anchors: FxMap<u64, Anchor>,
+    den: Vec<u64>,
+    scratch: Vec<u64>,
+}
+
+impl<'t> LargePrimeCollector<'t> {
+    /// The probes walk by `table`, which the caller has paid for.
+    fn new(
+        c: &OrbitCurve,
+        table: &'t RhoJumps,
+        opts: &OrbitIcOptions,
+        rep: &mut LogsReport,
+    ) -> Self {
+        let mut rng = StdRng::seed_from_u64(opts.seed ^ 0x6c6f_6773_5f70_7262);
+        let walk = AddingWalk::new(c, &mut rng, table);
+        rep.probe_ops += scalar_mul_ops(c.r);
+        Self {
+            table,
+            rng,
+            walk,
+            rows: Vec::new(),
+            anchors: FxMap::default(),
+            den: vec![0u64; SWEEP_BLOCK],
+            scratch: vec![0u64; SWEEP_BLOCK],
+        }
+    }
+
+    /// Probe until there are `want` relations or the budget is spent.
+    ///
+    /// The walk is deterministic, so once it returns to a probe it has
+    /// made it can only repeat itself; with a base of a few dozen orbits
+    /// the collection takes thousands of probes, and a walk on `r` points
+    /// comes back after `≈ √(πr/2)` steps, sometimes far sooner.  A
+    /// leftover meeting its own first occurrence from the same
+    /// representative with gain 1 is exactly such a return, `R = R₁`, and
+    /// the walk starts again from a fresh `[a]G`.
+    fn collect(
+        &mut self,
+        c: &OrbitCurve,
+        fb: &OrbitFactorBase,
+        opts: &OrbitIcOptions,
+        want: usize,
+        rep: &mut LogsReport,
+    ) {
+        let f = &c.fast.f;
+        let r = c.r;
+        let m = fb.len();
+        let (den, scratch) = (&mut self.den, &mut self.scratch);
+        while m > 0 && self.rows.len() < want && rep.oracle_ops < opts.max_ops {
+            rep.trials += 1;
+            let (pt, a) = (self.walk.point, self.walk.a);
+            let mut returned = false;
+            if !pt.infinity {
+                'probe: for start in (0..m).step_by(SWEEP_BLOCK) {
+                    let block = &fb.reps[start..(start + SWEEP_BLOCK).min(m)];
+                    for (i, q) in block.iter().enumerate() {
+                        let d = f.sub(pt.x, q.x);
+                        den[i] = if d == 0 { f.one() } else { d };
                     }
-                    // D = R − P_o, so a ≡ x_o + log D.
-                    let lam = f.mul(f.add(pt.y, q.y), den[i]);
-                    let xd = f.sub(f.sub(f.sqr(lam), pt.x), q.x);
-                    let d = FastPoint {
-                        x: xd,
-                        y: f.sub(f.mul(lam, f.sub(pt.x, xd)), pt.y),
-                        infinity: false,
-                    };
-                    if let Some(&o2) = fb.index.get(&xd) {
-                        // D = β(P_o2) is a base point: a ≡ x_o + e(β)·x_o2.
-                        if let Some(e) = c.image_eig(fb.reps[o2 as usize], d) {
-                            rows.push(Relation {
-                                terms: vec![(o, 1), (o2, e)],
+                    f.batch_inv(&mut den[..block.len()], &mut scratch[..block.len()]);
+                    rep.oracle_ops += block.len() as u64;
+                    for (i, q) in block.iter().enumerate() {
+                        let o = (start + i) as u32;
+                        if q.x == pt.x {
+                            // R = ±P_o: a one-term relation.
+                            let e = if q.y == pt.y { 1 } else { r - 1 };
+                            self.rows.push(Relation {
+                                terms: vec![(o, e)],
                                 rhs: a,
                             });
-                            rep.full_relations += 1;
+                            continue;
                         }
-                    } else {
-                        match anchors.entry(c.canonical_x(xd)) {
+                        // D = R − P_o, so a ≡ x_o + log D.
+                        let lam = f.mul(f.add(pt.y, q.y), den[i]);
+                        let xd = f.sub(f.sub(f.sqr(lam), pt.x), q.x);
+                        let d = FastPoint {
+                            x: xd,
+                            y: f.sub(f.mul(lam, f.sub(pt.x, xd)), pt.y),
+                            infinity: false,
+                        };
+                        if let Some(&o2) = fb.index.get(&xd) {
+                            // D = β(P_o2) is a base point: a ≡ x_o + e(β)·x_o2.
+                            if let Some(e) = c.image_eig(fb.reps[o2 as usize], d) {
+                                self.rows.push(Relation {
+                                    terms: vec![(o, 1), (o2, e)],
+                                    rhs: a,
+                                });
+                                rep.full_relations += 1;
+                            }
+                            continue;
+                        }
+                        match self.anchors.entry(c.canonical_x(xd)) {
                             Entry::Vacant(slot) => {
                                 slot.insert(Anchor { o, a, d });
                             }
                             Entry::Occupied(slot) => {
                                 let first = *slot.get();
                                 // D = γ(D₁) and a₁ ≡ x_o₁ + log D₁, so
-                                // x_o − e(γ)·x_o₁ ≡ a − e(γ)·a₁.  The same
-                                // leftover from the same representative is
-                                // the same probe again, and says nothing.
-                                if let Some(g) = c.image_eig(first.d, d) {
-                                    if g != 1 || first.o != o {
-                                        rows.push(Relation {
+                                // x_o − e(γ)·x_o₁ ≡ a − e(γ)·a₁.
+                                match c.image_eig(first.d, d) {
+                                    Some(1) if first.o == o => {
+                                        returned = true;
+                                        break 'probe;
+                                    }
+                                    Some(g) => {
+                                        self.rows.push(Relation {
                                             terms: vec![(o, 1), (first.o, r - g)],
                                             rhs: sub_r(a, mul_r(g, first.a, r), r),
                                         });
                                         rep.combined_relations += 1;
                                     }
+                                    None => {}
                                 }
                             }
                         }
                     }
-                    if rows.len() >= want {
-                        break 'probes;
-                    }
                 }
             }
+            if returned {
+                self.walk = AddingWalk::new(c, &mut self.rng, self.table);
+                rep.probe_ops += scalar_mul_ops(r);
+                rep.walk_restarts += 1;
+            } else {
+                self.walk.advance(c);
+                rep.probe_ops += 1;
+            }
         }
-        walk.advance(c);
-        rep.probe_ops += 1;
+        rep.distinct_large_primes = self.anchors.len() as u64;
     }
-    rep.distinct_large_primes = anchors.len() as u64;
-    (rows, anchors)
+}
+
+/// Solve `rows` over `fb` and certify every solved column as
+/// `[x_o]G == P_o`: the certified logarithm of each column (or `None`),
+/// the system's statistics and the count of solved columns that failed.
+fn certify_columns(
+    c: &OrbitCurve,
+    fb: &OrbitFactorBase,
+    rows: &[Relation],
+) -> (Vec<Option<u64>>, TwoTermStats, usize) {
+    let (solution, stats) = solve_two_term_system(fb.len(), rows, c.r);
+    let mut uncertified = 0;
+    let certified = solution
+        .iter()
+        .enumerate()
+        .map(|(o, x)| {
+            let x = (*x)?;
+            if c.mul_g(x) == fb.reps[o] {
+                Some(x)
+            } else {
+                uncertified += 1;
+                None
+            }
+        })
+        .collect();
+    (certified, stats, uncertified)
 }
 
 /// The factor-base logarithm database.
@@ -1814,6 +1897,13 @@ impl LogDatabase {
 /// construction, `D` being computed as `R − P_o`, and like every relation
 /// it is checked through the certification `[x_o]G == P_o` of each column
 /// it determines — an uncertified column is never used.
+///
+/// A small base can come out of its first round of relations mostly
+/// unpinned: on a generic curve every gain is `±1`, and a component is
+/// pinned only by a cycle whose gains multiply to `−1`.  So while fewer
+/// than three quarters of the orbits certify, the large-prime collection
+/// gathers another round, up to four in all; a wide base, or a lucky small
+/// one, stops after the first.
 pub fn solve_logs(
     c: &OrbitCurve,
     fb: &OrbitFactorBase,
@@ -1826,29 +1916,40 @@ pub fn solve_logs(
         factor_base_draws: fb.draws,
         ..LogsReport::default()
     };
-    let want = ((fb.len() as f64) * opts.relations_per_orbit).ceil() as usize;
-    let (rows, anchors) = if opts.large_primes {
-        collect_large_primes(c, fb, opts, want, &mut rep)
+    let round = ((fb.len() as f64) * opts.relations_per_orbit).ceil() as usize;
+    let (rows, anchors, (certified, stats, uncertified)) = if opts.large_primes {
+        let table = RhoJumps::new(c, opts.seed ^ 0x6c61_7267_655f_7072);
+        rep.probe_ops += table.ops;
+        let mut collector = LargePrimeCollector::new(c, &table, opts, &mut rep);
+        let mut want = round;
+        loop {
+            collector.collect(c, fb, opts, want, &mut rep);
+            rep.collection_rounds += 1;
+            let solved = certify_columns(c, fb, &collector.rows);
+            let certified = solved.0.iter().flatten().count();
+            let starved = collector.rows.len() < want;
+            if 4 * certified >= 3 * fb.len()
+                || starved
+                || rep.collection_rounds >= MAX_COLLECTION_ROUNDS
+            {
+                break (collector.rows, collector.anchors, solved);
+            }
+            want += round;
+        }
     } else {
-        (collect_full(c, fb, opts, want, &mut rep), FxMap::default())
+        let rows = collect_full(c, fb, opts, round, &mut rep);
+        rep.collection_rounds = 1;
+        let solved = certify_columns(c, fb, &rows);
+        (rows, FxMap::default(), solved)
     };
     rep.relations = rows.len();
-    let (solution, stats) = solve_two_term_system(fb.len(), &rows, c.r);
     rep.system = stats;
-    let mut keep = Vec::new();
-    let mut logs = Vec::new();
-    let mut certified: Vec<Option<u64>> = vec![None; fb.len()];
-    for (o, x) in solution.iter().enumerate() {
-        if let Some(x) = *x {
-            if c.mul_g(x) == fb.reps[o] {
-                keep.push(o);
-                logs.push(x);
-                certified[o] = Some(x);
-            } else {
-                rep.uncertified_columns += 1;
-            }
-        }
-    }
+    rep.uncertified_columns = uncertified;
+    let (keep, logs): (Vec<usize>, Vec<u64>) = certified
+        .iter()
+        .enumerate()
+        .filter_map(|(o, x)| x.map(|x| (o, x)))
+        .unzip();
     rep.certified_columns = keep.len();
     // A large prime is known once its first occurrence's orbit is:
     // a₁ ≡ x_{o₁} + log D₁.
@@ -2928,6 +3029,43 @@ mod tests {
         let fixed = (64 * (2 * scalar_mul_ops(c.r) + 1) + 32 * scalar_mul_ops(c.r)) as f64;
         let fold = (plain - fixed) / (folded - fixed);
         assert!((fold - 6f64.sqrt()).abs() < 1e-9, "{fold}");
+    }
+
+    #[test]
+    fn small_bases_certify_on_every_seed() {
+        // An 8-orbit base on a generic curve, whose gains are all ±1, used
+        // to come out unpinned on about one seed in ten: a starved first
+        // round of relations, or a collection walk gone round a cycle and
+        // repeating itself.  The guard and the restart must both have run
+        // somewhere in this sweep, or it no longer tests them.
+        let (mut rounds, mut restarts) = (0, 0);
+        for seed in 0..16u64 {
+            let inst = instance(CurveKind::Generic, 16, seed);
+            let c = &inst.curve;
+            let opts = OrbitIcOptions {
+                seed,
+                ..OrbitIcOptions::default()
+            };
+            let fb = OrbitFactorBase::select(c, 8, seed);
+            let (db, rep) = solve_logs(c, &fb, &opts);
+            assert_eq!(rep.uncertified_columns, 0, "seed {seed}");
+            assert!(
+                4 * rep.certified_columns >= 3 * fb.len(),
+                "seed {seed}: {} of {} certified after {} rounds",
+                rep.certified_columns,
+                fb.len(),
+                rep.collection_rounds
+            );
+            for &(k, q) in &inst.targets(3, seed) {
+                assert_eq!(descend(c, &db, q, &opts).recovered, Some(k), "seed {seed}");
+            }
+            rounds += u32::from(rep.collection_rounds > 1);
+            restarts += rep.walk_restarts;
+        }
+        assert!(
+            rounds > 0 && restarts > 0,
+            "{rounds} extra rounds, {restarts} restarts"
+        );
     }
 
     #[test]
