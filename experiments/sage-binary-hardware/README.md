@@ -5,8 +5,10 @@ Koblitz curves over GF(2^m), for degrees 1 through 256. A plan precomputes an
 exact GF(2)-linear map for its field modulus and power. The portable C++ path
 applies byte lookup/XOR tables; Apple Metal is available when Sage is built
 with its framework. Optional CUDA and OpenCL adapters are in the Python
-module and require their respective runtimes. `backend='auto'` still selects
-Sage because the fastest backend depends on the workload.
+module and require their respective runtimes. After the incremental
+[auto-routing patch](../sage-ic-campaign/auto-routing-20260924/README.md),
+`backend='auto'` selects portable CPU for measured degree-67/131,
+power-65 batches of at least 4,096 points and uses Sage otherwise.
 
 The standalone `sage-binary-hardware.patch` applies **after**
 [`sage-binary-batch.patch`](../sage-binary-batch/sage-binary-batch.patch) to
