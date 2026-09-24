@@ -87,6 +87,7 @@ use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use std::collections::hash_map::Entry;
 use std::time::Instant;
 
 /// Largest field a curve is built over: coordinates and the subgroup order
@@ -438,6 +439,28 @@ impl OrbitCurve {
             y: f.mul(al.cy, p.y),
             infinity: false,
         }
+    }
+
+    /// The eigenvalue of the automorphism taking `p` to `q`, if one does.
+    fn image_eig(&self, p: FastPoint, q: FastPoint) -> Option<u64> {
+        self.aut
+            .iter()
+            .find(|al| self.apply(al, p) == q)
+            .map(|al| al.eig)
+    }
+
+    /// The least abscissa over a point's orbit, from its abscissa alone:
+    /// every automorphism scales `x` by one of the `xmul`, and the sign of
+    /// `y` never moves it.  At most two multiplications (on `j = 0`).
+    #[inline]
+    fn canonical_x(&self, x: u64) -> u64 {
+        let f = &self.fast.f;
+        let one = f.one();
+        self.xmul
+            .iter()
+            .map(|&cx| if cx == one { x } else { f.mul(cx, x) })
+            .min()
+            .unwrap_or(x)
     }
 
     /// `x³ + a x + b`, Montgomery form in and out.
@@ -1066,12 +1089,7 @@ fn decompose(
     let r = c.r;
     let m = fb.reps.len();
     let w = c.aut.len();
-    let find_image = |o: usize, d: FastPoint| -> Option<u64> {
-        c.aut
-            .iter()
-            .find(|be| c.apply(be, fb.reps[o]) == d)
-            .map(|be| be.eig)
-    };
+    let find_image = |o: usize, d: FastPoint| c.image_eig(fb.reps[o], d);
     let (aut_off, rep_off) = (
         (target.y % w as u64) as usize,
         (target.x % m as u64) as usize,
@@ -1309,6 +1327,9 @@ pub struct OrbitIcOptions {
     pub width: f64,
     /// Relations collected per orbit before the logarithms are solved.
     pub relations_per_orbit: f64,
+    /// Collect the logarithm relations with the single-large-prime
+    /// variation (see [`solve_logs`]) instead of full 2-decompositions.
+    pub large_primes: bool,
     /// Oracle-operation bound for the logarithm precomputation.  A probe
     /// costs up to `w·m` operations, so this, not a probe count, is what
     /// bounds the running time.
@@ -1328,6 +1349,7 @@ impl Default for OrbitIcOptions {
             orbits: 0,
             width: 2.0,
             relations_per_orbit: 1.5,
+            large_primes: false,
             max_ops: 1 << 32,
             max_descent_ops: 1 << 30,
             rho_max_steps: 0,
@@ -1347,6 +1369,13 @@ pub struct LogsReport {
     pub relations: usize,
     /// Relations whose re-addition in the group failed; must be zero.
     pub rejected_relations: u64,
+    /// With large primes: relations with both summands in the base.
+    pub full_relations: u64,
+    /// With large primes: relations from two probes meeting on one large
+    /// prime, eliminated.
+    pub combined_relations: u64,
+    /// With large primes: distinct large-prime orbits seen.
+    pub distinct_large_primes: u64,
     /// Differences the oracle evaluated.
     pub oracle_ops: u64,
     /// Group additions spent advancing probes.
@@ -1476,22 +1505,16 @@ impl ProbeWalk {
     }
 }
 
-/// The factor-base logarithm database: relations `R = [a]G`, solved by
-/// [`solve_two_term_system`], every column certified.  Returns the base
-/// restricted to the certified orbits and their logarithms.
-pub fn solve_logs(
+/// Relations for [`solve_logs`] by full 2-decomposition: each probe is
+/// swept by [`decompose`] and kept, re-added in the group, only when both
+/// summands lie in the base.
+fn collect_full(
     c: &OrbitCurve,
     fb: &OrbitFactorBase,
     opts: &OrbitIcOptions,
-) -> (OrbitFactorBase, Vec<u64>, LogsReport) {
-    let begin = Instant::now();
-    let mut rep = LogsReport {
-        orbits: fb.len(),
-        points: fb.len() * c.automorphism_order(),
-        factor_base_draws: fb.draws,
-        ..LogsReport::default()
-    };
-    let want = ((fb.len() as f64) * opts.relations_per_orbit).ceil() as usize;
+    want: usize,
+    rep: &mut LogsReport,
+) -> Vec<Relation> {
     let mut rng = StdRng::seed_from_u64(opts.seed ^ 0x6c6f_6773_5f70_7262);
     let mut walk = ProbeWalk::new(c, &mut rng, FastPoint::INFINITY);
     rep.probe_ops += 2 * scalar_mul_ops(c.r) + 1;
@@ -1509,6 +1532,185 @@ pub fn solve_logs(
         walk.advance(c);
         rep.probe_ops += 1;
     }
+    rows
+}
+
+/// A large prime's first occurrence: the probe `R = [a]G = P_o + d`.
+#[derive(Clone, Copy)]
+struct Anchor {
+    o: u32,
+    a: u64,
+    d: FastPoint,
+}
+
+/// Probe walk `R_{t+1} = R_t + [c_j]G`, `j` chosen by `R_t`'s abscissa
+/// among the 32 multipliers of a [`RhoJumps`] table: one addition a probe.
+///
+/// The large-prime collector needs this where the descent's arithmetic
+/// progression will not do.  With `R_t = R₀ + t·S`, one coincidence
+/// `R_t − P_o = R_{t'} − P_{o'}` recurs at every `(t + k, t' + k)`, and
+/// `R_t − P_o = −(R_{t'} − P_{o'})` at every `(t + k, t' − k)`: nearly every
+/// collision is a copy of a few relations, so the relation graph fills
+/// with cycles of gain one and nothing is pinned (on a generic curve, where
+/// `Aut = {±1}`, every collision is of those two kinds).  Here the step
+/// depends on the point, so two probes that differ by a base-point
+/// difference part ways at the next step.
+struct AddingWalk<'t> {
+    point: FastPoint,
+    a: u64,
+    table: &'t RhoJumps,
+}
+
+impl<'t> AddingWalk<'t> {
+    fn new(c: &OrbitCurve, rng: &mut StdRng, table: &'t RhoJumps) -> Self {
+        let a = rng.gen_range(1..c.r);
+        Self {
+            point: c.mul_g(a),
+            a,
+            table,
+        }
+    }
+    fn advance(&mut self, c: &OrbitCurve) {
+        let (jump, u) = self.table.jumps[partition(self.point.x)];
+        self.point = c.fast.add(self.point, jump);
+        self.a = add_r(self.a, u, c.r);
+    }
+}
+
+/// Relations for [`solve_logs`] by the single-large-prime variation: every
+/// probe is peeled once by every representative, and a leftover that is not
+/// a base point waits, keyed by its orbit, for a second probe to meet it.
+fn collect_large_primes(
+    c: &OrbitCurve,
+    fb: &OrbitFactorBase,
+    opts: &OrbitIcOptions,
+    want: usize,
+    rep: &mut LogsReport,
+) -> Vec<Relation> {
+    let f = &c.fast.f;
+    let r = c.r;
+    let m = fb.len();
+    let mut rng = StdRng::seed_from_u64(opts.seed ^ 0x6c6f_6773_5f70_7262);
+    let table = RhoJumps::new(c, opts.seed ^ 0x6c61_7267_655f_7072);
+    let mut walk = AddingWalk::new(c, &mut rng, &table);
+    rep.probe_ops += table.ops + scalar_mul_ops(r);
+    let mut rows: Vec<Relation> = Vec::with_capacity(want);
+    let mut anchors: FxMap<u64, Anchor> = FxMap::default();
+    let (mut den, mut scratch) = (vec![0u64; SWEEP_BLOCK], vec![0u64; SWEEP_BLOCK]);
+    'probes: while m > 0 && rows.len() < want && rep.oracle_ops < opts.max_ops {
+        rep.trials += 1;
+        let (pt, a) = (walk.point, walk.a);
+        if !pt.infinity {
+            for start in (0..m).step_by(SWEEP_BLOCK) {
+                let block = &fb.reps[start..(start + SWEEP_BLOCK).min(m)];
+                for (i, q) in block.iter().enumerate() {
+                    let d = f.sub(pt.x, q.x);
+                    den[i] = if d == 0 { f.one() } else { d };
+                }
+                f.batch_inv(&mut den[..block.len()], &mut scratch[..block.len()]);
+                for (i, q) in block.iter().enumerate() {
+                    let o = (start + i) as u32;
+                    if q.x == pt.x {
+                        // R = ±P_o: a one-term relation.
+                        let e = if q.y == pt.y { 1 } else { r - 1 };
+                        rows.push(Relation {
+                            terms: vec![(o, e)],
+                            rhs: a,
+                        });
+                        continue;
+                    }
+                    rep.oracle_ops += 1;
+                    // D = R − P_o, so a ≡ x_o + log D.
+                    let lam = f.mul(f.add(pt.y, q.y), den[i]);
+                    let xd = f.sub(f.sub(f.sqr(lam), pt.x), q.x);
+                    let d = FastPoint {
+                        x: xd,
+                        y: f.sub(f.mul(lam, f.sub(pt.x, xd)), pt.y),
+                        infinity: false,
+                    };
+                    if let Some(&o2) = fb.index.get(&xd) {
+                        // D = β(P_o2) is a base point: a ≡ x_o + e(β)·x_o2.
+                        if let Some(e) = c.image_eig(fb.reps[o2 as usize], d) {
+                            rows.push(Relation {
+                                terms: vec![(o, 1), (o2, e)],
+                                rhs: a,
+                            });
+                            rep.full_relations += 1;
+                        }
+                    } else {
+                        match anchors.entry(c.canonical_x(xd)) {
+                            Entry::Vacant(slot) => {
+                                slot.insert(Anchor { o, a, d });
+                            }
+                            Entry::Occupied(slot) => {
+                                let first = *slot.get();
+                                // D = γ(D₁) and a₁ ≡ x_o₁ + log D₁, so
+                                // x_o − e(γ)·x_o₁ ≡ a − e(γ)·a₁.  The same
+                                // leftover from the same representative is
+                                // the same probe again, and says nothing.
+                                if let Some(g) = c.image_eig(first.d, d) {
+                                    if g != 1 || first.o != o {
+                                        rows.push(Relation {
+                                            terms: vec![(o, 1), (first.o, r - g)],
+                                            rhs: sub_r(a, mul_r(g, first.a, r), r),
+                                        });
+                                        rep.combined_relations += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if rows.len() >= want {
+                        break 'probes;
+                    }
+                }
+            }
+        }
+        walk.advance(c);
+        rep.probe_ops += 1;
+    }
+    rep.distinct_large_primes = anchors.len() as u64;
+    rows
+}
+
+/// The factor-base logarithm database, every column certified.  Returns
+/// the base restricted to the certified orbits and their logarithms.
+///
+/// Relations `R = [a]G` are collected one of two ways.  By full
+/// 2-decomposition, a probe counts only when both summands lie in the base,
+/// which costs `≈ c·r/w` differences for `c·m` relations.  With
+/// [`OrbitIcOptions::large_primes`], a probe is peeled once by every
+/// representative, `D_o = R − P_o`, so `a ≡ x_o + log D_o`: either `D_o`
+/// is a base point (a full relation) or it is a *large prime*, kept under
+/// its orbit's least abscissa.  When a later probe meets the same orbit,
+/// `D = γ(D₁)`, eliminating `log D₁` leaves the two-term relation
+/// `x_o − e(γ)·x_{o₁} ≡ a − e(γ)·a₁`.  Collisions grow as the square of the
+/// differences, so `c·m` relations take only `≈ √(2cmr/w)`.
+///
+/// Either way every relation has at most two unknowns and the system is
+/// solved by [`solve_two_term_system`].  A full 2-decomposition is re-added
+/// in the group before it is kept; a large-prime relation is exact by
+/// construction, `D` being computed as `R − P_o`, and like every relation
+/// it is checked through the certification `[x_o]G == P_o` of each column
+/// it determines — an uncertified column is never used.
+pub fn solve_logs(
+    c: &OrbitCurve,
+    fb: &OrbitFactorBase,
+    opts: &OrbitIcOptions,
+) -> (OrbitFactorBase, Vec<u64>, LogsReport) {
+    let begin = Instant::now();
+    let mut rep = LogsReport {
+        orbits: fb.len(),
+        points: fb.len() * c.automorphism_order(),
+        factor_base_draws: fb.draws,
+        ..LogsReport::default()
+    };
+    let want = ((fb.len() as f64) * opts.relations_per_orbit).ceil() as usize;
+    let rows = if opts.large_primes {
+        collect_large_primes(c, fb, opts, want, &mut rep)
+    } else {
+        collect_full(c, fb, opts, want, &mut rep)
+    };
     rep.relations = rows.len();
     let (solution, stats) = solve_two_term_system(fb.len(), &rows, c.r);
     rep.system = stats;
@@ -2075,6 +2277,85 @@ mod tests {
         assert_eq!(a.precompute_ops(), b.precompute_ops());
         assert_eq!(a.descent_ops_total(), b.descent_ops_total());
         assert_eq!(a.rho_ops_total(), b.rho_ops_total());
+    }
+
+    fn with_large_primes() -> OrbitIcOptions {
+        OrbitIcOptions {
+            large_primes: true,
+            ..OrbitIcOptions::default()
+        }
+    }
+
+    #[test]
+    fn large_primes_recover_every_target_for_every_type() {
+        for kind in [CurveKind::Generic, CurveKind::J0, CurveKind::J1728] {
+            let inst = instance(kind, 20, 6);
+            let targets = inst.targets(4, 1);
+            let points: Vec<FastPoint> = targets.iter().map(|&(_, q)| q).collect();
+            let rep = run_known_answer(&inst.curve, &points, &with_large_primes());
+            let logs = &rep.logs;
+            assert_eq!(logs.uncertified_columns, 0, "{kind:?}");
+            assert_eq!(logs.system.inconsistent_components, 0, "{kind:?}");
+            assert!(
+                logs.combined_relations > logs.full_relations,
+                "{kind:?}: {logs:?}"
+            );
+            assert!(
+                logs.certified_columns > logs.orbits * 3 / 4,
+                "{kind:?}: {logs:?}"
+            );
+            for (i, &(k, _)) in targets.iter().enumerate() {
+                assert_eq!(rep.descents[i].recovered, Some(k), "{kind:?} target {i}");
+            }
+        }
+    }
+
+    #[test]
+    fn large_primes_and_full_decompositions_agree_on_every_shared_column() {
+        // A discrete logarithm is unique, so two ways of collecting
+        // relations over one base must give the same value wherever both
+        // certify a column.
+        let inst = instance(CurveKind::J0, 20, 3);
+        let c = &inst.curve;
+        let fb = OrbitFactorBase::select(c, auto_orbits(c, 2.0), 4);
+        let logs_of = |opts: &OrbitIcOptions| {
+            let (base, logs, _) = solve_logs(c, &fb, opts);
+            base.reps
+                .iter()
+                .zip(logs)
+                .map(|(p, x)| ((p.x, p.y), x))
+                .collect::<std::collections::HashMap<_, _>>()
+        };
+        let full = logs_of(&OrbitIcOptions::default());
+        let large = logs_of(&with_large_primes());
+        let shared: Vec<_> = full.keys().filter(|k| large.contains_key(k)).collect();
+        assert!(
+            shared.len() > fb.len() / 2,
+            "{} shared of {}",
+            shared.len(),
+            fb.len()
+        );
+        for k in shared {
+            assert_eq!(full[k], large[k]);
+        }
+    }
+
+    #[test]
+    fn large_primes_cut_the_precompute() {
+        // √(2cmr/w) against c·r/w: about 56 times fewer operations at 24
+        // bits on this curve, rising as r^(1/4).
+        let inst = instance(CurveKind::J0, 24, 2);
+        let c = &inst.curve;
+        let fb = OrbitFactorBase::select(c, auto_orbits(c, 2.0), 1);
+        let ops = |opts: &OrbitIcOptions| {
+            let (_, _, rep) = solve_logs(c, &fb, opts);
+            rep.oracle_ops + rep.probe_ops
+        };
+        let (full, large) = (ops(&OrbitIcOptions::default()), ops(&with_large_primes()));
+        assert!(
+            large * 20 < full,
+            "large primes {large} against full {full}"
+        );
     }
 
     #[test]

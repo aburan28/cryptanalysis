@@ -1,11 +1,13 @@
 //! Index calculus against rho on prime-field curves, by curve type.
 //!
 //! For each type — generic (as P-192 … P-521), `j = 0` (as secp256k1),
-//! `j = 1728` — and each field size, build a certified known-answer
-//! instance, precompute one automorphism-orbit logarithm database
-//! ([`prime_orbit_index_calculus`]), descend `T` targets against it, and
-//! run the batched rho baseline on each.  Costs are group operations
-//! (affine additions, a batched inversion shared on both sides):
+//! `j = 1728` — each way of collecting relations (full 2-decompositions,
+//! or the single-large-prime variation) and each field size, build a
+//! certified known-answer instance, precompute one automorphism-orbit
+//! logarithm database ([`prime_orbit_index_calculus`]), descend `T`
+//! targets against it, and run the batched rho baseline on each.  Costs are
+//! group operations (affine additions, a batched inversion shared on both
+//! sides):
 //!
 //! - `precompute` — probes and oracle differences for the database;
 //! - `descent` — mean per target, database paid;
@@ -61,39 +63,45 @@ fn main() {
     let hi = args.get(1).copied().unwrap_or(24);
     let targets = args.get(2).copied().unwrap_or(16) as usize;
 
-    println!("| type | \\|Aut\\| | bits | r | orbits (certified) | verified IC / rho | precompute | descent | rho | folded rho | charged | amortised | whole | IC s | rho s |");
-    println!("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+    println!("| type | relations | \\|Aut\\| | bits | r | orbits (certified) | verified IC / rho | precompute | descent | rho | folded rho | charged | amortised | whole | IC s | rho s |");
+    println!("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
     let mut fits: Vec<(String, f64, f64, f64)> = Vec::new();
     for kind in [CurveKind::Generic, CurveKind::J0, CurveKind::J1728] {
-        let (mut pre_s, mut des_s, mut rho_s) = (Vec::new(), Vec::new(), Vec::new());
-        for bits in (lo..=hi).step_by(4) {
-            let Ok(inst) = generate_instance(ScaledShape::of_kind(kind), bits, None, 1) else {
-                println!(
-                    "| {} | | {bits} | no certified curve | | | | | | | | | | | |",
-                    kind.as_str()
+        for large_primes in [false, true] {
+            let mode = if large_primes { "large primes" } else { "full" };
+            let (mut pre_s, mut des_s, mut rho_s) = (Vec::new(), Vec::new(), Vec::new());
+            for bits in (lo..=hi).step_by(4) {
+                let Ok(inst) = generate_instance(ScaledShape::of_kind(kind), bits, None, 1) else {
+                    println!(
+                        "| {} | {mode} | | {bits} | no certified curve | | | | | | | | | | | |",
+                        kind.as_str()
+                    );
+                    continue;
+                };
+                let ts = inst.targets(targets, 1);
+                let points: Vec<_> = ts.iter().map(|&(_, q)| q).collect();
+                let opts = OrbitIcOptions {
+                    large_primes,
+                    ..OrbitIcOptions::default()
+                };
+                let rep = run_known_answer(&inst.curve, &points, &opts);
+                let t = ts.len() as f64;
+                let (pre, des, rho, rho_pre) = (
+                    rep.precompute_ops() as f64,
+                    rep.mean_descent_ops(),
+                    rep.mean_rho_ops(),
+                    rep.rho_precompute_ops as f64,
                 );
-                continue;
-            };
-            let ts = inst.targets(targets, 1);
-            let points: Vec<_> = ts.iter().map(|&(_, q)| q).collect();
-            let rep = run_known_answer(&inst.curve, &points, &OrbitIcOptions::default());
-            let t = ts.len() as f64;
-            let (pre, des, rho, rho_pre) = (
-                rep.precompute_ops() as f64,
-                rep.mean_descent_ops(),
-                rep.mean_rho_ops(),
-                rep.rho_precompute_ops as f64,
-            );
-            // The folded walk's expected steps, plus the same setup.
-            let setup = rep.rhos.iter().map(|r| r.setup_ops).sum::<u64>() as f64 / t;
-            let folded = rep
-                .rhos
-                .first()
-                .map_or(f64::NAN, |r| r.expected_steps_folded + setup);
-            let ic_s = rep.logs.seconds + rep.descents.iter().map(|d| d.seconds).sum::<f64>();
-            let rho_sec: f64 = rep.rhos.iter().map(|r| r.seconds).sum();
-            println!(
-                "| {} | {} | {bits} | {} | {} ({}) | {}/{} / {}/{} | {pre:.3e} | {des:.3e} | {rho:.3e} | {folded:.3e} | {:.2} | {:.3} | {:.4} | {ic_s:.3} | {rho_sec:.3} |",
+                // The folded walk's expected steps, plus the same setup.
+                let setup = rep.rhos.iter().map(|r| r.setup_ops).sum::<u64>() as f64 / t;
+                let folded = rep
+                    .rhos
+                    .first()
+                    .map_or(f64::NAN, |r| r.expected_steps_folded + setup);
+                let ic_s = rep.logs.seconds + rep.descents.iter().map(|d| d.seconds).sum::<f64>();
+                let rho_sec: f64 = rep.rhos.iter().map(|r| r.seconds).sum();
+                println!(
+                "| {} | {mode} | {} | {bits} | {} | {} ({}) | {}/{} / {}/{} | {pre:.3e} | {des:.3e} | {rho:.3e} | {folded:.3e} | {:.2} | {:.3} | {:.4} | {ic_s:.3} | {rho_sec:.3} |",
                 kind.as_str(),
                 rep.automorphism_order,
                 inst.curve.r,
@@ -107,20 +115,21 @@ fn main() {
                 (rho_pre / t + rho) / (pre / t + des),
                 (rho_pre + rho * t) / (pre + des * t),
             );
-            let rf = inst.curve.r as f64;
-            pre_s.push((rf, pre));
-            des_s.push((rf, des));
-            rho_s.push((rf, rho));
+                let rf = inst.curve.r as f64;
+                pre_s.push((rf, pre));
+                des_s.push((rf, des));
+                rho_s.push((rf, rho));
+            }
+            fits.push((
+                format!("{} / {mode}", kind.as_str()),
+                loglog_slope(&pre_s),
+                loglog_slope(&des_s),
+                loglog_slope(&rho_s),
+            ));
         }
-        fits.push((
-            kind.as_str().to_string(),
-            loglog_slope(&pre_s),
-            loglog_slope(&des_s),
-            loglog_slope(&rho_s),
-        ));
     }
     println!();
-    println!("| type | precompute ∝ r^α | descent ∝ r^α | rho ∝ r^α |");
+    println!("| series | precompute ∝ r^α | descent ∝ r^α | rho ∝ r^α |");
     println!("|---|---:|---:|---:|");
     for (name, pre, des, rho) in fits {
         println!("| {name} | {pre:.2} | {des:.2} | {rho:.2} |");
