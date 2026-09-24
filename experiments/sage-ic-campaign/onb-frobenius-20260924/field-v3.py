@@ -55,7 +55,8 @@ class Onb:
         if self.ord2 != m and self.ord2 != 2 * m:
             raise ValueError("ord_%d(2) = %d, not m or 2m; no type-II ONB" % (self.n, self.ord2))
         self.allOnes = (1 << self.n) - 1
-        self.frobPositions = {}
+        if m > 9:
+            self.frobPositions = {}
 
     # ---- conversion between coordinate vectors and internal symmetric form
     def fold(self, i):
@@ -111,7 +112,7 @@ class Onb:
     def frob(self, a, k):
         """a -> a^(2^k), i.e. z -> z^(2^k), an index permutation."""
         e = pow(2, k, self.n)
-        if e not in (2, 4):
+        if self.m <= 9:
             r = 0
             for i in range(self.n):
                 if (a >> i) & 1:
