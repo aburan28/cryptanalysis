@@ -1326,11 +1326,18 @@ pub fn solve_two_term_system(
 /// Knobs for [`run_known_answer`].  Zeros size themselves.
 #[derive(Clone, Copy, Debug)]
 pub struct OrbitIcOptions {
-    /// Orbits in the factor base; 0 → `⌈c·√r / w⌉` with `c = width`.
+    /// Orbits in the factor base; 0 sizes it (see [`base_orbits`]): to the
+    /// batch of targets with large primes, else `⌈c·√r / w⌉` with
+    /// `c = width`.
     pub orbits: usize,
-    /// Base width in units of `√r / w` when `orbits` is 0.  At width `c`
-    /// a descent costs about `√r / c` differences.
+    /// Base width in units of `√r / w`: the base without large primes or
+    /// with `orbits_per_target` 0, and the cap on a batch-sized one.  At
+    /// width `c` a full-decomposition descent costs about `√r / c`
+    /// differences.
     pub width: f64,
+    /// With large primes, orbits per target of a batch-sized base (see
+    /// [`batch_orbits`]); 0 sizes the base by `width` instead.
+    pub orbits_per_target: f64,
     /// Relations collected per orbit before the logarithms are solved.
     pub relations_per_orbit: f64,
     /// Collect the logarithm relations with the single-large-prime
@@ -1354,6 +1361,7 @@ impl Default for OrbitIcOptions {
         Self {
             orbits: 0,
             width: 2.0,
+            orbits_per_target: 0.5,
             relations_per_orbit: 1.5,
             large_primes: true,
             max_ops: 1 << 32,
@@ -1361,6 +1369,39 @@ impl Default for OrbitIcOptions {
             rho_max_steps: 0,
             skip_rho: false,
             seed: 1,
+        }
+    }
+}
+
+/// How [`base_orbits`] sizes the factor base.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BaseSizing {
+    /// [`OrbitIcOptions::orbits`] orbits.
+    Explicit,
+    /// To the batch of targets, [`batch_orbits`].
+    Batch,
+    /// To the group, [`auto_orbits`] at [`OrbitIcOptions::width`].
+    Width,
+}
+
+impl BaseSizing {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BaseSizing::Explicit => "explicit",
+            BaseSizing::Batch => "batch",
+            BaseSizing::Width => "width",
+        }
+    }
+}
+
+impl OrbitIcOptions {
+    pub fn sizing(&self) -> BaseSizing {
+        if self.orbits != 0 {
+            BaseSizing::Explicit
+        } else if self.large_primes && self.orbits_per_target > 0.0 {
+            BaseSizing::Batch
+        } else {
+            BaseSizing::Width
         }
     }
 }
@@ -2055,20 +2096,50 @@ pub fn auto_orbits(c: &OrbitCurve, width: f64) -> usize {
     ((width * (c.r as f64).sqrt() / w).ceil() as usize).max(8)
 }
 
-/// Select the base, precompute its logarithms once, then descend every
-/// target against that database and run the rho baseline on each: the
-/// whole known-answer experiment.  Target `i` seeds its descent and its
-/// rho walk with `seed + i`.
+/// The fewest orbits [`batch_orbits`] gives a base.  Fewer leave too many
+/// orbits uncertified, each taking its share of the large primes with it,
+/// and share each batched inversion among too few differences.
+const MIN_BATCH_ORBITS: usize = 16;
+
+/// The orbit count of a base sized to a batch of `targets` targets:
+/// `⌈orbits_per_target · targets⌉`, at least 16 and at most
+/// [`auto_orbits`] at `width`.
+///
+/// With large primes a collection of `N` differences learns about `N`
+/// large-prime logarithms, and a descent then costs about `r / (w·N)`
+/// differences, so `T` targets cost `N + T·r/(w·N)` in all, least at
+/// `N ≈ √(T·r/w)`.  Since `N ≈ √(2ρ·m·r/w)` for `m` orbits at `ρ` relations
+/// each, that is `m ≈ T/(2ρ)` whatever `r` is: both halves then grow as
+/// `√r`, where a base of `√r` orbits makes the collection grow as
+/// `r^(3/4)`.  Measured, the optimum sits nearer `T/2` than `T/3`, because
+/// a descent pays for part of a block it does not use and the uncertified
+/// orbits' large primes are lost.
+pub fn batch_orbits(c: &OrbitCurve, opts: &OrbitIcOptions, targets: usize) -> usize {
+    let want = (opts.orbits_per_target * targets as f64).ceil() as usize;
+    want.max(MIN_BATCH_ORBITS).min(auto_orbits(c, opts.width))
+}
+
+/// The orbit count [`run_known_answer`] gives the base for `targets`
+/// targets, by [`OrbitIcOptions::sizing`].
+pub fn base_orbits(c: &OrbitCurve, opts: &OrbitIcOptions, targets: usize) -> usize {
+    match opts.sizing() {
+        BaseSizing::Explicit => opts.orbits,
+        BaseSizing::Batch => batch_orbits(c, opts, targets),
+        BaseSizing::Width => auto_orbits(c, opts.width),
+    }
+}
+
+/// Select the base ([`base_orbits`] orbits for this many targets),
+/// precompute its logarithms once, then descend every target against that
+/// database and run the rho baseline on each: the whole known-answer
+/// experiment.  Target `i` seeds its descent and its rho walk with
+/// `seed + i`.
 pub fn run_known_answer(
     c: &OrbitCurve,
     targets: &[FastPoint],
     opts: &OrbitIcOptions,
 ) -> OrbitIcReport {
-    let orbits = if opts.orbits == 0 {
-        auto_orbits(c, opts.width)
-    } else {
-        opts.orbits
-    };
+    let orbits = base_orbits(c, opts, targets.len());
     let fb = OrbitFactorBase::select(c, orbits, opts.seed);
     let (db, logs_report) = solve_logs(c, &fb, opts);
     let per_target = |i: usize| OrbitIcOptions {
@@ -2548,6 +2619,96 @@ mod tests {
         assert!(
             with * 10 < without,
             "{with} differences with large primes, {without} without"
+        );
+    }
+
+    #[test]
+    fn a_batch_sized_base_follows_the_targets_not_the_group() {
+        let opts = OrbitIcOptions::default();
+        assert_eq!(opts.sizing(), BaseSizing::Batch);
+        let big = instance(CurveKind::J0, 28, 1);
+        for t in [1usize, 32, 33, 64, 1000] {
+            assert_eq!(
+                batch_orbits(&big.curve, &opts, t),
+                t.div_ceil(2).max(16),
+                "{t}"
+            );
+        }
+        // Never wider than the full-decomposition base.
+        let small = instance(CurveKind::J0, 16, 1);
+        let cap = auto_orbits(&small.curve, opts.width);
+        assert_eq!(batch_orbits(&small.curve, &opts, 4096), cap);
+        let by_width = OrbitIcOptions {
+            orbits_per_target: 0.0,
+            ..opts
+        };
+        let full = full_decompositions();
+        let explicit = OrbitIcOptions { orbits: 40, ..opts };
+        assert_eq!(by_width.sizing(), BaseSizing::Width);
+        assert_eq!(full.sizing(), BaseSizing::Width);
+        assert_eq!(explicit.sizing(), BaseSizing::Explicit);
+        assert_eq!(base_orbits(&big.curve, &explicit, 64), 40);
+        assert_eq!(
+            base_orbits(&big.curve, &full, 64),
+            auto_orbits(&big.curve, 2.0)
+        );
+    }
+
+    #[test]
+    fn a_batch_sized_base_cuts_the_whole_process() {
+        // Sixteen targets on a 24-bit j = 0 curve: the √r base (about 1130
+        // orbits) spends nearly everything on the precompute, which the
+        // 16-orbit batch base cuts about eightfold for a descent some
+        // three times dearer.
+        let inst = instance(CurveKind::J0, 24, 3);
+        let points: Vec<FastPoint> = inst.targets(16, 2).iter().map(|&(_, q)| q).collect();
+        let whole = |opts: OrbitIcOptions| {
+            let opts = OrbitIcOptions {
+                skip_rho: true,
+                ..opts
+            };
+            let rep = run_known_answer(&inst.curve, &points, &opts);
+            assert_eq!(rep.descents_verified(), points.len(), "{:?}", opts.sizing());
+            rep.precompute_ops() + rep.descent_ops_total()
+        };
+        let batch = whole(OrbitIcOptions::default());
+        let by_width = whole(OrbitIcOptions {
+            orbits_per_target: 0.0,
+            ..OrbitIcOptions::default()
+        });
+        assert!(
+            batch * 3 < by_width,
+            "batch-sized {batch}, width-sized {by_width}"
+        );
+    }
+
+    #[test]
+    fn a_batch_sized_precompute_grows_as_the_square_root() {
+        // From 20 to 28 bits r grows 256-fold: a fixed base's collection
+        // by about √256 = 16, a √r base's by about 256^(3/4) = 64 (about
+        // 11 and 48 here, the fixed setup weighing most at 20 bits).
+        let pre = |bits: u32, opts: &OrbitIcOptions| {
+            let inst = instance(CurveKind::J0, bits, 2);
+            let fb = OrbitFactorBase::select(&inst.curve, base_orbits(&inst.curve, opts, 32), 3);
+            let (_, rep) = solve_logs(&inst.curve, &fb, opts);
+            (rep.oracle_ops + rep.probe_ops) as f64
+        };
+        let batch = OrbitIcOptions::default();
+        let by_width = OrbitIcOptions {
+            orbits_per_target: 0.0,
+            ..batch
+        };
+        let (g_batch, g_width) = (
+            pre(28, &batch) / pre(20, &batch),
+            pre(28, &by_width) / pre(20, &by_width),
+        );
+        assert!(
+            (8.0..30.0).contains(&g_batch),
+            "batch-sized precompute grew {g_batch:.1}-fold"
+        );
+        assert!(
+            g_width > 35.0,
+            "width-sized precompute grew {g_width:.1}-fold"
         );
     }
 

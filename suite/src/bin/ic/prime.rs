@@ -34,8 +34,8 @@ use cryptanalysis_suite::cryptanalysis::ec_index_calculus_curves::{
     SolverRun, MAX_SEMAEV_BITS,
 };
 use cryptanalysis_suite::cryptanalysis::prime_orbit_index_calculus::{
-    generate_instance, run_known_answer, Coefficient, GeneratedInstance, OrbitIcOptions,
-    OrbitIcReport, ScaledShape, MIN_FIELD_BITS,
+    base_orbits, generate_instance, run_known_answer, BaseSizing, Coefficient, GeneratedInstance,
+    OrbitIcOptions, OrbitIcReport, ScaledShape, MIN_FIELD_BITS,
 };
 use cryptanalysis_suite::ecc::{curve::CurveParams, point::Point};
 use num_bigint::BigUint;
@@ -44,9 +44,10 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::time::Instant;
 
-/// Largest scaled field `ic prime` builds.  The certificate and rho reach
-/// further; the logarithm precomputation, at `≈ r/|Aut|` operations,
-/// does not, and the operation budget ends it as incomplete well before.
+/// Largest scaled field `ic prime` builds.  The certificate, rho and the
+/// large-prime precomputation reach further; the full-decomposition
+/// control, at `≈ r/|Aut|` operations, does not, and the operation budget
+/// ends it as incomplete well before.
 pub const MAX_PRIME_BITS: u32 = 40;
 
 /// A prime-field curve type, as `--type` spells it.
@@ -118,12 +119,20 @@ pub struct PrimeArgs {
     /// Seeds the curve search, the targets, the factor base and every walk.
     #[arg(long, default_value_t = 1)]
     pub seed: u64,
-    /// Factor-base orbits (orbit); 0 sizes the base as --width · √r / |Aut|.
+    /// Factor-base orbits (orbit); 0 sizes the base: to the batch of targets
+    /// with large primes (--orbits-per-target), else by --width.
     #[arg(long, default_value_t = 0)]
     pub orbits: usize,
-    /// Base width in units of √r / |Aut| (orbit): a descent costs about √r / width.
-    #[arg(long, default_value_t = 2.0)]
-    pub width: f64,
+    /// Size the base by width instead, in units of √r / |Aut| (orbit; 2
+    /// without large primes).  A full-decomposition descent costs about
+    /// √r / width.
+    #[arg(long, conflicts_with = "orbits_per_target")]
+    pub width: Option<f64>,
+    /// With large primes, factor-base orbits per target, at least 16 in all
+    /// (orbit; default 0.5).  The precompute and the descents then balance,
+    /// and both grow as √r.
+    #[arg(long)]
+    pub orbits_per_target: Option<f64>,
     /// Relations collected per orbit before the logarithms are solved (orbit).
     #[arg(long, default_value_t = 1.5)]
     pub relations_per_orbit: f64,
@@ -295,6 +304,8 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
             "automorphism_order": rep.automorphism_order,
             "certified_orbits": logs.certified_columns,
             "draws": logs.factor_base_draws,
+            "sizing": opts.sizing().as_str(),
+            "orbits_per_target": opts.orbits_per_target,
             "width": opts.width,
         },
         "logs": {
@@ -442,26 +453,33 @@ pub fn run(args: PrimeArgs, quiet: bool) -> Result<Value, String> {
         PrimeSolver::Orbit => {
             let targets = inst.targets(args.targets as usize, args.seed);
             let points: Vec<FastPoint> = targets.iter().map(|&(_, q)| q).collect();
+            let defaults = OrbitIcOptions::default();
             let opts = OrbitIcOptions {
                 orbits: args.orbits,
-                width: args.width,
+                width: args.width.unwrap_or(defaults.width),
+                orbits_per_target: match (args.width, args.orbits_per_target) {
+                    (Some(_), _) => 0.0,
+                    (None, k) => k.unwrap_or(defaults.orbits_per_target),
+                },
                 relations_per_orbit: args.relations_per_orbit,
                 large_primes: !args.no_large_primes,
                 max_ops: args.max_ops,
                 skip_rho: args.no_rho,
                 seed: args.seed,
-                ..OrbitIcOptions::default()
+                ..defaults
             };
             if !quiet {
+                let sized = match opts.sizing() {
+                    BaseSizing::Explicit => "as given".to_string(),
+                    BaseSizing::Batch => {
+                        format!("to the batch, {} per target", opts.orbits_per_target)
+                    }
+                    BaseSizing::Width => format!("to width {}", opts.width),
+                };
                 println!(
-                    "Targets: {}; factor base width {} (orbits {}); precompute budget {} group operations",
+                    "Targets: {}; factor base of {} orbits, sized {sized}; precompute budget {} group operations",
                     targets.len(),
-                    opts.width,
-                    if opts.orbits == 0 {
-                        "auto".to_string()
-                    } else {
-                        opts.orbits.to_string()
-                    },
+                    base_orbits(c, &opts, targets.len()),
                     opts.max_ops
                 );
                 let _ = std::io::stdout().flush();
@@ -529,7 +547,8 @@ pub fn run(args: PrimeArgs, quiet: bool) -> Result<Value, String> {
     ));
     report["limitations"] = json!([
         "No imported target was used; the deployed curve's own discrete logarithm is never attempted.",
-        "The precomputation costs about r/|Aut| group operations, linear in the subgroup order where rho is its square root; a charged win for the descent does not survive the whole-process accounting unless it is amortised over Omega(sqrt r) targets.",
+        "With large primes and a base sized to the batch, the precomputation and the T descents each cost on the order of sqrt(T r/|Aut|) group operations: rho's square-root scaling, not better. The whole-process gain over rho is one database amortised over T targets, about sqrt(|Aut| T) against independent unfolded walks; a folded batch rho that shares distinguished points between targets (Kuhn-Struik) amortises the same way and is not the baseline here.",
+        "Without large primes (the control) the precomputation costs about r/|Aut| group operations, linear in the subgroup order.",
         "The rho baseline does not fold by the automorphism group; the folded expectation is analytic, and a charged comparison against it is reported separately.",
         "Operation counts compare implementations only to within the cost of one affine addition on each side; wall time is reported beside them.",
         "This run does not establish scaling beyond the sizes it ran, or challenge readiness."

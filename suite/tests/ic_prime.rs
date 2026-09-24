@@ -158,11 +158,18 @@ fn every_target_is_recovered_and_the_accounting_adds_up() {
 #[test]
 fn large_primes_are_the_default_and_cut_the_precompute() {
     let args = ["--type", "j0", "--bits", "22", "--targets", "4"];
-    let (ok, lp) = prime(&args);
+    let (ok, default) = prime(&args);
+    assert!(ok, "{default}");
+    assert_eq!(default["logs"]["collection"], "large_primes");
+    assert_eq!(default["factor_base"]["sizing"], "batch");
+    // Against the control on the same base: the default would size the
+    // large-prime base to the batch, trading descent for precompute.
+    let mut same_base = args.to_vec();
+    same_base.extend(["--width", "2"]);
+    let (ok, lp) = prime(&same_base);
     assert!(ok, "{lp}");
-    assert_eq!(lp["logs"]["collection"], "large_primes");
     assert!(lp["logs"]["combined_relations"].as_u64().unwrap() > 0);
-    let mut control = args.to_vec();
+    let mut control = same_base.clone();
     control.push("--no-large-primes");
     let (ok, full) = prime(&control);
     assert!(ok, "{full}");
@@ -191,6 +198,42 @@ fn large_primes_are_the_default_and_cut_the_precompute() {
         mean(&lp),
         mean(&full)
     );
+}
+
+#[test]
+fn the_base_is_sized_to_the_batch_unless_a_width_is_given() {
+    let base = [
+        "--type",
+        "j0",
+        "--bits",
+        "22",
+        "--targets",
+        "40",
+        "--no-rho",
+    ];
+    let (ok, batch) = prime(&base);
+    assert!(ok, "{batch}");
+    assert_eq!(batch["factor_base"]["sizing"], "batch");
+    assert_eq!(batch["factor_base"]["orbits"], 20);
+    let with = |extra: &[&'static str]| {
+        let mut args = base.to_vec();
+        args.extend_from_slice(extra);
+        let (ok, v) = prime(&args);
+        assert!(ok, "{extra:?}: {v}");
+        v
+    };
+    assert_eq!(
+        with(&["--orbits-per-target", "2"])["factor_base"]["orbits"],
+        80
+    );
+    let wide = with(&["--width", "2"]);
+    assert_eq!(wide["factor_base"]["sizing"], "width");
+    assert!(wide["factor_base"]["orbits"].as_u64().unwrap() > 200);
+    let both = Command::new(env!("CARGO_BIN_EXE_ca-ic"))
+        .args(["prime", "--width", "2", "--orbits-per-target", "1"])
+        .output()
+        .unwrap();
+    assert!(!both.status.success());
 }
 
 #[test]

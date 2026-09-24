@@ -215,9 +215,10 @@ fn display_prime(report: &Value) {
     let logs = &report["logs"];
     let des = &report["descent"];
     println!(
-        "Factor base: {} orbits ({} certified) of |Aut| = {} points; {} relations from {} probes",
+        "Factor base: {} orbits ({} certified, sized {}) of |Aut| = {} points; {} relations from {} probes",
         fb["orbits"],
         fb["certified_orbits"],
+        fb["sizing"].as_str().unwrap_or("?"),
         fb["automorphism_order"],
         logs["relations"],
         logs["trials"]
