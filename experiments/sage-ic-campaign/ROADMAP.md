@@ -34,6 +34,7 @@ solver cost, including packing, transfers, construction and verification.
 | 21 | `binary_batch_ntl.pyx:_frobenius_one` | Restore NTL context before coordinate extraction and use one-point native squaring from `hom_frobenius.py` | **PASS_LOCAL** over PR #78 after a held context bug: 1.251x primary and 1.154x confirmation warm public-call means, exact field-switch suite and 116 hom doctests. Standalone patch and receipts in `frobenius-singleton-20260924/`. |
 | 22 | `binary_batch_ntl.pyx:_construct_standard_point` | Initialize the C-level parent and affine coordinates for verified standard finite-field outputs | **PASS_LOCAL** within the public-addition patch: GF(101) and unsupported binary controls improved 2.045x and 1.482x; the Python-only prototype failed parent identity. Keep the constructor coupled to `ell_point.py`'s guarded call site. |
 | 23 | `ecc2k130/{codegen,runner/codegen}/curves.py:Curve.mul` | Use a width-4 signed window for ONB scalar multiplication of 32 bits or more | **PASS_LOCAL**: all 16 frozen primary/confirmation cells were exact; 32–131-bit complete scalar calls improved 1.132–1.367x and 16-bit controls stayed within 1%. Both real copies are changed, with tests and receipts in `onb-scalar-window-20260924/`. A full IC total remains unmeasured. |
+| 24 | `ecc2k130/{codegen,runner/codegen}/curves.py:Curve.mul` | Recode large Koblitz scalars in the Frobenius endomorphism ring | **PASS_LOCAL over row 23**: exact tau identity and exhaustive small-field checks; all twelve 32–131-bit primary/confirmation cells improved 1.487–1.848x warm and at least 1.383x first-call. The tracked runner `AuditField` is included. Source and receipts: `onb-tau-adic-20260924/`. Charge complete IC phases before a DLP claim. |
 
 The executable degree-131 IC reference in `ecc2k130/codegen/indexcalc_e2e.py`
 currently performs most field and curve work in its own Python ONB classes and
@@ -63,3 +64,5 @@ Metal hypothesis. Keep the word-kernel and batched CPU as paired controls.
 The following `onb-scalar-window-20260924/` archive changes both local ONB
 curve copies. Scalar-call measurements are paired and verified, but should
 not be substituted for a complete IC run's charged phase total.
+`onb-tau-adic-20260924/` replaces its large-scalar path with exact
+Frobenius recoding; the signed-window result remains as the paired parent.
