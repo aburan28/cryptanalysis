@@ -37,6 +37,7 @@ solver cost, including packing, transfers, construction and verification.
 | 24 | `ecc2k130/{codegen,runner/codegen}/curves.py:Curve.mul` | Recode large Koblitz scalars in the Frobenius endomorphism ring | **PASS_LOCAL over row 23**: exact tau identity and exhaustive small-field checks; all twelve 32–131-bit primary/confirmation cells improved 1.487–1.848x warm and at least 1.383x first-call. The tracked runner `AuditField` is included. Source and receipts: `onb-tau-adic-20260924/`. Charge complete IC phases before a DLP claim. |
 | 25 | `ecc2k130/{codegen,runner/codegen}/curves.py:CurvePb.mul` | Apply exact Koblitz Frobenius recoding to polynomial-basis curves | **PASS_LOCAL**: exhaustive small-field and 20 frozen paired cells. For 8–64-bit scalars, complete calls improved 1.381–2.028x primary and 1.618–1.976x confirmation; first calls improved too. Both real code copies changed. Source and receipts: `pb-tau-adic-20260924/`. |
 | 26 | `ecc2k130/{codegen,runner/codegen}/field.py:Pb.inv` | Replace Fermat exponentiation with polynomial extended Euclid | **PASS_LOCAL** over row 25: exact exhaustive small-field and random wide-field checks. Twelve frozen local/runner cells improved inversion 14.5–91.4x, complete point addition 4.86–25.70x, and complete scalar calls 2.63–12.11x. Source and receipts: `pb-euclid-inverse-20260924/`. The IC total remains unmeasured. |
+| 27 | `ecc2k130/{codegen,runner/codegen}/field.py:Pb.sqr` | Expand even polynomial coefficients by byte before modular reduction | **PASS_LOCAL** over row 26: exhaustive small-field and 16 frozen paired cells. Complete 256-square batches improved 1.46–2.66x, and three-point 32-bit scalar calls improved 1.20–1.58x across both copies and independent seeds. Source and receipts: `pb-squaring-20260924/`. |
 
 The executable degree-131 IC reference in `ecc2k130/codegen/indexcalc_e2e.py`
 currently performs most field and curve work in its own Python ONB classes and
@@ -73,3 +74,6 @@ polynomial-basis path used by the runner when a type-II ONB is unavailable.
 `pb-euclid-inverse-20260924/` accelerates that path's field inversion and
 measures both direct inversions and containing curve calls. It does not infer
 an IC speedup from those stage measurements.
+`pb-squaring-20260924/` further accelerates the Frobenius-heavy polynomial
+basis scalar path. The standalone field gain is supported by the containing
+point-scalar gain, while a complete IC total remains a separate measurement.
