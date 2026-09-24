@@ -55,17 +55,18 @@ def _add_prepared(curve, pairs, FiniteField_ntl_gf2eElement a2):
     cdef FiniteField_ntl_gf2eElement model = field.zero()
     cdef FiniteField_ntl_gf2eElement x1, y1, x2, y2, x3, y3
     cdef vector[binary_batch_entry] active
-    cdef binary_batch_entry entry
+    cdef binary_batch_entry* entry
     cdef GF2E_c inverse, reciprocal, slope, result_x, result_y, temporary
     cdef Py_ssize_t i, n
     cdef Element point
     cdef Parent point_parent
-    cdef bint standard_points
+    cdef bint standard_points, same_x
     output = [None] * len(pairs)
     zero_point = None
     one = field.one()
     constructor = curve._point
     model._cache.F.restore()
+    active.reserve(len(pairs))
 
     for i in range(len(pairs)):
         sig_check()
@@ -80,12 +81,16 @@ def _add_prepared(curve, pairs, FiniteField_ntl_gf2eElement a2):
         if (x1.parent() is not field or y1.parent() is not field
                 or x2.parent() is not field or y2.parent() is not field):
             raise ValueError('coordinates belong to a different field')
-        if x1.x == x2.x:
+        same_x = x1.x == x2.x
+        if same_x:
             if y1.x != y2.x or IsZero(x1.x):
                 if zero_point is None:
                     zero_point = curve(0)
                 output[i] = zero_point
                 continue
+        active.emplace_back()
+        entry = &active.back()
+        if same_x:
             sqr(entry.numerator, x1.x)
             add(entry.numerator, entry.numerator, y1.x)
             entry.denominator = x1.x
@@ -97,7 +102,6 @@ def _add_prepared(curve, pairs, FiniteField_ntl_gf2eElement a2):
         entry.index = i
         entry.x = x1.x
         entry.y = y1.x
-        active.push_back(entry)
 
     n = active.size()
     if not n:
@@ -154,56 +158,4 @@ def _add_prepared(curve, pairs, FiniteField_ntl_gf2eElement a2):
             output[active[i].index] = point
         else:
             output[active[i].index] = constructor(curve, [x3, y3, one], check=False)
-    return output
-
-
-def _frobenius_prepared(curve, prepared, Py_ssize_t power):
-    """Apply a positive binary Frobenius power to validated point triples."""
-    # A point iterator may switch NTL's global field context while yielding.
-    prepared = list(prepared)
-    field = curve.base_ring()
-    if power <= 0 or power >= field.degree():
-        raise ValueError('power must be reduced modulo the field degree')
-    cdef FiniteField_ntl_gf2eElement model = field.zero()
-    cdef FiniteField_ntl_gf2eElement x, y, x3, y3
-    cdef GF2E_c result_x, result_y
-    cdef Py_ssize_t i, j
-    cdef Element point
-    cdef Parent point_parent
-    cdef bint standard_points
-    output = [None] * len(prepared)
-    one = field.one()
-    constructor = curve._point
-    standard_points = constructor is EllipticCurvePoint_finite_field
-    if standard_points:
-        point_parent = curve.point_homset()
-        allocate = constructor.__new__
-    model._cache.F.restore()
-    for i in range(len(prepared)):
-        sig_check()
-        P, px, py = prepared[i]
-        if px is None:
-            output[i] = P
-            continue
-        x, y = px, py
-        if x.parent() is not field or y.parent() is not field:
-            raise ValueError('coordinates belong to a different field')
-        result_x = x.x
-        result_y = y.x
-        for j in range(power):
-            sqr(result_x, result_x)
-            sqr(result_y, result_y)
-        x3 = model._new()
-        y3 = model._new()
-        x3.x = result_x
-        y3.x = result_y
-        if standard_points:
-            point = allocate(constructor)
-            point._parent = point_parent
-            point._codomain = curve
-            point._normalized = True
-            point._coords = (x3, y3, one)
-            output[i] = point
-        else:
-            output[i] = constructor(curve, [x3, y3, one], check=False)
     return output

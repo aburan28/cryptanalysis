@@ -199,9 +199,6 @@ def frobenius_points(curve, points, power=1):
         raise ValueError('Frobenius point maps require a Koblitz curve')
     field = curve.base_ring()
     power = integer_index(power) % int(field.degree())
-    if power and _native is not None and _native.supports(field):
-        prepared = (_point_data(curve, P) for P in points)
-        return _native._frobenius_prepared(curve, prepared, power)
     one = field.one()
     point_class = curve._point
     output = []
