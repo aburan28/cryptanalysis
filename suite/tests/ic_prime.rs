@@ -156,6 +156,31 @@ fn every_target_is_recovered_and_the_accounting_adds_up() {
 }
 
 #[test]
+fn large_primes_are_the_default_and_cut_the_precompute() {
+    let args = ["--type", "j0", "--bits", "22", "--targets", "4"];
+    let (ok, lp) = prime(&args);
+    assert!(ok, "{lp}");
+    assert_eq!(lp["logs"]["collection"], "large_primes");
+    assert!(lp["logs"]["combined_relations"].as_u64().unwrap() > 0);
+    let mut control = args.to_vec();
+    control.push("--no-large-primes");
+    let (ok, full) = prime(&control);
+    assert!(ok, "{full}");
+    assert_eq!(full["logs"]["collection"], "full_decompositions");
+    let pre = |v: &Value| {
+        v["logs"]["oracle_ops"].as_u64().unwrap() + v["logs"]["probe_ops"].as_u64().unwrap()
+    };
+    assert!(
+        pre(&lp) * 10 < pre(&full),
+        "large primes {} against full {}",
+        pre(&lp),
+        pre(&full)
+    );
+    assert_eq!(lp["descent"]["verified"], 4);
+    assert_eq!(full["descent"]["verified"], 4);
+}
+
+#[test]
 fn runs_are_reproducible() {
     let args = [
         "--type",

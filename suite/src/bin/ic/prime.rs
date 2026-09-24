@@ -127,6 +127,11 @@ pub struct PrimeArgs {
     /// Relations collected per orbit before the logarithms are solved (orbit).
     #[arg(long, default_value_t = 1.5)]
     pub relations_per_orbit: f64,
+    /// Collect relations by full 2-decomposition instead of the
+    /// single-large-prime variation (orbit): the control, `≈ r/|Aut|`
+    /// operations where large primes need `≈ √(m·r/|Aut|)`.
+    #[arg(long)]
+    pub no_large_primes: bool,
     /// Group-operation budget for the logarithm precomputation (orbit).
     #[arg(long, default_value_t = 1u64 << 32)]
     pub max_ops: u64,
@@ -293,8 +298,12 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
             "width": opts.width,
         },
         "logs": {
+            "collection": if opts.large_primes { "large_primes" } else { "full_decompositions" },
             "trials": logs.trials,
             "relations": logs.relations,
+            "full_relations": logs.full_relations,
+            "combined_relations": logs.combined_relations,
+            "distinct_large_primes": logs.distinct_large_primes,
             "rejected_relations": logs.rejected_relations,
             "oracle_ops": logs.oracle_ops,
             "probe_ops": logs.probe_ops,
@@ -435,6 +444,7 @@ pub fn run(args: PrimeArgs, quiet: bool) -> Result<Value, String> {
                 orbits: args.orbits,
                 width: args.width,
                 relations_per_orbit: args.relations_per_orbit,
+                large_primes: !args.no_large_primes,
                 max_ops: args.max_ops,
                 skip_rho: args.no_rho,
                 seed: args.seed,

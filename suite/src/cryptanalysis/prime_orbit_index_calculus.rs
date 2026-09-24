@@ -1349,7 +1349,7 @@ impl Default for OrbitIcOptions {
             orbits: 0,
             width: 2.0,
             relations_per_orbit: 1.5,
-            large_primes: false,
+            large_primes: true,
             max_ops: 1 << 32,
             max_descent_ops: 1 << 30,
             rho_max_steps: 0,
@@ -2187,26 +2187,37 @@ mod tests {
         assert_eq!(sol[1], Some(sub_r(5, x0, r)));
     }
 
+    /// The full 2-decomposition collector, the large-prime one's control.
+    fn full_decompositions() -> OrbitIcOptions {
+        OrbitIcOptions {
+            large_primes: false,
+            ..OrbitIcOptions::default()
+        }
+    }
+
     #[test]
     fn known_answer_runs_for_every_type() {
         for kind in [CurveKind::Generic, CurveKind::J0, CurveKind::J1728] {
-            let inst = instance(kind, 20, 6);
-            let targets = inst.targets(4, 1);
-            assert_eq!(targets[0], (inst.known_log, inst.target));
-            let points: Vec<FastPoint> = targets.iter().map(|&(_, q)| q).collect();
-            let rep = run_known_answer(&inst.curve, &points, &OrbitIcOptions::default());
-            assert_eq!(rep.logs.rejected_relations, 0, "{kind:?}");
-            assert_eq!(rep.logs.uncertified_columns, 0, "{kind:?}");
-            assert_eq!(rep.logs.system.inconsistent_components, 0, "{kind:?}");
-            assert!(
-                rep.logs.certified_columns > rep.logs.orbits * 3 / 4,
-                "{kind:?}"
-            );
-            assert_eq!(rep.descents_verified(), targets.len(), "{kind:?}");
-            assert_eq!(rep.rhos_verified(), targets.len(), "{kind:?}");
-            for (i, &(k, _)) in targets.iter().enumerate() {
-                assert_eq!(rep.descents[i].recovered, Some(k), "{kind:?} target {i}");
-                assert_eq!(rep.rhos[i].recovered, Some(k), "{kind:?} target {i}");
+            for opts in [full_decompositions(), OrbitIcOptions::default()] {
+                let inst = instance(kind, 20, 6);
+                let targets = inst.targets(4, 1);
+                assert_eq!(targets[0], (inst.known_log, inst.target));
+                let points: Vec<FastPoint> = targets.iter().map(|&(_, q)| q).collect();
+                let rep = run_known_answer(&inst.curve, &points, &opts);
+                let lp = opts.large_primes;
+                assert_eq!(rep.logs.rejected_relations, 0, "{kind:?} {lp}");
+                assert_eq!(rep.logs.uncertified_columns, 0, "{kind:?} {lp}");
+                assert_eq!(rep.logs.system.inconsistent_components, 0, "{kind:?} {lp}");
+                assert!(
+                    rep.logs.certified_columns > rep.logs.orbits * 3 / 4,
+                    "{kind:?} {lp}"
+                );
+                assert_eq!(rep.descents_verified(), targets.len(), "{kind:?} {lp}");
+                assert_eq!(rep.rhos_verified(), targets.len(), "{kind:?} {lp}");
+                for (i, &(k, _)) in targets.iter().enumerate() {
+                    assert_eq!(rep.descents[i].recovered, Some(k), "{kind:?} {lp} {i}");
+                    assert_eq!(rep.rhos[i].recovered, Some(k), "{kind:?} {lp} {i}");
+                }
             }
         }
     }
@@ -2257,7 +2268,7 @@ mod tests {
         let opts = OrbitIcOptions {
             width: 8.0,
             skip_rho: true,
-            ..OrbitIcOptions::default()
+            ..full_decompositions()
         };
         let rep = run_known_answer(&inst.curve, &[inst.target], &opts);
         let frac = rep.logs.certified_columns as f64 / rep.logs.orbits as f64;
@@ -2326,7 +2337,7 @@ mod tests {
                 .map(|(p, x)| ((p.x, p.y), x))
                 .collect::<std::collections::HashMap<_, _>>()
         };
-        let full = logs_of(&OrbitIcOptions::default());
+        let full = logs_of(&full_decompositions());
         let large = logs_of(&with_large_primes());
         let shared: Vec<_> = full.keys().filter(|k| large.contains_key(k)).collect();
         assert!(
@@ -2351,7 +2362,7 @@ mod tests {
             let (_, _, rep) = solve_logs(c, &fb, opts);
             rep.oracle_ops + rep.probe_ops
         };
-        let (full, large) = (ops(&OrbitIcOptions::default()), ops(&with_large_primes()));
+        let (full, large) = (ops(&full_decompositions()), ops(&with_large_primes()));
         assert!(
             large * 20 < full,
             "large primes {large} against full {full}"

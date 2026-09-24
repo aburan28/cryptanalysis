@@ -222,6 +222,12 @@ fn display_prime(report: &Value) {
         logs["relations"],
         logs["trials"]
     );
+    if logs["collection"] == "large_primes" {
+        println!(
+            "Large primes: {} relations from two probes meeting on one of {} large primes, {} with both summands in the base",
+            logs["combined_relations"], logs["distinct_large_primes"], logs["full_relations"]
+        );
+    }
     println!(
         "Logarithm precompute: {:.3e} group operations in {:.3}s",
         f(&logs["oracle_ops"]) + f(&logs["probe_ops"]),
