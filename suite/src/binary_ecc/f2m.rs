@@ -815,6 +815,150 @@ unsafe fn mul_words_hw(a: &[u64], b: &[u64], out: &mut [u64]) {
     }
 }
 
+/// Reduce `value` modulo `m(z)` in place, a whole word at a time.
+///
+/// Each word `w` at or above `z^m` stands for `w · z^{64i}`, and since
+/// `z^m ≡ r(z) = m(z) − z^m` it folds back as `Σ_t w · z^{64i − m + t}`
+/// over `r`'s few terms `t`: one two-word XOR per term.  Walking the
+/// words from the top down, a fold lands strictly below the word it came
+/// from as long as `m − deg r ≥ 64` (it reaches bit `64i − m + deg r +
+/// 63 < 64i`), so every word is folded exactly once and the partial word
+/// holding bit `m` last.  For B-163 that is three full words and one
+/// partial one, five terms each; the old chunk loop spent twice the
+/// instructions on the same folds through general bit-range helpers.
+///
+/// Every NIST and SECG field satisfies `m − deg r ≥ 64`.  The toy fields
+/// (`m = 8, 16`) and dense tails do not, and take [`reduce_chunked`].
+/// Both are tested against the bit-at-a-time `reduce_bitwise`.
+fn reduce_words(value: &mut [u64], irreducible: &IrreduciblePoly) {
+    let m = irreducible.degree as usize;
+    let terms = &irreducible.low_terms;
+    let t_max = terms.iter().copied().max().unwrap_or(0) as usize;
+    if m < t_max + 64 || terms.len() > 8 {
+        return reduce_chunked(value, irreducible);
+    }
+    // When r fits in one word, fold each word with a single carry-less
+    // multiply `w · r` instead of one shifted XOR per term.
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    if t_max < 64 && has_hw_clmul() {
+        let r = terms.iter().fold(0u64, |acc, &t| acc | (1u64 << t));
+        // SAFETY: the required CPU feature was detected at runtime.
+        unsafe { fold_words_clmul_hw(value, m, r) };
+        return;
+    }
+    fold_words_terms(value, m, terms);
+}
+
+/// The word-at-a-time fold of [`reduce_words`], one shifted XOR per term
+/// of `r`: for `deg r ≥ 64`, or without a hardware carry-less multiply.
+/// Requires `m ≥ deg r + 64`.
+fn fold_words_terms(value: &mut [u64], m: usize, terms: &[u32]) {
+    let wm = m / 64;
+    let bm = m % 64;
+    // Words wholly at or above z^m: from the top non-zero one down.
+    let first_full = if bm == 0 { wm } else { wm + 1 };
+    let mut top = value.len();
+    while top > first_full && value[top - 1] == 0 {
+        top -= 1;
+    }
+    for i in (first_full..top).rev() {
+        let w = value[i];
+        if w == 0 {
+            continue;
+        }
+        value[i] = 0;
+        let base = 64 * i - m;
+        for &t in terms {
+            xor_word_at(value, base + t as usize, w);
+        }
+    }
+    // The bits of word `wm` at and above z^m.  They number fewer than
+    // 64 and fold to below bit `deg r + 64 − bm ≤ m`, so one pass ends it.
+    if bm != 0 {
+        let w = value[wm] >> bm;
+        if w != 0 {
+            value[wm] &= (1u64 << bm) - 1;
+            for &t in terms {
+                xor_word_at(value, t as usize, w);
+            }
+        }
+    }
+}
+
+/// The word-at-a-time fold of [`reduce_words`] with `r = m(z) − z^m`
+/// packed into one word: each word `w` above `z^m` folds back as the
+/// 128-bit carry-less product `w · r`, placed at bit `64i − m` with three
+/// word XORs.  Same order and same bounds argument as the term loop:
+/// `m − deg r ≥ 64` keeps every fold strictly below its source word, and
+/// the third word can only be non-zero where it exists.
+macro_rules! fold_words_clmul_body {
+    ($value:ident, $m:ident, $r:ident) => {{
+        let value = $value;
+        let m = $m;
+        let r = $r;
+        #[inline(always)]
+        unsafe fn place(v: &mut [u64], pos: usize, w: u64, r: u64) {
+            let (lo, hi) = clmul64_hw(w, r);
+            let i = pos / 64;
+            let s = (pos % 64) as u32;
+            v[i] ^= lo << s;
+            v[i + 1] ^= ((lo >> 1) >> (63 - s)) | (hi << s);
+            let third = (hi >> 1) >> (63 - s);
+            if let Some(x) = v.get_mut(i + 2) {
+                *x ^= third;
+            }
+        }
+        let wm = m / 64;
+        let bm = m % 64;
+        let first_full = if bm == 0 { wm } else { wm + 1 };
+        let mut top = value.len();
+        while top > first_full && value[top - 1] == 0 {
+            top -= 1;
+        }
+        for i in (first_full..top).rev() {
+            let w = value[i];
+            if w != 0 {
+                value[i] = 0;
+                place(value, 64 * i - m, w, r);
+            }
+        }
+        if bm != 0 {
+            let w = value[wm] >> bm;
+            if w != 0 {
+                value[wm] &= (1u64 << bm) - 1;
+                place(value, 0, w, r);
+            }
+        }
+    }};
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "pclmulqdq")]
+unsafe fn fold_words_clmul_hw(value: &mut [u64], m: usize, r: u64) {
+    fold_words_clmul_body!(value, m, r)
+}
+
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "aes")]
+unsafe fn fold_words_clmul_hw(value: &mut [u64], m: usize, r: u64) {
+    fold_words_clmul_body!(value, m, r)
+}
+
+/// `v ^= w << pos` for a whole word `w`, branch-free.
+///
+/// The spill into the next word is `(w >> 1) >> (63 − s)`, which is `w >>
+/// (64 − s)` for `s > 0` and zero for `s = 0`, so both words are always
+/// written.  Callers guarantee `v[pos / 64 + 1]` exists: in the top-down
+/// fold it is at most the (already cleared) source word, and in the
+/// partial-word fold it is at most word `m / 64`.
+#[inline(always)]
+fn xor_word_at(v: &mut [u64], pos: usize, w: u64) {
+    let i = pos / 64;
+    let s = (pos % 64) as u32;
+    v[i] ^= w << s;
+    v[i + 1] ^= (w >> 1) >> (63 - s);
+}
+
 /// Bits `[pos, pos + len)` of `v` as an integer, `len ≤ 64`.
 #[inline(always)]
 fn get_bits(v: &[u64], pos: u32, len: u32) -> u64 {
@@ -846,6 +990,11 @@ fn xor_bits_at(v: &mut [u64], pos: u32, x: u64) {
 /// Reduce `value` modulo `m(z)` in place, a chunk of up to 64 bits at
 /// a time rather than one bit at a time.
 ///
+/// The general path behind [`reduce_words`], for polynomials whose tail
+/// reaches within 64 bits of `z^m` (the toy fields `m = 8, 16`, and
+/// dense tails); every NIST and SECG field takes the word-at-a-time
+/// path instead.
+///
 /// Walking down from the top, the chunk `[lo, hi)` above `z^m` is
 /// cleared and folded back as `Σ_t x · z^{lo − m + t}` over the
 /// irreducible's low terms `t`.  The chunk width is capped at
@@ -854,7 +1003,7 @@ fn xor_bits_at(v: &mut [u64], pos: u32, x: u64) {
 /// are picked up by later chunks.  For a trinomial or pentanomial
 /// that is a handful of shift-XORs per word of excess, independent of
 /// how many bits are set.
-fn reduce_words(value: &mut [u64], irreducible: &IrreduciblePoly) {
+fn reduce_chunked(value: &mut [u64], irreducible: &IrreduciblePoly) {
     let m = irreducible.degree;
     let t_max = irreducible.low_terms.iter().copied().max().unwrap_or(0);
     debug_assert!(t_max < m);
@@ -1113,6 +1262,91 @@ mod tests {
                 d.add_assign(&b);
                 assert_eq!(d, a.add(&b));
                 assert_ne!(d, a, "b is non-zero with overwhelming probability");
+            }
+        }
+    }
+
+    /// The word-level fold against the bit-at-a-time reference, on raw
+    /// vectors wider than any product, for the real field polynomials
+    /// and for random dense tails with `deg r` up to `m − 1`, which take
+    /// the most rounds.  Reduction modulo a polynomial is defined whether
+    /// or not it is irreducible, so the random tails need not be.
+    #[test]
+    fn reduce_words_matches_bitwise_reduction() {
+        let mut s = 0x0F1E_2D3C_4B5A_6978u64;
+        let mut polys: Vec<IrreduciblePoly> = all_fields();
+        // Sparse low tails that take the word-at-a-time path, including
+        // m a multiple of 64 (no partial word) and one past it.
+        for m in [65u32, 128, 129, 192, 200, 320] {
+            polys.push(IrreduciblePoly {
+                degree: m,
+                low_terms: vec![0, 1, 2, 7],
+            });
+        }
+        // deg r ≥ 64: word path, but r no longer fits one word.
+        for m in [200u32, 256, 320] {
+            polys.push(IrreduciblePoly {
+                degree: m,
+                low_terms: vec![0, 5, 70, m - 64],
+            });
+        }
+        for m in [2u32, 7, 63, 64, 65, 127, 128, 129, 163, 200, 577] {
+            for dense in [false, true] {
+                let mut terms = vec![0u32];
+                if dense {
+                    // About half of all positions, always including m − 1.
+                    terms.extend((1..m).filter(|&t| t == m - 1 || xorshift(&mut s) & 1 == 1));
+                } else {
+                    terms.push(1 + (xorshift(&mut s) % u64::from(m - 1)) as u32);
+                }
+                polys.push(IrreduciblePoly {
+                    degree: m,
+                    low_terms: terms,
+                });
+            }
+        }
+        for irr in &polys {
+            let m = irr.degree;
+            let words = (2 * m).div_ceil(64) as usize + 1;
+            for rep in 0..30 {
+                let mut v: Vec<u64> = (0..words).map(|_| xorshift(&mut s)).collect();
+                if rep == 0 {
+                    v.iter_mut().for_each(|w| *w = u64::MAX);
+                }
+                let mut want = v.clone();
+                reduce_bitwise(&mut want, irr);
+                // Each path on its own, wherever it applies, so the one a
+                // given CPU dispatches to is not the only one tested.
+                let mut chunked = v.clone();
+                reduce_chunked(&mut chunked, irr);
+                assert_eq!(
+                    chunked, want,
+                    "chunked, m = {m}, terms = {:?}",
+                    irr.low_terms
+                );
+                let t_max = irr.low_terms.iter().copied().max().unwrap_or(0);
+                if m >= t_max + 64 {
+                    let mut terms = v.clone();
+                    fold_words_terms(&mut terms, m as usize, &irr.low_terms);
+                    assert_eq!(
+                        terms, want,
+                        "term fold, m = {m}, terms = {:?}",
+                        irr.low_terms
+                    );
+                    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+                    if t_max < 64 && has_hw_clmul() {
+                        let r = irr.low_terms.iter().fold(0u64, |a, &t| a | (1u64 << t));
+                        let mut folded = v.clone();
+                        unsafe { fold_words_clmul_hw(&mut folded, m as usize, r) };
+                        assert_eq!(
+                            folded, want,
+                            "clmul fold, m = {m}, terms = {:?}",
+                            irr.low_terms
+                        );
+                    }
+                }
+                reduce_words(&mut v, irr);
+                assert_eq!(v, want, "m = {m}, terms = {:?}", irr.low_terms);
             }
         }
     }
