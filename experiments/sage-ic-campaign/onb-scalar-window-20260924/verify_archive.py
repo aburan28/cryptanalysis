@@ -23,10 +23,8 @@ confirm = json.loads((HERE / 'intent-confirm.json').read_text())
 assert primary['source_sha256'] == confirm['source_sha256']
 for name, expected in primary['source_sha256'].items():
     assert hashlib.sha256(paths[name].read_bytes()).hexdigest() == expected, name
-for variant in ('local', 'runner'):
-    assert (ROOT / 'ecc2k130' /
-            ('codegen' if variant == 'local' else 'runner/codegen') /
-            'curves.py').read_bytes() == paths['candidate-' + variant].read_bytes()
+# Source hashes above bind this experiment's exact candidate. The live curve
+# files may be superseded by a later arithmetic PR with its own source gate.
 assert 'signed-window scalar checks passed' in (HERE / 'test-window.log').read_text()
 assert 'OK' in (HERE / 'test-runner.log').read_text()
 full_log = (HERE / 'test-runner-full.log').read_text()
