@@ -99,15 +99,24 @@ pub const MIN_FIELD_BITS: u32 = 8;
 /// Representatives per batched inversion in the decomposition sweep.  The
 /// sweep stops at the first hit, so a block bounds the wasted work.
 const SWEEP_BLOCK: usize = 256;
-/// The most rounds of relations a large-prime collection gathers while
-/// fewer than three quarters of the base certify.  Each round asks for
-/// another `relations_per_orbit · m`.
-const MAX_COLLECTION_ROUNDS: u32 = 4;
 /// The descent's first block; each next one doubles, up to
 /// [`SWEEP_BLOCK`].  With a large-prime database a descent often hits
 /// within a few dozen differences, and a whole block is paid for (its
 /// batched inversion) before any of them is looked at.
 const DESCENT_FIRST_BLOCK: usize = 16;
+/// The fewest points a descent peels each probe by.  A probe step costs an
+/// addition for every this many differences, so a base smaller than this
+/// lends the descent known large primes to make up the number.
+pub const PEEL_POINTS: usize = 32;
+/// The most rounds of relations a large-prime collection gathers while
+/// fewer than three quarters of the base certify.  Each round asks for
+/// another `relations_per_orbit · m`.
+const MAX_COLLECTION_ROUNDS: u32 = 4;
+/// The most differences one learning descent records.  A healthy descent
+/// hits far sooner; this only bounds the memory of a descent whose base is
+/// too small to certify, which walks to [`OrbitIcOptions::max_descent_ops`]
+/// without a hit.
+const LEARN_CAP: usize = 1 << 18;
 
 // ── Arithmetic modulo the subgroup order ───────────────────────────────
 
@@ -1339,8 +1348,9 @@ pub struct OrbitIcOptions {
     /// width `c` a full-decomposition descent costs about `√r / c`
     /// differences.
     pub width: f64,
-    /// With large primes, orbits per target of a batch-sized base (see
-    /// [`batch_orbits`]); 0 sizes the base by `width` instead.
+    /// With large primes and descents that do not learn, orbits per target
+    /// of a batch-sized base (see [`batch_orbits`]); 0 sizes the base by
+    /// `width` instead.
     pub orbits_per_target: f64,
     /// Relations collected per orbit before the logarithms are solved.
     pub relations_per_orbit: f64,
@@ -1465,6 +1475,8 @@ pub struct DescentReport {
     /// Large primes this descent added to the database once verified (see
     /// [`descend_and_learn`]).
     pub learned: u64,
+    /// Times the probe walk came round a cycle and started again.
+    pub restarts: u64,
     pub recovered: Option<u64>,
     pub verified: bool,
     pub seconds: f64,
@@ -1855,6 +1867,15 @@ pub struct LogDatabase {
     /// A large prime's orbit, by least abscissa → a point on it and that
     /// point's logarithm.
     large: FxMap<u64, (FastPoint, u64)>,
+    /// What a descent peels each probe by, with logarithms: every certified
+    /// representative, topped up with known large primes to
+    /// [`PEEL_POINTS`] when the base is smaller.
+    peel: Vec<(FastPoint, u64)>,
+    /// The jump table a descent walks its probes by, shared by every
+    /// target as rho's is.  A step that depends on the point keeps two
+    /// targets' probes from running parallel, where one coincidence
+    /// between a probe and a learnt difference would recur at every step.
+    jumps: RhoJumps,
 }
 
 impl LogDatabase {
@@ -1917,10 +1938,11 @@ pub fn solve_logs(
         ..LogsReport::default()
     };
     let round = ((fb.len() as f64) * opts.relations_per_orbit).ceil() as usize;
+    // One jump table walks the collection's probes and every descent's.
+    let jumps = RhoJumps::new(c, opts.seed ^ 0x6c61_7267_655f_7072);
+    rep.probe_ops += jumps.ops;
     let (rows, anchors, (certified, stats, uncertified)) = if opts.large_primes {
-        let table = RhoJumps::new(c, opts.seed ^ 0x6c61_7267_655f_7072);
-        rep.probe_ops += table.ops;
-        let mut collector = LargePrimeCollector::new(c, &table, opts, &mut rep);
+        let mut collector = LargePrimeCollector::new(c, &jumps, opts, &mut rep);
         let mut want = round;
         loop {
             collector.collect(c, fb, opts, want, &mut rep);
@@ -1961,11 +1983,22 @@ pub fn solve_logs(
         }
     }
     rep.known_large_primes = large.len() as u64;
+    let mut peel: Vec<(FastPoint, u64)> = keep
+        .iter()
+        .zip(&logs)
+        .map(|(&o, &x)| (fb.reps[o], x))
+        .collect();
+    if peel.len() < PEEL_POINTS {
+        let more = PEEL_POINTS - peel.len();
+        peel.extend(large.values().take(more).copied());
+    }
     rep.seconds = begin.elapsed().as_secs_f64();
     let db = LogDatabase {
         base: fb.restrict(c, &keep),
         logs,
         large,
+        peel,
+        jumps,
     };
     (db, rep)
 }
@@ -1973,13 +2006,15 @@ pub fn solve_logs(
 /// Recover `log_G Q` from one probe `R = [a]G + Q` that the database can
 /// split, and check it as `[d]G == Q`.
 ///
-/// The probe is peeled by every certified representative, `D = R − P_o`,
-/// until `D` lies on a certified base orbit or a known large-prime orbit;
-/// then `a + d ≡ x_o + log D`.  A hit is as likely at every difference, so
-/// the expected cost is `r / (w · (base orbits + large primes))`
-/// differences, and the blocks start at 16 representatives and double so
-/// that an early hit pays for little unused inversion.  A second probe,
-/// `R + [s]G`, is built only if the first is exhausted.
+/// The probe is peeled by every point `P_o` of the database's peel set —
+/// the certified representatives, topped up with known large primes to
+/// [`PEEL_POINTS`] — as `D = R − P_o`, until `D` lies on a certified base
+/// orbit or a known large-prime orbit; then `a + d ≡ log P_o + log D`.  A
+/// hit is as likely at every difference, so the expected cost is
+/// `r / (w · (base orbits + large primes))` differences, and the blocks
+/// start at 16 points and double so that an early hit pays for little
+/// unused inversion.  An exhausted probe takes one step of an r-adding
+/// walk over the database's shared jump table, one addition.
 pub fn descend(
     c: &OrbitCurve,
     db: &LogDatabase,
@@ -2032,21 +2067,23 @@ fn descend_with(
 ) -> DescentReport {
     let begin = Instant::now();
     let (f, r) = (&c.fast.f, c.r);
-    let reps = &db.base.reps;
-    let m = reps.len();
+    let peel = &db.peel;
+    let m = peel.len();
     let mut rep = DescentReport::default();
     let mut rng = StdRng::seed_from_u64(opts.seed ^ 0x6465_7363_656e_7400);
     let mut a = rng.gen_range(1..r);
     let mut point = c.fast.add(c.mul_g(a), q);
     rep.probe_ops += scalar_mul_ops(r) + 1;
-    let mut step: Option<(FastPoint, u64)> = None;
+    // Brent: `saved` is refreshed at every power of two, so a walk that has
+    // come round to a probe it made meets it again within one lap.
+    let (mut saved, mut lap, mut since) = (point, 1u64, 0u64);
     let (mut den, mut scratch) = (vec![0u64; SWEEP_BLOCK], vec![0u64; SWEEP_BLOCK]);
     'probes: while m > 0 && rep.oracle_ops < opts.max_descent_ops {
         rep.trials += 1;
         let (mut start, mut len) = (0, DESCENT_FIRST_BLOCK);
         while !point.infinity && start < m {
-            let block = &reps[start..(start + len).min(m)];
-            for (i, p) in block.iter().enumerate() {
+            let block = &peel[start..(start + len).min(m)];
+            for (i, (p, _)) in block.iter().enumerate() {
                 let d = f.sub(point.x, p.x);
                 den[i] = if d == 0 { f.one() } else { d };
             }
@@ -2056,8 +2093,7 @@ fn descend_with(
             // descent stops at the first hit; a recording one finishes the
             // block, which is paid for, keeping every difference it forms.
             let mut split: Option<(u64, bool)> = None;
-            for (i, p) in block.iter().enumerate() {
-                let x_o = db.logs[start + i];
+            for (i, &(p, x_o)) in block.iter().enumerate() {
                 let candidate = if p.x == point.x {
                     Some((if p.y == point.y { x_o } else { r - x_o }, false))
                 } else {
@@ -2069,7 +2105,9 @@ fn descend_with(
                         infinity: false,
                     };
                     if let Some(buf) = prepared.as_mut() {
-                        buf.push((d, sub_r(a, x_o, r)));
+                        if buf.len() < LEARN_CAP {
+                            buf.push((d, sub_r(a, x_o, r)));
+                        }
                     }
                     db.log_of(c, d)
                         .map(|(log_d, large)| (add_r(x_o, log_d, r), large))
@@ -2091,16 +2129,21 @@ fn descend_with(
             start += block.len();
             len = (len * 2).min(SWEEP_BLOCK);
         }
-        let (s_point, s) = *step.get_or_insert_with(|| {
-            let s = rng.gen_range(1..r);
-            (c.mul_g(s), s)
-        });
-        if rep.trials == 1 {
-            rep.probe_ops += scalar_mul_ops(r);
-        }
-        point = c.fast.add(point, s_point);
-        a = add_r(a, s, r);
+        let (jump, u) = db.jumps.jumps[partition(point.x)];
+        point = c.fast.add(point, jump);
+        a = add_r(a, u, r);
         rep.probe_ops += 1;
+        since += 1;
+        if point == saved {
+            // The walk is on a cycle it has already peeled: start again.
+            a = rng.gen_range(1..r);
+            point = c.fast.add(c.mul_g(a), q);
+            rep.probe_ops += scalar_mul_ops(r) + 1;
+            rep.restarts += 1;
+            (saved, lap, since) = (point, 1, 0);
+        } else if since == lap {
+            (saved, lap, since) = (point, 2 * lap, 0);
+        }
     }
     rep.seconds = begin.elapsed().as_secs_f64();
     rep
@@ -2120,6 +2163,7 @@ fn distinguished(x: u64, dp_bits: u32) -> bool {
 /// depend on the target, so one table serves every target, as one
 /// logarithm database does on the index-calculus side, and its cost is
 /// charged once.
+#[derive(Clone)]
 pub struct RhoJumps {
     jumps: Vec<(FastPoint, u64)>,
     /// Group operations building the table.
@@ -2306,17 +2350,16 @@ pub fn auto_orbits(c: &OrbitCurve, width: f64) -> usize {
     ((width * (c.r as f64).sqrt() / w).ceil() as usize).max(8)
 }
 
-/// The fewest orbits [`batch_orbits`] gives a base.  Fewer leave too many
-/// orbits uncertified, each taking its share of the large primes with it,
-/// and share each batched inversion among too few differences.
+/// The fewest orbits [`batch_orbits`] gives a base when the descents do
+/// not learn, and so lean on the collection's large primes alone.
 const MIN_BATCH_ORBITS: usize = 16;
 
-/// The most orbits [`batch_orbits`] gives a base when the descents learn.
-const MAX_LEARNING_ORBITS: usize = 32;
+/// The orbits [`batch_orbits`] gives a base when the descents learn.
+const LEARNING_ORBITS: usize = 8;
 
-/// The orbit count of a base sized to a batch of `targets` targets:
-/// `⌈orbits_per_target · targets⌉`, at least 16, at most 32 when the
-/// descents learn, and at most [`auto_orbits`] at `width`.
+/// The orbit count of a base sized to a batch of `targets` targets: 8
+/// when the descents learn, else `⌈orbits_per_target · targets⌉` and at
+/// least 16; never more than [`auto_orbits`] at `width`.
 ///
 /// With large primes a collection of `N` differences learns about `N`
 /// large-prime logarithms, and a descent then costs about `r / (w·N)`
@@ -2331,18 +2374,18 @@ const MAX_LEARNING_ORBITS: usize = 32;
 /// Descents that learn ([`descend_and_learn`]) build the rest of the
 /// database themselves: the batch then costs about
 /// `N + √(N² + 2T·r/w) − N`, which only falls as `N` does, so the
-/// precomputation need only certify a small base.  Measured at 28 bits,
-/// 32 orbits is best from 64 targets to 1024, and 16 below that.
+/// precomputation need only certify a small base, and the descent's
+/// per-probe cost is set by its peel set ([`PEEL_POINTS`]), not by the
+/// base.  Measured at 28 bits, 8 orbits beats 16 and 32 from 16 targets to
+/// 256 on both the secp256k1 and the P-256 shapes; 4 leaves generic curves
+/// uncertified.
 pub fn batch_orbits(c: &OrbitCurve, opts: &OrbitIcOptions, targets: usize) -> usize {
-    let want = (opts.orbits_per_target * targets as f64).ceil() as usize;
-    let cap = if opts.learn {
-        MAX_LEARNING_ORBITS
+    let m = if opts.learn {
+        LEARNING_ORBITS
     } else {
-        usize::MAX
+        ((opts.orbits_per_target * targets as f64).ceil() as usize).max(MIN_BATCH_ORBITS)
     };
-    want.max(MIN_BATCH_ORBITS)
-        .min(cap)
-        .min(auto_orbits(c, opts.width))
+    m.min(auto_orbits(c, opts.width))
 }
 
 /// The orbit count [`run_known_answer`] gives the base for `targets`
@@ -2822,10 +2865,14 @@ mod tests {
         let c = &inst.curve;
         let fb = OrbitFactorBase::select(c, auto_orbits(c, 2.0), 6);
         let (db, _) = solve_logs(c, &fb, &with_large_primes());
+        // The base is wider than PEEL_POINTS, so both peel by it alone.
+        assert_eq!(db.peel.len(), db.base.len());
         let base_only = LogDatabase {
             base: db.base.clone(),
             logs: db.logs.clone(),
             large: FxMap::default(),
+            peel: db.peel.clone(),
+            jumps: db.jumps.clone(),
         };
         let targets = inst.targets(16, 4);
         let run = |db: &LogDatabase| {
@@ -2914,6 +2961,63 @@ mod tests {
     }
 
     #[test]
+    fn small_bases_certify_on_every_seed() {
+        // An 8-orbit base on a generic curve, whose gains are all ±1, used
+        // to come out unpinned on about one seed in ten: a starved first
+        // round of relations, or a collection walk gone round a cycle and
+        // repeating itself.  The guard and the restart must both have run
+        // somewhere in this sweep, or it no longer tests them.
+        let (mut rounds, mut restarts) = (0, 0);
+        for seed in 0..16u64 {
+            let inst = instance(CurveKind::Generic, 16, seed);
+            let c = &inst.curve;
+            let opts = OrbitIcOptions {
+                seed,
+                ..OrbitIcOptions::default()
+            };
+            let fb = OrbitFactorBase::select(c, 8, seed);
+            let (db, rep) = solve_logs(c, &fb, &opts);
+            assert_eq!(rep.uncertified_columns, 0, "seed {seed}");
+            assert!(
+                4 * rep.certified_columns >= 3 * fb.len(),
+                "seed {seed}: {} of {} certified after {} rounds",
+                rep.certified_columns,
+                fb.len(),
+                rep.collection_rounds
+            );
+            for &(k, q) in &inst.targets(3, seed) {
+                assert_eq!(descend(c, &db, q, &opts).recovered, Some(k), "seed {seed}");
+            }
+            rounds += u32::from(rep.collection_rounds > 1);
+            restarts += rep.walk_restarts;
+        }
+        assert!(
+            rounds > 0 && restarts > 0,
+            "{rounds} extra rounds, {restarts} restarts"
+        );
+    }
+
+    #[test]
+    fn a_descent_walk_that_comes_round_starts_again() {
+        // This instance's first target walks onto a cycle of the jump
+        // table; without the restart it peeled the same probes until its
+        // budget of 2^30 differences ran out.
+        let inst =
+            generate_instance(ScaledShape::of_kind(CurveKind::Generic), 28, Some(53), 10).unwrap();
+        let c = &inst.curve;
+        let opts = OrbitIcOptions {
+            seed: 10,
+            ..OrbitIcOptions::default()
+        };
+        let fb = OrbitFactorBase::select(c, 8, 10);
+        let (db, _) = solve_logs(c, &fb, &opts);
+        let d = descend(c, &db, inst.target, &opts);
+        assert_eq!(d.recovered, Some(53), "{d:?}");
+        assert!(d.restarts >= 1, "{d:?}");
+        assert!(d.oracle_ops < 1 << 20, "{d:?}");
+    }
+
+    #[test]
     fn a_batch_sized_base_follows_the_targets_not_the_group() {
         let opts = OrbitIcOptions::default();
         assert_eq!(opts.sizing(), BaseSizing::Batch);
@@ -2925,14 +3029,15 @@ mod tests {
         for t in [1usize, 32, 33, 64, 1000] {
             let half = t.div_ceil(2).max(16);
             assert_eq!(batch_orbits(&big.curve, &alone, t), half, "{t}");
-            assert_eq!(batch_orbits(&big.curve, &opts, t), half.min(32), "{t}");
+            // Learning descents build the database: the base only bootstraps.
+            assert_eq!(batch_orbits(&big.curve, &opts, t), 8, "{t}");
         }
         // Never wider than the full-decomposition base.
         let small = instance(CurveKind::J0, 12, 1);
         let cap = auto_orbits(&small.curve, opts.width);
-        assert!(cap < 32, "{cap}");
+        assert!(cap < 64, "{cap}");
         assert_eq!(batch_orbits(&small.curve, &alone, 4096), cap);
-        assert_eq!(batch_orbits(&small.curve, &opts, 4096), cap);
+        assert_eq!(batch_orbits(&small.curve, &opts, 4096), 8);
         let by_width = OrbitIcOptions {
             orbits_per_target: 0.0,
             ..opts
@@ -3029,43 +3134,6 @@ mod tests {
         let fixed = (64 * (2 * scalar_mul_ops(c.r) + 1) + 32 * scalar_mul_ops(c.r)) as f64;
         let fold = (plain - fixed) / (folded - fixed);
         assert!((fold - 6f64.sqrt()).abs() < 1e-9, "{fold}");
-    }
-
-    #[test]
-    fn small_bases_certify_on_every_seed() {
-        // An 8-orbit base on a generic curve, whose gains are all ±1, used
-        // to come out unpinned on about one seed in ten: a starved first
-        // round of relations, or a collection walk gone round a cycle and
-        // repeating itself.  The guard and the restart must both have run
-        // somewhere in this sweep, or it no longer tests them.
-        let (mut rounds, mut restarts) = (0, 0);
-        for seed in 0..16u64 {
-            let inst = instance(CurveKind::Generic, 16, seed);
-            let c = &inst.curve;
-            let opts = OrbitIcOptions {
-                seed,
-                ..OrbitIcOptions::default()
-            };
-            let fb = OrbitFactorBase::select(c, 8, seed);
-            let (db, rep) = solve_logs(c, &fb, &opts);
-            assert_eq!(rep.uncertified_columns, 0, "seed {seed}");
-            assert!(
-                4 * rep.certified_columns >= 3 * fb.len(),
-                "seed {seed}: {} of {} certified after {} rounds",
-                rep.certified_columns,
-                fb.len(),
-                rep.collection_rounds
-            );
-            for &(k, q) in &inst.targets(3, seed) {
-                assert_eq!(descend(c, &db, q, &opts).recovered, Some(k), "seed {seed}");
-            }
-            rounds += u32::from(rep.collection_rounds > 1);
-            restarts += rep.walk_restarts;
-        }
-        assert!(
-            rounds > 0 && restarts > 0,
-            "{rounds} extra rounds, {restarts} restarts"
-        );
     }
 
     #[test]

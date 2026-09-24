@@ -289,7 +289,7 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
             json!({"expected": k.to_string(), "recovered": d.recovered.map(|v| v.to_string()),
                    "verified": d.verified, "ops": OrbitIcReport::descent_ops(d), "trials": d.trials,
                    "through_large_prime": d.through_large_prime, "learned": d.learned,
-                   "seconds": d.seconds})
+                   "restarts": d.restarts, "seconds": d.seconds})
         })
         .collect();
     let per_rho: Vec<Value> = rep

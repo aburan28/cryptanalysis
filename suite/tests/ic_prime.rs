@@ -223,7 +223,8 @@ fn the_base_is_sized_to_the_batch_unless_a_width_is_given() {
     let (ok, batch) = prime(&base);
     assert!(ok, "{batch}");
     assert_eq!(batch["factor_base"]["sizing"], "batch");
-    assert_eq!(batch["factor_base"]["orbits"], 20);
+    // Learning descents build the database, so the base only bootstraps.
+    assert_eq!(batch["factor_base"]["orbits"], 8);
     let with = |extra: &[&'static str]| {
         let mut args = base.to_vec();
         args.extend_from_slice(extra);
@@ -231,12 +232,8 @@ fn the_base_is_sized_to_the_batch_unless_a_width_is_given() {
         assert!(ok, "{extra:?}: {v}");
         v
     };
-    // Descents that learn build the database themselves, so a batch base
-    // stops at 32 orbits unless they do not.
-    assert_eq!(
-        with(&["--orbits-per-target", "2"])["factor_base"]["orbits"],
-        32
-    );
+    // Without learning the base is sized to the batch, T/2 by default.
+    assert_eq!(with(&["--no-learn"])["factor_base"]["orbits"], 20);
     assert_eq!(
         with(&["--orbits-per-target", "2", "--no-learn"])["factor_base"]["orbits"],
         80
