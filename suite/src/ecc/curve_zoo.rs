@@ -441,6 +441,9 @@ impl CurveParams {
     /// 2012-specific 256-bit curve (distinct from the older CryptoPro-A
     /// curve which is renamed paramSetB in the 2012 standard).  Has a
     /// non-trivial `a`/`b`.
+    ///
+    /// This is the Weierstrass form of a twisted Edwards curve, so its
+    /// group order is `m = 4q` (RFC 7836 lists both): cofactor 4, not 1.
     pub fn gost_tc26_256_a() -> Self {
         CurveParams {
             name: "GOST-tc26-256-paramSetA",
@@ -450,7 +453,7 @@ impl CurveParams {
             gx: hexp("91E38443A5E82C0D880923425712B2BB658B9196932E02C78B2582FE742DAA28"),
             gy: hexp("32879423AB1A0375895786C4BB46E9565FDE0B5344766740AF268ADB32322E5C"),
             n: hexp("400000000000000000000000000000000FD8CDDFC87B6635C115AF556C360C67"),
-            h: 1,
+            h: 4,
         }
     }
 
@@ -522,6 +525,59 @@ mod tests {
                 curve.is_on_curve(&curve.generator()),
                 "generator off curve for {}",
                 curve.name,
+            );
+        }
+    }
+
+    /// Every curve's declared group order `n · h` lies in the Hasse
+    /// interval `|n·h − (p + 1)| ≤ 2√p`.  Necessary only, but it is the
+    /// check that sees a wrong cofactor: the generator checks above pass
+    /// whatever `h` says.
+    #[test]
+    fn declared_group_orders_satisfy_hasse() {
+        let curves = [
+            CurveParams::brainpool_p192r1(),
+            CurveParams::brainpool_p224r1(),
+            CurveParams::brainpool_p256r1(),
+            CurveParams::brainpool_p320r1(),
+            CurveParams::brainpool_p384r1(),
+            CurveParams::brainpool_p512r1(),
+            CurveParams::frp256v1(),
+            CurveParams::secp112r1(),
+            CurveParams::secp112r2(),
+            CurveParams::secp128r1(),
+            CurveParams::secp128r2(),
+            CurveParams::secp160k1(),
+            CurveParams::secp160r1(),
+            CurveParams::secp160r2(),
+            CurveParams::p192(),
+            CurveParams::p224(),
+            CurveParams::p256(),
+            CurveParams::p384(),
+            CurveParams::p521(),
+            CurveParams::secp192k1(),
+            CurveParams::secp224k1(),
+            CurveParams::secp256k1(),
+            CurveParams::sm2(),
+            CurveParams::gost_cryptopro_a(),
+            CurveParams::gost_cryptopro_b(),
+            CurveParams::gost_cryptopro_c(),
+            CurveParams::gost_tc26_512_a(),
+            CurveParams::gost_tc26_512_b(),
+            CurveParams::gost_tc26_256_a(),
+        ];
+        for curve in &curves {
+            let order = &curve.n * BigUint::from(curve.h);
+            let center = &curve.p + 1u32;
+            let diff = if order >= center {
+                &order - &center
+            } else {
+                &center - &order
+            };
+            assert!(
+                &diff * &diff <= &curve.p << 2usize,
+                "declared order n·h of {} is outside the Hasse interval",
+                curve.name
             );
         }
     }
