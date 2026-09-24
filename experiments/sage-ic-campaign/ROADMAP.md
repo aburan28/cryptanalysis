@@ -35,6 +35,7 @@ solver cost, including packing, transfers, construction and verification.
 | 22 | `binary_batch_ntl.pyx:_construct_standard_point` | Initialize the C-level parent and affine coordinates for verified standard finite-field outputs | **PASS_LOCAL** within the public-addition patch: GF(101) and unsupported binary controls improved 2.045x and 1.482x; the Python-only prototype failed parent identity. Keep the constructor coupled to `ell_point.py`'s guarded call site. |
 | 23 | `ecc2k130/{codegen,runner/codegen}/curves.py:Curve.mul` | Use a width-4 signed window for ONB scalar multiplication of 32 bits or more | **PASS_LOCAL**: all 16 frozen primary/confirmation cells were exact; 32–131-bit complete scalar calls improved 1.132–1.367x and 16-bit controls stayed within 1%. Both real copies are changed, with tests and receipts in `onb-scalar-window-20260924/`. A full IC total remains unmeasured. |
 | 24 | `ecc2k130/{codegen,runner/codegen}/curves.py:Curve.mul` | Recode large Koblitz scalars in the Frobenius endomorphism ring | **PASS_LOCAL over row 23**: exact tau identity and exhaustive small-field checks; all twelve 32–131-bit primary/confirmation cells improved 1.487–1.848x warm and at least 1.383x first-call. The tracked runner `AuditField` is included. Source and receipts: `onb-tau-adic-20260924/`. Charge complete IC phases before a DLP claim. |
+| 25 | `ecc2k130/{codegen,runner/codegen}/curves.py:CurvePb.mul` | Apply exact Koblitz Frobenius recoding to polynomial-basis curves | **PASS_LOCAL**: exhaustive small-field and 20 frozen paired cells. For 8–64-bit scalars, complete calls improved 1.381–2.028x primary and 1.618–1.976x confirmation; first calls improved too. Both real code copies changed. Source and receipts: `pb-tau-adic-20260924/`. |
 
 The executable degree-131 IC reference in `ecc2k130/codegen/indexcalc_e2e.py`
 currently performs most field and curve work in its own Python ONB classes and
@@ -66,3 +67,5 @@ curve copies. Scalar-call measurements are paired and verified, but should
 not be substituted for a complete IC run's charged phase total.
 `onb-tau-adic-20260924/` replaces its large-scalar path with exact
 Frobenius recoding; the signed-window result remains as the paired parent.
+`pb-tau-adic-20260924/` applies the same verified curve relation to the
+polynomial-basis path used by the runner when a type-II ONB is unavailable.

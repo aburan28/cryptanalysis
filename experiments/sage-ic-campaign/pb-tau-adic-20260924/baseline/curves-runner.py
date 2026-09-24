@@ -419,34 +419,13 @@ class CurvePb:
         return (x3, y3)
 
     def mul(self, p, k):
-        if p is None or k == 0:
-            return None
-        if k < 0:
-            return self.neg(self.mul(p, -k))
-        if k.bit_length() < 8:
-            r = None
-            b = p
-            while k:
-                if k & 1:
-                    r = self.add(r, b)
-                b = self.dbl(b)
-                k >>= 1
-            return r
-        # This polynomial-basis model has the same Koblitz Frobenius
-        # relation tau^2 + tau + 2 = 0 as the ONB curve above.
-        digits = []
-        r0, r1 = k, 0
-        while r0 or r1:
-            digit = 2 - ((r0 - 2*r1) & 3) if r0 & 1 else 0
-            even = r0 - digit
-            digits.append(digit)
-            r0, r1 = r1 - even//2, -even//2
-        negative = self.neg(p)
         r = None
-        for digit in reversed(digits):
-            r = self.frob(r)
-            if digit:
-                r = self.add(r, p if digit > 0 else negative)
+        b = p
+        while k:
+            if k & 1:
+                r = self.add(r, b)
+            b = self.dbl(b)
+            k >>= 1
         return r
 
     def frob(self, p, j=1):
