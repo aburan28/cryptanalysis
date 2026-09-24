@@ -38,17 +38,13 @@ def combinationsUpTo(n, w):
     return out
 
 
-def factorBase(onb, curve, weight, bulkHalfTrace=False):
+def factorBase(onb, curve, weight):
     """{P : HW(x(P)) <= weight}, and its Frobenius orbits.
 
     Orbits are what the relation matrix is indexed by, so their count is the
     number of relations a run needs -- the m-fold saving the Koblitz structure
     buys."""
     m = onb.m
-    if bulkHalfTrace:
-        if not isinstance(curve, curves.CurvePb):
-            raise ValueError('bulk half-trace requires a polynomial-basis curve')
-        curve.prepareHalfTrace()
     pts = {}
     for sup in combinationsUpTo(m, weight):
         c = 0
@@ -150,7 +146,7 @@ def liftAndCheck(onb, curve, coords, target):
 
 
 def runTrials(m, points, weight, trials, seed, leaf, verbose, maxConflicts=0, timeout=0,
-              basis='onb', bulkHalfTrace=False):
+              basis='onb'):
     # Recovering y from x solves z^2 + z = c by half-trace, which is only valid
     # for odd m; on even m curves.pointFromX asserts deep inside instead of
     # saying why, so refuse here.
@@ -165,7 +161,7 @@ def runTrials(m, points, weight, trials, seed, leaf, verbose, maxConflicts=0, ti
         onb = curves.NormalView(m)
         curve = curves.CurvePb(onb.pb)
     rng = random.Random(seed)
-    base, orbits = factorBase(onb, curve, weight, bulkHalfTrace)
+    base, orbits = factorBase(onb, curve, weight)
     if verbose:
         print('m=%d  factor base %d points in %d Frobenius orbits '
               '(relations a full run would need: %d)'
@@ -251,8 +247,6 @@ def main():
     ap.add_argument('--basis', choices=['onb', 'pb'], default='onb',
                     help='onb: type-II optimal normal basis (m in 3,5,9,11,23,29,...); '
                          'pb: polynomial basis with the weight taken in a normal basis, any odd m')
-    ap.add_argument('--bulk-half-trace', action='store_true',
-                    help='prepare polynomial-basis half trace before factor-base point recovery')
     ap.add_argument('--max-conflicts', type=int, default=0,
                     help='solver conflict budget; 0 = run to completion')
     ap.add_argument('--timeout', type=float, default=0,
@@ -261,7 +255,7 @@ def main():
     args = ap.parse_args()
     r = runTrials(args.m, args.points, args.weight, args.trials, args.seed,
                   args.leaf, not args.quiet, args.max_conflicts, args.timeout,
-                  args.basis, args.bulk_half_trace)
+                  args.basis)
     print('m=%d basis=%s points=%d weight=%d: solved %d, spurious %d, unsat %d, budget %d, '
           'median %.2fs, gates %d, orbits %d'
           % (r['m'], r['basis'], r['points'], r['weight'], r['solved'], r['spurious'],

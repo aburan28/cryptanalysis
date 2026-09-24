@@ -382,7 +382,6 @@ class CurvePb:
     def __init__(self, pb):
         self.f = pb
         self._traceMask = None
-        self._halfTraceImages = None
 
     def onCurve(self, p):
         if p is None:
@@ -460,25 +459,12 @@ class CurvePb:
         return (x, y)
 
     def halfTrace(self, a):
-        if self._halfTraceImages is not None and not a >> self.f.m:
-            result = 0
-            while a:
-                bit = a & -a
-                result ^= self._halfTraceImages[bit.bit_length() - 1]
-                a ^= bit
-            return result
         acc = a
         t = a
         for _ in range((self.f.m - 1) // 2):
             t = self.f.sqr(self.f.sqr(t))
             acc ^= t
         return acc
-
-    def prepareHalfTrace(self):
-        """Build the linear half-trace map for a declared bulk workload."""
-        if self._halfTraceImages is None:
-            self._halfTraceImages = tuple(self.halfTrace(1 << i)
-                                          for i in range(self.f.m))
 
     def trace(self, a):
         if not a >> self.f.m:
