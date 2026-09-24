@@ -96,13 +96,6 @@ class Onb:
 
     def mul(self, a, b):
         if not (a | b) & ~self.allOnes:
-            if b.bit_count() <= 12:
-                r = 0
-                while b:
-                    bit = b & -b
-                    r ^= self.rot(a, bit.bit_length() - 1)
-                    b ^= bit
-                return self.normalize(r)
             basis = (a, self.rot(a, 1), self.rot(a, 2), self.rot(a, 3))
             window = [0] * 16
             for mask in range(1, 16):
