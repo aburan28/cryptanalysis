@@ -77,7 +77,7 @@ class Onb:
     def fromCoords(self, a):
         """a is an m-bit int, bit (i-1) = coefficient of gamma_i."""
         bits = a & ((1 << self.m) - 1)
-        if self.m > 12 and _bitCount(bits) > 12:
+        if bits.bit_count() > 12:
             raw = bits.to_bytes((self.m + 7) // 8, 'little')
             mirrored = int.from_bytes(raw.translate(_reverseBytes), 'big') >> (-self.m % 8)
             return (bits << 1) | (mirrored << (self.m + 1))

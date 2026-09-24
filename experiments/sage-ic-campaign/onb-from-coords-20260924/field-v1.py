@@ -43,18 +43,6 @@ def popcount(x):
     return bin(x).count('1')
 
 
-_bitCount = getattr(int, 'bit_count', popcount)
-
-
-def reverseByte(x):
-    x = ((x & 0x55) << 1) | ((x & 0xaa) >> 1)
-    x = ((x & 0x33) << 2) | ((x & 0xcc) >> 2)
-    return ((x & 0x0f) << 4) | ((x & 0xf0) >> 4)
-
-
-_reverseBytes = bytes(reverseByte(i) for i in range(256))
-
-
 class Onb:
     """GF(2^m) as symmetric vectors mod the all-ones vector, n = 2m+1."""
 
@@ -76,12 +64,8 @@ class Onb:
 
     def fromCoords(self, a):
         """a is an m-bit int, bit (i-1) = coefficient of gamma_i."""
-        bits = a & ((1 << self.m) - 1)
-        if self.m > 12 and _bitCount(bits) > 12:
-            raw = bits.to_bytes((self.m + 7) // 8, 'little')
-            mirrored = int.from_bytes(raw.translate(_reverseBytes), 'big') >> (-self.m % 8)
-            return (bits << 1) | (mirrored << (self.m + 1))
         u = 0
+        bits = a & ((1 << self.m) - 1)
         while bits:
             bit = bits & -bits
             i = bit.bit_length()
@@ -111,7 +95,7 @@ class Onb:
 
     def mul(self, a, b):
         if not (a | b) & ~self.allOnes:
-            if self.m <= 9 or _bitCount(b) <= 12:
+            if b.bit_count() <= 12:
                 r = 0
                 while b:
                     bit = b & -b
