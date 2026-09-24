@@ -9,8 +9,11 @@
 //!
 //! - `precompute` — probes and oracle differences for the database;
 //! - `descent` — mean per target, database paid;
-//! - `rho` — mean walk steps per target, unfolded; the `√|Aut|`-folded
-//!   expectation is printed beside it.
+//! - `rho` — mean group operations per target (walk steps plus seeding
+//!   the walks), unfolded; the `√|Aut|`-folded step expectation plus the
+//!   same seeding is printed beside it.  Rho's jump table is shared by the
+//!   targets like the database is, and enters the amortised and whole
+//!   ratios the same way.
 //!
 //! The three ratios are the binary `vs_rho` block's timing classes, as
 //! `rho / IC` (above 1 means index calculus spent less): **charged**
@@ -75,15 +78,18 @@ fn main() {
             let points: Vec<_> = ts.iter().map(|&(_, q)| q).collect();
             let rep = run_known_answer(&inst.curve, &points, &OrbitIcOptions::default());
             let t = ts.len() as f64;
-            let (pre, des, rho) = (
+            let (pre, des, rho, rho_pre) = (
                 rep.precompute_ops() as f64,
                 rep.mean_descent_ops(),
-                rep.mean_rho_steps(),
+                rep.mean_rho_ops(),
+                rep.rho_precompute_ops as f64,
             );
+            // The folded walk's expected steps, plus the same setup.
+            let setup = rep.rhos.iter().map(|r| r.setup_ops).sum::<u64>() as f64 / t;
             let folded = rep
                 .rhos
                 .first()
-                .map_or(f64::NAN, |r| r.expected_steps_folded);
+                .map_or(f64::NAN, |r| r.expected_steps_folded + setup);
             let ic_s = rep.logs.seconds + rep.descents.iter().map(|d| d.seconds).sum::<f64>();
             let rho_sec: f64 = rep.rhos.iter().map(|r| r.seconds).sum();
             println!(
@@ -98,8 +104,8 @@ fn main() {
                 rep.rhos_verified(),
                 ts.len(),
                 rho / des,
-                rho / (pre / t + des),
-                (rho * t) / (pre + des * t),
+                (rho_pre / t + rho) / (pre / t + des),
+                (rho_pre + rho * t) / (pre + des * t),
             );
             let rf = inst.curve.r as f64;
             pre_s.push((rf, pre));

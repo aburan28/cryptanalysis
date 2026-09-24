@@ -239,10 +239,11 @@ fn display_prime(report: &Value) {
         return;
     }
     println!(
-        "Rho (unfolded, {} batched walks): {} verified; mean {:.0} steps (expected {:.0}; folded expectation {:.0})",
+        "Rho (unfolded, {} batched walks): {} verified; mean {:.0} steps + {:.0} setup (expected {:.0} steps; folded expectation {:.0})",
         rho["walks"],
         rho["verified"],
         f(&rho["mean_steps"]),
+        f(&rho["mean_setup_ops"]),
         f(&rho["expected_steps"]),
         f(&rho["expected_steps_folded"])
     );

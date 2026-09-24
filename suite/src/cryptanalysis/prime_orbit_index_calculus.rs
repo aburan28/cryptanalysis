@@ -54,9 +54,11 @@
 //!    `R = [a]G + [b]Q` over the certified orbits, and checked as
 //!    `[d]G == Q`.
 //! 7. **Baseline.**  [`rho_baseline`] is a distinguished-point Pollard rho
-//!    in the same arithmetic, many walks sharing one inversion per step.
-//!    It does not fold by `Aut`; the report carries the `√w` folded
-//!    expectation beside it.
+//!    in the same arithmetic, walks sized to the instance sharing one
+//!    inversion per step, over a jump table of multiples of `G` that every
+//!    target shares, as they share the logarithm database.  It does not
+//!    fold by `Aut`; the report carries the `√w` folded expectation
+//!    beside it.
 //!
 //! # Costs, and what they mean
 //!
@@ -1375,6 +1377,11 @@ pub struct RhoReport {
     pub dp_bits: u32,
     /// Walk steps (group additions).
     pub steps: u64,
+    /// Group operations seeding the walks (and reseeding one after a
+    /// degenerate collision), charged by [`scalar_mul_ops`].  The shared
+    /// jump table is charged once, in
+    /// [`OrbitIcReport::rho_precompute_ops`].
+    pub setup_ops: u64,
     pub distinguished_points: u64,
     pub recovered: Option<u64>,
     pub verified: bool,
@@ -1395,6 +1402,9 @@ pub struct OrbitIcReport {
     pub descents: Vec<DescentReport>,
     /// One per target, in order; empty when rho was skipped.
     pub rhos: Vec<RhoReport>,
+    /// Group operations building rho's shared jump table, the rho side's
+    /// target-independent precomputation.
+    pub rho_precompute_ops: u64,
 }
 
 impl OrbitIcReport {
@@ -1409,8 +1419,10 @@ impl OrbitIcReport {
     pub fn descent_ops_total(&self) -> u64 {
         self.descents.iter().map(Self::descent_ops).sum()
     }
-    pub fn rho_steps_total(&self) -> u64 {
-        self.rhos.iter().map(|r| r.steps).sum()
+    /// Rho group operations over every target, walk steps plus seeding;
+    /// the shared jump table is [`Self::rho_precompute_ops`].
+    pub fn rho_ops_total(&self) -> u64 {
+        self.rhos.iter().map(|r| r.steps + r.setup_ops).sum()
     }
     pub fn descents_verified(&self) -> usize {
         self.descents.iter().filter(|d| d.verified).count()
@@ -1422,10 +1434,20 @@ impl OrbitIcReport {
     pub fn mean_descent_ops(&self) -> f64 {
         self.descent_ops_total() as f64 / self.descents.len().max(1) as f64
     }
-    /// Mean rho walk steps per target.
-    pub fn mean_rho_steps(&self) -> f64 {
-        self.rho_steps_total() as f64 / self.rhos.len().max(1) as f64
+    /// Mean rho group operations per target, walk steps plus seeding.
+    pub fn mean_rho_ops(&self) -> f64 {
+        self.rho_ops_total() as f64 / self.rhos.len().max(1) as f64
     }
+}
+
+/// What one scalar multiplication is charged, in group operations: the
+/// `⌈1.5 · bits(r)⌉` doublings and additions of double-and-add.  Setup
+/// multiplications are charged at this rate on both sides of the
+/// comparison; the `[d]G == Q` and `[x]G == P` certification checks are
+/// charged to neither.
+pub fn scalar_mul_ops(r: u64) -> u64 {
+    let bits = u64::from(64 - r.leading_zeros());
+    (3 * bits).div_ceil(2)
 }
 
 /// Probe walk `R_t = [a_t]G + [b]Q` with `a_{t+1} = a_t + s`: one group
@@ -1472,7 +1494,7 @@ pub fn solve_logs(
     let want = ((fb.len() as f64) * opts.relations_per_orbit).ceil() as usize;
     let mut rng = StdRng::seed_from_u64(opts.seed ^ 0x6c6f_6773_5f70_7262);
     let mut walk = ProbeWalk::new(c, &mut rng, FastPoint::INFINITY);
-    rep.probe_ops += 2 * 64;
+    rep.probe_ops += 2 * scalar_mul_ops(c.r) + 1;
     let mut rows: Vec<Relation> = Vec::with_capacity(want);
     let mut sweep = Sweep::default();
     while rows.len() < want && rep.oracle_ops < opts.max_ops {
@@ -1523,7 +1545,7 @@ pub fn descend(
     let b = rng.gen_range(1..r);
     let b_inv = inv_r(b, r).expect("r is prime");
     let mut walk = ProbeWalk::new(c, &mut rng, c.fast.scalar_mul(q, b));
-    rep.probe_ops += 3 * 64;
+    rep.probe_ops += 3 * scalar_mul_ops(r) + 1;
     let mut sweep = Sweep::default();
     while rep.oracle_ops < opts.max_descent_ops && !fb.is_empty() {
         rep.trials += 1;
@@ -1556,20 +1578,59 @@ fn distinguished(x: u64, dp_bits: u32) -> bool {
     dp_bits == 0 || (x.wrapping_mul(0xC2B2_AE3D_27D4_EB4F) >> (64 - dp_bits)) == 0
 }
 
-/// Distinguished-point Pollard rho for `Q = [d]G`: `walks` r-adding walks
-/// over 32 precomputed `[u]G + [v]Q`, advanced together sharing one
-/// inversion per step, reporting points whose hash has `dp_bits` leading
-/// zeros.  A collision between two reports solves for `d`, checked as
-/// `[d]G == Q`.  The walk is not folded by `Aut`.
-pub fn rho_baseline(c: &OrbitCurve, q: FastPoint, seed: u64, max_steps: u64) -> RhoReport {
+/// The r-adding walk's jump table: 32 multiples `[c_j]G`.  It does not
+/// depend on the target, so one table serves every target, as one
+/// logarithm database does on the index-calculus side, and its cost is
+/// charged once.
+pub struct RhoJumps {
+    jumps: Vec<(FastPoint, u64)>,
+    /// Group operations building the table.
+    pub ops: u64,
+}
+
+impl RhoJumps {
+    pub fn new(c: &OrbitCurve, seed: u64) -> Self {
+        let mut rng = StdRng::seed_from_u64(seed ^ 0x6a75_6d70_5f74_6162);
+        let jumps: Vec<(FastPoint, u64)> = (0..32)
+            .map(|_| {
+                let u = rng.gen_range(1..c.r);
+                (c.mul_g(u), u)
+            })
+            .collect();
+        let ops = jumps.len() as u64 * scalar_mul_ops(c.r);
+        Self { jumps, ops }
+    }
+}
+
+/// Distinguished-point Pollard rho for `Q = [d]G` (van Oorschot–Wiener).
+///
+/// Each walk starts at `[a]G + [b]Q` with its own random `b` and steps by
+/// the shared `[c_j]G`, so `b` is constant along it and a collision of two
+/// walks solves for `d`.  The walks advance together sharing one inversion
+/// per step; a walk reports each point whose hash has `dp_bits` leading
+/// zeros and walks on, and two reports of one abscissa solve for `d`,
+/// checked as `[d]G == Q`.  A walk is reseeded only after a degenerate
+/// collision (with itself) or `32 · 2^dp_bits` steps without a report.
+///
+/// The walk count is sized to the instance — `≈ √r / 1024`, 4 to 32 — so
+/// that seeding the walks stays near a tenth of the expected steps rather
+/// than swamping them on a small curve, and `dp_bits` keeps the detection
+/// lag, `walks · 2^dp_bits`, near `√r / 32`.  The walk is not folded by
+/// `Aut`.
+pub fn rho_baseline(
+    c: &OrbitCurve,
+    table: &RhoJumps,
+    q: FastPoint,
+    seed: u64,
+    max_steps: u64,
+) -> RhoReport {
     let begin = Instant::now();
     let r = c.r;
     let f = c.fast.f;
     let rf = r as f64;
     let expected = (std::f64::consts::PI * rf / 2.0).sqrt();
-    let walks = 32usize;
-    // Keep the distinguished-point overhead, walks · 2^dp, near 1/8 of √r.
-    let dp_bits = ((expected / (walks as f64 * 8.0)).max(1.0).log2().floor() as u32).min(24);
+    let walks = ((expected / 1024.0).round() as usize).clamp(4, 32);
+    let dp_bits = ((expected / (walks as f64 * 32.0)).max(1.0).log2().floor() as u32).min(24);
     let mut rep = RhoReport {
         walks,
         dp_bits,
@@ -1577,18 +1638,18 @@ pub fn rho_baseline(c: &OrbitCurve, q: FastPoint, seed: u64, max_steps: u64) -> 
         expected_steps_folded: expected / (c.automorphism_order() as f64).sqrt(),
         ..RhoReport::default()
     };
+    // [a]G + [b]Q costs two scalar multiplications and an addition.
+    let seed_ops = 2 * scalar_mul_ops(r) + 1;
     let mut rng = StdRng::seed_from_u64(seed ^ 0x7268_6f5f_6261_7365);
-    let jumps: Vec<(FastPoint, u64, u64)> = (0..32)
-        .map(|_| {
-            let (u, v) = (rng.gen_range(0..r), rng.gen_range(0..r));
-            (c.fast.add(c.mul_g(u), c.fast.scalar_mul(q, v)), u, v)
-        })
-        .collect();
+    let jumps = &table.jumps;
     let fresh = |rng: &mut StdRng| {
-        let (a, b) = (rng.gen_range(0..r), rng.gen_range(0..r));
+        let (a, b) = (rng.gen_range(0..r), rng.gen_range(1..r));
         (c.fast.add(c.mul_g(a), c.fast.scalar_mul(q, b)), a, b)
     };
     let mut state: Vec<(FastPoint, u64, u64)> = (0..walks).map(|_| fresh(&mut rng)).collect();
+    rep.setup_ops = walks as u64 * seed_ops;
+    let mut since_report = vec![0u64; walks];
+    let stall = 32u64 << dp_bits;
     let mut seen: FxMap<u64, (u64, u64, u64)> = FxMap::default();
     let max_steps = if max_steps == 0 {
         (64.0 * expected) as u64 + 1_000_000
@@ -1609,7 +1670,7 @@ pub fn rho_baseline(c: &OrbitCurve, q: FastPoint, seed: u64, max_steps: u64) -> 
         f.batch_inv(&mut den, &mut scratch);
         for k in 0..walks {
             let (pt, a, b) = state[k];
-            let (jp, u, v) = jumps[partition(pt.x)];
+            let (jp, u) = jumps[partition(pt.x)];
             let next = if pt.infinity || jp.infinity || pt.x == jp.x {
                 c.fast.add(pt, jp)
             } else {
@@ -1621,32 +1682,48 @@ pub fn rho_baseline(c: &OrbitCurve, q: FastPoint, seed: u64, max_steps: u64) -> 
                     infinity: false,
                 }
             };
-            state[k] = (next, add_r(a, u, r), add_r(b, v, r));
+            state[k] = (next, add_r(a, u, r), b);
             rep.steps += 1;
+            since_report[k] += 1;
             let (pt, a, b) = state[k];
-            if pt.infinity || !distinguished(pt.x, dp_bits) {
-                continue;
-            }
-            rep.distinguished_points += 1;
-            if let Some(&(a2, b2, y2)) = seen.get(&pt.x) {
-                // Same abscissa: P = ±P', so a + bd ≡ ±(a2 + b2 d).
-                let (num, den_b) = if pt.y == y2 {
-                    (sub_r(a2, a, r), sub_r(b, b2, r))
-                } else {
-                    (r - add_r(a, a2, r) % r, add_r(b, b2, r))
-                };
-                if let Some(inv) = inv_r(den_b, r) {
-                    let d = mul_r(num % r, inv, r);
-                    if c.mul_g(d) == q {
-                        rep.recovered = Some(d);
-                        rep.verified = true;
-                        break 'walk;
+            let reseed = if pt.infinity || since_report[k] > stall {
+                true
+            } else if !distinguished(pt.x, dp_bits) {
+                false
+            } else {
+                rep.distinguished_points += 1;
+                since_report[k] = 0;
+                match seen.get(&pt.x) {
+                    Some(&(a2, b2, y2)) => {
+                        // Same abscissa: P = ±P', so a + bd ≡ ±(a2 + b2 d).
+                        let (num, den_b) = if pt.y == y2 {
+                            (sub_r(a2, a, r), sub_r(b, b2, r))
+                        } else {
+                            (r - add_r(a, a2, r) % r, add_r(b, b2, r))
+                        };
+                        if let Some(inv) = inv_r(den_b, r) {
+                            let d = mul_r(num % r, inv, r);
+                            if c.mul_g(d) == q {
+                                rep.recovered = Some(d);
+                                rep.verified = true;
+                                break 'walk;
+                            }
+                        }
+                        // Degenerate (the walk met itself, so b = b2): it
+                        // is on a cycle it cannot leave, so it is spent.
+                        true
+                    }
+                    None => {
+                        seen.insert(pt.x, (a, b, pt.y));
+                        false
                     }
                 }
-            } else {
-                seen.insert(pt.x, (a, b, pt.y));
+            };
+            if reseed {
+                state[k] = fresh(&mut rng);
+                since_report[k] = 0;
+                rep.setup_ops += seed_ops;
             }
-            state[k] = fresh(&mut rng);
         }
     }
     rep.seconds = begin.elapsed().as_secs_f64();
@@ -1684,20 +1761,23 @@ pub fn run_known_answer(
         .enumerate()
         .map(|(i, &q)| descend(c, &solved, &logs, q, &per_target(i)))
         .collect();
-    let rhos = if opts.skip_rho {
-        Vec::new()
+    let (rhos, rho_precompute_ops) = if opts.skip_rho {
+        (Vec::new(), 0)
     } else {
-        targets
+        let table = RhoJumps::new(c, opts.seed);
+        let rhos = targets
             .iter()
             .enumerate()
-            .map(|(i, &q)| rho_baseline(c, q, per_target(i).seed, opts.rho_max_steps))
-            .collect()
+            .map(|(i, &q)| rho_baseline(c, &table, q, per_target(i).seed, opts.rho_max_steps))
+            .collect();
+        (rhos, table.ops)
     };
     OrbitIcReport {
         automorphism_order: c.automorphism_order(),
         logs: logs_report,
         descents,
         rhos,
+        rho_precompute_ops,
     }
 }
 
@@ -1988,7 +2068,7 @@ mod tests {
         let b = run_known_answer(&again.curve, &points, &OrbitIcOptions::default());
         assert_eq!(a.precompute_ops(), b.precompute_ops());
         assert_eq!(a.descent_ops_total(), b.descent_ops_total());
-        assert_eq!(a.rho_steps_total(), b.rho_steps_total());
+        assert_eq!(a.rho_ops_total(), b.rho_ops_total());
     }
 
     #[test]

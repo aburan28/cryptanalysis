@@ -251,8 +251,16 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
     let t = targets.len() as f64;
     let pre = rep.precompute_ops() as f64;
     let des = rep.mean_descent_ops();
-    let rho = rep.mean_rho_steps();
-    let folded = rep.rhos.first().map(|r| r.expected_steps_folded);
+    let rho = rep.mean_rho_ops();
+    let rho_pre = rep.rho_precompute_ops as f64;
+    let n_rho = rep.rhos.len().max(1) as f64;
+    let mean_steps = rep.rhos.iter().map(|r| r.steps).sum::<u64>() as f64 / n_rho;
+    let mean_setup = rep.rhos.iter().map(|r| r.setup_ops).sum::<u64>() as f64 / n_rho;
+    // The folded walk would pay the same setup.
+    let folded = rep
+        .rhos
+        .first()
+        .map(|r| r.expected_steps_folded + mean_setup);
     let logs = &rep.logs;
     let per_descent: Vec<Value> = rep
         .descents
@@ -270,7 +278,8 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
         .zip(targets)
         .map(|(r, &(k, _))| {
             json!({"expected": k.to_string(), "recovered": r.recovered.map(|v| v.to_string()),
-                   "verified": r.verified, "steps": r.steps, "seconds": r.seconds})
+                   "verified": r.verified, "steps": r.steps, "setup_ops": r.setup_ops,
+                   "seconds": r.seconds})
         })
         .collect();
     let rho_run = !rep.rhos.is_empty();
@@ -307,25 +316,30 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
             "walks": rep.rhos[0].walks,
             "dp_bits": rep.rhos[0].dp_bits,
             "verified": rep.rhos_verified(),
-            "mean_steps": rho,
+            "precompute_ops": rep.rho_precompute_ops,
+            "mean_steps": mean_steps,
+            "mean_setup_ops": mean_setup,
+            "mean_ops": rho,
             "expected_steps": rep.rhos[0].expected_steps,
-            "expected_steps_folded": folded,
+            "expected_steps_folded": rep.rhos[0].expected_steps_folded,
             "per_target": per_rho,
         }) } else { Value::Null },
         "vs_rho": if rho_run { json!({
-            "unit": "group operations: affine additions, each sharing a batched inversion",
+            "unit": "group operations: affine additions, each sharing a batched inversion; setup scalar multiplications charged 1.5·bits(r) on both sides, certification checks on neither",
             "targets": targets.len(),
-            "charged": {"ic_ops_per_target": des, "rho_steps_per_target": rho,
-                        "ratio": ratio(rho, des), "ratio_vs_folded_expectation": folded.and_then(|f| ratio(f, des))},
-            "amortised": {"ic_ops_per_target": pre / t + des, "rho_steps_per_target": rho,
-                          "ratio": ratio(rho, pre / t + des)},
-            "whole_process": {"ic_ops": pre + des * t, "rho_steps": rho * t,
-                              "ratio": ratio(rho * t, pre + des * t)},
+            "charged": {"ic_ops_per_target": des, "rho_ops_per_target": rho,
+                        "ratio": ratio(rho, des),
+                        "folded_rho_ops_per_target_expected": folded,
+                        "ratio_vs_folded_expectation": folded.and_then(|f| ratio(f, des))},
+            "amortised": {"ic_ops_per_target": pre / t + des, "rho_ops_per_target": rho_pre / t + rho,
+                          "ratio": ratio(rho_pre / t + rho, pre / t + des)},
+            "whole_process": {"ic_ops": pre + des * t, "rho_ops": rho_pre + rho * t,
+                              "ratio": ratio(rho_pre + rho * t, pre + des * t)},
             "verdict": {
                 "all_verified": rep.descents_verified() == targets.len() && rep.rhos_verified() == targets.len(),
                 "charged_ic_cheaper": des < rho,
                 "charged_ic_cheaper_than_folded_rho": folded.is_some_and(|f| des < f),
-                "whole_process_ic_cheaper": pre + des * t < rho * t,
+                "whole_process_ic_cheaper": pre + des * t < rho_pre + rho * t,
             },
         }) } else { Value::Null },
     })
