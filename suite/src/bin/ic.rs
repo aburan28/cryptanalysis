@@ -266,6 +266,12 @@ fn display_prime(report: &Value) {
         f(&v["amortised"]["ratio"]),
         f(&v["whole_process"]["ratio"])
     );
+    let b = &v["whole_process_vs_batch_rho"];
+    println!(
+        "vs batch rho (Kuhn-Struik expectation, distinguished points shared by the targets): whole process {:.3}, {:.3} against the folded walk",
+        f(&b["ratio"]),
+        f(&b["ratio_folded"])
+    );
 }
 
 fn display(report: &Value) {

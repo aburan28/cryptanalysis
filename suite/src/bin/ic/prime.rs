@@ -357,11 +357,20 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
                           "ratio": ratio(rho_pre / t + rho, pre / t + des)},
             "whole_process": {"ic_ops": pre + des * t, "rho_ops": rho_pre + rho * t,
                               "ratio": ratio(rho_pre + rho * t, pre + des * t)},
+            "whole_process_vs_batch_rho": {
+                "model": "Kuhn-Struik expectation: the T targets solved in turn by one distinguished-point rho whose walks may finish on the trails of targets already solved, sqrt(pi n/2) * sum_{k<T} C(2k,k)/4^k steps on n = r classes (r/|Aut| folded), plus one walk's seeding a target and the jump table; analytic, with no detection lag",
+                "ic_ops": pre + des * t,
+                "rho_ops_expected": rep.batch_rho_expected_ops,
+                "rho_ops_expected_folded": rep.batch_rho_expected_ops_folded,
+                "ratio": ratio(rep.batch_rho_expected_ops, pre + des * t),
+                "ratio_folded": ratio(rep.batch_rho_expected_ops_folded, pre + des * t),
+            },
             "verdict": {
                 "all_verified": rep.descents_verified() == targets.len() && rep.rhos_verified() == targets.len(),
                 "charged_ic_cheaper": des < rho,
                 "charged_ic_cheaper_than_folded_rho": folded.is_some_and(|f| des < f),
                 "whole_process_ic_cheaper": pre + des * t < rho_pre + rho * t,
+                "whole_process_ic_cheaper_than_folded_batch_rho": pre + des * t < rep.batch_rho_expected_ops_folded,
             },
         }) } else { Value::Null },
     })
@@ -547,7 +556,7 @@ pub fn run(args: PrimeArgs, quiet: bool) -> Result<Value, String> {
     ));
     report["limitations"] = json!([
         "No imported target was used; the deployed curve's own discrete logarithm is never attempted.",
-        "With large primes and a base sized to the batch, the precomputation and the T descents each cost on the order of sqrt(T r/|Aut|) group operations: rho's square-root scaling, not better. The whole-process gain over rho is one database amortised over T targets, about sqrt(|Aut| T) against independent unfolded walks; a folded batch rho that shares distinguished points between targets (Kuhn-Struik) amortises the same way and is not the baseline here.",
+        "With large primes and a base sized to the batch, the precomputation and the T descents each cost on the order of sqrt(T r/|Aut|) group operations: rho's square-root scaling, not better, since the pipeline uses only group operations and abscissa lookups and so is a generic algorithm. The whole-process gain over rho is one database amortised over T targets, about sqrt(|Aut| T) against independent unfolded walks; a rho sharing distinguished points between targets (Kuhn-Struik) amortises the same way, and whole_process_vs_batch_rho compares against its analytic expectation, folded and not.",
         "Without large primes (the control) the precomputation costs about r/|Aut| group operations, linear in the subgroup order.",
         "The rho baseline does not fold by the automorphism group; the folded expectation is analytic, and a charged comparison against it is reported separately.",
         "Operation counts compare implementations only to within the cost of one affine addition on each side; wall time is reported beside them.",

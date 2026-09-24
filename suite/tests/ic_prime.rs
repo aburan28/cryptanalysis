@@ -153,6 +153,12 @@ fn every_target_is_recovered_and_the_accounting_adds_up() {
     let whole = &v["vs_rho"]["whole_process"];
     let pre = logs["oracle_ops"].as_f64().unwrap() + logs["probe_ops"].as_f64().unwrap();
     assert!((whole["ic_ops"].as_f64().unwrap() - (pre + total as f64)).abs() < 1.0);
+    // The batch-rho opponent is charged against the same whole process.
+    let batch = &v["vs_rho"]["whole_process_vs_batch_rho"];
+    assert_eq!(batch["ic_ops"], whole["ic_ops"]);
+    let plain = batch["rho_ops_expected"].as_f64().unwrap();
+    let folded = batch["rho_ops_expected_folded"].as_f64().unwrap();
+    assert!(0.0 < folded && folded < plain, "{batch}");
 }
 
 #[test]

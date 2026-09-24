@@ -1488,6 +1488,11 @@ pub struct OrbitIcReport {
     /// Group operations building rho's shared jump table, the rho side's
     /// target-independent precomputation.
     pub rho_precompute_ops: u64,
+    /// The whole batch by a rho that shares distinguished points between
+    /// targets, expected: [`batch_rho_expected_ops`], unfolded.
+    pub batch_rho_expected_ops: f64,
+    /// The same, walked on `Aut`-orbits.
+    pub batch_rho_expected_ops_folded: f64,
 }
 
 impl OrbitIcReport {
@@ -1526,6 +1531,11 @@ impl OrbitIcReport {
     /// Mean rho group operations per target, walk steps plus seeding.
     pub fn mean_rho_ops(&self) -> f64 {
         self.rho_ops_total() as f64 / self.rhos.len().max(1) as f64
+    }
+    /// Group operations index calculus spent on the whole batch: the
+    /// database once, and every descent.
+    pub fn whole_process_ops(&self) -> u64 {
+        self.precompute_ops() + self.descent_ops_total()
     }
 }
 
@@ -2090,6 +2100,38 @@ pub fn rho_baseline(
     rep
 }
 
+/// Expected walk steps for a distinguished-point rho on `n` classes that
+/// solves `targets` logarithms in turn, each walk able to finish on the
+/// trail of a target already solved (Kuhn–Struik):
+/// `√(π n / 2) · Σ_{k < T} C(2k, k) / 4^k`, which is `√(π n / 2)` for one
+/// target and tends to `√(2 n T)`.
+pub fn batch_rho_expected_steps(n: f64, targets: usize) -> f64 {
+    let (mut term, mut sum) = (1.0f64, 0.0f64);
+    for k in 0..targets {
+        sum += term;
+        term *= (2 * k + 1) as f64 / (2 * k + 2) as f64;
+    }
+    (std::f64::consts::PI * n / 2.0).sqrt() * sum
+}
+
+/// The Kuhn–Struik expectation for a batch of `targets` targets, in group
+/// operations: [`batch_rho_expected_steps`] on `r` classes, or on `r / w`
+/// when `folded`, one walk's seeding a target and a 32-entry jump table.
+/// Analytic and generous to rho — no detection lag, and one walk a target —
+/// so it is the fair opponent for a whole batch where the per-target
+/// baseline is not: it amortises over the targets as the database does.
+pub fn batch_rho_expected_ops(c: &OrbitCurve, targets: usize, folded: bool) -> f64 {
+    let r = c.r as f64;
+    let n = if folded {
+        r / c.automorphism_order() as f64
+    } else {
+        r
+    };
+    let seed_ops = (2 * scalar_mul_ops(c.r) + 1) as f64;
+    let table_ops = (32 * scalar_mul_ops(c.r)) as f64;
+    batch_rho_expected_steps(n, targets) + targets as f64 * seed_ops + table_ops
+}
+
 /// The auto-sized orbit count: `⌈width · √r / w⌉`, at least 8.
 pub fn auto_orbits(c: &OrbitCurve, width: f64) -> usize {
     let w = c.automorphism_order() as f64;
@@ -2168,6 +2210,8 @@ pub fn run_known_answer(
         descents,
         rhos,
         rho_precompute_ops,
+        batch_rho_expected_ops: batch_rho_expected_ops(c, targets.len(), false),
+        batch_rho_expected_ops_folded: batch_rho_expected_ops(c, targets.len(), true),
     }
 }
 
@@ -2710,6 +2754,30 @@ mod tests {
             g_width > 35.0,
             "width-sized precompute grew {g_width:.1}-fold"
         );
+    }
+
+    #[test]
+    fn the_batch_rho_expectation_runs_from_one_walk_to_root_2nt() {
+        let n = 1e12;
+        let single = (std::f64::consts::PI * n / 2.0).sqrt();
+        assert!((batch_rho_expected_steps(n, 1) / single - 1.0).abs() < 1e-12);
+        // C(0,0) + C(2,1)/4 + C(4,2)/16 = 1.875.
+        assert!((batch_rho_expected_steps(n, 3) / single - 1.875).abs() < 1e-12);
+        for t in [100usize, 10_000] {
+            let asymptote = (2.0 * n * t as f64).sqrt();
+            let e = batch_rho_expected_steps(n, t) / asymptote;
+            assert!((e - 1.0).abs() < 0.01, "{t}: {e}");
+        }
+        let inst = instance(CurveKind::J0, 24, 1);
+        let c = &inst.curve;
+        let (plain, folded) = (
+            batch_rho_expected_ops(c, 64, false),
+            batch_rho_expected_ops(c, 64, true),
+        );
+        // Folding divides the steps by √6; the seeding and table stay.
+        let fixed = (64 * (2 * scalar_mul_ops(c.r) + 1) + 32 * scalar_mul_ops(c.r)) as f64;
+        let fold = (plain - fixed) / (folded - fixed);
+        assert!((fold - 6f64.sqrt()).abs() < 1e-9, "{fold}");
     }
 
     #[test]

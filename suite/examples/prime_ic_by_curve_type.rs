@@ -23,8 +23,11 @@
 //! The three ratios are the binary `vs_rho` block's timing classes, as
 //! `rho / IC` (above 1 means index calculus spent less): **charged**
 //! (descent alone), **amortised** (precompute spread over the `T`
-//! targets, plus descent) and **whole** (everything, once).  A second
-//! table fits `ops ∝ r^α` per series.
+//! targets, plus descent) and **whole** (everything, once).  **whole vs
+//! batch** puts the whole process against the Kuhn–Struik expectation for
+//! a folded rho whose walks share distinguished points across the targets,
+//! the generic algorithm that amortises over a batch as the database does.
+//! A second table fits `ops ∝ r^α` per series.
 //!
 //! ```bash
 //! cargo run --release --example prime_ic_by_curve_type
@@ -66,9 +69,9 @@ fn main() {
     let hi = args.get(1).copied().unwrap_or(24);
     let targets = args.get(2).copied().unwrap_or(16) as usize;
 
-    println!("| type | relations | \\|Aut\\| | bits | r | orbits (certified) | known LP | verified IC / rho | descent via LP | precompute | descent | rho | folded rho | charged | amortised | whole | IC s | rho s |");
+    println!("| type | relations | \\|Aut\\| | bits | r | orbits (certified) | known LP | verified IC / rho | descent via LP | precompute | descent | rho | folded rho | charged | amortised | whole | whole vs batch | IC s | rho s |");
     println!(
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
     );
     let mut fits: Vec<(String, f64, f64, f64)> = Vec::new();
     for kind in [CurveKind::Generic, CurveKind::J0, CurveKind::J1728] {
@@ -78,7 +81,7 @@ fn main() {
             for bits in (lo..=hi).step_by(4) {
                 let Ok(inst) = generate_instance(ScaledShape::of_kind(kind), bits, None, 1) else {
                     println!(
-                        "| {} | {mode} | | {bits} | no certified curve | | | | | | | | | | | | | |",
+                        "| {} | {mode} | | {bits} | no certified curve | | | | | | | | | | | | | | |",
                         kind.as_str()
                     );
                     continue;
@@ -106,7 +109,7 @@ fn main() {
                 let ic_s = rep.logs.seconds + rep.descents.iter().map(|d| d.seconds).sum::<f64>();
                 let rho_sec: f64 = rep.rhos.iter().map(|r| r.seconds).sum();
                 println!(
-                "| {} | {mode} | {} | {bits} | {} | {} ({}) | {} | {}/{} / {}/{} | {}/{} | {pre:.3e} | {des:.3e} | {rho:.3e} | {folded:.3e} | {:.2} | {:.3} | {:.4} | {ic_s:.3} | {rho_sec:.3} |",
+                "| {} | {mode} | {} | {bits} | {} | {} ({}) | {} | {}/{} / {}/{} | {}/{} | {pre:.3e} | {des:.3e} | {rho:.3e} | {folded:.3e} | {:.2} | {:.3} | {:.4} | {:.3} | {ic_s:.3} | {rho_sec:.3} |",
                 kind.as_str(),
                 rep.automorphism_order,
                 inst.curve.r,
@@ -122,6 +125,7 @@ fn main() {
                 rho / des,
                 (rho_pre / t + rho) / (pre / t + des),
                 (rho_pre + rho * t) / (pre + des * t),
+                rep.batch_rho_expected_ops_folded / (pre + des * t),
             );
                 let rf = inst.curve.r as f64;
                 pre_s.push((rf, pre));
