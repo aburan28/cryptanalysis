@@ -3,6 +3,7 @@
 //
 //   ksmall selftest DIR   field/step/start-point vectors -> selftest-out.bin
 //   ksmall run DIR        walk until the requested number of collisions
+//   ksmall microbench DIR dependent chains of each field operation
 //
 // In run mode the host keeps every distinguished point in a table keyed by
 // the smallest rotation of its normal-basis x, which names its class
@@ -118,6 +119,14 @@ static id<MTLLibrary> compile(id<MTLDevice> dev, NSString *dir)
     return lib;
 }
 
+static id<MTLBuffer> tablesBuffer(id<MTLDevice> dev, NSString *dir)
+{
+    NSData *t = readFile(dir, @"tables.bin");
+    id<MTLBuffer> b = [dev newBufferWithBytes:t.bytes length:t.length options:MTLResourceStorageModeShared];
+    need(b != nil, "tables buffer");
+    return b;
+}
+
 static int selftest(id<MTLDevice> dev, NSString *dir, NSDictionary *cfg)
 {
     id<MTLLibrary> lib = compile(dev, dir);
@@ -126,7 +135,8 @@ static int selftest(id<MTLDevice> dev, NSString *dir, NSDictionary *cfg)
     NSData *in = readFile(dir, @"selftest-in.bin"), *seeds = readFile(dir, @"selftest-seeds.bin");
     id<MTLBuffer> bin = [dev newBufferWithBytes:in.bytes length:in.length options:MTLResourceStorageModeShared];
     id<MTLBuffer> bseed = [dev newBufferWithBytes:seeds.bytes length:seeds.length options:MTLResourceStorageModeShared];
-    size_t outBytes = (size_t(cases) * 7 * nw + size_t(cases) * 3) * 4;
+    size_t outBytes = (size_t(cases) * 9 * nw + size_t(cases) * 3) * 4;
+    id<MTLBuffer> tables = tablesBuffer(dev, dir);
     id<MTLBuffer> bout = buffer(dev, outBytes);
     id<MTLCommandBuffer> cb = [[dev newCommandQueue] commandBuffer];
     id<MTLComputeCommandEncoder> e = [cb computeCommandEncoder];
@@ -135,6 +145,7 @@ static int selftest(id<MTLDevice> dev, NSString *dir, NSDictionary *cfg)
     [e setBuffer:bout offset:0 atIndex:1];
     [e setBuffer:bseed offset:0 atIndex:2];
     [e setBytes:&cases length:4 atIndex:3];
+    [e setBuffer:tables offset:0 atIndex:4];
     [e dispatchThreads:MTLSizeMake(cases, 1, 1) threadsPerThreadgroup:MTLSizeMake(std::min<uint32_t>(cases, 64), 1, 1)];
     [e endEncoding];
     finish(cb);
@@ -165,6 +176,7 @@ static int run(id<MTLDevice> dev, NSString *dir, NSDictionary *cfg)
     id<MTLBuffer> seeds = buffer(dev, size_t(lanes) * 8), trail = buffer(dev, size_t(lanes) * 4);
     id<MTLBuffer> counts = buffer(dev, size_t(lanes) * 8 * 4), dps = buffer(dev, size_t(dpCap) * sizeof(DpRec));
     id<MTLBuffer> dpCount = buffer(dev, 4), work = buffer(dev, size_t(threads) * 3 * 8);
+    id<MTLBuffer> tables = tablesBuffer(dev, dir);
     for (uint32_t i = 0; i < lanes; ++i) {
         ((uint64_t *)seeds.contents)[i] = seedBase + i;
         ((uint32_t *)trail.contents)[i] = 0xffffffffu;
@@ -194,8 +206,8 @@ static int run(id<MTLDevice> dev, NSString *dir, NSDictionary *cfg)
         id<MTLComputeCommandEncoder> e = [cb computeCommandEncoder];
         [e setComputePipelineState:p];
         [e setBytes:&args length:sizeof args atIndex:0];
-        id<MTLBuffer> bufs[] = {X, Y, SX, SY, seeds, trail, counts, dps, dpCount, work};
-        for (int i = 0; i < 10; ++i) [e setBuffer:bufs[i] offset:0 atIndex:i + 1];
+        id<MTLBuffer> bufs[] = {X, Y, SX, SY, seeds, trail, counts, dps, dpCount, work, tables};
+        for (int i = 0; i < 11; ++i) [e setBuffer:bufs[i] offset:0 atIndex:i + 1];
         [e dispatchThreads:MTLSizeMake(threads, 1, 1) threadsPerThreadgroup:MTLSizeMake(tg, 1, 1)];
         [e endEncoding];
         gpuSeconds += finish(cb);
@@ -250,11 +262,46 @@ static int run(id<MTLDevice> dev, NSString *dir, NSDictionary *cfg)
     return collisions >= wantCollisions ? 0 : 3;
 }
 
+static int microbench(id<MTLDevice> dev, NSString *dir, NSDictionary *cfg)
+{
+    id<MTLLibrary> lib = compile(dev, dir);
+    id<MTLComputePipelineState> p = pipeline(dev, lib, @"microbench");
+    const uint32_t threads = [cfg[@"threads"] unsignedIntValue], nw = [cfg[@"NW"] unsignedIntValue];
+    NSUInteger tg = std::min<NSUInteger>(p.maxTotalThreadsPerThreadgroup, [cfg[@"threadgroup"] unsignedIntValue] ?: 64);
+    id<MTLBuffer> tables = tablesBuffer(dev, dir), sink = buffer(dev, size_t(threads) * nw * 4);
+    id<MTLCommandQueue> q = [dev newCommandQueue];
+    std::string out = "{\"device\":\"" + std::string(dev.name.UTF8String) + "\",\"threads\":" + std::to_string(threads) + ",\"ops\":[";
+    NSArray *ops = cfg[@"ops"], *iters = cfg[@"iters"];
+    for (NSUInteger k = 0; k < ops.count; ++k) {
+        uint32_t op = [ops[k] unsignedIntValue], n = [iters[k] unsignedIntValue];
+        double best = 1e30;
+        for (int rep = 0; rep < 4; ++rep) { // the first is a warm-up; keep the fastest of the rest
+            id<MTLCommandBuffer> cb = [q commandBuffer];
+            id<MTLComputeCommandEncoder> e = [cb computeCommandEncoder];
+            [e setComputePipelineState:p];
+            [e setBytes:&op length:4 atIndex:0];
+            [e setBytes:&n length:4 atIndex:1];
+            [e setBuffer:sink offset:0 atIndex:2];
+            [e setBuffer:tables offset:0 atIndex:3];
+            [e dispatchThreads:MTLSizeMake(threads, 1, 1) threadsPerThreadgroup:MTLSizeMake(tg, 1, 1)];
+            [e endEncoding];
+            double t = finish(cb);
+            if (rep > 0) best = std::min(best, t);
+        }
+        char buf[160];
+        snprintf(buf, sizeof buf, "%s{\"op\":%u,\"iters\":%u,\"gpuSeconds\":%.6f,\"perSecond\":%.1f}", k ? "," : "", op, n, best,
+                 double(threads) * n / best);
+        out += buf;
+    }
+    printf("%s]}\n", out.c_str());
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     @autoreleasepool {
         try {
-            need(argc == 3, "usage: ksmall selftest|run DIR");
+            need(argc == 3, "usage: ksmall selftest|run|microbench DIR");
             signal(SIGINT, onSignal);
             signal(SIGTERM, onSignal);
             NSString *dir = [NSString stringWithUTF8String:argv[2]];
@@ -264,6 +311,7 @@ int main(int argc, char **argv)
             need(dev != nil, "no Metal device (run outside the sandbox)");
             if (strcmp(argv[1], "selftest") == 0) return selftest(dev, dir, cfg);
             if (strcmp(argv[1], "run") == 0) return run(dev, dir, cfg);
+            if (strcmp(argv[1], "microbench") == 0) return microbench(dev, dir, cfg);
             need(false, "unknown mode");
         } catch (const std::exception &ex) {
             fprintf(stderr, "ksmall: %s\n", ex.what());
