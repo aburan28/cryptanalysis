@@ -141,6 +141,11 @@ pub struct PrimeArgs {
     /// operations where large primes need `≈ √(m·r/|Aut|)`.
     #[arg(long)]
     pub no_large_primes: bool,
+    /// Descend every target against the precomputed database alone (orbit),
+    /// instead of adding each verified descent's differences to it for the
+    /// targets after.
+    #[arg(long)]
+    pub no_learn: bool,
     /// Group-operation budget for the logarithm precomputation (orbit).
     #[arg(long, default_value_t = 1u64 << 32)]
     pub max_ops: u64,
@@ -283,7 +288,8 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
         .map(|(d, &(k, _))| {
             json!({"expected": k.to_string(), "recovered": d.recovered.map(|v| v.to_string()),
                    "verified": d.verified, "ops": OrbitIcReport::descent_ops(d), "trials": d.trials,
-                   "through_large_prime": d.through_large_prime, "seconds": d.seconds})
+                   "through_large_prime": d.through_large_prime, "learned": d.learned,
+                   "seconds": d.seconds})
         })
         .collect();
     let per_rho: Vec<Value> = rep
@@ -329,6 +335,8 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
         "descent": {
             "verified": rep.descents_verified(),
             "through_large_primes": rep.descents_through_large_primes(),
+            "learn": opts.learn,
+            "learned_large_primes": rep.learned_large_primes(),
             "mean_ops": des,
             "total_ops": rep.descent_ops_total(),
             "per_target": per_descent,
@@ -472,6 +480,7 @@ pub fn run(args: PrimeArgs, quiet: bool) -> Result<Value, String> {
                 },
                 relations_per_orbit: args.relations_per_orbit,
                 large_primes: !args.no_large_primes,
+                learn: !args.no_learn,
                 max_ops: args.max_ops,
                 skip_rho: args.no_rho,
                 seed: args.seed,

@@ -168,10 +168,13 @@ fn large_primes_are_the_default_and_cut_the_precompute() {
     assert!(ok, "{default}");
     assert_eq!(default["logs"]["collection"], "large_primes");
     assert_eq!(default["factor_base"]["sizing"], "batch");
-    // Against the control on the same base: the default would size the
-    // large-prime base to the batch, trading descent for precompute.
+    assert_eq!(default["descent"]["learn"], true);
+    // Against the control on the same base (the default would size the
+    // large-prime base to the batch, trading descent for precompute), and
+    // with descents that do not learn, so that each database is only what
+    // its collection found.
     let mut same_base = args.to_vec();
-    same_base.extend(["--width", "2"]);
+    same_base.extend(["--width", "2", "--no-learn"]);
     let (ok, lp) = prime(&same_base);
     assert!(ok, "{lp}");
     assert!(lp["logs"]["combined_relations"].as_u64().unwrap() > 0);
@@ -228,8 +231,14 @@ fn the_base_is_sized_to_the_batch_unless_a_width_is_given() {
         assert!(ok, "{extra:?}: {v}");
         v
     };
+    // Descents that learn build the database themselves, so a batch base
+    // stops at 32 orbits unless they do not.
     assert_eq!(
         with(&["--orbits-per-target", "2"])["factor_base"]["orbits"],
+        32
+    );
+    assert_eq!(
+        with(&["--orbits-per-target", "2", "--no-learn"])["factor_base"]["orbits"],
         80
     );
     let wide = with(&["--width", "2"]);

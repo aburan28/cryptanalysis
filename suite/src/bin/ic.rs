@@ -238,10 +238,11 @@ fn display_prime(report: &Value) {
         f(&logs["seconds"])
     );
     println!(
-        "Descent: {}/{} verified, {} through a large prime; mean {:.0} group operations per target",
+        "Descent: {}/{} verified, {} through a large prime, {} large primes learnt for the targets after; mean {:.0} group operations per target",
         des["verified"],
         des["per_target"].as_array().map_or(0, Vec::len),
         des["through_large_primes"],
+        des["learned_large_primes"],
         f(&des["mean_ops"])
     );
     let rho = &report["rho"];

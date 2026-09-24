@@ -13,7 +13,10 @@
 //!   second base the descent looks up (none with full decompositions);
 //!   `descent via LP` counts the descents that closed through one;
 //! - `precompute` — probes and oracle differences for the database;
-//! - `descent` — mean per target, database paid;
+//! - `descent` — mean per target, database paid.  With large primes the
+//!   descents learn: each adds its own differences to the database for the
+//!   targets after it, so the batch amortises as a shared-distinguished-point
+//!   rho does.  The full-decomposition control does not learn;
 //! - `rho` — mean group operations per target (walk steps plus seeding
 //!   the walks), unfolded; the `√|Aut|`-folded step expectation plus the
 //!   same seeding is printed beside it.  Rho's jump table is shared by the
@@ -90,6 +93,9 @@ fn main() {
                 let points: Vec<_> = ts.iter().map(|&(_, q)| q).collect();
                 let opts = OrbitIcOptions {
                     large_primes,
+                    // Keep the full-decomposition mode a classic control:
+                    // its descent does not cache large primes either.
+                    learn: large_primes,
                     ..OrbitIcOptions::default()
                 };
                 let rep = run_known_answer(&inst.curve, &points, &opts);

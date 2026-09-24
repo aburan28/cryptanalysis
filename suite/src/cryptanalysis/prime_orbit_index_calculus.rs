@@ -1343,6 +1343,9 @@ pub struct OrbitIcOptions {
     /// Collect the logarithm relations with the single-large-prime
     /// variation (see [`solve_logs`]) instead of full 2-decompositions.
     pub large_primes: bool,
+    /// Descend the targets in turn, each adding its differences to the
+    /// database for the next ([`descend_and_learn`]).
+    pub learn: bool,
     /// Oracle-operation bound for the logarithm precomputation.  A probe
     /// costs up to `w·m` operations, so this, not a probe count, is what
     /// bounds the running time.
@@ -1364,6 +1367,7 @@ impl Default for OrbitIcOptions {
             orbits_per_target: 0.5,
             relations_per_orbit: 1.5,
             large_primes: true,
+            learn: true,
             max_ops: 1 << 32,
             max_descent_ops: 1 << 30,
             rho_max_steps: 0,
@@ -1448,6 +1452,9 @@ pub struct DescentReport {
     /// The split's second summand was a known large prime, not a base
     /// point.
     pub through_large_prime: bool,
+    /// Large primes this descent added to the database once verified (see
+    /// [`descend_and_learn`]).
+    pub learned: u64,
     pub recovered: Option<u64>,
     pub verified: bool,
     pub seconds: f64,
@@ -1520,6 +1527,10 @@ impl OrbitIcReport {
             .iter()
             .filter(|d| d.through_large_prime)
             .count()
+    }
+    /// Large primes the descents added to the database.
+    pub fn learned_large_primes(&self) -> u64 {
+        self.descents.iter().map(|d| d.learned).sum()
     }
     pub fn rhos_verified(&self) -> usize {
         self.rhos.iter().filter(|r| r.verified).count()
@@ -1874,6 +1885,50 @@ pub fn descend(
     q: FastPoint,
     opts: &OrbitIcOptions,
 ) -> DescentReport {
+    descend_with(c, db, q, opts, None)
+}
+
+/// [`descend`], then add every difference the descent prepared to the
+/// database as a large prime: once `d` is known, `D = R − P_o` with
+/// `R = [a]G + Q` has logarithm `a + d − x_o`.  A batch descended this way
+/// amortises as a rho whose walks finish on earlier targets' trails does
+/// (Kuhn–Struik): target `i` looks up everything targets `< i` computed.
+/// Nothing is added unless `[d]G == Q`, and the differences were charged
+/// when they were prepared.
+pub fn descend_and_learn(
+    c: &OrbitCurve,
+    db: &mut LogDatabase,
+    q: FastPoint,
+    opts: &OrbitIcOptions,
+) -> DescentReport {
+    let begin = Instant::now();
+    let mut prepared = Vec::new();
+    let mut rep = descend_with(c, db, q, opts, Some(&mut prepared));
+    if let (true, Some(d)) = (rep.verified, rep.recovered) {
+        db.large.reserve(prepared.len());
+        for (pt, partial) in prepared {
+            if db.base.index.contains_key(&pt.x) {
+                continue;
+            }
+            if let Entry::Vacant(slot) = db.large.entry(c.canonical_x(pt.x)) {
+                slot.insert((pt, add_r(partial, d, c.r)));
+                rep.learned += 1;
+            }
+        }
+    }
+    rep.seconds = begin.elapsed().as_secs_f64();
+    rep
+}
+
+/// The descent; with `prepared`, every difference `D = R − P_o` computed
+/// is recorded with `a − x_o`, which is `log D − d`.
+fn descend_with(
+    c: &OrbitCurve,
+    db: &LogDatabase,
+    q: FastPoint,
+    opts: &OrbitIcOptions,
+    mut prepared: Option<&mut Vec<(FastPoint, u64)>>,
+) -> DescentReport {
     let begin = Instant::now();
     let (f, r) = (&c.fast.f, c.r);
     let reps = &db.base.reps;
@@ -1896,10 +1951,13 @@ pub fn descend(
             }
             f.batch_inv(&mut den[..block.len()], &mut scratch[..block.len()]);
             rep.oracle_ops += block.len() as u64;
+            // a + d ≡ log R, and log R is ±x_o or x_o + log D.  A plain
+            // descent stops at the first hit; a recording one finishes the
+            // block, which is paid for, keeping every difference it forms.
+            let mut split: Option<(u64, bool)> = None;
             for (i, p) in block.iter().enumerate() {
                 let x_o = db.logs[start + i];
-                // a + d ≡ log R, and log R is ±x_o or x_o + log D.
-                let split = if p.x == point.x {
+                let candidate = if p.x == point.x {
                     Some((if p.y == point.y { x_o } else { r - x_o }, false))
                 } else {
                     let lam = f.mul(f.add(point.y, p.y), den[i]);
@@ -1909,16 +1967,25 @@ pub fn descend(
                         y: f.sub(f.mul(lam, f.sub(point.x, xd)), point.y),
                         infinity: false,
                     };
+                    if let Some(buf) = prepared.as_mut() {
+                        buf.push((d, sub_r(a, x_o, r)));
+                    }
                     db.log_of(c, d)
                         .map(|(log_d, large)| (add_r(x_o, log_d, r), large))
                 };
-                if let Some((log_r, large)) = split {
-                    let d = sub_r(log_r, a, r);
-                    rep.recovered = Some(d);
-                    rep.verified = c.mul_g(d) == q;
-                    rep.through_large_prime = large;
-                    break 'probes;
+                if split.is_none() {
+                    split = candidate;
                 }
+                if split.is_some() && prepared.is_none() {
+                    break;
+                }
+            }
+            if let Some((log_r, large)) = split {
+                let d = sub_r(log_r, a, r);
+                rep.recovered = Some(d);
+                rep.verified = c.mul_g(d) == q;
+                rep.through_large_prime = large;
+                break 'probes;
             }
             start += block.len();
             len = (len * 2).min(SWEEP_BLOCK);
@@ -2143,9 +2210,12 @@ pub fn auto_orbits(c: &OrbitCurve, width: f64) -> usize {
 /// and share each batched inversion among too few differences.
 const MIN_BATCH_ORBITS: usize = 16;
 
+/// The most orbits [`batch_orbits`] gives a base when the descents learn.
+const MAX_LEARNING_ORBITS: usize = 32;
+
 /// The orbit count of a base sized to a batch of `targets` targets:
-/// `⌈orbits_per_target · targets⌉`, at least 16 and at most
-/// [`auto_orbits`] at `width`.
+/// `⌈orbits_per_target · targets⌉`, at least 16, at most 32 when the
+/// descents learn, and at most [`auto_orbits`] at `width`.
 ///
 /// With large primes a collection of `N` differences learns about `N`
 /// large-prime logarithms, and a descent then costs about `r / (w·N)`
@@ -2156,9 +2226,22 @@ const MIN_BATCH_ORBITS: usize = 16;
 /// `r^(3/4)`.  Measured, the optimum sits nearer `T/2` than `T/3`, because
 /// a descent pays for part of a block it does not use and the uncertified
 /// orbits' large primes are lost.
+///
+/// Descents that learn ([`descend_and_learn`]) build the rest of the
+/// database themselves: the batch then costs about
+/// `N + √(N² + 2T·r/w) − N`, which only falls as `N` does, so the
+/// precomputation need only certify a small base.  Measured at 28 bits,
+/// 32 orbits is best from 64 targets to 1024, and 16 below that.
 pub fn batch_orbits(c: &OrbitCurve, opts: &OrbitIcOptions, targets: usize) -> usize {
     let want = (opts.orbits_per_target * targets as f64).ceil() as usize;
-    want.max(MIN_BATCH_ORBITS).min(auto_orbits(c, opts.width))
+    let cap = if opts.learn {
+        MAX_LEARNING_ORBITS
+    } else {
+        usize::MAX
+    };
+    want.max(MIN_BATCH_ORBITS)
+        .min(cap)
+        .min(auto_orbits(c, opts.width))
 }
 
 /// The orbit count [`run_known_answer`] gives the base for `targets`
@@ -2183,7 +2266,7 @@ pub fn run_known_answer(
 ) -> OrbitIcReport {
     let orbits = base_orbits(c, opts, targets.len());
     let fb = OrbitFactorBase::select(c, orbits, opts.seed);
-    let (db, logs_report) = solve_logs(c, &fb, opts);
+    let (mut db, logs_report) = solve_logs(c, &fb, opts);
     let per_target = |i: usize| OrbitIcOptions {
         seed: opts.seed.wrapping_add(i as u64),
         ..*opts
@@ -2191,7 +2274,13 @@ pub fn run_known_answer(
     let descents = targets
         .iter()
         .enumerate()
-        .map(|(i, &q)| descend(c, &db, q, &per_target(i)))
+        .map(|(i, &q)| {
+            if opts.learn {
+                descend_and_learn(c, &mut db, q, &per_target(i))
+            } else {
+                descend(c, &db, q, &per_target(i))
+            }
+        })
         .collect();
     let (rhos, rho_precompute_ops) = if opts.skip_rho {
         (Vec::new(), 0)
@@ -2667,20 +2756,81 @@ mod tests {
     }
 
     #[test]
+    fn descents_that_learn_add_true_logarithms() {
+        let inst = instance(CurveKind::J0, 24, 5);
+        let c = &inst.curve;
+        let fb = OrbitFactorBase::select(c, 32, 7);
+        let (mut db, _) = solve_logs(c, &fb, &with_large_primes());
+        let before: std::collections::HashSet<u64> = db.large.keys().copied().collect();
+        let mut learned = 0u64;
+        for (i, &(k, q)) in inst.targets(24, 3).iter().enumerate() {
+            let opts = OrbitIcOptions {
+                seed: 90 + i as u64,
+                ..with_large_primes()
+            };
+            let d = descend_and_learn(c, &mut db, q, &opts);
+            assert_eq!(d.recovered, Some(k), "target {i}");
+            learned += d.learned;
+        }
+        assert!(learned > 0);
+        assert_eq!(db.large_primes() as u64, before.len() as u64 + learned);
+        let new: Vec<_> = db
+            .large
+            .iter()
+            .filter(|(key, _)| !before.contains(key))
+            .take(2000)
+            .collect();
+        assert!(!new.is_empty());
+        for (&key, &(p, log)) in new {
+            assert_eq!(c.canonical_x(p.x), key);
+            assert_eq!(c.mul_g(log), p, "a learnt logarithm is wrong");
+        }
+    }
+
+    #[test]
+    fn learning_cheapens_a_batch_of_descents() {
+        // Each descent leaves its differences behind, so the later targets
+        // meet a database that has grown by everything the earlier ones did.
+        let inst = instance(CurveKind::Generic, 24, 4);
+        let points: Vec<FastPoint> = inst.targets(64, 5).iter().map(|&(_, q)| q).collect();
+        let descents = |learn: bool| {
+            let opts = OrbitIcOptions {
+                learn,
+                skip_rho: true,
+                ..OrbitIcOptions::default()
+            };
+            let rep = run_known_answer(&inst.curve, &points, &opts);
+            assert_eq!(rep.descents_verified(), points.len(), "learn {learn}");
+            (rep.descent_ops_total(), rep.learned_large_primes())
+        };
+        let ((with, learned), (without, none)) = (descents(true), descents(false));
+        assert_eq!(none, 0);
+        assert!(learned > 0);
+        assert!(
+            with * 10 < without * 9,
+            "{with} descent operations learning, {without} not"
+        );
+    }
+
+    #[test]
     fn a_batch_sized_base_follows_the_targets_not_the_group() {
         let opts = OrbitIcOptions::default();
         assert_eq!(opts.sizing(), BaseSizing::Batch);
         let big = instance(CurveKind::J0, 28, 1);
+        let alone = OrbitIcOptions {
+            learn: false,
+            ..opts
+        };
         for t in [1usize, 32, 33, 64, 1000] {
-            assert_eq!(
-                batch_orbits(&big.curve, &opts, t),
-                t.div_ceil(2).max(16),
-                "{t}"
-            );
+            let half = t.div_ceil(2).max(16);
+            assert_eq!(batch_orbits(&big.curve, &alone, t), half, "{t}");
+            assert_eq!(batch_orbits(&big.curve, &opts, t), half.min(32), "{t}");
         }
         // Never wider than the full-decomposition base.
-        let small = instance(CurveKind::J0, 16, 1);
+        let small = instance(CurveKind::J0, 12, 1);
         let cap = auto_orbits(&small.curve, opts.width);
+        assert!(cap < 32, "{cap}");
+        assert_eq!(batch_orbits(&small.curve, &alone, 4096), cap);
         assert_eq!(batch_orbits(&small.curve, &opts, 4096), cap);
         let by_width = OrbitIcOptions {
             orbits_per_target: 0.0,
