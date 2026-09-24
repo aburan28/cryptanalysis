@@ -1,0 +1,47 @@
+diff --git a/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx b/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
+--- a/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
++++ b/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
+@@ -247,0 +248,13 @@
++
++
++def _construct_standard_point(curve, x, y, one):
++    """Initialize an ordinary finite-field point from verified affine data."""
++    if curve._point is not EllipticCurvePoint_finite_field:
++        raise ValueError('expected the standard finite-field point class')
++    cdef Element point
++    point = EllipticCurvePoint_finite_field.__new__(EllipticCurvePoint_finite_field)
++    point._parent = curve.point_homset()
++    point._codomain = curve
++    point._normalized = True
++    point._coords = (x, y, one)
++    return point
+diff --git a/src/sage/schemes/elliptic_curves/ell_point.py b/src/sage/schemes/elliptic_curves/ell_point.py
+--- a/src/sage/schemes/elliptic_curves/ell_point.py
++++ b/src/sage/schemes/elliptic_curves/ell_point.py
+@@ -1097,0 +1098,9 @@
++        if (a1 == 1 and not a3 and not a4
++                and E.base_ring().characteristic() == 2
++                and type(self) is EllipticCurvePoint_finite_field
++                and type(other) is EllipticCurvePoint_finite_field
++                and E._point is EllipticCurvePoint_finite_field):
++            from sage.schemes.elliptic_curves import binary_batch
++            if (binary_batch._native is not None
++                    and binary_batch._native.supports(E.base_ring())):
++                return binary_batch.add_pairs(E, ((self, other),))[0]
+@@ -1101 +1110,2 @@
+-        if x1 == x2 and y1 == -y2 - a1*x2 - a3:
++        same_x = x1 == x2
++        if same_x and y1 == -y2 - a1*x2 - a3:
+@@ -1105 +1115 @@
+-            if x1 == x2 and y1 == y2:
++            if same_x and y1 == y2:
+@@ -1124 +1134,8 @@
+-        return E.point([x3, y3, E.base_ring().one()], check=False)
++        one = E.base_ring().one()
++        if (type(self) is EllipticCurvePoint_finite_field
++                and type(other) is EllipticCurvePoint_finite_field
++                and E._point is EllipticCurvePoint_finite_field):
++            from sage.schemes.elliptic_curves import binary_batch
++            if binary_batch._native is not None:
++                return binary_batch._native._construct_standard_point(E, x3, y3, one)
++        return E.point([x3, y3, one], check=False)
