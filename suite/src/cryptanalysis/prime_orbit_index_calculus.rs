@@ -117,6 +117,11 @@ const MAX_COLLECTION_ROUNDS: u32 = 4;
 /// too small to certify, which walks to [`OrbitIcOptions::max_descent_ops`]
 /// without a hit.
 const LEARN_CAP: usize = 1 << 18;
+/// The most large primes learning grows a database to, about 1.5 GB.  A
+/// batch of thousands of targets on a 40-bit curve would learn several
+/// times this; past it the descents go on against a database that no
+/// longer grows.
+const MAX_LEARNT: usize = 1 << 24;
 
 // ── Arithmetic modulo the subgroup order ───────────────────────────────
 
@@ -2029,8 +2034,9 @@ pub fn descend(
 /// `R = [a]G + Q` has logarithm `a + d − x_o`.  A batch descended this way
 /// amortises as a rho whose walks finish on earlier targets' trails does
 /// (Kuhn–Struik): target `i` looks up everything targets `< i` computed.
-/// Nothing is added unless `[d]G == Q`, and the differences were charged
-/// when they were prepared.
+/// Nothing is added unless `[d]G == Q`, the differences were charged when
+/// they were prepared, and the database stops growing at 2^24 large
+/// primes.
 pub fn descend_and_learn(
     c: &OrbitCurve,
     db: &mut LogDatabase,
@@ -2041,8 +2047,12 @@ pub fn descend_and_learn(
     let mut prepared = Vec::new();
     let mut rep = descend_with(c, db, q, opts, Some(&mut prepared));
     if let (true, Some(d)) = (rep.verified, rep.recovered) {
-        db.large.reserve(prepared.len());
+        let room = MAX_LEARNT.saturating_sub(db.large.len());
+        db.large.reserve(prepared.len().min(room));
         for (pt, partial) in prepared {
+            if db.large.len() >= MAX_LEARNT {
+                break;
+            }
             if db.base.index.contains_key(&pt.x) {
                 continue;
             }
