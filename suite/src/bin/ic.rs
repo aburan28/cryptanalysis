@@ -7,6 +7,8 @@ mod experiment;
 mod fixed;
 #[path = "ic/params.rs"]
 mod params;
+#[path = "ic/prime.rs"]
+mod prime;
 #[path = "ic/workflow.rs"]
 mod workflow;
 
@@ -26,7 +28,7 @@ use std::{
     about = "Curve inspection and synthetic index-calculus research"
 )]
 #[command(
-    long_about = "Inspect named/custom curves, generate reproducible known-answer fixtures, run the toy index-calculus pipeline, compare factor-base candidates, or search for high-yield factor bases. Bare ic runs the default synthetic example. A bare curve name (for example ic ecc2k-130) performs inspection only. The fixed subcommand accepts explicit K_0 parameters and points with full-width coordinates."
+    long_about = "Inspect named/custom curves, generate reproducible known-answer fixtures, run the toy index-calculus pipeline, compare factor-base candidates, or search for high-yield factor bases. Bare ic runs the default synthetic example. A bare curve name (for example ic ecc2k-130 or ic p224) performs inspection only. The fixed subcommand accepts explicit K_0 parameters and points with full-width coordinates. The prime subcommand runs prime-field index calculus by curve type (generic, as P-192/P-224; j0, as secp256k1) on a scaled-down curve of that type."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -67,6 +69,8 @@ enum Action {
     Fixed(fixed::FixedArgs),
     /// Charge index calculus against rho analytically: what one decomposition may cost.
     Budget(budget::BudgetArgs),
+    /// Prime-field index calculus by curve type (generic P-curves, j0 Koblitz such as secp256k1): a named curve's structure, then a verified run on a scaled-down curve of that type against rho.
+    Prime(prime::PrimeArgs),
 }
 #[derive(Args)]
 #[group(required = true, multiple = false)]
@@ -113,6 +117,7 @@ fn execute(cli: &Cli) -> Result<Value, String> {
         Some(Action::Workflow(args)) => workflow::run(args.clone(), cli.json),
         Some(Action::Fixed(args)) => fixed::run(args.clone()),
         Some(Action::Budget(args)) => budget::run(args.clone(), cli.json),
+        Some(Action::Prime(args)) => prime::run(args.clone(), cli.json),
         Some(Action::Run(args)) => experiment::run(args.clone(), cli.json),
         None => {
             if let Some(name) = &cli.profile {
@@ -162,6 +167,93 @@ fn linear_algebra_summary(la: &Value) -> String {
         }
     }
     line
+}
+
+/// The `prime` summary: either solver's result, then the rho comparison.
+fn display_prime(report: &Value) {
+    let f = |v: &Value| v.as_f64().unwrap_or(f64::NAN);
+    println!(
+        "Prime-field index calculus ({}): {}",
+        report["solver"].as_str().unwrap_or("?"),
+        report["status"].as_str().unwrap_or("?")
+    );
+    println!(
+        "Expected: {}; recovered: {}; verified: {}",
+        report["result"]["expected"], report["result"]["recovered"], report["result"]["verified"]
+    );
+    if report["solver"] == "semaev" {
+        let ic = &report["index_calculus"];
+        let rho = &report["rho"];
+        println!(
+            "Index calculus ({}, {} factor-base {}): verified {} in {:.4}s over {} attempt(s)",
+            ic["solver"]["method"].as_str().unwrap_or("?"),
+            ic["factor_base"],
+            ic["factor_base_unit"].as_str().unwrap_or("?"),
+            ic["solver"]["verified"],
+            f(&ic["solver"]["seconds"]),
+            ic["solver"]["attempts"]
+        );
+        println!(
+            "Pollard rho (plain walk): verified {} in {:.5}s; expected {:.0} steps, {:.0} with the |Aut| = {} fold",
+            rho["solver"]["verified"],
+            f(&rho["solver"]["seconds"]),
+            f(&rho["expected_steps"]),
+            f(&rho["expected_steps_folded"]),
+            rho["automorphism_order"]
+        );
+        match report["vs_rho"]["rho_seconds_over_ic_seconds"].as_f64() {
+            Some(r) if r > 0.0 && r < 1.0 => println!(
+                "vs rho: rho/IC time {r:.4} — index calculus is {:.0}x slower",
+                1.0 / r
+            ),
+            Some(r) => println!("vs rho: rho/IC time {r:.4}"),
+            None => println!("vs rho: not measured"),
+        }
+        return;
+    }
+    let fb = &report["factor_base"];
+    let logs = &report["logs"];
+    let des = &report["descent"];
+    println!(
+        "Factor base: {} orbits ({} certified) of |Aut| = {} points; {} relations from {} probes",
+        fb["orbits"],
+        fb["certified_orbits"],
+        fb["automorphism_order"],
+        logs["relations"],
+        logs["trials"]
+    );
+    println!(
+        "Logarithm precompute: {:.3e} group operations in {:.3}s",
+        f(&logs["oracle_ops"]) + f(&logs["probe_ops"]),
+        f(&logs["seconds"])
+    );
+    println!(
+        "Descent: {}/{} verified; mean {:.0} group operations per target",
+        des["verified"],
+        des["per_target"].as_array().map_or(0, Vec::len),
+        f(&des["mean_ops"])
+    );
+    let rho = &report["rho"];
+    if rho.is_null() {
+        println!("Rho: skipped");
+        return;
+    }
+    println!(
+        "Rho (unfolded, {} batched walks): {} verified; mean {:.0} steps (expected {:.0}; folded expectation {:.0})",
+        rho["walks"],
+        rho["verified"],
+        f(&rho["mean_steps"]),
+        f(&rho["expected_steps"]),
+        f(&rho["expected_steps_folded"])
+    );
+    let v = &report["vs_rho"];
+    println!(
+        "vs rho (rho/IC, group operations): charged {:.3}, against the folded expectation {:.3}; amortised {:.4}; whole process {:.4}",
+        f(&v["charged"]["ratio"]),
+        f(&v["charged"]["ratio_vs_folded_expectation"]),
+        f(&v["amortised"]["ratio"]),
+        f(&v["whole_process"]["ratio"])
+    );
 }
 
 fn display(report: &Value) {
@@ -340,6 +432,7 @@ fn display(report: &Value) {
                 );
             }
         }
+        Some("prime") => display_prime(report),
         Some("workflow") => {
             println!(
                 "Workflow: {}; run {}{}; {}",
