@@ -178,6 +178,19 @@ fn large_primes_are_the_default_and_cut_the_precompute() {
     );
     assert_eq!(lp["descent"]["verified"], 4);
     assert_eq!(full["descent"]["verified"], 4);
+    // The large primes the collection met are a second, much larger base
+    // for the descent; the full collection has none.
+    let known = lp["logs"]["known_large_primes"].as_u64().unwrap();
+    assert!(known > 10 * lp["factor_base"]["certified_orbits"].as_u64().unwrap());
+    assert_eq!(full["logs"]["known_large_primes"], 0);
+    assert_eq!(full["descent"]["through_large_primes"], 0);
+    let mean = |v: &Value| v["descent"]["mean_ops"].as_f64().unwrap();
+    assert!(
+        mean(&lp) * 5.0 < mean(&full),
+        "descent {} with large primes against {} without",
+        mean(&lp),
+        mean(&full)
+    );
 }
 
 #[test]

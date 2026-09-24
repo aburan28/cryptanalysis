@@ -224,8 +224,11 @@ fn display_prime(report: &Value) {
     );
     if logs["collection"] == "large_primes" {
         println!(
-            "Large primes: {} relations from two probes meeting on one of {} large primes, {} with both summands in the base",
-            logs["combined_relations"], logs["distinct_large_primes"], logs["full_relations"]
+            "Large primes: {} relations from two probes meeting on one of {} large primes, {} with both summands in the base; {} large-prime logarithms known",
+            logs["combined_relations"],
+            logs["distinct_large_primes"],
+            logs["full_relations"],
+            logs["known_large_primes"]
         );
     }
     println!(
@@ -234,9 +237,10 @@ fn display_prime(report: &Value) {
         f(&logs["seconds"])
     );
     println!(
-        "Descent: {}/{} verified; mean {:.0} group operations per target",
+        "Descent: {}/{} verified, {} through a large prime; mean {:.0} group operations per target",
         des["verified"],
         des["per_target"].as_array().map_or(0, Vec::len),
+        des["through_large_primes"],
         f(&des["mean_ops"])
     );
     let rho = &report["rho"];

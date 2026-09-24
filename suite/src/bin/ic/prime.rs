@@ -274,7 +274,7 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
         .map(|(d, &(k, _))| {
             json!({"expected": k.to_string(), "recovered": d.recovered.map(|v| v.to_string()),
                    "verified": d.verified, "ops": OrbitIcReport::descent_ops(d), "trials": d.trials,
-                   "seconds": d.seconds})
+                   "through_large_prime": d.through_large_prime, "seconds": d.seconds})
         })
         .collect();
     let per_rho: Vec<Value> = rep
@@ -304,6 +304,7 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
             "full_relations": logs.full_relations,
             "combined_relations": logs.combined_relations,
             "distinct_large_primes": logs.distinct_large_primes,
+            "known_large_primes": logs.known_large_primes,
             "rejected_relations": logs.rejected_relations,
             "oracle_ops": logs.oracle_ops,
             "probe_ops": logs.probe_ops,
@@ -316,6 +317,7 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
         },
         "descent": {
             "verified": rep.descents_verified(),
+            "through_large_primes": rep.descents_through_large_primes(),
             "mean_ops": des,
             "total_ops": rep.descent_ops_total(),
             "per_target": per_descent,

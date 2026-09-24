@@ -99,6 +99,11 @@ pub const MIN_FIELD_BITS: u32 = 8;
 /// Representatives per batched inversion in the decomposition sweep.  The
 /// sweep stops at the first hit, so a block bounds the wasted work.
 const SWEEP_BLOCK: usize = 256;
+/// The descent's first block; each next one doubles, up to
+/// [`SWEEP_BLOCK`].  With a large-prime database a descent often hits
+/// within a few dozen differences, and a whole block is paid for (its
+/// batched inversion) before any of them is looked at.
+const DESCENT_FIRST_BLOCK: usize = 16;
 
 // ── Arithmetic modulo the subgroup order ───────────────────────────────
 
@@ -1061,7 +1066,8 @@ struct Sweep {
 }
 
 /// Decompose `target` as `α(P_o)` or `α(P_o) + β(P_o')` over the orbit
-/// base, or `None`.  `ops` is charged one per difference evaluated.
+/// base, or `None`.  `ops` is charged one per difference prepared: a block
+/// is paid for, its inversion shared, before the first hit in it is found.
 ///
 /// For each automorphism `α` the sweep forms `α⁻¹(R) − P_o` for every
 /// representative, sharing one inversion per [`SWEEP_BLOCK`], and looks
@@ -1120,12 +1126,12 @@ fn decompose(
             }));
             sweep.scratch.resize(len, 0);
             f.batch_inv(&mut sweep.den, &mut sweep.scratch);
+            *ops += len as u64;
             for i in 0..len {
                 let q = &fb.reps[rep_at(i)];
                 if q.x == ra.x {
                     continue;
                 }
-                *ops += 1;
                 // D = R_α − P_o = R_α + (−P_o): λ = (y_R + y_o)/(x_R − x_o).
                 let lam = f.mul(f.add(ra.y, q.y), sweep.den[i]);
                 let xd = f.sub(f.sub(f.sqr(lam), ra.x), q.x);
@@ -1376,6 +1382,10 @@ pub struct LogsReport {
     pub combined_relations: u64,
     /// With large primes: distinct large-prime orbits seen.
     pub distinct_large_primes: u64,
+    /// With large primes: large-prime orbits whose logarithm is known,
+    /// their first occurrence lying on a certified orbit.  These extend
+    /// the base a descent looks up at no further cost.
+    pub known_large_primes: u64,
     /// Differences the oracle evaluated.
     pub oracle_ops: u64,
     /// Group additions spent advancing probes.
@@ -1394,6 +1404,9 @@ pub struct DescentReport {
     pub trials: u64,
     pub oracle_ops: u64,
     pub probe_ops: u64,
+    /// The split's second summand was a known large prime, not a base
+    /// point.
+    pub through_large_prime: bool,
     pub recovered: Option<u64>,
     pub verified: bool,
     pub seconds: f64,
@@ -1455,6 +1468,12 @@ impl OrbitIcReport {
     }
     pub fn descents_verified(&self) -> usize {
         self.descents.iter().filter(|d| d.verified).count()
+    }
+    pub fn descents_through_large_primes(&self) -> usize {
+        self.descents
+            .iter()
+            .filter(|d| d.through_large_prime)
+            .count()
     }
     pub fn rhos_verified(&self) -> usize {
         self.rhos.iter().filter(|r| r.verified).count()
@@ -1580,13 +1599,14 @@ impl<'t> AddingWalk<'t> {
 /// Relations for [`solve_logs`] by the single-large-prime variation: every
 /// probe is peeled once by every representative, and a leftover that is not
 /// a base point waits, keyed by its orbit, for a second probe to meet it.
+/// Returns the relations and every large prime's first occurrence.
 fn collect_large_primes(
     c: &OrbitCurve,
     fb: &OrbitFactorBase,
     opts: &OrbitIcOptions,
     want: usize,
     rep: &mut LogsReport,
-) -> Vec<Relation> {
+) -> (Vec<Relation>, FxMap<u64, Anchor>) {
     let f = &c.fast.f;
     let r = c.r;
     let m = fb.len();
@@ -1608,6 +1628,7 @@ fn collect_large_primes(
                     den[i] = if d == 0 { f.one() } else { d };
                 }
                 f.batch_inv(&mut den[..block.len()], &mut scratch[..block.len()]);
+                rep.oracle_ops += block.len() as u64;
                 for (i, q) in block.iter().enumerate() {
                     let o = (start + i) as u32;
                     if q.x == pt.x {
@@ -1619,7 +1640,6 @@ fn collect_large_primes(
                         });
                         continue;
                     }
-                    rep.oracle_ops += 1;
                     // D = R − P_o, so a ≡ x_o + log D.
                     let lam = f.mul(f.add(pt.y, q.y), den[i]);
                     let xd = f.sub(f.sub(f.sqr(lam), pt.x), q.x);
@@ -1670,11 +1690,50 @@ fn collect_large_primes(
         rep.probe_ops += 1;
     }
     rep.distinct_large_primes = anchors.len() as u64;
-    rows
+    (rows, anchors)
 }
 
-/// The factor-base logarithm database, every column certified.  Returns
-/// the base restricted to the certified orbits and their logarithms.
+/// The factor-base logarithm database.
+///
+/// The certified base orbits and their logarithms, and — when the relations
+/// were collected with large primes — every large prime whose first
+/// occurrence `R₁ = P_{o₁} + D₁` lies on a certified orbit: its logarithm is
+/// `a₁ − x_{o₁}`, exact because `D₁` was computed as `R₁ − P_{o₁}`.  Those
+/// cost nothing beyond the collection that found them, and there are many
+/// more of them than base orbits, so a descent that looks them up finds a
+/// decomposition that many times sooner.
+pub struct LogDatabase {
+    /// The certified orbits, renumbered.
+    pub base: OrbitFactorBase,
+    /// `logs[o]` is the logarithm of `base.reps[o]`.
+    pub logs: Vec<u64>,
+    /// A large prime's orbit, by least abscissa → a point on it and that
+    /// point's logarithm.
+    large: FxMap<u64, (FastPoint, u64)>,
+}
+
+impl LogDatabase {
+    /// Large-prime orbits whose logarithm is known.
+    pub fn large_primes(&self) -> usize {
+        self.large.len()
+    }
+
+    /// `(log d, whether d is a large prime)` when `d` lies on a certified
+    /// base orbit or a known large-prime orbit.
+    fn log_of(&self, c: &OrbitCurve, d: FastPoint) -> Option<(u64, bool)> {
+        if let Some(&o) = self.base.index.get(&d.x) {
+            let o = o as usize;
+            return c
+                .image_eig(self.base.reps[o], d)
+                .map(|e| (mul_r(e, self.logs[o], c.r), false));
+        }
+        let &(p, log) = self.large.get(&c.canonical_x(d.x))?;
+        c.image_eig(p, d).map(|g| (mul_r(g, log, c.r), true))
+    }
+}
+
+/// The factor-base logarithm database, every column certified; see
+/// [`LogDatabase`] for what it holds.
 ///
 /// Relations `R = [a]G` are collected one of two ways.  By full
 /// 2-decomposition, a probe counts only when both summands lie in the base,
@@ -1697,7 +1756,7 @@ pub fn solve_logs(
     c: &OrbitCurve,
     fb: &OrbitFactorBase,
     opts: &OrbitIcOptions,
-) -> (OrbitFactorBase, Vec<u64>, LogsReport) {
+) -> (LogDatabase, LogsReport) {
     let begin = Instant::now();
     let mut rep = LogsReport {
         orbits: fb.len(),
@@ -1706,64 +1765,122 @@ pub fn solve_logs(
         ..LogsReport::default()
     };
     let want = ((fb.len() as f64) * opts.relations_per_orbit).ceil() as usize;
-    let rows = if opts.large_primes {
+    let (rows, anchors) = if opts.large_primes {
         collect_large_primes(c, fb, opts, want, &mut rep)
     } else {
-        collect_full(c, fb, opts, want, &mut rep)
+        (collect_full(c, fb, opts, want, &mut rep), FxMap::default())
     };
     rep.relations = rows.len();
     let (solution, stats) = solve_two_term_system(fb.len(), &rows, c.r);
     rep.system = stats;
     let mut keep = Vec::new();
     let mut logs = Vec::new();
+    let mut certified: Vec<Option<u64>> = vec![None; fb.len()];
     for (o, x) in solution.iter().enumerate() {
         if let Some(x) = *x {
             if c.mul_g(x) == fb.reps[o] {
                 keep.push(o);
                 logs.push(x);
+                certified[o] = Some(x);
             } else {
                 rep.uncertified_columns += 1;
             }
         }
     }
     rep.certified_columns = keep.len();
+    // A large prime is known once its first occurrence's orbit is:
+    // a₁ ≡ x_{o₁} + log D₁.
+    let mut large: FxMap<u64, (FastPoint, u64)> = FxMap::default();
+    large.reserve(anchors.len());
+    for (key, an) in anchors {
+        if let Some(x) = certified[an.o as usize] {
+            large.insert(key, (an.d, sub_r(an.a, x, c.r)));
+        }
+    }
+    rep.known_large_primes = large.len() as u64;
     rep.seconds = begin.elapsed().as_secs_f64();
-    (fb.restrict(c, &keep), logs, rep)
+    let db = LogDatabase {
+        base: fb.restrict(c, &keep),
+        logs,
+        large,
+    };
+    (db, rep)
 }
 
-/// Recover `log_G Q` from one decomposition of `R = [a]G + [b]Q` over the
-/// certified base, and check it as `[d]G == Q`.
+/// Recover `log_G Q` from one probe `R = [a]G + Q` that the database can
+/// split, and check it as `[d]G == Q`.
+///
+/// The probe is peeled by every certified representative, `D = R − P_o`,
+/// until `D` lies on a certified base orbit or a known large-prime orbit;
+/// then `a + d ≡ x_o + log D`.  A hit is as likely at every difference, so
+/// the expected cost is `r / (w · (base orbits + large primes))`
+/// differences, and the blocks start at 16 representatives and double so
+/// that an early hit pays for little unused inversion.  A second probe,
+/// `R + [s]G`, is built only if the first is exhausted.
 pub fn descend(
     c: &OrbitCurve,
-    fb: &OrbitFactorBase,
-    logs: &[u64],
+    db: &LogDatabase,
     q: FastPoint,
     opts: &OrbitIcOptions,
 ) -> DescentReport {
     let begin = Instant::now();
-    let r = c.r;
+    let (f, r) = (&c.fast.f, c.r);
+    let reps = &db.base.reps;
+    let m = reps.len();
     let mut rep = DescentReport::default();
     let mut rng = StdRng::seed_from_u64(opts.seed ^ 0x6465_7363_656e_7400);
-    let b = rng.gen_range(1..r);
-    let b_inv = inv_r(b, r).expect("r is prime");
-    let mut walk = ProbeWalk::new(c, &mut rng, c.fast.scalar_mul(q, b));
-    rep.probe_ops += 3 * scalar_mul_ops(r) + 1;
-    let mut sweep = Sweep::default();
-    while rep.oracle_ops < opts.max_descent_ops && !fb.is_empty() {
+    let mut a = rng.gen_range(1..r);
+    let mut point = c.fast.add(c.mul_g(a), q);
+    rep.probe_ops += scalar_mul_ops(r) + 1;
+    let mut step: Option<(FastPoint, u64)> = None;
+    let (mut den, mut scratch) = (vec![0u64; SWEEP_BLOCK], vec![0u64; SWEEP_BLOCK]);
+    'probes: while m > 0 && rep.oracle_ops < opts.max_descent_ops {
         rep.trials += 1;
-        if let Some(terms) = decompose(c, fb, walk.point, &mut sweep, &mut rep.oracle_ops) {
-            if verify_terms(c, fb, walk.point, &terms) {
-                // a + b·d ≡ Σ e·x  ⇒  d = (Σ e·x − a) / b.
-                let sum = terms.iter().fold(0u64, |acc, &(o, e)| {
-                    add_r(acc, mul_r(e, logs[o as usize], r), r)
-                });
-                let d = mul_r(sub_r(sum, walk.a, r), b_inv, r);
-                rep.recovered = Some(d);
-                rep.verified = c.mul_g(d) == q;
-                break;
+        let (mut start, mut len) = (0, DESCENT_FIRST_BLOCK);
+        while !point.infinity && start < m {
+            let block = &reps[start..(start + len).min(m)];
+            for (i, p) in block.iter().enumerate() {
+                let d = f.sub(point.x, p.x);
+                den[i] = if d == 0 { f.one() } else { d };
             }
+            f.batch_inv(&mut den[..block.len()], &mut scratch[..block.len()]);
+            rep.oracle_ops += block.len() as u64;
+            for (i, p) in block.iter().enumerate() {
+                let x_o = db.logs[start + i];
+                // a + d ≡ log R, and log R is ±x_o or x_o + log D.
+                let split = if p.x == point.x {
+                    Some((if p.y == point.y { x_o } else { r - x_o }, false))
+                } else {
+                    let lam = f.mul(f.add(point.y, p.y), den[i]);
+                    let xd = f.sub(f.sub(f.sqr(lam), point.x), p.x);
+                    let d = FastPoint {
+                        x: xd,
+                        y: f.sub(f.mul(lam, f.sub(point.x, xd)), point.y),
+                        infinity: false,
+                    };
+                    db.log_of(c, d)
+                        .map(|(log_d, large)| (add_r(x_o, log_d, r), large))
+                };
+                if let Some((log_r, large)) = split {
+                    let d = sub_r(log_r, a, r);
+                    rep.recovered = Some(d);
+                    rep.verified = c.mul_g(d) == q;
+                    rep.through_large_prime = large;
+                    break 'probes;
+                }
+            }
+            start += block.len();
+            len = (len * 2).min(SWEEP_BLOCK);
         }
-        walk.advance(c);
+        let (s_point, s) = *step.get_or_insert_with(|| {
+            let s = rng.gen_range(1..r);
+            (c.mul_g(s), s)
+        });
+        if rep.trials == 1 {
+            rep.probe_ops += scalar_mul_ops(r);
+        }
+        point = c.fast.add(point, s_point);
+        a = add_r(a, s, r);
         rep.probe_ops += 1;
     }
     rep.seconds = begin.elapsed().as_secs_f64();
@@ -1953,7 +2070,7 @@ pub fn run_known_answer(
         opts.orbits
     };
     let fb = OrbitFactorBase::select(c, orbits, opts.seed);
-    let (solved, logs, logs_report) = solve_logs(c, &fb, opts);
+    let (db, logs_report) = solve_logs(c, &fb, opts);
     let per_target = |i: usize| OrbitIcOptions {
         seed: opts.seed.wrapping_add(i as u64),
         ..*opts
@@ -1961,7 +2078,7 @@ pub fn run_known_answer(
     let descents = targets
         .iter()
         .enumerate()
-        .map(|(i, &q)| descend(c, &solved, &logs, q, &per_target(i)))
+        .map(|(i, &q)| descend(c, &db, q, &per_target(i)))
         .collect();
     let (rhos, rho_precompute_ops) = if opts.skip_rho {
         (Vec::new(), 0)
@@ -2330,10 +2447,11 @@ mod tests {
         let c = &inst.curve;
         let fb = OrbitFactorBase::select(c, auto_orbits(c, 2.0), 4);
         let logs_of = |opts: &OrbitIcOptions| {
-            let (base, logs, _) = solve_logs(c, &fb, opts);
-            base.reps
+            let (db, _) = solve_logs(c, &fb, opts);
+            db.base
+                .reps
                 .iter()
-                .zip(logs)
+                .zip(db.logs)
                 .map(|(p, x)| ((p.x, p.y), x))
                 .collect::<std::collections::HashMap<_, _>>()
         };
@@ -2359,13 +2477,77 @@ mod tests {
         let c = &inst.curve;
         let fb = OrbitFactorBase::select(c, auto_orbits(c, 2.0), 1);
         let ops = |opts: &OrbitIcOptions| {
-            let (_, _, rep) = solve_logs(c, &fb, opts);
+            let (_, rep) = solve_logs(c, &fb, opts);
             rep.oracle_ops + rep.probe_ops
         };
         let (full, large) = (ops(&full_decompositions()), ops(&with_large_primes()));
         assert!(
             large * 20 < full,
             "large primes {large} against full {full}"
+        );
+    }
+
+    #[test]
+    fn known_large_prime_logs_are_logs() {
+        for kind in [CurveKind::Generic, CurveKind::J0, CurveKind::J1728] {
+            let inst = instance(kind, 20, 7);
+            let c = &inst.curve;
+            let fb = OrbitFactorBase::select(c, auto_orbits(c, 2.0), 2);
+            let (db, rep) = solve_logs(c, &fb, &with_large_primes());
+            assert_eq!(rep.known_large_primes, db.large_primes() as u64);
+            assert!(
+                db.large_primes() > 10 * db.base.len(),
+                "{kind:?}: {} large primes, {} orbits",
+                db.large_primes(),
+                db.base.len()
+            );
+            for (&key, &(p, log)) in db.large.iter().take(2000) {
+                assert_eq!(c.canonical_x(p.x), key, "{kind:?}");
+                assert!(!fb.index.contains_key(&p.x), "{kind:?}");
+                assert_eq!(c.mul_g(log), p, "{kind:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn known_large_primes_shorten_the_descent() {
+        // A difference hits base ∪ large primes about (m + L)/m times as
+        // often as the base alone; here that is about 75.
+        let inst = instance(CurveKind::J0, 24, 3);
+        let c = &inst.curve;
+        let fb = OrbitFactorBase::select(c, auto_orbits(c, 2.0), 6);
+        let (db, _) = solve_logs(c, &fb, &with_large_primes());
+        let base_only = LogDatabase {
+            base: db.base.clone(),
+            logs: db.logs.clone(),
+            large: FxMap::default(),
+        };
+        let targets = inst.targets(16, 4);
+        let run = |db: &LogDatabase| {
+            let mut oracle = 0u64;
+            let mut through = 0;
+            for (i, &(k, q)) in targets.iter().enumerate() {
+                let opts = OrbitIcOptions {
+                    seed: 40 + i as u64,
+                    ..with_large_primes()
+                };
+                let d = descend(c, db, q, &opts);
+                assert!(d.verified, "target {i}");
+                assert_eq!(d.recovered, Some(k), "target {i}");
+                oracle += d.oracle_ops;
+                through += usize::from(d.through_large_prime);
+            }
+            (oracle, through)
+        };
+        let ((with, through), (without, none)) = (run(&db), run(&base_only));
+        assert_eq!(none, 0);
+        assert!(
+            through >= targets.len() * 3 / 4,
+            "{through} through large primes"
+        );
+        assert!(
+            with * 10 < without,
+            "{with} differences with large primes, {without} without"
         );
     }
 
