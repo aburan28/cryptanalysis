@@ -357,6 +357,7 @@ cd suite && cargo build --release
 ./target/release/ca-suite rho-collab init --curve demo-32 --secret 0x1234567 --out job.json
 ./target/release/ca-suite ec-challenges summary         # curve corpus: shapes, j, endomorphisms, volcanoes
 ./target/release/ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate
+./target/release/ca-ic prime --curve secp256k1 --bits 28      # prime-field IC by curve type, against rho
 ```
 
 The curve corpus is [`challenges/elliptic/`](challenges/elliptic/README.md):

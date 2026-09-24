@@ -6,6 +6,9 @@ known-answer or public hash-derived Koblitz targets. The `fixed` command also
 accepts explicit K_0 curve parameters and points through degree 131, with durable
 pair tables, relations and precomputation. See [Fixed parameters](FIXED_PARAMETERS.md).
 The older inspection command uses imported points for mathematical validation.
+The `prime` command runs the pipeline on prime-field curves by type — generic
+(NIST P-192 … P-521), `j = 0` Koblitz-style (secp256k1) and `j = 1728` — see
+[Prime-field curves](#prime-field-curves-ic-prime).
 
 **Research provenance:** the per-stage scoreboard
 ([`BOUNDARY_TARGETS.md`](https://github.com/aburan28/crypto/blob/main/docs/ic/BOUNDARY_TARGETS.md)),
@@ -25,14 +28,21 @@ A bare curve name is an inspection shortcut:
     ./target/release/ca-ic ecc2k-130
     ./target/release/ca-ic inspect --curve ecc2k-95 --json
     ./target/release/ca-ic inspect --curve secp256k1
+    ./target/release/ca-ic p224
     ./target/release/ca-ic inspect --file docs/ic/prime-example.json
 
-Named profiles are ECC2K-130, ECC2K-95, sect163k1, and secp256k1. Their data
-comes from the repository's ECC2K client definitions and existing curve
-constructors. ECC2K-130 has an abstract normal-basis profile: the inspector
-checks its Koblitz group-order recurrence but explicitly reports that the
-coordinate representation and challenge points have not been imported.
-It does not substitute polynomial-basis coordinates.
+Named profiles are the binary challenges ECC2K-130, ECC2K-95 and sect163k1,
+and every prime-field curve in the zoo: the SECG Koblitz (`j = 0`) curves
+secp160k1, secp192k1, secp224k1 and secp256k1; NIST P-192, P-224, P-256,
+P-384 and P-521 and the SECG secp112/128/160 `r` curves; Brainpool P192r1 …
+P512r1; FRP256v1; SM2; and the GOST CryptoPro A/B/C and TC26 sets. `ic list`
+prints them, and the standard aliases (`secp256r1`, `prime192v1`,
+`sm2p256v1`, …) are accepted too. Their data comes from the repository's
+ECC2K client definitions and existing curve constructors. ECC2K-130 has an
+abstract normal-basis profile: the inspector checks its Koblitz group-order
+recurrence but explicitly reports that the coordinate representation and
+challenge points have not been imported. It does not substitute
+polynomial-basis coordinates.
 
 ## Generated instances and larger synthetic curves
 
@@ -612,6 +622,180 @@ statistics, and both ρ and IC verification counts. No rung crosses: the
 charged ρ/IC ratio is below 1 at every one. Read its
 `what_this_is_not` before quoting any number from it.
 
+## Prime-field curves: `ic prime`
+
+    ./target/release/ca-ic prime --curve secp256k1 --bits 28
+    ./target/release/ca-ic prime --curve p224 --bits 24 --targets 64 --width 4
+    ./target/release/ca-ic prime --type j1728 --bits 24 --json
+    ./target/release/ca-ic prime --curve secp256k1 --bits 16 --solver semaev
+
+The binary pipeline gets its speed-up from a factor base closed under
+Frobenius. A prime field has no Frobenius acting on the points, but some
+prime-field curves have **automorphisms** that play the same role, and the
+curve type decides which:
+
+| type | deployed curves | `Aut(E)` on `⟨G⟩` | action on `(x, y)` | eigenvalue on `⟨G⟩` |
+|---|---|---|---|---|
+| `generic` | P-192 … P-521, secp`r1`, Brainpool, FRP256v1, SM2, GOST | `{±1}`, `w = 2` | `(x, ±y)` | `±1` |
+| `j0` (`koblitz`), `p ≡ 1 (3)` | secp160k1, secp192k1, secp224k1, secp256k1 | `μ₆`, `w = 6` | `(ζᵏx, ±y)` | `±λᵏ`, `λ² + λ + 1 ≡ 0` (GLV) |
+| `j1728`, `p ≡ 1 (4)` | none in the zoo | `μ₄`, `w = 4` | `ιᵏ`, `ι(x, y) = (−x, iy)` | `μᵏ`, `μ² ≡ −1` |
+
+A factor base that is a union of `m` whole `Aut`-orbits has `w·m` points but
+only `m` unknowns: every orbit member's logarithm is `e(α)·log(rep)`. A
+decomposition `R = α(P_o) + β(P_o')` through *any* orbit members is a relation
+`e(α) x_o + e(β) x_o' ≡ log R`, so against a negation-only base the same
+unknowns cover `(w/2)²` times as many pair sums — 9× on a `j = 0` curve. That
+is the prime-field analogue of the GGMP Frobenius collapse.
+
+**The older `j = 0` module does not do this.**
+`ec_index_calculus_j0::find_relation_with_psi` keeps one representative per
+`ζ`-orbit, but a decomposition through a `ζ`-image is looked up to its orbit
+and then discarded by `resolve_signs`, which tries only the stored
+representative. Its orbits therefore add factor-base size, not coverage. The
+new pipeline uses the whole orbit; on one `j = 0` curve with the same unknowns
+it yields over 5× the relations of the `{±1}` control
+(`the_extra_automorphisms_multiply_the_yield`).
+
+### What a run does
+
+With `--curve NAME` the report first carries a **structural** block on the
+real curve, `named_curve`, computed on its parameters and never solved: type,
+`j`-invariant, `|Aut|`, the cube root of unity `ζ`, the GLV eigenvalue `λ`
+checked as `ψ(G) = [λ]G`, whether Semaev's `S₃` is `ζ`-equivariant (checked
+on samples), and `log2` of the rho cost with and without the `√w` fold. For
+secp256k1 that is `|Aut| = 6`, rho `≈ 2^128.3`, folded `2^127.0`.
+
+Then the pipeline runs on a **scaled-down curve of the same shape**:
+
+1. **Shape.** A coefficient that is small, or `p − small`, is kept, and a
+   random-looking one is redrawn: secp256k1 scales to `y² = x³ + 7`,
+   P-224 to `y² = x³ − 3x + b` with `b` random, Brainpool to random `a, b`.
+   The prime is drawn in `[2^{bits−1}, 2^bits)` in the class the type's
+   automorphisms need, and the cofactor may not exceed the named curve's
+   (`j = 1728` always carries the rational 2-torsion point `(0, 0)`, so it
+   gets cofactor ≤ 4).
+2. **Certified order.** A baby-step giant-step over the Hasse interval finds
+   `N` with `[N]P = O`, and `N = h·r` with `r` prime, wider than the
+   interval, and `[h]P ≠ O` proves `#E = N`: `r | ord(P)`, so `N` is the only
+   multiple of `ord(P)` in the interval. The generator is `[h]P`. The report's
+   `instance.order_certificate` records the interval and the BSGS steps.
+3. **Automorphisms.** The table above is built and every eigenvalue is
+   checked on `G`.
+4. **Factor base.** Abscissae are drawn pseudo-randomly, lifted, multiplied
+   by the cofactor into `⟨G⟩`, and one representative per orbit is kept. No
+   logarithm is used. `--orbits N` fixes the count; otherwise it is
+   `--width · √r / w`.
+5. **Relations.** Probes `R = [a]G` are walked by `+[s]G` (one addition a
+   probe). The oracle sweeps `α⁻¹(R) − P_o` over every automorphism and every
+   representative, one batched inversion per block, looks the difference up
+   by abscissa, and stops at the first hit; the sweep's starting point is
+   rotated by the probe so that a wide base's relations do not pile onto its
+   first columns. Every hit is re-added in the group before it is kept.
+6. **Logarithms.** Each relation has at most two unknowns, so the system is a
+   gain graph and is solved exactly, component by component: a spanning tree
+   expresses every column affinely in the root, and a cycle of gain `≠ 1`, or
+   a one-term relation, pins it. Every solved column is certified by
+   `[x_o]G == P_o`; an uncertified column would never be used, and the report
+   counts rejected relations, uncertified columns and inconsistent components
+   (all three must be zero for a `complete` run).
+7. **Descent and baseline.** Each of `--targets` known answers (the planted
+   `--known-log`, default 53, then logarithms drawn from `--seed`) is
+   recovered from one decomposition of `R = [a]G + [b]Q` over the certified
+   orbits and checked as `[d]G == Q`. The rho baseline is 32 r-adding walks
+   sharing one inversion per step, with distinguished points, in the same
+   arithmetic; it does not fold by `Aut`, and the analytic folded expectation
+   `√(πr/2)/√w` is reported beside it.
+
+Everything is seeded: a rerun with the same arguments reproduces every
+operation count (`runs_are_reproducible`).
+
+### What it costs, and how to read `vs_rho`
+
+Counts are group operations — affine additions, each sharing a batched
+inversion on both sides — so they compare across implementations. The
+three ratios are the binary block's timing classes, as `rho / IC` (above 1
+means index calculus spent less): **charged** (one descent, database paid),
+with a second charged ratio against the folded-rho expectation;
+**amortised** (precompute spread over the targets, plus descent); and
+**whole process**.
+
+A random point has `≈ (wm)²/(2r)` decompositions, and the sweep finds each
+twice (once per summand) and stops at the first. So the precompute is
+`≈ c·r/w` whatever the width — linear in `r` — while one descent is
+`≈ wm·(P₀ + Σ_{D≥1} P(D)/(2D+1))/(1 − P₀)` for `D ~ Poisson((wm)²/(2r))`,
+about `√r / width` once the base is wide. Over 256 targets at 28 bits the
+measured mean descent is within 2.5% of that formula for both generic and
+`j = 0` curves.
+
+`cargo run --release --example prime_ic_by_curve_type -- 16 28 32`, width 2,
+32 targets per database, every target recovered by both sides:
+
+| type | `\|Aut\|` | bits | precompute | mean descent | mean rho | folded rho | charged | whole process |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| generic | 2 | 20 | 5.84e5 | 665 | 624 | 651 | 0.94 | 0.033 |
+| generic | 2 | 24 | 9.75e6 | 2022 | 3427 | 2602 | 1.69 | 0.011 |
+| generic | 2 | 28 | 2.22e8 | 12540 | 19510 | 12530 | 1.56 | 0.0028 |
+| j0 | 6 | 20 | 1.88e5 | 741 | 737 | 376 | 0.99 | 0.11 |
+| j0 | 6 | 24 | 5.18e6 | 2882 | 4544 | 1915 | 1.58 | 0.028 |
+| j0 | 6 | 28 | 9.94e7 | 20460 | 21960 | 8379 | 1.07 | 0.0070 |
+| j1728 | 4 | 20 | 7.76e4 | 412 | 250 | 231 | 0.61 | 0.088 |
+| j1728 | 4 | 24 | 3.39e6 | 2440 | 2465 | 1555 | 1.01 | 0.023 |
+| j1728 | 4 | 28 | 5.47e7 | 6474 | 13120 | 6263 | 2.03 | 0.0076 |
+
+The precompute fits `r^1.00` for every type and scales as `r/w`: at 28 bits
+it is 1.11, 0.37 and 0.55 operations per unit of `r` for generic, `j = 0`
+and `j = 1728` — every one `≈ 2.2·r/w`, so the `j = 0` curve's is 3.0
+times cheaper than the generic one's and the `j = 1728` curve's 2.0 times,
+the ratios of their automorphism orders. The automorphism group, not the
+solver, buys that.
+
+The descent is where width matters. On the secp256k1 shape at 28 bits, 64
+targets, all recovered (`ic prime --curve secp256k1 --bits 28 --width W
+--targets 64`):
+
+| width | orbits (certified) | precompute | mean descent | charged | charged vs folded rho | whole process |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 2256 (2105) | 8.48e7 | 21400 | 0.91 | 0.32 | 0.014 |
+| 2 | 4511 (4230) | 6.85e7 | 10260 | 1.89 | 0.67 | 0.018 |
+| 4 | 9022 (8478) | 4.98e7 | 4534 | 4.28 | 1.53 | 0.025 |
+| 8 | 18044 (16970) | 4.70e7 | 1791 | 10.8 | 3.87 | 0.026 |
+| 16 | 36087 (33935) | 4.63e7 | 1256 | 15.4 | 5.51 | 0.027 |
+
+From width 4 the charged descent beats even the folded rho, and the precompute
+gets *cheaper* as the base widens (fewer probes end in a full fruitless
+sweep). P-256's shape runs the same way, reaching a charged 21× (12.8×
+against folded rho) at width 16.
+
+**What this is not.** The whole-process ratio stays near 0.01: the database
+costs `≈ r/w` operations where rho costs `√r`, so a charged win survives
+the whole accounting only when it is amortised over `Ω(√r)` targets — and
+for many targets the fair opponent is not per-target rho but rho with
+precomputation (Bernstein–Lange, `preprocessing_rho` / `ca_precomp`), whose
+`≈ 2√(rT)` for `T` targets this pipeline does not approach. These are
+2-summand decompositions, which is also why no prime-field rung here could
+threaten a deployed curve: at 256 bits the precompute alone is `≈ 2^256/w`.
+
+### Options
+
+- `--curve NAME` (any prime profile of `ic list`) or `--type generic|j0|j1728`
+  (`koblitz` is `j0`); neither means `--type generic`.
+- `--bits` 8..=40 (default 24): the scaled field. The certificate and rho reach
+  further; the precompute's `r/w` does not, and `--max-ops` (default `2^32`
+  group operations) ends it as `incomplete`.
+- `--targets` (default 32): known answers descended against one database. A
+  descent's cost is heavy-tailed — its median is about half its mean — so a
+  charged ratio from a handful of targets is noisy.
+- `--width` (default 2), `--orbits`, `--relations-per-orbit` (default 1.5,
+  which certifies about 93% of the orbits), `--no-rho`, `--seed`,
+  `--known-log` / `--random-target`.
+- `--solver semaev` runs the reference Semaev `S₃` solvers instead
+  (`ec_index_calculus` for generic curves; `ec_index_calculus_j0`'s orbit or,
+  with `--eisenstein`, Eisenstein-lattice base for `j = 0`) and the reference
+  Floyd rho, in the general `num-bigint` arithmetic, compared in wall time. It
+  is `O(p^{3/2})`, so `--bits` is held to 24, and it needs a prime-order curve,
+  so `j1728` is refused. Its knobs are `--factor-base`, `--extra-relations`,
+  `--max-trials` and `--attempts`.
+
 ## Random fixtures and custom parameters
 
     ./target/release/ca-ic generate --degree 11 --curve-a 1 --seed 42 --out fixture.json
@@ -809,8 +993,9 @@ unsuccessful. Clap usage errors use its standard nonzero exit status.
 
 ## Verification
 
-    cargo test --release --test ic_framework --test ic_progress
+    cargo test --release --test ic_framework --test ic_progress --test ic_prime
     cargo test --release --lib koblitz_
+    cargo test --release --lib -- prime_orbit_index_calculus ec_index_calculus_curves
 
 The end-to-end pipeline is gated in CI as well: `ic-e2e-benchmark.yml` runs
 the whole method plus the in-process ρ baseline on three frozen ledger rungs

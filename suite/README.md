@@ -79,15 +79,19 @@ $ ca-suite bench
 ```
 
 `ca-ic` inspects curves and runs bounded, reproducible index-calculus
-experiments on binary Koblitz curves with known answers; see
-[docs/ic/README.md](docs/ic/README.md).
+experiments with known answers: on binary Koblitz curves, and with
+`ca-ic prime` on prime-field curves by type — generic (NIST P-192 … P-521),
+`j = 0` Koblitz-style (secp256k1) and `j = 1728` — over a scaled-down curve of
+the named curve's shape; see [docs/ic/README.md](docs/ic/README.md).
 
 ```sh
 $ ca-ic list
 $ ca-ic ecc2k-130                                   # inspection only
+$ ca-ic p224                                        # inspection only
 $ ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate --json
 $ ca-ic compare --degree 7 --curve-a 1 --samples 3 --holdout 2 --json
 $ ca-ic fixed --params docs/ic/params/k0n9-fixed.json --dir runs/k0n9 --attempts 256 --json
+$ ca-ic prime --curve secp256k1 --bits 28 --width 4  # j = 0: |Aut| = 6 orbits, descent vs rho
 ```
 
 `ca-curves` lists the challenge corpus in [`../challenges/ecc/`](../challenges/ecc/README.md)
@@ -138,6 +142,7 @@ the targets and the arithmetic they stand on.
 | `ec_challenges` | the elliptic-curve challenge corpus ([challenges/elliptic](../challenges/elliptic/README.md)): prime, binary, ternary and odd-extension fields from a few bits to 768, Koblitz and subfield curves, j = 0 / 1728 / generic, supersingular, anomalous, twist pairs, and multi-level isogeny volcanoes, each tagged with the solver that should be fastest |
 | `pollard_collab` | the collaborative rho: indexed work units, self-verifying DP check-ins, CRDT merge, mailbox / TCP gossip / cairn transports ([design](docs/POLLARD_COLLAB_DESIGN.md)) |
 | `pohlig_hellman`, `cheon_attack`, `ecm`, `shor`, `quantum_estimator` | Pohlig-Hellman, Cheon's strong-DH attack, ECM factoring, Shor's order finding, quantum resource estimates |
+| `prime_orbit_index_calculus`, `ec_index_calculus_curves` | index calculus on prime-field curves by type — generic, `j = 0` (secp256k1) and `j = 1728` — with factor bases of whole automorphism orbits, certified scaled-down curves, exact logarithms, descent, and a batched rho baseline |
 | `ec_index_calculus`, `ec_index_calculus_j0`, `residual_walk`, `gaudry_cubic`, `semaev_*`, `symmetrized_semaev`, `diem_descent`, `descent_*`, `degree_reduction*`, `coordinate_*` | Semaev index calculus on prime-field curves and `E(F_{p^3})`, residual walks, Diem descent, and the summation-polynomial machinery they share |
 | `koblitz_*`, `binary_semaev*`, `wdsat_oracle`, `polynomial_reuse`, `algebra_cache` | Frobenius-invariant factor bases on binary Koblitz curves, the F4 / SAT / WDSat decomposition oracles, relation collection and the sparse solve |
 | `ghs_descent`, `ghs_full_attack`, `binary_isogeny`, `ec_trapdoor`, `hyperelliptic_index_calculus`, `coleman_integration` | Weil descent (GHS / Hess) from `E(F_{2^n})` to a hyperelliptic Jacobian and index calculus there |
