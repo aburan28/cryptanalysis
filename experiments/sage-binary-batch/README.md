@@ -16,7 +16,9 @@ temporaries. The final implementation also shares point-construction setup
 across a batch. It initializes the standard finite-field point class directly
 for internally computed normalized outputs and retains ordinary constructors
 for custom subclasses. Other field representations use the Python fallback.
-The module includes the pure-Python `frobenius_points` helper for Koblitz curves.
+The module also includes `frobenius_points` for Koblitz curves. It now uses
+native NTL squaring and the same standard-point construction path for
+NTL-backed fields, with the existing Python fallback for other fields.
 These APIs use variable-time arithmetic for public mathematical computations.
 
 ## Measured results
@@ -29,6 +31,7 @@ about cumulative speed relative to stock Sage.
 |---|---|---:|---:|
 | Native field arithmetic | Previous Python batch implementation | 1.61x | 1.53x |
 | Shared point-construction setup | Previous native binary | 1.56x | 1.82x |
+| Native Koblitz Frobenius | Previous Python point map | 2.15x | 2.31x |
 
 The [native arithmetic report](../sage-binary-native-addition/RESULT.md) contains
 26 timing cases. The [point-construction report](../sage-binary-point-construction/RESULT.md)
@@ -37,6 +40,12 @@ general coefficients. Both passed their frozen wall-time, CPU and peak-RSS
 criteria. Timings charge complete API calls, exact verification against scalar
 Sage sums, and output cleanup. Common fixture/reference setup is recorded
 separately. These are local ARM64 results on a shared host.
+
+The [native Frobenius report](../sage-binary-native-frobenius/RESULT.md)
+contains seven further complete point-map cases, all checked against Sage's
+Frobenius isogeny. It is an incremental comparison with the previous
+`frobenius_points` implementation. The separate storage experiment was held
+after its pilot failed to show a consistent gain.
 
 ## Apply and build
 
@@ -60,13 +69,14 @@ to the measured final implementation.
 In the resulting Sage session:
 
 ```python
-from sage.schemes.elliptic_curves.binary_batch import add_pairs, add_cartesian
+from sage.schemes.elliptic_curves.binary_batch import add_pairs, add_cartesian, frobenius_points
 
 F = GF(2**131, 'z')
 E = EllipticCurve(F, [1, 1, 0, 0, 1])
 # left and right are valid Sage points on E.
 paired_sums = add_pairs(E, zip(left, right))
 grid = add_cartesian(E, left, right, block_size=1024)
+mapped = frobenius_points(E, left, power=7)
 ```
 
 ## Run correctness checks

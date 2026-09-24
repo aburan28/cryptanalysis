@@ -1,0 +1,70 @@
+--- a/src/sage/schemes/elliptic_curves/binary_batch.py
++++ b/src/sage/schemes/elliptic_curves/binary_batch.py
+@@ -199,6 +199,9 @@
+         raise ValueError('Frobenius point maps require a Koblitz curve')
+     field = curve.base_ring()
+     power = integer_index(power) % int(field.degree())
++    if power and _native is not None and _native.supports(field):
++        prepared = (_point_data(curve, P) for P in points)
++        return _native._frobenius_prepared(curve, prepared, power)
+     one = field.one()
+     point_class = curve._point
+     output = []
+--- a/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
++++ b/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
+@@ -155,3 +155,55 @@
+         else:
+             output[active[i].index] = constructor(curve, [x3, y3, one], check=False)
+     return output
++
++
++def _frobenius_prepared(curve, prepared, Py_ssize_t power):
++    """Apply a positive binary Frobenius power to validated point triples."""
++    # A point iterator may switch NTL's global field context while yielding.
++    prepared = list(prepared)
++    field = curve.base_ring()
++    if power <= 0 or power >= field.degree():
++        raise ValueError('power must be reduced modulo the field degree')
++    cdef FiniteField_ntl_gf2eElement model = field.zero()
++    cdef FiniteField_ntl_gf2eElement x, y, x3, y3
++    cdef GF2E_c result_x, result_y
++    cdef Py_ssize_t i, j
++    cdef Element point
++    cdef Parent point_parent
++    cdef bint standard_points
++    output = [None] * len(prepared)
++    one = field.one()
++    constructor = curve._point
++    standard_points = constructor is EllipticCurvePoint_finite_field
++    if standard_points:
++        point_parent = curve.point_homset()
++        allocate = constructor.__new__
++    model._cache.F.restore()
++    for i in range(len(prepared)):
++        sig_check()
++        P, px, py = prepared[i]
++        if px is None:
++            output[i] = P
++            continue
++        x, y = px, py
++        if x.parent() is not field or y.parent() is not field:
++            raise ValueError('coordinates belong to a different field')
++        result_x = x.x
++        result_y = y.x
++        for j in range(power):
++            sqr(result_x, result_x)
++            sqr(result_y, result_y)
++        x3 = model._new()
++        y3 = model._new()
++        x3.x = result_x
++        y3.x = result_y
++        if standard_points:
++            point = allocate(constructor)
++            point._parent = point_parent
++            point._codomain = curve
++            point._normalized = True
++            point._coords = (x3, y3, one)
++            output[i] = point
++        else:
++            output[i] = constructor(curve, [x3, y3, one], check=False)
++    return output

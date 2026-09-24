@@ -1,0 +1,3 @@
+# Storage candidate: HOLD
+
+The in-place vector construction and one-time reserve candidate compiled and passed all 19 existing regression test groups. Matched complete-API pilot timing with exact reference sums gave 0.949x for GF(2^19) 1,024 general pairs, 1.014x for GF(2^131) 4,096 general pairs, and 1.046x for GF(2^131) 4,096 Cartesian sums (geometric mean 1.002x). The gain is too small and inconsistent to retain. The source and installed binary were restored from `baseline/`; raw paired rounds remain in `pilot-001/`. `candidate/binary_batch_ntl.pyx` matches the candidate source SHA-256 recorded in the pilot, and `storage-candidate.patch` reproduces it from the baseline.
