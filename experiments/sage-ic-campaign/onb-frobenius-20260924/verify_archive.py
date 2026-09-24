@@ -21,7 +21,8 @@ sources = {
 for name, expected in sources.items():
     actual = hashlib.sha256((here / name).read_bytes()).hexdigest()
     assert actual == expected, (name, actual)
-accepted = root / 'ecc2k130/codegen/field.py'
+# Pin the accepted source from this stage; the live Pb class evolves later.
+accepted = root / 'experiments/sage-ic-campaign/pb-euclid-inverse-20260924/baseline/field-local.py'
 accepted_hash = hashlib.sha256(accepted.read_bytes()).hexdigest()
 if accepted_hash not in (
     'c8a39e9a28df54138d094e649f5bf5db1ac5390bbfe23fc28d9620a5fbbeb8c7',

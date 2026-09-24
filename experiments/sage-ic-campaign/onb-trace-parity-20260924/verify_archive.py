@@ -13,7 +13,7 @@ from pathlib import Path
 here = Path(__file__).resolve().parent
 root = here.parents[2]
 baseline = here / 'baseline/field.py'
-source = root / 'ecc2k130/codegen/field.py'
+source = root / 'experiments/sage-ic-campaign/pb-euclid-inverse-20260924/baseline/field-local.py'
 assert hashlib.sha256(baseline.read_bytes()).hexdigest() == \
     '191584f34e0092922cf8747d075a0791df702b6153923285b48736d96b0c6c03'
 assert hashlib.sha256(source.read_bytes()).hexdigest() in (
