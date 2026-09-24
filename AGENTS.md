@@ -6,7 +6,11 @@ Use this convention for new elliptic-curve index-calculus (IC) candidate
 configurations and result tables. It names a complete pipeline, from the
 mathematical instance through the recovered discrete logarithm. Existing
 artifacts keep their old names; give them an ID under this convention when
-they enter a new comparison. A campaign may impose stricter claim rules.
+they enter a new comparison. **Always** use the candidate and measurement
+rules below when comparing IC variants. A campaign may impose stricter claim
+rules. The [candidate catalog](experiments/ic-candidate-catalog/README.md)
+contains design proposals; its [measurement contract](experiments/ic-candidate-catalog/MEASUREMENT.md)
+specifies the empirical stage record and promotion gates.
 
 ### Three distinct identifiers
 
@@ -38,6 +42,19 @@ they enter a new comparison. A campaign may impose stricter claim rules.
    Form the workload ID from the first 12 hex digits of SHA-256 over its
    canonical workload record.
 
+A design proposal may use a `Q<number>` catalog ID while exact base points,
+algorithm wiring, or isogeny maps are unresolved. Keep `candidate_id: null`
+and all measured costs null until those gates are satisfied. A proposal ID is
+never an `IC1` result, and a nominal dimension is never an actual `fb` count.
+
+For an isogenous curve, preserve its own immutable curve ID and use the
+[volcano-position and isogeny-walk convention](experiments/ic-candidate-catalog/VOLCANO_NAMING.md).
+Only a proved ordinary `ell`-volcano level may appear as `V<ell>L<level>`;
+`L0` is the surface, and downward/upward edges change the level by `+1`/`-1`.
+Keep the ordered edge route separate from the curve ID. In characteristic
+two, degree-2 routes have no ordinary `V2` level label. Unknown levels remain
+`null`, not zero.
+
 `fb<B>` is the **actual number of distinct, nonidentity, subgroup-usable
 factor-base points before sign/Frobenius orbit folding**, written as a plain
 decimal integer without leading zeros. Record the nominal subspace dimension
@@ -51,8 +68,9 @@ There are no separators or zero-padded numbers in an ID. Structural tags
 (`kb1`, `f4`, `walk`, `bw`, etc.), the `fb` tag, and hex digits are lowercase.
 The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
-Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid` for point
-decomposition; `RCwalk`, `RCsample`, `RCdirect` for relation collection;
+Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, and `PDP4root`
+for the compact four-summand S3 root index; `RCwalk`, `RCsample`, `RCdirect`,
+and `RCguided` for pivot-guided relation collection;
 `LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
 `TDdirect`, `TDpdp`, `TDdescent` for target handling; `ISO0` for no isogeny
 transport and `ISO1` for a specified route. A solver's internal Macaulay
@@ -100,10 +118,11 @@ Keep exclusive phase costs so their sum is the charged total:
 
 `T_cold = T_setup + T_isogeny + T_factor_base + T_precompute + T_queries + T_PDP + T_relation_check + T_matrix_build + T_relation_LA + T_target_descent + T_recovery_check`.
 
-`T_PDP` covers relation collection and includes failed and timed-out attempts; `T_queries` includes query
-generation; target descent includes all recursive decomposition work for the
-target but charges it only once. Retain attempts, verified relations, novel
-rows, final rank, solved targets, memory peak, wall time, operation counts,
+`T_PDP` covers relation collection and includes failed and timed-out attempts;
+`T_queries` includes query generation. Target descent includes all recursive
+decomposition work for the target but charges it only once. Retain attempts,
+verified relations, novel rows, final rank, solved targets, memory peak,
+wall time, operation counts,
 conversion/calibration, and correctness certificate. `T_cold` is for the
 declared target count with empty caches. For `k` targets, report any warm
 amortization separately as `(shared_setup + sum(target_cost_i))/k`, naming
@@ -118,3 +137,14 @@ solve time, coverage, or cost per useful row are stage diagnostics. Label
 predictions and extrapolations separately from measurements. Put the
 baseline, candidate, rho reference, correctness, total, and boundary ratios
 in one table. A row with an unverified answer is not an end-to-end result.
+
+Every empirical comparison must also retain stage measurements: actual base
+size and folded columns, base construction and memory, ordinary-query PDP
+status mix and cost (including failed attempts), verified relation yield,
+novel rank per query and cost per useful row, matrix construction and final
+LA, target descent, and scalar replay. Pair variants on frozen inputs and
+resources; preserve timeouts, OOMs, and zero-yield cells. Report uncertainty
+for rates and paired costs. Planted decompositions are correctness controls,
+not estimates of natural relation yield. An unverified isogeny neighbor or
+conductor guess is a proposal only: `ISO1` requires an explicit verified map,
+ordered edge links, subgroup/log transport, and charged route costs.
