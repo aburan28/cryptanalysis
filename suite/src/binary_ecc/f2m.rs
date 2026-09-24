@@ -103,13 +103,84 @@ impl IrreduciblePoly {
     }
 }
 
+/// Words stored inline before an element falls back to the heap:
+/// `m ≤ 576`, which covers every NIST and SECG binary field up to
+/// B-571.
+const INLINE_WORDS: usize = 9;
+
+/// The limbs of an [`F2mElement`]: inline up to [`INLINE_WORDS`] words,
+/// a `Vec` beyond that.
+///
+/// Every field operation returns a fresh element, so with a `Vec` each
+/// one paid a heap allocation, and so did every `clone` — after the
+/// word-level arithmetic that allocation was most of a multiply.  Inline
+/// storage makes creating and cloning an element a copy of at most 72
+/// bytes.  It derefs to `[u64]` of exactly the element's word count, so
+/// the arithmetic sees the same slice either way; the heap arm only
+/// keeps fields wider than 576 bits working.
+#[derive(Clone)]
+enum Words {
+    Inline { len: u8, w: [u64; INLINE_WORDS] },
+    Heap(Vec<u64>),
+}
+
+impl Words {
+    fn zeroed(n: usize) -> Self {
+        if n <= INLINE_WORDS {
+            Words::Inline {
+                len: n as u8,
+                w: [0; INLINE_WORDS],
+            }
+        } else {
+            Words::Heap(vec![0; n])
+        }
+    }
+}
+
+impl std::ops::Deref for Words {
+    type Target = [u64];
+    #[inline(always)]
+    fn deref(&self) -> &[u64] {
+        match self {
+            Words::Inline { len, w } => &w[..*len as usize],
+            Words::Heap(v) => v,
+        }
+    }
+}
+
+impl std::ops::DerefMut for Words {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut [u64] {
+        match self {
+            Words::Inline { len, w } => &mut w[..*len as usize],
+            Words::Heap(v) => v,
+        }
+    }
+}
+
+/// Equality and `Debug` look at the words only, so they behave exactly
+/// as the old `Vec<u64>` field's derived impls did.
+impl PartialEq for Words {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+
+impl Eq for Words {}
+
+impl std::fmt::Debug for Words {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (**self).fmt(f)
+    }
+}
+
 /// An element of `F_{2^m}`: a polynomial of degree `< m` over `F_2`.
 /// Stored as a packed bit-vector; bit `i` represents the coefficient
 /// of `z^i`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct F2mElement {
     /// `bits[w] >> b` represents the coefficient of `z^(64·w + b)`.
-    bits: Vec<u64>,
+    bits: Words,
     /// Number of bits considered (≥ irreducible's degree; we keep
     /// the result reduced so high bits are always 0).
     m: u32,
@@ -120,7 +191,7 @@ impl F2mElement {
     pub fn zero(m: u32) -> Self {
         let n_words = m.div_ceil(64) as usize;
         Self {
-            bits: vec![0u64; n_words.max(1)],
+            bits: Words::zeroed(n_words.max(1)),
             m,
         }
     }
@@ -237,7 +308,7 @@ impl F2mElement {
     pub fn add(&self, other: &Self) -> Self {
         debug_assert_eq!(self.m, other.m);
         let mut out = self.clone();
-        for (a, b) in out.bits.iter_mut().zip(&other.bits) {
+        for (a, b) in out.bits.iter_mut().zip(other.bits.iter()) {
             *a ^= *b;
         }
         out
@@ -246,7 +317,7 @@ impl F2mElement {
     /// `self += other` in place (XOR), without allocating.
     pub fn add_assign(&mut self, other: &Self) {
         debug_assert_eq!(self.m, other.m);
-        for (a, b) in self.bits.iter_mut().zip(&other.bits) {
+        for (a, b) in self.bits.iter_mut().zip(other.bits.iter()) {
             *a ^= *b;
         }
     }
@@ -461,12 +532,10 @@ impl F2mElement {
 
     /// Internal: construct from a `&[u64]` raw word slice.
     fn from_words(words: &[u64], m: u32) -> Self {
-        let n_words = m.div_ceil(64) as usize;
-        let mut bits = vec![0u64; n_words.max(1)];
-        for (i, w) in words.iter().enumerate().take(bits.len()) {
-            bits[i] = *w;
+        let mut e = Self::zero(m);
+        for (b, w) in e.bits.iter_mut().zip(words) {
+            *b = *w;
         }
-        let mut e = Self { bits, m };
         e.mask_in_place();
         e
     }
@@ -790,12 +859,16 @@ fn reduce_words(value: &mut [u64], irreducible: &IrreduciblePoly) {
     let t_max = irreducible.low_terms.iter().copied().max().unwrap_or(0);
     debug_assert!(t_max < m);
     let width = (m - t_max).min(64);
-    // Highest possibly-set bit + 1, trimmed past trailing zero words.
+    // One past the highest set bit, so the first chunk starts at the
+    // product's real degree rather than at the top of its last word.
     let mut top_word = value.len();
     while top_word > 0 && value[top_word - 1] == 0 {
         top_word -= 1;
     }
-    let mut hi = (top_word as u32) * 64;
+    let mut hi = match top_word {
+        0 => 0,
+        w => (w as u32) * 64 - value[w - 1].leading_zeros(),
+    };
     while hi > m {
         let lo = hi.saturating_sub(width).max(m);
         let len = hi - lo;
@@ -1004,6 +1077,52 @@ mod tests {
                 assert_eq!(a.mul(&inv, &irr), F2mElement::one(m), "m = {m}");
             }
         }
+    }
+
+    /// Elements up to `INLINE_WORDS` words live inline and wider ones
+    /// on the heap; arithmetic, equality and cloning must not care
+    /// which.  Reduction is defined modulo any polynomial, irreducible
+    /// or not, so the wide fields here need not be fields.
+    #[test]
+    fn inline_and_heap_storage_agree_across_the_boundary() {
+        let mut s = 0xA5A5_5A5A_0F0F_F0F0u64;
+        // 576 = 9 words (last inline), 577 = 10 words (first heap), 640.
+        for m in [575u32, 576, 577, 640, 1031] {
+            let irr = IrreduciblePoly {
+                degree: m,
+                low_terms: vec![0, 1, 3, 4],
+            };
+            let words = m.div_ceil(64) as usize;
+            let heap = words > INLINE_WORDS;
+            let e = F2mElement::zero(m);
+            assert_eq!(matches!(e.bits, Words::Heap(_)), heap, "m = {m}");
+            assert_eq!(e.raw_bits().len(), words, "m = {m}");
+            for _ in 0..10 {
+                let a = random_elem(&mut s, m);
+                let b = random_elem(&mut s, m);
+                assert_eq!(a.mul(&b, &irr), a.schoolbook_mul(&b, &irr), "mul, m = {m}");
+                assert_eq!(
+                    a.square(&irr),
+                    a.schoolbook_mul(&a, &irr),
+                    "square, m = {m}"
+                );
+                let c = a.clone();
+                assert_eq!(c, a);
+                assert_eq!(c.raw_bits(), a.raw_bits());
+                let mut d = a.clone();
+                d.add_assign(&b);
+                assert_eq!(d, a.add(&b));
+                assert_ne!(d, a, "b is non-zero with overwhelming probability");
+            }
+        }
+    }
+
+    /// `Debug` prints the same shape the old `Vec<u64>` field produced,
+    /// so logged and snapshotted output does not change.
+    #[test]
+    fn debug_output_is_unchanged() {
+        let e = F2mElement::from_bit_positions(&[0, 3], 8);
+        assert_eq!(format!("{e:?}"), "F2mElement { bits: [9], m: 8 }");
     }
 
     /// The software carry-less multiply (the fallback on CPUs without
