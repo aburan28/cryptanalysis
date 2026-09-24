@@ -1,0 +1,32 @@
+--- a/src/sage/schemes/elliptic_curves/binary_hardware.py
++++ b/src/sage/schemes/elliptic_curves/binary_hardware.py
+@@ -322,6 +322,29 @@
+         data, infinity = self.pack_points(points)
+         return self._unpack_points(self.apply_words(data), infinity)
+ 
++    def apply_batches(self, batches):
++        r"""Map independent point batches with one backend dispatch.
++
++        The outer and inner inputs may be iterators. Batch boundaries and
++        point order are preserved, including empty batches. This operation
++        shares the plan's existing 512 MiB packed working-set limit.
++        """
++        if self._closed:
++            raise RuntimeError('plan is closed')
++        points = []
++        lengths = []
++        for batch in batches:
++            before = len(points)
++            points.extend(batch)
++            lengths.append(len(points) - before)
++        mapped = self.apply(points)
++        output = []
++        offset = 0
++        for length in lengths:
++            output.append(mapped[offset:offset + length])
++            offset += length
++        return output
++
+     def close(self):
+         """Release native resources. The plan cannot be used after closing."""
+         with self._lock:
