@@ -9,6 +9,9 @@
 //! group operations (affine additions, a batched inversion shared on both
 //! sides):
 //!
+//! - `known LP` — large primes whose logarithm the collection learnt, a
+//!   second base the descent looks up (none with full decompositions);
+//!   `descent via LP` counts the descents that closed through one;
 //! - `precompute` — probes and oracle differences for the database;
 //! - `descent` — mean per target, database paid;
 //! - `rho` — mean group operations per target (walk steps plus seeding
@@ -63,8 +66,10 @@ fn main() {
     let hi = args.get(1).copied().unwrap_or(24);
     let targets = args.get(2).copied().unwrap_or(16) as usize;
 
-    println!("| type | relations | \\|Aut\\| | bits | r | orbits (certified) | verified IC / rho | precompute | descent | rho | folded rho | charged | amortised | whole | IC s | rho s |");
-    println!("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+    println!("| type | relations | \\|Aut\\| | bits | r | orbits (certified) | known LP | verified IC / rho | descent via LP | precompute | descent | rho | folded rho | charged | amortised | whole | IC s | rho s |");
+    println!(
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+    );
     let mut fits: Vec<(String, f64, f64, f64)> = Vec::new();
     for kind in [CurveKind::Generic, CurveKind::J0, CurveKind::J1728] {
         for large_primes in [false, true] {
@@ -73,7 +78,7 @@ fn main() {
             for bits in (lo..=hi).step_by(4) {
                 let Ok(inst) = generate_instance(ScaledShape::of_kind(kind), bits, None, 1) else {
                     println!(
-                        "| {} | {mode} | | {bits} | no certified curve | | | | | | | | | | | |",
+                        "| {} | {mode} | | {bits} | no certified curve | | | | | | | | | | | | | |",
                         kind.as_str()
                     );
                     continue;
@@ -101,15 +106,18 @@ fn main() {
                 let ic_s = rep.logs.seconds + rep.descents.iter().map(|d| d.seconds).sum::<f64>();
                 let rho_sec: f64 = rep.rhos.iter().map(|r| r.seconds).sum();
                 println!(
-                "| {} | {mode} | {} | {bits} | {} | {} ({}) | {}/{} / {}/{} | {pre:.3e} | {des:.3e} | {rho:.3e} | {folded:.3e} | {:.2} | {:.3} | {:.4} | {ic_s:.3} | {rho_sec:.3} |",
+                "| {} | {mode} | {} | {bits} | {} | {} ({}) | {} | {}/{} / {}/{} | {}/{} | {pre:.3e} | {des:.3e} | {rho:.3e} | {folded:.3e} | {:.2} | {:.3} | {:.4} | {ic_s:.3} | {rho_sec:.3} |",
                 kind.as_str(),
                 rep.automorphism_order,
                 inst.curve.r,
                 rep.logs.orbits,
                 rep.logs.certified_columns,
+                rep.logs.known_large_primes,
                 rep.descents_verified(),
                 ts.len(),
                 rep.rhos_verified(),
+                ts.len(),
+                rep.descents_through_large_primes(),
                 ts.len(),
                 rho / des,
                 (rho_pre / t + rho) / (pre / t + des),
