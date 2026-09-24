@@ -2013,11 +2013,14 @@ mod tests {
     fn the_extra_automorphisms_multiply_the_yield() {
         // Same j = 0 curve, same number of unknowns: the full μ₆ orbits
         // against the {±1} control.  Coverage scales as (w·m)², so the
-        // yield per probe should rise by about (6/2)² = 9.
+        // yield per probe should rise by about (6/2)² = 9, a little less
+        // as the full base starts to saturate (≈ 8.7 here).  256 orbits
+        // give the control about 56 hits in 6000 probes, so the ratio is
+        // known to about ±1.2 and both bounds sit near three sigma.
         let inst = instance(CurveKind::J0, 24, 8);
         let full = &inst.curve;
         let control = full.negation_only();
-        let m = 48;
+        let m = 256;
         let yield_of = |c: &OrbitCurve| {
             let fb = OrbitFactorBase::select(c, m, 3);
             let mut sweep = Sweep::default();
@@ -2030,10 +2033,13 @@ mod tests {
                 .count()
         };
         let (y_full, y_control) = (yield_of(full), yield_of(&control));
-        assert!(y_control > 0 && y_full > 0);
+        assert!(
+            y_control > 20,
+            "control yield {y_control} is too small to compare"
+        );
         let ratio = y_full as f64 / y_control as f64;
         assert!(
-            ratio > 5.0,
+            (5.0..13.0).contains(&ratio),
             "μ₆ orbits yield {y_full}, the ±1 control {y_control}: ratio {ratio:.2}"
         );
     }

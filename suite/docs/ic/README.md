@@ -652,9 +652,10 @@ is the prime-field analogue of the GGMP Frobenius collapse.
 `ζ`-orbit, but a decomposition through a `ζ`-image is looked up to its orbit
 and then discarded by `resolve_signs`, which tries only the stored
 representative. Its orbits therefore add factor-base size, not coverage. The
-new pipeline uses the whole orbit; on one `j = 0` curve with the same unknowns
-it yields over 5× the relations of the `{±1}` control
-(`the_extra_automorphisms_multiply_the_yield`).
+new pipeline uses the whole orbit; on one 24-bit `j = 0` curve with the same
+256 unknowns it finds 682 relations in 6000 probes against the `{±1}`
+control's 79, a factor of 8.6 where the model predicts 8.7 (9, less a little
+saturation) — `the_extra_automorphisms_multiply_the_yield`.
 
 ### What a run does
 
