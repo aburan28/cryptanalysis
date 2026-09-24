@@ -111,12 +111,6 @@ class Onb:
     def frob(self, a, k):
         """a -> a^(2^k), i.e. z -> z^(2^k), an index permutation."""
         e = pow(2, k, self.n)
-        if e not in (2, 4):
-            r = 0
-            for i in range(self.n):
-                if (a >> i) & 1:
-                    r |= 1 << (i * e % self.n)
-            return self.normalize(r)
         positions = self.frobPositions.get(e)
         if positions is None:
             positionBits = tuple(1 << (i * e % self.n) for i in range(self.n))

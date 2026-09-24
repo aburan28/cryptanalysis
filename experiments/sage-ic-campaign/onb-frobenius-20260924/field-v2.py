@@ -111,29 +111,32 @@ class Onb:
     def frob(self, a, k):
         """a -> a^(2^k), i.e. z -> z^(2^k), an index permutation."""
         e = pow(2, k, self.n)
-        if e not in (2, 4):
-            r = 0
-            for i in range(self.n):
-                if (a >> i) & 1:
-                    r |= 1 << (i * e % self.n)
-            return self.normalize(r)
         positions = self.frobPositions.get(e)
         if positions is None:
             positionBits = tuple(1 << (i * e % self.n) for i in range(self.n))
-            padded = positionBits + (0,) * (-self.n % 8)
-            tables = []
-            for offset in range(0, len(padded), 8):
-                table = [0] * 256
-                for byte in range(1, 256):
-                    bit = byte & -byte
-                    table[byte] = table[byte ^ bit] | padded[offset + bit.bit_length() - 1]
-                tables.append(tuple(table))
-            positions = tuple(tables)
+            if self.m > 9:
+                padded = positionBits + (0,) * (-self.n % 8)
+                tables = []
+                for offset in range(0, len(padded), 8):
+                    table = [0] * 256
+                    for byte in range(1, 256):
+                        bit = byte & -byte
+                        table[byte] = table[byte ^ bit] | padded[offset + bit.bit_length() - 1]
+                    tables.append(tuple(table))
+                positions = tuple(tables)
+            else:
+                positions = positionBits
             self.frobPositions[e] = positions
         r = 0
         bits = a & self.allOnes
-        for table, byte in zip(positions, bits.to_bytes(len(positions), 'little')):
-            r |= table[byte]
+        if self.m > 9:
+            for table, byte in zip(positions, bits.to_bytes(len(positions), 'little')):
+                r |= table[byte]
+        else:
+            while bits:
+                bit = bits & -bits
+                r |= positions[bit.bit_length() - 1]
+                bits ^= bit
         return self.normalize(r)
 
     def add(self, a, b):
