@@ -31,6 +31,7 @@ solver cost, including packing, transfers, construction and verification.
 | 18 | `element_ntl_gf2e.pyx` GF(2^m) squaring/Frobenius | Reduce context setup or reuse field temporaries in repeated public operations | Only promote after field-level and containing point-operation gains; cover alternate moduli. |
 | 19 | `pbori/gbcore.py` nonlinear pair and reducer selection | Reduce work seen in complete Boolean Gröbner profiling | Existing dispatch and fixed batch-cap trials were held; use larger representative PDP systems and exact bases. |
 | 20 | `pbori` native matrix construction/reduction | Reduce Macaulay conversion and interreduction cost before considering Metal | Prior standalone Metal RREF was 9–21x slower than M4RI on tested matrices; profile stage costs and retain CPU control. |
+| 21 | `binary_batch_ntl.pyx:_frobenius_one` | Restore NTL context before coordinate extraction and use one-point native squaring from `hom_frobenius.py` | **PASS_LOCAL** over PR #78 after a held context bug: 1.251x primary and 1.154x confirmation warm public-call means, exact field-switch suite and 116 hom doctests. Standalone patch and receipts in `frobenius-singleton-20260924/`. |
 
 The executable degree-131 IC reference in `ecc2k130/codegen/indexcalc_e2e.py`
 currently performs most field and curve work in its own Python ONB classes and
