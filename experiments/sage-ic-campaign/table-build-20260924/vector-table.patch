@@ -1,0 +1,31 @@
+diff --git a/src/sage/schemes/elliptic_curves/binary_hardware.py b/src/sage/schemes/elliptic_curves/binary_hardware.py
+--- a/src/sage/schemes/elliptic_curves/binary_hardware.py
++++ b/src/sage/schemes/elliptic_curves/binary_hardware.py
+@@ -174,3 +174,3 @@
+         # from_integer/to_integer are inverse polynomial-basis encodings.
+-        basis = []
++        basis = np.zeros((self.bytes*8, self.words), dtype=np.uint32)
+         for bit in range(self.degree):
+@@ -178,13 +178,12 @@
+             image = value if not self.power else value.frobenius(self.power)
+-            basis.append(int(image) if self.degree == 1 else int(image.to_integer()))
+-        rows = []
++            integer = int(image) if self.degree == 1 else int(image.to_integer())
++            basis[bit] = [(integer >> (32*word)) & 0xffffffff
++                          for word in range(self.words)]
++        table = np.zeros((self.bytes, 256, self.words), dtype=np.uint32)
+         for byte in range(self.bytes):
+-            values = [0]*256
+-            for value in range(1, 256):
+-                low = value & -value
+-                bit = byte*8 + low.bit_length()-1
+-                values[value] = values[value ^ low] ^ (basis[bit] if bit < self.degree else 0)
+-            for value in values:
+-                rows.extend((value >> (32*w)) & 0xffffffff for w in range(self.words))
+-        result = np.array(rows, dtype=np.uint32)
++            row = table[byte]
++            for bit in range(8):
++                span = 1 << bit
++                row[span:2*span] = row[:span] ^ basis[byte*8 + bit]
++        result = table.reshape(-1)
+         result.setflags(write=False)
