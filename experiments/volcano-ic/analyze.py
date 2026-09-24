@@ -75,7 +75,7 @@ def bootRatio(x, y, rng, n=20000):
     return [float(np.percentile(r, 2.5)), float(np.percentile(r, 97.5))]
 
 
-def census(rows, out):
+def census(rows, out, cpuRows=()):
     rows = sorted(rows, key=lambda r: (r['curve'] != 'E0', r['curve']))
     e0 = next(r for r in rows if r['curve'] == 'E0')
     desc = [r for r in rows if r['curve'] != 'E0']
@@ -112,6 +112,22 @@ def census(rows, out):
     for r in desc:
         orbits.setdefault(r['orbit'], []).append(r['fb_size'])
     kwOrbit = stats.kruskal(*orbits.values())
+    # CPU-time Groebner cost (load-independent), one sample list per curve.
+    cpu = {r['curve']: r['gb_cpu_s'] for r in cpuRows}
+    cpuSummary = None
+    if len(cpu) >= 2:
+        kwCpu = stats.kruskal(*cpu.values())
+        fbOf = {r['curve']: r['fb_size'] for r in rows}
+        means = {c: float(np.mean(v)) for c, v in cpu.items()}
+        descMeans = [m for c, m in means.items() if c != 'E0']
+        allCpu = [x for v in cpu.values() for x in v]
+        cpuSummary = {'curves': len(cpu), 'median_s': float(np.median(allCpu)),
+                      'curve_mean_range_s': [float(min(means.values())), float(max(means.values()))],
+                      'e0_mean_s': means.get('E0'),
+                      'e0_percentile_of_descendant_means': percentile(descMeans, means['E0']) if 'E0' in means else None,
+                      'kruskal_by_curve': {'H': float(kwCpu.statistic), 'p': float(kwCpu.pvalue)},
+                      'spearman_mean_vs_fb_size': float(stats.spearmanr([fbOf[c] for c in means], list(means.values()))[0]),
+                      'within_curve_cv': float(np.median([np.std(v) / np.mean(v) for v in cpu.values()]))}
     summary = {
         'curves': len(rows), 'descendants': len(desc),
         'e0': {k: e0[k] for k in ('fb_size', 'tag_counts', 'eligible_signed_pairs', 'distinct_targets',
@@ -135,6 +151,8 @@ def census(rows, out):
                                 'kruskal_by_curve': {'H': float(kwCurve.statistic), 'p': float(kwCurve.pvalue)},
                                 'kruskal_by_instance': {'H': float(kwInst.statistic), 'p': float(kwInst.pvalue)}},
         'dreg': {'values': {str(v): dregs.count(v) for v in sorted(set(dregs))}, 'e0': dregE0},
+        'gb_cpu_seconds_per_call': cpuSummary,
+        'gb_wall_note': 'census wall-clock GB times drift with machine load in processing order; use gb_cpu_seconds_per_call',
         'fb_size_by_orbit_kruskal': {'H': float(kwOrbit.statistic), 'p': float(kwOrbit.pvalue)},
     }
     out['census'] = summary
@@ -164,11 +182,14 @@ def census(rows, out):
     a.set_ylabel('expected decomposition attempts per ECDLP\n(|F| + 10) / Pr[decomp]')
     a.set_title('C  Predicted relation-collection work')
     a = ax[1, 1]
-    order = sorted(gbByCurve, key=lambda c: (c != 'E0', c))
-    med = [np.median(gbByCurve[c]) * 1000 for c in order]
+    src = cpu if cpu else gbByCurve
+    order = sorted(src, key=lambda c: (c != 'E0', c))
+    med = [np.mean(src[c]) * 1000 for c in order]
     a.scatter(range(len(order)), med, s=6, color=[E0_COLOR if c == 'E0' else DESC_COLOR for c in order])
+    if 'E0' in src:
+        a.scatter([0], [med[0]], s=60, marker='D', color=E0_COLOR, zorder=3)
     a.set_xlabel('curve (E0 first, then Frobenius orbits O00 ... O23)')
-    a.set_ylabel('median GB ms per decomposition\n(over the 10 ECDLP instances)')
+    a.set_ylabel('mean Gröbner CPU ms per decomposition\n(20 targets, 2 per ECDLP instance)' if cpu else 'median GB wall ms (load-confounded)')
     a.set_title('D  Gröbner cost per decomposition by curve')
     for x in ax.flat:
         x.spines[['top', 'right']].set_visible(False)
@@ -185,21 +206,35 @@ def census(rows, out):
 def ecdlp(rows, censusByCurve, out):
     if not rows:
         return
+    # Keep one record per (curve, instance). Duplicates come from overlapping
+    # worker launches; they share a seed, so the attempt sequence is identical.
+    seen, unique = set(), []
+    for r in rows:
+        key = (r['curve'], r['instance'])
+        if key not in seen:
+            seen.add(key)
+            unique.append(r)
+    out['ecdlp_duplicates_dropped'] = len(rows) - len(unique)
+    rows = unique
     rng = np.random.default_rng(1)
     byCurve = {}
     for r in rows:
         byCurve.setdefault(r['curve'], []).append(r)
     complete = {c: v for c, v in byCurve.items() if len({r['instance'] for r in v}) == 10}
+    if len(complete) < 2 or 'E0' not in complete:
+        out['ecdlp'] = {'pending': {c: len(v) for c, v in byCurve.items()}}
+        return
     allRuns = [r for v in complete.values() for r in v]
     correct = sum(r['correct'] for r in allRuns)
     metrics = {}
-    for key in ('total_s', 'gb_calls', 'gb_s', 'linalg_s', 'relations'):
-        y = [math.log(r[key]) if key != 'relations' else r[key] for r in allRuns]
+    # relations is fixed at |F| + 10 per curve, so it carries no variance.
+    for key in ('gb_calls', 'total_cpu_s', 'gb_cpu_s', 'linalg_s', 'total_s'):
+        y = [math.log(r[key]) for r in allRuns]
         metrics[key] = twoWayAnova(y, [r['curve'] for r in allRuns], [r['instance'] for r in allRuns])
     e0 = [r for r in allRuns if r['curve'] == 'E0']
     desc = [r for r in allRuns if r['curve'] != 'E0']
     comp = {}
-    for key in ('total_s', 'gb_calls', 'gb_s'):
+    for key in ('total_cpu_s', 'gb_calls', 'gb_cpu_s'):
         x, y = [r[key] for r in e0], [r[key] for r in desc]
         mw = stats.mannwhitneyu(x, y)
         comp[key] = {'e0_mean': float(np.mean(x)), 'desc_mean': float(np.mean(y)),
@@ -214,7 +249,7 @@ def ecdlp(rows, censusByCurve, out):
     rc = stats.pearsonr([curvePred[c] for c in complete], [curveMeans[c] for c in complete])
     perInstance = {}
     for r in allRuns:
-        perInstance.setdefault(r['instance'], []).append(r['total_s'])
+        perInstance.setdefault(r['instance'], []).append(r['gb_calls'])
     out['ecdlp'] = {
         'curves': sorted(complete, key=lambda c: (c != 'E0', c)), 'runs': len(allRuns),
         'correct_logs': [correct, len(allRuns)],
@@ -222,28 +257,32 @@ def ecdlp(rows, censusByCurve, out):
         'e0_vs_descendants': comp,
         'predicted_vs_measured_attempts': {'pearson_r_curve_means': float(rc[0]), 'p': float(rc[1]),
                                            'mean_ratio_measured_over_predicted': float(np.mean(np.array(measured) / np.array(predicted)))},
-        'per_instance_median_total_s': {str(k): float(np.median(v)) for k, v in sorted(perInstance.items())},
+        'per_instance_median_attempts': {str(k): float(np.median(v)) for k, v in sorted(perInstance.items())},
         'per_curve': {c: {'fb_size': censusByCurve[c]['fb_size'],
                           'exact_decomp_prob': censusByCurve[c]['exact_decomp_prob'],
                           'predicted_attempts': curvePred[c],
                           'mean_attempts': float(curveMeans[c]),
-                          'median_total_s': float(np.median([r['total_s'] for r in v])),
-                          'iqr_total_s': [float(np.percentile([r['total_s'] for r in v], 25)),
-                                          float(np.percentile([r['total_s'] for r in v], 75))]}
+                          'median_total_cpu_s': float(np.median([r['total_cpu_s'] for r in v])),
+                          'iqr_total_cpu_s': [float(np.percentile([r['total_cpu_s'] for r in v], 25)),
+                                              float(np.percentile([r['total_cpu_s'] for r in v], 75))],
+                          'correct': sum(r['correct'] for r in v)}
                       for c, v in complete.items()},
     }
 
     order = sorted(complete, key=lambda c: (c != 'E0', curvePred[c]))
     fig, ax = plt.subplots(1, 3, figsize=(17, 5.8))
     a = ax[0]
-    data = [[r['total_s'] for r in complete[c]] for c in order]
+    data = [[r['gb_calls'] for r in complete[c]] for c in order]
     bp = a.boxplot(data, vert=False, widths=.6, patch_artist=True, medianprops={'color': 'black'})
     for patch, c in zip(bp['boxes'], order):
         patch.set_facecolor(E0_COLOR if c == 'E0' else DESC_COLOR)
         patch.set_alpha(.55)
+    a.scatter([curvePred[c] for c in order], range(1, len(order) + 1), marker='|', s=120, color='black',
+              zorder=3, label='census prediction')
     a.set_yticks(range(1, len(order) + 1), order, fontsize=7)
-    a.set_xlabel('end-to-end index-calculus seconds per ECDLP (10 scalars)')
-    a.set_title('A  Runtime by curve (sorted by predicted attempts)')
+    a.set_xlabel('decomposition attempts per ECDLP (10 scalars per curve)')
+    a.set_title('A  Work by curve (sorted by predicted attempts)')
+    a.legend(frameon=False, loc='lower right', fontsize=9)
     a = ax[1]
     a.scatter([curvePred[c] for c in order], [curveMeans[c] for c in order], s=18,
               color=[E0_COLOR if c == 'E0' else DESC_COLOR for c in order])
@@ -258,8 +297,8 @@ def ecdlp(rows, censusByCurve, out):
     a.boxplot([perInstance[i] for i in inst], widths=.6)
     a.set_xticks(range(1, len(inst) + 1), [str(i) for i in inst])
     a.set_xlabel('ECDLP instance (same 10 scalars on every curve)')
-    a.set_ylabel('seconds per ECDLP')
-    a.set_title('C  Runtime by instance')
+    a.set_ylabel('decomposition attempts per ECDLP')
+    a.set_title('C  Work by instance (all 31 curves)')
     for x in ax:
         x.spines[['top', 'right']].set_visible(False)
         x.grid(alpha=.2)
@@ -271,9 +310,45 @@ def ecdlp(rows, censusByCurve, out):
     plt.close(fig)
 
 
+def interleaved(rows, out):
+    """Blocked design: each round is a block holding one solve per curve."""
+    if not rows:
+        return
+    curves = sorted({r['curve'] for r in rows}, key=lambda c: (c != 'E0', c))
+    rounds = sorted({r['round'] for r in rows})
+    cell = {(r['curve'], r['round']): r for r in rows}
+    full = [rd for rd in rounds if all((c, rd) in cell for c in curves)]
+    mat = np.array([[cell[(c, rd)]['gb_cpu_s'] for c in curves] for rd in full])
+    fr = stats.friedmanchisquare(*mat.T)
+    # Round effect alone (drift) for contrast.
+    kwRound = stats.kruskal(*[mat[i] for i in range(len(full))])
+    per = {}
+    for j, c in enumerate(curves):
+        rs = [cell[(c, rd)] for rd in full]
+        ne = [r['gb_cpu_s'] for r in rs if r['nonempty']]
+        em = [r['gb_cpu_s'] for r in rs if not r['nonempty']]
+        per[c] = {'mean_ms': 1000 * float(mat[:, j].mean()), 'solvable_fraction': len(ne) / len(rs),
+                  'mean_ms_solvable': 1000 * float(np.mean(ne)) if ne else None,
+                  'mean_ms_unsolvable': 1000 * float(np.mean(em)) if em else None}
+    ne = [r['gb_cpu_s'] for r in rows if r['nonempty']]
+    em = [r['gb_cpu_s'] for r in rows if not r['nonempty']]
+    e0 = mat[:, 0]
+    rest = mat[:, 1:].mean(axis=1)
+    w = stats.wilcoxon(e0, rest)
+    out['interleaved_gb'] = {
+        'curves': curves, 'rounds': len(full),
+        'friedman_curve': {'chi2': float(fr.statistic), 'p': float(fr.pvalue)},
+        'kruskal_round_drift': {'H': float(kwRound.statistic), 'p': float(kwRound.pvalue)},
+        'solvable_vs_unsolvable_ms': [1000 * float(np.mean(ne)), 1000 * float(np.mean(em))],
+        'e0_over_descendant_mean_ratio': float(e0.mean() / rest.mean()),
+        'e0_vs_descendant_mean_wilcoxon_p': float(w.pvalue),
+        'per_curve': per}
+
+
 def main():
     out = {}
-    byCurve = census(load('census-*.jsonl'), out)
+    interleaved(load('interleave.jsonl'), out)
+    byCurve = census(load('census-*.jsonl'), out, load('gbcpu-*.jsonl'))
     ecdlp(load('ecdlp-*.jsonl'), byCurve, out)
     with open(os.path.join(HERE, 'results', 'summary.json'), 'w') as f:
         json.dump(out, f, indent=2, default=float)

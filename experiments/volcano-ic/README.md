@@ -34,3 +34,29 @@ Exact identities checked so far: eligible signed pairs =
 2 C(n0,2) + n0 + 2 C(n2,2) + n2 + C(n_odd,2) from the Z/4 tags, and the
 decomposition probability is 1 - exp(-eligible / ((p-1)/2)) to birthday
 accuracy.
+
+## Results
+
+`results/summary.json` has every number; `figures/` has the plots. `sage -python build_report.py` renders the HTML report.
+
+- **Relation yield depends only on the factor base.** The eligible-pair count equals the Z/4 tag formula on
+  457/457 curves. Decomposition probability follows the
+  birthday model to within 0.0046. Descendants range 0.544–0.696;
+  E0 is 0.608.
+- **The yield differences mostly cancel in total work.** Predicted attempts per ECDLP span
+  813–847; E0 needs 828.
+- **Formal degree of regularity is 11** on all 1371 sampled systems. b only enters as a constant.
+- **Gröbner decomposition matches the exact yield:** 28932 hits against 29025
+  expected (z = -0.90), with 146 spurious solutions rejected at lift time.
+- **Per-solve cost does not depend on the curve** once machine drift is blocked out. Interleaved test over 10 curves × 60 rounds:
+  Friedman p = 0.42; E0 costs 1.03× the descendant mean.
+- **End-to-end ECDLP:** 310/310 logs verified over 31 curves × 10 scalars.
+  - Attempts carry a small curve effect (η² = 0.15, p = 0.017) that the census predicts
+    (r = 0.78, measured/predicted = 1.001).
+  - There is no scalar effect (p = 0.31).
+  - E0 needs 0.996× the descendants' attempts (95% CI 0.976–1.017).
+
+Wall-clock and CPU timings on this shared machine drift with load, including P/E-core placement, and each curve's
+runs happened in their own time slot. Compare curves on attempt counts and on the interleaved test, not on raw
+seconds. `results/smoke-ecdlp-walltime.jsonl` holds the three wall-clock-only E0 smoke runs, which are not used in
+the analysis.

@@ -8,6 +8,7 @@
 # sample of Groebner decompositions drawn from each ECDLP instance.
 # Tier B per curve and instance: complete index calculus, verified log.
 
+import glob
 import os
 import random
 
@@ -119,9 +120,11 @@ def plain(o):
         return str(o)
 
 
-def done(path):
+def done(pattern):
+    # Every result file counts, so a job is never repeated when the shard
+    # count changes between launches.
     out = set()
-    if os.path.exists(path):
+    for path in glob.glob(pattern):
         for line in open(path):
             try:
                 r = json.loads(line)
@@ -135,7 +138,7 @@ def census(shard, shards):
     fld = Field(N_BITS, MODULUS, K)
     curves = loadCurves(fld)
     path = os.path.join(HERE, 'results', 'census-%d.jsonl' % shard)
-    skip = done(path)
+    skip = done(os.path.join(HERE, 'results', 'census-*.jsonl'))
     ss = scalars()
     with open(path, 'a') as out:
         for idx, (cid, b, orbit, power) in enumerate(curves):
@@ -179,11 +182,74 @@ def census(shard, shards):
             print(cid, len(cur.xs), '%.4f' % prob, dregs, '%.1fs' % (t4 - t0), flush=True)
 
 
+def gbcpu(shard, shards, perInstance=2):
+    """Groebner cost per decomposition in CPU seconds, for every curve.
+
+    The census GB timings are wall clock and drift with machine load in the
+    order curves were processed; CPU time does not."""
+    fld = Field(N_BITS, MODULUS, K)
+    curves = loadCurves(fld)
+    path = os.path.join(HERE, 'results', 'gbcpu-%d.jsonl' % shard)
+    skip = done(os.path.join(HERE, 'results', 'gbcpu-*.jsonl'))
+    ss = scalars()
+    with open(path, 'a') as out:
+        for idx, (cid, b, orbit, power) in enumerate(curves):
+            if idx % shards != shard or (cid, None) in skip:
+                continue
+            cur = Curve(fld, 0, b, ORDER, COFACTOR)
+            P = generator(cur, cid)
+            rng = random.Random('gbcpu:' + cid)
+            cpu, found = [], 0
+            st = {'build_s': 0.0, 'gb_s': 0.0, 'gb_calls': 0, 'nonempty': 0, 'spurious': 0}
+            for s in ss:
+                Q = s * P
+                for _ in range(perInstance):
+                    R = rng.randrange(1, int(cur.p)) * P + rng.randrange(1, int(cur.p)) * Q
+                    before = st.get('gb_cpu_s', 0.0)
+                    if solveRelation(cur, R, st) is not None:
+                        found += 1
+                    cpu.append(st['gb_cpu_s'] - before)
+            rec = {'curve': cid, 'orbit': orbit, 'gb_cpu_s': cpu, 'relations': found}
+            out.write(json.dumps(rec, default=plain) + '\n')
+            out.flush()
+            print(cid, '%.3f' % (sum(cpu) / len(cpu)), flush=True)
+
+
+def interleave(ids, rounds):
+    """Groebner CPU cost with curves interleaved round-robin in one process,
+    in a freshly shuffled order each round, so drift in machine load or core
+    placement falls on every curve equally."""
+    fld = Field(N_BITS, MODULUS, K)
+    allCurves = {c[0]: c for c in loadCurves(fld)}
+    ss = scalars()
+    state = {}
+    for cid in ids:
+        cur = Curve(fld, 0, allCurves[cid][1], ORDER, COFACTOR)
+        P = generator(cur, cid)
+        state[cid] = (cur, P, random.Random('interleave:' + cid))
+    order = random.Random('interleave-order')
+    path = os.path.join(HERE, 'results', 'interleave.jsonl')
+    with open(path, 'w') as out:
+        for rd in range(rounds):
+            seq = list(ids)
+            order.shuffle(seq)
+            for pos, cid in enumerate(seq):
+                cur, P, rng = state[cid]
+                Q = ss[rd % len(ss)] * P
+                R = rng.randrange(1, int(cur.p)) * P + rng.randrange(1, int(cur.p)) * Q
+                st = {'build_s': 0.0, 'gb_s': 0.0, 'gb_calls': 0, 'nonempty': 0, 'spurious': 0}
+                rel = solveRelation(cur, R, st)
+                out.write(json.dumps({'curve': cid, 'round': rd, 'position': pos, 'gb_cpu_s': st['gb_cpu_s'],
+                                      'nonempty': st['nonempty'], 'relation': rel is not None}, default=plain) + '\n')
+            out.flush()
+            print('round', rd, flush=True)
+
+
 def ecdlp(shard, shards, ids):
     fld = Field(N_BITS, MODULUS, K)
     curves = {c[0]: c for c in loadCurves(fld)}
     path = os.path.join(HERE, 'results', 'ecdlp-%d.jsonl' % shard)
-    skip = done(path)
+    skip = done(os.path.join(HERE, 'results', 'ecdlp-*.jsonl'))
     ss = scalars()
     jobs = [(cid, ii) for cid in ids for ii in range(len(ss))]
     with open(path, 'a') as out:
@@ -208,5 +274,9 @@ if __name__ == '__main__' and len(sys.argv) > 1:
     mode = sys.argv[1]
     if mode == 'census':
         census(int(sys.argv[2]), int(sys.argv[3]))
+    elif mode == 'gbcpu':
+        gbcpu(int(sys.argv[2]), int(sys.argv[3]))
+    elif mode == 'interleave':
+        interleave(sys.argv[2].split(','), int(sys.argv[3]))
     elif mode == 'ecdlp':
         ecdlp(int(sys.argv[2]), int(sys.argv[3]), sys.argv[4].split(','))

@@ -129,12 +129,15 @@ def solveRelation(cur, R, stats):
     t0 = time.perf_counter()
     polys = [f for f in fld.system(R[0], cur.b) if f != 0]
     t1 = time.perf_counter()
+    c1 = time.process_time()
     I = ideal(polys)
     gb = I.groebner_basis()
     sols = I.variety() if gb != [1] else []
     t2 = time.perf_counter()
     stats['build_s'] += t1 - t0
     stats['gb_s'] += t2 - t1
+    # CPU time is insensitive to other load on the machine; wall time is not.
+    stats['gb_cpu_s'] = stats.get('gb_cpu_s', 0.0) + time.process_time() - c1
     stats['gb_calls'] += 1
     if not sols:
         return None
@@ -161,6 +164,7 @@ def solveDlp(cur, P, Q, rng, extra=10, maxAttempts=None):
     stats = {'build_s': 0.0, 'gb_s': 0.0, 'gb_calls': 0, 'nonempty': 0, 'spurious': 0}
     rows, rhs = [], []
     t0 = time.perf_counter()
+    c0 = time.process_time()
     target = ncol + extra
     attempts = 0
     Fp = GF(p)
@@ -198,6 +202,7 @@ def solveDlp(cur, P, Q, rng, extra=10, maxAttempts=None):
             s = ZZ(-A / Bc)
             break
     t2 = time.perf_counter()
+    stats['total_cpu_s'] = time.process_time() - c0
     ok = s is not None and s * P == Q
     stats.update({'attempts': attempts, 'relations': len(rows), 'fb_size': ncol,
                   'columns_used': len(used), 'kernel_dim': len(K),
