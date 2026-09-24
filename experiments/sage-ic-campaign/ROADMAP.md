@@ -40,6 +40,7 @@ solver cost, including packing, transfers, construction and verification.
 | 27 | `ecc2k130/{codegen,runner/codegen}/field.py:Pb.sqr` | Expand even polynomial coefficients by byte before modular reduction | **PASS_LOCAL** over row 26: exhaustive small-field and 16 frozen paired cells. Complete 256-square batches improved 1.46–2.66x, and three-point 32-bit scalar calls improved 1.20–1.58x across both copies and independent seeds. Source and receipts: `pb-squaring-20260924/`. |
 | 28 | `ecc2k130/{codegen,runner/codegen}/curves.py:CurvePb.trace` | Derive a lazy trace mask from Newton sums of the field polynomial | **PASS_LOCAL** over row 27: exhaustive small-field and 16 frozen paired cells. Complete 64-point recovery batches improved 1.72–2.97x primary and 1.73–2.57x confirmation; first calls including mask setup improved at least 1.36x. Source and receipts: `pb-trace-mask-20260924/`. |
 | 29 | `ecc2k130/{codegen,runner/codegen}/field.py:Pb.mul` | Use sparse-bit or nibble carryless products | **HELD in exploratory pilot**: sparse-bit iteration regressed field batches at every tested degree; nibble products regressed degrees 11/15 and only helped larger fields. Exact paired samples are in `pb-mul-pilot-20260924/`. A degree-specific path needs independent confirmation and cold accounting. |
+| 30 | `ecc2k130/{codegen,runner/codegen}/curves.py:CurvePb.halfTrace` | Cache basis-vector half traces and XOR selected images | **HELD for automatic activation**: degree-131 cold 64-point batches were 0.27–0.28x and cold 256-point batches 0.92–1.03x across frozen primary/confirmation, despite 5.76–6.03x warm 256-point gains. Cold 1024-point batches improved 2.59–2.68x. Exact samples: `pb-halftrace-pilot-20260924/`. Test an explicit bulk policy with full IC charge. |
 
 The executable degree-131 IC reference in `ecc2k130/codegen/indexcalc_e2e.py`
 currently performs most field and curve work in its own Python ONB classes and
@@ -82,3 +83,6 @@ point-scalar gain, while a complete IC total remains a separate measurement.
 `pb-trace-mask-20260924/` turns a repeated Frobenius trace loop into a cached
 linear form. The first-call result includes the lazy construction, and the
 complete point-recovery result bounds its practical effect.
+`pb-halftrace-pilot-20260924/` retains the next cold/warm experiment. Its
+degree-131 setup threshold keeps the cached half-trace path out of automatic
+routing until a caller can declare enough point queries and charge setup.
