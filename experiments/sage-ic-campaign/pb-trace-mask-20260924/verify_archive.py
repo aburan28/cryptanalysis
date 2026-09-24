@@ -1,6 +1,5 @@
-"""Check frozen polynomial-basis inverse sources, correctness, and receipts."""
+"""Check frozen polynomial-basis trace-mask sources and timing receipts."""
 
-import ast
 import hashlib
 import json
 from pathlib import Path
@@ -10,12 +9,12 @@ import statistics
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 PATHS = {
-    'baseline-local': HERE / 'baseline/field-local.py',
-    'baseline-runner': HERE / 'baseline/field-runner.py',
-    'candidate-local': HERE / 'source/field-local.py',
-    'candidate-runner': HERE / 'source/field-runner.py',
-    'curves-local': ROOT / 'experiments/sage-ic-campaign/pb-trace-mask-20260924/baseline/curves-local.py',
-    'curves-runner': ROOT / 'experiments/sage-ic-campaign/pb-trace-mask-20260924/baseline/curves-runner.py',
+    'baseline-local': HERE / 'baseline/curves-local.py',
+    'baseline-runner': HERE / 'baseline/curves-runner.py',
+    'candidate-local': HERE / 'source/curves-local.py',
+    'candidate-runner': HERE / 'source/curves-runner.py',
+    'field-local': ROOT / 'ecc2k130/codegen/field.py',
+    'field-runner': ROOT / 'ecc2k130/runner/codegen/field.py',
     'benchmark': HERE / 'benchmark.py',
     'run': HERE / 'run.py',
 }
@@ -24,29 +23,17 @@ confirm = json.loads((HERE / 'intent-confirm.json').read_text())
 assert primary['source_sha256'] == confirm['source_sha256']
 for name, expected in primary['source_sha256'].items():
     assert hashlib.sha256(PATHS[name].read_bytes()).hexdigest() == expected, name
-def inverse_method(path):
-    tree = ast.parse(path.read_text())
-    pb = next(node for node in tree.body
-              if isinstance(node, ast.ClassDef) and node.name == 'Pb')
-    return ast.dump(next(node for node in pb.body
-                         if isinstance(node, ast.FunctionDef) and node.name == 'inv'))
-
-
 for variant in ('local', 'runner'):
     live = ROOT / ('ecc2k130/' + ('runner/' if variant == 'runner' else '') +
-                   'codegen/field.py')
-    assert inverse_method(live) == inverse_method(PATHS['candidate-' + variant])
-assert 'polynomial-basis Euclid inverse checks passed' in (
-    HERE / 'test-inverse.log').read_text()
-full_log = (HERE / 'test-runner-full.log').read_text()
-assert 'Ran 30 tests' in full_log and 'FAILED (errors=1)' in full_log
-assert 'ecc2k130-fixed.json' in full_log and 'FileNotFoundError' in full_log
-assert 'ModuleNotFoundError' not in full_log
+                   'codegen/curves.py')
+    assert live.read_bytes() == PATHS['candidate-' + variant].read_bytes()
+assert 'polynomial-basis trace-mask checks passed' in (
+    HERE / 'test-trace.log').read_text()
 
 seen = set()
 for intent, run in ((primary, 'run-primary-001'),
                     (confirm, 'run-confirm-001')):
-    assert len(intent['cases']) == 6
+    assert len(intent['cases']) == 8
     for i, case in enumerate(intent['cases']):
         parent = json.loads((HERE / run / ('cell-%02d-parent.json' % i)).read_text())
         raw = json.loads((HERE / run / ('cell-%02d.json' % i)).read_text())
@@ -58,12 +45,13 @@ for intent, run in ((primary, 'run-primary-001'),
         assert raw['source_sha256'] == {
             'baseline': intent['source_sha256']['baseline-' + variant],
             'candidate': intent['source_sha256']['candidate-' + variant],
-            'curves': intent['source_sha256']['curves-' + variant],
+            'field': intent['source_sha256']['field-' + variant],
         }
         assert 0 < raw['peak_rss_bytes'] <= intent['resource_budget']['peak_rss_bytes']
-        assert raw['point_attempts'] > 0
-        assert set(raw['results']) == {'field_inverse', 'point_add', 'point_scalar'}
+        assert set(raw['results']) == {'point_from_x', 'field_trace'}
+        masks = set()
         for name, result in raw['results'].items():
+            masks.add(result['trace_mask_hex'])
             assert set(result['first_call_ns']) == {'baseline', 'candidate'}
             assert all(value > 0 for value in result['first_call_ns'].values())
             assert set(result['samples']) == {'baseline', 'candidate'}
@@ -77,10 +65,16 @@ for intent, run in ((primary, 'run-primary-001'),
                     sample['operation_ns'] for sample in samples)
             speedup = (result['median_operation_ns']['baseline'] /
                        result['median_operation_ns']['candidate'])
-            assert speedup >= {'field_inverse': 10, 'point_add': 4,
-                               'point_scalar': 2}[name], (run, i, name, speedup)
+            assert speedup >= {'point_from_x': 1.5,
+                               'field_trace': 50}[name], (run, i, name, speedup)
+            if name == 'point_from_x':
+                first_speedup = (result['first_call_ns']['baseline'] /
+                                 result['first_call_ns']['candidate'])
+                assert first_speedup >= 1.2, (run, i, first_speedup)
+        assert len(masks) == 1
+        assert 0 < int(masks.pop(), 16) < (1 << case['degree'])
         seen.add((run, variant, case['degree'], case['seed']))
-assert len(seen) == 12
+assert len(seen) == 16
 assert set(case['seed'] for case in primary['cases']).isdisjoint(
     case['seed'] for case in confirm['cases'])
-print('Local and runner polynomial-basis Euclid inversion archive verified')
+print('Local and runner polynomial-basis trace-mask archive verified')

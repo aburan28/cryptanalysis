@@ -381,7 +381,6 @@ class CurvePb:
 
     def __init__(self, pb):
         self.f = pb
-        self._traceMask = None
 
     def onCurve(self, p):
         if p is None:
@@ -467,24 +466,6 @@ class CurvePb:
         return acc
 
     def trace(self, a):
-        if not a >> self.f.m:
-            if self._traceMask is None:
-                # Newton sums give Tr(z^k), the power sums of the roots of
-                # the field polynomial. Trace is linear in these bit basis
-                # coordinates, so subsequent calls need only one parity.
-                m = self.f.m
-                taps = [m - i for i in range(1, m)
-                        if (self.f.poly >> i) & 1]
-                sums = [0] * m
-                sums[0] = m & 1
-                for k in range(1, m):
-                    value = (k & 1) if k in taps else 0
-                    for j in taps:
-                        if j < k:
-                            value ^= sums[k - j]
-                    sums[k] = value
-                self._traceMask = sum(bit << i for i, bit in enumerate(sums))
-            return field._bitCount(a & self._traceMask) & 1
         t = a
         acc = a
         for _ in range(self.f.m - 1):
