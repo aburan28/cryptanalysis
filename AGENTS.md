@@ -47,6 +47,14 @@ algorithm wiring, or isogeny maps are unresolved. Keep `candidate_id: null`
 and all measured costs null until those gates are satisfied. A proposal ID is
 never an `IC1` result, and a nominal dimension is never an actual `fb` count.
 
+For an isogenous curve, preserve its own immutable curve ID and use the
+[volcano-position and isogeny-walk convention](experiments/ic-candidate-catalog/VOLCANO_NAMING.md).
+Only a proved ordinary `ell`-volcano level may appear as `V<ell>L<level>`;
+`L0` is the surface, and downward/upward edges change the level by `+1`/`-1`.
+Keep the ordered edge route separate from the curve ID. In characteristic
+two, degree-2 routes have no ordinary `V2` level label. Unknown levels remain
+`null`, not zero.
+
 `fb<B>` is the **actual number of distinct, nonidentity, subgroup-usable
 factor-base points before sign/Frobenius orbit folding**, written as a plain
 decimal integer without leading zeros. Record the nominal subspace dimension
@@ -60,8 +68,9 @@ There are no separators or zero-padded numbers in an ID. Structural tags
 (`kb1`, `f4`, `walk`, `bw`, etc.), the `fb` tag, and hex digits are lowercase.
 The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
-Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid` for point
-decomposition; `RCwalk`, `RCsample`, `RCdirect` for relation collection;
+Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, and `PDP4root`
+for the compact four-summand S3 root index; `RCwalk`, `RCsample`, `RCdirect`,
+and `RCguided` for pivot-guided relation collection;
 `LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
 `TDdirect`, `TDpdp`, `TDdescent` for target handling; `ISO0` for no isogeny
 transport and `ISO1` for a specified route. A solver's internal Macaulay
