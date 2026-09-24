@@ -204,10 +204,6 @@ class Onb:
 
     def trace(self, u):
         """Tr(a) over GF(2); equals the parity of the normal-basis weight."""
-        coords = self.toCoords(u)
-        if u == self.fromCoords(coords):
-            return _bitCount(coords) & 1
-        # Preserve the historical result for noncanonical raw vectors.
         t = 0
         v = u
         for _ in range(self.m):
