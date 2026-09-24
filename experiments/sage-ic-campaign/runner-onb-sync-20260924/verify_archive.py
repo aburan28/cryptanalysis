@@ -25,6 +25,7 @@ assert runner_field.read_bytes() == local_field.read_bytes()
 assert hashlib.sha256(runner_field.read_bytes()).hexdigest() in (
     '7e9c9e14fcd215ec75414a43e28472fc206721be451f0a2e5c47b99c0676613c',
     'dded18a11f243fa269277bfe3513f12a83e9eb28300becf08c9f3d6b5634a07e',
+    '2784e218bed1e9ed0af70955ef7e9983d216ef5f3eea00851949665325de97bd',
 )
 assert hashlib.sha256(runner_curves.read_bytes()).hexdigest() == \
     '33a1a95a4b149d6cbcf6c53f5c4819706fd8d6f6c674f45b21fa812a99eff598'

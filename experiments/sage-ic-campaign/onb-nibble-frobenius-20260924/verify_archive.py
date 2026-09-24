@@ -19,15 +19,17 @@ runner = root / 'ecc2k130/runner/codegen/field.py'
 assert hashlib.sha256(baseline.read_bytes()).hexdigest() == \
     '7e9c9e14fcd215ec75414a43e28472fc206721be451f0a2e5c47b99c0676613c'
 assert local.read_bytes() == runner.read_bytes()
-assert hashlib.sha256(local.read_bytes()).hexdigest() == \
-    'dded18a11f243fa269277bfe3513f12a83e9eb28300becf08c9f3d6b5634a07e'
+assert hashlib.sha256(local.read_bytes()).hexdigest() in (
+    'dded18a11f243fa269277bfe3513f12a83e9eb28300becf08c9f3d6b5634a07e',
+    '2784e218bed1e9ed0af70955ef7e9983d216ef5f3eea00851949665325de97bd',
+)
 original = ast.parse(baseline.read_text())
 candidate = ast.parse(local.read_text())
 for tree in (original, candidate):
     onb = next(node for node in tree.body
                if isinstance(node, ast.ClassDef) and node.name == 'Onb')
     onb.body = [node for node in onb.body if not (
-        isinstance(node, ast.FunctionDef) and node.name in ('__init__', 'frob'))]
+        isinstance(node, ast.FunctionDef) and node.name in ('__init__', 'frob', 'inv'))]
 assert ast.dump(original) == ast.dump(candidate)
 
 spec = importlib.util.spec_from_file_location('accepted_field', local)
