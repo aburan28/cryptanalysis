@@ -254,8 +254,16 @@ impl Gf2 {
         self.reduce(self.clmul(a, b))
     }
 
+    /// With `pclmulqdq`, `a·a` is one instruction and beats the
+    /// twelve-step bit spread; without it the spread is the cheap path.
     #[inline]
     pub fn sqr(&self, a: u64) -> u64 {
+        #[cfg(target_arch = "x86_64")]
+        if self.has_clmul {
+            // SAFETY: guarded by the runtime feature detection recorded
+            // in `has_clmul` at construction.
+            return self.reduce(unsafe { clmul_u64(a, a) });
+        }
         let w = (spread32(a) as u128) | ((spread32(a >> 32) as u128) << 64);
         self.reduce(w)
     }
@@ -270,24 +278,29 @@ impl Gf2 {
 
     /// `a^{-1}` by Fermat: `a^(2^n − 2)`.  Zero maps to zero.
     ///
-    /// Still `n` squarings and `n` multiplications — which is why the
-    /// code above it goes to some length to need only one per *row* of
-    /// the pair loop rather than one per polynomial division.
+    /// Itoh–Tsujii addition chain: with `β_k = a^{2^k − 1}`, walk the
+    /// bits of `n − 1` using `β_{2k} = β_k^{2^k} · β_k` and
+    /// `β_{k+1} = β_k² · a`, then square once.  That is `n − 1`
+    /// squarings but only `⌊log₂(n−1)⌋ + popcount(n−1) − 1`
+    /// multiplications, against `n − 2` for square-and-multiply —
+    /// 7 instead of 22 at `n = 24`.
     pub fn inv(&self, a: u64) -> u64 {
-        if a == 0 {
-            return 0;
+        if a == 0 || self.n <= 1 {
+            return a;
         }
-        let mut result = 1u64;
-        let mut base = a;
-        for _ in 1..self.n {
-            base = self.sqr(base);
-            result = if result == 1 {
-                base
-            } else {
-                self.mul(result, base)
-            };
+        let e = self.n - 1;
+        let mut beta = a;
+        let mut len = 1u32;
+        for bit in (0..(31 - e.leading_zeros())).rev() {
+            beta = self.mul(self.sqr_k(beta, len), beta);
+            len *= 2;
+            if (e >> bit) & 1 == 1 {
+                beta = self.mul(self.sqr(beta), a);
+                len += 1;
+            }
         }
-        result
+        debug_assert_eq!(len, e);
+        self.sqr(beta)
     }
 
     /// Invert a whole slice with **one** field inversion, by
@@ -657,6 +670,29 @@ mod tests {
         *state ^= *state << 25;
         *state ^= *state >> 27;
         state.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+
+    /// The Itoh–Tsujii inverse is a true inverse at every one-word
+    /// field size, where the chain's shape follows the bits of `n − 1`.
+    #[test]
+    fn itoh_tsujii_inverse_roundtrips_at_every_width() {
+        use crate::cryptanalysis::koblitz_index_calculus::find_irreducible_sparse;
+        let mut s = 0x0DDB_A11C_AFE0_F00Du64;
+        for n in 2u32..=63 {
+            let Some(irr) = find_irreducible_sparse(n) else {
+                continue;
+            };
+            let gf = Gf2::new(&irr);
+            assert_eq!(gf.inv(0), 0);
+            assert_eq!(gf.inv(1), 1);
+            for _ in 0..50 {
+                let a = xorshift(&mut s) & gf.mask;
+                if a == 0 {
+                    continue;
+                }
+                assert_eq!(gf.mul(a, gf.inv(a)), 1, "n = {n}, a = {a:#x}");
+            }
+        }
     }
 
     /// The one-word field must agree with the general implementation —
