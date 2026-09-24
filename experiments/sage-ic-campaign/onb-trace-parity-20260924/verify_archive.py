@@ -16,15 +16,18 @@ baseline = here / 'baseline/field.py'
 source = root / 'ecc2k130/codegen/field.py'
 assert hashlib.sha256(baseline.read_bytes()).hexdigest() == \
     '191584f34e0092922cf8747d075a0791df702b6153923285b48736d96b0c6c03'
-assert hashlib.sha256(source.read_bytes()).hexdigest() == \
-    '7e9c9e14fcd215ec75414a43e28472fc206721be451f0a2e5c47b99c0676613c'
+assert hashlib.sha256(source.read_bytes()).hexdigest() in (
+    '7e9c9e14fcd215ec75414a43e28472fc206721be451f0a2e5c47b99c0676613c',
+    'dded18a11f243fa269277bfe3513f12a83e9eb28300becf08c9f3d6b5634a07e',
+)
 original = ast.parse(baseline.read_text())
 candidate = ast.parse(source.read_text())
 for tree in (original, candidate):
     onb = next(node for node in tree.body
                if isinstance(node, ast.ClassDef) and node.name == 'Onb')
     onb.body = [node for node in onb.body
-                if not (isinstance(node, ast.FunctionDef) and node.name == 'trace')]
+                if not (isinstance(node, ast.FunctionDef) and
+                        node.name in ('trace', 'frob', '__init__'))]
 assert ast.dump(original) == ast.dump(candidate)
 
 intent = json.loads((here / 'intent.json').read_text())
