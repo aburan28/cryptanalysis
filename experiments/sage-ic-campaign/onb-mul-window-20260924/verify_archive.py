@@ -22,12 +22,13 @@ source = root / 'ecc2k130/codegen/field.py'
 accepted = '12bd1f54d807456f30a421acc8ae69614842f5bce174962b904547378e6493f0'
 if hashlib.sha256(source.read_bytes()).hexdigest() != accepted:
     # A descendant branch may optimize another method in the same field file.
-    cls = next(node for node in ast.parse(source.read_text()).body
+    source_text = source.read_text()
+    cls = next(node for node in ast.parse(source_text).body
                if isinstance(node, ast.ClassDef) and node.name == 'Onb')
     method = next(node for node in cls.body
                   if isinstance(node, ast.FunctionDef) and node.name == 'mul')
-    digest = hashlib.sha256(ast.dump(method, include_attributes=False).encode()).hexdigest()
-    assert digest == '918603425bd80238b48bd39c55979a5725ad0017ed13a3b6960c8a538da278cb'
+    digest = hashlib.sha256(ast.get_source_segment(source_text, method).encode()).hexdigest()
+    assert digest == '6867c98f2845cec31a172523ad3f78cea11935b563a9a95860532800dbc0e5fd'
 
 verification = subprocess.check_output([sys.executable, str(here / 'verify.py')], text=True)
 assert '3087' in verification
