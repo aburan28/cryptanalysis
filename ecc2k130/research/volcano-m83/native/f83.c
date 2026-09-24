@@ -23,17 +23,20 @@ typedef struct {
 static const u128 MASK = (((u128)1) << M) - 1;
 
 static inline u128 F(fe a) { return (u128)a.lo | ((u128)a.hi << 64); }
-static inline fe G(u128 a) {
+static inline fe G(u128 a)
+{
     fe r = {(u64)a, (u64)(a >> 64)};
     return r;
 }
 
-static inline u128 pm(u64 a, u64 b) {
+static inline u128 pm(u64 a, u64 b)
+{
     uint64x2_t v = vreinterpretq_u64_p128(vmull_p64((poly64_t)a, (poly64_t)b));
     return (u128)vgetq_lane_u64(v, 0) | ((u128)vgetq_lane_u64(v, 1) << 64);
 }
 
-static inline u128 red(u128 lo, u128 hi) {
+static inline u128 red(u128 lo, u128 hi)
+{
     u128 H = (lo >> M) | (hi << (128 - M));
     u128 L = lo & MASK;
     L ^= H ^ (H << 2) ^ (H << 4) ^ (H << 7);
@@ -42,21 +45,27 @@ static inline u128 red(u128 lo, u128 hi) {
     return L ^ H2 ^ (H2 << 2) ^ (H2 << 4) ^ (H2 << 7);
 }
 
-static inline u128 mul(u128 a, u128 b) {
+static inline u128 mul(u128 a, u128 b)
+{
     u64 a0 = (u64)a, a1 = (u64)(a >> 64), b0 = (u64)b, b1 = (u64)(b >> 64);
     u128 p0 = pm(a0, b0), p1 = pm(a0, b1) ^ pm(a1, b0), p2 = pm(a1, b1);
     return red(p0 ^ (p1 << 64), (p1 >> 64) ^ p2);
 }
 
-static inline u128 sqr(u128 a) { return red(pm((u64)a, (u64)a), pm((u64)(a >> 64), (u64)(a >> 64))); }
+static inline u128 sqr(u128 a)
+{
+    return red(pm((u64)a, (u64)a), pm((u64)(a >> 64), (u64)(a >> 64)));
+}
 
-static inline u128 sqrn(u128 a, int n) {
+static inline u128 sqrn(u128 a, int n)
+{
     while (n--) a = sqr(a);
     return a;
 }
 
 // Itoh-Tsujii, 82 = 1010010b
-static u128 inv(u128 a) {
+static u128 inv(u128 a)
+{
     u128 b1 = a;
     u128 b2 = mul(sqr(b1), b1);
     u128 b4 = mul(sqrn(b2, 2), b2);
@@ -70,15 +79,17 @@ static u128 inv(u128 a) {
 }
 
 static u128 TRMASK;
-static u128 HT_TABLE[11][256];   // half-trace, byte-sliced linear map
+static u128 HT_TABLE[11][256]; // half-trace, byte-sliced linear map
 static int ready;
 
-static inline int trace(u128 a) {
+static inline int trace(u128 a)
+{
     u128 v = a & TRMASK;
     return (__builtin_popcountll((u64)v) + __builtin_popcountll((u64)(v >> 64))) & 1;
 }
 
-static u128 halftrace_slow(u128 c) {
+static u128 halftrace_slow(u128 c)
+{
     u128 s = c, t = c;
     for (int i = 0; i < 41; i++) {
         t = sqr(sqr(t));
@@ -87,13 +98,15 @@ static u128 halftrace_slow(u128 c) {
     return s;
 }
 
-static inline u128 halftrace(u128 c) {
+static inline u128 halftrace(u128 c)
+{
     u128 s = 0;
     for (int i = 0; i < 11; i++) s ^= HT_TABLE[i][(c >> (8 * i)) & 0xff];
     return s;
 }
 
-static void init(void) {
+static void init(void)
+{
     if (ready) return;
     for (int i = 0; i < M; i++) {
         u128 x = ((u128)1) << i, t = 0, s = x;
@@ -119,12 +132,13 @@ typedef struct {
 
 static u128 B;
 
-static inline pt padd(pt P, pt Q) {
+static inline pt padd(pt P, pt Q)
+{
     if (P.inf) return Q;
     if (Q.inf) return P;
     pt R = {0, 0, 0};
     if (P.x == Q.x) {
-        if (P.y != Q.y || P.x == 0) {   // P = -Q (or 2-torsion doubled)
+        if (P.y != Q.y || P.x == 0) { // P = -Q (or 2-torsion doubled)
             R.inf = 1;
             return R;
         }
@@ -140,12 +154,14 @@ static inline pt padd(pt P, pt Q) {
     return R;
 }
 
-static inline pt pneg(pt P) {
+static inline pt pneg(pt P)
+{
     P.y ^= P.x;
     return P;
 }
 
-static pt pmul(pt P, const uint8_t *bits, int nbits) {
+static pt pmul(pt P, const uint8_t *bits, int nbits)
+{
     pt R = {0, 0, 1};
     for (int i = 0; i < nbits; i++) {
         R = padd(R, R);
@@ -158,7 +174,8 @@ static pt pmul(pt P, const uint8_t *bits, int nbits) {
 static uint8_t ELLBITS[96];
 static int ELLN;
 
-static void init_ell(void) {
+static void init_ell(void)
+{
     if (ELLN) return;
     u128 ell = 0;
     for (const char *p = "2417851639230796216685689"; *p; p++) ell = ell * 10 + (u128)(*p - '0');
@@ -168,7 +185,8 @@ static void init_ell(void) {
 }
 
 // lift: returns 0 if x is not rational; else sign-0 point (smaller y)
-static int lift(u128 x, pt *P) {
+static int lift(u128 x, pt *P)
+{
     if (x == 0) return 0;
     u128 ix = inv(x);
     u128 c = x ^ mul(B, sqr(ix));
@@ -181,7 +199,8 @@ static int lift(u128 x, pt *P) {
     return 1;
 }
 
-static int same(pt P, pt Q) {
+static int same(pt P, pt Q)
+{
     if (P.inf || Q.inf) return P.inf == Q.inf;
     return P.x == Q.x && P.y == Q.y;
 }
@@ -189,7 +208,8 @@ static int same(pt P, pt Q) {
 // ---- exported API (ctypes) ----
 
 // out[mask] = 1 iff sum_{i in mask} basis[i] is a nonzero rational x.
-void f83_ratx(fe b, const fe *basis, int k, uint8_t *out) {
+void f83_ratx(fe b, const fe *basis, int k, uint8_t *out)
+{
     init();
     B = F(b);
     u64 n = 1ull << k;
@@ -206,7 +226,7 @@ void f83_ratx(fe b, const fe *basis, int k, uint8_t *out) {
             x ^= F(basis[j]);
             u64 mask = g ^ (g >> 1);
             if (x == 0) {
-                out[mask] = 0;   // dependent basis: x = 0 is never a factor-base x
+                out[mask] = 0; // dependent basis: x = 0 is never a factor-base x
             } else {
                 xs[cnt] = x;
                 idx[cnt] = mask;
@@ -230,7 +250,8 @@ void f83_ratx(fe b, const fe *basis, int k, uint8_t *out) {
 
 // Count rational x in the subspace for several nested dimensions at once:
 // counts[d] = #rational nonzero x in span(basis[0..d)), d = 0..k.
-void f83_ratx_nested(fe b, const fe *basis, int k, u64 *counts) {
+void f83_ratx_nested(fe b, const fe *basis, int k, u64 *counts)
+{
     uint8_t *out = malloc((size_t)1 << k);
     f83_ratx(b, basis, k, out);
     for (int d = 0; d <= k; d++) counts[d] = 0;
@@ -246,7 +267,8 @@ void f83_ratx_nested(fe b, const fe *basis, int k, u64 *counts) {
 // of the sign-0 point (the sign-1 tag is -tag).  T is the first [ELL]P of order 4
 // in input order (else the first nonzero, tag 2).  Returns 0, or -1 if some x
 // does not lift.
-int f83_points(fe b, const fe *xs, int n, fe *ys, uint8_t *tags) {
+int f83_points(fe b, const fe *xs, int n, fe *ys, uint8_t *tags)
+{
     init();
     init_ell();
     B = F(b);
@@ -303,10 +325,11 @@ int f83_points(fe b, const fe *xs, int n, fe *ys, uint8_t *tags) {
 // sorting helper for 256-bit keys
 typedef struct {
     u64 w[4];
-    u64 id;   // packed witness
+    u64 id; // packed witness
 } key_t_;
 
-static int keycmp(const void *a, const void *b) {
+static int keycmp(const void *a, const void *b)
+{
     const key_t_ *x = a, *y = b;
     for (int i = 3; i >= 0; i--) {
         if (x->w[i] != y->w[i]) return x->w[i] < y->w[i] ? -1 : 1;
@@ -314,7 +337,8 @@ static int keycmp(const void *a, const void *b) {
     return 0;
 }
 
-static inline key_t_ mkkey(pt P, u64 id) {
+static inline key_t_ mkkey(pt P, u64 id)
+{
     key_t_ k;
     k.w[0] = (u64)P.x;
     k.w[1] = (u64)(P.x >> 64);
@@ -333,7 +357,8 @@ static inline key_t_ mkkey(pt P, u64 id) {
 // eligible target; targets_out (optional) receives distinct eligible targets as
 // (x, y) pairs, and target_ids (optional) one witness id per target.
 // Returns the number of duplicate members.
-static void push(key_t_ **arr, long *cnt, long *cap, key_t_ k) {
+static void push(key_t_ **arr, long *cnt, long *cap, key_t_ k)
+{
     if (*cnt == *cap) {
         *cap *= 2;
         *arr = realloc(*arr, sizeof(key_t_) * (size_t)*cap);
@@ -342,7 +367,8 @@ static void push(key_t_ **arr, long *cnt, long *cap, key_t_ k) {
 }
 
 long f83_image_ref(fe b, const fe *xs, const fe *ys, const uint8_t *tags, int n, int s, u64 *stats,
-                   u64 *dup_out, long dup_cap, fe *targets_out, u64 *target_ids, long targets_cap) {
+                   u64 *dup_out, long dup_cap, fe *targets_out, u64 *target_ids, long targets_cap)
+{
     init();
     B = F(b);
     pt *P = malloc(sizeof(pt) * (size_t)n * 2);
@@ -356,7 +382,8 @@ long f83_image_ref(fe b, const fe *xs, const fe *ys, const uint8_t *tags, int n,
         tg[2 * i + 1] = (uint8_t)((4 - tags[i]) & 3);
     }
     long cap = 1 << 16, cnt = 0, ecap = 1 << 16, ecnt = 0;
-    key_t_ *all = malloc(sizeof(key_t_) * (size_t)cap), *elig = malloc(sizeof(key_t_) * (size_t)ecap);
+    key_t_ *all = malloc(sizeof(key_t_) * (size_t)cap),
+           *elig = malloc(sizeof(key_t_) * (size_t)ecap);
     u64 total = 0, infc = 0, einf = 0, eligible = 0;
     int idx[4] = {0, 0, 0, 0};
     int last = n - s;
@@ -374,12 +401,16 @@ long f83_image_ref(fe b, const fe *xs, const fe *ys, const uint8_t *tags, int n,
                 id |= (u64)e << (16 * t);
             }
             total++;
-            if (S.inf) infc++;
-            else push(&all, &cnt, &cap, mkkey(S, id));
+            if (S.inf)
+                infc++;
+            else
+                push(&all, &cnt, &cap, mkkey(S, id));
             if ((tsum & 3) == 0) {
                 eligible++;
-                if (S.inf) einf++;
-                else push(&elig, &ecnt, &ecap, mkkey(S, id));
+                if (S.inf)
+                    einf++;
+                else
+                    push(&elig, &ecnt, &ecap, mkkey(S, id));
             }
         }
         int t = s - 1;
@@ -432,7 +463,8 @@ long f83_image_ref(fe b, const fe *xs, const fe *ys, const uint8_t *tags, int n,
 }
 
 // Scalar multiple (for tests): out = [k]P with k given as big-endian bits.
-int f83_scalar(fe b, fe x, fe y, const uint8_t *bits, int nbits, fe *ox, fe *oy) {
+int f83_scalar(fe b, fe x, fe y, const uint8_t *bits, int nbits, fe *ox, fe *oy)
+{
     init();
     B = F(b);
     pt P = {F(x), F(y), 0};
@@ -443,7 +475,8 @@ int f83_scalar(fe b, fe x, fe y, const uint8_t *bits, int nbits, fe *ox, fe *oy)
     return 0;
 }
 
-int f83_add(fe b, fe x1, fe y1, fe x2, fe y2, fe *ox, fe *oy) {
+int f83_add(fe b, fe x1, fe y1, fe x2, fe y2, fe *ox, fe *oy)
+{
     init();
     B = F(b);
     pt P = {F(x1), F(y1), 0}, Q = {F(x2), F(y2), 0};
@@ -456,11 +489,13 @@ int f83_add(fe b, fe x1, fe y1, fe x2, fe y2, fe *ox, fe *oy) {
 
 fe f83_mul(fe a, fe b) { return G(mul(F(a), F(b))); }
 fe f83_inv(fe a) { return G(inv(F(a))); }
-int f83_trace(fe a) {
+int f83_trace(fe a)
+{
     init();
     return trace(F(a));
 }
-fe f83_halftrace(fe a) {
+fe f83_halftrace(fe a)
+{
     init();
     return G(halftrace(F(a)));
 }
@@ -473,18 +508,22 @@ fe f83_halftrace(fe a) {
 // table_stats: [0] entries, [1] distinct sums, [2] collision excess.
 // counts[t] = decompositions of target t; witnesses (optional) receive up to
 // wcap (target, id_ab, id_cd) triples.
-static long find_first(const key_t_ *tab, long n, const key_t_ *k) {
+static long find_first(const key_t_ *tab, long n, const key_t_ *k)
+{
     long lo = 0, hi = n;
     while (lo < hi) {
         long mid = (lo + hi) / 2;
-        if (keycmp(&tab[mid], k) < 0) lo = mid + 1;
-        else hi = mid;
+        if (keycmp(&tab[mid], k) < 0)
+            lo = mid + 1;
+        else
+            hi = mid;
     }
     return lo;
 }
 
-long f83_pair_probe(fe b, const fe *xs, const fe *ys, int n, const fe *tx, const fe *ty, int ntargets,
-                    u64 *counts, u64 *witnesses, long wcap, u64 *table_stats) {
+long f83_pair_probe(fe b, const fe *xs, const fe *ys, int n, const fe *tx, const fe *ty,
+                    int ntargets, u64 *counts, u64 *witnesses, long wcap, u64 *table_stats)
+{
     init();
     B = F(b);
     long entries = 4L * n * (n - 1) / 2;
@@ -498,7 +537,7 @@ long f83_pair_probe(fe b, const fe *xs, const fe *ys, int n, const fe *tx, const
                 if (sg & 2) Q = pneg(Q);
                 pt S = padd(P, Q);
                 u64 id = ((u64)(2 * a + (sg & 1))) | ((u64)(2 * c + ((sg >> 1) & 1)) << 16);
-                tab[e++] = mkkey(S, id);   // distinct x, so S is never infinity
+                tab[e++] = mkkey(S, id); // distinct x, so S is never infinity
             }
     qsort(tab, (size_t)e, sizeof(key_t_), keycmp);
     u64 dist = 0;
@@ -514,14 +553,15 @@ long f83_pair_probe(fe b, const fe *xs, const fe *ys, int n, const fe *tx, const
         for (long i = 0; i < e; i++) {
             u64 id = tab[i].id;
             int ia = (int)((id & 0xffff) >> 1), ib = (int)(((id >> 16) & 0xffff) >> 1);
-            pt S = {((u128)tab[i].w[1] << 64) | tab[i].w[0], ((u128)tab[i].w[3] << 64) | tab[i].w[2], 0};
+            pt S = {((u128)tab[i].w[1] << 64) | tab[i].w[0],
+                    ((u128)tab[i].w[3] << 64) | tab[i].w[2], 0};
             pt D = padd(T, pneg(S));
             if (D.inf) continue;
             key_t_ k = mkkey(D, 0);
             for (long j = find_first(tab, e, &k); j < e && !keycmp(&tab[j], &k); j++) {
                 u64 jd = tab[j].id;
                 int ic = (int)((jd & 0xffff) >> 1), id2 = (int)(((jd >> 16) & 0xffff) >> 1);
-                if (!(ib < ic)) continue;          // a < b < c < d
+                if (!(ib < ic)) continue; // a < b < c < d
                 (void)id2;
                 cnt++;
                 if (witnesses && nw < wcap) {
@@ -540,7 +580,8 @@ long f83_pair_probe(fe b, const fe *xs, const fe *ys, int n, const fe *tx, const
 }
 
 // out[i] = in[i]^(2^n), n reduced mod 83 (relative Frobenius transport of coordinates).
-void f83_frobn(const fe *in, fe *out, long count, int n) {
+void f83_frobn(const fe *in, fe *out, long count, int n)
+{
     n %= M;
     if (n < 0) n += M;
     for (long i = 0; i < count; i++) {
@@ -552,7 +593,8 @@ void f83_frobn(const fe *in, fe *out, long count, int n) {
 
 // Pp + P[2c + t] for c in [c0, n), t in {0, 1}; one field inversion per call
 // (Montgomery's trick over the denominators x_Pp + x_c).
-static void add_batch(pt Pp, const pt *P, int c0, int n, pt *out, u128 *d, u128 *pre) {
+static void add_batch(pt Pp, const pt *P, int c0, int n, pt *out, u128 *d, u128 *pre)
+{
     int cnt = n - c0;
     if (cnt <= 0) return;
     if (Pp.inf) {
@@ -572,7 +614,7 @@ static void add_batch(pt Pp, const pt *P, int c0, int n, pt *out, u128 *d, u128 
         u128 id = i ? mul(iv, pre[i - 1]) : iv;
         if (i) iv = mul(iv, d[i]);
         const pt *Q0 = &P[2 * (c0 + i)];
-        if (Pp.x == Q0->x) {                 // doubling or inverse pair: rare, exact fallback
+        if (Pp.x == Q0->x) { // doubling or inverse pair: rare, exact fallback
             out[2 * i] = padd(Pp, Q0[0]);
             out[2 * i + 1] = padd(Pp, Q0[1]);
             continue;
@@ -590,7 +632,8 @@ static void add_batch(pt Pp, const pt *P, int c0, int n, pt *out, u128 *d, u128 
 }
 
 long f83_image(fe b, const fe *xs, const fe *ys, const uint8_t *tags, int n, int s, u64 *stats,
-               u64 *dup_out, long dup_cap, fe *targets_out, u64 *target_ids, long targets_cap) {
+               u64 *dup_out, long dup_cap, fe *targets_out, u64 *target_ids, long targets_cap)
+{
     init();
     B = F(b);
     pt *P = malloc(sizeof(pt) * (size_t)(n > 0 ? n : 1) * 2);
@@ -604,12 +647,14 @@ long f83_image(fe b, const fe *xs, const fe *ys, const uint8_t *tags, int n, int
         tg[2 * i + 1] = (uint8_t)((4 - tags[i]) & 3);
     }
     long cap = 1 << 16, cnt = 0, ecap = 1 << 16, ecnt = 0;
-    key_t_ *all = malloc(sizeof(key_t_) * (size_t)cap), *elig = malloc(sizeof(key_t_) * (size_t)ecap);
+    key_t_ *all = malloc(sizeof(key_t_) * (size_t)cap),
+           *elig = malloc(sizeof(key_t_) * (size_t)ecap);
     u64 total = 0, infc = 0, einf = 0, eligible = 0;
     pt *outb = malloc(sizeof(pt) * (size_t)(2 * (n > 0 ? n : 1)));
-    u128 *d = malloc(sizeof(u128) * (size_t)(n > 0 ? n : 1)), *pre = malloc(sizeof(u128) * (size_t)(n > 0 ? n : 1));
+    u128 *d = malloc(sizeof(u128) * (size_t)(n > 0 ? n : 1)),
+         *pre = malloc(sizeof(u128) * (size_t)(n > 0 ? n : 1));
     int idx[4] = {0, 0, 0, 0};
-    int p = s - 1;                   // prefix length
+    int p = s - 1; // prefix length
     if (n >= s) {
         for (int t = 0; t < p; t++) idx[t] = t;
         while (1) {
@@ -632,12 +677,16 @@ long f83_image(fe b, const fe *xs, const fe *ys, const uint8_t *tags, int n, int
                         u64 fid = id | ((u64)e << (16 * p));
                         int ts = tsum + tg[e];
                         total++;
-                        if (S.inf) infc++;
-                        else push(&all, &cnt, &cap, mkkey(S, fid));
+                        if (S.inf)
+                            infc++;
+                        else
+                            push(&all, &cnt, &cap, mkkey(S, fid));
                         if ((ts & 3) == 0) {
                             eligible++;
-                            if (S.inf) einf++;
-                            else push(&elig, &ecnt, &ecap, mkkey(S, fid));
+                            if (S.inf)
+                                einf++;
+                            else
+                                push(&elig, &ecnt, &ecap, mkkey(S, fid));
                         }
                     }
             }

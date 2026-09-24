@@ -9,12 +9,14 @@
 
 static pthread_t armed_by;
 
-static void on_prof(int sig) {
+static void on_prof(int sig)
+{
     (void)sig;
     pthread_kill(armed_by, SIGALRM);
 }
 
-int cpu_alarm(double seconds) {
+int cpu_alarm(double seconds)
+{
     struct sigaction sa;
     memset(&sa, 0, sizeof sa);
     sa.sa_handler = on_prof;
@@ -28,7 +30,8 @@ int cpu_alarm(double seconds) {
     return setitimer(ITIMER_PROF, &it, 0);
 }
 
-int cpu_alarm_cancel(void) {
+int cpu_alarm_cancel(void)
+{
     struct itimerval it;
     memset(&it, 0, sizeof it);
     return setitimer(ITIMER_PROF, &it, 0);

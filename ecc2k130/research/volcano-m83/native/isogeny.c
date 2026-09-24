@@ -22,13 +22,15 @@
 
 #include "tower.h"
 
-static double now(void) {
+static double now(void)
+{
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec + 1e-9 * ts.tv_nsec;
 }
 
-static int parse_taps(const char *s, int *taps) {
+static int parse_taps(const char *s, int *taps)
+{
     int n = 0;
     char buf[256];
     strncpy(buf, s, sizeof buf - 1);
@@ -37,7 +39,8 @@ static int parse_taps(const char *s, int *taps) {
     return n;
 }
 
-static u128 parse_hex128(const char *s) {
+static u128 parse_hex128(const char *s)
+{
     u128 v = 0;
     if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
     for (; *s; s++) {
@@ -47,10 +50,13 @@ static u128 parse_hex128(const char *s) {
     return v;
 }
 
-static void print_hex128(FILE *f, u128 v) {
+static void print_hex128(FILE *f, u128 v)
+{
     u64 hi = (u64)(v >> 64), lo = (u64)v;
-    if (hi) fprintf(f, "%llx%016llx", (unsigned long long)hi, (unsigned long long)lo);
-    else fprintf(f, "%llx", (unsigned long long)lo);
+    if (hi)
+        fprintf(f, "%llx%016llx", (unsigned long long)hi, (unsigned long long)lo);
+    else
+        fprintf(f, "%llx", (unsigned long long)lo);
 }
 
 // big-endian bit string of a hex integer
@@ -59,7 +65,8 @@ typedef struct {
     long n;
 } bitstr;
 
-static bitstr hex_bits(const char *hex) {
+static bitstr hex_bits(const char *hex)
+{
     bitstr b;
     long len = (long)strlen(hex);
     b.bits = malloc(4 * len + 1);
@@ -76,28 +83,32 @@ static bitstr hex_bits(const char *hex) {
     return b;
 }
 
-static bitstr int_bits(u64 v) {
+static bitstr int_bits(u64 v)
+{
     char buf[32];
     snprintf(buf, sizeof buf, "%llx", (unsigned long long)v);
     return hex_bits(buf);
 }
 
 static u64 rng_state;
-static u64 rng_next(void) {
+static u64 rng_next(void)
+{
     u64 z = (rng_state += 0x9e3779b97f4a7c15ull);
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
     z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
     return z ^ (z >> 31);
 }
 
-static void tw_random(const tower *T, u128 *a) {
+static void tw_random(const tower *T, u128 *a)
+{
     for (int i = 0; i < T->r; i++) {
         u128 v = ((u128)rng_next() << 64) | rng_next();
         a[i] = v & T->mask;
     }
 }
 
-static int write_elem(const tower *T, const char *path, const u128 *a) {
+static int write_elem(const tower *T, const char *path, const u128 *a)
+{
     FILE *f = fopen(path, "wb");
     if (!f) return -1;
     fwrite(a, sizeof(u128), (size_t)T->r, f);
@@ -105,7 +116,8 @@ static int write_elem(const tower *T, const char *path, const u128 *a) {
     return 0;
 }
 
-static int read_elem(const tower *T, const char *path, u128 *a) {
+static int read_elem(const tower *T, const char *path, u128 *a)
+{
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
     size_t got = fread(a, sizeof(u128), (size_t)T->r, f);
@@ -121,7 +133,8 @@ typedef struct {
     u128 *X1, *Z1, *X2, *Z2, *t1, *t2, *t3;
 } ladder;
 
-static void ladder_init(ladder *L, tower *T, u128 b) {
+static void ladder_init(ladder *L, tower *T, u128 b)
+{
     L->T = T;
     L->b = b;
     L->X1 = tw_alloc(T);
@@ -133,7 +146,8 @@ static void ladder_init(ladder *L, tower *T, u128 b) {
     L->t3 = tw_alloc(T);
 }
 
-static void ladder_free(ladder *L) {
+static void ladder_free(ladder *L)
+{
     free(L->X1);
     free(L->Z1);
     free(L->X2);
@@ -144,19 +158,21 @@ static void ladder_free(ladder *L) {
 }
 
 // (X,Z) <- 2(X,Z): X' = X^4 + b Z^4, Z' = X^2 Z^2
-static void mdouble(ladder *L, u128 *X, u128 *Z) {
+static void mdouble(ladder *L, u128 *X, u128 *Z)
+{
     tower *T = L->T;
-    tw_sqr(T, L->t1, X);       // X^2
-    tw_sqr(T, L->t2, Z);       // Z^2
+    tw_sqr(T, L->t1, X); // X^2
+    tw_sqr(T, L->t2, Z); // Z^2
     tw_mul(T, Z, L->t1, L->t2);
-    tw_sqr(T, L->t1, L->t1);   // X^4
-    tw_sqr(T, L->t2, L->t2);   // Z^4
+    tw_sqr(T, L->t1, L->t1); // X^4
+    tw_sqr(T, L->t2, L->t2); // Z^4
     if (L->b != 1) tw_scale(T, L->t2, L->t2, L->b);
     tw_add(T, X, L->t1, L->t2);
 }
 
 // (X1,Z1) <- (X1,Z1) + (X2,Z2) with affine difference x
-static void madd(ladder *L, u128 *X1, u128 *Z1, const u128 *X2, const u128 *Z2, const u128 *x) {
+static void madd(ladder *L, u128 *X1, u128 *Z1, const u128 *X2, const u128 *Z2, const u128 *x)
+{
     tower *T = L->T;
     tw_mul(T, L->t1, X1, Z2);
     tw_mul(T, L->t2, X2, Z1);
@@ -167,7 +183,8 @@ static void madd(ladder *L, u128 *X1, u128 *Z1, const u128 *X2, const u128 *Z2, 
     tw_add(T, X1, L->t3, L->t1);
 }
 
-static int ladder_run(ladder *L, u128 *out, const u128 *x, const bitstr *k, int progress) {
+static int ladder_run(ladder *L, u128 *out, const u128 *x, const bitstr *k, int progress)
+{
     tower *T = L->T;
     if (k->n == 0) return 0;
     tw_copy(T, L->X1, x);
@@ -197,7 +214,8 @@ static int ladder_run(ladder *L, u128 *out, const u128 *x, const bitstr *k, int 
 }
 
 // Tr_(2^(mr)/2)(x + b/x^2) = 0 iff x lifts to the curve over the big field.
-static int lifts(tower *T, const u128 *x, u128 b, u128 *tmp) {
+static int lifts(tower *T, const u128 *x, u128 b, u128 *tmp)
+{
     tw_inv(T, tmp, x);
     tw_sqr(T, tmp, tmp);
     tw_scale(T, tmp, tmp, b);
@@ -207,7 +225,8 @@ static int lifts(tower *T, const u128 *x, u128 b, u128 *tmp) {
 
 static tower T;
 
-static int setup(char **argv) {
+static int setup(char **argv)
+{
     int ft[4], gt[4];
     int nf = parse_taps(argv[1], ft);
     int ng = parse_taps(argv[3], gt);
@@ -217,9 +236,11 @@ static int setup(char **argv) {
     return rc;
 }
 
-static int cmd_selftest(void) {
+static int cmd_selftest(void)
+{
     rng_state = 12345;
-    u128 *a = tw_alloc(&T), *b = tw_alloc(&T), *c = tw_alloc(&T), *d = tw_alloc(&T), *e = tw_alloc(&T);
+    u128 *a = tw_alloc(&T), *b = tw_alloc(&T), *c = tw_alloc(&T), *d = tw_alloc(&T),
+         *e = tw_alloc(&T);
     int ok = 1;
     for (int it = 0; it < 4; it++) {
         tw_random(&T, a);
@@ -267,13 +288,15 @@ static int cmd_selftest(void) {
     int trace_ok = (d[0] == tq);
     for (int i = 1; i < T.r; i++) trace_ok &= (d[i] == 0);
     ok &= trace_ok;
-    printf("{\"selftest\":%s,\"trace_q_matches_frobenius_sum\":%s,\"mul_seconds\":%.6f,\"sqr_seconds\":%.6f,"
+    printf("{\"selftest\":%s,\"trace_q_matches_frobenius_sum\":%s,\"mul_seconds\":%.6f,\"sqr_"
+           "seconds\":%.6f,"
            "\"inv_seconds\":%.3f,\"words\":%zu}\n",
            ok ? "true" : "false", trace_ok ? "true" : "false", tmul, tsqr, tinv, T.nwords);
     return ok ? 0 : 1;
 }
 
-static int cmd_bench(void) {
+static int cmd_bench(void)
+{
     rng_state = 99;
     u128 *a = tw_alloc(&T), *b = tw_alloc(&T), *d = tw_alloc(&T);
     tw_random(&T, a);
@@ -292,7 +315,8 @@ static int cmd_bench(void) {
 
 // [cof]R for a random R on the curve (TWIST=0) or its quadratic twist over
 // the big field (TWIST=1); then report the order of the result modulo ELL^2.
-static int cmd_torsion(char **argv) {
+static int cmd_torsion(char **argv)
+{
     u128 b = parse_hex128(argv[0]);
     int twist = atoi(argv[1]);
     u64 ell = strtoull(argv[2], 0, 10);
@@ -320,7 +344,8 @@ static int cmd_torsion(char **argv) {
         if (tw_is_zero(&T, x)) continue;
         int on_curve = lifts(&T, x, b, tmp);
         if (on_curve == twist) continue;
-        fprintf(stderr, "sample %d accepted (twist=%d), ladder over %ld bits\n", tries, twist, cof.n);
+        fprintf(stderr, "sample %d accepted (twist=%d), ladder over %ld bits\n", tries, twist,
+                cof.n);
         if (!ladder_run(&L, P, x, &cof, 1)) {
             fprintf(stderr, "cofactor multiple is infinity; resampling\n");
             continue;
@@ -347,7 +372,8 @@ static int cmd_torsion(char **argv) {
 }
 
 // x(P)^q == x([c]P), and x(P + tau P) = x_P + 1/x_P has order ELL.
-static int cmd_frobcheck(char **argv) {
+static int cmd_frobcheck(char **argv)
+{
     u128 b = parse_hex128(argv[0]);
     u64 ell = strtoull(argv[1], 0, 10);
     u64 c = strtoull(argv[2], 0, 10);
@@ -362,9 +388,9 @@ static int cmd_frobcheck(char **argv) {
     int lines_ok = -1;
     if (b == 1) {
         tw_inv(&T, s, x);
-        tw_add(&T, s, s, x);                // x(P + tau P)
+        tw_add(&T, s, s, x); // x(P + tau P)
         lines_ok = !ladder_run(&L, z, s, &lb, 0);
-        tw_sqr(&T, y, x);                   // x(tau P)
+        tw_sqr(&T, y, x); // x(tau P)
         lines_ok &= !ladder_run(&L, z, y, &lb, 0);
         lines_ok &= !tw_equal(&T, s, x) && !tw_equal(&T, s, y);
     }
@@ -380,10 +406,11 @@ static int cmd_frobcheck(char **argv) {
 //   X_{v+1} = X_{v-1} U + Z_{v-1} X_v Z_v x_T,  Z_{v+1} = Z_{v-1} U.
 typedef struct {
     u128 *xT, *Xp, *Zp, *Xc, *Zc, *Xn, *Zn, *t1, *t2;
-    long v;   // index of (Xc, Zc)
+    long v; // index of (Xc, Zc)
 } chain;
 
-static void chain_init(chain *C, const u128 *xP) {
+static void chain_init(chain *C, const u128 *xP)
+{
     C->xT = tw_alloc(&T);
     C->Xp = tw_alloc(&T);
     C->Zp = tw_alloc(&T);
@@ -403,7 +430,8 @@ static void chain_init(chain *C, const u128 *xP) {
 }
 
 // Chain G_-u = P - u tau(P) from x(P - tau P) = x(P + tau P) + x_P x_T / (x_P + x_T)^2.
-static void chain_init_neg(chain *C, const u128 *xP) {
+static void chain_init_neg(chain *C, const u128 *xP)
+{
     chain_init(C, xP);
     u128 *s = C->t1, *t = C->t2;
     tw_add(&T, s, xP, C->xT);
@@ -414,10 +442,11 @@ static void chain_init_neg(chain *C, const u128 *xP) {
     tw_add(&T, C->Xc, C->Xc, t);
 }
 
-static void chain_step(chain *C) {
+static void chain_step(chain *C)
+{
     tw_mul(&T, C->t1, C->xT, C->Zc);
     tw_add(&T, C->t1, C->t1, C->Xc);
-    tw_sqr(&T, C->t1, C->t1);            // U
+    tw_sqr(&T, C->t1, C->t1); // U
     tw_mul(&T, C->Zn, C->Zp, C->t1);
     tw_mul(&T, C->Xn, C->Xp, C->t1);
     tw_mul(&T, C->t2, C->Xc, C->Zc);
@@ -425,12 +454,19 @@ static void chain_step(chain *C) {
     tw_mul(&T, C->t2, C->t2, C->Zp);
     tw_add(&T, C->Xn, C->Xn, C->t2);
     u128 *s;
-    s = C->Xp; C->Xp = C->Xc; C->Xc = C->Xn; C->Xn = s;
-    s = C->Zp; C->Zp = C->Zc; C->Zc = C->Zn; C->Zn = s;
+    s = C->Xp;
+    C->Xp = C->Xc;
+    C->Xc = C->Xn;
+    C->Xn = s;
+    s = C->Zp;
+    C->Zp = C->Zc;
+    C->Zc = C->Zn;
+    C->Zn = s;
     C->v++;
 }
 
-static int cmd_lines(char **argv) {
+static int cmd_lines(char **argv)
+{
     u64 ell = strtoull(argv[0], 0, 10);
     u128 *x = tw_alloc(&T);
     if (read_elem(&T, argv[1], x)) return 2;
@@ -472,12 +508,12 @@ static int cmd_lines(char **argv) {
         tw_inv(&T, inv, pre[n - 1]);
         for (long i = n - 1; i >= 0; i--) {
             if (i > 0) {
-                tw_mul(&T, t, inv, pre[i - 1]);     // 1/Z_i
+                tw_mul(&T, t, inv, pre[i - 1]); // 1/Z_i
                 tw_mul(&T, inv, inv, Z[i]);
             } else {
                 tw_copy(&T, t, inv);
             }
-            tw_mul(&T, X[i], X[i], t);             // affine x(G_{next+i})
+            tw_mul(&T, X[i], X[i], t); // affine x(G_{next+i})
         }
         for (long i = 0; i < n; i++) {
             printf("{\"line\":%ld,\"trace\":\"", next + i);
@@ -500,7 +536,8 @@ static int cmd_lines(char **argv) {
 }
 
 // Berlekamp-Massey over F_(2^m): minimal connection polynomial of s[0..n).
-static int bm(const u128 *s, long n, u128 *C, long *Lout) {
+static int bm(const u128 *s, long n, u128 *C, long *Lout)
+{
     u128 *B = calloc(n + 1, sizeof(u128)), *Tt = calloc(n + 1, sizeof(u128));
     memset(C, 0, (n + 1) * sizeof(u128));
     C[0] = 1;
@@ -534,7 +571,8 @@ static int bm(const u128 *s, long n, u128 *C, long *Lout) {
 
 // Kernel polynomial of line LINE: the minimal polynomial over F_q of x(G),
 // from the sequence Tr_q(x^i), i < 2d, with d = (ELL-1)/2.
-static int cmd_kernel(char **argv) {
+static int cmd_kernel(char **argv)
+{
     u64 ell = strtoull(argv[0], 0, 10);
     u128 *x = tw_alloc(&T), *g = tw_alloc(&T), *p = tw_alloc(&T);
     if (read_elem(&T, argv[1], x)) return 2;
@@ -552,7 +590,7 @@ static int cmd_kernel(char **argv) {
             while (C.v < v) chain_step(&C);
             tw_inv(&T, g, C.Zc);
             tw_mul(&T, g, g, C.Xc);
-        } else {                       // walk P - u tau(P), u = ell - v
+        } else { // walk P - u tau(P), u = ell - v
             long u = (long)ell - v;
             chain C;
             chain_init_neg(&C, x);
@@ -592,7 +630,8 @@ static int cmd_kernel(char **argv) {
     return (vanishes && L == d) ? 0 : 1;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     if (argc < 6) {
         fprintf(stderr, "usage: isogeny CMD M FTAPS R GTAPS ...\n");
         return 2;
