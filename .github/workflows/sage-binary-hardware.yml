@@ -1,0 +1,30 @@
+name: Sage binary hardware archive
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/sage-binary-hardware/**'
+      - 'experiments/sage-ic-campaign/**'
+      - 'experiments/sage-binary-batch/**'
+      - '.github/workflows/sage-binary-hardware.yml'
+  push:
+    paths:
+      - 'experiments/sage-binary-hardware/**'
+      - 'experiments/sage-ic-campaign/**'
+      - 'experiments/sage-binary-batch/**'
+      - '.github/workflows/sage-binary-hardware.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patch-and-receipts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct the Sage patch and check recorded measurements
+        run: python3 experiments/sage-binary-hardware/verify_archive.py
+      - name: Check native versus hardware rebaseline
+        run: python3 experiments/sage-ic-campaign/metal-rebaseline-20260924/verify_archive.py
