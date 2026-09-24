@@ -23,10 +23,8 @@ confirm = json.loads((HERE / 'intent-confirm.json').read_text())
 assert primary['source_sha256'] == confirm['source_sha256']
 for name, expected in primary['source_sha256'].items():
     assert hashlib.sha256(paths[name].read_bytes()).hexdigest() == expected, name
-for variant in ('local', 'runner'):
-    assert (ROOT / 'ecc2k130' /
-            ('codegen' if variant == 'local' else 'runner/codegen') /
-            'curves.py').read_bytes() == paths['candidate-' + variant].read_bytes()
+# The source hashes bind this exact candidate. A later curve PR can supersede
+# the live files while this frozen experiment remains independently valid.
 assert 'exact Koblitz tau-adic scalar checks passed' in (HERE / 'test-tau.log').read_text()
 assert 'OK' in (HERE / 'test-runner.log').read_text()
 
