@@ -41,6 +41,7 @@ solver cost, including packing, transfers, construction and verification.
 | 28 | `ecc2k130/{codegen,runner/codegen}/curves.py:CurvePb.trace` | Derive a lazy trace mask from Newton sums of the field polynomial | **PASS_LOCAL** over row 27: exhaustive small-field and 16 frozen paired cells. Complete 64-point recovery batches improved 1.72–2.97x primary and 1.73–2.57x confirmation; first calls including mask setup improved at least 1.36x. Source and receipts: `pb-trace-mask-20260924/`. |
 | 29 | `ecc2k130/{codegen,runner/codegen}/field.py:Pb.mul` | Use sparse-bit or nibble carryless products | **HELD in exploratory pilot**: sparse-bit iteration regressed field batches at every tested degree; nibble products regressed degrees 11/15 and only helped larger fields. Exact paired samples are in `pb-mul-pilot-20260924/`. A degree-specific path needs independent confirmation and cold accounting. |
 | 30 | `ecc2k130/{codegen,runner/codegen}/curves.py:CurvePb.halfTrace` | Cache basis-vector half traces and XOR selected images | **HELD for automatic activation**: degree-131 cold 64-point batches were 0.27–0.28x and cold 256-point batches 0.92–1.03x across frozen primary/confirmation, despite 5.76–6.03x warm 256-point gains. Cold 1024-point batches improved 2.59–2.68x. Exact samples: `pb-halftrace-pilot-20260924/`. Test an explicit bulk policy with full IC charge. |
+| 31 | `CurvePb.prepareHalfTrace` and `runner/codegen/indexcalc.py:factorBase` | Explicitly prepare half-trace images for declared polynomial-basis factor-base work | **PASS_LOCAL stage**: exact factor-base points and Frobenius orbits in eight frozen cells. Complete cold `factorBase` calls improved 1.300–4.019x over degrees 11/13/53/131; degree 131 was 4.019x primary and 4.001x fresh-process confirmation, with preparation charged. The CLI opt-in is `--basis pb --bulk-half-trace`. Source and receipts: `pb-bulk-halftrace-20260924/`. No complete IC/DLP total yet. |
 
 The executable degree-131 IC reference in `ecc2k130/codegen/indexcalc_e2e.py`
 currently performs most field and curve work in its own Python ONB classes and
@@ -86,3 +87,7 @@ complete point-recovery result bounds its practical effect.
 `pb-halftrace-pilot-20260924/` retains the next cold/warm experiment. Its
 degree-131 setup threshold keeps the cached half-trace path out of automatic
 routing until a caller can declare enough point queries and charge setup.
+`pb-bulk-halftrace-20260924/` supplies that explicit caller in the polynomial
+basis IC factor-base collector. Its opt-in result charges preparation to the
+factor-base stage; relation work through verified log recovery remains the
+next complete-workload gate.

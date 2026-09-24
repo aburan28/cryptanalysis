@@ -1,5 +1,6 @@
 """Check frozen polynomial-basis trace-mask sources and timing receipts."""
 
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -23,10 +24,20 @@ confirm = json.loads((HERE / 'intent-confirm.json').read_text())
 assert primary['source_sha256'] == confirm['source_sha256']
 for name, expected in primary['source_sha256'].items():
     assert hashlib.sha256(PATHS[name].read_bytes()).hexdigest() == expected, name
+
+
+def trace_method(path):
+    tree = ast.parse(path.read_text())
+    curve = next(node for node in tree.body
+                 if isinstance(node, ast.ClassDef) and node.name == 'CurvePb')
+    return ast.dump(next(node for node in curve.body
+                         if isinstance(node, ast.FunctionDef) and node.name == 'trace'))
+
+
 for variant in ('local', 'runner'):
     live = ROOT / ('ecc2k130/' + ('runner/' if variant == 'runner' else '') +
                    'codegen/curves.py')
-    assert live.read_bytes() == PATHS['candidate-' + variant].read_bytes()
+    assert trace_method(live) == trace_method(PATHS['candidate-' + variant])
 assert 'polynomial-basis trace-mask checks passed' in (
     HERE / 'test-trace.log').read_text()
 
