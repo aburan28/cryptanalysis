@@ -43,9 +43,6 @@ def popcount(x):
     return bin(x).count('1')
 
 
-_bitCount = getattr(int, 'bit_count', popcount)
-
-
 class Onb:
     """GF(2^m) as symmetric vectors mod the all-ones vector, n = 2m+1."""
 
@@ -98,28 +95,6 @@ class Onb:
         return ((u << k) | (u >> (self.n - k))) & self.allOnes if k else u
 
     def mul(self, a, b):
-        if not (a | b) & ~self.allOnes:
-            if self.m <= 9 or _bitCount(b) <= 12:
-                r = 0
-                while b:
-                    bit = b & -b
-                    r ^= self.rot(a, bit.bit_length() - 1)
-                    b ^= bit
-                return self.normalize(r)
-            basis = (a, self.rot(a, 1), self.rot(a, 2), self.rot(a, 3))
-            window = [0] * 16
-            for mask in range(1, 16):
-                bit = mask & -mask
-                window[mask] = window[mask ^ bit] ^ basis[bit.bit_length() - 1]
-            r = 0
-            shift = 0
-            while b:
-                digit = b & 15
-                if digit:
-                    r ^= self.rot(window[digit], shift)
-                b >>= 4
-                shift += 4
-            return self.normalize(r)
         r = 0
         bb = b
         i = 0
