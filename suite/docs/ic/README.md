@@ -701,10 +701,13 @@ Then the pipeline runs on a **scaled-down curve of the same shape**:
 7. **Descent and baseline.** Each of `--targets` known answers (the planted
    `--known-log`, default 53, then logarithms drawn from `--seed`) is
    recovered from one decomposition of `R = [a]G + [b]Q` over the certified
-   orbits and checked as `[d]G == Q`. The rho baseline is 32 r-adding walks
-   sharing one inversion per step, with distinguished points, in the same
-   arithmetic; it does not fold by `Aut`, and the analytic folded expectation
-   `√(πr/2)/√w` is reported beside it.
+   orbits and checked as `[d]G == Q`. The rho baseline is a van
+   Oorschot–Wiener distinguished-point rho in the same arithmetic: 4 to 32
+   walks sized to the instance (so seeding them stays near a tenth of the
+   expected steps), sharing one inversion per step, over a jump table of
+   multiples of `G` that every target shares, as they share the database. It
+   does not fold by `Aut`; the analytic folded expectation `√(πr/2)/√w` (plus
+   the same seeding) is reported beside it.
 
 Everything is seeded: a rerun with the same arguments reproduces every
 operation count (`runs_are_reproducible`).
@@ -712,12 +715,15 @@ operation count (`runs_are_reproducible`).
 ### What it costs, and how to read `vs_rho`
 
 Counts are group operations — affine additions, each sharing a batched
-inversion on both sides — so they compare across implementations. The
-three ratios are the binary block's timing classes, as `rho / IC` (above 1
-means index calculus spent less): **charged** (one descent, database paid),
-with a second charged ratio against the folded-rho expectation;
-**amortised** (precompute spread over the targets, plus descent); and
-**whole process**.
+inversion on both sides — so they compare across implementations. A setup
+scalar multiplication is charged `1.5·bits(r)` operations on either side;
+rho's jump table, like the database, is shared by the targets and enters the
+amortised and whole classes the same way; the `[d]G == Q` and `[x]G == P`
+certification checks are charged to neither. The three ratios are the binary
+block's timing classes, as `rho / IC` (above 1 means index calculus spent
+less): **charged** (one descent, database paid), with a second charged ratio
+against the folded-rho expectation; **amortised** (precomputations spread
+over the targets, plus the per-target costs); and **whole process**.
 
 A random point has `≈ (wm)²/(2r)` decompositions, and the sweep finds each
 twice (once per summand) and stops at the first. So the precompute is
@@ -732,15 +738,19 @@ measured mean descent is within 2.5% of that formula for both generic and
 
 | type | `\|Aut\|` | bits | precompute | mean descent | mean rho | folded rho | charged | whole process |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| generic | 2 | 20 | 5.84e5 | 665 | 624 | 651 | 0.94 | 0.033 |
-| generic | 2 | 24 | 9.75e6 | 2022 | 3427 | 2602 | 1.69 | 0.011 |
-| generic | 2 | 28 | 2.22e8 | 12540 | 19510 | 12530 | 1.56 | 0.0028 |
-| j0 | 6 | 20 | 1.88e5 | 741 | 737 | 376 | 0.99 | 0.11 |
-| j0 | 6 | 24 | 5.18e6 | 2882 | 4544 | 1915 | 1.58 | 0.028 |
-| j0 | 6 | 28 | 9.94e7 | 20460 | 21960 | 8379 | 1.07 | 0.0070 |
-| j1728 | 4 | 20 | 7.76e4 | 412 | 250 | 231 | 0.61 | 0.088 |
-| j1728 | 4 | 24 | 3.39e6 | 2440 | 2465 | 1555 | 1.01 | 0.023 |
-| j1728 | 4 | 28 | 5.47e7 | 6474 | 13120 | 6263 | 2.03 | 0.0076 |
+| generic | 2 | 20 | 5.84e5 | 564 | 1162 | 904 | 2.06 | 0.063 |
+| generic | 2 | 24 | 9.75e6 | 1939 | 3798 | 2908 | 1.96 | 0.013 |
+| generic | 2 | 28 | 2.22e8 | 12470 | 18260 | 13990 | 1.46 | 0.0026 |
+| j0 | 6 | 20 | 1.88e5 | 640 | 1229 | 631 | 1.92 | 0.19 |
+| j0 | 6 | 24 | 5.18e6 | 2799 | 4451 | 2287 | 1.59 | 0.027 |
+| j0 | 6 | 28 | 9.94e7 | 20400 | 23830 | 10090 | 1.17 | 0.0076 |
+| j1728 | 4 | 20 | 7.75e4 | 302 | 638 | 456 | 2.11 | 0.24 |
+| j1728 | 4 | 24 | 3.39e6 | 2354 | 3701 | 1852 | 1.57 | 0.035 |
+| j1728 | 4 | 28 | 5.47e7 | 6406 | 13240 | 7262 | 2.07 | 0.0077 |
+
+Fitted over 16–28 bits, the precompute grows as `r^{1.00}`, the descent as
+`r^{0.42–0.49}` and rho as `r^{0.44–0.45}` (a small fixed seeding cost
+flattens rho's slope at the low end).
 
 The precompute fits `r^1.00` for every type and scales as `r/w`: at 28 bits
 it is 1.11, 0.37 and 0.55 operations per unit of `r` for generic, `j = 0`
@@ -750,24 +760,26 @@ the ratios of their automorphism orders. The automorphism group, not the
 solver, buys that.
 
 The descent is where width matters. On the secp256k1 shape at 28 bits, 64
-targets, all recovered (`ic prime --curve secp256k1 --bits 28 --width W
---targets 64`):
+targets, all recovered by both sides (`ic prime --curve secp256k1 --bits 28
+--width W --targets 64`), against a rho that spends 17756 operations a target
+(16300 steps and 1456 seeding) and a folded-rho expectation of 8380:
 
 | width | orbits (certified) | precompute | mean descent | charged | charged vs folded rho | whole process |
 |---:|---:|---:|---:|---:|---:|---:|
-| 1 | 2256 (2105) | 8.48e7 | 21400 | 0.91 | 0.32 | 0.014 |
-| 2 | 4511 (4230) | 6.85e7 | 10260 | 1.89 | 0.67 | 0.018 |
-| 4 | 9022 (8478) | 4.98e7 | 4534 | 4.28 | 1.53 | 0.025 |
-| 8 | 18044 (16970) | 4.70e7 | 1791 | 10.8 | 3.87 | 0.026 |
-| 16 | 36087 (33935) | 4.63e7 | 1256 | 15.4 | 5.51 | 0.027 |
+| 1 | 2256 (2105) | 8.48e7 | 21335 | 0.83 | 0.39 | 0.013 |
+| 2 | 4511 (4230) | 6.85e7 | 10199 | 1.74 | 0.82 | 0.016 |
+| 4 | 9022 (8478) | 4.98e7 | 4469 | 3.97 | 1.88 | 0.023 |
+| 8 | 18044 (16970) | 4.70e7 | 1726 | 10.3 | 4.86 | 0.024 |
+| 16 | 36087 (33935) | 4.63e7 | 1191 | 14.9 | 7.03 | 0.025 |
 
 From width 4 the charged descent beats even the folded rho, and the precompute
 gets *cheaper* as the base widens (fewer probes end in a full fruitless
-sweep). P-256's shape runs the same way, reaching a charged 21× (12.8×
+sweep). P-256's shape runs the same way, reaching a charged 21.9× (15.3×
 against folded rho) at width 16.
 
-**What this is not.** The whole-process ratio stays near 0.01: the database
-costs `≈ r/w` operations where rho costs `√r`, so a charged win survives
+**What this is not.** The whole-process ratio stays between 0.003 and 0.03 at
+28 bits: the database costs `≈ r/w` operations where rho costs `√r`, so a
+charged win survives
 the whole accounting only when it is amortised over `Ω(√r)` targets — and
 for many targets the fair opponent is not per-target rho but rho with
 precomputation (Bernstein–Lange, `preprocessing_rho` / `ca_precomp`), whose

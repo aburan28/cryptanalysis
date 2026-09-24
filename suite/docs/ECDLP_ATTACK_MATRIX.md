@@ -149,7 +149,7 @@ representatives but accepts only decompositions through them, so there the
 automorphism adds no relation coverage. Measured at 28 bits: the logarithm
 precomputation is `≈ 2.2·r/|Aut|` operations for every type, a descent with
 the database paid beats per-target rho (from width 4 even the folded-rho
-expectation), and the whole process still costs 37–360× what rho does over
+expectation), and the whole process still costs 40–390× what rho does over
 32–64 targets. The
 secp256k1 structure — `|Aut| = 6`, the GLV `λ`, `S₃`'s `ζ`-equivariance — is
 computed on the real curve; see [ic/README.md](ic/README.md#prime-field-curves-ic-prime).
