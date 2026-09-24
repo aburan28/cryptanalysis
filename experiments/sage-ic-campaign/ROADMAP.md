@@ -33,6 +33,7 @@ solver cost, including packing, transfers, construction and verification.
 | 20 | `pbori` native matrix construction/reduction | Reduce Macaulay conversion and interreduction cost before considering Metal | Prior standalone Metal RREF was 9–21x slower than M4RI on tested matrices; profile stage costs and retain CPU control. |
 | 21 | `binary_batch_ntl.pyx:_frobenius_one` | Restore NTL context before coordinate extraction and use one-point native squaring from `hom_frobenius.py` | **PASS_LOCAL** over PR #78 after a held context bug: 1.251x primary and 1.154x confirmation warm public-call means, exact field-switch suite and 116 hom doctests. Standalone patch and receipts in `frobenius-singleton-20260924/`. |
 | 22 | `binary_batch_ntl.pyx:_construct_standard_point` | Initialize the C-level parent and affine coordinates for verified standard finite-field outputs | **PASS_LOCAL** within the public-addition patch: GF(101) and unsupported binary controls improved 2.045x and 1.482x; the Python-only prototype failed parent identity. Keep the constructor coupled to `ell_point.py`'s guarded call site. |
+| 23 | `ecc2k130/{codegen,runner/codegen}/curves.py:Curve.mul` | Use a width-4 signed window for ONB scalar multiplication of 32 bits or more | **PASS_LOCAL**: all 16 frozen primary/confirmation cells were exact; 32–131-bit complete scalar calls improved 1.132–1.367x and 16-bit controls stayed within 1%. Both real copies are changed, with tests and receipts in `onb-scalar-window-20260924/`. A full IC total remains unmeasured. |
 
 The executable degree-131 IC reference in `ecc2k130/codegen/indexcalc_e2e.py`
 currently performs most field and curve work in its own Python ONB classes and
@@ -59,3 +60,6 @@ and native Sage controls.
 The subsequent `metal-element-kernel-20260924/` pilots held row 6 after
 independent confirmation. Row 7's table access layout is the next measured
 Metal hypothesis. Keep the word-kernel and batched CPU as paired controls.
+The following `onb-scalar-window-20260924/` archive changes both local ONB
+curve copies. Scalar-call measurements are paired and verified, but should
+not be substituted for a complete IC run's charged phase total.

@@ -115,41 +115,13 @@ class Curve:
         return (x3, y3)
 
     def mul(self, p, k):
-        if p is None or k == 0:
-            return None
-        if k < 0:
-            return self.neg(self.mul(p, -k))
-        if k.bit_length() < 32:
-            r = None
-            b = p
-            while k:
-                if k & 1:
-                    r = self.add(r, b)
-                b = self.dbl(b)
-                k >>= 1
-            return r
-        twice = self.dbl(p)
-        odd = [p]
-        for _ in range(3):
-            odd.append(self.add(odd[-1], twice))
-        negative = [self.neg(q) for q in odd]
-        digits = []
-        while k:
-            digit = 0
-            if k & 1:
-                digit = k & 15
-                if digit >= 8:
-                    digit -= 16
-                k -= digit
-            digits.append(digit)
-            k >>= 1
         r = None
-        for digit in reversed(digits):
-            r = self.dbl(r)
-            if digit > 0:
-                r = self.add(r, odd[(digit - 1) // 2])
-            elif digit < 0:
-                r = self.add(r, negative[(-digit - 1) // 2])
+        b = p
+        while k:
+            if k & 1:
+                r = self.add(r, b)
+            b = self.dbl(b)
+            k >>= 1
         return r
 
     def frob(self, p, j=1):
