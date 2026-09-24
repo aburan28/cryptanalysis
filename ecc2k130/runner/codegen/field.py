@@ -204,7 +204,21 @@ class Onb:
         return r
 
     def inv(self, a):
-        return self.pow(a, (1 << self.m) - 2)
+        if a == 0 or a != self.fromCoords(self.toCoords(a)):
+            return self.pow(a, (1 << self.m) - 2)
+        b, u, v = self.allOnes, 1, 0
+        while a != 1:
+            if not a:
+                raise ValueError('nonunit in the ONB ring')
+            shift = a.bit_length() - b.bit_length()
+            if shift < 0:
+                a, b, u, v = b, a, v, u
+                shift = -shift
+            a ^= b << shift
+            u ^= v << shift
+        while u.bit_length() >= self.allOnes.bit_length():
+            u ^= self.allOnes << (u.bit_length() - self.allOnes.bit_length())
+        return self.normalize(u)
 
     def gamma(self, i):
         return self.fromCoords(1 << (i - 1))

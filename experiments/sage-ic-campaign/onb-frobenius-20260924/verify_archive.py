@@ -27,6 +27,8 @@ if accepted_hash not in (
     'c8a39e9a28df54138d094e649f5bf5db1ac5390bbfe23fc28d9620a5fbbeb8c7',
     # The adaptive descendant pins this exact new source in its own archive.
     'dded18a11f243fa269277bfe3513f12a83e9eb28300becf08c9f3d6b5634a07e',
+    # The public inversion descendant pins this exact source separately.
+    '2784e218bed1e9ed0af70955ef7e9983d216ef5f3eea00851949665325de97bd',
 ):
     # A descendant branch may optimize another method in the same field file.
     source_text = accepted.read_text()
