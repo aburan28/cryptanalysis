@@ -5,10 +5,12 @@ This archive accompanies a direct change to the fork's tracked
 of the `m` coordinate bits in Python. After the same normalization, the
 candidate extracts those contiguous bits with one shift and one mask.
 
-`baseline/field.py` is the source before this change. `intent-v1.json` was
-frozen before source edits or timing. `benchmark.py` measures extraction and
+`baseline/field.py` preserves the original parent source and timings;
+`baseline-v2/field.py` is the Python 3.9-compatible parent from the updated
+PR #82. `intent-v1.json` and `intent-v2.json` were frozen before their respective
+timings. `benchmark.py` measures extraction and
 the audit runner's `toCoords(...).bit_count() & 1` trace pattern.
-`point_recovery.py` uses the same curve, inverse, and seeded abscissae on both
+`point_recovery_v2.py` uses the same curve, inverse, and seeded abscissae on both
 sides to show the effect on a containing point operation.
 
 Run the portable archive check from the repository root:
