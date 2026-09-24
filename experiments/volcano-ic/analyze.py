@@ -83,7 +83,8 @@ def census(rows, out, cpuRows=()):
     prob = np.array([r['exact_decomp_prob'] for r in desc])
     att = np.array([r['expected_attempts_per_dlp'] for r in desc])
     formulaOk = sum(eligibleFormula(r['tag_counts']) == r['eligible_signed_pairs'] for r in rows)
-    birthday = np.array([1 - math.exp(-r['eligible_signed_pairs'] / CLASSES) for r in rows])
+    # 1 - exp(-eligible / classes): the birthday-paradox saturation curve.
+    saturation = np.array([1 - math.exp(-r['eligible_signed_pairs'] / CLASSES) for r in rows])
     exact = np.array([r['exact_decomp_prob'] for r in rows])
     # Empirical GB hit rate against the exact probability (pooled binomial).
     hits = sum(s['relations'] for r in rows for s in r['gb_sample'])
@@ -140,7 +141,7 @@ def census(rows, out, cpuRows=()):
             'exact_decomp_prob': [float(prob.min()), float(np.median(prob)), float(prob.max())],
             'expected_attempts_per_dlp': [float(att.min()), float(np.median(att)), float(att.max())]},
         'eligible_formula_matches': [formulaOk, len(rows)],
-        'birthday_model_max_abs_error': float(np.abs(birthday - exact).max()),
+        'saturation_model_max_abs_error': float(np.abs(saturation - exact).max()),
         'corr_fb_size_vs_expected_attempts': float(stats.pearsonr([r['fb_size'] for r in rows],
                                                                   [r['expected_attempts_per_dlp'] for r in rows])[0]),
         'gb_hit_rate': {'hits': hits, 'calls': calls, 'expected_hits': expectHits,

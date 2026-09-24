@@ -264,7 +264,7 @@ and Gröbner samples drawn from each of the 10 ECDLP instances. <b>Tier B</b> ru
 <h2>Relation yield</h2>
 <div class="key">
 <div><b>{c["eligible_formula_matches"][0]}/{c["eligible_formula_matches"][1]}</b><span>curves where eligible pairs equal the Z/4 tag formula exactly</span></div>
-<div><b>{c["birthday_model_max_abs_error"]:.4f}</b><span>largest gap between exact yield and the birthday model</span></div>
+<div><b>{c["saturation_model_max_abs_error"]:.4f}</b><span>largest gap between exact yield and the birthday model</span></div>
 <div><b>{e0["fb_size"]}</b><span>E0 factor-base size, {pct(pc["fb_size"])} percentile of descendants ({dr["fb_size"][0]}–{dr["fb_size"][2]})</span></div>
 <div><b>{e0["expected_attempts_per_dlp"]:.0f}</b><span>E0 predicted attempts per ECDLP, {pct(pc["expected_attempts_per_dlp"])} percentile</span></div>
 </div>
