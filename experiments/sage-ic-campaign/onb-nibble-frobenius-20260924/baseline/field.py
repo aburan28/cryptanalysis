@@ -68,7 +68,6 @@ class Onb:
             raise ValueError("ord_%d(2) = %d, not m or 2m; no type-II ONB" % (self.n, self.ord2))
         self.allOnes = (1 << self.n) - 1
         self.frobPositions = {}
-        self.frobCalls = {}
 
     # ---- conversion between coordinate vectors and internal symmetric form
     def fold(self, i):
@@ -157,15 +156,6 @@ class Onb:
             return self.normalize(r)
         positions = self.frobPositions.get(e)
         if positions is None:
-            if self.m > 9:
-                calls = self.frobCalls.get(e, 0) + 1
-                self.frobCalls[e] = calls
-                if calls < 36:
-                    r = 0
-                    for i in range(self.n):
-                        if (a >> i) & 1:
-                            r |= 1 << (i * e % self.n)
-                    return self.normalize(r)
             positionBits = tuple(1 << (i * e % self.n) for i in range(self.n))
             padded = positionBits + (0,) * (-self.n % 8)
             tables = []

@@ -23,7 +23,11 @@ for name, expected in sources.items():
     assert actual == expected, (name, actual)
 accepted = root / 'ecc2k130/codegen/field.py'
 accepted_hash = hashlib.sha256(accepted.read_bytes()).hexdigest()
-if accepted_hash != 'c8a39e9a28df54138d094e649f5bf5db1ac5390bbfe23fc28d9620a5fbbeb8c7':
+if accepted_hash not in (
+    'c8a39e9a28df54138d094e649f5bf5db1ac5390bbfe23fc28d9620a5fbbeb8c7',
+    # The adaptive descendant pins this exact new source in its own archive.
+    'dded18a11f243fa269277bfe3513f12a83e9eb28300becf08c9f3d6b5634a07e',
+):
     # A descendant branch may optimize another method in the same field file.
     source_text = accepted.read_text()
     cls = next(node for node in ast.parse(source_text).body

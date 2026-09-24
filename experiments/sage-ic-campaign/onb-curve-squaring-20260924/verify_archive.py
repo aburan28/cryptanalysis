@@ -22,16 +22,17 @@ for name, expected in (
     actual = hashlib.sha256((here / name).read_bytes()).hexdigest()
     assert actual == expected, (name, actual)
 field = root / 'ecc2k130/codegen/field.py'
-# Later trace-only work may change the field source while leaving every field
-# operation exercised by this archive unchanged. Compare the parsed module
-# after excluding that one method; the frozen parent source remains pinned.
+# Later trace and Frobenius setup work may change the field source. Compare
+# the parsed module after excluding those separately verified methods; the
+# frozen parent source remains pinned and this archive checks exact outputs.
 original_field = ast.parse((here / 'baseline-v3/field.py').read_text())
 current_field = ast.parse(field.read_text())
 for tree in (original_field, current_field):
     onb = next(node for node in tree.body
                if isinstance(node, ast.ClassDef) and node.name == 'Onb')
     onb.body = [node for node in onb.body
-                if not (isinstance(node, ast.FunctionDef) and node.name == 'trace')]
+                if not (isinstance(node, ast.FunctionDef) and
+                        node.name in ('trace', 'frob', '__init__'))]
 assert ast.dump(original_field) == ast.dump(current_field)
 curves = root / 'ecc2k130/codegen/curves.py'
 accepted = 'd7ccabe5688f4706b972a1c6508e7316f4c478e2fb2437e735734a4c6ee9d8d0'
