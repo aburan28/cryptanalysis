@@ -99,6 +99,10 @@ and degree-3 exploration; they have no edges or target curve. Their 200
 proposals are blocked from final candidate IDs and IC-versus-rho comparisons.
 Record endomorphism-order conductors and prime-specific volcano levels on
 each exact curve when proved; unknown stays `null`.
+The [volcano naming rule](VOLCANO_NAMING.md) gives each proved position a
+prime-specific level alias and each verified ordered route its own walk ID.
+It also reserves degree-2 edges over the binary field as characteristic-prime
+isogenies without a conventional `2`-volcano up/down label.
 
 ## Choosing what to run
 
