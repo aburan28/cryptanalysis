@@ -2,7 +2,7 @@
 
 A generated corpus of elliptic curves for the suite's Pollard rho, index
 calculus, and endomorphism benchmarks. The curves are research instances.
-The catalog checked in here has 251 curves, with field sizes from 2 bits
+The catalog checked in here has 263 curves, with field sizes from 2 bits
 through 771 bits, including prime-field and binary curves at 768 bits.
 They are not parameter sets for deployment.
 
@@ -26,6 +26,10 @@ Field shapes:
 
 - prime fields, from around 2^12 through 2^768;
 - `F_2^m` for prime and composite `m`, including 61, 127, 571, and 768;
+- scaled-down ECC2K-130: `f2-koblitz-a0-m{41,83,97,103,107}` are every
+  prime `m` in 24..130 where `y^2 + xy = x^3 + 1` has order 4·prime, as
+  ECC2K-130 (`f2-koblitz-a0-m131`) does. `ecc2k130/small/` solves them on
+  Metal;
 - characteristic 3, ordinary and supersingular, at prime degrees and at
   composite degrees (`3^4`, `3^5`, `3^6`, and products such as `2·3^5`);
 - odd-characteristic extensions `F_p^k` with both prime and composite `k`,
