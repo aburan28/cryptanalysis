@@ -14,8 +14,8 @@ solver cost, including packing, transfers, construction and verification.
 | 1 | `binary_batch.py:frobenius_points` and `binary_batch_ntl.pyx` | Native NTL coordinate squaring and standard point construction | **PASS_LOCAL**, 2.15x primary and 2.31x confirmation over the prior Python API; PR #72 is open. |
 | 2 | `binary_hardware_codec.pyx:unpack_points` | Cache the point homset and initialize verified normalized outputs directly | **PASS_LOCAL** after a noisy held pilot: 1.85x primary and 1.79x independent confirmation geometric means over complete CPU/Metal point calls; package as a stacked PR. |
 | 3 | `binary_hardware_codec.pyx:pack_points` | Reduce per-point Python validation/`xy()` work while retaining exact curve and class checks | **PASS_LOCAL** after a held first candidate: 1.337x primary and 1.258x confirmation complete-API geometric means; package as a stacked PR. |
-| 4 | `binary_hardware_metal.mm:bh_metal_apply` | Pack into reusable shared Metal input storage and reduce host copies | Current path copies input and output every call; measure full API and peak RSS. |
-| 5 | `binary_hardware_metal.mm:bh_metal_apply` | Reuse command resources or batch consecutive maps | Warm command/transfer overhead exceeds kernel time; prove gain with complete plan calls. |
+| 4 | `binary_hardware_metal.mm:bh_metal_apply` | Pack into reusable shared Metal input storage and reduce host copies | Current installed-source profile: packed Metal mapping took 1.1–2.1 ms versus 0.18–0.40 ms on CPU, while the device reported 0.03–0.09 ms. Instrument host copies and output access; compare complete point calls and peak RSS. Receipts: `metal-current-profile-20260924/`. |
+| 5 | `binary_hardware_metal.mm:bh_metal_apply` | Reuse command resources or batch consecutive maps | The current complete-call Metal plan lost to the CPU plan in all eight frozen degree-131 cells after codec/table changes. Measure command creation and synchronization inside the map stage, then test a batched workload before routing. |
 | 6 | `binary_hardware.py:kernel_source` | Assign one Metal thread per field element and reuse decoded bytes across output words | Current kernel repeats byte extraction per word; test exact packed outputs and full calls. |
 | 7 | `binary_hardware.py:kernel_source` | Reorder table layout for coalesced Metal reads | Current table index is byte/digit/word; profile device memory behavior before editing. |
 | 8 | `binary_hardware.py:FrobeniusPlan._make_table` | Vectorize the lookup-table recurrence over `uint32` rows | **PASS_LOCAL** on the PR #75 source: 1.369x primary and 1.339x confirmation cold CPU means; three of four Metal cold diagnostics improved, degree-19 Metal measured 0.968x. Standalone patch and held pilot archived in `table-build-20260924/`. Native NTL basis-image construction remains a possible next experiment. |
@@ -40,3 +40,10 @@ uses a separate SAT/F5 path. Sage's faster arithmetic therefore has **no
 automatic end-to-end IC speedup**. A later integration must run a frozen
 workload with complete phase accounting and a verified recovered log. The
 Metal rebaseline is in `metal-rebaseline-20260924/`.
+The later installed-codec CPU/Metal comparison and phase receipts are in
+`metal-current-profile-20260924/`; they supersede the older timing boundary
+for this Apple M4 Pro installation. PRs #81–#89 separately improve local and
+tracked-runner Python ONB arithmetic, with cold and warm receipts in their
+individual archives. The tracked IC runner already overrides inversion and
+trace, so public-API ratios for those operations are not incremental IC
+pipeline speedups.
