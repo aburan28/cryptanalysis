@@ -1645,7 +1645,11 @@ static ECC_HD void initSigmaWalkShared131() {
 }
 // Host code emulates the post-barrier values through the original
 // immutable table; it does not emulate CUDA block concurrency.
+#if ECC_PACKED_INLINE_SIGMA
+static ECC_HD SigmaWalkPair131 sigmaWalkNetworkPairShared131(P131 a, P131 b, int index) {
+#else
 static ECC_BIG SigmaWalkPair131 sigmaWalkNetworkPairShared131(P131 a, P131 b, int index) {
+#endif
 #if defined(__CUDACC__) && !defined(__CUDA_ARCH__)
     const int exponents[] = {3,4,5,6,7,8,9,10};
     for (int i=0;i<exponents[index];i++) { a=sqr131(a); b=sqr131(b); }

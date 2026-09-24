@@ -36,7 +36,7 @@ __device__ __forceinline__ void frobeniusSelect(
     }
     const int jump = (hw >> 1) & 7;
     const SigmaWalkPair131 sigmas = sigmaWalkNetworkPairShared131(x, y, jump);
-    P131 dp = toPolynomial131(add131(x, sigmas.first));
+    const P131 dp = toPolynomial131(add131(x, sigmas.first));
     const P131 ep = toPolynomial131(add131(y, sigmas.second));
     if (first) {
         *prod = dp;
@@ -46,7 +46,9 @@ __device__ __forceinline__ void frobeniusSelect(
         store(statePrefix, slot, tid, p.threads, pair.first);
         *prod = pair.second;
     }
-    dp.v[4] |= unsigned(jump) << 3;
+    // The fused update never reads cached jump tags. Keep the denominator
+    // canonical so the inverse loop also needs no tag-removal mask. This
+    // scratch buffer is rebuilt at launch entry and is not checkpointed.
     store(denominators, slot, tid, p.threads, dp);
 }
 
@@ -86,8 +88,7 @@ static __global__ void ECC_BOUNDS walk(
             const P131 x = load(stateX, slot, tid, p.threads);
             const P131 y = load(stateY, slot, tid, p.threads);
             const P131 w = load(statePrefix, slot, tid, p.threads);
-            P131 dp = load(denominators, slot, tid, p.threads);
-            dp.v[4] &= 7;
+            const P131 dp = load(denominators, slot, tid, p.threads);
             P131 lambda;
             if (i + 1 < ECC_BATCH) {
 #if ECC_PACKED_CHAIN_FIRST
