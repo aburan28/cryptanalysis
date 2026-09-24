@@ -14,8 +14,9 @@
  * exponent), then k modulo d from g^alpha.  Both phases are BSGS over
  * exponentiation orbits, so memory is O(sqrt((p-1)/d) + sqrt(d)).
  *
- * The d | p+1 variant (which needs arithmetic in F_{p^2} exponents) is
- * not implemented; see docs/ALGORITHMS.md.
+ * The d | p+1 variant is also implemented.  It needs the stronger
+ * auxiliary sequence g, g^alpha, ..., g^(alpha^(2d)); it is not a bare
+ * ECDLP attack.  Internally it works in the norm-one torus of F_{p^2}^*.
  */
 #ifndef CA_CHEON_H
 #define CA_CHEON_H
@@ -43,6 +44,30 @@ CA_API ca_status ca_cheon_solve(const ca_group *g, const ca_elem *gen, const ca_
 /* Helper for experiments: produce (alpha*g, alpha^d*g) from alpha. */
 CA_API ca_status ca_cheon_make_instance(const ca_group *g, const ca_elem *gen, uint64_t alpha,
                                         uint64_t d, ca_elem *g_alpha, ca_elem *g_alpha_d);
+
+/* Cheon's p+1 algorithm (DLP with auxiliary inputs).
+ *
+ * Given P_i = [alpha^i]gen for 0 <= i <= 2d, with d | p+1 and prime
+ * p = g->order, recover alpha.  The 2d+1 auxiliary points are essential:
+ * this routine does not derive them from an ordinary public key.
+ *
+ * The implementation follows Cheon's norm-one-torus construction over
+ * F_{p^2}.  Its search cost is O(sqrt((p+1)/d) + sqrt(d)); constructing
+ * the degree-2d projective encoding costs O(d) scalar multiplications, so
+ * the overall p+1 attack has the usual O(sqrt((p+1)/d) + d) accounting.
+ *
+ * Current implementation guard: 2d < p, which covers the cryptanalytic
+ * regime where the auxiliary sequence is much shorter than the group order.
+ */
+CA_API ca_status ca_cheon_solve_p_plus_1(const ca_group *g, const ca_elem *g_pows,
+                                         size_t powers_len, uint64_t d,
+                                         const ca_cheon_params *params,
+                                         uint64_t *alpha, ca_stats *st);
+
+/* Helper for tests/benchmarks: fill out[i] = [alpha^i]gen, i=0..2d. */
+CA_API ca_status ca_cheon_make_instance_p_plus_1(const ca_group *g, const ca_elem *gen,
+                                                 uint64_t alpha, uint64_t d,
+                                                 ca_elem *out, size_t out_len);
 
 /* Best divisor d of p-1 for the attack (minimises sqrt((p-1)/d) + sqrt(d)
  * over the divisors), and the corresponding cost estimate in
