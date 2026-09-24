@@ -625,8 +625,9 @@ charged ρ/IC ratio is below 1 at every one. Read its
 ## Prime-field curves: `ic prime`
 
     ./target/release/ca-ic prime --curve secp256k1 --bits 28
-    ./target/release/ca-ic prime --curve p224 --bits 24 --targets 64 --width 4
+    ./target/release/ca-ic prime --curve p224 --bits 36 --targets 256
     ./target/release/ca-ic prime --type j1728 --bits 24 --json
+    ./target/release/ca-ic prime --curve secp256k1 --bits 28 --no-large-primes --no-learn   # the control
     ./target/release/ca-ic prime --curve secp256k1 --bits 16 --solver semaev
 
 The binary pipeline gets its speed-up from a factor base closed under
@@ -684,31 +685,54 @@ Then the pipeline runs on a **scaled-down curve of the same shape**:
    checked on `G`.
 4. **Factor base.** Abscissae are drawn pseudo-randomly, lifted, multiplied
    by the cofactor into `⟨G⟩`, and one representative per orbit is kept. No
-   logarithm is used. `--orbits N` fixes the count; otherwise it is
-   `--width · √r / w`.
-5. **Relations.** Probes `R = [a]G` are walked by `+[s]G` (one addition a
-   probe). The oracle sweeps `α⁻¹(R) − P_o` over every automorphism and every
-   representative, one batched inversion per block, looks the difference up
-   by abscissa, and stops at the first hit; the sweep's starting point is
-   rotated by the probe so that a wide base's relations do not pile onto its
-   first columns. Every hit is re-added in the group before it is kept.
+   logarithm is used. By default the base has 8 orbits: it only bootstraps
+   the database, which the collection and the descents grow (below). With
+   `--no-learn` it is sized to the batch, `⌈T/2⌉` orbits for `T` targets and
+   at least 16 (`--orbits-per-target`); with `--width` or `--no-large-primes`
+   it is `width · √r / w`; `--orbits N` fixes it. The report's
+   `factor_base.sizing` says which.
+5. **Relations.** Probes `R = [a]G` take an r-adding walk over a jump table
+   of 32 multiples of `G`. Each probe is peeled once by every
+   representative, `D = R − P_o`, one batched inversion per block, so
+   `a ≡ x_o + log D`: either `D` is a base point (a relation in two
+   unknowns) or it is a *large prime*, kept under its orbit's least
+   abscissa. When a later probe meets the same orbit, `D = γ(D₁)`,
+   eliminating `log D₁` leaves `x_o − e(γ)·x_{o₁} ≡ a − e(γ)·a₁`. A walk
+   that returns to a probe it has made (a leftover meeting its own first
+   occurrence with gain 1) starts again from a fresh `[a]G`. The control,
+   `--no-large-primes`, keeps a probe only when it decomposes wholly over
+   the base: the oracle sweeps `α⁻¹(R) − P_o` over every automorphism and
+   representative, stops at the first hit, and re-adds it in the group.
 6. **Logarithms.** Each relation has at most two unknowns, so the system is a
    gain graph and is solved exactly, component by component: a spanning tree
    expresses every column affinely in the root, and a cycle of gain `≠ 1`, or
    a one-term relation, pins it. Every solved column is certified by
    `[x_o]G == P_o`; an uncertified column would never be used, and the report
    counts rejected relations, uncertified columns and inconsistent components
-   (all three must be zero for a `complete` run).
+   (all three must be zero for a `complete` run). On a generic curve every
+   gain is `±1`, so a small base can come out of its first round unpinned;
+   while fewer than three quarters of the orbits certify, the collection
+   gathers another round of relations, up to four. Every large prime whose
+   first occurrence lies on a certified orbit then has a known logarithm,
+   `a₁ − x_{o₁}`, exact because `D₁` was computed as `R₁ − P_{o₁}`.
 7. **Descent and baseline.** Each of `--targets` known answers (the planted
    `--known-log`, default 53, then logarithms drawn from `--seed`) is
-   recovered from one decomposition of `R = [a]G + [b]Q` over the certified
-   orbits and checked as `[d]G == Q`. The rho baseline is a van
-   Oorschot–Wiener distinguished-point rho in the same arithmetic: 4 to 32
-   walks sized to the instance (so seeding them stays near a tenth of the
-   expected steps), sharing one inversion per step, over a jump table of
-   multiples of `G` that every target shares, as they share the database. It
-   does not fold by `Aut`; the analytic folded expectation `√(πr/2)/√w` (plus
-   the same seeding) is reported beside it.
+   descended from a probe `R = [a]G + Q`, peeled by a fixed set of 32 points
+   of known logarithm (the certified representatives, topped up with known
+   large primes) until `D = R − P` lies on a base orbit or a known large
+   prime; then `a + d ≡ log P + log D`, checked as `[d]G == Q`. An exhausted
+   probe steps on the same jump table (Brent's check restarts a walk that
+   comes round). Once verified, every difference the descent formed has a
+   known logarithm, `a + d − log P`, and joins the database for the targets
+   after (`--no-learn` turns this off; the database stops growing at `2^24`).
+   The rho baseline is a van Oorschot–Wiener distinguished-point rho in the
+   same arithmetic: 4 to 32 walks sized to the instance (so seeding them
+   stays near a tenth of the expected steps), sharing one inversion per
+   step, over a jump table of multiples of `G` that every target shares, as
+   they share the database. It runs each target on its own and does not
+   fold by `Aut`; the analytic folded expectation `√(πr/2)/√w` (plus the
+   same seeding) is reported beside it, and so is the expectation for a
+   rho that shares distinguished points across the batch (below).
 
 Everything is seeded: a rerun with the same arguments reproduces every
 operation count (`runs_are_reproducible`).
@@ -718,89 +742,146 @@ operation count (`runs_are_reproducible`).
 Counts are group operations — affine additions, each sharing a batched
 inversion on both sides — so they compare across implementations. A setup
 scalar multiplication is charged `1.5·bits(r)` operations on either side;
-rho's jump table, like the database, is shared by the targets and enters the
-amortised and whole classes the same way; the `[d]G == Q` and `[x]G == P`
-certification checks are charged to neither. The three ratios are the binary
-block's timing classes, as `rho / IC` (above 1 means index calculus spent
-less): **charged** (one descent, database paid), with a second charged ratio
-against the folded-rho expectation; **amortised** (precomputations spread
-over the targets, plus the per-target costs); and **whole process**.
+the jump tables (rho's, and the one the collection and the descents walk),
+like the database, are shared by the targets and charged once; the
+`[d]G == Q` and `[x]G == P` certification checks are charged to neither.
+The ratios are the binary block's timing classes, as `rho / IC` (above 1
+means index calculus spent less): **charged** (one descent, database paid),
+with a second charged ratio against the folded-rho expectation;
+**amortised** (precomputations spread over the targets, plus the per-target
+costs); **whole process**; and **whole process against a batch rho**
+(`vs_rho.whole_process_vs_batch_rho`). That last is the Kuhn–Struik
+expectation for a rho that solves the targets in turn and may finish a
+walk on the trail of a target already solved,
+`√(πn/2) · Σ_{k<T} C(2k,k)/4^k` steps on `n = r` classes (`r/w` folded,
+tending to `√(2nT)`), plus one walk's seeding a target: analytic, generous
+to rho (no detection lag), and the fair opponent for a batch, because it
+amortises over the targets as the database does. Per-target rho does not.
 
-A random point has `≈ (wm)²/(2r)` decompositions, and the sweep finds each
-twice (once per summand) and stops at the first. So the precompute is
-`≈ c·r/w` whatever the width — linear in `r` — while one descent is
-`≈ wm·(P₀ + Σ_{D≥1} P(D)/(2D+1))/(1 − P₀)` for `D ~ Poisson((wm)²/(2r))`,
-about `√r / width` once the base is wide. Over 256 targets at 28 bits the
-measured mean descent is within 2.5% of that formula for both generic and
-`j = 0` curves.
+Where the cost goes. A collection of `N` differences learns about `N`
+large-prime logarithms, and a descent then hits after about `r/(w·L)`
+differences against `L` known points. Without learning, `T` targets cost
+`N + T·r/(w·N)`, least at `N ≈ √(T·r/w)`, which a base of about `T/2`
+orbits reaches whatever `r` is. With learning every descent's differences
+join the database, which grows by what the batch spends, and `T` targets
+cost about `N + √(N² + 2T·r/w) − N`: least when the collection is as small
+as certification allows. Either way both halves grow as `√r`. A base of
+`√r` orbits makes the collection grow as `r^{3/4}` with large primes, and
+as `r` with full decompositions, whose precompute is `≈ c·r/w`: a random
+point has `≈ (wm)²/(2r)` decompositions and the sweep stops at the first.
 
-`cargo run --release --example prime_ic_by_curve_type -- 16 28 32`, width 2,
-32 targets per database, every target recovered by both sides:
+`cargo run --release --example prime_ic_by_curve_type -- 16 28 64`, 64
+targets per database, every target recovered by both sides. The default
+pipeline (large primes, learning, an 8-orbit base), and the
+full-decomposition control at width 2 without learning at 28 bits:
 
-| type | `\|Aut\|` | bits | precompute | mean descent | mean rho | folded rho | charged | whole process |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| generic | 2 | 20 | 5.84e5 | 564 | 1162 | 904 | 2.06 | 0.063 |
-| generic | 2 | 24 | 9.75e6 | 1939 | 3798 | 2908 | 1.96 | 0.013 |
-| generic | 2 | 28 | 2.22e8 | 12470 | 18260 | 13990 | 1.46 | 0.0026 |
-| j0 | 6 | 20 | 1.88e5 | 640 | 1229 | 631 | 1.92 | 0.19 |
-| j0 | 6 | 24 | 5.18e6 | 2799 | 4451 | 2287 | 1.59 | 0.027 |
-| j0 | 6 | 28 | 9.94e7 | 20400 | 23830 | 10090 | 1.17 | 0.0076 |
-| j1728 | 4 | 20 | 7.75e4 | 302 | 638 | 456 | 2.11 | 0.24 |
-| j1728 | 4 | 24 | 3.39e6 | 2354 | 3701 | 1852 | 1.57 | 0.035 |
-| j1728 | 4 | 28 | 5.47e7 | 6406 | 13240 | 7262 | 2.07 | 0.0077 |
+| type | `\|Aut\|` | bits | pipeline | precompute | mean descent | mean rho | charged | whole | whole vs folded batch rho |
+|---|---:|---:|---|---:|---:|---:|---:|---:|---:|
+| generic | 2 | 20 | default | 4.05e3 | 131 | 1238 | 9.45 | 6.45 | 0.86 |
+| generic | 2 | 24 | default | 1.56e4 | 284 | 4020 | 14.2 | 7.66 | 0.87 |
+| generic | 2 | 28 | default | 4.70e4 | 1612 | 20420 | 12.7 | 8.72 | 0.80 |
+| generic | 2 | 28 | control | 2.25e8 | 8014 | 20420 | 2.55 | 0.0058 | 0.0010 |
+| j0 | 6 | 20 | default | 2.88e3 | 75 | 1219 | 16.2 | 10.3 | 1.07 |
+| j0 | 6 | 24 | default | 7.87e3 | 233 | 4678 | 20.1 | 13.2 | 1.02 |
+| j0 | 6 | 28 | default | 3.77e4 | 913 | 22720 | 24.9 | 15.1 | 0.86 |
+| j0 | 6 | 28 | control | 1.00e8 | 12170 | 22720 | 1.87 | 0.0144 | 0.0010 |
+| j1728 | 4 | 20 | default | 1.57e3 | 63 | 623 | 9.90 | 7.28 | 1.16 |
+| j1728 | 4 | 24 | default | 7.10e3 | 219 | 3581 | 16.4 | 10.9 | 0.93 |
+| j1728 | 4 | 28 | default | 3.22e4 | 745 | 13590 | 18.2 | 10.9 | 0.79 |
+| j1728 | 4 | 28 | control | 5.56e7 | 5770 | 13590 | 2.36 | 0.0156 | 0.0010 |
 
-Fitted over 16–28 bits, the precompute grows as `r^{1.00}`, the descent as
-`r^{0.42–0.49}` and rho as `r^{0.44–0.45}` (a small fixed seeding cost
-flattens rho's slope at the low end).
+Fitted over 16–28 bits, the default precompute grows as `r^{0.38–0.42}`,
+its descent as `r^{0.33–0.40}` and rho as `r^{0.44–0.46}`; the control's
+precompute grows as `r^{0.92–0.98}`. Larger fields, 64 targets
+(`ic prime --curve C --bits B --targets 64`), every target recovered by both
+sides:
 
-The precompute fits `r^1.00` for every type and scales as `r/w`: at 28 bits
-it is 1.11, 0.37 and 0.55 operations per unit of `r` for generic, `j = 0`
-and `j = 1728` — every one `≈ 2.2·r/w`, so the `j = 0` curve's is 3.0
-times cheaper than the generic one's and the `j = 1728` curve's 2.0 times,
-the ratios of their automorphism orders. The automorphism group, not the
-solver, buys that.
+| shape | bits | precompute | mean descent | mean rho | charged | whole | whole vs folded batch rho | IC s | rho s | peak MB |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| secp256k1 | 32 | 1.20e5 | 2402 | 69092 | 28.8 | 16.2 | 0.83 | 0.04 | 0.16 | 38 |
+| secp256k1 | 36 | 4.85e5 | 12314 | 308423 | 25.0 | 15.5 | 0.83 | 0.21 | 0.61 | 136 |
+| secp256k1 | 40 | 2.09e6 | 45515 | 1403968 | 30.8 | 18.0 | 0.88 | 1.28 | 2.70 | 529 |
+| P-256 | 32 | 3.53e5 | 3461 | 74224 | 21.4 | 8.27 | 0.73 | 0.09 | 0.16 | 70 |
+| P-256 | 36 | 1.32e6 | 20826 | 308754 | 14.8 | 7.44 | 0.74 | 0.48 | 0.61 | 266 |
+| P-256 | 40 | 3.79e6 | 69357 | 946379 | 13.6 | 7.36 | 0.72 | 1.98 | 1.83 | 1046 |
 
-The descent is where width matters. On the secp256k1 shape at 28 bits, 64
-targets, all recovered by both sides (`ic prime --curve secp256k1 --bits 28
---width W --targets 64`), against a rho that spends 17756 operations a target
-(16300 steps and 1456 seeding) and a folded-rho expectation of 8380:
+### How it got here
 
-| width | orbits (certified) | precompute | mean descent | charged | charged vs folded rho | whole process |
-|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 2256 (2105) | 8.48e7 | 21335 | 0.83 | 0.39 | 0.013 |
-| 2 | 4511 (4230) | 6.85e7 | 10199 | 1.74 | 0.82 | 0.016 |
-| 4 | 9022 (8478) | 4.98e7 | 4469 | 3.97 | 1.88 | 0.023 |
-| 8 | 18044 (16970) | 4.70e7 | 1726 | 10.3 | 4.86 | 0.024 |
-| 16 | 36087 (33935) | 4.63e7 | 1191 | 14.9 | 7.03 | 0.025 |
+Each step measured at its commit on the secp256k1 shape at 28 bits, 64
+targets (`ic prime --curve secp256k1 --bits 28 --targets 64`), every target
+recovered by both sides. The last column is against the folded batch-rho
+expectation for this batch, `6.92e4` operations.
 
-From width 4 the charged descent beats even the folded rho, and the precompute
-gets *cheaper* as the base widens (fewer probes end in a full fruitless
-sweep). P-256's shape runs the same way, reaching a charged 21.9× (15.3×
-against folded rho) at width 16.
+| step | commit | orbits (certified) | precompute | mean descent | charged | whole | whole vs folded batch rho |
+|---|---|---:|---:|---:|---:|---:|---:|
+| full 2-decompositions, width 2 | `d3d3870` | 4511 (4230) | 6.85e7 | 10199 | 1.74 | 0.0164 | 0.0010 |
+| single large primes | `fdf40d5` | 4511 (4166) | 6.42e5 | 9514 | 1.87 | 0.91 | 0.055 |
+| descend over the known large primes | `a3e7714` | 4511 (4166) | 6.42e5 | 122 | 145 | 1.75 | 0.106 |
+| base sized to the batch | `6922266` | 32 (31) | 5.35e4 | 666 | 26.7 | 11.8 | 0.72 |
+| descents learn | `e6b5831` | 32 (31) | 5.35e4 | 551 | 32.2 | 12.8 | 0.78 |
+| 8-orbit bootstrap, 32-point peel set, table walk | `7ab6880` | 8 (8) | 3.30e4 | 696 | 25.5 | 14.7 | 0.89 |
 
-**What this is not.** The whole-process ratio stays between 0.003 and 0.03 at
-28 bits: the database costs `≈ r/w` operations where rho costs `√r`, so a
-charged win survives
-the whole accounting only when it is amortised over `Ω(√r)` targets — and
-for many targets the fair opponent is not per-target rho but rho with
-precomputation (Bernstein–Lange, `preprocessing_rho` / `ca_precomp`), whose
-`≈ 2√(rT)` for `T` targets this pipeline does not approach. These are
-2-summand decompositions, which is also why no prime-field rung here could
-threaten a deployed curve: at 256 bits the precompute alone is `≈ 2^256/w`.
+1. **Single large primes.** Peel each probe by every representative and
+   let two probes meet on a leftover's orbit: `≈ √(2cmr/w)` differences for
+   `cm` relations instead of `≈ c·r/w`. The probes needed an r-adding walk:
+   along an arithmetic progression one coincidence recurs at every step,
+   and the relation graph filled with cycles of gain one.
+2. **Descend over the known large primes.** Every leftover whose first
+   occurrence lies on a certified orbit has a known logarithm, about 140
+   per orbit here, so a descent hits that many times sooner.
+3. **Size the base to the batch.** The descent was now nearly free and the
+   precompute was everything; `m ≈ T/2` orbits balances them and makes
+   both grow as `√r`.
+4. **Descents learn.** A verified descent's differences all have known
+   logarithms; adding them makes the batch amortise as a batch rho does.
+5. **Bootstrap 8 orbits; peel by 32 known points; walk on a shared table.**
+   With learning the precompute only certifies a base. A fixed peel set
+   decouples the descent's per-probe cost from the base, and descent probes
+   walk the collection's jump table: one shared arithmetic step made every
+   target walk a parallel progression, and on a generic curve learning
+   stopped paying.
+
+Small bases needed two safeguards (`b30b739`, and in the last step): a
+walk that returns to a probe it has made only repeats itself, so both the
+collection's walk and a descent's restart when they do; and on a generic
+curve, where every gain is `±1`, a first round of relations can leave the
+base unpinned, so the collection gathers more while fewer than three
+quarters of it certify. Over three types, four sizes and 20 seeds, all 480
+runs of an 8- or a 16-orbit base complete.
+
+**What this is not.** Not a subexponential attack, and not faster than the
+best generic algorithm. The pipeline uses only group operations and
+abscissa lookups — its relations have two summands and nothing like
+smoothness — so it is a generic algorithm with the automorphism oracle, and
+for `T` targets no generic algorithm beats order `√(T·r/w)`. The steps
+above bring it to that form: at 28–40 bits and 64 targets it spends
+1.1–1.4 times the folded batch-rho expectation (0.72–0.89 as a ratio), and
+comes out ahead only on the smallest fields, where the per-target seeding
+that expectation charges outweighs the walks. The 7–18× over per-target rho
+is amortisation over the batch plus the `√w` fold, both of which a folded
+rho sharing distinguished points has too; the charged ratio, which leaves
+the database out, says less still. No prime-field rung here threatens a
+deployed curve: at 256 bits every term is `≈ 2^128/√w`, as for rho.
 
 ### Options
 
 - `--curve NAME` (any prime profile of `ic list`) or `--type generic|j0|j1728`
   (`koblitz` is `j0`); neither means `--type generic`.
-- `--bits` 8..=40 (default 24): the scaled field. The certificate and rho reach
-  further; the precompute's `r/w` does not, and `--max-ops` (default `2^32`
-  group operations) ends it as `incomplete`.
-- `--targets` (default 32): known answers descended against one database. A
-  descent's cost is heavy-tailed — its median is about half its mean — so a
-  charged ratio from a handful of targets is noisy.
-- `--width` (default 2), `--orbits`, `--relations-per-orbit` (default 1.5,
-  which certifies about 93% of the orbits), `--no-rho`, `--seed`,
-  `--known-log` / `--random-target`.
+- `--bits` 8..=40 (default 24): the scaled field. At 40 bits a default run
+  of 64 targets takes about two seconds and half a gigabyte; the
+  full-decomposition control's `r/w` does not get that far, and `--max-ops`
+  (default `2^32` group operations) ends it as `incomplete`.
+- `--targets` (default 32, at most 4096): known answers descended against one
+  database, in turn. A descent's cost is heavy-tailed, and with learning the
+  later targets are cheaper, so quote the mean over the batch.
+- `--no-large-primes` (collect full 2-decompositions, the control) and
+  `--no-learn` (descend every target against the precomputed database alone).
+- Base size: `--orbits N`, or `--width W` (`W·√r/|Aut|` orbits; 2 without
+  large primes), or `--orbits-per-target K` (with `--no-learn`: `⌈K·T⌉`, at
+  least 16; default 0.5). `--width` and `--orbits-per-target` conflict.
+- `--relations-per-orbit` (default 1.5; a round, repeated up to four times
+  while fewer than three quarters of the orbits certify), `--no-rho`,
+  `--seed`, `--known-log` / `--random-target`.
 - `--solver semaev` runs the reference Semaev `S₃` solvers instead
   (`ec_index_calculus` for generic curves; `ec_index_calculus_j0`'s orbit or,
   with `--eisenstein`, Eisenstein-lattice base for `j = 0`) and the reference
