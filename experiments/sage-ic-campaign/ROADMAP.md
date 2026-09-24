@@ -12,7 +12,7 @@ solver cost, including packing, transfers, construction and verification.
 | # | Candidate site | Mechanism to test | Evidence and next gate |
 | ---: | --- | --- | --- |
 | 1 | `binary_batch.py:frobenius_points` and `binary_batch_ntl.pyx` | Native NTL coordinate squaring and standard point construction | **PASS_LOCAL**, 2.15x primary and 2.31x confirmation over the prior Python API; PR #72 is open. |
-| 2 | `binary_hardware_codec.pyx:unpack_points` | Cache the point homset and initialize verified normalized outputs directly | Current codec calls the generic constructor for every output; next paired CPU/Metal complete-API experiment. |
+| 2 | `binary_hardware_codec.pyx:unpack_points` | Cache the point homset and initialize verified normalized outputs directly | **PASS_LOCAL** after a noisy held pilot: 1.85x primary and 1.79x independent confirmation geometric means over complete CPU/Metal point calls; package as a stacked PR. |
 | 3 | `binary_hardware_codec.pyx:pack_points` | Reduce per-point Python validation/`xy()` work while retaining exact curve and class checks | Rebaseline shows conversion dominates kernel time; profile pack share and test fresh arrays. |
 | 4 | `binary_hardware_metal.mm:bh_metal_apply` | Pack into reusable shared Metal input storage and reduce host copies | Current path copies input and output every call; measure full API and peak RSS. |
 | 5 | `binary_hardware_metal.mm:bh_metal_apply` | Reuse command resources or batch consecutive maps | Warm command/transfer overhead exceeds kernel time; prove gain with complete plan calls. |
