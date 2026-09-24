@@ -87,7 +87,73 @@ pub fn binary_coordinates(point: &BinaryPoint) -> Option<Coordinates> {
         }),
     }
 }
-pub const NAMES: &[&str] = &["ecc2k-130", "ecc2k-95", "sect163k1", "secp256k1"];
+/// Inspection parameters for a prime-field short-Weierstrass curve from
+/// the zoo (`ecc::curve` / `ecc::curve_zoo`).  Only the generator is
+/// attached, and no fixture: these are imported reference parameters and
+/// the inspector never solves an imported target.
+fn prime_profile(name: &str, c: &CurveParams) -> Parameters {
+    Parameters {
+        schema_version: 1,
+        name: name.into(),
+        field: Field::Prime { modulus: hex(&c.p) },
+        a: hex(&c.a),
+        b: hex(&c.b),
+        subgroup_order: hex(&c.n),
+        cofactor: c.h.to_string(),
+        generator: Some(Coordinates {
+            x: hex(&c.gx),
+            y: hex(&c.gy),
+        }),
+        point: None,
+        fixture: None,
+    }
+}
+/// Every built-in inspection profile.  The binary Koblitz challenges come
+/// first, then the prime-field zoo, grouped by standard: the SECG Koblitz
+/// (j = 0) curves, the NIST / SECG random curves, Brainpool, and the
+/// national curves (ANSSI, Chinese SM2, Russian GOST).  A bare curve name
+/// (`ic <name>`) or `ic inspect --curve <name>` accepts any of these, and
+/// `ic prime --curve <name>` reads the same table for its index-calculus
+/// structural report.
+pub const NAMES: &[&str] = &[
+    // Binary-field challenges (Koblitz / ECC2K).
+    "ecc2k-130",
+    "ecc2k-95",
+    "sect163k1",
+    // SECG Koblitz (j = 0) prime-field curves.
+    "secp160k1",
+    "secp192k1",
+    "secp224k1",
+    "secp256k1",
+    // NIST / SECG random prime-field curves.
+    "secp112r1",
+    "secp112r2",
+    "secp128r1",
+    "secp128r2",
+    "secp160r1",
+    "secp160r2",
+    "p192",
+    "p224",
+    "p256",
+    "p384",
+    "p521",
+    // Brainpool (RFC 5639).
+    "brainpoolp192r1",
+    "brainpoolp224r1",
+    "brainpoolp256r1",
+    "brainpoolp320r1",
+    "brainpoolp384r1",
+    "brainpoolp512r1",
+    // National curves.
+    "frp256v1",
+    "sm2",
+    "gost-cryptopro-a",
+    "gost-cryptopro-b",
+    "gost-cryptopro-c",
+    "gost-tc26-256-a",
+    "gost-tc26-512-a",
+    "gost-tc26-512-b",
+];
 pub fn named(name: &str) -> Result<Parameters, String> {
     let profile = match name.to_ascii_lowercase().as_str() {
         "ecc2k-130" => Parameters {
@@ -147,27 +213,49 @@ pub fn named(name: &str) -> Result<Parameters, String> {
                 fixture: None,
             }
         }
-        "secp256k1" => {
-            let c = CurveParams::secp256k1();
-            Parameters {
-                schema_version: 1,
-                name: "secp256k1".into(),
-                field: Field::Prime { modulus: hex(&c.p) },
-                a: hex(&c.a),
-                b: hex(&c.b),
-                subgroup_order: hex(&c.n),
-                cofactor: c.h.to_string(),
-                generator: Some(Coordinates {
-                    x: hex(&c.gx),
-                    y: hex(&c.gy),
-                }),
-                point: None,
-                fixture: None,
-            }
-        }
-        _ => return Err(format!("unknown curve {name:?}; use ic list")),
+        other => match prime_curve(other) {
+            Some(c) => prime_profile(c.name, &c),
+            None => return Err(format!("unknown curve {name:?}; use ic list")),
+        },
     };
     Ok(profile)
+}
+/// The prime-field curve a built-in name (or one of its standard
+/// aliases, e.g. `secp256r1` for P-256) refers to, or `None` for a name
+/// that is not a prime-field profile.  Matching is case-insensitive.
+pub fn prime_curve(name: &str) -> Option<CurveParams> {
+    Some(match name.to_ascii_lowercase().as_str() {
+        "secp160k1" => CurveParams::secp160k1(),
+        "secp192k1" => CurveParams::secp192k1(),
+        "secp224k1" => CurveParams::secp224k1(),
+        "secp256k1" => CurveParams::secp256k1(),
+        "secp112r1" => CurveParams::secp112r1(),
+        "secp112r2" => CurveParams::secp112r2(),
+        "secp128r1" => CurveParams::secp128r1(),
+        "secp128r2" => CurveParams::secp128r2(),
+        "secp160r1" => CurveParams::secp160r1(),
+        "secp160r2" => CurveParams::secp160r2(),
+        "p192" | "p-192" | "secp192r1" | "prime192v1" => CurveParams::p192(),
+        "p224" | "p-224" | "secp224r1" => CurveParams::p224(),
+        "p256" | "p-256" | "secp256r1" | "prime256v1" => CurveParams::p256(),
+        "p384" | "p-384" | "secp384r1" => CurveParams::p384(),
+        "p521" | "p-521" | "secp521r1" => CurveParams::p521(),
+        "brainpoolp192r1" => CurveParams::brainpool_p192r1(),
+        "brainpoolp224r1" => CurveParams::brainpool_p224r1(),
+        "brainpoolp256r1" => CurveParams::brainpool_p256r1(),
+        "brainpoolp320r1" => CurveParams::brainpool_p320r1(),
+        "brainpoolp384r1" => CurveParams::brainpool_p384r1(),
+        "brainpoolp512r1" => CurveParams::brainpool_p512r1(),
+        "frp256v1" => CurveParams::frp256v1(),
+        "sm2" | "sm2p256v1" => CurveParams::sm2(),
+        "gost-cryptopro-a" => CurveParams::gost_cryptopro_a(),
+        "gost-cryptopro-b" => CurveParams::gost_cryptopro_b(),
+        "gost-cryptopro-c" => CurveParams::gost_cryptopro_c(),
+        "gost-tc26-256-a" => CurveParams::gost_tc26_256_a(),
+        "gost-tc26-512-a" => CurveParams::gost_tc26_512_a(),
+        "gost-tc26-512-b" => CurveParams::gost_tc26_512_b(),
+        _ => return None,
+    })
 }
 pub fn load(path: &Path) -> Result<(Parameters, String), String> {
     let mut data = Vec::new();
