@@ -75,6 +75,8 @@ jobs:
           ./target/release/ca-suite rho-collab work --job job.json --threads 2 --max-seconds 120 | grep -q '^verified: true'
           ./target/release/ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate --json \
             | python3 -c 'import json,sys; r=json.load(sys.stdin)["result"]; assert r["verified"] is True, r'
+          ./target/release/ca-ic prime --curve secp256k1 --bits 20 --targets 4 --json \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["status"] == "complete" and r["vs_rho"]["verdict"]["all_verified"] is True, r["status"]'
 
   rust-msrv:
     # The floor declared in suite/Cargo.toml, re-checked here so that it

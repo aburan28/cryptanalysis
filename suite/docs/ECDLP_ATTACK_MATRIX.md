@@ -67,7 +67,7 @@ The matrix is calibrated to **what an attacker can actually do to a curve**
 | 7 | **Smart-Semaev-Satoh-Araki** *(anomalous curves)* | structural | ○ N/A *(curve order ≠ p)* | ○ N/A | ✗ Breaks *(polynomial time)* | ○ N/A | ○ N/A | 🛡 `cryptanalysis/canonical_lift.rs::smart_attack_anomalous` |
 | 8 | **MOV / Frey-Rück** *(low embedding degree)* | structural | ○ N/A *(P-256 embedding degree astronomical)* | ○ N/A | ○ N/A | ○ N/A | ✗ Breaks *(transfers to F_{p^k}\*)* | (target group attacks via `bls12_381/`) |
 | 9 | **Weil descent / Gaudry-Hess-Smart** | structural | ○ N/A *(no extension structure)* | ○ N/A | ○ N/A | ✗ Breaks *(on F_{2^n}, n composite)* | partially applicable | (binary_ecc — vulnerable curves not deployed) |
-| 10 | **Index calculus / Semaev summation polys** (Semaev 2004, FPPR 2012, PQ 2012, PKM 2016) | structural | ◐ Asymptotically O(p^{3/2}) for 2-decomp; worse than rho | ◐ Same | ◐ Same | ✗ Breaks *(via Weil descent)* | ◐ Same | 🛡 `cryptanalysis/ec_index_calculus.rs` (full pipeline: S₃, S₄, factor base, relations, GE, end-to-end solver) |
+| 10 | **Index calculus / Semaev summation polys** (Semaev 2004, FPPR 2012, PQ 2012, PKM 2016) | structural | ◐ Asymptotically O(p^{3/2}) for 2-decomp; worse than rho | ◐ Same | ◐ Same | ✗ Breaks *(via Weil descent)* | ◐ Same | 🛡 `cryptanalysis/ec_index_calculus.rs` (full pipeline: S₃, S₄, factor base, relations, GE, end-to-end solver)<br>🛡 `cryptanalysis/prime_orbit_index_calculus.rs` (by curve type: automorphism-orbit factor bases for generic, `j = 0` and `j = 1728`; `ca-ic prime`) |
 | 10a | **Residual-collision hybrids** (partial decompositions + large-prime cancellation, r-adding residual walks, MITM 4-decompositions) | structural/generic | ◐ Partial *(measured √(2nB) ≥ rho; no non-generic gain)* | ◐ Same | ◐ Same | ◐ Same | ◐ Same | 🛡 `cryptanalysis/residual_walk.rs` ([upstream note](https://github.com/aburan28/crypto/blob/main/research/notes/index-calculus/RESEARCH_RESIDUAL_WALKS.md)) |
 | 10b | **Gaudry index calculus on E(F_{q^k}), subspace base** (Gaudry 2009; k = 3 toy) | structural | ○ N/A *(prime field)* | ○ N/A | ○ N/A | ✗ Breaks asymptotically for fixed k ≥ 3 *(measured: MITM oracle ∝ n^{2/3}; the O(1) S₄ solve costs C₃ ≈ 0.88·10⁶ F_p mults per residual after two optimisation rounds, three orders of magnitude above the rho crossover at these sizes; relation phase n^{1/3}, plain linear algebra n^{0.68} so S bottoms out near 200× rho, double-large-prime variation measured at n^{4/9} with the crossover past 2^230)* | ○ N/A | 🛡 `cryptanalysis/gaudry_cubic.rs` ([upstream note](https://github.com/aburan28/crypto/blob/main/research/notes/index-calculus/RESEARCH_RESIDUAL_WALKS.md) §11) |
 | 11 | **Diem on E(F_{p^k})** *(small composite k)* | structural | ○ N/A | ○ N/A | ○ N/A | ✗ Breaks *(faster than rho)* | ○ N/A | (documented; not implemented) |
@@ -135,6 +135,24 @@ operations; IC requires ~thousands of trials × ~16 relations. The gap is
 **exactly what the published research predicts**: 2-decomposition IC on
 prime-field curves is asymptotically `O(p^{3/2})`, strictly worse than rho's
 `O(p^{1/2})`. **This is the good news for prime-curve security.**
+
+### By curve type: `ca-ic prime`
+
+`cryptanalysis/prime_orbit_index_calculus.rs` runs the pipeline on prime-field
+curves by type, over certified scaled-down curves of a deployed curve's shape
+(`y² = x³ + 7` for secp256k1, `a = −3` for the NIST curves). Its factor base is
+a union of whole automorphism orbits — `{±1}` on generic curves, `μ₆` from the
+GLV endomorphism on `j = 0` curves, `μ₄` on `j = 1728` curves — so `w·m` points
+carry `m` unknowns. That is the prime-field analogue of the Frobenius collapse
+the binary Koblitz pipeline uses; `ec_index_calculus_j0` keeps orbit
+representatives but accepts only decompositions through them, so there the
+automorphism adds no relation coverage. Measured at 28 bits: the logarithm
+precomputation is `≈ 2.2·r/|Aut|` operations for every type, a descent with
+the database paid beats per-target rho (from width 4 even the folded-rho
+expectation), and the whole process still costs 40–390× what rho does over
+32–64 targets. The
+secp256k1 structure — `|Aut| = 6`, the GLV `λ`, `S₃`'s `ζ`-equivariance — is
+computed on the real curve; see [ic/README.md](ic/README.md#prime-field-curves-ic-prime).
 
 ### What would change the picture
 
