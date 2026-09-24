@@ -870,6 +870,60 @@ def build():
        'Require adjacent-dimension persistence and at least 20% complete-cost improvement before scaling a lead.',
        'Preserve caps as censored data; never convert a timeout into a degree or hardness claim.')
 
+    # ---------------- 18 the next level
+    lv = maybe('level-53676929/structure.json')
+    if lv:
+        s, c = lv['structure'], lv['costs']
+        h1('18. The conductor-53676929 level')
+        p('The second prime of [O_K : Z[pi]] gives the next level of the volcano lattice. Its structure is exact and '
+          'cheap to establish; its curves are not. Runs 01-10 need explicit curves at the level, and every known '
+          'way to produce one is out of reach on this machine.')
+        cyc = s['horizontal_cycles']
+        table([['Quantity', 'Conductor 6473 (this report)', 'Conductor 53676929'],
+               ['class number / Frobenius orbits', '6,474 / 78', '%s / %s' % (n(s['class_number']), n(s['frobenius_orbits']))],
+               ['class group', 'cyclic', 'cyclic of order %s = %s' % (n(s['class_number']), s['class_number_factorization'])],
+               ['minimum noninteger endomorphism degree', '73,324,526', n(s['minimum_noninteger_endomorphism_degree'])],
+               ['pi on E0[l]', '2514, order 6472 = l - 1', '%s, order %s = (l - 1)/%d' % (n(s['pi_scalar_on_E0_l']), n(s['pi_scalar_order']), s['index_in_F_l_star'])],
+               ['kernel polynomial over F_q', 'degree 3236, irreducible', 'degree %s = %d irreducible factors of degree %s'
+                % (n(s['kernel_polynomial_degree']), s['kernel_polynomial_irreducible_factors'], n(s['factor_degree']))],
+               ['kernel x-coordinates', 'F_(2^268588)', 'F_(2^%s), %.1f MB per element' % (n(s['x_coordinate_field_bits']), c['torsion_route']['element_megabytes'])],
+               ['full E[l]: crater / floor', 'F_(q^6472) / F_(q^41,893,256)', 'F_(q^%s) / F_(q^%s)' % (n(s['full_E0_torsion_field_degree']), n(s['floor_full_torsion_field_degree']))],
+               ['twist l-valuation over the x-field', '2', str(s['twist_l_valuation_over_F_q_r'])],
+               ['11-cycles on the level', '6 x 1,079 (13 orbits)', '%d x %s (%s orbits)' % (cyc['11']['cycles'], n(cyc['11']['length']), n(cyc['11']['orbits_per_cycle']))],
+               ['embedding degree of ELL', '74 bits', '74 bits']], [2.2, 2.2, 2.6])
+        p('Because 34000420 generates only an index-4 subgroup of F_l^* (containing -1), Frobenius no longer acts '
+          'transitively on a kernel line: each degree-%s kernel polynomial splits into four F_q-irreducible factors, '
+          'and the Velu sum becomes a sum of four traces from F_(q^%s). The level sits on the crater of the 6473-volcano '
+          'and the floor of the 53676929-volcano; the isogeny class is the 2 x 2 lattice below.'
+          % (n(s['kernel_polynomial_degree']), n(s['x_coordinate_field_degree'])))
+        sizes = s['level_lattice']['sizes']
+        table([['Level', 'Curves', 'Share of the isogeny class']] +
+              [[k, n(v), '%.6f%%' % (100 * v / s['level_lattice']['isogeny_class_size'])] for k, v in sizes.items()],
+              [3.0, 2.0, 2.0])
+        h2('Construction routes and their measured cost')
+        cm, tr, rs = c['cm_class_polynomial'], c['torsion_route'], c['random_search']
+        table([['Route', 'What it needs', 'Measured basis', 'Estimate'],
+               ['CM class polynomial', 'degree %s; its X^(h-1) coefficient alone has about %.1e bits (%.1e for gamma_2)'
+                % (n(cm['degree']), cm['j_coefficient_bits_lower_bound'], cm['gamma2_coefficient_bits_lower_bound']),
+                'polclass time ~ h^%.2f fitted on h = 312..6474' % cm['polclass_timing_law']['k'],
+                '%s CPU-years' % n(cm['extrapolated_cpu_years'])],
+               ['explicit l-torsion (Run-04 method)', 'a %s-bit twist ladder in F_(2^%s)' % (n(tr['ladder_bits']), n(tr['field_bits'])),
+                'one multiplication ~%.0f s CPU (Karatsuba exponent %.2f from native/clbench)' % (tr['multiplication_cpu_seconds'], tr['fitted_exponent']),
+                '%s CPU-years' % n(tr['ladder_cpu_years'])],
+               ['random search for the trace', '%.1e curves per hit (class of %s curves in 2^83)' % (rs['expected_tests'], n(rs['isogeny_class_size'])),
+                '%.0f us per [4 ELL]R = O test (%s random curves, %d hits)' % (1e6 * rs['cpu_seconds_per_test'], n(rs['measured_tests']), rs['measured_hits']),
+                '%.0f CPU-years, then one 6473-ascent' % rs['expected_cpu_years']]],
+              [1.4, 2.2, 2.2, 1.2])
+        callout('Disposition',
+                'The structural facts above are exact. The finite factor-base, solver and atlas runs cannot be '
+                'repeated at conductor 53676929: the cheapest construction route is %s at about %.0f CPU-years here. '
+                'A random hit is a bottom-level curve (conductor 6473 x 53676929) with probability %.5f, so even that '
+                'route first lands one level lower and needs a 6473-ascent (the Run-04 computation, about two hours). '
+                'An optimized x-only search kernel could cut the search by roughly an order of magnitude; it would '
+                'still be a multi-month campaign rather than an experiment.'
+                % (lv['cheapest_route'], lv['route_cpu_years'][lv['cheapest_route']], 1 - rs['probability_hit_is_on_this_level']),
+                'orange')
+
     # ---------------- appendices
     h1('Appendix A. Protocols and sample sizes')
     table([['Run', 'Scope', 'Scale', 'Boundary'],

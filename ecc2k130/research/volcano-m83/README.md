@@ -62,6 +62,30 @@ computed in F_(2^268588) by native code.
   linear algebra and extraction stay null. Signed-Frobenius rho is 2^37.14
   operations.
 
+## The next level: conductor 53676929
+
+The second prime of `[O_K : Z[pi]]` gives a level of 53,676,930 curves
+(646,710 Frobenius orbits; Cl cyclic, the prime above 2 of order 83). Its
+structure is established exactly in `outputs/level-53676929/structure.json`:
+
+* π acts on E0[53676929] as 34000420, of order (l − 1)/4, not a primitive root.
+  Each degree-26,838,464 kernel polynomial therefore splits into four
+  F_q-irreducible factors of degree 6,709,616.
+* Kernel x-coordinates live in F_(2^556,898,128), about 70 MB per element.
+
+Runs 01–10 need explicit curves at the level, and no known construction is
+feasible here. Measured and extrapolated on this machine:
+
+| route | estimate |
+|---|---|
+| CM class polynomial (degree 53.7M; the X^(h−1) coefficient alone ≈ 6.4×10⁸ bits) | ≈ 7,700 CPU-years |
+| explicit 53676929-torsion (the Run-04 method) | ≈ 43,000 CPU-years (≈ 490 s per field multiplication) |
+| random search for a curve with the right trace (2.8×10¹³ tests at 75 µs) | ≈ 66 CPU-years, plus a 6473-ascent |
+
+A random hit lands on the bottom level (conductor 6473·53676929) with
+probability 0.99985, so even the search reaches this level only through the
+Run-04 6473-isogeny machinery. Report section 18 has the details.
+
 ## Pipeline
 
 | stage | script | output |
@@ -81,6 +105,7 @@ computed in F_(2^268588) by native code.
 | Run-08 complete-floor adapted subspaces | `scripts/run08_subspaces.py` | `outputs/run08-subspaces/` |
 | Run-09 Frobenius-conjugate atlases (all 78 orbits) | `scripts/run09_frobenius_atlas.py` | `outputs/run09-frobenius-atlas/` |
 | Run-10 horizontal graph (l = 11..53) and degree-11 atlas | `scripts/run10_horizontal.py`, `run10_atlas.py` | `outputs/run10-horizontal/` |
+| conductor-53676929 level: structure and construction costs | `scripts/s10_level_53676929.py`, `native/clbench` | `outputs/level-53676929/` |
 | figures and report | `scripts/figures.py`, `report/build_report.py` | `outputs/figures/`, `report/` |
 
 Scripts that import Sage run under `sage -python` from `scripts/`;

@@ -8,8 +8,11 @@ all: $(BIN)
 $(BIN): isogeny.c tower.c tower.h
 	$(CC) $(CFLAGS) -o $@.tmp isogeny.c tower.c && mv -f $@.tmp $@
 
+clbench: clbench.c tower.c tower.h
+	$(CC) $(CFLAGS) -o $@.tmp clbench.c tower.c && mv -f $@.tmp $@
+
 clean:
-	rm -f $(BIN)
+	rm -f $(BIN) clbench
 
 .PHONY: all clean
 

@@ -632,6 +632,50 @@ The 26 seed maps (two per orbit, Sage isogenies_prime_degree, a few seconds each
 - Require adjacent-dimension persistence and at least 20% complete-cost improvement before scaling a lead.
 - Preserve caps as censored data; never convert a timeout into a degree or hardness claim.
 
+## 18. The conductor-53676929 level
+
+The second prime of [O_K : Z[pi]] gives the next level of the volcano lattice. Its structure is exact and cheap to establish; its curves are not. Runs 01-10 need explicit curves at the level, and every known way to produce one is out of reach on this machine.
+
+
+| Quantity | Conductor 6473 (this report) | Conductor 53676929 |
+|---|---|---|
+| class number / Frobenius orbits | 6,474 / 78 | 53,676,930 / 646,710 |
+| class group | cyclic | cyclic of order 53,676,930 = 2 * 3 * 5 * 83 * 21557 |
+| minimum noninteger endomorphism degree | 73,324,526 | 5,042,122,237,024,322 |
+| pi on E0[l] | 2514, order 6472 = l - 1 | 34,000,420, order 13,419,232 = (l - 1)/4 |
+| kernel polynomial over F_q | degree 3236, irreducible | degree 26,838,464 = 4 irreducible factors of degree 6,709,616 |
+| kernel x-coordinates | F_(2^268588) | F_(2^556,898,128), 69.6 MB per element |
+| full E[l]: crater / floor | F_(q^6472) / F_(q^41,893,256) | F_(q^13,419,232) / F_(q^720,303,163,298,528) |
+| twist l-valuation over the x-field | 2 | 2 |
+| 11-cycles on the level | 6 x 1,079 (13 orbits) | 6 x 8,946,155 (107,785 orbits) |
+| embedding degree of ELL | 74 bits | 74 bits |
+
+Because 34000420 generates only an index-4 subgroup of F_l^* (containing -1), Frobenius no longer acts transitively on a kernel line: each degree-26,838,464 kernel polynomial splits into four F_q-irreducible factors, and the Velu sum becomes a sum of four traces from F_(q^6,709,616). The level sits on the crater of the 6473-volcano and the floor of the 53676929-volcano; the isogeny class is the 2 x 2 lattice below.
+
+
+| Level | Curves | Share of the isogeny class |
+|---|---|---|
+| crater (conductor 1) | 1 | 0.000000% |
+| conductor 6473 | 6,474 | 0.000002% |
+| conductor 53676929 | 53,676,930 | 0.015444% |
+| conductor 6473*53676929 | 347,504,444,820 | 99.984554% |
+
+
+### Construction routes and their measured cost
+
+
+| Route | What it needs | Measured basis | Estimate |
+|---|---|---|---|
+| CM class polynomial | degree 53,676,930; its X^(h-1) coefficient alone has about 6.4e+08 bits (2.1e+08 for gamma_2) | polclass time ~ h^2.18 fitted on h = 312..6474 | 7,666 CPU-years |
+| explicit l-torsion (Run-04 method) | a 556,898,077-bit twist ladder in F_(2^556,898,128) | one multiplication ~488 s CPU (Karatsuba exponent 1.62 from native/clbench) | 43,033 CPU-years |
+| random search for the trace | 2.8e+13 curves per hit (class of 347,558,128,225 curves in 2^83) | 75 us per [4 ELL]R = O test (20,000 random curves, 0 hits) | 66 CPU-years, then one 6473-ascent |
+
+
+> **Disposition**
+>
+> The structural facts above are exact. The finite factor-base, solver and atlas runs cannot be repeated at conductor 53676929: the cheapest construction route is random search at about 66 CPU-years here. A random hit is a bottom-level curve (conductor 6473 x 53676929) with probability 0.99985, so even that route first lands one level lower and needs a 6473-ascent (the Run-04 computation, about two hours). An optimized x-only search kernel could cut the search by roughly an order of magnitude; it would still be a multi-month campaign rather than an experiment.
+
+
 ## Appendix A. Protocols and sample sizes
 
 
@@ -655,7 +699,7 @@ Censoring policy: a capped stage records the completed stages and a null observa
 
 ## Appendix B. Audit, artifacts and references
 
-`scripts/audit.py` re-derives the headline claims from the saved receipts, using Sage point arithmetic rather than the native library where possible, and writes `outputs/SHA256SUMS` over 150 files: 19 of 19 checks passed.
+`scripts/audit.py` re-derives the headline claims from the saved receipts, using Sage point arithmetic rather than the native library where possible, and writes `outputs/SHA256SUMS` over 151 files: 19 of 19 checks passed.
 
 
 | Check | Result |
