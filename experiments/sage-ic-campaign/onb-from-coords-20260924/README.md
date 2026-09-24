@@ -6,9 +6,10 @@ visit their set bits; denser values use bytewise bit reversal to form the
 mirrored half of the internal symmetric representation. High bits and negative
 inputs retain the original low-`m`-bit meaning.
 
-`baseline/field.py` is the source before this change. `field-v1.py` preserves
-the held set-bit-only candidate. All intent files were frozen before their
-corresponding source or timing revision. `point_build.py` measures the
+`baseline/field.py` preserves the first parent; `baseline-v3/field.py` is the
+Python 3.9-compatible parent after PR #83 was refreshed. `field-v1.py` and
+`field-v2.py` preserve held candidates. All intent files were frozen before their
+corresponding source or timing revision. `point_build_v3.py` measures the
 containing `Curve.pointFromX(Onb.fromCoords(...))` stage on sparse coordinates
 with the same inverse and trace algorithms on both sides.
 
@@ -18,5 +19,5 @@ Run the portable archive check from the repository root:
 python3 experiments/sage-ic-campaign/onb-from-coords-20260924/verify_archive.py
 ```
 
-Re-run `benchmark.py` or `point_build.py` for timings on another machine.
+Re-run `benchmark.py` or `point_build_v3.py` for timings on another machine.
 The archive check verifies exact outputs and the recorded stage gates.
