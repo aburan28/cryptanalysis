@@ -128,22 +128,28 @@ class Curve:
                 b = self.dbl(b)
                 k >>= 1
             return r
-        # For y^2 + xy = x^3 + 1, Frobenius tau obeys tau^2 + tau + 2 = 0.
-        # Divide k in Z[tau] with signed digits; each Horner step then uses
-        # Frobenius instead of an affine doubling and its field inversion.
+        twice = self.dbl(p)
+        odd = [p]
+        for _ in range(3):
+            odd.append(self.add(odd[-1], twice))
+        negative = [self.neg(q) for q in odd]
         digits = []
-        r0, r1 = k, 0
-        while r0 or r1:
-            digit = 2 - ((r0 - 2*r1) & 3) if r0 & 1 else 0
-            even = r0 - digit
+        while k:
+            digit = 0
+            if k & 1:
+                digit = k & 15
+                if digit >= 8:
+                    digit -= 16
+                k -= digit
             digits.append(digit)
-            r0, r1 = r1 - even//2, -even//2
-        negative = self.neg(p)
+            k >>= 1
         r = None
         for digit in reversed(digits):
-            r = self.frob(r)
-            if digit:
-                r = self.add(r, p if digit > 0 else negative)
+            r = self.dbl(r)
+            if digit > 0:
+                r = self.add(r, odd[(digit - 1) // 2])
+            elif digit < 0:
+                r = self.add(r, negative[(-digit - 1) // 2])
         return r
 
     def frob(self, p, j=1):
@@ -475,3 +481,79 @@ class CurvePb:
                 continue
             assert self.mul(p, ell) is None
             return p
+
+
+class NormalView:
+    """A polynomial-basis GF(2^m) seen through normal-basis coordinates.
+
+    Elements are polynomial-basis ints, as CurvePb expects, but fromCoords and
+    toCoords speak normal-basis coordinates, so code written against Onb --
+    the weight-bounded factor base and its Frobenius orbits in indexcalc.py --
+    runs unchanged on a field with no optimal normal basis.  The normal element
+    is the one whose conjugates, as polynomial-basis columns, are sparsest,
+    since those columns are the linear map the decomposition circuit pays for.
+    Seeded by m, so the factor base is the same on every run."""
+
+    def __init__(self, m, tries=400):
+        import random
+        self.m = m
+        self.poly, taps = findIrreduciblePoly(m)
+        self.taps = list(taps)
+        self.pb = field.Pb(m, self.poly)
+        rng = random.Random(m)
+        best = None
+        for _ in range(tries):
+            beta = rng.getrandbits(m)
+            if beta == 0:
+                continue
+            conj = []
+            cur = beta
+            for _ in range(m):
+                conj.append(cur)
+                cur = self.pb.sqr(cur)
+            inv = invertGf2Columns(conj, m)
+            if inv is None:
+                continue
+            ones = 0
+            for c in conj:
+                ones += bin(c).count('1')
+            if best is None or ones < best[0]:
+                best = (ones, conj, inv)
+        if best is None:
+            raise RuntimeError('no normal element found for m=%d' % m)
+        self.conj = best[1]
+        self.rowsPbToNb = best[2]
+        # rowsNbToPb[i]: the normal-basis coordinates whose parity is
+        # polynomial-basis coordinate i, the form linearMapIr takes
+        self.rowsNbToPb = []
+        for i in range(m):
+            r = 0
+            for j in range(m):
+                if (self.conj[j] >> i) & 1:
+                    r |= 1 << j
+            self.rowsNbToPb.append(r)
+
+    def fromCoords(self, c):
+        x = 0
+        j = 0
+        while c:
+            if c & 1:
+                x ^= self.conj[j]
+            c >>= 1
+            j += 1
+        return x
+
+    def toCoords(self, x):
+        c = 0
+        for i in range(self.m):
+            if bin(self.rowsPbToNb[i] & x).count('1') & 1:
+                c |= 1 << i
+        return c
+
+    def frob(self, x, k):
+        for _ in range(k % self.m):
+            x = self.pb.sqr(x)
+        return x
+
+    def trace(self, x):
+        return bin(self.toCoords(x)).count('1') & 1
