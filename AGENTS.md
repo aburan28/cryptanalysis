@@ -28,7 +28,7 @@ they enter a new comparison. A campaign may impose stricter claim rules.
    F4 point-decomposition solver, a walk relation collector, block Wiedemann
    for the final relation matrix, direct target handling, and no isogeny
    transport. Replace `<12hex>` with the first 12 lowercase hex digits of
-   SHA-256 over the canonical candidate record. Add a sequence suffix if a
+   SHA-256 over the canonical candidate record. Extend the digest if a
    truncated-hash collision ever occurs.
 3. **Run ID** identifies a measured execution of one candidate on one frozen
    workload. Use `<candidate-id>W<12hex-workload-id>R<run-number>`. Repetitions,
@@ -41,14 +41,16 @@ they enter a new comparison. A campaign may impose stricter claim rules.
 `fb<B>` is the **actual number of distinct, nonidentity, subgroup-usable
 factor-base points before sign/Frobenius orbit folding**, written as a plain
 decimal integer without leading zeros. Record the nominal subspace dimension
-or bound, geometric point count, and effective relation-matrix column count separately. The latter can
-be much smaller than `B`. Never compare configurations by `N` and `fb` alone;
+or bound, geometric point count, and effective relation-matrix column count
+separately. The latter can be much smaller than `B`. Never compare
+configurations by `N` and `fb` alone;
 the digest distinguishes different bases or algorithms with the same counts.
 
 There are no separators or zero-padded numbers in an ID. Structural tags
 (`IC`, `N`, `C`, `PDP`, `RC`, `LA`, `TD`, `ISO`, `W`, `R`) are uppercase; values
 (`kb1`, `f4`, `walk`, `bw`, etc.), the `fb` tag, and hex digits are lowercase.
 The stage codes are short, stable, and recorded in the candidate manifest.
+The compact ID is a label; load the manifest for the exact configuration.
 Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid` for point
 decomposition; `RCwalk`, `RCsample`, `RCdirect` for relation collection;
 `LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
