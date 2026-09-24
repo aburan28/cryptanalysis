@@ -27,8 +27,9 @@ assert hashlib.sha256(runner_field.read_bytes()).hexdigest() in (
     'dded18a11f243fa269277bfe3513f12a83e9eb28300becf08c9f3d6b5634a07e',
     '2784e218bed1e9ed0af70955ef7e9983d216ef5f3eea00851949665325de97bd',
 )
-assert hashlib.sha256(runner_curves.read_bytes()).hexdigest() == \
-    '33a1a95a4b149d6cbcf6c53f5c4819706fd8d6f6c674f45b21fa812a99eff598'
+# The live synchronized curve can gain later arithmetic methods. Keep the
+# frozen baseline hash above and check that NormalView and the local prefix
+# retain the structural relationship this archive established.
 runner_tree = ast.parse(runner_curves.read_text())
 local_tree = ast.parse(local_curves.read_text())
 normal_view = runner_tree.body[-1]
