@@ -1,0 +1,59 @@
+# Incremental, sharded, resumable version of the c10 coverage census (same definitions as c10/c10b).
+# argv: k_list(comma) shard n_shards ; appends one JSON line per curve to raw/c10c_k{ks}_shard{s}.jsonl
+import json, itertools, time, sys
+from pathlib import Path
+from sage.all import GF, PolynomialRing, EllipticCurve, Integer, set_random_seed
+W = Path("/Volumes/SSD990/ecdlp-hardness-work/codex-crosscheck")
+GT = json.loads(Path("/Volumes/SSD990/ecdlp-hardness-work/ground_truth/ground_truth.json").read_text())
+R = PolynomialRing(GF(2), "z"); zz = R.gen()
+K = GF(2**131, name="z", modulus=zz**131 + zz**13 + zz**2 + zz + 1); z = K.gen()
+N = Integer(GT["meta"]["N"])
+ks = [int(a) for a in sys.argv[1].split(",")]; si, ns = int(sys.argv[2]), int(sys.argv[3])
+outf = W / "raw" / f"c10c_k{'_'.join(map(str, ks))}_shard{si}of{ns}.jsonl"
+done = set()
+if outf.exists():
+    for line in outf.read_text().splitlines():
+        if line.strip(): done.add(json.loads(line)["label"])
+set_random_seed(1000 + si)
+t0 = time.time()
+for idx, c in enumerate(GT["curves"]):
+    if idx % ns != si or c["label"] in done: continue
+    lab = c["label"]
+    E = EllipticCurve(K, [1, int(c["a2"]), 0, 0, K.from_integer(int(c["b_int"]))])
+    while True:
+        T = N * E.random_point()
+        if not (2*T).is_zero(): break
+    Tm = [E(0), T, 2*T, 3*T]
+    rec = {"label": lab}
+    for k in ks:
+        pts = []
+        for mask in range(1, 2**k):
+            x = sum(z**i for i in range(k) if (mask >> i) & 1)
+            L = E.lift_x(x, all=True)
+            if L: pts.append(L[0])
+        tags = [Tm.index(N*P) for P in pts]; n = len(pts)
+        signed = [[P, -P] for P in pts]
+        pair = {}
+        for i, j in itertools.combinations(range(n), 2):
+            for a in (0, 1):
+                for b in (0, 1):
+                    if any(((1-2*a)*tags[i] + (1-2*b)*tags[j] + (1-2*cc)*tags[l]) % 4 == 0 for l in range(n) for cc in (0, 1)):
+                        pair[(i, j, a, b)] = signed[i][a] + signed[j][b]
+        elig = inf = 0; targets = set()
+        for i, j, l in itertools.combinations(range(n), 3):
+            for a in (0, 1):
+                for b in (0, 1):
+                    for cc in (0, 1):
+                        if ((1-2*a)*tags[i] + (1-2*b)*tags[j] + (1-2*cc)*tags[l]) % 4: continue
+                        elig += 1
+                        S = pair[(i, j, a, b)] + signed[l][cc]
+                        if S.is_zero(): inf += 1
+                        else: targets.add((S[0], S[1]))
+        rec[str(k)] = {"factor_base_x_count": n, "factor_base_signed_point_count": 2*n,
+                       "all_signed_triples": 8*(n*(n-1)*(n-2)//6), "eligible_signed_triples": elig,
+                       "infinity_triples": inf, "prime_subgroup_distinct_targets": len(targets),
+                       "tag_split_n0_n2_nodd": [tags.count(0), tags.count(2), n - tags.count(0) - tags.count(2)]}
+    with open(outf, "a") as fh:
+        fh.write(json.dumps(rec) + "\n")
+    print(lab, f"{time.time()-t0:.0f}s", flush=True)
+print("done", time.time() - t0, flush=True)

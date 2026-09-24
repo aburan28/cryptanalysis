@@ -1,0 +1,1693 @@
+{
+ "_meta": {
+  "task": "G4 reconcile B2 levels and literature",
+  "produced_by": [
+   "reconcile.py (sage -python, ~80 s)",
+   "lit_check.py (python3)",
+   "build_outputs.py (python3)"
+  ],
+  "inputs_read": [
+   "p-levels/{conclusions,levels}.json",
+   "literature/{levels,citations,per_curve}.json",
+   "verify/p-levels/C4-audit/*",
+   "verify/p-levels/C5-audit/*",
+   "verify/redteam/RT15-*",
+   "verify/redteam/RT2-01-*",
+   "redteam-2/raw/*.json",
+   "transport-263/summary.json",
+   "verify/codex-crosscheck/C1-audit/horiz_*"
+  ],
+  "units": {
+   "Fq_mult": "one multiplication in F_{2^131}",
+   "E0_rho_equiv": "cost / (E0 rho cost in F_q-mults), E0 rho = 2^60.809 iterations x 5 M (BBB09: (I-3M)/N + 5M + 21S, squarings free in normal basis); 6 M/iteration shown as sensitivity",
+   "effective_log2": "log2 of (E0 rho iterations + transport F_q-mults / 5), i.e. rho-iteration equivalents",
+   "C": "per-step constant: F_{q^K}-multiplications per l^D unit of one (l,...,l)-isogeny step in dimension D (no char-2 implementation exists here; C is scanned); kappa-scaled C = kappa * 3^D reflects the 3^D level-3 theta coordinates needed in char 2 (level must be odd)"
+  },
+  "E0_rho_log2_iterations": 60.809,
+  "E0_rho_log2_Fq_mults_5M_6M": [
+   63.131,
+   63.394
+  ],
+  "native_neg_only_rho_log2_iterations": 64.326,
+  "native_log2_Fq_mults_5M_6M": [
+   66.648,
+   66.911
+  ],
+  "note_on_class_fraction": "levels p and 263p together hold 263(p+1) of 263(p+2) curves = all but 2^-57.02 of the class; level 263p alone holds 262/263 = 99.62%"
+ },
+ "constants": {
+  "q": "2^131",
+  "t": "-22283658519494248867",
+  "N": "680564733841876926932320129493409985129",
+  "f": "263*p",
+  "p": "146505763881528721",
+  "kronecker_minus7": {
+   "p": -1,
+   "l263": 1
+  },
+  "class_numbers": [
+   "1",
+   "262",
+   "146505763881528722",
+   "38384510136960525164"
+  ],
+  "log2_class_numbers": [
+   0.0,
+   8.033,
+   57.024,
+   65.057
+  ],
+  "r_ord_p_c": [
+   12208813656794060,
+   53.439
+  ],
+  "r_x": [
+   6104406828397030,
+   52.439
+  ]
+ },
+ "levels": {
+  "1": {
+   "conductor": "1",
+   "end_ring": "O_K",
+   "class_count": "1",
+   "log2_class_count": 0.0,
+   "block": "B1",
+   "construction": {
+    "method": "given: E0 is the Certicom ECC2K-130 curve (j = 1)",
+    "log2_Fq_mults": 0.0
+   },
+   "native_rho_log2_iterations": 60.809,
+   "native_rho_note": "negation + F_2-Frobenius tau, classes of size 2*131",
+   "transport_to_E0": "identity",
+   "effective_log2_interval": [
+    60.809,
+    60.809
+   ],
+   "endpoint_conditions": "both endpoints: parallel rho on <-1,tau>-classes (the BBB09 walk costs 2^60.91 iterations with its 1.069993 non-randomness factor)"
+  },
+  "263": {
+   "conductor": "263",
+   "end_ring": "Z + 263 O_K",
+   "class_count": "262",
+   "log2_class_count": 8.033,
+   "block": "B1",
+   "construction": {
+    "method": "explicit: roots of H_D mod 2 (D = -7*263^2), equivalently Velu from the 264 subgroups of E0[263] over F_{q^2}; all 262 curves are in ground_truth.json",
+    "cost_note": "seconds of Sage time (ground-truth build and derive_floor); no bit estimate needed"
+   },
+   "native_rho_log2_iterations": 64.326,
+   "native_rho_note": "negation only (O_263 has no element of norm 2, so no Frobenius endomorphism)",
+   "transport_to_E0": {
+    "method": "one ascending 263-isogeny (kernel over F_{q^2}), all 262 transports checked in transport-263/",
+    "log2_Fq_mult_equiv": 15.55,
+    "log2_E0rho_equiv": -47.58,
+    "heuristic": false,
+    "char2_algorithm": "Velu (implemented, run)"
+   },
+   "effective_log2_interval": [
+    60.809,
+    60.809
+   ],
+   "endpoint_conditions": "both endpoints: E0 rho after a 2^15.55-mult transport (transport-263/summary.json effective_log2 median 60.809037)"
+  },
+  "p": {
+   "conductor": "p",
+   "end_ring": "Z + p O_K",
+   "class_count": "146505763881528722",
+   "log2_class_count": 57.024,
+   "block": "B2",
+   "construction": {
+    "cheapest_method": "random search over y^2+xy=x^3+b with the free prefilter a2 = 0, Tr(b) = 1 (every curve of order 4N has this shape: 4N = 4 mod 8), test [4N]P = O by an x-only ladder; a level-263p hit (262/263 of hits) is moved to level p by one 263-isogeny with kernel over F_{q^2}, so level p costs the same",
+    "log2_candidates": 64.937,
+    "candidate_space_comparison": {
+     "uniform (b,a2) over 2(q-1) classes (p-levels/conclusions.json)": {
+      "log2_trials_level_p_or_263p": 66.937,
+      "log2_trials_level_p_only": 74.976
+     },
+     "random j, both twists tested as one trial": {
+      "log2_trials_level_p_or_263p": 65.937,
+      "log2_trials_level_p_only": 73.976
+     },
+     "a2=0 only (q-1 candidates)": {
+      "log2_trials_level_p_or_263p": 65.937,
+      "log2_trials_level_p_only": 73.976
+     },
+     "a2=0 and Tr(b)=1 prefilter (q/2 candidates)": {
+      "log2_trials_level_p_or_263p": 64.937,
+      "log2_trials_level_p_only": 72.976
+     }
+    },
+    "per_candidate_test_Fq_mults": {
+     "lower_bound_131_doublings_x_2M": 262,
+     "ladder_xP_eq_1_counted": 660,
+     "ladder_generic_counted": 792
+    },
+    "log2_Fq_mults": {
+     "lower_bound": 72.971,
+     "counted_ladder_xP1": 74.304,
+     "counted_ladder_generic": 74.567,
+     "absurd_floor_1M_per_candidate": 64.937
+    },
+    "log2_E0rho_equivalents": {
+     "lower_bound_6M_iter": 9.577,
+     "counted_ladder_xP1_5M_iter": 11.173,
+     "absurd_floor_1M_per_candidate_6M_iter": 1.543
+    },
+    "galbraith2024_thm4_figure": {
+     "log2": 65.5,
+     "meaning": "O~(q^{1/2}) F_q-operations: an asymptotic statement that hides the per-candidate test (a log q factor) and constants; it is not a trial count"
+    },
+    "other_routes_log2_Fq_ops": {
+     "descend_from_E0_cofactor_kernel_point_xonly_LB": 111.911,
+     "descend_from_E0_cofactor_full_points": 113.911,
+     "Phi_p_Otilde_p2": [
+      114.047,
+      121.081
+     ],
+     "Phi_p_cubic_obsolete": 171.071,
+     "CM_log2_absD": [
+      116.855,
+      132.933
+     ]
+    },
+    "construction_costs_more_than_E0_instance": true,
+    "construction_vs_E0_statement": "YES. One B2 curve costs >= 2^72.97 F_q-mults (2^64.94 candidates x >= 262 M), i.e. >= 2^9.58 E0-rho solves; with the counted ladder 2^74.30 F_q-mults = 2^11.17 E0-rho solves (5 M/iteration). Even a 1-M test would cost 2^1.54 E0-rho solves."
+   },
+   "native_rho_log2_iterations": 64.326,
+   "native_rho_note": "negation only; smallest non-scalar endomorphism has degree 2^114.85 (level p) / 2^130.93 (level 263p) per C4-audit",
+   "transport_to_E0": {
+    "method": "Galbraith ePrint 2024/924 (RNT 11:7, 2025) Thm 1 + Thm 2 with h0 = 1 (the crater is {E0}, so the curve directly above a level-p curve is E0): Kani/Robert representation of the ascending p-isogeny found by a meet-in-the-middle over guesses of its action on E[M1], M = p + m smooth. Asymptotic cost O~(p^{1/2}) = O~(2^28.51).",
+    "thm1_hypotheses": {
+     "N_equals_p": {
+      "smallest_prime_factor": "146505763881528721",
+      "bound_4lnN_lnlnN": 581.3,
+      "ok": true
+     },
+     "N_equals_263p": {
+      "smallest_prime_factor": 263,
+      "bound_4lnN_lnlnN": 687.1,
+      "ok": false,
+      "fix": "ascend the 263-step first (kernel over F_{q^2}), then N = p"
+     }
+    },
+    "heuristics": [
+     "MITM meets exactly once (Gal24 footnote 8: unique solution expected)",
+     "Elkies-prime distribution: removable for bounded |D0| (Gal24 sec 2.1); here D0 = -7 and the needed parameters were found explicitly (kani_search.json)",
+     "m a sum of 2 squares (dim 4) / 1 square or horizontal-gamma norm (dim 2): not needed in dim 8; found explicitly here"
+    ],
+    "char2_algorithm_availability": {
+     "dim2": "described in the literature ([BCR10b], cited by Robert ePrint 2024/406 as the characteristic-2 theta-isogeny algorithm, dimension 2 only); not implemented in this work tree; per-step constant unknown",
+     "dim4_dim8": "no characteristic-2 algorithm for (l,...,l)-isogenies in dimension 4 or 8 is cited in the texts on disk; algebraic theta theory needs a level prime to the characteristic (odd level, 3^D coordinates)"
+    },
+    "models": {
+     "descended": "each step has an F_q-rational representation of cost C*l^D in F_{q^K_l}; later-prime basis points are pushed in their own field F_{q^K_j}",
+     "compositum": "step from a kernel basis in F_{q^K_l}; pushing a later prime's points needs F_{q^lcm(K_l,K_j)} (RT2-01-1 model)",
+     "compositum+theta": "compositum, with every field also containing the level-3 (level-5 for l = 3) theta-structure field (pi-order 8 on E[3], 24 on E[5])",
+     "equations": "Robert notes CA 2.8 first bullet: step from rational kernel equations in O(l^{D r}) F_q-ops, r = 1 if l = 1 mod 4 else 2; pushes in F_{q^K_j}"
+    },
+    "push_count": "2D basis points per later prime (reference, as RT2-01-1) or D (sensitivity)",
+    "field_mult": "Karatsuba K^1.585 (reference) or linear K (lower bound)",
+    "reproduction_of_disk_figures": {
+     "proposer_rt4_dim2": [
+      [
+       51.59,
+       55.06,
+       58.38
+      ],
+      [
+       50.02,
+       53.49,
+       56.81
+      ]
+     ],
+     "RT2_01_1_compositum_c81": [
+      55.83,
+      59.31,
+      62.63
+     ],
+     "descended_c81": [
+      51.21,
+      54.68,
+      58.0
+     ],
+     "RT15_1_per_guess_dim2": 58.66,
+     "verdict": "The two disputed dim-2 ranges are both arithmetically right for their own models and are reproduced exactly: 2^50.0-2^58.4 is the redteam-2 proposer model (C = 9..1000 over two parameter sets), which charges pushes of later-prime points in the field of the prime being stepped over (not a consistent field model); 2^55.8-2^62.6 is the RT2-01-1 compositum model on the c = 81 set. The descended model on the same set gives 2^51.2-2^58.0. Neither is measured; which applies depends on whether an F_q-rational (descended) step representation is available in characteristic 2."
+    },
+    "best_parameters": {
+     "dim2_scalar_descended": {
+      "a": 562398,
+      "M_factorisation": [
+       [
+        5,
+        3
+       ],
+       [
+        7,
+        1
+       ],
+       [
+        11,
+        1
+       ],
+       [
+        17,
+        1
+       ],
+       [
+        73,
+        1
+       ],
+       [
+        127,
+        1
+       ],
+       [
+        233,
+        1
+       ],
+       [
+        457,
+        1
+       ],
+       [
+        907,
+        1
+       ]
+      ],
+      "log2_U": 49.29
+     },
+     "dim2_scalar_compositum": {
+      "a": 34154152,
+      "M_factorisation": [
+       [
+        5,
+        2
+       ],
+       [
+        7,
+        1
+       ],
+       [
+        11,
+        2
+       ],
+       [
+        17,
+        1
+       ],
+       [
+        127,
+        1
+       ],
+       [
+        149,
+        1
+       ],
+       [
+        179,
+        1
+       ],
+       [
+        281,
+        1
+       ],
+       [
+        431,
+        1
+       ]
+      ],
+      "log2_U": 54.02
+     },
+     "dim2_horizontal_compositum": {
+      "c": 3,
+      "A": [
+       23,
+       29,
+       37,
+       43,
+       211
+      ],
+      "m": "3904749100059746",
+      "max_split_prime_in_gamma": 81181,
+      "log2_U": 48.22,
+      "log2_gamma_onetime": 51.92
+     }
+    },
+    "per_dimension_and_model": {
+     "dim2 (scalar gamma, M=p+a^2) | descended": {
+      "reference_setting": "dim2 scalar gamma (M = p + a^2)|descended|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 49.29,
+      "log2_U_range_over_settings": [
+       45.23,
+       49.29
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 52.46,
+       "log2_transport_E0rho_equiv": -10.67,
+       "effective_log2_iters": 60.81,
+       "effective_range_over_settings": [
+        60.809,
+        60.81
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 55.93,
+       "log2_transport_E0rho_equiv": -7.2,
+       "effective_log2_iters": 60.819,
+       "effective_range_over_settings": [
+        60.81,
+        60.819
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 59.26,
+       "log2_transport_E0rho_equiv": -3.87,
+       "effective_log2_iters": 60.904,
+       "effective_range_over_settings": [
+        60.815,
+        60.904
+       ]
+      },
+      "kappa=1 (C=9)": {
+       "log2_transport_Fq_mults": 52.46,
+       "effective_log2_iters": 60.81,
+       "effective_range_over_settings": [
+        60.809,
+        60.81
+       ]
+      },
+      "kappa=10 (C=90)": {
+       "log2_transport_Fq_mults": 55.78,
+       "effective_log2_iters": 60.818,
+       "effective_range_over_settings": [
+        60.81,
+        60.818
+       ]
+      },
+      "kappa=100 (C=900)": {
+       "log2_transport_Fq_mults": 59.1,
+       "effective_log2_iters": 60.895,
+       "effective_range_over_settings": [
+        60.814,
+        60.895
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 14673.9,
+       "C_no_gain_vs_native": 153276.6
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 244752.6,
+       "C_no_gain_vs_native": 2556568.9
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 14673.9,
+       "C_no_gain_vs_native": 153276.6
+      }
+     },
+     "dim2 (scalar gamma, M=p+a^2) | compositum": {
+      "reference_setting": "dim2 scalar gamma (M = p + a^2)|compositum|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 54.02,
+      "log2_U_range_over_settings": [
+       47.45,
+       54.02
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 57.19,
+       "log2_transport_E0rho_equiv": -5.94,
+       "effective_log2_iters": 60.832,
+       "effective_range_over_settings": [
+        60.809,
+        60.832
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 60.66,
+       "log2_transport_E0rho_equiv": -2.47,
+       "effective_log2_iters": 61.049,
+       "effective_range_over_settings": [
+        60.812,
+        61.049
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 63.99,
+       "log2_transport_E0rho_equiv": 0.86,
+       "effective_log2_iters": 62.299,
+       "effective_range_over_settings": [
+        60.836,
+        62.299
+       ]
+      },
+      "kappa=1 (C=9)": {
+       "log2_transport_Fq_mults": 57.19,
+       "effective_log2_iters": 60.832,
+       "effective_range_over_settings": [
+        60.809,
+        60.832
+       ]
+      },
+      "kappa=10 (C=90)": {
+       "log2_transport_Fq_mults": 60.51,
+       "effective_log2_iters": 61.027,
+       "effective_range_over_settings": [
+        60.812,
+        61.027
+       ]
+      },
+      "kappa=100 (C=900)": {
+       "log2_transport_Fq_mults": 63.83,
+       "effective_log2_iters": 62.203,
+       "effective_range_over_settings": [
+        60.834,
+        62.203
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 552.9,
+       "C_no_gain_vs_native": 5775.7
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 52534.0,
+       "C_no_gain_vs_native": 548745.4
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 552.9,
+       "C_no_gain_vs_native": 5775.7
+      }
+     },
+     "dim2 (scalar gamma, M=p+a^2) | compositum+theta": {
+      "reference_setting": "dim2 scalar gamma (M = p + a^2)|compositum+theta|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 55.65,
+      "log2_U_range_over_settings": [
+       48.37,
+       55.65
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 58.82,
+       "log2_transport_E0rho_equiv": -4.31,
+       "effective_log2_iters": 60.88,
+       "effective_range_over_settings": [
+        60.81,
+        60.88
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 62.29,
+       "log2_transport_E0rho_equiv": -0.84,
+       "effective_log2_iters": 61.45,
+       "effective_range_over_settings": [
+        60.814,
+        61.45
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 65.62,
+       "log2_transport_E0rho_equiv": 2.49,
+       "effective_log2_iters": 63.531,
+       "effective_range_over_settings": [
+        60.86,
+        63.531
+       ]
+      },
+      "kappa=1 (C=9)": {
+       "log2_transport_Fq_mults": 58.82,
+       "effective_log2_iters": 60.88,
+       "effective_range_over_settings": [
+        60.81,
+        60.88
+       ]
+      },
+      "kappa=10 (C=90)": {
+       "log2_transport_Fq_mults": 62.14,
+       "effective_log2_iters": 61.398,
+       "effective_range_over_settings": [
+        60.814,
+        61.398
+       ]
+      },
+      "kappa=100 (C=900)": {
+       "log2_transport_Fq_mults": 65.46,
+       "effective_log2_iters": 63.403,
+       "effective_range_over_settings": [
+        60.855,
+        63.403
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 178.6,
+       "C_no_gain_vs_native": 1866.1
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 27764.7,
+       "C_no_gain_vs_native": 290016.9
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 178.6,
+       "C_no_gain_vs_native": 1866.1
+      }
+     },
+     "dim2 (scalar gamma, M=p+a^2) | equations": {
+      "reference_setting": "dim2 scalar gamma (M = p + a^2)|equations|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 54.42,
+      "log2_U_range_over_settings": [
+       50.3,
+       54.42
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 57.59,
+       "log2_transport_E0rho_equiv": -5.54,
+       "effective_log2_iters": 60.84,
+       "effective_range_over_settings": [
+        60.811,
+        60.84
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 61.06,
+       "log2_transport_E0rho_equiv": -2.07,
+       "effective_log2_iters": 61.118,
+       "effective_range_over_settings": [
+        60.829,
+        61.118
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 64.39,
+       "log2_transport_E0rho_equiv": 1.26,
+       "effective_log2_iters": 62.569,
+       "effective_range_over_settings": [
+        60.995,
+        62.569
+       ]
+      },
+      "kappa=1 (C=9)": {
+       "log2_transport_Fq_mults": 57.59,
+       "effective_log2_iters": 60.84,
+       "effective_range_over_settings": [
+        60.811,
+        60.84
+       ]
+      },
+      "kappa=10 (C=90)": {
+       "log2_transport_Fq_mults": 60.91,
+       "effective_log2_iters": 61.09,
+       "effective_range_over_settings": [
+        60.827,
+        61.09
+       ]
+      },
+      "kappa=100 (C=900)": {
+       "log2_transport_Fq_mults": 64.23,
+       "effective_log2_iters": 62.463,
+       "effective_range_over_settings": [
+        60.977,
+        62.463
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 419.0,
+       "C_no_gain_vs_native": 4377.2
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 7286.3,
+       "C_no_gain_vs_native": 76108.9
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 419.0,
+       "C_no_gain_vs_native": 4377.2
+      }
+     },
+     "dim2 (horizontal gamma, rt2c) | descended": {
+      "reference_setting": "dim2 horizontal-gamma (rt2c type)|pool=split|descended|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 43.38,
+      "log2_U_range_over_settings": [
+       39.93,
+       43.38
+      ],
+      "log2_gamma_onetime_Fq_mults": 44.31,
+      "C=9": {
+       "log2_transport_Fq_mults": 46.83,
+       "log2_transport_E0rho_equiv": -16.3,
+       "effective_log2_iters": 60.809,
+       "effective_range_over_settings": [
+        60.809,
+        60.809
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 50.05,
+       "log2_transport_E0rho_equiv": -13.08,
+       "effective_log2_iters": 60.809,
+       "effective_range_over_settings": [
+        60.809,
+        60.809
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 53.35,
+       "log2_transport_E0rho_equiv": -9.78,
+       "effective_log2_iters": 60.811,
+       "effective_range_over_settings": [
+        60.809,
+        60.811
+       ]
+      },
+      "kappa=1 (C=9)": {
+       "log2_transport_Fq_mults": 46.83,
+       "effective_log2_iters": 60.809,
+       "effective_range_over_settings": [
+        60.809,
+        60.809
+       ]
+      },
+      "kappa=10 (C=90)": {
+       "log2_transport_Fq_mults": 49.9,
+       "effective_log2_iters": 60.809,
+       "effective_range_over_settings": [
+        60.809,
+        60.809
+       ]
+      },
+      "kappa=100 (C=900)": {
+       "log2_transport_Fq_mults": 53.2,
+       "effective_log2_iters": 60.811,
+       "effective_range_over_settings": [
+        60.809,
+        60.811
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 882333.6,
+       "C_no_gain_vs_native": 9216435.8
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 9642425.5,
+       "C_no_gain_vs_native": 100720178.4
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 882333.6,
+       "C_no_gain_vs_native": 9216435.8
+      }
+     },
+     "dim2 (horizontal gamma, rt2c) | compositum": {
+      "reference_setting": "dim2 horizontal-gamma (rt2c type)|pool=split|compositum|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 48.22,
+      "log2_U_range_over_settings": [
+       41.62,
+       48.22
+      ],
+      "log2_gamma_onetime_Fq_mults": 51.92,
+      "C=9": {
+       "log2_transport_Fq_mults": 52.68,
+       "log2_transport_E0rho_equiv": -10.45,
+       "effective_log2_iters": 60.81,
+       "effective_range_over_settings": [
+        60.809,
+        60.81
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 55.04,
+       "log2_transport_E0rho_equiv": -8.09,
+       "effective_log2_iters": 60.814,
+       "effective_range_over_settings": [
+        60.809,
+        60.814
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 58.2,
+       "log2_transport_E0rho_equiv": -4.93,
+       "effective_log2_iters": 60.856,
+       "effective_range_over_settings": [
+        60.81,
+        60.856
+       ]
+      },
+      "kappa=1 (C=9)": {
+       "log2_transport_Fq_mults": 52.68,
+       "effective_log2_iters": 60.81,
+       "effective_range_over_settings": [
+        60.809,
+        60.81
+       ]
+      },
+      "kappa=10 (C=90)": {
+       "log2_transport_Fq_mults": 54.91,
+       "effective_log2_iters": 60.814,
+       "effective_range_over_settings": [
+        60.809,
+        60.814
+       ]
+      },
+      "kappa=100 (C=900)": {
+       "log2_transport_Fq_mults": 58.05,
+       "effective_log2_iters": 60.851,
+       "effective_range_over_settings": [
+        60.81,
+        60.851
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 30806.9,
+       "C_no_gain_vs_native": 321793.9
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 2988447.3,
+       "C_no_gain_vs_native": 31215895.2
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 30806.9,
+       "C_no_gain_vs_native": 321793.9
+      }
+     },
+     "dim2 (horizontal gamma, rt2c) | compositum+theta": {
+      "reference_setting": "dim2 horizontal-gamma (rt2c type)|pool=split|compositum+theta|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 49.69,
+      "log2_U_range_over_settings": [
+       41.67,
+       49.69
+      ],
+      "log2_gamma_onetime_Fq_mults": 51.92,
+      "C=9": {
+       "log2_transport_Fq_mults": 53.47,
+       "log2_transport_E0rho_equiv": -9.66,
+       "effective_log2_iters": 60.811,
+       "effective_range_over_settings": [
+        60.809,
+        60.811
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 56.4,
+       "log2_transport_E0rho_equiv": -6.73,
+       "effective_log2_iters": 60.823,
+       "effective_range_over_settings": [
+        60.809,
+        60.823
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 59.66,
+       "log2_transport_E0rho_equiv": -3.47,
+       "effective_log2_iters": 60.934,
+       "effective_range_over_settings": [
+        60.81,
+        60.934
+       ]
+      },
+      "kappa=1 (C=9)": {
+       "log2_transport_Fq_mults": 53.47,
+       "effective_log2_iters": 60.811,
+       "effective_range_over_settings": [
+        60.809,
+        60.811
+       ]
+      },
+      "kappa=10 (C=90)": {
+       "log2_transport_Fq_mults": 56.26,
+       "effective_log2_iters": 60.821,
+       "effective_range_over_settings": [
+        60.809,
+        60.821
+       ]
+      },
+      "kappa=100 (C=900)": {
+       "log2_transport_Fq_mults": 59.51,
+       "effective_log2_iters": 60.922,
+       "effective_range_over_settings": [
+        60.81,
+        60.922
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 11120.7,
+       "C_no_gain_vs_native": 116161.9
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 2886649.8,
+       "C_no_gain_vs_native": 30152567.2
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 11120.7,
+       "C_no_gain_vs_native": 116161.9
+      }
+     },
+     "dim2 (horizontal gamma, rt2c) | equations": {
+      "reference_setting": "dim2 horizontal-gamma (rt2c type)|pool=split|equations|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 45.24,
+      "log2_U_range_over_settings": [
+       40.14,
+       45.24
+      ],
+      "log2_gamma_onetime_Fq_mults": 44.31,
+      "C=9": {
+       "log2_transport_Fq_mults": 48.49,
+       "log2_transport_E0rho_equiv": -14.64,
+       "effective_log2_iters": 60.809,
+       "effective_range_over_settings": [
+        60.809,
+        60.809
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 51.89,
+       "log2_transport_E0rho_equiv": -11.24,
+       "effective_log2_iters": 60.81,
+       "effective_range_over_settings": [
+        60.809,
+        60.81
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 55.21,
+       "log2_transport_E0rho_equiv": -7.92,
+       "effective_log2_iters": 60.815,
+       "effective_range_over_settings": [
+        60.809,
+        60.815
+       ]
+      },
+      "kappa=1 (C=9)": {
+       "log2_transport_Fq_mults": 48.49,
+       "effective_log2_iters": 60.809,
+       "effective_range_over_settings": [
+        60.809,
+        60.809
+       ]
+      },
+      "kappa=10 (C=90)": {
+       "log2_transport_Fq_mults": 51.74,
+       "effective_log2_iters": 60.81,
+       "effective_range_over_settings": [
+        60.809,
+        60.81
+       ]
+      },
+      "kappa=100 (C=900)": {
+       "log2_transport_Fq_mults": 55.05,
+       "effective_log2_iters": 60.814,
+       "effective_range_over_settings": [
+        60.809,
+        60.814
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 243062.0,
+       "C_no_gain_vs_native": 2538909.4
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 8336235.8,
+       "C_no_gain_vs_native": 87076344.2
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 243062.0,
+       "C_no_gain_vs_native": 2538909.4
+      }
+     },
+     "dim4 (two squares) | descended": {
+      "reference_setting": "dim4 two squares|pool=split|descended|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 51.11,
+      "log2_U_range_over_settings": [
+       45.3,
+       51.11
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 54.28,
+       "log2_transport_E0rho_equiv": -8.85,
+       "effective_log2_iters": 60.812,
+       "effective_range_over_settings": [
+        60.809,
+        60.812
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 57.75,
+       "log2_transport_E0rho_equiv": -5.38,
+       "effective_log2_iters": 60.843,
+       "effective_range_over_settings": [
+        60.81,
+        60.843
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 61.08,
+       "log2_transport_E0rho_equiv": -2.05,
+       "effective_log2_iters": 61.12,
+       "effective_range_over_settings": [
+        60.815,
+        61.12
+       ]
+      },
+      "kappa=1 (C=81)": {
+       "log2_transport_Fq_mults": 57.45,
+       "effective_log2_iters": 60.837,
+       "effective_range_over_settings": [
+        60.81,
+        60.837
+       ]
+      },
+      "kappa=10 (C=810)": {
+       "log2_transport_Fq_mults": 60.77,
+       "effective_log2_iters": 61.066,
+       "effective_range_over_settings": [
+        60.814,
+        61.066
+       ]
+      },
+      "kappa=100 (C=8100)": {
+       "log2_transport_Fq_mults": 64.09,
+       "effective_log2_iters": 62.369,
+       "effective_range_over_settings": [
+        60.858,
+        62.369
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 4156.0,
+       "C_no_gain_vs_native": 43411.1
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 233160.6,
+       "C_no_gain_vs_native": 2435484.7
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 4156.0,
+       "C_no_gain_vs_native": 43411.1
+      }
+     },
+     "dim4 (two squares) | compositum": {
+      "reference_setting": "dim4 two squares|pool=split|compositum|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 55.05,
+      "log2_U_range_over_settings": [
+       47.4,
+       55.05
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 58.22,
+       "log2_transport_E0rho_equiv": -4.91,
+       "effective_log2_iters": 60.856,
+       "effective_range_over_settings": [
+        60.809,
+        60.856
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 61.69,
+       "log2_transport_E0rho_equiv": -1.44,
+       "effective_log2_iters": 61.262,
+       "effective_range_over_settings": [
+        60.812,
+        61.262
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 65.02,
+       "log2_transport_E0rho_equiv": 1.89,
+       "effective_log2_iters": 63.04,
+       "effective_range_over_settings": [
+        60.835,
+        63.04
+       ]
+      },
+      "kappa=1 (C=81)": {
+       "log2_transport_Fq_mults": 61.39,
+       "effective_log2_iters": 61.187,
+       "effective_range_over_settings": [
+        60.811,
+        61.187
+       ]
+      },
+      "kappa=10 (C=810)": {
+       "log2_transport_Fq_mults": 64.71,
+       "effective_log2_iters": 62.806,
+       "effective_range_over_settings": [
+        60.83,
+        62.806
+       ]
+      },
+      "kappa=100 (C=8100)": {
+       "log2_transport_Fq_mults": 68.03,
+       "effective_log2_iters": 65.759,
+       "effective_range_over_settings": [
+        61.009,
+        65.759
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 270.8,
+       "C_no_gain_vs_native": 2828.4
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 54386.6,
+       "C_no_gain_vs_native": 568096.9
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 270.8,
+       "C_no_gain_vs_native": 2828.4
+      }
+     },
+     "dim4 (two squares) | compositum+theta": {
+      "reference_setting": "dim4 two squares|pool=split|compositum+theta|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 57.88,
+      "log2_U_range_over_settings": [
+       47.43,
+       57.88
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 61.05,
+       "log2_transport_E0rho_equiv": -2.08,
+       "effective_log2_iters": 61.115,
+       "effective_range_over_settings": [
+        60.809,
+        61.115
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 64.52,
+       "log2_transport_E0rho_equiv": 1.39,
+       "effective_log2_iters": 62.667,
+       "effective_range_over_settings": [
+        60.812,
+        62.667
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 67.85,
+       "log2_transport_E0rho_equiv": 4.72,
+       "effective_log2_iters": 65.578,
+       "effective_range_over_settings": [
+        60.836,
+        65.578
+       ]
+      },
+      "kappa=1 (C=81)": {
+       "log2_transport_Fq_mults": 64.22,
+       "effective_log2_iters": 62.454,
+       "effective_range_over_settings": [
+        60.811,
+        62.454
+       ]
+      },
+      "kappa=10 (C=810)": {
+       "log2_transport_Fq_mults": 67.54,
+       "effective_log2_iters": 65.286,
+       "effective_range_over_settings": [
+        60.831,
+        65.286
+       ]
+      },
+      "kappa=100 (C=8100)": {
+       "log2_transport_Fq_mults": 70.86,
+       "effective_log2_iters": 68.549,
+       "effective_range_over_settings": [
+        61.013,
+        68.549
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 38.1,
+       "C_no_gain_vs_native": 397.8
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 53267.4,
+       "C_no_gain_vs_native": 556405.6
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 38.1,
+       "C_no_gain_vs_native": 397.8
+      }
+     },
+     "dim4 (two squares) | equations": {
+      "reference_setting": "dim4 two squares|pool=split|equations|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 53.74,
+      "log2_U_range_over_settings": [
+       48.98,
+       53.74
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 56.91,
+       "log2_transport_E0rho_equiv": -6.22,
+       "effective_log2_iters": 60.828,
+       "effective_range_over_settings": [
+        60.81,
+        60.828
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 60.38,
+       "log2_transport_E0rho_equiv": -2.75,
+       "effective_log2_iters": 61.009,
+       "effective_range_over_settings": [
+        60.817,
+        61.009
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 63.71,
+       "log2_transport_E0rho_equiv": 0.58,
+       "effective_log2_iters": 62.125,
+       "effective_range_over_settings": [
+        60.886,
+        62.125
+       ]
+      },
+      "kappa=1 (C=81)": {
+       "log2_transport_Fq_mults": 60.08,
+       "effective_log2_iters": 60.973,
+       "effective_range_over_settings": [
+        60.815,
+        60.973
+       ]
+      },
+      "kappa=10 (C=810)": {
+       "log2_transport_Fq_mults": 63.4,
+       "effective_log2_iters": 61.951,
+       "effective_range_over_settings": [
+        60.872,
+        61.951
+       ]
+      },
+      "kappa=100 (C=8100)": {
+       "log2_transport_Fq_mults": 66.72,
+       "effective_log2_iters": 64.517,
+       "effective_range_over_settings": [
+        61.34,
+        64.517
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 671.4,
+       "C_no_gain_vs_native": 7012.8
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 18191.3,
+       "C_no_gain_vs_native": 190018.1
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 671.4,
+       "C_no_gain_vs_native": 7012.8
+      }
+     },
+     "dim8 (four squares, Thm 1 as proved) | descended": {
+      "reference_setting": "dim8 four squares (Thm 1 as proved)|pool=split|descended|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 70.72,
+      "log2_U_range_over_settings": [
+       61.8,
+       70.72
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 73.89,
+       "log2_transport_E0rho_equiv": 10.76,
+       "effective_log2_iters": 71.569,
+       "effective_range_over_settings": [
+        63.004,
+        71.569
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 77.36,
+       "log2_transport_E0rho_equiv": 14.23,
+       "effective_log2_iters": 75.042,
+       "effective_range_over_settings": [
+        66.158,
+        75.042
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 80.69,
+       "log2_transport_E0rho_equiv": 17.56,
+       "effective_log2_iters": 78.364,
+       "effective_range_over_settings": [
+        69.447,
+        78.364
+       ]
+      },
+      "kappa=1 (C=6561)": {
+       "log2_transport_Fq_mults": 83.4,
+       "effective_log2_iters": 81.078,
+       "effective_range_over_settings": [
+        72.158,
+        81.078
+       ]
+      },
+      "kappa=10 (C=65610)": {
+       "log2_transport_Fq_mults": 86.72,
+       "effective_log2_iters": 84.4,
+       "effective_range_over_settings": [
+        75.48,
+        84.4
+       ]
+      },
+      "kappa=100 (C=656100)": {
+       "log2_transport_Fq_mults": 90.04,
+       "effective_log2_iters": 87.722,
+       "effective_range_over_settings": [
+        78.802,
+        87.722
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 0.0,
+       "C_no_gain_vs_native": 0.1
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 2.5,
+       "C_no_gain_vs_native": 26.3
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 0.0,
+       "C_no_gain_vs_native": 0.1
+      }
+     },
+     "dim8 (four squares, Thm 1 as proved) | compositum": {
+      "reference_setting": "dim8 four squares (Thm 1 as proved)|pool=split|compositum|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 74.25,
+      "log2_U_range_over_settings": [
+       64.41,
+       74.25
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 77.42,
+       "log2_transport_E0rho_equiv": 14.29,
+       "effective_log2_iters": 75.098,
+       "effective_range_over_settings": [
+        65.323,
+        75.098
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 80.89,
+       "log2_transport_E0rho_equiv": 17.76,
+       "effective_log2_iters": 78.572,
+       "effective_range_over_settings": [
+        68.738,
+        78.572
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 84.22,
+       "log2_transport_E0rho_equiv": 21.09,
+       "effective_log2_iters": 81.894,
+       "effective_range_over_settings": [
+        72.054,
+        81.894
+       ]
+      },
+      "kappa=1 (C=6561)": {
+       "log2_transport_Fq_mults": 86.93,
+       "effective_log2_iters": 84.608,
+       "effective_range_over_settings": [
+        74.768,
+        84.608
+       ]
+      },
+      "kappa=10 (C=65610)": {
+       "log2_transport_Fq_mults": 90.25,
+       "effective_log2_iters": 87.93,
+       "effective_range_over_settings": [
+        78.09,
+        87.93
+       ]
+      },
+      "kappa=100 (C=656100)": {
+       "log2_transport_Fq_mults": 93.57,
+       "effective_log2_iters": 91.252,
+       "effective_range_over_settings": [
+        81.412,
+        91.252
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 0.0,
+       "C_no_gain_vs_native": 0.0
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 0.4,
+       "C_no_gain_vs_native": 4.3
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 0.0,
+       "C_no_gain_vs_native": 0.0
+      }
+     },
+     "dim8 (four squares, Thm 1 as proved) | compositum+theta": {
+      "reference_setting": "dim8 four squares (Thm 1 as proved)|pool=split|compositum+theta|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 76.1,
+      "log2_U_range_over_settings": [
+       64.6,
+       76.1
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 79.27,
+       "log2_transport_E0rho_equiv": 16.14,
+       "effective_log2_iters": 76.948,
+       "effective_range_over_settings": [
+        65.505,
+        76.948
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 82.74,
+       "log2_transport_E0rho_equiv": 19.61,
+       "effective_log2_iters": 80.422,
+       "effective_range_over_settings": [
+        68.927,
+        80.422
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 86.07,
+       "log2_transport_E0rho_equiv": 22.94,
+       "effective_log2_iters": 83.744,
+       "effective_range_over_settings": [
+        72.244,
+        83.744
+       ]
+      },
+      "kappa=1 (C=6561)": {
+       "log2_transport_Fq_mults": 88.78,
+       "effective_log2_iters": 86.458,
+       "effective_range_over_settings": [
+        74.958,
+        86.458
+       ]
+      },
+      "kappa=10 (C=65610)": {
+       "log2_transport_Fq_mults": 92.1,
+       "effective_log2_iters": 89.78,
+       "effective_range_over_settings": [
+        78.28,
+        89.78
+       ]
+      },
+      "kappa=100 (C=656100)": {
+       "log2_transport_Fq_mults": 95.42,
+       "effective_log2_iters": 93.102,
+       "effective_range_over_settings": [
+        81.602,
+        93.102
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 0.0,
+       "C_no_gain_vs_native": 0.0
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 0.4,
+       "C_no_gain_vs_native": 3.8
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 0.0,
+       "C_no_gain_vs_native": 0.0
+      }
+     },
+     "dim8 (four squares, Thm 1 as proved) | equations": {
+      "reference_setting": "dim8 four squares (Thm 1 as proved)|pool=split|equations|kara|npush=2D",
+      "log2_U_per_unit_C_reference": 91.75,
+      "log2_U_range_over_settings": [
+       70.72,
+       91.75
+      ],
+      "C=9": {
+       "log2_transport_Fq_mults": 94.92,
+       "log2_transport_E0rho_equiv": 31.79,
+       "effective_log2_iters": 92.598,
+       "effective_range_over_settings": [
+        71.569,
+        92.598
+       ]
+      },
+      "C=100": {
+       "log2_transport_Fq_mults": 98.39,
+       "log2_transport_E0rho_equiv": 35.26,
+       "effective_log2_iters": 96.072,
+       "effective_range_over_settings": [
+        75.042,
+        96.072
+       ]
+      },
+      "C=1000": {
+       "log2_transport_Fq_mults": 101.72,
+       "log2_transport_E0rho_equiv": 38.59,
+       "effective_log2_iters": 99.394,
+       "effective_range_over_settings": [
+        78.364,
+        99.394
+       ]
+      },
+      "kappa=1 (C=6561)": {
+       "log2_transport_Fq_mults": 104.43,
+       "effective_log2_iters": 102.108,
+       "effective_range_over_settings": [
+        81.078,
+        102.108
+       ]
+      },
+      "kappa=10 (C=65610)": {
+       "log2_transport_Fq_mults": 107.75,
+       "effective_log2_iters": 105.43,
+       "effective_range_over_settings": [
+        84.4,
+        105.43
+       ]
+      },
+      "kappa=100 (C=656100)": {
+       "log2_transport_Fq_mults": 111.07,
+       "effective_log2_iters": 108.752,
+       "effective_range_over_settings": [
+        87.722,
+        108.752
+       ]
+      },
+      "breakeven_C_reference": {
+       "C_transport_eq_E0rho": 0.0,
+       "C_no_gain_vs_native": 0.0
+      },
+      "breakeven_C_cheapest_setting": {
+       "C_transport_eq_E0rho": 0.0,
+       "C_no_gain_vs_native": 0.1
+      },
+      "breakeven_C_dearest_setting": {
+       "C_transport_eq_E0rho": 0.0,
+       "C_no_gain_vs_native": 0.0
+      }
+     }
+    },
+    "effective_spans_kappa_1_to_100": {
+     "dim2": [
+      60.809,
+      63.403
+     ],
+     "dim4": [
+      60.81,
+      68.549
+     ],
+     "dim8": [
+      72.158,
+      108.752
+     ]
+    }
+   },
+   "effective_log2_interval": [
+    60.809,
+    64.326
+   ],
+   "endpoint_conditions": {
+    "lower": "60.809: reached when a characteristic-2 odd-degree (l,l)-isogeny algorithm for abelian surfaces (dimension 2; [BCR10b] per Robert ePrint 2024/406, not implemented here) runs with a small per-step constant: at kappa = 1 (C = 9) every dim-2 model/setting gives at most 60.880; in the descended and horizontal-gamma models even kappa = 100 stays below 60.922. Heuristic parts: MITM uniqueness (the parameters themselves were found explicitly).",
+    "conditional_estimate_if_dim2_algorithm_exists": {
+     "kappa_1_to_100": [
+      60.809,
+      63.403
+     ],
+     "note": "over all four dim-2 models, both mult models, both push counts; reference compositum (scalar gamma) 60.832 at kappa = 1 and 62.203 at kappa = 100"
+    },
+    "upper": "64.326: no usable characteristic-2 higher-dimensional isogeny algorithm, or one whose constant exceeds the no-gain threshold (dim 2, scalar-gamma reference: C > 5776 compositum, C > 153277 descended); then the best known attack is native negation-only rho.",
+    "other_dimensions": "dim 4 (two squares) gives a gain only for C < 2828 (compositum reference, kappa < 34.9) or C < 43411 (descended reference, kappa < 536); dim 8 (four squares, the version Gal24 Thm 1 proves) gives effective >= 72.2 for kappa >= 1 (C >= 3^8); only an unscaled C = 1 with the most optimistic settings would bring it to 61.29."
+   },
+   "presented_vs_random": "The interval is for a PRESENTED curve. Nobody can currently present one: constructing any B2 curve costs 2^9.58-2^11.17 E0-rho solves (construction block)."
+  },
+  "263p": {
+   "conductor": "263*p (= conductor of Z[pi])",
+   "end_ring": "Z[pi] = Z + 263p O_K",
+   "class_count": "38384510136960525164",
+   "log2_class_count": 65.057,
+   "block": "B2",
+   "construction": {
+    "cheapest_method": "random search over y^2+xy=x^3+b with the free prefilter a2 = 0, Tr(b) = 1 (every curve of order 4N has this shape: 4N = 4 mod 8), test [4N]P = O by an x-only ladder; a level-263p hit (262/263 of hits) is moved to level p by one 263-isogeny with kernel over F_{q^2}, so level p costs the same",
+    "log2_candidates": 64.937,
+    "candidate_space_comparison": {
+     "uniform (b,a2) over 2(q-1) classes (p-levels/conclusions.json)": {
+      "log2_trials_level_p_or_263p": 66.937,
+      "log2_trials_level_p_only": 74.976
+     },
+     "random j, both twists tested as one trial": {
+      "log2_trials_level_p_or_263p": 65.937,
+      "log2_trials_level_p_only": 73.976
+     },
+     "a2=0 only (q-1 candidates)": {
+      "log2_trials_level_p_or_263p": 65.937,
+      "log2_trials_level_p_only": 73.976
+     },
+     "a2=0 and Tr(b)=1 prefilter (q/2 candidates)": {
+      "log2_trials_level_p_or_263p": 64.937,
+      "log2_trials_level_p_only": 72.976
+     }
+    },
+    "per_candidate_test_Fq_mults": {
+     "lower_bound_131_doublings_x_2M": 262,
+     "ladder_xP_eq_1_counted": 660,
+     "ladder_generic_counted": 792
+    },
+    "log2_Fq_mults": {
+     "lower_bound": 72.971,
+     "counted_ladder_xP1": 74.304,
+     "counted_ladder_generic": 74.567,
+     "absurd_floor_1M_per_candidate": 64.937
+    },
+    "log2_E0rho_equivalents": {
+     "lower_bound_6M_iter": 9.577,
+     "counted_ladder_xP1_5M_iter": 11.173,
+     "absurd_floor_1M_per_candidate_6M_iter": 1.543
+    },
+    "galbraith2024_thm4_figure": {
+     "log2": 65.5,
+     "meaning": "O~(q^{1/2}) F_q-operations: an asymptotic statement that hides the per-candidate test (a log q factor) and constants; it is not a trial count"
+    },
+    "other_routes_log2_Fq_ops": {
+     "descend_from_E0_cofactor_kernel_point_xonly_LB": 111.911,
+     "descend_from_E0_cofactor_full_points": 113.911,
+     "Phi_p_Otilde_p2": [
+      114.047,
+      121.081
+     ],
+     "Phi_p_cubic_obsolete": 171.071,
+     "CM_log2_absD": [
+      116.855,
+      132.933
+     ]
+    },
+    "construction_costs_more_than_E0_instance": true,
+    "construction_vs_E0_statement": "YES. One B2 curve costs >= 2^72.97 F_q-mults (2^64.94 candidates x >= 262 M), i.e. >= 2^9.58 E0-rho solves; with the counted ladder 2^74.30 F_q-mults = 2^11.17 E0-rho solves (5 M/iteration). Even a 1-M test would cost 2^1.54 E0-rho solves."
+   },
+   "native_rho_log2_iterations": 64.326,
+   "native_rho_note": "negation only; smallest non-scalar endomorphism has degree 2^114.85 (level p) / 2^130.93 (level 263p) per C4-audit",
+   "transport_to_E0": {
+    "step1": "ascending 263-isogeny to level p: kernel over F_{q^2} (t/2 = -1 mod 263), Velu, cost of the same order as the level-263 transport (2^15.55 F_q-mult equivalents measured there)",
+    "step2": "as level p (see levels.p.transport_to_E0); Thm 1 cannot be applied with N = 263p directly"
+   },
+   "effective_log2_interval": [
+    60.809,
+    64.326
+   ],
+   "endpoint_conditions": {
+    "lower": "60.809: reached when a characteristic-2 odd-degree (l,l)-isogeny algorithm for abelian surfaces (dimension 2; [BCR10b] per Robert ePrint 2024/406, not implemented here) runs with a small per-step constant: at kappa = 1 (C = 9) every dim-2 model/setting gives at most 60.880; in the descended and horizontal-gamma models even kappa = 100 stays below 60.922. Heuristic parts: MITM uniqueness (the parameters themselves were found explicitly).",
+    "conditional_estimate_if_dim2_algorithm_exists": {
+     "kappa_1_to_100": [
+      60.809,
+      63.403
+     ],
+     "note": "over all four dim-2 models, both mult models, both push counts; reference compositum (scalar gamma) 60.832 at kappa = 1 and 62.203 at kappa = 100"
+    },
+    "upper": "64.326: no usable characteristic-2 higher-dimensional isogeny algorithm, or one whose constant exceeds the no-gain threshold (dim 2, scalar-gamma reference: C > 5776 compositum, C > 153277 descended); then the best known attack is native negation-only rho.",
+    "other_dimensions": "dim 4 (two squares) gives a gain only for C < 2828 (compositum reference, kappa < 34.9) or C < 43411 (descended reference, kappa < 536); dim 8 (four squares, the version Gal24 Thm 1 proves) gives effective >= 72.2 for kappa >= 1 (C >= 3^8); only an unscaled C = 1 with the most optimistic settings would bring it to 61.29."
+   },
+   "presented_vs_random": "The interval is for a PRESENTED curve. Nobody can currently present one: constructing any B2 curve costs 2^9.58-2^11.17 E0-rho solves (construction block)."
+  }
+ },
+ "block_bridge_question": {
+  "question": "Does Galbraith 2024's O~(sqrt p) contradict 'no known method bridges the blocks'?",
+  "answer": "Yes, for the direction B2 -> B1 on a presented curve: Gal24 Thm 2 (h0 = 1) computes an evaluable representation of the ascending p-isogeny to E0 in O~(p^{1/2}) = O~(2^28.51) F_q-operations, and Gal24 sec 10 states the resulting reduction of any floor-curve ECDLP to the crater when h0 is small. No, for polynomial time (JMV05 sec 1.1 and Rob22 sec 4 speak about polynomial time; O~(p^{1/2}) is exponential in log p, so those statements stand as written). No, for the direction B1 -> B2: Problem B (produce a descended curve with an evaluable map) is O~(q^{1/2}) (Gal24 Thm 4) and Gal24 sec 10 says only two ways are known (N^2 work or guessing), both >= q^{1/2}; concretely >= 2^72.97 F_q-mults here. Concrete (not asymptotic) cost of the B2 -> B1 bridge depends on a characteristic-2 higher-dimensional isogeny algorithm: see levels.p.transport_to_E0."
+ },
+ "disputed_numbers": {
+  "construction_cost": {
+   "on_disk": [
+    "2^64.94 candidates (C5-audit, rt3_misc)",
+    "2^65.5 (Galbraith Thm 4)",
+    "2^66.94 trials (p-levels/conclusions.json)"
+   ],
+   "recomputed": {
+    "uniform_b_a2": 66.937,
+    "prefiltered": 64.937,
+    "galbraith_Otilde_q_half": 65.5,
+    "Fq_mults": {
+     "lower_bound": 72.971,
+     "counted_ladder_xP1": 74.304,
+     "counted_ladder_generic": 74.567,
+     "absurd_floor_1M_per_candidate": 64.937
+    },
+    "E0rho_equivalents": {
+     "lower_bound_6M_iter": 9.577,
+     "counted_ladder_xP1_5M_iter": 11.173,
+     "absurd_floor_1M_per_candidate_6M_iter": 1.543
+    }
+   },
+   "verdict": "2^64.94 is the right candidate count: every curve of order 4N has a2 = 0 and Tr(b) = 1 (4N = 4 mod 8; lemma re-verified by brute force for m = 7, 9, 11, 13 and on 12 random curves over F_2^131), so the uniform-(b, a2) count 2^66.94 wastes a factor 4. Galbraith's 2^65.5 is O~(q^{1/2}), an asymptotic figure with the per-candidate test and constants hidden, not a count. The right COST is 2^72.97-2^74.30 F_q-mults (>= 131 x-only doublings at 2 M, or the executed ladder at 660 M), i.e. 2^9.58-2^11.17 E0-rho solves."
+  },
+  "cofactor_kernel_point_bound": {
+   "on_disk": [
+    111.9,
+    113.9
+   ],
+   "recomputed": [
+    111.911,
+    113.911
+   ],
+   "verdict": "2^111.9 is the valid lower bound for that route: the kernel x-coordinates lie on the quadratic twist over F_{q^{r/2}} (c^{r/2} = -1), so an x-only ladder over F_{q^{r/2}} suffices; 2^113.9 counts full points over F_{q^r} (and equals Gal24 sec 2.2 O~(k^2 log q) with k = r). Both are 2^50 above E0 rho and bound only kernel-point routes, not the Kani route."
+  },
+  "Phi_p_route": {
+   "on_disk": [
+    "O~(p^2) = 2^114",
+    "2^171"
+   ],
+   "recomputed": {
+    "p2": [
+     114.047,
+     121.081
+    ],
+    "p3": 171.071
+   },
+   "verdict": "2^114 (2^121 with the log q factor) is current: Gal24 sec 2.2 cites O~(N^2 log q) for Phi_N over any F_q (Leroux; Robert; Kunzweiler-Robert), and sec 8.1 says O~(N^2) was already achievable in 1999. 2^171 = p^3 is the obsolete Gal99 bound. Neither matters for the verdict."
+  },
+  "galbraith_dim2_transport_cost": {
+   "on_disk": [
+    "2^50.0-2^58.4 (redteam-2 rt4)",
+    "2^55.8-2^62.6 (RT2-01-1 compositum)"
+   ],
+   "recomputed": {
+    "proposer_model_c81": [
+     51.59,
+     55.06,
+     58.38
+    ],
+    "proposer_model_c3": [
+     50.02,
+     53.49,
+     56.81
+    ],
+    "compositum_c81": [
+     55.83,
+     59.31,
+     62.63
+    ],
+    "descended_c81": [
+     51.21,
+     54.68,
+     58.0
+    ],
+    "searched_best": {
+     "scalar_descended_log2_U": 49.29,
+     "scalar_compositum_log2_U": 54.02,
+     "horizontal_compositum_log2_U": 48.22,
+     "horizontal_gamma_onetime": 51.92
+    }
+   },
+   "verdict": "Both on-disk ranges are reproduced exactly (C = 9, 100, 1000). The first uses a field model that cannot hold the pushed points, so it is not a valid model. The second (compositum) is the consistent model when each step is computed from a kernel basis; the descended model (F_q-rational step representations) gives 2^51.2-2^58.0 on the same set. Parameter search: the horizontal-gamma route reaches 2^48.22 per unit C plus a one-time 2^51.92 (compositum reference; the on-disk c = 81 set is 2^52.66); the scalar-gamma route, which needs no gamma, is 2^54.02 (compositum) / 2^49.29 (descended) per unit C. Every consistent dim-2 model keeps the effective hardness within 2.59 bits of E0 for kappa <= 100 (C <= 900). No figure is measured: none exists until a characteristic-2 dimension-2 (l,l)-isogeny implementation is timed."
+  },
+  "dims_4_and_8": {
+   "verdict": "dim 4 (two squares, Galbraith's preferred form): gain for C below 2828 (compositum reference) / 43411 (descended); dim 8 (four squares, Thm 1 as proved): effective >= 72.2 for kappa >= 1, so no gain. The RT2-01-1 claim \"no gain in dim 4 at C = 1000\" holds only for the proposer parameter set."
+  }
+ }
+}
