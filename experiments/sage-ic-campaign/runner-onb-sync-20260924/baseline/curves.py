@@ -78,7 +78,7 @@ class Curve:
         if p is None:
             return True
         x, y = p
-        return self.f.add(self.f.sqr(y), self.f.mul(x, y)) == self.f.add(self.f.mul(self.f.sqr(x), x), self.one)
+        return self.f.add(self.f.mul(y, y), self.f.mul(x, y)) == self.f.add(self.f.mul(self.f.mul(x, x), x), self.one)
 
     def neg(self, p):
         if p is None:
@@ -94,8 +94,8 @@ class Curve:
             return None
         f = self.f
         lam = f.add(x, f.mul(y, f.inv(x)))
-        x3 = f.add(f.sqr(lam), lam)
-        y3 = f.add(f.sqr(x), f.mul(f.add(lam, self.one), x3))
+        x3 = f.add(f.mul(lam, lam), lam)
+        y3 = f.add(f.mul(x, x), f.mul(f.add(lam, self.one), x3))
         return (x3, y3)
 
     def add(self, p, q):
@@ -110,7 +110,7 @@ class Curve:
             return self.dbl(p) if y1 == y2 else None
         d = f.add(x1, x2)
         lam = f.mul(f.add(y1, y2), f.inv(d))
-        x3 = f.add(f.add(f.sqr(lam), lam), d)
+        x3 = f.add(f.add(f.mul(lam, lam), lam), d)
         y3 = f.add(f.add(f.mul(lam, f.add(x1, x3)), x3), y1)
         return (x3, y3)
 
@@ -145,7 +145,7 @@ class Curve:
         f = self.f
         if x == 0:
             return None
-        c = f.add(x, f.inv(f.sqr(x)))     # x + 1/x^2
+        c = f.add(x, f.inv(f.mul(x, x)))     # x + 1/x^2
         if f.trace(c):
             return None
         z = self.halfTrace(c)
