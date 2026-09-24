@@ -1,6 +1,5 @@
-"""Check frozen polynomial-basis inverse sources, correctness, and receipts."""
+"""Check frozen polynomial-basis square sources, correctness, and receipts."""
 
-import ast
 import hashlib
 import json
 from pathlib import Path
@@ -24,29 +23,15 @@ confirm = json.loads((HERE / 'intent-confirm.json').read_text())
 assert primary['source_sha256'] == confirm['source_sha256']
 for name, expected in primary['source_sha256'].items():
     assert hashlib.sha256(PATHS[name].read_bytes()).hexdigest() == expected, name
-def inverse_method(path):
-    tree = ast.parse(path.read_text())
-    pb = next(node for node in tree.body
-              if isinstance(node, ast.ClassDef) and node.name == 'Pb')
-    return ast.dump(next(node for node in pb.body
-                         if isinstance(node, ast.FunctionDef) and node.name == 'inv'))
-
-
 for variant in ('local', 'runner'):
-    live = ROOT / ('ecc2k130/' + ('runner/' if variant == 'runner' else '') +
-                   'codegen/field.py')
-    assert inverse_method(live) == inverse_method(PATHS['candidate-' + variant])
-assert 'polynomial-basis Euclid inverse checks passed' in (
-    HERE / 'test-inverse.log').read_text()
-full_log = (HERE / 'test-runner-full.log').read_text()
-assert 'Ran 30 tests' in full_log and 'FAILED (errors=1)' in full_log
-assert 'ecc2k130-fixed.json' in full_log and 'FileNotFoundError' in full_log
-assert 'ModuleNotFoundError' not in full_log
+    assert (ROOT / ('ecc2k130/' + ('runner/' if variant == 'runner' else '') +
+                    'codegen/field.py')).read_bytes() == PATHS['candidate-' + variant].read_bytes()
+assert 'polynomial-basis square checks passed' in (HERE / 'test-square.log').read_text()
 
 seen = set()
 for intent, run in ((primary, 'run-primary-001'),
                     (confirm, 'run-confirm-001')):
-    assert len(intent['cases']) == 6
+    assert len(intent['cases']) == 8
     for i, case in enumerate(intent['cases']):
         parent = json.loads((HERE / run / ('cell-%02d-parent.json' % i)).read_text())
         raw = json.loads((HERE / run / ('cell-%02d.json' % i)).read_text())
@@ -54,6 +39,7 @@ for intent, run in ((primary, 'run-primary-001'),
         assert raw['exact_output_agreement'] is True
         assert all(raw['case'][key] == case[key]
                    for key in ('variant', 'degree', 'seed', 'rounds'))
+        assert int(raw['scalar_hex'], 16).bit_length() == 32
         variant = case['variant']
         assert raw['source_sha256'] == {
             'baseline': intent['source_sha256']['baseline-' + variant],
@@ -62,7 +48,7 @@ for intent, run in ((primary, 'run-primary-001'),
         }
         assert 0 < raw['peak_rss_bytes'] <= intent['resource_budget']['peak_rss_bytes']
         assert raw['point_attempts'] > 0
-        assert set(raw['results']) == {'field_inverse', 'point_add', 'point_scalar'}
+        assert set(raw['results']) == {'field_square', 'point_scalar'}
         for name, result in raw['results'].items():
             assert set(result['first_call_ns']) == {'baseline', 'candidate'}
             assert all(value > 0 for value in result['first_call_ns'].values())
@@ -77,10 +63,10 @@ for intent, run in ((primary, 'run-primary-001'),
                     sample['operation_ns'] for sample in samples)
             speedup = (result['median_operation_ns']['baseline'] /
                        result['median_operation_ns']['candidate'])
-            assert speedup >= {'field_inverse': 10, 'point_add': 4,
-                               'point_scalar': 2}[name], (run, i, name, speedup)
+            assert speedup >= {'field_square': 1.3,
+                               'point_scalar': 1.15}[name], (run, i, name, speedup)
         seen.add((run, variant, case['degree'], case['seed']))
-assert len(seen) == 12
+assert len(seen) == 16
 assert set(case['seed'] for case in primary['cases']).isdisjoint(
     case['seed'] for case in confirm['cases'])
-print('Local and runner polynomial-basis Euclid inversion archive verified')
+print('Local and runner polynomial-basis squaring archive verified')

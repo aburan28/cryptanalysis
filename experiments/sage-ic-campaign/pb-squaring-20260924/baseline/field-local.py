@@ -53,8 +53,6 @@ def reverseByte(x):
 
 
 _reverseBytes = bytes(reverseByte(i) for i in range(256))
-_squareBytes = tuple(sum(((byte >> bit) & 1) << (2 * bit)
-                         for bit in range(8)) for byte in range(256))
 
 
 class Onb:
@@ -313,15 +311,7 @@ class Pb:
         return r
 
     def sqr(self, a):
-        if a >> self.m:
-            return self.mul(a, a)
-        expanded = 0
-        shift = 0
-        while a:
-            expanded |= _squareBytes[a & 255] << shift
-            a >>= 8
-            shift += 16
-        return polyMod(expanded, self.poly)
+        return self.mul(a, a)
 
     def pow(self, a, e):
         r = 1
