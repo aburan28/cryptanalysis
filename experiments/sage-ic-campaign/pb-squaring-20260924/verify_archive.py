@@ -13,8 +13,8 @@ PATHS = {
     'baseline-runner': HERE / 'baseline/field-runner.py',
     'candidate-local': HERE / 'source/field-local.py',
     'candidate-runner': HERE / 'source/field-runner.py',
-    'curves-local': ROOT / 'ecc2k130/codegen/curves.py',
-    'curves-runner': ROOT / 'ecc2k130/runner/codegen/curves.py',
+    'curves-local': ROOT / 'experiments/sage-ic-campaign/pb-trace-mask-20260924/baseline/curves-local.py',
+    'curves-runner': ROOT / 'experiments/sage-ic-campaign/pb-trace-mask-20260924/baseline/curves-runner.py',
     'benchmark': HERE / 'benchmark.py',
     'run': HERE / 'run.py',
 }
