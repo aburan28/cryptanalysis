@@ -323,24 +323,7 @@ class Pb:
         return r
 
     def inv(self, a):
-        """Invert a field element by GF(2) polynomial extended Euclid."""
-        if a >> self.m:
-            a = polyMod(a, self.poly)
-        # Keep the previous Pb.pow(0, 2^m-2) behavior for callers that
-        # inspect a zero result before performing a field division.
-        if not a:
-            return 0
-        u, v, g, h = a, self.poly, 1, 0
-        while u != 1:
-            if not u:
-                raise ZeroDivisionError('element is not invertible')
-            shift = u.bit_length() - v.bit_length()
-            if shift < 0:
-                u, v, g, h = v, u, h, g
-                shift = -shift
-            u ^= v << shift
-            g ^= h << shift
-        return polyMod(g, self.poly)
+        return self.pow(a, (1 << self.m) - 2)
 
     def isIrreducible(self):
         # x^(2^k) mod poly, gcd test

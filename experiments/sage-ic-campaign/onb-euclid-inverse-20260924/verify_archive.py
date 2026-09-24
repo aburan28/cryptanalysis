@@ -13,8 +13,8 @@ from pathlib import Path
 here = Path(__file__).resolve().parent
 root = here.parents[2]
 baseline = here / 'baseline/field.py'
-local = root / 'ecc2k130/codegen/field.py'
-runner = root / 'ecc2k130/runner/codegen/field.py'
+local = root / 'experiments/sage-ic-campaign/pb-euclid-inverse-20260924/baseline/field-local.py'
+runner = root / 'experiments/sage-ic-campaign/pb-euclid-inverse-20260924/baseline/field-runner.py'
 assert hashlib.sha256(baseline.read_bytes()).hexdigest() == \
     'dded18a11f243fa269277bfe3513f12a83e9eb28300becf08c9f3d6b5634a07e'
 assert local.read_bytes() == runner.read_bytes()

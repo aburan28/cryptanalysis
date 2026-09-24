@@ -13,8 +13,8 @@ paths = {
     'baseline-runner': HERE / 'baseline/curves-runner.py',
     'candidate-local': HERE / 'source/curves-local.py',
     'candidate-runner': HERE / 'source/curves-runner.py',
-    'field-local': ROOT / 'ecc2k130/codegen/field.py',
-    'field-runner': ROOT / 'ecc2k130/runner/codegen/field.py',
+    'field-local': ROOT / 'experiments/sage-ic-campaign/pb-euclid-inverse-20260924/baseline/field-local.py',
+    'field-runner': ROOT / 'experiments/sage-ic-campaign/pb-euclid-inverse-20260924/baseline/field-runner.py',
     'benchmark': HERE / 'benchmark.py',
     'run': HERE / 'run.py',
 }

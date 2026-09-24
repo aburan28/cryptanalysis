@@ -21,10 +21,9 @@ for name, expected in (
 ):
     actual = hashlib.sha256((here / name).read_bytes()).hexdigest()
     assert actual == expected, (name, actual)
-field = root / 'ecc2k130/codegen/field.py'
-# Later trace, Frobenius setup and inversion work may change the field source. Compare
-# the parsed module after excluding those separately verified methods; the
-# frozen parent source remains pinned and this archive checks exact outputs.
+field = root / 'experiments/sage-ic-campaign/pb-euclid-inverse-20260924/baseline/field-local.py'
+# The field snapshot is the exact source preceding the later Pb inverse change.
+# Exclude separately verified ONB methods from the historical structure check.
 original_field = ast.parse((here / 'baseline-v3/field.py').read_text())
 current_field = ast.parse(field.read_text())
 for tree in (original_field, current_field):

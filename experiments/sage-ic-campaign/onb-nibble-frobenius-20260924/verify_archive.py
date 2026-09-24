@@ -14,8 +14,8 @@ from pathlib import Path
 here = Path(__file__).resolve().parent
 root = here.parents[2]
 baseline = here / 'baseline/field.py'
-local = root / 'ecc2k130/codegen/field.py'
-runner = root / 'ecc2k130/runner/codegen/field.py'
+local = root / 'experiments/sage-ic-campaign/pb-euclid-inverse-20260924/baseline/field-local.py'
+runner = root / 'experiments/sage-ic-campaign/pb-euclid-inverse-20260924/baseline/field-runner.py'
 assert hashlib.sha256(baseline.read_bytes()).hexdigest() == \
     '7e9c9e14fcd215ec75414a43e28472fc206721be451f0a2e5c47b99c0676613c'
 assert local.read_bytes() == runner.read_bytes()
