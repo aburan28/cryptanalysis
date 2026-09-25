@@ -30,6 +30,7 @@ RTX-PRO-6000; "H100:2" asks for two.  Credentials: MODAL_TOKEN_ID and
 MODAL_TOKEN_SECRET, or a profile from `modal token set`.
 """
 import argparse
+import calendar
 import io
 import json
 import os
@@ -353,7 +354,7 @@ def cmd_gc(args):
     for entry in vol.listdir("/"):
         name = entry.path.strip("/")
         try:
-            created = time.mktime(time.strptime(name[:15], "%Y%m%d-%H%M%S")) - time.timezone
+            created = calendar.timegm(time.strptime(name[:15], "%Y%m%d-%H%M%S"))
         except ValueError:
             continue
         if created < cutoff:
