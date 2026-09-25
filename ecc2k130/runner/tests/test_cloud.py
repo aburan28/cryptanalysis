@@ -99,6 +99,28 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(slots.claim('worker', {}), 5)
         self.assertEqual(items[0]['slot'], 4)
 
+    def test_heartbeat_survives_a_conflict_with_its_own_retried_write(self):
+        slots = S3Slots('test-bucket')
+        mine = {'owner': 'worker', 'leaseUntil': 1}
+        with patch.object(slots, '_get', side_effect=[(dict(mine), 'a'), (dict(mine), 'b')]), \
+             patch.object(slots, '_put', side_effect=[False, True]) as put:
+            self.assertTrue(slots.heartbeat(0, 'worker', {}))
+        self.assertEqual([c.kwargs['ifMatch'] for c in put.call_args_list], ['a', 'b'])
+
+    def test_heartbeat_is_lost_once_another_owner_holds_the_slot(self):
+        slots = S3Slots('test-bucket')
+        with patch.object(slots, '_get', side_effect=[({'owner': 'worker'}, 'a'), ({'owner': 'other'}, 'b')]), \
+             patch.object(slots, '_put', return_value=False) as put:
+            self.assertFalse(slots.heartbeat(0, 'worker', {}))
+        self.assertEqual(put.call_count, 1)
+
+    def test_heartbeat_gives_up_after_repeated_conflicts(self):
+        slots = S3Slots('test-bucket')
+        with patch.object(slots, '_get', return_value=({'owner': 'worker'}, 'a')), \
+             patch.object(slots, '_put', return_value=False) as put:
+            self.assertFalse(slots.heartbeat(0, 'worker', {}))
+        self.assertEqual(put.call_count, 3)
+
     def test_lost_lease_stops_publication(self):
         from unittest.mock import Mock
         import time

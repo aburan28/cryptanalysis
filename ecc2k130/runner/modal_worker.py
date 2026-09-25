@@ -12,6 +12,11 @@ LOCAL = Path(__file__).resolve().parent
 GPU = os.environ.get("ECC_MODAL_GPU", "RTX-PRO-6000")
 ARCH = os.environ.get("ECC_CUDA_ARCH", "120")
 SECRET = os.environ.get("ECC_MODAL_SECRET", "ecc2k130-cloud")
+# Each worker adds one PostgreSQL /32 rule to the RDS security group, which
+# allows 60 inbound rules by default.
+MAX_WORKERS = int(os.environ.get("ECC_MODAL_MAX_WORKERS", "4"))
+if not 1 <= MAX_WORKERS <= 32:
+    raise ValueError("ECC_MODAL_MAX_WORKERS must be between 1 and 32")
 NETWORK = {"ECC_RDS_SECURITY_GROUP": os.environ["ECC_RDS_SECURITY_GROUP"]} if os.environ.get("ECC_RDS_SECURITY_GROUP") else {}
 image = modal.Image.from_dockerfile(
     LOCAL / "deploy" / "Dockerfile", context_dir=LOCAL,
@@ -23,7 +28,8 @@ check_image = (
     .pip_install_from_requirements(LOCAL / "deploy" / "requirements.txt")
     .run_commands("curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o /tmp/rds-ca.pem")
     .env({"PGSSLROOTCERT": "/tmp/rds-ca.pem", "AWS_EC2_METADATA_DISABLED": "true",
-          "ECC_PREFIX": "campaigns/ecc2k130-frobenius32-120k-v1", **NETWORK})
+          "ECC_PREFIX": "campaigns/ecc2k130-frobenius32-120k-v1",
+          "ECC_MODAL_MAX_WORKERS": str(MAX_WORKERS), **NETWORK})
     .add_local_file(LOCAL / "cloud.py", "/opt/ecc2k130/cloud.py")
     .add_local_file(LOCAL / "build.json", "/opt/ecc2k130/build.json")
     .add_local_file(LOCAL / "aws" / "worker.py", "/opt/ecc2k130/aws/worker.py")
@@ -77,7 +83,11 @@ def readiness(smoke_test: bool = False, s3_only: bool = False, initialize: bool 
 # Modal bills the larger of the CPU request and actual use. A worker averages
 # 1.2 cores: the client spins one core waiting on the GPU, and uploads burst
 # briefly above that. Extra cores cost far more per walk step than the GPU.
-@app.function(image=image, gpu=GPU, cpu=2, memory=4096, timeout=86400, max_containers=4,
+# A failed worker is retried rather than leaving its GPU share idle until the
+# next rollout; the retry resumes an expired slot's checkpoint from S3.
+@app.function(image=image, gpu=GPU, cpu=2, memory=4096, timeout=86400,
+              max_containers=MAX_WORKERS,
+              retries=modal.Retries(max_retries=3, backoff_coefficient=1.0, initial_delay=60.0),
               secrets=[modal.Secret.from_name(SECRET)])
 def worker(command: str, seconds: int, s3_only: bool, rollout: str = "", deadline: float = 0.0):
     import sys
@@ -111,8 +121,8 @@ def worker(command: str, seconds: int, s3_only: bool, rollout: str = "", deadlin
               secrets=[modal.Secret.from_name(SECRET)])
 def fleet(count: int, seconds: int, s3_only: bool):
     """Keep lifecycle and network cleanup remote when the launcher disconnects."""
-    if not 1 <= count <= 4 or not 1 <= seconds <= 82800:
-        raise ValueError("fleet requires 1..4 workers and 1..82800 seconds")
+    if not 1 <= count <= MAX_WORKERS or not 1 <= seconds <= 82800:
+        raise ValueError("fleet requires 1..%d workers and 1..82800 seconds" % MAX_WORKERS)
     import sys
     sys.path.insert(0, "/opt/ecc2k130/aws")
     from rds_network import cleanup
@@ -146,8 +156,9 @@ def main(command: str = "preflight", seconds: int = 82800, s3_only: bool = False
          count: int = 4):
     if command not in ("preflight", "smoke", "run") or not 1 <= seconds <= 82800:
         raise ValueError("invalid command or duration (1..82800 seconds)")
-    if not 1 <= count <= 4:
-        raise ValueError("count must be between 1 and 4")
+    if not 1 <= count <= MAX_WORKERS:
+        raise ValueError("count must be between 1 and %d; set ECC_MODAL_MAX_WORKERS for more"
+                         % MAX_WORKERS)
     # Prove the service path once before starting any long GPU work.
     result = readiness.remote(command in ("smoke", "run"), s3_only, command in ("smoke", "run"))
     print(json.dumps({"readiness": result}), flush=True)

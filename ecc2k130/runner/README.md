@@ -219,14 +219,21 @@ modal run ecc2k130/runner/modal_worker.py --command smoke
 
 # Four concurrent workers, each collecting for 23 hours.
 modal run --detach ecc2k130/runner/modal_worker.py --command run --count 4 --seconds 82800
+
+# A larger fleet: raise the per-app cap, then ask for that many workers.
+ECC_MODAL_MAX_WORKERS=8 modal run --detach ecc2k130/runner/modal_worker.py --command run --count 8 --seconds 82800
 ```
 
 `preflight` and `smoke` execute in a CPU container. Image construction may still
 build the shared CUDA image, but these checks do not start GPU workers. `run`
-first requires a successful S3/RDS smoke check, then submits all four GPU calls
-before waiting for any result. `--count` accepts 1 through 4 (default 4), and the
-GPU function has a maximum of four concurrent containers per app. Avoid launching
-multiple copies of the app if you intend to keep the total fleet at four GPUs.
+first requires a successful S3/RDS smoke check, then submits every GPU call
+before waiting for any result. `--count` accepts 1 through `ECC_MODAL_MAX_WORKERS`
+(default 4, at most 32), which is also the app's cap on concurrent GPU containers.
+Each worker adds one `/32` rule to the RDS security group, and AWS allows 60
+inbound rules per group by default. Launch one app per fleet rather than several
+copies, so the whole fleet shares one rollout, deadline and cleanup. Modal
+retries a failed worker up to three times. A heartbeat whose conditional S3 write
+conflicts with its own retried request re-reads the lease rather than give it up.
 The launcher spawns a remote CPU coordinator, which prints the submitted call IDs
 and waits for the workers. After a detached launch, closing the local terminal
 ends neither the fleet nor the coordinator's network cleanup. The coordinator is
