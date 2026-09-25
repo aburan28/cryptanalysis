@@ -3,6 +3,7 @@ import os
 import json
 from pathlib import Path
 import subprocess
+import time
 import uuid
 
 import modal
@@ -73,14 +74,25 @@ def readiness(smoke_test: bool = False, s3_only: bool = False, initialize: bool 
             cleanup(network_token)
 
 
-@app.function(image=image, gpu=GPU, cpu=4, memory=4096, timeout=86400, max_containers=4,
+# Modal bills the larger of the CPU request and actual use. A worker averages
+# 1.2 cores: the client spins one core waiting on the GPU, and uploads burst
+# briefly above that. Extra cores cost far more per walk step than the GPU.
+@app.function(image=image, gpu=GPU, cpu=2, memory=4096, timeout=86400, max_containers=4,
               secrets=[modal.Secret.from_name(SECRET)])
-def worker(command: str, seconds: int, s3_only: bool, rollout: str = ""):
+def worker(command: str, seconds: int, s3_only: bool, rollout: str = "", deadline: float = 0.0):
     import sys
     sys.path.insert(0, "/opt/ecc2k130/aws")
     from rds_network import ensure_access
     if command not in ("preflight", "smoke", "run"):
         raise ValueError("command must be preflight, smoke or run")
+    # Modal restarts a preempted call with its original arguments. Ending at
+    # the rollout deadline keeps the coordinator, whose own timeout is 24 hours,
+    # alive until every worker exits so it can remove the rollout's rules.
+    if deadline:
+        seconds = min(seconds, int(deadline - time.time()))
+        if seconds < 1:
+            print(json.dumps({"skipped": "rollout deadline passed"}), flush=True)
+            return
     if not s3_only:
         if not rollout:
             raise ValueError("use the fleet entrypoint so network rules have an owner")
@@ -90,7 +102,9 @@ def worker(command: str, seconds: int, s3_only: bool, rollout: str = ""):
         args.append("--s3-only")
     # The supervisor handles its own duration and final flush before Modal's
     # hard deadline. S3 holds checkpoints across container replacements.
-    subprocess.run(args, check=True)
+    # Modal derives OMP_NUM_THREADS from the CPU request; the GPU idles while
+    # the client converts each checkpoint with OpenMP, so keep four threads.
+    subprocess.run(args, check=True, env=dict(os.environ, OMP_NUM_THREADS="4"))
 
 
 @app.function(image=check_image, timeout=86400, max_containers=1, cpu=0.125,
@@ -103,13 +117,15 @@ def fleet(count: int, seconds: int, s3_only: bool):
     sys.path.insert(0, "/opt/ecc2k130/aws")
     from rds_network import cleanup
     rollout = uuid.uuid4().hex
+    deadline = time.time() + seconds
     calls = []
     failed = []
     try:
         for _ in range(count):
-            calls.append(worker.spawn("run", seconds, s3_only, rollout))
+            calls.append(worker.spawn("run", seconds, s3_only, rollout, deadline))
         print(json.dumps({"submitted": len(calls), "seconds_per_worker": seconds,
-                          "rollout": rollout, "call_ids": [c.object_id for c in calls]}), flush=True)
+                          "deadline": int(deadline), "rollout": rollout,
+                          "call_ids": [c.object_id for c in calls]}), flush=True)
     finally:
         # Join already-submitted calls even if a later submission fails.
         for call in calls:
