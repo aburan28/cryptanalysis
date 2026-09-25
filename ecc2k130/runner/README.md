@@ -92,10 +92,15 @@ See the [deployment receipt](research/production/2026-09-21-120k-deployment.json
 for runtime identities, validation and live storage/database checks.
 
 The existing [public crypto dashboard](https://aburan28.github.io/crypto/status/)
-currently reports `ecc2k-130` at DP weight **32**. It reads root-level `ckpt/`
-objects and the legacy ingester's RDS counters. This fleet shares its actual
-collision table, but the page still needs support for namespaced checkpoints
-and direct reporting to account for this fleet's contribution accurately.
+reports `ecc2k-130` at DP weight **32**. Its feed comes from `dp_ingest.py` on the
+legacy Runpod ingest pod. Since 2026-09-25 the deployed copy also counts this
+fleet: checkpoints from namespaced campaigns that share the collision table, and
+points that workers report directly through `report_dp`. It also measures
+"walking now" over about an hour instead of an ever-growing window. The
+deployed file (`s3://…/aws/dp_ingest.py`, sha256 `58460b7a…`) is ahead of the
+`crypto` repository; the change is in
+[the dashboard patch](research/production/2026-09-25-dp-ingest-namespaced.patch)
+and its [receipt](research/production/2026-09-25-dp-ingest-namespaced.json).
 Its "GPUs running" count means a checkpoint was uploaded within 30 minutes;
 copying an old checkpoint can refresh that timestamp after a worker stops.
 Use the Modal app's worker logs and this campaign's S3 leases/RDS rows to check
