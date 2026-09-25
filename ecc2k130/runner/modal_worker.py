@@ -74,7 +74,10 @@ def readiness(smoke_test: bool = False, s3_only: bool = False, initialize: bool 
             cleanup(network_token)
 
 
-@app.function(image=image, gpu=GPU, cpu=4, memory=4096, timeout=86400, max_containers=4,
+# Modal bills the larger of the CPU request and actual use. A worker averages
+# 1.2 cores: the client spins one core waiting on the GPU, and uploads burst
+# briefly above that. Extra cores cost far more per walk step than the GPU.
+@app.function(image=image, gpu=GPU, cpu=2, memory=4096, timeout=86400, max_containers=4,
               secrets=[modal.Secret.from_name(SECRET)])
 def worker(command: str, seconds: int, s3_only: bool, rollout: str = "", deadline: float = 0.0):
     import sys
@@ -99,7 +102,9 @@ def worker(command: str, seconds: int, s3_only: bool, rollout: str = "", deadlin
         args.append("--s3-only")
     # The supervisor handles its own duration and final flush before Modal's
     # hard deadline. S3 holds checkpoints across container replacements.
-    subprocess.run(args, check=True)
+    # Modal derives OMP_NUM_THREADS from the CPU request; the GPU idles while
+    # the client converts each checkpoint with OpenMP, so keep four threads.
+    subprocess.run(args, check=True, env=dict(os.environ, OMP_NUM_THREADS="4"))
 
 
 @app.function(image=check_image, timeout=86400, max_containers=1, cpu=0.125,
