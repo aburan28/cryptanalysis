@@ -24,6 +24,7 @@
 //! This is a stage diagnostic (AGENTS.md): the decomposition oracle only,
 //! not an end-to-end ECDLP cost.
 
+use cryptanalysis_suite::binary_ecc::BinaryPoint;
 use cryptanalysis_suite::cryptanalysis::f4_batch::{BatchDecider, CpuDecider, DecisionRequest};
 use cryptanalysis_suite::cryptanalysis::f4_gf2::{self, Decision, KernelCounters, MacaulayCaps};
 use cryptanalysis_suite::cryptanalysis::f4_gpu::decider_from_spec;
@@ -34,6 +35,7 @@ use cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::{
     build_frobenius_factor_base, groebner_decompose, groebner_decompose_batch, KoblitzCurve,
 };
 use cryptanalysis_suite::cryptanalysis::pq_groebner_f2::F2BoolPoly;
+use cryptanalysis_suite::hash::sha256::sha256;
 use num_bigint::BigUint;
 use rayon::prelude::*;
 use serde_json::json;
@@ -110,6 +112,24 @@ fn main() {
 
     let kc = KoblitzCurve::new(a, n).expect("no Koblitz curve at this degree");
     let fb = build_frobenius_factor_base(&kc, 0).expect("no factor base");
+    // The base's identity for the candidate manifest: SHA-256 over its
+    // points as sorted "x,y" lines of lowercase 0x-hex coordinates.
+    let mut lines: Vec<String> = fb
+        .points
+        .iter()
+        .filter_map(|p| match p {
+            BinaryPoint::Affine { x, y } => {
+                Some(format!("{:#x},{:#x}", x.to_biguint(), y.to_biguint()))
+            }
+            BinaryPoint::Infinity => None,
+        })
+        .collect();
+    lines.sort();
+    let fb_digest = hex::encode(sha256(lines.join("\n").as_bytes()));
+    println!(
+        "factor base: {} points, SHA-256 {fb_digest} (sorted \"x,y\" hex lines)",
+        lines.len()
+    );
     let index_of = fb.index_map();
     let st = FieldStructure::new(kc.n, &kc.curve.irreducible);
     let g = kc.generator().clone();
@@ -323,6 +343,7 @@ fn main() {
         let doc = json!({
             "harness": "examples/f4_batch_bench.rs",
             "curve": format!("K_{a}/2^{n}"), "factor_base_points": fb.points.len(), "ell": fb.ell,
+            "factor_base_sha256": fb_digest,
             "targets": targets, "node_budget": budget, "kernel": format!("{:?}", f4_kernel()),
             "threads": rayon::current_num_threads(), "modes": rows,
             "replay": {"requests": requests.len(), "batch": replay_batch, "backends": replays},

@@ -1168,11 +1168,25 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
             "linear_algebra":r.linear_algebra_ns as f64/1e9},
         "f4_batch":{"backend":r.f4_batch_backend,"rounds":r.f4_batch_rounds,"requests":r.f4_batch_requests,
             "decide_seconds":r.f4_batch_decide_ns as f64/1e9,
-            "kernel":format!("{:?}",cryptanalysis_suite::cryptanalysis::koblitz_groebner::f4_kernel())},
+            "kernel":format!("{:?}",cryptanalysis_suite::cryptanalysis::koblitz_groebner::f4_kernel()),
+            "f5":cryptanalysis_suite::cryptanalysis::f4_gf2::default_options().f5},
+        "attempt_dispositions":disposition_counts(&r.attempt_records),
         "elapsed_seconds":begin.elapsed().as_secs_f64(),"resources":resources(),
         "limitations":["No imported target was used.","This run does not establish scaling or challenge readiness."]}),
     )
 }
+/// How every relation attempt ended, by disposition: the decomposition
+/// oracle's outcome mix, failed and budget-exhausted attempts included.
+fn disposition_counts(
+    records: &[cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::KoblitzRelationAttemptRecord],
+) -> Value {
+    let mut counts = std::collections::BTreeMap::<String, usize>::new();
+    for r in records {
+        *counts.entry(format!("{:?}", r.disposition)).or_default() += 1;
+    }
+    json!(counts)
+}
+
 fn child(args: &RunArgs, seconds: u32) -> Result<Value, String> {
     let start = Instant::now();
     let mut command = Command::new(std::env::current_exe().map_err(|e| e.to_string())?);
