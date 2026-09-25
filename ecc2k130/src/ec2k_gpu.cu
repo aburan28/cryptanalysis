@@ -470,8 +470,7 @@ struct Checkpoint {
         if (b.maxIters != want.maxIters)
             printf("note: checkpoint %s was written with --max-iters %llu; its lanes continue "
                    "under %llu\n",
-                   path.c_str(), (unsigned long long)b.maxIters,
-                   (unsigned long long)want.maxIters);
+                   path.c_str(), (unsigned long long)b.maxIters, (unsigned long long)want.maxIters);
         *iterBase = h.iterBase;
         return 1;
     }
