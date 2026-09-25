@@ -153,6 +153,99 @@ fn every_target_is_recovered_and_the_accounting_adds_up() {
     let whole = &v["vs_rho"]["whole_process"];
     let pre = logs["oracle_ops"].as_f64().unwrap() + logs["probe_ops"].as_f64().unwrap();
     assert!((whole["ic_ops"].as_f64().unwrap() - (pre + total as f64)).abs() < 1.0);
+    // The batch-rho opponent is charged against the same whole process.
+    let batch = &v["vs_rho"]["whole_process_vs_batch_rho"];
+    assert_eq!(batch["ic_ops"], whole["ic_ops"]);
+    let plain = batch["rho_ops_expected"].as_f64().unwrap();
+    let folded = batch["rho_ops_expected_folded"].as_f64().unwrap();
+    assert!(0.0 < folded && folded < plain, "{batch}");
+}
+
+#[test]
+fn large_primes_are_the_default_and_cut_the_precompute() {
+    let args = ["--type", "j0", "--bits", "22", "--targets", "4"];
+    let (ok, default) = prime(&args);
+    assert!(ok, "{default}");
+    assert_eq!(default["logs"]["collection"], "large_primes");
+    assert_eq!(default["factor_base"]["sizing"], "batch");
+    assert_eq!(default["descent"]["learn"], true);
+    // Against the control on the same base (the default would size the
+    // large-prime base to the batch, trading descent for precompute), and
+    // with descents that do not learn, so that each database is only what
+    // its collection found.
+    let mut same_base = args.to_vec();
+    same_base.extend(["--width", "2", "--no-learn"]);
+    let (ok, lp) = prime(&same_base);
+    assert!(ok, "{lp}");
+    assert!(lp["logs"]["combined_relations"].as_u64().unwrap() > 0);
+    let mut control = same_base.clone();
+    control.push("--no-large-primes");
+    let (ok, full) = prime(&control);
+    assert!(ok, "{full}");
+    assert_eq!(full["logs"]["collection"], "full_decompositions");
+    let pre = |v: &Value| {
+        v["logs"]["oracle_ops"].as_u64().unwrap() + v["logs"]["probe_ops"].as_u64().unwrap()
+    };
+    assert!(
+        pre(&lp) * 10 < pre(&full),
+        "large primes {} against full {}",
+        pre(&lp),
+        pre(&full)
+    );
+    assert_eq!(lp["descent"]["verified"], 4);
+    assert_eq!(full["descent"]["verified"], 4);
+    // The large primes the collection met are a second, much larger base
+    // for the descent; the full collection has none.
+    let known = lp["logs"]["known_large_primes"].as_u64().unwrap();
+    assert!(known > 10 * lp["factor_base"]["certified_orbits"].as_u64().unwrap());
+    assert_eq!(full["logs"]["known_large_primes"], 0);
+    assert_eq!(full["descent"]["through_large_primes"], 0);
+    let mean = |v: &Value| v["descent"]["mean_ops"].as_f64().unwrap();
+    assert!(
+        mean(&lp) * 5.0 < mean(&full),
+        "descent {} with large primes against {} without",
+        mean(&lp),
+        mean(&full)
+    );
+}
+
+#[test]
+fn the_base_is_sized_to_the_batch_unless_a_width_is_given() {
+    let base = [
+        "--type",
+        "j0",
+        "--bits",
+        "22",
+        "--targets",
+        "40",
+        "--no-rho",
+    ];
+    let (ok, batch) = prime(&base);
+    assert!(ok, "{batch}");
+    assert_eq!(batch["factor_base"]["sizing"], "batch");
+    // Learning descents build the database, so the base only bootstraps.
+    assert_eq!(batch["factor_base"]["orbits"], 8);
+    let with = |extra: &[&'static str]| {
+        let mut args = base.to_vec();
+        args.extend_from_slice(extra);
+        let (ok, v) = prime(&args);
+        assert!(ok, "{extra:?}: {v}");
+        v
+    };
+    // Without learning the base is sized to the batch, T/2 by default.
+    assert_eq!(with(&["--no-learn"])["factor_base"]["orbits"], 20);
+    assert_eq!(
+        with(&["--orbits-per-target", "2", "--no-learn"])["factor_base"]["orbits"],
+        80
+    );
+    let wide = with(&["--width", "2"]);
+    assert_eq!(wide["factor_base"]["sizing"], "width");
+    assert!(wide["factor_base"]["orbits"].as_u64().unwrap() > 200);
+    let both = Command::new(env!("CARGO_BIN_EXE_ca-ic"))
+        .args(["prime", "--width", "2", "--orbits-per-target", "1"])
+        .output()
+        .unwrap();
+    assert!(!both.status.success());
 }
 
 #[test]

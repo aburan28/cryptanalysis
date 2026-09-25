@@ -146,13 +146,19 @@ GLV endomorphism on `j = 0` curves, `μ₄` on `j = 1728` curves — so `w·m` p
 carry `m` unknowns. That is the prime-field analogue of the Frobenius collapse
 the binary Koblitz pipeline uses; `ec_index_calculus_j0` keeps orbit
 representatives but accepts only decompositions through them, so there the
-automorphism adds no relation coverage. Measured at 28 bits: the logarithm
-precomputation is `≈ 2.2·r/|Aut|` operations for every type, a descent with
-the database paid beats per-target rho (from width 4 even the folded-rho
-expectation), and the whole process still costs 40–390× what rho does over
-32–64 targets. The
-secp256k1 structure — `|Aut| = 6`, the GLV `λ`, `S₃`'s `ζ`-equivariance — is
-computed on the real curve; see [ic/README.md](ic/README.md#prime-field-curves-ic-prime).
+automorphism adds no relation coverage. Relations are collected with the
+single-large-prime variation, every large prime whose logarithm the
+collection learns becomes part of the database a descent looks up, and each
+verified descent adds its own differences for the targets after it. Measured
+at 28–40 bits over 64 targets, the whole batch costs 7–18× less than
+per-target rho, and 0.72–0.89 of the analytic expectation for a rho folded by
+`Aut` that shares distinguished points across the batch. That is the best
+this can do: the pipeline uses only group operations and abscissa lookups,
+so it is a generic algorithm, and for `T` targets no generic algorithm beats
+order `√(T·r/|Aut|)`. The collapse the automorphisms buy is rho's `√|Aut|`
+fold, not a subexponential step. The secp256k1 structure — `|Aut| = 6`,
+the GLV `λ`, `S₃`'s `ζ`-equivariance — is computed on the real curve; see
+[ic/README.md](ic/README.md#prime-field-curves-ic-prime).
 
 ### What would change the picture
 
