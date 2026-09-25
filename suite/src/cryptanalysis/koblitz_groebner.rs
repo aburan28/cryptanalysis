@@ -1030,6 +1030,19 @@ pub fn f4_profile() -> F4Profile {
     }
 }
 
+thread_local! {
+    static THREAD_WORD_OPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Word XORs the F4 reductions on the calling thread have performed so far.
+///
+/// Unlike [`f4_profile`], no other thread's solving reaches it, so a caller
+/// that solves on its own thread — `groebner_decompose` does — can price
+/// exactly its own work while the rest of the process keeps solving.
+pub fn f4_thread_word_ops() -> u64 {
+    THREAD_WORD_OPS.with(|c| c.get())
+}
+
 /// Clear the F4 stage profile.  Not synchronised against concurrent
 /// solving: reset before the work, read after it.
 pub fn f4_profile_reset() {
@@ -1059,6 +1072,9 @@ fn f4_profile_add(f: impl FnOnce(&mut F4Profile)) {
         if delta != 0 {
             counter.fetch_add(delta, Relaxed);
         }
+    }
+    if delta.word_ops != 0 {
+        THREAD_WORD_OPS.with(|c| c.set(c.get() + delta.word_ops));
     }
 }
 
@@ -2958,6 +2974,42 @@ mod tests {
             refuted > 20 && pinned > 20,
             "{refuted} refuted, {pinned} pinned"
         );
+    }
+
+    /// Solve-cost pricing charges only the calling thread's reductions:
+    /// another thread's F4 work must not move this thread's counter, and
+    /// this thread's must.
+    #[test]
+    fn thread_word_ops_ignore_other_threads() {
+        let n = 6;
+        let polys: Vec<F2BoolPoly> = (0..n as u32)
+            .map(|v| {
+                F2BoolPoly::from_monos(
+                    vec![
+                        F2BoolMono::from_mask(1u64 << v | 1u64 << ((v + 1) % n as u32)),
+                        F2BoolMono::var((v + 2) % n as u32),
+                        F2BoolMono::one(),
+                    ],
+                    n,
+                )
+            })
+            .collect();
+        let before = f4_thread_word_ops();
+        let elsewhere = polys.clone();
+        std::thread::spawn(move || {
+            let (_, ops) = matrix_f4_f2_counted(&elsewhere, n, 3).unwrap();
+            assert!(ops > 0);
+            assert!(f4_thread_word_ops() >= ops);
+        })
+        .join()
+        .unwrap();
+        assert_eq!(
+            f4_thread_word_ops(),
+            before,
+            "another thread's work leaked in"
+        );
+        let (_, ops) = matrix_f4_f2_counted(&polys, n, 3).unwrap();
+        assert_eq!(f4_thread_word_ops(), before + ops);
     }
 
     /// `xor_sorted` is addition over `F_2`: shared indices cancel.

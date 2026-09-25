@@ -258,7 +258,10 @@ twelve verified logarithms — see
 
 `--solve-cost-targets N` runs the Gröbner oracle on `N` census targets per
 candidate, charging refutations as well as successes, and ranks by
-`expected_stage_ops = expected trials × measured word XORs per target`. The
+`expected_stage_ops = expected trials × measured word XORs per target`.
+The XORs are the calling thread's own (solving elsewhere in the process is
+not charged) and are those of the F4 kernel in use, so compare rankings made
+with the same `F4_F2_RREF`. The
 report's `scoring_objective` says which of the two ranked it, and each
 candidate carries `measured_ops_per_target`, `expected_stage_ops` and
 `trace_zero`. Omitted, nothing changes: the ranking is the trial count as

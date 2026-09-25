@@ -73,7 +73,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::binary_ecc::{BinaryPoint, F2mElement};
 
-use super::koblitz_groebner::{f4_profile, FieldStructure, SolverEngine};
+use super::koblitz_groebner::{f4_thread_word_ops, FieldStructure, SolverEngine};
 use super::koblitz_index_calculus::{
     build_frobenius_factor_base, build_frobenius_factor_base_from_divisor,
     build_frobenius_union_factor_base, build_subgroup_orbit_factor_base, groebner_decompose,
@@ -960,7 +960,9 @@ fn measure_solve_cost(
     }
     let st = FieldStructure::new(kc.n, &kc.curve.irreducible);
     let index_of = fb.index_map();
-    let before = f4_profile().word_ops;
+    // This thread's own reductions only: the decompositions below run here,
+    // and solving elsewhere in the process must not be charged to them.
+    let before = f4_thread_word_ops();
     for target in targets.points.iter().take(trials) {
         let _ = groebner_decompose(
             kc,
@@ -973,7 +975,7 @@ fn measure_solve_cost(
             20_000,
         );
     }
-    let ops = f4_profile().word_ops.saturating_sub(before) as f64 / trials as f64;
+    let ops = f4_thread_word_ops().saturating_sub(before) as f64 / trials as f64;
     candidate.measured_ops_per_target = Some(ops);
     // Cost per target is only half of it: without a trial count there is
     // nothing to multiply, and a base that decomposes nothing is not made
