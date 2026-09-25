@@ -12,6 +12,7 @@ current verifier, its undefined-behavior-sanitized counterpart, and the dual
 solver's CLI/library without Sage, and does not overwrite measured receipts:
 
 ```sh
+python3 experiments/groebner-perf-20260924/unpack_evidence.py
 python3 experiments/groebner-perf-20260924/build_portable.py
 python3 experiments/groebner-perf-20260924/verify_archive.py
 python3 experiments/groebner-perf-20260924/ci_check.py
@@ -34,6 +35,12 @@ For the Apple GPU prototype, install M4RI and run the portable builder with
 path to preserve the frozen receipts. GPU execution needs local Metal access.
 Hosted CI validates CPU correctness; the 2,264 local GPU comparisons are
 recorded evidence, not a claim that hosted CI ran Metal hardware.
+
+Historical measurement JSON is stored as deterministic gzip files to keep the
+implementation diff reviewable. `unpack_evidence.py` verifies compressed and
+uncompressed hashes and restores the exact original JSON bytes; it refuses to
+overwrite changed local results. It does not rewrite measurements. The small
+round-three summary remains directly readable in GitHub.
 
 Historical measurement JSON and original recipes retain their absolute local
 paths and binary hashes. Compiled binaries are deliberately not distributed.

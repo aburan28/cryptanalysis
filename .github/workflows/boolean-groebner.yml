@@ -34,6 +34,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install sympy
+      - name: Unpack byte-preserved measurement evidence
+        run: python experiments/groebner-perf-20260924/unpack_evidence.py
       - name: Build verifier and solver, including UBSan
         run: python experiments/groebner-perf-20260924/build_portable.py
       - name: Verify shipped evidence hashes
@@ -57,8 +59,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libm4ri-dev pkg-config
           mkdir -p "$RUNNER_TEMP/m4ri"
-          ln -s "$(pkg-config --variable=includedir m4ri)" "$RUNNER_TEMP/m4ri/include"
-          ln -s "$(pkg-config --variable=libdir m4ri)" "$RUNNER_TEMP/m4ri/lib"
+          ln -s /usr/include "$RUNNER_TEMP/m4ri/include"
+          ln -s "/usr/lib/$(gcc -print-multiarch)" "$RUNNER_TEMP/m4ri/lib"
           echo "M4RI_PREFIX=$RUNNER_TEMP/m4ri" >> "$GITHUB_ENV"
       - name: Native basis, implicit field pairs, and original curve replay
         working-directory: experiments/pdp-scaling
