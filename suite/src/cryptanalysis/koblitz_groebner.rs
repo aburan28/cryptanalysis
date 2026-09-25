@@ -925,6 +925,7 @@ pub(crate) fn f4_profile_add_kernel(k: &f4_gf2::KernelCounters) {
             p.cols += k.cols;
             p.eliminated_rows += k.eliminated_rows;
             p.eliminated_cols += k.eliminated_cols;
+            p.f5_skipped += k.f5_skipped;
             p.word_ops += k.word_ops;
         });
     }
@@ -972,6 +973,10 @@ pub struct F4Profile {
     /// Columns the kernel actually eliminated.
     #[serde(default)]
     pub eliminated_cols: u64,
+    /// Nonempty rows the F5 criteria left out of elimination
+    /// ([`f4_gf2::KernelOptions::f5`]); they are counted in `rows`.
+    #[serde(default)]
+    pub f5_skipped: u64,
     /// 64-bit word XORs performed by the reductions.
     pub word_ops: u64,
 }
@@ -987,9 +992,10 @@ mod f4_counters {
     pub(super) static COLS: AtomicU64 = AtomicU64::new(0);
     pub(super) static ELIMINATED_ROWS: AtomicU64 = AtomicU64::new(0);
     pub(super) static ELIMINATED_COLS: AtomicU64 = AtomicU64::new(0);
+    pub(super) static F5_SKIPPED: AtomicU64 = AtomicU64::new(0);
     pub(super) static WORD_OPS: AtomicU64 = AtomicU64::new(0);
 
-    pub(super) fn all() -> [&'static AtomicU64; 10] {
+    pub(super) fn all() -> [&'static AtomicU64; 11] {
         [
             &CALLS,
             &OVERSIZE,
@@ -1000,6 +1006,7 @@ mod f4_counters {
             &COLS,
             &ELIMINATED_ROWS,
             &ELIMINATED_COLS,
+            &F5_SKIPPED,
             &WORD_OPS,
         ]
     }
@@ -1018,6 +1025,7 @@ pub fn f4_profile() -> F4Profile {
         cols: f4_counters::COLS.load(Relaxed),
         eliminated_rows: f4_counters::ELIMINATED_ROWS.load(Relaxed),
         eliminated_cols: f4_counters::ELIMINATED_COLS.load(Relaxed),
+        f5_skipped: f4_counters::F5_SKIPPED.load(Relaxed),
         word_ops: f4_counters::WORD_OPS.load(Relaxed),
     }
 }
@@ -1034,7 +1042,7 @@ fn f4_profile_add(f: impl FnOnce(&mut F4Profile)) {
     use std::sync::atomic::Ordering::Relaxed;
     let mut delta = F4Profile::default();
     f(&mut delta);
-    let pairs: [(&std::sync::atomic::AtomicU64, u64); 10] = [
+    let pairs: [(&std::sync::atomic::AtomicU64, u64); 11] = [
         (&f4_counters::CALLS, delta.calls),
         (&f4_counters::OVERSIZE, delta.oversize),
         (&f4_counters::BUILD_NS, delta.build_ns as u64),
@@ -1044,6 +1052,7 @@ fn f4_profile_add(f: impl FnOnce(&mut F4Profile)) {
         (&f4_counters::COLS, delta.cols),
         (&f4_counters::ELIMINATED_ROWS, delta.eliminated_rows),
         (&f4_counters::ELIMINATED_COLS, delta.eliminated_cols),
+        (&f4_counters::F5_SKIPPED, delta.f5_skipped),
         (&f4_counters::WORD_OPS, delta.word_ops),
     ];
     for (counter, delta) in pairs {

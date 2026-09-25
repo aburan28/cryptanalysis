@@ -99,6 +99,37 @@ impl Decision {
     }
 }
 
+/// Options of one kernel call.  None changes an answer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KernelOptions {
+    /// Leave out the rows the F5 criterion and the Boolean field-equation
+    /// criterion prove to be in the span of the others.  For the rows
+    /// `t·f_i` of the equations in order: F5 drops `t·f_i` when `t` leads
+    /// an element of the degree-`D − deg f_i` row space of `f_0 … f_{i−1}`;
+    /// the field equations (`f² = f`, so `s·f = Σ_{a ∈ supp f} (s·a)·f`)
+    /// drop the largest row of each such relation within the degree bound.
+    /// Each dropped row is a sum of rows of smaller key, so every reduced
+    /// echelon form is unchanged.  Dropped rows are still counted against
+    /// the caps.
+    pub f5: bool,
+}
+
+/// The options the solver uses: [`KernelOptions::f5`] on unless `F4_F2_F5`
+/// is `0`, `off` or `false`.  The plan is empty — and free — below the
+/// degree where a trivial syzygy fits, and measured 1.2–1.8× faster at
+/// degree 5 (`examples/f4_degree_bench.rs`).
+pub fn default_options() -> KernelOptions {
+    static F5: OnceLock<bool> = OnceLock::new();
+    KernelOptions {
+        f5: *F5.get_or_init(|| {
+            !matches!(
+                std::env::var("F4_F2_F5").as_deref(),
+                Ok("0") | Ok("off") | Ok("false")
+            )
+        }),
+    }
+}
+
 /// Counters of one kernel call, in the fields of
 /// [`super::koblitz_groebner::F4Profile`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -116,6 +147,13 @@ pub struct KernelCounters {
     pub eliminated_rows: u64,
     /// Columns actually eliminated.
     pub eliminated_cols: u64,
+    /// Nonempty rows left out by the F5 criteria.
+    pub f5_skipped: u64,
+    /// Rank of the matrix built.  For [`decide`] that is the matrix over
+    /// the occurring variables, whose rank equals the reference matrix's
+    /// only when every variable occurs: rows shifted by an absent variable
+    /// are copies in columns of their own and add their own rank.
+    pub rank: u64,
     /// 64-bit word XORs performed by this kernel.
     pub word_ops: u64,
     /// Nanoseconds building the matrix.
@@ -215,6 +253,8 @@ struct Scratch {
     row_start: Vec<u32>,
     /// Slack `D − deg p − deg u` of each candidate row.
     row_slack: Vec<u8>,
+    /// Whether the F5 plan leaves each candidate row out of elimination.
+    row_skip: Vec<bool>,
     /// Rank-space stamps: `stamp[r] == generation` marks rank `r` seen.
     stamp: Vec<u32>,
     generation: u32,
@@ -228,6 +268,8 @@ struct Scratch {
     matrix: Vec<u64>,
     /// Slack of each stored row.
     stored_slack: Vec<u8>,
+    /// Stored rows left out of elimination (filled only to be counted).
+    stored_skip: Vec<bool>,
     /// Per-slack OR of the stored rows (reference column count).
     class_or: Vec<u64>,
     /// Elimination: leading-column buckets.
@@ -323,6 +365,141 @@ impl Layout {
     }
 }
 
+/// Rows of one Macaulay matrix that are provably in the span of the rest.
+///
+/// Rows are `t·f_i` for the generating equations `f_0, f_1, …` in order,
+/// keyed `(i, t)` with `t` in DegRevLex.  Two criteria, each expressing a
+/// row through rows of strictly smaller key, so by induction on the key
+/// every removed row lies in the span of the kept ones and every reduced
+/// echelon form — hence every answer — is unchanged:
+///
+/// - **F5** (Faugère).  If `t` is the leading monomial of some `g` in the
+///   row space of `M_{≤D−deg f_i}(f_0 … f_{i−1})`, then
+///   `t·f_i = g·f_i + (g + t)·f_i`.  The first term is a sum of rows
+///   `w·f_j` with `j < i` (expand `g·f_i = Σ m_k f_{j_k}·f_i` and move each
+///   `f_i` into the multiplier; degrees stay within `D`), the second a sum
+///   of rows `u·f_i` with `u < t`.  The leading monomials come from an
+///   echelon form of the lower-degree matrix built in equation order,
+///   recording the first equation whose rows produce each one.
+/// - **Field equations.**  In the Boolean ring `f² = f`, so for any `s`,
+///   `s·f = s·f·f = Σ_{a ∈ supp f} (s·a)·f`.  When every multiplier in that
+///   relation is within the degree bound, the largest one with an odd
+///   coefficient names a row equal to the sum of the others.
+///
+/// Neither fires below `D = 2·deg f` for the degree-`deg f` equations, so on
+/// the splitting search's quadratic systems at `D ≤ 3` the plan is empty.
+struct F5Plan {
+    /// Per lower degree `E`: leading monomial rank → first equation index.
+    leading: Vec<(u32, FxMap<u32, u32>)>,
+    /// `(equation index, multiplier)` rows removed by the field equations.
+    frobenius: std::collections::HashSet<(u32, u64), super::fx_hash::FxBuild>,
+}
+
+impl F5Plan {
+    /// The plan for the generating equations at `degree`, or `None` when
+    /// neither criterion can apply.
+    fn new(generating: &[(&F2BoolPoly, u32)], layout: &Layout, degree: u32) -> Option<Self> {
+        let min_deg = generating.iter().map(|&(_, d)| d).min()?;
+        let applicable = generating
+            .iter()
+            .any(|&(_, d)| degree - d >= min_deg.max(1) || degree - d >= d.max(1));
+        if !applicable {
+            return None;
+        }
+        let mut leading: Vec<(u32, FxMap<u32, u32>)> = Vec::new();
+        for &(_, d) in generating {
+            let e = degree - d;
+            if e >= min_deg && !leading.iter().any(|(x, _)| *x == e) {
+                leading.push((e, Self::first_leading(generating, layout, e)));
+            }
+        }
+        let mut frobenius = std::collections::HashSet::default();
+        let mut ws: Vec<u64> = Vec::new();
+        for (i, &(p, d)) in generating.iter().enumerate() {
+            let e = degree - d;
+            if e < d.max(1) {
+                continue;
+            }
+            for_each_multiplier(&layout.bits, e as usize, |s, _| {
+                if p.terms.iter().any(|t| (t.mask | s).count_ones() > e) {
+                    return;
+                }
+                ws.clear();
+                ws.extend(p.terms.iter().map(|t| t.mask | s));
+                ws.push(s);
+                ws.sort_unstable_by_key(|&w| (std::cmp::Reverse(w.count_ones()), w));
+                let mut k = 0;
+                while k < ws.len() {
+                    let mut l = k;
+                    while l < ws.len() && ws[l] == ws[k] {
+                        l += 1;
+                    }
+                    if (l - k) % 2 == 1 {
+                        frobenius.insert((i as u32, ws[k]));
+                        break;
+                    }
+                    k = l;
+                }
+            });
+        }
+        Some(F5Plan { leading, frobenius })
+    }
+
+    /// Leading monomials of the row space of `M_{≤e}` of the equations of
+    /// degree at most `e`, each mapped to the first equation whose rows
+    /// produce it, by top-reducing the rows in equation order.
+    fn first_leading(
+        generating: &[(&F2BoolPoly, u32)],
+        layout: &Layout,
+        e: u32,
+    ) -> FxMap<u32, u32> {
+        use super::sparse_macaulay::xor_sorted;
+        let mut pivots: FxMap<u32, Vec<u32>> = FxMap::default();
+        let mut first: FxMap<u32, u32> = FxMap::default();
+        for (j, &(p, d)) in generating.iter().enumerate() {
+            if d > e {
+                continue;
+            }
+            for_each_multiplier(&layout.bits, (e - d) as usize, |u, _| {
+                let mut row: Vec<u32> = p.terms.iter().map(|t| layout.rank(t.mask | u)).collect();
+                row.sort_unstable();
+                let mut kept = Vec::with_capacity(row.len());
+                let mut k = 0;
+                while k < row.len() {
+                    if k + 1 < row.len() && row[k] == row[k + 1] {
+                        k += 2;
+                    } else {
+                        kept.push(row[k]);
+                        k += 1;
+                    }
+                }
+                while let Some(&lead) = kept.first() {
+                    match pivots.get(&lead) {
+                        Some(pivot) => kept = xor_sorted(&kept, pivot),
+                        None => break,
+                    }
+                }
+                if let Some(&lead) = kept.first() {
+                    first.insert(lead, j as u32);
+                    pivots.insert(lead, kept);
+                }
+            });
+        }
+        first
+    }
+
+    /// Whether row `(i, u)` of an equation of degree `d` is redundant.
+    fn skips(&self, layout: &Layout, degree: u32, i: usize, d: u32, u: u64) -> bool {
+        let e = degree - d;
+        if let Some((_, lead)) = self.leading.iter().find(|(x, _)| *x == e) {
+            if lead.get(&layout.rank(u)).is_some_and(|&j| (j as usize) < i) {
+                return true;
+            }
+        }
+        self.frobenius.contains(&(i as u32, u))
+    }
+}
+
 /// Build the Macaulay matrix of `polys` at `degree` into the scratch.
 ///
 /// With `compact`, multipliers range over the variables occurring in the
@@ -334,6 +511,7 @@ fn build(
     degree: u32,
     compact: bool,
     caps: MacaulayCaps,
+    opts: KernelOptions,
     s: &mut Scratch,
 ) -> BuildOutcome {
     let generating: Vec<(&F2BoolPoly, u32)> = polys
@@ -374,7 +552,13 @@ fn build(
     s.prov.clear();
     s.row_start.clear();
     s.row_slack.clear();
+    s.row_skip.clear();
     s.distinct.clear();
+    let plan = if opts.f5 {
+        F5Plan::new(&generating, &layout, degree)
+    } else {
+        None
+    };
     let use_rank = layout.rank_space <= RANK_LIMIT;
     if use_rank {
         let r = layout.rank_space as usize;
@@ -391,12 +575,16 @@ fn build(
         s.hash.clear();
     }
     let generation = s.generation;
-    for &(p, pdeg) in &generating {
+    for (i, &(p, pdeg)) in generating.iter().enumerate() {
         let k = (degree - pdeg) as usize;
         for_each_multiplier(&layout.bits, k, |u, du| {
             let slack = (k - du) as u8;
             s.row_start.push(s.prov.len() as u32);
             s.row_slack.push(slack);
+            s.row_skip.push(
+                plan.as_ref()
+                    .is_some_and(|plan| plan.skips(&layout, degree, i, pdeg, u)),
+            );
             for t in &p.terms {
                 let x = t.mask | u;
                 let (key, di) = if use_rank {
@@ -487,6 +675,7 @@ fn build(
     let classes = degree as usize + 1;
     s.class_or.clear();
     s.class_or.resize(classes * stride, 0);
+    s.stored_skip.clear();
     let mut stored = 0usize;
     let mut ref_rows = 0u64;
     for row in 0..candidates {
@@ -506,6 +695,7 @@ fn build(
             *acc |= w;
         }
         s.stored_slack.push(slack);
+        s.stored_skip.push(s.row_skip[row]);
         ref_rows = ref_rows.saturating_add(upto(missing, slack as usize));
         stored += 1;
     }
@@ -672,6 +862,9 @@ fn echelon(m: &mut [u64], rows: usize, stride: usize, stop: usize, s: &mut Scrat
     s.pivots.clear();
     s.low_rows.clear();
     for r in 0..rows {
+        if s.stored_skip.get(r).copied().unwrap_or(false) {
+            continue;
+        }
         match lead_from(&m[r * stride..(r + 1) * stride], 0) {
             Some(c) if c < stop => {
                 s.next[r] = s.head[c];
@@ -754,6 +947,64 @@ fn rref_u128(rows: &mut [u128], width: usize) -> usize {
     rank
 }
 
+/// The rows the F5 plan leaves out of the degree-`degree` matrix of
+/// `polys` over its occurring variables, as a bitmask in the GPU kernel's
+/// candidate order: the generating equations (nonzero, degree at most
+/// `degree`) in order, and within each its multipliers of degree `0, 1, …`,
+/// each degree in colex order — ascending integer order of the multiplier's
+/// mask over the compacted variables.  `None` when the plan is empty.
+///
+/// This is the host half of F5 on the device: the symbolic preprocessing
+/// picks the rows, the kernel eliminates only the rest.
+pub fn f5_row_mask(polys: &[F2BoolPoly], n_vars: usize, degree: u32) -> Option<Vec<u32>> {
+    let generating: Vec<(&F2BoolPoly, u32)> = polys
+        .iter()
+        .filter(|p| !p.is_zero())
+        .map(|p| (p, poly_degree(p)))
+        .filter(|&(_, d)| d <= degree)
+        .collect();
+    let occurring = generating
+        .iter()
+        .flat_map(|(p, _)| p.terms.iter())
+        .fold(0u64, |acc, t| acc | t.mask);
+    let layout = Layout::new(occurring, n_vars, degree);
+    let plan = F5Plan::new(&generating, &layout, degree)?;
+    let v = layout.bits.len();
+    let mut mask: Vec<u32> = Vec::new();
+    let mut row = 0usize;
+    let mut any = false;
+    for (i, &(_, d)) in generating.iter().enumerate() {
+        let k = (degree - d) as usize;
+        for j in 0..=k.min(v) {
+            // j-subsets of the v compact variables, ascending: Gosper's hack.
+            let mut c: u128 = (1u128 << j) - 1;
+            while c < (1u128 << v) {
+                let mut u = 0u64;
+                let mut rest = c;
+                while rest != 0 {
+                    u |= layout.bits[rest.trailing_zeros() as usize];
+                    rest &= rest - 1;
+                }
+                if mask.len() <= row / 32 {
+                    mask.push(0);
+                }
+                if plan.skips(&layout, degree, i, d, u) {
+                    mask[row / 32] |= 1 << (row % 32);
+                    any = true;
+                }
+                row += 1;
+                if j == 0 {
+                    break;
+                }
+                let low = c & c.wrapping_neg();
+                let ripple = c + low;
+                c = (((ripple ^ c) >> 2) / low) | ripple;
+            }
+        }
+    }
+    any.then_some(mask)
+}
+
 /// Default caps: the reference builder's, with the same environment
 /// overrides (read once per call rather than once per row).
 pub fn default_caps() -> MacaulayCaps {
@@ -775,12 +1026,23 @@ pub fn default_caps() -> MacaulayCaps {
 /// units).
 ///
 /// An empty `polys` builds nothing and reports `built = false`, as the
-/// reference does.
+/// reference does.  Uses [`default_options`].
 pub fn decide(
     polys: &[F2BoolPoly],
     n_vars: usize,
     degree: u32,
     caps: MacaulayCaps,
+) -> (Option<Decision>, KernelCounters) {
+    decide_with(polys, n_vars, degree, caps, default_options())
+}
+
+/// [`decide`] with explicit [`KernelOptions`].
+pub fn decide_with(
+    polys: &[F2BoolPoly],
+    n_vars: usize,
+    degree: u32,
+    caps: MacaulayCaps,
+    opts: KernelOptions,
 ) -> (Option<Decision>, KernelCounters) {
     let mut k = KernelCounters::default();
     if polys.is_empty() {
@@ -789,7 +1051,7 @@ pub fn decide(
     SCRATCH.with(|cell| {
         let s = &mut *cell.borrow_mut();
         let t0 = std::time::Instant::now();
-        let outcome = build(polys, n_vars, degree, true, caps, s);
+        let outcome = build(polys, n_vars, degree, true, caps, opts, s);
         k.build_ns = t0.elapsed().as_nanos();
         let b = match outcome {
             BuildOutcome::Oversize => {
@@ -805,7 +1067,8 @@ pub fn decide(
         k.built = true;
         k.rows = b.ref_rows;
         k.cols = b.ref_cols;
-        k.eliminated_rows = b.rows as u64;
+        k.f5_skipped = s.stored_skip.iter().filter(|&&x| x).count() as u64;
+        k.eliminated_rows = b.rows as u64 - k.f5_skipped;
         k.eliminated_cols = b.cols as u64;
 
         let t1 = std::time::Instant::now();
@@ -823,6 +1086,7 @@ pub fn decide(
         }
         s.matrix = m;
         let rank = rref_u128(&mut s.low, width);
+        k.rank = (s.pivots.len() + rank) as u64;
         k.reduce_ns = t1.elapsed().as_nanos();
 
         let t2 = std::time::Instant::now();
@@ -855,12 +1119,23 @@ pub fn decide(
 /// form of the degree-`degree` Macaulay matrix of `polys` over all
 /// `n_vars` variables, rows in pivot order, each a polynomial with its
 /// terms in descending monomial order.  `None` when the matrix exceeds
-/// `caps`.
+/// `caps`.  Uses [`default_options`].
 pub fn matrix_rows(
     polys: &[F2BoolPoly],
     n_vars: usize,
     degree: u32,
     caps: MacaulayCaps,
+) -> (Option<Vec<F2BoolPoly>>, KernelCounters) {
+    matrix_rows_with(polys, n_vars, degree, caps, default_options())
+}
+
+/// [`matrix_rows`] with explicit [`KernelOptions`].
+pub fn matrix_rows_with(
+    polys: &[F2BoolPoly],
+    n_vars: usize,
+    degree: u32,
+    caps: MacaulayCaps,
+    opts: KernelOptions,
 ) -> (Option<Vec<F2BoolPoly>>, KernelCounters) {
     let mut k = KernelCounters::default();
     if polys.is_empty() {
@@ -870,7 +1145,7 @@ pub fn matrix_rows(
     SCRATCH.with(|cell| {
         let s = &mut *cell.borrow_mut();
         let t0 = std::time::Instant::now();
-        let outcome = build(polys, n_vars, degree, false, caps, s);
+        let outcome = build(polys, n_vars, degree, false, caps, opts, s);
         k.build_ns = t0.elapsed().as_nanos();
         let b = match outcome {
             BuildOutcome::Oversize => {
@@ -886,7 +1161,8 @@ pub fn matrix_rows(
         k.built = true;
         k.rows = b.ref_rows;
         k.cols = b.ref_cols;
-        k.eliminated_rows = b.rows as u64;
+        k.f5_skipped = s.stored_skip.iter().filter(|&&x| x).count() as u64;
+        k.eliminated_rows = b.rows as u64 - k.f5_skipped;
         k.eliminated_cols = b.cols as u64;
 
         let t1 = std::time::Instant::now();
@@ -915,6 +1191,7 @@ pub fn matrix_rows(
             }
         }
         k.word_ops = ops;
+        k.rank = pivots.len() as u64;
         k.reduce_ns = t1.elapsed().as_nanos();
 
         let t2 = std::time::Instant::now();
@@ -1160,6 +1437,74 @@ mod tests {
             }
         }
         assert!(compared > 40, "only {compared} matrices compared");
+    }
+
+    /// The F5 plan must leave every reduced echelon form — so every row the
+    /// exact kernel returns and every decision — exactly as it was, and must
+    /// actually leave rows out once the degree admits a trivial syzygy.
+    #[test]
+    fn f5_pruning_changes_no_answer() {
+        let f5 = KernelOptions { f5: true };
+        let mut rng = StdRng::seed_from_u64(0x000F_50F5);
+        let mut skipped = 0u64;
+        let mut compared = 0usize;
+        for case in 0..250 {
+            let n_vars = 3 + case % 8;
+            let max_deg = 1 + (case as u32 % 3);
+            let polys = random_system(&mut rng, n_vars, max_deg);
+            if polys.is_empty() {
+                continue;
+            }
+            for degree in max_deg..=max_deg + 3 {
+                let Some((ref_rows, _)) = matrix_f4_f2_reference(&polys, n_vars, degree, CAPS)
+                else {
+                    continue;
+                };
+                let (rows, rk) = matrix_rows_with(&polys, n_vars, degree, CAPS, f5);
+                assert_eq!(rows.as_ref(), Some(&ref_rows), "rows, degree {degree}");
+                let (d, dk) = decide_with(&polys, n_vars, degree, CAPS, f5);
+                assert_eq!(d, Some(decision_of(&ref_rows)), "decision, degree {degree}");
+                let plain = decide_with(&polys, n_vars, degree, CAPS, KernelOptions::default());
+                assert_eq!(
+                    (dk.rows, dk.cols),
+                    (plain.1.rows, plain.1.cols),
+                    "caps units"
+                );
+                skipped += rk.f5_skipped + dk.f5_skipped;
+                compared += 1;
+            }
+        }
+        assert!(compared > 500, "only {compared} compared");
+        assert!(skipped > 1000, "F5 left out only {skipped} rows");
+    }
+
+    /// Decomposition systems at degrees 4 and 5, where the Koszul and
+    /// field-equation syzygies of their quadratic equations first fit.
+    #[test]
+    fn f5_pruning_on_decomposition_systems() {
+        let f5 = KernelOptions { f5: true };
+        let kc = KoblitzCurve::new(0, 9).unwrap();
+        let fb = build_frobenius_factor_base(&kc, 0).unwrap();
+        let st = FieldStructure::new(kc.n, &kc.curve.irreducible);
+        let mut skipped = 0u64;
+        for raw in [3u64, 77, 301] {
+            let x_r =
+                crate::binary_ecc::F2mElement::from_biguint(&num_bigint::BigUint::from(raw), 9);
+            let sys =
+                build_decomposition_system(&fb.subspace_basis, &x_r, &kc.curve.b, 2, &st).unwrap();
+            for degree in 4..=5 {
+                let reference = matrix_f4_f2_reference(&sys.equations, sys.n_vars, degree, CAPS)
+                    .expect("within the caps")
+                    .0;
+                let (rows, k) = matrix_rows_with(&sys.equations, sys.n_vars, degree, CAPS, f5);
+                assert_eq!(rows.unwrap(), reference, "degree {degree}");
+                assert!(k.f5_skipped > 0, "nothing left out at degree {degree}");
+                skipped += k.f5_skipped;
+                let (d, _) = decide_with(&sys.equations, sys.n_vars, degree, CAPS, f5);
+                assert_eq!(d.unwrap(), decision_of(&reference));
+            }
+        }
+        assert!(skipped > 0);
     }
 
     #[test]
