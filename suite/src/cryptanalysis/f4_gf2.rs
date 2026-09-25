@@ -168,6 +168,11 @@ pub struct KernelCounters {
 /// fall back to a hash map.
 const RANK_LIMIT: u64 = 1 << 20;
 
+/// A candidate matrix of at most this many words is filled before its
+/// reference column count is known; a larger one is counted sparsely first,
+/// so a matrix the caps refuse is never allocated.
+const FILL_LIMIT: usize = 1 << 22;
+
 /// `C(n, k)` for `n, k ≤ 64`, saturating at `u64::MAX`.
 fn binom() -> &'static [[u64; 65]; 65] {
     static TABLE: OnceLock<Box<[[u64; 65]; 65]>> = OnceLock::new();
@@ -260,8 +265,8 @@ struct Scratch {
     generation: u32,
     /// Rank (or hash id) → distinct index while building, then → column.
     remap: Vec<u32>,
-    /// Distinct monomials: `(rank or id, mask, largest row slack)`.
-    distinct: Vec<(u32, u64, u8)>,
+    /// Distinct monomials: `(rank or id, mask)`.
+    distinct: Vec<(u32, u64)>,
     /// Column → monomial mask, in column order.
     col_mask: Vec<u64>,
     /// Row-major bit matrix of the nonempty rows.
@@ -575,6 +580,7 @@ fn build(
         s.hash.clear();
     }
     let generation = s.generation;
+    let mut max_key = 0u32;
     for (i, &(p, pdeg)) in generating.iter().enumerate() {
         let k = (degree - pdeg) as usize;
         for_each_multiplier(&layout.bits, k, |u, du| {
@@ -587,24 +593,23 @@ fn build(
             );
             for t in &p.terms {
                 let x = t.mask | u;
-                let (key, di) = if use_rank {
+                let key = if use_rank {
                     let r = layout.rank(x) as usize;
                     if s.stamp[r] != generation {
                         s.stamp[r] = generation;
                         s.remap[r] = s.distinct.len() as u32;
-                        s.distinct.push((r as u32, x, slack));
+                        s.distinct.push((r as u32, x));
                     }
-                    (r as u32, s.remap[r] as usize)
+                    r as u32
                 } else {
                     let next_id = s.distinct.len() as u32;
                     let id = *s.hash.entry(x).or_insert(next_id);
                     if id == next_id {
-                        s.distinct.push((id, x, slack));
+                        s.distinct.push((id, x));
                     }
-                    (id, id as usize)
+                    id
                 };
-                let entry = &mut s.distinct[di];
-                entry.2 = entry.2.max(slack);
+                max_key = max_key.max(key);
                 s.prov.push(key);
             }
         });
@@ -615,15 +620,16 @@ fn build(
         return BuildOutcome::Empty;
     }
 
-    // Reference columns, before cancellation: an upper bound.
-    let cols_bound = if missing == 0 {
-        s.distinct.len() as u64
-    } else {
-        s.distinct.iter().fold(0u64, |acc, e| {
-            acc.saturating_add(upto(missing, e.2 as usize))
-        })
-    };
-    if cols_bound > caps.max_cols as u64 && exact_reference_cols_exceed(missing, caps, s) {
+    // Reference columns, before cancellation: an upper bound.  When it
+    // exceeds the cap, a matrix small enough to fill is counted exactly by
+    // the fill below; only a larger one is counted sparsely first.
+    let max_slack = s.row_slack.iter().copied().max().unwrap_or(0) as usize;
+    let cols_bound = (s.distinct.len() as u64).saturating_mul(upto(missing, max_slack));
+    let fill_words = candidates.saturating_mul(s.distinct.len().div_ceil(64));
+    if cols_bound > caps.max_cols as u64
+        && fill_words > FILL_LIMIT
+        && exact_reference_cols_exceed(missing, caps, s)
+    {
         return BuildOutcome::Oversize;
     }
 
@@ -678,12 +684,23 @@ fn build(
     s.stored_skip.clear();
     let mut stored = 0usize;
     let mut ref_rows = 0u64;
+    assert!(
+        (max_key as usize) < s.remap.len(),
+        "column key out of range"
+    );
     for row in 0..candidates {
         let dst = stored * stride;
         let (lo, hi) = (s.row_start[row] as usize, s.row_start[row + 1] as usize);
+        let words = &mut s.matrix[dst..dst + stride];
         for &key in &s.prov[lo..hi] {
-            let c = s.remap[key as usize] as usize;
-            s.matrix[dst + c / 64] ^= 1u64 << (c % 64);
+            // SAFETY: every key is at most `max_key`, inside `remap`
+            // (asserted above), and `remap` sends every key that occurs to a
+            // column `< n_cols ≤ 64 · stride`.
+            let c = unsafe { *s.remap.get_unchecked(key as usize) } as usize;
+            debug_assert!(c < n_cols);
+            unsafe {
+                *words.get_unchecked_mut(c / 64) ^= 1u64 << (c % 64);
+            }
         }
         let words = &s.matrix[dst..dst + stride];
         if words.iter().all(|&w| w == 0) {
@@ -845,6 +862,40 @@ fn xor_row_suffix(m: &mut [u64], stride: usize, dst: usize, src: usize, from: us
     }
 }
 
+/// `rows[dst] ^= rows[src]` over words `from..stride`, then the leading
+/// column of the result at or after word `from`.
+///
+/// The rows here are a few words long, so bounds checks and slice
+/// splitting cost as much as the XOR; one assertion covers both rows.
+#[inline]
+fn xor_then_lead(
+    m: &mut [u64],
+    stride: usize,
+    dst: usize,
+    src: usize,
+    from: usize,
+) -> Option<usize> {
+    assert!(dst != src && dst.max(src) * stride + stride <= m.len() && from <= stride);
+    let base = m.as_mut_ptr();
+    // SAFETY: both rows lie inside `m` (asserted) and are distinct, so the
+    // ranges `dst*stride..` and `src*stride..` of length `stride` are
+    // disjoint; every access is at an offset in `from..stride`.
+    unsafe {
+        let d = base.add(dst * stride);
+        let p = base.add(src * stride).cast_const();
+        for w in from..stride {
+            *d.add(w) ^= *p.add(w);
+        }
+        for w in from..stride {
+            let v = *d.add(w);
+            if v != 0 {
+                return Some(w * 64 + v.trailing_zeros() as usize);
+            }
+        }
+    }
+    None
+}
+
 /// Forward elimination over columns `0 .. stop`.
 ///
 /// Rows are bucketed by leading column, so a column's pivot is found
@@ -886,9 +937,8 @@ fn echelon(m: &mut [u64], rows: usize, stride: usize, stop: usize, s: &mut Scrat
         while r != NIL {
             let row = r as usize;
             let after = s.next[row];
-            xor_row_suffix(m, stride, row, piv, from);
             ops += (stride - from) as u64;
-            match lead_from(&m[row * stride..(row + 1) * stride], from) {
+            match xor_then_lead(m, stride, row, piv, from) {
                 Some(c2) if c2 < stop => {
                     s.next[row] = s.head[c2];
                     s.head[c2] = r;
