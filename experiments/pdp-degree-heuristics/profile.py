@@ -110,11 +110,6 @@ def pdp_config(m: int, limits: macaulay.Limits, formulation: str = "direct") -> 
     }
 
 
-def stage_id(fb: FactorBase, m: int, config: dict) -> str:
-    digest = sha256_hex({"factor_base": fb.record(), "point_decomposition": config})
-    return f"PS1N{fb.curve.n}C{fb.curve.tag}fb{fb.usable_points}PDP{m}xlh{digest[:12]}"
-
-
 # ------------------------------------------------------------------ workers
 _CTX: dict = {}
 

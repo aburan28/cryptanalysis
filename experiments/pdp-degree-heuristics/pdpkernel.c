@@ -427,15 +427,6 @@ long long mac_mul_rows(void *p, const int32_t *idx, int k, int nvars, const uint
     return ops;
 }
 
-/* Copy the basis row whose pivot is `col`; returns 0 if there is none. */
-int ech_row(void *p, int col, u64 *out)
-{
-    ech_t *e = p;
-    if (col < 0 || col >= e->ncols || e->pivot[col] < 0) return 0;
-    memcpy(out, e->rows + (size_t)e->pivot[col] * e->words, sizeof(u64) * e->words);
-    return 1;
-}
-
 /* --------------------------------------------- exact solution counting */
 
 /* In-place binary Moebius transform of a 2^nv table of F_2^n-valued ANF

@@ -253,23 +253,6 @@ class BooleanSystem:
             out.append(v)
         return count, np.array(out, dtype=np.uint32)
 
-    def rank_profile(self) -> dict:
-        """Base-degree ranks: independent equations and the rank of their top-degree parts."""
-        pc = np.array([bin(int(a)).count("1") for a in self.masks])
-        vecs, tops = [], []
-        top_sel = pc == self.top_degree
-        for t in range(self.n):
-            sel = ((self.coeffs >> np.uint64(t)) & np.uint64(1)).astype(bool)
-            v = 0
-            tv = 0
-            for p in np.flatnonzero(sel).tolist():
-                v |= 1 << p
-                if top_sel[p]:
-                    tv |= 1 << p
-            vecs.append(v)
-            tops.append(tv)
-        return {"equation_rank": fbmod.rank(vecs), "top_rank": fbmod.rank(tops)}
-
 
 def assignment_to_xs(fb: FactorBase, m: int, v: int) -> list[int]:
     l = fb.l

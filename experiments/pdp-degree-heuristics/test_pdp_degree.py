@@ -363,6 +363,34 @@ class SymmetricFormulationTests(unittest.TestCase):
             self.assertEqual(sorted(sols.tolist()), sorted(zeros.tolist()))
 
 
+class HeuristicsTests(unittest.TestCase):
+    def test_threshold_rule_recovers_a_planted_step(self):
+        import heuristics
+
+        rows = []
+        for n in (13, 19, 23, 31):
+            for e in range(-12, 8):
+                D = 2 + (e < -4) + (e < -9)
+                rows.append({"form": "direct", "m": 2, "n": n, "l": 5, "family": "random", "seed": e,
+                             "D": float(D), "excess": e, "censored": 0})
+        res = heuristics.fit_threshold_rule(rows)[2]
+        self.assertEqual(res["mae_fit"], 0.0)
+        self.assertEqual(res["mae_leave_one_n_out"], 0.0)
+        self.assertEqual(res["rule"]["base"], 2)
+        self.assertEqual(len(res["rule"]["thresholds"]), 2)
+
+    def test_old_receipts_get_the_zero_sum_correction(self):
+        import heuristics
+
+        card = {"cell": {"m": 2}, "factor_base": {"geometric_point_count": 10}, "curve": {"subgroup_order": 1000},
+                "yield": {"predicted": {"psi_tuples": 30, "expected_ordered": 0.03}}}
+        pred = heuristics.corrected_prediction(card)
+        self.assertEqual(pred["psi_tuples"], 20)
+        self.assertAlmostEqual(pred["expected_ordered"], 0.02)
+        card["yield"]["predicted"]["zero_sum_tuples"] = 10
+        self.assertEqual(heuristics.corrected_prediction(card)["psi_tuples"], 30)
+
+
 class MonitorTests(unittest.TestCase):
     def test_rank_tracker_mod_prime(self):
         from monitor import RankTracker

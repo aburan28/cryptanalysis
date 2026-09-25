@@ -57,7 +57,6 @@ _SIGNATURES = {
     "ech_add": (c_int, [c_void_p, _u64p, c_int, c_int, _llp]),
     "ech_count_pivots_from": (c_int, [c_void_p, c_int]),
     "ech_pivots": (c_int, [c_void_p, _i32p]),
-    "ech_row": (c_int, [c_void_p, c_int, _u64p]),
     "ech_row_pivots": (c_int, [c_void_p, _i32p]),
     "mac_mul_rows": (c_longlong, [c_void_p, _i32p, c_int, c_int, _u32p, _i32p, _u64p]),
     "anf_zeros": (c_longlong, [_u64p, c_int, _u32p, c_longlong]),
@@ -267,10 +266,6 @@ class Echelon:
         out = np.empty(max(1, self.rank), dtype=np.int32)
         k = self.L.ech_pivots(self._h, _p(out, _i32p))
         return out[:k]
-
-    def row(self, col: int) -> np.ndarray | None:
-        out = np.zeros(self.words, dtype=np.uint64)
-        return out if self.L.ech_row(self._h, col, _p(out, _u64p)) else None
 
     def row_pivots(self) -> np.ndarray:
         """Pivot column of every basis row, in insertion order."""
