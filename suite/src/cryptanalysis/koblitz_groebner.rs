@@ -1391,7 +1391,11 @@ pub fn first_fall_degree(
     let mut fall = None;
     let mut profiles = Vec::new();
     for d in 2..=d_max {
-        let prof = match macaulay_profile_sparse(polys, n_vars, d) {
+        let prof = match f4_kernel() {
+            F4Kernel::Fast => macaulay_profile_fast(polys, n_vars, d),
+            F4Kernel::Reference => macaulay_profile_sparse(polys, n_vars, d),
+        };
+        let prof = match prof {
             Some(p) => p,
             None => break,
         };
@@ -1663,7 +1667,11 @@ pub fn solving_degree(
     // Below the system's own degree the Macaulay matrix drops equations
     // rather than relaxing them; see [`solving_profile`].
     for d in system_degree(polys).max(1)..=d_max {
-        let prof = match solving_profile_sparse(polys, n_vars, d) {
+        let prof = match f4_kernel() {
+            F4Kernel::Fast => solving_profile_fast(polys, n_vars, d),
+            F4Kernel::Reference => solving_profile_sparse(polys, n_vars, d),
+        };
+        let prof = match prof {
             Some(p) => p,
             None => break,
         };
@@ -1676,6 +1684,54 @@ pub fn solving_degree(
         }
     }
     (solved, profiles)
+}
+
+/// [`solving_profile`] on the [`f4_gf2`] kernel (F5 pruning included, per
+/// [`f4_gf2::default_options`]): the same profile, field for field, from
+/// forward elimination over the high columns and a reduction of the linear
+/// block, with no full reduction.  `solving_profile_agrees_with_fast` holds
+/// the two to that.
+pub fn solving_profile_fast(
+    polys: &[F2BoolPoly],
+    n_vars: usize,
+    degree: u32,
+) -> Option<SolvingProfile> {
+    if degree < system_degree(polys) {
+        return None;
+    }
+    let (profile, counters) =
+        f4_gf2::profile_with(polys, n_vars, degree, f4_caps(), f4_gf2::default_options());
+    f4_profile_add_kernel(&counters);
+    let p = profile?;
+    let occurring = occurring_vars(polys);
+    let determined = p.forced.iter().fold(0u64, |acc, &(v, _)| acc | 1u64 << v);
+    Some(SolvingProfile {
+        degree,
+        rows: counters.rows as usize,
+        cols: counters.cols as usize,
+        rank: p.rank as usize,
+        vars_determined: (determined & occurring).count_ones() as usize,
+        vars_occurring: occurring.count_ones() as usize,
+        refuted: p.refuted,
+    })
+}
+
+/// [`macaulay_profile`] on the [`f4_gf2`] kernel.
+pub fn macaulay_profile_fast(
+    polys: &[F2BoolPoly],
+    n_vars: usize,
+    degree: u32,
+) -> Option<MacaulayProfile> {
+    let (profile, counters) =
+        f4_gf2::profile_with(polys, n_vars, degree, f4_caps(), f4_gf2::default_options());
+    f4_profile_add_kernel(&counters);
+    let p = profile?;
+    Some(MacaulayProfile {
+        degree,
+        rows: counters.rows as usize,
+        cols: counters.cols as usize,
+        rank: p.rank as usize,
+    })
 }
 
 // ── Gröbner solve with splitting ───────────────────────────────────
@@ -2850,6 +2906,58 @@ mod tests {
         assert!(compared > 100, "the comparison must actually run");
         assert!(refutations > 0, "and must cover refuted systems");
         assert!(pinnings > 0, "and systems that pin variables");
+    }
+
+    /// The fast kernel's profile must equal the dense reference's field for
+    /// field — rank, rows and columns in reference units, refutation, and
+    /// pinned variables even alongside a refutation — including systems
+    /// that leave variables unused and degrees where F5 prunes rows.
+    #[test]
+    fn solving_profile_agrees_with_fast() {
+        let mut rng = StdRng::seed_from_u64(0xFA57_9F0F);
+        let mut compared = 0usize;
+        let mut refuted = 0usize;
+        let mut pinned = 0usize;
+        for case in 0..200 {
+            let n_vars = 6 + case % 5;
+            let used = n_vars - (case % 3);
+            let n_eqs = 2 + rng.gen::<usize>() % 10;
+            let polys: Vec<F2BoolPoly> = (0..n_eqs)
+                .map(|_| {
+                    let n_terms = 1 + rng.gen::<usize>() % 4;
+                    let monos: Vec<F2BoolMono> = (0..n_terms)
+                        .map(|_| {
+                            let mut mask = 0u64;
+                            for _ in 0..(rng.gen::<u32>() % 4) {
+                                mask |= 1u64 << (rng.gen::<u32>() % used as u32);
+                            }
+                            F2BoolMono::from_mask(mask)
+                        })
+                        .collect();
+                    F2BoolPoly::from_monos(monos, n_vars)
+                })
+                .collect();
+            for d in 2..=5u32 {
+                assert_eq!(
+                    macaulay_profile(&polys, n_vars, d),
+                    macaulay_profile_fast(&polys, n_vars, d),
+                    "macaulay profile at degree {d}"
+                );
+                let dense = solving_profile(&polys, n_vars, d);
+                let fast = solving_profile_fast(&polys, n_vars, d);
+                assert_eq!(dense, fast, "solving profile at degree {d}");
+                if let Some(p) = dense {
+                    compared += 1;
+                    refuted += usize::from(p.refuted);
+                    pinned += usize::from(!p.refuted && p.vars_determined > 0);
+                }
+            }
+        }
+        assert!(compared > 300, "only {compared} compared");
+        assert!(
+            refuted > 20 && pinned > 20,
+            "{refuted} refuted, {pinned} pinned"
+        );
     }
 
     /// `xor_sorted` is addition over `F_2`: shared indices cancel.

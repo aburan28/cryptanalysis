@@ -1115,6 +1115,100 @@ pub fn decide_with(
     })
 }
 
+/// Rank and linear consequences of one Macaulay matrix, for the
+/// solving-degree and first-fall-degree sweeps.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Profile {
+    /// Rank of the reference matrix (all `n_vars` variables).
+    pub rank: u64,
+    /// The row space contains `1`.
+    pub refuted: bool,
+    /// Rows of the reduced echelon form of the form `v` or `v + 1`, in
+    /// variable order — reported even alongside a refutation, as the
+    /// reference reduction has them.
+    pub forced: Vec<(u32, bool)>,
+}
+
+/// **Profile** the reference Macaulay matrix of `polys` at `degree` —
+/// over all `n_vars` variables, so its rank and its linear rows are the
+/// reference reduction's exactly — by forward elimination over the high
+/// columns and a reduction of the linear block.  `None` over `caps`.
+pub fn profile_with(
+    polys: &[F2BoolPoly],
+    n_vars: usize,
+    degree: u32,
+    caps: MacaulayCaps,
+    opts: KernelOptions,
+) -> (Option<Profile>, KernelCounters) {
+    let mut k = KernelCounters::default();
+    if polys.is_empty() {
+        return (Some(Profile::default()), k);
+    }
+    SCRATCH.with(|cell| {
+        let s = &mut *cell.borrow_mut();
+        let t0 = std::time::Instant::now();
+        let outcome = build(polys, n_vars, degree, false, caps, opts, s);
+        k.build_ns = t0.elapsed().as_nanos();
+        let b = match outcome {
+            BuildOutcome::Oversize => {
+                k.oversize = true;
+                return (None, k);
+            }
+            BuildOutcome::Empty => {
+                k.built = true;
+                return (Some(Profile::default()), k);
+            }
+            BuildOutcome::Built(b) => b,
+        };
+        k.built = true;
+        k.rows = b.ref_rows;
+        k.cols = b.ref_cols;
+        k.f5_skipped = s.stored_skip.iter().filter(|&&x| x).count() as u64;
+        k.eliminated_rows = b.rows as u64 - k.f5_skipped;
+        k.eliminated_cols = b.cols as u64;
+        let t1 = std::time::Instant::now();
+        let mut m = std::mem::take(&mut s.matrix);
+        k.word_ops = echelon(&mut m, b.rows, b.stride, b.low_start, s);
+        let width = b.cols - b.low_start;
+        // Over all variables the linear block can exceed 65 columns only by
+        // variables the matrix never touches; it is at most n_vars + 1 ≤ 65.
+        s.low.clear();
+        for &r in &s.low_rows {
+            let r = r as usize;
+            s.low.push(extract_bits(
+                &m[r * b.stride..(r + 1) * b.stride],
+                b.low_start,
+                width,
+            ));
+        }
+        s.matrix = m;
+        let low_rank = rref_u128(&mut s.low, width);
+        k.rank = (s.pivots.len() + low_rank) as u64;
+        k.reduce_ns = t1.elapsed().as_nanos();
+        let low_masks = &s.col_mask[b.low_start..];
+        let const_bit = match low_masks.last() {
+            Some(&0) => 1u128 << (width - 1),
+            _ => 0,
+        };
+        let mut p = Profile {
+            rank: k.rank,
+            ..Profile::default()
+        };
+        for &row in &s.low[..low_rank] {
+            if const_bit != 0 && row == const_bit {
+                p.refuted = true;
+                continue;
+            }
+            let vars = row & !const_bit;
+            if vars.count_ones() == 1 {
+                let var = low_masks[vars.trailing_zeros() as usize].trailing_zeros();
+                p.forced.push((var, row & const_bit != 0));
+            }
+        }
+        (Some(p), k)
+    })
+}
+
 /// **The reference reduced rows**, bit-for-bit: the full reduced echelon
 /// form of the degree-`degree` Macaulay matrix of `polys` over all
 /// `n_vars` variables, rows in pivot order, each a polynomial with its
