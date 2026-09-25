@@ -458,6 +458,7 @@ def write_manifest(directory: Path, ident: str, record: dict) -> None:
 
 def run_suite(suite: str, jobs: int, calibration: dict, history: list[dict]) -> list[dict]:
     todo = [dict(c, suite=suite) for c in SUITES[suite]]
+    _warm_process()
     ctx = multiprocessing.get_context("spawn")
     results = []
     with ProcessPoolExecutor(max_workers=jobs, mp_context=ctx, initializer=_warm_process,
