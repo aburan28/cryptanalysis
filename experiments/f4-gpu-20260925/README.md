@@ -22,7 +22,7 @@ On a GPU host, the whole checked matrix (see RESULT.md, "Running it on a
 GPU host"):
 
 ```sh
-modal run experiments/f4-gpu-20260925/modal_f4.py   # Modal H100 + 32 cores; --gpu, --cpu
+experiments/f4-gpu-20260925/run_modal.sh           # Modal H100 + 32 cores; GPU=, CPU=
 python3 experiments/f4-gpu-20260925/gpu_bench.py --out /tmp/f4-gpu   # any CUDA host
 ```
 

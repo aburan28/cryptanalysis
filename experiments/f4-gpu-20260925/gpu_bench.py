@@ -10,8 +10,8 @@ Expects the release binaries of `suite/` built with
         --example f4_batch_bench --example groebner_stage_bench
 
 and, for the CUDA backend, an NVIDIA driver plus NVRTC (`CA_NVRTC_LIB` names
-the library when it is not on the loader path).  `modal_f4.py` runs exactly
-this on a Modal GPU.
+the library when it is not on the loader path).  `run_modal.sh` runs exactly
+this on a Modal GPU through `cloud/modal_run.py`.
 
 What it runs, every step checked:
 
