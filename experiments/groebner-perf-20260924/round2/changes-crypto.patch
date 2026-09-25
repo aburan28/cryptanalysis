@@ -1,0 +1,72 @@
+--- round1/f4.rs
++++ /Volumes/SSD990/crypto/research/gbrl/src/f4.rs
+@@ -170,32 +170,30 @@
+     }
+ }
+ 
+-// === Stubs that need real implementation ==============================
+-
+ /// Symbolic preprocessing (Faugère 1999, §3.3).
+ ///
+ /// Given a set of polynomials to reduce against `basis`, walk each polynomial's
+-/// non-leading monomials, and for every monomial m that has a basis poly g with
++/// monomials, and for every monomial m that has a basis poly g with
+ /// LM(g) dividing m, add the *shifted* g (m/LM(g) * g) as an extra row so the
+ /// matrix-stage reduction can cancel m. Returns:
+ ///   - rows: S-polys ∪ all shifted reductors
+ ///   - columns: the union of monomials appearing in any row, sorted descending.
+ ///
+-/// TODO: implement. Use a worklist over monomials to discover new reductors.
+ pub fn symbolic_preprocess(s_polys: Vec<Poly>, basis: &[Poly]) -> (Vec<Poly>, Vec<Monomial>) {
+     let mut rows = s_polys;
+     let mut seen: HashSet<Monomial> = HashSet::new();
+-    let mut work: Vec<Monomial> = rows
+-        .iter()
+-        .flat_map(|p| p.terms.iter().map(|t| t.mono.clone()))
+-        .collect();
++    let mut work = Vec::new();
++    // Intern on discovery, rather than allocating a worklist entry for every
++    // occurrence. The set is also precisely the final column union.
++    for p in &rows {
++        for term in &p.terms {
++            if !seen.contains(&term.mono) {
++                seen.insert(term.mono.clone());
++                work.push(term.mono.clone());
++            }
++        }
++    }
+     while let Some(mono) = work.pop() {
+-        // One reducer per monomial is sufficient. Repeated visits previously
+-        // skipped an already-used (basis index, multiplier) and fell through
+-        // to additional reducers, inflating both the worklist and the matrix.
+-        if !seen.insert(mono.clone()) {
+-            continue;
+-        }
+         for g in basis {
+             let Some(lm) = g.lm() else {
+                 continue;
+@@ -205,18 +203,17 @@
+             };
+             let shifted = g.mul_term(crate::field::Fp::one(), &multiplier);
+             for term in &shifted.terms {
+-                work.push(term.mono.clone());
++                if !seen.contains(&term.mono) {
++                    seen.insert(term.mono.clone());
++                    work.push(term.mono.clone());
++                }
+             }
+             rows.push(shifted);
+             break;
+         }
+     }
+-    let mut columns: Vec<Monomial> = rows
+-        .iter()
+-        .flat_map(|p| p.terms.iter().map(|t| t.mono.clone()))
+-        .collect();
+-    columns.sort_by(|a, b| b.cmp(a));
+-    columns.dedup();
++    let mut columns: Vec<Monomial> = seen.into_iter().collect();
++    columns.sort_unstable_by(|a, b| b.cmp(a));
+     (rows, columns)
+ }
+ 
