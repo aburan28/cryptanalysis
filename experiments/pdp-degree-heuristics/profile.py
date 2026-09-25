@@ -492,6 +492,12 @@ def run(args) -> list[dict]:
     seeds = [int(s) for s in args.seeds.split(",")]
     limits = {"d_max": args.d_max, "max_cols": args.max_cols, "max_rows": args.max_rows}
     cards = []
+    done: set[tuple] = set()
+    if args.skip_existing and args.out and Path(args.out).exists():
+        for line in Path(args.out).read_text().splitlines():
+            if line.strip():
+                c = json.loads(line)["cell"]
+                done.add((c["n"], c["m"], c["l"], c["family"], c["seed"], c.get("formulation", "direct")))
     ns = [int(v) for v in args.n.split(",")]
     ls = []
     for part in args.l.split(","):
@@ -510,6 +516,8 @@ def run(args) -> list[dict]:
                 cfgs = []
                 for fam in families:
                     for seed in (seeds if fam not in ("prefix",) else [0]):
+                        if (n, args.m, l, fam, seed, args.formulation) in done:
+                            continue
                         cfg = {
                             "n": n, "m": args.m, "l": l, "family": fam, "seed": seed, "limits": limits,
                             "dreg": args.dreg, "dreg_targets": args.dreg_targets,
@@ -594,6 +602,7 @@ def main() -> None:
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
     ap.add_argument("--out", default="")
     ap.add_argument("--trace", default="")
+    ap.add_argument("--skip-existing", action="store_true", help="skip factor bases already in --out (resume)")
     run(ap.parse_args())
 
 

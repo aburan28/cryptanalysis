@@ -218,6 +218,17 @@ class FactorBaseTests(unittest.TestCase):
         fb = FactorBase(C, "random", 5, 1)
         self.assertGreater(product_profile(C.K, fb.basis, 2)[1], 9)
 
+    def test_trace_zero_progression_keeps_profile_and_doubles_yield(self):
+        C = ToyCurve(23)
+        for seed in (1, 2):
+            gt = FactorBase(C, "geomtrace", 6, seed)
+            self.assertEqual(product_profile(C.K, gt.basis, 3), minimal_profile(23, 6, 3))
+            self.assertTrue(all(C.K.trace(v) == 0 for v in gt.basis))
+            labels = C.z4_labels(gt.xs, gt.ys)
+            self.assertTrue(all(k % 2 == 0 for k in labels))  # every point in 2E
+            ratio = predicted_yield(gt, 2)["expected_ordered"] / predicted_yield(gt, 2)["basic_expected_ordered"]
+            self.assertGreater(ratio, 1.6)
+
     def test_frobenius_stable_subspace_and_folded_columns(self):
         C = ToyCurve(31)
         fb = FactorBase(C, "invariant", 5, 1)

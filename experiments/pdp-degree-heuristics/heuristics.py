@@ -473,6 +473,12 @@ def build_report(cards: list[dict], runs: list[dict] | None = None) -> dict[str,
         for mode in modes:
             for m in sorted({r["m"] for r in rows_by_mode[mode] if r["form"] == form}):
                 sections[f"MATCHED_{form.upper()}_M{m}_{mode.upper()}"] = matched_table(cells[mode], form, m, mode)
+    if "mxl" in cells:
+        sections["SEL_M2"] = matched_table(cells["mxl"], "direct", 2, "mxl", ns=[23, 41], ls=[5, 6, 7, 8])
+        sections["SEL_M3"] = matched_table(cells["mxl"], "direct", 3, "mxl", ns=[31, 47], ls=[3, 4])
+        if "sym" in forms:
+            sections["SEL_SYM_M2"] = matched_table(cells["mxl"], "sym", 2, "mxl", ns=[23, 41], ls=[5, 6, 7])
+            sections["SEL_SYM_M3"] = matched_table(cells["mxl"], "sym", 3, "mxl", ns=[23, 31, 47], ls=[3, 4])
     if runs:
         sections["COLLECT"] = collection_table(runs)
     return sections
