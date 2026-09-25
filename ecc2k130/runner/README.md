@@ -70,9 +70,19 @@ target retains scalar inversion for 385,024-worker populations. Measurements and
 checkpoint compatibility receipts are in
 [the reconciliation report](research/DP-RECONCILIATION.md).
 
-The 2026-09-21 rollout runs four RTX PRO 6000 workers for 23 hours in
+The 2026-09-25 rollout resumes runs 12,000–12,003 from their S3 checkpoints on
+four RTX PRO 6000 workers in
+[Modal app ap-0QctCWSXDTzBSyBYcjVM3i](https://modal.com/apps/a-buran28/main/ap-0QctCWSXDTzBSyBYcjVM3i),
+until 2026-09-26 02:47 UTC. It is the first rollout of the fused Frobenius build
+(profile v2). That exact image passed the legacy compatibility gate in
+[its validation receipt](research/production/2026-09-25-fused-deployment-validation.json).
+At startup the four clients reported 70.08 billion updates/s in total, zero
+drops, advancing checkpoints and matching RDS samples. See the
+[deployment receipt](research/production/2026-09-25-fused-deployment.json).
+
+The 2026-09-21 rollout ran four RTX PRO 6000 workers in
 [Modal app ap-89OUG2uEQpkkKtdd1WO8ru](https://modal.com/apps/a-buran28/main/ap-89OUG2uEQpkkKtdd1WO8ru).
-Run 12,000 resumes the successful three-minute canary; runs 12,001–12,003 start
+Run 12,000 resumed the successful three-minute canary; runs 12,001–12,003 started
 fresh. The older volume-backed jobs were stopped gracefully, with their final
 checkpoints and 71,194,498 stored DP records verified in the persistent volume.
 See the [deployment receipt](research/production/2026-09-21-120k-deployment.json)
