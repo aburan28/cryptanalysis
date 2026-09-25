@@ -180,6 +180,62 @@ enum Cmd {
         #[command(subcommand)]
         op: EcChallengesOp,
     },
+    /// Isogeny / CM research module: class groups, Vélu's formulas,
+    /// ℓ-isogeny volcanoes, the secp256k1 case study, and experimental
+    /// ECDLP sweeps across an isogeny class.
+    Isogeny {
+        #[command(subcommand)]
+        op: IsogenyOp,
+    },
+}
+
+#[derive(Subcommand)]
+enum IsogenyOp {
+    /// Map the ℓ-volcano of a small curve.
+    /// `<curve>` is a built-in name: `toy-a`, `toy-b`, `toy-j0`.
+    Volcano {
+        #[arg(long, default_value = "toy-b")]
+        curve: String,
+        #[arg(long, default_value_t = 2)]
+        ell: u64,
+        #[arg(long, default_value_t = 4)]
+        depth: usize,
+    },
+    /// Build and display the S-isogeny graph for a small curve.
+    /// `<ell-list>` is comma-separated, e.g. `2,3,5`.
+    Graph {
+        #[arg(long, default_value = "toy-b")]
+        curve: String,
+        #[arg(long, default_value = "2,3")]
+        ell_list: String,
+        #[arg(long, default_value_t = 64)]
+        max_nodes: usize,
+    },
+    /// Compute class-group data for a negative discriminant `D`.
+    Cm {
+        /// Discriminant (must be negative, e.g. `-23`).
+        #[arg(long, allow_hyphen_values = true)]
+        discriminant: i64,
+    },
+    /// Run the experimental harness: random curves, isogeny
+    /// sweep, attack suite, JSON report.
+    Experiment {
+        #[arg(long, default_value_t = 10)]
+        bits: u32,
+        #[arg(long, default_value_t = 2)]
+        trials: u32,
+        #[arg(long, default_value = "2,3")]
+        ell_list: String,
+        /// Override the Pollard-rho iteration cap.  Defaults to the
+        /// `8·2^{bits/2}` heuristic below.  Frozen artifacts under
+        /// `experiments/` were produced with explicit caps (2^14, 2^18),
+        /// so reproducing them needs this.
+        #[arg(long)]
+        rho_cap: Option<u64>,
+    },
+    /// secp256k1 case study: GLV constants, twist analysis, MOV
+    /// embedding-degree certificate, small-degree-isogeny survey.
+    Secp256k1,
 }
 
 #[derive(Subcommand)]
@@ -546,6 +602,7 @@ fn run(op: Cmd) {
         Cmd::RhoCollab { op } => cmd_rho_collab(*op),
         Cmd::Mlwe { op } => cli_mlwe::run(op),
         Cmd::EcChallenges { op } => cmd_ec_challenges(op),
+        Cmd::Isogeny { op } => cmd_isogeny(op),
         Cmd::HashAuto { hash } => {
             use cryptanalysis_suite::cryptanalysis::hash_attacks::auto_hash_attack;
             match auto_hash_attack(&hash) {
@@ -1269,6 +1326,227 @@ fn cmd_rho_collab(op: RhoCollabOp) {
                 if units.len() > 40 {
                     println!("… {} more units", units.len() - 40);
                 }
+            }
+        }
+    }
+}
+
+// ── Isogeny subcommands ───────────────────────────────────────────────────────
+
+fn parse_isogeny_curve(name: &str) -> cryptanalysis_suite::isogeny::SmallCurve {
+    use cryptanalysis_suite::isogeny::{toy_curve_a, toy_curve_b, toy_curve_j0};
+    match name {
+        "toy-a" | "toy-2003" => toy_curve_a(),
+        "toy-b" | "toy-101" => toy_curve_b(),
+        "toy-j0" | "toy-j0-103" => toy_curve_j0(),
+        _ => {
+            eprintln!("unknown curve `{}`; try one of: toy-a, toy-b, toy-j0", name);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn parse_ell_list(s: &str) -> Vec<u64> {
+    s.split(',')
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .map(|t| {
+            t.parse::<u64>().unwrap_or_else(|_| {
+                eprintln!("bad ell value `{}` in ell-list", t);
+                std::process::exit(1);
+            })
+        })
+        .collect()
+}
+
+fn cmd_isogeny(op: IsogenyOp) {
+    use cryptanalysis_suite::isogeny::{
+        class_group::{class_above_prime, class_number, enumerate_reduced_forms, ClassGroup},
+        cm::{cm_discriminant, fundamental_discriminant_and_conductor},
+        experiment::{run_experiment, to_json, ExperimentConfig},
+        graph::build_graph,
+        secp256k1_analysis::{
+            beta, embedding_degree_secp256k1, lambda, run_secp256k1_suite,
+            small_degree_isogeny_survey, twist_pairing_friendly_check,
+        },
+        volcano::{j_invariant, map_volcano, position},
+    };
+    use num_bigint::BigInt;
+
+    match op {
+        IsogenyOp::Volcano { curve, ell, depth } => {
+            let c = parse_isogeny_curve(&curve);
+            let m = map_volcano(&c, ell, depth, 256);
+            let pos = position(&c, ell);
+            println!("# ℓ-isogeny volcano for `{}` at ℓ = {}", curve, ell);
+            println!();
+            println!(
+                "Curve:           y² = x³ + {}x + {}  over  F_{}",
+                c.a, c.b, c.p
+            );
+            println!("j-invariant:     {}", j_invariant(&c));
+            println!("Frobenius trace: {}", m.start_cm.trace);
+            println!("#E(F_p):         {}", m.start_cm.order);
+            println!(
+                "End(E) disc:     {}   (fundamental {}, conductor {})",
+                m.start_cm.endomorphism_disc, m.start_cm.fundamental_disc, m.start_cm.conductor,
+            );
+            println!(
+                "Position:        depth {}, crater_size {}, on_crater = {}",
+                pos.depth, pos.crater_size, pos.on_crater,
+            );
+            println!();
+            for level in &m.levels {
+                let n = level.j_invariants.len();
+                println!(
+                    "Level {:>2}: {:>3} vertices  j = {:?}",
+                    level.level, n, level.j_invariants
+                );
+            }
+        }
+        IsogenyOp::Graph {
+            curve,
+            ell_list,
+            max_nodes,
+        } => {
+            let c = parse_isogeny_curve(&curve);
+            let primes = parse_ell_list(&ell_list);
+            let g = build_graph(&c, &primes, max_nodes);
+            println!(
+                "# {}-isogeny graph for `{}`",
+                primes
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(","),
+                curve
+            );
+            println!();
+            println!("Vertices: {}", g.order());
+            println!("Edges:    {}", g.size());
+            let comps = g.connected_components();
+            println!("Components: {}", comps.len());
+            let diam = g.diameter();
+            println!("Diameter: {}", diam);
+            println!("Has cycle of length ≥ 3: {}", g.has_long_cycle());
+            println!();
+            for node in g.nodes.iter().take(32) {
+                let neigh: Vec<String> = g.adj[node.index]
+                    .iter()
+                    .map(|&(n, l)| format!("{}(ℓ={})", n, l))
+                    .collect();
+                println!(
+                    "  [{:>3}] j={} curve=(p={}, a={}, b={}) -> {}",
+                    node.index,
+                    node.j,
+                    node.curve.0,
+                    node.curve.1,
+                    node.curve.2,
+                    neigh.join(", "),
+                );
+            }
+            if g.order() > 32 {
+                println!("  ... ({} more vertices omitted)", g.order() - 32);
+            }
+        }
+        IsogenyOp::Cm { discriminant } => {
+            if discriminant >= 0 {
+                eprintln!("discriminant must be negative");
+                std::process::exit(1);
+            }
+            let d = BigInt::from(discriminant);
+            let (fund, cond) = fundamental_discriminant_and_conductor(discriminant);
+            let h = class_number(&d);
+            println!("# CM data for D = {}", discriminant);
+            println!();
+            println!("Fundamental disc:  {}", fund);
+            println!("Conductor:         {}", cond);
+            println!("Class number h(D): {}", h);
+            println!();
+            println!("Reduced forms (representatives of Cl(O)):");
+            for f in enumerate_reduced_forms(&d) {
+                println!("  {}", f);
+            }
+            if h <= 64 {
+                let cg = ClassGroup::new(&d);
+                println!();
+                println!("Identity (principal form): {}", cg.identity());
+                if let Some(t) = &cg.mul_table {
+                    println!();
+                    println!("Multiplication table (indices):");
+                    for row in t {
+                        let cells: Vec<String> = row.iter().map(|i| format!("{:>2}", i)).collect();
+                        println!("  {}", cells.join(" "));
+                    }
+                }
+            }
+            println!();
+            println!("Small-prime ideal classes above ℓ:");
+            for ell in [2u64, 3, 5, 7, 11, 13] {
+                if let Some(f) = class_above_prime(&d, ell) {
+                    println!("  ℓ = {:>2}:  {}", ell, f);
+                } else {
+                    println!("  ℓ = {:>2}:  inert / ramified (no split prime form)", ell);
+                }
+            }
+        }
+        IsogenyOp::Experiment {
+            bits,
+            trials,
+            ell_list,
+            rho_cap,
+        } => {
+            let mut cfg = ExperimentConfig::default_for_bits(bits);
+            cfg.num_curves = trials.max(1);
+            cfg.primes = parse_ell_list(&ell_list);
+            cfg.max_graph_nodes = 16;
+            // Cap scales with √n.  Hasse interval is centred at p, so
+            // √n ≈ √p = 2^{bits/2}.  Allow 8× headroom for the
+            // geometric-distribution tail.
+            let half_bits = cfg.bits.min(60) / 2;
+            cfg.rho_max_iters =
+                rho_cap.unwrap_or_else(|| 8u64.checked_shl(half_bits).unwrap_or(u64::MAX));
+            eprintln!(
+                "# Running isogeny experiment: bits={}, trials={}, ell={:?}",
+                cfg.bits, cfg.num_curves, cfg.primes,
+            );
+            let report = run_experiment(&cfg);
+            println!("{}", to_json(&report));
+            eprintln!(
+                "[summary] {} starting curves, {} isogenous vertices, mean rho iters = {:.1}",
+                report.aggregate.total_curves,
+                report.aggregate.total_isogenous_vertices,
+                report.aggregate.overall_mean_rho_iters,
+            );
+        }
+        IsogenyOp::Secp256k1 => {
+            let _ = cm_discriminant;
+            let _ = map_volcano;
+            let _ = twist_pairing_friendly_check;
+            let (beta_ok, lambda_ok, mov_inf, twist_safe) = run_secp256k1_suite();
+            println!("# secp256k1 case study");
+            println!();
+            println!("β (cube root of 1 in F_p):");
+            println!("  hex = {:x}", beta());
+            println!("  β³ ≡ 1 (mod p):       {}", beta_ok);
+            println!();
+            println!("λ (eigenvalue of φ on the n-torsion):");
+            println!("  hex = {:x}", lambda());
+            println!("  λ² + λ + 1 ≡ 0 (mod n): {}", lambda_ok);
+            println!();
+            println!("MOV / Frey–Rück feasibility:");
+            println!(
+                "  certificate: k > 200, embedding degree ≥ {}",
+                embedding_degree_secp256k1(),
+            );
+            println!("  → MOV infeasible: {}", mov_inf);
+            println!();
+            println!("Quadratic-twist pairing-friendly survey (k ≤ 32):");
+            println!("  → twist pairing-friendly: {}", !twist_safe);
+            println!();
+            println!("Small-degree-isogeny structural survey (Z[ω], disc = -3):");
+            for (ell, status) in small_degree_isogeny_survey(&[2, 3, 5, 7, 11, 13, 17, 19, 23]) {
+                println!("  ℓ = {:>2}:  {}", ell, status);
             }
         }
     }

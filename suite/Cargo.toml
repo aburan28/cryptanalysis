@@ -32,6 +32,12 @@ path = "src/main.rs"
 name = "ca-ic"
 path = "src/bin/ic.rs"
 
+# Index calculus across every standardized curve: the curve catalog, the
+# engine that picks an attack per curve, and the configurable framework.
+[[bin]]
+name = "ca-icx"
+path = "src/bin/icx.rs"
+
 # Sealed-oracle / blind-bundle Phase-A point-decomposition artifact sets.
 [[bin]]
 name = "ca-koblitz-pdp-prepare"
@@ -51,6 +57,8 @@ redis-cache = ["dep:redis"]
 # at build time and no new crate.  The CUDA backend needs no feature at all:
 # libcuda and NVRTC are opened at run time.
 gpu-emulator = []
+# Verbose tracing in the isogeny rho attack's linear-algebra step.
+rho_debug = []
 
 [dependencies]
 redis = { version = "0.32", optional = true, default-features = false, features = ["tls-rustls"] }
@@ -79,7 +87,9 @@ libca = { package = "cryptanalysis", path = "../bindings/rust/cryptanalysis" }
 [lints.rust]
 # md5_hashclash_ffi links the external HashClash library only when a build
 # script sets this cfg; the default build compiles the fallback path.
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(hashclash_linked)"] }
+# `suite_avx512` is set by build.rs on toolchains (1.89+) where AVX-512
+# target features are stable.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(hashclash_linked)", "cfg(suite_avx512)"] }
 
 [lints.clippy]
 # The tree is clean under `clippy --all-targets -- -D warnings` with exactly
