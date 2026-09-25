@@ -23,7 +23,7 @@ WORKDIR=/workspace/cryptanalysis
 RESTART=0
 [[ "${1:-}" == "--restart" ]] && RESTART=1
 
-mkdir -p "$FLEET" "$LOGS" "$SECRETS" "$PHOME" /workspace/jobs /workspace/opt
+mkdir -p "$FLEET" "$LOGS" "$SECRETS" "$PHOME" /workspace/jobs /workspace/opt /scratch
 chmod 700 "$SECRETS"
 
 exec 9>"$FLEET/boot.lock"
@@ -172,6 +172,8 @@ export FLEET_WORKER_NAME=$(printf '%q' "$FLEET_WORKER_NAME")
 export FLEET_CPUS=$cpus
 export FLEET_MEM_GB=$mem_gb
 export FLEET_GPU=$(printf '%q' "$gpu")
+# Fast local disk that a stop wipes (a GPU pod's /workspace is a network filesystem).
+export FLEET_SCRATCH=/scratch
 export CARGO_HOME=/root/.cargo
 export RUSTUP_HOME=/root/.rustup
 export MSOLVE=/workspace/opt/msolve/bin/msolve

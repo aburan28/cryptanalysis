@@ -38,8 +38,10 @@ cpu_model=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')
 mem_gb="${FLEET_MEM_GB:-${JOB_MEM_GB:-$(awk '/MemTotal/ {printf "%.0f", $2 / 1048576}' /proc/meminfo)}}"
 gpus=$(command -v nvidia-smi >/dev/null 2>&1 &&
   nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | paste -sd ';' -)
+# nproc can report the host's cores on a pod limited by CPU quota.
+cpus="${FLEET_CPUS:-$(nproc)}"
 note "job ${JOB_ID:-?} shard $SHARD_INDEX/$SHARD_COUNT on $(hostname) at $(date -u +%FT%TZ)"
-note "$(nproc) CPUs ($cpu_model), $mem_gb GiB${gpus:+, GPU: $gpus}"
+note "$cpus CPUs ($cpu_model), $mem_gb GiB${gpus:+, GPU: $gpus}"
 note "\$ $JOB_CMD"
 
 started=$(date +%s.%N)
@@ -76,7 +78,7 @@ if ((count > 0)); then
 fi
 
 python3 - "$JOB_DIR/status.json" "$rc" "$started" "$finished" "$count" \
-  "$(hostname)" "$(nproc)" "$mem_gb" "$cpu_model" "${gpus:-}" <<'EOF' || true
+  "$(hostname)" "$cpus" "$mem_gb" "$cpu_model" "${gpus:-}" <<'EOF' || true
 import json, os, sys
 path, rc, started, finished, count, host, cpus, mem_gb, cpu_model, gpus = sys.argv[1:]
 with open(path, "w") as f:

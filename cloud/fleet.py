@@ -452,7 +452,11 @@ def cmd_run(args):
     data, summary = tree.pack(root, include=args.include)
     job = time.strftime("%Y%m%d-%H%M%S", time.gmtime()) + "-" + os.urandom(2).hex()
     jobdir = f"/workspace/jobs/{job}"
-    workdir = f"/workspace/scratch/{args.dir}" if args.dir else f"{jobdir}/repo"
+    # The tree is unpacked and built on the container disk: a GPU pod's
+    # /workspace is a network filesystem, 40x slower to unpack onto.  Logs,
+    # status and outputs stay under /workspace/jobs.
+    workdir = f"/scratch/{args.dir}" if args.dir else f"/scratch/jobs/{job}"
+    cleanup = "" if args.dir else f"; rm -rf {workdir}"
     print(f"job {job} on {args.name}: {summary['files']} files, {summary['bytes'] / 1e6:.1f} MB"
           + (f" ({len(summary['skipped'])} large files skipped)" if summary["skipped"] else ""),
           file=sys.stderr)
@@ -462,14 +466,15 @@ def cmd_run(args):
     if upload.returncode or runner.returncode:
         sys.exit("upload failed")
     env = job_env(job, workdir, command, args.out, args.changed)
+    run = f"{env} bash {jobdir}/runner.sh; rc=$?{cleanup}; exit $rc"
     if args.detach:
-        script = (f"cd /workspace; setsid nohup bash -c {shlex.quote(env + f' bash {jobdir}/runner.sh')} "
+        script = (f"cd /workspace; setsid nohup bash -c {shlex.quote(run)} "
                   f"> {jobdir}/console.txt 2>&1 < /dev/null & echo $! > {jobdir}/pid")
         remote(pod, script, check=True)
         print(f"started {job}; follow with `cloud/fleet.py job {args.name} {job} --logs -f`, "
               f"fetch with `--fetch`")
         return 0
-    rc = remote(pod, f"cd /workspace; echo $$ > {jobdir}/pid; {env} bash {jobdir}/runner.sh").returncode
+    rc = remote(pod, f"cd /workspace; echo $$ > {jobdir}/pid; {run}").returncode
     fetch_outputs(pod, job, root, f"{args.name}-{job}")
     return rc
 
