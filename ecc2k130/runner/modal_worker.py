@@ -3,6 +3,7 @@ import os
 import json
 from pathlib import Path
 import subprocess
+import time
 import uuid
 
 import modal
@@ -75,12 +76,20 @@ def readiness(smoke_test: bool = False, s3_only: bool = False, initialize: bool 
 
 @app.function(image=image, gpu=GPU, cpu=4, memory=4096, timeout=86400, max_containers=4,
               secrets=[modal.Secret.from_name(SECRET)])
-def worker(command: str, seconds: int, s3_only: bool, rollout: str = ""):
+def worker(command: str, seconds: int, s3_only: bool, rollout: str = "", deadline: float = 0.0):
     import sys
     sys.path.insert(0, "/opt/ecc2k130/aws")
     from rds_network import ensure_access
     if command not in ("preflight", "smoke", "run"):
         raise ValueError("command must be preflight, smoke or run")
+    # Modal restarts a preempted call with its original arguments. Ending at
+    # the rollout deadline keeps the coordinator, whose own timeout is 24 hours,
+    # alive until every worker exits so it can remove the rollout's rules.
+    if deadline:
+        seconds = min(seconds, int(deadline - time.time()))
+        if seconds < 1:
+            print(json.dumps({"skipped": "rollout deadline passed"}), flush=True)
+            return
     if not s3_only:
         if not rollout:
             raise ValueError("use the fleet entrypoint so network rules have an owner")
@@ -103,13 +112,15 @@ def fleet(count: int, seconds: int, s3_only: bool):
     sys.path.insert(0, "/opt/ecc2k130/aws")
     from rds_network import cleanup
     rollout = uuid.uuid4().hex
+    deadline = time.time() + seconds
     calls = []
     failed = []
     try:
         for _ in range(count):
-            calls.append(worker.spawn("run", seconds, s3_only, rollout))
+            calls.append(worker.spawn("run", seconds, s3_only, rollout, deadline))
         print(json.dumps({"submitted": len(calls), "seconds_per_worker": seconds,
-                          "rollout": rollout, "call_ids": [c.object_id for c in calls]}), flush=True)
+                          "deadline": int(deadline), "rollout": rollout,
+                          "call_ids": [c.object_id for c in calls]}), flush=True)
     finally:
         # Join already-submitted calls even if a later submission fails.
         for call in calls:
