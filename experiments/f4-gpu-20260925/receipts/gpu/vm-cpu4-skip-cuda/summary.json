@@ -1,0 +1,256 @@
+{
+  "checks": [
+    {
+      "check": "stage ladder verdicts equal the committed receipts",
+      "detail": "",
+      "ok": true
+    },
+    {
+      "check": "f4_batch_bench k1-n23: every mode decided identically, every replayed decision matched the host kernel",
+      "detail": "exit 0",
+      "ok": true
+    },
+    {
+      "check": "f4_batch_bench k0-n23: every mode decided identically, every replayed decision matched the host kernel",
+      "detail": "exit 0",
+      "ok": true
+    },
+    {
+      "check": "e2e batch 64: every backend verified the same logarithm with the same trials, relations and reductions",
+      "detail": "",
+      "ok": true
+    },
+    {
+      "check": "e2e batch 1024: every backend verified the same logarithm with the same trials, relations and reductions",
+      "detail": "",
+      "ok": true
+    }
+  ],
+  "failures": 0,
+  "finished_unix": 1790323804.3771315,
+  "host": {
+    "cgroup_cpu_max": "",
+    "cpu_model": "Intel(R) Xeon(R) Processor",
+    "cpus": 4,
+    "cpus_schedulable": 4,
+    "gpus": "",
+    "hostname": "cursor",
+    "kernel": "6.12.94+",
+    "memory_kb": "16398384",
+    "omp_num_threads_env": null,
+    "rayon_num_threads_env": null
+  },
+  "started_unix": 1790323612.5919154,
+  "steps": {
+    "batch": {
+      "k0-n23": {
+        "cmd": [
+          "/workspace/suite/target/release/examples/f4_batch_bench",
+          "--degree",
+          "23",
+          "--curve-a",
+          "0",
+          "--targets",
+          "1024",
+          "--modes",
+          "rayon,lockstep:cpu",
+          "--replay-cap",
+          "200000",
+          "--replay-batch",
+          "16384",
+          "--out",
+          "/tmp/f4-cpu-final/batch/k0-n23"
+        ],
+        "exit": 0,
+        "log": "batch-k0-n23.txt",
+        "modes": {
+          "lockstep:cpu": {
+            "decider": "cpu",
+            "requests": 757061,
+            "rounds": 1144,
+            "setup_seconds": 8.08e-07,
+            "wall_seconds": 18.215429255
+          },
+          "rayon": {
+            "decider": null,
+            "requests": 0,
+            "rounds": 0,
+            "setup_seconds": 1.28e-07,
+            "wall_seconds": 15.949964153
+          }
+        },
+        "rayon_threads": 4,
+        "replay": {
+          "cpu": {
+            "decider": "cpu",
+            "decisions_per_second": 51038.587079399214,
+            "setup_seconds": 1.662e-06
+          },
+          "host-1-thread": {
+            "decider": null,
+            "decisions_per_second": 13270.352442351292,
+            "setup_seconds": 5.9e-08
+          }
+        },
+        "wall_seconds": 76.60178278799867
+      },
+      "k1-n23": {
+        "cmd": [
+          "/workspace/suite/target/release/examples/f4_batch_bench",
+          "--degree",
+          "23",
+          "--curve-a",
+          "1",
+          "--targets",
+          "1024",
+          "--modes",
+          "rayon,lockstep:cpu",
+          "--replay-cap",
+          "200000",
+          "--replay-batch",
+          "16384",
+          "--out",
+          "/tmp/f4-cpu-final/batch/k1-n23"
+        ],
+        "exit": 0,
+        "log": "batch-k1-n23.txt",
+        "modes": {
+          "lockstep:cpu": {
+            "decider": "cpu",
+            "requests": 764236,
+            "rounds": 1024,
+            "setup_seconds": 7.72e-07,
+            "wall_seconds": 18.766842418
+          },
+          "rayon": {
+            "decider": null,
+            "requests": 0,
+            "rounds": 0,
+            "setup_seconds": 1.74e-07,
+            "wall_seconds": 15.885081439
+          }
+        },
+        "rayon_threads": 4,
+        "replay": {
+          "cpu": {
+            "decider": "cpu",
+            "decisions_per_second": 51656.58859623396,
+            "setup_seconds": 8.99e-07
+          },
+          "host-1-thread": {
+            "decider": null,
+            "decisions_per_second": 13293.498179372573,
+            "setup_seconds": 2e-07
+          }
+        },
+        "wall_seconds": 77.66171133599892
+      }
+    },
+    "e2e": {
+      "batch1024-cores": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": null,
+          "decide_seconds": 0.0,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 0,
+          "rounds": 0,
+          "setup_seconds": 7.12e-07
+        },
+        "f4_reductions": 378367,
+        "process_cpu_seconds": 61.691689,
+        "process_wall_seconds": 15.936158792999777,
+        "recovered": "53",
+        "relation_collection_seconds": 15.925286113,
+        "relations": 407,
+        "status": "complete",
+        "trials": 1024,
+        "verified": true
+      },
+      "batch1024-cpu": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": "cpu",
+          "decide_seconds": 13.831995105,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 756733,
+          "rounds": 1024,
+          "setup_seconds": 2.459e-06
+        },
+        "f4_reductions": 378367,
+        "process_cpu_seconds": 64.81216599999999,
+        "process_wall_seconds": 18.22714483800155,
+        "recovered": "53",
+        "relation_collection_seconds": 18.213219319,
+        "relations": 407,
+        "status": "complete",
+        "trials": 1024,
+        "verified": true
+      },
+      "batch64-cores": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": null,
+          "decide_seconds": 0.0,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 0,
+          "rounds": 0,
+          "setup_seconds": 7.21e-07
+        },
+        "f4_reductions": 23351,
+        "process_cpu_seconds": 3.9019120000000003,
+        "process_wall_seconds": 1.0375522829999682,
+        "recovered": "53",
+        "relation_collection_seconds": 1.026921017,
+        "relations": 27,
+        "status": "complete",
+        "trials": 64,
+        "verified": true
+      },
+      "batch64-cpu": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": "cpu",
+          "decide_seconds": 0.908368434,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 46702,
+          "rounds": 1024,
+          "setup_seconds": 2.978e-06
+        },
+        "f4_reductions": 23351,
+        "process_cpu_seconds": 4.2791060000000005,
+        "process_wall_seconds": 1.2261355000009644,
+        "recovered": "53",
+        "relation_collection_seconds": 1.21687225,
+        "relations": 27,
+        "status": "complete",
+        "trials": 64,
+        "verified": true
+      }
+    },
+    "stage": {
+      "cmd": [
+        "/workspace/suite/target/release/examples/groebner_stage_bench",
+        "--label",
+        "gpu-host",
+        "--out",
+        "/tmp/f4-cpu-final/stage"
+      ],
+      "exit": 0,
+      "log": "stage.txt",
+      "wall_seconds": 1.0918300350003847,
+      "wall_seconds_by_rung": {
+        "K_0/2^13 m=2": 0.077969174,
+        "K_0/2^9 m=2": 0.010987897,
+        "K_0/2^9 m=3": 0.025872324,
+        "K_1/2^15 m=2": 0.001979064,
+        "K_1/2^17 m=2": 0.143237559,
+        "K_1/2^23 m=2": 0.818406433
+      }
+    }
+  }
+}

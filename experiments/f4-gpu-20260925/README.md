@@ -18,6 +18,14 @@ cuda/build_kernel.sh "$(../ecc2k130/scripts/fetch_cuda.sh)/bin/nvcc"
 python3 ../experiments/f4-gpu-20260925/records.py      # manifests, runs.jsonl, summary.json
 ```
 
+On a GPU host, the whole checked matrix (see RESULT.md, "Running it on a
+GPU host"):
+
+```sh
+modal run experiments/f4-gpu-20260925/modal_f4.py   # Modal H100 + 32 cores; --gpu, --cpu
+python3 experiments/f4-gpu-20260925/gpu_bench.py --out /tmp/f4-gpu   # any CUDA host
+```
+
 `records.py` hashes the measured sources as of `SOURCE_COMMIT`, so the
 candidate IDs do not drift with later edits; every record it writes passes
 `../ic-candidate-catalog/analyze.py`.
