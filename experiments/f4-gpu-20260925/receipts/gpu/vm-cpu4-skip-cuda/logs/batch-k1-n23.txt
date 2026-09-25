@@ -1,0 +1,20 @@
+$ /workspace/suite/target/release/examples/f4_batch_bench --degree 23 --curve-a 1 --targets 1024 --modes rayon,lockstep:cpu --replay-cap 200000 --replay-batch 16384 --out /tmp/f4-cpu-final/batch/k1-n23
+# exit 0, 77.662 s
+factor base: 2071 points, SHA-256 3ee32d6972ce80467ad810af21a3ba0c3933265334d5583ad6207f1934e7529b (sorted "x,y" hex lines)
+K_1/2^23: 2071 base points (l = 11), 1024 targets, node budget 4096, kernel Fast, 4 threads
+
+| mode | wall s | decomposed | reductions | splits | F4 calls | rounds | mean round | digest |
+|:-----|-------:|-----------:|-----------:|-------:|---------:|-------:|-----------:|:-------|
+| rayon | 15.885 | 396 | 382119 | 191285 | 763444 | 0 | 0.0 | 752ed1d2335e3b61 |
+| lockstep:cpu | 18.767 | 396 | 382119 | 191285 | 763444 | 1024 | 746.3 | 752ed1d2335e3b61 |
+
+Decision throughput on 200000 recorded requests, batches of 16384:
+| backend | wall s | decisions/s | µs/decision |
+|:--------|-------:|------------:|------------:|
+| host-1-thread | 15.045 | 13293 | 75.22 |
+| cpu | 3.872 | 51657 | 19.36 |
+
+Stage diagnostic only: the decomposition oracle, not an end-to-end ECDLP cost.
+Wrote /tmp/f4-cpu-final/batch/k1-n23/f4_batch.json
+
+--- stderr ---
