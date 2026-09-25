@@ -47,6 +47,10 @@
 //!   PRF.  These are the classic "is the output statistically
 //!   distinguishable from random?" tests.
 //!
+//! - [`factoring`] — integer factorisation: Pollard rho, p ± 1, the
+//!   quadratic sieve, the general and special number field sieves, the
+//!   classic weak-RSA attacks and a full-factorisation ladder.
+//!
 //! ## How to use it
 //!
 //! 1. Wrap your S-box(es) in [`Sbox::new`] and call [`Sbox::report`]
@@ -142,6 +146,7 @@ pub mod f4_fp;
 pub mod f4_fp_tower;
 pub mod f4_gf2;
 pub mod f4_gpu;
+pub mod factoring;
 pub mod fes_gpu;
 pub mod ffd_harness;
 pub mod fght_snfs;
