@@ -12,8 +12,8 @@ degree it stopped at and its per-degree cost can feed it.
 
 runs a complete collection with the Macaulay solver on ordinary subgroup targets, tracks
 the rank of the relation matrix mod r, solves it, and verifies every factor-base log
-against [log]G.  Brute-force solution enumeration (to confirm refutations and read off
-solutions) is charged as instrument time, not as PDP cost.
+against [log]G.  Every phase is metered (opcount.py); ../ic-bench prices the counters in
+one calibrated unit and names each run as an IC1 candidate.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ sys.path.insert(0, str(HERE))
 
 import kernel  # noqa: E402
 import macaulay  # noqa: E402
+import opcount  # noqa: E402
 from descent import Pieces  # noqa: E402
 from factor_base import FactorBase  # noqa: E402
 from profile import bootstrap_mean_ci, implementation_sha256, predictions, wilson95  # noqa: E402
@@ -61,10 +62,13 @@ class RankTracker:
             p = min(row)
             if p not in self.rows:
                 inv = pow(row[p], -1, r)
+                opcount.charge("modr_inv")
+                opcount.charge("modr_mul", len(row) + 1)
                 self.rows[p] = ({j: c * inv % r for j, c in row.items()}, rhs * inv % r)
                 return True
             prow, prhs = self.rows[p]
             f = row[p]
+            opcount.charge("modr_mul", len(prow) + 1)
             for j, c in prow.items():
                 v = (row.get(j, 0) - f * c) % r
                 if v:
@@ -80,6 +84,7 @@ class RankTracker:
         for p in sorted(self.rows, reverse=True):
             row, rhs = self.rows[p]
             v = rhs
+            opcount.charge("modr_mul", len(row) - 1)
             for j, c in row.items():
                 if j != p:
                     v -= c * sol[j]
@@ -303,68 +308,84 @@ class CollectionMonitor:
 
 
 # ------------------------------------------------------------------ collection run
-def collect(args) -> dict:
-    """Collect relations to the achievable rank, solve mod r, and descend fresh targets."""
+def collect(args, workload: dict | None = None, meter: opcount.Meter | None = None) -> dict:
+    """Collect relations to the achievable rank, solve mod r, and descend fresh targets.
+
+    Every phase runs inside `meter` (exclusive wall time and operation counters).  When a
+    query has S >= 1 solutions, the exhaustive enumeration supplies the count the degree scan
+    uses as its completion test and the solutions read off after it, so it is charged to the
+    phase it serves (pdp or target_descent) as `anf_op`.  With S = 0 the scan refutes without
+    reading S, so that enumeration stays in `instrument` with the diagnostics.
+
+    `workload` (see ../ic-bench) fixes the query stream, the targets and their
+    rerandomization streams independently of the factor base, so bases pair on it.
+    Without one, the streams are keyed by the factor-base digest as in results/collect.jsonl.
+    """
+    meter = meter or opcount.Meter()
     t_all = time.perf_counter_ns()
-    phase: Counter = Counter()
-    t0 = time.perf_counter_ns()
-    C = ToyCurve(args.n)
-    phase["setup"] += time.perf_counter_ns() - t0
-    t0 = time.perf_counter_ns()
-    fb = FactorBase(C, args.family, args.l, args.seed)
-    phase["factor_base"] += time.perf_counter_ns() - t0
-    t0 = time.perf_counter_ns()
-    P = Pieces(fb, args.m)
-    struct = P.structure()
-    achievable = achievable_rank(fb, args.m)
-    phase["precompute"] += time.perf_counter_ns() - t0
-    exact = exact_subgroup_yield(fb, args.m)
-    pred = {**predictions(args.n, args.m, args.l, struct), **predicted_yield(fb, args.m)}
-    if exact:
-        pred["p_decomposable"] = exact["p_decomposable"]
-    if args.m == 2:
-        pred["column_rates"] = column_hit_rates(fb)
+    with meter.phase("setup"):
+        C = ToyCurve(args.n)
+    if workload is not None and workload["curve_id"] != C.curve_id:
+        raise ValueError(f"workload is for {workload['curve_id']}, not {C.curve_id}")
+    with meter.phase("factor_base"):
+        fb = FactorBase(C, args.family, args.l, args.seed)
+    with meter.phase("precompute"):
+        P = Pieces(fb, args.m)
+        achievable = achievable_rank(fb, args.m)
+    with meter.phase("instrument"):
+        struct = P.structure()
+        exact = exact_subgroup_yield(fb, args.m)
+        pred = {**predictions(args.n, args.m, args.l, struct), **predicted_yield(fb, args.m)}
+        if exact:
+            pred["p_decomposable"] = exact["p_decomposable"]
+        if args.m == 2:
+            pred["column_rates"] = column_hit_rates(fb)
     columns = fb.effective_columns
     target_rank = columns if achievable is None else achievable
     mon = CollectionMonitor(columns, target_rank=target_rank, predicted=pred)
     tracker = RankTracker(columns, C.r)
     limits = macaulay.Limits(d_max=args.abort_degree or args.d_max, max_cols=args.max_cols, max_rows=args.max_rows)
-    rng = random.Random(f"collect|{fb.digest}|{args.m}|{args.workload_seed}")
-    instrument = Counter()
+    if workload is None:
+        rng = random.Random(f"collect|{fb.digest}|{args.m}|{args.workload_seed}")
+    else:
+        rng = random.Random(workload["query_stream"])
 
     def decompose(R: tuple[int, int], charge: str) -> tuple[dict, set]:
-        t0 = time.perf_counter_ns()
-        s = P.system(R[0])
-        phase["queries" if charge == "pdp" else charge] += time.perf_counter_ns() - t0
-        t0 = time.perf_counter_ns()
-        S, sols = s.solutions()
-        instrument["bruteforce_ns"] += time.perf_counter_ns() - t0
-        scan = macaulay.degree_scan(s, S, limits, mode=args.mode)
-        phase[charge] += scan["wall_ns"]
+        with meter.phase("queries" if charge == "pdp" else charge):
+            s = P.system(R[0])
+        with meter.phase("instrument") as ops:
+            before, t0 = ops.copy(), time.perf_counter_ns()
+            S, sols = s.solutions()
+            enum_ops, enum_ns = ops - before, time.perf_counter_ns() - t0
+        # with S = 0 the scan never reads S (it runs to its refutation), so the enumeration is a check
+        if S >= 1:
+            meter.move("instrument", charge, enum_ops, enum_ns)
+        with meter.phase(charge) as ops:
+            scan = macaulay.degree_scan(s, S, limits, mode=args.mode)
+            ops["mac_op"] += scan["xors"] + scan["build_ops"]
         rows: set = set()
         status = {"refuted": "proved_unsat", "solved": "solved"}.get(scan["status"], "budget")
         if status == "solved":
-            t0 = time.perf_counter_ns()
-            for v in sols.tolist():
-                c = classify_solution(fb, args.m, R, v)
-                if c["status"] in ("verified", "improper"):
-                    rows.add(tuple(sorted(relation_row(fb, c["points"]).items())))
-            phase["relation_check" if charge == "pdp" else charge] += time.perf_counter_ns() - t0
+            with meter.phase("relation_check" if charge == "pdp" else charge):
+                for v in sols.tolist():
+                    c = classify_solution(fb, args.m, R, v)
+                    if c["status"] in ("verified", "improper"):
+                        rows.add(tuple(sorted(relation_row(fb, c["points"]).items())))
             status = "verified_decomposition" if rows else "lift_rejected"
         return {"status": status, "scan": scan}, rows
 
     trace = []
     snapshots: list[dict] = []
     while mon.attempts < args.max_attempts and tracker.rank < target_rank:
-        k, R = C.random_subgroup_point(rng)
+        with meter.phase("queries"):
+            k, R = C.random_subgroup_point(rng)
         res, rows = decompose(R, "pdp")
         scan = res["scan"]
         rels = novel = 0
-        t0 = time.perf_counter_ns()
-        for row in rows:
-            rels += 1
-            novel += tracker.add(dict(row), k)
-        phase["matrix_build"] += time.perf_counter_ns() - t0
+        with meter.phase("matrix_build"):
+            for row in rows:
+                rels += 1
+                novel += tracker.add(dict(row), k)
         rec = {
             "status": res["status"],
             "D": scan["D_solve"],
@@ -386,43 +407,55 @@ def collect(args) -> dict:
                               "yield_estimate": s["yield_estimate"]})
         if args.report_every and mon.attempts % args.report_every == 0:
             print(mon.render(), file=sys.stderr, flush=True)
-    print(mon.render(), file=sys.stderr, flush=True)
+    if args.report_every:
+        print(mon.render(), file=sys.stderr, flush=True)
     complete = tracker.rank >= target_rank
-    t0 = time.perf_counter_ns()
-    logs = tracker.solve()
-    phase["relation_la"] += time.perf_counter_ns() - t0
+    with meter.phase("relation_la"):
+        logs = tracker.solve()
     verified_logs = None
     if tracker.rank == columns:
-        t0 = time.perf_counter_ns()
-        verified_logs = all(C.K.smul(C.G, logs[j]) == rep for j, rep in enumerate(fb.column_reps))
-        phase["recovery_check"] += time.perf_counter_ns() - t0
+        with meter.phase("recovery_check"):
+            verified_logs = all(C.K.smul(C.G, logs[j]) == rep for j, rep in enumerate(fb.column_reps))
     # target descent: Q + [a]G until it decomposes; with a kernel in the relation matrix the
     # log of every decomposable subgroup point is still determined
+    def target_stream():
+        if workload is None:
+            drng = random.Random(f"descent|{fb.digest}|{args.m}|{args.workload_seed}")
+            for _ in range(args.descent_targets):
+                s_true, Q = C.random_subgroup_point(drng)
+                yield s_true, Q, drng
+        else:
+            for i, (s_true, qx, qy) in enumerate(workload["targets"]):
+                yield s_true, (qx, qy), random.Random(f"{workload['rerandomization_stream']}|{i}")
+
     descents = []
-    drng = random.Random(f"descent|{fb.digest}|{args.m}|{args.workload_seed}")
-    for _ in range(args.descent_targets if complete else 0):
-        s_true, Q = C.random_subgroup_point(drng)
+    for s_true, Q, arng in target_stream() if complete else []:
         tries = 0
         found = None
+        before = meter.ops.get("target_descent", Counter()).copy()
         while tries < args.max_attempts and found is None:
             tries += 1
-            a = drng.randrange(1, C.r)
-            Qa = C.K.add(Q, C.K.smul(C.G, a))
+            with meter.phase("target_descent"):
+                a = arng.randrange(1, C.r)
+                Qa = C.K.add(Q, C.K.smul(C.G, a))
             if Qa[0] == kernel.INF_X:
                 continue
             res, rows = decompose(Qa, "target_descent")
             if rows:
                 row = dict(next(iter(rows)))
-                found = (sum(c * logs[j] for j, c in row.items()) - a) % C.r
+                with meter.phase("target_descent") as ops:
+                    found = (sum(c * logs[j] for j, c in row.items()) - a) % C.r
+                    ops["modr_mul"] += len(row)
         ok = None
         if found is not None:
-            t0 = time.perf_counter_ns()
-            ok = C.K.smul(C.G, found) == Q
-            phase["recovery_check"] += time.perf_counter_ns() - t0
-        descents.append({"attempts": tries, "recovered": found is not None, "verified": ok})
+            with meter.phase("recovery_check"):
+                ok = C.K.smul(C.G, found) == Q
+        descents.append({"attempts": tries, "recovered": found is not None, "verified": ok,
+                         "matches_workload": None if workload is None else found == s_true,
+                         "ops": dict(meter.ops.get("target_descent", Counter()) - before)})
     summary = mon.summary()
     out = {
-        "schema": "pdp-collection-run/1",
+        "schema": "pdp-collection-run/2",
         "kind": "stage",
         "candidate_id": None,
         "curve_id": C.curve_id,
@@ -443,8 +476,9 @@ def collect(args) -> dict:
         "dlp_verified": bool(descents) and all(d["verified"] for d in descents),
         "relation_linear_algebra": "dense Gaussian elimination mod r (RankTracker); free columns set to 0",
         "target_descent": "Q + [a]G with fresh random a until the PDP solver decomposes it",
-        "phase_wall_ns": dict(phase),
-        "instrument_bruteforce_ns": instrument["bruteforce_ns"],
+        "phase_wall_ns": {k: v for k, v in meter.wall_ns.items() if k != "instrument"},
+        "phase_ops": {k: dict(v) for k, v in meter.ops.items() if k != "instrument"},
+        "instrument_wall_ns": meter.wall_ns.get("instrument", 0),
         "wall_ns": time.perf_counter_ns() - t_all,
         "implementation_sha256": implementation_sha256(),
     }
