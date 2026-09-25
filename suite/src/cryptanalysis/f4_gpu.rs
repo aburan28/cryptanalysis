@@ -52,6 +52,10 @@ pub struct F4Result {
     pub rows: u32,
     /// Columns eliminated.
     pub cols: u32,
+    /// Nonempty rows the F5 mask left out of elimination.
+    pub f5_skipped: u32,
+    /// Padding; zero.
+    pub reserved: u32,
 }
 
 /// Decided; the decision is in the result.
@@ -91,16 +95,30 @@ pub struct PackedBatch {
     pub sys_poly_start: Vec<u32>,
     /// `n_vars | degree << 8` per system.
     pub sys_meta: Vec<u32>,
+    /// F5 row masks ([`f4_gf2::f5_row_mask`]), concatenated.
+    pub skip_bits: Vec<u32>,
+    /// Start of each system's mask in `skip_bits`, plus one end offset; an
+    /// empty range means no mask.
+    pub skip_start: Vec<u32>,
     /// Scratch words the most demanding system needs (an upper bound).
     pub scratch_words: u64,
 }
 
 impl PackedBatch {
-    /// Pack `requests`, dropping zero equations (they build no rows).
+    /// Pack `requests`, with F5 masks when [`f4_gf2::default_options`] has
+    /// F5 on.  Zero equations are dropped (they build no rows).
     pub fn pack(requests: &[DecisionRequest<'_>]) -> Self {
+        Self::pack_with(requests, f4_gf2::default_options().f5)
+    }
+
+    /// Pack `requests`, computing each system's F5 row mask on the host
+    /// when `f5` is set — the symbolic preprocessing half of F5, the
+    /// kernel doing the elimination half.
+    pub fn pack_with(requests: &[DecisionRequest<'_>], f5: bool) -> Self {
         let mut b = PackedBatch::default();
         b.sys_poly_start.push(0);
         b.poly_start.push(0);
+        b.skip_start.push(0);
         for r in requests {
             for p in r.polys.iter().filter(|p| !p.is_zero()) {
                 b.terms.extend(p.terms.iter().map(|t| t.mask));
@@ -110,6 +128,12 @@ impl PackedBatch {
             b.sys_meta
                 .push((r.n_vars.min(255) as u32) | (r.degree.min(255) << 8));
             b.scratch_words = b.scratch_words.max(scratch_bound(r));
+            if f5 {
+                if let Some(mask) = f4_gf2::f5_row_mask(r.polys, r.n_vars, r.degree) {
+                    b.skip_bits.extend(mask);
+                }
+            }
+            b.skip_start.push(b.skip_bits.len() as u32);
         }
         b
     }
@@ -194,6 +218,7 @@ pub fn unpack(
             k.cols = result.ref_cols;
             k.eliminated_rows = u64::from(result.rows);
             k.eliminated_cols = u64::from(result.cols);
+            k.f5_skipped = u64::from(result.f5_skipped);
             k.word_ops = result.word_ops;
             (
                 Some(Decision {
@@ -239,6 +264,8 @@ mod emulator_ffi {
             poly_start: *const u32,
             sys_poly_start: *const u32,
             sys_meta: *const u32,
+            skip_bits: *const u32,
+            skip_start: *const u32,
             n_systems: u32,
             max_rows: u32,
             max_cols: u32,
@@ -295,6 +322,12 @@ impl EmulatorDecider {
                 batch.poly_start.as_ptr(),
                 batch.sys_poly_start.as_ptr(),
                 batch.sys_meta.as_ptr(),
+                if batch.skip_bits.is_empty() {
+                    std::ptr::null()
+                } else {
+                    batch.skip_bits.as_ptr()
+                },
+                batch.skip_start.as_ptr(),
                 batch.len() as u32,
                 cap32(caps.max_rows),
                 cap32(caps.max_cols),
@@ -604,7 +637,7 @@ mod cuda {
         pub blocks_per_sm: u32,
         /// Device scratch budget over all blocks, in bytes.
         pub scratch_budget: usize,
-        buffers: [Buffer; 6],
+        buffers: [Buffer; 8],
     }
 
     // SAFETY: the handles are process-wide driver objects; every call makes
@@ -768,17 +801,21 @@ mod cuda {
             let mut poly_start = self.upload(1, &batch.poly_start)?;
             let mut sys_poly_start = self.upload(2, &batch.sys_poly_start)?;
             let mut sys_meta = self.upload(3, &batch.sys_meta)?;
+            let mut skip_bits = self.upload(6, &batch.skip_bits)?;
+            let mut skip_start = self.upload(7, &batch.skip_start)?;
             let mut scratch = self.ensure(4, (scratch_words as usize) * 8 * grid as usize)?;
             let mut out = self.ensure(5, n * std::mem::size_of::<F4Result>())?;
             let mut n_systems = n as u32;
             let mut max_rows = cap32(caps.max_rows);
             let mut max_cols = cap32(caps.max_cols);
             let mut words = scratch_words;
-            let mut params: [*mut c_void; 10] = [
+            let mut params: [*mut c_void; 12] = [
                 &mut terms as *mut u64 as *mut c_void,
                 &mut poly_start as *mut u64 as *mut c_void,
                 &mut sys_poly_start as *mut u64 as *mut c_void,
                 &mut sys_meta as *mut u64 as *mut c_void,
+                &mut skip_bits as *mut u64 as *mut c_void,
+                &mut skip_start as *mut u64 as *mut c_void,
                 &mut n_systems as *mut u32 as *mut c_void,
                 &mut max_rows as *mut u32 as *mut c_void,
                 &mut max_cols as *mut u32 as *mut c_void,
@@ -1100,8 +1137,8 @@ mod tests {
 
     #[test]
     fn result_layout_matches_the_kernel() {
-        // f4_u32 status, refuted; f4_u64 x5; f4_u32 rows, cols.
-        assert_eq!(std::mem::size_of::<F4Result>(), 56);
+        // f4_u32 status, refuted; f4_u64 x5; f4_u32 rows, cols, f5_skipped, reserved.
+        assert_eq!(std::mem::size_of::<F4Result>(), 64);
         assert_eq!(std::mem::align_of::<F4Result>(), 8);
     }
 
@@ -1186,6 +1223,68 @@ mod tests {
             }
         }
         assert!(refused > 20, "only {refused} refusals exercised");
+    }
+
+    /// F5 on the device: the host's plan as a row mask, the kernel
+    /// eliminating the rest.  The same rows must be left out as on the host,
+    /// and nothing may change but the work.
+    #[cfg(feature = "gpu-emulator")]
+    #[test]
+    fn the_emulated_kernel_skips_the_f5_rows_the_host_kernel_skips() {
+        use crate::cryptanalysis::f4_gf2::{decide_with, KernelOptions};
+        let kc = KoblitzCurve::new(0, 9).unwrap();
+        let fb = build_frobenius_factor_base(&kc, 0).unwrap();
+        let st = FieldStructure::new(kc.n, &kc.curve.irreducible);
+        let mut owned = Vec::new();
+        for raw in [5u64, 77, 190, 301] {
+            let x_r =
+                crate::binary_ecc::F2mElement::from_biguint(&num_bigint::BigUint::from(raw), 9);
+            let sys =
+                build_decomposition_system(&fb.subspace_basis, &x_r, &kc.curve.b, 2, &st).unwrap();
+            for degree in 4..=5 {
+                owned.push((sys.equations.clone(), sys.n_vars, degree));
+            }
+        }
+        let requests: Vec<DecisionRequest<'_>> = owned
+            .iter()
+            .map(|(p, n, d)| DecisionRequest {
+                polys: p,
+                n_vars: *n,
+                degree: *d,
+            })
+            .collect();
+        let with = PackedBatch::pack_with(&requests, true);
+        let without = PackedBatch::pack_with(&requests, false);
+        assert!(!with.skip_bits.is_empty() && without.skip_bits.is_empty());
+        let emu = EmulatorDecider { threads: 128 };
+        let (a, b) = (emu.run(&with, CAPS), emu.run(&without, CAPS));
+        let mut skipped = 0u64;
+        for (i, r) in requests.iter().enumerate() {
+            let (host, hk) = decide_with(
+                r.polys,
+                r.n_vars,
+                r.degree,
+                CAPS,
+                KernelOptions { f5: true },
+            );
+            let (got, gk) = unpack(&a[i], r, CAPS);
+            let (plain, _) = unpack(&b[i], r, CAPS);
+            assert_eq!(got, host, "request {i}");
+            assert_eq!(plain, host, "request {i} without the mask");
+            assert_eq!(gk.f5_skipped, hk.f5_skipped, "request {i}: rows left out");
+            assert_eq!(gk.eliminated_rows, hk.eliminated_rows, "request {i}");
+            assert_eq!(
+                (gk.rows, gk.cols),
+                (hk.rows, hk.cols),
+                "request {i}: reference shape"
+            );
+            assert!(
+                a[i].word_ops < b[i].word_ops,
+                "request {i}: F5 saved no work"
+            );
+            skipped += gk.f5_skipped;
+        }
+        assert!(skipped > 100, "only {skipped} rows left out");
     }
 
     /// The whole path the pipeline takes: searches in lockstep, every

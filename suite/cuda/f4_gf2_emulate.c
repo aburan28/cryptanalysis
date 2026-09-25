@@ -13,7 +13,8 @@
 
 int f4_gf2_emulate_batch(const f4_u64 *terms, const f4_u32 *poly_start,
                          const f4_u32 *sys_poly_start, const f4_u32 *sys_meta,
-                         f4_u32 n_systems, f4_u32 max_rows, f4_u32 max_cols, f4_u32 threads,
+                         const f4_u32 *skip_bits, const f4_u32 *skip_start, f4_u32 n_systems,
+                         f4_u32 max_rows, f4_u32 max_cols, f4_u32 threads,
                          f4_u64 scratch_words, F4Result *results)
 {
     if (threads == 0u || threads > F4_MAX_THREADS)
@@ -28,8 +29,9 @@ int f4_gf2_emulate_batch(const f4_u64 *terms, const f4_u32 *poly_start,
     const f4_u32 nt = threads;
     f4_block_init(sh, nt);
     for (f4_u32 sys = 0; sys < n_systems; ++sys)
-        f4_decide_system(sh, nt, terms, poly_start, sys_poly_start, sys_meta, sys, max_rows,
-                         max_cols, scratch, scratch_words, &results[sys]);
+        f4_decide_system(sh, nt, terms, poly_start, sys_poly_start, sys_meta, skip_bits,
+                         skip_start, sys, max_rows, max_cols, scratch, scratch_words,
+                         &results[sys]);
     free(scratch);
     free(sh);
     return 0;

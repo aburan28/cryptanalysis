@@ -46,8 +46,10 @@ typedef struct {
     f4_u64 ref_rows;    /* rows in reference units */
     f4_u64 ref_cols;    /* columns in reference units */
     f4_u64 word_ops;    /* 64-bit word XORs performed */
-    f4_u32 rows;        /* candidate rows eliminated */
+    f4_u32 rows;        /* nonempty rows eliminated */
     f4_u32 cols;        /* columns eliminated */
+    f4_u32 f5_skipped;  /* nonempty rows the F5 mask left out */
+    f4_u32 reserved;
 } F4Result;
 
 /* Block-shared state.  Scalars that one thread computes and the others
@@ -69,7 +71,7 @@ typedef struct {
     f4_u32 n_bitmap_words, n_cols, stride, low_start, low_width, const_present;
     f4_u32 low_var[65];
     f4_u64 off_prefix, off_mat, off_lead, off_meta, off_class, off_low, off_lmeta;
-    f4_u64 ref_rows, ref_cols, word_ops, nonempty;
+    f4_u64 ref_rows, ref_cols, word_ops, nonempty, skipped;
     /* Pivot reductions rotate through three slots: round r reduces into
      * slot r % 3 and clears slot (r + 1) % 3.  Every thread has read slot
      * r % 3 before the barrier of round r + 1, so clearing it in round
@@ -214,6 +216,7 @@ F4_BLOCK_FN void f4_stage_layout(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
         sh->ref_cols = 0ull;
         sh->word_ops = 0ull;
         sh->nonempty = 0ull;
+        sh->skipped = 0ull;
         sh->n_low = 0u;
         sh->n_gen = 0u;
         if (sh->poly_hi == sh->poly_lo)
@@ -380,10 +383,13 @@ F4_BLOCK_FN void f4_stage_columns(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
 }
 
 /* Stage 3: write every candidate row by XOR, and count rows and columns in
- * reference units. */
+ * reference units.  Rows set in the F5 mask (words skip_lo .. skip_hi of
+ * skip_bits, in candidate order) are counted like any other, then marked
+ * used so that no later stage eliminates them. */
 F4_BLOCK_FN void f4_stage_fill(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
                                const f4_u32 *poly_start, f4_u64 *scratch, f4_u32 max_rows,
-                               f4_u32 max_cols)
+                               f4_u32 max_cols, const f4_u32 *skip_bits, f4_u32 skip_lo,
+                               f4_u32 skip_hi)
 {
     const f4_u64 *bitmap = scratch;
     const f4_u32 *prefix = (const f4_u32 *)(scratch + sh->off_prefix);
@@ -394,7 +400,7 @@ F4_BLOCK_FN void f4_stage_fill(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
     const f4_u32 stride = sh->stride;
     F4_FOR_THREADS(tid)
         f4_u32 g = 0u;
-        f4_u64 rows_here = 0ull, nonempty_here = 0ull;
+        f4_u64 rows_here = 0ull, nonempty_here = 0ull, skipped_here = 0ull;
         for (f4_u32 row = tid; row < sh->n_cand; row += nt) {
             while (row >= sh->cand_start[g + 1u])
                 ++g;
@@ -415,12 +421,19 @@ F4_BLOCK_FN void f4_stage_fill(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
             if (l != F4_NONE) {
                 rows_here += sh->upto[slack];
                 nonempty_here += 1ull;
+                f4_u32 w = row >> 5;
+                if (skip_lo + w < skip_hi && ((skip_bits[skip_lo + w] >> (row & 31u)) & 1u)) {
+                    meta[row] |= 0x200u;
+                    skipped_here += 1ull;
+                }
             }
         }
         if (rows_here)
             F4_ATOMIC_ADD64(&sh->ref_rows, rows_here);
         if (nonempty_here)
             F4_ATOMIC_ADD64(&sh->nonempty, nonempty_here);
+        if (skipped_here)
+            F4_ATOMIC_ADD64(&sh->skipped, skipped_here);
     F4_END_THREADS
     F4_SYNC();
     /* Per word: OR the nonempty rows by slack class, then count each
@@ -626,7 +639,8 @@ F4_BLOCK_FN void f4_stage_linear(F4Shared *sh, f4_u32 nt, f4_u64 *scratch, F4Res
 /* Decide system `sys` with the calling block. */
 F4_BLOCK_FN void f4_decide_system(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
                                   const f4_u32 *poly_start, const f4_u32 *sys_poly_start,
-                                  const f4_u32 *sys_meta, f4_u32 sys, f4_u32 max_rows,
+                                  const f4_u32 *sys_meta, const f4_u32 *skip_bits,
+                                  const f4_u32 *skip_start, f4_u32 sys, f4_u32 max_rows,
                                   f4_u32 max_cols, f4_u64 *scratch, f4_u64 scratch_words,
                                   F4Result *out)
 {
@@ -634,7 +648,8 @@ F4_BLOCK_FN void f4_decide_system(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
     if (sh->status == F4_STATUS_DECIDED)
         f4_stage_columns(sh, nt, terms, poly_start, scratch, scratch_words);
     if (sh->status == F4_STATUS_DECIDED)
-        f4_stage_fill(sh, nt, terms, poly_start, scratch, max_rows, max_cols);
+        f4_stage_fill(sh, nt, terms, poly_start, scratch, max_rows, max_cols, skip_bits,
+                      skip_start[sys], skip_start[sys + 1u]);
     if (sh->status == F4_STATUS_DECIDED)
         f4_stage_echelon(sh, nt, scratch);
     F4_SINGLE {
@@ -649,8 +664,10 @@ F4_BLOCK_FN void f4_decide_system(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
                             ? sh->ref_cols
                             : 0ull;
         out->word_ops = sh->word_ops;
-        out->rows = sh->status == F4_STATUS_DECIDED ? (f4_u32)sh->nonempty : 0u;
+        out->rows = sh->status == F4_STATUS_DECIDED ? (f4_u32)(sh->nonempty - sh->skipped) : 0u;
         out->cols = sh->status == F4_STATUS_DECIDED ? sh->n_cols : 0u;
+        out->f5_skipped = sh->status == F4_STATUS_DECIDED ? (f4_u32)sh->skipped : 0u;
+        out->reserved = 0u;
     }
     F4_SYNC();
     if (sh->status == F4_STATUS_DECIDED)
