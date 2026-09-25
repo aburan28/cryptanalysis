@@ -147,11 +147,15 @@ first-fall-degree sweeps (`dreg_sweep`), which also use the fast kernel.
 and decides every round's matrices together, which is what gives a device
 enough independent work: `cuda[:N]` on an NVIDIA GPU (the kernel is
 `suite/cuda/f4_gf2_device.cuh`, one thread block per system; libcuda and
-NVRTC are opened at run time, `CA_F4_PTX` loads a prebuilt PTX instead),
+NVRTC are opened at run time and the kernel is compiled to SASS for the
+device, `CA_F4_PTX` loads a prebuilt PTX instead),
 `emulate[:threads]` for the same kernel source run on the host (build with
 `--features gpu-emulator`), or `cpu`. Each search takes the same steps as
 without it, so relations and the recovered logarithm are identical; the
-report's `f4_batch` block records the backend, the rounds and the requests.
+report's `f4_batch` block records the backend, the rounds, the requests,
+the time spent deciding them, and `setup_seconds`, the backend's own setup
+(for CUDA, the driver, the NVRTC compile and the module load), which no
+phase timer covers.
 Use a batch in the thousands to fill a GPU. `examples/f4_batch_bench.rs`
 replays the matrices real searches request through every backend and checks
 each answer against the host kernel. See
