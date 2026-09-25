@@ -1134,13 +1134,21 @@ mod tests {
         let src = kernel_source();
         assert!(src.contains("f4_gf2_decide_batch"));
         // NVRTC resolves no include path: the only #include is guarded out
-        // by the header that precedes it.
-        let includes: Vec<&str> = src
+        // by the header that precedes it.  (clang-format indents directives
+        // after the '#'.)
+        let directive = |l: &str| {
+            l.trim_start()
+                .strip_prefix('#')
+                .map(|rest| rest.trim_start().to_string())
+        };
+        let includes: Vec<String> = src
             .lines()
-            .filter(|l| l.trim_start().starts_with("#include"))
+            .filter_map(directive)
+            .filter(|d| d.starts_with("include"))
             .collect();
-        assert_eq!(includes, vec!["#include \"f4_gf2_device.cuh\""]);
-        assert!(src.find("#define F4_GF2_DEVICE_CUH").unwrap() < src.find("#include").unwrap());
+        assert_eq!(includes, vec!["include \"f4_gf2_device.cuh\"".to_string()]);
+        let guard = src.find("define F4_GF2_DEVICE_CUH").unwrap();
+        assert!(guard < src.find("include \"f4_gf2_device.cuh\"").unwrap());
     }
 
     #[test]

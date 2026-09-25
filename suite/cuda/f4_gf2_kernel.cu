@@ -15,15 +15,13 @@
  * with the header prepended, so the #include below is for nvcc builds.
  */
 #ifndef F4_GF2_DEVICE_CUH
-#include "f4_gf2_device.cuh"
+#    include "f4_gf2_device.cuh"
 #endif
 
 extern "C" __global__ void f4_gf2_decide_batch(const f4_u64 *terms, const f4_u32 *poly_start,
-                                               const f4_u32 *sys_poly_start,
-                                               const f4_u32 *sys_meta,
-                                               const f4_u32 *skip_bits,
-                                               const f4_u32 *skip_start, f4_u32 n_systems,
-                                               f4_u32 max_rows, f4_u32 max_cols,
+                                               const f4_u32 *sys_poly_start, const f4_u32 *sys_meta,
+                                               const f4_u32 *skip_bits, const f4_u32 *skip_start,
+                                               f4_u32 n_systems, f4_u32 max_rows, f4_u32 max_cols,
                                                f4_u64 *scratch, f4_u64 scratch_words,
                                                F4Result *results)
 {
@@ -33,6 +31,5 @@ extern "C" __global__ void f4_gf2_decide_batch(const f4_u64 *terms, const f4_u32
     f4_u64 *mine = scratch + (f4_u64)blockIdx.x * scratch_words;
     for (f4_u32 sys = blockIdx.x; sys < n_systems; sys += gridDim.x)
         f4_decide_system(&sh, nt, terms, poly_start, sys_poly_start, sys_meta, skip_bits,
-                         skip_start, sys, max_rows, max_cols, mine, scratch_words,
-                         &results[sys]);
+                         skip_start, sys, max_rows, max_cols, mine, scratch_words, &results[sys]);
 }

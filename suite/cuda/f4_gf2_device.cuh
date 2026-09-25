@@ -26,14 +26,14 @@
 typedef unsigned long long f4_u64;
 typedef unsigned int f4_u32;
 
-#define F4_DMAX 7u
-#define F4_MAX_POLYS 256u
+#define F4_DMAX        7u
+#define F4_MAX_POLYS   256u
 #define F4_MAX_THREADS 1024u
-#define F4_NONE 0xffffffffu
+#define F4_NONE        0xffffffffu
 
-#define F4_STATUS_DECIDED 0u
+#define F4_STATUS_DECIDED  0u
 #define F4_STATUS_OVERSIZE 1u
-#define F4_STATUS_EMPTY 2u
+#define F4_STATUS_EMPTY    2u
 #define F4_STATUS_NO_POLYS 3u
 #define F4_STATUS_FALLBACK 4u
 
@@ -83,37 +83,59 @@ typedef struct {
 } F4Shared;
 
 #if defined(__CUDACC__)
-#define F4_FN static __device__ __forceinline__
-#define F4_BLOCK_FN static __device__
-#define F4_FOR_THREADS(tid) { const f4_u32 tid = threadIdx.x;
-#define F4_END_THREADS }
-#define F4_SINGLE if (threadIdx.x == 0)
-#define F4_SYNC() __syncthreads()
-#define F4_POPC(x) ((f4_u32)__popcll(x))
-#define F4_CTZ(x) ((f4_u32)(__ffsll((long long)(x)) - 1))
-#define F4_ATOMIC_OR64(p, x) atomicOr((p), (x))
-#define F4_ATOMIC_ADD64(p, x) atomicAdd((p), (x))
-#define F4_ATOMIC_MIN64(p, x) atomicMin((p), (x))
-#define F4_ATOMIC_ADD32(p, x) atomicAdd((p), (x))
+#    define F4_FN       static __device__ __forceinline__
+#    define F4_BLOCK_FN static __device__
+#    define F4_FOR_THREADS(tid)                                                                    \
+        {                                                                                          \
+            const f4_u32 tid = threadIdx.x;
+#    define F4_END_THREADS        }
+#    define F4_SINGLE             if (threadIdx.x == 0)
+#    define F4_SYNC()             __syncthreads()
+#    define F4_POPC(x)            ((f4_u32)__popcll(x))
+#    define F4_CTZ(x)             ((f4_u32)(__ffsll((long long)(x)) - 1))
+#    define F4_ATOMIC_OR64(p, x)  atomicOr((p), (x))
+#    define F4_ATOMIC_ADD64(p, x) atomicAdd((p), (x))
+#    define F4_ATOMIC_MIN64(p, x) atomicMin((p), (x))
+#    define F4_ATOMIC_ADD32(p, x) atomicAdd((p), (x))
 #else
 /* Host emulation: a phase is a loop over thread indices, a barrier is a
  * no-op, and an atomic is the plain operation with CUDA's return value. */
-#define F4_FN static inline
-#define F4_BLOCK_FN static
-#define F4_FOR_THREADS(tid) for (f4_u32 tid = 0; tid < nt; ++tid) {
-#define F4_END_THREADS }
-#define F4_SINGLE
-#define F4_SYNC() ((void)0)
-#define F4_POPC(x) ((f4_u32)__builtin_popcountll(x))
-#define F4_CTZ(x) ((f4_u32)__builtin_ctzll(x))
-static inline f4_u64 f4_host_or64(f4_u64 *p, f4_u64 x) { f4_u64 old = *p; *p = old | x; return old; }
-static inline f4_u64 f4_host_add64(f4_u64 *p, f4_u64 x) { f4_u64 old = *p; *p = old + x; return old; }
-static inline f4_u64 f4_host_min64(f4_u64 *p, f4_u64 x) { f4_u64 old = *p; *p = old < x ? old : x; return old; }
-static inline f4_u32 f4_host_add32(f4_u32 *p, f4_u32 x) { f4_u32 old = *p; *p = old + x; return old; }
-#define F4_ATOMIC_OR64(p, x) f4_host_or64((p), (x))
-#define F4_ATOMIC_ADD64(p, x) f4_host_add64((p), (x))
-#define F4_ATOMIC_MIN64(p, x) f4_host_min64((p), (x))
-#define F4_ATOMIC_ADD32(p, x) f4_host_add32((p), (x))
+#    define F4_FN               static inline
+#    define F4_BLOCK_FN         static
+#    define F4_FOR_THREADS(tid) for (f4_u32 tid = 0; tid < nt; ++tid) {
+#    define F4_END_THREADS      }
+#    define F4_SINGLE
+#    define F4_SYNC()             ((void)0)
+#    define F4_POPC(x)            ((f4_u32)__builtin_popcountll(x))
+#    define F4_CTZ(x)             ((f4_u32)__builtin_ctzll(x))
+static inline f4_u64 f4_host_or64(f4_u64 *p, f4_u64 x)
+{
+    f4_u64 old = *p;
+    *p = old | x;
+    return old;
+}
+static inline f4_u64 f4_host_add64(f4_u64 *p, f4_u64 x)
+{
+    f4_u64 old = *p;
+    *p = old + x;
+    return old;
+}
+static inline f4_u64 f4_host_min64(f4_u64 *p, f4_u64 x)
+{
+    f4_u64 old = *p;
+    *p = old < x ? old : x;
+    return old;
+}
+static inline f4_u32 f4_host_add32(f4_u32 *p, f4_u32 x)
+{
+    f4_u32 old = *p;
+    *p = old + x;
+    return old;
+}
+#    define F4_ATOMIC_OR64(p, x)  f4_host_or64((p), (x))
+#    define F4_ATOMIC_ADD64(p, x) f4_host_add64((p), (x))
+#    define F4_ATOMIC_MIN64(p, x) f4_host_min64((p), (x))
+#    define F4_ATOMIC_ADD32(p, x) f4_host_add32((p), (x))
 #endif
 
 F4_FN f4_u64 f4_all_vars(f4_u32 n_vars)
@@ -172,8 +194,7 @@ F4_FN f4_u64 f4_multiplier(const F4Shared *sh, f4_u32 local, f4_u32 k, f4_u32 *d
 F4_FN f4_u32 f4_lead(const f4_u64 *row, f4_u32 from, f4_u32 stride)
 {
     for (f4_u32 w = from; w < stride; ++w)
-        if (row[w] != 0ull)
-            return w * 64u + F4_CTZ(row[w]);
+        if (row[w] != 0ull) return w * 64u + F4_CTZ(row[w]);
     return F4_NONE;
 }
 
@@ -188,8 +209,7 @@ F4_BLOCK_FN void f4_block_init(F4Shared *sh, f4_u32 nt)
                 if (k > n) {
                     c = 0ull;
                 } else {
-                    for (f4_u32 i = 1; i <= k; ++i)
-                        c = c * (f4_u64)(n - k + i) / (f4_u64)i;
+                    for (f4_u32 i = 1; i <= k; ++i) c = c * (f4_u64)(n - k + i) / (f4_u64)i;
                 }
                 sh->binom[n][k] = (f4_u32)c;
             }
@@ -205,7 +225,8 @@ F4_BLOCK_FN void f4_stage_layout(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
                                  const f4_u32 *sys_meta, f4_u32 sys, f4_u64 scratch_words)
 {
     (void)nt;
-    F4_SINGLE {
+    F4_SINGLE
+    {
         sh->status = F4_STATUS_DECIDED;
         sh->poly_lo = sys_poly_start[sys];
         sh->poly_hi = sys_poly_start[sys + 1];
@@ -226,14 +247,13 @@ F4_BLOCK_FN void f4_stage_layout(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
             sh->status = F4_STATUS_FALLBACK;
     }
     F4_SYNC();
-    if (sh->status != F4_STATUS_DECIDED)
-        return;
-    F4_SINGLE {
+    if (sh->status != F4_STATUS_DECIDED) return;
+    F4_SINGLE
+    {
         /* Generating equations: nonzero, degree at most D. */
         for (f4_u32 p = sh->poly_lo; p < sh->poly_hi; ++p) {
             f4_u32 lo = poly_start[p], hi = poly_start[p + 1];
-            if (lo == hi)
-                continue;
+            if (lo == hi) continue;
             f4_u32 pdeg = 0u;
             f4_u64 vars = 0ull;
             for (f4_u32 t = lo; t < hi; ++t) {
@@ -241,8 +261,7 @@ F4_BLOCK_FN void f4_stage_layout(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
                 pdeg = d > pdeg ? d : pdeg;
                 vars |= terms[t];
             }
-            if (pdeg > sh->degree)
-                continue;
+            if (pdeg > sh->degree) continue;
             sh->gen_poly[sh->n_gen] = p;
             sh->gen_k[sh->n_gen] = sh->degree - pdeg;
             sh->n_gen += 1u;
@@ -260,23 +279,19 @@ F4_BLOCK_FN void f4_stage_layout(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
         sh->missing = F4_POPC(f4_all_vars(sh->n_vars) & ~sh->occ);
         /* Rank offsets, highest degree first. */
         f4_u32 dm = sh->degree < v ? sh->degree : v;
-        for (f4_u32 d = 0; d <= F4_DMAX + 1u; ++d)
-            sh->base[d] = 0ull;
-        for (f4_u32 d = dm; d-- > 0u;)
-            sh->base[d] = sh->base[d + 1u] + sh->binom[v][d + 1u];
+        for (f4_u32 d = 0; d <= F4_DMAX + 1u; ++d) sh->base[d] = 0ull;
+        for (f4_u32 d = dm; d-- > 0u;) sh->base[d] = sh->base[d + 1u] + sh->binom[v][d + 1u];
         sh->rank_space = sh->base[0] + 1ull;
         for (f4_u32 s = 0; s <= F4_DMAX; ++s) {
             f4_u64 acc = 0ull;
-            for (f4_u32 j = 0; j <= s && j <= sh->missing; ++j)
-                acc += sh->binom[sh->missing][j];
+            for (f4_u32 j = 0; j <= s && j <= sh->missing; ++j) acc += sh->binom[sh->missing][j];
             sh->upto[s] = acc;
         }
         /* Candidate rows: every multiplier of degree <= k per equation. */
         f4_u64 total = 0ull;
         for (f4_u32 g = 0; g < sh->n_gen; ++g) {
             sh->cand_start[g] = (f4_u32)total;
-            for (f4_u32 j = 0; j <= sh->gen_k[g] && j <= v; ++j)
-                total += sh->binom[v][j];
+            for (f4_u32 j = 0; j <= sh->gen_k[g] && j <= v; ++j) total += sh->binom[v][j];
         }
         sh->cand_start[sh->n_gen] = (f4_u32)total;
         sh->n_bitmap_words = (f4_u32)((sh->rank_space + 63ull) >> 6);
@@ -297,21 +312,18 @@ F4_BLOCK_FN void f4_stage_layout(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
 /* Stage 2: mark every product monomial's rank, then prefix-count the
  * bitmap into dense column indices. */
 F4_BLOCK_FN void f4_stage_columns(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
-                                  const f4_u32 *poly_start, f4_u64 *scratch,
-                                  f4_u64 scratch_words)
+                                  const f4_u32 *poly_start, f4_u64 *scratch, f4_u64 scratch_words)
 {
     f4_u64 *bitmap = scratch;
     f4_u32 *prefix = (f4_u32 *)(scratch + sh->off_prefix);
     F4_FOR_THREADS(tid)
-        for (f4_u32 w = tid; w < sh->n_bitmap_words; w += nt)
-            bitmap[w] = 0ull;
+        for (f4_u32 w = tid; w < sh->n_bitmap_words; w += nt) bitmap[w] = 0ull;
     F4_END_THREADS
     F4_SYNC();
     F4_FOR_THREADS(tid)
         f4_u32 g = 0u;
         for (f4_u32 row = tid; row < sh->n_cand; row += nt) {
-            while (row >= sh->cand_start[g + 1u])
-                ++g;
+            while (row >= sh->cand_start[g + 1u]) ++g;
             f4_u32 deg;
             f4_u64 u = f4_multiplier(sh, row - sh->cand_start[g], sh->gen_k[g], &deg);
             f4_u32 p = sh->gen_poly[g];
@@ -326,15 +338,14 @@ F4_BLOCK_FN void f4_stage_columns(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
     F4_FOR_THREADS(tid)
         f4_u32 chunk = (sh->n_bitmap_words + nt - 1u) / nt;
         f4_u32 lo = tid * chunk, hi = lo + chunk;
-        if (hi > sh->n_bitmap_words)
-            hi = sh->n_bitmap_words;
+        if (hi > sh->n_bitmap_words) hi = sh->n_bitmap_words;
         f4_u32 sum = 0u;
-        for (f4_u32 w = lo; w < hi; ++w)
-            sum += F4_POPC(bitmap[w]);
+        for (f4_u32 w = lo; w < hi; ++w) sum += F4_POPC(bitmap[w]);
         sh->thread_sum[tid] = sum;
     F4_END_THREADS
     F4_SYNC();
-    F4_SINGLE {
+    F4_SINGLE
+    {
         f4_u32 run = 0u;
         for (f4_u32 i = 0; i < nt; ++i) {
             f4_u32 s = sh->thread_sum[i];
@@ -347,8 +358,7 @@ F4_BLOCK_FN void f4_stage_columns(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
     F4_FOR_THREADS(tid)
         f4_u32 chunk = (sh->n_bitmap_words + nt - 1u) / nt;
         f4_u32 lo = tid * chunk, hi = lo + chunk;
-        if (hi > sh->n_bitmap_words)
-            hi = sh->n_bitmap_words;
+        if (hi > sh->n_bitmap_words) hi = sh->n_bitmap_words;
         f4_u32 run = sh->thread_sum[tid];
         for (f4_u32 w = lo; w < hi; ++w) {
             prefix[w] = run;
@@ -356,7 +366,8 @@ F4_BLOCK_FN void f4_stage_columns(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
         }
     F4_END_THREADS
     F4_SYNC();
-    F4_SINGLE {
+    F4_SINGLE
+    {
         sh->stride = (sh->n_cols + 63u) / 64u;
         /* Degree <= 1 ranks start at base[1]; the constant is base[0]. */
         f4_u64 b1 = sh->v >= 1u && sh->degree >= 1u ? sh->base[1] : sh->base[0];
@@ -402,13 +413,11 @@ F4_BLOCK_FN void f4_stage_fill(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
         f4_u32 g = 0u;
         f4_u64 rows_here = 0ull, nonempty_here = 0ull, skipped_here = 0ull;
         for (f4_u32 row = tid; row < sh->n_cand; row += nt) {
-            while (row >= sh->cand_start[g + 1u])
-                ++g;
+            while (row >= sh->cand_start[g + 1u]) ++g;
             f4_u32 deg;
             f4_u64 u = f4_multiplier(sh, row - sh->cand_start[g], sh->gen_k[g], &deg);
             f4_u64 *dst = mat + (f4_u64)row * stride;
-            for (f4_u32 w = 0; w < stride; ++w)
-                dst[w] = 0ull;
+            for (f4_u32 w = 0; w < stride; ++w) dst[w] = 0ull;
             f4_u32 p = sh->gen_poly[g];
             for (f4_u32 t = poly_start[p]; t < poly_start[p + 1u]; ++t) {
                 f4_u32 c = f4_dense(bitmap, prefix, f4_rank(sh, terms[t] | u));
@@ -428,12 +437,9 @@ F4_BLOCK_FN void f4_stage_fill(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
                 }
             }
         }
-        if (rows_here)
-            F4_ATOMIC_ADD64(&sh->ref_rows, rows_here);
-        if (nonempty_here)
-            F4_ATOMIC_ADD64(&sh->nonempty, nonempty_here);
-        if (skipped_here)
-            F4_ATOMIC_ADD64(&sh->skipped, skipped_here);
+        if (rows_here) F4_ATOMIC_ADD64(&sh->ref_rows, rows_here);
+        if (nonempty_here) F4_ATOMIC_ADD64(&sh->nonempty, nonempty_here);
+        if (skipped_here) F4_ATOMIC_ADD64(&sh->skipped, skipped_here);
     F4_END_THREADS
     F4_SYNC();
     /* Per word: OR the nonempty rows by slack class, then count each
@@ -441,8 +447,7 @@ F4_BLOCK_FN void f4_stage_fill(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
     F4_FOR_THREADS(tid)
         f4_u64 cols_here = 0ull;
         for (f4_u32 w = tid; w < stride; w += nt) {
-            for (f4_u32 s = 0; s <= sh->degree; ++s)
-                cls[(f4_u64)s * stride + w] = 0ull;
+            for (f4_u32 s = 0; s <= sh->degree; ++s) cls[(f4_u64)s * stride + w] = 0ull;
             for (f4_u32 row = 0; row < sh->n_cand; ++row)
                 if (meta[row] & 0x100u)
                     cls[(f4_u64)(meta[row] & 0xffu) * stride + w] |= mat[(f4_u64)row * stride + w];
@@ -453,11 +458,11 @@ F4_BLOCK_FN void f4_stage_fill(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
                 covered |= m;
             }
         }
-        if (cols_here)
-            F4_ATOMIC_ADD64(&sh->ref_cols, cols_here);
+        if (cols_here) F4_ATOMIC_ADD64(&sh->ref_cols, cols_here);
     F4_END_THREADS
     F4_SYNC();
-    F4_SINGLE {
+    F4_SINGLE
+    {
         if (sh->nonempty == 0ull)
             sh->status = F4_STATUS_EMPTY;
         else if (sh->ref_rows > (f4_u64)max_rows || sh->ref_cols > (f4_u64)max_cols)
@@ -482,8 +487,7 @@ F4_BLOCK_FN void f4_stage_echelon(F4Shared *sh, f4_u32 nt, f4_u64 *scratch)
     for (f4_u32 round = 0;; ++round) {
         f4_u32 slot = round % 3u;
         F4_FOR_THREADS(tid)
-            if (tid == 0u)
-                sh->best[(slot + 1u) % 3u] = ~0ull;
+            if (tid == 0u) sh->best[(slot + 1u) % 3u] = ~0ull;
             f4_u64 mine = ~0ull;
             for (f4_u32 row = tid; row < sh->n_cand; row += nt) {
                 f4_u32 l = lead[row];
@@ -492,13 +496,11 @@ F4_BLOCK_FN void f4_stage_echelon(F4Shared *sh, f4_u32 nt, f4_u64 *scratch)
                     mine = key < mine ? key : mine;
                 }
             }
-            if (mine != ~0ull)
-                F4_ATOMIC_MIN64(&sh->best[slot], mine);
+            if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[slot], mine);
         F4_END_THREADS
         F4_SYNC();
         f4_u64 best = sh->best[slot];
-        if (best == ~0ull)
-            break;
+        if (best == ~0ull) break;
         const f4_u32 prow = (f4_u32)(best & 0xffffffffull);
         const f4_u32 pcol = (f4_u32)(best >> 32);
         const f4_u32 from = pcol >> 6;
@@ -509,17 +511,14 @@ F4_BLOCK_FN void f4_stage_echelon(F4Shared *sh, f4_u32 nt, f4_u64 *scratch)
                     meta[row] |= 0x200u;
                     continue;
                 }
-                if ((meta[row] & 0x200u) || lead[row] != pcol)
-                    continue;
+                if ((meta[row] & 0x200u) || lead[row] != pcol) continue;
                 f4_u64 *dst = mat + (f4_u64)row * stride;
                 const f4_u64 *src = mat + (f4_u64)prow * stride;
-                for (f4_u32 w = from; w < stride; ++w)
-                    dst[w] ^= src[w];
+                for (f4_u32 w = from; w < stride; ++w) dst[w] ^= src[w];
                 ops_here += stride - from;
                 lead[row] = f4_lead(dst, from, stride);
             }
-            if (ops_here)
-                F4_ATOMIC_ADD64(&sh->word_ops, ops_here);
+            if (ops_here) F4_ATOMIC_ADD64(&sh->word_ops, ops_here);
         F4_END_THREADS
         F4_SYNC();
     }
@@ -537,8 +536,7 @@ F4_BLOCK_FN void f4_stage_linear(F4Shared *sh, f4_u32 nt, f4_u64 *scratch, F4Res
     const f4_u32 stride = sh->stride, start = sh->low_start, width = sh->low_width;
     F4_FOR_THREADS(tid)
         for (f4_u32 row = tid; row < sh->n_cand; row += nt) {
-            if ((meta[row] & 0x200u) || lead[row] == F4_NONE)
-                continue;
+            if ((meta[row] & 0x200u) || lead[row] == F4_NONE) continue;
             f4_u64 lo = 0ull, hi = 0ull;
             for (f4_u32 j = 0; j < width; ++j) {
                 f4_u32 c = start + j;
@@ -556,7 +554,8 @@ F4_BLOCK_FN void f4_stage_linear(F4Shared *sh, f4_u32 nt, f4_u64 *scratch, F4Res
         }
     F4_END_THREADS
     F4_SYNC();
-    F4_SINGLE {
+    F4_SINGLE
+    {
         sh->lrank = 0u;
         sh->best[0] = ~0ull;
         sh->best[1] = ~0ull;
@@ -566,21 +565,18 @@ F4_BLOCK_FN void f4_stage_linear(F4Shared *sh, f4_u32 nt, f4_u64 *scratch, F4Res
     for (f4_u32 col = 0; col < width; ++col) {
         f4_u32 slot = col % 3u;
         F4_FOR_THREADS(tid)
-            if (tid == 0u)
-                sh->best[(slot + 1u) % 3u] = ~0ull;
+            if (tid == 0u) sh->best[(slot + 1u) % 3u] = ~0ull;
             f4_u64 mine = ~0ull;
             for (f4_u32 i = tid; i < sh->n_low; i += nt) {
                 f4_u64 word = col < 64u ? low[2u * i] : low[2u * i + 1u];
                 if (!lmeta[i] && ((word >> (col & 63u)) & 1ull))
                     mine = (f4_u64)i < mine ? (f4_u64)i : mine;
             }
-            if (mine != ~0ull)
-                F4_ATOMIC_MIN64(&sh->best[slot], mine);
+            if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[slot], mine);
         F4_END_THREADS
         F4_SYNC();
         f4_u64 best = sh->best[slot];
-        if (best == ~0ull)
-            continue;
+        if (best == ~0ull) continue;
         const f4_u32 piv = (f4_u32)best;
         F4_FOR_THREADS(tid)
             if (tid == 0u) {
@@ -601,7 +597,8 @@ F4_BLOCK_FN void f4_stage_linear(F4Shared *sh, f4_u32 nt, f4_u64 *scratch, F4Res
         F4_END_THREADS
         F4_SYNC();
     }
-    F4_SINGLE {
+    F4_SINGLE
+    {
         f4_u32 refuted = 0u;
         f4_u64 fmask = 0ull, fvals = 0ull;
         f4_u32 cbit = sh->const_present ? width - 1u : F4_NONE;
@@ -625,8 +622,7 @@ F4_BLOCK_FN void f4_stage_linear(F4Shared *sh, f4_u32 nt, f4_u64 *scratch, F4Res
                 f4_u32 j = lo ? F4_CTZ(lo) : 64u + F4_CTZ(hi);
                 f4_u32 var = sh->low_var[j];
                 fmask |= 1ull << var;
-                if (has_const)
-                    fvals |= 1ull << var;
+                if (has_const) fvals |= 1ull << var;
             }
         }
         out->refuted = refuted;
@@ -650,9 +646,9 @@ F4_BLOCK_FN void f4_decide_system(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
     if (sh->status == F4_STATUS_DECIDED)
         f4_stage_fill(sh, nt, terms, poly_start, scratch, max_rows, max_cols, skip_bits,
                       skip_start[sys], skip_start[sys + 1u]);
-    if (sh->status == F4_STATUS_DECIDED)
-        f4_stage_echelon(sh, nt, scratch);
-    F4_SINGLE {
+    if (sh->status == F4_STATUS_DECIDED) f4_stage_echelon(sh, nt, scratch);
+    F4_SINGLE
+    {
         out->status = sh->status;
         out->refuted = 0u;
         out->forced_mask = 0ull;
@@ -670,8 +666,7 @@ F4_BLOCK_FN void f4_decide_system(F4Shared *sh, f4_u32 nt, const f4_u64 *terms,
         out->reserved = 0u;
     }
     F4_SYNC();
-    if (sh->status == F4_STATUS_DECIDED)
-        f4_stage_linear(sh, nt, scratch, out);
+    if (sh->status == F4_STATUS_DECIDED) f4_stage_linear(sh, nt, scratch, out);
 }
 
 #endif /* F4_GF2_DEVICE_CUH */
