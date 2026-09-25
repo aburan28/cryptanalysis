@@ -1,0 +1,769 @@
+{
+ "script": "build_errata.py",
+ "n_errata": 12,
+ "errata": [
+  {
+   "id": "ERR-01",
+   "claim_id": "transport-263 C4 (transport op counts)",
+   "topic": "per-curve build op counts vary; Velu eval add count",
+   "original_value": {
+    "claim_text": "not on disk (sweep StructuredOutput only)",
+    "on_disk_single_curve_figure": {
+     "file": "transport-263/per_curve.json",
+     "key": "A000.build_ops",
+     "value": {
+      "M": 633,
+      "S": 831,
+      "I": 317,
+      "A": 2679
+     }
+    },
+    "on_disk_eval_ops_all_262": {
+     "file": "transport-263/per_curve.json",
+     "key": "*.eval_ops_per_point.A (distinct values over 262 floor rows)",
+     "value": [
+      787
+     ]
+    }
+   },
+   "corrected_value": {
+    "build_ops_range_over_262": {
+     "M": [
+      633,
+      639
+     ],
+     "S": [
+      831,
+      1617
+     ],
+     "I": [
+      317,
+      323
+     ],
+     "A": [
+      2679,
+      3471
+     ]
+    },
+    "eval_ops_per_point": 788,
+    "eval_A_as_counted_by_sweep": 787,
+    "M_equiv_upper_range": [
+     47576,
+     49196
+    ]
+   },
+   "correction_on_disk": [
+    {
+     "file": "verify/transport-263/C4-audit/count_ops.json",
+     "key": "build_ops_range_all_262",
+     "value": {
+      "M": [
+       633,
+       639
+      ],
+      "S": [
+       831,
+       1617
+      ],
+      "I": [
+       317,
+       323
+      ],
+      "A": [
+       2679,
+       3471
+      ]
+     }
+    },
+    {
+     "file": "verify/transport-263/C4-audit/count_ops.json",
+     "key": "velu_eval_instrumented.A000",
+     "value": {
+      "M": 914,
+      "S": 131,
+      "I": 1,
+      "A": 788
+     }
+    },
+    {
+     "file": "verify/transport-263/C4-audit/count_ops.json",
+     "key": "velu_eval_analytic.{A_incl_final_plus_v,A_as_counted_by_sweep}",
+     "value": [
+      788,
+      787
+     ]
+    },
+    {
+     "file": "verify/transport-263/C4-audit/count_ops.json",
+     "key": "build_failed_x_histogram",
+     "value": {
+      "0": 123,
+      "1": 68,
+      "2": 39,
+      "3": 16,
+      "4": 8,
+      "5": 7,
+      "6": 1
+     }
+    }
+   ],
+   "prose_only": false,
+   "g6_confirmation": {
+    "per_curve_build_ops_range_recomputed_from_per_curve_json": {
+     "M": [
+      633,
+      639
+     ],
+     "S": [
+      831,
+      1617
+     ],
+     "I": [
+      317,
+      323
+     ],
+     "A": [
+      2679,
+      3471
+     ]
+    },
+    "matches_audit_range": true,
+    "crosscheck T8_eval_ops disagreements (A 787 vs 788)": 262
+   },
+   "affects": [
+    {
+     "file": "transport-263/per_curve.json",
+     "key": "*.eval_ops_per_point.A",
+     "rows": 262
+    }
+   ],
+   "hardness_impact": "none: effective increment stays < 1e-11 bits (C4-recompute worst 0.00000000000003729929 bits)"
+  },
+  {
+   "id": "ERR-02",
+   "claim_id": "RT0-8 (twist / invalid-curve oracle on an x-only E0 implementation)",
+   "topic": "what an E0-twist oracle leaks",
+   "original_value": {
+    "claimed_small_part": "k mod 2*263^2",
+    "claimed_small_part_log2": {
+     "file": "verify/redteam/RT0-8-1/s1_structure.json",
+     "key": "G.claimed_small_part_log2",
+     "value": 17.077837978584604
+    },
+    "cofactor_2*263^2": {
+     "file": "verify/redteam/RT0-8-0/params.json",
+     "key": "cofactor",
+     "value": "138338"
+    }
+   },
+   "corrected_value": {
+    "leaks": "k mod 2*263 (and mod P114), not mod 2*263^2, because E0'(F_q) = Z/(2*263*P114) x Z/263",
+    "actual_E0_small_part_log2": 9.038918989292302,
+    "E0_impl_leak_modulus_log2": 123.9610810107077,
+    "E0_impl_residual_log2": 5.0389189892922985,
+    "floor_impl_leak_modulus_log2": 132.0
+   },
+   "correction_on_disk": [
+    {
+     "file": "verify/redteam/RT0-8-1/s1_structure.json",
+     "key": "G.{claimed_small_part_log2,actual_E0_small_part_log2}",
+     "value": [
+      17.077837978584604,
+      9.038918989292302
+     ]
+    },
+    {
+     "file": "verify/redteam/RT0-8-1/s1_structure.json",
+     "key": "B.pari_ellgroup",
+     "value": "[10350794431055162386633890497850385714, 263]"
+    },
+    {
+     "file": "verify/redteam/RT0-8-1/s2_e2e.json",
+     "key": "E0_impl.k_mod_263sq_obtainable",
+     "value": false
+    }
+   ],
+   "prose_only": false,
+   "g6_confirmation": {
+    "group-order E0 pari_twist_ellgroup": [
+     "10350794431055162386633890497850385714",
+     "263"
+    ],
+    "crosscheck C4_twist_group (E0' = Z/(2*263*P114) x Z/263, floor twists cyclic) disagreements": 0
+   },
+   "affects": [
+    {
+     "file": "per_curve_hardness.json",
+     "key": "curves.E0.twist.value.invalid_curve_note",
+     "rows": 1
+    }
+   ],
+   "hardness_impact": "implementation-level only (x-only / invalid-curve); the ECDLP on E0 is unaffected"
+  },
+  {
+   "id": "ERR-03",
+   "claim_id": "toy-analogue-a C3",
+   "topic": "runs vs distinct DLP instances",
+   "original_value": {
+    "claim_text": "not on disk (StructuredOutput only)"
+   },
+   "corrected_value": {
+    "rho_runs": 52600,
+    "distinct_planted_DLPs": 24300,
+    "transported_runs": 15200,
+    "errors": 0
+   },
+   "correction_on_disk": [
+    {
+     "file": "verify/toy-analogue-a/C3-audit/check_all.json",
+     "key": "grand_total.{rows,distinct_planted_instances_solved,tr_rows}",
+     "value": [
+      52600,
+      24300,
+      15200
+     ]
+    }
+   ],
+   "prose_only": false,
+   "original_prose_only": true,
+   "affects": [],
+   "hardness_impact": "none (all 52,600 runs recovered the planted log)"
+  },
+  {
+   "id": "ERR-04",
+   "claim_id": "toy-analogue-a C2",
+   "topic": "number of transported pairs",
+   "original_value": {
+    "value": 13200,
+    "source": {
+     "file": "verify/toy-analogue-a/C2-audit/audit_summary.json",
+     "key": "notes[0]",
+     "value": "transported rows in final TSVs = 15200 (T11 4400, T19 6000, T23 2400, T59 1800, T109 600), all verified+match; claim says 13,200"
+    }
+   },
+   "corrected_value": {
+    "value": 15200,
+    "per_family": {
+     "T11": 4400,
+     "T19": 6000,
+     "T23": 2400,
+     "T59": 1800,
+     "T109": 600
+    }
+   },
+   "correction_on_disk": [
+    {
+     "file": "verify/toy-analogue-a/C2-audit/recount.json",
+     "key": "total_transported_rows",
+     "value": 15200
+    },
+    {
+     "file": "verify/toy-analogue-a/C2-audit/audit_summary.json",
+     "key": "notes[0]",
+     "value": "transported rows in final TSVs = 15200 (T11 4400, T19 6000, T23 2400, T59 1800, T109 600), all verified+match; claim says 13,200"
+    }
+   ],
+   "prose_only": false,
+   "affects": [],
+   "hardness_impact": "none (count only; all rows verified)"
+  },
+  {
+   "id": "ERR-05",
+   "claim_id": "toy-analogue-a C2 (fast transport cross-check)",
+   "topic": "what the 120/120 cross-check compares",
+   "original_value": {
+    "value": "360 additional log checks",
+    "source": {
+     "file": "verify/toy-analogue-a/C2-audit/audit_summary.json",
+     "key": "notes[1]",
+     "value": "crosscheck_fast_transport: 120/120 per family for T19,T23,T109 compares P images only (up to sign) on instances already in the TSVs; not 360 additional log checks"
+    }
+   },
+   "corrected_value": {
+    "value": "120/120 per family for T19, T23, T109, comparing P images (up to sign) on instances already in the TSVs"
+   },
+   "correction_on_disk": [
+    {
+     "file": "verify/toy-analogue-a/C2-audit/audit_summary.json",
+     "key": "notes[1]",
+     "value": "crosscheck_fast_transport: 120/120 per family for T19,T23,T109 compares P images only (up to sign) on instances already in the TSVs; not 360 additional log checks"
+    }
+   ],
+   "prose_only": false,
+   "affects": [],
+   "hardness_impact": "none"
+  },
+  {
+   "id": "ERR-06",
+   "claim_id": "pairing-transfer C2",
+   "topic": "identical embedding degree across the 263 curves is forced, not measured",
+   "original_value": {
+    "claim_text": "not on disk (StructuredOutput only): identical k reported as a per-curve measurement",
+    "k": "216464610000596986937760855436835237"
+   },
+   "corrected_value": {
+    "k": "216464610000596986937760855436835237",
+    "status": "value correct; per_curve_pairings.py reads #E from ground_truth order_pari, asserts card == CARD and kE == K_REF, so equality holds by construction (isogenous curves have equal #E)"
+   },
+   "correction_on_disk": [
+    {
+     "file": "pairing-transfer/per_curve_pairings.py",
+     "key": "assert lines",
+     "value": [
+      "line 7: #  (1) N_E := order_pari/4; prove prime; factor N_E - 1 (PARI) and compute ord_{N_E}(q) three",
+      "line 142: card = Integer(rec[\"order_pari\"])",
+      "line 143: assert card == CARD and card % 4 == 0",
+      "line 147: assert kE == K_REF",
+      "line 162: tw = Integer(rec[\"twist_order_pari\"])"
+     ]
+    },
+    {
+     "file": "verify/pairing-transfer/C2-audit/c2_pure_python.json",
+     "key": "per_curve_summary.distinct_k_E (card derived from point orders, not read)",
+     "value": [
+      "216464610000596986937760855436835237"
+     ]
+    }
+   ],
+   "prose_only": true,
+   "prose_only_note": "no on-disk key states this correction; the evidence (assert lines, independent per-curve recompute) is on disk",
+   "affects": [],
+   "hardness_impact": "none (k ~ 2^117.38 on every curve)"
+  },
+  {
+   "id": "ERR-07",
+   "claim_id": "pairing-transfer C3 (audit)",
+   "topic": "the C3 audit script t1.gp was never completed or run",
+   "original_value": {
+    "audit_state": "verify/pairing-transfer/C3-audit contains only t1.gp",
+    "t1_run_by_G6": {
+     "returncode": 0,
+     "stdout_lines": [
+      "***   at top-level: rr=polrootsmod(fq,w);print(#rr)",
+      "  ***                    ^----------------------------",
+      "  *** polrootsmod: the PARI stack overflows !",
+      "  current stack size: 8000000 (7.629 Mbytes)",
+      "  [hint] set 'parisizemax' to a nonzero value in your GPRC",
+      "",
+      "... skipping file '/Volumes/SSD990/ecdlp-hardness-work/verify/pairing-transfer/C3-audit/t1.gp'",
+      "  ***   at top-level: r=rr[1];print(subst(fq,x,r)==0)",
+      "  ***                     ^---------------------------",
+      "  ***   incorrect type in _[_] OCcompo1 [not a vector] (t_POL).",
+      "0 0 time 13",
+      "E0 card 1 time 1",
+      "  ***   at top-level: ...e();g=ellgroup(E0);print(factor(g[1]),\" | \",fa",
+      "  ***                                             ^---------------------",
+      "  *** factor: the PARI stack overflows !",
+      "  current stack size: 8000000 (7.629 Mbytes)",
+      "  [hint] set 'parisizemax' to a nonzero value in your GPRC"
+     ]
+    },
+    "assessment": "incomplete: builds F_{2^262}, embeds F_q, point-counts one unrelated curve [1,0,0,0,w^5+1] and E0 over F_{q^2} and prints E0's ellgroup; it never evaluates a Tate pairing, so it cannot test t_263(P,Q_N) = 1"
+   },
+   "corrected_value": {
+    "verdict": "CONFIRMED: t_263(P, Q_N) = 1 on E0, A000, B000 (PARI, own embedding), with non-degenerate, shift-invariant, bilinear controls",
+    "all_checks_pass": true,
+    "results": {
+     "global": {
+      "N_is_prime": true,
+      "v263_CL": 2,
+      "QL_minus_1_div_263": true,
+      "gcd_N_263": 1,
+      "fq_irreducible_mod2": true,
+      "embedding_root_ok": true,
+      "embedding_ring_hom_20_pairs": true,
+      "done": true
+     },
+     "E0": {
+      "j_matches_ground_truth": true,
+      "b_times_j_is_1": true,
+      "card_L_equals_(q+1-t)(q+1+t)": true,
+      "QN_order_N": true,
+      "sylow263": "(Z/263)^2",
+      "P_order_263": true,
+      "frobenius_acts_as_minus1_on_P": true,
+      "tate_P_QN_all_1": true,
+      "nondegenerate_witness_found": true,
+      "tate_P_T_ne_1": true,
+      "tate_value_is_263rd_root_of_unity": true,
+      "shift_invariant_T_plus_QN": true,
+      "bilinear_second_slot": true,
+      "bilinear_first_slot": true,
+      "seconds": 0.141
+     },
+     "A000": {
+      "j_matches_ground_truth": true,
+      "b_times_j_is_1": true,
+      "card_L_equals_(q+1-t)(q+1+t)": true,
+      "QN_order_N": true,
+      "sylow263": "Z/263^2_cyclic",
+      "P_order_263": true,
+      "frobenius_acts_as_minus1_on_P": true,
+      "tate_P_QN_all_1": true,
+      "nondegenerate_witness_found": true,
+      "tate_P_T_ne_1": true,
+      "tate_value_is_263rd_root_of_unity": true,
+      "shift_invariant_T_plus_QN": true,
+      "bilinear_second_slot": true,
+      "bilinear_first_slot": true,
+      "seconds": 0.032
+     },
+     "B000": {
+      "j_matches_ground_truth": true,
+      "b_times_j_is_1": true,
+      "card_L_equals_(q+1-t)(q+1+t)": true,
+      "QN_order_N": true,
+      "sylow263": "Z/263^2_cyclic",
+      "P_order_263": true,
+      "frobenius_acts_as_minus1_on_P": true,
+      "tate_P_QN_all_1": true,
+      "nondegenerate_witness_found": true,
+      "tate_P_T_ne_1": true,
+      "tate_value_is_263rd_root_of_unity": true,
+      "shift_invariant_T_plus_QN": true,
+      "bilinear_second_slot": true,
+      "bilinear_first_slot": true,
+      "seconds": 0.038
+     }
+    }
+   },
+   "correction_on_disk": [
+    {
+     "file": "gaps/G6-consolidate-and-cross-check-per-curve/pairing_c3_check.json",
+     "key": "verdict",
+     "value": "CONFIRMED: t_263(P, Q_N) = 1 on E0, A000, B000 (PARI, own embedding), with non-degenerate, shift-invariant, bilinear controls"
+    },
+    {
+     "file": "gaps/G6-consolidate-and-cross-check-per-curve/t1_run.log",
+     "key": "stdout",
+     "value": "stack overflow in polrootsmod at default parisize; never evaluates a pairing"
+    }
+   ],
+   "prose_only": false,
+   "affects": [],
+   "hardness_impact": "none: claim C3 confirmed on E0, A000, B000 by an independent PARI script"
+  },
+  {
+   "id": "ERR-08",
+   "claim_id": "weil-descent-ghs (raw_magic_numbers.json gghs_min_pairs)",
+   "topic": "an unrealizable gGHS decomposition type is listed as a minimum",
+   "original_value": {
+    "file": "weil-descent-ghs/raw_magic_numbers.json",
+    "key": "curves.<floor>.gghs_min_pairs (distinct over 262 floor curves)",
+    "value": [
+     [
+      [
+       "Phi131",
+       "Phi131"
+      ],
+      [
+       "Phi131",
+       "x+1"
+      ]
+     ]
+    ]
+   },
+   "corrected_value": {
+    "realizable_min_pairs": [
+     [
+      "Phi131",
+      "Phi131"
+     ]
+    ],
+    "reason": "a factor of type x+1 is 1, so the other factor is sqrt(b), whose F_2-linear order is x^131+1 on every floor curve (conjugate rank 131, recomputed); (Phi131, x+1) cannot occur",
+    "min_genus_value": "unchanged, 2^130 - 1, attained by the (Phi131, Phi131) witness (gamma1*gamma2 = sqrt(b) verified on 262 curves)"
+   },
+   "correction_on_disk": [
+    {
+     "file": "gaps/G6-consolidate-and-cross-check-per-curve/crosscheck_report.json",
+     "key": "checks.G8_gghs_pairs_realizable",
+     "value": {
+      "description": "listed gGHS min pair containing x+1 is realizable (other factor = sqrt(b), of type Ord(sqrt b))",
+      "n_compared": 525,
+      "n_agree": 263,
+      "n_disagree": 262,
+      "sources": [
+       "weil-descent-ghs/raw_magic_numbers.json"
+      ],
+      "reference": "G6 recompute (rank of conjugates of sqrt(b))"
+     }
+    },
+    {
+     "file": "gaps/G2-verify-weil-descent-ghs/per_curve_G2.json",
+     "key": "curves.A000.min_pairs_vs_sweep",
+     "value": {
+      "ours_realizable": [
+       [
+        "Phi131",
+        "Phi131"
+       ]
+      ],
+      "sweep_listed": [
+       [
+        "Phi131",
+        "Phi131"
+       ],
+       [
+        "Phi131",
+        "x+1"
+       ]
+      ]
+     }
+    }
+   ],
+   "prose_only": false,
+   "found_by": "G6 cross-check G8 (G2 gap reports the same)",
+   "affects": [
+    {
+     "file": "weil-descent-ghs/raw_magic_numbers.json",
+     "key": "curves.*.gghs_min_pairs",
+     "rows": 262
+    }
+   ],
+   "hardness_impact": "none (the minimum genus is the same)"
+  },
+  {
+   "id": "ERR-09",
+   "claim_id": "RT2-13 (multi-instance / Kuhn-Struik batch claims)",
+   "topic": "claimed sqrt(L) totals and 0.5*log2(L) gains are optimistic",
+   "original_value": {
+    "claimed_total_sqrtL_log2": {
+     "2 instances on E0 (common base G)": 61.309,
+     "2 instances, E0 + one floor curve (own base)": 61.309,
+     "2 instances on two floor curves (own bases)": 61.309,
+     "131 instances on E0": 64.326,
+     "263 instances all on E0 (common base)": 64.828,
+     "263 instances, one per curve (E0 + 262 floor, independent bases)": 64.828,
+     "262 floor + E0, 10 instances per curve": 66.489,
+     "1000 instances on E0": 65.792
+    },
+    "claimed_gain_bits_0.5log2L (toy m41/m37)": {
+     "m41/common/L=2": 0.5,
+     "m41/common/L=8": 1.5,
+     "m41/common/L=32": 2.5,
+     "m41/common/L=128": 3.5,
+     "m41/distinct/L=2": 0.5,
+     "m41/distinct/L=8": 1.5,
+     "m41/distinct/L=32": 2.5,
+     "m41/distinct/L=128": 3.5,
+     "m37/common/L=8": 1.5,
+     "m37/common/L=32": 2.5,
+     "m37/common/L=74": 3.105,
+     "m37/distinct/L=8": 1.5,
+     "m37/distinct/L=32": 2.5,
+     "m37/distinct/L=74": 3.105
+    }
+   },
+   "corrected_value": {
+    "total_log2": {
+     "2 instances on E0 (common base G)": 61.394,
+     "2 instances, E0 + one floor curve (own base)": 61.716,
+     "2 instances on two floor curves (own bases)": 61.716,
+     "131 instances on E0": 64.499,
+     "263 instances all on E0 (common base)": 65.002,
+     "263 instances, one per curve (E0 + 262 floor, independent bases)": 65.501,
+     "262 floor + E0, 10 instances per curve": 66.732,
+     "1000 instances on E0": 65.966
+    },
+    "excess_over_claim_bits": {
+     "2 instances on E0 (common base G)": 0.085,
+     "2 instances, E0 + one floor curve (own base)": 0.407,
+     "2 instances on two floor curves (own bases)": 0.407,
+     "131 instances on E0": 0.173,
+     "263 instances all on E0 (common base)": 0.174,
+     "263 instances, one per curve (E0 + 262 floor, independent bases)": 0.673,
+     "262 floor + E0, 10 instances per curve": 0.243,
+     "1000 instances on E0": 0.174
+    },
+    "measured_amortised_gain_bits (toy)": {
+     "m41/common/L=2": 0.44,
+     "m41/common/L=8": 1.351,
+     "m41/common/L=32": 2.375,
+     "m41/common/L=128": 3.366,
+     "m41/distinct/L=2": 0.072,
+     "m41/distinct/L=8": 0.862,
+     "m41/distinct/L=32": 1.859,
+     "m41/distinct/L=128": 2.848,
+     "m37/common/L=8": 1.341,
+     "m37/common/L=32": 2.311,
+     "m37/common/L=74": 2.894,
+     "m37/distinct/L=8": 0.85,
+     "m37/distinct/L=32": 1.814,
+     "m37/distinct/L=74": 2.379
+    }
+   },
+   "correction_on_disk": [
+    {
+     "file": "verify/redteam/RT2-13-0/rt2_13_summary.json",
+     "key": "ks_scenarios[*].{claimed_total_sqrtL_log2,total_log2,excess_over_claim_bits}",
+     "value": 8
+    },
+    {
+     "file": "verify/redteam/RT2-13-1/aggregate.json",
+     "key": "m41/m37 rows",
+     "value": "claimed vs measured gain"
+    }
+   ],
+   "prose_only": false,
+   "affects": [],
+   "hardness_impact": "multi-instance only; single-instance 60.81 unaffected; batch savings are 0.085-0.673 bits smaller than claimed"
+  },
+  {
+   "id": "ERR-10",
+   "claim_id": "RT2-01 (dim-2 Kani transport cost, proposer model)",
+   "topic": "proposer's effective iterations recomputed with the best evaluation order",
+   "original_value": {
+    "C=9": 60.809,
+    "C=100": 60.814,
+    "C=1000": 60.853,
+    "C=10000": 61.199
+   },
+   "corrected_value": {
+    "C=9": 60.809,
+    "C=100": 60.812,
+    "C=1000": 60.833,
+    "C=10000": 61.032
+   },
+   "correction_on_disk": [
+    {
+     "file": "verify/redteam/RT2-01-0/raw/s3_cost.json",
+     "key": "proposer_cases.dim2_c81_A=29.71.137.179.C=*.{eff_iter_proposer,eff_iter_corrected}",
+     "value": "see values"
+    }
+   ],
+   "prose_only": false,
+   "affects": [
+    {
+     "file": "per_curve_hardness.json",
+     "key": "levels.*.effective_rho_log2.audited_conditional_figure"
+    }
+   ],
+   "hardness_impact": "conditional level-p/263p figure only"
+  },
+  {
+   "id": "ERR-11",
+   "claim_id": "p-levels C4 (vertical p-isogeny transport cost) and the level p / 263p effective figure",
+   "topic": "claimed lower bounds omit routes; effective figure is conditional",
+   "original_value": {
+    "claimed_lower_bounds_log2": {
+     "sqrt-Velu": 80.95064005607978,
+     "cofactor": 113.91096807582971,
+     "Phi_p": 171.07120511360188
+    },
+    "effective_log2_level_p": 64.33,
+    "effective_log2_level_263p": 64.33
+   },
+   "corrected_value": {
+    "routes_the_audit_adds_log2_Fq_ops": {
+     "x-only ladder": 111.91096807582971,
+     "Couveignes/De Feo O~(l^2) (not listed in C4)": 114.04747007573458,
+     "trace-Velu linear model": 66.82139656372104,
+     "trace-Velu M(r)=r log r": 72.56121152879106
+    },
+    "conditional_effective_log2": [
+     60.86,
+     61.3
+    ],
+    "condition": "Galbraith 2024 dimension-2 Kani transport, not implemented in characteristic 2"
+   },
+   "correction_on_disk": [
+    {
+     "file": "verify/p-levels/C4-audit/c4_numbers.json",
+     "key": "log2(...) keys",
+     "value": "see values"
+    },
+    {
+     "file": "verify/redteam/RT15-presented-level-p-and-263p-curves-1/rt15_summary.json",
+     "key": "dim2 optimistic / dim2 Robert-notes",
+     "value": "see values"
+    }
+   ],
+   "prose_only": false,
+   "affects": [
+    {
+     "file": "p-levels/conclusions.json",
+     "key": "per_level.conductor_p.effective_log2 / conductor_263p.effective_log2"
+    }
+   ],
+   "context": {
+    "file": "verify/redteam/RT2-01-1/raw/s3_cost_model.json",
+    "key": "constants.{log2_rho_E0_M,log2_rho_B2_native_M}",
+    "value": [
+     63.394,
+     66.911
+    ]
+   },
+   "hardness_impact": "level p / 263p: unconditional best known stays 64.33 (no implemented transport; the audit's cheapest vertical route, trace-Velu at 2^66.82 F_q ops, is not below native rho at 2^66.91 F_q mults); conditional on an unimplemented char-2 dim-2 Kani transport, about 60.81-61.3"
+  },
+  {
+   "id": "ERR-12",
+   "claim_id": "transport-263 C3 (recompute, subset run)",
+   "topic": "superseded subset run reports all_ok = false",
+   "original_value": {
+    "file": "verify/transport-263/C3-recompute/c3_pure_subset.json",
+    "key": "per_curve[0].{stored_ascending,all_ok}",
+    "value": {
+     "label": "A000",
+     "stored_ascending": false,
+     "all_ok": false
+    }
+   },
+   "corrected_value": {
+    "file": "verify/transport-263/C3-recompute/c3_pure_all.json",
+    "key": "counts_true.all_ok and per_curve[0].info_stored_int_ascending",
+    "value": {
+     "all_ok": 262,
+     "info_stored_int_ascending": "False"
+    }
+   },
+   "correction_on_disk": [],
+   "prose_only": false,
+   "note": "the subset run counted the storage order of kernel ints (not ascending) as a failure; the full run demotes it to info and passes 262/262. Not an error in the sweep.",
+   "affects": [],
+   "hardness_impact": "none"
+  }
+ ],
+ "g6_crosscheck_disagreement_classes": {
+  "G8_gghs_pairs_realizable": 262,
+  "T8_eval_ops": 262
+ },
+ "scan_summary": {
+  "file": "gaps/G6-consolidate-and-cross-check-per-curve/scan_corrections.json",
+  "n_files_scanned": 354,
+  "n_hits": 306,
+  "by_type": {
+   "false_match_flag": 43,
+   "key_text": 16,
+   "claim_vs_recomputed": 153,
+   "correction_key": 77,
+   "excess_over_claim": 16,
+   "text": 1
+  },
+  "triage": "false_match_flag hits are negative controls or expected inequalities (e.g. N != 2, floor j^2 != j, my_velu == -sage false while == sage true, negative-control kernels), except those folded into ERR-12; toy-analogue-b params_info m_matches_meta=false is in the excluded toy-b sweep; RT0-6-1 claims all match to 2 dp; rho_branch_correction keys are model constants, not errata."
+ },
+ "inputs_sha256": {
+  "transport-263/per_curve.json": "e1d29a40eb7551e63fbf6679072b7b3f69fdc94866550ff3b2a9959f72ba5595",
+  "verify/transport-263/C4-audit/count_ops.json": "3ee6ea0893aa975b0cc02be92c701c50c7de324f0d6d652cc910fb58d8a3133c",
+  "verify/transport-263/C4-recompute/summary_c4.json": "7c567339edb3d23e14e9ab14d1df8ba6f0621d5e831ee24c27bd759eac52e0f9",
+  "verify/redteam/RT0-8-1/s1_structure.json": "06b964c3c4b8257a34217c15a33b314e32922a792abf3a8f1aba229591821232",
+  "verify/redteam/RT0-8-1/s2_e2e.json": "13feb6b7aecf0d9e2947380307f8dfa2f7d70b4b56be3bb1aa6918e0ad92f89d",
+  "verify/redteam/RT0-8-0/params.json": "7c311a6f6c5662d6b6b52a7c96ff99f276753a32469f2a1a61e9b6cb0725937e",
+  "group-order/per_curve.json": "d6eb16251edb42679d09153d1e36455928b4cdb9b430eadc693a0b8de29a9043",
+  "verify/toy-analogue-a/C3-audit/check_all.json": "733c88d0aaae00b2f575bc7d8534ccf31bc730902048ae1a1240a0d48848a688",
+  "verify/toy-analogue-a/C2-audit/recount.json": "cd1dbc13597e74464f4438a1e742c8b182767a40b8e65bf7eba89d338f34beaa",
+  "verify/toy-analogue-a/C2-audit/audit_summary.json": "aa82f4b351b05ac133a820cb1fe9c525824857b84fa372f21da61fa113a8fd8a",
+  "verify/pairing-transfer/C2-audit/c2_pure_python.json": "7e30bebd0542e6faa567ebdd7d015daa8398c8cd215076d560c5b9f1ea0a8a33",
+  "weil-descent-ghs/raw_magic_numbers.json": "e32660954bed74bc0b22ab09ede64f3f4c7ee687eb37ea7cd3d238a59d9929f3",
+  "verify/redteam/RT2-13-0/rt2_13_summary.json": "788ae932dd6145f31fe20d849095498032fd17d1575de98e19d1f31f837dbedc",
+  "verify/redteam/RT2-13-1/aggregate.json": "5e9e88b5517fe41c91f6374c93ab0a78aa262f3fb30de2aca68389e2d76e60ac",
+  "verify/redteam/RT2-01-0/raw/s3_cost.json": "647836cd3dad725475d344ae867349e4a23906089845392e349d4848d8a2ada3",
+  "verify/p-levels/C4-audit/c4_numbers.json": "2a71d1b8fe0c211272fdd00ac608554fd16a26e9449a23ddfb3446809db9c272",
+  "p-levels/conclusions.json": "cee533a91b9a97c6c638b38caec1472e50ff8b7670f202a94c1c041272753e1c",
+  "verify/redteam/RT15-presented-level-p-and-263p-curves-1/rt15_summary.json": "7a7f6e5480647a74e45e4edee570d204f25196ef0223b2805836fc7971e9ec20",
+  "verify/redteam/RT2-01-1/raw/s3_cost_model.json": "0c0b7ccf05e77a9f256f41d89d38ca3ba3d4cddc001ed04bfee91469780b10ca",
+  "verify/transport-263/C3-recompute/c3_pure_subset.json": "a3c9d152907ac4037d459cdc026edf906502c62fd0d4714d3207010da5099ac9",
+  "verify/transport-263/C3-recompute/c3_pure_all.json": "48aaf881830ede3338e06ecd881fa16281e2a4acc190ce0da70fef26ef8a8ab3",
+  "pairing-transfer/per_curve_pairings.py": "86e2a6e4c7e0994025d218075b909788d1785d01077ae9dfe9e74d0c4596fbef",
+  "gaps/G2-verify-weil-descent-ghs/per_curve_G2.json": "93aca97612f0253a8639a0031d9a029d4f7f911a4a92b8fb6dbbfa6df0de4c42"
+ }
+}
