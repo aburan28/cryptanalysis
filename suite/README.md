@@ -164,6 +164,53 @@ the targets and the arithmetic they stand on.
 [docs/ECDLP_ATTACK_MATRIX.md](docs/ECDLP_ATTACK_MATRIX.md) is the
 attack-by-curve-family applicability matrix.
 
+### Integer factorisation
+
+`cryptanalysis::factoring` attacks RSA's hardness assumption directly.
+Every entry point takes an options struct with size-dependent defaults,
+returns a `serde::Serialize` report (factors, per-stage timings, factor-base
+and matrix sizes, relations, dependencies tried), never prints, and never
+reports a factor it has not verified by multiplication.
+
+| module | what it does |
+|---|---|
+| `factoring::nfs` | the **number field sieve**: shared core (rational and algebraic factor bases, quadratic characters, segmented line sieve with resieving and one large prime per side, singleton filtering, structured Gaussian elimination + Method-of-Four-Russians dense GF(2) solve, exact algebraic square root by Newton lifting from an inert prime, verified `δ² = Γ`), with two front ends: `gnfs` (base-m polynomial selection with leading-coefficient search, rotation and Murphy α; degree 3 up to 65 digits) and `snfs` (`n \| c·rᵉ + s` or an explicit `(f, m)`; reducible and Aurifeuillian polynomials split `n` directly) |
+| `factoring::qs` | self-initialising quadratic sieve (Knuth–Schroeppel multiplier, Gray-code polynomial switching, single large prime), sharing the NFS linear algebra |
+| `factoring::pm1`, `factoring::rho_factor` | Pollard p − 1 (stage 1 + prime-by-prime stage 2), Williams p + 1, Pollard–Brent rho |
+| `factoring::rsa_attacks` | Fermat (close primes), Wiener (small `d`), Håstad broadcast, common modulus, small-`e` root, batch GCD over a product/remainder tree, `(n, e, d) → p, q` |
+| `factoring::auto` | `factor(n, &options)`: trial division → perfect power → BPSW → rho → p − 1 → ECM (`cryptanalysis::ecm`) → SNFS (if a form is given) → SIQS / GNFS, recursing on cofactors; prime powers with exponents and the method that isolated each |
+
+Measured with `cargo run --release --example nfs_demo` on one core (one
+thread) of a shared, loaded 4-core machine, so treat them as upper bounds;
+every row is a verified factorisation:
+
+| method | n | digits | total s | sieve / linalg / sqrt s | relations (full + partial) | dense matrix |
+|---|---|---|---|---|---|---|
+| SIQS | semiprime | 40 / 50 / 55 / 60 | 0.2 / 1.2 / 3.2 / 16.2 | — | 3128 + 5805 at 60 | 912 × 848 at 60 |
+| GNFS | semiprime | 40 | 0.8 | 0.3 / 0.2 / 0.0 | 4067 + 37250 | 1440 × 1406 |
+| GNFS | semiprime | 45 | 3.1 | 1.5 / 0.4 / 0.4 | 5607 + 76570 | 2757 × 2722 |
+| GNFS | semiprime | 50 | 8.9 | 6.8 / 0.8 / 0.5 | 7812 + 113846 | 4513 × 4481 |
+| GNFS | semiprime | 55 | 17.7 | 14.1 / 1.9 / 0.7 | 13775 + 225289 | 7695 × 7647 |
+| GNFS | semiprime (`--big`, separate runs) | 58 / 59 | ≈ 60–75 / ≈ 100–140 | sieve-bound | | |
+| SNFS | `2^227 − 1`, `x⁴ − 2` | 69 | 6.8 | 5.4 / 0.8 / 0.4 | 5733 + 128468 | 4157 × 4124 |
+| SNFS | `(2^239 + 1)/3`, `x⁴ + 2` | 72 | 9.8 | 8.4 / 0.9 / 0.3 | 7985 + 158967 | 5167 × 5134 |
+| SNFS | `(3^163 − 1)/2`, `x⁴ − 3` | 78 | 22.4 | 19.8 / 1.9 / 0.4 | 12825 + 244866 | 7821 × 7787 |
+
+`--threads N` parallelises the sieves (rayon) across `N` workers.
+
+What this is not.  It is an educational implementation with production
+habits, not msieve / YAFU / CADO-NFS: no lattice sieve, no bucket sieve,
+no Kleinjung polynomial selection or full root optimisation, no double
+large primes, no Block Lanczos, no Montgomery/Nguyen square root.  In this
+code the QS beats the GNFS at every size either can reach (the NFS only
+wins from ~100 digits with those missing pieces), so `auto` sends
+composites up to 100 digits to the QS unless `prefer_nfs` is set; GNFS
+above ~60 digits and SNFS above difficulty ~80 take many minutes to hours.
+The algebraic square root needs a prime modulo which `f` is irreducible,
+so polynomials whose Galois group has no `d`-cycle (e.g. `x⁴ + 1`) are
+rejected rather than handled by CRT.  Primality is BPSW (proven below
+`2⁶⁴`, probable above; the reports say which).
+
 ### The targets
 
 `symmetric` (AES, ChaCha20-Poly1305, Serpent, Threefish, SM4, Kuznyechik,
