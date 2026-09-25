@@ -62,6 +62,30 @@ def verify_sources(sage, manifest):
     print(f"verified {len(manifest['files'])} Sage source files at {sage}")
 
 
+def verify_installed(sage, manifest):
+    """Fail before an experiment if Sage still imports old installed modules."""
+    packages = sorted((sage / "local" / "var" / "lib" / "sage").glob(
+        "venv-python*/lib/python*/site-packages/sage/schemes/elliptic_curves"))
+    if len(packages) != 1:
+        raise SystemExit(f"expected one installed Sage elliptic-curves package, found {len(packages)}")
+    package = packages[0]
+    names = ("binary_batch.py", "binary_hardware.py", "ell_point.py", "hom_frobenius.py")
+    stale = [name for name in names if not (package / name).is_file() or
+             digest(package / name) != manifest["files"]["src/sage/schemes/elliptic_curves/" + name]]
+    if stale:
+        raise SystemExit("rebuild Sage before running experiments; stale installed modules: " +
+                         ", ".join(stale))
+    extensions = ("binary_batch_ntl.*.so", "binary_hardware_codec.*.so")
+    missing = [pattern for pattern in extensions if not list(package.glob(pattern))]
+    if not any(path.suffix in (".so", ".dylib", ".dll")
+               for path in package.glob("_binary_hardware_native.*")):
+        missing.append("_binary_hardware_native")
+    if missing:
+        raise SystemExit("rebuild Sage before running experiments; missing native modules: " +
+                         ", ".join(missing))
+    print(f"verified installed Sage elliptic-curve modules at {package}")
+
+
 def patch_args(item):
     patch = ROOT / item["path"]
     if digest(patch) != item["sha256"]:
@@ -130,7 +154,7 @@ def bundle(manifest, output_dir, version):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["apply", "verify", "verify-stack", "build", "smoke", "bundle", "run"])
+    parser.add_argument("command", choices=["apply", "verify", "verify-installed", "verify-stack", "build", "smoke", "bundle", "run"])
     parser.add_argument("--sage", help="path to the pinned Sage source checkout")
     parser.add_argument("--out", type=Path, default=ROOT / "dist")
     parser.add_argument("--version", default="dev")
@@ -152,10 +176,13 @@ def main():
         return
     verify_revision(sage, manifest)
     verify_sources(sage, manifest)
+    if args.command in ("verify-installed", "smoke", "run"):
+        verify_installed(sage, manifest)
     if args.command == "build":
         if args.jobs < 1:
             raise SystemExit("--jobs must be positive")
         run("make", f"-j{args.jobs}", cwd=sage)
+        verify_installed(sage, manifest)
         run(str(sage / "sage"), "-python", str(ROOT / "scripts" / "sage_release_smoke.py"), cwd=sage, env=sage_env())
     elif args.command == "smoke":
         run(str(sage / "sage"), "-python", str(ROOT / "scripts" / "sage_release_smoke.py"), cwd=sage, env=sage_env())

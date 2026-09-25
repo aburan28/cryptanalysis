@@ -22,6 +22,7 @@ it refuses a partially modified source tree.
 ```sh
 python3 scripts/sage_release.py apply --sage third_party/sage-binary
 python3 scripts/sage_release.py build --sage third_party/sage-binary --jobs 6
+python3 scripts/sage_release.py verify-installed --sage third_party/sage-binary
 python3 scripts/sage_release.py smoke --sage third_party/sage-binary
 python3 scripts/sage_release.py run --sage third_party/sage-binary -- -python my_experiment.py
 ```
@@ -30,10 +31,12 @@ The `build` action assumes Sage's normal source-build prerequisites and
 configuration are already installed in that checkout. It runs `make`, then
 checks that the installed Python modules exactly match the release source and
 that native batch addition, Frobenius, scalar point operations, and the CPU
-point-map path return correct points. `run` verifies the source digests before
-starting the selected Sage interpreter and sets a writable Sage cache in the
-repository build directory. Experiments should use this command (or the same
-Sage interpreter) to load the installed optimized code.
+point-map path return correct points. `verify-installed` checks the installed
+module hashes and presence of the native extensions without starting Sage.
+`run` performs that check before starting the selected Sage interpreter and
+sets a writable Sage cache in the repository build directory. It exits with
+an error if source edits have not been installed. Experiments should use this
+command to load the optimized code.
 
 ## Release asset
 
