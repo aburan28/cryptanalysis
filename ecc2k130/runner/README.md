@@ -120,6 +120,26 @@ would need replay/continuation under the same walk to reach DP32. For the table
 walk, replay must also recover the cycle-history state. Relabeling a table-walk
 configuration as Frobenius does not convert its records.
 
+`maxIters` restarts a walk that has gone that many steps without a report, and
+the restarted walk's steps are lost, so the limit belongs far out in the tail of
+the trail length. At DP32 a trail averages 2^28.41 steps: the former 2^30 (three
+mean trails) cut 4.9% of honest trails and discarded 15.6% of all steps, while
+the template's 2^32 cuts 0.0006%
+([crypto WALK-CONSTANT.md §6](https://github.com/aburan28/crypto/blob/main/ecc2k130/WALK-CONSTANT.md)).
+The Frobenius walk has no fruitless cycles for the limit to catch. The limit
+changes neither the walk nor the DP rule, and checkpoints do not store it, so
+records and checkpoints stay compatible across a change. Workers read the S3
+copy of `campaign.json`, which `run` never overwrites, and load it once per
+worker process. To change a live campaign, edit only `maxIters` in that copy;
+workers use it from their next start:
+
+```sh
+key="s3://$ECC_BUCKET/$ECC_PREFIX/campaign.json"
+aws s3 cp "$key" campaign.json
+python3 -c 'import json; c = json.load(open("campaign.json")); c["maxIters"] = 1 << 32; json.dump(c, open("campaign.json", "w"), indent=2)'
+aws s3 cp campaign.json "$key"
+```
+
 The measured compatibility experiment and cutoff calculations are documented in
 [research/DP-RECONCILIATION.md](research/DP-RECONCILIATION.md). Run
 `modal run ecc2k130/runner/reconcile_dp.py` to compare the legacy, production and faster

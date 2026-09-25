@@ -15,7 +15,7 @@
  *
  * The default build walks what the live ecc2k-130 campaign walks: the sigma
  * walk R' = R + sigma^j(R) from Certicom's challenge points, distinguished at
- * weight 32, lanes restarted after 2^30 steps, seeds (runId << 48) |
+ * weight 32, lanes restarted after 2^32 steps, seeds (runId << 48) |
  * (lane << 16).  A point it writes to --dp-file is a record of that campaign,
  * byte for byte (tests/campaign-kat.hex is the proof: records the campaign's
  * own client wrote, which hosttest reproduces from their seeds).  WALK=table
@@ -444,8 +444,8 @@ struct Checkpoint {
             why = "another geometry (threads or batch)";
         else if (h.runId != e.P.runId)
             why = "another run id";
-        else if (b.dpWeight != want.dpWeight || b.maxIters != want.maxIters)
-            why = "another cutoff or restart limit";
+        else if (b.dpWeight != want.dpWeight)
+            why = "another cutoff";
         else if (memcmp(b.px, want.px, sizeof(b.px)) || memcmp(b.qx, want.qx, sizeof(b.qx)))
             why = "other base and target points";
         std::vector<unsigned char> buf;
@@ -464,6 +464,13 @@ struct Checkpoint {
             fprintf(stderr, "checkpoint %s: %s; refusing to overwrite it\n", path.c_str(), why);
             return -1;
         }
+        // The restart limit only decides when an unreported trail is
+        // abandoned; the points a lane reaches do not depend on it, so a
+        // checkpoint written under another limit continues under this one.
+        if (b.maxIters != want.maxIters)
+            printf("note: checkpoint %s was written with --max-iters %llu; its lanes continue "
+                   "under %llu\n",
+                   path.c_str(), (unsigned long long)b.maxIters, (unsigned long long)want.maxIters);
         *iterBase = h.iterBase;
         return 1;
     }
