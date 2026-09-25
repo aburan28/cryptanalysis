@@ -86,10 +86,25 @@ def spearman(a: list[float], b: list[float]) -> float | None:
 
 
 # ---------------------------------------------------------------- per-card features
+def corrected_prediction(c: dict) -> dict:
+    """The psi yield prediction without the tuples that sum to O.  Receipts written before
+    relations.zero_sum_tuples existed counted the |F| pairs (P, -P) for m = 2; for m = 3 the
+    zero-sum triples are a 1/r fraction and are left in."""
+    pred = dict(c["yield"]["predicted"])
+    if "zero_sum_tuples" not in pred and c["cell"]["m"] == 2:
+        T = pred["psi_tuples"] - c["factor_base"]["geometric_point_count"]
+        r = c["curve"]["subgroup_order"]
+        pred["psi_tuples"] = T
+        pred["expected_ordered"] = T / r
+        pred["expected_unordered"] = T / (2 * r)
+        pred["p_decomposable"] = 1 - math.exp(-T / (2 * r))
+    return pred
+
+
 def features(c: dict, mode: str) -> dict:
     cell, st, pr, dg = c["cell"], c["structure"], c["predictions"], c["degrees"][mode]
     cost = c["cost"][mode]
-    y = c["yield"]
+    y = {**c["yield"], "predicted": corrected_prediction(c)}
     n = cell["n"]
     omega = st["omega"]
     return {
@@ -107,6 +122,7 @@ def features(c: dict, mode: str) -> dict:
         "ops": cost["ops_per_attempt_mean"], "ops_ci": cost["ops_per_attempt_ci95"],
         "ops_rel": cost["derived_ops_per_relation"], "best_abort": cost["best_abort"],
         "p_exact": (y["exact"] or {}).get("p_decomposable"), "p_pred": y["predicted"]["p_decomposable"],
+        "decomposable_targets": (y["exact"] or {}).get("decomposable_targets"),
         "e_exact": (y["exact"] or {}).get("expected_ordered"), "e_pred": y["predicted"]["expected_ordered"],
         "e_basic": y["predicted"]["basic_expected_ordered"],
         "B": c["factor_base"]["actual_usable_point_count"], "cols": c["factor_base"]["effective_columns"],
@@ -124,10 +140,16 @@ def by_cell(rows: list[dict]) -> dict[tuple, dict[str, list[dict]]]:
 
 
 # ---------------------------------------------------------------- calibrated rule
+_RULE_CACHE: dict = {}
+
+
 def fit_threshold_rule(rows: list[dict]) -> dict:
     """Per m: D_solve ~ base + [excess < t1] + [excess < t2] + ..., thresholds fitted by
     least squares on the measured mean degree, with leave-one-n-out error."""
-    out = {}
+    key = tuple(sorted((r["form"], r["m"], r["n"], r["l"], r["family"], r["seed"], r["D"], r["excess"]) for r in rows if r["D"] is not None))
+    if key in _RULE_CACHE:
+        return _RULE_CACHE[key]
+    _RULE_CACHE[key] = out = {}
     for m in sorted({r["m"] for r in rows}):
         sub = [r for r in rows if r["m"] == m and r["D"] is not None and not r["censored"]]
         if len(sub) < 5:
@@ -140,13 +162,28 @@ def fit_threshold_rule(rows: list[dict]) -> dict:
             return rule["base"] + sum(1 for t in rule["thresholds"] if e < t)
 
         def fit(data):
+            import itertools
+
+            import numpy as np
+
+            e = np.array([r["excess"] for r in data], dtype=float)
+            d = np.array([r["D"] for r in data], dtype=float)
+            ts = np.array(sorted(grid, reverse=True) if len(grid) <= 40 else sorted(grid, reverse=True)[:: max(1, len(grid) // 40)])
+            ind = (e[None, :] < ts[:, None]).astype(float)
             best = None
-            for k, base in ((k, b) for k in range(0, 4) for b in bases):
-                for ts in _increasing(grid, k):
-                    rule = {"base": base, "thresholds": list(ts)}
-                    err = sum((predict(rule, r["excess"]) - r["D"]) ** 2 for r in data)
-                    if best is None or err < best[0] - 1e-12:
-                        best = (err, rule)
+            for k in range(0, 4):
+                combos = list(itertools.combinations(range(len(ts)), k))
+                if not combos:
+                    continue
+                if k == 0:
+                    sums = np.zeros((1, len(e)))
+                else:
+                    sums = np.stack([ind[list(c)].sum(axis=0) for c in combos])
+                for base in bases:
+                    err = ((base + sums - d[None, :]) ** 2).sum(axis=1)
+                    i = int(np.argmin(err))
+                    if best is None or err[i] < best[0] - 1e-12:
+                        best = (float(err[i]), {"base": base, "thresholds": [float(ts[j]) for j in combos[i]]})
             return best[1]
 
         rule = fit(sub)
@@ -162,18 +199,6 @@ def fit_threshold_rule(rows: list[dict]) -> dict:
         out[m] = {"rule": rule, "mae_fit": statistics.fmean(fitted), "mae_leave_one_n_out": statistics.fmean(loo) if loo else None,
                   "cells": len(sub)}
     return out
-
-
-def _increasing(grid, k):
-    if k == 0:
-        yield ()
-        return
-    if k > 3 or len(grid) > 40:
-        grid = grid[:: max(1, len(grid) // 40)]
-    import itertools
-
-    for ts in itertools.combinations(sorted(grid, reverse=True), k):
-        yield ts
 
 
 # ---------------------------------------------------------------- n = 131 predictions
@@ -269,12 +294,13 @@ def matched_table(cells, form: str, m: int, mode: str, ns=None, ls=None) -> list
 
 def paired_summary(cells, form: str, mode: str) -> list[str]:
     """Structured (prefix, geometric) against random bases on the same workload."""
+    split_head = " mean splits/query structured → random |" if form == "sym" else ""
     lines = [
-        "| m | cells | mean ΔD (random − structured) | ΔD > 0 | ΔD < 0 | ops/attempt ratio | ops/relation ratio | P(dec) ratio |",
-        "|--:|--:|--:|--:|--:|--:|--:|--:|",
+        f"| m | cells | mean ΔD (random − structured) | ΔD > 0 | ΔD < 0 | ops/attempt ratio | ops/relation ratio | P(dec) ratio |{split_head}",
+        "|--:|--:|--:|--:|--:|--:|--:|--:|" + ("---|" if form == "sym" else ""),
     ]
     for m in sorted({k[1] for k in cells if k[0] == form}):
-        dD, ratio, rel, yratio = [], [], [], []
+        dD, ratio, rel, yratio, ss, sr = [], [], [], [], [], []
         for (ff, mm, n, l), fams in cells.items():
             if ff != form or mm != m or "random" not in fams:
                 continue
@@ -290,11 +316,52 @@ def paired_summary(cells, form: str, mode: str) -> list[str]:
             ys, yr = [r["p_exact"] for r in s if r["p_exact"]], [r["p_exact"] for r in rnd if r["p_exact"]]
             if ys and yr:
                 yratio.append(statistics.fmean(yr) / statistics.fmean(ys))
+            if form == "sym":
+                ss.append(statistics.fmean(r["split_checks"] or 0 for r in s))
+                sr.append(statistics.fmean(r["split_checks"] or 0 for r in rnd))
         if dD:
+            split = f" {fmt(statistics.fmean(ss))} → {fmt(statistics.fmean(sr))} |" if form == "sym" else ""
             lines.append(
                 f"| {m} | {len(dD)} | {statistics.fmean(dD):+.2f} | {sum(1 for x in dD if x > 1e-9)} | {sum(1 for x in dD if x < -1e-9)} "
-                f"| {fmt(geomean(ratio))} | {fmt(geomean(rel))} | {fmt(geomean(yratio))} |"
+                f"| {fmt(geomean(ratio))} | {fmt(geomean(rel))} | {fmt(geomean(yratio))} |{split}"
             )
+    return lines
+
+
+def regime_summary(cells, rows_by_mode, form: str, mode: str, m: int = 2) -> list[str]:
+    """Structured against random bases, grouped by how many degrees apart the fitted
+    excess rule places them (0: same side of every threshold)."""
+    rules = fit_threshold_rule([r for r in rows_by_mode[mode] if r["form"] == form])
+    if m not in rules:
+        return []
+    rule = rules[m]["rule"]
+    pred = lambda e: rule["base"] + sum(1 for t in rule["thresholds"] if e < t)  # noqa: E731
+    groups: dict[int, dict[str, list]] = defaultdict(lambda: defaultdict(list))
+    for (ff, mm, n, l), fams in cells.items():
+        if ff != form or mm != m or "random" not in fams:
+            continue
+        s = [r for f in STRUCTURED for r in fams.get(f, []) if r["D"] is not None and not r["censored"]]
+        rnd = [r for r in fams["random"] if r["D"] is not None and not r["censored"]]
+        if not s or not rnd:
+            continue
+        gap = round(statistics.fmean(pred(r["excess"]) for r in rnd) - statistics.fmean(pred(r["excess"]) for r in s))
+        g = groups[gap]
+        g["cells"].append((n, l))
+        g["dD"].append(statistics.fmean(r["D"] for r in rnd) - statistics.fmean(r["D"] for r in s))
+        g["ops"].append(geomean(r["ops"] for r in rnd) / geomean(r["ops"] for r in s))
+        a, b = geomean(r["ops_rel"] for r in rnd), geomean(r["ops_rel"] for r in s)
+        if a and b:
+            g["rel"].append(a / b)
+    lines = [
+        f"| predicted degree gap | cells | measured mean ΔD | ops/attempt ratio: geo-mean (min–max) | ops/relation ratio: geo-mean (min–max) |",
+        "|--:|--:|--:|---|---|",
+    ]
+    for gap in sorted(groups):
+        g = groups[gap]
+        rel = f"{fmt(geomean(g['rel']))} ({fmt(min(g['rel']))}–{fmt(max(g['rel']))})" if g["rel"] else "—"
+        lines.append(
+            f"| {gap} | {len(g['cells'])} | {statistics.fmean(g['dD']):+.2f} | {fmt(geomean(g['ops']))} ({fmt(min(g['ops']))}–{fmt(max(g['ops']))}) | {rel} |"
+        )
     return lines
 
 
@@ -363,23 +430,27 @@ def rules_table(rows_by_mode: dict[str, list[dict]]) -> list[str]:
     return lines
 
 
-def yield_table(rows: list[dict]) -> list[str]:
+def yield_table(rows: list[dict], min_decomposable: int = 30) -> list[str]:
+    """Ratios exact/prediction as median (5%–95%) over factor bases with enough decomposable
+    targets for the realized yield to mean something."""
     lines = [
-        "| m | factor bases | median exact / ψ-prediction | 90% range | median exact / basic |F|^m/#E | 90% range |",
-        "|--:|--:|--:|---|--:|---|",
+        f"| m | factor bases (≥ {min_decomposable} decomposable targets) | E[#decomp]: exact / ψ-class count | E[#decomp]: exact / naive |F|^m/#E | P(decomposable): exact / Poisson from ψ count |",
+        "|--:|--:|---|---|---|",
     ]
     seen = {}
     for r in rows:
         seen[(r["m"], r["n"], r["l"], r["family"], r["seed"])] = r
-    rows = list(seen.values())
+    rows = [r for r in seen.values() if (r["decomposable_targets"] or 0) >= min_decomposable]
+    q = lambda v, p: v[min(len(v) - 1, int(p * len(v)))]  # noqa: E731
+    span = lambda v: f"{q(v, 0.5):.3f} ({q(v, 0.05):.2f}–{q(v, 0.95):.2f})"  # noqa: E731
     for m in sorted({r["m"] for r in rows}):
-        sub = [r for r in rows if r["m"] == m and r["e_exact"] and r["e_pred"] and r["e_basic"]]
+        sub = [r for r in rows if r["m"] == m and r["e_exact"] and r["e_pred"] and r["e_basic"] and r["p_pred"]]
         if not sub:
             continue
         a = sorted(r["e_exact"] / r["e_pred"] for r in sub)
         b = sorted(r["e_exact"] / r["e_basic"] for r in sub)
-        q = lambda v, p: v[min(len(v) - 1, int(p * len(v)))]  # noqa: E731
-        lines.append(f"| {m} | {len(sub)} | {q(a, 0.5):.3f} | {q(a, 0.05):.2f}–{q(a, 0.95):.2f} | {q(b, 0.5):.3f} | {q(b, 0.05):.2f}–{q(b, 0.95):.2f} |")
+        c = sorted(r["p_exact"] / r["p_pred"] for r in sub)
+        lines.append(f"| {m} | {len(sub)} | {span(a)} | {span(b)} | {span(c)} |")
     return lines
 
 
@@ -463,6 +534,9 @@ def build_report(cards: list[dict], runs: list[dict] | None = None) -> dict[str,
         sections[key] = []
         for mode in modes:
             sections[key] += [f"**{mode}**", "", *paired_summary(cells[mode], form, mode), ""]
+    sections["REGIME"] = []
+    for mode in modes:
+        sections["REGIME"] += [f"**{mode}**, two summands", "", *regime_summary(cells[mode], rows_by_mode, "direct", mode), ""]
     sections["PREDICTORS"] = predictor_table(rows_by_mode)
     sections["RULES"] = rules_table(rows_by_mode)
     sections["BASE"] = base_calibration(rows_by_mode)

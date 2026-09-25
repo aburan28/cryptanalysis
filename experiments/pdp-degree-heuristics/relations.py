@@ -15,9 +15,10 @@ arbitrary basis, the Moebius solution count and the lifting together.
 Yield prediction.  Sums of factor-base points land in <G> + <psi(F)>, psi(P) = [r]P.  Treating
 the r-component of an m-tuple sum as uniform on <G> gives, for a target R in <G>,
 
-    E[#ordered decompositions of R] = T_psi / r,   T_psi = #{ordered m-tuples : sum psi = O},
+    E[#ordered decompositions of R] = T_psi / r,   T_psi = #{ordered m-tuples : sum psi = O} - Z,
 
-which is exact to compute from the psi classes; for psi-balanced bases T_psi ~ |F|^m / h.
+where Z counts the tuples summing to O itself (|F| pairs (P, -P) for m = 2).  T_psi is exact
+to compute from the psi classes; for psi-balanced bases T_psi ~ |F|^m / h.
 The decomposition probability is predicted as 1 - exp(-E[#unordered]), E[#unordered] = T_psi / (r m!).
 """
 
@@ -121,15 +122,35 @@ def psi_tuple_count(fb: FactorBase, m: int) -> int:
     raise ValueError("m <= 3")
 
 
+def zero_sum_tuples(fb: FactorBase, m: int) -> int:
+    """Ordered m-tuples of factor-base points summing to O (they decompose no target)."""
+    F = len(fb.xs)
+    if m == 2:
+        return F  # (P, -P): F is closed under negation, and -T = T for the 2-torsion point
+    if m == 3:
+        K = fb.curve.K
+        pts = set(zip(fb.xs.tolist(), fb.ys.tolist()))
+        sx, sy = K.pair_sums(fb.xs, fb.ys)
+        i, j = np.triu_indices(F)
+        count = 0
+        for x, y, a, b in zip(sx.tolist(), sy.tolist(), i.tolist(), j.tolist()):
+            if x != INF and (x, x ^ y) in pts:
+                count += 1 if a == b else 2
+        return count
+    raise ValueError("m <= 3")
+
+
 def predicted_yield(fb: FactorBase, m: int) -> dict:
     r = fb.curve.r
-    T = psi_tuple_count(fb, m)
+    Z = zero_sum_tuples(fb, m)
+    T = psi_tuple_count(fb, m) - Z
     F = len(fb.xs)
     e_ord = T / r
     e_unord = e_ord / math.factorial(m)
     basic = F**m / fb.curve.order
     return {
         "psi_tuples": T,
+        "zero_sum_tuples": Z,
         "expected_ordered": e_ord,
         "expected_unordered": e_unord,
         "p_decomposable": 1 - math.exp(-e_unord),
