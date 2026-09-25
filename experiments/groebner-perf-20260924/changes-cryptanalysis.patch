@@ -1,0 +1,351 @@
+--- a/experiments/pdp-scaling/boolean_f5b.py
++++ b/experiments/pdp-scaling/boolean_f5b.py
+@@ -357,9 +357,22 @@
+         return sorted(reduced, key=lambda p: self.order_key(self.leading(p)),
+                       reverse=True)
+ 
+-    def is_groebner(self, basis: list[Polynomial]) -> bool:
+-        rows = self.reduction_table(basis)
++    def is_groebner(self, basis: list[Polynomial],
++                    reduction_rows: list[int] | None = None) -> bool:
++        """Check all ordinary and field pairs, optionally reusing basis rows.
++
++        Supplied rows must come from reduction_table for this exact basis.
++        This lets callers reuse the same table for source-generator checks.
++        """
++        rows = self.reduction_table(basis) if reduction_rows is None else reduction_rows
+         for i, left in enumerate(basis):
++            # Include pairs with the implicit Boolean field equations. A
++            # singleton such as xy+1 need not be a Boolean Groebner basis.
++            for variable in range(self.nvars):
++                bit = 1 << variable
++                if self.leading(left) & bit and self.normal_form(
++                        self.multiply_monomial(left, bit), basis, rows):
++                    return False
+             for right in basis[i + 1:]:
+                 common = self.leading(left) | self.leading(right)
+                 s_polynomial = self.add(
+@@ -386,12 +399,20 @@
+         completed = list(basis)
+         reduction_rows = self.reduction_table(completed)
+         pairs = []
+-        for i in range(len(completed)):
+-            for j in range(i + 1, len(completed)):
+-                if self.leading(completed[i]) & self.leading(completed[j]) == 0:
++
++        def install(position):
++            lm = self.leading(completed[position])
++            for k in range(position):
++                if self.leading(completed[k]) & lm == 0:
+                     self.stats["product_pairs_skipped"] += 1
+                 else:
+-                    pairs.append((i, j))
++                    pairs.append((k, position))
++            for variable in range(self.nvars):
++                if lm & (1 << variable):
++                    pairs.append((position, -variable - 1))
++
++        for position in range(len(completed)):
++            install(position)
+         batch_size = self.stats["completion_batch_size"]
+         while pairs:
+             self._check_budget()
+@@ -399,11 +420,15 @@
+             remainders = []
+             for i, j in batch:
+                 self.stats["completion_pairs"] += 1
+-                left, right = completed[i], completed[j]
+-                common = self.leading(left) | self.leading(right)
+-                s_polynomial = self.add(
+-                    self.multiply_monomial(left, common & ~self.leading(left)),
+-                    self.multiply_monomial(right, common & ~self.leading(right)))
++                left = completed[i]
++                if j < 0:
++                    s_polynomial = self.multiply_monomial(left, 1 << (-j - 1))
++                else:
++                    right = completed[j]
++                    common = self.leading(left) | self.leading(right)
++                    s_polynomial = self.add(
++                        self.multiply_monomial(left, common & ~self.leading(left)),
++                        self.multiply_monomial(right, common & ~self.leading(right)))
+                 remainder = self.normal_form(
+                     s_polynomial, completed, reduction_rows)
+                 if remainder and remainder not in completed:
+@@ -419,11 +444,7 @@
+                 position = len(completed)
+                 completed.append(remainder)
+                 self.add_reducer(reduction_rows, remainder)
+-                for k in range(position):
+-                    if self.leading(completed[k]) & self.leading(remainder) == 0:
+-                        self.stats["product_pairs_skipped"] += 1
+-                    else:
+-                        pairs.append((k, position))
++                install(position)
+                 self.stats["completion_insertions"] += 1
+         return completed
+ 
+--- a/experiments/pdp-scaling/boolean_f5b_native.cpp
++++ b/experiments/pdp-scaling/boolean_f5b_native.cpp
+@@ -67,9 +67,9 @@
+         return r;
+     }
+     int degree(const Poly& p) const {
+-        int d=0;
+-        for(int wi=0;wi<words;++wi){uint64_t x=p.w[wi];while(x){int bit=__builtin_ctzll(x);d=std::max(d,__builtin_popcount(mask_by_rank[wi*64+bit]));x&=x-1;}}
+-        return d;
++        // Rank order is degree-compatible; the leading term has max degree.
++        int rank = lead_rank(p);
++        return rank < 0 ? 0 : __builtin_popcount(mask_by_rank[rank]);
+     }
+     Poly multiply(const Poly& p, uint32_t m) const {
+         Poly r;
+@@ -139,12 +139,21 @@
+     }
+     Poly normal_rows(Poly value, const std::vector<Poly>& rows) {
+         Poly rem;
+-        while (!zero(value)) {
+-            uint32_t lm = lead(value);
+-            if (!zero(rows[lm])) { xori(value, rows[lm]); ++reductions; }
++        // A reduction strictly lowers the leading rank. Keep a descending
++        // cursor instead of rescanning all high zero words for every term.
++        int word = words - 1;
++        while (word >= 0) {
++            if (!value.w[word]) { --word; continue; }
++            int r = word * 64 + 63 - __builtin_clzll(value.w[word]);
++            uint64_t bit = uint64_t(1) << (r & 63);
++            uint32_t lm = mask_by_rank[r];
++            if (rows[lm].w[word] & bit) {
++                for (int w = 0; w <= word; ++w) value.w[w] ^= rows[lm].w[w];
++                ++reductions;
++            }
+             else {
+-                int r = rank_by_mask[lm]; rem.w[r >> 6] ^= uint64_t(1) << (r & 63);
+-                value.w[r >> 6] ^= uint64_t(1) << (r & 63);
++                rem.w[word] ^= bit;
++                value.w[word] ^= bit;
+             }
+         }
+         return rem;
+@@ -211,8 +220,7 @@
+ 
+     std::vector<Poly> interreduce(std::vector<Poly> cur) {
+         std::sort(cur.begin(),cur.end(),[&](const Poly&a,const Poly&b){
+-            int da=0,db=0; for(uint32_t m: masks(a)) da=std::max(da,__builtin_popcount(m));
+-            for(uint32_t m:masks(b)) db=std::max(db,__builtin_popcount(m));
++            int da=degree(a),db=degree(b);
+             if(da!=db)return da<db; if(terms(a)!=terms(b))return terms(a)<terms(b); return rank_by_mask[lead(a)]<rank_by_mask[lead(b)];});
+         cur.erase(std::unique(cur.begin(),cur.end()),cur.end());
+         std::vector<uint32_t> versions(cur.size(),0);
+@@ -263,12 +271,30 @@
+ 
+     std::vector<Poly> complete(std::vector<Poly> B) {
+         auto rows=reduction_table(B); std::vector<std::pair<int,int>> ps;
+-        for(int i=0;i<(int)B.size();++i)for(int j=i+1;j<(int)B.size();++j)if(lead(B[i])&lead(B[j]))ps.push_back({i,j});
++        auto install = [&](int pos) {
++            uint32_t lm = lead(B[pos]);
++            for (int k = 0; k < pos; ++k)
++                if (lead(B[k]) & lm) ps.push_back({k, pos});
++            // In the Boolean quotient the implicit field polynomials x_i^2+x_i
++            // still contribute critical pairs. Modulo those field equations,
++            // S(g, x_i^2+x_i) is x_i*g when x_i divides LM(g).
++            // A negative second index encodes one such field pair.
++            for (int variable = 0; variable < n; ++variable)
++                if (lm & (1u << variable)) ps.push_back({pos, -variable - 1});
++        };
++        for (int i = 0; i < (int)B.size(); ++i) install(i);
+         while(!ps.empty()) {
+-            auto [i,j]=ps.back();ps.pop_back();uint32_t c=lead(B[i])|lead(B[j]);
+-            Poly s=multiply(B[i],c&~lead(B[i]));xori(s,multiply(B[j],c&~lead(B[j])));Poly r=normal_rows(s,rows);
++            auto [i,j]=ps.back();ps.pop_back();
++            Poly s;
++            if (j < 0) s = multiply(B[i], 1u << (-j - 1));
++            else {
++                uint32_t c=lead(B[i])|lead(B[j]);
++                s=multiply(B[i],c&~lead(B[i]));
++                xori(s,multiply(B[j],c&~lead(B[j])));
++            }
++            Poly r=normal_rows(s,rows);
+             if(zero(r)||std::find(B.begin(),B.end(),r)!=B.end())continue;int pos=B.size();B.push_back(r);add_reducer(rows,r);
+-            for(int k=0;k<pos;++k)if(lead(B[k])&lead(r))ps.push_back({k,pos});
++            install(pos);
+         }
+         return B;
+     }
+--- a/experiments/pdp-scaling/boolean_f5b_m4ri.cpp
++++ b/experiments/pdp-scaling/boolean_f5b_m4ri.cpp
+@@ -113,31 +113,28 @@
+     auto phase = std::chrono::steady_clock::now();
+     std::vector<Poly> rows;
+     for (const Poly& generator: F) {
+-        // Any valid multiplier must satisfy the degree bound for every term.
+-        // Precheck it against one maximum-degree anchor before scanning the
+-        // full polynomial; this rejects most impossible multipliers cheaply.
+-        uint32_t anchor = 0;
+-        int anchor_degree = -1;
+-        for (int word = 0; word < e.words; ++word) {
+-            uint64_t bits = generator.w[word];
+-            while (bits) {
+-                int bit = __builtin_ctzll(bits);
+-                uint32_t term = e.mask_by_rank[word * 64 + bit];
+-                int term_degree = __builtin_popcount(term);
+-                if (term_degree > anchor_degree) {
+-                    anchor = term;
+-                    anchor_degree = term_degree;
+-                }
+-                bits &= bits - 1;
+-            }
+-        }
+-        int extra_degree = degree - anchor_degree;
++        // Screen before initializing a 512-byte row or doing rank lookups.
++        // Descending grevlex puts the strongest degree bounds first. The
++        // condition is identical to multiply_bounded: even terms which later
++        // cancel must meet the bound, preserving the exact original matrix.
++        auto terms = e.masks(generator);
++        std::reverse(terms.begin(), terms.end());
+         for (uint32_t multiplier = 0; multiplier < (uint32_t)e.universe;
+              ++multiplier) {
+-            if (__builtin_popcount(multiplier & ~anchor) > extra_degree) continue;
++            bool admissible = true;
++            for (uint32_t term: terms) {
++                if (__builtin_popcount(term | multiplier) > degree) {
++                    admissible = false;
++                    break;
++                }
++            }
++            if (!admissible) continue;
+             Poly row;
+-            if (e.multiply_bounded(generator, multiplier, degree, row) &&
+-                    !e.zero(row)) rows.push_back(row);
++            for (uint32_t term: terms) {
++                uint32_t rank = e.rank_by_mask[term | multiplier];
++                row.w[rank >> 6] ^= uint64_t(1) << (rank & 63);
++            }
++            if (!e.zero(row)) rows.push_back(row);
+         }
+     }
+     for (const Poly& consequence: f5_consequences) {
+@@ -153,6 +150,14 @@
+     phase = std::chrono::steady_clock::now();
+     mzd_t *matrix = mzd_init(rows.size(), e.universe);
+     for (size_t i = 0; i < rows.size(); ++i) {
++        // Both layouts are packed, but their column order is reversed. Copy
++        // complete words instead of performing a read/modify/write per term.
++        if (e.universe >= 64) {
++            word* target = mzd_row(matrix, i);
++            for (int w = 0; w < e.words; ++w)
++                target[e.words - 1 - w] = reverse_bits(rows[i].w[w]);
++            continue;
++        }
+         for (int word = 0; word < e.words; ++word) {
+             uint64_t bits = rows[i].w[word];
+             while (bits) {
+--- a/experiments/pdp-scaling/boolean_m4ri_runner.py
++++ b/experiments/pdp-scaling/boolean_m4ri_runner.py
+@@ -12,6 +12,7 @@
+ import time
+ 
+ from boolean_f5b import BooleanF5B
++from boolean_basis import basis_vanishes
+ from descend import verify_solution
+ 
+ 
+@@ -148,8 +149,9 @@
+         verifier = BooleanF5B(nvars, timeout=max(5, timeout))
+         basis = [verifier.from_terms(terms) for terms in basis_terms]
+         generators = [verifier.from_terms(equation) for equation in equations]
+-        groebner = verifier.is_groebner(basis)
+-        generators_ok = all(verifier.normal_form(generator, basis) == 0
++        reduction_rows = verifier.reduction_table(basis)
++        groebner = verifier.is_groebner(basis, reduction_rows)
++        generators_ok = all(verifier.normal_form(generator, basis, reduction_rows) == 0
+                             for generator in generators)
+     basis_hash = hashlib.sha256(json.dumps(
+         [sorted(terms) for terms in basis_terms], sort_keys=True).encode()).hexdigest()
+@@ -196,11 +198,15 @@
+     if result["status"] != "gb":
+         result.pop("basis_terms", None)
+         return result
+-    result.pop("basis_terms", None)
++    basis_terms = result.pop("basis_terms")
+     checked = 0
++    candidates = 0
+     extraction_started = time.monotonic()
+     for assignment in range(1 << instance.nvars):
+         checked += 1
++        if not basis_vanishes(basis_terms, assignment):
++            continue
++        candidates += 1
+         if instance.evaluate(assignment) == 0 and verify_solution(instance, assignment):
+             result.update({
+                 "status": "solved", "assignment": assignment, "verified": True,
+@@ -209,6 +215,7 @@
+             })
+             break
+     result["assignments_checked"] = checked
++    result["basis_candidates_checked"] = candidates
+     result["extraction_seconds"] = time.monotonic() - extraction_started
+     if result["status"] == "gb":
+         result["status"] = "gb-no-verified-solution"
+--- a/experiments/pdp-scaling/boolean_native_runner.py
++++ b/experiments/pdp-scaling/boolean_native_runner.py
+@@ -11,6 +11,7 @@
+ import time
+ 
+ from boolean_f5b import BooleanF5B
++from boolean_basis import basis_vanishes
+ from descend import verify_solution
+ 
+ 
+@@ -87,8 +88,9 @@
+     verifier = BooleanF5B(instance.nvars, timeout=max(5, timeout))
+     basis = [verifier.from_terms(terms) for terms in basis_terms]
+     generators = [verifier.from_terms(equation) for equation in equations]
+-    groebner = verifier.is_groebner(basis)
+-    generators_ok = all(verifier.normal_form(generator, basis) == 0
++    reduction_rows = verifier.reduction_table(basis)
++    groebner = verifier.is_groebner(basis, reduction_rows)
++    generators_ok = all(verifier.normal_form(generator, basis, reduction_rows) == 0
+                         for generator in generators)
+     basis_hash = hashlib.sha256(json.dumps(
+         [sorted(terms) for terms in basis_terms], sort_keys=True).encode()).hexdigest()
+@@ -113,9 +115,13 @@
+         result["complete"] = False
+         return result
+     checked = 0
++    candidates = 0
+     extraction_started = time.monotonic()
+     for assignment in range(1 << instance.nvars):
+         checked += 1
++        if not basis_vanishes(basis_terms, assignment):
++            continue
++        candidates += 1
+         if instance.evaluate(assignment) == 0 and verify_solution(instance, assignment):
+             result.update({"status": "solved", "assignment": assignment,
+                            "verified": True,
+@@ -123,6 +129,7 @@
+                                sorted(instance.x_from_assignment(instance.planted))})
+             break
+     result["assignments_checked"] = checked
++    result["basis_candidates_checked"] = candidates
+     result["extraction_seconds"] = time.monotonic() - extraction_started
+     if result["status"] == "gb":
+         result["status"] = "gb-no-verified-solution"
+--- /dev/null
++++ b/experiments/pdp-scaling/boolean_basis.py
+@@ -0,0 +1,16 @@
++"""Cheap exact filtering of assignments by a computed Boolean basis."""
++
++
++def basis_vanishes(basis_terms, assignment: int) -> bool:
++    """Evaluate squarefree ANF rows, stopping at the first violated equation.
++
++    The caller still checks surviving candidates against the original system
++    and the curve. This filter preserves ascending assignment enumeration.
++    """
++    for polynomial in basis_terms:
++        parity = False
++        for mask in polynomial:
++            parity ^= mask & assignment == mask
++        if parity:
++            return False
++    return True

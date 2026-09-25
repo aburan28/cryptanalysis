@@ -115,6 +115,49 @@ group before it becomes a relation:
   (<https://gitlab.lip6.fr/almasty/mq>,
   <https://github.com/cbouilla/libfes-lite>).
 
+### The Gröbner oracle's matrix kernel, F5, and GPUs
+
+    ./target/release/ca-ic run --degree 23 --curve-a 1 --solver groebner --batch 16
+    ./target/release/ca-ic run --degree 23 --curve-a 1 --solver groebner --batch 4096 --f4-backend cuda
+    F4_F2_RREF=reference ./target/release/ca-ic run --degree 23 --curve-a 1 --solver groebner   # control
+
+The `groebner` oracle reduces every node of its splitting search with one
+or two small Macaulay matrices (a few hundred rows), tens of thousands of
+times per relation. Its kernel is `f4_gf2`: columns are indexed by a
+combinatorial rank of the monomial (no hash map, no sorts), rows shifted by
+variables the search has substituted away are not built (the size caps are
+still applied in the reference builder's units), and the solver's decision
+— a refutation, or rows that pin a variable — is read off the linear block
+after eliminating only the high-degree columns, with no full reduction and
+no polynomial readback. `matrix_f4_f2` still returns the reference rows
+bit-for-bit, and the solver takes exactly the same steps: every verdict,
+relation and counter is unchanged. `F4_F2_RREF=reference` selects the
+original kernel as a paired control.
+
+**F5.** Rows `t·f_i` that the F5 criterion (`t` leads an element of the
+lower-degree row space of the earlier equations) or the Boolean
+field-equation criterion (`f² = f`) prove redundant are left out of
+elimination. Answers are unchanged; the savings start where a trivial
+syzygy fits (degree 4 for quadratic equations, or earlier once propagation
+has produced linear ones) and matter most in the solving-degree and
+first-fall-degree sweeps (`dreg_sweep`), which also use the fast kernel.
+`F4_F2_F5=0` turns it off.
+
+**GPUs.** `--f4-backend` runs each relation batch's searches in lockstep
+and decides every round's matrices together, which is what gives a device
+enough independent work: `cuda[:N]` on an NVIDIA GPU (the kernel is
+`suite/cuda/f4_gf2_device.cuh`, one thread block per system; libcuda and
+NVRTC are opened at run time, `CA_F4_PTX` loads a prebuilt PTX instead),
+`emulate[:threads]` for the same kernel source run on the host (build with
+`--features gpu-emulator`), or `cpu`. Each search takes the same steps as
+without it, so relations and the recovered logarithm are identical; the
+report's `f4_batch` block records the backend, the rounds and the requests.
+Use a batch in the thousands to fill a GPU. `examples/f4_batch_bench.rs`
+replays the matrices real searches request through every backend and checks
+each answer against the host kernel. See
+[`experiments/f4-gpu-20260925`](../../../experiments/f4-gpu-20260925/RESULT.md)
+for the measurements.
+
 Not every degree/coefficient combination has a usable subgroup. A valid
 curve does not guarantee successful collection or an invertible relation
 system. Factor-base materialization is capped at 4096 abscissae
@@ -215,7 +258,10 @@ twelve verified logarithms — see
 
 `--solve-cost-targets N` runs the Gröbner oracle on `N` census targets per
 candidate, charging refutations as well as successes, and ranks by
-`expected_stage_ops = expected trials × measured word XORs per target`. The
+`expected_stage_ops = expected trials × measured word XORs per target`.
+The XORs are the calling thread's own (solving elsewhere in the process is
+not charged) and are those of the F4 kernel in use, so compare rankings made
+with the same `F4_F2_RREF`. The
 report's `scoring_objective` says which of the two ranked it, and each
 candidate carries `measured_ops_per_target`, `expected_stage_ops` and
 `trace_zero`. Omitted, nothing changes: the ranking is the trial count as

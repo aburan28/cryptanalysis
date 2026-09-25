@@ -44,7 +44,7 @@ clang; pthreads).
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ctest --test-dir build            # 11 test programs, ~1 minute
-sudo cmake --install build        # headers, libcryptanalysis.{a,so}, ca, pkg-config
+sudo cmake --install build        # headers, library, cryptanalysis, ca, pkg-config
 ```
 
 Useful options: `-DCA_NATIVE=ON` (`-march=native`), `-DCA_SANITIZE=ON`
@@ -59,7 +59,19 @@ sm_90 and reports registers, local memory and spills.
 
 ## Command line
 
-`ca` prints one JSON object per invocation.
+`cryptanalysis` is the main command; `ca` remains a compatible alias. Generic
+BSGS and rho are top-level algorithm commands. `ic` currently solves DLPs in
+the multiplicative group of a prime field; the experimental binary-curve IC
+pipeline is separate and has no complete released DLP command yet.
+
+```sh
+./build/cryptanalysis bsgs --group zp --p 1000003 --order 166667 --g 533154 --h 579795
+./build/cryptanalysis rho --group zp --p 1000003 --order 166667 --g 533154 --h 579795 --seed 1
+./build/cryptanalysis ic --p 1099511627791 --g 3 --h 123456789 --threads 2
+```
+
+Each generic command prints one JSON object per invocation. The existing
+`solve --alg ...` form remains available:
 
 ```sh
 $ ./build/ca gen --group zp --p 2000000579 --order 1000000289 --x 123456789 --seed 1
@@ -250,6 +262,10 @@ live [ecc2k-130 campaign](https://aburan28.github.io/crypto/status/) walks --
 the FPGA core's `sigma^j(R) + R` from Certicom's challenge points,
 distinguished at weight 32 -- so its points are that campaign's, record for
 record; `make test` proves it on 48 records the campaign's own client wrote.
+The Linux release packages that curve-specific CUDA kernel as a private
+backend of `cryptanalysis rho --curve ecc2k130`. The existing `ec2k-gpu`
+archive remains available for current runners. The unified command dispatches
+to the campaign walk; it does not turn it into an arbitrary-target DLP solver.
 `WALK=table` builds an r-adding table walk instead, measured on one RTX PRO
 6000 Blackwell at **20.08 billion iterations per second**, 0.90 of the
 carry-less unit's ceiling for the 33 `clmad` an iteration costs; it is a
@@ -265,6 +281,14 @@ make ecc2k130-gpu NVCC=$(ecc2k130/scripts/fetch_cuda.sh)/bin/nvcc   # CUDA 13.3 
 ecc2k130/build/ec2k-gpu walk --run-id R --dp-file dps.bin --checkpoint state.ck   # collect
 ecc2k130/build/ec2k-gpu bench                                         # iterations per second
 ```
+
+For a downloaded `cryptanalysis` release archive, use
+`bin/cryptanalysis rho --curve ecc2k130 --check --kat
+share/cryptanalysis/campaign-kat.hex` before starting a walk, then
+`bin/cryptanalysis rho --curve ecc2k130 --run-id R --dp-file dps.bin
+--checkpoint state.ck`. The release also includes a pinned Sage source patch
+kit; [docs/SAGE_RELEASE.md](docs/SAGE_RELEASE.md) explains how to build and use
+the optimized local Sage for elliptic-curve experiments.
 
 Two more clients run the table walk from the same headers and write the same
 reports, for developing and testing a campaign's pipeline without renting a

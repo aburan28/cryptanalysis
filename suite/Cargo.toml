@@ -41,6 +41,11 @@ path = "src/bin/curves.rs"
 default = []
 # Back the algebra cache with a Redis server instead of the local directory.
 redis-cache = ["dep:redis"]
+# Compile the GPU F4 kernel's source (cuda/f4_gf2_device.cuh) as C and link
+# it, so the tests run the device algorithm on the host.  Needs a C compiler
+# at build time and no new crate.  The CUDA backend needs no feature at all:
+# libcuda and NVRTC are opened at run time.
+gpu-emulator = []
 
 [dependencies]
 redis = { version = "0.32", optional = true, default-features = false, features = ["tls-rustls"] }

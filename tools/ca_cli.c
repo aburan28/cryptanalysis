@@ -9,6 +9,8 @@
  *   ca gpu-info
  *   ca curve --name NAME | (--group ec --p P --a A --b B [--order N]) | --list
  *            report a curve's endomorphism structure (GLV) and chosen solver
+ *   cryptanalysis bsgs|rho --group zp|ec --p P --order N --g G --h H
+ *   cryptanalysis rho --curve ecc2k130 [campaign walk options]
  *   ca solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a A --b
  * B]
  *            --order N --g G --h H [--lo L --hi U] [--threads T] [--seed S]
@@ -71,6 +73,7 @@
 #include "ca_internal.h" /* ca_now: the CLI already links the static library */
 
 #include <fcntl.h>
+#include <limits.h>
 #include <pthread.h>
 #include <signal.h>
 #include <time.h>
@@ -147,7 +150,11 @@ static _Noreturn void usage(void)
 {
     fprintf(
         stderr,
-        "usage: ca <command> [options]\n"
+        "usage: cryptanalysis <command> [options]  (ca is a compatible alias)\n"
+        "  bsgs  --group zp|ec --p P --order N --g G --h H [--lo L --hi U]\n"
+        "  rho   --group zp|ec --p P --order N --g G --h H [--threads T]\n"
+        "  rho   --curve ecc2k130 [--run-id R --dp-file F --checkpoint F ...]\n"
+        "        --check [--kat F] runs the ECC2K-130 host known-answer check\n"
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
         "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a "
@@ -159,6 +166,7 @@ static _Noreturn void usage(void)
         "--alpha X)\n"
         "  ic    --p P --g G --h H [--method lsieve|rexp] [--B B] [--C C] [--threads T] "
         "[--verbose]\n"
+        "        index calculus in the multiplicative group of a prime field\n"
         "  num   powmod|invmod|gcd|isqrt|iroot|sqrtmod|legendre|crt|next-prime|order|\n"
         "        primitive-root|sieve|mont  (see the header comment for each op's options)\n"
         "  group exp|div|order|generator|random|lift-x --group zp|ec --p P [--a A --b B] ...\n"
@@ -257,11 +265,12 @@ static int cmd_gen(void)
     return 0;
 }
 
-static int cmd_solve(void)
+static int cmd_solve(const char *selected_alg)
 {
     ca_group g;
     make_group(&g);
-    const char *alg = opt("--alg");
+    if (selected_alg && opt("--alg")) die("--alg belongs to solve, not an algorithm subcommand");
+    const char *alg = selected_alg ? selected_alg : opt("--alg");
     if (!alg) die("--alg is required");
     ca_elem base, target;
     parse_elem(&g, opt("--g"), &base);
@@ -430,6 +439,52 @@ static int cmd_solve(void)
     print_stats(&st);
     printf("}\n");
     return 0;
+}
+
+/* The campaign's GF(2^131) walk uses a specialized CUDA kernel and fixed
+ * public instance. Keep the backend private to the package; the stable user
+ * entry point is `cryptanalysis rho --curve ecc2k130`. This is a walk, not a
+ * general arbitrary-target DLP solver. */
+static int cmd_ecc2k130_rho(void)
+{
+    char self[PATH_MAX];
+#ifdef __linux__
+    ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
+    if (n > 0) {
+        self[n] = '\0';
+    } else if (!realpath(argv_g[0], self)) {
+        die("cannot locate cryptanalysis executable");
+    }
+#else
+    if (!realpath(argv_g[0], self)) die("cannot locate cryptanalysis executable");
+#endif
+    char *slash = strrchr(self, '/');
+    if (!slash) die("cannot locate cryptanalysis executable directory");
+    *slash = '\0';
+    char backend[PATH_MAX];
+    int npath =
+        snprintf(backend, sizeof(backend), "%s/../libexec/cryptanalysis/ecc2k130-rho-kernel", self);
+    if (npath < 0 || (size_t)npath >= sizeof(backend)) die("backend path is too long");
+    if (access(backend, X_OK) != 0)
+        die("ECC2K-130 rho kernel is not installed beside cryptanalysis");
+    char **args = calloc((size_t)argc_g + 1, sizeof(*args));
+    if (!args) die("cannot allocate backend arguments");
+    int j = 0;
+    args[j++] = backend;
+    if (flag("--check") && flag("--bench")) die("choose only one of --check and --bench");
+    args[j++] = flag("--check") ? "check" : flag("--bench") ? "bench" : "walk";
+    for (int i = 2; i < argc_g; ++i) {
+        if (!strcmp(argv_g[i], "--check") || !strcmp(argv_g[i], "--bench")) continue;
+        if (!strcmp(argv_g[i], "--curve")) {
+            ++i;
+            if (i >= argc_g || strcmp(argv_g[i], "ecc2k130")) die("--curve must be ecc2k130");
+            continue;
+        }
+        args[j++] = argv_g[i];
+    }
+    args[j] = NULL;
+    execv(backend, args);
+    die("cannot execute ECC2K-130 rho kernel");
 }
 
 static int cmd_cheon(void)
@@ -1285,7 +1340,18 @@ int main(int argc, char **argv)
         return 0;
     }
     if (!strcmp(cmd, "gen")) return cmd_gen();
-    if (!strcmp(cmd, "solve")) return cmd_solve();
+    if (!strcmp(cmd, "solve")) return cmd_solve(NULL);
+    if (!strcmp(cmd, "bsgs")) return cmd_solve("bsgs");
+    if (!strcmp(cmd, "rho")) {
+        const char *curve = opt("--curve");
+        if (flag("--curve")) {
+            if (!curve || strcmp(curve, "ecc2k130")) die("--curve must be ecc2k130");
+            return cmd_ecc2k130_rho();
+        }
+        if (flag("--check") || flag("--bench") || flag("--kat"))
+            die("--check, --bench, and --kat require --curve ecc2k130");
+        return cmd_solve("rho");
+    }
     if (!strcmp(cmd, "cheon")) return cmd_cheon();
     if (!strcmp(cmd, "ic")) return cmd_ic();
     if (!strcmp(cmd, "coord-job")) return cmd_coord_job();

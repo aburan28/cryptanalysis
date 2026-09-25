@@ -142,6 +142,7 @@ use crate::cryptanalysis::crossbred::{
     SearchStats as CrossbredSearchStats,
 };
 use crate::cryptanalysis::ec_index_calculus::{gaussian_eliminate_mod_n, sqrt_mod_p};
+use crate::cryptanalysis::f4_batch::{solve_lockstep, BatchDecider, LockstepReport};
 use crate::cryptanalysis::koblitz_fast::{BatchScratch, FastCurve, FastPoint, FrobeniusCanon};
 use crate::cryptanalysis::koblitz_groebner::{
     matrix_f4_f2, solve_boolean_system_filtered, split_rule_default, FieldStructure, SolveOptions,
@@ -3702,6 +3703,74 @@ pub fn groebner_decompose(
     (found, stats)
 }
 
+/// [`groebner_decompose`] for a batch of targets: their searches run in
+/// lockstep ([`crate::cryptanalysis::f4_batch::solve_lockstep`]) and each
+/// round's Macaulay matrices are decided together by `decider` — the host
+/// kernel, a GPU, or the GPU kernel's emulator.
+///
+/// Per target the result is [`groebner_decompose`]'s: the same
+/// decomposition (the first root, in the same search order, that lifts)
+/// and the same [`SolveStats`], whichever decider answers.
+pub fn groebner_decompose_batch(
+    kc: &KoblitzCurve,
+    fb: &FrobeniusFactorBase,
+    index_of: &HashMap<(BigUint, BigUint), usize>,
+    st: &FieldStructure,
+    targets: &[BinaryPoint],
+    m: usize,
+    engine: SolverEngine,
+    node_budget: usize,
+    decider: &mut dyn BatchDecider,
+) -> (Vec<(Option<Vec<usize>>, SolveStats)>, LockstepReport) {
+    let mut built = Vec::new();
+    let mut systems = Vec::new();
+    let mut slot = vec![None; targets.len()];
+    for (t, target) in targets.iter().enumerate() {
+        let BinaryPoint::Affine { x: x_r, .. } = target else {
+            continue;
+        };
+        if let Some(sys) =
+            crate::cryptanalysis::polynomial_reuse::build_decomposition_system_reusing(
+                &fb.subspace_basis,
+                x_r,
+                &kc.curve.b,
+                m,
+                st,
+            )
+        {
+            slot[t] = Some(built.len());
+            systems.push((sys.equations.clone(), sys.n_vars));
+            built.push((sys, t));
+        }
+    }
+    let opts = SolveOptions {
+        engine,
+        max_solutions: usize::MAX,
+        node_budget,
+        split_rule: split_rule_default(),
+    };
+    let lift = |i: usize, root: u64| -> Option<Vec<usize>> {
+        let (sys, t) = &built[i];
+        let xs: Vec<F2mElement> = (0..m)
+            .map(|j| sys.summand_x(&fb.subspace_basis, root, j, kc.n))
+            .collect();
+        lift_candidate(kc, fb, index_of, &xs, &targets[*t])
+    };
+    let (outcomes, report) =
+        solve_lockstep(&systems, &opts, decider, &|i, root| lift(i, root).is_some());
+    let results = slot
+        .iter()
+        .map(|s| match s {
+            None => (None, SolveStats::default()),
+            Some(i) => {
+                let o = &outcomes[*i];
+                (o.accepted.and_then(|root| lift(*i, root)), o.stats.clone())
+            }
+        })
+        .collect();
+    (results, report)
+}
+
 /// Decompose `target` with **Crossbred** ([`crate::cryptanalysis::crossbred`]).
 ///
 /// The same Semaev system [`groebner_decompose`] builds, handed to a
@@ -4637,6 +4706,42 @@ pub struct KoblitzIcOptions {
     /// [`DecompositionStrategy::Crossbred`], or `None` to pick `k` from
     /// the system size at each call.  Ignored by every other strategy.
     pub crossbred: Option<CrossbredParams>,
+    /// Run a relation batch's Gröbner searches in lockstep and decide
+    /// their Macaulay matrices together on this backend (the host kernel,
+    /// a GPU, or the GPU kernel's host emulator; see
+    /// [`super::f4_gpu::decider_from_spec`]) instead of one search at a
+    /// time.  Every search takes the same steps either way, so relations,
+    /// counters and the recovered logarithm are unchanged; only where the
+    /// matrices are reduced moves.  Applies to
+    /// [`DecompositionStrategy::Groebner`] collection without Weil charts;
+    /// `None` keeps one search per target.
+    pub f4_batch: Option<SharedDecider>,
+}
+
+/// A [`BatchDecider`] shared by the options of one run, for
+/// [`KoblitzIcOptions::f4_batch`].
+#[derive(Clone)]
+pub struct SharedDecider(pub std::sync::Arc<std::sync::Mutex<Box<dyn BatchDecider>>>);
+
+impl SharedDecider {
+    /// Share `decider`.
+    pub fn new(decider: Box<dyn BatchDecider>) -> Self {
+        SharedDecider(std::sync::Arc::new(std::sync::Mutex::new(decider)))
+    }
+
+    /// The decider's label.
+    pub fn name(&self) -> String {
+        self.0
+            .lock()
+            .map(|d| d.name())
+            .unwrap_or_else(|_| "poisoned".into())
+    }
+}
+
+impl std::fmt::Debug for SharedDecider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SharedDecider({})", self.name())
+    }
 }
 
 /// The linear-algebra stage of the factor-base logarithm precompute.
@@ -4680,6 +4785,7 @@ impl Default for KoblitzIcOptions {
             crossbred: None,
             collapse_projected_orbits: false,
             linear_algebra: LinearAlgebra::Dense,
+            f4_batch: None,
         }
     }
 }
@@ -4740,6 +4846,15 @@ pub struct KoblitzIcReport {
     pub relation_batch_size: usize,
     /// Relation batches actually launched.
     pub relation_batches: usize,
+    /// The backend that decided the batched Gröbner searches'
+    /// matrices ([`KoblitzIcOptions::f4_batch`]), if any.
+    pub f4_batch_backend: Option<String>,
+    /// Lockstep rounds, i.e. calls to that backend.
+    pub f4_batch_rounds: usize,
+    /// Macaulay matrices those rounds carried.
+    pub f4_batch_requests: usize,
+    /// Nanoseconds inside the backend.
+    pub f4_batch_decide_ns: u128,
     /// Log recovered from R = O directly, bypassing the relation matrix.
     pub direct_relation: bool,
     /// Direct `aG+bQ=O` trials skipped because the benchmark forbade the
@@ -5030,6 +5145,10 @@ fn koblitz_index_calculus_dlp_observed(
         collapse_negation: opts.collapse_negation,
         relation_batch_size: opts.relation_batch_size.max(1),
         relation_batches: 0,
+        f4_batch_backend: None,
+        f4_batch_rounds: 0,
+        f4_batch_requests: 0,
+        f4_batch_decide_ns: 0,
         direct_relation: false,
         direct_relations_skipped: 0,
         m_cofactor_admissible,
@@ -5285,7 +5404,40 @@ fn koblitz_index_calculus_dlp_observed(
         };
         // Targets are drawn serially above and consumed in order below,
         // so the outcome is independent of thread scheduling.
-        let outcomes: Vec<_> = if batch_size > 1 {
+        let lockstep = match (&opts.f4_batch, opts.strategy, &opts.weil_charts) {
+            (Some(shared), DecompositionStrategy::Groebner, None) => Some(shared),
+            _ => None,
+        };
+        let outcomes: Vec<_> = if let Some(shared) = lockstep {
+            let targets: Vec<BinaryPoint> = attempts.iter().map(|(_, _, t)| t.clone()).collect();
+            let mut decider = shared.0.lock().expect("F4 batch decider poisoned");
+            report.f4_batch_backend = Some(decider.name());
+            let (results, rounds) = groebner_decompose_batch(
+                kc,
+                fb,
+                &index_of,
+                &field,
+                &targets,
+                opts.m,
+                opts.engine,
+                opts.node_budget,
+                decider.as_mut(),
+            );
+            report.f4_batch_rounds += rounds.rounds;
+            report.f4_batch_requests += rounds.requests;
+            report.f4_batch_decide_ns += rounds.decide_ns;
+            targets
+                .iter()
+                .zip(results)
+                .map(|(t, (idxs, stats))| {
+                    if *t == BinaryPoint::Infinity {
+                        RelationAttemptOutcome::Direct
+                    } else {
+                        RelationAttemptOutcome::Groebner(idxs, stats)
+                    }
+                })
+                .collect()
+        } else if batch_size > 1 {
             attempts.par_iter().map(evaluate).collect()
         } else {
             attempts.iter().map(evaluate).collect()
