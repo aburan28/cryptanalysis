@@ -450,15 +450,20 @@ static int cmd_ecc2k130_rho(void)
     char self[PATH_MAX];
 #ifdef __linux__
     ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
-    if (n > 0) self[n] = '\0';
-    else
-#endif
+    if (n > 0) {
+        self[n] = '\0';
+    } else if (!realpath(argv_g[0], self)) {
+        die("cannot locate cryptanalysis executable");
+    }
+#else
     if (!realpath(argv_g[0], self)) die("cannot locate cryptanalysis executable");
+#endif
     char *slash = strrchr(self, '/');
     if (!slash) die("cannot locate cryptanalysis executable directory");
     *slash = '\0';
     char backend[PATH_MAX];
-    int npath = snprintf(backend, sizeof(backend), "%s/../libexec/cryptanalysis/ecc2k130-rho-kernel", self);
+    int npath =
+        snprintf(backend, sizeof(backend), "%s/../libexec/cryptanalysis/ecc2k130-rho-kernel", self);
     if (npath < 0 || (size_t)npath >= sizeof(backend)) die("backend path is too long");
     if (access(backend, X_OK) != 0)
         die("ECC2K-130 rho kernel is not installed beside cryptanalysis");
