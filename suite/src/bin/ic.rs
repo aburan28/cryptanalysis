@@ -215,22 +215,34 @@ fn display_prime(report: &Value) {
     let logs = &report["logs"];
     let des = &report["descent"];
     println!(
-        "Factor base: {} orbits ({} certified) of |Aut| = {} points; {} relations from {} probes",
+        "Factor base: {} orbits ({} certified, sized {}) of |Aut| = {} points; {} relations from {} probes",
         fb["orbits"],
         fb["certified_orbits"],
+        fb["sizing"].as_str().unwrap_or("?"),
         fb["automorphism_order"],
         logs["relations"],
         logs["trials"]
     );
+    if logs["collection"] == "large_primes" {
+        println!(
+            "Large primes: {} relations from two probes meeting on one of {} large primes, {} with both summands in the base; {} large-prime logarithms known",
+            logs["combined_relations"],
+            logs["distinct_large_primes"],
+            logs["full_relations"],
+            logs["known_large_primes"]
+        );
+    }
     println!(
         "Logarithm precompute: {:.3e} group operations in {:.3}s",
         f(&logs["oracle_ops"]) + f(&logs["probe_ops"]),
         f(&logs["seconds"])
     );
     println!(
-        "Descent: {}/{} verified; mean {:.0} group operations per target",
+        "Descent: {}/{} verified, {} through a large prime, {} large primes learnt for the targets after; mean {:.0} group operations per target",
         des["verified"],
         des["per_target"].as_array().map_or(0, Vec::len),
+        des["through_large_primes"],
+        des["learned_large_primes"],
         f(&des["mean_ops"])
     );
     let rho = &report["rho"];
@@ -254,6 +266,12 @@ fn display_prime(report: &Value) {
         f(&v["charged"]["ratio_vs_folded_expectation"]),
         f(&v["amortised"]["ratio"]),
         f(&v["whole_process"]["ratio"])
+    );
+    let b = &v["whole_process_vs_batch_rho"];
+    println!(
+        "vs batch rho (Kuhn-Struik expectation, distinguished points shared by the targets): whole process {:.3}, {:.3} against the folded walk",
+        f(&b["ratio"]),
+        f(&b["ratio_folded"])
     );
 }
 
