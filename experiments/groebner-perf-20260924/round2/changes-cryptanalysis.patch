@@ -1,0 +1,275 @@
+--- round1/boolean_basis.py
++++ /Volumes/SSD990/cryptanalysis/experiments/pdp-scaling/boolean_basis.py
+@@ -1,4 +1,107 @@
+-"""Cheap exact filtering of assignments by a computed Boolean basis."""
++"""Exact certificates and assignment filtering for small Boolean bases."""
++
++
++def canonical_terms(terms):
++    """Canonical ANF: repeated terms cancel in characteristic two."""
++    result = set()
++    for term in terms:
++        result.symmetric_difference_update((term,))
++    return sorted(result)
++
++
++def certify_boolean_basis(nvars: int, equations, basis_terms, *, monomial_cache=True) -> dict:
++    """Certify the complete reduced GB using exact Boolean dimension counts.
++
++    In R = GF(2)[x]/(x_i^2+x_i), every ideal is radical and is determined by
++    its zeros. Let Z be ALL input zeros and S the squarefree monomials not
++    divisible by any output leading monomial. If G vanishes on Z, then
++    <G> is contained in I(Z), while |Z| <= dim(R/<G>) <= |S|. Equality
++    |S| = |Z| therefore proves ideal equality AND the Groebner property.
++    Checking minimal leading terms and standard tails proves reducedness.
++
++    Monomial evaluation uses independent bitset AND/XOR arithmetic, with one
++    bit per assignment. The default caps n at 12: a truth table of every
++    monomial uses O(4^n) bits. The explicit uncached mode supports n <= 20,
++    retaining only n variable truth tables (O(n*2^n) bits) and recomputing
++    each monomial's AND. It costs more operations per term but less memory.
++    No solver-supplied root set, rank, or completion flag is trusted.
++    """
++    if not 1 <= nvars <= (12 if monomial_cache else 20):
++        raise ValueError("certificate variable bound: cached 1..12, uncached 1..20")
++    universe = 1 << nvars
++    equations = [canonical_terms(g) for g in equations]
++    basis = [list(g) for g in basis_terms]
++    for g in equations + basis:
++        if any(not isinstance(m, int) or not 0 <= m < universe for m in g):
++            raise ValueError("monomial outside the Boolean ring")
++    invalid = {"verified": False, "method": "exact-Boolean-zeros-and-staircase"}
++    if any(not g or len(g) != len(set(g)) for g in basis):
++        return {**invalid, "reason": "noncanonical or zero basis row"}
++    all_bits = (1 << universe) - 1
++    variables = []
++    for v in range(nvars):
++        step = 1 << v
++        # Repeated doubling avoids large-integer division at larger n.
++        pattern = ((1 << step) - 1) << step
++        span = step * 2
++        while span < universe:
++            pattern |= pattern << span
++            span *= 2
++        variables.append(pattern)
++    truth = [all_bits] if monomial_cache else None
++    if truth is not None:
++        for mask in range(1, universe):
++            bit = mask & -mask
++            truth.append(truth[mask ^ bit] & variables[bit.bit_length() - 1])
++    def monomial_truth(mask):
++        if truth is not None:
++            return truth[mask]
++        value = all_bits
++        while mask:
++            bit = mask & -mask
++            value &= variables[bit.bit_length() - 1]
++            mask ^= bit
++        return value
++    def evaluate(g):
++        value = 0
++        for mask in g:
++            value ^= monomial_truth(mask)
++        return value
++    nonroots = 0
++    for g in equations:
++        nonroots |= evaluate(g)
++    roots = all_bits ^ nonroots
++    root_count = roots.bit_count()
++    if any(evaluate(g) & roots for g in basis):
++        return {**invalid, "reason": "basis removes an input root", "root_count": root_count}
++    leading = [max(g, key=lambda m: (m.bit_count(), -m)) for g in basis]
++    forbidden = 0
++    for lm in leading:
++        # Assignment a makes monomial lm equal one iff lm divides mask a.
++        forbidden |= monomial_truth(lm)
++    standard = all_bits ^ forbidden
++    dimension = standard.bit_count()
++    if dimension != root_count:
++        return {**invalid, "reason": "staircase dimension differs from root count",
++                "root_count": root_count, "standard_monomials": dimension}
++    for i, (g, lm) in enumerate(zip(basis, leading)):
++        if any(j != i and other & lm == other for j, other in enumerate(leading)):
++            return {**invalid, "reason": "nonminimal leading monomial"}
++        if any(m != lm and not ((standard >> m) & 1) for m in g):
++            return {**invalid, "reason": "nonstandard tail monomial"}
++    solutions = None
++    if root_count <= 256:
++        solutions = []
++        remaining = roots
++        while remaining:
++            bit = remaining & -remaining
++            solutions.append(bit.bit_length() - 1)
++            remaining ^= bit
++    return {"verified": True, "method": "exact-Boolean-zeros-and-staircase",
++            "root_count": root_count, "standard_monomials": dimension,
++            "monomial_cache": monomial_cache,
++            "solutions": solutions,
++            "ideal_equality": True, "reduced_groebner_basis": True}
+ 
+ 
+ def basis_vanishes(basis_terms, assignment: int) -> bool:
+--- round1/boolean_m4ri_runner.py
++++ /Volumes/SSD990/cryptanalysis/experiments/pdp-scaling/boolean_m4ri_runner.py
+@@ -11,8 +11,7 @@
+ import tempfile
+ import time
+ 
+-from boolean_f5b import BooleanF5B
+-from boolean_basis import basis_vanishes
++from boolean_basis import basis_vanishes, canonical_terms, certify_boolean_basis
+ from descend import verify_solution
+ 
+ 
+@@ -98,7 +97,7 @@
+     matrix_degree = min(matrix_degree, nvars)
+     if matrix_degree < 0:
+         raise ValueError("matrix_degree must be nonnegative")
+-    equations = [sorted(set(equation)) for equation in equations if equation]
++    equations = [canonical_terms(equation) for equation in equations if equation]
+     if any(monomial < 0 or monomial >= 1 << nvars
+            for equation in equations for monomial in equation):
+         raise ValueError("equation contains a monomial outside the Boolean ring")
+@@ -145,14 +144,11 @@
+ 
+     groebner = None
+     generators_ok = None
++    certificate = None
+     if verify:
+-        verifier = BooleanF5B(nvars, timeout=max(5, timeout))
+-        basis = [verifier.from_terms(terms) for terms in basis_terms]
+-        generators = [verifier.from_terms(equation) for equation in equations]
+-        reduction_rows = verifier.reduction_table(basis)
+-        groebner = verifier.is_groebner(basis, reduction_rows)
+-        generators_ok = all(verifier.normal_form(generator, basis, reduction_rows) == 0
+-                            for generator in generators)
++        certificate = certify_boolean_basis(nvars, equations, basis_terms)
++        groebner = certificate["verified"]
++        generators_ok = certificate["verified"]
+     basis_hash = hashlib.sha256(json.dumps(
+         [sorted(terms) for terms in basis_terms], sort_keys=True).encode()).hexdigest()
+     result = {
+@@ -178,6 +174,7 @@
+         "groebner_verified": groebner,
+         "generators_reduce_to_zero": generators_ok,
+         "independent_basis_verification": verify,
++        "basis_certificate": certificate,
+         "wall_seconds": wall,
+         "native_build": build,
+         "basis_terms": basis_terms,
+@@ -202,9 +199,12 @@
+     checked = 0
+     candidates = 0
+     extraction_started = time.monotonic()
+-    for assignment in range(1 << instance.nvars):
++    solutions = result["basis_certificate"].get("solutions")
++    assignments = range(1 << instance.nvars) if solutions is None else solutions
++    result["assignment_search"] = "basis-filtered-enumeration" if solutions is None else "certified-input-roots"
++    for assignment in assignments:
+         checked += 1
+-        if not basis_vanishes(basis_terms, assignment):
++        if solutions is None and not basis_vanishes(basis_terms, assignment):
+             continue
+         candidates += 1
+         if instance.evaluate(assignment) == 0 and verify_solution(instance, assignment):
+--- round1/boolean_native_runner.py
++++ /Volumes/SSD990/cryptanalysis/experiments/pdp-scaling/boolean_native_runner.py
+@@ -10,8 +10,7 @@
+ import tempfile
+ import time
+ 
+-from boolean_f5b import BooleanF5B
+-from boolean_basis import basis_vanishes
++from boolean_basis import basis_vanishes, certify_boolean_basis
+ from descend import verify_solution
+ 
+ 
+@@ -85,13 +84,9 @@
+             return {"status": "error", "complete": False,
+                     "detail": "invalid native basis row", "native_build": build}
+         basis_terms.append(fields[1:])
+-    verifier = BooleanF5B(instance.nvars, timeout=max(5, timeout))
+-    basis = [verifier.from_terms(terms) for terms in basis_terms]
+-    generators = [verifier.from_terms(equation) for equation in equations]
+-    reduction_rows = verifier.reduction_table(basis)
+-    groebner = verifier.is_groebner(basis, reduction_rows)
+-    generators_ok = all(verifier.normal_form(generator, basis, reduction_rows) == 0
+-                        for generator in generators)
++    certificate = certify_boolean_basis(instance.nvars, equations, basis_terms)
++    groebner = certificate["verified"]
++    generators_ok = certificate["verified"]
+     basis_hash = hashlib.sha256(json.dumps(
+         [sorted(terms) for terms in basis_terms], sort_keys=True).encode()).hexdigest()
+     result = {
+@@ -107,6 +102,7 @@
+         "basis_sha256": basis_hash,
+         "groebner_verified": groebner,
+         "generators_reduce_to_zero": generators_ok,
++        "basis_certificate": certificate,
+         "wall_seconds": wall,
+         "native_build": build,
+     }
+@@ -117,9 +113,12 @@
+     checked = 0
+     candidates = 0
+     extraction_started = time.monotonic()
+-    for assignment in range(1 << instance.nvars):
++    solutions = certificate.get("solutions")
++    assignments = range(1 << instance.nvars) if solutions is None else solutions
++    result["assignment_search"] = "basis-filtered-enumeration" if solutions is None else "certified-input-roots"
++    for assignment in assignments:
+         checked += 1
+-        if not basis_vanishes(basis_terms, assignment):
++        if solutions is None and not basis_vanishes(basis_terms, assignment):
+             continue
+         candidates += 1
+         if instance.evaluate(assignment) == 0 and verify_solution(instance, assignment):
+--- /dev/null
++++ /Volumes/SSD990/cryptanalysis/experiments/pdp-scaling/test_boolean_basis.py
+@@ -0,0 +1,46 @@
++import unittest
++
++from boolean_basis import canonical_terms, certify_boolean_basis
++
++
++class BooleanCertificateTests(unittest.TestCase):
++    def test_boolean_field_pairs_are_required(self):
++        self.assertFalse(certify_boolean_basis(2, [[0, 3]], [[0, 3]])["verified"])
++        result = certify_boolean_basis(2, [[0, 3]], [[0, 1], [0, 2]])
++        self.assertTrue(result["verified"])
++        self.assertEqual(result["root_count"], 1)
++        self.assertEqual(result["solutions"], [3])
++
++    def test_rejects_wrong_ideal_even_when_generators_reduce_to_zero(self):
++        # [1] is a GB and all inputs reduce to zero, but it discards real roots.
++        self.assertFalse(certify_boolean_basis(2, [[1]], [[0]])["verified"])
++
++    def test_rejects_nonreduced_basis(self):
++        self.assertFalse(certify_boolean_basis(2, [[1], [2]], [[1, 2], [2]])["verified"])
++        self.assertFalse(certify_boolean_basis(2, [[1]], [[1], [1, 3]])["verified"])
++
++    def test_zero_and_unit_ideals_and_term_cancellation(self):
++        self.assertEqual(canonical_terms([1, 1, 2]), [2])
++        self.assertTrue(certify_boolean_basis(2, [], [])["verified"])
++        self.assertTrue(certify_boolean_basis(2, [[1, 1]], [])["verified"])
++        self.assertTrue(certify_boolean_basis(2, [[1], [0, 1]], [[0]])["verified"])
++        self.assertFalse(certify_boolean_basis(2, [], [[1, 1]])["verified"])
++
++    def test_bounds(self):
++        with self.assertRaises(ValueError):
++            certify_boolean_basis(13, [], [])
++        with self.assertRaises(ValueError):
++            certify_boolean_basis(2, [[4]], [])
++
++    def test_uncached_certificate_above_small_table_bound(self):
++        equations = [[1 << v] for v in range(13)]
++        result = certify_boolean_basis(13, equations, equations, monomial_cache=False)
++        self.assertTrue(result["verified"])
++        self.assertEqual(result["root_count"], 1)
++        self.assertEqual(result["solutions"], [0])
++        self.assertFalse(certify_boolean_basis(13, equations, equations[:-1],
++                                             monomial_cache=False)["verified"])
++
++
++if __name__ == "__main__":
++    unittest.main()
