@@ -498,6 +498,7 @@ bindings/go/cmd/ca-coordinator  the coordinator service (Go, cgo onto this libra
 deploy/helm/ca-coordinator      Helm chart: the coordinator and its agents
 deploy/docker/                  one Dockerfile, two images (coordinator, agent)
 deploy/ca-coordinator/          systemd units and EC2 user-data for a plain VM
+cloud/                   Runpod pods hosting Cursor workers, and Modal jobs, for work too big for an agent VM (cloud/README.md)
 fuzz/                    libFuzzer harnesses and their seed corpora
 .github/workflows/       ci, analysis, bindings, suite, deploy, fpga, ecc2k130, fuzz, codeql, nightly
 ```
