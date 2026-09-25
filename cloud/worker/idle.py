@@ -11,8 +11,10 @@ A minute counts as busy when any of these hold:
 * a file in the agents' checkout (or one of its worktrees) changed recently,
 * Cursor reports this worker in use.
 
-The pod is stopped, not terminated: /workspace survives and
-`cloud/fleet.py up <name>` starts it again.  The current state is written to
+The pod is stopped, not terminated, and `cloud/fleet.py up <name>` starts it
+again.  On a pod whose /workspace is the container disk (Runpod CPU pods have
+no volume) a stop wipes the checkout, so uncommitted changes or unpushed
+commits there also count as busy.  The current state is written to
 /workspace/fleet/idle.json every minute.
 """
 import base64
@@ -156,24 +158,53 @@ def cursor_in_use(key, name):
     return any(w.get("name") == name and w.get("isInUse") for w in workers)
 
 
-def stop_pod():
-    key = os.environ.get("FLEET_RUNPOD_API_KEY") or secret("runpod-api-key")
-    pod = os.environ.get("RUNPOD_POD_ID") or secret("runpod-pod-id")
-    if not key or not pod:
-        log("cannot stop: no Runpod API key or pod id on this pod")
+def volume_backed():
+    """False when /workspace is the container disk, which a stop wipes (Runpod CPU pods)."""
+    try:
+        return os.stat("/workspace").st_dev != os.stat("/").st_dev
+    except OSError:
         return False
+
+
+def unsaved_work():
+    """Uncommitted changes or unpushed commits in the agents' checkout or its worktrees."""
+    for root in worktrees():
+        try:
+            dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                                   capture_output=True, text=True, timeout=60).stdout.strip()
+            ahead = subprocess.run(["git", "-C", str(root), "log", "--oneline", "-1",
+                                    "--branches", "--not", "--remotes"],
+                                   capture_output=True, text=True, timeout=60).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if dirty or ahead:
+            return True
+    return False
+
+
+def stop_pod():
+    # Runpod injects a key scoped to this pod; the GraphQL API accepts it, REST does not.
+    key = secret("runpod-api-key")
+    pod = secret("runpod-pod-id")
+    if not key or not pod:
+        log("cannot stop: no Runpod pod key or pod id on this pod")
+        return False
+    query = 'mutation { podStop(input: {podId: "%s"}) { id desiredStatus } }' % pod
     request = urllib.request.Request(
-        f"https://rest.runpod.io/v1/pods/{pod}/stop", method="POST", data=b"",
-        headers={"Authorization": f"Bearer {key}"})
+        "https://api.runpod.io/graphql", method="POST",
+        data=json.dumps({"query": query}).encode(),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
-            log(f"stop requested: HTTP {response.status}")
-            return True
-    except urllib.error.HTTPError as err:
-        log(f"stop failed: HTTP {err.code} {err.read()[:200]!r}")
-    except OSError as err:
+            reply = json.load(response)
+    except (OSError, ValueError) as err:
         log(f"stop failed: {err}")
-    return False
+        return False
+    if reply.get("errors"):
+        log(f"stop failed: {reply['errors']}")
+        return False
+    log(f"stop requested: {reply.get('data')}")
+    return True
 
 
 def main():
@@ -183,7 +214,10 @@ def main():
         log("idle stop disabled")
         return 0
     name = config.get("FLEET_WORKER_NAME", "")
-    log(f"stopping this pod after {limit} idle minutes")
+    keep_unsaved = not volume_backed()
+    log(f"stopping this pod after {limit} idle minutes"
+        + (" (never while the checkout has unsaved work: a stop wipes /workspace here)"
+           if keep_unsaved else ""))
     last_busy = time.time()
     in_use, in_use_checked = None, 0.0
     before_cpu, before = cpu_seconds(), time.monotonic()
@@ -208,6 +242,8 @@ def main():
             reasons.append("cursor agent")
         if not reasons and recent_edit():
             reasons.append("recent edits")
+        if not reasons and keep_unsaved and unsaved_work():
+            reasons.append("unsaved work in the checkout")
         if reasons:
             last_busy = time.time()
         idle = (time.time() - last_busy) / 60

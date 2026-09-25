@@ -75,7 +75,8 @@ fi
 if has msolve && [[ ! -x "$OPT/msolve/bin/msolve" ]]; then
   log "building msolve 0.10.1"
   tmp=$(mktemp -d)
-  if git clone -q --depth 1 --branch v0.10.1 https://github.com/algebraic-solving/msolve "$tmp/msolve" &&
+  if git -c advice.detachedHead=false clone -q --depth 1 --branch v0.10.1 \
+    https://github.com/algebraic-solving/msolve "$tmp/msolve" &&
     (cd "$tmp/msolve" && ./autogen.sh >/dev/null 2>&1 &&
       ./configure -q --prefix="$OPT/msolve" &&
       make -s -j"$FLEET_CPUS" && make -s install) >"$FLEET/logs/msolve-build.log" 2>&1; then

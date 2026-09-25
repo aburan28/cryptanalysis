@@ -139,11 +139,13 @@ if [[ -z "$cpus" && -r /sys/fs/cgroup/cpu.max ]]; then
   [[ "$quota" != max ]] && cpus=$(((quota + period - 1) / period))
 fi
 cpus="${cpus:-$(nproc)}"
-mem_gb=$(awk '/MemTotal/ {print int($2 / 1048576)}' /proc/meminfo)
-if [[ -r /sys/fs/cgroup/memory.max ]]; then
+mem_gb="${RUNPOD_MEM_GB:-}"
+if [[ -z "$mem_gb" && -r /sys/fs/cgroup/memory.max ]]; then
   limit=$(cat /sys/fs/cgroup/memory.max)
   [[ "$limit" != max ]] && mem_gb=$((limit / 1073741824))
 fi
+# /proc/meminfo shows the host's memory, not the pod's share; it is a last resort.
+mem_gb="${mem_gb:-$(awk '/MemTotal/ {print int($2 / 1048576)}' /proc/meminfo)}"
 gpu=""
 if command -v nvidia-smi >/dev/null 2>&1; then
   gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null |

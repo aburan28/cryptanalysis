@@ -277,10 +277,16 @@ def ssh_base(pod):
             "-o", "ServerAliveInterval=30", f"root@{host}"]
 
 
+def ssh_environ():
+    # ssh forwards LANG/LC_*; the pods lack most locales and bash warns about each one.
+    return {k: v for k, v in os.environ.items() if k != "LANG" and not k.startswith("LC_")}
+
+
 def remote(pod, script, **kwargs):
     """Run a bash script on the pod with the fleet environment loaded."""
     wrapped = "source /workspace/fleet/env.sh 2>/dev/null; " + script
-    return subprocess.run(ssh_base(pod) + [f"bash -c {shlex.quote(wrapped)}"], **kwargs)
+    return subprocess.run(ssh_base(pod) + [f"bash -c {shlex.quote(wrapped)}"],
+                          env=ssh_environ(), **kwargs)
 
 
 # ---- commands ------------------------------------------------------------------------------
@@ -396,11 +402,16 @@ def cmd_down(args):
     return 0
 
 
+def as_script(command):
+    """One argument is a shell script already; several are words to quote."""
+    return command[0] if len(command) == 1 else shlex.join(command)
+
+
 def cmd_ssh(args):
     pod = pod_or_exit(args.name)
     if not args.command:
-        os.execvp("ssh", ssh_base(pod) + ["-t"])
-    return remote(pod, shlex.join(args.command)).returncode
+        os.execvpe("ssh", ssh_base(pod) + ["-t"], ssh_environ())
+    return remote(pod, as_script(args.command)).returncode
 
 
 def cmd_logs(args):
@@ -435,7 +446,7 @@ def fetch_outputs(pod, job, dest, tag):
 
 
 def cmd_run(args):
-    command = shlex.join(args.command) if len(args.command) > 1 else args.command[0]
+    command = as_script(args.command)
     pod = pod_or_exit(args.name)
     root = tree.repo_root()
     data, summary = tree.pack(root, include=args.include)
