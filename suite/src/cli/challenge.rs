@@ -85,9 +85,11 @@ pub struct SolveArgs {
     #[arg(long, value_enum, default_value_t = Method::Auto)]
     pub method: Method,
     /// Refuse generic methods whose expected cost exceeds 2^this group
-    /// operations, instead of starting a run that cannot finish.
-    #[arg(long, default_value_t = 44)]
-    pub max_log2_ops: u32,
+    /// operations, instead of starting a run that cannot finish. Default:
+    /// 44 on the C library (about 25 ns per operation), 28 on the
+    /// arbitrary-precision attacks (about 2.5 us per operation).
+    #[arg(long)]
+    pub max_log2_ops: Option<u32>,
     #[arg(long, default_value_t = 1)]
     pub seed: u64,
     #[arg(long, default_value_t = 1)]
@@ -177,6 +179,10 @@ pub fn run(out: Out, args: &ChallengeArgs) -> CmdResult {
 /// What `solve` found out about the curve before choosing.
 #[derive(Clone, Debug, Serialize)]
 pub struct Analysis {
+    /// The factorisation behind the checks (also handed to the attacks, so
+    /// the order is factored once).
+    #[serde(skip)]
+    pub factors: Vec<(BigUint, u32)>,
     pub field_bits: u64,
     pub subgroup_bits: u64,
     pub subgroup_factors: Vec<String>,
@@ -272,10 +278,26 @@ fn embedding_degree(p: &BigUint, n: &BigUint, bound: u64) -> Option<u64> {
     None
 }
 
-/// Factor a subgroup order: trial division, Miller-Rabin and a budgeted
-/// Pollard-Brent rho (an unsplit cofactor is kept whole, never guessed).
+/// Factor a subgroup order: a prime order is recognised by Miller-Rabin
+/// and never trial-divided; otherwise trial division and a Pollard-Brent
+/// rho with a budget of 2^22 iterations (prime factors up to about 2^40).
+/// An unsplit cofactor is kept whole, never guessed.
 pub fn factor(n: &BigUint) -> Vec<(BigUint, u32)> {
-    crate::cryptanalysis::weak_curves::factor_order(n)
+    use crate::cryptanalysis::weak_curves::{factor, is_probable_prime, FactorOptions};
+    if is_probable_prime(n) {
+        return vec![(n.clone(), 1)];
+    }
+    let f = factor(
+        n,
+        &FactorOptions {
+            trial_bound: 1 << 16,
+            rho_iterations: 1 << 22,
+        },
+    );
+    let mut out = f.factors;
+    out.extend(f.unfactored.into_iter().map(|c| (c, 1)));
+    out.sort();
+    out
 }
 
 fn analyse(rec: &Value, ch: &PrimeFieldChallenge) -> Analysis {
@@ -286,6 +308,7 @@ fn analyse(rec: &Value, ch: &PrimeFieldChallenge) -> Analysis {
         .max()
         .unwrap_or_default();
     Analysis {
+        factors: factors.clone(),
         field_bits: bits(&ch.p),
         subgroup_bits: bits(&ch.subgroup_order),
         subgroup_factors: factors
@@ -369,12 +392,13 @@ fn solve(out: Out, root: &std::path::Path, a: &SolveArgs) -> CmdResult {
     }
     // Generic methods cost about sqrt(largest prime factor) group operations.
     let log2_cost = analysis.largest_prime_bits.div_ceil(2);
-    if log2_cost > u64::from(a.max_log2_ops) {
+    let limit = a.max_log2_ops.unwrap_or(44);
+    if log2_cost > u64::from(limit) {
         return Err(format!(
             "{}: the largest prime factor of the subgroup order has {} bits, so a generic \
              method needs about 2^{log2_cost} group operations (limit 2^{}; raise it with \
              --max-log2-ops)",
-            a.id, analysis.largest_prime_bits, a.max_log2_ops
+            a.id, analysis.largest_prime_bits, limit
         )
         .into());
     }
@@ -494,9 +518,21 @@ fn solve_structural(
             _ => None,
         },
         curve_order,
-        max_log2_ops: f64::from(a.max_log2_ops),
+        // Only a complete factorisation may be handed over; an unsplit
+        // cofactor would fail the attacks' primality check.
+        order_factorization: if analysis
+            .factors
+            .iter()
+            .all(|(q, _)| weak_curves::is_probable_prime(q))
+        {
+            analysis.factors.clone()
+        } else {
+            Vec::new()
+        },
+        max_log2_ops: f64::from(a.max_log2_ops.unwrap_or(28)),
         ..AttackOptions::default()
     };
+    opts.factor.rho_iterations = 1 << 22;
     opts.solver.seed = a.seed;
     let mut notes = Vec::new();
     let result =
