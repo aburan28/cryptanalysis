@@ -450,7 +450,7 @@ def collect(args, workload: dict | None = None, meter: opcount.Meter | None = No
         if found is not None:
             with meter.phase("recovery_check"):
                 ok = C.K.smul(C.G, found) == Q
-        descents.append({"attempts": tries, "recovered": found is not None, "verified": ok,
+        descents.append({"attempts": tries, "recovered": found is not None, "verified": ok, "scalar": found,
                          "matches_workload": None if workload is None else found == s_true,
                          "ops": dict(meter.ops.get("target_descent", Counter()) - before)})
     summary = mon.summary()
