@@ -7,8 +7,10 @@
 //! system.  This runs the same measurement on this repository's descent
 //! systems.
 //!
-//!     ic descent --out docs/ic/runs/ic-descent-degrees-YYYY-MM-DD.json
-//!     ic descent --cells 11:6:2,11:4:3 --targets 16
+//! ```text
+//! ic descent --out docs/ic/runs/ic-descent-degrees-YYYY-MM-DD.json
+//! ic descent --cells 11:6:2,11:4:3 --targets 16
+//! ```
 //!
 //! It prices **one decomposition oracle call**, so by `AGENTS.md` §2 it
 //! is a stage diagnostic and never a speed.  The whole-pipeline unit

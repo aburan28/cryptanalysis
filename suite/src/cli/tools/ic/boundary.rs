@@ -7,9 +7,11 @@
 //! counted Pollard rho, fits the exponents, and writes it all as one
 //! JSON report (with the Markdown table inside it).
 //!
-//!     ic boundary --quick --json
-//!     ic boundary --regime koblitz --koblitz-degrees 23,31 --repeats 2 --out ledger.json
-//!     ic boundary --out docs/ic/runs/ic-boundary-ledger-YYYY-MM-DD.json
+//! ```text
+//! ic boundary --quick --json
+//! ic boundary --regime koblitz --koblitz-degrees 23,31 --repeats 2 --out ledger.json
+//! ic boundary --out docs/ic/runs/ic-boundary-ledger-YYYY-MM-DD.json
+//! ```
 
 use crate::cryptanalysis::ic_boundary::{
     fit_exponents, format_markdown, run_char2_ladder, run_koblitz_ladder, run_prime_ladder,
