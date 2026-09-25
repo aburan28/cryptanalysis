@@ -43,6 +43,20 @@ def popcount(x):
     return bin(x).count('1')
 
 
+_bitCount = getattr(int, 'bit_count', popcount)
+
+
+def reverseByte(x):
+    x = ((x & 0x55) << 1) | ((x & 0xaa) >> 1)
+    x = ((x & 0x33) << 2) | ((x & 0xcc) >> 2)
+    return ((x & 0x0f) << 4) | ((x & 0xf0) >> 4)
+
+
+_reverseBytes = bytes(reverseByte(i) for i in range(256))
+_squareBytes = tuple(sum(((byte >> bit) & 1) << (2 * bit)
+                         for bit in range(8)) for byte in range(256))
+
+
 class Onb:
     """GF(2^m) as symmetric vectors mod the all-ones vector, n = 2m+1."""
 
@@ -55,6 +69,8 @@ class Onb:
         if self.ord2 != m and self.ord2 != 2 * m:
             raise ValueError("ord_%d(2) = %d, not m or 2m; no type-II ONB" % (self.n, self.ord2))
         self.allOnes = (1 << self.n) - 1
+        self.frobPositions = {}
+        self.frobCalls = {}
 
     # ---- conversion between coordinate vectors and internal symmetric form
     def fold(self, i):
@@ -63,19 +79,22 @@ class Onb:
 
     def fromCoords(self, a):
         """a is an m-bit int, bit (i-1) = coefficient of gamma_i."""
+        bits = a & ((1 << self.m) - 1)
+        if self.m > 12 and _bitCount(bits) > 12:
+            raw = bits.to_bytes((self.m + 7) // 8, 'little')
+            mirrored = int.from_bytes(raw.translate(_reverseBytes), 'big') >> (-self.m % 8)
+            return (bits << 1) | (mirrored << (self.m + 1))
         u = 0
-        for i in range(1, self.m + 1):
-            if (a >> (i - 1)) & 1:
-                u |= (1 << i) | (1 << (self.n - i))
+        while bits:
+            bit = bits & -bits
+            i = bit.bit_length()
+            u |= (1 << i) | (1 << (self.n - i))
+            bits ^= bit
         return u
 
     def toCoords(self, u):
         u = self.normalize(u)
-        a = 0
-        for i in range(1, self.m + 1):
-            if (u >> i) & 1:
-                a |= 1 << (i - 1)
-        return a
+        return (u >> 1) & ((1 << self.m) - 1)
 
     def normalize(self, u):
         if u & 1:
@@ -94,6 +113,28 @@ class Onb:
         return ((u << k) | (u >> (self.n - k))) & self.allOnes if k else u
 
     def mul(self, a, b):
+        if not (a | b) & ~self.allOnes:
+            if self.m <= 9 or _bitCount(b) <= 12:
+                r = 0
+                while b:
+                    bit = b & -b
+                    r ^= self.rot(a, bit.bit_length() - 1)
+                    b ^= bit
+                return self.normalize(r)
+            basis = (a, self.rot(a, 1), self.rot(a, 2), self.rot(a, 3))
+            window = [0] * 16
+            for mask in range(1, 16):
+                bit = mask & -mask
+                window[mask] = window[mask ^ bit] ^ basis[bit.bit_length() - 1]
+            r = 0
+            shift = 0
+            while b:
+                digit = b & 15
+                if digit:
+                    r ^= self.rot(window[digit], shift)
+                b >>= 4
+                shift += 4
+            return self.normalize(r)
         r = 0
         bb = b
         i = 0
@@ -110,10 +151,38 @@ class Onb:
     def frob(self, a, k):
         """a -> a^(2^k), i.e. z -> z^(2^k), an index permutation."""
         e = pow(2, k, self.n)
+        if e not in (2, 4):
+            r = 0
+            for i in range(self.n):
+                if (a >> i) & 1:
+                    r |= 1 << (i * e % self.n)
+            return self.normalize(r)
+        positions = self.frobPositions.get(e)
+        if positions is None:
+            if self.m > 9:
+                calls = self.frobCalls.get(e, 0) + 1
+                self.frobCalls[e] = calls
+                if calls < 36:
+                    r = 0
+                    for i in range(self.n):
+                        if (a >> i) & 1:
+                            r |= 1 << (i * e % self.n)
+                    return self.normalize(r)
+            positionBits = tuple(1 << (i * e % self.n) for i in range(self.n))
+            padded = positionBits + (0,) * (-self.n % 8)
+            tables = []
+            for offset in range(0, len(padded), 8):
+                table = [0] * 256
+                for byte in range(1, 256):
+                    bit = byte & -byte
+                    table[byte] = table[byte ^ bit] | padded[offset + bit.bit_length() - 1]
+                tables.append(tuple(table))
+            positions = tuple(tables)
+            self.frobPositions[e] = positions
         r = 0
-        for i in range(self.n):
-            if (a >> i) & 1:
-                r |= 1 << (i * e % self.n)
+        bits = a & self.allOnes
+        for table, byte in zip(positions, bits.to_bytes(len(positions), 'little')):
+            r |= table[byte]
         return self.normalize(r)
 
     def add(self, a, b):
@@ -137,7 +206,21 @@ class Onb:
         return r
 
     def inv(self, a):
-        return self.pow(a, (1 << self.m) - 2)
+        if a == 0 or a != self.fromCoords(self.toCoords(a)):
+            return self.pow(a, (1 << self.m) - 2)
+        b, u, v = self.allOnes, 1, 0
+        while a != 1:
+            if not a:
+                raise ValueError('nonunit in the ONB ring')
+            shift = a.bit_length() - b.bit_length()
+            if shift < 0:
+                a, b, u, v = b, a, v, u
+                shift = -shift
+            a ^= b << shift
+            u ^= v << shift
+        while u.bit_length() >= self.allOnes.bit_length():
+            u ^= self.allOnes << (u.bit_length() - self.allOnes.bit_length())
+        return self.normalize(u)
 
     def gamma(self, i):
         return self.fromCoords(1 << (i - 1))
@@ -147,6 +230,10 @@ class Onb:
 
     def trace(self, u):
         """Tr(a) over GF(2); equals the parity of the normal-basis weight."""
+        coords = self.toCoords(u)
+        if u == self.fromCoords(coords):
+            return _bitCount(coords) & 1
+        # Preserve the historical result for noncanonical raw vectors.
         t = 0
         v = u
         for _ in range(self.m):
@@ -226,7 +313,15 @@ class Pb:
         return r
 
     def sqr(self, a):
-        return self.mul(a, a)
+        if a >> self.m:
+            return self.mul(a, a)
+        expanded = 0
+        shift = 0
+        while a:
+            expanded |= _squareBytes[a & 255] << shift
+            a >>= 8
+            shift += 16
+        return polyMod(expanded, self.poly)
 
     def pow(self, a, e):
         r = 1
@@ -238,7 +333,24 @@ class Pb:
         return r
 
     def inv(self, a):
-        return self.pow(a, (1 << self.m) - 2)
+        """Invert a field element by GF(2) polynomial extended Euclid."""
+        if a >> self.m:
+            a = polyMod(a, self.poly)
+        # Keep the previous Pb.pow(0, 2^m-2) behavior for callers that
+        # inspect a zero result before performing a field division.
+        if not a:
+            return 0
+        u, v, g, h = a, self.poly, 1, 0
+        while u != 1:
+            if not u:
+                raise ZeroDivisionError('element is not invertible')
+            shift = u.bit_length() - v.bit_length()
+            if shift < 0:
+                u, v, g, h = v, u, h, g
+                shift = -shift
+            u ^= v << shift
+            g ^= h << shift
+        return polyMod(g, self.poly)
 
     def isIrreducible(self):
         # x^(2^k) mod poly, gcd test

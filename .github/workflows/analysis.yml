@@ -114,12 +114,13 @@ jobs:
             base=$(git rev-parse "HEAD^" 2>/dev/null || git rev-parse HEAD)
           fi
           echo "comparing against $base"
-          # Generated arithmetic headers are immutable outputs: their exact
-          # bytes are bound into benchmark/table manifests. Format generators,
-          # not the generated artifacts.
+          # Generated arithmetic headers and frozen campaign source snapshots
+          # are bound into experiment manifests. Format live source, not the
+          # immutable measurement artifacts.
           mapfile -t paths < <(
             git diff --name-only --diff-filter=ACMR "$base"...HEAD -- \
-              '*.c' '*.h' '*.cu' '*.cuh' | grep -Ev '(^|/)generated/' || true
+              '*.c' '*.h' '*.cu' '*.cuh' |
+              grep -Ev '(^|/)generated/|^experiments/sage-ic-campaign/[^/]+/(source|baseline|candidate-v1)/' || true
           )
           if [ "${#paths[@]}" -eq 0 ]; then
             echo "no non-generated C/CUDA files changed"
