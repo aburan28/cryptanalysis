@@ -1,6 +1,9 @@
 #define BOOLEAN_F5B_NO_MAIN
 #include "boolean_f5b_native.cpp"
 #include <m4ri/m4ri.h>
+#include <limits>
+#include <memory>
+#include <stdexcept>
 
 static uint64_t reverse_bits(uint64_t value) {
     value = ((value & UINT64_C(0x5555555555555555)) << 1) |
@@ -109,7 +112,9 @@ struct MatrixStats {
 
 static std::vector<Poly> macaulay_m4ri(Engine& e, const std::vector<Poly>& F,
                                        const std::vector<Poly>& f5_consequences,
-                                       int degree, MatrixStats& stats) {
+                                       int degree, MatrixStats& stats,
+                                       rci_t (*eliminate)(mzd_t*, int, int) = mzd_echelonize_m4ri,
+                                       size_t row_limit = std::numeric_limits<size_t>::max()) {
     auto phase = std::chrono::steady_clock::now();
     std::vector<Poly> rows;
     for (const Poly& generator: F) {
@@ -145,10 +150,15 @@ static std::vector<Poly> macaulay_m4ri(Engine& e, const std::vector<Poly>& F,
         }
     }
     stats.rows = rows.size();
+    if (rows.size() > row_limit)
+        throw std::runtime_error("Macaulay matrix exceeds prepared row capacity");
     stats.generation = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - phase).count();
     phase = std::chrono::steady_clock::now();
-    mzd_t *matrix = mzd_init(rows.size(), e.universe);
+    std::unique_ptr<mzd_t, decltype(&mzd_free)> owned_matrix(
+        mzd_init(rows.size(), e.universe), mzd_free);
+    mzd_t *matrix = owned_matrix.get();
+    if (!matrix) throw std::bad_alloc();
     for (size_t i = 0; i < rows.size(); ++i) {
         // Both layouts are packed, but their column order is reversed. Copy
         // complete words instead of performing a read/modify/write per term.
@@ -174,7 +184,7 @@ static std::vector<Poly> macaulay_m4ri(Engine& e, const std::vector<Poly>& F,
     // The recurring 12-variable matrix is about 3k x 4k. M4RI's automatic
     // table size is conservative for this shape; k=5 wins on every matched
     // seed while producing the identical reduced row echelon form.
-    rci_t rank = mzd_echelonize_m4ri(matrix, 1, 5);
+    rci_t rank = eliminate(matrix, 1, 5);
     stats.rank = rank;
     stats.elimination = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - phase).count();
@@ -194,7 +204,7 @@ static std::vector<Poly> macaulay_m4ri(Engine& e, const std::vector<Poly>& F,
         }
         if (!e.zero(row)) echelon.push_back(row);
     }
-    mzd_free(matrix);
+    owned_matrix.reset();
     std::vector<uint8_t> has_lead(e.universe, 0);
     for (const Poly& row: echelon) has_lead[e.lead(row)] = 1;
     std::vector<Poly> minimal;
@@ -233,6 +243,7 @@ static std::vector<Poly> macaulay_m4ri(Engine& e, const std::vector<Poly>& F,
     return result;
 }
 
+#ifndef BOOLEAN_F5B_M4RI_NO_MAIN
 int main() {
     std::ios::sync_with_stdio(false);
     int n, generators, signature_limit, degree;
@@ -276,3 +287,4 @@ int main() {
         std::cout << "\n";
     }
 }
+#endif
