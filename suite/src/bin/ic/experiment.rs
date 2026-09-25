@@ -6,8 +6,9 @@ use cryptanalysis_suite::cryptanalysis::koblitz_factor_base_search::{
     search_with_progress, Candidate, FactorBaseSpec, Family, SearchOptions, SearchReport,
 };
 use cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::{
-    factor_x_n_minus_1, individual_log, koblitz_index_calculus_dlp_with_factor_base_and_progress,
-    order_of_2_mod_n, solve_factor_base_logs, DecompositionStrategy, FactorBaseLogTable,
+    build_subgroup_orbit_factor_base_with_cost, factor_x_n_minus_1, individual_log,
+    koblitz_index_calculus_dlp_with_factor_base_and_progress, order_of_2_mod_n,
+    solve_factor_base_logs, DecompositionStrategy, FactorBaseLogTable, FactorBaseSelectionCost,
     FrobeniusFactorBase, KoblitzCurve, KoblitzIcEvent, KoblitzIcOptions, LinearAlgebra,
     LogTableReport, SharedDecider, MAX_N, MAX_SUBFIELD_DEGREE,
 };
@@ -771,7 +772,10 @@ pub fn solve(args: SolveArgs, quiet: bool) -> Result<Value, String> {
     let outcome = individual_log(&c, &fb, &table, &target, &opts);
     let (recovered, report) = match outcome {
         Some((d, r)) => (Some(d), r),
-        None => (None, cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::IndividualLogReport::default()),
+        None => (
+            None,
+            cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::IndividualLogReport::default(),
+        ),
     };
     let verified = recovered.as_ref() == Some(&k)
         && recovered
@@ -880,18 +884,30 @@ fn factor_base_spec(args: &RunArgs) -> Result<FactorBaseSpec, String> {
         }
     }
 }
-pub(crate) fn materialize(
+pub(crate) fn materialize_with_selection_cost(
     kc: &KoblitzCurve,
     spec: &FactorBaseSpec,
-) -> Result<FrobeniusFactorBase, String> {
-    let fb = spec.materialize(kc)?;
+) -> Result<(FrobeniusFactorBase, Option<FactorBaseSelectionCost>), String> {
+    let (fb, cost) = match spec {
+        FactorBaseSpec::SubgroupOrbits { seed, points } => {
+            let (fb, cost) = build_subgroup_orbit_factor_base_with_cost(kc, *seed, *points)?;
+            (fb, Some(cost))
+        }
+        _ => (spec.materialize(kc)?, None),
+    };
     if fb.subspace.len() > MAX_ABSCISSAE {
         return Err(format!(
             "factor base has {} abscissae, above the materialization limit {MAX_ABSCISSAE}",
             fb.subspace.len()
         ));
     }
-    Ok(fb)
+    Ok((fb, cost))
+}
+pub(crate) fn materialize(
+    kc: &KoblitzCurve,
+    spec: &FactorBaseSpec,
+) -> Result<FrobeniusFactorBase, String> {
+    materialize_with_selection_cost(kc, spec).map(|(fb, _)| fb)
 }
 pub(crate) fn factor_base_json(
     spec: &FactorBaseSpec,
