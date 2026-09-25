@@ -101,7 +101,8 @@ Layout on a pod:
 | `/workspace/fleet/{logs,secrets,src}` | fleet logs, credentials (mode 600), and the `cloud/` source it booted from |
 | `/workspace/fleet/{machine,toolchain,idle}.json` | hardware, installed tools, watchdog state |
 | `/workspace/venv`, `/workspace/opt/{msolve,sage,cuda-13.3}`, `/workspace/home` | tools (`/root/.cargo` and the like link into `/workspace/home`) |
-| `/workspace/jobs/<id>` | `fleet.py run` jobs |
+| `/workspace/jobs/<id>` | `fleet.py run` logs, status and outputs |
+| `/scratch` (`$FLEET_SCRATCH`) | local disk for job trees and builds; a stop wipes it |
 
 ### Running one command on a pod
 
@@ -114,10 +115,24 @@ cloud/fleet.py job rp-gpu-1 <job-id> --logs     # --fetch copies results back, -
 ```
 
 `run` ships the working tree, including uncommitted edits and untracked files
-that are not ignored, and runs the command in a fresh copy of it. With
-`--dir NAME` it runs in `/workspace/scratch/NAME` instead, which persists
-between jobs so builds stay warm. When the command finishes, `run` copies back
-the paths named by `--out`, plus every file it wrote when `--changed` is set.
+that are not ignored, and runs the command in a fresh copy of it under
+`/scratch`, on the pod's local disk. With `--dir NAME` it runs in
+`/scratch/NAME` instead, which is kept between jobs so builds stay warm until
+the pod stops. When the command finishes, `run` copies back the paths named by
+`--out`, plus every file it wrote when `--changed` is set.
+
+Measured on these pods:
+
+- On `rp-cpu-1`, configuring, building and running the C library's 15 tests
+  took 5.5 s; the whole `run` took 18 s.
+- On `rp-gpu-1`, building the ECC2K-130 client with CUDA 13.3 and running
+  `bench` gave 6.48 G iterations/s.
+
+On `rp-gpu-1`, `nproc` reports the host's 64 cores; the pod's share is
+`$FLEET_CPUS` (8), so use `make -j$FLEET_CPUS`. Its `/workspace` is a network
+filesystem: unpacking there is about 40x slower and building about 2x slower
+than on `$FLEET_SCRATCH`, so build out of tree there
+(`cmake -B $FLEET_SCRATCH/build`).
 
 ## Modal jobs
 
