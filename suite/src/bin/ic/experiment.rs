@@ -9,7 +9,7 @@ use cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::{
     factor_x_n_minus_1, individual_log, koblitz_index_calculus_dlp_with_factor_base_and_progress,
     order_of_2_mod_n, solve_factor_base_logs, DecompositionStrategy, FactorBaseLogTable,
     FrobeniusFactorBase, KoblitzCurve, KoblitzIcEvent, KoblitzIcOptions, LinearAlgebra,
-    LogTableReport, MAX_N, MAX_SUBFIELD_DEGREE,
+    LogTableReport, SharedDecider, MAX_N, MAX_SUBFIELD_DEGREE,
 };
 use cryptanalysis_suite::cryptanalysis::koblitz_sparse_la::{
     BlockWiedemannOptions, SparseSolveOptions,
@@ -283,6 +283,14 @@ pub struct RunArgs {
     /// projection merge, and a fixed-surplus collection before one solve.
     #[arg(long)]
     pub control: bool,
+    /// Run each batch's Gröbner searches in lockstep and decide their
+    /// Macaulay matrices together on this backend: `cpu`, `cuda[:N]` (an
+    /// NVIDIA device, through libcuda and NVRTC), or `emulate[:threads]`
+    /// (the GPU kernel on the host; needs the `gpu-emulator` feature).
+    /// Relations, counters and the recovered logarithm are the same as
+    /// without it.
+    #[arg(long)]
+    pub f4_backend: Option<String>,
 }
 impl Default for RunArgs {
     fn default() -> Self {
@@ -303,6 +311,7 @@ impl Default for RunArgs {
             wdsat_timeout_ms: 5_000,
             batch: 0,
             control: false,
+            f4_backend: None,
         }
     }
 }
@@ -983,6 +992,13 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
             if args.control { "; control accounting" } else { "" }
         );
     }
+    let f4_batch = match &args.f4_backend {
+        Some(spec) => Some(SharedDecider::new(
+            cryptanalysis_suite::cryptanalysis::f4_gpu::decider_from_spec(spec)
+                .map_err(|e| format!("--f4-backend {spec}: {e}"))?,
+        )),
+        None => None,
+    };
     let opts = KoblitzIcOptions {
         m: args.summands as usize,
         strategy: args.solver.strategy(),
@@ -997,6 +1013,7 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
         relation_batch_size: batch,
         wdsat_binary: args.wdsat_binary.clone(),
         wdsat_timeout_ms: args.wdsat_timeout_ms,
+        f4_batch,
         ..KoblitzIcOptions::default()
     };
     let mut stages = Vec::new();
@@ -1149,6 +1166,9 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
             "sat_conflicts":r.sat_conflicts,"linear_solve_attempts":r.linear_solve_attempts,"cofactor_admissible":r.m_cofactor_admissible},
         "timing_seconds":{"pair_table":r.pair_table_ns as f64/1e9,"relation_collection":r.relation_collection_ns as f64/1e9,
             "linear_algebra":r.linear_algebra_ns as f64/1e9},
+        "f4_batch":{"backend":r.f4_batch_backend,"rounds":r.f4_batch_rounds,"requests":r.f4_batch_requests,
+            "decide_seconds":r.f4_batch_decide_ns as f64/1e9,
+            "kernel":format!("{:?}",cryptanalysis_suite::cryptanalysis::koblitz_groebner::f4_kernel())},
         "elapsed_seconds":begin.elapsed().as_secs_f64(),"resources":resources(),
         "limitations":["No imported target was used.","This run does not establish scaling or challenge readiness."]}),
     )

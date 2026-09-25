@@ -722,7 +722,7 @@ fn monomials_up_to(n_vars: usize, deg: u32) -> Vec<u64> {
 /// system degrades to splitting instead of exhausting memory —
 /// overridable for experiments through the `F4_F2_MAX_ROWS` /
 /// `F4_F2_MAX_COLS` environment variables.
-fn f4_caps() -> MacaulayCaps {
+pub(crate) fn f4_caps() -> MacaulayCaps {
     f4_gf2::default_caps()
 }
 
@@ -909,7 +909,7 @@ pub(crate) fn matrix_f4_f2_reference(
 
 /// Add one [`f4_gf2`] call to the profile, in the fields the reference
 /// kernel fills.
-fn f4_profile_add_kernel(k: &f4_gf2::KernelCounters) {
+pub(crate) fn f4_profile_add_kernel(k: &f4_gf2::KernelCounters) {
     if k.oversize {
         f4_profile_add(|p| {
             p.oversize += 1;
@@ -1672,7 +1672,7 @@ pub fn solving_degree(
 // ── Gröbner solve with splitting ───────────────────────────────────
 
 /// Specialise `p` by setting variable `var` to `value`.
-fn substitute(p: &F2BoolPoly, var: u32, value: bool) -> F2BoolPoly {
+pub(crate) fn substitute(p: &F2BoolPoly, var: u32, value: bool) -> F2BoolPoly {
     let bit = 1u64 << var;
     let mut monos = Vec::with_capacity(p.terms.len());
     for t in &p.terms {
@@ -1783,7 +1783,7 @@ pub fn split_rule_default() -> SplitRule {
 /// variable that no longer occurs in the system is a don't-care: the
 /// occurrence-based rules score it zero, and the lowest such variable
 /// is taken when nothing scores higher.
-fn choose_split(
+pub(crate) fn choose_split(
     system: &[F2BoolPoly],
     assignment: &[Option<bool>],
     rule: SplitRule,
@@ -2003,7 +2003,7 @@ fn reduce_system_rows(
 }
 
 /// Is `p` the constant `1` — the infeasibility certificate?
-fn is_constant_one(p: &F2BoolPoly) -> bool {
+pub(crate) fn is_constant_one(p: &F2BoolPoly) -> bool {
     p.terms.len() == 1 && p.terms[0].mask == 0
 }
 
