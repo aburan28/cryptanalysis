@@ -23,6 +23,7 @@
 
 pub mod asymmetric;
 pub mod binary_ecc;
+pub mod cli;
 pub mod cryptanalysis;
 pub mod ct_bignum;
 pub mod ecc;

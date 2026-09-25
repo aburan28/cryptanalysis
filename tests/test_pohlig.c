@@ -63,6 +63,17 @@ int main(void)
         CHECK(ca_dlog(&g, &P, &h, &got, NULL) == CA_OK);
         CHECK_EQ_U64(got, x);
     }
+    /* base of smaller order than the group: a non-cyclic curve group,
+     * E(F_46687): y^2 = x^3 + 18059 x + 13589 with #E = 2^6 3^6 and a base of
+     * order 23328 (challenges/ecc fp-smooth-b16).  The group order stays the
+     * full #E; the log comes back modulo ord(base). */
+    CHECK(ca_group_ec_init(&g, 46687, 18059, 13589, 46656) == CA_OK);
+    uint64_t wb[4] = {0x1cce, 0x4e7, 0, 0}, wt[4] = {0xaee4, 0x446f, 0, 0};
+    CHECK(ca_group_encode(&g, &P, wb));
+    CHECK(ca_group_encode(&g, &h, wt));
+    CHECK_EQ_U64(ca_group_elem_order(&g, &P), 23328);
+    CHECK(ca_dlog(&g, &P, &h, &got, NULL) == CA_OK);
+    CHECK_EQ_U64(got, 0x32d9 % 23328);
     /* target outside <base> is rejected */
     CHECK(ca_group_zp_init(&g, 1000003, 166667) == CA_OK);
     CHECK(ca_group_find_generator(&g, &gen, 1) == CA_OK);
