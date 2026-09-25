@@ -2,9 +2,11 @@
 
 A container that loads every GPU it can see with the ECC2K-130 Pollard rho
 walk from [`ecc2k130/`](../../ecc2k130/README.md) for 60-120 seconds. It
-checks every result the GPUs produce and returns one verdict. It is built to
-run as a Kubernetes init container, or as a gate on new GPU nodes, so work
-lands only on GPUs that have just computed correctly at their expected speed.
+checks every result the GPUs produce and returns one verdict. Its Helm chart,
+[`deploy/helm/gpu-health`](../helm/gpu-health/README.md), injects it into the
+NVIDIA device plugin's pods, so that a node that comes up offers no GPU to the
+scheduler until its GPUs have computed correctly at their expected speed. It
+also runs as an init container of a single workload, or on its own.
 
 ```sh
 docker build -f deploy/gpu-health/Dockerfile -t gpu-health .     # from the repository root
@@ -217,11 +219,24 @@ The image needs the NVIDIA container runtime. It sets
 `NVIDIA_DRIVER_CAPABILITIES=compute,utility`: `utility` is what puts
 nvidia-smi in the container, and without it the telemetry checks are
 skipped. It wants about a CPU per GPU, because the host checks every report.
-The example manifests set no CPU limit, so it can use cores the node has
-idle. They keep its requests small, because an init container's requests
-count toward its pod's for as long as the pod exists.
+The manifests set no CPU limit, so it can use cores the node has idle. They
+keep its requests small, because an init container's requests count toward
+its pod's for as long as the pod exists.
 
-**As an init container** ([k8s/init-container.yaml](k8s/init-container.yaml)).
+**In front of the device plugin, when a node comes up**
+([`deploy/helm/gpu-health`](../helm/gpu-health/README.md)). A
+MutatingAdmissionPolicy appends the check to the init containers of the
+NVIDIA device plugin's pods, after the GPU Operator's own wait for the driver
+and toolkit. The plugin, which advertises `nvidia.com/gpu`, starts only once
+the check has passed. The check keeps a record of each boot on the node, so
+it loads the GPUs only when nothing can be using them: the first time the
+plugin starts after the node boots, and again after a failure. Later plugin
+restarts skip the load, and so does a node that was in service before the
+check reached it. The chart can also run the node gate described below. Its
+README covers installation, a report-only rollout, the rules for when the
+check runs, and what to do when a node fails.
+
+**As a workload's init container** ([k8s/init-container.yaml](k8s/init-container.yaml)).
 The init container requests the same `nvidia.com/gpu` count as the workload.
 The kubelet hands an init container's devices on to the pod's containers, so
 it checks exactly the GPUs the workload gets. If a GPU fails, the workload
@@ -230,30 +245,38 @@ does not start, and the reason is in the pod's
 once the kubelet has restarted the container). The limit is that the pod
 stays on that node and retries there.
 
-**As a gate on new nodes** ([k8s/node-gate.yaml](k8s/node-gate.yaml)), for
-"check GPUs when they are provisioned". Register GPU nodes with the taint
-`gpu-health/pending=true:NoSchedule`. A DaemonSet that tolerates the taint
-runs the check (120 s here) as its init container, with `--node-gate`. On a
-pass it labels the node `gpu-health/verdict=pass` and lifts the taint; on a
-failure it labels it `fail`, keeps the taint, and exits 1. The kubelet then
-retries with backoff, so a node that recovers is released later. The verdict
-line is also written to an annotation on the node. The DaemonSet sees the
-GPUs through `NVIDIA_VISIBLE_DEVICES=all` rather than a `nvidia.com/gpu`
-request, as the NVIDIA GPU Operator's own validator does. Otherwise its
-long-lived pod would hold every GPU on the node. A node that has already been
-released is never loaded again, so a rollout does not disturb running work.
-To re-check a node, drain it, taint it and delete its gpu-health pod.
+**As a gate on new nodes** (the chart with `nodeGate.enabled=true`). Register
+GPU nodes with the taint `gpu-health/pending=true:NoSchedule`. A DaemonSet
+that tolerates the taint runs the check as its init container, with
+`--node-gate`. On a pass it labels the node `gpu-health/verdict=pass` and
+lifts the taint. On a failure it labels it `fail`, keeps the taint, and exits
+1. The kubelet then retries with backoff, so a node that recovers is released
+later. The verdict line is also written to an annotation on the node. The
+DaemonSet sees the GPUs through `NVIDIA_VISIBLE_DEVICES=all` rather than a
+`nvidia.com/gpu` request, as the NVIDIA GPU Operator's own validator does.
+Otherwise its long-lived pod would hold every GPU on the node. A node that
+has already been released is never loaded again, so a rollout does not
+disturb running work. To re-check a node, drain it, taint it and delete its
+gpu-health pod.
 
 | setting (flag / environment) | default | |
 |---|---|---|
 | `--seconds` / `GPU_HEALTH_SECONDS` | 60 | load per GPU; the run takes 10-30 s more |
-| `--expect-gpus` / `GPU_HEALTH_EXPECT_GPUS` | 0 (any) | fail unless exactly this many GPUs are visible |
-| `--baselines` / `GPU_HEALTH_BASELINES` | `/etc/gpu-health/baselines.json` in the image | per-model rates; mount your own |
-| `--threshold NAME=VALUE` | see above | `baseline_fail`, `baseline_warn`, `peer_fail`, `peer_warn`, `trend_fail`, `trend_warn`, `utilization_warn` |
+| `--expect-gpus` / `GPU_HEALTH_EXPECT_GPUS` | 0 (any) | fail unless exactly this many GPUs are visible; `pci`: as many as the PCI bus shows NVIDIA GPUs |
+| `--baselines` / `GPU_HEALTH_BASELINES` | `/etc/gpu-health/baselines.json` in the image | per-model rates; mount your own, or pass them inline in `GPU_HEALTH_BASELINES_JSON` |
+| `--threshold NAME=VALUE` / `GPU_HEALTH_THRESHOLDS=NAME=VALUE,...` | see above | `baseline_fail`, `baseline_warn`, `peer_fail`, `peer_warn`, `trend_fail`, `trend_warn`, `utilization_warn` |
 | `--strict` / `GPU_HEALTH_STRICT=1` | off | warnings fail |
 | `--calibrate` / `GPU_HEALTH_CALIBRATE=1` | off | print baseline entries instead of rating throughput |
 | `--node-gate` / `GPU_HEALTH_NODE_GATE=1` | off | label NODE_NAME and lift `--gate-taint` on a pass |
 | `--gate-taint`, `--gate-label` | `gpu-health/pending`, `gpu-health/verdict` | |
+| `--label-node` / `GPU_HEALTH_LABEL_NODE=1` | off | record the verdict on NODE_NAME (`--gate-label` and an annotation); a failure to is logged, not fatal |
+| `--state-dir` / `GPU_HEALTH_STATE_DIR` | | the node's record of this boot: load only on the first start after boot or after a failure (the chart's rules) |
+| `--max-uptime` / `GPU_HEALTH_MAX_UPTIME` | 0 (no limit) | with `--state-dir`: seconds after boot beyond which a node with no record is left alone |
+| `--report-only` / `GPU_HEALTH_REPORT_ONLY=1` | off | record the verdict, exit 0 (and lift the gate taint) whatever it is |
+| `--wait-for-gpus` / `GPU_HEALTH_WAIT_SECONDS` | 0 | seconds to wait for the driver to show the GPUs |
+| `--skip-if-busy` / `GPU_HEALTH_SKIP_IF_BUSY=1` | off | exit 0 with a SKIP line if nvidia-smi shows other processes on a GPU |
+| `--skip-without-gpus` / `GPU_HEALTH_SKIP_WITHOUT_GPUS=1` | off | exit 0 with a SKIP line at once if the PCI bus shows no NVIDIA GPU |
+| `--skip-unsupported` / `GPU_HEALTH_SKIP_UNSUPPORTED=1` | off | leave GPUs below compute capability 8.0 unchecked, with a warning, instead of failing them |
 | `--rewalk-threads` / `GPU_HEALTH_REWALK_THREADS` | from the CPUs, 1-4 per GPU | golden-model re-walk threads per GPU |
 | `--kat` / `GPU_HEALTH_KAT` | off | also replay the campaign's 48 known answers (13 s of a core; the image build already ran them) |
 | `--json-out` / `GPU_HEALTH_JSON_OUT` | | also write the report, indented, to a file |
@@ -291,13 +314,17 @@ as slow.
   The host test holds the health checks to a model of the device's launch
   loop on the golden model: every report of a correct run passes, and each
   kind of corruption fails the check that is meant to catch it
-  (`ecc2k130/src/hosttest.cpp`). The orchestrator's 42 tests run it against
+  (`ecc2k130/src/hosttest.cpp`). The orchestrator's 63 tests run it against
   scripted stand-ins for `ec2k-gpu` and nvidia-smi: healthy nodes, silent
   corruption, crashes, hangs, missing GPUs, slow GPUs against baselines,
   peers and their own first window, hardware slowdown, ECC errors, row
-  remapping, calibration and the node gate
-  (`python3 -m unittest discover -s deploy/gpu-health/tests`). The image is
-  built and smoke-run by `.github/workflows/gpu-health.yml`.
+  remapping, calibration, the node gate, and the device plugin's rules for
+  when to load (`python3 -m unittest discover -s deploy/gpu-health/tests`).
+  The Helm chart's policy is tested on a real kube-apiserver, and the chart
+  as a whole on kind, where the injected check gates a stand-in device
+  plugin ([its README](../helm/gpu-health/README.md#tests)). The image is
+  built and smoke-run by `.github/workflows/gpu-health.yml`, which runs
+  all of these.
 - **Not yet done:** a run of `ec2k-gpu health` on a card. The walk kernel is
   the one measured throughout this tree, but the health command's launch
   loop, its rates and its coverage on real GPUs are unmeasured. The first run
@@ -319,5 +346,5 @@ as slow.
 | [`gpu_health.py`](gpu_health.py) | the orchestrator and entry point |
 | [`baselines.json`](baselines.json) | per-model rates; empty until calibrated |
 | [`k8s/init-container.yaml`](k8s/init-container.yaml) | a pod whose workload waits for its GPUs to pass |
-| [`k8s/node-gate.yaml`](k8s/node-gate.yaml) | a DaemonSet that releases new GPU nodes after they pass |
+| [`../helm/gpu-health/`](../helm/gpu-health/README.md) | the Helm chart: the check injected into the device plugin, or the node gate |
 | [`tests/`](tests/) | the orchestrator's tests and the stand-ins they drive |

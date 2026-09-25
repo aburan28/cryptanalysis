@@ -31,6 +31,14 @@ if cmd == "check":
     sys.exit(0)
 
 if cmd == "devices":
+    # devicesReadyAfter N: the driver is still loading for the first N calls.
+    calls = os.path.join(state, "devices-calls")
+    n = int(open(calls).read()) if os.path.exists(calls) else 0
+    open(calls, "w").write(str(n + 1))
+    if n < scenario.get("devicesReadyAfter", 0):
+        print(json.dumps({"status": "error", "error": "no CUDA-capable device is detected",
+                          "driverVersion": 0, "runtimeVersion": 13030, "devices": []}))
+        sys.exit(3)
     if scenario.get("devicesError"):
         print(json.dumps({"status": "error", "error": scenario["devicesError"],
                           "driverVersion": 0, "runtimeVersion": 13030, "devices": []}))

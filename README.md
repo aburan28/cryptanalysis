@@ -287,10 +287,13 @@ host: the point is on the curve, its weight and bookkeeping are right, and a
 sample is re-walked on the golden model. It also reports a throughput that
 barely moves between runs. [deploy/gpu-health/](deploy/gpu-health/README.md)
 packages it as a container that checks every GPU of a node in 60-120 s and
-returns one verdict, for a Kubernetes init container or a gate on new GPU
-nodes. Its README covers what the check establishes, what it does not
-(tensor cores, memory, interconnect), and how close it comes to each part's
-power limit.
+returns one verdict. Its README covers what the check establishes, what it
+does not (tensor cores, memory, interconnect), and how close it comes to each
+part's power limit. The Helm chart
+[deploy/helm/gpu-health/](deploy/helm/gpu-health/README.md) uses a
+MutatingAdmissionPolicy to inject the check into the NVIDIA device plugin's
+pods. A node that comes up then offers no GPU to the scheduler until its
+GPUs have passed.
 
 The [ECC2K-130 cloud runner](ecc2k130/runner/README.md) packages the deployed
 120,320-worker Frobenius profile with Modal/Runpod launch support, durable S3
@@ -509,7 +512,8 @@ bindings/go/cmd/ca-coordinator  the coordinator service (Go, cgo onto this libra
 deploy/helm/ca-coordinator      Helm chart: the coordinator and its agents
 deploy/docker/                  one Dockerfile, two images (coordinator, agent)
 deploy/ca-coordinator/          systemd units and EC2 user-data for a plain VM
-deploy/gpu-health/              GPU health-check image (ec2k-gpu health), init-container and node-gate manifests
+deploy/gpu-health/              GPU health-check image (ec2k-gpu health) and a workload init-container manifest
+deploy/helm/gpu-health          Helm chart: the check injected into the device plugin by a MutatingAdmissionPolicy, or a node gate
 cloud/                   Runpod pods hosting Cursor workers, and Modal jobs, for work too big for an agent VM (cloud/README.md)
 fuzz/                    libFuzzer harnesses and their seed corpora
 .github/workflows/       ci, analysis, bindings, suite, deploy, fpga, ecc2k130, fuzz, codeql, nightly
@@ -531,7 +535,7 @@ set locally, in the order that fails fastest.
 | `fpga` | the ECC2K-130 core: the golden model's own checks, then every testbench against the vectors it produces, at three multiplier widths; verilator `-Wall`; a yosys area report |
 | `ecc2k130` | the GPU client: the packed arithmetic, the table walk's selection and the walk itself against `fpga/model` on gcc and clang; the kernel compiled for sm_120 with CUDA 13.3 from pip wheels, with its register and spill report |
 | `deploy` | the Helm chart and the container images: `helm lint`, a render with every optional piece enabled whose manifests are parsed and asserted (one coordinator replica, `Recreate`, and an agent NetworkPolicy that allows no ingress at all), the three configurations the chart must refuse, and a build of both image targets that then runs each one |
-| `gpu-health` | the health-check orchestrator's tests on Python 3.8 and 3.12, then the image built on x86_64 and aarch64 (which compiles `ec2k-gpu` for sm_80 to sm_120 and runs the host test and `check --kat`) and smoke-run: without a GPU it must fail and say why, against scripted GPUs it must pass |
+| `gpu-health` | the health-check orchestrator's tests on Python 3.8 and 3.12; the Helm chart linted, and its MutatingAdmissionPolicy run on a real kube-apiserver; the image built on x86_64 and aarch64 (which compiles `ec2k-gpu` for sm_80 to sm_120 and runs the host test and `check --kat`) and smoke-run: without a GPU it must fail and say why, against scripted GPUs it must pass; then, on x86_64, the chart on kind, where the injected check gates a stand-in device plugin |
 | `codeql` | C, Go and Python, with the `security-and-quality` query pack |
 | `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
 

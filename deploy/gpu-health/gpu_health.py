@@ -21,13 +21,27 @@ JSON report goes to stdout (and --json-out); a one-line verdict goes to
 message.  With --node-gate it also records the verdict on its Kubernetes node
 (a label and an annotation) and, on a pass, removes the taint new GPU nodes
 are registered with, so that nothing schedules onto a node until its GPUs
-have passed.  See README.md beside this file for what the check does and does not
-establish, and for calibrating baselines.
+have passed.  --label-node records the verdict without touching taints.
+
+--state-dir is for a check that sits in front of the NVIDIA device plugin, as
+the Helm chart in deploy/helm/gpu-health injects it: the node then advertises
+no GPU until its GPUs have passed.  The directory holds the node's record of
+this boot (keyed on the kernel's boot id), and the check loads the GPUs only
+while nothing can be using them: on the device plugin's first start after
+the node boots, and again after a failure, since the plugin has not started
+since.  Once it has let the plugin start in a boot (a pass, a skip, or a
+--report-only verdict), later restarts of the plugin skip the load, and so
+does a node that has been up for longer than --max-uptime with no record at
+all (it was in service before the check was installed).  Runs on one node
+are serialised on a lock in the same directory.  See README.md beside this
+file for what the check does and does not establish, and for calibrating
+baselines.
 
 Python 3.8+, standard library only.
 """
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -384,13 +398,18 @@ def evaluate(gpus, baselines, thresholds, binary_sha, calibrate=False):
     return "fail" if any(g["failures"] for g in gpus) or not gpus else "pass"
 
 
+def cc_major(dev):
+    """The device's compute capability major version, or 0 if unknown."""
+    try:
+        return int(str(dev.get("computeCapability", "0.0")).split(".")[0])
+    except ValueError:
+        return 0
+
+
 def check_workload(g):
     res, rc, dev = g.get("result"), g.get("rc"), g["device"]
     cc = dev.get("computeCapability", "0.0")
-    try:
-        major = int(str(cc).split(".")[0])
-    except ValueError:
-        major = 0
+    major = cc_major(dev)
     if major and major < 8:
         g["failures"].append(
             "unsupported: compute capability %s; the walk's products are carry-less multiplies "
@@ -571,8 +590,14 @@ def parse_args(argv):
     p.add_argument("--binary", default=env("GPU_HEALTH_BINARY", "/usr/local/bin/ec2k-gpu"))
     p.add_argument("--baselines", default=env("GPU_HEALTH_BASELINES", ""),
                    help="baseline JSON (see README.md); empty: no baseline comparison")
-    p.add_argument("--expect-gpus", type=int, default=int(env("GPU_HEALTH_EXPECT_GPUS", "0")),
-                   help="fail unless exactly this many GPUs are visible (0: any)")
+    p.add_argument("--expect-gpus", default=env("GPU_HEALTH_EXPECT_GPUS", "0"),
+                   help="fail unless exactly this many GPUs are visible: a number (0: any), or "
+                        "'pci' for as many as the PCI bus shows NVIDIA display controllers")
+    p.add_argument("--skip-if-busy", action="store_true",
+                   default=env("GPU_HEALTH_SKIP_IF_BUSY", "") not in ("", "0", "false"),
+                   help="do not load GPUs nvidia-smi shows another process on: exit 0 with a "
+                        "SKIP line (a second guard: in a container, nvidia-smi may not see "
+                        "other containers' processes)")
     p.add_argument("--nvidia-smi", default=env("GPU_HEALTH_NVIDIA_SMI", "nvidia-smi"))
     p.add_argument("--sample-interval", type=float, default=2.0)
     p.add_argument("--rewalk-threads", type=int, default=int(env("GPU_HEALTH_REWALK_THREADS", "0")),
@@ -598,19 +623,80 @@ def parse_args(argv):
     p.add_argument("--node-gate", action="store_true",
                    default=env("GPU_HEALTH_NODE_GATE", "") not in ("", "0", "false"),
                    help="label NODE_NAME with the verdict and, on a pass, remove --gate-taint "
-                        "(in-cluster service account; see k8s/node-gate.yaml)")
+                        "(in-cluster service account; the Helm chart's nodeGate mode)")
     p.add_argument("--gate-taint", default=env("GPU_HEALTH_GATE_TAINT", "gpu-health/pending"))
     p.add_argument("--gate-label", default=env("GPU_HEALTH_GATE_LABEL", "gpu-health/verdict"))
+    p.add_argument("--label-node", action="store_true",
+                   default=env("GPU_HEALTH_LABEL_NODE", "") not in ("", "0", "false"),
+                   help="label and annotate NODE_NAME with the verdict, leaving its taints alone; "
+                        "a failure to do so is logged, not fatal")
+    p.add_argument("--state-dir", default=env("GPU_HEALTH_STATE_DIR", ""),
+                   help="the node's record of this boot: load the GPUs only on the first "
+                        "start after boot or after a failure, and serialise runs on a lock")
+    p.add_argument("--max-uptime", type=float,
+                   default=float(env("GPU_HEALTH_MAX_UPTIME", "0")),
+                   help="with --state-dir: a node up for longer than this many seconds with no "
+                        "record of this boot is left alone until it reboots (default 0: no "
+                        "limit)")
+    p.add_argument("--skip-without-gpus", action="store_true",
+                   default=env("GPU_HEALTH_SKIP_WITHOUT_GPUS", "") not in ("", "0", "false"),
+                   help="exit 0 with a SKIP line at once if the PCI bus shows no NVIDIA GPU, "
+                        "rather than wait for one")
+    p.add_argument("--skip-unsupported", action="store_true",
+                   default=env("GPU_HEALTH_SKIP_UNSUPPORTED", "") not in ("", "0", "false"),
+                   help="leave GPUs below compute capability 8.0, which the walk cannot run "
+                        "on, unchecked with a warning instead of failing them")
+    p.add_argument("--report-only", action="store_true",
+                   default=env("GPU_HEALTH_REPORT_ONLY", "") not in ("", "0", "false"),
+                   help="report and record the verdict but exit 0 (and in --node-gate mode "
+                        "lift the taint) whatever it is: for trying the check on a fleet")
+    p.add_argument("--wait-for-gpus", type=float,
+                   default=float(env("GPU_HEALTH_WAIT_SECONDS", "0")),
+                   help="seconds to wait for the CUDA devices (all --expect-gpus of them) to "
+                        "appear before giving up (default 0: do not wait)")
+    p.add_argument("--wait-poll", type=float, default=5.0, help="seconds between device polls")
     a = p.parse_args(argv)
+    a.baselines_json = env("GPU_HEALTH_BASELINES_JSON", "")
     a.thresholds = {}
-    for item in a.threshold:
-        name, _, value = item.partition("=")
+    items = [t for t in env("GPU_HEALTH_THRESHOLDS", "").split(",") if t.strip()] + a.threshold
+    for item in items:
+        name, _, value = item.strip().partition("=")
         if name not in DEFAULT_THRESHOLDS:
             p.error("unknown threshold %s" % name)
         a.thresholds[name] = float(value)
     if not a.seconds > 0:
         p.error("--seconds must be positive")
+    if a.max_uptime < 0:
+        p.error("--max-uptime must not be negative")
+    if a.expect_gpus != "pci" and not a.expect_gpus.isdigit():
+        p.error("--expect-gpus takes a number or 'pci'")
     return a
+
+
+def pci_gpus(root=None):
+    """NVIDIA display and 3D controllers on the PCI bus (vendor 0x10de, class
+    0x0300xx or 0x0302xx): what the node physically has, whatever the driver
+    managed to bring up.  NVSwitches (bridges) and audio functions are not
+    counted.  None if the bus cannot be read (no /sys, or no devices at all)."""
+    root = root or os.environ.get("GPU_HEALTH_SYSFS_PCI", "/sys/bus/pci/devices")
+    try:
+        devices = sorted(os.listdir(root))
+    except OSError:
+        return None
+    if not devices:
+        return None
+    n = 0
+    for dev in devices:
+        try:
+            with open(os.path.join(root, dev, "vendor")) as f:
+                vendor = f.read().strip().lower()
+            with open(os.path.join(root, dev, "class")) as f:
+                cls = f.read().strip().lower()
+        except OSError:
+            continue
+        if vendor == "0x10de" and cls[:6] in ("0x0300", "0x0302"):
+            n += 1
+    return n
 
 
 def write_termination_log(path, text):
@@ -632,7 +718,24 @@ def run(a):
     if not (os.path.isfile(a.binary) and os.access(a.binary, os.X_OK)):
         report["errors"].append("no workload binary at %s" % a.binary)
         return report, 2
-    baselines = load_baselines(a.baselines)
+    baselines = json.loads(a.baselines_json) if a.baselines_json else load_baselines(a.baselines)
+    pci = pci_gpus() if a.expect_gpus == "pci" or a.skip_without_gpus else None
+    if pci is not None:
+        report["pciGpus"] = pci
+    if a.skip_without_gpus and pci == 0:
+        # A device plugin scheduled onto a node without NVIDIA GPUs has nothing
+        # to advertise; holding it back would only leave a pod in Init.
+        report["skipped"] = "no NVIDIA GPU on this node's PCI bus: nothing to check"
+        report["verdict"] = "skip"
+        return report, 0
+    if a.expect_gpus == "pci":
+        a.expect_gpus = pci or 0
+        if not a.expect_gpus:
+            report["errors"].append("--expect-gpus pci: no NVIDIA GPU on the PCI bus "
+                                    "(is /sys mounted?)")
+            return report, 1
+    else:
+        a.expect_gpus = int(a.expect_gpus)
     binary_sha = sha256_of(a.binary)
     report["binary"] = {"path": a.binary, "sha256": binary_sha}
     env = dict(os.environ, CUDA_DEVICE_ORDER="PCI_BUS_ID")
@@ -647,9 +750,18 @@ def run(a):
                                 (r.stderr.strip().splitlines() or ["?"])[-1])
         return report, 1
 
-    r = subprocess.run([a.binary, "devices"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                       universal_newlines=True, timeout=120, env=env)
-    devs = last_json(r.stdout) or {}
+    deadline = time.monotonic() + a.wait_for_gpus
+    while True:
+        r = subprocess.run([a.binary, "devices"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           universal_newlines=True, timeout=120, env=env)
+        devs = last_json(r.stdout) or {}
+        seen = len(devs.get("devices") or [])
+        if (r.returncode == 0 and seen and seen >= a.expect_gpus) or time.monotonic() >= deadline:
+            break
+        # A node's driver can come up after the pod that checks it.
+        log("waiting for GPUs: %s" % (devs.get("error") or "%d of %d visible" %
+                                      (seen, a.expect_gpus)))
+        time.sleep(min(a.wait_poll, max(0.05, deadline - time.monotonic())))
     report["cuda"] = {k: devs.get(k) for k in ("driverVersion", "runtimeVersion", "error")}
     devices = devs.get("devices") or []
     if r.returncode != 0 or not devices:
@@ -659,6 +771,18 @@ def run(a):
     if a.expect_gpus and len(devices) != a.expect_gpus:
         report["errors"].append("%d GPU(s) visible, %d expected" % (len(devices), a.expect_gpus))
         return report, 1
+    old = [d for d in devices if 0 < cc_major(d) < 8]
+    if a.skip_unsupported and old:
+        names = ", ".join("gpu%s %s (%s)" % (d.get("index"), d.get("name"),
+                                              d.get("computeCapability")) for d in old)
+        report["notChecked"] = old
+        devices = [d for d in devices if d not in old]
+        if not devices:
+            report["skipped"] = ("no GPU here can run the check, which needs compute "
+                                 "capability 8.0: %s" % names)
+            report["verdict"] = "skip"
+            return report, 0
+        report["warnings"].append("not checked, below compute capability 8.0: " + names)
 
     smi = None
     if a.nvidia_smi and (os.path.sep in a.nvidia_smi and os.access(a.nvidia_smi, os.X_OK)
@@ -675,6 +799,13 @@ def run(a):
     apps = {}
     for row in (smi.compute_apps() if smi else []):
         apps.setdefault(row.get("gpu_uuid"), []).append(row)
+    busy = sorted(u for u in apps if u in {d.get("uuid") for d in devices})
+    if a.skip_if_busy and busy:
+        report["skipped"] = ("%d of %d GPU(s) are running other processes (%s): not loading "
+                             "GPUs that are in service" % (len(busy), len(devices),
+                                                           ", ".join(busy)))
+        report["verdict"] = "skip"
+        return report, 0
     driver = next((s.get("driver_version") for s in static.values()), None)
     report["driverVersion"] = driver
 
@@ -795,11 +926,14 @@ def kube_api(method, path, body=None, content_type="application/json"):
         return e.code, {"message": e.read().decode(errors="replace")[:500]}
 
 
-def gate_node(node, verdict, summary, taint_key, label_key, api=kube_api):
-    """Record the verdict on the node; on a pass, lift the taint.  Returns an
-    error string, or None.  The patch carries the node's resourceVersion, so a
-    concurrent change to its taints makes it fail with 409 and it is retried
-    against the new list rather than overwriting it."""
+def gate_node(node, verdict, summary, taint_key, label_key, api=kube_api, release=None):
+    """Record the verdict on the node and, if `release` (default: on a pass),
+    lift the taint (none if `taint_key` is empty).  Returns an error string,
+    or None.  The patch carries the node's resourceVersion, so a concurrent
+    change to its taints makes it fail with 409 and it is retried against the
+    new list rather than overwriting it."""
+    if release is None:
+        release = verdict == "pass"
     path = "/api/v1/nodes/" + node
     for _ in range(5):
         code, obj = api("GET", path)
@@ -811,7 +945,7 @@ def gate_node(node, verdict, summary, taint_key, label_key, api=kube_api):
                               "annotations": {label_key: "%s %s" % (now_iso(), summary[:900])}}}
         taints = spec.get("taints") or []
         kept = [t for t in taints if t.get("key") != taint_key]
-        if verdict == "pass" and len(kept) != len(taints):
+        if taint_key and release and len(kept) != len(taints):
             patch["spec"] = {"taints": kept or None}
         code, obj = api("PATCH", path, patch, "application/merge-patch+json")
         if code == 200:
@@ -861,6 +995,122 @@ def print_table(report):
         log("warning: " + w)
 
 
+# ---- once per boot ---------------------------------------------------------------
+#
+# In front of the device plugin, the check reads the node's record of this boot
+# (state-dir/boot.json) to decide whether its GPUs can be in use:
+#
+#   the check let the plugin start earlier this boot   skip: the plugin may have
+#     (a pass, a skip, or --report-only)                handed the GPUs to pods
+#   it ran this boot without letting the plugin start  run: the plugin has not
+#     (it failed, or was interrupted)                    started since the boot
+#   no record this boot, node up < --max-uptime        run: it has just come up
+#   no record this boot, node up longer                skip: it was in service
+#                                                        before the check was
+#                                                        installed
+#
+# nvidia-smi's list of other processes (--skip-if-busy) is only a second guard:
+# from inside a container it may not show other containers' processes.
+
+
+def proc_file(*parts):
+    return os.path.join(os.environ.get("GPU_HEALTH_PROC", "/proc"), *parts)
+
+
+def boot_id():
+    try:
+        with open(proc_file("sys", "kernel", "random", "boot_id")) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def uptime():
+    """Seconds since the node booted, or None."""
+    try:
+        with open(proc_file("uptime")) as f:
+            return float(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def duration(seconds):
+    s = int(seconds)
+    if s >= 86400:
+        return "%d d %d h" % (s // 86400, s % 86400 // 3600)
+    if s >= 3600:
+        return "%d h %d min" % (s // 3600, s % 3600 // 60)
+    if s >= 60:
+        return "%d min" % (s // 60)
+    return "%d s" % s
+
+
+def state_lock(state_dir):
+    """Take the node's lock, waiting for a run in progress: (file, None), or
+    (None, why) if the directory is unusable."""
+    try:
+        os.makedirs(state_dir, exist_ok=True)
+        f = open(os.path.join(state_dir, "lock"), "a")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        return f, None
+    except OSError as e:
+        return None, str(e)
+
+
+def boot_record(state_dir):
+    """The record in `state_dir` if it is this boot's, else None."""
+    try:
+        with open(os.path.join(state_dir, "boot.json")) as f:
+            rec = json.load(f)
+    except (OSError, ValueError):
+        return None
+    now = boot_id()
+    return rec if now and isinstance(rec, dict) and rec.get("bootId") == now else None
+
+
+def boot_decision(a, rec):
+    """Why this start must leave the GPUs alone, or None to check them."""
+    if rec and rec.get("released"):
+        if rec.get("verdict") == "pass":
+            return "passed this boot at %s: %s" % (rec.get("at"), rec.get("line", ""))
+        return ("the device plugin was let start without a pass earlier this boot (%s at %s: "
+                "%s) and may have handed out the GPUs since; they are checked at the next boot" %
+                (rec.get("verdict"), rec.get("at"), rec.get("line", "")))
+    if rec is None and a.max_uptime:
+        up = uptime()
+        if up is not None and up > a.max_uptime:
+            return ("no check has run since this node booted %s ago, longer than --max-uptime "
+                    "%s: its GPUs may already be in service, so they are left alone until it "
+                    "next boots" % (duration(up), duration(a.max_uptime)))
+    return None
+
+
+def put_json(state_dir, name, obj):
+    tmp = os.path.join(state_dir, name + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, sort_keys=True)
+    os.replace(tmp, os.path.join(state_dir, name))
+
+
+def record_boot(state_dir, rec, verdict, released, line, report=None):
+    """Write this boot's record, atomically, and last.json after a load.
+    Returns the new record."""
+    new = {"bootId": boot_id(), "verdict": verdict, "released": released, "at": now_iso(),
+           "line": line[:2000], "attempts": (rec or {}).get("attempts", 0)}
+    if verdict == "running":
+        new["attempts"] += 1
+    if report is not None and report.get("gpus"):
+        new["gpus"] = [g["device"].get("uuid") for g in report["gpus"]]
+        new["binarySha256"] = (report.get("binary") or {}).get("sha256")
+    try:
+        put_json(state_dir, "boot.json", new)
+        if report is not None and report.get("gpus"):
+            put_json(state_dir, "last.json", report)
+    except OSError as e:
+        log("could not record the run in %s: %s" % (state_dir, e))
+    return new
+
+
 def gate_pending(a, api=kube_api):
     """In --node-gate mode: None when the node still carries the gate taint
     (check it), else the one-line reason not to.  A node without the taint has
@@ -881,14 +1131,42 @@ def gate_pending(a, api=kube_api):
             "loaded again; taint it and recreate this pod to re-check" % (node, a.gate_taint)), 0
 
 
+def finish(a, line, rc):
+    """Log the one-line verdict and write it as the termination message."""
+    if a.report_only and rc != 0:
+        line += " (report only: not enforced)"
+        rc = 0
+    # Last, so that a termination message taken from the log's tail
+    # (terminationMessagePolicy: FallbackToLogsOnError) ends with the verdict.
+    log(line)
+    write_termination_log(a.termination_log, line)
+    return rc
+
+
 def main(argv=None, api=kube_api):
     a = parse_args(sys.argv[1:] if argv is None else argv)
     if a.node_gate:
         skip, rc = gate_pending(a, api)
         if skip is not None:
-            log(skip)
-            write_termination_log(a.termination_log, skip)
-            return rc
+            return finish(a, skip, rc)
+    rec, lock = None, None
+    if a.state_dir:
+        lock, why = state_lock(a.state_dir)
+        if lock is None:
+            return finish(a, "ERROR the state directory %s is unusable (%s): without it the "
+                             "check cannot tell a node that has just booted from one in "
+                             "service" % (a.state_dir, why), 2)
+        if not boot_id():
+            return finish(a, "ERROR cannot read the kernel's boot id (%s): without it the "
+                             "check cannot keep its record of the boot" %
+                          proc_file("sys", "kernel", "random", "boot_id"), 2)
+        rec = boot_record(a.state_dir)
+        skip = boot_decision(a, rec)
+        if skip:
+            if not (rec and rec.get("released")):
+                record_boot(a.state_dir, rec, "skip", True, "SKIP " + skip)
+            return finish(a, "SKIP " + skip, 0)
+        rec = record_boot(a.state_dir, rec, "running", False, "started at " + now_iso())
     try:
         report, rc = run(a)
     except (OSError, subprocess.SubprocessError, ValueError) as e:
@@ -896,6 +1174,12 @@ def main(argv=None, api=kube_api):
         rc = 2
     if rc == 2:
         report["verdict"] = "error"
+    if report.get("skipped"):
+        line = "SKIP " + report["skipped"]
+        print(json.dumps(report, sort_keys=True), flush=True)
+        if a.state_dir:
+            record_boot(a.state_dir, rec, "skip", True, line)
+        return finish(a, line, 0)
     print_table(report)
     text = json.dumps(report, sort_keys=True)
     print(text, flush=True)
@@ -905,25 +1189,34 @@ def main(argv=None, api=kube_api):
     if a.calibrate and "calibration" in report:
         log("baseline entries (merge into your baselines file):")
         print(json.dumps(report["calibration"], indent=2, sort_keys=True), file=sys.stderr)
-    verdict = one_line(report)
+    line = one_line(report)
+    release = rc == 0 or a.report_only
+    if a.state_dir:
+        record_boot(a.state_dir, rec, report["verdict"], release, line, report)
+    if a.label_node and not a.node_gate:
+        node = os.environ.get("NODE_NAME", "")
+        try:
+            why = gate_node(node, "pass" if rc == 0 else "fail", line, "", a.gate_label,
+                            api=api) if node else "NODE_NAME is not set"
+        except (OSError, KeyError, ValueError) as e:
+            why = "the Kubernetes API: %s" % e
+        log("node label: %s" % (why or "%s labelled %s=%s" % (
+            node, a.gate_label, "pass" if rc == 0 else "fail")))
     if a.node_gate:
         node, result = os.environ["NODE_NAME"], "pass" if rc == 0 else "fail"
         try:
-            why = gate_node(node, result, verdict, a.gate_taint, a.gate_label, api=api)
+            why = gate_node(node, result, line, a.gate_taint, a.gate_label, api=api,
+                            release=release)
         except (OSError, KeyError, ValueError) as e:
             why = "the Kubernetes API: %s" % e
         if why:
             log("node gate: " + why)
-            verdict += "; node gate failed: " + why
+            line += "; node gate failed: " + why
             rc = rc or 1
         else:
             log("node gate: %s labelled %s=%s%s" % (node, a.gate_label, result,
-                                                   ", %s lifted" % a.gate_taint if rc == 0 else ""))
-    # Last, so that a termination message taken from the log's tail
-    # (terminationMessagePolicy: FallbackToLogsOnError) ends with the verdict.
-    log(verdict)
-    write_termination_log(a.termination_log, verdict)
-    return rc
+                                                   ", %s lifted" % a.gate_taint if release else ""))
+    return finish(a, line, rc)
 
 
 if __name__ == "__main__":

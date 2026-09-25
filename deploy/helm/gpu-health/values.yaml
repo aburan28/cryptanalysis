@@ -1,0 +1,130 @@
+# gpu-health: see README.md beside this file, and deploy/gpu-health/README.md
+# for what the check establishes and what it does not.
+
+image:
+  repository: ghcr.io/aburan28/gpu-health
+  # Default: the chart's appVersion.  Pin a digest in production; the check
+  # runs in front of the device plugin on every GPU node.
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# The check itself, wherever it runs.
+check:
+  # Seconds of load on every GPU of the node, all at once.  The node's GPUs
+  # are unavailable for about this long plus 10-30 s after it boots.
+  seconds: 90
+  # Fail unless exactly this many GPUs are visible: a number, 0 for any, or
+  # "pci" for as many NVIDIA display controllers as the node's PCI bus shows
+  # (catches a GPU the driver lost).
+  expectGpus: "0"
+  # How long to wait for the driver to show the GPUs.  The GPU Operator's
+  # device plugin pod already waits for its driver before the check runs;
+  # a standalone plugin does not.
+  waitSeconds: 900
+  # Per-model steady rates from `gpu-health --calibrate` ({entries: [...]}).
+  # Empty: throughput is compared with the node's other GPUs and with the
+  # run's own first window, not with a baseline.
+  baselines: {}
+  # Overrides of the pass/fail ratios, e.g. {baseline_fail: 0.93}.
+  thresholds: {}
+  # Warnings fail too.
+  strict: false
+  # Host directory holding the node's record of this boot (boot.json), the
+  # last full report (last.json) and the lock that keeps two checks off one
+  # node's GPUs.  /run is cleared at boot on most distributions; the record is
+  # keyed on the kernel's boot id either way.
+  stateDir: /run/gpu-health
+  # A node up for longer than this with no record of this boot was in service
+  # before the check reached it (the chart was installed, or the device
+  # plugin's pods were recreated, on a running node): its GPUs may be busy, so
+  # they are left alone until it next boots.  Covers the time from boot to the
+  # device plugin's start, driver installation included.  0: no limit.
+  maxUptimeSeconds: 3600
+  # Run and record the check, but let the device plugin start (or the node
+  # gate lift its taint) whatever the verdict: a way to see what the check
+  # would do to a fleet before it holds anything back.
+  reportOnly: false
+  # The check reaches every GPU of the node through the NVIDIA container
+  # runtime with NVIDIA_VISIBLE_DEVICES=all, which an unprivileged container
+  # may only do if the runtime accepts that variable from one; the device
+  # plugin itself runs privileged.  It runs as root to write stateDir.
+  privileged: true
+  runAsUser: 0
+  resources:
+    requests:
+      cpu: 100m
+      memory: 1Gi
+    limits:
+      memory: 16Gi
+  # Extra environment for the check: [{name: ..., value: ...}].
+  extraEnv: []
+
+# Injection: a MutatingAdmissionPolicy appends the check to the init
+# containers of the NVIDIA device plugin's pods.  It runs after the plugin's
+# own init containers (the GPU Operator's waits for the driver and container
+# toolkit), and the plugin, which is what advertises nvidia.com/gpu to the
+# kubelet, starts only once it has passed.  The pod already tolerates the GPU
+# taints; the check runs once per boot, and skips GPUs that are already
+# running other processes.
+inject:
+  enabled: true
+  # Empty: the newest MutatingAdmissionPolicy version the cluster serves
+  # (admissionregistration.k8s.io/v1 from Kubernetes 1.36; v1beta1 on 1.34-1.35
+  # and v1alpha1 on 1.32-1.33 once enabled), or v1 when rendering without a
+  # cluster (helm template).
+  apiVersion: ""
+  # Ignore: if the policy itself cannot be evaluated, the device plugin
+  # starts unchecked rather than not at all.  A GPU that fails the check
+  # still keeps its node from advertising GPUs either way.
+  failurePolicy: Ignore
+  # Namespaces the device plugin runs in.  gpu-operator for the NVIDIA GPU
+  # Operator; the standalone NVIDIA device plugin chart installs where you put
+  # it (often nvidia-device-plugin or kube-system).
+  namespaces:
+    - gpu-operator
+  # A pod is injected when it runs a container with one of these names:
+  # nvidia-device-plugin (GPU Operator), nvidia-device-plugin-ctr (the
+  # standalone chart, whose gpu-feature-discovery pods carry the same labels
+  # but a different container).
+  containers:
+    - nvidia-device-plugin
+    - nvidia-device-plugin-ctr
+  # An extra label selector on the pods, if the container names are not enough.
+  objectSelector: {}
+  # Record the verdict on the node as the label gpu-health/verdict and an
+  # annotation.  Needs rbac.labelNodes for the device plugin's service account;
+  # without it the attempt is logged and the check's verdict still stands.
+  labelNode: false
+
+rbac:
+  labelNodes:
+    # get and patch on nodes, for the service accounts the check runs as.
+    enabled: false
+    serviceAccounts:
+      - namespace: gpu-operator
+        name: nvidia-device-plugin
+
+# The alternative to injection: a DaemonSet of its own that checks nodes
+# registered with a taint and lifts the taint once they pass.  Use it where the
+# device plugin's pods should not be touched.  Its pod stays (a pause
+# container), so it sees the GPUs through NVIDIA_VISIBLE_DEVICES=all rather
+# than a nvidia.com/gpu request it would hold forever.
+nodeGate:
+  enabled: false
+  seconds: 120
+  # The taint new GPU nodes are registered with; lifted on a pass.
+  taint: gpu-health/pending
+  label: gpu-health/verdict
+  runtimeClassName: nvidia
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+  # The gate taint is always tolerated; these are the GPU taints besides it.
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+  pauseImage: registry.k8s.io/pause:3.10
+  priorityClassName: ""
+
+nameOverride: ""
+fullnameOverride: ""

@@ -1,0 +1,100 @@
+{{- if .Values.inject.enabled }}
+{{- $name := include "gpu-health.fullname" . }}
+{{- $c := .Values.check }}
+{{- $container := default "gpu-health" .Values.inject.containerName }}
+{{- $volume := "gpu-health-state" }}
+{{- $api := include "gpu-health.admissionApi" . }}
+# Appends the GPU health check to the init containers of the NVIDIA device
+# plugin's pods.  The plugin is what advertises nvidia.com/gpu to the kubelet,
+# so a node offers no GPU until the check has passed; the check runs after the
+# pod's own init containers, which in the GPU Operator wait for the driver and
+# the container toolkit.  JSON Patch rather than an apply configuration, whose
+# merge would put the check first, ahead of that wait.
+apiVersion: {{ $api }}
+kind: MutatingAdmissionPolicy
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "gpu-health.labels" . | nindent 4 }}
+spec:
+  failurePolicy: {{ .Values.inject.failurePolicy }}
+  reinvocationPolicy: IfNeeded
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: runs-a-device-plugin
+      expression: >-
+        object.spec.containers.exists(c, c.name in {{ .Values.inject.containers | toJson }})
+    - name: not-injected-yet
+      expression: >-
+        !has(object.spec.initContainers) ||
+        !object.spec.initContainers.exists(c, c.name == {{ include "gpu-health.cel" $container }})
+  mutations:
+    # Object.spec... constructors are only in scope here, not in variables.
+    # A pod without init containers or volumes gets empty lists first, so
+    # that the check is always appended with "/-".
+    - patchType: JSONPatch
+      jsonPatch:
+        expression: |
+          (has(object.spec.initContainers) ? [] :
+            [JSONPatch{op: "add", path: "/spec/initContainers", value: []}]) +
+          (has(object.spec.volumes) ? [] :
+            [JSONPatch{op: "add", path: "/spec/volumes", value: []}]) +
+          [
+            JSONPatch{op: "add", path: "/spec/initContainers/-", value: Object.spec.initContainers{
+              name: {{ include "gpu-health.cel" $container }},
+              image: {{ include "gpu-health.cel" (include "gpu-health.image" .) }},
+              imagePullPolicy: {{ include "gpu-health.cel" .Values.image.pullPolicy }},
+              env: [
+              {{- range (include "gpu-health.env" (list . "inject") | fromJsonArray) }}
+                Object.spec.initContainers.env{name: {{ include "gpu-health.cel" .name }}, value: {{ include "gpu-health.cel" .value }}},
+              {{- end }}
+                Object.spec.initContainers.env{
+                  name: "NODE_NAME",
+                  valueFrom: Object.spec.initContainers.env.valueFrom{
+                    fieldRef: Object.spec.initContainers.env.valueFrom.fieldRef{fieldPath: "spec.nodeName"}
+                  }
+                }
+              ],
+              resources: Object.spec.initContainers.resources{
+                requests: {{ include "gpu-health.celMap" ($c.resources.requests | default dict) }},
+                limits: {{ include "gpu-health.celMap" ($c.resources.limits | default dict) }}
+              },
+              {{- $sc := list }}
+              {{- if not (kindIs "invalid" $c.privileged) }}{{ $sc = append $sc (printf "privileged: %t" $c.privileged) }}{{ end }}
+              {{- if not (kindIs "invalid" $c.runAsUser) }}{{ $sc = append $sc (printf "runAsUser: %d" (int $c.runAsUser)) }}{{ end }}
+              securityContext: Object.spec.initContainers.securityContext{ {{- join ", " $sc -}} },
+              volumeMounts: [
+                Object.spec.initContainers.volumeMounts{name: {{ include "gpu-health.cel" $volume }}, mountPath: {{ include "gpu-health.cel" $c.stateDir }}}
+              ],
+              terminationMessagePolicy: "FallbackToLogsOnError"
+            }},
+            JSONPatch{op: "add", path: "/spec/volumes/-", value: Object.spec.volumes{
+              name: {{ include "gpu-health.cel" $volume }},
+              hostPath: Object.spec.volumes.hostPath{path: {{ include "gpu-health.cel" $c.stateDir }}, type: "DirectoryOrCreate"}
+            }}
+          ]
+---
+apiVersion: {{ $api }}
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "gpu-health.labels" . | nindent 4 }}
+spec:
+  policyName: {{ $name }}
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: {{ .Values.inject.namespaces | toJson }}
+    {{- with .Values.inject.objectSelector }}
+    objectSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}

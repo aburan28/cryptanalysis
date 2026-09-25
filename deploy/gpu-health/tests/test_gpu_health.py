@@ -14,6 +14,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -40,6 +41,17 @@ class Run(unittest.TestCase):
         self.saved = dict(os.environ)
         os.environ["FAKE_GPU_STATE"] = self.tmp.name
         os.environ.pop("NODE_NAME", None)
+        self.boot("boot-1", 600)
+
+    def boot(self, boot_id, up_seconds):
+        """The node's /proc as the check reads it: this boot's id and uptime."""
+        proc = os.path.join(self.tmp.name, "proc")
+        os.makedirs(os.path.join(proc, "sys", "kernel", "random"), exist_ok=True)
+        with open(os.path.join(proc, "sys", "kernel", "random", "boot_id"), "w") as f:
+            f.write(boot_id + "\n")
+        with open(os.path.join(proc, "uptime"), "w") as f:
+            f.write("%.2f %.2f\n" % (up_seconds, 3 * up_seconds))
+        os.environ["GPU_HEALTH_PROC"] = proc
 
     def tearDown(self):
         os.environ.clear()
@@ -317,6 +329,269 @@ class Run(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertEqual(calls, [])
 
+    # ---- injected into the device plugin: once per boot, waiting for GPUs ------------
+
+    def loads(self):
+        return sorted(f for f in os.listdir(self.tmp.name) if f.startswith(("loading-", "done-")))
+
+    def clear_loads(self):
+        for f in self.loads():
+            os.remove(os.path.join(self.tmp.name, f))
+
+    def record(self, state):
+        with open(os.path.join(state, "boot.json")) as f:
+            return json.load(f)
+
+    def test_a_pass_is_recorded_and_the_same_boot_skips(self):
+        state = os.path.join(self.tmp.name, "state")
+        rc, report = self.run_check({"gpus": [gpu(0), gpu(1)]}, "--state-dir", state)
+        self.assertEqual(rc, 0)
+        rec = self.record(state)
+        self.assertEqual((rec["bootId"], rec["verdict"], rec["released"], rec["attempts"]),
+                         ("boot-1", "pass", True, 1))
+        self.assertEqual(rec["gpus"], [gpu(0)["uuid"], gpu(1)["uuid"]])
+        with open(os.path.join(state, "last.json")) as f:
+            self.assertEqual(json.load(f)["verdict"], "pass")
+        self.clear_loads()
+        rc, report = self.run_check({"gpus": [gpu(0), gpu(1, faults={"curve": 1})]},
+                                    "--state-dir", state)
+        self.assertEqual(rc, 0)
+        self.assertIsNone(report)
+        self.assertEqual(self.loads(), [], "a skipped run must not load the GPUs")
+        self.assertTrue(self.termination.startswith("SKIP passed this boot"), self.termination)
+        self.assertEqual(self.record(state), rec, "a skip leaves the pass on record")
+
+    def test_a_failure_keeps_the_node_checked(self):
+        state = os.path.join(self.tmp.name, "state")
+        rc, _ = self.run_check({"gpus": [gpu(0, faults={"curve": 1})]}, "--state-dir", state,
+                               "--max-uptime", "3600")
+        self.assertEqual(rc, 1)
+        rec = self.record(state)
+        self.assertEqual((rec["verdict"], rec["released"]), ("fail", False))
+        with open(os.path.join(state, "last.json")) as f:
+            self.assertEqual(json.load(f)["verdict"], "fail")
+        # Days later, still failing: the device plugin has not started since
+        # the boot, so the GPUs are idle and the check keeps running.
+        self.boot("boot-1", 5 * 86400)
+        rc, _ = self.run_check({"gpus": [gpu(0, faults={"curve": 1})]}, "--state-dir", state,
+                               "--max-uptime", "3600")
+        self.assertEqual(rc, 1, "a failed node is checked again, not skipped")
+        self.assertEqual(self.record(state)["attempts"], 2)
+        rc, _ = self.run_check({"gpus": [gpu(0)]}, "--state-dir", state, "--max-uptime", "3600")
+        self.assertEqual(rc, 0, "and released once it passes")
+        self.assertEqual(self.record(state)["verdict"], "pass")
+
+    def test_an_interrupted_check_runs_again(self):
+        state = os.path.join(self.tmp.name, "state")
+        os.makedirs(state)
+        with open(os.path.join(state, "boot.json"), "w") as f:
+            json.dump({"bootId": "boot-1", "verdict": "running", "released": False,
+                       "attempts": 1}, f)
+        rc, _ = self.run_check({"gpus": [gpu(0)]}, "--state-dir", state)
+        self.assertEqual(rc, 0)
+        self.assertNotEqual(self.loads(), [])
+        self.assertEqual(self.record(state)["attempts"], 2)
+
+    def test_a_new_boot_is_checked_again(self):
+        state = os.path.join(self.tmp.name, "state")
+        rc, _ = self.run_check({"gpus": [gpu(0)]}, "--state-dir", state)
+        self.assertEqual(rc, 0)
+        self.boot("boot-2", 300)
+        rc, _ = self.run_check({"gpus": [gpu(0, faults={"curve": 1})]}, "--state-dir", state)
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.record(state)["bootId"], "boot-2")
+
+    def test_a_node_in_service_before_the_check_is_left_alone(self):
+        state = os.path.join(self.tmp.name, "state")
+        self.boot("boot-1", 3 * 86400 + 7200)
+        rc, report = self.run_check({"gpus": [gpu(0, faults={"curve": 1})]},
+                                    "--state-dir", state, "--max-uptime", "3600")
+        self.assertEqual(rc, 0)
+        self.assertIsNone(report)
+        self.assertEqual(self.loads(), [])
+        self.assertIn("SKIP no check has run since this node booted 3 d 2 h ago", self.termination)
+        rec = self.record(state)
+        self.assertEqual((rec["verdict"], rec["released"], rec["attempts"]), ("skip", True, 0))
+        # Without --max-uptime the same node is checked (a standalone run).
+        shutil.rmtree(state)
+        rc, _ = self.run_check({"gpus": [gpu(0, faults={"curve": 1})]}, "--state-dir", state)
+        self.assertEqual(rc, 1)
+
+    def test_a_young_node_without_a_record_is_checked(self):
+        state = os.path.join(self.tmp.name, "state")
+        self.boot("boot-1", 1800)
+        rc, _ = self.run_check({"gpus": [gpu(0, faults={"curve": 1})]}, "--state-dir", state,
+                               "--max-uptime", "3600")
+        self.assertEqual(rc, 1)
+
+    def test_a_pass_from_another_boot_does_not_count(self):
+        state = os.path.join(self.tmp.name, "state")
+        os.makedirs(state)
+        with open(os.path.join(state, "boot.json"), "w") as f:
+            json.dump({"bootId": "an-earlier-boot", "verdict": "pass", "released": True}, f)
+        rc, _ = self.run_check({"gpus": [gpu(0, faults={"curve": 1})]}, "--state-dir", state)
+        self.assertEqual(rc, 1)
+
+    def test_an_unusable_state_dir_is_an_error(self):
+        blocker = os.path.join(self.tmp.name, "a-file")
+        open(blocker, "w").close()
+        rc, report = self.run_check({"gpus": [gpu(0)]}, "--state-dir",
+                                    os.path.join(blocker, "state"))
+        self.assertEqual(rc, 2)
+        self.assertIsNone(report)
+        self.assertEqual(self.loads(), [])
+        self.assertIn("state directory", self.termination)
+
+    def test_an_unreadable_boot_id_is_an_error(self):
+        os.remove(os.path.join(os.environ["GPU_HEALTH_PROC"], "sys", "kernel", "random",
+                               "boot_id"))
+        rc, report = self.run_check({"gpus": [gpu(0)]}, "--state-dir",
+                                    os.path.join(self.tmp.name, "state"))
+        self.assertEqual(rc, 2)
+        self.assertEqual(self.loads(), [])
+        self.assertIn("cannot read the kernel's boot id", self.termination)
+
+    def test_report_only_releases_a_failing_node_and_says_so(self):
+        state = os.path.join(self.tmp.name, "state")
+        rc, report = self.run_check({"gpus": [gpu(0, faults={"curve": 1})]}, "--state-dir",
+                                    state, "--report-only")
+        self.assertEqual(rc, 0)
+        self.assertEqual(report["verdict"], "fail")
+        self.assertTrue(self.termination.startswith("FAIL 0/1"), self.termination)
+        self.assertTrue(self.termination.endswith("(report only: not enforced)"),
+                        self.termination)
+        rec = self.record(state)
+        self.assertEqual((rec["verdict"], rec["released"]), ("fail", True))
+        # The plugin has started, so the rest of this boot leaves the GPUs alone.
+        self.clear_loads()
+        rc, _ = self.run_check({"gpus": [gpu(0, faults={"curve": 1})]}, "--state-dir", state,
+                               "--report-only")
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.loads(), [])
+        self.assertIn("SKIP the device plugin was let start without a pass", self.termination)
+
+    def test_report_only_gate_lifts_the_taint_but_labels_the_failure(self):
+        os.environ["NODE_NAME"] = "gpu-node-1"
+        fake, calls = self.gate_api()
+        rc, _ = self.run_check({"gpus": [gpu(0, faults={"curve": 1})]}, "--node-gate",
+                               "--report-only", api=fake)
+        self.assertEqual(rc, 0)
+        patch = [c for c in calls if c[0] == "PATCH"][0]
+        self.assertIsNone(patch[2]["spec"]["taints"])
+        self.assertEqual(patch[2]["metadata"]["labels"], {"gpu-health/verdict": "fail"})
+
+    def test_a_node_without_nvidia_gpus_is_released_at_once(self):
+        state = os.path.join(self.tmp.name, "state")
+        self.sysfs([("0x8086", "0x030000"), ("0x15b3", "0x020700")])
+        rc, report = self.run_check({"devicesReadyAfter": 1000, "gpus": []}, "--state-dir",
+                                    state, "--skip-without-gpus", "--wait-for-gpus", "600")
+        self.assertEqual(rc, 0)
+        self.assertEqual(report["pciGpus"], 0)
+        self.assertIn("SKIP no NVIDIA GPU on this node's PCI bus", self.termination)
+        self.assertEqual(self.record(state)["verdict"], "skip")
+
+    def test_gpus_the_walk_cannot_run_on(self):
+        t4 = dict(gpu(0), name="Tesla T4", cc="7.5", sms=40)
+        rc, report = self.run_check({"gpus": [t4, dict(t4, uuid=gpu(1)["uuid"])]})
+        self.assertEqual(rc, 1, "outside the device plugin an unsupported GPU fails")
+        self.assertIn("unsupported: compute capability 7.5", self.failures(report, 0))
+        self.clear_loads()
+        rc, report = self.run_check({"gpus": [t4, dict(t4, uuid=gpu(1)["uuid"])]},
+                                    "--skip-unsupported")
+        self.assertEqual(rc, 0)
+        self.assertEqual(report["verdict"], "skip")
+        self.assertEqual(self.loads(), [])
+        self.assertIn("SKIP no GPU here can run the check", self.termination)
+        self.assertIn("gpu0 Tesla T4 (7.5)", self.termination)
+        # A node with both: the A100 is checked, the T4 left out with a warning.
+        a100 = dict(gpu(1), name="NVIDIA A100-SXM4-80GB", cc="8.0", sms=108)
+        rc, report = self.run_check({"gpus": [t4, a100]}, "--skip-unsupported")
+        self.assertEqual(rc, 0, report)
+        self.assertEqual([g["device"]["name"] for g in report["gpus"]], [a100["name"]])
+        self.assertIn("not checked, below compute capability 8.0: gpu0 Tesla T4",
+                      " ".join(report["warnings"]))
+        rc, report = self.run_check({"gpus": [t4, a100]}, "--skip-unsupported", "--strict")
+        self.assertEqual(rc, 1, "--strict makes the unchecked GPU a failure")
+
+    def test_an_unreadable_pci_bus_is_not_taken_for_no_gpus(self):
+        os.environ["GPU_HEALTH_SYSFS_PCI"] = os.path.join(self.tmp.name, "no-sysfs")
+        self.assertIsNone(gpu_health.pci_gpus())
+        rc, report = self.run_check({"devicesReadyAfter": 1000, "gpus": []},
+                                    "--skip-without-gpus", "--wait-for-gpus", "0.3",
+                                    "--wait-poll", "0.05")
+        self.assertEqual(rc, 1)
+        self.assertIn("no usable CUDA device", " ".join(report["errors"]))
+
+    def test_waits_for_the_driver(self):
+        rc, report = self.run_check({"devicesReadyAfter": 3, "gpus": [gpu(0)]},
+                                    "--wait-for-gpus", "30", "--wait-poll", "0.05")
+        self.assertEqual(rc, 0)
+        self.assertIn("waiting for GPUs: no CUDA-capable device", self.stderr)
+
+    def test_waiting_gives_up(self):
+        rc, report = self.run_check({"devicesReadyAfter": 1000, "gpus": [gpu(0)]},
+                                    "--wait-for-gpus", "0.3", "--wait-poll", "0.05")
+        self.assertEqual(rc, 1)
+        self.assertIn("no usable CUDA device", " ".join(report["errors"]))
+
+    def test_inline_baselines_and_thresholds_from_the_environment(self):
+        os.environ["GPU_HEALTH_BASELINES_JSON"] = json.dumps(
+            {"entries": [{"name": H100, "sms": 132, "iterationsPerSecond": 7.5e9}]})
+        rc, report = self.run_check({"gpus": [gpu(0, rate=7.0e9)]})
+        self.assertEqual(rc, 0)
+        self.assertEqual(report["gpus"][0]["throughput"]["baselineRatio"], 0.9333)
+        os.environ["GPU_HEALTH_THRESHOLDS"] = "baseline_fail=0.95, peer_fail=0.9"
+        rc, report = self.run_check({"gpus": [gpu(0, rate=7.0e9)]})
+        self.assertEqual(rc, 1)
+
+    def test_label_node_leaves_taints_and_is_not_fatal(self):
+        os.environ["NODE_NAME"] = "gpu-node-1"
+        fake, calls = self.gate_api()
+        rc, _ = self.run_check({"gpus": [gpu(0)]}, "--label-node", api=fake)
+        self.assertEqual(rc, 0)
+        patch = [c for c in calls if c[0] == "PATCH"][0]
+        self.assertNotIn("spec", patch[2])
+        self.assertEqual(patch[2]["metadata"]["labels"], {"gpu-health/verdict": "pass"})
+
+        def forbidden(method, path, body=None, content_type=None):
+            return 403, {"message": "nodes is forbidden"}
+        rc, _ = self.run_check({"gpus": [gpu(0)]}, "--label-node", api=forbidden)
+        self.assertEqual(rc, 0, "a missing RBAC grant must not fail a healthy node")
+        self.assertIn("HTTP 403", self.stderr)
+
+    def test_busy_gpus_are_left_alone(self):
+        rc, report = self.run_check({"gpus": [gpu(0), gpu(1, apps=2)]}, "--skip-if-busy",
+                                    "--state-dir", os.path.join(self.tmp.name, "state"))
+        self.assertEqual(rc, 0)
+        self.assertEqual(report["verdict"], "skip")
+        self.assertEqual(self.loads(), [], "busy GPUs must not be loaded")
+        self.assertIn("1 of 2 GPU(s) are running other processes", self.termination)
+        rec = self.record(os.path.join(self.tmp.name, "state"))
+        self.assertEqual((rec["verdict"], rec["released"]), ("skip", True), "a skip is no pass")
+
+    def sysfs(self, classes):
+        root = os.path.join(self.tmp.name, "pci")
+        for i, (vendor, cls) in enumerate(classes):
+            d = os.path.join(root, "0000:%02x:00.0" % i)
+            os.makedirs(d)
+            with open(os.path.join(d, "vendor"), "w") as f:
+                f.write(vendor + "\n")
+            with open(os.path.join(d, "class"), "w") as f:
+                f.write(cls + "\n")
+        os.environ["GPU_HEALTH_SYSFS_PCI"] = root
+
+    def test_expect_as_many_gpus_as_the_pci_bus_has(self):
+        # Two H100s, an NVSwitch, an NVIDIA audio function and a NIC.
+        self.sysfs([("0x10de", "0x030200"), ("0x10de", "0x030200"), ("0x10de", "0x068000"),
+                    ("0x10de", "0x040300"), ("0x15b3", "0x020700")])
+        self.assertEqual(gpu_health.pci_gpus(), 2)
+        rc, report = self.run_check({"gpus": [gpu(0), gpu(1)]}, "--expect-gpus", "pci")
+        self.assertEqual(rc, 0)
+        self.assertEqual(report["pciGpus"], 2)
+        rc, report = self.run_check({"gpus": [gpu(0)]}, "--expect-gpus", "pci")
+        self.assertEqual(rc, 1)
+        self.assertIn("1 GPU(s) visible, 2 expected", " ".join(report["errors"]))
+
     def test_without_nvidia_smi_the_workload_still_decides(self):
         rc, report = self.run_check({"gpus": [gpu(0)]}, smi=False)
         self.assertEqual(rc, 0)
@@ -393,6 +668,11 @@ class NodeGate(unittest.TestCase):
 
 
 class Pieces(unittest.TestCase):
+    def test_duration(self):
+        d = gpu_health.duration
+        self.assertEqual([d(42), d(3599), d(3600), d(5 * 3600 + 125), d(2 * 86400 + 7300)],
+                         ["42 s", "59 min", "1 h 0 min", "5 h 2 min", "2 d 2 h"])
+
     def test_parse_value(self):
         p = gpu_health.parse_value
         self.assertEqual(p("[N/A]"), None)
