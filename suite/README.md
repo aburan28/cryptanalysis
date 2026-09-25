@@ -1,6 +1,6 @@
 # cryptanalysis-suite
 
-The attack library and command-line tools, in Rust: 126 attack modules
+The attack library and command-line tools, in Rust: 148 attack modules
 against symmetric ciphers, hash functions, elliptic-curve and finite-field
 discrete logarithms, signature nonces, lattices and the NIST post-quantum
 schemes, plus the primitives they target.  It is the cryptanalysis suite
@@ -13,12 +13,16 @@ the wide end: many attacks, arbitrary precision (`num-bigint`), and
 Markdown reports.  The two do not depend on each other.
 
 ```sh
-cargo build --release                 # ca-suite, ca-ic, ca-curves, ca-koblitz-pdp-prepare
-cargo test --release                  # 2395 unit + 31 integration tests, ~3 min on 4 cores
+cargo build --release                 # ca-suite, ca-ic, ca-icx, ca-curves, ca-koblitz-pdp-prepare
+cargo test --release                  # 2761 unit + 65 integration tests, ~6 min on 4 cores
 ./target/release/ca-suite --help
 ```
 
 Requirements: Rust 1.87 or newer (declared in `Cargo.toml`, checked in CI).
+AVX-512 target features are stable only from Rust 1.89, so `build.rs` compiles
+the AVX-512 kernels (Koblitz scan, `F_p` tower F4, `GF(2)` elimination, the
+wide FES walk) only on such a toolchain; older ones take the AVX2 and scalar
+paths, which compute the same values.
 `ca-ic fixed` additionally drives the Python engine in `python/indexcalc/`
 with `python3` (standard library only; `python-sat` or `pycryptosat` only
 for its SAT solver).
@@ -73,6 +77,9 @@ $ ca-suite rho-collab work --job job.json --node bob --peer alice:7000
 $ ca-suite rho-collab status --job job.json --peer alice:7000 --json
 
 # The visual demos and the falsifiable-hypothesis research bench
+$ ca-suite isogeny volcano --curve toy-b --ell 2 --depth 4
+$ ca-suite isogeny experiment --bits 10 --trials 2 --ell-list 2,3 --rho-cap 16384
+$ ca-suite isogeny secp256k1
 $ ca-suite visual-all --target pollard-rho
 $ ca-suite aes-visual-demo --demo dfa
 $ ca-suite bench
@@ -94,6 +101,25 @@ $ ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate --json
 $ ca-ic compare --degree 7 --curve-a 1 --samples 3 --holdout 2 --json
 $ ca-ic fixed --params docs/ic/params/k0n9-fixed.json --dir runs/k0n9 --attempts 256 --json
 $ ca-ic prime --curve secp256k1 --bits 28 --targets 64  # j = 0: |Aut| = 6 orbits, a batch vs rho
+$ ca-ic boundary --quick                            # every IC variant vs the generic floor and a counted rho
+$ ca-ic swap --cells 13:3 --pairs 16                # is a solver priced the same on R and R - P + Q?
+$ ca-ic bench --sweep docs/ic/sweeps/solver-engines.json   # plug-in pipeline configurations, compared
+$ ca-ic descent --families K --cells 11:6:2        # degree a Weil-descent system reaches vs semi-regular
+$ ca-ic corpus --degree 15 --dimension 5 --dir corpus/   # Semaev S4 corpus (Magma, DIMACS+XOR, CNF, ANF)
+$ ca-ic rho --koblitz-degrees 23,31 --runs 4       # the counted Pollard-rho references, paired
+```
+
+`ca-icx` runs index calculus across every standardized curve: the curve
+catalog (`curve_catalog`), the engine that classifies each curve into an
+attack regime and prices it (`ic_engine`), and a verified run on the curve
+or a same-family analogue (`ic_run`, through the configurable pipeline in
+`ic_framework`); see [docs/ic/FRAMEWORK.md](docs/ic/FRAMEWORK.md).
+
+```sh
+$ ca-icx list --family koblitz
+$ ca-icx inspect secp256k1
+$ ca-icx estimate sect163k1
+$ ca-icx run secp256k1 --json                       # on a same-family analogue inside the envelope
 ```
 
 `ca-curves` lists the challenge corpus in [`../challenges/ecc/`](../challenges/ecc/README.md)
@@ -192,13 +218,15 @@ link to them where a number needs its provenance.
 
 ```
 src/lib.rs                 the crate: cryptanalysis + the modules it targets
-src/cryptanalysis/         the suite (126 modules)
+src/cryptanalysis/         the suite (148 modules)
+src/isogeny/               CM / class-group / Vélu / volcano research module (ca-suite isogeny)
 src/main.rs, src/cli_mlwe.rs   ca-suite
 src/bin/ic.rs, src/bin/ic/     ca-ic
+src/bin/icx.rs             ca-icx
 src/bin/koblitz_pdp_prepare.rs ca-koblitz-pdp-prepare
-tests/                     integration tests (ca-ic end to end, the PARI curve audit, LLL probes)
+tests/                     integration tests (ca-ic and ca-icx end to end, the PARI curve audit, LLL probes)
 tests/data/                the PARI/GP audit template
-examples/                  100 runnable demos and measurement harnesses
+examples/                  148 runnable demos and measurement harnesses
 python/indexcalc/          the stdlib-only index-calculus engine behind `ca-ic fixed`
 fixtures/                  the two frozen contracts the F4 and Weil-factor tests read
 docs/                      tool guides: ic, ML-KEM/ML-DSA cryptanalysis, collaborative rho, attack matrix
