@@ -476,7 +476,8 @@ static int cmd_ecc2k130_rho(void)
     for (int i = 2; i < argc_g; ++i) {
         if (!strcmp(argv_g[i], "--check") || !strcmp(argv_g[i], "--bench")) continue;
         if (!strcmp(argv_g[i], "--curve")) {
-            if (++i >= argc_g || strcmp(argv_g[i], "ecc2k130")) die("--curve must be ecc2k130");
+            ++i;
+            if (i >= argc_g || strcmp(argv_g[i], "ecc2k130")) die("--curve must be ecc2k130");
             continue;
         }
         args[j++] = argv_g[i];
