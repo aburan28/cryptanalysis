@@ -150,6 +150,16 @@ certified build requires CUDA architecture 120 and CUDA 13.3.1; the Dockerfile
 rejects a different architecture. Other GPU types require a separately validated
 build and compatible campaign configuration.
 
+Each GPU worker requests two CPU cores. Modal bills the larger of the request
+and actual use. Live workers averaged 1.16 cores (90th percentile 1.58, peak
+2.82): the client spins one core while waiting for the GPU, and uploads briefly
+add more. The earlier four-core request left about 2.8 paid cores idle.
+Releasing them saves about 3% of each worker's cost. Filling them with the CPU
+walker instead would add an estimated 0.2–0.4% throughput, at 15–25 M
+iterations/s per core. At that rate, paid Modal cores yield 10–17 times fewer
+iterations per dollar than RTX PRO 6000 time. The client keeps four OpenMP
+threads because the GPU idles while it converts each checkpoint.
+
 The secret must exist before the first launch; creating a Modal app does not
 create it. From the repository root, copy the template and fill in the real values
 locally (the `.env` file is ignored by git and excluded from Docker builds):

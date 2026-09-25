@@ -1,6 +1,7 @@
 """Exercise fleet dispatch without contacting Modal or requiring its SDK."""
 import ast
 import json
+import os
 from pathlib import Path
 import time
 import unittest
@@ -106,7 +107,7 @@ class WorkerDeadlineTests(unittest.TestCase):
         modules.start()
         self.addCleanup(modules.stop)
         self.subprocess = Mock()
-        names = {'json': json, 'time': SimpleNamespace(time=Mock(return_value=1000.0)),
+        names = {'json': json, 'os': os, 'time': SimpleNamespace(time=Mock(return_value=1000.0)),
                  'subprocess': self.subprocess, 'print': Mock()}
         exec(compile(ast.Module(body=functions, type_ignores=[]), str(path), 'exec'), names)
         self.worker = names['worker']
@@ -132,6 +133,13 @@ class WorkerDeadlineTests(unittest.TestCase):
     def test_call_without_a_deadline_keeps_its_duration(self):
         self.worker('run', 600, True)
         self.assertEqual(self.seconds(), 600)
+
+    def test_client_keeps_four_openmp_threads_under_a_smaller_cpu_request(self):
+        with patch.dict(os.environ, {'OMP_NUM_THREADS': '2', 'ECC_BUCKET': 'bucket'}):
+            self.worker('run', 600, True)
+        env = self.subprocess.run.call_args.kwargs['env']
+        self.assertEqual(env['OMP_NUM_THREADS'], '4')
+        self.assertEqual(env['ECC_BUCKET'], 'bucket')
 
 
 if __name__ == '__main__':
