@@ -3,15 +3,15 @@
 **Result: `PASS_LOCAL` as a PDP-stage improvement; the GPU path is built,
 emulator-verified and compiled, but unmeasured on a device.** On one core,
 with every verdict, relation, solver counter and recovered logarithm
-unchanged, the Gröbner decomposition oracle runs **7.5–7.7×** faster inside
-complete `ca-ic run --solver groebner` DLPs at degree 23, **1.9–10.4×** on the
+unchanged, the Gröbner decomposition oracle runs **10.0–10.3×** faster inside
+complete `ca-ic run --solver groebner` DLPs at degree 23, **2.1–12.2×** on the
 frozen stage ladder, and the research degree sweeps run **190–280×** faster.
-With four cores the degree-23 run collects its relations in **1.49 s against
+With four cores the degree-23 run collects its relations in **1.08 s against
 the original 41.9 s**. The end-to-end total in a calibrated operation unit,
 `S`, and the rho ratios stay **unknown**: the pipeline prices no phase in
 operations.
 
-Source: commit `62489c0` (records hash these files as of that commit).
+Source: commit `5423bf0` (records hash these files as of that commit).
 Host: Intel Xeon VM, 4 vCPU, 15 GiB, no GPU; Rust 1.98.1 release profile.
 
 ## 1. Baseline and where the time went
@@ -59,18 +59,19 @@ manifests: `manifests/`. Curve IDs `EC1N23Cka1h7ef98b42c1e8`,
 
 | workload | baseline candidate (reference kernel) | candidate (f4_gf2 + F5) | correct | PDP wall, baseline / candidate (95% CI) | calibrated total | `S` | rho ratio |
 |:---------|:--------------------------------------|:------------------------|:-------:|:-----------------------------------------|:----------------:|:---:|:---------:|
-| `W35c075f41d7b` (`K_1/2^23`, `[53]G`) | `IC1N23Cka1fb2071PDP2f4RCsampleLAgaussTDdirectISO0hc16a334307d3` | `IC1N23Cka1fb2071PDP2f4RCsampleLAgaussTDdirectISO0ha8c82a7d1d6a` | 3/3 both, same log | **7.52×** [7.36, 7.81] | null | null | null |
-| `W793f7a80cc3f` (`K_0/2^23`, `[53]G`) | `IC1N23Cka0fb2025PDP2f4RCsampleLAgaussTDdirectISO0hffc66d027711` | `IC1N23Cka0fb2025PDP2f4RCsampleLAgaussTDdirectISO0h4692377ff0a8` | 3/3 both, same log | **7.70×** [7.66, 7.74] | null | null | null |
+| `W35c075f41d7b` (`K_1/2^23`, `[53]G`) | `IC1N23Cka1fb2071PDP2f4RCsampleLAgaussTDdirectISO0h573364f3659b` | `IC1N23Cka1fb2071PDP2f4RCsampleLAgaussTDdirectISO0h45c66064bdd9` | 3/3 both, same log | **10.29×** [10.26, 10.34] | null | null | null |
+| `W793f7a80cc3f` (`K_0/2^23`, `[53]G`) | `IC1N23Cka0fb2025PDP2f4RCsampleLAgaussTDdirectISO0h49b86f357f35` | `IC1N23Cka0fb2025PDP2f4RCsampleLAgaussTDdirectISO0h84a4dda206e0` | 3/3 both, same log | **9.95×** [9.43, 10.25] | null | null | null |
 
 Both arms made the same queries, found the same relations, refuted the
-same targets (189 of 303 at `K_0`; no budget exhaustion) and ran the same
-F4 reductions. The word XORs fall 3.6× (`4.79e9 → 1.34e9` at `K_1`). The
-whole-run wall ratio equals the PDP one (7.51×, 7.69×): nothing else moved.
+same targets (63 of 101 per `K_0` run; no budget exhaustion) and ran the
+same F4 reductions. The word XORs fall 3.6× (`4.79e9 → 1.34e9` at `K_1`).
+The whole-run wall ratio equals the PDP one (10.28×, 9.94×): nothing else
+moved.
 
-With the cores: `--batch 16` collects the `K_1/2^23` relations in **1.489 s**
+With the cores: `--batch 16` collects the `K_1/2^23` relations in **1.081 s**
 (`receipts/e2e-batch/`), against 41.88 s for the original binary on one
-core; the lockstep path with the host kernel takes 1.893 s and with the
-emulated GPU kernel 5.59 s, all with the same 64 trials, 27 relations,
+core; the lockstep path with the host kernel takes 1.418 s and with the
+emulated GPU kernel 5.39 s, all with the same 64 trials, 27 relations,
 23 351 reductions and logarithm 53.
 
 ### Frozen stage ladder (paired, one core, three repetitions)
@@ -81,15 +82,17 @@ split, oversize event and reference row/column count is identical
 
 | rung | wall ratio (95% CI) |
 |:-----|:-------------------:|
-| `K_0/2^9`, m = 2 | 4.33× [4.28, 4.39] |
-| `K_0/2^9`, m = 3 | 10.43× [9.96, 10.80] |
-| `K_0/2^13`, m = 2 | 7.70× [7.61, 7.87] |
-| `K_1/2^15`, m = 2 | 1.94× [1.81, 2.02] |
-| `K_1/2^17`, m = 2 | 5.72× [5.61, 5.81] |
-| `K_1/2^23`, m = 2 | 7.29× [7.28, 7.30] |
+| `K_0/2^9`, m = 2 | 4.78× [4.72, 4.82] |
+| `K_0/2^9`, m = 3 | 12.21× [12.16, 12.23] |
+| `K_0/2^13`, m = 2 | 8.98× [8.95, 8.99] |
+| `K_1/2^15`, m = 2 | 2.11× [2.08, 2.14] |
+| `K_1/2^17`, m = 2 | 7.35× [7.34, 7.37] |
+| `K_1/2^23`, m = 2 | 9.90× [9.84, 9.99] |
 
-On `K_1/2^23` build falls 5.6×, elimination 6.1×, readback from 2.6 s to
-under 1 ms.
+On `K_1/2^23` (medians) build falls from 2 440 to 422 ms, elimination from
+3 125 to 293 ms and readback from 2 302 to 0.7 ms; the wall from 8.06 to
+0.82 s — 11.3× against the original binary's 9.26 s, whose reference build
+also read an environment variable per row.
 
 ### One large matrix per degree (research sweeps)
 
@@ -98,16 +101,17 @@ same rank, refutation and pinned variables (asserted).
 
 | matrix | rows × cols | dense reference | sparse (previous sweep path) | fast | fast + F5 (F5 rows) |
 |:-------|------------:|----------------:|-----------------------------:|-----:|--------------------:|
-| `K_0/2^13`, m=2, D=5 | 30 225 × 53 871 | 25.0 s | 162.8 s | 6.38 s | **3.90 s** (1 993) |
-| `K_1/2^11`, m=2, D=5 | 14 861 × 21 196 | 2.68 s | 21.4 s | 0.48 s | **0.25 s** (1 125) |
-| `K_0/2^9`, m=3, D=5 | 33 147 × 87 118 | — | 4.08 s | 1.40 s | **0.93 s** (1 115) |
+| `K_0/2^13`, m=2, D=5 | 30 225 × 53 871 | 24.2 s | 158.7 s | 6.11 s | **3.74 s** (1 993) |
+| `K_1/2^11`, m=2, D=5 | 14 861 × 21 196 | 2.72 s | 20.8 s | 0.48 s | **0.27 s** (1 125) |
+| `K_0/2^9`, m=3, D=5 | 33 147 × 87 118 | — | 4.05 s | 1.38 s | **0.93 s** (1 115) |
 
 F5 leaves out only ~7% of the rows but saves 1.2–1.8×: they are the rows
 that would have been reduced to zero through the longest pivot chains.
 `solving_degree` and `first_fall_degree` now use this path, and
 `dreg_sweep --d-max 5 --trials 4 --n-max 13` prints the **identical table**
 (`receipts/dreg/`) while its `n = 11, m = 2` cell drops from 594.3 s to
-3.1 s and `n = 13, m = 2` from 169.4 s to 0.6 s.
+3.1 s and `n = 13, m = 2` from 169.4 s to 0.6 s; the whole sweep takes 5 s
+against about 13.7 minutes on the reference kernel.
 
 ### Batched decisions and the GPU kernel on the emulator
 
@@ -118,9 +122,9 @@ the 20 000 matrices those searches requested:
 
 | backend | decisions / s |
 |:--------|--------------:|
-| host kernel, 1 thread | 9 936 |
-| host kernel, 4 threads | 38 981 |
-| device kernel, emulated (4 threads × one serial 256-thread block) | 10 034 |
+| host kernel, 1 thread | 13 609 |
+| host kernel, 4 threads | 53 127 |
+| device kernel, emulated (4 threads × one serial 256-thread block) | 9 771 |
 
 The emulator executes the CUDA source one emulated thread at a time; its
 rate says nothing about a GPU and it exists to prove the source correct.
@@ -132,7 +136,7 @@ source.
 
 ## 4. The GPU design
 
-- **Batch, don't offload.** One 276 × 438 matrix is ~16 KB and ~100 µs on a
+- **Batch, don't offload.** One 276 × 438 matrix is ~16 KB and ~75 µs on a
   core even with the fast kernel; a launch per matrix loses to its own
   latency. Relation collection
   has thousands of independent targets, so `f4_batch` runs their searches
@@ -196,8 +200,8 @@ that differs from the host kernel's.
   GEMM on binary tensor cores (AND + POPC, parity bit).
 - **The whole search on the device**: one block per target with its stack
   in global memory, so the host no longer substitutes between rounds —
-  the search's own bookkeeping (~20 µs a node on `K_1/2^23`: 1.20 s of wall
-  against 1.10 s in the kernel over 4 934 nodes) bounds lockstep throughput
+  the search's own bookkeeping (~20 µs a node on `K_1/2^23`: 0.82 s of wall
+  against 0.72 s in the kernel over 4 934 nodes) bounds lockstep throughput
   today.
 - **Reuse across nodes**: the degree-2 rows are a sub-matrix of degree 3, and
   a child system differs from its parent by one substitution.

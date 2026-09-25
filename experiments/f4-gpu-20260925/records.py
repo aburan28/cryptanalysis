@@ -32,7 +32,7 @@ import analyze
 
 # The commit whose sources the measured binaries were built from; candidate
 # manifests hash these files as of this commit, whatever is checked out.
-SOURCE_COMMIT = "62489c0"
+SOURCE_COMMIT = "5423bf0"
 
 SOURCES = [
     "suite/src/cryptanalysis/koblitz_groebner.rs",
