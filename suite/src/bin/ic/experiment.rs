@@ -992,6 +992,7 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
             if args.control { "; control accounting" } else { "" }
         );
     }
+    let f4_setup = Instant::now();
     let f4_batch = match &args.f4_backend {
         Some(spec) => Some(SharedDecider::new(
             cryptanalysis_suite::cryptanalysis::f4_gpu::decider_from_spec(spec)
@@ -999,6 +1000,7 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
         )),
         None => None,
     };
+    let f4_setup_seconds = f4_setup.elapsed().as_secs_f64();
     let opts = KoblitzIcOptions {
         m: args.summands as usize,
         strategy: args.solver.strategy(),
@@ -1167,7 +1169,7 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
         "timing_seconds":{"pair_table":r.pair_table_ns as f64/1e9,"relation_collection":r.relation_collection_ns as f64/1e9,
             "linear_algebra":r.linear_algebra_ns as f64/1e9},
         "f4_batch":{"backend":r.f4_batch_backend,"rounds":r.f4_batch_rounds,"requests":r.f4_batch_requests,
-            "decide_seconds":r.f4_batch_decide_ns as f64/1e9,
+            "decide_seconds":r.f4_batch_decide_ns as f64/1e9,"setup_seconds":f4_setup_seconds,
             "kernel":format!("{:?}",cryptanalysis_suite::cryptanalysis::koblitz_groebner::f4_kernel()),
             "f5":cryptanalysis_suite::cryptanalysis::f4_gf2::default_options().f5},
         "attempt_dispositions":disposition_counts(&r.attempt_records),
