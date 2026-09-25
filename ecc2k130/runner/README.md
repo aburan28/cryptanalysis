@@ -186,7 +186,11 @@ so check the logs for four distinct claimed slots and progress reports.
 
 The GPU workers use the same Dockerfile as Runpod. Re-running `run` claims
 available slots and resumes from S3; no Modal Volume is required. Each invocation
-is bounded to 23 hours, below the 24-hour function timeout. This is one bounded
+is bounded to 23 hours, below the 24-hour function timeout. All workers share one
+absolute rollout deadline: Modal restarts a preempted call with its original
+arguments, and the restarted worker runs only for the remaining time. The
+coordinator therefore outlives every worker and removes the rollout's ingress
+rules. This is one bounded
 fleet run (up to 92 GPU-hours), not an automatically renewing daily deployment. Shutdown still
 requires the provider to allow enough time to finish the current kernel and
 upload. An abrupt termination recovers from the last acknowledged checkpoint.
