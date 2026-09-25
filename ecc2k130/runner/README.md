@@ -72,13 +72,16 @@ checkpoint compatibility receipts are in
 
 The 2026-09-25 rollout resumes runs 12,000–12,003 from their S3 checkpoints on
 four RTX PRO 6000 workers in
-[Modal app ap-0QctCWSXDTzBSyBYcjVM3i](https://modal.com/apps/a-buran28/main/ap-0QctCWSXDTzBSyBYcjVM3i),
-until 2026-09-26 02:47 UTC. It is the first rollout of the fused Frobenius build
+[Modal app ap-OZBcIVgzRNv4khVa0Hojt3](https://modal.com/apps/a-buran28/main/ap-OZBcIVgzRNv4khVa0Hojt3),
+until 2026-09-26 03:36 UTC. It is the first rollout of the fused Frobenius build
 (profile v2). That exact image passed the legacy compatibility gate in
 [its validation receipt](research/production/2026-09-25-fused-deployment-validation.json).
-At startup the four clients reported 70.08 billion updates/s in total, zero
-drops, advancing checkpoints and matching RDS samples. See the
-[deployment receipt](research/production/2026-09-25-fused-deployment.json).
+The first launch reserved four CPU cores per worker. At 04:35 UTC the fleet was
+relaunched with the two-core request. After the relaunch, the four clients
+reported 69.48 billion updates/s in total, zero drops, advancing checkpoints
+and seed-matching RDS samples. See the
+[relaunch receipt](research/production/2026-09-25-cpu2-deployment.json) and the
+[first launch receipt](research/production/2026-09-25-fused-deployment.json).
 
 The 2026-09-21 rollout ran four RTX PRO 6000 workers in
 [Modal app ap-89OUG2uEQpkkKtdd1WO8ru](https://modal.com/apps/a-buran28/main/ap-89OUG2uEQpkkKtdd1WO8ru).
@@ -222,7 +225,12 @@ With `ECC_RDS_SECURITY_GROUP` set, each Modal worker adds only its actual public
 IPv4 `/32` on TCP 5432. The coordinator removes rules tagged for its rollout when
 all workers finish; existing administrator rules are never adopted or deleted.
 Hard cancellation of the app can bypass cleanup: inspect descriptions beginning
-`ecc2k130-rollout-` and remove only rules belonging to the stopped rollout. Leave
+`ecc2k130-rollout-` and remove only rules belonging to the stopped rollout.
+`modal app stop` is such a cancellation. It terminates the containers
+immediately, so the workers cannot write a final checkpoint. They resume from
+their last upload, which was 8–136 seconds old in the 2026-09-25 stop. Wait for the 180-second slot
+leases to expire before relaunching; otherwise new workers allocate fresh slots
+instead of resuming the stopped ones. Leave
 this setting unset when an existing network path or static egress allow-list
 already provides access. Runpod uses its configured network path; the Modal
 coordinator's managed ingress is not part of the standalone Docker command.
