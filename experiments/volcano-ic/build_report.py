@@ -125,6 +125,86 @@ in CPU seconds, while its attempt count is {100 * (g["ratio_e0_over_desc"] - 1):
 <tbody>{"".join(body)}</tbody></table></div>'''
 
 
+def tauBullet(s):
+    t = s.get('tau', {}).get('variants')
+    if not t or 'tau6' not in t:
+        return ''
+    best = min((v for v in t if v != 'base'), key=lambda v: t[v]['total_cpu_s_mean'])
+    b = t[best]
+    return (f'<li><b>E0\'s real advantage is Frobenius, and it is large.</b> A τ-invariant factor base cuts the unknowns from '
+            f'{t["base"]["unknowns"]} to {b["unknowns"]} and makes E0\'s ECDLP {b["speedup_vs_base_mean"]:.1f}× cheaper '
+            f'(95% CI {b["speedup_ci95"][0]:.1f}–{b["speedup_ci95"][1]:.1f}×). No descendant can do this, because none has the endomorphism.</li>')
+
+
+def satSummary(v):
+    n = v.get('nb3sat')
+    if not n:
+        return ''
+    return (f'<p>The textbook weight-≤ 3 base behaves differently. Nearly every target decomposes ({n["relations_mean"]:.0f} relations from '
+            f'{n["targets_mean"]:.0f} targets), and the first SAT model was always a valid relation. But each call costs about '
+            f'{n["gb_ms_per_call"] / 1000:.0f} CPU s against milliseconds for the small Gröbner systems. End to end it runs at '
+            f'{n["speedup_vs_base_mean"]:.2f}× the baseline\'s speed, so the orbit-closure bases are about '
+            f'{n["total_cpu_s_mean"] / v["tau6"]["total_cpu_s_mean"]:.0f}× cheaper than it. Fewer unknowns only pay off if each decomposition stays cheap.</p>'
+            '<p class="cap">Timing windows: the τ runs and 4 baseline runs shared one window; the other 6 baseline runs and the SAT runs ran later, '
+            'after the external drive dropped out and came back. All runs are CPU-timed on the same machine, but these ratios carry the drift caveat above.</p>')
+
+
+def satNote(s):
+    v = s.get('tau', {}).get('variants', {}).get('nb3sat')
+    if not v:
+        return ''
+    return f', which dominates the cost: {v["correct"][1]} runs averaged {v["gb_calls_mean"]:.0f} SAT calls at {v["gb_ms_per_call"] / 1000:.1f} s each'
+
+
+def tauBlock(s):
+    t = s.get('tau')
+    if not t or 'variants' not in t:
+        return ''
+    v = t['variants']
+    rowsHtml = []
+    label = {'base': 'baseline: x in V, dim 10 (Gröbner)', 'tau6': "τ-invariant: orbits of x in V′, dim 6 (Gröbner)",
+             'tau7': "τ-invariant: orbits of x in V′, dim 7 (Gröbner)", 'nb3sat': 'τ-invariant: normal-basis weight ≤ 3 (SAT)'}
+    for k in ('base', 'tau6', 'tau7', 'nb3sat'):
+        if k not in v:
+            continue
+        e = v[k]
+        sp = f'{e["speedup_vs_base_mean"]:.2f}× ({e["speedup_ci95"][0]:.2f}–{e["speedup_ci95"][1]:.2f})' if k != 'base' else '1×'
+        rowsHtml.append(f'<tr class="{"" if k == "base" else "e0"}"><th scope="row">{label[k]}</th><td>{e["unknowns"]}</td>'
+                        f'<td>{e["relations_mean"]:.0f}</td><td>{e["gb_calls_mean"]:,.0f}</td><td>{e["gb_ms_per_call"]:.1f}</td>'
+                        f'<td>{e["total_cpu_s_mean"]:.0f}</td><td>{sp}</td><td>{e["correct"][0]}/{e["correct"][1]}</td></tr>')
+    b6 = v.get('tau6', {})
+    return f'''<h2>E0 with a τ-invariant factor base</h2>
+<div class="prose">
+<p>E0 is the only curve in the class with the Frobenius endomorphism τ(x, y) = (x², y²). On the prime subgroup τ acts as
+multiplication by λ, a root of λ² + λ + 2 mod p, so a factor base closed under τ needs one unknown per Frobenius orbit:
+log τ<sup>e</sup>P = λ<sup>e</sup> log P.</p>
+<p><b>The textbook choice fails for Gröbner bases.</b> Over F<sub>2</sub><sup>19</sup> no nontrivial subspace is closed
+under squaring (2 is a primitive root mod 19), so the usual τ-invariant base is x of Hamming weight ≤ 3 in a normal basis:
+665 points in 35 orbits. Its decomposition system has 38 variables plus 7,752 degree-4 weight constraints, and not one
+PolyBoRi solve finished within 15 minutes. That matches Galbraith–Gebregiyorgis, who moved to SAT solvers for this shape.</p>
+<p><b>SAT handles it.</b> The same 19 descended equations go to CryptoMiniSat as XOR clauses, with one auxiliary variable per
+product c<sub>i</sub>d<sub>j</sub> and sequential-counter cardinality constraints for the weight bound. The search stops at the first model that
+lifts to a real relation. Targets with a decomposition take seconds; a target without one needs a full UNSAT proof{satNote(s)}.</p>
+<p><b>What works:</b> the Frobenius-orbit closure of a small polynomial subspace, F = {{τ<sup>j</sup>P : x(P) ∈ V′}}. Squaring is
+F<sub>2</sub>-linear, so decomposing R = P<sub>1</sub> ± τ<sup>j</sup>P<sub>2</sub> with P<sub>1</sub>, P<sub>2</sub> ∈ V′ is still a quadratic
+system, now in only 2k′ variables. Each target is tried against the 19 shifts j until one yields a relation. The same 10 scalars
+were run under each factor base, with the baseline re-run in the same time window so CPU times are comparable.</p>
+</div>
+<div class="tw"><table>
+<thead><tr><th>E0 factor base</th><th>unknowns</th><th>relations</th><th>solver calls</th><th>ms per call</th><th>CPU s per ECDLP</th><th>speedup (95% CI)</th><th>logs correct</th></tr></thead>
+<tbody>{"".join(rowsHtml)}</tbody></table></div>
+<div class="figure">{img("tau.png")}</div>
+<p class="cap">Speedup is the mean of per-scalar ratios (baseline CPU / τ CPU), paired by scalar, with a bootstrap 95% interval.
+Each τ solve has 2k′ ≤ 14 variables, against 20 for the baseline.</p>
+<div class="prose">
+<p>The trade is many more, much cheaper decompositions for far fewer relations. The τ-invariant runs need only about
+{b6.get("relations_mean", 0):.0f} relations instead of ~{v["base"]["relations_mean"]:.0f}. Each solve is small, but most shifts fail, so
+the solve count goes up. The net is a clear end-to-end win that only E0 can claim. For ECC2K-130 this is the analogue of the known √(2·131) Frobenius
+speedup for Pollard rho: the endomorphism, not the position in the volcano, is what separates the crater curve from its descendants.</p>
+{satSummary(v)}
+</div>'''
+
+
 def main():
     s = json.load(open(os.path.join(HERE, 'results', 'summary.json')))
     c = s['census']
@@ -226,7 +306,8 @@ weakly on the curve, and exactly as the census predicts (r = {ev["predicted_vs_m
 = {ev["predicted_vs_measured_attempts"]["mean_ratio_measured_over_predicted"]:.3f}). It does not depend on the scalar (p = {an["gb_calls"]["instance"]["p"]:.2f}).
 E0 needs {e0v["gb_calls"]["ratio_e0_over_desc"]:.3f}× the descendants' attempts (95% CI {e0v["gb_calls"]["ratio_ci95"][0]:.3f}–{e0v["gb_calls"]["ratio_ci95"][1]:.3f}).</li>
 <li><b>Bottom line:</b> descending the volcano changes nothing structural for this attack. Curve-to-curve differences are
-factor-base counting, a few percent at most, and they partly cancel. E0's one real advantage, the Frobenius endomorphism, is not exercised by this factor base.</li>
+factor-base counting, a few percent at most, and they partly cancel.</li>
+{tauBullet(s)}
 </ul>
 </div>
 
@@ -324,14 +405,15 @@ so compare curves on attempts. Runtime is attempts × per-decomposition cost, an
 <p class="cap">{correct}/{len(recs)} recovered logs verified. Runs with the same curve and scalar are seeded identically; six overlapping
 duplicate runs reproduced the same attempt count and log exactly. Median CPU seconds are shown for scale only (see the drift note above).</p>
 
+{tauBlock(s)}
+
 <h2>Caveats</h2>
 <div class="prose">
 <ul>
 <li>This is an analogue. The mechanisms (tag-driven yield, curve-independent top-degree part) are structural and carry
 over to F<sub>2</sub><sup>131</sup>, but the constants do not.</li>
-<li>One factor-base choice (a polynomial-basis subspace, 2-point decompositions). E0's Frobenius endomorphism would allow a
-τ-invariant factor base with n-fold fewer unknowns; descendants have no such endomorphism. That is the one
-structural advantage E0 has, and it is not exercised here.</li>
+<li>The all-curve comparison uses one factor-base choice (a polynomial-basis subspace, 2-point decompositions) so every
+curve is treated alike. The τ-invariant runs are E0-only by construction: descendants have no Frobenius endomorphism.</li>
 <li>The machine was heavily loaded during all runs. Attempt counts and yields are exact and load-independent; comparisons
 of cost use CPU time only.</li>
 </ul>

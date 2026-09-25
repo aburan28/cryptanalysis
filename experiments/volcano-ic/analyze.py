@@ -346,9 +346,81 @@ def interleaved(rows, out):
         'per_curve': per}
 
 
+def tauComparison(rows, out):
+    """E0: tau-invariant factor bases against the baseline, paired by scalar."""
+    if not rows:
+        return
+    seen, by = set(), {}
+    for r in rows:
+        key = (r['curve'], r['instance'])
+        if key in seen:
+            continue
+        seen.add(key)
+        by.setdefault(r['curve'], {})[r['instance']] = r
+    variants = [v for v in ('base', 'tau6', 'tau7', 'nb3sat') if v in by]
+    common = sorted(set.intersection(*[set(by[v]) for v in variants]))
+    if 'base' not in by or not common:
+        out['tau'] = {'pending': {v: len(by[v]) for v in by}}
+        return
+    res = {'instances': len(common), 'variants': {}}
+    for v in variants:
+        rs = [by[v][i] for i in common]
+        cpu = np.array([r['total_cpu_s'] for r in rs])
+        entry = {'correct': [sum(r['correct'] for r in rs), len(rs)],
+                 'unknowns': rs[0].get('orbits', rs[0].get('fb_size')),
+                 'relations_mean': float(np.mean([r['relations'] for r in rs])),
+                 'gb_calls_mean': float(np.mean([r['gb_calls'] for r in rs])),
+                 'gb_ms_per_call': float(1000 * np.sum([r['gb_cpu_s'] for r in rs]) / np.sum([r['gb_calls'] for r in rs])),
+                 'total_cpu_s_mean': float(cpu.mean()), 'total_cpu_s_median': float(np.median(cpu))}
+        if v != 'base':
+            base = np.array([by['base'][i]['total_cpu_s'] for i in common])
+            ratio = base / cpu
+            rng = np.random.default_rng(2)
+            boot = [np.mean(rng.choice(ratio, len(ratio))) for _ in range(20000)]
+            entry['speedup_vs_base_mean'] = float(ratio.mean())
+            entry['speedup_ci95'] = [float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))]
+            entry['wilcoxon_p'] = float(stats.wilcoxon(base, cpu).pvalue)
+            entry['targets_mean'] = float(np.mean([r['targets'] for r in rs]))
+            entry['v_points'] = rs[0]['v_points']
+        res['variants'][v] = entry
+    out['tau'] = res
+
+    fig, ax = plt.subplots(1, 2, figsize=(15, 4.8))
+    unk = lambda v: res['variants'].get(v, {}).get('unknowns', 0)
+    names = {'base': 'baseline subspace\nGröbner · %d unknowns' % unk('base'),
+             'tau6': "τ orbits, k' = 6\nGröbner · %d unknowns" % unk('tau6'),
+             'tau7': "τ orbits, k' = 7\nGröbner · %d unknowns" % unk('tau7'),
+             'nb3sat': 'normal basis, wt ≤ 3\nSAT · %d unknowns' % unk('nb3sat')}
+    cols = {'base': DESC_COLOR, 'tau6': E0_COLOR, 'tau7': '#8C3A22', 'nb3sat': '#6B5B95'}
+    a = ax[0]
+    for i, v in enumerate(variants):
+        y = [by[v][c]['total_cpu_s'] for c in common]
+        a.scatter(np.full(len(y), i) + np.linspace(-.12, .12, len(y)), y, s=22, color=cols[v])
+        a.hlines(np.mean(y), i - .25, i + .25, color='black', lw=1.5)
+    a.set_yscale('log')
+    a.set_xticks(range(len(variants)), [names[v] for v in variants], fontsize=9)
+    a.set_ylabel('CPU seconds per ECDLP (log scale)')
+    a.set_title('A  E0 end-to-end cost, same 10 scalars')
+    a = ax[1]
+    w = .38
+    xs = np.arange(len(variants))
+    a.bar(xs - w / 2, [res['variants'][v]['relations_mean'] for v in variants], w, color='#9AA7AE', label='relations collected')
+    a.bar(xs + w / 2, [res['variants'][v]['gb_calls_mean'] / 10 for v in variants], w, color='#3E4A52', label='solver calls / 10')
+    a.set_xticks(xs, [names[v] for v in variants], fontsize=9)
+    a.set_title('B  Relations needed and solver calls')
+    a.legend(frameon=False)
+    for x in ax:
+        x.spines[['top', 'right']].set_visible(False)
+        x.grid(alpha=.2, axis='y')
+    fig.tight_layout()
+    fig.savefig(os.path.join(HERE, 'figures', 'tau.png'), dpi=150)
+    plt.close(fig)
+
+
 def main():
     out = {}
     interleaved(load('interleave.jsonl'), out)
+    tauComparison(load('tau-*.jsonl'), out)
     byCurve = census(load('census-*.jsonl'), out, load('gbcpu-*.jsonl'))
     ecdlp(load('ecdlp-*.jsonl'), byCurve, out)
     with open(os.path.join(HERE, 'results', 'summary.json'), 'w') as f:

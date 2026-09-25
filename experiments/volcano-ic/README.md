@@ -60,3 +60,29 @@ Wall-clock and CPU timings on this shared machine drift with load, including P/E
 runs happened in their own time slot. Compare curves on attempt counts and on the interleaved test, not on raw
 seconds. `results/smoke-ecdlp-walltime.jsonl` holds the three wall-clock-only E0 smoke runs, which are not used in
 the analysis.
+
+## E0 with a τ-invariant factor base
+
+`tau.sage` and `nbsat.sage`, run with `sage run.sage taucmp <shard> <shards> [variant]`; results in `results/tau-*.jsonl`
+and `figures/tau.png`.
+
+E0 alone has the Frobenius endomorphism τ. On the prime subgroup it acts as λ, a root of λ² + λ + 2 mod p, so a factor base
+closed under τ needs one unknown per orbit. Same 10 scalars, CPU time, speedup paired by scalar:
+
+| E0 factor base | decomposition | unknowns | relations | solver calls | CPU s / ECDLP | vs baseline |
+|---|---|---:|---:|---:|---:|---:|
+| x in V, dim 10 (baseline) | Gröbner | 494 | 504 | 827 | 444 | 1× |
+| τ-orbits of x in V', dim 6 | Gröbner, 19 shifts | 29 | 39 | 5434 | 70 | 6.85× (5.70–8.02) |
+| τ-orbits of x in V', dim 7 | Gröbner, 19 shifts | 54 | 64 | 2664 | 72 | 6.26× (5.86–6.70) |
+| normal-basis weight ≤ 3 | CryptoMiniSat | 35 | 45 | 48 | 668 | 0.68× (0.62–0.74) |
+
+All 40 logs are verified.
+
+- **Weight-≤ 3 normal basis:** the textbook τ-invariant base (665 points, 35 orbits). No 38-variable PolyBoRi solve finished
+  within 15 minutes. With SAT (XOR clauses for the descended equations, sequential-counter weight bounds, stop at the first
+  lifting model) it works, but each call costs about 14 CPU s, dominated by UNSAT proofs.
+- **Orbit-closure bases:** F = {τ^j P : x(P) in V'} works with Gröbner bases. Squaring is F2-linear, so
+  R = P1 ± τ^j P2 is a 2k'-variable quadratic system for each shift j.
+
+Timing windows: the τ runs and 4 baseline runs shared one window. The other 6 baseline runs and all SAT runs ran later,
+after the external drive dropped out and remounted.
