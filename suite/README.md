@@ -16,7 +16,7 @@ depend on the suite.
 
 ```sh
 cargo build --release                 # crax, ca-suite, ca-ic, ca-icx, ca-curves, ca-koblitz-pdp-prepare
-cargo test --release                  # 2761 unit + 65 integration tests, ~6 min on 4 cores
+cargo test --release                  # 2867 unit + 65 integration tests, ~10 min on 4 cores
 ./target/release/crax --help         # the unified command line: docs/CRAX.md
 ```
 
