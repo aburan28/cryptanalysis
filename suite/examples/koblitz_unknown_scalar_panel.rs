@@ -543,6 +543,7 @@ fn run_ic(profile: Profile, target_id: &str, x: &str, y: &str, seed: u64) -> Res
         wdsat_binary: None,
         wdsat_timeout_ms: 5_000,
         linear_algebra: LinearAlgebra::Dense,
+        f4_batch: None,
     };
     let solve_started = Instant::now();
     let report = koblitz_index_calculus_dlp_with_factor_base_and_progress(

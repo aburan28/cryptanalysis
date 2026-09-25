@@ -66,6 +66,7 @@ fn fingerprint() -> &'static str {
             include_str!("algebra_cache.rs"),
             include_str!("polynomial_reuse.rs"),
             include_str!("koblitz_groebner.rs"),
+            include_str!("f4_gf2.rs"),
             include_str!("pq_groebner_f2.rs"),
         ] {
             h.update(source.as_bytes());

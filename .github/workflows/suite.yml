@@ -58,6 +58,13 @@ jobs:
         # Release, as the suite's own convention: the attacks are arithmetic
         # over num-bigint and the unit tests take ten times longer unoptimised.
         run: cargo test --release
+      - name: GPU F4 kernel on the host emulator
+        # The CUDA kernel's own source (cuda/f4_gf2_device.cuh), compiled as
+        # C and held to the host kernel's decisions, caps and F5 rows, then
+        # driving lockstep searches.  No device and no CUDA toolkit needed.
+        run: |
+          cargo clippy --all-targets --features gpu-emulator -- -D warnings
+          cargo test --release --lib --features gpu-emulator -- f4_gpu f4_batch f4_gf2
       - name: Every binary answers --help
         run: |
           for bin in ca-suite ca-ic ca-koblitz-pdp-prepare; do
@@ -77,6 +84,42 @@ jobs:
             | python3 -c 'import json,sys; r=json.load(sys.stdin)["result"]; assert r["verified"] is True, r'
           ./target/release/ca-ic prime --curve secp256k1 --bits 20 --targets 4 --json \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["status"] == "complete" and r["vs_rho"]["verdict"]["all_verified"] is True, r["status"]'
+
+  f4-kernel:
+    # The batched F4 kernel compiled for sm_75 through sm_120 with the pinned
+    # CUDA 13.3 nvcc from NVIDIA's pip wheels, failing on spills, and the
+    # same source through NVRTC, which is what the CUDA backend runs.  No
+    # runner has a GPU: this says the kernel builds and what it costs, not
+    # how fast it is.  The emulator step of `rust` checks its answers.
+    name: F4 kernel compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ecc2k130/build/cuda
+          key: cuda-wheels-${{ hashFiles('ecc2k130/scripts/fetch_cuda.sh') }}
+      - name: Fetch CUDA 13.3
+        working-directory: .
+        run: echo "NVCC=$(ecc2k130/scripts/fetch_cuda.sh)/bin/nvcc" >> "$GITHUB_ENV"
+      - name: Compile for every generation and report
+        working-directory: .
+        run: suite/cuda/build_kernel.sh "$NVCC"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: suite
+      - name: NVRTC accepts the embedded source
+        working-directory: suite
+        run: |
+          pip download -q --no-deps -d /tmp/nvrtc nvidia-cuda-nvrtc-cu12
+          unzip -q -o /tmp/nvrtc/*.whl -d /tmp/nvrtc/x
+          lib=$(find /tmp/nvrtc/x -name 'libnvrtc.so.12' | head -1)
+          CA_NVRTC_LIB="$lib" cargo test --release --lib nvrtc_compiles -- --nocapture
 
   rust-msrv:
     # The floor declared in suite/Cargo.toml, re-checked here so that it
