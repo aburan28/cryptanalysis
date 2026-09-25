@@ -74,7 +74,7 @@ pub struct EcdlpArgs {
     /// Target Q as x,y.
     #[arg(long)]
     pub q: Option<String>,
-    /// Plant Q = [x] G instead of giving --q.
+    /// Plant Q = x·G instead of giving --q.
     #[arg(long, conflicts_with = "q")]
     pub x: Option<String>,
     #[arg(long, value_enum, default_value_t = Method::Auto)]
