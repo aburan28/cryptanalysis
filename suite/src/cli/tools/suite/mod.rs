@@ -10,11 +10,11 @@
 
 mod cli_mlwe;
 
-use clap::{Parser, Subcommand};
 use crate::{
     ecc::point::Point,
     utils::encoding::{from_hex, to_hex},
 };
+use clap::{Parser, Subcommand};
 use num_bigint::BigUint;
 
 #[derive(Parser)]
@@ -437,9 +437,7 @@ where
 
 fn run(op: Cmd) {
     use crate::cryptanalysis::auto_attack::{auto_attack_with, AutoAttackOptions};
-    use crate::cryptanalysis::boomerang::{
-        boomerang_distinguisher, rectangle_attack,
-    };
+    use crate::cryptanalysis::boomerang::{boomerang_distinguisher, rectangle_attack};
     use crate::cryptanalysis::cipher_registry::{list_ciphers, RegisteredCipher};
     use crate::cryptanalysis::research_bench::run_full_bench;
     match op {

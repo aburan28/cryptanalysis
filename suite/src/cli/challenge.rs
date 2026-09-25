@@ -70,6 +70,12 @@ pub enum Method {
     Glv,
     /// Plain rho with the negation map (C library, p < 2^64).
     Rho,
+    /// Smart's p-adic attack on an anomalous curve (#E = p), any size.
+    Smart,
+    /// MOV / Frey-Rück transfer to F_{p^k}^* with a Tate pairing, any size.
+    Mov,
+    /// Arbitrary-precision Pohlig-Hellman with BSGS / rho, any size.
+    Structural,
 }
 
 #[derive(Args, Clone, Debug)]
@@ -266,91 +272,10 @@ fn embedding_degree(p: &BigUint, n: &BigUint, bound: u64) -> Option<u64> {
     None
 }
 
-/// Trial division, Miller-Rabin and Pollard-Brent rho: enough for the
-/// corpus's subgroup orders (a large prime is recognised, not trial-divided).
+/// Factor a subgroup order: trial division, Miller-Rabin and a budgeted
+/// Pollard-Brent rho (an unsplit cofactor is kept whole, never guessed).
 pub fn factor(n: &BigUint) -> Vec<(BigUint, u32)> {
-    use crate::asymmetric::rsa::is_prime;
-    let mut out: Vec<(BigUint, u32)> = Vec::new();
-    let push =
-        |q: BigUint, out: &mut Vec<(BigUint, u32)>| match out.iter_mut().find(|(p, _)| *p == q) {
-            Some((_, e)) => *e += 1,
-            None => out.push((q, 1)),
-        };
-    let mut m = n.clone();
-    if m.is_zero() {
-        return out;
-    }
-    for p in 2u32..10_000 {
-        let bp = BigUint::from(p);
-        while (&m % &bp).is_zero() {
-            m /= &bp;
-            push(bp.clone(), &mut out);
-        }
-    }
-    let mut stack = vec![m];
-    while let Some(c) = stack.pop() {
-        if c.is_one() {
-            continue;
-        }
-        if is_prime(&c) {
-            push(c, &mut out);
-            continue;
-        }
-        let d = brent(&c);
-        stack.push(&c / &d);
-        stack.push(d);
-    }
-    out.sort();
-    out
-}
-
-/// A non-trivial factor of the odd composite `n` (Pollard-Brent rho).
-fn brent(n: &BigUint) -> BigUint {
-    use num_integer::Integer;
-    for c in 1u32.. {
-        let c = BigUint::from(c);
-        let f = |x: &BigUint| (x * x + &c) % n;
-        let (mut y, mut r, mut q) = (BigUint::from(2u32), 1u64, BigUint::one());
-        let (mut x, mut ys, mut g);
-        loop {
-            x = y.clone();
-            for _ in 0..r {
-                y = f(&y);
-            }
-            let mut k = 0;
-            loop {
-                ys = y.clone();
-                for _ in 0..r.saturating_sub(k).min(128) {
-                    y = f(&y);
-                    let diff = if x > y { &x - &y } else { &y - &x };
-                    q = (q * diff) % n;
-                }
-                g = q.gcd(n);
-                k += 128;
-                if k >= r || !g.is_one() {
-                    break;
-                }
-            }
-            r *= 2;
-            if !g.is_one() {
-                break;
-            }
-        }
-        if &g == n {
-            loop {
-                ys = f(&ys);
-                let diff = if x > ys { &x - &ys } else { &ys - &x };
-                g = diff.gcd(n);
-                if !g.is_one() {
-                    break;
-                }
-            }
-        }
-        if &g != n {
-            return g;
-        }
-    }
-    unreachable!("a composite always has a rho factor for some c")
+    crate::cryptanalysis::weak_curves::factor_order(n)
 }
 
 fn analyse(rec: &Value, ch: &PrimeFieldChallenge) -> Analysis {
@@ -416,8 +341,15 @@ fn solve(out: Out, root: &std::path::Path, a: &SolveArgs) -> CmdResult {
     let mut notes = Vec::new();
 
     let small = ch.p.bits() <= 64 && ch.subgroup_order.bits() <= 64;
+    // The structural attacks run at any size; the C solvers below need
+    // p < 2^64 and are generic.  An anomalous curve always goes to Smart.
+    let structural = matches!(a.method, Method::Smart | Method::Mov | Method::Structural)
+        || (a.method == Method::Auto && (!small || analysis.anomalous));
+    if structural {
+        return solve_structural(out, &rec, &ch, analysis, tier, a);
+    }
     let method = match a.method {
-        Method::Auto if small && analysis.endomorphism.as_deref().is_some_and(is_glv) => {
+        Method::Auto if analysis.endomorphism.as_deref().is_some_and(is_glv) => {
             if ch.subgroup_order.bits() >= 2 && analysis.subgroup_factors.len() == 1 {
                 Method::Glv
             } else {
@@ -427,25 +359,22 @@ fn solve(out: Out, root: &std::path::Path, a: &SolveArgs) -> CmdResult {
         Method::Auto => Method::PohligHellman,
         m => m,
     };
+    if !small {
+        return Err(format!(
+            "{}: {}-bit field; --method {method:?} runs on the 64-bit C library (use \
+             --method auto or structural for arbitrary precision)",
+            a.id, analysis.field_bits
+        )
+        .into());
+    }
     // Generic methods cost about sqrt(largest prime factor) group operations.
     let log2_cost = analysis.largest_prime_bits.div_ceil(2);
     if log2_cost > u64::from(a.max_log2_ops) {
         return Err(format!(
             "{}: the largest prime factor of the subgroup order has {} bits, so a generic \
              method needs about 2^{log2_cost} group operations (limit 2^{}; raise it with \
-             --max-log2-ops). Structural checks: anomalous={}, embedding degree={:?}.",
-            a.id,
-            analysis.largest_prime_bits,
-            a.max_log2_ops,
-            analysis.anomalous,
-            analysis.embedding_degree
-        )
-        .into());
-    }
-    if !small {
-        return Err(format!(
-            "{}: {}-bit field; the generic solvers here need p < 2^64",
-            a.id, analysis.field_bits
+             --max-log2-ops)",
+            a.id, analysis.largest_prime_bits, a.max_log2_ops
         )
         .into());
     }
@@ -516,9 +445,131 @@ fn solve_small(
             .map(|(x, _, st)| (x, st))
             .map_err(|e| format!("glv: {e}"))?,
         Method::Rho => group.rho(&g, &h, &opts).map_err(|e| format!("rho: {e}"))?,
-        Method::PohligHellman | Method::Auto => group
-            .dlog(&g, &h, &opts)
-            .map_err(|e| format!("pohlig-hellman: {e}"))?,
+        Method::PohligHellman | Method::Auto | Method::Smart | Method::Mov | Method::Structural => {
+            group
+                .dlog(&g, &h, &opts)
+                .map_err(|e| format!("pohlig-hellman: {e}"))?
+        }
     };
     Ok((BigUint::from(x), st.group_ops))
+}
+
+/// Any size: analyse and attack with [`crate::cryptanalysis::weak_curves`].
+fn solve_structural(
+    out: Out,
+    rec: &Value,
+    ch: &PrimeFieldChallenge,
+    analysis: Analysis,
+    tier: String,
+    a: &SolveArgs,
+) -> CmdResult {
+    use crate::cryptanalysis::weak_curves::{self, AttackOptions, Method as W};
+    let t0 = std::time::Instant::now();
+    let (gx, gy) = match &ch.generator {
+        Point::Affine { x, y } => (x.value.clone(), y.value.clone()),
+        Point::Infinity => return Err("the record's generator is the point at infinity".into()),
+    };
+    let curve = crate::ecc::curve::CurveParams {
+        name: "challenge",
+        p: ch.p.clone(),
+        a: ch.a.clone(),
+        b: ch.b.clone(),
+        gx,
+        gy,
+        n: ch.subgroup_order.clone(),
+        h: u32::try_from(&ch.cofactor).unwrap_or(0),
+    };
+    let curve_order = rec["group_order"]
+        .as_str()
+        .map(|s| {
+            let t = s.trim_start_matches("0x");
+            BigUint::parse_bytes(t.as_bytes(), 16)
+        })
+        .unwrap_or(None);
+    let mut opts = AttackOptions {
+        force: match a.method {
+            Method::Smart => Some(W::Smart),
+            Method::Mov => Some(W::Mov),
+            Method::Structural => Some(W::PohligHellman),
+            _ => None,
+        },
+        curve_order,
+        max_log2_ops: f64::from(a.max_log2_ops),
+        ..AttackOptions::default()
+    };
+    opts.solver.seed = a.seed;
+    let mut notes = Vec::new();
+    let result =
+        weak_curves::attack_with(&curve, &ch.generator, &ch.target, &ch.subgroup_order, &opts);
+    let (x, method, verified) = match result {
+        Ok(o) => {
+            let v = o.verified && verify(ch, &o.scalar);
+            (Some(o.scalar), format!("{:?}", o.method), v)
+        }
+        Err(e) => {
+            let r = weak_curves::analyze_with(
+                &curve,
+                &ch.generator,
+                &ch.target,
+                &ch.subgroup_order,
+                &opts,
+            );
+            for c in &r.checks {
+                notes.push(format!(
+                    "{:?}: {} — {}",
+                    c.method,
+                    if c.applicable {
+                        "applies"
+                    } else {
+                        "does not apply"
+                    },
+                    c.explanation
+                ));
+            }
+            notes.push(e.to_string());
+            (None, "none".to_string(), false)
+        }
+    };
+    let matches_known_log = match (&x, &ch.known_log) {
+        (Some(x), Some(k)) => {
+            let af = ch.a_fe();
+            Some(ch.generator.scalar_mul(k, &af) == ch.generator.scalar_mul(x, &af))
+        }
+        _ => None,
+    };
+    if tier == "open" && verified {
+        notes.push("open tier: no stored answer; the scalar multiplication is the check".into());
+    }
+    let solved = x.is_some();
+    let report = SolveReport {
+        status: match (solved, verified) {
+            (true, true) => "ok",
+            (true, false) => "unverified",
+            _ => "not_solved",
+        },
+        id: a.id.clone(),
+        tier,
+        method,
+        analysis,
+        x: x.map(|x| x.to_string()),
+        verified,
+        matches_known_log,
+        seconds: t0.elapsed().as_secs_f64(),
+        group_ops: None,
+        notes,
+    };
+    out.emit(&report, || report.text())?;
+    match (solved, verified, matches_known_log) {
+        (true, true, Some(false)) => Err(Failure::reported(
+            "verified answer differs from the stored log",
+        )),
+        (true, true, _) => Ok(()),
+        (true, false, _) => Err(Failure::reported(
+            "the answer does not satisfy [x]G = target",
+        )),
+        _ => Err(Failure::reported(format!(
+            "{}: no applicable attack within the limits (see the notes)",
+            a.id
+        ))),
+    }
 }

@@ -34,9 +34,7 @@ use crate::cryptanalysis::ic_framework::solvers::{
 use crate::cryptanalysis::ic_framework::stages::{
     DecompositionOracle, FactorBaseBuilder, InstanceCtx, Params, Targets,
 };
-use crate::cryptanalysis::ic_framework::{
-    format_markdown, run_pipeline, PipelineSpec, RunReport,
-};
+use crate::cryptanalysis::ic_framework::{format_markdown, run_pipeline, PipelineSpec, RunReport};
 
 #[derive(Args, Clone)]
 pub struct BenchArgs {
@@ -222,9 +220,7 @@ fn calibration_for_binary(inst: &BinaryInstance, regime: &str) -> (Calibration, 
     (calib, pins)
 }
 
-fn sample_prime_points(
-    inst: &PrimeInstance,
-) -> Vec<crate::cryptanalysis::ic_boundary::PrimePoint> {
+fn sample_prime_points(inst: &PrimeInstance) -> Vec<crate::cryptanalysis::ic_boundary::PrimePoint> {
     let g = inst.generator_point();
     let mut ops = GroupOps::default();
     (1..=8u64).map(|k| inst.curve.mul(&mut ops, g, k)).collect()

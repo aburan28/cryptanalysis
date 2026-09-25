@@ -27,7 +27,6 @@
 //!   for cross-validation on prime-order curves up to 24 bits.
 
 use super::{experiment, params};
-use clap::{Args, ValueEnum};
 use crate::cryptanalysis::bsgs_fast::FastPoint;
 use crate::cryptanalysis::ec_index_calculus_curves::{
     endomorphism_facts, solve_scaled_instance, CurveKind, EndomorphismFacts, PrimeIcOptions,
@@ -38,6 +37,7 @@ use crate::cryptanalysis::prime_orbit_index_calculus::{
     OrbitIcOptions, OrbitIcReport, ScaledShape, MIN_FIELD_BITS,
 };
 use crate::ecc::{curve::CurveParams, point::Point};
+use clap::{Args, ValueEnum};
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use serde_json::{json, Value};

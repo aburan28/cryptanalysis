@@ -46,7 +46,6 @@ use super::experiment::{
     self, log_table_from_doc, log_table_to_doc, FactorBaseDocument, LinearAlgebraMode,
     LogTableDocument, Solver,
 };
-use clap::{Args, ValueEnum};
 use crate::binary_ecc::{BinaryPoint, F2mElement};
 use crate::cryptanalysis::koblitz_factor_base_search::{
     search, Candidate, FactorBaseSpec, Family, SearchOptions,
@@ -58,6 +57,7 @@ use crate::cryptanalysis::koblitz_index_calculus::{
     KoblitzSignedRhoOptions, PairSumTable, ProbeBudget, RelationCollector, RelationWorkUnit,
 };
 use crate::cryptanalysis::koblitz_sparse_la::SparseSolveOptions;
+use clap::{Args, ValueEnum};
 use num_bigint::BigUint;
 use num_traits::Zero;
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -1181,9 +1181,7 @@ pub fn run(args: WorkflowArgs, quiet: bool) -> Result<Value, String> {
         report["selection_cost"] = json!(cost);
     }
     let columns =
-        crate::cryptanalysis::koblitz_index_calculus::projected_signed_orbit_count(
-            &c, &fb,
-        );
+        crate::cryptanalysis::koblitz_index_calculus::projected_signed_orbit_count(&c, &fb);
     if let Some(window) = p.collection_window {
         if window as usize >= fb.points.len() {
             return Err(format!(

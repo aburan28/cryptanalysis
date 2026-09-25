@@ -86,7 +86,7 @@ pub struct ZpReport {
 pub fn solve_zp(a: &ZpArgs) -> Result<ZpReport, String> {
     let p = parse_u64(&a.p)?;
     if !(3..1 << 63).contains(&p) || !libca::is_prime(p) {
-        return Err(format!("--p must be an odd prime below 2^63, got {p}").into());
+        return Err(format!("--p must be an odd prime below 2^63, got {p}"));
     }
     let g = match &a.g {
         Some(s) => parse_u64(s)? % p,
@@ -153,7 +153,9 @@ pub fn run_zp(out: Out, a: &ZpArgs) -> CmdResult {
     if r.verified {
         Ok(())
     } else {
-        Err(Failure::reported("ic zp: the answer does not satisfy g^x = h"))
+        Err(Failure::reported(
+            "ic zp: the answer does not satisfy g^x = h",
+        ))
     }
 }
 

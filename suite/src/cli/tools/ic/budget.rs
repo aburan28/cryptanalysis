@@ -10,8 +10,8 @@
 //! [`cryptanalysis::index_calculus_budget`](crate::cryptanalysis::index_calculus_budget);
 //! this module only turns it into arguments and a report.
 
-use clap::Args;
 use crate::cryptanalysis::index_calculus_budget as budget;
+use clap::Args;
 use serde_json::{json, Value};
 use std::time::Instant;
 

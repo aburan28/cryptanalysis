@@ -4,8 +4,8 @@
 //!
 //!     ic corpus --degree 19 --dimension 6 --sat 5 --unsat 5 --dir corpus/n19l6
 
-use clap::Args;
 use crate::cryptanalysis::ic_corpus::{generate, write_corpus, CorpusConfig};
+use clap::Args;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 

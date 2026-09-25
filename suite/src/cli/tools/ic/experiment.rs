@@ -1,6 +1,5 @@
 //! Bounded experiments on internally generated, known-answer toy instances.
 use super::params::{self, Field, Fixture, Parameters};
-use clap::{Args, ValueEnum};
 use crate::binary_ecc::{BinaryPoint, F2mElement};
 use crate::cryptanalysis::koblitz_factor_base_search::{
     search_with_progress, Candidate, FactorBaseSpec, Family, SearchOptions, SearchReport,
@@ -12,9 +11,8 @@ use crate::cryptanalysis::koblitz_index_calculus::{
     FrobeniusFactorBase, KoblitzCurve, KoblitzIcEvent, KoblitzIcOptions, LinearAlgebra,
     LogTableReport, SharedDecider, MAX_N, MAX_SUBFIELD_DEGREE,
 };
-use crate::cryptanalysis::koblitz_sparse_la::{
-    BlockWiedemannOptions, SparseSolveOptions,
-};
+use crate::cryptanalysis::koblitz_sparse_la::{BlockWiedemannOptions, SparseSolveOptions};
+use clap::{Args, ValueEnum};
 use num_bigint::BigUint;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};

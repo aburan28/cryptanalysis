@@ -17,6 +17,7 @@
 pub mod challenge;
 pub mod curve;
 pub mod dlog;
+pub mod ecdlp;
 pub mod ic;
 pub mod output;
 pub mod tools;
@@ -31,6 +32,7 @@ use output::{CmdResult, Out};
 const OVERVIEW: &str = "\
 Attacks by family:
   discrete logs (generic)   bsgs, rho, kangaroo, grumpy, precomp, glv, pohlig-hellman, cheon, gpu-rho
+  weak curves (any size)    ecdlp (singular, Smart anomalous, Pohlig-Hellman, MOV/Frey-Rueck)
   index calculus            ic (zp, prime, run, compare, fixed, workflow, boundary, bench, rho, ...), icx
   symmetric & hash          list-ciphers, auto, boomerang, rectangle, sbox, aes-related-key, hash-auto, length-extension
   lattice & post-quantum    mlwe
@@ -78,6 +80,9 @@ pub enum Command {
     PohligHellman(dlog::PohligArgs),
     /// Cheon's attack on the strong Diffie-Hellman problem.
     Cheon(dlog::CheonArgs),
+    /// ECDLP on prime-field curves of any size: analyse, then the cheapest
+    /// structural attack (singular, Smart, Pohlig-Hellman, MOV).
+    Ecdlp(ecdlp::EcdlpArgs),
     /// Pollard rho on the GPU kernel (CUDA, or its host emulator).
     GpuRho(dlog::GpuRhoArgs),
     /// Curve registry and structure.
@@ -90,7 +95,10 @@ pub enum Command {
 /// `crax ic zp`, parsed by `crax` itself so that it prints like the other
 /// generic solvers.
 #[derive(Parser, Debug)]
-#[command(name = "crax ic zp", about = "Discrete logs in (Z/pZ)^* by the linear sieve (p < 2^63)")]
+#[command(
+    name = "crax ic zp",
+    about = "Discrete logs in (Z/pZ)^* by the linear sieve (p < 2^63)"
+)]
 struct IcZpCli {
     /// Print one JSON object instead of text.
     #[arg(long)]
@@ -129,7 +137,10 @@ pub fn command() -> clap::Command {
     // crax's own subcommands first, in declaration order; the research
     // command lines after them.
     let mut cmd = Cli::command();
-    let own: Vec<String> = cmd.get_subcommands().map(|c| c.get_name().to_string()).collect();
+    let own: Vec<String> = cmd
+        .get_subcommands()
+        .map(|c| c.get_name().to_string())
+        .collect();
     for (i, name) in own.iter().enumerate() {
         cmd = cmd.mut_subcommand(name, |c| c.display_order(i));
     }
@@ -180,6 +191,7 @@ pub fn run(out: Out, cmd: Command) -> CmdResult {
         Command::Glv(a) => dlog::run_glv(out, &a),
         Command::PohligHellman(a) => dlog::run_pohlig(out, &a),
         Command::Cheon(a) => dlog::run_cheon(out, &a),
+        Command::Ecdlp(a) => ecdlp::run(out, &a),
         Command::GpuRho(a) => dlog::run_gpu_rho(out, &a),
         Command::Curve(c) => curve::run(out, &c),
         Command::Challenge(a) => challenge::run(out, &a),
@@ -202,7 +214,11 @@ where
     // A leading --json belongs to crax; the research tools take theirs after
     // the subcommand, so move it there.
     let lead_json = args.get(1).is_some_and(|a| a == "--json");
-    let rest: Vec<OsString> = args.iter().skip(if lead_json { 2 } else { 1 }).cloned().collect();
+    let rest: Vec<OsString> = args
+        .iter()
+        .skip(if lead_json { 2 } else { 1 })
+        .cloned()
+        .collect();
     let sub = rest.first().and_then(|a| a.to_str()).unwrap_or("");
     if let Some(tool) = tool_for(sub) {
         let is_zp = matches!(tool, Tool::Ic) && rest.get(1).is_some_and(|a| a == "zp");
@@ -229,7 +245,10 @@ where
             argv.push("--json".into());
         }
         let z = IcZpCli::parse_from(argv);
-        return finish(Out { json: z.json }, ic::run_zp(Out { json: z.json }, &z.args));
+        return finish(
+            Out { json: z.json },
+            ic::run_zp(Out { json: z.json }, &z.args),
+        );
     }
     let matches = command().get_matches_from(&args);
     let cli = match Cli::from_arg_matches(&matches) {

@@ -11,7 +11,6 @@
 //!     ic boundary --regime koblitz --koblitz-degrees 23,31 --repeats 2 --out ledger.json
 //!     ic boundary --out docs/ic/runs/ic-boundary-ledger-YYYY-MM-DD.json
 
-use clap::{Args, ValueEnum};
 use crate::cryptanalysis::ic_boundary::{
     fit_exponents, format_markdown, run_char2_ladder, run_koblitz_ladder, run_prime_ladder,
     BoundaryConfig, BoundaryLedger,
@@ -19,6 +18,7 @@ use crate::cryptanalysis::ic_boundary::{
 use crate::cryptanalysis::ic_oracle_pricing::{
     format_oracle_markdown, price_oracles, price_swaps, OraclePricingConfig,
 };
+use clap::{Args, ValueEnum};
 use serde_json::{json, Value};
 use std::time::Instant;
 
