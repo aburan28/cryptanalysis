@@ -24,7 +24,7 @@ mkdir -p "$JOB_DIR" "$JOB_WORKDIR"
 LOG="$JOB_DIR/log.txt"
 note() { echo "== $*" | tee -a "$LOG"; }
 
-if [[ -n "${JOB_SRC:-}" ]] && ! tar -xzf "$JOB_SRC" -C "$JOB_WORKDIR"; then
+if [[ -n "${JOB_SRC:-}" ]] && ! tar --no-same-owner -xzf "$JOB_SRC" -C "$JOB_WORKDIR"; then
   note "cannot unpack $JOB_SRC"
   exit 125
 fi

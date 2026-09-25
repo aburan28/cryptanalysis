@@ -94,7 +94,7 @@ if has sage; then
     mkdir -p "$OPT/micromamba"
     if [[ ! -x "$OPT/micromamba/bin/micromamba" ]]; then
       curl -fsSL https://micro.mamba.pm/api/micromamba/linux-64/latest |
-        tar -xj -C "$OPT/micromamba" bin/micromamba
+        tar --no-same-owner -xj -C "$OPT/micromamba" bin/micromamba
     fi
     MAMBA_ROOT_PREFIX="$OPT/mamba" "$OPT/micromamba/bin/micromamba" create -y -q \
       -p "$OPT/sage" -c conda-forge "sage=10.9" >"$FLEET/logs/sage-install.log" 2>&1 ||

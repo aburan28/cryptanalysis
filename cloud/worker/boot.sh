@@ -126,6 +126,9 @@ fi
 
 # ---- the Cursor CLI -------------------------------------------------------------
 export PATH="/root/.local/bin:$PATH"
+# A GPU pod's /workspace is a network filesystem that refuses chown, which
+# tar attempts when root unpacks an archive it did not create.
+export TAR_OPTIONS=--no-same-owner
 if ! command -v agent >/dev/null 2>&1; then
   log "installing the Cursor CLI"
   curl -fsS https://cursor.com/install | bash
@@ -163,6 +166,7 @@ export RUSTUP_HOME=/root/.rustup
 export MSOLVE=/workspace/opt/msolve/bin/msolve
 export CUDA13_HOME=/workspace/opt/cuda-13.3
 export PYTHONUNBUFFERED=1
+export TAR_OPTIONS=--no-same-owner
 case ":\$PATH:" in
   *:/workspace/venv/bin:*) ;;
   *) export PATH="/workspace/venv/bin:/root/.cargo/bin:/root/.local/bin:/workspace/opt/msolve/bin:\$PATH" ;;
