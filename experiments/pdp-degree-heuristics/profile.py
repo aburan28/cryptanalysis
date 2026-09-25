@@ -426,6 +426,7 @@ def summarize(cfg: dict, struct: dict, records: list[dict], wid: str, wrec: dict
             "algebraic_solutions": sum(r["solutions"] for r in ordinary),
             "solution_status": dict(sum((Counter(r["solution_status"]) for r in ordinary), Counter())),
             "planted": len(planted),
+            "planted_attempts": sum(1 for r in records if r["kind"] == "planted"),
             "split_checks_mean": mean(r.get("split_checks") for r in ordinary) if form != "direct" else None,
         },
         "degrees": {

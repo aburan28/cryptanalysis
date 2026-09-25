@@ -81,6 +81,31 @@ def cost_vs_l(rows: list[dict], out: Path, n: int, mode: str) -> None:
     plt.close(fig)
 
 
+def three_summands(cards: list[dict], out: Path, l: int = 3) -> None:
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3.8), sharey=True)
+    for ax, form, title in zip(axes, ("direct", "sym"), ("direct: unknowns x_i", "symmetric: unknowns e_k in V^(k)")):
+        per = defaultdict(lambda: defaultdict(list))
+        for c in cards:
+            cf = c["cell"].get("formulation", "direct")
+            if c["cell"]["m"] == 3 and c["cell"]["l"] == l and cf == form:
+                per[c["cell"]["family"]][c["cell"]["n"]].append(c["cost"]["mxl"]["ops_per_attempt_mean"])
+        for fam in H.FAMILY_ORDER:
+            if fam not in per:
+                continue
+            ns = sorted(per[fam])
+            ax.plot(ns, [H.geomean(per[fam][n]) for n in ns], "o-", color=COLORS.get(fam, "grey"), label=fam, ms=4)
+        ax.set_yscale("log")
+        ax.set_xlabel("field degree n")
+        ax.set_title(title, fontsize=10)
+        ax.grid(alpha=0.3, which="both")
+    axes[0].set_ylabel("word operations per PDP query (MXL)")
+    axes[1].legend(fontsize=7)
+    fig.suptitle(f"Three summands, l = {l}", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("results", nargs="+", type=Path)
@@ -94,6 +119,7 @@ def main() -> None:
     excess_vs_degree(rows_xl, args.outdir / "excess_vs_degree_m2_xl.png", "XL")
     for n in (23, 41):
         cost_vs_l(rows, args.outdir / f"cost_vs_l_n{n}_m2.png", n, "MXL")
+    three_summands(cards, args.outdir / "three_summands_l3.png")
     print("wrote", sorted(p.name for p in args.outdir.glob("*.png")))
 
 

@@ -31,7 +31,7 @@ import macaulay  # noqa: E402
 from factor_base import minimal_profile, product_profile, rank  # noqa: E402
 from profile import predictions  # noqa: E402
 
-FAMILY_ORDER = ["prefix", "geometric", "invariant", "normal", "kertrace", "random"]
+FAMILY_ORDER = ["prefix", "geometric", "geomtrace", "invariant", "normal", "kertrace", "random"]
 STRUCTURED = ("prefix", "geometric")
 
 
@@ -294,7 +294,7 @@ def matched_table(cells, form: str, m: int, mode: str, ns=None, ls=None) -> list
 
 def paired_summary(cells, form: str, mode: str) -> list[str]:
     """Structured (prefix, geometric) against random bases on the same workload."""
-    split_head = " mean splits/query structured → random |" if form == "sym" else ""
+    split_head = " cells where random needs more / fewer splits per query |" if form == "sym" else ""
     lines = [
         f"| m | cells | mean ΔD (random − structured) | ΔD > 0 | ΔD < 0 | ops/attempt ratio | ops/relation ratio | P(dec) ratio |{split_head}",
         "|--:|--:|--:|--:|--:|--:|--:|--:|" + ("---|" if form == "sym" else ""),
@@ -320,7 +320,9 @@ def paired_summary(cells, form: str, mode: str) -> list[str]:
                 ss.append(statistics.fmean(r["split_checks"] or 0 for r in s))
                 sr.append(statistics.fmean(r["split_checks"] or 0 for r in rnd))
         if dD:
-            split = f" {fmt(statistics.fmean(ss))} → {fmt(statistics.fmean(sr))} |" if form == "sym" else ""
+            more = sum(1 for a, b in zip(ss, sr) if b > a + 1e-9)
+            fewer = sum(1 for a, b in zip(ss, sr) if b < a - 1e-9)
+            split = f" {more} / {fewer} |" if form == "sym" else ""
             lines.append(
                 f"| {m} | {len(dD)} | {statistics.fmean(dD):+.2f} | {sum(1 for x in dD if x > 1e-9)} | {sum(1 for x in dD if x < -1e-9)} "
                 f"| {fmt(geomean(ratio))} | {fmt(geomean(rel))} | {fmt(geomean(yratio))} |{split}"
@@ -488,22 +490,43 @@ def sat_table(rows: list[dict]) -> list[str]:
 
 
 def collection_table(runs: list[dict]) -> list[str]:
-    lines = ["| n | m | l | family | seed | columns | attempts | yield observed (exact) | novel rows | ops/novel row | logs verified | at 50% rank: projected ± sd | actual remaining |",
-             "|--:|--:|--:|---|--:|--:|--:|--:|--:|--:|---|--:|--:|"]
+    lines = ["| n | m | l | family | seed | columns / achievable rank | attempts | yield observed (exact) | ops/novel row | at 50% rank: projected ± sd | actual remaining | descents verified (attempts) |",
+             "|--:|--:|--:|---|--:|--:|--:|--:|--:|--:|--:|---|"]
     for r in sorted(runs, key=lambda r: (r["cell"]["m"], r["cell"]["n"], r["cell"]["l"], r["cell"]["family"], r["cell"].get("workload_seed", 1))):
         c, mon = r["cell"], r["monitor"]
+        target = r.get("achievable_rank") or r["effective_columns"]
         snaps = r.get("snapshots", [])
-        half = next((s for s in snaps if s["rank"] >= r["effective_columns"] / 2 and s["projected_attempts"]), None)
+        half = next((s for s in snaps if s["rank"] >= target / 2 and s["projected_attempts"]), None)
         proj = "—"
         if half:
             proj = fmt(half["projected_attempts"]) + (f" ± {fmt(half['projected_sd'])}" if half.get("projected_sd") else "")
+        ds = r.get("descents", [])
+        desc = f"{sum(1 for d in ds if d['verified'])}/{len(ds)} ({', '.join(str(d['attempts']) for d in ds)})" if ds else "—"
+        if not r.get("collection_complete", True):
+            desc = f"incomplete at rank {r['final_rank']}"
         lines.append(
-            f"| {c['n']} | {c['m']} | {c['l']} | {c['family']} | {c.get('workload_seed', 1)} | {r['effective_columns']} | {mon['attempts']} "
-            f"| {fmt(mon['yield_per_attempt'])} ({fmt((r['exact_yield'] or {}).get('p_decomposable'))}) | {mon['novel_rows']} "
-            f"| {fmt(mon['ops_per_novel_row'])} | {r['factor_base_logs_verified']} "
-            f"| {proj} | {mon['attempts'] - half['attempt'] if half else '—'} |"
+            f"| {c['n']} | {c['m']} | {c['l']} | {c['family']} | {c.get('workload_seed', 1)} | {r['effective_columns']} / {target} | {mon['attempts']} "
+            f"| {fmt(mon['yield_per_attempt'])} ({fmt((r['exact_yield'] or {}).get('p_decomposable'))}) "
+            f"| {fmt(mon['ops_per_novel_row'])} | {proj} | {mon['attempts'] - half['attempt'] if half else '—'} | {desc} |"
         )
     return lines
+
+
+def projection_calibration(runs: list[dict]) -> list[str]:
+    """z = (actual remaining - projected) / sd for the projection made at half the target rank."""
+    zs = []
+    for r in runs:
+        target = r.get("achievable_rank") or r["effective_columns"]
+        half = next((s for s in r.get("snapshots", []) if s["rank"] >= target / 2 and s["projected_attempts"] and s.get("projected_sd")), None)
+        if half and r.get("collection_complete", True):
+            zs.append((r["monitor"]["attempts"] - half["attempt"] - half["projected_attempts"]) / half["projected_sd"])
+    if not zs:
+        return []
+    return [
+        "| runs with a projection sd | mean z | median z | abs(z) < 1 | abs(z) < 2 |",
+        "|--:|--:|--:|--:|--:|",
+        f"| {len(zs)} | {statistics.fmean(zs):+.2f} | {statistics.median(zs):+.2f} | {sum(1 for z in zs if abs(z) < 1)} | {sum(1 for z in zs if abs(z) < 2)} |",
+    ]
 
 
 def n131_table(rows: list[dict]) -> list[str]:
@@ -548,13 +571,14 @@ def build_report(cards: list[dict], runs: list[dict] | None = None) -> dict[str,
             for m in sorted({r["m"] for r in rows_by_mode[mode] if r["form"] == form}):
                 sections[f"MATCHED_{form.upper()}_M{m}_{mode.upper()}"] = matched_table(cells[mode], form, m, mode)
     if "mxl" in cells:
-        sections["SEL_M2"] = matched_table(cells["mxl"], "direct", 2, "mxl", ns=[23, 41], ls=[5, 6, 7, 8])
+        sections["SEL_M2"] = matched_table(cells["mxl"], "direct", 2, "mxl", ns=[23, 41], ls=[6, 7, 8])
         sections["SEL_M3"] = matched_table(cells["mxl"], "direct", 3, "mxl", ns=[31, 47], ls=[3, 4])
         if "sym" in forms:
-            sections["SEL_SYM_M2"] = matched_table(cells["mxl"], "sym", 2, "mxl", ns=[23, 41], ls=[5, 6, 7])
+            sections["SEL_SYM_M2"] = matched_table(cells["mxl"], "sym", 2, "mxl", ns=[19, 23], ls=[5, 6, 7])
             sections["SEL_SYM_M3"] = matched_table(cells["mxl"], "sym", 3, "mxl", ns=[23, 31, 47], ls=[3, 4])
     if runs:
         sections["COLLECT"] = collection_table(runs)
+        sections["COLLECT_CAL"] = projection_calibration(runs)
     return sections
 
 
