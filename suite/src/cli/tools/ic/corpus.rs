@@ -1,11 +1,11 @@
 //! `ic corpus`: write a benchmark corpus of Weil-descended Semaev `S₄`
 //! instances (Magma, DIMACS with XOR rows, plain CNF, ANF, INFO) with
-//! certified labels — see [`cryptanalysis_suite::cryptanalysis::ic_corpus`].
+//! certified labels — see [`crate::cryptanalysis::ic_corpus`].
 //!
 //!     ic corpus --degree 19 --dimension 6 --sat 5 --unsat 5 --dir corpus/n19l6
 
 use clap::Args;
-use cryptanalysis_suite::cryptanalysis::ic_corpus::{generate, write_corpus, CorpusConfig};
+use crate::cryptanalysis::ic_corpus::{generate, write_corpus, CorpusConfig};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 

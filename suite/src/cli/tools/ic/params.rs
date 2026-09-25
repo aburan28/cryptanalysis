@@ -1,5 +1,5 @@
 //! Read-only parameter inspection. This module never calls a DLP solver.
-use cryptanalysis_suite::{
+use crate::{
     binary_ecc::{curve::scalar_mul, BinaryCurve, BinaryPoint, F2mElement, IrreduciblePoly},
     ecc::{curve::CurveParams, field::FieldElement, point::Point},
 };

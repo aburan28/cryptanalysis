@@ -37,7 +37,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde_json::{json, Value};
 
-use cryptanalysis_suite::cryptanalysis::ic_boundary::{
+use crate::cryptanalysis::ic_boundary::{
     find_prime_order_curve, generic_floor_ops, generic_floor_s, koblitz_instance,
     koblitz_instance_best, prime_instance_for, random_binary_instance, rho_cap, rho_reference,
     rho_reference_walk, roster_prime_instance, signed_frobenius_rho, signed_frobenius_rho_batch,

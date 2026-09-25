@@ -18,26 +18,26 @@
 //! Two solvers:
 //!
 //! - `orbit` (default): the automorphism-orbit pipeline of
-//!   [`prime_orbit_index_calculus`](cryptanalysis_suite::cryptanalysis::prime_orbit_index_calculus)
+//!   [`prime_orbit_index_calculus`](crate::cryptanalysis::prime_orbit_index_calculus)
 //!   — one logarithm database, a descent per target, and the batched rho
 //!   baseline on each, compared in group operations in the three timing
 //!   classes of the binary `vs_rho` block.
 //! - `semaev`: the reference Semaev `S₃` solvers of
-//!   [`ec_index_calculus_curves`](cryptanalysis_suite::cryptanalysis::ec_index_calculus_curves),
+//!   [`ec_index_calculus_curves`](crate::cryptanalysis::ec_index_calculus_curves),
 //!   for cross-validation on prime-order curves up to 24 bits.
 
 use super::{experiment, params};
 use clap::{Args, ValueEnum};
-use cryptanalysis_suite::cryptanalysis::bsgs_fast::FastPoint;
-use cryptanalysis_suite::cryptanalysis::ec_index_calculus_curves::{
+use crate::cryptanalysis::bsgs_fast::FastPoint;
+use crate::cryptanalysis::ec_index_calculus_curves::{
     endomorphism_facts, solve_scaled_instance, CurveKind, EndomorphismFacts, PrimeIcOptions,
     SolverRun, MAX_SEMAEV_BITS,
 };
-use cryptanalysis_suite::cryptanalysis::prime_orbit_index_calculus::{
+use crate::cryptanalysis::prime_orbit_index_calculus::{
     base_orbits, generate_instance, run_known_answer, BaseSizing, Coefficient, GeneratedInstance,
     OrbitIcOptions, OrbitIcReport, ScaledShape, MIN_FIELD_BITS,
 };
-use cryptanalysis_suite::ecc::{curve::CurveParams, point::Point};
+use crate::ecc::{curve::CurveParams, point::Point};
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use serde_json::{json, Value};

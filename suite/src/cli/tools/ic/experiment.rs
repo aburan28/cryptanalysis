@@ -1,18 +1,18 @@
 //! Bounded experiments on internally generated, known-answer toy instances.
 use super::params::{self, Field, Fixture, Parameters};
 use clap::{Args, ValueEnum};
-use cryptanalysis_suite::binary_ecc::{BinaryPoint, F2mElement};
-use cryptanalysis_suite::cryptanalysis::koblitz_factor_base_search::{
+use crate::binary_ecc::{BinaryPoint, F2mElement};
+use crate::cryptanalysis::koblitz_factor_base_search::{
     search_with_progress, Candidate, FactorBaseSpec, Family, SearchOptions, SearchReport,
 };
-use cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::{
+use crate::cryptanalysis::koblitz_index_calculus::{
     build_subgroup_orbit_factor_base_with_cost, factor_x_n_minus_1, individual_log,
     koblitz_index_calculus_dlp_with_factor_base_and_progress, order_of_2_mod_n,
     solve_factor_base_logs, DecompositionStrategy, FactorBaseLogTable, FactorBaseSelectionCost,
     FrobeniusFactorBase, KoblitzCurve, KoblitzIcEvent, KoblitzIcOptions, LinearAlgebra,
     LogTableReport, SharedDecider, MAX_N, MAX_SUBFIELD_DEGREE,
 };
-use cryptanalysis_suite::cryptanalysis::koblitz_sparse_la::{
+use crate::cryptanalysis::koblitz_sparse_la::{
     BlockWiedemannOptions, SparseSolveOptions,
 };
 use num_bigint::BigUint;
@@ -774,7 +774,7 @@ pub fn solve(args: SolveArgs, quiet: bool) -> Result<Value, String> {
         Some((d, r)) => (Some(d), r),
         None => (
             None,
-            cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::IndividualLogReport::default(),
+            crate::cryptanalysis::koblitz_index_calculus::IndividualLogReport::default(),
         ),
     };
     let verified = recovered.as_ref() == Some(&k)
@@ -915,7 +915,7 @@ pub(crate) fn factor_base_json(
     columns: usize,
 ) -> Value {
     json!({"spec":spec,"family":spec.family(),
-        "domain":cryptanalysis_suite::cryptanalysis::koblitz_factor_base_search::domain_label(&fb.domain),
+        "domain":crate::cryptanalysis::koblitz_factor_base_search::domain_label(&fb.domain),
         "dimension":fb.ell,"abscissae":fb.subspace.len(),"points":fb.points.len(),
         "signed_orbits":fb.unknowns(),"columns":columns})
 }
@@ -1010,7 +1010,7 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
     }
     let f4_batch = match &args.f4_backend {
         Some(spec) => Some(SharedDecider::new(
-            cryptanalysis_suite::cryptanalysis::f4_gpu::decider_from_spec(spec)
+            crate::cryptanalysis::f4_gpu::decider_from_spec(spec)
                 .map_err(|e| format!("--f4-backend {spec}: {e}"))?,
         )),
         None => None,
@@ -1176,16 +1176,16 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
             "independent_relations":r.independent_relations,"dependent_relations":r.dependent_relations,
             "inconsistent_relations":r.inconsistent_relations,"verification_failures":r.verification_failures,
             "trials":r.trials,"batches":r.relation_batches,"pair_table_entries":r.pair_table_entries,
-            "algebra_cache_current_thread":cryptanalysis_suite::cryptanalysis::algebra_cache::stats(),
+            "algebra_cache_current_thread":crate::cryptanalysis::algebra_cache::stats(),
             "f4_reductions":r.reductions,
-            "f4_word_ops":cryptanalysis_suite::cryptanalysis::koblitz_groebner::f4_profile().word_ops,"sat_calls":r.sat_calls,"sat_unknowns":r.sat_unknowns,"sat_invalid_models":r.sat_invalid_models,
+            "f4_word_ops":crate::cryptanalysis::koblitz_groebner::f4_profile().word_ops,"sat_calls":r.sat_calls,"sat_unknowns":r.sat_unknowns,"sat_invalid_models":r.sat_invalid_models,
             "sat_conflicts":r.sat_conflicts,"linear_solve_attempts":r.linear_solve_attempts,"cofactor_admissible":r.m_cofactor_admissible},
         "timing_seconds":{"pair_table":r.pair_table_ns as f64/1e9,"relation_collection":r.relation_collection_ns as f64/1e9,
             "linear_algebra":r.linear_algebra_ns as f64/1e9},
         "f4_batch":{"backend":r.f4_batch_backend,"rounds":r.f4_batch_rounds,"requests":r.f4_batch_requests,
             "decide_seconds":r.f4_batch_decide_ns as f64/1e9,
-            "kernel":format!("{:?}",cryptanalysis_suite::cryptanalysis::koblitz_groebner::f4_kernel()),
-            "f5":cryptanalysis_suite::cryptanalysis::f4_gf2::default_options().f5},
+            "kernel":format!("{:?}",crate::cryptanalysis::koblitz_groebner::f4_kernel()),
+            "f5":crate::cryptanalysis::f4_gf2::default_options().f5},
         "attempt_dispositions":disposition_counts(&r.attempt_records),
         "elapsed_seconds":begin.elapsed().as_secs_f64(),"resources":resources(),
         "limitations":["No imported target was used.","This run does not establish scaling or challenge readiness."]}),
@@ -1194,7 +1194,7 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
 /// How every relation attempt ended, by disposition: the decomposition
 /// oracle's outcome mix, failed and budget-exhausted attempts included.
 fn disposition_counts(
-    records: &[cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::KoblitzRelationAttemptRecord],
+    records: &[crate::cryptanalysis::koblitz_index_calculus::KoblitzRelationAttemptRecord],
 ) -> Value {
     let mut counts = std::collections::BTreeMap::<String, usize>::new();
     for r in records {
@@ -1479,7 +1479,7 @@ pub fn search(args: SearchArgs, quiet: bool) -> Result<Value, String> {
         // the candidates measured later at a fraction of their cost.
         // Only a replayed *reduction* skips the counter: word_ops is added
         // inside matrix_f4_f2_counted, so a preprocessing hit still runs F4.
-        use cryptanalysis_suite::cryptanalysis::algebra_cache::{enabled, Layer};
+        use crate::cryptanalysis::algebra_cache::{enabled, Layer};
         if enabled(Layer::ExactReduction) {
             return Err(
                 "--solve-cost-targets cannot measure while replayed reductions report as free; \

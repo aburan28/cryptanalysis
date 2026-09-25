@@ -7,11 +7,11 @@
 //! degrees far past the 63 the curve constructors reach.
 //!
 //! The model lives in
-//! [`cryptanalysis::index_calculus_budget`](cryptanalysis_suite::cryptanalysis::index_calculus_budget);
+//! [`cryptanalysis::index_calculus_budget`](crate::cryptanalysis::index_calculus_budget);
 //! this module only turns it into arguments and a report.
 
 use clap::Args;
-use cryptanalysis_suite::cryptanalysis::index_calculus_budget as budget;
+use crate::cryptanalysis::index_calculus_budget as budget;
 use serde_json::{json, Value};
 use std::time::Instant;
 

@@ -17,14 +17,14 @@
 use clap::Args;
 use serde_json::{json, Value};
 
-use cryptanalysis_suite::cryptanalysis::ic_descent_degrees::{
+use crate::cryptanalysis::ic_descent_degrees::{
     format_engine_markdown, format_markdown, max_n_prime, price_descent_cell, price_engine_cell,
     semi_regular_degree, DescentCell, EngineCell,
 };
-use cryptanalysis_suite::cryptanalysis::ic_framework::solvers::{
+use crate::cryptanalysis::ic_framework::solvers::{
     solver_by_name, validate_solver_params,
 };
-use cryptanalysis_suite::cryptanalysis::ic_framework::stages::Params;
+use crate::cryptanalysis::ic_framework::stages::Params;
 
 #[derive(Args, Clone)]
 pub struct DescentArgs {

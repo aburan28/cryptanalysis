@@ -1,29 +1,29 @@
 //! `ca-suite mlwe …` — the command-line surface for
-//! [`cryptanalysis_suite::cryptanalysis::mlwe`] and the ML-KEM / ML-DSA
+//! [`crate::cryptanalysis::mlwe`] and the ML-KEM / ML-DSA
 //! implementation attacks.
 //!
 //! Every estimator, sieve and attack in those modules is reachable from here.
 //! Nothing prints a cost without also printing the model it was computed in.
 
 use clap::Subcommand;
-use cryptanalysis_suite::cryptanalysis::ml_dsa_fault;
-use cryptanalysis_suite::cryptanalysis::ml_dsa_leakage;
-use cryptanalysis_suite::cryptanalysis::ml_kem_pco;
-use cryptanalysis_suite::cryptanalysis::mlwe::cost::{BkzModel, Reps, SvpModel};
-use cryptanalysis_suite::cryptanalysis::mlwe::dual::{
+use crate::cryptanalysis::ml_dsa_fault;
+use crate::cryptanalysis::ml_dsa_leakage;
+use crate::cryptanalysis::ml_kem_pco;
+use crate::cryptanalysis::mlwe::cost::{BkzModel, Reps, SvpModel};
+use crate::cryptanalysis::mlwe::dual::{
     dual_distinguish, dual_matzov, dual_matzov_consistent,
 };
-use cryptanalysis_suite::cryptanalysis::mlwe::hybrid::{best_hybrid, hybrid_dual};
-use cryptanalysis_suite::cryptanalysis::mlwe::params::{
+use crate::cryptanalysis::mlwe::hybrid::{best_hybrid, hybrid_dual};
+use crate::cryptanalysis::mlwe::params::{
     all_lwe, all_sis, lwe_by_name, ml_dsa_by_name,
 };
-use cryptanalysis_suite::cryptanalysis::mlwe::primal::{
+use crate::cryptanalysis::mlwe::primal::{
     primal_usvp_2016, primal_usvp_simulated, sis_estimate, sis_required_beta,
 };
-use cryptanalysis_suite::cryptanalysis::mlwe::report::{
+use crate::cryptanalysis::mlwe::report::{
     best_believable, full_report, margin_table, render_table, report_search,
 };
-use cryptanalysis_suite::cryptanalysis::mlwe::sieve::{
+use crate::cryptanalysis::mlwe::sieve::{
     bucketed_sieve, gauss_sieve, measure_gauss_scaling, norm2, nv_sieve, progressive_bkz,
     random_qary_lattice, SieveConfig,
 };

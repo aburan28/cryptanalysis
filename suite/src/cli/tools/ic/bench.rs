@@ -17,24 +17,24 @@
 use clap::Args;
 use serde_json::{json, Value};
 
-use cryptanalysis_suite::cryptanalysis::ic_boundary::{
+use crate::cryptanalysis::ic_boundary::{
     calibrate_binary_instance, calibrate_group, calibrate_row_ops, calibrate_word_xor,
     generic_floor_ops, koblitz_instance, random_binary_instance, rho_reference,
     rho_reference_negation, roster_prime_instance, signed_frobenius_rho, BinaryGroup,
     BinaryInstance, Calibration, CountedGroup, GroupOps, PinOutcome, PrimeInstance, RhoResult,
 };
-use cryptanalysis_suite::cryptanalysis::ic_framework::linalg::MATRIX_NAMES;
-use cryptanalysis_suite::cryptanalysis::ic_framework::plugins::{
+use crate::cryptanalysis::ic_framework::linalg::MATRIX_NAMES;
+use crate::cryptanalysis::ic_framework::plugins::{
     BinarySubspaceBase, DescentAlgebraicOracle, FrobeniusMitmOracle, KoblitzOrbitBase, MitmOracle,
     PrimeAbscissaBase, SubtractOracle,
 };
-use cryptanalysis_suite::cryptanalysis::ic_framework::solvers::{
+use crate::cryptanalysis::ic_framework::solvers::{
     solver_by_name, solver_registry, validate_solver_params,
 };
-use cryptanalysis_suite::cryptanalysis::ic_framework::stages::{
+use crate::cryptanalysis::ic_framework::stages::{
     DecompositionOracle, FactorBaseBuilder, InstanceCtx, Params, Targets,
 };
-use cryptanalysis_suite::cryptanalysis::ic_framework::{
+use crate::cryptanalysis::ic_framework::{
     format_markdown, run_pipeline, PipelineSpec, RunReport,
 };
 
@@ -224,7 +224,7 @@ fn calibration_for_binary(inst: &BinaryInstance, regime: &str) -> (Calibration, 
 
 fn sample_prime_points(
     inst: &PrimeInstance,
-) -> Vec<cryptanalysis_suite::cryptanalysis::ic_boundary::PrimePoint> {
+) -> Vec<crate::cryptanalysis::ic_boundary::PrimePoint> {
     let g = inst.generator_point();
     let mut ops = GroupOps::default();
     (1..=8u64).map(|k| inst.curve.mul(&mut ops, g, k)).collect()

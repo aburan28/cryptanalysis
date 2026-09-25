@@ -58,8 +58,9 @@ pub struct ZpArgs {
     pub verbose: bool,
 }
 
+/// The report of `crax ic zp`.
 #[derive(Serialize)]
-struct ZpReport {
+pub struct ZpReport {
     status: &'static str,
     algorithm: &'static str,
     p: String,
@@ -81,7 +82,8 @@ struct ZpReport {
     threads: u32,
 }
 
-pub fn run_zp(out: Out, a: &ZpArgs) -> CmdResult {
+/// Solve and verify; `Err` only for bad input or a solver failure.
+pub fn solve_zp(a: &ZpArgs) -> Result<ZpReport, String> {
     let p = parse_u64(&a.p)?;
     if !(3..1 << 63).contains(&p) || !libca::is_prime(p) {
         return Err(format!("--p must be an odd prime below 2^63, got {p}").into());
@@ -141,22 +143,30 @@ pub fn run_zp(out: Out, a: &ZpArgs) -> CmdResult {
         total_seconds: st.total_seconds,
         threads: st.threads,
     };
-    out.emit(&report, || {
-        format!(
-            "ic zp: x = {} ({})\n  p = {}, g = {}, h = {}\n  factor base {} primes (B = {}), {} unknowns, {} relations, {} logs verified\n  sieve {:.3} s, linear algebra {:.3} s, total {:.3} s\n",
-            report.x,
-            if verified { "verified: g^x = h" } else { "NOT VERIFIED" },
-            p, g, h,
-            st.factor_base_size, report.factor_base_bound, st.unknowns, st.relations, st.verified_logs,
-            st.sieve_seconds, st.linalg_seconds, st.total_seconds
-        )
-    })?;
-    if verified {
+    Ok(report)
+}
+
+/// `crax ic zp`.
+pub fn run_zp(out: Out, a: &ZpArgs) -> CmdResult {
+    let r = solve_zp(a)?;
+    out.emit(&r, || r.text())?;
+    if r.verified {
         Ok(())
     } else {
-        Err(Failure::reported(
-            "ic zp: the answer does not satisfy g^x = h",
-        ))
+        Err(Failure::reported("ic zp: the answer does not satisfy g^x = h"))
+    }
+}
+
+impl ZpReport {
+    fn text(&self) -> String {
+        format!(
+            "ic zp: x = {} ({})\n  p = {}, g = {}, h = {}\n  factor base {} primes (B = {}), {} unknowns, {} relations, {} logs verified\n  sieve {:.3} s, linear algebra {:.3} s, total {:.3} s\n",
+            self.x,
+            if self.verified { "verified: g^x = h" } else { "NOT VERIFIED" },
+            self.p, self.g, self.h,
+            self.factor_base, self.factor_base_bound, self.unknowns, self.relations, self.verified_logs,
+            self.sieve_seconds, self.linalg_seconds, self.total_seconds
+        )
     }
 }
 

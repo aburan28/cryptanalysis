@@ -1,7 +1,7 @@
 //! `ic boundary`: the index-calculus boundary ledger.
 //!
 //! Runs the three regimes of
-//! [`cryptanalysis_suite::cryptanalysis::ic_boundary`] — generic prime field,
+//! [`crate::cryptanalysis::ic_boundary`] — generic prime field,
 //! generic binary field, Koblitz — over their size ladders, prices every
 //! phase of every variant in one unit against the generic floor and a
 //! counted Pollard rho, fits the exponents, and writes it all as one
@@ -12,11 +12,11 @@
 //!     ic boundary --out docs/ic/runs/ic-boundary-ledger-YYYY-MM-DD.json
 
 use clap::{Args, ValueEnum};
-use cryptanalysis_suite::cryptanalysis::ic_boundary::{
+use crate::cryptanalysis::ic_boundary::{
     fit_exponents, format_markdown, run_char2_ladder, run_koblitz_ladder, run_prime_ladder,
     BoundaryConfig, BoundaryLedger,
 };
-use cryptanalysis_suite::cryptanalysis::ic_oracle_pricing::{
+use crate::cryptanalysis::ic_oracle_pricing::{
     format_oracle_markdown, price_oracles, price_swaps, OraclePricingConfig,
 };
 use serde_json::{json, Value};
@@ -173,7 +173,7 @@ fn host() -> Value {
     // Captured at start-up, not here: a run of half an hour can outlive the
     // commit it started on, and a report that names the wrong one is worse
     // than a report that names none.
-    let commit = crate::git_commit();
+    let commit = super::git_commit();
     json!({
         "cpu": cpu,
         "logical_cores": std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0),

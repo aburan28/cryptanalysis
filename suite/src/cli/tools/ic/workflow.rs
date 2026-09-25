@@ -47,17 +47,17 @@ use super::experiment::{
     LogTableDocument, Solver,
 };
 use clap::{Args, ValueEnum};
-use cryptanalysis_suite::binary_ecc::{BinaryPoint, F2mElement};
-use cryptanalysis_suite::cryptanalysis::koblitz_factor_base_search::{
+use crate::binary_ecc::{BinaryPoint, F2mElement};
+use crate::cryptanalysis::koblitz_factor_base_search::{
     search, Candidate, FactorBaseSpec, Family, SearchOptions,
 };
-use cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::{
+use crate::cryptanalysis::koblitz_index_calculus::{
     koblitz_signed_frobenius_rho_with_progress, point_key, points_with_x, CollectedRelation,
     ColumnCoverage, DecompositionStrategy, FactorBaseLogSolver, FactorBaseLogTable,
     FactorBaseSelectionCost, FrobeniusFactorBase, IndividualLogSolver, KoblitzCurve,
     KoblitzSignedRhoOptions, PairSumTable, ProbeBudget, RelationCollector, RelationWorkUnit,
 };
-use cryptanalysis_suite::cryptanalysis::koblitz_sparse_la::SparseSolveOptions;
+use crate::cryptanalysis::koblitz_sparse_la::SparseSolveOptions;
 use num_bigint::BigUint;
 use num_traits::Zero;
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -860,7 +860,7 @@ fn search_options(src: &FactorBaseSource, p: &WorkflowParams) -> Result<SearchOp
                     .into(),
             );
         }
-        use cryptanalysis_suite::cryptanalysis::algebra_cache::{enabled, Layer};
+        use crate::cryptanalysis::algebra_cache::{enabled, Layer};
         if enabled(Layer::ExactReduction) {
             return Err(
                 "solve_cost_targets cannot measure while replayed reductions report as free; \
@@ -1181,7 +1181,7 @@ pub fn run(args: WorkflowArgs, quiet: bool) -> Result<Value, String> {
         report["selection_cost"] = json!(cost);
     }
     let columns =
-        cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::projected_signed_orbit_count(
+        crate::cryptanalysis::koblitz_index_calculus::projected_signed_orbit_count(
             &c, &fb,
         );
     if let Some(window) = p.collection_window {
@@ -2014,7 +2014,7 @@ fn collect_unit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::build_subgroup_orbit_factor_base;
+    use crate::cryptanalysis::koblitz_index_calculus::build_subgroup_orbit_factor_base;
 
     fn params(
         unit_trials: u64,
