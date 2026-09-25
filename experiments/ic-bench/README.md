@@ -108,3 +108,27 @@ Record the baseline after an intentional change and commit it with that change.
   `--tolerance`.
 
 Wall time is reported and never gated.
+
+## Other receipt writers (audit)
+
+These writers keep their existing names and outputs. None mints an `IC1` ID.
+
+- `ecc2k130/runner/codegen/indexcalc_e2e.py`, `indexcalc_fixed.py` and
+  `autolab.py` have exact SHA-256 digests pinned in
+  `docs/papers/ecc2k130-blackwell/evidence/source-manifest.json`, so they are
+  not edited.
+  - `indexcalc_e2e` counts logical calls in its own phase names, with no calibrated
+    unit. It refuses degree-131 recovery.
+  - `indexcalc_fixed` reports fixed-base stage checks.
+  - `autolab` tunes rho kernels, so IC IDs do not apply to it.
+
+  To enter an IC comparison, a run of `indexcalc_e2e` needs a candidate manifest
+  and a mapping of its ledger onto the eleven phases. Until then it is a
+  pre-convention artifact.
+- `experiments/sage-ic-campaign/*` measures arithmetic stages, such as point maps, codecs
+  and field operations, with its own intent and receipt files. Its ROADMAP already
+  requires candidate IDs and complete phase charging before any IC claim. This
+  harness is where such a claim would be measured.
+- `pdp-degree-heuristics/monitor.py collect` meters every phase, but it writes the
+  unnamed `pdp-collection-run/2` record. `bench.py` wraps it, names the run, and
+  prices it.
