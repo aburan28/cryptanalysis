@@ -74,10 +74,9 @@ class RankTracker:
             rhs = (rhs - f * prhs) % r
         return False
 
-    def solve(self) -> dict[int, int] | None:
-        if self.rank < self.columns:
-            return None
-        sol: dict[int, int] = {}
+    def solve(self) -> dict[int, int]:
+        """A solution with every non-pivot column set to 0 (unique when rank = columns)."""
+        sol: dict[int, int] = {j: 0 for j in range(self.columns) if j not in self.rows}
         for p in sorted(self.rows, reverse=True):
             row, rhs = self.rows[p]
             v = rhs
@@ -86,6 +85,32 @@ class RankTracker:
                     v -= c * sol[j]
             sol[p] = v % self.r
         return sol
+
+
+def achievable_rank(fb: FactorBase, m: int) -> int | None:
+    """Rank mod r of the relations from every two-point decomposition of every subgroup
+    target: the rank a collection can reach.  It is below the column count when the
+    psi classes force a kernel, e.g. on a cofactor-4 curve when the class-{1,3} columns
+    only ever meet as sigma_a e_a - sigma_b e_b and no 4-torsion point sits in F."""
+    if m != 2 or len(fb.xs) * (len(fb.xs) + 1) // 2 > 3_000_000:
+        return None
+    C, K = fb.curve, fb.curve.K
+    px, py = C.psi(fb.xs, fb.ys)
+    sx, _ = K.pair_sums(fb.xs, fb.ys)
+    qx, _ = K.pair_sums(px, py)
+    ok = (qx == np.uint64(kernel.INF_X)) & (sx != np.uint64(kernel.INF_X))
+    i, j = np.triu_indices(len(fb.xs))
+    t = RankTracker(fb.effective_columns, C.r)
+    for a, b in zip(i[ok].tolist(), j[ok].tolist()):
+        row: dict[int, int] = {}
+        for k in (a, b):
+            if fb.col_of[k] >= 0:
+                col = int(fb.col_of[k])
+                row[col] = (row.get(col, 0) + int(fb.col_coeff[k])) % C.r
+        t.add(row, 0)
+        if t.rank == fb.effective_columns:
+            break
+    return t.rank
 
 
 def coupon_time(rates: list[float]) -> tuple[float, float] | None:
@@ -279,6 +304,7 @@ class CollectionMonitor:
 
 # ------------------------------------------------------------------ collection run
 def collect(args) -> dict:
+    """Collect relations to the achievable rank, solve mod r, and descend fresh targets."""
     t_all = time.perf_counter_ns()
     phase: Counter = Counter()
     t0 = time.perf_counter_ns()
@@ -290,6 +316,7 @@ def collect(args) -> dict:
     t0 = time.perf_counter_ns()
     P = Pieces(fb, args.m)
     struct = P.structure()
+    achievable = achievable_rank(fb, args.m)
     phase["precompute"] += time.perf_counter_ns() - t0
     exact = exact_subgroup_yield(fb, args.m)
     pred = {**predictions(args.n, args.m, args.l, struct), **predicted_yield(fb, args.m)}
@@ -298,52 +325,58 @@ def collect(args) -> dict:
     if args.m == 2:
         pred["column_rates"] = column_hit_rates(fb)
     columns = fb.effective_columns
-    mon = CollectionMonitor(columns, predicted=pred)
+    target_rank = columns if achievable is None else achievable
+    mon = CollectionMonitor(columns, target_rank=target_rank, predicted=pred)
     tracker = RankTracker(columns, C.r)
     limits = macaulay.Limits(d_max=args.abort_degree or args.d_max, max_cols=args.max_cols, max_rows=args.max_rows)
     rng = random.Random(f"collect|{fb.digest}|{args.m}|{args.workload_seed}")
-    instrument_ns = 0
-    trace = []
-    snapshots: list[dict] = []
-    while mon.attempts < args.max_attempts and tracker.rank < columns:
+    instrument = Counter()
+
+    def decompose(R: tuple[int, int], charge: str) -> tuple[dict, set]:
         t0 = time.perf_counter_ns()
-        k, R = C.random_subgroup_point(rng)
         s = P.system(R[0])
-        phase["queries"] += time.perf_counter_ns() - t0
+        phase["queries" if charge == "pdp" else charge] += time.perf_counter_ns() - t0
         t0 = time.perf_counter_ns()
         S, sols = s.solutions()
-        instrument_ns += time.perf_counter_ns() - t0
+        instrument["bruteforce_ns"] += time.perf_counter_ns() - t0
         scan = macaulay.degree_scan(s, S, limits, mode=args.mode)
-        phase["pdp"] += scan["wall_ns"]
-        rels = novel = 0
+        phase[charge] += scan["wall_ns"]
+        rows: set = set()
         status = {"refuted": "proved_unsat", "solved": "solved"}.get(scan["status"], "budget")
         if status == "solved":
             t0 = time.perf_counter_ns()
-            rows = set()
             for v in sols.tolist():
                 c = classify_solution(fb, args.m, R, v)
                 if c["status"] in ("verified", "improper"):
-                    row = relation_row(fb, c["points"])
-                    rows.add(tuple(sorted(row.items())))
-            phase["relation_check"] += time.perf_counter_ns() - t0
+                    rows.add(tuple(sorted(relation_row(fb, c["points"]).items())))
+            phase["relation_check" if charge == "pdp" else charge] += time.perf_counter_ns() - t0
             status = "verified_decomposition" if rows else "lift_rejected"
-            t0 = time.perf_counter_ns()
-            for row in rows:
-                rels += 1
-                novel += tracker.add(dict(row), k)
-            phase["matrix_build"] += time.perf_counter_ns() - t0
+        return {"status": status, "scan": scan}, rows
+
+    trace = []
+    snapshots: list[dict] = []
+    while mon.attempts < args.max_attempts and tracker.rank < target_rank:
+        k, R = C.random_subgroup_point(rng)
+        res, rows = decompose(R, "pdp")
+        scan = res["scan"]
+        rels = novel = 0
+        t0 = time.perf_counter_ns()
+        for row in rows:
+            rels += 1
+            novel += tracker.add(dict(row), k)
+        phase["matrix_build"] += time.perf_counter_ns() - t0
         rec = {
-            "status": status,
+            "status": res["status"],
             "D": scan["D_solve"],
             "cost": scan["xors"] + scan["build_ops"],
             "wall_ns": scan["wall_ns"],
             "relations": rels,
             "novel": novel,
-            "rows": [[j for j, _ in row] for row in rows] if status == "verified_decomposition" else [],
+            "rows": [[j for j, _ in row] for row in rows],
             "per_degree": [(r["D"], r["xors"] + r["build_ops"]) for r in scan["per_degree"]],
         }
         mon.observe(rec)
-        trace.append({"attempt": mon.attempts, "k": k, "status": status, "D": scan["D_solve"],
+        trace.append({"attempt": mon.attempts, "k": k, "status": res["status"], "D": scan["D_solve"],
                       "cost": rec["cost"], "relations": rels, "novel": novel, "rank": tracker.rank})
         if novel or (args.report_every and mon.attempts % args.report_every == 0):
             s = mon.summary()
@@ -354,14 +387,39 @@ def collect(args) -> dict:
         if args.report_every and mon.attempts % args.report_every == 0:
             print(mon.render(), file=sys.stderr, flush=True)
     print(mon.render(), file=sys.stderr, flush=True)
+    complete = tracker.rank >= target_rank
     t0 = time.perf_counter_ns()
     logs = tracker.solve()
     phase["relation_la"] += time.perf_counter_ns() - t0
     verified_logs = None
-    if logs is not None:
+    if tracker.rank == columns:
         t0 = time.perf_counter_ns()
         verified_logs = all(C.K.smul(C.G, logs[j]) == rep for j, rep in enumerate(fb.column_reps))
         phase["recovery_check"] += time.perf_counter_ns() - t0
+    # target descent: Q + [a]G until it decomposes; with a kernel in the relation matrix the
+    # log of every decomposable subgroup point is still determined
+    descents = []
+    drng = random.Random(f"descent|{fb.digest}|{args.m}|{args.workload_seed}")
+    for _ in range(args.descent_targets if complete else 0):
+        s_true, Q = C.random_subgroup_point(drng)
+        tries = 0
+        found = None
+        while tries < args.max_attempts and found is None:
+            tries += 1
+            a = drng.randrange(1, C.r)
+            Qa = C.K.add(Q, C.K.smul(C.G, a))
+            if Qa[0] == kernel.INF_X:
+                continue
+            res, rows = decompose(Qa, "target_descent")
+            if rows:
+                row = dict(next(iter(rows)))
+                found = (sum(c * logs[j] for j, c in row.items()) - a) % C.r
+        ok = None
+        if found is not None:
+            t0 = time.perf_counter_ns()
+            ok = C.K.smul(C.G, found) == Q
+            phase["recovery_check"] += time.perf_counter_ns() - t0
+        descents.append({"attempts": tries, "recovered": found is not None, "verified": ok})
     summary = mon.summary()
     out = {
         "schema": "pdp-collection-run/1",
@@ -373,16 +431,20 @@ def collect(args) -> dict:
         "factor_base": fb.record(),
         "factor_base_sha256": fb.digest,
         "effective_columns": columns,
+        "achievable_rank": achievable,
         "predictions": pred,
         "exact_yield": exact,
         "monitor": summary,
         "snapshots": snapshots,
         "final_rank": tracker.rank,
+        "collection_complete": complete,
         "factor_base_logs_verified": verified_logs,
-        "relation_linear_algebra": "dense Gaussian elimination mod r (RankTracker)",
-        "target_descent": "none",
+        "descents": descents,
+        "dlp_verified": bool(descents) and all(d["verified"] for d in descents),
+        "relation_linear_algebra": "dense Gaussian elimination mod r (RankTracker); free columns set to 0",
+        "target_descent": "Q + [a]G with fresh random a until the PDP solver decomposes it",
         "phase_wall_ns": dict(phase),
-        "instrument_bruteforce_ns": instrument_ns,
+        "instrument_bruteforce_ns": instrument["bruteforce_ns"],
         "wall_ns": time.perf_counter_ns() - t_all,
         "implementation_sha256": implementation_sha256(),
     }
@@ -399,7 +461,7 @@ def collect(args) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    c = sub.add_parser("collect", help="run relation collection to full rank with the monitor")
+    c = sub.add_parser("collect", help="collect relations to the achievable rank with the monitor, solve, and descend fresh targets")
     c.add_argument("--n", type=int, required=True)
     c.add_argument("--m", type=int, default=2)
     c.add_argument("--l", type=int, required=True)
@@ -412,6 +474,7 @@ def main() -> None:
     c.add_argument("--max-rows", type=int, default=200_000)
     c.add_argument("--max-attempts", type=int, default=200_000)
     c.add_argument("--workload-seed", type=int, default=1)
+    c.add_argument("--descent-targets", type=int, default=3, help="fresh targets to descend and verify")
     c.add_argument("--report-every", type=int, default=500)
     c.add_argument("--out", default="")
     c.add_argument("--trace", default="")
@@ -419,7 +482,8 @@ def main() -> None:
     if args.cmd == "collect":
         res = collect(args)
         m = res["monitor"]
-        print(json.dumps({k: res[k] for k in ("curve_id", "cell", "effective_columns", "final_rank", "factor_base_logs_verified")}
+        print(json.dumps({k: res[k] for k in ("curve_id", "cell", "effective_columns", "achievable_rank", "final_rank",
+                                              "factor_base_logs_verified", "dlp_verified", "descents")}
                          | {"attempts": m["attempts"], "yield": m["yield_per_attempt"], "novel_rows": m["novel_rows"],
                             "ops_per_novel_row": m["ops_per_novel_row"], "best_abort": m["best_abort"]}, indent=1))
 

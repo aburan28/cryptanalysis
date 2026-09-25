@@ -441,12 +441,29 @@ class MonitorTests(unittest.TestCase):
 
         from monitor import collect
 
-        args = argparse.Namespace(n=13, m=2, l=4, family="prefix", seed=1, mode="mxl", abort_degree=0, d_max=8,
+        args = argparse.Namespace(n=13, m=2, l=4, family="prefix", seed=1, mode="mxl", abort_degree=0, d_max=8, descent_targets=2,
                                   max_cols=40_000, max_rows=200_000, max_attempts=20_000, workload_seed=1,
                                   report_every=0, out="", trace="")
         res = collect(args)
         self.assertEqual(res["final_rank"], res["effective_columns"])
         self.assertTrue(res["factor_base_logs_verified"])
+        self.assertTrue(res["dlp_verified"])
+
+    def test_rank_deficient_base_still_solves_the_dlp(self):
+        import argparse
+
+        from monitor import achievable_rank, collect
+
+        C = ToyCurve(13)
+        fb = FactorBase(C, "geometric", 4, 1)
+        self.assertEqual(achievable_rank(fb, 2), fb.effective_columns - 1)
+        args = argparse.Namespace(n=13, m=2, l=4, family="geometric", seed=1, mode="mxl", abort_degree=0, d_max=8,
+                                  descent_targets=2, max_cols=40_000, max_rows=200_000, max_attempts=100_000,
+                                  workload_seed=1, report_every=0, out="", trace="")
+        res = collect(args)
+        self.assertTrue(res["collection_complete"])
+        self.assertIsNone(res["factor_base_logs_verified"])
+        self.assertTrue(res["dlp_verified"])
 
 
 if __name__ == "__main__":

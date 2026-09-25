@@ -41,10 +41,17 @@ alone.  It also provides an online monitor for a relation-collection run.
    degree is the base degree for 95% of queries, whatever the base.
 5. **For three summands the formulation decides whether the factor base matters.**
    In the direct formulation (unknowns are the coordinates of the `x_i`) the solving degree
-   is set by the system's size.  The family moves it by at most one degree, and only for
-   large `n`.  In the symmetric formulation (unknowns are the coordinates of
-   `e_k ∈ V^(k)`, as in FPPR and WDSat), the number of unknowns *is*
-   `Σ_k dim V^(k)`, and structured bases are several hundred times cheaper per query.
+   is set by the system's size.  The family moves it by at most one degree, only for
+   `n ≥ 31`, and the cost by 1–8×.  In the symmetric formulation (unknowns are the
+   coordinates of `e_k ∈ V^(k)`, as in FPPR and WDSat), the number of unknowns *is*
+   `Σ_k dim V^(k)`: 15 against 19 at `l = 3`, and 21 against 34 at `l = 4`.  At `l = 3`
+   the progressions are 15–40× cheaper per query at equal degree, and 500–1,500× cheaper
+   where the random base needs one more degree.
+6. **Check the achievable rank before collecting.** On these cofactor-4 curves, a
+   two-summand relation matrix has rank `#columns − 1` unless the base contains a
+   4-torsion point or lies in `ker(Tr)`.  A collector that waits for full rank never
+   stops.  The target logs are still determined; the complete collections (section 7)
+   solve modulo the kernel and verify fresh targets by descent.
 
 None of this is an IC result: every row is a PDP-stage profile (`candidate_id: null`), and
 the toy fields are far from ECC2K-130.  Section 8 lists what would have to hold at scale.
@@ -194,6 +201,20 @@ workload and `l`; ratios are geometric means over cells; censored cells excluded
 <!-- BEGIN PAIRED -->
 <!-- END PAIRED -->
 
+The average hides where the difference comes from.  Grouped by how many degrees apart
+the fitted excess rule places the two bases:
+
+<!-- BEGIN REGIME -->
+<!-- END REGIME -->
+
+`geomtrace` rows appear in `REPORT.md` beside the others.  On the same workloads it has
+the kernel-of-trace yield and the geometric-progression degree, except near `e = 0`.
+The Frobenius-stable bases on `n = 31` show why AGENTS.md counts usable points and not
+dimensions.  The 5-dimensional `σ`-stable subspace `W` lifts every abscissa, and its 62
+usable points fold into a single relation-matrix column.  The 6-dimensional `F_2 ⊕ W` has
+three points in all.  61 of its 64 abscissae do not lift, and the three that do are 2- and
+4-torsion, so `B = 0`.
+
 ## 5. Heuristics that held up
 
 Accuracy of the structure-only degree predictors, against the measured mean solving
@@ -252,10 +273,33 @@ skipped, which is itself the effect):
 
 ## 7. Relation collection with the monitor
 
-Complete collections to full rank with the closure solver, paired on curve and cell,
-over independent target streams.  Every factor-base log is solved mod `r` and checked
-against `[log]G`.  The last two columns score the monitor's projection made when half the
-rank was reached.
+**Not every factor base can reach full rank, and the monitor has to know this before it
+starts.**  In the first collection runs, several bases stopped one short of full rank on
+all three target streams, after 200,000 queries each: `geometric` and `random` bases at
+`n = 19`.  The complete two-summand relation space (every decomposition of every
+subgroup target) was then computed exactly (`monitor.achievable_rank`).  For those bases
+its rank is `C − 1`.
+
+The reason is the class of each point in `E/⟨G⟩ ≅ Z/4`.  A pair sums into `⟨G⟩` only if
+its classes cancel.  So points of class 1 or 3, which share a column with their negatives,
+only ever meet each other, and always with opposite signs.  Every such relation reads
+`σ_a e_a − σ_b e_b`, and the vector `σ` on those columns is a kernel.
+
+Two bases escape it:
+
+* the `prefix` base, because `1 ∈ V` puts the 4-torsion point `(1, 0)` in `F`, and its
+  relations `R = P + T_4` are single-column rows;
+* the trace-zero bases (`kertrace`, `geomtrace`), which have no class-1 or class-3 points
+  at all.
+
+The deficiency is not fatal: every decomposition of a subgroup point is orthogonal to the
+kernel, so target logs are still determined.  The collection now stops at the achievable
+rank, solves with the free column set to 0, and verifies by descending three fresh targets
+(`Q + [a]G` until it decomposes) and checking `[log]G = Q`.
+
+These are complete collections with the closure solver, paired on curve and cell, over
+independent target streams.  The projection columns score the monitor's forecast, made at
+half the achievable rank.
 
 <!-- BEGIN COLLECT -->
 <!-- END COLLECT -->
@@ -286,18 +330,20 @@ counts use `|F| ≈ 2^l` and `#E = 4r`:
    jumps 10–100×.  The cheapest cost per relation is therefore at the largest `l` that
    keeps `e` above the next threshold: `l = 7`–`8` at `n = 23` for geometric progressions,
    against `l = 5`–`6` for random bases.
-4. *During collection*, feed `CollectionMonitor` one record per query.
+4. *Before collecting*, compute `monitor.achievable_rank` (or read the `ψ`-class counts)
+   and make it the stopping rank.
+5. *During collection*, feed `CollectionMonitor` one record per query.
    * Compare the observed yield with the prediction: the Wilson interval should cover it.
    * Compare the observed degree with the rule; drift means the base is not behaving like
      its profile.
    * Abort queries at the degree its table recommends.
    * Read the time to full rank from the coupon-collector projection over the exact
      column rates, with its standard deviation.
-5. *Do not steer by the degree of regularity or the first fall degree.*  The homogeneous
+6. *Do not steer by the degree of regularity or the first fall degree.*  The homogeneous
    `D_reg` is `l + 1` here, set by the block structure.  The first fall degree is the base
    degree in 95% of two-summand queries, whatever the base.  The semi-regular prediction
    is off by 0.6–0.8 degrees on average.
-6. *Match the heuristic to the solver.*  The profile helps linear-algebra solvers.
+7. *Match the heuristic to the solver.*  The profile helps linear-algebra solvers.
    CryptoMiniSat on the direct CNF-XOR model gains only about 10% from it.  For three
    summands the direct model hides most of the effect, so profile the symmetric model
    too.
@@ -306,10 +352,12 @@ counts use `|F| ≈ 2^l` and `#E = 4r`:
 
 * Rows are **PDP-stage profiles**: `candidate_id: null`, labelled
   `PS1N<n>Ckb1fb<B>PDP<m>xl[sym]h<12hex>` over the factor-base and point-decomposition
-  records (AGENTS.md).  Run IDs are `<PS1-id>W<workload>R<run>`.  Relation linear algebra
-  and target descent are `none`, so no end-to-end cost or speedup is claimed.  The
-  collection runs do solve the relation matrix and verify every factor-base log; target
-  descent is still absent.
+  records (AGENTS.md).  Run IDs are `<PS1-id>W<workload>R<run>`.  In the profiles,
+  relation linear algebra and target descent are `none`, so no end-to-end cost or speedup
+  is claimed.  The collection runs go further.  They solve the relation matrix modulo its
+  kernel and verify three fresh targets by descent (`[log]G = Q`), so each is a complete
+  toy DLP.  They are still not `IC1` results: their phases are charged in wall time and in
+  separate operation units, not one calibrated unit.
 * `ops/relation` in the profile tables is **derived**: mean ordinary-query cost divided by
   the exact decomposition probability.  The collection table measures it.
 * Each receipt keeps exclusive phase wall times (setup, factor base, precompute, queries,
@@ -319,6 +367,22 @@ counts use `|F| ≈ 2^l` and `#E = 4r`:
   in that range.  The `n = 131` table applies structure, not measured degrees, and says
   nothing about `m ≥ 3` degrees at scale.  Two summands cannot beat rho for any factor
   base, because the yield `≈ 2^(2l−n−1)` forces `2^(n+1−l)` queries.
+
+## Next steps
+
+* Promote one `geomtrace` base on a toy curve to a full `IC1` candidate.  The collection
+  run already has relation LA, descent and verification.  It still needs one calibrated
+  operation unit across phases and a candidate manifest.  Then pair it with the `prefix`
+  base on one workload.
+* Test whether the excess rule survives beyond `N = 18` with an external F4 (msolve,
+  already wired in `../pdp-scaling`).  The rule is a fit, and the thresholds may drift with
+  `N`.
+* The catalog's `n131_poly_*` profiles are `span{1..z^(l−1)}`, a geometric progression,
+  so this work supports that choice.  Its trace-zero sibling is the variant to add.  The
+  `n131_onb_hw*` bases are not subspaces, so the product-profile argument says nothing
+  about them.
+* For `m ≥ 3`, fit a rule on the symmetric model's own size and excess.  The direct
+  model's excess does not predict its degree across fields (see the three-summand rules).
 
 ## Reproduce
 
