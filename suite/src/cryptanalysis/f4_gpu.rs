@@ -372,7 +372,7 @@ impl BatchDecider for EmulatorDecider {
 }
 
 #[cfg(unix)]
-pub use cuda::CudaDecider;
+pub use cuda::{compile_kernel_ptx, CudaDecider};
 
 #[cfg(unix)]
 mod cuda {
@@ -612,6 +612,14 @@ mod cuda {
             unsafe { (self.destroy)(&mut prog) };
             result
         }
+    }
+
+    /// Compile the kernel with NVRTC for `compute_{arch}` and return its
+    /// NUL-terminated PTX — what [`CudaDecider::new`] loads.  Needs only
+    /// NVRTC (`CA_NVRTC_LIB` or `libnvrtc.so.*`), not a device, so it is
+    /// the check that a machine's NVRTC accepts the source.
+    pub fn compile_kernel_ptx(arch: u32) -> Result<Vec<u8>, String> {
+        Nvrtc::load()?.compile_ptx(&kernel_source(), arch)
     }
 
     /// A device allocation that grows as batches do.
@@ -1140,6 +1148,24 @@ mod tests {
         // f4_u32 status, refuted; f4_u64 x5; f4_u32 rows, cols, f5_skipped, reserved.
         assert_eq!(std::mem::size_of::<F4Result>(), 64);
         assert_eq!(std::mem::align_of::<F4Result>(), 8);
+    }
+
+    /// Where NVRTC is present, it must accept the embedded source and emit
+    /// the entry point; elsewhere there is nothing to check.
+    #[cfg(unix)]
+    #[test]
+    fn nvrtc_compiles_the_kernel_where_available() {
+        match compile_kernel_ptx(75) {
+            Ok(ptx) => {
+                let text = String::from_utf8_lossy(&ptx);
+                assert!(
+                    text.contains(".entry f4_gf2_decide_batch"),
+                    "no entry point"
+                );
+                assert_eq!(ptx.last(), Some(&0), "PTX must be NUL-terminated");
+            }
+            Err(e) => assert!(e.starts_with("none of"), "NVRTC was found but failed: {e}"),
+        }
     }
 
     #[test]
