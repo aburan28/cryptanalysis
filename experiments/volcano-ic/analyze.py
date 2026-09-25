@@ -4,15 +4,18 @@
 
 Reads results/census-*.jsonl (tier A, every curve) and results/ecdlp-*.jsonl
 (tier B, full index calculus on selected curves x 10 scalars) and writes
-results/summary.json plus figures under figures/.
+results/summary.json plus figures under figures/. The cross-check outputs
+(results/crosscheck*.json, from crosscheck.py and crosscheck.sage) are
+folded in when present.
 """
 import glob
 import json
 import math
 import os
+import re
 
 import numpy as np
-from scipy import stats
+from scipy import optimize, stats
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -23,14 +26,26 @@ CLASSES = (P_SUB - 1) // 2
 E0_COLOR, DESC_COLOR = '#C45132', '#3069A0'
 
 
-def load(pattern):
+def load(pattern, source=False):
     rows = []
     for path in sorted(glob.glob(os.path.join(HERE, 'results', pattern))):
         for line in open(path):
             line = line.strip()
             if line:
                 rows.append(json.loads(line))
+                if source:
+                    rows[-1]['_file'] = os.path.basename(path)
     return rows
+
+
+def attemptsOptimum():
+    """lambda minimising attempts: A ~ (|F| + 10) / (1 - e^-lambda) with lambda ~ |F|^2,
+    i.e. A ~ sqrt(lambda) / (1 - e^-lambda), stationary where e^lambda - 1 = 2 lambda."""
+    return optimize.brentq(lambda l: math.expm1(l) - 2 * l, .5, 3)
+
+
+def attemptsShape(lam):
+    return math.sqrt(lam) / -math.expm1(-lam)
 
 
 def eligibleFormula(tags):
@@ -84,8 +99,16 @@ def census(rows, out, cpuRows=()):
     att = np.array([r['expected_attempts_per_dlp'] for r in desc])
     formulaOk = sum(eligibleFormula(r['tag_counts']) == r['eligible_signed_pairs'] for r in rows)
     # 1 - exp(-eligible / classes): the birthday-paradox saturation curve.
-    saturation = np.array([1 - math.exp(-r['eligible_signed_pairs'] / CLASSES) for r in rows])
+    lam = np.array([r['eligible_signed_pairs'] / CLASSES for r in rows])
+    saturation = 1 - np.exp(-lam)
     exact = np.array([r['exact_decomp_prob'] for r in rows])
+    # Sampling noise of the occupied fraction when `eligible` balls fall into
+    # CLASSES bins at random, to put the model's error on a scale.
+    occupancySd = np.sqrt(CLASSES * (np.exp(-lam) - (1 + lam) * np.exp(-2 * lam))) / CLASSES
+    gap = exact - saturation
+    lamE0 = e0['eligible_signed_pairs'] / CLASSES
+    lamOpt = attemptsOptimum()
+    top = max(desc, key=lambda r: r['exact_decomp_prob'])
     # Empirical GB hit rate against the exact probability (pooled binomial).
     hits = sum(s['relations'] for r in rows for s in r['gb_sample'])
     calls = sum(s['gb_calls'] for r in rows for s in r['gb_sample'])
@@ -119,15 +142,19 @@ def census(rows, out, cpuRows=()):
     if len(cpu) >= 2:
         kwCpu = stats.kruskal(*cpu.values())
         fbOf = {r['curve']: r['fb_size'] for r in rows}
+        probOf = {r['curve']: r['exact_decomp_prob'] for r in rows}
         means = {c: float(np.mean(v)) for c, v in cpu.items()}
         descMeans = [m for c, m in means.items() if c != 'E0']
         allCpu = [x for v in cpu.values() for x in v]
+        rhoFb = stats.spearmanr([fbOf[c] for c in means], list(means.values()))
+        rhoProb = stats.spearmanr([probOf[c] for c in means], list(means.values()))
         cpuSummary = {'curves': len(cpu), 'median_s': float(np.median(allCpu)),
                       'curve_mean_range_s': [float(min(means.values())), float(max(means.values()))],
                       'e0_mean_s': means.get('E0'),
                       'e0_percentile_of_descendant_means': percentile(descMeans, means['E0']) if 'E0' in means else None,
                       'kruskal_by_curve': {'H': float(kwCpu.statistic), 'p': float(kwCpu.pvalue)},
-                      'spearman_mean_vs_fb_size': float(stats.spearmanr([fbOf[c] for c in means], list(means.values()))[0]),
+                      'spearman_mean_vs_fb_size': float(rhoFb[0]), 'spearman_mean_vs_fb_size_p': float(rhoFb[1]),
+                      'spearman_mean_vs_decomp_prob': float(rhoProb[0]), 'spearman_mean_vs_decomp_prob_p': float(rhoProb[1]),
                       'within_curve_cv': float(np.median([np.std(v) / np.mean(v) for v in cpu.values()]))}
     summary = {
         'curves': len(rows), 'descendants': len(desc),
@@ -140,8 +167,25 @@ def census(rows, out, cpuRows=()):
             'fb_size': [int(fb.min()), float(np.median(fb)), int(fb.max())],
             'exact_decomp_prob': [float(prob.min()), float(np.median(prob)), float(prob.max())],
             'expected_attempts_per_dlp': [float(att.min()), float(np.median(att)), float(att.max())]},
+        # Tier B's extremes were picked by predicted attempts, not by yield.
+        'highest_yield_descendant': {
+            'curve': top['curve'], 'fb_size': top['fb_size'], 'exact_decomp_prob': top['exact_decomp_prob'],
+            'expected_attempts_per_dlp': top['expected_attempts_per_dlp'],
+            'attempts_rank': 1 + sum(r['expected_attempts_per_dlp'] < top['expected_attempts_per_dlp'] for r in desc)},
         'eligible_formula_matches': [formulaOk, len(rows)],
         'saturation_model_max_abs_error': float(np.abs(saturation - exact).max()),
+        # The model runs slightly low: sums of distinct factor-base points
+        # collide less often than independent random targets would.
+        'saturation_model_bias': {'mean_exact_minus_model': float(gap.mean()),
+                                  'fraction_exact_above_model': float((gap > 0).mean()),
+                                  'mean_in_occupancy_sd': float((gap / occupancySd).mean()),
+                                  'occupancy_sd': float(occupancySd.mean())},
+        'e0_saturation_prob': float(1 - math.exp(-lamE0)),
+        'operating_point': {'lambda_range': [float(lam.min()), float(lam.max())], 'lambda_e0': lamE0,
+                            'lambda_attempts_optimum': lamOpt,
+                            'e0_attempts_over_optimum': attemptsShape(lamE0) / attemptsShape(lamOpt),
+                            # d ln A / d ln |F| with lambda ~ |F|^2 (ignoring the +10)
+                            'e0_attempts_elasticity_in_fb_size': 1 - 2 * lamE0 / math.expm1(lamE0)},
         'corr_fb_size_vs_expected_attempts': float(stats.pearsonr([r['fb_size'] for r in rows],
                                                                   [r['expected_attempts_per_dlp'] for r in rows])[0]),
         'gb_hit_rate': {'hits': hits, 'calls': calls, 'expected_hits': expectHits,
@@ -248,6 +292,21 @@ def ecdlp(rows, censusByCurve, out):
     curveMeans = {c: np.mean([r['gb_calls'] for r in v]) for c, v in complete.items()}
     curvePred = {c: censusByCurve[c]['expected_attempts_per_dlp'] for c in complete}
     rc = stats.pearsonr([curvePred[c] for c in complete], [curveMeans[c] for c in complete])
+    # Attempts per ECDLP are negative binomial: |F| + 10 successes at Pr each.
+    # If the census prediction were exact, curve means would scatter around it
+    # with this variance alone.
+    nbVar = {c: (censusByCurve[c]['fb_size'] + 10) * (1 - censusByCurve[c]['exact_decomp_prob'])
+             / censusByCurve[c]['exact_decomp_prob'] ** 2 / len(v) for c, v in complete.items()}
+    chi2 = sum((curveMeans[c] - curvePred[c]) ** 2 / nbVar[c] for c in complete)
+    predSd = np.std([curvePred[c] for c in complete], ddof=1)
+    descPred = np.mean([curvePred[c] for c in complete if c != 'E0'])
+    # Worker k of the 10-way sharded launch took jobs with index = k (mod 10),
+    # i.e. instance k of every curve, so "instance" also names the process.
+    shardOf = lambda r: int(re.search(r'ecdlp-(\d+)', r.get('_file', 'ecdlp--1')).group(1))
+    sameProcess = np.mean([shardOf(r) == r['instance'] for r in allRuns])
+    laMean = {c: np.mean([r['linalg_s'] for r in v]) for c, v in complete.items()}
+    laFit = stats.linregress([math.log(censusByCurve[c]['fb_size']) for c in complete],
+                             [np.mean([math.log(r['linalg_s']) for r in v]) for c, v in complete.items()])
     perInstance = {}
     for r in allRuns:
         perInstance.setdefault(r['instance'], []).append(r['gb_calls'])
@@ -257,7 +316,16 @@ def ecdlp(rows, censusByCurve, out):
         'anova_log_metrics': metrics,
         'e0_vs_descendants': comp,
         'predicted_vs_measured_attempts': {'pearson_r_curve_means': float(rc[0]), 'p': float(rc[1]),
-                                           'mean_ratio_measured_over_predicted': float(np.mean(np.array(measured) / np.array(predicted)))},
+                                           'mean_ratio_measured_over_predicted': float(np.mean(np.array(measured) / np.array(predicted))),
+                                           'residual_chi2': float(chi2), 'residual_df': len(complete),
+                                           'residual_p': float(stats.chi2.sf(chi2, len(complete))),
+                                           'expected_r_if_census_exact': float(predSd / math.sqrt(predSd ** 2 + np.mean(list(nbVar.values())))),
+                                           'census_predicted_e0_over_desc': float(curvePred['E0'] / descPred)},
+        'instance_is_worker_process_fraction': float(sameProcess),
+        'linalg': {'curve_mean_s_range': [float(min(laMean.values())), float(max(laMean.values()))],
+                   'median_share_of_total_cpu': float(np.median([r['linalg_s'] / r['total_cpu_s'] for r in allRuns])),
+                   'loglog_slope_vs_fb_size': float(laFit.slope), 'loglog_r': float(laFit.rvalue),
+                   'loglog_p': float(laFit.pvalue)},
         'per_instance_median_attempts': {str(k): float(np.median(v)) for k, v in sorted(perInstance.items())},
         'per_curve': {c: {'fb_size': censusByCurve[c]['fb_size'],
                           'exact_decomp_prob': censusByCurve[c]['exact_decomp_prob'],
@@ -336,6 +404,7 @@ def interleaved(rows, out):
     e0 = mat[:, 0]
     rest = mat[:, 1:].mean(axis=1)
     w = stats.wilcoxon(e0, rest)
+    cv = float(np.median(mat.std(axis=0) / mat.mean(axis=0)))
     out['interleaved_gb'] = {
         'curves': curves, 'rounds': len(full),
         'friedman_curve': {'chi2': float(fr.statistic), 'p': float(fr.pvalue)},
@@ -343,6 +412,8 @@ def interleaved(rows, out):
         'solvable_vs_unsolvable_ms': [1000 * float(np.mean(ne)), 1000 * float(np.mean(em))],
         'e0_over_descendant_mean_ratio': float(e0.mean() / rest.mean()),
         'e0_vs_descendant_mean_wilcoxon_p': float(w.pvalue),
+        # Resolution of the test: standard error of one curve's mean cost.
+        'within_curve_cv': cv, 'curve_mean_se_pct': 100 * cv / math.sqrt(len(full)),
         'per_curve': per}
 
 
@@ -417,12 +488,64 @@ def tauComparison(rows, out):
     plt.close(fig)
 
 
+def costModel(out, censusByCurve, crosscheck):
+    """Groebner cost implied by the interleaved split. A solvable system costs
+    c_s and an unsolvable one c_u, and a curve's solvable share is its exact
+    decomposition probability, so a decomposition costs c_u + (c_s - c_u) Pr
+    and one ECDLP (|F| + 10 relations) costs (|F| + 10) (c_s + c_u (1/Pr - 1))."""
+    il = out.get('interleaved_gb')
+    if not il:
+        return
+    cs, cu = (x / 1000 for x in il['solvable_vs_unsolvable_ms'])
+    names = sorted(censusByCurve, key=lambda c: (c != 'E0', c))
+    fb = np.array([censusByCurve[c]['fb_size'] for c in names])
+    pr = np.array([censusByCurve[c]['exact_decomp_prob'] for c in names])
+    att = np.array([censusByCurve[c]['expected_attempts_per_dlp'] for c in names])
+    perCall = cu + (cs - cu) * pr
+    gbDlp = (fb + 10) * (cs + cu * (1 / pr - 1))
+    observed = [il['per_curve'][c]['mean_ms'] / 1000 for c in il['curves']]
+    modelIl = [cu + (cs - cu) * censusByCurve[c]['exact_decomp_prob'] for c in il['curves']]
+    res = {'solvable_s': cs, 'unsolvable_s': cu,
+           'per_call_ms_range': [1000 * float(perCall.min()), 1000 * float(perCall.max())],
+           'per_call_spread_pct': 100 * float(perCall.max() / perCall.min() - 1),
+           'interleaved_observed_vs_model_r': float(np.corrcoef(observed, modelIl)[0, 1]),
+           'gb_cpu_s_per_dlp': {'range': [float(gbDlp.min()), float(gbDlp.max())], 'e0': float(gbDlp[0]),
+                                'e0_percentile': percentile(gbDlp[1:], gbDlp[0]),
+                                'halfwidth_pct': 100 * float((gbDlp.max() - gbDlp.min()) / 2 / np.median(gbDlp)),
+                                'corr_with_fb_size': float(np.corrcoef(fb, gbDlp)[0, 1])},
+           'corr_attempts_with_fb_size': float(np.corrcoef(fb, att)[0, 1])}
+    tz = (crosscheck or {}).get('trace_zero')
+    if tz:
+        tzC = [tz['per_curve'][c] for c in names]
+        tzDlp = np.array([(r['fb_size'] + 10) * (cs + cu * (1 / r['exact_decomp_prob'] - 1)) for r in tzC])
+        res['trace_zero_gb_cpu_s_per_dlp_mean'] = float(tzDlp.mean())
+        res['trace_zero_saving_pct'] = 100 * float(1 - tzDlp.mean() / gbDlp.mean())
+    out['cost_model'] = res
+
+
+def crosschecks(out):
+    """Fold in crosscheck.py / crosscheck.sage outputs, without per-curve detail."""
+    found = {}
+    for name in ('crosscheck', 'crosscheck-algebra'):
+        path = os.path.join(HERE, 'results', name + '.json')
+        if os.path.exists(path):
+            found[name] = json.load(open(path))
+    if 'crosscheck' in found:
+        cc = json.loads(json.dumps(found['crosscheck']))
+        cc.get('trace_zero', {}).pop('per_curve', None)
+        out['crosscheck'] = cc
+    if 'crosscheck-algebra' in found:
+        out['crosscheck_algebra'] = found['crosscheck-algebra']
+    return found.get('crosscheck')
+
+
 def main():
     out = {}
     interleaved(load('interleave.jsonl'), out)
     tauComparison(load('tau-*.jsonl'), out)
     byCurve = census(load('census-*.jsonl'), out, load('gbcpu-*.jsonl'))
-    ecdlp(load('ecdlp-*.jsonl'), byCurve, out)
+    ecdlp(load('ecdlp-*.jsonl', source=True), byCurve, out)
+    costModel(out, byCurve, crosschecks(out))
     with open(os.path.join(HERE, 'results', 'summary.json'), 'w') as f:
         json.dump(out, f, indent=2, default=float)
     print(json.dumps(out, indent=2, default=float)[:6000])
