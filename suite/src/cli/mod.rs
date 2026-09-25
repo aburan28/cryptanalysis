@@ -18,6 +18,7 @@ pub mod challenge;
 pub mod curve;
 pub mod dlog;
 pub mod ecdlp;
+pub mod factor;
 pub mod ic;
 pub mod output;
 pub mod tools;
@@ -33,6 +34,8 @@ const OVERVIEW: &str = "\
 Attacks by family:
   discrete logs (generic)   bsgs, rho, kangaroo, grumpy, precomp, glv, pohlig-hellman, cheon, gpu-rho
   weak curves (any size)    ecdlp (singular, Smart anomalous, Pohlig-Hellman, MOV/Frey-Rueck)
+  factoring                 factor, gnfs, snfs, qs, ecm, pm1 (--pp1), rho-factor
+  RSA                       rsa fermat|wiener|from-d|hastad|common-modulus|small-e|batch-gcd
   index calculus            ic (zp, prime, run, compare, fixed, workflow, boundary, bench, rho, ...), icx
   symmetric & hash          list-ciphers, auto, boomerang, rectangle, sbox, aes-related-key, hash-auto, length-extension
   lattice & post-quantum    mlwe
@@ -85,6 +88,25 @@ pub enum Command {
     Ecdlp(ecdlp::EcdlpArgs),
     /// Pollard rho on the GPU kernel (CUDA, or its host emulator).
     GpuRho(dlog::GpuRhoArgs),
+    /// Factor an integer completely: trial division, rho, p-1, ECM, SIQS,
+    /// SNFS/GNFS, each factor verified.
+    Factor(factor::FactorArgs),
+    /// General number field sieve (base-m polynomial selection).
+    Gnfs(factor::GnfsArgs),
+    /// Special number field sieve for n dividing c*r^e + s.
+    Snfs(factor::SnfsArgs),
+    /// Self-initialising multiple-polynomial quadratic sieve.
+    Qs(factor::QsArgs),
+    /// Lenstra's elliptic-curve method.
+    Ecm(factor::EcmArgs),
+    /// Pollard p-1 (or Williams p+1 with --pp1).
+    Pm1(factor::Pm1Args),
+    /// Pollard-Brent rho for integer factoring.
+    RhoFactor(factor::RhoFactorArgs),
+    /// Classic RSA attacks: Fermat, Wiener, d -> p,q, Hastad, common
+    /// modulus, small e, batch GCD.
+    #[command(subcommand)]
+    Rsa(factor::RsaCmd),
     /// Curve registry and structure.
     #[command(subcommand)]
     Curve(curve::CurveCmd),
@@ -193,6 +215,14 @@ pub fn run(out: Out, cmd: Command) -> CmdResult {
         Command::Cheon(a) => dlog::run_cheon(out, &a),
         Command::Ecdlp(a) => ecdlp::run(out, &a),
         Command::GpuRho(a) => dlog::run_gpu_rho(out, &a),
+        Command::Factor(a) => factor::run_factor(out, &a),
+        Command::Gnfs(a) => factor::run_gnfs(out, &a),
+        Command::Snfs(a) => factor::run_snfs(out, &a),
+        Command::Qs(a) => factor::run_qs(out, &a),
+        Command::Ecm(a) => factor::run_ecm(out, &a),
+        Command::Pm1(a) => factor::run_pm1(out, &a),
+        Command::RhoFactor(a) => factor::run_rho_factor(out, &a),
+        Command::Rsa(c) => factor::run_rsa(out, &c),
         Command::Curve(c) => curve::run(out, &c),
         Command::Challenge(a) => challenge::run(out, &a),
     }

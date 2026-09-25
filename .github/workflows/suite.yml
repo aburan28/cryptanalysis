@@ -67,7 +67,7 @@ jobs:
           cargo test --release --lib --features gpu-emulator -- f4_gpu f4_batch f4_gf2
       - name: Every binary answers --help
         run: |
-          for bin in ca-suite ca-ic ca-koblitz-pdp-prepare; do
+          for bin in crax ca-suite ca-ic ca-icx ca-curves ca-koblitz-pdp-prepare; do
             ./target/release/$bin --help > /dev/null
           done
       - name: Smoke the tools
@@ -84,6 +84,28 @@ jobs:
             | python3 -c 'import json,sys; r=json.load(sys.stdin)["result"]; assert r["verified"] is True, r'
           ./target/release/ca-ic prime --curve secp256k1 --bits 20 --targets 4 --json \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["status"] == "complete" and r["vs_rho"]["verdict"]["all_verified"] is True, r["status"]'
+      - name: Smoke crax
+        # One verified answer from each crax family, JSON-checked: the C
+        # library's solvers through the bindings, the challenge corpus,
+        # the weak-curve attacks, the factoring sieves, the RSA attacks,
+        # and the research command lines crax routes to.
+        run: |
+          C=./target/release/crax
+          ok() { python3 -c 'import json,sys; r=json.load(sys.stdin); assert r.get("verified") is True and r.get("status") in ("ok", None), r' ; }
+          $C --json rho --p 2000000579 --order 1000000289 --x 123456789 | ok
+          $C --json pohlig-hellman --p 1000003 --a 1 --b 7 --order 2777 --g 965127,959535 --h 484062,675069 | ok
+          $C --json glv --curve glv-j0-26 --x 999999 | ok
+          $C --json ic zp --p 1099511627791 --g 3 --x 99 | ok
+          $C --json challenge solve fp-cm-d11-b48 | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["verified"] and r["matches_known_log"], r'
+          $C --json challenge solve fp-anomalous-b128 | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["verified"] and r["method"] == "Smart", r'
+          $C --json ecdlp --curve p256 --x 5 --analyze-only | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not any(c["applicable"] for c in r["analysis"]["checks"]), r' 
+          $C --json factor '2^128+1' | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["complete"] and r["verified"], r'
+          $C --json qs '1000000000000037*100000000000031' | ok
+          $C --json snfs '2^227-1' | ok
+          $C --json rsa fermat '93821991298325395112481436679912640426227976229082400784744768813281354623479*93821991298325395112481436679912640426227976229082400784744768813281355623581' | ok
+          $C list-ciphers | grep -q '^  aes-4r'
+          $C --json ic prime --curve secp256k1 --bits 20 --targets 4 \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["status"] == "complete", r["status"]'
 
   f4-kernel:
     # The batched F4 kernel compiled for sm_75 through sm_120 with the pinned

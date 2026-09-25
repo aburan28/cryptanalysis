@@ -10,12 +10,14 @@ moved here and put under this repository's checks.
 Where the C library in the parent directory is one generic-group interface
 with a handful of fast, measured solvers over 64-bit groups, the suite is
 the wide end: many attacks, arbitrary precision (`num-bigint`), and
-Markdown reports.  The two do not depend on each other.
+Markdown reports.  The suite links the C library (through
+`../bindings/rust`) for `crax`'s generic solvers; the C library does not
+depend on the suite.
 
 ```sh
-cargo build --release                 # ca-suite, ca-ic, ca-icx, ca-curves, ca-koblitz-pdp-prepare
+cargo build --release                 # crax, ca-suite, ca-ic, ca-icx, ca-curves, ca-koblitz-pdp-prepare
 cargo test --release                  # 2761 unit + 65 integration tests, ~6 min on 4 cores
-./target/release/ca-suite --help
+./target/release/crax --help         # the unified command line: docs/CRAX.md
 ```
 
 Requirements: Rust 1.87 or newer (declared in `Cargo.toml`, checked in CI).
@@ -28,6 +30,13 @@ with `python3` (standard library only; `python-sat` or `pycryptosat` only
 for its SAT solver).
 
 ## Command line
+
+`crax` (see [../docs/CRAX.md](../docs/CRAX.md)) is the single entry point:
+the C library's generic solvers, `ecdlp`, `challenge`, the factoring and RSA
+commands, and every `ca-suite`, `ca-ic` and `ca-icx` subcommand below under
+the same name (`crax auto ...`, `crax ic prime ...`, `crax icx list`).  The
+research command lines live in `src/cli/tools/`; the `ca-*` binaries are
+shims over them and remain for existing scripts.
 
 `ca-suite` has one subcommand per tool.
 
