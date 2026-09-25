@@ -225,6 +225,7 @@ pub mod tls13_kdf;
 pub mod visual_demos;
 pub mod visualize;
 pub mod wdsat_oracle;
+pub mod weak_curves;
 pub mod weil_charts;
 
 pub use aut_folded_rho::{
