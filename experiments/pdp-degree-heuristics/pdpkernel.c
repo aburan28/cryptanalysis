@@ -34,7 +34,8 @@ size_t ctx_size(void) { return sizeof(ctx_t); }
 
 static inline int deg64(u64 a) { return a ? 63 - __builtin_clzll(a) : -1; }
 
-static inline u64 gf_mul(const ctx_t *c, u64 a, u64 b) {
+static inline u64 gf_mul(const ctx_t *c, u64 a, u64 b)
+{
     u64 r = 0, top = (u64)1 << c->n;
     while (b) {
         if (b & 1) r ^= a;
@@ -47,14 +48,19 @@ static inline u64 gf_mul(const ctx_t *c, u64 a, u64 b) {
 
 static inline u64 gf_sqr(const ctx_t *c, u64 a) { return gf_mul(c, a, a); }
 
-static u64 gf_inv(const ctx_t *c, u64 a) {
+static u64 gf_inv(const ctx_t *c, u64 a)
+{
     u64 u = a, v = c->mod, g1 = 1, g2 = 0;
     if (!a) return 0;
     while (u != 1) {
         int j = deg64(u) - deg64(v);
         if (j < 0) {
-            u64 t = u; u = v; v = t;
-            t = g1; g1 = g2; g2 = t;
+            u64 t = u;
+            u = v;
+            v = t;
+            t = g1;
+            g1 = g2;
+            g2 = t;
             j = -j;
         }
         u ^= v << j;
@@ -65,7 +71,8 @@ static u64 gf_inv(const ctx_t *c, u64 a) {
 
 static inline int gf_trace(const ctx_t *c, u64 a) { return __builtin_popcountll(a & c->tmask) & 1; }
 
-static u64 lin_apply(const u64 *tab, u64 a) {
+static u64 lin_apply(const u64 *tab, u64 a)
+{
     u64 r = 0;
     while (a) {
         int i = __builtin_ctzll(a);
@@ -75,7 +82,8 @@ static u64 lin_apply(const u64 *tab, u64 a) {
     return r;
 }
 
-int ctx_init(ctx_t *c, int n, u64 mod, u64 a2, u64 b) {
+int ctx_init(ctx_t *c, int n, u64 mod, u64 a2, u64 b)
+{
     if (n < 2 || n > 63 || deg64(mod) != n) return -1;
     memset(c, 0, sizeof(*c));
     c->n = n;
@@ -84,7 +92,10 @@ int ctx_init(ctx_t *c, int n, u64 mod, u64 a2, u64 b) {
     c->b = b;
     for (int i = 0; i < n; i++) {
         u64 x = (u64)1 << i, t = 0, y = x;
-        for (int k = 0; k < n; k++) { t ^= y; y = gf_sqr(c, y); }
+        for (int k = 0; k < n; k++) {
+            t ^= y;
+            y = gf_sqr(c, y);
+        }
         if (t != 0 && t != 1) return -2;
         if (t) c->tmask |= (u64)1 << i;
         y = x;
@@ -93,7 +104,10 @@ int ctx_init(ctx_t *c, int n, u64 mod, u64 a2, u64 b) {
         if (n & 1) {
             u64 h = 0;
             y = x;
-            for (int k = 0; k < (n + 1) / 2; k++) { h ^= y; y = gf_sqr(c, gf_sqr(c, y)); }
+            for (int k = 0; k < (n + 1) / 2; k++) {
+                h ^= y;
+                y = gf_sqr(c, gf_sqr(c, y));
+            }
             c->htab[i] = h;
         }
     }
@@ -106,18 +120,32 @@ int gf_trace_x(const ctx_t *c, u64 a) { return gf_trace(c, a); }
 u64 gf_halftrace_x(const ctx_t *c, u64 a) { return lin_apply(c->htab, a); }
 u64 gf_sqrt_x(const ctx_t *c, u64 a) { return lin_apply(c->stab, a); }
 
-void gf_mul_const_batch(const ctx_t *c, const u64 *a, int count, u64 k, u64 *out) {
+void gf_mul_const_batch(const ctx_t *c, const u64 *a, int count, u64 k, u64 *out)
+{
     for (int i = 0; i < count; i++) out[i] = gf_mul(c, a[i], k);
 }
 
 /* ---------------------------------------------------------------- curve */
 
-static void ec_add(const ctx_t *c, u64 x1, u64 y1, u64 x2, u64 y2, u64 *xo, u64 *yo) {
-    if (x1 == INF_X) { *xo = x2; *yo = y2; return; }
-    if (x2 == INF_X) { *xo = x1; *yo = y1; return; }
+static void ec_add(const ctx_t *c, u64 x1, u64 y1, u64 x2, u64 y2, u64 *xo, u64 *yo)
+{
+    if (x1 == INF_X) {
+        *xo = x2;
+        *yo = y2;
+        return;
+    }
+    if (x2 == INF_X) {
+        *xo = x1;
+        *yo = y1;
+        return;
+    }
     u64 lam, x3;
     if (x1 == x2) {
-        if (y1 != y2 || x1 == 0) { *xo = INF_X; *yo = 0; return; }
+        if (y1 != y2 || x1 == 0) {
+            *xo = INF_X;
+            *yo = 0;
+            return;
+        }
         lam = x1 ^ gf_mul(c, y1, gf_inv(c, x1));
         x3 = gf_sqr(c, lam) ^ lam ^ c->a2;
         *yo = gf_sqr(c, x1) ^ gf_mul(c, lam ^ 1, x3);
@@ -130,7 +158,8 @@ static void ec_add(const ctx_t *c, u64 x1, u64 y1, u64 x2, u64 y2, u64 *xo, u64 
     *xo = x3;
 }
 
-static void ec_mul(const ctx_t *c, u64 x, u64 y, u64 k, u64 *xo, u64 *yo) {
+static void ec_mul(const ctx_t *c, u64 x, u64 y, u64 k, u64 *xo, u64 *yo)
+{
     u64 rx = INF_X, ry = 0;
     int top = deg64(k);
     for (int i = top; i >= 0; i--) {
@@ -141,18 +170,24 @@ static void ec_mul(const ctx_t *c, u64 x, u64 y, u64 k, u64 *xo, u64 *yo) {
     *yo = ry;
 }
 
-void ec_add_x(const ctx_t *c, u64 x1, u64 y1, u64 x2, u64 y2, u64 *out) {
+void ec_add_x(const ctx_t *c, u64 x1, u64 y1, u64 x2, u64 y2, u64 *out)
+{
     ec_add(c, x1, y1, x2, y2, &out[0], &out[1]);
 }
 
-void ec_mul_x(const ctx_t *c, u64 x, u64 y, u64 k, u64 *out) { ec_mul(c, x, y, k, &out[0], &out[1]); }
+void ec_mul_x(const ctx_t *c, u64 x, u64 y, u64 k, u64 *out)
+{
+    ec_mul(c, x, y, k, &out[0], &out[1]);
+}
 
-void ec_mul_batch(const ctx_t *c, const u64 *xs, const u64 *ys, int count, u64 k, u64 *ox, u64 *oy) {
+void ec_mul_batch(const ctx_t *c, const u64 *xs, const u64 *ys, int count, u64 k, u64 *ox, u64 *oy)
+{
     for (int i = 0; i < count; i++) ec_mul(c, xs[i], ys[i], k, &ox[i], &oy[i]);
 }
 
 /* y for each x (the root y = x*t of t^2 + t = x + a2 + b/x^2), ok[i] = 0 if x does not lift. */
-void ec_lift_batch(const ctx_t *c, const u64 *xs, int count, u64 *ys, uint8_t *ok) {
+void ec_lift_batch(const ctx_t *c, const u64 *xs, int count, u64 *ys, uint8_t *ok)
+{
     for (int i = 0; i < count; i++) {
         u64 x = xs[i];
         if (x == 0) {
@@ -161,21 +196,28 @@ void ec_lift_batch(const ctx_t *c, const u64 *xs, int count, u64 *ys, uint8_t *o
             continue;
         }
         u64 rhs = x ^ c->a2 ^ gf_mul(c, c->b, gf_inv(c, gf_sqr(c, x)));
-        if (gf_trace(c, rhs)) { ok[i] = 0; ys[i] = 0; continue; }
+        if (gf_trace(c, rhs)) {
+            ok[i] = 0;
+            ys[i] = 0;
+            continue;
+        }
         ys[i] = gf_mul(c, x, lin_apply(c->htab, rhs));
         ok[i] = 1;
     }
 }
 
 /* All sums P_i + P_j with i <= j, in row-major order. */
-void ec_pair_sums(const ctx_t *c, const u64 *xs, const u64 *ys, int count, u64 *ox, u64 *oy) {
+void ec_pair_sums(const ctx_t *c, const u64 *xs, const u64 *ys, int count, u64 *ox, u64 *oy)
+{
     long long k = 0;
     for (int i = 0; i < count; i++)
         for (int j = i; j < count; j++, k++) ec_add(c, xs[i], ys[i], xs[j], ys[j], &ox[k], &oy[k]);
 }
 
 /* R - P_i for every i (negation is (x, x + y)). */
-void ec_sub_from(const ctx_t *c, u64 rx, u64 ry, const u64 *xs, const u64 *ys, int count, u64 *ox, u64 *oy) {
+void ec_sub_from(const ctx_t *c, u64 rx, u64 ry, const u64 *xs, const u64 *ys, int count, u64 *ox,
+                 u64 *oy)
+{
     for (int i = 0; i < count; i++) {
         u64 nx = xs[i], ny = xs[i] == INF_X ? 0 : xs[i] ^ ys[i];
         ec_add(c, rx, ry, nx, ny, &ox[i], &oy[i]);
@@ -194,7 +236,8 @@ void ec_sub_from(const ctx_t *c, u64 rx, u64 ry, const u64 *xs, const u64 *ys, i
  */
 long long mac_build_rows(int words, const uint32_t *eq_masks, const int32_t *eq_off,
                          const uint32_t *mult, const int32_t *mult_eq, int nrows,
-                         const int32_t *colidx, int col_offset, int homog_degree, u64 *out) {
+                         const int32_t *colidx, int col_offset, int homog_degree, u64 *out)
+{
     long long ops = 0;
     for (int r = 0; r < nrows; r++) {
         u64 *row = out + (size_t)r * words;
@@ -202,7 +245,8 @@ long long mac_build_rows(int words, const uint32_t *eq_masks, const int32_t *eq_
         uint32_t a = mult[r];
         for (int t = eq_off[e]; t < eq_off[e + 1]; t++) {
             uint32_t m = eq_masks[t];
-            if (homog_degree >= 0 && ((m & a) || __builtin_popcount(m | a) != homog_degree)) continue;
+            if (homog_degree >= 0 && ((m & a) || __builtin_popcount(m | a) != homog_degree))
+                continue;
             int col = colidx[m | a] - col_offset;
             row[col >> 6] ^= (u64)1 << (col & 63);
             ops++;
@@ -220,7 +264,8 @@ typedef struct {
     u64 *work;
 } ech_t;
 
-void *ech_new(int ncols) {
+void *ech_new(int ncols)
+{
     ech_t *e = calloc(1, sizeof(ech_t));
     if (!e) return NULL;
     e->ncols = ncols;
@@ -234,7 +279,8 @@ void *ech_new(int ncols) {
     return e;
 }
 
-void ech_free(void *p) {
+void ech_free(void *p)
+{
     ech_t *e = p;
     if (!e) return;
     free(e->rows);
@@ -243,7 +289,8 @@ void ech_free(void *p) {
     free(e);
 }
 
-int ech_extend(void *p, int ncols) {
+int ech_extend(void *p, int ncols)
+{
     ech_t *e = p;
     if (ncols <= e->ncols) return 0;
     int words = (ncols + 63) / 64;
@@ -252,7 +299,8 @@ int ech_extend(void *p, int ncols) {
         u64 *work = calloc((size_t)words, sizeof(u64));
         if (!rows || !work) return -1;
         for (int r = 0; r < e->nrows; r++)
-            memcpy(rows + (size_t)r * words, e->rows + (size_t)r * e->words, sizeof(u64) * e->words);
+            memcpy(rows + (size_t)r * words, e->rows + (size_t)r * e->words,
+                   sizeof(u64) * e->words);
         free(e->rows);
         free(e->work);
         e->rows = rows;
@@ -276,7 +324,8 @@ int ech_has_unit(void *p) { return ((ech_t *)p)->ncols > 0 && ((ech_t *)p)->pivo
  * independent ones.  Stops early once the constant monomial (column 0) is a pivot
  * if stop_on_unit is set.  Returns rows consumed; *xors accumulates word XORs.
  */
-int ech_add(void *p, const u64 *in, int k, int stop_on_unit, long long *xors) {
+int ech_add(void *p, const u64 *in, int k, int stop_on_unit, long long *xors)
+{
     ech_t *e = p;
     int W = e->words;
     long long x = 0;
@@ -314,14 +363,16 @@ int ech_add(void *p, const u64 *in, int k, int stop_on_unit, long long *xors) {
     return consumed;
 }
 
-int ech_count_pivots_from(void *p, int col_lo) {
+int ech_count_pivots_from(void *p, int col_lo)
+{
     ech_t *e = p;
     int c = 0;
     for (int i = col_lo < 0 ? 0 : col_lo; i < e->ncols; i++) c += e->pivot[i] >= 0;
     return c;
 }
 
-int ech_pivots(void *p, int32_t *out) {
+int ech_pivots(void *p, int32_t *out)
+{
     ech_t *e = p;
     int c = 0;
     for (int i = 0; i < e->ncols; i++)
@@ -330,7 +381,8 @@ int ech_pivots(void *p, int32_t *out) {
 }
 
 /* out[i] = pivot column of basis row i (rows are kept in insertion order). */
-int ech_row_pivots(void *p, int32_t *out) {
+int ech_row_pivots(void *p, int32_t *out)
+{
     ech_t *e = p;
     for (int c = 0; c < e->ncols; c++)
         if (e->pivot[c] >= 0) out[e->pivot[c]] = c;
@@ -345,7 +397,8 @@ int ech_row_pivots(void *p, int32_t *out) {
  * degree are multiplied again instead of waiting for the next Macaulay degree.
  */
 long long mac_mul_rows(void *p, const int32_t *idx, int k, int nvars, const uint32_t *pos2mask,
-                       const int32_t *colidx, u64 *out) {
+                       const int32_t *colidx, u64 *out)
+{
     ech_t *e = p;
     int W = e->words;
     long long ops = 0;
@@ -370,7 +423,8 @@ long long mac_mul_rows(void *p, const int32_t *idx, int k, int nvars, const uint
 }
 
 /* Copy the basis row whose pivot is `col`; returns 0 if there is none. */
-int ech_row(void *p, int col, u64 *out) {
+int ech_row(void *p, int col, u64 *out)
+{
     ech_t *e = p;
     if (col < 0 || col >= e->ncols || e->pivot[col] < 0) return 0;
     memcpy(out, e->rows + (size_t)e->pivot[col] * e->words, sizeof(u64) * e->words);
@@ -382,7 +436,8 @@ int ech_row(void *p, int col, u64 *out) {
 /* In-place binary Moebius transform of a 2^nv table of F_2^n-valued ANF
  * coefficients into function values; writes up to max_out zero positions.
  * Returns the number of zeros. */
-long long anf_zeros(u64 *a, int nv, uint32_t *out, long long max_out) {
+long long anf_zeros(u64 *a, int nv, uint32_t *out, long long max_out)
+{
     size_t size = (size_t)1 << nv;
     for (int i = 0; i < nv; i++) {
         size_t bit = (size_t)1 << i;
@@ -399,7 +454,8 @@ long long anf_zeros(u64 *a, int nv, uint32_t *out, long long max_out) {
 }
 
 /* Number of multilinear monomials over nv variables divisible by none of lm[]. */
-long long count_standard(const uint32_t *lm, int k, int nv) {
+long long count_standard(const uint32_t *lm, int k, int nv)
+{
     size_t size = (size_t)1 << nv;
     uint8_t *cl = calloc(size, 1);
     if (!cl) return -1;
