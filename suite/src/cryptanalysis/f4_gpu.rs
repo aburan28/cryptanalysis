@@ -19,8 +19,8 @@
 //! - [`CudaDecider`], the kernel on an NVIDIA device through the CUDA driver
 //!   API.  `libcuda` and NVRTC are opened at run time, so the crate builds
 //!   and links everywhere and nothing here runs unless it is asked for.
-//!   The source is compiled by NVRTC for the device found (or loaded as PTX
-//!   from `CA_F4_PTX`).
+//!   NVRTC compiles the source to SASS for the device found, falling back
+//!   to PTX, or the PTX is loaded from `CA_F4_PTX`.
 //!
 //! A system the kernel cannot hold — degree above 7, more than 256
 //! equations, or more scratch than a block was given — comes back as
@@ -372,7 +372,7 @@ impl BatchDecider for EmulatorDecider {
 }
 
 #[cfg(unix)]
-pub use cuda::{compile_kernel_ptx, CudaDecider};
+pub use cuda::{compile_kernel_ptx, compile_kernel_sass, CudaDecider};
 
 #[cfg(unix)]
 mod cuda {
@@ -536,6 +536,11 @@ mod cuda {
         log: unsafe extern "C" fn(Handle, *mut c_char) -> c_int,
         ptx_size: unsafe extern "C" fn(Handle, *mut usize) -> c_int,
         ptx: unsafe extern "C" fn(Handle, *mut c_char) -> c_int,
+        /// `nvrtcGetCUBINSize` and `nvrtcGetCUBIN`, absent before NVRTC 11.1.
+        cubin: Option<(
+            unsafe extern "C" fn(Handle, *mut usize) -> c_int,
+            unsafe extern "C" fn(Handle, *mut c_char) -> c_int,
+        )>,
         destroy: unsafe extern "C" fn(*mut Handle) -> c_int,
     }
 
@@ -559,14 +564,26 @@ mod cuda {
                     log: lib.symbol("nvrtcGetProgramLog")?,
                     ptx_size: lib.symbol("nvrtcGetPTXSize")?,
                     ptx: lib.symbol("nvrtcGetPTX")?,
+                    cubin: lib
+                        .symbol("nvrtcGetCUBINSize")
+                        .and_then(|size| Ok((size, lib.symbol("nvrtcGetCUBIN")?)))
+                        .ok(),
                     destroy: lib.symbol("nvrtcDestroyProgram")?,
                     _lib: lib,
                 })
             }
         }
 
-        /// Compile `source` to PTX for `compute_{arch}`.
-        fn compile_ptx(&self, source: &str, arch: u32) -> Result<Vec<u8>, String> {
+        /// Compile `source` to SASS for `sm_{arch}` when `sass`, else to
+        /// NUL-terminated PTX for `compute_{arch}`.
+        fn compile(&self, source: &str, arch: u32, sass: bool) -> Result<Vec<u8>, String> {
+            let (size_of, read) = if sass {
+                self.cubin
+                    .ok_or("this NVRTC cannot emit SASS (nvrtcGetCUBIN needs NVRTC 11.1)")?
+            } else {
+                (self.ptx_size, self.ptx)
+            };
+            let target = format!("{}_{arch}", if sass { "sm" } else { "compute" });
             let src = CString::new(source).map_err(|e| e.to_string())?;
             let name = CString::new("f4_gf2_kernel.cu").unwrap();
             let mut prog: Handle = std::ptr::null_mut();
@@ -584,7 +601,7 @@ mod cuda {
             if rc != 0 {
                 return Err(format!("nvrtcCreateProgram failed ({rc})"));
             }
-            let opt = CString::new(format!("--gpu-architecture=compute_{arch}")).unwrap();
+            let opt = CString::new(format!("--gpu-architecture={target}")).unwrap();
             let opts = [opt.as_ptr()];
             // SAFETY: `prog` is live; one option string.
             let rc = unsafe { (self.compile)(prog, 1, opts.as_ptr()) };
@@ -596,16 +613,16 @@ mod cuda {
                 // SAFETY: `buf` holds the reported log size.
                 unsafe { (self.log)(prog, buf.as_mut_ptr() as *mut c_char) };
                 Err(format!(
-                    "NVRTC compile for compute_{arch} failed: {}",
+                    "NVRTC compile for {target} failed: {}",
                     String::from_utf8_lossy(&buf).trim_end_matches('\0')
                 ))
             } else {
                 let mut n = 0usize;
-                // SAFETY: querying the PTX of a compiled program.
-                unsafe { (self.ptx_size)(prog, &mut n) };
+                // SAFETY: querying the output size of a compiled program.
+                unsafe { size_of(prog, &mut n) };
                 let mut buf = vec![0u8; n];
-                // SAFETY: `buf` holds the reported PTX size, NUL included.
-                unsafe { (self.ptx)(prog, buf.as_mut_ptr() as *mut c_char) };
+                // SAFETY: `buf` holds the reported size (PTX: NUL included).
+                unsafe { read(prog, buf.as_mut_ptr() as *mut c_char) };
                 Ok(buf)
             };
             // SAFETY: destroying the program once.
@@ -615,11 +632,19 @@ mod cuda {
     }
 
     /// Compile the kernel with NVRTC for `compute_{arch}` and return its
-    /// NUL-terminated PTX — what [`CudaDecider::new`] loads.  Needs only
-    /// NVRTC (`CA_NVRTC_LIB` or `libnvrtc.so.*`), not a device, so it is
-    /// the check that a machine's NVRTC accepts the source.
+    /// NUL-terminated PTX.  Needs only NVRTC (`CA_NVRTC_LIB` or
+    /// `libnvrtc.so.*`), not a device, so it is the check that a machine's
+    /// NVRTC accepts the source.
     pub fn compile_kernel_ptx(arch: u32) -> Result<Vec<u8>, String> {
-        Nvrtc::load()?.compile_ptx(&kernel_source(), arch)
+        Nvrtc::load()?.compile(&kernel_source(), arch, false)
+    }
+
+    /// Compile the kernel with NVRTC to an `sm_{arch}` cubin, the image
+    /// [`CudaDecider::new`] loads first: SASS needs no driver JIT, so it
+    /// loads under any driver of NVRTC's CUDA major version, where PTX
+    /// from a newer NVRTC than the driver is refused.
+    pub fn compile_kernel_sass(arch: u32) -> Result<Vec<u8>, String> {
+        Nvrtc::load()?.compile(&kernel_source(), arch, true)
     }
 
     /// A device allocation that grows as batches do.
@@ -637,6 +662,8 @@ mod cuda {
         module: Handle,
         function: Handle,
         name: String,
+        /// The loaded image: `sm_XY` SASS, `compute_XY` PTX, or `CA_F4_PTX`.
+        code: String,
         compute: (i32, i32),
         sm_count: u32,
         /// Threads per block.
@@ -653,8 +680,10 @@ mod cuda {
     unsafe impl Send for CudaDecider {}
 
     impl CudaDecider {
-        /// Open device `ordinal`, compile the kernel for it (NVRTC, or the
-        /// PTX file named by `CA_F4_PTX`) and load it.
+        /// Open device `ordinal`, compile the kernel for it and load it:
+        /// the first of `sm_XY` SASS, `compute_XY` PTX and `compute_75` PTX
+        /// that NVRTC emits and the driver accepts, or the PTX file named
+        /// by `CA_F4_PTX`.
         pub fn new(ordinal: usize) -> Result<Self, String> {
             let driver = Driver::load()?;
             // SAFETY: plain driver API calls with valid out-pointers.
@@ -692,26 +721,45 @@ mod cuda {
                     "cuDevicePrimaryCtxRetain",
                 )?;
                 driver.check((driver.ctx_set_current)(context), "cuCtxSetCurrent")?;
-                let ptx = match std::env::var("CA_F4_PTX") {
+                let mut module: Handle = std::ptr::null_mut();
+                let code = match std::env::var("CA_F4_PTX") {
                     Ok(path) => {
                         let mut bytes = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
                         bytes.push(0);
-                        bytes
+                        driver.check(
+                            (driver.module_load_data)(&mut module, bytes.as_ptr() as *const c_void),
+                            "cuModuleLoadData",
+                        )?;
+                        "CA_F4_PTX".to_string()
                     }
                     Err(_) => {
                         let nvrtc = Nvrtc::load()?;
                         let arch = (compute.0 * 10 + compute.1) as u32;
                         let source = kernel_source();
-                        nvrtc
-                            .compile_ptx(&source, arch)
-                            .or_else(|_| nvrtc.compile_ptx(&source, 75))?
+                        let mut failures = Vec::new();
+                        let mut loaded = None;
+                        for (target, sass) in [(arch, true), (arch, false), (75, false)] {
+                            let code = format!("{}_{target}", if sass { "sm" } else { "compute" });
+                            let attempt = nvrtc.compile(&source, target, sass).and_then(|image| {
+                                driver.check(
+                                    (driver.module_load_data)(
+                                        &mut module,
+                                        image.as_ptr() as *const c_void,
+                                    ),
+                                    &format!("cuModuleLoadData({code})"),
+                                )
+                            });
+                            match attempt {
+                                Ok(()) => {
+                                    loaded = Some(code);
+                                    break;
+                                }
+                                Err(e) => failures.push(e),
+                            }
+                        }
+                        loaded.ok_or_else(|| failures.join("; "))?
                     }
                 };
-                let mut module: Handle = std::ptr::null_mut();
-                driver.check(
-                    (driver.module_load_data)(&mut module, ptx.as_ptr() as *const c_void),
-                    "cuModuleLoadData",
-                )?;
                 let fname = CString::new("f4_gf2_decide_batch").unwrap();
                 let mut function: Handle = std::ptr::null_mut();
                 driver.check(
@@ -735,6 +783,7 @@ mod cuda {
                     module,
                     function,
                     name,
+                    code,
                     compute,
                     sm_count,
                     threads,
@@ -884,8 +933,8 @@ mod cuda {
     impl BatchDecider for CudaDecider {
         fn name(&self) -> String {
             format!(
-                "cuda:{} sm_{}{} x{}",
-                self.name, self.compute.0, self.compute.1, self.sm_count
+                "cuda:{} sm_{}{} x{} code={}",
+                self.name, self.compute.0, self.compute.1, self.sm_count, self.code
             )
         }
 
@@ -1173,6 +1222,28 @@ mod tests {
                 assert_eq!(ptx.last(), Some(&0), "PTX must be NUL-terminated");
             }
             Err(e) => assert!(e.starts_with("none of"), "NVRTC was found but failed: {e}"),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn nvrtc_emits_sass_where_available() {
+        match compile_kernel_sass(75) {
+            Ok(cubin) => {
+                assert_eq!(
+                    cubin.get(..4),
+                    Some(&b"\x7fELF"[..]),
+                    "a cubin is an ELF image"
+                );
+                assert!(
+                    cubin.windows(19).any(|w| w == b"f4_gf2_decide_batch"),
+                    "no entry point"
+                );
+            }
+            Err(e) => assert!(
+                e.starts_with("none of") || e.starts_with("this NVRTC cannot emit SASS"),
+                "NVRTC was found but failed: {e}"
+            ),
         }
     }
 
