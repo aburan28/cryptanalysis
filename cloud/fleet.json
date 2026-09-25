@@ -1,0 +1,37 @@
+{
+  "repo": "https://github.com/aburan28/cryptanalysis.git",
+  "fleetRef": "cursor/cloud-compute-workers-20e9",
+  "fallbackRef": "claude/cryptanalysis-repo-setup-p59kek",
+  "workerBranch": "claude/cryptanalysis-repo-setup-p59kek",
+  "workers": {
+    "rp-cpu-1": {
+      "description": "32 vCPU / 64 GiB compute-optimized CPU box with SageMath 10.9 and msolve",
+      "computeType": "CPU",
+      "imageName": "runpod/base:1.0.2-ubuntu2404",
+      "cpuFlavorIds": ["cpu5c", "cpu3c"],
+      "vcpuCount": 32,
+      "containerDiskInGb": 60,
+      "volumeInGb": 100,
+      "features": ["msolve", "sage"],
+      "idleStopMinutes": 240
+    },
+    "rp-gpu-1": {
+      "description": "1x Blackwell (sm_120) GPU with the CUDA 12.8 image plus the CUDA 13.3 compiler",
+      "computeType": "GPU",
+      "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+      "gpuTypeIds": [
+        "NVIDIA RTX PRO 4500 Blackwell",
+        "NVIDIA RTX PRO 4500 Blackwell Server Edition",
+        "NVIDIA GeForce RTX 5090"
+      ],
+      "gpuCount": 1,
+      "minVCPUPerGPU": 8,
+      "minRAMPerGPU": 24,
+      "allowedCudaVersions": ["13.0", "12.9", "12.8"],
+      "containerDiskInGb": 60,
+      "volumeInGb": 100,
+      "features": ["msolve", "cuda13"],
+      "idleStopMinutes": 60
+    }
+  }
+}
