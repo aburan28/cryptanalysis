@@ -34,20 +34,26 @@
 //! ## What this module ships
 //!
 //! - [`embedding_degree`] — compute the smallest `k` with `n | p^k − 1`.
-//! - [`mov_attack_supersingular_k2`] — concrete end-to-end MOV
-//!   reduction on a `k = 2` supersingular curve, with the F_{p²}* DLP
-//!   solved by baby-step-giant-step / Pohlig-Hellman.
+//! - [`mov_attack_supersingular_k2`] — MOV reduction on a curve with
+//!   small embedding degree (`k ≤ 6`), returning the legacy
+//!   [`MovAttackReport`].  It delegates to
+//!   [`crate::cryptanalysis::weak_curves::mov::mov_attack`], which
+//!   computes the **reduced Tate pairing by Miller's algorithm** over a
+//!   genuine `F_{p^k} = F_p[t]/(f)` and solves the resulting DLP in the
+//!   order-`n` subgroup of `F_{p^k}*` with BSGS / Pollard rho.
 //! - [`MovAttackReport`] — structured outcome.
 //! - [`format_visualization`] — Markdown attack report.
 //!
+//! Earlier versions used a "pseudo-pairing" `(x₁² + x₂) mod n`, which is
+//! not bilinear, and a brute-force DLP in `(Z/n)*`; they could not
+//! attack a real MOV-weak curve and have been removed.
+//!
 //! ## What this module does NOT ship
 //!
-//! - Generic Weil/Tate pairings (we'd need the Miller loop +
-//!   `F_{p^k}` arithmetic).  We use the `k = 2` case where the
-//!   pairing simplifies dramatically.  See `bls12_381::pairing`
-//!   for a full pairing implementation on a much larger curve.
-//! - Index calculus on `F_{p^k}*` for large `k` — falls back to
-//!   Pollard rho via our existing rho-on-F_p* code.
+//! - Index calculus / NFS in `F_{p^k}*`.  The transferred DLP is solved
+//!   generically, so it costs `√n` just as Pollard rho on the curve
+//!   does: the reduction is real, the speed-up needs a subexponential
+//!   finite-field solver that is out of scope.
 //!
 //! ## References
 //!
@@ -63,22 +69,14 @@
 use crate::ecc::curve::CurveParams;
 use crate::ecc::point::Point;
 use num_bigint::BigUint;
-use num_traits::{One, Zero};
+use num_traits::Zero;
 
 /// Find the **embedding degree** `k`: smallest `k ≥ 1` with
 /// `n | p^k − 1`.  Capped at `max_k` (returns `None` if no `k ≤ max_k`
 /// works — the curve is **MOV-secure** against attacks bounded by
 /// `max_k`).
 pub fn embedding_degree(p: &BigUint, n: &BigUint, max_k: u32) -> Option<u32> {
-    let mut pk = BigUint::one();
-    for k in 1..=max_k {
-        pk *= p;
-        let diff = &pk - 1u32;
-        if &diff % n == BigUint::zero() {
-            return Some(k);
-        }
-    }
-    None
+    crate::cryptanalysis::weak_curves::mov::embedding_degree(p, n, max_k)
 }
 
 /// Outcome of one MOV reduction.
@@ -100,91 +98,46 @@ pub struct MovAttackReport {
     pub mov_secure_under_bound: bool,
 }
 
-/// **Pseudo-Weil pairing on a supersingular curve with `k = 2`**.
+/// **MOV attack** on a curve with small embedding degree (`k ≤ 6`;
+/// supersingular curves over `F_p`, `p ≥ 5`, have `k = 2`).
 ///
-/// For supersingular curves over `F_p` with `p ≡ 2 (mod 3)` and
-/// `b ≠ 0`, the distortion map `φ: (x, y) ↦ (ζ·x, y)` where `ζ ∈
-/// F_{p²}` is a non-trivial cube root of unity carries `E(F_p)` to
-/// linearly-independent points in `E(F_{p²})`.  This is enough to
-/// build a non-degenerate pairing.
+/// Given `Q = d·G` with `ord(G) = n` prime, computes `α = t_n(G, R)` and
+/// `β = t_n(Q, R)` with the reduced Tate pairing (Miller's algorithm,
+/// real `F_{p^k}` arithmetic) for an independent `R ∈ E(F_{p^k})[n]`,
+/// then solves `β = α^d` in the order-`n` subgroup of `F_{p^k}*`.  This
+/// delegates to [`crate::cryptanalysis::weak_curves::mov::mov_attack`];
+/// `recovered_d` is set only for a scalar verified by `d·G = Q`.
 ///
-/// We implement the simplified `k = 2` case where the pairing
-/// `e_n(P, Q) ∈ F_{p²}*` is computable by Miller's algorithm.  For
-/// this module we use a **simulated** pairing that's algebraically
-/// correct for the toy supersingular case but doesn't run the full
-/// Miller loop — instead it leverages the fact that on supersingular
-/// curves `(p+1)·G = O`, so the pairing has a simpler closed form.
-fn pseudo_weil_pairing_k2(_curve: &CurveParams, p1: &Point, p2: &Point, n: &BigUint) -> BigUint {
-    // For the purposes of this module's *educational* MOV
-    // demonstration, we use a deterministic "pairing-like" function
-    // that gives the right BEHAVIOUR for the discrete-log reduction:
-    // `e(d·P, Q) = e(P, Q)^d`.  Specifically, we map both points
-    // to integers via their x-coordinates (with the distortion-map
-    // tweak suppressed because the test curves we use produce a
-    // valid non-degenerate map in `Z/n*` anyway).
-    //
-    // This is NOT a real Weil pairing; it's a "compatible" map that
-    // preserves the bilinearity we need to demonstrate the attack.
-    // For a real Miller-loop pairing, see `bls12_381::pairing`.
-    let x1 = p1.x_coord().cloned().unwrap_or_else(BigUint::zero);
-    let x2 = p2.x_coord().cloned().unwrap_or_else(BigUint::zero);
-    // Combined "pairing-value": (x1^2 + x2) mod n.  Bilinear in the
-    // simplified sense we need.
-    ((&x1 * &x1) + &x2) % n
-}
-
-/// **MOV attack** on a supersingular curve with embedding degree `k = 2`.
-///
-/// Given `Q = d·G`, computes a "pairing" `α = e(G, R)` and
-/// `β = e(Q, R)`, then `d` is recovered as the discrete log of `β`
-/// base `α` in `(Z/n)*` (a smaller, easier group).
-///
-/// Returns a structured report.  This is intentionally a **teaching
-/// demonstration**: the supporting "pairing" is a compatible
-/// deterministic surrogate that preserves the bilinearity property
-/// `e(d·P, Q) = e(P, Q)^d` for the educational example, not the full
-/// Miller loop.  For production-grade pairings see `bls12_381`.
+/// `#E(F_p)` (needed for `#E(F_{p^k})`) is taken from `curve.n ·
+/// curve.h` when that is consistent, otherwise `p + 1` (the order of
+/// every supersingular curve over `F_p`, `p ≥ 5`) is tried.  When
+/// neither validates, or the DLP in `F_{p^k}*` is out of budget,
+/// `recovered_d` is `None`.
 pub fn mov_attack_supersingular_k2(
     curve: &CurveParams,
     g: &Point,
     q: &Point,
     n: &BigUint,
 ) -> MovAttackReport {
+    use crate::cryptanalysis::weak_curves::mov::{mov_attack, MovOptions};
     let t0 = std::time::Instant::now();
     let p = &curve.p;
     let k = embedding_degree(p, n, 6).unwrap_or(0);
     let target = if k > 0 { p.pow(k) } else { BigUint::zero() };
-    let mov_secure = k == 0 || k > 6;
-    if mov_secure {
-        return MovAttackReport {
-            curve_name: curve.name.to_string(),
-            embedding_degree: k,
-            n: n.clone(),
-            target_field_size: target,
-            recovered_d: None,
-            elapsed_ms: t0.elapsed().as_millis(),
-            mov_secure_under_bound: true,
-        };
-    }
-    // Find an auxiliary point R with e(G, R) ≠ 1.  For our simplified
-    // pairing, any random R with x_R ≠ x_G works.
+    let mov_secure = k == 0;
     let mut found = None;
-    let a_fe = curve.a_fe();
-    let mut scan = BigUint::one();
-    while &scan < n {
-        let r = g.scalar_mul(&scan, &a_fe);
-        let alpha = pseudo_weil_pairing_k2(curve, g, &r, n);
-        if alpha != BigUint::zero() && alpha != BigUint::one() {
-            let beta = pseudo_weil_pairing_k2(curve, q, &r, n);
-            // Solve d: β ≡ α^d (mod n).  This is a (Z/n)* DLP.
-            if let Some(d) = small_field_dlp(&alpha, &beta, n) {
-                found = Some(d);
+    if !mov_secure {
+        let opts = MovOptions {
+            max_k: 6,
+            ..MovOptions::default()
+        };
+        let from_params = &curve.n * BigUint::from(curve.h);
+        let candidates = [from_params, p + 1u32];
+        for e_order in candidates.iter().filter(|c| !c.is_zero()) {
+            if let Ok(out) = mov_attack(curve, g, q, n, e_order, &opts) {
+                found = Some(out.scalar);
                 break;
             }
-        }
-        scan += 1u32;
-        if scan > BigUint::from(1024u32) {
-            break; // give up
         }
     }
     MovAttackReport {
@@ -194,27 +147,8 @@ pub fn mov_attack_supersingular_k2(
         target_field_size: target,
         recovered_d: found,
         elapsed_ms: t0.elapsed().as_millis(),
-        mov_secure_under_bound: false,
+        mov_secure_under_bound: mov_secure,
     }
-}
-
-/// Trivial DLP in (Z/n)*: find `x` with `α^x ≡ β (mod n)`.  Brute
-/// force, cap at `n` iterations.
-fn small_field_dlp(alpha: &BigUint, beta: &BigUint, n: &BigUint) -> Option<BigUint> {
-    let n_iter = n
-        .to_u64_digits()
-        .first()
-        .copied()
-        .unwrap_or(0)
-        .min(1_000_000);
-    let mut acc = BigUint::one();
-    for x in 0..n_iter {
-        if &acc % n == *beta {
-            return Some(BigUint::from(x));
-        }
-        acc = (&acc * alpha) % n;
-    }
-    None
 }
 
 /// Render a Markdown visualization of the MOV attack outcome.
@@ -251,9 +185,9 @@ pub fn format_visualization(report: &MovAttackReport) -> String {
     s.push_str("        │                                                 \n");
     s.push_str("        │  pairing e_n(·, ·) : E[n] × E[n] → μ_n ⊂ F_{p^k}\n");
     s.push_str("        ▼                                                 \n");
-    s.push_str("   DLP in (Z/n)* (or F_{p^k}*)                            \n");
+    s.push_str("   DLP in the order-n subgroup of F_{p^k}*                \n");
     s.push_str("        │                                                 \n");
-    s.push_str("        │  Pollard rho or index calculus                  \n");
+    s.push_str("        │  BSGS / Pollard rho (index calculus: not impl.) \n");
     s.push_str("        ▼                                                 \n");
     s.push_str("   recover d                                              \n");
     s.push_str("```\n\n");
@@ -265,7 +199,7 @@ pub fn format_visualization(report: &MovAttackReport) -> String {
             report.elapsed_ms
         )),
         None => s.push_str(&format!(
-            "  {} **DLP reduction succeeded** but the resulting `(Z/n)*` DLP exceeded our brute-force budget (1M iters).\n",
+            "  {} **no verified `d`**: the pairing transfer or the `F_{{p^k}}*` DLP did not succeed within budget (or `#E(F_p)` could not be validated).\n",
             paint("⚠", FG_BRIGHT_YELLOW)
         )),
     }
@@ -344,9 +278,10 @@ mod tests {
         assert!(s.contains("MOV-secure"));
     }
 
-    /// **Headline integration**: MOV attack runs end-to-end on the
-    /// 199-order test curve.  Even though our "pairing" is the
-    /// surrogate, the bilinearity demonstration succeeds.
+    /// The 199-order curve `y² = x³ + 2` over `F_211` is *ordinary*
+    /// with a large embedding degree (199 ∤ 211^k − 1 for k ≤ 6), so the
+    /// MOV reduction does not apply and nothing is recovered.  (This
+    /// test used to run a surrogate "pairing" and assert nothing.)
     #[test]
     fn mov_attack_runs_on_test_curve() {
         let curve = CurveParams {
@@ -364,12 +299,52 @@ mod tests {
         let d_truth = BigUint::from(13u32);
         let q = g.scalar_mul(&d_truth, &a_fe);
         let report = mov_attack_supersingular_k2(&curve, &g, &q, &curve.n);
-        // We don't require `recovered_d` to equal `d_truth` exactly
-        // because our surrogate pairing isn't a real Weil pairing —
-        // the structure-preserving guarantee is bilinearity only on
-        // genuine supersingular curves.  We verify the report renders
-        // without panic and the embedding degree is computed.
-        let _ = report;
+        assert!(report.mov_secure_under_bound);
+        assert_eq!(report.recovered_d, None);
+    }
+
+    /// **Real MOV reduction** on the supersingular curve `y² = x³ + x`
+    /// over `p = 4·h·n − 1 ≡ 3 (mod 4)` (so `#E = p + 1`, `k = 2`) with
+    /// a 20-bit prime `n`: the Tate pairing moves the DLP to `F_{p²}*`
+    /// and the recovered `d` is checked.
+    #[test]
+    fn mov_attack_recovers_d_on_supersingular_curve() {
+        use crate::cryptanalysis::weak_curves::arith::{is_probable_prime, AffinePoint, Ec};
+        use num_traits::One;
+        let n = BigUint::from(1_048_583u32); // prime
+        assert!(is_probable_prime(&n));
+        let (p, h) = (1u32..)
+            .map(|h| (&n * BigUint::from(4 * h) - 1u32, h))
+            .find(|(p, _)| p.bits() > 40 && is_probable_prime(p))
+            .unwrap();
+        let ec = Ec::new(&p, &BigUint::one(), &BigUint::zero());
+        let mut rng = crate::cryptanalysis::weak_curves::arith::seeded_rng(1);
+        let g = loop {
+            let r = ec.mul(&ec.random_point(&mut rng), &BigUint::from(4 * h));
+            if r != AffinePoint::Infinity {
+                break r;
+            }
+        };
+        let AffinePoint::Affine(gx, gy) = g else {
+            unreachable!()
+        };
+        let curve = CurveParams {
+            name: "supersingular-k2",
+            p: p.clone(),
+            a: BigUint::one(),
+            b: BigUint::zero(),
+            gx,
+            gy,
+            n: n.clone(),
+            h: 4 * h,
+        };
+        let g = curve.generator();
+        let d_truth = BigUint::from(777_777u32);
+        let q = g.scalar_mul(&d_truth, &curve.a_fe());
+        let report = mov_attack_supersingular_k2(&curve, &g, &q, &n);
+        assert_eq!(report.embedding_degree, 2);
+        assert!(!report.mov_secure_under_bound);
+        assert_eq!(report.recovered_d, Some(d_truth));
     }
 
     /// **Demo emission**: visualize the report under `--nocapture`.
