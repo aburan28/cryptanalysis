@@ -34,6 +34,17 @@ fi
 
 log() { printf '[fleet boot %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 
+# A run over SSH lacks the pod's environment; take what is missing from PID 1.
+pid1_env() { tr '\0' '\n' </proc/1/environ 2>/dev/null; }
+while IFS='=' read -r key value; do
+  case "$key" in
+    FLEET_* | CURSOR_API_KEY | GITHUB_TOKEN | RUNPOD_*)
+      [[ -n "${!key:-}" ]] || export "$key=$value" ;;
+  esac
+done < <(pid1_env)
+image_path=$(pid1_env | sed -n 's/^PATH=//p')
+image_ld_path=$(pid1_env | sed -n 's/^LD_LIBRARY_PATH=//p')
+
 # ---- configuration ---------------------------------------------------------
 CONFIG="$FLEET/config.env"
 CONFIG_VARS=(FLEET_WORKER_NAME FLEET_REPO FLEET_REF FLEET_FALLBACK_REF
@@ -169,9 +180,12 @@ export PYTHONUNBUFFERED=1
 export TAR_OPTIONS=--no-same-owner
 case ":\$PATH:" in
   *:/workspace/venv/bin:*) ;;
-  *) export PATH="/workspace/venv/bin:/root/.cargo/bin:/root/.local/bin:/workspace/opt/msolve/bin:\$PATH" ;;
+  *) export PATH="/workspace/venv/bin:/root/.cargo/bin:/root/.local/bin:/workspace/opt/msolve/bin:${image_path:+$image_path:}\$PATH" ;;
 esac
 EOF
+if [[ -n "$image_ld_path" ]]; then
+  echo "export LD_LIBRARY_PATH=\"$image_ld_path\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\"" >>"$FLEET/env.sh"
+fi
 ln -sfn "$FLEET/env.sh" /etc/profile.d/zz-fleet.sh
 grep -qs 'fleet/env.sh' /root/.bashrc ||
   echo '[ -f /workspace/fleet/env.sh ] && . /workspace/fleet/env.sh' >>/root/.bashrc
