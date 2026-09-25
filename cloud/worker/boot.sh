@@ -208,7 +208,9 @@ session() {
     ((RESTART)) || return 0
     tmux kill-session -t "=$name"
   fi
-  tmux new-session -d -s "$name" -c /workspace -- "$@"
+  # Close the lock's descriptor, or the tmux server inherits it and holds the
+  # boot lock for as long as it runs.
+  tmux new-session -d -s "$name" -c /workspace -- "$@" 9>&-
   log "started tmux session $name"
 }
 session cursor-worker bash "$SRC/cloud/worker/worker.sh"
