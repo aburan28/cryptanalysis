@@ -109,6 +109,7 @@
 //!   Boolean-ring representation.
 
 use crate::binary_ecc::{F2mElement, IrreduciblePoly};
+use crate::cryptanalysis::f4_gf2::{self, MacaulayCaps};
 use crate::cryptanalysis::pq_groebner_f2::{cmp_mono, groebner_basis_f2, F2BoolMono, F2BoolPoly};
 
 /// Hard cap: Boolean monomials are `u64` bitmasks in
@@ -612,6 +613,7 @@ pub fn matrix_f4_f2_blocked(
     // Candidate shifts: monomials already inside the bounds.  A shift
     // that breaks a bound on its own can only break it further after
     // multiplication.
+    let caps = f4_caps();
     let total_bound: u32 = bounds.iter().sum();
     let mut rows_monos: Vec<Vec<u64>> = Vec::new();
     for p in polys {
@@ -643,7 +645,7 @@ pub fn matrix_f4_f2_blocked(
                 continue;
             }
             rows_monos.push(row);
-            if rows_monos.len() > max_f4_rows() {
+            if rows_monos.len() > caps.max_rows {
                 return None;
             }
         }
@@ -655,7 +657,7 @@ pub fn matrix_f4_f2_blocked(
     let mut cols: Vec<u64> = rows_monos.iter().flatten().copied().collect();
     cols.sort_unstable();
     cols.dedup();
-    if cols.len() > max_f4_cols() {
+    if cols.len() > caps.max_cols {
         return None;
     }
     cols.sort_by(|a, b| cmp_mono(F2BoolMono::from_mask(*a), F2BoolMono::from_mask(*b)).reverse());
@@ -716,24 +718,41 @@ fn monomials_up_to(n_vars: usize, deg: u32) -> Vec<u64> {
     out
 }
 
-/// Limits on one Macaulay matrix, so a too-large system degrades to
-/// splitting instead of exhausting memory.
-const MAX_F4_ROWS: usize = 20_000;
-const MAX_F4_COLS: usize = 40_000;
-
-/// Macaulay size caps, overridable for experiments through the
-/// `F4_F2_MAX_ROWS` / `F4_F2_MAX_COLS` environment variables.
-fn max_f4_rows() -> usize {
-    std::env::var("F4_F2_MAX_ROWS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(MAX_F4_ROWS)
+/// Macaulay size caps — 20 000 rows and 40 000 columns, so a too-large
+/// system degrades to splitting instead of exhausting memory —
+/// overridable for experiments through the `F4_F2_MAX_ROWS` /
+/// `F4_F2_MAX_COLS` environment variables.
+fn f4_caps() -> MacaulayCaps {
+    f4_gf2::default_caps()
 }
-fn max_f4_cols() -> usize {
-    std::env::var("F4_F2_MAX_COLS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(MAX_F4_COLS)
+
+/// Which implementation reduces the Boolean Macaulay matrices.
+///
+/// Both give the same answers: [`F4Kernel::Fast`] returns the reference
+/// reduced rows bit-for-bit from [`matrix_f4_f2`], and the splitting
+/// solver draws the same refutations and forced assignments from it.  They
+/// differ in cost, and in the word XORs [`F4Profile`] reports, which are
+/// each kernel's own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum F4Kernel {
+    /// The hash-indexed build over all variables, a full reduced echelon
+    /// form, and polynomial readback: the implementation this module
+    /// shipped with, kept as the paired control.
+    Reference,
+    /// [`super::f4_gf2`]: a rank-indexed build over the occurring
+    /// variables, bucketed elimination, and — in the solver — the
+    /// decision read off the linear block without a full reduction.
+    Fast,
+}
+
+/// The kernel in use, fixed for the process: `F4_F2_RREF=reference`
+/// selects [`F4Kernel::Reference`], anything else [`F4Kernel::Fast`].
+pub fn f4_kernel() -> F4Kernel {
+    static KERNEL: std::sync::OnceLock<F4Kernel> = std::sync::OnceLock::new();
+    *KERNEL.get_or_init(|| match std::env::var("F4_F2_RREF").as_deref() {
+        Ok("reference") => F4Kernel::Reference,
+        _ => F4Kernel::Fast,
+    })
 }
 
 /// **Matrix-F4 step over `F_2`**: multiply every input polynomial by
@@ -764,6 +783,22 @@ pub fn matrix_f4_f2(polys: &[F2BoolPoly], n_vars: usize, degree: u32) -> Option<
 /// are not counted, because they are linear in the matrix size and the
 /// elimination is not.
 pub fn matrix_f4_f2_counted(
+    polys: &[F2BoolPoly],
+    n_vars: usize,
+    degree: u32,
+) -> Option<(Vec<F2BoolPoly>, u64)> {
+    match f4_kernel() {
+        F4Kernel::Reference => matrix_f4_f2_counted_reference(polys, n_vars, degree),
+        F4Kernel::Fast => {
+            let (rows, counters) = f4_gf2::matrix_rows(polys, n_vars, degree, f4_caps());
+            f4_profile_add_kernel(&counters);
+            rows.map(|r| (r, counters.word_ops))
+        }
+    }
+}
+
+/// [`matrix_f4_f2_counted`] on the [`F4Kernel::Reference`] kernel.
+fn matrix_f4_f2_counted_reference(
     polys: &[F2BoolPoly],
     n_vars: usize,
     degree: u32,
@@ -816,9 +851,83 @@ pub fn matrix_f4_f2_counted(
         p.readback_ns += readback_ns;
         p.rows += matrix.len() as u64;
         p.cols += cols.len() as u64;
+        p.eliminated_rows += matrix.len() as u64;
+        p.eliminated_cols += cols.len() as u64;
         p.word_ops += word_ops;
     });
     Some((out, word_ops))
+}
+
+/// The [`F4Kernel::Reference`] computation with explicit caps: the reduced
+/// rows and, when a nonempty matrix was built, its `(rows, cols)`.  The
+/// oracle the fast kernels are tested against.
+#[cfg(test)]
+pub(crate) fn matrix_f4_f2_reference(
+    polys: &[F2BoolPoly],
+    n_vars: usize,
+    degree: u32,
+    caps: MacaulayCaps,
+) -> Option<(Vec<F2BoolPoly>, Option<(u64, u64)>)> {
+    if polys.is_empty() {
+        return Some((Vec::new(), None));
+    }
+    let rows_monos = macaulay_rows_monos_capped(polys, n_vars, degree, caps.max_rows)?;
+    if rows_monos.is_empty() {
+        return Some((Vec::new(), None));
+    }
+    let cols = macaulay_columns_capped(&rows_monos, caps.max_cols)?;
+    let index: std::collections::HashMap<u64, usize> =
+        cols.iter().enumerate().map(|(i, m)| (*m, i)).collect();
+    let words = cols.len().div_ceil(64);
+    let mut matrix: Vec<Vec<u64>> = rows_monos
+        .iter()
+        .map(|monos| {
+            let mut row = vec![0u64; words];
+            for m in monos {
+                let c = index[m];
+                row[c / 64] |= 1 << (c % 64);
+            }
+            row
+        })
+        .collect();
+    let rank = rref_f2(&mut matrix, cols.len());
+    let n_vars_out = polys[0].n_vars;
+    let out = matrix
+        .iter()
+        .take(rank)
+        .map(|row| {
+            let monos: Vec<F2BoolMono> = (0..cols.len())
+                .filter(|c| row[c / 64] & (1u64 << (c % 64)) != 0)
+                .map(|c| F2BoolMono::from_mask(cols[c]))
+                .collect();
+            F2BoolPoly::from_monos(monos, n_vars_out)
+        })
+        .filter(|p| !p.is_zero())
+        .collect();
+    Some((out, Some((rows_monos.len() as u64, cols.len() as u64))))
+}
+
+/// Add one [`f4_gf2`] call to the profile, in the fields the reference
+/// kernel fills.
+fn f4_profile_add_kernel(k: &f4_gf2::KernelCounters) {
+    if k.oversize {
+        f4_profile_add(|p| {
+            p.oversize += 1;
+            p.build_ns += k.build_ns;
+        });
+    } else if k.built {
+        f4_profile_add(|p| {
+            p.calls += 1;
+            p.build_ns += k.build_ns;
+            p.reduce_ns += k.reduce_ns;
+            p.readback_ns += k.readback_ns;
+            p.rows += k.rows;
+            p.cols += k.cols;
+            p.eliminated_rows += k.eliminated_rows;
+            p.eliminated_cols += k.eliminated_cols;
+            p.word_ops += k.word_ops;
+        });
+    }
 }
 
 // ── F4 stage profile ───────────────────────────────────────────────
@@ -850,10 +959,19 @@ pub struct F4Profile {
     pub reduce_ns: u128,
     /// Nanoseconds turning reduced rows back into polynomials.
     pub readback_ns: u128,
-    /// Rows summed over all calls.
+    /// Rows summed over all calls, counted as the reference builder does:
+    /// every nonempty product over all `n_vars` variables.
     pub rows: u64,
-    /// Columns summed over all calls.
+    /// Columns summed over all calls, in the same reference units.
     pub cols: u64,
+    /// Rows the kernel actually eliminated.  Equal to `rows` on the
+    /// reference kernel; smaller on [`F4Kernel::Fast`], which does not
+    /// build rows shifted by variables the system no longer contains.
+    #[serde(default)]
+    pub eliminated_rows: u64,
+    /// Columns the kernel actually eliminated.
+    #[serde(default)]
+    pub eliminated_cols: u64,
     /// 64-bit word XORs performed by the reductions.
     pub word_ops: u64,
 }
@@ -867,9 +985,11 @@ mod f4_counters {
     pub(super) static READBACK_NS: AtomicU64 = AtomicU64::new(0);
     pub(super) static ROWS: AtomicU64 = AtomicU64::new(0);
     pub(super) static COLS: AtomicU64 = AtomicU64::new(0);
+    pub(super) static ELIMINATED_ROWS: AtomicU64 = AtomicU64::new(0);
+    pub(super) static ELIMINATED_COLS: AtomicU64 = AtomicU64::new(0);
     pub(super) static WORD_OPS: AtomicU64 = AtomicU64::new(0);
 
-    pub(super) fn all() -> [&'static AtomicU64; 8] {
+    pub(super) fn all() -> [&'static AtomicU64; 10] {
         [
             &CALLS,
             &OVERSIZE,
@@ -878,6 +998,8 @@ mod f4_counters {
             &READBACK_NS,
             &ROWS,
             &COLS,
+            &ELIMINATED_ROWS,
+            &ELIMINATED_COLS,
             &WORD_OPS,
         ]
     }
@@ -894,6 +1016,8 @@ pub fn f4_profile() -> F4Profile {
         readback_ns: f4_counters::READBACK_NS.load(Relaxed) as u128,
         rows: f4_counters::ROWS.load(Relaxed),
         cols: f4_counters::COLS.load(Relaxed),
+        eliminated_rows: f4_counters::ELIMINATED_ROWS.load(Relaxed),
+        eliminated_cols: f4_counters::ELIMINATED_COLS.load(Relaxed),
         word_ops: f4_counters::WORD_OPS.load(Relaxed),
     }
 }
@@ -910,7 +1034,7 @@ fn f4_profile_add(f: impl FnOnce(&mut F4Profile)) {
     use std::sync::atomic::Ordering::Relaxed;
     let mut delta = F4Profile::default();
     f(&mut delta);
-    let pairs: [(&std::sync::atomic::AtomicU64, u64); 8] = [
+    let pairs: [(&std::sync::atomic::AtomicU64, u64); 10] = [
         (&f4_counters::CALLS, delta.calls),
         (&f4_counters::OVERSIZE, delta.oversize),
         (&f4_counters::BUILD_NS, delta.build_ns as u64),
@@ -918,6 +1042,8 @@ fn f4_profile_add(f: impl FnOnce(&mut F4Profile)) {
         (&f4_counters::READBACK_NS, delta.readback_ns as u64),
         (&f4_counters::ROWS, delta.rows),
         (&f4_counters::COLS, delta.cols),
+        (&f4_counters::ELIMINATED_ROWS, delta.eliminated_rows),
+        (&f4_counters::ELIMINATED_COLS, delta.eliminated_cols),
         (&f4_counters::WORD_OPS, delta.word_ops),
     ];
     for (counter, delta) in pairs {
@@ -941,6 +1067,16 @@ pub(crate) fn macaulay_rows_monos(
     polys: &[F2BoolPoly],
     n_vars: usize,
     degree: u32,
+) -> Option<Vec<Vec<u64>>> {
+    macaulay_rows_monos_capped(polys, n_vars, degree, f4_caps().max_rows)
+}
+
+/// [`macaulay_rows_monos`] with an explicit row cap.
+fn macaulay_rows_monos_capped(
+    polys: &[F2BoolPoly],
+    n_vars: usize,
+    degree: u32,
+    max_rows: usize,
 ) -> Option<Vec<Vec<u64>>> {
     let mut rows_monos: Vec<Vec<u64>> = Vec::new();
     for p in polys {
@@ -974,7 +1110,7 @@ pub(crate) fn macaulay_rows_monos(
             if !row.is_empty() {
                 rows_monos.push(row);
             }
-            if rows_monos.len() > max_f4_rows() {
+            if rows_monos.len() > max_rows {
                 return None;
             }
         }
@@ -991,10 +1127,15 @@ pub(crate) fn macaulay_rows_monos(
 /// what makes "leading column index ≥ the degree-≤1 boundary" equivalent
 /// to "this row is a linear consequence".
 pub(crate) fn macaulay_columns(rows_monos: &[Vec<u64>]) -> Option<Vec<u64>> {
+    macaulay_columns_capped(rows_monos, f4_caps().max_cols)
+}
+
+/// [`macaulay_columns`] with an explicit column cap.
+fn macaulay_columns_capped(rows_monos: &[Vec<u64>], max_cols: usize) -> Option<Vec<u64>> {
     let mut cols: Vec<u64> = rows_monos.iter().flatten().copied().collect();
     cols.sort_unstable();
     cols.dedup();
-    if cols.len() > max_f4_cols() {
+    if cols.len() > max_cols {
         return None;
     }
     cols.sort_by(|a, b| cmp_mono(F2BoolMono::from_mask(*a), F2BoolMono::from_mask(*b)).reverse());
@@ -1724,15 +1865,31 @@ pub struct SolveStats {
     pub oversize: usize,
 }
 
-/// Reduce `system`, returning polynomials in the same ideal — either a
-/// Gröbner basis or the reduced Macaulay rows.  `None` means the F4
-/// matrix would have been too large.
+/// What one algebraic reduction settled: whether the ideal contains `1`,
+/// and the variables pinned by rows of the form `v` or `v + 1`, in the
+/// order those rows appear.
+struct Reduction {
+    refuted: bool,
+    forced: Vec<(u32, bool)>,
+}
+
+impl Reduction {
+    fn from_rows(rows: &[F2BoolPoly]) -> Self {
+        Reduction {
+            refuted: rows.iter().any(is_constant_one),
+            forced: rows.iter().filter_map(forced_assignment).collect(),
+        }
+    }
+}
+
+/// Reduce `system` and report what the reduction settles.  `None` means
+/// the F4 matrix would have been too large.
 fn reduce_system(
     system: &[F2BoolPoly],
     n_vars: usize,
     engine: SolverEngine,
     stats: &mut SolveStats,
-) -> Option<Vec<F2BoolPoly>> {
+) -> Option<Reduction> {
     use crate::cryptanalysis::algebra_cache::{self, Layer};
     if !algebra_cache::enabled(Layer::ExactReduction) {
         return reduce_system_uncached(system, n_vars, engine, stats);
@@ -1742,7 +1899,7 @@ fn reduce_system(
     let value: Option<(Vec<F2BoolPoly>, u32, usize)> =
         algebra_cache::memoize(Layer::ExactReduction, &key, || {
             let mut measured = SolveStats::default();
-            let rows = reduce_system_uncached(system, n_vars, engine, &mut measured);
+            let rows = reduce_system_rows(system, n_vars, engine, &mut measured);
             // Preserve the metadata even when no reduction could be computed.
             stats.max_degree_built = stats.max_degree_built.max(measured.max_degree_built);
             miss_oversize = measured.oversize;
@@ -1755,11 +1912,56 @@ fn reduce_system(
     value.map(|(rows, degree, oversize)| {
         stats.oversize += oversize;
         stats.max_degree_built = stats.max_degree_built.max(degree);
-        rows
+        Reduction::from_rows(&rows)
     })
 }
 
+/// [`reduce_system`] without the cache.  The matrix-F4 engine on the
+/// [`F4Kernel::Fast`] kernel decides straight from the linear block of
+/// each matrix; everything else reduces to rows first.
 fn reduce_system_uncached(
+    system: &[F2BoolPoly],
+    n_vars: usize,
+    engine: SolverEngine,
+    stats: &mut SolveStats,
+) -> Option<Reduction> {
+    let SolverEngine::MatrixF4 { max_degree } = engine else {
+        return reduce_system_rows(system, n_vars, engine, stats).map(|r| Reduction::from_rows(&r));
+    };
+    if f4_kernel() == F4Kernel::Reference {
+        return reduce_system_rows(system, n_vars, engine, stats).map(|r| Reduction::from_rows(&r));
+    }
+    stats.reductions += 1;
+    let base = system_degree(system).max(2);
+    let caps = f4_caps();
+    let mut best: Option<f4_gf2::Decision> = None;
+    for d in base..=max_degree.max(base) {
+        let (decision, counters) = f4_gf2::decide(system, n_vars, d, caps);
+        f4_profile_add_kernel(&counters);
+        match decision {
+            Some(decision) => {
+                stats.max_degree_built = stats.max_degree_built.max(d);
+                let decisive = decision.is_decisive();
+                best = Some(decision);
+                if decisive {
+                    break;
+                }
+            }
+            None => {
+                stats.oversize += 1;
+                break;
+            }
+        }
+    }
+    best.map(|d| Reduction {
+        refuted: d.refuted,
+        forced: d.forced,
+    })
+}
+
+/// Reduce `system` to polynomials in the same ideal — a Gröbner basis or
+/// the reduced Macaulay rows of the highest degree built.
+fn reduce_system_rows(
     system: &[F2BoolPoly],
     n_vars: usize,
     engine: SolverEngine,
@@ -1882,11 +2084,11 @@ fn solve_rec(
             Some(r) => r,
             None => break, // no reduction available; split instead
         };
-        if reduced.iter().any(is_constant_one) {
+        if reduced.refuted {
             stats.infeasible_branches += 1;
             return;
         }
-        let forced: Vec<(u32, bool)> = reduced.iter().filter_map(forced_assignment).collect();
+        let forced = reduced.forced;
         if forced.is_empty() {
             break;
         }

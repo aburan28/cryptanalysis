@@ -136,6 +136,7 @@ pub mod eds_net;
 pub mod eds_residue;
 pub mod eds_tate;
 pub mod f4_fp;
+pub mod f4_gf2;
 pub mod ffd_harness;
 pub mod fght_snfs;
 pub(crate) mod fx_hash;
