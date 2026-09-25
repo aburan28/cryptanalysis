@@ -510,6 +510,23 @@ def collection_table(runs: list[dict]) -> list[str]:
     return lines
 
 
+def projection_calibration(runs: list[dict]) -> list[str]:
+    """z = (actual remaining - projected) / sd for the projection made at half the target rank."""
+    zs = []
+    for r in runs:
+        target = r.get("achievable_rank") or r["effective_columns"]
+        half = next((s for s in r.get("snapshots", []) if s["rank"] >= target / 2 and s["projected_attempts"] and s.get("projected_sd")), None)
+        if half and r.get("collection_complete", True):
+            zs.append((r["monitor"]["attempts"] - half["attempt"] - half["projected_attempts"]) / half["projected_sd"])
+    if not zs:
+        return []
+    return [
+        "| runs with a projection sd | mean z | median z | abs(z) < 1 | abs(z) < 2 |",
+        "|--:|--:|--:|--:|--:|",
+        f"| {len(zs)} | {statistics.fmean(zs):+.2f} | {statistics.median(zs):+.2f} | {sum(1 for z in zs if abs(z) < 1)} | {sum(1 for z in zs if abs(z) < 2)} |",
+    ]
+
+
 def n131_table(rows: list[dict]) -> list[str]:
     lines = [
         "| family | l | dims V^(k), k ≤ 5 | minimum possible | Σ_{k≤3} dim V^(k) | m = 2: ω | m = 2: excess | log2 E[decompositions], m = 2 / 3 / 4 / 5 |",
@@ -559,6 +576,7 @@ def build_report(cards: list[dict], runs: list[dict] | None = None) -> dict[str,
             sections["SEL_SYM_M3"] = matched_table(cells["mxl"], "sym", 3, "mxl", ns=[23, 31, 47], ls=[3, 4])
     if runs:
         sections["COLLECT"] = collection_table(runs)
+        sections["COLLECT_CAL"] = projection_calibration(runs)
     return sections
 
 

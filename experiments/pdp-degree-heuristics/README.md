@@ -53,14 +53,16 @@ alone.  It also provides an online monitor for a relation-collection run.
    stops.  The target logs are still determined; the complete collections (section 7)
    solve modulo the kernel and verify fresh targets by descent.
 
-None of this is an IC result: every row is a PDP-stage profile (`candidate_id: null`), and
-the toy fields are far from ECC2K-130.  Section 8 lists what would have to hold at scale.
+None of this is an IC result.  Every profile row is a PDP-stage profile
+(`candidate_id: null`), the collections are toy DLPs without one calibrated cost unit,
+and the fields are far from ECC2K-130.  Section 8 applies the structure-only parts at
+`n = 131`, and section 9 lists the limits.
 
 ## 1. Quick start
 
 ```sh
 cd experiments/pdp-degree-heuristics
-python3 -m pytest -q                         # 22 tests, ~3 s (numpy; gcc builds pdpkernel.c on first use)
+python3 -m pytest -q                         # 26 tests, ~15 s (numpy; gcc builds pdpkernel.c on first use)
 
 # profile factor bases on one curve and one frozen target workload
 python3 profile.py --n 23 --m 2 --l 6,7,8 --families prefix,geomtrace,random --seeds 1 \
@@ -259,6 +261,13 @@ Direct formulation:
 <!-- BEGIN SEL_M3 -->
 <!-- END SEL_M3 -->
 
+![three summands at l = 3, both formulations](figures/three_summands_l3.png)
+
+The formulation that suits a base depends on its profile.  For geometric progressions the
+symmetric model is about as cheap as the direct one from `n = 23` on.  For random bases it
+is several hundred times more expensive, because their `V^(2)` and `V^(3)` add 4 more
+unknowns.
+
 Symmetric formulation (unknowns `e_k ∈ V^(k)`; random bases above 22 unknowns are
 skipped, which is itself the effect):
 
@@ -303,6 +312,13 @@ half the achievable rank.
 
 <!-- BEGIN COLLECT -->
 <!-- END COLLECT -->
+
+How well the monitor's projection at half rank predicted the remaining attempts.  `z` is
+the miss in units of the projected standard deviation; the three-summand runs have no
+exact column rates and hence no standard deviation.
+
+<!-- BEGIN COLLECT_CAL -->
+<!-- END COLLECT_CAL -->
 
 ## 8. What this predicts for ECC2K-130 (prediction, not measurement)
 
