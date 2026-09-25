@@ -93,6 +93,8 @@ def features(c: dict, mode: str) -> dict:
     n = cell["n"]
     omega = st["omega"]
     return {
+        "form": "sym" if cell.get("formulation", "direct") != "direct" else "direct",
+        "split_checks": c["counts"].get("split_checks_mean"),
         "n": n, "m": cell["m"], "l": cell["l"], "N": cell["N"], "family": cell["family"], "seed": cell["seed"],
         "profile": st["product_profile"], "omega": omega, "omega_top": st["omega_top"],
         "excess": n - (omega - 1),
@@ -117,7 +119,7 @@ def features(c: dict, mode: str) -> dict:
 def by_cell(rows: list[dict]) -> dict[tuple, dict[str, list[dict]]]:
     out: dict[tuple, dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
     for r in rows:
-        out[(r["m"], r["n"], r["l"])][r["family"]].append(r)
+        out[(r["form"], r["m"], r["n"], r["l"])][r["family"]].append(r)
     return out
 
 
@@ -130,7 +132,7 @@ def fit_threshold_rule(rows: list[dict]) -> dict:
         sub = [r for r in rows if r["m"] == m and r["D"] is not None and not r["censored"]]
         if len(sub) < 5:
             continue
-        base = min(r["D"] for r in sub)
+        bases = sorted({math.floor(min(r["D"] for r in sub)), math.ceil(min(r["D"] for r in sub))})
         cand = sorted({r["excess"] for r in sub})
         grid = [c + 0.5 for c in cand]
 
@@ -139,7 +141,7 @@ def fit_threshold_rule(rows: list[dict]) -> dict:
 
         def fit(data):
             best = None
-            for k in range(0, 4):
+            for k, base in ((k, b) for k in range(0, 4) for b in bases):
                 for ts in _increasing(grid, k):
                     rule = {"base": base, "thresholds": list(ts)}
                     err = sum((predict(rule, r["excess"]) - r["D"]) ** 2 for r in data)
@@ -233,43 +235,48 @@ def n131_predictions(ls=(8, 12, 16, 20, 24, 28), ms=(2, 3, 4, 5), families=("pre
 
 
 # ---------------------------------------------------------------- report
-def matched_table(cells, m: int, mode: str, ns=None) -> list[str]:
+def _hist_str(rows: list[dict]) -> str:
+    hist: dict[str, int] = defaultdict(int)
+    for r in rows:
+        for k, v in r["D_hist"].items():
+            hist[k] += v
+    return " ".join(f"{k}:{v}" for k, v in sorted(hist.items(), key=lambda kv: (kv[0] == "None", kv[0])))
+
+
+def matched_table(cells, form: str, m: int, mode: str, ns=None, ls=None) -> list[str]:
+    extra = " splits/query |" if form == "sym" else ""
     lines = [
-        f"| n | l | N | family | dims V^(k) | ω | excess | P(dec) exact | D_solve {mode} | base refuted | ops/attempt | ops/relation |",
-        "|--:|--:|--:|---|---|--:|--:|--:|---|--:|--:|--:|",
+        f"| n | l | unknowns | family | dims V^(k) | ω | excess | P(dec) exact | D_solve {mode} | base refuted | ops/attempt |{extra} ops/relation |",
+        "|--:|--:|--:|---|---|--:|--:|--:|---|--:|--:|" + ("--:|" if form == "sym" else "") + "--:|",
     ]
-    for (mm, n, l), fams in sorted(cells.items()):
-        if mm != m or (ns and n not in ns):
+    for (ff, mm, n, l), fams in sorted(cells.items()):
+        if ff != form or mm != m or (ns and n not in ns) or (ls and l not in ls):
             continue
         for fam in FAMILY_ORDER:
             rows = fams.get(fam)
             if not rows:
                 continue
-            hist: dict[str, int] = defaultdict(int)
-            for r in rows:
-                for k, v in r["D_hist"].items():
-                    hist[k] += v
-            hs = " ".join(f"{k}:{v}" for k, v in sorted(hist.items(), key=lambda kv: (kv[0] == "None", kv[0])))
+            p_ex = [r["p_exact"] for r in rows if r["p_exact"] is not None]
+            split = f" {fmt(statistics.fmean(r['split_checks'] for r in rows if r['split_checks'] is not None))} |" if form == "sym" else ""
             lines.append(
-                f"| {n} | {l} | {m * l} | {fam}{' ×' + str(len(rows)) if len(rows) > 1 else ''} | {rows[0]['profile'][:m + 1]} "
+                f"| {n} | {l} | {rows[0]['N']} | {fam}{' ×' + str(len(rows)) if len(rows) > 1 else ''} | {rows[0]['profile'][:m + 1]} "
                 f"| {fmt(statistics.fmean(r['omega'] for r in rows))} | {fmt(statistics.fmean(r['excess'] for r in rows))} "
-                f"| {fmt(statistics.fmean(r['p_exact'] for r in rows if r['p_exact'] is not None)) if any(r['p_exact'] is not None for r in rows) else '—'} "
-                f"| {hs} | {fmt(statistics.fmean(r['base_rate'] for r in rows), 2)} "
-                f"| {fmt(geomean(r['ops'] for r in rows))} | {fmt(geomean(r['ops_rel'] for r in rows))} |"
+                f"| {fmt(statistics.fmean(p_ex)) if p_ex else '—'} | {_hist_str(rows)} | {fmt(statistics.fmean(r['base_rate'] for r in rows), 2)} "
+                f"| {fmt(geomean(r['ops'] for r in rows))} |{split} {fmt(geomean(r['ops_rel'] for r in rows))} |"
             )
     return lines
 
 
-def paired_summary(cells, mode: str) -> list[str]:
-    """Structured (prefix, geometric) vs random on the same workload, per m."""
+def paired_summary(cells, form: str, mode: str) -> list[str]:
+    """Structured (prefix, geometric) against random bases on the same workload."""
     lines = [
-        "| m | cells | mean ΔD (random − structured) | cells with ΔD > 0 | cells with ΔD < 0 | geo-mean ops ratio random/structured | geo-mean yield ratio random/structured |",
-        "|--:|--:|--:|--:|--:|--:|--:|",
+        "| m | cells | mean ΔD (random − structured) | ΔD > 0 | ΔD < 0 | ops/attempt ratio | ops/relation ratio | P(dec) ratio |",
+        "|--:|--:|--:|--:|--:|--:|--:|--:|",
     ]
-    for m in sorted({k[0] for k in cells}):
-        dD, ratio, yratio = [], [], []
-        for (mm, n, l), fams in cells.items():
-            if mm != m or "random" not in fams:
+    for m in sorted({k[1] for k in cells if k[0] == form}):
+        dD, ratio, rel, yratio = [], [], [], []
+        for (ff, mm, n, l), fams in cells.items():
+            if ff != form or mm != m or "random" not in fams:
                 continue
             s = [r for f in STRUCTURED for r in fams.get(f, []) if r["D"] is not None and not r["censored"]]
             rnd = [r for r in fams["random"] if r["D"] is not None and not r["censored"]]
@@ -277,25 +284,28 @@ def paired_summary(cells, mode: str) -> list[str]:
                 continue
             dD.append(statistics.fmean(r["D"] for r in rnd) - statistics.fmean(r["D"] for r in s))
             ratio.append(geomean(r["ops"] for r in rnd) / geomean(r["ops"] for r in s))
+            a, b = geomean(r["ops_rel"] for r in rnd), geomean(r["ops_rel"] for r in s)
+            if a and b:
+                rel.append(a / b)
             ys, yr = [r["p_exact"] for r in s if r["p_exact"]], [r["p_exact"] for r in rnd if r["p_exact"]]
             if ys and yr:
                 yratio.append(statistics.fmean(yr) / statistics.fmean(ys))
         if dD:
             lines.append(
                 f"| {m} | {len(dD)} | {statistics.fmean(dD):+.2f} | {sum(1 for x in dD if x > 1e-9)} | {sum(1 for x in dD if x < -1e-9)} "
-                f"| {fmt(geomean(ratio))} | {fmt(geomean(yratio))} |"
+                f"| {fmt(geomean(ratio))} | {fmt(geomean(rel))} | {fmt(geomean(yratio))} |"
             )
     return lines
 
 
 def predictor_table(rows_by_mode: dict[str, list[dict]]) -> list[str]:
     lines = [
-        "| m | mode | cells | semi-regular D_reg MAE | fall-adjusted MAE | structure-only expected MAE | Spearman (expected vs measured, within cell) |",
-        "|--:|---|--:|--:|--:|--:|--:|",
+        "| formulation | m | mode | factor bases | semi-regular D_reg MAE | fall-adjusted MAE | structure-only expected MAE | within-cell Spearman |",
+        "|---|--:|---|--:|--:|--:|--:|--:|",
     ]
     for mode, rows in rows_by_mode.items():
-        for m in sorted({r["m"] for r in rows}):
-            sub = [r for r in rows if r["m"] == m and r["D"] is not None and not r["censored"]]
+        for form, m in sorted({(r["form"], r["m"]) for r in rows}):
+            sub = [r for r in rows if r["form"] == form and r["m"] == m and r["D"] is not None and not r["censored"]]
             if not sub:
                 continue
 
@@ -304,14 +314,14 @@ def predictor_table(rows_by_mode: dict[str, list[dict]]) -> list[str]:
                 return statistics.fmean(v) if v else None
 
             rhos = []
-            for key, grp in _cells(sub).items():
+            for grp in _cells(sub).values():
                 a = [r["expected"] for r in grp if r["expected"] is not None]
                 b = [r["D"] for r in grp if r["expected"] is not None]
                 rho = spearman(a, b)
                 if rho is not None:
                     rhos.append(rho)
             lines.append(
-                f"| {m} | {mode} | {len(sub)} | {fmt(mae('semi_regular'))} | {fmt(mae('fall_adjusted'))} | {fmt(mae('expected'))} "
+                f"| {form} | {m} | {mode} | {len(sub)} | {fmt(mae('semi_regular'))} | {fmt(mae('fall_adjusted'))} | {fmt(mae('expected'))} "
                 f"| {fmt(statistics.fmean(rhos)) if rhos else '—'} ({len(rhos)} cells) |"
             )
     return lines
@@ -320,26 +330,48 @@ def predictor_table(rows_by_mode: dict[str, list[dict]]) -> list[str]:
 def _cells(rows):
     out = defaultdict(list)
     for r in rows:
-        out[(r["m"], r["n"], r["l"])].append(r)
+        out[(r["form"], r["m"], r["n"], r["l"])].append(r)
     return out
 
 
-def base_calibration(rows: list[dict], mode: str) -> list[str]:
-    """Predicted base-degree refutation probability (from omega) against the measured rate."""
+def base_calibration(rows_by_mode: dict[str, list[dict]], m: int = 2) -> list[str]:
+    """Predicted base-degree refutation probability (from omega) against the measured rates."""
+    modes = list(rows_by_mode)
     bins = [(0.0, 0.05), (0.05, 0.3), (0.3, 0.7), (0.7, 0.95), (0.95, 1.01)]
-    lines = [f"| predicted p (ω) | factor bases | mean predicted | mean measured ({mode}) |", "|---|--:|--:|--:|"]
+    lines = [
+        "| predicted p (from ω) | factor bases | mean predicted | " + " | ".join(f"measured {mode}" for mode in modes) + " |",
+        "|---|--:|--:|" + "--:|" * len(modes),
+    ]
+    keyed = {mode: {(r["n"], r["l"], r["family"], r["seed"]): r for r in rows if r["m"] == m and r["form"] == "direct"} for mode, rows in rows_by_mode.items()}
+    first = keyed[modes[0]]
     for lo, hi in bins:
-        sub = [r for r in rows if lo <= r["p_base_pred"] < hi]
-        if sub:
-            lines.append(f"| [{lo:.2f}, {min(hi, 1):.2f}) | {len(sub)} | {statistics.fmean(r['p_base_pred'] for r in sub):.3f} | {statistics.fmean(r['base_rate'] for r in sub):.3f} |")
+        keys = [k for k, r in first.items() if lo <= r["p_base_pred"] < hi]
+        if keys:
+            meas = " | ".join(f"{statistics.fmean(keyed[mode][k]['base_rate'] for k in keys if k in keyed[mode]):.3f}" for mode in modes)
+            lines.append(f"| [{lo:.2f}, {min(hi, 1):.2f}) | {len(keys)} | {statistics.fmean(first[k]['p_base_pred'] for k in keys):.3f} | {meas} |")
+    return lines
+
+
+def rules_table(rows_by_mode: dict[str, list[dict]]) -> list[str]:
+    lines = ["| formulation | m | mode | factor bases | fitted rule on excess e = n − (ω − 1) | MAE (fit) | MAE (leave one n out) |",
+             "|---|--:|---|--:|---|--:|--:|"]
+    for mode, rows in rows_by_mode.items():
+        for form in sorted({r["form"] for r in rows}):
+            for m, res in fit_threshold_rule([r for r in rows if r["form"] == form]).items():
+                rule = f"D = {res['rule']['base']}" + "".join(f" + [e < {t:g}]" for t in res["rule"]["thresholds"])
+                lines.append(f"| {form} | {m} | {mode} | {res['cells']} | {rule} | {res['mae_fit']:.3f} | {fmt(res['mae_leave_one_n_out'])} |")
     return lines
 
 
 def yield_table(rows: list[dict]) -> list[str]:
     lines = [
-        "| m | factor bases | median exact/pred E[ordered] | 90% range | median exact/basic E[ordered] | 90% range |",
+        "| m | factor bases | median exact / ψ-prediction | 90% range | median exact / basic |F|^m/#E | 90% range |",
         "|--:|--:|--:|---|--:|---|",
     ]
+    seen = {}
+    for r in rows:
+        seen[(r["m"], r["n"], r["l"], r["family"], r["seed"])] = r
+    rows = list(seen.values())
     for m in sorted({r["m"] for r in rows}):
         sub = [r for r in rows if r["m"] == m and r["e_exact"] and r["e_pred"] and r["e_basic"]]
         if not sub:
@@ -351,9 +383,61 @@ def yield_table(rows: list[dict]) -> list[str]:
     return lines
 
 
+def dreg_table(cards: list[dict]) -> list[str]:
+    lines = ["| m | l | factor bases | homogeneous D_reg (measured) | D_solve xl | D_solve mxl | semi-regular D_reg |",
+             "|--:|--:|--:|--:|--:|--:|--:|"]
+    groups = defaultdict(list)
+    for c in cards:
+        h = (c["degrees"].get("homogeneous") or {}).get("D_reg_emp_mean")
+        if h is not None and c["cell"].get("formulation", "direct") == "direct":
+            groups[(c["cell"]["m"], c["cell"]["l"])].append(c)
+    for (m, l), cs in sorted(groups.items()):
+        x = [c["degrees"]["xl"]["D_solve_mean"] for c in cs if c["degrees"]["xl"]["D_solve_mean"]]
+        mx = [c["degrees"]["mxl"]["D_solve_mean"] for c in cs if c["degrees"].get("mxl", {}).get("D_solve_mean")]
+        lines.append(
+            f"| {m} | {l} | {len(cs)} | {fmt(statistics.fmean(c['degrees']['homogeneous']['D_reg_emp_mean'] for c in cs))} "
+            f"| {fmt(statistics.fmean(x)) if x else '—'} | {fmt(statistics.fmean(mx)) if mx else '—'} "
+            f"| {fmt(statistics.fmean(c['predictions']['semi_regular_dreg'] for c in cs if c['predictions']['semi_regular_dreg']))} |"
+        )
+    return lines
+
+
+def sat_table(rows: list[dict]) -> list[str]:
+    lines = ["| m | cells | geo-mean CryptoMiniSat CPU ratio random/structured | cells where random is slower |", "|--:|--:|--:|--:|"]
+    for m in sorted({r["m"] for r in rows}):
+        ratios = []
+        for grp in _cells([r for r in rows if r["m"] == m and r["form"] == "direct" and r["sat_cpu"]]).values():
+            s = [r["sat_cpu"] for r in grp if r["family"] in STRUCTURED]
+            rnd = [r["sat_cpu"] for r in grp if r["family"] == "random"]
+            if s and rnd:
+                ratios.append(geomean(rnd) / geomean(s))
+        if ratios:
+            lines.append(f"| {m} | {len(ratios)} | {fmt(geomean(ratios))} | {sum(1 for x in ratios if x > 1)} |")
+    return lines
+
+
+def collection_table(runs: list[dict]) -> list[str]:
+    lines = ["| n | m | l | family | seed | columns | attempts | yield observed (exact) | novel rows | ops/novel row | logs verified | at 50% rank: projected ± sd | actual remaining |",
+             "|--:|--:|--:|---|--:|--:|--:|--:|--:|--:|---|--:|--:|"]
+    for r in sorted(runs, key=lambda r: (r["cell"]["m"], r["cell"]["n"], r["cell"]["l"], r["cell"]["family"], r["cell"].get("workload_seed", 1))):
+        c, mon = r["cell"], r["monitor"]
+        snaps = r.get("snapshots", [])
+        half = next((s for s in snaps if s["rank"] >= r["effective_columns"] / 2 and s["projected_attempts"]), None)
+        proj = "—"
+        if half:
+            proj = fmt(half["projected_attempts"]) + (f" ± {fmt(half['projected_sd'])}" if half.get("projected_sd") else "")
+        lines.append(
+            f"| {c['n']} | {c['m']} | {c['l']} | {c['family']} | {c.get('workload_seed', 1)} | {r['effective_columns']} | {mon['attempts']} "
+            f"| {fmt(mon['yield_per_attempt'])} ({fmt((r['exact_yield'] or {}).get('p_decomposable'))}) | {mon['novel_rows']} "
+            f"| {fmt(mon['ops_per_novel_row'])} | {r['factor_base_logs_verified']} "
+            f"| {proj} | {mon['attempts'] - half['attempt'] if half else '—'} |"
+        )
+    return lines
+
+
 def n131_table(rows: list[dict]) -> list[str]:
     lines = [
-        "| family | l | dims V^(k), k ≤ 5 | minimum | Σ_{k≤3} dim V^(k) | m = 2: ω | m = 2: excess | log2 E[decompositions], m = 2 / 3 / 4 / 5 |",
+        "| family | l | dims V^(k), k ≤ 5 | minimum possible | Σ_{k≤3} dim V^(k) | m = 2: ω | m = 2: excess | log2 E[decompositions], m = 2 / 3 / 4 / 5 |",
         "|---|--:|---|---|--:|--:|--:|---|",
     ]
     grouped = defaultdict(dict)
@@ -368,37 +452,29 @@ def n131_table(rows: list[dict]) -> list[str]:
     return lines
 
 
-def build_report(cards: list[dict]) -> dict[str, list[str]]:
+def build_report(cards: list[dict], runs: list[dict] | None = None) -> dict[str, list[str]]:
     modes = sorted({m for c in cards for m in c["point_decomposition"].get("modes", ["xl"])})
     rows_by_mode = {mode: [features(c, mode) for c in cards if mode in c["degrees"]] for mode in modes}
     cells = {mode: by_cell(rows) for mode, rows in rows_by_mode.items()}
+    forms = sorted({r["form"] for rows in rows_by_mode.values() for r in rows})
     sections: dict[str, list[str]] = {}
-    sections["PAIRED"] = []
-    for mode in modes:
-        sections["PAIRED"] += [f"**{mode}**", "", *paired_summary(cells[mode], mode), ""]
+    for form in forms:
+        key = "PAIRED" if form == "direct" else "PAIRED_SYM"
+        sections[key] = []
+        for mode in modes:
+            sections[key] += [f"**{mode}**", "", *paired_summary(cells[mode], form, mode), ""]
     sections["PREDICTORS"] = predictor_table(rows_by_mode)
-    rules = {mode: fit_threshold_rule(rows) for mode, rows in rows_by_mode.items()}
-    rl = ["| m | mode | cells | fitted rule on excess e = n − (ω − 1) | MAE (fit) | MAE (leave one n out) |", "|--:|---|--:|---|--:|--:|"]
-    for mode, per_m in rules.items():
-        for m, res in per_m.items():
-            ts = res["rule"]["thresholds"]
-            rule = f"D = {res['rule']['base']}" + "".join(f" + [e < {t:g}]" for t in ts)
-            rl.append(f"| {m} | {mode} | {res['cells']} | {rule} | {res['mae_fit']:.3f} | {fmt(res['mae_leave_one_n_out'])} |")
-    sections["RULES"] = rl
-    sections["BASE"] = base_calibration([r for r in rows_by_mode[modes[0]] if r["m"] == 2], modes[0])
+    sections["RULES"] = rules_table(rows_by_mode)
+    sections["BASE"] = base_calibration(rows_by_mode)
     sections["YIELD"] = yield_table(rows_by_mode[modes[0]])
-    for mode in modes:
-        for m in sorted({r["m"] for r in rows_by_mode[mode]}):
-            sections[f"MATCHED_M{m}_{mode.upper()}"] = matched_table(cells[mode], m, mode)
-    dregs = [r for r in rows_by_mode[modes[0]] if r["dreg_emp"] is not None]
-    dl = ["| m | l | factor bases | homogeneous D_reg (measured) | D_solve xl | D_solve mxl | semi-regular D_reg |", "|--:|--:|--:|--:|--:|--:|--:|"]
-    for (m, l) in sorted({(r["m"], r["l"]) for r in dregs}):
-        sub = [r for r in dregs if r["m"] == m and r["l"] == l]
-        mx = [features(c, "mxl")["D"] for c in cards if c["cell"]["m"] == m and c["cell"]["l"] == l and "mxl" in c["degrees"]
-              and (c["degrees"].get("homogeneous") or {}).get("D_reg_emp_mean") is not None]
-        dl.append(f"| {m} | {l} | {len(sub)} | {fmt(statistics.fmean(r['dreg_emp'] for r in sub))} | {fmt(statistics.fmean(r['D'] for r in sub if r['D']))} "
-                  f"| {fmt(statistics.fmean(v for v in mx if v)) if any(mx) else '—'} | {fmt(statistics.fmean(r['semi_regular'] for r in sub if r['semi_regular']))} |")
-    sections["DREG"] = dl
+    sections["DREG"] = dreg_table(cards)
+    sections["SAT"] = sat_table(rows_by_mode[modes[0]])
+    for form in forms:
+        for mode in modes:
+            for m in sorted({r["m"] for r in rows_by_mode[mode] if r["form"] == form}):
+                sections[f"MATCHED_{form.upper()}_M{m}_{mode.upper()}"] = matched_table(cells[mode], form, m, mode)
+    if runs:
+        sections["COLLECT"] = collection_table(runs)
     return sections
 
 
@@ -418,7 +494,9 @@ def main() -> None:
     ap.add_argument("--n131-out", type=Path, default=HERE / "results" / "n131_structure.json")
     args = ap.parse_args()
     cards = load(args.results)
-    sections = build_report(cards) if cards else {}
+    runs = [json.loads(line) for p in args.results for line in p.read_text().splitlines()
+            if line.strip() and json.loads(line).get("schema") == "pdp-collection-run/1"]
+    sections = build_report(cards, runs) if cards else {}
     if args.n131:
         rows = n131_predictions()
         args.n131_out.write_text(json.dumps(rows, indent=1) + "\n")

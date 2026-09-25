@@ -387,6 +387,16 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(by_D[4]["relations_kept"], 1.0)
         self.assertEqual(s["best_abort"]["D_abort"], 4)
 
+    def test_coupon_collector_moments(self):
+        from monitor import coupon_time
+
+        mean, sd = coupon_time([0.01])
+        self.assertAlmostEqual(mean, 100.0, delta=1.0)
+        self.assertAlmostEqual(sd, 100.0, delta=2.0)
+        mean, _ = coupon_time([0.01, 0.01])
+        self.assertAlmostEqual(mean, 150.0, delta=1.5)
+        self.assertIsNone(coupon_time([0.01, 0.0]))
+
     def test_collection_recovers_every_factor_base_log(self):
         import argparse
 

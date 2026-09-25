@@ -46,6 +46,11 @@ A design proposal may use a `Q<number>` catalog ID while exact base points,
 algorithm wiring, or isogeny maps are unresolved. Keep `candidate_id: null`
 and all measured costs null until those gates are satisfied. A proposal ID is
 never an `IC1` result, and a nominal dimension is never an actual `fb` count.
+A measured PDP-stage profile of an exact base without final relation LA or
+target descent (`experiments/pdp-degree-heuristics/`) also keeps
+`candidate_id: null`. Label it `PS1N<n>C<curve-tag>fb<B>PDP<m><solver>h<12hex>`,
+hashing its factor-base and point-decomposition records. Its run ID is
+`<PS1-id>W<workload>R<run>`, and it is never an `IC1` result.
 
 For an isogenous curve, preserve its own immutable curve ID and use the
 [volcano-position and isogeny-walk convention](experiments/ic-candidate-catalog/VOLCANO_NAMING.md).
@@ -69,7 +74,10 @@ There are no separators or zero-padded numbers in an ID. Structural tags
 The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
 Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, and `PDP4root`
-for the compact four-summand S3 root index; `RCwalk`, `RCsample`, `RCdirect`,
+for the compact four-summand S3 root index; `PDP2xl` for a dense Macaulay/XL
+degree scan and `PDP2xlsym` for the same scan over the symmetric-function
+(`e_k` in `V^(k)`) formulation, with the XL or closure mode in the manifest;
+`RCwalk`, `RCsample`, `RCdirect`,
 and `RCguided` for pivot-guided relation collection;
 `LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
 `TDdirect`, `TDpdp`, `TDdescent` for target handling; `ISO0` for no isogeny
