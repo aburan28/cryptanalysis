@@ -321,8 +321,10 @@ class Render(unittest.TestCase):
     """What the chart renders without a server to ask."""
 
     def api_versions(self, *args):
-        out = subprocess.run([HELM, "template", "gh", CHART] + list(args), capture_output=True,
-                             text=True, check=True).stdout
+        # --kube-version: without it, Helm before 3.17 renders for 1.31, which
+        # the chart's kubeVersion refuses.
+        out = subprocess.run([HELM, "template", "gh", CHART, "--kube-version", "1.37.0"] +
+                             list(args), capture_output=True, text=True, check=True).stdout
         return sorted({line.split(":", 1)[1].strip() for line in out.splitlines()
                        if line.startswith("apiVersion: admissionregistration")})
 

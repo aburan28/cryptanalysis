@@ -196,8 +196,9 @@ rec=$(record)
 started=$(kubectl -n "$NS" get pod "$P" -o jsonpath='{.status.containerStatuses[0].state.running.startedAt}')
 checked=$(kubectl -n "$NS" get pod "$P" \
     -o jsonpath='{.status.initContainerStatuses[?(@.name=="gpu-health")].state.terminated.finishedAt}')
-[ -n "$started" ] && [ -n "$checked" ] && [[ ! "$started" < "$checked" ]] ||
+if [ -z "$started" ] || [ -z "$checked" ] || [[ "$started" < "$checked" ]]; then
     fail "the plugin started ($started) before the check finished ($checked)"
+fi
 echo "ok: $names; check finished $checked, plugin started $started; record: $rec"
 
 step "2. the same boot skips the load"
