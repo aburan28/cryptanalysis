@@ -33,7 +33,9 @@ marker="$JOB_DIR/.started"
 touch "$marker"
 
 cpu_model=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')
-mem_gb=$(awk '/MemTotal/ {printf "%.0f", $2 / 1048576}' /proc/meminfo)
+# Containers see the host's /proc/meminfo; prefer the allocation when it is known
+# (FLEET_MEM_GB on a pod, JOB_MEM_GB as requested from Modal).
+mem_gb="${FLEET_MEM_GB:-${JOB_MEM_GB:-$(awk '/MemTotal/ {printf "%.0f", $2 / 1048576}' /proc/meminfo)}}"
 gpus=$(command -v nvidia-smi >/dev/null 2>&1 &&
   nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | paste -sd ';' -)
 note "job ${JOB_ID:-?} shard $SHARD_INDEX/$SHARD_COUNT on $(hostname) at $(date -u +%FT%TZ)"

@@ -142,12 +142,15 @@ def new_job_id():
     return time.strftime("%Y%m%d-%H%M%S", time.gmtime()) + "-" + os.urandom(2).hex()
 
 
-def shard_env(job, shard, shards, command, outs, changed, extra):
-    return {**extra,
-            "JOB_ID": job, "JOB_DIR": f"{MOUNT}/{job}/shards/{shard}", "JOB_WORKDIR": WORKDIR,
-            "JOB_SRC": f"{MOUNT}/{job}/src.tar.gz", "JOB_CMD": command,
-            "JOB_OUTS": "\n".join(outs), "JOB_CHANGED": "1" if changed else "0",
-            "SHARD_INDEX": str(shard), "SHARD_COUNT": str(shards)}
+def shard_env(job, shard, shards, command, outs, changed, extra, memory_gib=None):
+    env = {**extra,
+           "JOB_ID": job, "JOB_DIR": f"{MOUNT}/{job}/shards/{shard}", "JOB_WORKDIR": WORKDIR,
+           "JOB_SRC": f"{MOUNT}/{job}/src.tar.gz", "JOB_CMD": command,
+           "JOB_OUTS": "\n".join(outs), "JOB_CHANGED": "1" if changed else "0",
+           "SHARD_INDEX": str(shard), "SHARD_COUNT": str(shards)}
+    if memory_gib:
+        env["JOB_MEM_GB"] = f"{memory_gib:g}"
+    return env
 
 
 def parse_env(pairs):
@@ -230,7 +233,8 @@ def cmd_run(args):
             sandboxes.append(m.Sandbox.create(
                 "bash", "-c", runner, app=app, image=image, cpu=cpu, memory=int(memory * 1024),
                 gpu=gpu, timeout=timeout, volumes={MOUNT: vol}, secrets=secrets, workdir="/",
-                env=shard_env(job, shard, args.shards, command, args.out, args.changed, extra),
+                env=shard_env(job, shard, args.shards, command, args.out, args.changed, extra,
+                              memory),
                 tags={"job": job, "shard": str(shard)}))
     meta["sandboxes"] = [sb.object_id for sb in sandboxes]
     put(vol, {f"/{job}/job.json": json.dumps(meta).encode()})
