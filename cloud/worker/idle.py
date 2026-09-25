@@ -31,6 +31,8 @@ from pathlib import Path
 FLEET = Path("/workspace/fleet")
 WORKDIR = Path("/workspace/cryptanalysis")
 JOBS = Path("/workspace/jobs")
+# Runpod's API sits behind Cloudflare, which refuses urllib's default User-Agent.
+USER_AGENT = "cryptanalysis-fleet-idle/1"
 BUSY_CORES = 0.25
 BUSY_GPU_PERCENT = 5
 EDIT_WINDOW_SECONDS = 600
@@ -149,7 +151,8 @@ def cursor_in_use(key, name):
         return None
     request = urllib.request.Request(
         "https://api.cursor.com/v0/private-workers?scope=personal&limit=100",
-        headers={"Authorization": "Basic " + base64.b64encode(f"{key}:".encode()).decode()})
+        headers={"Authorization": "Basic " + base64.b64encode(f"{key}:".encode()).decode(),
+                 "User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             workers = json.load(response).get("workers", [])
@@ -193,7 +196,8 @@ def stop_pod():
     request = urllib.request.Request(
         "https://api.runpod.io/graphql", method="POST",
         data=json.dumps({"query": query}).encode(),
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
+                 "User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
             reply = json.load(response)
