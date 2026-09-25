@@ -107,6 +107,8 @@ python3 experiments/groebner-perf-20260924/round10/audit.py
 ```
 
 On Linux use `build.py --cpu-only` with pkg-config M4RI, then omit `--gpu`.
+Ubuntu dependencies are `clang libm4ri-dev libpng-dev pkg-config`; its M4RI
+pkg-config metadata requires libpng's development metadata as well.
 The audit always checks the retained run, independently of a newly generated
 benchmark output. Do not overwrite historical evidence to refresh a benchmark.
 
