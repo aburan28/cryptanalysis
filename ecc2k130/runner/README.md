@@ -227,8 +227,12 @@ first requires a successful S3/RDS smoke check, then submits all four GPU calls
 before waiting for any result. `--count` accepts 1 through 4 (default 4), and the
 GPU function has a maximum of four concurrent containers per app. Avoid launching
 multiple copies of the app if you intend to keep the total fleet at four GPUs.
-The remote CPU coordinator prints the submitted call IDs and waits for completion,
-so closing the local terminal after a detached launch does not end the fleet.
+The launcher spawns a remote CPU coordinator, which prints the submitted call IDs
+and waits for the workers. After a detached launch, closing the local terminal
+ends neither the fleet nor the coordinator's network cleanup. The coordinator is
+spawned because Modal cancels a `.remote()` call about a minute after its
+launcher disconnects; the workers would keep running with their ingress rules
+left open.
 Submission is not proof of startup,
 so check the logs for four distinct claimed slots and progress reports.
 

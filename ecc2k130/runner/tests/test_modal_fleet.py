@@ -28,10 +28,19 @@ class FleetTests(unittest.TestCase):
         names = {'worker': self.worker, 'readiness': self.readiness, 'json': json, 'time': time,
                  'uuid': uuid, 'print': Mock()}
         exec(compile(ast.Module(body=functions, type_ignores=[]), str(path), 'exec'), names)
+        coordinator = names['fleet']
         self.fleet = Mock()
-        self.fleet.remote.side_effect = names['fleet']
+        self.fleet.spawn.side_effect = lambda *args: SimpleNamespace(
+            object_id='fleet-call', get=lambda: coordinator(*args))
         names['fleet'] = self.fleet
         self.main = names['main']
+
+    def test_the_coordinator_is_spawned_so_a_lost_launcher_cannot_cancel_it(self):
+        self.worker.spawn.side_effect = [Mock(object_id=f'call-{n}') for n in range(4)]
+        self.main(command='run')
+        self.fleet.spawn.assert_called_once_with(4, 82800, False)
+        self.fleet.remote.assert_not_called()
+        self.cleanup.assert_called_once()
 
     def test_four_long_calls_are_submitted_before_waiting(self):
         calls = [Mock(object_id=f'call-{n}') for n in range(4)]

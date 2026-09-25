@@ -153,4 +153,8 @@ def main(command: str = "preflight", seconds: int = 82800, s3_only: bool = False
     print(json.dumps({"readiness": result}), flush=True)
     if command != "run":
         return
-    print(json.dumps(fleet.remote(count, seconds, s3_only)), flush=True)
+    # A .remote() call is cancelled when its launcher disconnects, which took
+    # the coordinator's network cleanup with it. A spawned call is not.
+    call = fleet.spawn(count, seconds, s3_only)
+    print(json.dumps({"coordinator_call_id": call.object_id}), flush=True)
+    print(json.dumps(call.get()), flush=True)
