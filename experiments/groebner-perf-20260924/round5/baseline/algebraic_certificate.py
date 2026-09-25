@@ -17,7 +17,7 @@ class VerificationBudget(Exception):
 
 def verify(nvars, equations, basis, proof, *, max_work=2_000_000, max_retained_terms=500_000):
     stats = dict(work=0, retained_terms=0, proof_nodes=0, generator_checks=0,
-                 basis_pairs=0, product_pairs_skipped=0, field_pairs=0, reduction_steps=0)
+                 basis_pairs=0, field_pairs=0, reduction_steps=0)
 
     def charge(work=1):
         stats['work'] += work
@@ -151,13 +151,6 @@ def verify(nvars, equations, basis, proof, *, max_work=2_000_000, max_retained_t
                     raise InvalidCertificate('implicit Boolean field pair has nonzero normal form')
             for other_lm, other in reducers[i+1:]:
                 stats['basis_pairs'] += 1
-                charge()
-                # Ordinary-polynomial Buchberger product criterion: coprime
-                # leading monomials have a zero S-remainder using this pair.
-                # Adding the Boolean field generators preserves that proof.
-                if not lm & other_lm:
-                    stats['product_pairs_skipped'] += 1
-                    continue
                 common = lm | other_lm
                 pair = add(multiply(row,common & ~lm),multiply(other,common & ~other_lm))
                 if normal_form(pair,reducers):
