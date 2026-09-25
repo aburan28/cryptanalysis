@@ -1,0 +1,155 @@
+name: gpu-health
+
+# The GPU health-check image (deploy/gpu-health/): the orchestrator's tests on
+# the oldest and newest Python it supports, then the image, built from the
+# repository root on x86_64 and aarch64.  The image build compiles ec2k-gpu
+# for sm_80 through sm_120 and runs the host test (which includes the health
+# checks' own tests) and `ec2k-gpu check --kat`; the smoke runs then hold the
+# image to two behaviours: with no GPU it fails and says why, and against the
+# scripted stand-ins in tests/fakes it passes.  No runner has a GPU, so
+# nothing here says anything about a card.
+#
+# A tag gpu-health-vX.Y.Z also publishes ghcr.io/OWNER/gpu-health:X.Y.Z, one
+# manifest for both architectures, and moves :latest unless the version has a
+# pre-release suffix (-rc1 and the like).
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["gpu-health-v*"]
+    paths:
+      - "deploy/gpu-health/**"
+      - "ecc2k130/Makefile"
+      - "ecc2k130/include/**"
+      - "ecc2k130/src/**"
+      - "ecc2k130/scripts/fetch_cuda.sh"
+      - "ecc2k130/tests/campaign-kat.hex"
+      - "fpga/model/**"
+      - ".github/workflows/gpu-health.yml"
+  pull_request:
+    paths:
+      - "deploy/gpu-health/**"
+      - "ecc2k130/Makefile"
+      - "ecc2k130/include/**"
+      - "ecc2k130/src/**"
+      - "ecc2k130/scripts/fetch_cuda.sh"
+      - "ecc2k130/tests/campaign-kat.hex"
+      - "fpga/model/**"
+      - ".github/workflows/gpu-health.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: orchestrator tests (Python ${{ matrix.python }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.8"
+            runner: ubuntu-22.04
+          - python: "3.12"
+            runner: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: unittest
+        run: python3 -m unittest discover -s deploy/gpu-health/tests -v
+
+  image:
+    name: image (linux/${{ matrix.arch }})
+    needs: tests
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/gpu-health/Dockerfile
+          load: true
+          tags: gpu-health:ci
+          cache-from: type=gha,scope=gpu-health-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=gpu-health-${{ matrix.arch }}
+      - name: "Smoke: no GPU fails, and says so"
+        run: |
+          set +e
+          out=$(docker run --rm gpu-health:ci --seconds 5 2>&1)
+          rc=$?
+          set -e
+          echo "$out" | tail -5
+          [ "$rc" -eq 1 ] || { echo "::error::exit $rc without a GPU, expected 1"; exit 1; }
+          grep -q "no usable CUDA device" <<<"$out"
+      - name: "Smoke: the image's own binary checks itself"
+        run: docker run --rm --entrypoint ec2k-gpu gpu-health:ci check --kat /usr/local/share/gpu-health/campaign-kat.hex
+      - name: "Smoke: a healthy scripted node passes inside the image"
+        run: |
+          state=$(mktemp -d)
+          chmod 777 "$state"
+          cat >"$state/scenario.json" <<'EOF'
+          {"gpus": [{"name": "NVIDIA H100 80GB HBM3", "uuid": "GPU-00000000-0000-0000-0000-000000000000", "sms": 132, "cc": "9.0", "rate": 7.5e9},
+                    {"name": "NVIDIA H100 80GB HBM3", "uuid": "GPU-00000001-0000-0000-0000-000000000000", "sms": 132, "cc": "9.0", "rate": 7.45e9}]}
+          EOF
+          docker run --rm -v "$PWD/deploy/gpu-health/tests/fakes:/fakes:ro" -v "$state:/state" \
+            -e FAKE_GPU_SCENARIO=/state/scenario.json -e FAKE_GPU_STATE=/state gpu-health:ci \
+            --binary /fakes/ec2k-gpu --nvidia-smi /fakes/nvidia-smi --seconds 2 \
+            --json-out /state/report.json
+          python3 -c "import json,sys; r=json.load(open(sys.argv[1])); assert r['verdict'] == 'pass', r" "$state/report.json"
+      - name: Push the architecture's image
+        if: startsWith(github.ref, 'refs/tags/gpu-health-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          image="ghcr.io/$owner/gpu-health:${TAG#gpu-health-v}-$ARCH"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag gpu-health:ci "$image"
+          docker push "$image"
+
+  publish:
+    name: publish ghcr.io/${{ github.repository_owner }}/gpu-health
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/gpu-health-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - name: One manifest for both architectures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          version=${TAG#gpu-health-v}
+          base="ghcr.io/$owner/gpu-health"
+          tags=(-t "$base:$version")
+          case "$version" in *-*) ;; *) tags+=(-t "$base:latest") ;; esac
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx imagetools create "${tags[@]}" "$base:$version-amd64" "$base:$version-arm64"

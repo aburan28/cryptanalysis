@@ -1,0 +1,67 @@
+# A workload that starts only after its GPUs pass the health check.
+#
+# The init container requests the same GPUs as the workload.  The kubelet's
+# device manager hands devices allocated to an init container on to the
+# pod's app containers, so the check runs on exactly the GPUs the workload
+# then gets.  If a GPU fails, the init container exits 1 and the workload
+# never starts; the reason is the container's termination message:
+#
+#   kubectl get pod gpu-workload \
+#     -o jsonpath='{.status.initContainerStatuses[0].state.terminated.message}'
+#
+# (lastState instead of state once the kubelet has restarted the container,
+# as it does under restartPolicy Always.)
+#
+# A failed check does not move the pod to another node: a Deployment's pod
+# retries on the same node, with backoff.  To keep work off a bad node
+# altogether, gate the node instead (node-gate.yaml).
+#
+# Budget: GPU_HEALTH_SECONDS of load plus about 10-30 s of start-up.  The
+# check wants about a CPU per GPU, because the host checks every point the
+# GPUs report.  It has no CPU limit, so it can use cores the node has idle;
+# its requests stay small because an init container's requests count toward
+# the pod's for as long as the pod exists.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-workload
+spec:
+  restartPolicy: Never
+  initContainers:
+    - name: gpu-health
+      image: ghcr.io/aburan28/gpu-health:latest  # pin a digest in production
+      env:
+        - name: GPU_HEALTH_SECONDS
+          value: "60"
+        # Fail unless the pod sees exactly this many GPUs (0: any).
+        - name: GPU_HEALTH_EXPECT_GPUS
+          value: "8"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        # Per-model throughput baselines from --calibrate; see README.md.
+        # - name: GPU_HEALTH_BASELINES
+        #   value: /etc/gpu-health-baselines/baselines.json
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          nvidia.com/gpu: 8
+          memory: 16Gi
+      terminationMessagePolicy: FallbackToLogsOnError
+      # volumeMounts:
+      #   - name: baselines
+      #     mountPath: /etc/gpu-health-baselines
+      #     readOnly: true
+  containers:
+    - name: workload
+      image: registry.example.com/your-gpu-workload:tag  # your workload
+      resources:
+        limits:
+          nvidia.com/gpu: 8
+  # volumes:
+  #   - name: baselines
+  #     configMap:
+  #       name: gpu-health-baselines

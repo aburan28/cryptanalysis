@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""A stand-in for ec2k-gpu in gpu_health.py's tests: no GPU, scripted results.
+
+The scenario is the JSON file named by FAKE_GPU_SCENARIO; FAKE_GPU_STATE is a
+directory where `health` leaves loading-N while it runs and done-N after, so
+that the fake nvidia-smi can answer as a card under load or after it would.
+"""
+import json
+import os
+import signal
+import sys
+import time
+
+scenario = json.load(open(os.environ["FAKE_GPU_SCENARIO"]))
+state = os.environ.get("FAKE_GPU_STATE", ".")
+args = sys.argv[1:]
+
+
+def opt(name, default=None):
+    return args[args.index(name) + 1] if name in args else default
+
+
+cmd = args[0] if args else ""
+if cmd == "check":
+    if scenario.get("hostCheck", "ok") != "ok":
+        print("ecc2k130 hostcheck: failed: mul131 == golden multiply", file=sys.stderr)
+        print("FAILED: 1 of 868 checks", file=sys.stderr)
+        sys.exit(1)
+    print(json.dumps({"status": "ok", "walk": "sigma", "checks": 868, "rounds": 16,
+                      "knownAnswers": "--kat" in args}))
+    sys.exit(0)
+
+if cmd == "devices":
+    if scenario.get("devicesError"):
+        print(json.dumps({"status": "error", "error": scenario["devicesError"],
+                          "driverVersion": 0, "runtimeVersion": 13030, "devices": []}))
+        sys.exit(3)
+    devs = [{"index": i, "name": g["name"], "uuid": g["uuid"], "pciBusId": g.get("pci", ""),
+             "computeCapability": g.get("cc", "9.0"), "sms": g.get("sms", 132),
+             "clockKHz": 1980000, "memoryBytes": 85e9} for i, g in enumerate(scenario["gpus"])]
+    print(json.dumps({"status": "ok", "driverVersion": 13030, "runtimeVersion": 13030,
+                      "devices": devs}))
+    sys.exit(0)
+
+if cmd == "health":
+    i = int(opt("--device", "0"))
+    g = scenario["gpus"][i]
+    seconds = float(opt("--seconds", "1"))
+    stopped = []
+    signal.signal(signal.SIGTERM, lambda *_: stopped.append(1))
+    print("device: %s, %d SMs, 2 block(s) of 256 threads resident per SM" % (g["name"],
+                                                                            g.get("sms", 132)))
+    print("health: sigma walk, 1081344 lanes, 4096 steps per launch, dp weight 42", flush=True)
+    open(os.path.join(state, "loading-%d" % i), "w").close()
+    behavior = g.get("behavior", "ok")
+    if behavior == "crash":
+        time.sleep(min(seconds, 0.2))
+        print("CUDA error at src/ec2k_gpu.cu:907: an illegal memory access was encountered",
+              file=sys.stderr, flush=True)
+        sys.exit(3)
+    if behavior == "hang":
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        time.sleep(3600)
+    end = time.monotonic() + seconds
+    while time.monotonic() < end and not stopped:
+        time.sleep(0.02)
+    os.remove(os.path.join(state, "loading-%d" % i))
+    open(os.path.join(state, "done-%d" % i), "w").close()
+    rate = float(g.get("rate", 7.5e9))
+    trend = float(g.get("trend", 1.0))
+    windows = [{"start": 0, "end": 1, "iterationsPerSecond": rate},
+               {"start": 1, "end": 2, "iterationsPerSecond": rate * (1 + trend) / 2},
+               {"start": 2, "end": 3, "iterationsPerSecond": rate * trend}]
+    faults = {"seed": 0, "sequence": 0, "iters": 0, "weight": 0, "curve": 0, "rewalk": 0}
+    faults.update(g.get("faults", {}))
+    status = "fault" if any(faults.values()) else (
+        "inconclusive" if stopped or behavior == "inconclusive" else "ok")
+    rewalked = 0 if behavior == "inconclusive" else g.get("rewalked", 25)
+    print(json.dumps({
+        "status": status, "cmd": "health", "walk": "sigma",
+        "device": {"index": i, "name": g["name"], "uuid": g["uuid"]},
+        "seconds": seconds, "warmupSeconds": 0.0, "launches": 3, "iterations": 3 * rate,
+        "iterationsPerSecond": rate, "steadyIterationsPerSecond": rate,
+        "windowMinOverMax": min(1.0, trend) / max(1.0, trend), "windowLastOverFirst": trend,
+        "windows": windows, "reports": 1000, "checked": 1000, "checkedSteps": 29000000,
+        "checkedFraction": 0.93, "faults": faults,
+        "rewalk": {"offered": 30, "skipped": 5, "rewalked": rewalked, "steps": 900,
+                   "threads": int(opt("--rewalk-threads", "1")), "maxIters": 512},
+        "lanes": 1081344, "threads": 67584, "batch": 16, "steps": 4096, "dpWeight": 42,
+        "runId": 65535, "stopped": bool(stopped), "lost": None}), flush=True)
+    sys.exit(1 if status == "fault" else 4 if status == "inconclusive" else 0)
+
+print("usage: ec2k-gpu <walk|bench|check|health|devices> [options]", file=sys.stderr)
+sys.exit(2)

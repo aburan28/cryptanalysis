@@ -6,7 +6,7 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
         coordinator coordinator-test fpga fpga-lint fpga-synth ecc2k130 ecc2k130-gpu \
-        ecc2k130-cpu ecc2k130-metal \
+        ecc2k130-cpu ecc2k130-metal gpu-health gpu-health-image \
         suite suite-build suite-test suite-lint suite-python
 
 all: lib
@@ -88,6 +88,17 @@ ecc2k130-cpu:
 
 ecc2k130-metal:
 	$(MAKE) -C ecc2k130 metal
+
+# ---- the GPU health check (deploy/gpu-health/) -----------------------------
+# ec2k-gpu's `health` command and the orchestrator that turns one run per GPU
+# into a verdict.  `gpu-health` runs the orchestrator's tests against scripted
+# stand-ins for ec2k-gpu and nvidia-smi (no GPU); `gpu-health-image` builds
+# the image, which compiles and self-checks ec2k-gpu on the way.
+gpu-health:
+	python3 -m unittest discover -s deploy/gpu-health/tests
+
+gpu-health-image:
+	docker build -f deploy/gpu-health/Dockerfile -t gpu-health:dev .
 
 # ---- the attack suite (suite/) ---------------------------------------------
 # The Rust cryptanalysis library and its tools (ca-suite, ca-ic,
