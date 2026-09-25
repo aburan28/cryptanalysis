@@ -82,7 +82,9 @@ $ ca-suite bench
 experiments with known answers: on binary Koblitz curves, and with
 `ca-ic prime` on prime-field curves by type — generic (NIST P-192 … P-521),
 `j = 0` Koblitz-style (secp256k1) and `j = 1728` — over a scaled-down curve of
-the named curve's shape; see [docs/ic/README.md](docs/ic/README.md).
+the named curve's shape, a batch of targets against rho, both per target and
+as a batch that shares distinguished points; see
+[docs/ic/README.md](docs/ic/README.md).
 
 ```sh
 $ ca-ic list
@@ -91,7 +93,7 @@ $ ca-ic p224                                        # inspection only
 $ ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate --json
 $ ca-ic compare --degree 7 --curve-a 1 --samples 3 --holdout 2 --json
 $ ca-ic fixed --params docs/ic/params/k0n9-fixed.json --dir runs/k0n9 --attempts 256 --json
-$ ca-ic prime --curve secp256k1 --bits 28 --width 4  # j = 0: |Aut| = 6 orbits, descent vs rho
+$ ca-ic prime --curve secp256k1 --bits 28 --targets 64  # j = 0: |Aut| = 6 orbits, a batch vs rho
 ```
 
 `ca-curves` lists the challenge corpus in [`../challenges/ecc/`](../challenges/ecc/README.md)

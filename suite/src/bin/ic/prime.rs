@@ -34,8 +34,8 @@ use cryptanalysis_suite::cryptanalysis::ec_index_calculus_curves::{
     SolverRun, MAX_SEMAEV_BITS,
 };
 use cryptanalysis_suite::cryptanalysis::prime_orbit_index_calculus::{
-    generate_instance, run_known_answer, Coefficient, GeneratedInstance, OrbitIcOptions,
-    OrbitIcReport, ScaledShape, MIN_FIELD_BITS,
+    base_orbits, generate_instance, run_known_answer, BaseSizing, Coefficient, GeneratedInstance,
+    OrbitIcOptions, OrbitIcReport, ScaledShape, MIN_FIELD_BITS,
 };
 use cryptanalysis_suite::ecc::{curve::CurveParams, point::Point};
 use num_bigint::BigUint;
@@ -44,9 +44,10 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::time::Instant;
 
-/// Largest scaled field `ic prime` builds.  The certificate and rho reach
-/// further; the logarithm precomputation, at `≈ r/|Aut|` operations,
-/// does not, and the operation budget ends it as incomplete well before.
+/// Largest scaled field `ic prime` builds.  The certificate, rho and the
+/// large-prime precomputation reach further; the full-decomposition
+/// control, at `≈ r/|Aut|` operations, does not, and the operation budget
+/// ends it as incomplete well before.
 pub const MAX_PRIME_BITS: u32 = 40;
 
 /// A prime-field curve type, as `--type` spells it.
@@ -118,15 +119,33 @@ pub struct PrimeArgs {
     /// Seeds the curve search, the targets, the factor base and every walk.
     #[arg(long, default_value_t = 1)]
     pub seed: u64,
-    /// Factor-base orbits (orbit); 0 sizes the base as --width · √r / |Aut|.
+    /// Factor-base orbits (orbit); 0 sizes the base: to the batch of targets
+    /// with large primes (--orbits-per-target), else by --width.
     #[arg(long, default_value_t = 0)]
     pub orbits: usize,
-    /// Base width in units of √r / |Aut| (orbit): a descent costs about √r / width.
-    #[arg(long, default_value_t = 2.0)]
-    pub width: f64,
+    /// Size the base by width instead, in units of √r / |Aut| (orbit; 2
+    /// without large primes).  A full-decomposition descent costs about
+    /// √r / width.
+    #[arg(long, conflicts_with = "orbits_per_target")]
+    pub width: Option<f64>,
+    /// With large primes, factor-base orbits per target, at least 16 in all
+    /// (orbit; default 0.5).  The precompute and the descents then balance,
+    /// and both grow as √r.
+    #[arg(long)]
+    pub orbits_per_target: Option<f64>,
     /// Relations collected per orbit before the logarithms are solved (orbit).
     #[arg(long, default_value_t = 1.5)]
     pub relations_per_orbit: f64,
+    /// Collect relations by full 2-decomposition instead of the
+    /// single-large-prime variation (orbit): the control, `≈ r/|Aut|`
+    /// operations where large primes need `≈ √(m·r/|Aut|)`.
+    #[arg(long)]
+    pub no_large_primes: bool,
+    /// Descend every target against the precomputed database alone (orbit),
+    /// instead of adding each verified descent's differences to it for the
+    /// targets after.
+    #[arg(long)]
+    pub no_learn: bool,
     /// Group-operation budget for the logarithm precomputation (orbit).
     #[arg(long, default_value_t = 1u64 << 32)]
     pub max_ops: u64,
@@ -269,7 +288,8 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
         .map(|(d, &(k, _))| {
             json!({"expected": k.to_string(), "recovered": d.recovered.map(|v| v.to_string()),
                    "verified": d.verified, "ops": OrbitIcReport::descent_ops(d), "trials": d.trials,
-                   "seconds": d.seconds})
+                   "through_large_prime": d.through_large_prime, "learned": d.learned,
+                   "restarts": d.restarts, "seconds": d.seconds})
         })
         .collect();
     let per_rho: Vec<Value> = rep
@@ -290,11 +310,20 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
             "automorphism_order": rep.automorphism_order,
             "certified_orbits": logs.certified_columns,
             "draws": logs.factor_base_draws,
+            "sizing": opts.sizing().as_str(),
+            "orbits_per_target": opts.orbits_per_target,
             "width": opts.width,
         },
         "logs": {
+            "collection": if opts.large_primes { "large_primes" } else { "full_decompositions" },
             "trials": logs.trials,
             "relations": logs.relations,
+            "full_relations": logs.full_relations,
+            "combined_relations": logs.combined_relations,
+            "distinct_large_primes": logs.distinct_large_primes,
+            "known_large_primes": logs.known_large_primes,
+            "collection_rounds": logs.collection_rounds,
+            "walk_restarts": logs.walk_restarts,
             "rejected_relations": logs.rejected_relations,
             "oracle_ops": logs.oracle_ops,
             "probe_ops": logs.probe_ops,
@@ -307,6 +336,9 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
         },
         "descent": {
             "verified": rep.descents_verified(),
+            "through_large_primes": rep.descents_through_large_primes(),
+            "learn": opts.learn,
+            "learned_large_primes": rep.learned_large_primes(),
             "mean_ops": des,
             "total_ops": rep.descent_ops_total(),
             "per_target": per_descent,
@@ -335,11 +367,20 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
                           "ratio": ratio(rho_pre / t + rho, pre / t + des)},
             "whole_process": {"ic_ops": pre + des * t, "rho_ops": rho_pre + rho * t,
                               "ratio": ratio(rho_pre + rho * t, pre + des * t)},
+            "whole_process_vs_batch_rho": {
+                "model": "Kuhn-Struik expectation: the T targets solved in turn by one distinguished-point rho whose walks may finish on the trails of targets already solved, sqrt(pi n/2) * sum_{k<T} C(2k,k)/4^k steps on n = r classes (r/|Aut| folded), plus one walk's seeding a target and the jump table; analytic, with no detection lag",
+                "ic_ops": pre + des * t,
+                "rho_ops_expected": rep.batch_rho_expected_ops,
+                "rho_ops_expected_folded": rep.batch_rho_expected_ops_folded,
+                "ratio": ratio(rep.batch_rho_expected_ops, pre + des * t),
+                "ratio_folded": ratio(rep.batch_rho_expected_ops_folded, pre + des * t),
+            },
             "verdict": {
                 "all_verified": rep.descents_verified() == targets.len() && rep.rhos_verified() == targets.len(),
                 "charged_ic_cheaper": des < rho,
                 "charged_ic_cheaper_than_folded_rho": folded.is_some_and(|f| des < f),
                 "whole_process_ic_cheaper": pre + des * t < rho_pre + rho * t,
+                "whole_process_ic_cheaper_than_folded_batch_rho": pre + des * t < rep.batch_rho_expected_ops_folded,
             },
         }) } else { Value::Null },
     })
@@ -431,25 +472,34 @@ pub fn run(args: PrimeArgs, quiet: bool) -> Result<Value, String> {
         PrimeSolver::Orbit => {
             let targets = inst.targets(args.targets as usize, args.seed);
             let points: Vec<FastPoint> = targets.iter().map(|&(_, q)| q).collect();
+            let defaults = OrbitIcOptions::default();
             let opts = OrbitIcOptions {
                 orbits: args.orbits,
-                width: args.width,
+                width: args.width.unwrap_or(defaults.width),
+                orbits_per_target: match (args.width, args.orbits_per_target) {
+                    (Some(_), _) => 0.0,
+                    (None, k) => k.unwrap_or(defaults.orbits_per_target),
+                },
                 relations_per_orbit: args.relations_per_orbit,
+                large_primes: !args.no_large_primes,
+                learn: !args.no_learn,
                 max_ops: args.max_ops,
                 skip_rho: args.no_rho,
                 seed: args.seed,
-                ..OrbitIcOptions::default()
+                ..defaults
             };
             if !quiet {
+                let sized = match opts.sizing() {
+                    BaseSizing::Explicit => "as given".to_string(),
+                    BaseSizing::Batch => {
+                        format!("to the batch, {} per target", opts.orbits_per_target)
+                    }
+                    BaseSizing::Width => format!("to width {}", opts.width),
+                };
                 println!(
-                    "Targets: {}; factor base width {} (orbits {}); precompute budget {} group operations",
+                    "Targets: {}; factor base of {} orbits, sized {sized}; precompute budget {} group operations",
                     targets.len(),
-                    opts.width,
-                    if opts.orbits == 0 {
-                        "auto".to_string()
-                    } else {
-                        opts.orbits.to_string()
-                    },
+                    base_orbits(c, &opts, targets.len()),
                     opts.max_ops
                 );
                 let _ = std::io::stdout().flush();
@@ -517,7 +567,8 @@ pub fn run(args: PrimeArgs, quiet: bool) -> Result<Value, String> {
     ));
     report["limitations"] = json!([
         "No imported target was used; the deployed curve's own discrete logarithm is never attempted.",
-        "The precomputation costs about r/|Aut| group operations, linear in the subgroup order where rho is its square root; a charged win for the descent does not survive the whole-process accounting unless it is amortised over Omega(sqrt r) targets.",
+        "With large primes, a bootstrap base and descents that learn, the whole batch of T targets costs on the order of sqrt(T r/|Aut|) group operations: rho's square-root scaling, not better, since the pipeline uses only group operations and abscissa lookups and so is a generic algorithm. The whole-process gain over rho is one growing database amortised over the T targets, about sqrt(|Aut| T) against independent unfolded walks; a rho sharing distinguished points between targets (Kuhn-Struik) amortises the same way, and whole_process_vs_batch_rho compares against its analytic expectation, folded and not.",
+        "Without large primes (the control) the precomputation costs about r/|Aut| group operations, linear in the subgroup order.",
         "The rho baseline does not fold by the automorphism group; the folded expectation is analytic, and a charged comparison against it is reported separately.",
         "Operation counts compare implementations only to within the cost of one affine addition on each side; wall time is reported beside them.",
         "This run does not establish scaling beyond the sizes it ran, or challenge readiness."

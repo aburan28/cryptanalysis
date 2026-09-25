@@ -156,3 +156,22 @@ for rates and paired costs. Planted decompositions are correctness controls,
 not estimates of natural relation yield. An unverified isogeny neighbor or
 conductor guess is a proposal only: `ISO1` requires an explicit verified map,
 ordered edge links, subgroup/log transport, and charged route costs.
+
+## Remote compute
+
+A cloud-agent VM has 4 CPUs, 15 GB and no GPU. Run bigger work, such as
+multi-core sweeps, Sage/F4/SAT grids, long test suites or CUDA, with the
+tools in [`cloud/`](cloud/README.md). Both run the command on a copy of the
+working tree and copy the results back into the checkout:
+
+- `cloud/modal_run.py run [--image cpu|cuda|sage] [--cpu N] [--memory GB]
+  [--gpu TYPE] [--shards K] [--out PATH | --changed] [--detach] -- CMD` runs
+  on Modal and is billed per second.
+- `cloud/fleet.py run rp-cpu-1|rp-gpu-1 [--out PATH | --changed] -- CMD`
+  runs on the Runpod pods; `cloud/fleet.py status` and `up NAME` show and
+  start them.
+
+If `FLEET_WORKER_NAME` is set, you are already on a fleet pod: run locally,
+up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
+credentials into the tree, and copy the hardware from each shard's
+`status.json` into the run record.

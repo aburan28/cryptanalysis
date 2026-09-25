@@ -107,7 +107,9 @@ What makes the points the campaign's:
   is the work done, which is what the campaign's ingest reads. The rest of
   the file is this client's own and loads only into this client, with the
   same geometry, run id, cutoff and points. Anything else is refused, and
-  the file is left as it was.
+  the file is left as it was. A different `--max-iters` is not refused: the
+  restart limit decides when an unreported trail is abandoned, not which
+  points a lane reaches, so the lanes continue under the new limit.
 
 After a crash, as opposed to a stop, lanes resume from the last checkpoint
 and report again what they reported since. The second copy is byte-identical
@@ -254,7 +256,11 @@ build/ec2k-gpu check --rounds 256                    # the host test, from the c
 `--run-id`, the high 16 bits of every seed, because two runs under one id walk
 the same trails. A lane that reports is revived from its incremented seed
 between launches. `--max-iters N` restarts lanes that have walked `N` steps
-without reporting; the sigma default is the campaign's `2^30`. `--dp-file`
+without reporting; the sigma default is the campaign's `2^32`, about twelve
+mean trails at weight 32. A restarted lane's steps are lost, so a short limit
+is expensive: the earlier `2^30` cut 4.9% of honest trails, 15.6% of all
+steps ([WALK-CONSTANT.md](https://github.com/aburan28/crypto/blob/main/ecc2k130/WALK-CONSTANT.md)
+§6). `--dp-file`
 takes the 32-byte campaign record. `--dp-file64` takes the full 64-byte
 report `(seed, iterations, x, y)`, which is what `--verify` re-walks. The base
 and target points are Certicom's. `--p-seed` and `--q-seed` replace them with
