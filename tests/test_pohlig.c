@@ -68,7 +68,7 @@ int main(void)
      * order 23328 (challenges/ecc fp-smooth-b16).  The group order stays the
      * full #E; the log comes back modulo ord(base). */
     CHECK(ca_group_ec_init(&g, 46687, 18059, 13589, 46656) == CA_OK);
-    uint64_t wb[4] = {0x1cce, 0x4e7, 0, 0}, wt[4] = {0xaee4, 0x446f, 0, 0};
+    const uint64_t wb[4] = {0x1cce, 0x4e7, 0, 0}, wt[4] = {0xaee4, 0x446f, 0, 0};
     CHECK(ca_group_encode(&g, &P, wb));
     CHECK(ca_group_encode(&g, &h, wt));
     CHECK_EQ_U64(ca_group_elem_order(&g, &P), 23328);
