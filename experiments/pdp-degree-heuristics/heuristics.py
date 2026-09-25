@@ -294,7 +294,7 @@ def matched_table(cells, form: str, m: int, mode: str, ns=None, ls=None) -> list
 
 def paired_summary(cells, form: str, mode: str) -> list[str]:
     """Structured (prefix, geometric) against random bases on the same workload."""
-    split_head = " mean splits/query structured → random |" if form == "sym" else ""
+    split_head = " cells where random needs more / fewer splits per query |" if form == "sym" else ""
     lines = [
         f"| m | cells | mean ΔD (random − structured) | ΔD > 0 | ΔD < 0 | ops/attempt ratio | ops/relation ratio | P(dec) ratio |{split_head}",
         "|--:|--:|--:|--:|--:|--:|--:|--:|" + ("---|" if form == "sym" else ""),
@@ -320,7 +320,9 @@ def paired_summary(cells, form: str, mode: str) -> list[str]:
                 ss.append(statistics.fmean(r["split_checks"] or 0 for r in s))
                 sr.append(statistics.fmean(r["split_checks"] or 0 for r in rnd))
         if dD:
-            split = f" {fmt(statistics.fmean(ss))} → {fmt(statistics.fmean(sr))} |" if form == "sym" else ""
+            more = sum(1 for a, b in zip(ss, sr) if b > a + 1e-9)
+            fewer = sum(1 for a, b in zip(ss, sr) if b < a - 1e-9)
+            split = f" {more} / {fewer} |" if form == "sym" else ""
             lines.append(
                 f"| {m} | {len(dD)} | {statistics.fmean(dD):+.2f} | {sum(1 for x in dD if x > 1e-9)} | {sum(1 for x in dD if x < -1e-9)} "
                 f"| {fmt(geomean(ratio))} | {fmt(geomean(rel))} | {fmt(geomean(yratio))} |{split}"
@@ -572,7 +574,7 @@ def build_report(cards: list[dict], runs: list[dict] | None = None) -> dict[str,
         sections["SEL_M2"] = matched_table(cells["mxl"], "direct", 2, "mxl", ns=[23, 41], ls=[6, 7, 8])
         sections["SEL_M3"] = matched_table(cells["mxl"], "direct", 3, "mxl", ns=[31, 47], ls=[3, 4])
         if "sym" in forms:
-            sections["SEL_SYM_M2"] = matched_table(cells["mxl"], "sym", 2, "mxl", ns=[23, 41], ls=[5, 6, 7])
+            sections["SEL_SYM_M2"] = matched_table(cells["mxl"], "sym", 2, "mxl", ns=[19, 23], ls=[5, 6, 7])
             sections["SEL_SYM_M3"] = matched_table(cells["mxl"], "sym", 3, "mxl", ns=[23, 31, 47], ls=[3, 4])
     if runs:
         sections["COLLECT"] = collection_table(runs)
