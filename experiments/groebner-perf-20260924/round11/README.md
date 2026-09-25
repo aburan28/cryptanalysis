@@ -121,6 +121,11 @@ The first screen found that failed attempts lacked partial phase/counter details
 The final code fixes this for producer and checker; the confirmation uses the
 final code. `screen/` preserves the exact earlier sources for that screen, including
 its tests. Historical source hashes are checked against those preserved copies.
+CI subsequently required whitespace formatting in the ABI header. `measured/`
+preserves the exact pre-format header and measurement-time audit. The live header
+is formatted; no algorithm or data-layout change was made.
+Rebuilding after formatting produced byte-identical optimized producer/checker
+libraries; `formatting-build-receipt.json` retains that comparison.
 
 No factor-base relation yield or target logarithm recovery is measured.
 `candidate_id`, `IC_online_ms` and `rho_online_ms` remain null. Evaluation wins on

@@ -29,10 +29,6 @@ def audit_report(name):
         if name=='screen' and actual.parent==HERE and actual.name in (
                 'packed_producer.cpp','native_checker.cpp','test_packed_proof.py'):
             actual=HERE/'screen'/actual.name
-        if actual.parent==HERE and actual.name=='proof_abi.h':
-            actual=HERE/'measured/proof_abi.h.txt'
-        if name=='comparison' and actual.parent==HERE and actual.name=='audit.py':
-            actual=HERE/'measured/audit.py.txt'
         assert hashlib.sha256(actual.read_bytes()).hexdigest()==expected,relative
     assert len(report['inputs'])==23
     attempts=verified=0;cells=[]
@@ -83,12 +79,6 @@ def audit_report(name):
 
 
 def main():
-    # The post-measurement ABI edit changes whitespace only.
-    assert ''.join((HERE/'proof_abi.h').read_text().split())==''.join((HERE/'measured/proof_abi.h.txt').read_text().split())
-    formatting=json.loads((HERE/'results/formatting-build-receipt.json').read_text())
-    measured=json.loads((HERE/'results/build-receipt.json').read_text())['binary_sha256']
-    assert formatting['identical'] and formatting['before']==formatting['after']
-    assert all(measured[name]==value for name,value in formatting['before'].items())
     inventory=json.loads((HERE/'results/inventory.json').read_text())
     for relative,expected in inventory['sha256'].items():
         path=Path(relative)
