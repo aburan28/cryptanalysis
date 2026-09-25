@@ -330,11 +330,18 @@ def cmd_status(args):
     return 0
 
 
-def wait_for_workers(names, timeout):
+def wait_for_workers(names, timeout, since=None):
+    """Wait until each worker has connected after since[name] (ms since the epoch).
+
+    A stopped pod's worker stays listed until its heartbeat lapses, so a
+    connection older than the start request does not count.
+    """
+    since = since or {}
     deadline = time.time() + timeout
     pending = list(names)
     while pending:
-        connected = {w.get("name") for w in cursor_workers() or []}
+        connected = {w.get("name") for w in cursor_workers() or []
+                     if w.get("connectedAtMs", 0) >= since.get(w.get("name"), 0)}
         for name in [n for n in pending if n in connected]:
             print(f"{name}: Cursor worker connected")
             pending.remove(name)
@@ -353,11 +360,13 @@ def cmd_up(args):
     github = os.environ.get("GITHUB_TOKEN") or None
     pods = list_pods()
     keys = public_keys()
+    since = {}
     for name in args.names:
         spec = spec_for(fleet, name)
         env = pod_env(name, spec, fleet, cursor_key=key, github_token=github,
                       public_keys=keys, ref=args.ref)
         pod = find_pod(name, pods)
+        since[name] = int(time.time() * 1000)
         if pod and args.recreate:
             runpod("DELETE", f"/pods/{pod['id']}")
             print(f"{name}: terminated pod {pod['id']} to recreate it")
@@ -371,6 +380,7 @@ def cmd_up(args):
             print(f"{name}: updated pod {pod['id']}; it resets and boots again")
         elif pod.get("desiredStatus") == "RUNNING":
             print(f"{name}: pod {pod['id']} already running")
+            since.pop(name)
         else:
             try:
                 runpod("POST", f"/pods/{pod['id']}/start")
@@ -379,7 +389,7 @@ def cmd_up(args):
                 sys.exit(f"{name}: could not start pod {pod['id']} ({err}).\n"
                          f"Its machine may have no free GPU; `up --recreate {name}` rents a "
                          f"new one (the old /workspace volume is lost).")
-    return wait_for_workers(args.names, args.timeout) if args.wait else 0
+    return wait_for_workers(args.names, args.timeout, since) if args.wait else 0
 
 
 def cmd_stop(args):

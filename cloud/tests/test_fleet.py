@@ -75,6 +75,15 @@ class PodLookupTest(unittest.TestCase):
         self.assertEqual(fleet.find_pod("rp-cpu-1", pods[:1] + pods[2:])["id"], "a")
         self.assertIsNone(fleet.find_pod("rp-gpu-1", pods))
 
+    def test_wait_ignores_a_registration_older_than_the_start(self):
+        stale = [{"name": "rp-gpu-1", "connectedAtMs": 1000}]
+        fresh = [{"name": "rp-gpu-1", "connectedAtMs": 5000}]
+        with mock.patch.object(fleet, "cursor_workers", side_effect=[stale, fresh]), \
+                mock.patch.object(fleet.time, "sleep") as sleep, \
+                mock.patch("builtins.print"):
+            self.assertEqual(fleet.wait_for_workers(["rp-gpu-1"], 60, {"rp-gpu-1": 2000}), 0)
+        self.assertEqual(sleep.call_count, 1)
+
     def test_ssh_endpoint(self):
         self.assertEqual(fleet.ssh_endpoint({"publicIp": "1.2.3.4", "portMappings": {"22": 10341}}),
                          ("1.2.3.4", 10341))
