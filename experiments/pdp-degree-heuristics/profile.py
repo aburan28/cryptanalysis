@@ -34,8 +34,9 @@ sys.path.insert(0, str(HERE))
 import kernel  # noqa: E402
 import macaulay  # noqa: E402
 import satengine  # noqa: E402
-from descent import Pieces  # noqa: E402
-from factor_base import FactorBase  # noqa: E402
+from descent import Pieces, xs_to_assignment  # noqa: E402
+from factor_base import FactorBase, product_profile  # noqa: E402
+from sym import SymPieces  # noqa: E402
 from relations import Oracle, classify_solution, exact_subgroup_yield, predicted_yield  # noqa: E402
 from toycurve import ToyCurve, canonical, sha256_hex  # noqa: E402
 
@@ -49,6 +50,7 @@ SOURCES = [
     HERE / "macaulay.py",
     HERE / "relations.py",
     HERE / "satengine.py",
+    HERE / "sym.py",
     HERE / "profile.py",
     HERE.parent / "pdp-scaling" / "sumpoly.py",
     HERE.parent / "pdp-scaling" / "gf2n.py",
@@ -82,11 +84,21 @@ def workload(curve: ToyCurve, seed: int, count: int) -> tuple[str, dict, list[li
     return sha256_hex(record)[:12], record, targets
 
 
-def pdp_config(m: int, limits: macaulay.Limits) -> dict:
+def pdp_config(m: int, limits: macaulay.Limits, formulation: str = "direct") -> dict:
+    extra = {}
+    if formulation != "direct":
+        extra = {
+            "formulation": "symmetric_e",
+            "symmetrization": "S_{m+1} rewritten in e_k = sigma_k(x_1..x_m) (sym.symmetrize)",
+            "solution_lift": "split T^m + e_1 T^(m-1) + ... + e_m over V by evaluation, then sign search",
+        }
     return {
+        **extra,
         "summands": m,
         "summation_polynomial": f"S_{m + 1} by iterated resultants (experiments/pdp-scaling/sumpoly.py)",
-        "weil_descent": "x_i = sum_j v_ij beta_j over the factor-base basis; v^2 = v",
+        "weil_descent": "x_i = sum_j v_ij beta_j over the factor-base basis; v^2 = v"
+        if formulation == "direct"
+        else "e_k = sum_j u_kj b_kj over a basis of V^(k); u^2 = u",
         "equation_order": "equation t is bit t of each F_2^n coefficient, t = 0..n-1",
         "solver_family": "xl",
         "solver": "incremental dense Macaulay degree scan over F_2[x]/(x_i^2 + x_i); stop at "
@@ -108,7 +120,8 @@ _CTX: dict = {}
 
 
 def _context(cfg: dict):
-    key = (cfg["n"], cfg["family"], cfg["l"], cfg["seed"], cfg["m"])
+    form = cfg.get("formulation", "direct")
+    key = (cfg["n"], cfg["family"], cfg["l"], cfg["seed"], cfg["m"], form)
     if key not in _CTX:
         if len(_CTX) > 8:
             _CTX.clear()
@@ -117,7 +130,7 @@ def _context(cfg: dict):
         t1 = time.perf_counter_ns()
         fb = FactorBase(C, cfg["family"], cfg["l"], cfg["seed"])
         t2 = time.perf_counter_ns()
-        P = Pieces(fb, cfg["m"])
+        P = Pieces(fb, cfg["m"]) if form == "direct" else SymPieces(fb, cfg["m"])
         t3 = time.perf_counter_ns()
         try:
             O = Oracle(fb, cfg["m"])
@@ -191,7 +204,15 @@ def task_target(cfg: dict, kind: str, index: int, target: list[int] | None) -> d
     rec["bruteforce_ns"] = time.perf_counter_ns() - t0
     rec["solutions"] = S
     t0 = time.perf_counter_ns()
-    cls = [classify_solution(fb, m, R, v) for v in sols[: cfg.get("max_classify", 256)].tolist()]
+    if cfg.get("formulation", "direct") == "direct":
+        cls = [classify_solution(fb, m, R, v) for v in sols[: cfg.get("max_classify", 256)].tolist()]
+    else:
+        # every e-solution is a splitting check: that enumeration is the formulation's work
+        cls = []
+        for v in sols.tolist():
+            xs = P.split(v)
+            cls.append({"status": "split_rejected"} if xs is None else classify_solution(fb, m, R, xs_to_assignment(fb, xs)))
+        rec["split_checks"] = len(sols)
     rec["verify_ns"] = time.perf_counter_ns() - t0
     sc = Counter(c["status"] for c in cls)
     rec["solution_status"] = dict(sc)
@@ -355,11 +376,12 @@ def summarize(cfg: dict, struct: dict, records: list[dict], wid: str, wrec: dict
     m, l, n = cfg["m"], cfg["l"], cfg["n"]
     limits = macaulay.Limits(**cfg["limits"])
     modes = cfg.get("modes", ["xl", "mxl"])
-    config = pdp_config(m, limits)
+    form = cfg.get("formulation", "direct")
+    config = pdp_config(m, limits, form)
     config["modes"] = modes
     fb_record = struct["factor_base"]
     digest = sha256_hex({"factor_base": fb_record, "point_decomposition": config})
-    sid = f"PS1N{n}C{C.tag}fb{fb_record['actual_usable_point_count']}PDP{m}xlh{digest[:12]}"
+    sid = f"PS1N{n}C{C.tag}fb{fb_record['actual_usable_point_count']}PDP{m}xl{'' if form == 'direct' else 'sym'}h{digest[:12]}"
     ordinary = [r for r in records if r["kind"] == "ordinary"]
     planted = [r for r in records if r["kind"] == "planted" and "scan" in r]
     exact = struct["exact_yield"]
@@ -376,8 +398,9 @@ def summarize(cfg: dict, struct: dict, records: list[dict], wid: str, wrec: dict
         "curve_id": C.curve_id,
         "workload_id": wid,
         "run_id": f"{sid}W{wid}R{run}",
-        "label": struct["label"],
-        "cell": {"n": n, "m": m, "l": l, "N": m * l, "family": cfg["family"], "seed": cfg["seed"]},
+        "label": struct["label"] + ("" if form == "direct" else "sym"),
+        "cell": {"n": n, "m": m, "l": l, "N": struct["structure"].get("sym_unknowns", m * l), "family": cfg["family"],
+                 "seed": cfg["seed"], "formulation": form},
         "curve": C.summary(),
         "workload": wrec,
         "factor_base": fb_record,
@@ -408,6 +431,7 @@ def summarize(cfg: dict, struct: dict, records: list[dict], wid: str, wrec: dict
             "algebraic_solutions": sum(r["solutions"] for r in ordinary),
             "solution_status": dict(sum((Counter(r["solution_status"]) for r in ordinary), Counter())),
             "planted": len(planted),
+            "split_checks_mean": mean(r.get("split_checks") for r in ordinary) if form != "direct" else None,
         },
         "degrees": {
             mode: {k: v for k, v in st.items() if not k.startswith(("ops_", "wall_", "final_", "derived_", "abort", "best_", "status"))}
@@ -481,7 +505,7 @@ def run(args) -> list[dict]:
             C = ToyCurve(n)
             wid, wrec, targets = workload(C, args.workload_seed, args.targets)
             for l in ls:
-                if args.m * l > args.max_vars:
+                if args.formulation == "direct" and args.m * l > args.max_vars:
                     continue
                 cfgs = []
                 for fam in families:
@@ -492,12 +516,19 @@ def run(args) -> list[dict]:
                             "dreg_limits": {**limits, "d_max": args.dreg_max},
                             "sat": args.sat, "sat_time_limit": args.sat_time_limit,
                             "modes": args.modes.split(","),
+                            "formulation": args.formulation,
+                            "max_solutions": 1 << 16 if args.formulation == "sym" else 4096,
                         }
                         try:
-                            FactorBase(C, fam, l, seed)
+                            fb = FactorBase(C, fam, l, seed)
                         except ValueError as exc:
                             print(f"skip {fam} n={n} l={l}: {exc}", file=sys.stderr)
                             continue
+                        if args.formulation == "sym":
+                            unknowns = sum(product_profile(C.K, fb.basis, args.m))
+                            if unknowns > args.max_vars:
+                                print(f"skip {fam} n={n} l={l}: {unknowns} symmetric unknowns", file=sys.stderr)
+                                continue
                         cfgs.append(cfg)
                 futures = []
                 for cfg in cfgs:
@@ -553,6 +584,8 @@ def main() -> None:
     ap.add_argument("--max-rows", type=int, default=200_000)
     ap.add_argument("--max-vars", type=int, default=20)
     ap.add_argument("--modes", default="xl,mxl", help="Macaulay solver modes to measure (xl, mxl)")
+    ap.add_argument("--formulation", default="direct", choices=["direct", "sym"],
+                    help="unknowns: factor-base coordinates (direct) or symmetric functions e_k in V^(k) (sym)")
     ap.add_argument("--dreg", action="store_true", help="also measure the homogeneous regularity degree")
     ap.add_argument("--dreg-targets", type=int, default=6)
     ap.add_argument("--dreg-max", type=int, default=10)

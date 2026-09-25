@@ -304,5 +304,101 @@ class DescentAndYieldTests(unittest.TestCase):
             self.assertEqual(pred["linearization_excess"], 23 - prof[0] - prof[1])
 
 
+class SymmetricFormulationTests(unittest.TestCase):
+    def test_symmetrization_matches_the_wdsat_model(self):
+        import symmodel
+
+        from sym import symmetrize
+
+        self.assertEqual(symmetrize(3), symmodel.symmetrize_s4())
+        # S_3 = e_2^2 + e_1^2 X^2 + e_2 X + b
+        self.assertEqual(set(symmetrize(2)), {(0, 2, 0, 0), (2, 0, 2, 0), (0, 1, 1, 0), (0, 0, 0, 1)})
+
+    def test_split_recovers_planted_decompositions(self):
+        from sym import SymPieces
+
+        C = ToyCurve(23)
+        rng = random.Random(6)
+        for fam, m, l in (("prefix", 2, 6), ("random", 2, 5), ("geometric", 3, 3), ("random", 3, 3)):
+            fb = FactorBase(C, fam, l, 1)
+            P = SymPieces(fb, m)
+            self.assertEqual(P.dims, product_profile(C.K, fb.basis, m))
+            done = 0
+            while done < 3:
+                idx = rng.sample(range(len(fb.xs)), m)
+                pts = [(int(fb.xs[i]), int(fb.ys[i])) for i in idx]
+                R = (kernel.INF_X, 0)
+                for p in pts:
+                    R = C.K.add(R, p)
+                if len({p[0] for p in pts}) < m or R[0] == kernel.INF_X:
+                    continue
+                done += 1
+                S, sols = P.system(R[0]).solutions()
+                hits = [P.split(v) for v in sols.tolist()]
+                self.assertIn(sorted(p[0] for p in pts), [sorted(h) for h in hits if h])
+
+    def test_affine_solutions_match_brute_force(self):
+        rng = random.Random(12)
+        for _ in range(30):
+            N = rng.randrange(2, 9)
+            s = random_system(rng, N, rng.randrange(1, N + 3), 1, 2 * N)
+            if not s.equations:
+                continue
+            count, sols = s.solutions()
+            table = np.zeros(1 << N, dtype=np.uint64)
+            table[s.masks] = s.coeffs
+            z, zeros = kernel.anf_zeros(table, N)
+            self.assertEqual(count, z)
+            self.assertEqual(sorted(sols.tolist()), sorted(zeros.tolist()))
+
+
+class MonitorTests(unittest.TestCase):
+    def test_rank_tracker_mod_prime(self):
+        from monitor import RankTracker
+
+        rng = random.Random(2)
+        p, cols = 101, 6
+        secret = [rng.randrange(p) for _ in range(cols)]
+        t = RankTracker(cols, p)
+        rows = []
+        while t.rank < cols:
+            row = {j: rng.randrange(p) for j in rng.sample(range(cols), 3)}
+            rhs = sum(c * secret[j] for j, c in row.items()) % p
+            rows.append(row)
+            t.add(row, rhs)
+        self.assertEqual([t.solve()[j] for j in range(cols)], secret)
+        self.assertFalse(t.add(rows[0], sum(c * secret[j] for j, c in rows[0].items())))
+
+    def test_monitor_summary_and_abort_table(self):
+        from monitor import CollectionMonitor
+
+        mon = CollectionMonitor(columns=4, predicted={"p_decomposable": 0.1, "expected_D_solve": 3.0})
+        for i in range(100):
+            ok = i % 10 == 0
+            mon.observe({"status": "verified_decomposition" if ok else "proved_unsat", "D": 4 if ok else 3,
+                         "cost": 100, "relations": 1 if ok else 0, "novel": 1 if ok and mon.rank < 4 else 0,
+                         "per_degree": [(3, 40), (4, 60)] if ok else [(3, 40)]})
+        s = mon.summary()
+        self.assertEqual(s["attempts"], 100)
+        self.assertAlmostEqual(s["yield_per_attempt"], 0.1)
+        self.assertEqual(s["rank"], 4)
+        by_D = {a["D_abort"]: a for a in s["abort_policy"]}
+        self.assertEqual(by_D[3]["relations_kept"], 0.0)
+        self.assertEqual(by_D[4]["relations_kept"], 1.0)
+        self.assertEqual(s["best_abort"]["D_abort"], 4)
+
+    def test_collection_recovers_every_factor_base_log(self):
+        import argparse
+
+        from monitor import collect
+
+        args = argparse.Namespace(n=13, m=2, l=4, family="prefix", seed=1, mode="mxl", abort_degree=0, d_max=8,
+                                  max_cols=40_000, max_rows=200_000, max_attempts=20_000, workload_seed=1,
+                                  report_every=0, out="", trace="")
+        res = collect(args)
+        self.assertEqual(res["final_rank"], res["effective_columns"])
+        self.assertTrue(res["factor_base_logs_verified"])
+
+
 if __name__ == "__main__":
     unittest.main()

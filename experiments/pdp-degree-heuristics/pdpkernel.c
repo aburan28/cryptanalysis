@@ -125,6 +125,11 @@ void gf_mul_const_batch(const ctx_t *c, const u64 *a, int count, u64 k, u64 *out
     for (int i = 0; i < count; i++) out[i] = gf_mul(c, a[i], k);
 }
 
+void gf_mul_vec(const ctx_t *c, const u64 *a, const u64 *b, int count, u64 *out)
+{
+    for (int i = 0; i < count; i++) out[i] = gf_mul(c, a[i], b[i]);
+}
+
 /* ---------------------------------------------------------------- curve */
 
 static void ec_add(const ctx_t *c, u64 x1, u64 y1, u64 x2, u64 y2, u64 *xo, u64 *yo)

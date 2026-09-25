@@ -206,12 +206,52 @@ class BooleanSystem:
         return flat, off
 
     def solutions(self, max_out: int = 1 << 16) -> tuple[int, np.ndarray]:
-        """Exact solution set by the Moebius transform (N <= 26)."""
+        """Exact solution set: Gaussian elimination for affine systems, else the Moebius
+        transform (N <= 26).  Returns (count, up to max_out solutions)."""
+        if self.top_degree <= 1:
+            return self._affine_solutions(max_out)
         if self.N > 26:
             raise ValueError("brute force limited to 26 variables")
         table = np.zeros(1 << self.N, dtype=np.uint64)
         table[self.masks] = self.coeffs
         return kernel.anf_zeros(table, self.N, max_out)
+
+    def _affine_solutions(self, max_out: int) -> tuple[int, np.ndarray]:
+        # row = (variable bits) | constant << N
+        N = self.N
+        pivots: dict[int, int] = {}
+        for eq in self.equations:
+            row = 0
+            for mask in eq.tolist():
+                row ^= (1 << N) if mask == 0 else mask
+            while row & ((1 << N) - 1):
+                h = (row & ((1 << N) - 1)).bit_length() - 1
+                if h in pivots:
+                    row ^= pivots[h]
+                else:
+                    pivots[h] = row
+                    break
+            else:
+                if row:
+                    return 0, np.zeros(0, dtype=np.uint32)
+        for h in sorted(pivots):
+            for g in list(pivots):
+                if g != h and (pivots[g] >> h) & 1:
+                    pivots[g] ^= pivots[h]
+        free = [j for j in range(N) if j not in pivots]
+        count = 1 << len(free)
+        out = []
+        for k in range(min(count, max_out)):
+            v = 0
+            for i, j in enumerate(free):
+                if (k >> i) & 1:
+                    v |= 1 << j
+            for h, row in pivots.items():
+                bit = (row >> N) & 1
+                bit ^= bin(row & v & ((1 << N) - 1) & ~(1 << h)).count("1") & 1
+                v |= bit << h
+            out.append(v)
+        return count, np.array(out, dtype=np.uint32)
 
     def rank_profile(self) -> dict:
         """Base-degree ranks: independent equations and the rank of their top-degree parts."""

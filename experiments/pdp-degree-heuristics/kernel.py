@@ -37,6 +37,7 @@ _SIGNATURES = {
     "gf_halftrace_x": (c_uint64, [c_void_p, c_uint64]),
     "gf_sqrt_x": (c_uint64, [c_void_p, c_uint64]),
     "gf_mul_const_batch": (None, [c_void_p, _u64p, c_int, c_uint64, _u64p]),
+    "gf_mul_vec": (None, [c_void_p, _u64p, _u64p, c_int, _u64p]),
     "ec_add_x": (None, [c_void_p, c_uint64, c_uint64, c_uint64, c_uint64, _u64p]),
     "ec_mul_x": (None, [c_void_p, c_uint64, c_uint64, c_uint64, _u64p]),
     "ec_mul_batch": (None, [c_void_p, _u64p, _u64p, c_int, c_uint64, _u64p, _u64p]),
@@ -151,6 +152,13 @@ class Field:
         out = np.empty_like(a)
         if len(a):
             self.L.gf_mul_const_batch(self._ctx, _p(a, _u64p), len(a), k, _p(out, _u64p))
+        return out
+
+    def mul_vec(self, a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        a, b = u64(a), u64(b)
+        out = np.empty_like(a)
+        if len(a):
+            self.L.gf_mul_vec(self._ctx, _p(a, _u64p), _p(b, _u64p), len(a), _p(out, _u64p))
         return out
 
     # curve (points are (x, y) with x == INF_X for the identity)
