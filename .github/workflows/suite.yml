@@ -113,13 +113,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: suite
-      - name: NVRTC accepts the embedded source
+      - name: NVRTC accepts the embedded source and emits PTX and SASS
         working-directory: suite
         run: |
           pip download -q --no-deps -d /tmp/nvrtc nvidia-cuda-nvrtc-cu12
           unzip -q -o /tmp/nvrtc/*.whl -d /tmp/nvrtc/x
           lib=$(find /tmp/nvrtc/x -name 'libnvrtc.so.12' | head -1)
-          CA_NVRTC_LIB="$lib" cargo test --release --lib nvrtc_compiles -- --nocapture
+          CA_NVRTC_LIB="$lib" cargo test --release --lib nvrtc_ -- --nocapture
 
   rust-msrv:
     # The floor declared in suite/Cargo.toml, re-checked here so that it
