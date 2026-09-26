@@ -368,18 +368,39 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
     uint64_t m = ca_isqrt(width) + 1;
     ca_htab tab;
     if (ca_htab_init(&tab, (size_t)m) != CA_OK) return 0;
+    /* Baby and giant steps go EC_LANES at a time through ec_batch_op, one
+     * field inversion per block; hashing, insertion, lookup and every
+     * count follow the one-step loops, and elements a block computes past
+     * the last one used are not charged. */
+    enum { EC_LANES = 64 };
+    ca_elem lane[EC_LANES], stride[EC_LANES];
+    uint64_t scratch[2 * EC_LANES];
     ca_elem cur;
-    ec_identity(g, &cur);
     uint64_t small_order = 0;
-    for (uint64_t j = 0; j < m; j++) {
-        uint64_t old;
-        if (ca_htab_insert(&tab, ec_hash(g, &cur), j, 0, &old, NULL) == 1) {
-            /* cur == old*P: P has small order j - old */
-            small_order = j - old;
-            break;
+    {
+        const uint64_t first = m < EC_LANES ? m : EC_LANES;
+        ec_identity(g, &lane[0]);
+        for (uint64_t c = 1; c < first; c++) ec_op(g, &lane[c], &lane[c - 1], P);
+        ca_group_mul(g, &stride[0], P, EC_LANES, NULL);
+        for (int c = 1; c < EC_LANES; c++) stride[c] = stride[0];
+        uint64_t steps_done = m;
+        for (uint64_t j0 = 0; j0 < m && !small_order; j0 += EC_LANES) {
+            const uint64_t n = m - j0 < EC_LANES ? m - j0 : EC_LANES;
+            for (uint64_t c = 0; c < n; c++) {
+                uint64_t old;
+                if (ca_htab_insert(&tab, ec_hash(g, &lane[c]), j0 + c, 0, &old, NULL) == 1) {
+                    /* (j0 + c) P == old P: P has small order j0 + c - old */
+                    small_order = j0 + c - old;
+                    steps_done = j0 + c;
+                    break;
+                }
+            }
+            if (!small_order && j0 + EC_LANES < m) {
+                const uint64_t next = m - j0 - EC_LANES;
+                ec_batch_op(g, lane, lane, stride, next < EC_LANES ? next : EC_LANES, scratch);
+            }
         }
-        ec_op(g, &cur, &cur, P);
-        if (st) st->group_ops++;
+        if (st) st->group_ops += steps_done;
     }
     size_t found = 0;
     if (small_order) {
@@ -414,22 +435,33 @@ static size_t ec_interval_all(const ca_group *g, const ca_elem *P, const ca_elem
     ec_inv(g, &base, &base);
     ec_op(g, &R, T, &base); /* T - lo P */
     uint64_t steps = m ? width / m + 1 : 1;
-    for (uint64_t i = 0; i < steps; i++) {
-        uint64_t j;
-        if (ca_htab_find(&tab, ec_hash(g, &R), &j, NULL)) {
-            /* verify */
-            ca_elem chk;
-            ca_group_mul(g, &chk, P, j, NULL);
-            if (ec_equal(g, &chk, &R)) {
-                ca_u128 k = (ca_u128)lo + (ca_u128)i * m + j;
-                if (k < (ca_u128)lo + width) {
-                    if (found < cap) out[found] = (uint64_t)k;
-                    found++;
+    /* giant[k] = k (-m P); a block is R + giant[k] for k < EC_LANES */
+    ca_elem giant[EC_LANES], block_step, Rrep[EC_LANES];
+    ec_identity(g, &giant[0]);
+    for (int k = 1; k < EC_LANES; k++) ec_op(g, &giant[k], &giant[k - 1], &negmP);
+    ec_op(g, &block_step, &giant[EC_LANES - 1], &negmP);
+    for (uint64_t i0 = 0; i0 < steps; i0 += EC_LANES) {
+        const uint64_t n = steps - i0 < EC_LANES ? steps - i0 : EC_LANES;
+        for (uint64_t k = 0; k < n; k++) Rrep[k] = R;
+        ec_batch_op(g, lane, Rrep, giant, n, scratch);
+        for (uint64_t k = 0; k < n; k++) {
+            const uint64_t i = i0 + k;
+            uint64_t j;
+            if (ca_htab_find(&tab, ec_hash(g, &lane[k]), &j, NULL)) {
+                /* verify */
+                ca_elem chk;
+                ca_group_mul(g, &chk, P, j, NULL);
+                if (ec_equal(g, &chk, &lane[k])) {
+                    ca_u128 kk = (ca_u128)lo + (ca_u128)i * m + j;
+                    if (kk < (ca_u128)lo + width) {
+                        if (found < cap) out[found] = (uint64_t)kk;
+                        found++;
+                    }
                 }
             }
         }
-        ec_op(g, &R, &R, &negmP);
-        if (st) st->group_ops++;
+        if (st) st->group_ops += n;
+        if (n == EC_LANES) ec_op(g, &R, &R, &block_step);
     }
     ca_htab_free(&tab);
     return found;
