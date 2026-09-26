@@ -20,9 +20,11 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "ic-candidate-catalog"))
 
+import amortize  # noqa: E402
 import bench  # noqa: E402
 import compare  # noqa: E402
 import opcount  # noqa: E402
+import prime_bridge  # noqa: E402
 from calibrate import weights_for  # noqa: E402
 
 CALIBRATION = json.loads(bench.CALIBRATION.read_text())
@@ -68,24 +70,45 @@ class MeterTest(unittest.TestCase):
             self.assertEqual(set(weights_for(CALIBRATION, n)), set(opcount.CLASSES))
             self.assertTrue(all(isinstance(w, int) and w > 0 for w in weights_for(CALIBRATION, n).values()))
 
-    def test_history_migrates_existing_online_values(self):
+    def test_history_migrates_pre_batch_schema(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "history.csv"
-            old_fields = bench.CSV_FIELDS[:-3]
+            old_fields = bench.CSV_FIELDS[:bench.CSV_FIELDS.index("workload_series_id")]
             with path.open("w", newline="") as fh:
-                writer = csv.writer(fh)
-                writer.writerow(old_fields)
-                writer.writerow(["old" if field == "bench_cell" else "" for field in old_fields])
-                writer.writerow(["extended" if field == "bench_cell" else "" for field in old_fields] +
-                                ["100", "200", "2"])
-            bench.write_csv(path, [{"bench_cell": "new", "ic_online_ns": "300"}], append=True)
+                writer = csv.DictWriter(fh, fieldnames=old_fields, lineterminator="\n")
+                writer.writeheader()
+                writer.writerow({"bench_cell": "old", "ic_online_ns": "100",
+                                 "rho_online_ns": "200", "online_speedup": "2"})
+            bench.write_csv(path, [{"bench_cell": "new", "workload_series_id": "ICBW1h123"}], append=True)
             with path.open(newline="") as fh:
                 reader = csv.DictReader(fh)
                 self.assertEqual(reader.fieldnames, bench.CSV_FIELDS)
                 rows = list(reader)
-            self.assertEqual([row["bench_cell"] for row in rows], ["old", "extended", "new"])
-            self.assertEqual(rows[1]["rho_online_ns"], "200")
-            self.assertEqual(rows[2]["ic_online_ns"], "300")
+            self.assertEqual([row["bench_cell"] for row in rows], ["old", "new"])
+            self.assertEqual(rows[0]["rho_online_ns"], "200")
+            self.assertEqual(rows[0]["workload_series_id"], "")
+            self.assertEqual(rows[1]["workload_series_id"], "ICBW1h123")
+
+    def test_batch_rho_reference_and_prefixes(self):
+        r, n = 130873, 19
+        single = round((bench.math.pi * r / 2) ** 0.5)
+        folded = round((bench.math.pi * r / (4 * n)) ** 0.5)
+        self.assertEqual(bench.batch_rho_group_operations(r, 1), single)
+        self.assertEqual(bench.batch_rho_group_operations(r, 1, 2 * n), folded)
+        self.assertLess(bench.batch_rho_group_operations(r, 4), 4 * single)
+        self.assertEqual(bench.batch_prefix_sizes(16), [1, 2, 4, 8, 16])
+        self.assertEqual(bench.batch_prefix_sizes(13), [1, 2, 4, 8, 13])
+
+    def test_workload_series_pairs_target_prefixes(self):
+        curve = bench.ToyCurve(13)
+        wid1, w1 = bench.workload(curve, 7, 1)
+        wid4, w4 = bench.workload(curve, 7, 4)
+        self.assertNotEqual(wid1, wid4)
+        self.assertEqual(w1["targets"], w4["targets"][:1])
+        self.assertEqual(bench.workload_series_id(curve, 7, "cold"),
+                         bench.workload_series_id(curve, 7, "cold"))
+        self.assertNotEqual(bench.workload_series_id(curve, 7, "cold"),
+                            bench.workload_series_id(curve, 8, "cold"))
 
 
 class ReceiptTest(unittest.TestCase):
@@ -103,6 +126,13 @@ class ReceiptTest(unittest.TestCase):
         self.assertEqual(rec["total_operations"], sum(rec["phase_operations"].values()))
         self.assertEqual(set(rec["phase_operations"]), set(bench.PHASES))
         self.assertEqual(rec["counts"]["targets_verified"], CELL["targets"])
+        self.assertEqual(rec["warm"]["shared_operations"] + rec["warm"]["target_operations"],
+                         rec["total_operations"])
+        self.assertEqual([p["targets"] for p in rec["warm"]["prefixes"]], [1, 2])
+        self.assertEqual(rec["warm"]["prefixes"][-1]["ic_operations"], rec["total_operations"])
+        self.assertEqual(rec["rho_batch"]["folded_shared_dp_expected_operations"],
+                         rec["warm"]["folded_batch_rho_operations"])
+        amortize.validate_receipt(rec)
 
     def test_identifiers_follow_the_convention(self):
         rec = self.outs[0]["receipt"]
@@ -142,6 +172,71 @@ def row(cell="c1", total=1000, cid="IC1a", status="complete", verified="True", *
          "ops_pdp": str(total), "calibration_id": "ICBCAL1hx"}
     r.update(kw)
     return r
+
+
+
+class PrimeBridgeTest(unittest.TestCase):
+    def report(self):
+        ds = [
+            {"expected": str(11+i), "target": {"x": str(20+i), "y": str(30+i)},
+             "recovered": str(11+i), "verified": True, "ops": 40+i,
+             "oracle_ops": 30+i, "probe_ops": 10, "trials": 2+i,
+             "through_large_prime": True, "learned": 3, "restarts": 0, "seconds": 0.001}
+            for i in range(4)
+        ]
+        return {
+            "schema_version": 1, "operation": "prime", "status": "complete", "solver": "orbit",
+            "curve_type": "j0",
+            "instance": {"field_bits": 18, "p": "262147", "a": "0", "b": "7",
+                "group_order": "262148", "cofactor": 4, "subgroup_order": "65537",
+                "generator": {"x": "1", "y": "2"},
+                "order_certificate": {"method": "test", "hasse_interval": ["1","2"], "bsgs_steps": 1},
+                "endomorphism": {"automorphism_order": 6, "rho_speedup": 2.449489742783178}},
+            "configuration": {"solver": "orbit", "orbits_requested": 0, "width": 2.0,
+                "orbits_per_target": 0.5, "relations_per_orbit": 1.5, "large_primes": True,
+                "learn": True, "max_ops": 100000, "max_descent_ops": 10000,
+                "rho_max_steps": 0, "skip_rho": False, "seed": 1},
+            "factor_base": {"orbits": 8, "points": 48, "automorphism_order": 6,
+                "certified_orbits": 8, "draws": 20, "sizing": "batch",
+                "orbits_per_target": 0.5, "width": 2.0},
+            "logs": {"collection": "large_primes", "trials": 20, "relations": 12,
+                "rank": 8, "oracle_ops": 900, "probe_ops": 100, "seconds": 0.01},
+            "descent": {"verified": 4, "mean_ops": 41.5, "total_ops": 166, "per_target": ds},
+            "rho": {"verified": 4, "precompute_ops": 100, "mean_steps": 300.0,
+                "mean_setup_ops": 55.0, "mean_ops": 355.0, "expected_steps": 321.0,
+                "expected_steps_folded": 131.0, "per_target": []},
+            "vs_rho": {"whole_process_vs_batch_rho": {"rho_ops_expected": 1000.0,
+                "rho_ops_expected_folded": 500.0}},
+            "elapsed_seconds": 0.02, "resources": {"peak_rss_bytes": 12345},
+            "software": {"version": "0.1.0", "binary_blake3": "a"*64, "git_commit": "b"*40},
+        }
+
+    def test_prime_receipt_satisfies_common_contract(self):
+        import analyze
+        out = prime_bridge.normalize(self.report(), host="test")
+        rec = out["receipt"]
+        analyze.validate_run(copy.deepcopy(rec))
+        self.assertTrue(rec["candidate_id"].startswith("IC1P18Cj0fb48PDP2orbitRClpLAgraphTDlearnISO0h"))
+        self.assertEqual(rec["operation_unit"], "prime_group_operation")
+        self.assertEqual(rec["total_operations"], 1166)
+        self.assertEqual(rec["counts"]["final_rank"], 8)
+        self.assertEqual(rec["warm"]["prefixes"][-1]["targets"], 4)
+        self.assertEqual(rec["warm"]["prefixes"][-1]["ic_operations"], 1166)
+        self.assertEqual(rec["descents"][0]["target"], {"x": "20", "y": "30"})
+        def no_float(value):
+            if isinstance(value, dict): return all(no_float(v) for v in value.values())
+            if isinstance(value, list): return all(no_float(v) for v in value)
+            return not isinstance(value, float)
+        self.assertTrue(no_float(out["manifest"][1]))
+
+    def test_prime_candidate_and_workload_are_deterministic(self):
+        a = prime_bridge.normalize(self.report(), host="a")
+        b = prime_bridge.normalize(self.report(), host="b")
+        self.assertEqual(a["manifest"], b["manifest"])
+        self.assertEqual(a["workload"], b["workload"])
+        self.assertEqual(a["receipt"]["candidate_id"], b["receipt"]["candidate_id"])
+        self.assertEqual(a["receipt"]["workload_id"], b["receipt"]["workload_id"])
+        self.assertNotEqual(a["receipt"]["provenance"]["host_id"], b["receipt"]["provenance"]["host_id"])
 
 
 class CompareTest(unittest.TestCase):

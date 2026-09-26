@@ -73,6 +73,47 @@ For a complete DLP, every phase is priced, the total equals their sum, and
 the scalar certificate is required. [`analyze.py`](analyze.py) validates these
 rules before reporting rates or a paired speedup.
 
+## Cross-regime normalization
+
+The common receipt schema is not permission to mix incomparable operation units.
+Binary extension-field `ic-bench` receipts use calibrated reference picoseconds
+(`rps`); `ca-ic prime --solver orbit` receipts use counted affine group
+operations. A prime receipt maps its logarithm-database oracle/probe work to the
+common `precompute` phase and its ordered descent oracle/probe work to
+`target_descent`; common phases that the native prime ledger does not separately
+charge are zero and the native report is retained. Do not convert those zeros
+into claims that the physical work was free.
+
+Across field regimes compare dimensionless quantities against a matched control:
+one-target IC/rho for one-target work and IC/folded-shared-DP-rho for batches.
+Absolute `total_operations` values may be compared only when `operation_unit`
+and the calibration/accounting definition match. Prime candidates use the
+`IC1P<b>C...` namespace defined in `AGENTS.md` and must bind the exact modulus,
+target points, automorphism quotient, executable hash, startup commit, and all
+algorithm-affecting options in their manifests/receipts.
+
+## Many-target control
+
+For T targets on one curve, report shared precomputation separately from the
+ordered marginal target costs and retain exact prefix points at T=1,2,4,... .
+The independent baseline `T * rho_one_target` is useful for showing setup
+amortization, but it is not the fair many-target opponent. Also report a
+shared-distinguished-point rho expectation. For N equivalence classes use
+
+`sqrt(pi*N/2) * sum_{k=0}^{T-1} C(2k,k)/4^k`,
+
+which tends to `sqrt(2*N*T)`. When the IC candidate folds an automorphism group,
+use the same quotient in N for the strict rho control (for the binary Koblitz
+sign/Frobenius benchmark, N=r/(2n)). State setup/detection-lag assumptions.
+Never call a crossover against independent per-target rho a many-target
+algorithmic win when the shared-DP rho control still wins.
+
+A batch receipt must make it possible to distinguish fixed setup amortization
+from a change in marginal target work. If descents learn across targets, record
+the ordered learning state and compare against a no-learning control. If they
+do not, say so explicitly; a decreasing total/T alone is then only setup
+amortization.
+
 ## Isogeny activation gate
 
 An `isogeny_routes.json` search record is a task, not a usable route. To

@@ -666,7 +666,7 @@ where
     // Generated parameter documents remain directly importable under their strict schema.
     if report.get("operation").is_some() {
         report["software"] = json!({"version":env!("CARGO_PKG_VERSION"),"os":std::env::consts::OS,
-            "arch":std::env::consts::ARCH,"binary_blake3":binary_hash()});
+            "arch":std::env::consts::ARCH,"binary_blake3":binary_hash(),"git_commit":git_commit()});
     }
     let success = matches!(
         report["status"].as_str(),
