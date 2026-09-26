@@ -7,7 +7,11 @@ Families compared at matched (n, l):
   geometric  c * span{1, g, ..., g^(l-1)} for random c != 0, g not in F_2
   geomtrace  a geometric progression inside ker(Tr): c is drawn from the (n - l)-dimensional
              solution space of Tr(c g^j) = 0, so the base has the minimal product profile
-             and every point lies in 2E (the kertrace yield)
+             and every point lies in 2E (the kertrace yield).  c is drawn as an integer
+             (not XOR) sum of kernel vectors and rejected unless the base lands in ker(Tr),
+             so each try succeeds with probability about 2^-l; recorded receipts replay
+             this exact sampler, and it is impractical beyond l ~ 12 at large n
+  geomtraceu the same subspace law with c uniform on the kernel (XOR of a random subset)
   random     a uniformly random l-dimensional subspace
   normal     span{beta, beta^2, ..., beta^(2^(l-1))}, consecutive conjugates of a normal element
   kertrace   a random l-dimensional subspace of ker(Tr)
@@ -37,7 +41,16 @@ import numpy as np
 import kernel
 from toycurve import ToyCurve, sha256_hex
 
-FAMILIES = ("prefix", "geometric", "geomtrace", "random", "normal", "kertrace", "invariant")
+FAMILIES = (
+    "prefix",
+    "geometric",
+    "geomtrace",
+    "geomtraceu",
+    "random",
+    "normal",
+    "kertrace",
+    "invariant",
+)
 
 
 # --------------------------------------------------------------- F_2 linear algebra
@@ -220,6 +233,24 @@ def family_basis(curve: ToyCurve, family: str, l: int, seed: int) -> tuple[list[
             basis = [K.mul(c, p) for p in powers]
             if rank(basis) == l and all(K.trace(b) == 0 for b in basis):
                 break
+        params.update({"c": c, "g": g})
+    elif family == "geomtraceu":
+        while True:
+            g = rng.randrange(2, 1 << n)
+            powers = [K.pow(g, j) for j in range(l)]
+            if rank(powers) < l:
+                continue
+            conds = [sum(K.trace(K.mul(1 << i, p)) << i for i in range(n)) for p in powers]
+            ker = kernel_basis(_columns_of_rows(conds, n), n)
+            c = 0
+            while not c:
+                for v in ker:
+                    if rng.getrandbits(1):
+                        c ^= v
+            basis = [K.mul(c, p) for p in powers]
+            if rank(basis) == l:
+                break
+        assert all(K.trace(b) == 0 for b in basis)
         params.update({"c": c, "g": g})
     elif family == "random":
         basis = _random_independent(rng, n, l)

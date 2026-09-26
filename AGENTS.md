@@ -10,7 +10,13 @@ they enter a new comparison. **Always** use the candidate and measurement
 rules below when comparing IC variants. A campaign may impose stricter claim
 rules. The [candidate catalog](experiments/ic-candidate-catalog/README.md)
 contains design proposals; its [measurement contract](experiments/ic-candidate-catalog/MEASUREMENT.md)
-specifies the empirical stage record and promotion gates.
+specifies the empirical stage record and promotion gates. The
+[IC benchmark](experiments/ic-bench/README.md) is the reference harness for
+named, fully charged, verified toy-curve runs. It holds the calibrated `rps` unit,
+candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a new
+baseline there when a change is intended. Archive factor bases (record, point set,
+digests) with [fb-archive](experiments/fb-archive/README.md); a recipe-only
+archive keeps `B` null.
 
 ### Three distinct identifiers
 

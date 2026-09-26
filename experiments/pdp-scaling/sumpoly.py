@@ -15,6 +15,7 @@ S_{m+1}(x(P_1), ..., x(P_m), x(P_1 + ... + P_m)) = 0 on random points.
 
 from __future__ import annotations
 
+import os
 import pickle
 import random
 from functools import cache
@@ -151,8 +152,10 @@ def load(upto: int = 6) -> dict[int, Poly]:
         if max(S) >= upto:
             return S
     S = summation_polynomials(upto)
-    with CACHE.open("wb") as fh:
+    tmp = CACHE.with_name(f"{CACHE.name}.{os.getpid()}")
+    with tmp.open("wb") as fh:
         pickle.dump(S, fh)
+    os.replace(tmp, CACHE)
     return S
 
 
