@@ -132,7 +132,7 @@ def normalize(r,host=None,run_number=1):
                                        "git_commit":r["software"].get("git_commit")})
     receipt={"schema_version":1,"kind":"full_dlp","status":status,"candidate_id":cid,"proposal_id":None,
       "run_id":run_id,"workload_id":wid,
-      "workload_series_id":"ICBWP1h"+sha({"curve_id":curve_id,"seed":q["seed"],
+      "workload_series_id":"ICBW1h"+sha({"curve_id":curve_id,"seed":q["seed"],
                                           "target_law":wrec["target_law"]})[:12],
       "pair_block_id":f"W{wid}","source_curve_ref":curve_id,
       "profile_id":f"prime-{r['curve_type']}-b{r['instance']['field_bits']}-t{len(ds)}-s{q['seed']}",
