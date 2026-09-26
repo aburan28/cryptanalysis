@@ -84,7 +84,7 @@ jobs:
           fi
       - name: Build, self-check and pack
         run: scripts/package.sh "$VERSION" dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cryptanalysis-linux-${{ matrix.machine }}
           path: ecc2k130/dist/*
@@ -110,7 +110,7 @@ jobs:
           fi
       - name: Build, self-check and pack
         run: bash scripts/package_metal.sh "$VERSION" dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cryptanalysis-macos-arm64-metal
           path: ecc2k130/dist/cryptanalysis-*-macos-arm64.tar.gz*
@@ -146,7 +146,7 @@ jobs:
             version="0.0.0-dev.${GITHUB_SHA::12}"
           fi
           python3 scripts/sage_release.py bundle --version "$version" --out ecc2k130/dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cryptanalysis-sage-source
           path: ecc2k130/dist/cryptanalysis-sage-*
@@ -208,7 +208,7 @@ jobs:
           archives=(ecc2k130/dist/cryptanalysis-sage-"$version"-macos-arm64-py*.tar.gz)
           test "${#archives[@]}" -eq 1
           python3 scripts/sage_release.py install-binary --sage "$RUNNER_TEMP/sage-upstream" --archive "${archives[0]}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cryptanalysis-sage-macos-arm64
           path: ecc2k130/dist/cryptanalysis-sage-*-macos-arm64-py*.tar.gz*
