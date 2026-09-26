@@ -310,6 +310,12 @@ share/cryptanalysis/campaign-kat.hex` before starting a walk, then
 kit; [docs/SAGE_RELEASE.md](docs/SAGE_RELEASE.md) explains how to build and use
 the optimized local Sage for elliptic-curve experiments.
 
+The macOS arm64 archive exposes the separate Metal table walk through
+`bin/cryptanalysis rho --curve ecc2k130 --backend metal`. Run `--check` for its
+host arithmetic check, then use `--run-id R --dp-file table-dps.bin --verify N`
+to collect and re-walk table-walk reports. Those points cannot join the live
+CUDA sigma-walk campaign corpus. The Metal shader is compiled at start-up.
+
 Two more clients run the table walk from the same headers and write the same
 reports, for developing and testing a campaign's pipeline without renting a
 card: `ec2k-cpu` on host cores, its products on PMULL (AArch64) or PCLMULQDQ
