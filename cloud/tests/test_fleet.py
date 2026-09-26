@@ -52,6 +52,14 @@ class PodBodyTest(unittest.TestCase):
         self.assertNotIn("GITHUB_TOKEN", env)
         self.assertEqual(body_for("rp-cpu-1", github_token="ghp_x")["env"]["GITHUB_TOKEN"], "ghp_x")
 
+    def test_without_a_key_the_worker_waits_for_a_sign_in(self):
+        spec = FLEET["workers"]["rp-cpu-1"]
+        env = fleet.pod_env("rp-cpu-1", spec, FLEET)
+        self.assertNotIn("CURSOR_API_KEY", env)
+        worker = (fleet.HERE / "worker" / "worker.sh").read_text()
+        self.assertIn("agent login", worker)
+        self.assertIn("login-link.txt", worker)
+
     def test_ref_override(self):
         self.assertEqual(body_for("rp-cpu-1", ref="my-branch")["env"]["FLEET_REF"], "my-branch")
 

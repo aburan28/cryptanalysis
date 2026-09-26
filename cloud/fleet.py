@@ -135,7 +135,7 @@ def spec_for(fleet, name):
         sys.exit(f"unknown worker {name!r}; cloud/fleet.json defines {', '.join(fleet['workers'])}")
 
 
-def pod_env(name, spec, fleet, *, cursor_key, github_token=None, public_keys="", ref=None):
+def pod_env(name, spec, fleet, *, cursor_key=None, github_token=None, public_keys="", ref=None):
     labels = {"kind": spec["computeType"].lower(), **spec.get("labels", {})}
     env = {
         "FLEET_WORKER_NAME": name,
@@ -146,8 +146,9 @@ def pod_env(name, spec, fleet, *, cursor_key, github_token=None, public_keys="",
         "FLEET_FEATURES": ",".join(spec.get("features", [])),
         "FLEET_LABELS": ",".join(f"{k}={v}" for k, v in sorted(labels.items())),
         "FLEET_IDLE_STOP_MINUTES": str(spec.get("idleStopMinutes", 0)),
-        "CURSOR_API_KEY": cursor_key,
     }
+    if cursor_key:
+        env["CURSOR_API_KEY"] = cursor_key
     if github_token:
         env["GITHUB_TOKEN"] = github_token
     if public_keys:
@@ -356,7 +357,10 @@ def wait_for_workers(names, timeout, since=None):
 
 def cmd_up(args):
     fleet = load_fleet()
-    key = need("CURSOR_API_KEY")
+    key = os.environ.get("CURSOR_API_KEY") or None
+    if not key:
+        print("no CURSOR_API_KEY: each worker waits for a sign-in; "
+              "`cloud/fleet.py login NAME` prints its link once the pod has booted")
     github = os.environ.get("GITHUB_TOKEN") or None
     pods = list_pods()
     keys = public_keys()
@@ -530,6 +534,37 @@ def cmd_rekey(args):
     return 0
 
 
+def cmd_login(args):
+    """Print the `agent login` link a pod's worker is waiting on."""
+    pods = list_pods()
+    pod = pod_or_exit(args.name, pods)
+    if args.switch:
+        current = runpod("GET", f"/pods/{pod['id']}").get("env") or {}
+        env = {k: v for k, v in current.items() if k != "CURSOR_API_KEY"}
+        runpod("PATCH", f"/pods/{pod['id']}", {"env": env})
+        print(f"{args.name}: dropped its API key; the pod resets and waits for a sign-in")
+    deadline = time.time() + args.timeout
+    while time.time() < deadline:
+        pod = pod_or_exit(args.name)
+        if ssh_endpoint(pod):
+            out = remote(pod, "cat /workspace/fleet/login-link.txt 2>/dev/null; "
+                              "[ -s /workspace/fleet/secrets/cursor-api-key ] && echo KEYED",
+                         capture_output=True, text=True)
+            lines = out.stdout.split()
+            links = [line for line in lines if line.startswith("https://")]
+            if links:
+                print(f"{args.name}: open this while signed in to cursor.com as the account "
+                      f"that should own the worker:\n{links[0]}")
+                return 0
+            if "KEYED" in lines:
+                print(f"{args.name}: signed in with an API key (`login --switch` drops it)")
+                return 0
+        time.sleep(15)
+    print(f"{args.name}: no sign-in link yet; the worker may already be signed in "
+          f"(`cloud/fleet.py logs {args.name} --file worker`)")
+    return 1
+
+
 def cmd_agent(args):
     fleet = load_fleet()
     spec_for(fleet, args.name)
@@ -626,6 +661,13 @@ def parser():
     s = sub.add_parser("rekey", help="push the current CURSOR_API_KEY/GITHUB_TOKEN to pods")
     s.add_argument("names", nargs="+")
     s.set_defaults(fn=cmd_rekey)
+
+    s = sub.add_parser("login", help="print the sign-in link a pod's worker is waiting on")
+    s.add_argument("name")
+    s.add_argument("--switch", action="store_true",
+                   help="drop the pod's API key first, so whoever signs in owns the worker")
+    s.add_argument("--timeout", type=int, default=600)
+    s.set_defaults(fn=cmd_login)
 
     s = sub.add_parser("agent", help="start a Cursor cloud agent on a pod's worker")
     s.add_argument("name")
