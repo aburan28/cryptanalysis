@@ -16,6 +16,9 @@ python3 bench.py run --suite ci --jobs 4 --out-dir out/       # secondary cold-o
 python3 compare.py baseline/ci.csv out/ci.csv                 # legacy regression gate
 python3 bench.py run --suite batch --jobs 2 --out-dir out/    # 2^16-target binary IC runs
 python3 amortize.py out/batch.jsonl --require-max-power 16    # exact 1,2,4,...,2^16 prefixes
+cargo build --release --manifest-path ../../suite/Cargo.toml --bin ca-ic
+python3 prime_bridge.py run --suite ci --out-dir out/prime     # normalized prime-field receipts
+python3 cross_report.py out/batch.jsonl out/prime/prime.jsonl # unit-safe binary/prime table
 python3 -m pytest -q .
 ```
 
@@ -163,6 +166,28 @@ Record the baseline after an intentional change and commit it with that change.
   `--tolerance`.
 
 Wall time is reported and never gated.
+
+## Prime-field bridge
+
+`prime_bridge.py` runs or adapts `ca-ic prime --solver orbit --json` and mints the
+same candidate/workload/run records used by the binary harness. Prime candidates
+use `IC1P<b>C...` and curves use `EC1P<b>C...`; `P<b>` is the modulus bit length,
+while the manifest binds the exact prime. The bridge preserves exact target points,
+planted scalars, automorphism quotient, factor-base sizing, large-prime/learning
+policy, relation coefficient rank, executable BLAKE3, startup git commit, resource
+limits, and the native report.
+
+The common eleven-phase ledger is populated conservatively in the prime experiment's
+native **group-operation** unit: logarithm collection is `precompute`, ordered target
+work is `target_descent`, and stages not separately charged by `ca-ic prime` are zero.
+This is not the binary harness's calibrated `rps` unit. Therefore absolute totals are
+never compared between regimes. `cross_report.py` compares only dimensionless ratios
+to matched rho controls, especially IC/folded-batch-rho for many-target work.
+
+The normalized prime suites are `smoke` (one tiny j=0 run), `ci` (generic, j=0 and
+j=1728 at 20 bits, two seeds), and `broad` (all three types at 20..40 bits, 64 targets,
+three seeds). The manual `ic-broad` workflow can run the broad prime campaign and
+upload both raw and normalized evidence.
 
 ## Multi-target accounting
 
