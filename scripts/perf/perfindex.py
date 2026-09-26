@@ -53,10 +53,13 @@ def crate_dir(root: Path) -> str:
 
 
 def sparse_dirs(crate: str) -> list[str]:
-    """Directories a sparse build worktree checks out (cone mode keeps root files)."""
+    """Directories a sparse build worktree checks out (cone mode keeps root
+    files); empty for a full checkout.  crypto's research tree is gigabytes
+    and its build needs none of it; the suite includes files from across
+    its small repository (challenge corpora, bindings), so it takes all."""
     if crate == ".":
         return ["src", "examples", "benches", "tests", "scripts", "docs"]
-    return [crate, "src", "include", "tools", "cmake", "scripts", "docs"]
+    return []
 BOOTSTRAP = 2000
 
 
@@ -272,7 +275,11 @@ def cmd_build(a: argparse.Namespace) -> None:
             ["git", "-C", str(root), "worktree", "add", "--no-checkout", "--detach", str(src), a.ref],
             check=True,
         )
-        subprocess.run(["git", "-C", str(src), "sparse-checkout", "set", *sparse_dirs(crate)], check=True)
+        dirs = sparse_dirs(crate)
+        if dirs:
+            subprocess.run(["git", "-C", str(src), "sparse-checkout", "set", *dirs], check=True)
+        else:
+            subprocess.run(["git", "-C", str(src), "sparse-checkout", "disable"], check=True)
         subprocess.run(["git", "-C", str(src), "checkout", "--detach", a.ref], check=True)
         meta["rev"] = subprocess.run(
             ["git", "-C", str(src), "rev-parse", "HEAD"], capture_output=True, text=True
