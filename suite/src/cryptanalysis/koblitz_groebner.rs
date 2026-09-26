@@ -784,15 +784,35 @@ pub fn matrix_f4_f2_blocked(
     let n_vars_out = polys[0].n_vars;
     let mut out = Vec::with_capacity(rank);
     for row in matrix.iter().take(rank) {
-        let monos: Vec<F2BoolMono> = (0..cols.len())
-            .filter(|c| row[c / 64] & (1u64 << (c % 64)) != 0)
-            .map(|c| F2BoolMono::from_mask(cols[c]))
-            .collect();
+        let monos = row_monos(row, &cols);
         if !monos.is_empty() {
             out.push(F2BoolPoly::from_monos(monos, n_vars_out));
         }
     }
     Some((out, word_ops))
+}
+
+/// The monomials of one packed Macaulay row, in column order.
+///
+/// Walks the row's set bits a word at a time rather than testing every
+/// column: a reduced row is sparse, so testing all `cols.len()` bits of
+/// every row was about half of a full readback.  Bits at or past
+/// `cols.len()` are never read, as before.
+fn row_monos(row: &[u64], cols: &[u64]) -> Vec<F2BoolMono> {
+    let set: u32 = row.iter().map(|w| w.count_ones()).sum();
+    let mut monos = Vec::with_capacity(set as usize);
+    for (word_index, &packed) in row.iter().enumerate() {
+        let mut bits = packed;
+        while bits != 0 {
+            let c = word_index * 64 + bits.trailing_zeros() as usize;
+            if c >= cols.len() {
+                return monos;
+            }
+            monos.push(F2BoolMono::from_mask(cols[c]));
+            bits &= bits - 1;
+        }
+    }
+    monos
 }
 
 // ── Matrix-F4 over the Boolean ring ────────────────────────────────
@@ -1271,10 +1291,7 @@ fn matrix_f4_f2_counted_impl(
                     }
                 }
             } else {
-                let monos: Vec<F2BoolMono> = (0..cols.len())
-                    .filter(|c| row[c / 64] & (1u64 << (c % 64)) != 0)
-                    .map(|c| F2BoolMono::from_mask(cols[c]))
-                    .collect();
+                let monos = row_monos(row, &cols);
                 if !monos.is_empty() {
                     out.push(F2BoolPoly::from_monos(monos, n_vars_out));
                 }
