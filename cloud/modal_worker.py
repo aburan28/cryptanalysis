@@ -222,6 +222,7 @@ class Worker:
         self.log_path = Path("/root/worker.log")
         self.started = time.time()
         self.proc = None
+        self.gpu_name = ""
 
     def update(self, **fields):
         entry = self.state.get(self.name) or {}
@@ -242,8 +243,13 @@ class Worker:
         command = ["agent", "worker", "--name", self.name, "--worker-dir", str(CHECKOUT),
                    "--data-dir", "/root/.cursor-worker", "--idle-release-timeout", "0",
                    "--management-addr", MANAGEMENT, *labels, "start", "--verbose"]
+        # The same machine description the Runpod pods give their agents (AGENTS.md).
+        env = {**os.environ, "FLEET_WORKER_NAME": self.name,
+               "FLEET_CPUS": str(int(self.request["cpu"])),
+               "FLEET_MEM_GB": f"{self.request['memory']:g}",
+               "FLEET_GPU": self.gpu_name, "FLEET_SCRATCH": "/root"}
         log = self.log_path.open("a")
-        self.proc = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+        self.proc = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env)
 
     def save_unsaved(self, idle):
         if not idle.unsaved_work(CHECKOUT):
@@ -258,11 +264,11 @@ class Worker:
         os.environ["FLEET_WORKDIR"] = str(CHECKOUT)
         sys.path.insert(0, "/opt/fleet")
         import idle
-        gpu = run("nvidia-smi", "--query-gpu=name", "--format=csv,noheader").stdout.strip() \
-            if shutil.which("nvidia-smi") else ""
+        self.gpu_name = run("nvidia-smi", "--query-gpu=name", "--format=csv,noheader").stdout \
+            .strip() if shutil.which("nvidia-smi") else ""
         self.state.pop(f"{self.name}:stop", None)
         self.update(state="starting", started=self.started, login_link=None, reason=None,
-                    gpu_name=gpu or None)
+                    gpu_name=self.gpu_name or None)
         run("git", "clone", "-q", self.request["repo"], str(CHECKOUT), check=True)
         run("git", "-C", str(CHECKOUT), "checkout", "-q", self.request["branch"])
         for key, value in (("user.name", "Cursor Agent"), ("user.email", "cursoragent@cursor.com")):
@@ -389,19 +395,25 @@ def render_page(token):
     expected = workers.get(TOKEN_KEY) or ""
     if not expected or not hmac.compare_digest(token.encode(), expected.encode()):
         return HTMLResponse("not found", status_code=404)
-    links = [e.get("login_link") for e in [workers.get(SIGNIN_KEY) or {}, *worker_entries(workers).values()]
+    entries = worker_entries(workers)
+    links = [e.get("login_link") for e in [workers.get(SIGNIN_KEY) or {}, *entries.values()]
              if e.get("login_link") and running(e)]
     if links:
         return RedirectResponse(links[0], status_code=302)
+    # Queued workers but no live sign-in (the last one lapsed): start another.
+    preparing = any(e.get("state") == "pending" for e in entries.values())
+    if preparing:
+        ensure_signin(workers)
     rows = "".join(f"<tr><td>{name}</td><td>{e.get('state')}</td><td>{e.get('cpu', 0):g} CPU, "
                    f"{e.get('memory_gib', 0):g} GiB{', ' + e['gpu'] if e.get('gpu') else ''}</td></tr>"
-                   for name, e in sorted(worker_entries(workers).items()))
-    signin_state = (workers.get(SIGNIN_KEY) or {}).get("state", "not started")
+                   for name, e in sorted(entries.items()))
+    message = ("Preparing a sign-in link; this page opens it in a few seconds." if preparing
+               else f"Sign-in: {(workers.get(SIGNIN_KEY) or {}).get('state', 'not started')}.")
     return HTMLResponse(
         "<!doctype html><meta name=viewport content='width=device-width'>"
-        "<meta http-equiv=refresh content=20><title>cryptanalysis workers</title>"
-        f"<h3>Cursor workers on Modal</h3><p>Sign-in: {signin_state}. No sign-in link is "
-        f"waiting right now.</p><table border=1 cellpadding=4>{rows}</table>")
+        f"<meta http-equiv=refresh content={5 if preparing else 30}>"
+        f"<title>cryptanalysis workers</title><h3>Cursor workers on Modal</h3><p>{message}</p>"
+        f"<table border=1 cellpadding=4>{rows}</table>")
 
 
 # ---- the launching side -----------------------------------------------------------------------------
