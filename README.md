@@ -246,6 +246,22 @@ the trust model, [deploy/helm/ca-coordinator/](deploy/helm/ca-coordinator/)
 for the chart, and [deploy/ca-coordinator/](deploy/ca-coordinator/) for
 systemd units on a plain VM.
 
+## Cloud GPU (ECC2K-130)
+
+One entrypoint for Modal fanout, the RunPod GPU campaign, and the MiG ingest
+host that feeds the status page:
+
+```sh
+./scripts/cloud_launch.sh doctor
+./scripts/cloud_launch.sh ingest start   # RunPod MiG pod "ingest"
+./scripts/cloud_launch.sh modal long     # 24h × 4 × RTX PRO 6000
+make runpod-status
+```
+
+Docs: [docs/CLOUD_LAUNCH.md](docs/CLOUD_LAUNCH.md). Usecase notes and the
+20 B/s geometry: [usecases/ecc2k130-gpu/](usecases/ecc2k130-gpu/). GitHub
+one-click: Actions → **Cloud ECC2K-130** → Run workflow.
+
 ## Hardware
 
 `fpga/` is a synthesisable Pollard rho core for the Certicom **ECC2K-130**
@@ -561,7 +577,10 @@ scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
 suite/                   the attack suite: Rust crate cryptanalysis-suite, ca-suite / ca-ic / ca-curves CLIs, Python engine
 challenges/ecc/          elliptic-curve challenge corpus (Koblitz, CM, char 3, extensions, volcanoes)
-docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md
+docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md,
+                         CLOUD_LAUNCH.md (Modal + RunPod + ingest MiG),
+                         RUNPOD_CURSOR_WORKER.md (Cursor My Machines on a RunPod)
+usecases/ecc2k130-gpu/   ECC2K-130 20 B/s GPU rho notes and patches
 bindings/go/cmd/ca-coordinator  the coordinator service (Go, cgo onto this library)
 deploy/helm/ca-coordinator      Helm chart: the coordinator and its agents
 deploy/docker/                  one Dockerfile, two images (coordinator, agent)
@@ -570,7 +589,8 @@ deploy/gpu-health/              GPU health-check image (ec2k-gpu health) and a w
 deploy/helm/gpu-health          Helm chart: the check injected into the device plugin by a MutatingAdmissionPolicy, or a node gate
 cloud/                   Runpod pods hosting Cursor workers, and Modal jobs, for work too big for an agent VM (cloud/README.md)
 fuzz/                    libFuzzer harnesses and their seed corpora
-.github/workflows/       ci, analysis, bindings, suite, deploy, fpga, ecc2k130, fuzz, codeql, nightly
+.github/workflows/       ci, analysis, bindings, suite, deploy, fpga, ecc2k130, fuzz, codeql,
+                         nightly, cloud-ecc2k130 (manual Modal/RunPod launch)
 ```
 
 ## Checks

@@ -178,8 +178,10 @@ typedef struct curve_entry {
  * one small (for tests) and one ~2^32 (for benchmarks) per family, plus a
  * generic curve that has only the negation map. */
 static const curve_entry CURVES[] = {
-    {"glv-j0-26", 67108933, 0, 7, 16773703},    {"glv-j1728-26", 67108933, 6, 0, 6712457},
-    {"glv-j0-32", 4294967377, 0, 15, 23729779}, {"glv-j1728-32", 4294967377, 3, 0, 37025581},
+    {"glv-j0-26", 67108933, 0, 7, 16773703},
+    {"glv-j1728-26", 67108933, 6, 0, 6712457},
+    {"glv-j0-32", 4294967377, 0, 15, 23729779},
+    {"glv-j1728-32", 4294967377, 3, 0, 37025581},
     {"generic-26", 67108879, 2, 3, 3355777},
     /* Open instances from challenges/elliptic.  Subgroup orders stay at most
      * ~2^16 so `ca_bench glv` (20 rho walks per name) finishes with the

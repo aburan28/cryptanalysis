@@ -582,8 +582,10 @@ static void run_glv(void)
     const char *names[32];
     size_t nc = ca_curve_list(names, 32);
     size_t nuse = nc < 32 ? nc : 32;
-    printf("| curve                        | endo  | m | GLV S=ops/sqrtn |  rho S | speedup | ok  |\n");
-    printf("|------------------------------|-------|---|-----------------|-------:|--------:|-----|\n");
+    printf("| curve                        | endo  | m | GLV S=ops/sqrtn |  rho S | speedup | ok  "
+           "|\n");
+    printf("|------------------------------|-------|---|-----------------|-------:|--------:|-----|"
+           "\n");
     for (size_t i = 0; i < nuse; i++) {
         uint64_t p, a, b, order;
         if (ca_curve_by_name(names[i], &p, &a, &b, &order) != CA_OK) continue;
