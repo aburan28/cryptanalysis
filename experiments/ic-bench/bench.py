@@ -224,7 +224,9 @@ CSV_FIELDS = [
 DETERMINISTIC = [f for f in CSV_FIELDS if f.startswith(("ops_", "count_")) or f in (
     "status", "verified", "targets_verified", "fb_points", "effective_columns", "achievable_rank", "final_rank",
     "ordinary_queries", "pdp_verified", "pdp_proved_unsat", "pdp_budget", "pdp_lift_rejected",
-    "verified_relations", "novel_rows", "descent_attempts", "total_operations", "rho_operations")]
+    "verified_relations", "novel_rows", "descent_attempts", "total_operations", "rho_operations",
+    "workload_series_id", "shared_operations", "target_operations", "rho_independent_batch_operations",
+    "rho_batch_operations", "rho_batch_floor_operations")]
 
 
 # ------------------------------------------------------------------ identities
