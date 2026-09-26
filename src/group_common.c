@@ -8,10 +8,11 @@
 
 void ca_group_mul(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k, uint64_t *ops)
 {
-    /* Curves take the Jacobian ladder; ops still counts what the
-     * double-and-add below would: one op per set bit, one dbl per bit
-     * after the lowest. */
-    if (g->kind == CA_GROUP_EC && ca_ec_group_mul(g, r, a, k)) {
+    /* Curves take the Jacobian ladder and Z_p^* an inline Montgomery
+     * ladder; ops still counts what the double-and-add below would: one
+     * op per set bit, one dbl per bit after the lowest. */
+    if ((g->kind == CA_GROUP_EC && ca_ec_group_mul(g, r, a, k)) ||
+        (g->kind == CA_GROUP_ZP && ca_zp_group_mul(g, r, a, k))) {
         if (ops && k) *ops += (uint64_t)__builtin_popcountll(k) + (uint64_t)(63 - __builtin_clzll(k));
         return;
     }

@@ -123,6 +123,9 @@ void ca_set_error(const char *fmt, ...);
 struct ca_group;
 /* k*a on a curve made by ca_group_ec_init, in Jacobian coordinates with one
  * inversion; returns 0 (and does nothing) for any other vtable. */
+/* k*a in a group made by ca_group_zp_init, without the vtable; returns 0
+ * (and does nothing) for any other vtable. */
+int ca_zp_group_mul(const struct ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k);
 int ca_ec_group_mul(const struct ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k);
 
 int ca_check_members(const struct ca_group *g, const ca_elem *base, const ca_elem *target,

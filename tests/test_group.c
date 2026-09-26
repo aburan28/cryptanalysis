@@ -210,6 +210,26 @@ static void test_ec_mul_matches_affine(void)
             CHECK(memcmp(&a, &self, sizeof a) == 0);
         }
     }
+    /* Z_p^* takes an inline Montgomery ladder: same words, same ops. */
+    const uint64_t zps[] = {1000003, 2305843009213693951ULL, 18446744073709551557ULL};
+    for (size_t c = 0; c < 3; c++) {
+        CHECK(ca_group_zp_init(&g, zps[c], 0) == CA_OK);
+        ca_rng rng;
+        ca_rng_seed(&rng, 99 + c);
+        for (int t = 0; t < 400; t++) {
+            uint64_t w[4] = {1 + ca_rng_below(&rng, zps[c] - 1), 0, 0, 0};
+            ca_elem pt, a, b;
+            CHECK(ca_group_encode(&g, &pt, w));
+            uint64_t ks[] = {0, 1, 2, UINT64_MAX, ca_rng_next(&rng), ca_rng_next(&rng) >> 50};
+            for (size_t i = 0; i < sizeof ks / sizeof ks[0]; i++) {
+                uint64_t oa = 0, ob = 0;
+                ca_group_mul(&g, &a, &pt, ks[i], &oa);
+                mul_affine(&g, &b, &pt, ks[i], &ob);
+                CHECK(memcmp(&a, &b, sizeof a) == 0);
+                CHECK_EQ_U64(oa, ob);
+            }
+        }
+    }
 }
 
 int main(void)
