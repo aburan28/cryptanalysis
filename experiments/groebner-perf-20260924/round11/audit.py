@@ -33,6 +33,9 @@ def audit_report(name):
             actual=HERE/'measured/proof_abi.h.txt'
         if name=='comparison' and actual.parent==HERE and actual.name=='audit.py':
             actual=HERE/'measured/audit.py.txt'
+        if relative=='experiments/pdp-scaling/sumpoly.py':
+            # Shared, still-evolving file; pin the byte content measured here.
+            actual=HERE/'measured/sumpoly.py.txt'
         assert hashlib.sha256(actual.read_bytes()).hexdigest()==expected,relative
     assert len(report['inputs'])==23
     attempts=verified=0;cells=[]
