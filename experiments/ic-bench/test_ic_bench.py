@@ -6,9 +6,11 @@
 from __future__ import annotations
 
 import copy
+import csv
 import json
 import multiprocessing
 import sys
+import tempfile
 import unittest
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
@@ -65,6 +67,25 @@ class MeterTest(unittest.TestCase):
         for n in (13, 19, 23):
             self.assertEqual(set(weights_for(CALIBRATION, n)), set(opcount.CLASSES))
             self.assertTrue(all(isinstance(w, int) and w > 0 for w in weights_for(CALIBRATION, n).values()))
+
+    def test_history_migrates_existing_online_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "history.csv"
+            old_fields = bench.CSV_FIELDS[:-3]
+            with path.open("w", newline="") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(old_fields)
+                writer.writerow(["old" if field == "bench_cell" else "" for field in old_fields])
+                writer.writerow(["extended" if field == "bench_cell" else "" for field in old_fields] +
+                                ["100", "200", "2"])
+            bench.write_csv(path, [{"bench_cell": "new", "ic_online_ns": "300"}], append=True)
+            with path.open(newline="") as fh:
+                reader = csv.DictReader(fh)
+                self.assertEqual(reader.fieldnames, bench.CSV_FIELDS)
+                rows = list(reader)
+            self.assertEqual([row["bench_cell"] for row in rows], ["old", "extended", "new"])
+            self.assertEqual(rows[1]["rho_online_ns"], "200")
+            self.assertEqual(rows[2]["ic_online_ns"], "300")
 
 
 class ReceiptTest(unittest.TestCase):

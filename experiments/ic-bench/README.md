@@ -68,6 +68,8 @@ mul/inv/linear maps, point additions (`ec_mul` = bitlen + popcount additions),
 lifts, Macaulay word operations, Boolean-system slicing, enumeration, and mod-`r`
 Gaussian elimination. The counters are exact functions of the code and its inputs, so
 CI compares them exactly.
+Peak RSS is normalized to bytes from each operating system's `ru_maxrss`
+convention (bytes on macOS, kibibytes on Linux).
 
 `calibration.json` prices the counters in **rps** (reference picoseconds): each class
 is weighted by its batch-throughput time on the calibration host, per field

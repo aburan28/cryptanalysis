@@ -434,7 +434,9 @@ def run_cell(cell: dict, calibration: dict) -> dict:
         },
         "wall_ns": time.perf_counter_ns() - t_all,
         "run_wall_ns": wall,
-        "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
+        # Darwin reports ru_maxrss in bytes; Linux reports kibibytes.
+        "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss *
+        (1 if sys.platform == "darwin" else 1024),
         "provenance": {
             "workload_fixture_sha256": sha256_hex(wrec),
             "source_sha256": implementation_sha256(),
@@ -505,6 +507,23 @@ def csv_row(rec: dict, commit: str, recorded_at: str) -> dict:
 
 def write_csv(path: Path, rows: list[dict], append: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if append and path.exists() and path.stat().st_size:
+        with path.open(newline="") as fh:
+            reader = csv.DictReader(fh)
+            old_fields = reader.fieldnames or []
+            if old_fields != CSV_FIELDS:
+                if old_fields != CSV_FIELDS[:len(old_fields)]:
+                    raise ValueError(f"cannot migrate unknown CSV schema at {path}")
+                new_fields = CSV_FIELDS[len(old_fields):]
+                prior = []
+                for row in reader:
+                    extra = row.pop(None, [])
+                    if extra and len(extra) != len(new_fields):
+                        raise ValueError(f"incomplete extended CSV row at {path}")
+                    row.update(dict(zip(new_fields, extra)))
+                    prior.append(row)
+                write_csv(path, prior + rows)
+                return
     new = not (append and path.exists() and path.stat().st_size)
     with path.open("a" if append else "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=CSV_FIELDS, lineterminator="\n")
