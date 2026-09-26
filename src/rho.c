@@ -32,6 +32,7 @@ typedef struct rho_shared {
     ca_elem base, target;
     uint64_t n;
     uint32_t r;
+    uint64_t r_magic;   /* floor(2^64 / r) + 1, for rho_index */
     ca_elem *M;
     uint64_t *alpha, *beta;
     int negmap;
@@ -53,6 +54,7 @@ typedef struct rho_shared {
 
 typedef struct rho_walk {
     ca_elem Y;
+    uint64_t h;         /* ca_group_hash of Y, kept with it */
     uint64_t a, b;
     uint32_t idx;
     uint8_t retry;
@@ -75,9 +77,12 @@ void ca_rho_params_default(ca_rho_params *p)
     p->negation_map = 1;
 }
 
+/* (h >> 32) mod r without a divide: for a 32-bit numerator and divisor,
+ * Lemire's fastmod with M = floor(2^64 / r) + 1 is exact. */
 static inline uint32_t rho_index(const rho_shared *sh, uint64_t h)
 {
-    return (uint32_t)((h >> 32) % sh->r);
+    uint64_t low = sh->r_magic * (h >> 32);
+    return (uint32_t)(((ca_u128)low * sh->r) >> 64);
 }
 
 static inline void exp_add(uint64_t n, uint64_t *a, uint64_t d)
@@ -99,6 +104,7 @@ static void walk_restart(rho_shared *sh, rho_walk *w, ca_rng *rng, uint64_t *ops
         w->a = w->a ? sh->n - w->a : 0;
         w->b = w->b ? sh->n - w->b : 0;
     }
+    w->h = ca_group_hash(g, &w->Y);
     w->retry = 0;
     w->since_dp = 0;
     w->win = 0;
@@ -120,17 +126,19 @@ static inline void walk_apply(const rho_shared *sh, rho_walk *w, uint32_t i, int
 static void walk_step_single(rho_shared *sh, rho_walk *w, uint64_t *ops)
 {
     const ca_group *g = sh->g;
-    uint32_t i = w->retry ? w->idx : rho_index(sh, ca_group_hash(g, &w->Y));
+    uint32_t i = w->retry ? w->idx : rho_index(sh, w->h);
     for (;;) {
         ca_elem Yn;
         ca_group_op(g, &Yn, &w->Y, &sh->M[i]);
         (*ops)++;
         int neg = sh->negmap ? ca_group_canonicalize(g, &Yn) : 0;
-        if (sh->negmap && rho_index(sh, ca_group_hash(g, &Yn)) == i) {
+        uint64_t h = ca_group_hash(g, &Yn);
+        if (sh->negmap && rho_index(sh, h) == i) {
             i = (i + 1) % sh->r;
             continue;
         }
         w->Y = Yn;
+        w->h = h;
         walk_apply(sh, w, i, neg);
         w->retry = 0;
         return;
@@ -145,10 +153,10 @@ static void walk_escape_cycle(rho_shared *sh, rho_walk *w, uint64_t *ops)
     rho_walk cur = *w;
     cur.retry = 0;
     rho_walk best = cur;
-    uint64_t best_h = ca_group_hash(g, &cur.Y);
+    uint64_t best_h = cur.h;
     for (uint32_t k = 0; k < 4 * RHO_WINDOW; k++) {
         walk_step_single(sh, &cur, ops);
-        uint64_t h = ca_group_hash(g, &cur.Y);
+        uint64_t h = cur.h;
         if (ca_group_equal(g, &cur.Y, &w->Y)) break;
         if (h < best_h) { best_h = h; best = cur; }
     }
@@ -160,6 +168,7 @@ static void walk_escape_cycle(rho_shared *sh, rho_walk *w, uint64_t *ops)
         w->a = w->a ? sh->n - w->a : 0;
         w->b = w->b ? sh->n - w->b : 0;
     }
+    w->h = ca_group_hash(g, &w->Y);
     w->retry = 0;
     w->win = 0;
 }
@@ -228,7 +237,7 @@ static void *rho_thread_main(void *arg)
     while (!atomic_load_explicit(&sh->done, memory_order_relaxed)) {
         for (uint32_t w = 0; w < W; w++) {
             rho_walk *wk = &walks[w];
-            if (!wk->retry) wk->idx = rho_index(sh, ca_group_hash(g, &wk->Y));
+            if (!wk->retry) wk->idx = rho_index(sh, wk->h);
             B[w] = sh->M[wk->idx];
         }
         for (uint32_t w = 0; w < W; w++) Yn[w] = walks[w].Y;
@@ -245,6 +254,7 @@ static void *rho_thread_main(void *arg)
             }
             wk->retry = 0;
             wk->Y = Yn[w];
+            wk->h = h;
             walk_apply(sh, wk, wk->idx, neg);
             wk->since_dp++;
 
@@ -256,7 +266,7 @@ static void *rho_thread_main(void *arg)
                     wk->win--;
                     if (wk->Y.w[0] == wk->saved.w[0] && ca_group_equal(g, &wk->Y, &wk->saved)) {
                         walk_escape_cycle(sh, wk, &ops);
-                        h = ca_group_hash(g, &wk->Y);
+                        h = wk->h;
                     }
                 }
             }
@@ -384,6 +394,7 @@ ca_status ca_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *ta
         sh.r = r;
     }
     if (sh.r < 4) sh.r = 4;
+    sh.r_magic = UINT64_MAX / sh.r + 1;
     sh.seed = ca_seed_or_random(params->seed);
     sh.max_ops = params->max_ops;
     sh.max_table = params->max_table_entries;
