@@ -1,6 +1,7 @@
 name: cloud
-# The Runpod worker fleet and the Modal job runner (cloud/).  Nothing here
-# talks to Runpod, Modal or Cursor; the tests run the job runner locally.
+# The Runpod worker fleet, the Modal job runner and the Modal workers (cloud/).
+# Nothing here talks to Runpod, Modal or Cursor; the tests run the job runner
+# locally, and the Modal client is installed only so its definitions import.
 on:
   push:
     paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
@@ -17,6 +18,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Modal client
+        run: pip install 'modal>=1.0'
       - name: Unit tests
         run: python -m unittest discover -s cloud/tests -v
       - name: shellcheck
