@@ -177,3 +177,10 @@ index, and the changes that were tried and rejected with their numbers
 | setting | result | decision |
 |:--|:--|:--|
 | `lto = "fat"`, `codegen-units = 1` (2026-09-26, crypto, bool_gb + gf2_la kernels, 3 paired rounds) | no kernel reliably faster; `gf2_la/rref_random_2048` 0.77× (slower); area indices 1.005× / 0.769×; build 3 min | rejected: the default profile stays |
+
+## Changes tried and rejected
+
+| change | measurement | decision |
+|:--|:--|:--|
+| `f4_gf2::xor_then_lead` as two non-aliasing slices (vectorisable XOR, `position` for the lead) instead of raw-pointer loops (2026-09-26) | suite f4gf2/f4batch kernels 0.81–0.99× vs the previous commit, 5 paired rounds, all inside the A/A spread and none faster: the rows are a few words long | not landed |
+| `bsgs_fast::FastField::inv` by extended Euclid instead of Fermat (considered) | not built: a 63-bit Euclid is ~40 dependent 64-bit divisions against ~94 pipelined Montgomery multiplications | not landed |
