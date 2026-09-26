@@ -141,9 +141,16 @@ fn every_target_is_recovered_and_the_accounting_adds_up() {
     assert_eq!(logs["inconsistent_components"], 0);
     let per = v["descent"]["per_target"].as_array().unwrap();
     assert_eq!(per.len(), 8);
+    assert_eq!(v["configuration"]["solver"], "orbit");
+    assert_eq!(v["configuration"]["seed"], 1);
+    assert!(logs["rank"].as_u64().unwrap() <= v["factor_base"]["orbits"].as_u64().unwrap());
+    assert!(logs["solved_columns"].as_u64().unwrap() <= v["factor_base"]["orbits"].as_u64().unwrap());
     for t in per {
         assert_eq!(t["verified"], true);
         assert_eq!(t["expected"], t["recovered"]);
+        assert!(t["target"]["x"].is_string() && t["target"]["y"].is_string());
+        assert_eq!(t["ops"].as_u64().unwrap(),
+                   t["oracle_ops"].as_u64().unwrap() + t["probe_ops"].as_u64().unwrap());
     }
     for t in v["rho"]["per_target"].as_array().unwrap() {
         assert_eq!(t["expected"], t["recovered"]);
