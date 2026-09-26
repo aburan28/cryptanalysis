@@ -105,6 +105,9 @@ def merge_outputs(data, dest, tag, seen):
             target = dest / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(tmp.name, target)
-            os.chmod(target, (member.mode & 0o777) or 0o644)
+            # Job output is not trusted input: keep the owner's rwx bits (so an
+            # extracted script stays runnable) but never grant group/other
+            # access, regardless of what mode the remote tar member claims.
+            os.chmod(target, (member.mode & 0o700) or 0o600)
             written.append(name)
     return written
