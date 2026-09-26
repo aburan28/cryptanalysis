@@ -24,6 +24,7 @@ use num_traits::{One, Zero};
 use serde::Serialize;
 use std::time::Instant;
 
+use super::arith::Mont128;
 use super::serde_big;
 
 /// Options for [`rho`].
@@ -171,66 +172,6 @@ fn brent_u64(n: u64, c: u64, max_iter: u64, batch: u64, iters: &mut u64) -> Opti
 }
 
 /// One Brent walk with constant `c` over big integers.
-/// `a · b` as a 256-bit `(high, low)` pair.
-#[inline]
-fn mul_wide(a: u128, b: u128) -> (u128, u128) {
-    let (a0, a1) = (a as u64 as u128, a >> 64);
-    let (b0, b1) = (b as u64 as u128, b >> 64);
-    let (p00, p01, p10, p11) = (a0 * b0, a0 * b1, a1 * b0, a1 * b1);
-    let mid = (p00 >> 64) + (p01 as u64 as u128) + (p10 as u64 as u128);
-    let lo = (p00 as u64 as u128) | (mid << 64);
-    let hi = p11 + (p01 >> 64) + (p10 >> 64) + (mid >> 64);
-    (hi, lo)
-}
-
-/// Montgomery arithmetic modulo an odd `n < 2¹²⁷` with `R = 2¹²⁸`, for
-/// [`brent_u128`].
-struct Mont128 {
-    n: u128,
-    /// `n⁻¹ mod 2¹²⁸`.
-    ninv: u128,
-    /// `R² mod n`.
-    r2: u128,
-}
-
-impl Mont128 {
-    fn new(n: u128) -> Self {
-        debug_assert!(n % 2 == 1 && n < 1 << 127);
-        let mut ninv = n; // correct to 3 bits: n·n ≡ 1 (mod 8)
-        for _ in 0..6 {
-            ninv = ninv.wrapping_mul(2u128.wrapping_sub(n.wrapping_mul(ninv)));
-        }
-        // R mod n, then doubled 128 times: R² mod n (sums stay below 2¹²⁸)
-        let mut r2 = (u128::MAX % n + 1) % n;
-        for _ in 0..128 {
-            r2 <<= 1;
-            if r2 >= n {
-                r2 -= n;
-            }
-        }
-        Mont128 { n, ninv, r2 }
-    }
-
-    /// `a·b·R⁻¹ mod n` for `a, b < n` (subtraction-form REDC: the low
-    /// halves of `a·b` and `u·n` agree, so the quotient is exact).
-    #[inline]
-    fn mul(&self, a: u128, b: u128) -> u128 {
-        let (hi, lo) = mul_wide(a, b);
-        let u = lo.wrapping_mul(self.ninv);
-        let (mh, _) = mul_wide(u, self.n);
-        let (r, borrow) = hi.overflowing_sub(mh);
-        if borrow {
-            r.wrapping_add(self.n)
-        } else {
-            r
-        }
-    }
-
-    fn to(&self, a: u128) -> u128 {
-        self.mul(a % self.n, self.r2)
-    }
-}
-
 /// [`brent_big`] for odd `n < 2¹²⁷` in fixed-width Montgomery arithmetic,
 /// with the same argument as [`brent_u64`]: every quantity the walk
 /// inspects is a gcd with `n`, so the gcds, iteration counts and factor

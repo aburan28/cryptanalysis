@@ -402,6 +402,97 @@ pub(crate) fn secs(t: std::time::Instant) -> f64 {
     t.elapsed().as_secs_f64()
 }
 
+/// `a · b` as a 256-bit `(high, low)` pair.
+#[inline]
+pub(crate) fn mul_wide(a: u128, b: u128) -> (u128, u128) {
+    let (a0, a1) = (a as u64 as u128, a >> 64);
+    let (b0, b1) = (b as u64 as u128, b >> 64);
+    let (p00, p01, p10, p11) = (a0 * b0, a0 * b1, a1 * b0, a1 * b1);
+    let mid = (p00 >> 64) + (p01 as u64 as u128) + (p10 as u64 as u128);
+    let lo = (p00 as u64 as u128) | (mid << 64);
+    let hi = p11 + (p01 >> 64) + (p10 >> 64) + (mid >> 64);
+    (hi, lo)
+}
+
+/// Montgomery arithmetic modulo an odd `n < 2¹²⁷` with `R = 2¹²⁸`, for the
+/// fixed-width Pollard-Brent and p − 1 paths.
+pub(crate) struct Mont128 {
+    n: u128,
+    /// `n⁻¹ mod 2¹²⁸`.
+    ninv: u128,
+    /// `R mod n`, the Montgomery form of 1.
+    r1: u128,
+    /// `R² mod n`.
+    r2: u128,
+}
+
+impl Mont128 {
+    pub(crate) fn new(n: u128) -> Self {
+        debug_assert!(n % 2 == 1 && n < 1 << 127);
+        let mut ninv = n; // correct to 3 bits: n·n ≡ 1 (mod 8)
+        for _ in 0..6 {
+            ninv = ninv.wrapping_mul(2u128.wrapping_sub(n.wrapping_mul(ninv)));
+        }
+        // R mod n, then doubled 128 times: R² mod n (sums stay below 2¹²⁸)
+        let r1 = (u128::MAX % n + 1) % n;
+        let mut r2 = r1;
+        for _ in 0..128 {
+            r2 <<= 1;
+            if r2 >= n {
+                r2 -= n;
+            }
+        }
+        Mont128 { n, ninv, r1, r2 }
+    }
+
+    /// `a·b·R⁻¹ mod n` for `a, b < n` (subtraction-form REDC: the low
+    /// halves of `a·b` and `u·n` agree, so the quotient is exact).
+    #[inline]
+    pub(crate) fn mul(&self, a: u128, b: u128) -> u128 {
+        let (hi, lo) = mul_wide(a, b);
+        let u = lo.wrapping_mul(self.ninv);
+        let (mh, _) = mul_wide(u, self.n);
+        let (r, borrow) = hi.overflowing_sub(mh);
+        if borrow {
+            r.wrapping_add(self.n)
+        } else {
+            r
+        }
+    }
+
+    /// Into Montgomery form.
+    pub(crate) fn to(&self, a: u128) -> u128 {
+        self.mul(a % self.n, self.r2)
+    }
+
+    /// The Montgomery form of 1.
+    pub(crate) fn one(&self) -> u128 {
+        self.r1
+    }
+
+    /// `a^e` for `a` in Montgomery form (square-and-multiply).
+    pub(crate) fn pow(&self, mut a: u128, mut e: u64) -> u128 {
+        let mut r = self.r1;
+        while e != 0 {
+            if e & 1 == 1 {
+                r = self.mul(r, a);
+            }
+            a = self.mul(a, a);
+            e >>= 1;
+        }
+        r
+    }
+
+    /// `x − 1` for `x` in Montgomery form, i.e. `(x − 1)·R mod n`.
+    pub(crate) fn sub_one(&self, x: u128) -> u128 {
+        if x >= self.r1 {
+            x - self.r1
+        } else {
+            x + (self.n - self.r1)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

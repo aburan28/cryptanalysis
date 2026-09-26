@@ -37,7 +37,7 @@ use num_traits::{One, Zero};
 use serde::Serialize;
 use std::time::Instant;
 
-use super::arith::primes_up_to;
+use super::arith::{primes_up_to, Mont128};
 use super::serde_big;
 
 /// Options for [`pm1`].
@@ -151,6 +151,20 @@ pub fn pm1(n: &BigUint, params: &Pm1Params) -> Pm1Result {
         .copied()
         .take_while(|&p| p <= params.b1)
         .collect();
+    if n.is_odd() && n.bits() <= 127 {
+        let mut d = n.iter_u64_digits();
+        let lo = d.next().unwrap_or(0) as u128;
+        let nw = lo | (d.next().unwrap_or(0) as u128) << 64;
+        pm1_mont(nw, params, &primes, &s1, &mut res);
+    } else {
+        pm1_big(n, params, &primes, &s1, &mut res);
+    }
+    res.seconds = t0.elapsed().as_secs_f64();
+    res
+}
+
+/// [`pm1`] on big integers, for even or wide `n`.
+fn pm1_big(n: &BigUint, params: &Pm1Params, primes: &[u64], s1: &[u64], res: &mut Pm1Result) {
     let mut a = BigUint::from(params.base) % n;
     // Stage 1 in batches of 64 primes, with a replay if a batch overshoots.
     for chunk in s1.chunks(64) {
@@ -172,20 +186,17 @@ pub fn pm1(n: &BigUint, params: &Pm1Params) -> Pm1Result {
                     b = b.modpow(&BigUint::from(p), n);
                     let g = sub1(&b, n).gcd(n);
                     if res.accept(g.clone(), 1) {
-                        res.seconds = t0.elapsed().as_secs_f64();
-                        return res;
+                        return;
                     }
                     if &g == n {
                         break;
                     }
                 }
             }
-            res.seconds = t0.elapsed().as_secs_f64();
-            return res;
+            return;
         }
         res.accept(g, 1);
-        res.seconds = t0.elapsed().as_secs_f64();
-        return res;
+        return;
     }
     // Stage 2: primes q in (B1, B2].
     let s2: Vec<u64> = primes.iter().copied().filter(|&p| p > params.b1).collect();
@@ -232,8 +243,96 @@ pub fn pm1(n: &BigUint, params: &Pm1Params) -> Pm1Result {
             }
         }
     }
-    res.seconds = t0.elapsed().as_secs_f64();
-    res
+}
+
+/// [`pm1`] for odd `n < 2¹²⁷` in fixed-width Montgomery arithmetic: the
+/// same stages, batches, replays and stage-2 prime steps, with every
+/// power, product and table entry in Montgomery form.  Each quantity the
+/// method tests is a gcd with `n` of a value that is the big-integer
+/// path's times a power of `R`, a unit mod `n` (the stage-2 product is
+/// kept in plain form by starting it at `1`), so the gcds, prime counts,
+/// stage and factor are the same.
+fn pm1_mont(n: u128, params: &Pm1Params, primes: &[u64], s1: &[u64], res: &mut Pm1Result) {
+    let m = Mont128::new(n);
+    let gcd_one = |x: u128| BigUint::from(m.sub_one(x).gcd(&n));
+    let mut a = m.to(params.base as u128);
+    // Stage 1 in batches of 64 primes, with a replay if a batch overshoots.
+    for chunk in s1.chunks(64) {
+        let saved = a;
+        for &p in chunk {
+            a = m.pow(a, prime_power_below(p, params.b1));
+        }
+        res.stage1_primes += chunk.len();
+        let g = gcd_one(a);
+        if g.is_one() {
+            continue;
+        }
+        if g == res.n {
+            // Every prime of n appeared in this batch: replay one by one.
+            let mut b = saved;
+            for &p in chunk {
+                let pk = prime_power_below(p, params.b1);
+                for _ in 0..pk.ilog(p) {
+                    b = m.pow(b, p);
+                    let g = gcd_one(b);
+                    if res.accept(g.clone(), 1) {
+                        return;
+                    }
+                    if g == res.n {
+                        break;
+                    }
+                }
+            }
+            return;
+        }
+        res.accept(g, 1);
+        return;
+    }
+    // Stage 2: primes q in (B1, B2].
+    let s2: Vec<u64> = primes.iter().copied().filter(|&p| p > params.b1).collect();
+    if !s2.is_empty() && params.b2 > params.b1 {
+        let max_gap = s2.windows(2).map(|w| w[1] - w[0]).max().unwrap_or(2);
+        let a2 = m.mul(a, a);
+        let mut table = vec![m.one(); (max_gap / 2 + 1) as usize];
+        for i in 1..table.len() {
+            table[i] = m.mul(table[i - 1], a2);
+        }
+        let mut x = m.pow(a, s2[0]);
+        // plain: each step multiplies in (x − 1)·R and divides by R
+        let mut acc = 1u128;
+        let mut last_ok = x;
+        let mut last_ok_idx = 0usize;
+        for i in 0..s2.len() {
+            acc = m.mul(acc, m.sub_one(x));
+            res.stage2_primes += 1;
+            if i + 1 < s2.len() {
+                x = m.mul(x, table[((s2[i + 1] - s2[i]) / 2) as usize]);
+            }
+            if (i + 1).is_multiple_of(256) || i + 1 == s2.len() {
+                let g = BigUint::from(acc.gcd(&n));
+                if g.is_one() {
+                    last_ok = x;
+                    last_ok_idx = i + 1;
+                    continue;
+                }
+                if g == res.n {
+                    // Replay the block one prime at a time.
+                    let mut y = last_ok;
+                    for j in last_ok_idx..=i {
+                        if res.accept(gcd_one(y), 2) {
+                            break;
+                        }
+                        if j + 1 < s2.len() {
+                            y = m.mul(y, table[((s2[j + 1] - s2[j]) / 2) as usize]);
+                        }
+                    }
+                } else {
+                    res.accept(g, 2);
+                }
+                break;
+            }
+        }
+    }
 }
 
 /// Options for [`pp1`].
@@ -319,6 +418,85 @@ pub fn pp1(n: &BigUint, params: &Pp1Params) -> Pm1Result {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Montgomery path returns the big-integer path's factor, stage and
+    /// prime counts: semiprimes built to be caught in stage 1, in stage 2,
+    /// by a whole stage-1 batch (the replay), and not at all, plus random
+    /// odd n, at small bounds so both paths run to the end.
+    #[test]
+    fn montgomery_path_matches_the_big_integer_path() {
+        fn next(state: &mut u64) -> u64 {
+            *state ^= *state << 13;
+            *state ^= *state >> 7;
+            *state ^= *state << 17;
+            *state
+        }
+        fn is_prime(p: u64) -> bool {
+            p > 1 && (2..).take_while(|d| d * d <= p).all(|d| !p.is_multiple_of(d))
+        }
+        // a prime p with p − 1 = 2·(primes below `smooth`)·`extra`
+        fn prime_with(state: &mut u64, smooth: u64, extra: u64) -> u64 {
+            loop {
+                let mut v = 2u64;
+                while v < 1 << 20 {
+                    let q = 3 + next(state) % smooth;
+                    if is_prime(q) {
+                        v *= q;
+                    }
+                }
+                let p = v * extra + 1;
+                if is_prime(p) {
+                    return p;
+                }
+            }
+        }
+        let mut state = 0x1357_9BDF_2468_ACE0u64;
+        let mut ns: Vec<BigUint> = Vec::new();
+        for extra in [1u64, 1009, 2003, 1_000_003] {
+            let p = prime_with(&mut state, 97, extra);
+            let q = (next(&mut state) >> 2) | 1;
+            ns.push(BigUint::from(p) * BigUint::from(q));
+        }
+        for _ in 0..8 {
+            let (hi, lo) = (next(&mut state) as u128, next(&mut state) as u128);
+            ns.push(BigUint::from((hi << 60 | lo) | 1));
+        }
+        let params = Pm1Params {
+            b1: 100,
+            b2: 3000,
+            base: 3,
+        };
+        let primes = primes_up_to(params.b1.max(params.b2));
+        let s1: Vec<u64> = primes
+            .iter()
+            .copied()
+            .take_while(|&p| p <= params.b1)
+            .collect();
+        for n in &ns {
+            assert!(n.is_odd() && n.bits() <= 127);
+            let mut d = n.iter_u64_digits();
+            let nw = d.next().unwrap_or(0) as u128 | (d.next().unwrap_or(0) as u128) << 64;
+            let mut fast = Pm1Result::new(n, "p-1");
+            pm1_mont(nw, &params, &primes, &s1, &mut fast);
+            let mut slow = Pm1Result::new(n, "p-1");
+            pm1_big(n, &params, &primes, &s1, &mut slow);
+            assert_eq!(
+                (
+                    &fast.factor,
+                    fast.stage,
+                    fast.stage1_primes,
+                    fast.stage2_primes
+                ),
+                (
+                    &slow.factor,
+                    slow.stage,
+                    slow.stage1_primes,
+                    slow.stage2_primes
+                ),
+                "n={n}"
+            );
+        }
+    }
 
     #[test]
     fn pm1_stage1_finds_smooth_p_minus_1() {
