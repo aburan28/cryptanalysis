@@ -118,16 +118,68 @@ impl QuadraticForm {
 /// In-place Möbius / zeta transform over the Boolean lattice, as in
 /// ALMASTY `moebius.c` (`small`): after this, `table[x]` holds the
 /// packed truth-table values of every equation at assignment `x`.
+///
+/// The `n` layers (layer `i` XORs each lower half of stride `2^i` into
+/// its upper half) commute, so they are applied in the order that keeps
+/// the table in cache: layers below [`MOEBIUS_BLOCK_BITS`] one
+/// `2^MOEBIUS_BLOCK_BITS`-word block at a time, then the rest two per
+/// pass.  At `n = 22` that is 5 passes over the 32 MiB table instead of
+/// 22.  The loops run over zipped slices, so they carry no bounds checks
+/// and vectorise.
 pub fn moebius_transform(table: &mut [u64], n: usize) {
     debug_assert_eq!(table.len(), 1usize << n);
-    for i in 0..n {
-        let sz = 1usize << i;
-        let mut pos = 0usize;
-        while pos < table.len() {
-            for j in 0..sz {
-                table[pos + sz + j] ^= table[pos + j];
-            }
-            pos += 2 * sz;
+    let low = n.min(MOEBIUS_BLOCK_BITS);
+    for block in table.chunks_exact_mut(1 << low) {
+        moebius_layers(block, 0, low);
+    }
+    moebius_layers(table, low, n);
+}
+
+/// Words per cache block of [`moebius_transform`]: `2^12` words, 32 KiB.
+const MOEBIUS_BLOCK_BITS: usize = 12;
+
+/// Moebius layers `from..to` of `table`, two at a time.
+fn moebius_layers(table: &mut [u64], from: usize, to: usize) {
+    let mut i = from;
+    while i + 1 < to {
+        moebius_layer_pair(table, i);
+        i += 2;
+    }
+    if i < to {
+        moebius_layer(table, i);
+    }
+}
+
+/// One layer: every upper half of stride `2^i` gets its lower half added.
+fn moebius_layer(table: &mut [u64], i: usize) {
+    let sz = 1usize << i;
+    for pair in table.chunks_exact_mut(2 * sz) {
+        let (lo, hi) = pair.split_at_mut(sz);
+        for (h, l) in hi.iter_mut().zip(lo.iter()) {
+            *h ^= *l;
+        }
+    }
+}
+
+/// Layers `i` and `i + 1` in one pass: with quarters `a, b, c, d` of each
+/// `2^(i+2)` run, layer `i` makes `b ^= a, d ^= c` and layer `i + 1` then
+/// `c ^= a, d ^= b`, so `b = a+b, c = a+c, d = a+b+c+d`.
+fn moebius_layer_pair(table: &mut [u64], i: usize) {
+    let sz = 1usize << i;
+    for quad in table.chunks_exact_mut(4 * sz) {
+        let (ab, cd) = quad.split_at_mut(2 * sz);
+        let (a, b) = ab.split_at_mut(sz);
+        let (c, d) = cd.split_at_mut(sz);
+        for (((a, b), c), d) in a
+            .iter()
+            .zip(b.iter_mut())
+            .zip(c.iter_mut())
+            .zip(d.iter_mut())
+        {
+            let (a0, b0, c0) = (*a, *b, *c);
+            *b = a0 ^ b0;
+            *c = a0 ^ c0;
+            *d ^= a0 ^ b0 ^ c0;
         }
     }
 }
@@ -835,6 +887,39 @@ pub fn mq_fes_decompose(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The layer-by-layer transform the blocked one replaced.
+    fn moebius_reference(table: &mut [u64], n: usize) {
+        for i in 0..n {
+            let sz = 1usize << i;
+            let mut pos = 0usize;
+            while pos < table.len() {
+                for j in 0..sz {
+                    table[pos + sz + j] ^= table[pos + j];
+                }
+                pos += 2 * sz;
+            }
+        }
+    }
+
+    #[test]
+    fn blocked_moebius_matches_the_layer_by_layer_transform() {
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        for n in 0..=16 {
+            let table: Vec<u64> = (0..1usize << n)
+                .map(|_| {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    state
+                })
+                .collect();
+            let (mut got, mut want) = (table.clone(), table);
+            moebius_transform(&mut got, n);
+            moebius_reference(&mut want, n);
+            assert_eq!(got, want, "n = {n}");
+        }
+    }
     use crate::cryptanalysis::wdsat_oracle::AnfRow;
 
     #[test]
