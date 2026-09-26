@@ -98,7 +98,10 @@ jobs:
           $C --json ic zp --p 1099511627791 --g 3 --x 99 | ok
           $C --json challenge solve fp-cm-d11-b48 | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["verified"] and r["matches_known_log"], r'
           $C --json challenge solve fp-anomalous-b128 | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["verified"] and r["method"] == "Smart", r'
-          $C --json ecdlp --curve p256 --x 5 --analyze-only | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not any(c["applicable"] for c in r["analysis"]["checks"]), r' 
+          $C --json ecdlp --curve p256 --x 5 --analyze-only | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not any(c["applicable"] for c in r["analysis"]["checks"]), r'
+          $C --json ecdsa nonce-reuse --demo | ok
+          $C --json ecdsa hnp --demo | ok
+          $C --json ecdsa invalid-curve --demo | ok
           $C --json factor '2^128+1' | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["complete"] and r["verified"], r'
           $C --json qs '1000000000000037*100000000000031' | ok
           $C --json snfs '2^227-1' | ok

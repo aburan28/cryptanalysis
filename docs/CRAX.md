@@ -37,6 +37,7 @@ The same binary is built by `make suite`.
 |---|---|
 | discrete logs, generic (C library, p < 2^64) | `bsgs`, `rho`, `kangaroo`, `grumpy`, `precomp`, `glv`, `pohlig-hellman` (`ph`, `dlog`), `cheon`, `gpu-rho` |
 | weak curves, any size | `ecdlp` (singular, Smart anomalous, Pohlig–Hellman, MOV/Frey–Rück) |
+| ECDSA signature attacks | `ecdsa nonce-reuse \| hnp \| audit \| invalid-curve` |
 | factoring | `factor`, `gnfs`, `snfs`, `qs`, `ecm`, `pm1` (`--pp1`), `rho-factor` |
 | RSA | `rsa fermat \| wiener \| from-d \| hastad \| common-modulus \| small-e \| batch-gcd` |
 | index calculus | `ic zp` ((Z/pZ)^*, C library), `ic prime \| run \| compare \| fixed \| workflow \| boundary \| bench \| rho \| descent \| corpus \| budget \| ...`, `icx` |
@@ -106,6 +107,63 @@ ecdlp on a 256-bit prime field: not solved
 MOV really does move the logarithm into F_{p^k}^\*. The finite-field solver
 here is generic, though, not index calculus, so MOV is reported as a weakness
 but never chosen on cost.
+
+## ECDSA signature attacks: `crax ecdsa`
+
+These are *implementation* attacks: they exploit how the per-message nonce
+`k` is produced, not the ECDLP on the curve. Every command reconstructs the
+private scalar and then **verifies it independently** — `d·G == Q`, or by
+re-deriving the signatures — and reports `"verified": true` only on success.
+Each takes a named curve (`--curve secp256k1|p256|sm2`) or a full custom curve
+(`--p --a --b --gx --gy --order`), and a `--demo` mode that plants a key with
+the stated weakness and recovers it (so there is always something runnable).
+
+**`nonce-reuse`** — two signatures that reused one nonce `k` on hashes
+`z1, z2` share the same `r`; then `k = (z1−z2)/(s1−s2)` and
+`d = (s1·k−z1)/r`, both mod `n`. Give `--r --s1 --s2 --z1 --z2` (and optional
+`--q x,y` for a `d·G == Q` check; otherwise the two signatures are re-derived
+from the recovered `(k, d)`):
+
+```text
+$ crax ecdsa nonce-reuse --demo
+ecdsa nonce-reuse on secp256k1
+  r        55778340832446138752524611825738996659700884378540138182536574743701968198492
+  nonce k  16045690984503098046
+  key d    1311768467463790320 (d·G == Q)
+```
+
+**`hnp`** — biased-nonce key recovery through the hidden number problem,
+driving `cryptanalysis::hnp_ecdsa` and the lattice reduction in
+`cryptanalysis::lattice`. The supported leak model is *known high bits are
+zero*: each nonce satisfies `k < 2^k_bits`, stated with `--k-bits`. Give a
+transcript as repeated `--sig r,s,z` plus `--q x,y`; pick the reduction with
+`--reduction lll|bkz|lll-hp` (`--bkz-beta` for BKZ). `--demo` plants a
+64-bit-bias P-256 stream and recovers `d`:
+
+```text
+$ crax --json ecdsa hnp --demo
+{"status":"ok","curve":"P-256","signatures":8,"k_bits":192,"bias_bits":64,"reduction":"lll","d":"…","verified":true}
+```
+
+**`audit`** — run the `cryptanalysis::ecdsa_audit` transcript auditor: a
+chi-squared bias score, then a `k_bits` sweep that recovers the key if a bias
+is present. Reports `no_bias`, `bias_suspected`, or `key_recovered`
+(verified). A well-implemented RFC 6979 stream scores near zero and returns
+`no_bias`.
+
+**`invalid-curve`** — the real oracle invalid-curve attack (see
+`cryptanalysis::invalid_curve_attack`). Against a black-box scalar-multiply
+oracle `d·P`, it crafts points of small prime-power order on the weak sextic
+twists of a j-invariant-0 base curve, queries the oracle, solves each small
+subgroup DLP, CRTs the residues, and confirms `d·G == Q`. The attack code
+never sees `d` — `--secret` feeds only the honest oracle. Twist enumeration is
+`O(p)`, so the base prime must be small; `--demo` uses a built-in 16-bit
+curve:
+
+```text
+$ crax --json ecdsa invalid-curve --demo
+{"status":"ok","base_curve":"j0-demo-16bit","n_base":"65521","twists_total":6,"twists_used":6,"bits_recovered":26.0,"d":"12345","d_partial":"12345","verified":true}
+```
 
 ## The challenge corpus: `crax challenge`
 
