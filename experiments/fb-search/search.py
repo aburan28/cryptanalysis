@@ -354,11 +354,19 @@ def _key(rec: dict) -> float:
 
 def cmd_select(args) -> None:
     """Best, median and worst seed per (n, l, family) by predicted cost, plus every prefix base."""
-    recs = [r for r in load_jsonl(args.scans) if r["implementation_sha256"] == implementation_sha256()
-            or args.any_implementation]
+    recs = load_jsonl(args.scans)
+    impls = {(r["implementation_sha256"], r["bench_implementation_sha256"]) for r in recs}
+    if len(impls) > 1:
+        print(f"warning: scans from {len(impls)} implementations; candidate IDs may not match one bench snapshot",
+              file=sys.stderr)
+    want = {tuple(int(v) for v in s.split(":")) for s in args.cells} if args.cells else None
     groups: dict[tuple, list[dict]] = {}
     for r in recs:
         c = r["cell"]
+        if want is not None and (c["n"], c["l"]) not in want:
+            continue
+        if args.families and c["family"] not in args.families:
+            continue
         groups.setdefault((c["n"], c["l"], c["family"]), []).append(r)
     picks = []
     for (n, l, fam), rs in sorted(groups.items()):
@@ -487,7 +495,8 @@ def main() -> None:
     sel.add_argument("scans", nargs="+")
     sel.add_argument("--per-family", type=int, default=3)
     sel.add_argument("--out", default=str(SELECTED))
-    sel.add_argument("--any-implementation", action="store_true")
+    sel.add_argument("--cells", nargs="*", default=[], help="n:l pairs to keep, e.g. 19:5 19:6")
+    sel.add_argument("--families", nargs="*", default=[])
     ch = sub.add_parser("check", help="join predictions with measured ic-bench receipts on candidate_id")
     ch.add_argument("receipts", nargs="+")
     ch.add_argument("--predictions", nargs="*", default=[])
