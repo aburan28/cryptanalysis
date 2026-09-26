@@ -431,7 +431,8 @@ def corpus(E, order, count, seed):
     return [scalar(E, k, G) for k in rng.sample(range(1, (order + 1) // 2), count)]
 
 
-def benchmark(n, l, phases, encoding, mode, guess_bits, count, seed, timeout):
+def benchmark(n, l, phases, encoding, mode, guess_bits, count, seed, timeout,
+              *, template_factory=Template):
     # The common field/curve initialization is charged to each contender.
     start_cpu, start_wall = time.process_time(), time.monotonic()
     F = GF2n(n)
@@ -453,7 +454,7 @@ def benchmark(n, l, phases, encoding, mode, guess_bits, count, seed, timeout):
         if template is None or mode == "cold":
             t = time.process_time()
             template = (AnfTemplate(F, l, phases, R.x) if encoding == "anf-s4"
-                        else Template(F, l, phases, encoding))
+                        else template_factory(F, l, phases, encoding))
             build_cpu += time.process_time() - t
         if solver is None or mode != "incremental":
             t = time.process_time()
@@ -472,6 +473,8 @@ def benchmark(n, l, phases, encoding, mode, guess_bits, count, seed, timeout):
     return {"n": n, "modulus": F.mod, "subgroup_order": order, "l": l,
             "phases": phases, "encoding": encoding, "mode": mode,
             "guess_bits": guess_bits, "seed": seed, "targets": count,
+            "template_class": type(template).__name__,
+            "domain_payloads": getattr(template, "domain_payloads", None),
             "target_sha256": hashlib.sha256(target_json.encode()).hexdigest(),
             "statuses": dict(statuses), "verified": statuses["sat"],
             "oracle_sat": sum(x is not None for x in truth),

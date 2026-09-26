@@ -187,3 +187,10 @@ if it loses to the baseline at matched completions on both seed sets; retain
 it as a correctness/control backend. Improvements to setup alone remain
 engineering diagnostics. An exponent or rho claim requires the final unchecked
 item, not extrapolation from these toy fields.
+
+## Explicit toy-domain follow-up
+
+[TOY_DOMAIN.md](TOY_DOMAIN.md) records a bounded, fully charged admissibility
+filter and fresh paired measurements against the original incremental chain.
+The earlier results above are retained; the filter is an exponential toy
+control, not a replacement for the unresolved scalable membership problem.
