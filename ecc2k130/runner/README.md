@@ -70,10 +70,21 @@ target retains scalar inversion for 385,024-worker populations. Measurements and
 checkpoint compatibility receipts are in
 [the reconciliation report](research/DP-RECONCILIATION.md).
 
-The 2026-09-25 rollout resumes runs 12,000–12,003 from their S3 checkpoints on
+The current rollout runs eight RTX PRO 6000 workers in
+[Modal app ap-BfNPp3WMk8aVi0GYaDdkbw](https://modal.com/apps/a-buran28/main/ap-BfNPp3WMk8aVi0GYaDdkbw)
+from 23:57 UTC on 2026-09-25 until 22:57 UTC on 2026-09-26. Runs 12,000–12,004
+resumed from their S3 checkpoints and runs 12,005–12,007 started fresh. It replaced
+a rollout that had shrunk to one worker. Its two-hour check measured 16.8–17.7 billion
+updates/s per worker, 138.9 billion in total, with no restarts and seed-matching
+RDS samples. See the [deployment receipt](research/production/2026-09-25-8worker-deployment.json)
+and the [validation receipt](research/production/2026-09-25-8worker-deployment-validation.json)
+for the rebuilt binary.
+
+The earlier 2026-09-25 rollout resumed runs 12,000–12,003 from their S3 checkpoints on
 four RTX PRO 6000 workers in
-[Modal app ap-OZBcIVgzRNv4khVa0Hojt3](https://modal.com/apps/a-buran28/main/ap-OZBcIVgzRNv4khVa0Hojt3),
-until 2026-09-26 03:36 UTC. It is the first rollout of the fused Frobenius build
+[Modal app ap-OZBcIVgzRNv4khVa0Hojt3](https://modal.com/apps/a-buran28/main/ap-OZBcIVgzRNv4khVa0Hojt3).
+It was stopped before its 03:36 UTC deadline to make way for the eight-worker
+rollout. It was the first rollout of the fused Frobenius build
 (profile v2). That exact image passed the legacy compatibility gate in
 [its validation receipt](research/production/2026-09-25-fused-deployment-validation.json).
 The first launch reserved four CPU cores per worker. At 04:35 UTC the fleet was
