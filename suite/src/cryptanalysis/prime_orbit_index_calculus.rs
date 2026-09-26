@@ -1204,6 +1204,9 @@ pub struct TwoTermStats {
     pub determined_components: usize,
     /// Components with a contradiction; nonzero means a wrong relation.
     pub inconsistent_components: usize,
+    /// Rank of the relation coefficient matrix over the subgroup order.
+    /// An unpinned connected component contributes |V|-1; a pinned one |V|.
+    pub rank: usize,
     pub solved_columns: usize,
 }
 
@@ -1328,7 +1331,13 @@ pub fn solve_two_term_system(
             stats.inconsistent_components += 1;
             continue;
         }
+        // A connected component's spanning tree has |V|-1 independent
+        // equations. A nontrivial cycle or one-term equation pins the root
+        // and contributes the final rank. This is the exact coefficient rank
+        // for the sound two-term systems accepted by this experiment.
+        stats.rank += comp.len().saturating_sub(1);
         if let Some(t) = pinned {
+            stats.rank += 1;
             stats.determined_components += 1;
             for &u in &comp {
                 solution[u] = Some(add_r(mul_r(alpha[u], t, r), beta[u], r));
