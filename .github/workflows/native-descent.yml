@@ -1,0 +1,47 @@
+name: Native fixed-layout descent
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/native-descent.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/native-descent.yml'
+permissions:
+  contents: read
+concurrency:
+  group: native-descent-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  contraction:
+    name: Native contraction (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, cxx: g++}
+          - {os: macos-latest, cxx: clang++}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build optimized and UBSan contraction with independent solver/checker
+        run: |
+          python experiments/groebner-perf-20260924/round4/build.py
+          python experiments/groebner-perf-20260924/round14/build.py
+      - name: Original descent parity, ABI bounds and independent checks
+        run: python -m unittest discover -s experiments/groebner-perf-20260924/round14 -p 'test_*.py' -v
+      - name: Audit frozen complete queries
+        run: python experiments/groebner-perf-20260924/round14/verify_evidence.py
