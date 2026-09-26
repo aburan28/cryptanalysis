@@ -110,6 +110,30 @@ int ca_htab_insert(ca_htab *t, uint64_t key, uint64_t v0, uint64_t v1,
 int ca_htab_find(const ca_htab *t, uint64_t key, uint64_t *v0, uint64_t *v1);
 size_t ca_htab_bytes(const ca_htab *t);
 
+/* ---- open addressing hash table: u64 key to one u64 value ------------- */
+/* The single-value tables (BSGS, Cheon, Mestre) take 16 bytes an entry
+ * instead of 24, so there is a third less to zero and to walk.  Keys are
+ * element hashes, already well mixed, so they index the table directly.
+ * Semantics as ca_htab: key 0 is stored as 1, and inserting a present key
+ * reports its value without replacing it. */
+typedef struct ca_htab1_entry {
+    uint64_t key; /* 0 = empty */
+    uint64_t v0;
+} ca_htab1_entry;
+
+typedef struct ca_htab1 {
+    ca_htab1_entry *e;
+    size_t cap;   /* power of two */
+    size_t count;
+    size_t max_count;
+} ca_htab1;
+
+ca_status ca_htab1_init(ca_htab1 *t, size_t expected);
+void ca_htab1_free(ca_htab1 *t);
+int ca_htab1_insert(ca_htab1 *t, uint64_t key, uint64_t v0, uint64_t *old0);
+int ca_htab1_find(const ca_htab1 *t, uint64_t key, uint64_t *v0);
+size_t ca_htab1_bytes(const ca_htab1 *t);
+
 /* ---- misc -------------------------------------------------------------- */
 static inline uint64_t ca_max_u64(uint64_t a, uint64_t b) { return a > b ? a : b; }
 static inline uint64_t ca_min_u64(uint64_t a, uint64_t b) { return a < b ? a : b; }

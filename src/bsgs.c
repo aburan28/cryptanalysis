@@ -25,7 +25,7 @@ struct ca_bsgs_table {
     ca_elem giant[BSGS_LANES]; /* k * (-m * base) for k < BSGS_LANES */
     ca_elem giant_block;       /* BSGS_LANES * (-m * base) */
     uint64_t m;
-    ca_htab tab;
+    ca_htab1 tab;
 };
 
 void ca_bsgs_params_default(ca_bsgs_params *p)
@@ -42,7 +42,7 @@ ca_status ca_bsgs_table_new(const ca_group *g, const ca_elem *base, uint64_t m, 
     t->g = g;
     t->base = *base;
     t->m = m;
-    if (ca_htab_init(&t->tab, (size_t)m) != CA_OK) { free(t); return CA_ERR_NOMEM; }
+    if (ca_htab1_init(&t->tab, (size_t)m) != CA_OK) { free(t); return CA_ERR_NOMEM; }
     /* lane c holds (j0 + c) * base for the block starting at j0 */
     ca_elem lane[BSGS_LANES], stride[BSGS_LANES];
     uint64_t scratch[2 * BSGS_LANES];
@@ -54,7 +54,7 @@ ca_status ca_bsgs_table_new(const ca_group *g, const ca_elem *base, uint64_t m, 
     for (uint64_t j0 = 0; j0 < m; j0 += BSGS_LANES) {
         const uint64_t n = m - j0 < BSGS_LANES ? m - j0 : BSGS_LANES;
         for (uint64_t c = 0; c < n; c++) {
-            int rc = ca_htab_insert(&t->tab, ca_group_hash(g, &lane[c]), j0 + c, 0, NULL, NULL);
+            int rc = ca_htab1_insert(&t->tab, ca_group_hash(g, &lane[c]), j0 + c, NULL);
             if (rc < 0) { ca_bsgs_table_free(t); return CA_ERR_NOMEM; }
             if (rc == 1) {
                 /* base has order <= j: the table already spans the whole group */
@@ -82,7 +82,7 @@ baby_done:
 void ca_bsgs_table_free(ca_bsgs_table *t)
 {
     if (!t) return;
-    ca_htab_free(&t->tab);
+    ca_htab1_free(&t->tab);
     free(t);
 }
 
@@ -113,7 +113,7 @@ static ca_status bsgs_table_solve_impl(const ca_bsgs_table *t, const ca_elem *ta
         for (uint64_t k = 0; k < n; k++) {
             const uint64_t i = i0 + k;
             uint64_t j;
-            if (ca_htab_find(&t->tab, ca_group_hash(g, &Rs[k]), &j, NULL)) {
+            if (ca_htab1_find(&t->tab, ca_group_hash(g, &Rs[k]), &j)) {
                 ca_u128 cand = (ca_u128)lo + (ca_u128)i * m + j;
                 if (cand <= hi) {
                     uint64_t cx = (uint64_t)cand;
@@ -122,7 +122,7 @@ static ca_status bsgs_table_solve_impl(const ca_bsgs_table *t, const ca_elem *ta
                         if (st) {
                             st->iterations += i + 1;
                             st->table_entries = ca_max_u64(st->table_entries, t->tab.count);
-                            st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&t->tab));
+                            st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab1_bytes(&t->tab));
                             if (add_time) st->seconds += ca_now() - t0;
                         }
                         return CA_OK;
@@ -136,7 +136,7 @@ static ca_status bsgs_table_solve_impl(const ca_bsgs_table *t, const ca_elem *ta
     if (st) {
         st->iterations += steps;
         st->table_entries = ca_max_u64(st->table_entries, t->tab.count);
-        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&t->tab));
+        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab1_bytes(&t->tab));
         if (add_time) st->seconds += ca_now() - t0;
     }
     return CA_ERR_NOT_FOUND;
