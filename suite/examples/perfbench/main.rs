@@ -25,6 +25,7 @@ mod gf2_la;
 mod pdp;
 mod relation;
 mod sat;
+mod suite_extra;
 
 fn registry() -> Vec<harness::Kernel> {
     let mut kernels = Vec::new();
@@ -36,6 +37,7 @@ fn registry() -> Vec<harness::Kernel> {
     field_ec::register(&mut kernels);
     relation::register(&mut kernels);
     dlp::register(&mut kernels);
+    suite_extra::register(&mut kernels);
     kernels
 }
 
