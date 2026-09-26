@@ -36,7 +36,9 @@ def audit(path):
         source = (ROOT / name).read_bytes()
         if hashlib.sha256(source).hexdigest() != expected and name in (
                 'experiments/groebner-perf-20260924/round12/native_engine.cpp',
-                'experiments/groebner-perf-20260924/round12/audit.py'):
+                'experiments/groebner-perf-20260924/round12/audit.py',
+                # shared with, and still actively measured by, other experiments
+                'experiments/pdp-scaling/sumpoly.py'):
             snapshot = gzip.decompress((HERE / 'measured' / (Path(name).name + '.gz')).read_bytes())
             if name.endswith('native_engine.cpp'):
                 assert source.rstrip() == snapshot.rstrip()
