@@ -26,7 +26,7 @@ def table(rs):
     for r in sorted(rs,key=lambda x:(regime(x),x["profile_id"])):
         w=r.get("warm") or {}; total=r.get("total_operations")
         shared=w.get("shared_operations")
-        lines.append(f"| {regime(r)} | \`{r['profile_id']}\` | {r['counts'].get('targets',0)} | "
+        lines.append(f"| {regime(r)} | `{r['profile_id']}` | {r['counts'].get('targets',0)} | "
           f"{r.get('verified_scalar') is True} | {fmt(total)} | {r.get('operation_unit','?')} | "
           f"{fmt(r.get('ratio_to_rho'))} | {fmt(r.get('ratio_to_independent_rho_batch'))} | "
           f"{fmt(r.get('ratio_to_batch_floor'))} | "
