@@ -327,6 +327,17 @@ static int cmp_factor(const void *a, const void *b)
 
 ca_status ca_factorize(uint64_t n, ca_factorization *out)
 {
+    /* The factorisation of n is unique and returned sorted, so the last
+     * one per thread can be handed out again.  Callers factor the same
+     * group order repeatedly (element orders, then Pohlig-Hellman, per
+     * target), and Pollard-Brent dominated those calls. */
+    static _Thread_local uint64_t memo_n;
+    static _Thread_local ca_factorization memo_f;
+    if (n > 1 && n == memo_n) {
+        *out = memo_f;
+        return CA_OK;
+    }
+    const uint64_t n_in = n;
     memset(out, 0, sizeof(*out));
     if (n == 0) return CA_ERR_INVALID;
     if (n == 1) return CA_OK;
@@ -339,6 +350,8 @@ ca_status ca_factorize(uint64_t n, ca_factorization *out)
     }
     factor_rec(n, out, 0);
     qsort(out->f, out->count, sizeof(ca_factor), cmp_factor);
+    memo_n = n_in;
+    memo_f = *out;
     return CA_OK;
 }
 
