@@ -118,10 +118,15 @@ PI      = exp( Σ_a w(a) · ln A(a) ),  Σ_a w(a) = 1  performance index
 * **Instruction counts.** `perfindex.py instr` runs each kernel once under
   callgrind, restricted to the timed region (`perfbench_measured_region`),
   and applies the same formula to instruction counts `Ir`.  It is
-  deterministic and immune to host load, and it is blind to memory stalls
-  and to instruction width: valgrind has no AVX-512, so it measures the
-  scalar/AVX2 dispatch paths.  Report it next to wall time, never instead
-  of it.
+  deterministic and immune to host load, and it is blind to memory stalls,
+  to instruction latency and to instruction width: valgrind has no
+  AVX-512, so it measures the scalar/AVX2 dispatch paths, and a 64-bit
+  divide counts as one instruction, so replacing a `%` by a few
+  multiplications *raises* `Ir` while the time falls (the index-calculus
+  trial division in `cryptanalysis`: `Ir` 0.82×, wall 2.57× faster).
+  Instrumentation is switched on and off by client requests in the
+  measured region, so work on every thread counts, including private
+  thread pools.  Report it next to wall time, never instead of it.
 
 ## From the index to a workload
 
@@ -166,3 +171,9 @@ A performance change carries, in its commit or PR: the host manifest
 fingerprints, the single- and many-thread indices, the instruction-count
 index, and the changes that were tried and rejected with their numbers
 (§10).  It is classified **engineering** (§3).
+
+## Build settings tried
+
+| setting | result | decision |
+|:--|:--|:--|
+| `lto = "fat"`, `codegen-units = 1` (2026-09-26, crypto, bool_gb + gf2_la kernels, 3 paired rounds) | no kernel reliably faster; `gf2_la/rref_random_2048` 0.77× (slower); area indices 1.005× / 0.769×; build 3 min | rejected: the default profile stays |
