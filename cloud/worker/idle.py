@@ -4,8 +4,8 @@
 boot.sh runs this in the tmux session `fleet-idle` when the limit is positive.
 A minute counts as busy when any of these hold:
 
-* the Cursor worker has an agent session, or had activity in the last
-  ACTIVITY_WINDOW_SECONDS (its own /metrics on the management address),
+* the Cursor worker has an agent session (its own /metrics on the
+  management address),
 * the container used more than BUSY_CORES of CPU,
 * a GPU was more than BUSY_GPU_PERCENT utilized,
 * someone is logged in over SSH,
@@ -40,7 +40,6 @@ USER_AGENT = "cryptanalysis-fleet-idle/1"
 BUSY_CORES = 0.25
 BUSY_GPU_PERCENT = 5
 EDIT_WINDOW_SECONDS = 600
-ACTIVITY_WINDOW_SECONDS = 300
 PRUNE = {".git", "node_modules", "target", "__pycache__", ".venv"}
 METRICS = {"cursor_self_hosted_worker_connected": "connected",
            "cursor_self_hosted_worker_session_active": "session_active",
@@ -89,13 +88,10 @@ def worker_metrics(address=MANAGEMENT):
         return {}
 
 
-def agent_busy(metrics, now=None):
-    if metrics.get("session_active"):
-        return "agent session"
-    last = metrics.get("last_activity")
-    if last and (now or time.time()) - last < ACTIVITY_WINDOW_SECONDS:
-        return "recent agent activity"
-    return None
+def agent_busy(metrics):
+    # last_activity moves with the server's heartbeat frames every 30 s, so it
+    # says nothing about agents; only an open session does.
+    return "agent session" if metrics.get("session_active") else None
 
 
 def cpu_seconds():
@@ -166,8 +162,13 @@ def worktrees(root=None):
     return {r for r in roots if r.is_dir()}
 
 
-def recent_edit(root=None, limit=50000):
-    cutoff = time.time() - EDIT_WINDOW_SECONDS
+def recent_edit(root=None, since=0.0, limit=50000):
+    """A file changed in the last EDIT_WINDOW_SECONDS, and after `since`.
+
+    `since` excludes the checkout's own creation: a fresh clone stamps every
+    file with the time it was written.
+    """
+    cutoff = max(time.time() - EDIT_WINDOW_SECONDS, since)
     seen = 0
     for tree in worktrees(root):
         for dirpath, dirnames, filenames in os.walk(tree):
@@ -244,7 +245,7 @@ def main():
     log(f"stopping this pod after {limit} idle minutes"
         + (" (never while the checkout has unsaved work: a stop wipes /workspace here)"
            if keep_unsaved else ""))
-    last_busy = time.time()
+    started = last_busy = time.time()
     before_cpu, before = cpu_seconds(), time.monotonic()
     while True:
         time.sleep(60)
@@ -262,7 +263,7 @@ def main():
             reasons.append("ssh session")
         if job_running():
             reasons.append("fleet job")
-        if not reasons and recent_edit():
+        if not reasons and recent_edit(since=started):
             reasons.append("recent edits")
         if not reasons and keep_unsaved and unsaved_work():
             reasons.append("unsaved work in the checkout")

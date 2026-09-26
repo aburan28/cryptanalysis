@@ -281,6 +281,7 @@ class Worker:
         self.start_worker()
 
         reason, restarts, last_busy, last_kept = None, 0, time.time(), time.time()
+        ready = time.time()
         before_cpu, before = idle.cpu_seconds(), time.monotonic()
         try:
             while reason is None:
@@ -301,7 +302,7 @@ class Worker:
                     busy.append(f"cpu {cores:.2f} cores")
                 if gpu_load is not None and gpu_load > idle.BUSY_GPU_PERCENT:
                     busy.append(f"gpu {gpu_load}%")
-                if not busy and idle.recent_edit(CHECKOUT):
+                if not busy and idle.recent_edit(CHECKOUT, since=ready):
                     busy.append("recent edits")
                 if busy:
                     last_busy = time.time()

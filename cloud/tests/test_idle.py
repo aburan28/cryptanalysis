@@ -19,16 +19,26 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(idle.parse_metrics(METRICS),
                          {"connected": 1.0, "session_active": 0.0, "last_activity": 1790380186.0})
 
-    def test_an_active_session_is_busy(self):
+    def test_only_an_open_session_is_busy(self):
         self.assertEqual(idle.agent_busy({"session_active": 1.0}), "agent session")
-
-    def test_recent_activity_is_busy_and_old_activity_is_not(self):
-        now = 1790380186.0 + 60
-        self.assertEqual(idle.agent_busy({"session_active": 0.0, "last_activity": 1790380186.0}, now),
-                         "recent agent activity")
-        self.assertIsNone(idle.agent_busy({"session_active": 0.0, "last_activity": 1790380186.0},
-                                          now + idle.ACTIVITY_WINDOW_SECONDS))
+        # Heartbeats keep last_activity current even with no agent at all.
+        self.assertIsNone(idle.agent_busy({"session_active": 0.0, "last_activity": 1790380186.0}))
         self.assertIsNone(idle.agent_busy({}))
+
+
+class EditTest(unittest.TestCase):
+    def test_files_written_before_since_are_not_edits(self):
+        import os
+        import tempfile
+        import time
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root, "a.c")
+            path.write_text("x")
+            self.assertTrue(idle.recent_edit(root))
+            self.assertFalse(idle.recent_edit(root, since=time.time() + 1))
+            later = time.time() + 5
+            os.utime(path, (later, later))
+            self.assertTrue(idle.recent_edit(root, since=later - 1))
 
 
 if __name__ == "__main__":
