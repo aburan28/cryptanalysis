@@ -29,8 +29,20 @@ class ModalWorkerTest(unittest.TestCase):
             self.assertEqual(modal_worker.copy_sign_in(Path(a) / "absent", b), 0)
 
     def test_control_keys_are_not_workers(self):
-        entries = {"modal-cpu-1": {"state": "connected"}, "modal-cpu-1:stop": True}
+        entries = {"modal-cpu-1": {"state": "connected"}, "modal-cpu-1:stop": True,
+                   "_signin": {"state": "waiting for sign-in"}, "_token": "t"}
         self.assertEqual(list(modal_worker.worker_entries(entries)), ["modal-cpu-1"])
+
+    def test_pending_workers_launch_once_signed_in(self):
+        workers = {"a": {"state": "pending", "request": {"gpu": None}},
+                   "b": {"state": "connected", "call": "fc-1"},
+                   "c": {"state": "pending", "request": {"gpu": "L4"}}}
+        call = mock.Mock(object_id="fc-new")
+        with mock.patch.object(modal_worker, "spawn_worker", return_value=call) as spawn:
+            self.assertEqual(modal_worker.launch_pending(workers), ["a", "c"])
+        self.assertEqual([c.args[0] for c in spawn.call_args_list], ["a", "c"])
+        self.assertEqual((workers["a"]["state"], workers["a"]["call"]), ("queued", "fc-new"))
+        self.assertEqual(workers["b"]["call"], "fc-1")
 
     def test_command_line(self):
         calls = []
