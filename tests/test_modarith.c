@@ -77,6 +77,32 @@ int main(void)
             }
         }
     }
+    /* ca_powmod (Montgomery for odd moduli and long exponents) against the
+     * plain square-and-multiply ladder, and ca_is_prime against trial
+     * division below 200000. */
+    {
+        uint64_t pmods[] = {3, 9, 15, 1000003, 4294967296ULL, 4294967311ULL,
+                            9223372036854775837ULL, 18446744073709551557ULL,
+                            18446744073709551615ULL, 18446744073709551614ULL};
+        for (size_t i = 0; i < sizeof(pmods) / sizeof(pmods[0]); i++) {
+            for (int k = 0; k < 3000; k++) {
+                uint64_t b = ca_rng_next(&rng), e = k < 40 ? (uint64_t)k : ca_rng_next(&rng);
+                uint64_t want = 1 % pmods[i], bb = b % pmods[i], ee = e;
+                while (ee) {
+                    if (ee & 1) want = ca_mulmod(want, bb, pmods[i]);
+                    bb = ca_mulmod(bb, bb, pmods[i]);
+                    ee >>= 1;
+                }
+                CHECK_EQ_U64(ca_powmod(b, e, pmods[i]), want);
+            }
+        }
+        for (uint64_t n = 0; n < 200000; n++) {
+            int naive = n >= 2;
+            for (uint64_t d = 2; d * d <= n && naive; d++) naive = n % d != 0;
+            CHECK(ca_is_prime(n) == naive);
+        }
+        CHECK(!ca_is_prime(3825123056546413051ULL)); /* spsp to bases 2..23 */
+    }
     /* isqrt / iroot */
     CHECK_EQ_U64(ca_isqrt(0), 0);
     CHECK_EQ_U64(ca_isqrt(1), 1);
