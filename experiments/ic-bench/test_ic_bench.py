@@ -100,6 +100,20 @@ class ReceiptTest(unittest.TestCase):
         self.assertEqual({k: a[k] for k in bench.DETERMINISTIC}, {k: b[k] for k in bench.DETERMINISTIC})
         self.assertEqual(self.outs[0]["manifest"], self.outs[1]["manifest"])
 
+    def test_one_target_online_pair_is_verified_and_exclusive(self):
+        import analyze
+
+        cell = dict(bench.SUITES["primary"][0], suite="primary")
+        rec = run_fresh([cell])[0]["receipt"]
+        analyze.validate_run(copy.deepcopy(rec))
+        self.assertEqual(rec["counts"]["targets"], 1)
+        self.assertEqual(rec["counts"]["targets_verified"], 1)
+        self.assertTrue(rec["rho_measured"]["verified"])
+        self.assertEqual(rec["descents"][0]["scalar"], rec["rho_measured"]["scalar"])
+        self.assertEqual(sum(rec["online"]["phase_wall_ns"].values()), rec["online"]["ic_online_ns"])
+        self.assertAlmostEqual(rec["online"]["speedup"],
+                               rec["online"]["rho_online_ns"] / rec["online"]["ic_online_ns"])
+
 
 def row(cell="c1", total=1000, cid="IC1a", status="complete", verified="True", **kw):
     r = {"bench_cell": cell, "workload_id": "w1", "candidate_id": cid, "run_id": f"{cid}Ww1R1", "status": status,

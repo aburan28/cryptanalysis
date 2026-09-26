@@ -1,7 +1,9 @@
 # Measurement contract for IC candidate proposals
 
-The unit of comparison is one verified discrete logarithm in the same source
-subgroup and resource envelope. A proposal is not an experiment result.
+The primary unit of comparison is one previously unseen, verified discrete
+logarithm in the same source subgroup and resource envelope. The headline is
+measured online wall time for that public target after reusable IC preparation,
+paired with a verified rho solve of the same point. A proposal is not an experiment result.
 Promote a proposal to a final `IC1...h...` ID only after materializing an exact
 base and complete method manifest, resolving all stage interfaces, and, for
 `ISO1`, verifying the linked isogeny route. Keep raw runs keyed by
@@ -38,7 +40,8 @@ and `lift_rejected`, with the exact denominator and confidence interval.
 | Relation collection | All attempted ordinary targets, verified witnesses, false lifts, duplicate and dependent rows, useful rank increments, coefficient RHS checks, query cost and rank trajectory | Coverage, conditional solve rate, novel-row rate at frozen rank checkpoints, charged cost per useful row and time to required rank. |
 | Relation matrix LA | Exact matrix digest, modulus `r`, rows, columns, nonzeros, rank, solver/version, build cost, solve operations/time, memory, verified factor logs | Matched complete matrix solve cost; keep PDP Macaulay LA separate. |
 | Target descent and recovery | Independent holdout targets, failed descent attempts, recursive PDP costs, recovered scalar and `[k]G=Q` certificate | Verified completion fraction and incremental per-target cost. |
-| Whole pipeline | Every exclusive phase above, setup/cache policy, orchestration, failed attempts, total calibrated operations and wall time | Cold `S=C_total/sqrt(r)`, ratio to fixed rho and floor, and baseline/candidate total-cost ratio. |
+| One-target online result | Target query, PDP including failed attempts, relation check, descent, scalar replay; same-point rho interval and certificate | Verified `rho_online_ms / IC_online_ms` with all five exclusive target phases summing to the IC interval. |
+| Whole pipeline, supplementary | Every exclusive phase above, setup/cache policy, orchestration, failed attempts, total calibrated operations and wall time | Cold `S=C_total/sqrt(r)`, ratio to fixed theoretical rho and floor, and baseline/candidate total-cost ratio, clearly separate from online speed. |
 
 At a fixed row space, the diagnostic expected cost per new row can be written
 `mean_attempt_cost / (p_coverage * p_solve_given_coverage * p_novel_given_solved)`.
@@ -64,8 +67,8 @@ wall time. For a stage or incomplete run, `total_operations` is null.
 Every run links to `isogeny_route_ref`; a search-only route cannot support a
 complete DLP record.
 The required PDP counts describe ordinary relation-query attempts. Keep
-target-descent attempts in the raw target trace and charge their cost only to
-the `target_descent` phase to avoid double counting.
+target-descent attempts in the raw target trace and charge their cost to the
+five online target phases exactly once.
 For a complete DLP, every phase is priced, the total equals their sum, and
 the scalar certificate is required. [`analyze.py`](analyze.py) validates these
 rules before reporting rates or a paired speedup.
@@ -91,8 +94,8 @@ Use matched baseline/candidate inputs and resources. For rates, give numerator,
 denominator, a binomial interval or block bootstrap interval, and the count of
 censored cases. For costs, report all observed paired runs and a 95% paired
 confidence interval; state whether it includes no improvement. Never average
-only successful solves or erase a timeout. Compare operations in a calibrated
-common unit first, wall time and peak memory second. A component win is a
-stage result; a full IC win requires equal verified DLP workloads, complete
-exclusive costs, and the fixed rho and floor ratios in one table. Extrapolated
-N131 costs remain predictions until measured with the complete pipeline.
+only successful solves or erase a timeout. Compare the verified one-target
+online wall time to measured same-point rho first; retain calibrated cold
+operations, stage costs, and memory as supplementary diagnostics. A component
+win is a stage result. Extrapolated N131 costs remain predictions until
+measured with the complete pipeline.

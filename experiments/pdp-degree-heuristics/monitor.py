@@ -351,22 +351,23 @@ def collect(args, workload: dict | None = None, meter: opcount.Meter | None = No
         rng = random.Random(workload["query_stream"])
 
     def decompose(R: tuple[int, int], charge: str) -> tuple[dict, set]:
-        with meter.phase("queries" if charge == "pdp" else charge):
+        target = charge == "target_descent"
+        with meter.phase("target_query" if target else "queries"):
             s = P.system(R[0])
-        with meter.phase("instrument") as ops:
+        with meter.phase("target_pdp" if target else "instrument") as ops:
             before, t0 = ops.copy(), time.perf_counter_ns()
             S, sols = s.solutions()
             enum_ops, enum_ns = ops - before, time.perf_counter_ns() - t0
         # with S = 0 the scan never reads S (it runs to its refutation), so the enumeration is a check
-        if S >= 1:
+        if S >= 1 and not target:
             meter.move("instrument", charge, enum_ops, enum_ns)
-        with meter.phase(charge) as ops:
+        with meter.phase("target_pdp" if target else charge) as ops:
             scan = macaulay.degree_scan(s, S, limits, mode=args.mode)
             ops["mac_op"] += scan["xors"] + scan["build_ops"]
         rows: set = set()
         status = {"refuted": "proved_unsat", "solved": "solved"}.get(scan["status"], "budget")
         if status == "solved":
-            with meter.phase("relation_check" if charge == "pdp" else charge):
+            with meter.phase("target_relation_check" if target else "relation_check"):
                 for v in sols.tolist():
                     c = classify_solution(fb, args.m, R, v)
                     if c["status"] in ("verified", "improper"):
@@ -430,9 +431,12 @@ def collect(args, workload: dict | None = None, meter: opcount.Meter | None = No
 
     descents = []
     for s_true, Q, arng in target_stream() if complete else []:
+        target_start = time.perf_counter_ns()
         tries = 0
         found = None
-        before = meter.ops.get("target_descent", Counter()).copy()
+        target_phases = ("target_query", "target_pdp", "target_relation_check", "target_descent",
+                         "target_recovery_check")
+        before = {p: meter.ops.get(p, Counter()).copy() for p in target_phases}
         while tries < args.max_attempts and found is None:
             tries += 1
             with meter.phase("target_descent"):
@@ -448,11 +452,16 @@ def collect(args, workload: dict | None = None, meter: opcount.Meter | None = No
                     ops["modr_mul"] += len(row)
         ok = None
         if found is not None:
-            with meter.phase("recovery_check"):
+            with meter.phase("target_recovery_check"):
                 ok = C.K.smul(C.G, found) == Q
+        target_wall_ns = time.perf_counter_ns() - target_start
+        target_ops = Counter()
+        for phase in target_phases:
+            target_ops.update(meter.ops.get(phase, Counter()) - before[phase])
         descents.append({"attempts": tries, "recovered": found is not None, "verified": ok, "scalar": found,
                          "matches_workload": None if workload is None else found == s_true,
-                         "ops": dict(meter.ops.get("target_descent", Counter()) - before)})
+                         "ops": dict(target_ops),
+                         "online_wall_ns": target_wall_ns})
     summary = mon.summary()
     out = {
         "schema": "pdp-collection-run/2",
