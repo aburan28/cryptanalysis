@@ -9,10 +9,11 @@ solves the relation matrix mod `r`, descends every workload target, and checks
 
 ```bash
 python3 bench.py list                                        # suites and cells
-python3 bench.py run --suite ci --jobs 4 --out-dir out/      # out/ci.csv, out/ci.jsonl, manifests
-python3 compare.py baseline/ci.csv out/ci.csv                # regression gate (tolerance 5%)
-python3 report.py out/ci.csv                                 # paired factor-base table
-python3 ../ic-candidate-catalog/analyze.py out/ci.jsonl      # contract validation and summary
+python3 bench.py run --suite primary --jobs 1 --out-dir out/ # one unseen target per run, paired rho
+python3 report.py out/primary.csv                             # verified online wall and rho/IC
+python3 ../ic-candidate-catalog/analyze.py out/primary.jsonl  # contract validation
+python3 bench.py run --suite ci --jobs 4 --out-dir out/       # secondary cold-operation regression
+python3 compare.py baseline/ci.csv out/ci.csv                 # legacy regression gate
 python3 -m pytest -q .
 ```
 
@@ -30,8 +31,8 @@ Each row is keyed by `(candidate_id, workload_id, run_id)`:
   Any change to the executed code gives new candidate IDs. That is intended: the
   manifest pins the implementation.
 - **Workload** `workloads/<id>.json`. It fixes the curve, the query stream,
-  the targets `Q_i = [s_i]G`, the rerandomization streams, the cold target count, and
-  the rho reference and floor. The factor base is the declared variable of a suite;
+  the targets `Q_i = [s_i]G`, the rerandomization streams, the cache state and
+  the rho reference and floor. The primary workload has one target; the factor base is the declared variable;
   every other input is paired.
 - **Run** `<candidate>W<workload>R<k>`, where `k` is one more than the highest
   recorded run in `history.csv`.
@@ -40,10 +41,29 @@ Each row is keyed by `(candidate_id, workload_id, run_id)`:
 workload scalar and `[log Q]G = Q` holds. Otherwise it is `insufficient_relations`,
 `budget` or `error`, and `total_operations` is empty (unknown).
 
+## Primary one-target comparison
+
+`primary` freezes three distinct public targets and runs each on the prefix,
+geomtrace and random bases with one process at a time. It completes relation
+collection and final matrix solving before starting the target clock. That
+clock starts at the first target rerandomization and stops after scalar replay.
+Target query creation, PDP work including failed attempts, relation checks,
+descent, and replay have five exclusive wall-time entries that sum exactly to
+`ic_online_ns`. Python loop overhead is charged to target descent.
+
+The same public point is then solved by a measured three-set Pollard rho
+control. The rho walk sees only the public point, uses a seed derived from
+public curve and point coordinates, and verifies its recovered scalar. The
+headline `online_speedup` is `rho_online_ns / ic_online_ns` only when both
+answers verify. Target generation from a known scalar occurs before either
+clock. Receipts preserve the exact target and both recovered scalars. The
+three-target bootstrap interval in `report.py` describes variation across
+those frozen points, not a claim about larger fields or ECC2K-130.
+
 ## Phase costs and the unit
 
-`pdp-degree-heuristics/opcount.py` meters the eleven exclusive phases of
-`T_cold`. Every arithmetic entry point charges an exact counter: field
+`pdp-degree-heuristics/opcount.py` also meters the eleven exclusive phases of
+supplementary `T_cold`. Every arithmetic entry point charges an exact counter: field
 mul/inv/linear maps, point additions (`ec_mul` = bitlen + popcount additions),
 lifts, Macaulay word operations, Boolean-system slicing, enumeration, and mod-`r`
 Gaussian elimination. The counters are exact functions of the code and its inputs, so
@@ -67,9 +87,10 @@ are never paired. Caveats:
   `S_ec_add = total / (w_ec_add sqrt(r))`. These boundaries are fixed by the
   workload record before any run.
 
-**Instrument** work is recorded but not charged. It covers structure checks,
-exact-yield enumeration, predictions, and brute-force enumerations of systems
-whose solution count the scan never reads. The receipt keeps it under `instrument`.
+**Instrument** work is recorded but not charged to supplementary cold operations.
+It covers structure checks, exact-yield enumeration, and predictions. All
+target PDP enumeration, including unsuccessful attempts, remains inside the
+primary online interval.
 
 ### Oracle-assisted completion
 
@@ -83,7 +104,9 @@ therefore measure this implementation, not an asymptotic XL cost.
 
 ## Suites
 
-- `ci` has 12 runs. At `n = 13, m = 3, l = 3` it runs {prefix, geomtrace, random} on 3
+- `primary` has 9 one-target runs: three factor bases on each of three frozen
+  `n = 13, m = 3, l = 3` public points. It is the default suite.
+- `ci` is a secondary multi-target regression suite with 12 runs. At `n = 13, m = 3, l = 3` it runs {prefix, geomtrace, random} on 3
   workloads; at `n = 19, m = 2, l = 5` it runs {prefix, geomtrace, random} on 1
   workload. It finishes in well under a minute on four cores.
 - `full` adds `n = 19` at `l = 5` and `l = 6` with more families, including

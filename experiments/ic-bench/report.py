@@ -34,6 +34,29 @@ def bootstrap(xs: list[float], seed: str) -> list[float] | None:
 
 
 def table(rows: list[dict], baseline_family: str) -> list[str]:
+    if rows and all(r.get("targets") == "1" for r in rows):
+        lines = ["| workload | candidate | verified | IC online ms | rho online ms | rho/IC | fb | columns | ordinary queries |",
+                 "|---|---|---|--:|--:|--:|--:|--:|--:|"]
+        by_family = defaultdict(list)
+        for r in rows:
+            good = bool(r.get("status") == "complete" and r.get("verified") == "True" and
+                        r.get("online_speedup"))
+            ic = float(r["ic_online_ns"]) / 1e6 if r.get("ic_online_ns") else None
+            rho = float(r["rho_online_ns"]) / 1e6 if r.get("rho_online_ns") else None
+            lines.append(f"| {r['workload_id']} | `{r['candidate_id']}` | {good} | "
+                         f"{f'{ic:.3f}' if ic is not None else '—'} | "
+                         f"{f'{rho:.3f}' if rho is not None else '—'} | "
+                         f"{r.get('online_speedup') or '—'} | {r['fb_points']} | "
+                         f"{r['effective_columns']} | {r['ordinary_queries']} |")
+            if good:
+                by_family[r["family"]].append(float(r["online_speedup"]))
+        lines += ["", "| factor base | verified targets | geometric mean rho/IC | 95% bootstrap interval |",
+                  "|---|--:|--:|---|"]
+        for family, ratios in sorted(by_family.items()):
+            ci = bootstrap(ratios, family)
+            lines.append(f"| {family} | {len(ratios)} | {geomean(ratios):.4f} | "
+                         f"{f'[{ci[0]:.4f}, {ci[1]:.4f}]' if ci else 'fewer than 3 targets'} |")
+        return lines
     groups = defaultdict(dict)
     for r in rows:
         groups[(int(r["n"]), int(r["m"]), int(r["l"]), r["mode"], r["workload_id"])][r["family"]] = r
