@@ -33,6 +33,8 @@ type options struct {
 	listen    string
 	tokenFile string
 	requireTk bool
+	allowAnon bool
+	insecure  bool
 	logPath   string
 	leaseSecs uint64
 	pushEvery time.Duration
@@ -91,7 +93,9 @@ func main() {
 	flag.StringVar(&o.jobPath, "job", "", "job document to serve (a file written by `ca coord-job`)")
 	flag.StringVar(&o.listen, "listen", ":8080", "address to serve on")
 	flag.StringVar(&o.tokenFile, "token-file", "", "file whose first line is the required bearer token")
-	flag.BoolVar(&o.requireTk, "require-token", false, "refuse to start without a token")
+	flag.BoolVar(&o.allowAnon, "allow-anonymous", false, "serve WITHOUT a token: an unauthenticated hub anyone who can reach it may write to. Required to start with no token.")
+	flag.BoolVar(&o.insecure, "insecure", false, "alias for -allow-anonymous")
+	flag.BoolVar(&o.requireTk, "require-token", false, "deprecated: a token is required by default now; this flag is a no-op unless combined with -allow-anonymous, which it then contradicts")
 	flag.StringVar(&o.logPath, "log", "", "append every accepted check-in to this file, and replay it at start")
 	flag.Uint64Var(&o.leaseSecs, "lease-secs", 120, "seconds a silent claim counts as active (reporting only)")
 	flag.DurationVar(&o.pushEvery, "push-interval", 500*time.Millisecond, "how often an idle channel is examined")
@@ -139,12 +143,20 @@ func run(o *options, log *slog.Logger) (int, error) {
 	if err != nil {
 		return 1, fmt.Errorf("cannot read the token: %w", err)
 	}
-	if token == "" && o.requireTk {
-		return 2, errors.New("-require-token was set but no token was given (-token-file or " + ca.TokenEnv + ")")
+	// Finding 6: an unauthenticated hub must be a deliberate, loud choice,
+	// not the default. Without a token the hub refuses to start unless
+	// -allow-anonymous (or its alias -insecure) is passed, and then it
+	// warns prominently, naming the flag.
+	if o.requireTk {
+		log.Warn("-require-token is deprecated: a token is required by default; " +
+			"pass -allow-anonymous to serve without one")
 	}
-	if token == "" && !strings.HasPrefix(o.listen, "127.0.0.1") && !strings.HasPrefix(o.listen, "localhost") {
-		log.Warn("serving with no token: anyone who can reach this can read the job and write to the log",
-			"listen", o.listen)
+	_, warn, err := authDecision(token, o.requireTk, o.allowAnon, o.insecure)
+	if err != nil {
+		return 2, err
+	}
+	if warn != "" {
+		log.Warn(warn, "listen", o.listen)
 	}
 
 	ctx, err := ca.OpenCtx(job)
@@ -268,6 +280,33 @@ func run(o *options, log *slog.Logger) (int, error) {
 	log.Info("stopped", "steps", p.Steps, "dps", p.DPsStored, "checkins", p.Checkins,
 		"solved", p.Solved, "solution", p.Solution)
 	return 0, nil
+}
+
+// authDecision resolves the startup authentication policy (finding 6).  It
+// returns whether the hub will run anonymously, a warning to log if any, and
+// an error that must stop startup.  Pure, so the policy is unit-testable
+// without standing a server up.
+func authDecision(token string, requireTk, allowAnon, insecure bool) (anon bool, warn string, err error) {
+	anon = allowAnon || insecure
+	if requireTk && anon {
+		return false, "", errors.New("-require-token and -allow-anonymous are contradictory")
+	}
+	if token == "" && !anon {
+		return false, "", errors.New("refusing to start without a token: set one with " +
+			"-token-file or the " + ca.TokenEnv + " environment variable, or pass " +
+			"-allow-anonymous to serve an unauthenticated hub on purpose")
+	}
+	if token != "" && anon {
+		// The token wins; say so rather than silently ignoring the flag.
+		return false, "-allow-anonymous ignored: a token was given, so the hub authenticates", nil
+	}
+	if token == "" {
+		return true, "SERVING WITHOUT AUTHENTICATION (-allow-anonymous): anyone who can " +
+			"reach this hub can read the job and write verifiable-but-useless check-ins to " +
+			"the log. Require a token (-token-file or " + ca.TokenEnv + ") on any untrusted " +
+			"network.", nil
+	}
+	return false, "", nil
 }
 
 func newLogger(format string) *slog.Logger {
