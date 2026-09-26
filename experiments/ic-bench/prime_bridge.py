@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Bridge ca-ic prime/orbit JSON into the common IC receipt contract."""
 from __future__ import annotations
-import argparse, hashlib, json, math, os, platform, subprocess
+import argparse, hashlib, json, math, platform, subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -209,14 +210,17 @@ def run_cell(binary,cell):
 def main():
     ap=argparse.ArgumentParser(description=__doc__); sub=ap.add_subparsers(dest="cmd",required=True)
     a=sub.add_parser("adapt"); a.add_argument("raw",type=Path); a.add_argument("--out-dir",type=Path,required=True)
-    x=sub.add_parser("run"); x.add_argument("--suite",choices=SUITES,default="ci"); x.add_argument("--binary",type=Path,default=BINARY); x.add_argument("--out-dir",type=Path,required=True)
+    x=sub.add_parser("run"); x.add_argument("--suite",choices=SUITES,default="ci"); x.add_argument("--binary",type=Path,default=BINARY); x.add_argument("--out-dir",type=Path,required=True); x.add_argument("--jobs",type=int,default=1)
     args=ap.parse_args()
     if args.cmd=="adapt":
         raw=json.loads(args.raw.read_text()); items=[normalize(raw)]
     else:
-        items=[]
-        for cell in SUITES[args.suite]:
-            raw=run_cell(args.binary,cell); item=normalize(raw); items.append(item)
+        if args.jobs < 1: raise ValueError("--jobs must be positive")
+        cells=SUITES[args.suite]
+        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            raws=list(pool.map(lambda cell: run_cell(args.binary,cell),cells))
+        items=[normalize(raw) for raw in raws]
+        for item in items:
             rr=item["receipt"]; print(f"{rr['profile_id']}: {rr['status']} total={rr['total_operations']} IC/folded-batch-rho={rr['ratio_to_batch_floor']:.4g}")
     write(args.out_dir,items)
     print(f"wrote {len(items)} normalized prime-field receipt(s) to {args.out_dir}")
