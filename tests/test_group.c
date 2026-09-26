@@ -150,11 +150,74 @@ static void test_count_points_64bit(void)
     }
 }
 
+/* The affine double-and-add ca_group_mul used before curves took the
+ * Jacobian ladder, through the vtable. */
+static void mul_affine(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k, uint64_t *ops)
+{
+    ca_elem acc, base = *a;
+    ca_group_identity(g, &acc);
+    while (k) {
+        if (k & 1) { ca_group_op(g, &acc, &acc, &base); (*ops)++; }
+        k >>= 1;
+        if (k) { ca_group_dbl(g, &base, &base); (*ops)++; }
+    }
+    *r = acc;
+}
+
+/* Jacobian ca_group_mul against the affine ladder: every point of a small
+ * curve with a cofactor (so small-order points and 2P = O occur) times
+ * every k up to past 2#E, and random points and scalars on 61/64-bit
+ * curves, including k = 0, 1, n - 1, n, n + 1 and 2^64 - 1. */
+static void test_ec_mul_matches_affine(void)
+{
+    ca_group g;
+    uint64_t order = 0;
+    CHECK(ca_ec_count_points(1009, 7, 11, &order, NULL) == CA_OK);
+    CHECK(ca_group_ec_init(&g, 1009, 7, 11, order) == CA_OK);
+    for (uint64_t x = 0; x < 1009; x++) {
+        ca_elem pt;
+        if (!ca_ec_lift_x(&g, &pt, x)) continue;
+        for (uint64_t k = 0; k < 2 * order + 3; k += (k < 64 ? 1 : 7)) {
+            ca_elem a, b;
+            uint64_t oa = 0, ob = 0;
+            ca_group_mul(&g, &a, &pt, k, &oa);
+            mul_affine(&g, &b, &pt, k, &ob);
+            CHECK(memcmp(&a, &b, sizeof a) == 0);
+            CHECK_EQ_U64(oa, ob);
+        }
+    }
+    const uint64_t curves[][3] = {{2305843009213693951ULL, 3, 7},
+                                  {18446744073709551557ULL, 5, 13},
+                                  {4294967291ULL, 0, 7}};
+    for (size_t c = 0; c < 3; c++) {
+        CHECK(ca_group_ec_init(&g, curves[c][0], curves[c][1], curves[c][2], 0) == CA_OK);
+        ca_rng rng;
+        ca_rng_seed(&rng, 7 + c);
+        for (int t = 0; t < 400; t++) {
+            ca_elem pt, a, b;
+            ca_ec_random_point(&g, &pt, ca_rng_next(&rng));
+            uint64_t ks[] = {0, 1, 2, 3, UINT64_MAX, ca_rng_next(&rng), ca_rng_next(&rng) >> 40};
+            for (size_t i = 0; i < sizeof ks / sizeof ks[0]; i++) {
+                uint64_t oa = 0, ob = 0;
+                ca_group_mul(&g, &a, &pt, ks[i], &oa);
+                mul_affine(&g, &b, &pt, ks[i], &ob);
+                CHECK(memcmp(&a, &b, sizeof a) == 0);
+                CHECK_EQ_U64(oa, ob);
+            }
+            ca_group_mul(&g, &a, &pt, 12345, NULL); /* r aliasing a */
+            ca_elem self = pt;
+            ca_group_mul(&g, &self, &self, 12345, NULL);
+            CHECK(memcmp(&a, &self, sizeof a) == 0);
+        }
+    }
+}
+
 int main(void)
 {
     test_zp();
     test_ec();
     test_count_points_larger();
     test_count_points_64bit();
+    test_ec_mul_matches_affine();
     TEST_MAIN_END();
 }

@@ -189,6 +189,102 @@ static const ca_group_vtable ec_vt = {
     ec_batch_op, ec_encode, ec_decode, ec_is_valid, ec_canonicalize,
 };
 
+/*
+ * Scalar multiplication in Jacobian coordinates (X : Y : Z), affine
+ * (X/Z^2, Y/Z^3), all in Montgomery form.  An affine step costs a field
+ * inversion (an extended gcd, ~660 of an affine add's ~880 instructions);
+ * a Jacobian step costs a dozen multiplications, and one inversion at the
+ * end returns the same canonical affine point.  The special cases match
+ * ec_op/ec_dbl: Y = 0 doubles to the identity, and P + Q with equal
+ * abscissae is a double or the identity.
+ */
+typedef struct ec_jac {
+    uint64_t x, y, z;
+    int inf;
+} ec_jac;
+
+/* 2P (dbl-2007-bl, general a). */
+static void ec_jac_dbl(const ca_group *g, ec_jac *r)
+{
+    if (r->inf) return;
+    if (r->y == 0) { r->inf = 1; return; }
+    uint64_t xx = fsqr(g, r->x), yy = fsqr(g, r->y), yyyy = fsqr(g, yy), zz = fsqr(g, r->z);
+    uint64_t t = fadd(g, r->x, yy);
+    uint64_t s = fsub(g, fsub(g, fsqr(g, t), xx), yyyy);
+    s = fadd(g, s, s);
+    uint64_t m = fadd(g, fadd(g, fadd(g, xx, xx), xx), fmul(g, g->a_mont, fsqr(g, zz)));
+    uint64_t x3 = fsub(g, fsub(g, fsqr(g, m), s), s);
+    uint64_t y8 = fadd(g, yyyy, yyyy);
+    y8 = fadd(g, y8, y8);
+    y8 = fadd(g, y8, y8);
+    uint64_t y3 = fsub(g, fmul(g, m, fsub(g, s, x3)), y8);
+    uint64_t yz = fadd(g, r->y, r->z);
+    uint64_t z3 = fsub(g, fsub(g, fsqr(g, yz), yy), zz);
+    r->x = x3;
+    r->y = y3;
+    r->z = z3;
+}
+
+/* P + (x2, y2) for a finite affine (x2, y2) (madd-2007-bl). */
+static void ec_jac_add_affine(const ca_group *g, ec_jac *r, uint64_t x2, uint64_t y2)
+{
+    if (r->inf) {
+        r->x = x2;
+        r->y = y2;
+        r->z = g->mont.r1;
+        r->inf = 0;
+        return;
+    }
+    uint64_t z1z1 = fsqr(g, r->z);
+    uint64_t u2 = fmul(g, x2, z1z1);
+    uint64_t s2 = fmul(g, fmul(g, y2, r->z), z1z1);
+    uint64_t h = fsub(g, u2, r->x);
+    uint64_t rr = fsub(g, s2, r->y);
+    if (h == 0) {
+        if (rr == 0) ec_jac_dbl(g, r);
+        else r->inf = 1;
+        return;
+    }
+    rr = fadd(g, rr, rr);
+    uint64_t hh = fsqr(g, h);
+    uint64_t i = fadd(g, hh, hh);
+    i = fadd(g, i, i);
+    uint64_t j = fmul(g, h, i);
+    uint64_t v = fmul(g, r->x, i);
+    uint64_t x3 = fsub(g, fsub(g, fsub(g, fsqr(g, rr), j), v), v);
+    uint64_t y1j = fmul(g, r->y, j);
+    uint64_t y3 = fsub(g, fsub(g, fmul(g, rr, fsub(g, v, x3)), y1j), y1j);
+    uint64_t zh = fadd(g, r->z, h);
+    uint64_t z3 = fsub(g, fsub(g, fsqr(g, zh), z1z1), hh);
+    r->x = x3;
+    r->y = y3;
+    r->z = z3;
+}
+
+int ca_ec_group_mul(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k)
+{
+    if (g->vt != &ec_vt) return 0; /* a caller's own vtable: use it */
+    const uint64_t ax = FX(a), ay = FY(a);
+    const int ainf = FINF(a) != 0;
+    ec_jac acc = {0, 0, 0, 1};
+    if (!ainf) {
+        for (int bit = 63 - (k ? __builtin_clzll(k) : 63); k && bit >= 0; bit--) {
+            ec_jac_dbl(g, &acc);
+            if ((k >> bit) & 1) ec_jac_add_affine(g, &acc, ax, ay);
+        }
+    }
+    if (acc.inf) {
+        ec_identity(g, r);
+        return 1;
+    }
+    uint64_t zi = finv(g, acc.z), zi2 = fsqr(g, zi);
+    FX(r) = fmul(g, acc.x, zi2);
+    FY(r) = fmul(g, acc.y, fmul(g, zi2, zi));
+    FINF(r) = 0;
+    r->w[3] = 0;
+    return 1;
+}
+
 ca_status ca_group_ec_init(ca_group *g, uint64_t p, uint64_t a, uint64_t b, uint64_t order)
 {
     memset(g, 0, sizeof(*g));

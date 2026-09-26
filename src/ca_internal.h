@@ -121,6 +121,10 @@ void ca_set_error(const char *fmt, ...);
  * <base>; a walk started without it never collides and never stops.  Sets
  * the error message and returns 0 on failure. */
 struct ca_group;
+/* k*a on a curve made by ca_group_ec_init, in Jacobian coordinates with one
+ * inversion; returns 0 (and does nothing) for any other vtable. */
+int ca_ec_group_mul(const struct ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k);
+
 int ca_check_members(const struct ca_group *g, const ca_elem *base, const ca_elem *target,
                      uint64_t n, const char *solver);
 
