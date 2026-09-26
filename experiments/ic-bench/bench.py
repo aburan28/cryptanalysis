@@ -65,6 +65,110 @@ RECEIPTS = HERE / "results" / "receipts.jsonl"
 LIMITS = {"d_max": 10, "max_cols": 40_000, "max_rows": 200_000}
 
 
+def batch_prefix_sizes(targets: int) -> list[int]:
+    """Powers of two through targets, plus the final size when it is not a power of two."""
+    if targets < 1:
+        return []
+    out, k = [], 1
+    while k <= targets:
+        out.append(k)
+        k <<= 1
+    if out[-1] != targets:
+        out.append(targets)
+    return out
+
+
+def batch_rho_group_operations(r: int, targets: int, class_divisor: int = 1) -> int:
+    """Kuhn-Struik batch-rho expectation on r/class_divisor equivalence classes.
+
+    The T targets are solved in turn by one distinguished-point rho whose walks may
+    finish on trails belonging to targets already solved.  Detection lag, seeding and
+    jump-table setup are omitted, making this a deliberately generous rho reference.
+    For T=1 this is sqrt(pi*N/2), N=r/class_divisor.
+    """
+    if targets < 1 or class_divisor < 1:
+        raise ValueError("targets and class_divisor must be positive")
+    coeff = 1.0
+    series = 0.0
+    for k in range(targets):
+        series += coeff
+        coeff *= (2 * k + 1) / (2 * k + 2)
+    classes = r / class_divisor
+    return round(math.sqrt(math.pi * classes / 2) * series)
+
+
+def workload_series_id(curve: ToyCurve, seed: int, cache_state: str) -> str:
+    """Identity shared by workload prefixes with the same query/target streams."""
+    record = {
+        "schema": "ic-bench-workload-series/1",
+        "curve_id": curve.curve_id,
+        "query_stream": f"icbench-queries|{curve.curve_id}|{seed}",
+        "target_stream": f"icbench-targets|{curve.curve_id}|{seed}",
+        "rerandomization_stream": f"icbench-descent|{curve.curve_id}|{seed}",
+        "cache_state": cache_state,
+        "seed": seed,
+    }
+    return "ICBW1h" + sha256_hex(record)[:12]
+
+
+def warm_accounting(total: int | None, per_target: list[int], rho: int, rho_floor: int,
+                    r: int, n: int, ec_add_weight: int) -> dict:
+    """Shared-vs-marginal accounting and fair batch-rho controls for one run."""
+    k = len(per_target)
+    target_total = sum(per_target)
+    shared = total - target_total if total is not None else None
+    plain_batch = batch_rho_group_operations(r, k) * ec_add_weight if k else None
+    folded_batch = batch_rho_group_operations(r, k, 2 * n) * ec_add_weight if k else None
+    independent = k * rho if k else None
+    prefixes = []
+    cumulative = 0
+    wanted = set(batch_prefix_sizes(k))
+    for i, ops in enumerate(per_target, 1):
+        cumulative += ops
+        if i not in wanted:
+            continue
+        ic = shared + cumulative if shared is not None else None
+        plain = batch_rho_group_operations(r, i) * ec_add_weight
+        folded = batch_rho_group_operations(r, i, 2 * n) * ec_add_weight
+        prefixes.append({
+            "targets": i,
+            "ic_operations": ic,
+            "shared_operations": shared,
+            "target_operations": cumulative,
+            "mean_target_operations": cumulative / i,
+            "amortized_operations_per_target": ic / i if ic is not None else None,
+            "independent_rho_operations": i * rho,
+            "batch_rho_operations": plain,
+            "folded_batch_rho_operations": folded,
+            "ic_over_independent_rho": ic / (i * rho) if ic is not None else None,
+            "ic_over_batch_rho": ic / plain if ic is not None else None,
+            "ic_over_folded_batch_rho": ic / folded if ic is not None else None,
+            "shared_fraction": shared / ic if ic else None,
+        })
+    mean_target = target_total / k if k else None
+    break_even = None
+    if shared is not None and mean_target is not None and mean_target < rho:
+        break_even = math.floor(shared / (rho - mean_target)) + 1
+    return {
+        "k": k,
+        "per_target_operations": per_target,
+        "target_operations": target_total,
+        "mean_target_operations": mean_target,
+        "shared_operations": shared,
+        "amortized_operations_per_target": total / k if total is not None and k else None,
+        "independent_rho_operations": independent,
+        "batch_rho_operations": plain_batch,
+        "folded_batch_rho_operations": folded_batch,
+        "ic_over_independent_rho": total / independent if total is not None and independent else None,
+        "ic_over_batch_rho": total / plain_batch if total is not None and plain_batch else None,
+        "ic_over_folded_batch_rho": total / folded_batch if total is not None and folded_batch else None,
+        "break_even_targets_vs_independent_rho": break_even,
+        "prefixes": prefixes,
+        "shared": "factor base, relation collection, relation LA and shared log checks; all target work is marginal",
+        "batch_rho_model": "Kuhn-Struik distinguished-point expectation; folded reference uses r/(2n) sign/Frobenius classes; no detection lag or setup",
+    }
+
+
 def cells(n, m, l, families, workload_seeds, targets=3, max_attempts=200_000, mode="mxl", seed=1):
     return [{"n": n, "m": m, "l": l, "family": f, "seed": seed, "mode": mode, "workload_seed": w,
              "targets": targets, "max_attempts": max_attempts}
@@ -97,6 +201,10 @@ SUITES = {
     + cells(19, 2, 6, ["prefix", "geometric", "geomtrace", "geomtraceu", "random"], [1, 2, 3])
     + cells(23, 2, 6, ["prefix", "geomtrace", "random"], [1], max_attempts=800_000),
     "search": search_cells(),
+    # Long multi-target runs. One 2^16-target receipt yields exact prefix points
+    # 1,2,4,...,2^16 without repaying the shared relation database at each size.
+    "batch": cells(13, 3, 3, ["geomtrace"], [1], targets=1 << 16)
+    + cells(19, 2, 7, ["geomtraceu"], [1], targets=1 << 16, seed=3),
 }
 
 CSV_FIELDS = [
@@ -109,6 +217,9 @@ CSV_FIELDS = [
     *[f"count_{c}" for c in opcount.CLASSES], "wall_ns", "priced_over_wall", "peak_rss_bytes", "calibration_id",
     "implementation_sha256", "git_commit", "recorded_at", "host",
     "ic_online_ns", "rho_online_ns", "online_speedup",
+    "workload_series_id", "shared_operations", "target_operations", "mean_target_operations",
+    "rho_independent_batch_operations", "rho_batch_operations", "rho_batch_floor_operations",
+    "ratio_to_independent_rho_batch", "ratio_to_batch_rho", "ratio_to_batch_floor",
 ]
 DETERMINISTIC = [f for f in CSV_FIELDS if f.startswith(("ops_", "count_")) or f in (
     "status", "verified", "targets_verified", "fb_points", "effective_columns", "achievable_rank", "final_rank",
@@ -371,6 +482,8 @@ def run_cell(cell: dict, calibration: dict) -> dict:
     floor = wrec["rho_floor"]["group_operations"] * weights["ec_add"]
     per_target = [sum(k * weights[c] for c, k in d["ops"].items()) for d in descents]
     priced_charged = sum(phase_ops.values())
+    warm = warm_accounting(total, per_target, rho, floor, r, curve.n, weights["ec_add"])
+    series_id = workload_series_id(curve, cell["workload_seed"], "prepared" if primary else "cold")
     run = cell.get("run", 1)
     run_id = f"{cid}W{wid}R{run}"
     solved = st.get("verified_decomposition", 0)
@@ -382,6 +495,7 @@ def run_cell(cell: dict, calibration: dict) -> dict:
         "proposal_id": None,
         "run_id": run_id,
         "workload_id": wid,
+        "workload_series_id": series_id,
         "pair_block_id": f"W{wid}",
         "source_curve_ref": curve.curve_id,
         "profile_id": cell_label(cell),
@@ -422,12 +536,18 @@ def run_cell(cell: dict, calibration: dict) -> dict:
         "rho_measured": rho_measured,
         "ratio_to_rho": total / rho if total is not None else None,
         "ratio_to_floor": total / floor if total is not None else None,
+        "ratio_to_independent_rho_batch": warm["ic_over_independent_rho"],
+        "ratio_to_batch_rho": warm["ic_over_batch_rho"],
+        "ratio_to_batch_floor": warm["ic_over_folded_batch_rho"],
+        "rho_batch": {
+            "independent_operations": warm["independent_rho_operations"],
+            "shared_dp_expected_operations": warm["batch_rho_operations"],
+            "folded_shared_dp_expected_operations": warm["folded_batch_rho_operations"],
+            "model": warm["batch_rho_model"],
+        },
         "S_rps": total / math.sqrt(r) if total is not None else None,
         "S_ec_add": total / (weights["ec_add"] * math.sqrt(r)) if total is not None else None,
-        "warm": {"k": len(descents), "per_target_operations": per_target,
-                 "shared_operations": priced_charged - sum(per_target),
-                 "amortized_operations_per_target": total / len(descents) if total is not None and descents else None,
-                 "shared": "every phase except target descent (factor base, collection, relation LA, log checks)"},
+        "warm": warm,
         "verified_scalar": status == "complete",
         "scalar_certificate_ref": f"{run_id}#descents" if status == "complete" else None,
         "descents": [{k: d[k] for k in ("attempts", "recovered", "verified", "matches_workload", "scalar")}
@@ -513,6 +633,16 @@ def csv_row(rec: dict, commit: str, recorded_at: str) -> dict:
         "ic_online_ns": (rec.get("online") or {}).get("ic_online_ns"),
         "rho_online_ns": (rec.get("online") or {}).get("rho_online_ns"),
         "online_speedup": (rec.get("online") or {}).get("speedup"),
+        "workload_series_id": rec["workload_series_id"],
+        "shared_operations": rec["warm"]["shared_operations"],
+        "target_operations": rec["warm"]["target_operations"],
+        "mean_target_operations": rec["warm"]["mean_target_operations"],
+        "rho_independent_batch_operations": rec["warm"]["independent_rho_operations"],
+        "rho_batch_operations": rec["warm"]["batch_rho_operations"],
+        "rho_batch_floor_operations": rec["warm"]["folded_batch_rho_operations"],
+        "ratio_to_independent_rho_batch": rec["warm"]["ic_over_independent_rho"],
+        "ratio_to_batch_rho": rec["warm"]["ic_over_batch_rho"],
+        "ratio_to_batch_floor": rec["warm"]["ic_over_folded_batch_rho"],
     }
     for k, v in row.items():
         if isinstance(v, float):
