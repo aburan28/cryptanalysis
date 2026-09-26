@@ -189,3 +189,5 @@ algorithm must then win one complete independently verified query, including
 conversion, launch and checking costs, before dispatch changes. Hard unsolved
 controls stay in every comparison, and the larger IC acceptance gate remains one
 unseen public target through verified recovery with a paired rho measurement.
+
+Historical audit compatibility: the current base branch now writes the summation-polynomial cache atomically. The older measured loader and measured auditor bytes are retained in `../measured_sources/`, addressed by their original SHA-256 digest. Audits read those exact bytes without executing them or replacing the live implementation; current code is built and tested separately. All five affected historical audits pass with the updated loader.

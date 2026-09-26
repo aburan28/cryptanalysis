@@ -6,6 +6,9 @@ on:
       - 'experiments/groebner-perf-20260924/round12/**'
       - 'experiments/groebner-perf-20260924/round11/**'
       - 'experiments/groebner-perf-20260924/round5/**'
+      - 'experiments/groebner-perf-20260924/measured_source.py'
+      - 'experiments/groebner-perf-20260924/measured_sources/**'
+      - 'experiments/groebner-perf-20260924/test_measured_source.py'
       - '.github/workflows/frontier-reduction.yml'
   push:
     paths:
@@ -13,6 +16,9 @@ on:
       - 'experiments/groebner-perf-20260924/round12/**'
       - 'experiments/groebner-perf-20260924/round11/**'
       - 'experiments/groebner-perf-20260924/round5/**'
+      - 'experiments/groebner-perf-20260924/measured_source.py'
+      - 'experiments/groebner-perf-20260924/measured_sources/**'
+      - 'experiments/groebner-perf-20260924/test_measured_source.py'
       - '.github/workflows/frontier-reduction.yml'
 permissions:
   contents: read
@@ -43,5 +49,7 @@ jobs:
         run: python experiments/groebner-perf-20260924/round13/build.py
       - name: Exact trace, independent oracle and boundary checks
         run: python -m unittest discover -s experiments/groebner-perf-20260924/round13 -p 'test_*.py' -v
+      - name: Historical source integrity checks
+        run: python experiments/groebner-perf-20260924/test_measured_source.py
       - name: Audit frozen paired measurements
         run: python experiments/groebner-perf-20260924/round13/verify_evidence.py

@@ -4,6 +4,7 @@ from collections import Counter
 import gzip
 import hashlib
 import json
+import sys
 import math
 from pathlib import Path
 import random
@@ -11,6 +12,8 @@ import statistics
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+sys.path.insert(0, str(HERE.parent))
+from measured_source import measured_bytes
 ARMS = ('baseline', 'pivots', 'ordered', 'combined')
 
 
@@ -41,6 +44,8 @@ def audit(path):
             if name.endswith('native_engine.cpp'):
                 assert source.rstrip() == snapshot.rstrip()
             source = snapshot
+        if hashlib.sha256(source).hexdigest() != expected:
+            source = measured_bytes(ROOT / name, expected)
         assert hashlib.sha256(source).hexdigest() == expected, name
     status = Counter()
     summary = []

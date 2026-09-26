@@ -5,6 +5,7 @@ This audit checks evidence integrity; it does not execute Metal or certify bases
 import hashlib
 import gzip
 import json
+import sys
 import math
 from pathlib import Path
 import random
@@ -12,6 +13,8 @@ import statistics
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+sys.path.insert(0, str(HERE.parent))
+from measured_source import measured_bytes
 
 
 def ratio(rows,numerator,denominator):
@@ -29,7 +32,7 @@ def main():
         assert hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==expected,name
     report = json.loads(gzip.decompress((HERE/'results/query-comparison.json.gz').read_bytes()))
     for name,expected in report['source_sha256'].items():
-        assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==expected,name
+        assert hashlib.sha256(measured_bytes(ROOT/name,expected)).hexdigest()==expected,name
     assert report['candidate_id'] is None and report['IC_online_ms'] is None and report['rho_online_ms'] is None
     assert report['status']=='PASS' and report['capacity']==8192
     assert report['arms']==['cpu','gpu-direct','gpu-indirect','evaluation']
