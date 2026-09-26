@@ -98,6 +98,17 @@ class MeterTest(unittest.TestCase):
         self.assertEqual(bench.batch_prefix_sizes(16), [1, 2, 4, 8, 16])
         self.assertEqual(bench.batch_prefix_sizes(13), [1, 2, 4, 8, 13])
 
+    def test_workload_series_pairs_target_prefixes(self):
+        curve = bench.ToyCurve(13)
+        wid1, w1 = bench.workload(curve, 7, 1)
+        wid4, w4 = bench.workload(curve, 7, 4)
+        self.assertNotEqual(wid1, wid4)
+        self.assertEqual(w1["targets"], w4["targets"][:1])
+        self.assertEqual(bench.workload_series_id(curve, 7, "cold"),
+                         bench.workload_series_id(curve, 7, "cold"))
+        self.assertNotEqual(bench.workload_series_id(curve, 7, "cold"),
+                            bench.workload_series_id(curve, 8, "cold"))
+
 
 class ReceiptTest(unittest.TestCase):
     @classmethod
