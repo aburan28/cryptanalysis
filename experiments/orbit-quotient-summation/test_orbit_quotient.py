@@ -23,6 +23,21 @@ class OrbitQuotientTests(unittest.TestCase):
         self.assertEqual(mobius_anf(fixed[0], 12)["degree"], 12)
         self.assertEqual(mobius_anf(orbit[0], 12)["degree"], 11)
 
+    def test_n19_reference(self):
+        M = model(19, 6, 112679)
+        self.assertEqual(M["r"], 130873)
+        self.assertEqual(M["lam"], 41811)
+        self.assertEqual(len(M["keys"]), 23)
+        self.assertEqual(len(M["H"]), 38)
+
+        targets, _ = planted_targets(M, 3, 1, (0, 1, 2), 20260926)
+        fixed, fs = m3_truths(M, targets, "fixed")
+        orbit, os = m3_truths(M, targets, "orbit")
+        self.assertEqual(fs[0]["positive_key_tuples"], 1)
+        self.assertEqual(os[0]["positive_key_tuples"], 3895)
+        self.assertEqual(mobius_anf(fixed[0], 18)["degree"], 18)
+        self.assertEqual(mobius_anf(orbit[0], 18)["degree"], 18)
+
 
 if __name__ == "__main__":
     unittest.main()
