@@ -42,7 +42,7 @@ of Bailey et al. (so every distinguished point is compatible with theirs):
 | GTX 295 (2010) | 0.063 B | ePrint 2012/002 |
 
 Per card, that is about **280× the 2010 GPU**. Per SM clock cycle, one
-iteration went from roughly 1,180 cycles to about 30. On the same GPU, native
+iteration went from roughly 1,180 cycles to about 25 (188 SMs at about 2.36 GHz). On the same GPU, native
 carry-less multiply beats 2009-style bitslicing by about 20×.
 
 ## So what does it cost?
