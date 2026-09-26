@@ -34,9 +34,11 @@ that native batch addition, Frobenius, scalar point operations, and the CPU
 point-map path return correct points. `verify-installed` checks the installed
 module hashes and presence of the native extensions without starting Sage.
 `run` performs that check before starting the selected Sage interpreter and
-sets a writable Sage cache in the repository build directory. It exits with
-an error if source edits have not been installed. Experiments should use this
-command to load the optimized code.
+also checks the paths Sage actually imports. It sets a writable Sage cache in
+the repository build directory. It exits with an error if the installed
+release modules differ from their hashes. Source edits that have not been
+installed do not affect this check; `build`, `verify`, and `pack-binary` still
+require the exact release source stack.
 
 ## Compiled macOS arm64 accelerator overlay
 
@@ -56,6 +58,24 @@ python3 scripts/sage_release.py install-binary --sage /path/to/built/sage \
   --archive dist/cryptanalysis-sage-VERSION-macos-arm64-py314.tar.gz
 python3 scripts/sage_release.py run --sage /path/to/built/sage -- -python my_experiment.py
 ```
+
+When the shared Sage installation is being used for new source experiments,
+run a local computation directly from the checked archive without replacing
+its installed files:
+
+```sh
+python3 scripts/sage_release.py run-overlay --sage /path/to/built/sage \
+  --archive dist/cryptanalysis-sage-VERSION-macos-arm64-py314.tar.gz \
+  -- -python my_experiment.py
+```
+
+`run-overlay` checks the archive's source and ABI manifest, stages its modules
+under `build/sage-overlays/`, verifies the six importable modules resolve to
+that directory, runs the arithmetic smoke test once per archive and smoke
+script version, and then starts the experiment. It leaves the shared Sage
+source and installed package untouched. Both commands put setup and import
+checks before the experiment process; an online target timer should start
+after that setup.
 
 The target checkout must first have the source patch stack applied and its
 base Sage installation built. An overlay built against Python 3.14 cannot be

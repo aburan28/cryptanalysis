@@ -10,8 +10,6 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
-import sys
-import sysconfig
 import tarfile
 import tempfile
 
@@ -24,8 +22,8 @@ def run(*args, cwd=None, env=None):
     subprocess.run(args, cwd=cwd, env=env, check=True)
 
 
-def output(*args, cwd=None):
-    return subprocess.check_output(args, cwd=cwd, text=True).strip()
+def output(*args, cwd=None, env=None):
+    return subprocess.check_output(args, cwd=cwd, env=env, text=True).strip()
 
 
 def digest(path):
@@ -123,6 +121,19 @@ def sage_abi(sage):
     return json.loads(output(str(sage / "sage"), "-python", "-c", script, cwd=sage))
 
 
+def verify_runtime(sage, package, env=None):
+    """Ensure Sage imports the checked installed modules, not an editable source tree."""
+    script = ("import json; from sage.schemes.elliptic_curves import "
+              "binary_batch,binary_hardware,ell_point,hom_frobenius,binary_batch_ntl,binary_hardware_codec; "
+              "print(json.dumps({m.__name__.rsplit('.',1)[-1]: m.__file__ for m in "
+              "(binary_batch,binary_hardware,ell_point,hom_frobenius,binary_batch_ntl,binary_hardware_codec)}))")
+    imported = json.loads(output(str(sage / "sage"), "-python", "-c", script, cwd=sage, env=env))
+    for name, path in imported.items():
+        if Path(path).resolve().parent != package.resolve():
+            raise SystemExit(f"Sage imports {name} outside the verified installed package: {path}")
+    print("verified Sage imports the installed accelerator modules")
+
+
 def binary_bundle(sage, manifest, output_dir, version):
     """Package only the patched accelerator overlay, never Sage's nonrelocatable tree."""
     if platform.system() != "Darwin" or platform.machine() != "arm64":
@@ -150,26 +161,21 @@ def binary_bundle(sage, manifest, output_dir, version):
     print(archive)
 
 
-def install_binary(sage, manifest, archive):
-    """Install a checked overlay into a prebuilt, matching Sage checkout."""
+def read_binary_archive(sage, manifest, archive):
+    """Validate all archive bytes before installing or loading an overlay."""
     if not archive:
-        raise SystemExit("install-binary requires --archive")
-    verify_revision(sage, manifest)
-    verify_sources(sage, manifest)
-    package = sorted((sage / "local" / "var" / "lib" / "sage").glob(
-        "venv-python*/lib/python*/site-packages/sage/schemes/elliptic_curves"))
-    if len(package) != 1:
-        raise SystemExit("install-binary requires one complete, prebuilt Sage installation")
-    package = package[0]
+        raise SystemExit("a compiled Sage overlay requires --archive")
     abi = sage_abi(sage)
     with tarfile.open(archive, "r:gz") as tar:
         members = tar.getmembers()
-        if any(not m.isfile() for m in members):
-            raise SystemExit("binary archive contains a non-file member")
+        if not members or any(not m.isfile() or m.size > 50_000_000 for m in members):
+            raise SystemExit("binary archive contains a non-file or oversized member")
         names = [Path(m.name).parts for m in members]
         if any(len(parts) != 2 or parts[0] != names[0][0] for parts in names):
             raise SystemExit("binary archive has an unexpected path")
         payload = {parts[1]: tar.extractfile(member).read() for parts, member in zip(names, members)}
+        if len(payload) != len(members):
+            raise SystemExit("binary archive has duplicate members")
     if "binary-manifest.json" not in payload:
         raise SystemExit("binary archive has no manifest")
     record = json.loads(payload.pop("binary-manifest.json"))
@@ -177,7 +183,9 @@ def install_binary(sage, manifest, archive):
             record.get("sage_commit") != manifest["sage_commit"] or
             record.get("source_manifest_sha256") != digest(MANIFEST) or record.get("abi") != abi):
         raise SystemExit("binary archive does not match this Sage revision, source stack, or Python ABI")
-    if set(payload) != set(record["files"]) or set(PY_MODULES) - set(payload) or len(payload) != 7:
+    expected = set(PY_MODULES) | {stem + abi["extension_suffix"] for stem in NATIVE_MODULES[:2]} | {
+        "_binary_hardware_native.dylib"}
+    if set(payload) != set(record["files"]) or set(payload) != expected:
         raise SystemExit("binary archive has an incomplete or unexpected module set")
     for name, data in payload.items():
         if Path(name).name != name or hashlib.sha256(data).hexdigest() != record["files"][name]:
@@ -186,6 +194,19 @@ def install_binary(sage, manifest, archive):
             raise SystemExit(f"binary module has the wrong Python ABI: {name}")
         if name in PY_MODULES and record["files"][name] != manifest["files"]["src/sage/schemes/elliptic_curves/" + name]:
             raise SystemExit(f"binary archive has stale Sage source: {name}")
+    return record, payload
+
+
+def install_binary(sage, manifest, archive):
+    """Install a checked overlay into a prebuilt, matching Sage checkout."""
+    verify_revision(sage, manifest)
+    verify_sources(sage, manifest)
+    package = sorted((sage / "local" / "var" / "lib" / "sage").glob(
+        "venv-python*/lib/python*/site-packages/sage/schemes/elliptic_curves"))
+    if len(package) != 1:
+        raise SystemExit("install-binary requires one complete, prebuilt Sage installation")
+    package = package[0]
+    record, payload = read_binary_archive(sage, manifest, archive)
     with tempfile.TemporaryDirectory(prefix="sage-binary-backup-") as backup:
         originals = {}
         stamp = package / ".cryptanalysis-binary-manifest.json"
@@ -215,6 +236,39 @@ def install_binary(sage, manifest, archive):
                 stamp.write_bytes(old_stamp)
             raise
     print(f"installed and smoke-tested Sage accelerator overlay at {package}")
+
+
+def run_overlay(sage, manifest, archive, remainder):
+    """Run the pinned modules from an archive without changing shared Sage files."""
+    verify_revision(sage, manifest)
+    record, payload = read_binary_archive(sage, manifest, archive)
+    if not remainder:
+        raise SystemExit("run-overlay requires Sage arguments after --")
+    location = ROOT / "build" / "sage-overlays" / digest(archive)[:24]
+    modules = location / "modules"
+    bootstrap = location / "bootstrap"
+    modules.mkdir(parents=True, exist_ok=True)
+    bootstrap.mkdir(parents=True, exist_ok=True)
+    for name, data in payload.items():
+        target = modules / name
+        if not target.exists() or hashlib.sha256(target.read_bytes()).hexdigest() != record["files"][name]:
+            with tempfile.NamedTemporaryFile(dir=modules, prefix=name + ".", delete=False) as fh:
+                fh.write(data)
+                temporary = Path(fh.name)
+            temporary.replace(target)
+    (bootstrap / "sitecustomize.py").write_text(
+        "import sage.schemes.elliptic_curves as ec\n"
+        f"ec.__path__.insert(0, {str(modules)!r})\n")
+    env = sage_env()
+    env["PYTHONPATH"] = str(bootstrap) + os.pathsep + env.get("PYTHONPATH", "")
+    verify_runtime(sage, modules, env=env)
+    marker = location / "smoke.ok"
+    smoke_identity = digest(archive) + ":" + digest(ROOT / "scripts" / "sage_release_smoke.py")
+    if not marker.exists() or marker.read_text().strip() != smoke_identity:
+        run(str(sage / "sage"), "-python", str(ROOT / "scripts" / "sage_release_smoke.py"),
+            cwd=sage, env=env)
+        marker.write_text(smoke_identity + "\n")
+    os.execve(str(sage / "sage"), [str(sage / "sage"), *remainder], env)
 
 
 def patch_args(item):
@@ -285,7 +339,7 @@ def bundle(manifest, output_dir, version):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["apply", "verify", "verify-installed", "verify-stack", "build", "smoke", "bundle", "pack-binary", "install-binary", "run"])
+    parser.add_argument("command", choices=["apply", "verify", "verify-installed", "verify-stack", "build", "smoke", "bundle", "pack-binary", "install-binary", "run", "run-overlay"])
     parser.add_argument("--sage", help="path to the pinned Sage source checkout")
     parser.add_argument("--out", type=Path, default=ROOT / "dist")
     parser.add_argument("--version", default="dev")
@@ -305,14 +359,22 @@ def main():
     if args.command == "install-binary":
         install_binary(sage, manifest, args.archive)
         return
+    if args.command == "run-overlay":
+        if remainder and remainder[0] == "--":
+            remainder = remainder[1:]
+        run_overlay(sage, manifest, args.archive, remainder)
+        return
     if args.command == "verify-stack":
         verify_revision(sage, manifest)
         preflight(sage, manifest)
         return
     verify_revision(sage, manifest)
-    verify_sources(sage, manifest)
+    if args.command in ("verify", "build", "pack-binary"):
+        verify_sources(sage, manifest)
     if args.command in ("verify-installed", "smoke", "run"):
-        verify_installed(sage, manifest)
+        package = verify_installed(sage, manifest)
+        if args.command == "run":
+            verify_runtime(sage, package)
     if args.command == "pack-binary":
         binary_bundle(sage, manifest, args.out, args.version)
         return
