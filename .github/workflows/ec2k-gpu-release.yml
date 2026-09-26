@@ -6,8 +6,9 @@ name: cryptanalysis-release
 # campaign build (WALK=sigma) and unified CLI on Linux
 # x86_64 and aarch64 with the pinned CUDA 13.3 from NVIDIA's pip wheels, for
 # sm_80 through sm_120 plus compute_120 PTX, and publishes the tarballs and
-# a macOS arm64 CLI with the separate Metal table walk, and their .sha256 as
-# a GitHub release. A tag with -rc or -pre in it is a
+# a macOS arm64 CLI with the separate Metal table walk, a pinned Sage
+# accelerator overlay, and their .sha256 as a GitHub release. A tag with
+# -rc or -pre in it is a
 # prerelease.  On a pull request, or run by hand (workflow_dispatch), it
 # builds and uploads the tarballs as workflow artifacts and publishes nothing.
 #
@@ -151,9 +152,71 @@ jobs:
           path: ecc2k130/dist/cryptanalysis-sage-*
           if-no-files-found: error
 
+  sage-compiled:
+    name: build and package Sage accelerator (macos-arm64)
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-15
+    timeout-minutes: 240
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Fetch pinned Sage source
+        run: |
+          mkdir -p "$RUNNER_TEMP/sage-upstream"
+          git -C "$RUNNER_TEMP/sage-upstream" init
+          git -C "$RUNNER_TEMP/sage-upstream" remote add origin https://github.com/sagemath/sage.git
+          git -C "$RUNNER_TEMP/sage-upstream" fetch --depth=1 origin refs/tags/10.10.rc0
+          git -C "$RUNNER_TEMP/sage-upstream" checkout --detach FETCH_HEAD
+          python3 scripts/sage_release.py apply --sage "$RUNNER_TEMP/sage-upstream"
+      - name: Install Sage build prerequisites
+        working-directory: ${{ runner.temp }}/sage-upstream
+        run: |
+          python3 -m pip install setuptools
+          # Sage prints shell commands for Homebrew; eval is intentional here.
+          # shellcheck disable=SC2046
+          eval $(build/bin/sage-print-system-package-command homebrew update)
+          # shellcheck disable=SC2046
+          eval $(build/bin/sage-print-system-package-command homebrew --yes --ignore-missing install $(build/bin/sage-get-system-packages homebrew _bootstrap _prereq $(build/bin/sage-package list :standard:)))
+          brew install libomp
+      - name: Configure and build installed Sage
+        working-directory: ${{ runner.temp }}/sage-upstream
+        env:
+          MAKE: 'make -j4'
+        run: |
+          source ./.homebrew-build-env
+          ./bootstrap
+          ./configure --disable-editable --enable-download-from-upstream-url --with-darwin-accelerate
+          make build V=0
+      - name: Verify, install and package accelerator overlay
+        run: |
+          source "$RUNNER_TEMP/sage-upstream/.homebrew-build-env"
+          python3 scripts/sage_release.py verify-installed --sage "$RUNNER_TEMP/sage-upstream"
+          python3 scripts/sage_release.py smoke --sage "$RUNNER_TEMP/sage-upstream"
+          if [[ "$GITHUB_REF" == refs/tags/cryptanalysis-v* ]]; then
+            version=${GITHUB_REF_NAME#cryptanalysis-v}
+          elif [[ "$GITHUB_REF" == refs/tags/ec2k-gpu-v* ]]; then
+            version=${GITHUB_REF_NAME#ec2k-gpu-v}
+          else
+            version="0.0.0-dev.${GITHUB_SHA::12}"
+          fi
+          python3 scripts/sage_release.py pack-binary --sage "$RUNNER_TEMP/sage-upstream" --version "$version" --out ecc2k130/dist
+          archives=(ecc2k130/dist/cryptanalysis-sage-"$version"-macos-arm64-py*.tar.gz)
+          test "${#archives[@]}" -eq 1
+          python3 scripts/sage_release.py install-binary --sage "$RUNNER_TEMP/sage-upstream" --archive "${archives[0]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cryptanalysis-sage-macos-arm64
+          path: ecc2k130/dist/cryptanalysis-sage-*-macos-arm64-py*.tar.gz*
+          if-no-files-found: error
+
   release:
     name: publish
-    needs: [build, metal-build, sage-source]
+    needs: [build, metal-build, sage-source, sage-compiled]
     if: startsWith(github.ref, 'refs/tags/cryptanalysis-v') || startsWith(github.ref, 'refs/tags/ec2k-gpu-v')
     runs-on: ubuntu-latest
     permissions:
@@ -193,7 +256,7 @@ jobs:
 
           Pick \`R\` at random in 10000-65534, one per GPU. The legacy ec2k-gpu archive is also included for existing runners. See share/cryptanalysis/ECC2K130-README.md in the archive for campaign point details, and ecc2k130/scripts/device_check.sh for checks on a card. The index-calculus command currently targets the multiplicative group of a prime field.
 
-          The cryptanalysis-sage-$version-source.tar.gz asset contains the pinned Sage patch stack and a local build/verification script. It is source, not a precompiled Sage binary; see docs/SAGE_RELEASE.md.
+          The cryptanalysis-sage-$version-source.tar.gz asset contains the pinned Sage patch stack. The macOS arm64 Sage accelerator archive contains seven compiled/runtime modules for an already built Sage at the pinned commit and matching Python ABI. It is not a full Sage installation; see docs/SAGE_RELEASE.md.
           EOF
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
             --title "cryptanalysis $version" --notes-file notes.md "${flags[@]}"

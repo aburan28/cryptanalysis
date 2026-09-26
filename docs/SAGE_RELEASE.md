@@ -38,16 +38,49 @@ sets a writable Sage cache in the repository build directory. It exits with
 an error if source edits have not been installed. Experiments should use this
 command to load the optimized code.
 
-## Release asset
+## Compiled macOS arm64 accelerator overlay
+
+The seven patched runtime modules can be distributed as a small compiled
+overlay for an **already built** Sage at the pinned commit. The archive does
+not include Sage itself. It records the Sage source manifest digest, CPU and
+operating system, Python version and extension suffix, and a SHA-256 for every
+file. The installer refuses a mismatched checkout or Python ABI, verifies all
+payload digests, and runs the same arithmetic smoke test after installation.
+It restores the previous modules if the smoke test fails. Native extensions
+also require their linked NTL library to be available on the target Mac.
+
+```sh
+python3 scripts/sage_release.py pack-binary --sage third_party/sage-binary \
+  --version VERSION --out dist
+python3 scripts/sage_release.py install-binary --sage /path/to/built/sage \
+  --archive dist/cryptanalysis-sage-VERSION-macos-arm64-py314.tar.gz
+python3 scripts/sage_release.py run --sage /path/to/built/sage -- -python my_experiment.py
+```
+
+The target checkout must first have the source patch stack applied and its
+base Sage installation built. An overlay built against Python 3.14 cannot be
+installed into Sage built with Python 3.13. The compiler output has an NTL
+dynamic library dependency; the post-install smoke test catches a missing or
+incompatible library before an experiment starts. The `run` command checks
+the installed source modules on every invocation.
+
+## Source release asset
 
 The release workflow reconstructs the patch stack on a fresh pinned Sage
 checkout and publishes `cryptanalysis-sage-VERSION-source.tar.gz` with the
-manifest, patches, and the build/smoke script. This is a reproducible source
-kit for a locally built Sage. It is **not** a relocatable Sage executable or a
-precompiled Metal extension. Sage's compiled extensions have platform and
-Python ABI dependencies; a distributable binary needs separate packaging and
-testing on each target platform. The release job does not claim to build that
-binary.
+manifest, patches, and the build/smoke script. A separate `macos-15` job builds
+the pinned Sage source, verifies its installed modules, packages the compiled
+overlay, installs that archive back through the ABI and smoke gates, and
+publishes the archive and checksum with the release. The release waits for
+both jobs. The source asset is a reproducible build kit; the compiled asset is
+only an accelerator overlay for a separately built Sage with the matching
+Python ABI. A full Sage tree is not a relocatable archive.
+
+If a release needs a manually rebuilt Mac artifact, the operator can run
+`bash scripts/publish_sage_binary.sh cryptanalysis-vVERSION /path/to/built/sage`
+after the tagged release exists. It checks the installed stack, builds the
+overlay archive and checksum, reinstalls it through the ABI gate and smoke
+test, then attaches both files to the GitHub release.
 
 Extract the source kit in any directory, use its `scripts/sage_release.py`
 to apply the patches to a Sage checkout at the pinned commit, configure that
