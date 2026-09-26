@@ -21,6 +21,11 @@ SUITES = {
 def canon(x): return json.dumps(x,sort_keys=True,separators=(",",":"),ensure_ascii=False)
 def sha(x): return hashlib.sha256(canon(x).encode()).hexdigest()
 def dec(x): return None if x is None else format(x,".17g")
+def frozen(x):
+    if isinstance(x,float): return dec(x)
+    if isinstance(x,list): return [frozen(v) for v in x]
+    if isinstance(x,dict): return {k:frozen(v) for k,v in x.items()}
+    return x
 
 def batch_rho(r,w,t,folded):
     n=r/w if folded else r; term=1.; series=0.
@@ -71,7 +76,7 @@ def candidate(r,curve):
     rc="lp" if q["large_primes"] else "full"; td="learn" if q["learn"] else "descent"
     m={"schema":"ic-candidate/1","field":curve["field"],"curve":curve["curve"],
        "curve_id":curve["curve_id"],"isogeny":"none",
-       "endomorphism":{"automorphism_order":f["automorphism_order"],"record":r["instance"]["endomorphism"],
+       "endomorphism":{"automorphism_order":f["automorphism_order"],"record":frozen(r["instance"]["endomorphism"]),
                        "endomorphism_order_conductor":None,
                        "conductor_status":"not_measured_by_prime_orbit_experiment"},
        "factor_base":{"construction":"deterministic subgroup points; one representative per automorphism orbit",
