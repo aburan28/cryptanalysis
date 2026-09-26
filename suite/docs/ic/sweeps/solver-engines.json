@@ -1,0 +1,16 @@
+{
+  "_what": "What does the polynomial-system engine do to the whole pipeline? Hold the instance, the base, the targets and the matrix fixed; run the pair-table oracle as the reference row, then the descent-algebraic oracle once per engine, and read the solver's ops, its priced cost, D_solve against D_sr, and S across the rows. The algebraic rows carry the solver inside S; the reference row is what they have to beat on the same base.",
+  "_why_no_xl": "xl-f2 is not in the matrix: the repository's XL runs one pass at degree n_vars with no budget hook, which on this shape (13 equations, 12 unknowns) is about 150 seconds a call against Buchberger's 7 milliseconds, and its op count is modelled rather than counted. It declines shapes above 10 unknowns rather than run for hours; put it in a matrix at dimension 5 or below.",
+  "instance": { "regime": "char2", "degree": 13, "max_cofactor": 8 },
+  "repeats": 2,
+  "seed": 20260922,
+  "configurations": [
+    { "factor_base": "binary-subspace:dimension=6", "oracle": "mitm:m=2", "targets": "walk" }
+  ],
+  "matrix": {
+    "factor_base": ["binary-subspace:dimension=6"],
+    "oracle": ["descent-algebraic:m=2"],
+    "solver": ["buchberger-f2", "sat-cdcl", "exhaustive"],
+    "targets": ["walk"]
+  }
+}

@@ -1,0 +1,96 @@
+name: Sage binary hardware archive
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/sage-binary-hardware/**'
+      - 'experiments/sage-ic-campaign/**'
+      - 'experiments/sage-binary-batch/**'
+      - 'ecc2k130/codegen/field.py'
+      - 'ecc2k130/runner/codegen/field.py'
+      - 'ecc2k130/codegen/curves.py'
+      - 'ecc2k130/runner/codegen/curves.py'
+      - 'ecc2k130/runner/codegen/indexcalc.py'
+      - '.github/workflows/sage-binary-hardware.yml'
+  push:
+    paths:
+      - 'experiments/sage-binary-hardware/**'
+      - 'experiments/sage-ic-campaign/**'
+      - 'experiments/sage-binary-batch/**'
+      - 'ecc2k130/codegen/field.py'
+      - 'ecc2k130/runner/codegen/field.py'
+      - 'ecc2k130/codegen/curves.py'
+      - 'ecc2k130/runner/codegen/curves.py'
+      - 'ecc2k130/runner/codegen/indexcalc.py'
+      - '.github/workflows/sage-binary-hardware.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patch-and-receipts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct the Sage patch and check recorded measurements
+        run: python3 experiments/sage-binary-hardware/verify_archive.py
+      - name: Check native versus hardware rebaseline
+        run: python3 experiments/sage-ic-campaign/metal-rebaseline-20260924/verify_archive.py
+      - name: Check the output codec patch and measurements
+        run: python3 experiments/sage-ic-campaign/codec-output-20260924/verify_archive.py
+      - name: Check the input codec patch and measurements
+        run: python3 experiments/sage-ic-campaign/codec-pack-20260924/verify_archive.py
+      - name: Check the vectorized table patch and measurements
+        run: python3 experiments/sage-ic-campaign/table-build-20260924/verify_archive.py
+      - name: Check the native Frobenius-isogeny patch and measurements
+        run: python3 experiments/sage-ic-campaign/frobenius-hom-20260924/verify_archive.py
+      - name: Check the native Frobenius singleton patch and measurements
+        run: python3 experiments/sage-ic-campaign/frobenius-singleton-20260924/verify_archive.py
+      - name: Check the scalar point-addition patch and measurements
+        run: python3 experiments/sage-ic-campaign/scalar-add-20260924/verify_archive.py
+      - name: Check the local ONB Frobenius patch and measurements
+        run: python3 experiments/sage-ic-campaign/onb-frobenius-20260924/verify_archive.py
+      - name: Check the local ONB multiplication patch and measurements
+        run: python3 experiments/sage-ic-campaign/onb-mul-window-20260924/verify_archive.py
+      - name: Check the local ONB coordinate patch and measurements
+        run: python3 experiments/sage-ic-campaign/onb-to-coords-20260924/verify_archive.py
+      - name: Check the local ONB coordinate-packing patch and measurements
+        run: python3 experiments/sage-ic-campaign/onb-from-coords-20260924/verify_archive.py
+      - name: Check the local ONB curve-squaring patch and measurements
+        run: python3 experiments/sage-ic-campaign/onb-curve-squaring-20260924/verify_archive.py
+      - name: Check the local ONB trace-parity patch and measurements
+        run: python3 experiments/sage-ic-campaign/onb-trace-parity-20260924/verify_archive.py
+      - name: Check the IC runner ONB synchronization and measurements
+        run: python3 experiments/sage-ic-campaign/runner-onb-sync-20260924/verify_archive.py
+      - name: Check adaptive ONB Frobenius setup and measurements
+        run: python3 experiments/sage-ic-campaign/onb-nibble-frobenius-20260924/verify_archive.py
+      - name: Check public ONB Euclid inversion and measurements
+        run: python3 experiments/sage-ic-campaign/onb-euclid-inverse-20260924/verify_archive.py
+      - name: Check current installed Sage CPU/Metal comparison receipts
+        run: python3 experiments/sage-ic-campaign/metal-current-profile-20260924/verify_archive.py
+      - name: Check instrumented Metal host phases and timing rechecks
+        run: python3 experiments/sage-ic-campaign/metal-host-timing-20260924/verify_archive.py
+      - name: Check batched Sage Metal point maps and cold receipts
+        run: python3 experiments/sage-ic-campaign/metal-batched-point-maps-20260924/verify_archive.py
+      - name: Check the held Metal element-kernel experiment
+        run: python3 experiments/sage-ic-campaign/metal-element-kernel-20260924/verify_archive.py
+      - name: Check ONB signed-window scalar arithmetic and measurements
+        run: python3 experiments/sage-ic-campaign/onb-scalar-window-20260924/verify_archive.py
+      - name: Check Koblitz tau-adic scalar arithmetic and measurements
+        run: python3 experiments/sage-ic-campaign/onb-tau-adic-20260924/verify_archive.py
+      - name: Check polynomial-basis Koblitz scalar arithmetic and measurements
+        run: python3 experiments/sage-ic-campaign/pb-tau-adic-20260924/verify_archive.py
+      - name: Check polynomial-basis Euclid inversion and measurements
+        run: python3 experiments/sage-ic-campaign/pb-euclid-inverse-20260924/verify_archive.py
+      - name: Check polynomial-basis squaring and measurements
+        run: python3 experiments/sage-ic-campaign/pb-squaring-20260924/verify_archive.py
+      - name: Check polynomial-basis trace mask and point recovery
+        run: python3 experiments/sage-ic-campaign/pb-trace-mask-20260924/verify_archive.py
+      - name: Check held polynomial-basis multiplication pilot
+        run: python3 experiments/sage-ic-campaign/pb-mul-pilot-20260924/verify_archive.py
+      - name: Check held polynomial-basis half-trace pilot
+        run: python3 experiments/sage-ic-campaign/pb-halftrace-pilot-20260924/verify_archive.py
+      - name: Check explicit bulk half trace and IC factor-base receipts
+        run: python3 experiments/sage-ic-campaign/pb-bulk-halftrace-20260924/verify_archive.py

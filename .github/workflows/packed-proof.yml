@@ -1,0 +1,43 @@
+name: Packed algebraic proofs
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round11/**'
+      - 'experiments/groebner-perf-20260924/round5/**'
+      - '.github/workflows/packed-proof.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round11/**'
+      - 'experiments/groebner-perf-20260924/round5/**'
+      - '.github/workflows/packed-proof.yml'
+permissions:
+  contents: read
+concurrency:
+  group: packed-proof-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  proof:
+    name: Packed proofs (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, cxx: g++}
+          - {os: macos-latest, cxx: clang++}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build independent libraries and UBSan trap variants
+        run: python experiments/groebner-perf-20260924/round11/build.py
+      - name: Independent oracle, adversarial, wide-ring, and ABI checks
+        run: python -m unittest discover -s experiments/groebner-perf-20260924/round11 -p 'test_*.py' -v
+      - name: Audit retained measurements
+        run: python experiments/groebner-perf-20260924/round11/audit.py

@@ -1,0 +1,33 @@
+diff --git a/src/sage/schemes/elliptic_curves/binary_hardware_codec.pyx b/src/sage/schemes/elliptic_curves/binary_hardware_codec.pyx
+index ec20363..9125e25 100644
+--- a/src/sage/schemes/elliptic_curves/binary_hardware_codec.pyx
++++ b/src/sage/schemes/elliptic_curves/binary_hardware_codec.pyx
+@@ -50,12 +50,22 @@ def pack_points(curve, points, unsigned int words):
+     cdef FiniteField_ntl_gf2eElement x, y
+     for i in range(n):
+         P = items[i]
+-        if not isinstance(P, EllipticCurvePoint_field) or P.curve() is not curve:
+-            raise ValueError('each input must be a Sage point on this curve')
+-        if not P:
+-            zero[i] = 1
+-            continue
+-        coordinates = P.xy()
++        if type(P) is EllipticCurvePoint_finite_field:
++            coordinates = P._coords
++            if P._codomain is not curve:
++                raise ValueError('each input must be a Sage point on this curve')
++            if not coordinates[2]:
++                zero[i] = 1
++                continue
++            if not coordinates[2].is_one():
++                coordinates = P.xy()
++        else:
++            if not isinstance(P, EllipticCurvePoint_field) or P.curve() is not curve:
++                raise ValueError('each input must be a Sage point on this curve')
++            if not P:
++                zero[i] = 1
++                continue
++            coordinates = P.xy()
+         x = coordinates[0]
+         y = coordinates[1]
+         bh_pack_element(&raw[2*i, 0], x.x, 4*words)

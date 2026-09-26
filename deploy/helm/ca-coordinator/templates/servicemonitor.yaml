@@ -1,0 +1,27 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ca-coordinator.fullname" . }}
+  labels:
+    {{- include "ca-coordinator.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ca-coordinator.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+      {{- if include "ca-coordinator.hasToken" . }}
+      # /metrics sits behind the same token as everything else.
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ include "ca-coordinator.tokenSecret" . }}
+          key: {{ .Values.auth.key }}
+      {{- end }}
+{{- end }}

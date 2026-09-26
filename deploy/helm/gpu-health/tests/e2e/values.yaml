@@ -1,0 +1,12 @@
+# The chart as run.sh installs it: the test image and a short load.  run.sh
+# adds the check's environment for each step (the scripted stand-ins, a
+# scenario, and sometimes a stand-in /proc).  The node's real uptime is the CI
+# runner's, so the uptime rule is off except in the step that tests it.
+image:
+  repository: gpu-health
+  tag: e2e
+  pullPolicy: Never
+check:
+  seconds: 3
+  waitSeconds: 30
+  maxUptimeSeconds: 0

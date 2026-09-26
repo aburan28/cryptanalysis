@@ -1,0 +1,27 @@
+name: cloud
+# The Runpod worker fleet and the Modal job runner (cloud/).  Nothing here
+# talks to Runpod, Modal or Cursor; the tests run the job runner locally.
+on:
+  push:
+    paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
+  pull_request:
+    paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests
+        run: python -m unittest discover -s cloud/tests -v
+      - name: shellcheck
+        run: |
+          shellcheck -x cloud/job_runner.sh cloud/worker/*.sh
+          python -c 'import sys; sys.path.insert(0, "cloud"); import fleet; print(fleet.STAGE0)' \
+            > "$RUNNER_TEMP/stage0.sh"
+          shellcheck -s bash "$RUNNER_TEMP/stage0.sh"

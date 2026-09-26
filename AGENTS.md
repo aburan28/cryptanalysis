@@ -10,7 +10,13 @@ they enter a new comparison. **Always** use the candidate and measurement
 rules below when comparing IC variants. A campaign may impose stricter claim
 rules. The [candidate catalog](experiments/ic-candidate-catalog/README.md)
 contains design proposals; its [measurement contract](experiments/ic-candidate-catalog/MEASUREMENT.md)
-specifies the empirical stage record and promotion gates.
+specifies the empirical stage record and promotion gates. The
+[IC benchmark](experiments/ic-bench/README.md) is the reference harness for
+named, fully charged, verified toy-curve runs. It holds the calibrated `rps` unit,
+candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a new
+baseline there when a change is intended. Archive factor bases (record, point set,
+digests) with [fb-archive](experiments/fb-archive/README.md); a recipe-only
+archive keeps `B` null.
 
 ### Three distinct identifiers
 
@@ -46,6 +52,11 @@ A design proposal may use a `Q<number>` catalog ID while exact base points,
 algorithm wiring, or isogeny maps are unresolved. Keep `candidate_id: null`
 and all measured costs null until those gates are satisfied. A proposal ID is
 never an `IC1` result, and a nominal dimension is never an actual `fb` count.
+A measured PDP-stage profile of an exact base without final relation LA or
+target descent (`experiments/pdp-degree-heuristics/`) also keeps
+`candidate_id: null`. Label it `PS1N<n>C<curve-tag>fb<B>PDP<m><solver>h<12hex>`,
+hashing its factor-base and point-decomposition records. Its run ID is
+`<PS1-id>W<workload>R<run>`, and it is never an `IC1` result.
 
 For an isogenous curve, preserve its own immutable curve ID and use the
 [volcano-position and isogeny-walk convention](experiments/ic-candidate-catalog/VOLCANO_NAMING.md).
@@ -69,7 +80,10 @@ There are no separators or zero-padded numbers in an ID. Structural tags
 The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
 Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, and `PDP4root`
-for the compact four-summand S3 root index; `RCwalk`, `RCsample`, `RCdirect`,
+for the compact four-summand S3 root index; `PDP2xl` for a dense Macaulay/XL
+degree scan and `PDP2xlsym` for the same scan over the symmetric-function
+(`e_k` in `V^(k)`) formulation, with the XL or closure mode in the manifest;
+`RCwalk`, `RCsample`, `RCdirect`,
 and `RCguided` for pivot-guided relation collection;
 `LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
 `TDdirect`, `TDpdp`, `TDdescent` for target handling; `ISO0` for no isogeny
@@ -191,3 +205,22 @@ for rates and paired costs. Planted decompositions are correctness controls,
 not estimates of natural relation yield. An unverified isogeny neighbor or
 conductor guess is a proposal only: `ISO1` requires an explicit verified map,
 ordered edge links, subgroup/log transport, and charged route costs.
+
+## Remote compute
+
+A cloud-agent VM has 4 CPUs, 15 GB and no GPU. Run bigger work, such as
+multi-core sweeps, Sage/F4/SAT grids, long test suites or CUDA, with the
+tools in [`cloud/`](cloud/README.md). Both run the command on a copy of the
+working tree and copy the results back into the checkout:
+
+- `cloud/modal_run.py run [--image cpu|cuda|sage] [--cpu N] [--memory GB]
+  [--gpu TYPE] [--shards K] [--out PATH | --changed] [--detach] -- CMD` runs
+  on Modal and is billed per second.
+- `cloud/fleet.py run rp-cpu-1|rp-gpu-1 [--out PATH | --changed] -- CMD`
+  runs on the Runpod pods; `cloud/fleet.py status` and `up NAME` show and
+  start them.
+
+If `FLEET_WORKER_NAME` is set, you are already on a fleet pod: run locally,
+up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
+credentials into the tree, and copy the hardware from each shard's
+`status.json` into the run record.

@@ -1,0 +1,19 @@
+{
+  "status": "frozen before instrumenting the native bridge",
+  "objective": "Attribute the measured packed Metal host gap to allocation, host input copy, command setup, commit/wait, and host output copy without changing the installed Sage library",
+  "baseline_source_sha256": {
+    "binary_hardware_cpu.cpp": "54539695631aa8a8398c223ca853e7e3e3468d1d0b8cb450287f0f4a4783f01a",
+    "binary_hardware_metal.mm": "6b51818209aa01b889dcd65fcdd26a87f2bc4dd0f75c4b256a012148f67a33bd",
+    "binary_hardware_native.h": "9bec28b07a60bde3cfc20220a69ea471104b167a5f2512c21a3b99c0dbab76c9"
+  },
+  "installed_module_sha256": "a895cf65a28f52e1b7703a7121213b394f9cb814338bdfe104dd48fa728d2de0",
+  "installed_native_sha256": "7ae8510c922b5ba3ee127c6b56333bab5a742fc049fd1b3b37ffa4c4d1ef6a8e",
+  "cases": [
+    {"degree": 131, "points": 1024, "power": 65, "seed": 2026092601},
+    {"degree": 131, "points": 4096, "power": 65, "seed": 2026092602},
+    {"degree": 131, "points": 16384, "power": 65, "seed": 2026092603}
+  ],
+  "measurement": "Twelve alternating complete Sage-point calls of installed Metal and standalone instrumented bridge, exact native Sage output check every call; report internal bridge phases and peak RSS",
+  "decision": "Choose the largest reproducible host phase for one implementation experiment; retain failed or noisy pilot receipts",
+  "resource_budget": {"per_cell_seconds": 300, "working_set_bytes": 536870912, "cloud_spend": 0}
+}

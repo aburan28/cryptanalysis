@@ -1,0 +1,224 @@
+\section{Pollard rho}
+\label{sec:rho}
+
+Pollard rho is the reference. This section records the walk this
+library actually runs, the constants it measures, and the GPU and
+fleet machinery that parallelise it without changing $S$.
+
+\subsection{The walk}
+\label{sec:rho-walk}
+
+The solver is Teske's $r$-adding walk~\cite{teske2001}. Multipliers
+$M_i=\alpha_i G+\beta_i H$ are drawn once per job; the state is
+$(Y,a,b)$ with $Y=aG+bH$; a step is $Y\leftarrow Y+M_{\mathrm{idx}(Y)}$.
+Distinguished points --- hashes with \texttt{dp\_bits} trailing zero
+bits --- are stored with their $(a,b)$ in a shared table (van
+Oorschot--Wiener~\cite{vanoorschot1999}). A second arrival with a
+different $(a,b)$ gives $(b-b')x=a'-a\pmod n$. For composite $n$ the
+congruence is solved by gcd and every candidate is
+verified.\art{src/rho.c}\art{docs/ALGORITHMS.md, ``Pollard rho''}
+
+$r$, the number of walks per thread $W$, and \texttt{dp\_bits} are
+chosen automatically from $n$ and the thread count so that neither the
+multiplier table nor the walk start-ups (each about $3\log_2 n$
+operations) exceed a small fraction of $\sqrt{n}$, and so that the
+expected number of distinguished points is about 32 per walk, bounded
+above at $2^{24}$ table entries. Walks that run $24\cdot
+2^{\texttt{dp\_bits}}$ steps without a distinguished point are
+restarted.
+
+Threads run batches of $W$ walks; each batch step is one
+\texttt{ca\_group\_batch\_op}, Montgomery's simultaneous
+inversion~\cite{montgomery1987}. On one core an affine curve addition
+costs $232.2$~ns with a private inversion and $21.8$~ns in batches of
+$256$ ($45.88$~Mops/s), a $10.6\times$
+saving.\art{docs/BENCHMARKS.md, ``Raw group operation throughput''} A
+$61$-bit $(\ZZ/p\ZZ)^*$ Montgomery multiply is $5.9$~ns
+($169.4$~Mops/s) on the same host.
+
+\subsection{Negation map and fruitless cycles}
+
+On elliptic curves every point is replaced by the canonical member of
+$\{Y,-Y\}$ (the one with the smaller Montgomery $y$), negating $(a,b)$
+when needed. The search space shrinks by $2$ and the expected cost by
+$\sqrt{2}$. The walk on classes is well defined because $\mathrm{idx}$
+is evaluated on the canonical form.
+
+Fruitless cycles are handled as in Bernstein--Lange--Schwabe~\cite{bls2011}:
+\begin{itemize}[leftmargin=1.2em]
+\item \emph{2-cycles.} The look-ahead rule ``if $\mathrm{idx}(Y+M_i)=i$
+  use $M_{i+1}$ instead'' (iterated) keeps the walk a deterministic
+  function of $Y$ and reduces the 2-cycle rate from $1/(2r)$ to about
+  $1/(2r)^2$.
+\item \emph{Longer cycles.} A sliding window compares each new point
+  with a point saved every 64 steps. On a hit the cycle is traversed
+  once, its minimum (by hash) found, and the walk escapes
+  deterministically to $2\cdot\min$. Because the escape depends only
+  on the cycle, two walks that merged inside a cycle stay merged.
+\end{itemize}
+With the negation map, $r$ is allowed to grow to $1024$; without it
+the default is $32$.
+
+\subsection{Measured $S$}
+\label{sec:rho-S}
+
+Table~\ref{tab:rho-s} is the whole-group table of
+\texttt{docs/BENCHMARKS.md}: prime-order $(\ZZ/p\ZZ)^*$ subgroups of
+safe primes and prime-order curves, five instances per row, $S$
+counting every thread's operations. With five repetitions the rho and
+kangaroo rows carry about $\pm 25\%$ statistical noise (the standard
+deviation of one run is about half its mean), so the honest summary is
+that rho, kangaroo and grumpy giants all sit at $S\sim 1.2$--$1.8$,
+BSGS at $1.5$, as theory says.\art{docs/BENCHMARKS.md, ``Whole-group discrete logarithm''}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Whole-group discrete logarithm, $S=\mathrm{ops}/\sqrt{n}$,
+  5 instances per row, 4 threads for \texttt{rho-T}. From
+  \texttt{ca\_bench generic --threads 4}.}
+\label{tab:rho-s}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+grp & bits & BSGS & rho-1 & kangaroo & grumpy \\
+\midrule
+$\ZZ_p^*$ & 24 & 1.496 & 2.066 & 1.751 & 1.242 \\
+$E(\FF_p)$ & 24 & 1.496 & 1.603 & 1.886 & 1.211 \\
+$\ZZ_p^*$ & 32 & 1.575 & 1.256 & 1.412 & 1.365 \\
+$E(\FF_p)$ & 32 & 1.575 & 0.791 & 2.174 & 1.514 \\
+$\ZZ_p^*$ & 36 & 1.441 & 1.563 & 1.691 & 1.351 \\
+$E(\FF_p)$ & 36 & 1.441 & 1.283 & 1.768 & 1.413 \\
+$\ZZ_p^*$ & 40 & 1.573 & 0.887 & 1.795 & 1.393 \\
+$E(\FF_p)$ & 40 & 1.573 & 1.713 & 1.220 & 1.251 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+One-thread rho on $32$-bit $\ZZ_p^*$ is $S=1.256$; on curves with the
+negation map the 24--40-bit span is $0.791$--$1.713$. The wall-clock
+column of the source table (not reproduced) shows the structural
+facts: table-based methods slow down per operation as the table grows,
+rho stays at $40$--$100$~Mops/s in $\ZZ_p^*$ and $10$--$20$~Mops/s on
+curves, and kangaroo is the fastest per operation because it stores
+almost nothing.
+
+Interval logarithms of width $2^w$ inside a $\sim 2^{60}$ ($\ZZ_p^*$)
+or $\sim 2^{56}$ (curve) group sit at $S=\mathrm{ops}/\sqrt{w}$ of
+$1.5$--$2.8$. A separate 400-instance run of grumpy giants gives
+$S=1.78$ for intervals and $1.18$ for whole groups; the five-instance
+rows scatter around those
+values.\art{docs/ALGORITHMS.md, ``Two grumpy giants and a baby''}
+
+\subsection{Fitted exponents}
+
+$S$ assumes the exponent is $1/2$. The library also measures it.
+\texttt{ca\_bench complexity --bits 20,24,28,32,36 --reps 5} fits
+$\mathrm{cost}\sim C\cdot N^{\alpha}$ in log-log space and reports
+$\alpha$ next to the theoretical exponent
+(Table~\ref{tab:exponents}).\art{docs/BENCHMARKS.md, ``Measured time complexity''}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Fitted exponents, five sizes, five repetitions. The last
+  column is $\mathrm{mean}(\mathrm{cost}/N^{\mathrm{theory}})$, the
+  familiar $S$, meaningful because the fitted $\alpha$ confirms the
+  exponent.}
+\label{tab:exponents}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+algorithm & theory & $\alpha$ & $R^2$ & const \\
+\midrule
+BSGS ($\ZZ_p^*$) & $N^{0.500}$ & 0.487 & 0.9993 & 1.508 \\
+rho ($\ZZ_p^*$) & $N^{0.500}$ & 0.477 & 0.9903 & 1.781 \\
+kangaroo ($\ZZ_p^*$) & $N^{0.500}$ & 0.526 & 0.9910 & 1.843 \\
+grumpy ($\ZZ_p^*$) & $N^{0.500}$ & 0.502 & 0.9966 & 1.264 \\
+precomp build ($\ZZ_p^*$) & $N^{0.667}$ & 0.647 & 0.9954 & 1.192 \\
+precomp online ($\ZZ_p^*$) & $N^{0.333}$ & 0.347 & 0.8768 & 2.781 \\
+BSGS (EC) & $N^{0.500}$ & 0.487 & 0.9993 & 1.508 \\
+rho (EC) & $N^{0.500}$ & 0.428 & 0.9845 & 1.572 \\
+kangaroo (EC) & $N^{0.500}$ & 0.494 & 0.9995 & 1.622 \\
+grumpy (EC) & $N^{0.500}$ & 0.480 & 0.9956 & 1.128 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The square-root methods land at $\alpha\sim 0.5$ and the
+precomputation phases at $0.667$ and $0.333$. The EC-rho fit
+$\alpha=0.428$ is a finite-size artefact (negation-map savings and
+walk-start constants on 20--36-bit curves), not a claim that rho
+beats $N^{1/2}$. Index calculus is absent from the table on purpose:
+it is $L_p[1/2]$, so no single power-law describes it
+(Section~\ref{sec:ic-mult}).
+
+\subsection{GPU kernel, emulator-verified}
+\label{sec:rho-gpu}
+
+The same walk runs as a CUDA kernel: tens of thousands of walks, one
+thread owning eight of them that share a single Fermat inversion
+(\texttt{CA\_GPU\_W}${}=8$). A private inversion would be about $99$
+multiplications per curve step; the batched step is about $18$, a
+$5.5\times$ arithmetic saving.\art{docs/GPU.md}
+
+The device code is simultaneously valid CUDA~C++ and valid C11. A host
+emulator executes the identical kernel body one thread at a time, so
+the algorithm is testable without a GPU. Table~\ref{tab:gpu-emu} is
+that emulator: operation counts are portable, seconds are not a GPU
+measurement, and no row is a device-throughput
+result.\art{docs/BENCHMARKS.md, ``GPU rho kernel''}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Host-emulator GPU rho versus CPU rho. $S$ does not grow with
+  the walk count: van Oorschot--Wiener parallelisation is linear in
+  the number of walkers. 3 instances per row.}
+\label{tab:gpu-emu}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+grp & bits & CPU $S$ & GPU-emu $S$ & walks \\
+\midrule
+$\ZZ_p^*$ & 24 & 1.849 & 1.895 & 8 \\
+$E(\FF_p)$ & 24 & 1.707 & 1.844 & 8 \\
+$\ZZ_p^*$ & 28 & 2.578 & 1.990 & 8 \\
+$E(\FF_p)$ & 28 & 2.033 & 1.504 & 16 \\
+$\ZZ_p^*$ & 32 & 2.045 & 1.262 & 40 \\
+$E(\FF_p)$ & 32 & 0.873 & 1.857 & 56 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both solvers sit at $S\sim 1.3$--$2.6$. A regression --- an $S$ that
+grows with the walk count --- would mean the distinguished-point
+density or the restart policy is wrong, which is what this row
+watches. Kernel resources from \texttt{ptxas} 12.9, no GPU required:
+72 registers and $736$~B local memory per thread on sm\_70, 64
+registers and the same local memory on sm\_80/89/90, zero spills on
+all four.\art{docs/GPU.md, resource table}
+
+The host never reads walk state. Distinguished points are written
+through \texttt{atomicAdd}; the host verifies every candidate with a
+scalar multiplication before returning it.
+
+\subsection{Fleet protocol}
+\label{sec:rho-fleet}
+
+\texttt{ca\_coord} divides one instance across machines that cannot
+reach each other. Agents in private subnets dial a coordinator URL;
+the hub pushes distinguished points and the solution back down the
+socket the agent opened. What is shared is van Oorschot--Wiener's
+observation that parallel rho divides by start point, not by search
+space: every agent walks the same function (the branch table is
+derived from the job id) and reports only distinguished points. What
+is partitioned is the walker index space. Every fact on the wire is
+verifiable from the job alone: a check-in carries $({\mathrm{walker}},
+{\mathrm{steps}}, Y, a, b)$ with $aG+bH=Y$, which costs the receiver
+two scalar multiplications to check against the $2^{\texttt{dp\_bits}}$
+steps it stands for. The hub is a rendezvous, not an
+authority.\art{include/cryptanalysis/ca_coord.h}
+
+The ECC2K-130 campaign of Section~\ref{sec:campaign} is the same
+protocol specialised to a Koblitz iteration: 16-bit \texttt{--run-id}
+spaces, 32-byte distinguished-point records, checkpointed iteration
+totals rather than point counts for rate estimates, and a public
+dashboard that publishes aggregates only.

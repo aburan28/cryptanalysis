@@ -1,0 +1,89 @@
+{
+  "status": "frozen before installed binary timing",
+  "step_id": "sage-binary-hardware-004",
+  "scope": "public synthetic binary/Koblitz Frobenius maps, no relation search or logarithm extraction",
+  "incumbent": "built Sage 10.10.rc0 binary_batch.frobenius_points, source d306dfc5fb039d0e061820cb42113dfd36332bfa6582a943bab2f2205b1d7fe1",
+  "mechanism": "Precompute the exact GF(2)-linear Frobenius map as byte lookup tables; use the same uint32 XOR mapping on portable C++ CPU, Metal, CUDA and OpenCL adapters. Preserve a Sage fallback. Separate packed-buffer throughput from complete Sage-point API cost.",
+  "invariants": [
+    "identical field modulus and polynomial-basis encoding",
+    "exact point outputs in input order",
+    "infinity and duplicate positions preserved",
+    "negative powers reduced modulo degree",
+    "same completed output count",
+    "unsupported devices must fail explicitly or use the declared CPU fallback"
+  ],
+  "counter_changes": [
+    "repeated field squarings replaced by precomputed linear-map lookups; table construction is charged"
+  ],
+  "hardware": {
+    "local": [
+      "ARM64 CPU",
+      "Apple M4 Pro Metal GPU"
+    ],
+    "requires_external_validation": [
+      "physical x86-64 CPU",
+      "NVIDIA CUDA GPU",
+      "AMD OpenCL GPU",
+      "Intel OpenCL GPU"
+    ]
+  },
+  "primary_cases": {
+    "degrees": [
+      19,
+      67,
+      131
+    ],
+    "points": [
+      1024,
+      16384
+    ],
+    "powers": [
+      1,
+      7,
+      65
+    ],
+    "seed": 2026092501
+  },
+  "confirmation_cases": {
+    "degrees": [
+      31,
+      131
+    ],
+    "points": [
+      4096
+    ],
+    "powers": [
+      7,
+      65
+    ],
+    "seed": 2026092502
+  },
+  "measurement": "12 balanced alternating rounds; exact output verification charged in primary full-API wall time. Record plan/table/backend construction separately and cold setup plus first call. Packed-buffer comparison includes dispatch and host/device copies. Kernel-only time is diagnostic. Fresh worker for each cell; preserve every result and failure.",
+  "criteria_version": "binary-hardware-v1: operation-level adaptation of the repository measurement discipline, not a GNFS gate",
+  "criteria": "No automatic GPU promotion in this first step. Report per-cell gains only if median speedup exceeds 1.02 and paired-bootstrap 95% lower bound exceeds 1; report regressions and cold break-even. An aggregate or cross-device claim requires successful full-API confirmation on the named devices. No universal speedup claim from portable source or a microkernel.",
+  "budgets": {
+    "cloud_spend": 0,
+    "gpu_working_bytes_max": 536870912,
+    "host_bytes_max": 2147483648,
+    "per_worker_timeout_seconds": 300,
+    "cpu_threads": 1
+  },
+  "rejection_conditions": [
+    "incorrect output",
+    "missing output",
+    "crash",
+    "timeout",
+    "field representation mismatch",
+    "unmeasured hardware reported as tested"
+  ],
+  "candidate_hash": "8536968a324539fa2df075c3c2d222c136071b1277c766d15279657772ebe83e",
+  "supersedes": "run-002 is complete prototype evidence and preserved",
+  "change": "Same source kernels and criteria; measure Meson-installed native library and codec with normal package imports and fresh seeds. Installed import failure corrected with codec fast_getattr=False; arithmetic and cases unchanged. intent-v3 never reached timing.",
+  "source_sha256": {
+    "binary_hardware_cpu.cpp": "54539695631aa8a8398c223ca853e7e3e3468d1d0b8cb450287f0f4a4783f01a",
+    "binary_hardware_codec.pyx": "3f94b8e434bfb2f788d4960ad35e0b0f1613cae64682a9ca6c0c945e83835990",
+    "binary_hardware_metal.mm": "6b51818209aa01b889dcd65fcdd26a87f2bc4dd0f75c4b256a012148f67a33bd",
+    "binary_hardware.py": "8536968a324539fa2df075c3c2d222c136071b1277c766d15279657772ebe83e",
+    "binary_hardware_native.h": "9bec28b07a60bde3cfc20220a69ea471104b167a5f2512c21a3b99c0dbab76c9"
+  }
+}

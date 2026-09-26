@@ -1,0 +1,45 @@
+name: Packed ANF query boundary
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/packed-anf.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/packed-anf.yml'
+permissions:
+  contents: read
+concurrency:
+  group: packed-anf-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  packed:
+    name: Packed coefficients (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, cxx: g++}
+          - {os: macos-latest, cxx: clang++}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore frozen comparison inputs
+        run: python experiments/groebner-perf-20260924/unpack_evidence.py
+      - name: Build original baseline and packed libraries
+        run: |
+          python experiments/groebner-perf-20260924/build_portable.py
+          python experiments/groebner-perf-20260924/round4/build.py
+      - name: Packed input, sanitizer, workspace, equation and curve checks
+        run: python experiments/groebner-perf-20260924/round4/test_packed.py -v
+      - name: Verify measured source bytes and paired correctness records
+        run: python experiments/groebner-perf-20260924/round4/audit.py

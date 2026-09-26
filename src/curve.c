@@ -181,6 +181,17 @@ static const curve_entry CURVES[] = {
     {"glv-j0-26", 67108933, 0, 7, 16773703},    {"glv-j1728-26", 67108933, 6, 0, 6712457},
     {"glv-j0-32", 4294967377, 0, 15, 23729779}, {"glv-j1728-32", 4294967377, 3, 0, 37025581},
     {"generic-26", 67108879, 2, 3, 3355777},
+    /* Open instances from challenges/elliptic.  Subgroup orders stay at most
+     * ~2^16 so `ca_bench glv` (20 rho walks per name) finishes with the
+     * existing curves.  Larger rows live in challenges/elliptic/c_registry.txt. */
+    {"pf-anomalous-b9", 757, 537, 465, 757},
+    {"pf-generic-b7", 191, 139, 97, 31},
+    {"pf-ssj0-b7", 227, 0, 1, 228},
+    {"pf-ssj1728-b7", 227, 1, 0, 228},
+    {"pf-mov-b15", 41609, 0, 1, 41610},
+    {"pf-twist-smooth-b19", 778579, 603144, 500010, 97},
+    {"pf-j0-twist-b27", 161882863, 0, 27, 433},
+    {"volcano-l2-h3-p73-d3-floor", 73, 37, 49, 80},
 };
 
 ca_status ca_curve_by_name(const char *name, uint64_t *p, uint64_t *a, uint64_t *b, uint64_t *order)
@@ -487,6 +498,8 @@ ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *
         info->lambda = g->endo_lambda;
         info->rho_speedup = sqrt((double)info->aut_order);
     }
+    if (g->order && !ca_check_members(g, base, target, g->order, "glv rho"))
+        return CA_ERR_NOT_FOUND;
     if (g->kind == CA_GROUP_EC && g->endo_kind != 0)
         return glv_rho_solve(g, base, target, seed, x, st);
     ca_rho_params rp;
