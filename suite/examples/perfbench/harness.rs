@@ -143,6 +143,22 @@ impl Fp {
     }
 }
 
+/// Carries the workload into `ThreadPool::install`, which demands `Send`.
+struct OnThisThread<'a>(&'a mut Box<dyn Workload>);
+
+impl<'a> OnThisThread<'a> {
+    // A method, so the closure captures the whole wrapper and not the
+    // non-`Send` field alone (edition 2021 disjoint capture).
+    fn into_inner(self) -> &'a mut Box<dyn Workload> {
+        self.0
+    }
+}
+
+// SAFETY: the pool is built with `use_current_thread`, so `install` called
+// from this thread runs its closure inline on this thread; the workload
+// never leaves the thread that owns it.
+unsafe impl Send for OnThisThread<'_> {}
+
 /// The region `perfindex.py instr` restricts callgrind to
 /// (`--toggle-collect=*perfbench_measured_region*`).
 #[inline(never)]
@@ -249,11 +265,25 @@ fn measure(k: &Kernel, o: &Options) {
     let setup_ns = setup_start.elapsed().as_nanos() as u64;
 
     if o.instr {
-        // One warm run outside the region, one measured run inside it.
-        w.prepare();
-        let fp0 = black_box(w.run());
-        w.prepare();
-        let fp = perfbench_measured_region(w.as_mut());
+        // One warm run outside the region, one measured run inside it, both
+        // on a one-thread rayon pool whose only worker is this thread: work a
+        // kernel hands to rayon then runs inline under
+        // `perfbench_measured_region`, where callgrind counts it, instead of
+        // on a pool worker whose stack never enters the region.
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .use_current_thread()
+            .build()
+            .expect("one-thread rayon pool");
+        let job = OnThisThread(&mut w);
+        let (fp0, fp) = pool.install(move || {
+            let w = job.into_inner();
+            w.prepare();
+            let fp0 = black_box(w.run());
+            w.prepare();
+            (fp0, perfbench_measured_region(w.as_mut()))
+        });
+        drop(pool);
         assert_eq!(fp0, fp, "{}: fingerprint changed between runs", k.id);
         println!(
             "{{\"id\":{},\"area\":{},\"fingerprint\":\"{:016x}\",\"setup_ns\":{}}}",
