@@ -170,8 +170,10 @@ working tree and copy the results back into the checkout:
 - `cloud/fleet.py run rp-cpu-1|rp-gpu-1 [--out PATH | --changed] -- CMD`
   runs on the Runpod pods; `cloud/fleet.py status` and `up NAME` show and
   start them.
+- For whole agents on bigger machines, `cloud/modal_worker.py up NAME [--gpu
+  TYPE]` starts a Cursor worker on Modal, and `status` shows it.
 
-If `FLEET_WORKER_NAME` is set, you are already on a fleet pod: run locally,
-up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
+If `FLEET_WORKER_NAME` is set, you are already on a fleet machine (a Runpod
+pod or a Modal worker): run locally, up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
 credentials into the tree, and copy the hardware from each shard's
 `status.json` into the run record.

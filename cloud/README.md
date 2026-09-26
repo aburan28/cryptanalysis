@@ -1,13 +1,14 @@
 # Cloud compute for agents
 
-A cloud-agent VM has 4 CPUs, 15 GB and no GPU. This directory provides two
-larger places to run work, and one runner shared by both:
+A cloud-agent VM has 4 CPUs, 15 GB and no GPU. This directory provides larger
+places to run work:
 
 | Need | Use | Billing |
 | --- | --- | --- |
 | An agent that *lives* on a big CPU or GPU box: long interactive work, CUDA development, warm build trees | a **Cursor worker on a Runpod pod** (`fleet.py`) | per hour while the pod runs; stops itself when idle |
+| The same, when Runpod is out of credit or more machines are needed at once | a **Cursor worker on Modal** (`modal_worker.py`) | per second at Modal's function rates; stops itself when idle |
 | One heavy command from a small VM, run next to an agent's session | `fleet.py run rp-cpu-1 -- CMD` | the pod's hourly rate (already running) |
-| Burst or fan-out: 1-100 containers, any core count, any GPU type, then back to zero | **Modal** (`modal_run.py`) | per second of container time |
+| Burst or fan-out: 1-100 containers, any core count, any GPU type, then back to zero | **Modal** (`modal_run.py`) | per second of sandbox time (3x the function rate) |
 
 Everything here is Python standard library plus the `modal` client, and needs
 no local GPU or Docker.
@@ -19,9 +20,9 @@ cloud agent receives them as environment variables:
 
 | Secret | For | Where to get it |
 | --- | --- | --- |
-| `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | `modal_run.py` | [modal.com/settings/tokens](https://modal.com/settings/tokens) |
+| `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | `modal_run.py`, `modal_worker.py` | [modal.com/settings/tokens](https://modal.com/settings/tokens) |
 | `RUNPOD_API_KEY` | `fleet.py` | [Runpod console -> Settings -> API keys](https://console.runpod.io/user/settings) |
-| `CURSOR_API_KEY` | `fleet.py up`, `rekey`, `agent` | [cursor.com/dashboard -> API keys](https://cursor.com/dashboard) (a *user* key) |
+| `CURSOR_API_KEY` (optional) | `fleet.py up`, `rekey`, `agent`; without it workers wait for a sign-in link | [cursor.com/dashboard -> API keys](https://cursor.com/dashboard) (a *user* key) |
 | `RUNPOD_SSH_PRIVATE_KEY` | `fleet.py ssh`, `logs`, `run`, `jobs` | the private half of an SSH key registered in the Runpod console |
 | `GITHUB_TOKEN` (optional) | lets agents on the pods push branches | a fine-grained token with contents and pull-request write on this repo |
 
@@ -50,9 +51,13 @@ on one:
 - **From another agent or a script**:
   `cloud/fleet.py agent rp-cpu-1 "run the pdp-scaling m=5 grid and commit the CSVs" --wait`.
 
-A worker belongs to the Cursor user whose `CURSOR_API_KEY` registered it, and
-only that user's agents can target it. To move the workers to another
-account, set that account's key and run `cloud/fleet.py rekey rp-cpu-1 rp-gpu-1`.
+A worker belongs to the Cursor user who signed it in, and only that user's
+agents can target it. `fleet.py up` with `CURSOR_API_KEY` set signs in with
+that key. Without it, the worker runs `agent login` and waits;
+`cloud/fleet.py login NAME` prints the link, and whoever opens it owns the
+worker. To move a keyed worker to another account, either run
+`cloud/fleet.py login --switch NAME` and open the link as that account, or set
+that account's key and run `cloud/fleet.py rekey NAME`.
 
 Agents on the pods push with `GITHUB_TOKEN` when it was set at `up` or `rekey`
 time. Without it they can commit, but they cannot push.
@@ -133,6 +138,50 @@ On `rp-gpu-1`, `nproc` reports the host's 64 cores; the pod's share is
 filesystem: unpacking there is about 40x slower and building about 2x slower
 than on `$FLEET_SCRATCH`, so build out of tree there
 (`cmake -B $FLEET_SCRATCH/build`).
+
+## Cursor workers on Modal
+
+[`modal_worker.py`](modal_worker.py) runs the same kind of Cursor worker as
+the pods, as a call of a Modal function in the app `cryptanalysis-workers`.
+Each call does three things:
+
+1. clones this repository into `/root/cryptanalysis`, in an image with the
+   `cpu` or `cuda` toolchain of `modal_run.py`;
+2. signs in and runs `agent worker --name NAME`;
+3. returns after `--idle-minutes` without an agent session, CPU or GPU load,
+   or edits, or after `--hours` (at most 24).
+
+```sh
+cloud/modal_worker.py up modal-cpu-1 modal-cpu-2 --cpu 16 --memory 64 --idle-minutes 120
+cloud/modal_worker.py up modal-gpu-1 --gpu RTX-PRO-6000 --cpu 4 --memory 32 --idle-minutes 60
+cloud/modal_worker.py status           # sign-in state, each worker's state and $/hr
+cloud/modal_worker.py login            # the sign-in page
+cloud/modal_worker.py logs modal-cpu-1
+cloud/modal_worker.py down modal-gpu-1 # or --all, which also ends a pending sign-in
+```
+
+At Modal's list prices a 16-core, 64 GiB worker costs about $1.27/hr. A
+4-core RTX PRO 6000 worker costs about $3.48/hr. Modal counts physical cores,
+so 16 cores is 32 vCPUs.
+
+**Signing in.** If the Modal secret `cursor-worker` holds a `CURSOR_API_KEY`,
+the workers use it. Otherwise:
+
+1. `up` queues the workers and starts `signin`, a quarter-core call (about
+   $0.02/hr) that keeps an `agent login` link live for up to 24 hours. Each
+   link lasts about 24 minutes, and `signin` replaces it when it lapses.
+2. `up` prints a sign-in page, `https://a-buran28--cryptanalysis-signin.modal.run?k=<token>`,
+   which always redirects to the live link. Open it while signed in to
+   cursor.com as the account that should own the workers.
+3. The sign-in is saved on the volume `cryptanalysis-workers` and the queued
+   workers launch. Later launches reuse the saved sign-in and start at once.
+
+The token keeps other people off the page. `login --new-token` replaces it.
+
+A worker keeps its checkout on local disk. Before it stops, any uncommitted or
+unpushed work is saved to `/persist/<name>/unsaved-*.tar.gz` on the volume.
+Modal may occasionally preempt a function; the call then restarts on a new
+container and reuses the saved sign-in.
 
 ## Modal jobs
 
