@@ -2629,6 +2629,8 @@ mod tests {
         }
         let (sol, stats) = solve_two_term_system(m, &rows, r);
         assert_eq!(stats.inconsistent_components, 0);
+        assert!(stats.rank <= m);
+        assert!(stats.rank >= stats.solved_columns.saturating_sub(stats.determined_components));
         assert!(stats.solved_columns > m * 8 / 10, "{stats:?}");
         for (o, v) in sol.iter().enumerate() {
             if let Some(v) = v {
@@ -2658,6 +2660,7 @@ mod tests {
         ];
         let (sol, stats) = solve_two_term_system(2, &rows, r);
         assert_eq!(stats.determined_components, 0);
+        assert_eq!(stats.rank, 1);
         assert!(sol.iter().all(Option::is_none));
         // x0 − x1 ≡ 2 alongside pins both: 2 x0 ≡ 7.
         let mut rows = rows;
@@ -2665,7 +2668,8 @@ mod tests {
             terms: vec![(0, 1), (1, r - 1)],
             rhs: 2,
         });
-        let (sol, _) = solve_two_term_system(2, &rows, r);
+        let (sol, stats) = solve_two_term_system(2, &rows, r);
+        assert_eq!(stats.rank, 2);
         let x0 = mul_r(7, inv_r(2, r).unwrap(), r);
         assert_eq!(sol[0], Some(x0));
         assert_eq!(sol[1], Some(sub_r(5, x0, r)));
