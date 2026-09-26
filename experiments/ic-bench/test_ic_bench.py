@@ -24,6 +24,7 @@ import amortize  # noqa: E402
 import bench  # noqa: E402
 import compare  # noqa: E402
 import opcount  # noqa: E402
+import prime_bridge  # noqa: E402
 from calibrate import weights_for  # noqa: E402
 
 CALIBRATION = json.loads(bench.CALIBRATION.read_text())
@@ -171,6 +172,66 @@ def row(cell="c1", total=1000, cid="IC1a", status="complete", verified="True", *
          "ops_pdp": str(total), "calibration_id": "ICBCAL1hx"}
     r.update(kw)
     return r
+
+
+
+class PrimeBridgeTest(unittest.TestCase):
+    def report(self):
+        ds = [
+            {"expected": str(11+i), "target": {"x": str(20+i), "y": str(30+i)},
+             "recovered": str(11+i), "verified": True, "ops": 40+i,
+             "oracle_ops": 30+i, "probe_ops": 10, "trials": 2+i,
+             "through_large_prime": True, "learned": 3, "restarts": 0, "seconds": 0.001}
+            for i in range(4)
+        ]
+        return {
+            "schema_version": 1, "operation": "prime", "status": "complete", "solver": "orbit",
+            "curve_type": "j0",
+            "instance": {"field_bits": 18, "p": "262147", "a": "0", "b": "7",
+                "group_order": "262148", "cofactor": 4, "subgroup_order": "65537",
+                "generator": {"x": "1", "y": "2"},
+                "order_certificate": {"method": "test", "hasse_interval": ["1","2"], "bsgs_steps": 1},
+                "endomorphism": {"automorphism_order": 6}},
+            "configuration": {"solver": "orbit", "orbits_requested": 0, "width": 2.0,
+                "orbits_per_target": 0.5, "relations_per_orbit": 1.5, "large_primes": True,
+                "learn": True, "max_ops": 100000, "max_descent_ops": 10000,
+                "rho_max_steps": 0, "skip_rho": False, "seed": 1},
+            "factor_base": {"orbits": 8, "points": 48, "automorphism_order": 6,
+                "certified_orbits": 8, "draws": 20, "sizing": "batch",
+                "orbits_per_target": 0.5, "width": 2.0},
+            "logs": {"collection": "large_primes", "trials": 20, "relations": 12,
+                "rank": 8, "oracle_ops": 900, "probe_ops": 100, "seconds": 0.01},
+            "descent": {"verified": 4, "mean_ops": 41.5, "total_ops": 166, "per_target": ds},
+            "rho": {"verified": 4, "precompute_ops": 100, "mean_steps": 300.0,
+                "mean_setup_ops": 55.0, "mean_ops": 355.0, "expected_steps": 321.0,
+                "expected_steps_folded": 131.0, "per_target": []},
+            "vs_rho": {"whole_process_vs_batch_rho": {"rho_ops_expected": 1000.0,
+                "rho_ops_expected_folded": 500.0}},
+            "elapsed_seconds": 0.02, "resources": {"peak_rss_bytes": 12345},
+            "software": {"version": "0.1.0", "binary_blake3": "a"*64, "git_commit": "b"*40},
+        }
+
+    def test_prime_receipt_satisfies_common_contract(self):
+        import analyze
+        out = prime_bridge.normalize(self.report(), host="test")
+        rec = out["receipt"]
+        analyze.validate_run(copy.deepcopy(rec))
+        self.assertTrue(rec["candidate_id"].startswith("IC1P18Cj0fb48PDP2orbitRClpLAgraphTDlearnISO0h"))
+        self.assertEqual(rec["operation_unit"], "prime_group_operation")
+        self.assertEqual(rec["total_operations"], 1166)
+        self.assertEqual(rec["counts"]["final_rank"], 8)
+        self.assertEqual(rec["warm"]["prefixes"][-1]["targets"], 4)
+        self.assertEqual(rec["warm"]["prefixes"][-1]["ic_operations"], 1166)
+        self.assertEqual(rec["descents"][0]["target"], {"x": "20", "y": "30"})
+
+    def test_prime_candidate_and_workload_are_deterministic(self):
+        a = prime_bridge.normalize(self.report(), host="a")
+        b = prime_bridge.normalize(self.report(), host="b")
+        self.assertEqual(a["manifest"], b["manifest"])
+        self.assertEqual(a["workload"], b["workload"])
+        self.assertEqual(a["receipt"]["candidate_id"], b["receipt"]["candidate_id"])
+        self.assertEqual(a["receipt"]["workload_id"], b["receipt"]["workload_id"])
+        self.assertNotEqual(a["receipt"]["provenance"]["host_id"], b["receipt"]["provenance"]["host_id"])
 
 
 class CompareTest(unittest.TestCase):
