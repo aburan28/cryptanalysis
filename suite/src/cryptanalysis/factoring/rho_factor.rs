@@ -171,6 +171,117 @@ fn brent_u64(n: u64, c: u64, max_iter: u64, batch: u64, iters: &mut u64) -> Opti
 }
 
 /// One Brent walk with constant `c` over big integers.
+/// `a · b` as a 256-bit `(high, low)` pair.
+#[inline]
+fn mul_wide(a: u128, b: u128) -> (u128, u128) {
+    let (a0, a1) = (a as u64 as u128, a >> 64);
+    let (b0, b1) = (b as u64 as u128, b >> 64);
+    let (p00, p01, p10, p11) = (a0 * b0, a0 * b1, a1 * b0, a1 * b1);
+    let mid = (p00 >> 64) + (p01 as u64 as u128) + (p10 as u64 as u128);
+    let lo = (p00 as u64 as u128) | (mid << 64);
+    let hi = p11 + (p01 >> 64) + (p10 >> 64) + (mid >> 64);
+    (hi, lo)
+}
+
+/// Montgomery arithmetic modulo an odd `n < 2¹²⁷` with `R = 2¹²⁸`, for
+/// [`brent_u128`].
+struct Mont128 {
+    n: u128,
+    /// `n⁻¹ mod 2¹²⁸`.
+    ninv: u128,
+    /// `R² mod n`.
+    r2: u128,
+}
+
+impl Mont128 {
+    fn new(n: u128) -> Self {
+        debug_assert!(n % 2 == 1 && n < 1 << 127);
+        let mut ninv = n; // correct to 3 bits: n·n ≡ 1 (mod 8)
+        for _ in 0..6 {
+            ninv = ninv.wrapping_mul(2u128.wrapping_sub(n.wrapping_mul(ninv)));
+        }
+        // R mod n, then doubled 128 times: R² mod n (sums stay below 2¹²⁸)
+        let mut r2 = (u128::MAX % n + 1) % n;
+        for _ in 0..128 {
+            r2 <<= 1;
+            if r2 >= n {
+                r2 -= n;
+            }
+        }
+        Mont128 { n, ninv, r2 }
+    }
+
+    /// `a·b·R⁻¹ mod n` for `a, b < n` (subtraction-form REDC: the low
+    /// halves of `a·b` and `u·n` agree, so the quotient is exact).
+    #[inline]
+    fn mul(&self, a: u128, b: u128) -> u128 {
+        let (hi, lo) = mul_wide(a, b);
+        let u = lo.wrapping_mul(self.ninv);
+        let (mh, _) = mul_wide(u, self.n);
+        let (r, borrow) = hi.overflowing_sub(mh);
+        if borrow {
+            r.wrapping_add(self.n)
+        } else {
+            r
+        }
+    }
+
+    fn to(&self, a: u128) -> u128 {
+        self.mul(a % self.n, self.r2)
+    }
+}
+
+/// [`brent_big`] for odd `n < 2¹²⁷` in fixed-width Montgomery arithmetic,
+/// with the same argument as [`brent_u64`]: every quantity the walk
+/// inspects is a gcd with `n`, so the gcds, iteration counts and factor
+/// are the big-integer walk's, without its divisions and allocations.
+fn brent_u128(n: u128, c: u64, max_iter: u64, batch: u64, iters: &mut u64) -> Option<u128> {
+    let m = Mont128::new(n);
+    let cr = m.to(c as u128);
+    let f = |x: u128| {
+        let s = m.mul(x, x) + cr; // both < n < 2¹²⁷: no overflow
+        if s >= n {
+            s - n
+        } else {
+            s
+        }
+    };
+    let (mut y, mut r, mut q) = (m.to(2), 1u64, 1u128);
+    let (mut x, mut ys) = (y, y);
+    let mut g = 1u128;
+    while g == 1 {
+        x = y;
+        for _ in 0..r {
+            y = f(y);
+        }
+        let mut k = 0;
+        while k < r && g == 1 {
+            ys = y;
+            for _ in 0..batch.min(r - k) {
+                y = f(y);
+                q = m.mul(q, x.abs_diff(y));
+            }
+            g = q.gcd(&n);
+            k += batch;
+        }
+        *iters += r;
+        r *= 2;
+        if *iters > max_iter {
+            break;
+        }
+    }
+    if g == n {
+        loop {
+            ys = f(ys);
+            g = x.abs_diff(ys).gcd(&n);
+            if g > 1 {
+                break;
+            }
+        }
+    }
+    (g > 1 && g < n).then_some(g)
+}
+
 fn brent_big(n: &BigUint, c: u64, max_iter: u64, batch: u64, iters: &mut u64) -> Option<BigUint> {
     let cb = BigUint::from(c);
     let f = |x: &BigUint| (x * x + &cb) % n;
@@ -233,10 +344,17 @@ pub fn rho(n: &BigUint, params: &RhoParams) -> RhoResult {
     } else {
         let small = n.bits() <= 63;
         let nu = small.then(|| n.iter_u64_digits().next().unwrap_or(0));
+        let wide = (!small && n.bits() <= 127).then(|| {
+            let mut d = n.iter_u64_digits();
+            let lo = d.next().unwrap_or(0) as u128;
+            lo | (d.next().unwrap_or(0) as u128) << 64
+        });
         for c in 1..=params.attempts as u64 {
             let mut it = 0u64;
             let g = if let Some(nu) = nu {
                 brent_u64(nu, c, params.max_iterations, params.batch, &mut it).map(BigUint::from)
+            } else if let Some(nw) = wide {
+                brent_u128(nw, c, params.max_iterations, params.batch, &mut it).map(BigUint::from)
             } else {
                 brent_big(n, c, params.max_iterations, params.batch, &mut it)
             };
@@ -299,6 +417,44 @@ mod tests {
             }
         }
         (g > 1 && g < n).then_some(g)
+    }
+
+    /// The 128-bit Montgomery walk finds the same factor after the same
+    /// number of iterations as the big-integer walk, on odd n from 64 to
+    /// 127 bits (semiprimes with factors of assorted sizes, and random
+    /// odd n), for several constants and batch sizes.
+    #[test]
+    fn wide_montgomery_walk_matches_the_big_integer_walk() {
+        let mut state = 0x243F_6A88_85A3_08D3u64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let mut ns: Vec<u128> = Vec::new();
+        for bits in [64u32, 65, 80, 100, 120, 126, 127] {
+            for _ in 0..6 {
+                let hi = (next() as u128) << 64 | next() as u128;
+                let n = (hi >> (128 - bits)) | 1 | (1u128 << (bits - 1));
+                ns.push(n);
+            }
+        }
+        for split in [20u32, 30, 40] {
+            for _ in 0..4 {
+                let p = (next() >> (64 - split)) | 1 | (1 << (split - 1));
+                let q = (next() >> (64 - (100 - split))) | 1 | (1 << (100 - split - 1));
+                ns.push(p as u128 * q as u128);
+            }
+        }
+        for &n in &ns {
+            for (c, batch) in [(1u64, 128u64), (5, 1), (9, 33)] {
+                let (mut a, mut b) = (0, 0);
+                let got = brent_u128(n, c, 60_000, batch, &mut a).map(BigUint::from);
+                let want = brent_big(&BigUint::from(n), c, 60_000, batch, &mut b);
+                assert_eq!((got, a), (want, b), "n={n} c={c} batch={batch}");
+            }
+        }
     }
 
     /// The Montgomery walk finds the same factor after the same number of
