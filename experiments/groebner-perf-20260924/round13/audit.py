@@ -14,7 +14,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(HERE.parent))
 from measured_source import measured_bytes
-ARMS = ('baseline', 'pivots', 'ordered', 'combined')
+ARMS = ('baseline', 'ordered', 'frontier')
 
 
 def digest(value):
@@ -32,18 +32,20 @@ def paired(rows, arm, metric='wall_ns'):
 
 def audit(path):
     report = json.loads(gzip.decompress(path.read_bytes()))
+    arms_config=tuple(report.get('producer_arms',ARMS))
+    assert len(arms_config)==len(set(arms_config))
+    assert set(arms_config) in ({'baseline','ordered','frontier'}, {'baseline','ordered','frontier','indexed'}, {'baseline','frontier','cached','cached_indexed'})
     assert report['status'] == 'RECORDED'
     assert report['candidate_id'] is None and report['IC_online_ms'] is None and report['rho_online_ms'] is None
     assert len(report['inputs']) == 23 and len(report['rows']) == 200
     for name, expected in report['source_sha256'].items():
         source = (ROOT / name).read_bytes()
-        if hashlib.sha256(source).hexdigest() != expected and name in (
-                'experiments/groebner-perf-20260924/round12/native_engine.cpp',
-                'experiments/groebner-perf-20260924/round12/audit.py'):
-            snapshot = gzip.decompress((HERE / 'measured' / (Path(name).name + '.gz')).read_bytes())
-            if name.endswith('native_engine.cpp'):
-                assert source.rstrip() == snapshot.rstrip()
-            source = snapshot
+        snapshots={'frontier-only.json.gz':'frontier-only-sources.json.gz',
+                   'index-screen.json.gz':'index-sources.json.gz',
+                   'index-confirmation.json.gz':'index-sources.json.gz'}
+        if hashlib.sha256(source).hexdigest()!=expected and path.name in snapshots:
+            snapshot=json.loads(gzip.decompress((HERE/'results'/snapshots[path.name]).read_bytes()))
+            source=snapshot[name].encode()
         if hashlib.sha256(source).hexdigest() != expected:
             source = measured_bytes(ROOT / name, expected)
         assert hashlib.sha256(source).hexdigest() == expected, name
@@ -58,7 +60,7 @@ def audit(path):
         assert digest(canonical) == key
         rows = [r for r in report['rows'] if r['workload_sha256'] == key]
         assert [r['repetition'] for r in rows] == list(range(fixture['repetitions'] + 1))
-        arms = list(ARMS) + (['evaluation'] if fixture['boundary'] == 'pdp' else [])
+        arms = list(arms_config) + (['evaluation'] if fixture['boundary'] == 'pdp' else [])
         for row in rows:
             assert row['warmup'] == (row['repetition'] == 0)
             assert sorted(row['order']) == sorted(arms)
@@ -91,7 +93,7 @@ def audit(path):
             'cpu_median_ms': {a: statistics.median(r[a]['parent_cpu_ns'] / 1e6 for r in measured) for a in arms},
             'baseline_over_variant': {a: paired(measured, a) for a in arms if a != 'baseline'},
             'baseline_over_variant_cpu': {a: paired(measured, a, 'parent_cpu_ns') for a in arms if a != 'baseline'}})
-    assert sum(status.values()) == 920
+    assert sum(status.values()) == 200*len(arms_config)+120
     return {'file': path.name, 'statuses_including_warmups': dict(status), 'host': report['host'], 'cases': summary}
 
 
@@ -99,7 +101,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('reports', nargs='*', type=Path)
     args = parser.parse_args()
-    reports = args.reports or sorted((HERE / 'results').glob('*.json.gz'))
+    reports = args.reports or [HERE/'results'/(name+'.json.gz')
+        for name in ('frontier-only','index-screen','index-confirmation','screen','confirmation')
+        if (HERE/'results'/(name+'.json.gz')).exists()]
     assert reports, 'no retained comparisons'
     print(json.dumps([audit(path) for path in reports], indent=2))
 

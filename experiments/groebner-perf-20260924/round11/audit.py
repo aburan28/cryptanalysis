@@ -2,6 +2,7 @@
 import gzip
 import hashlib
 import json
+import sys
 import math
 from pathlib import Path
 import random
@@ -9,6 +10,8 @@ import statistics
 
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[2]
+sys.path.insert(0, str(HERE.parent))
+from measured_source import measured_bytes
 
 
 def paired(rows,numerator,denominator):
@@ -33,7 +36,7 @@ def audit_report(name):
             actual=HERE/'measured/proof_abi.h.txt'
         if name=='comparison' and actual.parent==HERE and actual.name=='audit.py':
             actual=HERE/'measured/audit.py.txt'
-        assert hashlib.sha256(actual.read_bytes()).hexdigest()==expected,relative
+        assert hashlib.sha256(measured_bytes(actual,expected)).hexdigest()==expected,relative
     assert len(report['inputs'])==23
     attempts=verified=0;cells=[]
     for fixture in report['inputs']:
