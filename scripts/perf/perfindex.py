@@ -3,6 +3,8 @@
 
     perfindex.py build   --ref REV --out DIR      # perfbench for REV, with this tree's harness
     perfindex.py build   --current --out DIR      # perfbench for the working tree
+    perfindex.py build   --c --ref REV --out DIR  # the C library's ca_perfbench (tools/ca_perfbench.c)
+    perfindex.py build   --c --current --out DIR  #   (extra args after -- go to cmake configure)
     perfindex.py compare --base BIN --cand BIN --out DIR [--rounds 5] [--threads 1]
     perfindex.py instr   --base BIN --cand BIN --out DIR   # callgrind instruction counts
     perfindex.py report  DIR/compare.json
@@ -154,11 +156,96 @@ def load_weights(path: str | None) -> dict:
 # ----------------------------------------------------------------------------
 # build
 
+# The C library's harness (cryptanalysis only): same protocol, built with CMake.
+C_HARNESS = Path("tools") / "ca_perfbench.c"
+C_EXAMPLE = "ca_perfbench"
+# Appended to a --ref checkout's CMakeLists.txt so revisions that predate the
+# harness target still build it (a no-op where the target already exists).
+C_TARGET_STANZA = """
+# added by scripts/perf/perfindex.py build --c: the harness target for
+# revisions that predate it
+if(NOT TARGET ca_perfbench)
+  add_executable(ca_perfbench tools/ca_perfbench.c)
+  target_link_libraries(ca_perfbench PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_perfbench PRIVATE src cuda)
+endif()
+"""
+
+
+def cmd_build_c(a: argparse.Namespace, root: Path, out: Path) -> None:
+    """Build tools/ca_perfbench.c against REV's (or the working tree's) C library."""
+    harness_src = root / C_HARNESS
+    if not harness_src.exists():
+        raise SystemExit(f"no C harness at {harness_src}")
+    target = out / "target"
+    cc = subprocess.run(["cc", "--version"], capture_output=True, text=True).stdout
+    meta = {
+        "harness": str(C_HARNESS),
+        "harness_sha256": hashlib.sha256(harness_src.read_bytes()).hexdigest(),
+        "host": host_manifest(),
+        "cc": cc.splitlines()[0] if cc else "",
+    }
+    if a.current:
+        src = root
+        meta["rev"] = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        meta["dirty"] = bool(
+            subprocess.run(
+                ["git", "-C", str(root), "status", "--porcelain", "--",
+                 "src", "include", "cuda", "CMakeLists.txt", str(C_HARNESS)],
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+    else:
+        src = out / "src"
+        subprocess.run(
+            ["git", "-C", str(root), "worktree", "add", "--no-checkout", "--detach", str(src), a.ref],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(src), "sparse-checkout", "set", "src", "include", "tools", "cmake", "cuda"],
+            check=True,
+        )
+        subprocess.run(["git", "-C", str(src), "checkout", "--detach", a.ref], check=True)
+        meta["rev"] = subprocess.run(
+            ["git", "-C", str(src), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        # Overlay this tree's harness so both sides run identical kernels.
+        shutil.copy2(harness_src, src / C_HARNESS)
+        with open(src / "CMakeLists.txt", "a") as f:
+            f.write(C_TARGET_STANZA)
+    t0 = time.time()
+    subprocess.run(
+        ["cmake", "-S", str(src), "-B", str(target), "-DCMAKE_BUILD_TYPE=Release",
+         "-DCA_BUILD_TOOLS=ON", "-DCA_BUILD_TESTS=OFF", *a.cargo_args],
+        check=True,
+    )
+    subprocess.run(
+        ["cmake", "--build", str(target), "--target", C_EXAMPLE, "-j", str(os.cpu_count() or 1)],
+        check=True,
+    )
+    meta["build_seconds"] = round(time.time() - t0, 1)
+    found = [p for p in (target / C_EXAMPLE, target / "tools" / C_EXAMPLE) if p.exists()]
+    if not found:
+        raise SystemExit(f"cmake built no {C_EXAMPLE} under {target}")
+    shutil.copy2(found[0], out / C_EXAMPLE)
+    (out / "build.json").write_text(json.dumps(meta, indent=2) + "\n")
+    if not a.keep:
+        shutil.rmtree(target, ignore_errors=True)
+        if not a.current:
+            subprocess.run(["git", "-C", str(root), "worktree", "remove", "--force", str(src)])
+    print(out / C_EXAMPLE)
+
 
 def cmd_build(a: argparse.Namespace) -> None:
     root = repo_root()
     out = Path(a.out).resolve()
     out.mkdir(parents=True, exist_ok=False)
+    if a.c:
+        cmd_build_c(a, root, out)
+        return
     crate = crate_dir(root)
     harness_rel = Path(crate) / "examples" / EXAMPLE
     harness_src = root / harness_rel
@@ -472,6 +559,12 @@ def main() -> None:
     g.add_argument("--current", action="store_true")
     b.add_argument("--out", required=True)
     b.add_argument("--keep", action="store_true", help="keep the worktree and target dir")
+    b.add_argument(
+        "--c",
+        action="store_true",
+        help="build the C library's tools/ca_perfbench.c with CMake instead of the Rust "
+        "harness; extra args (after --) go to cmake configure",
+    )
     b.add_argument("cargo_args", nargs="*")
     b.set_defaults(func=cmd_build)
 
