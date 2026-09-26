@@ -48,6 +48,29 @@ int main(void)
         for (uint32_t j = 0; j < n; j++) CHECK_EQ_U64(x[j], xt[j]);
         free(M); free(rhs); free(xt); free(x);
     }
+    /* dense with unreduced 64-bit entries, at the largest prime below 2^63
+     * (the division-free path) and the largest below 2^64 (the fallback) */
+    {
+        const uint64_t dqs[] = {9223372036854775783ULL, 18446744073709551557ULL};
+        for (size_t qi = 0; qi < 2; qi++) {
+            uint64_t q = dqs[qi];
+            uint32_t n = 60;
+            uint64_t *M = calloc((size_t)n * n, sizeof(uint64_t)), *rhs = calloc(n, sizeof(uint64_t));
+            uint64_t *xt = calloc(n, sizeof(uint64_t)), *x = calloc(n, sizeof(uint64_t));
+            for (uint32_t j = 0; j < n; j++) xt[j] = ca_rng_below(&rng, q);
+            for (uint32_t i = 0; i < n; i++) {
+                uint64_t acc = 0;
+                for (uint32_t j = 0; j < n; j++) {
+                    M[i * n + j] = ca_rng_next(&rng);
+                    acc = ca_addmod(acc, ca_mulmod(M[i * n + j] % q, xt[j], q), q);
+                }
+                rhs[i] = acc + (UINT64_MAX - acc) / q * q; /* unreduced, same residue */
+            }
+            CHECK(ca_dense_solve_mod_prime(M, n, rhs, q, x) == CA_OK);
+            for (uint32_t j = 0; j < n; j++) CHECK_EQ_U64(x[j], xt[j]);
+            free(M); free(rhs); free(xt); free(x);
+        }
+    }
     /* sparse: various sizes, big prime modulus */
     const uint64_t qs[] = {4294967311ULL, 1000000000000000003ULL, 18446744073709551557ULL};
     for (size_t qi = 0; qi < 3; qi++) {
