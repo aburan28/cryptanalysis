@@ -47,6 +47,36 @@ int main(void)
             if (a) CHECK_EQ_U64(ca_mont_from(&m2, ca_mont_inv(&m2, am)), ca_invmod(a, mods[i]));
         }
     }
+    /* REDC against the addition form it replaced, on every modulus class
+     * (tiny, 32-bit, 63-bit, the largest 64-bit prime) and on t at the
+     * edges of its domain t < p * 2^64: 0, 1, p*2^64 - 1, multiples of
+     * 2^64, and random products of two residues. */
+    {
+        uint64_t rmods[] = {3, 5, 1000003, 4294967311ULL, 9223372036854775837ULL,
+                            18446744073709551557ULL, 18446744073709551615ULL};
+        for (size_t i = 0; i < sizeof(rmods) / sizeof(rmods[0]); i++) {
+            ca_mont m3;
+            CHECK(ca_mont_init(&m3, rmods[i]));
+            const uint64_t q = rmods[i];
+            ca_u128 edge[] = {0, 1, ((ca_u128)q << 64) - 1, (ca_u128)(q - 1) << 64,
+                              ((ca_u128)(q - 1) << 64) | UINT64_MAX, (ca_u128)(q - 1) * (q - 1)};
+            for (int k = 0; k < 20000 + 6; k++) {
+                ca_u128 t;
+                if (k < 6) {
+                    t = edge[k];
+                } else {
+                    uint64_t a = ca_rng_below(&rng, q), b = ca_rng_below(&rng, q);
+                    t = k & 1 ? (ca_u128)a * b : ((ca_u128)ca_rng_below(&rng, q) << 64) | ca_rng_next(&rng);
+                }
+                uint64_t u = (uint64_t)t * m3.pinv;
+                ca_u128 sum = t + (ca_u128)u * q;
+                uint64_t want = (uint64_t)(sum >> 64);
+                if (sum < t) want += (uint64_t)0 - q;
+                if (want >= q) want -= q;
+                CHECK_EQ_U64(ca_mont_redc(&m3, t), want);
+            }
+        }
+    }
     /* isqrt / iroot */
     CHECK_EQ_U64(ca_isqrt(0), 0);
     CHECK_EQ_U64(ca_isqrt(1), 1);
