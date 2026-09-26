@@ -1,0 +1,54 @@
+name: ecc-corpus
+
+# Guards the generated elliptic-curve challenge corpus in challenges/ecc/.
+# Two gates:
+#   1. the committed corpus must match a fresh, deterministic generation;
+#   2. every prime-field short-Weierstrass record must satisfy the challenge
+#      invariants (ord(G) == subgroup_order, cofactor == #E/ord(G), and each
+#      target lies in <G> so its discrete log exists).
+# These catch regressions of docs/REVIEW-2026-09-25.md findings 10 and 18.
+#
+# Path-filtered so it only runs when the corpus, its generator, or this
+# workflow changes; ordinary pushes stay fast.
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "challenges/ecc/**"
+      - ".github/workflows/ecc-corpus.yml"
+  pull_request:
+    paths:
+      - "challenges/ecc/**"
+      - ".github/workflows/ecc-corpus.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  corpus:
+    name: regenerate and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate the corpus deterministically
+        run: python3 challenges/ecc/generate.py
+
+      - name: Committed corpus must match a fresh generation
+        run: git diff --exit-code -- challenges/ecc/
+
+      - name: Validate prime-field challenge invariants
+        run: python3 challenges/ecc/validate.py
