@@ -149,6 +149,14 @@ if(CA_BUILD_TOOLS)
   target_include_directories(ca_bench PRIVATE src cuda)
   target_compile_options(ca_bench PRIVATE ${CA_WARNINGS})
   ca_sanitize(ca_bench)
+  # Fixed-input kernels for the performance index (docs/perf/PERFORMANCE_INDEX.md);
+  # speaks the same protocol as suite/examples/perfbench, driven by
+  # scripts/perf/perfindex.py.
+  add_executable(ca_perfbench tools/ca_perfbench.c)
+  target_link_libraries(ca_perfbench PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_perfbench PRIVATE src cuda)
+  target_compile_options(ca_perfbench PRIVATE ${CA_WARNINGS})
+  ca_sanitize(ca_perfbench)
 endif()
 
 if(CA_BUILD_TESTS)

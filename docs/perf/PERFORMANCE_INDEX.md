@@ -21,6 +21,33 @@ python3 scripts/perf/perfindex.py compare ... --threads 4 --out /tmp/pi-4t
 python3 scripts/perf/perfindex.py instr --base ... --cand ... --out /tmp/pi-ir
 ```
 
+The C library's harness is built the same way with `--c` (CMake instead of
+Cargo; the ref side gets this tree's `tools/ca_perfbench.c` overlaid and, if
+it predates the target, a guarded `ca_perfbench` target appended to its
+`CMakeLists.txt`); `compare` and `instr` need no flag, they drive any binary
+that speaks the protocol:
+
+```bash
+python3 scripts/perf/perfindex.py build --c --ref <base-rev> --out /tmp/ci-base
+python3 scripts/perf/perfindex.py build --c --current      --out /tmp/ci-cand
+python3 scripts/perf/perfindex.py compare --base /tmp/ci-base/ca_perfbench \
+    --cand /tmp/ci-cand/ca_perfbench --rounds 5 --threads 1 --out /tmp/ci-1t
+python3 scripts/perf/perfindex.py instr --base /tmp/ci-base/ca_perfbench \
+    --cand /tmp/ci-cand/ca_perfbench --out /tmp/ci-ir
+```
+
+Its kernels (`ca_perfbench list --full`) cover `field_ec` (Montgomery
+arithmetic, `ca_powmod`/`ca_invmod`/`ca_sqrtmod_prime`, primality and
+factoring, affine and batched EC addition, scalar multiplication, point
+counting), `dlp` (rho, kangaroo, BSGS, grumpy giants, Pohlig-Hellman,
+Bernstein-Lange precomputation, GLV rho, the emulated GPU rho, Cheon) and
+`relation` (index-calculus precomputation and individual logs, the sparse
+Lanczos and dense elimination modulo a prime).  All run one thread except
+`dlp/c_rho_ec44_mt`, which takes `RAYON_NUM_THREADS` and fingerprints only
+the recovered logarithms.  Fingerprints cover the answers and the solvers'
+deterministic work counters (`group_ops`, `iterations`, `table_entries`,
+`collisions`), not `seconds` or the `bytes_peak` memory estimate.
+
 ## What it measures, and what it does not
 
 `suite/examples/perfbench` is a registry of **kernels**: each runs a fixed,
