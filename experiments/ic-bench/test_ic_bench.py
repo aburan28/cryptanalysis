@@ -223,6 +223,11 @@ class PrimeBridgeTest(unittest.TestCase):
         self.assertEqual(rec["warm"]["prefixes"][-1]["targets"], 4)
         self.assertEqual(rec["warm"]["prefixes"][-1]["ic_operations"], 1166)
         self.assertEqual(rec["descents"][0]["target"], {"x": "20", "y": "30"})
+        def no_float(value):
+            if isinstance(value, dict): return all(no_float(v) for v in value.values())
+            if isinstance(value, list): return all(no_float(v) for v in value)
+            return not isinstance(value, float)
+        self.assertTrue(no_float(out["manifest"][1]))
 
     def test_prime_candidate_and_workload_are_deterministic(self):
         a = prime_bridge.normalize(self.report(), host="a")
