@@ -18,6 +18,7 @@ pub mod challenge;
 pub mod curve;
 pub mod dlog;
 pub mod ecdlp;
+pub mod ecdsa;
 pub mod factor;
 pub mod ic;
 pub mod output;
@@ -110,6 +111,10 @@ pub enum Command {
     /// Curve registry and structure.
     #[command(subcommand)]
     Curve(curve::CurveCmd),
+    /// ECDSA signature attacks: nonce reuse, biased-nonce HNP, transcript
+    /// audit, and the oracle invalid-curve attack.
+    #[command(subcommand)]
+    Ecdsa(ecdsa::EcdsaCmd),
     /// The elliptic-curve challenge corpus: list, show, solve.
     Challenge(challenge::ChallengeArgs),
 }
@@ -224,6 +229,7 @@ pub fn run(out: Out, cmd: Command) -> CmdResult {
         Command::RhoFactor(a) => factor::run_rho_factor(out, &a),
         Command::Rsa(c) => factor::run_rsa(out, &c),
         Command::Curve(c) => curve::run(out, &c),
+        Command::Ecdsa(c) => ecdsa::run(out, &c),
         Command::Challenge(a) => challenge::run(out, &a),
     }
 }
