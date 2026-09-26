@@ -134,7 +134,9 @@ therefore measure this implementation, not an asymptotic XL cost.
   A single receipt records every marginal target cost, so `amortize.py`
   reconstructs exact prefix points 1,2,4,...,2^16 without repaying factor-base
   construction, relation collection or relation LA at every prefix. It is
-  intentionally not a pull-request CI gate.
+  intentionally not a pull-request CI gate. The manual `ic-broad` GitHub Actions
+  workflow runs `full`, `search`, or `batch` with uploaded receipts; the batch
+  job also writes the power-of-two amortization table into the job summary.
 
 A single workload is a noisy measurement of a factor base: at `n = 19` the query
 count of one collection run has a standard deviation of about 35% of its mean, and
