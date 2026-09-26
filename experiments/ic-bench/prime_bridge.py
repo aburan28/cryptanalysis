@@ -74,8 +74,8 @@ def candidate(r,curve):
     q,f,l=r["configuration"],r["factor_base"],r["logs"]
     tag={"generic":"gen","j0":"j0","j1728":"j1728"}[r["curve_type"]]
     rc="lp" if q["large_primes"] else "full"; td="learn" if q["learn"] else "descent"
-    m={"schema":"ic-candidate/1","field":curve["field"],"curve":curve["curve"],
-       "curve_id":curve["curve_id"],"isogeny":"none",
+    m={"schema":"ic-candidate/1","field":curve["field"],
+       "curve":{**curve["curve"],"curve_id":curve["curve_id"]},"isogeny":"none",
        "endomorphism":{"automorphism_order":f["automorphism_order"],"record":frozen(r["instance"]["endomorphism"]),
                        "endomorphism_order_conductor":None,
                        "conductor_status":"not_measured_by_prime_orbit_experiment"},
