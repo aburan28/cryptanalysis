@@ -351,6 +351,11 @@ static ca_status ec_count_once(const ca_group *g, uint64_t *order, ca_stats *st,
     ca_u128 lo128 = (ca_u128)p + 1 - 2 * (ca_u128)s;
     uint64_t lo = lo128 < 1 ? 1 : (uint64_t)lo128;
     uint64_t width = 4 * s + 1;
+    /* Near 2^64 the top of the Hasse interval does not fit a uint64_t:
+     * search only the part that does (the walk would otherwise wrap and
+     * return the order modulo 2^64), and report an order above 2^64 as
+     * not found rather than truncated. */
+    if (width - 1 > UINT64_MAX - lo) width = UINT64_MAX - lo + 1;
     ca_rng rng;
     ca_rng_seed(&rng, seed);
     enum { CAP = 4096 };
@@ -425,12 +430,19 @@ ca_status ca_ec_count_points(uint64_t p, uint64_t a, uint64_t b, uint64_t *order
             uint64_t ot;
             int amb2 = 0;
             if (ec_count_once(&tw, &ot, st, 0x7715ULL ^ p, &amb2) == CA_OK) {
-                /* #E + #E' = 2p + 2; 128-bit so p > 2^63 does not wrap */
-                *order = (uint64_t)((ca_u128)2 * p + 2 - ot);
-                rc = CA_OK;
+                /* #E + #E' = 2p + 2; 128-bit so p > 2^63 does not wrap,
+                 * and an order that does not fit 64 bits is refused. */
+                ca_u128 o = (ca_u128)2 * p + 2 - ot;
+                if (o <= (ca_u128)UINT64_MAX) {
+                    *order = (uint64_t)o;
+                    rc = CA_OK;
+                }
             }
         }
     }
     st->seconds += ca_now() - t0;
+    if (rc != CA_OK && (ca_u128)p + 1 + 2 * ((ca_u128)ca_isqrt(p) + 1) > (ca_u128)UINT64_MAX)
+        ca_set_error("p = %llu: #E(F_p) may exceed 64 bits and was not found below 2^64",
+                     (unsigned long long)p);
     return rc;
 }

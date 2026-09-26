@@ -65,11 +65,11 @@ pub const FP_MULS_PER_ADD: f64 = 60.0;
 // ── F_p helpers ──────────────────────────────────────────────────────────
 
 #[inline]
-fn mm(a: u64, b: u64, p: u64) -> u64 {
+pub(crate) fn mm(a: u64, b: u64, p: u64) -> u64 {
     ((a as u128 * b as u128) % p as u128) as u64
 }
 #[inline]
-fn am(a: u64, b: u64, p: u64) -> u64 {
+pub(crate) fn am(a: u64, b: u64, p: u64) -> u64 {
     let s = a + b;
     if s >= p {
         s - p
@@ -78,7 +78,7 @@ fn am(a: u64, b: u64, p: u64) -> u64 {
     }
 }
 #[inline]
-fn sm(a: u64, b: u64, p: u64) -> u64 {
+pub(crate) fn sm(a: u64, b: u64, p: u64) -> u64 {
     if a >= b {
         a - b
     } else {
@@ -589,7 +589,7 @@ impl SubspaceBase {
 // ── Univariate polynomials over F_p (small degree) ───────────────────────
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct UPoly(Vec<u64>); // coefficients, low to high, trimmed
+pub(crate) struct UPoly(pub(crate) Vec<u64>); // coefficients, low to high, trimmed
 
 fn trim(mut v: Vec<u64>) -> Vec<u64> {
     while v.last() == Some(&0) {
@@ -598,13 +598,13 @@ fn trim(mut v: Vec<u64>) -> Vec<u64> {
     v
 }
 
-struct PolyRing {
+pub(crate) struct PolyRing {
     p: u64,
-    muls: Cell<u64>,
+    pub(crate) muls: Cell<u64>,
 }
 
 impl PolyRing {
-    fn new(p: u64) -> Self {
+    pub(crate) fn new(p: u64) -> Self {
         PolyRing {
             p,
             muls: Cell::new(0),
@@ -692,7 +692,7 @@ impl PolyRing {
         acc
     }
     /// All roots in `F_p` of `f` (Cantor–Zassenhaus).
-    fn roots(&self, f: &UPoly, rng: &mut StdRng) -> Vec<u64> {
+    pub(crate) fn roots(&self, f: &UPoly, rng: &mut StdRng) -> Vec<u64> {
         let f = {
             let inv = match f.0.last() {
                 Some(&l) => inv_mod(l, self.p),
@@ -1144,6 +1144,10 @@ fn s4_symbolic(curve: &Curve3) -> KPoly {
 pub struct SymmetrisedS4 {
     /// exponent `(a, b, c, d)` = `e₁^a e₂^b e₃^c x₄^d` → coefficient.
     terms: HashMap<[u8; 4], E3>,
+    /// The demand-driven elimination's row plan, learned from this
+    /// curve's first full solve (see [`BorderPlan`]).  Empty unless the
+    /// lazy elimination is switched on.
+    plan: std::sync::OnceLock<BorderPlan>,
 }
 
 impl SymmetrisedS4 {
@@ -1195,7 +1199,10 @@ impl SymmetrisedS4 {
             }
         }
         terms.retain(|_, c| *c != Fp3::ZERO);
-        SymmetrisedS4 { terms }
+        SymmetrisedS4 {
+            terms,
+            plan: std::sync::OnceLock::new(),
+        }
     }
 
     /// The three `F_p`-components of `H(e₁, e₂, e₃, x_R)` as sparse
@@ -1254,7 +1261,7 @@ fn grevlex_cmp(a: &[u8; 3], b: &[u8; 3]) -> std::cmp::Ordering {
 /// Row-reduce `m` (rows × cols) over `F_p` to reduced row echelon form;
 /// returns the pivot column of each non-zero row, in order.  Counts
 /// multiplications.
-fn rref_mod_p(m: &mut [Vec<u64>], p: u64, muls: &mut u64) -> Vec<usize> {
+pub(crate) fn rref_mod_p(m: &mut [Vec<u64>], p: u64, muls: &mut u64) -> Vec<usize> {
     let rows = m.len();
     let cols = if rows > 0 { m[0].len() } else { 0 };
     let mut pivots = Vec::new();
@@ -1293,7 +1300,7 @@ fn rref_mod_p(m: &mut [Vec<u64>], p: u64, muls: &mut u64) -> Vec<usize> {
 /// Characteristic polynomial of a square matrix over `F_p` (Hessenberg
 /// reduction, then the standard recurrence).  Coefficients low to high,
 /// monic.
-fn charpoly_mod_p(a: &[Vec<u64>], p: u64, muls: &mut u64) -> UPoly {
+pub(crate) fn charpoly_mod_p(a: &[Vec<u64>], p: u64, muls: &mut u64) -> UPoly {
     let n = a.len();
     let mut h: Vec<Vec<u64>> = a.to_vec();
     // Reduce to upper Hessenberg form by similarity transforms.
@@ -1348,7 +1355,12 @@ fn charpoly_mod_p(a: &[Vec<u64>], p: u64, muls: &mut u64) -> UPoly {
 }
 
 /// Kernel basis of `(m − λI)` for a square matrix `m` over `F_p`.
-fn eigenvectors_mod_p(m: &[Vec<u64>], lambda: u64, p: u64, muls: &mut u64) -> Vec<Vec<u64>> {
+pub(crate) fn eigenvectors_mod_p(
+    m: &[Vec<u64>],
+    lambda: u64,
+    p: u64,
+    muls: &mut u64,
+) -> Vec<Vec<u64>> {
     let n = m.len();
     let mut a: Vec<Vec<u64>> = m.to_vec();
     for i in 0..n {
@@ -1405,6 +1417,92 @@ pub struct SolveStats {
     pub charpoly_muls: u64,
     pub eigenvector_muls: u64,
     pub roots_muls: u64,
+    /// Demand-driven elimination (`GAUDRY_LAZY_ELIM`): solves finished
+    /// on it, and solves that fell back to the full elimination — their
+    /// lazy work stays charged.  `lazy_pivots_reduced` out of
+    /// `lazy_pivots_planned` is how much of the echelon it built.
+    pub lazy_solves: u64,
+    pub lazy_fallbacks: u64,
+    pub lazy_pivots_reduced: u64,
+    pub lazy_pivots_planned: u64,
+    /// `GAUDRY_LAZY_VERIFY`: lazy solves re-done with the full
+    /// elimination (uncharged), and those whose staircase or `M_{e₁}`
+    /// differed from it in any entry.
+    pub lazy_verified: u64,
+    pub lazy_verify_mismatches: u64,
+    /// `GAUDRY_LAZY_VERIFY`: fallbacks whose residual turned out to have
+    /// the plan's staircase after all — a fallback the lazy elimination
+    /// should not have needed.  Every other fallback is a residual whose
+    /// staircase is not the plan's, which no plan could serve.
+    pub lazy_needless_fallbacks: u64,
+}
+
+/// Which elimination the `S₄` solve uses.  `Off` is the forward
+/// elimination of the whole Macaulay matrix every earlier run used;
+/// `On` reduces a row only when a normal form first reads it; `Verify`
+/// is `On` plus an uncharged full elimination per solve, compared entry
+/// by entry.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LazyElim {
+    #[default]
+    Off,
+    On,
+    Verify,
+}
+
+/// Switches for [`solve_s4_subspace_with`]; [`solve_s4_subspace`] reads
+/// them from the environment.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SolveMode {
+    /// `GAUDRY_BORDER_RETRY`: retry border-unreachable residuals at
+    /// degrees 11–13 instead of stopping (the pre-check behaviour).
+    pub border_retry: bool,
+    /// `GAUDRY_LAZY_ELIM` / `GAUDRY_LAZY_VERIFY`.
+    pub lazy: LazyElim,
+}
+
+impl SolveMode {
+    pub fn from_env() -> SolveMode {
+        let lazy = if std::env::var_os("GAUDRY_LAZY_VERIFY").is_some() {
+            LazyElim::Verify
+        } else if std::env::var_os("GAUDRY_LAZY_ELIM").is_some() {
+            LazyElim::On
+        } else {
+            LazyElim::Off
+        };
+        SolveMode {
+            border_retry: border_retry_enabled(),
+            lazy,
+        }
+    }
+}
+
+/// The row plan a demand-driven elimination follows: which Macaulay row
+/// becomes the pivot row of which column, and which columns are
+/// standard.  Learned once per curve from the first full solve — the
+/// staircase is the same on every residual measured (§11.13) — and
+/// never trusted blindly: a row that does not reduce to its planned
+/// leading column, or meets a nonzero entry no planned pivot can clear,
+/// sends that solve back to the full elimination.
+#[derive(Clone, Debug)]
+pub struct BorderPlan {
+    degree: u8,
+    leads: Vec<Option<[u8; 3]>>,
+    nrows: usize,
+    /// Pivot column → index of the Macaulay row that becomes its pivot row.
+    pivot_row: HashMap<usize, usize>,
+    /// Pivot column → the other rows nonzero there when the forward
+    /// elimination reached it: the spares when the planned row's entry
+    /// cancels on some residual.
+    live: HashMap<usize, Vec<usize>>,
+    /// Standard columns (the staircase), in column order.
+    standard: Vec<usize>,
+}
+
+impl BorderPlan {
+    fn fits(&self, degree: u8, leads: &[Option<[u8; 3]>], nrows: usize) -> bool {
+        self.degree == degree && self.leads == leads && self.nrows == nrows
+    }
 }
 
 /// Solve `S₄(x₁, x₂, x₃, x_R) = 0` for `x_i ∈ F_p` with cost
@@ -1423,6 +1521,19 @@ pub fn solve_s4_subspace(
     rng: &mut StdRng,
     stats: &mut SolveStats,
 ) -> Option<Vec<[u64; 3]>> {
+    solve_s4_subspace_with(inst, pre, x_r, rng, stats, SolveMode::from_env())
+}
+
+/// [`solve_s4_subspace`] with its switches passed rather than read from
+/// the environment, so two modes can run side by side on one stream.
+pub fn solve_s4_subspace_with(
+    inst: &Instance3,
+    pre: &SymmetrisedS4,
+    x_r: &E3,
+    rng: &mut StdRng,
+    stats: &mut SolveStats,
+    mode: SolveMode,
+) -> Option<Vec<[u64; 3]>> {
     let f = &inst.curve.field;
     let mut muls = 0u64;
     stats.solves += 1;
@@ -1440,6 +1551,8 @@ pub fn solve_s4_subspace(
             stats,
             &mut muls,
             &mut border_unreachable,
+            &pre.plan,
+            mode.lazy,
         ) {
             Some(res) => {
                 stats.fp_muls += muls;
@@ -1453,7 +1566,7 @@ pub fn solve_s4_subspace(
                 // the fallback, none in a solution — so stop now rather
                 // than paying degrees 11, 12 and 13 at `Θ(d⁶)` each.
                 border_retry_seen |= border_unreachable;
-                if border_unreachable && !border_retry_enabled() {
+                if border_unreachable && !mode.border_retry {
                     stats.border_unreachable += 1;
                     stats.unsolved += 1;
                     if std::env::var_os("GAUDRY_DEBUG_SOLVE").is_some() {
@@ -1498,6 +1611,8 @@ fn border_retry_enabled() -> bool {
 /// built because a border monomial falls on a non-pivot column at the
 /// top degree — a truncation artefact that recurs identically one
 /// degree up, so the caller uses it to stop retrying.
+/// With `lazy` on and a plan in `plan_slot` that fits, the solve runs on
+/// [`solve_lazy`] first; the first full solve at a degree learns the plan.
 fn solve_at_degree(
     inst: &Instance3,
     comps: &[HashMap<[u8; 3], u64>; 3],
@@ -1506,6 +1621,8 @@ fn solve_at_degree(
     stats: &mut SolveStats,
     muls: &mut u64,
     border_unreachable: &mut bool,
+    plan_slot: &std::sync::OnceLock<BorderPlan>,
+    lazy: LazyElim,
 ) -> Option<Vec<[u64; 3]>> {
     let p = inst.curve.field.p;
     let debug = std::env::var_os("GAUDRY_DEBUG_SOLVE").is_some();
@@ -1542,8 +1659,29 @@ fn solve_at_degree(
         }
     }
     stats.macaulay_rows += mat.len() as u64;
+    let nrows = mat.len();
+
+    // Demand-driven elimination, once this curve has a plan that fits.
+    // A solve it cannot finish falls through to the full elimination
+    // below, with the lazy work already in `muls`.
+    if lazy != LazyElim::Off {
+        if let Some(plan) = plan_slot.get().filter(|pl| pl.fits(degree, &leads, nrows)) {
+            let verify = lazy == LazyElim::Verify;
+            if let Some(res) = solve_lazy(
+                plan, &mat, &cols, &col_index, &comps, degree, p, rng, stats, muls, verify, debug,
+            ) {
+                stats.lazy_solves += 1;
+                return Some(res);
+            }
+            stats.lazy_fallbacks += 1;
+            if debug {
+                eprintln!("  degree {degree}: lazy elimination fell back to the full one");
+            }
+        }
+    }
+
     let before = *muls;
-    let pivots = echelon_mod_p(&mut mat, p, muls);
+    let (pivots, trace) = echelon_traced(&mut mat, p, muls);
     stats.echelon_muls += *muls - before;
     let pivot_set: std::collections::HashSet<usize> = pivots.iter().copied().collect();
 
@@ -1554,11 +1692,27 @@ fn solve_at_degree(
         .collect();
     let dim = standard.len();
     if debug {
+        // The staircase itself, not just its size: a border basis is cheap
+        // and fixed-shape when every residual shares one order ideal, and
+        // needs Mourrain's iteration with a commutation test when it does
+        // not.  Printed as the per-variable maxima plus the monomial set so
+        // a box `[0,k)^3` is recognisable at a glance.
+        let mut std_mono: Vec<[u8; 3]> = standard.iter().map(|&c| cols[c]).collect();
+        std_mono.sort_unstable();
+        let mx = |k: usize| std_mono.iter().map(|m| m[k]).max().unwrap_or(0);
+        let is_box = {
+            let (a, b, c) = (mx(0) + 1, mx(1) + 1, mx(2) + 1);
+            std_mono.len() == (a as usize) * (b as usize) * (c as usize)
+                && std_mono.iter().all(|m| m[0] < a && m[1] < b && m[2] < c)
+        };
         eprintln!(
-            "  degree {degree}: rows {} cols {} pivots {} standard(dim) {dim}",
+            "  degree {degree}: rows {} cols {} pivots {} standard(dim) {dim}              maxima [{},{},{}] box={is_box} staircase={std_mono:?}",
             mat.len(),
             cols.len(),
-            pivots.len()
+            pivots.len(),
+            mx(0),
+            mx(1),
+            mx(2),
         );
     }
     if dim == 0 || dim > 64 {
@@ -1607,9 +1761,45 @@ fn solve_at_degree(
     stats.quotient_dim_total += dim as u64;
     let std_index: HashMap<usize, usize> =
         standard.iter().enumerate().map(|(i, &c)| (c, i)).collect();
-    let mut nfs = NormalForms::new(&mat, &pivots, &std_index, dim, p);
+    let mut nfs = NormalForms::new(&mut mat, &pivots, &std_index, dim, p);
     // Multiplication matrix of e₁: column b ↦ NF(e₁ · b).
     let m_e1 = mult_matrix(&cols, &col_index, &standard, [1, 0, 0], &mut nfs, muls);
+    if debug {
+        // How much of the echelon the normal forms actually depend on.  The
+        // forward elimination reduces all 226 rows; if the border reaches
+        // only a fraction of the pivots, a lazier elimination has something
+        // to skip, and if it reaches nearly all of them it has nothing.
+        let reached = nfs.memo.iter().filter(|m| m.is_some()).count();
+        let reached_pivots = pivots.iter().filter(|&&c| nfs.memo[c].is_some()).count();
+        eprintln!(
+            "  degree {degree}: nf resolved {reached} columns of {}, of which              {reached_pivots} of {} pivots ({:.0}%)",
+            cols.len(),
+            pivots.len(),
+            100.0 * reached_pivots as f64 / pivots.len().max(1) as f64,
+        );
+        // Two attributions of the same multiplications.  §11.13 charged
+        // each to the pivot row doing the subtracting; what an elimination
+        // that reduces only the rows it needs can skip is the work done
+        // *on* rows nobody reads — the complement of the closure below.
+        let elim = trace.total();
+        let wasted: u64 = pivots
+            .iter()
+            .filter(|&&c| nfs.memo[c].is_none())
+            .map(|&c| trace.done_by(c))
+            .sum();
+        let (needed, skippable) = trace.closure(&pivots, |c| nfs.memo[c].is_some());
+        eprintln!(
+            "  degree {degree}: elimination {elim} muls, {wasted} on pivots the \
+             normal forms never reach ({:.1}% of elimination)",
+            100.0 * wasted as f64 / elim.max(1) as f64,
+        );
+        eprintln!(
+            "  degree {degree}: closure {needed} of {} pivot rows; {skippable} muls on rows \
+             outside it ({:.1}% of elimination)",
+            pivots.len(),
+            100.0 * skippable as f64 / elim.max(1) as f64,
+        );
+    }
     stats.macaulay_muls += *muls - before;
     let Some(m_e1) = m_e1 else {
         if debug {
@@ -1617,9 +1807,67 @@ fn solve_at_degree(
         }
         return None;
     };
+    let read = read_solutions(
+        &m_e1, &cols, &col_index, &standard, &std_index, &pivots, &mut nfs, &comps, p, rng, stats,
+        muls, debug, degree, false,
+    );
+    let Read::Solved(res) = read else {
+        return None;
+    };
+    if lazy != LazyElim::Off && plan_slot.get().is_none() {
+        let mut live: HashMap<usize, Vec<usize>> = HashMap::new();
+        for &(c, r, _) in &trace.mods {
+            live.entry(c).or_default().push(r);
+        }
+        let _ = plan_slot.set(BorderPlan {
+            degree,
+            leads,
+            nrows,
+            pivot_row: trace.pivot_row,
+            live,
+            standard,
+        });
+    }
+    Some(res)
+}
+
+/// What reading the solutions off the normal forms came to.
+enum Read {
+    Solved(Vec<[u64; 3]>),
+    /// `1`, `e₁`, `e₂` or `e₃` is not standard: no evaluation functionals.
+    Failed,
+    /// A degenerate eigenspace needed `M_{e₂}` or `M_{e₃}` and a normal
+    /// form it reads was unavailable (reported only when `strict`; the
+    /// full elimination has always gone on with the unsplit space).
+    SplitUnavailable,
+}
+
+/// Everything after `M_{e₁}`: its characteristic polynomial and
+/// eigenvalues, the eigenvectors (split by `e₂`, `e₃` when an eigenspace
+/// is degenerate), the check of every candidate against the components,
+/// and the cubic splits.  Shared by the full and the demand-driven
+/// elimination, which differ only in how `nfs` produces a normal form.
+fn read_solutions(
+    m_e1: &[Vec<u64>],
+    cols: &[[u8; 3]],
+    col_index: &HashMap<[u8; 3], usize>,
+    standard: &[usize],
+    std_index: &HashMap<usize, usize>,
+    pivots: &[usize],
+    nfs: &mut NormalForms,
+    comps: &[HashMap<[u8; 3], u64>],
+    p: u64,
+    rng: &mut StdRng,
+    stats: &mut SolveStats,
+    muls: &mut u64,
+    debug: bool,
+    degree: u8,
+    strict: bool,
+) -> Read {
+    let dim = standard.len();
     // Eigenvalues in F_p from the characteristic polynomial.
     let before_cp = *muls;
-    let cp = charpoly_mod_p(&m_e1, p, muls);
+    let cp = charpoly_mod_p(m_e1, p, muls);
     stats.charpoly_muls += *muls - before_cp;
     let ring = PolyRing::new(p);
     let lambdas = ring.roots(&cp, rng);
@@ -1651,7 +1899,7 @@ fn solve_at_degree(
             );
         }
         *muls += ring.muls.get();
-        return None;
+        return Read::Failed;
     };
     let eval_comp = |comp: &HashMap<[u8; 3], u64>, e: [u64; 3]| -> u64 {
         let mut acc = 0u64;
@@ -1690,10 +1938,14 @@ fn solve_at_degree(
                 }
                 if m_other[k].is_none() {
                     let before = *muls;
-                    m_other[k] = mult_matrix(&cols, &col_index, &standard, var, &mut nfs, muls);
+                    m_other[k] = mult_matrix(cols, col_index, standard, var, nfs, muls);
                     stats.macaulay_muls += *muls - before;
                 }
                 let Some(mv) = &m_other[k] else {
+                    if strict {
+                        *muls += ring.muls.get();
+                        return Read::SplitUnavailable;
+                    }
                     break;
                 };
                 ker = split_eigenspace(&ker, mv, p, rng, muls);
@@ -1750,15 +2002,267 @@ fn solve_at_degree(
     *muls += ring.muls.get();
     result.sort_unstable();
     result.dedup();
-    Some(result)
+    Read::Solved(result)
+}
+
+/// One solve on the demand-driven elimination.  The Macaulay rows stay
+/// as built until a normal form reads one; [`NormalForms`] then reduces
+/// that row — and, first, every planned pivot row it has to be cleared
+/// with — and leaves the rest untouched.  `None` sends the residual back
+/// to the full elimination; the multiplications spent here stay charged.
+fn solve_lazy(
+    plan: &BorderPlan,
+    mat: &[Vec<u64>],
+    cols: &[[u8; 3]],
+    col_index: &HashMap<[u8; 3], usize>,
+    comps: &[HashMap<[u8; 3], u64>],
+    degree: u8,
+    p: u64,
+    rng: &mut StdRng,
+    stats: &mut SolveStats,
+    muls: &mut u64,
+    verify: bool,
+    debug: bool,
+) -> Option<Vec<[u64; 3]>> {
+    let before = *muls;
+    let standard = &plan.standard;
+    let dim = standard.len();
+    let std_index: HashMap<usize, usize> =
+        standard.iter().enumerate().map(|(i, &c)| (c, i)).collect();
+    let mut rows = mat.to_vec();
+    let mut nfs = NormalForms::lazy(&mut rows, plan, &std_index, dim, p);
+    let m_e1 =
+        mult_matrix(cols, col_index, standard, [1, 0, 0], &mut nfs, muls).filter(|_| !nfs.broken());
+    stats.macaulay_muls += *muls - before;
+    let Some(m_e1) = m_e1 else {
+        if debug {
+            eprintln!(
+                "  degree {degree}: lazy elimination found no normal form (staircase off the plan: {})",
+                nfs.broken()
+            );
+        }
+        stats.echelon_muls += nfs.elim_muls;
+        stats.lazy_pivots_reduced += nfs.reduced;
+        stats.lazy_pivots_planned += plan.pivot_row.len() as u64;
+        if verify && staircase_of(mat, cols, degree, p) == *standard {
+            stats.lazy_needless_fallbacks += 1;
+        }
+        return None;
+    };
+    if verify {
+        // The full elimination on the same rows, uncharged: its staircase
+        // must be the plan's and its `M_{e₁}` must agree in every entry.
+        let mut scratch = 0u64;
+        let mut full = mat.to_vec();
+        let (pivots_f, _) = echelon_traced(&mut full, p, &mut scratch);
+        let pivot_set: std::collections::HashSet<usize> = pivots_f.iter().copied().collect();
+        let standard_f: Vec<usize> = (0..cols.len())
+            .filter(|&c| !pivot_set.contains(&c))
+            .filter(|&c| (cols[c][0] + cols[c][1] + cols[c][2]) < degree)
+            .collect();
+        let same = standard_f == *standard && {
+            let mut nfs_f = NormalForms::new(&mut full, &pivots_f, &std_index, dim, p);
+            mult_matrix(
+                cols,
+                col_index,
+                standard,
+                [1, 0, 0],
+                &mut nfs_f,
+                &mut scratch,
+            )
+            .as_ref()
+                == Some(&m_e1)
+        };
+        stats.lazy_verified += 1;
+        if !same {
+            stats.lazy_verify_mismatches += 1;
+            if debug {
+                eprintln!(
+                    "  degree {degree}: lazy/full mismatch (staircase equal: {})",
+                    standard_f == *standard
+                );
+            }
+        }
+    }
+    let mut planned: Vec<usize> = plan.pivot_row.keys().copied().collect();
+    planned.sort_unstable();
+    let read = read_solutions(
+        &m_e1, cols, col_index, standard, &std_index, &planned, &mut nfs, comps, p, rng, stats,
+        muls, debug, degree, true,
+    );
+    let read = if nfs.broken() {
+        Read::SplitUnavailable
+    } else {
+        read
+    };
+    stats.echelon_muls += nfs.elim_muls;
+    stats.lazy_pivots_reduced += nfs.reduced;
+    stats.lazy_pivots_planned += plan.pivot_row.len() as u64;
+    if debug {
+        eprintln!(
+            "  degree {degree}: lazy elimination reduced {} of {} planned pivot rows, {} muls",
+            nfs.reduced,
+            plan.pivot_row.len(),
+            nfs.elim_muls
+        );
+    }
+    match read {
+        Read::Solved(res) => {
+            stats.quotient_dim_total += dim as u64;
+            Some(res)
+        }
+        Read::Failed | Read::SplitUnavailable => {
+            if verify && staircase_of(mat, cols, degree, p) == *standard {
+                stats.lazy_needless_fallbacks += 1;
+            }
+            None
+        }
+    }
+}
+
+/// The standard columns of `mat` at `degree` — non-pivot columns below
+/// the top degree — from a full elimination on a copy, uncharged.  Only
+/// the verification mode calls it.
+fn staircase_of(mat: &[Vec<u64>], cols: &[[u8; 3]], degree: u8, p: u64) -> Vec<usize> {
+    let mut scratch = 0u64;
+    let (pivots, _) = echelon_traced(&mut mat.to_vec(), p, &mut scratch);
+    let pivot_set: std::collections::HashSet<usize> = pivots.into_iter().collect();
+    (0..cols.len())
+        .filter(|&c| !pivot_set.contains(&c))
+        .filter(|&c| (cols[c][0] + cols[c][1] + cols[c][2]) < degree)
+        .collect()
+}
+
+/// What a forward elimination did, by original row index: the row each
+/// pivot column took, the multiplications normalising it, and every
+/// reduction of one row by a pivot row with its cost.  The demand-driven
+/// elimination learns its plan from `pivot_row`; the rest prices what
+/// it can skip.
+struct EchelonTrace {
+    pivot_row: HashMap<usize, usize>,
+    norm: HashMap<usize, u64>,
+    /// `(pivot column, original index of the row it reduced, multiplications)`.
+    mods: Vec<(usize, usize, u64)>,
+}
+
+impl EchelonTrace {
+    fn total(&self) -> u64 {
+        self.norm.values().sum::<u64>() + self.mods.iter().map(|m| m.2).sum::<u64>()
+    }
+
+    /// §11.13's attribution: the work pivot column `c` *did* — its
+    /// normalisation and every reduction it performed, on any row.
+    fn done_by(&self, c: usize) -> u64 {
+        self.norm.get(&c).copied().unwrap_or(0)
+            + self
+                .mods
+                .iter()
+                .filter(|m| m.0 == c)
+                .map(|m| m.2)
+                .sum::<u64>()
+    }
+
+    /// The rows a set of normal forms depends on — the pivot rows of the
+    /// columns they reached and, transitively, every pivot row subtracted
+    /// from one of those — and the multiplications spent on rows outside
+    /// that set, which nothing ever reads.  Returns `(rows, muls)`.
+    fn closure(&self, pivots: &[usize], reached: impl Fn(usize) -> bool) -> (usize, u64) {
+        let mut needed: std::collections::HashSet<usize> = pivots
+            .iter()
+            .filter(|&&c| reached(c))
+            .map(|c| self.pivot_row[c])
+            .collect();
+        let mut reduces: HashMap<usize, Vec<usize>> = HashMap::new();
+        for &(c, r, _) in &self.mods {
+            reduces.entry(c).or_default().push(r);
+        }
+        // A pivot row reduces only rows that become pivots further right
+        // (or end as zero rows, which nothing reads), so one right-to-left
+        // pass settles every row before anything that reduced it is asked.
+        for &c in pivots.iter().rev() {
+            let r = self.pivot_row[&c];
+            if !needed.contains(&r)
+                && reduces
+                    .get(&c)
+                    .is_some_and(|rs| rs.iter().any(|x| needed.contains(x)))
+            {
+                needed.insert(r);
+            }
+        }
+        let skippable = pivots
+            .iter()
+            .filter(|c| !needed.contains(&self.pivot_row[c]))
+            .map(|c| self.norm[c])
+            .sum::<u64>()
+            + self
+                .mods
+                .iter()
+                .filter(|m| !needed.contains(&m.1))
+                .map(|m| m.2)
+                .sum::<u64>();
+        (needed.len(), skippable)
+    }
 }
 
 /// Forward elimination to row echelon form over `F_p` (pivot rows
 /// normalised to a leading `1`), sparse-aware: only rows with a nonzero
 /// entry in the pivot column are touched, and only the nonzero entries
 /// of the pivot row are multiplied — `muls` counts exactly those.
-/// Returns the pivot columns in order; row `k` is the pivot row of
-/// `pivots[k]` and rows from `pivots.len()` on are zero.
+/// Returns the pivot columns in order — row `k` is the pivot row of
+/// `pivots[k]` and rows from `pivots.len()` on are zero — and the
+/// [`EchelonTrace`] of which original row went where at what cost.
+fn echelon_traced(m: &mut [Vec<u64>], p: u64, muls: &mut u64) -> (Vec<usize>, EchelonTrace) {
+    let rows = m.len();
+    let cols = if rows > 0 { m[0].len() } else { 0 };
+    let mut orig: Vec<usize> = (0..rows).collect();
+    let mut trace = EchelonTrace {
+        pivot_row: HashMap::new(),
+        norm: HashMap::new(),
+        mods: Vec::new(),
+    };
+    let mut pivots = Vec::new();
+    let mut r = 0;
+    for c in 0..cols {
+        if r >= rows {
+            break;
+        }
+        let Some(pr) = (r..rows).find(|&i| m[i][c] != 0) else {
+            continue;
+        };
+        m.swap(r, pr);
+        orig.swap(r, pr);
+        let inv = inv_mod(m[r][c], p);
+        let mut nz: Vec<usize> = Vec::new();
+        for j in c..cols {
+            if m[r][j] != 0 {
+                m[r][j] = mm(m[r][j], inv, p);
+                nz.push(j);
+            }
+        }
+        *muls += nz.len() as u64;
+        trace.norm.insert(c, nz.len() as u64);
+        let pivot_row = m[r].clone();
+        for i in (r + 1)..rows {
+            if m[i][c] != 0 {
+                let fct = m[i][c];
+                for &j in &nz {
+                    m[i][j] = sm(m[i][j], mm(fct, pivot_row[j], p), p);
+                }
+                *muls += nz.len() as u64;
+                trace.mods.push((c, orig[i], nz.len() as u64));
+            }
+        }
+        trace.pivot_row.insert(c, orig[r]);
+        pivots.push(c);
+        r += 1;
+    }
+    (pivots, trace)
+}
+
+/// Forward elimination mod `p` returning the pivot columns, counting the
+/// multiplications in `muls`.  The untraced form of the traced echelon
+/// above; kept as the plain reference it is checked against in the tests.
+#[cfg(test)]
 fn echelon_mod_p(m: &mut [Vec<u64>], p: u64, muls: &mut u64) -> Vec<usize> {
     let rows = m.len();
     let cols = if rows > 0 { m[0].len() } else { 0 };
@@ -1800,36 +2304,278 @@ fn echelon_mod_p(m: &mut [Vec<u64>], p: u64, muls: &mut u64) -> Vec<usize> {
 /// Normal forms over the standard monomials, by memoised
 /// back-substitution in the echelon form — the reduced echelon form is
 /// never built, only the normal forms actually asked for.
+///
+/// In demand-driven mode ([`NormalForms::lazy`]) the echelon form is not
+/// built either: the rows are the Macaulay rows as constructed, and a
+/// pivot row is found and reduced the first time a normal form reads it.
 struct NormalForms<'a> {
-    m: &'a [Vec<u64>],
+    m: &'a mut [Vec<u64>],
+    /// Pivot column → row.  Complete after a full elimination; filled in
+    /// as rows are reduced in demand-driven mode.
     pivot_row: HashMap<usize, usize>,
     std_index: &'a HashMap<usize, usize>,
     dim: usize,
     p: u64,
     memo: Vec<Option<Vec<u64>>>,
+    lazy: Option<LazyRows<'a>>,
+    /// Multiplications the demand-driven mode spent reducing rows (also
+    /// counted in the caller's `muls`), and how many pivot rows it built.
+    elim_muls: u64,
+    reduced: u64,
+}
+
+/// Demand-driven mode's bookkeeping, per Macaulay row.
+struct LazyRows<'a> {
+    plan: &'a BorderPlan,
+    /// Row `r` has no nonzero entry left of column `upto[r]`.
+    upto: Vec<usize>,
+    /// Already some column's pivot row.
+    used: Vec<bool>,
+    /// Being reduced further up the call stack.
+    busy: Vec<bool>,
+    /// Rows tried for a column whose entry there cancelled: they lead
+    /// further right, so they are the first spares for later columns.
+    displaced: Vec<usize>,
+    /// Some row led at a column the plan does not pivot: this residual's
+    /// staircase is not the plan's, and no normal form here is trusted.
+    broken: bool,
+}
+
+/// What clearing a row left of a column came to.
+enum Cleared {
+    /// It leads at the column.
+    Leads,
+    /// Its entry there cancelled too; it leads further right.
+    Cancelled,
+    /// It leads at an earlier pivot column that had no free row, and
+    /// has become that column's pivot row instead.
+    Adopted,
+    /// It leads at a column with no pivot in the plan.
+    Broken,
 }
 
 impl<'a> NormalForms<'a> {
+    /// Over a forward-eliminated matrix: row `k` is the pivot row of
+    /// `pivots[k]`.
     fn new(
-        m: &'a [Vec<u64>],
+        m: &'a mut [Vec<u64>],
         pivots: &[usize],
         std_index: &'a HashMap<usize, usize>,
         dim: usize,
         p: u64,
     ) -> Self {
+        let pivot_row = pivots.iter().enumerate().map(|(r, &c)| (c, r)).collect();
+        Self::build(m, pivot_row, std_index, dim, p, None)
+    }
+
+    /// Over the Macaulay rows as built, following `plan`: nothing is
+    /// eliminated until a normal form reads it.
+    fn lazy(
+        m: &'a mut [Vec<u64>],
+        plan: &'a BorderPlan,
+        std_index: &'a HashMap<usize, usize>,
+        dim: usize,
+        p: u64,
+    ) -> Self {
+        let rows = m.len();
+        let lazy = LazyRows {
+            plan,
+            upto: vec![0; rows],
+            used: vec![false; rows],
+            busy: vec![false; rows],
+            displaced: Vec::new(),
+            broken: false,
+        };
+        Self::build(m, HashMap::new(), std_index, dim, p, Some(lazy))
+    }
+
+    fn build(
+        m: &'a mut [Vec<u64>],
+        pivot_row: HashMap<usize, usize>,
+        std_index: &'a HashMap<usize, usize>,
+        dim: usize,
+        p: u64,
+        lazy: Option<LazyRows<'a>>,
+    ) -> Self {
         let cols = if m.is_empty() { 0 } else { m[0].len() };
         NormalForms {
             m,
-            pivot_row: pivots.iter().enumerate().map(|(r, &c)| (c, r)).collect(),
+            pivot_row,
             std_index,
             dim,
             p,
             memo: vec![None; cols],
+            lazy,
+            elim_muls: 0,
+            reduced: 0,
         }
     }
 
+    /// Demand-driven mode found a row leading off the plan's staircase.
+    fn broken(&self) -> bool {
+        self.lazy.as_ref().is_some_and(|lz| lz.broken)
+    }
+
+    /// The reduced row whose leading entry is column `c`.  `None` when
+    /// `c` is not a pivot column or — demand-driven — when no row can be
+    /// brought to lead there.
+    ///
+    /// Demand-driven, any row of the Macaulay matrix that leads at `c`
+    /// once its entries to the left are cleared will do: it is in the
+    /// row space with leading monomial `c`, and the normal forms read
+    /// off distinct-lead rows do not depend on which rows they are.  The
+    /// plan's row is tried first; if its entry at `c` cancels — an
+    /// accident of the values, probability about `1/p` per entry — the
+    /// rows displaced that way earlier are tried, then the rows that were
+    /// live in column `c` when the plan was learned, then any row left.
+    fn pivot(&mut self, c: usize, muls: &mut u64) -> Option<usize> {
+        if let Some(&r) = self.pivot_row.get(&c) {
+            return Some(r);
+        }
+        let lz = self.lazy.as_ref()?;
+        if lz.broken {
+            return None;
+        }
+        let mut tries = vec![*lz.plan.pivot_row.get(&c)?];
+        tries.extend(lz.displaced.iter().copied());
+        if let Some(live) = lz.plan.live.get(&c) {
+            tries.extend(live.iter().copied());
+        }
+        // Last resort, as the forward elimination itself searches: every
+        // row not yet spent.
+        tries.extend((0..lz.used.len()).filter(|&r| !lz.used[r]));
+        for r in tries {
+            let lz = self.lazy.as_ref()?;
+            if lz.used[r] || lz.busy[r] {
+                continue;
+            }
+            match self.clear(r, c, muls) {
+                Cleared::Leads => {
+                    let p = self.p;
+                    let inv = inv_mod(self.m[r][c], p);
+                    let mut spent = 0u64;
+                    for x in self.m[r].iter_mut().skip(c) {
+                        if *x != 0 {
+                            *x = mm(*x, inv, p);
+                            spent += 1;
+                        }
+                    }
+                    *muls += spent;
+                    self.elim_muls += spent;
+                    self.reduced += 1;
+                    self.pivot_row.insert(c, r);
+                    let lz = self.lazy.as_mut()?;
+                    lz.used[r] = true;
+                    lz.displaced.retain(|&x| x != r);
+                    return Some(r);
+                }
+                Cleared::Cancelled => {
+                    let lz = self.lazy.as_mut()?;
+                    if !lz.displaced.contains(&r) {
+                        lz.displaced.push(r);
+                    }
+                }
+                Cleared::Adopted => {}
+                Cleared::Broken => {
+                    self.lazy.as_mut()?.broken = true;
+                    return None;
+                }
+            }
+        }
+        None
+    }
+
+    /// Clear row `r` left of column `c` with the pivot rows of those
+    /// columns — finding and reducing them first if nothing has read
+    /// them yet — exactly as the forward elimination would, but one row
+    /// at a time, so a row nobody reads is never touched and a row that
+    /// is read costs what it costs there.
+    fn clear(&mut self, r: usize, c: usize, muls: &mut u64) -> Cleared {
+        let p = self.p;
+        let Some(lz) = self.lazy.as_mut() else {
+            return Cleared::Broken;
+        };
+        let start = lz.upto[r];
+        if start > c {
+            return Cleared::Cancelled;
+        }
+        lz.busy[r] = true;
+        let mut row = std::mem::take(&mut self.m[r]);
+        let width = row.len();
+        let mut spent = 0u64;
+        let mut outcome = None;
+        let mut upto = c;
+        for j in start..c {
+            let a = row[j];
+            if a == 0 {
+                continue;
+            }
+            // Every entry left of `j` is zero: the row leads at `j`.
+            let planned = self
+                .lazy
+                .as_ref()
+                .is_some_and(|lz| lz.plan.pivot_row.contains_key(&j));
+            if !planned {
+                outcome = Some(Cleared::Broken);
+                upto = j;
+                break;
+            }
+            let Some(rj) = self.pivot(j, muls) else {
+                upto = j;
+                if self.broken() {
+                    outcome = Some(Cleared::Broken);
+                    break;
+                }
+                // No free row leads at `j` and this one does — the rows
+                // that could are further up the call stack — so, as in
+                // the forward elimination, it becomes `j`'s pivot row.
+                let inv = inv_mod(a, p);
+                for x in row.iter_mut().skip(j) {
+                    if *x != 0 {
+                        *x = mm(*x, inv, p);
+                        spent += 1;
+                    }
+                }
+                outcome = Some(Cleared::Adopted);
+                break;
+            };
+            let piv = &self.m[rj];
+            for k in j..width {
+                if piv[k] != 0 {
+                    row[k] = sm(row[k], mm(a, piv[k], p), p);
+                    spent += 1;
+                }
+            }
+        }
+        let outcome = match outcome {
+            Some(o) => o,
+            None if row[c] != 0 => Cleared::Leads,
+            None => {
+                upto = c + 1;
+                Cleared::Cancelled
+            }
+        };
+        self.m[r] = row;
+        *muls += spent;
+        self.elim_muls += spent;
+        if let Some(lz) = self.lazy.as_mut() {
+            lz.busy[r] = false;
+            lz.upto[r] = upto;
+            if matches!(outcome, Cleared::Adopted) {
+                lz.used[r] = true;
+                lz.displaced.retain(|&x| x != r);
+            }
+        }
+        if matches!(outcome, Cleared::Adopted) {
+            self.pivot_row.insert(upto, r);
+            self.reduced += 1;
+        }
+        outcome
+    }
+
     /// `None` when column `c` is neither standard nor a pivot (a
-    /// monomial the matrix does not reduce at this degree).
+    /// monomial the matrix does not reduce at this degree), or — in
+    /// demand-driven mode — when no row can be brought to lead there.
     fn nf(&mut self, c: usize, muls: &mut u64) -> Option<Vec<u64>> {
         if let Some(v) = &self.memo[c] {
             return Some(v.clone());
@@ -1841,7 +2587,7 @@ impl<'a> NormalForms<'a> {
             self.memo[c] = Some(v.clone());
             return Some(v);
         }
-        let &r = self.pivot_row.get(&c)?;
+        let r = self.pivot(c, muls)?;
         let cols = self.m[r].len();
         for j in (c + 1)..cols {
             let a = self.m[r][j];
@@ -1969,7 +2715,7 @@ fn mult_matrix(
 /// functionals that are simultaneous eigenvectors.  Vectors of an
 /// eigenvalue whose kernel is still degenerate are returned as they
 /// are (for a further split by the next variable).
-fn split_eigenspace(
+pub(crate) fn split_eigenspace(
     w: &[Vec<u64>],
     mv: &[Vec<u64>],
     p: u64,
@@ -2151,6 +2897,18 @@ pub struct GaudryReport {
     /// of those rows; solve attempts (Wiedemann retries with more rows).
     pub la_mode: String,
     pub la_ops: u64,
+    /// Relations the merge-level cap discarded: residuals paid for and
+    /// thrown away, which is what the cap costs.
+    pub lp_abandoned: u64,
+    /// Mean pivot reductions a surviving relation went through.
+    pub lp_mean_merge_depth: f64,
+    /// The cap in force, echoed so a row states its own configuration.
+    pub lp_max_merge_level: u8,
+    /// Multiplications the **eliminator** spent merging pivots, separated
+    /// from the solve.  A merge-level cap trades one against the other --
+    /// it makes the matrix sparser and the eliminator busier -- so lumping
+    /// them in `la_ops` hides which way the trade went.
+    pub lp_merge_ops: u64,
     pub la_unknowns: usize,
     pub la_rows: usize,
     pub la_avg_weight: f64,
@@ -2187,6 +2945,17 @@ pub struct GaudryOptions {
     pub small_base: usize,
     /// Decompositions with more large primes than this are discarded.
     pub max_large_primes: u8,
+    /// **Merge-level cap.**  A relation is abandoned once it has been
+    /// reduced against this many stored pivots, instead of being chained
+    /// until every large prime cancels.  `0` means no cap, which is what
+    /// this module did before it was measured and what section 11.7 of
+    /// `research/notes/index-calculus/RESEARCH_RESIDUAL_WALKS.md` records
+    /// as its loose end: chaining merges the pivots' columns in, so row
+    /// weight grows with `n` and the linear algebra measures `n^{0.56}`
+    /// against its own `4/9`.  Capping holds the weight down and pays for
+    /// it in discarded residuals; which side of that trade wins is
+    /// [`GaudryReport::lp_abandoned`] against the fitted exponent.
+    pub max_merge_level: u8,
 }
 
 impl Default for GaudryOptions {
@@ -2198,6 +2967,7 @@ impl Default for GaudryOptions {
             sparse_la: false,
             small_base: 0,
             max_large_primes: 0,
+            max_merge_level: 0,
         }
     }
 }
@@ -2240,18 +3010,36 @@ pub struct LargePrimeEliminator {
     small: usize,
     n: u64,
     pivots: HashMap<usize, SparseRel>,
+    /// Abandon a relation after this many pivot reductions; `0` is no cap.
+    max_merge_level: u8,
+    /// Relations discarded by the cap: residuals paid for and thrown away,
+    /// which is exactly what the cap costs.
+    pub abandoned: u64,
+    /// Merge depth summed over relations that survived, and how many did,
+    /// so the realised depth can be reported rather than assumed.
+    pub depth_sum: u64,
+    pub depth_count: u64,
 }
 
 impl LargePrimeEliminator {
     pub fn new(small: usize, n: u64) -> Self {
+        Self::with_cap(small, n, 0)
+    }
+
+    pub fn with_cap(small: usize, n: u64, max_merge_level: u8) -> Self {
         LargePrimeEliminator {
             small,
             n,
             pivots: HashMap::new(),
+            max_merge_level,
+            abandoned: 0,
+            depth_sum: 0,
+            depth_count: 0,
         }
     }
 
     pub fn feed(&mut self, mut rel: SparseRel, ops: &mut u64) -> Option<SparseRel> {
+        let mut depth = 0u8;
         loop {
             let lp: Vec<(usize, u64)> = rel
                 .cols
@@ -2260,7 +3048,19 @@ impl LargePrimeEliminator {
                 .filter(|&(c, _)| c >= self.small)
                 .collect();
             if lp.is_empty() {
+                self.depth_sum += u64::from(depth);
+                self.depth_count += 1;
                 return Some(rel);
+            }
+            // The cap.  Uncapped, this loop chains until every large prime
+            // cancels, and each reduction merges a pivot's columns in; that
+            // unbounded chaining is the fill-in section 11.7 measures.  Past
+            // the cap the relation is dropped rather than densified -- it is
+            // not stored as a pivot either, since a capped relation is not a
+            // reduced one and would seed the same growth from a new column.
+            if self.max_merge_level != 0 && depth >= self.max_merge_level {
+                self.abandoned += 1;
+                return None;
             }
             let Some(&(c, v)) = lp.iter().find(|(c, _)| self.pivots.contains_key(c)) else {
                 // No pivot for any of its large primes: store under one.
@@ -2278,6 +3078,16 @@ impl LargePrimeEliminator {
             };
             let piv = self.pivots[&c].clone();
             rel = rel.sub_scaled(v, &piv, self.n, ops);
+            depth += 1;
+        }
+    }
+
+    /// Mean number of pivot reductions a surviving relation went through.
+    pub fn mean_merge_depth(&self) -> f64 {
+        if self.depth_count == 0 {
+            0.0
+        } else {
+            self.depth_sum as f64 / self.depth_count as f64
         }
     }
 }
@@ -2584,9 +3394,12 @@ pub fn run_gaudry_opts(
     curve.reset();
     let mut stats = SolveStats::default();
     let mut system = RelationSystem::new(n, unknowns);
-    let mut eliminator = LargePrimeEliminator::new(small, n);
+    let mut eliminator = LargePrimeEliminator::with_cap(small, n, opts.max_merge_level);
     let mut full_rels: Vec<SparseRel> = Vec::new();
     let mut la_ops = 0u64;
+    // The eliminator's share of `la_ops`, tracked alongside it so the solve's
+    // share is the difference.
+    let mut merge_ops = 0u64;
     let mut la_attempts = 0u64;
     let mut next_attempt = unknowns;
     let mut la_rows_used = 0usize;
@@ -2623,6 +3436,10 @@ pub fn run_gaudry_opts(
             "dense".to_string()
         },
         la_ops: 0,
+        lp_abandoned: 0,
+        lp_mean_merge_depth: 0.0,
+        lp_max_merge_level: opts.max_merge_level,
+        lp_merge_ops: 0,
         la_unknowns: unknowns,
         la_rows: 0,
         la_avg_weight: 0.0,
@@ -2738,7 +3555,9 @@ pub fn run_gaudry_opts(
             let full = if lp_count == 0 {
                 Some(rel)
             } else {
+                let before = la_ops;
                 let f = eliminator.feed(rel, &mut la_ops);
+                merge_ops += la_ops - before;
                 if f.is_some() {
                     rep.lp_full_relations += 1;
                 }
@@ -2828,6 +3647,9 @@ pub fn run_gaudry_opts(
     rep.precompute_fp_muls = precompute_muls;
     rep.solve_stats = stats;
     rep.la_ops = la_ops + system.ops();
+    rep.lp_merge_ops = merge_ops;
+    rep.lp_abandoned = eliminator.abandoned;
+    rep.lp_mean_merge_depth = eliminator.mean_merge_depth();
     rep.la_rows = la_rows_used;
     rep.la_attempts = la_attempts;
     if opts.sparse_la {
@@ -2926,6 +3748,19 @@ pub fn run_rho3(inst: &Instance3, seed: u64) -> RhoReport3 {
 
 #[cfg(test)]
 mod tests {
+    /// The plain echelon finds the pivot columns of a rank-deficient
+    /// matrix and counts its multiplications.
+    #[test]
+    fn plain_echelon_finds_the_pivots() {
+        let p = 7;
+        let mut m = vec![vec![1, 2, 3], vec![2, 4, 6], vec![0, 1, 1]];
+        let mut muls = 0u64;
+        let pivots = super::echelon_mod_p(&mut m, p, &mut muls);
+        assert_eq!(pivots, vec![0, 1]);
+        assert!(muls > 0);
+        assert!(m[2].iter().all(|&x| x == 0), "{m:?}");
+    }
+
     use super::*;
 
     fn small_field() -> (Fp3, StdRng) {
@@ -3202,6 +4037,63 @@ mod tests {
         );
     }
 
+    /// The demand-driven elimination must give the full elimination's
+    /// answer on every residual and build the same `M_{e₁}` entry for
+    /// entry — on one residual stream, in lockstep, with the modes passed
+    /// explicitly so no environment variable is shared with the tests
+    /// that set them.
+    #[test]
+    fn the_lazy_elimination_reads_the_same_normal_forms() {
+        let inst = generate_instance3(271, 1);
+        let p = inst.curve.field.p;
+        let pre_full = SymmetrisedS4::precompute(&inst.curve);
+        let pre_lazy = SymmetrisedS4::precompute(&inst.curve);
+        let full = SolveMode::default();
+        let lazy = SolveMode {
+            lazy: LazyElim::Verify,
+            ..SolveMode::default()
+        };
+        let mut rng_full = StdRng::seed_from_u64(7);
+        let mut rng_lazy = StdRng::seed_from_u64(7);
+        let mut st_full = SolveStats::default();
+        let mut st_lazy = SolveStats::default();
+        for k in 0..200u64 {
+            let x_r = E3([
+                (k * 7919 + 1) % p,
+                (k * 104_729 + 13) % p,
+                (k * 15_485_863 + 7) % p,
+            ]);
+            let a =
+                solve_s4_subspace_with(&inst, &pre_full, &x_r, &mut rng_full, &mut st_full, full);
+            let b =
+                solve_s4_subspace_with(&inst, &pre_lazy, &x_r, &mut rng_lazy, &mut st_lazy, lazy);
+            assert_eq!(a, b, "residual {k}: full {a:?} vs lazy {b:?}");
+        }
+        assert!(pre_lazy.plan.get().is_some(), "no plan was learned");
+        assert!(
+            pre_full.plan.get().is_none(),
+            "the full mode learned a plan"
+        );
+        assert_eq!(st_lazy.lazy_verify_mismatches, 0, "{st_lazy:?}");
+        assert_eq!(st_lazy.lazy_verified, st_lazy.lazy_solves, "{st_lazy:?}");
+        // Every residual after the one that taught the plan is tried
+        // lazily, and every one that falls back has a staircase no plan
+        // could serve — an accidental cancellation (probability ~`1/p`
+        // per entry) is absorbed by trying another row, never a fallback.
+        assert!(
+            st_lazy.lazy_solves + st_lazy.lazy_fallbacks + 1 >= st_lazy.solves,
+            "{st_lazy:?}"
+        );
+        assert_eq!(st_lazy.lazy_needless_fallbacks, 0, "{st_lazy:?}");
+        assert!(st_lazy.lazy_fallbacks * 20 <= st_lazy.solves, "{st_lazy:?}");
+        // It skips rows, though not many: whether that pays is the
+        // measurement's question (§11.14), not this test's.
+        assert!(
+            st_lazy.lazy_pivots_reduced < st_lazy.lazy_pivots_planned,
+            "reduced every planned row: {st_lazy:?}"
+        );
+    }
+
     #[test]
     fn wiedemann_solves_random_sparse_systems() {
         let n = 1_000_003u64;
@@ -3321,6 +4213,77 @@ mod tests {
             .collect();
         let sol = wiedemann_u64(&sel, n_cols, n, &mut rng, &mut ops).expect("core solves");
         assert_eq!(sol[map[keep]], x[keep]);
+    }
+
+    #[test]
+    fn the_merge_cap_bounds_depth_and_charges_what_it_discards() {
+        // Section 11.10's cap.  Uncapped, `feed` chains pivot reductions until
+        // every large prime cancels, and each one merges a pivot's columns in;
+        // that is the fill-in section 11.7 measures.  Capped, a relation past
+        // the depth bound is dropped instead, and the drop is counted because
+        // it is a residual that was paid for.
+        let n = 1_000_003u64;
+        let small = 5usize;
+        let build = |cap: u8| {
+            let mut rng = StdRng::seed_from_u64(9);
+            let mut el = LargePrimeEliminator::with_cap(small, n, cap);
+            let x: Vec<u64> = (0..small + 6).map(|_| rng.gen_range(0..n)).collect();
+            let mut ops = 0u64;
+            let mut full = 0usize;
+            for _ in 0..400 {
+                let mut cols: Vec<(usize, u64)> = Vec::new();
+                for _ in 0..3 {
+                    let c = if rng.gen_bool(0.6) {
+                        small + rng.gen_range(0..6)
+                    } else {
+                        rng.gen_range(0..small)
+                    };
+                    let v = if rng.gen_bool(0.5) { 1 } else { n - 1 };
+                    if let Some(e) = cols.iter_mut().find(|(cc, _)| *cc == c) {
+                        e.1 = am(e.1, v, n);
+                    } else {
+                        cols.push((c, v));
+                    }
+                }
+                cols.retain(|&(_, v)| v != 0);
+                cols.sort_unstable();
+                let rhs = cols
+                    .iter()
+                    .fold(0u64, |acc, &(c, v)| am(acc, mm(v, x[c], n), n));
+                if let Some(r) = el.feed(SparseRel { cols, rhs }, &mut ops) {
+                    // Whatever survives is still a true relation over the
+                    // small base: a cap must not corrupt what it lets through.
+                    assert!(r.cols.iter().all(|&(c, _)| c < small));
+                    let lhs = r
+                        .cols
+                        .iter()
+                        .fold(0u64, |acc, &(c, v)| am(acc, mm(v, x[c], n), n));
+                    assert_eq!(lhs, r.rhs);
+                    full += 1;
+                }
+            }
+            (el, full)
+        };
+
+        let (uncapped, full_uncapped) = build(0);
+        let (capped, full_capped) = build(1);
+
+        // The cap binds: nothing survives past depth 1, and the uncapped run
+        // went deeper than that.
+        assert!(capped.abandoned > 0, "a depth-1 cap must discard something");
+        assert_eq!(uncapped.abandoned, 0, "no cap means nothing is discarded");
+        assert!(capped.mean_merge_depth() <= 1.0);
+        assert!(
+            uncapped.mean_merge_depth() > capped.mean_merge_depth(),
+            "uncapped {} vs capped {}",
+            uncapped.mean_merge_depth(),
+            capped.mean_merge_depth()
+        );
+        // And it costs relations, which is the trade being measured.
+        assert!(
+            full_capped < full_uncapped,
+            "capped {full_capped} should yield fewer full relations than {full_uncapped}"
+        );
     }
 
     #[test]

@@ -108,6 +108,26 @@ def validate_run(run: dict) -> dict:
         require(run.get("verified_scalar") is not True, "stage or censored run claims scalar")
     rho = run.get("rho_operations")
     require(rho is None or (type(rho) is int and rho > 0), "invalid rho cost")
+    online = run.get("online")
+    if online is not None:
+        require(counts["targets"] == 1, "primary online receipt needs exactly one target")
+        charged = online.get("phase_wall_ns", {})
+        required = {"target_query", "target_pdp", "target_relation_check", "target_descent",
+                    "target_recovery_check"}
+        require(set(charged) == required and all(type(v) is int and v >= 0 for v in charged.values()),
+                "invalid primary online phase accounting")
+        ic_ns = online.get("ic_online_ns")
+        require(type(ic_ns) is int and ic_ns > 0 and sum(charged.values()) == ic_ns,
+                "primary online phases must sum to the target interval")
+        measured = run.get("rho_measured") or {}
+        rho_ns = measured.get("online_wall_ns")
+        require(type(rho_ns) is int and rho_ns > 0 and rho_ns == online.get("rho_online_ns"),
+                "missing paired measured rho interval")
+        if online.get("speedup") is not None:
+            require(run.get("verified_scalar") is True and measured.get("verified") is True,
+                    "unverified target claims online speedup")
+            require(math.isclose(online["speedup"], rho_ns / ic_ns, rel_tol=1e-12),
+                    "incorrect online speedup")
     return run
 
 
@@ -165,6 +185,10 @@ def summarize(runs: list[dict]) -> dict:
             "complete_dlp_runs": len(full),
             "median_complete_total_operations": statistics.median(
                 run["total_operations"] for run in full) if full else None,
+            "median_verified_ic_online_ns": statistics.median(
+                run["online"]["ic_online_ns"] for run in full
+                if run.get("online") and run["online"].get("speedup") is not None)
+            if any(run.get("online") and run["online"].get("speedup") is not None for run in full) else None,
         }
     return result
 
@@ -197,14 +221,24 @@ def paired_compare(runs: list[dict], baseline: str, candidate: str) -> dict:
         for field in ("workload_fixture_sha256", "resource_envelope_id", "calibration_id"):
             require(a["provenance"][field] == b["provenance"][field],
                     f"mismatched provenance {field} in {key}")
+        require(bool(a.get("online")) == bool(b.get("online")),
+                f"mismatched online accounting in {key}")
         if a["kind"] != "full_dlp" or b["kind"] != "full_dlp" or a["status"] != "complete" or b["status"] != "complete":
             incomplete.append({"block": key, "reason": "incomplete_dlp"})
             continue
-        ratios.append(a["total_operations"] / b["total_operations"])
+        if a.get("online") and b.get("online"):
+            if a["online"].get("speedup") is None or b["online"].get("speedup") is None:
+                incomplete.append({"block": key, "reason": "unverified_online_control"})
+                continue
+            ratios.append(a["online"]["ic_online_ns"] / b["online"]["ic_online_ns"])
+        else:
+            ratios.append(a["total_operations"] / b["total_operations"])
     outcome = {"baseline": baseline, "candidate": candidate,
                "paired_blocks": len(keys), "complete_pairs": len(ratios),
                "incomplete_pairs": incomplete, "speedup": None,
                "speedup_ci95": None, "confidence_unit": "independent_pair_block"}
+    outcome["metric"] = "one_target_online_wall_ns" if all(
+        run.get("online") is not None for pair in selected.values() for run in pair.values()) else "cold_operations"
     if incomplete or not ratios:
         return outcome
     logs = [math.log(ratio) for ratio in ratios]

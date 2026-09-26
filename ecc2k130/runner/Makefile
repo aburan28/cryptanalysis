@@ -769,6 +769,7 @@ check-cloud:
 	python3 -m unittest discover -s tests -v
 	python3 -m unittest discover -s aws -p 'test*.py' -v
 	python3 codegen/checkcli.py modal_worker.py
+	python3 codegen/checkcli.py modal_ingest.py
 
 .PHONY: gpu-rtx-pro6000-22b
 gpu-rtx-pro6000-22b: gpu-goal22

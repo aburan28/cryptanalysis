@@ -453,6 +453,11 @@ impl CurveParams {
             gx: hexp("91E38443A5E82C0D880923425712B2BB658B9196932E02C78B2582FE742DAA28"),
             gy: hexp("32879423AB1A0375895786C4BB46E9565FDE0B5344766740AF268ADB32322E5C"),
             n: hexp("400000000000000000000000000000000FD8CDDFC87B6635C115AF556C360C67"),
+            // id-tc26-gost-3410-2012-256-paramSetA is a cofactor-4 curve
+            // (twisted-Edwards form): #E = 4·n, with n the prime subgroup
+            // order stored above.  Recorded as h = 1 previously, which fails
+            // the Hasse bound |#E - (p+1)| <= 2√p; see the curve-catalog
+            // verification and docs/ic/ENGINE_AUDIT_AND_DESIGN.md §2.5.
             h: 4,
         }
     }

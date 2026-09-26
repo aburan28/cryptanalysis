@@ -498,6 +498,8 @@ ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *
         info->lambda = g->endo_lambda;
         info->rho_speedup = sqrt((double)info->aut_order);
     }
+    if (g->order && !ca_check_members(g, base, target, g->order, "glv rho"))
+        return CA_ERR_NOT_FOUND;
     if (g->kind == CA_GROUP_EC && g->endo_kind != 0)
         return glv_rho_solve(g, base, target, seed, x, st);
     ca_rho_params rp;

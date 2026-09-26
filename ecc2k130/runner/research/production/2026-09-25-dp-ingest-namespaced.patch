@@ -1,0 +1,702 @@
+diff -ruN a/ecc2k130/aws/dp_ingest.py b/ecc2k130/aws/dp_ingest.py
+--- a/ecc2k130/aws/dp_ingest.py
++++ b/ecc2k130/aws/dp_ingest.py
+@@ -511,9 +511,18 @@
+     cur.execute("SELECT 1 FROM dp_ingest_totals WHERE campaign_id = %s FOR UPDATE",
+                 (CAMPAIGN,))
+     cur.execute("LOCK TABLE dp_ingest_hourly IN EXCLUSIVE MODE")
++    # Direct reports newer than the lag are left to sweepDirectReports, which
++    # resumes from the mark this transaction sets, so none is counted twice.
++    cur.execute("INSERT INTO dp_ingest_meta (key, at) "
++                "VALUES (%s, clock_timestamp() - make_interval(secs => %s)) "
++                "ON CONFLICT (key) DO UPDATE SET at = EXCLUDED.at",
++                (DIRECT_MARK, DIRECT_REPORT_LAG_S))
+     cur.execute(
+         "SELECT date_trunc('hour', found_at), count(*), min(found_at), max(found_at) "
+-        "FROM distinguished_points WHERE campaign_id = %s GROUP BY 1", (CAMPAIGN,))
++        "FROM distinguished_points WHERE campaign_id = %s "
++        "  AND (worker_id LIKE 'dp-%%' "
++        "       OR found_at <= (SELECT m.at FROM dp_ingest_meta m WHERE m.key = %s)) "
++        "GROUP BY 1", (CAMPAIGN, DIRECT_MARK))
+     rows = cur.fetchall()
+     total = sum(int(n) for _, n, _, _ in rows)
+     cur.execute("DELETE FROM dp_ingest_hourly WHERE campaign_id = %s", (CAMPAIGN,))
+@@ -534,6 +543,104 @@
+     return True
+ 
+ 
++# Points other writers insert -- the ecc2k130 runner's workers call
++# `report_dp` directly, and its rows never pass through `applyRollup` -- are
++# added to the counters by a sweep over `found_at`, once each: every row this
++# program writes has a `dp-` worker_id, so a row is counted either here or
++# there and never both. `report_dp` runs one autocommit statement per point,
++# so a row older than DIRECT_REPORT_LAG_S is committed; the watermark in
++# dp_ingest_meta advances in the same transaction as the counts it covers.
++DIRECT_MARK = "direct_reports_counted_to"
++DIRECT_REPORT_LAG_S = 300
++DIRECT_CHUNK_S = 3600
++DIRECT_BUDGET_S = 45.0
++
++
++def sweepQuietly(conn):
++    """The sweep is bookkeeping for the page; it never stops a publish."""
++    try:
++        return sweepDirectReports(conn)
++    except Exception as exc:
++        try:
++            conn.rollback()
++        except Exception:
++            pass
++        log("direct report sweep failed: %s: %s" % (type(exc).__name__, exc))
++        return 0
++
++
++def sweepDirectReports(conn, budget=DIRECT_BUDGET_S, lag=DIRECT_REPORT_LAG_S,
++                       chunk=DIRECT_CHUNK_S):
++    """Add points written behind this program's back to the counters.
++
++    Starts from the rollup seed, which counted everything before it, and
++    catches up one `chunk` of `found_at` per transaction until it is `lag`
++    behind the database clock or has spent `budget` seconds. Returns the
++    number of points added. Takes the totals row first, the same order as
++    `ensureRollup`, so an ingest's `applyRollup` waits rather than
++    interleaving.
++    """
++    started, added = time.time(), 0
++    while True:
++        with conn.cursor() as cur:
++            cur.execute("INSERT INTO dp_ingest_totals (campaign_id) VALUES (%s) "
++                        "ON CONFLICT (campaign_id) DO NOTHING", (CAMPAIGN,))
++            cur.execute("SELECT 1 FROM dp_ingest_totals WHERE campaign_id = %s FOR UPDATE",
++                        (CAMPAIGN,))
++            cur.execute("SELECT at FROM dp_ingest_meta WHERE key = %s FOR UPDATE", (DIRECT_MARK,))
++            row = cur.fetchone()
++            if row is None:
++                cur.execute("SELECT at FROM dp_ingest_meta WHERE key = %s", (ROLLUP_MARK,))
++                seeded = cur.fetchone()
++                if seeded is None:
++                    conn.rollback()
++                    return added
++                cur.execute("INSERT INTO dp_ingest_meta (key, at) VALUES (%s, %s) "
++                            "ON CONFLICT (key) DO NOTHING", (DIRECT_MARK, seeded[0]))
++                cur.execute("SELECT at FROM dp_ingest_meta WHERE key = %s FOR UPDATE",
++                            (DIRECT_MARK,))
++                row = cur.fetchone()
++            since = row[0]
++            # clock_timestamp, not now(): now() is when the transaction began,
++            # which on a reused connection can be older than the rows to count.
++            cur.execute("SELECT least(%s::timestamptz + make_interval(secs => %s), "
++                        "clock_timestamp() - make_interval(secs => %s)), "
++                        "%s::timestamptz + make_interval(secs => %s) >= "
++                        "clock_timestamp() - make_interval(secs => %s)",
++                        (since, chunk, lag, since, chunk, lag))
++            until, last = cur.fetchone()
++            if until <= since:
++                conn.rollback()
++                return added
++            cur.execute(
++                "SELECT date_trunc('hour', found_at), count(*), min(found_at), max(found_at) "
++                "FROM distinguished_points "
++                "WHERE campaign_id = %s AND found_at > %s AND found_at <= %s "
++                "  AND (worker_id IS NULL OR worker_id NOT LIKE 'dp-%%') "
++                "GROUP BY 1", (CAMPAIGN, since, until))
++            rows = cur.fetchall()
++            n = sum(int(r[1]) for r in rows)
++            if n:
++                cur.execute(
++                    "UPDATE dp_ingest_totals SET dps = dps + %s, "
++                    "  first_dp_at = least(first_dp_at, %s), "
++                    "  last_dp_at = greatest(last_dp_at, %s) WHERE campaign_id = %s",
++                    (n, min(r[2] for r in rows), max(r[3] for r in rows), CAMPAIGN))
++                for hour, count, _, _ in rows:
++                    cur.execute(
++                        "INSERT INTO dp_ingest_hourly (campaign_id, hour, dps) VALUES (%s, %s, %s) "
++                        "ON CONFLICT (campaign_id, hour) DO UPDATE SET "
++                        "  dps = dp_ingest_hourly.dps + EXCLUDED.dps",
++                        (CAMPAIGN, hour, int(count)))
++            cur.execute("UPDATE dp_ingest_meta SET at = %s WHERE key = %s", (until, DIRECT_MARK))
++        conn.commit()
++        added += n
++        if n:
++            log("counted %d directly reported points up to %s" % (n, until))
++        if last or time.time() - started >= budget:
++            return added
++
++
+ # A collision is the campaign's terminal event, and until now the ingest was
+ # the one place it could be seen and the one place it was thrown away:
+ # `ON CONFLICT (campaign_id, point_key) DO NOTHING` cannot tell a worker
+@@ -857,6 +964,15 @@
+ # Below this the checkpoint granularity dominates the difference between two
+ # consecutive status.json writes.
+ MIN_WALK_RATE_SPAN_S = 600
++# "Walking now" is measured over about this long, from samples status.json
++# carries forward. Differencing against the previous write's measured_from
++# instead never moved that base forward, so the published rate became the
++# mean since whenever it was last set (27 hours on 2026-09-25).
++WALK_RATE_WINDOW_S = 3600
++WALK_RATE_SAMPLE_S = 300
++WALK_RATE_KEEP_S = 3 * 3600
++# Namespaced campaigns (the ecc2k130 runner's S3 layout) live under this.
++NAMESPACE_ROOT = "campaigns/"
+ 
+ # The campaign's distinguished-point rule, and what it costs in iterations per
+ # point: measured on the live fleet from each client's own counters, every GPU
+@@ -1042,6 +1158,106 @@
+     }
+ 
+ 
++def workScopesOf(per_slot):
++    """Checkpointed iterations per S3 prefix; "" is the bucket root."""
++    scopes = {"": 0}
++    for slot in per_slot:
++        prefix = slot.get("prefix") or ""
++        scopes[prefix] = scopes.get(prefix, 0) + int(slot["iterations"])
++    return scopes
++
++
++def workScopes(status):
++    """`{prefix: iterations}` of one document, or None.
++
++    A document written before scopes existed counted the bucket root only.
++    """
++    work = (status or {}).get("work") or {}
++    try:
++        if isinstance(work.get("scopes"), dict):
++            return {str(k): int(v) for k, v in work["scopes"].items()}
++        total = int(work.get("iterations"))
++    except (TypeError, ValueError):
++        return None
++    return {"": total} if total > 0 else None
++
++
++def _historyEntries(previous):
++    entries = []
++    for entry in (previous or {}).get("walk_rate_history") or []:
++        if not isinstance(entry, dict):
++            continue
++        at = parseIso(entry.get("at"))
++        scopes = workScopes({"work": {"scopes": entry.get("scopes")}}) \
++            if isinstance(entry.get("scopes"), dict) else None
++        if at is not None and scopes:
++            entries.append((at, scopes))
++    entries.sort(key=lambda e: e[0])
++    return entries
++
++
++def _pickBase(entries, now):
++    aged = [e for e in entries if (now - e[0]).total_seconds() >= WALK_RATE_WINDOW_S]
++    if aged:
++        return aged[-1]
++    ready = [e for e in entries if (now - e[0]).total_seconds() >= MIN_WALK_RATE_SPAN_S]
++    return ready[0] if ready else None
++
++
++def _scopedRate(current, now, scopes, base):
++    at, before = base
++    shared = sorted(set(scopes) & set(before))
++    span = (now - at).total_seconds()
++    # A slot resumed from an older checkpoint moves its prefix backwards; that
++    # is no walk at all, not negative work.
++    walked = sum(max(0, scopes[k] - before[k]) for k in shared)
++    return {
++        "iterations_per_second": walked / span,
++        "window_seconds": int(round(span)),
++        "measured_from": at.strftime("%Y-%m-%dT%H:%M:%SZ"),
++        "measured_to": current.get("generated_at"),
++        "iterations_from": sum(before[k] for k in shared),
++        "iterations_to": sum(scopes[k] for k in shared),
++        "scopes": shared,
++        "method": ("difference of checkpointed totals per S3 prefix against a sample "
++                   "about %d s old" % WALK_RATE_WINDOW_S),
++    }
++
++
++def walkRateFromHistory(current, previous):
++    """`(walk_rate, walk_rate_history)` for a document about to be published.
++
++    The base is the newest carried-forward sample at least WALK_RATE_WINDOW_S
++    old, else the oldest at least MIN_WALK_RATE_SPAN_S old, preferring samples
++    that count every prefix the current document counts. Only the prefixes
++    both count are differenced: adding a campaign's whole history to one
++    window would read as a burst no fleet walked. Before any sample is old
++    enough -- the first writes after an upgrade -- the root is still measured
++    the previous way, so the page never goes without a rate.
++    """
++    now = parseIso(current.get("generated_at"))
++    scopes = workScopes(current)
++    history = []
++    if now is not None:
++        history = [e for e in _historyEntries(previous)
++                   if e[0] < now and (now - e[0]).total_seconds() <= WALK_RATE_KEEP_S]
++    rate = None
++    if now is not None and scopes:
++        covering = [e for e in history if set(scopes) <= set(e[1])]
++        base = _pickBase(covering, now) or _pickBase(history, now)
++        if base is not None:
++            rate = _scopedRate(current, now, scopes, base)
++        else:
++            root = {"generated_at": current.get("generated_at"),
++                    "work": {"iterations": scopes.get("", 0)}}
++            rate = walkRateBetween(root, previous)
++            if rate is not None:
++                rate["scopes"] = [""]
++        if not history or (now - history[-1][0]).total_seconds() >= WALK_RATE_SAMPLE_S:
++            history.append((now, scopes))
++    return rate, [{"at": at.strftime("%Y-%m-%dT%H:%M:%SZ"), "scopes": s} for at, s in history]
++
++
+ def windowSum(hourly, hours):
+     """Points in the last `hours`, from the rollup.
+ 
+@@ -1078,7 +1294,41 @@
+     return out
+ 
+ 
+-def checkpointWork(s3, bucket, staleAfter=1800.0):
++def sharedNamespaces(s3, bucket):
++    """Prefixes of namespaced campaigns whose points land in this collision table.
++
++    The ecc2k130 runner keeps a fleet's leases and checkpoints under
++    `campaigns/<name>/` and reports its points straight to rho-dp through
++    `report_dp`, so neither its checkpoints nor its rows pass through this
++    program. A namespace counts here only when its own campaign.json names this
++    campaign and its cutoff: a different walk (the table walk's
++    `ecc2k130-table8-22b-v1`) cannot meet these walks and is not this work.
++    """
++    out, token = [], None
++    while True:
++        kw = {"Bucket": bucket, "Prefix": NAMESPACE_ROOT, "Delimiter": "/"}
++        if token:
++            kw["ContinuationToken"] = token
++        page = s3.list_objects_v2(**kw)
++        for item in page.get("CommonPrefixes") or []:
++            prefix = item.get("Prefix") or ""
++            try:
++                body = s3.get_object(Bucket=bucket, Key=prefix + "campaign.json")["Body"].read()
++                cfg = json.loads(body.decode("utf-8"))
++            except Exception as exc:
++                if "NoSuchKey" not in type(exc).__name__ + str(exc):
++                    log("namespace %s: campaign.json unreadable, not counted: %s: %s"
++                        % (prefix, type(exc).__name__, exc))
++                continue
++            if cfg.get("campaignId") == CAMPAIGN and cfg.get("dpWeight") == CAMPAIGN_DP_WEIGHT:
++                out.append(prefix)
++        if not page.get("IsTruncated"):
++            break
++        token = page["NextContinuationToken"]
++    return sorted(out)
++
++
++def checkpointWork(s3, bucket, staleAfter=1800.0, namespaces=None):
+     """Exact iterations walked, read from the slot checkpoints.
+ 
+     This is the honest measure of work done and it needs no assumption about
+@@ -1103,15 +1353,37 @@
+     The contract path leaves every earlier blob in place, so a slot may have
+     many `.ck` objects.  Only the newest one is the walk; summing the rest
+     would count the same slot once per checkpoint.
++
++    Namespaced campaigns that share this collision table (`sharedNamespaces`)
++    are added with their `prefix` on each row, because their slot numbers
++    restart at zero and name different walks than the root slots do.
+     """
++    total, slots = _checkpointSlots(s3, bucket, "", staleAfter)
++    for prefix in sharedNamespaces(s3, bucket) if namespaces is None else namespaces:
++        try:
++            extra, rows = _checkpointSlots(s3, bucket, prefix, staleAfter)
++        except Exception as exc:
++            log("namespace %s: checkpoints unreadable, not counted: %s: %s"
++                % (prefix, type(exc).__name__, exc))
++            continue
++        total += extra
++        slots.extend(rows)
++    slots.sort(key=lambda s: (s["retired"], s["prefix"], s["slot"]))
++    return total, slots
++
++
++def _checkpointSlots(s3, bucket, prefix, staleAfter):
+     latest, token = {}, None
+     while True:
+-        kw = {"Bucket": bucket, "Prefix": "ckpt/"}
++        kw = {"Bucket": bucket, "Prefix": prefix + "ckpt/"}
+         if token:
+             kw["ContinuationToken"] = token
+         page = s3.list_objects_v2(**kw)
+         for item in page.get("Contents", []):
+-            m = CKPT_RE.match(item["Key"])
++            key = item["Key"]
++            if not key.startswith(prefix):
++                continue
++            m = CKPT_RE.match(key[len(prefix):])
+             if not m:
+                 continue
+             slot = int(m.group(2))
+@@ -1135,6 +1407,7 @@
+         age = time.time() - modified
+         slots.append({
+             "slot": int(m.group(2)),
++            "prefix": prefix,
+             "run_id": runId,
+             # Whether a slot is still walking is decided by how recently its
+             # checkpoint moved, not by the ckpt/retired/ prefix.  That prefix
+@@ -1148,7 +1421,6 @@
+             "per_walk_steps": iterBase,
+             "iterations": iterBase * walks,
+         })
+-    slots.sort(key=lambda s: (s["retired"], s["slot"]))
+     total = sum(s["iterations"] for s in slots)
+     return total, slots
+ 
+@@ -1263,7 +1535,9 @@
+     # both 2026-09-20 Modal problems within an hour.
+     perSlotRecords = snapshot.get("per_slot_records") or {}
+     for slot in per_slot:
+-        counts = perSlotRecords.get(slot["slot"]) or {}
++        # Records are keyed by root slot; a namespaced slot's points never
++        # pass through this ingest, so it has none here to judge by.
++        counts = {} if slot.get("prefix") else (perSlotRecords.get(slot["slot"]) or {})
+         slot["records"] = int(counts.get("records") or 0)
+         slot["uploaded"] = int(counts.get("uploaded") or slot["records"])
+         slot["duplicates"] = int(counts.get("duplicates") or 0)
+@@ -1302,7 +1576,11 @@
+         "work": {
+             "iterations": iterations,
+             "iterations_log2": (math.log2(iterations) if iterations else None),
+-            "method": "sum over slot checkpoints of iterBase * threads * batch",
++            "method": ("sum over slot checkpoints of iterBase * threads * batch * lanes, "
++                       "at the bucket root and in namespaced campaigns reporting to this one"),
++            # Per S3 prefix ("" is the bucket root), so a rate can difference
++            # like with like when a namespace starts or stops being counted.
++            "scopes": workScopesOf(per_slot),
+             "density_independent": True,
+             "slots": len(per_slot),
+             "walking_slots": len(walking),
+@@ -1380,7 +1658,8 @@
+     kind = source or ("cached" if snapshot is not None else "sql")
+     payload = statusPayload(conn, s3, bucket, ingest, snapshot=snapshot)
+     payload["published_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+-    rate = walkRateBetween(payload, previous)
++    rate, history = walkRateFromHistory(payload, previous)
++    payload["walk_rate_history"] = history
+     if rate is not None:
+         payload["walk_rate"] = rate
+     public = publicStatus(payload)
+@@ -1490,6 +1769,7 @@
+             )
+             if need_sql:
+                 with self.connect() as conn:
++                    sweepQuietly(conn)
+                     snapshot = campaignSnapshot(conn)
+                 snap_at = time.time()
+                 with self._lock:
+@@ -1710,11 +1990,12 @@
+         objects, _ = s3Objects(s3, args.bucket, args.prefix)
+         recordsBySlot = coveredRecords(coverageRows(objects))
+         for s in per_slot:
+-            ratio, estimate, ok = dpWeightVerdict(s["iterations"], recordsBySlot.get(s["slot"], 0))
++            records = 0 if s["prefix"] else recordsBySlot.get(s["slot"], 0)
++            ratio, estimate, ok = dpWeightVerdict(s["iterations"], records)
+             verdict = ("" if ok is None else
+                        "  2^%.2f it/point %s" % (ratio, "ok" if ok else "OFF WEIGHT (~%d)" % estimate))
+-            log("slot %05d run %d %-8s ckpt %5ds old  %d walks x %d steps = %.6g iterations%s"
+-                % (s["slot"], s["run_id"], "retired" if s["retired"] else "walking",
++            log("%sslot %05d run %d %-8s ckpt %5ds old  %d walks x %d steps = %.6g iterations%s"
++                % (s["prefix"], s["slot"], s["run_id"], "retired" if s["retired"] else "walking",
+                    s["checkpoint_age_s"], s["walks"], s["per_walk_steps"], s["iterations"],
+                    verdict))
+         log("exact total: %d iterations = 2^%.3f (no density assumption)"
+@@ -1794,6 +2075,7 @@
+                         # --once: one synchronous publish after the pass.
+                         try:
+                             with connect() as conn:
++                                sweepQuietly(conn)
+                                 snapshot = campaignSnapshot(conn)
+                             publishStatus(
+                                 None, s3, args.bucket, args.status_bucket,
+diff -ruN a/ecc2k130/aws/test_dp_ingest.py b/ecc2k130/aws/test_dp_ingest.py
+--- a/ecc2k130/aws/test_dp_ingest.py
++++ b/ecc2k130/aws/test_dp_ingest.py
+@@ -1643,6 +1643,282 @@
+                 ingest_lambda.handler({}, None)
+ 
+ 
++class FakeNamespaceS3:
++    """Prefix-aware listing with delimiters, campaign.json reads, ranged gets."""
++
++    def __init__(self, objects):
++        self.objects = {k: (t, b) for k, t, b in objects}
++
++    def list_objects_v2(self, **kw):
++        prefix = kw.get("Prefix", "")
++        keys = sorted(k for k in self.objects if k.startswith(prefix))
++        if kw.get("Delimiter"):
++            common = sorted({prefix + k[len(prefix):].split("/", 1)[0] + "/"
++                             for k in keys if "/" in k[len(prefix):]})
++            return {"CommonPrefixes": [{"Prefix": p} for p in common], "IsTruncated": False}
++        return {"Contents": [{"Key": k, "Size": len(self.objects[k][1]),
++                              "LastModified": self.objects[k][0]} for k in keys],
++                "IsTruncated": False}
++
++    def get_object(self, **kw):
++        if kw["Key"] not in self.objects:
++            raise KeyError("NoSuchKey: " + kw["Key"])
++        body = self.objects[kw["Key"]][1]
++        rng = kw.get("Range")
++        if rng:
++            lo, hi = rng.split("=", 1)[1].split("-")
++            body = body[int(lo):int(hi) + 1]
++        return {"Body": io.BytesIO(body)}
++
++
++class NamespacedWork(unittest.TestCase):
++    """The runner's namespaced fleet walks this campaign; its checkpoints are this work."""
++
++    def setUp(self):
++        self.recent = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=30)
++
++    def campaign(self, campaignId="ecc2k-130", dpWeight=32):
++        return json.dumps({"campaignId": campaignId, "dpWeight": dpWeight}).encode()
++
++    def test_a_shared_namespace_adds_its_checkpoints(self):
++        s3 = FakeNamespaceS3([
++            ("ckpt/slot-00002.ck", self.recent, ckpt(10, 2, 4)),
++            ("campaigns/fleet/campaign.json", self.recent, self.campaign()),
++            ("campaigns/fleet/ckpt/slot-00000.ck", self.recent, ckpt(100, 3, 16, runId=12000)),
++            ("campaigns/fleet/ckpt/slot-00002.ck", self.recent, ckpt(200, 3, 16, runId=12002)),
++        ])
++        total, slots = dp_ingest.checkpointWork(s3, "bucket")
++        self.assertEqual(total, 80 + 100 * 48 + 200 * 48)
++        self.assertEqual(sorted((s["prefix"], s["slot"]) for s in slots),
++                         [("", 2), ("campaigns/fleet/", 0), ("campaigns/fleet/", 2)])
++        self.assertEqual(dp_ingest.workScopesOf(slots),
++                         {"": 80, "campaigns/fleet/": 100 * 48 + 200 * 48})
++
++    def test_other_walks_and_cutoffs_are_not_this_campaign(self):
++        s3 = FakeNamespaceS3([
++            ("campaigns/table/campaign.json", self.recent,
++             self.campaign("ecc2k130-table8-22b-v1", 34)),
++            ("campaigns/table/ckpt/slot-00000.ck", self.recent, ckpt(100, 3, 16)),
++            ("campaigns/dp34/campaign.json", self.recent, self.campaign(dpWeight=34)),
++            ("campaigns/dp34/ckpt/slot-00000.ck", self.recent, ckpt(100, 3, 16)),
++            ("campaigns/bare/ckpt/slot-00000.ck", self.recent, ckpt(100, 3, 16)),
++        ])
++        self.assertEqual(dp_ingest.sharedNamespaces(s3, "bucket"), [])
++        self.assertEqual(dp_ingest.checkpointWork(s3, "bucket"), (0, []))
++
++    def test_a_namespaced_slot_is_not_judged_by_a_root_slots_records(self):
++        slots = [
++            {"slot": 0, "prefix": "", "run_id": 1, "retired": False, "checkpoint_age_s": 10,
++             "walks": 1, "per_walk_steps": 1, "iterations": 2 ** 28 * 60000},
++            {"slot": 0, "prefix": "campaigns/fleet/", "run_id": 12000, "retired": False,
++             "checkpoint_age_s": 10, "walks": 1, "per_walk_steps": 1, "iterations": 2 ** 40},
++        ]
++        snapshot = {"dps": 1, "dps_last_hour": 1, "hourly": [],
++                    "per_slot_records": {0: {"records": 60000, "uploaded": 60000}}}
++        work = (sum(s["iterations"] for s in slots), slots)
++        with mock.patch.object(dp_ingest, "checkpointWork", return_value=work):
++            payload = dp_ingest.statusPayload(None, None, "bucket", snapshot=snapshot)
++        rows = {s["prefix"]: s for s in payload["work"]["per_slot"]}
++        self.assertTrue(rows[""]["dp_weight_ok"])
++        self.assertIsNone(rows["campaigns/fleet/"]["dp_weight_ok"])
++        self.assertEqual(payload["work"]["off_weight_slots"], 0)
++        self.assertEqual(payload["work"]["walking_slots"], 2)
++        self.assertEqual(payload["work"]["scopes"]["campaigns/fleet/"], 2 ** 40)
++
++
++class WalkRateHistory(unittest.TestCase):
++    """'Walking now' covers about an hour, and a newly counted campaign is not a burst."""
++
++    T = datetime.datetime(2026, 9, 25, 6, 0, tzinfo=datetime.timezone.utc)
++
++    def iso(self, secondsBefore):
++        return (self.T - datetime.timedelta(seconds=secondsBefore)).strftime("%Y-%m-%dT%H:%M:%SZ")
++
++    def current(self, scopes):
++        return {"generated_at": self.iso(0),
++                "work": {"iterations": sum(scopes.values()), "scopes": scopes}}
++
++    def previous(self, history, **extra):
++        return dict({"generated_at": self.iso(180), "work": {"iterations": 1},
++                     "walk_rate_history": history}, **extra)
++
++    def test_the_first_write_after_the_upgrade_measures_the_root_as_before(self):
++        previous = {"generated_at": self.iso(180), "work": {"iterations": 9000},
++                    "walk_rate": {"iterations_from": 1000, "measured_from": self.iso(8000)}}
++        scopes = {"": 9100, "campaigns/fleet/": 10 ** 15}
++        rate, history = dp_ingest.walkRateFromHistory(self.current(scopes), previous)
++        self.assertAlmostEqual(rate["iterations_per_second"], (9100 - 1000) / 8000)
++        self.assertEqual(rate["scopes"], [""])
++        self.assertEqual(history, [{"at": self.iso(0), "scopes": scopes}])
++
++    def test_a_covering_sample_measures_every_scope(self):
++        previous = self.previous([{"at": self.iso(700), "scopes": {"": 1000, "c/": 5000}}])
++        rate, _ = dp_ingest.walkRateFromHistory(self.current({"": 1700, "c/": 12000}), previous)
++        self.assertAlmostEqual(rate["iterations_per_second"], (700 + 7000) / 700)
++        self.assertEqual(rate["window_seconds"], 700)
++        self.assertEqual(rate["scopes"], ["", "c/"])
++
++    def test_the_base_is_the_newest_sample_an_hour_old(self):
++        samples = [(7200, 0), (3700, 3700), (3500, 3900), (600, 6800)]
++        previous = self.previous([{"at": self.iso(s), "scopes": {"": v}} for s, v in samples])
++        rate, _ = dp_ingest.walkRateFromHistory(self.current({"": 7400}), previous)
++        self.assertEqual(rate["measured_from"], self.iso(3700))
++        self.assertAlmostEqual(rate["iterations_per_second"], (7400 - 3700) / 3700)
++
++    def test_a_partial_sample_is_used_only_without_a_covering_one(self):
++        previous = self.previous([{"at": self.iso(4000), "scopes": {"": 1000}},
++                                  {"at": self.iso(300), "scopes": {"": 4700, "c/": 10 ** 12}}])
++        rate, _ = dp_ingest.walkRateFromHistory(
++            self.current({"": 5000, "c/": 10 ** 12 + 3000}), previous)
++        self.assertEqual(rate["scopes"], [""])
++        self.assertAlmostEqual(rate["iterations_per_second"], 4000 / 4000)
++
++    def test_a_scope_that_moves_backwards_walked_nothing(self):
++        previous = self.previous([{"at": self.iso(1000), "scopes": {"": 100, "c/": 500}}])
++        rate, _ = dp_ingest.walkRateFromHistory(self.current({"": 1100, "c/": 400}), previous)
++        self.assertAlmostEqual(rate["iterations_per_second"], 1000 / 1000)
++
++    def test_history_is_sampled_and_trimmed(self):
++        entries = [{"at": self.iso(dp_ingest.WALK_RATE_KEEP_S + 60), "scopes": {"": 1}},
++                   {"at": self.iso(1200), "scopes": {"": 2}},
++                   {"at": self.iso(100), "scopes": {"": 3}}]
++        _, history = dp_ingest.walkRateFromHistory(self.current({"": 4}), self.previous(entries))
++        self.assertEqual([h["at"] for h in history], [self.iso(1200), self.iso(100)])
++        _, history = dp_ingest.walkRateFromHistory(self.current({"": 4}), self.previous(entries[:2]))
++        self.assertEqual([h["at"] for h in history], [self.iso(1200), self.iso(0)])
++
++    def test_publish_carries_the_history_forward(self):
++        puts = []
++        previous = self.previous([{"at": self.iso(700), "scopes": {"": 1000, "c/": 5000}}])
++
++        class StatusS3:
++            def get_object(self, **kw):
++                return {"Body": io.BytesIO(json.dumps(previous).encode())}
++
++            def put_object(self, **kw):
++                puts.append(json.loads(kw["Body"].decode()))
++
++        slots = [{"slot": 0, "prefix": "", "run_id": 1, "retired": False, "checkpoint_age_s": 5,
++                  "walks": 1, "per_walk_steps": 1, "iterations": 1700},
++                 {"slot": 0, "prefix": "c/", "run_id": 2, "retired": False, "checkpoint_age_s": 5,
++                  "walks": 1, "per_walk_steps": 1, "iterations": 12000}]
++        with mock.patch.object(dp_ingest, "checkpointWork", return_value=(13700, slots)), \
++                mock.patch.object(dp_ingest.time, "gmtime", return_value=self.T.timetuple()):
++            dp_ingest.publishStatus(None, StatusS3(), "bucket", "status",
++                                    snapshot={"dps": 1, "dps_last_hour": 1, "hourly": []})
++        body = puts[0]
++        self.assertAlmostEqual(body["walk_rate"]["iterations_per_second"], (700 + 7000) / 700)
++        self.assertEqual(body["walk_rate_history"][-1]["scopes"], {"": 1700, "c/": 12000})
++        self.assertNotIn("per_slot", body["work"])
++
++
++class SweepCursor:
++    def __init__(self, db):
++        self.db = db
++        self.result = []
++
++    def __enter__(self):
++        return self
++
++    def __exit__(self, *exc):
++        return False
++
++    def execute(self, sql, params=()):
++        db, sql = self.db, " ".join(sql.split())
++        self.result = []
++        if sql.startswith("SELECT 1 FROM dp_ingest_totals"):
++            self.result = [(1,)]
++        elif sql.startswith("SELECT at FROM dp_ingest_meta"):
++            self.result = [(db.meta[params[0]],)] if params[0] in db.meta else []
++        elif sql.startswith("INSERT INTO dp_ingest_meta (key, at) VALUES (%s, %s)"):
++            db.meta.setdefault(params[0], params[1])
++        elif sql.startswith("SELECT least("):
++            since, chunk, lag = params[0], params[1], params[2]
++            limit = db.now - datetime.timedelta(seconds=lag)
++            end = since + datetime.timedelta(seconds=chunk)
++            self.result = [(min(end, limit), end >= limit)]
++        elif sql.startswith("SELECT date_trunc('hour', found_at)"):
++            _, since, until = params
++            hours = {}
++            for at, worker in db.points:
++                if since < at <= until and not (worker or "").startswith("dp-"):
++                    h = hours.setdefault(at.replace(minute=0, second=0, microsecond=0), [])
++                    h.append(at)
++            self.result = [(h, len(v), min(v), max(v)) for h, v in hours.items()]
++        elif sql.startswith("UPDATE dp_ingest_totals SET dps = dps + %s"):
++            db.totals += params[0]
++        elif sql.startswith("INSERT INTO dp_ingest_hourly"):
++            db.hourly[params[1]] = db.hourly.get(params[1], 0) + params[2]
++        elif sql.startswith("UPDATE dp_ingest_meta SET at = %s"):
++            db.meta[params[1]] = params[0]
++        elif not sql.startswith("INSERT INTO dp_ingest_totals (campaign_id) VALUES"):
++            raise AssertionError("unexpected SQL: " + sql)
++
++    def fetchone(self):
++        return self.result[0] if self.result else None
++
++    def fetchall(self):
++        return list(self.result)
++
++
++class SweepConn:
++    """meta, totals, hourly and points: just enough of rho-dp for the sweep."""
++
++    def __init__(self, now, points, meta):
++        self.now, self.points, self.meta = now, points, dict(meta)
++        self.totals, self.hourly, self.commits = 0, {}, 0
++
++    def cursor(self):
++        return SweepCursor(self)
++
++    def commit(self):
++        self.commits += 1
++
++    def rollback(self):
++        pass
++
++
++class DirectReports(unittest.TestCase):
++    """Rows written by report_dp reach the counters once each, never twice."""
++
++    NOW = datetime.datetime(2026, 9, 25, 6, 0, tzinfo=datetime.timezone.utc)
++
++    def ago(self, seconds):
++        return self.NOW - datetime.timedelta(seconds=seconds)
++
++    def test_counts_direct_rows_since_the_seed_and_only_those(self):
++        points = [(self.ago(7000), "modal:gpu0:a"),       # before the seed: in it already
++                  (self.ago(5000), "dp-slot-00208-x"),    # this program's own, via applyRollup
++                  (self.ago(5000), "modal:gpu0:a"),
++                  (self.ago(4000), "modal:gpu0:b"),
++                  (self.ago(4000), None),
++                  (self.ago(120), "modal:gpu0:a")]        # inside the lag: not yet
++        db = SweepConn(self.NOW, points, {dp_ingest.ROLLUP_MARK: self.ago(6000)})
++        self.assertEqual(dp_ingest.sweepDirectReports(db, lag=300, chunk=3600), 3)
++        self.assertEqual(db.totals, 3)
++        self.assertEqual(sum(db.hourly.values()), 3)
++        self.assertEqual(db.meta[dp_ingest.DIRECT_MARK], self.ago(300))
++        self.assertEqual(dp_ingest.sweepDirectReports(db, lag=300, chunk=3600), 0)
++        db.now = self.NOW + datetime.timedelta(seconds=600)
++        self.assertEqual(dp_ingest.sweepDirectReports(db, lag=300, chunk=3600), 1)
++        self.assertEqual(db.totals, 4)
++
++    def test_catches_up_one_chunk_per_transaction_within_the_budget(self):
++        points = [(self.ago(s), "modal:gpu0:a") for s in (17000, 13000, 9000, 5000, 1000)]
++        db = SweepConn(self.NOW, points, {dp_ingest.ROLLUP_MARK: self.ago(18000)})
++        self.assertEqual(dp_ingest.sweepDirectReports(db, budget=0, lag=300, chunk=3600), 1)
++        self.assertEqual(db.commits, 1)
++        self.assertEqual(dp_ingest.sweepDirectReports(db, lag=300, chunk=3600), 4)
++        self.assertEqual(db.totals, 5)
++        self.assertEqual(db.commits, 5)
++
++    def test_waits_for_the_counters_to_be_seeded(self):
++        db = SweepConn(self.NOW, [(self.ago(100), "modal:gpu0:a")], {})
++        self.assertEqual(dp_ingest.sweepDirectReports(db), 0)
++        self.assertNotIn(dp_ingest.DIRECT_MARK, db.meta)
++        self.assertEqual(db.totals, 0)
++
++
+ class _StopParsing(Exception):
+     pass
+ 
