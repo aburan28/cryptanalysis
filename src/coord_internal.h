@@ -69,6 +69,26 @@ typedef struct coord_log_entry {
     char *line;
 } coord_log_entry;
 
+/*
+ * Open-addressed indices kept *beside* the log and the unit table, so a
+ * check-in's dedup and unit lookups are O(1) rather than a linear scan of
+ * everything ever seen.  They hold no data the arrays do not; losing them
+ * would only make ingest quadratic again.  Both use power-of-two caps and
+ * are grown when three quarters full.
+ */
+typedef struct coord_seen_slot {
+    int32_t used;
+    uint32_t peer;
+    uint64_t seq;
+} coord_seen_slot;
+
+typedef struct coord_unit_index_slot {
+    int32_t used;
+    uint32_t peer;
+    uint64_t unit;
+    size_t idx; /* index into ca_coord_state.units */
+} coord_unit_index_slot;
+
 /* The in-process backend: the open-addressed table this library has always
  * used, now reachable through ca_coord_dp_store like any other. */
 typedef struct coord_mem_store {
@@ -94,6 +114,13 @@ struct ca_coord_state {
 
     coord_log_entry *log;
     size_t log_cap, log_count;
+
+    /* O(1) dedup index beside the log: presence of (peer, seq). */
+    coord_seen_slot *seen;
+    size_t seen_cap, seen_count;
+    /* O(1) index beside units: (unit, peer) -> index into units[]. */
+    coord_unit_index_slot *unit_index;
+    size_t unit_index_cap, unit_index_count;
 
     uint64_t steps, dps_total, dead_trails;
     uint64_t rejected_dps, rejected_checkins, sterile_collisions;

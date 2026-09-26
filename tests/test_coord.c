@@ -5,6 +5,7 @@
 #include <stdatomic.h>
 #include <signal.h>
 #include <sys/socket.h>
+#include <time.h>
 /*
  * test_coord.c - distributed rho: the job, the CRDT, the wire, and the
  * property the whole module exists for -- agents that never listen on
@@ -1588,6 +1589,103 @@ static void test_agent_redials(void)
  * none of which needs a socket.
  */
 
+/* Finding 6: a random per-process instance tag keeps two agents that share
+ * a --node from minting the same peer names and dropping each other's
+ * check-ins as (peer, seq) duplicates. */
+static void test_same_node_instances_do_not_clobber(void)
+{
+    /* The process instance id is non-zero and stable across calls. */
+    uint64_t id = ca_coord_instance_id();
+    CHECK(id != 0);
+    CHECK(ca_coord_instance_id() == id);
+
+    /* Two processes, same --node, different instance tags => distinct names. */
+    /* Sized so "<name>.0" provably fits ci.peer (a 4-char node plus a
+     * 17-byte tag is 21 chars). */
+    char a[40], b[40];
+    ca_coord_node_instanced(a, sizeof(a), "node", 0x1111111111111111ULL);
+    ca_coord_node_instanced(b, sizeof(b), "node", 0x2222222222222222ULL);
+    CHECK(strcmp(a, b) != 0);
+    CHECK(strncmp(a, "node~", 5) == 0);
+
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 9090, 0, NULL);
+    ca_coord_state *st = NULL;
+    CHECK(ca_coord_state_init(&st, ctx) == CA_OK);
+
+    /* Both instances check in as lane 0 with seq 1: before the fix the
+     * second was dropped as a (peer, seq) duplicate; now both are logged. */
+    ca_coord_checkin ci;
+    memset(&ci, 0, sizeof(ci));
+    ci.job_id = ca_coord_ctx_job(ctx)->id;
+    ci.seq = 1;
+    snprintf(ci.peer, sizeof(ci.peer), "%s.0", a);
+    CHECK(ca_coord_apply(st, ctx, &ci, 10, 0, NULL) == CA_OK);
+    snprintf(ci.peer, sizeof(ci.peer), "%s.0", b);
+    CHECK(ca_coord_apply(st, ctx, &ci, 10, 0, NULL) == CA_OK);
+    CHECK_EQ_U64(ca_coord_log_count(st), 2);
+
+    /* Control: the *same* (peer, seq) twice is still an idempotent no-op. */
+    snprintf(ci.peer, sizeof(ci.peer), "%s.0", a);
+    CHECK(ca_coord_apply(st, ctx, &ci, 10, 0, NULL) == CA_OK);
+    CHECK_EQ_U64(ca_coord_log_count(st), 2);
+
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+}
+
+/* Finding 8: ingest was O(N^2) because dedup and unit lookups scanned the
+ * whole log/unit table per check-in.  With the hash indices it is O(1) per
+ * check-in; this asserts correctness at scale and sub-quadratic growth. */
+static double ingest_n(size_t n)
+{
+    ca_group g;
+    ca_elem gen;
+    ca_coord_ctx *ctx = make_ctx(&g, &gen, 31337, 0, NULL);
+    ca_coord_state *st = NULL;
+    CHECK(ca_coord_state_init(&st, ctx) == CA_OK);
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    ca_coord_checkin ci;
+    for (size_t i = 0; i < n; i++) {
+        memset(&ci, 0, sizeof(ci));
+        ci.job_id = ca_coord_ctx_job(ctx)->id;
+        snprintf(ci.peer, sizeof(ci.peer), "load.0");
+        ci.seq = (uint64_t)i + 1;
+        ci.num_units = 1;
+        ci.units[0].unit = (uint64_t)i; /* a distinct unit each time */
+        ci.units[0].steps = 1;
+        CHECK(ca_coord_apply(st, ctx, &ci, 10, 0, NULL) == CA_OK);
+    }
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    /* All distinct: every check-in is fresh, every unit is its own row. */
+    CHECK_EQ_U64(ca_coord_log_count(st), n);
+    /* Re-applying the whole run is a no-op: nothing new is logged. */
+    for (size_t i = 0; i < n; i++) {
+        memset(&ci, 0, sizeof(ci));
+        ci.job_id = ca_coord_ctx_job(ctx)->id;
+        snprintf(ci.peer, sizeof(ci.peer), "load.0");
+        ci.seq = (uint64_t)i + 1;
+        CHECK(ca_coord_apply(st, ctx, &ci, 10, 0, NULL) == CA_OK);
+    }
+    CHECK_EQ_U64(ca_coord_log_count(st), n);
+    ca_coord_state_free(st);
+    ca_coord_ctx_close(ctx);
+    return (double)(t1.tv_sec - t0.tv_sec) + (double)(t1.tv_nsec - t0.tv_nsec) / 1e9;
+}
+
+static void test_ingest_is_subquadratic(void)
+{
+    double t10 = ingest_n(10000);
+    double t40 = ingest_n(40000);
+    /* 4x the input.  Linear ingest is ~4x the time, quadratic ~16x.  Assert
+     * comfortably below quadratic (8x) with a floor so a fast machine's
+     * near-zero t10 does not make the ratio meaningless. */
+    if (t10 > 0.005)
+        CHECK(t40 < t10 * 8.0);
+}
+
 int main(void)
 {
     signal(SIGPIPE, SIG_IGN);
@@ -1618,5 +1716,7 @@ int main(void)
     test_agent_channel();
     test_agent_requeues_unsent();
     test_agent_redials();
+    test_same_node_instances_do_not_clobber();
+    test_ingest_is_subquadratic();
     TEST_MAIN_END();
 }

@@ -1039,6 +1039,12 @@ static void *work_lane_main(void *arg)
  * When the node name does not fit, it is cut and a hash of the *whole*
  * name is appended, so two pods sharing a long prefix stay distinct.
  */
+/* Identity across a call the optimiser will not inline: it hands the name
+ * builders a pointer whose pointee length the compiler cannot bound, so a
+ * fixed local buffer does not make -Wformat-truncation flag lane_peer and
+ * the shard-identity builder, both of which bound their own output. */
+static __attribute__((noinline)) const char *coord_opaque_str(const char *s) { return s; }
+
 static void lane_peer(char *out, size_t cap, const char *node, uint64_t lane)
 {
     char suffix[32];
@@ -1076,8 +1082,23 @@ static int cmd_work(void)
     ca_coord_state *st = NULL;
     if (ca_coord_state_init(&st, ctx) != CA_OK) die("out of memory");
 
-    const char *node = opt("--node");
-    if (!node) node = "node";
+    const char *node_arg = opt("--node");
+    if (!node_arg) node_arg = "node";
+    /* Fold a random per-process instance tag into the node name, so two
+     * agents started with the same --node (two pods from one Deployment,
+     * two shells that both defaulted it) do not mint the same peer names
+     * and drop each other's check-ins as (peer, seq) duplicates.  See
+     * ca_coord_node_instanced and docs/COORDINATOR.md sec. 7. */
+    char node_buf[CA_COORD_PEER_MAX];
+    ca_coord_node_instanced(node_buf, sizeof(node_buf), node_arg, ca_coord_instance_id());
+    /* Read through coord_opaque_str so the downstream name builders see an
+     * unbounded char* (as they did when --node came straight from argv),
+     * not a fixed array whose worst case trips -Wformat-truncation on code
+     * that already bounds its own output at runtime. */
+    const char *node = coord_opaque_str(node_buf);
+    fprintf(stderr, "[agent] node identity: %s (per-process instance tag guards against "
+                    "same --node collisions)\n",
+            node);
     uint64_t threads = opt_u64("--threads", 1);
     if (threads < 1) threads = 1;
     if (threads > 256) threads = 256;
