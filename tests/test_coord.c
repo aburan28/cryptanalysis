@@ -1682,8 +1682,7 @@ static void test_ingest_is_subquadratic(void)
     /* 4x the input.  Linear ingest is ~4x the time, quadratic ~16x.  Assert
      * comfortably below quadratic (8x) with a floor so a fast machine's
      * near-zero t10 does not make the ratio meaningless. */
-    if (t10 > 0.005)
-        CHECK(t40 < t10 * 8.0);
+    if (t10 > 0.005) CHECK(t40 < t10 * 8.0);
 }
 
 int main(void)

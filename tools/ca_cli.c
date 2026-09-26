@@ -1096,8 +1096,9 @@ static int cmd_work(void)
      * not a fixed array whose worst case trips -Wformat-truncation on code
      * that already bounds its own output at runtime. */
     const char *node = coord_opaque_str(node_buf);
-    fprintf(stderr, "[agent] node identity: %s (per-process instance tag guards against "
-                    "same --node collisions)\n",
+    fprintf(stderr,
+            "[agent] node identity: %s (per-process instance tag guards against "
+            "same --node collisions)\n",
             node);
     uint64_t threads = opt_u64("--threads", 1);
     if (threads < 1) threads = 1;
