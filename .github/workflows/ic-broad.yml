@@ -14,6 +14,7 @@ on:
           - full
           - search
           - batch
+          - prime
       jobs:
         description: Parallel fresh worker processes
         required: true
@@ -46,13 +47,29 @@ jobs:
           python -m pytest -q experiments/ic-bench
           python -m pytest -q experiments/ic-candidate-catalog
 
-      - name: Run selected suite
+      - name: Run selected binary-field suite
+        if: inputs.suite != 'prime'
         working-directory: experiments/ic-bench
         run: python bench.py run --suite "${{ inputs.suite }}" --jobs "${{ inputs.jobs }}" --out-dir broad-out
 
-      - name: Validate receipts
+      - name: Build prime-field runner
+        if: inputs.suite == 'prime'
+        run: cargo build --release --manifest-path suite/Cargo.toml --bin ca-ic
+
+      - name: Run normalized prime-field suite
+        if: inputs.suite == 'prime'
+        working-directory: experiments/ic-bench
+        run: python prime_bridge.py run --suite broad --out-dir broad-out
+
+      - name: Validate binary receipts
+        if: inputs.suite != 'prime'
         working-directory: experiments/ic-bench
         run: python ../ic-candidate-catalog/analyze.py "broad-out/${{ inputs.suite }}.jsonl" > "broad-out/${{ inputs.suite }}-analysis.json"
+
+      - name: Validate prime receipts
+        if: inputs.suite == 'prime'
+        working-directory: experiments/ic-bench
+        run: python ../ic-candidate-catalog/analyze.py broad-out/prime.jsonl > broad-out/prime-analysis.json
 
       - name: Multi-target prefix report
         if: inputs.suite == 'batch'
@@ -61,9 +78,14 @@ jobs:
           python amortize.py broad-out/batch.jsonl --require-max-power 16 | tee broad-out/batch-amortization.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Standard report
-        if: inputs.suite != 'batch'
+        if: inputs.suite != 'batch' && inputs.suite != 'prime'
         working-directory: experiments/ic-bench
         run: python report.py "broad-out/${{ inputs.suite }}.csv" | tee "broad-out/${{ inputs.suite }}-report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prime normalized report
+        if: inputs.suite == 'prime'
+        working-directory: experiments/ic-bench
+        run: python cross_report.py broad-out/prime.jsonl | tee broad-out/prime-report.md >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         if: always()
