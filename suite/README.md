@@ -1,6 +1,6 @@
 # cryptanalysis-suite
 
-The attack library and command-line tools, in Rust: 126 attack modules
+The attack library and command-line tools, in Rust: 148 attack modules
 against symmetric ciphers, hash functions, elliptic-curve and finite-field
 discrete logarithms, signature nonces, lattices and the NIST post-quantum
 schemes, plus the primitives they target.  It is the cryptanalysis suite
@@ -10,20 +10,33 @@ moved here and put under this repository's checks.
 Where the C library in the parent directory is one generic-group interface
 with a handful of fast, measured solvers over 64-bit groups, the suite is
 the wide end: many attacks, arbitrary precision (`num-bigint`), and
-Markdown reports.  The two do not depend on each other.
+Markdown reports.  The suite links the C library (through
+`../bindings/rust`) for `crax`'s generic solvers; the C library does not
+depend on the suite.
 
 ```sh
-cargo build --release                 # ca-suite, ca-ic, ca-curves, ca-koblitz-pdp-prepare
-cargo test --release                  # 2395 unit + 31 integration tests, ~3 min on 4 cores
-./target/release/ca-suite --help
+cargo build --release                 # crax, ca-suite, ca-ic, ca-icx, ca-curves, ca-koblitz-pdp-prepare
+cargo test --release                  # 2867 unit + 65 integration tests, ~10 min on 4 cores
+./target/release/crax --help         # the unified command line: docs/CRAX.md
 ```
 
 Requirements: Rust 1.87 or newer (declared in `Cargo.toml`, checked in CI).
+AVX-512 target features are stable only from Rust 1.89, so `build.rs` compiles
+the AVX-512 kernels (Koblitz scan, `F_p` tower F4, `GF(2)` elimination, the
+wide FES walk) only on such a toolchain; older ones take the AVX2 and scalar
+paths, which compute the same values.
 `ca-ic fixed` additionally drives the Python engine in `python/indexcalc/`
 with `python3` (standard library only; `python-sat` or `pycryptosat` only
 for its SAT solver).
 
 ## Command line
+
+`crax` (see [../docs/CRAX.md](../docs/CRAX.md)) is the single entry point:
+the C library's generic solvers, `ecdlp`, `challenge`, the factoring and RSA
+commands, and every `ca-suite`, `ca-ic` and `ca-icx` subcommand below under
+the same name (`crax auto ...`, `crax ic prime ...`, `crax icx list`).  The
+research command lines live in `src/cli/tools/`; the `ca-*` binaries are
+shims over them and remain for existing scripts.
 
 `ca-suite` has one subcommand per tool.
 
@@ -73,6 +86,9 @@ $ ca-suite rho-collab work --job job.json --node bob --peer alice:7000
 $ ca-suite rho-collab status --job job.json --peer alice:7000 --json
 
 # The visual demos and the falsifiable-hypothesis research bench
+$ ca-suite isogeny volcano --curve toy-b --ell 2 --depth 4
+$ ca-suite isogeny experiment --bits 10 --trials 2 --ell-list 2,3 --rho-cap 16384
+$ ca-suite isogeny secp256k1
 $ ca-suite visual-all --target pollard-rho
 $ ca-suite aes-visual-demo --demo dfa
 $ ca-suite bench
@@ -94,6 +110,25 @@ $ ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate --json
 $ ca-ic compare --degree 7 --curve-a 1 --samples 3 --holdout 2 --json
 $ ca-ic fixed --params docs/ic/params/k0n9-fixed.json --dir runs/k0n9 --attempts 256 --json
 $ ca-ic prime --curve secp256k1 --bits 28 --targets 64  # j = 0: |Aut| = 6 orbits, a batch vs rho
+$ ca-ic boundary --quick                            # every IC variant vs the generic floor and a counted rho
+$ ca-ic swap --cells 13:3 --pairs 16                # is a solver priced the same on R and R - P + Q?
+$ ca-ic bench --sweep docs/ic/sweeps/solver-engines.json   # plug-in pipeline configurations, compared
+$ ca-ic descent --families K --cells 11:6:2        # degree a Weil-descent system reaches vs semi-regular
+$ ca-ic corpus --degree 15 --dimension 5 --dir corpus/   # Semaev S4 corpus (Magma, DIMACS+XOR, CNF, ANF)
+$ ca-ic rho --koblitz-degrees 23,31 --runs 4       # the counted Pollard-rho references, paired
+```
+
+`ca-icx` runs index calculus across every standardized curve: the curve
+catalog (`curve_catalog`), the engine that classifies each curve into an
+attack regime and prices it (`ic_engine`), and a verified run on the curve
+or a same-family analogue (`ic_run`, through the configurable pipeline in
+`ic_framework`); see [docs/ic/FRAMEWORK.md](docs/ic/FRAMEWORK.md).
+
+```sh
+$ ca-icx list --family koblitz
+$ ca-icx inspect secp256k1
+$ ca-icx estimate sect163k1
+$ ca-icx run secp256k1 --json                       # on a same-family analogue inside the envelope
 ```
 
 `ca-curves` lists the challenge corpus in [`../challenges/ecc/`](../challenges/ecc/README.md)
@@ -164,6 +199,53 @@ the targets and the arithmetic they stand on.
 [docs/ECDLP_ATTACK_MATRIX.md](docs/ECDLP_ATTACK_MATRIX.md) is the
 attack-by-curve-family applicability matrix.
 
+### Integer factorisation
+
+`cryptanalysis::factoring` attacks RSA's hardness assumption directly.
+Every entry point takes an options struct with size-dependent defaults,
+returns a `serde::Serialize` report (factors, per-stage timings, factor-base
+and matrix sizes, relations, dependencies tried), never prints, and never
+reports a factor it has not verified by multiplication.
+
+| module | what it does |
+|---|---|
+| `factoring::nfs` | the **number field sieve**: shared core (rational and algebraic factor bases, quadratic characters, segmented line sieve with resieving and one large prime per side, singleton filtering, structured Gaussian elimination + Method-of-Four-Russians dense GF(2) solve, exact algebraic square root by Newton lifting from an inert prime, verified `δ² = Γ`), with two front ends: `gnfs` (base-m polynomial selection with leading-coefficient search, rotation and Murphy α; degree 3 up to 65 digits) and `snfs` (`n \| c·rᵉ + s` or an explicit `(f, m)`; reducible and Aurifeuillian polynomials split `n` directly) |
+| `factoring::qs` | self-initialising quadratic sieve (Knuth–Schroeppel multiplier, Gray-code polynomial switching, single large prime), sharing the NFS linear algebra |
+| `factoring::pm1`, `factoring::rho_factor` | Pollard p − 1 (stage 1 + prime-by-prime stage 2), Williams p + 1, Pollard–Brent rho |
+| `factoring::rsa_attacks` | Fermat (close primes), Wiener (small `d`), Håstad broadcast, common modulus, small-`e` root, batch GCD over a product/remainder tree, `(n, e, d) → p, q` |
+| `factoring::auto` | `factor(n, &options)`: trial division → perfect power → BPSW → rho → p − 1 → ECM (`cryptanalysis::ecm`) → SNFS (if a form is given) → SIQS / GNFS, recursing on cofactors; prime powers with exponents and the method that isolated each |
+
+Measured with `cargo run --release --example nfs_demo` on one core (one
+thread) of a shared, loaded 4-core machine, so treat them as upper bounds;
+every row is a verified factorisation:
+
+| method | n | digits | total s | sieve / linalg / sqrt s | relations (full + partial) | dense matrix |
+|---|---|---|---|---|---|---|
+| SIQS | semiprime | 40 / 50 / 55 / 60 | 0.2 / 1.2 / 3.2 / 16.2 | — | 3128 + 5805 at 60 | 912 × 848 at 60 |
+| GNFS | semiprime | 40 | 0.8 | 0.3 / 0.2 / 0.0 | 4067 + 37250 | 1440 × 1406 |
+| GNFS | semiprime | 45 | 3.1 | 1.5 / 0.4 / 0.4 | 5607 + 76570 | 2757 × 2722 |
+| GNFS | semiprime | 50 | 8.9 | 6.8 / 0.8 / 0.5 | 7812 + 113846 | 4513 × 4481 |
+| GNFS | semiprime | 55 | 17.7 | 14.1 / 1.9 / 0.7 | 13775 + 225289 | 7695 × 7647 |
+| GNFS | semiprime (`--big`, separate runs) | 58 / 59 | ≈ 60–75 / ≈ 100–140 | sieve-bound | | |
+| SNFS | `2^227 − 1`, `x⁴ − 2` | 69 | 6.8 | 5.4 / 0.8 / 0.4 | 5733 + 128468 | 4157 × 4124 |
+| SNFS | `(2^239 + 1)/3`, `x⁴ + 2` | 72 | 9.8 | 8.4 / 0.9 / 0.3 | 7985 + 158967 | 5167 × 5134 |
+| SNFS | `(3^163 − 1)/2`, `x⁴ − 3` | 78 | 22.4 | 19.8 / 1.9 / 0.4 | 12825 + 244866 | 7821 × 7787 |
+
+`--threads N` parallelises the sieves (rayon) across `N` workers.
+
+What this is not.  It is an educational implementation with production
+habits, not msieve / YAFU / CADO-NFS: no lattice sieve, no bucket sieve,
+no Kleinjung polynomial selection or full root optimisation, no double
+large primes, no Block Lanczos, no Montgomery/Nguyen square root.  In this
+code the QS beats the GNFS at every size either can reach (the NFS only
+wins from ~100 digits with those missing pieces), so `auto` sends
+composites up to 100 digits to the QS unless `prefer_nfs` is set; GNFS
+above ~60 digits and SNFS above difficulty ~80 take many minutes to hours.
+The algebraic square root needs a prime modulo which `f` is irreducible,
+so polynomials whose Galois group has no `d`-cycle (e.g. `x⁴ + 1`) are
+rejected rather than handled by CRT.  Primality is BPSW (proven below
+`2⁶⁴`, probable above; the reports say which).
+
 ### The targets
 
 `symmetric` (AES, ChaCha20-Poly1305, Serpent, Threefish, SM4, Kuznyechik,
@@ -192,13 +274,15 @@ link to them where a number needs its provenance.
 
 ```
 src/lib.rs                 the crate: cryptanalysis + the modules it targets
-src/cryptanalysis/         the suite (126 modules)
+src/cryptanalysis/         the suite (148 modules)
+src/isogeny/               CM / class-group / Vélu / volcano research module (ca-suite isogeny)
 src/main.rs, src/cli_mlwe.rs   ca-suite
 src/bin/ic.rs, src/bin/ic/     ca-ic
+src/bin/icx.rs             ca-icx
 src/bin/koblitz_pdp_prepare.rs ca-koblitz-pdp-prepare
-tests/                     integration tests (ca-ic end to end, the PARI curve audit, LLL probes)
+tests/                     integration tests (ca-ic and ca-icx end to end, the PARI curve audit, LLL probes)
 tests/data/                the PARI/GP audit template
-examples/                  100 runnable demos and measurement harnesses
+examples/                  148 runnable demos and measurement harnesses
 python/indexcalc/          the stdlib-only index-calculus engine behind `ca-ic fixed`
 fixtures/                  the two frozen contracts the F4 and Weil-factor tests read
 docs/                      tool guides: ic, ML-KEM/ML-DSA cryptanalysis, collaborative rho, attack matrix

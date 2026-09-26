@@ -1104,9 +1104,446 @@ pub fn elimination_comparison(
     })
 }
 
+// ── Fixed-surplus ladder ───────────────────────────────────────────
+//
+// `subspace_ladder` takes `ℓ` from the Frobenius-invariant subspaces, so
+// its surplus `S = n − mℓ` jumps with `n` (−7, −2, −19, −23 at n = 5, 7,
+// 11, 13).  `RESEARCH_DESCENT_CROSSOVER.md` §2.1 shows the surplus is what
+// sets a target's decomposition yield, so a ladder that lets it jump
+// confounds field size with yield.  These pieces hold it fixed: a random
+// subspace of any dimension, an exact count of each draw's solutions so a
+// non-resolving degree can be read as a lower bound only where the system
+// has none, and one draw's measurement with the cap-limited case kept
+// apart from the mathematical one.
+
+/// A uniformly random `ell`-dimensional `F₂`-subspace of `F_{2^n}`, as a
+/// basis in the field's polynomial representation (`n < 64`).  Not
+/// required to contain `1` or to be Frobenius-stable.
+pub fn random_subspace_basis(n: u32, ell: usize, rng: &mut StdRng) -> Vec<F2mElement> {
+    assert!(
+        ell >= 1 && (ell as u32) < n && n < 64,
+        "need 1 ≤ ℓ < n < 64"
+    );
+    let mask = (1u64 << n) - 1;
+    // Reduced vectors with distinct leading bits, kept in descending order,
+    // so `r = min(r, r ^ e)` over them reduces `r` against their span.
+    let mut echelon: Vec<u64> = Vec::new();
+    let mut basis = Vec::with_capacity(ell);
+    while basis.len() < ell {
+        let v = rng.gen::<u64>() & mask;
+        let r = echelon.iter().fold(v, |r, &e| r.min(r ^ e));
+        if r == 0 {
+            continue;
+        }
+        echelon.push(r);
+        echelon.sort_unstable_by(|a, b| b.cmp(a));
+        basis.push(F2mElement::from_biguint(&BigUint::from(v), n));
+    }
+    basis
+}
+
+/// **Exact** number of Boolean solutions of the `m = 3` chained system
+/// [`build_decomposition_system`] builds: tuples `(x₁, x₂, x₃, u)` with
+/// `x_i ∈ span(basis)`, `u ∈ F_{2^n}`, `S₃(x₁, x₂, u) = 0` and
+/// `S₃(u, x₃, x_R) = 0`, where `S₃(a, c, d) = (a+c)²d² + acd + (ac)² + b`.
+///
+/// Each tuple is one assignment of the system's `3ℓ + n` unknowns (the
+/// summand coordinates in `basis`, then `u`'s polynomial-basis bits), so
+/// this is the count an exhaustive evaluation of the system would give --
+/// `chained_s3_count_matches_exhaustive_evaluation` holds it to that.  Cost
+/// `2^{2ℓ+n}` quadratic evaluations, then `2^ℓ` per root.
+pub fn chained_s3_solution_count(
+    basis: &[F2mElement],
+    x_r: &F2mElement,
+    b: &F2mElement,
+    irr: &crate::binary_ecc::IrreduciblePoly,
+) -> u64 {
+    use crate::cryptanalysis::semaev_decomp::Gf2;
+    let gf = Gf2::new(irr);
+    let n = irr.degree;
+    let word = |e: &F2mElement| e.raw_bits().first().copied().unwrap_or(0);
+    let words: Vec<u64> = basis.iter().map(word).collect();
+    let span: Vec<u64> = (0..1u64 << words.len())
+        .map(|c| {
+            (0..words.len())
+                .filter(|t| (c >> t) & 1 == 1)
+                .fold(0, |acc, t| acc ^ words[t])
+        })
+        .collect();
+    let (xr, bb) = (word(x_r), word(b));
+    let s3 = |a: u64, c: u64, d: u64| {
+        let ac = gf.mul(a, c);
+        gf.mul(gf.sqr(a ^ c), gf.sqr(d)) ^ gf.mul(ac, d) ^ gf.sqr(ac) ^ bb
+    };
+    let squares: Vec<u64> = (0..1u64 << n).map(|u| gf.sqr(u)).collect();
+    let mut count = 0u64;
+    for &x1 in &span {
+        for &x2 in &span {
+            let (lead, mid) = (gf.sqr(x1 ^ x2), gf.mul(x1, x2));
+            let tail = gf.sqr(mid) ^ bb;
+            for (u, &uu) in squares.iter().enumerate() {
+                let u = u as u64;
+                if gf.mul(lead, uu) ^ gf.mul(mid, u) ^ tail != 0 {
+                    continue;
+                }
+                count += span.iter().filter(|&&x3| s3(u, x3, xr) == 0).count() as u64;
+            }
+        }
+    }
+    count
+}
+
+/// How one draw of a ladder cell came out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LadderOutcome {
+    /// The system has solutions, so it can never be refuted; it was not
+    /// run through the Macaulay matrices.
+    Satisfiable,
+    /// Resolved at this degree -- `refuted` says by the constant `1`, else
+    /// by every occurring variable pinned.
+    Resolved { degree: u32, refuted: bool },
+    /// No solutions, and the matrix at `d_max` was built in full without
+    /// resolving: the resolving degree is **at least `d_max + 1`**.  A
+    /// mathematical lower bound, not a resource limit.
+    AtLeast(u32),
+    /// No solutions, and the size caps stopped the matrices below `d_max`
+    /// (`built` is the last degree built, if any).  Unknown -- a resource
+    /// limit, never evidence about the degree.
+    CapsHit { built: Option<u32> },
+}
+
+/// One draw of a fixed-surplus ladder cell.
+#[derive(Clone, Debug)]
+pub struct LadderDraw {
+    pub n: u32,
+    pub ell: u32,
+    pub n_vars: usize,
+    pub n_eqs: usize,
+    pub v_basis: Vec<u64>,
+    pub x_r: u64,
+    pub solutions: u64,
+    pub outcome: LadderOutcome,
+    /// First fall degree, when a fall occurs by `ffd_max`; only measured on
+    /// draws with no solutions.
+    pub ffd: Option<u32>,
+    pub secs: f64,
+}
+
+/// The random part of one ladder draw: a subspace basis, then a target
+/// abscissa, consuming `rng` exactly as [`ladder_draw`] does.  Replaying it
+/// reproduces a cell's draw sequence without measuring anything, so a single
+/// draw can be measured on its own (`dreg_ladder --unsat-index`).
+pub fn ladder_sample(n: u32, ell: usize, rng: &mut StdRng) -> (Vec<F2mElement>, F2mElement) {
+    let basis = random_subspace_basis(n, ell, rng);
+    let x_r = F2mElement::from_biguint(&BigUint::from(rng.gen::<u64>() & ((1u64 << n) - 1)), n);
+    (basis, x_r)
+}
+
+/// Measure one sampled draw of the `m = 3` cell `(n, ℓ = basis.len())`.  The
+/// exact solution count comes first; only a system with none goes through
+/// [`first_fall_degree`] (to `ffd_max`) and [`solving_degree`] (to `d_max`).
+pub fn ladder_measure(
+    n: u32,
+    basis: &[F2mElement],
+    x_r: &F2mElement,
+    d_max: u32,
+    ffd_max: u32,
+) -> Option<LadderDraw> {
+    use crate::cryptanalysis::koblitz_index_calculus::find_irreducible_sparse;
+    let started = Instant::now();
+    let irr = find_irreducible_sparse(n)?;
+    let st = FieldStructure::new(n, &irr);
+    let b = F2mElement::one(n);
+    let sys = build_decomposition_system(basis, x_r, &b, 3, &st)?;
+    let solutions = chained_s3_solution_count(basis, x_r, &b, &irr);
+    let word = |e: &F2mElement| e.raw_bits().first().copied().unwrap_or(0);
+    let mut ffd = None;
+    let outcome = if solutions > 0 {
+        LadderOutcome::Satisfiable
+    } else {
+        ffd = first_fall_degree(&sys.equations, sys.n_vars, ffd_max).0;
+        let (d, profs) = solving_degree(&sys.equations, sys.n_vars, d_max);
+        let built = profs.last().map(|p| p.degree);
+        match d {
+            Some(degree) => LadderOutcome::Resolved {
+                degree,
+                refuted: profs.last().map(|p| p.refuted).unwrap_or(false),
+            },
+            None if built == Some(d_max) => LadderOutcome::AtLeast(d_max + 1),
+            None => LadderOutcome::CapsHit { built },
+        }
+    };
+    Some(LadderDraw {
+        n,
+        ell: basis.len() as u32,
+        n_vars: sys.n_vars,
+        n_eqs: sys.equations.len(),
+        v_basis: basis.iter().map(word).collect(),
+        x_r: word(x_r),
+        solutions,
+        outcome,
+        ffd,
+        secs: started.elapsed().as_secs_f64(),
+    })
+}
+
+/// Draw one `(V, x_R)` for the `m = 3` cell `(n, ℓ)` and measure it:
+/// [`ladder_sample`] then [`ladder_measure`].
+pub fn ladder_draw(
+    n: u32,
+    ell: usize,
+    d_max: u32,
+    ffd_max: u32,
+    rng: &mut StdRng,
+) -> Option<LadderDraw> {
+    let (basis, x_r) = ladder_sample(n, ell, rng);
+    ladder_measure(n, &basis, &x_r, d_max, ffd_max)
+}
+
+/// The infeasible null object for a ladder cell: same unknowns, degree and
+/// term density as the cell's systems, `n_vars + 4` equations, run to
+/// `d_max` exactly like a draw.  See [`random_control_system`].
+pub fn ladder_control(
+    n_vars: usize,
+    degree: u32,
+    terms_per_eq: usize,
+    d_max: u32,
+    seed: u64,
+) -> LadderOutcome {
+    let polys = random_control_system(n_vars, n_vars + 4, degree, terms_per_eq, seed);
+    let (d, profs) = solving_degree(&polys, n_vars, d_max);
+    let built = profs.last().map(|p| p.degree);
+    match d {
+        Some(degree) => LadderOutcome::Resolved {
+            degree,
+            refuted: profs.last().map(|p| p.refuted).unwrap_or(false),
+        },
+        None if built == Some(d_max) => LadderOutcome::AtLeast(d_max + 1),
+        None => LadderOutcome::CapsHit { built },
+    }
+}
+
+/// The sparse elimination's cost on one cell at one degree, and nothing
+/// about its outcome: matrix shape, build and elimination time, row weight
+/// before and after.  For cells too large for [`elimination_comparison`]'s
+/// dense pass.
+#[derive(Clone, Debug)]
+pub struct SparseEliminationCost {
+    pub n: u32,
+    pub m: usize,
+    pub degree: u32,
+    pub n_vars: usize,
+    pub rows: usize,
+    pub cols: usize,
+    pub high_cols: usize,
+    pub build_ms: f64,
+    pub sparse_ms: f64,
+    pub start_max_weight: usize,
+    pub max_weight: usize,
+}
+
+/// See [`SparseEliminationCost`].  Same cell construction as
+/// [`elimination_comparison`], so the two are comparable where both run.
+pub fn sparse_elimination_cost(
+    n: u32,
+    factor_index: usize,
+    m: usize,
+    degree: u32,
+    seed: u64,
+) -> Option<SparseEliminationCost> {
+    use crate::cryptanalysis::koblitz_groebner::build_macaulay_sparse;
+    use crate::cryptanalysis::sparse_macaulay::{eliminate_high_columns, low_column_start};
+
+    let (irr, basis) = invariant_subspace_basis(n, factor_index)?;
+    let st = FieldStructure::new(n, &irr);
+    let b = F2mElement::one(n);
+    let mut rng = StdRng::seed_from_u64(seed);
+    let x_r = F2mElement::from_biguint(&BigUint::from(rng.gen::<u64>()), n);
+    let sys = build_decomposition_system(&basis, &x_r, &b, m, &st)?;
+
+    let t0 = Instant::now();
+    let (cols, rows) = build_macaulay_sparse(&sys.equations, sys.n_vars, degree)?;
+    let build_ms = t0.elapsed().as_secs_f64() * 1e3;
+    let high_cols = low_column_start(&cols);
+    let start_max_weight = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+    let n_rows = rows.len();
+    let t1 = Instant::now();
+    let elim = eliminate_high_columns(rows, cols.len(), high_cols);
+    let sparse_ms = t1.elapsed().as_secs_f64() * 1e3;
+    Some(SparseEliminationCost {
+        n,
+        m,
+        degree,
+        n_vars: sys.n_vars,
+        rows: n_rows,
+        cols: cols.len(),
+        high_cols,
+        build_ms,
+        sparse_ms,
+        start_max_weight,
+        max_weight: elim.max_weight,
+    })
+}
+
+/// The dense Macaulay matrix of one frozen decomposition system, for
+/// benchmarking an elimination kernel on the matrices the oracle really
+/// reduces: the system `build_decomposition_system` makes for `m`
+/// summands over factor-base subspace `factor_index` of `K / F_2^n`, with
+/// the target abscissa drawn from `seed`, expanded to `degree`.
+///
+/// Returns `(variables, columns, rows)`; `None` when the cell has no
+/// invariant subspace or exceeds the builder's size caps.
+pub fn decomposition_macaulay(
+    n: u32,
+    factor_index: usize,
+    m: usize,
+    degree: u32,
+    seed: u64,
+) -> Option<(usize, usize, Vec<Vec<u64>>)> {
+    use crate::cryptanalysis::koblitz_groebner::build_macaulay;
+
+    let (irr, basis) = invariant_subspace_basis(n, factor_index)?;
+    let st = FieldStructure::new(n, &irr);
+    let b = F2mElement::one(n);
+    let mut rng = StdRng::seed_from_u64(seed);
+    let x_r = F2mElement::from_biguint(&BigUint::from(rng.gen::<u64>()), n);
+    let sys = build_decomposition_system(&basis, &x_r, &b, m, &st)?;
+    let (cols, matrix) = build_macaulay(&sys.equations, sys.n_vars, degree)?;
+    Some((sys.n_vars, cols.len(), matrix))
+}
+
+/// The elimination kernel the Gröbner oracle used before
+/// [`crate::cryptanalysis::gf2_elim`], exposed as the same-binary control
+/// for it: reduced row echelon form in place, returning the rank and
+/// charging the word XORs to `word_ops`.
+pub fn rref_f2_legacy(matrix: &mut [Vec<u64>], n_cols: usize, word_ops: &mut u64) -> usize {
+    crate::cryptanalysis::koblitz_groebner::rref_f2_legacy_counted(matrix, n_cols, word_ops)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The exact counter is the count an exhaustive evaluation of the
+    /// built system gives, on every draw of every small cell -- the check
+    /// that its `S₃`, its `b`, its basis map and its variable layout are the
+    /// system's.  Includes satisfiable and unsatisfiable draws.
+    #[test]
+    fn chained_s3_count_matches_exhaustive_evaluation() {
+        use crate::cryptanalysis::koblitz_index_calculus::find_irreducible_sparse;
+        let mut rng = StdRng::seed_from_u64(0x001A_DDE5);
+        let (mut sat, mut unsat) = (0usize, 0usize);
+        for (n, ell) in [(5u32, 2usize), (5, 3), (7, 2), (7, 3), (9, 3)] {
+            let irr = find_irreducible_sparse(n).unwrap();
+            let st = FieldStructure::new(n, &irr);
+            let b = F2mElement::one(n);
+            for _ in 0..6 {
+                let basis = random_subspace_basis(n, ell, &mut rng);
+                let x_r = F2mElement::from_biguint(
+                    &BigUint::from(rng.gen::<u64>() & ((1u64 << n) - 1)),
+                    n,
+                );
+                let sys = build_decomposition_system(&basis, &x_r, &b, 3, &st).unwrap();
+                let exhaustive = (0u64..1 << sys.n_vars)
+                    .filter(|&a| sys.equations.iter().all(|p| p.eval(a) == 0))
+                    .count() as u64;
+                let counted = chained_s3_solution_count(&basis, &x_r, &b, &irr);
+                assert_eq!(counted, exhaustive, "n={n} ℓ={ell}");
+                if counted == 0 {
+                    unsat += 1
+                } else {
+                    sat += 1
+                }
+            }
+        }
+        assert!(
+            sat > 0 && unsat > 0,
+            "both kinds of draw exercised: {sat} sat, {unsat} unsat"
+        );
+    }
+
+    #[test]
+    fn random_subspace_basis_is_independent_and_of_the_asked_dimension() {
+        let mut rng = StdRng::seed_from_u64(7);
+        for (n, ell) in [(5u32, 1usize), (7, 3), (13, 5), (19, 7), (31, 12)] {
+            let basis = random_subspace_basis(n, ell, &mut rng);
+            let words: Vec<u64> = basis
+                .iter()
+                .map(|e| e.raw_bits().first().copied().unwrap_or(0))
+                .collect();
+            let span: std::collections::HashSet<u64> = (0..1u64 << ell)
+                .map(|c| {
+                    (0..ell)
+                        .filter(|t| (c >> t) & 1 == 1)
+                        .fold(0, |acc, t| acc ^ words[t])
+                })
+                .collect();
+            assert_eq!(span.len(), 1usize << ell, "n={n} ℓ={ell}");
+            assert!(words.iter().all(|&w| w < 1u64 << n));
+        }
+    }
+
+    /// Replaying the samples and measuring one of them is the draw
+    /// `ladder_draw` would have made at that position -- same subspace, same
+    /// target, same outcome -- so a cell measured one draw per process is the
+    /// cell measured in one process.
+    #[test]
+    fn replayed_samples_measure_as_the_sequential_draws() {
+        let seq: Vec<LadderDraw> = {
+            let mut rng = StdRng::seed_from_u64(0x001A_DDE7);
+            (0..10)
+                .map(|_| ladder_draw(5, 2, 7, 4, &mut rng).unwrap())
+                .collect()
+        };
+        let mut rng = StdRng::seed_from_u64(0x001A_DDE7);
+        for want in &seq {
+            let (basis, x_r) = ladder_sample(5, 2, &mut rng);
+            let got = ladder_measure(5, &basis, &x_r, 7, 4).unwrap();
+            assert_eq!(
+                (
+                    got.v_basis.clone(),
+                    got.x_r,
+                    got.solutions,
+                    got.outcome,
+                    got.ffd
+                ),
+                (
+                    want.v_basis.clone(),
+                    want.x_r,
+                    want.solutions,
+                    want.outcome,
+                    want.ffd
+                )
+            );
+        }
+    }
+
+    /// A draw with solutions is never sent to the Macaulay path, and a
+    /// small unsatisfiable draw resolves by refutation within a generous
+    /// `d_max` -- the three outcomes the sweep distinguishes are reachable.
+    #[test]
+    fn ladder_draw_separates_satisfiable_from_refuted() {
+        let mut rng = StdRng::seed_from_u64(0x001A_DDE6);
+        let (mut sat, mut refuted) = (0, 0);
+        for _ in 0..24 {
+            let d = ladder_draw(5, 2, 8, 4, &mut rng).unwrap();
+            match d.outcome {
+                LadderOutcome::Satisfiable => {
+                    assert!(d.solutions > 0);
+                    sat += 1
+                }
+                LadderOutcome::Resolved { refuted: true, .. } => {
+                    assert_eq!(d.solutions, 0);
+                    refuted += 1
+                }
+                other => assert_eq!(d.solutions, 0, "{other:?}"),
+            }
+        }
+        assert!(
+            sat > 0 && refuted > 0,
+            "{sat} satisfiable, {refuted} refuted"
+        );
+    }
 
     #[test]
     fn cost_model_matches_the_built_system() {

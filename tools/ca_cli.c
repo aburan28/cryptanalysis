@@ -612,7 +612,7 @@ static int cmd_num(void)
     }
     if (!strcmp(op, "legendre")) {
         uint64_t p = opt_u64("--p", 0);
-        if (p < 3) die("--p must be an odd prime");
+        if (p < 3 || !ca_is_prime(p)) die("--p must be an odd prime");
         printf("{\"result\":%d}\n", ca_legendre(opt_u64("--a", 0), p));
         return 0;
     }
@@ -639,7 +639,8 @@ static int cmd_num(void)
     }
     if (!strcmp(op, "order")) {
         uint64_t p = opt_u64("--p", 0);
-        if (p < 2) die("--p must be a prime at least 2");
+        /* ca_mult_order works in (Z/pZ)^* of order p - 1: prime p only. */
+        if (p < 2 || !ca_is_prime(p)) die("--p must be a prime");
         uint64_t o = ca_mult_order(opt_u64("--a", 0), p);
         if (o == 0) {
             printf("{\"defined\":false}\n");

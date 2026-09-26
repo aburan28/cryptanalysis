@@ -123,6 +123,99 @@ fn schema_unknown_fields_and_ambiguous_abstract_coordinates_are_rejected() {
     assert_eq!(report["status"], "invalid");
 }
 #[test]
+fn boundary_ledger_quick_run_prices_every_regime_and_verifies() {
+    let (ok, v) = command(&["boundary", "--quick", "--oracles"]);
+    assert!(ok, "{}", v["status"]);
+    assert_eq!(v["operation"], "boundary");
+    assert_eq!(v["status"], "complete");
+    assert_eq!(v["all_verified"], true);
+    let instances = v["ledger"]["instances"].as_array().unwrap();
+    let regimes: std::collections::BTreeSet<&str> = instances
+        .iter()
+        .map(|i| i["regime"].as_str().unwrap())
+        .collect();
+    assert_eq!(regimes.len(), 3, "{regimes:?}");
+    for inst in instances {
+        assert_eq!(inst["rho_verified_all"], true, "{}", inst["curve"]["name"]);
+        assert!(inst["floor_s"].as_f64().unwrap() > 0.0);
+        assert!(inst["calibration"]["ns_per_add"].as_f64().unwrap() > 0.0);
+        for var in inst["variants"].as_array().unwrap() {
+            assert_eq!(var["verified"], true, "{}", var["name"]);
+            assert!(var["s"].as_f64().unwrap() > 0.0);
+            assert!(var["ratio_to_floor"].as_f64().unwrap() > 1.0);
+            assert!(var["relations"]["native"]["trials"].as_u64().unwrap() > 0);
+            // The family shape law is reported per row at that row's own
+            // table fold and column fold, and `S` divided by it is the
+            // `vs family` column of the note and the scoreboard.
+            let fam = var["family_optimum_s"].as_f64().unwrap();
+            assert!(fam > 0.0, "{}", var["name"]);
+            let ratio = var["ratio_to_family_optimum"].as_f64().unwrap();
+            assert!(
+                (ratio - var["s"].as_f64().unwrap() / fam).abs() < 1e-6,
+                "{}: ratio_to_family_optimum is not S / family_optimum_s",
+                var["name"]
+            );
+            assert!(var["family_optimum_base"].as_f64().unwrap() > 0.0);
+            // A relation search that is pinned by decomposing one group
+            // element twice is measuring a collision, not relations
+            // (§10.2); it must not happen on any row.
+            assert_eq!(
+                var["linear_algebra"]["native"]["repeated_column_rows"], 0,
+                "{}",
+                var["name"]
+            );
+        }
+    }
+    assert_eq!(v["oracle_pricing"]["all_agree"], true);
+    assert!(v["markdown"].as_str().unwrap().contains("| regime |"));
+}
+#[test]
+fn corpus_writes_certified_instances_in_every_format() {
+    let dir = std::env::temp_dir().join(format!("ic-corpus-{}", std::process::id()));
+    let (ok, v) = command(&[
+        "corpus",
+        "--degree",
+        "13",
+        "--dimension",
+        "4",
+        "--sat",
+        "1",
+        "--unsat",
+        "1",
+        "--dir",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(ok, "{v}");
+    assert_eq!(v["status"], "complete");
+    let instances = v["instances"].as_array().unwrap();
+    assert_eq!(instances.len(), 2);
+    assert!(instances
+        .iter()
+        .all(|i| i["label_checked_by_own_solver"] == true));
+    assert_eq!(v["written"].as_array().unwrap().len(), 10);
+    assert!(dir.join("n13l4-1-S.cnf").exists());
+    let info = std::fs::read_to_string(dir.join("INFOn13l4-1-S")).unwrap();
+    assert!(info.contains("satisfiable true"));
+    let dimacs = std::fs::read_to_string(dir.join("n13l4-1-S.dimacs")).unwrap();
+    assert!(dimacs.starts_with("p cnf ") && dimacs.contains("\nx "));
+    // Never overwrite.
+    let (again, _) = command(&[
+        "corpus",
+        "--degree",
+        "13",
+        "--dimension",
+        "4",
+        "--sat",
+        "1",
+        "--unsat",
+        "0",
+        "--dir",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(!again);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+#[test]
 fn supported_larger_fixture_completes_and_reports_resources() {
     // Control accounting: one column per Frobenius orbit, fixed surplus,
     // serial trials — the historical 91 + 4 relations.

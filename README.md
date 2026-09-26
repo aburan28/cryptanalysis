@@ -59,7 +59,27 @@ sm_90 and reports registers, local memory and spills.
 
 ## Command line
 
-`cryptanalysis` is the main command; `ca` remains a compatible alias. Generic
+**`crax` is the toolkit's single command line**: one subcommand per attack,
+over both halves of the repository — the generic discrete-log solvers of
+this C library (through the Rust bindings), and the suite's weak-curve,
+factoring (GNFS, SNFS, SIQS, ECM, p−1), RSA, index-calculus, symmetric,
+hash, lattice and isogeny attacks.  Every command takes `--json`, and every
+answer it reports has been verified independently of the solver.  See
+[docs/CRAX.md](docs/CRAX.md).
+
+```sh
+cd suite && cargo build --release --bin crax
+./target/release/crax rho --p 2000000579 --order 1000000289 --x 123456789
+./target/release/crax challenge solve fp-anomalous-b128     # Smart's attack, 62 ms
+./target/release/crax ecdlp --curve p256 --x 5 --analyze-only
+./target/release/crax factor '2^128+1'
+./target/release/crax snfs '2^227-1'
+./target/release/crax rsa wiener <n> --e <e>
+./target/release/crax ic prime --curve secp256k1 --bits 20 --targets 4
+```
+
+The C tools below remain for the library on its own. `cryptanalysis` is
+the main C command; `ca` remains a compatible alias. Generic
 BSGS and rho are top-level algorithm commands. `ic` currently solves DLPs in
 the multiplicative group of a prime field; the experimental binary-curve IC
 pipeline is separate and has no complete released DLP command yet.
@@ -377,7 +397,7 @@ images: [deploy/docker/](./deploy/docker/); systemd units for a plain VM:
 
 The C library is the narrow, fast end: one group interface, a handful of
 solvers, 64-bit groups, measured constants.  [`suite/`](suite/README.md) is
-the wide end -- a Rust crate of 126 attack modules with the primitives they
+the wide end -- a Rust crate of about 150 attack modules with the primitives they
 target, moved here from the [crypto](https://github.com/aburan28/crypto)
 study repository and put under this repository's checks: S-box, Boolean
 and statistical primitives; the reduced-round AES catalogue and the
@@ -409,7 +429,8 @@ solver, `shape` instances to check field arithmetic at the large end.
 
 `make suite` runs its gates (fmt, clippy `-D warnings`, rustdoc `-D
 warnings`, cargo-deny, the release test suite, the Python engine's lint and
-tests).  The two halves do not depend on each other.
+tests).  The suite links the C library through `bindings/rust` for
+`crax`'s generic solvers; the C library does not depend on the suite.
 
 ## C API in one screen
 
