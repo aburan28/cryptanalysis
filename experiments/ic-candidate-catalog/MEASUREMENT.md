@@ -73,6 +73,28 @@ For a complete DLP, every phase is priced, the total equals their sum, and
 the scalar certificate is required. [`analyze.py`](analyze.py) validates these
 rules before reporting rates or a paired speedup.
 
+## Many-target control
+
+For T targets on one curve, report shared precomputation separately from the
+ordered marginal target costs and retain exact prefix points at T=1,2,4,... .
+The independent baseline `T * rho_one_target` is useful for showing setup
+amortization, but it is not the fair many-target opponent. Also report a
+shared-distinguished-point rho expectation. For N equivalence classes use
+
+`sqrt(pi*N/2) * sum_{k=0}^{T-1} C(2k,k)/4^k`,
+
+which tends to `sqrt(2*N*T)`. When the IC candidate folds an automorphism group,
+use the same quotient in N for the strict rho control (for the binary Koblitz
+sign/Frobenius benchmark, N=r/(2n)). State setup/detection-lag assumptions.
+Never call a crossover against independent per-target rho a many-target
+algorithmic win when the shared-DP rho control still wins.
+
+A batch receipt must make it possible to distinguish fixed setup amortization
+from a change in marginal target work. If descents learn across targets, record
+the ordered learning state and compare against a no-learning control. If they
+do not, say so explicitly; a decreasing total/T alone is then only setup
+amortization.
+
 ## Isogeny activation gate
 
 An `isogeny_routes.json` search record is a task, not a usable route. To
