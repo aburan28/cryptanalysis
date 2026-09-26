@@ -15,6 +15,10 @@ experiment with external Frobenius phases, reusable XOR circuits, hybrid
 payload guesses, and independent subgroup-point verification. It is a PDP
 stage diagnostic; the original scaling results below are unchanged.
 
+[COMPACT.md](COMPACT.md) follows the bounded toy experiment with exact compact
+admissibility constraints, a frozen 100-target corpus, and four-size measurements
+that charge setup and count independent factor-base rows.
+
 ## The question
 
 An index calculus on `E(F_2^131)` writes random points as sums of `m` points
