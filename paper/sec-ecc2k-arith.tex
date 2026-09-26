@@ -1,0 +1,165 @@
+\section{ECC2K-130 arithmetic}
+\label{sec:ecc2k-arith}
+
+ECC2K-130 is the Certicom challenge
+\[
+  E:\ y^2 + xy = x^3 + 1 \qquad\text{over }\FF_{2^{131}},
+\]
+group order $4\cdot r$ with
+\[
+  r = 680564733841876926932320129493409985129
+\]
+a 129-bit prime~\cite{bailey2009,certicom1997}. Expected work is
+$2^{60.9}$ iterations of a Frobenius-equivariant walk. This section
+records the field, the iteration, the golden model, and the small-curve
+controls. Throughput, FPGA, and the live campaign follow in
+Sections~\ref{sec:ecc2k-gpu}--\ref{sec:campaign}.
+
+\subsection{Why a type-II optimal normal basis}
+
+$2\cdot 131+1=263$ is prime and $2$ has order $131$ modulo $263$, so
+$\FF_{2^{131}}$ has a type-II optimal normal basis. With $\gamma$ a
+primitive $263$rd root of unity the basis is $\beta_i=\gamma^i+\gamma^{-i}$,
+$i=1,\ldots,131$, and an element is a 131-bit vector. Three
+consequences, and every design in both repositories is built on all
+three:\art{fpga/README.md}
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.42\textwidth}p{0.48\textwidth}@{}}
+\toprule
+fact & consequence \\
+\midrule
+$\beta_i\beta_j=\beta_{i+j}+\beta_{i-j}$
+  (indices folded by $\beta_{263-k}=\beta_k$, $\beta_0=0$)
+  & a product is a cyclic convolution of two symmetric 263-bit vectors \\
+$\beta_i^2=\beta_{2i\bmod 263}$
+  & squaring is a permutation --- free, it is wiring --- so Frobenius
+    costs nothing in this basis \\
+Hamming weight is basis-invariant between this index order and the
+  normal-basis order
+  & the iteration's $j$ and the distinguished-point test read the
+    vector the hardware already holds \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+None of that is taken on trust. The golden C model
+(\texttt{fpga/model/ecc2k130.c}) builds the field independently and
+checks the basis, the product rule, the squaring permutation, that
+$1$ is the all-ones vector, and that the trace is the parity of the
+weight. The curve is identified the same way: $E_0(\FF_2)$ has 4
+points, so the Frobenius trace is $t=-1$, and the Koblitz recursion
+$s_m=t\,s_{m-1}-2s_{m-2}$ gives $\#E(\FF_{2^{131}})=2^{131}+1-s_{131}
+=4\cdot r$. The test then checks the two facts that make this
+\emph{this} curve: $\sigma^2+\sigma+2=0$ on every point, and $n\cdot
+P=\mathcal{O}$ for points multiplied by the cofactor.
+
+\subsection{Three multiplier realisations}
+
+A 131-bit product is realised three ways, kept bit-for-bit compatible
+so a distinguished-point record re-walks under any of them.
+
+\begin{enumerate}[leftmargin=1.2em,itemsep=0.4em]
+\item \emph{Digit-serial cyclic convolution} (this library's FPGA
+  core). \texttt{DIGIT} bits of the convolution per cycle; inversion
+  is Itoh--Tsujii~\cite{itoh1988} along $1,2,4,8,16,32,64,65,130$,
+  eight multiplications, over the core's one multiplier.
+  Section~\ref{sec:fpga-core}.
+\item \emph{Bitsliced software} (companion client, historical GPU
+  control). Thirty-two walks in the bits of a word; the original
+  packed-backend audit measured this control at $0.852294$~B/s on an
+  RTX~PRO~6000.\art{crypto:ecc2k130/PACKED.md}
+\item \emph{Packed polynomial-basis products} (companion client, and
+  the GPU kernel imported here). Coordinates live in
+  $\FF_2[c]/(m)$, $c=\gamma_1$; a 131-bit product is three $64\times
+  64$ carry-less multiplies --- six \texttt{clmad} --- plus a
+  reduction. Bernstein--Lange conversions to and from the normal
+  basis (where the weight, the selection and the distinguished-point
+  test live) are $O(K\log K)$ shift-and-mask networks. A single-product
+  variant with word-parallel conversions at the boundaries is the
+  first rung of the GPU ledger in Section~\ref{sec:gpu-ledger}.
+\end{enumerate}
+
+The companion also has a pipelined Karatsuba multiplier in VHDL for
+the F2 engine (Section~\ref{sec:fpga-f2}).
+
+\subsection{Two iteration functions}
+
+The FPGA core and the historical campaign walk the Bailey et
+al.~\cite{bailey2009} map
+\begin{align*}
+  j &= ((\HW(x_R)\gg 1)\bmod 8)+3, \qquad j\in[3,10],\\
+  R' &= \sigma^j(R)+R, \qquad \sigma(x,y)=(x^2,y^2),\\
+  \text{distinguished} &\iff \HW(x)\le 34
+\end{align*}
+(campaign cutoff $32$ is the live-fleet predicate;
+Section~\ref{sec:campaign}). One step is one affine addition: one
+inversion, two multiplications and a free Frobenius, since $\sigma^j$
+is wiring. The inversion is eight of about eleven multiplications, so
+it is $70\%$ of the step --- the single most important number in the
+FPGA design.\art{fpga/README.md, ``The walk''}
+
+Only $x$ is reported. On a Koblitz curve $-(x,y)=(x,x+y)$, so $x$ is
+already the negation-class invariant; the Frobenius class is
+normalised host-side. No coefficients are tracked: a walk is identified
+by its seed and a collision is resolved by replaying both walks.
+
+The packed GPU client imported into this library walks a different
+function, an $r$-adding walk on the classes of $\langle\sigma,-1\rangle$
+(262 points each):
+\begin{align*}
+  h(R) &= (\HW(x)/2)\bmod 8,\\
+  k(R) &= \bigl(\textstyle\sum_e L(e)\,x_e\bigr)\cdot\HW(x)^{-1}\bmod 131,\\
+  \varepsilon(R) &= \text{bit $p(R)$ of $y$},\\
+  R' &= R + (-1)^{\varepsilon}\,\sigma^{k}(T_{h}),
+\end{align*}
+with $T_h=[a_h]P+[b_h]Q$ and a $131\times 8$-point table ($48.7$~KB)
+in shared memory. $k$ shifts by one under $\sigma$ and $\varepsilon$
+flips under negation, so the walk descends to classes with no
+canonical representative in the loop. Fruitless 2- and 4-cycles are
+avoided by advancing $h$ against the last four step tags. The two
+walks share the field, the model and the 32-byte record; they do not
+share a corpus.\art{ecc2k130/README.md, ``The walk''}
+
+The exceptional case $\sigma^j(R)=\pm R$ makes the denominator zero.
+The FPGA core raises \texttt{exc} and stops; dividing would produce a
+point that is not on the curve, which the core would then report as
+distinguished.
+
+\subsection{Golden model and CPU walker}
+
+\texttt{fpga/model/ecc2k130.c} is the oracle. The FPGA testbenches
+compare against vectors it emits; the GPU host
+(\texttt{ecc2k130/src/hostcheck.cpp}) re-slices packed words into the
+same permuted type-II basis and checks equality, not equivalence up
+to a basis change. \texttt{make} in \texttt{ecc2k130/} runs $1{,}904$
+checks (gcc and clang in CI) covering field arithmetic, Frobenius
+networks, basis conversions, table selection and the walk, with no
+CUDA required.\art{ecc2k130/README.md}
+
+The companion client's source compiles for CUDA (32-bit lanes) and
+for the CPU (64-bit lanes), so the exact code that would run on a GPU
+is what the CPU test suite exercises. That CPU walker is the
+verification path for every GPU row below; it is not a throughput
+claim.
+
+\subsection{Small-curve controls, including ECC2K-95}
+
+ECC2K-95 is the retired Certicom Koblitz challenge over
+$\FF_{2^{97}}$, group order $4\cdot r$ with $r$ a 95-bit prime, about
+$2^{44}$ iterations, solved by Harley and collaborators in
+1998~\cite{harley1998}. $2\cdot 97+1=195$ is composite, so there is
+no type-II optimal normal basis; the companion runs a
+polynomial-basis backend with the orbit-invariant weight taken
+through a linear map. The published secret
+$37837308472231540269443981458$ is the check. Harley's own
+measurement was $2.16\cdot 10^{13}$ iterations against a repository
+prediction of $1.79\cdot 10^{13}$. The ECC2K-95 CUDA kernel itself
+has run only through CPU emulation and is not a headline
+throughput.\art{crypto:ecc2k130/README.md}\art{crypto:gpu/ecc2k/README.md}
+
+Toy Koblitz curves with 21-bit and 40-bit subgroups (Section~\ref{sec:crossval})
+close the pipeline to a verified logarithm in seconds. They are the
+control that the iteration commutes with the class action, not a
+substitute for the 129-bit group.

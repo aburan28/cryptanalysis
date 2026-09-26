@@ -1,0 +1,48 @@
+\section{Related work}
+\label{sec:related}
+
+Pollard's rho method~\cite{pollard1978} and Shanks' baby-step
+giant-step~\cite{shanks1971} are the generic algorithms. Teske's
+$r$-adding walk~\cite{teske2001} is the mixing rule this library uses;
+van Oorschot--Wiener~\cite{vanoorschot1999} is the parallelisation;
+Bernstein--Lange--Schwabe~\cite{bls2011} is the correct use of the
+negation map. Two grumpy giants and a baby~\cite{bernsteinlange2012grumpy}
+and free precomputation~\cite{bernsteinlange2012small,bernsteinlange2013}
+are priced as neighbours, not as replacements. Wiener--Zuccherato and
+Duursma--Gaudry--Morain~\cite{wienerzuccherato1998,duursma1999} folded
+rho by the automorphism group; GLV~\cite{glv2001} is the constructive
+counterpart that this library applies automatically on $j=0$ and
+$j=1728$. Cheon~\cite{cheon2006,cheon2010} is a different problem ---
+DLP with auxiliary inputs --- and is labelled as such.
+
+The linear sieve~\cite{cos1986} and Lanczos over finite
+fields~\cite{lamacchia1990} are the $(\ZZ/p\ZZ)^*$ solver. Semaev
+summation polynomials~\cite{semaev2004}, Gaudry's index calculus for
+abelian varieties of small dimension~\cite{gaudry2009}, Diem's analysis
+of the elliptic discrete logarithm~\cite{diem2011}, and Joux--Vitse
+pair decompositions~\cite{jouxvitse2013} are the elliptic side. The
+contribution here is not a new algorithm; it is a measurement in one
+unit, with every phase priced, against a floor that cannot be tuned
+away.
+
+ECC2K-130 is Bailey et al.~\cite{bailey2009}, building on Harley's
+ECC2K-95~\cite{harley1998} and Certicom's challenge
+list~\cite{certicom1997}. Itoh--Tsujii
+inversion~\cite{itoh1988} and Montgomery's simultaneous
+inversion~\cite{montgomery1987} are the two inversion tricks the
+designs spend most of their area and most of their GPU time on. The
+FPGA and GPU numbers in Sections~\ref{sec:ecc2k-gpu} and~\ref{sec:ecc2k-fpga}
+are this programme's, cited to their artefacts; they are not a claim
+to have broken the challenge.
+
+The reporting rule --- boundary, one unit, four classes, phases priced
+separately, extrapolations marked --- is the sibling study library's
+standing convention, written to stop a thread from spending weeks
+improving a headline constant while the ratio to the floor stays
+flat. Wesolowski's supersingular-isogeny result in time
+$p^{1/3+o(1)}$ is the target-result profile that convention is aimed
+at: exponent-first, heuristics numbered, phases booked as
+per-attempt-cost times inverse success probability. This paper is a
+measurement paper, not that theorem; the profile is named so the
+negative elliptic result is read as a finished thread, not as a
+pause.

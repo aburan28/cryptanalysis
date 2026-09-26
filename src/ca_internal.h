@@ -116,4 +116,12 @@ static inline uint64_t ca_min_u64(uint64_t a, uint64_t b) { return a < b ? a : b
 
 void ca_set_error(const char *fmt, ...);
 
+/* Whether n * base = n * target = O, i.e. both lie in the order-n subgroup.
+ * When n is prime and base is not the identity this is exactly target in
+ * <base>; a walk started without it never collides and never stops.  Sets
+ * the error message and returns 0 on failure. */
+struct ca_group;
+int ca_check_members(const struct ca_group *g, const ca_elem *base, const ca_elem *target,
+                     uint64_t n, const char *solver);
+
 #endif /* CA_INTERNAL_H */

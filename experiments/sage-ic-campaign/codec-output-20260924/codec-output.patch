@@ -1,0 +1,51 @@
+diff --git a/src/sage/schemes/elliptic_curves/binary_hardware_codec.pyx b/src/sage/schemes/elliptic_curves/binary_hardware_codec.pyx
+index 845f97d..ec20363 100644
+--- a/src/sage/schemes/elliptic_curves/binary_hardware_codec.pyx
++++ b/src/sage/schemes/elliptic_curves/binary_hardware_codec.pyx
+@@ -4,9 +4,13 @@
+ # distutils: libraries = ntl gmp
+ """Native polynomial-basis transfer between Sage NTL points and uint32 arrays."""
+ import numpy as np
+-from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint_field
++from sage.schemes.elliptic_curves.ell_point import (
++    EllipticCurvePoint_field, EllipticCurvePoint_finite_field,
++)
+ from sage.rings.finite_rings.element_ntl_gf2e cimport FiniteField_ntl_gf2eElement
+ from sage.libs.ntl.types cimport GF2E_c
++from sage.structure.element cimport Element
++from sage.structure.parent cimport Parent
+ 
+ cdef extern from *:
+     """
+@@ -74,9 +78,16 @@ def unpack_points(curve, data, flags, unsigned int words):
+     cdef FiniteField_ntl_gf2eElement model = curve.base_ring().zero()
+     cdef FiniteField_ntl_gf2eElement x, y
+     cdef Py_ssize_t i
++    cdef Element point
++    cdef Parent point_parent
++    cdef bint standard_points
+     model._cache.F.restore()
+     one = curve.base_ring().one()
+     constructor = curve._point
++    standard_points = constructor is EllipticCurvePoint_finite_field
++    if standard_points:
++        point_parent = curve.point_homset()
++        allocate = constructor.__new__
+     output = []
+     for i in range(len(flags)):
+         if zero[i]:
+@@ -86,5 +97,13 @@ def unpack_points(curve, data, flags, unsigned int words):
+         y = model._new()
+         bh_unpack_element(x.x, &raw[2*i, 0], 4*words)
+         bh_unpack_element(y.x, &raw[2*i+1, 0], 4*words)
+-        output.append(constructor(curve, [x, y, one], check=False))
++        if standard_points:
++            point = allocate(constructor)
++            point._parent = point_parent
++            point._codomain = curve
++            point._normalized = True
++            point._coords = (x, y, one)
++            output.append(point)
++        else:
++            output.append(constructor(curve, [x, y, one], check=False))
+     return output

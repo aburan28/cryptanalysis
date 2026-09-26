@@ -5,7 +5,9 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 .PHONY: all lib test bench asan tsan valgrind coverage tidy cppcheck analyzer \
         shellcheck format checks rust go python bindings clean install cuda cuda-kernel \
-        orchestrator orchestrator-test smoke fpga fpga-lint fpga-synth \
+        coordinator coordinator-test fpga fpga-lint fpga-synth ecc2k130 ecc2k130-gpu \
+        ecc2k130-cpu ecc2k130-metal gpu-health gpu-health-image \
+        suite suite-build suite-test suite-lint suite-python \
         cloud-doctor cloud-all modal-setup modal-bench modal-long modal-sync \
         modal-sync-loop runpod-start runpod-status runpod-stop \
         fanout-start fanout-status fanout-stop \
@@ -50,20 +52,14 @@ cuda:
 cuda-kernel:
 	./scripts/build_cuda_kernel.sh --fetch
 
-# ---- the orchestration layer (Go; control plane + agents) -----------------
-# The Go tests take the library's own `ca` as their reference implementation
-# and skip without it, so the library is built first.
-orchestrator: lib
-	cd orchestrator && CGO_ENABLED=0 go build -trimpath -o ../$(BUILD)/ca-control ./cmd/ca-control
-	cd orchestrator && CGO_ENABLED=0 go build -trimpath -o ../$(BUILD)/ca-agent ./cmd/ca-agent
+# ---- the coordinator (Go; the service agents dial out to) ------------------
+# The Go package compiles the C sources itself through cgo, so there is no
+# prior cmake step; `lib` is built anyway because the tests exercise both.
+coordinator: lib
+	cd bindings/go && go build -trimpath -o ../../$(BUILD)/ca-coordinator ./cmd/ca-coordinator
 
-orchestrator-test: lib
-	cd orchestrator && go vet ./... && CA_BIN=$(CURDIR)/$(BUILD)/ca go test -race ./...
-
-# One control plane, two agents, one instance, one real answer -- as separate
-# processes over a socket, which is where deployment bugs live.
-smoke: orchestrator
-	orchestrator/scripts/smoke.sh $(BUILD)
+coordinator-test:
+	cd bindings/go && go vet ./... && go test -race ./...
 
 # ---- the ECC2K-130 FPGA core (fpga/) ---------------------------------------
 # A separate tree with its own toolchain: a golden C model, synthesisable
@@ -78,6 +74,62 @@ fpga-lint:
 
 fpga-synth:
 	$(MAKE) -C fpga synth CORES=1 DIGIT=4
+
+# ---- the ECC2K-130 GPU client (ecc2k130/) ----------------------------------
+# The packed GF(2^131) table walk for CUDA devices with a carry-less
+# multiplier, held to fpga/model's golden model.  `ecc2k130` is the host test
+# (no CUDA needed); `ecc2k130-gpu` builds the client with nvcc >= 13.3, which
+# ecc2k130/scripts/fetch_cuda.sh can supply from NVIDIA's pip wheels.
+ecc2k130:
+	$(MAKE) -C ecc2k130 test
+
+ecc2k130-gpu:
+	$(MAKE) -C ecc2k130 gpu
+
+# The same walk and reports without a CUDA device: on host cores over PMULL or
+# PCLMULQDQ, and on an Apple GPU through Metal (macOS; shader built at start-up).
+ecc2k130-cpu:
+	$(MAKE) -C ecc2k130 cpu
+
+ecc2k130-metal:
+	$(MAKE) -C ecc2k130 metal
+
+# ---- the GPU health check (deploy/gpu-health/) -----------------------------
+# ec2k-gpu's `health` command and the orchestrator that turns one run per GPU
+# into a verdict.  `gpu-health` runs the orchestrator's tests against scripted
+# stand-ins for ec2k-gpu and nvidia-smi (no GPU); `gpu-health-image` builds
+# the image, which compiles and self-checks ec2k-gpu on the way.
+gpu-health:
+	python3 -m unittest discover -s deploy/gpu-health/tests
+
+gpu-health-image:
+	docker build -f deploy/gpu-health/Dockerfile -t gpu-health:dev .
+
+# ---- the attack suite (suite/) ---------------------------------------------
+# The Rust cryptanalysis library and its tools (ca-suite, ca-ic,
+# ca-koblitz-pdp-prepare), independent of the C library.  `make suite` is
+# what the suite workflow gates a pull request on, in the order that fails
+# fastest; the tests run in release because they are arithmetic over
+# num-bigint and take ten times longer unoptimised.
+suite: suite-lint suite-test suite-python
+
+suite-build:
+	cd suite && cargo build --release
+
+suite-lint:
+	cd suite && cargo fmt --all --check
+	cd suite && cargo clippy --all-targets -- -D warnings
+	cd suite && RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+	cd suite && cargo deny check
+
+suite-test:
+	cd suite && cargo test --release
+
+# The stdlib-only engine behind `ca-ic fixed`; the SAT back ends it can use
+# are in suite/python/indexcalc/requirements-sat.txt.
+suite-python:
+	cd suite/python/indexcalc && ruff check . && \
+	  python3 -m unittest test_indexcalc_e2e test_indexcalc_fixed test_indexcalc_selector testirschedule
 
 asan:
 	cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCA_SANITIZE=address,undefined \
@@ -132,7 +184,7 @@ analyzer:
 	cmake --build build-analyzer -j$(JOBS)
 
 shellcheck:
-	shellcheck scripts/*.sh
+	shellcheck scripts/*.sh deploy/*/*.sh
 
 # ---- cloud ECC2K-130 (Modal + RunPod + ingest MiG) -----------------------
 # See docs/CLOUD_LAUNCH.md. GPU time is billed; these are not CI gates.
@@ -216,4 +268,4 @@ format:
 
 clean:
 	rm -rf $(BUILD) build-asan build-tsan build-vg build-cov build-tidy \
-	       build-analyzer build-cuda build-cuda-kernel bindings/rust/target
+	       build-analyzer build-cuda build-cuda-kernel bindings/rust/target suite/target

@@ -1,0 +1,683 @@
+--- a/include/packed131.h
++++ b/include/packed131.h
+@@ -732,17 +732,8 @@
+ }
+ // Polynomial coefficients square into the even positions of a degree-260
+ // product. This is distinct from sqr131's normal-basis permutation.
+-ECC_HD P131 squarePolynomial131(P131 a) {
+-    uint32_t h[9];
+-#pragma unroll
+-    for (int i = 0; i < 4; ++i) {
+-        const uint64_t w = ECC_PACKED_ALU_SQUARE ? spread32alu(a.v[i]) : spread32p(a.v[i]);
+-        h[2 * i] = uint32_t(w);
+-        h[2 * i + 1] = uint32_t(w >> 32);
+-    }
+-    h[8] = uint32_t(ECC_PACKED_ALU_SQUARE ? spread32alu(a.v[4]) : spread32p(a.v[4]));
+-    return reducePolynomial131(h);
+-}
++#include "square_reduce.h"
++ECC_HD P131 squarePolynomial131(P131 a) { return goal22SquareReduced(a); }
+ ECC_HD P131 sqr131(const P131 &a){
+  P131 rev=reverse131(a),r;
+ #if ECC_PACKED_ALU_SQR
+--- a/include/packedkernels.cuh
++++ b/include/packedkernels.cuh
+@@ -2,6 +2,8 @@
+ #pragma once
+ #include "kernel.h"
+ #include "packed131.h"
++#include "collective_inverse.cuh"
++#include "compact_metadata.cuh"
+ #ifndef ECC_PACKED_COMPACT_STATE
+ #define ECC_PACKED_COMPACT_STATE 0
+ #endif
+@@ -214,7 +216,7 @@
+ 
+ static __global__ void ECC_BOUNDS init(WalkParams<unsigned> p, bool reseed) {
+     const size_t id = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
+-    if (id >= size_t(p.threads) * ECC_BATCH || (reseed && !p.dead[id])) return;
++    if (id >= size_t(p.threads) * ECC_BATCH || (reseed && !goal22ReadDead(p.dead, id))) return;
+     const unsigned long long seed = reseed ? p.seed[id] + 1 : eccSeedFor(p.runId, id);
+     const unsigned long long c0 = eccPrf(seed, 0), c1 = eccPrf(seed, 1);
+     P131 x = targetX, y = targetY;
+@@ -238,9 +240,9 @@
+     store(p.y, slot, tid, p.threads, y);
+     p.seed[id] = seed;
+     p.startIter[id] = p.iterBase;
+-    p.dead[id] = 0;
++    goal22WriteDead(p.dead, id, 0);
+ #if ECC_WALK_TABLE
+-    p.hist[id] = ECC_HIST_EMPTY;
++    goal22WriteHist(p.hist, id, size_t(p.threads)*ECC_BATCH, ECC_HIST_EMPTY);
+ #endif
+ }
+ 
+@@ -266,35 +268,37 @@
+ // The forward-pass selection of one slot, without the chain product: load the
+ // point, weight and distinguished-point test, table-walk selection with its
+ // history update, and the addend (d, e) in the polynomial basis.
+-__device__ __forceinline__ void tableSelectSlot(const WalkParams<unsigned> &p, int slot, int tid,
++__device__ __forceinline__ void tableSelectSlot(const WalkParams<unsigned> &p, unsigned *__restrict__ stateX, unsigned *__restrict__ stateY, unsigned *__restrict__ statePrefix, unsigned *__restrict__ stateDead, unsigned long long *__restrict__ stateHistory, const unsigned long long *__restrict__ stateSeed, const unsigned long long *__restrict__ stateStart, DpRecord *__restrict__ reports, unsigned *__restrict__ reportCounts, const unsigned *__restrict__ walkConstants, int slot, int tid,
+                                                 unsigned long long now, bool guard,
+                                                 const uint32_t *twSel, const uint32_t *twTab,
+                                                 P131 *dp, P131 *ep) {
+-    const P131 xp = load(p.x, slot, tid, p.threads);
+-    const P131 yp = load(p.y, slot, tid, p.threads);
++    const P131 xp = load(stateX, slot, tid, p.threads);
++    const P131 yp = load(stateY, slot, tid, p.threads);
+     const size_t id = size_t(slot) * p.threads + tid;
+     const P131 x = fromPolynomial131(xp);
+     const int hw = weight(x);
+-    if (!p.dead[id]) {
++    if (!goal22ReadDead(stateDead, id)) {
+         if (hw <= p.dpWeight) {
+-            if ((p.seed[id] & 0xffffull) == 0xffffull) atomicAdd(p.dpCount + 2, 1u);
+-            const unsigned dest = atomicAdd(p.dpCount, 1u);
++            if ((stateSeed[id] & 0xffffull) == 0xffffull) atomicAdd(reportCounts + 2, 1u);
++            const unsigned dest = atomicAdd(reportCounts, 1u);
+             if (dest < p.dpCap) {
+                 DpRecord rec;
+-                rec.seed = p.seed[id];
+-                rec.iters = now - p.startIter[id];
++                rec.seed = stateSeed[id];
++                rec.iters = now - stateStart[id];
+                 toLimbs(x, rec.x);
+                 toLimbs(fromPolynomial131(yp), rec.y);
+-                p.dp[dest] = rec;
+-            }
+-            p.dead[id] = 1;
+-        } else if (guard && now - p.startIter[id] >= p.maxIters) {
+-            if ((p.seed[id] & 0xffffull) == 0xffffull) atomicAdd(p.dpCount + 2, 1u);
+-            p.dead[id] = 1;
+-            atomicAdd(p.dpCount + 1, 1u);
++                reports[dest] = rec;
++            }
++            goal22WriteDead(stateDead, id, 1);
++        } else if (guard && now - stateStart[id] >= p.maxIters) {
++            if ((stateSeed[id] & 0xffffull) == 0xffffull) atomicAdd(reportCounts + 2, 1u);
++            goal22WriteDead(stateDead, id, 1);
++            atomicAdd(reportCounts + 1, 1u);
+         }
+     }
+-    const unsigned tag = twSelect(x, yp, hw, p.hist + id, twSel);
++    unsigned long long compactHist = goal22ReadHist(stateHistory, id, size_t(p.threads)*ECC_BATCH);
++    const unsigned tag = twSelectHist(x, yp, hw, &compactHist, twSel);
++    goal22WriteHist(stateHistory, id, size_t(p.threads)*ECC_BATCH, compactHist);
+     twAddend(tag, xp, yp, twTab, dp, ep);
+ }
+ #endif
+@@ -304,59 +308,59 @@
+ // distinguished-point test, the table-walk selection with its history update,
+ // the addend, and this slot's contribution to the running prefix chain.
+ // `first` marks the first slot of the accumulation (its W is e alone).
+-__device__ __forceinline__ void fusedSelect(const WalkParams<unsigned> &p, const P131 &xp,
++__device__ __forceinline__ void fusedSelect(const WalkParams<unsigned> &p, unsigned *__restrict__ stateX, unsigned *__restrict__ stateY, unsigned *__restrict__ statePrefix, unsigned *__restrict__ stateDead, unsigned long long *__restrict__ stateHistory, const unsigned long long *__restrict__ stateSeed, const unsigned long long *__restrict__ stateStart, DpRecord *__restrict__ reports, unsigned *__restrict__ reportCounts, const unsigned *__restrict__ walkConstants, const P131 &xp,
+                                             const P131 &yp, size_t id, int slot, int tid,
+                                             unsigned long long now, bool guard, bool first,
+                                             unsigned long long hist, const uint32_t *twSel,
+                                             const uint32_t *twTab, P131 *prod) {
+     const P131 x = fromPolynomial131(xp);
+     const int hw = weight(x);
+-    if (!p.dead[id]) {
++    if (!goal22ReadDead(stateDead, id)) {
+         if (hw <= p.dpWeight) {
+-            if ((p.seed[id] & 0xffffull) == 0xffffull) atomicAdd(p.dpCount + 2, 1u);
+-            const unsigned dest = atomicAdd(p.dpCount, 1u);
++            if ((stateSeed[id] & 0xffffull) == 0xffffull) atomicAdd(reportCounts + 2, 1u);
++            const unsigned dest = atomicAdd(reportCounts, 1u);
+             if (dest < p.dpCap) {
+                 DpRecord rec;
+-                rec.seed = p.seed[id];
+-                rec.iters = now - p.startIter[id];
++                rec.seed = stateSeed[id];
++                rec.iters = now - stateStart[id];
+                 toLimbs(x, rec.x);
+                 toLimbs(fromPolynomial131(yp), rec.y);
+-                p.dp[dest] = rec;
+-            }
+-            p.dead[id] = 1;
+-        } else if (guard && now - p.startIter[id] >= p.maxIters) {
+-            if ((p.seed[id] & 0xffffull) == 0xffffull) atomicAdd(p.dpCount + 2, 1u);
+-            p.dead[id] = 1;
+-            atomicAdd(p.dpCount + 1, 1u);
++                reports[dest] = rec;
++            }
++            goal22WriteDead(stateDead, id, 1);
++        } else if (guard && now - stateStart[id] >= p.maxIters) {
++            if ((stateSeed[id] & 0xffffull) == 0xffffull) atomicAdd(reportCounts + 2, 1u);
++            goal22WriteDead(stateDead, id, 1);
++            atomicAdd(reportCounts + 1, 1u);
+         }
+     }
+     const unsigned tag = twSelectHist(x, yp, hw, &hist, twSel);
+-    p.hist[id] = hist;
++    goal22WriteHist(stateHistory, id, size_t(p.threads)*ECC_BATCH, hist);
+     P131 dp, ep;
+     twAddend(tag, xp, yp, twTab, &dp, &ep);
+     if (!first) {
+         PolynomialPair pair = mulPolynomialPair131(*prod, ep, dp);
+-        store(p.pchain, slot, tid, p.threads, pair.first);
++        store(statePrefix, slot, tid, p.threads, pair.first);
+         *prod = pair.second;
+     } else {
+         *prod = dp;
+-        store(p.pchain, slot, tid, p.threads, ep);
++        store(statePrefix, slot, tid, p.threads, ep);
+     }
+ }
+ 
+-static __global__ void ECC_BOUNDS walk(WalkParams<unsigned> p, unsigned *denominators) {
++static __global__ void ECC_BOUNDS walk(WalkParams<unsigned> p, unsigned *__restrict__ stateX, unsigned *__restrict__ stateY, unsigned *__restrict__ statePrefix, unsigned *__restrict__ stateDead, unsigned long long *__restrict__ stateHistory, const unsigned long long *__restrict__ stateSeed, const unsigned long long *__restrict__ stateStart, DpRecord *__restrict__ reports, unsigned *__restrict__ reportCounts, const unsigned *__restrict__ walkConstants, unsigned *__restrict__ denominators) {
+     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+     (void)denominators;
+ #if ECC_TABLE_GLOBAL
+-    const uint32_t *twSel = p.twConsts;
+-    const uint32_t *twTab = p.twConsts;
++    const uint32_t *twSel = walkConstants;
++    const uint32_t *twTab = walkConstants;
+ #elif ECC_TABLE_ADDEND_GLOBAL
+     extern __shared__ uint32_t twSel[];
+-    twLoadShared(twSel, p.twConsts + TW_MASK_OFF, TW_SEL_WORDS);
+-    const uint32_t *twTab = p.twConsts;
++    twLoadShared(twSel, walkConstants + TW_MASK_OFF, TW_SEL_WORDS);
++    const uint32_t *twTab = walkConstants;
+ #else
+     extern __shared__ uint32_t twSel[];
+-    twLoadShared(twSel, p.twConsts);
++    twLoadShared(twSel, walkConstants);
+     const uint32_t *twTab = twSel;
+ #endif
+     if (tid >= p.threads) return;
+@@ -368,8 +372,8 @@
+ #pragma unroll 1
+         for (int slot = 0; slot < ECC_BATCH; ++slot) {
+             const size_t id = size_t(slot) * p.threads + tid;
+-            fusedSelect(p, load(p.x, slot, tid, p.threads), load(p.y, slot, tid, p.threads), id,
+-                        slot, tid, now, guard, slot == 0, p.hist[id], twSel, twTab, &prod);
++            fusedSelect(p, stateX, stateY, statePrefix, stateDead, stateHistory, stateSeed, stateStart, reports, reportCounts, walkConstants, load(stateX, slot, tid, p.threads), load(stateY, slot, tid, p.threads), id,
++                        slot, tid, now, guard, slot == 0, goal22ReadHist(stateHistory, id, size_t(p.threads)*ECC_BATCH), twSel, twTab, &prod);
+         }
+     }
+ #pragma unroll 1
+@@ -381,7 +385,7 @@
+         const bool last = step + 1 == p.steps;
+         const unsigned long long now = p.iterBase + step + 1;
+         const bool guard = p.maxIters && now % ECC_GUARD_PERIOD == 0;
+-        P131 inv = toPolynomial131(inv131(fromPolynomial131(prod)));
++        P131 inv = (((blockIdx.x + 1) * blockDim.x <= p.threads) ? goal22CollectiveInverse<4>(prod) : toPolynomial131(inv131(fromPolynomial131(prod))));
+         P131 next;
+ #if ECC_TABLE_FUSED_PIPE
+         // The slot's operands are loaded one iteration ahead, before this
+@@ -389,9 +393,9 @@
+         // compiler must otherwise assume the stores alias the next loads and
+         // cannot start them early.
+         const int slot0 = forward ? 0 : ECC_BATCH - 1;
+-        P131 nxX = load(p.x, slot0, tid, p.threads), nxY = load(p.y, slot0, tid, p.threads);
+-        P131 nxW = load(p.pchain, slot0, tid, p.threads);
+-        unsigned long long nxHist = p.hist[size_t(slot0) * p.threads + tid];
++        P131 nxX = load(stateX, slot0, tid, p.threads), nxY = load(stateY, slot0, tid, p.threads);
++        P131 nxW = load(statePrefix, slot0, tid, p.threads);
++        unsigned long long nxHist = goal22ReadHist(stateHistory, size_t(slot0) * p.threads + tid, size_t(p.threads)*ECC_BATCH);
+ #endif
+ #if ECC_UNROLL_SLOTS > 1
+ #pragma unroll 2
+@@ -406,15 +410,15 @@
+             const unsigned long long hist = nxHist;
+             if (i + 1 < ECC_BATCH) {
+                 const int s1 = forward ? slot + 1 : slot - 1;
+-                nxX = load(p.x, s1, tid, p.threads);
+-                nxY = load(p.y, s1, tid, p.threads);
+-                nxW = load(p.pchain, s1, tid, p.threads);
+-                nxHist = p.hist[size_t(s1) * p.threads + tid];
+-            }
+-#else
+-            const P131 x = load(p.x, slot, tid, p.threads), y = load(p.y, slot, tid, p.threads);
+-            const unsigned long long hist = p.hist[id];
+-            const P131 w = load(p.pchain, slot, tid, p.threads);
++                nxX = load(stateX, s1, tid, p.threads);
++                nxY = load(stateY, s1, tid, p.threads);
++                nxW = load(statePrefix, s1, tid, p.threads);
++                nxHist = goal22ReadHist(stateHistory, size_t(s1) * p.threads + tid, size_t(p.threads)*ECC_BATCH);
++            }
++#else
++            const P131 x = load(stateX, slot, tid, p.threads), y = load(stateY, slot, tid, p.threads);
++            const unsigned long long hist = goal22ReadHist(stateHistory, id, size_t(p.threads)*ECC_BATCH);
++            const P131 w = load(statePrefix, slot, tid, p.threads);
+ #endif
+             P131 dp;
+             twDenominator(unsigned(hist & 0xFFFFu), x, twTab, &dp);
+@@ -429,29 +433,29 @@
+             const P131 nx = add131(add131(squarePolynomial131(lambdaPoly), lambdaPoly), dp);
+             const P131 product = mulPolynomial131(lambdaPoly, add131(x, nx));
+             const P131 ny = add131(add131(product, nx), y);
+-            store(p.x, slot, tid, p.threads, nx);
+-            store(p.y, slot, tid, p.threads, ny);
++            store(stateX, slot, tid, p.threads, nx);
++            store(stateY, slot, tid, p.threads, ny);
+             if (!last)
+-                fusedSelect(p, nx, ny, id, slot, tid, now, guard, i == 0, hist, twSel, twTab, &next);
++                fusedSelect(p, stateX, stateY, statePrefix, stateDead, stateHistory, stateSeed, stateStart, reports, reportCounts, walkConstants, nx, ny, id, slot, tid, now, guard, i == 0, hist, twSel, twTab, &next);
+         }
+         prod = next;
+     }
+ }
+ #else
+-static __global__ void ECC_BOUNDS walk(WalkParams<unsigned> p, unsigned *denominators) {
++static __global__ void ECC_BOUNDS walk(WalkParams<unsigned> p, unsigned *__restrict__ stateX, unsigned *__restrict__ stateY, unsigned *__restrict__ statePrefix, unsigned *__restrict__ stateDead, unsigned long long *__restrict__ stateHistory, const unsigned long long *__restrict__ stateSeed, const unsigned long long *__restrict__ stateStart, DpRecord *__restrict__ reports, unsigned *__restrict__ reportCounts, const unsigned *__restrict__ walkConstants, unsigned *__restrict__ denominators) {
+     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+ #if ECC_WALK_TABLE
+     // All block threads participate, including inactive partial-tile workers.
+ #if ECC_TABLE_GLOBAL
+-    const uint32_t *twSel = p.twConsts;
+-    const uint32_t *twTab = p.twConsts;
++    const uint32_t *twSel = walkConstants;
++    const uint32_t *twTab = walkConstants;
+ #elif ECC_TABLE_ADDEND_GLOBAL
+     extern __shared__ uint32_t twSel[];
+-    twLoadShared(twSel, p.twConsts + TW_MASK_OFF, TW_SEL_WORDS);
+-    const uint32_t *twTab = p.twConsts;
++    twLoadShared(twSel, walkConstants + TW_MASK_OFF, TW_SEL_WORDS);
++    const uint32_t *twTab = walkConstants;
+ #else
+     extern __shared__ uint32_t twSel[];
+-    twLoadShared(twSel, p.twConsts);
++    twLoadShared(twSel, walkConstants);
+     const uint32_t *twTab = twSel;
+ #endif
+ #elif ECC_PACKED_SHARED_SIGMA
+@@ -466,8 +470,8 @@
+ #endif
+     P131 prod, inv;
+ #if ECC_PACKED_SLOT_PIPELINE
+-    P131 pipeX = load(p.x, 0, tid, p.threads);
+-    P131 pipeY = load(p.y, 0, tid, p.threads);
++    P131 pipeX = load(stateX, 0, tid, p.threads);
++    P131 pipeY = load(stateY, 0, tid, p.threads);
+     P131 pipeD, pipeC;
+ #endif
+ #pragma unroll 1
+@@ -478,10 +482,10 @@
+ #if ECC_TABLE_PIPE_SELECT
+         {
+             P131 dpN, epN;
+-            tableSelectSlot(p, 0, tid, now, guard, twSel, twTab, &dpN, &epN);
++            tableSelectSlot(p, stateX, stateY, statePrefix, stateDead, stateHistory, stateSeed, stateStart, reports, reportCounts, walkConstants, 0, tid, now, guard, twSel, twTab, &dpN, &epN);
+             prod = dpN;
+-            store(p.pchain, 0, tid, p.threads, epN);
+-            tableSelectSlot(p, 1, tid, now, guard, twSel, twTab, &dpN, &epN);
++            store(statePrefix, 0, tid, p.threads, epN);
++            tableSelectSlot(p, stateX, stateY, statePrefix, stateDead, stateHistory, stateSeed, stateStart, reports, reportCounts, walkConstants, 1, tid, now, guard, twSel, twTab, &dpN, &epN);
+             // Twelve CLMADs per slot: the chain product prod*d first, because
+             // its reduction gates the next slot's products, then W = prod*e.
+             // W's reduction and store are deferred by one slot, into the time
+@@ -496,14 +500,14 @@
+                 uint32_t hb[9], hc[9];
+                 product131(prod, dp, hc);
+                 product131(prod, ep, hb);
+-                if (slot > 1) store(p.pchain, slot - 1, tid, p.threads, reducePolynomial131(hbPrev));
++                if (slot > 1) store(statePrefix, slot - 1, tid, p.threads, reducePolynomial131(hbPrev));
+                 if (slot + 1 < ECC_BATCH)
+-                    tableSelectSlot(p, slot + 1, tid, now, guard, twSel, twTab, &dpN, &epN);
++                    tableSelectSlot(p, stateX, stateY, statePrefix, stateDead, stateHistory, stateSeed, stateStart, reports, reportCounts, walkConstants, slot + 1, tid, now, guard, twSel, twTab, &dpN, &epN);
+                 prod = reducePolynomial131(hc);
+ #pragma unroll
+                 for (int i = 0; i < 9; ++i) hbPrev[i] = hb[i];
+             }
+-            store(p.pchain, ECC_BATCH - 1, tid, p.threads, reducePolynomial131(hbPrev));
++            store(statePrefix, ECC_BATCH - 1, tid, p.threads, reducePolynomial131(hbPrev));
+         }
+ #else
+ #if ECC_UNROLL_SLOTS >= 8
+@@ -518,8 +522,8 @@
+         for (int slot = 0; slot < ECC_BATCH; ++slot) {
+ #if ECC_PACKED_SLOT_PREFETCH
+             if (slot + 1 < ECC_BATCH) {
+-                prefetch(p.x, slot + 1, tid, p.threads);
+-                prefetch(p.y, slot + 1, tid, p.threads);
++                prefetch(stateX, slot + 1, tid, p.threads);
++                prefetch(stateY, slot + 1, tid, p.threads);
+             }
+ #endif
+ #if ECC_PACKED_SLOT_PIPELINE
+@@ -527,11 +531,11 @@
+             const P131 xp = x;
+             const P131 yp = pipeY;
+             if (slot + 1 < ECC_BATCH) {
+-                pipeX = load(p.x, slot + 1, tid, p.threads);
+-                pipeY = load(p.y, slot + 1, tid, p.threads);
+-            }
+-#else
+-            P131 x = load(p.x, slot, tid, p.threads);
++                pipeX = load(stateX, slot + 1, tid, p.threads);
++                pipeY = load(stateY, slot + 1, tid, p.threads);
++            }
++#else
++            P131 x = load(stateX, slot, tid, p.threads);
+ #if ECC_WALK_TABLE
+             const P131 xp = x;
+ #endif
+@@ -541,28 +545,28 @@
+ #endif
+             const int hw = weight(x);
+             const size_t id = size_t(slot) * p.threads + tid;
+-            if (!p.dead[id]) {
++            if (!goal22ReadDead(stateDead, id)) {
+                 if (hw <= p.dpWeight) {
+-                    if ((p.seed[id] & 0xffffull) == 0xffffull) atomicAdd(p.dpCount + 2, 1u);
+-                    const unsigned dest = atomicAdd(p.dpCount, 1u);
++                    if ((stateSeed[id] & 0xffffull) == 0xffffull) atomicAdd(reportCounts + 2, 1u);
++                    const unsigned dest = atomicAdd(reportCounts, 1u);
+                     if (dest < p.dpCap) {
+                         DpRecord rec;
+-                        rec.seed = p.seed[id];
+-                        rec.iters = now - p.startIter[id];
++                        rec.seed = stateSeed[id];
++                        rec.iters = now - stateStart[id];
+                         toLimbs(x, rec.x);
+ #if ECC_PACKED_POLY_STATE
+-                        toLimbs(fromPolynomial131(load(p.y, slot, tid, p.threads)), rec.y);
+-#else
+-                        toLimbs(load(p.y, slot, tid, p.threads), rec.y);
+-#endif
+-                        p.dp[dest] = rec;
++                        toLimbs(fromPolynomial131(load(stateY, slot, tid, p.threads)), rec.y);
++#else
++                        toLimbs(load(stateY, slot, tid, p.threads), rec.y);
++#endif
++                        reports[dest] = rec;
+                     }
+-                    p.dead[id] = 1;
+-                } else if (guard && now - p.startIter[id] >= p.maxIters) {
+-                    if ((p.seed[id] & 0xffffull) == 0xffffull) atomicAdd(p.dpCount + 2, 1u);
++                    goal22WriteDead(stateDead, id, 1);
++                } else if (guard && now - stateStart[id] >= p.maxIters) {
++                    if ((stateSeed[id] & 0xffffull) == 0xffffull) atomicAdd(reportCounts + 2, 1u);
+                     // Overdue walks need a restart, not a false DP report.
+-                    p.dead[id] = 1;
+-                    atomicAdd(p.dpCount + 1, 1u);
++                    goal22WriteDead(stateDead, id, 1);
++                    atomicAdd(reportCounts + 1, 1u);
+                 }
+             }
+ #if ECC_WALK_TABLE
+@@ -571,18 +575,20 @@
+             // the polynomial basis, so nothing is converted and no Frobenius
+             // network runs.  The second pass only needs dp and the chain.
+ #if !ECC_PACKED_SLOT_PIPELINE
+-            const P131 yp = load(p.y, slot, tid, p.threads);
+-#endif
+-            const unsigned tag = twSelect(x, yp, hw, p.hist + id, twSel);
++            const P131 yp = load(stateY, slot, tid, p.threads);
++#endif
++            unsigned long long compactHist = goal22ReadHist(stateHistory, id, size_t(p.threads)*ECC_BATCH);
++    const unsigned tag = twSelectHist(x, yp, hw, &compactHist, twSel);
++    goal22WriteHist(stateHistory, id, size_t(p.threads)*ECC_BATCH, compactHist);
+             P131 dp, ep;
+             twAddend(tag, xp, yp, twTab, &dp, &ep);
+             if (slot) {
+                 PolynomialPair pair = mulPolynomialPair131(prod, ep, dp);
+-                store(p.pchain, slot, tid, p.threads, pair.first);
++                store(statePrefix, slot, tid, p.threads, pair.first);
+                 prod = pair.second;
+             } else {
+                 prod = dp;
+-                store(p.pchain, slot, tid, p.threads, ep);
++                store(statePrefix, slot, tid, p.threads, ep);
+             }
+ #if !ECC_TABLE_TAG_DENOM
+             store(denominators, slot, tid, p.threads, dp);
+@@ -593,7 +599,7 @@
+             js[slot] = j;
+ #endif
+ #if ECC_PACKED_WEIGHTED_PREFIX
+-            const P131 normalY = fromPolynomial131(load(p.y, slot, tid, p.threads));
++            const P131 normalY = fromPolynomial131(load(stateY, slot, tid, p.threads));
+ #if ECC_PACKED_WEIGHTED_PREFIX == 2
+ #if ECC_PACKED_SHARED_SIGMA
+             const SigmaWalkPair131 sigmas = sigmaWalkNetworkPairShared131(x, normalY, j - 3);
+@@ -610,11 +616,11 @@
+             // W_i = E_i * product_{k<i}(D_k). Every prefix slot is used.
+             if (slot) {
+                 PolynomialPair pair = mulPolynomialPair131(prod, ep, dp);
+-                store(p.pchain, slot, tid, p.threads, pair.first);
++                store(statePrefix, slot, tid, p.threads, pair.first);
+                 prod = pair.second;
+             } else {
+                 prod = dp;
+-                store(p.pchain, slot, tid, p.threads, ep);
++                store(statePrefix, slot, tid, p.threads, ep);
+             }
+ #else
+             P131 d = add131(x, sigma131(x, j));
+@@ -627,7 +633,7 @@
+ #else
+             prod = slot == 0 ? d : mul131(prod, d);
+ #endif
+-            if (slot + 1 < ECC_BATCH) store(p.pchain, slot, tid, p.threads, prod);
++            if (slot + 1 < ECC_BATCH) store(statePrefix, slot, tid, p.threads, prod);
+ #endif
+ #if ECC_PACKED_CACHE_DENOM
+             // The high 29 bits are unused by the field. Keep the jump index
+@@ -645,7 +651,7 @@
+ #endif  // ECC_TABLE_PIPE_SELECT
+         ECC_PHASE_MARK(ph1);
+ #if ECC_PACKED_POLY_CHAIN
+-        inv = toPolynomial131(inv131(fromPolynomial131(prod)));
++        inv = (((blockIdx.x + 1) * blockDim.x <= p.threads) ? goal22CollectiveInverse<4>(prod) : toPolynomial131(inv131(fromPolynomial131(prod))));
+ #else
+         inv = inv131(prod);
+ #endif
+@@ -656,10 +662,10 @@
+ #endif
+         ECC_PHASE_MARK(ph2);
+ #if ECC_PACKED_SLOT_PIPELINE
+-        pipeX = load(p.x, ECC_BATCH - 1, tid, p.threads);
+-        pipeY = load(p.y, ECC_BATCH - 1, tid, p.threads);
++        pipeX = load(stateX, ECC_BATCH - 1, tid, p.threads);
++        pipeY = load(stateY, ECC_BATCH - 1, tid, p.threads);
+         pipeD = load(denominators, ECC_BATCH - 1, tid, p.threads);
+-        pipeC = load(p.pchain, ECC_BATCH - 1, tid, p.threads);
++        pipeC = load(statePrefix, ECC_BATCH - 1, tid, p.threads);
+ #endif
+ #if ECC_UNROLL_SLOTS >= 8
+ #pragma unroll 8
+@@ -673,19 +679,19 @@
+         for (int slot = ECC_BATCH - 1; slot >= 0; --slot) {
+ #if ECC_PACKED_SLOT_PREFETCH
+             if (slot > 0) {
+-                prefetch(p.x, slot - 1, tid, p.threads);
+-                prefetch(p.y, slot - 1, tid, p.threads);
+-                prefetch(p.pchain, slot - 1, tid, p.threads);
++                prefetch(stateX, slot - 1, tid, p.threads);
++                prefetch(stateY, slot - 1, tid, p.threads);
++                prefetch(statePrefix, slot - 1, tid, p.threads);
+                 prefetch(denominators, slot - 1, tid, p.threads);
+             }
+ #endif
+ #if ECC_PACKED_SLOT_PIPELINE
+             P131 x = pipeX, y = pipeY, dp = pipeD, pch = pipeC;
+             if (slot > 0) {
+-                pipeX = load(p.x, slot - 1, tid, p.threads);
+-                pipeY = load(p.y, slot - 1, tid, p.threads);
++                pipeX = load(stateX, slot - 1, tid, p.threads);
++                pipeY = load(stateY, slot - 1, tid, p.threads);
+                 pipeD = load(denominators, slot - 1, tid, p.threads);
+-                pipeC = load(p.pchain, slot - 1, tid, p.threads);
++                pipeC = load(statePrefix, slot - 1, tid, p.threads);
+             }
+             dp.v[4] &= 7;
+             P131 lambdaPoly;
+@@ -697,7 +703,7 @@
+                 lambdaPoly = mulPolynomial131(inv, pch);
+             }
+ #else
+-            P131 x = load(p.x, slot, tid, p.threads), y = load(p.y, slot, tid, p.threads);
++            P131 x = load(stateX, slot, tid, p.threads), y = load(stateY, slot, tid, p.threads);
+ #if ECC_PACKED_WEIGHTED_PREFIX
+ #if ECC_TABLE_TAG_DENOM
+             // The forward pass pushed this step's tag into hist; x is still the
+@@ -705,7 +711,7 @@
+             // table for the cost of a 5-word shared read instead of a 17-byte
+             // global store and load.
+             P131 dp;
+-            twDenominator(unsigned(p.hist[size_t(slot) * p.threads + tid] & 0xFFFFu), x, twTab, &dp);
++            twDenominator(unsigned(goal22ReadHist(stateHistory, size_t(slot) * p.threads + tid, size_t(p.threads)*ECC_BATCH) & 0xFFFFu), x, twTab, &dp);
+ #else
+             P131 dp = load(denominators, slot, tid, p.threads);
+             dp.v[4] &= 7;
+@@ -715,17 +721,17 @@
+ #if ECC_PACKED_CHAIN_FIRST
+                 // The chain product inv*d gates the next slot; issue it first.
+                 PolynomialPair pair = mulPolynomialPair131(inv, dp,
+-                    load(p.pchain, slot, tid, p.threads));
++                    load(statePrefix, slot, tid, p.threads));
+                 lambdaPoly = pair.second;
+                 inv = pair.first;
+ #else
+                 PolynomialPair pair = mulPolynomialPair131(inv,
+-                    load(p.pchain, slot, tid, p.threads), dp);
++                    load(statePrefix, slot, tid, p.threads), dp);
+                 lambdaPoly = pair.first;
+                 inv = pair.second;
+ #endif
+             } else {
+-                lambdaPoly = mulPolynomial131(inv, load(p.pchain, 0, tid, p.threads));
++                lambdaPoly = mulPolynomial131(inv, load(statePrefix, 0, tid, p.threads));
+             }
+ #else
+ #if ECC_PACKED_POLY_STATE
+@@ -747,7 +753,7 @@
+ #if ECC_PACKED_POLY_CHAIN
+ #if ECC_PACKED_PAIR_PRODUCTS
+                 PolynomialPair pair=mulPolynomialPair131(inv,
+-                    load(p.pchain,slot-1,tid,p.threads),
++                    load(statePrefix,slot-1,tid,p.threads),
+ #if ECC_PACKED_POLY_STATE
+                     dp);
+ #else
+@@ -755,7 +761,7 @@
+ #endif
+                 ii=pair.first; inv=pair.second;
+ #else
+-                ii = mulPolynomial131(inv, load(p.pchain, slot - 1, tid, p.threads));
++                ii = mulPolynomial131(inv, load(statePrefix, slot - 1, tid, p.threads));
+ #if ECC_PACKED_POLY_STATE
+                 inv = mulPolynomial131(inv, dp);
+ #else
+@@ -763,7 +769,7 @@
+ #endif
+ #endif
+ #else
+-                ii = mul131(inv, load(p.pchain, slot - 1, tid, p.threads));
++                ii = mul131(inv, load(statePrefix, slot - 1, tid, p.threads));
+                 inv = mul131(inv, d);
+ #endif
+             } else ii = inv;
+@@ -791,8 +797,8 @@
+             P131 ny = add131(add131(mul131(lambda, add131(x, nx)), nx), y);
+ #endif
+ #endif
+-            store(p.x, slot, tid, p.threads, nx);
+-            store(p.y, slot, tid, p.threads, ny);
++            store(stateX, slot, tid, p.threads, nx);
++            store(stateY, slot, tid, p.threads, ny);
+ #if ECC_PACKED_SLOT_PIPELINE
+             // Reverse pass ends at slot 0 with pipeX/pipeY still holding that
+             // slot's pre-add coordinates. Refresh them so the next step's first
+--- a/include/packedengine.cuh
++++ b/include/packedengine.cuh
+@@ -63,6 +63,7 @@
+     static size_t dynamicSharedBytes() { return 0; }
+     unsigned checkpointVersion() const override { return 2u; }
+ #endif
++#include "metadata_checkpoint.inc"
+     size_t fieldCount() const override { return size_t(P.threads) * BATCH * 5; }
+ #if ECC_PACKED_STATE_TILE
+     size_t physicalFieldCount() const override {
+@@ -185,7 +186,7 @@
+ 
+     // Tables above the 48 KB static limit need the opt-in before any query.
+     static void prepareKernel() {
+-        if (dynamicSharedBytes() > 48 * 1024)
++        if (dynamicSharedBytes() > 0)
+             CUDA_CHECK(cudaFuncSetAttribute(eccPacked131::walk,
+                 cudaFuncAttributeMaxDynamicSharedMemorySize, int(dynamicSharedBytes())));
+     }
+@@ -248,7 +249,8 @@
+         CUDA_CHECK(cudaMalloc(&denominators, bytes * denominatorFields));
+ #endif
+ #endif
+-        CUDA_CHECK(cudaMalloc(&P.dead, slotCount() * sizeof(unsigned)));
++        CUDA_CHECK(cudaMalloc(&P.dead, eccPacked131::goal22DeadBytes(slotCount())));
++        CUDA_CHECK(cudaMemset(P.dead, 0, eccPacked131::goal22DeadBytes(slotCount())));
+         CUDA_CHECK(cudaMalloc(&P.seed, laneCount() * sizeof(u64)));
+         CUDA_CHECK(cudaMalloc(&P.startIter, laneCount() * sizeof(u64)));
+ #if ECC_WALK_TABLE
+@@ -260,7 +262,7 @@
+             CUDA_CHECK(cudaMemcpy(twConsts, consts.data(), consts.size() * sizeof(uint32_t), cudaMemcpyHostToDevice));
+             P.twConsts = twConsts;
+         }
+-        CUDA_CHECK(cudaMalloc(&P.hist, laneCount() * sizeof(u64)));
++        CUDA_CHECK(cudaMalloc(&P.hist, eccPacked131::goal22HistoryBytes(laneCount())));
+ #endif
+         CUDA_CHECK(cudaMalloc(&P.dp, size_t(P.dpCap) * sizeof(DpRecord)));
+         // Second counter signals overdue restarts without emitting false DPs.
+@@ -340,7 +342,7 @@
+         CUDA_CHECK(cudaProfilerStart());
+ #endif
+         eccPacked131::walk<<<(P.threads + ECC_THREADS - 1) / ECC_THREADS, ECC_THREADS,
+-                             dynamicSharedBytes()>>>(P, denominators);
++                             dynamicSharedBytes()>>>(P, P.x, P.y, P.pchain, P.dead, P.hist, P.seed, P.startIter, P.dp, P.dpCount, P.twConsts, denominators);
+         CUDA_CHECK(cudaGetLastError());
+ #if ECC_PHASE_PROFILE
+         profWarpSteps += double(P.threads / 32) * P.steps;
+--- a/src/main.cu
++++ b/src/main.cu
+@@ -608,6 +608,19 @@
+     // and whatever a backend adds (the table walk's step history).
+     virtual int laneArrayCount() const { return 2; }
+     virtual u64 *laneArray(int i) const { return i ? P.startIter : P.seed; }
++    virtual void readCheckpointDead(std::vector<W> &v) const {
++        CUDA_CHECK(cudaMemcpy(v.data(), P.dead, v.size()*sizeof(W), cudaMemcpyDeviceToHost));
++    }
++    virtual void writeCheckpointDead(const std::vector<W> &v) {
++        CUDA_CHECK(cudaMemcpy(P.dead, v.data(), v.size()*sizeof(W), cudaMemcpyHostToDevice));
++    }
++    virtual void readCheckpointLane(int i, std::vector<u64> &v) const {
++        CUDA_CHECK(cudaMemcpy(v.data(), laneArray(i), v.size()*sizeof(u64), cudaMemcpyDeviceToHost));
++    }
++    virtual void writeCheckpointLane(int i, const std::vector<u64> &v) {
++        CUDA_CHECK(cudaMemcpy(laneArray(i), v.data(), v.size()*sizeof(u64), cudaMemcpyHostToDevice));
++    }
++
+ 
+     bool save(const char *path, u64 iterBase, unsigned runId) const {
+         CUDA_CHECK(cudaDeviceSynchronize());
+@@ -638,11 +651,11 @@
+             ok = fwrite(fbuf.data(), sizeof(W), fbuf.size(), f) == fbuf.size();
+         }
+         if (ok) {
+-            CUDA_CHECK(cudaMemcpy(sbuf.data(), P.dead, sbuf.size() * sizeof(W), cudaMemcpyDeviceToHost));
++            readCheckpointDead(sbuf);
+             ok = fwrite(sbuf.data(), sizeof(W), sbuf.size(), f) == sbuf.size();
+         }
+         for (int i = 0; i < laneArrayCount() && ok; ++i) {
+-            CUDA_CHECK(cudaMemcpy(lbuf.data(), laneArray(i), lbuf.size() * sizeof(u64), cudaMemcpyDeviceToHost));
++            readCheckpointLane(i, lbuf);
+             ok = fwrite(lbuf.data(), sizeof(u64), lbuf.size(), f) == lbuf.size();
+         }
+         ok = ok && durableFlush(f);
+@@ -677,11 +690,11 @@
+         }
+         if (ok) {
+             ok = fread(sbuf.data(), sizeof(W), sbuf.size(), f) == sbuf.size();
+-            if (ok) CUDA_CHECK(cudaMemcpy(P.dead, sbuf.data(), sbuf.size() * sizeof(W), cudaMemcpyHostToDevice));
++            if (ok) writeCheckpointDead(sbuf);
+         }
+         for (int i = 0; i < laneArrayCount() && ok; ++i) {
+             ok = ok && fread(lbuf.data(), sizeof(u64), lbuf.size(), f) == lbuf.size();
+-            if (ok) CUDA_CHECK(cudaMemcpy(laneArray(i), lbuf.data(), lbuf.size() * sizeof(u64), cudaMemcpyHostToDevice));
++            if (ok) writeCheckpointLane(i, lbuf);
+         }
+         fclose(f);
+         if (ok) *iterBase = h.iterBase;

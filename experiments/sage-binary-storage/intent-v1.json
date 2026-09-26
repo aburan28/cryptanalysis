@@ -1,0 +1,36 @@
+{
+  "status": "frozen before implementation and timing",
+  "step_id": "sage-binary-storage-v1",
+  "incumbent": {
+    "source_sha256": "92ffc0257c13ff2036c773be424f6c1a0c221cd25a4eccb7690e0a92d79ff5fb",
+    "installed_binary_sha256": "c475bf6b8d2989e0f1e371784b79e2d09fd9cb1bd5332df3a88a25086fca8b67"
+  },
+  "mechanism": "Reserve active entries once and construct them in place, avoiding repeated vector growth and copying a six-GF2E temporary entry for every nonexceptional sum.",
+  "invariants": [
+    "exact ordered Sage point sums and point object contract",
+    "infinity, doubling, inverse and order-two handling",
+    "one inversion and 3(n-1) products for n active entries",
+    "generator exhaustion before NTL context restore",
+    "custom point classes and Python fallback"
+  ],
+  "evaluation": {
+    "pilot_cases": [
+      {
+        "degree": 19,
+        "side": 32,
+        "api": "pairs"
+      },
+      {
+        "degree": 131,
+        "side": 64,
+        "api": "pairs"
+      },
+      {
+        "degree": 131,
+        "side": 64,
+        "api": "cartesian"
+      }
+    ],
+    "acceptance": "Retain only if correctness passes and repeatable matched complete-API timing improves without material memory regression; otherwise restore incumbent."
+  }
+}

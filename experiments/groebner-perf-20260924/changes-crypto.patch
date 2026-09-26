@@ -1,0 +1,199 @@
+--- a/research/gbrl/src/f4.rs
++++ b/research/gbrl/src/f4.rs
+@@ -1,17 +1,12 @@
+ #![allow(dead_code)]
+-// F4 Gröbner basis algorithm — STRUCTURAL SCAFFOLD ONLY.
+-//
+-// This file defines the public API and data structures for an F4 engine that
+-// would drop into the existing rl_server / strategy framework. The hot inner
+-// pieces (symbolic preprocessing, Macaulay matrix construction, sparse
+-// reduction) are stubbed with `unimplemented!` and detailed TODOs.
++// Bounded prime-field F4 with symbolic preprocessing and dense elimination.
++// Sparse linear algebra and full Gebauer-Möller installation remain future
++// work; this backend has no claim to state-of-the-art performance.
+ //
+ // Why F4 vs Buchberger:
+ //   - Buchberger processes one S-polynomial at a time.
+ //   - F4 batches ALL pairs of a given lcm-degree into one matrix and reduces
+-//     them simultaneously via Gaussian elimination. Same Gröbner basis output,
+-//     ~10× faster on cyclic-n and dramatically faster on Semaev systems with
+-//     m ≥ 3 (where Buchberger gets stuck on basis-size blow-up).
++//     them simultaneously via Gaussian elimination.
+ //
+ // References for an implementor:
+ //   - Faugère (1999), "A new efficient algorithm for computing Gröbner bases (F4)".
+@@ -115,6 +110,9 @@
+         let matrix_rows = rows.len();
+         let matrix_cols = columns.len();
+         if matrix_rows > max_rows || matrix_cols > max_cols {
++            // Selecting a bucket drains it. Preserve unfinished work so a
++            // caller can retry with a larger cap without silently losing pairs.
++            self.pairs.extend(selected);
+             return F4StepResult {
+                 added: 0,
+                 matrix_rows,
+@@ -186,22 +184,25 @@
+ /// TODO: implement. Use a worklist over monomials to discover new reductors.
+ pub fn symbolic_preprocess(s_polys: Vec<Poly>, basis: &[Poly]) -> (Vec<Poly>, Vec<Monomial>) {
+     let mut rows = s_polys;
+-    let mut seen: HashSet<(usize, Monomial)> = HashSet::new();
++    let mut seen: HashSet<Monomial> = HashSet::new();
+     let mut work: Vec<Monomial> = rows
+         .iter()
+         .flat_map(|p| p.terms.iter().map(|t| t.mono.clone()))
+         .collect();
+     while let Some(mono) = work.pop() {
+-        for (idx, g) in basis.iter().enumerate() {
++        // One reducer per monomial is sufficient. Repeated visits previously
++        // skipped an already-used (basis index, multiplier) and fell through
++        // to additional reducers, inflating both the worklist and the matrix.
++        if !seen.insert(mono.clone()) {
++            continue;
++        }
++        for g in basis {
+             let Some(lm) = g.lm() else {
+                 continue;
+             };
+             let Some(multiplier) = mono.div(lm) else {
+                 continue;
+             };
+-            if !seen.insert((idx, multiplier.clone())) {
+-                continue;
+-            }
+             let shifted = g.mul_term(crate::field::Fp::one(), &multiplier);
+             for term in &shifted.terms {
+                 work.push(term.mono.clone());
+@@ -520,5 +521,49 @@
+         let result = state.step_bounded(0, 0, 0);
+         assert!(result.resource_exhausted);
+         assert_eq!(state.basis.len(), before);
+-    }
+-}
++        assert!(!state.is_done());
++        let retried = state.step_bounded(0, 64, 64);
++        assert!(!retried.resource_exhausted);
++        assert!(state.is_done());
++    }
++
++    #[test]
++    fn symbolic_preprocess_uses_one_reducer_for_repeated_monomials() {
++        let term = |x, y| Term { coef: Fp::one(), mono: mono(&[x, y]) };
++        let first = Poly::from_terms(vec![term(2, 0), term(0, 1)], 2);
++        let second = Poly::from_terms(vec![term(2, 0), term(0, 0)], 2);
++        let input = Poly::from_terms(vec![term(3, 0)], 2);
++        let (rows, _) = symbolic_preprocess(vec![input.clone(), input], &[first, second]);
++        assert_eq!(rows.len(), 3, "two inputs and one shifted reducer");
++    }
++
++    #[test]
++    fn f4_nonlinear_completion_matches_buchberger_and_all_s_pairs() {
++        use crate::reduce::reduce;
++        for constant in 1..=8 {
++            let term = |coef, x, y| Term { coef: Fp::new(coef), mono: mono(&[x, y]) };
++            let input = vec![
++                Poly::from_terms(vec![term(1, 2, 0), term(-1, 0, 1)], 2),
++                Poly::from_terms(vec![term(1, 1, 1), term(-constant, 0, 0)], 2),
++            ];
++            let mut f4 = F4State::new(input.clone());
++            let mut buch = BuchbergerState::new(input.clone());
++            for _ in 0..100 {
++                if f4.is_done() { break; }
++                assert!(!f4.step_bounded(0, 1000, 1000).resource_exhausted);
++            }
++            for _ in 0..100 {
++                if buch.is_done() { break; }
++                buch.step(0);
++            }
++            assert!(f4.is_done() && buch.is_done());
++            for p in &f4.basis { assert!(reduce(p, &buch.basis).0.is_zero()); }
++            for p in &buch.basis { assert!(reduce(p, &f4.basis).0.is_zero()); }
++            for i in 0..f4.basis.len() {
++                for j in i+1..f4.basis.len() {
++                    assert!(reduce(&spoly(&f4.basis[i], &f4.basis[j]), &f4.basis).0.is_zero());
++                }
++            }
++        }
++    }
++}
+--- /dev/null
++++ b/research/gbrl/examples/f4_preprocess_bench.rs
+@@ -0,0 +1,79 @@
++//! Paired symbolic-preprocessing control on public synthetic Semaev systems.
++//! The original implementation is retained here solely as a benchmark control.
++use gbrl::f4::symbolic_preprocess;
++use gbrl::field::Fp;
++use gbrl::monomial::Monomial;
++use gbrl::poly::Poly;
++use gbrl::semaev::semaev_decomposition_3_instance;
++use gbrl::spoly::spoly;
++use std::collections::HashSet;
++use std::time::Instant;
++
++fn original(s_polys: Vec<Poly>, basis: &[Poly]) -> (Vec<Poly>, Vec<Monomial>) {
++    let mut rows = s_polys;
++    let mut seen: HashSet<(usize, Monomial)> = HashSet::new();
++    let mut work: Vec<Monomial> = rows.iter().flat_map(|p| p.terms.iter().map(|t| t.mono.clone())).collect();
++    while let Some(mono) = work.pop() {
++        for (idx, g) in basis.iter().enumerate() {
++            let Some(lm) = g.lm() else { continue; };
++            let Some(multiplier) = mono.div(lm) else { continue; };
++            if !seen.insert((idx, multiplier.clone())) { continue; }
++            let shifted = g.mul_term(Fp::one(), &multiplier);
++            for term in &shifted.terms { work.push(term.mono.clone()); }
++            rows.push(shifted);
++            break;
++        }
++    }
++    let mut columns: Vec<_> = rows.iter().flat_map(|p| p.terms.iter().map(|t| t.mono.clone())).collect();
++    columns.sort_by(|a,b| b.cmp(a)); columns.dedup();
++    (rows, columns)
++}
++
++fn median(samples: &[f64]) -> f64 {
++    let mut sorted = samples.to_vec(); sorted.sort_by(f64::total_cmp);
++    sorted[sorted.len()/2]
++}
++
++fn main() {
++    let mut cells = Vec::new();
++    for fb in [3, 4] {
++        let basis = semaev_decomposition_3_instance(fb);
++        let mut input = Vec::new();
++        for i in 0..basis.len() {
++            for j in i+1..basis.len() {
++                if !basis[i].lm().unwrap().gcd_is_one(basis[j].lm().unwrap()) {
++                    input.push(spoly(&basis[i], &basis[j]));
++                }
++            }
++        }
++        let mut samples = [Vec::new(), Vec::new()];
++        let mut shapes = [(0,0);2];
++        for repeat in 0..22 {
++            let order = if repeat % 2 == 0 { [0,1] } else { [1,0] };
++            for variant in order {
++                let start = Instant::now();
++                let (rows, cols) = if variant == 0 { original(input.clone(), &basis) }
++                    else { symbolic_preprocess(input.clone(), &basis) };
++                let ms = start.elapsed().as_secs_f64()*1000.0;
++                shapes[variant] = (rows.len(), cols.len());
++                if repeat > 0 { samples[variant].push(ms); }
++                // Check symbolic closure: every reducible column has a row
++                // whose leading monomial is exactly that column.
++                let leads: HashSet<_> = rows.iter().filter_map(|p| p.lm()).collect();
++                for m in &cols {
++                    if basis.iter().any(|g| g.lm().is_some_and(|lm| lm.divides(m))) {
++                        assert!(leads.contains(m));
++                    }
++                }
++            }
++        }
++        cells.push(serde_json::json!({"fb_size":fb,"repeats":21,
++            "original_shape":shapes[0],"optimized_shape":shapes[1],
++            "original_median_ms":median(&samples[0]),"optimized_median_ms":median(&samples[1]),
++            "speedup":median(&samples[0])/median(&samples[1]),
++            "original_samples_ms":samples[0],"optimized_samples_ms":samples[1]}));
++    }
++    println!("{}", serde_json::json!({"kind":"symbolic_preprocessing_only",
++        "claim":"Paired shared-host timings; symbolic closure checked; not a complete solve timing",
++        "cells":cells}));
++}

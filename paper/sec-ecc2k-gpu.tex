@@ -1,0 +1,168 @@
+\section{ECC2K-130 on GPU}
+\label{sec:ecc2k-gpu}
+
+The GPU question is a throughput question at a known exponent. The
+unit is billions of complete scalar iterations per second on one card.
+The class of every row is engineering: the walk is the same, the
+collision structure is the same, and the ratio to the generic-group
+floor does not move. What can move is the ratio to the carry-less-unit
+floor of Section~\ref{sec:method-pipe}.
+
+\subsection{The ledger: $0.85$ to $14.64$~B/s}
+\label{sec:gpu-ledger}
+
+The original packed-backend audit measured a bitsliced control at
+$0.852294$~B/s on an RTX~PRO~6000.\art{crypto:ecc2k130/PACKED.md}
+The historical shipping packed walk, after native \texttt{clmad},
+compact state and shared Frobenius masks, is $14.637530$~B complete
+iterations/s on the same part ($14.106673$~B/s while collecting
+DP34).\art{crypto:ecc2k130/THROUGHPUT-30B.md} Those two numbers are
+not a single paired comparison; the rungs between them were measured
+against adjacent controls, and the early rows of a previous draft of
+this paper had quoted gains derived from headline numbers rather than
+from each note's own pair. Table~\ref{tab:gpu-rungs} uses the notes'
+stated figures.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Packed-backend rungs on one RTX~PRO~6000. Each gain is
+  the note's own paired comparison, not a ratio of non-adjacent
+  headlines. Occupancy changes are named. Class: engineering.}
+\label{tab:gpu-rungs}
+\begin{tabular}{@{}p{0.34\textwidth}rrl@{}}
+\toprule
+step & from & to & stated gain \\
+\midrule
+bitsliced control
+  & --- & $0.852294$ & historical baseline \\
+single product, equal occupancy (2 blocks/SM)
+  & $2.956981$ & $3.366572$ & $+13.85\%$ \\
+denominator cache, equal occupancy
+  & $3.506509$ & $4.024103$ & $+14.76\%$ \\
+\quad same, retuned to 6 blocks/SM
+  & $3.506509$ & $4.094367$ & $+16.76\%$ \\
+Frobenius permutation networks
+  & $4.115575$ & $5.811421$ & $+41.21\%$ \\
+polynomial-basis batch chain
+  & $5.832342$ & $6.054107$ & $+3.80\%$ \\
+paired products
+  & $6.123614$ & $6.215430$ & $+1.50\%$ \\
+\texttt{clmad} + compact state + shared masks
+  & $7.110440$ & $14.637530$ & shipping packed walk \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Sources, one per rung: single product~\art{crypto:ecc2k130/SINGLE-PRODUCT.md};
+denominator cache~\art{crypto:ecc2k130/DENOMINATOR-CACHE.md};
+Frobenius networks~\art{crypto:ecc2k130/FROBENIUS-NETWORK.md};
+polynomial chain~\art{crypto:ecc2k130/POLYNOMIAL-CHAIN.md};
+paired products~\art{crypto:ecc2k130/PAIRED-PRODUCTS.md};
+shipping packed walk~\art{crypto:ecc2k130/THROUGHPUT-30B.md}.
+The polynomial-chain and paired-product comparisons also change
+occupancy; the notes say so, and so does the table. The compounded
+remainder between the Frobenius-network confirmation ($5.81$~B/s)
+and the shipping packed walk ($14.64$~B/s) is native carry-less
+multiplication plus layout work that put the kernel back on the
+integer pipe, about a $2.5\times$ remaining factor of which the
+comparable chain of occupancy-controlled rungs above accounts for
+only a slice. Quoting a single ``$\approx 23\%$ compounded remainder''
+over the occupancy-matched product/cache/network/chain/pair steps is
+a narrative of those five notes, not a sixth measurement.
+
+\subsection{The floor that rules out $28$~B/s}
+\label{sec:floor28}
+
+Any walk that keeps the rho collision structure performs one affine
+addition per iteration. At batch 16 the packed kernel issues $4.81$
+polynomial products per update; each product is $6$ \texttt{CLMAD};
+squarings and the inversion chain add more. The arithmetic floor is
+$28.9$ \texttt{CLMAD}/update even with squarings moved to the ALU, and
+about $1{,}090$--$1{,}180$ ALU slots/update. A $28$~B/s target on the
+188-SM RTX~PRO~6000 permits only $25.4$--$26.9$ \texttt{CLMAD}/update
+and $959$--$1{,}013$ ALU slots at $100\%$ utilisation. Both budgets
+are below both floors. $28$~B/s on one GPU is therefore not an
+engineering target; it is below the pipe.\art{crypto:ecc2k130/ITERATION-FUNCTION.md, §1}
+
+A later measurement on this library's imported client, with the
+carry-less unit issuing at $1.62$ lane-operations per SM-clock, prices
+an iteration at $33.1$ \texttt{clmad} and writes a floor of
+$22.3$~B/s at $2.42$~GHz with the unit never idle. No subsequent row
+changes that count.\art{ecc2k130/README.md, ``Boundary and measurement''}
+
+\subsection{Table walk, declined at $16.56$ against $17.0$}
+\label{sec:tablewalk}
+
+A redesigned $r$-adding table walk removes the per-step Frobenius and
+basis-conversion work. On the same host and geometry as the shipping
+$\sigma$-walk it measured $16.560337$~B/s against $14.412634$~B/s
+($+14.9\%$, six alternating repetitions, every paired ratio between
+$1.146$ and $1.169$). In the audited $385{,}024$-worker geometry the
+pair is $16.351936$ against $14.975448$ ($+9.2\%$). $300$ of $300$
+device reports re-walked; $64$ of $64$ planted logs were recovered on
+$\mathrm{GF}(2^{41})$.\art{crypto:ecc2k130/benchmarks/table-walk/comparison.json}
+
+The note set $17.0$~B/s as its own target in §4.4 \emph{before} the
+build. Both medians missed it (by $2.6\%$ and $3.8\%$), so by the rule
+declared there the change is engineering that did not pay: the
+shipping walk stays the campaign default and the table walk stays
+available behind \texttt{WALK\_TABLE=1}.
+
+This library's imported client then took that table walk further under
+a different geometry ($\mathtt{\_\_launch\_bounds\_\_}(512,1)$,
+denominators rebuilt from the step tag, inlined products, pipelined
+forward pass) and measured $20.077$--$20.080$~B/s, $0.90$ of its
+$22.3$~B/s floor, with $300/300$ device reports re-walked on the
+golden model.\art{ecc2k130/README.md} That configuration is not the
+live campaign; mixing it with the $14.64$~B/s historical ledger
+without naming the geometry would be the unit mistake.
+
+\subsection{Per-GPU survey}
+
+The campaign default remains the RTX~PRO~6000. Modal also rents T4,
+L4, A10, L40S, A100, H100, H200, B200 and B300. Table~\ref{tab:survey}
+is one packed walk, automatic workers, three valid \texttt{--bench}
+repeats, on every catalog SKU. No row beat $15.115792$~B/s. Closest
+other parts: B200 at $0.585\times$, L40S at
+$0.575\times$.\art{crypto:ecc2k130/benchmarks/modal-gpus/SURVEY.md}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Modal GPU survey, automatic workers, packed recipe. Unit:
+  billion complete iterations/s. Class: engineering.}
+\label{tab:survey}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+GPU & B/s & / 6000 & it/\$ (T) \\
+\midrule
+RTX PRO 6000, 385k workers & 15.116 & 1.000 & 17.95 \\
+RTX PRO 6000, automatic & 14.470 & 0.957 & 17.19 \\
+B200 & 8.840 & 0.585 & 5.09 \\
+L40S & 8.696 & 0.575 & 16.04 \\
+H200 & 7.632 & 0.505 & 6.05 \\
+B300 & 7.575 & 0.501 & 3.84 \\
+H100 & 7.540 & 0.499 & 6.87 \\
+A100-80GB & 4.632 & 0.306 & 6.67 \\
+L4 & 2.561 & 0.169 & 11.54 \\
+T4 (no \texttt{clmad}) & 0.541 & 0.036 & 3.30 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The walk is integer/carry-less-bound, not tensor-core-bound. LLM SKU
+rankings do not transfer. A collecting 6000 at $14.1$~B/s is $16.75$~T
+it/\$ at Modal list; L40S is the cheapest other SKU at $16.04$ and
+still loses.
+
+\subsection{This library's imported client}
+
+The device code in \texttt{ecc2k130/include/} is imported from the
+companion at the configuration that measured $20.08$~B/s. This
+library's part is the host: a bridge to the golden model, a re-walk of
+every device report, and a \texttt{make test} that does not need a
+GPU. The measured run re-walked $300$ of $300$ reports. CI compiles
+the kernel and reports registers and spills; no runner has the card,
+so only a card reproduces $20.08$. The live campaign remains the
+companion's $\sigma$-walk at $\sim 14.1$~B/s collecting.

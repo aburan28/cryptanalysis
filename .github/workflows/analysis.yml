@@ -114,7 +114,19 @@ jobs:
             base=$(git rev-parse "HEAD^" 2>/dev/null || git rev-parse HEAD)
           fi
           echo "comparing against $base"
-          diff=$(git-clang-format --diff --extensions c,h,cu,cuh "$base" || true)
+          # Generated arithmetic headers and frozen campaign source snapshots
+          # are bound into experiment manifests. Format live source, not the
+          # immutable measurement artifacts.
+          mapfile -t paths < <(
+            git diff --name-only --diff-filter=ACMR "$base"...HEAD -- \
+              '*.c' '*.h' '*.cu' '*.cuh' |
+              grep -Ev '(^|/)generated/|^experiments/sage-ic-campaign/[^/]+/(source|baseline|candidate-v1)/' || true
+          )
+          if [ "${#paths[@]}" -eq 0 ]; then
+            echo "no non-generated C/CUDA files changed"
+            exit 0
+          fi
+          diff=$(git-clang-format --diff --extensions c,h,cu,cuh "$base" -- "${paths[@]}" || true)
           case "$diff" in
             ""|*"no modified files to format"*|*"clang-format did not modify any files"*)
               echo "formatting is clean"
@@ -138,7 +150,7 @@ jobs:
         run: |
           sudo apt-get update || true
           sudo apt-get install -y --no-install-recommends shellcheck
-          shellcheck scripts/*.sh
+          shellcheck scripts/*.sh deploy/*/*.sh
 
       - name: actionlint
         # Also runs shellcheck over every `run:` block in these workflows.

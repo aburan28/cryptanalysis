@@ -1,0 +1,133 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage[protrusion=true,expansion=false]{microtype}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{url}
+
+\hypersetup{
+  pdftitle={The Constant in Front of sqrt(n): Measured Pollard Rho, ECC2K-130 Arithmetic, and Index Calculus over Prime Fields},
+  pdfauthor={Anonymous},
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black,
+}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\FF}{\mathbb{F}}
+\newcommand{\ZZ}{\mathbb{Z}}
+\newcommand{\QQ}{\mathbb{Q}}
+\newcommand{\Aut}{\operatorname{Aut}}
+\newcommand{\Jac}{\operatorname{Jac}}
+\newcommand{\ord}{\operatorname{ord}}
+\newcommand{\HW}{\operatorname{HW}}
+\renewcommand{\gcd}{\operatorname{gcd}}
+\newcommand{\thislib}{\texttt{cryptanalysis}}
+\newcommand{\sibling}{\texttt{crypto}}
+% Footnote a number to a repository artefact. Paths without a repo prefix
+% are in this library; paths prefixed crypto: are in the sibling.
+\newcommand{\art}[1]{\footnote{\texttt{\detokenize{#1}}.}}
+
+\title{The Constant in Front of $\sqrt{n}$: Measured Pollard Rho,
+       ECC2K-130 Arithmetic, and Index Calculus over Prime Fields}
+% Anonymized for double-blind submission.  Author block restored
+% for camera-ready / preprint release; see paper/README.md.
+\author{Anonymous}
+\date{}
+
+\begin{document}
+\maketitle
+\emergencystretch=2em
+
+\begin{abstract}
+This library measures discrete-logarithm algorithms in one unit
+$S=\mathrm{ops}/\sqrt{n}$, against two boundaries: a counting floor
+and a matched Pollard rho. On elliptic curves over prime fields and
+over $\FF_{p^3}$ the method sits hundreds of times above rho at every
+size that fits; the constant in front of $\sqrt{n}$ is the quantity
+that moved, and it did not fall below one. The same unit prices a
+multiplicative-group linear sieve that does cross rho near 56 bits, a
+Koblitz GPU/FPGA iteration for ECC2K-130 whose pipe floor rules out
+28 billion steps per second on one GPU, and a genus-3/4 Jacobian
+positive control that behaves as the exponent law says.
+\end{abstract}
+
+\tableofcontents
+\clearpage
+
+\input{sec-intro}
+\input{sec-method}
+\input{sec-rho}
+\input{sec-rho-variants}
+\input{sec-ecc2k-arith}
+\input{sec-ecc2k-gpu}
+\input{sec-ecc2k-fpga}
+\input{sec-ecc2k-campaign}
+\input{sec-indexcalc}
+\input{sec-related}
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Three statements survive the accounting.
+
+First, Pollard rho on this library is a measured constant, not a slogan:
+$S \approx 1.2$--$1.8$ across 24--40~bits, with the negation map, Teske's
+$r$-adding walk, Bernstein--Lange--Schwabe cycle handling, and one
+inversion per 256 additions all inside the count. Independent
+implementations in the companion recover the same constant (rho $S=0.85$
+against BSGS $S=1.07$; a Frobenius-class walk at $0.94\times$ and
+$1.32\times$ of its own prediction). Nothing here is an advance on the
+generic-group floor.
+
+Second, ECC2K-130 is an arithmetic problem at a known exponent. The
+GPU ledger from a bitsliced control at $0.85$~B/s to a packed walk at
+$14.64$~B/s is engineering against a carry-less-unit floor that rules
+out $28$~B/s on one GPU. A table walk measured $16.56$~B/s against a
+pre-declared $17.0$ and was declined. A digit-serial FPGA core in this
+library takes $362$ cycles/step at $7{,}941$ LUT4; a companion engine
+on an AWS F2 holds $8.25$~G~steps/s. The live fleet walks at cutoff
+$32$, one report per $2^{28.41}$ iterations, with about $124$~M points
+and no collision. Structural alternatives (index calculus on the
+Koblitz curve, a $28$~B/s one-addition walk, a SKU that beats the
+RTX~PRO~6000) were measured and did not pay.
+
+Third, index calculus over $(\ZZ/p\ZZ)^*$ crosses rho near $56$~bits
+and pulls away. Index calculus on $E(\FF_p)$ and $E(\FF_{p^3})$ does
+not: at the sizes that fit, every end-to-end elliptic variant costs
+between $14.5\times$ and $4{,}000\times$ matched rho, and the
+asymptotically better $E(\FF_{p^3})$ hybrid bottoms near $200\times$
+rho around $2^{50}$ and rises. The genus-3/4 Jacobian is the positive
+control that shows the unit can register a crossover when one exists.
+
+The constant in front of $\sqrt{n}$ is the right quantity. On the
+curves that matter it has not yet fallen below one.
+
+\input{app-reproduction}
+
+\bibliographystyle{plainnat}
+\bibliography{ecdlp}
+
+\end{document}

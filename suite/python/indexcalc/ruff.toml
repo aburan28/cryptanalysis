@@ -1,0 +1,22 @@
+# Ruff configuration for the index-calculus engine behind `ca-ic fixed`.
+#
+# Run from suite/python/indexcalc:
+#     ruff check .
+#
+# This is upstream research code with its own conventions (camelCase names,
+# no type hints, standard library only), so only the correctness rules are
+# enforced here: pyflakes and the pycodestyle errors.  `ruff format` is not a
+# gate for this directory; a wholesale reformat would bury every future diff
+# against the upstream copy it is kept in step with.
+
+line-length = 100
+target-version = "py38"
+src = ["."]
+
+[lint]
+select = ["F", "E", "W"]
+ignore = [
+    # E501: the docstrings quote formulas and paper titles at the width they
+    # were written.
+    "E501",
+]
