@@ -135,7 +135,8 @@ It opens its own `/32` rule and removes it when it ends; `modal app stop` skips
 that cleanup, as it does for the fleet. Running it alongside a restarted pod is
 safe: point inserts are `ON CONFLICT DO NOTHING`, and the direct-report sweep
 row-locks its counters and watermark, so a concurrent sweep waits and continues
-from the new mark.
+from the new mark. The [first Modal run's receipt](research/production/2026-09-26-modal-dp-ingest.json)
+records the Runpod silence and the page's recovery.
 
 DP weight is a Hamming-weight cutoff, not a different record size: both cutoffs
 use the same 32-byte record. For two corpora with the **same walk identity**,
