@@ -69,10 +69,72 @@ pub struct RhoResult {
     pub seconds: f64,
 }
 
-/// One Brent walk with constant `c` over `u64` arithmetic (`n < 2⁶³`).
+/// Montgomery arithmetic modulo an odd `n < 2⁶³`, for [`brent_u64`].
+struct Mont {
+    n: u64,
+    /// `n⁻¹ mod 2⁶⁴`.
+    ninv: u64,
+    /// `2⁶⁴ mod n`.
+    r1: u64,
+}
+
+impl Mont {
+    fn new(n: u64) -> Self {
+        debug_assert!(n % 2 == 1 && n < 1 << 63);
+        let mut ninv = n; // correct to 3 bits: n·n ≡ 1 (mod 8)
+        for _ in 0..5 {
+            ninv = ninv.wrapping_mul(2u64.wrapping_sub(n.wrapping_mul(ninv)));
+        }
+        let r1 = ((1u128 << 64) % n as u128) as u64;
+        Mont { n, ninv, r1 }
+    }
+
+    /// `t·2⁻⁶⁴ mod n` for `t < n·2⁶⁴` (subtraction form).
+    #[inline]
+    fn redc(&self, t: u128) -> u64 {
+        let u = (t as u64).wrapping_mul(self.ninv);
+        let hi = (t >> 64) as u64;
+        let mh = ((u as u128 * self.n as u128) >> 64) as u64;
+        let (r, borrow) = hi.overflowing_sub(mh);
+        if borrow {
+            r.wrapping_add(self.n)
+        } else {
+            r
+        }
+    }
+
+    #[inline]
+    fn mul(&self, a: u64, b: u64) -> u64 {
+        self.redc(a as u128 * b as u128)
+    }
+
+    #[inline]
+    fn to(&self, a: u64) -> u64 {
+        ((a as u128 * self.r1 as u128) % self.n as u128) as u64
+    }
+}
+
+/// One Brent walk with constant `c` over `u64` arithmetic (`n < 2⁶³`,
+/// odd).
+///
+/// The walk runs in Montgomery form: `x ↦ x² + c` is `X ↦ REDC(X²) + cR`
+/// for `X = xR`, so no step divides.  Every quantity the walk inspects is
+/// a gcd with `n`, and `R` is a unit mod `n`: `|X − Y| ≡ ±(x − y)R`, the
+/// batched product (started at the plain `1`) is `±∏(x − y)`, and the
+/// gcds, iteration counts and returned factor are the ones the plain walk
+/// finds.
 fn brent_u64(n: u64, c: u64, max_iter: u64, batch: u64, iters: &mut u64) -> Option<u64> {
-    let f = |x: u64| ((x as u128 * x as u128 + c as u128) % n as u128) as u64;
-    let (mut y, mut r, mut q) = (2u64, 1u64, 1u64);
+    let m = Mont::new(n);
+    let cr = m.to(c);
+    let f = |x: u64| {
+        let s = m.mul(x, x) + cr; // both < n < 2⁶³: no overflow
+        if s >= n {
+            s - n
+        } else {
+            s
+        }
+    };
+    let (mut y, mut r, mut q) = (m.to(2), 1u64, 1u64);
     let (mut x, mut ys) = (y, y);
     let mut g = 1u64;
     while g == 1 {
@@ -85,7 +147,7 @@ fn brent_u64(n: u64, c: u64, max_iter: u64, batch: u64, iters: &mut u64) -> Opti
             ys = y;
             for _ in 0..batch.min(r - k) {
                 y = f(y);
-                q = (q as u128 * x.abs_diff(y) as u128 % n as u128) as u64;
+                q = m.mul(q, x.abs_diff(y));
             }
             g = q.gcd(&n);
             k += batch;
@@ -200,6 +262,74 @@ pub fn rho(n: &BigUint, params: &RhoParams) -> RhoResult {
 
 #[cfg(test)]
 mod tests {
+    /// The plain-arithmetic walk `brent_u64` replaced.
+    fn brent_u64_plain(n: u64, c: u64, max_iter: u64, batch: u64, iters: &mut u64) -> Option<u64> {
+        let f = |x: u64| ((x as u128 * x as u128 + c as u128) % n as u128) as u64;
+        let (mut y, mut r, mut q) = (2u64, 1u64, 1u64);
+        let (mut x, mut ys) = (y, y);
+        let mut g = 1u64;
+        while g == 1 {
+            x = y;
+            for _ in 0..r {
+                y = f(y);
+            }
+            let mut k = 0;
+            while k < r && g == 1 {
+                ys = y;
+                for _ in 0..batch.min(r - k) {
+                    y = f(y);
+                    q = (q as u128 * x.abs_diff(y) as u128 % n as u128) as u64;
+                }
+                g = q.gcd(&n);
+                k += batch;
+            }
+            *iters += r;
+            r *= 2;
+            if *iters > max_iter {
+                break;
+            }
+        }
+        if g == n {
+            loop {
+                ys = f(ys);
+                g = x.abs_diff(ys).gcd(&n);
+                if g > 1 {
+                    break;
+                }
+            }
+        }
+        (g > 1 && g < n).then_some(g)
+    }
+
+    /// The Montgomery walk finds the same factor after the same number of
+    /// iterations as the plain one, on odd composites from 15 to just
+    /// below 2⁶³, for several constants and batch sizes.
+    #[test]
+    fn montgomery_walk_matches_the_plain_walk() {
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let mut ns: Vec<u64> = (15..3000).step_by(2).collect();
+        ns.extend((0..300).map(|_| (next() >> 1) | 1));
+        ns.extend((0..100).map(|_| ((next() >> 33) | 1) * ((next() >> 34) | 1)));
+        ns.push((1u64 << 63) - 25);
+        for &n in &ns {
+            if n < 5 {
+                continue;
+            }
+            for (c, batch) in [(1u64, 128u64), (3, 1), (7, 17)] {
+                let (mut a, mut b) = (0, 0);
+                let got = brent_u64(n, c, 200_000, batch, &mut a);
+                let want = brent_u64_plain(n, c, 200_000, batch, &mut b);
+                assert_eq!((got, a), (want, b), "n={n} c={c} batch={batch}");
+            }
+        }
+    }
+
     use super::*;
 
     #[test]
