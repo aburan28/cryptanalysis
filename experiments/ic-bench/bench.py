@@ -65,10 +65,26 @@ RECEIPTS = HERE / "results" / "receipts.jsonl"
 LIMITS = {"d_max": 10, "max_cols": 40_000, "max_rows": 200_000}
 
 
-def cells(n, m, l, families, workload_seeds, targets=3, max_attempts=200_000, mode="mxl"):
-    return [{"n": n, "m": m, "l": l, "family": f, "seed": 1, "mode": mode, "workload_seed": w,
+def cells(n, m, l, families, workload_seeds, targets=3, max_attempts=200_000, mode="mxl", seed=1):
+    return [{"n": n, "m": m, "l": l, "family": f, "seed": seed, "mode": mode, "workload_seed": w,
              "targets": targets, "max_attempts": max_attempts}
             for w in workload_seeds for f in families]
+
+
+SEARCH_SELECTION = HERE.parent / "fb-search" / "selected.json"
+
+
+def search_cells(path: Path = SEARCH_SELECTION, workload_seeds=(1, 2, 3)) -> list[dict]:
+    """Factor bases picked by ../fb-search (family, l, seed), each on the same frozen workloads."""
+    if not path.exists():
+        return []
+    out = []
+    for pick in json.loads(path.read_text())["picks"]:
+        c = pick["cell"]
+        n = c["n"]
+        out += cells(n, c["m"], c["l"], [c["family"]], list(workload_seeds), targets=c["targets"],
+                     max_attempts=200_000 if n < 23 else 800_000, mode=c["mode"], seed=c["seed"])
+    return out
 
 
 SUITES = {
@@ -80,6 +96,7 @@ SUITES = {
     + cells(19, 2, 5, ["prefix", "geometric", "geomtrace", "geomtraceu", "random", "kertrace"], [1, 2, 3])
     + cells(19, 2, 6, ["prefix", "geometric", "geomtrace", "geomtraceu", "random"], [1, 2, 3])
     + cells(23, 2, 6, ["prefix", "geomtrace", "random"], [1], max_attempts=800_000),
+    "search": search_cells(),
 }
 
 CSV_FIELDS = [
