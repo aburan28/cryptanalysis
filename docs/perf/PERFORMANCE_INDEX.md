@@ -184,3 +184,4 @@ index, and the changes that were tried and rejected with their numbers
 |:--|:--|:--|
 | `f4_gf2::xor_then_lead` as two non-aliasing slices (vectorisable XOR, `position` for the lead) instead of raw-pointer loops (2026-09-26) | suite f4gf2/f4batch kernels 0.81–0.99× vs the previous commit, 5 paired rounds, all inside the A/A spread and none faster: the rows are a few words long | not landed |
 | `bsgs_fast::FastField::inv` by extended Euclid instead of Fermat (considered) | not built: a 63-bit Euclid is ~40 dependent 64-bit divisions against ~94 pipelined Montgomery multiplications | not landed |
+| `prime_orbit_index_calculus::add_r`/`sub_r` with a conditional subtraction for reduced operands (2026-09-26) | orbit rho 1.01×, orbit IC 0.93×, both inside the A/A spread | not landed |
