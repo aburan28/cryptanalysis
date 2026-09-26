@@ -429,11 +429,18 @@ class S3Slots:
         raise RuntimeError("could not allocate a slot")
 
     def _modify(self, slot, owner, fn):
-        item, etag = self._get(slot)
-        if item is None or item.get("owner") != owner:
-            return False
-        fn(item)
-        return self._put(slot, item, ifMatch=etag)
+        # A conditional put can fail against this owner's own earlier attempt:
+        # the aws CLI retries a put whose response was lost, and the retry no
+        # longer matches the ETag that attempt created. The lease is lost only
+        # when the record names someone else.
+        for _ in range(3):
+            item, etag = self._get(slot)
+            if item is None or item.get("owner") != owner:
+                return False
+            fn(item)
+            if self._put(slot, item, ifMatch=etag):
+                return True
+        return False
 
     def heartbeat(self, slot, owner, fields):
         now = int(time.time())
@@ -652,10 +659,11 @@ class Worker:
                 raise RuntimeError("slot lease expired")
             if not self.slots.heartbeat(slot, self.owner, {}):
                 raise RuntimeError("slot lease lost")
-        except Exception:
+        except Exception as exc:
             self.leaseLost = True
             self.stopping = True
-            raise RuntimeError("could not renew slot lease; publication stopped") from None
+            raise RuntimeError("could not renew slot lease (%s: %s); publication stopped"
+                               % (type(exc).__name__, exc)) from None
         self.lastLeaseRenewal = now
 
     # ---- durable copies ---------------------------------------------------
@@ -810,10 +818,11 @@ class Worker:
                     self.renewLease(slot, force=True)
                     if not self.slots.heartbeat(slot, self.owner, fields):
                         raise RuntimeError("slot lease lost")
-                except Exception:
+                except Exception as exc:
                     self.leaseLost = True
                     self.stopping = True
-                    log("heartbeat failed; stopping without publishing further checkpoints")
+                    log("heartbeat failed (%s: %s); stopping without publishing further checkpoints"
+                        % (type(exc).__name__, exc))
                 if last:
                     log("%.3f B it/s, %d iterations this run, %d dp, %d uploaded, checkpoint at %d"
                         % (last["rate"] / 1e9, last["iters"], last["dp"],

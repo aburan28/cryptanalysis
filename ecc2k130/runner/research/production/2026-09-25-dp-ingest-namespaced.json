@@ -1,0 +1,149 @@
+{
+  "status": "deployed_and_verified",
+  "component": "legacy root campaign status publisher (dp_ingest.py on Runpod pod 5nt8khpaxo6rug, ecc2k-cpu-1)",
+  "source_of_truth_note": "The deployed copy is ahead of aburan28/crypto main (ecc2k130/aws/dp_ingest.py, blob identical to the archived original). The patch in 2026-09-25-dp-ingest-namespaced.patch applies cleanly to crypto main and reproduces the deployed file byte for byte.",
+  "changes": [
+    "work: also counts checkpoints of namespaced campaigns whose campaign.json has campaignId ecc2k-130 and dpWeight 32 (campaigns/*/ckpt/), tagged by prefix; namespaced slots skip the root-keyed DP-weight verdict",
+    "rate: 'walking now' differences per-prefix checkpoint totals against a carried-forward sample about 3600 s old (history kept in status.json), instead of a measured_from base that never advanced; only prefixes both samples count are differenced",
+    "points: a watermarked sweep adds rows written outside this ingest (worker_id not 'dp-...', i.e. report_dp from the ecc2k130 runner) to dp_ingest_totals/dp_ingest_hourly once each, 300 s behind clock_timestamp(); --recount leaves post-mark direct rows to the sweep"
+  ],
+  "s3": {
+    "key": "aws/dp_ingest.py",
+    "previous_sha256": "6a1a899718c65576b52e5c48808569c456402105016518d8db2220bbb6aaea72",
+    "deployed_sha256": "58460b7a9f5ea51fc7f23c02ee8f1dc9d5ac85f01ce1e4f09738cb548f050411",
+    "archive": "aws/archive/dp_ingest-6a1a899718c65576b52e5c48808569c456402105016518d8db2220bbb6aaea72.py",
+    "uploaded_at": "2026-09-25T06:42:46Z",
+    "read_back_verified": true
+  },
+  "restart": {
+    "api": "POST /v1/pods/5nt8khpaxo6rug/restart at 2026-09-25T06:42:58Z returned HTTP 500 (internal timeout)",
+    "observed": "cpu boot 2026-09-25T06:43:01Z; ingest log 'dp_ingest.py sha256=58460b7a...'; ingest started 06:43:23Z; first publish 06:45:34Z"
+  },
+  "tests": {
+    "unit": {
+      "ran": 122,
+      "existing": 109,
+      "new": 13,
+      "passed": 122,
+      "new_tests_on_original": "2 failures, 11 errors"
+    },
+    "postgres16_integration": [
+      "seed",
+      "direct reports including already-ingested points",
+      "ingest applyRollup waiting behind a sweep (no deadlock)",
+      "recount then sweep without double counting"
+    ],
+    "result": "counters equal count(*) and per-hour counts at every step"
+  },
+  "dry_run_before_deploy": {
+    "namespaces": [
+      "campaigns/ecc2k130-frobenius32-120k-v1/",
+      "campaigns/ecc2k130-frobenius32-v1/"
+    ],
+    "work_log2": 56.4799,
+    "walking_slots": 6,
+    "sweep_would_add": 18696880,
+    "sweep_by_day": [
+      [
+        "2026-09-21",
+        4601794
+      ],
+      [
+        "2026-09-22",
+        12252005
+      ],
+      [
+        "2026-09-25",
+        1843081
+      ]
+    ]
+  },
+  "backfill": {
+    "first_attempt": "3600 s chunks from the ingester plus a 10800 s-chunk job stalled at ~85 s per data hour on cold pages; the job was stopped, its open transaction rolled back, watermark consistent at 2026-09-21T15:36:27Z",
+    "catch_up": {
+      "code_sha256": "58460b7a9f5ea51fc7f23c02ee8f1dc9d5ac85f01ce1e4f09738cb548f050411",
+      "chunk_seconds": 400000,
+      "added": 19052038,
+      "counted_to": "2026-09-25 07:04:08.709673+00:00",
+      "seconds": 249.4,
+      "totals_after": 386261468
+    },
+    "then_incremental": "ingester sweep counted 50597 points up to 2026-09-25T07:08:14Z at 07:13:15Z"
+  },
+  "hourly_spot_check": [
+    {
+      "hour": "2026-09-25T03:00Z",
+      "published": 173192,
+      "table_modal": 133712,
+      "table_other": 39480
+    },
+    {
+      "hour": "2026-09-25T04:00Z",
+      "published": 658783,
+      "table_modal": 618634,
+      "table_other": 40149
+    },
+    {
+      "hour": "2026-09-25T05:00Z",
+      "published": 741787,
+      "table_modal": 702056,
+      "table_other": 39731
+    }
+  ],
+  "status_before": {
+    "generated_at": "2026-09-25T06:03:40Z",
+    "state": "COLLECTING",
+    "dps": 367163141,
+    "dps_last_hour": 39731,
+    "dps_last_day": 780779,
+    "walkers": 2,
+    "work_iterations_log2": 56.3805,
+    "walking_slots": 2,
+    "slots": 195,
+    "walk_rate_per_second": 2817647063,
+    "walk_rate_window_seconds": 98481,
+    "walk_rate_scopes": null
+  },
+  "status_after": {
+    "generated_at": "2026-09-25T07:23:04Z",
+    "state": "COLLECTING",
+    "dps": 386422840,
+    "dps_last_hour": 951498,
+    "dps_last_day": 3186679,
+    "walkers": 6,
+    "work_iterations_log2": 56.4827,
+    "walking_slots": 6,
+    "slots": 199,
+    "walk_rate_per_second": 72640371768,
+    "walk_rate_window_seconds": 2250,
+    "walk_rate_scopes": [
+      "",
+      "campaigns/ecc2k130-frobenius32-120k-v1/"
+    ]
+  },
+  "page_before": {
+    "walking_now": "2.8 B it/s (mean over about 1 day)",
+    "eta": "23.1 years",
+    "slots": 2
+  },
+  "page_after": {
+    "walking_now": "75.1 B it/s (mean over 33 min)",
+    "eta": "315.8 days",
+    "gpus_running": 6,
+    "rendered_at": "2026-09-25T07:22Z"
+  },
+  "cpu_walker_recovery_after_restart": {
+    "run_id": 201,
+    "slot": 200,
+    "previous_owner": "893590113e6942da9bdb74de8decd471",
+    "reason": "owner process died in the 06:43Z container restart without releasing",
+    "new_checkpoint_floor": 146113536,
+    "walker_now": "run 202 (slot 201), resumed at 265564160"
+  },
+  "network": "managed ingress rules left: only the live Modal rollout's 4 (31 total with 27 administrator rules)",
+  "limits": [
+    "Legacy slots checkpoint every 600 s, so a window of a few minutes overstates their share; the first full-scope rate (641 s window) read 78.8 B/s against about 73 B/s of client rates.",
+    "'walkers' counts slots with a checkpoint under 30 minutes old, so a stopped slot stays counted for up to 30 minutes.",
+    "The deployed file must be upstreamed to aburan28/crypto or the next deploy from that repository reverts it."
+  ]
+}
