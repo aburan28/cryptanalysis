@@ -185,7 +185,11 @@ ca_status ca_coord_parse_url(const char *url, char *host_port, size_t hp_cap, ch
 {
     if (!url || !host_port || !prefix) return CA_ERR_INVALID;
     if (strncmp(url, "https://", 8) == 0) {
-        ca_set_error("%s: no TLS here; terminate it in front and pass the http:// address", url);
+        ca_set_error("%s: this client speaks plain HTTP only. Terminate TLS in a local "
+                     "sidecar (stunnel/nginx/socat) and set CA_COORDINATOR_URL to its "
+                     "http://127.0.0.1 address; the sidecar dials the public https:// hub. "
+                     "See docs/COORDINATOR.md \"8a. TLS: terminate it in a sidecar\"",
+                     url);
         return CA_ERR_UNSUPPORTED;
     }
     const char *p = url;

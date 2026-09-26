@@ -218,9 +218,11 @@ $ ./build/ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 
 $ make coordinator && ./build/ca-coordinator -job job.txt -listen :8080 \
       -token-file /etc/ca/token
 
-# On every agent, anywhere.  The URL is the whole configuration: no inbound
-# rule, no address of its own, not even a copy of the job document.
-$ export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=...
+# On every agent, anywhere.  The agent speaks plain HTTP to a local TLS
+# sidecar (stunnel/nginx/socat) that dials the public https:// hub; see
+# "8a. TLS: terminate it in a sidecar" in docs/COORDINATOR.md.  It needs no
+# inbound rule, no address of its own, not even a copy of the job document.
+$ export CA_COORDINATOR_URL=http://127.0.0.1:8443 CA_COORDINATOR_TOKEN=...
 $ ./build/ca work --node "$(hostname)" --threads "$(nproc)"
 $ ./build/ca coord-status
 ```
@@ -374,8 +376,9 @@ ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
 cd bindings/go && go build ./cmd/ca-coordinator
 ./ca-coordinator -job ../../job.txt -listen :8080 -token-file /etc/ca/token
 
-# On every agent, anywhere.  The URL is the whole configuration.
-export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=…
+# On every agent, anywhere.  The agent speaks plain HTTP to a local TLS
+# sidecar that dials the public https:// hub (see docs/COORDINATOR.md §8a).
+export CA_COORDINATOR_URL=http://127.0.0.1:8443 CA_COORDINATOR_TOKEN=…
 ca work --node "$(hostname)" --threads "$(nproc)"
 ca coord-status
 ```

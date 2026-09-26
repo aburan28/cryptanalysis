@@ -907,6 +907,8 @@ void ca_coord_state_free(ca_coord_state *st)
     if (!st) return;
     for (size_t i = 0; i < st->log_count; i++) free(st->log[i].line);
     free(st->log);
+    free(st->seen);
+    free(st->unit_index);
     if (st->store.close) st->store.close(st->store.self);
     free(st->mem.dp);
     free(st->peers);
@@ -1050,12 +1052,81 @@ static int coord_dp_insert(ca_coord_state *st, const ca_coord_ctx *ctx, const ca
     }
 }
 
+/* ---- O(1) indices beside the log and the unit table --------------------
+ *
+ * Finding 8: coord_seen once scanned the whole log per check-in and
+ * coord_unit_slot the whole unit table, so ingest was O(N^2).  These two
+ * open-addressed tables give both lookups O(1) while leaving the immutable
+ * log array and the unit array exactly as they were: the indices are pure
+ * accelerators, keyed on the same fields, and hold no authoritative state.
+ */
+
+/* Mix a (peer, seq) or (unit, peer) pair into a probe start. */
+static uint64_t coord_pair_hash(uint64_t a, uint64_t b)
+{
+    return ca_mix64((a + 1) * 0x9E3779B97F4A7C15ULL ^ ca_mix64(b + 1));
+}
+
+static int coord_seen_grow(ca_coord_state *st)
+{
+    size_t cap = st->seen_cap ? st->seen_cap * 2 : 128;
+    coord_seen_slot *s = calloc(cap, sizeof(*s));
+    if (!s) return 0;
+    for (size_t i = 0; i < st->seen_cap; i++) {
+        if (!st->seen[i].used) continue;
+        size_t j = coord_pair_hash(st->seen[i].peer, st->seen[i].seq) & (cap - 1);
+        while (s[j].used) j = (j + 1) & (cap - 1);
+        s[j] = st->seen[i];
+    }
+    free(st->seen);
+    st->seen = s;
+    st->seen_cap = cap;
+    return 1;
+}
+
+/* Record (peer, seq) in the dedup index.  Caller has already checked it is
+ * not present, so this only inserts. */
+static int coord_seen_add(ca_coord_state *st, uint32_t peer, uint64_t seq)
+{
+    if (st->seen_count * 4 >= st->seen_cap * 3 && !coord_seen_grow(st)) return 0;
+    size_t j = coord_pair_hash(peer, seq) & (st->seen_cap - 1);
+    while (st->seen[j].used) j = (j + 1) & (st->seen_cap - 1);
+    st->seen[j].used = 1;
+    st->seen[j].peer = peer;
+    st->seen[j].seq = seq;
+    st->seen_count++;
+    return 1;
+}
+
+static int coord_unit_index_grow(ca_coord_state *st)
+{
+    size_t cap = st->unit_index_cap ? st->unit_index_cap * 2 : 64;
+    coord_unit_index_slot *s = calloc(cap, sizeof(*s));
+    if (!s) return 0;
+    for (size_t i = 0; i < st->unit_index_cap; i++) {
+        if (!st->unit_index[i].used) continue;
+        size_t j = coord_pair_hash(st->unit_index[i].unit, st->unit_index[i].peer) & (cap - 1);
+        while (s[j].used) j = (j + 1) & (cap - 1);
+        s[j] = st->unit_index[i];
+    }
+    free(st->unit_index);
+    st->unit_index = s;
+    st->unit_index_cap = cap;
+    return 1;
+}
+
 /* unit views -------------------------------------------------------------- */
 
 static coord_unit_view *coord_unit_slot(ca_coord_state *st, uint64_t unit, uint32_t peer)
 {
-    for (size_t i = 0; i < st->unit_count; i++)
-        if (st->units[i].unit == unit && st->units[i].peer == peer) return &st->units[i];
+    if (st->unit_index_cap) {
+        size_t j = coord_pair_hash(unit, peer) & (st->unit_index_cap - 1);
+        while (st->unit_index[j].used) {
+            if (st->unit_index[j].unit == unit && st->unit_index[j].peer == peer)
+                return &st->units[st->unit_index[j].idx];
+            j = (j + 1) & (st->unit_index_cap - 1);
+        }
+    }
     if (st->unit_count == st->unit_cap) {
         size_t cap = st->unit_cap ? st->unit_cap * 2 : 16;
         coord_unit_view *u = realloc(st->units, cap * sizeof(*u));
@@ -1063,10 +1134,24 @@ static coord_unit_view *coord_unit_slot(ca_coord_state *st, uint64_t unit, uint3
         st->units = u;
         st->unit_cap = cap;
     }
-    coord_unit_view *v = &st->units[st->unit_count++];
+    size_t idx = st->unit_count;
+    coord_unit_view *v = &st->units[idx];
     memset(v, 0, sizeof(*v));
     v->unit = unit;
     v->peer = peer;
+    /* Index the new slot.  If the index cannot grow, unwind the append so
+     * the two never disagree: a missing index entry would resurrect the
+     * quadratic scan and, worse, let one (unit, peer) get two rows. */
+    if (st->unit_index_count * 4 >= st->unit_index_cap * 3 && !coord_unit_index_grow(st))
+        return NULL;
+    size_t j = coord_pair_hash(unit, peer) & (st->unit_index_cap - 1);
+    while (st->unit_index[j].used) j = (j + 1) & (st->unit_index_cap - 1);
+    st->unit_index[j].used = 1;
+    st->unit_index[j].unit = unit;
+    st->unit_index[j].peer = peer;
+    st->unit_index[j].idx = idx;
+    st->unit_index_count++;
+    st->unit_count++;
     return v;
 }
 
@@ -1085,6 +1170,11 @@ static int coord_log_append(ca_coord_state *st, uint32_t peer, uint64_t seq, con
     size_t n = strlen(line) + 1;
     copy = malloc(n);
     if (!copy) return 0;
+    /* Index before publishing the row, so coord_seen never trails the log. */
+    if (!coord_seen_add(st, peer, seq)) {
+        free(copy);
+        return 0;
+    }
     memcpy(copy, line, n);
     st->log[st->log_count].peer = peer;
     st->log[st->log_count].seq = seq;
@@ -1095,8 +1185,12 @@ static int coord_log_append(ca_coord_state *st, uint32_t peer, uint64_t seq, con
 
 static int coord_seen(const ca_coord_state *st, uint32_t peer, uint64_t seq)
 {
-    for (size_t i = 0; i < st->log_count; i++)
-        if (st->log[i].peer == peer && st->log[i].seq == seq) return 1;
+    if (!st->seen_cap) return 0;
+    size_t j = coord_pair_hash(peer, seq) & (st->seen_cap - 1);
+    while (st->seen[j].used) {
+        if (st->seen[j].peer == peer && st->seen[j].seq == seq) return 1;
+        j = (j + 1) & (st->seen_cap - 1);
+    }
     return 0;
 }
 
@@ -1434,6 +1528,42 @@ uint64_t ca_coord_claim_unit(ca_coord_state *st, const ca_coord_ctx *ctx, const 
     uint32_t pick = (uint32_t)(ca_mix64(h) % found);
     if (resume_from) *resume_from = cursors[pick];
     return candidates[pick];
+}
+
+/* ---- per-process instance identity -------------------------------------- */
+
+static uint64_t coord_instance;
+static pthread_once_t coord_instance_once = PTHREAD_ONCE_INIT;
+
+static void coord_instance_init(void)
+{
+    /* ca_seed_or_random(0) draws from /dev/urandom and never returns 0. */
+    coord_instance = ca_seed_or_random(0);
+}
+
+uint64_t ca_coord_instance_id(void)
+{
+    pthread_once(&coord_instance_once, coord_instance_init);
+    return coord_instance;
+}
+
+void ca_coord_node_instanced(char *out, size_t cap, const char *node, uint64_t instance)
+{
+    if (!out || cap == 0) return;
+    if (!node) node = "node";
+    /* "~" is a legal peer-name byte (it is not one of the wire separators),
+     * so an old coordinator reads the whole thing as an ordinary name. */
+    char tag[20];
+    int tn = snprintf(tag, sizeof(tag), "~%016" PRIx64, instance);
+    size_t nn = strlen(node);
+    if (tn > 0 && nn + (size_t)tn + 1 <= cap) {
+        memcpy(out, node, nn);
+        memcpy(out + nn, tag, (size_t)tn + 1);
+    } else {
+        /* No room for the tag: keep the node readable and accept the
+         * residual collision risk rather than silently mangling identity. */
+        snprintf(out, cap, "%s", node);
+    }
 }
 
 /* ---- the lane ----------------------------------------------------------- */
