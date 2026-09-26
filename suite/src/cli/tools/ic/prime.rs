@@ -285,9 +285,11 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
         .descents
         .iter()
         .zip(targets)
-        .map(|(d, &(k, _))| {
-            json!({"expected": k.to_string(), "recovered": d.recovered.map(|v| v.to_string()),
-                   "verified": d.verified, "ops": OrbitIcReport::descent_ops(d), "trials": d.trials,
+        .map(|(d, &(k, q))| {
+            json!({"expected": k.to_string(), "target": {"x": q.x.to_string(), "y": q.y.to_string()},
+                   "recovered": d.recovered.map(|v| v.to_string()), "verified": d.verified,
+                   "ops": OrbitIcReport::descent_ops(d), "oracle_ops": d.oracle_ops,
+                   "probe_ops": d.probe_ops, "trials": d.trials,
                    "through_large_prime": d.through_large_prime, "learned": d.learned,
                    "restarts": d.restarts, "seconds": d.seconds})
         })
@@ -304,6 +306,20 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
         .collect();
     let rho_run = !rep.rhos.is_empty();
     json!({
+        "configuration": {
+            "solver": "orbit",
+            "orbits_requested": opts.orbits,
+            "width": opts.width,
+            "orbits_per_target": opts.orbits_per_target,
+            "relations_per_orbit": opts.relations_per_orbit,
+            "large_primes": opts.large_primes,
+            "learn": opts.learn,
+            "max_ops": opts.max_ops,
+            "max_descent_ops": opts.max_descent_ops,
+            "rho_max_steps": opts.rho_max_steps,
+            "skip_rho": opts.skip_rho,
+            "seed": opts.seed,
+        },
         "factor_base": {
             "orbits": logs.orbits,
             "points": logs.points,
@@ -330,6 +346,8 @@ fn orbit_json(rep: &OrbitIcReport, targets: &[(u64, FastPoint)], opts: &OrbitIcO
             "components": logs.system.components,
             "determined_components": logs.system.determined_components,
             "inconsistent_components": logs.system.inconsistent_components,
+            "rank": logs.system.rank,
+            "solved_columns": logs.system.solved_columns,
             "certified_columns": logs.certified_columns,
             "uncertified_columns": logs.uncertified_columns,
             "seconds": logs.seconds,
