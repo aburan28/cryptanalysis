@@ -470,6 +470,60 @@ def point_order_from_multiple(P, a, p, multiple: int) -> int:
     return order
 
 
+def _partial_prime_factors(n: int) -> tuple[set[int], int]:
+    """Distinct primes of n found by small-prime trial plus a bounded rho.
+
+    Returns (primes, residual): `residual` is the product of any composite
+    chunk the bounded search could not split (1 when n is fully factored). It
+    is left intact rather than raising, so this works for curves whose order
+    carries a large prime (or large composite) subgroup that cannot be
+    factored cheaply.
+    """
+    primes: set[int] = set()
+    residual = 1
+    for pr in PRIMES:
+        if pr * pr > n:
+            break
+        if n % pr == 0:
+            primes.add(pr)
+            while n % pr == 0:
+                n //= pr
+    stack = [n] if n > 1 else []
+    while stack:
+        m = stack.pop()
+        if m == 1:
+            continue
+        if is_probable_prime(m):
+            primes.add(m)
+            continue
+        f = pollard_rho_factor(m, limit=200000)
+        if not f or f in (1, m):
+            residual *= m
+            continue
+        stack.append(f)
+        stack.append(m // f)
+    return primes, residual
+
+
+def ec_point_order(P, a, p, group_order: int) -> int:
+    """Exact order of P, given a multiple (the full group order).
+
+    Unlike `point_order_from_multiple`, this does not require a complete
+    factorisation: every prime factor that can be found cheaply is tested and
+    removed, and any residual factor that resists the bounded search is assumed
+    to divide ord(P) (the case of a large cyclic prime subgroup, where that is
+    exactly right). The smooth/crackable part is always tested, which is where
+    a non-cyclic structure or a rho-cracked subgroup prime makes ord(P) a
+    proper divisor of the naive smooth split.
+    """
+    primes, _residual = _partial_prime_factors(group_order)
+    order = group_order
+    for q in primes:
+        while order % q == 0 and ec_mul(order // q, P, a, p) is INF:
+            order //= q
+    return order
+
+
 def mestre_order(a, b, p, rng: Rng) -> int:
     if p < 64:
         return brute_order(a, b, p)
@@ -1817,7 +1871,6 @@ def prime_record(
         if ec_mul(order, P, a, p) is not INF:
             raise RuntimeError(f"{id} order does not annihilate a point")
         h = parts["cofactor_int"]
-        n = parts["subgroup_int"]
         G = ec_mul(h, P, a, p)
         if G is INF:
             # Try another point.
@@ -1829,18 +1882,34 @@ def prime_record(
                     break
         if G is INF:
             raise RuntimeError(f"{id} subgroup generator is identity")
+        # The published subgroup is exactly <G>. Do not assume [h]P generates
+        # the whole non-smooth part: when #E is non-cyclic, or when the short
+        # rho inside factor_smooth cracked what is really the subgroup prime,
+        # ord([h]P) is a proper divisor of parts["subgroup_int"]. Record the
+        # true ord(G) and the matching cofactor #E / ord(G) instead.
+        n = ec_point_order(G, a, p, order)
+        cofactor_true = order // n
+        subgroup_prime = is_probable_prime(n)
         if ec_mul(n, G, a, p) is not INF:
             raise RuntimeError(f"{id} subgroup order failed")
-        if parts["subgroup_probable_prime"] and ec_mul(1, G, a, p) is INF:
+        if ec_mul(1, G, a, p) is INF:
             raise RuntimeError("zero generator")
         verification = "scalar-annihilation"
-        sub_bits = n.bit_length()
-        if sub_bits <= 48:
+        # Tier is decided by the field's challenge scale (the smooth split's
+        # residual), so a curve whose ord(G) turns out small stays the tier it
+        # was designed as rather than silently flipping to `check`.
+        tier_bits = parts["subgroup_int"].bit_length()
+        if tier_bits <= 48:
             known = 1 + (rng_seed % (n - 1))
             target = ec_mul(known, G, a, p)
         else:
+            # Open tier: clear the hashed point by the cofactor #E/ord(G) so it
+            # lands in <G>. With G of maximal order, [#E/ord(G)]E ⊆ <G>, so the
+            # discrete log is guaranteed to exist. When that multiple is the
+            # identity (the hashed point sat entirely in the complement of a
+            # non-cyclic group) fall back to G itself, as before.
             T = hash_point_prime(a, b, p, id + ":target")
-            target = ec_mul(h, T, a, p)
+            target = ec_mul(cofactor_true, T, a, p)
             if target is INF:
                 target = G
     else:
@@ -1850,7 +1919,7 @@ def prime_record(
     rec = {
         "id": id,
         "family": family,
-        "tier": tier_for(parts["subgroup_int"].bit_length(), True),
+        "tier": tier_for(tier_bits, True),
         "tags": tags,
         "field": {
             "type": "prime",
@@ -1868,15 +1937,15 @@ def prime_record(
         "j": hx(j),
         "trace": trace_of(order, p),
         "group_order": hx(order),
-        "cofactor": parts["cofactor"],
-        "subgroup_order": parts["subgroup_order"],
-        "subgroup_probable_prime": parts["subgroup_probable_prime"],
+        "cofactor": hx(cofactor_true),
+        "subgroup_order": hx(n),
+        "subgroup_probable_prime": subgroup_prime,
         "generator": {"x": hx(G[0]), "y": hx(G[1])},
         "target": {"x": hx(target[0]), "y": hx(target[1])},
         "known_log": hx(known) if known is not None else None,
         "endomorphism": endomorphism,
         "volcanoes": volcanoes or [],
-        "embedding_degree_bound": embedding_bound(p, parts["subgroup_int"]) if parts["subgroup_probable_prime"] else None,
+        "embedding_degree_bound": embedding_bound(p, n) if subgroup_prime else None,
         "order_certificate": certificate,
         "verification": verification,
         "suggested_solvers": solvers_for(tags, parts),
