@@ -113,6 +113,16 @@ therefore measure this implementation, not an asymptotic XL cost.
   workload. It finishes in well under a minute on four cores.
 - `full` adds `n = 19` at `l = 5` and `l = 6` with more families, including
   `geomtraceu`, on 3 workloads each, plus `n = 23, l = 6`. It is not gated in CI.
+- `search` runs the factor bases chosen by [`../fb-search`](../fb-search/README.md)
+  (`selected.json`: family, `l` and seed) on workloads 1-3. Cells carry the seed
+  (`-s<seed>-` in the cell label). The current selection is 39 bases, 117 runs, at
+  `n = 19`. It is not gated in CI.
+
+A single workload is a noisy measurement of a factor base: at `n = 19` the query
+count of one collection run has a standard deviation of about 35% of its mean, and
+workloads 1-3 all fall in the upper tail for `n19m2l5-prefix`. The fb-search replay
+reproduces every m = 2 run's query counts exactly, so compare bases by
+`search.py expect` over many workloads, and use these suites as regression checks.
 
 ## Recording and history
 
