@@ -147,6 +147,24 @@ def validate_run(run: dict) -> dict:
         require(series is None or (isinstance(series, str) and series.startswith("ICBW1h")),
                 "invalid workload series ID")
 
+    if run["source_curve_ref"].startswith("EC1P"):
+        require(run["candidate_id"] is not None and run["candidate_id"].startswith("IC1P"),
+                "prime-field curve must use the IC1P candidate namespace")
+        require(run.get("operation_unit") == "prime_group_operation",
+                "prime-field normalized receipt has the wrong operation unit")
+        require(isinstance(run.get("native_prime_report"), dict)
+                and run["native_prime_report"].get("operation") == "prime",
+                "prime-field normalized receipt must retain the native ca-ic report")
+        require(run["provenance"].get("binary_blake3"),
+                "prime-field receipt lacks executable digest")
+        batch = run.get("rho_batch") or {}
+        require(type(batch.get("shared_dp_expected_operations")) is int
+                and batch["shared_dp_expected_operations"] > 0,
+                "prime-field receipt lacks batch-rho control")
+        require(type(batch.get("folded_shared_dp_expected_operations")) is int
+                and batch["folded_shared_dp_expected_operations"] > 0,
+                "prime-field receipt lacks folded batch-rho control")
+
     online = run.get("online")
     if online is not None:
         require(counts["targets"] == 1, "primary online receipt needs exactly one target")
