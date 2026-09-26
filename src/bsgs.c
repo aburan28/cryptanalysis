@@ -10,10 +10,20 @@
 #include "cryptanalysis/ca_bsgs.h"
 #include "dlog_internal.h"
 
+/* Baby and giant steps advance BSGS_LANES elements at once through the
+ * group's batched op, which on a curve shares one field inversion among
+ * them (a single affine add pays one each).  Which elements are hashed,
+ * inserted, looked up and verified, in which order, and every count are
+ * those of the one-at-a-time loops; a block may compute up to
+ * BSGS_LANES - 1 elements past the last one used, which are not counted. */
+#define BSGS_LANES 64
+
 struct ca_bsgs_table {
     const ca_group *g;
     ca_elem base;
     ca_elem neg_m_base; /* -m * base */
+    ca_elem giant[BSGS_LANES]; /* k * (-m * base) for k < BSGS_LANES */
+    ca_elem giant_block;       /* BSGS_LANES * (-m * base) */
     uint64_t m;
     ca_htab tab;
 };
@@ -33,22 +43,38 @@ ca_status ca_bsgs_table_new(const ca_group *g, const ca_elem *base, uint64_t m, 
     t->base = *base;
     t->m = m;
     if (ca_htab_init(&t->tab, (size_t)m) != CA_OK) { free(t); return CA_ERR_NOMEM; }
-    ca_elem cur;
-    ca_group_identity(g, &cur);
-    for (uint64_t j = 0; j < m; j++) {
-        int rc = ca_htab_insert(&t->tab, ca_group_hash(g, &cur), j, 0, NULL, NULL);
-        if (rc < 0) { ca_bsgs_table_free(t); return CA_ERR_NOMEM; }
-        if (rc == 1) {
-            /* base has order <= j: the table already spans the whole group */
-            t->m = j;
-            break;
+    /* lane c holds (j0 + c) * base for the block starting at j0 */
+    ca_elem lane[BSGS_LANES], stride[BSGS_LANES];
+    uint64_t scratch[2 * BSGS_LANES];
+    const uint64_t first = m < BSGS_LANES ? m : BSGS_LANES;
+    ca_group_identity(g, &lane[0]);
+    for (uint64_t c = 1; c < first; c++) ca_group_op(g, &lane[c], &lane[c - 1], base);
+    ca_group_mul(g, &stride[0], base, BSGS_LANES, NULL);
+    for (int c = 1; c < BSGS_LANES; c++) stride[c] = stride[0];
+    for (uint64_t j0 = 0; j0 < m; j0 += BSGS_LANES) {
+        const uint64_t n = m - j0 < BSGS_LANES ? m - j0 : BSGS_LANES;
+        for (uint64_t c = 0; c < n; c++) {
+            int rc = ca_htab_insert(&t->tab, ca_group_hash(g, &lane[c]), j0 + c, 0, NULL, NULL);
+            if (rc < 0) { ca_bsgs_table_free(t); return CA_ERR_NOMEM; }
+            if (rc == 1) {
+                /* base has order <= j: the table already spans the whole group */
+                t->m = j0 + c;
+                goto baby_done;
+            }
         }
-        ca_group_op(g, &cur, &cur, base);
+        if (j0 + BSGS_LANES < m) {
+            const uint64_t next = m - j0 - BSGS_LANES;
+            ca_group_batch_op(g, lane, lane, stride, next < BSGS_LANES ? next : BSGS_LANES, scratch);
+        }
     }
+baby_done:
     if (t->m == 0) { ca_bsgs_table_free(t); return CA_ERR_INVALID; }
     ca_elem mb;
     ca_group_mul(g, &mb, base, t->m, NULL);
     ca_group_inv(g, &t->neg_m_base, &mb);
+    ca_group_identity(g, &t->giant[0]);
+    for (int k = 1; k < BSGS_LANES; k++) ca_group_op(g, &t->giant[k], &t->giant[k - 1], &t->neg_m_base);
+    ca_group_op(g, &t->giant_block, &t->giant[BSGS_LANES - 1], &t->neg_m_base);
     *out = t;
     return CA_OK;
 }
@@ -75,26 +101,37 @@ static ca_status bsgs_table_solve_impl(const ca_bsgs_table *t, const ca_elem *ta
     ca_group_inv(g, &tmp, &tmp);
     ca_group_op(g, &R, target, &tmp);
     uint64_t steps = width_m1 / m + 1;
-    for (uint64_t i = 0; i < steps; i++) {
-        uint64_t j;
-        if (ca_htab_find(&t->tab, ca_group_hash(g, &R), &j, NULL)) {
-            ca_u128 cand = (ca_u128)lo + (ca_u128)i * m + j;
-            if (cand <= hi) {
-                uint64_t cx = (uint64_t)cand;
-                if (ca_verify_log(g, &t->base, target, cx)) {
-                    *x = cx;
-                    if (st) {
-                        st->iterations += i + 1;
-                        st->table_entries = ca_max_u64(st->table_entries, t->tab.count);
-                        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&t->tab));
-                        if (add_time) st->seconds += ca_now() - t0;
+    /* Step i + k of a block is R_i + k * (-m base), BSGS_LANES of them per
+     * batched op; they are looked up in order and each one that does not
+     * return is charged one op, as the one-step loop charges it. */
+    ca_elem Rs[BSGS_LANES], Rrep[BSGS_LANES];
+    uint64_t scratch[2 * BSGS_LANES];
+    for (uint64_t i0 = 0; i0 < steps; i0 += BSGS_LANES) {
+        const uint64_t n = steps - i0 < BSGS_LANES ? steps - i0 : BSGS_LANES;
+        for (uint64_t k = 0; k < n; k++) Rrep[k] = R;
+        ca_group_batch_op(g, Rs, Rrep, t->giant, n, scratch);
+        for (uint64_t k = 0; k < n; k++) {
+            const uint64_t i = i0 + k;
+            uint64_t j;
+            if (ca_htab_find(&t->tab, ca_group_hash(g, &Rs[k]), &j, NULL)) {
+                ca_u128 cand = (ca_u128)lo + (ca_u128)i * m + j;
+                if (cand <= hi) {
+                    uint64_t cx = (uint64_t)cand;
+                    if (ca_verify_log(g, &t->base, target, cx)) {
+                        *x = cx;
+                        if (st) {
+                            st->iterations += i + 1;
+                            st->table_entries = ca_max_u64(st->table_entries, t->tab.count);
+                            st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&t->tab));
+                            if (add_time) st->seconds += ca_now() - t0;
+                        }
+                        return CA_OK;
                     }
-                    return CA_OK;
                 }
             }
+            if (st) st->group_ops++;
         }
-        ca_group_op(g, &R, &R, &t->neg_m_base);
-        if (st) st->group_ops++;
+        if (n == BSGS_LANES) ca_group_op(g, &R, &R, &t->giant_block);
     }
     if (st) {
         st->iterations += steps;
