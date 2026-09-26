@@ -321,6 +321,11 @@ enum RhoCollabOp {
         /// TCP peers to gossip with (repeatable).
         #[arg(long = "peer")]
         peers: Vec<String>,
+        /// Shared token every TCP peer must present before its check-ins are
+        /// accepted, and that this node presents when dialling peers. Empty
+        /// serves and dials unauthenticated (trusted networks only).
+        #[arg(long, default_value = "")]
+        peer_token: String,
         /// Walkers per check-in.
         #[arg(long, default_value_t = 64)]
         checkin_every: u64,
@@ -374,6 +379,9 @@ enum RhoCollabOp {
         mailbox: Option<std::path::PathBuf>,
         #[arg(long = "peer")]
         peers: Vec<String>,
+        /// Shared token presented to each TCP peer that requires one.
+        #[arg(long, default_value = "")]
+        peer_token: String,
         /// Read the objective's accepted points from this cairn node.
         #[arg(long, requires = "objective")]
         cairn: Option<String>,
@@ -851,7 +859,7 @@ fn cmd_rho_collab(op: RhoCollabOp) {
         wall_clock, CairnConfig, CairnTransport, Submitter,
     };
     use crate::cryptanalysis::pollard_collab::{
-        demo_curve, run_lane, sync_with_peer, JobSpec, LaneOptions, Mailbox, PeerServer,
+        demo_curve, run_lane, sync_with_peer_auth, JobSpec, LaneOptions, Mailbox, PeerServer,
         SharedState, DEMO_CURVES,
     };
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -1011,6 +1019,7 @@ fn cmd_rho_collab(op: RhoCollabOp) {
             mailbox,
             listen,
             peers,
+            peer_token,
             checkin_every,
             lease_secs,
             sync_secs,
@@ -1067,14 +1076,30 @@ fn cmd_rho_collab(op: RhoCollabOp) {
                 Arc::new(Mutex::new(mb))
             });
             let _server = listen.as_ref().map(|addr| {
-                let s = PeerServer::start(addr, Arc::clone(&ctx), Arc::clone(&state))
-                    .unwrap_or_else(|e| die(format!("listen {addr}: {e}")));
-                eprintln!("[collab] listening on {}", s.local_addr());
+                let s = PeerServer::start_with_token(
+                    addr,
+                    Arc::clone(&ctx),
+                    Arc::clone(&state),
+                    peer_token.clone(),
+                )
+                .unwrap_or_else(|e| die(format!("listen {addr}: {e}")));
+                if peer_token.is_empty() {
+                    eprintln!(
+                        "[collab] listening on {} (UNAUTHENTICATED: pass --peer-token on any \
+                         untrusted network)",
+                        s.local_addr()
+                    );
+                } else {
+                    eprintln!(
+                        "[collab] listening on {} (peer token required)",
+                        s.local_addr()
+                    );
+                }
                 s
             });
             let do_sync = |verbose: bool| {
                 for p in &peers {
-                    match sync_with_peer(p.as_str(), &ctx, &state) {
+                    match sync_with_peer_auth(p.as_str(), &ctx, &state, &peer_token) {
                         Ok(r) => {
                             if verbose && (r.received > 0 || r.sent > 0) {
                                 eprintln!(
@@ -1251,6 +1276,7 @@ fn cmd_rho_collab(op: RhoCollabOp) {
             job,
             mailbox,
             peers,
+            peer_token,
             cairn,
             objective,
             json,
@@ -1276,7 +1302,7 @@ fn cmd_rho_collab(op: RhoCollabOp) {
                 }
             }
             for p in &peers {
-                if let Err(e) = sync_with_peer(p.as_str(), &ctx, &state) {
+                if let Err(e) = sync_with_peer_auth(p.as_str(), &ctx, &state, &peer_token) {
                     eprintln!("[collab] {p}: {e}");
                 }
             }
