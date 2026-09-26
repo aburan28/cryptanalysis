@@ -74,7 +74,7 @@ class MeterTest(unittest.TestCase):
             path = Path(directory) / "history.csv"
             old_fields = bench.CSV_FIELDS[:bench.CSV_FIELDS.index("workload_series_id")]
             with path.open("w", newline="") as fh:
-                writer = csv.DictWriter(fh, fieldnames=old_fields, lineterminator="\\n")
+                writer = csv.DictWriter(fh, fieldnames=old_fields, lineterminator="\n")
                 writer.writeheader()
                 writer.writerow({"bench_cell": "old", "ic_online_ns": "100",
                                  "rho_online_ns": "200", "online_speedup": "2"})
