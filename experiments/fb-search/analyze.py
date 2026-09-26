@@ -15,16 +15,13 @@ import math
 import statistics
 from collections import defaultdict
 
-from search import spearman
+from search import load_jsonl, spearman
 
 REF = "prefix"
 
 
 def load(paths):
-    out = []
-    for p in paths:
-        with open(p) as fh:
-            out += [json.loads(line) for line in fh if line.strip()]
+    out = load_jsonl(paths)
     # one record per (candidate, rank-process runs); a repeated scan keeps the last
     uniq = {}
     for r in out:
@@ -40,11 +37,58 @@ def fmt(x, p=3):
     return "-" if x is None else f"{x:.{p}g}"
 
 
+def measured(receipts_path: str, selection_path: str, baseline: str) -> None:
+    """One row per candidate: measured cold totals on the shared workloads, paired with the baseline
+    candidate's runs on the same workloads (geometric mean of the per-workload ratio, with its range)."""
+    with open(receipts_path) as fh:
+        recs = [json.loads(line) for line in fh if line.strip()]
+    picks = {p["candidate_id"]: p for p in json.loads(open(selection_path).read())["picks"]}
+    by_cand = defaultdict(dict)
+    for r in recs:
+        by_cand[r["candidate_id"]][r["workload_id"]] = r
+    base_id = next(cid for cid, p in picks.items() if f"n{p['cell']['n']}l{p['cell']['l']}-{p['cell']['family']}"
+                   == baseline)
+    base = by_cand[base_id]
+    print(f"## Measured end-to-end cost (baseline `{base_id}`, {baseline})\n")
+    print("Every row is a complete IC pipeline with every target's log verified by scalar replay. `total` is the "
+          "mean cold total over the workloads (3 targets each, rps); `speedup` is baseline_total / candidate_total "
+          "per workload, geometric mean [min, max] over the paired workloads. `x rho` and `x floor` are the "
+          "boundary ratios fixed in the workload records; `S` is total / sqrt(r) in rps.\n")
+    print("| candidate | l | family | seed | role | verified | queries (mean) | predicted total | measured total "
+          "| speedup vs baseline | x rho | x floor | S |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    rows = []
+    for cid, runs in by_cand.items():
+        p = picks.get(cid)
+        if p is None:
+            continue
+        common = sorted(set(runs) & set(base))
+        sp = [base[w]["total_operations"] / runs[w]["total_operations"] for w in common
+              if runs[w]["total_operations"] and base[w]["total_operations"]]
+        rows.append((p["cell"]["l"], p["cell"]["family"] != REF, p["cell"]["family"], p["rank"], cid, p, runs, sp))
+    for l, _, fam, _, cid, p, runs, sp in sorted(rows):
+        rs = list(runs.values())
+        ok = sum(1 for r in rs if r["status"] == "complete" and r["verified_scalar"])
+        tot = statistics.fmean(r["total_operations"] for r in rs)
+        print(f"| `{cid}` | {l} | {fam} | {p['cell']['seed']} | {p['role']} | {ok}/{len(rs)} "
+              f"| {statistics.fmean(r['counts']['ordinary_queries'] + r['counts']['descent_attempts'] for r in rs):.0f} "
+              f"| {p['predicted']['total_operations_mean']:.3e} | {tot:.3e} "
+              f"| {statistics.geometric_mean(sp):.2f} [{min(sp):.2f}, {max(sp):.2f}] "
+              f"| {statistics.fmean(r['ratio_to_rho'] for r in rs):.4g} "
+              f"| {statistics.fmean(r['ratio_to_floor'] for r in rs):.4g} "
+              f"| {statistics.fmean(r['S_rps'] for r in rs):.4g} |")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("scans", nargs="+")
-    ap.add_argument("--best-of", type=int, nargs="+", default=[1, 8, 48])
+    ap.add_argument("scans", nargs="*")
+    ap.add_argument("--receipts", default="", help="ic-bench receipts to tabulate against --selection")
+    ap.add_argument("--selection", default="selected.json")
+    ap.add_argument("--baseline", default="n19l5-prefix")
     args = ap.parse_args()
+    if args.receipts:
+        measured(args.receipts, args.selection, args.baseline)
+        return
     recs = [r for r in load(args.scans) if cost(r) is not None]
     groups = defaultdict(list)
     for r in recs:

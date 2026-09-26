@@ -339,9 +339,11 @@ def cmd_scan(args) -> None:
 
 
 def load_jsonl(paths: list[str]) -> list[dict]:
+    import gzip
+
     out = []
     for p in paths:
-        with open(p) as fh:
+        with (gzip.open(p, "rt") if str(p).endswith(".gz") else open(p)) as fh:
             out += [json.loads(line) for line in fh if line.strip()]
     return out
 
@@ -455,8 +457,9 @@ def cmd_check(args) -> None:
             w = csv.DictWriter(fh, fieldnames=fields, lineterminator="\n")
             w.writeheader()
             w.writerows(rows)
-    for r in rows:
-        print(r)
+    if args.verbose:
+        for r in rows:
+            print(r)
     zs = [r["z_collection"] for r in rows if r["z_collection"] is not None]
     within = sum(1 for z in zs if abs(z) <= 1)
     if not rows:
@@ -465,7 +468,13 @@ def cmd_check(args) -> None:
     if zs:
         print(f"{len(rows)} runs; collection within 1 sd of the expectation: {within}/{len(zs)}; mean z = "
               f"{statistics.fmean(zs):+.2f}")
-    print(f"exact replay of collection and descent query counts: {sum(r['replay_exact'] for r in rows)}/{len(rows)}")
+    exact = sum(r["replay_exact"] for r in rows)
+    print(f"exact replay of collection and descent query counts: {exact}/{len(rows)}")
+    if args.require_exact and exact < len(rows):
+        bad = [r["run_id"] for r in rows if not r["replay_exact"]]
+        print(f"replay mismatch (the PDP solver missed decompositions or the pipeline changed): {bad}",
+              file=sys.stderr)
+        sys.exit(1)
     rep = [r["meas_total_ops"] / r["replay_total_ops"] for r in rows if r["replay_total_ops"] and r["meas_total_ops"]]
     if rep:
         print(f"measured total / (probe price x replayed queries + fixed): median {statistics.median(rep):.4f} "
@@ -476,6 +485,50 @@ def cmd_check(args) -> None:
         ratio = [b / a for a, b in paired]
         print(f"total ops: spearman {rho:.3f}, measured/predicted median {statistics.median(ratio):.3f} "
               f"[{min(ratio):.3f}, {max(ratio):.3f}]")
+
+
+def cmd_expect(args) -> None:
+    """Replay estimate: the pipeline's exact query counts on many ic-bench workloads (complete solver
+    assumed; checked by `check`) priced with the probe.  Not an end-to-end measurement."""
+    calibration = json.loads(bench.CALIBRATION.read_text())
+    weights = weights_for(calibration, args.n)
+    curve = ToyCurve(args.n)
+    bench._warm_process()
+    out = Path(args.out) if args.out else None
+    for spec in args.bases:
+        family, l, seed = spec.split(":")
+        l, seed = int(l), int(seed)
+        rec = score(curve, family, l, seed, targets=args.targets, runs=args.runs, probe_queries=args.probe_queries,
+                    weights=weights)
+        fb = FactorBase(curve, family, l, seed)
+        target = achievable_rank(fb, 2)
+        wids, qs = [], []
+        for w in parse_seeds(args.workloads):
+            wid, wrec = bench.workload(curve, w, args.targets)
+            rp = replay_workload(fb, wrec, target)
+            wids.append(wid)
+            qs.append(rp["collection_queries"] + sum(rp["descent_attempts"]))
+        price, fixed = rec["probe"]["ops_per_query"], rec["probe"]["fixed_ops"]
+        totals = [fixed + price * q for q in qs]
+        rng = random.Random(f"fbsearch-expect|{rec['candidate_id']}")
+        boot = sorted(statistics.fmean(rng.choices(totals, k=len(totals))) for _ in range(2000))
+        row = {
+            "schema": "fb-search-replay-estimate/1", "kind": "replay_estimate", "candidate_id": rec["candidate_id"],
+            "curve_id": curve.curve_id, "cell": rec["cell"], "workload_ids": wids,
+            "workload_seeds": args.workloads, "queries_mean": statistics.fmean(qs),
+            "total_operations_mean": statistics.fmean(totals),
+            "total_operations_ci95": [boot[50], boot[1949]],
+            "predicted_total_operations_mean": rec["predicted"]["total_operations_mean"],
+            "probe": rec["probe"], "calibration_id": calibration["calibration_id"],
+            "note": "query counts replayed exactly through the factor base's decomposition table on each workload's "
+            "streams; phase costs priced by the probe (per query) and probed fixed costs; not a measured run",
+            "implementation_sha256": implementation_sha256(),
+        }
+        print(f"{spec:18s} {rec['candidate_id']} replay mean {row['total_operations_mean']:.3e} "
+              f"[{boot[50]:.3e}, {boot[1949]:.3e}] predicted {row['predicted_total_operations_mean']:.3e}", flush=True)
+        if out:
+            with out.open("a") as fh:
+                fh.write(canonical(row) + "\n")
 
 
 def main() -> None:
@@ -502,8 +555,18 @@ def main() -> None:
     ch.add_argument("--predictions", nargs="*", default=[])
     ch.add_argument("--selection", default=str(SELECTED))
     ch.add_argument("--out", default="")
+    ch.add_argument("--require-exact", action="store_true", help="exit 1 unless every m = 2 run replays exactly")
+    ch.add_argument("--verbose", action="store_true", help="print every joined row")
+    ex = sub.add_parser("expect", help="replay estimate of the expected cost over many workloads")
+    ex.add_argument("--n", type=int, required=True)
+    ex.add_argument("bases", nargs="+", help="family:l:seed")
+    ex.add_argument("--workloads", default="1-200")
+    ex.add_argument("--targets", type=int, default=3)
+    ex.add_argument("--runs", type=int, default=400)
+    ex.add_argument("--probe-queries", type=int, default=200)
+    ex.add_argument("--out", default="")
     args = ap.parse_args()
-    {"scan": cmd_scan, "select": cmd_select, "check": cmd_check}[args.cmd](args)
+    {"scan": cmd_scan, "select": cmd_select, "check": cmd_check, "expect": cmd_expect}[args.cmd](args)
 
 
 if __name__ == "__main__":
