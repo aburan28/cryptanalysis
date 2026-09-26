@@ -20,6 +20,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "ic-candidate-catalog"))
 
+import amortize  # noqa: E402
 import bench  # noqa: E402
 import compare  # noqa: E402
 import opcount  # noqa: E402
@@ -68,24 +69,34 @@ class MeterTest(unittest.TestCase):
             self.assertEqual(set(weights_for(CALIBRATION, n)), set(opcount.CLASSES))
             self.assertTrue(all(isinstance(w, int) and w > 0 for w in weights_for(CALIBRATION, n).values()))
 
-    def test_history_migrates_existing_online_values(self):
+    def test_history_migrates_pre_batch_schema(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "history.csv"
-            old_fields = bench.CSV_FIELDS[:-3]
+            old_fields = bench.CSV_FIELDS[:bench.CSV_FIELDS.index("workload_series_id")]
             with path.open("w", newline="") as fh:
-                writer = csv.writer(fh)
-                writer.writerow(old_fields)
-                writer.writerow(["old" if field == "bench_cell" else "" for field in old_fields])
-                writer.writerow(["extended" if field == "bench_cell" else "" for field in old_fields] +
-                                ["100", "200", "2"])
-            bench.write_csv(path, [{"bench_cell": "new", "ic_online_ns": "300"}], append=True)
+                writer = csv.DictWriter(fh, fieldnames=old_fields, lineterminator="\\n")
+                writer.writeheader()
+                writer.writerow({"bench_cell": "old", "ic_online_ns": "100",
+                                 "rho_online_ns": "200", "online_speedup": "2"})
+            bench.write_csv(path, [{"bench_cell": "new", "workload_series_id": "ICBW1h123"}], append=True)
             with path.open(newline="") as fh:
                 reader = csv.DictReader(fh)
                 self.assertEqual(reader.fieldnames, bench.CSV_FIELDS)
                 rows = list(reader)
-            self.assertEqual([row["bench_cell"] for row in rows], ["old", "extended", "new"])
-            self.assertEqual(rows[1]["rho_online_ns"], "200")
-            self.assertEqual(rows[2]["ic_online_ns"], "300")
+            self.assertEqual([row["bench_cell"] for row in rows], ["old", "new"])
+            self.assertEqual(rows[0]["rho_online_ns"], "200")
+            self.assertEqual(rows[0]["workload_series_id"], "")
+            self.assertEqual(rows[1]["workload_series_id"], "ICBW1h123")
+
+    def test_batch_rho_reference_and_prefixes(self):
+        r, n = 130873, 19
+        single = round((bench.math.pi * r / 2) ** 0.5)
+        folded = round((bench.math.pi * r / (4 * n)) ** 0.5)
+        self.assertEqual(bench.batch_rho_group_operations(r, 1), single)
+        self.assertEqual(bench.batch_rho_group_operations(r, 1, 2 * n), folded)
+        self.assertLess(bench.batch_rho_group_operations(r, 4), 4 * single)
+        self.assertEqual(bench.batch_prefix_sizes(16), [1, 2, 4, 8, 16])
+        self.assertEqual(bench.batch_prefix_sizes(13), [1, 2, 4, 8, 13])
 
 
 class ReceiptTest(unittest.TestCase):
@@ -103,6 +114,13 @@ class ReceiptTest(unittest.TestCase):
         self.assertEqual(rec["total_operations"], sum(rec["phase_operations"].values()))
         self.assertEqual(set(rec["phase_operations"]), set(bench.PHASES))
         self.assertEqual(rec["counts"]["targets_verified"], CELL["targets"])
+        self.assertEqual(rec["warm"]["shared_operations"] + rec["warm"]["target_operations"],
+                         rec["total_operations"])
+        self.assertEqual([p["targets"] for p in rec["warm"]["prefixes"]], [1, 2])
+        self.assertEqual(rec["warm"]["prefixes"][-1]["ic_operations"], rec["total_operations"])
+        self.assertEqual(rec["rho_batch"]["folded_shared_dp_expected_operations"],
+                         rec["warm"]["folded_batch_rho_operations"])
+        amortize.validate_receipt(rec)
 
     def test_identifiers_follow_the_convention(self):
         rec = self.outs[0]["receipt"]
