@@ -191,7 +191,7 @@ class PrimeBridgeTest(unittest.TestCase):
                 "group_order": "262148", "cofactor": 4, "subgroup_order": "65537",
                 "generator": {"x": "1", "y": "2"},
                 "order_certificate": {"method": "test", "hasse_interval": ["1","2"], "bsgs_steps": 1},
-                "endomorphism": {"automorphism_order": 6}},
+                "endomorphism": {"automorphism_order": 6, "rho_speedup": 2.449489742783178}},
             "configuration": {"solver": "orbit", "orbits_requested": 0, "width": 2.0,
                 "orbits_per_target": 0.5, "relations_per_orbit": 1.5, "large_primes": True,
                 "learn": True, "max_ops": 100000, "max_descent_ops": 10000,
