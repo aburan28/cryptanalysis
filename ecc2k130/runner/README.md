@@ -108,6 +108,24 @@ the new fleet. Archived `ecc2k130-table8-22b-v1` records have a different walk
 identity and must remain separate; they are not relabeled or merged by this
 production switch.
 
+The ingest pod is also the Runpod CPU walker. When it stops, the page freezes at
+its last publish, as it did when every Runpod pod went silent at 23:04 UTC on
+2026-09-25. `modal_ingest.py` runs the same deployed `aws/dp_ingest.py`, with the
+pod's arguments, in a one-core Modal container for at most 23 hours:
+
+```sh
+export ECC_RDS_SECURITY_GROUP=YOUR_RDS_SECURITY_GROUP
+modal run --detach ecc2k130/runner/modal_ingest.py --seconds 82800
+```
+
+It downloads the S3 copy at start and logs its sha256. It connects with the
+Modal secret's `RHO_DP_DSN`, the same `rho` role as the pod's `rho/dp-rds` secret.
+It opens its own `/32` rule and removes it when it ends; `modal app stop` skips
+that cleanup, as it does for the fleet. Running it alongside a restarted pod is
+safe: point inserts are `ON CONFLICT DO NOTHING`, and the direct-report sweep
+row-locks its counters and watermark, so a concurrent sweep waits and continues
+from the new mark.
+
 DP weight is a Hamming-weight cutoff, not a different record size: both cutoffs
 use the same 32-byte record. For two corpora with the **same walk identity**,
 `dp_compat.py` can retain DP34 records whose endpoint already satisfies DP32,
