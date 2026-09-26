@@ -168,6 +168,7 @@ From the repository root, with Python >=3.10 and Clang or GCC:
 python3 experiments/groebner-perf-20260924/round13/build.py
 python3 -m unittest discover -s experiments/groebner-perf-20260924/round13 -p 'test_*.py' -v
 python3 experiments/groebner-perf-20260924/round13/verify_evidence.py
+python3 experiments/groebner-perf-20260924/round4/build.py
 python3 experiments/groebner-perf-20260924/round13/benchmark.py --output /tmp/cached-reduction-new-run.json.gz
 ```
 
