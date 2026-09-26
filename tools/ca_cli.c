@@ -153,8 +153,9 @@ static _Noreturn void usage(void)
         "usage: cryptanalysis <command> [options]  (ca is a compatible alias)\n"
         "  bsgs  --group zp|ec --p P --order N --g G --h H [--lo L --hi U]\n"
         "  rho   --group zp|ec --p P --order N --g G --h H [--threads T]\n"
-        "  rho   --curve ecc2k130 [--run-id R --dp-file F --checkpoint F ...]\n"
-        "        --check [--kat F] runs the ECC2K-130 host known-answer check\n"
+        "  rho   --curve ecc2k130 [--backend cuda|metal] [walk options]\n"
+        "        cuda: campaign sigma walk; metal: separate table walk\n"
+        "        --check [--kat F] checks the selected backend (KAT: cuda only)\n"
         "  version | factor N | prime N | ec-order --p P --a A --b B | gpu-info\n"
         "  gen   --group zp|ec --p P [--a A --b B] [--order N] [--x X] [--seed S]\n"
         "  solve --alg bsgs|rho|kangaroo|grumpy|precomp|glv|dlog|gpu-rho --group zp|ec --p P [--a "
@@ -441,12 +442,17 @@ static int cmd_solve(const char *selected_alg)
     return 0;
 }
 
-/* The campaign's GF(2^131) walk uses a specialized CUDA kernel and fixed
- * public instance. Keep the backend private to the package; the stable user
- * entry point is `cryptanalysis rho --curve ecc2k130`. This is a walk, not a
- * general arbitrary-target DLP solver. */
+/* ECC2K-130 walks use private curve-specific backends. CUDA uses the live
+ * campaign's sigma walk; Metal uses a separate table walk and corpus. This is
+ * a walk, not a general arbitrary-target DLP solver. */
 static int cmd_ecc2k130_rho(void)
 {
+    const char *selected_backend = flag("--backend") ? opt("--backend") : "cuda";
+    if (!selected_backend ||
+        (strcmp(selected_backend, "cuda") && strcmp(selected_backend, "metal")))
+        die("--backend must be cuda or metal");
+    if (!strcmp(selected_backend, "metal") && (flag("--kat") || flag("--checkpoint")))
+        die("Metal table walk has no campaign KAT or CUDA checkpoint format");
     char self[PATH_MAX];
 #ifdef __linux__
     ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
@@ -462,11 +468,11 @@ static int cmd_ecc2k130_rho(void)
     if (!slash) die("cannot locate cryptanalysis executable directory");
     *slash = '\0';
     char backend[PATH_MAX];
-    int npath =
-        snprintf(backend, sizeof(backend), "%s/../libexec/cryptanalysis/ecc2k130-rho-kernel", self);
+    int npath = snprintf(backend, sizeof(backend), "%s/../libexec/cryptanalysis/ecc2k130-rho-%s",
+                         self, selected_backend);
     if (npath < 0 || (size_t)npath >= sizeof(backend)) die("backend path is too long");
     if (access(backend, X_OK) != 0)
-        die("ECC2K-130 rho kernel is not installed beside cryptanalysis");
+        die("selected ECC2K-130 rho backend is not installed beside cryptanalysis");
     char **args = calloc((size_t)argc_g + 1, sizeof(*args));
     if (!args) die("cannot allocate backend arguments");
     int j = 0;
@@ -475,6 +481,11 @@ static int cmd_ecc2k130_rho(void)
     args[j++] = flag("--check") ? "check" : flag("--bench") ? "bench" : "walk";
     for (int i = 2; i < argc_g; ++i) {
         if (!strcmp(argv_g[i], "--check") || !strcmp(argv_g[i], "--bench")) continue;
+        if (!strcmp(argv_g[i], "--backend")) {
+            ++i;
+            if (i >= argc_g || strcmp(argv_g[i], selected_backend)) die("invalid --backend value");
+            continue;
+        }
         if (!strcmp(argv_g[i], "--curve")) {
             ++i;
             if (i >= argc_g || strcmp(argv_g[i], "ecc2k130")) die("--curve must be ecc2k130");
