@@ -129,6 +129,7 @@ def list_kernels(binary: str, full: bool, filters: list[str]) -> list[dict]:
     if full:
         cmd.append("--full")
     ks = run_json(cmd, dict(os.environ))
+    filters = [f for spec in filters for f in spec.split(",") if f]
     if filters:
         ks = [k for k in ks if any(f in k["id"] for f in filters)]
     return ks
