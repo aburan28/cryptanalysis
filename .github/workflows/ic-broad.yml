@@ -1,0 +1,73 @@
+name: ic-broad
+
+# Manual long-form IC campaigns. PR CI stays on the small deterministic suite;
+# this workflow is for full/search/batch evidence and always uploads receipts.
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Benchmark suite
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - search
+          - batch
+      jobs:
+        description: Parallel fresh worker processes
+        required: true
+        default: "2"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ic-broad-${{ github.ref }}-${{ inputs.suite }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install --quiet numpy pytest
+
+      - name: Validate benchmark code
+        run: |
+          python -m pytest -q experiments/ic-bench
+          python -m pytest -q experiments/ic-candidate-catalog
+
+      - name: Run selected suite
+        working-directory: experiments/ic-bench
+        run: python bench.py run --suite "${{ inputs.suite }}" --jobs "${{ inputs.jobs }}" --out-dir broad-out
+
+      - name: Validate receipts
+        working-directory: experiments/ic-bench
+        run: python ../ic-candidate-catalog/analyze.py "broad-out/${{ inputs.suite }}.jsonl" > "broad-out/${{ inputs.suite }}-analysis.json"
+
+      - name: Multi-target prefix report
+        if: inputs.suite == 'batch'
+        working-directory: experiments/ic-bench
+        run: |
+          python amortize.py broad-out/batch.jsonl --require-max-power 16 | tee broad-out/batch-amortization.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Standard report
+        if: inputs.suite != 'batch'
+        working-directory: experiments/ic-bench
+        run: python report.py "broad-out/${{ inputs.suite }}.csv" | tee "broad-out/${{ inputs.suite }}-report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "ic-broad-${{ inputs.suite }}-${{ github.run_id }}"
+          path: experiments/ic-bench/broad-out/
+          if-no-files-found: warn
