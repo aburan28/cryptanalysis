@@ -189,6 +189,10 @@ def write(out_dir,items):
             ident,rec=x[key]; p=d/f"{ident}.json"; txt=json.dumps(rec,indent=1,sort_keys=True)+"\\n"
             if p.exists() and p.read_text()!=txt: raise ValueError(f"{p} identity collision")
             p.write_text(txt)
+    native=out_dir/"native"; native.mkdir(exist_ok=True)
+    for x in items:
+        r=x["receipt"]; p=native/f"{r['run_id']}.json"
+        p.write_text(json.dumps(r["native_prime_report"],indent=1,sort_keys=True)+"\\n")
 
 def run_cell(binary,cell):
     cmd=[str(binary),"prime","--type",cell["curve_type"],"--bits",str(cell["bits"]),
