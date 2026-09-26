@@ -13,6 +13,14 @@ import statistics
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 
+# experiments/pdp-scaling/ is shared with, and still being actively measured
+# by, other experiments; sumpoly.py has since changed there.  This round's
+# receipts pin the byte content it was measured against, so that content is
+# frozen here rather than re-pointed at the live, moved-on file.
+FROZEN_SOURCES = {
+    'experiments/pdp-scaling/sumpoly.py': HERE/'results'/'sources'/'sumpoly.py',
+}
+
 
 def ratio(rows,numerator,denominator):
     logs = [math.log(r[numerator]['wall_ns']/r[denominator]['wall_ns']) for r in rows]
@@ -29,7 +37,8 @@ def main():
         assert hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==expected,name
     report = json.loads(gzip.decompress((HERE/'results/query-comparison.json.gz').read_bytes()))
     for name,expected in report['source_sha256'].items():
-        assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==expected,name
+        path = FROZEN_SOURCES[name] if name in FROZEN_SOURCES else ROOT/name
+        assert hashlib.sha256(path.read_bytes()).hexdigest()==expected,name
     assert report['candidate_id'] is None and report['IC_online_ms'] is None and report['rho_online_ms'] is None
     assert report['status']=='PASS' and report['capacity']==8192
     assert report['arms']==['cpu','gpu-direct','gpu-indirect','evaluation']
