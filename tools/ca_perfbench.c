@@ -1371,9 +1371,35 @@ static const pb_kernel KERNELS[] = {
 
 /* ---- harness ------------------------------------------------------------- */
 
-/* The region `perfindex.py instr` restricts callgrind to
- * (--toggle-collect=*perfbench_measured_region*).  Not static and not
- * inlinable, so the symbol exists under exactly this name. */
+/* A valgrind client request (the preamble of <valgrind/valgrind.h>, which
+ * a real CPU runs as rotations of rdi by 128 bits in all and a no-op
+ * exchange).  Only the two callgrind requests below are used. */
+#define PB_CALLGRIND_START_INSTRUMENTATION \
+    (((uint64_t)'C' << 24) | ((uint64_t)'T' << 16) | 4)
+#define PB_CALLGRIND_STOP_INSTRUMENTATION (PB_CALLGRIND_START_INSTRUMENTATION + 1)
+
+static inline void pb_callgrind(uint64_t request)
+{
+#if defined(__x86_64__)
+    volatile uint64_t args[6] = {request, 0, 0, 0, 0, 0};
+    uint64_t result = 0;
+    __asm__ volatile("rolq $3,  %%rdi\n\trolq $13, %%rdi\n\t"
+                     "rolq $61, %%rdi\n\trolq $51, %%rdi\n\t"
+                     "xchgq %%rbx, %%rbx"
+                     : "=d"(result)
+                     : "a"(&args[0]), "0"(result)
+                     : "cc", "memory");
+    (void)result;
+#else
+    (void)request;
+#endif
+}
+
+/* The region `perfindex.py instr` counts: callgrind runs with
+ * --instr-atstart=no and the region switches instrumentation on and off.
+ * Instrumentation is global, so work on other threads (the rho worker
+ * pool) is counted too.  Not static and not inlinable, so the symbol
+ * exists under exactly this name. */
 #if defined(__clang__)
 #    define PB_NOINLINE __attribute__((noinline))
 #else
@@ -1382,8 +1408,10 @@ static const pb_kernel KERNELS[] = {
 uint64_t perfbench_measured_region(const pb_kernel *k, void *state);
 PB_NOINLINE uint64_t perfbench_measured_region(const pb_kernel *k, void *state)
 {
+    pb_callgrind(PB_CALLGRIND_START_INSTRUMENTATION);
     uint64_t fp = k->run(state);
     __asm__ volatile("" : : "r"(fp) : "memory");
+    pb_callgrind(PB_CALLGRIND_STOP_INSTRUMENTATION);
     return fp;
 }
 

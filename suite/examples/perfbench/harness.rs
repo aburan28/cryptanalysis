@@ -159,11 +159,51 @@ impl<'a> OnThisThread<'a> {
 // never leaves the thread that owns it.
 unsafe impl Send for OnThisThread<'_> {}
 
-/// The region `perfindex.py instr` restricts callgrind to
-/// (`--toggle-collect=*perfbench_measured_region*`).
+/// The region `perfindex.py instr` counts.  Callgrind runs with
+/// `--instr-atstart=no`, and the region switches instrumentation on and
+/// off around the run with client requests.  Instrumentation is global,
+/// so work the kernel hands to other threads — a rayon pool, or a
+/// private pool an entry point builds for itself — is counted too, which
+/// a per-thread `--toggle-collect` on this function would miss.
 #[inline(never)]
 pub fn perfbench_measured_region(w: &mut dyn Workload) -> u64 {
-    black_box(w.run())
+    callgrind_request(CALLGRIND_START_INSTRUMENTATION);
+    let fp = black_box(w.run());
+    callgrind_request(CALLGRIND_STOP_INSTRUMENTATION);
+    fp
+}
+
+/// `VG_USERREQ_TOOL_BASE('C', 'T') + 4` and `+ 5` (`valgrind/callgrind.h`).
+const CALLGRIND_START_INSTRUMENTATION: u64 = (b'C' as u64) << 24 | (b'T' as u64) << 16 | 4;
+const CALLGRIND_STOP_INSTRUMENTATION: u64 = CALLGRIND_START_INSTRUMENTATION + 1;
+
+/// A valgrind client request: the magic preamble of `valgrind.h`, which
+/// valgrind recognises and a real CPU executes as four rotations of `rdi`
+/// by 128 bits in all and a no-op exchange — nothing, outside valgrind.
+#[inline(always)]
+fn callgrind_request(request: u64) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        let args = [request, 0, 0, 0, 0, 0u64];
+        // SAFETY: the sequence leaves every register as it found it
+        // (`rdi` is rotated by a multiple of 64, `xchg rbx, rbx` is a
+        // no-op); valgrind reads `args` through `rax` and writes `rdx`.
+        unsafe {
+            std::arch::asm!(
+                "rol rdi, 3",
+                "rol rdi, 13",
+                "rol rdi, 61",
+                "rol rdi, 51",
+                "xchg rbx, rbx",
+                in("rax") args.as_ptr(),
+                inout("rdx") 0u64 => _,
+                inout("rdi") 0u64 => _,
+                options(nostack),
+            );
+        }
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    let _ = request;
 }
 
 struct Options {
