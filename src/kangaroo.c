@@ -93,12 +93,18 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
     ca_elem *B = calloc(total, sizeof(ca_elem));
     uint64_t *scratch = calloc(2 * (size_t)total, sizeof(uint64_t));
     uint32_t *jidx = calloc(total, sizeof(uint32_t));
+    /* hs[i] is the hash of roos[i].Y, recomputed only where Y changes: a
+     * hop needs it for the distinguished-point test and again for the
+     * next jump, and hashing twice was a third of a Z_p hop. */
+    uint64_t *hs = calloc(total, sizeof(uint64_t));
     ca_htab tab;
-    if (!J || !jsz || !roos || !Yn || !B || !scratch || !jidx ||
+    if (!J || !jsz || !roos || !Yn || !B || !scratch || !jidx || !hs ||
         ca_htab_init(&tab, 4096) != CA_OK) {
-        free(J); free(jsz); free(roos); free(Yn); free(B); free(scratch); free(jidx);
+        free(J); free(jsz); free(roos); free(Yn); free(B); free(scratch); free(jidx); free(hs);
         return CA_ERR_NOMEM;
     }
+    /* (h >> 32) mod nj without a divide (Lemire; exact for 32-bit values) */
+    const uint64_t nj_magic = UINT64_MAX / nj + 1;
     uint64_t ops = 0;
     for (uint32_t j = 0; j < nj; j++) {
         jsz[j] = 1ULL << j;
@@ -125,14 +131,14 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
         }
         r->since_dp = 0;
     }
+    for (uint32_t i = 0; i < total; i++) hs[i] = ca_group_hash(g, &roos[i].Y);
     rc = CA_ERR_INTERNAL;
     uint64_t abandon = (uint64_t)32 << dp;
     uint64_t dps = 0, restarts = 0;
     int running = 1;
     while (running) {
         for (uint32_t i = 0; i < total; i++) {
-            uint64_t h = ca_group_hash(g, &roos[i].Y);
-            jidx[i] = (uint32_t)((h >> 32) % nj);
+            jidx[i] = (uint32_t)(((ca_u128)(nj_magic * (hs[i] >> 32)) * nj) >> 64);
             B[i] = J[jidx[i]];
             Yn[i] = roos[i].Y;
         }
@@ -144,6 +150,7 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
             r->dist += jsz[jidx[i]];
             r->since_dp++;
             uint64_t h = ca_group_hash(g, &r->Y);
+            hs[i] = h;
             int tame = (i & 1) == 0;
             if ((h & dp_mask) == 0) {
                 uint64_t od, otype;
@@ -165,6 +172,7 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
                             ca_group_op(g, &r->Y, target, &t);
                             ops++;
                         }
+                        hs[i] = ca_group_hash(g, &r->Y);
                         restarts++;
                     } else {
                         /* tame position T, wild distance D: x = T - D */
@@ -199,6 +207,7 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
                     ca_group_op(g, &r->Y, target, &t);
                     ops++;
                 }
+                hs[i] = ca_group_hash(g, &r->Y);
                 restarts++;
             }
         }
@@ -214,6 +223,6 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
         st->seconds += ca_now() - t0;
     }
     ca_htab_free(&tab);
-    free(J); free(jsz); free(roos); free(Yn); free(B); free(scratch); free(jidx);
+    free(J); free(jsz); free(roos); free(Yn); free(B); free(scratch); free(jidx); free(hs);
     return rc;
 }
