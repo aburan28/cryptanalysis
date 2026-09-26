@@ -1,0 +1,27 @@
+apiVersion: v2
+name: gpu-health
+description: |
+  A one-to-two-minute GPU health check, injected by a MutatingAdmissionPolicy
+  into the NVIDIA device plugin's pods: a new GPU node advertises no
+  nvidia.com/gpu until every GPU on it has run the self-verifying ECC2K-130
+  Pollard rho load and passed.  Optionally, a DaemonSet that gates new nodes
+  on a taint instead.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+# MutatingAdmissionPolicy is admissionregistration.k8s.io/v1 from 1.36
+# (inject.apiVersion); 1.34-1.35 serve v1beta1 and 1.32-1.33 v1alpha1 when
+# enabled.  The node-gate mode alone needs nothing new.
+kubeVersion: ">=1.32.0-0"
+keywords:
+  - gpu
+  - health-check
+  - nvidia
+  - admission-policy
+  - pollard-rho
+home: https://github.com/aburan28/cryptanalysis/tree/main/deploy/gpu-health
+sources:
+  - https://github.com/aburan28/cryptanalysis
+maintainers:
+  - name: aburan28
+    url: https://github.com/aburan28

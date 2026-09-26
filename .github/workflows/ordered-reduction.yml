@@ -1,0 +1,45 @@
+name: Ordered sparse reduction
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round12/**'
+      - 'experiments/groebner-perf-20260924/round11/**'
+      - 'experiments/groebner-perf-20260924/round5/**'
+      - '.github/workflows/ordered-reduction.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round12/**'
+      - 'experiments/groebner-perf-20260924/round11/**'
+      - 'experiments/groebner-perf-20260924/round5/**'
+      - '.github/workflows/ordered-reduction.yml'
+permissions:
+  contents: read
+concurrency:
+  group: ordered-reduction-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  proof:
+    name: Reduction traces (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, cxx: g++}
+          - {os: macos-latest, cxx: clang++}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build baseline, ablations and UBSan trap variants
+        run: python experiments/groebner-perf-20260924/round12/build.py
+      - name: Exact trace, independent oracle and boundary checks
+        run: python -m unittest discover -s experiments/groebner-perf-20260924/round12 -p 'test_*.py' -v
+      - name: Audit frozen paired measurements
+        run: python experiments/groebner-perf-20260924/round12/verify_evidence.py

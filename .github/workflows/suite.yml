@@ -58,9 +58,16 @@ jobs:
         # Release, as the suite's own convention: the attacks are arithmetic
         # over num-bigint and the unit tests take ten times longer unoptimised.
         run: cargo test --release
+      - name: GPU F4 kernel on the host emulator
+        # The CUDA kernel's own source (cuda/f4_gf2_device.cuh), compiled as
+        # C and held to the host kernel's decisions, caps and F5 rows, then
+        # driving lockstep searches.  No device and no CUDA toolkit needed.
+        run: |
+          cargo clippy --all-targets --features gpu-emulator -- -D warnings
+          cargo test --release --lib --features gpu-emulator -- f4_gpu f4_batch f4_gf2
       - name: Every binary answers --help
         run: |
-          for bin in ca-suite ca-ic ca-koblitz-pdp-prepare; do
+          for bin in crax ca-suite ca-ic ca-icx ca-curves ca-koblitz-pdp-prepare; do
             ./target/release/$bin --help > /dev/null
           done
       - name: Smoke the tools
@@ -77,6 +84,67 @@ jobs:
             | python3 -c 'import json,sys; r=json.load(sys.stdin)["result"]; assert r["verified"] is True, r'
           ./target/release/ca-ic prime --curve secp256k1 --bits 20 --targets 4 --json \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["status"] == "complete" and r["vs_rho"]["verdict"]["all_verified"] is True, r["status"]'
+      - name: Smoke crax
+        # One verified answer from each crax family, JSON-checked: the C
+        # library's solvers through the bindings, the challenge corpus,
+        # the weak-curve attacks, the factoring sieves, the RSA attacks,
+        # and the research command lines crax routes to.
+        run: |
+          C=./target/release/crax
+          ok() { python3 -c 'import json,sys; r=json.load(sys.stdin); assert r.get("verified") is True and r.get("status") in ("ok", None), r' ; }
+          $C --json rho --p 2000000579 --order 1000000289 --x 123456789 | ok
+          $C --json pohlig-hellman --p 1000003 --a 1 --b 7 --order 2777 --g 965127,959535 --h 484062,675069 | ok
+          $C --json glv --curve glv-j0-26 --x 999999 | ok
+          $C --json ic zp --p 1099511627791 --g 3 --x 99 | ok
+          $C --json challenge solve fp-cm-d11-b48 | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["verified"] and r["matches_known_log"], r'
+          $C --json challenge solve fp-anomalous-b128 | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["verified"] and r["method"] == "Smart", r'
+          $C --json ecdlp --curve p256 --x 5 --analyze-only | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not any(c["applicable"] for c in r["analysis"]["checks"]), r'
+          $C --json ecdsa nonce-reuse --demo | ok
+          $C --json ecdsa hnp --demo | ok
+          $C --json ecdsa invalid-curve --demo | ok
+          $C --json factor '2^128+1' | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["complete"] and r["verified"], r'
+          $C --json qs '1000000000000037*100000000000031' | ok
+          $C --json snfs '2^227-1' | ok
+          $C --json rsa fermat '93821991298325395112481436679912640426227976229082400784744768813281354623479*93821991298325395112481436679912640426227976229082400784744768813281355623581' | ok
+          $C list-ciphers | grep -q '^  aes-4r'
+          $C --json ic prime --curve secp256k1 --bits 20 --targets 4 \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["status"] == "complete", r["status"]'
+
+  f4-kernel:
+    # The batched F4 kernel compiled for sm_75 through sm_120 with the pinned
+    # CUDA 13.3 nvcc from NVIDIA's pip wheels, failing on spills, and the
+    # same source through NVRTC, which is what the CUDA backend runs.  No
+    # runner has a GPU: this says the kernel builds and what it costs, not
+    # how fast it is.  The emulator step of `rust` checks its answers.
+    name: F4 kernel compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ecc2k130/build/cuda
+          key: cuda-wheels-${{ hashFiles('ecc2k130/scripts/fetch_cuda.sh') }}
+      - name: Fetch CUDA 13.3
+        working-directory: .
+        run: echo "NVCC=$(ecc2k130/scripts/fetch_cuda.sh)/bin/nvcc" >> "$GITHUB_ENV"
+      - name: Compile for every generation and report
+        working-directory: .
+        run: suite/cuda/build_kernel.sh "$NVCC"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: suite
+      - name: NVRTC accepts the embedded source
+        working-directory: suite
+        run: |
+          pip download -q --no-deps -d /tmp/nvrtc nvidia-cuda-nvrtc-cu12
+          unzip -q -o /tmp/nvrtc/*.whl -d /tmp/nvrtc/x
+          lib=$(find /tmp/nvrtc/x -name 'libnvrtc.so.12' | head -1)
+          CA_NVRTC_LIB="$lib" cargo test --release --lib nvrtc_compiles -- --nocapture
 
   rust-msrv:
     # The floor declared in suite/Cargo.toml, re-checked here so that it

@@ -714,6 +714,61 @@ impl Solver {
         }
     }
 
+    /// Install a normalized, non-unit permanent clause without discarding the
+    /// current trail. Lazy theory clauses arrive at a propagation fixpoint, so
+    /// their watches must be selected from literals that are not currently
+    /// false. If only one such literal remains, the clause is unit and is
+    /// enqueued immediately; if none remain, the installed clause is the
+    /// current conflict.
+    ///
+    /// False fallback watches are ordered by decreasing decision level. When
+    /// conflict analysis backjumps, those are the first literals to become
+    /// unassigned, preserving the two-watch invariant without replaying the
+    /// whole trail.
+    fn add_lazy_clause_at_current_level(&mut self, mut lits: Vec<Lit>) -> Option<Conflict> {
+        debug_assert!(lits.len() >= 2);
+        lits.sort_by(|&left, &right| {
+            let key = |lit: Lit| {
+                (
+                    self.lit_value(lit) != Some(false),
+                    self.level[var_of(lit) as usize],
+                )
+            };
+            key(right).cmp(&key(left))
+        });
+        let non_false = lits
+            .iter()
+            .take_while(|&&lit| self.lit_value(lit) != Some(false))
+            .count();
+        let idx = self.clauses.len();
+        let (l0, l1) = (lits[0], lits[1]);
+        self.clauses.push(lits);
+        self.watches[watch_index(l0)].push(Watcher {
+            cref: idx,
+            blocker: l1,
+        });
+        self.watches[watch_index(l1)].push(Watcher {
+            cref: idx,
+            blocker: l0,
+        });
+        self.detached.resize(self.clauses.len(), false);
+        // Theory clauses are permanent propagation lemmas. Advancing this
+        // boundary also retains any learnt clauses that preceded them, which
+        // costs memory but cannot change an answer.
+        self.n_orig_clauses = self.clauses.len();
+        match non_false {
+            0 => Some(Conflict::Clause(idx)),
+            1 if self.lit_value(l0).is_none() => {
+                if self.enqueue(l0, Reason::Propagated(idx)).is_err() {
+                    Some(Conflict::Clause(idx))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     /// Look up the truth value of a literal under the current trail.
     fn lit_value(&self, lit: Lit) -> Option<bool> {
         let v = var_of(lit) as usize;
@@ -1398,6 +1453,32 @@ impl Solver {
 
     /// Main solve loop. Runs until SAT/UNSAT or conflict budget hits.
     pub fn solve(&mut self) -> SolveResult {
+        let mut no_theory = |_: &[Option<bool>]| None;
+        self.solve_with_lazy_clauses(&[], &mut no_theory)
+    }
+
+    /// Solve while allowing a theory callback to install globally valid lazy
+    /// clauses whenever every `trigger_var` is assigned.
+    ///
+    /// The callback sees the current partial assignment and may return guarded
+    /// consequence clauses. Non-unit clauses are attached at the current
+    /// propagation fixpoint, where they can imply theory variables without
+    /// losing the decisions that selected the current pattern. Empty or unit
+    /// consequences use the conservative level-zero [`Self::add_clause`] path.
+    /// Returning `None` means the current frontier has already been handled and
+    /// ordinary CDCL should continue.
+    ///
+    /// The caller is responsible for clause soundness.  This is intended for
+    /// small theory propagators whose consequences are expensive to encode
+    /// eagerly, such as finite-field root relations.
+    pub fn solve_with_lazy_clauses<F>(
+        &mut self,
+        trigger_vars: &[u32],
+        theory: &mut F,
+    ) -> SolveResult
+    where
+        F: FnMut(&[Option<bool>]) -> Option<Vec<Vec<Lit>>>,
+    {
         if self.is_unsat {
             return SolveResult::Unsat;
         }
@@ -1412,8 +1493,9 @@ impl Solver {
         self.detached.resize(self.clauses.len(), false);
         let mut luby_index = 1u64;
         let mut restart_limit = 100u64 * luby(luby_index);
+        let mut pending_conflict = None;
         loop {
-            if let Some(conflict_idx) = self.propagate() {
+            if let Some(conflict_idx) = pending_conflict.take().or_else(|| self.propagate()) {
                 self.conflicts += 1;
                 self.stats.conflicts += 1;
                 let lvl = self.trail_lim.len() as u64;
@@ -1477,6 +1559,46 @@ impl Solver {
                     restart_limit = 100u64 * luby(luby_index);
                 }
             } else {
+                if !trigger_vars.is_empty()
+                    && trigger_vars
+                        .iter()
+                        .all(|&variable| self.assignment[(variable - 1) as usize].is_some())
+                {
+                    if let Some(clauses) = theory(&self.assignment) {
+                        assert!(!clauses.is_empty(), "lazy theory returned an empty update");
+                        let mut normalized = Vec::with_capacity(clauses.len());
+                        for mut clause in clauses {
+                            clause.sort_by_key(|&lit| (var_of(lit), lit));
+                            clause.dedup();
+                            if clause.windows(2).any(|pair| pair[0] == -pair[1]) {
+                                continue;
+                            }
+                            normalized.push(clause);
+                        }
+                        let has_current_conflict = normalized.iter().any(|clause| {
+                            !clause.is_empty()
+                                && clause.iter().all(|&lit| self.lit_value(lit) == Some(false))
+                        });
+                        if has_current_conflict || normalized.iter().any(|clause| clause.len() < 2)
+                        {
+                            self.backjump(0);
+                            for clause in normalized {
+                                if !self.add_clause(clause) {
+                                    return SolveResult::Unsat;
+                                }
+                            }
+                            self.detached.resize(self.clauses.len(), false);
+                        } else {
+                            for clause in normalized {
+                                let conflict = self.add_lazy_clause_at_current_level(clause);
+                                if pending_conflict.is_none() {
+                                    pending_conflict = conflict;
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                }
                 // No conflict — pick a new variable.
                 match self.pick_branching_variable() {
                     None => return SolveResult::Sat,
@@ -1519,6 +1641,26 @@ impl Solver {
     /// without rebuilding the whole encoding each time.
     pub fn reset_search(&mut self) {
         self.backjump(0);
+    }
+
+    /// Scramble phase-saving polarity with a deterministic xorshift seed.
+    ///
+    /// Intended for multi-shot search: after a conflict-budget timeout,
+    /// [`Self::reset_search`] then scramble phases so the next shot explores
+    /// a different decision polarity trajectory while keeping learnt clauses.
+    pub fn scramble_saved_phases(&mut self, seed: u64) {
+        let mut state = seed | 1;
+        for phase in &mut self.saved_phase {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            *phase = (state & 1) != 0;
+        }
+    }
+
+    /// Force every saved phase to a constant polarity (search-polarity lever).
+    pub fn set_all_saved_phases(&mut self, value: bool) {
+        self.saved_phase.fill(value);
     }
 
     /// Cumulative conflicts across all calls to [`Self::solve`].
@@ -1667,6 +1809,9 @@ pub fn parse_dimacs_xor(input: &str) -> Result<Solver, String> {
             lits.push(l);
         }
         if lits.is_empty() {
+            if !is_xor && payload.split_whitespace().any(|token| token == "0") {
+                clauses.push(Vec::new());
+            }
             continue;
         }
         if is_xor {
@@ -1705,6 +1850,69 @@ pub fn to_dimacs(solver: &Solver) -> String {
         s.push_str("0\n");
     }
     s
+}
+
+impl Solver {
+    /// The native parity rows as 1-indexed variable lists with their
+    /// right-hand sides, in the order they were added.
+    pub fn xor_rows(&self) -> Vec<(Vec<u32>, bool)> {
+        self.xors
+            .iter()
+            .map(|row| {
+                let vars = (0..self.n_vars)
+                    .filter(|&v| (row.mask[(v / 64) as usize] >> (v % 64)) & 1 == 1)
+                    .map(|v| v + 1)
+                    .collect();
+                (vars, row.rhs)
+            })
+            .collect()
+    }
+
+    /// Number of original (non-learnt) clauses.
+    pub fn n_original_clauses(&self) -> usize {
+        self.n_orig_clauses
+    }
+}
+
+/// Emit the solver's original CNF clauses and native parity rows as
+/// CryptoMiniSat-style extended DIMACS.
+///
+/// An XOR row with right-hand side one is emitted as `x 1 2 ... 0`.
+/// For right-hand side zero the first literal is negated, matching
+/// [`parse_dimacs_xor`].  A solver that is already inconsistent also emits an
+/// explicit empty clause so root UNSAT survives export.
+pub fn to_dimacs_xor(solver: &Solver) -> String {
+    let constraints = solver.n_orig_clauses + solver.xors.len() + usize::from(solver.is_unsat);
+    let mut output = format!("p cnf {} {}\n", solver.n_vars, constraints);
+    for clause in solver.clauses.iter().take(solver.n_orig_clauses) {
+        for &literal in clause {
+            output.push_str(&literal.to_string());
+            output.push(' ');
+        }
+        output.push_str("0\n");
+    }
+    for row in &solver.xors {
+        output.push('x');
+        let mut first = true;
+        for variable in 0..solver.n_vars {
+            if !bs_get(&row.mask, variable) {
+                continue;
+            }
+            let literal = if first && !row.rhs {
+                -((variable + 1) as Lit)
+            } else {
+                (variable + 1) as Lit
+            };
+            output.push(' ');
+            output.push_str(&literal.to_string());
+            first = false;
+        }
+        output.push_str(" 0\n");
+    }
+    if solver.is_unsat {
+        output.push_str("0\n");
+    }
+    output
 }
 
 /// Convenience: verify that a model satisfies all clauses.
@@ -2029,6 +2237,81 @@ mod tests {
             parse_dimacs_xor(src_bad).expect("parse").solve(),
             SolveResult::Unsat
         );
+    }
+
+    #[test]
+    fn extended_dimacs_export_round_trips_xors_and_root_unsat() {
+        let mut original = Solver::new(4);
+        assert!(original.add_clause(vec![1, -4]));
+        assert!(original.add_xor(&[1, 2, 3], true));
+        assert!(original.add_xor(&[2, 4], false));
+        let encoded = to_dimacs_xor(&original);
+        let mut reparsed = parse_dimacs_xor(&encoded).expect("parse exported XOR DIMACS");
+        assert_eq!(reparsed.n_xors(), 2);
+        assert_eq!(reparsed.solve(), SolveResult::Sat);
+        let model = reparsed.model();
+        assert!(reparsed.check_xors(&model));
+
+        let mut root_unsat = Solver::new(1);
+        assert!(!root_unsat.add_clause(Vec::new()));
+        let encoded_unsat = to_dimacs_xor(&root_unsat);
+        assert!(encoded_unsat.lines().any(|line| line.trim() == "0"));
+        assert_eq!(
+            parse_dimacs_xor(&encoded_unsat)
+                .expect("parse exported root conflict")
+                .solve(),
+            SolveResult::Unsat
+        );
+    }
+
+    #[test]
+    fn lazy_clause_callback_installs_guarded_theory_consequences_on_current_trail() {
+        let mut solver = Solver::new(3);
+        solver.set_branch_priority(&[1, 2]);
+        let mut seen = std::collections::HashSet::new();
+        let mut theory = |assignment: &[Option<bool>]| {
+            let left = assignment[0].unwrap();
+            let right = assignment[1].unwrap();
+            if !seen.insert((left, right)) {
+                return None;
+            }
+            let mut clause = vec![if left { -1 } else { 1 }, if right { -2 } else { 2 }];
+            clause.push(if left ^ right { 3 } else { -3 });
+            Some(vec![clause])
+        };
+        assert_eq!(
+            solver.solve_with_lazy_clauses(&[1, 2], &mut theory),
+            SolveResult::Sat
+        );
+        let model = solver.model();
+        assert_eq!(model[2], model[0] ^ model[1]);
+        assert!(!seen.is_empty());
+    }
+
+    #[test]
+    fn lazy_clause_conflict_backjumps_and_preserves_theory_answer() {
+        let mut solver = Solver::new(3);
+        solver.set_branch_priority(&[1, 2]);
+        assert!(solver.add_clause(vec![-3]));
+        let mut seen = std::collections::HashSet::new();
+        let mut theory = |assignment: &[Option<bool>]| {
+            let left = assignment[0].unwrap();
+            let right = assignment[1].unwrap();
+            if !seen.insert((left, right)) {
+                return None;
+            }
+            let mut clause = vec![if left { -1 } else { 1 }, if right { -2 } else { 2 }];
+            clause.push(if left ^ right { 3 } else { -3 });
+            Some(vec![clause])
+        };
+        assert_eq!(
+            solver.solve_with_lazy_clauses(&[1, 2], &mut theory),
+            SolveResult::Sat
+        );
+        let model = solver.model();
+        assert!(!model[2]);
+        assert_eq!(model[2], model[0] ^ model[1]);
+        assert!(!seen.is_empty());
     }
 
     /// **Clause forgetting must not change any answer.**  Under a

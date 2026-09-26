@@ -44,7 +44,7 @@ clang; pthreads).
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ctest --test-dir build            # 11 test programs, ~1 minute
-sudo cmake --install build        # headers, libcryptanalysis.{a,so}, ca, pkg-config
+sudo cmake --install build        # headers, library, cryptanalysis, ca, pkg-config
 ```
 
 Useful options: `-DCA_NATIVE=ON` (`-march=native`), `-DCA_SANITIZE=ON`
@@ -59,7 +59,39 @@ sm_90 and reports registers, local memory and spills.
 
 ## Command line
 
-`ca` prints one JSON object per invocation.
+**`crax` is the toolkit's single command line**: one subcommand per attack,
+over both halves of the repository — the generic discrete-log solvers of
+this C library (through the Rust bindings), and the suite's weak-curve,
+factoring (GNFS, SNFS, SIQS, ECM, p−1), RSA, index-calculus, symmetric,
+hash, lattice and isogeny attacks.  Every command takes `--json`, and every
+answer it reports has been verified independently of the solver.  See
+[docs/CRAX.md](docs/CRAX.md).
+
+```sh
+cd suite && cargo build --release --bin crax
+./target/release/crax rho --p 2000000579 --order 1000000289 --x 123456789
+./target/release/crax challenge solve fp-anomalous-b128     # Smart's attack, 62 ms
+./target/release/crax ecdlp --curve p256 --x 5 --analyze-only
+./target/release/crax factor '2^128+1'
+./target/release/crax snfs '2^227-1'
+./target/release/crax rsa wiener <n> --e <e>
+./target/release/crax ic prime --curve secp256k1 --bits 20 --targets 4
+```
+
+The C tools below remain for the library on its own. `cryptanalysis` is
+the main C command; `ca` remains a compatible alias. Generic
+BSGS and rho are top-level algorithm commands. `ic` currently solves DLPs in
+the multiplicative group of a prime field; the experimental binary-curve IC
+pipeline is separate and has no complete released DLP command yet.
+
+```sh
+./build/cryptanalysis bsgs --group zp --p 1000003 --order 166667 --g 533154 --h 579795
+./build/cryptanalysis rho --group zp --p 1000003 --order 166667 --g 533154 --h 579795 --seed 1
+./build/cryptanalysis ic --p 1099511627791 --g 3 --h 123456789 --threads 2
+```
+
+Each generic command prints one JSON object per invocation. The existing
+`solve --alg ...` form remains available:
 
 ```sh
 $ ./build/ca gen --group zp --p 2000000579 --order 1000000289 --x 123456789 --seed 1
@@ -250,6 +282,10 @@ live [ecc2k-130 campaign](https://aburan28.github.io/crypto/status/) walks --
 the FPGA core's `sigma^j(R) + R` from Certicom's challenge points,
 distinguished at weight 32 -- so its points are that campaign's, record for
 record; `make test` proves it on 48 records the campaign's own client wrote.
+The Linux release packages that curve-specific CUDA kernel as a private
+backend of `cryptanalysis rho --curve ecc2k130`. The existing `ec2k-gpu`
+archive remains available for current runners. The unified command dispatches
+to the campaign walk; it does not turn it into an arbitrary-target DLP solver.
 `WALK=table` builds an r-adding table walk instead, measured on one RTX PRO
 6000 Blackwell at **20.08 billion iterations per second**, 0.90 of the
 carry-less unit's ceiling for the 33 `clmad` an iteration costs; it is a
@@ -266,6 +302,14 @@ ecc2k130/build/ec2k-gpu walk --run-id R --dp-file dps.bin --checkpoint state.ck 
 ecc2k130/build/ec2k-gpu bench                                         # iterations per second
 ```
 
+For a downloaded `cryptanalysis` release archive, use
+`bin/cryptanalysis rho --curve ecc2k130 --check --kat
+share/cryptanalysis/campaign-kat.hex` before starting a walk, then
+`bin/cryptanalysis rho --curve ecc2k130 --run-id R --dp-file dps.bin
+--checkpoint state.ck`. The release also includes a pinned Sage source patch
+kit; [docs/SAGE_RELEASE.md](docs/SAGE_RELEASE.md) explains how to build and use
+the optimized local Sage for elliptic-curve experiments.
+
 Two more clients run the table walk from the same headers and write the same
 reports, for developing and testing a campaign's pipeline without renting a
 card: `ec2k-cpu` on host cores, its products on PMULL (AArch64) or PCLMULQDQ
@@ -280,6 +324,20 @@ make ecc2k130-metal && ecc2k130/build/ec2k-metal bench       # macOS
 
 See [ecc2k130/README.md](ecc2k130/README.md) for the measurement, the
 boundary it is measured against, and how the last 15% was found.
+
+The same walk is also a GPU health check. `ec2k-gpu health` loads a GPU for a
+fixed time at a test weight and checks every point the GPU reports on the
+host: the point is on the curve, its weight and bookkeeping are right, and a
+sample is re-walked on the golden model. It also reports a throughput that
+barely moves between runs. [deploy/gpu-health/](deploy/gpu-health/README.md)
+packages it as a container that checks every GPU of a node in 60-120 s and
+returns one verdict. Its README covers what the check establishes, what it
+does not (tensor cores, memory, interconnect), and how close it comes to each
+part's power limit. The Helm chart
+[deploy/helm/gpu-health/](deploy/helm/gpu-health/README.md) uses a
+MutatingAdmissionPolicy to inject the check into the NVIDIA device plugin's
+pods. A node that comes up then offers no GPU to the scheduler until its
+GPUs have passed.
 
 The [ECC2K-130 cloud runner](ecc2k130/runner/README.md) packages the deployed
 120,320-worker Frobenius profile with Modal/Runpod launch support, durable S3
@@ -339,7 +397,7 @@ images: [deploy/docker/](./deploy/docker/); systemd units for a plain VM:
 
 The C library is the narrow, fast end: one group interface, a handful of
 solvers, 64-bit groups, measured constants.  [`suite/`](suite/README.md) is
-the wide end -- a Rust crate of 126 attack modules with the primitives they
+the wide end -- a Rust crate of about 150 attack modules with the primitives they
 target, moved here from the [crypto](https://github.com/aburan28/crypto)
 study repository and put under this repository's checks: S-box, Boolean
 and statistical primitives; the reduced-round AES catalogue and the
@@ -371,7 +429,8 @@ solver, `shape` instances to check field arithmetic at the large end.
 
 `make suite` runs its gates (fmt, clippy `-D warnings`, rustdoc `-D
 warnings`, cargo-deny, the release test suite, the Python engine's lint and
-tests).  The two halves do not depend on each other.
+tests).  The suite links the C library through `bindings/rust` for
+`crax`'s generic solvers; the C library does not depend on the suite.
 
 ## C API in one screen
 
@@ -498,6 +557,8 @@ bindings/go/cmd/ca-coordinator  the coordinator service (Go, cgo onto this libra
 deploy/helm/ca-coordinator      Helm chart: the coordinator and its agents
 deploy/docker/                  one Dockerfile, two images (coordinator, agent)
 deploy/ca-coordinator/          systemd units and EC2 user-data for a plain VM
+deploy/gpu-health/              GPU health-check image (ec2k-gpu health) and a workload init-container manifest
+deploy/helm/gpu-health          Helm chart: the check injected into the device plugin by a MutatingAdmissionPolicy, or a node gate
 cloud/                   Runpod pods hosting Cursor workers, and Modal jobs, for work too big for an agent VM (cloud/README.md)
 fuzz/                    libFuzzer harnesses and their seed corpora
 .github/workflows/       ci, analysis, bindings, suite, deploy, fpga, ecc2k130, fuzz, codeql, nightly
@@ -519,6 +580,7 @@ set locally, in the order that fails fastest.
 | `fpga` | the ECC2K-130 core: the golden model's own checks, then every testbench against the vectors it produces, at three multiplier widths; verilator `-Wall`; a yosys area report |
 | `ecc2k130` | the GPU client: the packed arithmetic, the table walk's selection and the walk itself against `fpga/model` on gcc and clang; the kernel compiled for sm_120 with CUDA 13.3 from pip wheels, with its register and spill report |
 | `deploy` | the Helm chart and the container images: `helm lint`, a render with every optional piece enabled whose manifests are parsed and asserted (one coordinator replica, `Recreate`, and an agent NetworkPolicy that allows no ingress at all), the three configurations the chart must refuse, and a build of both image targets that then runs each one |
+| `gpu-health` | the health-check orchestrator's tests on Python 3.8 and 3.12; the Helm chart linted, and its MutatingAdmissionPolicy run on a real kube-apiserver; the image built on x86_64 and aarch64 (which compiles `ec2k-gpu` for sm_80 to sm_120 and runs the host test and `check --kat`) and smoke-run: without a GPU it must fail and say why, against scripted GPUs it must pass; then, on x86_64, the chart on kind, where the injected check gates a stand-in device plugin |
 | `codeql` | C, Go and Python, with the `security-and-quality` query pack |
 | `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
 

@@ -48,7 +48,9 @@ def recompute(card: dict) -> dict:
     wid, wrec, targets = prof.workload(C, card["workload"]["seed"], card["workload"]["target_count"])
     struct = prof.task_structure(cfg)
     records = [prof.task_target(cfg, "ordinary", i, t) for i, t in enumerate(targets)]
-    records += [prof.task_target(cfg, "planted", i, None) for i in range(card["counts"]["planted"])]
+    # receipts before planted_attempts was recorded used the sweep settings
+    tried = card["counts"].get("planted_attempts") or (8 if cell["m"] == 2 else 2 if cell["l"] == 5 else 6)
+    records += [prof.task_target(cfg, "planted", i, None) for i in range(tried)]
     return prof.summarize(cfg, struct, records, wid, wrec, 0)
 
 

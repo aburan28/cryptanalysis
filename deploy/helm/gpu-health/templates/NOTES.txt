@@ -1,0 +1,28 @@
+{{- if .Values.inject.enabled }}
+The GPU health check is injected ({{ include "gpu-health.admissionApi" . }}
+MutatingAdmissionPolicy) into NVIDIA device plugin pods created from now on in:
+{{ join ", " .Values.inject.namespaces }} (pods running a container named
+{{ join " or " .Values.inject.containers }}).
+
+It loads a node's GPUs for {{ .Values.check.seconds }} s when the node comes up, before the device plugin
+starts, and {{ if .Values.check.reportOnly }}reports the verdict (reportOnly: the plugin starts whatever it is){{ else }}the node advertises no nvidia.com/gpu until they pass{{ end }}.
+Later device plugin restarts in the same boot skip the load{{ if .Values.check.maxUptimeSeconds }}, and so do nodes up
+for more than {{ .Values.check.maxUptimeSeconds }} s when their plugin pod is recreated: those were in service
+before the check reached them, and are checked at their next boot{{ end }}.
+Device plugin pods that already exist are not changed.
+
+  kubectl get pods -A -l app=nvidia-device-plugin-daemonset      # Init:N/M while checking
+  kubectl logs -n NAMESPACE POD -c gpu-health --tail=3           # the verdict, or why it skipped
+  kubectl get pod -n NAMESPACE POD \
+    -o jsonpath='{.status.initContainerStatuses[?(@.name=="gpu-health")]}'
+{{- end }}
+{{- if .Values.nodeGate.enabled }}
+
+The node gate checks nodes registered with the taint
+{{ .Values.nodeGate.taint }}:NoSchedule and lifts it once they pass.
+
+  kubectl get nodes -L {{ .Values.nodeGate.label }}
+{{- end }}
+{{- if not (or .Values.inject.enabled .Values.nodeGate.enabled) }}
+Nothing is enabled: set inject.enabled or nodeGate.enabled.
+{{- end }}

@@ -34,6 +34,7 @@ import sumpoly  # noqa: E402
 
 import factor_base as fbmod  # noqa: E402
 import kernel  # noqa: E402
+import opcount  # noqa: E402
 from factor_base import FactorBase  # noqa: E402
 
 
@@ -184,6 +185,7 @@ class BooleanSystem:
         keep = self.coeffs != 0
         self.masks = self.masks[keep]
         self.coeffs = self.coeffs[keep]
+        opcount.charge("sys_word", self.n * len(self.masks))
         pcs = np.array([bin(int(a)).count("1") for a in self.masks], dtype=np.int32)
         eqs, degs = [], []
         for t in range(self.n):
@@ -209,9 +211,11 @@ class BooleanSystem:
         """Exact solution set: Gaussian elimination for affine systems, else the Moebius
         transform (N <= 26).  Returns (count, up to max_out solutions)."""
         if self.top_degree <= 1:
+            opcount.charge("anf_op", len(self.equations) * self.N)
             return self._affine_solutions(max_out)
         if self.N > 26:
             raise ValueError("brute force limited to 26 variables")
+        opcount.charge("anf_op", (self.N + 2) << max(0, self.N - 1))
         table = np.zeros(1 << self.N, dtype=np.uint64)
         table[self.masks] = self.coeffs
         return kernel.anf_zeros(table, self.N, max_out)

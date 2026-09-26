@@ -326,6 +326,7 @@ fn main() {
         wdsat_timeout_ms: 5_000,
         linear_algebra:
             cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::LinearAlgebra::Dense,
+        f4_batch: None,
     };
     let solve_start = Instant::now();
     let report =

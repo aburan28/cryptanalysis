@@ -161,6 +161,15 @@ for alg in bsgs rho kangaroo grumpy dlog; do
     --h "$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')" \
     --lo 0 --hi 1000002 --seed 1
 done
+# The public algorithm commands share the solver implementation and result
+# contract with `solve --alg`, including exact scalar recovery.
+want '"x":123456' bsgs "${ZP[@]}" --g 858101 \
+  --h "$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')"
+want '"x":123456' rho "${ZP[@]}" --g 858101 \
+  --h "$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')" \
+  --seed 1
+want_fail bsgs --alg rho "${ZP[@]}" --g 858101 --h 123456
+want_fail rho --curve unknown
 want '"x":123456' solve --alg gpu-rho "${ZP[@]}" --g 858101 \
   --h "$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')" \
   --seed 1

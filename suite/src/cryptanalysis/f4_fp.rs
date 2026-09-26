@@ -190,6 +190,22 @@ pub struct F4Options {
     pub max_degree: u32,
     /// Cooperative stop: the run returns `timed_out` once past it.
     pub deadline: Option<Instant>,
+    /// Stop once the leading monomials of the basis so far leave at most
+    /// this many standard monomials.
+    ///
+    /// The basis generates a subideal of the input ideal whose quotient then
+    /// has at most that dimension. Every solution of the input is therefore
+    /// among at most that many points, which can be enumerated and checked
+    /// against the input directly. The pairs still pending would only
+    /// certify the Gröbner basis, and are left unprocessed.
+    ///
+    /// Zero-dimensionality alone is not a stopping criterion. Field-like
+    /// equations (`y² = …` for every variable) make the leading ideal
+    /// zero-dimensional from the start, with an exponentially large
+    /// staircase. `None` (the default) never stops early; a stopped run
+    /// reports the staircase it stopped at in
+    /// `F4Report::staircase_at_stop`.
+    pub stop_staircase: Option<usize>,
 }
 
 impl F4Options {
@@ -198,12 +214,66 @@ impl F4Options {
             order,
             max_degree,
             deadline: None,
+            stop_staircase: None,
         }
     }
     pub fn with_budget(mut self, budget: Duration) -> Self {
         self.deadline = Some(Instant::now() + budget);
         self
     }
+    /// See [`F4Options::stop_staircase`].
+    pub fn stopping_below(mut self, standard_monomials: usize) -> Self {
+        self.stop_staircase = Some(standard_monomials);
+        self
+    }
+}
+
+/// The number of monomials divisible by none of `lms` (the staircase of a
+/// zero-dimensional leading ideal), or `None` when it exceeds `bound` or is
+/// infinite.
+///
+/// The search is depth first over the variables. A monomial that is
+/// already divisible with the remaining exponents at zero stays divisible
+/// however they grow, so such branches are pruned. The search stops at
+/// `bound + 1` leaves, so a huge staircase costs as little as a small one.
+fn staircase_at_most(lms: &[&[u32]], n_vars: usize, bound: usize) -> Option<usize> {
+    // the exponent of the smallest pure power of each variable among the LMs
+    let mut cap = vec![0u32; n_vars];
+    for (k, c) in cap.iter_mut().enumerate() {
+        *c = lms
+            .iter()
+            .filter(|m| m.iter().enumerate().all(|(i, &e)| (i == k) == (e > 0)))
+            .map(|m| m[k])
+            .min()?;
+    }
+    fn walk(
+        k: usize,
+        mono: &mut Vec<u32>,
+        cap: &[u32],
+        lms: &[&[u32]],
+        count: &mut usize,
+        bound: usize,
+    ) -> bool {
+        if lms.iter().any(|l| divides(l, mono)) {
+            return true;
+        }
+        if k == cap.len() {
+            *count += 1;
+            return *count <= bound;
+        }
+        for e in 0..cap[k] {
+            mono[k] = e;
+            if !walk(k + 1, mono, cap, lms, count, bound) {
+                mono[k] = 0;
+                return false;
+            }
+        }
+        mono[k] = 0;
+        true
+    }
+    let mut count = 0usize;
+    let mut mono = vec![0u32; n_vars];
+    walk(0, &mut mono, &cap, lms, &mut count, bound).then_some(count)
 }
 
 #[derive(Clone, Debug)]
@@ -216,6 +286,19 @@ pub struct F4Report {
     /// Degree of the step at which `1` appeared, or at which the last
     /// new basis element was found.
     pub solving_degree: u32,
+    /// The highest step degree at which the run learned something new (a
+    /// new basis element, or `1`).  This is the framework's solving degree
+    /// (`docs/ic/FRAMEWORK.md` §3).  It differs from `solving_degree` when
+    /// step degrees fall: on tower and chain systems the normal strategy
+    /// climbs, learns low-degree elements and descends again, so the last
+    /// productive step need not be the highest one.
+    pub solving_degree_max: u32,
+    /// The widest matrix up to and including the last productive step.
+    /// This is what reaching the basis costs, without the trailing steps
+    /// whose pairs all reduce to zero.
+    pub max_cols_to_solution: usize,
+    /// Steps up to and including the last productive one.
+    pub steps_to_solution: usize,
     pub steps: usize,
     pub max_rows: usize,
     pub max_cols: usize,
@@ -224,6 +307,10 @@ pub struct F4Report {
     /// Pairs dropped because their lcm degree exceeded the bound: `> 0`
     /// means the basis may be a strict truncation.
     pub pairs_above_bound: usize,
+    /// When the run stopped early (`F4Options::stop_staircase`), the number
+    /// of standard monomials it stopped at, with pairs still pending: the
+    /// basis is then not certified complete.
+    pub staircase_at_stop: Option<usize>,
 }
 
 struct Pair {
@@ -331,7 +418,18 @@ pub fn f4(input: &[Poly], n_vars: usize, p: u64, opts: &F4Options) -> F4Report {
     let mut alive: Vec<bool> = Vec::new();
     let mut pairs: Vec<Pair> = Vec::new();
     let mut pairs_above_bound = 0usize;
-    let report = |basis: &[Poly], alive: &[bool], inconsistent, dr, sd, steps, mr, mc, to, pab| {
+    // `learned` is (solving_degree_max, max_cols_to_solution, steps_to_solution).
+    let report = |basis: &[Poly],
+                  alive: &[bool],
+                  inconsistent,
+                  dr,
+                  sd,
+                  steps,
+                  mr,
+                  mc,
+                  to,
+                  pab,
+                  learned: (u32, usize, usize)| {
         let b: Vec<Poly> = if inconsistent {
             vec![vec![(vec![0; n_vars], 1)]]
         } else {
@@ -347,12 +445,16 @@ pub fn f4(input: &[Poly], n_vars: usize, p: u64, opts: &F4Options) -> F4Report {
             inconsistent,
             degree_reached: dr,
             solving_degree: sd,
+            solving_degree_max: learned.0,
+            max_cols_to_solution: learned.1,
+            steps_to_solution: learned.2,
             steps,
             max_rows: mr,
             max_cols: mc,
             ms: t0.elapsed().as_secs_f64() * 1e3,
             timed_out: to,
             pairs_above_bound: pab,
+            staircase_at_stop: None,
         }
     };
 
@@ -407,7 +509,7 @@ pub fn f4(input: &[Poly], n_vars: usize, p: u64, opts: &F4Options) -> F4Report {
             continue;
         }
         if total_degree(&f[0].0) == 0 {
-            return report(&basis, &alive, true, 0, 0, 0, 0, 0, false, 0);
+            return report(&basis, &alive, true, 0, 0, 0, 0, 0, false, 0, (0, 0, 0));
         }
         add(
             f,
@@ -424,6 +526,9 @@ pub fn f4(input: &[Poly], n_vars: usize, p: u64, opts: &F4Options) -> F4Report {
     let mut max_cols = 0usize;
     let mut degree_reached = 0u32;
     let mut solving_degree = 0u32;
+    // (solving_degree_max, max_cols_to_solution, steps_to_solution)
+    let mut learned = (0u32, 0usize, 0usize);
+    let mut staircase_at_stop: Option<usize> = None;
 
     while !pairs.is_empty() {
         if debug {
@@ -442,6 +547,7 @@ pub fn f4(input: &[Poly], n_vars: usize, p: u64, opts: &F4Options) -> F4Report {
                     max_cols,
                     true,
                     pairs_above_bound,
+                    learned,
                 );
             }
         }
@@ -612,6 +718,7 @@ pub fn f4(input: &[Poly], n_vars: usize, p: u64, opts: &F4Options) -> F4Report {
                 max_cols,
                 true,
                 pairs_above_bound,
+                learned,
             );
         };
         // new polynomials: rows whose pivot column is not an input leading monomial
@@ -638,13 +745,16 @@ pub fn f4(input: &[Poly], n_vars: usize, p: u64, opts: &F4Options) -> F4Report {
                     max_cols,
                     false,
                     pairs_above_bound,
+                    (learned.0.max(d), max_cols, steps),
                 );
             }
             new_polys.push(poly);
         }
         if !new_polys.is_empty() {
             solving_degree = d;
+            learned = (learned.0.max(d), max_cols, steps);
         }
+        let learned_now = !new_polys.is_empty();
         for f in new_polys {
             add(
                 f,
@@ -654,6 +764,18 @@ pub fn f4(input: &[Poly], n_vars: usize, p: u64, opts: &F4Options) -> F4Report {
                 opts.max_degree,
                 &mut pairs_above_bound,
             );
+        }
+        if let (Some(bound), true) = (opts.stop_staircase, learned_now && !pairs.is_empty()) {
+            let lms: Vec<&[u32]> = basis
+                .iter()
+                .zip(&alive)
+                .filter(|(_, &a)| a)
+                .map(|(f, _)| f[0].0.as_slice())
+                .collect();
+            if let Some(count) = staircase_at_most(&lms, n_vars, bound) {
+                staircase_at_stop = Some(count);
+                break;
+            }
         }
     }
     // final interreduction of the alive basis (tails)
@@ -669,12 +791,16 @@ pub fn f4(input: &[Poly], n_vars: usize, p: u64, opts: &F4Options) -> F4Report {
         inconsistent: false,
         degree_reached,
         solving_degree,
+        solving_degree_max: learned.0,
+        max_cols_to_solution: learned.1,
+        steps_to_solution: learned.2,
         steps,
         max_rows,
         max_cols,
         ms: t0.elapsed().as_secs_f64() * 1e3,
         timed_out: false,
         pairs_above_bound,
+        staircase_at_stop,
     }
 }
 
@@ -1062,6 +1188,110 @@ mod tests {
         };
         sols.sort();
         assert_eq!(sols, vec![vec![2, 2], vec![5, 5]]);
+    }
+
+    #[test]
+    fn solving_degree_max_sees_the_highest_productive_step() {
+        // x⁸ − 1 and x² + x + 1 over F_7 have no common root (x⁸ = 1 and
+        // x³ = 1 force x² = 1).  The only pair has degree 8 and falls to a
+        // linear element; the pair after it, of degree 2, yields 1.  The last
+        // productive step is at degree 2, but the run learned something at
+        // degree 8 first.
+        let p = 7;
+        let f = poly(&[(&[8], 1), (&[0], 6)]);
+        let g = poly(&[(&[2], 1), (&[1], 1), (&[0], 1)]);
+        let r = f4(&[f, g], 1, p, &F4Options::new(Ordering::Grevlex, 16));
+        assert!(r.inconsistent);
+        assert_eq!(r.solving_degree, 2);
+        assert_eq!(r.solving_degree_max, 8);
+        assert!(r.max_cols_to_solution <= r.max_cols);
+        assert!(r.steps_to_solution <= r.steps);
+    }
+
+    #[test]
+    fn staircase_counts_standard_monomials() {
+        // (x², y²) leaves 1, x, y, xy; adding xy leaves three; no pure power
+        // of y leaves infinitely many.
+        let x2: &[u32] = &[2, 0];
+        let y2: &[u32] = &[0, 2];
+        let xy: &[u32] = &[1, 1];
+        assert_eq!(staircase_at_most(&[x2, y2], 2, 10), Some(4));
+        assert_eq!(staircase_at_most(&[x2, y2, xy], 2, 10), Some(3));
+        assert_eq!(staircase_at_most(&[x2, y2], 2, 3), None);
+        assert_eq!(staircase_at_most(&[x2, xy], 2, 100), None);
+    }
+
+    #[test]
+    fn stopping_below_a_staircase_keeps_every_solution() {
+        // Two Kummer towers over F_17 (y0² = y1, y1² = 1 and the same for
+        // z), linked by y0 + z0 = c.  The towers alone leave 16 standard
+        // monomials, so zero-dimensionality is there from the start and must
+        // not stop the run; a bound of 2 may.  When it does, every root of
+        // the system must still be a zero of every element of the basis, and
+        // the staircase it stopped at bounds the number of roots.
+        let p = 17;
+        // variables: y0, y1, z0, z1
+        let tower = |a: usize, b: usize| {
+            let mut sq = vec![0u32; 4];
+            sq[a] = 2;
+            let mut nx = vec![0u32; 4];
+            nx[b] = 1;
+            vec![(sq, 1), (nx, p - 1)]
+        };
+        let last = |a: usize| {
+            let mut sq = vec![0u32; 4];
+            sq[a] = 2;
+            vec![(sq, 1), (vec![0; 4], p - 1)]
+        };
+        for c in 0..p {
+            let link = vec![
+                (vec![1, 0, 0, 0], 1),
+                (vec![0, 0, 1, 0], 1),
+                (vec![0; 4], (p - c) % p),
+            ];
+            let sys: Vec<Poly> = vec![tower(0, 1), last(1), tower(2, 3), last(3), link];
+            let mut roots = Vec::new();
+            for y0 in 0..p {
+                for z0 in 0..p {
+                    let x = [y0, y0 * y0 % p, z0, z0 * z0 % p];
+                    if sys.iter().all(|f| eval(f, &x, p) == 0) {
+                        roots.push(x);
+                    }
+                }
+            }
+            let r = f4(
+                &sys,
+                4,
+                p,
+                &F4Options::new(Ordering::Grevlex, 12).stopping_below(2),
+            );
+            if r.inconsistent {
+                assert!(roots.is_empty(), "c = {c}: refuted a system with roots");
+                continue;
+            }
+            if let Some(s) = r.staircase_at_stop {
+                assert!(
+                    s <= 2 && s >= roots.len(),
+                    "c = {c}: stopped at {s} with {} roots",
+                    roots.len()
+                );
+            }
+            for x in &roots {
+                for b in &r.basis {
+                    assert_eq!(eval(b, x, p), 0, "c = {c}: a basis element misses a root");
+                }
+            }
+            // A bound of zero can only be met by 1, which is a refutation, so
+            // it never stops a run early.
+            let full = f4(
+                &sys,
+                4,
+                p,
+                &F4Options::new(Ordering::Grevlex, 12).stopping_below(0),
+            );
+            assert_eq!(full.staircase_at_stop, None);
+            assert_eq!(full.inconsistent, roots.is_empty(), "c = {c}");
+        }
     }
 
     #[test]

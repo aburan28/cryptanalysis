@@ -115,6 +115,49 @@ group before it becomes a relation:
   (<https://gitlab.lip6.fr/almasty/mq>,
   <https://github.com/cbouilla/libfes-lite>).
 
+### The Gröbner oracle's matrix kernel, F5, and GPUs
+
+    ./target/release/ca-ic run --degree 23 --curve-a 1 --solver groebner --batch 16
+    ./target/release/ca-ic run --degree 23 --curve-a 1 --solver groebner --batch 4096 --f4-backend cuda
+    F4_F2_RREF=reference ./target/release/ca-ic run --degree 23 --curve-a 1 --solver groebner   # control
+
+The `groebner` oracle reduces every node of its splitting search with one
+or two small Macaulay matrices (a few hundred rows), tens of thousands of
+times per relation. Its kernel is `f4_gf2`: columns are indexed by a
+combinatorial rank of the monomial (no hash map, no sorts), rows shifted by
+variables the search has substituted away are not built (the size caps are
+still applied in the reference builder's units), and the solver's decision
+— a refutation, or rows that pin a variable — is read off the linear block
+after eliminating only the high-degree columns, with no full reduction and
+no polynomial readback. `matrix_f4_f2` still returns the reference rows
+bit-for-bit, and the solver takes exactly the same steps: every verdict,
+relation and counter is unchanged. `F4_F2_RREF=reference` selects the
+original kernel as a paired control.
+
+**F5.** Rows `t·f_i` that the F5 criterion (`t` leads an element of the
+lower-degree row space of the earlier equations) or the Boolean
+field-equation criterion (`f² = f`) prove redundant are left out of
+elimination. Answers are unchanged; the savings start where a trivial
+syzygy fits (degree 4 for quadratic equations, or earlier once propagation
+has produced linear ones) and matter most in the solving-degree and
+first-fall-degree sweeps (`dreg_sweep`), which also use the fast kernel.
+`F4_F2_F5=0` turns it off.
+
+**GPUs.** `--f4-backend` runs each relation batch's searches in lockstep
+and decides every round's matrices together, which is what gives a device
+enough independent work: `cuda[:N]` on an NVIDIA GPU (the kernel is
+`suite/cuda/f4_gf2_device.cuh`, one thread block per system; libcuda and
+NVRTC are opened at run time, `CA_F4_PTX` loads a prebuilt PTX instead),
+`emulate[:threads]` for the same kernel source run on the host (build with
+`--features gpu-emulator`), or `cpu`. Each search takes the same steps as
+without it, so relations and the recovered logarithm are identical; the
+report's `f4_batch` block records the backend, the rounds and the requests.
+Use a batch in the thousands to fill a GPU. `examples/f4_batch_bench.rs`
+replays the matrices real searches request through every backend and checks
+each answer against the host kernel. See
+[`experiments/f4-gpu-20260925`](../../../experiments/f4-gpu-20260925/RESULT.md)
+for the measurements.
+
 Not every degree/coefficient combination has a usable subgroup. A valid
 curve does not guarantee successful collection or an invertible relation
 system. Factor-base materialization is capped at 4096 abscissae
@@ -215,7 +258,10 @@ twelve verified logarithms — see
 
 `--solve-cost-targets N` runs the Gröbner oracle on `N` census targets per
 candidate, charging refutations as well as successes, and ranks by
-`expected_stage_ops = expected trials × measured word XORs per target`. The
+`expected_stage_ops = expected trials × measured word XORs per target`.
+The XORs are the calling thread's own (solving elsewhere in the process is
+not charged) and are those of the F4 kernel in use, so compare rankings made
+with the same `F4_F2_RREF`. The
 report's `scoring_objective` says which of the two ranked it, and each
 candidate carries `measured_ops_per_target`, `expected_stage_ops` and
 `trace_zero`. Omitted, nothing changes: the ranking is the trial count as
@@ -578,11 +624,74 @@ ratio at 5.1 at 48 bits and wanted 315 targets, because it was measured
 on constants that have since moved three times.
 
 `docs/ic/params/k0n53-subgroup-wide.json` is the degree-53 rung on a
-36464-point compact base: the descent falls from 50.4 ms a target to
-16.3 ms and the charged ρ/IC ratio rises from 25.0 to 75.2, while the
-precompute rises from 16.5 s to 87.8 s. That is a trade, and
-`docs/ic/runs/koblitz-compact-pair-table-20260912.json` prices it — about
-2200 targets before the wider base is the cheaper one.
+36464-point base.  Its original compact-table measurement is retained in
+`docs/ic/runs/koblitz-compact-pair-table-20260912.json`: the descent fell
+from 50.4 ms a target to 16.3 ms, but precompute rose from 16.5 s to
+87.8 s.  That is a historical representation comparison; current
+`auto` pricing selects the folded table for this run.
+
+`docs/ic/params/k0n53-subgroup-one-unit.json` is the current same-host
+profile for that base.  A target-independent screen of public relation
+seeds found that seed 6 certifies every one of the 344 orbit columns in
+one 17000-probe unit.  Against the preceding seed-1/26000-probe profile,
+three alternating-order pairs gave median candidate/reference ratios of
+0.840 wall, 0.824 total core-seconds and 0.981 peak RSS; charged work fell
+to 19,363,000 summand scans and 588 verified relations.  The exact first
+complete prefix is trial 16689; the profile keeps a 311-probe cushion.
+
+The primary control is the single scalar-blind target in
+`docs/ic/params/k0n53-subgroup-one-unit-public-unknown.json`:
+
+    target/release/ca-ic workflow \
+      --params docs/ic/params/k0n53-subgroup-one-unit-public-unknown.json \
+      --dir /tmp/k0n53-public-unknown
+
+The select report now exposes its native algebraic-construction counts:
+695 abscissae drawn, 344 lifts, 344 cofactor multiplications, 18,232
+Frobenius squarings and one rebuild.  Fresh and resumed materialisation
+report the same deterministic counts; process CPU, RSS and select wall
+remain charged separately.
+
+Public hash seed 53001 constructs no target scalar and supplies no
+factor-base logs; relation-derived logs recovered `7892094459170` and
+verified the published point in all five fresh runs.  The selected
+operational profile charges base materialisation, pair-table predicate
+construction, relation collection and verification, sparse linear
+algebra, descent, process CPU and peak RSS.  It won 4/5 whole-process
+wall comparisons, with medians of 1.380 s IC and 1.589 s rho, but IC
+alone still used 10.573 core-seconds.  The wall crossover is not a
+total-compute crossover.
+
+The parameter search is retained and charged separately rather than
+made free: 45 through-logs processes used 77.960 sequential wall-seconds,
+484.310 core-seconds and at most 106.9 MB RSS.  Charging that discovery
+to a first-ever single target gives 79.340 s wall and 494.883
+core-seconds on the IC side, so it does not cross rho.  The selected-run
+ratio applies only once the public profile is fixed; amortisation must
+name and count later targets explicitly.
+
+Adjacent factor-base widths and collection windows did not reduce the
+complete rank-producing core cost.  Reusing window scratch preserved
+every relation hash and scalar across eight matched pairs but was speed
+neutral (0.997 median wall, 1.001 core) and therefore rejected.  Across
+selection, validation and rejected diagnostics, the retained science
+campaign contains 101 processes, 311.140 sequential wall-seconds,
+1,159.243 core-seconds and a 139.9 MB maximum RSS.
+
+With `RAYON_NUM_THREADS=1`, five fresh scalar-blind repeats used a
+median 8.570 s for full IC against 1.599 s for rho: IC was 5.362 times
+slower, with 10.984 total process core-seconds, 68.5 MB peak RSS and a
+1.008 wall/core ratio.  A one-pass 2/4/6/8/10/12/14-thread diagnostic
+first crossed wall at eight threads; no thread count produced a
+single-target core crossover.  As a secondary amortisation control, the
+independent 32-target one-thread holdout spent 8.819 s in IC against
+32.916 s in rho, with 32/32 verified.  The batch result does not repair
+the single-target loss.
+
+`docs/ic/runs/koblitz-n53-one-unit-20260921.json` records the seed
+screen, discovery envelope, thread diagnostic, repeats, resources and
+remaining gate failures.  This is a bounded engineering improvement,
+not a SOTA claim.
 
 **`descent_summands`** lets the descent ask for a different number of
 summands than collection, which shares only the base and its pair table.
@@ -890,6 +999,210 @@ deployed curve: at 256 bits every term is `≈ 2^128/√w`, as for rho.
   so `j1728` is refused. Its knobs are `--factor-base`, `--extra-relations`,
   `--max-trials` and `--attempts`.
 
+## The boundary ledger: `ic boundary`
+
+    ./target/release/ca-ic boundary --quick
+    ./target/release/ca-ic boundary --regime koblitz --koblitz-degrees 23,31,41 --repeats 2 --out ledger.json
+    ./target/release/ca-ic boundary --oracles --out docs/ic/runs/ic-boundary-ledger-YYYY-MM-DD.json
+
+`boundary` is the one-table-one-unit measurement `AGENTS.md` asks for,
+run over three regimes at once: a generic prime-field curve, a random
+binary curve, and a Koblitz curve.  Every variant of every regime solves
+the same planted logarithm end to end — factor base, relation
+collection, decomposition oracle, linear algebra, verification — and is
+priced in **group-addition equivalents per `√r`** against two
+boundaries: the generic floor `√(π/2A)` for the automorphisms `A` the
+curve offers, and a counted Pollard rho on the same instance in the same
+process, matched to those automorphisms: the negation-map walk on the
+prime and random binary curves, where the plain walk runs beside it on
+the same seeds as the before mark (ledger §18), and the signed
+Frobenius walk on Koblitz curves.  Native counters — trials, pair-table
+probes, square roots, Artin–Schreier solves, pairs of the
+pairs-and-solve loop, multiply-subtracts of the elimination — are exact;
+the conversion to additions uses the ratios **pinned in
+[`calibration.json`](calibration.json)**, so that two runs price
+identical native counts identically.
+
+That pinning is Round 4 (the note's §12).  Through Round 3 the factors
+were measured on the host at the start of each run, and the *ratios*
+between them drifted — a median of `1.08` and up to `3.70` for the same
+instance and unit across three ladders on one machine — which repriced
+rows that had done identical work by up to eight per cent and put a
+floor under every cross-run comparison the ledger makes.  Operation
+counts survive hardware, as `AGENTS.md` §6 requires; a conversion
+re-measured per run does not.  The host's factors are still taken and
+still reported, as `calibration_measured`, because they are the
+wall-clock practicality note and because a host that stops resembling
+the reference one should be visible — they simply price nothing.  An
+instance the table does not carry keeps them and says so in
+`calibration_pinned`, so a row priced the old way is never silent about
+it.  `tools/boundary_pin_calibration.py` regenerates the table as the
+median over a set of frozen runs.
+
+The relation phase also carries its counting ceiling, `C(F+m−1, m)/#E`,
+and the measured yield against it.
+
+Variants: Semaev `S₃` roots, direct subtraction and meet in the middle
+(`m = 2, 3`) on prime curves; `S₄` pairs-and-solve and meet in the
+middle on random binary curves over the low-order subspace of dimension
+`⌈n/3⌉`; meet in the middle over signed-Frobenius-orbit columns, the
+same without the fold, and `S₄` pairs-and-solve over the invariant
+subspace on Koblitz curves.  Exponents `ops ∝ r^α` are fitted per phase
+over the ladder.  `--oracles` additionally prices the decomposition
+oracles that cannot finish a logarithm at these sizes — matrix-F4 (word
+XORs, exact), CDCL SAT (conflicts), enumeration, meet in the middle,
+`S₄` — per target on the Koblitz Semaev systems, with each system's
+unknowns, equations, degree, Macaulay profile and first fall degree.
+
+The frozen run (`runs/ic-boundary-ledger-2026-09-21.json`) and its
+reading are in
+[`research/notes/index-calculus/RESEARCH_IC_BOUNDARY_LEDGER.md`](https://github.com/aburan28/crypto/blob/main/research/notes/index-calculus/RESEARCH_IC_BOUNDARY_LEDGER.md);
+the report JSON carries the Markdown tables under `markdown`.  The
+scripts in `tools/` render a report into the note's tables
+(`boundary_ledger_tables.py`), the scoreboard's rows
+(`boundary_scoreboard_rows.py`) and the ledger twin's records
+(`boundary_ledger_update.py`), so a new run updates the three places
+`AGENTS.md` §7 requires without numbers being typed.
+
+**Round 2** (`runs/ic-boundary-ledger-round2-2026-09-21.json`, the note's
+§10) keeps every first-round row as its *before* mark and adds, per
+regime, the rungs of a cumulative engineering ledger, named by suffix:
+`_negfold` (the pair table built once per pair up to negation, `|F|²/4`
+additions instead of `|F|²/2`), `_frobfold` (Koblitz: once per pair up
+to negation and the Frobenius, keyed by the normal-basis canonical form
+of the sum's abscissa, `|F|²/(4n)`; canonicalisations counted and priced
+at a measured factor), `_walk` (targets from a 16-jump r-adding walk
+with tracked coefficients, one addition each, fresh jumps per segment),
+`mitm_m2_…` rows wherever the cofactor classes admit two summands and
+the exact floor fits the budget, and `_balanced` (Koblitz, `n ≥ 37`: a
+base sized to balance the folded table against the walk's trials).
+Every row carries the **exact** counting ceiling next to the uniform
+one — the `m`-multisets of base points whose cofactor classes cancel,
+over `r` — which is the §3.5 accounting correction of the first round.
+
+Every row is also **guarded against decomposing one group element
+twice**.  Two rows with the same factor-base part and different `(a, b)`
+pin the logarithm by themselves, which is a generic collision resolved
+through the factor base rather than a relation, and it arrives after
+about `√r` targets whatever the oracle costs; measured, it ends 24.4% of
+unguarded two-summand runs and 82% of those whose walk segments share
+one jump table.  The guard is one hash insert per target, counted as
+`target_guard_probes` and priced as a lookup, with
+`repeated_targets_skipped`, `repeated_column_rows` and
+`pinned_by_repeated_row` reported.  `--unguarded-targets` reproduces the
+old behaviour for that diagnostic; the note's §10.2 has the numbers.
+
+**Round 3** (`runs/ic-boundary-ledger-round3-2026-09-21.json`, the note's
+§11) does not add a suffix.  Its first lever makes an existing row
+cheaper: the walk's **restarts**.  Round 2 redrew all sixteen jumps at
+two scalar multiplications each whenever the target guard forced a
+restart, which on the rungs that restart often cost more than every walk
+step put together.  The walk now draws its jumps once, keeps sixteen
+pooled offsets beside them, and restarts by adding one offset to the
+current point while rotating which jump each hash selects — so two
+segments still have different step functions and cannot merge, at one
+group operation per restart instead of thirty-two scalar
+multiplications.  The second lever gives the prime and binary regimes
+the `_balanced` row the Koblitz regime already had.  The third is
+reporting: every row now carries its ratio to the **family shape law**
+
+```text
+    ops(F) = F²/(4t) + c·#E/(2kF),   least at F = (c·#E·t/k)^{1/3}
+    S_family = 0.75·(#E·t/k)^{2/3} / (t·√r)
+```
+
+with `t` the table fold (1 up to negation, `n` up to `⟨σ, −1⟩`) and `k`
+the column fold (1 per abscissa, `n` per signed Frobenius orbit).  On a
+prime-order curve that is `Θ(r^{1/6})`, so no choice of base size
+escapes it and every constant this repository can tune lives inside the
+`0.75`.  It is a model of the family and not a bound on the problem —
+the relation count is an expectation over the cycle structure, so a row
+can land under it — and it is reported next to the generic floor, which
+is a bound.
+
+`tools/boundary_round_compare.py` pairs rows two ways and saves the
+`speedup = baseline_total_operations / candidate_total_operations`
+comparison `AGENTS.md` §8 asks for.  Within a run it pairs each new row
+with the rung it was built on (same curve, target, seed), which is what
+prices a row a round *adds*; with `--across <previous-round.json>` it
+pairs each row with the same-named row of the previous round's run on
+the same instance and seed, which is the only pairing that can see a
+lever that makes an existing row cheaper without renaming it.  It also
+records which first-round rows reproduce the frozen counts and which the
+target guard moved.
+
+## The pluggable benchmarking framework: `ic bench`
+
+`ic bench` runs one index-calculus *configuration* — a factor base, a
+target source, a decomposition oracle, a polynomial-system solver and a
+relation matrix, each chosen by name — end to end against a planted
+logarithm, and prices every stage in the ledger's unit so that swapping
+one stage shows what it changes and nothing else.  `ic bench --list`
+prints what can be plugged in at each stage; `--sweep` runs a matrix of
+configurations from a JSON file and prints one table.
+
+    ./target/release/ca-ic bench --list
+    ./target/release/ca-ic bench --char2-degree 13 \
+        --factor-base binary-subspace:dimension=6 \
+        --oracle descent-algebraic:m=2 --solver buchberger-f2
+    ./target/release/ca-ic bench --sweep docs/ic/sweeps/solver-engines.json
+
+[`FRAMEWORK.md`](FRAMEWORK.md) is the manual: the unit, the report
+columns, the stage contracts, a worked example of adding a solver (the
+plug point for F4, F5, XL, SAT), the sweep schema and the reporting
+rules a comparison has to keep.  `ic descent` measures the algebraic
+oracle's systems on their own, in the shape of Petit–Quisquater's
+Table 2 (§14 of the ledger note); it is a stage diagnostic, never a
+speed, and `ic bench` is where the same solver's cost reaches `S`.
+`ic bench` also runs counted Pollard rho on the same instance and
+planted targets (`--rho-runs`, default 16) and fills the table's
+`vs rho` column from it. The column divides by the **matched** walk: the
+negation map (`A = 2`) on prime and random binary curves, and on a
+Koblitz curve the cheaper of the signed-Frobenius and negation walks.
+The plain walk every report used through ledger §17 rides along as the
+before mark. `ic rho` runs the walks paired over a ladder, and
+`ic rho --reprice FILE` re-prices a frozen report against the matched
+walk (ledger §18). `ic rho --batch-koblitz a/n` runs batch rho, `k`
+targets in one group solved together, which is the reference for any
+figure that amortises one build over `k` targets (ledger §19).
+
+    ./target/release/ca-ic rho --prime-bits 16,20,24 --char2-degrees 17,21,25 --runs 64
+    ./target/release/ca-ic rho --reprice docs/ic/runs/ic-boundary-ledger-round5-2026-09-22.json
+    ./target/release/ca-ic rho --batch-koblitz 0/41 --batch-sizes 1,32 --batches 16
+
+With `--solver` (repeated once per engine), `ic descent` prices
+several registered engines on the same seeded systems instead of the
+built-in Buchberger: every engine solves every target `--repeats`
+times, interleaved per target with the engine order rotated each
+repetition, and every answer is checked against the reference engine
+(`fes-f2` on quadratic cells, `exhaustive` otherwise).  Each system
+carries a blake3 fingerprint and each cell a digest of the reference
+answers, so a later run can prove it saw the same inputs and decided
+them the same way.
+
+    ./target/release/ca-ic descent --cells 17:9:2,21:11:2 --targets 8 --repeats 3 \
+        --solver buchberger-f2 --solver f4-f2 --solver matrix-f5 \
+        --solver crossbred-f2 --solver fes-f2 --solver exhaustive
+
+The matched suite that freezes this comparison, with its whole-pipeline
+counterpart, is
+[`research/ic_framework_engines_20260922/`](https://github.com/aburan28/crypto/blob/main/research/ic_framework_engines_20260922/README.md).
+
+## A benchmark corpus: `ic corpus`
+
+    ./target/release/ca-ic corpus --degree 19 --dimension 6 --sat 5 --unsat 5 --dir corpus/n19l6
+
+Writes Weil-descended symmetrised Semaev `S₄` instances — the family of
+`mtrimoska/EC-Index-Calculus-Benchmarks` — for external solvers: DIMACS
+with native `x` parity lines, plain CNF, one GF(2) polynomial per line
+(`.anf`), a Magma script computing the Gröbner basis, and an `INFO`
+file with the target, the label, the planted witness and its SAT
+assignment.  Labels are certified: satisfiable instances plant a sum of
+three factor-base points and are confirmed by a model of this crate's
+solver; unsatisfiable ones are refuted by the complete pairs-and-solve
+search.  `docs/ic/corpus/` holds small generated sets with their
+reports; everything is deterministic in `--seed`.
+
 ## Random fixtures and custom parameters
 
     ./target/release/ca-ic generate --degree 11 --curve-a 1 --seed 42 --out fixture.json
@@ -1096,7 +1409,7 @@ the whole method plus the in-process ρ baseline on three frozen ledger rungs
 and fails closed on an unverified logarithm, a drifted seeded counter, or a
 regressed same-host end-to-end wall ratio. What it checks, what passing
 does not claim, and how to re-freeze after a deliberate change are in
-[`ci/README.md`](ci/README.md).
+[`ci/README.md`](https://github.com/aburan28/crypto/blob/main/docs/ic/ci/README.md).
 
 Tests cover named profiles, custom prime curves, generated-fixture
 round trips, reproducibility, malformed and ambiguous parameters,
@@ -1140,10 +1453,21 @@ against 3.3×.
 - `koblitz_fast::NormalBasis` builds the basis and is the key; the two
   keys pick different representatives of the same orbit, so a folded
   table is not portable across the change.
-- `PairSumTable::build_within` reaches for the fold as its last tier, when
-  neither the full nor the compact table fits the budget. That is still
-  right after the cheaper key: what the fold buys is a *wider* base, and
-  the base is fixed by the time the tier is chosen.
+- `PairSumTable::build_within` chooses the tier by a **measured cost
+  model**, not by what fits. It has been ordered three ways: first that
+  fits (summands, compact, fold), then fold-first, and now neither. Both
+  fixed orders treat the tier as a property of the base, and it is not —
+  the fold buys a build `2n` times cheaper and pays for it on every
+  probe, so the answer depends on how much probing amortises the build.
+  `ProbeBudget` carries that volume; `build_within_for` takes one.
+  Priced in group additions over four widths on one curve, the cheapest
+  tier is full below about 8000 points, compact from there to about
+  16000, and folded above; `full/folded` crosses one at `|F| ≈ 13,623`.
+  The default never picks `full` — it wins only the narrowest width
+  measured, by 5.8%, inside the conversion's own noise, and costs four
+  times the memory — but every tier stays reachable by name and `ic`'s
+  `pair_table_tier` overrides the choice.
+  `docs/ic/runs/koblitz-tier-crossover-20260921.json` is the sweep.
 - `PairSumTable::folded_byte_size` is the sizing law to choose a base by.
 - `PairSumTable::contains_pair` is the probe on its own, without the
   `O(|F|)` summand recovery a hit would otherwise charge to it — one
@@ -1168,10 +1492,38 @@ against 3.3×.
   **74 ns** a base point, and the canonicalisation measured alone is
   **76** — so the fold's cost in the descent is the canon and nothing
   else.  Read it down the columns: blocking buys the folded table
-  **1.83×** and the compact table, the control, **1.35×**, which is what
-  says the cause is the key's length.
+  **1.83×** and the compact table **1.35×**.
   `docs/ic/runs/koblitz-probe-shape-20260913.json` records it, and what
   it does not claim.
+- `examples/probe_window_sweep.rs` then asks *why* blocking pays, with
+  the control that comparison lacks: the folded table canonicalised with
+  `k` rotations instead of `n`, so the lookup is held fixed and only the
+  key's length moves.  The gain does not scale with the key — it
+  **steps**, doubling between `k = 8` and `k = 10` and flat on either
+  side, which at six uops a rotation puts the knee at **82 to 94 uops**
+  against this host's **97-entry scheduler**.  So the capacity that
+  binds is the scheduler, not the 224-entry ROB; the `x < best` branch
+  is a `cmovb` and never mispredicted; and TLB pressure was never a
+  competing hypothesis, since it sets how big the exposed round trip is
+  rather than whether it is exposed.
+- `examples/m4_inversion_cost.rs` prices the `m = 4` arm's unbatched
+  `FastCurve::add`: a Fermat inversion at **1300 ns** a `(k, l)` against
+  `add_many`'s **68**, which is twelve times the lone-probe penalty the
+  note used to name as that arm's problem.  The arm now batches that
+  inversion the way `m = 3` does, and the same harness measures the arm
+  itself: **1155.5 → 123 ns** a `(k, l)`, **9.4×**, with the 1030 ns
+  saved matching the Fermat inversion the binary measures alone.
+  Measured at `n = 61` where a target has no witnesses, because at
+  `n = 19` the `|F|`-long compact recovery each hit pays hides the whole
+  difference — 2452 against 2429, 1% apart.
+  `docs/ic/runs/koblitz-m4-batched-20260921.json` records it.  No
+  shipped parameter set asks for `m = 4`, so no `S` moves and no
+  scoreboard row follows: **engineering** by `AGENTS.md` §3.
+- The three bullets above are **stage diagnostics** (`AGENTS.md` §2):
+  each prices one slice — a probe, a key, an inversion — so none is a
+  speedup, and the ones that correct an earlier figure are
+  **accounting** by §3.  The method's speed is its `S` column, whole and
+  cold; none of this moves it, so none of it is a scoreboard row.
 
 - `docs/ic/runs/koblitz-degree61-folded-20260913.json` — the pipeline run
   whole at 300608 points / 2464 orbits: 32 of 32 verified, **330.7×** over
