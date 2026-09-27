@@ -28,6 +28,9 @@ def require(condition: bool, message: str) -> None:
 
 def validate_run(run: dict) -> dict:
     require(run.get("schema_version") == CONTRACT["schema_version"], "wrong schema version")
+    mode = run.get("accounting_mode", "calibrated_operations")
+    require(mode in CONTRACT["accounting_modes"], "unknown accounting mode")
+    wall_only = mode == "verified_online_wall"
     require(run.get("kind") in CONTRACT["run_kinds"], "unknown run kind")
     require(run.get("status") in CONTRACT["run_statuses"], "unknown run status")
     for key in ("run_id", "workload_id", "pair_block_id", "source_curve_ref", "profile_id",
@@ -83,6 +86,16 @@ def validate_run(run: dict) -> dict:
     require(isinstance(run.get("subgroup_order"), str) and run["subgroup_order"].isdigit()
             and int(run["subgroup_order"]) > 1, "invalid subgroup order")
     total = run.get("total_operations")
+    if wall_only:
+        require(run["kind"] == "full_dlp", "online wall mode requires a full-DLP attempt")
+        require(total is None and all(value is None for value in phases.values())
+                and run.get("rho_operations") is None and run.get("operation_unit") is None,
+                "unmeasured operations must remain unknown")
+        require(isinstance(run.get("unknown_operation_reason"), str)
+                and bool(run["unknown_operation_reason"]), "missing unmeasured-operation explanation")
+        require(run.get("warm") is None and all(run.get(key) is None for key in (
+            "ratio_to_rho", "ratio_to_floor", "S_rps", "S_ec_add", "rho_floor_operations")),
+            "online wall mode cannot claim operation ratios or amortization")
     all_priced = all(value is not None for value in phases.values())
     if total is not None:
         require(all_priced and type(total) is int and total == sum(phases.values()),
@@ -98,9 +111,13 @@ def validate_run(run: dict) -> dict:
             require(run["isogeny_route_ref"] == "none", "ISO0 candidate names a route")
         require(run.get("verified_scalar") is True and run.get("scalar_certificate_ref"),
                 "full DLP lacks scalar certificate")
-        require(total is not None and run.get("rho_operations") is not None,
-                "full DLP lacks complete cost or rho reference")
-        require(total > 0, "full DLP total cost must be positive")
+        if wall_only:
+            require(run.get("online") is not None and run["online"].get("speedup") is not None,
+                    "online wall completion lacks paired verified timing")
+        else:
+            require(total is not None and run.get("rho_operations") is not None,
+                    "full DLP lacks complete cost or rho reference")
+            require(total > 0, "full DLP total cost must be positive")
         require(all(value is not None for value in phase_wall.values()),
                 "full DLP lacks phase wall times")
     else:
@@ -185,6 +202,21 @@ def validate_run(run: dict) -> dict:
                     "unverified target claims online speedup")
             require(math.isclose(online["speedup"], rho_ns / ic_ns, rel_tol=1e-12),
                     "incorrect online speedup")
+        if wall_only:
+            target = online.get("public_target")
+            require(isinstance(target, dict) and target.get("inf") is False
+                    and all(type(target.get(k)) is int and target[k] >= 0 for k in ("x", "y")),
+                    "online wall receipt lacks a finite public target")
+            require(measured.get("target") == target, "rho was not paired on the same public point")
+            if run["status"] == "complete":
+                certificate = run.get("scalar_certificate") or {}
+                require(certificate.get("target") == target and certificate.get("replayed_point") == target
+                        and measured.get("replayed_point") == target,
+                        "online wall completion lacks same-point scalar replay")
+                require(type(certificate.get("scalar")) is int
+                        and 0 <= certificate["scalar"] < int(run["subgroup_order"])
+                        and certificate["scalar"] == measured.get("scalar"),
+                        "IC and rho recovered different scalars")
     return run
 
 
@@ -223,6 +255,7 @@ def summarize(runs: list[dict]) -> dict:
         collection_ops = sum(run["phase_operations"][phase] for run in group
                              for phase in collection_phases) if collection_priced else None
         full = [run for run in group if run["kind"] == "full_dlp" and run["status"] == "complete"]
+        priced_full = [run for run in full if run["total_operations"] is not None]
         result.setdefault(config, {})[workload] = {
             "runs": len(group),
             "statuses": dict(sorted(counts.items())),
@@ -241,7 +274,7 @@ def summarize(runs: list[dict]) -> dict:
             "novel_rows_per_ordinary_query": novel / ordinary if ordinary else None,
             "complete_dlp_runs": len(full),
             "median_complete_total_operations": statistics.median(
-                run["total_operations"] for run in full) if full else None,
+                run["total_operations"] for run in priced_full) if priced_full else None,
             "median_verified_ic_online_ns": statistics.median(
                 run["online"]["ic_online_ns"] for run in full
                 if run.get("online") and run["online"].get("speedup") is not None)

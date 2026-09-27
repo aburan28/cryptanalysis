@@ -140,3 +140,14 @@ online wall time to measured same-point rho first; retain calibrated cold
 operations, stage costs, and memory as supplementary diagnostics. A component
 win is a stage result. Extrapolated N131 costs remain predictions until
 measured with the complete pipeline.
+
+Receipts whose native implementation does not yet count every operation may
+declare `accounting_mode: "verified_online_wall"`. A completed run in this mode
+still requires the full candidate, stage wall ledger, exactly one public target,
+five exclusive online phases, independently replayed recovery and measured rho
+on the same point. Both recovered scalars and replayed points must agree. Its
+operation unit, every phase operation count, total operation count, operation
+ratios and amortization remain null, with `unknown_operation_reason` explaining
+the gap. This mode supports a verified online wall comparison; it does not
+establish an operation-count or asymptotic claim. The existing default
+`calibrated_operations` mode retains its complete-cost requirements.
