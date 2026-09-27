@@ -81,16 +81,88 @@ abscissa. Neither fraction base here is a demonstrated Frobenius-invariant
 torus base for ECC2K-130; no relation-matrix rank, recovered DLP, comparison
 with rho, degree-131 solve, or scaled F4/F5 speedup has been measured.
 
-## Next discriminating experiment
+## A strict homogeneous lift and an explicit component solver
 
-Use a **compiled multigraded F4 or F5 backend** on the same valid fraction
-ideal, eliminating zero-denominator and zero-block components without giving
-either arm a toy-only enumerated membership polynomial. Record actual
-multidegree matrix supports, solving degree, peak memory, preprocessing,
-verified independent relations, and failed attempts at `k=2` and eventually
-the paper's `n=17` panel. A genuine gain must beat an optimized ordinary
-solver on the *same* valid ideal and lower cost per verified independent
-relation before transfer to the phase-aware ECC2K base.
+`strict_multigraded.py` lifts every Boolean S4 coordinate polynomial to
+formal tri-degree `(4,4,4)` with three separate homogenizers. Its homogeneous
+field equations are `x_j^2+x_j*h_i`; its denominator equations exclude zero
+denominators. Macaulay2 saturates by `h_0*h_1*h_2` and runs F4. The `multi`
+and `total` arms pass the **same generators and monomial order**, differing
+only in whether the ring records three degrees or one. `run_strict_multigraded.py`
+checks the *entire affine Boolean root set*, a separate curve relation oracle,
+and the tri-degrees of the computed multi-arm basis.
+
+The reproducible Macaulay2 1.22 action
+[`strict-homogeneous`](https://github.com/aburan28/cryptanalysis/actions/workflows/strict-homogeneous.yml)
+completed eight runs on `n=5,k=0`: two repeats each for a positive target 0
+(four Boolean roots and four verified roots) and a negative target 2 (zero
+roots). F4 CPU medians, in milliseconds, were **1.67 multi / 1.38 total**
+for target 0 and **0.98 multi / 0.96 total** for target 2. Saturation CPU
+medians were **13.38 multi / 4.68 total** and **10.26 multi / 4.75 total**.
+Macaulay2's available trace did not expose F4 matrix partitions, so the
+grading annotation by itself establishes **no measured block exploitation**.
+The generated scripts, logs, and per-run JSON are uploaded by the action.
+The formal lift specializes exactly to the same Boolean equations at `h_i=1`,
+but it is the lift of Boolean-reduced S4, not an assertion about the original
+unreduced project's homogeneous ideal.
+
+The separately bounded `n=7,k=1` positive/negative panel timed out in all
+four arms after 60 seconds per arm **before F4**. The graded arm printed its
+22-generator input count but no saturation-complete marker; the total arm did
+not print even the input count. Its [timeout receipts](strict_n7_timeouts.json)
+and generated inputs/logs are retained. This experiment therefore cannot
+support an `n=7` F4 speed comparison. The costly panel runs only on a manual
+workflow dispatch.
+
+`homogeneous_components.py` explicitly performs component-wise GF(2)
+Macaulay elimination in the homogeneous quotient `x_j^2=x_j*h_i`. Each row
+has an exact three-component degree. `split` reduces one degree component
+at a time; `flat` reduces **identical degree-tagged rows and columns**
+together. Both dehomogenize the same consequences, run the same exact search,
+and independently check every Boolean root and signed curve relation. This
+is a bounded XL experiment and **not a full multigraded F4**.
+
+Reproduce the isolated three-repeat panel with:
+
+```sh
+python3 homogeneous_components.py --repeats 3 --output homogeneous_component_results.json
+```
+
+These are local Python 3.12 median total solver seconds, with the exhaustive
+audit and independent oracle timed separately. Positive and negative attempts
+both count:
+
+| n / k | target | components / rows | split s | flat s | flat / split | maximum columns, split / flat |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5 / 0 | 0 | 34 / 123 | 0.0056 | 0.0065 | 1.17 | 23 / 252 |
+| 5 / 0 | 2 | 34 / 177 | 0.0080 | 0.0108 | 1.34 | 27 / 320 |
+| 7 / 1 | 1 | 117 / 3,079 | 0.2295 | 2.1893 | 9.54 | 482 / 12,056 |
+| 7 / 1 | 50 | 117 / 3,079 | 0.5686 | 2.5544 | 4.49 | 730 / 12,304 |
+
+Ranks, consequence hashes, exact root sets, search nodes, and relation checks
+agree arm by arm; the raw receipts are in
+[`homogeneous_component_results.json`](homogeneous_component_results.json).
+The saving comes from shorter bit vectors and smaller back-elimination loops.
+An optimized sparse ungraded solver could discover these disconnected
+supports on its own. The prior direct-search control still wins: 0.020 s on
+`n=7,target=1` and 0.340 s on `n=7,target=50`. Thus this explicitly
+measures the homogeneous blocks, **without demonstrating an index-calculus
+speedup**.
+
+## Research goal
+
+The next useful gate is **at least 2× lower median total collection CPU time
+per new independent, verified curve relation than the fastest same-ideal
+baseline** on a fixture where direct search no longer dominates. Include
+negative targets, construction, saturation, matrix reduction, exact point
+verification, and duplicate/relation-rank filtering; preserve relation yield.
+Compare against a compiled ungraded F4/F5 implementation with identical
+denominator restrictions, and record matrix supports and peak memory.
+Increase `k` and `n` only when the smaller correctness checks pass. The
+following gate is lower *total* relation-collection plus linear-algebra and
+target-descent cost against the available nonfraction/Frobenius method and
+rho on a curve where the proposed factor base is valid. The toy fraction base
+does not establish that crossover or an ECC2K-130 attack.
 
 Source: Galbraith, Granger, Merz, Petit, [*On Index Calculus Algorithms for
 Subfield Curves*, Section 5.2](https://sacworkshop.org/SAC20/files/preproceedings/18-IndexCalculus.pdf).
