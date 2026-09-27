@@ -41,8 +41,8 @@ function run_worker()
                 operation = String(request.operation)
                 basis = nothing
                 if operation == "learn"
-                    trace, basis = groebner_learn(polynomials, ordering=DegRevLex(),
-                                                 linalg=:deterministic)
+                    # groebner_learn does not accept linalg; its learn run is deterministic.
+                    trace, basis = groebner_learn(polynomials, ordering=DegRevLex())
                     support = shape
                     response["trace_id"] = "session-trace-1"
                 elseif operation == "apply"

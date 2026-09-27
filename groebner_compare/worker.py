@@ -45,10 +45,11 @@ def solve(name, request):
                         monomial *= variables[i]
                 polynomial += monomial
             polys.append(polynomial)
-        basis = ring.ideal(polys).groebner_basis()
-        rows = [[sum(1 << i for i, variable in enumerate(variables)
-                     if variable in monomial.variables())
-                 for monomial in polynomial.monomials()] for polynomial in basis]
+        # Sage cannot build an empty ideal; the zero ideal's basis is empty.
+        basis = ring.ideal(polys).groebner_basis() if polys else []
+        # BooleanMonomial.variables() can misreport generators; iterindex() is exact.
+        rows = [[sum(1 << i for i in monomial.iterindex())
+                 for monomial in polynomial.terms()] for polynomial in basis]
         version = SAGE_VERSION
     elif name == "repository-f5b":
         source = Path(__file__).resolve().parents[1] / "experiments/pdp-scaling"
