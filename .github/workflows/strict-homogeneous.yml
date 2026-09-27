@@ -1,0 +1,36 @@
+name: strict-homogeneous
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/homogeneous-fraction/**'
+      - '.github/workflows/strict-homogeneous.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  graded-f4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: experiments/homogeneous-fraction
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Macaulay2 1.22
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends macaulay2
+          M2 --version
+      - name: Generate paired saturated ideals and verify the Boolean chart
+        run: |
+          python3 -m py_compile math_model.py block_fraction_solver.py strict_multigraded.py run_strict_multigraded.py
+          python3 run_strict_multigraded.py --repeats 2 --timeout 90
+      - name: Preserve raw inputs, logs and receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-homogeneous-graded-f4
+          path: experiments/homogeneous-fraction/strict_runs/
