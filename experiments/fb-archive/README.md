@@ -79,3 +79,50 @@ Nothing is hardcoded. Without a URI or credentials, it prints why and exits 0;
 `<prefix>/factor-bases/<curve-id>/<file>` with `sha256` metadata, and unchanged
 objects are skipped when boto3 can read that metadata. CI uploads only on pushes
 where `IC_ARCHIVE_S3_URI` and AWS secrets are configured.
+
+## Streaming point and orbit metadata shards
+
+`orbit_shards.py` provides a separate `ic-factor-base-shards/1` format for
+enumerated bases too large for one JSON object. A producer streams **strictly
+sorted** `(x, y)` rows; the writer retains at most `--shard-records` rows
+per compressed shard and builds a content-addressed manifest. Its
+`enumerated_set_sha256` is computed incrementally using the existing
+canonical sorted-point-list encoding, so the final count and digest must
+match the existing `factor_base` record. A recipe-only base has unknown
+`B` and digest and cannot claim a completed point archive.
+
+Input `--record` is a small JSON object containing the existing `field`,
+`curve`, and `factor_base` records. Input `--rows` is JSONL or `-` for
+standard input. Each row has exactly these seven fields:
+
+```json
+{"point":[12,34],"subgroup_projection":null,"orbit_key":null,"frobenius_phase":null,"sign":null,"column_id":null,"column_coefficient":null}
+```
+
+The coordinates use the field record's unsigned integer encoding.
+`orbit_key` names an implementation-defined projected quotient key;
+`frobenius_phase` is an exponent from `0` to `n-1`;
+`sign` is `-1` or `1`. The column ID and coefficient must both be
+present or both null. The archive verifies **structure, hashes, order, and
+agreement with the enumerated point set declared by the existing digest**.
+It does **not** prove subgroup projection, orbit equivalence, phase,
+coefficient, or usefulness for point decomposition; manifests explicitly
+carry `annotations_verified: false`. Publish a separate mathematical
+verification receipt before using these annotations as relation columns.
+
+```bash
+python3 orbit_shards.py ingest --record base-record.json --rows sorted-points.jsonl \
+    --out /data/factor-bases --shard-records 100000
+python3 orbit_shards.py verify /data/factor-bases/manifests/<sha256>.json
+```
+
+The producer may also call `write_shards(root, record, row_iterator)`
+directly without materializing its point set. Each shard stores canonical
+JSONL in deterministic gzip, with compressed and uncompressed SHA-256,
+byte count, record count, and first/last point in the manifest. The
+content-addressed manifest includes the complete base record and its
+original `factor_base_sha256`; it is independent of absolute paths and
+measurement run IDs. Keep `candidate_id`, `workload_id`, and `run_id`
+in a separate benchmark table under the AGENTS.md measurement contract.
+This format is a storage substrate for a future nonlinear orbit-union
+generator, not evidence that such a base improves relation yield at N131.
