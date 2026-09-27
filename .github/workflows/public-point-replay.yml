@@ -1,0 +1,51 @@
+name: Independent public-point replay
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round17/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/pdp-degree-heuristics/pdpkernel.c'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/public-point-replay.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round17/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/pdp-degree-heuristics/pdpkernel.c'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/public-point-replay.yml'
+permissions:
+  contents: read
+concurrency:
+  group: public-point-replay-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  correctness:
+    name: Public-point replay (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build native replay and query dependencies
+        run: |
+          python experiments/groebner-perf-20260924/round4/build.py
+          python experiments/groebner-perf-20260924/round14/build.py
+          python experiments/groebner-perf-20260924/round15/build.py
+          python experiments/groebner-perf-20260924/round17/build.py
+      - name: Independent replay, ABI, complete queries, admission and audit checks
+        run: python -m unittest discover -s experiments/groebner-perf-20260924/round17 -p 'test_*.py' -v
+      - name: Retained evidence and source identities
+        run: python experiments/groebner-perf-20260924/round17/verify_evidence.py
