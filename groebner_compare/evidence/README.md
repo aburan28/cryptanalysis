@@ -23,7 +23,7 @@ each original system and checks actual point sums after Boolean evaluation.
 | Block-aware batch F4 prototype | 15.031 | 0 | 0 | 0 | 3 five-second timeouts |
 | ElimLin → global batch F4 | 15.032 | 0 | 0 | 0 | 3 five-second timeouts |
 | Three-bit guess → block F4 | 15.023 | 0 | 0 | 0 | 3 five-second timeouts |
-| Pinned original M5GB C++ | 1.230 | 0 | 0 | 0 | 3 upstream signal-11 exits |
+| Pinned original M5GB C++ | 1.230 | 0 | 0 | 0 | 3 signal-11 exits under initial bridge table cap |
 
 For a timed-out solver the outcome is **unknown**, not mathematical UNSAT.
 Backend-reported progress captured before termination: block F4 reached
@@ -31,7 +31,9 @@ degree 8 and a matrix of at most 94 rows / 417 columns (separate maxima),
 ElimLin→F4 reached degree 6 and 49 rows / 380 columns. The first-pass hybrid
 wrapper did not forward branch matrix telemetry. M5GB produced a valid basis on
 one small toy control but also an invalid basis and a crash on other controls;
-none of its ECC outputs passed certification.
+none of its ECC outputs passed certification. A subsequent sanitizer run
+located an out-of-range term-table access in the **bridge's bounded table**.
+The initial crashes are not evidence that the full M5GB algorithm fails.
 
 Totals begin at backend launch and include failures, repeated requests,
 worker lifetime and independent checks. Input generation/encoding, initial
@@ -53,7 +55,22 @@ Its branches with no witnesses are charged and are not certified UNSAT.
 Existing F5B certified 3/3 complete bases in **6.645 s**. All 3 attempts
 each for block F4 (**15.026 s**), ElimLin→F4 (**15.024 s**), and hybrid→F4
 (**15.024 s**) timed out. M5GB again exited on signal 11 for all 3 seeds
-(**1.266 s**). Hybrid F4 reached degree 6 and backend-reported matrix maxima
+(**1.266 s**) under that same bridge cap. Hybrid F4 reached degree 6 and backend-reported matrix maxima
 of 350 rows and 64 columns before termination; other maxima appear in the
 first pass above. This is a **negative** result for specialization + SAT on
 these three planted inputs, with no claim of statistical significance.
+
+## Corrected M5GB table-bound control
+
+After the sanitizer located out-of-range term-table indexing in the earlier
+bridge, the bridge and third frozen manifest were committed at
+`fa16e1348b19b513fccc0bfc8f3210c7b405395d` **before** this control.
+The unmodified pinned M5GB source was rebuilt with checked C++ vector
+indexing and table parameter `d=15`. The three original ECC inputs, group
+verifier, and five-second request watchdog were reused. The complete third
+receipt is in `ecc2k17-m5gb-checked-table/`: total charged **12.035 s**;
+three attempts returned **unknown** because the bounded term table was
+exceeded (individual requests 4.097, 4.000 and 3.935 seconds). There was
+no complete certified basis. The corrected interpretation is a **bridge
+resource limit** on this encoding. No conclusion about a properly provisioned
+M5GB implementation's speed or feasibility follows from these outcomes.
