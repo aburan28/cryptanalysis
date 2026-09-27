@@ -32,6 +32,12 @@ archive keeps `B` null.
 
    `IC1N<n>C<curve-tag>fb<B>PDP<m><solver>RC<collector>LA<matrix-solver>TD<descent>ISO<0|1>h<12hex>`
 
+   For prime fields use the parallel form `IC1P<b>C<curve-tag>...`, where
+   `P<b>` is the bit length of the prime field modulus. Its curve ID is
+   `EC1P<b>C<curve-tag>h<12hex>`. The manifest, not the bit length, binds the
+   exact modulus. This keeps prime-field scaled experiments in the same receipt
+   namespace without pretending that `N<b>` means a field of size `2^b`.
+
    For example, the *illustrative* name
    `IC1N53Ckb1fb64PDP5f4RCwalkLAbwTDdirectISO0h<12hex>` means a
    field of size `2^53`, 64 actual usable factor-base points, a five-summand
@@ -79,14 +85,15 @@ There are no separators or zero-padded numbers in an ID. Structural tags
 (`kb1`, `f4`, `walk`, `bw`, etc.), the `fb` tag, and hex digits are lowercase.
 The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
-Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, and `PDP4root`
+Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, `PDP4root`, and
+`PDP2orbit` for the prime-field two-summand automorphism-orbit peel/lookup oracle
 for the compact four-summand S3 root index; `PDP2xl` for a dense Macaulay/XL
 degree scan and `PDP2xlsym` for the same scan over the symmetric-function
 (`e_k` in `V^(k)`) formulation, with the XL or closure mode in the manifest;
-`RCwalk`, `RCsample`, `RCdirect`,
+`RCwalk`, `RCsample`, `RCdirect`, `RClp` for single-large-prime collection,
 and `RCguided` for pivot-guided relation collection;
-`LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
-`TDdirect`, `TDpdp`, `TDdescent` for target handling; `ISO0` for no isogeny
+`LAbw`, `LAwied`, `LAgauss`, `LAgraph` for exact one/two-term gain-graph solving, for **final sparse relation-matrix** solving;
+`TDdirect`, `TDpdp`, `TDdescent`, `TDlearn` for an ordered descent that adds verified differences to a shared logarithm database, for target handling; `ISO0` for no isogeny
 transport and `ISO1` for a specified route. A solver's internal Macaulay
 matrix reduction belongs under `PDP`, including its RREF/M4RI/GPU kernel. It
 is not the `LA` stage. Extend the vocabulary in this file when a genuinely

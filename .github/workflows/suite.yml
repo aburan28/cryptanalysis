@@ -84,6 +84,13 @@ jobs:
             | python3 -c 'import json,sys; r=json.load(sys.stdin)["result"]; assert r["verified"] is True, r'
           ./target/release/ca-ic prime --curve secp256k1 --bits 20 --targets 4 --json \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["status"] == "complete" and r["vs_rho"]["verdict"]["all_verified"] is True, r["status"]'
+      - name: Normalize prime IC into the common benchmark contract
+        run: |
+          ./target/release/ca-ic prime --type j0 --bits 20 --targets 4 --json --out /tmp/prime-native.json > /dev/null
+          python3 ../experiments/ic-bench/prime_bridge.py adapt /tmp/prime-native.json --out-dir /tmp/prime-normalized
+          python3 ../experiments/ic-candidate-catalog/analyze.py /tmp/prime-normalized/prime.jsonl > /tmp/prime-analysis.json
+          python3 -c 'import json; r=json.loads(open("/tmp/prime-normalized/prime.jsonl").read()); assert r["verified_scalar"] and r["candidate_id"].startswith("IC1P") and r["ratio_to_batch_floor"] > 0, r'
+
       - name: Smoke crax
         # One verified answer from each crax family, JSON-checked: the C
         # library's solvers through the bindings, the challenge corpus,
