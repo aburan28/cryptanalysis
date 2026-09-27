@@ -240,6 +240,20 @@ class PrimeBridgeTest(unittest.TestCase):
         self.assertIsNone(row["matrix_ops"])
         self.assertIsNone(row["online_rho_over_ic"])
 
+    def test_prime_write_roundtrips_through_contract_validator(self):
+        import analyze
+
+        item = prime_bridge.normalize(self.report(), host="test")
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            prime_bridge.write(out, [item])
+            lines = (out / "prime.jsonl").read_text().splitlines()
+            self.assertEqual(len(lines), 1)
+            parsed = json.loads(lines[0])
+            analyze.validate_run(parsed)
+            self.assertEqual(parsed["run_id"], item["receipt"]["run_id"])
+            self.assertEqual(json.loads(next((out / "native").glob("*.json")).read_text()), self.report())
+
     def test_prime_candidate_and_workload_are_deterministic(self):
         a = prime_bridge.normalize(self.report(), host="a")
         b = prime_bridge.normalize(self.report(), host="b")
