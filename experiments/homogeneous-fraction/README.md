@@ -77,9 +77,14 @@ real matrix-filtration saving, **not an end-to-end relation-search gain**.
 The `n=7, target=1` example also shows why a raw polynomial root is not a
 relation: 108 of its 216 roots failed independent signed point addition. All
 reported success statuses require a real point triple summing to the target
-abscissa. Neither fraction base here is a demonstrated Frobenius-invariant
-torus base for ECC2K-130; no relation-matrix rank, recovered DLP, comparison
-with rho, degree-131 solve, or scaled F4/F5 speedup has been measured.
+abscissa. A subsequent **subgroup audit changed the interpretation of this
+pilot**: the `n=7,k=1` fraction set has three curve points, all of which
+project to the identity under the cofactor 4. The point sums above create
+**zero useful subgroup columns or independent IC rows**. They remain correct
+PDP arithmetic checks, not index-calculus relation yield. Neither fraction
+base here is a demonstrated Frobenius-invariant torus base for ECC2K-130;
+no recovered DLP, comparison with rho, degree-131 solve, or scaled F4/F5
+speedup has been measured.
 
 ## A strict homogeneous lift and an explicit component solver
 
@@ -149,20 +154,90 @@ supports on its own. The prior direct-search control still wins: 0.020 s on
 measures the homogeneous blocks, **without demonstrating an index-calculus
 speedup**.
 
-## Research goal
+## First subgroup-valid relation gate
 
-The next useful gate is **at least 2× lower median total collection CPU time
-per new independent, verified curve relation than the fastest same-ideal
-baseline** on a fixture where direct search no longer dominates. Include
-negative targets, construction, saturation, matrix reduction, exact point
-verification, and duplicate/relation-rank filtering; preserve relation yield.
-Compare against a compiled ungraded F4/F5 implementation with identical
-denominator restrictions, and record matrix supports and peak memory.
-Increase `k` and `n` only when the smaller correctness checks pass. The
-following gate is lower *total* relation-collection plus linear-algebra and
-target-descent cost against the available nonfraction/Frobenius method and
-rho on a curve where the proposed factor base is valid. The toy fraction base
-does not establish that crossover or an ECC2K-130 attack.
+`relation_gate.py` fixes the exact Koblitz curve over `F_(2^13)` with
+modulus `0x2027` and prime subgroup order **2,003** (curve order 8,012).
+The `k=2` fraction x-set lifts to 35 curve points. Multiplication by the
+cofactor 4 produces **16 distinct nonidentity subgroup points**, or eight
+columns after sign folding. The baseline builds a complete table of 630
+unordered point pairs, then processes *ordinary uniform nonzero subgroup
+targets*. It verifies exact signed point addition, the S4 equation, the
+projected point equation, and rank over `F_2003`. Duplicate and dependent
+rows are charged. The target fixture's scalar is used to generate an ordinary
+query and label its right-hand side; it never supplies a witness.
+
+```sh
+python3 relation_gate.py --attempts 128 --seeds 20260927 20260928 20260929 --repeats 2 --out relation_gate_results.json
+python3 verify_relation_gate.py relation_gate_results.json
+python3 probe_large.py --target-index 16 --timeout 20 --out relation_probe_results.json
+python3 m83_feasibility.py
+```
+
+The [raw relation receipts](relation_gate_results.json) retain every target,
+failed query, first novel row, coefficient vector, repeated row, rank
+increment, phase timing, and process-startup-inclusive wall time. Here are
+the three independent streams; each was timed twice in a fresh process.
+The independent `ToyCurve/pdpkernel.c` audit replays **all 768 target
+outcomes** and the 48 accepted point/rank certificates, and independently
+checks the earlier `n=7,k=1` cofactor collapse.
+The last column is the median of the two fully charged times divided by eight
+new rows, in seconds:
+
+| Seed | Targets | Verified-target hits | Misses | Hits with no new rank | Repeated coefficient rows | New rank / columns | Charged s / new row |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 20260927 | 128 | 16 | 112 | 8 | 73 | 8 / 8 | 0.174 |
+| 20260928 | 128 | 23 | 105 | 15 | 221 | 8 / 8 | 0.170 |
+| 20260929 | 128 | 23 | 105 | 15 | 184 | 8 / 8 | 0.166 |
+
+The median across six runs is **0.166 s per independent row**, including
+factor-base construction, pair-index construction, all unsuccessful attempts,
+point verification, rank work, Python overhead, and process startup. This
+direct point-table collector is the fastest **currently measured on this
+exact fraction base**; a compiled same-base collector remains an open
+baseline. A 2× win against this control alone would require at most
+**0.083 s per independent row** on these matched streams. The target stream
+and base digest must remain fixed.
+
+The [bounded homogeneous attempt](relation_probe_results.json) selected a
+known positive target at index 16 solely to diagnose solver feasibility.
+Building its 98 tri-degree components and 39,001 rows took 14.6 s, and the
+process timed out at 20 s during elimination. **No independent row was
+obtained**, so cost per row and a speedup ratio are **null**. This selected
+positive is a diagnostic, not an estimate of natural yield. The same
+original fraction points and projected base are frozen for both methods;
+the current component solver still needs exact-target, signed-point
+extraction to enter the collection comparison.
+
+At the user's higher-fidelity `n=83` curve, the independently checked
+[`k=2` base audit](m83_feasibility.json) finds 43 original fraction points,
+20 nonidentity cofactor-projected points, and 10 sign-folded columns. All
+projected points pass the known prime-subgroup order check. For a uniformly
+random subgroup query, even the **upper bound** from all ordered projected
+three-tuples is only `20^3 / 2417851639230796216685689
+= 3.31e-21`; no natural relations or rank were measured at `n=83`.
+This particular small base cannot be the high-fidelity collection candidate.
+It is a validity/coverage bound, not a solver extrapolation.
+
+## Research goal and promotion rule
+
+On a larger, subgroup-valid base, require **at least 2× less total charged
+time per *new independent, verified* relation than the fastest matched
+baseline**. Freeze ordinary targets, base, cofactor projection, subgroup
+order, sign/orbit columns, cache policy and resource limit. Count all
+construction, failed and timed-out attempts, repeated and dependent rows,
+solving, exact point verification and rank updates. A timeout gives a
+censored observation, not an UNSAT conclusion or a finite speedup. A
+compiled, same-base collector must be included before promoting any
+Python-only win. The `n=13` work is screening; high-fidelity confidence
+requires a separate `n=83` valid base with nonnegligible natural coverage,
+and any `n=131` claim requires its own validation.
+
+**Current gate: not met.** Only after a paired relation-collection gain with
+matched yield and rank should we add the full collection, final relation
+matrix linear algebra, target descent, and rho costs in the style of Table 1.
+An internal Macaulay-matrix elimination time must never occupy the final
+relation-matrix LA column.
 
 Source: Galbraith, Granger, Merz, Petit, [*On Index Calculus Algorithms for
 Subfield Curves*, Section 5.2](https://sacworkshop.org/SAC20/files/preproceedings/18-IndexCalculus.pdf).

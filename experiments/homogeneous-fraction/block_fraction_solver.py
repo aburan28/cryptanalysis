@@ -19,7 +19,7 @@ from pathlib import Path
 
 from math_model import GF2n, symbolic_anf
 
-MODULI = {5: 0x25, 7: 0x83, 11: 0x805}
+MODULI = {5: 0x25, 7: 0x83, 11: 0x805, 13: 0x2027}
 
 
 def fraction_pair(word, k, field):
