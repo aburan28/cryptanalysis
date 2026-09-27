@@ -29,7 +29,7 @@ def rank(rows):
     return len(pivots)
 
 
-def verify(path):
+def verify(path, oracle_complete=True):
     runs = json.loads(path.read_text())["runs"]
     tiny = ToyCurve(7)
     assert (tiny.mod, tiny.order, tiny.r, tiny.h) == (0x83, 116, 29, 4)
@@ -93,7 +93,10 @@ def verify(path):
             assert Q == ec.smul(G, scalar)
             exists = any(pair_sums[ec.add(Q, ec.neg(p))]
                          for p in original)
-            assert exists == (attempt["status"] != "no_relation")
+            if oracle_complete:
+                assert exists == (attempt["status"] != "no_relation")
+            elif attempt["status"] != "no_relation":
+                assert exists
             counts[attempt["status"]] += 1
             if attempt["status"] == "new_independent_relation":
                 record = attempt["relation"]

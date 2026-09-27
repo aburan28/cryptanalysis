@@ -174,6 +174,7 @@ python3 relation_gate.py --attempts 128 --target-rank 0 --seeds 20260927 2026092
 python3 verify_relation_gate.py relation_yield_results.json
 python3 probe_large.py --target-index 16 --timeout 20 --out relation_probe_results.json
 python3 m83_feasibility.py
+python3 goal_check.py --baseline relation_gate_results.json --probe relation_probe_results.json --out goal_status.json
 ```
 
 The [primary collection receipts](relation_gate_results.json) stop **as soon
@@ -242,6 +243,20 @@ matched yield and rank should we add the full collection, final relation
 matrix linear algebra, target descent, and rho costs in the style of Table 1.
 An internal Macaulay-matrix elimination time must never occupy the final
 relation-matrix LA column.
+
+The [machine-readable goal status](goal_status.json) is
+`censored_no_complete_candidate`: the known-positive homogeneous probe has
+no verified row and consequently no numerical speedup. `goal_check.py`
+compares only paired, completed rank-eight receipts on the exact base and
+ordered workload; supply a separately verified collection receipt with
+`--candidate candidate_results.json` to compute per-seed ratios and a
+reproducible paired bootstrap interval. Its lower 95% bound must reach 2×.
+The recorded control median is 111 ms per row across six fresh processes,
+so its provisional 2× target is 55.6 ms per row. The checker invokes the
+independent C point/rank replay for both arms before computing the comparison;
+an unsolved candidate target is treated as a charged miss, even if the direct
+oracle could solve it. A stronger, compiled same-base control and a
+larger naturally productive base remain necessary for promotion.
 
 Source: Galbraith, Granger, Merz, Petit, [*On Index Calculus Algorithms for
 Subfield Curves*, Section 5.2](https://sacworkshop.org/SAC20/files/preproceedings/18-IndexCalculus.pdf).

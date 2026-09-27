@@ -32,9 +32,10 @@ jobs:
         run: python3 homogeneous_components.py --repeats 2 --timeout 30 --output strict_runs/component_results.json
       - name: Check subgroup-valid relation accounting and high-fidelity base
         run: |
-          python3 -m py_compile relation_gate.py probe_large.py m83_feasibility.py verify_relation_gate.py
+          python3 -m py_compile relation_gate.py probe_large.py m83_feasibility.py verify_relation_gate.py goal_check.py
           python3 relation_gate.py --attempts 80 --target-rank 8 --seeds 20260927 --repeats 1 --out strict_runs/relation_gate_ci.json
           python3 verify_relation_gate.py strict_runs/relation_gate_ci.json
+          python3 goal_check.py --baseline strict_runs/relation_gate_ci.json --probe relation_probe_results.json --out strict_runs/goal_ci.json
           python3 m83_feasibility.py
       - name: Attempt larger paired n=7, k=1 solve within a per-arm time budget
         if: github.event_name == 'workflow_dispatch'
