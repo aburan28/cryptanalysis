@@ -8,6 +8,10 @@ other family is paired with it on the same curve, workload, solver, limits and
 calibration, with the factor base as the declared variable.  speedup = baseline total /
 candidate total in the calibrated unit.  Across workloads the table gives the geometric
 mean and, from three workloads up, a bootstrap 95% interval over workloads.
+
+For multi-target rows the table also reports amortized IC work and the fairer
+folded batch-rho comparison. The legacy ratio-to-rho column is a cold run versus
+one independent rho target and should not be used as a batch crossover claim.
 """
 
 from __future__ import annotations
@@ -61,8 +65,8 @@ def table(rows: list[dict], baseline_family: str) -> list[str]:
     for r in rows:
         groups[(int(r["n"]), int(r["m"]), int(r["l"]), r["mode"], r["workload_id"])][r["family"]] = r
     lines = ["| n | m | l | workload | arm | candidate | verified | fb | columns | queries | total ops | "
-             "ratio to rho | ratio to floor | S (ec_add eq.) | speedup vs baseline |",
-             "|--:|--:|--:|---|---|---|---|--:|--:|--:|--:|--:|--:|--:|--:|"]
+             "amortized ops/target | IC/independent-rho batch | IC/folded batch rho | S (ec_add eq.) | speedup vs baseline |",
+             "|--:|--:|--:|---|---|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|"]
     speedups = defaultdict(list)
     for key in sorted(groups):
         arms = groups[key]
@@ -78,8 +82,9 @@ def table(rows: list[dict], baseline_family: str) -> list[str]:
             lines.append(
                 f"| {key[0]} | {key[1]} | {key[2]} | {key[4]} | {fam}{' (baseline)' if fam == baseline_family else ''} "
                 f"| `{r['candidate_id']}` | {r['verified']} | {r['fb_points']} | {r['effective_columns']} "
-                f"| {r['ordinary_queries']} | {total if total is not None else 'unknown'} | {r['ratio_to_rho'] or '—'} "
-                f"| {r['ratio_to_floor'] or '—'} | {r['S_ec_add'] or '—'} | {f'{sp:.3f}' if sp else '—'} |"
+                f"| {r['ordinary_queries']} | {total if total is not None else 'unknown'} | "
+                f"{r.get('amortized_ops_per_target') or '—'} | {r.get('ratio_to_independent_rho_batch') or '—'} | "
+                f"{r.get('ratio_to_batch_floor') or '—'} | {r['S_ec_add'] or '—'} | {f'{sp:.3f}' if sp else '—'} |"
             )
     lines += ["", "| n | m | l | arm vs baseline | workloads | geometric-mean speedup | 95% bootstrap over workloads |",
               "|--:|--:|--:|---|--:|--:|---|"]

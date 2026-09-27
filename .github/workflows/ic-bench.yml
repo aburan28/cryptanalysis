@@ -10,6 +10,7 @@ on:
     paths:
       - "experiments/ic-bench/**"
       - "experiments/fb-archive/**"
+      - "experiments/fb-search/**"
       - "experiments/pdp-degree-heuristics/**"
       - "experiments/pdp-scaling/sumpoly.py"
       - "experiments/pdp-scaling/gf2n.py"
@@ -21,6 +22,7 @@ on:
     paths:
       - "experiments/ic-bench/**"
       - "experiments/fb-archive/**"
+      - "experiments/fb-search/**"
       - "experiments/pdp-degree-heuristics/**"
       - "experiments/pdp-scaling/sumpoly.py"
       - "experiments/pdp-scaling/gf2n.py"
@@ -60,6 +62,7 @@ jobs:
           python -m pytest -q experiments/pdp-degree-heuristics
           python -m pytest -q experiments/ic-bench
           python -m pytest -q experiments/fb-archive
+          python -m pytest -q experiments/fb-search
 
       - name: Candidate catalog
         working-directory: experiments/ic-candidate-catalog
@@ -77,6 +80,10 @@ jobs:
       - name: Compare with the baseline
         working-directory: experiments/ic-bench
         run: python compare.py baseline/ci.csv bench-out/ci.csv --tolerance 0.05 --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Replay the m = 2 runs through the factor-base model
+        working-directory: experiments/fb-search
+        run: python search.py check ../ic-bench/bench-out/ci.jsonl --selection "" --require-exact
 
       - name: Paired factor-base report
         if: always()

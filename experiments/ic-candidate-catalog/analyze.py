@@ -108,6 +108,63 @@ def validate_run(run: dict) -> dict:
         require(run.get("verified_scalar") is not True, "stage or censored run claims scalar")
     rho = run.get("rho_operations")
     require(rho is None or (type(rho) is int and rho > 0), "invalid rho cost")
+    warm = run.get("warm")
+    if warm is not None:
+        per_target = warm.get("per_target_operations")
+        require(isinstance(per_target, list)
+                and all(type(v) is int and v >= 0 for v in per_target),
+                "invalid per-target operation ledger")
+        require(len(per_target) == counts["targets"],
+                "per-target operation ledger length differs from target count")
+        require(warm.get("target_operations") == sum(per_target),
+                "target operation total differs from per-target ledger")
+        shared = warm.get("shared_operations")
+        require(shared is None or (type(shared) is int and shared >= 0),
+                "invalid shared operation count")
+        if total is not None:
+            require(shared is not None and shared + sum(per_target) == total,
+                    "shared plus target operations must equal total")
+        prefixes = warm.get("prefixes")
+        require(isinstance(prefixes, list), "invalid amortization prefix list")
+        previous = 0
+        for prefix in prefixes:
+            k = prefix.get("targets")
+            require(type(k) is int and previous < k <= len(per_target),
+                    "invalid amortization prefix target count")
+            previous = k
+            if total is not None:
+                require(prefix.get("ic_operations") == shared + sum(per_target[:k]),
+                        "prefix IC operations do not match shared plus marginal ledger")
+                require(prefix.get("independent_rho_operations") == k * rho,
+                        "prefix independent-rho operations are inconsistent")
+                for key in ("batch_rho_operations", "folded_batch_rho_operations"):
+                    require(type(prefix.get(key)) is int and prefix[key] > 0,
+                            f"invalid prefix {key}")
+        if per_target:
+            require(prefixes and prefixes[-1]["targets"] == len(per_target),
+                    "amortization prefixes do not include the full batch")
+        series = run.get("workload_series_id")
+        require(series is None or (isinstance(series, str) and series.startswith("ICBW1h")),
+                "invalid workload series ID")
+
+    if run["source_curve_ref"].startswith("EC1P"):
+        require(run["candidate_id"] is not None and run["candidate_id"].startswith("IC1P"),
+                "prime-field curve must use the IC1P candidate namespace")
+        require(run.get("operation_unit") == "prime_group_operation",
+                "prime-field normalized receipt has the wrong operation unit")
+        require(isinstance(run.get("native_prime_report"), dict)
+                and run["native_prime_report"].get("operation") == "prime",
+                "prime-field normalized receipt must retain the native ca-ic report")
+        require(run["provenance"].get("binary_blake3"),
+                "prime-field receipt lacks executable digest")
+        batch = run.get("rho_batch") or {}
+        require(type(batch.get("shared_dp_expected_operations")) is int
+                and batch["shared_dp_expected_operations"] > 0,
+                "prime-field receipt lacks batch-rho control")
+        require(type(batch.get("folded_shared_dp_expected_operations")) is int
+                and batch["folded_shared_dp_expected_operations"] > 0,
+                "prime-field receipt lacks folded batch-rho control")
+
     online = run.get("online")
     if online is not None:
         require(counts["targets"] == 1, "primary online receipt needs exactly one target")
@@ -189,6 +246,17 @@ def summarize(runs: list[dict]) -> dict:
                 run["online"]["ic_online_ns"] for run in full
                 if run.get("online") and run["online"].get("speedup") is not None)
             if any(run.get("online") and run["online"].get("speedup") is not None for run in full) else None,
+            "median_shared_operations": statistics.median(
+                run["warm"]["shared_operations"] for run in full if run.get("warm"))
+            if any(run.get("warm") for run in full) else None,
+            "median_marginal_target_operations": statistics.median(
+                run["warm"]["mean_target_operations"] for run in full if run.get("warm"))
+            if any(run.get("warm") for run in full) else None,
+            "median_ic_over_folded_batch_rho": statistics.median(
+                run["warm"]["ic_over_folded_batch_rho"] for run in full
+                if run.get("warm") and run["warm"].get("ic_over_folded_batch_rho") is not None)
+            if any(run.get("warm") and run["warm"].get("ic_over_folded_batch_rho") is not None
+                   for run in full) else None,
         }
     return result
 

@@ -32,6 +32,12 @@ archive keeps `B` null.
 
    `IC1N<n>C<curve-tag>fb<B>PDP<m><solver>RC<collector>LA<matrix-solver>TD<descent>ISO<0|1>h<12hex>`
 
+   For prime fields use the parallel form `IC1P<b>C<curve-tag>...`, where
+   `P<b>` is the bit length of the prime field modulus. Its curve ID is
+   `EC1P<b>C<curve-tag>h<12hex>`. The manifest, not the bit length, binds the
+   exact modulus. This keeps prime-field scaled experiments in the same receipt
+   namespace without pretending that `N<b>` means a field of size `2^b`.
+
    For example, the *illustrative* name
    `IC1N53Ckb1fb64PDP5f4RCwalkLAbwTDdirectISO0h<12hex>` means a
    field of size `2^53`, 64 actual usable factor-base points, a five-summand
@@ -79,14 +85,15 @@ There are no separators or zero-padded numbers in an ID. Structural tags
 (`kb1`, `f4`, `walk`, `bw`, etc.), the `fb` tag, and hex digits are lowercase.
 The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
-Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, and `PDP4root`
+Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, `PDP4root`, and
+`PDP2orbit` for the prime-field two-summand automorphism-orbit peel/lookup oracle
 for the compact four-summand S3 root index; `PDP2xl` for a dense Macaulay/XL
 degree scan and `PDP2xlsym` for the same scan over the symmetric-function
 (`e_k` in `V^(k)`) formulation, with the XL or closure mode in the manifest;
-`RCwalk`, `RCsample`, `RCdirect`,
+`RCwalk`, `RCsample`, `RCdirect`, `RClp` for single-large-prime collection,
 and `RCguided` for pivot-guided relation collection;
-`LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
-`TDdirect`, `TDpdp`, `TDdescent` for target handling; `ISO0` for no isogeny
+`LAbw`, `LAwied`, `LAgauss`, `LAgraph` for exact one/two-term gain-graph solving, for **final sparse relation-matrix** solving;
+`TDdirect`, `TDpdp`, `TDdescent`, `TDlearn` for an ordered descent that adds verified differences to a shared logarithm database, for target handling; `ISO0` for no isogeny
 transport and `ISO1` for a specified route. A solver's internal Macaulay
 matrix reduction belongs under `PDP`, including its RREF/M4RI/GPU kernel. It
 is not the `LA` stage. Extend the vocabulary in this file when a genuinely
@@ -125,16 +132,57 @@ an isogeny walk must identify its actual route. If no isogeny is used, record
 The spreadsheet/CSV/table key is `(candidate_id, workload_id, run_id)`.
 One row per run preserves failures, timeouts, and OOMs. Pair candidates on
 the same curve, factor-base policy when that is the controlled variable,
-target set, seeds, target count, resource limit, and accounting unit. When a
-factor base or curve is the variable, state that comparison explicitly.
+target point, target-generation seed where applicable, resource limit, and
+accounting unit. When a factor base or curve is the variable, state that
+comparison explicitly.
+
+**The default IC objective is one target.** The primary workload has exactly
+one previously unseen target point, and the headline IC metric is its online
+wall time: start the clock when target-dependent IC computation begins, after
+any reusable factor-base/index/log precomputation is ready; stop after the
+target's DLP is recovered and independently verified. Do not include process
+launch, input loading, curve/base/index/log setup, or other target-independent
+startup in this online time. Do not substitute a multi-target average or
+shared-table amortization for the single-target result. Record the exact
+online interval and its included target-dependent stages so it can be paired
+fairly with a one-target rho solve on the same public point. A target already
+supplied as a point is the input; generating it from a known scalar is fixture
+construction and stays outside both timed intervals. Keep all correctness
+checks, including scalar replay, in the result record; if they are outside the
+online interval, report their timing separately and do not imply they were
+charged to it.
+
+Multi-target or batch workloads are secondary only. Run them only after the
+single-target measurement has been completed and explicitly identify a
+separate question that requires multiple targets (for example, shared-log
+amortization). Label the target count and shared setup clearly, and never use
+such a result to answer or replace the single-target question. Batch results
+must not be the default workload, headline, or acceptance gate for an IC
+speedup claim.
+
+For the primary one-target comparison, report the candidate and rho online
+wall times and `rho_online_ms / IC_online_ms`, paired on the same point and
+resource conditions. A successful, verified target is required for a speedup;
+timeouts, failures, OOMs, and unverified results remain rows and do not count
+as wins. Keep target-independent IC preparation costs available as separate
+reproducibility data when useful, but exclude them from this online metric and
+do not lead with a cold-start or amortized-total figure when the stated goal
+is single-target online speed.
 
 Keep exclusive phase costs so their sum is the charged total:
+
+`T_online,1 = T_target_query + T_target_PDP + T_target_relation_check + T_target_descent + T_target_recovery_check`.
+
+The cold-start accounting below is supplementary and must not replace the
+primary `T_online,1` metric for a single-target study.
 
 `T_cold = T_setup + T_isogeny + T_factor_base + T_precompute + T_queries + T_PDP + T_relation_check + T_matrix_build + T_relation_LA + T_target_descent + T_recovery_check`.
 
 `T_PDP` covers relation collection and includes failed and timed-out attempts;
-`T_queries` includes query generation. Target descent includes all recursive
-decomposition work for the target but charges it only once. Retain attempts,
+`T_queries` includes query generation. For the one-target online metric, charge
+all target-dependent attempts, including failed and timed-out attempts, to that
+target; target descent includes all recursive decomposition work for the target
+but is charged only once. Retain attempts,
 verified relations, novel rows, final rank, solved targets, memory peak,
 wall time, operation counts,
 conversion/calibration, and correctness certificate. `T_cold` is for the
@@ -143,14 +191,16 @@ amortization separately as `(shared_setup + sum(target_cost_i))/k`, naming
 `k` and which costs are shared. A missing phase cost makes the end-to-end
 total and speedup **unknown**, not zero.
 
-The headline comparison is complete verified DLP cost in one calibrated
-operation unit: `speedup = baseline_total / candidate_total`. Also report
-`S = total_operations / sqrt(r)` and the ratios to the declared rho reference
-and applicable floor, with the boundary fixed before measurement. F4/F5/SAT
-solve time, coverage, or cost per useful row are stage diagnostics. Label
-predictions and extrapolations separately from measurements. Put the
-baseline, candidate, rho reference, correctness, total, and boundary ratios
-in one table. A row with an unverified answer is not an end-to-end result.
+For the primary single-target study, the headline comparison is verified
+online wall time for that target in one calibrated environment:
+`online_speedup = rho_online_ms / IC_online_ms`. Report the paired target,
+candidate, rho reference, correctness, included timing interval, and speedup in
+one table. Report `S = total_operations / sqrt(r)` and ratios to the declared
+rho reference and applicable floor only with their operation-count boundary
+fixed before measurement; label setup-inclusive variants supplementary.
+F4/F5/SAT solve time, coverage, or cost per useful row are stage diagnostics.
+Label predictions and extrapolations separately from measurements. A row with
+an unverified answer is not a verified single-target result.
 
 Every empirical comparison must also retain stage measurements: actual base
 size and folded columns, base construction and memory, ordinary-query PDP

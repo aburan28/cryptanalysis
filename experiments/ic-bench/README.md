@@ -14,6 +14,11 @@ python3 report.py out/primary.csv                             # verified online 
 python3 ../ic-candidate-catalog/analyze.py out/primary.jsonl  # contract validation
 python3 bench.py run --suite ci --jobs 4 --out-dir out/       # secondary cold-operation regression
 python3 compare.py baseline/ci.csv out/ci.csv                 # legacy regression gate
+python3 bench.py run --suite batch --jobs 2 --out-dir out/    # 2^16-target binary IC runs
+python3 amortize.py out/batch.jsonl --require-max-power 16    # exact 1,2,4,...,2^16 prefixes
+cargo build --release --manifest-path ../../suite/Cargo.toml --bin ca-ic
+python3 prime_bridge.py run --suite ci --out-dir out/prime     # normalized prime-field receipts
+python3 cross_report.py out/batch.jsonl out/prime/prime.jsonl # unit-safe binary/prime table
 python3 -m pytest -q .
 ```
 
@@ -89,6 +94,16 @@ are never paired. Caveats:
   `S_ec_add = total / (w_ec_add sqrt(r))`. These boundaries are fixed by the
   workload record before any run.
 
+For **multiple targets**, multiplying the one-target rho cost by T is useful but
+is not the fair asymptotic opponent. Receipts also record the analytic
+Kuhn-Struik distinguished-point batch-rho expectation
+`sqrt(pi N/2) * sum_{k<T} C(2k,k)/4^k`, both on `N=r` and on the folded
+`N=r/(2n)` sign/Frobenius classes. This tends to `sqrt(2NT)`: rho itself
+amortizes across a batch. The model deliberately omits detection lag and setup,
+so the folded batch-rho number is generous to rho. Multi-target claims should
+use `ratio_to_batch_floor`; the older `ratio_to_rho` remains a cold whole-run /
+one-target diagnostic and is not a batch crossover metric.
+
 **Instrument** work is recorded but not charged to supplementary cold operations.
 It covers structure checks, exact-yield enumeration, and predictions. All
 target PDP enumeration, including unsuccessful attempts, remains inside the
@@ -113,6 +128,24 @@ therefore measure this implementation, not an asymptotic XL cost.
   workload. It finishes in well under a minute on four cores.
 - `full` adds `n = 19` at `l = 5` and `l = 6` with more families, including
   `geomtraceu`, on 3 workloads each, plus `n = 23, l = 6`. It is not gated in CI.
+- `search` runs the factor bases chosen by [`../fb-search`](../fb-search/README.md)
+  (`selected.json`: family, `l` and seed) on workloads 1-3. Cells carry the seed
+  (`-s<seed>-` in the cell label). The current selection is 39 bases, 117 runs, at
+  `n = 19`. It is not gated in CI.
+- `batch` is the long multi-target suite. It runs one `n=13,m=3` geomtrace
+  candidate and one `n=19,m=2` geomtraceu candidate on **2^16 targets each**.
+  A single receipt records every marginal target cost, so `amortize.py`
+  reconstructs exact prefix points 1,2,4,...,2^16 without repaying factor-base
+  construction, relation collection or relation LA at every prefix. It is
+  intentionally not a pull-request CI gate. The manual `ic-broad` GitHub Actions
+  workflow runs `full`, `search`, or `batch` with uploaded receipts; the batch
+  job also writes the power-of-two amortization table into the job summary.
+
+A single workload is a noisy measurement of a factor base: at `n = 19` the query
+count of one collection run has a standard deviation of about 35% of its mean, and
+workloads 1-3 all fall in the upper tail for `n19m2l5-prefix`. The fb-search replay
+reproduces every m = 2 run's query counts exactly, so compare bases by
+`search.py expect` over many workloads, and use these suites as regression checks.
 
 ## Recording and history
 
@@ -133,6 +166,101 @@ Record the baseline after an intentional change and commit it with that change.
   `--tolerance`.
 
 Wall time is reported and never gated.
+
+## Prime-field bridge
+
+`prime_bridge.py` runs or adapts `ca-ic prime --solver orbit --json` and mints the
+same candidate/workload/run records used by the binary harness. Prime candidates
+use `IC1P<b>C...` and curves use `EC1P<b>C...`; `P<b>` is the modulus bit length,
+while the manifest binds the exact prime. The bridge preserves exact target points,
+planted scalars, automorphism quotient, factor-base sizing, large-prime/learning
+policy, relation coefficient rank, executable BLAKE3, startup git commit, resource
+limits, and the native report.
+
+The common eleven-phase ledger is populated conservatively in the prime experiment's
+native **group-operation** unit: logarithm collection is `precompute`, ordered target
+work is `target_descent`, and stages not separately charged by `ca-ic prime` are zero.
+This is not the binary harness's calibrated `rps` unit. Therefore absolute totals are
+never compared between regimes. `cross_report.py` compares only dimensionless ratios
+to matched rho controls, especially IC/folded-batch-rho for many-target work.
+
+The normalized prime suites are `smoke` (one tiny j=0 run), `ci` (generic, j=0 and
+j=1728 at 20 bits, two seeds), and `broad` (all three types at 20..40 bits, 64 targets,
+three seeds). The manual `ic-broad` workflow can run the broad prime campaign and
+upload both raw and normalized evidence.
+
+## Paper-style relation and linear-algebra costs
+
+`cost_table.py` turns **full-DLP** receipts into a table with the two columns
+emphasized in Table 1 of [Galbraith, Granger, Merz and Petit, *On Index
+Calculus Algorithms for Subfield Curves*](https://sacworkshop.org/SAC20/files/preproceedings/18-IndexCalculus.pdf).
+It never assigns a candidate one of the paper's five construction labels solely
+because its curve is Koblitz or its columns were folded.
+
+```bash
+python3 cost_table.py baseline/primary.jsonl
+python3 cost_table.py baseline/primary.jsonl --paper 2 31 5 3
+python3 cost_table.py out/prime/prime.jsonl --json > out/prime/costs.json
+```
+
+A [fresh n=13 primary example](results/paper-style-n13-primary.md) includes
+all nine verified one-target receipts and the paper-model feasibility warning.
+
+The empirical `queries → verified → rank` column counts all ordinary attempts,
+curve-verified relations, and **actual independent matrix rows**. For the binary
+collector, relation work is `queries + pdp + relation_check` in the calibrated
+receipt unit. `mean H = pdp / pdp_attempts` includes failed and budget-limited
+systems; `collection / rank` also includes query and relation-check work.
+Matrix work is `matrix_build + relation_la`, the *final relation matrix*, not
+the internal Macaulay elimination used to solve each PDP system. The second
+table shows the Wilson interval for binary positive-query yield, failure
+status counts and the folded column count. Time and operations are both kept.
+
+The prime orbit collector uses an oracle and graph equations, **not a Semaev
+polynomial system**. Its counted relation probes live in `precompute` in the
+bridge. Its final graph linear algebra is not separately metered, so `H` and
+the matrix entry are unknown, not zero. Absolute binary `rps` and prime group
+operations cannot be divided to get a speedup. The one-target rho/IC entry
+comes only from paired verified *online wall times*, after reusable
+precomputation. For batches, use `cross_report.py` and `amortize.py` with their
+shared-DP controls; the paper's relation and LA columns describe the shared
+work, not the default one-target online objective.
+
+`--paper Q N N_PRIME M` prints the five **conditional, heuristic** rows from
+the paper with `k = N - M*N_PRIME`. It leaves the four per-system costs `H1`
+through `H4` unknown and labels the LA counts as asymptotic proxies. These
+numbers cannot be added to measured run times. A rank multiplier from
+Frobenius is credited only when actual verified rows increase rank modulo the
+subgroup order. For example, `--paper 2 131 32 4` is a formal substitution:
+`ord_131(2) = 130`, so an invariant **linear** subspace of dimension 32 does
+not exist over F_2 in F_(2^131). The tool flags this automatically. A nonlinear
+invariant base needs its own measured decomposition and rank evidence.
+
+To compare two actual methods, pair the same curve/subgroup, public target,
+workload seed, resource limits and operation calibration. Keep the precise
+factor-base and solver policies in candidate manifests. A useful candidate
+reduces measured work **per independent row**, completes the matrix and target
+descent, and improves the paired one-target online solve. Theoretical changes
+in the number of systems and the folded number of columns are stage predictions
+until those three observations agree.
+
+## Multi-target accounting
+
+Every complete receipt splits calibrated operations into `warm.shared_operations`
+and `warm.per_target_operations`; their sum must equal the whole run. The receipt
+stores exact power-of-two prefix totals, independent-rho cost, plain batch-rho
+cost, and folded batch-rho cost. `workload_series_id` is stable across target-
+count prefixes with the same deterministic streams, while `workload_id` still
+identifies the exact frozen target list.
+
+This separates **setup amortization** from **marginal learning**. The current
+binary collector shares factor-base logs and the relation database but does not
+learn new descent state across targets. Therefore a falling marginal target-cost
+curve would represent a real algorithm/implementation change, not an accounting
+artifact. Compare that curve across n before claiming scaling beyond trivial
+setup amortization. The observed-mean break-even in a receipt is only against
+independent per-target rho; the folded batch-rho prefix curve is the fairer many-
+target control.
 
 ## Other receipt writers (audit)
 
