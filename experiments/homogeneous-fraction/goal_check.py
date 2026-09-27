@@ -69,6 +69,10 @@ def evaluate(baseline_path, candidate_path=None, probe_path=None):
         result["status"] = "censored_no_complete_candidate"
         result["reason"] = ("diagnostic timed out before a verified independent row"
                             if probe and probe["status"] == "timeout" else
+                            "selected-positive relation used an exact fallback; "
+                            "no matched rank-eight homogeneous receipts"
+                            if probe and probe["status"] ==
+                            "homogeneous_stage_followed_by_exact_fallback" else
                             "no matched candidate receipts provided")
         result["probe_status"] = probe["status"] if probe else None
         return result
@@ -103,9 +107,9 @@ def evaluate(baseline_path, candidate_path=None, probe_path=None):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--baseline", type=Path, default=Path("relation_gate_results.json"))
+    p.add_argument("--baseline", type=Path, default=Path("compiled_control_results.json"))
     p.add_argument("--candidate", type=Path)
-    p.add_argument("--probe", type=Path, default=Path("relation_probe_results.json"))
+    p.add_argument("--probe", type=Path, default=Path("relation_probe_completed.json"))
     p.add_argument("--out", type=Path, default=Path("goal_status.json"))
     args = p.parse_args()
     result = evaluate(args.baseline, args.candidate, args.probe)

@@ -173,8 +173,13 @@ python3 verify_relation_gate.py relation_gate_results.json
 python3 relation_gate.py --attempts 128 --target-rank 0 --seeds 20260927 20260928 20260929 --repeats 2 --out relation_yield_results.json
 python3 verify_relation_gate.py relation_yield_results.json
 python3 probe_large.py --target-index 16 --timeout 20 --out relation_probe_results.json
+python3 probe_large.py --target-index 16 --timeout 60 --out relation_probe_completed.json
+python3 verify_probe.py relation_probe_completed.json
+python3 compiled_control.py --out compiled_control_results.json
+python3 verify_relation_gate.py compiled_control_results.json
+python3 run_matched_prefix.py --timeout 60 --out matched_prefix_results.json
 python3 m83_feasibility.py
-python3 goal_check.py --baseline relation_gate_results.json --probe relation_probe_results.json --out goal_status.json
+python3 goal_check.py --baseline compiled_control_results.json --probe relation_probe_completed.json --out goal_status.json
 ```
 
 The [primary collection receipts](relation_gate_results.json) stop **as soon
@@ -197,11 +202,9 @@ target outcomes**, all 96 accepted point/rank certificates, and the earlier
 Each seed was timed twice in a fresh process. The median primary cost across
 six runs is **0.111 s per independent row**, including factor-base and
 pair-index construction, all failed attempts *before required rank*,
-point verification, rank work, Python overhead and process startup. The
-direct point-table collector is the fastest **currently measured on this
-exact fraction base**; a compiled same-base collector remains an open
-baseline. A 2× win against this control alone would require at most
-**0.056 s per independent row** on these matched streams. Fix the same
+point verification, rank work, Python overhead and process startup. This
+Python collector is an archival reference; the compiled collector below is
+the fastest **currently measured on this exact base**. Fix the same
 rank-eight stopping rule, target stream and base digest for each arm.
 
 The [bounded homogeneous attempt](relation_probe_results.json) selected a
@@ -213,6 +216,52 @@ positive is a diagnostic, not an estimate of natural yield. The same
 original fraction points and projected base are frozen for both methods;
 the current component solver still needs exact-target, signed-point
 extraction to enter the collection comparison.
+
+## Compiled control and bounded extraction follow-up
+
+The independent [`direct_collector.c`](direct_collector.c) constructs the
+same 35 lifted points and 630 point pairs from the fraction definition,
+verifies signed point/S4/cofactor equalities, handles repeated and dependent
+rows, and stops at rank eight over `F_2003`. The
+[`compiled_control.py`](compiled_control.py) driver charges process startup,
+construction, all ordinary misses, C verification/rank, Python parsing, an
+additional S4/point replay, and output construction. Compiler time is a
+separate one-time implementation cost. Its six
+[`receipts`](compiled_control_results.json) cover the **same 282 target
+outcomes and 48 independent rows** as the Python control. Independent
+`ToyCurve/pdpkernel.c` replay passes. Median fully charged cost is **4.72 ms
+per new independent row**, making the provisional 2× threshold **2.36 ms**
+per row on these streams (versus the previous Python-only 55.6 ms threshold).
+Neither result is an end-to-end DLP measurement.
+
+The 60 s [selected-positive diagnostic](relation_probe_completed.json)
+finishes the exact tri-degree `(4,4,4)` homogeneous matrix on the same n=13
+base: 39,001 rows across 98 components, 330,103 tagged columns counted
+across components, and 48 degree-three/four consequences, with **zero
+degree-two-or-less consequences**. An exact S4 x-triple enumeration then
+finds points `(7,435)+(7,435)+(8163,1662)` for the target at index 16;
+the independent C curve replays the signed sum, subgroup projection and
+rank-one coefficient vector `(0,0,-1,0,2,0,0,0)`. Its charged wall time is
+**24.94 s**, including independent verification. The graded pivots did not
+prune this enumeration; consequently it is a **verified fallback relation**,
+not a homogeneous-solver or index-calculus speedup. The preselected positive
+is still not a natural-yield sample.
+
+[`run_matched_prefix.py`](run_matched_prefix.py) applies a predeclared
+early-stop rule to the **first ordinary target** in each frozen stream. One
+charged attempt already costs more than *half the entire compiled rank-eight
+time on that stream*, so this pipeline cannot meet the 2× goal even with
+zero-cost future attempts. Its individual [raw
+receipts](matched_prefix_results.json) retain the two misses and one
+verified fallback row; the resource cap is 60 s per target. A complete
+rank-eight homogeneous cost and speedup are **null**, as are final relation
+collection and final relation-matrix LA.
+
+| Seed | Compiled rank-eight wall, fastest repeat | 2× total-time ceiling | Graded stage + extraction for first target | New rows | Lower-bound budget overrun |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 20260927 | 0.0477 s | 0.0239 s | 24.71 s | 0 | 1,035× |
+| 20260928 | 0.0375 s | 0.0188 s | 24.33 s | 0 | 1,297× |
+| 20260929 | 0.0344 s | 0.0172 s | 24.74 s | 1 | 1,437× |
 
 At the user's higher-fidelity `n=83` curve, the independently checked
 [`k=2` base audit](m83_feasibility.json) finds 43 original fraction points,
@@ -245,18 +294,18 @@ An internal Macaulay-matrix elimination time must never occupy the final
 relation-matrix LA column.
 
 The [machine-readable goal status](goal_status.json) is
-`censored_no_complete_candidate`: the known-positive homogeneous probe has
-no verified row and consequently no numerical speedup. `goal_check.py`
+`censored_no_complete_candidate`: the selected-positive fallback does not
+supply matched rank-eight homogeneous receipts. `goal_check.py`
 compares only paired, completed rank-eight receipts on the exact base and
 ordered workload; supply a separately verified collection receipt with
 `--candidate candidate_results.json` to compute per-seed ratios and a
 reproducible paired bootstrap interval. Its lower 95% bound must reach 2×.
-The recorded control median is 111 ms per row across six fresh processes,
-so its provisional 2× target is 55.6 ms per row. The checker invokes the
+The fastest recorded control median is 4.72 ms per row across six fresh
+processes, so its provisional 2× target is 2.36 ms per row. The checker invokes the
 independent C point/rank replay for both arms before computing the comparison;
 an unsolved candidate target is treated as a charged miss, even if the direct
-oracle could solve it. A stronger, compiled same-base control and a
-larger naturally productive base remain necessary for promotion.
+oracle could solve it. A larger naturally productive base and a genuinely
+homogeneous-aided complete solver remain necessary for promotion.
 
 Source: Galbraith, Granger, Merz, Petit, [*On Index Calculus Algorithms for
 Subfield Curves*, Section 5.2](https://sacworkshop.org/SAC20/files/preproceedings/18-IndexCalculus.pdf).
