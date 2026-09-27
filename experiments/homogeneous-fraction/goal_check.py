@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import math
 import random
 import statistics
 from pathlib import Path
@@ -44,7 +45,7 @@ def overall_median_cost_ms(data):
         for r in data.values())
 
 
-def evaluate(baseline_path, candidate_path=None, probe_path=None):
+def evaluate(baseline_path, candidate_path=None, probe_path=None, prefix_path=None):
     base = runs(baseline_path)
     assert verify(baseline_path)["status"] == "PASS", "independent baseline replay failed"
     base_cost = median_cost_ms_by_seed(base)
@@ -75,6 +76,38 @@ def evaluate(baseline_path, candidate_path=None, probe_path=None):
                             "homogeneous_stage_followed_by_exact_fallback" else
                             "no matched candidate receipts provided")
         result["probe_status"] = probe["status"] if probe else None
+        if prefix_path is not None:
+            prefix = json.loads(prefix_path.read_text())
+            assert prefix["status"] == "early_stopped_cannot_meet_2x"
+            assert len(prefix["runs"]) == len(base_cost)
+            lower_bounds = {}
+            for record in prefix["runs"]:
+                seed = record["seed"]
+                paired = [r for (s, _), r in base.items() if s == seed]
+                assert paired and all(r["targets"][0] ==
+                                      record["first_target_scalar"] for r in paired)
+                assert all(r["attempts"][0]["target_point"] ==
+                           record["first_target_point"] for r in paired)
+                ceiling = min(r["driver_wall_ns_including_startup"] for r in paired) / 2e9
+                assert math.isclose(ceiling,
+                                    record["max_candidate_rank_eight_wall_seconds_for_2x"],
+                                    rel_tol=1e-9)
+                assert record["attempts_run"] == 1 and record[
+                    "full_rank_eight_wall_seconds"] is None
+                receipt = json.loads((prefix_path.parent / record["receipt"]).read_text())
+                assert receipt["seed"] == seed and receipt["target_index"] == 0
+                assert receipt["stages"][0]["target_scalar"] == record["first_target_scalar"]
+                assert receipt["independent_verified_relations"] == record[
+                    "first_target_independent_verified_rows"]
+                assert math.isclose(receipt["charged_wall_seconds"],
+                                    record["first_target_wall_seconds"], rel_tol=1e-9)
+                assert receipt["charged_wall_seconds"] > ceiling
+                lower_bounds[seed] = receipt["charged_wall_seconds"] / ceiling
+            assert set(lower_bounds) == set(base_cost)
+            result["status"] = "early_stopped_cannot_meet_2x"
+            result["reason"] = "each first matched attempt exceeds the full rank-eight 2x budget"
+            result["matched_prefix"] = str(prefix_path)
+            result["first_attempt_budget_overrun_by_seed"] = lower_bounds
         return result
     candidate = runs(candidate_path)
     assert verify(candidate_path, oracle_complete=False)["status"] == "PASS", (
@@ -110,9 +143,11 @@ def main():
     p.add_argument("--baseline", type=Path, default=Path("compiled_control_results.json"))
     p.add_argument("--candidate", type=Path)
     p.add_argument("--probe", type=Path, default=Path("relation_probe_completed.json"))
+    p.add_argument("--prefix", type=Path,
+                   help="verify the matched one-target early-stop lower bound")
     p.add_argument("--out", type=Path, default=Path("goal_status.json"))
     args = p.parse_args()
-    result = evaluate(args.baseline, args.candidate, args.probe)
+    result = evaluate(args.baseline, args.candidate, args.probe, args.prefix)
     args.out.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result))
 

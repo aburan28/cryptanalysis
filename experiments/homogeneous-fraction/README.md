@@ -179,7 +179,7 @@ python3 compiled_control.py --out compiled_control_results.json
 python3 verify_relation_gate.py compiled_control_results.json
 python3 run_matched_prefix.py --timeout 60 --out matched_prefix_results.json
 python3 m83_feasibility.py
-python3 goal_check.py --baseline compiled_control_results.json --probe relation_probe_completed.json --out goal_status.json
+python3 goal_check.py --baseline compiled_control_results.json --probe relation_probe_completed.json --prefix matched_prefix_results.json --out goal_status.json
 ```
 
 The [primary collection receipts](relation_gate_results.json) stop **as soon
@@ -294,8 +294,10 @@ An internal Macaulay-matrix elimination time must never occupy the final
 relation-matrix LA column.
 
 The [machine-readable goal status](goal_status.json) is
-`censored_no_complete_candidate`: the selected-positive fallback does not
-supply matched rank-eight homogeneous receipts. `goal_check.py`
+`early_stopped_cannot_meet_2x`: the checker verifies the first-target cost,
+frozen target identity and compiled full-collection ceiling for all three
+streams. The selected-positive fallback does not supply matched rank-eight
+homogeneous receipts. `goal_check.py`
 compares only paired, completed rank-eight receipts on the exact base and
 ordered workload; supply a separately verified collection receipt with
 `--candidate candidate_results.json` to compute per-seed ratios and a

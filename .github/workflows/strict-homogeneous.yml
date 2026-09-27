@@ -39,6 +39,7 @@ jobs:
           python3 verify_relation_gate.py strict_runs/compiled_control_ci.json
           python3 verify_probe.py relation_probe_completed.json
           python3 goal_check.py --baseline strict_runs/compiled_control_ci.json --probe relation_probe_completed.json --out strict_runs/goal_ci.json
+          python3 goal_check.py --baseline compiled_control_results.json --probe relation_probe_completed.json --prefix matched_prefix_results.json --out strict_runs/goal_matched_ci.json
           python3 -c 'import json; r=json.load(open("matched_prefix_results.json")); assert r["status"] == "early_stopped_cannot_meet_2x" and all(x["single_target_lower_bound_exceeds_2x_budget"] for x in r["runs"])'
           python3 m83_feasibility.py
       - name: Attempt larger paired n=7, k=1 solve within a per-arm time budget
