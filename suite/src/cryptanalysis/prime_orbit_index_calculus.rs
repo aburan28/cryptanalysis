@@ -2630,7 +2630,12 @@ mod tests {
         let (sol, stats) = solve_two_term_system(m, &rows, r);
         assert_eq!(stats.inconsistent_components, 0);
         assert!(stats.rank <= m);
-        assert!(stats.rank >= stats.solved_columns.saturating_sub(stats.determined_components));
+        assert!(
+            stats.rank
+                >= stats
+                    .solved_columns
+                    .saturating_sub(stats.determined_components)
+        );
         assert!(stats.solved_columns > m * 8 / 10, "{stats:?}");
         for (o, v) in sol.iter().enumerate() {
             if let Some(v) = v {

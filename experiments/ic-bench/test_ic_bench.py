@@ -23,6 +23,7 @@ sys.path.insert(0, str(HERE.parent / "ic-candidate-catalog"))
 import amortize  # noqa: E402
 import bench  # noqa: E402
 import compare  # noqa: E402
+import cost_table  # noqa: E402
 import opcount  # noqa: E402
 import prime_bridge  # noqa: E402
 from calibrate import weights_for  # noqa: E402
@@ -228,6 +229,30 @@ class PrimeBridgeTest(unittest.TestCase):
             if isinstance(value, list): return all(no_float(v) for v in value)
             return not isinstance(value, float)
         self.assertTrue(no_float(out["manifest"][1]))
+
+    def test_prime_cost_table_keeps_unmetered_graph_la_unknown(self):
+        rec = prime_bridge.normalize(self.report(), host="test")["receipt"]
+        row = cost_table.measure(rec)
+        self.assertEqual((row["queries"], row["verified_relations"], row["rank"]), (20, 12, 8))
+        self.assertEqual(row["collection_ops"], 1000)
+        self.assertEqual(row["factor_base_points"], 48)
+        self.assertIsNone(row["mean_H_ops"])
+        self.assertIsNone(row["matrix_ops"])
+        self.assertIsNone(row["online_rho_over_ic"])
+
+    def test_prime_write_roundtrips_through_contract_validator(self):
+        import analyze
+
+        item = prime_bridge.normalize(self.report(), host="test")
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            prime_bridge.write(out, [item])
+            lines = (out / "prime.jsonl").read_text().splitlines()
+            self.assertEqual(len(lines), 1)
+            parsed = json.loads(lines[0])
+            analyze.validate_run(parsed)
+            self.assertEqual(parsed["run_id"], item["receipt"]["run_id"])
+            self.assertEqual(json.loads(next((out / "native").glob("*.json")).read_text()), self.report())
 
     def test_prime_candidate_and_workload_are_deterministic(self):
         a = prime_bridge.normalize(self.report(), host="a")

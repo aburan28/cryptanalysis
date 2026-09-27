@@ -39,5 +39,5 @@ def table(rs):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__); ap.add_argument("jsonl",type=Path,nargs="+")
-    a=ap.parse_args(); print("\\n".join(table(load(a.jsonl))))
+    a=ap.parse_args(); print("\n".join(table(load(a.jsonl))))
 if __name__=="__main__": main()

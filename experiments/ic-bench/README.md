@@ -189,6 +189,61 @@ j=1728 at 20 bits, two seeds), and `broad` (all three types at 20..40 bits, 64 t
 three seeds). The manual `ic-broad` workflow can run the broad prime campaign and
 upload both raw and normalized evidence.
 
+## Paper-style relation and linear-algebra costs
+
+`cost_table.py` turns **full-DLP** receipts into a table with the two columns
+emphasized in Table 1 of [Galbraith, Granger, Merz and Petit, *On Index
+Calculus Algorithms for Subfield Curves*](https://sacworkshop.org/SAC20/files/preproceedings/18-IndexCalculus.pdf).
+It never assigns a candidate one of the paper's five construction labels solely
+because its curve is Koblitz or its columns were folded.
+
+```bash
+python3 cost_table.py baseline/primary.jsonl
+python3 cost_table.py baseline/primary.jsonl --paper 2 31 5 3
+python3 cost_table.py out/prime/prime.jsonl --json > out/prime/costs.json
+```
+
+A [fresh n=13 primary example](results/paper-style-n13-primary.md) includes
+all nine verified one-target receipts and the paper-model feasibility warning.
+
+The empirical `queries → verified → rank` column counts all ordinary attempts,
+curve-verified relations, and **actual independent matrix rows**. For the binary
+collector, relation work is `queries + pdp + relation_check` in the calibrated
+receipt unit. `mean H = pdp / pdp_attempts` includes failed and budget-limited
+systems; `collection / rank` also includes query and relation-check work.
+Matrix work is `matrix_build + relation_la`, the *final relation matrix*, not
+the internal Macaulay elimination used to solve each PDP system. The second
+table shows the Wilson interval for binary positive-query yield, failure
+status counts and the folded column count. Time and operations are both kept.
+
+The prime orbit collector uses an oracle and graph equations, **not a Semaev
+polynomial system**. Its counted relation probes live in `precompute` in the
+bridge. Its final graph linear algebra is not separately metered, so `H` and
+the matrix entry are unknown, not zero. Absolute binary `rps` and prime group
+operations cannot be divided to get a speedup. The one-target rho/IC entry
+comes only from paired verified *online wall times*, after reusable
+precomputation. For batches, use `cross_report.py` and `amortize.py` with their
+shared-DP controls; the paper's relation and LA columns describe the shared
+work, not the default one-target online objective.
+
+`--paper Q N N_PRIME M` prints the five **conditional, heuristic** rows from
+the paper with `k = N - M*N_PRIME`. It leaves the four per-system costs `H1`
+through `H4` unknown and labels the LA counts as asymptotic proxies. These
+numbers cannot be added to measured run times. A rank multiplier from
+Frobenius is credited only when actual verified rows increase rank modulo the
+subgroup order. For example, `--paper 2 131 32 4` is a formal substitution:
+`ord_131(2) = 130`, so an invariant **linear** subspace of dimension 32 does
+not exist over F_2 in F_(2^131). The tool flags this automatically. A nonlinear
+invariant base needs its own measured decomposition and rank evidence.
+
+To compare two actual methods, pair the same curve/subgroup, public target,
+workload seed, resource limits and operation calibration. Keep the precise
+factor-base and solver policies in candidate manifests. A useful candidate
+reduces measured work **per independent row**, completes the matrix and target
+descent, and improves the paired one-target online solve. Theoretical changes
+in the number of systems and the folded number of columns are stage predictions
+until those three observations agree.
+
 ## Multi-target accounting
 
 Every complete receipt splits calibrated operations into `warm.shared_operations`

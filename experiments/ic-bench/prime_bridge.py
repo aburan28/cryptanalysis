@@ -187,23 +187,23 @@ def normalize(r,host=None,run_number=1):
 def write(out_dir,items):
     out_dir.mkdir(parents=True,exist_ok=True)
     with (out_dir/"prime.jsonl").open("w") as fh:
-        for x in items: fh.write(canon(x["receipt"])+"\\n")
+        for x in items: fh.write(canon(x["receipt"])+"\n")
     for sub,key in (("candidates","manifest"),("workloads","workload"),("curves","curve")):
         d=out_dir/sub; d.mkdir(exist_ok=True)
         for x in items:
-            ident,rec=x[key]; p=d/f"{ident}.json"; txt=json.dumps(rec,indent=1,sort_keys=True)+"\\n"
+            ident,rec=x[key]; p=d/f"{ident}.json"; txt=json.dumps(rec,indent=1,sort_keys=True)+"\n"
             if p.exists() and p.read_text()!=txt: raise ValueError(f"{p} identity collision")
             p.write_text(txt)
     native=out_dir/"native"; native.mkdir(exist_ok=True)
     for x in items:
         r=x["receipt"]; p=native/f"{r['run_id']}.json"
-        p.write_text(json.dumps(r["native_prime_report"],indent=1,sort_keys=True)+"\\n")
+        p.write_text(json.dumps(r["native_prime_report"],indent=1,sort_keys=True)+"\n")
 
 def run_cell(binary,cell):
     cmd=[str(binary),"prime","--type",cell["curve_type"],"--bits",str(cell["bits"]),
          "--targets",str(cell["targets"]),"--seed",str(cell["seed"]),"--json"]
     p=subprocess.run(cmd,cwd=ROOT,text=True,capture_output=True)
-    if p.returncode: raise RuntimeError(f"{' '.join(cmd)}\\n{p.stderr}\\n{p.stdout}")
+    if p.returncode: raise RuntimeError(f"{' '.join(cmd)}\n{p.stderr}\n{p.stdout}")
     return json.loads(p.stdout)
 
 def main():
