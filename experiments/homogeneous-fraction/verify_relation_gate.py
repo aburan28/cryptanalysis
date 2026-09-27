@@ -56,6 +56,15 @@ def verify(path):
     inf = ec.smul(curve.G, 0)
     cases = successes = 0
     for run in runs:
+        assert len(run["attempts"]) == run["counts"]["ordinary_attempts"]
+        assert len(run["targets"]) == run["counts"]["attempt_budget"]
+        if run["target_rank"]:
+            assert run["status"] == "rank_reached"
+            assert run["attempts"][-1]["rank_after"] == run["target_rank"]
+            assert all(a["rank_after"] < run["target_rank"] for a in run["attempts"][:-1])
+        else:
+            assert run["status"] == "fixed_attempts_complete"
+            assert len(run["attempts"]) == len(run["targets"])
         base = run["base"]
         original = [tuple(point) for point in base["original_points"]]
         projected = {point: ec.smul(point, 4) for point in original}

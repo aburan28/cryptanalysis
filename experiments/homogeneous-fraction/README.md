@@ -168,36 +168,40 @@ rows are charged. The target fixture's scalar is used to generate an ordinary
 query and label its right-hand side; it never supplies a witness.
 
 ```sh
-python3 relation_gate.py --attempts 128 --seeds 20260927 20260928 20260929 --repeats 2 --out relation_gate_results.json
+python3 relation_gate.py --attempts 128 --target-rank 8 --seeds 20260927 20260928 20260929 --repeats 2 --out relation_gate_results.json
 python3 verify_relation_gate.py relation_gate_results.json
+python3 relation_gate.py --attempts 128 --target-rank 0 --seeds 20260927 20260928 20260929 --repeats 2 --out relation_yield_results.json
+python3 verify_relation_gate.py relation_yield_results.json
 python3 probe_large.py --target-index 16 --timeout 20 --out relation_probe_results.json
 python3 m83_feasibility.py
 ```
 
-The [raw relation receipts](relation_gate_results.json) retain every target,
-failed query, first novel row, coefficient vector, repeated row, rank
-increment, phase timing, and process-startup-inclusive wall time. Here are
-the three independent streams; each was timed twice in a fresh process.
-The independent `ToyCurve/pdpkernel.c` audit replays **all 768 target
-outcomes** and the 48 accepted point/rank certificates, and independently
-checks the earlier `n=7,k=1` cofactor collapse.
-The last column is the median of the two fully charged times divided by eight
-new rows, in seconds:
+The [primary collection receipts](relation_gate_results.json) stop **as soon
+as rank reaches eight**. A fixed-length 128-target
+[yield audit](relation_yield_results.json) retains every later duplicate and
+dependent row as a separate diagnostic, but its post-completion work is not
+charged to the primary time-to-rank metric. Both files preserve the frozen
+target stream, every executed attempt, coefficient vectors, phase timing and
+process-startup-inclusive wall time. The independent
+`ToyCurve/pdpkernel.c` replay checks **282 primary and 768 yield-audit
+target outcomes**, all 96 accepted point/rank certificates, and the earlier
+`n=7,k=1` cofactor collapse.
 
-| Seed | Targets | Verified-target hits | Misses | Hits with no new rank | Repeated coefficient rows | New rank / columns | Charged s / new row |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 20260927 | 128 | 16 | 112 | 8 | 73 | 8 / 8 | 0.174 |
-| 20260928 | 128 | 23 | 105 | 15 | 221 | 8 / 8 | 0.170 |
-| 20260929 | 128 | 23 | 105 | 15 | 184 | 8 / 8 | 0.166 |
+| Seed | Attempts to rank 8 | Misses before rank 8 | Charged s / new row | Full 128-query hits / misses / dependent | Repeated coefficient rows in full audit |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 20260927 | 65 | 57 | 0.127 | 16 / 112 / 8 | 73 |
+| 20260928 | 43 | 35 | 0.109 | 23 / 105 / 15 | 221 |
+| 20260929 | 33 | 25 | 0.105 | 23 / 105 / 15 | 184 |
 
-The median across six runs is **0.166 s per independent row**, including
-factor-base construction, pair-index construction, all unsuccessful attempts,
-point verification, rank work, Python overhead, and process startup. This
+Each seed was timed twice in a fresh process. The median primary cost across
+six runs is **0.111 s per independent row**, including factor-base and
+pair-index construction, all failed attempts *before required rank*,
+point verification, rank work, Python overhead and process startup. The
 direct point-table collector is the fastest **currently measured on this
 exact fraction base**; a compiled same-base collector remains an open
 baseline. A 2× win against this control alone would require at most
-**0.083 s per independent row** on these matched streams. The target stream
-and base digest must remain fixed.
+**0.056 s per independent row** on these matched streams. Fix the same
+rank-eight stopping rule, target stream and base digest for each arm.
 
 The [bounded homogeneous attempt](relation_probe_results.json) selected a
 known positive target at index 16 solely to diagnose solver feasibility.

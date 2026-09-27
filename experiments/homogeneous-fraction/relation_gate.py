@@ -190,7 +190,7 @@ def collect(field, original, projected, column, generator, table,
     }
 
 
-def worker(attempts, seed):
+def worker(attempts, seed, target_rank):
     total_start = time.perf_counter_ns()
     field, original, projected, column, generator, base, build_ns = prepare_base()
     table, table_ns = pair_table(field, original)
@@ -198,8 +198,12 @@ def worker(attempts, seed):
     rng = random.Random(seed)
     rank = Rank(len(column) // 2)
     targets = [rng.randrange(1, ORDER) for _ in range(attempts)]
-    records = [collect(field, original, projected, column, generator,
-                       table, scalar, rank, i) for i, scalar in enumerate(targets)]
+    records = []
+    for i, scalar in enumerate(targets):
+        records.append(collect(field, original, projected, column, generator,
+                               table, scalar, rank, i))
+        if target_rank and rank.value >= target_rank:
+            break
     all_ns = time.perf_counter_ns() - total_start
     assert rank.value == sum(r["status"] == "new_independent_relation" for r in records)
     expected = sum((r["timings_ns"]["total"] for r in records), 0) + build_ns + table_ns
@@ -208,10 +212,14 @@ def worker(attempts, seed):
         "schema": "homogeneous-fraction-relation-gate.v1",
         "scope": "relation_collection_only; no final LA or DLP",
         "candidate_id": None, "solver": "complete direct point-pair table",
+        "target_rank": target_rank,
+        "status": "rank_reached" if target_rank and rank.value >= target_rank
+                  else "fixed_attempts_complete" if not target_rank else "budget_exhausted",
         "seed": seed, "targets": targets, "workload_sha256": digest(targets),
         "base": base, "base_sha256": digest(base),
         "counts": {
-            "ordinary_attempts": attempts, "verified_relations": sum(
+            "attempt_budget": attempts, "ordinary_attempts": len(records),
+            "verified_relations": sum(
                 r["candidates_verified"] > 0 for r in records),
             "novel_rows": rank.value,
             "failed_targets": sum(r["status"] == "no_relation" for r in records),
@@ -242,14 +250,18 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--worker", action="store_true")
     p.add_argument("--attempts", type=int, default=128)
+    p.add_argument("--target-rank", type=int, default=8,
+                   help="stop at this independent rank; use 0 for a fixed-length yield audit")
     p.add_argument("--seed", type=int, default=SEED)
     p.add_argument("--seeds", nargs="+", type=int,
                    help="freeze several ordinary-target workloads")
     p.add_argument("--repeats", type=int, default=3)
     p.add_argument("--out", type=Path, default=Path("relation_gate_results.json"))
     args = p.parse_args()
+    if not 0 <= args.target_rank <= 8:
+        p.error("target rank must be between 0 and eight signed columns")
     if args.worker:
-        print(json.dumps(worker(args.attempts, args.seed)), flush=True)
+        print(json.dumps(worker(args.attempts, args.seed, args.target_rank)), flush=True)
         return
     runs = []
     for seed in args.seeds or [args.seed]:
@@ -257,7 +269,8 @@ def main():
             started = time.perf_counter_ns()
             proc = subprocess.run(
                 [sys.executable, str(Path(__file__).resolve()), "--worker",
-                 "--attempts", str(args.attempts), "--seed", str(seed)],
+                 "--attempts", str(args.attempts), "--seed", str(seed),
+                 "--target-rank", str(args.target_rank)],
                 text=True, capture_output=True, check=True, timeout=120)
             wall_ns = time.perf_counter_ns() - started
             result = json.loads(proc.stdout)
@@ -268,7 +281,9 @@ def main():
                 if result["counts"]["novel_rows"] else None)
             runs.append(result)
             args.out.write_text(json.dumps({"runs": runs}, separators=(",", ":")) + "\n")
-            print(json.dumps({"seed": seed, "repeat": repeat, "attempts": args.attempts,
+            print(json.dumps({"seed": seed, "repeat": repeat,
+                              "attempts": result["counts"]["ordinary_attempts"],
+                              "attempt_budget": args.attempts, "target_rank": args.target_rank,
                               "verified": result["counts"]["verified_relations"],
                               "rank": result["counts"]["rank"],
                               "failed": result["counts"]["failed_targets"],
