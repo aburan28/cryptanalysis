@@ -26,9 +26,12 @@ jobs:
           M2 --version
       - name: Generate paired saturated ideals and verify the Boolean chart
         run: |
-          python3 -m py_compile math_model.py block_fraction_solver.py strict_multigraded.py run_strict_multigraded.py
+          python3 -m py_compile math_model.py block_fraction_solver.py strict_multigraded.py run_strict_multigraded.py homogeneous_components.py
           python3 run_strict_multigraded.py --repeats 2 --timeout 90
+      - name: Compare explicit homogeneous degree components with identical flat rows
+        run: python3 homogeneous_components.py --repeats 2 --timeout 30 --output strict_runs/component_results.json
       - name: Attempt larger paired n=7, k=1 solve within a per-arm time budget
+        if: github.event_name == 'workflow_dispatch'
         continue-on-error: true
         run: python3 run_strict_multigraded.py --extended-only --repeats 1 --timeout 60 --out strict_runs/extended
       - name: Preserve raw inputs, logs and receipts
