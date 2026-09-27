@@ -116,12 +116,14 @@ def main():
     ap.add_argument("--repeats", type=int, default=2)
     ap.add_argument("--timeout", type=int, default=90)
     ap.add_argument("--extended", action="store_true")
+    ap.add_argument("--extended-only", action="store_true",
+                    help="run only the bounded n=7,k=1 cases")
     args = ap.parse_args()
     if args.repeats < 1:
         ap.error("at least one repeat required")
     args.out.mkdir(parents=True, exist_ok=True)
-    cases = [(5, 0, 0), (5, 0, 2)]
-    if args.extended:
+    cases = [] if args.extended_only else [(5, 0, 0), (5, 0, 2)]
+    if args.extended or args.extended_only:
         cases += [(7, 1, 1), (7, 1, 50)]
     rows = []
     for n, k, target in cases:
