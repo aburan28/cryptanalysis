@@ -6,8 +6,12 @@ import sys
 import threading
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent.parent / 'pdp-scaling'))
-from gf2n import Curve, GF2n, INF, Point, is_irreducible
+_import_path = sys.path[:]
+try:
+    sys.path.insert(0, str(HERE.parent.parent / 'pdp-scaling'))
+    from gf2n import Curve, GF2n, INF, Point, is_irreducible
+finally:
+    sys.path[:] = _import_path
 
 MAX_POINTS = 12
 U32, U64 = ct.c_uint32, ct.c_uint64

@@ -6,9 +6,17 @@ import time
 
 from public_replay import HERE, Point, replay
 
-sys.path.insert(0, str(HERE.parent / 'round15'))
-from ordered_query import NativeDescent, query
-from descend import Instance
+_import_path = sys.path[:]
+try:
+    sys.path.insert(0, str(HERE.parent / 'round15'))
+    from ordered_query import NativeDescent, query
+    from descend import Instance
+finally:
+    # Older adapters prepend their own directories. Do not let those imports
+    # redirect this round's benchmark/audit modules or the caller's imports.
+    sys.path[:] = _import_path
+
+_query_import_lock = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -38,7 +46,12 @@ class PublicQuery:
         self.descent = self.basis = None
         try:
             self.descent = NativeDescent(n, mod, b, m, ell)
-            self.basis = query(m * ell, n, 'ordered')
+            with _query_import_lock:
+                previous = sys.path[:]
+                try:
+                    self.basis = query(m * ell, n, 'ordered')
+                finally:
+                    sys.path[:] = previous
         except Exception:
             self.close()
             raise

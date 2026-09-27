@@ -10,7 +10,7 @@ def main():
     inventory = json.loads((HERE / 'results/inventory.json').read_text())
     for name, expected in inventory.items():
         assert hashlib.sha256((HERE / name).read_bytes()).hexdigest() == expected, name
-    for filename in ('final-validation.log', 'audit-validation.log'):
+    for filename in ('final-validation.log', 'audit-validation.log', 'combined-validation.log'):
         log = (HERE / 'results' / filename).read_text()
         assert '\nOK\n' in log and '\nFAILED' not in log, filename
     receipt = json.loads((HERE / 'results/build-receipt.json').read_text())

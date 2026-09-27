@@ -77,7 +77,9 @@ integration into an IC pipeline must retain that pipeline's membership checks.
 
 ## Correctness evidence
 
-The retained final core suite passes eight test groups in 33.120 seconds:
+The final combined suite passes all eleven tests in one discovery run, in
+90.393 seconds on the busy local host. The earlier core suite passed eight test
+groups in 33.120 seconds:
 
 - 1,536 exhaustive native/Python comparisons over two curves over GF(8), with
   all pairs of x coordinates and every curve point plus the identity as target;
@@ -99,6 +101,14 @@ temporary synthetic report fixtures contain explicitly artificial timings and
 are not benchmark measurements. CI rebuilds and repeats the tests on Linux and
 macOS. Source and build receipts provide reproducibility and integrity checks;
 they are not external attestations.
+
+The first CI run exposed older adapters changing the Python import search path,
+which redirected combined discovery to round4's audit module. Imports and query
+construction now restore the caller's search path, and the complete-query test
+checks that invariant. The combined local run includes all core and audit tests.
+The initial CI failure logs and initial build receipt remain separate artifacts;
+the current receipt identifies the formatted native source used by the combined
+run. No failed CI run is presented as passing evidence.
 
 ## Paired timing protocol and current limit
 

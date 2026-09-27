@@ -36,14 +36,14 @@ static int replay_irreducible(int n, u64 mod)
 
 static int replay_on_curve(const ctx_t *c, u64 x, u64 y)
 {
-    return (gf_sqr(c, y) ^ gf_mul(c, x, y)) ==
-           (gf_mul(c, gf_sqr(c, x), x) ^ c->b);
+    return (gf_sqr(c, y) ^ gf_mul(c, x, y)) == (gf_mul(c, gf_sqr(c, x), x) ^ c->b);
 }
 
 void *replay_create(uint32_t n, u64 mod, u64 b)
 {
-    if (n < 3 || n > 63 || !(n & 1) || deg64(mod) != (int)n ||
-        !b || b >> n || !replay_irreducible((int)n, mod)) return NULL;
+    if (n < 3 || n > 63 || !(n & 1) || deg64(mod) != (int)n || !b || b >> n ||
+        !replay_irreducible((int)n, mod))
+        return NULL;
     ctx_t *c = malloc(sizeof(*c));
     if (!c) return NULL;
     if (ctx_init(c, (int)n, mod, 0, b)) {
@@ -68,19 +68,21 @@ int replay_target_valid(const void *handle, u64 rx, u64 ry, uint32_t infinity)
 /* Codes: 0 witness, 1 no matching signs, 2 an x has no lift, 3 invalid input.
  * All call-local output is reset. A live handle and buffer extents belong to
  * the C caller; the Python adapter owns them and serializes lifetime. */
-int replay_match(const void *handle, const u64 *xs, uint32_t count,
-                 u64 rx, u64 ry, uint32_t infinity, replay_result *out)
+int replay_match(const void *handle, const u64 *xs, uint32_t count, u64 rx, u64 ry,
+                 uint32_t infinity, replay_result *out)
 {
     if (!out) return 3;
     memset(out, 0, sizeof(*out));
     out->code = 3;
     out->signs = UINT32_MAX;
     if (!handle || !xs || count < 1 || count > REPLAY_MAX_POINTS ||
-        !replay_target_valid(handle, rx, ry, infinity)) return 3;
+        !replay_target_valid(handle, rx, ry, infinity))
+        return 3;
     const ctx_t *c = handle;
     u64 ys[REPLAY_MAX_POINTS];
     uint8_t ok[REPLAY_MAX_POINTS];
-    for (uint32_t i = 0; i < count; ++i) if (xs[i] >> c->n) return 3;
+    for (uint32_t i = 0; i < count; ++i)
+        if (xs[i] >> c->n) return 3;
     ec_lift_batch(c, xs, (int)count, ys, ok);
     for (uint32_t i = 0; i < count; ++i) {
         if (!ok[i]) return out->code = 2;

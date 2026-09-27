@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import ctypes as ct
 import random
+import sys
 import unittest
 
 from public_replay import (Curve, GF2n, INF, NativeReplay, NativeResult, Point,
@@ -136,8 +137,10 @@ class ReplayTests(unittest.TestCase):
             curve = Curve(GF2n(n, original.mod), original.b)
             target = curve.sum(original.points)
             shape = (n, original.mod, original.b, 3, ell)
+            import_path = sys.path[:]
             with PublicQuery(*shape, arm='python') as python, \
                     PublicQuery(*shape, arm='native-or-python') as native:
+                self.assertEqual(sys.path, import_path)
                 # Neither query receives fixture points or a planted assignment.
                 for point in (target, curve.neg(target)):
                     left, right = python.solve(point), native.solve(point)
