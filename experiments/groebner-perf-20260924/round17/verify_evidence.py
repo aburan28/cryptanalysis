@@ -3,6 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from audit import audit
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -20,8 +22,19 @@ def main():
     assert not admission['admitted'] and admission['timed_attempts'] == 0
     assert admission['load'][0] > admission['logical_cpus'] * admission['max_load_per_cpu']
     assert not (HERE / 'results/paired-attempt1.json.gz').exists()
-    print(json.dumps({'status': 'VERIFIED', 'measured_speedup': None, 'timed_attempts': 0,
-                      'scope': 'Correctness and evidence integrity; benchmark not admitted'}))
+    measured = audit(HERE / 'results/ci-ubuntu-run36294322020/paired.json.gz')
+    assert measured['timing_admission_eligible']
+    assert measured['statuses'] == {'python:solved': 320, 'native-or-python:solved': 320}
+    runner = json.loads((HERE / 'results/ci-ubuntu-run36294322020/runner.json').read_text())
+    run = json.loads((HERE / 'results/ci-run36294322020.json').read_text())
+    assert run['id'] == int(runner['GITHUB_RUN_ID']) == 36294322020
+    assert run['status'] == 'completed' and run['conclusion'] == 'success'
+    rejected = json.loads((HERE / 'results/ci-macos-run36294322020/paired.json.gz.admission.json').read_text())
+    assert not rejected['admitted'] and rejected['timed_attempts'] == 0
+    assert not (HERE / 'results/ci-macos-run36294322020/paired.json.gz').exists()
+    print(json.dumps({'status': 'VERIFIED', 'local_timed_attempts': 0,
+                      'ci_verified_attempts': 640, 'ci_timing_admission_eligible': True,
+                      'scope': 'Paired CPU component measurements on one Linux runner; no IC recovery or GPU win'}))
 
 
 if __name__ == '__main__':

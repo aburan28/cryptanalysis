@@ -9,9 +9,15 @@ The replay has two implementations: unchanged Python field/curve arithmetic
 with reusable fixed field setup, and a native checker using the repository's
 separate PDP field kernel. Both check the same public point, return explicit
 signed point witnesses and use the same ordered CPU certificate path. The
-implementation is correctness-tested; **no speedup has been measured yet**.
-The first paired timing attempt was rejected before numerical work at a
-one-minute load of 68.600 on 14 logical CPUs. It made zero timed attempts.
+implementation is correctness-tested. An admitted Linux CI run retained **640
+verified complete queries**. Its six 18-variable controls improved by
+**1.193–1.406×**, and its 9- and 12-variable GF(2^31) controls improved by
+**5.033× and 5.097×**, respectively. These are paired wall-time geometric means
+on one runner, not a global performance ranking or a full IC result.
+
+The first local timing attempt was rejected before numerical work at a
+one-minute load of 68.600 on 14 logical CPUs. It made zero timed attempts and
+remains retained separately from the admitted Linux run.
 
 ## What changes at the query boundary
 
@@ -110,7 +116,53 @@ The initial CI failure logs and initial build receipt remain separate artifacts;
 the current receipt identifies the formatted native source used by the combined
 run. No failed CI run is presented as passing evidence.
 
-## Paired timing protocol and current limit
+## Retained complete-query comparison
+
+[CI run 36294322020](https://github.com/aburan28/cryptanalysis/actions/runs/36294322020)
+measured head `2bf712a4d49e9ee4be13d2b539ca8e29d1546461` through its PR merge
+checkout `07edabb083ff55f2f8b28bb77ce8979f114bf007`. The numerical replay sources
+match the current code. Its Linux guest exposed four logical CPUs on an AMD
+EPYC 9V45 host and ran Python 3.12.14. Load was 0.729 at admission and 0.915 at
+completion, with all recorded group starts below the declared limit of four.
+This establishes admission, not exclusive ownership of the physical host.
+
+Each control has 31 shuffled paired measurements plus one warmup pair. All 640
+attempts solved and independently verified, with matching basis certificates,
+assignments and signed point witnesses across the arms. The report, source/build
+snapshots, runner metadata, admission record, audit and GitHub run/artifact
+metadata are retained under `results/ci-ubuntu-run36294322020/` and neighboring
+receipt files. A local re-audit agrees with the CI audit.
+
+| Control | Python median ms | Native/fallback median ms | Paired wall GM [bootstrap 95%] |
+| --- | ---: | ---: | ---: |
+| 18 variables, seed101 | 8.599 | 7.210 | 1.193 [1.189, 1.197] |
+| 18 variables, seed102 | 9.252 | 7.142 | 1.304 [1.290, 1.326] |
+| 18 variables, seed103 | 8.695 | 7.271 | 1.199 [1.196, 1.203] |
+| 18 variables, seed104 | 8.761 | 7.249 | 1.206 [1.202, 1.210] |
+| 18 variables, seed105 | 9.058 | 7.289 | 1.245 [1.239, 1.251] |
+| 18 variables, seed106 | 10.407 | 7.426 | 1.406 [1.401, 1.410] |
+| 9 variables, GF(2^31) | 2.042 | 0.404 | 5.033 [4.954, 5.102] |
+| 12 variables, GF(2^31) | 4.278 | 0.837 | 5.097 [5.051, 5.143] |
+| 6 variables, GF(2^11) | 0.378 | 0.240 | 1.526 [1.479, 1.570] |
+| 6 variables, GF(2^83), Python fallback | 15.607 | 15.645 | 0.998 [0.993, 1.003] |
+
+The ratios use paired observations, not ratios of marginal medians. The largest
+gain occurs where curve arithmetic dominates the small Boolean solve. On the
+18-variable seed101 control, equation/curve replay changes from a 3.474 ms
+marginal median to 2.084 ms, while basis/certificate work remains around 4.5 ms.
+The remaining replay includes Python packed-to-dictionary conversion and original
+equation scans. The wider-field fallback remains near parity; no native speedup
+is claimed there. These measurements use a new common public-point boundary and
+must not be multiplied by gains from earlier rounds or directly compared with
+their different busy-host absolute timings.
+
+The same CI run's macOS guest rejected admission at load 10.347 against a limit
+of three logical CPUs, with zero numerical attempts. Its metadata probe reported
+an `Apple Paravirtual device` from Metal. That is device-availability evidence,
+not shader execution, GPU correctness or a GPU speedup. Both the rejection and
+device probe are retained under `results/ci-macos-run36294322020/`.
+
+## Paired timing protocol and remaining limits
 
 The benchmark predeclares the same ten planted component controls used in
 round16: six 18-variable controls and four smaller/wider-field controls. The
@@ -134,8 +186,8 @@ and result are recorded separately. This extra audit is not silently charged
 to the native algorithm or represented as part of its online time.
 
 The retained `paired-attempt1.json.gz.admission.json` records the rejected first
-attempt; there is no corresponding timing report. The numerical changes are
-therefore not performance-qualified. These controls do not measure natural
+local attempt; there is no corresponding local timing report. The admitted Linux
+comparison is a separate run. These controls do not measure natural
 relation yield, recover discrete logarithms or qualify an IC candidate. Candidate
 identity and IC/rho times remain null. The producer remains exact evaluation plus
 Buchberger–Möller interpolation, with a 20-variable and 256-root limit. The
@@ -167,5 +219,5 @@ python3 experiments/groebner-perf-20260924/round17/audit.py /tmp/public-replay-n
 For library use, import `PublicQuery` from `public_query.py`, construct it with
 the fixed `(n, modulus, b, m, ell)` and an explicit arm, and pass only a `Point`
 to `solve`. Use a context manager or close it explicitly. No implicit compiler
-invocation occurs at query time. A reliable full-query gain on an admitted host
-is still required before any performance promotion.
+invocation occurs at query time. A performance promotion must stay within the
+measured workload/backend applicability; no existing default dispatch changes.
