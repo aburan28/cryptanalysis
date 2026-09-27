@@ -28,6 +28,9 @@ jobs:
         run: |
           python3 -m py_compile math_model.py block_fraction_solver.py strict_multigraded.py run_strict_multigraded.py
           python3 run_strict_multigraded.py --repeats 2 --timeout 90
+      - name: Attempt larger paired n=7, k=1 solve within a per-arm time budget
+        continue-on-error: true
+        run: python3 run_strict_multigraded.py --extended-only --repeats 1 --timeout 60 --out strict_runs/extended
       - name: Preserve raw inputs, logs and receipts
         if: always()
         uses: actions/upload-artifact@v4
