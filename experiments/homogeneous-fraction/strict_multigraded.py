@@ -113,7 +113,7 @@ def emit(n, k, target, arm):
         '<< "SATGENS|" << numgens J << endl;',
         "gbTrace=1;",
         "tg=cpuTime();",
-        'G=groebnerBasis(J,Strategy=>"F4",MGBOptions=>{"Threads"=>1,"Log"=>"F4MatrixSizes,SPairDegree"});',
+        'G=groebnerBasis(J,Strategy=>"F4");',
         '<< "GBCPU|" << (cpuTime()-tg) << endl;',
         '<< "GBCOUNT|" << numgens source G << endl;',
         'scan(flatten entries G,p->(<< "GBPOLY|" << toString p << endl));',
