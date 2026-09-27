@@ -1,0 +1,91 @@
+name: First verified target relation
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round21/**'
+      - 'experiments/groebner-perf-20260924/round20/**'
+      - 'experiments/groebner-perf-20260924/round18/**'
+      - 'experiments/groebner-perf-20260924/round17/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/groebner-perf-20260924/round2/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/ic-bench/**'
+      - 'experiments/ic-candidate-catalog/**'
+      - '.github/workflows/first-verified-target.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round21/**'
+      - '.github/workflows/first-verified-target.yml'
+permissions:
+  contents: read
+concurrency:
+  group: first-verified-target-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  correctness:
+    name: First verified relation (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build and bind native components
+        run: python experiments/groebner-perf-20260924/round20/build.py
+      - name: Exhaustive relation, full DLP, failure, audit and receipt checks
+        run: |
+          python -m unittest discover -s experiments/groebner-perf-20260924/round21 -p 'test_*.py' -v
+          python -m unittest discover -s experiments/groebner-perf-20260924/round20 -p 'test_*.py' -v
+          python -m unittest discover -s experiments/ic-candidate-catalog -p 'test_*.py' -v
+      - name: Reconstruct and audit both complete one-target shapes
+        run: |
+          python experiments/groebner-perf-20260924/round21/first_measure.py --correctness-only --repetitions 2 --output first-relation-evidence/correctness.json.gz
+          python experiments/groebner-perf-20260924/round21/first_audit.py first-relation-evidence/correctness.json.gz > first-relation-evidence/correctness-audit.json
+          python experiments/groebner-perf-20260924/round21/verify_evidence.py
+      - name: Paired one-target online measurements after admission
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          out = pathlib.Path('first-relation-evidence')
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','RUNNER_OS','RUNNER_ARCH','GITHUB_WORKFLOW_REF')}
+          cpuinfo = pathlib.Path('/proc/cpuinfo')
+          if cpuinfo.exists():
+              metadata['cpu'] = {}
+              for line in cpuinfo.read_text().splitlines():
+                  key, separator, value = line.partition(':')
+                  if separator and key.strip() in ('model name','vendor_id','cpu cores','cache size'):
+                      metadata['cpu'].setdefault(key.strip(), value.strip())
+          (out/'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          root = pathlib.Path('experiments/groebner-perf-20260924/round21')
+          report = out/'paired.json.gz'
+          run = subprocess.run([sys.executable,str(root/'first_measure.py'),'--repetitions','31',
+                                '--admission-wait-seconds','240','--output',str(report)])
+          if run.returncode == 2:
+              admission = json.loads(pathlib.Path(str(report)+'.admission.json').read_text())
+              assert not admission['admitted'] and admission['timed_attempts'] == 0 and not report.exists()
+          else:
+              run.check_returncode()
+              with (out/'paired-audit.json').open('w') as stream:
+                  subprocess.run([sys.executable,str(root/'first_audit.py'),str(report)],stdout=stream,check=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: first-relation-evidence-${{ matrix.os }}
+          path: first-relation-evidence/
+          if-no-files-found: warn
+          retention-days: 14
