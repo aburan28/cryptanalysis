@@ -141,6 +141,14 @@ identity and IC/rho times remain null. The producer remains exact evaluation plu
 Buchberger–Möller interpolation, with a 20-variable and 256-root limit. The
 separate larger-ring algebraic certificate work and F4/F5 paths are unchanged.
 
+PR CI also attempts a bounded 31-pair CPU comparison on its existing Linux and
+macOS runners after correctness checks finish. The same predeclared load gate
+applies: a busy runner preserves its rejection without numerical work. An
+admitted run retains every attempt, source/build snapshot, paired audit and
+runner identity as a downloadable artifact. Completing CI is not itself a
+speedup claim; the complete-query results and their admission records must be
+inspected. These jobs do not execute GPU benchmarks.
+
 ## Reproduce
 
 From the repository root with Python >=3.10 and Clang or GCC:
