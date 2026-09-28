@@ -29,6 +29,7 @@ def main():
     five_n53 = read("runs/n53_dyadic_five_sum_dlp.json")
     five_n83 = read("runs/n83_dyadic_five_sum_stage.json")
     five_support_n83 = read("runs/n83_dyadic_G_pair_scalar_support_L1000.json")
+    five_packed_n83 = read("runs/n83_dyadic_five_sum_packed_stage.json")
     assert ordinary["curve_id"] == panel["curve_id"] == geometry["Q1014"]["curve_id"]
     assert ordinary["factor_base"] == panel["factor_base"] == geometry[
         "Q1014"]["factor_base"]
@@ -49,10 +50,13 @@ def main():
     assert five_support_n83["curve_id"] == geometry["Q1020"]["curve_id"]
     assert five_support_n83["factor_base"]["enumerated_set_sha256"] == geometry[
         "Q1020"]["factor_base"]["enumerated_set_sha256"]
+    assert five_packed_n83["curve_id"] == five_n83["curve_id"]
+    assert five_packed_n83["factor_base"]["enumerated_set_sha256"] == five_n83[
+        "factor_base"]["enumerated_set_sha256"]
     assert all(row["candidate_id"] is None and row["isogeny"] == "none"
                for row in (*geometry.values(), ordinary, panel, target, wide_target,
                            n83_perf, n83_compact, five_n53, five_n83,
-                           five_support_n83))
+                           five_support_n83, five_packed_n83))
     source = {
         "Q1013": (geometry["Q1013"], "enumerated 100-seed n83 geometry; 99 unknown seed logs", ["runs/n83_dyadic_base_geometry.json", "dyadic_n83_work_projection.json"]),
         "Q1014": (geometry["Q1014"], "enumerated 8-seed n53 geometry; 7 unknown seed logs", ["runs/n53_dyadic_base_geometry.json"]),
@@ -68,6 +72,7 @@ def main():
         "Q1024": (five_n53, "verified single-target n53 five-sum two-plus-three quotient DLP pilot", ["runs/n53_dyadic_five_sum_dlp.json"]),
         "Q1025": (five_n83, "n83 L32 two-G quotient index and bounded batched three-Q stage", ["runs/n83_dyadic_five_sum_stage.json", "dyadic_five_sum_n83_projection.json"]),
         "Q1026": (five_support_n83, "exact n83 L1000 G-pair scalar quotient support, no point-witness index", ["runs/n83_dyadic_G_pair_scalar_support_L1000.json", "dyadic_five_sum_n83_projection.json"]),
+        "Q1027": (five_packed_n83, "packed n83 L32 two-G witness index with paired ordinary three-Q query blocks", ["runs/n83_dyadic_five_sum_packed_stage.json"]),
     }
     out = []
     for proposal_id, (receipt, description, refs) in source.items():
@@ -102,29 +107,29 @@ def main():
                     "point_coefficient_label_sha256"],
             },
             "point_decomposition": {
-                "m": 5 if proposal_id in ("Q1024", "Q1025", "Q1026") else 4,
+                "m": 5 if proposal_id in ("Q1024", "Q1025", "Q1026", "Q1027") else 4,
                 "method": "complete two-G quotient pair index with sampled three-Q complements"
-                          if proposal_id in ("Q1024", "Q1025") else
+                          if proposal_id in ("Q1024", "Q1025", "Q1027") else
                           "exact known-scalar G-pair orbit support only"
                           if proposal_id == "Q1026" else
                           "complete cross-seed quotient pair-sum index",
                 "quotient": "signed Frobenius, x-only cyclic canonicalization",
                 "complement": "batched inversion across one orbit",
                 "status": "implemented n53" if proposal_id in ("Q1015", "Q1016", "Q1019", "Q1021", "Q1024") else
-                          "implemented n83 bounded stage" if proposal_id in ("Q1022", "Q1023", "Q1025") else
+                          "implemented n83 bounded stage" if proposal_id in ("Q1022", "Q1023", "Q1025", "Q1027") else
                           "exact n83 L1000 scalar support only" if proposal_id == "Q1026" else
                           "conditional n83 scaling or geometry only",
             },
             "relation_collection": (
                 "known-scalar uniform G multiples against public target-seeded base"
-                if proposal_id in ("Q1019", "Q1021", "Q1024", "Q1025") else
+                if proposal_id in ("Q1019", "Q1021", "Q1024", "Q1025", "Q1027") else
                 "frozen ordinary target stream" if proposal_id == "Q1016" else None),
             "relation_linear_algebra": (
                 "one-row modular inverse if a nonzero target coefficient is found"
-                if proposal_id in ("Q1019", "Q1021", "Q1024", "Q1025") else None),
+                if proposal_id in ("Q1019", "Q1021", "Q1024", "Q1025", "Q1027") else None),
             "target_descent": (
                 "direct scalar recovery from target-seed coefficient"
-                if proposal_id in ("Q1019", "Q1021", "Q1024", "Q1025") else None),
+                if proposal_id in ("Q1019", "Q1021", "Q1024", "Q1025", "Q1027") else None),
             "stage_receipts": refs,
             "measured_complete_work_log2": None,
             "rho_paired_online_speedup": None,

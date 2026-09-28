@@ -11,6 +11,7 @@ import field
 from dyadic_base_geometry import CONFIG, enumerate_points
 from dyadic_two_seed_geometry import CONFIG as TWO_SEED_CONFIG
 from dyadic_n53_five_sum_dlp import build_g_pair_index
+from dyadic_n83_compact_index import build_packed
 from dyadic_n83_g_pair_scalar_support import coefficients_by_window, quotient_keys
 from perf_probe import sha
 from x_only_cycle import XOnlyCycle
@@ -563,6 +564,79 @@ def verify_five_sum_candidate():
     return candidate_id
 
 
+def verify_n83_five_sum_packed():
+    path = HERE / "runs" / "n83_dyadic_five_sum_packed_stage.json"
+    report = json.loads(path.read_text())
+    baseline_path = HERE / "runs" / "n83_dyadic_five_sum_stage.json"
+    baseline = json.loads(baseline_path.read_text())
+    reference_path = HERE / "runs" / "n83_perf_prefix.json"
+    reference = json.loads(reference_path.read_text())
+    assert report["source_sha256"] == sha(HERE / "dyadic_n83_five_sum_packed_stage.py")
+    assert report["baseline_sha256"] == sha(baseline_path)
+    assert report["reference_sha256"] == sha(reference_path)
+    for name, digest in report["dependency_sha256"].items():
+        assert digest == sha(HERE / name)
+    assert report["candidate_id"] is None and report["isogeny"] == "none"
+    assert report["curve_id"] == baseline["curve_id"] == reference["curve_id"]
+    assert report["curve_identity_record"] == reference["curve_identity_record"]
+    assert report["factor_base"] == baseline["factor_base"]
+    assert report["workload_id"] == hashlib.sha256(frozen(report["workload"])).hexdigest()[:12]
+    assert report["run_id"] == f"Q1027W{report['workload_id']}R1"
+    curve = curves.Curve(field.Onb(83))
+    order = int(reference["subgroup_order"])
+    generator = tuple(reference["curve_identity_record"]["curve"]["generator"])
+    target = tuple(reference["workload"]["target"])
+    lam = int(baseline["frobenius_eigenvalue_mod_r"])
+    labels, representatives, digests = enumerate_points(
+        curve, curve.f, [generator, target], 32, lam, order)
+    assert report["factor_base"]["enumerated_set_sha256"] == digests[
+        "enumerated_set_sha256"]
+    g_base = [point for point in sorted(labels) if labels[point][0] == 0]
+    g_reps = [point for point in sorted(representatives) if labels[point][0] == 0]
+    packed, build = build_packed(curve, g_reps, g_base, XOnlyCycle(curve.f))
+    receipt_build = report["packed_build"]
+    assert len(packed) == receipt_build["quotient_keys"] == 80868
+    assert build["retained_array_sha256"] == receipt_build[
+        "retained_array_sha256"]
+    assert build["key_sha256"] == receipt_build["key_sha256"] == report[
+        "full_key_set_sha256"]
+    assert receipt_build["row_bytes"] == 24
+    assert receipt_build["retained_array_bytes"] == 24 * 80868
+    assert report["dictionary_build"]["index_sha256"] == baseline[
+        "index_build"]["index_sha256"]
+    assert report["sampled_witness_replays"] == 1001
+    assert len(report["paired_blocks"]) == 3
+    for row in report["paired_blocks"]:
+        assert set(row["execution_order"]) == {
+            "dictionary", "packed_binary", "packed_vectorized"}
+        for variant in ("dictionary", "packed_binary", "packed_vectorized"):
+            assert row[variant]["attempts_including_failed"] == 4096
+            assert row[variant]["quotient_hits"] == 0
+            assert row[variant]["verified_relations"] == []
+        assert row["dictionary_wall_over_packed_binary_wall"] > 0
+        assert row["dictionary_wall_over_packed_vectorized_wall"] > 0
+    witness = report["planted_positive_control"]
+    assert len({point[0] for point in witness["point_witness"][2:]}) == 3
+    total = None
+    for raw in witness["point_witness"]:
+        total = curve.add(total, tuple(raw))
+    verify_five_sum_witness(witness["point_witness"], labels, curve,
+                            generator, target, order, total, witness)
+    planted_query = report["planted_vectorized_query_control"]
+    assert planted_query["verified_relations"][0] == {
+        "attempt": 1, "relation": witness}
+    assert report["ordinary_quotient_hits"] == 0
+    assert report["verified_single_target_dlp"] is False
+    return {"keys": len(packed),
+            "retained_bytes": receipt_build["retained_array_bytes"],
+            "packed_only_peak_rss_bytes": report[
+                "packed_only_peak_rss_bytes_before_dictionary_build"],
+            "median_dictionary_wall_over_packed_binary_wall": report[
+                "median_dictionary_wall_over_packed_binary_wall"],
+            "median_dictionary_wall_over_packed_vectorized_wall": report[
+                "median_dictionary_wall_over_packed_vectorized_wall"]}
+
+
 def main():
     geometry = {}
     for n in (53, 83):
@@ -625,6 +699,7 @@ def main():
     five_sum_n53 = verify_five_sum_n53()
     five_sum_n83 = verify_five_sum_n83()
     five_sum_candidate = verify_five_sum_candidate()
+    five_sum_packed = verify_n83_five_sum_packed()
     print(json.dumps({"n53_curve_id": geometry[53]["report"]["curve_id"],
                       "n83_curve_id": geometry[83]["report"]["curve_id"],
                       "n83_actual_B": geometry[83]["report"]["factor_base"][
@@ -640,7 +715,8 @@ def main():
                       "n83_L32_compact": compact,
                       "n53_five_sum": five_sum_n53,
                       "n83_five_sum": five_sum_n83,
-                      "n53_five_sum_candidate_id": five_sum_candidate}))
+                      "n53_five_sum_candidate_id": five_sum_candidate,
+                      "n83_five_sum_packed": five_sum_packed}))
 
 
 if __name__ == "__main__":

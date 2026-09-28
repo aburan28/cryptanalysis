@@ -269,7 +269,7 @@ retain every bounded outcome.
 
 ## Dyadic-window quotient relations at degrees 53 and 83
 
-The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1026`
+The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1027`
 under the repository protocol. Every row carries the exact field and curve,
 actual distinct subgroup-usable `B` **before** folding, the enumerated-set
 digest, signed-Frobenius columns, effective unknown seed-log columns, and
@@ -389,6 +389,26 @@ coefficient replay. The batched point-addition helper is checked against
 the complete affine law for ordinary, identity, equal-point, and opposite
 inputs at both degrees 53 and 83. The zero-hit prefix is a stage throughput
 measurement, not a useful natural relation or a measured DLP yield.
+
+The [packed two-G Q1027 run](runs/n83_dyadic_five_sum_packed_stage.json)
+stores the same complete L32 point-witness index in 1,940,832 retained
+bytes (24 bytes per key). Its packed-only process peak before constructing
+the dictionary control was 61.6 MB, and build took 9.44 s. The dictionary
+control built in 30.96 s in the same process; these build times were not
+alternated. The **entire** packed key set matches the dictionary key set;
+1,001 sampled witnesses and a five-point planted relation with three
+different Q-side x coordinates pass group and coefficient replay. Three
+paired, alternating-order blocks used identical frozen ordinary triples
+for the dictionary, per-key packed binary search, and batched NumPy
+search. All 12,288 attempts per variant missed. The median
+dictionary/packed query wall ratio was **0.945** for per-key binary search
+and **0.969** for vectorized lookup, so the latter came close to dictionary
+query time on this L32 process. A planted relation also passed through the
+full vectorized query and replay path. This is a real packed point-witness
+index, but only at L32; it does not change the L1000 search exponent. At the
+82,843,900 exact L1000 two-G quotient keys, the retained packed rows alone
+would be 1,988,253,600 bytes. That is a format-based storage projection,
+not an L1000 point-witness index measurement.
 
 The [exact degree-83 L1000 support run](runs/n83_dyadic_G_pair_scalar_support_L1000.json)
 replaces the earlier L32-ratio extrapolation. It uses the **same exact base**
@@ -618,6 +638,7 @@ python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_two_seed_n83_pr
 ./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/test_dyadic_five_sum_batch.py
 ./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_five_sum_dlp.py
 ./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_five_sum_stage.py
+./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_five_sum_packed_stage.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_g_pair_scalar_support.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_five_sum_n83_projection.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/emit_dyadic_stage_proposals.py
