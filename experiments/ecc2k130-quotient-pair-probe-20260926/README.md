@@ -1,7 +1,7 @@
 # ECC2K-130 quotient pair-sum gate, 2026-09-26
 
-This experiment supplies an exact four-point quotient pair-sum oracle on
-public Koblitz curves, two verified degree-53 target-seeded discrete logarithm
+This experiment supplies exact four-point and five-point quotient pair-sum methods on
+public Koblitz curves, three verified degree-53 target-seeded discrete logarithm
 pilots, and a separate degree-131 support bound. The degree-53 pilots have
 exact `IC1` method identities but incomplete online and operation accounting.
 There is no degree-83 or ECC2K-130 recovered logarithm, calibrated operation
@@ -31,7 +31,7 @@ before folding, not the coordinate count. An optional first-`k` orbit cut
 selects entire signed-Frobenius orbits, so closure and the completeness proof
 still hold. The fixed workload draws nonzero scalars with seed `260926`,
 multiplies one verified subgroup generator, and excludes fixture creation
-from query timing. No scalar is recovered by index calculus.
+from query timing. These weight-base toy rows do not recover a scalar.
 
 ## Frozen stage measurements
 
@@ -269,7 +269,7 @@ retain every bounded outcome.
 
 ## Dyadic-window quotient relations at degrees 53 and 83
 
-The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1023`
+The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1025`
 under the repository protocol. Every row carries the exact field and curve,
 actual distinct subgroup-usable `B` **before** folding, the enumerated-set
 digest, signed-Frobenius columns, effective unknown seed-log columns, and
@@ -351,6 +351,61 @@ The independent [comparison control](runs/n83_dyadic_compact_compare.json)
 reconstructed the dictionary index, proved equality of the **entire key
 set** and its frozen digest, and replayed 1,001 sampled packed witnesses.
 
+### Five-point two-plus-three quotient decomposition
+
+The five-point variant indexes every signed-Frobenius quotient class of a
+sum of two generator-seed points. For a known-log query `αG`, it samples
+three points from the public target-seed base and looks up the remaining
+complement. A verified hit has the form `αG = aG + bQ`; `b != 0` gives the
+target scalar by one modular inverse. This is a complete index for the
+chosen two-G side, followed by random sampling on the three-Q side. Every
+failed triple is charged to the same public target.
+
+The [degree-53 Q1024 receipt](runs/n53_dyadic_five_sum_dlp.json) uses the
+same exact L64 base and target as Q1021: `B=13,568`, 128 folded columns,
+one unknown log, and the same enumerated-set digest. Its G-pair index has
+207,940 keys and took 41.3 s to build. One natural verified relation
+appeared after **121,430** ordinary triple attempts, recovering
+`log_G(Q)=3400509474685`; the independent `[scalar]G=Q` replay passed.
+The measured target interval, including target membership preflight, base,
+index, failed attempts, and replay, was **53.2 s**. One hit in one search
+is not a stable yield estimate, and this run is not paired with rho. The
+complete implemented method has its own
+[IC1 candidate manifest](candidates/IC1N53Ckb1fb13568PDP5q23RCsampleLAgaussTDdirectISO0hf7ff67353971.json)
+and [candidate-linked run](runs/n53_dyadic_five_sum_candidate.json).
+`PDP5q23` is defined in [`AGENTS.md`](../../AGENTS.md). Exclusive phase
+accounting and calibrated field-operation totals remain incomplete, so the
+formal work `2^x` and online speedup remain unknown.
+
+The [degree-83 Q1025 receipt](runs/n83_dyadic_five_sum_stage.json) uses
+the exact named ONB curve, public target, and L32 base: `B=10,624`, 64
+folded columns, one unknown log. Its complete two-G quotient index has
+80,868 keys, representing exactly **13,423,923** distinct pair sums under
+the verified 166-point nonidentity signed-Frobenius orbits. Build time was
+28.8 s and peak process RSS was 153.3 MB. Three bounded blocks sampled
+12,288 ordinary target-base triples with no hit; median time was 636.7 ms
+per 4,096 attempts. A planted five-point relation passed group and seed
+coefficient replay. The batched point-addition helper is checked against
+the complete affine law for ordinary, identity, equal-point, and opposite
+inputs at both degrees 53 and 83. The zero-hit prefix is a stage throughput
+measurement, not a useful natural relation or a measured DLP yield.
+
+The [degree-83 five-point projection](dyadic_five_sum_n83_projection.json)
+keeps support and work units separate. At L1000, the exact base would have
+166,000 G-side points and 166,000 Q-side points, hence at most
+`C(166000+1,2)=13,778,083,000` distinct two-G sums and 83,000,500
+quotient keys. Under the **unverified** model that fixed-target triple
+complements are independent and uniform over the subgroup and that hits
+have nonzero target coefficient, even this maximum support gives
+`2^47.32` expected triple attempts. Transferring the measured L32 batched
+operation vector gives `2^51.22` field API multiplication calls and
+`2^53.68` cyclic word rotations, in separate units. If the measured L32
+support ratio 0.9513 transfers, the model becomes `2^47.39` attempts.
+These are conditional lower-side screens for query work, **not** a complete
+solve-cost upper bound or a claim below `2^61`: fixed-target coverage,
+L1000 index construction and memory, field-cost calibration, and an n83
+ordinary relation remain unmeasured.
+
 [Exact enumeration on the frozen public degree-83 target](runs/n83_dyadic_target_seed_geometry.json)
 gave `B=332,000`, 2,000 folded columns, and one unknown log in 2.83 seconds.
 The corresponding [independent-seed geometry](runs/n83_dyadic_two_seed_geometry.json)
@@ -362,8 +417,8 @@ Transferring the measured degree-83 L32 dictionary RSS per key would suggest
 about 276 GB. The packed 24-byte format instead projects **3.984 GB retained**
 at 166 million keys, with temporary sort/dedup storage and base points in
 addition. Both figures are **memory extrapolations**, not degree-83 L1000
-measurements. No complete
-degree-83 index, ordinary relation, rank, or scalar recovery has been run.
+measurements. No complete degree-83 L1000 index, ordinary relation, rank,
+or scalar recovery has been run.
 
 The original two-seed `r/P` estimate, where `P` is the number of cross-seed
 pairs, incorrectly treats pair probes as independent relation opportunities.
@@ -542,8 +597,13 @@ python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_two_seed_n83_pr
 ./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_relation_panel.py
 ./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_target_seed_dlp.py
 ./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_target_seed_dlp_w64.py
+./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/test_dyadic_five_sum_batch.py
+./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_five_sum_dlp.py
+./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_five_sum_stage.py
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_five_sum_n83_projection.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/emit_dyadic_stage_proposals.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/promote_dyadic_n53_candidates.py
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/promote_dyadic_n53_five_sum.py
 ./sage experiments/ecc2k130-quotient-pair-probe-20260926/verify_dyadic_receipts.py
 ```
 

@@ -10,7 +10,9 @@ import curves
 import field
 from dyadic_base_geometry import CONFIG, enumerate_points
 from dyadic_two_seed_geometry import CONFIG as TWO_SEED_CONFIG
+from dyadic_n53_five_sum_dlp import build_g_pair_index
 from perf_probe import sha
+from x_only_cycle import XOnlyCycle
 
 HERE = Path(__file__).resolve().parent
 
@@ -366,6 +368,171 @@ def verify_n83_compact():
             "packed_peak_rss_bytes": reports["packed"]["peak_process_rss_bytes"]}
 
 
+def verify_five_sum_witness(witness, labels, curve, generator, target, order,
+                            alpha_g, relation, scalar_expected=None):
+    points = [tuple(point) for point in witness]
+    assert len(points) == 5 and all(point in labels for point in points)
+    assert [labels[point][0] for point in points] == [0, 0, 1, 1, 1]
+    total = None
+    for point in points:
+        total = curve.add(total, point)
+    assert total == alpha_g
+    a = sum(labels[point][1] for point in points[:2]) % order
+    b = sum(labels[point][1] for point in points[2:]) % order
+    assert a == relation["known_G_coefficient_mod_r"]
+    assert b == relation["target_Q_coefficient_mod_r"]
+    assert curve.add(curve.mul(generator, a), curve.mul(target, b)) == alpha_g
+    if scalar_expected is not None:
+        assert b != 0
+        assert (relation["known_query_scalar_alpha"] - a) * pow(
+            b, -1, order) % order == scalar_expected
+        assert curve.mul(generator, scalar_expected) == target
+
+
+def verify_five_sum_n53():
+    path = HERE / "runs" / "n53_dyadic_five_sum_dlp.json"
+    report = json.loads(path.read_text())
+    reference = json.loads((HERE / "runs" / "n53_perf_prefix.json").read_text())
+    assert report["source_sha256"] == sha(HERE / "dyadic_n53_five_sum_dlp.py")
+    assert report["reference_sha256"] == sha(HERE / "runs" / "n53_perf_prefix.json")
+    for name, digest in report["dependency_sha256"].items():
+        assert digest == sha(HERE / name)
+    assert report["curve_id"] == reference["curve_id"]
+    assert report["curve_identity_record"] == reference["curve_identity_record"]
+    assert report["candidate_id"] is None and report["isogeny"] == "none"
+    assert report["workload_id"] == hashlib.sha256(frozen(report["workload"])).hexdigest()[:12]
+    assert report["run_id"] == f"Q1024W{report['workload_id']}R1"
+    curve = curves.Curve(field.Onb(53))
+    order = int(report["subgroup_order"])
+    generator = tuple(reference["curve_identity_record"]["curve"]["generator"])
+    target = tuple(report["target"])
+    lam = int(report["frobenius_eigenvalue_mod_r"])
+    assert pow(lam, 53, order) == 1
+    assert all(pow(lam, j, order) not in (1, order - 1) for j in range(1, 53))
+    labels, representatives, digests = enumerate_points(
+        curve, curve.f, [generator, target], 64, lam, order)
+    base = report["factor_base"]
+    assert len(labels) == base["actual_usable_points_B_before_folding"] == 13568
+    assert len(representatives) == base["signed_frobenius_columns"] == 128
+    assert base["effective_unknown_log_columns_after_dyadic_labels"] == 1
+    for name, value in digests.items():
+        assert base[name] == value
+    g_base = [point for point in sorted(labels) if labels[point][0] == 0]
+    g_reps = [point for point in sorted(representatives) if labels[point][0] == 0]
+    index, build = build_g_pair_index(curve, g_base, g_reps, XOnlyCycle(curve.f))
+    assert build["index_sha256"] == report["index_build"]["index_sha256"]
+    assert len(index) == report["index_build"]["quotient_keys"]
+    assert report["query"]["triple_attempts_including_failed"] == 121430
+    assert report["query"]["quotient_hits"] == 1
+    assert report["query"]["verified_group_relations"] == 1
+    assert report["verified_single_target_dlp"]
+    assert report["recovered_scalar"] == reference["target_fixture_scalar"]
+    relation = report["relation"]
+    alpha_g = curve.mul(generator, relation["known_query_scalar_alpha"])
+    verify_five_sum_witness(relation["point_witness"], labels, curve,
+                            generator, target, order, alpha_g, relation,
+                            report["recovered_scalar"])
+    return {"B": len(labels), "index_keys": len(index),
+            "triple_attempts": report["query"]["triple_attempts_including_failed"],
+            "verified_scalar": report["recovered_scalar"]}
+
+
+def verify_five_sum_n83():
+    path = HERE / "runs" / "n83_dyadic_five_sum_stage.json"
+    report = json.loads(path.read_text())
+    reference = json.loads((HERE / "runs" / "n83_perf_prefix.json").read_text())
+    assert report["source_sha256"] == sha(HERE / "dyadic_n83_five_sum_stage.py")
+    for name, digest in report["dependency_sha256"].items():
+        assert digest == sha(HERE / name)
+    assert report["reference_sha256"] == sha(HERE / "runs" / "n83_perf_prefix.json")
+    assert report["curve_id"] == reference["curve_id"]
+    assert report["curve_identity_record"] == reference["curve_identity_record"]
+    assert report["candidate_id"] is None and report["isogeny"] == "none"
+    assert report["workload_id"] == hashlib.sha256(frozen(report["workload"])).hexdigest()[:12]
+    assert report["run_id"] == f"Q1025W{report['workload_id']}R1"
+    curve = curves.Curve(field.Onb(83))
+    order = int(report["subgroup_order"])
+    generator = tuple(reference["curve_identity_record"]["curve"]["generator"])
+    target = tuple(report["target_seed"])
+    lam = int(report["frobenius_eigenvalue_mod_r"])
+    assert pow(lam, 83, order) == 1
+    assert all(pow(lam, j, order) not in (1, order - 1) for j in range(1, 83))
+    labels, representatives, digests = enumerate_points(
+        curve, curve.f, [generator, target], 32, lam, order)
+    base = report["factor_base"]
+    assert len(labels) == base["actual_usable_points_B_before_folding"] == 10624
+    assert len(representatives) == base["signed_frobenius_columns"] == 64
+    assert base["effective_unknown_log_columns_after_dyadic_labels"] == 1
+    for name, value in digests.items():
+        assert base[name] == value
+    g_base = [point for point in sorted(labels) if labels[point][0] == 0]
+    g_reps = [point for point in sorted(representatives) if labels[point][0] == 0]
+    index, build = build_g_pair_index(curve, g_base, g_reps, XOnlyCycle(curve.f))
+    assert build["index_sha256"] == report["index_build"]["index_sha256"]
+    assert len(index) == report["index_build"]["quotient_keys"] == 80868
+    assert -1 in index
+    assert report["exact_two_G_pair_sum_support"] == 1 + (len(index) - 1) * 166
+    assert sum(block["attempts_including_failed"] for block in report[
+        "ordinary_blocks"]) == 12288
+    assert all(block["quotient_hits"] == 0 and not block[
+        "verified_relations"] for block in report["ordinary_blocks"])
+    assert report["verified_single_target_dlp"] is False
+    planted = report["planted_positive_control"]
+    total = None
+    for point in planted["point_witness"]:
+        total = curve.add(total, tuple(point))
+    verify_five_sum_witness(planted["point_witness"], labels, curve,
+                            generator, target, order, total, planted)
+    projection_path = HERE / "dyadic_five_sum_n83_projection.json"
+    projection = json.loads(projection_path.read_text())
+    assert projection["source_sha256"] == sha(HERE / "dyadic_five_sum_n83_projection.py")
+    assert projection["stage_receipt_sha256"] == sha(path)
+    assert projection["L32_exact_two_G_pair_sum_support"] == report[
+        "exact_two_G_pair_sum_support"]
+    assert projection["L1000_unordered_pair_sum_support_cap"] == 166000 * 166001 // 2
+    return {"B": len(labels), "index_keys": len(index),
+            "ordinary_triple_attempts": 12288, "ordinary_hits": 0}
+
+
+def verify_five_sum_candidate():
+    receipt_path = HERE / "runs" / "n53_dyadic_five_sum_dlp.json"
+    receipt = json.loads(receipt_path.read_text())
+    run_path = HERE / "runs" / "n53_dyadic_five_sum_candidate.json"
+    run = json.loads(run_path.read_text())
+    candidate_id = run["candidate_id"]
+    manifest_path = HERE / "candidates" / f"{candidate_id}.json"
+    manifest = json.loads(manifest_path.read_text())
+    record = manifest["identity_record"]
+    assert manifest["candidate_id"] == candidate_id
+    assert candidate_id.startswith(
+        "IC1N53Ckb1fb13568PDP5q23RCsampleLAgaussTDdirectISO0h")
+    assert candidate_id.endswith("h" + hashlib.sha256(frozen(record)).hexdigest()[:12])
+    curve = dict(record["curve"])
+    curve_id = curve.pop("curve_id")
+    assert curve_id == receipt["curve_id"]
+    assert hashlib.sha256(frozen({"field": record["field"],
+                                  "curve": curve})).hexdigest()[:12] == curve_id.rsplit("h", 1)[1]
+    assert record["isogeny"] == "none"
+    assert record["endomorphism"]["order_conductor"] is None
+    assert record["factor_base"]["actual_usable_point_count_B"] == 13568
+    assert record["factor_base"]["enumerated_set_sha256"] == receipt[
+        "factor_base"]["enumerated_set_sha256"]
+    assert record["point_decomposition"]["m"] == 5
+    assert record["point_decomposition"]["solver_family"] == (
+        "two_plus_three_quotient_pair_index")
+    for name, digest in record["implementation"][
+            "source_sha256_by_component"].items():
+        assert sha(HERE / name) == digest
+    assert manifest["source_receipt_sha256"] == run[
+        "source_receipt_sha256"] == sha(receipt_path)
+    assert run["manifest_sha256"] == sha(manifest_path)
+    assert run["run_id"] == f"{candidate_id}W{receipt['workload_id']}R1"
+    assert run["verified_scalar"] == receipt["recovered_scalar"]
+    assert run["total_calibrated_field_operations"] is None
+    assert run["complete_work_log2"] is None
+    return candidate_id
+
+
 def main():
     geometry = {}
     for n in (53, 83):
@@ -419,6 +586,9 @@ def main():
     candidate_ids = [verify_promoted_candidate(window) for window in (16, 64)]
     n83_perf = verify_n83_perf()
     compact = verify_n83_compact()
+    five_sum_n53 = verify_five_sum_n53()
+    five_sum_n83 = verify_five_sum_n83()
+    five_sum_candidate = verify_five_sum_candidate()
     print(json.dumps({"n53_curve_id": geometry[53]["report"]["curve_id"],
                       "n83_curve_id": geometry[83]["report"]["curve_id"],
                       "n83_actual_B": geometry[83]["report"]["factor_base"][
@@ -431,7 +601,10 @@ def main():
                       "n53_wide_target_seed_dlp_status": wide_dlp_status,
                       "n53_candidate_ids": candidate_ids,
                       "n83_L32_perf": n83_perf,
-                      "n83_L32_compact": compact}))
+                      "n83_L32_compact": compact,
+                      "n53_five_sum": five_sum_n53,
+                      "n83_five_sum": five_sum_n83,
+                      "n53_five_sum_candidate_id": five_sum_candidate}))
 
 
 if __name__ == "__main__":
