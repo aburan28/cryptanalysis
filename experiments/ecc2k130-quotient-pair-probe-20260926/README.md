@@ -428,6 +428,55 @@ the former count was also enumerated exactly by Q1026's scalar-support
 calculation. No L1000 curve-point witness build or n83 natural relation
 has yet been measured.
 
+### Same-target degree-83 rho reference
+
+The [rho bridge](n83_public_target_rho.cpp) supplies the **same frozen public
+G and Q** to the tracked CPU engine in `crypto/ecc2k130/src/main.cu`. It
+converts the declared 167-bit symmetric ONB representation to the engine's
+83-bit ONB coordinates; the source contains no target scalar. The engine's
+degree-83 field, orbit, walk, and collision-solver self-checks passed on
+these points. This is a separately labeled rho reference, not a `Q`/`IC1`
+factor-base candidate. Its collision is not evidence of ordinary IC relation
+yield. The [independent replay script](verify_n83_public_target_rho.py)
+rejects an incomplete log and writes a receipt only after the returned
+scalar reproduces the exact public Q under the experiment's separate point
+arithmetic. It reports rho walk iterations as its work unit, leaving
+complete IC work unknown.
+
+The bridge was compiled against the tracked `crypto` engine at commit
+`fb4491d4451b882514b2312c8f1eabff622dfe26` for the current local run.
+The local four-thread 16-launch collection prefix measured 67,108,864 walk
+iterations in 1.4 s, or 46.838 million iterations/s, with 1,114 distinguished
+points and zero drops. This prefix is a throughput diagnostic, not a DLP.
+The checkpointed same-target run is in progress; its scalar and full work
+remain unreported until independent replay passes.
+
+For a new local run, set `RHO_ENGINE_SRC` to the `src` directory of a
+checkout of the pinned `crypto` commit, then build and run from this repo:
+
+```sh
+RHO_ENGINE_SRC=/path/to/crypto/ecc2k130/src
+/opt/homebrew/opt/llvm/bin/clang++ -isysroot "$(xcrun --show-sdk-path)" \
+  -O3 -std=c++17 -march=native -fopenmp -DECC_NO_CUDA -DECC_BATCH=32 \
+  -I"$RHO_ENGINE_SRC" -x c++ \
+  experiments/ecc2k130-quotient-pair-probe-20260926/n83_public_target_rho.cpp \
+  -o /tmp/ecc2k83-public-rho
+/tmp/ecc2k83-public-rho --test --threads 4
+/tmp/ecc2k83-public-rho --threads 4 --steps 512 --run-id 32028 \
+  --dp-weight 22 --verify 8 --dp-file /tmp/ecc2k83-public-rho.dps \
+  --checkpoint /tmp/ecc2k83-public-rho.ckpt \
+  > /tmp/ecc2k83-public-rho.log 2>&1
+./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/verify_n83_public_target_rho.py \
+  --log /tmp/ecc2k83-public-rho.log --binary /tmp/ecc2k83-public-rho \
+  --driver-source experiments/ecc2k130-quotient-pair-probe-20260926/n83_public_target_rho.cpp \
+  --rho-source "$RHO_ENGINE_SRC/main.cu" \
+  --out /tmp/ecc2k83-public-rho-replay.json
+```
+
+The final replay command must fail while the run is incomplete. The run
+ID, DP file, and checkpoint form one frozen rho workload; use new paths and
+a new run ID for an independent repetition.
+
 The [exact degree-83 L1000 support run](runs/n83_dyadic_G_pair_scalar_support_L1000.json)
 replaces the earlier L32-ratio extrapolation. It uses the **same exact base**
 as Q1020: `B=332,000`, 2,000 folded columns, one unknown log, and the
