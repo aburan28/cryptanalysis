@@ -396,9 +396,11 @@ limit reaching 2×. The candidate receipt, per-seed speedups, and confidence
 interval remain null because all bounded homogeneous probes were censored
 before a verified relation. The refreshed k=2 control calculation is in
 [`goal_status_k2_refreshed.json`](goal_status_k2_refreshed.json); its baseline
-median is 4.034 ms per row and its median ceiling is 2.017 ms. The older
-[`goal_status.json`](goal_status.json) is retained as the historical k=2
-early-stop result and is tied to the earlier 4.72 ms baseline.
+median is **4.034 ms per row** and its median 2× ceiling is **2.017 ms**.
+[`goal_status.json`](goal_status.json) applies the refreshed per-seed control
+timings to the matched-prefix receipts: every first candidate attempt exceeds
+its revised per-seed 2× budget. Earlier status calculations remain in the
+preceding commit history.
 
 The existing `goal_check.py` independently replays the k=2 C relation/rank
 receipts before evaluating a supplied candidate. The k=3 receipts have their
