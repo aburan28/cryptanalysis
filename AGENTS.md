@@ -206,6 +206,34 @@ not estimates of natural relation yield. An unverified isogeny neighbor or
 conductor guess is a proposal only: `ISO1` requires an explicit verified map,
 ordered edge links, subgroup/log transport, and charged route costs.
 
+## Hardware and placement for empirical benchmarks
+
+For every performance or memory comparison, save a machine-readable hardware
+and execution manifest with the run receipt. Record the CPU vendor, exact
+reported model and generation or microarchitecture when independently known,
+architecture, exposed cores/threads/sockets, cache topology, kernel and OS,
+virtualization/container status, and CPU and memory cgroup limits. Record the
+physical memory technology (for example DDR4 or DDR5), speed, and channel
+configuration only when the host exposes verifiable evidence; otherwise write
+`unknown`, especially in a VM. Do not infer DIMM type from a CPU model.
+
+Record allowed CPUs and NUMA memory nodes, the selected CPU affinity and
+memory policy, and observed page placement for the measured process. On a
+multi-node host, choose a CPU and its local memory node together, first-touch
+the working set under that policy, and verify the placement. If only one node
+is exposed, say so and do not claim a NUMA locality comparison or host-level
+isolation. CPU affinity restricts the benchmark process's placement; it does
+not reserve a core from other processes. Record any CPU throttling and relevant
+co-runners where observable.
+
+Pair variants on the same host, core/node policy, inputs, limits and warmup
+policy. Report process CPU time and wall time separately, along with peak RSS,
+operation counts, rank progress, and algorithm-specific work such as row
+fill-in. Include repeated paired runs and variability for timing claims;
+never treat one elapsed-time result alone as evidence of a solver speedup.
+Keep source and input hashes and record censored, timed-out, or memory-limited
+runs as such.
+
 ## Remote compute
 
 A cloud-agent VM has 4 CPUs, 15 GB and no GPU. Run bigger work, such as
