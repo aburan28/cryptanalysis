@@ -11,6 +11,7 @@ import field
 from dyadic_base_geometry import CONFIG, enumerate_points
 from dyadic_two_seed_geometry import CONFIG as TWO_SEED_CONFIG
 from dyadic_n53_five_sum_dlp import build_g_pair_index
+from dyadic_n83_g_pair_scalar_support import coefficients_by_window, quotient_keys
 from perf_probe import sha
 from x_only_cycle import XOnlyCycle
 
@@ -470,6 +471,12 @@ def verify_five_sum_n83():
     index, build = build_g_pair_index(curve, g_base, g_reps, XOnlyCycle(curve.f))
     assert build["index_sha256"] == report["index_build"]["index_sha256"]
     assert len(index) == report["index_build"]["quotient_keys"] == 80868
+    scalar_twos, scalar_buckets = coefficients_by_window(order, lam, 32)
+    scalar_keys, _, _, _ = quotient_keys(order, scalar_twos, scalar_buckets)
+    point_index_scalar_keys = {
+        pow((labels[pair[0]][1] + labels[pair[1]][1]) % order, 166, order)
+        for _, pair in index.values()}
+    assert scalar_keys == point_index_scalar_keys
     assert -1 in index
     assert report["exact_two_G_pair_sum_support"] == 1 + (len(index) - 1) * 166
     assert sum(block["attempts_including_failed"] for block in report[
@@ -487,6 +494,29 @@ def verify_five_sum_n83():
     projection = json.loads(projection_path.read_text())
     assert projection["source_sha256"] == sha(HERE / "dyadic_five_sum_n83_projection.py")
     assert projection["stage_receipt_sha256"] == sha(path)
+    support_path = HERE / "runs" / "n83_dyadic_G_pair_scalar_support_L1000.json"
+    support = json.loads(support_path.read_text())
+    assert support["source_sha256"] == sha(HERE / "dyadic_n83_g_pair_scalar_support.py")
+    assert support["geometry_receipt_sha256"] == sha(
+        HERE / "runs" / "n83_dyadic_target_seed_geometry.json")
+    assert support["stage_control_receipt_sha256"] == sha(path)
+    assert support["curve_id"] == report["curve_id"]
+    assert support["curve_identity_record"] == report["curve_identity_record"]
+    assert support["candidate_id"] is None and support["isogeny"] == "none"
+    assert support["factor_base"]["actual_usable_points_B_before_folding"] == 332000
+    assert support["factor_base"]["signed_frobenius_columns"] == 2000
+    assert support["workload_id"] == hashlib.sha256(frozen(support["workload"])).hexdigest()[:12]
+    assert support["run_id"] == f"Q1026W{support['workload_id']}R1"
+    assert support["L32_independent_curve_point_key_control"]["quotient_keys"] == len(scalar_keys)
+    assert support["L1000_unordered_pair_orbit_generators"] == 83 * 1000 * 1001
+    assert support["L1000_exact_quotient_keys"] == 82843900
+    assert support["L1000_exact_distinct_G_pair_sums"] == (
+        1 + (support["L1000_exact_quotient_keys"] - 1) * 166)
+    assert len(support["L1000_prefix_checkpoints"]) == 10
+    assert support["L1000_prefix_checkpoints"][-1]["quotient_keys"] == 82843900
+    assert projection["exact_support_receipt_sha256"] == sha(support_path)
+    assert projection["L1000_exact_G_pair_sum_support"] == support[
+        "L1000_exact_distinct_G_pair_sums"]
     assert projection["L32_exact_two_G_pair_sum_support"] == report[
         "exact_two_G_pair_sum_support"]
     assert projection["L1000_unordered_pair_sum_support_cap"] == 166000 * 166001 // 2
@@ -564,6 +594,12 @@ def main():
         if row["two_coefficient_sum_count_exact"] is not None:
             assert row["two_coefficient_sum_count_exact"] <= row[
                 "two_coefficient_sum_count_upper"]
+        if n == 83 and length == 1000:
+            support_path = HERE / "runs" / "n83_dyadic_G_pair_scalar_support_L1000.json"
+            exact_support = json.loads(support_path.read_text())
+            assert row["external_exact_support_receipt_sha256"] == sha(support_path)
+            assert row["two_coefficient_sum_count_exact"] == exact_support[
+                "L1000_exact_distinct_G_pair_sums"]
         assert math.isclose(row["uniform_known_log_query_hit_probability_upper"],
                             min(1, int(row["query_scalar_support_count_upper"]) /
                                 (int(geometry[n]["report"]["subgroup_order"]) - 1)),

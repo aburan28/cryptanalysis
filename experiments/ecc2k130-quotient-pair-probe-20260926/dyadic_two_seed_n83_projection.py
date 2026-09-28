@@ -37,17 +37,12 @@ def main():
     expected_probes = order / pair_count
     support_row = next(row for row in support["rows"] if
                        row["degree"] == 83 and row["doubling_window"] == 1000)
-    diagnostic_row = next(row for row in support["rows"] if
-                          row["degree"] == 83 and row["doubling_window"] == 20)
     assert support_row["curve_id"] == geometry["curve_id"]
     assert support_row["cross_seed_pair_count"] == pair_count
+    exact_sum_count = support_row["two_coefficient_sum_count_exact"]
+    assert exact_sum_count == 13752087235
     failed_probe_lower_log2 = support_row[
         "iid_uniform_expected_failed_pair_probes_lower_log2"]
-    transferred_ratio = diagnostic_row["exact_two_sum_to_ordered_pair_ratio"]
-    heuristic_sum_count = transferred_ratio * pair_count
-    heuristic_probability = min(1.0, heuristic_sum_count**2 / (order - 1))
-    heuristic_failed_probes_log2 = math.log2(
-        pair_count * (1 / heuristic_probability - 1))
     unit_calls = dict(measured["field_api_operations"])
     assert unit_calls["sqr"] >= measured["lookups"]
     unit_calls["direct_batch_formula_xors"] = 8 * measured["lookups"]
@@ -58,8 +53,6 @@ def main():
                      for name, count in per_probe.items() if count > 0}
     failed_lower = {name: failed_probe_lower_log2 + math.log2(count)
                     for name, count in per_probe.items() if count > 0}
-    heuristic_counts = {name: heuristic_failed_probes_log2 + math.log2(count)
-                        for name, count in per_probe.items() if count > 0}
     quotient_generators = geometry["conditional_direct_pair_screen"][
         "quotient_cross_seed_pair_generators"]
     report = {
@@ -73,11 +66,11 @@ def main():
         "effective_unknown_log_columns": 1,
         "exact_cross_seed_unordered_pair_count": str(pair_count),
         "refuted_independent_pair_probe_model_log2": math.log2(expected_probes),
+        "exact_L1000_two_coefficient_sum_count": exact_sum_count,
+        "exact_L1000_two_sum_to_ordered_cross_seed_pair_ratio": exact_sum_count / pair_count,
         "uniform_query_hit_probability_upper": support_row[
             "uniform_known_log_query_hit_probability_upper"],
         "expected_failed_full_scans_pair_probes_lower_log2": failed_probe_lower_log2,
-        "heuristic_transferred_n83_window20_two_sum_ratio": transferred_ratio,
-        "heuristic_expected_failed_scans_pair_probes_log2": heuristic_failed_probes_log2,
         "quotient_pair_generators_if_no_sum_orbit_collisions": quotient_generators,
         "minimum_11_byte_x_key_payload_bytes_model": 11 * quotient_generators,
         "measured_L32_base_B": 10624,
@@ -87,13 +80,11 @@ def main():
         "measured_L32_calls_per_probe": per_probe,
         "refuted_independent_pair_count_log2_by_separate_unit": naive_one_hit,
         "expected_failed_scan_lower_bound_log2_by_separate_unit": failed_lower,
-        "heuristic_failed_scan_log2_by_separate_unit": heuristic_counts,
         "model_assumptions": [
-            "cross-seed pair-sum support is near the exact pair count",
+            "the exact G-side two-sum support also describes the Q-side coefficient support; both use the same dyadic coefficient set",
             "first hit has nonzero Q coefficient",
             "a complete 166-million-key quotient index can be built and queried",
             "L32 operation counts transfer to L1000 despite memory and cache changes",
-            "heuristic only: coefficient two-sum collision ratio transfers from L20 to L1000",
         ],
         "omitted_costs": ["target-dependent base construction", "index generation",
                           "index storage and cache misses", "failed full-query overhead",
@@ -111,7 +102,6 @@ def main():
     print(json.dumps({"curve_id": report["curve_id"],
                       "independent_probe_model_refuted_log2": math.log2(expected_probes),
                       "expected_failed_scan_probes_lower_log2": failed_probe_lower_log2,
-                      "heuristic_failed_scan_probes_log2": heuristic_failed_probes_log2,
                       "failed_scan_separate_unit_lower_exponents": failed_lower}, indent=2))
 
 

@@ -36,7 +36,7 @@ def exact_two_sum_count(values, order):
     return len(sums)
 
 
-def row(n, length, geometry_name, count_exact):
+def row(n, length, geometry_name, count_exact, exact_receipt_name=None):
     geometry_path = HERE / "runs" / geometry_name
     geometry = json.loads(geometry_path.read_text())
     order = int(geometry["subgroup_order"])
@@ -46,6 +46,18 @@ def row(n, length, geometry_name, count_exact):
     pair_count = c * c
     upper = c * (c + 1) // 2
     exact = exact_two_sum_count(values, order) if count_exact else None
+    exact_receipt_sha = None
+    if exact_receipt_name is not None:
+        assert exact is None
+        exact_path = HERE / "runs" / exact_receipt_name
+        external = json.loads(exact_path.read_text())
+        assert external["curve_id"] == geometry["curve_id"]
+        assert external["factor_base"]["enumerated_set_sha256"] == geometry[
+            "factor_base"]["enumerated_set_sha256"]
+        assert external["G_side_actual_points"] == c
+        exact = external["L1000_exact_distinct_G_pair_sums"]
+        assert exact == 1 + (external["L1000_exact_quotient_keys"] - 1) * 2 * n
+        exact_receipt_sha = sha(exact_path)
     support_cap = exact if exact is not None else upper
     probability_cap = min(1.0, support_cap * support_cap / (order - 1))
     expected_failed_scans_lower = (1 / probability_cap - 1)
@@ -65,6 +77,7 @@ def row(n, length, geometry_name, count_exact):
             math.log2(expected_failed_scans_lower * pair_count)
             if expected_failed_scans_lower > 0 else 0),
         "geometry_receipt_sha256": sha(geometry_path),
+        "external_exact_support_receipt_sha256": exact_receipt_sha,
     }
 
 
@@ -72,12 +85,13 @@ def main():
     rows = [
         row(53, 16, "n53_dyadic_two_seed_geometry.json", True),
         row(83, 20, "n83_dyadic_base_geometry.json", True),
-        row(83, 1000, "n83_dyadic_target_seed_geometry.json", False),
+        row(83, 1000, "n83_dyadic_target_seed_geometry.json", False,
+            "n83_dyadic_G_pair_scalar_support_L1000.json"),
     ]
     report = {
         "kind": "two_seed_dyadic_four_sum_relation_support_screen",
         "proposal_ids": ["Q1019", "Q1020"], "candidate_id": None,
-        "scope": "exact coefficient combinatorics at n53 and n83 L20; rigorous two-sum cardinality upper bound at n83 L1000; no measured n83 relation yield or complete DLP",
+        "scope": "exact two-coefficient-sum cardinality at n53 L16, n83 L20, and n83 L1000; no measured n83 relation yield or complete DLP",
         "argument": "For one fixed public Q, a known-log query alpha*G admits a cross-seed four-sum only if alpha belongs to (C+C)+log_G(Q)*(C+C). Its support is at most |C+C|^2, even if every quotient lookup is perfect.",
         "n83_window20_role": "coefficient-collision diagnostic using the same ONB curve and Frobenius eigenvalue; it is not a relation-yield bound for the 100-seed Q1013 base",
         "query_probability_model": "alpha uniformly sampled independently from 1..r-1; p at most support/(r-1); expected complete failed scans at least 1/p-1",

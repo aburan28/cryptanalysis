@@ -269,7 +269,7 @@ retain every bounded outcome.
 
 ## Dyadic-window quotient relations at degrees 53 and 83
 
-The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1025`
+The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1026`
 under the repository protocol. Every row carries the exact field and curve,
 actual distinct subgroup-usable `B` **before** folding, the enumerated-set
 digest, signed-Frobenius columns, effective unknown seed-log columns, and
@@ -390,21 +390,38 @@ the complete affine law for ordinary, identity, equal-point, and opposite
 inputs at both degrees 53 and 83. The zero-hit prefix is a stage throughput
 measurement, not a useful natural relation or a measured DLP yield.
 
-The [degree-83 five-point projection](dyadic_five_sum_n83_projection.json)
-keeps support and work units separate. At L1000, the exact base would have
-166,000 G-side points and 166,000 Q-side points, hence at most
-`C(166000+1,2)=13,778,083,000` distinct two-G sums and 83,000,500
-quotient keys. Under the **unverified** model that fixed-target triple
-complements are independent and uniform over the subgroup and that hits
-have nonzero target coefficient, even this maximum support gives
-`2^47.32` expected triple attempts. Transferring the measured L32 batched
-operation vector gives `2^51.22` field API multiplication calls and
-`2^53.68` cyclic word rotations, in separate units. If the measured L32
-support ratio 0.9513 transfers, the model becomes `2^47.39` attempts.
-These are conditional lower-side screens for query work, **not** a complete
-solve-cost upper bound or a claim below `2^61`: fixed-target coverage,
-L1000 index construction and memory, field-cost calibration, and an n83
-ordinary relation remain unmeasured.
+The [exact degree-83 L1000 support run](runs/n83_dyadic_G_pair_scalar_support_L1000.json)
+replaces the earlier L32-ratio extrapolation. It uses the **same exact base**
+as Q1020: `B=332,000`, 2,000 folded columns, one unknown log, and the
+same point-set digest. The G side contains 166,000 points. Because its
+scalar coefficients are known, raising each nonzero pair-sum coefficient
+to the 166th power modulo the prime subgroup order identifies precisely
+one signed-Frobenius orbit. Enumerating 83,083,000 unordered pair-orbit
+generators took 69.7 s and 12.6 GB peak RSS and found **82,843,900**
+quotient orbits, representing exactly **13,752,087,235** distinct G-pair
+sums. This is **99.8113%** of the rigorous unordered-pair cap
+`C(166000+1,2)=13,778,083,000`. At L32, the scalar-orbit key set agrees
+with every key reconstructed from the independently built curve-point
+index. The L1000 count is a support measurement, **not** a point-witness
+index capable of querying an unknown target. At 24 bytes per packed witness
+row, those exact keys would retain 1,988,253,600 bytes before sorting and
+lookup overhead; this is a format transfer, not measured L1000 index memory.
+The former L32 support-ratio
+transfer (0.9513) was inaccurate at L1000.
+
+The updated [five-point work projection](dyadic_five_sum_n83_projection.json)
+uses the **exact** L1000 support. Under the still **unverified** model that
+fixed-target triple complements are independent and uniform over the
+subgroup and that hits have nonzero target coefficient, it gives
+`2^47.321` expected triple attempts. Transferring the measured L32 batched
+operation vector gives `2^51.227` field API multiplication calls and
+`2^53.679` cyclic word rotations, in separate units. Transferring the
+same Python wall rate would be about 866 single-process years; this is a
+diagnostic extrapolation, not an implementation benchmark at L1000.
+These are conditional query-work screens, **not** a complete solve-cost
+upper bound or a claim below `2^61`: fixed-target triple coverage,
+L1000 point-witness index construction and memory, field-cost calibration,
+and an n83 ordinary relation remain unmeasured.
 
 [Exact enumeration on the frozen public degree-83 target](runs/n83_dyadic_target_seed_geometry.json)
 gave `B=332,000`, 2,000 folded columns, and one unknown log in 2.83 seconds.
@@ -428,16 +445,17 @@ target-seeded base requires `α` to be in `S+log_G(Q)·S`. Therefore an
 independent uniform known-log query has success probability **at most**
 `|S|²/(r−1)`. Exact degree-53, 16-step enumeration gives `|S|=1,267,231`
 and a probability cap of `0.0763`. At degree 83 with 1,000 steps, the
-rigorous `|S|≤166000·166001/2` cap gives probability at most
-`7.85×10^-5`, hence at least `2^48.32` **expected probes in failed complete
+new exact count `|S|=13,752,087,235` gives probability at most
+`7.82×10^-5`, hence at least `2^48.324` **expected probes in failed complete
 scans alone** under independent uniform query sampling. This is a lower
 bound for the stated direct-index query policy, not a solve-cost upper bound.
 The separate [same-curve operation screen](dyadic_two_seed_n83_projection.json)
-gives `2^48.52` failed-scan probes as an exploratory estimate if the measured
-degree-83 20-step coefficient collision ratio transfers to 1,000 steps.
+now uses the exact L1000 support. The earlier `2^48.52` L20 collision-ratio
+transfer is superseded.
 Applying the measured same-curve **packed** L32 batched-query operation vector
-to the rigorous failed-scan lower bound gives `2^50.64` field API multiplication calls and
-`2^54.68` cyclic word rotations, in separate units. Index construction,
+to the exact-support failed-scan lower bound gives `2^50.649` field API
+multiplication calls and `2^54.681` cyclic word rotations, in separate units.
+Index construction,
 memory traffic, useful coefficient yield, full target checks, and any
 field-operation calibration are additional and unmeasured. The earlier
 `2^46.32` independent-probe projection is **refuted for this two-seed
@@ -600,6 +618,7 @@ python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_two_seed_n83_pr
 ./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/test_dyadic_five_sum_batch.py
 ./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_five_sum_dlp.py
 ./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_five_sum_stage.py
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_g_pair_scalar_support.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_five_sum_n83_projection.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/emit_dyadic_stage_proposals.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/promote_dyadic_n53_candidates.py
