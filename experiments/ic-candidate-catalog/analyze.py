@@ -27,6 +27,9 @@ def require(condition: bool, message: str) -> None:
 
 
 def validate_run(run: dict) -> dict:
+    if run.get("schema_version") == 2:
+        import analyze_v2
+        return analyze_v2.validate_run(run)
     require(run.get("schema_version") == CONTRACT["schema_version"], "wrong schema version")
     mode = run.get("accounting_mode", "calibrated_operations")
     require(mode in CONTRACT["accounting_modes"], "unknown accounting mode")
@@ -359,12 +362,20 @@ def main() -> None:
     parser.add_argument("--candidate")
     args = parser.parse_args()
     require(bool(args.baseline) == bool(args.candidate), "supply both comparison IDs")
-    runs = [validate_run(json.loads(line)) for line in args.runs.read_text().splitlines() if line.strip()]
+    raw_runs = [json.loads(line) for line in args.runs.read_text().splitlines() if line.strip()]
+    versions = {run.get("schema_version") for run in raw_runs}
+    require(len(versions) <= 1, "mixed receipt schema versions")
+    if versions == {2}:
+        import analyze_v2
+        implementation = analyze_v2
+    else:
+        implementation = __import__(__name__)
+    runs = [implementation.validate_run(run) for run in raw_runs]
     ids = [run["run_id"] for run in runs]
     require(len(set(ids)) == len(ids), "duplicate run IDs")
-    report = {"run_count": len(runs), "configurations": summarize(runs)}
+    report = {"run_count": len(runs), "configurations": implementation.summarize(runs)}
     if args.baseline:
-        report["comparison"] = paired_compare(runs, args.baseline, args.candidate)
+        report["comparison"] = implementation.paired_compare(runs, args.baseline, args.candidate)
     print(json.dumps(report, indent=2))
 
 
