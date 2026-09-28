@@ -177,9 +177,14 @@ python3 probe_large.py --target-index 16 --timeout 60 --out relation_probe_compl
 python3 verify_probe.py relation_probe_completed.json
 python3 compiled_control.py --out compiled_control_results.json
 python3 verify_relation_gate.py compiled_control_results.json
-python3 run_matched_prefix.py --timeout 60 --out matched_prefix_results.json
-python3 m83_feasibility.py
-python3 goal_check.py --baseline compiled_control_results.json --probe relation_probe_completed.json --prefix matched_prefix_results.json --out goal_status.json
+python3 factor_base_yield.py --out factor_base_yield_results.json
+python3 compiled_k3_control.py --out compiled_k3_control_results.json
+python3 verify_k3_control.py
+python3 probe_k3_homogeneous.py --seed 20260927 --target-index 0 --timeout 60
+python3 verify_homogeneous_bitset.py --out homogeneous_bitset_exact_intersection_verification.json
+python3 probe_k3_homogeneous_targetonly.py --seed 20260927 --target-index 0 --timeout 60 --deduction-degree 8 --out k3_homogeneous_targetonly_degree8_results.json
+python3 probe_k3_homogeneous_targetonly.py --seed 20260927 --target-index 0 --timeout 60 --deduction-degree 9 --out k3_homogeneous_targetonly_degree9_results.json
+python3 goal_check.py --baseline compiled_control_results.json --probe relation_probe_completed.json --out goal_status_k2_refreshed.json
 ```
 
 The [primary collection receipts](relation_gate_results.json) stop **as soon
@@ -207,71 +212,161 @@ Python collector is an archival reference; the compiled collector below is
 the fastest **currently measured on this exact base**. Fix the same
 rank-eight stopping rule, target stream and base digest for each arm.
 
-The [bounded homogeneous attempt](relation_probe_results.json) selected a
-known positive target at index 16 solely to diagnose solver feasibility.
-Building its 98 tri-degree components and 39,001 rows took 14.6 s, and the
-process timed out at 20 s during elimination. **No independent row was
-obtained**, so cost per row and a speedup ratio are **null**. This selected
-positive is a diagnostic, not an estimate of natural yield. The same
-original fraction points and projected base are frozen for both methods;
-the current component solver still needs exact-target, signed-point
-extraction to enter the collection comparison.
+## Compiled controls and factor-base yield sweep
 
-## Compiled control and bounded extraction follow-up
+[`factor_base_yield.py`](factor_base_yield.py) constructs the same rational
+fraction bases for `n=13,53,83` at `k=2,3,4`. It checks the field moduli by
+Rabin's irreducibility test, uses the Koblitz Lucas recurrence for the full
+curve order, records a primality certificate for each prime subgroup order,
+and checks `[r]([h]P)=O` for every distinct nonidentity projected point. The
+exact points and hashes are in
+[`factor_base_yield_results.json`](factor_base_yield_results.json). `n=53`
+is a screening curve; `n=83` remains the required higher-fidelity check.
 
-The independent [`direct_collector.c`](direct_collector.c) constructs the
-same 35 lifted points and 630 point pairs from the fraction definition,
-verifies signed point/S4/cofactor equalities, handles repeated and dependent
-rows, and stops at rank eight over `F_2003`. The
-[`compiled_control.py`](compiled_control.py) driver charges process startup,
-construction, all ordinary misses, C verification/rank, Python parsing, an
-additional S4/point replay, and output construction. Compiler time is a
-separate one-time implementation cost. Its six
-[`receipts`](compiled_control_results.json) cover the **same 282 target
-outcomes and 48 independent rows** as the Python control. Independent
-`ToyCurve/pdpkernel.c` replay passes. Median fully charged cost is **4.72 ms
-per new independent row**, making the provisional 2× threshold **2.36 ms**
-per row on these streams (versus the previous Python-only 55.6 ms threshold).
-Neither result is an end-to-end DLP measurement.
+| n | k | Fraction x-values | Original lifted points | Projected nonidentity points B | Sign-folded columns | Ordered-triple upper bound B^3/r |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 13 | 2 | 32 | 35 | 16 | 8 | 2.04 |
+| 13 | 3 | 128 | 115 | 56 | 28 | 87.7 |
+| 13 | 4 | 512 | 467 | 226 | 113 | 5.76e3 |
+| 53 | 2 | 32 | 19 | 8 | 4 | 2.43e-11 |
+| 53 | 3 | 128 | 131 | 64 | 32 | 1.25e-8 |
+| 53 | 4 | 512 | 523 | 260 | 130 | 8.35e-7 |
+| 83 | 2 | 32 | 43 | 20 | 10 | 3.31e-21 |
+| 83 | 3 | 128 | 131 | 64 | 32 | 1.08e-19 |
+| 83 | 4 | 512 | 563 | 280 | 140 | 9.08e-18 |
 
-The 60 s [selected-positive diagnostic](relation_probe_completed.json)
-finishes the exact tri-degree `(4,4,4)` homogeneous matrix on the same n=13
-base: 39,001 rows across 98 components, 330,103 tagged columns counted
-across components, and 48 degree-three/four consequences, with **zero
-degree-two-or-less consequences**. An exact S4 x-triple enumeration then
-finds points `(7,435)+(7,435)+(8163,1662)` for the target at index 16;
-the independent C curve replays the signed sum, subgroup projection and
-rank-one coefficient vector `(0,0,-1,0,2,0,0,0)`. Its charged wall time is
-**24.94 s**, including independent verification. The graded pivots did not
-prune this enumeration; consequently it is a **verified fallback relation**,
-not a homogeneous-solver or index-calculus speedup. The preselected positive
-is still not a natural-yield sample.
+The final column is only a loose upper bound on the chance that a uniformly
+random subgroup target is the sum of some ordered triple from the projected
+base. It is **not** an observed relation rate. Even the `n=83,k=4` base is
+far too small to support a collection comparison; no `n=53` or `n=83`
+ordinary-target collector was run.
 
-[`run_matched_prefix.py`](run_matched_prefix.py) applies a predeclared
-early-stop rule to the **first ordinary target** in each frozen stream. One
-charged attempt already costs more than *half the entire compiled rank-eight
-time on that stream*, so this pipeline cannot meet the 2× goal even with
-zero-cost future attempts. Its individual [raw
-receipts](matched_prefix_results.json) retain the two misses and one
-verified fallback row; the resource cap is 60 s per target. A complete
-rank-eight homogeneous cost and speedup are **null**, as are final relation
-collection and final relation-matrix LA.
+The compiled [`direct_collector.c`](direct_collector.c) now builds both the
+`n=13,k=2` and `n=13,k=3` bases. [`compiled_k3_control.py`](compiled_k3_control.py)
+uses the **same fixed subgroup generator, exact target points and six frozen
+target streams** as the refreshed `k=2` compiled control. It charges C base
+and pair-index construction, process launch and input, target misses,
+repeated/dependent rows, C exact checks and rank updates, Python parsing, and
+an independent point/S4/projected-row replay for every accepted row. The
+compiler cost is separate. All 48 `k=3` accepted rows pass the independent
+pure-Python replay in [`verify_k3_control.py`](verify_k3_control.py).
 
-| Seed | Compiled rank-eight wall, fastest repeat | 2× total-time ceiling | Graded stage + extraction for first target | New rows | Lower-bound budget overrun |
+| Seed | k=2 attempts / misses | k=2 ms per row | k=3 attempts / misses | k=3 ms per row | k=2 / k=3 cost ratio |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 20260927 | 0.0477 s | 0.0239 s | 24.71 s | 0 | 1,035× |
-| 20260928 | 0.0375 s | 0.0188 s | 24.33 s | 0 | 1,297× |
-| 20260929 | 0.0344 s | 0.0172 s | 24.74 s | 1 | 1,437× |
+| 20260927 | 65 / 57 | 5.735 | 8 / 0 | 1.217 | 4.71 |
+| 20260928 | 43 / 35 | 4.034 | 8 / 0 | 1.246 | 3.24 |
+| 20260929 | 33 / 25 | 3.395 | 8 / 0 | 1.273 | 2.67 |
 
-At the user's higher-fidelity `n=83` curve, the independently checked
-[`k=2` base audit](m83_feasibility.json) finds 43 original fraction points,
-20 nonidentity cofactor-projected points, and 10 sign-folded columns. All
-projected points pass the known prime-subgroup order check. For a uniformly
-random subgroup query, even the **upper bound** from all ordered projected
-three-tuples is only `20^3 / 2417851639230796216685689
-= 3.31e-21`; no natural relations or rank were measured at `n=83`.
-This particular small base cannot be the high-fidelity collection candidate.
-It is a validity/coverage bound, not a solver extrapolation.
+Each seed has two fresh-process repetitions. The k=2 values are refreshed
+medians over the two repetitions; the k=3 values use the same rule. The global
+median is **4.03 ms per row at k=2** and **1.237 ms per row at k=3**. Every
+`k=3` run reached signed rank eight in eight ordinary targets with zero misses;
+the first stream also contained one repeated row and one additional dependent
+row. This shows a useful **base-yield effect** on these small screening streams.
+It does not show a homogeneous-solver speedup: both arms use the direct point
+pair collector and the factor base changed. The `k=3` same-base baseline sets
+the provisional 2× ceiling at **0.618 ms per new row** for a homogeneous
+candidate, before the paired 95% bootstrap gate.
+
+## Bounded homogeneous extraction on the k=3 base
+
+[`probe_k3_homogeneous.py`](probe_k3_homogeneous.py) takes an ordinary first
+target from the frozen streams, builds target-specific homogeneous S4 rows,
+reduces them by three-block degree, searches the resulting consequences, and
+independently checks any extracted signed points against the exact curve sum,
+S4 equation, cofactor projection, and rank-one signed row. Its per-target
+budget is 60 seconds.
+
+The degree-5 target-equation matrix attempt timed out during equation/row
+construction at the 60-second cap, before producing a complete matrix or a
+signed point triple. The raw log and censored receipt are in
+[`k3_homogeneous_degree5_raw`](k3_homogeneous_degree5_raw/) and
+[`k3_homogeneous_degree5_results.json`](k3_homogeneous_degree5_results.json).
+A preceding cap-4 calibration built 79,720 rows in 61 components in 24.4 s,
+then timed out during elimination; its matrix did not multiply the S4
+coordinate equations, so it is not a solver result. Both attempts have zero
+independently verified relations and **null cost per row**. A timeout is
+censored work, not an UNSAT result.
+
+For the matched k=3 direct baseline, the six-run median is **1.237 ms per new
+row**; the seed-20260927 paired median is **1.217 ms per row**, so its 2×
+screening ceiling is **0.608 ms per row**. None of the homogeneous attempts
+returned one verified relation within its 60-second target budget. Therefore
+there is no rank-eight candidate run, speedup, full relation-collection
+estimate, final relation-matrix linear algebra, or DLP cost.
+
+### Packed degree-one homogeneous layer
+
+[`probe_k3_homogeneous_bitset.py`](probe_k3_homogeneous_bitset.py) tests a
+degree-one Macaulay layer on that same first ordinary target. It uses the
+Boolean-reduced S4 coordinate equations at tri-degree `(4,4,4)`, then
+multiplies them by the constant and each of the 24 coefficient variables. The
+result is reduced in four separate components: `(4,4,4)`, `(5,4,4)`,
+`(4,5,4)`, and `(4,4,5)`. Denominator constraints stay in exact search and
+independent replay. [`homogeneous_bitset.py`](homogeneous_bitset.py) packs
+monomial supports as bit vectors, and [`monomial_degree_order.c`](monomial_degree_order.c)
+orders columns by total degree and then monomial mask before component
+reduction.
+
+The earlier conservative extractor selected only low-degree rows already
+present in a reduced basis. Those cutoff-five and cutoff-seven runs built
+1,800,555 Boolean terms in about 9.4 s, reduced 325 rows across four
+components, and found no such basis rows. Their exact source is preserved in
+[`homogeneous_bitset_conservative_v1.py`](homogeneous_bitset_conservative_v1.py).
+
+The current extractor computes the **exact row-space intersection** with the
+low-degree monomial subspace by eliminating the high-degree projection. With
+cutoff seven it built and reduced the same 325 rows in 5.68 s after equation
+construction; with cutoff eight it took 6.11 s. Both matrices have rank 325,
+1,952,064 tagged columns, and zero high-projection dependencies, so the
+degree-one row space has no nonzero consequences supported through degree
+eight. Peak RSS was 691,380 KiB and 702,720 KiB, respectively. A third
+cutoff-eight run passed **only the target point** into the worker; it also
+found zero consequences and timed out during exact search. These receipts are
+[`k3_homogeneous_exact_intersection_degree7_results.json`](k3_homogeneous_exact_intersection_degree7_results.json),
+[`k3_homogeneous_exact_intersection_degree8_results.json`](k3_homogeneous_exact_intersection_degree8_results.json),
+and
+[`k3_homogeneous_targetonly_degree8_results.json`](k3_homogeneous_targetonly_degree8_results.json).
+The point-only cutoff-nine run timed out before row construction completed;
+that cell is censored, with no matrix rank or relation result, in
+[`k3_homogeneous_targetonly_degree9_results.json`](k3_homogeneous_targetonly_degree9_results.json).
+
+The compiled direct control independently accepts this ordinary target as a
+new relation, so the timeout is a solver failure, not evidence that the
+target has no decomposition. Earlier workers also received the fixture scalar
+as output metadata, although their equation builder and search did not read
+it. Only the final target-only receipts are eligible for a strict no-key
+comparison. No attempt returned signed points within 60 seconds, so the cost
+per verified relation remains null.
+
+| Attempt | Last complete stage | Built rows | Peak RSS | Charged result |
+| --- | --- | ---: | ---: | --- |
+| [Sparse degree-one rows](k3_homogeneous_degree1_results.json) | 325 rows in four components | 325 | 2,627,320 KiB | 60.102 s timeout during elimination |
+| [Packed bitsets, numeric order, cutoff 4](k3_homogeneous_bitset_results.json) | matrix reduced, no deductions | 325 | 1,037,412 KiB | 60.065 s timeout during exact search |
+| [Packed bitsets, numeric order, cutoff 5](k3_homogeneous_bitset_degree5_results.json) | matrix reduced, no deductions | 325 | 1,035,456 KiB | 60.065 s timeout during exact search |
+| [Packed bitsets, graded order, cutoff 5](k3_homogeneous_graded_bitset_degree5_results.json) | matrix reduced, no deductions | 325 | 635,508 KiB | 60.067 s timeout during exact search |
+| [Packed bitsets, graded order, cutoff 7](k3_homogeneous_graded_bitset_degree7_results.json) | matrix reduced, no deductions | 325 | 636,220 KiB | 60.067 s timeout during exact search |
+| [Exact row-space intersection, cutoff 7](k3_homogeneous_exact_intersection_degree7_results.json) | exact high-degree projection, empty intersection | 325 | 691,380 KiB | 60.067 s timeout during exact search |
+| [Exact row-space intersection, cutoff 8](k3_homogeneous_exact_intersection_degree8_results.json) | exact high-degree projection, empty intersection | 325 | 702,720 KiB | 60.024 s timeout during exact search |
+| [Target-only exact intersection, cutoff 8](k3_homogeneous_targetonly_degree8_results.json) | point-only worker, empty intersection | 325 | 679,892 KiB | 60.064 s timeout during exact search |
+| [Target-only exact intersection, cutoff 9](k3_homogeneous_targetonly_degree9_results.json) | monomial order ready; row construction incomplete | — | 112,616 KiB | 60.069 s timeout during matrix setup |
+
+The first sparse-row wrapper run also failed while writing its raw log because
+of a relative-path bug; it earned no relation credit, and its output was lost.
+That harness failure is recorded in
+[`k3_homogeneous_attempt_history.json`](k3_homogeneous_attempt_history.json).
+[`verify_homogeneous_bitset.py`](verify_homogeneous_bitset.py) checks the fast
+field arithmetic against the reference implementation, the graded monomial
+permutation, packed multiplication, and component ranks. Its receipt is
+[`homogeneous_bitset_exact_intersection_verification.json`](homogeneous_bitset_exact_intersection_verification.json).
+The conservative verifier receipt is retained at
+[`homogeneous_bitset_verification_conservative.json`](homogeneous_bitset_verification_conservative.json).
+
+This is a measured homogeneous matrix stage, not a completed point-decomposition
+solver. The matrix rows remained independent, the exact low-degree
+intersections through degree eight were empty, and exact extraction consumed
+the remaining budget. The gate stays closed; do not use these matrix timings
+as relation-collection or final linear-algebra costs.
 
 ## Research goal and promotion rule
 
@@ -293,21 +388,23 @@ matrix linear algebra, target descent, and rho costs in the style of Table 1.
 An internal Macaulay-matrix elimination time must never occupy the final
 relation-matrix LA column.
 
-The [machine-readable goal status](goal_status.json) is
-`early_stopped_cannot_meet_2x`: the checker verifies the first-target cost,
-frozen target identity and compiled full-collection ceiling for all three
-streams. The selected-positive fallback does not supply matched rank-eight
-homogeneous receipts. `goal_check.py`
-compares only paired, completed rank-eight receipts on the exact base and
-ordered workload; supply a separately verified collection receipt with
-`--candidate candidate_results.json` to compute per-seed ratios and a
-reproducible paired bootstrap interval. Its lower 95% bound must reach 2×.
-The fastest recorded control median is 4.72 ms per row across six fresh
-processes, so its provisional 2× target is 2.36 ms per row. The checker invokes the
-independent C point/rank replay for both arms before computing the comparison;
-an unsolved candidate target is treated as a charged miss, even if the direct
-oracle could solve it. A larger naturally productive base and a genuinely
-homogeneous-aided complete solver remain necessary for promotion.
+The [current k=3 goal status](k3_collection_goal_status.json) is
+`not_evaluated_no_complete_rank8_candidate`. Its paired same-base direct
+control median is **1.237 ms per new row**, so the candidate must stay at or
+below **0.618 ms per row at the median**, with the paired 95% bootstrap lower
+limit reaching 2×. The candidate receipt, per-seed speedups, and confidence
+interval remain null because all bounded homogeneous probes were censored
+before a verified relation. The refreshed k=2 control calculation is in
+[`goal_status_k2_refreshed.json`](goal_status_k2_refreshed.json); its baseline
+median is 4.034 ms per row and its median ceiling is 2.017 ms. The older
+[`goal_status.json`](goal_status.json) is retained as the historical k=2
+early-stop result and is tied to the earlier 4.72 ms baseline.
+
+The existing `goal_check.py` independently replays the k=2 C relation/rank
+receipts before evaluating a supplied candidate. The k=3 receipts have their
+own independent Python replay and status record. Promotion still requires a
+complete, same-base rank-eight candidate, matched target order and base hash,
+and the paired bootstrap gate. An unsolved target remains a charged miss.
 
 Source: Galbraith, Granger, Merz, Petit, [*On Index Calculus Algorithms for
 Subfield Curves*, Section 5.2](https://sacworkshop.org/SAC20/files/preproceedings/18-IndexCalculus.pdf).

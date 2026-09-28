@@ -1,4 +1,5 @@
 import random
+from array import array
 class GF2n:
     def __init__(self, n, modulus):
         self.n, self.modulus, self.mask = n, modulus, (1 << n) - 1
@@ -79,6 +80,53 @@ class GF2n:
         slope = self.mul(y ^ yy, self.inv(x ^ xx))
         xxx = self.sq(slope) ^ slope ^ x ^ xx
         return xxx, self.mul(slope, x ^ xxx) ^ xxx ^ y
+
+
+class FastGF2n(GF2n):
+    """GF(2^n) arithmetic with a compact nibble multiplication table.
+
+    This is an exact arithmetic backend for small fields used while expanding
+    large Boolean polynomials.  It keeps only 64 products per field element
+    (rather than a full q-by-q table), then multiplies with four lookups and
+    XORs.  Fields above 16 bits retain the reference implementation.
+    """
+
+    def __init__(self, n, modulus):
+        super().__init__(n, modulus)
+        self._mul_nibbles = None
+        if n > 16:
+            return
+        q = 1 << n
+        table = array("H", [0]) * (q * 64)
+        for a in range(q):
+            powers = []
+            value = a
+            for _ in range(n):
+                powers.append(value)
+                value <<= 1
+                if value >> n:
+                    value ^= modulus
+            offset = a * 64
+            for chunk in range(4):
+                start = 4 * chunk
+                for nibble in range(16):
+                    product = 0
+                    for bit in range(4):
+                        power = start + bit
+                        if nibble & (1 << bit) and power < n:
+                            product ^= powers[power]
+                    table[offset + chunk * 16 + nibble] = product
+        self._mul_nibbles = table
+
+    def mul(self, a, b):
+        table = self._mul_nibbles
+        if table is None or (a | b) & ~self.mask:
+            return super().mul(a, b)
+        offset = a * 64
+        product = 0
+        for chunk in range(4):
+            product ^= table[offset + chunk * 16 + ((b >> (4 * chunk)) & 15)]
+        return product
 
 
 def symbolic_anf(field, omega, k, target):

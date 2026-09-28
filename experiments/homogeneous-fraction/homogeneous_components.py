@@ -11,6 +11,7 @@ This is an actual component-wise linear-algebra comparison, not an F4 claim.
 import argparse
 import collections
 import hashlib
+import itertools
 import json
 import resource
 import subprocess
@@ -25,7 +26,9 @@ from block_fraction_solver import (
 from math_model import GF2n
 
 
-def tagged_rows(n, k, target, cap):
+def tagged_rows(n, k, target, cap, field=None, include_denominators=True,
+                max_multiplier_degree=None, validate_rows=True,
+                equations_override=None):
     """Rows modulo x_j^2=x_j*h_i, tagged by their *exact* homogeneous degree.
 
     The coordinate equations lift to degree (4,4,4), and each denominator
@@ -35,37 +38,54 @@ def tagged_rows(n, k, target, cap):
     D_i - popcount(x-support_i). Thus a (D, mask) pair is an unambiguous
     monomial of the graded field-equation quotient.
     """
-    field = GF2n(n, MODULI[n])
+    if field is None:
+        field = GF2n(n, MODULI[n])
     width = 2 * (k + 1)
     nv = 3 * width
-    eqs = equations(field, k, target)
-    formal = [(4, 4, 4)] * n + [
+    eqs = equations_override if equations_override is not None else equations(field, k, target)
+    row_eqs = eqs if include_denominators else eqs[:n]
+    formal = [(4, 4, 4)] * n + ([
         tuple(k + 1 if b == i else 0 for i in range(3)) for b in range(3)
-    ]
+    ] if include_denominators else [])
     if any(any(block_profile(mon, width)[i] > degree[i]
-                   for i in range(3)) for poly, degree in zip(eqs, formal)
+                   for i in range(3)) for poly, degree in zip(row_eqs, formal)
            for mon in poly):
         raise AssertionError("input has no declared homogeneous lift")
+    masks_by_limit = {
+        limit: [mask for mask in range(1 << width) if mask.bit_count() <= limit]
+        for limit in set(max(0, c - d) for base in formal for c, d in zip(cap, base))
+    }
     groups = collections.defaultdict(set)
-    for poly, base in zip(eqs, formal):
+    for poly, base in zip(row_eqs, formal):
         if not poly:
             continue
-        for multiplier in range(1 << nv):
-            profile = block_profile(multiplier, width)
-            degree = tuple(a + b for a, b in zip(base, profile))
-            if any(d > c for d, c in zip(degree, cap)):
+        limits = tuple(c - d for c, d in zip(cap, base))
+        if any(limit < 0 for limit in limits):
+            continue
+        choices = [masks_by_limit[limit] for limit in limits]
+        for pieces in itertools.product(*choices):
+            if (max_multiplier_degree is not None
+                    and sum(piece.bit_count() for piece in pieces) > max_multiplier_degree):
                 continue
+            multiplier = sum(piece << (block * width)
+                             for block, piece in enumerate(pieces))
+            degree = tuple(d + piece.bit_count() for d, piece in zip(base, pieces))
             row = multiplied(poly, multiplier)
             if not row:
                 continue
-            if any(any(block_profile(mon, width)[i] > degree[i]
-                       for i in range(3)) for mon in row):
+            # Every input monomial is checked against its declared base degree
+            # above.  Since Boolean multiplication is mask union, its output
+            # support cannot exceed base degree plus multiplier degree.  Keep
+            # the full per-row assertion for the reference path; the bounded
+            # experiment can skip this repeated scan over very large rows.
+            if validate_rows and any(any(block_profile(mon, width)[i] > degree[i]
+                                         for i in range(3)) for mon in row):
                 raise AssertionError("field reduction broke the grading")
             groups[degree].add(row)
     return field, width, eqs, groups
 
 
-def eliminate(groups, split, deduction_degree):
+def eliminate(groups, split, deduction_degree, canonical_row_order=True):
     """Eliminate identical rows and columns, changing only block partition."""
     begin = time.perf_counter()
     degrees = sorted(groups)
@@ -73,11 +93,16 @@ def eliminate(groups, split, deduction_degree):
         d: sorted(set().union(*groups[d]), key=lambda mon: (mon.bit_count(), mon))
         for d in degrees
     }
-    row_order = {
-        d: sorted(groups[d], key=lambda row:
-                  (max(mon.bit_count() for mon in row), len(row), tuple(sorted(row))))
-        for d in degrees
-    }
+    if canonical_row_order:
+        row_order = {
+            d: sorted(groups[d], key=lambda row:
+                      (max(mon.bit_count() for mon in row), len(row), tuple(sorted(row))))
+            for d in degrees
+        }
+    else:
+        # The final reduced row space is canonical for a fixed column order.
+        # Avoid sorting millions of monomial IDs just to choose a pivot order.
+        row_order = {d: list(groups[d]) for d in degrees}
     assembly = time.perf_counter() - begin
     begin = time.perf_counter()
     if split:
@@ -143,6 +168,7 @@ def eliminate(groups, split, deduction_degree):
         "derived_sha256": fingerprint,
         "assembly_seconds": assembly,
         "elimination_seconds": elapsed,
+        "canonical_row_order": canonical_row_order,
     }
 
 
