@@ -269,7 +269,7 @@ retain every bounded outcome.
 
 ## Dyadic-window quotient relations at degrees 53 and 83
 
-The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1027`
+The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1028`
 under the repository protocol. Every row carries the exact field and curve,
 actual distinct subgroup-usable `B` **before** folding, the enumerated-set
 digest, signed-Frobenius columns, effective unknown seed-log columns, and
@@ -409,6 +409,22 @@ index, but only at L32; it does not change the L1000 search exponent. At the
 82,843,900 exact L1000 two-G quotient keys, the retained packed rows alone
 would be 1,988,253,600 bytes. That is a format-based storage projection,
 not an L1000 point-witness index measurement.
+
+The [symmetric packed Q1028 run](runs/n83_dyadic_five_sum_symmetric_stage.json)
+uses the commutativity of the two G summands: for seed-orbit pair `(i,j)`,
+it constructs only the orientation with `i <= j`. On the **same n83 L32
+curve and base**, this cut point-pair generators from 169,984 to **87,648**
+and raw row storage from 4,079,616 to **2,103,552 bytes**. It built in
+4.74 s, including the orbit partition, at 59.8 MB peak process RSS; the
+full packed Q1027 build took 9.44 s in a separate process, so the wall
+comparison is unpaired. The full 80,868-key digest and even the retained
+row digest match Q1027 exactly, and 1,001 sampled witnesses pass group
+and quotient replay. The retained array remains 1,940,832 bytes and query
+probability is unchanged. At L1000, this schedule requires **83,083,000**
+pair generators rather than 166,000,000, assuming the same orbit geometry;
+the former count was also enumerated exactly by Q1026's scalar-support
+calculation. No L1000 curve-point witness build or n83 natural relation
+has yet been measured.
 
 The [exact degree-83 L1000 support run](runs/n83_dyadic_G_pair_scalar_support_L1000.json)
 replaces the earlier L32-ratio extrapolation. It uses the **same exact base**
@@ -639,6 +655,7 @@ python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_two_seed_n83_pr
 ./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_five_sum_dlp.py
 ./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_five_sum_stage.py
 ./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_five_sum_packed_stage.py
+./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_five_sum_symmetric_stage.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_g_pair_scalar_support.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_five_sum_n83_projection.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/emit_dyadic_stage_proposals.py
