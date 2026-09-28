@@ -403,8 +403,10 @@ for the dictionary, per-key packed binary search, and batched NumPy
 search. All 12,288 attempts per variant missed. The median
 dictionary/packed query wall ratio was **0.945** for per-key binary search
 and **0.969** for vectorized lookup, so the latter came close to dictionary
-query time on this L32 process. A planted relation also passed through the
-full vectorized query and replay path. This is a real packed point-witness
+query time on this L32 process. Across the three paired blocks, the observed
+ratios ranged **0.889–0.949** and **0.896–0.979**, respectively; three blocks
+do not support a precise population interval. A planted relation also passed
+through the full vectorized query and replay path. This is a real packed point-witness
 index, but only at L32; it does not change the L1000 search exponent. At the
 82,843,900 exact L1000 two-G quotient keys, the retained packed rows alone
 would be 1,988,253,600 bytes. That is a format-based storage projection,
