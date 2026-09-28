@@ -42,7 +42,7 @@ target-independent and separate from query time. Wall times below are medians
 from one macOS Python 3.14.7 run, in milliseconds; they are not field-operation
 counts or ECC2K-130 projections.
 The [curve manifest](curve_manifest.json) records canonical field and curve
-identities for all five measured degrees; the paired degree-23 curve is
+identities for all six measured degrees; the paired degree-23 curve is
 `EC1N23Ckb1h4e0f4fecc64d`. The base policy is the controlled variable.
 
 | Field, base | Actual `B` | Pair generators | Quotient keys | Direct keys | Quotient index build | Verified hits / queries | Quotient query median | Direct query median |
@@ -99,6 +99,55 @@ implementation and degree specific; the table is **not** a wall-time
 extrapolation to degree 131. The operation counts confirm this implementation
 uses roughly one point Frobenius map and one negation per degree per query
 lookup, in addition to a point addition.
+
+## Matched x-first canonicalization follow-up
+
+The [x-first implementation](fast_canonical.py) exploits the binary curve
+law: negating `(x,y)` leaves `x` unchanged. It finds the least Frobenius
+conjugate of `x`, then transforms `y` only at shifts attaining that `x` and
+chooses the smaller of the two signs. [Exact equivalence controls](test_fast_canonical.py)
+compare its `(key, shift, sign)` with the original scan on degrees 13, 19,
+23, 53, 83, and 131. Every matched run also reproduces the original complete
+selected-base index digest and the same bounded query hit trace.
+
+The comparison uses six paired process blocks per degree. Both arms in each
+block use the same field, curve ID, base digest, one ordinary target, and
+2,048-lookup prefix repeated three times. Arm order alternates. The ratio
+below is original scan time divided by x-first time, using each arm's median
+query time within a block; confidence intervals bootstrap the six paired
+log-ratios 10,000 times. These are stage timings on one macOS host, with
+considerable run-to-run variation.
+
+| Degree and curve ID | Actual `B` / folded columns | Original / x-first mean query time per 2,048 lookups | Paired geometric-mean ratio | Paired bootstrap 95% interval | Faster blocks |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 53, `EC1N53Ckb1hf77aab617904` | 212 / 2 | 333 / 200 ms | 1.66 | 1.57–1.78 | 6/6 |
+| 83, `EC1N83Ckb1h876c2921cb64` | 332 / 2 | 645 / 373 ms | 1.73 | 1.61–1.83 | 6/6 |
+| 131, `EC1N131Ckb1h6816f880945e` | 524 / 2 | 1,328 / 713 ms | 1.86 | 1.80–1.91 | 6/6 |
+
+Per 2,048-lookup prefix, the original scan used 109,567 point Frobenius calls
+and 111,616 point negations at degree 53; x-first used 1,023 and 3,072,
+respectively, plus 106,496 x-coordinate field Frobenius calls and about
+2,000 y-coordinate field Frobenius calls. At degrees 83 and 131 the
+x-coordinate counts are 167,936 and 266,240. At degree 131 the original
+scan uses 269,311 point Frobenius calls per prefix and x-first uses 1,023,
+plus its x- and y-coordinate calls. These operation types have different costs and are not combined
+into a field-operation count. The pair-complement-probe exponent in the
+degree-131 work model below is unchanged.
+
+The [stage proposal registry](stage_proposals.json) reserves `Q1001`–`Q1006`
+for the two variants on the three exact curves. It records the normal-basis
+field modulus and encoding, exact curve and subgroup, pre-fold usable `B`,
+folded columns, base digest, solver variant, and `isogeny: "none"` with unknown
+endomorphism conductor left `null`. The [version-2 stage rows](stage_runs.jsonl)
+carry `proposal_id`, `candidate_id: null`, workload and run IDs, matched
+resource and target references, all bounded outcomes, and partial phase
+costs. The [comparison receipt](comparison.json) preserves every paired
+timing and its input hashes. The catalog's current analyzer accepts its older
+version-1 run schema; this experiment's [emitter](emit_protocol_comparison.py)
+validates the version-2 stage invariants locally. Neither variant has an
+`IC1` ID: collection, final relation-matrix solving, and target descent are
+unresolved. The repeated prefixes are not completed ordinary decomposition
+attempts and give no relation-yield estimate.
 
 ## Degree-131 support gate
 
@@ -198,6 +247,10 @@ python3 experiments/ecc2k130-quotient-pair-probe-20260926/perf_probe.py --degree
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/perf_probe.py --degree 83 --generators 664 --lookups 2048 --output /tmp/ecc2k130-qpair-n83-perf.json
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/verify_receipts.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/work_estimate.py
+python3 -m unittest discover -s experiments/ecc2k130-quotient-pair-probe-20260926 -p test_fast_canonical.py -v
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_canonical.py --degree 53 --variant scan --run-number 1 --output /tmp/ecc2k130-qpair-n53-scan.json
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_canonical.py --degree 53 --variant xfirst --run-number 1 --output /tmp/ecc2k130-qpair-n53-xfirst.json
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/emit_protocol_comparison.py
 ```
 
 The probe uses frozen local copies of the repository's `ecc2k130/codegen`
@@ -205,3 +258,8 @@ The probe uses frozen local copies of the repository's `ecc2k130/codegen`
 library. The scripts and frozen receipts are self-contained in this
 directory. To regenerate the frozen receipt hashes, use the paths in `runs/`
 as outputs and run the verifier and estimator after all stage runs.
+For a full refresh of the matched comparison, first run
+`freeze_n131_stage_reference.py`, then rerun both variants for all six blocks
+at degrees 53, 83, and 131, and finally run `emit_protocol_comparison.py`.
+Refreshing only the degree-131 reference changes its measured timing fields
+and therefore its hash; the comparison emitter correctly rejects older runs.
