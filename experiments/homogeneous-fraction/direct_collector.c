@@ -1,5 +1,6 @@
-/* Compiled, exact same-base direct collector for the n=13,k=2 screening gate.
+/* Compiled, exact direct collector for n=13 fraction-base screening.
  * Build: cc -O3 -std=c11 -Wall -Wextra -o direct_collector direct_collector.c
+ *        add -DK=3 for the k=3 base.
  * Input: count, target rank, then count scalar targets on stdin.
  * Output: a base certificate and one complete charged attempt per target.
  */
@@ -8,9 +9,22 @@
 #include <stdio.h>
 #include <time.h>
 
-#define R  2003
-#define B  35
-#define NC 8
+#ifndef K
+#    define K 2
+#endif
+#if K == 2
+#    define R    2003
+#    define B    35
+#    define NC   8
+#    define NSUB 16
+#elif K == 3
+#    define R    2003
+#    define B    115
+#    define NC   28
+#    define NSUB 56
+#else
+#    error "the n=13 screening collector supports K=2 or K=3"
+#endif
 typedef struct {
     u64 x, y;
 } point;
@@ -19,7 +33,7 @@ typedef struct {
     int i, j;
 } pair;
 static ctx_t ctx;
-static point orig[B], image[B], subgroup[16], reps[NC], generator;
+static point orig[B], image[B], subgroup[NSUB], reps[NC], generator;
 static pair pairs[B * (B + 1) / 2];
 static int pivot[NC][NC], has_pivot[NC], seen[10000][NC], nseen, rank_now;
 
@@ -141,10 +155,12 @@ static void build(void)
     if (ctx_init(&ctx, 13, 0x2027, 0, 1)) exit(2);
     int nb = 0, nx = 0;
     unsigned char xs[8192] = {0};
-    for (int word = 0; word < 64; word++) {
-        u64 a = word & 7, b = word >> 3;
+    const int width = K + 1;
+    const int block_mask = (1 << width) - 1;
+    for (int word = 0; word < (1 << (2 * width)); word++) {
+        u64 a = word & block_mask, b = word >> width;
         if (!b) continue;
-        /* For k=2, the basis elements are 1,z,z^2 encoded by bits 0..2. */
+        /* Each block encodes coefficients in the basis 1,z,...,z^K. */
         xs[gf_mul(&ctx, a, gf_inv(&ctx, b))] = 1;
     }
     for (int x = 0; x < 8192; x++)
@@ -178,13 +194,53 @@ static void build(void)
                 break;
             }
         if (!found) {
-            if (ni == 16) exit(2);
+            if (ni == NSUB) exit(2);
             subgroup[ni++] = image[i];
         }
     }
-    if (ni != 16) exit(2);
+    if (ni != NSUB) exit(2);
     qsort(subgroup, ni, sizeof(point), cmppoint);
-    generator = subgroup[0];
+    if (K == 2) {
+        generator = subgroup[0];
+    } else {
+        /* Keep ordinary target points identical to the frozen k=2 streams.
+         * Derive their canonical generator from the embedded k=2 fraction base. */
+        unsigned char small_xs[8192] = {0};
+        point small_subgroup[16];
+        int small_nx = 0, small_ni = 0;
+        for (int word = 0; word < 64; word++) {
+            u64 a = word & 7, b = word >> 3;
+            if (b) small_xs[gf_mul(&ctx, a, gf_inv(&ctx, b))] = 1;
+        }
+        for (int x = 0; x < 8192; x++)
+            if (small_xs[x]) {
+                small_nx++;
+                u64 xx = (u64)x, y;
+                uint8_t ok;
+                ec_lift_batch(&ctx, &xx, 1, &y, &ok);
+                if (!ok) continue;
+                point p = mul((point){xx, y}, 4);
+                if (p.x != INF_X) {
+                    int found = 0;
+                    for (int j = 0; j < small_ni; j++) found |= !cmppt(small_subgroup[j], p);
+                    if (!found) small_subgroup[small_ni++] = p;
+                }
+                if (x) {
+                    p = mul((point){xx, xx ^ y}, 4);
+                    if (p.x != INF_X) {
+                        int found = 0;
+                        for (int j = 0; j < small_ni; j++) found |= !cmppt(small_subgroup[j], p);
+                        if (!found) small_subgroup[small_ni++] = p;
+                    }
+                }
+            }
+        if (small_nx != 32 || small_ni != 16) exit(2);
+        qsort(small_subgroup, small_ni, sizeof(point), cmppoint);
+        generator = small_subgroup[0];
+        int found = 0;
+        for (int i = 0; i < ni; i++) found |= !cmppt(subgroup[i], generator);
+        if (!found) exit(2);
+    }
     int nr = 0;
     for (int i = 0; i < ni; i++) {
         point rep = cmppt(subgroup[i], neg(subgroup[i])) < 0 ? subgroup[i] : neg(subgroup[i]);
