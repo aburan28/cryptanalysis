@@ -1,5 +1,10 @@
 # Point decomposition on E(F_2^n): a scaling measurement
 
+For an explicit, subgroup-valid ECC2K83 base-size feasibility screen after
+the ordinary three-summand zero-yield probe, see
+[the frozen base frontier](EXPLICIT_BASE_FRONTIER.md). Its outputs count actual
+factor-base points; tuple coverage remains an upper bound, not measured yield.
+
 An experiment, not a library feature.  It measures how the cost of the
 **point decomposition problem** (PDP) behind a summation-polynomial index
 calculus on a binary Koblitz curve grows with the size of the factor base,
