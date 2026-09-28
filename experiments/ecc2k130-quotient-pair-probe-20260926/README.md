@@ -269,7 +269,7 @@ retain every bounded outcome.
 
 ## Dyadic-window quotient relations at degrees 53 and 83
 
-The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1022`
+The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1023`
 under the repository protocol. Every row carries the exact field and curve,
 actual distinct subgroup-usable `B` **before** folding, the enumerated-set
 digest, signed-Frobenius columns, effective unknown seed-log columns, and
@@ -339,15 +339,30 @@ relation-yield estimate. This gives a larger same-curve performance point
 than the earlier 332-point base, without extrapolating wall time across
 field representations.
 
+The [packed Q1023 run](runs/n83_dyadic_compact_packed.json) uses the **same**
+L32 curve, public target, base, and known-log query. It enumerates only one
+cross-seed orientation, sorts `(83-bit key, compact pair label)` rows, and
+reconstructs full point witnesses during a query. All 169,984 keys occupy
+**4,079,616 retained bytes at 24 bytes per row**. Its one-process build took
+9.2 seconds with 80.3 MB peak RSS; three 10,624-lookup prefixes had a 746 ms
+median and no ordinary hits, and the planted hit passed replay. This single
+process result is not a paired wall-speed estimate against the dictionary.
+The independent [comparison control](runs/n83_dyadic_compact_compare.json)
+reconstructed the dictionary index, proved equality of the **entire key
+set** and its frozen digest, and replayed 1,001 sampled packed witnesses.
+
 [Exact enumeration on the frozen public degree-83 target](runs/n83_dyadic_target_seed_geometry.json)
 gave `B=332,000`, 2,000 folded columns, and one unknown log in 2.83 seconds.
 The corresponding [independent-seed geometry](runs/n83_dyadic_two_seed_geometry.json)
 has the same counts but a different exact point-set digest. A complete
 cross-seed quotient index enumerates 166,000,000 pair generators and would
 hold up to that many distinct keys. At the no-collision size, eleven bytes
-per x key alone require 1.826 GB; this excludes witnesses and hash-table overhead. Transferring the
-measured degree-83 L32 Python index RSS per key would suggest about 276 GB,
-which is a **memory extrapolation**, not a degree-83 measurement. No complete
+per x key alone require 1.826 GB; this excludes witnesses and hash-table overhead.
+Transferring the measured degree-83 L32 dictionary RSS per key would suggest
+about 276 GB. The packed 24-byte format instead projects **3.984 GB retained**
+at 166 million keys, with temporary sort/dedup storage and base points in
+addition. Both figures are **memory extrapolations**, not degree-83 L1000
+measurements. No complete
 degree-83 index, ordinary relation, rank, or scalar recovery has been run.
 
 The original two-seed `r/P` estimate, where `P` is the number of cross-seed
@@ -365,8 +380,8 @@ bound for the stated direct-index query policy, not a solve-cost upper bound.
 The separate [same-curve operation screen](dyadic_two_seed_n83_projection.json)
 gives `2^48.52` failed-scan probes as an exploratory estimate if the measured
 degree-83 20-step coefficient collision ratio transfers to 1,000 steps.
-Applying the measured same-curve L32 batched-query operation vector to the
-rigorous failed-scan lower bound gives `2^50.64` field API multiplication calls and
+Applying the measured same-curve **packed** L32 batched-query operation vector
+to the rigorous failed-scan lower bound gives `2^50.64` field API multiplication calls and
 `2^54.68` cyclic word rotations, in separate units. Index construction,
 memory traffic, useful coefficient yield, full target checks, and any
 field-operation calibration are additional and unmeasured. The earlier
@@ -518,6 +533,8 @@ write their receipts incrementally so failures remain visible:
 ./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_two_seed_geometry.py --degree 83
 ./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_target_base.py
 ./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_target_perf.py
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_compact_index.py --mode packed
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_compact_index.py --mode compare
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_coefficient_support.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_work_projection.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_two_seed_n83_projection.py
@@ -531,6 +548,7 @@ python3 experiments/ecc2k130-quotient-pair-probe-20260926/promote_dyadic_n53_can
 ```
 
 The base geometry receipt hashes feed the later runs, so regenerate in this
-order. Timings and receipt hashes will change on another host; candidate
+order. The packed-index variant additionally requires NumPy. Timings and
+receipt hashes will change on another host; candidate
 identity hashes change only if the mathematical base, algorithm, or executed
 source snapshot changes.

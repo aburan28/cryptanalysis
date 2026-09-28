@@ -15,14 +15,15 @@ def sha(path):
 
 def main():
     geometry_path = HERE / "runs" / "n83_dyadic_target_seed_geometry.json"
-    perf_path = HERE / "runs" / "n83_dyadic_target_perf_L32.json"
+    perf_path = HERE / "runs" / "n83_dyadic_compact_packed.json"
     support_path = HERE / "dyadic_coefficient_support.json"
     geometry = json.loads(geometry_path.read_text())
     perf = json.loads(perf_path.read_text())
     support = json.loads(support_path.read_text())
     assert geometry["curve_id"] == perf["curve_id"] == "EC1N83Ckb1h876c2921cb64"
-    assert geometry["proposal_id"] == "Q1020" and perf["proposal_id"] == "Q1022"
-    assert geometry["target"] == perf["target_seed"]
+    assert geometry["proposal_id"] == "Q1020" and perf["proposal_id"] == "Q1023"
+    assert perf["workload"]["mode"] == "packed"
+    assert geometry["target"] == perf["workload"]["target"]
     base = geometry["factor_base"]
     assert base["actual_usable_points_B_before_folding"] == 332000
     assert base["signed_frobenius_columns"] == 2000
@@ -48,8 +49,8 @@ def main():
     heuristic_failed_probes_log2 = math.log2(
         pair_count * (1 / heuristic_probability - 1))
     unit_calls = dict(measured["field_api_operations"])
-    assert unit_calls["mul"] == 5 * unit_calls["sqr"]
-    unit_calls["direct_batch_formula_xors"] = 8 * unit_calls["sqr"]
+    assert unit_calls["sqr"] >= measured["lookups"]
+    unit_calls["direct_batch_formula_xors"] = 8 * measured["lookups"]
     unit_calls["cyclic_word_rotations"] = measured[
         "canonical_operations"]["word_rotations"]
     per_probe = {name: count / measured["lookups"] for name, count in unit_calls.items()}
@@ -65,7 +66,7 @@ def main():
         "kind": "n83_target_seed_two_seed_conditional_operation_projection",
         "proposal_id": "Q1020", "candidate_id": None,
         "curve_id": geometry["curve_id"], "isogeny": "none",
-        "scope": "exact target-seeded base on the frozen public n83 point; same-curve L32 complete-index query operation vector is transferred conditionally to L1000; no n83 ordinary hit or DLP",
+        "scope": "exact target-seeded base on the frozen public n83 point; same-curve packed L32 complete-index query operation vector is transferred conditionally to L1000; no n83 ordinary hit or DLP",
         "target_seed_policy": "public G with known log 1, public DLP target Q with unknown log; target-dependent base and index would be charged online",
         "actual_usable_base_B": 332000,
         "signed_frobenius_columns": 2000,
@@ -80,6 +81,7 @@ def main():
         "quotient_pair_generators_if_no_sum_orbit_collisions": quotient_generators,
         "minimum_11_byte_x_key_payload_bytes_model": 11 * quotient_generators,
         "measured_L32_base_B": 10624,
+        "measured_L32_index_variant": "packed_numpy_structured_array",
         "measured_L32_query_lookups": measured["lookups"],
         "measured_L32_field_api_and_word_counts": unit_calls,
         "measured_L32_calls_per_probe": per_probe,
@@ -101,7 +103,7 @@ def main():
         "target_scalar_recovered_n83": False,
         "geometry_receipt_sha256": sha(geometry_path),
         "coefficient_support_receipt_sha256": sha(support_path),
-        "L32_perf_receipt_sha256": sha(perf_path),
+        "L32_packed_receipt_sha256": sha(perf_path),
         "source_sha256": sha(Path(__file__)),
     }
     out = HERE / "dyadic_two_seed_n83_projection.json"

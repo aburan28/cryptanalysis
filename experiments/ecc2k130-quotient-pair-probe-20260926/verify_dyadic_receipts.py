@@ -326,6 +326,46 @@ def verify_n83_perf():
             "median_prefix_ms": report["ordinary_query_prefix_median_wall_ns"] / 1e6}
 
 
+def verify_n83_compact():
+    baseline_path = HERE / "runs" / "n83_dyadic_target_perf_L32.json"
+    baseline = json.loads(baseline_path.read_text())
+    reports = {}
+    for mode, run_number in (("packed", 1), ("compare", 2)):
+        path = HERE / "runs" / f"n83_dyadic_compact_{mode}.json"
+        report = json.loads(path.read_text())
+        assert report["source_sha256"] == sha(HERE / "dyadic_n83_compact_index.py")
+        assert report["baseline_receipt_sha256"] == sha(baseline_path)
+        assert report["curve_id"] == baseline["curve_id"]
+        assert report["candidate_id"] is None and report["isogeny"] == "none"
+        assert report["workload_id"] == hashlib.sha256(frozen(report["workload"])).hexdigest()[:12]
+        assert report["run_id"] == f"Q1023W{report['workload_id']}R{run_number}"
+        assert report["factor_base"]["enumerated_set_sha256"] == baseline[
+            "factor_base"]["enumerated_set_sha256"]
+        build = report["packed_build"]
+        assert build["pair_generators"] == 169984
+        assert build["quotient_keys"] == baseline["index_build"]["quotient_keys"]
+        assert build["row_bytes"] == 24
+        assert build["retained_array_bytes"] == 24 * build["quotient_keys"]
+        assert len(report["ordinary_query_prefixes"]) == 3
+        assert all(row["lookups"] == 166 * 64 and
+                   row["verified_hit_positions"] == [] for row in report[
+                       "ordinary_query_prefixes"])
+        assert report["planted_positive_control"]["verified_hit_positions"] == [1]
+        assert report["verified_single_target_dlp"] is False
+        reports[mode] = report
+    assert reports["packed"]["packed_build"]["retained_array_sha256"] == reports[
+        "compare"]["packed_build"]["retained_array_sha256"]
+    control = reports["compare"]["dictionary_comparison"]
+    assert control["full_dict_key_sha256"] == reports["packed"]["packed_build"][
+        "key_sha256"]
+    assert control["full_dict_index_sha256"] == control[
+        "baseline_dict_index_sha256"] == baseline["index_build"]["index_sha256"]
+    assert control["sampled_witness_replays"] == 1001
+    return {"retained_bytes": reports["packed"]["packed_build"][
+        "retained_array_bytes"],
+            "packed_peak_rss_bytes": reports["packed"]["peak_process_rss_bytes"]}
+
+
 def main():
     geometry = {}
     for n in (53, 83):
@@ -344,8 +384,8 @@ def main():
     assert two_seed_projection["geometry_receipt_sha256"] == sha(
         HERE / "runs" / "n83_dyadic_target_seed_geometry.json")
     assert two_seed_projection["curve_id"] == target_geometry["curve_id"]
-    assert two_seed_projection["L32_perf_receipt_sha256"] == sha(
-        HERE / "runs" / "n83_dyadic_target_perf_L32.json")
+    assert two_seed_projection["L32_packed_receipt_sha256"] == sha(
+        HERE / "runs" / "n83_dyadic_compact_packed.json")
     support_path = HERE / "dyadic_coefficient_support.json"
     support = json.loads(support_path.read_text())
     assert support["source_sha256"] == sha(HERE / "dyadic_coefficient_support.py")
@@ -378,6 +418,7 @@ def main():
         64, "Q1021")
     candidate_ids = [verify_promoted_candidate(window) for window in (16, 64)]
     n83_perf = verify_n83_perf()
+    compact = verify_n83_compact()
     print(json.dumps({"n53_curve_id": geometry[53]["report"]["curve_id"],
                       "n83_curve_id": geometry[83]["report"]["curve_id"],
                       "n83_actual_B": geometry[83]["report"]["factor_base"][
@@ -389,7 +430,8 @@ def main():
                       "n53_target_seed_dlp_status": target_dlp_status,
                       "n53_wide_target_seed_dlp_status": wide_dlp_status,
                       "n53_candidate_ids": candidate_ids,
-                      "n83_L32_perf": n83_perf}))
+                      "n83_L32_perf": n83_perf,
+                      "n83_L32_compact": compact}))
 
 
 if __name__ == "__main__":
