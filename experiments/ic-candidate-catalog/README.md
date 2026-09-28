@@ -97,8 +97,10 @@ N131 receipt when that separate file is available.
 The [measurement protocol](MEASUREMENT.md) defines activation, stage costs,
 comparison cells, and promotion gates.
 
-Future run receipts follow [`measurement_contract.json`](measurement_contract.json).
-`analyze.py` validates exclusive phase operation counts and produces a
+New run receipts follow [`measurement_contract_v2.json`](measurement_contract_v2.json).
+The [version-1 contract](measurement_contract.json) remains available for
+earlier calibrated-operation and verified-online-wall receipts. `analyze.py`
+selects the validator by receipt schema version and produces a
 per-configuration, per-workload stage summary. Given `--baseline IC1... --candidate IC1...`,
 it pairs independent blocks on the same frozen one-target workload and reports
 online wall-time speedup only when **every** pair finished with a verified

@@ -12,7 +12,7 @@ import sys
 HERE = Path(__file__).resolve().parent
 CATALOG = HERE.parents[1]
 sys.path.insert(0, str(CATALOG))
-import analyze  # noqa: E402
+import analyze_v2 as analyze  # noqa: E402
 
 
 def ns(seconds: float) -> int:

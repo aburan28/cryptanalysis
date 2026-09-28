@@ -85,11 +85,14 @@ There are no separators or zero-padded numbers in an ID. Structural tags
 (`kb1`, `f4`, `walk`, `bw`, etc.), the `fb` tag, and hex digits are lowercase.
 The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
-Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, `PDP4root`, and
+Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, `PDP4root`,
+`PDP3direct` for exact same-base point-pair lookup, and
 `PDP2orbit` for the prime-field two-summand automorphism-orbit peel/lookup oracle
 for the compact four-summand S3 root index; `PDP2xl` for a dense Macaulay/XL
 degree scan and `PDP2xlsym` for the same scan over the symmetric-function
 (`e_k` in `V^(k)`) formulation, with the XL or closure mode in the manifest;
+`PDP3eval` for Boolean evaluation with Buchberger-Moeller basis construction
+and an independently checked exact Boolean basis certificate;
 `RCwalk`, `RCsample`, `RCdirect`, `RClp` for single-large-prime collection,
 and `RCguided` for pivot-guided relation collection;
 `LAbw`, `LAwied`, `LAgauss`, `LAgraph` for exact one/two-term gain-graph solving, for **final sparse relation-matrix** solving;

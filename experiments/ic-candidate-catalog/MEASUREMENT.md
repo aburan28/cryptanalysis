@@ -64,7 +64,7 @@ cost. Charge construction, failed attempts and matrix work separately; do not
 reuse this local formula as a complete speedup.
 
 Save one JSON object per run in a `.jsonl` file. The version-2 machine contract in
-[`measurement_contract.json`](measurement_contract.json) fixes five exclusive
+[`measurement_contract_v2.json`](measurement_contract_v2.json) fixes five exclusive
 online target phases and eleven supplementary cold operation phases, along
 with required provenance and counts. Include both
 `proposal_id` and `candidate_id` keys, with exactly one non-null; use the
@@ -89,6 +89,13 @@ partial online times but cannot claim a speedup. Cold operation totals are
 optional supplementary measurements; if supplied, every cold phase must be
 priced and sum exactly to the total. [`analyze.py`](analyze.py) validates these
 rules before reporting rates or a paired online speedup.
+
+The [version-1 contract](measurement_contract.json) remains valid for earlier
+receipts, including `accounting_mode: "verified_online_wall"`. That mode
+requires a same-point rho measurement and scalar replay while keeping
+unmeasured operation counts, operation ratios, and amortization null.
+`analyze.py` selects the validator by schema version; one input file must
+contain only one version.
 
 ## Isogeny activation gate
 

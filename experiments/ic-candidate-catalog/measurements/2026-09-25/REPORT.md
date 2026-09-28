@@ -134,9 +134,9 @@ four-summand root-index candidate in another experiment has a different base
 and PDP method, so its online timing cannot be assigned to this catalog's N53
 five-summand proposals.
 
-The catalog [measurement contract](../../measurement_contract.json) and
-[analyzer](../../analyze.py) now use version 2: exact five-phase online wall
-time and verified paired rho are required for a complete one-target headline;
+The catalog [version-2 measurement contract](../../measurement_contract_v2.json)
+and [analyzer](../../analyze.py) require exact five-phase online wall
+time and verified paired rho for a complete one-target headline;
 cold operation totals are supplementary. This change prevents setup-inclusive
 or batch costs from silently becoming the headline speedup.
 
