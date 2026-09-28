@@ -10,20 +10,20 @@
 #include <time.h>
 
 #ifndef K
-#define K 2
+#    define K 2
 #endif
 #if K == 2
-#define R  2003
-#define B  35
-#define NC 8
-#define NSUB 16
+#    define R    2003
+#    define B    35
+#    define NC   8
+#    define NSUB 16
 #elif K == 3
-#define R  2003
-#define B  115
-#define NC 28
-#define NSUB 56
+#    define R    2003
+#    define B    115
+#    define NC   28
+#    define NSUB 56
 #else
-#error "the n=13 screening collector supports K=2 or K=3"
+#    error "the n=13 screening collector supports K=2 or K=3"
 #endif
 typedef struct {
     u64 x, y;
@@ -212,29 +212,28 @@ static void build(void)
             u64 a = word & 7, b = word >> 3;
             if (b) small_xs[gf_mul(&ctx, a, gf_inv(&ctx, b))] = 1;
         }
-        for (int x = 0; x < 8192; x++) if (small_xs[x]) {
-            small_nx++;
-            u64 xx = (u64)x, y;
-            uint8_t ok;
-            ec_lift_batch(&ctx, &xx, 1, &y, &ok);
-            if (!ok) continue;
-            point p = mul((point){xx, y}, 4);
-            if (p.x != INF_X) {
-                int found = 0;
-                for (int j = 0; j < small_ni; j++)
-                    found |= !cmppt(small_subgroup[j], p);
-                if (!found) small_subgroup[small_ni++] = p;
-            }
-            if (x) {
-                p = mul((point){xx, xx ^ y}, 4);
+        for (int x = 0; x < 8192; x++)
+            if (small_xs[x]) {
+                small_nx++;
+                u64 xx = (u64)x, y;
+                uint8_t ok;
+                ec_lift_batch(&ctx, &xx, 1, &y, &ok);
+                if (!ok) continue;
+                point p = mul((point){xx, y}, 4);
                 if (p.x != INF_X) {
                     int found = 0;
-                    for (int j = 0; j < small_ni; j++)
-                        found |= !cmppt(small_subgroup[j], p);
+                    for (int j = 0; j < small_ni; j++) found |= !cmppt(small_subgroup[j], p);
                     if (!found) small_subgroup[small_ni++] = p;
                 }
+                if (x) {
+                    p = mul((point){xx, xx ^ y}, 4);
+                    if (p.x != INF_X) {
+                        int found = 0;
+                        for (int j = 0; j < small_ni; j++) found |= !cmppt(small_subgroup[j], p);
+                        if (!found) small_subgroup[small_ni++] = p;
+                    }
+                }
             }
-        }
         if (small_nx != 32 || small_ni != 16) exit(2);
         qsort(small_subgroup, small_ni, sizeof(point), cmppoint);
         generator = small_subgroup[0];

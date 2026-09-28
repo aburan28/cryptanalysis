@@ -7,7 +7,8 @@ static uint32_t *mask_by_rank;
 static uint32_t nvars_current;
 static uint32_t nmonomials_current;
 
-int degree_order_init(int nvars) {
+int degree_order_init(int nvars)
+{
     if (nvars < 1 || nvars > 24) return 1;
     free(rank_by_mask);
     free(mask_by_rank);
@@ -25,8 +26,7 @@ int degree_order_init(int nvars) {
     choose[0][0] = 1;
     for (uint32_t n = 1; n <= nvars_current; n++) {
         choose[n][0] = choose[n][n] = 1;
-        for (uint32_t k = 1; k < n; k++)
-            choose[n][k] = choose[n - 1][k - 1] + choose[n - 1][k];
+        for (uint32_t k = 1; k < n; k++) choose[n][k] = choose[n - 1][k - 1] + choose[n - 1][k];
     }
 
     for (uint32_t mask = 1; mask < nmonomials_current; mask++) {
@@ -53,7 +53,8 @@ int degree_order_init(int nvars) {
 const uint32_t *degree_order_rank_map(void) { return rank_by_mask; }
 const uint32_t *degree_order_inverse_map(void) { return mask_by_rank; }
 
-int degree_order_reorder_bits(const uint8_t *input, uint8_t *output) {
+int degree_order_reorder_bits(const uint8_t *input, uint8_t *output)
+{
     if (!input || !output || !rank_by_mask) return 1;
     size_t nbytes = (size_t)nmonomials_current / 8;
     memset(output, 0, nbytes);

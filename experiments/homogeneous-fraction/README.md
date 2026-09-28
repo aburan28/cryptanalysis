@@ -408,5 +408,9 @@ own independent Python replay and status record. Promotion still requires a
 complete, same-base rank-eight candidate, matched target order and base hash,
 and the paired bootstrap gate. An unsolved target remains a charged miss.
 
+## Exact measurement source snapshot
+
+The `C_source_sha256` and `monomial_order_source_sha256` values in the receipts bind the source bytes used during measurement. Those bytes match commit [`b437c7e4`](https://github.com/aburan28/cryptanalysis/commit/b437c7e4b5a875f3dbead4419eaaf541496a294d), also recorded as `measurement_source_commit` in the manifest. The follow-up applies the repository's clang-format output to the two C sources; control and bitset verifiers pass on the formatted files. Timing receipts remain tied to the hashed source snapshot.
+
 Source: Galbraith, Granger, Merz, Petit, [*On Index Calculus Algorithms for
 Subfield Curves*, Section 5.2](https://sacworkshop.org/SAC20/files/preproceedings/18-IndexCalculus.pdf).
