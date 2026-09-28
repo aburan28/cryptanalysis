@@ -1,11 +1,12 @@
 # ECC2K-130 quotient pair-sum gate, 2026-09-26
 
-This experiment supplies an exact four-point **stage** oracle on public toy
-Koblitz curves and a separate degree-131 support bound. It has no complete
-index-calculus candidate, recovered discrete logarithm, calibrated operation
-comparison with rho, or demonstrated work below `2^61`. All receipts have
-`candidate_id: null`; the measured query times are PDP diagnostics, not the
-single-target IC online metric.
+This experiment supplies an exact four-point quotient pair-sum oracle on
+public Koblitz curves, two verified degree-53 target-seeded discrete logarithm
+pilots, and a separate degree-131 support bound. The degree-53 pilots have
+exact `IC1` method identities but incomplete online and operation accounting.
+There is no degree-83 or ECC2K-130 recovered logarithm, calibrated operation
+comparison with rho, or demonstrated work below `2^61`. The other stage
+receipts retain `candidate_id: null`.
 
 ## What the quotient index does
 
@@ -266,6 +267,113 @@ common unit and measured ordinary rank yield. The
 `candidate_id: null`, and the [version-2 rows](batch_stage_runs.jsonl)
 retain every bounded outcome.
 
+## Dyadic-window quotient relations at degrees 53 and 83
+
+The [dyadic proposal registry](dyadic_stage_proposals.json) names `Q1013`–`Q1022`
+under the repository protocol. Every row carries the exact field and curve,
+actual distinct subgroup-usable `B` **before** folding, the enumerated-set
+digest, signed-Frobenius columns, effective unknown seed-log columns, and
+`isogeny: "none"`. The ONB curve IDs are
+`EC1N53Ckb1hf77aab617904` and `EC1N83Ckb1h876c2921cb64`; they must not
+be conflated with the polynomial-basis degree-83 curve above. The unknown
+endomorphism-order conductor remains `null`. The
+[receipt verifier](verify_dyadic_receipts.py) independently replays curve
+identity hashes, coefficient labels, group sums, recovered scalars, and
+candidate identity hashes.
+
+The base starts with subgroup points `G` and one or more independent seeds,
+takes a short doubling window from each, and closes under sign and Frobenius.
+The label of each point is `±2^k λ^j` times its seed log modulo the subgroup
+order, where `λ` is the verified Frobenius eigenvalue. This preserves an exact
+large point set while reducing the number of *unknown* logs. The two-seed
+target-dependent variant uses the supplied public DLP target as its second
+seed, so a known-scalar query `αG` with a verified four-point relation gives
+one equation `α = a + b log_G(Q) (mod r)`. If `b != 0`, one modular inverse
+recovers the scalar, which is independently replayed on the curve. All
+target-dependent base and index work belongs to that target.
+
+| Frozen degree-53 run | Actual `B` | Signed-Frobenius columns / unknown logs | Complete missed queries | Verified relations | Complement probes including failures | Index keys / build | Measured interval after target preflight | Peak RSS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `Q1015`, independent eight-seed base, one ordinary target | 3,392 | 32 / 7 | 1 | 0 | 5,033,728 | 47,488 / 11.7 s | 233.6 s query only | — |
+| `Q1016`, same base, secondary four-target panel | 3,392 | 32 / 7 | 3 | 1 | 15,107,470 | 47,488 / 9.7 s | 699.0 s queries | — |
+| `Q1019`, public target as second seed, 16 doublings | 3,392 | 32 / 1 | 4 | 1 | 11,694,693 | 27,136 / 12.3 s | 674.2 s | 61.5 MB |
+| `Q1021`, same target, 64 doublings | 13,568 | 128 / 1 | 0 | 1 | 1,573,644 | 434,176 / 131.8 s | 223.9 s | 576.0 MB |
+
+The secondary `Q1016` panel was frozen only after the `Q1015` single-target
+miss. Its first three ordinary targets exhausted the quotient index and its
+fourth hit after 6,286 probes. The four-point witness has four distinct
+points and a nonzero coefficient in four unknown seed columns; it supplies
+one verified row, not seven logs or a DLP. Observed yield is `1/4`, with an
+exact 95% binomial interval of about `[0.0063, 0.806]`. The two target-seeded
+runs recovered the same scalar, `3400509474685`, on the same public point;
+the [16-step](runs/n53_dyadic_target_seed_dlp.json) and
+[64-step](runs/n53_dyadic_target_seed_dlp_w64.json) receipts retain every
+miss, probe count, four-point witness, coefficient row, index digest, and
+independent `[scalar]G = Q` check. Their query streams differ, so their wall
+times are individual results, not a paired speedup estimate.
+
+The exact [candidate manifests](candidates) name the completed degree-53
+methods as
+`IC1N53Ckb1fb3392PDP4qpairRCsampleLAgaussTDdirectISO0h9bff857cc742`
+and
+`IC1N53Ckb1fb13568PDP4qpairRCsampleLAgaussTDdirectISO0hb99205944185`.
+The corresponding [candidate-linked pilot rows](runs) use the full
+`<candidate-id>W<workload-id>R1` run form. `PDP4qpair` is recorded in
+[`AGENTS.md`](../../AGENTS.md) as the exact four-summand quotient pair index.
+These are target-specific candidate identities because the public target
+itself is an exact factor-base seed. The measured interval begins with base
+enumeration and omits target subgroup validation just before that timer;
+therefore the formal single-target online time, complete calibrated field
+operation count, `2^x` full-work value, and paired rho speedup all remain
+`null` in the candidate-linked rows. Neither pilot establishes a speedup.
+
+At degree 83, the [L32 bounded performance run](runs/n83_dyadic_target_perf_L32.json)
+built a complete target-seeded quotient index with **10,624 actual usable
+points**, 64 signed-Frobenius columns, 169,984 quotient keys, and one unknown
+log. Index construction took 60.4 seconds and peak process RSS was 282.5 MB.
+Three prefixes of 10,624 ordinary known-log complement lookups had zero hits;
+their median was 647 ms, or about 61 µs per lookup in this bounded run.
+A separate planted four-point target hit at lookup 1 and passed group-law
+replay. The zero-hit prefixes are throughput measurements, **not** a
+relation-yield estimate. This gives a larger same-curve performance point
+than the earlier 332-point base, without extrapolating wall time across
+field representations.
+
+[Exact enumeration on the frozen public degree-83 target](runs/n83_dyadic_target_seed_geometry.json)
+gave `B=332,000`, 2,000 folded columns, and one unknown log in 2.83 seconds.
+The corresponding [independent-seed geometry](runs/n83_dyadic_two_seed_geometry.json)
+has the same counts but a different exact point-set digest. A complete
+cross-seed quotient index enumerates 166,000,000 pair generators and would
+hold up to that many distinct keys. At the no-collision size, eleven bytes
+per x key alone require 1.826 GB; this excludes witnesses and hash-table overhead. Transferring the
+measured degree-83 L32 Python index RSS per key would suggest about 276 GB,
+which is a **memory extrapolation**, not a degree-83 measurement. No complete
+degree-83 index, ordinary relation, rank, or scalar recovery has been run.
+
+The original two-seed `r/P` estimate, where `P` is the number of cross-seed
+pairs, incorrectly treats pair probes as independent relation opportunities.
+The [coefficient-support audit](dyadic_coefficient_support.json) corrects it.
+Writing `C={±2^k λ^j}` and `S=C+C`, an `αG` four-sum relation on a
+target-seeded base requires `α` to be in `S+log_G(Q)·S`. Therefore an
+independent uniform known-log query has success probability **at most**
+`|S|²/(r−1)`. Exact degree-53, 16-step enumeration gives `|S|=1,267,231`
+and a probability cap of `0.0763`. At degree 83 with 1,000 steps, the
+rigorous `|S|≤166000·166001/2` cap gives probability at most
+`7.85×10^-5`, hence at least `2^48.32` **expected probes in failed complete
+scans alone** under independent uniform query sampling. This is a lower
+bound for the stated direct-index query policy, not a solve-cost upper bound.
+The separate [same-curve operation screen](dyadic_two_seed_n83_projection.json)
+gives `2^48.52` failed-scan probes as an exploratory estimate if the measured
+degree-83 20-step coefficient collision ratio transfers to 1,000 steps.
+Applying the measured same-curve L32 batched-query operation vector to the
+rigorous failed-scan lower bound gives `2^50.64` field API multiplication calls and
+`2^54.68` cyclic word rotations, in separate units. Index construction,
+memory traffic, useful coefficient yield, full target checks, and any
+field-operation calibration are additional and unmeasured. The earlier
+`2^46.32` independent-probe projection is **refuted for this two-seed
+policy**; the 100-seed `Q1013` model remains an unvalidated hypothesis with
+different support geometry.
+
 ## Degree-131 support gate
 
 The [support receipt](weight5_support_gate.json) computes the exact generous
@@ -397,3 +505,32 @@ than `/tmp/` outputs above, then run `summarize_cycle.py`. The summary checks
 each source and reference hash before emitting the proposal and stage rows.
 The batch comparison works the same way: write both full receipts to their
 `runs/` paths before running `summarize_batch.py`.
+
+For the dyadic-window additions, run the local verified `./sage` launcher
+from the primary repository checkout. The geometry, support, and projection
+checks finish quickly; the two degree-53 DLP pilots take several minutes and
+write their receipts incrementally so failures remain visible:
+
+```sh
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_base_geometry.py --degree 53
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_base_geometry.py --degree 83
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_two_seed_geometry.py --degree 53
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_two_seed_geometry.py --degree 83
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_target_base.py
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_target_perf.py
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_coefficient_support.py
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_work_projection.py
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_two_seed_n83_projection.py
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_relation_probe.py
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_relation_panel.py
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_target_seed_dlp.py
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n53_target_seed_dlp_w64.py
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/emit_dyadic_stage_proposals.py
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/promote_dyadic_n53_candidates.py
+./sage experiments/ecc2k130-quotient-pair-probe-20260926/verify_dyadic_receipts.py
+```
+
+The base geometry receipt hashes feed the later runs, so regenerate in this
+order. Timings and receipt hashes will change on another host; candidate
+identity hashes change only if the mathematical base, algorithm, or executed
+source snapshot changes.

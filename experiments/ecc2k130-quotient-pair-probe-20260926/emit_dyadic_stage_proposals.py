@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Emit exact Q-stage identities without issuing premature IC1 candidate IDs."""
+
+import json
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+RUNS = HERE / "runs"
+
+
+def read(name):
+    return json.loads((HERE / name).read_text())
+
+
+def main():
+    geometry = {
+        "Q1013": read("runs/n83_dyadic_base_geometry.json"),
+        "Q1014": read("runs/n53_dyadic_base_geometry.json"),
+        "Q1017": read("runs/n53_dyadic_two_seed_geometry.json"),
+        "Q1018": read("runs/n83_dyadic_two_seed_geometry.json"),
+        "Q1020": read("runs/n83_dyadic_target_seed_geometry.json"),
+    }
+    ordinary = read("runs/n53_dyadic_ordinary_relation.json")
+    panel = read("runs/n53_dyadic_relation_panel.json")
+    target = read("runs/n53_dyadic_target_seed_dlp.json")
+    wide_target = read("runs/n53_dyadic_target_seed_dlp_w64.json")
+    n83_perf = read("runs/n83_dyadic_target_perf_L32.json")
+    assert ordinary["curve_id"] == panel["curve_id"] == geometry["Q1014"]["curve_id"]
+    assert ordinary["factor_base"] == panel["factor_base"] == geometry[
+        "Q1014"]["factor_base"]
+    assert target["curve_id"] == geometry["Q1017"]["curve_id"]
+    assert target["factor_base"]["actual_usable_points_B_before_folding"] == 3392
+    assert wide_target["curve_id"] == target["curve_id"]
+    assert wide_target["factor_base"]["actual_usable_points_B_before_folding"] == 13568
+    assert n83_perf["curve_id"] == geometry["Q1020"]["curve_id"]
+    assert n83_perf["factor_base"]["actual_usable_points_B_before_folding"] == 10624
+    assert all(row["candidate_id"] is None and row["isogeny"] == "none"
+               for row in (*geometry.values(), ordinary, panel, target, wide_target, n83_perf))
+    source = {
+        "Q1013": (geometry["Q1013"], "enumerated 100-seed n83 geometry; 99 unknown seed logs", ["runs/n83_dyadic_base_geometry.json", "dyadic_n83_work_projection.json"]),
+        "Q1014": (geometry["Q1014"], "enumerated 8-seed n53 geometry; 7 unknown seed logs", ["runs/n53_dyadic_base_geometry.json"]),
+        "Q1015": (ordinary, "one frozen n53 ordinary-target complete quotient search", ["runs/n53_dyadic_ordinary_relation.json"]),
+        "Q1016": (panel, "secondary frozen n53 ordinary-target relation-yield panel", ["runs/n53_dyadic_relation_panel.json"]),
+        "Q1017": (geometry["Q1017"], "enumerated two-seed n53 geometry; one unknown seed log", ["runs/n53_dyadic_two_seed_geometry.json"]),
+        "Q1018": (geometry["Q1018"], "enumerated two-seed n83 geometry; one unknown seed log", ["runs/n83_dyadic_two_seed_geometry.json"]),
+        "Q1019": (target, "target-dependent two-seed n53 quotient DLP pilot", ["runs/n53_dyadic_target_seed_dlp.json"]),
+        "Q1020": (geometry["Q1020"], "target-dependent two-seed n83 geometry and conditional query model", ["runs/n83_dyadic_target_seed_geometry.json", "dyadic_two_seed_n83_projection.json"]),
+        "Q1021": (wide_target, "target-dependent two-seed n53 quotient DLP pilot with 64-step window", ["runs/n53_dyadic_target_seed_dlp_w64.json"]),
+        "Q1022": (n83_perf, "exact target-dependent n83 L32 quotient index and bounded ordinary-query performance", ["runs/n83_dyadic_target_perf_L32.json"]),
+    }
+    out = []
+    for proposal_id, (receipt, description, refs) in source.items():
+        base = receipt["factor_base"]
+        identity = receipt.get("curve_identity_record")
+        if identity is None:
+            identity = geometry["Q1014"]["curve_identity_record"]
+        assert receipt["curve_id"] in (geometry["Q1014"]["curve_id"],
+                                        geometry["Q1013"]["curve_id"])
+        assert identity["field"]["n"] == (53 if receipt["curve_id"] == geometry[
+            "Q1014"]["curve_id"] else 83)
+        row = {
+            "proposal_id": proposal_id, "candidate_id": None,
+            "description": description,
+            "field": identity["field"],
+            "curve_id": receipt["curve_id"], "curve": identity["curve"],
+            "isogeny": "none", "endomorphism_order_conductor": None,
+            "factor_base": {
+                "construction": base.get("construction", receipt.get("seed_selection")),
+                "nominal_seed_columns": base["nominal_seed_columns"],
+                "doubling_window": base["doubling_window"],
+                "actual_usable_points_B_before_folding": base[
+                    "actual_usable_points_B_before_folding"],
+                "signed_frobenius_columns": base["signed_frobenius_columns"],
+                "effective_unknown_log_columns_after_dyadic_labels": base[
+                    "effective_unknown_log_columns_after_dyadic_labels"],
+                "enumerated_set_sha256": base["enumerated_set_sha256"],
+                "point_coefficient_label_sha256": base[
+                    "point_coefficient_label_sha256"],
+            },
+            "point_decomposition": {
+                "m": 4, "method": "complete cross-seed quotient pair-sum index",
+                "quotient": "signed Frobenius, x-only cyclic canonicalization",
+                "complement": "batched inversion across one orbit",
+                "status": "implemented n53" if proposal_id in ("Q1015", "Q1016", "Q1019", "Q1021") else
+                          "implemented n83 bounded stage" if proposal_id == "Q1022" else
+                          "conditional n83 scaling or geometry only",
+            },
+            "relation_collection": (
+                "known-scalar uniform G multiples against public target-seeded base"
+                if proposal_id in ("Q1019", "Q1021") else
+                "frozen ordinary target stream" if proposal_id == "Q1016" else None),
+            "relation_linear_algebra": (
+                "one-row modular inverse if a nonzero target coefficient is found"
+                if proposal_id in ("Q1019", "Q1021") else None),
+            "target_descent": (
+                "direct scalar recovery from target-seed coefficient"
+                if proposal_id in ("Q1019", "Q1021") else None),
+            "stage_receipts": refs,
+            "measured_complete_work_log2": None,
+            "rho_paired_online_speedup": None,
+        }
+        out.append(row)
+    path = HERE / "dyadic_stage_proposals.json"
+    path.write_text(json.dumps(out, indent=2) + "\n")
+    print(json.dumps({"proposal_ids": [row["proposal_id"] for row in out],
+                      "curves": sorted(set(row["curve_id"] for row in out))}))
+
+
+if __name__ == "__main__":
+    main()
