@@ -1557,7 +1557,7 @@ void ca_coord_node_instanced(char *out, size_t cap, const char *node, uint64_t i
     int tn = snprintf(tag, sizeof(tag), "~%016" PRIx64, instance);
     size_t nn = strlen(node);
     if (tn > 0 && nn + (size_t)tn + 1 <= cap) {
-        memcpy(out, node, nn);
+        memcpy(out, node, nn + 1);
         memcpy(out + nn, tag, (size_t)tn + 1);
     } else {
         /* No room for the tag: keep the node readable and accept the
