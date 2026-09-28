@@ -149,6 +149,89 @@ validates the version-2 stage invariants locally. Neither variant has an
 unresolved. The repeated prefixes are not completed ordinary decomposition
 attempts and give no relation-yield estimate.
 
+## Normal-basis cyclic and x-only quotient keys
+
+[`cycle_canonical.py`](cycle_canonical.py) reorders the optimal-normal-basis
+coordinates into their Frobenius cycle. One Frobenius step is then one cyclic
+bit rotation. The implementation chooses the least rotation before
+transforming the selected point. Its key order differs from x-first, so
+index construction and lookup must both use this rule. The independent
+[orbit-scan test](test_cycle_canonical.py) checks keys, shifts, signs, and
+group witnesses at degrees 53 and 83.
+
+[`x_only_cycle.py`](x_only_cycle.py) goes further. On
+`y²+xy=x³+1`, every rational nonzero `x` has two `y` roots, related by
+curve negation. Thus `x` alone identifies a signed-Frobenius point orbit.
+The lookup returns a rotation of `x` without transforming `y`; after a hit,
+the stored pair sum is aligned to the complement and its sign is checked
+before the four base points are replayed. The [positive control](test_x_only_cycle.py)
+constructs a four-point target, gets a hit, and checks the group sum at both
+degrees. Both index variants contain exactly the same number of quotient
+orbits as the frozen x-first index, though their key digests differ by design.
+
+The [cycle](runs/n83_cycle_comparison.json) and
+[x-only](runs/n83_x_only_comparison.json) degree-83 receipts retain six
+paired blocks each, alternating arm order, with three repeated 2,048-lookup
+ordinary-target prefixes per block. Corresponding [degree-53 cycle](runs/n53_cycle_comparison.json)
+and [x-only](runs/n53_x_only_comparison.json) receipts use the same design.
+Every prefix had zero hits and every constructed positive control had an
+independently replayed hit. The table gives the paired geometric mean of
+x-first query time divided by the new variant's time; intervals bootstrap
+the six paired block ratios. The selected base and target are identical
+within each pair, and setup is outside the query interval.
+
+| Degree, exact curve ID | Actual `B` / columns | Variant | Quotient keys | x-first / variant query ratio | Paired 95% interval | Faster blocks |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| 53, `EC1N53Ckb1hf77aab617904` | 212 / 2 | cyclic full-point | 207 | 1.69 | 1.62–1.83 | 6/6 |
+| 53, same curve | 212 / 2 | cyclic x-only | 207 | 2.43 | 2.39–2.47 | 6/6 |
+| 83, `EC1N83Ckb1h876c2921cb64` | 332 / 2 | cyclic full-point | 327 | 1.95 | 1.81–2.09 | 6/6 |
+| 83, same curve | 332 / 2 | cyclic x-only | 327 | 3.07 | 3.00–3.16 | 6/6 |
+
+Each x-only miss performs 82 or 52 word rotations at degrees 83 or 53,
+respectively, and no selected `x`/`y` field Frobenius transform. The
+full-point cyclic variant still transforms both coordinates at the selected
+shift. The [proposal registry](cycle_stage_proposals.json) uses `Q1007`–`Q1010`
+and retains `candidate_id: null`, the exact curve identity, pre-fold `B`,
+folded columns, base digest, and `isogeny: "none"`. The
+[version-2 stage rows](cycle_stage_runs.jsonl) retain a run ID for every
+bounded variant block, workload ID, partial phase time, and budget outcome.
+The [comparison summary](cycle_stage_comparison.json) retains input hashes,
+operation vectors, paired uncertainty, and the absent relation-yield and
+verified-DLP fields. This benchmark measures lookup prefixes on small bases;
+it does not estimate a complete solve.
+
+### Conditional degree-83 work screen on an enumerated base
+
+The separate [work screen](n83_d12_work_screen.json) uses frozen
+[curve](n83_d12_inputs/n83_toy_curve.json) and
+[base geometry](n83_d12_inputs/n83_d12_frobenius_orbit_base_geometry.json)
+inputs for **`EC1N83Ckb1hc1776f347753`**, a polynomial-basis field
+representation. This is a different curve ID from the normal-basis timing
+panel; no timing or operation conversion is transferred between them. Its
+dimension-12 base has 4,006 projected seed points, **326,024 actual subgroup
+points before folding**, and 1,964 signed-Frobenius columns. No isogeny is
+used. The [screen source](n83_d12_work_screen.py) counts
+`C(326024,2) − 1964·C(166,2)` cross-column unordered pairs exactly and
+uses a declared uniform pair-sum model:
+
+| Conditional quantity | Value and unit |
+| --- | ---: |
+| Pair-complement probes per verified relation | `2^45.37` probes |
+| `K=1,964` novel rows plus one target relation | `2^56.31` probes |
+| Quotient pair generators, with no cross-orbit sum collisions | 319,992,556 generators |
+| Bare 11-byte x-key payload at that size | 3,519,918,116 bytes |
+| Word rotations for those probes with x-only key | `2^62.67` rotations |
+| Field-operation budget per probe to keep the modeled total below `2^61`, if all other costs were zero | 25.78 field operations |
+
+These figures include failed probes in the uniform-support model but assume
+every relation adds a new row. Actual pair-sum distribution, novel rank,
+index storage overhead, field-operation conversion, factor-base logarithms,
+matrix solution, and target scalar recovery are unmeasured. The key payload
+is a minimum that excludes witnesses, point values, and table overhead.
+There is still **no measured ordinary relation yield, full DLP, or verified
+work below `2^61`**. The screen identifies the cost a scaled implementation
+must beat; it is not evidence that it does.
+
 ## Degree-131 support gate
 
 The [support receipt](weight5_support_gate.json) computes the exact generous
