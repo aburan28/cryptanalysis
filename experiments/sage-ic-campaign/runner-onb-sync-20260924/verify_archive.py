@@ -25,15 +25,15 @@ assert runner_field.read_bytes() == local_field.read_bytes()
 assert hashlib.sha256((root / 'experiments/sage-ic-campaign/pb-euclid-inverse-20260924/baseline/field-runner.py').read_bytes()).hexdigest() == (
     '2784e218bed1e9ed0af70955ef7e9983d216ef5f3eea00851949665325de97bd')
 # The live synchronized curve can gain later arithmetic methods. Keep the
-# frozen baseline hash above and check that NormalView and the local prefix
-# retain the structural relationship this archive established.
+# frozen baseline hash above and check that NormalView remains unchanged.
+# NormalView is now shared by both live copies, so compare their complete
+# syntax trees instead of removing the formerly runner-only class.
 runner_tree = ast.parse(runner_curves.read_text())
 local_tree = ast.parse(local_curves.read_text())
 normal_view = runner_tree.body[-1]
 assert isinstance(normal_view, ast.ClassDef) and normal_view.name == 'NormalView'
 original_tree = ast.parse((here / 'baseline/curves.py').read_text())
 assert ast.dump(normal_view) == ast.dump(original_tree.body[-1])
-runner_tree.body.pop()
 assert ast.dump(runner_tree) == ast.dump(local_tree)
 
 intent = json.loads((here / 'intent.json').read_text())
