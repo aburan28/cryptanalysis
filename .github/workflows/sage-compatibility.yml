@@ -1,0 +1,51 @@
+name: Sage arithmetic compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/sage-binary-hardware/**'
+      - 'experiments/sage-ic-campaign/five-opportunities-20260925/**'
+      - 'experiments/sage-ic-campaign/pari-result-20260926/**'
+      - 'scripts/sage-release-manifest.json'
+      - 'scripts/sage_release.py'
+      - '.github/workflows/sage-compatibility.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archive-and-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 experiments/sage-binary-hardware/verify_compatibility_archive.py
+      - uses: actions/checkout@v4
+        with:
+          repository: sagemath/sage
+          ref: 671dfa344f4cc4a6d54f343cbfd1272ee81698c9
+          path: build/sage-source
+          sparse-checkout: |
+            src/sage/schemes/elliptic_curves
+            src/doc/en/reference/arithmetic_curves
+      - run: python3 scripts/sage_release.py verify-stack --sage build/sage-source
+
+  native-cpu:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and execute the native CPU kernel with UBSan
+        run: python3 experiments/sage-binary-hardware/validate_native.py --ubsan --out build/native-compatibility
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sage-native-${{ matrix.os }}
+          path: |
+            build/native-compatibility/receipt.json
+            build/native-compatibility/*.txt
