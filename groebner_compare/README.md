@@ -1,5 +1,12 @@
 # Verified Boolean Gröbner comparison protocol
 
+For ordinary, unplanted subgroup queries with signed-row and rank accounting,
+see the separate [ordinary campaign](../experiments/pdp-scaling/ORDINARY_PROTOCOL.md)
+and its [measured receipts](../experiments/pdp-scaling/ordinary-evidence-20260928/README.md).
+That campaign accepts verified witnesses and does not claim complete bases.
+Its shared rank/gate utilities are in `relation_metrics.py`; the exact Boolean
+basis protocol documented below retains its twelve-variable limit.
+
 This is executable **solver-stage infrastructure**, bounded to synthetic or
 otherwise authorized Boolean systems with 1–12 variables. It implements frozen
 inputs, fresh-process baselines, persistent learn/apply workers, independent
