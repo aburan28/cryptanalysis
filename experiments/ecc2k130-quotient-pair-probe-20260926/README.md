@@ -334,6 +334,14 @@ python3 -m unittest discover -s experiments/ecc2k130-quotient-pair-probe-2026092
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_canonical.py --degree 53 --variant scan --run-number 1 --output /tmp/ecc2k130-qpair-n53-scan.json
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_canonical.py --degree 53 --variant xfirst --run-number 1 --output /tmp/ecc2k130-qpair-n53-xfirst.json
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/emit_protocol_comparison.py
+python3 -m unittest discover -s experiments/ecc2k130-quotient-pair-probe-20260926 -p test_cycle_canonical.py -v
+python3 -m unittest discover -s experiments/ecc2k130-quotient-pair-probe-20260926 -p test_x_only_cycle.py -v
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_cycle.py --degree 53 --output /tmp/n53-cycle-comparison.json
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_cycle.py --degree 83 --output /tmp/n83-cycle-comparison.json
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_x_only.py --degree 53 --output /tmp/n53-x-only-comparison.json
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_x_only.py --degree 83 --output /tmp/n83-x-only-comparison.json
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/n83_d12_work_screen.py
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/summarize_cycle.py
 ```
 
 The probe uses frozen local copies of the repository's `ecc2k130/codegen`
@@ -346,3 +354,6 @@ For a full refresh of the matched comparison, first run
 at degrees 53, 83, and 131, and finally run `emit_protocol_comparison.py`.
 Refreshing only the degree-131 reference changes its measured timing fields
 and therefore its hash; the comparison emitter correctly rejects older runs.
+To refresh the cyclic comparison receipts, use their `runs/` paths rather
+than `/tmp/` outputs above, then run `summarize_cycle.py`. The summary checks
+each source and reference hash before emitting the proposal and stage rows.
