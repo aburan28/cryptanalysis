@@ -232,6 +232,40 @@ There is still **no measured ordinary relation yield, full DLP, or verified
 work below `2^61`**. The screen identifies the cost a scaled implementation
 must beat; it is not evidence that it does.
 
+### Batch-inversion operation gate
+
+The [batch implementation](batch_x_only.py) computes the target complements
+for one signed-Frobenius orbit using one shared field inversion. It handles
+identity, equal-`x`, doubling, and opposite-point cases through the complete
+curve law. [Exact controls](test_batch_x_only.py) compare each batch sum with
+ordinary addition and compare both quotient-query hit traces, including a
+constructed positive four-point target, at degrees 53 and 83.
+
+The [degree-53](runs/n53_batch_x_only_comparison.json) and
+[degree-83](runs/n83_batch_x_only_comparison.json) receipts pair the same
+small selected base, ordinary target, and 2,048-lookup prefix against the
+affine x-only implementation in six alternating-order blocks. The
+[summary](batch_stage_comparison.json) reports the ratio of affine wall time
+to batch wall time; a ratio below one means the batch was slower in Python.
+
+| Degree, exact curve ID | Affine / batch paired wall ratio (95% interval) | Affine inversions → batch inversions per prefix | Affine multiplications → batch multiplications |
+| --- | ---: | ---: | ---: |
+| 53, `EC1N53Ckb1hf77aab617904` | 0.875 (0.799–0.926) | 1,942 → 19 | 3,884 → 9,710 |
+| 83, `EC1N83Ckb1h876c2921cb64` | 0.949 (0.913–0.987) | 1,882 → 12 | 3,764 → 9,410 |
+
+The counts cover calls to the field API during one frozen prefix. The batch
+formula also contains direct XORs, and the internal bit work of a field
+multiplication or inversion is not decomposed. Batch inversion greatly
+reduces inversion calls but did **not** improve Python wall time on these
+small bases. At degree 83 it uses about 4.59 multiplication calls and
+0.0059 inversion calls per probe, plus about 0.92 squarings and 0.92
+Frobenius calls. These operation types cannot be added to the polynomial-
+basis work screen's 25.78-field-operation allowance without a calibrated
+common unit and measured ordinary rank yield. The
+[stage registry](batch_stage_proposals.json) uses `Q1011`–`Q1012`, with
+`candidate_id: null`, and the [version-2 rows](batch_stage_runs.jsonl)
+retain every bounded outcome.
+
 ## Degree-131 support gate
 
 The [support receipt](weight5_support_gate.json) computes the exact generous
@@ -342,6 +376,10 @@ python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_x_only.py --de
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_x_only.py --degree 83 --output /tmp/n83-x-only-comparison.json
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/n83_d12_work_screen.py
 python3 experiments/ecc2k130-quotient-pair-probe-20260926/summarize_cycle.py
+python3 -m unittest discover -s experiments/ecc2k130-quotient-pair-probe-20260926 -p test_batch_x_only.py -v
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_batch_x_only.py --degree 53 --output /tmp/n53-batch-comparison.json
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/compare_batch_x_only.py --degree 83 --output /tmp/n83-batch-comparison.json
+python3 experiments/ecc2k130-quotient-pair-probe-20260926/summarize_batch.py
 ```
 
 The probe uses frozen local copies of the repository's `ecc2k130/codegen`
@@ -357,3 +395,5 @@ and therefore its hash; the comparison emitter correctly rejects older runs.
 To refresh the cyclic comparison receipts, use their `runs/` paths rather
 than `/tmp/` outputs above, then run `summarize_cycle.py`. The summary checks
 each source and reference hash before emitting the proposal and stage rows.
+The batch comparison works the same way: write both full receipts to their
+`runs/` paths before running `summarize_batch.py`.
