@@ -234,3 +234,95 @@ If `FLEET_WORKER_NAME` is set, you are already on a fleet pod: run locally,
 up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
 credentials into the tree, and copy the hardware from each shard's
 `status.json` into the run record.
+
+## Local Sage runs
+
+**Required rule:** Agents must launch all new and resumed local Sage jobs
+through a checked launcher for the accepted optimized build. This includes
+jobs they write, run, or configure for later execution. On the primary local
+workspace, use its existing repository launcher:
+
+```sh
+# From this repository:
+./sage -python path/to/job.py
+./sage path/to/job.sage
+
+# From another directory, including local worker and scheduler commands:
+/Volumes/SSD990/cryptanalysis/sage -python /absolute/path/to/job.py
+```
+
+For a source checkout without that workspace launcher, build the pinned
+stack as described in `docs/SAGE_RELEASE.md`, then use:
+
+```sh
+python3 scripts/sage_release.py run --sage /path/to/built/sage -- -python /absolute/path/to/job.py
+```
+
+This release launcher checks `scripts/sage-release-manifest.json` and the
+imported module paths. If using a compiled overlay, use its `run-overlay`
+command so the archive is checked before use. Rebuild overlays after the
+release manifest changes; do not reuse binaries with an older source stamp.
+
+This applies to commands written by agents, shell scripts, and Python
+subprocesses. Use the absolute repository launcher in subprocess argument
+lists; do not rely on a scheduler's PATH or a system `python3` to select Sage.
+The primary workspace launcher verifies the accepted source and native
+binaries against
+`experiments/sage-binary-arithmetic/runtime-current.json` before starting each
+job, and gives child commands named `sage` the same checked launcher on PATH.
+If verification fails, fix the installation before running the job; do not
+bypass the check or fall back to another installation.
+
+For measured runs on the primary workspace, save `./sage --runtime-info`
+output alongside the results
+before starting the workload. For other builds, retain the release manifest
+and compatibility receipt identifying the actual imported modules and native
+binaries. Keep this startup check outside the arithmetic
+or single-target online timing interval. The output records the actual
+imported modules, manifest hash, installation receipt, and native dispatch.
+Restart existing Python/Sage processes after an accepted build changes so
+they load its new modules.
+
+Import the installed `sage.schemes.elliptic_curves` modules for ordinary
+local work. Eligible scalar operations use the installed acceleration
+automatically; independent point batches can use the public `binary_batch`
+APIs documented in the installed module and `docs/SAGE_RELEASE.md`.
+When running the hardware experiment harness against the accepted build,
+set `SAGE_BINARY_USE_INSTALLED=1`; its default loader selects a development
+prototype. Prototype loaders and `SAGE_BINARY_CANDIDATE`,
+`SAGE_BINARY_NATIVE`, or `SAGE_BINARY_CODEC` overrides belong only in explicit
+candidate comparisons, with their sources recorded separately.
+
+Do not silently substitute `/usr/local/bin/sage`, which launches the older
+application on this host. Explicit baseline comparisons may use that
+application, with its runtime recorded separately. The user-level `sage`
+shim also forwards to this repository, but persisted local job commands
+should use the repository launcher explicitly.
+
+## Sage hardware compatibility
+
+**Required rule:** Preserve correctness and a portable CPU path when changing
+Sage arithmetic. Validate the installed build on each hardware/backend for
+which compatibility or a speedup is claimed. Rebuild native extensions on
+the target platform; do not reuse this host's archived macOS binaries in
+cross-platform tests. Keep architecture-specific instructions and optional
+GPU libraries behind explicit capability checks, with the existing Sage/CPU
+fallback available when those capabilities are absent.
+
+Use `experiments/sage-binary-hardware/validate_compatibility.py` through the
+checked Sage launcher for installed scalar, batch, and selected-backend
+correctness. Use `validate_native.py` in the same directory for a separately
+built portable CPU kernel check. Cover ARM64 and x86-64 CPUs, and the selected
+Apple Metal, NVIDIA CUDA, or AMD/Intel OpenCL backend where applicable.
+HIP/ROCm packed-kernel replay is a separate check, not proof that the complete
+Sage API has been validated on that device.
+
+Record the architecture, OS, compiler/runtime, device/backend, source and
+binary hashes, and exact-output test results. A requested backend that fails
+or is unavailable must remain an explicit result. Distinguish physical
+hardware runs from emulation/translation, compilation checks, and untested
+platforms. Rosetta execution does not establish physical Intel/AMD coverage.
+Correctness passes do not establish speedups: require matched full-operation
+benchmarks on each claimed device, including conversion and transfer costs,
+before enabling device-specific automatic routing or making performance
+claims. Keep unmeasured backends opt-in.

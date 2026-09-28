@@ -326,7 +326,11 @@ share/cryptanalysis/campaign-kat.hex` before starting a walk, then
 `bin/cryptanalysis rho --curve ecc2k130 --run-id R --dp-file dps.bin
 --checkpoint state.ck`. The release also includes a pinned Sage source patch
 kit; [docs/SAGE_RELEASE.md](docs/SAGE_RELEASE.md) explains how to build and use
-the optimized local Sage for elliptic-curve experiments.
+the optimized local Sage for elliptic-curve experiments. Local jobs must use
+the [checked-launcher rule](AGENTS.md#local-sage-runs). The
+[hardware compatibility suite](experiments/sage-binary-hardware/README.md#current-compatibility-gate)
+checks installed scalar, batch, CPU and selected GPU paths and records their
+actual runtime identities.
 
 The macOS arm64 archive exposes the separate Metal table walk through
 `bin/cryptanalysis rho --curve ecc2k130 --backend metal`. Run `--check` for its
