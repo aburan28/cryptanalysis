@@ -454,7 +454,7 @@ static uint64_t run_is_prime(void *p)
     (void)p;
     pb_fp f;
     fp_init(&f);
-    uint64_t start[2] = {(1ULL << 62) + 12345, (1ULL << 40) + 777};
+    const uint64_t start[2] = {(1ULL << 62) + 12345, (1ULL << 40) + 777};
     for (int k = 0; k < 2; k++) {
         uint64_t cnt = 0, acc = 0;
         for (uint64_t v = start[k]; v < start[k] + 30000; v++) {
@@ -1374,9 +1374,8 @@ static const pb_kernel KERNELS[] = {
 /* A valgrind client request (the preamble of <valgrind/valgrind.h>, which
  * a real CPU runs as rotations of rdi by 128 bits in all and a no-op
  * exchange).  Only the two callgrind requests below are used. */
-#define PB_CALLGRIND_START_INSTRUMENTATION \
-    (((uint64_t)'C' << 24) | ((uint64_t)'T' << 16) | 4)
-#define PB_CALLGRIND_STOP_INSTRUMENTATION (PB_CALLGRIND_START_INSTRUMENTATION + 1)
+#define PB_CALLGRIND_START_INSTRUMENTATION (((uint64_t)'C' << 24) | ((uint64_t)'T' << 16) | 4)
+#define PB_CALLGRIND_STOP_INSTRUMENTATION  (PB_CALLGRIND_START_INSTRUMENTATION + 1)
 
 static inline void pb_callgrind(uint64_t request)
 {

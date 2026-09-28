@@ -157,9 +157,15 @@ static void mul_affine(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t
     ca_elem acc, base = *a;
     ca_group_identity(g, &acc);
     while (k) {
-        if (k & 1) { ca_group_op(g, &acc, &acc, &base); (*ops)++; }
+        if (k & 1) {
+            ca_group_op(g, &acc, &acc, &base);
+            (*ops)++;
+        }
         k >>= 1;
-        if (k) { ca_group_dbl(g, &base, &base); (*ops)++; }
+        if (k) {
+            ca_group_dbl(g, &base, &base);
+            (*ops)++;
+        }
     }
     *r = acc;
 }
@@ -186,9 +192,8 @@ static void test_ec_mul_matches_affine(void)
             CHECK_EQ_U64(oa, ob);
         }
     }
-    const uint64_t curves[][3] = {{2305843009213693951ULL, 3, 7},
-                                  {18446744073709551557ULL, 5, 13},
-                                  {4294967291ULL, 0, 7}};
+    const uint64_t curves[][3] = {
+        {2305843009213693951ULL, 3, 7}, {18446744073709551557ULL, 5, 13}, {4294967291ULL, 0, 7}};
     for (size_t c = 0; c < 3; c++) {
         CHECK(ca_group_ec_init(&g, curves[c][0], curves[c][1], curves[c][2], 0) == CA_OK);
         ca_rng rng;
@@ -217,7 +222,7 @@ static void test_ec_mul_matches_affine(void)
         ca_rng rng;
         ca_rng_seed(&rng, 99 + c);
         for (int t = 0; t < 400; t++) {
-            uint64_t w[4] = {1 + ca_rng_below(&rng, zps[c] - 1), 0, 0, 0};
+            const uint64_t w[4] = {1 + ca_rng_below(&rng, zps[c] - 1), 0, 0, 0};
             ca_elem pt, a, b;
             CHECK(ca_group_encode(&g, &pt, w));
             uint64_t ks[] = {0, 1, 2, UINT64_MAX, ca_rng_next(&rng), ca_rng_next(&rng) >> 50};

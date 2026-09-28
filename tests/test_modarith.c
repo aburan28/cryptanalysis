@@ -52,21 +52,31 @@ int main(void)
      * edges of its domain t < p * 2^64: 0, 1, p*2^64 - 1, multiples of
      * 2^64, and random products of two residues. */
     {
-        uint64_t rmods[] = {3, 5, 1000003, 4294967311ULL, 9223372036854775837ULL,
-                            18446744073709551557ULL, 18446744073709551615ULL};
+        uint64_t rmods[] = {3,
+                            5,
+                            1000003,
+                            4294967311ULL,
+                            9223372036854775837ULL,
+                            18446744073709551557ULL,
+                            18446744073709551615ULL};
         for (size_t i = 0; i < sizeof(rmods) / sizeof(rmods[0]); i++) {
             ca_mont m3;
             CHECK(ca_mont_init(&m3, rmods[i]));
             const uint64_t q = rmods[i];
-            ca_u128 edge[] = {0, 1, ((ca_u128)q << 64) - 1, (ca_u128)(q - 1) << 64,
-                              ((ca_u128)(q - 1) << 64) | UINT64_MAX, (ca_u128)(q - 1) * (q - 1)};
+            ca_u128 edge[] = {0,
+                              1,
+                              ((ca_u128)q << 64) - 1,
+                              (ca_u128)(q - 1) << 64,
+                              ((ca_u128)(q - 1) << 64) | UINT64_MAX,
+                              (ca_u128)(q - 1) * (q - 1)};
             for (int k = 0; k < 20000 + 6; k++) {
                 ca_u128 t;
                 if (k < 6) {
                     t = edge[k];
                 } else {
                     uint64_t a = ca_rng_below(&rng, q), b = ca_rng_below(&rng, q);
-                    t = k & 1 ? (ca_u128)a * b : ((ca_u128)ca_rng_below(&rng, q) << 64) | ca_rng_next(&rng);
+                    t = k & 1 ? (ca_u128)a * b
+                              : ((ca_u128)ca_rng_below(&rng, q) << 64) | ca_rng_next(&rng);
                 }
                 uint64_t u = (uint64_t)t * m3.pinv;
                 ca_u128 sum = t + (ca_u128)u * q;
@@ -81,9 +91,16 @@ int main(void)
      * plain square-and-multiply ladder, and ca_is_prime against trial
      * division below 200000. */
     {
-        uint64_t pmods[] = {3, 9, 15, 1000003, 4294967296ULL, 4294967311ULL,
-                            9223372036854775837ULL, 18446744073709551557ULL,
-                            18446744073709551615ULL, 18446744073709551614ULL};
+        uint64_t pmods[] = {3,
+                            9,
+                            15,
+                            1000003,
+                            4294967296ULL,
+                            4294967311ULL,
+                            9223372036854775837ULL,
+                            18446744073709551557ULL,
+                            18446744073709551615ULL,
+                            18446744073709551614ULL};
         for (size_t i = 0; i < sizeof(pmods) / sizeof(pmods[0]); i++) {
             for (int k = 0; k < 3000; k++) {
                 uint64_t b = ca_rng_next(&rng), e = k < 40 ? (uint64_t)k : ca_rng_next(&rng);

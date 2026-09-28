@@ -87,7 +87,8 @@ int main(void)
                 CHECK_EQ_U64(got, x);
                 uint64_t i = (x - lo) / sizes[si];
                 /* plus the lo * base shift: popcount + bit length - 1 */
-                uint64_t shift = lo ? (uint64_t)__builtin_popcountll(lo) + (63 - __builtin_clzll(lo)) : 0;
+                uint64_t shift =
+                    lo ? (uint64_t)__builtin_popcountll(lo) + (63 - __builtin_clzll(lo)) : 0;
                 CHECK_EQ_U64(st.iterations, i + 1);
                 CHECK_EQ_U64(st.group_ops, sizes[si] + shift + i);
                 CHECK_EQ_U64(st.table_entries, sizes[si]);

@@ -432,7 +432,10 @@ mod tests {
             *state
         }
         fn is_prime(p: u64) -> bool {
-            p > 1 && (2..).take_while(|d| d * d <= p).all(|d| !p.is_multiple_of(d))
+            p > 1
+                && (2..)
+                    .take_while(|d| d * d <= p)
+                    .all(|d| !p.is_multiple_of(d))
         }
         // a prime p with p − 1 = 2·(primes below `smooth`)·`extra`
         fn prime_with(state: &mut u64, smooth: u64, extra: u64) -> u64 {

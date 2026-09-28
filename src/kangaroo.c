@@ -100,7 +100,14 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
     ca_htab tab;
     if (!J || !jsz || !roos || !Yn || !B || !scratch || !jidx || !hs ||
         ca_htab_init(&tab, 4096) != CA_OK) {
-        free(J); free(jsz); free(roos); free(Yn); free(B); free(scratch); free(jidx); free(hs);
+        free(J);
+        free(jsz);
+        free(roos);
+        free(Yn);
+        free(B);
+        free(scratch);
+        free(jidx);
+        free(hs);
         return CA_ERR_NOMEM;
     }
     /* (h >> 32) mod nj without a divide (Lemire; exact for 32-bit values) */
@@ -223,6 +230,13 @@ ca_status ca_kangaroo_solve(const ca_group *g, const ca_elem *base, const ca_ele
         st->seconds += ca_now() - t0;
     }
     ca_htab_free(&tab);
-    free(J); free(jsz); free(roos); free(Yn); free(B); free(scratch); free(jidx); free(hs);
+    free(J);
+    free(jsz);
+    free(roos);
+    free(Yn);
+    free(B);
+    free(scratch);
+    free(jidx);
+    free(hs);
     return rc;
 }

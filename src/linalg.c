@@ -228,7 +228,10 @@ static ca_status lanczos(const ca_spmat *A, const uint64_t *b, uint64_t q, uint6
     uint64_t *Bw = calloc(n, sizeof(uint64_t));
     ca_i128 *acc = malloc(n * sizeof(ca_i128));
     ca_status rc = CA_ERR_SINGULAR;
-    if (!D || !Dp || !tmp_m || !bp || !w0 || !w1 || !w2 || !Bw || !acc) { rc = CA_ERR_NOMEM; goto out; }
+    if (!D || !Dp || !tmp_m || !bp || !w0 || !w1 || !w2 || !Bw || !acc) {
+        rc = CA_ERR_NOMEM;
+        goto out;
+    }
     for (uint32_t i = 0; i < m; i++) {
         D[i] = 1 + ca_rng_below(rng, q - 1);
         Dp[i] = shoup ? shoup_pre(D[i], q) : 0;
@@ -263,15 +266,18 @@ static ca_status lanczos(const ca_spmat *A, const uint64_t *b, uint64_t q, uint6
         uint64_t c2 = prev_wBw ? ca_mulmod(wBw, ca_invmod(prev_wBw, q), q) : 0;
         if (shoup) {
             /* coef, c1 and c2 are fixed for the whole vector update */
-            const uint64_t coefp = shoup_pre(coef, q), c1p = shoup_pre(c1, q), c2p = shoup_pre(c2, q);
-            for (uint32_t j = 0; j < n; j++) x[j] = ca_addmod(x[j], shoup_mul(w_cur[j], coef, coefp, q), q);
+            const uint64_t coefp = shoup_pre(coef, q), c1p = shoup_pre(c1, q),
+                           c2p = shoup_pre(c2, q);
+            for (uint32_t j = 0; j < n; j++)
+                x[j] = ca_addmod(x[j], shoup_mul(w_cur[j], coef, coefp, q), q);
             for (uint32_t j = 0; j < n; j++) {
                 uint64_t t = ca_submod(Bw[j], shoup_mul(w_cur[j], c1, c1p, q), q);
                 if (c2) t = ca_submod(t, shoup_mul(w_prev[j], c2, c2p, q), q);
                 w_next[j] = t;
             }
         } else {
-            for (uint32_t j = 0; j < n; j++) x[j] = ca_addmod(x[j], ca_mulmod(coef, w_cur[j], q), q);
+            for (uint32_t j = 0; j < n; j++)
+                x[j] = ca_addmod(x[j], ca_mulmod(coef, w_cur[j], q), q);
             for (uint32_t j = 0; j < n; j++) {
                 uint64_t t = ca_submod(Bw[j], ca_mulmod(c1, w_cur[j], q), q);
                 if (c2) t = ca_submod(t, ca_mulmod(c2, w_prev[j], q), q);
@@ -290,7 +296,15 @@ static ca_status lanczos(const ca_spmat *A, const uint64_t *b, uint64_t q, uint6
     }
     if (iters_out) *iters_out = it;
 out:
-    free(D); free(Dp); free(tmp_m); free(bp); free(w0); free(w1); free(w2); free(Bw); free(acc);
+    free(D);
+    free(Dp);
+    free(tmp_m);
+    free(bp);
+    free(w0);
+    free(w1);
+    free(w2);
+    free(Bw);
+    free(acc);
     return rc;
 }
 

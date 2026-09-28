@@ -55,7 +55,8 @@ int main(void)
         for (size_t qi = 0; qi < 2; qi++) {
             uint64_t q = dqs[qi];
             uint32_t n = 60;
-            uint64_t *M = calloc((size_t)n * n, sizeof(uint64_t)), *rhs = calloc(n, sizeof(uint64_t));
+            uint64_t *M = calloc((size_t)n * n, sizeof(uint64_t)),
+                     *rhs = calloc(n, sizeof(uint64_t));
             uint64_t *xt = calloc(n, sizeof(uint64_t)), *x = calloc(n, sizeof(uint64_t));
             for (uint32_t j = 0; j < n; j++) xt[j] = ca_rng_below(&rng, q);
             for (uint32_t i = 0; i < n; i++) {
@@ -68,7 +69,10 @@ int main(void)
             }
             CHECK(ca_dense_solve_mod_prime(M, n, rhs, q, x) == CA_OK);
             for (uint32_t j = 0; j < n; j++) CHECK_EQ_U64(x[j], xt[j]);
-            free(M); free(rhs); free(xt); free(x);
+            free(M);
+            free(rhs);
+            free(xt);
+            free(x);
         }
     }
     /* sparse: various sizes, big prime modulus */

@@ -121,7 +121,7 @@ impl QuadraticForm {
 ///
 /// The `n` layers (layer `i` XORs each lower half of stride `2^i` into
 /// its upper half) commute, so they are applied in the order that keeps
-/// the table in cache: layers below [`MOEBIUS_BLOCK_BITS`] one
+/// the table in cache: layers below `MOEBIUS_BLOCK_BITS` one
 /// `2^MOEBIUS_BLOCK_BITS`-word block at a time, then the rest two per
 /// pass.  At `n = 22` that is 5 passes over the 32 MiB table instead of
 /// 22.  The loops run over zipped slices, so they carry no bounds checks

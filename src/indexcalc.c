@@ -142,7 +142,10 @@ static int trial_factor(uint64_t v, const uint32_t *fb, const ic_fbdiv *div, uin
             v >>= e;
         } else {
             const uint64_t inv = div[i].inv, lim = div[i].lim;
-            while (v * inv <= lim) { v *= inv; e++; }
+            while (v * inv <= lim) {
+                v *= inv;
+                e++;
+            }
         }
         if (e) {
             if (n >= IC_MAX_REL_COLS) return 0;
@@ -506,7 +509,11 @@ ca_status ca_ic_precompute(uint64_t p, uint64_t g, const ca_ic_params *params, c
     ctx->fb_known = calloc(nfb, 1);
     ctx->fb_div = malloc(nfb * sizeof(ic_fbdiv));
     uint8_t *fb_log2 = malloc(nfb);
-    if (!ctx->fb || !ctx->fb_log || !ctx->fb_known || !ctx->fb_div || !fb_log2) { free(fb_log2); ca_ic_free(ctx); return CA_ERR_NOMEM; }
+    if (!ctx->fb || !ctx->fb_log || !ctx->fb_known || !ctx->fb_div || !fb_log2) {
+        free(fb_log2);
+        ca_ic_free(ctx);
+        return CA_ERR_NOMEM;
+    }
     ca_sieve_primes(B, ctx->fb, nfb);
     ctx->nfb = (uint32_t)nfb;
     for (size_t i = 0; i < nfb; i++) {

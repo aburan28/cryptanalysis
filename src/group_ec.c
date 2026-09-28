@@ -207,7 +207,10 @@ typedef struct ec_jac {
 static void ec_jac_dbl(const ca_group *g, ec_jac *r)
 {
     if (r->inf) return;
-    if (r->y == 0) { r->inf = 1; return; }
+    if (r->y == 0) {
+        r->inf = 1;
+        return;
+    }
     uint64_t xx = fsqr(g, r->x), yy = fsqr(g, r->y), yyyy = fsqr(g, yy), zz = fsqr(g, r->z);
     uint64_t t = fadd(g, r->x, yy);
     uint64_t s = fsub(g, fsub(g, fsqr(g, t), xx), yyyy);
@@ -241,8 +244,10 @@ static void ec_jac_add_affine(const ca_group *g, ec_jac *r, uint64_t x2, uint64_
     uint64_t h = fsub(g, u2, r->x);
     uint64_t rr = fsub(g, s2, r->y);
     if (h == 0) {
-        if (rr == 0) ec_jac_dbl(g, r);
-        else r->inf = 1;
+        if (rr == 0)
+            ec_jac_dbl(g, r);
+        else
+            r->inf = 1;
         return;
     }
     rr = fadd(g, rr, rr);

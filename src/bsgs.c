@@ -42,7 +42,10 @@ ca_status ca_bsgs_table_new(const ca_group *g, const ca_elem *base, uint64_t m, 
     t->g = g;
     t->base = *base;
     t->m = m;
-    if (ca_htab1_init(&t->tab, (size_t)m) != CA_OK) { free(t); return CA_ERR_NOMEM; }
+    if (ca_htab1_init(&t->tab, (size_t)m) != CA_OK) {
+        free(t);
+        return CA_ERR_NOMEM;
+    }
     /* lane c holds (j0 + c) * base for the block starting at j0 */
     ca_elem lane[BSGS_LANES], stride[BSGS_LANES];
     uint64_t scratch[2 * BSGS_LANES];
@@ -55,7 +58,10 @@ ca_status ca_bsgs_table_new(const ca_group *g, const ca_elem *base, uint64_t m, 
         const uint64_t n = m - j0 < BSGS_LANES ? m - j0 : BSGS_LANES;
         for (uint64_t c = 0; c < n; c++) {
             int rc = ca_htab1_insert(&t->tab, ca_group_hash(g, &lane[c]), j0 + c, NULL);
-            if (rc < 0) { ca_bsgs_table_free(t); return CA_ERR_NOMEM; }
+            if (rc < 0) {
+                ca_bsgs_table_free(t);
+                return CA_ERR_NOMEM;
+            }
             if (rc == 1) {
                 /* base has order <= j: the table already spans the whole group */
                 t->m = j0 + c;
@@ -64,7 +70,8 @@ ca_status ca_bsgs_table_new(const ca_group *g, const ca_elem *base, uint64_t m, 
         }
         if (j0 + BSGS_LANES < m) {
             const uint64_t next = m - j0 - BSGS_LANES;
-            ca_group_batch_op(g, lane, lane, stride, next < BSGS_LANES ? next : BSGS_LANES, scratch);
+            ca_group_batch_op(g, lane, lane, stride, next < BSGS_LANES ? next : BSGS_LANES,
+                              scratch);
         }
     }
 baby_done:
@@ -73,7 +80,8 @@ baby_done:
     ca_group_mul(g, &mb, base, t->m, NULL);
     ca_group_inv(g, &t->neg_m_base, &mb);
     ca_group_identity(g, &t->giant[0]);
-    for (int k = 1; k < BSGS_LANES; k++) ca_group_op(g, &t->giant[k], &t->giant[k - 1], &t->neg_m_base);
+    for (int k = 1; k < BSGS_LANES; k++)
+        ca_group_op(g, &t->giant[k], &t->giant[k - 1], &t->neg_m_base);
     ca_group_op(g, &t->giant_block, &t->giant[BSGS_LANES - 1], &t->neg_m_base);
     *out = t;
     return CA_OK;

@@ -32,7 +32,7 @@ typedef struct rho_shared {
     ca_elem base, target;
     uint64_t n;
     uint32_t r;
-    uint64_t r_magic;   /* floor(2^64 / r) + 1, for rho_index */
+    uint64_t r_magic; /* floor(2^64 / r) + 1, for rho_index */
     ca_elem *M;
     uint64_t *alpha, *beta;
     int negmap;
@@ -54,7 +54,7 @@ typedef struct rho_shared {
 
 typedef struct rho_walk {
     ca_elem Y;
-    uint64_t h;         /* ca_group_hash of Y, kept with it */
+    uint64_t h; /* ca_group_hash of Y, kept with it */
     uint64_t a, b;
     uint32_t idx;
     uint8_t retry;

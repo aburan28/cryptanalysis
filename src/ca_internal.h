@@ -123,7 +123,7 @@ typedef struct ca_htab1_entry {
 
 typedef struct ca_htab1 {
     ca_htab1_entry *e;
-    size_t cap;   /* power of two */
+    size_t cap; /* power of two */
     size_t count;
     size_t max_count;
 } ca_htab1;
