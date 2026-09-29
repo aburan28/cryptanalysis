@@ -761,6 +761,95 @@ def verify_n83_g_pair_witness_index(window):
             "local_rows_verified": local_rows_verified}
 
 
+def verify_n83_uniform_alpha_stage():
+    input_path = HERE / "runs" / "n83_uniform_alpha_L32_inputs.json"
+    stage_path = HERE / "runs" / "n83_uniform_alpha_L32_stage.json"
+    projection_path = HERE / "dyadic_n83_uniform_alpha_projection.json"
+    support_path = HERE / "runs" / "n83_dyadic_G_pair_scalar_support_L1000.json"
+    inputs = json.loads(input_path.read_text())
+    stage = json.loads(stage_path.read_text())
+    projection = json.loads(projection_path.read_text())
+    support = json.loads(support_path.read_text())
+    reference = json.loads((HERE / "runs" / "n83_perf_prefix.json").read_text())
+    baseline = json.loads((HERE / "runs" /
+                           "n83_dyadic_five_sum_stage.json").read_text())
+    source = HERE / "dyadic_n83_uniform_alpha_stage.py"
+    assert inputs["source_sha256"] == stage["source_sha256"] == sha(source)
+    assert inputs["reference_sha256"] == stage["reference_sha256"] == sha(
+        HERE / "runs" / "n83_perf_prefix.json")
+    assert stage["frozen_inputs_sha256"] == stage["workload"][
+        "frozen_inputs_sha256"] == sha(input_path)
+    for name, digest in stage["dependency_sha256"].items():
+        assert digest == sha(HERE / name)
+    assert stage["candidate_id"] is None and stage["isogeny"] == "none"
+    assert stage["curve_id"] == inputs["curve_id"] == support["curve_id"] == (
+        reference["curve_id"])
+    assert stage["curve_identity_record"] == reference["curve_identity_record"]
+    assert stage["factor_base"] == baseline["factor_base"]
+    assert inputs["factor_base_sha256"] == stage["factor_base"][
+        "enumerated_set_sha256"]
+    assert tuple(inputs["target"]) == tuple(stage["workload"]["target"]) == (
+        tuple(reference["workload"]["target"]))
+    assert stage["workload_id"] == hashlib.sha256(frozen(stage["workload"])).hexdigest()[:12]
+    assert stage["run_id"] == f"Q1030W{stage['workload_id']}R1"
+    assert inputs["target_count"] == stage["workload"]["target_count"] == 1
+    assert inputs["blocks"] == 3 and inputs["block_size"] == 4096
+    assert len(inputs["rows"]) == stage["ordinary_attempts"] == 12288
+    curve = curves.Curve(field.Onb(83))
+    generator = tuple(reference["curve_identity_record"]["curve"]["generator"])
+    target = tuple(reference["workload"]["target"])
+    order = int(reference["subgroup_order"])
+    labels, _, digests = enumerate_points(
+        curve, curve.f, [generator, target], 32,
+        int(baseline["frobenius_eigenvalue_mod_r"]), order)
+    assert digests["enumerated_set_sha256"] == stage["factor_base"][
+        "enumerated_set_sha256"]
+    q_base = [point for point in sorted(labels) if labels[point][0] == 1]
+    for alpha, i, j, k in inputs["rows"]:
+        assert 0 <= alpha < order
+        assert all(0 <= index < len(q_base) for index in (i, j, k))
+        assert sum(labels[q_base[index]][1] for index in (i, j, k)) % order
+    assert stage["target_dependent_two_G_index_build"]["quotient_keys"] == (
+        baseline["index_build"]["quotient_keys"])
+    symmetric = json.loads((HERE / "runs" /
+                            "n83_dyadic_five_sum_symmetric_stage.json").read_text())
+    assert stage["target_dependent_two_G_index_build"]["key_sha256"] == (
+        symmetric["build"]["key_sha256"])
+    assert stage["target_dependent_two_G_index_build"][
+        "retained_array_sha256"] == symmetric["build"][
+            "retained_array_sha256"]
+    blocks = stage["ordinary_query_blocks"]
+    assert len(blocks) == 3
+    assert sum(row["attempts_including_failed"] for row in blocks) == 12288
+    assert all(row["logical_group_additions"] <= 13 * 4096 for row in blocks)
+    assert sum(row["quotient_hits"] for row in blocks) == stage[
+        "ordinary_quotient_hits"] == 0
+    assert all(row["verified_relations"] == [] for row in blocks)
+    assert stage["L1000_exact_pair_sum_support"] == support[
+        "L1000_exact_distinct_G_pair_sums"]
+    expected_log2 = math.log2(order) - math.log2(
+        stage["L1000_exact_pair_sum_support"])
+    assert math.isclose(stage["L1000_ideal_expected_attempts_log2"],
+                        expected_log2, abs_tol=1e-12)
+    assert stage["L1000_ideal_independent_alpha_hit_probability"] == (
+        f"{support['L1000_exact_distinct_G_pair_sums']}/{order}")
+    assert stage["verified_single_target_dlp"] is False
+    assert stage["complete_work_log2"] is None
+    assert projection["source_sha256"] == sha(
+        HERE / "dyadic_n83_uniform_alpha_projection.py")
+    assert projection["stage_receipt_sha256"] == sha(stage_path)
+    assert projection["support_receipt_sha256"] == sha(support_path)
+    assert projection["exact_ideal_alpha_hit_probability"] == stage[
+        "L1000_ideal_independent_alpha_hit_probability"]
+    assert math.isclose(projection["expected_attempts_log2"], expected_log2,
+                        abs_tol=1e-12)
+    assert projection["complete_IC_work_log2"] is None
+    return {"ordinary_attempts": 12288, "ordinary_hits": 0,
+            "ideal_L1000_expected_attempts_log2": expected_log2,
+            "transferred_mul_calls_log2": projection[
+                "L1000_transferred_expected_field_api_calls_log2"]["mul"]}
+
+
 def verify_n83_rho_stopped_attempt():
     path = HERE / "runs" / "n83_public_target_rho_attempt.json"
     report = json.loads(path.read_text())
@@ -938,6 +1027,7 @@ def main():
     five_sum_symmetric = verify_n83_five_sum_symmetric()
     g_pair_witness_l32 = verify_n83_g_pair_witness_index(32)
     g_pair_witness_l1000 = verify_n83_g_pair_witness_index(1000)
+    uniform_alpha = verify_n83_uniform_alpha_stage()
     rho_attempt = verify_n83_rho_stopped_attempt()
     rho_solved = verify_n83_rho_solved()
     print(json.dumps({"n53_curve_id": geometry[53]["report"]["curve_id"],
@@ -960,6 +1050,7 @@ def main():
                       "n83_five_sum_symmetric": five_sum_symmetric,
                       "n83_G_pair_witness_L32": g_pair_witness_l32,
                       "n83_G_pair_witness_L1000": g_pair_witness_l1000,
+                      "n83_uniform_alpha": uniform_alpha,
                       "n83_rho_attempt": rho_attempt,
                       "n83_rho_solved": rho_solved}))
 

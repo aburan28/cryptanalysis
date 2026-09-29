@@ -447,6 +447,44 @@ build is target-dependent because the base includes the public Q.
   --window 1000 --workdir /private/tmp/ecc2k83-Gpair-witness-L1000
 ```
 
+### Fresh-alpha quotient queries (Q1030)
+
+Q1030 changes the known-log query scalar on **every** five-point trial. First
+select three Q-base points whose known coefficient sum `b` is nonzero. Then
+draw a fresh independent uniform `alpha` in the order-`r` subgroup and test
+whether `alpha*G - b*Q` lies in the complete two-G pair-sum support `S`.
+Conditional on any fixed public Q, selected triple, and past trials, that
+complement is uniform, so the hit probability is **exactly `|S|/r`** under
+this random-input law. On a hit, its pair witness supplies `a` and recovers
+`log_G(Q) = (alpha-a)/b (mod r)`. This removes the unverified fixed-`alpha`
+coverage assumption from Q1026's trial-count projection. It does not reduce
+the number of trials or make their wall time practical in the current code.
+
+The [frozen L32 inputs](runs/n83_uniform_alpha_L32_inputs.json) use
+OS-backed `secrets.randbelow(r)` for each scalar and save all 12,288 scalars
+and Q-triple indices. The [Q1030 receipt](runs/n83_uniform_alpha_L32_stage.json)
+replays those inputs on the same `EC1N83Ckb1h876c2921cb64` public target,
+`B=10,624` base, and complete 80,868-key two-G witness index. All 12,288
+ordinary trials missed. Three 4,096-trial blocks took about 2.51–2.52 s
+each and used 62.26–62.40 field multiplication API calls per trial,
+including batched radix-256 generation of each known-log `alpha*G`.
+The G-only radix table is target-independent setup; the target-seeded base
+and pair index remain target-dependent. No n83 relation or IC DLP is claimed
+from this zero-hit performance run.
+
+The [fresh-alpha projection](dyadic_n83_uniform_alpha_projection.json) uses
+Q1026's **exact** L1000 pair-sum support, `13,752,087,235`, to give
+`2^47.321` expected trials and `2^48.904` trials for at least 95% success
+under independent uniform draws. Transferring the measured L32 API vector
+gives **`2^53.283` expected** and **`2^54.866` at 95%** field multiplication
+API calls. An algorithmic bound counting at most ten fixed-base additions,
+two triple additions, and one complement addition per trial, plus all
+83,083,000 L1000 pair-index additions, gives `2^51.022` expected logical
+group additions. These are different units and conditional projections;
+L1000 lookup cost, complete point-index build, target-dependent base setup,
+field-cost conversion, actual relation yield, and complete IC solve work
+remain unmeasured.
+
 ### Same-target degree-83 rho reference
 
 The [rho bridge](n83_public_target_rho.cpp) supplies the **same frozen public
