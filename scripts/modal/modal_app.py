@@ -21,13 +21,15 @@ VOLUME_NAME = "cryptanalysis-sage-results"
 image = (
     modal.Image.from_registry("ubuntu:24.04", add_python="3.12")
     .apt_install(
-        "autoconf", "automake", "bison", "build-essential", "ca-certificates",
+        "autoconf", "automake", "bc", "binutils", "bison", "build-essential",
+        "bzip2", "ca-certificates",
         "cmake", "cryptominisat", "curl", "flex", "gfortran", "git",
-        "libboost-graph-dev", "libffi-dev", "libgmp-dev", "liblapack-dev",
-        "libm4ri-dev", "libmpc-dev", "libmpfr-dev", "libntl-dev",
-        "libopenblas-dev", "libreadline-dev", "libssl-dev", "libtool", "m4",
-        "ninja-build", "patch", "pkg-config", "python3-dev", "python3-pip", "python3-setuptools",
-        "python3-venv", "redis-server", "texinfo", "zlib1g-dev", "zstd",
+        "libboost-graph-dev", "libbz2-dev", "libffi-dev", "libgmp-dev", "liblapack-dev",
+        "liblzma-dev", "libm4ri-dev", "libmpc-dev", "libmpfr-dev", "libntl-dev",
+        "libopenblas-dev", "libreadline-dev", "libsqlite3-dev", "libssl-dev",
+        "libtool", "m4", "ninja-build", "patch", "perl", "pkg-config",
+        "python3-dev", "python3-pip", "python3-setuptools", "python3-venv",
+        "redis-server", "texinfo", "xz-utils", "zlib1g-dev", "zstd",
     )
     .run_commands("curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.94.1")
     .env({"PATH": "/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"})
