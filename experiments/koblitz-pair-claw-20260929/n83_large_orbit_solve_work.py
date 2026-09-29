@@ -16,6 +16,8 @@ SCREEN = HERE / "n83_large_knownlog_base_screen.json"
 OUTPUT = HERE / "n83_large_orbit_solve_work.json"
 FAILED_R31 = (HERE / "runs" /
     "n83_orbit_k48194_chunk_M31_R31_tstart0_qstart0_b20_h14_rb8.json")
+FIRST_COMPLETED_R30 = (HERE / "runs" /
+    "n83_orbit_k48194_chunk_M31_R30_tstart0_qstart0_b20_h14_rb8.json")
 QUANTILES = ("0.5", "0.8", "0.9", "0.95", "0.99")
 
 
@@ -127,6 +129,24 @@ def main():
         measured["build_seconds"] + measured["exact_replay_seconds"] +
         measured["query_seconds"] * half_reps / (1 << 20) /
         screen["paired_bounded_query_speedup_14_vs_8_workers"])
+    first_completed = json.loads(FIRST_COMPLETED_R30.read_text())
+    assert first_completed["kind"] == (
+        "n83_public_target_orbit_query_k48194_exact_replay_chunk")
+    assert first_completed["curve_id"] == curve_id
+    assert first_completed["proposal_id"] == "Q1051"
+    assert first_completed["candidate_id"] is None
+    assert first_completed["isogeny"] == "none"
+    assert first_completed["factor_base"]["enumerated_set_sha256"] == base[
+        "enumerated_set_sha256"]
+    assert first_completed["table_descriptors"] == table
+    assert first_completed["query_representatives"] == half_reps
+    assert first_completed["table_start"] == 0
+    assert first_completed["query_start"] == 0
+    assert first_completed["native_result"]["exact_hit_queries"] == 0
+    assert first_completed["verified_public_target_quotient_table_dlp"] is False
+    assert int(first_completed["native_field_add_mul_sqr_call_model"]) == half_calls
+    actual_native = first_completed["native_result"]
+    actual_wall = first_completed["wrapper_subprocess_wall_seconds"]
     active_campaign = {
         "query_representatives_per_chunk": half_reps,
         "planned_chunks": 118,
@@ -143,6 +163,21 @@ def main():
         "model_probability_no_hit_after_all_full_chunks": 1 - half_cdf[-1],
         "projected_days_for_planned_chunks_if_bounded_speedup_transfers":
             118 * half_projected_seconds / 86400,
+        "first_completed_R30_zero_exact_hits": True,
+        "first_completed_R30_bloom_positive_queries": actual_native[
+            "bloom_positive_queries"],
+        "first_completed_R30_build_seconds": actual_native["build_seconds"],
+        "first_completed_R30_query_seconds": actual_native["query_seconds"],
+        "first_completed_R30_exact_replay_seconds": actual_native[
+            "exact_replay_seconds"],
+        "first_completed_R30_peak_rss_bytes": actual_native["peak_rss_bytes"],
+        "first_completed_R30_wrapper_wall_seconds": actual_wall,
+        "first_completed_R30_receipt_sha256": hashlib.sha256(
+            FIRST_COMPLETED_R30.read_bytes()).hexdigest(),
+        "projected_days_for_planned_chunks_from_one_full_R30_wall_sample":
+            118 * actual_wall / 86400,
+        "one_full_R30_wall_to_bounded_rate_projection_ratio":
+            actual_wall / half_projected_seconds,
         "prior_failed_R31_actual_field_calls": None,
         "prior_failed_R31_field_call_model_upper_bound": str(calls_per_chunk),
         "planned_plus_prior_failed_field_call_model_upper_bound_log2":
@@ -188,7 +223,8 @@ def main():
             "The success distribution assumes uniform finite-support relation placement; it is not an observed natural-target yield rate.",
             "The native run processes a whole rectangle before reporting a hit, so each first-hit quantile charges whole completed rectangles.",
             "The expected work is conditional on a hit within the 89 disjoint full chunks; the model leaves a positive no-hit probability.",
-            "The wall-time projection transfers a 14-versus-8-worker speedup from a smaller filter and has not been measured on a full query chunk.",
+            "The older bounded-rate wall projection transfers a 14-versus-8-worker speedup from a smaller filter; that worker ratio has not been isolated at full size.",
+            "The active R30 campaign now has one completed full query chunk; transferring its wall time to 118 chunks is a one-sample projection, not measured campaign time.",
             "The operation model is a specified stage boundary, not complete end-to-end IC work or a calibrated field-operation equivalent for rho.",
             "The active R30 campaign has a prior interrupted R31 attempt with unknown actual work; its structural field-call upper bound is a model, not a measured count.",
         ],
