@@ -1,0 +1,51 @@
+name: n83 portable quotient controls
+
+on:
+  pull_request:
+    paths:
+      - "experiments/koblitz-pair-claw-20260929/**"
+      - ".github/workflows/n83-portable-quotient-controls.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  physical-x86-controls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record host and compiler
+        run: |
+          test "$(uname -m)" = x86_64
+          uname -a
+          clang++ --version
+          python3 --version
+
+      - name: Exact PCLMUL and portable fallback controls
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/verify_n83_portable_controls.py \
+            --backend x86_pclmul --spill-dir "$RUNNER_TEMP" \
+            --out "$RUNNER_TEMP/n83_x86_pclmul_controls.json"
+          python3 experiments/koblitz-pair-claw-20260929/verify_n83_portable_controls.py \
+            --backend x86_generic --spill-dir "$RUNNER_TEMP" \
+            --out "$RUNNER_TEMP/n83_x86_generic_controls.json"
+
+      - name: One bounded public-target stage chunk
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/run_n83_portable_chunk.py \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$RUNNER_TEMP" --binary "$RUNNER_TEMP/ecc2k83-query" \
+            --table-log2 20 --query-reps-log2 14 \
+            --table-start 0 --query-start 1073741824 \
+            --workers 2 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --out "$RUNNER_TEMP/n83_x86_public_M20_R14.json"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: n83-physical-x86-controls
+          path: ${{ runner.temp }}/n83_x86_*.json
+          if-no-files-found: warn

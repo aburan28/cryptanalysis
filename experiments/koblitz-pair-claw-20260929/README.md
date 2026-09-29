@@ -1166,9 +1166,50 @@ RSS, spill I/O cost, and wall time have not been measured. The Q1060
 the system volume, 1 GiB free on the spill volume, and stable swap-outs.
 `--spill-dir` selects an absolute existing directory on the runner host;
 the local default is `/Volumes/SSD990/llm/tmp`.
-The system volume was below that launch gate at the latest preflight.
-Q1060 has `candidate_id: null`, `isogeny: "none"`, and no natural relation
+The first full Q1060 M28/R30 rectangle started under that guard at
+2026-09-29 20:29 UTC; its terminal outcome is pending. Q1060 has
+`candidate_id: null`, `isogeny: "none"`, and no measured natural relation
 or complete IC DLP.
+
+### Portable CPU quotient stage (Q1061)
+
+Q1061 keeps Q1060's frozen curve, target, factor base, signed-x key,
+ten-hash Bloom filter, exact replay, and SSD candidate spool. Its
+[separate native source](native_n83_orbit_query_spill_portable.cpp) selects
+ARM PMULL, x86 PCLMUL, or a generic carryless-multiply loop at compile
+time. The [CPU controls](verify_n83_portable_controls.py) matched every
+frozen Q1060 exact outcome on this ARM host and in both x86 backends
+under Rosetta. Each planted run produced the same exact hit and an
+independently replayed scalar. Each small public-target run produced
+247 Bloom positives and zero exact hits. Rosetta is a translation check,
+not physical x86 performance evidence. The
+[x86 CI workflow](../../.github/workflows/n83-portable-quotient-controls.yml)
+runs both backends and one bounded public-target chunk on an x64 Linux
+runner; retain its artifact before citing any physical x86 result.
+
+The [Q1061 screen](n83_portable_cpu_stage_screen.json) and
+[M24/R20 receipt](runs/n83_portable_q1061_k48194_chunk_M24_R20_tstart0_qstart1073741824_b20_h10_rb8.json)
+record one measured n=83 ARM stage chunk: 16,777,216 table descriptors,
+1,048,576 query representatives, 18,675 Bloom positives, zero exact
+hits, and about 366 MB peak RSS. The native field-call model for that
+chunk is about $2^{30.58}$; this is a stage arithmetic count, not a
+complete DLP cost. Q1061's prospective 936-rectangle field-call model
+remains $2^{50.001}$, conditional on the Q1060 schedule. It excludes
+keying, Bloom and spill I/O, memory traffic, all historical interrupted
+attempts, verification, and the possibility of finding no relation.
+Full M28/R30 wall time, natural relation yield, and complete-solve work
+in $2^x$ units remain unknown.
+
+Q1061 is a stage proposal with `candidate_id: null` and `run_id: null`.
+Its receipts retain the canonical field and curve record under
+`EC1N83Ckb1h876c2921cb64`, actual usable factor-base count
+`B=8000204` before folding, the 48,194 signed-Frobenius columns,
+the enumerated-set digest, and `isogeny: "none"`. No volcano level or
+isogeny route is asserted. The native-only
+[chunk runner](run_n83_portable_chunk.py) uses pure Python verification
+and records failed attempts with unknown work. It requires at least
+1 GiB free on the candidate spill volume and never overwrites a
+terminal receipt.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
@@ -1227,4 +1268,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_fast_low_memory_screen.py
 python3 experiments/koblitz-pair-claw-20260929/n83_spill_low_memory_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_low_memory_campaign.py --proposal-id Q1060
 # --run-next launches one Q1060 SSD-spill rectangle under its separate guard.
+# Q1061 controls can run with ordinary Python; they do not import Sage.
+python3 experiments/koblitz-pair-claw-20260929/verify_n83_portable_controls.py --backend arm_pmull --spill-dir /Volumes/SSD990/llm/tmp
+# The CI workflow runs x86_pclmul and x86_generic on a physical x64 Linux runner.
 ```
