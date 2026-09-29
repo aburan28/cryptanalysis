@@ -834,7 +834,7 @@ attempts, and independent scalar replay.
 | n=53 known-log control | Verified one-target DLP in 117.94 s online; $2^{20.739}$ cold pair samples | Measured wall time and logical pair samples; full field-operation count unknown |
 | n=83 Q1051 | One full R=$2^{30}$ rectangle completed in 7,164.3 s with zero exact hits; 95% model prefix $2^{48.016}$ | Measured one-rectangle wall time and zero yield; prefix field calls predicted |
 | n=83 Q1052 | No natural hit yet; median $2^{44.974}$, 95% $2^{47.049}$ | Predicted native field-call stage only; full-size throughput unmeasured |
-| n=83 Q1054 | Planted scalar replay passed; bounded query 1.152× faster; 95% $2^{47.071}$ | Predicted x-only field-call stage; full-size throughput and natural yield unmeasured |
+| n=83 Q1054 | Planted scalar replay passed; bounded query 1.176× faster at 14 workers; 95% $2^{47.071}$ | Predicted x-only field-call stage; full-size throughput and natural yield unmeasured |
 
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
 [campaign driver](n83_two_shard_campaign.py) retain source hashes,
@@ -911,13 +911,23 @@ paired-sign times were 6.95–7.16 s. The median query-phase speedup was
 **1.152×**, with paired ratios **1.139–1.166×**. These two repetitions
 give a range, not a full-size confidence interval.
 
+A second [ABBA paired comparison](runs/n83_signed_x_paired_14worker.json)
+used the planned **14 workers**, M=$2^{20}$, and R=$2^{22}$ on the same
+public target. Both kernels gave 52,139 Bloom positives and zero exact
+hits. Original query times were 14.13–14.39 s and Q1054 times were
+12.02–12.23 s: **1.176× median speedup**, with paired ratios
+**1.156–1.197×**. Its [Sage runtime receipt](runs/n83_signed_x_14worker_runtime_info.json)
+was saved before the run. The filter is still much smaller than the
+full $2^{31}$-descriptor filter, so these timings do not measure
+full-size throughput.
+
 The [conditional Q1054 screen](n83_signed_x_screen.json) retains
 Q1051's finite-support first-hit probabilities. It predicts
 **$2^{47.071}$ native field calls** for 118 completed rectangles and
 95.24% modeled success, versus Q1051's $2^{48.016}$. Applying the
-bounded query speedup to the first completed full-size Q1051 timing
-projects **8.77 days** for 118 Q1054 rectangles, conditional on transfer
-to a $2^{31}$ filter and 14 workers. For the *current same target*,
+bounded 14-worker query speedup to the first completed full-size Q1051
+timing projects **8.63 days** for 118 Q1054 rectangles, conditional on
+transfer to a $2^{31}$ filter. For the *current same target*,
 one Q1051 rectangle has completed and three attempts failed; charging
 their full-rectangle model upper bounds plus 117 future Q1054 rectangles
 gives **$2^{47.172}$** field calls. Actual work in the failures, full-size
