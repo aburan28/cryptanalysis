@@ -622,6 +622,24 @@ Four $2^{31}$ table shards instead project **6.66 GiB** peak per chunk,
 **$2^{48.576}$ field calls**, and **14.34 days** across 88 chunks at
 the bounded rates. These memory and time figures remain projections.
 
+Two more public-target [calibrations](n83_query_orbit_reuse_screen.json)
+used the same curve, target, base digest, solver binary, filter settings,
+and $2^{20}$ query representatives:
+
+| Table descriptors | Filter | Peak RSS | Build | Query | Exact replay | Exact hits |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| $2^{28}$ | 0.67 GB | 0.84 GB | 85.69 s | 6.34 s | 50.70 s | 0 |
+| $2^{29}$ | 1.34 GB | 1.51 GB | 221.09 s | 5.99 s | 100.38 s | 0 |
+| $2^{30}$ | 2.68 GB | 2.85 GB | 353.63 s | 6.14 s | 201.30 s | 0 |
+
+Swap-outs stayed flat through both new runs. Build rate varied from
+319 to 412 to 329 ns per descriptor, so a single measured rate is not
+a reliable large-filter runtime. Linear scaling from the $2^{30}$ run
+projects **13.94 days** for the four-shard 95.11% model; this remains
+a forecast, with full-size query throughput and natural relation yield
+unmeasured. The $2^{30}$ stage used a modeled $2^{34.824}$ field
+add/multiply/square calls; no complete DLP work exponent is known.
+
 The [Q1050 chunk runner](run_n83_orbit_chunk.py) freezes one absolute
 table range and one query-representative range, records a terminal failed
 receipt with unknown work on interruption, and independently replays an
@@ -629,17 +647,21 @@ exact public-target hit against the same-target rho scalar. Its bounded
 zero-hit smoke checks passed at table starts 0 and 4096 and query starts
 0 and 1024. The [aggregator](aggregate_n83_orbit_chunks.py) combined
 two disjoint table shards and rejected a duplicate rectangle. The
-[campaign driver](n83_orbit_campaign.py) advances one of 44 rectangles
-per invocation and refuses to launch while a direct shard's start marker
-exists. The direct shard's original process handle exited 130; its
-terminal failure receipt remains in the record. A start marker is only a
-guard against accidental concurrent large filters, not proof of life.
+[campaign driver](n83_orbit_campaign.py) defaults to the four-shard,
+88-rectangle M=$2^{31}$ plan. The earlier two-shard, 44-rectangle
+M=$2^{32}$ plan is available for read-only inspection with `--plan m32`.
+The driver advances one rectangle per invocation only when no search
+start marker exists and at least 4 GiB is free on the system volume.
+This disk guard does not establish that a full M=$2^{31}$ run fits in
+memory. The direct shard's original process handle exited 130; its
+terminal failure receipt remains in the record. A start marker guards
+against accidental concurrent filters; it is not proof of life.
 
 Naming follows the [candidate catalog measurement contract](../ic-candidate-catalog/MEASUREMENT.md):
 the exact curve is `EC1N83Ckb1h876c2921cb64`; the factor base has
 **B=4,000,102 actual subgroup-usable points before folding** and 24,097
 signed-Frobenius columns, with its enumerated-set digest in each receipt;
-the isogeny is `"none"`. This remains proposal `Q1049` with
+the isogeny is `"none"`. Q1049 and Q1050 remain proposals with
 `candidate_id: null` because a complete IC target solve and all pipeline
 stages have not been measured. No nominal base dimension or folded column
 count is being used as `fb<B>` in an `IC1` name.
@@ -664,11 +686,8 @@ python3 experiments/koblitz-pair-claw-20260929/n83_bloom_resource_screen.py
 python3 experiments/koblitz-pair-claw-20260929/n83_parallel_chunk_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_bloom_shard.py
 python3 experiments/koblitz-pair-claw-20260929/n83_bloom_shard_screen.py
-# One memory-bounded n=83 shard; wait for its terminal receipt before aggregating.
-./sage -python experiments/koblitz-pair-claw-20260929/run_n83_bloom_chunk.py --table-log2 32 --table-start 0 --query-count-log2 38 --query-start 0 --workers 8 --bits-per-key 20 --hashes 14
-# A second table shard uses --table-start 4294967296 with the same query range.
+# Inspect the stopped direct-shard campaign; its M=2^32 run exceeded host headroom.
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_bloom_campaign.py
-# After verifying the prior run handle has ended, --run-next advances one chunk.
 # --aggregate writes completed-chunk accounting and rejects overlap.
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_query_orbit_reuse.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_query_orbit_reuse.py
@@ -676,6 +695,6 @@ python3 experiments/koblitz-pair-claw-20260929/n83_bloom_shard_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_orbit_ABBA.py
 python3 experiments/koblitz-pair-claw-20260929/n83_query_orbit_reuse_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_orbit_campaign.py
-# Once host memory and system-volume space are sufficient:
+# Once host memory and system-volume space are sufficient for M=2^31:
 # ./sage -python experiments/koblitz-pair-claw-20260929/n83_orbit_campaign.py --run-next
 ```
