@@ -291,7 +291,7 @@ measurement rows:
 the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
 requires exactly one of those IDs to be non-null. New comparison rows
 must use the `IC1` ID and carry the old `Q` lineage separately. Current
-n=83 stage records use `Q1051` through `Q1056`, with
+n=83 stage records use `Q1051` through `Q1057`, with
 `candidate_id: null`.
 
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
@@ -837,6 +837,7 @@ attempts, and independent scalar replay.
 | n=83 Q1054 | Planted scalar replay passed; bounded query 1.176× faster at 14 workers; 95% $2^{47.071}$ | Predicted x-only field-call stage; full-size throughput and natural yield unmeasured |
 | n=83 Q1055 | M=$2^{20}$ median query 1.053× faster; one M=$2^{28}$ pair gave 1.140× query and 1.054× full native-stage speedups; planted scalar replay passed | Measured bounded stages; reverse-order M=$2^{28}$ repeat interrupted; predicted 95% Bloom bit probes $2^{47.597}$, distinct from field calls |
 | n=83 Q1056 | Exact fast-key equality on 1,048,576 field inputs; 1.508× isolated key-kernel speedup | Microbenchmark only; bounded full-query speedup and relation yield unmeasured |
+| n=83 Q1057 | Exact cyclic-gap rotation key; 1.202× slower than Q1056 byte-table key | Negative isolated-kernel result; gap-scanning implementation rejected |
 
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
 [campaign driver](n83_two_shard_campaign.py) retain source hashes,
@@ -1037,6 +1038,16 @@ campaign now checks the native pair and Bloom-core source digests for each
 future full-size receipt. Both native full-query variants passed an
 [ARM64 compilation check](runs/n83_fast_keyer_compile_check.json); that
 check does not establish full-query correctness or performance.
+
+The separate Q1057 [cyclic-gap screen](runs/n83_gap_rotation_screen.json)
+tested a minimum-rotation shortcut: a binary cyclic key must begin at a
+longest zero run. Its [standalone control](bench_n83_gap_rotation.cpp)
+matched the original key on 1,048,576 field inputs, all 3,403 two-bit
+patterns, and 1,024 Frobenius images. Four passes per variant measured
+63.665 ms for Q1056's byte-table key and 76.521 ms with gap scanning.
+This implementation is **1.202× slower**, so it is not enabled in the
+native query solver. The result rejects this implementation's speed claim;
+it is not evidence about natural n=83 relation yield.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
