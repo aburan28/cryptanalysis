@@ -7,17 +7,13 @@ from pathlib import Path
 import re
 
 import modal
+from build_image_step import build_sage
 
 
 HERE = Path(__file__).resolve().parent
 ARCHIVE = HERE / ".build/sage-source.tar.gz"
 APP_NAME = "cryptanalysis-sage-jobs"
 VOLUME_NAME = "cryptanalysis-sage-results"
-
-
-def build_sage() -> None:
-    import subprocess
-    subprocess.run(["bash", "/opt/modal/build_sage_linux.sh"], check=True)
 
 
 # The source archive comes from package_sage_source.sh. No macOS binaries or
@@ -37,7 +33,7 @@ image = (
     .env({"PATH": "/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"})
     .add_local_file(ARCHIVE, "/opt/modal/sage-source.tar.gz", copy=True)
     .add_local_file(HERE / "build_sage_linux.sh", "/opt/modal/build_sage_linux.sh", copy=True)
-    .run_function(build_sage, cpu=8, memory=32768, timeout=86400, include_source=False)
+    .run_function(build_sage, cpu=8, memory=32768, timeout=86400)
     .add_local_file(HERE / "remote_sage.sh", "/opt/modal/remote_sage.sh", copy=True)
     .add_local_file(HERE / "accept_linux_runtime.py", "/opt/modal/accept_linux_runtime.py", copy=True)
     .add_local_file(HERE / "run_job.py", "/opt/modal/run_job.py", copy=True)
