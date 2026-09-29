@@ -485,6 +485,47 @@ L1000 lookup cost, complete point-index build, target-dependent base setup,
 field-cost conversion, actual relation yield, and complete IC solve work
 remain unmeasured.
 
+### Random affine three-point target relation scan (Q1031)
+
+Q1031 reuses the same complete G-pair quotient index and looks for a
+**three-point** relation `alpha*G = A+B+Q`, where `A` and `B` are G-base
+points. One natural hit would recover `log_G(Q) = alpha-a (mod r)`, with
+`a` the known coefficient of `A+B`. Its asymmetric base uses a G doubling
+window and only one signed-Frobenius Q orbit: at L32 the exact usable count
+is **`B=5,478`**, with 33 folded columns and one unknown log. The G-pair
+index can be built independently of the target and reused; the Q orbit and
+query remain target-dependent. The `PDP3qpair` and `RCaffine` stage codes are
+recorded in [`AGENTS.md`](../../AGENTS.md). Q1031 is a distinct method from
+the five-point Q1030 policy and retains `candidate_id: null`.
+
+For each block choose independent uniform `alpha0 in Z_r` and nonzero
+`delta in Z_r`, then query `alpha_j=alpha0+j*delta`. Initialize the
+complement `alpha0*G-Q` once and advance it by the **single** point addition
+`delta*G` per trial. Because `r` is prime, any two distinct positions in a
+block map uniformly to ordered distinct scalars. For the fixed translated
+G-pair support of size `M`, the number of hits in `T` trials has mean
+`TM/r` and variance `T(M/r)(1-M/r)(r-T)/(r-1)`. The second-moment bound
+therefore gives a one-block failure probability below `1/2` at
+`T=ceil(2r/M)`, for **any** spacing of the actual pair-sum set. Restarting
+independent blocks needs at most two blocks in expectation and five blocks
+for at least 95% success under this bound.
+
+The [frozen-input L32 pilot](runs/n83_affine_scan_L32_inputs.json) and
+[stage receipt](runs/n83_affine_scan_L32_stage.json) scanned 12,288
+ordinary points in three blocks, with zero hits. Each 4,096-point block,
+including its two starting scalar multiplications, took about **0.26 s**;
+its final point matched independent scalar replay. The G-pair key digest
+matches Q1028 exactly. The [L1000 projection](dyadic_n83_affine_scan_projection.json)
+uses the exact `M=13,752,087,235` support and bounds expected progression
+additions by **`2^49.321`**, or **`2^50.643`** for at least 95% success.
+Transferring the L32 API vector gives conditional expected upper screens of
+`2^50.360` multiplication calls, `2^49.360` inversion calls, and
+`2^55.679` cyclic word rotations, in separate units. The G-only L1000
+index build adds 83,083,000 point additions to cold work. These are
+random-input work bounds and transferred operation screens, **not** an
+observed n83 relation, a completed IC DLP, or a calibrated full-work claim.
+The L1000 point-witness index and its memory-access cost are still in progress.
+
 ### Same-target degree-83 rho reference
 
 The [rho bridge](n83_public_target_rho.cpp) supplies the **same frozen public

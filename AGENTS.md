@@ -83,11 +83,12 @@ Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, `PDP4root`
 for the compact four-summand S3 root index, and `PDP4qpair` for a complete
 four-summand signed-Frobenius quotient pair-sum index; `PDP5q23` for a
 five-summand two-G pair quotient index queried by three target-seed points;
+`PDP3qpair` for a three-summand two-G quotient lookup with one target point;
 `PDP2xl` for a dense Macaulay/XL
 degree scan and `PDP2xlsym` for the same scan over the symmetric-function
 (`e_k` in `V^(k)`) formulation, with the XL or closure mode in the manifest;
-`RCwalk`, `RCsample`, `RCdirect`,
-and `RCguided` for pivot-guided relation collection;
+`RCwalk`, `RCsample`, `RCdirect`; `RCguided` for pivot-guided relation
+collection; `RCaffine` for random-start nonzero-stride known-log query blocks;
 `LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
 `TDdirect`, `TDpdp`, `TDdescent` for target handling; `ISO0` for no isogeny
 transport and `ISO1` for a specified route. A solver's internal Macaulay
