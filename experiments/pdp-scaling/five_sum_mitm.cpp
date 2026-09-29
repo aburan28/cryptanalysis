@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
     try {
         if (argc != 9) throw std::invalid_argument("usage: five_sum_mitm n modulus_decimal base.tsv targets.tsv max_checks max_seconds expected_targets summands");
         const int n = std::stoi(argv[1]);
-        if (n != 13 && n != 83) throw std::invalid_argument("unsupported curve");
+        if (n != 13 && n != 31 && n != 83) throw std::invalid_argument("unsupported curve");
         Curve curve{Field{n, decimal(argv[2])}};
         const auto points = read_points(argv[3], curve);
         const uint64_t pairs = uint64_t(points.size()) * (points.size() + 1) / 2;
