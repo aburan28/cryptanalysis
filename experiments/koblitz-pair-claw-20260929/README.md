@@ -761,6 +761,23 @@ upper bound for the prior failed R=$2^{31}$ attempt gives
 $2^{48.040}$ under the same field-call model. Actual consumed work in
 the failed attempt remains unknown.
 
+The [first full R=$2^{30}$ rectangle](runs/n83_orbit_k48194_chunk_M31_R30_tstart0_qstart0_b20_h14_rb8.json)
+completed on the public target with **16,719,837 Bloom positives, all
+rejected by exact replay**, and zero verified relations. It measured
+803.1 seconds to build the $2^{31}$-descriptor filter, 5,644.4 seconds
+for 14-worker queries, and 715.9 seconds for exact replay; peak RSS was
+6.42 GB. Its query plus replay interval was **6,360.2 seconds** and
+the wrapper wall time was **7,164.3 seconds**. The completed native
+field-call model is **$2^{41.133}$**. The
+[cumulative receipt](runs/n83_large_orbit_campaign_aggregate.json)
+retains the earlier failed R=$2^{31}$ attempt as unknown actual work;
+the sum of completed work and that attempt's full-rectangle model upper
+bound is **$2^{42.707}$ field calls**. Transferring the first full
+rectangle's 7,164.3-second wall time to all 118 rectangles gives
+**9.78 days**, a one-sample projection that supersedes the earlier
+bounded-rate 8.18-day estimate. Neither projection is a measured full
+campaign or complete DLP work.
+
 ### Two-table shared-query proposal (Q1052)
 
 Q1052 keeps the same n=83 curve `EC1N83Ckb1h876c2921cb64`,
@@ -803,7 +820,7 @@ attempts, and independent scalar replay.
 | Case | Result | Work unit and status |
 | --- | --- | --- |
 | n=53 known-log control | Verified one-target DLP in 117.94 s online; $2^{20.739}$ cold pair samples | Measured wall time and logical pair samples; full field-operation count unknown |
-| n=83 Q1051 | No natural hit yet; 95% model prefix $2^{48.016}$ | Predicted native field-call stage only; current full chunk running |
+| n=83 Q1051 | One full R=$2^{30}$ rectangle completed in 7,164.3 s with zero exact hits; 95% model prefix $2^{48.016}$ | Measured one-rectangle wall time and zero yield; prefix field calls predicted |
 | n=83 Q1052 | No natural hit yet; median $2^{44.974}$, 95% $2^{47.049}$ | Predicted native field-call stage only; full-size throughput unmeasured |
 
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
@@ -814,11 +831,11 @@ R=$2^{14}$ [public-target receipt](runs/n83_two_shard_chunk_M20_R14_tstart0_qsta
 passed the wrapper checks with zero exact hits. The
 [aggregator](aggregate_n83_two_shard_chunks.py) rejects overlapping
 completed rectangles and retains unknown failed work with a conservative
-field-call-model upper bound. The Q1052 driver detects the live Q1051
-start marker and will not launch a competing full-size search.
+field-call-model upper bound. The Q1052 driver checks for any active
+Q1051 marker and will not launch a competing full-size search.
 Once Q1051 exits, `n83_two_shard_campaign.py --calibrate-full-table`
 uses the same disk/swap guard to measure two full $2^{31}$-descriptor
-filters against only $2^{20}$ query representatives. It uses a disjoint
+filters against $2^{24}$ query representatives. It uses a disjoint
 query range immediately after the planned 59-chunk prefix. Its receipt
 is included in cumulative work and will decide whether full-size memory
 and query rates support the campaign. A zero-hit calibration is a stage

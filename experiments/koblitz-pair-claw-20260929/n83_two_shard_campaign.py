@@ -19,10 +19,10 @@ AGGREGATOR = HERE / "aggregate_n83_two_shard_chunks.py"
 AGGREGATE = RUNS / "n83_two_shard_campaign_aggregate.json"
 TABLE_LOG2 = 31
 QUERY_LOG2 = 30
-CALIBRATION_QUERY_LOG2 = 20
+CALIBRATION_QUERY_LOG2 = 24
 CALIBRATION_QUERY_START = 59 * (1 << QUERY_LOG2)
 CALIBRATION = RUNS / (
-    f"n83_two_shard_chunk_M31_R20_tstart0_qstart{CALIBRATION_QUERY_START}_"
+    f"n83_two_shard_chunk_M31_R24_tstart0_qstart{CALIBRATION_QUERY_START}_"
     "b20_h14_rb8.json")
 MIN_SYSTEM_FREE_BYTES = 1 << 30
 STOP_SYSTEM_FREE_BYTES = 512 << 20
@@ -138,7 +138,7 @@ def main():
     launch.add_argument("--run-next", action="store_true",
                         help="run exactly one missing rectangle")
     launch.add_argument("--calibrate-full-table", action="store_true",
-                        help="guarded 2^31-per-shard table with 2^20 queries")
+                        help="guarded 2^31-per-shard table with 2^24 queries")
     parser.add_argument("--aggregate", action="store_true",
                         help="write cumulative accounting for completed rectangles")
     args = parser.parse_args()
