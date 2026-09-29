@@ -113,8 +113,14 @@ def main():
         "table_shards": 2,
         "table_descriptors_per_shard": M,
         "total_table_descriptors": 2 * M,
+        "campaign_query_workers": 14,
         "query_representatives_per_chunk": R,
         "query_chunks_for_95pct_model": chunks,
+        "zero_pair_key_cap_before_accidental_collisions": base[
+            "zero_pair_key_cap_before_accidental_collisions"],
+        "unordered_query_pair_domain": base[
+            "unordered_query_pair_domain"],
+        "heuristic_mean_four_point_multisets": mean,
         "model_success_probability_at_prefix": probability(
             chunks, mean, table_fraction, query_fraction_per_chunk),
         "model_success_probability_after_all_full_query_chunks":

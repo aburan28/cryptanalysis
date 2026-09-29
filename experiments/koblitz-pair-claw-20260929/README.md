@@ -776,6 +776,16 @@ the two-filter memory illustration is **12.66 GB**. Full-size
 two-filter memory, throughput, and natural relation yield are unmeasured,
 so Q1052 remains a proposal with `candidate_id: null` and complete solve
 work unknown.
+The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
+[campaign driver](n83_two_shard_campaign.py) retain source hashes,
+exact-hit scalar replay, terminal failure receipts, disjoint query ranges,
+and the same disk/swap guard. A bounded M=$2^{20}$-per-shard,
+R=$2^{14}$ [public-target receipt](runs/n83_two_shard_chunk_M20_R14_tstart0_qstart0_b20_h14_rb8.json)
+passed the wrapper checks with zero exact hits. The
+[aggregator](aggregate_n83_two_shard_chunks.py) rejects overlapping
+completed rectangles and retains unknown failed work with a conservative
+field-call-model upper bound. The Q1052 driver detects the live Q1051
+start marker and will not launch a competing full-size search.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
@@ -818,4 +828,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_large_orbit_solve_work.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_two_shard_planted.py
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_two_shard_paired.py
 python3 experiments/koblitz-pair-claw-20260929/n83_two_shard_screen.py
+./sage -python experiments/koblitz-pair-claw-20260929/run_n83_two_shard_chunk.py --table-log2 20 --query-reps-log2 14 --workers 1
+./sage -python experiments/koblitz-pair-claw-20260929/n83_two_shard_campaign.py
+# --run-next launches one guarded Q1052 rectangle after competing runs finish.
 ```
