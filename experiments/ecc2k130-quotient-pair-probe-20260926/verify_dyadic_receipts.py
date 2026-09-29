@@ -811,6 +811,13 @@ def verify_n83_rho_solved():
     merge_log = HERE / "runs" / "n83_public_target_rho_merge_solved.log"
     assert sha(merge_log) == report["rho_log_sha256"]
     assert report["reference_sha256"] == sha(HERE / "runs" / "n83_perf_prefix.json")
+    assert report["verification_source_sha256"] == sha(
+        HERE / "verify_n83_public_target_rho.py")
+    assert report["stopped_attempt_receipt_sha256"] == sha(
+        HERE / "runs" / "n83_public_target_rho_attempt.json")
+    assert report["workload"] == earlier["workload"]
+    assert report["workload_id"] == earlier["workload_id"]
+    assert report["worker_count"] == 3
     assert report["rho_source_sha256"] == earlier["rho_source_sha256"]
     assert report["portable_driver_source_sha256"] == sha(
         HERE / "n83_public_target_rho.cpp")
@@ -844,6 +851,9 @@ def verify_n83_rho_solved():
         assert int(row["walk_iterations"]) == row[
             "iterations_per_walk"] * row["walks"]
         assert row["dp_records_total"] >= row["distinguished_points"]
+        assert row["backend"] == {"threads": 4, "slots": 32,
+                                  "lanes": 64, "walks": 8192,
+                                  "dp_weight": 22, "steps_per_launch": 512}
     assert workers[0]["dp_records_total"] >= earlier["workers"][0][
         "dp_records"] + workers[0]["distinguished_points"]
     assert all(row["dp_records_total"] == row["distinguished_points"]
@@ -854,6 +864,8 @@ def verify_n83_rho_solved():
     assert total < 1 << 61
     assert sum(row["dp_records_total"] for row in workers) == report[
         "rho_distinguished_points"]
+    assert 32 * report["rho_distinguished_points"] == report[
+        "distinguished_point_corpus_bytes"]
     assert report["complete_IC_work_log2"] is None
     return {"scalar": str(scalar), "walk_iterations": str(total),
             "walk_iterations_log2": math.log2(total),

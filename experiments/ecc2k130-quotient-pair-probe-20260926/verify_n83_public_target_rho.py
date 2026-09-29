@@ -43,14 +43,20 @@ SOLVED_RE = (r"^\s*solved after (\d+) iterations of (\d+) walks in "
              r"([0-9.]+) s \((\d+) distinguished points\)\s*$")
 STOPPED_RE = (r"^stopping: (\d+) iterations of (\d+) walks, "
               r"(\d+) points reported\s*$")
+BACKEND_RE = (r"^backend cpu: (\d+) threads x (\d+) slots x (\d+) lanes = "
+              r"(\d+) walks, dp weight (\d+), (\d+) steps per launch\s*$")
 
 
 def worker_result(log_path, binary, driver_source, run_id):
     log = log_path.read_text()
     solved = re.findall(SOLVED_RE, log, re.MULTILINE)
     stopped = re.findall(STOPPED_RE, log, re.MULTILINE)
+    backend = re.findall(BACKEND_RE, log, re.MULTILINE)
     if len(solved) + len(stopped) != 1:
         raise SystemExit(f"worker log is not terminal: {log_path}")
+    if len(backend) != 1:
+        raise SystemExit(f"worker backend is not unique: {log_path}")
+    threads, slots, lanes, backend_walks, dp_weight, steps = map(int, backend[0])
     if solved:
         iterations, walks, seconds, points = solved[0]
         status = "solved"
@@ -63,6 +69,9 @@ def worker_result(log_path, binary, driver_source, run_id):
         "status": status,
         "iterations_per_walk": int(iterations),
         "walks": int(walks),
+        "backend": {"threads": threads, "slots": slots, "lanes": lanes,
+                    "walks": backend_walks, "dp_weight": dp_weight,
+                    "steps_per_launch": steps},
         "walk_iterations": str(int(iterations) * int(walks)),
         "distinguished_points": int(points),
         "online_seconds_from_runner_if_solved": (
@@ -89,6 +98,8 @@ def main():
     args = parser.parse_args()
     reference_path = HERE / "runs" / "n83_perf_prefix.json"
     reference = json.loads(reference_path.read_text())
+    stopped_path = HERE / "runs" / "n83_public_target_rho_attempt.json"
+    stopped = json.loads(stopped_path.read_text())
     assert reference["curve_id"] == CURVE_ID
     identity = reference["curve_identity_record"]
     canonical_identity = json.dumps(identity, sort_keys=True,
@@ -98,6 +109,8 @@ def main():
     g = tuple(reference["curve_identity_record"]["curve"]["generator"])
     q = tuple(reference["workload"]["target"])
     order = int(reference["subgroup_order"])
+    assert stopped["curve_id"] == CURVE_ID
+    assert tuple(stopped["public_target"]) == q
     onb = field.Onb(83)
     verify_driver_public_points(args.driver_source, onb, g, q)
     for worker_source in args.worker_driver_source:
@@ -132,6 +145,27 @@ def main():
                 raise SystemExit(f"incomplete or inconsistent DP corpus: {dp}")
             worker["dp_records_total"] = size // 32
             worker["dp_corpus_sha256"] = digest(dp)
+    assert all(worker["walks"] == worker["backend"]["walks"] for worker in workers)
+    run_ids = [worker["run_id"] for worker in workers]
+    first_backend = workers[0]["backend"]
+    same_backend = all(worker["backend"] == first_backend for worker in workers)
+    if same_backend:
+        workload = {"curve_id": CURVE_ID, "target": list(q),
+                    "target_count": 1, "walk": "signed-Frobenius rho CPU engine",
+                    "worker_run_ids": run_ids,
+                    "dp_weight": first_backend["dp_weight"],
+                    "threads_per_worker": first_backend["threads"],
+                    "steps_per_launch": first_backend["steps_per_launch"]}
+    else:
+        workload = {"curve_id": CURVE_ID, "target": list(q),
+                    "target_count": 1, "walk": "signed-Frobenius rho CPU engine",
+                    "worker_run_ids": run_ids,
+                    "worker_backends": [worker["backend"] for worker in workers]}
+    workload_id = hashlib.sha256(json.dumps(
+        workload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:12]
+    same_stopped_workload = workload == stopped["workload"]
+    if same_stopped_workload:
+        assert workload_id == stopped["workload_id"]
     if direct_finishes and digest(args.log) not in {
             worker["log_sha256"] for worker in workers}:
         raise SystemExit("direct solving worker is absent from worker logs")
@@ -148,6 +182,15 @@ def main():
         "curve_id": CURVE_ID,
         "curve_identity_record": reference["curve_identity_record"],
         "isogeny": "none",
+        "workload_id": workload_id,
+        "workload": workload,
+        "worker_count": len(workers),
+        "collision_policy": "distinguished points by recorded Hamming-weight threshold; signed-Frobenius canonical-x orbit key; merge same-target worker corpora; independently rewalk colliding seeds and solve their coefficient equation",
+        "distinguished_point_corpus_bytes": (sum(
+            worker["dp_records_total"] * 32 for worker in workers)
+            if args.worker_dp else None),
+        "distinguished_point_memory_peak_bytes": None,
+        "rho_online_wall_ms": None,
         "subgroup_order": str(order),
         "public_generator": list(g),
         "public_target": list(q),
@@ -166,6 +209,9 @@ def main():
         "work_boundary": "sum of all worker walk iterations including unsuccessful workers; excludes corpus hashing and collision replay; no IC relation yield or IC solve-work claim",
         "complete_IC_work_log2": None,
         "reference_sha256": digest(reference_path),
+        "stopped_attempt_receipt_sha256": (
+            digest(stopped_path) if same_stopped_workload else None),
+        "verification_source_sha256": digest(Path(__file__)),
         "rho_log_sha256": digest(args.log),
         "rho_binary_sha256": digest(args.binary),
         "rho_source_sha256": digest(args.rho_source),
