@@ -160,26 +160,26 @@ medians, and speedups are paired geometric means against the faster CPU sample.
 
 | Control | CPU evaluation (ms) | CPU quadratic (ms) | Metal quadratic (ms) | Best CPU / Metal, paired 95% interval |
 | --- | ---: | ---: | ---: | --- |
-| n31-m3-ell6-seed101 | 2.1191 | 4.8826 | 1.7480 | 1.217 [1.205, 1.228] |
-| n31-m3-ell6-seed102 | 2.1252 | 4.7678 | 1.7261 | 1.225 [1.206, 1.242] |
-| n31-m3-ell6-seed103 | 2.1662 | 4.8676 | 1.7815 | 1.187 [1.141, 1.226] |
-| n31-m3-ell6-seed104 | 2.0840 | 4.7101 | 1.7242 | 1.212 [1.197, 1.225] |
-| n31-m3-ell6-seed105 | 2.1220 | 4.8764 | 1.7391 | 1.220 [1.210, 1.230] |
-| n31-m3-ell6-seed106 | 2.1262 | 4.8667 | 1.7782 | 1.183 [1.139, 1.214] |
-| n31-m3-ell5-seed101 | 0.5244 | 0.6756 | 0.5282 | 0.985 [0.961, 1.010] |
-| n11-m3-ell3-seed101 | 0.1720 | 0.0929 | 0.2125 | 0.435 [0.417, 0.451] |
-| n83-m3-ell2-seed101 | 15.0686 | 15.0648 | 15.0430 | 0.988 [0.979, 0.995] |
+| n31-m3-ell6-seed101 | 2.1105 | 4.5538 | 1.7132 | 1.213 [1.178, 1.239] |
+| n31-m3-ell6-seed102 | 2.1117 | 4.2720 | 1.7270 | 1.225 [1.210, 1.239] |
+| n31-m3-ell6-seed103 | 2.1689 | 4.6444 | 1.7591 | 1.233 [1.219, 1.248] |
+| n31-m3-ell6-seed104 | 2.0913 | 4.4039 | 1.6918 | 1.232 [1.217, 1.246] |
+| n31-m3-ell6-seed105 | 2.1278 | 4.3794 | 1.7184 | 1.237 [1.224, 1.249] |
+| n31-m3-ell6-seed106 | 2.1365 | 4.4182 | 1.7460 | 1.199 [1.154, 1.229] |
+| n31-m3-ell5-seed101 | 0.5482 | 0.6702 | 0.5440 | 1.006 [0.983, 1.030] |
+| n11-m3-ell3-seed101 | 0.1813 | 0.0941 | 0.2228 | 0.417 [0.395, 0.438] |
+| n83-m3-ell2-seed101 | 15.0962 | 14.9807 | 15.0219 | 0.997 [0.991, 1.003] |
 
-The first run's six 18-variable paired speedups were 1.187–1.217×; the
-confirmation's were 1.183–1.225×. These are improvements over the existing CPU
+The first run's six 18-variable paired speedups were 1.205–1.243×; the
+confirmation's were 1.199–1.237×. These are improvements over the existing CPU
 evaluation solver, not merely over the slower CPU quadratic implementation.
 The 15-variable control has no established win. The 9-variable control strongly
 favors the CPU quadratic solver. The 83-equation control is a recorded CPU
 shape fallback and makes no GPU claim. No automatic dispatch rule is enabled.
 
 In the first final run's seed-101 18-variable query, median specialization was
-0.223 ms, Metal copy/dispatch/wait was 0.255 ms (device execution about 0.050 ms),
-and independent certification was 0.734 ms. These diagnostic medians need not
+0.217 ms, Metal copy/dispatch/wait was 0.225 ms (device execution about 0.050 ms),
+and independent certification was 0.724 ms. These diagnostic medians need not
 sum to the median complete-query time. Certification is the next major cost.
 
 The [first report](results/paired-final.json.gz) and
