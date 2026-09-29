@@ -554,6 +554,14 @@ completed 20-bit shard receipts into a separate cumulative account.
 The interrupted 24-bit prototype remains in the research record but is
 outside this 20-bit candidate configuration.
 
+A [paired bounded lookup check](runs/n83_bloom_early_exit_paired_negative.json)
+tested stopping a Bloom membership query at its first missing bit. It
+produced identical exact outcomes over $2^{26}$ table descriptors and
+$2^{27}$ query pairs in both ABBA repetitions, but its query phase took
+**1.055×** the baseline time. The full-size shard was running at the
+same time, so this is a bounded negative result rather than a full-size
+throughput comparison; the early-exit variant was not promoted.
+
 Naming follows the [candidate catalog measurement contract](../ic-candidate-catalog/MEASUREMENT.md):
 the exact curve is `EC1N83Ckb1h876c2921cb64`; the factor base has
 **B=4,000,102 actual subgroup-usable points before folding** and 24,097
