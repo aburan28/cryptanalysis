@@ -1200,6 +1200,15 @@ attempts, verification, and the possibility of finding no relation.
 Full M28/R30 wall time, natural relation yield, and complete-solve work
 in $2^x$ units remain unknown.
 
+The first physical x86 CI run passed exact controls but exposed a Linux
+RSS unit error: `ru_maxrss` was labeled as bytes without conversion
+from KiB. The separate portable source now converts that field, and
+round-two controls and stage receipts retain their own source hashes.
+The round-two M24/R20 run overlapped the full Q1060 run, so its wall
+time is retained as a stage record but is not used for an isolated
+performance comparison. The CI workflow also checks that peak RSS is
+at least the allocated Bloom-filter size.
+
 Q1061 is a stage proposal with `candidate_id: null` and `run_id: null`.
 Its receipts retain the canonical field and curve record under
 `EC1N83Ckb1h876c2921cb64`, actual usable factor-base count

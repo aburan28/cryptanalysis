@@ -22,7 +22,7 @@ CORE = HERE / "native_n83_bloom_core_portable.hpp"
 REFERENCE = RUNS / "n83_spill_controls.json"
 PLANTED = RUNS / "n83_fast_low_memory_planted.json"
 PUBLIC = RUNS / "n83_fast_lowmem_k48194_chunk_M20_R14_tstart0_qstart1073741824_b20_h10_rb8.json"
-OUTPUT = RUNS / "n83_portable_controls.json"
+OUTPUT = RUNS / "n83_portable_controls_r2.json"
 
 
 def sha(path):

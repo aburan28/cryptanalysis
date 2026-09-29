@@ -42,6 +42,7 @@ jobs:
             --table-start 0 --query-start 1073741824 \
             --workers 2 --rep-batch 8 --bits-per-key 20 --hashes 10 \
             --out "$RUNNER_TEMP/n83_x86_public_M20_R14.json"
+          python3 -c 'import json, os; p=os.path.join(os.environ["RUNNER_TEMP"], "n83_x86_public_M20_R14.json"); n=json.load(open(p))["native_result"]; assert n["peak_rss_bytes"] >= n["bloom_bytes"]; assert n["bloom_positive_queries"] == 247 and n["exact_hit_queries"] == 0'
 
       - uses: actions/upload-artifact@v4
         if: always()

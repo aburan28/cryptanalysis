@@ -40,20 +40,22 @@
   "signed_frobenius_columns": 48194,
   "algorithm": "Q1060 frozen signed-x ten-hash and unlinked candidate spill with separate ARM PMULL, x86 PCLMUL, and generic CPU arithmetic backends",
   "source_sha256s": {
-    "native": "edca00e7434bb27d29a27f471362888382d6973aa8c45c5f0c362513e7632366",
+    "native": "ac845ee752e7c4d3d3d62581cbe66af50d3413383eb5bf5858a30947b04dd63a",
     "pairs": "532c00b89e91d25c20d76abe3527ca4d79e30b686e77238cb222589045994080",
     "bloom_core": "8aeab4dade9964d59183706ea73225c43c17a20021c52cf8b147692f1709269f",
     "runner": "cd9c38eda2d75e2a822c9195a5f9f8e8349900ab56c403fe46434b714e24238c",
-    "controls": "2fd1db7ceb89e6bb69644f8658cd19c00b2b2cf972ab578ea296ded4ddb054d6"
+    "controls": "4b56fc168a4002c00f1b61c66a80f36ca8776d0f2b310c95b4b2b3f32d945e9f"
   },
   "control_receipt_sha256s": {
-    "arm_pmull": "ada316b56a8cb2f168addc2c0af07085a37713f0c714063111c9daa928f190a8",
-    "x86_pclmul_rosetta": "5e9f5b26ccecddd60f6d5aea7c9f90f711450ca6e6d5826abce4e61e8dab5d57",
-    "x86_generic_rosetta": "e1254a84cf7a60d68933ab633e893ee055600336c378894fe9f453d0af7fc4af"
+    "arm_pmull": "4e38fd90910e29eefad089030f77172a0413632826939d18911b1e95432ac980",
+    "x86_pclmul_rosetta": "3faa3e42c970d1d5637bf37c70e8787945bb61c027e56deba55e63affbac0e69",
+    "x86_generic_rosetta": "2ad8debe45ab023013fc475a0c970078e0fb98037dc41a89422b4bd67577fcc8"
   },
   "measured_chunk_receipt_sha256s": {
-    "M20_R14_arm_pmull": "27b3f430c5de5e77a1cd7cd1d0b65ed5bb302144ab0dc69c88330e472094a02c",
-    "M24_R20_arm_pmull": "fecf1400f689146b1823eeb9b1da293f1b0f97fe29c2e4020119751ed269d961"
+    "M20_R14_arm_pmull_r1": "27b3f430c5de5e77a1cd7cd1d0b65ed5bb302144ab0dc69c88330e472094a02c",
+    "M24_R20_arm_pmull_r1": "fecf1400f689146b1823eeb9b1da293f1b0f97fe29c2e4020119751ed269d961",
+    "M20_R14_arm_pmull_r2_concurrent": "e497e8ba9dc6896a69db083afd8da9040a439a3a932b8757aecc3ff5735f6a64",
+    "M24_R20_arm_pmull_r2_concurrent": "6f0fe62af08305d2129184bb46e369b7c6d75b8f41b3269a80d61cc47a7931c5"
   },
   "measured_M24_R20": {
     "table_descriptors": 16777216,
@@ -65,19 +67,33 @@
     "bloom_positive_queries": 18675,
     "exact_hit_queries": 0,
     "candidate_spill_bytes": 448200,
-    "field_call_model_log2": 30.58243604314262
+    "field_call_model_log2": 30.58243604314262,
+    "measurement_label": "r1 isolated stage diagnostic before Q1060 launch; native source at commit b1e68476"
   },
   "future_rectangles_after_completed_Q1051": 936,
   "modeled_future_native_field_calls_log2": 50.000991837644634,
   "modeled_plan_end_success_probability_conditional_on_first_no_hit": 0.9511252921930905,
   "complete_solve_work_log2": null,
   "ordinary_n83_relation_measured": false,
-  "physical_x86_validation_status": "pending CI",
+  "physical_x86_validation_status": "r1 exact controls passed on GitHub Actions run 36626830678; r2 corrected RSS rerun pending",
   "Q1060_screen_sha256": "739550821f77397933556481b93cd878fd6a3d182c3e0369fad0159b67b86211",
   "limits": [
     "Q1061 controls on this ARM host and translated x86 are correctness checks, not physical x86 performance measurements.",
     "The M24/R20 zero-hit row measures one bounded stage rectangle; it does not estimate natural relation yield.",
     "The future field-call exponent is a structural model inherited from Q1060 and excludes keying, Bloom, I/O, memory, setup, verification, all historical interrupted attempts, and any failure to find a relation.",
-    "No complete Q1061 M28/R30 rectangle, natural relation, or verified IC discrete logarithm has been measured."
-  ]
+    "No complete Q1061 M28/R30 rectangle, natural relation, or verified IC discrete logarithm has been measured.",
+    "The r2 M24/R20 run overlapped the full Q1060 rectangle; its wall time is not a paired or isolated performance estimate."
+  ],
+  "measured_M24_R20_r2_concurrent": {
+    "table_descriptors": 16777216,
+    "query_representatives": 1048576,
+    "filter_build_seconds": 10.0151815,
+    "query_seconds": 9.054845666,
+    "exact_replay_seconds": 6.209125375,
+    "peak_rss_bytes": 366313472,
+    "bloom_positive_queries": 18675,
+    "exact_hit_queries": 0,
+    "measurement_label": "current source with corrected Linux RSS unit; ran concurrently with full Q1060 M28/R30, unsuitable for isolated speed comparison"
+  },
+  "physical_x86_r1_workflow_url": "https://github.com/aburan28/cryptanalysis/actions/runs/36626830678"
 }

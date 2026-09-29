@@ -320,6 +320,11 @@ int main(int argc, char **argv) {
             std::chrono::steady_clock::now() - started).count();
         struct rusage usage{};
         getrusage(RUSAGE_SELF, &usage);
+#if defined(__linux__)
+        U peak_rss_bytes = U(usage.ru_maxrss) * 1024;
+#else
+        U peak_rss_bytes = U(usage.ru_maxrss);
+#endif
         std::cout << "{\"actual_B\":" << base.size()
                   << ",\"table_descriptors\":" << table_entries
                   << ",\"table_start\":" << table_start
@@ -351,7 +356,7 @@ int main(int argc, char **argv) {
                   << ",\"build_seconds\":" << build_seconds
                   << ",\"query_seconds\":" << query_seconds
                   << ",\"exact_replay_seconds\":" << replay_seconds
-                  << ",\"peak_rss_bytes\":" << usage.ru_maxrss
+                  << ",\"peak_rss_bytes\":" << peak_rss_bytes
                   << ",\"hits\":[";
         for (size_t i = 0; i < hit_samples.size(); ++i) {
             if (i) std::cout << ',';
