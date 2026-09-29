@@ -980,6 +980,12 @@ hashes versus the 16.7 million measured in Q1051; this is a prediction,
 not a full-size memory measurement. Ten hashes is a provisional setting
 for a guarded full-filter calibration. Q1054's 14-hash campaign remains
 unchanged until that calibration and an ordinary n=83 relation are measured.
+The [Q1055 public-target chunk smoke](runs/n83_signed_x_q1055_k48194_chunk_M20_R14_tstart0_qstart0_b20_h10_rb8.json)
+completed M=$2^{20}$, R=$2^{14}$ with zero exact hits; its
+[runtime receipt](runs/n83_signed_x_q1055_smoke_runtime_info.json) was
+saved before launch. The shared chunk runner now requires Q1054 to use
+14 hashes and Q1055 to use 10, so future receipts cannot silently assign
+the 10-hash setting to Q1054.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py

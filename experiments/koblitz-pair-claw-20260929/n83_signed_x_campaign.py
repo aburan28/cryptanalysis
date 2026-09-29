@@ -204,6 +204,7 @@ def main():
         raise RuntimeError("another n=83 search started before launch")
     command = [
         str(SAGE), "-python", str(RUNNER),
+        "--proposal-id", "Q1054",
         "--table-log2", "31", "--table-start", "0",
         "--query-reps-log2", "30",
         "--query-start", str(chunk["query_start"]),

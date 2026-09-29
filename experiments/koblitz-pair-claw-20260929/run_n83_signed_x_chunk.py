@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one n=83 query-orbit rectangle on the extended known-log base."""
+"""Run one named n=83 signed-x query-orbit rectangle."""
 
 import argparse
 import hashlib
@@ -55,6 +55,8 @@ def main():
     parser.add_argument("--rep-batch", type=int, default=8)
     parser.add_argument("--bits-per-key", type=int, default=20)
     parser.add_argument("--hashes", type=int, default=14)
+    parser.add_argument("--proposal-id", choices=("Q1054", "Q1055"),
+                        default="Q1054")
     parser.add_argument("--runtime-info", type=Path, default=RUNTIME_INFO)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
@@ -65,8 +67,13 @@ def main():
     assert 1 <= args.rep_batch <= 48
     assert 8 <= args.bits_per_key <= 64
     assert 1 <= args.hashes <= 32
+    assert args.bits_per_key == 20
+    assert args.hashes == (14 if args.proposal_id == "Q1054" else 10), (
+        "Bloom hash count must match the named stage proposal")
+    prefix = ("n83_signed_x_" if args.proposal_id == "Q1054" else
+              "n83_signed_x_q1055_")
     out = args.out or HERE / "runs" / (
-        f"n83_signed_x_k48194_chunk_M{args.table_log2}_R{args.query_reps_log2}_"
+        f"{prefix}k48194_chunk_M{args.table_log2}_R{args.query_reps_log2}_"
         f"tstart{args.table_start}_qstart{args.query_start}_"
         f"b{args.bits_per_key}_h{args.hashes}_rb{args.rep_batch}.json")
     started_path = out.with_suffix(".started.json")
@@ -121,7 +128,7 @@ def main():
     ]
     started = {
         "kind": "n83_public_target_signed_x_query_k48194_chunk_started",
-        "proposal_id": "Q1054", "candidate_id": None,
+        "proposal_id": args.proposal_id, "candidate_id": None,
         "curve_id": curve_id,
         "curve_identity_record": identity,
         "isogeny": "none",
@@ -238,7 +245,7 @@ def main():
     report = {
         "kind": "n83_public_target_signed_x_query_k48194_exact_replay_chunk",
         "scope": "one frozen target and one table/query rectangle; exact hits independently verified; full campaign work requires all chunks",
-        "proposal_id": "Q1054", "candidate_id": None,
+        "proposal_id": args.proposal_id, "candidate_id": None,
         "run_id": None,
         "curve_id": curve_id,
         "curve_identity_record": identity,
