@@ -15,6 +15,7 @@ ABBA = HERE / "runs" / "n83_orbit_reuse_vs_direct_ABBA_bounded.json"
 MEASURED_M28 = HERE / "runs" / "n83_orbit_chunk_M28_R20_tstart0_qstart0_b20_h14_rb8.json"
 MEASURED_M29 = HERE / "runs" / "n83_orbit_chunk_M29_R20_tstart0_qstart0_b20_h14_rb8.json"
 MEASURED_M30 = HERE / "runs" / "n83_orbit_chunk_M30_R20_tstart0_qstart0_b20_h14_rb8.json"
+MEASURED_M31 = HERE / "runs" / "n83_orbit_chunk_M31_R20_tstart0_qstart0_b20_h14_rb8.json"
 OUTPUT = HERE / "n83_query_orbit_reuse_screen.json"
 M = 1 << 32
 REPRESENTATIVES_PER_CHUNK = 1 << 31
@@ -50,8 +51,8 @@ def main():
     native = json.loads(NATIVE.read_text())
     abba = json.loads(ABBA.read_text())
     measured_stages = [json.loads(path.read_text()) for path in (
-        MEASURED_M28, MEASURED_M29, MEASURED_M30)]
-    measured_m28, _, measured_m30 = measured_stages
+        MEASURED_M28, MEASURED_M29, MEASURED_M30, MEASURED_M31)]
+    measured_m28, _, measured_m30, measured_m31 = measured_stages
     assert n23["all_checks_passed"] and n83["all_checks_passed"]
     assert n83["curve_id"] == finite["curve_id"]
     assert n83["factor_base_enumerated_set_sha256"] == finite[
@@ -68,7 +69,7 @@ def main():
     assert all(row["exact_hit_queries"] == 0 for row in native[
         "public_target_runs"])
     assert abba["direct_to_orbit_query_speedup"] > 1
-    for exponent, stage in zip((28, 29, 30), measured_stages):
+    for exponent, stage in zip((28, 29, 30, 31), measured_stages):
         assert stage["curve_id"] == finite["curve_id"]
         assert stage["factor_base"]["enumerated_set_sha256"] == finite[
             "factor_base_enumerated_set_sha256"]
@@ -131,15 +132,14 @@ def main():
         measured["build_seconds"] * safe_m / measured_m +
         measured["query_seconds"] * full_q / measured_q +
         measured["exact_replay_seconds"] * safe_m / measured_m)
-    latest = measured_m30["native_result"]
-    latest_m = measured_m30["table_descriptors"]
-    latest_q = measured_m30["lifted_query_pairs"]
-
-    def projected_days_from_latest(table_m, shard_count):
+    def projected_days_from_stage(stage, table_m, shard_count):
+        measured_stage = stage["native_result"]
         per_chunk = (
-            (latest["build_seconds"] + latest["exact_replay_seconds"])
-            * table_m / latest_m +
-            latest["query_seconds"] * full_q / latest_q)
+            (measured_stage["build_seconds"] +
+             measured_stage["exact_replay_seconds"])
+            * table_m / stage["table_descriptors"] +
+            measured_stage["query_seconds"] * full_q /
+            stage["lifted_query_pairs"])
         return shard_count * chunks_per_shard * per_chunk / 86400
 
     measured_stage_rows = []
@@ -226,7 +226,7 @@ def main():
                 "false_positive_queries"],
             "exact_hit_queries": measured["exact_hit_queries"],
         },
-        "measured_filter_stages_2pow28_to_2pow30":
+        "measured_filter_stages_2pow28_to_2pow31":
             measured_stage_rows,
         "two_2pow32_shards_95pct_projected_days_from_2pow28_rates":
             full_projected_days,
@@ -240,9 +240,13 @@ def main():
             safe_shards * chunks_per_shard *
             safe_seconds_per_chunk / 86400,
         "two_2pow32_shards_95pct_projected_days_from_2pow30_rates":
-            projected_days_from_latest(M, 2),
+            projected_days_from_stage(measured_m30, M, 2),
         "four_2pow31_shards_95pct_projected_days_from_2pow30_rates":
-            projected_days_from_latest(safe_m, safe_shards),
+            projected_days_from_stage(measured_m30, safe_m,
+                                      safe_shards),
+        "four_2pow31_shards_95pct_projected_days_from_2pow31_rates":
+            projected_days_from_stage(measured_m31, safe_m,
+                                      safe_shards),
         "one_2pow31_shard_illustrative_peak_filter_bytes":
             projected_peak(safe_m),
         "native_runtime_measured": True,
@@ -254,7 +258,7 @@ def main():
             "The operation model assumes one batched pair addition per representative and one batched target-complement addition per lifted pair, plus one filter build and exact replay per chunk.",
             "The field-call model excludes canonical keying, Bloom probes, memory traffic, base construction, and scalar replay; it is not a complete solve-work count.",
             "The paired ABBA query speedup was measured at 2^24 table descriptors with different deterministic query schedules and while another full-size shard ran concurrently; 2^32-table throughput is unmeasured.",
-            "The 2^28 through 2^30 public-target runs measured bounded stage throughput without concurrent full-size work; scaling them to 2^31 or 2^32 filters is conditional and may fail under host swap or cache effects.",
+            "The 2^28 through 2^31 public-target runs measured bounded stage throughput without concurrent full-size query work; scaling the query phase to 2^31 representatives or the filter to 2^32 descriptors is conditional and may fail under host swap or cache effects.",
             "The four-shard 2^31-table option has the same modeled success prefix but twice as many lifted target-query evaluations as two 2^32-table shards; its lower memory is projected, not verified at full size.",
         ],
         "finite_support_screen_sha256": sha(FINITE),
@@ -265,6 +269,7 @@ def main():
         "measured_2pow28_receipt_sha256": sha(MEASURED_M28),
         "measured_2pow29_receipt_sha256": sha(MEASURED_M29),
         "measured_2pow30_receipt_sha256": sha(MEASURED_M30),
+        "measured_2pow31_receipt_sha256": sha(MEASURED_M31),
         "source_sha256": sha(Path(__file__)),
     }
     OUTPUT.write_text(json.dumps(report, indent=2) + "\n")
@@ -281,7 +286,11 @@ def main():
             safe_shards * chunks_per_shard *
             safe_seconds_per_chunk / 86400),
         "four_2pow31_projected_days_from_2pow30":
-            projected_days_from_latest(safe_m, safe_shards),
+            projected_days_from_stage(measured_m30, safe_m,
+                                      safe_shards),
+        "four_2pow31_projected_days_from_2pow31":
+            projected_days_from_stage(measured_m31, safe_m,
+                                      safe_shards),
     }))
 
 

@@ -71,7 +71,7 @@
     "false_positive_queries": 16421,
     "exact_hit_queries": 0
   },
-  "measured_filter_stages_2pow28_to_2pow30": [
+  "measured_filter_stages_2pow28_to_2pow31": [
     {
       "table_descriptors": 268435456,
       "query_representatives": 1048576,
@@ -113,6 +113,20 @@
       "false_positive_queries": 16207,
       "exact_hit_queries": 0,
       "native_field_add_mul_sqr_call_model_log2": 34.82364090416642
+    },
+    {
+      "table_descriptors": 2147483648,
+      "query_representatives": 1048576,
+      "lifted_query_pairs": 174063616,
+      "bloom_bytes": 5368774656,
+      "peak_rss_bytes": 5534056448,
+      "build_seconds": 798.456480125,
+      "build_ns_per_descriptor": 371.8102723942138,
+      "query_seconds": 6.730117542,
+      "exact_replay_seconds": 406.69683,
+      "false_positive_queries": 16423,
+      "exact_hit_queries": 0,
+      "native_field_add_mul_sqr_call_model_log2": 35.76801628320741
     }
   ],
   "two_2pow32_shards_95pct_projected_days_from_2pow28_rates": 7.728124677777778,
@@ -122,6 +136,7 @@
   "four_2pow31_shards_95pct_projected_days_from_2pow28_rates": 14.34489074232296,
   "two_2pow32_shards_95pct_projected_days_from_2pow30_rates": 7.537378688727963,
   "four_2pow31_shards_95pct_projected_days_from_2pow30_rates": 13.944349885125002,
+  "four_2pow31_shards_95pct_projected_days_from_2pow31_rates": 15.26599762940287,
   "one_2pow31_shard_illustrative_peak_filter_bytes": 7148273664.0,
   "native_runtime_measured": true,
   "ordinary_n83_relation_measured": false,
@@ -132,7 +147,7 @@
     "The operation model assumes one batched pair addition per representative and one batched target-complement addition per lifted pair, plus one filter build and exact replay per chunk.",
     "The field-call model excludes canonical keying, Bloom probes, memory traffic, base construction, and scalar replay; it is not a complete solve-work count.",
     "The paired ABBA query speedup was measured at 2^24 table descriptors with different deterministic query schedules and while another full-size shard ran concurrently; 2^32-table throughput is unmeasured.",
-    "The 2^28 through 2^30 public-target runs measured bounded stage throughput without concurrent full-size work; scaling them to 2^31 or 2^32 filters is conditional and may fail under host swap or cache effects.",
+    "The 2^28 through 2^31 public-target runs measured bounded stage throughput without concurrent full-size query work; scaling the query phase to 2^31 representatives or the filter to 2^32 descriptors is conditional and may fail under host swap or cache effects.",
     "The four-shard 2^31-table option has the same modeled success prefix but twice as many lifted target-query evaluations as two 2^32-table shards; its lower memory is projected, not verified at full size."
   ],
   "finite_support_screen_sha256": "c589e32c9df3b784154d406dbad3f07a4a3072530ae6f7f4752cf64522861829",
@@ -143,5 +158,6 @@
   "measured_2pow28_receipt_sha256": "9c9d7ba6b360fa4a86f17a68cba55fbd67c5e4eb7f184887bef1e73445030a11",
   "measured_2pow29_receipt_sha256": "b35014821c72b08a1e2617d89720719d9410c6f05a8f37e71fe6b69691a51f54",
   "measured_2pow30_receipt_sha256": "e3055ea693687792f923d24bbec115ac87644849b983031a07dd3cb35b004d27",
-  "source_sha256": "abdbb0209217018c59955f3e71795cd06d0c94e09691f3f7c9dd70420c3ea83a"
+  "measured_2pow31_receipt_sha256": "e2de8c1e0dc2e901415094c7aff79b9fdebe1a73ab40bcd5c171fffc55d51b30",
+  "source_sha256": "2259e8af8ace07a8a66882871331d391bfd0d5bb2fe848db0d6c71e387c21ae6"
 }

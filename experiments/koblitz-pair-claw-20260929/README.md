@@ -620,9 +620,9 @@ The prior 10 GiB-filter direct run nevertheless caused host swap and
 was interrupted; this is not evidence that a $2^{32}$ Q1050 shard fits.
 Four $2^{31}$ table shards instead project **6.66 GiB** peak per chunk,
 **$2^{48.576}$ field calls**, and **14.34 days** across 88 chunks at
-the bounded rates. These memory and time figures remain projections.
+the earlier $2^{28}$ rates. These memory and time figures remain projections.
 
-Two more public-target [calibrations](n83_query_orbit_reuse_screen.json)
+Three more public-target [calibrations](n83_query_orbit_reuse_screen.json)
 used the same curve, target, base digest, solver binary, filter settings,
 and $2^{20}$ query representatives:
 
@@ -631,14 +631,16 @@ and $2^{20}$ query representatives:
 | $2^{28}$ | 0.67 GB | 0.84 GB | 85.69 s | 6.34 s | 50.70 s | 0 |
 | $2^{29}$ | 1.34 GB | 1.51 GB | 221.09 s | 5.99 s | 100.38 s | 0 |
 | $2^{30}$ | 2.68 GB | 2.85 GB | 353.63 s | 6.14 s | 201.30 s | 0 |
+| $2^{31}$ | 5.37 GB | 5.53 GB | 798.46 s | 6.73 s | 406.70 s | 0 |
 
-Swap-outs stayed flat through both new runs. Build rate varied from
-319 to 412 to 329 ns per descriptor, so a single measured rate is not
-a reliable large-filter runtime. Linear scaling from the $2^{30}$ run
-projects **13.94 days** for the four-shard 95.11% model; this remains
-a forecast, with full-size query throughput and natural relation yield
-unmeasured. The $2^{30}$ stage used a modeled $2^{34.824}$ field
-add/multiply/square calls; no complete DLP work exponent is known.
+Swap-outs stayed flat through all four runs. Build rate varied from
+319 to 412 to 329 to 372 ns per descriptor. Scaling the measured
+$2^{31}$ table and $2^{20}$-representative query rates projects
+**15.27 days** for the four-shard 95.11% model; this remains a forecast,
+with full-size query throughput, candidate memory, and natural relation
+yield unmeasured. The completed $2^{31}$ stage used a modeled
+$2^{35.768}$ field add/multiply/square calls; no complete DLP work
+exponent is known.
 
 The [Q1050 chunk runner](run_n83_orbit_chunk.py) freezes one absolute
 table range and one query-representative range, records a terminal failed
