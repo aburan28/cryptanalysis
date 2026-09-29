@@ -437,7 +437,7 @@ At $2^{28}$ table descriptors, the filter occupied **805,371,904 bytes**;
 $2^{24}$ unique target queries produced **291 filter positives and zero
 exact matches**. The planted control yielded one exact match and an
 independently replayed scalar. Build, target-query, and exact replay rates
-were approximately **312.6**, **344.8**, and **165 ns per descriptor or
+were approximately **314.8**, **348.6**, and **170.8 ns per descriptor or
 query**, respectively. The 291 false positives give a measured rate
 $1.7345\times10^{-5}$ on that bounded query prefix; the reported Wilson
 interval assumes independent outcomes and may not cover correlations in
@@ -451,11 +451,37 @@ million** candidate queries. Allowing twice that count for vector capacity
 and adding observed base-process overhead gives an illustrative **32.4 GB
 peak filter-phase footprint**, below the host's 51.54 GB physical memory.
 The one-core measured-rate proxy, including a second exact table pass, is
-**31.0 days**; the field add/multiply/square model is $2^{47.58}$ calls.
+**31.3 days**; the field add/multiply/square model is $2^{47.58}$ calls.
 These are conditional projections from the bounded run. Full-size memory
 pressure, throughput, exact key counts, target representability, and
 ordinary relation yield remain unmeasured. The rho reference above is the
 only verified complete DLP for this n=83 public target.
+
+### Parallel query ranges and first full-key chunk
+
+Stage **Q1049** shares one read-only Bloom filter among query workers and
+accepts an absolute query-position offset. The [paired receipt](runs/n83_native_bloom_parallel_perf.json)
+compared one, four, and eight workers on identical n=83 public-target
+query ranges. At $2^{28}$ table descriptors and $2^{25}$ unique target
+queries, the query phase measured **346.7 ns per pair with one worker**
+and **51.5 ns per pair with eight workers**: a **6.73×** speedup in the
+query phase. All worker counts produced the same 564 filter positives and
+zero exact hits. A separate split-range check showed that two disjoint
+query ranges recombine to exactly the full range's positive, false-positive,
+and exceptional-query counts. The [chunk runner](run_n83_bloom_chunk.py)
+records one frozen range, its failed work or verified hit, phase timings,
+source hashes, and the same-target rho scalar check when a hit occurs.
+
+The [first-chunk screen](n83_parallel_chunk_screen.json) specifies
+$2^{33}$ table descriptors, the first $2^{38}$ unique query pairs, and
+eight workers. It predicts a **14.76% relation probability** under the
+same finite-support model, **26.15 GB** illustrative peak filter-phase
+memory, **5.74 hours** from bounded build/query/replay rates, and about
+$2^{42.81}$ field add/multiply/square calls. These are predictions until
+that full-key chunk actually finishes; the $2^{28}$-key query speed may
+change when the filter grows to 25.77 GB. Each separate chunk rebuilds
+the filter, and cumulative solve work must charge every chunk, including
+ones with zero relations.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
@@ -471,6 +497,10 @@ only verified complete DLP for this n=83 public target.
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_native_n83_table.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_native_n83_planted.py
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_native_n83_bloom.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_native_n83_parallel.py
 python3 experiments/koblitz-pair-claw-20260929/n83_knownlog_screen.py
 python3 experiments/koblitz-pair-claw-20260929/n83_bloom_resource_screen.py
+python3 experiments/koblitz-pair-claw-20260929/n83_parallel_chunk_screen.py
+# First full-key chunk; the resource screen projects 26 GB and about 6 hours.
+./sage -python experiments/koblitz-pair-claw-20260929/run_n83_bloom_chunk.py --table-log2 33 --query-count-log2 38 --query-start 0 --workers 8
 ```

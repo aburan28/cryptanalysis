@@ -26,6 +26,7 @@ BATCH = 1024
 BITS_PER_KEY = 24
 HASHES = 17
 BLOCKS_PER_KEY = 2
+QUERY_WORKERS = 1
 sys.path.insert(0, str(CODEGEN))
 
 import curves
@@ -76,7 +77,8 @@ def main():
     ]
     subprocess.run(compiler_command, check=True)
 
-    def execute(point, table_entries, query_pairs, batch_size):
+    def execute(point, table_entries, query_pairs, batch_size,
+                query_start=0, query_workers=QUERY_WORKERS):
         command = [
             str(BINARY), str(key_path),
             format(onb.toCoords(point[0]), "x"),
@@ -87,6 +89,7 @@ def main():
             str(scheduled["query_schedule"]["step"]),
             str(scheduled["query_schedule"]["offset"]),
             str(BITS_PER_KEY), str(HASHES),
+            str(query_start), str(query_workers),
         ]
         return json.loads(subprocess.run(
             command, check=True, capture_output=True, text=True).stdout)
@@ -100,6 +103,7 @@ def main():
         row = execute(target, M, QUERY_PAIRS, BATCH)
         assert row["actual_B"] == record["actual_usable_points_B_before_folding"]
         assert row["table_descriptors"] == M and row["query_pairs"] == QUERY_PAIRS
+        assert row["query_start"] == 0 and row["query_workers"] == QUERY_WORKERS
         assert row["bloom_positive_queries"] == (row["false_positive_queries"] +
                                                   row["exact_hit_queries"])
         assert row["exact_hit_queries"] >= row["exact_hit_keys"]
@@ -166,6 +170,7 @@ def main():
         "table_log2_sizes": list(TABLE_LOG2),
         "query_pairs_each_size": QUERY_PAIRS,
         "batch_size": BATCH,
+        "query_workers": QUERY_WORKERS,
         "bloom_bits_per_table_descriptor": BITS_PER_KEY,
         "bloom_hashes_per_key": HASHES,
         "bloom_blocks_per_key": BLOCKS_PER_KEY,

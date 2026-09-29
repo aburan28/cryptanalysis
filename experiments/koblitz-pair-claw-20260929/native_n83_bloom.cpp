@@ -6,6 +6,7 @@
 #undef main
 
 #include <sys/resource.h>
+#include <thread>
 
 struct alignas(64) BloomBlock { std::array<U, 8> word{}; };
 static_assert(sizeof(BloomBlock) == 64, "Bloom block must be one cache line");
@@ -110,7 +111,7 @@ struct CandidateTable {
 
 int main(int argc, char **argv) {
     try {
-        need(argc == 13, "usage: native_n83_bloom BASE TARGET_X_ONB_HEX TARGET_Y_ONB_HEX TABLE_DESCRIPTORS QUERY_PAIRS BATCH TABLE_STEP TABLE_OFFSET QUERY_STEP QUERY_OFFSET BITS_PER_KEY HASHES");
+        need(argc == 15, "usage: native_n83_bloom BASE TARGET_X_ONB_HEX TARGET_Y_ONB_HEX TABLE_DESCRIPTORS QUERY_PAIRS BATCH TABLE_STEP TABLE_OFFSET QUERY_STEP QUERY_OFFSET BITS_PER_KEY HASHES QUERY_START QUERY_WORKERS");
         Keyer keyer;
         auto base = load_base(argv[1], keyer);
         self_test(base);
@@ -124,11 +125,15 @@ int main(int argc, char **argv) {
         U query_step = std::stoull(argv[9]), query_offset = std::stoull(argv[10]);
         unsigned bits_per_key = unsigned(std::stoul(argv[11]));
         unsigned hashes = unsigned(std::stoul(argv[12]));
+        U query_start = std::stoull(argv[13]);
+        unsigned query_workers = unsigned(std::stoul(argv[14]));
         const U d_cross = U(K) * (K - 1) / 2 * L;
         const U pair_domain = U(base.size()) * (base.size() + 1) / 2;
         need(table_entries > 0 && table_entries <= d_cross &&
-             query_pairs > 0 && query_pairs <= pair_domain &&
-             batch_size > 0 && batch_size <= 8192,
+             query_pairs > 0 && query_start < pair_domain &&
+             query_pairs <= pair_domain - query_start &&
+             batch_size > 0 && batch_size <= 8192 &&
+             query_workers > 0 && query_workers <= 64,
              "invalid bounded work");
 
         auto started = std::chrono::steady_clock::now();
@@ -159,43 +164,83 @@ int main(int argc, char **argv) {
         double build_seconds = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - started).count();
 
-        std::vector<Candidate> candidates;
-        U complement_identity = 0;
+        struct QueryResult {
+            std::vector<Candidate> candidates;
+            U complement_identity = 0;
+        };
+        std::vector<QueryResult> query_results(query_workers);
+        std::vector<std::exception_ptr> query_errors(query_workers);
+        std::vector<std::thread> threads;
+        threads.reserve(query_workers);
+        U total_batches = (query_pairs + batch_size - 1) / batch_size;
         started = std::chrono::steady_clock::now();
-        for (U position = 0; position < query_pairs; position += batch_size) {
-            U count = std::min(batch_size, query_pairs - position);
-            left.clear(); right.clear(); targets.clear();
-            for (U i = 0; i < count; ++i) {
-                U rank = scheduled_rank(position + i, pair_domain,
-                                        query_step, query_offset);
-                auto pair = unordered_pair(rank);
-                left.push_back(base[pair.first]);
-                right.push_back(base[pair.second]);
-            }
-            batch_add(left, right, sums);
-            for (U i = 0; i < count; ++i) {
-                targets.push_back(target);
-                sums[i] = neg(sums[i]);
-            }
-            batch_add(targets, sums, complements);
-            for (U i = 0; i < count; ++i) {
-                if (complements[i].inf) { ++complement_identity; continue; }
-                V key = keyer.canonical_x(complements[i].x);
-                if (bloom.contains(key))
-                    candidates.push_back({key, position + i});
-            }
+        for (unsigned worker = 0; worker < query_workers; ++worker) {
+            threads.emplace_back([&, worker] {
+                try {
+                    std::vector<Point> qleft, qright, qsums, qtargets,
+                        qcomplements;
+                    qleft.reserve(batch_size); qright.reserve(batch_size);
+                    qtargets.reserve(batch_size);
+                    U first_batch = total_batches * worker / query_workers;
+                    U end_batch = total_batches * (worker + 1) / query_workers;
+                    QueryResult &result = query_results[worker];
+                    for (U batch = first_batch; batch < end_batch; ++batch) {
+                        U offset = batch * batch_size;
+                        U count = std::min(batch_size, query_pairs - offset);
+                        qleft.clear(); qright.clear(); qtargets.clear();
+                        for (U i = 0; i < count; ++i) {
+                            U absolute = query_start + offset + i;
+                            U rank = scheduled_rank(absolute, pair_domain,
+                                                    query_step, query_offset);
+                            auto pair = unordered_pair(rank);
+                            qleft.push_back(base[pair.first]);
+                            qright.push_back(base[pair.second]);
+                        }
+                        batch_add(qleft, qright, qsums);
+                        for (U i = 0; i < count; ++i) {
+                            qtargets.push_back(target);
+                            qsums[i] = neg(qsums[i]);
+                        }
+                        batch_add(qtargets, qsums, qcomplements);
+                        for (U i = 0; i < count; ++i) {
+                            if (qcomplements[i].inf) {
+                                ++result.complement_identity;
+                                continue;
+                            }
+                            V key = keyer.canonical_x(qcomplements[i].x);
+                            if (bloom.contains(key))
+                                result.candidates.push_back(
+                                    {key, query_start + offset + i});
+                        }
+                    }
+                } catch (...) {
+                    query_errors[worker] = std::current_exception();
+                }
+            });
         }
+        for (std::thread &thread : threads) thread.join();
+        for (const auto &error : query_errors)
+            if (error) std::rethrow_exception(error);
         double query_seconds = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - started).count();
-        U candidate_vector_capacity_bytes =
-            U(candidates.capacity()) * sizeof(Candidate);
+        U bloom_positive_queries = 0;
+        U complement_identity = 0;
+        U candidate_vector_capacity_bytes = 0;
+        for (const QueryResult &result : query_results) {
+            bloom_positive_queries += result.candidates.size();
+            complement_identity += result.complement_identity;
+            candidate_vector_capacity_bytes +=
+                U(result.candidates.capacity()) * sizeof(Candidate);
+        }
 
         bloom.release();
         started = std::chrono::steady_clock::now();
-        CandidateTable exact(candidates.size());
-        for (const Candidate &candidate : candidates) exact.insert(candidate);
+        CandidateTable exact{size_t(bloom_positive_queries)};
+        for (const QueryResult &result : query_results)
+            for (const Candidate &candidate : result.candidates)
+                exact.insert(candidate);
         U exact_hit_keys = 0;
-        if (!candidates.empty()) {
+        if (bloom_positive_queries) {
             for (U position = 0; position < table_entries; position += batch_size) {
                 U count = std::min(batch_size, table_entries - position);
                 left.clear(); right.clear();
@@ -220,14 +265,15 @@ int main(int argc, char **argv) {
         }
         U exact_hit_queries = 0;
         std::vector<Candidate> verified;
-        for (const Candidate &candidate : candidates) {
-            CandidateSlot *entry = exact.find(candidate.key);
-            need(entry != nullptr, "missing Bloom-positive query");
-            if (entry->table_position == U(-1)) continue;
-            ++exact_hit_queries;
-            if (verified.size() < 16)
-                verified.push_back(candidate);
-        }
+        for (const QueryResult &result : query_results)
+            for (const Candidate &candidate : result.candidates) {
+                CandidateSlot *entry = exact.find(candidate.key);
+                need(entry != nullptr, "missing Bloom-positive query");
+                if (entry->table_position == U(-1)) continue;
+                ++exact_hit_queries;
+                if (verified.size() < 16)
+                    verified.push_back(candidate);
+            }
         double replay_seconds = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - started).count();
         struct rusage usage{};
@@ -235,6 +281,8 @@ int main(int argc, char **argv) {
         std::cout << "{\"actual_B\":" << base.size()
                   << ",\"table_descriptors\":" << table_entries
                   << ",\"query_pairs\":" << query_pairs
+                  << ",\"query_start\":" << query_start
+                  << ",\"query_workers\":" << query_workers
                   << ",\"batch_size\":" << batch_size
                   << ",\"bloom_bits_per_key\":" << bits_per_key
                   << ",\"bloom_hashes\":" << hashes
@@ -245,12 +293,13 @@ int main(int argc, char **argv) {
                   << candidate_vector_capacity_bytes
                   << ",\"candidate_exact_slot_bytes\":"
                   << sizeof(CandidateSlot)
-                  << ",\"bloom_positive_queries\":" << candidates.size()
+                  << ",\"bloom_positive_queries\":"
+                  << bloom_positive_queries
                   << ",\"duplicate_positive_keys\":" << exact.duplicate_keys
                   << ",\"exact_hit_keys\":" << exact_hit_keys
                   << ",\"exact_hit_queries\":" << exact_hit_queries
                   << ",\"false_positive_queries\":"
-                  << candidates.size() - exact_hit_queries
+                  << bloom_positive_queries - exact_hit_queries
                   << ",\"complement_identity_queries\":" << complement_identity
                   << ",\"allocation_seconds\":" << std::setprecision(12)
                   << allocation_seconds
