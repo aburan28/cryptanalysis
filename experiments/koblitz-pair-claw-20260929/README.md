@@ -209,8 +209,8 @@ behavior and search law are unvalidated at a four-million-point base.
 
 The n=53 budget miss does not calibrate an n=83 success rate. The screen
 records the actual B and column count, but keeps `candidate_id`, measured
-n=83 relation yield, and complete-work exponent `null`; `verified_n83_dlp`
-is false. It does
+n=83 relation yield, and complete-work exponent `null`; the stage-specific
+`verified_n83_dlp` flag is false. It does
 not promote a stage benchmark or a conditional extrapolation to a result.
 An exact n=83 candidate still needs measured ordinary-query yield including failures, rank per
 query, a verified previously unseen target DLP, and complete operation
@@ -290,7 +290,7 @@ bytes. Base construction took 64.4 seconds; the
 and log. On that exact base, the [bounded stage benchmark](runs/n83_knownlog_pair_perf.json)
 measured **95.4 µs per table sample** and **140.4 µs per target-side
 sample** over 100,000 samples of each. It found zero matches at that small
-cap, and no n=83 DLP.
+cap, and no DLP from this quotient-table stage.
 
 ### X-only keys, unique pair schedules, and corrected work estimate
 
@@ -403,14 +403,59 @@ table gives **37.3 one-core days**. The latter is only a throughput proxy:
 the required $2^{33}$-key table would occupy about **147 GB** with this
 12-byte-slot design at 70% load, above this host's 48 GB physical memory,
 and its large-table lookup rate is unmeasured. There is still no verified
-ordinary n=83 relation or public-target DLP, so the complete solve work
-remains **unknown** and no sub-$2^{61}$ result is claimed.
+ordinary n=83 relation or quotient-table public-target DLP, so the
+complete **IC** solve work remains **unknown** and no sub-$2^{61}$ IC
+result is claimed.
+
+The same n=83 public target already has a separately verified
+[rho solution](../ecc2k130-quotient-pair-probe-20260926/runs/n83_public_target_rho_solved.json):
+the recovered scalar is `467066815623456506232910`, independently replayed
+on this exact curve after **$2^{37.554}$ aggregate walk iterations** across
+three workers. The rho result supplies a same-target reference and a
+complete DLP in rho-step units. It does not establish ordinary factor-base
+relation yield or the quotient-table solve cost. The
+[finite-support screen](n83_knownlog_conditional_screen.json) now links the
+rho receipt explicitly and labels its own DLP flag as
+`verified_n83_quotient_table_dlp`.
 
 These additions are stage proposals **Q1046** and **Q1047** under the
 same exact `EC1N83Ckb1h876c2921cb64` curve and B=4,000,102 known-log
 base. Their `candidate_id` remains null. The factor base is recorded as
 actual B before folding, with 24,097 signed-Frobenius columns separately;
 both records specify `isogeny: "none"`.
+
+### Bounded memory filter with exact second-pass verification
+
+Stage **Q1048** replaces the large in-memory exact table with a two-block
+Bloom filter. It sets 17 independently mixed bits per 83-bit quotient key
+across two 64-byte blocks and keeps every positive target query for an
+exact second pass over the deterministic table schedule. Only a replayed
+exact key match is sent to the independent four-point and scalar verifier.
+The [bounded receipt](runs/n83_native_bloom_exact_replay_perf.json) used
+the exact same n=83 curve, B=4,000,102 base, and frozen public target.
+At $2^{28}$ table descriptors, the filter occupied **805,371,904 bytes**;
+$2^{24}$ unique target queries produced **291 filter positives and zero
+exact matches**. The planted control yielded one exact match and an
+independently replayed scalar. Build, target-query, and exact replay rates
+were approximately **312.6**, **344.8**, and **165 ns per descriptor or
+query**, respectively. The 291 false positives give a measured rate
+$1.7345\times10^{-5}$ on that bounded query prefix; the reported Wilson
+interval assumes independent outcomes and may not cover correlations in
+the deterministic schedule.
+
+The [resource screen](n83_bloom_resource_screen.json) applies those rates
+to the same **95% modeled success** point of $2^{33}$ distinct table keys
+and about $2^{42.816}$ unique target queries. Its projected Bloom filter
+is **25.77 GB**; the measured false-positive rate suggests about **134
+million** candidate queries. Allowing twice that count for vector capacity
+and adding observed base-process overhead gives an illustrative **32.4 GB
+peak filter-phase footprint**, below the host's 51.54 GB physical memory.
+The one-core measured-rate proxy, including a second exact table pass, is
+**31.0 days**; the field add/multiply/square model is $2^{47.58}$ calls.
+These are conditional projections from the bounded run. Full-size memory
+pressure, throughput, exact key counts, target representability, and
+ordinary relation yield remain unmeasured. The rho reference above is the
+only verified complete DLP for this n=83 public target.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
@@ -425,5 +470,7 @@ both records specify `isogeny: "none"`.
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_native_n83.py
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_native_n83_table.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_native_n83_planted.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_native_n83_bloom.py
 python3 experiments/koblitz-pair-claw-20260929/n83_knownlog_screen.py
+python3 experiments/koblitz-pair-claw-20260929/n83_bloom_resource_screen.py
 ```

@@ -15,6 +15,8 @@ FIELD_PERF = HERE / "runs" / "n53_n83_field_unit_perf.json"
 NATIVE_PERF = HERE / "runs" / "n83_native_pair_perf.json"
 EXACT_TABLE_PERF = HERE / "runs" / "n83_native_exact_table_perf.json"
 N53 = HERE / "runs" / "n53_knownlog_one_target.json"
+N83_RHO = (HERE.parent / "ecc2k130-quotient-pair-probe-20260926" /
+           "runs" / "n83_public_target_rho_solved.json")
 OUTPUT = HERE / "n83_knownlog_conditional_screen.json"
 TARGET_SUCCESS = 0.95
 
@@ -38,8 +40,12 @@ def main():
     native = json.loads(NATIVE_PERF.read_text())
     exact_table = json.loads(EXACT_TABLE_PERF.read_text())
     n53 = json.loads(N53.read_text())
+    rho = json.loads(N83_RHO.read_text())
     assert base["curve_id"] == perf["curve_id"] == "EC1N83Ckb1h876c2921cb64"
     assert n53["verified_single_target_dlp"] is True
+    assert rho["curve_id"] == base["curve_id"]
+    assert rho["independent_scalar_replay_passed"] is True
+    assert rho["public_target"] == exact_table["public_target"]
     record = base["factor_base"]
     order = base["curve_identity_record"]["curve"]["subgroup_order"]
     B = record["actual_usable_points_B_before_folding"]
@@ -230,6 +236,13 @@ def main():
         "measured_n83_stage_key_hits": perf["query_table_key_hits"],
         "verified_n53_complete_control_candidate_id": n53["candidate_id"],
         "verified_n53_complete_control_scalar": n53["recovered_scalar"],
+        "n83_same_target_rho_reference": {
+            "recovered_scalar": rho["recovered_scalar"],
+            "walk_iterations": rho["rho_walk_iterations"],
+            "walk_iterations_log2": rho["rho_walk_iterations_log2"],
+            "independent_scalar_replay_passed": True,
+            "receipt_sha256": sha(N83_RHO),
+        },
         "tradeoff_rows": rows,
         "model": "A finite base has B(B+1)/2 unordered query pairs and at most D zero-pair quotient keys. Under a random-base heuristic, proper four-point multisets for a fixed target are Poisson with mean C(B+3,4)/r. Each has six pair partitions. Index fraction f and unique-query fraction t give success 1-exp(-mu*(1-(1-f*t)^6)). Repeated queries cannot make t exceed one.",
         "assumptions_and_limits": [
@@ -250,7 +263,7 @@ def main():
             "The paired n83 direct-x-key benchmark verified key equivalence on 32768 samples per phase. The chosen schedule benchmark also covers 32768 samples per phase and no large table.",
         ],
         "measured_n83_relation_yield": None,
-        "verified_n83_dlp": False,
+        "verified_n83_quotient_table_dlp": False,
         "complete_work_log2": None,
         "base_receipt_sha256": sha(BASE),
         "stage_benchmark_sha256": sha(PERF),
@@ -260,6 +273,7 @@ def main():
         "native_benchmark_sha256": sha(NATIVE_PERF),
         "exact_table_benchmark_sha256": sha(EXACT_TABLE_PERF),
         "n53_complete_control_sha256": sha(N53),
+        "n83_rho_reference_sha256": sha(N83_RHO),
         "source_sha256": sha(Path(__file__)),
     }
     OUTPUT.write_text(json.dumps(report, indent=2) + "\n")
