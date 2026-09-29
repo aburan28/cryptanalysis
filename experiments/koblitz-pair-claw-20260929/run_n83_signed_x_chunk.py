@@ -55,7 +55,7 @@ def main():
     parser.add_argument("--rep-batch", type=int, default=8)
     parser.add_argument("--bits-per-key", type=int, default=20)
     parser.add_argument("--hashes", type=int, default=14)
-    parser.add_argument("--proposal-id", choices=("Q1054", "Q1055"),
+    parser.add_argument("--proposal-id", choices=("Q1054", "Q1055", "Q1058"),
                         default="Q1054")
     parser.add_argument("--runtime-info", type=Path, default=RUNTIME_INFO)
     parser.add_argument("--out", type=Path)
@@ -70,8 +70,9 @@ def main():
     assert args.bits_per_key == 20
     assert args.hashes == (14 if args.proposal_id == "Q1054" else 10), (
         "Bloom hash count must match the named stage proposal")
-    prefix = ("n83_signed_x_" if args.proposal_id == "Q1054" else
-              "n83_signed_x_q1055_")
+    prefix = {"Q1054": "n83_signed_x_",
+              "Q1055": "n83_signed_x_q1055_",
+              "Q1058": "n83_lowmem_"}[args.proposal_id]
     out = args.out or HERE / "runs" / (
         f"{prefix}k48194_chunk_M{args.table_log2}_R{args.query_reps_log2}_"
         f"tstart{args.table_start}_qstart{args.query_start}_"

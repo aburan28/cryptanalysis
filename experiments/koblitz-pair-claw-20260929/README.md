@@ -291,7 +291,7 @@ measurement rows:
 the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
 requires exactly one of those IDs to be non-null. New comparison rows
 must use the `IC1` ID and carry the old `Q` lineage separately. Current
-n=83 stage records use `Q1051` through `Q1057`, with
+n=83 stage records use `Q1051` through `Q1058`, with
 `candidate_id: null`.
 
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
@@ -838,6 +838,7 @@ attempts, and independent scalar replay.
 | n=83 Q1055 | M=$2^{20}$ median query 1.053× faster; one M=$2^{28}$ pair gave 1.140× query and 1.054× full native-stage speedups; planted scalar replay passed | Measured bounded stages; reverse-order M=$2^{28}$ repeat interrupted; predicted 95% Bloom bit probes $2^{47.597}$, distinct from field calls |
 | n=83 Q1056 | Exact fast-key equality on 1,048,576 field inputs; 1.508× isolated key-kernel speedup | Microbenchmark only; bounded full-query speedup and relation yield unmeasured |
 | n=83 Q1057 | Exact cyclic-gap rotation key; 1.202× slower than Q1056 byte-table key | Negative isolated-kernel result; gap-scanning implementation rejected |
+| n=83 Q1058 | Eight disjoint M=$2^{28}$ table shards; 936 future R=$2^{30}$ rectangles model $2^{50.001}$ native field calls | Conditional lower-memory plan only; 54.5 projected query-only days, no natural relation |
 
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
 [campaign driver](n83_two_shard_campaign.py) retain source hashes,
@@ -1049,6 +1050,55 @@ This implementation is **1.202× slower**, so it is not enabled in the
 native query solver. The result rejects this implementation's speed claim;
 it is not evidence about natural n=83 relation yield.
 
+### Disjoint low-memory table shards (Q1058)
+
+The [Q1058 screen](n83_low_memory_screen.json) keeps the same exact
+`EC1N83Ckb1h876c2921cb64` curve, public target, and factor base:
+**B=8,000,204** distinct usable points before folding, 48,194 signed
+Frobenius columns, set digest
+`7e3c95f988225da1d586578529953ad61ae5ed62ca740eb92c2aea6d841a5a02`.
+It uses Q1054's paired-sign x-only arithmetic and Q1055's ten-hash Bloom
+filter. Eight disjoint M=$2^{28}$ table shards cover the same M=$2^{31}$
+descriptor range as Q1051. Its query ranges are also disjoint. The first
+R=$2^{30}$ range was already completed against the entire M=$2^{31}$ table
+under Q1051 with zero exact hits, so Q1058 schedules only the remaining
+117 query ranges per shard: **936 future rectangles**. The two completed
+M28/R24 calibrations overlap one of those future ranges and do not increase
+the distinct modeled coverage.
+
+| Table size per rectangle | Table shards | Future rectangles | Future native field-call model | Filter bit array, ideal |
+| ---: | ---: | ---: | ---: | ---: |
+| $2^{28}$ | 8 | 936 | $2^{50.001}$ | 0.625 GiB |
+| $2^{29}$ | 4 | 468 | $2^{49.009}$ | 1.25 GiB |
+| $2^{30}$ | 2 | 234 | $2^{48.026}$ | 2.5 GiB |
+| $2^{31}$ | 1 | 117 | $2^{47.059}$ | 5 GiB |
+
+All four schedules have the same **95.24% unconditional** success probability
+under Q1051's finite-support heuristic. Given the completed first range's
+zero hit, the model predicts **95.11% conditional** success over the remaining
+ranges. This is a model of at least one four-point decomposition, not a
+measured relation yield. For M28, the Q1051 completed rectangle plus future
+rectangles is $2^{50.004}$ modeled calls. Adding full-rectangle structural
+upper proxies for three prior Q1051 interruptions and the M28 interrupted
+calibration, along with the two completed M28 calibration call models, gives
+the [same-target accounting field](n83_low_memory_screen.json),
+**$2^{50.016}$ modeled native field calls**; actual interrupted work is
+unknown. None of these exponents is complete solve work.
+
+The single completed M28/R24 ten-hash run measured 1.020 GB peak RSS and
+78.627 seconds of query time. Scaling that query rate to R=$2^{30}$ gives
+**54.5 days of query time alone** for 936 rectangles on the same 14-worker
+host; full-size replay and wall time remain unmeasured. Scaling only the
+observed candidate-vector capacity gives an **illustrative 1.71 GB peak**
+for one M28/R30 rectangle. This is not a memory bound; full-size candidate
+tables, allocation, and swapping could cost more. The
+[guarded campaign driver](n83_low_memory_campaign.py) requires 4 GiB free
+on the system volume and low swap-out growth before launching one rectangle.
+The system volume was below the launch guard during preflight, so no Q1058 full
+rectangle has been launched. `Q1058` has `candidate_id: null`,
+`isogeny: "none"`, zero measured natural relations, and no IC DLP or rho
+speedup claim.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
@@ -1097,4 +1147,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_two_shard_solve_work.py
 # --run-next launches one guarded Q1052 rectangle after competing runs finish.
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_unified_planted.py
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_unified_paired.py
+python3 experiments/koblitz-pair-claw-20260929/n83_low_memory_screen.py
+./sage -python experiments/koblitz-pair-claw-20260929/n83_low_memory_campaign.py
+# --run-next launches one Q1058 rectangle only after the 4 GiB system-volume guard passes.
 ```
