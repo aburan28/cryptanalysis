@@ -638,7 +638,9 @@ At degree 83 the shared circuit has 92,456 bit-operation gates. The ordinary
 public-target formula has **80,342 variables, 86,392 CNF clauses, and 50,884
 native XOR clauses**. CryptoMiniSat 5.14.7 reached its bounded limit on the
 ordinary target without a decomposition: about 20.7 seconds and 93,633
-conflicts. An unpinned planted target also reached 100,000 conflicts without
+conflicts. Constructing that CNF took 0.044 seconds and writing its 2.55 MB
+DIMACS/XOR file took 0.042 seconds; the observed bottleneck was the search.
+An unpinned planted target also reached 100,000 conflicts without
 a result. A separately **pinned** planted control fixes all four input
 `x` values and both chain intermediates; it returned SAT in about 0.045
 seconds, and its subgroup points independently replayed to the planted
@@ -651,7 +653,11 @@ four-point multiset as potentially useful gives the exact coverage cap
 at least **75.69 uniform queries per hit in expectation**. Seeing the 5,637
 column relations plus one target relation needs at least **426,716 queries
 (`2^18.703`) in expectation**, before dependent rows, failed SAT attempts,
-or target descent. This is a lower bound on query count, not an estimate of
+or target descent. If the entire `2^61` field-operation target were spent on
+only these minimum queries, each could average at most `2^42.297` field
+operations. This necessary budget ignores base construction and linear
+algebra; SAT conflicts have not been converted to field operations. The
+query count is a lower bound, not an estimate of
 the SAT solver's total work. The two bounded unpinned instances give no
 measured natural relation yield or calibrated full-work `2^x` for this lane.
 Q1035 remains a proposal with `candidate_id: null`, `PDP4sat`, and
