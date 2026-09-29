@@ -8,6 +8,7 @@ tar -xzf /opt/modal/sage-source.tar.gz -C "$source_dir"
 echo 'Sage source extracted'
 cd "$source_dir"
 test -x ./configure
+test -x build/bin/sage-venv
 test -f src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
 
 # Sage builds and installs its own missing dependencies. System libraries cut
