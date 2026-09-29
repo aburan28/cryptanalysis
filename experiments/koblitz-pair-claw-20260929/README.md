@@ -840,6 +840,19 @@ query range immediately after the planned 59-chunk prefix. Its receipt
 is included in cumulative work and will decide whether full-size memory
 and query rates support the campaign. A zero-hit calibration is a stage
 measurement, not evidence of natural relation yield.
+The [first full-table calibration attempt](runs/n83_two_shard_chunk_M31_R24_tstart0_qstart63350767616_b20_h14_rb8.json)
+was interrupted by the swap guard after about nine minutes. Swap-outs
+rose by 43,468 pages during the attempt while two separate `kissat`
+processes reached about 7 GB combined RSS. Its native phase counts and
+actual consumed field work are **unknown**; no query yield was measured.
+The full-rectangle structural field-call model is at most
+**$2^{37.119}$** for that attempt, and adding that upper bound to
+Q1052's 95% modeled prefix changes $2^{47.049}$ to **$2^{47.050}$**.
+This is a model upper bound, not a measured operation total. The
+campaign retains the failed receipt and names the next attempt
+`.retry1.json`; a completed retry and its failure both enter cumulative
+accounting. The guard interruption does not establish that the two
+filters are infeasible without the competing memory load.
 
 ### One-filter two-table stage probe (Q1053)
 

@@ -70,6 +70,10 @@ def attempt_path(chunk, attempt):
     return base.with_name(f"{base.stem}.retry{attempt}.json")
 
 
+def calibration_attempt_path(attempt):
+    return attempt_path({"receipt": CALIBRATION}, attempt)
+
+
 def inspect(chunks, screen):
     completed = []
     started = []
@@ -151,9 +155,15 @@ def main():
     assert len(chunks) == 59
     completed, started, failed, missing, solved, selected_markers = inspect(
         chunks, screen)
-    calibration_record = None
-    if CALIBRATION.exists():
-        calibration_record = json.loads(CALIBRATION.read_text())
+    calibration_attempts = []
+    calibration_completed = None
+    calibration_attempt_number = 0
+    while True:
+        calibration_path = calibration_attempt_path(calibration_attempt_number)
+        if not calibration_path.exists():
+            next_calibration_path = calibration_path
+            break
+        calibration_record = json.loads(calibration_path.read_text())
         assert calibration_record["proposal_id"] == "Q1052"
         assert calibration_record["candidate_id"] is None
         assert calibration_record["curve_id"] == screen["curve_id"]
@@ -175,11 +185,18 @@ def main():
             "campaign_query_workers"]
         if calibration_record["kind"] == (
                 "n83_public_target_two_shard_query_k48194_exact_replay_chunk"):
+            if calibration_completed is not None:
+                raise ValueError("multiple completed calibration attempts")
+            calibration_completed = (calibration_path, calibration_record)
             if calibration_record["verified_public_target_quotient_table_dlp"]:
-                solved.append({"receipt": CALIBRATION})
+                solved.append({"receipt": calibration_path})
         elif calibration_record["kind"] != (
                 "n83_public_target_two_shard_query_k48194_chunk_failed"):
-            raise ValueError(f"unexpected calibration receipt: {CALIBRATION}")
+            raise ValueError(f"unexpected calibration receipt: {calibration_path}")
+        calibration_attempts.append((calibration_path, calibration_record))
+        calibration_attempt_number += 1
+    if calibration_completed and calibration_attempts[-1][0] != calibration_completed[0]:
+        raise ValueError("calibration retry after completed attempt")
     competing_markers = sorted(
         set(RUNS.glob("n83_bloom_chunk_*.started.json")) |
         set(RUNS.glob("n83_orbit_chunk_*.started.json")) |
@@ -199,9 +216,13 @@ def main():
         "table_descriptors_per_shard": 1 << TABLE_LOG2,
         "query_workers": screen["campaign_query_workers"],
         "total_planned_rectangles": len(chunks),
-        "calibration_receipt": str(CALIBRATION) if calibration_record else None,
-        "calibration_status": (
-            calibration_record["kind"] if calibration_record else None),
+        "calibration_attempts": [
+            {"receipt": str(path), "kind": record["kind"]}
+            for path, record in calibration_attempts],
+        "calibration_completed_receipt": (
+            str(calibration_completed[0]) if calibration_completed else None),
+        "next_calibration_attempt": (
+            str(next_calibration_path) if not calibration_completed else None),
         "completed": len(completed),
         "started_markers": [str(item["started"]) for item in started],
         "competing_search_markers": [
@@ -219,13 +240,11 @@ def main():
         "next_missing": str(missing[0]["receipt"]) if missing else None,
     }
     print(json.dumps(summary), flush=True)
-    if args.aggregate and (completed or calibration_record and
-                           calibration_record["kind"] ==
-                           "n83_public_target_two_shard_query_k48194_exact_replay_chunk"):
+    if args.aggregate and (completed or calibration_completed):
         subprocess.run([sys.executable, str(AGGREGATOR),
                        *[str(item["receipt"]) for item in completed],
                        *[str(item["receipt"]) for item in failed],
-                       *([str(CALIBRATION)] if calibration_record else []),
+                       *[str(path) for path, _ in calibration_attempts],
                        "--out", str(AGGREGATE)],
                        check=True)
     if args.run_next or args.calibrate_full_table:
@@ -234,9 +253,7 @@ def main():
                 "a start marker exists; verify the original process handle before advancing")
         if solved:
             raise RuntimeError("a verified quotient-table DLP already exists")
-        if args.run_next and (calibration_record is None or
-                calibration_record["kind"] !=
-                "n83_public_target_two_shard_query_k48194_exact_replay_chunk"):
+        if args.run_next and calibration_completed is None:
             raise RuntimeError(
                 "measure and inspect the full-table calibration first")
         if args.run_next and not missing:
@@ -245,13 +262,14 @@ def main():
             raise RuntimeError(
                 "system volume has insufficient free space for swap safety")
         if args.calibrate_full_table:
-            if CALIBRATION.exists() or CALIBRATION.with_suffix(
-                    ".started.json").exists():
+            if calibration_completed is not None:
                 raise RuntimeError(
-                    "full-table calibration already has a receipt or start marker")
+                    "full-table calibration already completed")
+            if next_calibration_path.with_suffix(".started.json").exists():
+                raise RuntimeError("calibration start marker exists")
             chunk = {"table_start": 0,
                      "query_start": CALIBRATION_QUERY_START,
-                     "receipt": CALIBRATION}
+                     "receipt": next_calibration_path}
             query_log2 = CALIBRATION_QUERY_LOG2
         else:
             chunk = missing[0]
