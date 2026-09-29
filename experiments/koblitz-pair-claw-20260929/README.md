@@ -692,6 +692,18 @@ $2^{48.576}$ for Q1050's four-shard 88-chunk plan. The larger base
 raises the modeled four-point multiset count from 4.41 to 70.59 and
 makes the one-shard query prefix fit within its exact pair domain.
 These success rates and field-call totals are conditional models.
+The [first-hit work distribution](n83_large_orbit_solve_work.json)
+states the solve estimate at a fixed accounting boundary: one complete
+rectangle costs $2^{42.116}$ modeled native field calls, including its
+fresh table build and exact replay. The model reaches 50% success after
+14 rectangles ($2^{45.923}$ calls), 90% after 45
+($2^{47.608}$), and 95% after 59 ($2^{47.999}$). Conditional on a hit
+within all 89 full disjoint rectangles, its expected first-hit work is
+$2^{46.349}$ calls; the modeled chance of no hit after all 89 is still
+1.06%. These are **first-hit predictions**, not completed DLP
+measurements. Keying, Bloom work, memory traffic, base setup, and final
+scalar replay are outside the field-call model; the full-size wall rate
+and natural relation yield have not been measured.
 
 Public-target [bounded measurements](runs/n83_orbit_k48194_chunk_M31_R20_tstart0_qstart0_b20_h14_rb8.json)
 at $2^{28}$ and $2^{31}$ table descriptors found zero exact hits.
@@ -750,6 +762,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_query_orbit_reuse_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_knownlog_base_k48194.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_large_orbit_planted.py
 python3 experiments/koblitz-pair-claw-20260929/n83_large_knownlog_base_screen.py
+python3 experiments/koblitz-pair-claw-20260929/n83_large_orbit_solve_work.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_large_orbit_campaign.py
 # --run-next launches one guarded Q1051 rectangle when no competing marker exists.
 ```
