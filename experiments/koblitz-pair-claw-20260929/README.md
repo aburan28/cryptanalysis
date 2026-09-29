@@ -523,7 +523,10 @@ started marker is not a completed measurement.
 For the 95% *modeled* success point, both $2^{32}$ shards would each
 scan about $2^{42.816}$ unique query pairs. Counting both builds, both
 exact replays, and both query scans gives **$2^{48.581}$ field calls**
-under the native operation model. Quotient keying, Bloom probes, memory
+under the native operation model. Scaling the bounded rates gives
+**8.14 elapsed days** for those two sequential eight-worker shards;
+the full-size random-access rate has not been measured. Quotient keying,
+Bloom probes, memory
 traffic, base construction, failed work with unknown counts, and final
 verification remain outside that number. It is a conditional stage
 estimate, **not** measured complete IC solve work or evidence of a

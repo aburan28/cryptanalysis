@@ -77,6 +77,10 @@ def main():
         for item in finite["tradeoff_rows"]
         if item["hypothetical_distinct_table_keys"] == 1 << 33)
     two_shard_95_calls = 2 * field_calls(M, target_95_queries)
+    two_shard_95_seconds = 2 * (
+        row["build_seconds"] * M / measured_m +
+        row["query_seconds"] * target_95_queries / measured_q +
+        row["exact_replay_seconds"] * M / measured_m)
     report = {
         "kind": "n83_20bit_bloom_two_shard_conditional_screen",
         "scope": "projection from measured 2^28-key, 2^24-query run; no ordinary n83 relation or IC DLP claimed",
@@ -122,6 +126,8 @@ def main():
             two_shard_95_calls),
         "two_shard_95pct_model_field_add_mul_sqr_calls_log2":
             math.log2(two_shard_95_calls),
+        "two_shard_95pct_model_projected_seconds_from_small_run_rates":
+            two_shard_95_seconds,
         "interrupted_24bit_2pow33_attempt_work_known": False,
         "complete_one_target_work_log2": None,
         "verified_n83_quotient_table_dlp": False,
@@ -153,6 +159,7 @@ def main():
             "one_shard_illustrative_peak_filter_phase_bytes"] / (1 << 30),
         "one_shard_field_calls_log2": math.log2(one_calls),
         "two_shard_95pct_field_calls_log2": math.log2(two_shard_95_calls),
+        "two_shard_95pct_projected_days": two_shard_95_seconds / 86400,
     }))
 
 
