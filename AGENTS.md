@@ -54,6 +54,17 @@ archive keeps `B` null.
    Form the workload ID from the first 12 hex digits of SHA-256 over its
    canonical workload record.
 
+For each new finalized curve, add a readable entry to the
+[`curves.yaml` registry](experiments/ic-candidate-catalog/curves.yaml).
+Use a short alias such as `ecc2k130_pb` in prose, but retain the full
+`EC1...h...` ID in candidate manifests, run records, and isogeny links.
+The YAML entry contains the exact `field` and `curve` hash input, with
+`curve_id` stored separately, plus provenance, endomorphism status, and
+incoming/outgoing route references. Hash only `{"field": ..., "curve": ...}`
+using the canonical JSON rule above; alias, evidence, and route metadata
+never change the curve ID. Unknown values remain `null`. A readable alias
+cannot stand in for an exact field representation or subgroup.
+
 A design proposal may use a `Q<number>` catalog ID while exact base points,
 algorithm wiring, or isogeny maps are unresolved. Keep `candidate_id: null`
 and all measured costs null until those gates are satisfied. A proposal ID is
