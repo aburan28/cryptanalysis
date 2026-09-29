@@ -14,6 +14,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SCREEN = HERE / "n83_large_knownlog_base_screen.json"
 OUTPUT = HERE / "n83_large_orbit_solve_work.json"
+FAILED_R31 = (HERE / "runs" /
+    "n83_orbit_k48194_chunk_M31_R31_tstart0_qstart0_b20_h14_rb8.json")
 QUANTILES = ("0.5", "0.8", "0.9", "0.95", "0.99")
 
 
@@ -88,6 +90,66 @@ def main():
     full_chunk_projected_days = (
         screen["projected_days_if_bounded_14worker_speedup_holds_at_2pow31_filter"] /
         screen["query_chunks_for_95pct_model"])
+    failed = json.loads(FAILED_R31.read_text())
+    assert failed["kind"] == "n83_public_target_orbit_query_k48194_chunk_failed"
+    assert failed["curve_id"] == curve_id and failed["proposal_id"] == "Q1051"
+    assert failed["candidate_id"] is None and failed["isogeny"] == "none"
+    assert failed["native_phase_counts"] is None
+    assert failed["factor_base_enumerated_set_sha256"] == base[
+        "enumerated_set_sha256"]
+    assert failed["table_descriptors"] == table
+    assert failed["query_representatives"] == reps
+    half_reps = reps // 2
+    half_calls = (26 * table + 13 * half_reps + 13 * half_reps * lift +
+                  90 * (2 * math.ceil(table / 1024) +
+                        2 * math.ceil(half_reps / 8)))
+    half_max = screen["cross_orbit_query_representative_domain"] // half_reps
+    half_cdf = [0.0] + [success_probability(
+        chunk, mean_relations=mean, table_fraction=table_fraction,
+        query_fraction_per_chunk=half_reps * lift / screen[
+            "unordered_query_pair_domain"])
+        for chunk in range(1, half_max + 1)]
+    assert half_cdf[116] < 0.95 <= half_cdf[117]
+    assert math.isclose(half_cdf[118], cdf[59])
+    half_quantiles = {}
+    for label in QUANTILES:
+        probability = float(label)
+        chunk = next((i for i in range(1, half_max + 1)
+                      if half_cdf[i] >= probability), None)
+        half_quantiles[label] = {
+            "completed_chunks": chunk,
+            "model_success_probability": half_cdf[chunk] if chunk else None,
+            "cumulative_field_calls_log2":
+                math.log2(chunk * half_calls) if chunk else None,
+        }
+    measured = screen["measured_extended_base_2pow31_stage"]
+    half_projected_seconds = (
+        measured["build_seconds"] + measured["exact_replay_seconds"] +
+        measured["query_seconds"] * half_reps / (1 << 20) /
+        screen["paired_bounded_query_speedup_14_vs_8_workers"])
+    active_campaign = {
+        "query_representatives_per_chunk": half_reps,
+        "planned_chunks": 118,
+        "model_success_probability_at_plan_end": half_cdf[118],
+        "first_hit_quantiles": half_quantiles,
+        "field_calls_per_completed_chunk": str(half_calls),
+        "field_calls_per_completed_chunk_log2": math.log2(half_calls),
+        "planned_completed_chunk_field_calls_log2": math.log2(118 * half_calls),
+        "expected_field_calls_conditional_on_hit_within_full_support_log2":
+            math.log2(half_calls * sum(
+                chunk * (half_cdf[chunk] - half_cdf[chunk - 1])
+                for chunk in range(1, half_max + 1)) / half_cdf[-1]),
+        "maximum_disjoint_full_chunks": half_max,
+        "model_probability_no_hit_after_all_full_chunks": 1 - half_cdf[-1],
+        "projected_days_for_planned_chunks_if_bounded_speedup_transfers":
+            118 * half_projected_seconds / 86400,
+        "prior_failed_R31_actual_field_calls": None,
+        "prior_failed_R31_field_call_model_upper_bound": str(calls_per_chunk),
+        "planned_plus_prior_failed_field_call_model_upper_bound_log2":
+            math.log2(118 * half_calls + calls_per_chunk),
+        "prior_failed_receipt_sha256": hashlib.sha256(
+            FAILED_R31.read_bytes()).hexdigest(),
+    }
     report = {
         "kind": "n83_q1051_first_hit_conditional_work_distribution",
         "scope": "frozen finite-support heuristic; no measured natural relation or complete IC DLP",
@@ -119,6 +181,7 @@ def main():
             quantiles["0.5"]["completed_chunks"] * full_chunk_projected_days,
         "projected_days_at_95pct_model_success_if_speedup_transfers":
             quantiles["0.95"]["completed_chunks"] * full_chunk_projected_days,
+        "active_R30_campaign": active_campaign,
         "ordinary_n83_relation_measured": False,
         "complete_solve_work_log2": None,
         "limits": [
@@ -127,6 +190,7 @@ def main():
             "The expected work is conditional on a hit within the 89 disjoint full chunks; the model leaves a positive no-hit probability.",
             "The wall-time projection transfers a 14-versus-8-worker speedup from a smaller filter and has not been measured on a full query chunk.",
             "The operation model is a specified stage boundary, not complete end-to-end IC work or a calibrated field-operation equivalent for rho.",
+            "The active R30 campaign has a prior interrupted R31 attempt with unknown actual work; its structural field-call upper bound is a model, not a measured count.",
         ],
         "input_screen_sha256": hashlib.sha256(SCREEN.read_bytes()).hexdigest(),
         "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),

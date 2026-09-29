@@ -740,6 +740,14 @@ calls** for the 95% prefix, and **8.18 projected days** if the bounded
 receipts use `.retry<N>.json`; the campaign retains all failed receipts,
 and the aggregator gives an upper bound under the same field-call model
 while leaving actual failed work and complete end-to-end work unknown.
+For this active R=$2^{30}$ plan, the
+[first-hit distribution](n83_large_orbit_solve_work.json) reaches 50%
+after 27 completed rectangles ($2^{45.888}$ modeled field calls), 90%
+after 89 ($2^{47.609}$), and 95% after 117 ($2^{48.003}$). The plan's
+118th rectangle raises modeled success to 95.24%; adding a full-rectangle
+upper bound for the prior failed R=$2^{31}$ attempt gives
+$2^{48.040}$ under the same field-call model. Actual consumed work in
+the failed attempt remains unknown.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
