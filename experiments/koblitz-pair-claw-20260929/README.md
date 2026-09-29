@@ -340,6 +340,7 @@ $1-\exp[-4.412(1-(1-ft)^6)]$. This is a prediction, not measured yield.
 | Distinct table keys | Modeled maximum success after all query pairs | Unique target queries for 95% | Conditional sampled-stage Python multiplication-time equivalents | x-key bytes alone |
 | ---: | ---: | ---: | ---: | ---: |
 | $2^{24}$ | 0.92% | impossible | unknown | 176 MiB |
+| $2^{28}$ | 13.53% | impossible | unknown | 2.75 GiB |
 | $2^{30}$ | 42.76% | impossible | unknown | 11 GiB |
 | $2^{32}$ | 84.92% | impossible | unknown | 44 GiB |
 | $2^{33}$ | 95.28% | $2^{42.82}$ | $2^{46.55}$ | 88 GiB |
@@ -359,6 +360,58 @@ sub-$2^{61}$ solve. Extrapolating the same small-stage rate gives about
 **29.4 one-core years** at $2^{33}$ keys. The public target's actual
 four-point representability remains unverified.
 
+### Native n=83 exact-table measurement and solve-work units
+
+The [native pair-stage receipt](runs/n83_native_pair_perf.json) uses the
+same curve, exact known-log base, frozen target, and unique schedules as
+Q1045. Its C++ field kernel uses the generated n=83 basis conversion and
+batched affine additions. The first 256 table keys and first 256 target
+keys were checked against the independent Python implementation for each
+batch size. Over one million samples per phase and three repetitions,
+batch size 1024 gave medians of **157.8 ns per table descriptor** and
+**192.8 ns per target query** for arithmetic, keying, and scheduling.
+This stage has no materialized hash table or lookup.
+
+The [exact-table receipt](runs/n83_native_exact_table_perf.json) then
+materialized lossless 83-bit x keys in 12-byte open-address slots. It
+tested table sizes $2^{20}$, $2^{24}$, $2^{26}$, and $2^{28}$ with
+$2^{20}$ unique public-target queries at each size. The largest table had
+**268,435,456 distinct keys, zero duplicates, 4,601,762,952 table bytes**
+(4.29 GiB), and **zero key hits**. Its build rate was **351.5 ns per
+descriptor** and its target rate, including exact lookup, was **415.3 ns
+per query**; peak process RSS was about 4.76 GB. The zero-hit observation
+at this cap is consistent with the model's maximum 13.53% target success
+even after *all* query pairs are searched. The separate
+[planted-hit control](runs/n83_native_planted_control.json) found its
+constructed hit, reconstructed all four points, recovered the scalar, and
+independently replayed it. That control does not measure ordinary target
+relation yield.
+
+For an explicit $2^x$ work estimate, the [finite-support screen](n83_knownlog_conditional_screen.json)
+uses $M=2^{33}$ exact table keys and about $2^{42.816}$ unique target
+queries to obtain **95% modeled success** on this fixed base. The sum is
+$2^{42.818}$ pair evaluations. Counting the native batched code's field
+XORs, multiplications, and squarings, including its inversion chain,
+gives approximately **$2^{47.58}$ field-operation calls**; multiplications
+alone are $2^{46.14}$. These are algorithm-level counts under the
+finite-support model, not a measured complete solve. They exclude key
+canonicalization, hash probes, memory traffic, base construction, and
+final replay. At the measured small-table rates, arithmetic without
+lookup extrapolates to **17.3 one-core days**, while applying the
+$2^{28}$ exact-table build and lookup rates to the much larger proposed
+table gives **37.3 one-core days**. The latter is only a throughput proxy:
+the required $2^{33}$-key table would occupy about **147 GB** with this
+12-byte-slot design at 70% load, above this host's 48 GB physical memory,
+and its large-table lookup rate is unmeasured. There is still no verified
+ordinary n=83 relation or public-target DLP, so the complete solve work
+remains **unknown** and no sub-$2^{61}$ result is claimed.
+
+These additions are stage proposals **Q1046** and **Q1047** under the
+same exact `EC1N83Ckb1h876c2921cb64` curve and B=4,000,102 known-log
+base. Their `candidate_id` remains null. The factor base is recorded as
+actual B before folding, with 24,097 signed-Frobenius columns separately;
+both records specify `isogeny: "none"`.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
@@ -369,5 +422,8 @@ four-point representability remains unverified.
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_field_unit.py
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_unique_schedule.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_pair_schedule.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_native_n83.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_native_n83_table.py
+./sage -python experiments/koblitz-pair-claw-20260929/verify_native_n83_planted.py
 python3 experiments/koblitz-pair-claw-20260929/n83_knownlog_screen.py
 ```

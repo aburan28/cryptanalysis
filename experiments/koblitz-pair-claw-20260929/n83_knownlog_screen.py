@@ -12,6 +12,8 @@ PERF = HERE / "runs" / "n83_knownlog_pair_perf.json"
 BATCH_PERF = HERE / "runs" / "n53_n83_batch_xkey_perf.json"
 SCHEDULE_PERF = HERE / "runs" / "n53_n83_unique_schedule_perf.json"
 FIELD_PERF = HERE / "runs" / "n53_n83_field_unit_perf.json"
+NATIVE_PERF = HERE / "runs" / "n83_native_pair_perf.json"
+EXACT_TABLE_PERF = HERE / "runs" / "n83_native_exact_table_perf.json"
 N53 = HERE / "runs" / "n53_knownlog_one_target.json"
 OUTPUT = HERE / "n83_knownlog_conditional_screen.json"
 TARGET_SUCCESS = 0.95
@@ -33,6 +35,8 @@ def main():
     batch = json.loads(BATCH_PERF.read_text())
     schedule = json.loads(SCHEDULE_PERF.read_text())
     field_cal = json.loads(FIELD_PERF.read_text())
+    native = json.loads(NATIVE_PERF.read_text())
+    exact_table = json.loads(EXACT_TABLE_PERF.read_text())
     n53 = json.loads(N53.read_text())
     assert base["curve_id"] == perf["curve_id"] == "EC1N83Ckb1h876c2921cb64"
     assert n53["verified_single_target_dlp"] is True
@@ -45,6 +49,10 @@ def main():
     assert record["unknown_log_columns"] == 0
     assert batch["runs"][1]["curve_id"] == base["curve_id"]
     assert schedule["runs"][1]["curve_id"] == base["curve_id"]
+    assert native["curve_id"] == base["curve_id"]
+    assert native["factor_base"]["enumerated_set_sha256"] == record["enumerated_set_sha256"]
+    assert exact_table["curve_id"] == base["curve_id"]
+    assert exact_table["factor_base"]["enumerated_set_sha256"] == record["enumerated_set_sha256"]
     pair_domain = math.comb(B + 1, 2)
     # Cross-orbit unordered pairs have L relative positions. Within one
     # orbit there are L/2+1 pair classes, including one identity class.
@@ -74,8 +82,15 @@ def main():
                           ("add", "mul", "sqr", "inv"))
     query_mul_units = sum(query_calls.get(name, 0) * weights[name] for name in
                           ("add", "mul", "sqr", "inv"))
+    native_table_ns = native["table_ns_per_sample_median"]
+    native_query_ns = native["query_ns_per_sample_median"]
+    native_batch = native["chosen_batch_size_by_query_median"]
+    largest_exact = exact_table["runs"][-1]
+    exact_table_ns = largest_exact["table_ns_per_descriptor"]
+    exact_query_ns = largest_exact[
+        "query_ns_per_pair_including_exact_lookup"]
     rows = []
-    for M in (1 << 20, 1 << 24, 1 << 27, 1 << 30,
+    for M in (1 << 20, 1 << 24, 1 << 27, 1 << 28, 1 << 30,
               1 << 32, 1 << 33, 1 << 34, key_cap):
         if M > key_cap:
             continue
@@ -88,6 +103,10 @@ def main():
         field_mul_time_work_log2 = None
         sampled_stage_mul_time_work_log2 = None
         python_years = None
+        native_days = None
+        native_exact_lookup_proxy_days = None
+        native_field_mul_calls_log2 = None
+        native_field_operation_calls_log2 = None
         if possible:
             query_fraction = required_partition_coverage / fraction
             unique_queries = query_fraction * pair_domain
@@ -102,6 +121,23 @@ def main():
             python_years = (
                 M * table_ns + unique_queries * query_ns
             ) / 1e9 / (365.25 * 24 * 3600)
+            native_days = (
+                M * native_table_ns + unique_queries * native_query_ns
+            ) / 1e9 / (24 * 3600)
+            native_exact_lookup_proxy_days = (
+                M * exact_table_ns + unique_queries * exact_query_ns
+            ) / 1e9 / (24 * 3600)
+            native_field_mul_calls_log2 = math.log2(
+                5 * M + 10 * unique_queries +
+                8 * (math.ceil(M / native_batch) +
+                     2 * math.ceil(unique_queries / native_batch)))
+            # Each batch inversion uses 8 multiplications and 82
+            # squarings in the native Itoh-Tsujii chain. The pair additions
+            # use 5/10 multiplies, 1/2 squares, and 7/15 field XORs.
+            inversions = (math.ceil(M / native_batch) +
+                          2 * math.ceil(unique_queries / native_batch))
+            native_field_operation_calls_log2 = math.log2(
+                13 * M + 27 * unique_queries + 90 * inversions)
         rows.append({
             "hypothetical_distinct_table_keys": M,
             "table_keys_log2": math.log2(M),
@@ -125,7 +161,17 @@ def main():
                 sampled_stage_mul_time_work_log2,
             "conditional_one_core_python_years_at_measured_unique_schedule_rate":
                 python_years,
+            "conditional_one_core_native_pair_stage_days_at_bounded_rate":
+                native_days,
+            "conditional_one_core_native_exact_lookup_days_at_2pow28_table_rate":
+                native_exact_lookup_proxy_days,
+            "conditional_native_batch_field_mul_calls_log2":
+                native_field_mul_calls_log2,
+            "conditional_native_batch_field_add_mul_sqr_calls_log2":
+                native_field_operation_calls_log2,
             "x_key_bits_only_memory_bytes_lower_bound": M * 11,
+            "illustrative_12byte_exact_open_address_table_bytes_at_70pct_load":
+                (M * 10 // 7 + 1024) * 12,
             "illustrative_32byte_packed_entry_bytes": M * 32,
         })
     report = {
@@ -164,6 +210,21 @@ def main():
         "measured_n83_direct_xkey_query_field_api_calls_per_sample": query_calls,
         "measured_n83_field_mul_ns_per_call": mul_ns,
         "measured_n83_field_api_time_ratios_to_mul": weights,
+        "measured_n83_native_table_ns_per_sample": native_table_ns,
+        "measured_n83_native_query_ns_per_sample": native_query_ns,
+        "measured_n83_native_batch_size": native_batch,
+        "measured_n83_native_samples_per_phase": native["samples_per_phase"],
+        "measured_n83_native_timing_repetitions": native["timing_repetitions"],
+        "measured_n83_exact_table_largest_descriptors":
+            exact_table["runs"][-1]["table_descriptors"],
+        "measured_n83_exact_table_largest_memory_bytes":
+            exact_table["runs"][-1]["table_bytes"],
+        "measured_n83_exact_table_largest_query_ns_per_pair_including_lookup":
+            exact_query_ns,
+        "measured_n83_exact_table_largest_table_ns_per_descriptor":
+            exact_table_ns,
+        "measured_n83_exact_table_largest_key_hits":
+            exact_table["runs"][-1]["key_hits"],
         "measured_n83_stage_table_samples": perf["table_samples"],
         "measured_n83_stage_query_samples": perf["query_samples"],
         "measured_n83_stage_key_hits": perf["query_table_key_hits"],
@@ -178,10 +239,14 @@ def main():
             "The key cap assumes only forced signed-Frobenius equivalences; accidental collisions can reduce it.",
             "The bounded affine schedules visit unique table descriptors and query pairs; only 32768 entries per phase were timed, so full-domain throughput is unmeasured.",
             "The affine schedules are deterministic permutations, not random samples; uniform placement of this fixed target's relation partitions within them is a heuristic.",
-            "Table build charges one sample per distinct key; duplicate sampling, large-table hash and memory effects, and base construction are omitted.",
+            "Table build charges one sample per distinct key. The Python and native arithmetic-only stage rates omit duplicate sampling, hash lookup, large-table memory effects, and base construction.",
             "Eleven bytes per x key excludes witnesses and hash overhead; 32 bytes per entry is illustrative.",
             "The field API unit model assigns one unit to add, mul, sqr, and inv; it is neither a multiplication equivalent nor a complete work bound.",
             "Multiplication-time equivalents divide measured Python stage wall time or weighted field API time by the measured local Python field-mul call time. They are implementation-specific proxies, not a mathematical field-operation count.",
+            "Native field call counts use 5/10 multiplications, 1/2 squarings, and 7/15 field XORs per batched table/target pair, plus 8 multiplications and 82 squarings per batch inversion. Exceptional pairs are ignored. Counts exclude x-keying, hashing, lookup, base setup, and answer verification.",
+            "Native one-core days extrapolate a one-million-sample arithmetic-and-key stage without a materialized large table or lookup. They are not a demonstrated run time for a complete solve.",
+            "The native exact-lookup day proxy uses measured 2^28-key table build and lookup rates for a hypothetical larger table; it excludes allocation, base setup, replay, verification, and any slowdown at larger memory sizes.",
+            "The exact 12-byte-slot hash table and lookup have only been measured through 2^28 distinct n83 keys; capacity, insertion, and lookup at 2^33 keys are unmeasured.",
             "The paired n83 direct-x-key benchmark verified key equivalence on 32768 samples per phase. The chosen schedule benchmark also covers 32768 samples per phase and no large table.",
         ],
         "measured_n83_relation_yield": None,
@@ -192,6 +257,8 @@ def main():
         "batch_benchmark_sha256": sha(BATCH_PERF),
         "unique_schedule_benchmark_sha256": sha(SCHEDULE_PERF),
         "field_calibration_sha256": sha(FIELD_PERF),
+        "native_benchmark_sha256": sha(NATIVE_PERF),
+        "exact_table_benchmark_sha256": sha(EXACT_TABLE_PERF),
         "n53_complete_control_sha256": sha(N53),
         "source_sha256": sha(Path(__file__)),
     }
