@@ -103,12 +103,15 @@ fn negmod(a: u64, m: u64) -> u64 {
 /// Modular inverse by the extended Euclidean algorithm; `None` when
 /// `a` and `m` are not coprime (impossible for prime `m` and `a ≠ 0`).
 fn invmod(a: u64, m: u64) -> Option<u64> {
-    let (mut old_r, mut r) = (a as i128, m as i128);
+    // The remainders never go negative, so they and the quotients stay
+    // in `u64`: a hardware division per step instead of the `i128`
+    // library call (`__divti3`), which filtering pays once per pivot.
+    let (mut old_r, mut r) = (a, m);
     let (mut old_s, mut s) = (1i128, 0i128);
     while r != 0 {
         let q = old_r / r;
         (old_r, r) = (r, old_r - q * r);
-        (old_s, s) = (s, old_s - q * s);
+        (old_s, s) = (s, old_s - q as i128 * s);
     }
     if old_r != 1 {
         return None;
@@ -128,6 +131,233 @@ pub const MAX_MODULUS_BITS: u64 = 63;
 /// Whether a subgroup order can be handled by this module.
 pub fn modulus_supported(r: &BigUint) -> bool {
     r.bits() <= MAX_MODULUS_BITS && *r >= BigUint::from(2u32)
+}
+
+// ── Division-free products by a fixed modulus ──────────────────────
+//
+// `mulmod` divides a `u128` by the modulus (`__umodti3`, tens of cycles
+// on x86-64), and that division was most of the block Wiedemann time:
+// once per matrix entry and lane in the block products, and once per
+// element update in the approximant basis.  The helpers below return
+// the same canonical residue from multiplications alone, so every
+// vector, generator and report is unchanged.  They need `m < 2⁶³`
+// (`MAX_MODULUS_BITS`); each caller keeps the plain `mulmod` path for a
+// modulus outside that range.
+
+/// `x mod m` for `x < 2m`: `x − m` wraps past `x` exactly when `x < m`,
+/// so the smaller of the two is the residue.  The comparison is a coin
+/// flip on the data; written as `min` it compiles to a conditional move,
+/// where the `if`s of `submod` became branches in the approximant basis
+/// whose mispredictions cost more than the division these helpers save.
+#[inline(always)]
+fn fold_once(x: u64, m: u64) -> u64 {
+    x.min(x.wrapping_sub(m))
+}
+
+/// `w·t mod m` for a fixed `w < m < 2⁶³` and any `t`, by Shoup's method
+/// with `ws = ⌊w·2⁶⁴/m⌋`.  Writing `ws = (w·2⁶⁴ − e)/m` with `0 ≤ e < m`,
+/// `ws·t/2⁶⁴ = w·t/m − e·t/(m·2⁶⁴)` falls short of `w·t/m` by less than
+/// one, so `q = ⌊ws·t/2⁶⁴⌋` is `⌊w·t/m⌋` or one less and `w·t − q·m`
+/// lies in `[0, 2m)`, which fits a `u64` because `m < 2⁶³`; one
+/// conditional subtraction makes it canonical.
+#[inline]
+fn mulmod_shoup(w: u64, ws: u64, t: u64, m: u64) -> u64 {
+    let q = ((ws as u128 * t as u128) >> 64) as u64;
+    fold_once(w.wrapping_mul(t).wrapping_sub(q.wrapping_mul(m)), m)
+}
+
+/// Multiplication by one fixed residue: Shoup's method when `m < 2⁶³`,
+/// the `u128` division otherwise.  Its set-up costs one division, so it
+/// pays wherever the same factor scales more than a couple of entries.
+#[derive(Clone, Copy, Debug)]
+struct FixedMul {
+    w: u64,
+    /// `⌊w·2⁶⁴/m⌋`, or `None` when the modulus is too wide for it.
+    ws: Option<u64>,
+}
+
+impl FixedMul {
+    #[inline]
+    fn new(w: u64, m: u64) -> Self {
+        debug_assert!(w < m, "a fixed multiplier must be reduced");
+        let ws = (m >> MAX_MODULUS_BITS == 0).then(|| (((w as u128) << 64) / m as u128) as u64);
+        Self { w, ws }
+    }
+
+    #[inline]
+    fn mul(self, t: u64, m: u64) -> u64 {
+        match self.ws {
+            Some(ws) => mulmod_shoup(self.w, ws, t, m),
+            None => mulmod(self.w, t, m),
+        }
+    }
+
+    /// `a − w·t mod m` for a residue `a`: `submod(a, mulmod(w, t, m), m)`
+    /// with the subtraction as a conditional move too
+    /// (`a − p + m ∈ [1, 2m)` for residues `a`, `p`).
+    #[inline]
+    fn sub_from(self, a: u64, t: u64, m: u64) -> u64 {
+        match self.ws {
+            Some(ws) => fold_once(
+                a.wrapping_sub(mulmod_shoup(self.w, ws, t, m))
+                    .wrapping_add(m),
+                m,
+            ),
+            None => submod(a, mulmod(self.w, t, m), m),
+        }
+    }
+}
+
+/// Reduction of a `u128` modulo a fixed `m` with `2 ≤ m < 2⁶³`:
+/// `v = hi·2⁶⁴ + lo ≡ hi·(2⁶⁴ mod m) + lo·1`, both products by Shoup's
+/// method, so five multiplications replace the `u128` division.
+#[derive(Clone, Copy, Debug)]
+struct Reducer {
+    m: u64,
+    /// `2⁶⁴ mod m` and its Shoup multiplier.
+    r64: u64,
+    r64_shoup: u64,
+    /// `⌊2⁶⁴/m⌋`, the Shoup multiplier of `1`.
+    one_shoup: u64,
+}
+
+impl Reducer {
+    /// `None` outside `2 ≤ m < 2⁶³`, where the Shoup bound fails (or,
+    /// for `m = 1`, the multiplier of `1` does not fit); the callers keep
+    /// their per-entry `mulmod` path for such moduli.
+    fn new(m: u64) -> Option<Self> {
+        if m < 2 || m >> MAX_MODULUS_BITS != 0 {
+            return None;
+        }
+        let shoup = |w: u64| (((w as u128) << 64) / m as u128) as u64;
+        let r64 = ((1u128 << 64) % m as u128) as u64;
+        Some(Self {
+            m,
+            r64,
+            r64_shoup: shoup(r64),
+            one_shoup: shoup(1),
+        })
+    }
+
+    #[inline]
+    fn reduce(&self, v: u128) -> u64 {
+        let m = self.m;
+        let high = mulmod_shoup(self.r64, self.r64_shoup, (v >> 64) as u64, m);
+        let low = mulmod_shoup(1, self.one_shoup, v as u64, m);
+        fold_once(high + low, m)
+    }
+
+    /// How many products `a·t` with `a ≤ a_max` and any `t < 2⁶⁴` a
+    /// `u128` accumulator holding a residue (`≤ m − 1`) absorbs before
+    /// it must be reduced again: the largest `K` with
+    /// `(m − 1) + K·a_max·(2⁶⁴ − 1) < 2¹²⁸`.  At least 1 for any `a_max`,
+    /// since `(2⁶⁴ − 1)² + 2⁶³ < 2¹²⁸`; at least 2 for a reduced
+    /// `a_max < 2⁶³`; and over 800,000 for the 45-bit `k0n53` order, far
+    /// above any row weight, so there the reduction happens once a lane.
+    fn lazy_terms(&self, a_max: u64) -> usize {
+        let a_max = a_max.max(1) as u128;
+        let room = u128::MAX - (self.m - 1) as u128;
+        (room / (a_max * u64::MAX as u128)).min(usize::MAX as u128) as usize
+    }
+}
+
+/// `W` lanes of a sum of products `a·t`, each summed exactly in a `u128`
+/// and reduced once at the end, instead of one `u128` division per
+/// product.  A lane is folded back to a residue whenever `terms` products
+/// ([`Reducer::lazy_terms`] for the largest `a` the caller adds) have
+/// accumulated, which only a modulus near `2⁶³` ever needs; the slice
+/// methods split their input at those points so that the inner loop is
+/// only multiply-and-add.  The sum is exact and the reduction canonical,
+/// so the result is the per-product `addmod(mulmod(..))` chain's to the
+/// bit.
+struct LazyLanes<'r, const W: usize> {
+    acc: [u128; W],
+    /// Products the lanes can still absorb before a fold.
+    room: usize,
+    terms: usize,
+    red: &'r Reducer,
+}
+
+impl<'r, const W: usize> LazyLanes<'r, W> {
+    #[inline(always)]
+    fn new(red: &'r Reducer, terms: usize) -> Self {
+        Self {
+            acc: [0; W],
+            room: terms,
+            terms,
+            red,
+        }
+    }
+
+    #[inline(always)]
+    fn mac(&mut self, a: u64, src: &[u64]) {
+        for (acc, &s) in self.acc.iter_mut().zip(&src[..W]) {
+            *acc += a as u128 * s as u128;
+        }
+    }
+
+    #[inline(always)]
+    fn fold(&mut self) {
+        let red = self.red;
+        self.acc
+            .iter_mut()
+            .for_each(|v| *v = red.reduce(*v) as u128);
+        self.room = self.terms;
+    }
+
+    /// Lane `l` gains `a · src[l]`.
+    #[inline(always)]
+    fn add(&mut self, a: u64, src: &[u64]) {
+        if self.room == 0 {
+            self.fold();
+        }
+        self.room -= 1;
+        self.mac(a, src);
+    }
+
+    /// Lane `l` gains `Σ_k vals[k] · x[cols[k]·n + l]`.
+    #[inline(always)]
+    fn add_sparse(&mut self, cols: &[u32], vals: &[u64], x: &[u64], n: usize) {
+        let (mut cols, mut vals) = (cols, vals);
+        loop {
+            let take = vals.len().min(self.room);
+            for (&c, &a) in cols[..take].iter().zip(&vals[..take]) {
+                self.mac(a, &x[c as usize * n..]);
+            }
+            self.room -= take;
+            (cols, vals) = (&cols[take..], &vals[take..]);
+            if vals.is_empty() {
+                break;
+            }
+            self.fold();
+        }
+    }
+
+    /// Lane `l` gains `Σ_k coeffs[k] · x[k·stride + l]`.
+    #[inline(always)]
+    fn add_strided(&mut self, coeffs: &[u64], x: &[u64], stride: usize) {
+        let (mut coeffs, mut x) = (coeffs, x);
+        loop {
+            let take = coeffs.len().min(self.room);
+            for (k, &a) in coeffs[..take].iter().enumerate() {
+                self.mac(a, &x[k * stride..]);
+            }
+            self.room -= take;
+            coeffs = &coeffs[take..];
+            if coeffs.is_empty() {
+                break;
+            }
+            x = &x[take * stride..];
+            self.fold();
+        }
+    }
+
+    #[inline(always)]
+    fn finish(self, out: &mut [u64]) {
+        for (o, &a) in out.iter_mut().zip(&self.acc) {
+            *o = self.red.reduce(a);
+        }
+    }
 }
 
 // ── Sparse rows ────────────────────────────────────────────────────
@@ -195,8 +425,9 @@ impl SparseRow {
         })
     }
 
-    /// `self − factor · other`, entries merged by column.
+    /// `self − factor · other`, entries merged by column (`factor < r`).
     fn axpy(&self, factor: u64, other: &SparseRow, modulus: u64) -> SparseRow {
+        let factor = FixedMul::new(factor, modulus);
         let mut entries = Vec::with_capacity(self.entries.len() + other.entries.len());
         let (mut i, mut j) = (0, 0);
         while i < self.entries.len() || j < other.entries.len() {
@@ -209,12 +440,12 @@ impl SparseRow {
                 i += 1;
             } else if take_other {
                 let (c, v) = other.entries[j];
-                entries.push((c, negmod(mulmod(factor, v, modulus), modulus)));
+                entries.push((c, negmod(factor.mul(v, modulus), modulus)));
                 j += 1;
             } else {
                 let (c, a) = self.entries[i];
                 let b = other.entries[j].1;
-                let v = submod(a, mulmod(factor, b, modulus), modulus);
+                let v = submod(a, factor.mul(b, modulus), modulus);
                 if v != 0 {
                     entries.push((c, v));
                 }
@@ -224,7 +455,7 @@ impl SparseRow {
         }
         SparseRow {
             entries,
-            rhs: submod(self.rhs, mulmod(factor, other.rhs, modulus), modulus),
+            rhs: submod(self.rhs, factor.mul(other.rhs, modulus), modulus),
         }
     }
 }
@@ -774,6 +1005,10 @@ pub struct CsrMatrix {
     col_idx: Vec<u32>,
     vals: Vec<u64>,
     modulus: u64,
+    /// The reducer and the products an accumulator absorbs between
+    /// reductions ([`Reducer::lazy_terms`] for the largest stored
+    /// coefficient); `None` for a modulus outside `[2, 2⁶³)`.
+    lazy: Option<(Reducer, usize)>,
 }
 
 /// Rows below this many are multiplied serially.
@@ -794,6 +1029,14 @@ impl CsrMatrix {
             }
             row_ptr.push(col_idx.len());
         }
+        // Rows are built reduced, but `entries` is public: bound the
+        // products by the largest coefficient actually stored, and by
+        // `m − 1` for the homogenising column `Homogenised` appends.
+        let a_max = vals
+            .iter()
+            .copied()
+            .fold(modulus.saturating_sub(1), u64::max);
+        let lazy = Reducer::new(modulus).map(|r| (r, r.lazy_terms(a_max)));
         Self {
             n_rows: rows.len(),
             n_cols,
@@ -801,6 +1044,7 @@ impl CsrMatrix {
             col_idx,
             vals,
             modulus,
+            lazy,
         }
     }
 
@@ -811,6 +1055,47 @@ impl CsrMatrix {
 
     #[inline]
     fn row_into(&self, i: usize, x: &[u64], n: usize, out: &mut [u64]) {
+        match &self.lazy {
+            Some(lazy) => self.row_lazy(i, x, n, 0, lazy, out),
+            None => self.row_into_per_entry(i, x, n, out),
+        }
+    }
+
+    /// Row `i` of `A · x` over `n` lanes, plus `extra · x[n_cols·n + j]` in
+    /// lane `j` when `extra ≠ 0` (the homogenising column, `extra < m`),
+    /// with one reduction per lane ([`LazyLanes`]).  Lanes go four at a
+    /// time (the default block width), then singly, so the accumulators
+    /// stay in registers.
+    #[inline]
+    fn row_lazy(
+        &self,
+        i: usize,
+        x: &[u64],
+        n: usize,
+        extra: u64,
+        (red, terms): &(Reducer, usize),
+        out: &mut [u64],
+    ) {
+        let span = self.row_ptr[i]..self.row_ptr[i + 1];
+        let row = (&self.col_idx[span.clone()], &self.vals[span]);
+        let extra = (self.n_cols * n, extra);
+        let mut j = 0;
+        while j + 4 <= n {
+            let acc = LazyLanes::<4>::new(red, *terms);
+            csr_lanes(acc, row, &x[j..], n, extra, &mut out[j..j + 4]);
+            j += 4;
+        }
+        while j < n {
+            let acc = LazyLanes::<1>::new(red, *terms);
+            csr_lanes(acc, row, &x[j..], n, extra, &mut out[j..j + 1]);
+            j += 1;
+        }
+    }
+
+    /// One `mulmod` per entry and lane: the path for a modulus the
+    /// [`Reducer`] does not cover, and the reference the lazy path is
+    /// tested against.
+    fn row_into_per_entry(&self, i: usize, x: &[u64], n: usize, out: &mut [u64]) {
         let m = self.modulus;
         out.iter_mut().for_each(|v| *v = 0);
         for k in self.row_ptr[i]..self.row_ptr[i + 1] {
@@ -823,21 +1108,46 @@ impl CsrMatrix {
         }
     }
 
+    /// `row(i, out)` for every `n`-lane row of `y`, in parallel over rows
+    /// for a large matrix.
+    fn for_each_row(&self, y: &mut [u64], n: usize, row: impl Fn(usize, &mut [u64]) + Sync) {
+        if self.n_rows >= PARALLEL_ROWS {
+            y.par_chunks_mut(n)
+                .enumerate()
+                .for_each(|(i, out)| row(i, out));
+        } else {
+            for (i, out) in y.chunks_mut(n).enumerate() {
+                row(i, out);
+            }
+        }
+    }
+
     /// `y = A · x` for `n` column vectors stored row-major
     /// (`x[c * n + j]`), in parallel over rows.
     pub fn mul_block(&self, x: &[u64], n: usize, y: &mut [u64]) {
         debug_assert_eq!(x.len(), self.n_cols * n);
         debug_assert_eq!(y.len(), self.n_rows * n);
-        if self.n_rows >= PARALLEL_ROWS {
-            y.par_chunks_mut(n)
-                .enumerate()
-                .for_each(|(i, out)| self.row_into(i, x, n, out));
-        } else {
-            for (i, out) in y.chunks_mut(n).enumerate() {
-                self.row_into(i, x, n, out);
-            }
-        }
+        self.for_each_row(y, n, |i, out| self.row_into(i, x, n, out));
     }
+}
+
+/// `W` lanes of one CSR row `(columns, coefficients)` times `x`, where
+/// `x` starts at the first of those lanes and holds `n` lanes per column,
+/// plus `extra.1` times the lanes at offset `extra.0` when nonzero.
+#[inline(always)]
+fn csr_lanes<const W: usize>(
+    mut acc: LazyLanes<'_, W>,
+    (cols, vals): (&[u32], &[u64]),
+    x: &[u64],
+    n: usize,
+    extra: (usize, u64),
+    out: &mut [u64],
+) {
+    acc.add_sparse(cols, vals, x, n);
+    if extra.1 != 0 {
+        acc.add(extra.1, &x[extra.0..]);
+    }
+    acc.finish(out);
 }
 
 /// A square linear operator on block vectors, as block Wiedemann sees it.
@@ -878,6 +1188,18 @@ impl BlockOperator for Homogenised<'_> {
         let big_n = self.a.dim();
         let m = self.a.modulus;
         let (ya, yt) = y.split_at_mut(big_n * n);
+        yt.iter_mut().for_each(|v| *v = 0);
+        if let Some(lazy) = &self.a.lazy {
+            // `−b_i · t_j` is one more product in row `i`'s sum, against
+            // the `t` lanes that follow `A`'s `N·n` in `x`: one reduction
+            // per lane for the whole row of `M`.
+            self.a.for_each_row(ya, n, |i, out| {
+                let bi = self.b[i];
+                let bi = if bi < m { bi } else { bi % m };
+                self.a.row_lazy(i, x, n, negmod(bi, m), lazy, out);
+            });
+            return;
+        }
         self.a.mul_block(&x[..big_n * n], n, ya);
         let t = &x[big_n * n..];
         for (i, out) in ya.chunks_mut(n).enumerate() {
@@ -889,7 +1211,6 @@ impl BlockOperator for Homogenised<'_> {
                 *o = submod(*o, mulmod(bi, tj, m), m);
             }
         }
-        yt.iter_mut().for_each(|v| *v = 0);
     }
     fn modulus(&self) -> u64 {
         self.a.modulus
@@ -1005,32 +1326,33 @@ fn minimal_approximant_basis(
                 if pj.f.len() < width {
                     pj.f.resize(width, vec![0u64; n]);
                 }
+                // `c` scales a whole column: one Shoup set-up, then three
+                // multiplications per element instead of a division (and
+                // no test for a zero entry, which the product leaves be).
+                let c = FixedMul::new(c, modulus);
                 for (fj, fp) in pj.f.iter_mut().zip(&pp.f) {
                     for (a, &b) in fj.iter_mut().zip(fp) {
-                        if b != 0 {
-                            *a = submod(*a, mulmod(c, b, modulus), modulus);
-                        }
+                        *a = c.sub_from(*a, b, modulus);
                     }
                 }
-                for k in t * m..big_l * m {
-                    let b = pp.residual[k];
-                    if b != 0 {
-                        pj.residual[k] = submod(pj.residual[k], mulmod(c, b, modulus), modulus);
-                    }
+                let span = t * m..big_l * m;
+                for (a, &b) in pj.residual[span.clone()].iter_mut().zip(&pp.residual[span]) {
+                    *a = c.sub_from(*a, b, modulus);
                 }
             }
             if let Some(row) = (0..m).find(|&i| cols[j].residual[t * m + i] != 0) {
                 // Normalise the pivot so later reductions are one product.
                 let inv = invmod(cols[j].residual[t * m + row], modulus).expect("prime modulus");
                 if inv != 1 {
+                    let inv = FixedMul::new(inv, modulus);
                     let col = &mut cols[j];
                     for fk in col.f.iter_mut() {
                         for a in fk.iter_mut() {
-                            *a = mulmod(*a, inv, modulus);
+                            *a = inv.mul(*a, modulus);
                         }
                     }
-                    for k in t * m..big_l * m {
-                        col.residual[k] = mulmod(col.residual[k], inv, modulus);
+                    for a in &mut col.residual[t * m..big_l * m] {
+                        *a = inv.mul(*a, modulus);
                     }
                 }
                 pivots.push((j, row));
@@ -1082,6 +1404,10 @@ pub fn block_wiedemann_kernel(
         ..BlockWiedemannReport::default()
     };
 
+    // X, Z and the basis are reduced, so their products are bounded by
+    // `m − 1` times whatever the operator returns.
+    let lazy = Reducer::new(modulus).map(|r| (r, r.lazy_terms(modulus - 1)));
+
     // Krylov sequence S_t = X Mᵗ Y = X Mᵗ⁺¹ Z.
     let mut seq: Vec<Vec<u64>> = Vec::with_capacity(big_l);
     let mut v = y.clone();
@@ -1090,19 +1416,35 @@ pub fn block_wiedemann_kernel(
         let mut s = vec![0u64; m * n];
         for i in 0..m {
             let xi = &x[i * big_n..(i + 1) * big_n];
-            let row: Vec<u64> = (0..n)
-                .map(|j| {
-                    let mut acc = 0u128;
-                    for (r, &xr) in xi.iter().enumerate() {
-                        acc += xr as u128 * v[r * n + j] as u128;
-                        if acc >> 126 != 0 {
-                            acc %= modulus as u128;
-                        }
+            let out = &mut s[i * n..(i + 1) * n];
+            if let Some((red, terms)) = &lazy {
+                // Row i of X against the lanes of v, like a dense matrix
+                // row: lanes four at a time, one reduction each.
+                let mut j = 0;
+                while j + 4 <= n {
+                    let mut acc = LazyLanes::<4>::new(red, *terms);
+                    acc.add_strided(xi, &v[j..], n);
+                    acc.finish(&mut out[j..j + 4]);
+                    j += 4;
+                }
+                while j < n {
+                    let mut acc = LazyLanes::<1>::new(red, *terms);
+                    acc.add_strided(xi, &v[j..], n);
+                    acc.finish(&mut out[j..j + 1]);
+                    j += 1;
+                }
+                continue;
+            }
+            for (j, o) in out.iter_mut().enumerate() {
+                let mut acc = 0u128;
+                for (r, &xr) in xi.iter().enumerate() {
+                    acc += xr as u128 * v[r * n + j] as u128;
+                    if acc >> 126 != 0 {
+                        acc %= modulus as u128;
                     }
-                    (acc % modulus as u128) as u64
-                })
-                .collect();
-            s[i * n..(i + 1) * n].copy_from_slice(&row);
+                }
+                *o = (acc % modulus as u128) as u64;
+            }
         }
         seq.push(s);
         if t + 1 < big_l {
@@ -1119,10 +1461,17 @@ pub fn block_wiedemann_kernel(
     let mut buf = vec![0u64; big_n];
     let z_times = |f: &[u64], out: &mut [u64]| {
         for (r, o) in out.iter_mut().enumerate() {
+            let zr = &z[r * n..(r + 1) * n];
+            if let Some((red, terms)) = &lazy {
+                let mut acc = LazyLanes::<1>::new(red, *terms);
+                acc.add_strided(f, zr, 1);
+                acc.finish(std::slice::from_mut(o));
+                continue;
+            }
             let mut acc = 0u64;
             for (j, &fj) in f.iter().enumerate() {
                 if fj != 0 {
-                    acc = addmod(acc, mulmod(z[r * n + j], fj, modulus), modulus);
+                    acc = addmod(acc, mulmod(zr[j], fj, modulus), modulus);
                 }
             }
             *o = acc;
@@ -1447,6 +1796,265 @@ mod tests {
         }
         assert_eq!(invmod(0, P), None);
         assert_eq!(invmod(6, 9), None);
+    }
+
+    /// The largest prime below `2⁶³`: the widest modulus the module
+    /// admits, where a lazy accumulator absorbs only two products.
+    const Q63: u64 = (1u64 << 63) - 25;
+
+    #[test]
+    fn division_free_reduction_matches_the_division() {
+        let mut rng = StdRng::seed_from_u64(12);
+        let mut moduli = vec![2, 3, P, Q, Q63, (1 << 63) - 1, 21_044_858_204_113];
+        moduli.extend(
+            (2..=63).map(|bits| rng.gen_range(1u64 << (bits - 1)..=u64::MAX >> (64 - bits))),
+        );
+        for &m in &moduli {
+            let red = Reducer::new(m).expect("in range");
+            let mut values: Vec<u128> = vec![
+                0,
+                1,
+                m as u128 - 1,
+                m as u128,
+                (m as u128 - 1) * (m as u128 - 1),
+                u64::MAX as u128,
+                1u128 << 64,
+                u128::MAX,
+                u128::MAX - 1,
+            ];
+            values.extend((0..200).map(|_| rng.gen::<u128>() >> rng.gen_range(0..128)));
+            for &v in &values {
+                assert_eq!(red.reduce(v) as u128, v % m as u128, "m = {m}, v = {v}");
+            }
+            for _ in 0..200 {
+                let w = rng.gen_range(0..m);
+                let t = if rng.gen_bool(0.1) {
+                    u64::MAX
+                } else {
+                    rng.gen()
+                };
+                let fixed = FixedMul::new(w, m);
+                assert!(fixed.ws.is_some());
+                assert_eq!(
+                    fixed.mul(t, m),
+                    mulmod(w, t, m),
+                    "m = {m}, w = {w}, t = {t}"
+                );
+                let a = rng.gen_range(0..m);
+                assert_eq!(fixed.sub_from(a, t, m), submod(a, mulmod(w, t, m), m));
+            }
+            // The accumulation bound, checked against the exact inequality.
+            for a_max in [0, 1, m - 1, u64::MAX] {
+                let k = red.lazy_terms(a_max) as u128;
+                let per = a_max.max(1) as u128 * u64::MAX as u128;
+                let fits = |k: u128| {
+                    k.checked_mul(per)
+                        .and_then(|s| s.checked_add(m as u128 - 1))
+                        .is_some()
+                };
+                assert!(k >= 1 && fits(k), "m = {m}, a_max = {a_max}");
+                if k < usize::MAX as u128 {
+                    assert!(!fits(k + 1), "m = {m}, a_max = {a_max}: not the largest");
+                }
+            }
+        }
+        assert_eq!(Reducer::new(Q63).unwrap().lazy_terms(Q63 - 1), 2);
+        assert_eq!(
+            Reducer::new(21_044_858_204_113)
+                .unwrap()
+                .lazy_terms(21_044_858_204_112),
+            876_543
+        );
+        for m in [0, 1, 1 << 63, u64::MAX] {
+            assert!(Reducer::new(m).is_none(), "m = {m}");
+        }
+        // Past 2⁶³ a fixed multiplier falls back to the division.
+        let wide = u64::MAX - 58; // prime
+        for _ in 0..200 {
+            let (w, t) = (rng.gen_range(0..wide), rng.gen());
+            let fixed = FixedMul::new(w, wide);
+            assert!(fixed.ws.is_none());
+            assert_eq!(fixed.mul(t, wide), mulmod(w, t, wide));
+            let a = rng.gen_range(0..wide);
+            assert_eq!(
+                fixed.sub_from(a, t, wide),
+                submod(a, mulmod(w, t, wide), wide)
+            );
+        }
+    }
+
+    /// Random CSR rows up to `max_weight` entries, coefficients below
+    /// `coeff_bound` (unreduced when it exceeds the modulus; `entries` is
+    /// public, so the products must hold for any stored value).
+    fn random_csr(
+        rng: &mut StdRng,
+        rows: usize,
+        cols: usize,
+        max_weight: usize,
+        coeff_bound: u64,
+        modulus: u64,
+    ) -> CsrMatrix {
+        let rows: Vec<SparseRow> = (0..rows)
+            .map(|_| {
+                let w = rng.gen_range(0..=max_weight);
+                let mut entries: Vec<(u32, u64)> = (0..w)
+                    .map(|_| (rng.gen_range(0..cols) as u32, rng.gen_range(1..coeff_bound)))
+                    .collect();
+                entries.sort_unstable_by_key(|&(c, _)| c);
+                entries.dedup_by_key(|&mut (c, _)| c);
+                SparseRow { entries, rhs: 0 }
+            })
+            .collect();
+        CsrMatrix::from_rows(&rows, cols, modulus)
+    }
+
+    #[test]
+    fn lazy_block_products_match_per_entry_products() {
+        let mut rng = StdRng::seed_from_u64(13);
+        let mut chunked = false;
+        for &modulus in &[P, 21_044_858_204_113, Q, Q63] {
+            for &coeff_bound in &[modulus, u64::MAX] {
+                let big_n = rng.gen_range(20..60);
+                // Rows up to 40 entries, far past the two products a
+                // 63-bit accumulator holds between reductions.
+                let a = random_csr(&mut rng, big_n, big_n, 40, coeff_bound, modulus);
+                let (_, terms) = a.lazy.expect("modulus in range");
+                chunked |= terms < 40;
+                for n in 1..=9 {
+                    let x: Vec<u64> = (0..big_n * n)
+                        .map(|_| match rng.gen_range(0..3) {
+                            0 => rng.gen_range(0..modulus),
+                            1 => rng.gen(),
+                            _ => u64::MAX - rng.gen_range(0..2),
+                        })
+                        .collect();
+                    let mut y = vec![0u64; big_n * n];
+                    a.mul_block(&x, n, &mut y);
+                    for (i, out) in y.chunks(n).enumerate() {
+                        let mut expect = vec![0u64; n];
+                        a.row_into_per_entry(i, &x, n, &mut expect);
+                        assert_eq!(out, &expect[..], "modulus {modulus}, n {n}, row {i}");
+                    }
+                    // The homogenised operator, fused, against A·x
+                    // followed by the per-entry subtraction of b ⊗ t.
+                    let b: Vec<u64> = (0..big_n)
+                        .map(|_| match rng.gen_range(0..4) {
+                            0 => 0,
+                            1 => modulus,
+                            2 => rng.gen(),
+                            _ => rng.gen_range(0..modulus),
+                        })
+                        .collect();
+                    let t: Vec<u64> = (0..n).map(|_| rng.gen()).collect();
+                    let xt: Vec<u64> = x.iter().chain(&t).copied().collect();
+                    let op = Homogenised { a: &a, b: &b };
+                    let mut z = vec![1u64; (big_n + 1) * n];
+                    op.apply(&xt, n, &mut z);
+                    for (i, out) in z[..big_n * n].chunks(n).enumerate() {
+                        for (j, &o) in out.iter().enumerate() {
+                            let ax = y[i * n + j];
+                            let expect = submod(ax, mulmod(b[i], t[j], modulus), modulus);
+                            assert_eq!(o, expect, "modulus {modulus}, n {n}, row {i}");
+                        }
+                    }
+                    assert!(z[big_n * n..].iter().all(|&v| v == 0));
+                }
+            }
+        }
+        assert!(chunked, "some row outgrew the accumulator");
+        // Past 2⁶³ the per-entry path runs; small values keep its sums
+        // inside a u64, so it can be checked against plain u128 sums.
+        let wide = (1u64 << 63) + 29;
+        let a = random_csr(&mut rng, 30, 30, 8, 1 << 40, wide);
+        assert!(a.lazy.is_none());
+        let n = 3;
+        let x: Vec<u64> = (0..30 * n).map(|_| rng.gen_range(0..1 << 20)).collect();
+        let mut y = vec![0u64; 30 * n];
+        a.mul_block(&x, n, &mut y);
+        for (i, out) in y.chunks(n).enumerate() {
+            for (j, &o) in out.iter().enumerate() {
+                let sum: u128 = (a.row_ptr[i]..a.row_ptr[i + 1])
+                    .map(|k| a.vals[k] as u128 * x[a.col_idx[k] as usize * n + j] as u128)
+                    .sum();
+                assert_eq!(o as u128, sum % wide as u128);
+            }
+        }
+    }
+
+    #[test]
+    fn lazy_strided_sums_match_per_product_sums() {
+        // The Krylov projection's and `z_times`' shape: reduced
+        // coefficients against arbitrary lanes at a stride, from empty to
+        // long enough that at 63 bits the sum, and the slice with it, is
+        // split at every second product.
+        let mut rng = StdRng::seed_from_u64(15);
+        for &modulus in &[2, 3, P, 21_044_858_204_113, Q, Q63] {
+            let red = Reducer::new(modulus).expect("in range");
+            let terms = red.lazy_terms(modulus - 1);
+            for len in 0..24 {
+                let coeffs: Vec<u64> = (0..len).map(|_| rng.gen_range(0..modulus)).collect();
+                for stride in [1, 4, 5] {
+                    let x: Vec<u64> = (0..len * stride + 4)
+                        .map(|_| {
+                            if rng.gen_bool(0.3) {
+                                u64::MAX
+                            } else {
+                                rng.gen()
+                            }
+                        })
+                        .collect();
+                    let expect: Vec<u64> = (0..4)
+                        .map(|l| {
+                            coeffs.iter().enumerate().fold(0, |acc, (k, &a)| {
+                                addmod(acc, mulmod(a, x[k * stride + l], modulus), modulus)
+                            })
+                        })
+                        .collect();
+                    let mut four = [0u64; 4];
+                    let mut acc = LazyLanes::<4>::new(&red, terms);
+                    acc.add_strided(&coeffs, &x, stride);
+                    acc.finish(&mut four);
+                    assert_eq!(four[..], expect[..], "m = {modulus}, len {len}");
+                    let mut one = 0u64;
+                    let mut acc = LazyLanes::<1>::new(&red, terms);
+                    acc.add_strided(&coeffs, &x, stride);
+                    acc.finish(std::slice::from_mut(&mut one));
+                    assert_eq!(one, expect[0], "m = {modulus}, len {len}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn block_wiedemann_solves_systems_modulo_a_63_bit_prime() {
+        // Two products per accumulator: every row, the homogenising
+        // column and the Krylov projection reduce part-way.
+        let mut rng = StdRng::seed_from_u64(14);
+        for trial in 0..6 {
+            let big_n = rng.gen_range(10..60);
+            let (rows, x) = planted_system(&mut rng, big_n, big_n, 12, Q63);
+            let a = CsrMatrix::from_rows(&rows, big_n, Q63);
+            let b: Vec<u64> = rows.iter().map(|r| r.rhs).collect();
+            let op = Homogenised { a: &a, b: &b };
+            let nonsingular = dense_reference(&rows, big_n, Q63).is_some();
+            let Some((z, _)) =
+                block_wiedemann_kernel(&op, &BlockWiedemannOptions::default(), rng.gen())
+            else {
+                assert!(!nonsingular, "trial {trial}");
+                continue;
+            };
+            let mut img = vec![0u64; big_n + 1];
+            op.apply(&z, 1, &mut img);
+            assert!(
+                img.iter().all(|&v| v == 0),
+                "trial {trial}: not a kernel vector"
+            );
+            if nonsingular {
+                let inv = invmod(z[big_n], Q63).expect("t ≠ 0");
+                let sol: Vec<u64> = z[..big_n].iter().map(|&v| mulmod(v, inv, Q63)).collect();
+                assert_eq!(sol, x, "trial {trial}");
+            }
+        }
     }
 
     #[test]
