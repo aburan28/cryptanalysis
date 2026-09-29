@@ -1185,7 +1185,9 @@ independently replayed scalar. Each small public-target run produced
 not physical x86 performance evidence. The
 [x86 CI workflow](../../.github/workflows/n83-portable-quotient-controls.yml)
 runs both backends and one bounded public-target chunk on an x64 Linux
-runner; retain its artifact before citing any physical x86 result.
+runner. Its corrected [physical x86 receipt](runs/n83_portable_physical_x86_ci_run36627669403.json)
+archives the successful PCLMUL and generic controls, compiler and OS,
+source and binary hashes, and the bounded public-target stage result.
 
 The [Q1061 screen](n83_portable_cpu_stage_screen.json) and
 [M24/R20 receipt](runs/n83_portable_q1061_k48194_chunk_M24_R20_tstart0_qstart1073741824_b20_h10_rb8.json)
@@ -1206,8 +1208,8 @@ from KiB. The separate portable source now converts that field, and
 round-two controls and stage receipts retain their own source hashes.
 The round-two M24/R20 run overlapped the full Q1060 run, so its wall
 time is retained as a stage record but is not used for an isolated
-performance comparison. The CI workflow also checks that peak RSS is
-at least the allocated Bloom-filter size.
+performance comparison. The corrected physical x86 CI run passed and
+checked that peak RSS is at least the allocated Bloom-filter size.
 
 Q1061 is a stage proposal with `candidate_id: null` and `run_id: null`.
 Its receipts retain the canonical field and curve record under
