@@ -291,7 +291,7 @@ measurement rows:
 the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
 requires exactly one of those IDs to be non-null. New comparison rows
 must use the `IC1` ID and carry the old `Q` lineage separately. Current
-n=83 stage records use `Q1051` through `Q1054`, with
+n=83 stage records use `Q1051` through `Q1055`, with
 `candidate_id: null`.
 
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
@@ -835,6 +835,7 @@ attempts, and independent scalar replay.
 | n=83 Q1051 | One full R=$2^{30}$ rectangle completed in 7,164.3 s with zero exact hits; 95% model prefix $2^{48.016}$ | Measured one-rectangle wall time and zero yield; prefix field calls predicted |
 | n=83 Q1052 | No natural hit yet; median $2^{44.974}$, 95% $2^{47.049}$ | Predicted native field-call stage only; full-size throughput unmeasured |
 | n=83 Q1054 | Planted scalar replay passed; bounded query 1.176× faster at 14 workers; 95% $2^{47.071}$ | Predicted x-only field-call stage; full-size throughput and natural yield unmeasured |
+| n=83 Q1055 | Bounded 10-hash query 1.053× faster than 14 hashes; planted scalar replay passed | Measured small-filter stage; predicted 95% Bloom bit probes $2^{47.597}$, distinct from field calls |
 
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
 [campaign driver](n83_two_shard_campaign.py) retain source hashes,
@@ -945,6 +946,40 @@ separate guard telemetry if it interrupts a child. The full-size launch
 gate currently refuses to start: system-volume free space is below its
 12 GiB minimum, and this host recently accumulated heavy swap-outs.
 No full-size Q1054 rate or relation has been measured.
+
+### Bloom hash-count stage screen (Q1055)
+
+The [Q1055 paired run](runs/n83_signed_x_hashes_paired.json) kept the
+Q1054 signed-x kernel, exact n=83 curve, public target, 8,000,204-point
+base, 48,194 folded columns, base digest, M=$2^{20}$ table, R=$2^{22}$
+query, and 14 workers fixed. It ran hash counts 14, 8, 10, 12, 12, 10,
+8, 14. The [runtime receipt](runs/n83_signed_x_hashes_runtime_info.json)
+was saved before the measured workload. Each hash count found zero exact
+hits. The 10-hash variant produced 63,442 Bloom positives, versus 52,139
+with 14 hashes, and median query times of 10.957 versus 11.542 seconds.
+Its **1.053× bounded query speedup** agrees with a **1.050× process CPU
+speedup**. The latter includes launch and setup, so it is a diagnostic,
+not one-target online time. The 10-hash query range was 10.764–11.150 s,
+and the 14-hash range was 10.696–12.389 s; their overlap prevents a robust
+full-size wall-time gain on this busy host. Eight hashes used less CPU
+but produced 96,083 positives and only a 1.017× median wall gain.
+
+The [10-hash planted control](runs/n83_signed_x_hash10_planted.json)
+found the same nonzero-offset exact hit as Q1054 and independently replayed
+the scalar. Its [separate runtime receipt](runs/n83_signed_x_hash10_runtime_info.json)
+was saved before that job. It is a correctness check, not natural relation yield. The
+[work screen](n83_signed_x_hashes_screen.json) counts one Bloom bit probe
+per hash insertion or lookup: $h(M+166R)$ per full rectangle. Under
+Q1051's heuristic 118-rectangle prefix, this is **$2^{47.597}$ probes**
+at ten hashes versus **$2^{48.082}$ probes** at fourteen. The Q1054
+field-call model remains **$2^{47.071}$** in either case. Bloom probes,
+field calls, memory traffic, and scalar recovery have not been calibrated
+into one equivalent work unit. Scaling the bounded false-positive ratio
+to the full filter would suggest about 20.3 million positives for ten
+hashes versus the 16.7 million measured in Q1051; this is a prediction,
+not a full-size memory measurement. Ten hashes is a provisional setting
+for a guarded full-filter calibration. Q1054's 14-hash campaign remains
+unchanged until that calibration and an ordinary n=83 relation are measured.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
