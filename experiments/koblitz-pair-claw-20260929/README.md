@@ -836,7 +836,7 @@ attempts, and independent scalar replay.
 | n=83 Q1052 | No natural hit yet; median $2^{44.974}$, 95% $2^{47.049}$ | Predicted native field-call stage only; full-size throughput unmeasured |
 | n=83 Q1054 | Planted scalar replay passed; bounded query 1.176× faster at 14 workers; 95% $2^{47.071}$ | Predicted x-only field-call stage; full-size throughput and natural yield unmeasured |
 | n=83 Q1055 | M=$2^{20}$ median query 1.053× faster; one M=$2^{28}$ pair gave 1.140× query and 1.054× full native-stage speedups; planted scalar replay passed | Measured bounded stages; reverse-order M=$2^{28}$ repeat interrupted; predicted 95% Bloom bit probes $2^{47.597}$, distinct from field calls |
-| n=83 Q1056 | Exact fast-key equality on 1,048,576 field inputs; 1.508× isolated key-kernel speedup | Microbenchmark only; bounded full-query speedup and relation yield unmeasured |
+| n=83 Q1056 | Exact fast-key equality on 1,048,576 field inputs; 1.508× isolated key-kernel and 1.326× paired bounded-query speedups | M=$2^{20}$, R=$2^{22}$ query stage only; full-size rate and relation yield unmeasured |
 | n=83 Q1057 | Exact cyclic-gap rotation key; 1.202× slower than Q1056 byte-table key | Negative isolated-kernel result; gap-scanning implementation rejected |
 | n=83 Q1058 | Eight disjoint M=$2^{28}$ table shards; 936 future R=$2^{30}$ rectangles model $2^{50.001}$ native field calls | Conditional lower-memory plan only; 54.5 projected query-only days, no natural relation |
 
@@ -1029,16 +1029,21 @@ keys, a **1.508× isolated key-kernel speedup**. The reference range was
 [Sage runtime receipt](runs/n83_fast_keyer_runtime_info.json) was saved
 before measurement.
 
-This does not measure the query kernel, relation yield, or complete DLP
-work. A [guarded paired query benchmark](bench_n83_fast_keyer_paired.py)
-is prepared on the same M=$2^{20}$, R=$2^{22}$, 14-worker workload as
-Q1054. It requires at least 2 GiB free on the system volume and has not
-run while that guard fails. Its [checked-Sage preflight](runs/n83_fast_keyer_paired_preflight.json)
-refused to start with 1.404 GB free and recorded no native work. The Q1054
-campaign now checks the native pair and Bloom-core source digests for each
-future full-size receipt. Both native full-query variants passed an
-[ARM64 compilation check](runs/n83_fast_keyer_compile_check.json); that
-check does not establish full-query correctness or performance.
+The [guarded paired query benchmark](runs/n83_fast_keyer_paired.json)
+subsequently completed on the same M=$2^{20}$, R=$2^{22}$, 14-worker
+public-target workload as Q1054, after a fresh
+[checked-Sage runtime receipt](runs/n83_fast_keyer_paired_runtime_info.json).
+The ABBA order gave reference query times 22.864 and 25.518 s, and fast
+times 18.840 and 17.640 s. The medians are **24.191 versus 18.240 s**,
+a **1.326× bounded-query speedup**; median build + query + exact replay
+was 24.836 versus 18.673 s, a **1.330× native-stage speedup**. Every run
+had the same 52,139 Bloom positives, zero exact hits, and zero swap-out
+growth during its timed execution. Peak RSS was 328.1–329.2 MB. An earlier
+[preflight](runs/n83_fast_keyer_paired_preflight.json) had refused to
+start with 1.404 GB free against the 2 GiB gate; it recorded no native
+work. The Q1054 campaign checks native pair and Bloom-core source digests
+for each future full-size receipt. Full M=$2^{31}$ filter performance,
+natural relation yield, and complete DLP work remain unmeasured.
 
 The separate Q1057 [cyclic-gap screen](runs/n83_gap_rotation_screen.json)
 tested a minimum-rotation shortcut: a binary cyclic key must begin at a
