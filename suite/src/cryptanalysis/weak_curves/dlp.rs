@@ -302,6 +302,7 @@ pub fn pollard_rho<G: DlpGroup>(
     let mut dps: HashMap<G::Elem, (BigUint, BigUint)> = HashMap::new();
     let mut steps = 0u64;
     let mut idx = vec![0usize; walks];
+    let mut pending: Vec<(usize, usize, usize)> = Vec::new();
     while steps < max_steps {
         for i in 0..walks {
             idx[i] = (hs[i] % r as u64) as usize;
@@ -312,6 +313,12 @@ pub fn pollard_rho<G: DlpGroup>(
         }
         steps += walks as u64;
         ops += walks as u64;
+        // Restarts are drawn in walk order below but applied together after
+        // the pass, two batched operations for all of them (one shared
+        // inversion on a curve) instead of two single ones each.  Nothing
+        // in the pass reads a restarted walk's point again, so deferring
+        // them changes no walk, no draw and no count.
+        pending.clear();
         for i in 0..walks {
             let w = &mut ws[i];
             w.cnt[idx[i]] += 1;
@@ -343,15 +350,26 @@ pub fn pollard_rho<G: DlpGroup>(
             // Restart (after a distinguished point, or a walk that is
             // probably trapped in a cycle) from X·T_u·T_v.
             let (a, b) = log_of(w);
-            let (tu, au, bu) = &restarts[rng.gen_range(0..RESTARTS)];
-            let (tv, av, bv) = &restarts[rng.gen_range(0..RESTARTS)];
-            xs[i] = grp.op(&grp.op(&xs[i], tu), tv);
+            let (u, v) = (rng.gen_range(0..RESTARTS), rng.gen_range(0..RESTARTS));
+            let (_, au, bu) = &restarts[u];
+            let (_, av, bv) = &restarts[v];
+            pending.push((i, u, v));
             ops += 2;
             w.a0 = add_mod(&add_mod(&a, au, ell), av, ell);
             w.b0 = add_mod(&add_mod(&b, bu, ell), bv, ell);
             w.cnt.iter_mut().for_each(|c| *c = 0);
             w.len = 0;
-            hs[i] = grp.hash64(&xs[i]);
+        }
+        if !pending.is_empty() {
+            let mut moved: Vec<G::Elem> = pending.iter().map(|&(i, _, _)| xs[i].clone()).collect();
+            let first: Vec<&G::Elem> = pending.iter().map(|&(_, u, _)| &restarts[u].0).collect();
+            grp.op_many(&mut moved, &first);
+            let second: Vec<&G::Elem> = pending.iter().map(|&(_, _, v)| &restarts[v].0).collect();
+            grp.op_many(&mut moved, &second);
+            for (&(i, _, _), x) in pending.iter().zip(moved) {
+                hs[i] = grp.hash64(&x);
+                xs[i] = x;
+            }
         }
     }
     None

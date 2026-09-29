@@ -78,6 +78,19 @@ static const ca_group_vtable zp_vt = {
     zp_batch_op, zp_encode, zp_decode, zp_is_valid, NULL,
 };
 
+/* k*a in (Z/pZ)^*: the square-and-multiply of ca_group_mul on the one
+ * residue word, with inline Montgomery arithmetic instead of two indirect
+ * calls and 32-byte element copies per bit.  Returns 0 for any other
+ * vtable. */
+int ca_zp_group_mul(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k)
+{
+    if (g->vt != &zp_vt) return 0;
+    uint64_t base = a->w[0];
+    r->w[0] = ca_mont_pow(&g->mont, base, k);
+    r->w[1] = r->w[2] = r->w[3] = 0;
+    return 1;
+}
+
 ca_status ca_group_zp_init(ca_group *g, uint64_t p, uint64_t order)
 {
     memset(g, 0, sizeof(*g));

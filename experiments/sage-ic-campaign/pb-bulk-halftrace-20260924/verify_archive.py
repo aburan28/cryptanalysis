@@ -22,8 +22,11 @@ paths = {
 }
 for name, expected in intent['source_sha256'].items():
     assert hashlib.sha256(paths[name].read_bytes()).hexdigest() == expected, name
+# Both live copies now include NormalView, which was already part of the
+# measured runner snapshot. Preserve the frozen local hash above and compare
+# both complete live modules with the archived runner implementation.
 assert (ROOT / 'ecc2k130/codegen/curves.py').read_bytes() == paths[
-    'candidate-curves-local'].read_bytes()
+    'candidate-curves-runner'].read_bytes()
 assert (ROOT / 'ecc2k130/runner/codegen/curves.py').read_bytes() == paths[
     'candidate-curves-runner'].read_bytes()
 assert (ROOT / 'ecc2k130/runner/codegen/indexcalc.py').read_bytes() == paths[
