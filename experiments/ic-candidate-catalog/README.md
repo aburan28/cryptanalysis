@@ -19,6 +19,13 @@ limitations are recorded, not silently treated as completed implementations.
 The 50 ms budget comes from the shifted-base solver smoke; 1,000 ms is a
 prospective screening cap, not an observed performance result.
 
+The [quotient-pair stage proposal registry](../ecc2k130-quotient-pair-probe-20260926/stage_proposals.json)
+reserves `Q1001`–`Q1006` for a matched canonicalization comparison on exact
+N53, N83, and N131 curves. These six records are separate from the generated
+1,000-proposal design matrix. Their full IC collection, matrix, and target
+descent stages remain unresolved; the [stage runs](../ecc2k130-quotient-pair-probe-20260926/stage_runs.jsonl)
+have `candidate_id: null` and do not issue an `IC1` result.
+
 ## Evidence-linked profiles
 
 | Profile | Field | Factor base and arity | Evidence state |
