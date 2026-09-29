@@ -1,4 +1,4 @@
-# Four-point pair claw: n=23 control, n=53 relation, n=83 work screen
+# Four-point pair claw: n=53 DLP controls and n=83 work screens
 
 This experiment tests a two-color pair-sum distinguished-point walk for an
 ordinary four-point relation. At a state $X$, a fixed hash selects a color
@@ -12,8 +12,9 @@ This is a group-law search, not a quotient-summation polynomial solver. Its
 large-instance cost remains unknown. In particular, a small-base step timing
 does not establish relation yield or a sub-$2^{61}$ solve at n=83.
 The local [stage proposal registry](stage_proposals.json) assigns `Q1036`
-to the completed toy pipeline and `Q1037`–`Q1041` to the later stage
-controls. Only `Q1036` has a final `IC1` candidate identity.
+to the completed toy pipeline and `Q1037`–`Q1043` to the later work.
+`Q1036` and the complete n=53 known-log control `Q1042` have final `IC1`
+candidate identities; the remaining stage proposals do not.
 
 ## Complete n=23 one-target control
 
@@ -256,4 +257,70 @@ memory behavior at a terabyte-scale table has not been measured.
 
 ```sh
 python3 experiments/koblitz-pair-claw-20260929/n83_table_screen.py
+```
+
+## Known-log orbit base: complete n=53 control and n=83 screen
+
+The previous weight-five bases have unknown factor-base logs. A second
+target-independent construction starts from seeded scalar multiples
+$[a_i]G$. Their logs $a_i$ are known, and the Frobenius eigenvalue gives
+the log of every signed-Frobenius orbit point. It retains the same quotient
+pair-matching algorithm and needs **no relation matrix**. The candidate
+stage tag is `LAnone` for this precise reason.
+
+The [n=53 complete run](runs/n53_knownlog_one_target.json) has its own
+[immutable candidate manifest](candidates/IC1N53Ckb1fb24062PDP4qtableRCdirectLAnoneTDdirectISO0h7c80ef394c64.json).
+Its 227 independently checked seed logs expand to **actual B=24,062**
+points. On the same public n=53 target as the preceding probes, 500,000
+table samples and 1,249,820 target-side samples found a proper relation.
+The recovered scalar is **`3400509474685`**, independently replayed as
+$[k]G=Q$ and checked against the fixture. The one-target online interval
+was **117.94 seconds**; cold base, table, membership index, and online time
+totaled **150.10 seconds**. Cold pair samples were 1,749,820, or
+$2^{20.739}$. The [independent verifier](verify_knownlog_n53.py) rebuilt
+all seed logs and the matching pair metadata. No paired rho speedup or
+field-operation total is claimed.
+
+The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
+replays 24,097 seeded scalar orbits, again giving **actual B=4,000,102**
+and **24,097 folded columns, all with known logs**. Its compressed
+[key-and-log file](runs/n83_knownlog_orbit_keys_and_logs.bin) is 771,104
+bytes. Base construction took 64.4 seconds; the
+[independent verifier](verify_n83_knownlog_base.py) regenerated every key
+and log. On that exact base, the [bounded stage benchmark](runs/n83_knownlog_pair_perf.json)
+measured **95.4 µs per table sample** and **140.4 µs per target-side
+sample** over 100,000 samples of each. It found zero matches at that small
+cap, and no n=83 DLP.
+
+The [known-log work screen](n83_knownlog_conditional_screen.json) removes
+the 24,097 rank-collection queries from the earlier table model. It still
+assumes independent uniform quotient keys, a fixed target that has a
+four-point representation, and 95% match probability after the modeled
+number of queries. The table is target independent and charged once.
+
+| Distinct table keys | Key bytes alone | Ideal cold table plus one-target samples | Unit field-API work if each inversion costs one unit |
+| ---: | ---: | ---: | ---: |
+| $2^{20}$ | 21 MiB | $2^{55.21}$ | $2^{59.73}$ |
+| $2^{24}$ | 336 MiB | $2^{51.21}$ | $2^{55.73}$ |
+| $2^{27}$ | 2.6 GiB | $2^{48.21}$ | $2^{52.73}$ |
+| $2^{30}$ | 21 GiB | $2^{45.21}$ | $2^{49.73}$ |
+| about $2^{35.49}$ | 943 GiB | $2^{39.79}$ | $2^{44.28}$ |
+
+These are conditional work proxies, **not a measured n=83 solve**. The
+100,000-sample stage did not establish a relation yield, and the public
+target's four-point representability in this particular base is unknown.
+Field inversion cost, table-build duplicates, memory overhead, and
+large-table performance are unpriced. At $2^{27}$ keys, the measured
+small-table Python rate extrapolates to roughly 1,450 one-core years even
+though the optimistic operation proxy is below $2^{61}$. The active gate
+remains a verified ordinary n=83 relation and complete scalar replay with
+all work charged.
+
+```sh
+./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
+./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
+./sage -python experiments/koblitz-pair-claw-20260929/build_n83_knownlog_base.py
+./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_knownlog_base.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_knownlog.py
+python3 experiments/koblitz-pair-claw-20260929/n83_knownlog_screen.py
 ```

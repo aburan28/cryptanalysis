@@ -93,6 +93,7 @@ degree scan and `PDP2xlsym` for the same scan over the symmetric-function
 `RCwalk`, `RCsample`, `RCdirect`; `RCguided` for pivot-guided relation
 collection; `RCaffine` for random-start nonzero-stride known-log query blocks;
 `LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
+`LAnone` when all factor-base logs are known and there is no final matrix;
 `TDdirect`, `TDpdp`, `TDdescent` for target handling; `ISO0` for no isogeny
 transport and `ISO1` for a specified route. A solver's internal Macaulay
 matrix reduction belongs under `PDP`, including its RREF/M4RI/GPU kernel. It
