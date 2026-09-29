@@ -1,0 +1,101 @@
+name: Conditional linear certification
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round27/**'
+      - 'experiments/groebner-perf-20260924/round23/**'
+      - 'experiments/groebner-perf-20260924/round21/**'
+      - 'experiments/groebner-perf-20260924/round20/**'
+      - 'experiments/groebner-perf-20260924/round18/**'
+      - 'experiments/groebner-perf-20260924/round17/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/groebner-perf-20260924/round2/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/ic-bench/**'
+      - 'experiments/ic-candidate-catalog/**'
+      - '.github/workflows/conditional-linear.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round27/**'
+      - 'experiments/groebner-perf-20260924/round23/**'
+      - 'experiments/groebner-perf-20260924/round21/**'
+      - '.github/workflows/conditional-linear.yml'
+permissions:
+  contents: read
+concurrency:
+  group: conditional-linear-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  correctness:
+    name: Conditional linear certification (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build and bind native components
+        run: |
+          mkdir -p conditional-linear-evidence
+          python experiments/groebner-perf-20260924/round20/build.py > conditional-linear-evidence/dependency-build.log 2>&1
+          python experiments/groebner-perf-20260924/round23/build.py > conditional-linear-evidence/checker-build.log 2>&1
+          python experiments/groebner-perf-20260924/round27/build.py > conditional-linear-evidence/branch-build.log 2>&1
+      - name: Exhaustive, large-variable, query, failure, audit and journal checks
+        run: |
+          python -m unittest discover -s experiments/groebner-perf-20260924/round27 -p 'test_*.py' -v > conditional-linear-evidence/tests.log 2>&1
+      - name: Reconstruct complete queries and larger exact certificates
+        run: |
+          python experiments/groebner-perf-20260924/round27/branch_measure.py --correctness-only --repetitions 2 --output conditional-linear-evidence/correctness.json.gz
+          python experiments/groebner-perf-20260924/round27/branch_audit.py conditional-linear-evidence/correctness.json.gz > conditional-linear-evidence/correctness-audit.json
+          python experiments/groebner-perf-20260924/round27/large_certificates.py --output conditional-linear-evidence/large.json.gz
+          python experiments/groebner-perf-20260924/round27/large_certificates.py --audit conditional-linear-evidence/large.json.gz > conditional-linear-evidence/large-audit.json
+          python experiments/groebner-perf-20260924/round27/branch_audit.py experiments/groebner-perf-20260924/round27/results/correctness-final.json.gz > conditional-linear-evidence/retained-audit.json
+          python experiments/groebner-perf-20260924/round27/branch_audit.py experiments/groebner-perf-20260924/round27/results/paired-confirmation.json.gz > conditional-linear-evidence/retained-paired-audit.json
+          python experiments/groebner-perf-20260924/round27/large_certificates.py --audit experiments/groebner-perf-20260924/round27/results/large-final.json.gz > conditional-linear-evidence/retained-large-audit.json
+      - name: Paired complete single-query measurements after admission
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          out = pathlib.Path('conditional-linear-evidence')
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','RUNNER_OS','RUNNER_ARCH','GITHUB_WORKFLOW_REF')}
+          cpuinfo = pathlib.Path('/proc/cpuinfo')
+          if cpuinfo.exists():
+              metadata['cpu'] = {}
+              for line in cpuinfo.read_text().splitlines():
+                  key, separator, value = line.partition(':')
+                  if separator and key.strip() in ('model name','vendor_id','cpu cores','cache size'):
+                      metadata['cpu'].setdefault(key.strip(), value.strip())
+          (out/'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          root = pathlib.Path('experiments/groebner-perf-20260924/round27')
+          report = out/'paired.json.gz'
+          run = subprocess.run([sys.executable,str(root/'branch_measure.py'),'--repetitions','31',
+                                '--admission-wait-seconds','240','--output',str(report)])
+          if run.returncode == 2:
+              admission = json.loads(pathlib.Path(str(report)+'.admission.json').read_text())
+              assert not admission['admitted'] and admission['timed_attempts'] == 0 and not report.exists()
+          else:
+              run.check_returncode()
+              with (out/'paired-audit.json').open('w') as stream:
+                  subprocess.run([sys.executable,str(root/'branch_audit.py'),str(report)],stdout=stream,check=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conditional-linear-evidence-${{ matrix.os }}
+          path: conditional-linear-evidence/
+          if-no-files-found: warn
+          retention-days: 14
