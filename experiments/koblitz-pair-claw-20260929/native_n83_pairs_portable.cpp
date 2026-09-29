@@ -284,13 +284,25 @@ std::vector<Point> load_base(const std::string &path, const Keyer &keyer) {
     return result;
 }
 
+struct BatchScratch {
+    std::vector<F> denominator, prefix;
+    std::vector<unsigned char> exceptional;
+    void resize(size_t count) {
+        denominator.resize(count);
+        prefix.resize(count);
+        exceptional.resize(count);
+    }
+};
+
 void batch_add(const std::vector<Point> &left, const std::vector<Point> &right,
-               std::vector<Point> &out) {
+               std::vector<Point> &out, BatchScratch &scratch) {
     need(left.size() == right.size(), "batch length mismatch");
     const size_t count = left.size();
     out.resize(count);
-    std::vector<F> denominator(count), prefix(count);
-    std::vector<unsigned char> exceptional(count);
+    scratch.resize(count);
+    auto &denominator = scratch.denominator;
+    auto &prefix = scratch.prefix;
+    auto &exceptional = scratch.exceptional;
     F product = one();
     for (size_t i = 0; i < count; ++i) {
         exceptional[i] = left[i].inf || right[i].inf ||
@@ -311,6 +323,12 @@ void batch_add(const std::vector<Point> &left, const std::vector<Point> &right,
         F x = sqr(slope) ^ slope ^ denominator[i];
         out[i] = {x, mul(slope, left[i].x ^ x) ^ x ^ left[i].y, false};
     }
+}
+
+void batch_add(const std::vector<Point> &left, const std::vector<Point> &right,
+               std::vector<Point> &out) {
+    BatchScratch scratch;
+    batch_add(left, right, out, scratch);
 }
 
 void self_test(const std::vector<Point> &base) {

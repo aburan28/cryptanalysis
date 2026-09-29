@@ -1211,6 +1211,15 @@ time is retained as a stage record but is not used for an isolated
 performance comparison. The corrected physical x86 CI run passed and
 checked that peak RSS is at least the allocated Bloom-filter size.
 
+The current source revision reuses the pair-addition and signed-x scratch
+vectors for every worker. The preceding source allocated those vectors
+on every representative batch; an R30 rectangle has $2^{27}$ batches
+at batch size eight. ARM and translated x86 exact controls still match
+the frozen Q1060 outputs and planted scalar replay. The CI workflow
+runs a paired M24/R20 ABBA comparison against the frozen round-two
+source on one native x86 host. Until that comparison completes, scratch
+reuse has no measured speedup claim.
+
 Q1061 is a stage proposal with `candidate_id: null` and `run_id: null`.
 Its receipts retain the canonical field and curve record under
 `EC1N83Ckb1h876c2921cb64`, actual usable factor-base count

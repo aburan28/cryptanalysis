@@ -64,12 +64,14 @@ struct SignedX {
 // Batch-invert the shared denominator once and omit both output y coordinates.
 void batch_signed_x(const std::vector<Point> &centers,
                     const std::vector<Point> &reps,
-                    std::vector<SignedX> &out) {
+                    std::vector<SignedX> &out, BatchScratch &scratch) {
     need(centers.size() == reps.size(), "signed x batch length mismatch");
     const size_t count = centers.size();
     out.resize(count);
-    std::vector<F> denominator(count), prefix(count);
-    std::vector<unsigned char> exceptional(count);
+    scratch.resize(count);
+    auto &denominator = scratch.denominator;
+    auto &prefix = scratch.prefix;
+    auto &exceptional = scratch.exceptional;
     F product = one();
     for (size_t i = 0; i < count; ++i) {
         exceptional[i] = centers[i].inf || reps[i].inf ||
@@ -105,7 +107,8 @@ void signed_x_self_test(const std::vector<Point> &base, Point target) {
         reps.push_back(base[(i * 7919 + 1) % base.size()]);
     }
     std::vector<SignedX> got;
-    batch_signed_x(centers, reps, got);
+    BatchScratch scratch;
+    batch_signed_x(centers, reps, got, scratch);
     for (size_t i = 0; i < got.size(); ++i) {
         Point minus = add(centers[i], neg(reps[i]));
         Point plus = add(centers[i], reps[i]);
@@ -156,6 +159,7 @@ int main(int argc, char **argv) {
             std::chrono::steady_clock::now() - started).count();
         U bloom_bytes = bloom.bytes();
         std::vector<Point> left, right, sums;
+        BatchScratch table_scratch;
         left.reserve(batch_size);
         right.reserve(batch_size);
         started = std::chrono::steady_clock::now();
@@ -169,7 +173,7 @@ int main(int argc, char **argv) {
                 left.push_back(base[pair[0] * L]);
                 right.push_back(base[pair[1] * L + pair[2]]);
             }
-            batch_add(left, right, sums);
+            batch_add(left, right, sums, table_scratch);
             for (U i = 0; i < count; ++i) {
                 need(!sums[i].inf, "cross-orbit zero pair");
                 bloom.insert(keyer.canonical_x(sums[i].x));
@@ -203,6 +207,7 @@ int main(int argc, char **argv) {
                     std::vector<Point> qleft, qright, qsums;
                     std::vector<Point> centers, reps;
                     std::vector<SignedX> complements;
+                    BatchScratch pair_scratch, signed_scratch;
                     qleft.reserve(rep_batch);
                     qright.reserve(rep_batch);
                     centers.reserve(rep_batch * N);
@@ -222,7 +227,7 @@ int main(int argc, char **argv) {
                             qleft.push_back(base[pair[0] * L]);
                             qright.push_back(base[pair[1] * L + pair[2]]);
                         }
-                        batch_add(qleft, qright, qsums);
+                        batch_add(qleft, qright, qsums, pair_scratch);
                         centers.clear();
                         reps.clear();
                         for (U i = 0; i < count; ++i) {
@@ -232,7 +237,7 @@ int main(int argc, char **argv) {
                                 reps.push_back(qsums[i]);
                             }
                         }
-                        batch_signed_x(centers, reps, complements);
+                        batch_signed_x(centers, reps, complements, signed_scratch);
                         for (size_t j = 0; j < complements.size(); ++j) {
                             U position = query_start + offset + j / N;
                             unsigned k = unsigned(j % N);
@@ -293,7 +298,7 @@ int main(int argc, char **argv) {
                     left.push_back(base[pair[0] * L]);
                     right.push_back(base[pair[1] * L + pair[2]]);
                 }
-                batch_add(left, right, sums);
+                batch_add(left, right, sums, table_scratch);
                 for (U i = 0; i < count; ++i) {
                     if (sums[i].inf) continue;
                     V key = keyer.canonical_x(sums[i].x);

@@ -22,7 +22,7 @@ CORE = HERE / "native_n83_bloom_core_portable.hpp"
 REFERENCE = RUNS / "n83_spill_controls.json"
 PLANTED = RUNS / "n83_fast_low_memory_planted.json"
 PUBLIC = RUNS / "n83_fast_lowmem_k48194_chunk_M20_R14_tstart0_qstart1073741824_b20_h10_rb8.json"
-OUTPUT = RUNS / "n83_portable_controls_r2.json"
+OUTPUT = RUNS / "n83_portable_controls_r3.json"
 
 
 def sha(path):
@@ -97,6 +97,7 @@ def main():
     parser.add_argument("--out", type=Path, default=OUTPUT)
     args = parser.parse_args()
     assert args.spill_dir.is_dir()
+    assert not args.out.exists(), "refusing to overwrite an existing control receipt"
     baseline = json.loads(REFERENCE.read_text())
     planted_ref = json.loads(PLANTED.read_text())
     public_ref = json.loads(PUBLIC.read_text())
