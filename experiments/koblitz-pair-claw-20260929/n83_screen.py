@@ -11,8 +11,8 @@ REFERENCE = (HERE.parent / "ecc2k130-quotient-pair-probe-20260926" /
              "runs" / "n83_perf_prefix.json")
 STAGE = HERE / "runs" / "n53_n83_step_perf.json"
 OUTPUT = HERE / "n83_conditional_screen.json"
-HYPOTHETICAL_B = 4000000
 ORBIT_SIZE = 166
+HYPOTHETICAL_B = ORBIT_SIZE * 24097
 DISTINGUISHED_BITS = 18
 
 
@@ -26,7 +26,8 @@ def main():
     assert reference["curve_id"] == "EC1N83Ckb1h876c2921cb64"
     stage_n83 = next(row for row in benchmark["runs"] if row["curve_id"] == reference["curve_id"])
     order = int(reference["subgroup_order"])
-    columns = math.ceil(HYPOTHETICAL_B / ORBIT_SIZE)
+    assert HYPOTHETICAL_B % ORBIT_SIZE == 0
+    columns = HYPOTHETICAL_B // ORBIT_SIZE
     pair_domain = math.comb(HYPOTHETICAL_B + 1, 2)
     multisets = math.comb(HYPOTHETICAL_B + 3, 4)
     sqrt_log2 = math.log2(order) / 2
@@ -62,9 +63,9 @@ def main():
         "conditional_one_core_python_years_at_measured_stage_rate": (
             conditional_steps * stage_n83["median_ns_per_step"] / 1e9 /
             (365.25 * 24 * 3600)),
-        "wall_extrapolation_limit": "The timed n83 stage base has only 256 points; cache and memory behavior for a hypothetical 4,000,000-point base are unmeasured. The random-claw work law is also unverified.",
+        "wall_extrapolation_limit": "The timed n83 stage base has only 256 points; cache and memory behavior for a hypothetical 4,000,102-point base are unmeasured. The random-claw work law is also unverified.",
         "assumptions": [
-            "A target-independent factor base with exactly 4,000,000 distinct subgroup points must first be enumerated and given an immutable candidate identity.",
+            "A target-independent factor base with exactly 4,000,102 distinct subgroup points, comprising 24,097 full signed-Frobenius orbits, must first be enumerated and given an immutable candidate identity.",
             "Every selected point has a full signed-Frobenius orbit of size 166; the actual column count and rank yield are unknown.",
             "Pair sums distribute approximately uniformly in the prime subgroup, and the fixed public target has a valid proper four-point representation.",
             "The two-color map and distinguished-point walks behave like a random claw search with a constant multiple of sqrt(r) evaluations per verified relation.",

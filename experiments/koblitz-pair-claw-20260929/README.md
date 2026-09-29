@@ -1,4 +1,4 @@
-# Four-point pair claw: complete toy control and n=53/n=83 step cost
+# Four-point pair claw: n=23 control, n=53 relation, n=83 work screen
 
 This experiment tests a two-color pair-sum distinguished-point walk for an
 ordinary four-point relation. At a state $X$, a fixed hash selects a color
@@ -12,8 +12,8 @@ This is a group-law search, not a quotient-summation polynomial solver. Its
 large-instance cost remains unknown. In particular, a small-base step timing
 does not establish relation yield or a sub-$2^{61}$ solve at n=83.
 The local [stage proposal registry](stage_proposals.json) assigns `Q1036`
-to the completed toy pipeline and `Q1037` to the incomplete n=53 stage;
-only `Q1036` has a final `IC1` candidate identity.
+to the completed toy pipeline and `Q1037`–`Q1040` to the later stage
+controls. Only `Q1036` has a final `IC1` candidate identity.
 
 ## Complete n=23 one-target control
 
@@ -99,10 +99,63 @@ It neither proves that the method scales as $\sqrt r$ nor rules it out.
 ./sage -python experiments/koblitz-pair-claw-20260929/probe_n53_relation.py
 ```
 
+## Signed-Frobenius quotient key and measured searches
+
+The [orbit-key code](orbit_key.py) puts the type-II ONB coefficients in
+Frobenius-cycle order. It takes the minimum over all rotations and both
+signs. A collision of the canonical keys for $A=F_i+F_j$ and
+$Q-(F_k+F_l)$ gives a relation by rotating and possibly negating the first
+pair back into the original target equation. The witness is checked against
+the enumerated base and the group law. The key invariant and transform were
+checked on n=23, n=53, and n=83 points and their Frobenius and sign orbits.
+
+On the same n=23 target, the [quotient target-stage control](runs/n23_quotient_target_control.json)
+recovered scalar `987654` in 1,807 main evaluations and 118.3 ms. It imported
+the seven factor-base logs from `Q1036`; therefore it is a target-stage
+control with `candidate_id: null`, not a second complete IC candidate.
+
+The [paired step benchmark](runs/n53_n83_quotient_step_perf.json) uses the
+same 256-point sample bases at both field sizes:
+
+| Curve | Direct step | Quotient step | Quotient/direct wall ratio |
+| --- | ---: | ---: | ---: |
+| n=53, `EC1N53Ckb1hf77aab617904` | 44.5 µs | 64.2 µs | 1.44 |
+| n=83, `EC1N83Ckb1h876c2921cb64` | 64.3 µs | 136.2 µs | 2.12 |
+
+On the full n=53 weight≤3 base, the [quotient distinguished-point
+walk](runs/n53_weight3_quotient_relation_probe.json) found **no relation**
+by its two-million-main-step cap. It spent 317.4 seconds on the query and
+replayed 11,418 endpoint merges. The simple independent-output model would
+predict about five opposite-color matches at that cap; repeated walk states
+make that model unreliable for this implementation. This measured miss is
+why no quotient-walk $\sqrt{r/(2n)}$ claim is made.
+
+A direct quotient **pair table** did find an ordinary n=53 relation for the
+same public target. The [receipt](runs/n53_weight3_quotient_table_probe.json)
+and [independent verifier](verify_table.py) fix the same 24,062-point base,
+227 folded columns, and exact field/curve. The target-independent table used
+500,000 pair samples and kept 457,277 distinct quotient keys. A target-side
+pair matched after 165,899 samples. This run used 665,899 pair samples,
+or $2^{19.345}$ stage samples. Table and query times were 23.6 and
+12.4 seconds; base setup took 19.0 seconds. Peak parent RSS was 156 MiB.
+The independently replayed four-point witness sums to the public target.
+The factor-base logs and target DLP remain unknown, so `Q1040` has
+`candidate_id: null` and no complete-work exponent.
+
+```sh
+./sage -python experiments/koblitz-pair-claw-20260929/verify_orbit_key.py
+./sage -python experiments/koblitz-pair-claw-20260929/probe_n23_quotient.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_quotient_steps.py
+./sage -python experiments/koblitz-pair-claw-20260929/probe_n53_quotient.py
+./sage -python experiments/koblitz-pair-claw-20260929/probe_n53_table.py
+./sage -python experiments/koblitz-pair-claw-20260929/verify_table.py
+```
+
 ## Conditional n=83 work screen
 
-The [screen](n83_conditional_screen.json) assumes a **hypothetical**, fully
-enumerated 4,000,000-point base with full signed-Frobenius orbit size 166.
+The [direct-walk screen](n83_conditional_screen.json) assumes a
+**hypothetical**, fully enumerated 4,000,102-point base: exactly 24,097 full
+signed-Frobenius orbits of size 166.
 Neither that base nor its rank yield has been measured. The assumptions give
 24,097 folded columns and about 4.41 four-point multisets per uniform
 target in expectation. They further suppose that a useful opposite-color
@@ -133,4 +186,33 @@ accounting. Those are the next gates for this line.
 
 ```sh
 python3 experiments/koblitz-pair-claw-20260929/n83_screen.py
+```
+
+The [quotient-table screen](n83_conditional_table_screen.json) makes the
+memory/work exchange explicit for the same hypothetical base. It assumes a
+reusable table of $M$ **distinct** zero-pair quotient keys, independent
+uniform target-side keys, 95% match probability for targets with a relation,
+and one novel rank row per successful query. It charges the table once,
+about $24{,}097/0.95$ setup queries, and one target query. Matrix and base
+construction, duplicate rows, missing target representations, and the cost
+of a field operation are still unpriced.
+
+| Distinct table keys | Key bytes alone | Ideal cold pair samples | Maximum field operations/sample for total $<2^{61}$ |
+| ---: | ---: | ---: | ---: |
+| $2^{27}$ | 2.6 GiB | $2^{62.84}$ | 0.28 |
+| $2^{30}$ | 21 GiB | $2^{59.84}$ | 2.24 |
+| $2^{33}$ | 168 GiB | $2^{56.84}$ | 17.9 |
+| about $2^{35.49}$, near the full pair-key cap | 943 GiB | $2^{54.35}$ | 100.4 |
+
+The memory column contains only the 21-byte quotient key per entry. Pair
+indices and hash-table overhead add to it; a 32-byte packed entry at the
+last row would occupy about 1.4 TiB. Even the $2^{30}$ row leaves only
+2.24 field operations per pair sample, before any other work. The large
+memory rows may fit a $2^{61}$ *conditional operation count* only if their
+unmeasured per-sample field cost falls below the listed cap. The n=53
+relation shows that the table can work on a larger field; it does not
+validate the n=83 uniform model or provide an n=83 DLP.
+
+```sh
+python3 experiments/koblitz-pair-claw-20260929/n83_table_screen.py
 ```

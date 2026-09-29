@@ -82,7 +82,9 @@ The compact ID is a label; load the manifest for the exact configuration.
 Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, `PDP4root`
 for the compact four-summand S3 root index, and `PDP4qpair` for a complete
 four-summand signed-Frobenius quotient pair-sum index; `PDP4claw` for a
-two-color four-summand pair-sum distinguished-point claw; `PDP5q23` for a
+two-color four-summand pair-sum distinguished-point claw; `PDP4qclaw` for its
+signed-Frobenius quotient walk; `PDP4qtable` for a signed-Frobenius quotient
+pair table matched against target-complement pairs; `PDP5q23` for a
 five-summand two-G pair quotient index queried by three target-seed points;
 `PDP3qpair` for a three-summand two-G quotient lookup with one target point;
 `PDP2xl` for a dense Macaulay/XL
