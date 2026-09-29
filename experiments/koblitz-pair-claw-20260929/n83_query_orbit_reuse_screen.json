@@ -59,6 +59,24 @@
   ],
   "bounded_paired_ABBA_direct_to_orbit_query_speedup": 1.251012059239737,
   "bounded_planted_nonzero_offset_scalar_replay_passed": true,
+  "measured_2pow28_filter_stage": {
+    "table_descriptors": 268435456,
+    "query_representatives": 1048576,
+    "lifted_query_pairs": 174063616,
+    "bloom_bytes": 671154176,
+    "peak_rss_bytes": 836894720,
+    "build_seconds": 85.693744541,
+    "query_seconds": 6.344200417,
+    "exact_replay_seconds": 50.700267083,
+    "false_positive_queries": 16421,
+    "exact_hit_queries": 0
+  },
+  "two_2pow32_shards_95pct_projected_days_from_2pow28_rates": 7.728124677777778,
+  "one_2pow32_shard_illustrative_peak_filter_bytes": 12516982784.0,
+  "four_2pow31_shards_95pct_total_chunk_runs": 88,
+  "four_2pow31_shards_95pct_conditional_field_calls_log2": 48.57556486683775,
+  "four_2pow31_shards_95pct_projected_days_from_2pow28_rates": 14.34489074232296,
+  "one_2pow31_shard_illustrative_peak_filter_bytes": 7148273664.0,
   "native_runtime_measured": true,
   "ordinary_n83_relation_measured": false,
   "complete_solve_work_log2": null,
@@ -67,12 +85,15 @@
     "The key identity is exact, but the success probability retains the random-base Poisson and schedule-placement heuristics of the finite-support screen.",
     "The operation model assumes one batched pair addition per representative and one batched target-complement addition per lifted pair, plus one filter build and exact replay per chunk.",
     "The field-call model excludes canonical keying, Bloom probes, memory traffic, base construction, and scalar replay; it is not a complete solve-work count.",
-    "The paired ABBA query speedup was measured at 2^24 table descriptors with different deterministic query schedules and while another full-size shard ran concurrently; 2^32-table throughput is unmeasured."
+    "The paired ABBA query speedup was measured at 2^24 table descriptors with different deterministic query schedules and while another full-size shard ran concurrently; 2^32-table throughput is unmeasured.",
+    "The 2^28-filter public-target run measured stage throughput without concurrent full-size work; scaling it to 2^31 or 2^32 filters is conditional and may fail under host swap or cache effects.",
+    "The four-shard 2^31-table option has the same modeled success prefix but twice as many lifted target-query evaluations as two 2^32-table shards; its lower memory is projected, not verified at full size."
   ],
   "finite_support_screen_sha256": "c589e32c9df3b784154d406dbad3f07a4a3072530ae6f7f4752cf64522861829",
   "n23_control_sha256": "d3fd86fc7dc4f675948610ac1af4ed0ef917e37881043686d0ab15fa4fbbdfb8",
   "n83_sample_sha256": "954332f665fc78147031ef74c6fd0bb6c766bca9f2f6716e6b347478372de6b2",
   "bounded_native_receipt_sha256": "d17fc3ebb8fb65f21cf2d876803e72964360185cacb47dba3b62dde4e7276a08",
   "paired_ABBA_receipt_sha256": "fda972a048b115d0abffbb795c1df0be5ac5cff644ae3c0cfb9b3d97a85af7e7",
-  "source_sha256": "6d5b4c7470710264afc70963f3f0af080ac9def93d23ad087b92d46e61c87e76"
+  "measured_2pow28_receipt_sha256": "9c9d7ba6b360fa4a86f17a68cba55fbd67c5e4eb7f184887bef1e73445030a11",
+  "source_sha256": "f6d0811c6694c6fea1e1165c41fc7c3e0d1b8aba0d81f0082b59e3cc6439d037"
 }

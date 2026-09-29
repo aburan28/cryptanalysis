@@ -523,8 +523,12 @@ filter memory**, **11.32 GiB illustrative peak filter-phase memory**,
 field add/multiply/square calls**. These are predictions; the large
 random-access filter may change throughput. The finite-support model
 assigns **7.73%** success to the first shard and **14.76%** to both
-shards at this query prefix. The first shard has been launched; its
-started marker is not a completed measurement.
+shards at this query prefix. The first shard was
+[interrupted](runs/n83_bloom_chunk_M32_Q38_tstart0_qstart0_b20_h14.json)
+after about an hour when swap-outs rose and the system volume fell to
+about 1.2 GiB free. The process exited 130, its native child was absent
+on readback, and its native phase counts and consumed work are **unknown**.
+It is not a completed zero-hit measurement.
 
 For the 95% *modeled* success point, both $2^{32}$ shards would each
 scan about $2^{42.816}$ unique query pairs. Counting both builds, both
@@ -603,6 +607,34 @@ keying, Bloom probes, memory, setup, and scalar replay. No ordinary
 n=83 relation or complete quotient-table DLP has been measured for
 Q1050, so neither model is a complete sub-$2^{61}$ solve claim.
 
+A [larger n=83 stage run](runs/n83_orbit_chunk_M28_R20_tstart0_qstart0_b20_h14_rb8.json)
+completed with $2^{28}$ table descriptors and $2^{20}$ representatives
+(174,063,616 lifted target complements): **16,421 Bloom positives, zero
+exact matches**, 671,154,176 filter bytes, and 836,894,720 bytes peak
+RSS. Its build, query, and exact replay phases took 85.69, 6.34, and
+50.70 seconds. Query time was **36.45 ns per lifted complement**. No
+swap-outs occurred during this bounded run. Scaling those measured
+rates gives **7.73 days** for the 44-run two-shard model, with an
+illustrative **11.66 GiB** peak filter-phase footprint per chunk.
+The prior 10 GiB-filter direct run nevertheless caused host swap and
+was interrupted; this is not evidence that a $2^{32}$ Q1050 shard fits.
+Four $2^{31}$ table shards instead project **6.66 GiB** peak per chunk,
+**$2^{48.576}$ field calls**, and **14.34 days** across 88 chunks at
+the bounded rates. These memory and time figures remain projections.
+
+The [Q1050 chunk runner](run_n83_orbit_chunk.py) freezes one absolute
+table range and one query-representative range, records a terminal failed
+receipt with unknown work on interruption, and independently replays an
+exact public-target hit against the same-target rho scalar. Its bounded
+zero-hit smoke checks passed at table starts 0 and 4096 and query starts
+0 and 1024. The [aggregator](aggregate_n83_orbit_chunks.py) combined
+two disjoint table shards and rejected a duplicate rectangle. The
+[campaign driver](n83_orbit_campaign.py) advances one of 44 rectangles
+per invocation and refuses to launch while a direct shard's start marker
+exists. The direct shard's original process handle exited 130; its
+terminal failure receipt remains in the record. A start marker is only a
+guard against accidental concurrent large filters, not proof of life.
+
 Naming follows the [candidate catalog measurement contract](../ic-candidate-catalog/MEASUREMENT.md):
 the exact curve is `EC1N83Ckb1h876c2921cb64`; the factor base has
 **B=4,000,102 actual subgroup-usable points before folding** and 24,097
@@ -643,4 +675,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_bloom_shard_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_orbit_query.py
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_orbit_ABBA.py
 python3 experiments/koblitz-pair-claw-20260929/n83_query_orbit_reuse_screen.py
+./sage -python experiments/koblitz-pair-claw-20260929/n83_orbit_campaign.py
+# Once host memory and system-volume space are sufficient:
+# ./sage -python experiments/koblitz-pair-claw-20260929/n83_orbit_campaign.py --run-next
 ```
