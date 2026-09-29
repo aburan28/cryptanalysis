@@ -1214,11 +1214,16 @@ checked that peak RSS is at least the allocated Bloom-filter size.
 The current source revision reuses the pair-addition and signed-x scratch
 vectors for every worker. The preceding source allocated those vectors
 on every representative batch; an R30 rectangle has $2^{27}$ batches
-at batch size eight. ARM and translated x86 exact controls still match
-the frozen Q1060 outputs and planted scalar replay. The CI workflow
-runs a paired M24/R20 ABBA comparison against the frozen round-two
-source on one native x86 host. Until that comparison completes, scratch
-reuse has no measured speedup claim.
+at batch size eight. This eliminates 806,879,232 repeated vector
+allocations across one modeled M28/R30 query, build, and exact replay.
+ARM, translated x86, and native x86 exact controls still match the
+frozen Q1060 outputs and planted scalar replay. The
+[native x86 ABBA receipt](runs/n83_portable_scratch_x86_ci_36629800449.json)
+compares the round-two and scratch-reuse sources on one M24/R20
+workload: query ratios (old/new) were 1.0100 and 1.0050, median
+**1.0075×**. The two positive ratios are a small stage result, with
+full-size and verified-target speedups unmeasured. The structural
+field-call model is unchanged.
 
 Q1061 is a stage proposal with `candidate_id: null` and `run_id: null`.
 Its receipts retain the canonical field and curve record under
