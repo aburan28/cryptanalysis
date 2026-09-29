@@ -1,0 +1,98 @@
+name: Sparse verifier in one-target IC
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round25/**'
+      - 'experiments/groebner-perf-20260924/round23/**'
+      - 'experiments/groebner-perf-20260924/round21/**'
+      - 'experiments/groebner-perf-20260924/round20/**'
+      - 'experiments/groebner-perf-20260924/round18/**'
+      - 'experiments/groebner-perf-20260924/round17/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/groebner-perf-20260924/round2/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/ic-bench/**'
+      - 'experiments/ic-candidate-catalog/**'
+      - '.github/workflows/sparse-ic-proof.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round25/**'
+      - 'experiments/groebner-perf-20260924/round23/**'
+      - 'experiments/groebner-perf-20260924/round21/**'
+      - '.github/workflows/sparse-ic-proof.yml'
+permissions:
+  contents: read
+concurrency:
+  group: sparse-ic-proof-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  correctness:
+    name: Sparse one-target IC (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build and bind native components
+        run: |
+          mkdir -p sparse-ic-evidence
+          python experiments/groebner-perf-20260924/round20/build.py > sparse-ic-evidence/dependency-build.log 2>&1
+          python experiments/groebner-perf-20260924/round23/build.py > sparse-ic-evidence/checker-build.log 2>&1
+      - name: Exhaustive relation, full DLP, failure, audit and receipt checks
+        run: |
+          python -m unittest discover -s experiments/groebner-perf-20260924/round25 -p 'test_*.py' -v > sparse-ic-evidence/tests.log 2>&1
+          python -m unittest discover -s experiments/groebner-perf-20260924/round21 -p 'test_*.py' -v > sparse-ic-evidence/frozen-pipeline-tests.log 2>&1
+          python -m unittest discover -s experiments/ic-candidate-catalog -p 'test_*.py' -v > sparse-ic-evidence/catalog-tests.log 2>&1
+      - name: Reconstruct and audit both complete one-target shapes
+        run: |
+          python experiments/groebner-perf-20260924/round25/measure.py --correctness-only --repetitions 2 --output sparse-ic-evidence/correctness.json.gz
+          python experiments/groebner-perf-20260924/round25/audit.py sparse-ic-evidence/correctness.json.gz > sparse-ic-evidence/correctness-audit.json
+          python experiments/groebner-perf-20260924/round25/verify_evidence.py > sparse-ic-evidence/retained-evidence.log
+      - name: Paired one-target online measurements after admission
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          out = pathlib.Path('sparse-ic-evidence')
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','RUNNER_OS','RUNNER_ARCH','GITHUB_WORKFLOW_REF')}
+          cpuinfo = pathlib.Path('/proc/cpuinfo')
+          if cpuinfo.exists():
+              metadata['cpu'] = {}
+              for line in cpuinfo.read_text().splitlines():
+                  key, separator, value = line.partition(':')
+                  if separator and key.strip() in ('model name','vendor_id','cpu cores','cache size'):
+                      metadata['cpu'].setdefault(key.strip(), value.strip())
+          (out/'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          root = pathlib.Path('experiments/groebner-perf-20260924/round25')
+          report = out/'paired.json.gz'
+          run = subprocess.run([sys.executable,str(root/'measure.py'),'--repetitions','31',
+                                '--admission-wait-seconds','240','--output',str(report)])
+          if run.returncode == 2:
+              admission = json.loads(pathlib.Path(str(report)+'.admission.json').read_text())
+              assert not admission['admitted'] and admission['timed_attempts'] == 0 and not report.exists()
+          else:
+              run.check_returncode()
+              with (out/'paired-audit.json').open('w') as stream:
+                  subprocess.run([sys.executable,str(root/'audit.py'),str(report)],stdout=stream,check=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sparse-ic-evidence-${{ matrix.os }}
+          path: sparse-ic-evidence/
+          if-no-files-found: warn
+          retention-days: 14
