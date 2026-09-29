@@ -291,7 +291,8 @@ measurement rows:
 the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
 requires exactly one of those IDs to be non-null. New comparison rows
 must use the `IC1` ID and carry the old `Q` lineage separately. Current
-n=83 stage records use only `Q1051` or `Q1052`, with `candidate_id: null`.
+n=83 stage records use `Q1051`, `Q1052`, or `Q1053`, with
+`candidate_id: null`.
 
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
 replays 24,097 seeded scalar orbits, again giving **actual B=4,000,102**
@@ -833,26 +834,29 @@ passed the wrapper checks with zero exact hits. The
 completed rectangles and retains unknown failed work with a conservative
 field-call-model upper bound. The Q1052 driver checks for any active
 Q1051 marker and will not launch a competing full-size search.
-Once Q1051 exits, `n83_two_shard_campaign.py --calibrate-full-table`
-uses the same disk/swap guard to measure two full $2^{31}$-descriptor
-filters against $2^{24}$ query representatives. It uses a disjoint
-query range immediately after the planned 59-chunk prefix. Its receipt
-is included in cumulative work and will decide whether full-size memory
-and query rates support the campaign. A zero-hit calibration is a stage
-measurement, not evidence of natural relation yield.
+`n83_two_shard_campaign.py --calibrate-full-table` was used twice with
+the same disk/swap guard to try two full $2^{31}$-descriptor filters
+against $2^{24}$ query representatives. The calibration query range is
+disjoint from the planned 59-chunk prefix. Neither attempt completed;
+full-size Q1052 memory and query rates remain unmeasured.
 The [first full-table calibration attempt](runs/n83_two_shard_chunk_M31_R24_tstart0_qstart63350767616_b20_h14_rb8.json)
 was interrupted by the swap guard after about nine minutes. Swap-outs
 rose by 43,468 pages during the attempt while two separate `kissat`
 processes reached about 7 GB combined RSS. Its native phase counts and
 actual consumed field work are **unknown**; no query yield was measured.
-The full-rectangle structural field-call model is at most
-**$2^{37.119}$** for that attempt, and adding that upper bound to
-Q1052's 95% modeled prefix changes $2^{47.049}$ to **$2^{47.050}$**.
-This is a model upper bound, not a measured operation total. The
-campaign retains the failed receipt and names the next attempt
-`.retry1.json`; a completed retry and its failure both enter cumulative
-accounting. The guard interruption does not establish that the two
-filters are infeasible without the competing memory load.
+The [second attempt](runs/n83_two_shard_chunk_M31_R24_tstart0_qstart63350767616_b20_h14_rb8.retry1.json)
+also crossed the swap guard, after about 14 minutes while the second
+filter was becoming resident. The competing `kissat` jobs had exited
+before that attempt. Swap-outs rose by 24,984 pages; native phase counts,
+actual consumed field work, and query yield are **unknown**. A single
+failed attempt has a full-rectangle structural field-call-model upper
+bound of **$2^{37.119}$**. The [first-hit calculation](n83_two_shard_solve_work.json)
+includes both failures as a combined **$2^{38.119}$** upper bound;
+adding that to Q1052's 95% modeled prefix changes $2^{47.049}$ to
+approximately **$2^{47.052}$**. These are model upper bounds, not
+measured operation totals. The two-filter search has no demonstrated
+full-size completion under this host's guard, so the campaign is paused
+in favor of the completed one-filter Q1051 route.
 
 ### One-filter two-table stage probe (Q1053)
 
@@ -871,7 +875,7 @@ zero exact hits on that ordinary target range. The field-call model is
 the same as Q1052 because group arithmetic and exact table passes are
 unchanged; full-size memory, parallel throughput, natural yield, and
 complete solve work remain unmeasured. The small timing gain does not
-yet justify replacing the guarded Q1052 full-table calibration.
+yet establish a full-size replacement for the completed Q1051 route.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py

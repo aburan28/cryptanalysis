@@ -13,8 +13,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SCREEN = HERE / "n83_two_shard_screen.json"
 OUTPUT = HERE / "n83_two_shard_solve_work.json"
-FAILED_CALIBRATION = (HERE / "runs" /
+CALIBRATION = (HERE / "runs" /
     "n83_two_shard_chunk_M31_R24_tstart0_qstart63350767616_b20_h14_rb8.json")
+FAILED_CALIBRATIONS = (
+    CALIBRATION,
+    CALIBRATION.with_name(f"{CALIBRATION.stem}.retry1.json"),
+)
 QUANTILES = ("0.5", "0.8", "0.9", "0.95", "0.99")
 
 
@@ -85,24 +89,31 @@ def main():
     projected_days_per_chunk = (screen[
         "projected_days_if_small_filter_query_ratio_and_14_worker_speedup_transfer"] /
         screen["query_chunks_for_95pct_model"])
-    failed_calibration = json.loads(FAILED_CALIBRATION.read_text())
-    assert failed_calibration["kind"] == (
-        "n83_public_target_two_shard_query_k48194_chunk_failed")
-    assert failed_calibration["proposal_id"] == "Q1052"
-    assert failed_calibration["candidate_id"] is None
-    assert failed_calibration["curve_id"] == curve_id
-    assert failed_calibration["isogeny"] == "none"
-    assert failed_calibration["factor_base_enumerated_set_sha256"] == factor[
-        "enumerated_set_sha256"]
-    assert failed_calibration["native_phase_counts"] is None
-    assert failed_calibration["table_descriptors_per_shard"] == 1 << 31
-    assert failed_calibration["query_representatives"] == 1 << 24
-    calibration_reps = failed_calibration["query_representatives"]
-    failed_calibration_upper = (
+    calibration_reps = 1 << 24
+    one_failed_calibration_upper = (
         26 * table + 13 * calibration_reps +
         13 * calibration_reps * lift +
         90 * (2 * math.ceil(table / 1024) +
               2 * math.ceil(calibration_reps / 8)))
+    failed_receipts = []
+    for path in FAILED_CALIBRATIONS:
+        failed_calibration = json.loads(path.read_text())
+        assert failed_calibration["kind"] == (
+            "n83_public_target_two_shard_query_k48194_chunk_failed")
+        assert failed_calibration["proposal_id"] == "Q1052"
+        assert failed_calibration["candidate_id"] is None
+        assert failed_calibration["curve_id"] == curve_id
+        assert failed_calibration["isogeny"] == "none"
+        assert failed_calibration["factor_base_enumerated_set_sha256"] == factor[
+            "enumerated_set_sha256"]
+        assert failed_calibration["native_phase_counts"] is None
+        assert failed_calibration["table_descriptors_per_shard"] == 1 << 31
+        assert failed_calibration["query_representatives"] == calibration_reps
+        assert failed_calibration["query_start"] == 59 * (1 << 30)
+        failed_receipts.append({"receipt": str(path.relative_to(HERE)),
+                                "sha256": hashlib.sha256(
+                                    path.read_bytes()).hexdigest()})
+    failed_calibration_upper = len(failed_receipts) * one_failed_calibration_upper
     report = {
         "kind": "n83_q1052_first_hit_conditional_work_distribution",
         "scope": "frozen finite-support heuristic; no measured natural relation or complete IC DLP",
@@ -131,16 +142,16 @@ def main():
             quantiles["0.5"]["completed_chunks"] * projected_days_per_chunk,
         "projected_days_at_95pct_model_success_if_speedups_transfer":
             quantiles["0.95"]["completed_chunks"] * projected_days_per_chunk,
+        "prior_failed_full_table_calibration_attempts": len(failed_receipts),
         "prior_failed_full_table_calibration_actual_field_calls": None,
-        "prior_failed_full_table_calibration_field_call_model_upper_bound":
+        "prior_failed_full_table_calibrations_field_call_model_upper_bound":
             str(failed_calibration_upper),
-        "prior_failed_full_table_calibration_field_call_model_upper_bound_log2":
+        "prior_failed_full_table_calibrations_field_call_model_upper_bound_log2":
             math.log2(failed_calibration_upper),
-        "p95_plus_prior_failed_calibration_field_call_model_upper_bound_log2":
+        "p95_plus_prior_failed_calibrations_field_call_model_upper_bound_log2":
             math.log2(quantiles["0.95"]["completed_chunks"] * calls +
                       failed_calibration_upper),
-        "prior_failed_calibration_receipt_sha256": hashlib.sha256(
-            FAILED_CALIBRATION.read_bytes()).hexdigest(),
+        "prior_failed_calibration_receipts": failed_receipts,
         "ordinary_n83_relation_measured": False,
         "complete_solve_work_log2": None,
         "limits": [
@@ -148,7 +159,7 @@ def main():
             "The native run finishes a whole rectangle before reporting a hit, so quantiles charge whole completed rectangles.",
             "The conditional expected work excludes the small positive probability of no hit after all 179 full chunks.",
             "The wall-time projection transfers bounded one-worker sharing and 14-versus-8-worker ratios to full-size filters; full-size throughput is unmeasured.",
-            "The failed Q1052 full-table calibration has unknown actual native work; its structural full-rectangle field-call model is only an upper bound.",
+            "Both failed Q1052 full-table calibrations have unknown actual native work; their structural full-rectangle field-call models are only upper bounds.",
             "These stage field calls exclude prior Q1051 attempts, keying, Bloom, base setup, and final replay. They are not complete IC operations or a calibrated rho-equivalent unit.",
         ],
         "input_screen_sha256": hashlib.sha256(SCREEN.read_bytes()).hexdigest(),
