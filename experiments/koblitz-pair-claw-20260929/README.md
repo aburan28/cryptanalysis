@@ -562,6 +562,47 @@ $2^{27}$ query pairs in both ABBA repetitions, but its query phase took
 same time, so this is a bounded negative result rather than a full-size
 throughput comparison; the early-exit variant was not promoted.
 
+### Signed-Frobenius query-pair reuse (Q1050)
+
+Every cross-orbit pair in this base belongs to a 166-member simultaneous
+sign/Frobenius orbit. For a representative pair sum $Z$, its lifted query
+key obeys the exact identity
+
+$$\operatorname{can}_x(Q-\epsilon\pi^k Z)
+  =\operatorname{can}_x(\pi^{-k}Q-\epsilon Z),\qquad
+  \epsilon\in\{+1,-1\}. $$
+
+The right side computes $Z$ once, then checks 166 target complements.
+The [n=23 control](runs/n23_query_orbit_reuse_control.json) exhaustively
+maps all 44,436 cross-orbit unordered pairs to 966 representatives with
+no duplicates and checks 944 group/key identities. The
+[n=83 control](runs/n83_query_orbit_reuse_sample.json) checks 512 more
+identities on the exact B=4,000,102 base and frozen target. Within-orbit
+pairs account for only **0.00417%** of the n=83 unordered query domain;
+Q1050 currently omits them, and its model records that exclusion.
+
+The [native bounded stage](runs/n83_native_query_orbit_bounded.json)
+uses the same 20-bit Bloom filter and exact second pass as Q1049. Its
+planted hit at **table start 1024, query-representative start 256** was
+reconstructed into four base points and an independently replayed scalar.
+All three bounded public-target runs had zero exact hits. An
+[ABBA paired comparison](runs/n83_orbit_reuse_vs_direct_ABBA_bounded.json)
+at $2^{24}$ table descriptors and 43,515,904 tested complements per run
+measured **1.251× query-phase speedup** over the direct solver. The
+deterministic query schedules differ, and a full-size shard was running
+concurrently; $2^{32}$-table throughput remains unmeasured.
+
+The [conditional work screen](n83_query_orbit_reuse_screen.json) uses
+22 chunks of $2^{31}$ query-pair representatives per $2^{32}$ table
+shard. Across two shards this covers a **95.11% modeled success**
+prefix in 44 runs. Counting each build, exact replay, representative
+pair addition, lifted target addition, and batch inversion gives
+**$2^{47.592}$ field add/multiply/square calls**, about 2.07× fewer
+than Q1049's 58-chunk model on the same base. This count excludes
+keying, Bloom probes, memory, setup, and scalar replay. No ordinary
+n=83 relation or complete quotient-table DLP has been measured for
+Q1050, so neither model is a complete sub-$2^{61}$ solve claim.
+
 Naming follows the [candidate catalog measurement contract](../ic-candidate-catalog/MEASUREMENT.md):
 the exact curve is `EC1N83Ckb1h876c2921cb64`; the factor base has
 **B=4,000,102 actual subgroup-usable points before folding** and 24,097
@@ -597,4 +638,9 @@ python3 experiments/koblitz-pair-claw-20260929/n83_bloom_shard_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_bloom_campaign.py
 # After verifying the prior run handle has ended, --run-next advances one chunk.
 # --aggregate writes completed-chunk accounting and rejects overlap.
+./sage -python experiments/koblitz-pair-claw-20260929/verify_query_orbit_reuse.py
+./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_query_orbit_reuse.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_orbit_query.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_orbit_ABBA.py
+python3 experiments/koblitz-pair-claw-20260929/n83_query_orbit_reuse_screen.py
 ```
