@@ -38,6 +38,16 @@ def field_calls(table_descriptors, queries):
     return 26 * table_descriptors + 27 * queries + 90 * inversions
 
 
+def wilson95(positives, trials):
+    z = 1.959963984540054
+    p = positives / trials
+    denominator = 1 + z * z / trials
+    center = (p + z * z / (2 * trials)) / denominator
+    half = z * math.sqrt(p * (1 - p) / trials +
+                         z * z / (4 * trials * trials)) / denominator
+    return [max(0.0, center - half), min(1.0, center + half)]
+
+
 def main():
     finite = json.loads(FINITE.read_text())
     calibration = json.loads(CALIBRATION.read_text())
@@ -59,6 +69,7 @@ def main():
     measured_q = calibration["query_count"]
     positives = row["false_positive_queries"]
     rate = positives / measured_q
+    false_positive_interval = wilson95(positives, measured_q)
     bloom_bytes = ((M * BITS + 511) // 512 + 1024) * 64
     projected_candidates = Q * rate
     # Observed small-run non-filter RSS is a proxy. Vector capacity is
@@ -67,6 +78,8 @@ def main():
                         row["candidate_vector_capacity_bytes"])
     illustrative_vector_bytes = (2 * projected_candidates *
                                  row["candidate_record_bytes"])
+    projected_candidates_interval = [Q * value for value in
+                                     false_positive_interval]
     projected_seconds = (
         row["build_seconds"] * M / measured_m +
         row["query_seconds"] * Q / measured_q +
@@ -104,6 +117,8 @@ def main():
         "measured_target_queries": measured_q,
         "measured_false_positive_queries": positives,
         "measured_false_positive_rate": rate,
+        "measured_false_positive_rate_wilson95":
+            false_positive_interval,
         "measured_public_target_exact_hits": row["exact_hit_queries"],
         "planted_nonzero_shard_scalar_replay_passed": True,
         "one_shard_heuristic_relation_probability": success_probability(
@@ -112,6 +127,8 @@ def main():
             finite, 2 * M, Q),
         "one_shard_bloom_bytes": bloom_bytes,
         "one_shard_projected_positive_queries": projected_candidates,
+        "one_shard_projected_positive_queries_wilson95":
+            projected_candidates_interval,
         "one_shard_illustrative_twice_count_candidate_vector_bytes":
             illustrative_vector_bytes,
         "one_shard_illustrative_peak_filter_phase_bytes": (
@@ -137,6 +154,8 @@ def main():
             "The success probabilities use the finite-support Poisson heuristic, not measured ordinary relation yield.",
             "The projected time scales small-run rates linearly and may be inaccurate at a 10 GiB random-access Bloom filter.",
             "The projected candidate vector uses twice the expected number of positives as an illustrative capacity, not a memory bound.",
+            "The Wilson interval assumes independent Bloom outcomes; deterministic query ordering and correlated keys may invalidate its nominal 95pct coverage.",
+            "The build, query, and replay time projection uses one bounded run, so its timing uncertainty has not been estimated.",
             "The 95pct field-call count assumes exactly two shards, each scanned with the same unique query prefix; each build and exact replay is charged.",
             "The field-call model omits quotient-keying, Bloom hashes and probes, memory traffic, base construction, and independent verification; it is not complete solve work.",
             "The interrupted 24-bit attempt has unknown consumed work and cannot be silently counted as zero in a cumulative campaign cost.",

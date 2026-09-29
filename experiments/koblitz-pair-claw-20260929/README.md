@@ -511,6 +511,12 @@ $2^{28}$ descriptors, $2^{24}$ queries, 14 hashes, and eight workers on
 the same n=83 curve, factor base, and public target. It measured **1,599
 Bloom positives, zero exact matches**, 671,154,176 filter bytes, and
 835,387,392 bytes peak RSS. The [shard screen](n83_bloom_shard_screen.json)
+gives a nominal Wilson 95% false-positive-rate interval of
+$[9.075\times10^{-5},1.001\times10^{-4}]$, equivalent to about
+24.9–27.5 million candidates at $2^{38}$ queries if the rate transfers.
+The deterministic schedule may violate that interval's independence
+assumption. Timing uncertainty from the single bounded run is unmeasured.
+The screen
 projects one $2^{32}$-descriptor, $2^{38}$-query shard at **10.00 GiB
 filter memory**, **11.32 GiB illustrative peak filter-phase memory**,
 **4.03 hours** from the smaller run's phase rates, and **$2^{42.786}$
