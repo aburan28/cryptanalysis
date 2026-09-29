@@ -1,0 +1,83 @@
+name: Sparse exact basis verification
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round23/**'
+      - 'experiments/groebner-perf-20260924/round20/**'
+      - 'experiments/groebner-perf-20260924/round18/**'
+      - 'experiments/groebner-perf-20260924/round17/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/groebner-perf-20260924/round2/**'
+      - 'experiments/pdp-degree-heuristics/pdpkernel.c'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/sparse-basis-proof.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round23/**'
+      - '.github/workflows/sparse-basis-proof.yml'
+permissions:
+  contents: read
+concurrency:
+  group: sparse-basis-proof-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  correctness:
+    name: Sparse exact proof (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build independent checker and unchanged CPU dependencies
+        run: |
+          mkdir -p sparse-proof-measurement
+          python experiments/groebner-perf-20260924/round20/build.py > sparse-proof-measurement/dependency-build.log 2>&1
+          python experiments/groebner-perf-20260924/round23/build.py > sparse-proof-measurement/build.log 2>&1
+      - name: Exact proof, query, fallback, admission and evidence contracts
+        run: |
+          python -m unittest discover -s experiments/groebner-perf-20260924/round23 -p 'test_*.py' -v > sparse-proof-measurement/tests.log 2>&1
+          python experiments/groebner-perf-20260924/round23/verify_evidence.py > sparse-proof-measurement/evidence.log
+      - name: Three-arm complete-query correctness trace and journal audit
+        run: |
+          python experiments/groebner-perf-20260924/round23/benchmark.py --correctness-only --repetitions 2 --output sparse-proof-measurement/correctness.json.gz
+          python experiments/groebner-perf-20260924/round23/audit.py sparse-proof-measurement/correctness.json.gz > sparse-proof-measurement/correctness-audit.json
+      - name: Complete-query comparison after bounded load admission
+        if: github.event_name == 'pull_request'
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          out = pathlib.Path('sparse-proof-measurement')
+          metadata = {name: os.environ.get(name) for name in
+              ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS',
+               'RUNNER_ARCH', 'GITHUB_WORKFLOW_REF')}
+          (out/'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          root = pathlib.Path('experiments/groebner-perf-20260924/round23')
+          report = out/'paired.json.gz'
+          run = subprocess.run([sys.executable, str(root/'benchmark.py'), '--repetitions', '31',
+                                '--admission-wait-seconds', '240', '--output', str(report)])
+          if run.returncode == 2:
+              admission = json.loads(pathlib.Path(str(report)+'.admission.json').read_text())
+              assert not admission['admitted'] and admission['timed_attempts'] == 0
+              assert not report.exists()
+          else:
+              run.check_returncode()
+              with (out/'audit.json').open('w') as target:
+                  subprocess.run([sys.executable, str(root/'audit.py'), str(report)], stdout=target, check=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sparse-proof-measurement-${{ matrix.os }}
+          path: sparse-proof-measurement/
+          if-no-files-found: ignore
+          retention-days: 14
