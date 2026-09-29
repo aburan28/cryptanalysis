@@ -16,6 +16,9 @@ SCREEN = HERE / "n83_large_knownlog_base_screen.json"
 OUTPUT = HERE / "n83_large_orbit_solve_work.json"
 FAILED_R31 = (HERE / "runs" /
     "n83_orbit_k48194_chunk_M31_R31_tstart0_qstart0_b20_h14_rb8.json")
+FAILED_R30 = (HERE / "runs" /
+    "n83_orbit_k48194_chunk_M31_R30_tstart0_qstart1073741824_b20_h14_rb8.json")
+AGGREGATE = HERE / "runs" / "n83_large_orbit_campaign_aggregate.json"
 FIRST_COMPLETED_R30 = (HERE / "runs" /
     "n83_orbit_k48194_chunk_M31_R30_tstart0_qstart0_b20_h14_rb8.json")
 QUANTILES = ("0.5", "0.8", "0.9", "0.95", "0.99")
@@ -101,10 +104,56 @@ def main():
         "enumerated_set_sha256"]
     assert failed["table_descriptors"] == table
     assert failed["query_representatives"] == reps
+    failed_r30 = json.loads(FAILED_R30.read_text())
+    assert failed_r30["kind"] == failed["kind"]
+    assert failed_r30["curve_id"] == curve_id
+    assert failed_r30["proposal_id"] == "Q1051"
+    assert failed_r30["candidate_id"] is None
+    assert failed_r30["isogeny"] == "none"
+    assert failed_r30["factor_base_enumerated_set_sha256"] == base[
+        "enumerated_set_sha256"]
+    assert failed_r30["table_descriptors"] == table
+    assert failed_r30["query_representatives"] == reps // 2
+    assert failed_r30["query_start"] == reps // 2
+    assert failed_r30["native_phase_counts"] is None
     half_reps = reps // 2
     half_calls = (26 * table + 13 * half_reps + 13 * half_reps * lift +
                   90 * (2 * math.ceil(table / 1024) +
                         2 * math.ceil(half_reps / 8)))
+    retry_paths = []
+    retry_index = 1
+    while True:
+        path = FAILED_R30.with_name(
+            f"{FAILED_R30.stem}.retry{retry_index}.json")
+        if not path.exists():
+            break
+        retry_paths.append(path)
+        retry_index += 1
+    assert set(retry_paths) == set(FAILED_R30.parent.glob(
+        f"{FAILED_R30.stem}.retry*.json")), "noncontiguous retry receipts"
+    assert not list(FAILED_R30.parent.glob(
+        f"{FAILED_R30.stem}*.started.json")), "active retry omitted"
+    failed_paths = [FAILED_R31, FAILED_R30, *retry_paths]
+    for path in retry_paths:
+        retry = json.loads(path.read_text())
+        for key in ("kind", "curve_id", "proposal_id", "candidate_id",
+                    "isogeny", "factor_base_enumerated_set_sha256",
+                    "table_start", "table_descriptors", "query_start",
+                    "query_representatives"):
+            assert retry[key] == failed_r30[key], (path, key)
+        assert retry["native_phase_counts"] is None
+    aggregate = json.loads(AGGREGATE.read_text())
+    assert aggregate["curve_id"] == curve_id
+    assert aggregate["proposal_id"] == "Q1051"
+    assert len(aggregate["failed_chunks_with_unknown_work"]) == len(
+        failed_paths)
+    assert {item["receipt_sha256"] for item in aggregate[
+        "failed_chunks_with_unknown_work"]} == {
+            hashlib.sha256(path.read_bytes()).hexdigest() for path in
+            failed_paths}
+    failed_upper = calls_per_chunk + (1 + len(retry_paths)) * half_calls
+    assert int(aggregate["failed_native_field_call_model_upper_bound"]) == (
+        failed_upper)
     half_max = screen["cross_orbit_query_representative_domain"] // half_reps
     half_cdf = [0.0] + [success_probability(
         chunk, mean_relations=mean, table_fraction=table_fraction,
@@ -180,10 +229,23 @@ def main():
             actual_wall / half_projected_seconds,
         "prior_failed_R31_actual_field_calls": None,
         "prior_failed_R31_field_call_model_upper_bound": str(calls_per_chunk),
+        "prior_failed_R30_actual_field_calls": None,
+        "prior_failed_R30_field_call_model_upper_bound": str(half_calls),
+        "prior_failed_attempts_count": len(failed_paths),
+        "prior_failed_attempts_field_call_model_upper_bound": str(
+            failed_upper),
         "planned_plus_prior_failed_field_call_model_upper_bound_log2":
-            math.log2(118 * half_calls + calls_per_chunk),
+            math.log2(118 * half_calls + failed_upper),
         "prior_failed_receipt_sha256": hashlib.sha256(
             FAILED_R31.read_bytes()).hexdigest(),
+        "prior_failed_R30_receipt_sha256": hashlib.sha256(
+            FAILED_R30.read_bytes()).hexdigest(),
+        "prior_failed_retry_receipts": [{
+            "receipt": str(path.relative_to(HERE)),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        } for path in retry_paths],
+        "campaign_aggregate_sha256": hashlib.sha256(
+            AGGREGATE.read_bytes()).hexdigest(),
     }
     report = {
         "kind": "n83_q1051_first_hit_conditional_work_distribution",

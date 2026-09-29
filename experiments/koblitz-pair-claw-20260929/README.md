@@ -291,7 +291,7 @@ measurement rows:
 the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
 requires exactly one of those IDs to be non-null. New comparison rows
 must use the `IC1` ID and carry the old `Q` lineage separately. Current
-n=83 stage records use `Q1051`, `Q1052`, or `Q1053`, with
+n=83 stage records use `Q1051` through `Q1054`, with
 `candidate_id: null`.
 
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
@@ -735,7 +735,11 @@ the $2^{31}$ filter rate gives **7.35 projected days**, conditional on
 the same speedup holding at full size. The
 [campaign driver](n83_large_orbit_campaign.py) checks competing start
 markers and interrupts its child if swap-outs rise by more than 1,024
-pages or system-volume free space falls below 512 MiB. A failed chunk's
+pages or system-volume free space falls below 512 MiB. After the repeated
+interruptions, it now requires at least 12 GiB system-volume free space
+and stable swapouts over a 30-second preflight, and launches via the
+checked repository Sage path with runtime information saved before each
+new run. A failed chunk's
 consumed work remains unknown. Q1051 has `candidate_id: null` until a
 natural relation recovers the public target and complete IC work is
 accounted for.
@@ -757,10 +761,9 @@ For this active R=$2^{30}$ plan, the
 [first-hit distribution](n83_large_orbit_solve_work.json) reaches 50%
 after 27 completed rectangles ($2^{45.888}$ modeled field calls), 90%
 after 89 ($2^{47.609}$), and 95% after 117 ($2^{48.003}$). The plan's
-118th rectangle raises modeled success to 95.24%; adding a full-rectangle
-upper bound for the prior failed R=$2^{31}$ attempt gives
-$2^{48.040}$ under the same field-call model. Actual consumed work in
-the failed attempt remains unknown.
+118th rectangle raises modeled success to 95.24%. Adding full-rectangle
+model upper bounds for all three interrupted attempts gives $2^{48.064}$;
+their actual consumed work remains unknown.
 
 The [first full R=$2^{30}$ rectangle](runs/n83_orbit_k48194_chunk_M31_R30_tstart0_qstart0_b20_h14_rb8.json)
 completed on the public target with **16,719,837 Bloom positives, all
@@ -771,9 +774,17 @@ for 14-worker queries, and 715.9 seconds for exact replay; peak RSS was
 the wrapper wall time was **7,164.3 seconds**. The completed native
 field-call model is **$2^{41.133}$**. The
 [cumulative receipt](runs/n83_large_orbit_campaign_aggregate.json)
-retains the earlier failed R=$2^{31}$ attempt as unknown actual work;
-the sum of completed work and that attempt's full-rectangle model upper
-bound is **$2^{42.707}$ field calls**. Transferring the first full
+retains three failed attempts as unknown actual work. The second,
+[R=$2^{30}$ range starting at $2^{30}$](runs/n83_orbit_k48194_chunk_M31_R30_tstart0_qstart1073741824_b20_h14_rb8.json),
+was interrupted after about 31 minutes with no native phase counts or
+query yield. The host's swap counter was substantially higher when
+inspected later, but the terminal receipt does not identify which guard
+fired.
+An additional [retry](runs/n83_orbit_k48194_chunk_M31_R30_tstart0_qstart1073741824_b20_h14_rb8.retry1.json)
+was interrupted after about 14 seconds with no native phase counts.
+The completed rectangle plus all three failures has a **$2^{43.448}$**
+structural field-call-model upper bound, not a measured consumed total.
+Transferring the first full
 rectangle's 7,164.3-second wall time to all 118 rectangles gives
 **9.78 days**, a one-sample projection that supersedes the earlier
 bounded-rate 8.18-day estimate. Neither projection is a measured full
@@ -823,6 +834,7 @@ attempts, and independent scalar replay.
 | n=53 known-log control | Verified one-target DLP in 117.94 s online; $2^{20.739}$ cold pair samples | Measured wall time and logical pair samples; full field-operation count unknown |
 | n=83 Q1051 | One full R=$2^{30}$ rectangle completed in 7,164.3 s with zero exact hits; 95% model prefix $2^{48.016}$ | Measured one-rectangle wall time and zero yield; prefix field calls predicted |
 | n=83 Q1052 | No natural hit yet; median $2^{44.974}$, 95% $2^{47.049}$ | Predicted native field-call stage only; full-size throughput unmeasured |
+| n=83 Q1054 | Planted scalar replay passed; bounded query 1.152× faster; 95% $2^{47.071}$ | Predicted x-only field-call stage; full-size throughput and natural yield unmeasured |
 
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
 [campaign driver](n83_two_shard_campaign.py) retain source hashes,
@@ -876,6 +888,53 @@ the same as Q1052 because group arithmetic and exact table passes are
 unchanged; full-size memory, parallel throughput, natural yield, and
 complete solve work remain unmeasured. The small timing gain does not
 yet establish a full-size replacement for the completed Q1051 route.
+
+### Paired-sign x-only query stage (Q1054)
+
+The [Q1054 native kernel](native_n83_orbit_query_signed_x.cpp) shares
+the denominator for $P+Z$ and $P-Z$, returning only their x coordinates.
+For each pair of signs, it replaces two full point additions with six
+field additions, five multiplications, and two squares, or 13 counted
+field calls instead of 26. It uses the exact Q1051 curve, public target,
+B=8,000,204 base, 48,194 folded columns, and set digest, with
+`candidate_id: null` and `isogeny: "none"`. The
+[nonzero-offset planted control](runs/n83_signed_x_nonzero_offset_planted.json)
+found an exact hit and independently replayed its scalar. The checked
+[Sage runtime receipt](runs/n83_signed_x_runtime_info.json) was saved
+before the run.
+
+The [ABBA paired bounded public-target comparison](runs/n83_signed_x_paired_bounded.json)
+used one worker, M=$2^{20}$, R=$2^{18}$, and identical table and query
+ranges. Both variants produced 3,311 Bloom positives, zero exact hits,
+and identical identity counts. Original query times were 8.10–8.16 s;
+paired-sign times were 6.95–7.16 s. The median query-phase speedup was
+**1.152×**, with paired ratios **1.139–1.166×**. These two repetitions
+give a range, not a full-size confidence interval.
+
+The [conditional Q1054 screen](n83_signed_x_screen.json) retains
+Q1051's finite-support first-hit probabilities. It predicts
+**$2^{47.071}$ native field calls** for 118 completed rectangles and
+95.24% modeled success, versus Q1051's $2^{48.016}$. Applying the
+bounded query speedup to the first completed full-size Q1051 timing
+projects **8.77 days** for 118 Q1054 rectangles, conditional on transfer
+to a $2^{31}$ filter and 14 workers. For the *current same target*,
+one Q1051 rectangle has completed and three attempts failed; charging
+their full-rectangle model upper bounds plus 117 future Q1054 rectangles
+gives **$2^{47.172}$** field calls. Actual work in the failures, full-size
+Q1054 throughput, natural relation yield, and complete DLP work remain
+unknown. The checked runtime, planted hit, and bounded speedup do not
+establish a full-size solve.
+
+The [Q1054 chunk runner](run_n83_signed_x_chunk.py) completed a bounded
+M=$2^{20}$, R=$2^{14}$ public-target smoke with zero exact hits and
+[retained its terminal receipt](runs/n83_signed_x_k48194_chunk_M20_R14_tstart0_qstart0_b20_h14_rb8.json).
+The [campaign driver](n83_signed_x_campaign.py) schedules the 117
+remaining disjoint R=$2^{30}$ ranges after Q1051's completed range. It
+saves a checked Sage runtime receipt before each launch and records
+separate guard telemetry if it interrupts a child. The full-size launch
+gate currently refuses to start: system-volume free space is below its
+12 GiB minimum, and this host recently accumulated heavy swap-outs.
+No full-size Q1054 rate or relation has been measured.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py

@@ -13,6 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 RUNS = HERE / "runs"
+SAGE = Path("/Volumes/SSD990/cryptanalysis/sage")
 SCREEN = HERE / "n83_large_knownlog_base_screen.json"
 RUNNER = HERE / "run_n83_orbit_chunk_k48194.py"
 AGGREGATOR = HERE / "aggregate_n83_large_orbit_chunks.py"
@@ -21,9 +22,10 @@ TABLE_LOG2 = 31
 QUERY_LOG2 = 30
 LEGACY_FAILED = (RUNS /
     "n83_orbit_k48194_chunk_M31_R31_tstart0_qstart0_b20_h14_rb8.json")
-MIN_SYSTEM_FREE_BYTES = 1 << 30
+MIN_SYSTEM_FREE_BYTES = 12 << 30
 STOP_SYSTEM_FREE_BYTES = 512 << 20
 MAX_SWAPOUT_GROWTH_PAGES = 1024
+MAX_PREFLIGHT_SWAPOUT_GROWTH_PAGES = 128
 
 
 def swapouts():
@@ -204,9 +206,25 @@ def main():
         if system_free_bytes < MIN_SYSTEM_FREE_BYTES:
             raise RuntimeError(
                 "system volume has insufficient free space for swap safety")
+        time.sleep(30)
+        ready_free = shutil.disk_usage("/").free
+        ready_swap = swapouts()
+        if (ready_free < MIN_SYSTEM_FREE_BYTES or
+                ready_swap - current_swapouts >
+                MAX_PREFLIGHT_SWAPOUT_GROWTH_PAGES):
+            raise RuntimeError("preflight root space or swap stability failed")
+        if list(RUNS.glob("n83_*.started.json")):
+            raise RuntimeError("another n=83 search started during preflight")
         chunk = missing[0]
+        runtime_path = chunk["receipt"].with_suffix(".runtime.json")
+        runtime = subprocess.run([str(SAGE), "--runtime-info"], check=True,
+                                 capture_output=True, text=True).stdout
+        runtime_path.write_text(runtime)
+        assert json.loads(runtime)["status"] == "verified"
+        if list(RUNS.glob("n83_*.started.json")):
+            raise RuntimeError("another n=83 search started before launch")
         command = [
-            sys.executable, str(RUNNER),
+            str(SAGE), "-python", str(RUNNER),
             "--table-log2", str(TABLE_LOG2),
             "--table-start", str(chunk["table_start"]),
             "--query-reps-log2", str(QUERY_LOG2),
