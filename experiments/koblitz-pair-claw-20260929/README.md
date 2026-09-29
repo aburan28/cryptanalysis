@@ -824,6 +824,25 @@ is included in cumulative work and will decide whether full-size memory
 and query rates support the campaign. A zero-hit calibration is a stage
 measurement, not evidence of natural relation yield.
 
+### One-filter two-table stage probe (Q1053)
+
+Q1053 puts both disjoint table shards into one Bloom filter, then uses
+one candidate list and exact replays both shards. It has the same curve,
+B=8,000,204 base, enumerated-set digest, and `isogeny: "none"` as
+Q1052; it remains a proposal with `candidate_id: null`. A
+[second-shard planted control](runs/n83_unified_second_table_planted.json)
+found one exact hit and independently replayed its scalar. In the
+[paired bounded public-target run](runs/n83_unified_paired_bounded.json)
+at M=$2^{20}$ per shard and R=$2^{18}$ with one worker, the unified
+filter reduced Bloom positives from 6,533 to 3,703, or **43.3%**.
+It reduced median query time from 15.273 to 14.861 seconds, a
+**1.028×** speedup while Q1051 shared the host. Both variants found
+zero exact hits on that ordinary target range. The field-call model is
+the same as Q1052 because group arithmetic and exact table passes are
+unchanged; full-size memory, parallel throughput, natural yield, and
+complete solve work remain unmeasured. The small timing gain does not
+yet justify replacing the guarded Q1052 full-table calibration.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
@@ -870,4 +889,6 @@ python3 experiments/koblitz-pair-claw-20260929/n83_two_shard_solve_work.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_two_shard_campaign.py
 # After Q1051 exits: --calibrate-full-table first, then assess its resource receipt.
 # --run-next launches one guarded Q1052 rectangle after competing runs finish.
+./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_unified_planted.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_unified_paired.py
 ```
