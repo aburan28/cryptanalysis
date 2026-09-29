@@ -1401,12 +1401,17 @@ def verify_n83_rho_solved():
 
 
 def verify_weight4_s3_stage():
+    import sys
+
     path = HERE / "runs" / "n83_weight4_s3_stage.json"
     report = json.loads(path.read_text())
     reference_path = HERE / "runs" / "n83_perf_prefix.json"
     reference = json.loads(reference_path.read_text())
     assert report["source_sha256"] == sha(HERE / "n83_weight4_s3_stage.py")
     assert report["reference_sha256"] == sha(reference_path)
+    codegen = HERE.parents[1] / "ecc2k130" / "runner" / "codegen"
+    for name, digest in report["dependency_sha256"].items():
+        assert digest == sha(codegen / name)
     assert report["curve_id"] == reference["curve_id"] == "EC1N83Ckb1h876c2921cb64"
     assert report["curve_identity_record"] == reference["curve_identity_record"]
     assert report["isogeny"] == "none" and report["candidate_id"] is None
@@ -1433,6 +1438,17 @@ def verify_weight4_s3_stage():
     target = tuple(reference["workload"]["target"])
     assert curve.mul(generator, order) is None
     assert curve.mul(target, order) is None
+    sys.path.insert(0, str(codegen))
+    import indexcalc_e2e
+    eigen = int(base["frobenius_eigenvalue_mod_r"])
+    assert curve.mul(generator, eigen) == curve.frob(generator)
+    reps, lookup = indexcalc_e2e.subgroupBase(curve.f, curve, order, eigen, 4)
+    assert len(reps) == base["signed_frobenius_columns"]
+    assert len(lookup) == base["actual_usable_points_B_before_folding"]
+    point_hash = hashlib.sha256()
+    for x, y in sorted(lookup):
+        point_hash.update(f"{x},{y}\n".encode())
+    assert point_hash.hexdigest() == base["enumerated_set_sha256"]
     planted = None
     for point in report["planted_input_points_after_lex_order"]:
         p = tuple(point)
