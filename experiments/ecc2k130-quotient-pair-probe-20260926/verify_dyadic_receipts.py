@@ -950,6 +950,139 @@ def verify_n83_affine_scan_stage():
             stage["L1000_expected_scan_point_additions_upper_log2"]}
 
 
+def verify_n83_affine_scan_l1000():
+    path = HERE / "runs" / "n83_affine_scan_L1000_stage.json"
+    if not path.exists():
+        return "not_run"
+    report = json.loads(path.read_text())
+    reference_path = HERE / "runs" / "n83_perf_prefix.json"
+    index_path = HERE / "runs" / "n83_dyadic_G_pair_witness_index_L1000.json"
+    input_path = HERE / "runs" / "n83_affine_scan_L32_inputs.json"
+    support_path = HERE / "runs" / "n83_dyadic_G_pair_scalar_support_L1000.json"
+    rho_path = HERE / "runs" / "n83_public_target_rho_solved.json"
+    reference = json.loads(reference_path.read_text())
+    index = json.loads(index_path.read_text())
+    inputs = json.loads(input_path.read_text())
+    support = json.loads(support_path.read_text())
+    rho = json.loads(rho_path.read_text())
+    assert report["source_sha256"] == sha(HERE / "dyadic_n83_affine_scan_L1000.py")
+    assert report["reference_sha256"] == sha(reference_path)
+    assert report["support_receipt_sha256"] == sha(support_path)
+    assert report["frozen_inputs_sha256"] == sha(input_path)
+    for name, digest in report["dependency_sha256"].items():
+        assert digest == sha(HERE / name)
+    assert report["candidate_id"] is None and report["isogeny"] == "none"
+    assert report["curve_id"] == reference["curve_id"] == index[
+        "curve_id"] == rho["curve_id"]
+    assert report["curve_identity_record"] == reference["curve_identity_record"]
+    assert report["workload"]["target"] == reference["workload"]["target"]
+    assert report["workload"]["frozen_inputs_sha256"] == sha(input_path)
+    assert report["workload_id"] == hashlib.sha256(frozen(
+        report["workload"])).hexdigest()[:12]
+    assert report["run_id"] == f"Q1032W{report['workload_id']}R1"
+    proposals = json.loads((HERE / "dyadic_stage_proposals.json").read_text())
+    proposal = next(row for row in proposals
+                    if row["proposal_id"] == "Q1032")
+    assert proposal["candidate_id"] is None
+    assert proposal["curve_id"] == report["curve_id"]
+    assert proposal["field"] == report["curve_identity_record"]["field"]
+    assert proposal["isogeny"] == report["isogeny"] == "none"
+    assert proposal["factor_base"] == report["factor_base"]
+    assert proposal["point_decomposition"]["stage_code"] == "PDP3qpair"
+    assert proposal["relation_collection_code"] == "RCaffine"
+    assert report["factor_base"]["actual_usable_points_B_before_folding"] == 166166
+    assert report["factor_base"]["signed_frobenius_columns"] == 1001
+    assert report["factor_base"][
+        "effective_unknown_log_columns_after_dyadic_labels"] == 1
+    curve = curves.Curve(field.Onb(83))
+    generator = tuple(reference["curve_identity_record"]["curve"]["generator"])
+    target = tuple(reference["workload"]["target"])
+    order = int(reference["subgroup_order"])
+    geometry = json.loads((HERE / "runs" /
+                           "n83_dyadic_target_seed_geometry.json").read_text())
+    eigenvalue = int(geometry["frobenius_eigenvalue_mod_r"])
+    g_labels, g_reps, _ = enumerate_points(
+        curve, curve.f, [generator], 1000, eigenvalue, order)
+    q_labels, q_reps, _ = enumerate_points(
+        curve, curve.f, [target], 1, eigenvalue, order)
+    assert set(g_labels).isdisjoint(q_labels)
+    labels = dict(g_labels)
+    labels.update({point: (1, coefficient)
+                   for point, (_, coefficient) in q_labels.items()})
+    encoded_points = json.dumps(sorted(labels), separators=(",", ":")).encode()
+    encoded_labels = frozen(sorted((point[0], point[1], label[0], label[1])
+                                   for point, label in labels.items()))
+    assert len(labels) == 166166 and len(g_reps) + len(q_reps) == 1001
+    assert hashlib.sha256(encoded_points).hexdigest() == report[
+        "factor_base"]["enumerated_set_sha256"]
+    assert hashlib.sha256(encoded_labels).hexdigest() == report[
+        "factor_base"]["point_coefficient_label_sha256"]
+    index_info = report["target_independent_G_pair_index"]
+    assert index_info["point_witness_receipt_sha256"] == sha(index_path)
+    assert index_info["quotient_keys"] == index["quotient_keys"] == support[
+        "L1000_exact_quotient_keys"]
+    assert index_info["sorted_array_sha256"] == index[
+        "sorted_array_sha256"]
+    assert index_info["sorted_array_bytes"] == index["raw_array_bytes"]
+    blocks = report["ordinary_query_blocks"]
+    assert len(blocks) == len(inputs["rows"]) == 3
+    assert sum(row["attempts_including_failed"] for row in blocks) == report[
+        "ordinary_attempts"]
+    assert report["ordinary_attempts"] == 12288
+    assert all(row["progression_point_additions"] == 4096 for row in blocks)
+    assert all(row["final_progression_point_verified"] for row in blocks)
+    assert sum(row["quotient_hits"] for row in blocks) == report[
+        "ordinary_quotient_hits"]
+    projection = report["projected_work"]
+    length = report["L1000_affine_block_length_for_mu_at_least_2"]
+    expected_additions = length * report["L1000_expected_blocks_upper"]
+    assert math.isclose(projection[
+        "expected_upper_scan_point_additions_log2"],
+        math.log2(expected_additions), rel_tol=1e-12)
+    assert math.isclose(projection[
+        "success_95pct_scan_point_additions_log2"],
+        math.log2(length * report[
+            "L1000_blocks_for_at_least_95pct_success"]), rel_tol=1e-12)
+    assert projection["measured_prefix_attempts"] == report[
+        "ordinary_attempts"]
+    assert projection["measured_prefix_api_operation_totals"] == {
+        name: sum(row["field_api_operations"].get(name, 0)
+                  for row in blocks)
+        for name in sorted({name for row in blocks
+                            for name in row["field_api_operations"]})
+    }
+    assert projection["measured_prefix_word_rotations"] == sum(
+        row["canonical_operations"]["word_rotations"] for row in blocks)
+    natural = [item["relation"] for row in blocks
+               for item in row["verified_relations"]]
+    if natural:
+        assert report["verified_single_target_dlp"] is True
+        assert report["ordinary_recovered_scalar"] == rho["recovered_scalar"]
+        assert all(item["recovered_scalar"] == int(rho["recovered_scalar"])
+                   for item in natural)
+    else:
+        assert report["verified_single_target_dlp"] is False
+        assert report["ordinary_recovered_scalar"] is None
+    planted = report["planted_positive_control"]
+    assert planted["rho_receipt_sha256"] == sha(rho_path)
+    assert "excluded from ordinary yield" in planted["scope"]
+    assert planted["relation"]["recovered_scalar"] == int(rho[
+        "recovered_scalar"])
+    witness = [tuple(point) for point in planted["relation"]["point_witness"]]
+    assert len(witness) == 3
+    assert witness[2] == target
+    total = None
+    for point in witness:
+        total = curve.add(total, point)
+    assert total == curve.mul(generator, int(planted[
+        "known_query_scalar_alpha"]))
+    assert report["complete_work_log2"] is None
+    return {"actual_B": len(labels), "keys": index_info["quotient_keys"],
+            "ordinary_attempts": report["ordinary_attempts"],
+            "ordinary_hits": report["ordinary_quotient_hits"],
+            "planted_control_passed": True}
+
+
 def verify_n83_rho_stopped_attempt():
     path = HERE / "runs" / "n83_public_target_rho_attempt.json"
     report = json.loads(path.read_text())
@@ -1129,6 +1262,7 @@ def main():
     g_pair_witness_l1000 = verify_n83_g_pair_witness_index(1000)
     uniform_alpha = verify_n83_uniform_alpha_stage()
     affine_scan = verify_n83_affine_scan_stage()
+    affine_scan_l1000 = verify_n83_affine_scan_l1000()
     rho_attempt = verify_n83_rho_stopped_attempt()
     rho_solved = verify_n83_rho_solved()
     print(json.dumps({"n53_curve_id": geometry[53]["report"]["curve_id"],
@@ -1153,6 +1287,7 @@ def main():
                       "n83_G_pair_witness_L1000": g_pair_witness_l1000,
                       "n83_uniform_alpha": uniform_alpha,
                       "n83_affine_scan": affine_scan,
+                      "n83_affine_scan_L1000": affine_scan_l1000,
                       "n83_rho_attempt": rho_attempt,
                       "n83_rho_solved": rho_solved}))
 

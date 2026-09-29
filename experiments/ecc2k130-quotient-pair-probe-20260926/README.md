@@ -4,9 +4,11 @@ This experiment supplies exact four-point and five-point quotient pair-sum metho
 public Koblitz curves, three verified degree-53 target-seeded discrete logarithm
 pilots, and a separate degree-131 support bound. The degree-53 pilots have
 exact `IC1` method identities but incomplete online and operation accounting.
-There is no degree-83 or ECC2K-130 recovered logarithm, calibrated operation
-comparison with rho, or demonstrated work below `2^61`. The other stage
-receipts retain `candidate_id: null`.
+The same public degree-83 target has a verified rho logarithm, but no
+ordinary degree-83 factor-base relation or index-calculus recovery. There is
+no ECC2K-130 recovered logarithm, calibrated IC operation comparison with
+rho, or demonstrated IC work below `2^61`. The other stage receipts retain
+`candidate_id: null`.
 
 ## What the quotient index does
 
@@ -409,8 +411,8 @@ do not support a precise population interval. A planted relation also passed
 through the full vectorized query and replay path. This is a real packed point-witness
 index, but only at L32; it does not change the L1000 search exponent. At the
 82,843,900 exact L1000 two-G quotient keys, the retained packed rows alone
-would be 1,988,253,600 bytes. That is a format-based storage projection,
-not an L1000 point-witness index measurement.
+would be 1,988,253,600 bytes. Q1029 below has now built the complete index;
+the number here is a retained-row format calculation.
 
 The [symmetric packed Q1028 run](runs/n83_dyadic_five_sum_symmetric_stage.json)
 uses the commutativity of the two G summands: for seed-orbit pair `(i,j)`,
@@ -423,24 +425,26 @@ comparison is unpaired. The full 80,868-key digest and even the retained
 row digest match Q1027 exactly, and 1,001 sampled witnesses pass group
 and quotient replay. The retained array remains 1,940,832 bytes and query
 probability is unchanged. At L1000, this schedule requires **83,083,000**
-pair generators rather than 166,000,000, assuming the same orbit geometry;
-the former count was also enumerated exactly by Q1026's scalar-support
-calculation. No L1000 curve-point witness build or n83 natural relation
-has yet been measured.
+pair generators rather than 166,000,000; Q1026 independently enumerated
+the same generator count from scalar support. Q1029 has now built the
+corresponding L1000 point witnesses. No natural n83 relation has been
+measured.
 
-The [Q1029 disk-backed builder](dyadic_n83_g_pair_witness_index.py) is now
-running the exact L1000 two-G point-witness construction, with a checkpoint
-after each completed G orbit. Its completed [L32 control](runs/n83_dyadic_G_pair_witness_index_L32.json)
+The [Q1029 disk-backed builder](dyadic_n83_g_pair_witness_index.py) completed
+the exact L1000 two-G point-witness construction, with a checkpoint after
+each G orbit. Its [L32 control](runs/n83_dyadic_G_pair_witness_index_L32.json)
 reconstructed all 87,648 generators and 80,868 quotient keys on the same
 curve and base as Q1028. The **entire** sorted unique-row digest and key-set
 digest match Q1028, and 996 sampled row witnesses passed point addition
 and quotient replay. This verifies the disk-backed format
-before the L1000 build. The larger run will compare its complete point-key
-count against Q1026's independently enumerated scalar support; until its
-receipt exists, L1000 point witnesses and ordinary relation yield remain
-unmeasured. Both the raw and sorted large row files stay outside Git; a
-completed receipt will retain their hashes and the exact local paths. The
-build is target-dependent because the base includes the public Q.
+before the L1000 build. The [L1000 receipt](runs/n83_dyadic_G_pair_witness_index_L1000.json)
+records **83,083,000** pair generators, **82,843,900** quotient keys matching
+Q1026's independent scalar-support count, and **1,002** successful sampled
+point-witness replays. Pair generation took **4,372.49 s** and sorting
+**52.73 s**. Each raw or sorted row file uses **1,993,992,000 bytes**; both
+stay outside Git, with the sorted array hash and local path in the receipt.
+The index itself uses only G points and is reusable across targets; the
+receipt also records the larger G+Q base geometry used by this experiment.
 
 ```sh
 ./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_g_pair_witness_index.py \
@@ -524,7 +528,37 @@ Transferring the L32 API vector gives conditional expected upper screens of
 index build adds 83,083,000 point additions to cold work. These are
 random-input work bounds and transferred operation screens, **not** an
 observed n83 relation, a completed IC DLP, or a calibrated full-work claim.
-The L1000 point-witness index and its memory-access cost are still in progress.
+### Full-index n83 affine scan (Q1032)
+
+Q1032 applies the same three frozen random-affine blocks to the complete
+L1000 G-pair point-witness index. Its exact asymmetric factor base is the
+signed-Frobenius closure of 1,000 G doublings and one public-Q orbit:
+**`B=166,166`** distinct usable points before folding, **1,001** folded
+columns, and one unknown logarithm after the G labels are used. The exact
+point-set and coefficient-label hashes are in the [Q1032 receipt](runs/n83_affine_scan_L1000_stage.json).
+The curve remains `EC1N83Ckb1h876c2921cb64`, the isogeny route is `none`,
+and Q1032 retains `candidate_id: null` and its own frozen workload ID.
+
+The three 4,096-query ordinary blocks took **0.304, 0.302, and 0.299 s**
+against the full disk-backed index, including two starting scalar
+multiplications per block. All **12,288** ordinary lookups missed. A separate
+post-rho planted witness recovered the independently verified scalar and is
+excluded from relation yield. The measured prefix rate is **73.65 μs per
+attempt**; this is a full-index memory-access measurement, not a complete
+target solve.
+
+For this exact pair-sum support, the random-affine second-moment bound gives
+at most **`2^49.321` expected scan point additions**, or **`2^50.643`**
+point additions for at least 95% success. The scan makes at most 28 packed
+row probes per lookup, giving **`2^54.128`** expected-upper row probes under
+the same bound. Transferring the measured prefix operation vector gives
+conditional expected-upper counts of **`2^50.360` field multiplication API
+calls**, **`2^49.360` inversions**, **`2^52.168` additions**, and
+**`2^55.679` word rotations**. Transferring its wall rate gives
+**`2^35.592` seconds**; this long-run extrapolation does not price changes
+in cache behavior. These are separate units, and the 4,372.49-second index
+build is additional cold work. Zero natural hits mean there is still no
+observed n83 IC solve or calibrated full-work `2^x` claim.
 
 ### Same-target degree-83 rho reference
 
