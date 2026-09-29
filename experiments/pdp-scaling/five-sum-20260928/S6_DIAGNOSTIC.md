@@ -5,6 +5,15 @@ This exploratory check used the first **ordinary** n=83 target in the frozen
 85 Boolean input bits). It is separate from the preregistered pair-table
 pilot in `run-1/`. No five-summand solution or relation was obtained.
 
+**Target correction for any future solver:** this diagnostic substituted the
+projected target `R.x` only to measure construction size. The archived factor
+base stores `[4]P` for original points whose x-coordinate lies in the
+subspace. A valid original-point equation must instead target one of the four
+preimages `T+K` of `R`, where `T=[4^{-1} mod r]R` and
+`K ∈ {O,(0,1),(1,0),(1,1)}` is the rational 4-torsion kernel. Using `R.x`
+with original x-variables is **not** a correct projected-base relation
+encoding. Every extracted witness needs an exact `[4]sum(P_i)=R` replay.
+
 Python 3.12.14 on x86_64 Linux, with a 512 MiB `RLIMIT_AS` and a 30-second
 external watchdog: generating the characteristic-two S6 polynomial via
 `sumpoly.summation_polynomials(6)` produced **190,252 monomials** in
