@@ -58,6 +58,7 @@ def main():
     table_groups = {}
     completed = []
     failed = []
+    failed_field_call_upper_bound = 0
     for path, record in records:
         if record["curve_id"] != curve_id:
             raise ValueError(f"curve mismatch: {path}")
@@ -66,6 +67,22 @@ def main():
                 record["isogeny"] != "none"):
             raise ValueError(f"proposal identity mismatch: {path}")
         if record["kind"] == "n83_public_target_orbit_query_k48194_chunk_failed":
+            if (record["factor_base_enumerated_set_sha256"] != first[
+                    "factor_base"]["enumerated_set_sha256"] or
+                    any(record[key] != expected[key] for key in (
+                        "compiled_binary_sha256", "native_source_sha256",
+                        "bloom_core_sha256", "native_pairs_sha256",
+                        "key_file_sha256", "schedule_receipt_sha256",
+                        "bits_per_key", "hashes", "representative_batch",
+                        "query_workers"))):
+                raise ValueError(f"failed chunk identity mismatch: {path}")
+            m = record["table_descriptors"]
+            r = record["query_representatives"]
+            lift = first["factor_base"]["signed_frobenius_orbit_size"]
+            upper = (26 * m + 13 * r + 13 * r * lift +
+                     90 * (2 * math.ceil(m / 1024) +
+                           2 * math.ceil(r / record["representative_batch"])))
+            failed_field_call_upper_bound += upper
             failed.append({
                 "receipt": str(path), "receipt_sha256": sha(path),
                 "table_start": record["table_start"],
@@ -74,6 +91,7 @@ def main():
                 "query_representatives": record["query_representatives"],
                 "reason": record.get("stderr"),
                 "charged_work_unknown": True,
+                "field_call_model_upper_bound": str(upper),
             })
             continue
         if record["isogeny"] != "none" or any(
@@ -127,8 +145,9 @@ def main():
                                min(common_query_prefix, qprefix))
     common_query_prefix = common_query_prefix or 0
     work_known = not failed
-    field_calls = (sum(int(record["native_field_add_mul_sqr_call_model"])
-                       for _, record in completed) if work_known else None)
+    completed_field_calls = sum(int(record[
+        "native_field_add_mul_sqr_call_model"]) for _, record in completed)
+    field_calls = completed_field_calls if work_known else None
     online_seconds = (sum(record["target_online_seconds"]
                           for _, record in completed) if work_known else None)
     build_seconds = (sum(record["target_independent_filter_build_seconds"]
@@ -196,11 +215,20 @@ def main():
             str(field_calls) if work_known else None),
         "cumulative_native_field_add_mul_sqr_calls_log2": (
             math.log2(field_calls) if field_calls else None),
+        "completed_native_field_add_mul_sqr_call_model": str(
+            completed_field_calls),
+        "failed_native_field_call_model_upper_bound": str(
+            failed_field_call_upper_bound),
+        "cumulative_native_field_call_model_upper_bound": str(
+            completed_field_calls + failed_field_call_upper_bound),
+        "cumulative_native_field_call_model_upper_bound_log2": (
+            math.log2(completed_field_calls + failed_field_call_upper_bound)
+            if completed_field_calls + failed_field_call_upper_bound else None),
         "cumulative_target_online_seconds": online_seconds,
         "cumulative_target_independent_filter_build_seconds":
             build_seconds,
         "complete_end_to_end_work_log2": None,
-        "work_boundary": "field add, multiply, and square calls from every supplied completed chunk; failed chunks with unknown phase counts make cumulative work unknown; keying, Bloom, memory, base setup, and final verification remain outside this model",
+        "work_boundary": "field add, multiply, and square calls from every supplied completed chunk; failed chunks have unknown actual phase counts but a conservative full-rectangle field-call model upper bound; keying, Bloom, memory, base setup, and final verification remain outside this model",
         "same_target_rho_reference": finite[
             "n83_same_target_rho_reference"],
         "finite_support_screen_sha256": sha(FINITE),

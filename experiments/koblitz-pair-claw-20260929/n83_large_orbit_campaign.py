@@ -18,6 +18,9 @@ RUNNER = HERE / "run_n83_orbit_chunk_k48194.py"
 AGGREGATOR = HERE / "aggregate_n83_large_orbit_chunks.py"
 AGGREGATE = RUNS / "n83_large_orbit_campaign_aggregate.json"
 TABLE_LOG2 = 31
+QUERY_LOG2 = 30
+LEGACY_FAILED = (RUNS /
+    "n83_orbit_k48194_chunk_M31_R31_tstart0_qstart0_b20_h14_rb8.json")
 MIN_SYSTEM_FREE_BYTES = 1 << 30
 STOP_SYSTEM_FREE_BYTES = 512 << 20
 MAX_SWAPOUT_GROWTH_PAGES = 1024
@@ -34,16 +37,17 @@ def swapouts():
 
 def expected_chunks(screen):
     m = 1 << TABLE_LOG2
-    r = screen["query_representatives_per_chunk"]
-    count = screen["query_chunks_for_95pct_model"]
-    assert r == 1 << 31 and count == 59
+    r = 1 << QUERY_LOG2
+    original_r = screen["query_representatives_per_chunk"]
+    count = screen["query_chunks_for_95pct_model"] * (original_r // r)
+    assert r == 1 << 30 and original_r == 1 << 31 and count == 118
     assert screen["table_descriptors"] == m
     assert screen["table_shards"] == 1
     assert screen["query_lifted_pairs_for_95pct_model"] == count * r * 166
     assert screen["model_success_probability_at_prefix"] >= 0.95
     for query_index in range(count):
         query_start = query_index * r
-        name = (f"n83_orbit_k48194_chunk_M31_R31_tstart0_"
+        name = (f"n83_orbit_k48194_chunk_M31_R30_tstart0_"
                 f"qstart{query_start}_b20_h14_rb8.json")
         receipt = RUNS / name
         yield {
@@ -56,16 +60,34 @@ def expected_chunks(screen):
         }
 
 
+def attempt_path(chunk, attempt):
+    if attempt == 0:
+        return chunk["receipt"]
+    base = chunk["receipt"]
+    return base.with_name(f"{base.stem}.retry{attempt}.json")
+
+
 def inspect(chunks, screen):
     completed = []
     started = []
     failed = []
     missing = []
     solved = []
+    selected_markers = set()
     for chunk in chunks:
-        path = chunk["receipt"]
-        marker = chunk["started"]
-        if path.exists():
+        successful = []
+        active = []
+        attempt = 0
+        while True:
+            path = attempt_path(chunk, attempt)
+            marker = path.with_suffix(".started.json")
+            if not path.exists() and not marker.exists():
+                missing_attempt = attempt
+                break
+            selected_markers.add(marker)
+            if not path.exists():
+                active.append(dict(chunk, receipt=path, started=marker))
+                break
             record = json.loads(path.read_text())
             assert record["curve_id"] == screen["curve_id"]
             assert record["proposal_id"] == "Q1051"
@@ -74,23 +96,32 @@ def inspect(chunks, screen):
             for key in ("table_start", "table_descriptors",
                         "query_start", "query_representatives"):
                 assert record[key] == chunk[key], (path, key)
+            if marker.exists():
+                raise ValueError(f"both terminal and start marker: {path}")
             if record["kind"] == "n83_public_target_orbit_query_k48194_chunk_failed":
-                failed.append(chunk)
+                failed.append(dict(chunk, receipt=path, started=marker))
             elif record["kind"] == "n83_public_target_orbit_query_k48194_exact_replay_chunk":
                 assert record["factor_base"]["enumerated_set_sha256"] == screen[
                     "factor_base"]["enumerated_set_sha256"]
-                completed.append(chunk)
+                successful.append(dict(chunk, receipt=path, started=marker))
                 if record["verified_public_target_quotient_table_dlp"]:
-                    solved.append(chunk)
+                    solved.append(dict(chunk, receipt=path, started=marker))
             else:
                 raise ValueError(f"unexpected terminal receipt: {path}")
-            if marker.exists():
-                raise ValueError(f"both terminal and start marker: {path}")
-        elif marker.exists():
-            started.append(chunk)
+            attempt += 1
+        if len(successful) > 1:
+            raise ValueError(f"multiple completed attempts for {chunk['receipt']}")
+        if successful:
+            completed.extend(successful)
+            if active:
+                raise ValueError(f"completed rectangle has active retry: {chunk['receipt']}")
+        elif active:
+            started.extend(active)
         else:
-            missing.append(chunk)
-    return completed, started, failed, missing, solved
+            path = attempt_path(chunk, missing_attempt)
+            missing.append(dict(chunk, receipt=path,
+                                started=path.with_suffix(".started.json")))
+    return completed, started, failed, missing, solved, selected_markers
 
 
 def main():
@@ -106,9 +137,22 @@ def main():
     assert screen["isogeny"] == "none"
     assert screen["campaign_query_workers"] == 14
     chunks = list(expected_chunks(screen))
-    assert len(chunks) == 59
-    completed, started, failed, missing, solved = inspect(chunks, screen)
-    selected_markers = {item["started"] for item in chunks}
+    assert len(chunks) == 118
+    completed, started, failed, missing, solved, selected_markers = inspect(
+        chunks, screen)
+    if LEGACY_FAILED.exists():
+        legacy = json.loads(LEGACY_FAILED.read_text())
+        assert legacy["kind"] == (
+            "n83_public_target_orbit_query_k48194_chunk_failed")
+        assert legacy["curve_id"] == screen["curve_id"]
+        assert legacy["proposal_id"] == "Q1051"
+        assert legacy["candidate_id"] is None
+        assert legacy["isogeny"] == "none"
+        assert legacy["factor_base_enumerated_set_sha256"] == screen[
+            "factor_base"]["enumerated_set_sha256"]
+        assert legacy["table_descriptors"] == 1 << 31
+        assert legacy["query_representatives"] == 1 << 31
+        failed.insert(0, {"receipt": LEGACY_FAILED})
     competing_markers = sorted(
         set(RUNS.glob("n83_bloom_chunk_*.started.json")) |
         set(RUNS.glob("n83_orbit_chunk_*.started.json")) |
@@ -146,14 +190,13 @@ def main():
     if args.aggregate and completed:
         subprocess.run([sys.executable, str(AGGREGATOR),
                         *[str(item["receipt"]) for item in completed],
+                        *[str(item["receipt"]) for item in failed],
                         "--out", str(AGGREGATE)],
                        check=True)
     if args.run_next:
         if started or competing_markers:
             raise RuntimeError(
                 "a start marker exists; verify the original process handle before advancing")
-        if failed:
-            raise RuntimeError("a terminal failed chunk needs work accounting")
         if solved:
             raise RuntimeError("a verified quotient-table DLP already exists")
         if not missing:
@@ -166,12 +209,13 @@ def main():
             sys.executable, str(RUNNER),
             "--table-log2", str(TABLE_LOG2),
             "--table-start", str(chunk["table_start"]),
-            "--query-reps-log2", "31",
+            "--query-reps-log2", str(QUERY_LOG2),
             "--query-start", str(chunk["query_start"]),
             "--workers", str(screen["campaign_query_workers"]),
             "--rep-batch", "8",
             "--bits-per-key", "20",
             "--hashes", "14",
+            "--out", str(chunk["receipt"]),
         ]
         child = subprocess.Popen(command, start_new_session=True)
         while child.poll() is None:

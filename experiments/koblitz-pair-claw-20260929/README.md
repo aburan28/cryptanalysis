@@ -727,6 +727,20 @@ consumed work remains unknown. Q1051 has `candidate_id: null` until a
 natural relation recovers the public target and complete IC work is
 accounted for.
 
+The first full M=$2^{31}$, R=$2^{31}$ public-target rectangle was
+[interrupted by the system-volume guard](runs/n83_orbit_k48194_chunk_M31_R31_tstart0_qstart0_b20_h14_rb8.json)
+after 39 minutes. Swap-outs did not rise, but free space fell below
+512 MiB. Its native phase counts are unavailable; this is **not** a
+completed zero-hit result. To retain more measured progress per run, the
+campaign now splits the same 95.24% modeled query prefix into **118
+disjoint R=$2^{30}$ rectangles**. This charges a fresh M=$2^{31}$ table
+build and exact replay for every rectangle: **$2^{48.016}$ modeled field
+calls** for the 95% prefix, and **8.18 projected days** if the bounded
+14-worker speedup transfers. The extra build cost is explicit. Retry
+receipts use `.retry<N>.json`; the campaign retains all failed receipts,
+and the aggregator gives an upper bound under the same field-call model
+while leaving actual failed work and complete end-to-end work unknown.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
