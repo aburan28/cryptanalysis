@@ -1,0 +1,91 @@
+name: Conditional quadratic lifting
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round31/**'
+      - 'experiments/groebner-perf-20260924/round27/**'
+      - 'experiments/groebner-perf-20260924/round23/**'
+      - 'experiments/groebner-perf-20260924/round20/**'
+      - 'experiments/groebner-perf-20260924/round18/**'
+      - 'experiments/groebner-perf-20260924/round17/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/groebner-perf-20260924/round2/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/quadratic-lifting.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round31/**'
+      - '.github/workflows/quadratic-lifting.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quadratic-lifting-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Quadratic lifting (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build independent CPU dependencies
+        run: |
+          mkdir -p quadratic-evidence
+          python experiments/groebner-perf-20260924/round20/build.py > quadratic-evidence/dependency-build.log 2>&1
+          python experiments/groebner-perf-20260924/round23/build.py > quadratic-evidence/checker-build.log 2>&1
+      - name: Build portable producer
+        if: runner.os == 'Linux'
+        run: python experiments/groebner-perf-20260924/round31/build.py > quadratic-evidence/producer-build.log 2>&1
+      - name: Build requested Metal producer
+        if: runner.os == 'macOS'
+        run: |
+          python experiments/groebner-perf-20260924/round31/build.py --metal > quadratic-evidence/producer-build.log 2>&1
+          echo "QUADRATIC_TEST_METAL=1" >> "$GITHUB_ENV"
+      - name: Exact queries, exhaustive functions, sanitizer and corruption controls
+        run: python -m unittest discover -s experiments/groebner-perf-20260924/round31 -p 'test_*.py' -v > quadratic-evidence/tests.log 2>&1
+      - name: Retain source-bound complete-query correctness evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          root = pathlib.Path('experiments/groebner-perf-20260924/round31')
+          out = pathlib.Path('quadratic-evidence')
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          (out/'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          command = [sys.executable, str(root/'measure.py'), '--correctness-only', '--repetitions', '2', '--output', str(out/'correctness.json.gz')]
+          if sys.platform == 'darwin':
+              command.append('--metal')
+          subprocess.run(command, check=True)
+          with (out/'audit.json').open('w') as stream:
+              subprocess.run([sys.executable, str(root/'audit.py'), str(out/'correctness.json.gz')], stdout=stream, check=True)
+          for report in sorted((root/'results').glob('*.json.gz')):
+              if report.name.endswith('.journal.gz'):
+                  continue
+              with (out/('retained-'+report.name+'.audit.json')).open('w') as stream:
+                  subprocess.run([sys.executable, str(root/'audit.py'), str(report)], stdout=stream, check=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quadratic-lifting-${{ matrix.os }}
+          path: quadratic-evidence/
+          if-no-files-found: error
+          retention-days: 14
