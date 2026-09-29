@@ -111,7 +111,7 @@ struct CandidateTable {
 
 int main(int argc, char **argv) {
     try {
-        need(argc == 15, "usage: native_n83_bloom BASE TARGET_X_ONB_HEX TARGET_Y_ONB_HEX TABLE_DESCRIPTORS QUERY_PAIRS BATCH TABLE_STEP TABLE_OFFSET QUERY_STEP QUERY_OFFSET BITS_PER_KEY HASHES QUERY_START QUERY_WORKERS");
+        need(argc == 15 || argc == 16, "usage: native_n83_bloom BASE TARGET_X_ONB_HEX TARGET_Y_ONB_HEX TABLE_DESCRIPTORS QUERY_PAIRS BATCH TABLE_STEP TABLE_OFFSET QUERY_STEP QUERY_OFFSET BITS_PER_KEY HASHES QUERY_START QUERY_WORKERS [TABLE_START]");
         Keyer keyer;
         auto base = load_base(argv[1], keyer);
         self_test(base);
@@ -127,9 +127,11 @@ int main(int argc, char **argv) {
         unsigned hashes = unsigned(std::stoul(argv[12]));
         U query_start = std::stoull(argv[13]);
         unsigned query_workers = unsigned(std::stoul(argv[14]));
+        U table_start = argc == 16 ? std::stoull(argv[15]) : 0;
         const U d_cross = U(K) * (K - 1) / 2 * L;
         const U pair_domain = U(base.size()) * (base.size() + 1) / 2;
-        need(table_entries > 0 && table_entries <= d_cross &&
+        need(table_entries > 0 && table_start < d_cross &&
+             table_entries <= d_cross - table_start &&
              query_pairs > 0 && query_start < pair_domain &&
              query_pairs <= pair_domain - query_start &&
              batch_size > 0 && batch_size <= 8192 &&
@@ -149,7 +151,7 @@ int main(int argc, char **argv) {
             U count = std::min(batch_size, table_entries - position);
             left.clear(); right.clear();
             for (U i = 0; i < count; ++i) {
-                U rank = scheduled_rank(position + i, d_cross,
+                U rank = scheduled_rank(table_start + position + i, d_cross,
                                         table_step, table_offset);
                 auto pair = cross_pair(rank);
                 left.push_back(base[pair[0] * L]);
@@ -245,7 +247,7 @@ int main(int argc, char **argv) {
                 U count = std::min(batch_size, table_entries - position);
                 left.clear(); right.clear();
                 for (U i = 0; i < count; ++i) {
-                    U rank = scheduled_rank(position + i, d_cross,
+                    U rank = scheduled_rank(table_start + position + i, d_cross,
                                             table_step, table_offset);
                     auto pair = cross_pair(rank);
                     left.push_back(base[pair[0] * L]);
@@ -257,7 +259,7 @@ int main(int argc, char **argv) {
                     V key = keyer.canonical_x(sums[i].x);
                     CandidateSlot *entry = exact.find(key);
                     if (entry && entry->table_position == U(-1)) {
-                        entry->table_position = position + i;
+                        entry->table_position = table_start + position + i;
                         ++exact_hit_keys;
                     }
                 }
@@ -280,6 +282,7 @@ int main(int argc, char **argv) {
         getrusage(RUSAGE_SELF, &usage);
         std::cout << "{\"actual_B\":" << base.size()
                   << ",\"table_descriptors\":" << table_entries
+                  << ",\"table_start\":" << table_start
                   << ",\"query_pairs\":" << query_pairs
                   << ",\"query_start\":" << query_start
                   << ",\"query_workers\":" << query_workers

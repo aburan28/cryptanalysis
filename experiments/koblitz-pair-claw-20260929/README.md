@@ -483,6 +483,61 @@ change when the filter grows to 25.77 GB. Each separate chunk rebuilds
 the filter, and cumulative solve work must charge every chunk, including
 ones with zero relations.
 
+### Memory-bounded n=83 table shards and measured-work boundary
+
+The first $2^{33}$-descriptor, 24-bit-filter run was stopped during filter
+construction when host swap-outs rose and the system volume had about 3 GiB
+free. Its [terminal receipt](runs/n83_bloom_chunk_M33_Q38_start0.json)
+records exit 130, the source and input hashes, and **unknown consumed field
+work**. It is not a completed zero-hit sample. This observation supersedes
+the earlier 26.15 GB peak-memory projection as a feasibility claim on this
+host.
+
+Stage Q1049 now accepts a nonzero absolute table start. Two disjoint
+$2^{32}$ table shards cover the same first $2^{33}$ scheduled descriptors;
+each shard scans the same unique target-query prefix, and every build and
+exact replay is charged. The native hit stores its **absolute** table
+position, so the existing independent four-point verifier still checks the
+relation and recovered scalar. A [nonzero-shard planted control](runs/n83_bloom_bits20_nonzero_shard_planted.json)
+at table position 1024 passed. It is a correctness control, not natural
+relation yield. The [chunk aggregator](aggregate_n83_bloom_chunks.py)
+rejects overlapping table/query rectangles, checks curve, target, base,
+source and Bloom parameters, and preserves any failed chunk's unknown
+work. A verified scalar remains a verified scalar even if cumulative work
+is unknown.
+
+The [20-bit calibration](runs/n83_bloom_bits20_stage_M28_Q24.json) used
+$2^{28}$ descriptors, $2^{24}$ queries, 14 hashes, and eight workers on
+the same n=83 curve, factor base, and public target. It measured **1,599
+Bloom positives, zero exact matches**, 671,154,176 filter bytes, and
+835,387,392 bytes peak RSS. The [shard screen](n83_bloom_shard_screen.json)
+projects one $2^{32}$-descriptor, $2^{38}$-query shard at **10.00 GiB
+filter memory**, **11.32 GiB illustrative peak filter-phase memory**,
+**4.03 hours** from the smaller run's phase rates, and **$2^{42.786}$
+field add/multiply/square calls**. These are predictions; the large
+random-access filter may change throughput. The finite-support model
+assigns **7.73%** success to the first shard and **14.76%** to both
+shards at this query prefix. The first shard has been launched; its
+started marker is not a completed measurement.
+
+For the 95% *modeled* success point, both $2^{32}$ shards would each
+scan about $2^{42.816}$ unique query pairs. Counting both builds, both
+exact replays, and both query scans gives **$2^{48.581}$ field calls**
+under the native operation model. Quotient keying, Bloom probes, memory
+traffic, base construction, failed work with unknown counts, and final
+verification remain outside that number. It is a conditional stage
+estimate, **not** measured complete IC solve work or evidence of a
+sub-$2^{61}$ IC solve.
+
+Naming follows the [candidate catalog measurement contract](../ic-candidate-catalog/MEASUREMENT.md):
+the exact curve is `EC1N83Ckb1h876c2921cb64`; the factor base has
+**B=4,000,102 actual subgroup-usable points before folding** and 24,097
+signed-Frobenius columns, with its enumerated-set digest in each receipt;
+the isogeny is `"none"`. This remains proposal `Q1049` with
+`candidate_id: null` because a complete IC target solve and all pipeline
+stages have not been measured. No nominal base dimension or folded column
+count is being used as `fb<B>` in an `IC1` name.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
@@ -501,6 +556,9 @@ ones with zero relations.
 python3 experiments/koblitz-pair-claw-20260929/n83_knownlog_screen.py
 python3 experiments/koblitz-pair-claw-20260929/n83_bloom_resource_screen.py
 python3 experiments/koblitz-pair-claw-20260929/n83_parallel_chunk_screen.py
-# First full-key chunk; the resource screen projects 26 GB and about 6 hours.
-./sage -python experiments/koblitz-pair-claw-20260929/run_n83_bloom_chunk.py --table-log2 33 --query-count-log2 38 --query-start 0 --workers 8
+./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_bloom_shard.py
+python3 experiments/koblitz-pair-claw-20260929/n83_bloom_shard_screen.py
+# One memory-bounded n=83 shard; wait for its terminal receipt before aggregating.
+./sage -python experiments/koblitz-pair-claw-20260929/run_n83_bloom_chunk.py --table-log2 32 --table-start 0 --query-count-log2 38 --query-start 0 --workers 8 --bits-per-key 20 --hashes 14
+# A second table shard uses --table-start 4294967296 with the same query range.
 ```

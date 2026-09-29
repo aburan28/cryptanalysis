@@ -24,8 +24,6 @@ SOURCE = HERE / "native_n83_bloom.cpp"
 PAIRS_SOURCE = HERE / "native_n83_pairs.cpp"
 BINARY = Path("/private/tmp/ecc2k83-native-bloom-chunk")
 BATCH = 1024
-BITS_PER_KEY = 24
-HASHES = 17
 sys.path.insert(0, str(CODEGEN))
 
 import curves
@@ -46,16 +44,24 @@ def main():
     parser.add_argument("--table-log2", type=int, default=33)
     parser.add_argument("--query-count-log2", type=int, default=38)
     parser.add_argument("--query-start", type=int, default=0)
+    parser.add_argument("--table-start", type=int, default=0)
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--bits-per-key", type=int, default=24)
+    parser.add_argument("--hashes", type=int)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
     M = 1 << args.table_log2
     Q = 1 << args.query_count_log2
+    hashes = (args.hashes if args.hashes is not None else
+              round(args.bits_per_key * math.log(2)))
     assert 1 <= args.workers <= 64
+    assert 8 <= args.bits_per_key <= 64 and 1 <= hashes <= 32
     assert args.query_start >= 0
+    assert args.table_start >= 0
     out = args.out or HERE / "runs" / (
         f"n83_bloom_chunk_M{args.table_log2}_Q{args.query_count_log2}_"
-        f"start{args.query_start}.json")
+        f"tstart{args.table_start}_qstart{args.query_start}_"
+        f"b{args.bits_per_key}_h{hashes}.json")
     started_path = out.with_suffix(".started.json")
     assert not out.exists(), f"refusing to overwrite completed chunk: {out}"
 
@@ -75,6 +81,8 @@ def main():
     assert list(target) == rho["public_target"]
     pair_domain = record["actual_usable_points_B_before_folding"] * (
         record["actual_usable_points_B_before_folding"] + 1) // 2
+    cross_domain = scheduled["cross_orbit_zero_pair_class_domain"]
+    assert args.table_start + M <= cross_domain
     assert Q > 0 and args.query_start + Q <= pair_domain
     onb = field.Onb(83)
     curve = curves.Curve(onb)
@@ -95,16 +103,20 @@ def main():
         str(scheduled["table_schedule"]["offset"]),
         str(scheduled["query_schedule"]["step"]),
         str(scheduled["query_schedule"]["offset"]),
-        str(BITS_PER_KEY), str(HASHES),
+        str(args.bits_per_key), str(hashes),
         str(args.query_start), str(args.workers),
+        str(args.table_start),
     ]
     started = {
         "kind": "n83_public_target_bloom_chunk_started",
         "curve_id": curve_id,
         "query_start": args.query_start,
         "query_count": Q,
+        "table_start": args.table_start,
         "table_descriptors": M,
         "workers": args.workers,
+        "bits_per_key": args.bits_per_key,
+        "hashes": hashes,
         "started_at_utc": utc_now(),
         "wrapper_pid": os.getpid(),
         "compiled_binary_sha256": sha(BINARY),
@@ -120,20 +132,29 @@ def main():
     try:
         raw = subprocess.run(command, check=True, capture_output=True,
                              text=True)
-    except subprocess.CalledProcessError as exc:
+    except BaseException as exc:
         failed = dict(started)
         failed.update({
             "kind": "n83_public_target_bloom_chunk_failed",
             "failed_at_utc": utc_now(),
-            "returncode": exc.returncode,
-            "stderr": exc.stderr[-4000:],
+            "terminal_status": type(exc).__name__,
+            "returncode": (exc.returncode if isinstance(
+                exc, subprocess.CalledProcessError) else 130),
+            "stderr": (exc.stderr[-4000:] if isinstance(
+                exc, subprocess.CalledProcessError) and exc.stderr else
+                str(exc)),
+            "native_phase_counts": None,
+            "verified_public_target_quotient_table_dlp": False,
+            "cumulative_work_known": False,
         })
         out.write_text(json.dumps(failed, indent=2) + "\n")
+        started_path.unlink(missing_ok=True)
         raise
     elapsed_ns = time.perf_counter_ns() - wall_started
     native = json.loads(raw.stdout)
     assert native["actual_B"] == record["actual_usable_points_B_before_folding"]
     assert native["table_descriptors"] == M
+    assert native["table_start"] == args.table_start
     assert native["query_start"] == args.query_start
     assert native["query_pairs"] == Q
     assert native["query_workers"] == args.workers
@@ -170,8 +191,11 @@ def main():
         "factor_base": record,
         "query_start": args.query_start,
         "query_count": Q,
+        "table_start": args.table_start,
         "table_descriptors": M,
         "query_workers": args.workers,
+        "bits_per_key": args.bits_per_key,
+        "hashes": hashes,
         "native_result": native,
         "verified_public_target_relations": verified,
         "verified_public_target_quotient_table_dlp": bool(verified),
@@ -208,6 +232,7 @@ def main():
         "curve_id": curve_id,
         "query_start": args.query_start,
         "query_count": Q,
+        "table_start": args.table_start,
         "table_descriptors": M,
         "workers": args.workers,
         "exact_hit_queries": native["exact_hit_queries"],
