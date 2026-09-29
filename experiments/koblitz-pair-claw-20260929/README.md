@@ -531,8 +531,15 @@ scan about $2^{42.816}$ unique query pairs. Counting both builds, both
 exact replays, and both query scans gives **$2^{48.581}$ field calls**
 under the native operation model. Scaling the bounded rates gives
 **8.14 elapsed days** for those two sequential eight-worker shards;
-the full-size random-access rate has not been measured. Quotient keying,
-Bloom probes, memory
+but retaining all positives from either long query pass would give an
+illustrative **43.15 GiB peak filter-phase footprint**, unsafe with the
+available host memory. The executable bounded plan uses **29 chunks of
+$2^{38}$ queries per table shard**, or 58 runs covering 7,971,459,301,376
+unique query positions per shard. It reaches **95.25% modeled success**
+and charges **$2^{48.644}$ field calls** and **9.74 elapsed days** at the
+small-run rates, including all 58 filter builds and exact replays.
+These are conditional projections; the full-size random-access rate has
+not been measured. Quotient keying, Bloom probes, memory
 traffic, base construction, failed work with unknown counts, and final
 verification remain outside that number. It is a conditional stage
 estimate, **not** measured complete IC solve work or evidence of a

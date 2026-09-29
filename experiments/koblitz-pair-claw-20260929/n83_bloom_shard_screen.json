@@ -67,6 +67,14 @@
   "two_shard_95pct_model_field_add_mul_sqr_calls": "421137165431040.44",
   "two_shard_95pct_model_field_add_mul_sqr_calls_log2": 48.5812835276467,
   "two_shard_95pct_model_projected_seconds_from_small_run_rates": 703705.0006572787,
+  "two_shard_95pct_one_pass_each_illustrative_peak_filter_bytes": 46329893821.67998,
+  "bounded_95pct_chunks_per_shard": 29,
+  "bounded_95pct_total_chunk_runs": 58,
+  "bounded_95pct_query_prefix_each_shard": 7971459301376,
+  "bounded_95pct_model_relation_probability": 0.9524953004742519,
+  "bounded_95pct_conditional_field_add_mul_sqr_calls": "439781867651072",
+  "bounded_95pct_conditional_field_add_mul_sqr_calls_log2": 48.64378145105808,
+  "bounded_95pct_projected_seconds_from_small_run_rates": 841206.2191549761,
   "interrupted_24bit_2pow33_attempt_work_known": false,
   "complete_one_target_work_log2": null,
   "verified_n83_quotient_table_dlp": false,
@@ -84,6 +92,8 @@
     "The Wilson interval assumes independent Bloom outcomes; deterministic query ordering and correlated keys may invalidate its nominal 95pct coverage.",
     "The build, query, and replay time projection uses one bounded run, so its timing uncertainty has not been estimated.",
     "The 95pct field-call count assumes exactly two shards, each scanned with the same unique query prefix; each build and exact replay is charged.",
+    "The two one-pass 95pct shard projection would retain too many positives for the current host's available memory; it is a lower-work proxy, not the operational plan.",
+    "The bounded 95pct plan uses 29 complete 2^38-query chunks per table shard, rebuilding and exactly replaying each chunk because the current runner retains positives in memory.",
     "The field-call model omits quotient-keying, Bloom hashes and probes, memory traffic, base construction, and independent verification; it is not complete solve work.",
     "The interrupted 24-bit attempt has unknown consumed work and cannot be silently counted as zero in a cumulative campaign cost."
   ],
@@ -91,5 +101,5 @@
   "calibration_receipt_sha256": "a3dd82256de143ba08fd0587ea3f3b5135cbe9b93c089ff1f207d5a08b259457",
   "planted_receipt_sha256": "a4f09b6349168cbf9a13cf5ed78a07d68489f4d3e83779b43540458982e058db",
   "interrupted_receipt_sha256": "6df57b8e45f3b53ab2af19946ddc3d791483ecb2d95078fb2e6afa17d76acd1e",
-  "source_sha256": "7334b5cd1154613624abab8e96bf4ee51b8067656d8e717edd2dd5f3d6d14b8a"
+  "source_sha256": "77287005bd2dc15f0b108b6c189a05a1397eff7ca59dfce2846cc7bd39c4815d"
 }

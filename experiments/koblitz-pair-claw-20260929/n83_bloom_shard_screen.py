@@ -94,6 +94,15 @@ def main():
         row["build_seconds"] * M / measured_m +
         row["query_seconds"] * target_95_queries / measured_q +
         row["exact_replay_seconds"] * M / measured_m)
+    bounded_chunks_per_shard = math.ceil(target_95_queries / Q)
+    bounded_query_prefix = bounded_chunks_per_shard * Q
+    assert bounded_query_prefix <= finite["unordered_pair_domain"]
+    bounded_calls = 2 * bounded_chunks_per_shard * one_calls
+    bounded_seconds = 2 * bounded_chunks_per_shard * projected_seconds
+    full_prefix_candidates = target_95_queries * rate
+    full_prefix_illustrative_peak = (
+        bloom_bytes + 2 * full_prefix_candidates *
+        row["candidate_record_bytes"] + non_filter_bytes)
     report = {
         "kind": "n83_20bit_bloom_two_shard_conditional_screen",
         "scope": "projection from measured 2^28-key, 2^24-query run; no ordinary n83 relation or IC DLP claimed",
@@ -145,6 +154,19 @@ def main():
             math.log2(two_shard_95_calls),
         "two_shard_95pct_model_projected_seconds_from_small_run_rates":
             two_shard_95_seconds,
+        "two_shard_95pct_one_pass_each_illustrative_peak_filter_bytes":
+            full_prefix_illustrative_peak,
+        "bounded_95pct_chunks_per_shard": bounded_chunks_per_shard,
+        "bounded_95pct_total_chunk_runs": 2 * bounded_chunks_per_shard,
+        "bounded_95pct_query_prefix_each_shard": bounded_query_prefix,
+        "bounded_95pct_model_relation_probability":
+            success_probability(finite, 2 * M, bounded_query_prefix),
+        "bounded_95pct_conditional_field_add_mul_sqr_calls": str(
+            bounded_calls),
+        "bounded_95pct_conditional_field_add_mul_sqr_calls_log2":
+            math.log2(bounded_calls),
+        "bounded_95pct_projected_seconds_from_small_run_rates":
+            bounded_seconds,
         "interrupted_24bit_2pow33_attempt_work_known": False,
         "complete_one_target_work_log2": None,
         "verified_n83_quotient_table_dlp": False,
@@ -157,6 +179,8 @@ def main():
             "The Wilson interval assumes independent Bloom outcomes; deterministic query ordering and correlated keys may invalidate its nominal 95pct coverage.",
             "The build, query, and replay time projection uses one bounded run, so its timing uncertainty has not been estimated.",
             "The 95pct field-call count assumes exactly two shards, each scanned with the same unique query prefix; each build and exact replay is charged.",
+            "The two one-pass 95pct shard projection would retain too many positives for the current host's available memory; it is a lower-work proxy, not the operational plan.",
+            "The bounded 95pct plan uses 29 complete 2^38-query chunks per table shard, rebuilding and exactly replaying each chunk because the current runner retains positives in memory.",
             "The field-call model omits quotient-keying, Bloom hashes and probes, memory traffic, base construction, and independent verification; it is not complete solve work.",
             "The interrupted 24-bit attempt has unknown consumed work and cannot be silently counted as zero in a cumulative campaign cost.",
         ],
@@ -179,6 +203,9 @@ def main():
         "one_shard_field_calls_log2": math.log2(one_calls),
         "two_shard_95pct_field_calls_log2": math.log2(two_shard_95_calls),
         "two_shard_95pct_projected_days": two_shard_95_seconds / 86400,
+        "bounded_95pct_total_chunk_runs": 2 * bounded_chunks_per_shard,
+        "bounded_95pct_field_calls_log2": math.log2(bounded_calls),
+        "bounded_95pct_projected_days": bounded_seconds / 86400,
     }))
 
 
