@@ -14,7 +14,7 @@ test -f src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
 # Sage builds and installs its own missing dependencies. System libraries cut
 # down the build, while the source archive fixes the algorithm implementation.
 ./configure --enable-build-as-root --disable-editable --with-python=/usr/bin/python3
-make -j"${SAGE_BUILD_JOBS:-8}" all
+make -j"${SAGE_BUILD_JOBS:-4}" all
 test -x venv/bin/python3
 ./sage -python - <<'PY'
 from sage.all import GF, EllipticCurve
