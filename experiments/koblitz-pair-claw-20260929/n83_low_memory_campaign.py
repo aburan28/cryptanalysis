@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect or advance one guarded Q1058/Q1059 n=83 rectangle.
+"""Inspect or advance one guarded Q1058/Q1059/Q1060 n=83 rectangle.
 
 The first M31/R30 range was completed under Q1051. Each remaining range is
 queried against eight disjoint M28 table shards. A run never silently retries
@@ -22,17 +22,23 @@ RUNS = HERE / "runs"
 SAGE = Path("/Volumes/SSD990/cryptanalysis/sage")
 RUNNER = HERE / "run_n83_signed_x_chunk.py"
 SOURCE = HERE / "native_n83_orbit_query_signed_x.cpp"
+SPILL_SOURCE = HERE / "native_n83_orbit_query_spill.cpp"
 PAIRS = HERE / "native_n83_pairs.cpp"
 CORE = HERE / "native_n83_bloom_core.hpp"
 SCREENS = {
     "Q1058": HERE / "n83_low_memory_screen.json",
     "Q1059": HERE / "n83_fast_low_memory_screen.json",
+    "Q1060": HERE / "n83_spill_low_memory_screen.json",
 }
 FIRST = RUNS / "n83_orbit_k48194_chunk_M31_R30_tstart0_qstart0_b20_h14_rb8.json"
 M = 1 << 28
 R = 1 << 30
 MIN_SYSTEM_FREE_BYTES = 4 << 30
 STOP_SYSTEM_FREE_BYTES = 2 << 30
+MIN_SPILL_SYSTEM_FREE_BYTES = 1536 << 20
+STOP_SPILL_SYSTEM_FREE_BYTES = 768 << 20
+MIN_SPILL_VOLUME_FREE_BYTES = 1 << 30
+SPILL_DIR = Path("/Volumes/SSD990/llm/tmp")
 MAX_SWAPOUT_GROWTH_PAGES = 1024
 MAX_PREFLIGHT_SWAPOUT_GROWTH_PAGES = 128
 
@@ -52,7 +58,8 @@ def swapouts():
 
 def plan(proposal_id="Q1058"):
     prefix = {"Q1058": "n83_lowmem_",
-              "Q1059": "n83_fast_lowmem_"}[proposal_id]
+              "Q1059": "n83_fast_lowmem_",
+              "Q1060": "n83_spill_lowmem_"}[proposal_id]
     for query_index in range(1, 118):
         for shard in range(8):
             table_start = shard * M
@@ -117,7 +124,11 @@ def inspect(screen):
             assert row["bits_per_key"] == 20
             assert row["hashes"] == 10
             assert row.get("fast_keyer_enabled", False) == (
-                proposal_id == "Q1059")
+                proposal_id in ("Q1059", "Q1060"))
+            assert row.get("candidate_spill_enabled", False) == (
+                proposal_id == "Q1060")
+            if proposal_id == "Q1060":
+                assert Path(row["candidate_spill_directory"]).is_absolute()
             if row["kind"] == (
                     "n83_public_target_signed_x_query_k48194_chunk_failed"):
                 assert row["native_phase_counts"] is None
@@ -125,6 +136,9 @@ def inspect(screen):
                 chunk_failed.append(path)
             elif row["kind"] == (
                     "n83_public_target_signed_x_query_k48194_exact_replay_chunk"):
+                if proposal_id == "Q1060":
+                    assert row["native_result"]["candidate_store_mode"] == (
+                        "unlinked_file")
                 successful.append(path)
                 if row["verified_public_target_quotient_table_dlp"]:
                     solved.append(path)
@@ -166,11 +180,16 @@ def main():
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument("--proposal-id", choices=tuple(SCREENS),
                         default="Q1058")
+    parser.add_argument("--spill-dir", type=Path, default=SPILL_DIR)
     args = parser.parse_args()
+    if args.proposal_id == "Q1060":
+        assert args.spill_dir.is_absolute(), "candidate spill path must be absolute"
+    spill_dir = args.spill_dir
     screen = json.loads(SCREENS[args.proposal_id].read_text())
     assert screen["proposal_id"] == args.proposal_id
     assert screen["candidate_id"] is None and screen["isogeny"] == "none"
-    assert sha(SOURCE) == screen["native_source_sha256"]
+    native_source = SPILL_SOURCE if args.proposal_id == "Q1060" else SOURCE
+    assert sha(native_source) == screen["native_source_sha256"]
     assert sha(PAIRS) == screen["native_pairs_sha256"]
     assert sha(CORE) == screen["bloom_core_sha256"]
     assert sha(RUNNER) == screen["runner_source_sha256"]
@@ -181,12 +200,26 @@ def main():
     assert rectangles[0] == (0, R)
     assert rectangles[-1] == (7 * M, 117 * R)
     completed, failed, active, missing, solved, unresolved, selected = inspect(screen)
-    other_id = "Q1059" if args.proposal_id == "Q1058" else "Q1058"
-    other_screen = json.loads(SCREENS[other_id].read_text())
-    other_completed, other_failed, other_active, _, other_solved, _, _ = inspect(other_screen)
+    other_completed, other_failed, other_active, other_solved = [], [], [], []
+    for other_id, other_path in SCREENS.items():
+        if other_id == args.proposal_id:
+            continue
+        other_screen = json.loads(other_path.read_text())
+        c, f, a, _, s, _, _ = inspect(other_screen)
+        other_completed.extend(c)
+        other_failed.extend(f)
+        other_active.extend(a)
+        other_solved.extend(s)
     competing = sorted(set(RUNS.glob("n83_*.started.json")) - selected)
     free = shutil.disk_usage("/").free
+    spill_free = (shutil.disk_usage(spill_dir).free
+                  if args.proposal_id == "Q1060" and spill_dir.is_dir()
+                  else None)
     swap = swapouts()
+    min_start_free = (MIN_SPILL_SYSTEM_FREE_BYTES if args.proposal_id == "Q1060"
+                      else MIN_SYSTEM_FREE_BYTES)
+    min_running_free = (STOP_SPILL_SYSTEM_FREE_BYTES if args.proposal_id == "Q1060"
+                        else STOP_SYSTEM_FREE_BYTES)
     next_chunk = (unresolved[0] if args.retry_failed and unresolved else
                   missing[0] if missing else None)
     print(json.dumps({
@@ -208,7 +241,12 @@ def main():
                             "query_start": next_chunk["query_start"]}
                            if next_chunk else None),
         "system_free_bytes": free,
-        "minimum_system_free_bytes_to_launch": MIN_SYSTEM_FREE_BYTES,
+        "minimum_system_free_bytes_to_launch": min_start_free,
+        "spill_volume_free_bytes": spill_free,
+        "candidate_spill_directory": (str(spill_dir) if
+                                      args.proposal_id == "Q1060" else None),
+        "minimum_spill_volume_free_bytes_to_launch": (
+            MIN_SPILL_VOLUME_FREE_BYTES if args.proposal_id == "Q1060" else None),
         "swapouts_pages": swap,
     }), flush=True)
     if not args.run_next:
@@ -223,14 +261,22 @@ def main():
         raise RuntimeError("a failed rectangle has unknown work; inspect its receipt before an explicit --retry-failed")
     if not missing:
         raise RuntimeError("low-memory plan exhausted without a relation")
-    if free < MIN_SYSTEM_FREE_BYTES:
+    if free < min_start_free:
         raise RuntimeError("system volume lacks M28/R30 search headroom")
+    if args.proposal_id == "Q1060" and (
+            spill_free is None or spill_free < MIN_SPILL_VOLUME_FREE_BYTES):
+        raise RuntimeError("candidate spill volume lacks headroom")
     time.sleep(30)
     ready_free = shutil.disk_usage("/").free
+    ready_spill_free = (shutil.disk_usage(spill_dir).free
+                        if args.proposal_id == "Q1060" else None)
     ready_swap = swapouts()
-    if (ready_free < MIN_SYSTEM_FREE_BYTES or ready_swap - swap >
+    if (ready_free < min_start_free or ready_swap - swap >
             MAX_PREFLIGHT_SWAPOUT_GROWTH_PAGES):
         raise RuntimeError("preflight root space or swap stability failed")
+    if args.proposal_id == "Q1060" and ready_spill_free < (
+            MIN_SPILL_VOLUME_FREE_BYTES):
+        raise RuntimeError("preflight candidate spill volume lacks headroom")
     if list(RUNS.glob("n83_*.started.json")):
         raise RuntimeError("another n=83 search started during preflight")
     chunk = next_chunk
@@ -251,16 +297,24 @@ def main():
         "--runtime-info", str(runtime_path),
         "--out", str(chunk["receipt"]),
     ]
-    if args.proposal_id == "Q1059":
+    if args.proposal_id in ("Q1059", "Q1060"):
         command.append("--fast-keyer")
+    if args.proposal_id == "Q1060":
+        command.extend(["--spill-dir", str(spill_dir)])
     child = subprocess.Popen(command, start_new_session=True)
     while child.poll() is None:
         time.sleep(15)
         current_free = shutil.disk_usage("/").free
         current_swap = swapouts()
-        reason = ("system_volume" if current_free < STOP_SYSTEM_FREE_BYTES
+        current_spill_free = (shutil.disk_usage(spill_dir).free
+                              if args.proposal_id == "Q1060" and
+                              spill_dir.is_dir() else None)
+        reason = ("system_volume" if current_free < min_running_free
                   else "swap_growth" if current_swap - ready_swap >
-                  MAX_SWAPOUT_GROWTH_PAGES else None)
+                  MAX_SWAPOUT_GROWTH_PAGES else "spill_volume" if
+                  args.proposal_id == "Q1060" and
+                  (current_spill_free is None or current_spill_free <
+                   MIN_SPILL_VOLUME_FREE_BYTES // 2) else None)
         if reason and child.poll() is None:
             os.killpg(child.pid, signal.SIGINT)
             child.wait()

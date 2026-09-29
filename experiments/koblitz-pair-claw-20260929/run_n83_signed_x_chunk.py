@@ -21,9 +21,11 @@ RHO = HERE.parent / "ecc2k130-quotient-pair-probe-20260926" / "runs" / "n83_publ
 BASE_RECEIPT = HERE / "runs" / "n83_knownlog_orbit_base_k48194.json"
 SCHEDULE = HERE / "runs" / "n53_n83_unique_schedule_perf.json"
 SOURCE = HERE / "native_n83_orbit_query_signed_x.cpp"
+SPILL_SOURCE = HERE / "native_n83_orbit_query_spill.cpp"
 CORE = HERE / "native_n83_bloom_core.hpp"
 PAIRS = HERE / "native_n83_pairs.cpp"
 BINARY = Path("/private/tmp/ecc2k83-native-signed-x-k48194-chunk")
+SPILL_BINARY = Path("/private/tmp/ecc2k83-native-spill-k48194-chunk")
 RUNTIME_INFO = HERE / "runs" / "n83_signed_x_runtime_info.json"
 TABLE_BATCH = 1024
 L = 166
@@ -55,9 +57,10 @@ def main():
     parser.add_argument("--rep-batch", type=int, default=8)
     parser.add_argument("--bits-per-key", type=int, default=20)
     parser.add_argument("--hashes", type=int, default=14)
-    parser.add_argument("--proposal-id", choices=("Q1054", "Q1055", "Q1058", "Q1059"),
+    parser.add_argument("--proposal-id", choices=("Q1054", "Q1055", "Q1058", "Q1059", "Q1060"),
                         default="Q1054")
     parser.add_argument("--fast-keyer", action="store_true")
+    parser.add_argument("--spill-dir", type=Path)
     parser.add_argument("--runtime-info", type=Path, default=RUNTIME_INFO)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
@@ -71,12 +74,19 @@ def main():
     assert args.bits_per_key == 20
     assert args.hashes == (14 if args.proposal_id == "Q1054" else 10), (
         "Bloom hash count must match the named stage proposal")
-    assert args.fast_keyer == (args.proposal_id == "Q1059"), (
+    assert args.fast_keyer == (args.proposal_id in ("Q1059", "Q1060")), (
         "Fast-keyer build must match the named stage proposal")
+    assert (args.spill_dir is not None) == (args.proposal_id == "Q1060"), (
+        "Candidate spill directory must match the named stage proposal")
+    if args.spill_dir is not None:
+        assert args.spill_dir.is_dir(), "candidate spill directory is missing"
+    native_source = SPILL_SOURCE if args.proposal_id == "Q1060" else SOURCE
+    binary = SPILL_BINARY if args.proposal_id == "Q1060" else BINARY
     prefix = {"Q1054": "n83_signed_x_",
               "Q1055": "n83_signed_x_q1055_",
               "Q1058": "n83_lowmem_",
-              "Q1059": "n83_fast_lowmem_"}[args.proposal_id]
+              "Q1059": "n83_fast_lowmem_",
+              "Q1060": "n83_spill_lowmem_"}[args.proposal_id]
     out = args.out or HERE / "runs" / (
         f"{prefix}k48194_chunk_M{args.table_log2}_R{args.query_reps_log2}_"
         f"tstart{args.table_start}_qstart{args.query_start}_"
@@ -120,10 +130,10 @@ def main():
     ]
     if args.fast_keyer:
         compiler_command.append("-DECC2K83_FAST_KEYER=1")
-    compiler_command.extend([str(SOURCE), "-o", str(BINARY)])
+    compiler_command.extend([str(native_source), "-o", str(binary)])
     subprocess.run(compiler_command, check=True)
     command = [
-        str(BINARY), str(key_path),
+        str(binary), str(key_path),
         format(onb.toCoords(target[0]), "x"),
         format(onb.toCoords(target[1]), "x"),
         str(M), str(R), str(TABLE_BATCH),
@@ -156,10 +166,13 @@ def main():
         "bits_per_key": args.bits_per_key,
         "hashes": args.hashes,
         "fast_keyer_enabled": args.fast_keyer,
+        "candidate_spill_enabled": args.spill_dir is not None,
+        "candidate_spill_directory": (str(args.spill_dir) if args.spill_dir
+                                      is not None else None),
         "started_at_utc": utc_now(),
         "wrapper_pid": os.getpid(),
-        "compiled_binary_sha256": sha(BINARY),
-        "native_source_sha256": sha(SOURCE),
+        "compiled_binary_sha256": sha(binary),
+        "native_source_sha256": sha(native_source),
         "bloom_core_sha256": sha(CORE),
         "native_pairs_sha256": sha(PAIRS),
         "key_file_sha256": sha(key_path),
@@ -172,8 +185,11 @@ def main():
     print(json.dumps(started), flush=True)
     begun = time.perf_counter_ns()
     try:
+        native_env = os.environ.copy()
+        if args.spill_dir is not None:
+            native_env["ECC2K83_CANDIDATE_TMPDIR"] = str(args.spill_dir)
         raw = subprocess.run(command, check=True, capture_output=True,
-                             text=True)
+                             text=True, env=native_env)
     except BaseException as exc:
         failed = dict(started)
         failed.update({
@@ -207,7 +223,11 @@ def main():
     assert native["bloom_hashes"] == args.hashes
     assert native["bloom_positive_queries"] == (
         native["false_positive_queries"] + native["exact_hit_queries"])
-    assert sha(SOURCE) == started["native_source_sha256"]
+    if args.proposal_id == "Q1060":
+        assert native["candidate_store_mode"] == "unlinked_file"
+        assert native["candidate_spill_bytes"] == (
+            24 * native["bloom_positive_queries"])
+    assert sha(native_source) == started["native_source_sha256"]
     assert sha(CORE) == started["bloom_core_sha256"]
     assert sha(PAIRS) == started["native_pairs_sha256"]
 
@@ -270,6 +290,9 @@ def main():
         "bits_per_key": args.bits_per_key,
         "hashes": args.hashes,
         "fast_keyer_enabled": args.fast_keyer,
+        "candidate_spill_enabled": args.spill_dir is not None,
+        "candidate_spill_directory": (str(args.spill_dir) if args.spill_dir
+                                      is not None else None),
         "table_schedule": scheduled["table_schedule"],
         "query_representative_schedule": {
             "domain": d_cross, "step": query_step,
@@ -292,8 +315,8 @@ def main():
         "started_at_utc": started["started_at_utc"],
         "finished_at_utc": utc_now(),
         "compiler_command": compiler_command,
-        "compiled_binary_sha256": sha(BINARY),
-        "native_source_sha256": sha(SOURCE),
+        "compiled_binary_sha256": sha(binary),
+        "native_source_sha256": sha(native_source),
         "bloom_core_sha256": sha(CORE),
         "native_pairs_sha256": sha(PAIRS),
         "generated_field_sha256": sha(GENERATED),

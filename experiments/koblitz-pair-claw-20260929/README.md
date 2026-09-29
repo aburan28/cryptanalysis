@@ -291,7 +291,7 @@ measurement rows:
 the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
 requires exactly one of those IDs to be non-null. New comparison rows
 must use the `IC1` ID and carry the old `Q` lineage separately. Current
-n=83 stage records use `Q1051` through `Q1059`, with
+n=83 stage records use `Q1051` through `Q1060`, with
 `candidate_id: null`.
 
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
@@ -840,6 +840,7 @@ attempts, and independent scalar replay.
 | n=83 Q1057 | Exact cyclic-gap rotation key; 1.202× slower than Q1056 byte-table key | Negative isolated-kernel result; gap-scanning implementation rejected |
 | n=83 Q1058 | Eight disjoint M=$2^{28}$ table shards; 936 future R=$2^{30}$ rectangles model $2^{50.001}$ native field calls | Conditional lower-memory plan only; 54.5 projected query-only days, no natural relation |
 | n=83 Q1059 | Q1058 shards with the exact Q1056 fast keyer; planted scalar replay and public-target smoke passed | Same $2^{50.001}$ arithmetic model; 41.1 query-only days if two bounded-rate transfers hold, no natural relation |
+| n=83 Q1060 | Q1059 shards with Bloom-positive records in unlinked SSD files; planted replay and small public-target exact outcomes match | Same $2^{50.001}$ arithmetic model; M28/R30 wall time and peak RSS unmeasured, no natural relation |
 
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
 [campaign driver](n83_two_shard_campaign.py) retain source hashes,
@@ -1115,9 +1116,9 @@ speedup claim.
 [Q1059](n83_fast_low_memory_screen.json) uses the same curve, target,
 factor-base digest, actual B, 48,194 folded columns, and disjoint Q1058
 table/query ranges. It compiles the Q1056 exact byte-table keyer with the
-Q1055 ten-hash filter. The new runner flag is only accepted with proposal
-`Q1059`, and [the guarded driver](n83_low_memory_campaign.py) refuses to
-switch variants after either one has completed a full rectangle, so it
+Q1055 ten-hash filter. The fast-keyer runner flag is accepted for the
+named Q1059 and Q1060 stages, and [the guarded driver](n83_low_memory_campaign.py)
+refuses to switch variants after one has completed a full rectangle, so it
 cannot silently duplicate coverage. The
 [nonzero-offset planted control](runs/n83_fast_low_memory_planted.json)
 found the same exact hit as Q1055 and independently replayed its scalar.
@@ -1137,6 +1138,37 @@ speedup transfers. The latter transfer has not been measured. The full
 M28/R30 memory, wall time, natural relation yield, and complete operation
 equivalent remain unknown. `Q1059` retains `candidate_id: null` and
 `isogeny: "none"`.
+
+### Spilled-candidate low-memory variant (Q1060)
+
+Q1060 keeps Q1059's exact curve, target, factor base, ten-hash filter,
+fast keyer, and disjoint table/query schedule. Its separate
+[native kernel](native_n83_orbit_query_spill.cpp) writes Bloom-positive
+query records to unlinked files on the SSD, then reads them for exact
+table replay. The files close and disappear when the process exits. Its
+[checked-Sage controls](runs/n83_spill_controls.json) matched Q1059's
+planted hit and independently replayed the scalar; the public-target
+M=$2^{20}$, R=$2^{14}$ outputs also matched exactly, with 247 Bloom
+positives and zero exact hits. The [named runner smoke](runs/n83_spill_lowmem_k48194_chunk_M20_R14_tstart0_qstart1073741824_b20_h10_rb8.json)
+recorded the spill mode and zero exact hits. These are correctness
+controls, not natural relation yield.
+
+The [Q1060 screen](n83_spill_low_memory_screen.json) retains the
+**$2^{50.001}$ future native field-call model** and Q1059's **95.11%**
+conditional finite-support success model. If the single M28/R24
+ten-hash positive rate transfers to R30, one rectangle would spill
+about **467 MB** of candidate records and need about **779 MB** of
+exact-table slots. A base-memory calculation suggests **1.12 GB** peak
+if releasing the Bloom filter returns its pages to the OS, or **1.79 GB**
+if those pages remain resident. These are scenarios, not bounds; M28/R30
+RSS, spill I/O cost, and wall time have not been measured. The Q1060
+[campaign driver](n83_low_memory_campaign.py) requires 1.5 GiB free on
+the system volume, 1 GiB free on the spill volume, and stable swap-outs.
+`--spill-dir` selects an absolute existing directory on the runner host;
+the local default is `/Volumes/SSD990/llm/tmp`.
+The system volume was below that launch gate at the latest preflight.
+Q1060 has `candidate_id: null`, `isogeny: "none"`, and no natural relation
+or complete IC DLP.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
@@ -1192,4 +1224,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_low_memory_screen.py
 python3 experiments/koblitz-pair-claw-20260929/n83_fast_low_memory_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_low_memory_campaign.py --proposal-id Q1059
 # --run-next launches one Q1059 fast-keyer rectangle under the same guard.
+python3 experiments/koblitz-pair-claw-20260929/n83_spill_low_memory_screen.py
+./sage -python experiments/koblitz-pair-claw-20260929/n83_low_memory_campaign.py --proposal-id Q1060
+# --run-next launches one Q1060 SSD-spill rectangle under its separate guard.
 ```

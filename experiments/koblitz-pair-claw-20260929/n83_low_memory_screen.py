@@ -175,6 +175,7 @@ def main():
             "build_seconds": h10["build_seconds"],
             "exact_replay_seconds": h10["exact_replay_seconds"],
             "bloom_positive_queries": h10["bloom_positive_queries"],
+            "bloom_bytes": h10["bloom_bytes"],
             "peak_rss_bytes": h10["peak_rss_bytes"],
             "candidate_vector_capacity_bytes": h10[
                 "candidate_vector_capacity_bytes"],
