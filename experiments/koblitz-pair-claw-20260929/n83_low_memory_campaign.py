@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect or advance one guarded Q1058 n=83 low-memory rectangle.
+"""Inspect or advance one guarded Q1058/Q1059 n=83 rectangle.
 
 The first M31/R30 range was completed under Q1051. Each remaining range is
 queried against eight disjoint M28 table shards. A run never silently retries
@@ -24,7 +24,10 @@ RUNNER = HERE / "run_n83_signed_x_chunk.py"
 SOURCE = HERE / "native_n83_orbit_query_signed_x.cpp"
 PAIRS = HERE / "native_n83_pairs.cpp"
 CORE = HERE / "native_n83_bloom_core.hpp"
-SCREEN = HERE / "n83_low_memory_screen.json"
+SCREENS = {
+    "Q1058": HERE / "n83_low_memory_screen.json",
+    "Q1059": HERE / "n83_fast_low_memory_screen.json",
+}
 FIRST = RUNS / "n83_orbit_k48194_chunk_M31_R30_tstart0_qstart0_b20_h14_rb8.json"
 M = 1 << 28
 R = 1 << 30
@@ -47,12 +50,14 @@ def swapouts():
     raise RuntimeError("vm_stat omitted Swapouts")
 
 
-def plan():
+def plan(proposal_id="Q1058"):
+    prefix = {"Q1058": "n83_lowmem_",
+              "Q1059": "n83_fast_lowmem_"}[proposal_id]
     for query_index in range(1, 118):
         for shard in range(8):
             table_start = shard * M
             query_start = query_index * R
-            name = (f"n83_lowmem_k48194_chunk_M28_R30_tstart{table_start}_"
+            name = (f"{prefix}k48194_chunk_M28_R30_tstart{table_start}_"
                     f"qstart{query_start}_b20_h10_rb8.json")
             yield {"table_start": table_start, "query_start": query_start,
                    "receipt": RUNS / name}
@@ -65,17 +70,21 @@ def attempt_path(chunk, attempt):
 
 
 def inspect(screen):
-    completed, failed, active, missing, solved = [], [], [], [], []
+    completed, failed, active, missing, solved, unresolved = [], [], [], [], [], []
     selected_markers = set()
-    for chunk in plan():
+    proposal_id = screen["proposal_id"]
+    for chunk in plan(proposal_id):
         successful = []
+        chunk_failed = []
+        next_missing = None
         attempt = 0
         while True:
             path = attempt_path(chunk, attempt)
             marker = path.with_suffix(".started.json")
             if not path.exists() and not marker.exists():
                 if not successful:
-                    missing.append(dict(chunk, receipt=path))
+                    next_missing = dict(chunk, receipt=path)
+                    missing.append(next_missing)
                 break
             selected_markers.add(marker)
             if not path.exists():
@@ -84,7 +93,7 @@ def inspect(screen):
             if marker.exists():
                 raise ValueError(f"terminal receipt retains start marker: {path}")
             row = json.loads(path.read_text())
-            assert row["proposal_id"] == "Q1058"
+            assert row["proposal_id"] == proposal_id
             assert row["candidate_id"] is None
             assert row["curve_id"] == screen["curve_id"]
             assert row["isogeny"] == "none"
@@ -107,10 +116,13 @@ def inspect(screen):
             assert row["representative_batch"] == 8
             assert row["bits_per_key"] == 20
             assert row["hashes"] == 10
+            assert row.get("fast_keyer_enabled", False) == (
+                proposal_id == "Q1059")
             if row["kind"] == (
                     "n83_public_target_signed_x_query_k48194_chunk_failed"):
                 assert row["native_phase_counts"] is None
                 failed.append(path)
+                chunk_failed.append(path)
             elif row["kind"] == (
                     "n83_public_target_signed_x_query_k48194_exact_replay_chunk"):
                 successful.append(path)
@@ -121,17 +133,19 @@ def inspect(screen):
             attempt += 1
         if len(successful) > 1:
             raise ValueError(f"multiple completed attempts: {chunk['receipt']}")
+        if chunk_failed and next_missing is not None:
+            unresolved.append(next_missing)
         completed.extend(successful)
-    return completed, failed, active, missing, solved, selected_markers
+    return completed, failed, active, missing, solved, unresolved, selected_markers
 
 
-def write_guard_receipt(chunk, *, reason, initial_swap, final_swap,
+def write_guard_receipt(chunk, *, proposal_id, reason, initial_swap, final_swap,
                         initial_free, final_free):
     terminal = chunk["receipt"]
     path = terminal.with_suffix(".guard.json")
     row = {
         "kind": "n83_low_memory_resource_guard_interruption",
-        "proposal_id": "Q1058", "candidate_id": None,
+        "proposal_id": proposal_id, "candidate_id": None,
         "reason": reason,
         "table_start": chunk["table_start"],
         "query_start": chunk["query_start"],
@@ -149,9 +163,12 @@ def write_guard_receipt(chunk, *, reason, initial_swap, final_swap,
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-next", action="store_true")
+    parser.add_argument("--retry-failed", action="store_true")
+    parser.add_argument("--proposal-id", choices=tuple(SCREENS),
+                        default="Q1058")
     args = parser.parse_args()
-    screen = json.loads(SCREEN.read_text())
-    assert screen["proposal_id"] == "Q1058"
+    screen = json.loads(SCREENS[args.proposal_id].read_text())
+    assert screen["proposal_id"] == args.proposal_id
     assert screen["candidate_id"] is None and screen["isogeny"] == "none"
     assert sha(SOURCE) == screen["native_source_sha256"]
     assert sha(PAIRS) == screen["native_pairs_sha256"]
@@ -159,40 +176,53 @@ def main():
     assert sha(RUNNER) == screen["runner_source_sha256"]
     assert sha(FIRST) == screen["first_completed_Q1051_receipt_sha256"]
     rectangles = [(item["table_start"], item["query_start"])
-                  for item in plan()]
+                  for item in plan(args.proposal_id)]
     assert len(rectangles) == len(set(rectangles)) == 936
     assert rectangles[0] == (0, R)
     assert rectangles[-1] == (7 * M, 117 * R)
-    completed, failed, active, missing, solved, selected = inspect(screen)
+    completed, failed, active, missing, solved, unresolved, selected = inspect(screen)
+    other_id = "Q1059" if args.proposal_id == "Q1058" else "Q1058"
+    other_screen = json.loads(SCREENS[other_id].read_text())
+    other_completed, other_failed, other_active, _, other_solved, _, _ = inspect(other_screen)
     competing = sorted(set(RUNS.glob("n83_*.started.json")) - selected)
     free = shutil.disk_usage("/").free
     swap = swapouts()
+    next_chunk = (unresolved[0] if args.retry_failed and unresolved else
+                  missing[0] if missing else None)
     print(json.dumps({
-        "proposal_id": "Q1058", "candidate_id": None,
+        "proposal_id": args.proposal_id, "candidate_id": None,
         "curve_id": screen["curve_id"],
         "factor_base_enumerated_set_sha256": screen[
             "factor_base_enumerated_set_sha256"],
         "completed_rectangles": len(completed),
         "failed_attempts_with_unknown_native_work": len(failed),
+        "unresolved_failed_rectangles": len(unresolved),
         "active_rectangles": len(active),
         "remaining_rectangles": len(missing),
         "verified_dlp_receipts": [str(path) for path in solved],
+        "other_variant_completed_rectangles": len(other_completed),
+        "other_variant_failed_attempts": len(other_failed),
+        "other_variant_verified_dlp_receipts": [str(path) for path in other_solved],
         "competing_start_markers": [str(path) for path in competing],
-        "next_rectangle": ({"table_start": missing[0]["table_start"],
-                            "query_start": missing[0]["query_start"]}
-                           if missing else None),
+        "next_rectangle": ({"table_start": next_chunk["table_start"],
+                            "query_start": next_chunk["query_start"]}
+                           if next_chunk else None),
         "system_free_bytes": free,
         "minimum_system_free_bytes_to_launch": MIN_SYSTEM_FREE_BYTES,
         "swapouts_pages": swap,
     }), flush=True)
     if not args.run_next:
         return
-    if active or competing:
+    if active or other_active or competing:
         raise RuntimeError("an n=83 search marker exists; inspect its process")
-    if solved:
+    if solved or other_solved:
         raise RuntimeError("a verified public-target DLP already exists")
+    if other_completed or other_failed:
+        raise RuntimeError("the other low-memory variant has completed or failed rectangles; reconcile coverage before switching")
+    if unresolved and not args.retry_failed:
+        raise RuntimeError("a failed rectangle has unknown work; inspect its receipt before an explicit --retry-failed")
     if not missing:
-        raise RuntimeError("Q1058 plan exhausted without a relation")
+        raise RuntimeError("low-memory plan exhausted without a relation")
     if free < MIN_SYSTEM_FREE_BYTES:
         raise RuntimeError("system volume lacks M28/R30 search headroom")
     time.sleep(30)
@@ -203,7 +233,7 @@ def main():
         raise RuntimeError("preflight root space or swap stability failed")
     if list(RUNS.glob("n83_*.started.json")):
         raise RuntimeError("another n=83 search started during preflight")
-    chunk = missing[0]
+    chunk = next_chunk
     runtime_path = chunk["receipt"].with_suffix(".runtime.json")
     runtime = subprocess.run([str(SAGE), "--runtime-info"], check=True,
                              capture_output=True, text=True).stdout
@@ -213,7 +243,7 @@ def main():
         raise RuntimeError("another n=83 search started before launch")
     command = [
         str(SAGE), "-python", str(RUNNER),
-        "--proposal-id", "Q1058",
+        "--proposal-id", args.proposal_id,
         "--table-log2", "28", "--table-start", str(chunk["table_start"]),
         "--query-reps-log2", "30", "--query-start", str(chunk["query_start"]),
         "--workers", "14", "--rep-batch", "8",
@@ -221,6 +251,8 @@ def main():
         "--runtime-info", str(runtime_path),
         "--out", str(chunk["receipt"]),
     ]
+    if args.proposal_id == "Q1059":
+        command.append("--fast-keyer")
     child = subprocess.Popen(command, start_new_session=True)
     while child.poll() is None:
         time.sleep(15)
@@ -232,7 +264,8 @@ def main():
         if reason and child.poll() is None:
             os.killpg(child.pid, signal.SIGINT)
             child.wait()
-            write_guard_receipt(chunk, reason=reason,
+            write_guard_receipt(chunk, proposal_id=args.proposal_id,
+                                reason=reason,
                                 initial_swap=ready_swap,
                                 final_swap=current_swap,
                                 initial_free=ready_free,

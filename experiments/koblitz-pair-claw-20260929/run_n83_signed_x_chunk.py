@@ -55,8 +55,9 @@ def main():
     parser.add_argument("--rep-batch", type=int, default=8)
     parser.add_argument("--bits-per-key", type=int, default=20)
     parser.add_argument("--hashes", type=int, default=14)
-    parser.add_argument("--proposal-id", choices=("Q1054", "Q1055", "Q1058"),
+    parser.add_argument("--proposal-id", choices=("Q1054", "Q1055", "Q1058", "Q1059"),
                         default="Q1054")
+    parser.add_argument("--fast-keyer", action="store_true")
     parser.add_argument("--runtime-info", type=Path, default=RUNTIME_INFO)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
@@ -70,9 +71,12 @@ def main():
     assert args.bits_per_key == 20
     assert args.hashes == (14 if args.proposal_id == "Q1054" else 10), (
         "Bloom hash count must match the named stage proposal")
+    assert args.fast_keyer == (args.proposal_id == "Q1059"), (
+        "Fast-keyer build must match the named stage proposal")
     prefix = {"Q1054": "n83_signed_x_",
               "Q1055": "n83_signed_x_q1055_",
-              "Q1058": "n83_lowmem_"}[args.proposal_id]
+              "Q1058": "n83_lowmem_",
+              "Q1059": "n83_fast_lowmem_"}[args.proposal_id]
     out = args.out or HERE / "runs" / (
         f"{prefix}k48194_chunk_M{args.table_log2}_R{args.query_reps_log2}_"
         f"tstart{args.table_start}_qstart{args.query_start}_"
@@ -113,8 +117,10 @@ def main():
     compiler_command = [
         "clang++", "-O3", "-std=c++17", "-march=armv8.2-a+crypto",
         f"-DECC2K83_ORBITS={K}",
-        str(SOURCE), "-o", str(BINARY),
     ]
+    if args.fast_keyer:
+        compiler_command.append("-DECC2K83_FAST_KEYER=1")
+    compiler_command.extend([str(SOURCE), "-o", str(BINARY)])
     subprocess.run(compiler_command, check=True)
     command = [
         str(BINARY), str(key_path),
@@ -149,6 +155,7 @@ def main():
         "representative_batch": args.rep_batch,
         "bits_per_key": args.bits_per_key,
         "hashes": args.hashes,
+        "fast_keyer_enabled": args.fast_keyer,
         "started_at_utc": utc_now(),
         "wrapper_pid": os.getpid(),
         "compiled_binary_sha256": sha(BINARY),
@@ -262,6 +269,7 @@ def main():
         "representative_batch": args.rep_batch,
         "bits_per_key": args.bits_per_key,
         "hashes": args.hashes,
+        "fast_keyer_enabled": args.fast_keyer,
         "table_schedule": scheduled["table_schedule"],
         "query_representative_schedule": {
             "domain": d_cross, "step": query_step,

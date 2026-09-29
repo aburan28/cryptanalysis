@@ -291,7 +291,7 @@ measurement rows:
 the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
 requires exactly one of those IDs to be non-null. New comparison rows
 must use the `IC1` ID and carry the old `Q` lineage separately. Current
-n=83 stage records use `Q1051` through `Q1058`, with
+n=83 stage records use `Q1051` through `Q1059`, with
 `candidate_id: null`.
 
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
@@ -839,6 +839,7 @@ attempts, and independent scalar replay.
 | n=83 Q1056 | Exact fast-key equality on 1,048,576 field inputs; 1.508× isolated key-kernel and 1.326× paired bounded-query speedups | M=$2^{20}$, R=$2^{22}$ query stage only; full-size rate and relation yield unmeasured |
 | n=83 Q1057 | Exact cyclic-gap rotation key; 1.202× slower than Q1056 byte-table key | Negative isolated-kernel result; gap-scanning implementation rejected |
 | n=83 Q1058 | Eight disjoint M=$2^{28}$ table shards; 936 future R=$2^{30}$ rectangles model $2^{50.001}$ native field calls | Conditional lower-memory plan only; 54.5 projected query-only days, no natural relation |
+| n=83 Q1059 | Q1058 shards with the exact Q1056 fast keyer; planted scalar replay and public-target smoke passed | Same $2^{50.001}$ arithmetic model; 41.1 query-only days if two bounded-rate transfers hold, no natural relation |
 
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
 [campaign driver](n83_two_shard_campaign.py) retain source hashes,
@@ -1086,9 +1087,11 @@ measured relation yield. For M28, the Q1051 completed rectangle plus future
 rectangles is $2^{50.004}$ modeled calls. Adding full-rectangle structural
 upper proxies for three prior Q1051 interruptions and the M28 interrupted
 calibration, along with the two completed M28 calibration call models, gives
-the [same-target accounting field](n83_low_memory_screen.json),
-**$2^{50.016}$ modeled native field calls**; actual interrupted work is
-unknown. None of these exponents is complete solve work.
+the [selected-receipt accounting field](n83_low_memory_screen.json),
+**$2^{50.016}$ modeled native field calls**. Other same-target research
+trials are omitted, and actual interrupted work is unknown. This number
+is not a bound on all historical work; none of these exponents is complete
+solve work.
 
 The single completed M28/R24 ten-hash run measured 1.020 GB peak RSS and
 78.627 seconds of query time. Scaling that query rate to R=$2^{30}$ gives
@@ -1099,10 +1102,41 @@ for one M28/R30 rectangle. This is not a memory bound; full-size candidate
 tables, allocation, and swapping could cost more. The
 [guarded campaign driver](n83_low_memory_campaign.py) requires 4 GiB free
 on the system volume and low swap-out growth before launching one rectangle.
+It retains failed receipts with unknown work and requires an explicit
+`--retry-failed` after inspection; it will not silently retry or switch
+to a variant whose full-size rectangles have already run.
 The system volume was below the launch guard during preflight, so no Q1058 full
 rectangle has been launched. `Q1058` has `candidate_id: null`,
 `isogeny: "none"`, zero measured natural relations, and no IC DLP or rho
 speedup claim.
+
+### Fast-keyer low-memory variant (Q1059)
+
+[Q1059](n83_fast_low_memory_screen.json) uses the same curve, target,
+factor-base digest, actual B, 48,194 folded columns, and disjoint Q1058
+table/query ranges. It compiles the Q1056 exact byte-table keyer with the
+Q1055 ten-hash filter. The new runner flag is only accepted with proposal
+`Q1059`, and [the guarded driver](n83_low_memory_campaign.py) refuses to
+switch variants after either one has completed a full rectangle, so it
+cannot silently duplicate coverage. The
+[nonzero-offset planted control](runs/n83_fast_low_memory_planted.json)
+found the same exact hit as Q1055 and independently replayed its scalar.
+A [paired small public-target check](runs/n83_low_memory_smoke_paired.json)
+then exercised Q1058 and Q1059 on identical M=$2^{20}$, R=$2^{14}$
+positions. The native outcomes matched exactly: 247 Bloom positives and
+zero exact hits in both. The planted and public-target runs have
+checked-Sage runtime receipts. The small rectangle is a correctness
+control, not a full-size speed comparison.
+
+Q1059 has Q1058's **$2^{50.001}$ future native field-call model** and
+**95.11% conditional finite-support success probability**. Dividing
+Q1058's 54.5 projected query-only days by Q1056's measured 1.326×
+M=$2^{20}$, R=$2^{22}$ 14-hash speedup gives **41.1 query-only days**,
+conditional on *both* the M28/R24-to-R30 rate and the M20/14-hash-to-M28/10-hash
+speedup transfers. The latter transfer has not been measured. The full
+M28/R30 memory, wall time, natural relation yield, and complete operation
+equivalent remain unknown. `Q1059` retains `candidate_id: null` and
+`isogeny: "none"`.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
@@ -1155,4 +1189,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_two_shard_solve_work.py
 python3 experiments/koblitz-pair-claw-20260929/n83_low_memory_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_low_memory_campaign.py
 # --run-next launches one Q1058 rectangle only after the 4 GiB system-volume guard passes.
+python3 experiments/koblitz-pair-claw-20260929/n83_fast_low_memory_screen.py
+./sage -python experiments/koblitz-pair-claw-20260929/n83_low_memory_campaign.py --proposal-id Q1059
+# --run-next launches one Q1059 fast-keyer rectangle under the same guard.
 ```

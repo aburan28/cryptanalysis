@@ -16,6 +16,7 @@ BASE = HERE / "n83_large_knownlog_base_screen.json"
 SIGNED = HERE / "n83_signed_x_screen.json"
 M28 = HERE / "n83_signed_x_m28_hashes_screen.json"
 PAIR = RUNS / "n83_signed_x_m28_hashes_paired.json"
+PAIRED_SMOKE = RUNS / "n83_low_memory_smoke_paired.json"
 FIRST = RUNS / "n83_orbit_k48194_chunk_M31_R30_tstart0_qstart0_b20_h14_rb8.json"
 SOURCE = HERE / "native_n83_orbit_query_signed_x.cpp"
 PAIRS = HERE / "native_n83_pairs.cpp"
@@ -49,15 +50,23 @@ def main():
     signed = json.loads(SIGNED.read_text())
     m28 = json.loads(M28.read_text())
     pair = json.loads(PAIR.read_text())
+    paired_smoke = json.loads(PAIRED_SMOKE.read_text())
     first = json.loads(FIRST.read_text())
     records = (base, signed, m28, pair, first)
     assert [r["proposal_id"] for r in (base, signed, m28, first)] == [
         "Q1051", "Q1054", "Q1055", "Q1051"]
     assert pair["proposal_ids"] == ["Q1054", "Q1055"]
+    assert paired_smoke["proposal_ids"] == ["Q1058", "Q1059"]
+    assert paired_smoke["candidate_id"] is None
+    assert paired_smoke["curve_id"] == base["curve_id"]
+    assert paired_smoke["isogeny"] == "none"
+    assert paired_smoke["exact_native_outcomes_identical"]
+    assert paired_smoke["exact_hit_queries"] == 0
     assert all(r["curve_id"] == "EC1N83Ckb1h876c2921cb64" for r in records)
     assert all(r["candidate_id"] is None and r["isogeny"] == "none"
                for r in records)
     digest = base["factor_base"]["enumerated_set_sha256"]
+    assert paired_smoke["factor_base_enumerated_set_sha256"] == digest
     assert digest == "7e3c95f988225da1d586578529953ad61ae5ed62ca740eb92c2aea6d841a5a02"
     assert (signed["factor_base_enumerated_set_sha256"] ==
             m28["factor_base_enumerated_set_sha256"] ==
@@ -173,7 +182,7 @@ def main():
         "M28_R30_query_seconds_if_R24_rate_transfers":
             h10["query_seconds"] * query_scale,
         "M28_future_query_only_days_if_R24_rate_transfers": query_only_days,
-        "M28_current_target_with_prior_attempts_structural_field_call_upper_log2":
+        "M28_selected_research_attempts_plus_future_structural_field_call_log2":
             math.log2(known_and_upper_calls),
         "M28_R30_bloom_positives_if_R24_rate_transfers": round(
             h10["bloom_positive_queries"] * query_scale),
@@ -186,7 +195,9 @@ def main():
         "limits": [
             "The success probability assumes the frozen Q1051 finite-support random-base model; it is not an empirical natural-target yield rate.",
             "The completed M31/R30 rectangle covers the first R30 query range for all eight M28 shards. The M28/R24 calibrations overlap a future range and do not add disjoint success coverage.",
+            "The paired M20/R14 Q1058/Q1059 smoke also overlaps a future rectangle and does not add disjoint success coverage.",
             "Failed Q1051 and interrupted M28 attempts have unknown actual native work. Their full-rectangle structural models are upper accounting proxies, not measured consumption.",
+            "The selected-receipt account includes the named Q1051 and M28 receipts plus prospective rectangles. It omits other same-target research trials, including later keyer and smoke measurements, and is not an upper bound on all historical target-dependent work.",
             "The R24-to-R30 query-time and Bloom-positive scalings are unmeasured transfers; full R30 exact replay time and peak memory are unknown.",
             "The illustrative M28 peak scales only measured candidate vector capacity. It excludes hash-table growth, allocator behavior, and swapping and is not a memory bound.",
             "Field calls exclude keying, Bloom probes, memory traffic, setup, and scalar replay, so the exponent is not a complete field-operation-equivalent DLP cost.",
@@ -196,6 +207,7 @@ def main():
         "signed_screen_sha256": sha(SIGNED),
         "M28_screen_sha256": sha(M28),
         "M28_pair_receipt_sha256": sha(PAIR),
+        "paired_smoke_receipt_sha256": sha(PAIRED_SMOKE),
         "first_completed_Q1051_receipt_sha256": sha(FIRST),
         "native_source_sha256": sha(SOURCE),
         "native_pairs_sha256": sha(PAIRS),
