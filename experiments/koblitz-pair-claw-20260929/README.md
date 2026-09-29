@@ -776,6 +776,24 @@ the two-filter memory illustration is **12.66 GB**. Full-size
 two-filter memory, throughput, and natural relation yield are unmeasured,
 so Q1052 remains a proposal with `candidate_id: null` and complete solve
 work unknown.
+The [Q1052 first-hit calculation](n83_two_shard_solve_work.json) charges
+whole completed rectangles: median modeled first hit at 14 chunks and
+**$2^{44.974}$ stage field calls**, 90% by 45 chunks and
+**$2^{46.658}$ calls**, 95% by 59 chunks and **$2^{47.049}$ calls**,
+and 99% by 91 chunks and **$2^{47.674}$ calls**. The conditional mean,
+given a hit within all 179 full disjoint chunks, is
+**$2^{45.469}$ calls**; the model still leaves a 0.0136% no-hit chance
+after those chunks. This is a first-hit prediction based on assumed
+finite-support relation placement. The measured complete-solve exponent
+is **unknown**; these calls exclude keying, Bloom work, base setup, prior
+attempts, and independent scalar replay.
+
+| Case | Result | Work unit and status |
+| --- | --- | --- |
+| n=53 known-log control | Verified one-target DLP in 117.94 s online; $2^{20.739}$ cold pair samples | Measured wall time and logical pair samples; full field-operation count unknown |
+| n=83 Q1051 | No natural hit yet; 95% model prefix $2^{48.016}$ | Predicted native field-call stage only; current full chunk running |
+| n=83 Q1052 | No natural hit yet; median $2^{44.974}$, 95% $2^{47.049}$ | Predicted native field-call stage only; full-size throughput unmeasured |
+
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
 [campaign driver](n83_two_shard_campaign.py) retain source hashes,
 exact-hit scalar replay, terminal failure receipts, disjoint query ranges,
@@ -828,6 +846,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_large_orbit_solve_work.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_two_shard_planted.py
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_two_shard_paired.py
 python3 experiments/koblitz-pair-claw-20260929/n83_two_shard_screen.py
+python3 experiments/koblitz-pair-claw-20260929/n83_two_shard_solve_work.py
 ./sage -python experiments/koblitz-pair-claw-20260929/run_n83_two_shard_chunk.py --table-log2 20 --query-reps-log2 14 --workers 1
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_two_shard_campaign.py
 # --run-next launches one guarded Q1052 rectangle after competing runs finish.
