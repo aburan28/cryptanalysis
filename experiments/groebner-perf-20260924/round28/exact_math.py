@@ -249,4 +249,3 @@ class Mathematics:
             require(result['status'] in ('error', 'budget'), 'unverified status')
         for phase in ONLINE[:3]:
             require(sum(a.get('phase_wall_ns', {}).get(phase, 0) for a in result['attempts']) <= result['phase_wall_ns'][phase], 'attempt time omitted')
-

@@ -147,3 +147,33 @@ mixes, separate preparation costs and all paired intervals are retained in
 raw report and hash-chained journal retained in the task evidence archive.
 The committed correctness trace has full source/build snapshots and raw
 mathematical evidence; CI reconstructs and audits it against the same sources.
+
+## Final-source physical confirmation
+
+A second admitted 31-pair run verifies another 576 complete IC recoveries and
+192 same-point rho controls, including 24 total warmups. The only source change
+is removal of a trailing blank line in the offline auditor; its Python AST is
+identical. The earlier implementation/evidence remains at commit `5779c56`.
+The committed current-source correctness trace is under `results/final/`; CI
+re-audits that trace. Every numerical source in the final report is unchanged
+by the later documentation and artifact commit.
+
+| Actual base points | Public point (x,y) | Three-eval ms | Two-eval ms | Two-conditional ms | Same-point rho ms | rho / two-conditional [95%] | two-eval / two-conditional [95%] |
+| ---: | --- | ---: | ---: | ---: | ---: | --- | --- |
+| 8 | (5948,4412) | 4.456042 | 8.175792 | 2.963708 | 0.462458 | 0.170 [0.155, 0.190] | 2.775 [2.722, 2.826] |
+| 8 | (5292,2374) | 10.831667 | 9.466041 | 3.403666 | 0.580000 | 0.172 [0.162, 0.182] | 2.798 [2.649, 2.999] |
+| 8 | (4029,4301) | 11.887000 | 10.344417 | 3.713375 | 0.444208 | 0.120 [0.116, 0.124] | 2.771 [2.714, 2.822] |
+| 60 | (5948,4412) | 1.602667 | 0.622917 | 0.456458 | 0.447625 | 1.016 [0.970, 1.075] | 1.377 [1.332, 1.421] |
+| 60 | (5292,2374) | 1.686209 | 0.769500 | 0.549333 | 0.551417 | 1.063 [1.006, 1.128] | 1.410 [1.364, 1.461] |
+| 60 | (4029,4301) | 1.883667 | 0.793708 | 0.537000 | 0.435125 | 0.832 [0.795, 0.882] | 1.503 [1.432, 1.602] |
+
+The full recovery gain over two-eval repeats at 2.77–2.80× on the smaller base
+and 1.38–1.50× on the larger one. Changing the full pipeline from three-eval to
+two-conditional gives 1.50–3.54×. The point (5292,2374) on the larger base again
+has a narrow individual rho/IC interval above one, with geometric ratio 1.063;
+its median ratio is close to parity. The other larger-base points are near
+parity or slower. This is a repeated result for that exact toy point on this
+physical host, not a broad IC advantage. Hosted confirmation and held-out
+workloads remain distinct questions. Individual intervals are unadjusted for
+multiple comparisons. Source identities, exact candidate IDs, full phases and
+all ratios remain in `results/final/confirmation-audit.json`.
