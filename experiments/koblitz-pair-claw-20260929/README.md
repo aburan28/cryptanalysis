@@ -749,6 +749,34 @@ upper bound for the prior failed R=$2^{31}$ attempt gives
 $2^{48.040}$ under the same field-call model. Actual consumed work in
 the failed attempt remains unknown.
 
+### Two-table shared-query proposal (Q1052)
+
+Q1052 keeps the same n=83 curve `EC1N83Ckb1h876c2921cb64`,
+B=8,000,204 known-log factor-base points, 48,194 folded columns,
+enumerated-set digest, and `isogeny: "none"`. Its
+[native stage](native_n83_orbit_query_two_shard.cpp) builds two disjoint
+table Bloom filters and checks both with each target-query point sum.
+The [paired bounded receipt](runs/n83_two_shard_paired_bounded.json)
+matched each shard's 3,245 and 3,288 Bloom positives and zero exact
+hits to separate one-table runs on identical public-target inputs. With
+one query worker and $2^{20}$ descriptors per shard, sharing the query
+was **1.729× faster in the query phase** than two separate runs. This
+bounded timing was measured while the full Q1051 run shared the host.
+The [second-table planted control](runs/n83_two_shard_second_table_planted.json)
+found an exact hit and independently replayed its scalar; it is not
+natural relation yield.
+
+The [Q1052 screen](n83_two_shard_screen.json) projects 95.24% success
+for 59 R=$2^{30}$ query rectangles against two M=$2^{31}$ table
+shards. Its explicit field-add/multiply/square boundary is
+**$2^{47.049}$ calls**, compared with Q1051's $2^{48.016}$ for the
+same model probability. Combining the bounded one-worker shared-query
+ratio with the earlier 14-worker calibration projects **5.43 days**;
+the two-filter memory illustration is **12.66 GB**. Full-size
+two-filter memory, throughput, and natural relation yield are unmeasured,
+so Q1052 remains a proposal with `candidate_id: null` and complete solve
+work unknown.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
@@ -787,4 +815,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_large_knownlog_base_screen.py
 python3 experiments/koblitz-pair-claw-20260929/n83_large_orbit_solve_work.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_large_orbit_campaign.py
 # --run-next launches one guarded Q1051 rectangle when no competing marker exists.
+./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_two_shard_planted.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_two_shard_paired.py
+python3 experiments/koblitz-pair-claw-20260929/n83_two_shard_screen.py
 ```
