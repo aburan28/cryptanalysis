@@ -281,6 +281,18 @@ $2^{20.739}$. The [independent verifier](verify_knownlog_n53.py) rebuilt
 all seed logs and the matching pair metadata. No paired rho speedup or
 field-operation total is claimed.
 
+The curve and candidate hashes in the n=23 and n=53 manifests were
+recomputed against the catalog's sorted-key canonical JSON rule. Their
+`fb` tags use actual pre-folding point counts, and both record
+`isogeny: "none"`. The archived n=23 and n=53 raw run receipts retain
+their originating `Q` proposal ID alongside their promoted `IC1` ID.
+That is historical provenance, but those are not schema-compliant catalog
+measurement rows:
+the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
+requires exactly one of those IDs to be non-null. New comparison rows
+must use the `IC1` ID and carry the old `Q` lineage separately. Current
+n=83 stage records use only `Q1051` or `Q1052`, with `candidate_id: null`.
+
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
 replays 24,097 seeded scalar orbits, again giving **actual B=4,000,102**
 and **24,097 folded columns, all with known logs**. Its compressed
