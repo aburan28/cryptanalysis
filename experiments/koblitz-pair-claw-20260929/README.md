@@ -835,7 +835,7 @@ attempts, and independent scalar replay.
 | n=83 Q1051 | One full R=$2^{30}$ rectangle completed in 7,164.3 s with zero exact hits; 95% model prefix $2^{48.016}$ | Measured one-rectangle wall time and zero yield; prefix field calls predicted |
 | n=83 Q1052 | No natural hit yet; median $2^{44.974}$, 95% $2^{47.049}$ | Predicted native field-call stage only; full-size throughput unmeasured |
 | n=83 Q1054 | Planted scalar replay passed; bounded query 1.176× faster at 14 workers; 95% $2^{47.071}$ | Predicted x-only field-call stage; full-size throughput and natural yield unmeasured |
-| n=83 Q1055 | Bounded 10-hash query 1.053× faster than 14 hashes; planted scalar replay passed | Measured small-filter stage; predicted 95% Bloom bit probes $2^{47.597}$, distinct from field calls |
+| n=83 Q1055 | M=$2^{20}$ median query 1.053× faster; one M=$2^{28}$ pair gave 1.140× query and 1.054× full native-stage speedups; planted scalar replay passed | Measured bounded stages; reverse-order M=$2^{28}$ repeat interrupted; predicted 95% Bloom bit probes $2^{47.597}$, distinct from field calls |
 
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
 [campaign driver](n83_two_shard_campaign.py) retain source hashes,
@@ -986,6 +986,30 @@ completed M=$2^{20}$, R=$2^{14}$ with zero exact hits; its
 saved before launch. The shared chunk runner now requires Q1054 to use
 14 hashes and Q1055 to use 10, so future receipts cannot silently assign
 the 10-hash setting to Q1054.
+
+A [guarded larger-filter comparison](runs/n83_signed_x_m28_hashes_paired.json)
+used M=$2^{28}$, R=$2^{24}$, 14 workers, the same base and public target,
+and a query range starting at $2^{30}$, beyond the completed Q1051 range.
+One 14/10-hash pair completed with zero exact hits in both runs and no
+swap-out growth. Query times were **89.623 s** and **78.627 s**
+(**1.140×**); build plus query plus exact replay took **239.925 s** and
+**227.663 s** (**1.054×**). Bloom positives rose from 261,727 to
+304,118; peak RSS rose from 1.016 to 1.020 GB. The [M28 screen](n83_signed_x_m28_hashes_screen.json)
+keeps these measured phase costs separate from its projection: applying
+the 1.162× positive ratio to Q1051's full-filter count would suggest
+19.43 million positives at ten hashes, but full-filter memory and rate
+have not been measured.
+
+The next 10-hash repetition was [interrupted by the swap guard](runs/n83_signed_x_m28_hash10_R24_qstart1073741824_abba3.json)
+after 11,132 additional swap-out pages. It has no native phase counts;
+its actual work and hit status are unknown. The final 14-hash repetition
+did not start. This leaves a single completed M28 pair, not a robust
+large-filter speedup estimate or an n=83 natural-relation measurement.
+Charging both completed M28 calibrations and a full-rectangle structural
+upper model for the interruption to the existing same-target Q1051 work
+and 117 hypothetical future full rectangles gives **$2^{47.173}$ modeled
+native field calls**. It is neither measured consumed work nor a complete
+operation-equivalent DLP cost.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
