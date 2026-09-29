@@ -568,3 +568,9 @@ python3 fb_yield.py 17 5 4000                 # factor-base subspace yields
 ```
 
 `run.py` resumes: rows already in the CSV are skipped.
+
+# Exact five-summand subset pilot
+
+The [frozen five-summand pilot](five-sum-20260928/README.md) uses the archived
+ECC2K83 factor base in a bounded exact point solver. Its source and receipts
+separate planted controls, ordinary target outcomes, and independent row rank.
