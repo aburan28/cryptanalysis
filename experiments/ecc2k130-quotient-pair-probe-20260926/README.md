@@ -539,13 +539,14 @@ point-set and coefficient-label hashes are in the [Q1032 receipt](runs/n83_affin
 The curve remains `EC1N83Ckb1h876c2921cb64`, the isogeny route is `none`,
 and Q1032 retains `candidate_id: null` and its own frozen workload ID.
 
-The three 4,096-query ordinary blocks took **0.304, 0.302, and 0.299 s**
+The three 4,096-query ordinary blocks took **0.305, 0.302, and 0.304 s**
 against the full disk-backed index, including two starting scalar
 multiplications per block. All **12,288** ordinary lookups missed. A separate
 post-rho planted witness recovered the independently verified scalar and is
-excluded from relation yield. The measured prefix rate is **73.65 μs per
-attempt**; this is a full-index memory-access measurement, not a complete
-target solve.
+excluded from relation yield. The measured prefix rate is **74.05 μs per
+attempt** after a sequential hash pass over the 1.99 GB row file. The OS
+page-cache state was not controlled. This is a full-index memory-access
+measurement, not a complete target solve.
 
 For this exact pair-sum support, the random-affine second-moment bound gives
 at most **`2^49.321` expected scan point additions**, or **`2^50.643`**
@@ -555,7 +556,7 @@ the same bound. Transferring the measured prefix operation vector gives
 conditional expected-upper counts of **`2^50.360` field multiplication API
 calls**, **`2^49.360` inversions**, **`2^52.168` additions**, and
 **`2^55.679` word rotations**. Transferring its wall rate gives
-**`2^35.592` seconds**; this long-run extrapolation does not price changes
+**`2^35.600` seconds**; this long-run extrapolation does not price changes
 in cache behavior. These are separate units, and the 4,372.49-second index
 build is additional cold work. Zero natural hits mean there is still no
 observed n83 IC solve or calibrated full-work `2^x` claim.

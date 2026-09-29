@@ -1024,6 +1024,9 @@ def verify_n83_affine_scan_l1000():
     assert index_info["sorted_array_sha256"] == index[
         "sorted_array_sha256"]
     assert index_info["sorted_array_bytes"] == index["raw_array_bytes"]
+    assert "SHA-256 hash" in report["index_cache_policy"]
+    assert "page-cache state is uncontrolled" in report[
+        "index_cache_policy"]
     blocks = report["ordinary_query_blocks"]
     assert len(blocks) == len(inputs["rows"]) == 3
     assert sum(row["attempts_including_failed"] for row in blocks) == report[

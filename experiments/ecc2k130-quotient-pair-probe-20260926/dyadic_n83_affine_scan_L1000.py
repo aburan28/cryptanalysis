@@ -249,6 +249,10 @@ def main():
             "sorted_array_sha256": index_receipt["sorted_array_sha256"],
             "point_witness_receipt_sha256": sha(index_receipt_path),
         },
+        "index_cache_policy": (
+            "sequentially SHA-256 hash the 1.99 GB sorted row file before "
+            "timed blocks; OS page-cache state is uncontrolled; retain the "
+            "same memory map across all three blocks"),
         "ordinary_query_blocks": blocks,
         "ordinary_attempts": 3 * PREFIX,
         "ordinary_quotient_hits": sum(row["quotient_hits"] for row in blocks),
