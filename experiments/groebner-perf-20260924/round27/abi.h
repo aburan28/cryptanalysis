@@ -9,6 +9,6 @@ struct BranchStats {
 constexpr uint32_t ROOT_LIMIT = 256;
 constexpr uint32_t TERM_LIMIT = 1000000;
 #ifndef CONDITIONAL_PROOF_BUDGET
-#define CONDITIONAL_PROOF_BUDGET 1000000
+#    define CONDITIONAL_PROOF_BUDGET 1000000
 #endif
 constexpr uint64_t PROOF_BUDGET = CONDITIONAL_PROOF_BUDGET;

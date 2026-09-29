@@ -156,43 +156,53 @@ remain separate parts of the larger effort.
 
 ## Final-source physical M4 Pro measurement
 
-The admitted 31-pair confirmation verifies all 576 complete queries, including
-18 warmups. The six frozen 20-variable controls improve by 8.06–8.63× versus
-the unchanged sparse CPU path. Two smaller controls also improve; the wide-field
-case has a small 1.016× result in this run and was inconclusive in the initial
-implementation run. It is not a robust large improvement. All individual
+The formatting-corrected 31-pair confirmation verifies all 576 complete queries,
+including 18 warmups. The six frozen 20-variable controls improve by 7.61–8.60×
+versus the unchanged sparse CPU path. Two smaller controls also improve; the
+wide-field case has a small 1.010× result in this run and was inconclusive in
+the initial implementation run. It is not a robust large improvement. Individual
 bootstrap intervals are unadjusted for multiple comparisons.
 
 Host: physical Apple M4 Pro, 14 logical CPUs, macOS 26.6 ARM64, Python 3.13.1.
-One-minute load was 11.102 at entry and 10.613 at exit; all group boundaries passed.
+One-minute load was 6.395 at entry and 6.523 at exit; all group boundaries passed.
 Load admission does not establish exclusive access to the host.
 
 | Frozen control | Sparse CPU ms | Conditional ms | Paired gain [95% interval] |
 | --- | ---: | ---: | --- |
-| n31-m2-ell10-seed201 | 3.953 | 0.500 | 8.059 [7.797, 8.324] |
-| n31-m2-ell10-seed202 | 3.948 | 0.488 | 8.133 [7.860, 8.427] |
-| n31-m2-ell10-seed203 | 3.950 | 0.461 | 8.464 [8.163, 8.785] |
-| n63-m2-ell10-seed201 | 4.722 | 0.546 | 8.627 [8.399, 8.852] |
-| n63-m2-ell10-seed202 | 4.722 | 0.555 | 8.598 [8.305, 8.904] |
-| n63-m2-ell10-seed203 | 4.745 | 0.566 | 8.497 [8.346, 8.654] |
-| n31-m2-ell4-seed101 | 0.158 | 0.071 | 2.191 [2.073, 2.308] |
-| n11-m2-ell3-seed101 | 0.137 | 0.051 | 2.684 [2.570, 2.799] |
-| n83-m2-ell2-seed101 | 8.959 | 8.798 | 1.016 [1.007, 1.024] |
+| n31-m2-ell10-seed201 | 4.051 | 0.542 | 7.607 [7.342, 7.877] |
+| n31-m2-ell10-seed202 | 4.039 | 0.528 | 8.061 [7.745, 8.411] |
+| n31-m2-ell10-seed203 | 4.064 | 0.537 | 7.638 [7.500, 7.774] |
+| n63-m2-ell10-seed201 | 4.852 | 0.578 | 8.463 [8.262, 8.659] |
+| n63-m2-ell10-seed202 | 4.810 | 0.585 | 8.247 [8.093, 8.410] |
+| n63-m2-ell10-seed203 | 4.791 | 0.563 | 8.603 [8.404, 8.849] |
+| n31-m2-ell4-seed101 | 0.152 | 0.067 | 2.263 [2.146, 2.366] |
+| n11-m2-ell3-seed101 | 0.138 | 0.050 | 2.667 [2.523, 2.801] |
+| n83-m2-ell2-seed101 | 8.989 | 8.899 | 1.010 [1.002, 1.017] |
 
 Times are medians; ratios are paired geometric means. The n31/n63 labels
 identify field degrees, not subgroup-bit security. These are component
 queries, with no recovered discrete logarithm or paired rho run.
 
-The earlier checker independently reconstructed rows afresh for each branch.
-Its admitted physical run verified 576 queries and measured 5.23–6.23× gains on
-the six 20-variable controls. Its exact sources, journal and audit are retained
-in the task archive referenced by results/prior-attempts.json. The final checker
-uses independently decoded binary-increment row updates. The two implementations
-were each paired with the frozen baseline; their cross-run timings are not a
-paired estimate of the incremental checker improvement.
+The earlier checker reconstructed equation rows afresh for each branch. Its
+admitted physical run verified 576 queries and measured 5.23–6.23× gains on the
+six 20-variable controls. Its exact source archive is referenced by
+results/prior-attempts.json. After binary-increment row updates, a pre-format
+run verified another 576 queries and measured 8.06–8.63× gains. That report is
+retained directly in results/. The final formatting-corrected reports are in
+results/formatted/. The formatting fix changes only preprocessor indentation;
+both optimized native libraries have identical bytes before and after it.
+Each implementation/run is paired with the frozen baseline; cross-run numbers
+do not estimate the incremental checker improvement.
 
-A first final-source timing attempt was not admitted at load 30.012 on 14 CPUs
-and ran zero trials. Its admission receipt remains in results/. Final-source
-correctness-only queries and all five larger exact certificates are also retained.
-Every result includes source/binary identities; no archived native binary is
-reused as cross-platform correctness evidence.
+One timing attempt was not admitted at load 30.012 on 14 CPUs and ran zero
+trials. Its admission receipt remains in results/. Both final-source
+correctness-only queries and all five larger exact certificates are retained.
+Every result includes source/binary identities. Re-auditing an older source
+snapshot requires its corresponding trusted checkout; the CI audits the
+formatted final-source reports.
+
+Future GPU comparisons on eligible two-block systems must use this conditional
+CPU path as a competing baseline. A GPU win against the older full-cube CPU
+path alone cannot establish a win against the fastest tested CPU alternative.
+Three-block and F4 matrix-reduction experiments have different applicability
+and retain their own matched baselines.
