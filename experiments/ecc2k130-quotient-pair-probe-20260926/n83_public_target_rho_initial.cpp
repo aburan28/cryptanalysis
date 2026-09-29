@@ -2,7 +2,7 @@
 // Coordinates are the public G and Q from runs/n83_perf_prefix.json converted
 // by field.Onb(83).toCoords; no scalar or known-answer value is linked here.
 #define main ecc2k130_embedded_main
-#include "main.cu"
+#include "/Volumes/SSD990/crypto/ecc2k130/src/main.cu"
 #undef main
 
 int main(int argc, char **argv) {
@@ -30,9 +30,6 @@ int main(int argc, char **argv) {
         else if (i + 1 < argc && a == "--run-id") o.runId = (unsigned)atoi(argv[++i]);
         else if (i + 1 < argc && a == "--verify") o.verify = atoi(argv[++i]);
         else if (i + 1 < argc && a == "--dp-file") o.dpFile = argv[++i];
-        else if (i + 1 < argc && a == "--load") o.loadFiles.push_back(argv[++i]);
-        else if (i + 1 < argc && a == "--load-max")
-            o.loadMax = strtoull(argv[++i], NULL, 10);
         else if (i + 1 < argc && a == "--checkpoint") o.ckptFile = argv[++i];
         else if (a == "--bench") o.bench = true;
         else if (a == "--test") o.test = true;
@@ -49,7 +46,6 @@ int main(int argc, char **argv) {
     signal(SIGINT, onStop);
     signal(SIGTERM, onStop);
     setvbuf(stdout, NULL, _IOLBF, 0);
-    if (o.bench) o.dpWeight = 0;
     return runCurve<CfgF83>(o, px, py, qx, qy,
                             eccF83::ELL_DEC, eccF83::S_DEC,
                             eccF83::DP_WEIGHT, NULL);

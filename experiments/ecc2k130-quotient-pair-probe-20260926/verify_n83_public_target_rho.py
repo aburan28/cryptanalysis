@@ -19,12 +19,52 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+SOLVED_RE = (r"^\s*solved after (\d+) iterations of (\d+) walks in "
+             r"([0-9.]+) s \((\d+) distinguished points\)\s*$")
+STOPPED_RE = (r"^stopping: (\d+) iterations of (\d+) walks, "
+              r"(\d+) points reported\s*$")
+
+
+def worker_result(log_path, binary, driver_source, run_id):
+    log = log_path.read_text()
+    solved = re.findall(SOLVED_RE, log, re.MULTILINE)
+    stopped = re.findall(STOPPED_RE, log, re.MULTILINE)
+    if len(solved) + len(stopped) != 1:
+        raise SystemExit(f"worker log is not terminal: {log_path}")
+    if solved:
+        iterations, walks, seconds, points = solved[0]
+        status = "solved"
+    else:
+        iterations, walks, points = stopped[0]
+        seconds = None
+        status = "stopped"
+    return {
+        "run_id": run_id,
+        "status": status,
+        "iterations_per_walk": int(iterations),
+        "walks": int(walks),
+        "walk_iterations": str(int(iterations) * int(walks)),
+        "distinguished_points": int(points),
+        "online_seconds_from_runner_if_solved": (
+            float(seconds) if seconds is not None else None),
+        "log_sha256": digest(log_path),
+        "binary_sha256": digest(binary),
+        "driver_source_sha256": digest(driver_source),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--log", type=Path, required=True)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--driver-source", type=Path, required=True)
     parser.add_argument("--rho-source", type=Path, required=True)
+    parser.add_argument("--worker-log", type=Path, action="append", default=[])
+    parser.add_argument("--worker-binary", type=Path, action="append", default=[])
+    parser.add_argument("--worker-driver-source", type=Path, action="append",
+                        default=[])
+    parser.add_argument("--worker-dp", type=Path, action="append", default=[])
+    parser.add_argument("--worker-run-id", type=int, action="append", default=[])
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     reference_path = HERE / "runs" / "n83_perf_prefix.json"
@@ -40,21 +80,45 @@ def main():
     order = int(reference["subgroup_order"])
     log = args.log.read_text()
     scalars = re.findall(r"^\s*k = (\d+)\s*$", log, re.MULTILINE)
-    finishes = re.findall(
-        r"^\s*solved after (\d+) iterations of (\d+) walks in ([0-9.]+) s "
-        r"\((\d+) distinguished points\)\s*$", log, re.MULTILINE)
-    if (len(scalars) != 1 or len(finishes) != 1 or
+    direct_finishes = re.findall(SOLVED_RE, log, re.MULTILINE)
+    reloaded_collision = "collision found while reloading" in log
+    if (len(scalars) != 1 or len(direct_finishes) > 1 or
+            not (direct_finishes or reloaded_collision) or
             "verified [k]P == Q" not in log):
         raise SystemExit("rho log has no single completed, internally verified solve")
     k = int(scalars[0])
-    iterations_per_walk, walks, seconds, distinguished = finishes[0]
+    if args.worker_log:
+        if not (len(args.worker_log) == len(args.worker_binary) ==
+                len(args.worker_driver_source) == len(args.worker_dp) ==
+                len(args.worker_run_id)):
+            raise SystemExit("each worker needs log, binary, driver source, DP corpus, and run ID")
+        if len(set(args.worker_run_id)) != len(args.worker_run_id):
+            raise SystemExit("worker run IDs must be distinct")
+        worker_inputs = zip(args.worker_log, args.worker_binary,
+                            args.worker_driver_source, args.worker_run_id)
+    else:
+        if not direct_finishes:
+            raise SystemExit("a merged solve needs terminal worker logs")
+        worker_inputs = [(args.log, args.binary, args.driver_source, None)]
+    workers = [worker_result(*item) for item in worker_inputs]
+    if args.worker_dp:
+        for worker, dp in zip(workers, args.worker_dp):
+            size = dp.stat().st_size
+            if size % 32 or size // 32 < worker["distinguished_points"]:
+                raise SystemExit(f"incomplete or inconsistent DP corpus: {dp}")
+            worker["dp_records_total"] = size // 32
+            worker["dp_corpus_sha256"] = digest(dp)
+    if direct_finishes and digest(args.log) not in {
+            worker["log_sha256"] for worker in workers}:
+        raise SystemExit("direct solving worker is absent from worker logs")
     curve = curves.Curve(field.Onb(83))
     assert curve.onCurve(g) and curve.onCurve(q)
     assert curve.mul(g, order) is None
     assert curve.mul(q, order) is None
     assert 0 < k < order
     assert curve.mul(g, k) == q
-    total_walk_iterations = int(iterations_per_walk) * int(walks)
+    total_walk_iterations = sum(int(worker["walk_iterations"])
+                                for worker in workers)
     report = {
         "kind": "independent_n83_public_target_rho_replay",
         "curve_id": CURVE_ID,
@@ -65,11 +129,16 @@ def main():
         "public_target": list(q),
         "recovered_scalar": str(k),
         "independent_scalar_replay_passed": True,
-        "rho_online_seconds_from_runner": float(seconds),
+        "rho_online_seconds_from_runner_if_single_worker": (
+            float(direct_finishes[0][2]) if len(workers) == 1 and
+            direct_finishes else None),
         "rho_walk_iterations": str(total_walk_iterations),
         "rho_walk_iterations_log2": math.log2(total_walk_iterations),
-        "rho_distinguished_points": int(distinguished),
-        "work_boundary": "rho walk iterations only; no IC relation yield or IC solve-work claim",
+        "rho_distinguished_points": sum(worker.get(
+            "dp_records_total", worker["distinguished_points"])
+                                         for worker in workers),
+        "workers": workers,
+        "work_boundary": "sum of all worker walk iterations including unsuccessful workers; excludes corpus hashing and collision replay; no IC relation yield or IC solve-work claim",
         "complete_IC_work_log2": None,
         "reference_sha256": digest(reference_path),
         "rho_log_sha256": digest(args.log),

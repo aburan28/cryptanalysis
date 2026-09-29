@@ -448,8 +448,20 @@ The bridge was compiled against the tracked `crypto` engine at commit
 The local four-thread 16-launch collection prefix measured 67,108,864 walk
 iterations in 1.4 s, or 46.838 million iterations/s, with 1,114 distinguished
 points and zero drops. This prefix is a throughput diagnostic, not a DLP.
-The checkpointed same-target run is in progress; its scalar and full work
-remain unreported until independent replay passes.
+The [stopped-attempt receipt](runs/n83_public_target_rho_attempt.json) records
+three same-target workers with distinct run IDs and preserved failed work:
+**91,142,225,920** total walk iterations (`2^36.407`), **1,467,130** DP
+records, zero dropped reports, and a complete three-corpus merge with
+1,467,130 distinct orbits and no collision. Every worker exited through its
+checkpoint path. The multiworker experiment was stopped when host load caused
+throughput to collapse; its DP files and checkpoints remain available locally
+for resume. This is an unsuccessful rho attempt, **not** a measured DLP,
+ordinary IC relation, or complete-work success below `2^61`. The attempt
+receipt retains source, binary, log, corpus, and checkpoint hashes; the large
+binary corpora are not bundled in this PR.
+The exact first-worker [driver source snapshot](n83_public_target_rho_initial.cpp)
+is retained beside the portable bridge; the verifier matches both source
+hashes to their respective worker rows.
 
 For a new local run, set `RHO_ENGINE_SRC` to the `src` directory of a
 checkout of the pinned `crypto` commit, then build and run from this repo:
@@ -475,7 +487,12 @@ RHO_ENGINE_SRC=/path/to/crypto/ecc2k130/src
 
 The final replay command must fail while the run is incomplete. The run
 ID, DP file, and checkpoint form one frozen rho workload; use new paths and
-a new run ID for an independent repetition.
+a new run ID for an independent repetition. For a parallel solve, pass one
+`--worker-log`, `--worker-binary`, `--worker-driver-source`, and
+`--worker-dp`, and `--worker-run-id` per worker after all workers have
+reached terminal logs;
+the replay tool sums **every** worker's walk iterations, including failed
+work. A merge log with a recovered scalar can be supplied as `--log`.
 
 The [exact degree-83 L1000 support run](runs/n83_dyadic_G_pair_scalar_support_L1000.json)
 replaces the earlier L32-ratio extrapolation. It uses the **same exact base**

@@ -699,6 +699,47 @@ def verify_n83_five_sum_symmetric():
                 "build_seconds_including_orbit_partition"]}
 
 
+def verify_n83_rho_stopped_attempt():
+    path = HERE / "runs" / "n83_public_target_rho_attempt.json"
+    report = json.loads(path.read_text())
+    reference_path = HERE / "runs" / "n83_perf_prefix.json"
+    reference = json.loads(reference_path.read_text())
+    assert report["source_sha256"] == sha(
+        HERE / "freeze_n83_public_target_rho_attempt.py")
+    assert report["portable_driver_source_sha256"] == sha(
+        HERE / "n83_public_target_rho.cpp")
+    assert report["reference_sha256"] == sha(reference_path)
+    assert report["curve_id"] == reference["curve_id"]
+    assert report["curve_identity_record"] == reference["curve_identity_record"]
+    assert report["public_target"] == reference["workload"]["target"]
+    assert report["isogeny"] == "none"
+    assert report["workload_id"] == hashlib.sha256(frozen(
+        report["workload"])).hexdigest()[:12]
+    workers = report["workers"]
+    assert [row["run_id"] for row in workers] == [32028, 32029, 32030]
+    assert all(row["status"] == "stopped" for row in workers)
+    assert workers[0]["driver_source_sha256"] == sha(
+        HERE / "n83_public_target_rho_initial.cpp")
+    assert all(row["driver_source_sha256"] == sha(
+        HERE / "n83_public_target_rho.cpp") for row in workers[1:])
+    for row in workers:
+        assert int(row["walk_iterations"]) == row[
+            "iterations_per_walk"] * row["walks"]
+        assert row["dp_records"] == row["distinguished_points"]
+    total = sum(int(row["walk_iterations"]) for row in workers)
+    distinct = sum(row["dp_records"] for row in workers)
+    assert str(total) == report["total_rho_walk_iterations"]
+    assert math.isclose(math.log2(total), report[
+        "total_rho_walk_iterations_log2"], abs_tol=1e-12)
+    assert distinct == report["distinct_dp_orbits_after_full_merge"]
+    assert report["recovered_scalar"] is None
+    assert report["verified_single_target_dlp"] is False
+    assert report["ordinary_factor_base_relation_yield"] is None
+    assert report["complete_IC_work_log2"] is None
+    return {"walk_iterations": str(total), "log2": math.log2(total),
+            "distinct_dp_orbits": distinct, "verified_dlp": False}
+
+
 def main():
     geometry = {}
     for n in (53, 83):
@@ -763,6 +804,7 @@ def main():
     five_sum_candidate = verify_five_sum_candidate()
     five_sum_packed = verify_n83_five_sum_packed()
     five_sum_symmetric = verify_n83_five_sum_symmetric()
+    rho_attempt = verify_n83_rho_stopped_attempt()
     print(json.dumps({"n53_curve_id": geometry[53]["report"]["curve_id"],
                       "n83_curve_id": geometry[83]["report"]["curve_id"],
                       "n83_actual_B": geometry[83]["report"]["factor_base"][
@@ -780,7 +822,8 @@ def main():
                       "n83_five_sum": five_sum_n83,
                       "n53_five_sum_candidate_id": five_sum_candidate,
                       "n83_five_sum_packed": five_sum_packed,
-                      "n83_five_sum_symmetric": five_sum_symmetric}))
+                      "n83_five_sum_symmetric": five_sum_symmetric,
+                      "n83_rho_attempt": rho_attempt}))
 
 
 if __name__ == "__main__":
