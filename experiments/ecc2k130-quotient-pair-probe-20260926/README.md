@@ -1,13 +1,13 @@
 # ECC2K-130 quotient pair-sum gate, 2026-09-26
 
 This experiment supplies exact four-point and five-point quotient pair-sum methods on
-public Koblitz curves, three verified degree-53 target-seeded discrete logarithm
+public Koblitz curves, four verified degree-53 target-seeded discrete logarithm
 pilots, and a separate degree-131 support bound. The degree-53 pilots have
 exact `IC1` method identities but incomplete online and operation accounting.
 The same public degree-83 target has a verified rho logarithm, but no
 ordinary degree-83 factor-base relation or index-calculus recovery. There is
 no ECC2K-130 recovered logarithm, calibrated IC operation comparison with
-rho, or demonstrated IC work below `2^61`. The other stage receipts retain
+rho, or demonstrated ECC2K-130 IC work below `2^61`. The other stage receipts retain
 `candidate_id: null`.
 
 ## What the quotient index does
@@ -560,6 +560,64 @@ calls**, **`2^49.360` inversions**, **`2^52.168` additions**, and
 in cache behavior. These are separate units, and the 4,372.49-second index
 build is additional cold work. Zero natural hits mean there is still no
 observed n83 IC solve or calibrated full-work `2^x` claim.
+
+### Independent short-block affine restarts (Q1033 and Q1034)
+
+The [restart runner](dyadic_affine_restart.py) freezes independent uniform
+`alpha0` and nonzero `delta` for each 4,096-query affine block, then queries
+`alpha_j*G-Q` against a complete G-pair point-witness index. It stops at the
+first ordinary hit and independently replays the recovered scalar. The
+[n53 inputs](runs/n53_affine_restart_L128_inputs.json) and
+[n83 inputs](runs/n83_affine_restart_L1000_inputs.json) were frozen before
+their measured queries; their row digests preserve every random block,
+including unused n53 blocks after the successful hit.
+
+There is a tighter random-input work bound for this executable restart
+policy. If the exact G-pair support has size `M` in the prime subgroup of
+order `r`, a block of `T` affine queries has hit count `X` with
+`E[X]=mu=T*M/r` and `Var(X)<=mu`. The second-moment inequality gives
+`P(X>0)>=mu/(1+mu)`. Independent blocks therefore need at most
+**`r/M+T` expected scan attempts**; after `K` blocks their failure
+probability is at most `(1+mu)^(-K)`. Unlike the earlier long-block
+`2^49.321` bound, this prices every restart through the measured block-start
+scalar multiplications. The 95% count uses an integer `K` chosen from the
+exact support and recorded in each run receipt.
+
+| Exact curve / proposal | Actual `B` / folded columns | Exact G-pair support `M` | Ordinary attempts and result | One-target online / reusable index setup |
+| --- | ---: | ---: | --- | ---: |
+| `EC1N53Ckb1hf77aab617904` / Q1034 | 13,674 / 129 | 90,010,431 | 167,088; one verified natural relation and scalar `3400509474685` | 8.56 s / 34.74 s |
+| `EC1N83Ckb1h876c2921cb64` / Q1033 | 166,166 / 1,001 | 13,752,087,235 | 65,536; zero hits, censored | 5.96 s / 1.89 s to load/check the existing index |
+
+The [n53 receipt](runs/n53_affine_restart_L128_stage.json) records the
+complete one-target DLP and all failed attempts: **`2^17.350` actual scan
+attempts**, 1,044,875 cold logical group-add calls (`2^19.995`), and
+2,089,572 cold field-multiplication API calls (`2^20.994`). These are
+different operation units; no calibrated common-operation total or paired
+one-target rho speedup is claimed. The natural hit matched an earlier
+independent n53 recovery, but that scalar was read only after the search.
+The n53 index had 849,156 quotient keys in 20,379,744 retained bytes.
+
+For **n83**, the exact `M` gives **`2^47.321` expected scan attempts** and
+**`2^48.904` attempts for at least 95% success** under fresh independent
+blocks. That is a two-bit tightening of the earlier conservative expected
+addition bound. The [n83 receipt](runs/n83_affine_restart_L1000_stage.json)
+measured **82.54 μs per ordinary attempt** against the full 82,843,900-key
+index, including block starts. Transferring that bounded-prefix rate gives
+**`2^33.756` seconds** for the expected-upper scan, or about 460 years at
+this Python rate. Conditional operation screens are `2^48.358` field
+multiplication API calls, `2^47.358` inversions, and `2^53.679` word
+rotations; index construction and long-run cache effects are additional.
+The n83 run found no relation, so neither this tighter work estimate nor the
+verified rho DLP is a completed n83 index-calculus solve. The Q1033 and
+Q1034 stage receipts retain `candidate_id: null`, exact point-set and
+coefficient digests, `isogeny: "none"`, and `PDP3qpair` / `RCaffine` stage
+codes. The complete n53 method is separately named
+[`IC1N53Ckb1fb13674PDP3qpairRCaffineLAgaussTDdirectISO0h9c402d124771`](candidates/IC1N53Ckb1fb13674PDP3qpairRCaffineLAgaussTDdirectISO0h9c402d124771.json)
+with a [candidate-linked run](runs/n53_affine_restart_L128_candidate.json).
+Its one-target interval includes target subgroup validation, Q-base
+enumeration, failed blocks, relation replay, and independent scalar replay.
+The measured group/field call vectors remain separate, and no paired rho
+online wall comparison or common-operation total is asserted.
 
 ### Same-target degree-83 rho reference
 
