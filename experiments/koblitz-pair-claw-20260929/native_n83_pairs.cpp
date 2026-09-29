@@ -20,7 +20,10 @@
 
 using U = uint64_t;
 using V = unsigned __int128;
-constexpr unsigned N = 83, L = 166, K = 24097;
+#ifndef ECC2K83_ORBITS
+#define ECC2K83_ORBITS 24097
+#endif
+constexpr unsigned N = 83, L = 166, K = ECC2K83_ORBITS;
 constexpr U HIGH_MASK = (U(1) << 19) - 1;
 constexpr V CYCLE_MASK = (V(1) << N) - 1;
 

@@ -668,6 +668,53 @@ the isogeny is `"none"`. Q1049 and Q1050 remain proposals with
 stages have not been measured. No nominal base dimension or folded column
 count is being used as `fb<B>` in an `IC1` name.
 
+### Doubled known-log orbit base (Q1051)
+
+The [extended base receipt](runs/n83_knownlog_orbit_base_k48194.json)
+uses the same n=83 field, curve, generator, seed stream, and
+`isogeny: "none"` as Q1050. It contains **48,194 distinct signed-Frobenius
+orbits**, or **B=8,000,204 actual subgroup points before folding**.
+Its enumerated-set digest is
+`7e3c95f988225da1d586578529953ad61ae5ed62ca740eb92c2aea6d841a5a02`.
+The [independent replay](runs/n83_knownlog_orbit_base_k48194_verified.json)
+checked every canonical key and log against the seeded scalar stream and
+confirmed that all 24,097 original orbits and logs are a subset. A
+[nonzero-offset planted control](runs/n83_large_orbit_nonzero_offset_planted.json)
+used two orbits beyond the original base, found one exact quotient hit,
+and independently replayed its scalar. It is a correctness control, not
+natural target yield.
+
+The [Q1051 work screen](n83_large_knownlog_base_screen.json) estimates
+95.24% success for **one $2^{31}$-descriptor table** scanned against
+**59 chunks of $2^{31}$ query representatives**. It charges
+**$2^{47.999}$ native field add/multiply/square calls**, compared with
+$2^{48.576}$ for Q1050's four-shard 88-chunk plan. The larger base
+raises the modeled four-point multiset count from 4.41 to 70.59 and
+makes the one-shard query prefix fit within its exact pair domain.
+These success rates and field-call totals are conditional models.
+
+Public-target [bounded measurements](runs/n83_orbit_k48194_chunk_M31_R20_tstart0_qstart0_b20_h14_rb8.json)
+at $2^{28}$ and $2^{31}$ table descriptors found zero exact hits.
+At $2^{31}$, the Bloom filter used 5.37 GB, peak RSS was 5.69 GB,
+and build, $2^{20}$-representative query, and exact replay took
+809.00, 6.39, and 408.66 seconds. Swap-outs stayed flat. Scaling
+these rates to the 59-chunk model gives **9.76 days**; the full-size
+query throughput is still unmeasured. Twice the expected Bloom-positive
+candidate capacity yields an illustrative **7.29 GB** full-chunk
+filter-phase peak, not a memory bound. A
+[paired worker check](runs/n83_large_orbit_worker_count_paired.json)
+on identical $2^{24}$-descriptor inputs found a **1.370× median
+query-phase speedup** with 14 workers versus eight, with identical
+Bloom-positive and exact-hit counts. Applying that bounded ratio to
+the $2^{31}$ filter rate gives **7.35 projected days**, conditional on
+the same speedup holding at full size. The
+[campaign driver](n83_large_orbit_campaign.py) checks competing start
+markers and interrupts its child if swap-outs rise by more than 1,024
+pages or system-volume free space falls below 512 MiB. A failed chunk's
+consumed work remains unknown. Q1051 has `candidate_id: null` until a
+natural relation recovers the public target and complete IC work is
+accounted for.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
@@ -699,4 +746,10 @@ python3 experiments/koblitz-pair-claw-20260929/n83_query_orbit_reuse_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_orbit_campaign.py
 # Once host memory and system-volume space are sufficient for M=2^31:
 # ./sage -python experiments/koblitz-pair-claw-20260929/n83_orbit_campaign.py --run-next
+./sage -python experiments/koblitz-pair-claw-20260929/build_n83_knownlog_base_k48194.py
+./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_knownlog_base_k48194.py
+./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_large_orbit_planted.py
+python3 experiments/koblitz-pair-claw-20260929/n83_large_knownlog_base_screen.py
+./sage -python experiments/koblitz-pair-claw-20260929/n83_large_orbit_campaign.py
+# --run-next launches one guarded Q1051 rectangle when no competing marker exists.
 ```
