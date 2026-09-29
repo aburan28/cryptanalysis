@@ -147,6 +147,9 @@ std::string hex(V value) {
 struct Keyer {
     std::array<V, N> pb_to_cycle{};
     std::array<unsigned, N> coord_at_cycle{};
+#ifdef ECC2K83_FAST_KEYER
+    std::array<std::array<V, 256>, (N + 7) / 8> pb_byte_to_cycle{};
+#endif
     Keyer() {
         unsigned index = 1;
         for (unsigned j = 0; j < N; ++j) {
@@ -167,8 +170,33 @@ struct Keyer {
                 onb &= onb - 1;
             }
         }
+#ifdef ECC2K83_FAST_KEYER
+        for (unsigned byte = 0; byte < pb_byte_to_cycle.size(); ++byte)
+            for (unsigned value = 1; value < 256; ++value) {
+                unsigned bit = 8 * byte + unsigned(__builtin_ctz(value));
+                pb_byte_to_cycle[byte][value] =
+                    pb_byte_to_cycle[byte][value & (value - 1)] ^
+                    (bit < N ? pb_to_cycle[bit] : V(0));
+            }
+        // Check every basis vector and mixed coordinates before any query.
+        for (unsigned bit = 0; bit < N; ++bit) {
+            F x = bit < 64 ? F{U(1) << bit, 0} :
+                             F{0, U(1) << (bit - 64)};
+            need(cycle_bits_lookup(x) == cycle_bits_reference(x),
+                 "byte-table basis conversion mismatch");
+        }
+        U seed = 0x83b1057ca11e531dull;
+        for (unsigned i = 0; i < 256; ++i) {
+            seed = seed * 6364136223846793005ull + 1;
+            U lo = seed;
+            seed = seed * 6364136223846793005ull + 1;
+            F x{lo, seed & HIGH_MASK};
+            need(cycle_bits_lookup(x) == cycle_bits_reference(x),
+                 "byte-table mixed conversion mismatch");
+        }
+#endif
     }
-    V canonical_x(F x) const {
+    V cycle_bits_reference(F x) const {
         V bits = 0;
         U lo = x.a, hi = x.b;
         while (lo) {
@@ -181,6 +209,23 @@ struct Keyer {
             bits ^= pb_to_cycle[64 + bit];
             hi &= hi - 1;
         }
+        return bits;
+    }
+#ifdef ECC2K83_FAST_KEYER
+    V cycle_bits_lookup(F x) const {
+        V coords = V(x.a) | (V(x.b) << 64);
+        V bits = 0;
+        for (unsigned byte = 0; byte < pb_byte_to_cycle.size(); ++byte)
+            bits ^= pb_byte_to_cycle[byte][U(coords >> (8 * byte)) & 255];
+        return bits;
+    }
+#endif
+    V canonical_x(F x) const {
+#ifdef ECC2K83_FAST_KEYER
+        V bits = cycle_bits_lookup(x);
+#else
+        V bits = cycle_bits_reference(x);
+#endif
         V best = bits;
         for (unsigned j = 1; j < N; ++j) {
             bits = ((bits << 1) | (bits >> (N - 1))) & CYCLE_MASK;

@@ -291,7 +291,7 @@ measurement rows:
 the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
 requires exactly one of those IDs to be non-null. New comparison rows
 must use the `IC1` ID and carry the old `Q` lineage separately. Current
-n=83 stage records use `Q1051` through `Q1055`, with
+n=83 stage records use `Q1051` through `Q1056`, with
 `candidate_id: null`.
 
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
@@ -836,6 +836,7 @@ attempts, and independent scalar replay.
 | n=83 Q1052 | No natural hit yet; median $2^{44.974}$, 95% $2^{47.049}$ | Predicted native field-call stage only; full-size throughput unmeasured |
 | n=83 Q1054 | Planted scalar replay passed; bounded query 1.176× faster at 14 workers; 95% $2^{47.071}$ | Predicted x-only field-call stage; full-size throughput and natural yield unmeasured |
 | n=83 Q1055 | M=$2^{20}$ median query 1.053× faster; one M=$2^{28}$ pair gave 1.140× query and 1.054× full native-stage speedups; planted scalar replay passed | Measured bounded stages; reverse-order M=$2^{28}$ repeat interrupted; predicted 95% Bloom bit probes $2^{47.597}$, distinct from field calls |
+| n=83 Q1056 | Exact fast-key equality on 1,048,576 field inputs; 1.508× isolated key-kernel speedup | Microbenchmark only; bounded full-query speedup and relation yield unmeasured |
 
 The [Q1052 chunk runner](run_n83_two_shard_chunk.py) and
 [campaign driver](n83_two_shard_campaign.py) retain source hashes,
@@ -1010,6 +1011,32 @@ upper model for the interruption to the existing same-target Q1051 work
 and 117 hypothetical future full rectangles gives **$2^{47.173}$ modeled
 native field calls**. It is neither measured consumed work nor a complete
 operation-equivalent DLP cost.
+
+### Byte-table quotient-key conversion (Q1056)
+
+The optional `ECC2K83_FAST_KEYER` path in [the native pair source](native_n83_pairs.cpp)
+uses a 44 KiB byte lookup to convert polynomial-basis coordinates to the
+Frobenius-cycle bit vector. The minimum-rotation key, group arithmetic,
+Bloom filter, and exact replay are unchanged. The default build retains
+the original conversion. The [standalone control](runs/n83_fast_keyer_microbenchmark.json)
+matched all 1,048,576 fast keys to the original method and checked 1,024
+Frobenius images. Four passes per variant measured median **96.009 ms**
+for the reference and **63.665 ms** for the lookup path over 1,048,576
+keys, a **1.508× isolated key-kernel speedup**. The reference range was
+95.199–96.065 ms; the fast range was 63.230–63.736 ms. The checked
+[Sage runtime receipt](runs/n83_fast_keyer_runtime_info.json) was saved
+before measurement.
+
+This does not measure the query kernel, relation yield, or complete DLP
+work. A [guarded paired query benchmark](bench_n83_fast_keyer_paired.py)
+is prepared on the same M=$2^{20}$, R=$2^{22}$, 14-worker workload as
+Q1054. It requires at least 2 GiB free on the system volume and has not
+run while that guard fails. Its [checked-Sage preflight](runs/n83_fast_keyer_paired_preflight.json)
+refused to start with 1.404 GB free and recorded no native work. The Q1054
+campaign now checks the native pair and Bloom-core source digests for each
+future full-size receipt. Both native full-query variants passed an
+[ARM64 compilation check](runs/n83_fast_keyer_compile_check.json); that
+check does not establish full-query correctness or performance.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py

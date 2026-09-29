@@ -16,6 +16,8 @@ HERE = Path(__file__).resolve().parent
 RUNS = HERE / "runs"
 SAGE = Path("/Volumes/SSD990/cryptanalysis/sage")
 RUNNER = HERE / "run_n83_signed_x_chunk.py"
+PAIRS = HERE / "native_n83_pairs.cpp"
+CORE = HERE / "native_n83_bloom_core.hpp"
 FIRST_Q1051 = RUNS / (
     "n83_orbit_k48194_chunk_M31_R30_tstart0_qstart0_b20_h14_rb8.json")
 SCREEN = HERE / "n83_signed_x_screen.json"
@@ -82,6 +84,8 @@ def inspect(plan, screen):
             assert record["public_target"] == screen["public_target"]
             assert record["native_source_sha256"] == screen[
                 "native_source_sha256"]
+            assert record["native_pairs_sha256"] == sha(PAIRS)
+            assert record["bloom_core_sha256"] == sha(CORE)
             assert record["table_start"] == 0
             assert record["table_descriptors"] == M
             assert record["query_start"] == chunk["query_start"]
