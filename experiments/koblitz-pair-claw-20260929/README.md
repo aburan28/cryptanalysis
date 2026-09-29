@@ -292,29 +292,72 @@ measured **95.4 µs per table sample** and **140.4 µs per target-side
 sample** over 100,000 samples of each. It found zero matches at that small
 cap, and no n=83 DLP.
 
-The [known-log work screen](n83_knownlog_conditional_screen.json) removes
-the 24,097 rank-collection queries from the earlier table model. It still
-assumes independent uniform quotient keys, a fixed target that has a
-four-point representation, and 95% match probability after the modeled
-number of queries. The table is target independent and charged once.
+### X-only keys, unique pair schedules, and corrected work estimate
 
-| Distinct table keys | Key bytes alone | Ideal cold table plus one-target samples | Unit field-API work if each inversion costs one unit |
-| ---: | ---: | ---: | ---: |
-| $2^{20}$ | 21 MiB | $2^{55.21}$ | $2^{59.73}$ |
-| $2^{24}$ | 336 MiB | $2^{51.21}$ | $2^{55.73}$ |
-| $2^{27}$ | 2.6 GiB | $2^{48.21}$ | $2^{52.73}$ |
-| $2^{30}$ | 21 GiB | $2^{45.21}$ | $2^{49.73}$ |
-| about $2^{35.49}$ | 943 GiB | $2^{39.79}$ | $2^{44.28}$ |
+The [stage proposal record](stage_proposals.json) records these measured
+stages as **Q1044** on `EC1N53Ckb1hf77aab617904` and **Q1045** on
+`EC1N83Ckb1h876c2921cb64`. Both reuse the exact known-log bases from
+Q1042 and Q1043, with actual pre-folding B and folded columns recorded
+separately and `isogeny: "none"`. Their candidate IDs remain null because
+this optimized schedule has not completed a one-target pipeline.
 
-These are conditional work proxies, **not a measured n=83 solve**. The
-100,000-sample stage did not establish a relation yield, and the public
-target's four-point representability in this particular base is unknown.
-Field inversion cost, table-build duplicates, memory overhead, and
-large-table performance are unpriced. At $2^{27}$ keys, the measured
-small-table Python rate extrapolates to roughly 1,450 one-core years even
-though the optimistic operation proxy is below $2^{61}$. The active gate
-remains a verified ordinary n=83 relation and complete scalar replay with
-all work charged.
+The signed-Frobenius quotient key needs only the x coordinate: negation
+leaves x unchanged, and the least normal-basis x rotation identifies the
+orbit. The [paired benchmark](runs/n53_n83_batch_xkey_perf.json) checked
+the x-only key against the original full-point key on 32,768 table pairs
+and 32,768 target-side pairs per curve. Three timing repetitions on the
+same pairs give n=53 target-side medians of **89.5 µs** (range 89.4–91.5)
+for the full key and **79.1 µs** (78.9–80.2) for x-only. At n=83 they
+give **138.3 µs** (137.3–138.5) and **119.3 µs** (119.2–119.6).
+Batch inversion was also measured, but the local ONB inversion costs only
+about 2.29 multiplication-call times at n=83. Its extra multiplications
+made the 256-point batch slower at **131.0 µs** (129.4–131.2) than
+direct x-only addition. The [field calibration](runs/n53_n83_field_unit_perf.json)
+records the local timing ratios.
+
+The [unique schedule](runs/n53_n83_unique_schedule_perf.json) permutes
+zero-pair quotient descriptors and unordered query-pair ranks without
+repeats. At n=83 its three-repetition medians were **77.1 µs per table
+descriptor** (range 76.9–77.3) and **119.6 µs per target query**
+(118.9–119.8), over 32,768 of each; all table descriptors and
+query ranks were distinct. The [exhaustive n=23 receipt](runs/n23_pair_schedule_verified.json)
+from [the verifier](verify_pair_schedule.py)
+compared all 52,003 unordered base pairs with the 1,127
+nonidentity quotient descriptors and found the same 1,094 distinct keys.
+The n=83 base still has no measured target relation.
+
+The previous screen treated repeated queries as independent even after
+the finite query-pair domain had been exhausted. That gave impossible 95%
+success estimates for small tables. The [corrected screen](n83_knownlog_conditional_screen.json)
+uses the exact **8,000,410,005,253** unordered query pairs and a cap of
+**48,195,228,947** nonidentity zero-pair quotient descriptors. Its
+random-base heuristic has an average of **4.412** distinct four-point
+multisets for a fixed target. Each has six zero-pair/query-pair
+partitions. Indexing fraction $f$ of zero-pair keys and visiting fraction
+$t$ of unique query pairs gives modeled success
+$1-\exp[-4.412(1-(1-ft)^6)]$. This is a prediction, not measured yield.
+
+| Distinct table keys | Modeled maximum success after all query pairs | Unique target queries for 95% | Conditional sampled-stage Python multiplication-time equivalents | x-key bytes alone |
+| ---: | ---: | ---: | ---: | ---: |
+| $2^{24}$ | 0.92% | impossible | unknown | 176 MiB |
+| $2^{30}$ | 42.76% | impossible | unknown | 11 GiB |
+| $2^{32}$ | 84.92% | impossible | unknown | 44 GiB |
+| $2^{33}$ | 95.28% | $2^{42.82}$ | $2^{46.55}$ | 88 GiB |
+| $2^{34}$ | 98.34% | $2^{41.82}$ | $2^{45.55}$ | 176 GiB |
+| about $2^{35.49}$ | 98.79% | $2^{40.33}$ | $2^{44.09}$ | 494 GiB |
+
+The model needs at least **8,314,903,507 distinct table keys**
+($2^{32.95}$) to reach 95% even after exhaustive query enumeration.
+At $2^{33}$ keys, the 32-byte illustrative packed table would use **256
+GiB** before hash or sorting overhead. The $2^{46.55}$ number divides
+the measured small-stage Python time by the measured local n=83 field
+multiplication-call time; it includes base decoding, pair arithmetic,
+keying, and rank scheduling in those stage samples. It omits large-table
+lookup, duplicate keys, base construction, and final relation replay, so
+it is **not** a complete field-operation count or a demonstrated
+sub-$2^{61}$ solve. Extrapolating the same small-stage rate gives about
+**29.4 one-core years** at $2^{33}$ keys. The public target's actual
+four-point representability remains unverified.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
@@ -322,5 +365,9 @@ all work charged.
 ./sage -python experiments/koblitz-pair-claw-20260929/build_n83_knownlog_base.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_knownlog_base.py
 ./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_knownlog.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_batch_xkey.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_field_unit.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_unique_schedule.py
+./sage -python experiments/koblitz-pair-claw-20260929/verify_pair_schedule.py
 python3 experiments/koblitz-pair-claw-20260929/n83_knownlog_screen.py
 ```
