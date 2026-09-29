@@ -10,7 +10,7 @@ tmp="$out.tmp"
 trap 'rm -f "$tmp"' EXIT
 # Ship source, including the currently uncommitted fork changes, but never the
 # macOS build, credentials, Git history, or prior experiment output.
-tar -C "$source_dir" -czf "$tmp" \
+COPYFILE_DISABLE=1 tar -C "$source_dir" -czf "$tmp" --no-xattrs --no-acls \
   --exclude='./.git' --exclude='./build' --exclude='./build-deps' \
   --exclude='./local' --exclude='./venv' --exclude='./logs' \
   --exclude='./upstream' --exclude='./.sage' --exclude='./__pycache__' \

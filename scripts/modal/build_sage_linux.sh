@@ -3,7 +3,9 @@ set -euo pipefail
 
 source_dir=/opt/sage-binary
 mkdir -p "$source_dir"
+echo 'Extracting Sage source archive'
 tar -xzf /opt/modal/sage-source.tar.gz -C "$source_dir"
+echo 'Sage source extracted'
 cd "$source_dir"
 test -x ./configure
 test -f src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
