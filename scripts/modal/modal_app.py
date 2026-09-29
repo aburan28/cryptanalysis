@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 import modal
-from build_image_step import build_sage
+from build_image_step import build_sage, build_sage_packages
 
 
 HERE = Path(__file__).resolve().parent
@@ -39,6 +39,15 @@ image = (
     .run_function(build_sage, args=("flint",), cpu=8, memory=32768, timeout=86400)
     .run_function(build_sage, args=("gf2x",), cpu=8, memory=32768, timeout=86400)
     .run_function(build_sage, args=("highs",), cpu=8, memory=32768, timeout=86400)
+    .run_function(build_sage_packages, args=((
+        "libpng", "cddlib", "curl", "libatomic_ops", "info",
+        "primesieve", "givaro", "gsl",
+    ),), cpu=8, memory=32768, timeout=86400)
+    .run_function(build_sage_packages, args=((
+        "fplll", "freetype", "gap", "gengetopt", "gfan", "glpk",
+        "libbraiding", "libgd", "mpfi", "nauty", "palp",
+        "planarity", "ppl", "primecount",
+    ),), cpu=8, memory=32768, timeout=86400)
     .run_function(build_sage, args=("local",), cpu=8, memory=32768, timeout=86400)
     .run_function(build_sage, args=("venv",), cpu=8, memory=32768, timeout=86400)
     .run_function(build_sage, args=("verify",), cpu=8, memory=32768, timeout=86400)
