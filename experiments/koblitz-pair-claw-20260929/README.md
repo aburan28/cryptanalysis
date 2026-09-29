@@ -804,6 +804,13 @@ passed the wrapper checks with zero exact hits. The
 completed rectangles and retains unknown failed work with a conservative
 field-call-model upper bound. The Q1052 driver detects the live Q1051
 start marker and will not launch a competing full-size search.
+Once Q1051 exits, `n83_two_shard_campaign.py --calibrate-full-table`
+uses the same disk/swap guard to measure two full $2^{31}$-descriptor
+filters against only $2^{20}$ query representatives. It uses a disjoint
+query range immediately after the planned 59-chunk prefix. Its receipt
+is included in cumulative work and will decide whether full-size memory
+and query rates support the campaign. A zero-hit calibration is a stage
+measurement, not evidence of natural relation yield.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
@@ -849,5 +856,6 @@ python3 experiments/koblitz-pair-claw-20260929/n83_two_shard_screen.py
 python3 experiments/koblitz-pair-claw-20260929/n83_two_shard_solve_work.py
 ./sage -python experiments/koblitz-pair-claw-20260929/run_n83_two_shard_chunk.py --table-log2 20 --query-reps-log2 14 --workers 1
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_two_shard_campaign.py
+# After Q1051 exits: --calibrate-full-table first, then assess its resource receipt.
 # --run-next launches one guarded Q1052 rectangle after competing runs finish.
 ```

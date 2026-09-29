@@ -19,6 +19,11 @@ AGGREGATOR = HERE / "aggregate_n83_two_shard_chunks.py"
 AGGREGATE = RUNS / "n83_two_shard_campaign_aggregate.json"
 TABLE_LOG2 = 31
 QUERY_LOG2 = 30
+CALIBRATION_QUERY_LOG2 = 20
+CALIBRATION_QUERY_START = 59 * (1 << QUERY_LOG2)
+CALIBRATION = RUNS / (
+    f"n83_two_shard_chunk_M31_R20_tstart0_qstart{CALIBRATION_QUERY_START}_"
+    "b20_h14_rb8.json")
 MIN_SYSTEM_FREE_BYTES = 1 << 30
 STOP_SYSTEM_FREE_BYTES = 512 << 20
 MAX_SWAPOUT_GROWTH_PAGES = 1024
@@ -129,8 +134,11 @@ def inspect(chunks, screen):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-next", action="store_true",
+    launch = parser.add_mutually_exclusive_group()
+    launch.add_argument("--run-next", action="store_true",
                         help="run exactly one missing rectangle")
+    launch.add_argument("--calibrate-full-table", action="store_true",
+                        help="guarded 2^31-per-shard table with 2^20 queries")
     parser.add_argument("--aggregate", action="store_true",
                         help="write cumulative accounting for completed rectangles")
     args = parser.parse_args()
@@ -143,6 +151,35 @@ def main():
     assert len(chunks) == 59
     completed, started, failed, missing, solved, selected_markers = inspect(
         chunks, screen)
+    calibration_record = None
+    if CALIBRATION.exists():
+        calibration_record = json.loads(CALIBRATION.read_text())
+        assert calibration_record["proposal_id"] == "Q1052"
+        assert calibration_record["candidate_id"] is None
+        assert calibration_record["curve_id"] == screen["curve_id"]
+        assert calibration_record["isogeny"] == "none"
+        if calibration_record["kind"] == (
+                "n83_public_target_two_shard_query_k48194_exact_replay_chunk"):
+            calibration_base_digest = calibration_record[
+                "factor_base"]["enumerated_set_sha256"]
+        else:
+            calibration_base_digest = calibration_record[
+                "factor_base_enumerated_set_sha256"]
+        assert calibration_base_digest == screen[
+            "factor_base"]["enumerated_set_sha256"]
+        assert calibration_record["table_start"] == 0
+        assert calibration_record["table_descriptors_per_shard"] == 1 << TABLE_LOG2
+        assert calibration_record["query_start"] == CALIBRATION_QUERY_START
+        assert calibration_record["query_representatives"] == 1 << CALIBRATION_QUERY_LOG2
+        assert calibration_record["query_workers"] == screen[
+            "campaign_query_workers"]
+        if calibration_record["kind"] == (
+                "n83_public_target_two_shard_query_k48194_exact_replay_chunk"):
+            if calibration_record["verified_public_target_quotient_table_dlp"]:
+                solved.append({"receipt": CALIBRATION})
+        elif calibration_record["kind"] != (
+                "n83_public_target_two_shard_query_k48194_chunk_failed"):
+            raise ValueError(f"unexpected calibration receipt: {CALIBRATION}")
     competing_markers = sorted(
         set(RUNS.glob("n83_bloom_chunk_*.started.json")) |
         set(RUNS.glob("n83_orbit_chunk_*.started.json")) |
@@ -162,6 +199,9 @@ def main():
         "table_descriptors_per_shard": 1 << TABLE_LOG2,
         "query_workers": screen["campaign_query_workers"],
         "total_planned_rectangles": len(chunks),
+        "calibration_receipt": str(CALIBRATION) if calibration_record else None,
+        "calibration_status": (
+            calibration_record["kind"] if calibration_record else None),
         "completed": len(completed),
         "started_markers": [str(item["started"]) for item in started],
         "competing_search_markers": [
@@ -179,29 +219,48 @@ def main():
         "next_missing": str(missing[0]["receipt"]) if missing else None,
     }
     print(json.dumps(summary), flush=True)
-    if args.aggregate and completed:
+    if args.aggregate and (completed or calibration_record and
+                           calibration_record["kind"] ==
+                           "n83_public_target_two_shard_query_k48194_exact_replay_chunk"):
         subprocess.run([sys.executable, str(AGGREGATOR),
-                        *[str(item["receipt"]) for item in completed],
-                        *[str(item["receipt"]) for item in failed],
-                        "--out", str(AGGREGATE)],
+                       *[str(item["receipt"]) for item in completed],
+                       *[str(item["receipt"]) for item in failed],
+                       *([str(CALIBRATION)] if calibration_record else []),
+                       "--out", str(AGGREGATE)],
                        check=True)
-    if args.run_next:
+    if args.run_next or args.calibrate_full_table:
         if started or competing_markers:
             raise RuntimeError(
                 "a start marker exists; verify the original process handle before advancing")
         if solved:
             raise RuntimeError("a verified quotient-table DLP already exists")
-        if not missing:
+        if args.run_next and (calibration_record is None or
+                calibration_record["kind"] !=
+                "n83_public_target_two_shard_query_k48194_exact_replay_chunk"):
+            raise RuntimeError(
+                "measure and inspect the full-table calibration first")
+        if args.run_next and not missing:
             raise RuntimeError("bounded campaign exhausted without a relation")
         if system_free_bytes < MIN_SYSTEM_FREE_BYTES:
             raise RuntimeError(
                 "system volume has insufficient free space for swap safety")
-        chunk = missing[0]
+        if args.calibrate_full_table:
+            if CALIBRATION.exists() or CALIBRATION.with_suffix(
+                    ".started.json").exists():
+                raise RuntimeError(
+                    "full-table calibration already has a receipt or start marker")
+            chunk = {"table_start": 0,
+                     "query_start": CALIBRATION_QUERY_START,
+                     "receipt": CALIBRATION}
+            query_log2 = CALIBRATION_QUERY_LOG2
+        else:
+            chunk = missing[0]
+            query_log2 = QUERY_LOG2
         command = [
             sys.executable, str(RUNNER),
             "--table-log2", str(TABLE_LOG2),
             "--table-start", str(chunk["table_start"]),
-            "--query-reps-log2", str(QUERY_LOG2),
+            "--query-reps-log2", str(query_log2),
             "--query-start", str(chunk["query_start"]),
             "--workers", str(screen["campaign_query_workers"]),
             "--rep-batch", "8",
