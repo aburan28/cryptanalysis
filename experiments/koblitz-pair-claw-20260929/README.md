@@ -545,6 +545,15 @@ verification remain outside that number. It is a conditional stage
 estimate, **not** measured complete IC solve work or evidence of a
 sub-$2^{61}$ IC solve.
 
+The [campaign driver](n83_bloom_campaign.py) lists the 58 disjoint
+table/query rectangles, runs at most one missing chunk per invocation,
+and refuses to advance past a start marker, a terminal failure, or a
+verified DLP. A marker alone is not proof that a process is alive; check
+the original run handle before resuming. `--aggregate` writes the
+completed 20-bit shard receipts into a separate cumulative account.
+The interrupted 24-bit prototype remains in the research record but is
+outside this 20-bit candidate configuration.
+
 Naming follows the [candidate catalog measurement contract](../ic-candidate-catalog/MEASUREMENT.md):
 the exact curve is `EC1N83Ckb1h876c2921cb64`; the factor base has
 **B=4,000,102 actual subgroup-usable points before folding** and 24,097
@@ -577,4 +586,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_bloom_shard_screen.py
 # One memory-bounded n=83 shard; wait for its terminal receipt before aggregating.
 ./sage -python experiments/koblitz-pair-claw-20260929/run_n83_bloom_chunk.py --table-log2 32 --table-start 0 --query-count-log2 38 --query-start 0 --workers 8 --bits-per-key 20 --hashes 14
 # A second table shard uses --table-start 4294967296 with the same query range.
+./sage -python experiments/koblitz-pair-claw-20260929/n83_bloom_campaign.py
+# After verifying the prior run handle has ended, --run-next advances one chunk.
+# --aggregate writes completed-chunk accounting and rejects overlap.
 ```
