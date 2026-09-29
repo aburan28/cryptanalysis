@@ -15,10 +15,6 @@ SCREEN = HERE / "n83_two_shard_screen.json"
 OUTPUT = HERE / "n83_two_shard_solve_work.json"
 CALIBRATION = (HERE / "runs" /
     "n83_two_shard_chunk_M31_R24_tstart0_qstart63350767616_b20_h14_rb8.json")
-FAILED_CALIBRATIONS = (
-    CALIBRATION,
-    CALIBRATION.with_name(f"{CALIBRATION.stem}.retry1.json"),
-)
 QUANTILES = ("0.5", "0.8", "0.9", "0.95", "0.99")
 
 
@@ -31,6 +27,26 @@ def success_probability(chunks, mean, table_fraction, query_fraction):
     covered = table_fraction * chunks * query_fraction
     assert 0 <= covered <= 1
     return -math.expm1(-mean * (1 - (1 - covered) ** 6))
+
+
+def calibration_attempts():
+    """Require a contiguous terminal receipt for every calibration retry."""
+    paths = [CALIBRATION]
+    attempt = 1
+    while True:
+        path = CALIBRATION.with_name(f"{CALIBRATION.stem}.retry{attempt}.json")
+        if not path.exists():
+            break
+        paths.append(path)
+        attempt += 1
+    discovered = set(CALIBRATION.parent.glob(
+        f"{CALIBRATION.stem}.retry*.json"))
+    assert set(paths[1:]) == discovered, "noncontiguous calibration retry receipts"
+    assert CALIBRATION.exists(), "missing first calibration receipt"
+    started = list(CALIBRATION.parent.glob(
+        f"{CALIBRATION.stem}*.started.json"))
+    assert not started, "unfinished calibration attempt must not be omitted"
+    return paths
 
 
 def main():
@@ -96,7 +112,7 @@ def main():
         90 * (2 * math.ceil(table / 1024) +
               2 * math.ceil(calibration_reps / 8)))
     failed_receipts = []
-    for path in FAILED_CALIBRATIONS:
+    for path in calibration_attempts():
         failed_calibration = json.loads(path.read_text())
         assert failed_calibration["kind"] == (
             "n83_public_target_two_shard_query_k48194_chunk_failed")
@@ -159,7 +175,7 @@ def main():
             "The native run finishes a whole rectangle before reporting a hit, so quantiles charge whole completed rectangles.",
             "The conditional expected work excludes the small positive probability of no hit after all 179 full chunks.",
             "The wall-time projection transfers bounded one-worker sharing and 14-versus-8-worker ratios to full-size filters; full-size throughput is unmeasured.",
-            "Both failed Q1052 full-table calibrations have unknown actual native work; their structural full-rectangle field-call models are only upper bounds.",
+            "Failed Q1052 full-table calibrations have unknown actual native work; their structural full-rectangle field-call models are only upper bounds.",
             "These stage field calls exclude prior Q1051 attempts, keying, Bloom, base setup, and final replay. They are not complete IC operations or a calibrated rho-equivalent unit.",
         ],
         "input_screen_sha256": hashlib.sha256(SCREEN.read_bytes()).hexdigest(),
