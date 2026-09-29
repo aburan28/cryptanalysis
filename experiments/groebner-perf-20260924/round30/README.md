@@ -103,7 +103,38 @@ claim**: other CPU-heavy jobs were active, and earlier M4RI capture medians
 were about 12.4 ms. The load gate permits some contention and does not fix
 CPU frequency or core placement. CPU wins all three random controls; the
 duplicate-row CPU comparison is inconclusive. Keep CPU routing unchanged
-until stronger CPU controls and complete-query timings justify a decision.
+until stronger CPU controls and complete-query timings justify a decision;
+the separate lower-load run below narrows this particular uncertainty.
+
+### Separate lower-load confirmation
+
+After the code commit, host load fell and a second run used the same eight
+sources without modifications. Initial/final one-minute load was 5.77/6.54,
+versus a 14-logical-CPU admission limit. All controls and measurements passed;
+`results/lower-load/` retains its separate receipt, raw samples and audit.
+
+| Matrix | CPU ms | Previous GPU ms | Mapped32 GPU ms | CPU / mapped32 [95%] |
+| --- | ---: | ---: | ---: | --- |
+| Captured seed1 | 12.6779 | 14.5041 | 11.2643 | 1.106 [1.092, 1.120] |
+| Captured seed2 | 12.5328 | 14.4433 | 11.2440 | 1.106 [1.093, 1.120] |
+| Random 256 × 1024 | 0.0742 | 0.9217 | 0.7941 | 0.097 [0.087, 0.109] |
+| Random 1536 × 3072 | 2.2154 | 5.8060 | 4.9161 | 0.437 [0.429, 0.445] |
+| Random 2048 × 4096 | 4.7140 | 8.6007 | 7.3586 | 0.626 [0.615, 0.637] |
+| Captured seed1 with duplicate rows | 5.9120 | 12.0102 | 7.5183 | 0.771 [0.756, 0.784] |
+
+This confirms a **modest matrix-component crossover on the two captures**
+against the declared M4RI `k=5` reference: both paired ratios are about 1.106,
+with 95% intervals [1.092,1.120]. The previous-GPU gains remain 1.277
+[1.260,1.294] and 1.277 [1.258,1.296]. CPU returns near its earlier quieter
+medians, reducing the first run's apparent CPU advantage substantially.
+These are repetitions on the same frozen captures, not held-out targets.
+
+CPU wins the other four controls. Word skipping gains about 5.8–6.5% on the
+captures and 21.8% on duplicate rows, but regresses the random 256 × 1024 and
+2048 × 4096 cases by about 4.5% and 3.3% respectively in paired ratios.
+Retain both paths; a measured selection policy and fresh CPU tuning are
+future experiments. A matrix crossover does not establish complete-query
+performance or justify a general GPU default.
 
 ## Retained exploration and failures
 

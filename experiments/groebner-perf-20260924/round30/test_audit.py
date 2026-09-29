@@ -27,8 +27,9 @@ class MeasurementTests(unittest.TestCase):
             audit.measurement(data)
 
     def test_real_control(self):
-        audit.measurement(self.data)
-        audit.correctness(self.control)
+        for path in sorted((HERE / "results").rglob("measure.json.gz")):
+            audit.measurement(json.loads(gzip.decompress(path.read_bytes())))
+            audit.correctness(json.loads((path.parent / "correctness.json").read_text()))
 
     def test_excluded_correctness_timing(self):
         data = copy.deepcopy(self.control)
