@@ -12,7 +12,7 @@ This is a group-law search, not a quotient-summation polynomial solver. Its
 large-instance cost remains unknown. In particular, a small-base step timing
 does not establish relation yield or a sub-$2^{61}$ solve at n=83.
 The local [stage proposal registry](stage_proposals.json) assigns `Q1036`
-to the completed toy pipeline and `Q1037`–`Q1040` to the later stage
+to the completed toy pipeline and `Q1037`–`Q1041` to the later stage
 controls. Only `Q1036` has a final `IC1` candidate identity.
 
 ## Complete n=23 one-target control
@@ -151,14 +151,45 @@ The factor-base logs and target DLP remain unknown, so `Q1040` has
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_table.py
 ```
 
+## Exact n=83 orbit base and bounded full-base timing
+
+The [n=83 base receipt](runs/n83_weight5_orbit_base.json) and
+[compressed orbit-key file](runs/n83_weight5_orbit_keys.bin) freeze an
+actual, target-independent weight-five normal-$x$ orbit-union base on
+`EC1N83Ckb1h876c2921cb64`. A deterministic seed drew 52,021 five-bit
+supports, considered 48,381 distinct $x$ orbits, and retained 24,097
+rational, nonidentity, distinct subgroup-point orbits after $[4]$
+projection. The subgroup order is prime. Its Frobenius eigenvalue has order
+83, so every nonidentity representative has 166 distinct signed-Frobenius
+points. **Actual B is 4,000,102 before folding; effective columns are
+24,097.** The sorted 21-byte canonical-key file is 506,037 bytes; its
+SHA-256, expansion rule, source hashes, exact field/curve record, and
+`isogeny: "none"` are in the receipt. Building it took 7.4 seconds in this
+Python run. The [independent verifier](verify_n83_base.py) decoded and
+checked all 24,097 representatives on the curve and in the subgroup.
+
+The [full-base stage benchmark](runs/n83_full_base_quotient_pair_perf.json)
+decoded base points on demand. On the same public n=83 target, 100,000
+target-independent table samples averaged **99.5 µs/sample**, and 100,000
+target-complement query samples averaged **145.8 µs/sample**. There were
+zero quotient-key hits at this tiny cap. Peak parent RSS was 52.4 MiB.
+In a separate instrumented run, one table sample used 1 field inversion,
+2 multiplications, 1 squaring, and 7 additions; one target-side sample
+used 2 inversions, 4 multiplications, 2 squarings, and 15 additions.
+These are real pair-sample costs on the exact base, but they do not measure
+ordinary relation yield at a useful query budget or recover any base log.
+
+```sh
+./sage -python experiments/koblitz-pair-claw-20260929/build_n83_orbit_base.py
+./sage -python experiments/koblitz-pair-claw-20260929/verify_n83_base.py
+./sage -python experiments/koblitz-pair-claw-20260929/bench_n83_full_base.py
+```
+
 ## Conditional n=83 work screen
 
-The [direct-walk screen](n83_conditional_screen.json) assumes a
-**hypothetical**, fully enumerated 4,000,102-point base: exactly 24,097 full
-signed-Frobenius orbits of size 166.
-Neither that base nor its rank yield has been measured. The assumptions give
-24,097 folded columns and about 4.41 four-point multisets per uniform
-target in expectation. They further suppose that a useful opposite-color
+The [direct-walk screen](n83_conditional_screen.json) uses the **enumerated**
+base above. Under a uniform-sum model it has about 4.41 four-point
+multisets per target in expectation. It further supposes that a useful opposite-color
 claw costs exactly $\sqrt r$ walk evaluations and that every verified
 relation adds rank. Charging one further search for the target gives
 
@@ -176,11 +207,11 @@ about **74,000 one-core years**, a wall-time illustration whose cache
 behavior and search law are unvalidated at a four-million-point base.
 
 The n=53 budget miss does not calibrate an n=83 success rate. The screen
-keeps `candidate_id`, actual B, actual columns, relation yield,
-and complete-work exponent `null`, and `verified_n83_dlp` is false. It does
+records the actual B and column count, but keeps `candidate_id`, measured
+n=83 relation yield, and complete-work exponent `null`; `verified_n83_dlp`
+is false. It does
 not promote a stage benchmark or a conditional extrapolation to a result.
-An exact n=83 candidate needs a frozen enumerated base and signed-Frobenius
-column count, measured ordinary-query yield including failures, rank per
+An exact n=83 candidate still needs measured ordinary-query yield including failures, rank per
 query, a verified previously unseen target DLP, and complete operation
 accounting. Those are the next gates for this line.
 
@@ -189,7 +220,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_screen.py
 ```
 
 The [quotient-table screen](n83_conditional_table_screen.json) makes the
-memory/work exchange explicit for the same hypothetical base. It assumes a
+memory/work exchange explicit for the same exact base. It assumes a
 reusable table of $M$ **distinct** zero-pair quotient keys, independent
 uniform target-side keys, 95% match probability for targets with a relation,
 and one novel rank row per successful query. It charges the table once,
@@ -212,6 +243,16 @@ memory rows may fit a $2^{61}$ *conditional operation count* only if their
 unmeasured per-sample field cost falls below the listed cap. The n=53
 relation shows that the table can work on a larger field; it does not
 validate the n=83 uniform model or provide an n=83 DLP.
+Even counting every measured field API call as one unit, including each
+inversion, the $2^{33}$-key row would cost $2^{61.36}$ units. At the last
+row, that optimistic model gives $2^{58.87}$ units; the total could stay
+below $2^{61}$ only if an inversion cost at most 39.7 such units when field
+additions, multiplications, and squarings each cost one and every other
+stage is free. This is a conditional threshold, not a field-operation
+calibration or a complete solve.
+At the last row, the measured **small-table** n=83 Python rates would imply
+roughly 100,000 one-core years. That is a conditional wall extrapolation;
+memory behavior at a terabyte-scale table has not been measured.
 
 ```sh
 python3 experiments/koblitz-pair-claw-20260929/n83_table_screen.py
