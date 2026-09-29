@@ -428,6 +428,25 @@ the former count was also enumerated exactly by Q1026's scalar-support
 calculation. No L1000 curve-point witness build or n83 natural relation
 has yet been measured.
 
+The [Q1029 disk-backed builder](dyadic_n83_g_pair_witness_index.py) is now
+running the exact L1000 two-G point-witness construction, with a checkpoint
+after each completed G orbit. Its completed [L32 control](runs/n83_dyadic_G_pair_witness_index_L32.json)
+reconstructed all 87,648 generators and 80,868 quotient keys on the same
+curve and base as Q1028. The **entire** sorted unique-row digest and key-set
+digest match Q1028, and 996 sampled row witnesses passed point addition
+and quotient replay. This verifies the disk-backed format
+before the L1000 build. The larger run will compare its complete point-key
+count against Q1026's independently enumerated scalar support; until its
+receipt exists, L1000 point witnesses and ordinary relation yield remain
+unmeasured. Both the raw and sorted large row files stay outside Git; a
+completed receipt will retain their hashes and the exact local paths. The
+build is target-dependent because the base includes the public Q.
+
+```sh
+./sage -python experiments/ecc2k130-quotient-pair-probe-20260926/dyadic_n83_g_pair_witness_index.py \
+  --window 1000 --workdir /private/tmp/ecc2k83-Gpair-witness-L1000
+```
+
 ### Same-target degree-83 rho reference
 
 The [rho bridge](n83_public_target_rho.cpp) supplies the **same frozen public
@@ -462,6 +481,24 @@ binary corpora are not bundled in this PR.
 The exact first-worker [driver source snapshot](n83_public_target_rho_initial.cpp)
 is retained beside the portable bridge; the verifier matches both source
 hashes to their respective worker rows.
+
+The resumed worker later produced a cross-corpus collision with one of the
+stopped workers. The [terminal merge log](runs/n83_public_target_rho_merge_solved.log)
+records `k = 467066815623456506232910` and the engine's `[k]P == Q` check.
+The [separate Python replay receipt](runs/n83_public_target_rho_solved.json)
+recomputes `[k]G` on the exact named ONB curve and verifies the frozen public
+Q. It charges **all three workers**, including the earlier unsuccessful
+attempt and the checkpointed resume: **201,733,439,488** rho walk iterations,
+or **`2^37.554` walk iterations**, to this one solved target. The terminal
+worker counts are 176,404,037,632, 12,914,262,016, and 12,415,139,840.
+The quotient is a count of rho walk steps, not field multiplications or a
+complete IC cost; collision replay, corpus hashing, and offline scalar replay
+are outside that operation boundary. The primary paired online rho wall time
+is unknown because this run was interrupted and resumed in separate intervals.
+The large distinguished-point corpora and terminal logs were copied to a
+frozen local snapshot whose hashes match the receipt; they are omitted
+from Git. **No ordinary n83 factor-base relation has been found**, so this
+rho DLP does not establish the requested index-calculus relation yield.
 
 For a new local run, set `RHO_ENGINE_SRC` to the `src` directory of a
 checkout of the pinned `crypto` commit, then build and run from this repo:

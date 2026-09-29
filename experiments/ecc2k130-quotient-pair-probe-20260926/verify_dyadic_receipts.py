@@ -7,6 +7,8 @@ import math
 import random
 from pathlib import Path
 
+import numpy as np
+
 import curves
 import field
 from dyadic_base_geometry import CONFIG, enumerate_points
@@ -14,6 +16,7 @@ from dyadic_two_seed_geometry import CONFIG as TWO_SEED_CONFIG
 from dyadic_n53_five_sum_dlp import build_g_pair_index
 from dyadic_n83_compact_index import build_packed
 from dyadic_n83_five_sum_symmetric_stage import build_symmetric
+from dyadic_n83_g_pair_witness_index import hash_file, scan_sorted
 from dyadic_n83_g_pair_scalar_support import coefficients_by_window, quotient_keys
 from perf_probe import sha
 from x_only_cycle import XOnlyCycle
@@ -699,6 +702,65 @@ def verify_n83_five_sum_symmetric():
                 "build_seconds_including_orbit_partition"]}
 
 
+def verify_n83_g_pair_witness_index(window):
+    path = HERE / "runs" / f"n83_dyadic_G_pair_witness_index_L{window}.json"
+    if not path.exists():
+        return "not_run"
+    report = json.loads(path.read_text())
+    reference_path = HERE / "runs" / "n83_perf_prefix.json"
+    geometry_path = HERE / "runs" / "n83_dyadic_target_seed_geometry.json"
+    reference = json.loads(reference_path.read_text())
+    geometry = json.loads(geometry_path.read_text())
+    assert report["source_sha256"] == sha(HERE / "dyadic_n83_g_pair_witness_index.py")
+    assert report["reference_sha256"] == sha(reference_path)
+    assert report["geometry_sha256"] == sha(geometry_path)
+    for name, digest in report["dependency_sha256"].items():
+        assert digest == sha(HERE / name)
+    assert report["candidate_id"] is None and report["isogeny"] == "none"
+    assert report["curve_id"] == reference["curve_id"] == geometry["curve_id"]
+    assert report["curve_identity_record"] == reference["curve_identity_record"]
+    assert report["workload"]["doubling_window"] == window
+    assert report["workload_id"] == hashlib.sha256(frozen(report["workload"])).hexdigest()[:12]
+    assert report["run_id"] == f"Q1029W{report['workload_id']}R1"
+    assert report["factor_base"]["actual_usable_points_B_before_folding"] == 332 * window
+    assert report["factor_base"]["signed_frobenius_columns"] == 2 * window
+    assert report["G_side_actual_points"] == 166 * window
+    assert report["unordered_pair_orbit_generators"] == 83 * window * (window + 1)
+    assert report["raw_array_bytes"] == 24 * report["unordered_pair_orbit_generators"]
+    if window == 32:
+        control = json.loads((HERE / "runs" /
+                              "n83_dyadic_five_sum_symmetric_stage.json").read_text())
+        assert report["factor_base"]["enumerated_set_sha256"] == control[
+            "factor_base"]["enumerated_set_sha256"]
+        assert report["quotient_keys"] == control["build"]["quotient_keys"]
+        assert report["key_sha256"] == control["build"]["key_sha256"]
+        assert report["retained_unique_row_sha256"] == control[
+            "build"]["retained_array_sha256"]
+    if window == 1000:
+        support = json.loads((HERE / "runs" /
+                              "n83_dyadic_G_pair_scalar_support_L1000.json").read_text())
+        assert report["factor_base"]["enumerated_set_sha256"] == support[
+            "factor_base"]["enumerated_set_sha256"]
+        assert report["quotient_keys"] == support["L1000_exact_quotient_keys"]
+    sorted_path = Path(report["local_sorted_rows"])
+    local_rows_verified = False
+    if sorted_path.is_file():
+        assert sorted_path.stat().st_size == report["raw_array_bytes"]
+        assert hash_file(sorted_path) == report["sorted_array_sha256"]
+        rows = np.memmap(sorted_path, dtype=[("hi", "<u8"), ("lo", "<u8"),
+                                             ("witness", "<u8")], mode="r")
+        count, keys_sha, retained_sha = scan_sorted(rows)
+        assert (count, keys_sha, retained_sha) == (
+            report["quotient_keys"], report["key_sha256"],
+            report["retained_unique_row_sha256"])
+        local_rows_verified = True
+    assert report["verified_single_target_dlp"] is False
+    assert report["complete_work_log2"] is None
+    return {"window": window, "keys": report["quotient_keys"],
+            "generators": report["unordered_pair_orbit_generators"],
+            "local_rows_verified": local_rows_verified}
+
+
 def verify_n83_rho_stopped_attempt():
     path = HERE / "runs" / "n83_public_target_rho_attempt.json"
     report = json.loads(path.read_text())
@@ -738,6 +800,64 @@ def verify_n83_rho_stopped_attempt():
     assert report["complete_IC_work_log2"] is None
     return {"walk_iterations": str(total), "log2": math.log2(total),
             "distinct_dp_orbits": distinct, "verified_dlp": False}
+
+
+def verify_n83_rho_solved():
+    path = HERE / "runs" / "n83_public_target_rho_solved.json"
+    report = json.loads(path.read_text())
+    reference = json.loads((HERE / "runs" / "n83_perf_prefix.json").read_text())
+    earlier = json.loads((HERE / "runs" /
+                          "n83_public_target_rho_attempt.json").read_text())
+    merge_log = HERE / "runs" / "n83_public_target_rho_merge_solved.log"
+    assert sha(merge_log) == report["rho_log_sha256"]
+    assert report["reference_sha256"] == sha(HERE / "runs" / "n83_perf_prefix.json")
+    assert report["rho_source_sha256"] == earlier["rho_source_sha256"]
+    assert report["portable_driver_source_sha256"] == sha(
+        HERE / "n83_public_target_rho.cpp")
+    assert report["executed_driver_source_sha256"] == sha(
+        HERE / "n83_public_target_rho.cpp")
+    assert report["isogeny"] == "none"
+    assert report["curve_id"] == reference["curve_id"]
+    assert report["curve_identity_record"] == reference["curve_identity_record"]
+    assert report["public_generator"] == reference[
+        "curve_identity_record"]["curve"]["generator"]
+    assert report["public_target"] == reference["workload"]["target"]
+    order = int(reference["subgroup_order"])
+    scalar = int(report["recovered_scalar"])
+    assert 0 <= scalar < order
+    assert f"  k = {scalar}\n  verified [k]P == Q" in merge_log.read_text()
+    curve = curves.Curve(field.Onb(83))
+    generator = tuple(report["public_generator"])
+    target = tuple(report["public_target"])
+    assert curve.mul(generator, scalar) == target
+    assert report["independent_scalar_replay_passed"] is True
+    assert report["driver_public_points_verified"] is True
+    workers = report["workers"]
+    assert [row["run_id"] for row in workers] == [32028, 32029, 32030]
+    assert all(row["status"] == "stopped" for row in workers)
+    assert workers[0]["driver_source_sha256"] == sha(
+        HERE / "n83_public_target_rho_initial.cpp")
+    assert all(row["driver_source_sha256"] == sha(
+        HERE / "n83_public_target_rho.cpp") for row in workers[1:])
+    total = sum(int(row["walk_iterations"]) for row in workers)
+    for row in workers:
+        assert int(row["walk_iterations"]) == row[
+            "iterations_per_walk"] * row["walks"]
+        assert row["dp_records_total"] >= row["distinguished_points"]
+    assert workers[0]["dp_records_total"] >= earlier["workers"][0][
+        "dp_records"] + workers[0]["distinguished_points"]
+    assert all(row["dp_records_total"] == row["distinguished_points"]
+               for row in workers[1:])
+    assert str(total) == report["rho_walk_iterations"]
+    assert math.isclose(math.log2(total), report[
+        "rho_walk_iterations_log2"], abs_tol=1e-12)
+    assert total < 1 << 61
+    assert sum(row["dp_records_total"] for row in workers) == report[
+        "rho_distinguished_points"]
+    assert report["complete_IC_work_log2"] is None
+    return {"scalar": str(scalar), "walk_iterations": str(total),
+            "walk_iterations_log2": math.log2(total),
+            "independent_scalar_replay_passed": True}
 
 
 def main():
@@ -804,7 +924,10 @@ def main():
     five_sum_candidate = verify_five_sum_candidate()
     five_sum_packed = verify_n83_five_sum_packed()
     five_sum_symmetric = verify_n83_five_sum_symmetric()
+    g_pair_witness_l32 = verify_n83_g_pair_witness_index(32)
+    g_pair_witness_l1000 = verify_n83_g_pair_witness_index(1000)
     rho_attempt = verify_n83_rho_stopped_attempt()
+    rho_solved = verify_n83_rho_solved()
     print(json.dumps({"n53_curve_id": geometry[53]["report"]["curve_id"],
                       "n83_curve_id": geometry[83]["report"]["curve_id"],
                       "n83_actual_B": geometry[83]["report"]["factor_base"][
@@ -823,7 +946,10 @@ def main():
                       "n53_five_sum_candidate_id": five_sum_candidate,
                       "n83_five_sum_packed": five_sum_packed,
                       "n83_five_sum_symmetric": five_sum_symmetric,
-                      "n83_rho_attempt": rho_attempt}))
+                      "n83_G_pair_witness_L32": g_pair_witness_l32,
+                      "n83_G_pair_witness_L1000": g_pair_witness_l1000,
+                      "n83_rho_attempt": rho_attempt,
+                      "n83_rho_solved": rho_solved}))
 
 
 if __name__ == "__main__":

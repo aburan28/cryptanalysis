@@ -19,6 +19,26 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def verify_driver_public_points(path, onb, g, q):
+    """Check C++ ONB limbs against the exact public points in the curve record."""
+    source = path.read_text()
+    expected = {"px": onb.toCoords(g[0]), "py": onb.toCoords(g[1]),
+                "qx": onb.toCoords(q[0]), "qy": onb.toCoords(q[1])}
+    for name, value in expected.items():
+        matches = re.findall(
+            rf"static const unsigned long long {name}\[3\]\s*=\s*\{{([^}}]+)\}};",
+            source, re.MULTILINE)
+        if len(matches) != 1:
+            raise SystemExit(f"cannot uniquely parse {name} in {path}")
+        limbs = [int(item.strip().removesuffix("ull"), 0)
+                 for item in matches[0].split(",") if item.strip()]
+        if len(limbs) != 3 or sum(limb << (64 * i) for i, limb in
+                                  enumerate(limbs)) != value:
+            raise SystemExit(f"embedded {name} differs from the frozen public point: {path}")
+    if "runCurve<CfgF83>(o, px, py, qx, qy" not in source:
+        raise SystemExit(f"driver does not pass the verified points to n83: {path}")
+
+
 SOLVED_RE = (r"^\s*solved after (\d+) iterations of (\d+) walks in "
              r"([0-9.]+) s \((\d+) distinguished points\)\s*$")
 STOPPED_RE = (r"^stopping: (\d+) iterations of (\d+) walks, "
@@ -78,6 +98,10 @@ def main():
     g = tuple(reference["curve_identity_record"]["curve"]["generator"])
     q = tuple(reference["workload"]["target"])
     order = int(reference["subgroup_order"])
+    onb = field.Onb(83)
+    verify_driver_public_points(args.driver_source, onb, g, q)
+    for worker_source in args.worker_driver_source:
+        verify_driver_public_points(worker_source, onb, g, q)
     log = args.log.read_text()
     scalars = re.findall(r"^\s*k = (\d+)\s*$", log, re.MULTILINE)
     direct_finishes = re.findall(SOLVED_RE, log, re.MULTILINE)
@@ -111,7 +135,7 @@ def main():
     if direct_finishes and digest(args.log) not in {
             worker["log_sha256"] for worker in workers}:
         raise SystemExit("direct solving worker is absent from worker logs")
-    curve = curves.Curve(field.Onb(83))
+    curve = curves.Curve(onb)
     assert curve.onCurve(g) and curve.onCurve(q)
     assert curve.mul(g, order) is None
     assert curve.mul(q, order) is None
@@ -129,6 +153,7 @@ def main():
         "public_target": list(q),
         "recovered_scalar": str(k),
         "independent_scalar_replay_passed": True,
+        "driver_public_points_verified": True,
         "rho_online_seconds_from_runner_if_single_worker": (
             float(direct_finishes[0][2]) if len(workers) == 1 and
             direct_finishes else None),
