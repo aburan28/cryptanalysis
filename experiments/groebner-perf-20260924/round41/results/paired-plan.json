@@ -1,0 +1,22 @@
+{
+  "schema": "wide-metal-paired-plan/1",
+  "scope": "Separate complete single-query planted PDP controls, not natural relation yield or an IC recovery benchmark.",
+  "prior_arms": "All arms in each retained round38 correctness panel, preserving explicit requested-Metal CPU fallbacks.",
+  "additional_arms": ["projection-cpu", "wide-cpu", "wide-metal"],
+  "measured_pairs_per_input": 7,
+  "warmup_pairs_per_input": 1,
+  "trials": [
+    {"name": "small-1", "panel": "correctness", "order_seed": 202609304401},
+    {"name": "wide-1", "panel": "wide-correctness", "order_seed": 202609304402},
+    {"name": "small-2", "panel": "correctness", "order_seed": 202609304403},
+    {"name": "wide-2", "panel": "wide-correctness", "order_seed": 202609304404}
+  ],
+  "admission": {"max_load_per_logical_cpu": 1.0, "max_wait_seconds": 300, "poll_seconds": 30},
+  "boundary": "Fresh solve(public fixture point), including target validation, packed native descent, GPU transfers/synchronization when used, basis construction, independent certificate check, original equations and signed curve replay; followed by independent evaluation of untouched reference ANFs. Outer elapsed_ns through that reference check is primary. Setup, fixture generation, reference proof comparison and evidence serialization stay outside.",
+  "setup": "Reuse only invariant workspace layouts/buffers. Construct before timed queries. Run every arm sequentially, randomize arm order within each paired repetition. No target answer cache.",
+  "resource_gate": "Every query start/end and final one-minute load <= logical CPU count. Preserve rejected admissions and all attempts. No other local build, audit or benchmark from this thread during admitted timing.",
+  "reference_gate": "All mathematical outputs match independently audited frozen references, including exact proof bytes where that arm produces proof bytes. Fresh reference ANFs evaluate to zero inside every charged interval. Record actual gpu_used separately from backend request.",
+  "analysis": "Predeclared analysis-plan.json. Require both trials and positive paired lower95 bounds against all retained CPU and actually executing prior GPU arms for an input-specific candidate win; no automatic routing change.",
+  "candidate_id": null,
+  "online_speedup": null
+}
