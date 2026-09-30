@@ -1982,14 +1982,21 @@ isolated full-size speedup. The alternate native kernel found the same
 planted exact hit, and [checked Sage](runs/n83_zero_run_stage_planted_sage_verify.json)
 independently verified its four-point relation and scalar. The
 [source generator](bench_n83_zero_run_stage.py) records hashes for the frozen
-and generated sources. A [one-shot physical x86 screen](../../.github/workflows/n83-zero-run-keyer-x86-q1078.yml)
-passed its host preflight, then [failed before native work](runs/n83_zero_run_x86_ci_36765966186_failed/failed.json)
-because an archived command contained a local absolute factor-base path.
-The repaired screen resolves that file from the checked checkout and is
-prepared for a one-shot retry. Q1078 uses the
+and generated sources. The first physical x86 run passed host preflight,
+then [failed before native work](runs/n83_zero_run_x86_ci_36765966186_failed/failed.json)
+because an archived command contained a local absolute factor-base path;
+it has zero credited coverage. The repaired
+[physical x86 PCLMUL run](runs/n83_zero_run_x86_ci_36766502340/audit.json)
+passed exact source, curve, factor-base, and native-outcome checks on the
+same bounded M20/R18 public workload. Its median query phase improved
+1.55×, with cross-pair ratios 1.53–1.57×; query plus exact replay improved
+1.54×. All four public runs had zero exact hits. The planted hit matched
+the frozen witness and passed an independent local checked-Sage replay.
+The [one-shot x86 workflow](../../.github/workflows/n83-zero-run-keyer-x86-q1078.yml)
+is closed after this audit. Q1078 uses the
 same exact curve and factor base, `isogeny: "none"`, and null candidate/run
-IDs. Natural n=83 relation yield, complete solve work, and physical x86
-performance remain unknown; the failed x86 attempt receives no coverage.
+IDs. Natural n=83 relation yield, a full-size speedup, and complete solve
+work remain unknown.
 The frozen native field-call model is unchanged because Q1078 replaces
 only orbit-key selection; its bounded wall-time gain does not lower the
 $2^{39.371}$ modeled field calls per M32/R29 rectangle or establish a
