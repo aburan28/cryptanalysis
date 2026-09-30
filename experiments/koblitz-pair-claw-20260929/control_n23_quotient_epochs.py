@@ -40,18 +40,24 @@ def main():
                 "factor_base_enumerated_set_sha256": point_digest(base)}
     workload_id = hashlib.sha256(frozen(workload)).hexdigest()[:12]
     rows = []
-    for epochs in (1, 4):
+    for variant, epochs, cap in (("one_epoch", 1, 50000),
+                                 ("four_epochs", 4, 50000),
+                                 ("forced_restart", 4, 2000)):
         result = walk_epochs(curve, base, generator, order, target,
-                             OrbitKey(onb), 999999, 3, 512, 50000, epochs)
+                             OrbitKey(onb), 999999, 3, 512, cap, epochs)
         relation = result["relation"]
         assert relation is not None
+        if variant == "forced_restart":
+            assert result["epochs_completed"] == 4
         points = [tuple(point) for point in relation["points"]]
         assert len(points) == 4 and all(point in base for point in points)
         total = None
         for point in points:
             total = curve.add(total, point)
         assert total == target
-        rows.append({"epochs": epochs,
+        rows.append({"variant": variant, "epochs": epochs,
+                     "max_main_step_evaluations": cap,
+                     "hit_epoch": result["epochs_completed"] - 1,
                      "main_step_evaluations_excluding_replay":
                      result["main_step_evaluations_excluding_replay"],
                      "replay_step_evaluations":

@@ -161,9 +161,10 @@ states. It fixes the same n=53 public target, exact weight-three base
 base digest `356ebb34476f44b89d376e04fe4b03570a0a4cf3dfe0cd722309d7ea083ccc18`),
 walk seed, distinguished threshold, and two-million-main-step cap. The
 [n=23 correctness control](runs/n23_quotient_epoch_control.json) found a
-valid four-point witness under both epoch settings. The n=53 variants share
-workload ID `c87b5dc47ab5` and use `isogeny: "none"`; Q1067 remains a
-stage proposal with null candidate and run IDs.
+valid four-point witness under both epoch settings; a 500-step-per-epoch
+control also forced a restart and found its witness in epoch three. The n=53
+variants share workload ID `c87b5dc47ab5` and use `isogeny: "none"`;
+Q1067 remains a stage proposal with null candidate and run IDs.
 
 | n=53 variant | Main steps | Replay steps | Total pair-map steps | Distinct output keys summed within epochs | Endpoint rows | Query wall | Natural relations |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
