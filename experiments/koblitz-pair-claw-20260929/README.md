@@ -1807,8 +1807,9 @@ the same n=83 curve, public target, exact factor base, signed-Frobenius
 folding, `isogeny: "none"`, and portable kernel. The 20-bit Bloom filter
 would occupy about 20 GiB. A complete rectangle models $2^{39.582}$
 field calls and a 5.12% hit chance under the same finite-support placement
-heuristic. The plan is gated on terminal zero-hit audits for the active
-searches and at least 24 GiB of free host memory and 2 GiB of free spill
+heuristic. The plan is gated on terminal status for the active searches,
+independent replay of any supplied hits, no verified DLP, and at least
+24 GiB of free host memory and 2 GiB of free spill
 space. It has not run, and its candidate, run, and complete-solve-work
 fields remain null.
 
