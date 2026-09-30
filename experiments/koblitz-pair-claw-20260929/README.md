@@ -16,6 +16,29 @@ to the completed toy pipeline and `Q1037`–`Q1043` to the later work.
 `Q1036` and the complete n=53 known-log control `Q1042` have final `IC1`
 candidate identities; the remaining stage proposals do not.
 
+### Idealized ECC2K-130 pair-table scaling screen
+
+The [ECC2K-130 subgroup record](../../ecc2k130/runner/ENGINE.md) gives
+$n=131$ and prime order
+$\ell=680564733841876926932320129493409985129$ (129 bits). A signed
+Frobenius orbit has at most $2n=262$ points. If table pair sums and
+target-side pair sums behave as independent uniform group elements, then
+$M$ table evaluations and $R$ target evaluations give the **heuristic**
+hit probability $1-\exp(-262MR/\ell)$. At fixed probability, $M=R$
+minimizes the raw count $M+R$:
+
+| Modeled hit probability | Optimistic minimum pair evaluations | Work boundary |
+| --- | ---: | --- |
+| 50% | $2^{61.219}$ | Pair sums only; excludes field cost, keying, base construction, failures, and scalar replay |
+| 95% | $2^{62.275}$ | Same boundary and uniformity assumption |
+
+Thus the direct pair-table route has no modeled sub-$2^{61}$ ECC2K-130
+solve even under this optimistic count. Structure in a different factor
+base could change the collision law; the n=53 and n=83 experiments below
+measure this particular known-log base family. This screen gives no
+empirical relation yield, complete operation count, or conclusion about
+a summation-polynomial decomposition solver.
+
 ## Complete n=23 one-target control
 
 The [run receipt](runs/n23_one_target.json) and [immutable candidate
