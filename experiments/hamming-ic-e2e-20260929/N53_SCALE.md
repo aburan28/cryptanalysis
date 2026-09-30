@@ -90,6 +90,17 @@ checking; it is not an IC online time or a natural relation-yield estimate.
 The unpinned N53 gate remains negative. A next solver variant needs to handle
 the middle-coordinate chain before an ordinary-target or N83 promotion.
 
+An [exact S3 root control](n53_s3_root_control.py) handles that chain once
+the five base x values are supplied. Writing S3 as
+`(a+b)^2 c^2 + ab c + (ab)^2 + 1 = 0` gives at most two roots for each
+middle x coordinate. On the frozen planted x values, the oracle explored
+2, then 4, then 8 chains; exactly one passed the final target-x equation,
+and it was the independently replayed group witness. A separate 128-pair
+control checked that the root set contains the actual group-sum x value for
+every sampled factor-base pair. The [receipt](runs/n53_s3_root_v1/receipt.json)
+binds the exact source, seed, inputs, and results. This is a control with
+five supplied x values, not a natural-target search or a complete IC method.
+
 To regenerate a new immutable stage directory on this host:
 
 Use a Python environment with `psutil` installed and the recorded
