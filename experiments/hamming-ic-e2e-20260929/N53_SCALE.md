@@ -63,6 +63,33 @@ experiment, and censored solve times are not treated as performance wins.
 The observed N53 gate does not justify advancing this exact FC-Hamming S3
 pipeline to N83 yet.
 
+## Follow-up: pinned planted-witness diagnosis
+
+The original planted attempts showed that the known group witness satisfies
+the four S3 equations, but did not prove that the emitted XCNF accepts it.
+The [witness diagnostic](diagnose_n53_witness.py) now reads each archived
+planted formula and its receipt, appends unit clauses for the known witness,
+and independently checks every CNF and XOR row in any returned model. It
+keeps the original XCNF hash, source hashes, solver-binary hash, and exact
+pin count in [separate receipts](runs/n53_witness_v3). The complete solver
+models are stored as deterministic gzip archives beside those receipts.
+
+| Encoding | Pinned input | Units | Diagnostic wall | Result |
+| --- | --- | ---: | ---: | --- |
+| FC-Hamming | all five x values and three middle x values | 424 | 0.204 s | SAT, complete XCNF model verified |
+| Unary | all five x values and three middle x values | 424 | 0.194 s | SAT, complete XCNF model verified |
+| FC-Hamming | five x values only | 265 | 20.113 s | external timeout, no model |
+| Unary | five x values only | 265 | 20.021 s | external timeout, no model |
+
+These are **known-witness controls**. The all-pinned rows establish that both
+archived formulas encode the planted witness; the x-only rows show that the
+current solver did not recover the intermediate coordinates within 20
+seconds, even with all five base x values supplied. The diagnostic wall
+includes formula extraction, unit-clause writing, solver execution, and model
+checking; it is not an IC online time or a natural relation-yield estimate.
+The unpinned N53 gate remains negative. A next solver variant needs to handle
+the middle-coordinate chain before an ordinary-target or N83 promotion.
+
 To regenerate a new immutable stage directory on this host:
 
 Use a Python environment with `psutil` installed and the recorded
