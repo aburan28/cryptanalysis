@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 
 import n83_full_spill_work as work
+import n83_m32_ci_ingest as m32_portable
 import n83_portable_ci_ingest as portable
 from n83_full_spill_screen import field_calls
 from n83_identity_contract import validate_receipt, validate_reference
@@ -16,6 +17,7 @@ REPO = HERE.parents[1]
 OUTPUT = HERE / "n83_full_spill_segment_work.json"
 M28 = 1 << 28
 M31 = 1 << 31
+M32 = 1 << 32
 R27 = 1 << 27
 R30 = 1 << 30
 SEGMENTS_PER_RANGE = R30 // R27
@@ -64,7 +66,7 @@ def compressed_starts(starts):
 def query_segments(query_start, query_reps):
     range_index, remainder = divmod(query_start, R30)
     assert 1 <= range_index < 118
-    assert query_reps in (R27, 1 << 29, R30)
+    assert query_reps in (R27, 1 << 28, 1 << 29, R30)
     assert remainder % R27 == 0
     first = remainder // R27
     count = query_reps // R27
@@ -132,6 +134,54 @@ def portable_ci_rows(screen):
     return completed, failed, incomplete
 
 
+def m32_ci_rows(screen):
+    completed, failed, noncompleted = [], [], []
+    for bundle_path in sorted(RUNS.glob(
+            "n83_portable_q1065_M32_R28_ci_*/bundle.json")):
+        bundle = json.loads(bundle_path.read_text())
+        assert bundle["kind"] == "n83_q1065_physical_x86_M32_R28_ci_bundle"
+        assert bundle["proposal_id"] == "Q1065"
+        assert bundle["executable_proposal_id"] == "Q1061"
+        assert bundle["candidate_id"] is None and bundle["run_id"] is None
+        assert bundle["curve_id"] == screen["curve_id"]
+        assert bundle["isogeny"] == "none"
+        assert bundle["factor_base_enumerated_set_sha256"] == screen[
+            "factor_base"]["enumerated_set_sha256"]
+        assert bundle["table_descriptors"] == M32
+        assert bundle["query_representatives"] == 1 << 28
+        assert bundle["query_start"] == 6 * R30
+        assert bundle["portable_native_source_sha256"] == work.sha(
+            m32_portable.SOURCE)
+        for name, digest in bundle["artifact_sha256"].items():
+            assert work.sha(bundle_path.parent / name) == digest
+        full_path = bundle_path.parent / "full.json"
+        if not full_path.exists():
+            noncompleted.append({"bundle": repo_path(bundle_path),
+                                 "sha256": work.sha(bundle_path),
+                                 "status": bundle["status"]})
+            continue
+        row = json.loads(full_path.read_text())
+        validate_receipt(screen, row)
+        assert row["proposal_id"] == "Q1061"
+        assert row["table_start"] == 0
+        assert row["table_descriptors"] == M32
+        assert row["query_representatives"] == 1 << 28
+        assert row["query_start"] == bundle["query_start"]
+        query_segments(row["query_start"], row["query_representatives"])
+        if row["kind"] == work.FAILED_KIND:
+            assert bundle["status"] == "failed_full_segment_unknown_work"
+            assert row["native_phase_counts"] is None
+            failed.append((full_path, row))
+        else:
+            assert row["kind"] == work.SUCCESS_KIND
+            m32_portable.verify_row(screen, full_path, full=True)
+            assert bundle["status"] in (
+                "completed_zero_hit", "native_verified_hit_needs_independent_sage",
+                "unverified_exact_hit_requires_review")
+            completed.append((full_path, row))
+    return completed, failed, noncompleted
+
+
 def main():
     base = json.loads(work.BASE.read_text())
     screen = json.loads(work.SCREEN.read_text())
@@ -151,6 +201,9 @@ def main():
         "n83_full_spill_k48194_chunk_M31_R27_tstart0_qstart*_b20_h10_rb8*.json",
         "Q1062", screen)
     q1061_ci, failed_q1061_ci, incomplete_q1061_ci = portable_ci_rows(screen)
+    q1065_m32, failed_q1065_m32, noncompleted_q1065_m32 = m32_ci_rows(
+        screen)
+    m32_paths = {path for path, _ in q1065_m32}
     covered = {(0, segment, shard)
                for segment in range(SEGMENTS_PER_RANGE)
                for shard in range(8)}
@@ -159,14 +212,18 @@ def main():
                   "sha256": work.sha(work.FIRST),
                   "field_calls": str(charged), "new_cells": 64}]
     complete_segments = set()
+    extra_m32_covered = set()
     verified_dlp = []
     unverified_hits = []
-    for path, row in sorted(q1060 + q1062_full + q1062_seg + q1061_ci,
+    for path, row in sorted(q1060 + q1062_full + q1062_seg + q1061_ci +
+                            q1065_m32,
                             key=lambda item: (item[1]["finished_at_utc"],
                                               str(item[0]))):
         qstart = row["query_start"]
         range_index, remainder = divmod(qstart, R30)
         assert 1 <= range_index < 118
+        is_m32 = row["table_descriptors"] == M32
+        novel_extra_m32 = 0
         if row["proposal_id"] == "Q1060":
             assert remainder == 0 and row["query_representatives"] == R30
             assert row["table_descriptors"] == M28
@@ -176,12 +233,18 @@ def main():
                      for segment in range(SEGMENTS_PER_RANGE)}
         else:
             assert row["table_start"] == 0
-            assert row["table_descriptors"] == M31
+            assert row["table_descriptors"] in (M31, M32)
+            assert not is_m32 or path in m32_paths
             checked_range_index, segments = query_segments(
                 qstart, row["query_representatives"])
             assert checked_range_index == range_index
             cells = {(range_index, segment, shard)
                      for segment in segments for shard in range(8)}
+            if is_m32:
+                extra_cells = {(range_index, segment, shard)
+                               for segment in segments for shard in range(8, 16)}
+                novel_extra_m32 = len(extra_cells - extra_m32_covered)
+                extra_m32_covered.update(extra_cells)
             complete_segments.update((range_index, segment)
                                      for segment in segments)
         if row["verified_public_target_quotient_table_dlp"]:
@@ -203,11 +266,16 @@ def main():
         covered.update(cells)
         calls = int(row["native_field_add_mul_sqr_call_model"])
         charged += calls
-        completed.append({"proposal_id": row["proposal_id"],
-                          "path": repo_path(path), "sha256": work.sha(path),
-                          "field_calls": str(calls), "new_cells": novel})
+        entry = {"proposal_id": "Q1065" if is_m32 else row["proposal_id"],
+                 "path": repo_path(path), "sha256": work.sha(path),
+                 "field_calls": str(calls), "new_cells": novel}
+        if is_m32:
+            entry["executable_proposal_id"] = row["proposal_id"]
+            entry["new_M32_extension_cells"] = novel_extra_m32
+        completed.append(entry)
     failures = [failed_record(path, row) for path, row in
-                failed_q1060 + failed_full + failed_seg + failed_q1061_ci]
+                failed_q1060 + failed_full + failed_seg + failed_q1061_ci +
+                failed_q1065_m32]
     cell_fraction = (M28 /
                      base["zero_pair_key_cap_before_accidental_collisions"]
                      * R27 * base["factor_base"]["signed_frobenius_orbit_size"]
@@ -349,10 +417,12 @@ def main():
         "query_shape": "eight_R27_segments_per_R30_range",
         "completed_receipts": completed,
         "completed_disjoint_M28_by_R27_cells": len(covered),
+        "completed_M32_extension_M28_by_R27_cells": len(extra_m32_covered),
         "full_plan_disjoint_cells": 118 * SEGMENTS_PER_RANGE * 8,
         "failed_receipts_with_unknown_field_calls": failures,
         "incomplete_portable_ci_bundles_with_unknown_work":
             incomplete_q1061_ci,
+        "noncompleted_M32_ci_bundles": noncompleted_q1065_m32,
         "active_start_markers_excluded": [repo_path(path) for path in sorted(
             RUNS.glob("n83_*.started.json"))],
         "future_R27_segment_count": len(future),
@@ -381,11 +451,14 @@ def main():
             "The relation-placement probability is a frozen finite-support heuristic, not measured yield.",
             "Failed attempts have measured wall/CPU time where available but unknown field-call work and no completed coverage.",
             "Field calls exclude keying, Bloom work, SSD traffic, base setup, and scalar replay; no complete operation-equivalent solve cost is claimed.",
+            "M32 completed receipts credit their M31-overlapping first eight table shards to the primary grid; the extra eight table shards are counted separately and are omitted from its conservative future-hit projection.",
         ],
         "Q1062_screen_sha256": work.sha(work.SCREEN),
         "base_screen_sha256": work.sha(work.BASE),
         "portable_ci_ingest_source_sha256": work.sha(
             HERE / "n83_portable_ci_ingest.py"),
+        "m32_ci_ingest_source_sha256": work.sha(
+            HERE / "n83_m32_ci_ingest.py"),
         "portable_native_source_sha256": work.sha(portable.SOURCE),
         "segment_campaign_source_sha256": work.sha(
             HERE / "n83_full_spill_segment_campaign.py"),

@@ -1551,6 +1551,14 @@ archiving that artifact. The activation commit remains the queued run's
 frozen checkout; the current workflow has no PR trigger and its job is
 disabled, so later PR updates cannot repeat the same search. A hit still
 requires independent checked-Sage replay before it counts as a DLP.
+After a terminal M32 receipt is ingested, the
+[coverage/work ledger](n83_full_spill_segment_work.py) will charge its
+entire native field-call model. A completed zero-hit M32 rectangle can
+credit 16 $M=2^{28}$ by $R=2^{27}$ cells from its first $M=2^{31}$
+table half; it records the 16 extra-table cells separately. Failed or
+incomplete runs get no coverage credit. A failed full native attempt
+retains unknown field calls, while preflight and control failures keep
+their separate statuses.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
