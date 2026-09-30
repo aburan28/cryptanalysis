@@ -1987,6 +1987,10 @@ is prepared for a later PR synchronization; it has not run. Q1078 uses the
 same exact curve and factor base, `isogeny: "none"`, and null candidate/run
 IDs. Natural n=83 relation yield, complete solve work, and physical x86
 performance remain unknown.
+The frozen native field-call model is unchanged because Q1078 replaces
+only orbit-key selection; its bounded wall-time gain does not lower the
+$2^{39.371}$ modeled field calls per M32/R29 rectangle or establish a
+complete solve exponent.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
