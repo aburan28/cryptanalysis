@@ -1491,6 +1491,23 @@ run ID; the coverage ledger will charge overlapping or failed work only
 according to terminal receipts. The wave remains inactive if the first
 group has an exact hit awaiting review or a verified relation.
 
+### Bounded Bloom hash-count screen (Q1063)
+
+The [paired ARM receipt](runs/n83_portable_hash8_vs10_paired.json) uses
+the frozen Q1061 native source, public target, curve, base, table/query
+schedules, $M=2^{24}$, $R=2^{20}$, four query workers, and a 20-bit-per-key
+filter. Only the number of Bloom hashes changes in ABBA order: 10, 8,
+8, 10. All four runs gave zero exact hits. Eight hashes raised Bloom
+positives from 18,675 to 27,463, while its two paired query-time ratios
+were 1.0134 and 1.0074 in favor of eight hashes. The median full native
+wall ratio was 1.0283, with individual ratios 1.0511 and 1.0055.
+The [checked Sage runtime](runs/n83_portable_hash8_vs10_runtime_info.json)
+was captured before the runs. This is a small bounded ARM stage gain with
+visible paired variation. It does not alter the native field-call model,
+establish physical x86 full-size performance, or produce a natural
+relation, so Q1063 remains a proposal and the active campaign keeps ten
+hashes.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
