@@ -342,9 +342,9 @@ That is historical provenance, but those are not schema-compliant catalog
 measurement rows:
 the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
 requires exactly one of those IDs to be non-null. New comparison rows
-must use the `IC1` ID and carry the old `Q` lineage separately. Current
-n=83 stage records use `Q1051` through `Q1060`, with
-`candidate_id: null`.
+must use the `IC1` ID and carry the old `Q` lineage separately. The
+current n=83 search records use `Q` proposal IDs with `candidate_id: null`
+until a complete method and verified target solve are recorded.
 
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
 replays 24,097 seeded scalar orbits, again giving **actual B=4,000,102**
