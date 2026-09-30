@@ -1508,6 +1508,32 @@ establish physical x86 full-size performance, or produce a natural
 relation, so Q1063 remains a proposal and the active campaign keeps ten
 hashes.
 
+### Equal-area table/query shape screens (Q1064 and Q1065)
+
+The portable kernel schedules distinct cross-orbit pair descriptors over a
+domain of $\binom{48,194}{2}\cdot166$, so $M=2^{32}$ remains well below
+that domain. At fixed $MR=2^{60}$, the [field-call model](n83_full_spill_screen.py)
+charges $2^{39.252}$ calls for $M=2^{31},R=2^{29}$ and $2^{38.582}$
+for $M=2^{32},R=2^{28}$: 37.1% fewer calls in the latter shape.
+Its 20-bit-per-key Bloom allocation doubles from about 5 to 10 GiB;
+the archived x86 host had 15.4 GB available before its $M=2^{31}$ run.
+That leaves full-size $M=2^{32}$ feasibility and wall time unmeasured.
+
+Two checked-Sage, ABBA paired ARM screens used the same frozen n83 public
+target, factor base, affine schedules, native source, Bloom settings, and
+table/query product $2^{44}$. The [4-to-16 ratio receipt](runs/n83_portable_shape_4to16_paired.json)
+compares $M=2^{23},R=2^{21}$ with $M=2^{24},R=2^{20}$: the latter's
+paired full-wall speedup ratios have median 1.0957. The [16-to-64 ratio
+receipt](runs/n83_portable_shape_paired.json) compares $M=2^{24},R=2^{20}$
+with $M=2^{25},R=2^{19}$: the latter's median full-wall speedup is
+0.8100, despite 9.0% fewer modeled field calls. Table building and
+full-table replay rise enough to erase its query saving. All eight
+bounded runs had zero exact hits. These ARM measurements favor moving
+from a ratio of 4 to 16, then stopping; they do not establish the
+full-size x86 speedup or equal natural relation yield. Q1064 and Q1065
+remain stage proposals with null candidate/run IDs. The running physical
+x86 $M=2^{31},R=2^{29}$ job and the staged wave keep their frozen shape.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
