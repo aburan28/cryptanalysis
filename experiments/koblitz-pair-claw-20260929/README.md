@@ -1425,6 +1425,9 @@ terminal status before copying an uploaded receipt into the local run
 ledger. After a successful host preflight and bounded control, it
 preserves a failed or incomplete full-size attempt as such; a native
 verified hit still needs separate Sage replay before a complete DLP claim.
+Host preflight and bounded-control failures are archived with explicit
+statuses and no query coverage. The ingester's `--archive-root` option
+allows isolated receipt checks without adding synthetic runs to the ledger.
 The segmented work report and local campaign inspector read archived
 Q1061 CI bundles, count completed query coverage once across Q1061 and
 Q1062, and stop local progression on an exact hit awaiting that replay.

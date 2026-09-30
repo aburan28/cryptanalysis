@@ -77,25 +77,29 @@ def main():
     parser.add_argument("--run-id", type=int, required=True)
     parser.add_argument("--matrix-job", action="store_true",
                         help="include the query start in the bundle path when one GitHub run has multiple artifacts")
+    parser.add_argument("--archive-root", type=Path, default=RUNS,
+                        help="destination root; defaults to the run ledger")
     args = parser.parse_args()
     assert args.run_id > 0
+    assert args.archive_root.is_absolute() and args.archive_root.is_dir()
     artifact = args.artifact_dir.resolve()
     assert artifact.is_dir()
     host_path = artifact / "host.json"
     control_path = artifact / "control.json"
     full_path = artifact / "full.json"
     full_marker = artifact / "full.started.json"
-    assert host_path.is_file() and control_path.is_file()
+    assert host_path.is_file()
+    control_marker = artifact / "control.started.json"
+    assert not (control_path.exists() and control_marker.exists()), (
+        "terminal control receipt retains start marker")
     assert not (full_path.exists() and full_marker.exists()), (
         "terminal full receipt retains start marker")
     screen = json.loads(SCREEN.read_text())
     validate_reference(screen)
     host = json.loads(host_path.read_text())
     assert host["architecture"].lower() in ("x86_64", "amd64")
-    assert host["mem_available_bytes"] >= host[
-        "minimum_mem_available_bytes"] >= 6 << 30
-    assert host["root_free_bytes"] >= host[
-        "minimum_root_free_bytes"] >= 10 << 30
+    assert host["minimum_mem_available_bytes"] >= 6 << 30
+    assert host["minimum_root_free_bytes"] >= 10 << 30
     query_start = host["query_start"]
     query_reps = host.get("query_representatives", R27)
     assert query_reps in (R27, R29)
@@ -103,11 +107,46 @@ def main():
         f"n83_portable_R{int(math.log2(query_reps))}_host_preflight")
     assert R30 <= query_start < 118 * R30 and query_start % R27 == 0
     assert query_start % R30 + query_reps <= R30
-    control = verified_row(screen, control_path, full=False)
-    assert control["query_start"] == query_start
+    resources_ok = (host["mem_available_bytes"] >= host[
+        "minimum_mem_available_bytes"] and host["root_free_bytes"] >= host[
+            "minimum_root_free_bytes"])
+    if not resources_ok:
+        assert not control_path.exists() and not control_marker.exists()
+        assert not full_path.exists() and not full_marker.exists()
+        control = None
+        control_ok = False
+    elif control_path.is_file():
+        control_record = json.loads(control_path.read_text())
+        if control_record["kind"] == (
+                "n83_public_target_signed_x_query_k48194_exact_replay_chunk"):
+            control = verified_row(screen, control_path, full=False)
+            control_ok = True
+        else:
+            assert control_record["kind"] == (
+                "n83_public_target_signed_x_query_k48194_chunk_failed")
+            validate_receipt(screen, control_record)
+            assert control_record["proposal_id"] == "Q1061"
+            assert control_record["cpu_backend"] == "x86_pclmul"
+            assert control_record["native_source_sha256"] == sha(SOURCE)
+            assert control_record["bloom_core_sha256"] == sha(CORE)
+            assert control_record["native_pairs_sha256"] == sha(PAIRS)
+            assert control_record["table_descriptors"] == 1 << 20
+            assert control_record["query_representatives"] == 1 << 14
+            assert control_record["native_phase_counts"] is None
+            assert not control_record["verified_public_target_quotient_table_dlp"]
+            control = control_record
+            control_ok = False
+        assert control["query_start"] == query_start
+        if not control_ok:
+            assert not full_path.exists() and not full_marker.exists()
+    else:
+        assert not full_path.exists() and not full_marker.exists()
+        control = None
+        control_ok = False
     full = json.loads(full_path.read_text()) if full_path.exists() else None
     full_success = False
     if full is not None:
+        assert resources_ok and control_ok
         if full["kind"] == (
                 "n83_public_target_signed_x_query_k48194_exact_replay_chunk"):
             full = verified_row(screen, full_path, full=True,
@@ -140,7 +179,11 @@ def main():
             assert full["factor_base_enumerated_set_sha256"] == control[
                 "factor_base"]["enumerated_set_sha256"]
         assert full["public_target"] == control["public_target"]
-    status = ("incomplete_no_terminal_full_receipt" if full is None else
+    status = ("host_preflight_failed" if not resources_ok else
+              "failed_bounded_control" if control is not None and
+              not control_ok else
+              "incomplete_no_control_receipt" if control is None else
+              "incomplete_no_terminal_full_receipt" if full is None else
               "failed_full_segment_unknown_work" if not full_success else
               "native_verified_hit_needs_independent_sage" if full[
                   "verified_public_target_quotient_table_dlp"] else
@@ -152,11 +195,11 @@ def main():
         f"{args.run_id}")
     if args.matrix_job:
         destination_name += f"_qstart{query_start}"
-    destination = RUNS / destination_name
+    destination = args.archive_root / destination_name
     assert not destination.exists(), "refusing to overwrite archived CI artifact"
     destination.mkdir()
-    names = ("host.json", "control.json", "full.json",
-             "full.started.json")
+    names = ("host.json", "control.json", "control.started.json",
+             "full.json", "full.started.json")
     copied = {}
     for name in names:
         source = artifact / name
