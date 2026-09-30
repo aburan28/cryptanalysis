@@ -88,11 +88,29 @@ def preflight(plan, spill_dir):
              RUNS / "n83_knownlog_orbit_base_k48194.json")):
         assert plan[key] == sha(path), key
 
-    prior_path = RUNS / "n83_local_arm_m33_q1073.json"
+    interruption_path = RUNS / "n83_local_arm_m33_q1073_interrupted.json"
+    interruption = json.loads(interruption_path.read_text())
+    assert interruption["status"] == (
+        "interrupted_no_terminal_search_receipt")
+    assert not interruption["coverage_credited"]
+    assert not (RUNS / "n83_local_arm_m33_q1073.json").exists()
+    retry_preflight_path = RUNS / (
+        "n83_local_arm_m33_q1073_retry2_preflight.json")
+    retry_runtime_path = RUNS / (
+        "n83_local_arm_m33_q1073_retry2_runtime_info.json")
+    retry_preflight = json.loads(retry_preflight_path.read_text())
+    retry_runtime = json.loads(retry_runtime_path.read_text())
+    assert retry_preflight["status"] == "passed_before_launch"
+    assert retry_preflight["plan_sha256"] == sha(PRIOR_PLAN)
+    assert retry_preflight["prior_interrupted_attempt_sha256"] == sha(
+        interruption_path)
+    assert retry_runtime["status"] == "verified"
+    prior_path = RUNS / "n83_local_arm_m33_q1073_retry2.json"
     assert not prior_path.with_suffix(".started.json").exists(), (
-        "Q1073 still has a start marker")
+        "Q1073 retry still has a start marker")
     prior = checked_zero_receipt(
-        prior_path, RUNS / "n83_local_arm_m33_q1073_sage_verify.json")
+        prior_path, RUNS / "n83_local_arm_m33_q1073_retry2_sage_verify.json")
+    assert prior["sage_runtime_info_sha256"] == sha(retry_runtime_path)
     assert prior["curve_id"] == plan["curve_id"]
     assert prior["isogeny"] == "none"
     assert prior["candidate_id"] is None and prior["run_id"] is None
@@ -151,7 +169,10 @@ def preflight(plan, spill_dir):
         "query_representatives": plan["query_representatives"],
         "Q1073_receipt_sha256": sha(prior_path),
         "Q1073_audit_sha256": sha(
-            RUNS / "n83_local_arm_m33_q1073_sage_verify.json"),
+            RUNS / "n83_local_arm_m33_q1073_retry2_sage_verify.json"),
+        "Q1073_interruption_sha256": sha(interruption_path),
+        "Q1073_retry_preflight_sha256": sha(retry_preflight_path),
+        "Q1073_retry_runtime_sha256": sha(retry_runtime_path),
         "coverage_ledger_sha256": sha(
             HERE / "n83_full_spill_segment_work.json"),
         "system_memory_bytes": system_bytes,

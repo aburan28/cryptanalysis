@@ -1843,6 +1843,17 @@ Its candidate, run, measured relation yield, and complete-solve-work
 fields remain null. A retry needs separate artifacts and must charge this
 interrupted attempt as unknown work.
 
+The [retry-2 launcher](launch_n83_local_arm_m33_q1073_retry2.py) binds
+the preserved interruption, repeats the same frozen query rectangle,
+and writes distinct artifacts. Its [controller](runs/n83_local_arm_m33_q1073_retry2_controller.json)
+started a detached physical ARM search after passing a fresh
+[preflight](runs/n83_local_arm_m33_q1073_retry2_preflight.json) and saving
+the checked [Sage runtime](runs/n83_local_arm_m33_q1073_retry2_runtime_info.json).
+The [retry start marker](runs/n83_local_arm_m33_q1073_retry2.started.json)
+is not a terminal result. The earlier unknown work stays charged as an
+interrupted attempt; no new coverage or relation is credited while retry 2
+is running.
+
 ### Conditional one-table R30 continuation (Q1074)
 
 The [frozen Q1074 plan](n83_local_arm_m33_r30_q1074_plan.json) starts at
@@ -1855,7 +1866,7 @@ a 9.98% hit probability for this rectangle. Both figures are predictions,
 not measured natural yield or complete-solve work.
 
 The [guarded launcher](launch_n83_local_arm_m33_r30_q1074.py) requires
-Q1073 to finish with zero exact hits and an independent checked-Sage
+Q1073 retry 2 to finish with zero exact hits and an independent checked-Sage
 audit. It checks the curve, actual B, folded columns, base digest, source
 hashes, public target, query disjointness, physical ARM backend, and
 fresh host memory and spill space before saving the checked Sage runtime
@@ -1880,6 +1891,9 @@ control, terminal checks, and artifact upload. The
 [ingester](n83_m32_wave_q1075_ci_ingest.py) preserves failures and exact
 hits for independent checked-Sage replay. Q1075 keeps null candidate
 and run IDs until a complete method is identified.
+[Run 36751667950](https://github.com/aburan28/cryptanalysis/actions/runs/36751667950)
+has all eight jobs in the full-search step. No Q1075 relation, DLP, or
+completed work is claimed before terminal artifacts are audited.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
