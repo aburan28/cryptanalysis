@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 
 import n83_full_spill_work as work
+import n83_portable_ci_ingest as portable
 from n83_full_spill_screen import field_calls
 from n83_identity_contract import validate_reference
 
@@ -16,7 +17,10 @@ SCREEN = HERE / "n83_full_spill_screen.json"
 BASE = HERE / "n83_large_knownlog_base_screen.json"
 LEDGER = HERE / "n83_full_spill_segment_work.json"
 WORKFLOW = REPO / ".github/workflows/n83-portable-quotient-wave.yml"
+SEGMENT_WORKFLOW = REPO / ".github/workflows/n83-portable-quotient-segment.yml"
 OUTPUT = HERE / "n83_portable_wave_plan.json"
+FIRST_GROUP = (HERE / "runs" /
+               "n83_portable_q1061_M31_R29_ci_36669737583")
 M31 = 1 << 31
 R27 = 1 << 27
 R29 = 1 << 29
@@ -39,6 +43,32 @@ def main():
         "factor_base_enumerated_set_sha256"]
     assert ledger["verified_quotient_table_dlp_receipts"] == []
     assert ledger["unverified_exact_hit_receipts"] == []
+    first_bundle_path = FIRST_GROUP / "bundle.json"
+    first_bundle_sha = first_sage_sha = None
+    if first_bundle_path.exists():
+        bundle = json.loads(first_bundle_path.read_text())
+        assert bundle["github_run_id"] == 36669737583
+        assert bundle["query_start"] == R30 + R27
+        assert bundle["query_representatives"] == R29
+        assert bundle["curve_id"] == screen["curve_id"]
+        first_bundle_sha = sha(first_bundle_path)
+        if bundle["status"] == "completed_zero_hit":
+            full_path = FIRST_GROUP / "full.json"
+            row = portable.verified_row(
+                screen, full_path, full=True, full_query_reps=R29)
+            assert row["native_result"]["exact_hit_queries"] == 0
+            sage_path = FIRST_GROUP / "sage_verify.json"
+            assert sage_path.exists(), "independent Sage zero replay required"
+            sage = json.loads(sage_path.read_text())
+            assert sage["receipt_sha256"] == sha(full_path)
+            assert sage["verified_relation_count"] == 0
+            assert sage["natural_public_target_relation_verified"] is False
+            first_sage_sha = sha(sage_path)
+            status = "ready_after_independent_first_R29_zero_receipt"
+        else:
+            status = f"hold_after_first_R29_{bundle['status']}"
+    else:
+        status = "staged_inactive_pending_first_R29_terminal_review"
     assert len(STARTS) == len(set(STARTS)) == 8
     assert all(start >= 2 * R30 and start % R29 == 0 and
                start % R30 + R29 <= R30 for start in STARTS)
@@ -67,7 +97,7 @@ def main():
     report = {
         "kind": "n83_q1061_physical_x86_grouped_wave_plan",
         "proposal_id": "Q1061", "candidate_id": None, "run_id": None,
-        "status": "staged_inactive_pending_first_R29_terminal_review",
+        "status": status,
         "curve_id": screen["curve_id"], "isogeny": "none",
         "factor_base_enumerated_set_sha256": screen["factor_base"][
             "enumerated_set_sha256"],
@@ -88,6 +118,8 @@ def main():
         "heuristic_hit_probability_conditional_on_archived_zero_hits":
             -math.expm1(-(new_intensity - old_intensity)),
         "pending_first_R29_github_run_id": 36669737583,
+        "first_R29_bundle_sha256": first_bundle_sha,
+        "first_R29_sage_replay_sha256": first_sage_sha,
         "activation_gate": (
             "Review terminal first-R29 receipt and independent Sage replay; "
             "do not activate if it has a verified or unverified exact hit."),
@@ -95,6 +127,7 @@ def main():
         "base_screen_sha256": sha(BASE),
         "coverage_ledger_sha256": sha(LEDGER),
         "workflow_sha256": sha(WORKFLOW),
+        "segment_workflow_sha256": sha(SEGMENT_WORKFLOW),
         "source_sha256": sha(Path(__file__)),
     }
     OUTPUT.write_text(json.dumps(report, indent=2) + "\n")

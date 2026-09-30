@@ -46,6 +46,7 @@ jobs:
     env:
       SEGMENT_QUERY_START: ${{ inputs.query_start || '1207959552' }}
       SEGMENT_QUERY_REPS_LOG2: ${{ inputs.query_reps_log2 || '29' }}
+      SEGMENT_FROM_WAVE: ${{ inputs.from_wave || false }}
     steps:
       - uses: actions/checkout@v4
 
@@ -53,7 +54,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/n83-segment"
           python3 - <<'PY'
-          import json, os, pathlib, platform, shutil, subprocess
+          import hashlib, json, os, pathlib, platform, shutil, subprocess
           start = int(os.environ['SEGMENT_QUERY_START'])
           reps_log2 = int(os.environ['SEGMENT_QUERY_REPS_LOG2'])
           r27 = 1 << 27
@@ -62,6 +63,19 @@ jobs:
           reps = 1 << reps_log2
           assert r30 <= start < 118 * r30 and start % r27 == 0
           assert start % r30 + reps <= r30
+          if os.environ.get('SEGMENT_FROM_WAVE', 'false').lower() == 'true':
+              root = pathlib.Path('experiments/koblitz-pair-claw-20260929')
+              plan = json.loads((root / 'n83_portable_wave_plan.json').read_text())
+              assert plan['status'] == 'ready_after_independent_first_R29_zero_receipt'
+              assert plan['first_R29_bundle_sha256']
+              assert plan['first_R29_sage_replay_sha256']
+              assert start in plan['query_starts'] and reps == plan['query_representatives_per_job']
+              for path, field in (
+                  (root / 'n83_full_spill_segment_work.json', 'coverage_ledger_sha256'),
+                  (pathlib.Path('.github/workflows/n83-portable-quotient-wave.yml'), 'workflow_sha256'),
+                  (pathlib.Path('.github/workflows/n83-portable-quotient-segment.yml'), 'segment_workflow_sha256'),
+              ):
+                  assert hashlib.sha256(path.read_bytes()).hexdigest() == plan[field]
           assert platform.machine().lower() in ('x86_64', 'amd64')
           meminfo = pathlib.Path('/proc/meminfo').read_text().splitlines()
           memory = {line.split(':', 1)[0]: int(line.split(':', 1)[1].split()[0]) * 1024

@@ -1478,6 +1478,9 @@ segment has a full-size portable timing receipt.
 The [eight-job physical x86 wave plan](n83_portable_wave_plan.json) is
 staged with its [workflow](../../.github/workflows/n83-portable-quotient-wave.yml)
 disabled until the first grouped run's terminal receipt is reviewed.
+The plan generator marks it ready only after a completed zero-hit receipt
+and an independent checked-Sage zero replay; failed or exact-hit receipts
+keep it inactive.
 It selects two $R=2^{29}$ groups in each of four later, disjoint $R=2^{30}$
 ranges, for 256 new grid cells if all jobs finish. The declared wave cost
 is $2^{42.252}$ native field calls and its frozen-heuristic probability of
