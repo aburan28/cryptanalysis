@@ -152,6 +152,43 @@ The factor-base logs and target DLP remain unknown, so `Q1040` has
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_table.py
 ```
 
+### Q1067 salted epoch restart screen
+
+The frozen [Q1067 plan](n53_quotient_epoch_plan.json) tests whether changing
+the quotient walk's deterministic map after a bounded epoch reduces repeated
+states. It fixes the same n=53 public target, exact weight-three base
+(`EC1N53Ckb1hf77aab617904`, 24,062 usable points, 227 folded columns,
+base digest `356ebb34476f44b89d376e04fe4b03570a0a4cf3dfe0cd722309d7ea083ccc18`),
+walk seed, distinguished threshold, and two-million-main-step cap. The
+[n=23 correctness control](runs/n23_quotient_epoch_control.json) found a
+valid four-point witness under both epoch settings. The n=53 variants share
+workload ID `c87b5dc47ab5` and use `isogeny: "none"`; Q1067 remains a
+stage proposal with null candidate and run IDs.
+
+| n=53 variant | Main steps | Replay steps | Total pair-map steps | Distinct output keys summed within epochs | Endpoint rows | Query wall | Natural relations |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| One epoch | 2,000,000 | 2,685,910 | 4,685,910 = $2^{22.160}$ | 495,435 | 3,889 | 300.34 s | 0 |
+| Four epochs | 2,000,000 | 2,345,047 | 4,345,047 = $2^{22.051}$ | 865,659 | 6,719 | 283.26 s | 0 |
+
+The [paired comparison](n53_quotient_epoch_comparison.json) links the two
+receipts and their checked Sage runtime. Four epochs used 7.27% fewer total
+pair-map steps and ran 1.0603 times faster on this one target and seed. The
+distinct-key sum is within separate maps; it is not a cross-epoch unique
+count. Neither run found a relation, so this screen supplies no natural-yield
+rate, n=83 speedup, or complete DLP work exponent. The $2^x$ values above
+count pair-map calls, including replay, and are **not** field operations or
+an estimated solve. One paired seed cannot establish uncertainty for the
+wall ratio or relation yield. The active n=83 native searches retain their
+separately frozen implementation.
+
+```sh
+./sage --runtime-info > /private/tmp/n53_quotient_epoch_runtime_info.json
+./sage -python experiments/koblitz-pair-claw-20260929/control_n23_quotient_epochs.py
+./sage -python experiments/koblitz-pair-claw-20260929/probe_n53_quotient_epochs.py --variant single --runtime-info /private/tmp/n53_quotient_epoch_runtime_info.json --out /private/tmp/n53_quotient_epoch_single_replay.json
+./sage -python experiments/koblitz-pair-claw-20260929/probe_n53_quotient_epochs.py --variant four --runtime-info /private/tmp/n53_quotient_epoch_runtime_info.json --out /private/tmp/n53_quotient_epoch_four_replay.json
+python3 experiments/koblitz-pair-claw-20260929/summarize_n53_quotient_epochs.py
+```
+
 ## Exact n=83 orbit base and bounded full-base timing
 
 The [n=83 base receipt](runs/n83_weight5_orbit_base.json) and
