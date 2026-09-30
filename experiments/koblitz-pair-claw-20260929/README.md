@@ -1903,8 +1903,11 @@ the native worker remained live. Two idle temporary worktrees' ignored
 Rust build caches were cleared, restoring about 2.5 GiB free; the worker
 resumed CPU work. A second free-space decline led to clearing two more
 idle ignored build caches, with about 2.8 GiB free afterward. Any
-eventual Q1073 retry wall time must be read with
-this host-pressure event attached. It gives no result or coverage credit.
+later decline below the original 2 GiB guard led to clearing 254 MiB of
+newly regenerated, ignored Rust build cache after confirming it was idle;
+the native worker remained live. Eventual Q1073 retry wall time must be
+read with these host-pressure events attached. They give no result or
+coverage credit.
 
 ### Conditional one-table R30 continuation (Q1074)
 
