@@ -2099,6 +2099,15 @@ failed or pending audits visible without credit. With both searches still
 running, this source update changes no completed coverage or modeled work;
 the dispatch plan remains bound to the frozen pre-dispatch coverage snapshot.
 
+The [Q1081 conditional design](n83_m32_wave_q1081_design.json) reserves the
+next eight aligned M32/R29 intervals, starting exactly at Q1079's end. It
+does not dispatch or credit them. The first interval repeats Q1080's bounded
+M28/R24 keyer-control range; that earlier work stays separately charged.
+Q1081 can become an executable wave only after all Q1079 terminal receipts
+are independently audited and the coverage ledger and source hashes are
+refrozen. Its additional eight-job arithmetic model is $2^{42.371}$ native
+field calls, with natural hit probability and complete solve work unknown.
+
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
 The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
