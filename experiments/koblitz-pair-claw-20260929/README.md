@@ -1629,6 +1629,12 @@ records 126/7,552 primary cells and $2^{42.470}$ completed modeled
 field calls. A complete DLP and operation-equivalent solve work remain
 unknown.
 
+For zero-hit receipts, the Sage verifier checks the archived identity,
+subgroup, field conversion, and receipt hash. It independently replays a
+four-point witness only when the receipt contains one. The absence of
+exact matches in this M32 search rests on the native kernel's complete
+exact scan of its Bloom positives; the Sage audit does not rescan them.
+
 ### Bounded Bloom density screen (Q1066)
 
 The [paired ARM receipt](runs/n83_portable_bloom16_vs20_paired.json)
