@@ -2065,6 +2065,9 @@ complete n=83 IC solve or a measured complete-solve exponent. Any exact
 hit still requires independent checked-Sage replay. The
 [audit tool](audit_n83_q1080_paired.py) checks all four receipts, generated
 sources, binary hashes, and Sage replays before a paired result is credited.
+The [partial-work accountant](n83_q1080_partial_work.py) will charge all
+four field-call models after that audit while recording one novel M28/R24
+rectangle and zero complete R27 grid cells.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
