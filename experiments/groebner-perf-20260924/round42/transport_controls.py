@@ -76,4 +76,3 @@ def validate_transport_tables():
                                     'extent_guards': 5, 'reconfigured_modulus': alternate})
     print('TRANSPORT_TABLES_PASS', len(records), 'shape/build records;', sum(r['values'] for r in records), 'values', flush=True)
     return records
-
