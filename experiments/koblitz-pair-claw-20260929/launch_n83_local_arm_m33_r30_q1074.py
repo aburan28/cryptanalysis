@@ -129,6 +129,16 @@ def preflight(plan, spill_dir):
     # A new ledger may include Q1073; every charged receipt must stay clear
     # of this query interval, regardless of its table shard.
     ledger = json.loads((HERE / "n83_full_spill_segment_work.json").read_text())
+    assert ledger["source_sha256"] == sha(
+        HERE / "n83_full_spill_segment_work.py"), (
+        "coverage ledger needs regeneration after source changes")
+    assert not ledger["verified_quotient_table_dlp_receipts"], (
+        "a verified target DLP makes Q1074 unnecessary")
+    assert not ledger["unverified_exact_hit_receipts"], (
+        "review exact hits before starting Q1074")
+    assert any(entry["sha256"] == sha(prior_path)
+               for entry in ledger["completed_receipts"]), (
+        "credit the audited Q1073 retry in the ledger before Q1074")
     for entry in ledger["completed_receipts"]:
         row = json.loads((REPO / entry["path"]).read_text())
         start = row["query_start"]

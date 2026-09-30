@@ -1908,7 +1908,9 @@ not measured natural yield or complete-solve work.
 
 The [guarded launcher](launch_n83_local_arm_m33_r30_q1074.py) requires
 Q1073 retry 2 to finish with zero exact hits and an independent checked-Sage
-audit. It checks the curve, actual B, folded columns, base digest, source
+audit, then requires that receipt to be credited in the regenerated
+coverage ledger with no verified DLP or unresolved exact hit. It checks
+the curve, actual B, folded columns, base digest, source
 hashes, public target, query disjointness, physical ARM backend, and
 fresh host memory and spill space before saving the checked Sage runtime
 and starting a job. Its negative preflight test stopped at Q1073's start
