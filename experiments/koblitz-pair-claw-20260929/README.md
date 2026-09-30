@@ -2183,8 +2183,10 @@ the source used by active full-size searches unchanged. The
 [one-shot paired workflow](../../.github/workflows/n83-q1082-m28-r24-bloom-paired-x86.yml)
 checks physical x86 resources and exact identities, archives the derived
 runner and every source and binary, and compares exact outcomes despite
-the expected difference in Bloom positives. Any performance result is
-pending. A [local M20/R14 16-bit smoke](runs/n83_q1082_smoke_b16_M20_R14.json)
+the expected difference in Bloom positives. [Run 36792009510](https://github.com/aburan28/cryptanalysis/actions/runs/36792009510)
+started from the [frozen enabled workflow](runs/n83_q1082_ci_36792009510_workflow_snapshot.yml);
+the live workflow is disabled for later PR synchronizations. Any paired
+performance result is pending. A [local M20/R14 16-bit smoke](runs/n83_q1082_smoke_b16_M20_R14.json)
 passed the [independent checked-Sage replay](runs/n83_q1082_smoke_b16_M20_R14_sage_verify.json):
 1,144 Bloom positives, zero exact hits, and no verified relation. It
 checks the derived runner's executable path and gives no paired timing
