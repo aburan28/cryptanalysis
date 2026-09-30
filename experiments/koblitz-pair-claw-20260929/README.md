@@ -1725,7 +1725,9 @@ The work exponent has a fixed boundary in this ledger:
 | Quantity | $2^x$ native field calls | Status |
 | --- | ---: | --- |
 | One complete M32/R29 rectangle | $2^{39.371}$ | Modeled attempt cost, with no hit required |
-| Completed disjoint search receipts | $2^{43.847}$ | Modeled calls over measured terminal coverage |
+| Completed R27-grid search receipts | $2^{43.847}$ | Modeled calls over audited terminal grid coverage |
+| Q1080 four paired M28/R24 attempts | $2^{36.582}$ | Charged separately; one novel partial rectangle, zero full R27 cells |
+| All successful terminal attempts through Q1080 | $2^{43.856}$ | Sum of the preceding charged work; active jobs excluded |
 | First hit on the selected M32 route | $2^{45.292}$ | Finite-support expectation, conditional on a hit by plan end |
 | Complete one-target IC solve | unknown | No natural n=83 relation or independently verified IC scalar yet |
 
@@ -2068,9 +2070,22 @@ complete n=83 IC solve or a measured complete-solve exponent. Any exact
 hit still requires independent checked-Sage replay. The
 [audit tool](audit_n83_q1080_paired.py) checks all four receipts, generated
 sources, binary hashes, and Sage replays before a paired result is credited.
-The [partial-work accountant](n83_q1080_partial_work.py) will charge all
+The [partial-work accountant](n83_q1080_partial_work.py) charges all
 four field-call models after that audit while recording one novel M28/R24
 rectangle and zero complete R27 grid cells.
+The [physical x86 run](https://github.com/aburan28/cryptanalysis/actions/runs/36770585105)
+completed with four exactly matching outcomes: 304,862 Bloom positives
+and **zero exact hits** each. The [independent audit](runs/n83_q1080_x86_ci_36770585105/audit.json)
+checks archived source and binary hashes plus four checked-Sage zero-hit
+replays. Original query times were 253.19 and 253.60 s; Q1079 times
+were 201.49 and 201.33 s. The ratio of medians is **1.258×** for query
+and **1.261×** for query plus exact replay, with respective all-pair
+ranges 1.257–1.260× and 1.244–1.277×. This is two repetitions per
+variant on one host, not a full-size rate. The
+[work receipt](n83_q1080_partial_work.json) charges all four attempts
+at $2^{36.582}$ modeled native field calls in total, credits the one
+novel M28/R24 rectangle, and credits zero full R27 cells. The one-shot
+workflow is disabled after this audit.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
