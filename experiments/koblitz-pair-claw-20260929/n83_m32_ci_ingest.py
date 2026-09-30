@@ -87,7 +87,7 @@ def main():
     control_path = artifact / "control.json"
     full_path = artifact / "full.json"
     marker_path = artifact / "full.started.json"
-    assert host_path.is_file() and control_path.is_file()
+    assert host_path.is_file()
     assert not (full_path.exists() and marker_path.exists()), (
         "terminal receipt retains an incompatible start marker")
     screen = json.loads(SCREEN.read_text())
@@ -114,16 +114,43 @@ def main():
     assert host["query_representatives"] == R
     assert host["query_start"] == QUERY_START
     assert host["architecture"].lower() in ("x86_64", "amd64")
-    assert host["mem_available_bytes"] >= host[
-        "minimum_mem_available_bytes"] >= 13 << 30
-    assert host["root_free_bytes"] >= host[
-        "minimum_root_free_bytes"] >= 10 << 30
+    assert host["minimum_mem_available_bytes"] >= 13 << 30
+    assert host["minimum_root_free_bytes"] >= 10 << 30
     assert host["screen_sha256"] == sha(SCREEN)
     assert host["wave_plan_sha256"] == plan["wave_plan_sha256"]
-    control = verify_row(screen, control_path, full=False)
+    resources_ok = (host["mem_available_bytes"] >= host[
+        "minimum_mem_available_bytes"] and host["root_free_bytes"] >= host[
+            "minimum_root_free_bytes"])
+    if not resources_ok:
+        assert not control_path.exists() and not full_path.exists()
+        control = None
+        control_ok = False
+    elif control_path.is_file():
+        control_record = json.loads(control_path.read_text())
+        if control_record["kind"] == (
+                "n83_public_target_signed_x_query_k48194_exact_replay_chunk"):
+            control = verify_row(screen, control_path, full=False)
+            control_ok = True
+        else:
+            assert control_record["kind"] == (
+                "n83_public_target_signed_x_query_k48194_chunk_failed")
+            validate_receipt(screen, control_record)
+            assert control_record["proposal_id"] == "Q1061"
+            assert control_record["table_descriptors"] == 1 << 20
+            assert control_record["query_representatives"] == 1 << 14
+            assert control_record["query_start"] == QUERY_START
+            control = control_record
+            control_ok = False
+        if not control_ok:
+            assert not full_path.exists()
+    else:
+        assert not full_path.exists()
+        control = None
+        control_ok = False
     full = json.loads(full_path.read_text()) if full_path.exists() else None
     full_success = False
     if full is not None:
+        assert resources_ok and control_ok
         if full["kind"] == "n83_public_target_signed_x_query_k48194_exact_replay_chunk":
             full = verify_row(screen, full_path, full=True)
             full_success = True
@@ -149,7 +176,11 @@ def main():
         else:
             assert full["factor_base_enumerated_set_sha256"] == control[
                 "factor_base"]["enumerated_set_sha256"]
-    status = ("incomplete_no_terminal_full_receipt" if full is None else
+    status = ("host_preflight_failed" if not resources_ok else
+              "failed_bounded_control" if control is not None and
+              not control_ok else
+              "incomplete_no_control_receipt" if control is None else
+              "incomplete_no_terminal_full_receipt" if full is None else
               "failed_full_segment_unknown_work" if not full_success else
               "native_verified_hit_needs_independent_sage" if full[
                   "verified_public_target_quotient_table_dlp"] else
@@ -160,7 +191,8 @@ def main():
     assert not destination.exists(), "refusing to overwrite archived artifact"
     destination.mkdir()
     copied = {}
-    for name in ("host.json", "control.json", "full.json", "full.started.json"):
+    for name in ("host.json", "control.json", "control.started.json",
+                 "full.json", "full.started.json"):
         source = artifact / name
         if source.is_file():
             copied[name] = sha(source)
