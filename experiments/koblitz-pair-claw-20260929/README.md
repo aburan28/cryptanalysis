@@ -1692,16 +1692,16 @@ run, while the placement probability remains unvalidated by natural
 yield. The workflow was disabled for subsequent PR commits.
 
 The [coverage-aware work ledger](n83_full_spill_segment_work.json) now
-also projects a distinct future M32/R29 route. It retains both the 286
-completed primary M28-by-R27 cells and the 48 completed extra-table
+also projects a distinct future M32/R29 route. It retains both the 318
+completed primary M28-by-R27 cells and the 80 completed extra-table
 cells, then orders the remaining aligned R29 rectangles by new coverage.
-Under the same frozen finite-support placement model, 235 future M32/R29
-calls cover the entire M32-by-query domain, with a 99.710% conditional
+Under the same frozen finite-support placement model, 234 future M32/R29
+calls cover the entire M32-by-query domain, with a 99.702% conditional
 chance of at least one hit. Conditional on a hit within that finite plan,
-the expected first hit is after 38.40 additional calls and $2^{45.061}$
+the expected first hit is after 38.40 additional calls and $2^{45.089}$
 selected-route modeled native field calls including completed receipts.
-The median is 27 calls ($2^{44.702}$); the 95% quantile is 117 calls
-($2^{46.396}$). These are **model outputs**, not measured relation yield,
+The median is 27 calls ($2^{44.737}$); the 95% quantile is 117 calls
+($2^{46.407}$). These are **model outputs**, not measured relation yield,
 elapsed time, or complete operation-equivalent solve work. In-flight
 receipts are excluded until terminal, and the estimate will be recomputed
 after their coverage is known.
@@ -1711,8 +1711,8 @@ The work exponent has a fixed boundary in this ledger:
 | Quantity | $2^x$ native field calls | Status |
 | --- | ---: | --- |
 | One complete M32/R29 rectangle | $2^{39.371}$ | Modeled attempt cost, with no hit required |
-| Completed disjoint search receipts | $2^{43.099}$ | Modeled calls over measured terminal coverage |
-| First hit on the selected M32 route | $2^{45.061}$ | Finite-support expectation, conditional on a hit by plan end |
+| Completed disjoint search receipts | $2^{43.204}$ | Modeled calls over measured terminal coverage |
+| First hit on the selected M32 route | $2^{45.089}$ | Finite-support expectation, conditional on a hit by plan end |
 | Complete one-target IC solve | unknown | No natural n=83 relation or independently verified IC scalar yet |
 
 The field-call boundary counts table construction and replay and the
@@ -1778,14 +1778,18 @@ same one-target M=$2^{32}$ table with an R=$2^{29}$ representative-query
 range $[11,811,160,064,12,348,030,976)$. It starts exactly where the
 Q1069 wave ends, so the range does not duplicate its eight x86 jobs. The
 checked [Sage runtime receipt](runs/n83_local_arm_m32_q1071_runtime_info.json)
-was saved before the local physical ARM search started. The wrapper's
-[started receipt](runs/n83_local_arm_m32_q1071.started.json) records the
-actual curve, base digest, B, folded columns, target, source hashes, and
-`isogeny: "none"`. It identifies the shared Q1061 search kernel; Q1071 is
-the frozen local dispatch of that kernel. The frozen batch-8 choice follows
-the Q1070 screen. Q1071 has `candidate_id: null` and `run_id: null` while
-this stage is in progress; its modeled $2^{39.371}$ field calls are an
-attempt budget, not measured complete-solve work.
+was saved before the local physical ARM search started. The terminal
+[receipt](runs/n83_local_arm_m32_q1071.json) and independent checked-Sage
+[audit](runs/n83_local_arm_m32_q1071_sage_verify.json) pin the exact
+curve, base digest, B, folded columns, target, source hashes, and
+`isogeny: "none"`. The wrapper identifies the shared Q1061 search kernel;
+Q1071 is the frozen local dispatch of that kernel. The batch-8 choice
+followed the Q1070 screen. Its native scan found **zero exact hits** among
+9,739,019 Bloom positives. Full wall time was 8,494.23 s, with 6,875.79 s
+target-online query and replay and 10.30 GiB peak RSS. It added 32
+primary and 32 M32-extension cells. Q1071 retains `candidate_id: null`
+and `run_id: null`; its $2^{39.371}$ field calls are a modeled attempt
+cost, not measured complete-solve work.
 
 ### Bloom early-exit screen (Q1072)
 
