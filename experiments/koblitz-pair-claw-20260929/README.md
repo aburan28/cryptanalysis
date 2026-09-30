@@ -1544,7 +1544,10 @@ Bloom allocation gives an 11.06 GB RSS forecast by adding its size
 increase to one earlier physical x86 peak; this is not a measured M32
 memory bound. The [one-shot workflow](../../.github/workflows/n83-portable-quotient-shape.yml)
 requires at least 13 GiB available memory, runs a bounded same-host
-control first, and uploads terminal or failed receipts. A hit still
+control first, and uploads terminal or failed receipts. The
+[Q1065 artifact ingester](n83_m32_ci_ingest.py) checks curve, base,
+target, shape, source hashes, terminal status, and host resources before
+archiving that artifact. A hit still
 requires independent checked-Sage replay before it counts as a DLP.
 
 ```sh
