@@ -1886,6 +1886,12 @@ The [retry start marker](runs/n83_local_arm_m33_q1073_retry2.started.json)
 is not a terminal result. The earlier unknown work stays charged as an
 interrupted attempt; no new coverage or relation is credited while retry 2
 is running.
+The [host-resource intervention record](runs/n83_local_arm_m33_q1073_retry2_resource_intervention.json)
+documents a temporary system-volume free-space drop below 300 MiB while
+the native worker remained live. Two idle temporary worktrees' ignored
+Rust build caches were cleared, restoring about 2.5 GiB free; the worker
+resumed CPU work. Any eventual Q1073 retry wall time must be read with
+this host-pressure event attached. It gives no result or coverage credit.
 
 ### Conditional one-table R30 continuation (Q1074)
 
