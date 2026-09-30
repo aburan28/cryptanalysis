@@ -1958,6 +1958,36 @@ Q1075 have terminal checked-Sage audits and the coverage ledger is
 recomputed. Q1077 is not an executable or dispatched wave; a verified
 target DLP or unresolved exact hit closes its launch gate.
 
+### Exact zero-run orbit keyer screen (Q1078)
+
+The Q1078 keyer observes that the smallest cyclic bit rotation begins at a
+longest run of zero bits. Whole-word cyclic ANDs identify every such start;
+Q1078 compares the resulting full rotations exactly, including ties. The
+[one-million-input benchmark](runs/n83_rotation_keyer_bounded_comparison.json)
+checked equality with the existing keyer on zero, one, polynomial and
+normal-basis vectors, normal-basis pair and spaced-triple supports, and
+deterministic pseudorandom 83-bit inputs. On this physical ARM host, the
+zero-run keyer took a median 0.0210 s versus 0.0649 s for the existing
+keyer, a 3.09× keyer-only gain. A separate Booth implementation was 5.39×
+slower than the existing keyer and is not promoted.
+
+The [paired native stage screen](runs/n83_zero_run_stage_bounded_comparison.json)
+generated an alternate source from the frozen Q1061 source without changing
+the source used by the live Q1073 and Q1075 searches. Two M20/R18
+public-target runs per arm had identical Bloom positives and exact outcomes:
+zero natural hits. The median query phase was 1.80× faster with zero-run
+keying; query plus exact replay was 1.75× faster. The host was also running
+the four-worker Q1073 search, so these short timings do not establish an
+isolated full-size speedup. The alternate native kernel found the same
+planted exact hit, and [checked Sage](runs/n83_zero_run_stage_planted_sage_verify.json)
+independently verified its four-point relation and scalar. The
+[source generator](bench_n83_zero_run_stage.py) records hashes for the frozen
+and generated sources. A [one-shot physical x86 screen](../../.github/workflows/n83-zero-run-keyer-x86-q1078.yml)
+is prepared for a later PR synchronization; it has not run. Q1078 uses the
+same exact curve and factor base, `isogeny: "none"`, and null candidate/run
+IDs. Natural n=83 relation yield, complete solve work, and physical x86
+performance remain unknown.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
