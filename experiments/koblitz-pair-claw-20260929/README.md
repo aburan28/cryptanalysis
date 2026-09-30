@@ -2040,7 +2040,11 @@ The intended next intervals remain the disjoint Q1077 design. The
 [full-size plan builder](n83_q1079_full_plan.py) refuses to freeze them
 until Q1073, all eight Q1075 jobs, and Q1080 have terminal independent
 audits with no hit, and the Q1062 coverage ledger has been refreshed.
-Its current preflight stops on the still-active Q1073 receipt. Q1079 retains
+The [eight-job physical x86 workflow](../../.github/workflows/n83-q1079-zero-run-m32-wave.yml)
+is disabled until that plan exists. Each job checks the exact instance,
+source and audit hashes, memory and disk, runs a bounded control, then
+passes the frozen plan to the source-bound M32/R29 runner. Its current
+preflight stops on the still-active Q1073 receipt. Q1079 retains
 null candidate/run IDs and `isogeny: "none"`; its field-call model is
 unchanged from Q1061.
 
