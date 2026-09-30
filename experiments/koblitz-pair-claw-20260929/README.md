@@ -1890,7 +1890,9 @@ The [host-resource intervention record](runs/n83_local_arm_m33_q1073_retry2_reso
 documents a temporary system-volume free-space drop below 300 MiB while
 the native worker remained live. Two idle temporary worktrees' ignored
 Rust build caches were cleared, restoring about 2.5 GiB free; the worker
-resumed CPU work. Any eventual Q1073 retry wall time must be read with
+resumed CPU work. A second free-space decline led to clearing two more
+idle ignored build caches, with about 2.8 GiB free afterward. Any
+eventual Q1073 retry wall time must be read with
 this host-pressure event attached. It gives no result or coverage credit.
 
 ### Conditional one-table R30 continuation (Q1074)
