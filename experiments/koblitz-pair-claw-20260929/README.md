@@ -1190,7 +1190,11 @@ placement model, not measured natural relation yield or complete-solve
 work. Transferring the single measured subprocess rate to all 935
 remaining rectangles gives about 60.86 days, also only a projection.
 The next disjoint rectangle starts at table descriptor $2^{28}$ and the
-same query range. Q1060 retains `candidate_id: null`,
+same query range. That [second full Q1060 receipt](runs/n83_spill_lowmem_k48194_chunk_M28_R30_tstart268435456_qstart1073741824_b20_h10_rb8.json)
+has now completed with 19,465,369 Bloom positives, **zero exact hits**,
+467.17 MB candidate spill, 1.773 GB peak RSS, and 4,973.11 s target
+online time. Both completed shards are charged in the current Q1062
+coverage-aware work report. Q1060 retains `candidate_id: null`,
 `isogeny: "none"`, and no measured natural relation or complete IC DLP.
 
 ### Portable CPU quotient stage (Q1061)
@@ -1279,22 +1283,20 @@ modeled native field calls per full range and $2^{47.059}$ for the 117
 ranges after Q1051's completed first range. Adding the completed Q1051
 field-call model gives $2^{47.082}$. The frozen finite-support heuristic
 predicts 95.11% success conditional on Q1051's first zero-hit range.
-The already completed Q1060 M28 shard overlaps Q1062's first full
-range; it remains separately charged historical work and adds no
-disjoint coverage to this model. The second Q1060 shard was active
-when this Q1062 screen was generated, so its terminal work and outcome
-must be reconciled before a full Q1062 launch. Interrupted historical
+The two completed Q1060 M28 shards overlap Q1062's first full
+range; they remain separately charged historical work. The frozen
+Q1062 screen predates the second shard; the current work report below
+reconciles both zero-hit terminal receipts. Interrupted historical
 attempts also retain unknown actual work. None of these figures is a
 complete measured DLP cost.
 
 The [coverage-aware work report](n83_full_spill_work.json) scans
 completed terminal receipts and counts M28-by-R30 shard-range cells in
-their union. With Q1051's first range and one Q1060 shard completed,
-it finds nine cells; the active second Q1060 shard is listed but not
-credited. The frozen model predicts a first hit after 33.05 additional
+their union. With Q1051's first range and two Q1060 shards completed,
+it finds ten cells. The frozen model predicts a first hit after 33.16 additional
 Q1062 full ranges on average *conditional on a hit within the plan*.
-That is $2^{45.356}$ selected-route native field calls including the
-two completed rectangles; the 95% point is $2^{47.094}$, with 4.90%
+That is $2^{45.398}$ selected-route native field calls including the
+three completed rectangles; the 95% point is $2^{47.105}$, with 4.92%
 modeled no-hit probability at plan end. These estimates are updated by
 rerunning the report after each terminal receipt. They omit failed
 attempts, other same-target research work, keying, Bloom operations,
@@ -1311,13 +1313,19 @@ campaign status and work report include the contract source hash.
 
 The [guarded Q1062 campaign](n83_full_spill_campaign.py) inspects all
 117 named full ranges, refuses a competing n=83 start marker or an
-already verified Q1060 scalar, and requires 12 GiB of system-volume
+already verified Q1060 scalar, and requires 10 GiB of system-volume
 headroom, 1 GiB on the spill volume, and stable swap-outs before one
 full-range launch. A failed range requires an explicit retry and keeps
 its unknown actual work. The [one-shot handoff](n83_full_spill_handoff.py)
-waits for the active Q1060 rectangle's terminal receipt and invokes
-the guarded Q1062 driver only after an exact zero-hit result and a
-cleared start marker; it does not retry a failed Q1060 run. Q1062
+waited for the second Q1060 rectangle and attempted the first Q1062
+range after its exact zero-hit receipt and cleared start marker. The
+original 12 GiB system-volume gate refused that attempt at 12.075 GB
+free, before any full-size Q1062 process started. The revised 10 GiB
+launch gate is documented in the [resource decision](n83_full_spill_guard_revision.json):
+Q1051's measured M31 peak was 6.42 GB, the host reports 48 GiB of
+physical memory with 56% free, and Q1060 produced no additional
+swap-outs. The 4 GiB running stop, spill-space, and swap-growth guards
+are unchanged. This does not establish Q1062 full-size feasibility. Q1062
 retains the exact field and curve
 `EC1N83Ckb1h876c2921cb64`, B=8,000,204 actual usable points before
 folding, 48,194 signed-Frobenius columns, the enumerated-set digest,

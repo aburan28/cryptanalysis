@@ -29,7 +29,10 @@ SAGE = Path("/Volumes/SSD990/cryptanalysis/sage")
 SPILL_DIR = Path("/Volumes/SSD990/llm/tmp")
 M = 1 << 31
 R = 1 << 30
-MIN_SYSTEM_FREE = 12 << 30
+# Q1051's measured M31 peak was 6.42 GB; the failed 12-GiB launch gate
+# exceeded current system-volume free space despite flat swap-outs.
+# Keep the 4-GiB running stop and swap-growth guard unchanged.
+MIN_SYSTEM_FREE = 10 << 30
 STOP_SYSTEM_FREE = 4 << 30
 MIN_SPILL_FREE = 1 << 30
 STOP_SPILL_FREE = 512 << 20
@@ -199,8 +202,14 @@ def main():
         "next_needs_explicit_retry": next_chunk["needs_retry"]
         if next_chunk else None,
         "system_free_bytes": free,
+        "minimum_system_free_bytes": MIN_SYSTEM_FREE,
+        "stop_system_free_bytes": STOP_SYSTEM_FREE,
         "spill_volume_free_bytes": spill_free,
+        "minimum_spill_free_bytes": MIN_SPILL_FREE,
+        "stop_spill_free_bytes": STOP_SPILL_FREE,
         "swapouts_pages": swap,
+        "maximum_preflight_swapout_pages": MAX_PREFLIGHT_SWAPOUT_PAGES,
+        "maximum_running_swapout_pages": MAX_RUNNING_SWAPOUT_PAGES,
     }), flush=True)
     if not args.run_next:
         return
