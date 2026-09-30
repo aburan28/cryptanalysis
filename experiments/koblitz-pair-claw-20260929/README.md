@@ -1660,7 +1660,7 @@ interval begins exactly where the completed M32/R28 run ended and stays
 clear of all eight active wave ranges. It retains the exact n=83 curve,
 8,000,204-point usable base, 48,194 signed-Frobenius columns, public
 target, portable Q1061 kernel, ten Bloom hashes, and `isogeny: "none"`.
-The proposal has null candidate/run IDs and has **not** been dispatched.
+The proposal has null candidate/run IDs.
 
 One grouped call models 710,766,755,840 ($2^{39.371}$) native field
 calls, 13.66% fewer than two separate M32/R28 calls because it builds
@@ -1668,10 +1668,17 @@ and replays the same table once. Reusing the completed M32 phase times
 gives a 3.24-hour full-wall forecast under one table build, twice the
 R28 query time, and one exact replay. The frozen quotient-collision
 heuristic gives a 2.59% hit probability for this rectangle. Neither is
-a measurement of M32/R29 wall time or natural yield. The design requires
-terminal review of the whole active wave and a refreshed coverage ledger
-before any launch; an exact hit in the wave would instead need immediate
-independent witness replay. Complete-solve work remains unknown.
+a measurement of M32/R29 wall time or natural yield. The initial design
+would have waited for the whole wave. The later
+[one-shot launch plan](n83_m32_group_launch_plan.json) selected a
+concurrent disjoint run to add coverage while the wave remained active.
+[Physical x86 run 36698966100](https://github.com/aburan28/cryptanalysis/actions/runs/36698966100)
+started from frozen commit `0647fdcb`, passed its host preflight and
+same-host bounded control, and is in the full search. The workflow was
+disabled for subsequent PR commits. No M32/R29 relation, wall time,
+memory result, or coverage is claimed before its terminal artifact.
+An exact hit in either active search needs immediate independent Sage
+witness replay; complete-solve work remains unknown.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
