@@ -1983,10 +1983,13 @@ planted exact hit, and [checked Sage](runs/n83_zero_run_stage_planted_sage_verif
 independently verified its four-point relation and scalar. The
 [source generator](bench_n83_zero_run_stage.py) records hashes for the frozen
 and generated sources. A [one-shot physical x86 screen](../../.github/workflows/n83-zero-run-keyer-x86-q1078.yml)
-is prepared for a later PR synchronization; it has not run. Q1078 uses the
+passed its host preflight, then [failed before native work](runs/n83_zero_run_x86_ci_36765966186_failed/failed.json)
+because an archived command contained a local absolute factor-base path.
+The repaired screen resolves that file from the checked checkout and is
+prepared for a one-shot retry. Q1078 uses the
 same exact curve and factor base, `isogeny: "none"`, and null candidate/run
 IDs. Natural n=83 relation yield, complete solve work, and physical x86
-performance remain unknown.
+performance remain unknown; the failed x86 attempt receives no coverage.
 The frozen native field-call model is unchanged because Q1078 replaces
 only orbit-key selection; its bounded wall-time gain does not lower the
 $2^{39.371}$ modeled field calls per M32/R29 rectangle or establish a

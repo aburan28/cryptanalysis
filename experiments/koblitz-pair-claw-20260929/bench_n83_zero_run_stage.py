@@ -94,8 +94,10 @@ def compile_binary(source, binary, backend):
 def native(command, spill):
     env = os.environ.copy()
     env["ECC2K83_CANDIDATE_TMPDIR"] = str(spill)
-    return json.loads(subprocess.run(command, capture_output=True, text=True,
-                                     env=env, check=True).stdout)
+    result = subprocess.run(command, capture_output=True, text=True, env=env)
+    assert result.returncode == 0, (
+        f"native exit {result.returncode}: {result.stderr[-2000:]}")
+    return json.loads(result.stdout)
 
 
 def same_outcome(a, b):
@@ -140,6 +142,8 @@ def main():
         "factor_base"]["enumerated_set_sha256"]
     assert control["factor_base_enumerated_set_sha256"] == screen[
         "factor_base"]["enumerated_set_sha256"]
+    key_path = HERE / screen["factor_base"]["key_and_log_file"]
+    assert sha(key_path) == screen["factor_base"]["key_and_log_file_sha256"]
     with tempfile.TemporaryDirectory(prefix="n83-zero-run-stage-") as directory:
         temp = Path(directory)
         alternate_sources = generated_sources(temp)
@@ -147,7 +151,8 @@ def main():
         original_compile = compile_binary(MAIN, original_binary, args.cpu_backend)
         alternate_compile = compile_binary(alternate_sources[2], alternate_binary,
                                            args.cpu_backend)
-        seed_command = control["planted_native_command"]
+        seed_command = list(control["planted_native_command"])
+        seed_command[1] = str(key_path)
         original_planted = native([str(original_binary), *seed_command[1:]], temp)
         alternate_planted = native([str(alternate_binary), *seed_command[1:]], temp)
         same_outcome(original_planted, alternate_planted)
@@ -155,6 +160,7 @@ def main():
         assert alternate_planted["hits"] == [planted[
             "matched_previously_verified_hit"]]
         public_command = list(control["public_native_command"])
+        public_command[1] = str(key_path)
         public_command[4] = str(1 << 20)
         public_command[5] = str(1 << 18)
         public_command[15] = "4"
