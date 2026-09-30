@@ -68,7 +68,10 @@ def main():
     host_path = artifact / "host.json"
     control_path = artifact / "control.json"
     full_path = artifact / "full.json"
+    full_marker = artifact / "full.started.json"
     assert host_path.is_file() and control_path.is_file()
+    assert not (full_path.exists() and full_marker.exists()), (
+        "terminal full receipt retains start marker")
     screen = json.loads(SCREEN.read_text())
     validate_reference(screen)
     host = json.loads(host_path.read_text())

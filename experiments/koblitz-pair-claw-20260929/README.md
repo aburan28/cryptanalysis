@@ -1325,6 +1325,11 @@ used the checked [Sage runtime](runs/n83_sage_relation_verify_runtime_info.json)
 The planted control is a correctness check, not a natural-relation yield
 measurement. A future natural public-target certificate must pass this
 verifier before its DLP is counted independently verified.
+The same verifier also accepted an existing
+[portable Q1061 public zero-hit receipt](runs/n83_sage_portable_q1061_zero_receipt_verify.json),
+and a [physical x86 Q1061 public zero-hit receipt](runs/n83_sage_physical_x86_zero_receipt_verify.json),
+confirming that an x86 segment artifact can use the same independent
+Sage replay path. Neither bounded receipt found a relation.
 
 The [guarded Q1062 campaign](n83_full_spill_campaign.py) inspects all
 117 named full ranges, refuses a competing n=83 start marker or an
