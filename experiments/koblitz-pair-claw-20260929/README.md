@@ -1373,6 +1373,34 @@ The followthrough has synthetic controls for all five stop/continue
 outcomes. It correctly stopped on this failed first attempt. A retry
 requires explicit `--retry-failed` and stable resource headroom.
 
+The [segmented Q1062 fallback](n83_full_spill_segment_campaign.py) uses
+the unchanged checked-Sage runner and native kernel with eight disjoint
+$R=2^{27}$ query segments in each original $R=2^{30}$ range. It retains
+the same $M=2^{31}$ table, exact replay, resource guards, target, and
+factor base. Each segment has its own terminal receipt, so an interrupted
+later segment does not erase earlier completed coverage. The
+[coverage-aware screen](n83_full_spill_segment_work.json) includes the
+completed Q1051 and Q1060 rectangles and the failed Q1062 attempt,
+without assigning the failed attempt field calls or coverage. The frozen
+heuristic still gives 95.08% conditional success over the remaining
+support; it predicts 261.79 more segments given a hit within the plan,
+or $2^{45.738}$ selected-route native field calls. The 95% first-hit
+point is 931 segments and $2^{47.481}$ calls. Rebuilding the table eight
+times per original range costs 1.314 times the original full-range
+field-call model. These are predictions, not relation yield or complete
+solve work. No full-size segment has run. The fallback remains Q1062 with
+`candidate_id: null`; its receipt records the changed query shape.
+
+The default command below only inspects the 936-segment plan. The guarded
+run command is appropriate only after system-volume free space is stably
+above 10 GiB; it explicitly acknowledges the archived failed full range.
+Both commands use the required checked Sage launcher:
+
+```sh
+/Volumes/SSD990/cryptanalysis/sage -python experiments/koblitz-pair-claw-20260929/n83_full_spill_segment_campaign.py
+/Volumes/SSD990/cryptanalysis/sage -python experiments/koblitz-pair-claw-20260929/n83_full_spill_segment_campaign.py --run-next --acknowledge-failed-full-range
+```
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
