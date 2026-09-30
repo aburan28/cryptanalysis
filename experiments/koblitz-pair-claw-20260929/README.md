@@ -2055,7 +2055,9 @@ charged work, while the rectangle earns novel coverage only once.
 The purpose is to measure whether Q1079's bounded speed gain persists
 after table and Bloom growth. The plan and any stage timing are not a
 complete n=83 IC solve or a measured complete-solve exponent. Any exact
-hit still requires independent checked-Sage replay.
+hit still requires independent checked-Sage replay. The
+[audit tool](audit_n83_q1080_paired.py) checks all four receipts, generated
+sources, binary hashes, and Sage replays before a paired result is credited.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
