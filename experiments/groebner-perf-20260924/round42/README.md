@@ -26,7 +26,8 @@ assumptions. The [transport argument](TRANSPORT.md) justifies the lookup tables.
 Neither is a general degree-of-regularity bound or a novel asymptotic result.
 
 `normalized.Producer.configure_normalization(modulus)` enables the constructor;
-passing zero disables it. Rejected replacement moduli leave it disabled.
+passing zero disables it. A replacement rejected by native modulus validation
+leaves it disabled; Python argument-type/range errors occur before that request.
 `normalized_query.NormalizedQuery` configures it from the query's explicit field
 description. Setup is target-independent; each solve computes fresh
 coefficients, pivots, proofs, original-equation checks and signed curve replay.
@@ -72,9 +73,22 @@ passed all 36 optimized CPU/Metal records; UBSan outputs matched the audited
 CPU reference. A preceding lookup-only prototype passed 24,526 transport cases
 and retained exactly the same complete-query proof bytes as its reference.
 
-Portable package validation and its binding to that prototype remain pending.
-Per-input paired timings are running under a predeclared load gate with all
-retained CPU/GPU comparators. No new repeated complete-query speedup is claimed
-yet. Earlier normalization timing includes rejected/ineligible trials; those
-outcomes remain in the evidence. This is a PDP-stage experiment with
-`candidate_id: null`, not a complete single-target IC/rho result.
+The portable package also passes 18,003 system runs (17,949 verified and 54
+expected root-limit outcomes), four budget controls, seven configuration
+controls and 54 complete queries. Its independent original-ANF audit passes
+all 54 records and 35 unique proofs. Complete proof bytes, mathematical
+outputs and integer work match the isolated physical prototype exactly.
+
+The paired timing audit passes all 6,040 completed queries. Thirty-three of
+36 planned trials qualify; two exceed the unchanged load limit and one is
+not admitted. All three frozen 24-variable inputs pass both trial gates
+against every retained comparator: 15.845–21.852 ms complete-query medians,
+with paired gains of 1.303–1.441 over previous wide Metal and 1.861–2.689 over
+the fastest measured CPU. Smaller inputs have no repeated combined-path win.
+The 27-variable controls need qualifying repeats. See [results and limits](RESULTS.md)
+and the frozen plans and full analysis in `evidence/`.
+
+Earlier normalization timing retains 4,176 verified queries, only one
+qualified trial and no repeated gain. This is a planted PDP-stage experiment
+with `candidate_id: null`; a complete same-point single-target IC/rho
+comparison remains a separate acceptance gate.

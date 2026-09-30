@@ -72,6 +72,7 @@ def main():
               'validator_sha256': sha(Path(__file__)), 'build_receipt_sha256': sha(receipt_path),
               'corpus_sha256': sha(corpus_path), 'metal': metal, 'transport_controls': validate_transport_tables(),
               'controls': [], 'budgets': [], 'queries': [], 'proofs': {}, 'devices': [],
+              'configuration_controls': [],
               'timing_eligible': False, 'candidate_id': None, 'online_speedup': None}
     for backend, sanitizer in modes:
         with ExitStack() as stack:
@@ -113,6 +114,36 @@ def main():
                 report['controls'].append(row)
                 if (index + 1) % 1000 == 0:
                     print('CONTROLS_PASS', backend, sanitizer, index + 1, flush=True)
+    with candidate.Producer(1, 3, 7) as p, candidate.Checker(1, 3, 7) as c:
+        assert p.configure_normalization(131)
+        for modulus in (130, 258):
+            try:
+                p.configure_normalization(modulus)
+            except ValueError:
+                assert not p.normalization_configuration['enabled']
+                answer = p.produce(candidate.Packed(4, 7, []), checker=c)
+                assert answer['certificate']['verified'] and not answer['normalization_stats']['attempts']
+                report['configuration_controls'].append({'modulus': modulus, 'status': 'rejected-and-disabled'})
+            else:
+                raise AssertionError('invalid modulus accepted')
+            assert p.configure_normalization(131)
+        for value in (-1, True, 1 << 64):
+            try:
+                p.configure_normalization(value)
+            except ValueError:
+                assert p.normalization_configuration['enabled']
+                report['configuration_controls'].append({'argument': repr(value), 'status': 'rejected-before-native-request'})
+            else:
+                raise AssertionError('invalid Python argument accepted')
+        # The monic odd quotient x^7+1 makes the fixed seed column 6 a
+        # nonunit. Disable normalization and preserve exact generic solving.
+        assert not p.configure_normalization(129)
+        answer = p.produce(candidate.Packed(4, 7, []), checker=c)
+        assert answer['certificate']['verified'] and not answer['normalization_stats']['attempts']
+        report['configuration_controls'].append({'modulus': 129, 'status': 'setup-nonunit-disabled'})
+        assert p.configure_normalization(131)
+        assert not p.configure_normalization(0)
+        report['configuration_controls'].append({'modulus': 0, 'status': 'explicitly-disabled'})
     for mode in ('budget_test', 'multiplier_budget_test'):
         for name, terms in [('empty', []), ('affine-unsat', [(2, 1), (4, 2), (6, 4), (0, 4)])]:
             with candidate.Producer(1, 3, 7, **{mode: True}) as p, candidate.Checker(1, 3, 7) as c:
