@@ -1547,7 +1547,9 @@ requires at least 13 GiB available memory, runs a bounded same-host
 control first, and uploads terminal or failed receipts. The
 [Q1065 artifact ingester](n83_m32_ci_ingest.py) checks curve, base,
 target, shape, source hashes, terminal status, and host resources before
-archiving that artifact. A hit still
+archiving that artifact. The activation commit remains the queued run's
+frozen checkout; the current workflow has no PR trigger and its job is
+disabled, so later PR updates cannot repeat the same search. A hit still
 requires independent checked-Sage replay before it counts as a DLP.
 
 ```sh
