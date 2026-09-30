@@ -1652,6 +1652,27 @@ x86 speed, total RSS, and false-positive replay cost remain unmeasured.
 Q1066 is a stage proposal with null candidate/run IDs; the live x86
 jobs keep their frozen 20-bit filters.
 
+### Disjoint M32 grouped follow-up design (Q1068)
+
+The [frozen Q1068 design](n83_m32_group_followup_plan.json) places an
+$M=2^{32},R=2^{29}$ search at query start 6,710,886,400. Its query
+interval begins exactly where the completed M32/R28 run ended and stays
+clear of all eight active wave ranges. It retains the exact n=83 curve,
+8,000,204-point usable base, 48,194 signed-Frobenius columns, public
+target, portable Q1061 kernel, ten Bloom hashes, and `isogeny: "none"`.
+The proposal has null candidate/run IDs and has **not** been dispatched.
+
+One grouped call models 710,766,755,840 ($2^{39.371}$) native field
+calls, 13.66% fewer than two separate M32/R28 calls because it builds
+and replays the same table once. Reusing the completed M32 phase times
+gives a 3.24-hour full-wall forecast under one table build, twice the
+R28 query time, and one exact replay. The frozen quotient-collision
+heuristic gives a 2.59% hit probability for this rectangle. Neither is
+a measurement of M32/R29 wall time or natural yield. The design requires
+terminal review of the whole active wave and a refreshed coverage ledger
+before any launch; an exact hit in the wave would instead need immediate
+independent witness replay. Complete-solve work remains unknown.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
