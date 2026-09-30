@@ -1321,6 +1321,18 @@ folding, 48,194 signed-Frobenius columns, the enumerated-set digest,
 `isogeny: "none"`, and `candidate_id: null`. No natural relation or
 complete IC DLP is claimed.
 
+The [bounded sequential supervisor](n83_full_spill_supervisor.py) can
+advance up to a declared number of Q1062 ranges, one guarded campaign
+invocation at a time. Its default mode only inspects state. In run mode
+it writes a durable report and log before launching, records every
+terminal receipt hash, and stops on a verified DLP, an unverified exact
+hit, a failed attempt, a resource refusal, a competing run, or the
+declared limit. It does not retry failed ranges or clear start markers.
+Each child still runs through the checked Sage launcher and saves a
+separate runtime-info receipt before the measured work. The first full
+Q1062 range remains under the existing one-shot handoff, so this
+supervisor is available only after that result is reviewed.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
