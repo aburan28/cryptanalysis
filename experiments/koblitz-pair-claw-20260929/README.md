@@ -1401,6 +1401,16 @@ Both commands use the required checked Sage launcher:
 /Volumes/SSD990/cryptanalysis/sage -python experiments/koblitz-pair-claw-20260929/n83_full_spill_segment_campaign.py --run-next --acknowledge-failed-full-range
 ```
 
+The [physical x86 segment workflow](../../.github/workflows/n83-portable-quotient-segment.yml)
+provides one independently hosted $M=2^{31}$, $R=2^{27}$ attempt using
+Q1061's already controlled portable PCLMUL implementation. It records
+the host, compiler, available memory and disk; refuses inadequate
+resources; runs a bounded same-host control; and uploads a terminal or
+failure artifact. Its receipt belongs to Q1061, so any completed result
+must be reconciled by exact query/table coverage before being combined
+with the Q1062 work report. A natural hit must also pass the independent
+Sage relation verifier. No x86 full-size segment outcome is claimed yet.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
