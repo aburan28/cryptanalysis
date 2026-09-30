@@ -317,7 +317,21 @@ was **117.94 seconds**; cold base, table, membership index, and online time
 totaled **150.10 seconds**. Cold pair samples were 1,749,820, or
 $2^{20.739}$. The [independent verifier](verify_knownlog_n53.py) rebuilt
 all seed logs and the matching pair metadata. No paired rho speedup or
-field-operation total is claimed.
+calibrated field-operation total is claimed from that original run.
+
+The [Q1076 instrumented replay](runs/n53_knownlog_field_api_replay_q1076.json)
+used the same exact curve, base seeds, table/query seeds, target, and
+checked Sage runtime. It reproduced the archived relation after
+1,249,820 target queries and recovered the same scalar. Across base
+setup, table build, online search, and scalar replay, it directly counted
+31,455,094 non-inversion field API calls and 3,012,612 inversions. The
+online portion counted 26,245,565 non-inversion calls and 2,499,573
+inversions. At the **assumed** weight of 90 calls per inversion, those
+are $2^{28.173}$ cold and $2^{27.904}$ online weighted API calls. The
+90-call weight has not been calibrated for this Python Euclidean inversion
+implementation. Q1076 is a diagnostic proposal with null candidate and
+run IDs; the original uninstrumented 117.94-second online measurement
+remains the wall-time result.
 
 The curve and candidate hashes in the n=23 and n=53 manifests were
 recomputed against the catalog's sorted-key canonical JSON rule. Their
@@ -1717,8 +1731,10 @@ The work exponent has a fixed boundary in this ledger:
 
 The n=53 control did recover and independently verify one target in
 117.94 seconds online with $2^{20.739}$ logical pair samples across cold
-table construction and target search. It has no measured field-operation
-total. On the exact n=83 base, the eight completed physical x86 Q1069
+table construction and target search. Q1076 measured its field API call
+vector and gives a separately labeled $2^{28.173}$ cold inversion-weight
+model; no calibrated common operation total is available. On the exact
+n=83 base, the eight completed physical x86 Q1069
 M32/R29 rectangles took 9,672.04–12,158.11 seconds of target-online
 query and replay each, with zero exact hits; each rectangle models
 $2^{39.371}$ native field calls including its reusable table build.
