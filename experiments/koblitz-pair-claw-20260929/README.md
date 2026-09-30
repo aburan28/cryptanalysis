@@ -2166,6 +2166,32 @@ at $2^{36.582}$ modeled native field calls in total, credits the one
 novel M28/R24 rectangle, and credits zero full R27 cells. The one-shot
 workflow is disabled after this audit.
 
+### Same-host Bloom density scaling gate (Q1082)
+
+The [Q1082 plan](n83_q1082_m28_r24_bloom_paired_plan.json) repeats the
+audited Q1080 public target and M28/R24 rectangle as a performance
+control. Four physical x86 runs use the Q1079 keyer in 20, 16, 16, 20
+bits-per-key order with ten hashes and identical schedules. Since the
+query interval is repeated, it earns **zero new coverage**. All four
+attempts would charge $2^{36.582}$ modeled native field calls together.
+The plan pins the Q1080 audit, exact curve and base, source hashes, and
+absent isogeny; `candidate_id` and `run_id` stay null.
+
+The [one-edit generator](generate_n83_q1082_bloom_runner.py) derives a
+bounded 16/20-bit runner from the hash-pinned Q1079 source while leaving
+the source used by active full-size searches unchanged. The
+[one-shot paired workflow](../../.github/workflows/n83-q1082-m28-r24-bloom-paired-x86.yml)
+checks physical x86 resources and exact identities, archives the derived
+runner and every source and binary, and compares exact outcomes despite
+the expected difference in Bloom positives. Any performance result is
+pending. A [local M20/R14 16-bit smoke](runs/n83_q1082_smoke_b16_M20_R14.json)
+passed the [independent checked-Sage replay](runs/n83_q1082_smoke_b16_M20_R14_sage_verify.json):
+1,144 Bloom positives, zero exact hits, and no verified relation. It
+checks the derived runner's executable path and gives no paired timing
+result. The earlier Q1066 small ARM screen favored 16 bits, but did
+not establish full-size x86 behavior. This control will determine whether
+that setting merits a full-size test after Q1079 terminal audits.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
