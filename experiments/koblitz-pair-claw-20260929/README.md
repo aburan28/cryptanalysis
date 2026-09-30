@@ -1289,7 +1289,11 @@ The [guarded Q1062 campaign](n83_full_spill_campaign.py) inspects all
 already verified Q1060 scalar, and requires 12 GiB of system-volume
 headroom, 1 GiB on the spill volume, and stable swap-outs before one
 full-range launch. A failed range requires an explicit retry and keeps
-its unknown actual work. Q1062 retains the exact field and curve
+its unknown actual work. The [one-shot handoff](n83_full_spill_handoff.py)
+waits for the active Q1060 rectangle's terminal receipt and invokes
+the guarded Q1062 driver only after an exact zero-hit result and a
+cleared start marker; it does not retry a failed Q1060 run. Q1062
+retains the exact field and curve
 `EC1N83Ckb1h876c2921cb64`, B=8,000,204 actual usable points before
 folding, 48,194 signed-Frobenius columns, the enumerated-set digest,
 `isogeny: "none"`, and `candidate_id: null`. No natural relation or
@@ -1358,4 +1362,6 @@ python3 experiments/koblitz-pair-claw-20260929/verify_n83_portable_controls.py -
 python3 experiments/koblitz-pair-claw-20260929/n83_full_spill_screen.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_full_spill_campaign.py
 # --run-next launches one Q1062 full-filter range only after competing runs exit and its guard passes.
+./sage -python experiments/koblitz-pair-claw-20260929/n83_full_spill_handoff.py
+# One-shot handoff from the active Q1060 rectangle to the guarded first Q1062 range.
 ```
