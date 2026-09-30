@@ -17,6 +17,11 @@ SOURCE = HERE / "native_n83_orbit_query_spill_portable.cpp"
 CORE = HERE / "native_n83_bloom_core_portable.hpp"
 PAIRS = HERE / "native_n83_pairs_portable.cpp"
 WRAPPER = HERE / "run_n83_portable_chunk.py"
+GENERATED = HERE.parents[1] / "ecc2k130" / "runner" / "generated" / "eccF83.h"
+REFERENCE = HERE.parent / "ecc2k130-quotient-pair-probe-20260926" / "runs" / "n83_perf_prefix.json"
+RHO = HERE.parent / "ecc2k130-quotient-pair-probe-20260926" / "runs" / "n83_public_target_rho_solved.json"
+BASE_RECEIPT = RUNS / "n83_knownlog_orbit_base_k48194.json"
+SCHEDULE = RUNS / "n53_n83_unique_schedule_perf.json"
 R27 = 1 << 27
 R30 = 1 << 30
 
@@ -42,6 +47,13 @@ def verified_row(screen, path, *, full):
     assert row["bloom_core_sha256"] == sha(CORE)
     assert row["native_pairs_sha256"] == sha(PAIRS)
     assert row["wrapper_source_sha256"] == sha(WRAPPER)
+    assert row["generated_field_sha256"] == sha(GENERATED)
+    assert row["reference_sha256"] == sha(REFERENCE)
+    assert row["rho_reference_receipt_sha256"] == sha(RHO)
+    assert row["base_receipt_sha256"] == sha(BASE_RECEIPT)
+    assert row["schedule_receipt_sha256"] == sha(SCHEDULE)
+    assert row["key_file_sha256"] == screen["factor_base"][
+        "key_and_log_file_sha256"]
     native = row["native_result"]
     assert native["candidate_store_mode"] == "unlinked_file"
     assert native["table_descriptors"] == row["table_descriptors"]

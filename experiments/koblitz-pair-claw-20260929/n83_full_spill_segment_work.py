@@ -12,6 +12,7 @@ from n83_identity_contract import validate_receipt, validate_reference
 
 HERE = Path(__file__).resolve().parent
 RUNS = HERE / "runs"
+REPO = HERE.parents[1]
 OUTPUT = HERE / "n83_full_spill_segment_work.json"
 M28 = 1 << 28
 M31 = 1 << 31
@@ -19,6 +20,10 @@ R27 = 1 << 27
 R30 = 1 << 30
 SEGMENTS_PER_RANGE = R30 // R27
 QUANTILES = ("0.5", "0.8", "0.9", "0.95")
+
+
+def repo_path(path):
+    return str(path.resolve().relative_to(REPO))
 
 
 def failed_record(path, row):
@@ -29,7 +34,7 @@ def failed_record(path, row):
         assert guard["query_start"] == row["query_start"]
         assert guard["curve_id"] == row["curve_id"]
     return {
-        "path": str(path), "sha256": work.sha(path),
+        "path": repo_path(path), "sha256": work.sha(path),
         "query_start": row["query_start"],
         "query_representatives": row["query_representatives"],
         "native_subprocess_wall_seconds": row.get(
@@ -74,7 +79,7 @@ def portable_ci_rows(screen):
             assert work.sha(bundle_path.parent / name) == digest
         full_path = bundle_path.parent / "full.json"
         if not full_path.exists():
-            incomplete.append({"bundle": str(bundle_path),
+            incomplete.append({"bundle": repo_path(bundle_path),
                                "sha256": work.sha(bundle_path),
                                "status": bundle["status"]})
             continue
@@ -119,7 +124,7 @@ def main():
                for segment in range(SEGMENTS_PER_RANGE)
                for shard in range(8)}
     charged = int(first["native_field_add_mul_sqr_call_model"])
-    completed = [{"proposal_id": "Q1051", "path": str(work.FIRST),
+    completed = [{"proposal_id": "Q1051", "path": repo_path(work.FIRST),
                   "sha256": work.sha(work.FIRST),
                   "field_calls": str(charged), "new_cells": 64}]
     complete_segments = set()
@@ -160,19 +165,19 @@ def main():
                     sage = json.loads(sage_path.read_text())
                     assert sage["receipt_sha256"] == work.sha(path)
                     assert sage["natural_public_target_relation_verified"]
-                    verified_dlp.append(str(path))
+                    verified_dlp.append(repo_path(path))
                 else:
-                    unverified_hits.append(str(path))
+                    unverified_hits.append(repo_path(path))
             else:
-                verified_dlp.append(str(path))
+                verified_dlp.append(repo_path(path))
         elif row["native_result"]["exact_hit_queries"]:
-            unverified_hits.append(str(path))
+            unverified_hits.append(repo_path(path))
         novel = len(cells - covered)
         covered.update(cells)
         calls = int(row["native_field_add_mul_sqr_call_model"])
         charged += calls
         completed.append({"proposal_id": row["proposal_id"],
-                          "path": str(path), "sha256": work.sha(path),
+                          "path": repo_path(path), "sha256": work.sha(path),
                           "field_calls": str(calls), "new_cells": novel})
     failures = [failed_record(path, row) for path, row in
                 failed_q1060 + failed_full + failed_seg + failed_q1061_ci]
@@ -247,7 +252,7 @@ def main():
         "failed_receipts_with_unknown_field_calls": failures,
         "incomplete_portable_ci_bundles_with_unknown_work":
             incomplete_q1061_ci,
-        "active_start_markers_excluded": [str(path) for path in sorted(
+        "active_start_markers_excluded": [repo_path(path) for path in sorted(
             RUNS.glob("n83_*.started.json"))],
         "future_R27_segment_count": len(future),
         "future_R27_segment_spans": compressed_starts(
@@ -256,6 +261,7 @@ def main():
         "modeled_eight_R27_segments_vs_one_R30_field_call_ratio":
             8 * per_segment / field_calls(M31, R30),
         "completed_selected_route_field_calls": str(charged),
+        "completed_selected_route_field_calls_log2": math.log2(charged),
         "verified_quotient_table_dlp_receipts": verified_dlp,
         "unverified_exact_hit_receipts": unverified_hits,
         "conditional_model_if_no_verified_dlp": conditional,

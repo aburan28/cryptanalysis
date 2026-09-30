@@ -99,7 +99,10 @@ jobs:
           control = json.loads((root / 'control.json').read_text())
           result = json.loads((root / 'full.json').read_text())
           assert control['curve_id'] == result['curve_id'] == 'EC1N83Ckb1h876c2921cb64'
-          assert control['factor_base_enumerated_set_sha256'] == result['factor_base_enumerated_set_sha256']
+          assert (control['factor_base']['enumerated_set_sha256'] ==
+                  result['factor_base']['enumerated_set_sha256'])
+          assert (control['factor_base']['actual_usable_points_B_before_folding'] ==
+                  result['factor_base']['actual_usable_points_B_before_folding'])
           assert result['isogeny'] == 'none' and result['candidate_id'] is None
           assert result['public_target'] == control['public_target']
           assert result['table_descriptors'] == 1 << 31
