@@ -1688,6 +1688,21 @@ memory result, or coverage is claimed before its terminal artifact.
 An exact hit in either active search needs immediate independent Sage
 witness replay; complete-solve work remains unknown.
 
+The [coverage-aware work ledger](n83_full_spill_segment_work.json) now
+also projects a distinct future M32/R29 route. It retains both the 126
+completed primary M28-by-R27 cells and the 16 completed extra-table
+cells, then orders the remaining aligned R29 rectangles by new coverage.
+Under the same frozen finite-support placement model, 236 future M32/R29
+calls cover the entire M32-by-query domain, with a 99.732% conditional
+chance of at least one hit. Conditional on a hit within that finite plan,
+the expected first hit is after 38.41 additional calls and $2^{44.924}$
+selected-route modeled native field calls including completed receipts.
+The median is 27 calls ($2^{44.523}$); the 95% quantile is 117 calls
+($2^{46.343}$). These are **model outputs**, not measured relation yield,
+elapsed time, or complete operation-equivalent solve work. In-flight
+receipts are excluded until terminal, and the estimate will be recomputed
+after their coverage is known.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py

@@ -377,8 +377,36 @@ def main():
     assert group_covered == future_covered
     assert math.isclose(group_cdf[-1], cdf[-1], rel_tol=1e-12)
     assert group_segments[-1] == len(future)
+    # The M32 table covers a second set of eight M28 shards. Keep this
+    # projection separate from the established M31 grid and schedule the
+    # most novel full R29 rectangles first. An already completed M32 cell
+    # is never credited twice, even when a new rectangle overlaps it.
+    all_covered = covered | extra_m32_covered
+    m32_start_intensity = work.intensity(
+        len(all_covered), cell_fraction=cell_fraction, mean=mean)
+    m32_groups = []
+    for range_index in range(118):
+        for first_segment in (0, 4):
+            cells = {(range_index, segment, shard)
+                     for segment in range(first_segment, first_segment + 4)
+                     for shard in range(16)}
+            novel = len(cells - all_covered)
+            if novel:
+                m32_groups.append((range_index, first_segment, cells, novel))
+    m32_groups.sort(key=lambda group: (-group[3], group[0], group[1]))
+    m32_future_covered = set(all_covered)
+    m32_cdf = [0.0]
+    for _, _, cells, _ in m32_groups:
+        m32_future_covered.update(cells)
+        m32_cdf.append(-math.expm1(-(
+            work.intensity(len(m32_future_covered),
+                           cell_fraction=cell_fraction, mean=mean)
+            - m32_start_intensity)))
+    assert len(m32_future_covered) == 118 * SEGMENTS_PER_RANGE * 16
+    assert all(a <= b for a, b in zip(m32_cdf, m32_cdf[1:]))
     conditional = None
     grouped_conditional = None
+    m32_conditional = None
     if not verified_dlp and not unverified_hits:
         probability = cdf[-1]
         expected = (sum(i * (cdf[i] - cdf[i - 1])
@@ -450,6 +478,47 @@ def main():
             "all_remaining_grouped_calls_field_calls_log2":
                 math.log2(group_costs[-1]) if groups else None,
         }
+        m32_cost = field_calls(M32, 1 << 29)
+        m32_probability = m32_cdf[-1]
+        m32_expected_calls = (
+            sum(i * (m32_cdf[i] - m32_cdf[i - 1])
+                for i in range(1, len(m32_cdf))) / m32_probability
+            if m32_probability else None)
+        m32_quantiles = {}
+        for label in QUANTILES:
+            count = next((i for i in range(1, len(m32_cdf))
+                          if m32_cdf[i] >= float(label)), None)
+            m32_quantiles[label] = {
+                "additional_M32_R29_calls": count,
+                "model_probability": m32_cdf[count] if count else None,
+                "selected_route_field_calls_log2":
+                    math.log2(charged + count * m32_cost)
+                    if count else None,
+            }
+        m32_conditional = {
+            "shape": "M32_R29_aligned_groups_most_novel_cells_first",
+            "initial_completed_primary_cells": len(covered),
+            "initial_completed_M32_extension_cells":
+                len(extra_m32_covered),
+            "future_group_count": len(m32_groups),
+            "modeled_field_calls_per_group": str(m32_cost),
+            "probability_of_hit_by_plan_end_conditional_on_zero_hits_so_far":
+                m32_probability,
+            "expected_additional_calls_given_hit_by_plan_end":
+                m32_expected_calls,
+            "selected_route_expected_field_calls_given_hit_log2":
+                math.log2(charged + m32_expected_calls * m32_cost)
+                if m32_expected_calls is not None else None,
+            "first_hit_quantiles": m32_quantiles,
+            "all_remaining_grouped_calls_field_calls_log2":
+                math.log2(len(m32_groups) * m32_cost)
+                if m32_groups else None,
+            "limits": [
+                "This is a finite-support placement model, not measured relation yield or a completed DLP.",
+                "Active wave and Q1068 jobs are excluded until terminal receipts are ingested.",
+                "Every projected group rebuilds its M32 table; failed attempts and non-field work are omitted from the field-call model.",
+            ],
+        }
     report = {
         "kind": "n83_q1062_segmented_coverage_aware_conditional_work",
         "proposal_id": "Q1062", "candidate_id": None, "run_id": None,
@@ -501,6 +570,8 @@ def main():
         "conditional_model_if_no_verified_dlp": conditional,
         "conditional_grouped_R29_route_if_no_verified_dlp":
             grouped_conditional,
+        "conditional_M32_grouped_R29_route_if_no_verified_dlp":
+            m32_conditional,
         "complete_solve_work_log2": None,
         "limits": [
             "The relation-placement probability is a frozen finite-support heuristic, not measured yield.",
