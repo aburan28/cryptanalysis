@@ -1416,6 +1416,9 @@ terminal status before copying an uploaded receipt into the local run
 ledger. After a successful host preflight and bounded control, it
 preserves a failed or incomplete full-size attempt as such; a native
 verified hit still needs separate Sage replay before a complete DLP claim.
+The segmented work report and local campaign inspector read archived
+Q1061 CI bundles, count completed query coverage once across Q1061 and
+Q1062, and stop local progression on an exact hit awaiting that replay.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py

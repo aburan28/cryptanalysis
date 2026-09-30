@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 
 import n83_full_spill_work as work
+import n83_portable_ci_ingest as portable
 from n83_full_spill_screen import field_calls
 from n83_identity_contract import validate_receipt, validate_reference
 
@@ -55,6 +56,46 @@ def compressed_starts(starts):
     return spans
 
 
+def portable_ci_rows(screen):
+    completed, failed, incomplete = [], [], []
+    for bundle_path in sorted(RUNS.glob(
+            "n83_portable_q1061_M31_R27_ci_*/bundle.json")):
+        bundle = json.loads(bundle_path.read_text())
+        assert bundle["kind"] == (
+            "n83_portable_q1061_physical_x86_segment_ci_bundle")
+        assert bundle["proposal_id"] == "Q1061"
+        assert bundle["curve_id"] == screen["curve_id"]
+        assert bundle["factor_base_enumerated_set_sha256"] == screen[
+            "factor_base"]["enumerated_set_sha256"]
+        assert bundle["query_representatives"] == R27
+        assert bundle["portable_native_source_sha256"] == work.sha(
+            portable.SOURCE)
+        for name, digest in bundle["artifact_sha256"].items():
+            assert work.sha(bundle_path.parent / name) == digest
+        full_path = bundle_path.parent / "full.json"
+        if not full_path.exists():
+            incomplete.append({"bundle": str(bundle_path),
+                               "sha256": work.sha(bundle_path),
+                               "status": bundle["status"]})
+            continue
+        row = json.loads(full_path.read_text())
+        validate_receipt(screen, row)
+        assert row["proposal_id"] == "Q1061"
+        assert row["query_start"] == bundle["query_start"]
+        assert row["table_start"] == 0
+        assert row["table_descriptors"] == M31
+        assert row["query_representatives"] == R27
+        if row["kind"] == work.FAILED_KIND:
+            assert bundle["status"] == "failed_full_segment_unknown_work"
+            assert row["native_phase_counts"] is None
+            failed.append((full_path, row))
+        else:
+            assert row["kind"] == work.SUCCESS_KIND
+            portable.verified_row(screen, full_path, full=True)
+            completed.append((full_path, row))
+    return completed, failed, incomplete
+
+
 def main():
     base = json.loads(work.BASE.read_text())
     screen = json.loads(work.SCREEN.read_text())
@@ -73,6 +114,7 @@ def main():
     q1062_seg, failed_seg = work.load_terminal_rows(
         "n83_full_spill_k48194_chunk_M31_R27_tstart0_qstart*_b20_h10_rb8*.json",
         "Q1062", screen)
+    q1061_ci, failed_q1061_ci, incomplete_q1061_ci = portable_ci_rows(screen)
     covered = {(0, segment, shard)
                for segment in range(SEGMENTS_PER_RANGE)
                for shard in range(8)}
@@ -83,7 +125,7 @@ def main():
     complete_segments = set()
     verified_dlp = []
     unverified_hits = []
-    for path, row in sorted(q1060 + q1062_full + q1062_seg,
+    for path, row in sorted(q1060 + q1062_full + q1062_seg + q1061_ci,
                             key=lambda item: (item[1]["finished_at_utc"],
                                               str(item[0]))):
         qstart = row["query_start"]
@@ -112,7 +154,17 @@ def main():
                                      for segment in segments)
         if row["verified_public_target_quotient_table_dlp"]:
             assert row["verified_public_target_relations"]
-            verified_dlp.append(str(path))
+            if row["proposal_id"] == "Q1061":
+                sage_path = path.with_name("sage_verify.json")
+                if sage_path.exists():
+                    sage = json.loads(sage_path.read_text())
+                    assert sage["receipt_sha256"] == work.sha(path)
+                    assert sage["natural_public_target_relation_verified"]
+                    verified_dlp.append(str(path))
+                else:
+                    unverified_hits.append(str(path))
+            else:
+                verified_dlp.append(str(path))
         elif row["native_result"]["exact_hit_queries"]:
             unverified_hits.append(str(path))
         novel = len(cells - covered)
@@ -123,7 +175,7 @@ def main():
                           "path": str(path), "sha256": work.sha(path),
                           "field_calls": str(calls), "new_cells": novel})
     failures = [failed_record(path, row) for path, row in
-                failed_q1060 + failed_full + failed_seg]
+                failed_q1060 + failed_full + failed_seg + failed_q1061_ci]
     cell_fraction = (M28 /
                      base["zero_pair_key_cap_before_accidental_collisions"]
                      * R27 * base["factor_base"]["signed_frobenius_orbit_size"]
@@ -193,6 +245,8 @@ def main():
         "completed_disjoint_M28_by_R27_cells": len(covered),
         "full_plan_disjoint_cells": 118 * SEGMENTS_PER_RANGE * 8,
         "failed_receipts_with_unknown_field_calls": failures,
+        "incomplete_portable_ci_bundles_with_unknown_work":
+            incomplete_q1061_ci,
         "active_start_markers_excluded": [str(path) for path in sorted(
             RUNS.glob("n83_*.started.json"))],
         "future_R27_segment_count": len(future),
@@ -213,6 +267,9 @@ def main():
         ],
         "Q1062_screen_sha256": work.sha(work.SCREEN),
         "base_screen_sha256": work.sha(work.BASE),
+        "portable_ci_ingest_source_sha256": work.sha(
+            HERE / "n83_portable_ci_ingest.py"),
+        "portable_native_source_sha256": work.sha(portable.SOURCE),
         "segment_campaign_source_sha256": work.sha(
             HERE / "n83_full_spill_segment_campaign.py"),
         "source_sha256": work.sha(Path(__file__)),

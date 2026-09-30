@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 import n83_full_spill_campaign as full
+import n83_full_spill_segment_work as segment_work
 import n83_full_spill_work as work
 from n83_identity_contract import validate_receipt, validate_reference
 
@@ -36,7 +37,7 @@ def plan():
                    "query_start": query_start, "receipt": RUNS / name}
 
 
-def inspect(screen, completed_full_ranges):
+def inspect(screen, completed_full_ranges, completed_other_segments):
     completed, failed, active, missing, solved, unverified = [], [], [], [], [], []
     for chunk in plan():
         attempt = 0
@@ -45,7 +46,8 @@ def inspect(screen, completed_full_ranges):
             path = full.attempt_path(chunk, attempt)
             marker = path.with_suffix(".started.json")
             if not path.exists() and not marker.exists():
-                if chunk["range_index"] not in completed_full_ranges:
+                if (chunk["range_index"] not in completed_full_ranges and
+                        chunk["query_start"] not in completed_other_segments):
                     missing.append(dict(chunk, receipt=path,
                                         needs_retry=attempt > 0))
                 break
@@ -113,8 +115,11 @@ def main():
     full_done, full_failed, full_active, _, full_solved = full.inspect(screen)
     full_ranges = {json.loads(path.read_text())["query_start"] // full.R
                    for path in full_done}
+    q1061_ci, failed_q1061_ci, incomplete_q1061_ci = (
+        segment_work.portable_ci_rows(screen))
+    portable_done = {row["query_start"] for _, row in q1061_ci}
     completed, failed, active, missing, solved, unverified = inspect(
-        screen, full_ranges)
+        screen, full_ranges, portable_done)
     full_unverified = [path for path in full_done if
                        json.loads(path.read_text())["native_result"][
                            "exact_hit_queries"] and path not in full_solved]
@@ -131,6 +136,16 @@ def main():
     other_unverified = [str(path) for path, row in q1060_rows if
                         row["native_result"]["exact_hit_queries"] and not
                         row["verified_public_target_quotient_table_dlp"]]
+    for path, row in q1061_ci:
+        if row["native_result"]["exact_hit_queries"]:
+            sage_path = path.with_name("sage_verify.json")
+            if sage_path.exists():
+                sage = json.loads(sage_path.read_text())
+                assert sage["receipt_sha256"] == full.sha(path)
+                assert sage["natural_public_target_relation_verified"]
+                other_solved.append(str(path))
+            else:
+                other_unverified.append(str(path))
     print(json.dumps({
         "proposal_id": "Q1062", "candidate_id": None,
         "query_shape": "M31_R27_eight_segments_per_R30_range",
@@ -138,7 +153,11 @@ def main():
         "factor_base_enumerated_set_sha256": screen["factor_base"][
             "enumerated_set_sha256"],
         "completed_segments": len(completed),
+        "completed_portable_ci_segments": len(q1061_ci),
         "failed_segments_with_unknown_field_calls": len(failed),
+        "failed_portable_ci_segments_with_unknown_field_calls": len(
+            failed_q1061_ci),
+        "incomplete_portable_ci_bundles": len(incomplete_q1061_ci),
         "active_segments": len(active),
         "remaining_segments": len(missing),
         "failed_full_ranges_with_unknown_field_calls": len(full_failed),
