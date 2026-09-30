@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -14,6 +15,7 @@ RUNS = HERE / "runs"
 SCREEN = HERE / "n83_full_spill_screen.json"
 DESIGN = HERE / "n83_m32_wave_q1077_design.json"
 Q1075 = HERE / "n83_m32_wave_q1075_plan.json"
+Q1074 = HERE / "n83_local_arm_m33_r30_q1074_plan.json"
 LEDGER = HERE / "n83_full_spill_segment_work.json"
 OUTPUT = HERE / "n83_q1079_m32_wave_plan.json"
 sys.path.insert(0, str(HERE))
@@ -51,6 +53,72 @@ def terminal_zero(screen, receipt, sage_path, *, start, descriptors, reps):
             "sage_audit_sha256": sha(sage_path)}
 
 
+def q1074_state(screen, design):
+    """Allow disjoint live Q1074 work without treating it as coverage."""
+    plan = json.loads(Q1074.read_text())
+    assert plan["proposal_id"] == "Q1074"
+    assert plan["curve_id"] == screen["curve_id"]
+    assert plan["isogeny"] == "none"
+    assert plan["factor_base_enumerated_set_sha256"] == screen[
+        "factor_base"]["enumerated_set_sha256"]
+    assert plan["public_target"] == screen["public_target"]
+    assert plan["table_start"] == design["table_start"] == 0
+    assert plan["query_end_exclusive"] <= min(design["query_starts"])
+    start = RUNS / "n83_local_arm_m33_r30_q1074.started.json"
+    receipt = RUNS / "n83_local_arm_m33_r30_q1074.json"
+    audit = RUNS / "n83_local_arm_m33_r30_q1074_sage_verify.json"
+    preflight = RUNS / "n83_local_arm_m33_r30_q1074_preflight.json"
+    runtime = RUNS / "n83_local_arm_m33_r30_q1074_runtime_info.json"
+    result = {"plan_sha256": sha(Q1074),
+              "query_start": plan["query_start"],
+              "query_end_exclusive": plan["query_end_exclusive"],
+              "completed_coverage_credited_here": False}
+    if not any(path.exists() for path in (start, receipt, audit,
+                                            preflight, runtime)):
+        result["status"] = "not_started"
+        return result
+    assert preflight.is_file() and runtime.is_file(), (
+        "Q1074 has files but lacks complete launch preflight evidence")
+    preflight_row = json.loads(preflight.read_text())
+    runtime_row = json.loads(runtime.read_text())
+    assert preflight_row["status"] == "passed_before_launch"
+    assert preflight_row["plan_sha256"] == sha(Q1074)
+    assert runtime_row["status"] == "verified"
+    result["preflight_sha256"] = sha(preflight)
+    result["runtime_info_sha256"] = sha(runtime)
+    if receipt.exists():
+        assert not start.exists(), "Q1074 terminal receipt retains a start marker"
+        result["status"] = "completed_zero_audited"
+        result["terminal_audit"] = terminal_zero(
+            screen, receipt, audit, start=plan["query_start"],
+            descriptors=plan["table_descriptors"],
+            reps=plan["query_representatives"])
+        return result
+    assert start.is_file(), "Q1074 has no terminal receipt or live start marker"
+    marker = json.loads(start.read_text())
+    validate_receipt(screen, marker)
+    assert marker["kind"] == (
+        "n83_public_target_signed_x_query_k48194_chunk_started")
+    assert marker["proposal_id"] == "Q1061"
+    assert marker["table_start"] == plan["table_start"]
+    assert marker["table_descriptors"] == plan["table_descriptors"]
+    assert marker["query_start"] == plan["query_start"]
+    assert marker["query_representatives"] == plan["query_representatives"]
+    assert marker["sage_runtime_info_sha256"] == sha(runtime)
+    assert not audit.exists(), "Q1074 live marker already has a terminal audit"
+    try:
+        os.kill(marker["wrapper_pid"], 0)
+    except ProcessLookupError as exc:
+        raise AssertionError(
+            "Q1074 start marker exists but wrapper process is missing; adjudicate attempt"
+        ) from exc
+    result["status"] = "active_uncredited"
+    result["start_marker_sha256"] = sha(start)
+    result["wrapper_pid_live_at_freeze"] = marker["wrapper_pid"]
+    result["exact_hit_status"] = "unknown_until_terminal"
+    return result
+
+
 def freeze():
     screen = json.loads(SCREEN.read_text())
     design = json.loads(DESIGN.read_text())
@@ -78,8 +146,7 @@ def freeze():
         screen, RUNS / "n83_local_arm_m33_q1073_retry2.json",
         RUNS / "n83_local_arm_m33_q1073_retry2_sage_verify.json",
         start=12348030976, descriptors=1 << 33, reps=r)
-    assert not list(RUNS.glob("*q1074*")), (
-        "Q1074 has run files; adjudicate its terminal status before freezing Q1079")
+    q1074 = q1074_state(screen, design)
     audited = [q1073]
     q1075_receipts = []
     for start in q1075["query_starts"]:
@@ -173,6 +240,7 @@ def freeze():
         "terminal_prior_audits": audited,
         "Q1077_design_sha256": sha(DESIGN),
         "Q1075_plan_sha256": sha(Q1075),
+        "Q1074_state": q1074,
         "Q1080_plan_sha256": sha(q1080),
         "Q1080_terminal_audit_path": str(q1080_audit_path.relative_to(HERE)),
         "Q1080_terminal_audit_sha256": sha(q1080_audit_path),

@@ -77,6 +77,15 @@ jobs:
               assert plan[key] == sha(path), key
           q1080_audit = root / plan['Q1080_terminal_audit_path']
           assert plan['Q1080_terminal_audit_sha256'] == sha(q1080_audit)
+          q1074 = plan['Q1074_state']
+          assert q1074['plan_sha256'] == sha(root / 'n83_local_arm_m33_r30_q1074_plan.json')
+          assert not q1074['completed_coverage_credited_here']
+          assert q1074['query_end_exclusive'] <= min(plan['query_starts'])
+          assert q1074['status'] in ('not_started','active_uncredited','completed_zero_audited')
+          if q1074['status'] == 'completed_zero_audited':
+              terminal = q1074['terminal_audit']
+              assert terminal['receipt_sha256'] == sha(root / terminal['receipt'])
+              assert terminal['sage_audit_sha256'] == sha(root / terminal['sage_audit'])
           assert len(plan['terminal_prior_audits']) == 9
           for item in plan['terminal_prior_audits']:
               assert item['receipt_sha256'] == sha(root / item['receipt'])
@@ -113,6 +122,7 @@ jobs:
               'minimum_mem_available_bytes':plan['minimum_mem_available_bytes'],
               'minimum_root_free_bytes':plan['minimum_root_free_bytes'],
               'plan_sha256':sha(plan_path),
+              'Q1074_state_at_plan_freeze':q1074['status'],
               'workflow_sha256':sha(workflow_path),
           }
           (dest / 'host.json').write_text(json.dumps(report,indent=2)+'\n')
