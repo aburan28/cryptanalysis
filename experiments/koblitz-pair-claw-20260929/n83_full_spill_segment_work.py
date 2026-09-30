@@ -61,10 +61,21 @@ def compressed_starts(starts):
     return spans
 
 
+def query_segments(query_start, query_reps):
+    range_index, remainder = divmod(query_start, R30)
+    assert 1 <= range_index < 118
+    assert query_reps in (R27, 1 << 29, R30)
+    assert remainder % R27 == 0
+    first = remainder // R27
+    count = query_reps // R27
+    assert first + count <= SEGMENTS_PER_RANGE
+    return range_index, range(first, first + count)
+
+
 def portable_ci_rows(screen):
     completed, failed, incomplete = [], [], []
     for bundle_path in sorted(RUNS.glob(
-            "n83_portable_q1061_M31_R27_ci_*/bundle.json")):
+            "n83_portable_q1061_M31_R*_ci_*/bundle.json")):
         bundle = json.loads(bundle_path.read_text())
         assert bundle["kind"] == (
             "n83_portable_q1061_physical_x86_segment_ci_bundle")
@@ -72,7 +83,9 @@ def portable_ci_rows(screen):
         assert bundle["curve_id"] == screen["curve_id"]
         assert bundle["factor_base_enumerated_set_sha256"] == screen[
             "factor_base"]["enumerated_set_sha256"]
-        assert bundle["query_representatives"] == R27
+        query_reps = bundle["query_representatives"]
+        assert query_reps in (R27, 1 << 29)
+        assert f"_R{int(math.log2(query_reps))}_ci_" in str(bundle_path)
         assert bundle["portable_native_source_sha256"] == work.sha(
             portable.SOURCE)
         for name, digest in bundle["artifact_sha256"].items():
@@ -89,14 +102,16 @@ def portable_ci_rows(screen):
         assert row["query_start"] == bundle["query_start"]
         assert row["table_start"] == 0
         assert row["table_descriptors"] == M31
-        assert row["query_representatives"] == R27
+        assert row["query_representatives"] == query_reps
+        query_segments(row["query_start"], query_reps)
         if row["kind"] == work.FAILED_KIND:
             assert bundle["status"] == "failed_full_segment_unknown_work"
             assert row["native_phase_counts"] is None
             failed.append((full_path, row))
         else:
             assert row["kind"] == work.SUCCESS_KIND
-            portable.verified_row(screen, full_path, full=True)
+            portable.verified_row(screen, full_path, full=True,
+                                  full_query_reps=query_reps)
             completed.append((full_path, row))
     return completed, failed, incomplete
 
@@ -146,13 +161,9 @@ def main():
         else:
             assert row["table_start"] == 0
             assert row["table_descriptors"] == M31
-            if row["query_representatives"] == R30:
-                assert remainder == 0
-                segments = range(SEGMENTS_PER_RANGE)
-            else:
-                assert row["query_representatives"] == R27
-                assert remainder % R27 == 0
-                segments = [remainder // R27]
+            checked_range_index, segments = query_segments(
+                qstart, row["query_representatives"])
+            assert checked_range_index == range_index
             cells = {(range_index, segment, shard)
                      for segment in segments for shard in range(8)}
             complete_segments.update((range_index, segment)
@@ -186,6 +197,17 @@ def main():
                      * R27 * base["factor_base"]["signed_frobenius_orbit_size"]
                      / base["unordered_query_pair_domain"])
     mean = base["heuristic_mean_four_point_multisets"]
+    # A full M31-by-R27 rectangle has eight grid cells. Its finite-base
+    # multiset intensity should agree with the direct quotient-key estimate:
+    # each table and query pair represents a signed-Frobenius orbit of L.
+    finite_segment_intensity = work.intensity(
+        8, cell_fraction=cell_fraction, mean=mean)
+    quotient_segment_intensity = (
+        M31 * R27 *
+        base["factor_base"]["signed_frobenius_orbit_size"] ** 2 /
+        screen["curve_identity_record"]["curve"]["subgroup_order"])
+    assert math.isclose(finite_segment_intensity,
+                        quotient_segment_intensity, rel_tol=1e-4)
     start_intensity = work.intensity(len(covered),
                                      cell_fraction=cell_fraction, mean=mean)
     future = [(range_index, segment)
@@ -260,6 +282,14 @@ def main():
         "modeled_field_calls_per_R27_segment": str(per_segment),
         "modeled_eight_R27_segments_vs_one_R30_field_call_ratio":
             8 * per_segment / field_calls(M31, R30),
+        "R27_hit_intensity_cross_check": {
+            "finite_base_four_point_multiset_model":
+                finite_segment_intensity,
+            "quotient_pair_collision_model": quotient_segment_intensity,
+            "relative_difference": abs(
+                finite_segment_intensity - quotient_segment_intensity) /
+                quotient_segment_intensity,
+        },
         "completed_selected_route_field_calls": str(charged),
         "completed_selected_route_field_calls_log2": math.log2(charged),
         "verified_quotient_table_dlp_receipts": verified_dlp,

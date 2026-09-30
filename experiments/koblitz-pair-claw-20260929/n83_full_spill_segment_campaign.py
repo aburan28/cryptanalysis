@@ -117,7 +117,11 @@ def main():
                    for path in full_done}
     q1061_ci, failed_q1061_ci, incomplete_q1061_ci = (
         segment_work.portable_ci_rows(screen))
-    portable_done = {row["query_start"] for _, row in q1061_ci}
+    portable_done = {
+        row["query_start"] + offset
+        for _, row in q1061_ci
+        for offset in range(0, row["query_representatives"], SEGMENT_REPS)
+    }
     completed, failed, active, missing, solved, unverified = inspect(
         screen, full_ranges, portable_done)
     full_unverified = [path for path in full_done if
@@ -153,7 +157,8 @@ def main():
         "factor_base_enumerated_set_sha256": screen["factor_base"][
             "enumerated_set_sha256"],
         "completed_segments": len(completed),
-        "completed_portable_ci_segments": len(q1061_ci),
+        "completed_portable_ci_segments": len(portable_done),
+        "completed_portable_ci_runs": len(q1061_ci),
         "failed_segments_with_unknown_field_calls": len(failed),
         "failed_portable_ci_segments_with_unknown_field_calls": len(
             failed_q1061_ci),

@@ -1450,6 +1450,21 @@ transfers to every later one; this is not a measured solve time. The
 native field-call model is $2^{37.582}$ for this completed segment;
 complete operation-equivalent work remains unknown.
 
+For that x86 segment, table build and the full-table exact replay took
+828.50 s and 809.06 s, respectively: 43.9% of full wall time. The
+next disjoint four $R=2^{27}$ query segments start at 1,207,959,552.
+The portable workflow now groups them into one $R=2^{29}$ call, so its
+native kernel builds and replays the same $M=2^{31}$ table once for the
+four-segment group. The [coverage ledger](n83_full_spill_segment_work.py)
+accepts both $R=2^{27}$ and aligned $R=2^{29}$ CI receipts and expands a
+completed group into four disjoint cells. Its native field-call model
+for this group is 654,554,693,632 calls, 79.5% of four separate calls.
+If query time scales linearly and full-table replay stays at the
+measured duration, grouped wall time would be about 2.78 hours versus
+4.15 hours for four separate runs. This is a forecast; the grouped run
+must finish and pass the same artifact and independent Sage checks before
+its coverage, time, or relation yield is counted.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py

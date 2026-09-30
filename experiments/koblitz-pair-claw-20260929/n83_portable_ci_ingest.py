@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import math
 import shutil
 from pathlib import Path
 
@@ -23,6 +24,7 @@ RHO = HERE.parent / "ecc2k130-quotient-pair-probe-20260926" / "runs" / "n83_publ
 BASE_RECEIPT = RUNS / "n83_knownlog_orbit_base_k48194.json"
 SCHEDULE = RUNS / "n53_n83_unique_schedule_perf.json"
 R27 = 1 << 27
+R29 = 1 << 29
 R30 = 1 << 30
 
 
@@ -30,7 +32,7 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def verified_row(screen, path, *, full):
+def verified_row(screen, path, *, full, full_query_reps=R27):
     row = json.loads(path.read_text())
     validate_receipt(screen, row)
     assert row["kind"] == (
@@ -39,7 +41,7 @@ def verified_row(screen, path, *, full):
     assert row["cpu_backend"] == "x86_pclmul"
     assert row["table_start"] == 0
     assert row["table_descriptors"] == (1 << (31 if full else 20))
-    assert row["query_representatives"] == (R27 if full else 1 << 14)
+    assert row["query_representatives"] == (full_query_reps if full else 1 << 14)
     assert row["query_workers"] == 4 and row["representative_batch"] == 8
     assert row["bits_per_key"] == 20 and row["hashes"] == 10
     assert row["candidate_spill_enabled"] and row["fast_keyer_enabled"]
@@ -87,14 +89,18 @@ def main():
     screen = json.loads(SCREEN.read_text())
     validate_reference(screen)
     host = json.loads(host_path.read_text())
-    assert host["kind"] == "n83_portable_R27_host_preflight"
     assert host["architecture"].lower() in ("x86_64", "amd64")
     assert host["mem_available_bytes"] >= host[
         "minimum_mem_available_bytes"] >= 6 << 30
     assert host["root_free_bytes"] >= host[
         "minimum_root_free_bytes"] >= 10 << 30
     query_start = host["query_start"]
+    query_reps = host.get("query_representatives", R27)
+    assert query_reps in (R27, R29)
+    assert host["kind"] == (
+        f"n83_portable_R{int(math.log2(query_reps))}_host_preflight")
     assert R30 <= query_start < 118 * R30 and query_start % R27 == 0
+    assert query_start % R30 + query_reps <= R30
     control = verified_row(screen, control_path, full=False)
     assert control["query_start"] == query_start
     full = json.loads(full_path.read_text()) if full_path.exists() else None
@@ -102,7 +108,8 @@ def main():
     if full is not None:
         if full["kind"] == (
                 "n83_public_target_signed_x_query_k48194_exact_replay_chunk"):
-            full = verified_row(screen, full_path, full=True)
+            full = verified_row(screen, full_path, full=True,
+                                full_query_reps=query_reps)
             full_success = True
         else:
             assert full["kind"] == (
@@ -117,7 +124,7 @@ def main():
             assert full["native_pairs_sha256"] == sha(PAIRS)
             assert full["wrapper_source_sha256"] == sha(WRAPPER)
             assert full["table_descriptors"] == 1 << 31
-            assert full["query_representatives"] == R27
+            assert full["query_representatives"] == query_reps
             assert full["query_workers"] == 4
             assert full["representative_batch"] == 8
     if full is not None:
@@ -138,7 +145,9 @@ def main():
               "unverified_exact_hit_requires_review" if full[
                   "native_result"]["exact_hit_queries"] else
               "completed_zero_hit")
-    destination = RUNS / f"n83_portable_q1061_M31_R27_ci_{args.run_id}"
+    destination = RUNS / (
+        f"n83_portable_q1061_M31_R{int(math.log2(query_reps))}_ci_"
+        f"{args.run_id}")
     assert not destination.exists(), "refusing to overwrite archived CI artifact"
     destination.mkdir()
     names = ("host.json", "control.json", "full.json",
@@ -161,7 +170,7 @@ def main():
         "signed_frobenius_columns": screen["factor_base"][
             "signed_frobenius_columns"],
         "query_start": query_start,
-        "query_representatives": R27,
+        "query_representatives": query_reps,
         "github_run_id": args.run_id,
         "github_run_url": (
             f"https://github.com/aburan28/cryptanalysis/actions/runs/"
