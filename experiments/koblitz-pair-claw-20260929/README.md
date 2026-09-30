@@ -1560,6 +1560,23 @@ incomplete runs get no coverage credit. A failed full native attempt
 retains unknown field calls, while preflight and control failures keep
 their separate statuses.
 
+### Bounded Bloom density screen (Q1066)
+
+The [paired ARM receipt](runs/n83_portable_bloom16_vs20_paired.json)
+uses the same frozen n83 public target, factor base, $M=2^{24}$,
+$R=2^{20}$, affine schedules, four workers, and ten Bloom hashes in
+ABBA order with 20, 16, 16, and 20 bits per key. The 16-bit filter
+raised positives from 18,675 to 93,121 and candidate spill from 0.45
+to 2.23 MB. It cut the filter from 42.01 to 33.62 MB. Its two paired
+query-time speedup ratios were 1.1212 and 1.0663; the median full-wall
+speedup was 1.0509. All four runs had zero exact hits. The
+[checked Sage runtime](runs/n83_portable_bloom16_vs20_runtime_info.json)
+was captured before the runs. At $M=2^{32}$ the allocation formula
+would reduce the filter from about 10 to 8 GiB, but full-size physical
+x86 speed, total RSS, and false-positive replay cost remain unmeasured.
+Q1066 is a stage proposal with null candidate/run IDs; the live x86
+jobs keep their frozen 20-bit filters.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
