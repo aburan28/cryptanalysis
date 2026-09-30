@@ -1502,13 +1502,15 @@ completed group into four disjoint cells. Its native field-call model
 for this group is 654,554,693,632 calls, 79.5% of four separate calls.
 The prior linear-query forecast was 2.78 hours versus 4.15 hours for
 four separate runs; the completed grouped wall time was 2.77 hours.
-For an all-grouped continuation where four contiguous segments are
-available, the [work report](n83_full_spill_segment_work.json) schedules
-232 prospective $R=2^{29}$ groups and three $R=2^{27}$ singles. Its
-frozen-heuristic first-hit estimate, conditional on a hit by plan end, is
-67.66 additional grouped calls and $2^{45.467}$ selected-route native
-field calls, versus $2^{45.751}$ for the all-$R=2^{27}$ continuation.
-The grouped 95% first-hit point is $2^{47.168}$ calls. Group boundaries
+After the completed M32 zero-hit result below, the
+[work report](n83_full_spill_segment_work.json) schedules 231 prospective
+$R=2^{29}$ groups and five $R=2^{27}$ singles. Its frozen-heuristic
+first-hit estimate, conditional on a hit by plan end, is 68.91 additional
+grouped calls and $2^{45.480}$ selected-route native field calls. The
+conditional hit probability by the finite plan end is now 94.987%, so
+the 95% first-hit quantile is beyond that plan and remains null. The
+extra M32 table cells are recorded but omitted from this conservative
+future-hit projection. Group boundaries
 charge an entire call even if a relation would first occur within it.
 These are prospective arithmetic models, distinct from the measured
 R27 and R29 x86 segment timings.
@@ -1540,8 +1542,9 @@ The [independent checked-Sage replay](runs/n83_portable_q1061_M31_R29_ci_3666973
 accepted the exact curve, base, and public target and found zero verified
 natural relations. The coverage ledger credits 24 new $M=2^{28}$ by
 $R=2^{27}$ cells after overlap with previously completed table shards.
-Completed selected-route work is now $2^{42.369}$ modeled native field
-calls; complete solve work remains unknown. The [wave plan](n83_portable_wave_plan.json)
+Before the later M32 run, completed selected-route work was $2^{42.369}$
+modeled native field calls; complete solve work remained unknown. The
+frozen [wave plan](n83_portable_wave_plan.json)
 is ready after this terminal zero-hit receipt and Sage replay, and its
 one-shot branch-scoped workflow has been enabled for the eight disjoint
 grouped jobs. Their prospective $2^{42.252}$ field calls and 9.97%
@@ -1574,7 +1577,8 @@ charges $2^{39.252}$ calls for $M=2^{31},R=2^{29}$ and $2^{38.582}$
 for $M=2^{32},R=2^{28}$: 37.1% fewer calls in the latter shape.
 Its 20-bit-per-key Bloom allocation doubles from about 5 to 10 GiB;
 the archived x86 host had 15.4 GB available before its $M=2^{31}$ run.
-That leaves full-size $M=2^{32}$ feasibility and wall time unmeasured.
+The completed M32 measurement below resolves full-size feasibility for
+one physical AMD EPYC 7763 runner.
 
 Two checked-Sage, ABBA paired ARM screens used the same frozen n83 public
 target, factor base, affine schedules, native source, Bloom settings, and
@@ -1597,25 +1601,33 @@ completed grouped query and all eight wave jobs. It uses the same
 public target and unchanged Q1061 portable kernel. The plan predicts
 $2^{38.582}$ native field calls and 1.305% hit probability for this one
 rectangle under the frozen quotient-collision heuristic. The 10 GiB
-Bloom allocation gives an 11.06 GB RSS forecast by adding its size
-increase to one earlier physical x86 peak; this is not a measured M32
-memory bound. The [one-shot workflow](../../.github/workflows/n83-portable-quotient-shape.yml)
+Bloom allocation gave an 11.06 GB RSS forecast by adding its size
+increase to one earlier physical x86 peak. The
+[one-shot workflow](../../.github/workflows/n83-portable-quotient-shape.yml)
 requires at least 13 GiB available memory, runs a bounded same-host
 control first, and uploads terminal or failed receipts. The
 [Q1065 artifact ingester](n83_m32_ci_ingest.py) checks curve, base,
 target, shape, source hashes, terminal status, and host resources before
-archiving that artifact. The activation commit remains the running job's
-frozen checkout; the current workflow has no PR trigger and its job is
-disabled, so later PR updates cannot repeat the same search. A hit still
-requires independent checked-Sage replay before it counts as a DLP.
-After a terminal M32 receipt is ingested, the
-[coverage/work ledger](n83_full_spill_segment_work.py) will charge its
-entire native field-call model. A completed zero-hit M32 rectangle can
-credit 16 $M=2^{28}$ by $R=2^{27}$ cells from its first $M=2^{31}$
-table half; it records the 16 extra-table cells separately. Failed or
-incomplete runs get no coverage credit. A failed full native attempt
-retains unknown field calls, while preflight and control failures keep
-their separate statuses.
+archiving that artifact. The workflow has no PR trigger and its job is
+disabled, so later PR updates cannot repeat the same search.
+
+[Physical x86 run 36673555074](https://github.com/aburan28/cryptanalysis/actions/runs/36673555074)
+completed from its frozen checkout. The [terminal receipt](runs/n83_portable_q1065_M32_R28_ci_36673555074/full.json)
+records 44,560,285,696 lifted query pairs, 4,869,720 Bloom positives,
+zero exact hits, and an 11.06 GB peak RSS. Table build, target query,
+and exact replay took 1,653.79 s, 4,196.40 s, and 1,611.66 s;
+full subprocess wall time was 7,462.91 s. The same-model physical x86
+M31/R29 job took 9,974.55 s on its different runner, so this single
+M32/R28 run is 1.337 times faster in full wall time at equal $MR=2^{60}$.
+Host-to-host variance is unmeasured. The
+[independent checked-Sage replay](runs/n83_portable_q1065_M32_R28_ci_36673555074/sage_verify.json)
+accepted the curve, base, target, and zero natural relations. The
+[coverage/work ledger](n83_full_spill_segment_work.py) charges all
+411,595,440,128 ($2^{38.582}$) modeled native field calls and credits
+16 new primary grid cells plus 16 separate extra-table cells. It now
+records 126/7,552 primary cells and $2^{42.470}$ completed modeled
+field calls. A complete DLP and operation-equivalent solve work remain
+unknown.
 
 ### Bounded Bloom density screen (Q1066)
 
