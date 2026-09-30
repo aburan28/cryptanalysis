@@ -1938,6 +1938,15 @@ and run IDs until a complete method is identified.
 has all eight jobs in the full-search step. No Q1075 relation, DLP, or
 completed work is claimed before terminal artifacts are audited.
 
+The [Q1077 conditional design](n83_m32_wave_q1077_design.json) reserves
+eight further M32/R29 intervals from query start 18,253,611,008 through
+22,548,578,304, all disjoint from Q1073, Q1074, and Q1075 and inside the
+frozen query domain. It models another $2^{42.371}$ native field calls,
+but leaves the hit probability and measured work null until Q1073 and
+Q1075 have terminal checked-Sage audits and the coverage ledger is
+recomputed. Q1077 is not an executable or dispatched wave; a verified
+target DLP or unresolved exact hit closes its launch gate.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
