@@ -39,9 +39,11 @@ re-added. It needs `3l - 1 <= n`.
 **Four-point decomposition.** Sample `Q = P_a + P_b` from the base and ask
 the oracle about `R - Q`. It hits with probability about `2^(2l - n)`, so a
 decomposition costs about `2^(n - 2l)` linear solves, against meet-in-the-
-middle's `2^(2l)` group operations. For `n/4 < l <= (n + 1)/3` that is an
-exponent `(n - 2l)/l < 2` in `|F|`, below every exponent `../pdp-scaling`
-lists, and it *falls* as `l` grows.
+middle's `2^(2l)` group operations. The method applies when
+`3l - 1 <= n` (the linearization) and `4l >= n + log2(4!)` (so that a random
+target has a four-point decomposition at all). There the cost is an exponent
+`(n - 2l)/l < 2` in `|F|`, below every exponent `../pdp-scaling` lists, and
+it *falls* as `l` grows.
 
 ## Verification
 
@@ -57,9 +59,16 @@ lists, and it *falls* as `l` grows.
 | n | l | targets solved | median samples | log2 median samples | predicted log2 (n - 2l) | MITM log2 (2l) | exponent in \|F\| (log2 samples / l) | median CPU s |
 |--:|--:|--:|--:|--:|--:|--:|--:|--:|
 | 31 | 10 | 12/12 | 1639 | 10.7 | 11 | 20 | 1.07 | 2.9 |
+| 41 | 13 | 12/12 | 60105 | 15.9 | 15 | 26 | 1.22 | 223.6 |
 | 41 | 14 | 12/12 | 11786 | 13.5 | 13 | 28 | 0.97 | 52.4 |
 
-Cells `(31, 8)` and `(41, 13)` were still running when this table was written.
+The `(31, 8)` cell was stopped and is not a result (`results/lhd_n31_l8.log`
+records no decomposition). At `n = 31, l = 8` the base has about `2^15` pair
+sums, so `4l = 32 < n + log2(24) = 35.6`: a random target has a four-point
+decomposition with probability only about `2^-3.6`, and the first target ran
+toward the `2^24`-sample cap with nothing to find. A planted target at the
+same parameters decomposed in 3,183 samples. The regime statement above was
+corrected to include this existence condition.
 
 The measured sample counts track the `2^(n - 2l)` prediction. At `n = 31,
 l = 10` a four-point decomposition takes a median of about 3 s of Python.
