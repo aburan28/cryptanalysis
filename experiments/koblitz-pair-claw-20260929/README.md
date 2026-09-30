@@ -1356,14 +1356,22 @@ hit, a failed attempt, a resource refusal, a competing run, or the
 declared limit. It does not retry failed ranges or clear start markers.
 Each child still runs through the checked Sage launcher and saves a
 separate runtime-info receipt before the measured work. The first full
-Q1062 range is now running. The [validated followthrough](n83_full_spill_followthrough.py)
+Q1062 range started but was stopped by the 4-GiB system-volume guard.
+Its [failed terminal receipt](runs/n83_full_spill_k48194_chunk_M31_R30_tstart0_qstart1073741824_b20_h10_rb8.json)
+records 2,431.79 native wall seconds and 18,534.24 child CPU seconds;
+the [guard receipt](runs/n83_full_spill_k48194_chunk_M31_R30_tstart0_qstart1073741824_b20_h10_rb8.guard.json)
+records system free space falling from 12.10 GB to 3.73 GB with no
+additional swap-outs. Native phase counts and actual field calls are
+unknown. The attempt supplies no natural-relation result or completed
+range coverage. The [validated followthrough](n83_full_spill_followthrough.py)
 waits for its terminal receipt and clears no marker. It stops on a failed
 run, unverified exact hit, verified DLP, identity/source/parameter mismatch,
 or a first-range peak over 10 GiB. A zero-hit terminal receipt passing
 those checks starts the supervisor for at most the remaining 116 ranges;
 every later range still gets the one-range resource preflight and guard.
 The followthrough has synthetic controls for all five stop/continue
-outcomes. Its continuation has not been launched at this writing.
+outcomes. It correctly stopped on this failed first attempt. A retry
+requires explicit `--retry-failed` and stable resource headroom.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py

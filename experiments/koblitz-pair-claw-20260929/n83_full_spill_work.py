@@ -135,6 +135,28 @@ def main():
             "verified_dlp": row["verified_public_target_quotient_table_dlp"],
         })
     per_range = int(screen["modeled_field_calls_per_full_range"])
+    failed_attempts = []
+    for path, row in failed_q1060 + failed_q1062:
+        guard_path = path.with_suffix(".guard.json")
+        guard = json.loads(guard_path.read_text()) if guard_path.exists() else None
+        if guard is not None:
+            assert guard["terminal_receipt_sha256"] == sha(path)
+            assert guard["curve_id"] == screen["curve_id"]
+            assert guard["query_start"] == row["query_start"]
+        failed_attempts.append({
+            "path": str(path), "sha256": sha(path),
+            "proposal_id": row["proposal_id"],
+            "query_start": row["query_start"],
+            "terminal_status": row.get("terminal_status"),
+            "native_subprocess_wall_seconds": row.get(
+                "native_subprocess_wall_seconds"),
+            "native_child_cpu_total_seconds": row.get(
+                "native_child_cpu_total_seconds"),
+            "native_phase_counts": None,
+            "resource_guard_reason": guard["reason"] if guard else None,
+            "resource_guard_receipt_sha256": sha(guard_path)
+            if guard else None,
+        })
     cell_fraction = (M28 /
                      base["zero_pair_key_cap_before_accidental_collisions"]
                      * R30 * base["factor_base"]["signed_frobenius_orbit_size"]
@@ -204,9 +226,7 @@ def main():
         "completed_selected_route_field_calls": str(completed_calls),
         "completed_selected_route_field_calls_log2": math.log2(
             completed_calls),
-        "failed_receipts_with_unknown_field_calls": [
-            {"path": str(path), "sha256": sha(path)}
-            for path, _ in failed_q1060 + failed_q1062],
+        "failed_receipts_with_unknown_field_calls": failed_attempts,
         "active_start_markers_excluded": [str(path) for path in sorted(
             RUNS.glob("n83_*chunk_M*_R30_*.started.json"))],
         "Q1062_future_full_range_starts": [index * R30 for index in future],
@@ -216,7 +236,7 @@ def main():
         "complete_solve_work_log2": None,
         "limits": [
             "The finite-support probability is the frozen random-base heuristic, not an empirical relation yield rate.",
-            "Selected-route field calls include completed Q1051, Q1060, and Q1062 terminal receipts only; failed attempts and other same-target research trials require separate accounting.",
+            "Selected-route field calls include completed Q1051, Q1060, and Q1062 terminal receipts only; failed attempts are listed with measured wall/CPU time where available but unknown field-call work, and other same-target research trials require separate accounting.",
             "A Q1062 full range may overlap completed Q1060 shards. Calls are charged twice; covered cells are counted once.",
             "Field calls omit keying, Bloom operations, memory and SSD traffic, and independent scalar replay; no complete operation-equivalent cost is claimed.",
         ],
