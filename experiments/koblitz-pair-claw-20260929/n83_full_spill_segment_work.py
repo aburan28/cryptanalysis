@@ -218,6 +218,83 @@ def m32_ci_rows(screen):
     return completed, failed, noncompleted, proposal_by_path
 
 
+def local_m32_rows(screen):
+    """Credit Q1071 only from its terminal receipt on the frozen ARM range."""
+    plan_path = HERE / "n83_local_arm_m32_q1071_plan.json"
+    receipt_path = RUNS / "n83_local_arm_m32_q1071.json"
+    runtime_path = RUNS / "n83_local_arm_m32_q1071_runtime_info.json"
+    sage_path = RUNS / "n83_local_arm_m32_q1071_sage_verify.json"
+    plan = json.loads(plan_path.read_text())
+    assert plan["proposal_id"] == "Q1071"
+    assert plan["curve_id"] == screen["curve_id"]
+    assert plan["isogeny"] == "none"
+    assert plan["factor_base_enumerated_set_sha256"] == screen[
+        "factor_base"]["enumerated_set_sha256"]
+    assert plan["actual_usable_points_B_before_folding"] == screen[
+        "factor_base"]["actual_usable_points_B_before_folding"]
+    assert plan["signed_frobenius_columns"] == screen[
+        "factor_base"]["signed_frobenius_columns"]
+    assert plan["table_descriptors"] == M32
+    assert plan["query_representatives"] == 1 << 29
+    assert plan["query_end_exclusive"] == (plan["query_start"] +
+                                           plan["query_representatives"])
+    assert plan["query_start"] == 11 * R30
+    if not receipt_path.exists():
+        return [], [], {}, {}
+    row = json.loads(receipt_path.read_text())
+    validate_receipt(screen, row)
+    assert row["proposal_id"] == "Q1061"
+    assert row["table_start"] == plan["table_start"] == 0
+    assert row["table_descriptors"] == M32
+    assert row["query_start"] == plan["query_start"]
+    assert row["query_representatives"] == plan["query_representatives"]
+    assert row["cpu_backend"] == plan["cpu_backend"] == "arm_pmull"
+    assert row["query_workers"] == plan["query_workers"]
+    assert row["representative_batch"] == plan["representative_batch"]
+    assert row["bits_per_key"] == plan["bits_per_key"]
+    assert row["hashes"] == plan["hashes"]
+    assert row["sage_runtime_info_sha256"] == work.sha(runtime_path)
+    runtime = json.loads(runtime_path.read_text())
+    assert runtime["status"] == "verified"
+    for row_key, plan_key, path in (
+            ("native_source_sha256", "portable_native_source_sha256",
+             HERE / "native_n83_orbit_query_spill_portable.cpp"),
+            ("bloom_core_sha256", "portable_core_source_sha256",
+             HERE / "native_n83_bloom_core_portable.hpp"),
+            ("native_pairs_sha256", "portable_pairs_source_sha256",
+             HERE / "native_n83_pairs_portable.cpp"),
+            ("wrapper_source_sha256", "portable_wrapper_source_sha256",
+             HERE / "run_n83_portable_chunk.py"),
+            ("generated_field_sha256", "generated_field_header_sha256",
+             REPO / "ecc2k130/runner/generated/eccF83.h"),
+            ("base_receipt_sha256", "base_receipt_sha256",
+             RUNS / "n83_knownlog_orbit_base_k48194.json")):
+        if row["kind"] != work.FAILED_KIND:
+            assert row[row_key] == plan[plan_key]
+        assert plan[plan_key] == work.sha(path)
+    if row["kind"] == work.FAILED_KIND:
+        assert row["native_phase_counts"] is None
+        return [], [(receipt_path, row)], {}, {}
+    assert row["kind"] == work.SUCCESS_KIND
+    assert row["native_result"]["actual_B"] == plan[
+        "actual_usable_points_B_before_folding"]
+    assert row["native_result"]["exact_hit_queries"] >= len(
+        row["verified_public_target_relations"])
+    assert int(row["native_field_add_mul_sqr_call_model"]) == field_calls(
+        M32, plan["query_representatives"])
+    assert sage_path.exists(), "local M32 receipt needs independent Sage audit"
+    sage = json.loads(sage_path.read_text())
+    assert sage["receipt_sha256"] == work.sha(receipt_path)
+    assert sage["curve_id"] == screen["curve_id"]
+    assert sage["sage_runtime_info_sha256"] == work.sha(runtime_path)
+    assert sage["verified_relation_count"] == len(
+        row["verified_public_target_relations"])
+    assert sage["natural_public_target_relation_verified"] == bool(
+        row["verified_public_target_relations"])
+    return [(receipt_path, row)], [], {receipt_path: "Q1071"}, {
+        receipt_path: sage_path}
+
+
 def main():
     base = json.loads(work.BASE.read_text())
     screen = json.loads(work.SCREEN.read_text())
@@ -239,7 +316,10 @@ def main():
     q1061_ci, failed_q1061_ci, incomplete_q1061_ci = portable_ci_rows(screen)
     m32_ci, failed_m32_ci, noncompleted_m32_ci, m32_proposals = m32_ci_rows(
         screen)
-    m32_paths = {path for path, _ in m32_ci}
+    local_m32, failed_local_m32, local_m32_proposals, local_sage_paths = (
+        local_m32_rows(screen))
+    m32_proposals.update(local_m32_proposals)
+    m32_paths = {path for path, _ in m32_ci + local_m32}
     covered = {(0, segment, shard)
                for segment in range(SEGMENTS_PER_RANGE)
                for shard in range(8)}
@@ -274,7 +354,7 @@ def main():
     verified_dlp = []
     unverified_hits = []
     for path, row in sorted(q1060 + q1062_full + q1062_seg + q1061_ci +
-                            m32_ci,
+                            m32_ci + local_m32,
                             key=lambda item: (item[1]["finished_at_utc"],
                                               str(item[0]))):
         qstart = row["query_start"]
@@ -308,7 +388,8 @@ def main():
         if row["verified_public_target_quotient_table_dlp"]:
             assert row["verified_public_target_relations"]
             if row["proposal_id"] == "Q1061":
-                sage_path = path.with_name("sage_verify.json")
+                sage_path = local_sage_paths.get(
+                    path, path.with_name("sage_verify.json"))
                 if sage_path.exists():
                     sage = json.loads(sage_path.read_text())
                     assert sage["receipt_sha256"] == work.sha(path)
@@ -334,7 +415,7 @@ def main():
         completed.append(entry)
     failures = [failed_record(path, row) for path, row in
                 failed_q1060 + failed_full + failed_seg + failed_q1061_ci +
-                failed_m32_ci]
+                failed_m32_ci + failed_local_m32]
     cell_fraction = (M28 /
                      base["zero_pair_key_cap_before_accidental_collisions"]
                      * R27 * base["factor_base"]["signed_frobenius_orbit_size"]
@@ -602,6 +683,8 @@ def main():
             HERE / "n83_m32_group_ci_ingest.py"),
         "m32_wave_ci_ingest_source_sha256": work.sha(
             HERE / "n83_m32_wave_ci_ingest.py"),
+        "local_M32_Q1071_plan_sha256": work.sha(
+            HERE / "n83_local_arm_m32_q1071_plan.json"),
         "portable_native_source_sha256": work.sha(portable.SOURCE),
         "segment_campaign_source_sha256": work.sha(
             HERE / "n83_full_spill_segment_campaign.py"),
