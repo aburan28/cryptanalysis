@@ -1707,28 +1707,31 @@ yield. The workflow was disabled for subsequent PR commits.
 
 The [coverage-aware work ledger](n83_full_spill_segment_work.json) also
 projects a distinct future M32/R29 route. After all eight Q1069 wave
-receipts and Q1071, it retains 574 completed primary M28-by-R27 cells
-and 336 completed extra-table cells, then orders the remaining aligned
+receipts, Q1071, and five independently audited Q1075 receipts, it retains
+734 completed primary M28-by-R27 cells and 496 completed extra-table
+cells, then orders the remaining aligned
 R29 rectangles by new coverage. Under the frozen finite-support placement
-model, 226 future M32/R29 calls cover the entire M32-by-query domain,
-with a 99.633% conditional chance of at least one hit. Conditional on a
-hit within that finite plan, the expected first hit is after 38.36
-additional calls and $2^{45.292}$ selected-route modeled native field
+model, 221 future M32/R29 calls cover the entire M32-by-query domain,
+with a 99.581% conditional chance of at least one hit. Conditional on a
+hit within that finite plan, the expected first hit is after 38.33
+additional calls and $2^{45.406}$ selected-route modeled native field
 calls including completed receipts. The median is 27 calls
-($2^{44.993}$); the 95% quantile is 117 calls ($2^{46.492}$).
+($2^{45.132}$); the 95% quantile is 117 calls ($2^{46.543}$).
 These are **model outputs**, not measured relation yield, elapsed time,
 or complete operation-equivalent solve work. The interrupted Q1073 attempt
-has unknown arithmetic work and receives no coverage credit.
+has unknown arithmetic work and receives no coverage credit. Q1080's
+partial R24 interval is charged separately and is omitted from this R27
+grid's placement model.
 
 The work exponent has a fixed boundary in this ledger:
 
 | Quantity | $2^x$ native field calls | Status |
 | --- | ---: | --- |
 | One complete M32/R29 rectangle | $2^{39.371}$ | Modeled attempt cost, with no hit required |
-| Completed R27-grid search receipts | $2^{43.847}$ | Modeled calls over audited terminal grid coverage |
+| Completed R27-grid search receipts | $2^{44.139}$ | Modeled calls over audited terminal grid coverage, including five Q1075 jobs |
 | Q1080 four paired M28/R24 attempts | $2^{36.582}$ | Charged separately; one novel partial rectangle, zero full R27 cells |
-| All successful terminal attempts through Q1080 | $2^{43.856}$ | Sum of the preceding charged work; active jobs excluded |
-| First hit on the selected M32 route | $2^{45.292}$ | Finite-support expectation, conditional on a hit by plan end |
+| All successful terminal attempts through five Q1075 jobs and Q1080 | $2^{44.147}$ | Sum of the preceding charged work; active jobs excluded |
+| First hit on the selected M32 route | $2^{45.406}$ | Finite-support expectation, conditional on a hit by plan end |
 | Complete one-target IC solve | unknown | No natural n=83 relation or independently verified IC scalar yet |
 
 The n=53 control did recover and independently verify one target in
@@ -1954,8 +1957,17 @@ control, terminal checks, and artifact upload. The
 hits for independent checked-Sage replay. Q1075 keeps null candidate
 and run IDs until a complete method is identified.
 [Run 36751667950](https://github.com/aburan28/cryptanalysis/actions/runs/36751667950)
-has all eight jobs in the full-search step. No Q1075 relation, DLP, or
-completed work is claimed before terminal artifacts are audited.
+has five terminal zero-hit jobs at query starts 15,032,385,536,
+15,569,256,448, 16,642,998,272, 17,179,869,184, and 17,716,740,096;
+the other three remain in the full-search step. All five
+[archived receipts](runs/n83_portable_q1075_M32_R29_ci_36751667950_qstart15032385536/bundle.json)
+passed exact identity/source checks and independent checked-Sage zero-hit
+replay, with native binaries and GitHub artifact digests retained beside
+the receipts. Each contributed 32 new primary R27 cells and 32 M32
+extension cells. The refreshed ledger has 734 primary cells, 496 M32
+extension cells, and $2^{44.139}$ modeled native field calls over its
+successful terminal attempts. These five jobs found no natural relation
+or target DLP. Three active jobs receive no work or coverage credit yet.
 
 The [Q1077 conditional design](n83_m32_wave_q1077_design.json) reserves
 eight further M32/R29 intervals from query start 18,253,611,008 through
@@ -2040,7 +2052,7 @@ M20/R14 control, not a full-size timing estimate. The one-shot workflow
 is disabled after this audit.
 The intended next intervals remain the disjoint Q1077 design. The
 [full-size plan builder](n83_q1079_full_plan.py) refuses to freeze them
-until Q1073, all eight Q1075 jobs, and Q1080 have terminal independent
+until Q1073 and all eight Q1075 jobs have terminal independent
 audits with no hit, and the Q1062 coverage ledger has been refreshed.
 It permits Q1074 to run concurrently on the disjoint ARM interval when
 its wrapper process is live, records that work as active and uncredited,
