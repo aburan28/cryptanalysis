@@ -2041,6 +2041,22 @@ terminal Q1073/Q1075 audits and a refreshed work ledger. Q1079 retains
 null candidate/run IDs and `isogeny: "none"`; its field-call model is
 unchanged from Q1061.
 
+### Same-host M28/R24 keyer scaling gate (Q1080)
+
+The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
+public-target rectangle immediately after the Q1077 reserved interval:
+M28 table descriptors and R24 query representatives beginning at
+22,548,578,304. A [one-shot physical x86 workflow](../../.github/workflows/n83-q1080-m28-r24-paired-x86.yml)
+runs Q1061, Q1079, Q1079, Q1061 in that order on the same host, with
+the same point, exact base, resource envelope, and rectangle. It checks
+that all four native outcomes match, including any exact hits. Each run
+models $2^{34.582}$ native field calls; all four repetitions count as
+charged work, while the rectangle earns novel coverage only once.
+The purpose is to measure whether Q1079's bounded speed gain persists
+after table and Bloom growth. The plan and any stage timing are not a
+complete n=83 IC solve or a measured complete-solve exponent. Any exact
+hit still requires independent checked-Sage replay.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
