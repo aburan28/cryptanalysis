@@ -16,7 +16,7 @@ RUNS = HERE / "runs"
 BASE = HERE / "n83_large_knownlog_base_screen.json"
 Q1060 = HERE / "n83_spill_low_memory_screen.json"
 FIRST = RUNS / "n83_orbit_k48194_chunk_M31_R30_tstart0_qstart0_b20_h14_rb8.json"
-SMOKE = RUNS / "n83_full_spill_k48194_chunk_M20_R14_tstart0_qstart1073741824_b20_h10_rb8.json"
+SMOKE = RUNS / "n83_full_spill_k48194_chunk_M20_R14_tstart0_qstart1073741824_b20_h10_rb8.cpu.json"
 Q1060_SMOKE = RUNS / "n83_spill_lowmem_k48194_chunk_M20_R14_tstart0_qstart1073741824_b20_h10_rb8.json"
 Q1060_FULL = RUNS / "n83_spill_lowmem_k48194_chunk_M28_R30_tstart0_qstart1073741824_b20_h10_rb8.json"
 SOURCE = HERE / "native_n83_orbit_query_spill.cpp"
@@ -51,6 +51,7 @@ def main():
     assert (q1060["proposal_id"] == old_smoke["proposal_id"] ==
             measured["proposal_id"] == "Q1060")
     assert smoke["proposal_id"] == "Q1062"
+    assert smoke["wrapper_source_sha256"] == sha(RUNNER)
     assert all(row["curve_id"] == "EC1N83Ckb1h876c2921cb64"
                for row in (base, q1060, first, smoke, old_smoke, measured))
     assert all(row["candidate_id"] is None and row["isogeny"] == "none"
@@ -64,6 +65,11 @@ def main():
     assert sha(PAIRS) == q1060["native_pairs_sha256"]
     assert sha(CORE) == q1060["bloom_core_sha256"]
     assert smoke["native_result"]["bloom_positive_queries"] == 247
+    assert smoke["native_child_cpu_user_seconds"] > 0
+    assert smoke["native_child_cpu_system_seconds"] >= 0
+    assert math.isclose(smoke["native_child_cpu_total_seconds"],
+                        smoke["native_child_cpu_user_seconds"] +
+                        smoke["native_child_cpu_system_seconds"])
     for key in ("bloom_positive_queries", "exact_hit_queries",
                 "candidate_spill_bytes", "hits"):
         assert smoke["native_result"][key] == old_smoke["native_result"][key]
@@ -95,6 +101,8 @@ def main():
             "native_result"]["bloom_positive_queries"],
         "measured_bounded_smoke_exact_hits": smoke[
             "native_result"]["exact_hit_queries"],
+        "measured_bounded_smoke_native_cpu_seconds": smoke[
+            "native_child_cpu_total_seconds"],
         "full_M31_R30_Q1062_terminal_measured": False,
         "modeled_field_calls_per_full_range": str(per_range),
         "modeled_field_calls_per_full_range_log2": math.log2(per_range),

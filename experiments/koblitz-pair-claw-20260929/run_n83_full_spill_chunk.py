@@ -11,6 +11,7 @@ import json
 import math
 import os
 import platform
+import resource
 import subprocess
 import sys
 import time
@@ -177,6 +178,7 @@ def main():
     with started_path.open("x") as handle:
         handle.write(json.dumps(started, indent=2) + "\n")
     print(json.dumps(started), flush=True)
+    before_cpu = resource.getrusage(resource.RUSAGE_CHILDREN)
     begun = time.perf_counter_ns()
     try:
         native_env = os.environ.copy()
@@ -185,6 +187,7 @@ def main():
         raw = subprocess.run(command, check=True, capture_output=True,
                              text=True, env=native_env)
     except BaseException as exc:
+        after_cpu = resource.getrusage(resource.RUSAGE_CHILDREN)
         failed = dict(started)
         failed.update({
             "kind": "n83_public_target_signed_x_query_k48194_chunk_failed",
@@ -196,6 +199,10 @@ def main():
                 exc, subprocess.CalledProcessError) and exc.stderr else
                 str(exc)),
             "native_phase_counts": None,
+            "native_child_cpu_user_seconds": max(
+                0.0, after_cpu.ru_utime - before_cpu.ru_utime),
+            "native_child_cpu_system_seconds": max(
+                0.0, after_cpu.ru_stime - before_cpu.ru_stime),
             "verified_public_target_quotient_table_dlp": False,
             "cumulative_work_known": False,
         })
@@ -203,6 +210,10 @@ def main():
         started_path.unlink(missing_ok=True)
         raise
     elapsed = (time.perf_counter_ns() - begun) / 1e9
+    after_cpu = resource.getrusage(resource.RUSAGE_CHILDREN)
+    native_user = after_cpu.ru_utime - before_cpu.ru_utime
+    native_system = after_cpu.ru_stime - before_cpu.ru_stime
+    assert native_user >= 0 and native_system >= 0
     native = json.loads(raw.stdout)
     assert native["actual_B"] == record[
         "actual_usable_points_B_before_folding"]
@@ -301,6 +312,14 @@ def main():
         "target_independent_filter_build_seconds": (
             native["allocation_seconds"] + native["build_seconds"]),
         "wrapper_subprocess_wall_seconds": elapsed,
+        "native_child_cpu_user_seconds": native_user,
+        "native_child_cpu_system_seconds": native_system,
+        "native_child_cpu_total_seconds": native_user + native_system,
+        "native_child_cpu_time_boundary": (
+            "RUSAGE_CHILDREN delta immediately around the native search "
+            "subprocess; includes target-independent filter build and "
+            "target-dependent query and replay; excludes native compilation "
+            "and Python scalar verification"),
         "native_field_add_mul_sqr_call_model": str(field_calls),
         "native_field_add_mul_sqr_call_model_log2": math.log2(
             field_calls),
