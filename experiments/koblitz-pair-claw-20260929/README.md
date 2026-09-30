@@ -2113,6 +2113,10 @@ Q1081 can become an executable wave only after all Q1079 terminal receipts
 are independently audited and the coverage ledger and source hashes are
 refrozen. Its additional eight-job arithmetic model is $2^{42.371}$ native
 field calls, with natural hit probability and complete solve work unknown.
+The [Q1081 plan builder](n83_q1081_full_plan.py) enforces those gates and
+refuses to overwrite a frozen plan. Its current negative control refuses to
+freeze while the eight Q1079 audits are missing; no Q1081 executable plan
+or job has been created.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
