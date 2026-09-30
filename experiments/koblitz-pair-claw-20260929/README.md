@@ -2078,11 +2078,20 @@ intervals after nine terminal independent audits and the refreshed Q1062
 coverage ledger. It verified that Q1074's wrapper process was live and
 recorded the disjoint ARM interval as active and uncredited.
 The [eight-job physical x86 workflow](../../.github/workflows/n83-q1079-zero-run-m32-wave.yml)
-is enabled for one-shot dispatch with that plan. Each job checks the exact instance,
+dispatched [run 36784663720](https://github.com/aburan28/cryptanalysis/actions/runs/36784663720)
+from that plan. All eight jobs passed host and bounded-control checks and
+entered the full search. The workflow is disabled after dispatch to keep
+later PR synchronizations from repeating the fixed intervals. Each job checks the exact instance,
 source and audit hashes, memory and disk, runs a bounded control, then
 passes the frozen plan to the source-bound M32/R29 runner. Q1079 retains
 null candidate/run IDs and `isogeny: "none"`; its field-call model is
 unchanged from Q1061.
+The [full-size ingester](n83_q1079_full_ci_ingest.py) preserves each
+terminal artifact, generated sources, native binaries, failures, and exact
+hits for an independent checked-Sage audit. A
+[workflow snapshot](runs/n83_q1079_ci_36784663720_workflow_snapshot.yml)
+and [coverage snapshot](runs/n83_q1079_ci_36784663720_coverage_snapshot.json)
+pin the enabled dispatch and its original work ledger after later updates.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
