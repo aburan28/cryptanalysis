@@ -13,7 +13,7 @@ model under its tested bounds.
   `r=21044858204113`, cofactor 428, and generator
   `(198217578752339,7929897206038174)`.
 - Candidate: `IC1N53Ckb1fb23426PDP4rootRCguidedLAgaussTDdirectISO0hd89d75bbe48f`.
-  The full [candidate manifest](runs/n53_w3_root_pair_v2/candidate.json) binds
+  The full [candidate manifest](runs/n53_w3_root_pair_v3/candidate.json) binds
   the method and binary digest. The [base export](runs/n53_w3_base_export_v1/representatives.json)
   contains all 221 sorted signed-Frobenius representatives. Its exact
   reconstruction has 23,426 usable subgroup points before folding.
@@ -41,15 +41,15 @@ the relation rank and target-span log, and replayed both recovered scalars.
 
 | Run | Workload | IC online | Same-point rho online | rho / IC | Ordinary queries / verified / novel rank |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `v2` | `32611ba1c3e1` | 3,575.810 ms | 2,133.823 ms | 0.597× | 214 / 214 / 214 |
 | `v3` | `bd9c9a1dff79` | 3,202.635 ms | 1,023.159 ms | 0.319× | 219 / 219 / 219 |
 | `v4` | `247f33e06393` | 4,572.414 ms | 1,460.097 ms | 0.319× | 286 / 286 / 221 |
+| `v5` | `c6f52be49d30` | 3,146.958 ms | 804.337 ms | 0.256× | 216 / 216 / 216 |
 
-The paired ratio range is **0.319–0.597**, and rho is faster on every target.
+The paired ratio range is **0.256–0.319**, and rho is faster on every target.
 The median ratio is 0.319; the three-target percentile bootstrap 95% interval
-for the geometric mean paired ratio is also 0.319–0.597. That interval is
+for the geometric mean paired ratio is also 0.256–0.319. That interval is
 exploratory with only three targets. Across the three relation streams,
-719/719 ordinary queries produced group-verified relations; 654 added rank.
+721/721 ordinary queries produced group-verified relations; 656 added rank.
 The nominal Wilson 95% interval for the verified-query fraction is
 0.995–1.000, but its independent-query assumption is unproved for this
 adaptive, rank-stopped stream. These observations do not establish a
@@ -59,9 +59,9 @@ The [measurement rows](runs/n53_w3_root_pair_summary/rows.csv) retain each
 target point, exact online phases, base and index construction, rank yield,
 matrix construction, incremental linear algebra, target descent and replay,
 operation counts in the solver records, and per-child peak resident memory.
-Root-index construction took 889–952 ms; IC peak RSS was about 405 MB.
-Rho peak RSS was 92–179 MB. The IC online phase sum is checked against its
-clock in each [Sage replay](runs/n53_w3_root_pair_v2/sage_replay.json).
+Root-index construction took 908–952 ms; IC peak RSS was about 405 MB.
+Rho peak RSS was 50–93 MB. The IC online phase sum is checked against its
+clock in each [Sage replay](runs/n53_w3_root_pair_v3/sage_replay.json).
 The [summary JSON](runs/n53_w3_root_pair_summary/summary.json) carries the
 observed ranges and claim boundary.
 The [schema-v2 rows](runs/n53_w3_root_pair_summary/contract_v2.jsonl) pass
@@ -73,9 +73,12 @@ is retained as `HARNESS_FAILURE` in the rows. Its `/usr/bin/time -l` wrapper
 returned exit code 1 because sandboxed `sysctl kern.clockrate` was denied;
 the child solver outputs were retained, but this row has no verified speedup.
 The direct `wait4` accounting in `v2` reran the same frozen point as `R2` and
-recorded each child's exit status and exact peak RSS. An earlier published
-target was used only for a root-index smoke control and has its own independent
-Sage replay. No primary result uses that smoke target.
+passed independent Sage replay. Because the point was already seen by the
+`v1` solvers, `v2` is a `VERIFIED_REUSE_CONTROL` and is excluded from the
+primary one-target table and schema-v2 complete-DLP rows. Three new seeds
+produced the `v3`–`v5` primary workloads. An earlier published target was
+used only for a root-index smoke control and has its own independent Sage
+replay.
 
 This is N53 evidence only. N51 and N83 remain unmeasured, and these results
 do not support an IC speedup claim. Setup-inclusive cost and a normalized
@@ -94,7 +97,7 @@ cp /Volumes/SSD990/cryptanalysis/experiments/hamming-ic-e2e-20260929/koblitz_rho
 cd /Volumes/SSD990/crypto
 cargo build --release --example koblitz_w3_root_index --example koblitz_rho_point
 cd /Volumes/SSD990/cryptanalysis
-python3 experiments/hamming-ic-e2e-20260929/run_n53_w3_root_pair.py --out /private/tmp/new-n53-w3-pair --run-number 1 --fixture-seed 20261003 --ic-seed 53018 --rho-seed 53019
+python3 experiments/hamming-ic-e2e-20260929/run_n53_w3_root_pair.py --out /private/tmp/new-n53-w3-pair --run-number 1 --fixture-seed 20261004 --ic-seed 53020 --rho-seed 53021
 /Volumes/SSD990/cryptanalysis/sage -python experiments/hamming-ic-e2e-20260929/sage_replay_n53_w3_root_pair.py --run /private/tmp/new-n53-w3-pair
 python3 experiments/hamming-ic-e2e-20260929/summarize_n53_w3_root_pairs.py
 python3 experiments/ic-candidate-catalog/analyze_v2.py experiments/hamming-ic-e2e-20260929/runs/n53_w3_root_pair_summary/contract_v2.jsonl

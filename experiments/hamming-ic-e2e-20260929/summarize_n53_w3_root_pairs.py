@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep every N53 W3-root pair, including the failed harness row."""
+"""Keep every N53 W3-root pair; exclude a reused target from primary results."""
 
 from __future__ import annotations
 
@@ -14,7 +14,8 @@ import statistics
 HERE = Path(__file__).resolve().parent
 RUNS = HERE / "runs"
 NAMES = ("n53_w3_root_pair_v1", "n53_w3_root_pair_v2",
-         "n53_w3_root_pair_v3", "n53_w3_root_pair_v4")
+         "n53_w3_root_pair_v3", "n53_w3_root_pair_v4",
+         "n53_w3_root_pair_v5")
 OUT = RUNS / "n53_w3_root_pair_summary"
 PHASES = ("setup", "isogeny", "factor_base", "precompute", "queries", "pdp",
           "relation_check", "matrix_build", "relation_la", "target_descent",
@@ -53,7 +54,8 @@ def bootstrap95_geometric(values):
 
 
 def contract_row(directory, receipt, ic, replay):
-    verified = replay is not None and replay["status"] == "PASS"
+    replay_verified = replay is not None and replay["status"] == "PASS"
+    verified = replay_verified and directory.name != "n53_w3_root_pair_v2"
     timing = ic["timing_ms"]
     online_ns = round(timing["target_online_after_reusable_setup"] * 1_000_000) if verified else None
     if verified:
@@ -82,6 +84,10 @@ def contract_row(directory, receipt, ic, replay):
                                          "pdp_budget", "pdp_error", "pdp_lift_rejected")) == counts["pdp_attempts"]
     return {"schema_version": 2, "kind": "full_dlp" if verified else "stage",
             "status": "complete" if verified else "error", "candidate_id": receipt["candidate_id"],
+            "exclusion_reason": "target_reused_after_harness_failure"
+                                if replay_verified and not verified else
+                                "harness_wrapper_exit_nonzero" if not replay_verified else None,
+            "observed_scalar_replay_verified": replay_verified,
             "proposal_id": None, "workload_id": receipt["workload_id"],
             "run_id": receipt["run_id"],
             "pair_block_id": "W" + receipt["workload_id"] + "R" + receipt["run_id"].rsplit("R", 1)[1],
@@ -117,7 +123,8 @@ def main():
         rho = read(directory / "rho.stdout.txt")
         replay_path = directory / "sage_replay.json"
         replay = read(replay_path) if replay_path.exists() else None
-        verified = replay is not None and replay["status"] == "PASS"
+        replay_verified = replay is not None and replay["status"] == "PASS"
+        verified = replay_verified and name not in ("n53_w3_root_pair_v2",)
         assert receipt["candidate_id"] == (replay or receipt)["candidate_id"]
         assert receipt["workload_id"] == (replay or receipt)["workload_id"]
         assert ic["target"] == rho["target_point"] == receipt["target_point"]
@@ -125,8 +132,10 @@ def main():
             "candidate_id": receipt["candidate_id"],
             "workload_id": receipt["workload_id"], "run_id": receipt["run_id"],
             "directory": name, "target_point": json.dumps(receipt["target_point"], separators=(",", ":")),
-            "status": "VERIFIED_COMPLETE" if verified else "HARNESS_FAILURE",
-            "failure_detail": "time_l_sysctl_denied" if name.endswith("v1") else "",
+            "status": "VERIFIED_COMPLETE" if verified else
+                      "VERIFIED_REUSE_CONTROL" if replay_verified else "HARNESS_FAILURE",
+            "failure_detail": "time_l_sysctl_denied" if name.endswith("v1") else
+                              "target_reused_after_v1" if name.endswith("v2") else "",
             "target_count": 1, "ic_workers": 1, "rho_workers": 1,
             "wall_limit_seconds_each": receipt["resource_envelope"]["wall_limit_seconds_each"],
             "ic_online_ms": replay["ic_online_ms"] if verified else None,
@@ -165,8 +174,8 @@ def main():
             "rho_peak_rss_bytes": receipt["rho"]["process"]["peak_rss_bytes"],
             "rho_walk_steps": rho["walk_steps"],
             "rho_table_entries": rho["table_entries"],
-            "ic_scalar_replay_verified": verified and replay["ic_scalar_replay_verified"],
-            "rho_scalar_replay_verified": verified and replay["rho_scalar_replay_verified"],
+            "ic_scalar_replay_verified": replay_verified and replay["ic_scalar_replay_verified"],
+            "rho_scalar_replay_verified": replay_verified and replay["rho_scalar_replay_verified"],
         }
         rows.append(row)
         contract_rows.append(contract_row(directory, receipt, ic, replay))
@@ -182,7 +191,8 @@ def main():
         "kind": "n53_w3_root_independent_one_target_pairs",
         "candidate_id": completed[0]["candidate_id"],
         "curve_id": completed[0]["curve_id"],
-        "all_run_rows": len(rows), "harness_failures": len(rows) - len(completed),
+        "all_run_rows": len(rows), "harness_failures": sum(row["status"] == "HARNESS_FAILURE" for row in rows),
+        "verified_reuse_controls": sum(row["status"] == "VERIFIED_REUSE_CONTROL" for row in rows),
         "verified_one_target_pairs": len(completed),
         "different_frozen_targets": len({row["target_point"] for row in completed}),
         "median_ic_online_ms": statistics.median(row["ic_online_ms"] for row in completed),
