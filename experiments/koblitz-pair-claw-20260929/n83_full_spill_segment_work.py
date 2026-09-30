@@ -1032,9 +1032,14 @@ def main():
             "modeled_mean_hits_on_those_cells": m32_start_intensity,
             "modeled_probability_of_zero_hits_on_those_cells":
                 math.exp(-m32_start_intensity),
+            "modeled_mean_hits_per_unique_cell":
+                m32_start_intensity / len(all_covered),
+            "zero_hit_one_sided_95pct_upper_mean_hits_per_cell_if_independent_homogeneous_poisson":
+                -math.log(0.05) / len(all_covered),
+            "zero_hit_lower_mean_hits_per_cell": 0.0,
             "observed_zero_exact_hits_in_terminal_receipts":
                 not verified_dlp and not unverified_hits,
-            "scope": "Frozen finite-support Poisson placement heuristic on unique primary and M32-extension cells only; active attempts and M33-only shards are excluded. This is a model check, not measured relation yield or a calibrated probability.",
+            "scope": "Frozen finite-support placement heuristic on unique primary and M32-extension cells only; active attempts and M33-only shards are excluded. The one-sided zero-event upper limit additionally assumes independent homogeneous Poisson exposures, which has not been validated. Zero observed hits give no positive lower rate or finite empirical first-hit work bound.",
         },
         "completed_selected_route_field_calls": str(charged),
         "completed_selected_route_field_calls_log2": math.log2(charged),

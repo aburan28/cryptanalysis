@@ -1730,6 +1730,12 @@ The same frozen placement heuristic assigns 0.608 expected hits to the
 model probability of the observed zero-hit count. This is a check of the
 model against current coverage, not a measured relation rate or a calibrated
 chance of future success; it excludes the 64 M33-only cells.
+If those 1,486 unique cells were independent homogeneous Poisson exposures,
+zero events would give a one-sided 95% upper mean of 0.002016 hits per cell,
+versus the frozen model's 0.000409. The lower rate remains zero. That
+independence assumption is unvalidated, so this is a conditional uncertainty
+calculation, not an empirical yield calibration. In particular, zero hits
+provide no finite data-only upper estimate for first-hit solve work.
 
 The work exponent has a fixed boundary in this ledger:
 
