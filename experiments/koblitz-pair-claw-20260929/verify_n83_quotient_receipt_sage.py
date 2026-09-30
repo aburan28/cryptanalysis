@@ -150,6 +150,13 @@ def verify(receipt_path, runtime_path):
             coords ^= least
         return field(polynomial_ring([(bits >> i) & 1 for i in range(N)]))
 
+    # Validate the archived ONB-to-polynomial table against field arithmetic,
+    # independently of the point and quotient-key implementations.
+    for i in range(1, N + 1):
+        doubled = 2 * i % RING_BITS
+        image = min(doubled, RING_BITS - doubled)
+        assert element(1 << (i - 1))**2 == element(1 << (image - 1))
+
     def point_from_coords(coords):
         return curve(element(coords[0]), element(coords[1]))
 
