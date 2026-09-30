@@ -1675,32 +1675,33 @@ calls, 13.66% fewer than two separate M32/R28 calls because it builds
 and replays the same table once. Reusing the completed M32 phase times
 gives a 3.24-hour full-wall forecast under one table build, twice the
 R28 query time, and one exact replay. The frozen quotient-collision
-heuristic gives a 2.59% hit probability for this rectangle. Neither is
-a measurement of M32/R29 wall time or natural yield. The initial design
+heuristic gives a 2.59% hit probability for this rectangle. The initial design
 would have waited for the whole wave. The later
 [one-shot launch plan](n83_m32_group_launch_plan.json) selected a
 concurrent disjoint run to add coverage while the wave remained active.
 [Physical x86 run 36698966100](https://github.com/aburan28/cryptanalysis/actions/runs/36698966100)
 started from frozen commit `0647fdcb`, passed its host preflight and
-same-host bounded control, and is in the full search. The workflow was
-disabled for subsequent PR commits. The
-[failure-preserving ingester](n83_m32_group_ci_ingest.py) is ready for
-its terminal artifact. No M32/R29 relation, wall time,
-memory result, or coverage is claimed before its terminal artifact.
-An exact hit in either active search needs immediate independent Sage
-witness replay; complete-solve work remains unknown.
+same-host bounded control, and completed the full search with **zero exact
+hits** among 9,739,636 Bloom positives. Its archived [receipt and
+checked-Sage audit](runs/n83_portable_q1068_M32_R29_ci_36698966100/sage_verify.json)
+pin the exact curve, base, target, sources, and absent isogeny. Full
+segment wall time was 11,495.48 s (3.19 h), including 1,622.38 s of
+target-independent filter setup; target-online query and replay took
+9,872.92 s. Peak RSS was 10.30 GiB. The forecast was close in this one
+run, while the placement probability remains unvalidated by natural
+yield. The workflow was disabled for subsequent PR commits.
 
 The [coverage-aware work ledger](n83_full_spill_segment_work.json) now
-also projects a distinct future M32/R29 route. It retains both the 254
-completed primary M28-by-R27 cells and the 16 completed extra-table
+also projects a distinct future M32/R29 route. It retains both the 286
+completed primary M28-by-R27 cells and the 48 completed extra-table
 cells, then orders the remaining aligned R29 rectangles by new coverage.
-Under the same frozen finite-support placement model, 236 future M32/R29
-calls cover the entire M32-by-query domain, with a 99.717% conditional
+Under the same frozen finite-support placement model, 235 future M32/R29
+calls cover the entire M32-by-query domain, with a 99.710% conditional
 chance of at least one hit. Conditional on a hit within that finite plan,
-the expected first hit is after 38.40 additional calls and $2^{45.033}$
+the expected first hit is after 38.40 additional calls and $2^{45.061}$
 selected-route modeled native field calls including completed receipts.
-The median is 27 calls ($2^{44.665}$); the 95% quantile is 117 calls
-($2^{46.385}$). These are **model outputs**, not measured relation yield,
+The median is 27 calls ($2^{44.702}$); the 95% quantile is 117 calls
+($2^{46.396}$). These are **model outputs**, not measured relation yield,
 elapsed time, or complete operation-equivalent solve work. In-flight
 receipts are excluded until terminal, and the estimate will be recomputed
 after their coverage is known.
@@ -1710,8 +1711,8 @@ The work exponent has a fixed boundary in this ledger:
 | Quantity | $2^x$ native field calls | Status |
 | --- | ---: | --- |
 | One complete M32/R29 rectangle | $2^{39.371}$ | Modeled attempt cost, with no hit required |
-| Completed disjoint search receipts | $2^{42.986}$ | Modeled calls over measured terminal coverage |
-| First hit on the selected M32 route | $2^{45.033}$ | Finite-support expectation, conditional on a hit by plan end |
+| Completed disjoint search receipts | $2^{43.099}$ | Modeled calls over measured terminal coverage |
+| First hit on the selected M32 route | $2^{45.061}$ | Finite-support expectation, conditional on a hit by plan end |
 | Complete one-target IC solve | unknown | No natural n=83 relation or independently verified IC scalar yet |
 
 The field-call boundary counts table construction and replay and the
@@ -1733,8 +1734,11 @@ Together they add 128 primary M28-by-R27 cells and 2,618,218,774,528
 time is 35,763.92 s across four separate x86 hosts. GitHub marked the
 remaining four queued matrix jobs cancelled before any steps ran; they
 have no terminal search receipt, measured work, or credited coverage.
-The [coverage ledger](n83_full_spill_segment_work.json) now records
-254/7,552 primary cells and $2^{42.986}$ completed modeled field calls.
+Before Q1068, the [coverage ledger](n83_full_spill_segment_work.json)
+had 254/7,552 primary cells and $2^{42.986}$ completed modeled field
+calls. Q1068 added 32 primary and 32 M32-extension cells and
+710,766,755,840 more modeled field calls; the current totals appear
+above.
 
 The [Q1069 frozen launch plan](n83_m32_wave_launch_plan.json) chooses
 eight M32/R29 rectangles at query starts 7,516,192,768 through
