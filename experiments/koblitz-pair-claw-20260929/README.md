@@ -1341,8 +1341,14 @@ hit, a failed attempt, a resource refusal, a competing run, or the
 declared limit. It does not retry failed ranges or clear start markers.
 Each child still runs through the checked Sage launcher and saves a
 separate runtime-info receipt before the measured work. The first full
-Q1062 range remains under the existing one-shot handoff, so this
-supervisor is available only after that result is reviewed.
+Q1062 range is now running. The [validated followthrough](n83_full_spill_followthrough.py)
+waits for its terminal receipt and clears no marker. It stops on a failed
+run, unverified exact hit, verified DLP, identity/source/parameter mismatch,
+or a first-range peak over 10 GiB. A zero-hit terminal receipt passing
+those checks starts the supervisor for at most the remaining 116 ranges;
+every later range still gets the one-range resource preflight and guard.
+The followthrough has synthetic controls for all five stop/continue
+outcomes. Its continuation has not been launched at this writing.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
