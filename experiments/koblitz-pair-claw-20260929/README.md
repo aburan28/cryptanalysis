@@ -1258,6 +1258,41 @@ and records failed attempts with unknown work. It requires at least
 1 GiB free on the candidate spill volume and never overwrites a
 terminal receipt.
 
+### Full-filter spilled-candidate route (Q1062)
+
+Q1062 reuses Q1060's frozen native signed-x, fast-keyer, ten-hash Bloom,
+SSD-spill, and exact-replay source. Its [separately named runner](run_n83_full_spill_chunk.py)
+uses a full M=$2^{31}$ table filter against each R=$2^{30}$ query range.
+That covers all eight Q1060 table shards in one query pass. The
+[bounded checked-Sage control](runs/n83_full_spill_k48194_chunk_M20_R14_tstart0_qstart1073741824_b20_h10_rb8.json)
+exactly matched Q1060's same-input outcome: 247 Bloom positives, zero
+exact hits, and 5,928 candidate-spill bytes. Q1062's M31/R30 memory,
+wall time, and natural relation yield are not measured.
+
+The [Q1062 screen](n83_full_spill_screen.json) gives $2^{40.188}$
+modeled native field calls per full range and $2^{47.059}$ for the 117
+ranges after Q1051's completed first range. Adding the completed Q1051
+field-call model gives $2^{47.082}$. The frozen finite-support heuristic
+predicts 95.11% success conditional on Q1051's first zero-hit range.
+The already completed Q1060 M28 shard overlaps Q1062's first full
+range; it remains separately charged historical work and adds no
+disjoint coverage to this model. The second Q1060 shard was active
+when this Q1062 screen was generated, so its terminal work and outcome
+must be reconciled before a full Q1062 launch. Interrupted historical
+attempts also retain unknown actual work. None of these figures is a
+complete measured DLP cost.
+
+The [guarded Q1062 campaign](n83_full_spill_campaign.py) inspects all
+117 named full ranges, refuses a competing n=83 start marker or an
+already verified Q1060 scalar, and requires 12 GiB of system-volume
+headroom, 1 GiB on the spill volume, and stable swap-outs before one
+full-range launch. A failed range requires an explicit retry and keeps
+its unknown actual work. Q1062 retains the exact field and curve
+`EC1N83Ckb1h876c2921cb64`, B=8,000,204 actual usable points before
+folding, 48,194 signed-Frobenius columns, the enumerated-set digest,
+`isogeny: "none"`, and `candidate_id: null`. No natural relation or
+complete IC DLP is claimed.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
@@ -1318,4 +1353,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_spill_low_memory_screen.py
 # Q1061 controls can run with ordinary Python; they do not import Sage.
 python3 experiments/koblitz-pair-claw-20260929/verify_n83_portable_controls.py --backend arm_pmull --spill-dir /Volumes/SSD990/llm/tmp
 # The CI workflow runs x86_pclmul and x86_generic on a physical x64 Linux runner.
+python3 experiments/koblitz-pair-claw-20260929/n83_full_spill_screen.py
+./sage -python experiments/koblitz-pair-claw-20260929/n83_full_spill_campaign.py
+# --run-next launches one Q1062 full-filter range only after competing runs exit and its guard passes.
 ```
