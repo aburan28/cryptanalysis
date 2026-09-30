@@ -1,0 +1,33 @@
+name: n83 portable quotient wave
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/n83-portable-quotient-wave.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  grouped-wave:
+    # Prepare the next disjoint query ranges while the first R29 call is
+    # measured. Activate only after its terminal receipt is reviewed.
+    if: false
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        query_start:
+          - "2147483648"
+          - "2684354560"
+          - "3221225472"
+          - "3758096384"
+          - "4294967296"
+          - "4831838208"
+          - "5368709120"
+          - "5905580032"
+    uses: ./.github/workflows/n83-portable-quotient-segment.yml
+    with:
+      query_start: ${{ matrix.query_start }}
+      query_reps_log2: "29"
+      from_wave: true

@@ -75,6 +75,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifact-dir", type=Path, required=True)
     parser.add_argument("--run-id", type=int, required=True)
+    parser.add_argument("--matrix-job", action="store_true",
+                        help="include the query start in the bundle path when one GitHub run has multiple artifacts")
     args = parser.parse_args()
     assert args.run_id > 0
     artifact = args.artifact_dir.resolve()
@@ -145,9 +147,12 @@ def main():
               "unverified_exact_hit_requires_review" if full[
                   "native_result"]["exact_hit_queries"] else
               "completed_zero_hit")
-    destination = RUNS / (
+    destination_name = (
         f"n83_portable_q1061_M31_R{int(math.log2(query_reps))}_ci_"
         f"{args.run_id}")
+    if args.matrix_job:
+        destination_name += f"_qstart{query_start}"
+    destination = RUNS / destination_name
     assert not destination.exists(), "refusing to overwrite archived CI artifact"
     destination.mkdir()
     names = ("host.json", "control.json", "full.json",
@@ -172,6 +177,7 @@ def main():
         "query_start": query_start,
         "query_representatives": query_reps,
         "github_run_id": args.run_id,
+        "matrix_job": args.matrix_job,
         "github_run_url": (
             f"https://github.com/aburan28/cryptanalysis/actions/runs/"
             f"{args.run_id}"),

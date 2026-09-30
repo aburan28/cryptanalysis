@@ -1475,6 +1475,19 @@ charge an entire call even if a relation would first occur within it.
 These are prospective arithmetic models; only the completed R27 x86
 segment has a full-size portable timing receipt.
 
+The [eight-job physical x86 wave plan](n83_portable_wave_plan.json) is
+staged with its [workflow](../../.github/workflows/n83-portable-quotient-wave.yml)
+disabled until the first grouped run's terminal receipt is reviewed.
+It selects two $R=2^{29}$ groups in each of four later, disjoint $R=2^{30}$
+ranges, for 256 new grid cells if all jobs finish. The declared wave cost
+is $2^{42.252}$ native field calls and its frozen-heuristic probability of
+at least one hit, conditional on archived zero-hit coverage, is 9.97%.
+Neither is a measured solve result. The artifact ingester's `--matrix-job`
+option gives each job a separate immutable bundle under the shared GitHub
+run ID; the coverage ledger will charge overlapping or failed work only
+according to terminal receipts. The wave remains inactive if the first
+group has an exact hit awaiting review or a verified relation.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py

@@ -4,6 +4,18 @@ on:
   pull_request:
     paths:
       - ".github/workflows/n83-portable-quotient-segment.yml"
+  workflow_call:
+    inputs:
+      query_start:
+        required: true
+        type: string
+      query_reps_log2:
+        required: true
+        type: string
+      from_wave:
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       query_start:
@@ -28,7 +40,7 @@ jobs:
   physical-x86-segment:
     # One grouped PR measurement was dispatched from this frozen head. Later
     # receipt and documentation commits must not launch a repeat.
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.sha == '4a997c30ec6993ed2213fd31615ac9a28ddd7fc9'
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.sha == '4a997c30ec6993ed2213fd31615ac9a28ddd7fc9' || (inputs.from_wave && github.event.pull_request.head.repo.full_name == 'aburan28/cryptanalysis' && github.event.pull_request.head.ref == 'codex/koblitz-pair-claw-toy')
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
