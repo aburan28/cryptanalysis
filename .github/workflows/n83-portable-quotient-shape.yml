@@ -1,0 +1,131 @@
+name: n83 portable quotient M32 shape
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/n83-portable-quotient-shape.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: n83-portable-M32-R28-q6442450944-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+
+jobs:
+  physical-x86-m32-shape:
+    # One run on this PR branch. Disable this gate in the next commit after
+    # the initial run is created; the running checkout remains frozen.
+    if: github.event.pull_request.head.repo.full_name == 'aburan28/cryptanalysis' && github.event.pull_request.head.ref == 'codex/koblitz-pair-claw-toy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      QUERY_START: "6442450944"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Freeze identity and host resources
+        run: |
+          mkdir -p "$RUNNER_TEMP/n83-m32"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, platform, shutil, subprocess
+          root = pathlib.Path('experiments/koblitz-pair-claw-20260929')
+          screen = json.loads((root / 'n83_full_spill_screen.json').read_text())
+          wave = json.loads((root / 'n83_portable_wave_plan.json').read_text())
+          start = int(os.environ['QUERY_START'])
+          assert screen['curve_id'] == 'EC1N83Ckb1h876c2921cb64'
+          assert screen['factor_base']['actual_usable_points_B_before_folding'] == 8000204
+          assert screen['factor_base']['signed_frobenius_columns'] == 48194
+          assert screen['isogeny'] == 'none' and screen['candidate_id'] is None
+          assert start == 6 * (1 << 30)
+          assert start >= max(wave['query_starts']) + wave['query_representatives_per_job']
+          assert platform.machine().lower() in ('x86_64', 'amd64')
+          meminfo = pathlib.Path('/proc/meminfo').read_text().splitlines()
+          memory = {line.split(':', 1)[0]: int(line.split(':', 1)[1].split()[0]) * 1024
+                    for line in meminfo if ':' in line}
+          disk = shutil.disk_usage('/').free
+          report = {
+              'kind': 'n83_q1065_M32_R28_host_preflight',
+              'proposal_id': 'Q1065', 'candidate_id': None, 'run_id': None,
+              'curve_id': screen['curve_id'], 'isogeny': 'none',
+              'factor_base_enumerated_set_sha256': screen['factor_base']['enumerated_set_sha256'],
+              'actual_usable_points_B_before_folding': 8000204,
+              'signed_frobenius_columns': 48194,
+              'table_descriptors': 1 << 32,
+              'query_representatives': 1 << 28,
+              'query_start': start,
+              'architecture': platform.machine(),
+              'platform': platform.platform(),
+              'cpu_model': next((line.split(':', 1)[1].strip() for line in
+                                 pathlib.Path('/proc/cpuinfo').read_text().splitlines()
+                                 if line.startswith('model name')), None),
+              'compiler': subprocess.run(['clang++', '--version'], check=True,
+                                         capture_output=True, text=True).stdout.splitlines()[0],
+              'mem_total_bytes': memory['MemTotal'],
+              'mem_available_bytes': memory['MemAvailable'],
+              'root_free_bytes': disk,
+              'minimum_mem_available_bytes': 13 << 30,
+              'minimum_root_free_bytes': 10 << 30,
+              'screen_sha256': hashlib.sha256((root / 'n83_full_spill_screen.json').read_bytes()).hexdigest(),
+              'wave_plan_sha256': hashlib.sha256((root / 'n83_portable_wave_plan.json').read_bytes()).hexdigest(),
+          }
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-m32' / 'host.json'
+          out.write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report))
+          assert memory['MemAvailable'] >= 13 << 30, 'insufficient free memory for M32 Bloom'
+          assert disk >= 10 << 30, 'insufficient root free space for M32 run'
+          PY
+
+      - name: Same-host bounded exact control
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/run_n83_portable_chunk.py \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$RUNNER_TEMP" \
+            --binary "$RUNNER_TEMP/n83-m32/ecc2k83-control" \
+            --table-log2 20 --query-reps-log2 14 \
+            --table-start 0 --query-start "$QUERY_START" \
+            --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --out "$RUNNER_TEMP/n83-m32/control.json"
+
+      - name: Full M32 public-target shape search
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/run_n83_portable_chunk.py \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$RUNNER_TEMP" \
+            --binary "$RUNNER_TEMP/n83-m32/ecc2k83-full" \
+            --table-log2 32 --query-reps-log2 28 \
+            --table-start 0 --query-start "$QUERY_START" \
+            --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --out "$RUNNER_TEMP/n83-m32/full.json"
+
+      - name: Check terminal receipt
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-m32'
+          host = json.loads((root / 'host.json').read_text())
+          control = json.loads((root / 'control.json').read_text())
+          result = json.loads((root / 'full.json').read_text())
+          assert control['curve_id'] == result['curve_id'] == host['curve_id']
+          assert control['factor_base'] == result['factor_base']
+          assert result['factor_base']['enumerated_set_sha256'] == host['factor_base_enumerated_set_sha256']
+          assert result['isogeny'] == 'none' and result['candidate_id'] is None
+          assert result['public_target'] == control['public_target']
+          assert result['table_descriptors'] == 1 << 32
+          assert result['query_representatives'] == 1 << 28
+          assert result['query_start'] == int(os.environ['QUERY_START'])
+          assert result['native_result']['candidate_store_mode'] == 'unlinked_file'
+          assert result['native_result']['peak_rss_bytes'] >= result['native_result']['bloom_bytes']
+          if result['native_result']['exact_hit_queries']:
+              assert result['verified_public_target_quotient_table_dlp'], 'exact hit needs review'
+          print(json.dumps({'exact_hit_queries': result['native_result']['exact_hit_queries'],
+                            'verified_dlp': result['verified_public_target_quotient_table_dlp'],
+                            'target_online_seconds': result['target_online_seconds']}))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: n83-q1065-M32-R28-start-6442450944
+          path: ${{ runner.temp }}/n83-m32/
+          retention-days: 7

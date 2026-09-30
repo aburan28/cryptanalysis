@@ -1534,6 +1534,19 @@ full-size x86 speedup or equal natural relation yield. Q1064 and Q1065
 remain stage proposals with null candidate/run IDs. The running physical
 x86 $M=2^{31},R=2^{29}$ job and the staged wave keep their frozen shape.
 
+The [Q1065 one-shot x86 plan](n83_m32_shape_plan.json) fixes
+$M=2^{32},R=2^{28}$ and query start 6,442,450,944, disjoint from the
+running grouped query and all eight staged wave jobs. It uses the same
+public target and unchanged Q1061 portable kernel. The plan predicts
+$2^{38.582}$ native field calls and 1.305% hit probability for this one
+rectangle under the frozen quotient-collision heuristic. The 10 GiB
+Bloom allocation gives an 11.06 GB RSS forecast by adding its size
+increase to one earlier physical x86 peak; this is not a measured M32
+memory bound. The [one-shot workflow](../../.github/workflows/n83-portable-quotient-shape.yml)
+requires at least 13 GiB available memory, runs a bounded same-host
+control first, and uploads terminal or failed receipts. A hit still
+requires independent checked-Sage replay before it counts as a DLP.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
