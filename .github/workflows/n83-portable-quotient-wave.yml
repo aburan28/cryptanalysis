@@ -10,9 +10,10 @@ permissions:
 
 jobs:
   grouped-wave:
-    # The first R29 run has a zero-hit terminal receipt and independent Sage
-    # replay. Keep this one-shot wave scoped to its originating PR branch.
-    if: github.event.pull_request.head.repo.full_name == 'aburan28/cryptanalysis' && github.event.pull_request.head.ref == 'codex/koblitz-pair-claw-toy'
+    # Run 36684977689 is terminal. Its four successful receipts are archived;
+    # the remaining four jobs were cancelled before steps. Never repeat the
+    # frozen intervals on later PR synchronizations.
+    if: false
     strategy:
       fail-fast: false
       max-parallel: 4

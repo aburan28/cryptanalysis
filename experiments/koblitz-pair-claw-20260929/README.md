@@ -1691,7 +1691,7 @@ An exact hit in either active search needs immediate independent Sage
 witness replay; complete-solve work remains unknown.
 
 The [coverage-aware work ledger](n83_full_spill_segment_work.json) now
-also projects a distinct future M32/R29 route. It retains both the 126
+also projects a distinct future M32/R29 route. It retains both the 254
 completed primary M28-by-R27 cells and the 16 completed extra-table
 cells, then orders the remaining aligned R29 rectangles by new coverage.
 Under the same frozen finite-support placement model, 236 future M32/R29
@@ -1704,6 +1704,21 @@ The median is 27 calls ($2^{44.665}$); the 95% quantile is 117 calls
 elapsed time, or complete operation-equivalent solve work. In-flight
 receipts are excluded until terminal, and the estimate will be recomputed
 after their coverage is known.
+
+The work exponent has a fixed boundary in this ledger:
+
+| Quantity | $2^x$ native field calls | Status |
+| --- | ---: | --- |
+| One complete M32/R29 rectangle | $2^{39.371}$ | Modeled attempt cost, with no hit required |
+| Completed disjoint search receipts | $2^{42.986}$ | Modeled calls over measured terminal coverage |
+| First hit on the selected M32 route | $2^{45.033}$ | Finite-support expectation, conditional on a hit by plan end |
+| Complete one-target IC solve | unknown | No natural n=83 relation or independently verified IC scalar yet |
+
+The field-call boundary counts table construction and replay and the
+representative-query point arithmetic. It excludes Bloom/key operations,
+memory and disk traffic, failed attempts with unknown operation counts,
+base construction, and scalar replay. These omissions prevent the
+conditional first-hit model from being reported as complete solve work.
 
 ### First M31 wave receipts and disjoint M32 wave (Q1069)
 
@@ -1735,6 +1750,67 @@ failures and archives each job by query start. Q1069 is a stage proposal
 with null candidate and run IDs; the eight-job hit probability is not
 measured relation yield. Any native hit requires independent checked-Sage
 witness replay before a DLP or solve-work claim.
+
+### Representative-batch timing screen (Q1070)
+
+The [paired ARM receipt](runs/n83_portable_rep_batch_paired.json) compares
+representative batches 8, 16, and 32 in ABCCBA order on the same frozen
+n=83 public target, M=$2^{24}$ table, R=$2^{20}$ query, base, schedules,
+20-bit Bloom filter, ten hashes, four workers, and native source. The
+[checked Sage runtime](runs/n83_portable_rep_batch_runtime_info.json)
+was saved before the measurement. All six runs had the same 18,675 Bloom
+positives and zero exact hits. Against batch 8, batch 16's two paired
+query-time ratios were 1.0372 and 0.9963; batch 32's were 1.0278 and
+0.9899. Both comparisons straddle one, while the median full-wall ratios
+were 0.9578 and 0.9599. This bounded ARM screen does not support a
+full-size x86 speedup, so the live Q1068 and Q1069 runs retain their
+frozen batch-8 policy. Q1070 remains a stage diagnostic with null
+candidate/run IDs and no complete-solve work claim.
+
+### Disjoint local ARM rectangle (Q1071)
+
+The [frozen Q1071 plan](n83_local_arm_m32_q1071_plan.json) extends the
+same one-target M=$2^{32}$ table with an R=$2^{29}$ representative-query
+range $[11,811,160,064,12,348,030,976)$. It starts exactly where the
+Q1069 wave ends, so the range does not duplicate its eight x86 jobs. The
+checked [Sage runtime receipt](runs/n83_local_arm_m32_q1071_runtime_info.json)
+was saved before the local physical ARM search started. The wrapper's
+[started receipt](runs/n83_local_arm_m32_q1071.started.json) records the
+actual curve, base digest, B, folded columns, target, source hashes, and
+`isogeny: "none"`. It identifies the shared Q1061 search kernel; Q1071 is
+the frozen local dispatch of that kernel. The frozen batch-8 choice follows
+the Q1070 screen. Q1071 has `candidate_id: null` and `run_id: null` while
+this stage is in progress; its modeled $2^{39.371}$ field calls are an
+attempt budget, not measured complete-solve work.
+
+### Bloom early-exit screen (Q1072)
+
+The [paired ARM benchmark](runs/n83_bloom_early_exit_paired.json) compares
+the frozen Bloom lookup with a variant that returns as soon as a missing bit
+is found. The [benchmark source](bench_n83_bloom_early_exit.py) generates the
+variant from an exact checked source anchor and records both generated
+source hashes. A [small exact control](runs/n83_bloom_early_exit_smoke.json)
+and the full M=$2^{24}$, R=$2^{20}$ ABBA screen had identical Bloom
+positives and exact hits across variants. The full screen had 18,675 Bloom
+positives and zero exact hits. Early exit's two paired query-speed ratios
+were **0.9598** and **0.9599** (frozen/variant); full-wall ratios were
+0.9935 and 0.9795. The local Q1071 search was active during this screen,
+so it is a concurrent-load ARM stage diagnostic. Both query pairs were
+slower, and Q1072 is not promoted to a full-size search. Its candidate and
+run IDs remain null, and it provides no complete-solve work estimate.
+
+### Conditional larger-table ARM follow-up (Q1073)
+
+The [frozen M33/R29 plan](n83_local_arm_m33_q1073_plan.json) starts at
+query position 12,348,030,976, exactly after Q1071's interval. It keeps
+the same n=83 curve, public target, exact factor base, signed-Frobenius
+folding, `isogeny: "none"`, and portable kernel. The 20-bit Bloom filter
+would occupy about 20 GiB. A complete rectangle models $2^{39.582}$
+field calls and a 5.12% hit chance under the same finite-support placement
+heuristic. The plan is gated on terminal zero-hit audits for the active
+searches and at least 24 GiB of free host memory and 2 GiB of free spill
+space. It has not run, and its candidate, run, and complete-solve-work
+fields remain null.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
