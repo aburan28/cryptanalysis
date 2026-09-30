@@ -2186,7 +2186,10 @@ runner and every source and binary, and compares exact outcomes despite
 the expected difference in Bloom positives. [Run 36792009510](https://github.com/aburan28/cryptanalysis/actions/runs/36792009510)
 started from the [frozen enabled workflow](runs/n83_q1082_ci_36792009510_workflow_snapshot.yml);
 the live workflow is disabled for later PR synchronizations. Any paired
-performance result is pending. A [local M20/R14 16-bit smoke](runs/n83_q1082_smoke_b16_M20_R14.json)
+performance result is pending. The [terminal audit](audit_n83_q1082_bloom_paired.py)
+will check archived sources and binaries, same-instance outcomes, and four
+independent checked-Sage replays before reporting a ratio. A
+[local M20/R14 16-bit smoke](runs/n83_q1082_smoke_b16_M20_R14.json)
 passed the [independent checked-Sage replay](runs/n83_q1082_smoke_b16_M20_R14_sage_verify.json):
 1,144 Bloom positives, zero exact hits, and no verified relation. It
 checks the derived runner's executable path and gives no paired timing
