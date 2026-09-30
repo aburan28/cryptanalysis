@@ -138,6 +138,41 @@ natural relation yield nor a solved target follows from it. It identifies
 weight-three/four-summand root indexing as the next complete N53 proposal
 to test, with a new exact manifest and paired one-target accounting.
 
+## Weight-three/four-summand planted SAT gate
+
+The [paired planted runner](run_n53_w3_s4_planted.py) tested this changed
+base and summand count before any ordinary target. It used the exact 23,426
+point geometry, 11,713 forbidden nonrational weight-three masks, one solver
+thread, a sampled 2 GiB RSS guard, a declared 10-second/100,000-conflict
+search bound, and a 30-second external watchdog. Each arm first solved a
+separate fully pinned known-witness formula. The same four-point raw target
+was then searched without witness pins in FC-Hamming and unary XCNF.
+
+| Run | Encoding | Variables | CNF | XOR | Fully pinned | Unpinned planted search | Sampled search RSS |
+| --- | --- | ---: | ---: | ---: | ---: | --- | ---: |
+| v1 | FC-Hamming | 28,854 | 126,876 | 1,923 | SAT, 0.066 s | `INDETERMINATE`, 10.225 s, no model | 91.2 MiB |
+| v1 | Unary | 28,138 | 126,204 | 1,487 | SAT, 0.052 s | `INDETERMINATE`, 10.500 s, no model | 167.5 MiB |
+| v2 | FC-Hamming | 28,854 | 126,876 | 1,923 | SAT, 0.096 s | `INDETERMINATE`, 10.217 s, no model | 90.9 MiB |
+| v2 | Unary | 28,138 | 126,204 | 1,487 | SAT, 0.042 s | `INDETERMINATE`, 10.230 s, no model | 167.5 MiB |
+
+These are the solver's terminal `INDETERMINATE` results, not external
+watchdog kills. The receipts do not identify which internal limit ended each
+search. Both fully pinned models satisfy every archived CNF and XOR row; the
+[checked-Sage replay](runs/n53_w3_s4_planted_v2/sage_replay.json) also
+verifies the four-point group sum, S3 chain, and compressed formula hashes.
+Its [runtime receipt](runs/n53_w3_s4_planted_v2/sage_runtime_info.json)
+was saved before the control. The [paired summary](runs/n53_w3_s4_planted_v2/summary.json)
+sets `advance_to_ordinary_target: false`. The first run is retained with its
+original terminal receipts and exact executed source snapshots. Its workload
+label had an extra `W` prefix; the second run records the full canonical
+workload and the correct 12-hex ID `7ddf9aedd436`. The
+[reconciliation](runs/n53_w3_s4_reconciliation.json) proves both runs share
+the fixture, formulas, limits, and solver binary, and preserves all four
+indeterminate-search rows. The larger base improves the
+combinatorial support screen, but the tested SAT search still did not pass
+its planted positive control. There is no ordinary relation or E2E IC result
+for this variant.
+
 To regenerate a new immutable stage directory on this host:
 
 Use a Python environment with `psutil` installed and the recorded
