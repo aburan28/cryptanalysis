@@ -1166,10 +1166,32 @@ RSS, spill I/O cost, and wall time have not been measured. The Q1060
 the system volume, 1 GiB free on the spill volume, and stable swap-outs.
 `--spill-dir` selects an absolute existing directory on the runner host;
 the local default is `/Volumes/SSD990/llm/tmp`.
-The first full Q1060 M28/R30 rectangle started under that guard at
-2026-09-29 20:29 UTC; its terminal outcome is pending. Q1060 has
-`candidate_id: null`, `isogeny: "none"`, and no measured natural relation
-or complete IC DLP.
+The first [full Q1060 M28/R30 rectangle](runs/n83_spill_lowmem_k48194_chunk_M28_R30_tstart0_qstart1073741824_b20_h10_rb8.json)
+finished on 2026-09-29 at 22:02 UTC. It tested $2^{28}$ table descriptors
+against $2^{30}$ query representatives on the frozen public target. It
+measured 19,454,731 Bloom positives, **zero exact hits**, a 466.9 MB
+candidate spill, 1.773 GB peak RSS, 5,429.44 s query time, 87.74 s
+exact replay, and 5,517.18 s target online time. The full native
+subprocess took 5,623.69 s including the 106.00 s table build. The
+declared arithmetic boundary gives $2^{40.131}$ native field calls for
+this rectangle; it does not count keying, Bloom work, memory or SSD
+traffic, or historical failed attempts.
+
+The reproducible [post-run work report](n83_q1060_full_rectangle_work.json)
+checks the receipt and original factor-base identity, then applies the
+*frozen finite-support heuristic* after both the Q1051 and first Q1060
+zero-hit rectangles. Conditional on a hit within the remaining plan,
+its expected completed-rectangle arithmetic is $2^{48.169}$ field
+calls including those two completed rectangles. Its modeled median
+first-hit point is $2^{47.879}$ and its 95% first-hit point is
+$2^{49.995}$; the plan ends at $2^{50.004}$, with 4.90% modeled
+no-hit probability. These are predictions under a random-base
+placement model, not measured natural relation yield or complete-solve
+work. Transferring the single measured subprocess rate to all 935
+remaining rectangles gives about 60.86 days, also only a projection.
+The next disjoint rectangle starts at table descriptor $2^{28}$ and the
+same query range. Q1060 retains `candidate_id: null`,
+`isogeny: "none"`, and no measured natural relation or complete IC DLP.
 
 ### Portable CPU quotient stage (Q1061)
 
@@ -1199,8 +1221,8 @@ complete DLP cost. Q1061's prospective 936-rectangle field-call model
 remains $2^{50.001}$, conditional on the Q1060 schedule. It excludes
 keying, Bloom and spill I/O, memory traffic, all historical interrupted
 attempts, verification, and the possibility of finding no relation.
-Full M28/R30 wall time, natural relation yield, and complete-solve work
-in $2^x$ units remain unknown.
+Q1060 now supplies one full M28/R30 wall-time measurement. Natural
+relation yield and complete-solve work in $2^x$ units remain unknown.
 
 The first physical x86 CI run passed exact controls but exposed a Linux
 RSS unit error: `ru_maxrss` was labeled as bytes without conversion
