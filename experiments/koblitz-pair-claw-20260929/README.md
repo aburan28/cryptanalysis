@@ -1975,8 +1975,8 @@ The [paired native stage screen](runs/n83_zero_run_stage_bounded_comparison.json
 generated an alternate source from the frozen Q1061 source without changing
 the source used by the live Q1073 and Q1075 searches. Two M20/R18
 public-target runs per arm had identical Bloom positives and exact outcomes:
-zero natural hits. The median query phase was 1.80× faster with zero-run
-keying; query plus exact replay was 1.75× faster. The host was also running
+zero natural hits. The median query phase was 2.00× faster with zero-run
+keying; query plus exact replay was 2.02× faster. The host was also running
 the four-worker Q1073 search, so these short timings do not establish an
 isolated full-size speedup. The alternate native kernel found the same
 planted exact hit, and [checked Sage](runs/n83_zero_run_stage_planted_sage_verify.json)

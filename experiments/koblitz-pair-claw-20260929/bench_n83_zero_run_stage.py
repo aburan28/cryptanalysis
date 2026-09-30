@@ -152,6 +152,8 @@ def main():
         alternate_planted = native([str(alternate_binary), *seed_command[1:]], temp)
         same_outcome(original_planted, alternate_planted)
         assert alternate_planted["exact_hit_queries"] == 1
+        assert alternate_planted["hits"] == [planted[
+            "matched_previously_verified_hit"]]
         public_command = list(control["public_native_command"])
         public_command[4] = str(1 << 20)
         public_command[5] = str(1 << 18)
