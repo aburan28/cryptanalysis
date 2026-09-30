@@ -1264,11 +1264,14 @@ Q1062 reuses Q1060's frozen native signed-x, fast-keyer, ten-hash Bloom,
 SSD-spill, and exact-replay source. Its [separately named runner](run_n83_full_spill_chunk.py)
 uses a full M=$2^{31}$ table filter against each R=$2^{30}$ query range.
 That covers all eight Q1060 table shards in one query pass. The
-[bounded checked-Sage control](runs/n83_full_spill_k48194_chunk_M20_R14_tstart0_qstart1073741824_b20_h10_rb8.cpu.json)
+[bounded checked-Sage control](runs/n83_full_spill_k48194_chunk_M20_R14_tstart0_qstart1073741824_b20_h10_rb8.cpu_v2.json)
 exactly matched Q1060's same-input outcome: 247 Bloom positives, zero
 exact hits, and 5,928 candidate-spill bytes. Its runner also records
 native child user and system CPU seconds, separately from wall time and
-Python scalar verification. Q1062's M31/R30 memory,
+Python scalar verification. The second control receipt freezes a wrapper
+that also records a monotonic native-subprocess elapsed interval and an
+explicit null run ID on failed attempts; a synthetic native failure
+confirmed these fields and start-marker cleanup. Q1062's M31/R30 memory,
 wall time, and natural relation yield are not measured.
 
 The [Q1062 screen](n83_full_spill_screen.json) gives $2^{40.188}$

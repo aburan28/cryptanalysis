@@ -85,8 +85,13 @@ def main():
         "kind": "n83_q1062_guarded_sequential_supervisor",
         "proposal_id": "Q1062", "candidate_id": None, "run_id": None,
         "curve_id": screen["curve_id"], "isogeny": "none",
+        "curve_identity_record": screen["curve_identity_record"],
         "factor_base_enumerated_set_sha256": screen["factor_base"][
             "enumerated_set_sha256"],
+        "actual_usable_points_B_before_folding": screen["factor_base"][
+            "actual_usable_points_B_before_folding"],
+        "signed_frobenius_columns": screen["factor_base"][
+            "signed_frobenius_columns"],
         "public_target": screen["public_target"],
         "max_ranges": args.max_ranges,
         "started_at_utc": now(),

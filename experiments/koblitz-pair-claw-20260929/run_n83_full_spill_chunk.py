@@ -141,6 +141,7 @@ def main():
     started = {
         "kind": "n83_public_target_signed_x_query_k48194_chunk_started",
         "proposal_id": args.proposal_id, "candidate_id": None,
+        "run_id": None,
         "curve_id": curve_id,
         "curve_identity_record": identity,
         "isogeny": "none",
@@ -188,6 +189,7 @@ def main():
                              text=True, env=native_env)
     except BaseException as exc:
         after_cpu = resource.getrusage(resource.RUSAGE_CHILDREN)
+        elapsed = (time.perf_counter_ns() - begun) / 1e9
         failed = dict(started)
         failed.update({
             "kind": "n83_public_target_signed_x_query_k48194_chunk_failed",
@@ -199,9 +201,13 @@ def main():
                 exc, subprocess.CalledProcessError) and exc.stderr else
                 str(exc)),
             "native_phase_counts": None,
+            "native_subprocess_wall_seconds": elapsed,
             "native_child_cpu_user_seconds": max(
                 0.0, after_cpu.ru_utime - before_cpu.ru_utime),
             "native_child_cpu_system_seconds": max(
+                0.0, after_cpu.ru_stime - before_cpu.ru_stime),
+            "native_child_cpu_total_seconds": max(
+                0.0, after_cpu.ru_utime - before_cpu.ru_utime) + max(
                 0.0, after_cpu.ru_stime - before_cpu.ru_stime),
             "verified_public_target_quotient_table_dlp": False,
             "cumulative_work_known": False,
