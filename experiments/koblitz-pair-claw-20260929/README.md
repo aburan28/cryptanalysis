@@ -2092,6 +2092,12 @@ hits for an independent checked-Sage audit. A
 [workflow snapshot](runs/n83_q1079_ci_36784663720_workflow_snapshot.yml)
 and [coverage snapshot](runs/n83_q1079_ci_36784663720_coverage_snapshot.json)
 pin the enabled dispatch and its original work ledger after later updates.
+The [coverage/work ledger](n83_full_spill_segment_work.py) now recognizes
+Q1079's full-size bundles and Q1074's local terminal receipt. It credits
+successful rectangles only after independent checked-Sage replay and keeps
+failed or pending audits visible without credit. With both searches still
+running, this source update changes no completed coverage or modeled work;
+the dispatch plan remains bound to the frozen pre-dispatch coverage snapshot.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 

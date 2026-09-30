@@ -120,7 +120,7 @@ jobs:
           mapfile -t paths < <(
             git diff --name-only --diff-filter=ACMR "$base"...HEAD -- \
               '*.c' '*.h' '*.cu' '*.cuh' |
-              grep -Ev '(^|/)generated/|^experiments/sage-ic-campaign/[^/]+/(source|baseline|candidate-v1)/' || true
+              grep -Ev '(^|/)generated/|^experiments/sage-ic-campaign/[^/]+/(source|baseline|candidate-v1)/|^experiments/koblitz-pair-claw-20260929/runs/[^/]+/(sources[0-9]*|control-sources|full-sources)/' || true
           )
           if [ "${#paths[@]}" -eq 0 ]; then
             echo "no non-generated C/CUDA files changed"
