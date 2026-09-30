@@ -1462,28 +1462,25 @@ four-segment group. The [coverage ledger](n83_full_spill_segment_work.py)
 accepts both $R=2^{27}$ and aligned $R=2^{29}$ CI receipts and expands a
 completed group into four disjoint cells. Its native field-call model
 for this group is 654,554,693,632 calls, 79.5% of four separate calls.
-If query time scales linearly and full-table replay stays at the
-measured duration, grouped wall time would be about 2.78 hours versus
-4.15 hours for four separate runs. This is a forecast; the grouped run
-must finish and pass the same artifact and independent Sage checks before
-its coverage, time, or relation yield is counted.
+The prior linear-query forecast was 2.78 hours versus 4.15 hours for
+four separate runs; the completed grouped wall time was 2.77 hours.
 For an all-grouped continuation where four contiguous segments are
 available, the [work report](n83_full_spill_segment_work.json) schedules
-233 prospective $R=2^{29}$ groups and three $R=2^{27}$ singles. Its
+232 prospective $R=2^{29}$ groups and three $R=2^{27}$ singles. Its
 frozen-heuristic first-hit estimate, conditional on a hit by plan end, is
-67.96 additional grouped calls and $2^{45.453}$ selected-route native
-field calls, versus $2^{45.742}$ for the all-$R=2^{27}$ continuation.
-The grouped 95% first-hit point is $2^{47.162}$ calls. Group boundaries
+67.66 additional grouped calls and $2^{45.467}$ selected-route native
+field calls, versus $2^{45.751}$ for the all-$R=2^{27}$ continuation.
+The grouped 95% first-hit point is $2^{47.168}$ calls. Group boundaries
 charge an entire call even if a relation would first occur within it.
-These are prospective arithmetic models; only the completed R27 x86
-segment has a full-size portable timing receipt.
+These are prospective arithmetic models, distinct from the measured
+R27 and R29 x86 segment timings.
 
-The [eight-job physical x86 wave plan](n83_portable_wave_plan.json) is
-staged with its [workflow](../../.github/workflows/n83-portable-quotient-wave.yml)
-disabled until the first grouped run's terminal receipt is reviewed.
-The plan generator marks it ready only after a completed zero-hit receipt
-and an independent checked-Sage zero replay; failed or exact-hit receipts
-keep it inactive.
+The [eight-job physical x86 wave plan](n83_portable_wave_plan.json)
+reached its activation gate after the first grouped run's zero-hit
+terminal receipt and independent checked-Sage replay. Its
+[workflow](../../.github/workflows/n83-portable-quotient-wave.yml) is
+enabled only for this PR branch; failed or exact-hit first-group receipts
+would have kept it inactive.
 It selects two $R=2^{29}$ groups in each of four later, disjoint $R=2^{30}$
 ranges, for 256 new grid cells if all jobs finish. The declared wave cost
 is $2^{42.252}$ native field calls and its frozen-heuristic probability of
@@ -1491,8 +1488,27 @@ at least one hit, conditional on archived zero-hit coverage, is 9.97%.
 Neither is a measured solve result. The artifact ingester's `--matrix-job`
 option gives each job a separate immutable bundle under the shared GitHub
 run ID; the coverage ledger will charge overlapping or failed work only
-according to terminal receipts. The wave remains inactive if the first
-group has an exact hit awaiting review or a verified relation.
+according to terminal receipts. Any exact hit in a wave job requires
+independent Sage replay before it can count as a relation or DLP.
+
+The [first grouped x86 run 36669737583](https://github.com/aburan28/cryptanalysis/actions/runs/36669737583)
+completed its $M=2^{31}$, $R=2^{29}$ rectangle at query start
+1,207,959,552. Its [terminal receipt](runs/n83_portable_q1061_M31_R29_ci_36669737583/full.json)
+records 89,120,571,392 lifted query pairs, 9,739,284 Bloom positives,
+zero exact hits, 233.74 MB of candidate spill, and 5.69 GB peak RSS.
+Target-dependent query plus exact replay took 9,152.57 s; full segment
+wall time including reusable table construction was 9,974.55 s.
+The [independent checked-Sage replay](runs/n83_portable_q1061_M31_R29_ci_36669737583/sage_verify.json)
+accepted the exact curve, base, and public target and found zero verified
+natural relations. The coverage ledger credits 24 new $M=2^{28}$ by
+$R=2^{27}$ cells after overlap with previously completed table shards.
+Completed selected-route work is now $2^{42.369}$ modeled native field
+calls; complete solve work remains unknown. The [wave plan](n83_portable_wave_plan.json)
+is ready after this terminal zero-hit receipt and Sage replay, and its
+one-shot branch-scoped workflow has been enabled for the eight disjoint
+grouped jobs. Their prospective $2^{42.252}$ field calls and 9.97%
+conditional hit probability remain model values until terminal receipts
+are checked.
 
 ### Bounded Bloom hash-count screen (Q1063)
 
@@ -1534,12 +1550,12 @@ full-table replay rise enough to erase its query saving. All eight
 bounded runs had zero exact hits. These ARM measurements favor moving
 from a ratio of 4 to 16, then stopping; they do not establish the
 full-size x86 speedup or equal natural relation yield. Q1064 and Q1065
-remain stage proposals with null candidate/run IDs. The running physical
-x86 $M=2^{31},R=2^{29}$ job and the staged wave keep their frozen shape.
+remain stage proposals with null candidate/run IDs. The completed physical
+x86 $M=2^{31},R=2^{29}$ job and the activated wave retain their frozen shape.
 
 The [Q1065 one-shot x86 plan](n83_m32_shape_plan.json) fixes
 $M=2^{32},R=2^{28}$ and query start 6,442,450,944, disjoint from the
-running grouped query and all eight staged wave jobs. It uses the same
+completed grouped query and all eight wave jobs. It uses the same
 public target and unchanged Q1061 portable kernel. The plan predicts
 $2^{38.582}$ native field calls and 1.305% hit probability for this one
 rectangle under the frozen quotient-collision heuristic. The 10 GiB
@@ -1550,7 +1566,7 @@ requires at least 13 GiB available memory, runs a bounded same-host
 control first, and uploads terminal or failed receipts. The
 [Q1065 artifact ingester](n83_m32_ci_ingest.py) checks curve, base,
 target, shape, source hashes, terminal status, and host resources before
-archiving that artifact. The activation commit remains the queued run's
+archiving that artifact. The activation commit remains the running job's
 frozen checkout; the current workflow has no PR trigger and its job is
 disabled, so later PR updates cannot repeat the same search. A hit still
 requires independent checked-Sage replay before it counts as a DLP.

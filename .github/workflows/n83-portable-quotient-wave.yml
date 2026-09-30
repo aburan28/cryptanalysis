@@ -10,9 +10,9 @@ permissions:
 
 jobs:
   grouped-wave:
-    # Prepare the next disjoint query ranges while the first R29 call is
-    # measured. Activate only after its terminal receipt is reviewed.
-    if: false
+    # The first R29 run has a zero-hit terminal receipt and independent Sage
+    # replay. Keep this one-shot wave scoped to its originating PR branch.
+    if: github.event.pull_request.head.repo.full_name == 'aburan28/cryptanalysis' && github.event.pull_request.head.ref == 'codex/koblitz-pair-claw-toy'
     strategy:
       fail-fast: false
       max-parallel: 4
