@@ -1385,18 +1385,22 @@ the same $M=2^{31}$ table, exact replay, resource guards, target, and
 factor base. Each segment has its own terminal receipt, so an interrupted
 later segment does not erase earlier completed coverage. The
 [coverage-aware screen](n83_full_spill_segment_work.json) includes the
-completed Q1051 and Q1060 rectangles and the failed Q1062 attempt,
-without assigning the failed attempt field calls or coverage. The frozen
-heuristic still gives 95.08% conditional success over the remaining
-support; it predicts 261.79 more segments given a hit within the plan,
-or $2^{45.738}$ selected-route native field calls. The 95% first-hit
-point is 931 segments and $2^{47.481}$ calls. Rebuilding the table eight
+completed Q1051 and Q1060 rectangles, the completed Q1061 x86 segment,
+and the failed Q1062 attempt, without assigning the failed attempt field
+calls or coverage. The completed receipts occupy 86 of 7,552 disjoint
+$M=2^{28}$ by $R=2^{27}$ cells and carry $2^{42.192}$ modeled native
+field calls. The frozen heuristic gives 95.07% conditional success over
+the remaining support; it predicts 261.46 more segments given a hit
+within the plan, or $2^{45.742}$ selected-route native field calls. The
+95% first-hit point is 931 additional segments and $2^{47.482}$ calls.
+Rebuilding the table eight
 times per original range costs 1.314 times the original full-range
 field-call model. These are predictions, not relation yield or complete
-solve work. No full-size segment has run. The fallback remains Q1062 with
-`candidate_id: null`; its receipt records the changed query shape.
+solve work. No Q1062 full-size segment has run. The fallback remains
+Q1062 with `candidate_id: null`; its receipt records the changed query
+shape.
 
-The default command below only inspects the 936-segment plan. The guarded
+The default command below only inspects the 935-segment plan. The guarded
 run command is appropriate only after system-volume free space is stably
 above 10 GiB; it explicitly acknowledges the archived failed full range.
 Both commands use the required checked Sage launcher:
@@ -1414,7 +1418,7 @@ resources; runs a bounded same-host control; and uploads a terminal or
 failure artifact. Its receipt belongs to Q1061, so any completed result
 must be reconciled by exact query/table coverage before being combined
 with the Q1062 work report. A natural hit must also pass the independent
-Sage relation verifier. No x86 full-size segment outcome is claimed yet.
+Sage relation verifier. The first full-size x86 segment is recorded below.
 The [CI artifact ingester](n83_portable_ci_ingest.py) checks the exact
 field, curve, base, target, source hashes, backend, host preflight, and
 terminal status before copying an uploaded receipt into the local run
@@ -1424,6 +1428,27 @@ verified hit still needs separate Sage replay before a complete DLP claim.
 The segmented work report and local campaign inspector read archived
 Q1061 CI bundles, count completed query coverage once across Q1061 and
 Q1062, and stop local progression on an exact hit awaiting that replay.
+
+The [physical x86 run 36663733518](https://github.com/aburan28/cryptanalysis/actions/runs/36663733518)
+completed its $M=2^{31}$, $R=2^{27}$ public-target segment on an AMD
+EPYC 7763 host. Its [archived receipt](runs/n83_portable_q1061_M31_R27_ci_36663733518/full.json)
+records 22,280,142,848 lifted query pairs, 2,436,870 Bloom positives,
+zero exact hits, 58.48 MB of candidate spill, and 5.69 GB peak RSS.
+The target-dependent query plus exact replay took 2,904.70 s; the full
+segment, including reusable table construction, took 3,733.77 s.
+The [independent checked-Sage replay](runs/n83_portable_q1061_M31_R27_ci_36663733518/sage_verify.json)
+accepted its exact curve/base/target identity and recorded zero natural
+relations. The workflow's final receipt-check step failed because its
+original code looked for the base digest at the wrong JSON level; the
+full computation and artifact upload succeeded, and the check is fixed
+in this PR. The corrected assertions pass against the archived control
+and full receipts. The segment contributes six new coverage cells because the
+first two table shards overlapped completed Q1060 work. Extrapolating
+3,733.77 s across the heuristic's 261.46 expected additional segments
+gives 11.30 serial host-days **only if** this single x86 segment's time
+transfers to every later one; this is not a measured solve time. The
+native field-call model is $2^{37.582}$ for this completed segment;
+complete operation-equivalent work remains unknown.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
