@@ -1707,36 +1707,39 @@ yield. The workflow was disabled for subsequent PR commits.
 
 The [coverage-aware work ledger](n83_full_spill_segment_work.json) also
 projects a distinct future M32/R29 route. After all eight Q1069 wave
-receipts, Q1071, and seven independently audited Q1075 receipts, it retains
-798 completed primary M28-by-R27 cells and 560 completed extra-table
+receipts, Q1071, the audited Q1073 retry, and all eight audited Q1075
+receipts, it retains 862 completed primary M28-by-R27 cells, 624 M32
+extension cells, and 64 M33-only extension
 cells, then orders the remaining aligned
 R29 rectangles by new coverage. Under the frozen finite-support placement
-model, 219 future M32/R29 calls cover the entire M32-by-query domain,
-with a 99.559% conditional chance of at least one hit. Conditional on a
-hit within that finite plan, the expected first hit is after 38.31
-additional calls and $2^{45.449}$ selected-route modeled native field
+model, 217 future M32/R29 calls cover the entire M32-by-query domain,
+with a 99.535% conditional chance of at least one hit. Conditional on a
+hit within that finite plan, the expected first hit is after 38.29
+additional calls and $2^{45.494}$ selected-route modeled native field
 calls including completed receipts. The median is 27 calls
-($2^{45.184}$); the 95% quantile is 117 calls ($2^{46.563}$).
+($2^{45.239}$); the 95% quantile is 117 calls ($2^{46.584}$).
 These are **model outputs**, not measured relation yield, elapsed time,
-or complete operation-equivalent solve work. The interrupted Q1073 attempt
-has unknown arithmetic work and receives no coverage credit. Q1080's
+or complete operation-equivalent solve work. The first interrupted Q1073
+attempt has unknown arithmetic work and receives no coverage credit;
+its independently audited retry is charged and credited. The active Q1074
+attempt receives no work or coverage credit yet. Q1080's
 partial R24 interval is charged separately and is omitted from this R27
 grid's placement model.
-The same frozen placement heuristic assigns 0.556 expected hits to the
-1,358 unique completed primary and M32-extension cells, giving a 57.4%
+The same frozen placement heuristic assigns 0.608 expected hits to the
+1,486 unique completed primary and M32-extension cells, giving a 54.4%
 model probability of the observed zero-hit count. This is a check of the
 model against current coverage, not a measured relation rate or a calibrated
-chance of future success.
+chance of future success; it excludes the 64 M33-only cells.
 
 The work exponent has a fixed boundary in this ledger:
 
 | Quantity | $2^x$ native field calls | Status |
 | --- | ---: | --- |
 | One complete M32/R29 rectangle | $2^{39.371}$ | Modeled attempt cost, with no hit required |
-| Completed R27-grid search receipts | $2^{44.241}$ | Modeled calls over audited terminal grid coverage, including seven Q1075 jobs |
+| Completed R27-grid search receipts | $2^{44.344}$ | Modeled calls over audited terminal grid coverage, including Q1073 retry and eight Q1075 jobs |
 | Q1080 four paired M28/R24 attempts | $2^{36.582}$ | Charged separately; one novel partial rectangle, zero full R27 cells |
-| All successful terminal attempts through seven Q1075 jobs and Q1080 | $2^{44.248}$ | Sum of the preceding charged work; active jobs excluded |
-| First hit on the selected M32 route | $2^{45.449}$ | Finite-support expectation, conditional on a hit by plan end |
+| All successful terminal attempts through Q1073, Q1075, and Q1080 | $2^{44.350}$ | Sum of the preceding charged work; Q1074 active work excluded |
+| First hit on the selected M32 route | $2^{45.494}$ | Finite-support expectation, conditional on a hit by plan end |
 | Complete one-target IC solve | unknown | No natural n=83 relation or independently verified IC scalar yet |
 
 The n=53 control did recover and independently verify one target in
@@ -1894,8 +1897,8 @@ binds the [start marker](runs/n83_local_arm_m33_q1073.started.json),
 preflight, and runtime hashes; its operation counts, exact-hit result,
 and completed coverage are **unknown**. No Q1073 coverage is credited.
 Its candidate, run, measured relation yield, and complete-solve-work
-fields remain null. A retry needs separate artifacts and must charge this
-interrupted attempt as unknown work.
+fields remain null. The retry has separate artifacts; this interrupted
+attempt remains unknown work.
 
 The [retry-2 launcher](launch_n83_local_arm_m33_q1073_retry2.py) binds
 the preserved interruption, repeats the same frozen query rectangle,
@@ -1903,10 +1906,17 @@ and writes distinct artifacts. Its [controller](runs/n83_local_arm_m33_q1073_ret
 started a detached physical ARM search after passing a fresh
 [preflight](runs/n83_local_arm_m33_q1073_retry2_preflight.json) and saving
 the checked [Sage runtime](runs/n83_local_arm_m33_q1073_retry2_runtime_info.json).
-The [retry start marker](runs/n83_local_arm_m33_q1073_retry2.started.json)
-is not a terminal result. The earlier unknown work stays charged as an
-interrupted attempt; no new coverage or relation is credited while retry 2
-is running.
+The retry completed its M=$2^{33}$, R=$2^{29}$ rectangle with **zero exact
+hits** among 9,735,473 Bloom positives. Its terminal
+[receipt](runs/n83_local_arm_m33_q1073_retry2.json), independent
+[checked-Sage audit](runs/n83_local_arm_m33_q1073_retry2_sage_verify.json),
+and [terminal provenance](runs/n83_local_arm_m33_q1073_retry2_terminal_audit.json)
+pin the original curve, factor base, public target, source hashes, and
+archived native binary. The full wrapper took 16,222.99 s, including
+5,297.56 s of target-independent filter construction; target-online query
+and replay took 10,924.53 s. Its regular native path models
+$2^{39.582}$ field calls. The earlier interrupted attempt remains unknown
+work and receives no coverage credit.
 The [host-resource intervention record](runs/n83_local_arm_m33_q1073_retry2_resource_intervention.json)
 documents a temporary system-volume free-space drop below 300 MiB while
 the native worker remained live. Two idle temporary worktrees' ignored
@@ -1918,9 +1928,9 @@ newly regenerated, ignored Rust build cache after confirming it was idle;
 the native worker remained live. A later drop to 1.68 GiB free led to
 removing an idle 2.24 GiB Cargo target cache, identified by its cache tag
 and with no open files; free space rose to 3.88 GiB and the worker kept
-running. Eventual Q1073 retry wall time must be
-read with these host-pressure events attached. They give no result or
-coverage credit.
+running. The terminal Q1073 retry wall time must be read with these
+host-pressure events attached. The interventions themselves give no
+result or coverage credit.
 
 ### Conditional one-table R30 continuation (Q1074)
 
@@ -1941,9 +1951,14 @@ the curve, actual B, folded columns, base digest, source
 hashes, public target, query disjointness, physical ARM backend, and
 fresh host memory and spill space before saving the checked Sage runtime
 and starting a job. Its negative preflight test stopped at Q1073's start
-marker without launching Q1074. Because Q1073 has no audited zero-hit
-terminal receipt, Q1074 remains closed. The proposal retains null
-candidate and run IDs; no Q1074 performance or relation is yet measured.
+marker without launching Q1074. After Q1073's audited zero-hit terminal
+receipt and refreshed ledger, the [new preflight](runs/n83_local_arm_m33_r30_q1074_preflight.json)
+passed with about 40.7 GiB estimated free memory and 5.6 GiB spill space.
+The [checked Sage runtime](runs/n83_local_arm_m33_r30_q1074_runtime_info.json)
+was saved before the disjoint ARM search started. Its
+[start marker](runs/n83_local_arm_m33_r30_q1074.started.json) is active and
+uncredited. The proposal retains null candidate and run IDs; no Q1074
+performance or relation is yet measured.
 
 ### Next disjoint physical x86 wave (Q1075)
 
@@ -1962,29 +1977,28 @@ control, terminal checks, and artifact upload. The
 hits for independent checked-Sage replay. Q1075 keeps null candidate
 and run IDs until a complete method is identified.
 [Run 36751667950](https://github.com/aburan28/cryptanalysis/actions/runs/36751667950)
-has seven terminal zero-hit jobs at query starts 14,495,514,624,
-15,032,385,536, 15,569,256,448, 16,106,127,360, 16,642,998,272,
-17,179,869,184, and 17,716,740,096; the last job remains in the
-full-search step. All seven
+completed all eight jobs at query starts 13,958,643,712 through
+17,716,740,096. All eight have zero exact hits among a combined
+77,908,982 Bloom positives. Their
 [archived receipts](runs/n83_portable_q1075_M32_R29_ci_36751667950_qstart15032385536/bundle.json)
 passed exact identity/source checks and independent checked-Sage zero-hit
 replay, with native binaries and GitHub artifact digests retained beside
 the receipts. Each contributed 32 new primary R27 cells and 32 M32
-extension cells. The refreshed ledger has 798 primary cells, 560 M32
-extension cells, and $2^{44.241}$ modeled native field calls over its
-successful terminal attempts. These seven jobs found no natural relation
-or target DLP. The last active job receives no work or coverage credit yet.
-Their target-online intervals have a 10,042.81 s median and a
-9,860.58–11,251.68 s range across separate physical x86 hosts.
+extension cells. With Q1073 retry credited, the refreshed ledger has 862
+primary cells, 624 M32 extension cells, 64 M33-only cells, and
+$2^{44.344}$ modeled native field calls over successful terminal grid
+attempts. These jobs found no natural relation or target DLP. Their
+target-online intervals have a 10,100.70 s median and a
+9,860.58–12,288.20 s range across separate physical x86 hosts.
 
 The [Q1077 conditional design](n83_m32_wave_q1077_design.json) reserves
 eight further M32/R29 intervals from query start 18,253,611,008 through
 22,548,578,304, all disjoint from Q1073, Q1074, and Q1075 and inside the
-frozen query domain. It models another $2^{42.371}$ native field calls,
-but leaves the hit probability and measured work null until Q1073 and
-Q1075 have terminal checked-Sage audits and the coverage ledger is
-recomputed. Q1077 is not an executable or dispatched wave; a verified
-target DLP or unresolved exact hit closes its launch gate.
+frozen query domain. It models another $2^{42.371}$ native field calls.
+The Q1077 design is now frozen into the
+[Q1079 source-bound plan](n83_q1079_m32_wave_plan.json) after Q1073 and all
+Q1075 terminal checked-Sage audits and the recomputed coverage ledger.
+Q1077 remains a design ID; Q1079 is the executable wave.
 
 ### Exact zero-run orbit keyer screen (Q1078)
 
@@ -2059,17 +2073,14 @@ found zero relations. Its 0.323 s target-online interval is a bounded
 M20/R14 control, not a full-size timing estimate. The one-shot workflow
 is disabled after this audit.
 The intended next intervals remain the disjoint Q1077 design. The
-[full-size plan builder](n83_q1079_full_plan.py) refuses to freeze them
-until Q1073 and all eight Q1075 jobs have terminal independent
-audits with no hit, and the Q1062 coverage ledger has been refreshed.
-It permits Q1074 to run concurrently on the disjoint ARM interval when
-its wrapper process is live, records that work as active and uncredited,
-and rejects a terminal Q1074 hit until independently adjudicated.
+[full-size plan builder](n83_q1079_full_plan.py) has frozen all eight
+intervals after nine terminal independent audits and the refreshed Q1062
+coverage ledger. It verified that Q1074's wrapper process was live and
+recorded the disjoint ARM interval as active and uncredited.
 The [eight-job physical x86 workflow](../../.github/workflows/n83-q1079-zero-run-m32-wave.yml)
-is disabled until that plan exists. Each job checks the exact instance,
+is enabled for one-shot dispatch with that plan. Each job checks the exact instance,
 source and audit hashes, memory and disk, runs a bounded control, then
-passes the frozen plan to the source-bound M32/R29 runner. Its current
-preflight stops on the still-active Q1073 receipt. Q1079 retains
+passes the frozen plan to the source-bound M32/R29 runner. Q1079 retains
 null candidate/run IDs and `isogeny: "none"`; its field-call model is
 unchanged from Q1061.
 
