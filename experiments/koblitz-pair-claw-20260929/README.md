@@ -1839,6 +1839,26 @@ terminal search receipt. Its candidate, run, measured relation yield,
 and complete-solve-work fields remain null until a terminal receipt is
 audited.
 
+### Conditional one-table R30 continuation (Q1074)
+
+The [frozen Q1074 plan](n83_local_arm_m33_r30_q1074_plan.json) starts at
+query position 12,884,901,888, exactly where Q1073 ends, and covers one
+full R=$2^{30}$ range with the same M=$2^{33}$ table. Reusing one table
+and one exact-replay pass models 1,421,533,511,680 ($2^{40.371}$) native
+field calls, **13.66% fewer** than two separate M33/R29 calls covering
+the same query range. The frozen finite-support placement heuristic gives
+a 9.98% hit probability for this rectangle. Both figures are predictions,
+not measured natural yield or complete-solve work.
+
+The [guarded launcher](launch_n83_local_arm_m33_r30_q1074.py) requires
+Q1073 to finish with zero exact hits and an independent checked-Sage
+audit. It checks the curve, actual B, folded columns, base digest, source
+hashes, public target, query disjointness, physical ARM backend, and
+fresh host memory and spill space before saving the checked Sage runtime
+and starting a job. Its negative preflight test stopped at the live Q1073
+start marker without launching Q1074. The proposal retains null candidate
+and run IDs; no Q1074 performance or relation is yet measured.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
