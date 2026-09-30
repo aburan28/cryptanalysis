@@ -1464,6 +1464,16 @@ measured duration, grouped wall time would be about 2.78 hours versus
 4.15 hours for four separate runs. This is a forecast; the grouped run
 must finish and pass the same artifact and independent Sage checks before
 its coverage, time, or relation yield is counted.
+For an all-grouped continuation where four contiguous segments are
+available, the [work report](n83_full_spill_segment_work.json) schedules
+233 prospective $R=2^{29}$ groups and three $R=2^{27}$ singles. Its
+frozen-heuristic first-hit estimate, conditional on a hit by plan end, is
+67.96 additional grouped calls and $2^{45.453}$ selected-route native
+field calls, versus $2^{45.742}$ for the all-$R=2^{27}$ continuation.
+The grouped 95% first-hit point is $2^{47.162}$ calls. Group boundaries
+charge an entire call even if a relation would first occur within it.
+These are prospective arithmetic models; only the completed R27 x86
+segment has a full-size portable timing receipt.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py

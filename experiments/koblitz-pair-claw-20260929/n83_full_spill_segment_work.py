@@ -72,6 +72,22 @@ def query_segments(query_start, query_reps):
     return range_index, range(first, first + count)
 
 
+def grouped_future_plan(future):
+    remaining = set(future)
+    groups = []
+    for range_index, segment in future:
+        if (range_index, segment) not in remaining:
+            continue
+        count = 4 if (segment + 4 <= SEGMENTS_PER_RANGE and all(
+            (range_index, segment + offset) in remaining
+            for offset in range(4))) else 1
+        for offset in range(count):
+            remaining.remove((range_index, segment + offset))
+        groups.append((range_index, segment, count))
+    assert not remaining
+    return groups
+
+
 def portable_ci_rows(screen):
     completed, failed, incomplete = [], [], []
     for bundle_path in sorted(RUNS.glob(
@@ -228,7 +244,27 @@ def main():
     assert len(future_covered) == 118 * SEGMENTS_PER_RANGE * 8
     assert all(a <= b for a, b in zip(cdf, cdf[1:]))
     per_segment = field_calls(M31, R27)
+    groups = grouped_future_plan(future)
+    group_covered = set(covered)
+    group_cdf = [0.0]
+    group_costs = [0]
+    group_segments = [0]
+    for range_index, first_segment, count in groups:
+        group_covered.update((range_index, segment, shard)
+                             for segment in range(first_segment,
+                                                  first_segment + count)
+                             for shard in range(8))
+        group_cdf.append(-math.expm1(-(
+            work.intensity(len(group_covered),
+                           cell_fraction=cell_fraction, mean=mean)
+            - start_intensity)))
+        group_costs.append(group_costs[-1] + field_calls(M31, count * R27))
+        group_segments.append(group_segments[-1] + count)
+    assert group_covered == future_covered
+    assert math.isclose(group_cdf[-1], cdf[-1], rel_tol=1e-12)
+    assert group_segments[-1] == len(future)
     conditional = None
+    grouped_conditional = None
     if not verified_dlp and not unverified_hits:
         probability = cdf[-1]
         expected = (sum(i * (cdf[i] - cdf[i - 1])
@@ -256,6 +292,49 @@ def main():
             "first_hit_quantiles": quantiles,
             "all_remaining_segments_field_calls_log2": math.log2(
                 len(future) * per_segment) if future else None,
+        }
+        grouped_quantiles = {}
+        for label in QUANTILES:
+            count = next((i for i in range(1, len(group_cdf))
+                          if group_cdf[i] >= float(label)), None)
+            grouped_quantiles[label] = {
+                "additional_grouped_calls": count,
+                "additional_R27_segments_covered":
+                    group_segments[count] if count else None,
+                "model_probability": group_cdf[count] if count else None,
+                "selected_route_field_calls_log2":
+                    math.log2(charged + group_costs[count])
+                    if count else None,
+            }
+        expected_group_cost = (
+            sum((charged + group_costs[i]) *
+                (group_cdf[i] - group_cdf[i - 1])
+                for i in range(1, len(group_cdf))) / probability
+            if probability else None)
+        grouped_conditional = {
+            "shape": "greedy_earliest_four_contiguous_R27_segments_as_R29_else_R27",
+            "future_R29_group_count": sum(count == 4 for _, _, count in groups),
+            "future_R27_single_count": sum(count == 1 for _, _, count in groups),
+            "first_group_query_start": (
+                groups[0][0] * R30 + groups[0][1] * R27)
+            if groups else None,
+            "probability_of_hit_by_plan_end_conditional_on_zero_hits_so_far":
+                probability,
+            "expected_additional_grouped_calls_given_hit_by_plan_end":
+                sum(i * (group_cdf[i] - group_cdf[i - 1])
+                    for i in range(1, len(group_cdf))) / probability
+                if probability else None,
+            "expected_additional_R27_segments_covered_given_hit_by_plan_end":
+                sum(group_segments[i] *
+                    (group_cdf[i] - group_cdf[i - 1])
+                    for i in range(1, len(group_cdf))) / probability
+                if probability else None,
+            "selected_route_expected_field_calls_given_hit_log2":
+                math.log2(expected_group_cost)
+                if expected_group_cost is not None else None,
+            "first_hit_quantiles": grouped_quantiles,
+            "all_remaining_grouped_calls_field_calls_log2":
+                math.log2(group_costs[-1]) if groups else None,
         }
     report = {
         "kind": "n83_q1062_segmented_coverage_aware_conditional_work",
@@ -295,6 +374,8 @@ def main():
         "verified_quotient_table_dlp_receipts": verified_dlp,
         "unverified_exact_hit_receipts": unverified_hits,
         "conditional_model_if_no_verified_dlp": conditional,
+        "conditional_grouped_R29_route_if_no_verified_dlp":
+            grouped_conditional,
         "complete_solve_work_log2": None,
         "limits": [
             "The relation-placement probability is a frozen finite-support heuristic, not measured yield.",
