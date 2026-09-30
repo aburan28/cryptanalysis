@@ -231,6 +231,28 @@ def main():
                for segment in range(SEGMENTS_PER_RANGE)
                for shard in range(8)}
     charged = int(first["native_field_add_mul_sqr_call_model"])
+    measured_search = {
+        "table_descriptors_processed": 0,
+        "query_representatives_processed": 0,
+        "lifted_query_pairs_tested": 0,
+        "bloom_positive_queries_for_exact_replay": 0,
+        "target_online_seconds_sum_across_hosts": 0.0,
+    }
+
+    def charge_measured_search(row):
+        native = row["native_result"]
+        measured_search["table_descriptors_processed"] += native[
+            "table_descriptors"]
+        measured_search["query_representatives_processed"] += native[
+            "query_representatives"]
+        measured_search["lifted_query_pairs_tested"] += native[
+            "lifted_query_pairs"]
+        measured_search["bloom_positive_queries_for_exact_replay"] += native[
+            "bloom_positive_queries"]
+        measured_search["target_online_seconds_sum_across_hosts"] += row[
+            "target_online_seconds"]
+
+    charge_measured_search(first)
     completed = [{"proposal_id": "Q1051", "path": repo_path(work.FIRST),
                   "sha256": work.sha(work.FIRST),
                   "field_calls": str(charged), "new_cells": 64}]
@@ -289,6 +311,7 @@ def main():
         covered.update(cells)
         calls = int(row["native_field_add_mul_sqr_call_model"])
         charged += calls
+        charge_measured_search(row)
         entry = {"proposal_id": m32_proposals[path] if is_m32 else row["proposal_id"],
                  "path": repo_path(path), "sha256": work.sha(path),
                  "field_calls": str(calls), "new_cells": novel}
@@ -464,6 +487,15 @@ def main():
         },
         "completed_selected_route_field_calls": str(charged),
         "completed_selected_route_field_calls_log2": math.log2(charged),
+        "completed_measured_search_work": {
+            **{key: str(value) for key, value in measured_search.items()
+               if key != "target_online_seconds_sum_across_hosts"},
+            "lifted_query_pairs_tested_log2": math.log2(
+                measured_search["lifted_query_pairs_tested"]),
+            "target_online_seconds_sum_across_hosts": measured_search[
+                "target_online_seconds_sum_across_hosts"],
+            "scope": "successful terminal receipts only; repeated work is charged, including overlapping coverage; excluded failed attempt has unknown operation counts; online seconds sum separate hosts and are not one continuous wall-clock solve",
+        },
         "verified_quotient_table_dlp_receipts": verified_dlp,
         "unverified_exact_hit_receipts": unverified_hits,
         "conditional_model_if_no_verified_dlp": conditional,

@@ -1626,8 +1626,14 @@ accepted the curve, base, target, and zero natural relations. The
 411,595,440,128 ($2^{38.582}$) modeled native field calls and credits
 16 new primary grid cells plus 16 separate extra-table cells. It now
 records 126/7,552 primary cells and $2^{42.470}$ completed modeled
-field calls. A complete DLP and operation-equivalent solve work remain
-unknown.
+field calls. The ledger also sums the measured search work from successful
+terminal receipts: 11,274,289,152 table descriptors processed,
+4,160,749,568 query representatives, 690,684,428,288 ($2^{39.329}$)
+lifted query pairs tested, and 72,685,811 Bloom positives sent to exact
+replay. Repeated table/query work is included. The 34,715.84 target-online
+seconds are a sum across different hosts, not one continuous elapsed time;
+the failed Q1062 attempt has unknown operation counts. A complete DLP and
+operation-equivalent solve work remain unknown.
 
 For zero-hit receipts, the Sage verifier checks the archived identity,
 subgroup, field conversion, and receipt hash. It independently replays a
