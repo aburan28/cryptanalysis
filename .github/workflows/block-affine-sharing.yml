@@ -1,0 +1,58 @@
+name: Packed affine sharing cost screen
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round39/**'
+      - '.github/workflows/block-affine-sharing.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round39/**'
+      - '.github/workflows/block-affine-sharing.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: block-affine-sharing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Packed affine sharing (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build native and UBSan pilots and validate exact proofs
+        run: |
+          mkdir -p block-affine-evidence
+          python -u experiments/groebner-perf-20260924/round39/validate_packed.py \
+            --affine-report experiments/groebner-perf-20260924/round39/fixtures/affine-block-probe.json.gz \
+            --output block-affine-evidence/cost-screen.json \
+            > block-affine-evidence/validation.log 2>&1
+      - name: Retain runner identity
+        if: always()
+        run: |
+          mkdir -p block-affine-evidence
+          python - <<'PY'
+          import json, os, pathlib
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          pathlib.Path('block-affine-evidence/runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: packed-affine-sharing-${{ matrix.os }}
+          path: block-affine-evidence/
+          if-no-files-found: error
+          retention-days: 14
