@@ -79,8 +79,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifact-dir", type=Path, required=True)
     parser.add_argument("--run-id", type=int, required=True)
+    parser.add_argument("--archive-root", type=Path, default=RUNS,
+                        help="destination root; defaults to the run ledger")
     args = parser.parse_args()
     assert args.run_id > 0
+    assert args.archive_root.is_absolute() and args.archive_root.is_dir()
     artifact = args.artifact_dir.resolve()
     assert artifact.is_dir()
     host_path = artifact / "host.json"
@@ -187,7 +190,8 @@ def main():
               "unverified_exact_hit_requires_review" if full[
                   "native_result"]["exact_hit_queries"] else
               "completed_zero_hit")
-    destination = RUNS / f"n83_portable_q1065_M32_R28_ci_{args.run_id}"
+    destination = args.archive_root / (
+        f"n83_portable_q1065_M32_R28_ci_{args.run_id}")
     assert not destination.exists(), "refusing to overwrite archived artifact"
     destination.mkdir()
     copied = {}
