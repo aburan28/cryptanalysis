@@ -21,6 +21,9 @@ concurrency:
 
 jobs:
   physical-x86-segment:
+    # The PR run is deliberately one-shot. Later documentation or receipt
+    # commits must not silently spend another full M31/R27 runner interval.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.sha == '5dfabe2712780a0c6a2095f48a34675b701e8e66'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:

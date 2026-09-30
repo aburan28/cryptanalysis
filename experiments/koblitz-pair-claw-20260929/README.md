@@ -1410,6 +1410,12 @@ failure artifact. Its receipt belongs to Q1061, so any completed result
 must be reconciled by exact query/table coverage before being combined
 with the Q1062 work report. A natural hit must also pass the independent
 Sage relation verifier. No x86 full-size segment outcome is claimed yet.
+The [CI artifact ingester](n83_portable_ci_ingest.py) checks the exact
+field, curve, base, target, source hashes, backend, host preflight, and
+terminal status before copying an uploaded receipt into the local run
+ledger. After a successful host preflight and bounded control, it
+preserves a failed or incomplete full-size attempt as such; a native
+verified hit still needs separate Sage replay before a complete DLP claim.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
