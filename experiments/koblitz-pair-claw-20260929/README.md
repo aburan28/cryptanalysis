@@ -1284,6 +1284,20 @@ must be reconciled before a full Q1062 launch. Interrupted historical
 attempts also retain unknown actual work. None of these figures is a
 complete measured DLP cost.
 
+The [coverage-aware work report](n83_full_spill_work.json) scans
+completed terminal receipts and counts M28-by-R30 shard-range cells in
+their union. With Q1051's first range and one Q1060 shard completed,
+it finds nine cells; the active second Q1060 shard is listed but not
+credited. The frozen model predicts a first hit after 33.05 additional
+Q1062 full ranges on average *conditional on a hit within the plan*.
+That is $2^{45.356}$ selected-route native field calls including the
+two completed rectangles; the 95% point is $2^{47.094}$, with 4.90%
+modeled no-hit probability at plan end. These estimates are updated by
+rerunning the report after each terminal receipt. They omit failed
+attempts, other same-target research work, keying, Bloom operations,
+SSD traffic, and scalar replay, so `complete_solve_work_log2` remains
+`null`.
+
 The [guarded Q1062 campaign](n83_full_spill_campaign.py) inspects all
 117 named full ranges, refuses a competing n=83 start marker or an
 already verified Q1060 scalar, and requires 12 GiB of system-volume
@@ -1360,6 +1374,7 @@ python3 experiments/koblitz-pair-claw-20260929/n83_spill_low_memory_screen.py
 python3 experiments/koblitz-pair-claw-20260929/verify_n83_portable_controls.py --backend arm_pmull --spill-dir /Volumes/SSD990/llm/tmp
 # The CI workflow runs x86_pclmul and x86_generic on a physical x64 Linux runner.
 python3 experiments/koblitz-pair-claw-20260929/n83_full_spill_screen.py
+python3 experiments/koblitz-pair-claw-20260929/n83_full_spill_work.py
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_full_spill_campaign.py
 # --run-next launches one Q1062 full-filter range only after competing runs exit and its guard passes.
 ./sage -python experiments/koblitz-pair-claw-20260929/n83_full_spill_handoff.py
