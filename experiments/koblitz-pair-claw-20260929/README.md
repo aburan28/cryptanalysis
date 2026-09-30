@@ -1675,7 +1675,9 @@ concurrent disjoint run to add coverage while the wave remained active.
 [Physical x86 run 36698966100](https://github.com/aburan28/cryptanalysis/actions/runs/36698966100)
 started from frozen commit `0647fdcb`, passed its host preflight and
 same-host bounded control, and is in the full search. The workflow was
-disabled for subsequent PR commits. No M32/R29 relation, wall time,
+disabled for subsequent PR commits. The
+[failure-preserving ingester](n83_m32_group_ci_ingest.py) is ready for
+its terminal artifact. No M32/R29 relation, wall time,
 memory result, or coverage is claimed before its terminal artifact.
 An exact hit in either active search needs immediate independent Sage
 witness replay; complete-solve work remains unknown.
