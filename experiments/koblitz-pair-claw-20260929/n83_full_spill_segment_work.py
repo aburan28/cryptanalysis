@@ -8,6 +8,7 @@ from pathlib import Path
 import n83_full_spill_work as work
 import n83_m32_ci_ingest as m32_portable
 import n83_m32_group_ci_ingest as m32_group
+import n83_m32_wave_ci_ingest as m32_wave
 import n83_portable_ci_ingest as portable
 from n83_full_spill_screen import field_calls
 from n83_identity_contract import validate_receipt, validate_reference
@@ -145,6 +146,9 @@ def m32_ci_rows(screen):
         ("n83_portable_q1068_M32_R29_ci_*/bundle.json",
          "n83_q1068_physical_x86_M32_R29_ci_bundle", "Q1068",
          1 << 29, 6 * R30 + (1 << 28), m32_group),
+        ("n83_portable_q1069_M32_R29_ci_*/bundle.json",
+         "n83_q1069_physical_x86_M32_R29_ci_bundle", "Q1069",
+         1 << 29, None, m32_wave),
     )
     for pattern, kind, proposal, query_reps, query_start, ingester in specs:
         for bundle_path in sorted(RUNS.glob(pattern)):
@@ -163,13 +167,18 @@ def m32_ci_rows(screen):
                 "factor_base"]["signed_frobenius_columns"]
             assert bundle["table_descriptors"] == M32
             assert bundle["query_representatives"] == query_reps
-            assert bundle["query_start"] == query_start
+            if query_start is None:
+                plan = json.loads(ingester.PLAN.read_text())
+                assert bundle["query_start"] in plan["query_starts"]
+                assert str(bundle["query_start"]) in str(bundle_path)
+            else:
+                assert bundle["query_start"] == query_start
             assert bundle["portable_native_source_sha256"] == work.sha(
                 ingester.SOURCE)
             assert bundle["source_sha256"] == work.sha(
                 Path(ingester.__file__))
             assert bundle["plan_sha256"] == work.sha(ingester.PLAN)
-            if proposal == "Q1068":
+            if proposal in ("Q1068", "Q1069"):
                 plan = json.loads(ingester.PLAN.read_text())
                 assert bundle["frozen_workflow_sha256"] == plan[
                     "workflow_sha256"]
@@ -188,7 +197,7 @@ def m32_ci_rows(screen):
             assert row["table_start"] == 0
             assert row["table_descriptors"] == M32
             assert row["query_representatives"] == query_reps
-            assert row["query_start"] == query_start
+            assert row["query_start"] == bundle["query_start"]
             query_segments(row["query_start"], row["query_representatives"])
             if row["kind"] == work.FAILED_KIND:
                 assert bundle["status"] == "failed_full_segment_unknown_work"
@@ -196,7 +205,11 @@ def m32_ci_rows(screen):
                 failed.append((full_path, row))
             else:
                 assert row["kind"] == work.SUCCESS_KIND
-                ingester.verify_row(screen, full_path, full=True)
+                if proposal == "Q1069":
+                    ingester.verify_row(screen, full_path, full=True,
+                                        query_start=bundle["query_start"])
+                else:
+                    ingester.verify_row(screen, full_path, full=True)
                 assert bundle["status"] in (
                     "completed_zero_hit",
                     "native_verified_hit_needs_independent_sage",
@@ -587,6 +600,8 @@ def main():
             HERE / "n83_m32_ci_ingest.py"),
         "m32_group_ci_ingest_source_sha256": work.sha(
             HERE / "n83_m32_group_ci_ingest.py"),
+        "m32_wave_ci_ingest_source_sha256": work.sha(
+            HERE / "n83_m32_wave_ci_ingest.py"),
         "portable_native_source_sha256": work.sha(portable.SOURCE),
         "segment_campaign_source_sha256": work.sha(
             HERE / "n83_full_spill_segment_campaign.py"),

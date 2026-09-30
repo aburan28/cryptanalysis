@@ -1503,11 +1503,11 @@ for this group is 654,554,693,632 calls, 79.5% of four separate calls.
 The prior linear-query forecast was 2.78 hours versus 4.15 hours for
 four separate runs; the completed grouped wall time was 2.77 hours.
 After the completed M32 zero-hit result below, the
-[work report](n83_full_spill_segment_work.json) schedules 231 prospective
+[work report](n83_full_spill_segment_work.json) schedules 227 prospective
 $R=2^{29}$ groups and five $R=2^{27}$ singles. Its frozen-heuristic
-first-hit estimate, conditional on a hit by plan end, is 68.91 additional
-grouped calls and $2^{45.480}$ selected-route native field calls. The
-conditional hit probability by the finite plan end is now 94.987%, so
+first-hit estimate, conditional on a hit by plan end, is 68.56 additional
+grouped calls and $2^{45.547}$ selected-route native field calls. The
+conditional hit probability by the finite plan end is now 94.716%, so
 the 95% first-hit quantile is beyond that plan and remains null. The
 extra M32 table cells are recorded but omitted from this conservative
 future-hit projection. Group boundaries
@@ -1528,8 +1528,10 @@ at least one hit, conditional on archived zero-hit coverage, is 9.97%.
 Neither is a measured solve result. The artifact ingester's `--matrix-job`
 option gives each job a separate immutable bundle under the shared GitHub
 run ID; the coverage ledger will charge overlapping or failed work only
-according to terminal receipts. Any exact hit in a wave job requires
-independent Sage replay before it can count as a relation or DLP.
+according to terminal receipts. Four jobs later completed with zero hits
+and four queued jobs were cancelled before starting, as documented below.
+Any exact hit in a wave job requires independent Sage replay before it can
+count as a relation or DLP.
 
 The [first grouped x86 run 36669737583](https://github.com/aburan28/cryptanalysis/actions/runs/36669737583)
 completed its $M=2^{31}$, $R=2^{29}$ rectangle at query start
@@ -1663,7 +1665,7 @@ jobs keep their frozen 20-bit filters.
 The [frozen Q1068 design](n83_m32_group_followup_plan.json) places an
 $M=2^{32},R=2^{29}$ search at query start 6,710,886,400. Its query
 interval begins exactly where the completed M32/R28 run ended and stays
-clear of all eight active wave ranges. It retains the exact n=83 curve,
+clear of all eight planned wave ranges. It retains the exact n=83 curve,
 8,000,204-point usable base, 48,194 signed-Frobenius columns, public
 target, portable Q1061 kernel, ten Bloom hashes, and `isogeny: "none"`.
 The proposal has null candidate/run IDs.
@@ -1693,15 +1695,46 @@ also projects a distinct future M32/R29 route. It retains both the 126
 completed primary M28-by-R27 cells and the 16 completed extra-table
 cells, then orders the remaining aligned R29 rectangles by new coverage.
 Under the same frozen finite-support placement model, 236 future M32/R29
-calls cover the entire M32-by-query domain, with a 99.732% conditional
+calls cover the entire M32-by-query domain, with a 99.717% conditional
 chance of at least one hit. Conditional on a hit within that finite plan,
-the expected first hit is after 38.41 additional calls and $2^{44.924}$
+the expected first hit is after 38.40 additional calls and $2^{45.033}$
 selected-route modeled native field calls including completed receipts.
-The median is 27 calls ($2^{44.523}$); the 95% quantile is 117 calls
-($2^{46.343}$). These are **model outputs**, not measured relation yield,
+The median is 27 calls ($2^{44.665}$); the 95% quantile is 117 calls
+($2^{46.385}$). These are **model outputs**, not measured relation yield,
 elapsed time, or complete operation-equivalent solve work. In-flight
 receipts are excluded until terminal, and the estimate will be recomputed
 after their coverage is known.
+
+### First M31 wave receipts and disjoint M32 wave (Q1069)
+
+The first four jobs of [physical x86 run 36684977689](https://github.com/aburan28/cryptanalysis/actions/runs/36684977689)
+completed at query starts 2,147,483,648, 2,684,354,560,
+3,221,225,472, and 3,758,096,384. Their native receipts report
+**zero exact hits** after 38,962,099 Bloom positives. Each receipt has an
+archived [bundle and independent checked-Sage audit](runs/n83_portable_q1061_M31_R29_ci_36684977689_qstart2147483648/sage_verify.json)
+with the exact curve, base digest, target, and zero supplied witnesses.
+Together they add 128 primary M28-by-R27 cells and 2,618,218,774,528
+($2^{41.252}$) modeled native field calls. Their summed target-online
+time is 35,763.92 s across four separate x86 hosts. GitHub marked the
+remaining four queued matrix jobs cancelled before any steps ran; they
+have no terminal search receipt, measured work, or credited coverage.
+The [coverage ledger](n83_full_spill_segment_work.json) now records
+254/7,552 primary cells and $2^{42.986}$ completed modeled field calls.
+
+The [Q1069 frozen launch plan](n83_m32_wave_launch_plan.json) chooses
+eight M32/R29 rectangles at query starts 7,516,192,768 through
+11,274,289,152, all beyond the Q1068 interval and the cancelled M31
+jobs. The unchanged Q1061 portable kernel and exact n=83 curve, public
+target, B=8,000,204 base, 48,194 folded columns, base digest, and
+`isogeny: "none"` are pinned in the plan. It models $2^{42.371}$ native
+field calls for all eight jobs and an 18.96% heuristic chance of a hit.
+The [physical x86 workflow](../../.github/workflows/n83-portable-quotient-m32-wave.yml)
+uses eight parallel jobs, per-host resource gates, a bounded control,
+and terminal receipts. The [ingester](n83_m32_wave_ci_ingest.py) preserves
+failures and archives each job by query start. Q1069 is a stage proposal
+with null candidate and run IDs; the eight-job hit probability is not
+measured relation yield. Any native hit requires independent checked-Sage
+witness replay before a DLP or solve-work claim.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
