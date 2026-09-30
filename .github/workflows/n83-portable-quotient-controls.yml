@@ -57,12 +57,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 8
+          fetch-depth: 1
 
       - name: Prepare frozen Q1061 round-two baseline
+        env:
+          N83_Q1061_BASE_SHA: 93e8f9d642ff23d1952903d3b088ef08f5be0eae
         run: |
-          git cat-file -e '93e8f9d642ff23d1952903d3b088ef08f5be0eae^{commit}'
-          git worktree add --detach "$RUNNER_TEMP/n83-q1061-r2" 93e8f9d642ff23d1952903d3b088ef08f5be0eae
+          if ! git cat-file -e "${N83_Q1061_BASE_SHA}^{commit}"; then
+            git fetch --no-tags --depth=1 origin "$N83_Q1061_BASE_SHA" || true
+          fi
+          if ! git cat-file -e "${N83_Q1061_BASE_SHA}^{commit}"; then
+            git fetch --no-tags --unshallow origin
+          fi
+          git cat-file -e "${N83_Q1061_BASE_SHA}^{commit}"
+          git worktree add --detach "$RUNNER_TEMP/n83-q1061-r2" "$N83_Q1061_BASE_SHA"
           mkdir "$RUNNER_TEMP/n83-paired"
 
       - name: Paired M24/R20 ABBA scratch comparison
