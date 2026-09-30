@@ -2036,8 +2036,11 @@ the generated sources and binary match the archived hashes, the same
 found zero relations. Its 0.323 s target-online interval is a bounded
 M20/R14 control, not a full-size timing estimate. The one-shot workflow
 is disabled after this audit.
-The intended next intervals remain the disjoint Q1077 design, subject to
-terminal Q1073/Q1075 audits and a refreshed work ledger. Q1079 retains
+The intended next intervals remain the disjoint Q1077 design. The
+[full-size plan builder](n83_q1079_full_plan.py) refuses to freeze them
+until Q1073, all eight Q1075 jobs, and Q1080 have terminal independent
+audits with no hit, and the Q1062 coverage ledger has been refreshed.
+Its current preflight stops on the still-active Q1073 receipt. Q1079 retains
 null candidate/run IDs and `isogeny: "none"`; its field-call model is
 unchanged from Q1061.
 
