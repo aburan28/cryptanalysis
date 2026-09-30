@@ -28,6 +28,33 @@ SEGMENTS_PER_RANGE = R30 // R27
 QUANTILES = ("0.5", "0.8", "0.9", "0.95")
 
 
+def regular_batch_field_calls(table_descriptors, query_representatives):
+    """Nominal API calls in the portable native table and signed-x query."""
+    m, r, n = table_descriptors, query_representatives, 83
+    table_batches = math.ceil(m / 1024)
+    query_batches = math.ceil(r / 8)
+    additions = 14 * m + 7 * r + 6 * n * r
+    multiplications = 10 * m + 5 * r + 5 * n * r
+    squarings = 2 * m + r + 2 * n * r
+    inversions = 2 * table_batches + 2 * query_batches
+    # The native Itoh-Tsujii inversion calls mul eight times and sqr 82.
+    expanded = {
+        "add": additions,
+        "mul": multiplications + 8 * inversions,
+        "sqr": squarings + 82 * inversions,
+    }
+    assert sum(expanded.values()) == field_calls(m, r)
+    return {
+        "add": str(additions), "mul": str(multiplications),
+        "sqr": str(squarings), "inv": str(inversions),
+        "expanded_inversion_add": str(expanded["add"]),
+        "expanded_inversion_mul": str(expanded["mul"]),
+        "expanded_inversion_sqr": str(expanded["sqr"]),
+        "total_expanded_calls": str(sum(expanded.values())),
+        "scope": "nominal regular batch_add/batch_signed_x path, two table passes, 83 query lifts; excludes exceptional branches, base loading, self-tests, keying, Bloom, spool, and Python replay",
+    }
+
+
 def repo_path(path):
     return str(path.resolve().relative_to(REPO))
 
@@ -772,6 +799,8 @@ def main():
         "future_R27_segment_spans": compressed_starts(
             [i * R30 + s * R27 for i, s in future]),
         "modeled_field_calls_per_R27_segment": str(per_segment),
+        "modeled_regular_batch_field_calls_per_M32_R29_group":
+            regular_batch_field_calls(M32, 1 << 29),
         "modeled_eight_R27_segments_vs_one_R30_field_call_ratio":
             8 * per_segment / field_calls(M31, R30),
         "R27_hit_intensity_cross_check": {

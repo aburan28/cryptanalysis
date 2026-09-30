@@ -1750,8 +1750,19 @@ conditional first-hit model from being reported as complete solve work.
 For one n=83 rectangle with $M$ table descriptors and $R$ query
 representatives, the frozen arithmetic count is
 $C(M,R)=26M+13R+13\cdot83R+90(2\lceil M/1024\rceil+2\lceil R/8\rceil)$.
-The 90-call inversion equivalent and exceptional-pair treatment are model
-assumptions. Table build is included in $C$ but excluded from the
+The [ledger's field-API vector](n83_full_spill_segment_work.json) exposes the
+terms for one M32/R29 rectangle: 331,249,352,704 additions,
+268,435,456,000 multiplications, 98,247,376,896 squarings, and
+142,606,336 inversions on the regular batch path. The native Itoh-Tsujii
+inversion calls eight multiplications and 82 squarings, so expanding those
+inversions gives 710,766,755,840 ($2^{39.371}$) field API calls. The two
+table passes each use seven additions, five multiplications, and one
+squaring per descriptor; a query representative uses the same vector,
+then each of its 83 signed-x lifts uses six additions, five multiplications,
+and two squarings. This is a call count, not a calibrated common-cost
+equivalent: additions, squarings, and multiplications need not have equal
+hardware cost. Exceptional pairs and all work outside these batch paths
+remain excluded. Table build is included in $C$ but excluded from the
 single-target online wall interval because the table is reusable.
 
 ### First M31 wave receipts and disjoint M32 wave (Q1069)
