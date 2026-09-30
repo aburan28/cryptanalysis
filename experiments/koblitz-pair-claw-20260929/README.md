@@ -1905,7 +1905,10 @@ resumed CPU work. A second free-space decline led to clearing two more
 idle ignored build caches, with about 2.8 GiB free afterward. Any
 later decline below the original 2 GiB guard led to clearing 254 MiB of
 newly regenerated, ignored Rust build cache after confirming it was idle;
-the native worker remained live. Eventual Q1073 retry wall time must be
+the native worker remained live. A later drop to 1.68 GiB free led to
+removing an idle 2.24 GiB Cargo target cache, identified by its cache tag
+and with no open files; free space rose to 3.88 GiB and the worker kept
+running. Eventual Q1073 retry wall time must be
 read with these host-pressure events attached. They give no result or
 coverage credit.
 
@@ -2004,6 +2007,31 @@ The frozen native field-call model is unchanged because Q1078 replaces
 only orbit-key selection; its bounded wall-time gain does not lower the
 $2^{39.371}$ modeled field calls per M32/R29 rectangle or establish a
 complete solve exponent.
+
+### Source-bound zero-run rectangle runner (Q1079)
+
+[Q1079](run_n83_zero_run_chunk.py) executes one public-target quotient
+rectangle with the Q1078 keyer. It generates separate native sources,
+records their hashes and the source-generator hash, verifies the exact
+curve and factor-base records, and independently checks every exact hit
+against the frozen public target. A full-size call requires a source-bound
+frozen Q1079 plan; the [negative preflight control](runs/n83_q1079_missing_plan_gate.json)
+rejected an M32/R29 call before native source generation or work. No
+full-size plan is yet ready. Its
+[M20/R14 public smoke](runs/n83_q1079_smoke2_M20_R14.json) matched the
+frozen Q1061 control exactly: 247 Bloom positives and zero exact hits.
+The [checked-Sage audit](runs/n83_q1079_smoke2_M20_R14_sage_verify.json)
+confirmed the receipt identity and zero verified relations. This smoke
+checks the executable path, not natural yield or full-size performance.
+The earlier [exploratory smoke](runs/n83_q1079_smoke_M20_R14.json) and
+[its checked-Sage audit](runs/n83_q1079_smoke_M20_R14_sage_verify.json)
+are retained with their earlier wrapper source hash; the source-bound
+`smoke2` receipt above is the current runner control. A one-shot physical
+x86 PCLMUL workflow checks that same bounded rectangle on another host.
+The intended next intervals remain the disjoint Q1077 design, subject to
+terminal Q1073/Q1075 audits and a refreshed work ledger. Q1079 retains
+null candidate/run IDs and `isogeny: "none"`; its field-call model is
+unchanged from Q1061.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
