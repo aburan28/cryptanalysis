@@ -1715,11 +1715,28 @@ The work exponent has a fixed boundary in this ledger:
 | First hit on the selected M32 route | $2^{45.292}$ | Finite-support expectation, conditional on a hit by plan end |
 | Complete one-target IC solve | unknown | No natural n=83 relation or independently verified IC scalar yet |
 
+The n=53 control did recover and independently verify one target in
+117.94 seconds online with $2^{20.739}$ logical pair samples across cold
+table construction and target search. It has no measured field-operation
+total. On the exact n=83 base, the eight completed physical x86 Q1069
+M32/R29 rectangles took 9,672.04–12,158.11 seconds of target-online
+query and replay each, with zero exact hits; each rectangle models
+$2^{39.371}$ native field calls including its reusable table build.
+The n=53 sample count, n=83 modeled field calls, and online wall times
+have different boundaries and cannot be fitted into a measured n=83
+solve exponent.
+
 The field-call boundary counts table construction and replay and the
 representative-query point arithmetic. It excludes Bloom/key operations,
 memory and disk traffic, failed attempts with unknown operation counts,
 base construction, and scalar replay. These omissions prevent the
 conditional first-hit model from being reported as complete solve work.
+For one n=83 rectangle with $M$ table descriptors and $R$ query
+representatives, the frozen arithmetic count is
+$C(M,R)=26M+13R+13\cdot83R+90(2\lceil M/1024\rceil+2\lceil R/8\rceil)$.
+The 90-call inversion equivalent and exceptional-pair treatment are model
+assumptions. Table build is included in $C$ but excluded from the
+single-target online wall interval because the table is reusable.
 
 ### First M31 wave receipts and disjoint M32 wave (Q1069)
 
