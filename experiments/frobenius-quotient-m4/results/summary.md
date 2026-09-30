@@ -9,5 +9,6 @@
 | 13 | 2 | 39 | 5.29 | 3 | planted | 6 | 0 | 0 | 0 | 0 | 103.44 |
 | 13 | 2 | 39 | 5.29 | 3 | random | 6 | 0 | 0 | 0 | 0 | 9.71 |
 | 15 | 2 | 45 | 5.49 | 3 | planted | 3 | 0 | 0 | 0 | 0 | 215.65 |
+| 15 | 2 | 45 | 5.49 | 3 | random | 1 | 0 | 2 | 0 | 0 | 172.05 |
 
 Slope of log2(median random-arm CPU) on log2 B over 4 uncensored cells: 1.34 (descriptive; cells differ in n as well as B).
