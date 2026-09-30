@@ -1311,6 +1311,21 @@ or failed receipt used by the Q1062 campaign and work report. These are
 proposal-stage records: `candidate_id` and `run_id` remain null. The
 campaign status and work report include the contract source hash.
 
+The [independent Sage receipt verifier](verify_n83_quotient_receipt_sage.py)
+rebuilds four factor-base points and their signed-Frobenius logs from the
+archived key/log artifact. It converts the type-II normal-basis coordinates
+to Sage's polynomial basis, checks each point against the generator, adds
+the four points, and replays the recovered scalar against the receipt's
+target. Its [planted control](runs/n83_sage_planted_relation_verify_v2.json)
+passes all four-point and scalar checks, while the
+[public zero-hit control](runs/n83_sage_public_zero_receipt_verify.json)
+reports no verified relation. A one-unit change to the planted recovered
+scalar was rejected at the factor-base-log sum assertion. Both controls
+used the checked [Sage runtime](runs/n83_sage_relation_verify_runtime_info.json).
+The planted control is a correctness check, not a natural-relation yield
+measurement. A future natural public-target certificate must pass this
+verifier before its DLP is counted independently verified.
+
 The [guarded Q1062 campaign](n83_full_spill_campaign.py) inspects all
 117 named full ranges, refuses a competing n=83 start marker or an
 already verified Q1060 scalar, and requires 10 GiB of system-volume
