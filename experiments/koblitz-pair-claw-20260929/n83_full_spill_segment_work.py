@@ -9,6 +9,7 @@ import n83_full_spill_work as work
 import n83_m32_ci_ingest as m32_portable
 import n83_m32_group_ci_ingest as m32_group
 import n83_m32_wave_ci_ingest as m32_wave
+import n83_m32_wave_q1075_ci_ingest as m32_wave_q1075
 import n83_portable_ci_ingest as portable
 from n83_full_spill_screen import field_calls
 from n83_identity_contract import validate_receipt, validate_reference
@@ -149,6 +150,9 @@ def m32_ci_rows(screen):
         ("n83_portable_q1069_M32_R29_ci_*/bundle.json",
          "n83_q1069_physical_x86_M32_R29_ci_bundle", "Q1069",
          1 << 29, None, m32_wave),
+        ("n83_portable_q1075_M32_R29_ci_*/bundle.json",
+         "n83_q1075_physical_x86_M32_R29_ci_bundle", "Q1075",
+         1 << 29, None, m32_wave_q1075),
     )
     for pattern, kind, proposal, query_reps, query_start, ingester in specs:
         for bundle_path in sorted(RUNS.glob(pattern)):
@@ -178,7 +182,7 @@ def m32_ci_rows(screen):
             assert bundle["source_sha256"] == work.sha(
                 Path(ingester.__file__))
             assert bundle["plan_sha256"] == work.sha(ingester.PLAN)
-            if proposal in ("Q1068", "Q1069"):
+            if proposal in ("Q1068", "Q1069", "Q1075"):
                 plan = json.loads(ingester.PLAN.read_text())
                 assert bundle["frozen_workflow_sha256"] == plan[
                     "workflow_sha256"]
@@ -205,7 +209,7 @@ def m32_ci_rows(screen):
                 failed.append((full_path, row))
             else:
                 assert row["kind"] == work.SUCCESS_KIND
-                if proposal == "Q1069":
+                if proposal in ("Q1069", "Q1075"):
                     ingester.verify_row(screen, full_path, full=True,
                                         query_start=bundle["query_start"])
                 else:
@@ -416,6 +420,31 @@ def main():
     failures = [failed_record(path, row) for path, row in
                 failed_q1060 + failed_full + failed_seg + failed_q1061_ci +
                 failed_m32_ci + failed_local_m32]
+    interrupted_markers = set()
+    interrupted_q1073 = RUNS / "n83_local_arm_m33_q1073_interrupted.json"
+    if interrupted_q1073.exists():
+        interruption = json.loads(interrupted_q1073.read_text())
+        marker = RUNS / "n83_local_arm_m33_q1073.started.json"
+        assert interruption["kind"] == (
+            "n83_q1073_local_arm_M33_R29_interrupted_attempt")
+        assert interruption["status"] == (
+            "interrupted_no_terminal_search_receipt")
+        assert interruption["curve_id"] == screen["curve_id"]
+        assert interruption["factor_base_enumerated_set_sha256"] == screen[
+            "factor_base"]["enumerated_set_sha256"]
+        assert interruption["start_marker_sha256"] == work.sha(marker)
+        assert not (RUNS / "n83_local_arm_m33_q1073.json").exists()
+        assert not interruption["coverage_credited"]
+        failures.append({
+            "path": repo_path(interrupted_q1073),
+            "sha256": work.sha(interrupted_q1073),
+            "query_start": interruption["query_start"],
+            "query_representatives": interruption["query_representatives"],
+            "native_phase_counts": None,
+            "resource_guard_reason": "interrupted_without_terminal_receipt",
+            "resource_guard_receipt_sha256": None,
+        })
+        interrupted_markers.add(marker)
     cell_fraction = (M28 /
                      base["zero_pair_key_cap_before_accidental_collisions"]
                      * R27 * base["factor_base"]["signed_frobenius_orbit_size"]
@@ -633,7 +662,8 @@ def main():
             incomplete_q1061_ci,
         "noncompleted_M32_ci_bundles": noncompleted_m32_ci,
         "active_start_markers_excluded": [repo_path(path) for path in sorted(
-            RUNS.glob("n83_*.started.json"))],
+            RUNS.glob("n83_*.started.json")) if path not in
+            interrupted_markers],
         "future_R27_segment_count": len(future),
         "future_R27_segment_spans": compressed_starts(
             [i * R30 + s * R27 for i, s in future]),
@@ -683,6 +713,8 @@ def main():
             HERE / "n83_m32_group_ci_ingest.py"),
         "m32_wave_ci_ingest_source_sha256": work.sha(
             HERE / "n83_m32_wave_ci_ingest.py"),
+        "m32_wave_q1075_ci_ingest_source_sha256": work.sha(
+            HERE / "n83_m32_wave_q1075_ci_ingest.py"),
         "local_M32_Q1071_plan_sha256": work.sha(
             HERE / "n83_local_arm_m32_q1071_plan.json"),
         "portable_native_source_sha256": work.sha(portable.SOURCE),

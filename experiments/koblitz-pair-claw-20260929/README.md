@@ -1703,8 +1703,8 @@ additional calls and $2^{45.292}$ selected-route modeled native field
 calls including completed receipts. The median is 27 calls
 ($2^{44.993}$); the 95% quantile is 117 calls ($2^{46.492}$).
 These are **model outputs**, not measured relation yield, elapsed time,
-or complete operation-equivalent solve work. Q1073 is in flight and is
-excluded until its terminal receipt is audited.
+or complete operation-equivalent solve work. The interrupted Q1073 attempt
+has unknown arithmetic work and receives no coverage credit.
 
 The work exponent has a fixed boundary in this ledger:
 
@@ -1834,10 +1834,14 @@ M33/R29 workload. All gates passed in the
 [preflight receipt](runs/n83_local_arm_m33_q1073_preflight.json); the
 [checked Sage runtime](runs/n83_local_arm_m33_q1073_runtime_info.json)
 was saved before the physical ARM run started at 2026-09-30 15:01 UTC.
-Its [start marker](runs/n83_local_arm_m33_q1073.started.json) is not a
-terminal search receipt. Its candidate, run, measured relation yield,
-and complete-solve-work fields remain null until a terminal receipt is
-audited.
+The wrapper and native process later disappeared without a terminal
+receipt. The preserved [interruption record](runs/n83_local_arm_m33_q1073_interrupted.json)
+binds the [start marker](runs/n83_local_arm_m33_q1073.started.json),
+preflight, and runtime hashes; its operation counts, exact-hit result,
+and completed coverage are **unknown**. No Q1073 coverage is credited.
+Its candidate, run, measured relation yield, and complete-solve-work
+fields remain null. A retry needs separate artifacts and must charge this
+interrupted attempt as unknown work.
 
 ### Conditional one-table R30 continuation (Q1074)
 
@@ -1855,9 +1859,27 @@ Q1073 to finish with zero exact hits and an independent checked-Sage
 audit. It checks the curve, actual B, folded columns, base digest, source
 hashes, public target, query disjointness, physical ARM backend, and
 fresh host memory and spill space before saving the checked Sage runtime
-and starting a job. Its negative preflight test stopped at the live Q1073
-start marker without launching Q1074. The proposal retains null candidate
-and run IDs; no Q1074 performance or relation is yet measured.
+and starting a job. Its negative preflight test stopped at Q1073's start
+marker without launching Q1074. Because Q1073 has no audited zero-hit
+terminal receipt, Q1074 remains closed. The proposal retains null
+candidate and run IDs; no Q1074 performance or relation is yet measured.
+
+### Next disjoint physical x86 wave (Q1075)
+
+The [frozen eight-job plan](n83_m32_wave_q1075_plan.json) starts at query
+position 13,958,643,712, exactly after Q1074's proposed interval, and
+ends at 18,253,611,008. All eight M=$2^{32}$, R=$2^{29}$ intervals are
+disjoint from completed search receipts and from Q1073/Q1074. The plan
+retains the same fixed public target, curve ID, exact 8,000,204-point
+factor base, 48,194 signed-Frobenius columns, and `isogeny: "none"`.
+Together the jobs model $2^{42.371}$ native field calls and an 18.96%
+finite-support hit chance. These are predictions, not measured solve work
+or natural relation yield. The [one-shot workflow](../../.github/workflows/n83-portable-quotient-m32-wave-q1075.yml)
+uses physical x86 PCLMUL, per-host memory and disk gates, a bounded exact
+control, terminal checks, and artifact upload. The
+[ingester](n83_m32_wave_q1075_ci_ingest.py) preserves failures and exact
+hits for independent checked-Sage replay. Q1075 keeps null candidate
+and run IDs until a complete method is identified.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
