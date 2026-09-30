@@ -811,6 +811,16 @@ def main():
                 finite_segment_intensity - quotient_segment_intensity) /
                 quotient_segment_intensity,
         },
+        "M32_completed_zero_hit_model_check": {
+            "unique_completed_primary_and_M32_extension_cells":
+                len(all_covered),
+            "modeled_mean_hits_on_those_cells": m32_start_intensity,
+            "modeled_probability_of_zero_hits_on_those_cells":
+                math.exp(-m32_start_intensity),
+            "observed_zero_exact_hits_in_terminal_receipts":
+                not verified_dlp and not unverified_hits,
+            "scope": "Frozen finite-support Poisson placement heuristic on unique primary and M32-extension cells only; active attempts and M33-only shards are excluded. This is a model check, not measured relation yield or a calibrated probability.",
+        },
         "completed_selected_route_field_calls": str(charged),
         "completed_selected_route_field_calls_log2": math.log2(charged),
         "completed_measured_search_work": {
