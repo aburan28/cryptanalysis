@@ -979,9 +979,14 @@ def main():
             "all_remaining_grouped_calls_field_calls_log2":
                 math.log2(len(m32_groups) * m32_cost)
                 if m32_groups else None,
+            "selected_route_field_calls_if_all_remaining_groups_run":
+                str(charged + len(m32_groups) * m32_cost),
+            "selected_route_field_calls_if_all_remaining_groups_run_log2":
+                math.log2(charged + len(m32_groups) * m32_cost),
             "limits": [
                 "This is a finite-support placement model, not measured relation yield or a completed DLP.",
                 "Active wave and Q1068 jobs are excluded until terminal receipts are ingested.",
+                "The all-groups-run total charges every planned rectangle even if none hits; it is not an upper bound on complete solve work or a guarantee of a hit.",
                 "Every projected group rebuilds its M32 table; failed attempts and non-field work are omitted from the field-call model.",
             ],
         }

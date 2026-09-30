@@ -1718,9 +1718,17 @@ hit within that finite plan, the expected first hit is after 38.29
 additional calls and $2^{45.494}$ selected-route modeled native field
 calls including completed receipts. The median is 27 calls
 ($2^{45.239}$); the 95% quantile is 117 calls ($2^{46.584}$).
+Running all 217 remaining rectangles, including a possible no-hit outcome,
+models $2^{47.132}$ additional calls. Together with completed R27-grid
+receipts, this finite search-stage route models **176,562,433,425,408
+($2^{47.327}$) calls**. Its 99.535% hit probability is a hypothesis of
+the frozen placement model, so exhausting the route does not guarantee a
+relation or bound complete solve work.
 These are **model outputs**, not measured relation yield, elapsed time,
-or complete operation-equivalent solve work. The first interrupted Q1073
-attempt has unknown arithmetic work and receives no coverage credit;
+or complete operation-equivalent solve work. They apply to the exact
+$n=83$ curve and base; they are not an $n=131$ projection. The first
+interrupted Q1073 attempt has unknown arithmetic work and receives no
+coverage credit;
 its independently audited retry is charged and credited. The active Q1074
 attempt receives no work or coverage credit yet. Q1080's
 partial R24 interval is charged separately and is omitted from this R27
@@ -1746,6 +1754,7 @@ The work exponent has a fixed boundary in this ledger:
 | Q1080 four paired M28/R24 attempts | $2^{36.582}$ | Charged separately; one novel partial rectangle, zero full R27 cells |
 | All successful terminal attempts through Q1073, Q1075, and Q1080 | $2^{44.350}$ | Sum of the preceding charged work; Q1074 active work excluded |
 | First hit on the selected M32 route | $2^{45.494}$ | Finite-support expectation, conditional on a hit by plan end |
+| Exhaust all 217 selected M32 rectangles, plus completed grid receipts | $2^{47.327}$ | Finite search-stage arithmetic model, including a no-hit outcome; excludes Q1080 partial work, active and failed attempts, non-field costs, and complete DLP recovery |
 | Complete one-target IC solve | unknown | No natural n=83 relation or independently verified IC scalar yet |
 
 The n=53 control did recover and independently verify one target in
