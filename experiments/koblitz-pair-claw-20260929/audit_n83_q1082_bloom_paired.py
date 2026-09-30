@@ -155,6 +155,8 @@ def audit(bundle, github_run_id, artifact_digest, head_sha):
     b20_online = [rows[i]["target_online_seconds"] for i in (0, 3)]
     b16_online = [rows[i]["target_online_seconds"] for i in (1, 2)]
     online_ratio = ratios(b20_online, b16_online)
+    b20_full = [rows[i]["wrapper_subprocess_wall_seconds"] for i in (0, 3)]
+    b16_full = [rows[i]["wrapper_subprocess_wall_seconds"] for i in (1, 2)]
     assert math.isclose(paired["median_target_online_speedup_b20_over_b16"],
                         online_ratio["ratio_of_medians"])
     return {
@@ -181,6 +183,11 @@ def audit(bundle, github_run_id, artifact_digest, head_sha):
         "exact_replay_seconds": paired["exact_replay_seconds"],
         "target_online_seconds": paired["target_online_seconds"],
         "target_online_speedup_b20_over_b16": online_ratio,
+        "target_independent_filter_build_seconds": {
+            name: row["target_independent_filter_build_seconds"]
+            for name, row in zip(ORDER, rows)},
+        "full_wrapper_seconds": paired["wrapper_subprocess_wall_seconds"],
+        "full_wrapper_speedup_b20_over_b16": ratios(b20_full, b16_full),
         "modeled_native_field_calls_four_runs_log2": plan[
             "modeled_four_run_field_calls_log2"],
         "novel_coverage_cells": 0,
