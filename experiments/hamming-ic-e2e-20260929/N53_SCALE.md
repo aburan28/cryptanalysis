@@ -88,7 +88,9 @@ seconds, even with all five base x values supplied. The diagnostic wall
 includes formula extraction, unit-clause writing, solver execution, and model
 checking; it is not an IC online time or a natural relation-yield estimate.
 The unpinned N53 gate remains negative. A next solver variant needs to handle
-the middle-coordinate chain before an ordinary-target or N83 promotion.
+the middle-coordinate chain; the separate raw-target coverage gate below
+also needs a different base or summand policy before an ordinary-target or
+N83 promotion.
 
 An [exact S3 root control](n53_s3_root_control.py) handles that chain once
 the five base x values are supplied. Writing S3 as
@@ -100,6 +102,41 @@ control checked that the root set contains the actual group-sum x value for
 every sampled factor-base pair. The [receipt](runs/n53_s3_root_v1/receipt.json)
 binds the exact source, seed, inputs, and results. This is a control with
 five supplied x values, not a natural-target search or a complete IC method.
+
+## Raw-target coverage and a larger-base screen
+
+The S3 circuit searches for five **raw** curve points whose sum is exactly
+the supplied target point. The factor base, however, stores their images
+under multiplication by the cofactor 428. For a raw sum to equal a target in
+the order-`r` subgroup, the raw points' cofactor-torsion components must sum
+to zero. The weight-two base has 954 points whose `[r]P` has order 107 and
+742 whose `[r]P` has order 214; none has cofactor order 428.
+
+The [coverage audit](audit_n53_raw_coverage.py) counted the torsion classes
+of all 1,696 raw points and used generating-function convolution to count
+all five-point multisets with repetition. Of
+**117,626,840,087,840** multisets, exactly **549,681,461,808** have a sum
+in the order-`r` subgroup. Each such multiset can hit at most one subgroup
+point, so at most **2.6119513682%** of *uniformly selected subgroup targets*
+can be represented by this raw five-sum base. This is a rigorous support
+upper bound, not an estimate of SAT success or proof that the particular
+frozen target is unreachable. The [receipt](runs/n53_raw_coverage_v1/receipt.json)
+binds the base, torsion-class digest, exact count, and source. A
+[checked-Sage replay](runs/n53_raw_coverage_v1/sage_replay.json) independently
+verified the curve order, all torsion classes, and the count through Newton
+identities in the cyclic group ring. The checked runtime is archived
+[alongside it](runs/n53_raw_coverage_v1/sage_runtime_info.json).
+
+A separate [weight-three geometry screen](audit_n53_weight3_geometry.py)
+changes the controlled base and summand count. It enumerates 23,426 actual
+usable projected points before folding and 221 signed Frobenius columns;
+the [direct enumeration replay](runs/n53_weight3_geometry_v1/direct_replay.json)
+agrees with the orbit-based [geometry receipt](runs/n53_weight3_geometry_v1/receipt.json).
+For four raw summands, the multiset count divided by the full curve order is
+1.393486512638. This is only a combinatorial design screen; neither a
+natural relation yield nor a solved target follows from it. It identifies
+weight-three/four-summand root indexing as the next complete N53 proposal
+to test, with a new exact manifest and paired one-target accounting.
 
 To regenerate a new immutable stage directory on this host:
 
