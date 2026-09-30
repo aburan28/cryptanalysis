@@ -130,8 +130,9 @@ What the completed cells show, and do not:
   small at once; this ladder already shows the `n` dependence is not.
 - **`n = 15` is where the random arm starts to censor.** Two of three
   random targets exhausted the 900 s budget (censored, not UNSAT); the third
-  decomposed in 172 s. The cell's random median is therefore not reported,
-  and the slope printed by `summarize.py` uses only uncensored cells.
+  decomposed in 172 s. The table's 172 s for that arm is the one completed
+  instance, not a median of the cell; the slope printed by `summarize.py`
+  excludes any cell with a censored instance.
 - **At these sizes the random arm is not the regime that matters.** The
   base is large relative to the group, so every random target decomposed
   (and quickly: median 9.7 s at `n = 13`, below the planted 103 s, because
