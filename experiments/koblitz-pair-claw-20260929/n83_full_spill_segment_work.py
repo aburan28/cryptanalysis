@@ -335,6 +335,9 @@ def q1079_ci_rows(screen):
         sage_path = bundle_path.parent / "sage_verify.json"
         runtime_path = bundle_path.parent / "runtime_info.json"
         if not sage_path.exists() or not runtime_path.exists():
+            assert not row["native_result"]["exact_hit_queries"], (
+                "Q1079 exact hit requires independent Sage audit before "
+                "the zero-hit conditional ledger can be regenerated")
             noncompleted.append({"bundle": repo_path(bundle_path),
                                  "sha256": work.sha(bundle_path),
                                  "status": "pending_independent_sage_audit"})
@@ -590,6 +593,9 @@ def local_m33_q1074_rows(screen):
     assert int(row["native_field_add_mul_sqr_call_model"]) == field_calls(
         M33, R30)
     if not sage_path.exists():
+        assert not row["native_result"]["exact_hit_queries"], (
+            "Q1074 exact hit requires independent Sage audit before "
+            "the zero-hit conditional ledger can be regenerated")
         return [], [], {}, {}, [{
             "path": repo_path(receipt_path),
             "sha256": work.sha(receipt_path),
