@@ -129,12 +129,12 @@ def preflight(plan, spill_dir):
 
     assert platform.machine().lower() in ("arm64", "aarch64")
     assert sys.platform == "darwin"
-    system_bytes = int(subprocess.run(
-        ["sysctl", "-n", "hw.memsize"], check=True,
-        capture_output=True, text=True).stdout.strip())
     pressure = subprocess.run(
         ["memory_pressure", "-Q"], check=True,
         capture_output=True, text=True).stdout
+    capacity = re.search(r"The system has\s+(\d+)\s+\(", pressure)
+    assert capacity, "cannot parse memory_pressure system capacity"
+    system_bytes = int(capacity.group(1))
     match = re.search(r"System-wide memory free percentage:\s*(\d+)%",
                       pressure)
     assert match, "cannot parse memory_pressure free percentage"

@@ -1691,28 +1691,28 @@ target-independent filter setup; target-online query and replay took
 run, while the placement probability remains unvalidated by natural
 yield. The workflow was disabled for subsequent PR commits.
 
-The [coverage-aware work ledger](n83_full_spill_segment_work.json) now
-also projects a distinct future M32/R29 route. It retains both the 318
-completed primary M28-by-R27 cells and the 80 completed extra-table
-cells, then orders the remaining aligned R29 rectangles by new coverage.
-Under the same frozen finite-support placement model, 234 future M32/R29
-calls cover the entire M32-by-query domain, with a 99.702% conditional
-chance of at least one hit. Conditional on a hit within that finite plan,
-the expected first hit is after 38.40 additional calls and $2^{45.089}$
-selected-route modeled native field calls including completed receipts.
-The median is 27 calls ($2^{44.737}$); the 95% quantile is 117 calls
-($2^{46.407}$). These are **model outputs**, not measured relation yield,
-elapsed time, or complete operation-equivalent solve work. In-flight
-receipts are excluded until terminal, and the estimate will be recomputed
-after their coverage is known.
+The [coverage-aware work ledger](n83_full_spill_segment_work.json) also
+projects a distinct future M32/R29 route. After all eight Q1069 wave
+receipts and Q1071, it retains 574 completed primary M28-by-R27 cells
+and 336 completed extra-table cells, then orders the remaining aligned
+R29 rectangles by new coverage. Under the frozen finite-support placement
+model, 226 future M32/R29 calls cover the entire M32-by-query domain,
+with a 99.633% conditional chance of at least one hit. Conditional on a
+hit within that finite plan, the expected first hit is after 38.36
+additional calls and $2^{45.292}$ selected-route modeled native field
+calls including completed receipts. The median is 27 calls
+($2^{44.993}$); the 95% quantile is 117 calls ($2^{46.492}$).
+These are **model outputs**, not measured relation yield, elapsed time,
+or complete operation-equivalent solve work. Q1073 is in flight and is
+excluded until its terminal receipt is audited.
 
 The work exponent has a fixed boundary in this ledger:
 
 | Quantity | $2^x$ native field calls | Status |
 | --- | ---: | --- |
 | One complete M32/R29 rectangle | $2^{39.371}$ | Modeled attempt cost, with no hit required |
-| Completed disjoint search receipts | $2^{43.204}$ | Modeled calls over measured terminal coverage |
-| First hit on the selected M32 route | $2^{45.089}$ | Finite-support expectation, conditional on a hit by plan end |
+| Completed disjoint search receipts | $2^{43.847}$ | Modeled calls over measured terminal coverage |
+| First hit on the selected M32 route | $2^{45.292}$ | Finite-support expectation, conditional on a hit by plan end |
 | Complete one-target IC solve | unknown | No natural n=83 relation or independently verified IC scalar yet |
 
 The field-call boundary counts table construction and replay and the
@@ -1737,8 +1737,8 @@ have no terminal search receipt, measured work, or credited coverage.
 Before Q1068, the [coverage ledger](n83_full_spill_segment_work.json)
 had 254/7,552 primary cells and $2^{42.986}$ completed modeled field
 calls. Q1068 added 32 primary and 32 M32-extension cells and
-710,766,755,840 more modeled field calls; the current totals appear
-above.
+710,766,755,840 more modeled field calls; Q1069 then added 256 primary
+and 256 M32-extension cells. The current totals appear above.
 
 The [Q1069 frozen launch plan](n83_m32_wave_launch_plan.json) chooses
 eight M32/R29 rectangles at query starts 7,516,192,768 through
@@ -1748,12 +1748,20 @@ target, B=8,000,204 base, 48,194 folded columns, base digest, and
 `isogeny: "none"` are pinned in the plan. It models $2^{42.371}$ native
 field calls for all eight jobs and an 18.96% heuristic chance of a hit.
 The [physical x86 workflow](../../.github/workflows/n83-portable-quotient-m32-wave.yml)
-uses eight parallel jobs, per-host resource gates, a bounded control,
-and terminal receipts. The [ingester](n83_m32_wave_ci_ingest.py) preserves
-failures and archives each job by query start. Q1069 is a stage proposal
-with null candidate and run IDs; the eight-job hit probability is not
-measured relation yield. Any native hit requires independent checked-Sage
-witness replay before a DLP or solve-work claim.
+used eight parallel jobs, per-host resource gates, a bounded control,
+and terminal receipts. [Run 36706324060](https://github.com/aburan28/cryptanalysis/actions/runs/36706324060)
+completed all eight jobs with **zero exact hits** among 77,891,536 Bloom
+positives. Each archived bundle was checked by the
+[ingester](n83_m32_wave_ci_ingest.py) and an independent checked-Sage
+identity [audit](runs/n83_portable_q1069_M32_R29_ci_36706324060_qstart7516192768/sage_verify.json).
+The eight job walls range from 11,143.17 to 13,916.41 s, and target-online
+query plus replay ranges from 9,672.04 to 12,158.11 s. The latter sum to
+84,208.29 s across separate hosts and must not be interpreted as one
+continuous solve time. The wave charges $2^{42.371}$ modeled native field
+calls and adds 256 primary plus 256 M32-extension cells. Q1069 remains a
+stage proposal with null candidate and run IDs; its 18.96% frozen hit
+probability was a model prediction, not measured natural yield. No n=83
+IC DLP or complete-solve work is established.
 
 ### Representative-batch timing screen (Q1070)
 
@@ -1767,7 +1775,7 @@ positives and zero exact hits. Against batch 8, batch 16's two paired
 query-time ratios were 1.0372 and 0.9963; batch 32's were 1.0278 and
 0.9899. Both comparisons straddle one, while the median full-wall ratios
 were 0.9578 and 0.9599. This bounded ARM screen does not support a
-full-size x86 speedup, so the live Q1068 and Q1069 runs retain their
+full-size x86 speedup, so Q1068 and Q1069 retained their
 frozen batch-8 policy. Q1070 remains a stage diagnostic with null
 candidate/run IDs and no complete-solve work claim.
 
@@ -1818,8 +1826,18 @@ field calls and a 5.12% hit chance under the same finite-support placement
 heuristic. The plan is gated on terminal status for the active searches,
 independent replay of any supplied hits, no verified DLP, and at least
 24 GiB of free host memory and 2 GiB of free spill
-space. It has not run, and its candidate, run, and complete-solve-work
-fields remain null.
+space. The [guarded launcher](launch_n83_local_arm_m33_q1073.py) checks
+the exact curve and factor-base identities, source hashes, disjoint query
+range, audited prior zero-hit receipts, terminal Q1069 bundles, and current
+host resources. It records the checked Sage runtime before starting the
+M33/R29 workload. All gates passed in the
+[preflight receipt](runs/n83_local_arm_m33_q1073_preflight.json); the
+[checked Sage runtime](runs/n83_local_arm_m33_q1073_runtime_info.json)
+was saved before the physical ARM run started at 2026-09-30 15:01 UTC.
+Its [start marker](runs/n83_local_arm_m33_q1073.started.json) is not a
+terminal search receipt. Its candidate, run, measured relation yield,
+and complete-solve-work fields remain null until a terminal receipt is
+audited.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
