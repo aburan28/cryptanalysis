@@ -11,6 +11,9 @@ import json
 import math
 from pathlib import Path
 
+from n83_identity_contract import (sha as identity_sha, validate_receipt,
+                                   validate_reference)
+
 HERE = Path(__file__).resolve().parent
 RUNS = HERE / "runs"
 BASE = HERE / "n83_large_knownlog_base_screen.json"
@@ -42,10 +45,8 @@ def load_terminal_rows(pattern, proposal_id, screen):
         row = json.loads(path.read_text())
         if row.get("kind") not in (SUCCESS_KIND, FAILED_KIND):
             continue
+        validate_receipt(screen, row)
         assert row["proposal_id"] == proposal_id
-        assert row["candidate_id"] is None and row["isogeny"] == "none"
-        assert row["curve_id"] == screen["curve_id"]
-        assert row["public_target"] == screen["public_target"]
         digest = (row["factor_base"]["enumerated_set_sha256"]
                   if "factor_base" in row else
                   row["factor_base_enumerated_set_sha256"])
@@ -65,6 +66,8 @@ def main():
     first = json.loads(FIRST.read_text())
     assert base["proposal_id"] == first["proposal_id"] == "Q1051"
     assert screen["proposal_id"] == "Q1062"
+    validate_reference(screen)
+    validate_receipt(screen, first)
     assert all(row["candidate_id"] is None and row["isogeny"] == "none"
                for row in (base, screen, first))
     assert base["curve_id"] == screen["curve_id"] == first["curve_id"]
@@ -219,6 +222,8 @@ def main():
         ],
         "base_screen_sha256": sha(BASE),
         "Q1062_screen_sha256": sha(SCREEN),
+        "identity_contract_source_sha256": identity_sha(
+            HERE / "n83_identity_contract.py"),
         "source_sha256": sha(Path(__file__)),
     }
     OUTPUT.write_text(json.dumps(report, indent=2) + "\n")

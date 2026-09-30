@@ -18,6 +18,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from n83_identity_contract import (sha as identity_sha, validate_receipt,
+                                   validate_reference)
+
 HERE = Path(__file__).resolve().parent
 RUNS = HERE / "runs"
 SCREEN = HERE / "n83_full_spill_screen.json"
@@ -80,11 +83,8 @@ def inspect(screen):
             if marker.exists():
                 raise ValueError(f"terminal receipt retains start marker: {path}")
             row = json.loads(path.read_text())
+            validate_receipt(screen, row)
             assert row["proposal_id"] == "Q1062"
-            assert row["candidate_id"] is None
-            assert row["curve_id"] == screen["curve_id"]
-            assert row["isogeny"] == "none"
-            assert row["public_target"] == screen["public_target"]
             base_digest = (row["factor_base"]["enumerated_set_sha256"]
                            if "factor_base" in row else
                            row["factor_base_enumerated_set_sha256"])
@@ -164,7 +164,7 @@ def main():
     assert args.spill_dir.is_absolute() and args.spill_dir.is_dir()
     screen = json.loads(SCREEN.read_text())
     assert screen["proposal_id"] == "Q1062"
-    assert screen["candidate_id"] is None and screen["isogeny"] == "none"
+    validate_reference(screen)
     assert sha(RUNNER) == screen["runner_source_sha256"]
     assert sha(HERE / "native_n83_orbit_query_spill.cpp") == screen[
         "native_source_sha256"]
@@ -186,6 +186,8 @@ def main():
         "curve_id": screen["curve_id"],
         "factor_base_enumerated_set_sha256": screen["factor_base"][
             "enumerated_set_sha256"],
+        "identity_contract_source_sha256": identity_sha(
+            HERE / "n83_identity_contract.py"),
         "completed_full_ranges": len(completed),
         "failed_attempts_with_unknown_work": len(failed),
         "active_full_ranges": len(active),

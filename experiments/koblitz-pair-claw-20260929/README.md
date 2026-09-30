@@ -1298,6 +1298,14 @@ attempts, other same-target research work, keying, Bloom operations,
 SSD traffic, and scalar replay, so `complete_solve_work_log2` remains
 `null`.
 
+The [identity contract](n83_identity_contract.py) recomputes the curve ID
+from canonical sorted-key field/curve JSON, verifies the known-log base
+artifact and the actual pre-folding point count, and requires the exact
+field, curve, base, target, and absent-isogeny records in every completed
+or failed receipt used by the Q1062 campaign and work report. These are
+proposal-stage records: `candidate_id` and `run_id` remain null. The
+campaign status and work report include the contract source hash.
+
 The [guarded Q1062 campaign](n83_full_spill_campaign.py) inspects all
 117 named full ranges, refuses a competing n=83 start marker or an
 already verified Q1060 scalar, and requires 12 GiB of system-volume
