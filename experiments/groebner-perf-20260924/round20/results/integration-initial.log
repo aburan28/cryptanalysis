@@ -1,0 +1,30 @@
+Traceback (most recent call last):
+  File "<string>", line 5, in <module>
+    with PreparedIC(13,3,arm) as q:
+         ~~~~~~~~~~^^^^^^^^^^
+  File "/Volumes/SSD990/llm/tmp/cryptanalysis-packed-ic/experiments/groebner-perf-20260924/round20/ic_query.py", line 204, in __init__
+    self.backend = PDP(fb, arm, sanitizer=sanitizer)
+                   ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Volumes/SSD990/llm/tmp/cryptanalysis-packed-ic/experiments/groebner-perf-20260924/round20/ic_query.py", line 90, in __init__
+    self.query = TruthQuery(C.n, C.mod, C.b, 3, fb.l,
+                 ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+                            'combined' if arm == 'packed' else 'baseline', sanitizer=sanitizer)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Volumes/SSD990/llm/tmp/cryptanalysis-packed-ic/experiments/groebner-perf-20260924/round18/truth_query.py", line 14, in __init__
+    super().__init__(n, mod, b, m, ell, arm='native-or-python', sanitizer=sanitizer)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Volumes/SSD990/llm/tmp/cryptanalysis-packed-ic/experiments/groebner-perf-20260924/round17/public_query.py", line 45, in __init__
+    self.replay = replay(n, mod, b, arm, sanitizer=sanitizer)
+                  ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Volumes/SSD990/llm/tmp/cryptanalysis-packed-ic/experiments/groebner-perf-20260924/round17/public_replay.py", line 177, in replay
+    return NativeReplay(n, mod, b, sanitizer=sanitizer)
+  File "/Volumes/SSD990/llm/tmp/cryptanalysis-packed-ic/experiments/groebner-perf-20260924/round17/public_replay.py", line 116, in __init__
+    self.binary_sha256 = hashlib.sha256(self.path.read_bytes()).hexdigest()
+                                        ~~~~~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py", line 625, in read_bytes
+    with self.open(mode='rb') as f:
+         ~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py", line 537, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Volumes/SSD990/llm/tmp/cryptanalysis-packed-ic/experiments/groebner-perf-20260924/round17/build/replay.dylib'

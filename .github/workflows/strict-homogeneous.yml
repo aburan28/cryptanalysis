@@ -1,0 +1,58 @@
+name: strict-homogeneous
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/homogeneous-fraction/**'
+      - '.github/workflows/strict-homogeneous.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  graded-f4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: experiments/homogeneous-fraction
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Macaulay2 1.22
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends macaulay2 python3-numpy
+          M2 --version
+      - name: Generate paired saturated ideals and verify the Boolean chart
+        run: |
+          python3 -m py_compile math_model.py block_fraction_solver.py strict_multigraded.py run_strict_multigraded.py homogeneous_components.py
+          python3 run_strict_multigraded.py --repeats 2 --timeout 90
+      - name: Compare explicit homogeneous degree components with identical flat rows
+        run: python3 homogeneous_components.py --repeats 2 --timeout 30 --output strict_runs/component_results.json
+      - name: Verify packed one-step homogeneous bitset algebra
+        run: |
+          python3 -m py_compile math_model.py homogeneous_bitset.py probe_k3_homogeneous_bitset.py probe_k3_homogeneous_targetonly.py verify_homogeneous_bitset.py
+          python3 verify_homogeneous_bitset.py --out strict_runs/homogeneous_bitset_verification.json
+      - name: Check subgroup-valid relation accounting and high-fidelity base
+        run: |
+          python3 -m py_compile relation_gate.py probe_large.py verify_probe.py compiled_control.py run_matched_prefix.py m83_feasibility.py verify_relation_gate.py goal_check.py
+          python3 relation_gate.py --attempts 80 --target-rank 8 --seeds 20260927 --repeats 1 --out strict_runs/relation_gate_ci.json
+          python3 verify_relation_gate.py strict_runs/relation_gate_ci.json
+          python3 compiled_control.py --out strict_runs/compiled_control_ci.json
+          python3 verify_relation_gate.py strict_runs/compiled_control_ci.json
+          python3 verify_probe.py relation_probe_completed.json
+          python3 goal_check.py --baseline strict_runs/compiled_control_ci.json --probe relation_probe_completed.json --out strict_runs/goal_ci.json
+          python3 goal_check.py --baseline compiled_control_results.json --probe relation_probe_completed.json --prefix matched_prefix_results.json --out strict_runs/goal_matched_ci.json
+          python3 -c 'import json; r=json.load(open("matched_prefix_results.json")); assert r["status"] == "early_stopped_cannot_meet_2x" and all(x["single_target_lower_bound_exceeds_2x_budget"] for x in r["runs"])'
+          python3 m83_feasibility.py
+      - name: Attempt larger paired n=7, k=1 solve within a per-arm time budget
+        if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        run: python3 run_strict_multigraded.py --extended-only --repeats 1 --timeout 60 --out strict_runs/extended
+      - name: Preserve raw inputs, logs and receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-homogeneous-graded-f4
+          path: experiments/homogeneous-fraction/strict_runs/

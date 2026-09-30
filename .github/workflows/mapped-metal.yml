@@ -1,0 +1,97 @@
+name: Mapped Metal buffer verification
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round24/**'
+      - 'experiments/groebner-perf-20260924/round23/**'
+      - 'experiments/groebner-perf-20260924/round22/**'
+      - 'experiments/groebner-perf-20260924/round20/build.py'
+      - 'experiments/groebner-perf-20260924/round18/**'
+      - 'experiments/groebner-perf-20260924/round17/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/groebner-perf-20260924/round2/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/mapped-metal.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round24/**'
+      - '.github/workflows/mapped-metal.yml'
+permissions:
+  contents: read
+concurrency:
+  group: mapped-metal-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  correctness:
+    name: Mapped buffer checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build portable CPU dependencies
+        run: |
+          mkdir -p mapped-metal-measurement
+          python -m pip install numpy==2.4.0
+          python experiments/groebner-perf-20260924/round20/build.py > mapped-metal-measurement/dependency-build.log 2>&1
+          python experiments/groebner-perf-20260924/round23/build.py > mapped-metal-measurement/sparse-build.log 2>&1
+      - name: Portable CPU, generation, admission and audit contracts
+        run: |
+          python -m unittest discover -s experiments/groebner-perf-20260924/round24 -p 'test_a*.py' -v > mapped-metal-measurement/contracts.log 2>&1
+          python -m unittest discover -s experiments/groebner-perf-20260924/round24 -p 'test_journal.py' -v > mapped-metal-measurement/journal.log 2>&1
+          python -m unittest discover -s experiments/groebner-perf-20260924/round24 -p 'test_cpu.py' -v > mapped-metal-measurement/cpu.log 2>&1
+          python experiments/groebner-perf-20260924/round24/verify_evidence.py > mapped-metal-measurement/evidence.log 2>&1
+      - name: Build and verify the actual Metal device
+        if: runner.os == 'macOS'
+        run: |
+          python experiments/groebner-perf-20260924/round22/build.py > mapped-metal-measurement/reference-build.log 2>&1
+          python experiments/groebner-perf-20260924/round24/build.py > mapped-metal-measurement/mapped-build.log 2>&1
+          experiments/groebner-perf-20260924/round24/build/test-mapped 256 > mapped-metal-measurement/device-optimized.log
+          experiments/groebner-perf-20260924/round24/build/test-mapped-ubsan 64 > mapped-metal-measurement/device-ubsan.log
+          python -m unittest discover -s experiments/groebner-perf-20260924/round24 -p 'test_gpu.py' -v > mapped-metal-measurement/integration.log 2>&1
+      - name: Complete five-arm correctness trace and journal audit
+        if: runner.os == 'macOS'
+        run: |
+          python experiments/groebner-perf-20260924/round24/benchmark.py --correctness-only --repetitions 2 --output mapped-metal-measurement/correctness.json.gz
+          python experiments/groebner-perf-20260924/round24/audit.py mapped-metal-measurement/correctness.json.gz > mapped-metal-measurement/correctness-audit.json
+      - name: Complete-query comparison after bounded load admission
+        if: runner.os == 'macOS' && github.event_name == 'pull_request'
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          out = pathlib.Path('mapped-metal-measurement')
+          metadata = {name: os.environ.get(name) for name in
+              ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS',
+               'RUNNER_ARCH', 'GITHUB_WORKFLOW_REF')}
+          (out/'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          root = pathlib.Path('experiments/groebner-perf-20260924/round24')
+          report = out/'paired.json.gz'
+          run = subprocess.run([sys.executable, str(root/'benchmark.py'), '--repetitions', '31',
+                                '--admission-wait-seconds', '240', '--output', str(report)])
+          if run.returncode == 2:
+              admission = json.loads(pathlib.Path(str(report)+'.admission.json').read_text())
+              assert not admission['admitted'] and admission['timed_attempts'] == 0
+              assert not report.exists()
+          else:
+              run.check_returncode()
+              with (out/'audit.json').open('w') as target:
+                  subprocess.run([sys.executable, str(root/'audit.py'), str(report)], stdout=target, check=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mapped-metal-measurement-${{ matrix.os }}
+          path: mapped-metal-measurement/
+          if-no-files-found: error
+          retention-days: 14
