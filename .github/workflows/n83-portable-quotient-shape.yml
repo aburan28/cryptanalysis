@@ -14,9 +14,9 @@ concurrency:
 
 jobs:
   physical-x86-m32-shape:
-    # One run on this PR branch. Disable this gate in the next commit after
-    # the initial run is created; the running checkout remains frozen.
-    if: github.event.pull_request.head.repo.full_name == 'aburan28/cryptanalysis' && github.event.pull_request.head.ref == 'codex/koblitz-pair-claw-toy'
+    # The one-shot run uses the frozen 25d0757f checkout. Keep subsequent
+    # PR updates from launching a second M32 search on the same interval.
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
