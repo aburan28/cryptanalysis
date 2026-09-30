@@ -2028,6 +2028,14 @@ The earlier [exploratory smoke](runs/n83_q1079_smoke_M20_R14.json) and
 are retained with their earlier wrapper source hash; the source-bound
 `smoke2` receipt above is the current runner control. A one-shot physical
 x86 PCLMUL workflow checks that same bounded rectangle on another host.
+The [physical x86 control](runs/n83_q1079_x86_ci_36769166764/audit.json)
+passed on [run 36769166764](https://github.com/aburan28/cryptanalysis/actions/runs/36769166764):
+the generated sources and binary match the archived hashes, the same
+247 Bloom positives and zero exact hits were reported, and the
+[independent checked-Sage replay](runs/n83_q1079_x86_ci_36769166764/sage_verify.json)
+found zero relations. Its 0.323 s target-online interval is a bounded
+M20/R14 control, not a full-size timing estimate. The one-shot workflow
+is disabled after this audit.
 The intended next intervals remain the disjoint Q1077 design, subject to
 terminal Q1073/Q1075 audits and a refreshed work ledger. Q1079 retains
 null candidate/run IDs and `isogeny: "none"`; its field-call model is
