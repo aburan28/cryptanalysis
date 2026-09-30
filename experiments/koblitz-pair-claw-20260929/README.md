@@ -2117,6 +2117,11 @@ The [Q1081 plan builder](n83_q1081_full_plan.py) enforces those gates and
 refuses to overwrite a frozen plan. Its current negative control refuses to
 freeze while the eight Q1079 audits are missing; no Q1081 executable plan
 or job has been created.
+The [Q1081 one-shot workflow](../../.github/workflows/n83-q1081-zero-run-m32-wave.yml)
+is committed with `if: false`. Its eight matrix starts, source and audit
+hash checks, physical x86 resource gate, bounded control, and terminal
+artifact retention are reviewable now; it cannot start until a frozen plan
+exists and a later change explicitly enables that one-shot dispatch.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
