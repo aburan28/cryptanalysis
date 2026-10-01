@@ -2278,6 +2278,11 @@ same-host wall gates, rechecks current coverage,
 and enforces ARM, memory, and SSD spill-space gates. Its checked-Sage
 [missing-plan negative test](runs/n83_q1084_missing_plan_gate.json) rejects
 before creating a preflight or runtime receipt; no Q1084 search has started.
+The coverage ledger now has a Q1084 path that preserves partial launches and
+failed searches without credit, and credits a completed M33/R30 interval
+only after its plan, preflight, runtime, native receipt, and checked-Sage
+audit agree. Its no-plan and synthetic-receipt gates pass; the refreshed
+ledger retains the previous completed-work totals.
 
 The [Q1085 conditional design](n83_m32_wave_q1085_design.json) reserves 32
 M32/R29 intervals after Q1084's reserved end, from query position
