@@ -123,6 +123,38 @@ def main():
     expected_index = sum(index * (cdf[index] - cdf[index - 1])
                          for index in range(1, JOBS + 1)) / cdf[-1]
     expected_calls = charged + expected_index * per_job
+    diagnostic = ledger["M32_completed_zero_hit_model_check"]
+    assert diagnostic["observed_zero_exact_hits_in_terminal_receipts"]
+    assert diagnostic["unique_completed_primary_and_M32_extension_cells"] == (
+        ledger["completed_disjoint_M28_by_R27_cells"] +
+        ledger["completed_M32_extension_M28_by_R27_cells"])
+    assert diagnostic["zero_hit_lower_mean_hits_per_cell"] == 0
+    modeled_rate = diagnostic["modeled_mean_hits_per_unique_cell"]
+    upper_rate = diagnostic[
+        "zero_hit_one_sided_95pct_upper_mean_hits_per_cell_if_independent_homogeneous_poisson"]
+    assert modeled_rate > 0 and upper_rate > modeled_rate
+    upper_multiplier = upper_rate / modeled_rate
+    intensities = [-math.log1p(-probability) for probability in cdf]
+    sensitivity = []
+    for label, multiplier in (("quarter_rate", 0.25),
+                              ("half_rate", 0.5),
+                              ("frozen_model", 1.0),
+                              ("double_rate", 2.0),
+                              ("zero_hit_95pct_upper_if_poisson",
+                               upper_multiplier)):
+        scenario_cdf = [-math.expm1(-multiplier * value)
+                        for value in intensities]
+        success = scenario_cdf[-1]
+        scenario_expected_index = sum(
+            index * (scenario_cdf[index] - scenario_cdf[index - 1])
+            for index in range(1, JOBS + 1)) / success
+        sensitivity.append({
+            "scenario": label,
+            "intensity_multiplier": multiplier,
+            "model_hit_probability_by_eight": success,
+            "conditional_expected_search_field_calls_log2": math.log2(
+                charged + scenario_expected_index * per_job),
+        })
     quantiles = {}
     for label in ("0.5", "0.8", "0.9", "0.95"):
         index = next((i for i in range(1, JOBS + 1)
@@ -154,6 +186,10 @@ def main():
         "first_hit_quantiles": quantiles,
         "model_probability_of_hit_by_eight": cdf[-1],
         "model_probability_of_no_hit_by_eight": 1 - cdf[-1],
+        "completed_zero_hit_diagnostic": diagnostic,
+        "intensity_multiplier_sensitivity": sensitivity,
+        "data_only_lower_hit_rate": 0,
+        "data_only_finite_upper_first_hit_work": None,
         "measured_natural_relation_count": 0,
         "measured_complete_solve_work_log2": None,
         "screen_sha256": sha(SCREEN), "base_sha256": sha(BASE),
@@ -164,6 +200,7 @@ def main():
             "The eight jobs are a projection only; dispatch requires a separate audited plan after Q1086's first terminal result.",
             "Q1074 and Q1083 are active at this frozen screen; their work and coverage are excluded until terminal audits.",
             "Probabilities use the frozen finite-support placement heuristic, not a measured n=83 natural-relation rate.",
+            "The rate sensitivity is a scenario calculation; zero observed hits give no positive data-only yield lower bound, and the Poisson upper-rate diagnostic assumes unvalidated independent homogeneous exposures.",
             "A no-hit outcome is possible; the eight-job route is not a complete-solve guarantee.",
             "Every job rebuilds its M34 table, and the work model includes credited historical attempts but excludes failed or active work of unknown cost.",
             "Field calls omit Bloom and keying, memory and disk, setup, and independent scalar replay; wall time and full-size ARM RSS are unmeasured.",

@@ -2382,6 +2382,18 @@ relation, measured complete-solve exponent, or full-size M34 memory and
 wall-time result follows from this projection. A further wave requires a
 separate audited plan after Q1086's first terminal receipt.
 
+The projection now includes a hit-rate sensitivity calculation. If the
+frozen heuristic overstates the true intensity by a factor of four, the
+eight-job hit probability falls to **55.70%**; at half the heuristic rate,
+it is **80.37%**. The zero-hit diagnostic on 2,510 completed primary and
+M32-extension cells gives a one-sided 95% upper rate of 2.924 times the
+heuristic only if those cells are independent homogeneous Poisson exposures.
+That assumption is unvalidated, and zero observed hits give a data-only
+lower rate of zero. Consequently there is no finite empirical upper bound
+on first-hit or complete-solve work from these observations. The
+$2^{45.229}$ figure remains explicitly conditional on the placement model
+and a hit within eight jobs.
+
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
 The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
