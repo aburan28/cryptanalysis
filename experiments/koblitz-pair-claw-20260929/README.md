@@ -1957,6 +1957,13 @@ archived native binary. The full wrapper took 16,222.99 s, including
 and replay took 10,924.53 s. Its regular native path models
 $2^{39.582}$ field calls. The earlier interrupted attempt remains unknown
 work and receives no coverage credit.
+Its stale start marker was preserved at
+[the reconciled archive path](runs/reconciled_start_markers/n83_local_arm_m33_q1073.started.json)
+after the same-range retry passed its terminal Sage audit. The
+[reconciliation receipt](runs/n83_local_arm_m33_q1073_attempt_reconciliation.json)
+binds both attempt digests and retains the interrupted attempt as unknown
+work with zero coverage credit. The coverage ledger accepts the archive only
+when its digest matches the original interruption record.
 The [host-resource intervention record](runs/n83_local_arm_m33_q1073_retry2_resource_intervention.json)
 documents a temporary system-volume free-space drop below 300 MiB while
 the native worker remained live. Two idle temporary worktrees' ignored
@@ -2135,23 +2142,24 @@ pin the enabled dispatch and its original work ledger after later updates.
 The [coverage/work ledger](n83_full_spill_segment_work.py) recognizes
 Q1079's full-size bundles and Q1074's local terminal receipt. It credits
 successful rectangles only after independent checked-Sage replay and keeps
-failed or pending audits visible without credit. Four Q1079 M32/R29 jobs
-have completed and passed that replay at query starts 18,790,481,920,
-19,864,223,744, 20,401,094,656, and 22,011,707,392. All four reported
-zero exact hits and zero verified relations. Their target-online intervals
-were 8,424.30, 7,835.68, 7,753.74, and 7,793.11 seconds respectively;
-these are separate physical x86 jobs, not one continuous solve interval.
+failed or pending audits visible without credit. Seven Q1079 M32/R29 jobs
+have completed and passed that replay at query starts 18,253,611,008,
+18,790,481,920, 19,327,352,832, 19,864,223,744, 20,401,094,656,
+20,937,965,568, and 22,011,707,392. All seven reported zero exact hits
+and zero verified relations. Their separate target-online intervals range
+from 7,753.74 to 9,197.34 seconds; these are physical x86 jobs, not one
+continuous solve interval.
 Their [archived receipts](runs/n83_zero_run_q1079_M32_R29_ci_36784663720_qstart18790481920/bundle.json)
 include the full artifact, source and binary identity, runtime information,
-and independent checked-Sage result. The other four jobs and local Q1074
+and independent checked-Sage result. The last Q1079 job and local Q1074
 remain active and uncredited. The dispatch plan remains bound to the frozen
 pre-dispatch coverage snapshot.
 
 Across successful terminal receipts, the refreshed ledger charges
-3,096,939,855,872 lifted query-pair tests ($2^{41.494}$), including repeated
-work. The selected-route arithmetic model charges $2^{44.517}$ native field
+3,364,301,570,048 lifted query-pair tests ($2^{41.613}$), including repeated
+work. The selected-route arithmetic model charges $2^{44.634}$ native field
 calls already completed; its conditional expected first-hit work is now
-$2^{45.573}$ native field calls, with a 95% model quantile of $2^{46.632}$.
+$2^{45.630}$ native field calls, with a 95% model quantile of $2^{46.660}$.
 Those are finite-support placement projections, not measured natural yield or
 a complete DLP work estimate. `complete_solve_work_log2` stays null.
 

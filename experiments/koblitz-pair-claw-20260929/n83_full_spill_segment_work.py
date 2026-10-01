@@ -767,7 +767,27 @@ def main():
     interrupted_q1073 = RUNS / "n83_local_arm_m33_q1073_interrupted.json"
     if interrupted_q1073.exists():
         interruption = json.loads(interrupted_q1073.read_text())
-        marker = RUNS / "n83_local_arm_m33_q1073.started.json"
+        original_marker = RUNS / "n83_local_arm_m33_q1073.started.json"
+        archived_marker = (RUNS / "reconciled_start_markers" /
+                           "n83_local_arm_m33_q1073.started.json")
+        reconciliation_path = (RUNS /
+                               "n83_local_arm_m33_q1073_attempt_reconciliation.json")
+        if original_marker.exists():
+            assert not archived_marker.exists() and not reconciliation_path.exists()
+            marker = original_marker
+        else:
+            assert archived_marker.is_file() and reconciliation_path.is_file()
+            marker = archived_marker
+            reconciliation = json.loads(reconciliation_path.read_text())
+            assert reconciliation["kind"] == (
+                "n83_q1073_attempt1_marker_reconciliation")
+            assert reconciliation["reconciliation"]["status"] == (
+                "attempt1_unknown_uncredited_retry2_terminal_zero_audited")
+            assert reconciliation["attempt1"]["coverage_credit"] == 0
+            assert reconciliation["attempt1"]["unknown_work_preserved"]
+            assert reconciliation["attempt1"]["start_marker_sha256"] == work.sha(marker)
+            assert reconciliation["attempt1"]["interruption_receipt_sha256"] == (
+                work.sha(interrupted_q1073))
         assert interruption["kind"] == (
             "n83_q1073_local_arm_M33_R29_interrupted_attempt")
         assert interruption["status"] == (
@@ -787,7 +807,7 @@ def main():
             "resource_guard_reason": "interrupted_without_terminal_receipt",
             "resource_guard_receipt_sha256": None,
         })
-        interrupted_markers.add(marker)
+        interrupted_markers.add(original_marker)
     cell_fraction = (M28 /
                      base["zero_pair_key_cap_before_accidental_collisions"]
                      * R27 * base["factor_base"]["signed_frobenius_orbit_size"]
