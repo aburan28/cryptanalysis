@@ -2299,6 +2299,26 @@ negative gate refuses the missing Q1083 plan without writing output. Q1085
 has no executable plan or workflow yet; the design's hit probability and
 complete-solve work remain null until the prior audits exist.
 
+The [Q1086 M34/R31 feasibility screen](n83_q1086_m34_feasibility.json)
+reserves a further disjoint range from query position 53,687,091,200 to
+55,834,574,848. One 16-bit Bloom job would add 1,024 fresh M28-by-R27
+cells for $2^{41.371}$ modeled native field calls, with 34.0% conditional
+hit probability under the same finite-support placement heuristic at the
+current audited coverage. This is a search-stage prediction, not a measured
+relation or complete-solve work. Q1083's 16 M32/R29 jobs would cover the
+same 1,024 cells for $2^{43.371}$ modeled field calls, so Q1086 uses one
+quarter of their modeled arithmetic; this does not compare elapsed time or
+host resources. The Bloom allocation is exactly 32.00006
+GiB for the current source. Scaling Q1082's physical x86 M28/R24 16-bit
+control by the 128-fold query count predicts 192.7 million Bloom positives,
+4.31 GiB of candidate spill, and 7.18 GiB of candidate-table slots. An
+independent 20-bit positive-count scaling from Q1073's physical ARM M33/R29
+result agrees with Q1082's 20-bit scaling within 0.21%, but neither validates
+full-size 16-bit ARM memory or wall time. The host has 48 GiB physical memory;
+Q1086 has no executable plan or run. A launch gate must wait for terminal
+Q1074 and Q1081 audits, extend the coverage ledger for M34 shards, verify a
+bounded compatible control, and check free memory and SSD space.
+
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
 The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
