@@ -2179,8 +2179,15 @@ for that wave. These are search-stage predictions, not measured natural yield
 or complete solve work. The builder refuses to overwrite the frozen plan.
 The [Q1081 one-shot workflow](../../.github/workflows/n83-q1081-zero-run-m32-wave.yml)
 has eight matrix starts, source and audit hash checks, a physical x86
-resource gate, bounded control, and terminal artifact retention. It is ready
-for one-shot dispatch from the frozen plan.
+resource gate, bounded control, and terminal artifact retention. It
+dispatched [run 36801654799](https://github.com/aburan28/cryptanalysis/actions/runs/36801654799)
+from the frozen plan. All eight physical x86 jobs passed their host and
+bounded-control checks and entered the full search. The workflow is disabled
+after dispatch to prevent later PR synchronizations from repeating the fixed
+intervals. The enabled
+[workflow snapshot](runs/n83_q1081_ci_36801654799_workflow_snapshot.yml)
+and [pre-dispatch coverage snapshot](runs/n83_q1081_ci_36801654799_coverage_snapshot.json)
+preserve the original run inputs for terminal audits.
 The [Q1081 artifact ingester](n83_q1081_full_ci_ingest.py) is staged
 for terminal source and identity checks. It reuses the hash-checked Q1079
 receipt verifier while preserving `Q1081` as the wave ID and `Q1079` as
