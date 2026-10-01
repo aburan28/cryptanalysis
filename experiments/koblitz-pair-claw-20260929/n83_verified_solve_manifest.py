@@ -29,6 +29,8 @@ def main():
     assert base["actual_usable_points_B_before_folding"] == 8000204
     assert base["signed_frobenius_columns"] == 48194
     assert hit["verified_public_target_quotient_table_dlp"]
+    assert hit["lifted_query_pairs"] == 166 * hit[
+        "query_representatives"]
     curve_id = hit["curve_id"]
     assert curve_id == "EC1N83Ckb1h" + digest(identity)[:12]
     curve = dict(identity["curve"], curve_id=curve_id)
@@ -69,7 +71,8 @@ def main():
             "stage_code": "PDP4qtable",
             "table_descriptors_per_job": hit["table_descriptors"],
             "query_representatives_per_job": hit["query_representatives"],
-            "query_pair_lifts": 83,
+            "signed_frobenius_rotations": 83,
+            "lifted_query_pairs_per_representative": 166,
             "table_schedule": hit["table_schedule"],
             "query_representative_schedule": hit[
                 "query_representative_schedule"],

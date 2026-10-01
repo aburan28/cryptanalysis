@@ -2573,7 +2573,7 @@ the Koblitz `b=1` curve, and its declared prime-order subgroup. The factor
 base has **8,000,204 actual usable points before folding**, represented by
 48,194 signed-Frobenius orbit columns, with enumerated-set digest
 `7e3c95f988225da1d586578529953ad61ae5ed62ca740eb92c2aea6d841a5a02`.
-There is no isogeny transport. The [exact method manifest](candidates/IC1N83Ckb1fb8000204PDP4qtableRCdirectLAnoneTDdirectISO0hfb53252590b0.json)
+There is no isogeny transport. The [exact method manifest](candidates/IC1N83Ckb1fb8000204PDP4qtableRCdirectLAnoneTDdirectISO0hd66302fd58d2.json)
 and [one-target workload link](n83_verified_solve_named_run.json) apply the
 `IC1` curve/base/stage digest and `W...R1` run naming convention. The raw
 Q1083 artifacts retain their original proposal IDs and null candidate IDs;
