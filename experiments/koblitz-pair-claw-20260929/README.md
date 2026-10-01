@@ -2132,12 +2132,28 @@ hits for an independent checked-Sage audit. A
 [workflow snapshot](runs/n83_q1079_ci_36784663720_workflow_snapshot.yml)
 and [coverage snapshot](runs/n83_q1079_ci_36784663720_coverage_snapshot.json)
 pin the enabled dispatch and its original work ledger after later updates.
-The [coverage/work ledger](n83_full_spill_segment_work.py) now recognizes
+The [coverage/work ledger](n83_full_spill_segment_work.py) recognizes
 Q1079's full-size bundles and Q1074's local terminal receipt. It credits
 successful rectangles only after independent checked-Sage replay and keeps
-failed or pending audits visible without credit. With both searches still
-running, this source update changes no completed coverage or modeled work;
-the dispatch plan remains bound to the frozen pre-dispatch coverage snapshot.
+failed or pending audits visible without credit. Four Q1079 M32/R29 jobs
+have completed and passed that replay at query starts 18,790,481,920,
+19,864,223,744, 20,401,094,656, and 22,011,707,392. All four reported
+zero exact hits and zero verified relations. Their target-online intervals
+were 8,424.30, 7,835.68, 7,753.74, and 7,793.11 seconds respectively;
+these are separate physical x86 jobs, not one continuous solve interval.
+Their [archived receipts](runs/n83_zero_run_q1079_M32_R29_ci_36784663720_qstart18790481920/bundle.json)
+include the full artifact, source and binary identity, runtime information,
+and independent checked-Sage result. The other four jobs and local Q1074
+remain active and uncredited. The dispatch plan remains bound to the frozen
+pre-dispatch coverage snapshot.
+
+Across successful terminal receipts, the refreshed ledger charges
+3,096,939,855,872 lifted query-pair tests ($2^{41.494}$), including repeated
+work. The selected-route arithmetic model charges $2^{44.517}$ native field
+calls already completed; its conditional expected first-hit work is now
+$2^{45.573}$ native field calls, with a 95% model quantile of $2^{46.632}$.
+Those are finite-support placement projections, not measured natural yield or
+a complete DLP work estimate. `complete_solve_work_log2` stays null.
 
 The [Q1081 conditional design](n83_m32_wave_q1081_design.json) reserves the
 next eight aligned M32/R29 intervals, starting exactly at Q1079's end. It

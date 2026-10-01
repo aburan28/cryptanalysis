@@ -113,6 +113,7 @@ def main():
     assert plan["curve_id"] == screen["curve_id"]
     assert plan["factor_base_enumerated_set_sha256"] == screen[
         "factor_base"]["enumerated_set_sha256"]
+    assert plan["screen_sha256"] == sha(SCREEN)
     assert args.query_start in plan["query_starts"]
     assert plan["table_descriptors"] == 1 << 32
     assert plan["query_representatives"] == 1 << 29
@@ -134,7 +135,6 @@ def main():
     assert host["query_representatives"] == 1 << 29
     assert host["architecture"].lower() in ("x86_64", "amd64")
     assert host["plan_sha256"] == sha(PLAN)
-    assert host["screen_sha256"] == sha(SCREEN)
     assert host["Q1074_state_at_plan_freeze"] == plan["Q1074_state"]["status"]
     assert host["workflow_sha256"] == sha(args.workflow_snapshot)
     resources_ok = (host["mem_available_bytes"] >= host[
