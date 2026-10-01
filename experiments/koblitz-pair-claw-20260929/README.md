@@ -2237,8 +2237,11 @@ model. One M33/R30 interval and four M32/R29 intervals each add 256
 M28-by-R27 cells. Each therefore has a 9.88% modeled probability of an exact
 hit at the currently audited 2,062-cell coverage, while the M33/R30 route
 models $2^{40.371}$ native field calls versus $2^{41.371}$ for the four M32
-jobs. One M32/R29 interval adds 64 cells for a 2.57% modeled hit probability
-and $2^{39.371}$ field calls. The M33 arithmetic advantage is conditional:
+jobs. Excluding the reusable first table-build pass in each job, the
+corresponding target-online query and exact-replay models are $2^{40.252}$
+and $2^{41.252}$ calls. One M32/R29 interval adds 64 cells for a 2.57%
+modeled hit probability and $2^{39.371}$ field calls. The M33 arithmetic
+advantage is conditional:
 the live Q1074 M33/R30 run has no terminal wall-time or memory result yet,
 and the active Q1074 and Q1081 ranges receive neither coverage nor completed
 work credit here. These probabilities are placement predictions, not natural

@@ -22,6 +22,11 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def table_build_calls(descriptors):
+    # One target-independent point-add pass and its 1024-wide inversions.
+    return 13 * descriptors + 90 * math.ceil(descriptors / 1024)
+
+
 def main():
     base = json.loads(BASE.read_text())
     ledger = json.loads(LEDGER.read_text())
@@ -62,6 +67,9 @@ def main():
             cell_fraction=cell_fraction, mean=mean) - baseline
         calls = jobs * field_calls(table_descriptors,
                                   query_representatives)
+        build = jobs * table_build_calls(table_descriptors)
+        online = calls - build
+        assert calls == build + online and online > 0
         return {
             "shape": name,
             "jobs": jobs,
@@ -72,6 +80,10 @@ def main():
             "modeled_hit_probability": -math.expm1(-delta),
             "modeled_native_field_calls": str(calls),
             "modeled_native_field_calls_log2": math.log2(calls),
+            "modeled_target_independent_table_build_calls": str(build),
+            "modeled_target_online_query_and_replay_calls": str(online),
+            "modeled_target_online_query_and_replay_calls_log2":
+                math.log2(online),
             "modeled_field_calls_per_unit_hit_intensity": calls / delta,
         }
 
@@ -99,11 +111,16 @@ def main():
         "M33_R30_vs_four_M32_R29_modeled_field_call_saving_fraction":
             1 - int(m33["modeled_native_field_calls"]) / int(
                 four_m32["modeled_native_field_calls"]),
+        "M33_R30_vs_four_M32_R29_modeled_online_field_call_saving_fraction":
+            1 - int(m33["modeled_target_online_query_and_replay_calls"])
+            / int(four_m32[
+                "modeled_target_online_query_and_replay_calls"]),
         "limits": [
             "Hit probabilities are from the frozen finite-support placement heuristic, not measured natural yield.",
             "Each route is projected onto fresh disjoint query ranges; active Q1074 and Q1081 work is excluded.",
             "M33 needs more memory and its R30 target-online time has no terminal measurement yet.",
-            "Field calls exclude keying, Bloom, memory, disk, setup, failed work, and scalar replay.",
+            "The cold field-call model includes one target-independent table-build pass per job; the online phase model excludes those passes but includes query and exact replay.",
+            "Field calls exclude keying, Bloom, memory, disk, failed work, and scalar replay.",
             "This screen is not a complete DLP work estimate."
         ],
         "base_screen_sha256": sha(BASE),
@@ -117,6 +134,8 @@ def main():
         "M33_R30_one_hit_probability": m33["modeled_hit_probability"],
         "M33_vs_four_M32_call_saving_fraction": report[
             "M33_R30_vs_four_M32_R29_modeled_field_call_saving_fraction"],
+        "M33_online_field_calls_log2": m33[
+            "modeled_target_online_query_and_replay_calls_log2"],
         "complete_solve_work_log2": None,
     }))
 
