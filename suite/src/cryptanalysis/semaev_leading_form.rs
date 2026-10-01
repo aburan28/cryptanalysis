@@ -160,6 +160,7 @@
 //! 1146 of them and on no tuple lacking a decomposition.
 
 use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasherDefault, Hasher};
 
 /// Variable slots: `0..=7` are `X₁..X₈`, `8` is `a₆`, `9` is the resultant
 /// variable `Y`, `10` is a scratch elimination variable.
@@ -184,27 +185,68 @@ pub const MAX_REVERSED_M: usize = 7;
 /// Exponent vector of one monomial.
 pub type Mono = [u8; NVARS];
 
+/// Hasher for [`Mono`] keys.
+///
+/// A monomial is eleven small exponents, and the ring operations below do
+/// little besides hash them: under SipHash, the standard library's default,
+/// hashing was most of the cost of a resultant.  Nothing adversarial reaches
+/// these sets.  Each 8-byte word is folded in by one 64×64→128-bit multiply
+/// whose halves are XORed, so every input bit reaches the low bits the table
+/// picks a bucket from; a multiply-rotate hash (`FxHasher`) would leave those
+/// bits depending on the first two exponents and the `a₆`/`Y` slots alone.
+/// A set iterates in a different order under a different hasher and holds the
+/// same monomials under any.
+#[derive(Default, Clone, Copy)]
+pub struct MonoHasher(u64);
+
+impl Hasher for MonoHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut w = [0u8; 8];
+            w[..chunk.len()].copy_from_slice(chunk);
+            self.write_u64(u64::from_le_bytes(w));
+        }
+    }
+    #[inline]
+    fn write_u64(&mut self, x: u64) {
+        let p = u128::from(self.0 ^ x) * 0x9e37_79b9_7f4a_7c15;
+        self.0 = (p as u64) ^ ((p >> 64) as u64);
+    }
+    #[inline]
+    fn write_usize(&mut self, x: usize) {
+        self.write_u64(x as u64);
+    }
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+/// A set of monomials, hashed by [`MonoHasher`].
+pub type MonoSet = HashSet<Mono, BuildHasherDefault<MonoHasher>>;
+
 /// A polynomial over `F_2`: the set of monomials with coefficient 1.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct F2Poly {
-    pub terms: HashSet<Mono>,
+    pub terms: MonoSet,
 }
 
 impl F2Poly {
     pub fn zero() -> Self {
         F2Poly {
-            terms: HashSet::new(),
+            terms: MonoSet::default(),
         }
     }
     pub fn one() -> Self {
-        let mut t = HashSet::new();
+        let mut t = MonoSet::default();
         t.insert([0u8; NVARS]);
         F2Poly { terms: t }
     }
     pub fn var(i: usize) -> Self {
         let mut m = [0u8; NVARS];
         m[i] = 1;
-        let mut t = HashSet::new();
+        let mut t = MonoSet::default();
         t.insert(m);
         F2Poly { terms: t }
     }
@@ -232,7 +274,7 @@ impl F2Poly {
         if self.is_zero() || other.is_zero() {
             return Self::zero();
         }
-        let mut t: HashSet<Mono> = HashSet::new();
+        let mut t = MonoSet::default();
         for a in &self.terms {
             for b in &other.terms {
                 let mut m = [0u8; NVARS];
@@ -249,7 +291,7 @@ impl F2Poly {
     /// `self²`.  In characteristic 2 squaring is a relabelling — every cross
     /// term cancels — so it just doubles each exponent.
     pub fn square(&self) -> Self {
-        let mut t = HashSet::with_capacity(self.terms.len());
+        let mut t = MonoSet::with_capacity_and_hasher(self.terms.len(), Default::default());
         for a in &self.terms {
             let mut m = [0u8; NVARS];
             for k in 0..NVARS {
@@ -280,7 +322,7 @@ impl F2Poly {
     }
     /// Permute the variable slots.
     pub fn permute(&self, perm: &[usize]) -> Self {
-        let mut t: HashSet<Mono> = HashSet::new();
+        let mut t = MonoSet::default();
         for m in &self.terms {
             let mut m2 = *m;
             for (i, &j) in perm.iter().enumerate() {
@@ -419,7 +461,7 @@ impl F2Poly {
         if self.is_zero() || other.is_zero() {
             return Self::zero();
         }
-        let mut acc: HashSet<Mono> = HashSet::new();
+        let mut acc = MonoSet::default();
         for a in &self.terms {
             let da = t.degree(a);
             if da > t.max {
@@ -447,7 +489,7 @@ impl F2Poly {
     /// polynomial's degree in that slot and the reversal is not a
     /// polynomial.
     pub fn reverse_in(&self, slots: &[usize], d: u8) -> Self {
-        let mut t: HashSet<Mono> = HashSet::new();
+        let mut t = MonoSet::default();
         for m in &self.terms {
             let mut m2 = *m;
             for &i in slots {
@@ -464,7 +506,7 @@ impl F2Poly {
     /// The coefficient of `Π_{i∈slots} Zᵢ^{k}`, as a polynomial in the
     /// remaining slots.
     pub fn diagonal_coeff(&self, slots: &[usize], k: u8) -> Self {
-        let mut t: HashSet<Mono> = HashSet::new();
+        let mut t = MonoSet::default();
         for m in &self.terms {
             if !slots.iter().all(|&i| m[i] == k) {
                 continue;
@@ -1126,10 +1168,12 @@ const ENCODER_TAG: &str = "f2poly-mask-packed-v1";
 ///
 /// Two properties the encoding has to have:
 ///
-/// * **Deterministic.** `terms` is a `HashSet`, whose iteration order varies
-///   between runs. Encoding it unsorted would give one polynomial many
-///   encodings, so each process would write a different artifact for the same
-///   value and the checksum would describe the run rather than the polynomial.
+/// * **Deterministic.** `terms` is a `HashSet`, whose iteration order depends
+///   on how the set was built (and depended on the process too, under the
+///   standard library's seeded hasher). Encoding it unsorted would give one
+///   polynomial many encodings, so each process would write a different
+///   artifact for the same value and the checksum would describe the run
+///   rather than the polynomial.
 ///   Monomials are sorted before packing.
 /// * **Self-describing.** Only the slots a polynomial actually uses are
 ///   stored, behind a mask header -- S_6 lives in 7 of `NVARS` -- so the
@@ -1181,7 +1225,7 @@ impl CompactF2Poly {
         if bytes.len() != 6 + count.checked_mul(live.len())? {
             return None;
         }
-        let mut terms = HashSet::with_capacity(count);
+        let mut terms = MonoSet::with_capacity_and_hasher(count, Default::default());
         for c in 0..count {
             let mut m: Mono = [0u8; NVARS];
             for (j, &i) in live.iter().enumerate() {
