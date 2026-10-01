@@ -2152,8 +2152,8 @@ seconds; these are physical x86 jobs, not one
 continuous solve interval.
 Their [archived receipts](runs/n83_zero_run_q1079_M32_R29_ci_36784663720_qstart18790481920/bundle.json)
 include the full artifact, source and binary identity, runtime information,
-and independent checked-Sage result. Local Q1074 remains active and
-uncredited. The dispatch plan remains bound to the frozen
+and independent checked-Sage result. Local Q1074 was active and uncredited
+at this snapshot; its terminal audit is recorded below. The dispatch plan remains bound to the frozen
 pre-dispatch coverage snapshot.
 
 Across successful terminal receipts, the refreshed ledger charges
@@ -2260,10 +2260,9 @@ jobs. Excluding the reusable first table-build pass in each job, the
 corresponding target-online query and exact-replay models are $2^{40.252}$
 and $2^{41.252}$ calls. One M32/R29 interval adds 64 cells for a 2.57%
 modeled hit probability and $2^{39.371}$ field calls. The M33 arithmetic
-advantage is conditional:
-the live Q1074 M33/R30 run has no terminal wall-time or memory result yet,
-and the active Q1074 and Q1081 ranges receive neither coverage nor completed
-work credit here. These probabilities are placement predictions, not natural
+advantage is conditional: Q1074 and Q1081 had no terminal credit when this
+screen was frozen. Their later audits and measured times are recorded below.
+These probabilities are placement predictions, not natural
 relation measurements or complete-DLP work. The [source-bound
 calculation](n83_m33_vs_m32_placement_screen.py) records its ledger, base,
 and Q1074 plan hashes; candidate and run IDs remain null while this is a
@@ -2272,16 +2271,16 @@ proposal comparison.
 The [Q1084 conditional local design](n83_q1084_local_m33_design.json)
 reserves one M33/R30 interval starting at 35,433,480,192, after Q1083's
 reserved range. It models $2^{40.371}$ native field calls and prefers the
-SSD spill volume, which currently has substantially more free space than
-the system volume used by live Q1074. Q1084 is not an executable plan or
+SSD spill volume, which had substantially more free space than
+the system volume used by Q1074. Q1084 is not an executable plan or
 a launched search. Freezing it requires terminal checked-Sage zero-hit
 audits for Q1074 and all eight Q1081 jobs, a refreshed overlap check, and
 Q1074's measured wall-time and memory result. The [design generator](n83_q1084_local_m33_design.py)
 binds the Q1074 and Q1081 plans, Q1083 reservation, and current ledger;
 its probability and complete-solve work remain null until those gates pass.
-The [Q1084 plan builder](n83_q1084_full_plan.py) is staged and currently
-rejects the missing Q1074 terminal audit without writing a plan. Once
-Q1074's zero-hit audit exists, it will also require the
+The [Q1084 plan builder](n83_q1084_full_plan.py) is staged. Its original
+negative gate rejected the then-missing Q1074 audit without writing a plan.
+That audit is now archived; the builder also requires the
 same-host M33/R30 target-online interval to beat four measured M32/R29
 intervals, verify the reserved range against completed receipts and live
 start markers, and bind the native and model source hashes before freezing.
@@ -2308,9 +2307,9 @@ target, factor base, and disjoint range. The
 terminal checked-Sage audits against the refreshed coverage ledger, requires
 Q1074's terminal zero-hit audit, and refuses any launched Q1084 job without
 a terminal zero-hit audit. It also checks source hashes, identifier fields,
-and disjoint completed and active ranges before writing a plan. Its current
-negative gate now refuses Q1074's missing terminal audit; Q1083's terminal
-audits are also still required. It writes no plan. Q1085
+and disjoint completed and active ranges before writing a plan. Q1074's audit
+is now present, while Q1083's terminal audits are still required. It writes
+no plan. Q1085
 has no executable plan or workflow yet; the design's hit probability and
 complete-solve work remain null until the prior audits exist.
 
@@ -2333,14 +2332,14 @@ full-size 16-bit ARM memory or wall time. The host has 48 GiB physical memory.
 The [Q1086 full plan builder](n83_q1086_full_plan.py) now requires Q1074's
 terminal checked-Sage zero-hit audit, all eight archived Q1081 zero-hit
 audits, the bounded 16-bit control, unchanged source hashes, and a disjoint
-range. Its negative gate stops at the still-active Q1074 job without writing
-a plan. The [local launcher](launch_n83_local_arm_m34_r31_q1086.py) requires
+range. Its original negative gate stopped at Q1074's missing terminal audit;
+after that audit the full plan froze. The [local launcher](launch_n83_local_arm_m34_r31_q1086.py) requires
 that frozen plan and checks at least 36 GiB estimated free physical memory,
 16 GiB free SSD spill, and no active Q1084 job before it can save checked-Sage
 runtime info and begin the full search. Its missing-plan gate creates no
 preflight or run receipt. The coverage ledger can now account for M34's two
-R30 ranges and shards 32 through 63, leaving all prior coverage and work
-values unchanged. Q1086 has no full-size executable plan or run yet.
+R30 ranges and shards 32 through 63. The full run has since launched, as
+recorded below.
 
 The bounded 16-bit physical ARM control now passes using a
 [one-line derived portable wrapper](generate_n83_q1086_portable_b16_runner.py)
@@ -2376,7 +2375,7 @@ eight jobs**, is $2^{45.229}$ modeled calls including credited history. The
 no-hit outcome remains. The comparable selected M32/R29 route reaches its
 95% model quantile at $2^{46.740}$ on the same frozen ledger. This is an
 arithmetic model comparison, not a same-host wall-time comparison. Q1074
-and Q1083 are active and excluded from the frozen snapshot until audited;
+and Q1083 were active and excluded at this frozen snapshot;
 failed-attempt work and non-field costs are also unknown. No natural n=83
 relation, measured complete-solve exponent, or full-size M34 memory and
 wall-time result follows from this projection. A further wave requires a
@@ -2415,6 +2414,43 @@ do not coexist in its normal path. This is a storage model, not a measured
 full-size ARM RSS or wall-time bound; allocator and OS memory, positive-rate
 transfer, and SSD costs remain unmeasured. Q1088 launches nothing and
 requires Q1086's terminal audit before any follow-on plan can be chosen.
+
+### Audited Q1074 terminal result and launched Q1086
+
+The physical ARM [Q1074 M33/R30 receipt](runs/n83_local_arm_m33_r30_q1074.json)
+finished with **zero exact hits**. Its
+[independent checked-Sage audit](runs/n83_local_arm_m33_r30_q1074_sage_verify.json)
+verified the same `EC1N83Ckb1h876c2921cb64` curve, the enumerated
+8,000,204-point base, `isogeny: "none"`, and zero natural public-target
+relations. Q1074 measured 25,563.48 seconds target online, including
+22,594.87 seconds querying and 2,968.61 seconds exact replay; its separate
+target-independent Bloom build took 3,588.77 seconds. It wrote 19,479,598
+Bloom positives and peaked at 21,796,798,464 bytes RSS. The completed
+attempt models $2^{40.371}$ native field API calls, including both table
+passes. These are measured phase times and a modeled call count for a
+zero-hit search, not a complete DLP result.
+
+The [refreshed coverage ledger](n83_full_spill_segment_work.json) now credits
+Q1074's 256 new M28-by-R27 cells. It records 1,438 primary cells, 1,200
+M32 extension cells, and 192 M33-only cells; the selected-route completed
+arithmetic model is $2^{44.997}$ native field calls. Active and failed work
+with unknown native counts remains excluded, and `complete_solve_work_log2`
+is still null.
+
+Q1074's terminal zero-hit audit enabled the
+[source-bound Q1086 M34/R31 plan](n83_q1086_local_m34_plan.json). The
+[local launcher](launch_n83_local_arm_m34_r31_q1086.py) passed its physical
+ARM preflight with 86% reported free system memory and more than 90 GiB
+free SSD spill, saved the checked-Sage runtime, and launched one 16-bit
+Bloom job on a disjoint range beginning at query representative
+53,687,091,200. Its [start record](runs/n83_local_arm_m34_r31_q1086.started.json)
+pins the source and binary hashes, target, curve, base, and absent isogeny.
+The job models $2^{41.371}$ native field calls for 1,024 fresh cells and
+33.88% hit probability under the frozen placement heuristic conditioned
+on audited zero hits through Q1074. It is **active and uncredited**: full
+M34 memory, wall time, natural relation yield, and complete-solve work
+are not yet measured. The earlier Q1087/Q1088 screens remain frozen
+pre-Q1074 comparisons and must be recalculated before a follow-on dispatch.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
