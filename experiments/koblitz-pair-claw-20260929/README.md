@@ -2280,15 +2280,16 @@ Q1074's measured wall-time and memory result. The [design generator](n83_q1084_l
 binds the Q1074 and Q1081 plans, Q1083 reservation, and current ledger;
 its probability and complete-solve work remain null until those gates pass.
 The [Q1084 plan builder](n83_q1084_full_plan.py) is staged and currently
-rejects the missing Q1081 terminal audits without writing a plan. Once
-those audits and Q1074's zero-hit audit exist, it will also require the
+rejects the missing Q1074 terminal audit without writing a plan. Once
+Q1074's zero-hit audit exists, it will also require the
 same-host M33/R30 target-online interval to beat four measured M32/R29
 intervals, verify the reserved range against completed receipts and live
 start markers, and bind the native and model source hashes before freezing.
 The [Q1084 local launcher](launch_n83_local_arm_m33_r30_q1084.py) then
 requires that frozen plan, replays the plan builder's audited target and
 same-host wall gates, rechecks current coverage,
-and enforces ARM, memory, and SSD spill-space gates. Its checked-Sage
+and enforces ARM, memory, SSD spill-space, and Q1086 mutual-exclusion gates.
+Its checked-Sage
 [missing-plan negative test](runs/n83_q1084_missing_plan_gate.json) rejects
 before creating a preflight or runtime receipt; no Q1084 search has started.
 The coverage ledger now has a Q1084 path that preserves partial launches and
@@ -2308,7 +2309,8 @@ terminal checked-Sage audits against the refreshed coverage ledger, requires
 Q1074's terminal zero-hit audit, and refuses any launched Q1084 job without
 a terminal zero-hit audit. It also checks source hashes, identifier fields,
 and disjoint completed and active ranges before writing a plan. Its current
-negative gate refuses the missing Q1083 plan without writing output. Q1085
+negative gate now refuses Q1074's missing terminal audit; Q1083's terminal
+audits are also still required. It writes no plan. Q1085
 has no executable plan or workflow yet; the design's hit probability and
 complete-solve work remain null until the prior audits exist.
 
@@ -2327,10 +2329,18 @@ control by the 128-fold query count predicts 192.7 million Bloom positives,
 4.31 GiB of candidate spill, and 7.18 GiB of candidate-table slots. An
 independent 20-bit positive-count scaling from Q1073's physical ARM M33/R29
 result agrees with Q1082's 20-bit scaling within 0.21%, but neither validates
-full-size 16-bit ARM memory or wall time. The host has 48 GiB physical memory;
-Q1086 has no full-size executable plan or run. A launch gate must wait for terminal
-Q1074 and Q1081 audits, extend the coverage ledger for M34 shards, verify a
-bounded compatible control, and check free memory and SSD space.
+full-size 16-bit ARM memory or wall time. The host has 48 GiB physical memory.
+The [Q1086 full plan builder](n83_q1086_full_plan.py) now requires Q1074's
+terminal checked-Sage zero-hit audit, all eight archived Q1081 zero-hit
+audits, the bounded 16-bit control, unchanged source hashes, and a disjoint
+range. Its negative gate stops at the still-active Q1074 job without writing
+a plan. The [local launcher](launch_n83_local_arm_m34_r31_q1086.py) requires
+that frozen plan and checks at least 36 GiB estimated free physical memory,
+16 GiB free SSD spill, and no active Q1084 job before it can save checked-Sage
+runtime info and begin the full search. Its missing-plan gate creates no
+preflight or run receipt. The coverage ledger can now account for M34's two
+R30 ranges and shards 32 through 63, leaving all prior coverage and work
+values unchanged. Q1086 has no full-size executable plan or run yet.
 
 The bounded 16-bit physical ARM control now passes using a
 [one-line derived portable wrapper](generate_n83_q1086_portable_b16_runner.py)
