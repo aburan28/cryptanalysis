@@ -3,9 +3,11 @@
 **Current n=83 result:** Q1083 found one natural four-point relation and a
 complete public-target DLP, independently replayed in checked Sage. The
 [result and accounting](#first-natural-n83-four-point-relation-and-exact-one-target-dlp)
-give an overcounting $2^{45.761}$ search field-call shape estimate. A
-calibrated complete-solve operation total and paired one-target rho speedup
-remain unmeasured. This result makes no sub-$2^{61}$ ECC2K-130 claim.
+give an overcounting $2^{45.761}$ search field-call shape estimate and a
+separate conditional $2^{60.810}$ CPU core-cycle capacity envelope for the
+whole local/CI campaign. A calibrated complete-solve operation total and
+paired one-target rho speedup remain unmeasured. This result makes no
+sub-$2^{61}$ ECC2K-130 claim.
 
 This experiment tests a two-color pair-sum distinguished-point walk for an
 ordinary four-point relation. At a state $X$, a fixed hash selects a color
@@ -2607,6 +2609,26 @@ keeps `complete_calibrated_solve_work_log2: null` and
 claim therefore remains open even though the relation and scalar are
 verified. None of these n=83 measurements transfer to ECC2K-130 without
 a separate argument and full-size measurement.
+
+A supplementary [whole-campaign resource envelope](n83_verified_solve_resource_envelope.json)
+charges all 155 direct receipts or starts for their archived wrapper time,
+or until a deliberately late cutoff when terminal time is missing. It charges
+each of 62 other records containing this target's x coordinate an entire
+63.5-hour window; these include 20 earlier factor-base or nested benchmark
+records omitted by the exact-base search accountant. It then reserves eight
+more full-window lanes for work not represented by one of those records,
+including base construction and Sage verification. Assigning 16 active CPU
+cores to **each** record or reserve lane and an assumed 7 GHz clock ceiling
+gives at most $2^{60.810}$ CPU core-cycle capacity. The largest archived native query
+setting is 14 workers; the Q1083 standard Ubuntu runner has four vCPUs under
+the [GitHub runner specification](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+This is a conditional capacity bound covering non-field wall work and failed
+attempts, not a retired-instruction count or an identity between CPU cycles
+and the field-call unit. It depends on the stated time window, per-record
+concurrency ceiling, clock ceiling, and reserve covering any missing
+execution. The [reproducible calculation](n83_verified_solve_resource_envelope.py)
+does not replace the null calibrated operation total or establish a paired
+rho speedup.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
