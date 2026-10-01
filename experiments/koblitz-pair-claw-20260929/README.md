@@ -2204,6 +2204,17 @@ The [Q1083 conditional design](n83_m32_wave_q1083_design.json) reserves the
 next 16 aligned M32/R29 intervals after Q1081, through query position
 35,433,480,192. It does not dispatch them. Sixteen jobs would model
 $2^{43.371}$ native field calls before non-field costs and failures. The
+[Q1083 batching screen](n83_q1083_batching_screen.json) checks a possible
+eight-job R30 alternative against all eight measured Q1079 R29 phase
+receipts. One M32/R30 job would save 7.91% modeled field calls relative to
+two M32/R29 jobs covering the same queries. Assuming query and replay time
+double, the slowest observed host projects to 21,118.58 seconds of native
+work, only 481.42 seconds below the 360-minute CI job limit before wrapper,
+control, upload, and host variance. That R30 duration is an extrapolation,
+so Q1083 keeps the shorter R29 jobs until full-size R30 timing supports a
+different choice. The [source-bound screen](n83_q1083_batching_screen.py)
+retains each Q1079 receipt digest and phase time.
+The
 [Q1083 plan builder](n83_q1083_full_plan.py) refuses to freeze until all
 eight Q1081 jobs have terminal checked-Sage audits, no verified target DLP
 or unresolved exact hit exists, and Q1074's live or terminal state is
