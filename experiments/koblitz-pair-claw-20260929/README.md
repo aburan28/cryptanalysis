@@ -2273,6 +2273,16 @@ and enforces ARM, memory, and SSD spill-space gates. Its checked-Sage
 [missing-plan negative test](runs/n83_q1084_missing_plan_gate.json) rejects
 before creating a preflight or runtime receipt; no Q1084 search has started.
 
+The [Q1085 conditional design](n83_m32_wave_q1085_design.json) reserves 32
+M32/R29 intervals after Q1084's reserved end, from query position
+36,507,222,016 through 53,687,091,200. They would add 2,048 fresh
+M28-by-R27 cells for $2^{44.371}$ modeled native field calls. The
+[source-bound generator](n83_q1085_m32_wave_design.py) fixes the same curve,
+target, factor base, and disjoint range. It does not freeze or dispatch a
+workflow; Q1083's 16 jobs, Q1074, Q1081, and any launched Q1084 must first
+have terminal independent audits with no verified or unresolved hit. Its
+hit probability and complete-solve work remain null until then.
+
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
 The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
