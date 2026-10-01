@@ -2208,6 +2208,10 @@ $2^{43.371}$ native field calls before non-field costs and failures. The
 eight Q1081 jobs have terminal checked-Sage audits, no verified target DLP
 or unresolved exact hit exists, and Q1074's live or terminal state is
 adjudicated. Its current negative gate stops at the missing Q1081 audits.
+The [Q1083 one-shot workflow](../../.github/workflows/n83-q1083-zero-run-m32-wave.yml)
+is staged with `if: false`. Its 16 exact starts, source and prior-audit hash
+checks, physical x86 resource gate, bounded control, and terminal artifact
+retention can be reviewed before any dispatch.
 Any Q1083 hit probability and complete-solve work remain unknown until the
 prior results and coverage ledger are refreshed.
 
