@@ -2200,6 +2200,17 @@ independent checked-Sage replay before crediting successful rectangles.
 Pending audits and failed full searches remain visible without coverage or
 modeled completed-work credit.
 
+The [Q1083 conditional design](n83_m32_wave_q1083_design.json) reserves the
+next 16 aligned M32/R29 intervals after Q1081, through query position
+35,433,480,192. It does not dispatch them. Sixteen jobs would model
+$2^{43.371}$ native field calls before non-field costs and failures. The
+[Q1083 plan builder](n83_q1083_full_plan.py) refuses to freeze until all
+eight Q1081 jobs have terminal checked-Sage audits, no verified target DLP
+or unresolved exact hit exists, and Q1074's live or terminal state is
+adjudicated. Its current negative gate stops at the missing Q1081 audits.
+Any Q1083 hit probability and complete-solve work remain unknown until the
+prior results and coverage ledger are refreshed.
+
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
 The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
