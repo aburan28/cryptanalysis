@@ -2394,6 +2394,28 @@ on first-hit or complete-solve work from these observations. The
 $2^{45.229}$ figure remains explicitly conditional on the placement model
 and a hit within eight jobs.
 
+The [Q1088 longer-query screen](n83_q1088_long_query_screen.json) tests
+reusing each M34 Bloom build across a larger disjoint query interval after
+Q1086's first R31 job. All routes retain the same exact curve, target,
+factor base, and absent isogeny; they are design-only `Q` proposals with
+null candidate/run IDs. At the same frozen coverage snapshot:
+
+| Route including Q1086 first | Model hit chance | All-job search calls including credited history | Expected first-hit calls given a hit by route end |
+| --- | ---: | ---: | ---: |
+| Eight R31 jobs | 96.15% | $2^{45.682}$ | $2^{45.229}$ |
+| R31, R33, R32, R31 | 96.15% | $2^{45.635}$ | $2^{45.309}$ |
+| R31, R33, R33 | 97.41% | $2^{45.686}$ | $2^{45.327}$ |
+
+Longer jobs reduce repeated table builds but defer the opportunity to stop
+after a smaller successful chunk. The R33 storage projection is 770.8
+million Bloom positives, 17.23 GiB of candidate spill, and 28.72 GiB of
+candidate-table slots. The native source releases the 32.00006 GiB Bloom
+allocation before constructing that exact table, so those two allocations
+do not coexist in its normal path. This is a storage model, not a measured
+full-size ARM RSS or wall-time bound; allocator and OS memory, positive-rate
+transfer, and SSD costs remain unmeasured. Q1088 launches nothing and
+requires Q1086's terminal audit before any follow-on plan can be chosen.
+
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
 The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
