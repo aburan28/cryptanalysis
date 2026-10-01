@@ -2257,6 +2257,12 @@ audits for Q1074 and all eight Q1081 jobs, a refreshed overlap check, and
 Q1074's measured wall-time and memory result. The [design generator](n83_q1084_local_m33_design.py)
 binds the Q1074 and Q1081 plans, Q1083 reservation, and current ledger;
 its probability and complete-solve work remain null until those gates pass.
+The [Q1084 plan builder](n83_q1084_full_plan.py) is staged and currently
+rejects the missing Q1081 terminal audits without writing a plan. Once
+those audits and Q1074's zero-hit audit exist, it will also require the
+same-host M33/R30 target-online interval to beat four measured M32/R29
+intervals, verify the reserved range against completed receipts and live
+start markers, and bind the native and model source hashes before freezing.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
