@@ -2452,6 +2452,22 @@ M34 memory, wall time, natural relation yield, and complete-solve work
 are not yet measured. The earlier Q1087/Q1088 screens remain frozen
 pre-Q1074 comparisons and must be recalculated before a follow-on dispatch.
 
+The [Q1089 post-Q1074 projection](n83_q1089_post_q1074_projection.json)
+recalculates the eight disjoint M34/R31 jobs from the audited ledger while
+leaving active Q1086 and pending Q1083 uncredited. It counts **2,830
+completed coverage cells** and $2^{44.997}$ completed modeled field calls.
+The first projected job is Q1086. Under the unvalidated finite-support
+placement model, eight jobs have a **96.13%** chance of at least one exact
+hit; the expected search cost conditional on a hit within the eight is
+$2^{45.278}$ modeled native field API calls, including credited history.
+Running all eight would cost $2^{45.718}$ in that same model. At one-quarter
+of the assumed relation intensity, the eight-job hit chance is 55.65%.
+Zero measured natural relations give no positive data-only yield lower bound
+or finite first-hit upper bound. These search figures exclude Bloom, memory,
+SSD, setup, and replay costs; **complete-solve work remains unknown**, with
+`measured_complete_solve_work_log2: null`. Q1089 is a design screen and
+authorizes no follow-on launch.
+
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
 The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
