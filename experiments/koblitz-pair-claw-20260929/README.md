@@ -2632,15 +2632,19 @@ does not replace the null calibrated operation total or establish a paired
 rho speedup.
 
 An independent global-pool cross-check in that same report does not depend
-on one receipt per attempt. It finds 16 distinct archived n=83 CI run IDs
-and checks all 14 n=83 workflow sources: their hosted jobs use standard
-`ubuntu-24.04` runners and matrix jobs cap parallelism at eight. GitHub
+on one receipt per attempt. The archived
+[GitHub run inventory](runs/n83_ci_workflow_run_inventory_20261001.json)
+contains 918 runs across all 14 n=83 workflows; at most **15** run intervals
+overlapped during the accounting window, including skipped runs. Their
+hosted jobs use standard `ubuntu-24.04` runners and matrix jobs cap
+parallelism at eight. GitHub
 specifies four vCPUs for those runners; a sanitized
 [local host audit](runs/n83_local_resource_host_audit_20261001.json) records
 the 14-core Apple M4 Pro used by the local jobs. Allowing **32** concurrent
-CI runs (16 archived plus 16 reserve), eight jobs per run, four vCPUs per
-job, and all 14 local cores busy continuously for the full 63.5-hour window
-at an assumed **8 GHz per core** gives $2^{60.719}$ core-cycle capacity.
+CI runs (17 above the observed interval maximum), eight jobs per run, four
+vCPUs per job, and all 14 local cores busy continuously for the full
+63.5-hour window at an assumed **8 GHz per core** gives $2^{60.719}$
+core-cycle capacity.
 This pool bound covers missed receipt rows if all target-specific CPU work
 used those hosted runners or that Mac and the stated run/concurrency/clock
 ceilings hold. It remains a conditional physical resource estimate, not a

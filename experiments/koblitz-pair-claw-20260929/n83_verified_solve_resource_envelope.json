@@ -23,6 +23,7 @@
   "github_standard_runner_spec_url": "https://docs.github.com/en/actions/reference/runners/github-hosted-runners",
   "github_runner_vcpu_per_job": 4,
   "local_host_audit_sha256": "a1c4db258bcf69925cb1ba6f278591c2f24042cd75c19d10b8223c7cc8b3a9c8",
+  "ci_workflow_run_inventory_sha256": "f590591e1c8fb4d4b7f9d10eb7838aa004213e3bfb778efc4c18a2fe70b173ec",
   "direct_charged_host_seconds": 2047488,
   "other_charged_host_seconds": 14173200,
   "reserve_charged_host_seconds": 1828800,
@@ -51,15 +52,21 @@
       "36817149475"
     ],
     "archived_distinct_ci_run_count": 16,
-    "assumed_ci_run_count_ceiling_including_unarchived": 32,
-    "assumed_extra_full_window_ci_run_reserve": 16,
+    "github_workflow_run_inventory_count": 918,
+    "github_workflow_runs_intersecting_window": 892,
+    "observed_max_concurrent_workflow_run_intervals": 15,
+    "assumed_max_concurrent_ci_runs": 32,
+    "concurrent_run_headroom_above_observed_intervals": 17,
     "max_jobs_per_ci_run": 8,
     "standard_runner_vcpu_per_job": 4,
     "local_physical_cpu_cores": 14,
     "total_simultaneous_core_ceiling": 1038,
+    "observed_interval_core_capacity_ceiling": 494,
     "clock_hz_per_core_ceiling": 8000000000,
     "full_window_core_cycle_capacity": "1898294400000000000",
     "full_window_core_cycle_capacity_log2": 60.719409460333345,
+    "observed_interval_core_cycle_capacity": "903427200000000000",
+    "observed_interval_core_cycle_capacity_log2": 59.648185963560145,
     "below_2_61_under_stated_pool_assumptions": true,
     "workflow_sources": [
       {
@@ -181,7 +188,7 @@
     "Each charged record and each of eight extra reserve lanes occupies at most sixteen simultaneously active CPU cores; the native query plans use at most fourteen worker threads. Nested jobs in one summary must fit that per-record concurrency cap.",
     "Every active core is assigned seven billion cycles per second, a deliberately loose assumed clock ceiling for the archived ARM and x86 hosts. The result counts cycle capacity, including idle and stalled time, rather than retired instructions or field API calls.",
     "The eight extra full-window lanes cover target-dependent activity without a matching receipt, base construction, independent Sage verification, and orchestration. Work on a different target or outside this window is outside this one-target envelope.",
-    "The independent global-pool cross-check assumes at most thirty-two n=83 standard-runner CI runs (sixteen archived plus sixteen reserved), eight simultaneous jobs per run, four vCPUs per job, and this fourteen-core local Mac, all busy for the entire window at eight GHz. It covers all CPU phases within that host pool even when an individual receipt is missing."
+    "The independent global-pool cross-check archives 918 GitHub run intervals across all fourteen n=83 workflows, with at most fifteen overlapping the accounting window. It still charges thirty-two simultaneous standard-runner runs, eight jobs per run, four vCPUs per job, and this fourteen-core local Mac for the entire window at eight GHz. It covers all CPU phases within that host pool even when an individual receipt is missing."
   ],
   "boundary": "conditional whole-experiment CPU core-cycle capacity upper, including setup and failed work; not a pre-registered calibrated IC total_operations measurement or an IC/rho speedup",
   "complete_calibrated_solve_operations": null,

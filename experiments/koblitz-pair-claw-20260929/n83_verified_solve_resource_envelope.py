@@ -18,6 +18,7 @@ RUNS = HERE / "runs"
 ACCOUNTING = HERE / "n83_verified_solve_accounting.json"
 SCREEN = HERE / "n83_full_spill_screen.json"
 LOCAL_HOST = RUNS / "n83_local_resource_host_audit_20261001.json"
+CI_INVENTORY = RUNS / "n83_ci_workflow_run_inventory_20261001.json"
 OUTPUT = HERE / "n83_verified_solve_resource_envelope.json"
 UTC = dt.timezone.utc
 WINDOW_START = dt.datetime(2026, 9, 29, 0, 0, tzinfo=UTC)
@@ -170,11 +171,48 @@ def main():
                                  "sha256": sha(path),
                                  "max_parallel": max(parallel, default=1),
                                  "runner_labels": labels})
+
+    inventory = json.loads(CI_INVENTORY.read_text())
+    assert inventory["repository"] == "aburan28/cryptanalysis"
+    assert inventory["branch"] == "codex/koblitz-pair-claw-toy"
+    assert inventory["per_workflow_limit"] == 500
+    assert set(inventory["workflow_row_counts"]) == {
+        path.name for path in workflow_files}
+    assert max(inventory["workflow_row_counts"].values()) < 500
+    assert len(inventory["rows"]) == 918
+    assert len({row["databaseId"] for row in inventory["rows"]}) == 918
+    events = []
+    runs_intersecting_window = 0
+    for row in inventory["rows"]:
+        start, end = utc(row["createdAt"]), utc(row["updatedAt"])
+        assert start <= end
+        if start >= WINDOW_END or end <= WINDOW_START:
+            continue
+        assert row["status"] == "completed", row["databaseId"]
+        runs_intersecting_window += 1
+        events.extend(((max(start, WINDOW_START), 1),
+                       (min(end, WINDOW_END), -1)))
+    concurrent_runs = 0
+    observed_run_overlap_max = 0
+    for _, delta in sorted(events, key=lambda pair: (pair[0], pair[1])):
+        concurrent_runs += delta
+        observed_run_overlap_max = max(observed_run_overlap_max,
+                                       concurrent_runs)
+    assert concurrent_runs == 0
+    assert runs_intersecting_window == 892
+    assert observed_run_overlap_max == 15
+    assert observed_run_overlap_max < POOL_RUNS_CEILING
     pool_cores = (POOL_RUNS_CEILING * POOL_JOBS_PER_RUN_CEILING *
                   POOL_VCPU_PER_JOB + host["physical_core_count"])
     pool_cycle_capacity = (window_seconds * pool_cores *
                            POOL_CLOCK_HZ_CEILING)
+    observed_pool_cores = (
+        observed_run_overlap_max * POOL_JOBS_PER_RUN_CEILING *
+        POOL_VCPU_PER_JOB + host["physical_core_count"])
+    observed_pool_capacity = (window_seconds * observed_pool_cores *
+                              POOL_CLOCK_HZ_CEILING)
     assert pool_cycle_capacity < 1 << 61
+    assert observed_pool_capacity <= pool_cycle_capacity
     report = {
         "kind": "n83_verified_one_target_conditional_cpu_resource_envelope",
         "curve_id": screen["curve_id"], "isogeny": "none",
@@ -198,6 +236,7 @@ def main():
             "https://docs.github.com/en/actions/reference/runners/github-hosted-runners",
         "github_runner_vcpu_per_job": POOL_VCPU_PER_JOB,
         "local_host_audit_sha256": sha(LOCAL_HOST),
+        "ci_workflow_run_inventory_sha256": sha(CI_INVENTORY),
         "direct_charged_host_seconds": direct_seconds,
         "other_charged_host_seconds": other_seconds,
         "reserve_charged_host_seconds": reserve_seconds,
@@ -209,18 +248,29 @@ def main():
         "global_pool_cross_check": {
             "archived_distinct_ci_run_ids": archived_ci_run_ids,
             "archived_distinct_ci_run_count": len(archived_ci_run_ids),
-            "assumed_ci_run_count_ceiling_including_unarchived":
+            "github_workflow_run_inventory_count": len(inventory["rows"]),
+            "github_workflow_runs_intersecting_window":
+                runs_intersecting_window,
+            "observed_max_concurrent_workflow_run_intervals":
+                observed_run_overlap_max,
+            "assumed_max_concurrent_ci_runs":
                 POOL_RUNS_CEILING,
-            "assumed_extra_full_window_ci_run_reserve":
-                POOL_RUNS_CEILING - len(archived_ci_run_ids),
+            "concurrent_run_headroom_above_observed_intervals":
+                POOL_RUNS_CEILING - observed_run_overlap_max,
             "max_jobs_per_ci_run": POOL_JOBS_PER_RUN_CEILING,
             "standard_runner_vcpu_per_job": POOL_VCPU_PER_JOB,
             "local_physical_cpu_cores": host["physical_core_count"],
             "total_simultaneous_core_ceiling": pool_cores,
+            "observed_interval_core_capacity_ceiling":
+                observed_pool_cores,
             "clock_hz_per_core_ceiling": POOL_CLOCK_HZ_CEILING,
             "full_window_core_cycle_capacity": str(pool_cycle_capacity),
             "full_window_core_cycle_capacity_log2":
                 math.log2(pool_cycle_capacity),
+            "observed_interval_core_cycle_capacity":
+                str(observed_pool_capacity),
+            "observed_interval_core_cycle_capacity_log2":
+                math.log2(observed_pool_capacity),
             "below_2_61_under_stated_pool_assumptions": True,
             "workflow_sources": workflow_sources,
         },
@@ -230,7 +280,7 @@ def main():
             "Each charged record and each of eight extra reserve lanes occupies at most sixteen simultaneously active CPU cores; the native query plans use at most fourteen worker threads. Nested jobs in one summary must fit that per-record concurrency cap.",
             "Every active core is assigned seven billion cycles per second, a deliberately loose assumed clock ceiling for the archived ARM and x86 hosts. The result counts cycle capacity, including idle and stalled time, rather than retired instructions or field API calls.",
             "The eight extra full-window lanes cover target-dependent activity without a matching receipt, base construction, independent Sage verification, and orchestration. Work on a different target or outside this window is outside this one-target envelope.",
-            "The independent global-pool cross-check assumes at most thirty-two n=83 standard-runner CI runs (sixteen archived plus sixteen reserved), eight simultaneous jobs per run, four vCPUs per job, and this fourteen-core local Mac, all busy for the entire window at eight GHz. It covers all CPU phases within that host pool even when an individual receipt is missing.",
+            "The independent global-pool cross-check archives 918 GitHub run intervals across all fourteen n=83 workflows, with at most fifteen overlapping the accounting window. It still charges thirty-two simultaneous standard-runner runs, eight jobs per run, four vCPUs per job, and this fourteen-core local Mac for the entire window at eight GHz. It covers all CPU phases within that host pool even when an individual receipt is missing.",
         ],
         "boundary": "conditional whole-experiment CPU core-cycle capacity upper, including setup and failed work; not a pre-registered calibrated IC total_operations measurement or an IC/rho speedup",
         "complete_calibrated_solve_operations": None,
