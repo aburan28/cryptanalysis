@@ -2212,6 +2212,11 @@ The [Q1083 one-shot workflow](../../.github/workflows/n83-q1083-zero-run-m32-wav
 is staged with `if: false`. Its 16 exact starts, source and prior-audit hash
 checks, physical x86 resource gate, bounded control, and terminal artifact
 retention can be reviewed before any dispatch.
+The [Q1083 ingester](n83_q1083_full_ci_ingest.py) is also staged; its
+[negative gate](runs/n83_q1083_missing_plan_gate.json) rejected a synthetic
+artifact before mutating the archive because the executable plan does not
+exist. It preserves `Q1083` as the wave ID and `Q1079` as the executable
+solver ID when real terminal artifacts arrive.
 Any Q1083 hit probability and complete-solve work remain unknown until the
 prior results and coverage ledger are refreshed.
 
