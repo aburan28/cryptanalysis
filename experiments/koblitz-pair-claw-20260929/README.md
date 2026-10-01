@@ -2263,6 +2263,11 @@ those audits and Q1074's zero-hit audit exist, it will also require the
 same-host M33/R30 target-online interval to beat four measured M32/R29
 intervals, verify the reserved range against completed receipts and live
 start markers, and bind the native and model source hashes before freezing.
+The [Q1084 local launcher](launch_n83_local_arm_m33_r30_q1084.py) then
+requires that frozen plan, rechecks audited receipts and current coverage,
+and enforces ARM, memory, and SSD spill-space gates. Its checked-Sage
+[missing-plan negative test](runs/n83_q1084_missing_plan_gate.json) rejects
+before creating a preflight or runtime receipt; no Q1084 search has started.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 

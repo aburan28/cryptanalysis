@@ -180,6 +180,8 @@ def freeze():
             if Q1083_PLAN.exists() else None,
         "Q1083_builder_source_sha256": sha(Path(q1083_builder.__file__)),
         "Q1074_state_source_sha256": sha(Path(prior_builder.__file__)),
+        "local_launcher_source_sha256": sha(
+            HERE / "launch_n83_local_arm_m33_r30_q1084.py"),
         "finite_support_model_source_sha256": sha(Path(work.__file__)),
         "field_call_model_source_sha256": sha(
             HERE / "n83_full_spill_screen.py"),
