@@ -2157,16 +2157,16 @@ uncredited. The dispatch plan remains bound to the frozen
 pre-dispatch coverage snapshot.
 
 Across successful terminal receipts, the refreshed ledger charges
-3,453,422,141,440 lifted query-pair tests ($2^{41.651}$), including repeated
-work. The selected-route arithmetic model charges $2^{44.671}$ native field
+4,166,386,712,576 lifted query-pair tests ($2^{41.922}$), including repeated
+work. The selected-route arithmetic model charges $2^{44.938}$ native field
 calls already completed; its conditional expected first-hit work is now
-$2^{45.649}$ native field calls, with a 95% model quantile of $2^{46.669}$.
+$2^{45.788}$ native field calls, with a 95% model quantile of $2^{46.740}$.
 Those are finite-support placement projections, not measured natural yield or
 a complete DLP work estimate. `complete_solve_work_log2` stays null.
 
-The [Q1081 conditional design](n83_m32_wave_q1081_design.json) reserves the
-next eight aligned M32/R29 intervals, starting exactly at Q1079's end. It
-does not dispatch or credit them. The first interval repeats Q1080's bounded
+The [Q1081 conditional design](n83_m32_wave_q1081_design.json) reserved the
+next eight aligned M32/R29 intervals, starting exactly at Q1079's end. The
+first interval repeats Q1080's bounded
 M28/R24 keyer-control range; that earlier work stays separately charged.
 After all eight Q1079 terminal receipts passed independent checked-Sage
 replay, the [Q1081 plan builder](n83_q1081_full_plan.py) froze the
@@ -2182,18 +2182,23 @@ has eight matrix starts, source and audit hash checks, a physical x86
 resource gate, bounded control, and terminal artifact retention. It
 dispatched [run 36801654799](https://github.com/aburan28/cryptanalysis/actions/runs/36801654799)
 from the frozen plan. All eight physical x86 jobs passed their host and
-bounded-control checks and entered the full search. The workflow is disabled
+bounded-control checks, completed the full search, and reported zero exact
+hits. Their eight full receipts now have independent checked-Sage zero-hit
+audits, and the refreshed ledger credits their 256 primary and 256 M32
+extension cells. Their separate target-online intervals range from 7,719.39
+to 9,137.21 seconds; their $2^{42.371}$ field-call count is a model for
+the eight successful jobs, not a continuous one-target wall time. The workflow is disabled
 after dispatch to prevent later PR synchronizations from repeating the fixed
 intervals. The enabled
 [workflow snapshot](runs/n83_q1081_ci_36801654799_workflow_snapshot.yml)
 and [pre-dispatch coverage snapshot](runs/n83_q1081_ci_36801654799_coverage_snapshot.json)
 preserve the original run inputs for terminal audits.
-The [Q1081 artifact ingester](n83_q1081_full_ci_ingest.py) is staged
-for terminal source and identity checks. It reuses the hash-checked Q1079
+The [Q1081 artifact ingester](n83_q1081_full_ci_ingest.py) checked
+terminal source and identity records. It reuses the hash-checked Q1079
 receipt verifier while preserving `Q1081` as the wave ID and `Q1079` as
 the executable solver ID. Its negative gate rejects input before any
-archive mutation while the Q1081 executable plan is absent; full-size
-ingestion remains untested until a job finishes.
+archive mutation while the Q1081 executable plan is absent. All eight
+full-size bundles are archived with GitHub artifact digests.
 The coverage ledger now recognizes Q1081 bundles and checks the frozen
 workflow, source digests, bounded control, full receipt, runtime, and
 independent checked-Sage replay before crediting successful rectangles.
@@ -2215,33 +2220,36 @@ so Q1083 keeps the shorter R29 jobs until full-size R30 timing supports a
 different choice. The [source-bound screen](n83_q1083_batching_screen.py)
 retains each Q1079 receipt digest and phase time.
 The
-[Q1083 plan builder](n83_q1083_full_plan.py) refuses to freeze until all
+[Q1083 plan builder](n83_q1083_full_plan.py) refused to freeze until all
 eight Q1081 jobs have terminal checked-Sage audits, no verified target DLP
 or unresolved exact hit exists, and Q1074's live or terminal state is
-adjudicated. Its current negative gate stops at the missing Q1081 audits.
+adjudicated. These gates passed and it froze the
+[source-bound 16-job plan](n83_q1083_m32_wave_plan.json), retaining Q1074's
+active interval as uncredited work.
 The [Q1083 one-shot workflow](../../.github/workflows/n83-q1083-zero-run-m32-wave.yml)
-is staged with `if: false`. Its 16 exact starts, source and prior-audit hash
-checks, physical x86 resource gate, bounded control, and terminal artifact
-retention can be reviewed before any dispatch.
+has its one-shot dispatch gate enabled. Its 16 exact starts, source and
+prior-audit hash checks, physical x86 resource gate, bounded control, and
+terminal artifact retention bind the frozen plan. It must be disabled after
+the run starts so later PR synchronizations cannot repeat the intervals.
 The [Q1083 ingester](n83_q1083_full_ci_ingest.py) is also staged; its
 [negative gate](runs/n83_q1083_missing_plan_gate.json) rejected a synthetic
-artifact before mutating the archive because the executable plan does not
-exist. It preserves `Q1083` as the wave ID and `Q1079` as the executable
+artifact before mutating the archive because the executable plan did not
+exist at that time. It preserves `Q1083` as the wave ID and `Q1079` as the executable
 solver ID when real terminal artifacts arrive.
-Any Q1083 hit probability and complete-solve work remain unknown until the
-prior results and coverage ledger are refreshed.
+Q1083's conditional hit probability is 33.9% under the finite-support model
+from the refreshed ledger; measured yield and complete-solve work remain
+unknown.
 The [coverage ledger](n83_full_spill_segment_work.py) now recognizes
 archived Q1083 bundles only after the frozen plan, run/workflow source,
 artifact hashes, full native receipt, and independent checked-Sage replay
 agree. Its missing-plan gate rejects a synthetic bundle; with no Q1083
-artifacts yet, refreshing the ledger leaves every prior completed-work and
-coverage value unchanged.
+artifacts yet, the newly credited coverage comes from Q1081 only.
 
 The [Q1074 versus Q1079 placement screen](n83_m33_vs_m32_placement_screen.json)
 compares fresh, disjoint query ranges under the same frozen finite-support
 model. One M33/R30 interval and four M32/R29 intervals each add 256
 M28-by-R27 cells. Each therefore has a 9.88% modeled probability of an exact
-hit at the currently audited 2,062-cell coverage, while the M33/R30 route
+hit at the screen's frozen 2,062-cell pre-Q1081 coverage, while the M33/R30 route
 models $2^{40.371}$ native field calls versus $2^{41.371}$ for the four M32
 jobs. Excluding the reusable first table-build pass in each job, the
 corresponding target-online query and exact-replay models are $2^{40.252}$
@@ -2304,7 +2312,7 @@ reserves a further disjoint range from query position 53,687,091,200 to
 55,834,574,848. One 16-bit Bloom job would add 1,024 fresh M28-by-R27
 cells for $2^{41.371}$ modeled native field calls, with 34.0% conditional
 hit probability under the same finite-support placement heuristic at the
-current audited coverage. This is a search-stage prediction, not a measured
+screen's frozen pre-Q1081 audited coverage. This is a search-stage prediction, not a measured
 relation or complete-solve work. Q1083's 16 M32/R29 jobs would cover the
 same 1,024 cells for $2^{43.371}$ modeled field calls, so Q1086 uses one
 quarter of their modeled arithmetic; this does not compare elapsed time or
