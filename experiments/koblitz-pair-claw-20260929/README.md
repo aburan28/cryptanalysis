@@ -2650,6 +2650,42 @@ used those hosted runners or that Mac and the stated run/concurrency/clock
 ceilings hold. It remains a conditional physical resource estimate, not a
 calibrated field-operation total or a one-target speedup measurement.
 
+### Fresh n=83 holdout for the one-target protocol
+
+The verified Q1083 point was already used in the earlier rho run and search
+probes. It is a valid natural relation and DLP certificate, but it is not a
+previously unseen target under the repository's primary workload contract.
+The [Q1090 target fixture](n83_holdout_target_20261001.json) fixes one new
+uniform subgroup point on the same exact field and curve. Its secret scalar
+was used only inside the checked Sage fixture process and was discarded
+before search. The fixture stores the public point, a scalar replay result
+from Sage, workload ID `9ccc27baec79`, the accepted Sage runtime receipt,
+and the exact 8,000,204-point factor-base digest. It records
+`isogeny: "none"`; the 48,194 signed-Frobenius columns are a separate count.
+The public x coordinate appeared nowhere else in the repository when the
+fixture was frozen.
+
+The [Q1090 source-bound wave](n83_q1090_holdout_m32_wave_plan.json) names
+candidate `IC1N83Ckb1fb8000204PDP4qtableRCdirectLAnoneTDdirectISO0h49b47d79e9e3`
+and run `IC1N83Ckb1fb8000204PDP4qtableRCdirectLAnoneTDdirectISO0h49b47d79e9e3W9ccc27baec79R1`.
+Its [immutable candidate manifest](candidates/IC1N83Ckb1fb8000204PDP4qtableRCdirectLAnoneTDdirectISO0h49b47d79e9e3.json)
+retains the exact curve, basis, base digest, source hashes, solver wiring,
+and native backend. Sixteen disjoint M32/R29 query rectangles are frozen
+against that one point. The first [M20/R14 local control](runs/n83_holdout_q1090_smoke_M20_R14.json)
+finished with zero exact hits and an
+[independent checked-Sage zero-hit audit](runs/n83_holdout_q1090_smoke_M20_R14_sage_verify.json).
+This control establishes target encoding and source compatibility; it is
+not a relation-yield estimate.
+
+The planned sixteen full jobs have a $2^{43.371}$ native field API-call
+model if all finish. This is a point-decomposition stage estimate, not a
+measured complete-solve exponent. The full one-target online wall time,
+failed-attempt work, memory and disk work, target scalar replay, and a
+same-point rho online wall comparison remain unmeasured for this new
+workload. Every full exact hit needs the
+[holdout Sage verifier](verify_n83_holdout_receipt_sage.py) before promotion
+to a verified DLP result.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
