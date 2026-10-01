@@ -3,9 +3,10 @@
 **Current n=83 result:** Q1083 found one natural four-point relation and a
 complete public-target DLP, independently replayed in checked Sage. The
 [result and accounting](#first-natural-n83-four-point-relation-and-exact-one-target-dlp)
-give an overcounting $2^{45.761}$ search field-call shape estimate and a
-separate conditional $2^{60.810}$ CPU core-cycle capacity envelope for the
-whole local/CI campaign. A calibrated complete-solve operation total and
+give an overcounting $2^{45.761}$ search field-call shape estimate. Separate,
+conditional whole-campaign CPU capacity checks give $2^{60.810}$ from the
+receipt inventory and $2^{60.719}$ from the host pool. A calibrated
+complete-solve operation total and
 paired one-target rho speedup remain unmeasured. This result makes no
 sub-$2^{61}$ ECC2K-130 claim.
 
@@ -2629,6 +2630,21 @@ concurrency ceiling, clock ceiling, and reserve covering any missing
 execution. The [reproducible calculation](n83_verified_solve_resource_envelope.py)
 does not replace the null calibrated operation total or establish a paired
 rho speedup.
+
+An independent global-pool cross-check in that same report does not depend
+on one receipt per attempt. It finds 16 distinct archived n=83 CI run IDs
+and checks all 14 n=83 workflow sources: their hosted jobs use standard
+`ubuntu-24.04` runners and matrix jobs cap parallelism at eight. GitHub
+specifies four vCPUs for those runners; a sanitized
+[local host audit](runs/n83_local_resource_host_audit_20261001.json) records
+the 14-core Apple M4 Pro used by the local jobs. Allowing **32** concurrent
+CI runs (16 archived plus 16 reserve), eight jobs per run, four vCPUs per
+job, and all 14 local cores busy continuously for the full 63.5-hour window
+at an assumed **8 GHz per core** gives $2^{60.719}$ core-cycle capacity.
+This pool bound covers missed receipt rows if all target-specific CPU work
+used those hosted runners or that Mac and the stated run/concurrency/clock
+ceilings hold. It remains a conditional physical resource estimate, not a
+calibrated field-operation total or a one-target speedup measurement.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py

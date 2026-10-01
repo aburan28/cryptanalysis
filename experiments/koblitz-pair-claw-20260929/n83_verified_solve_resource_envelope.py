@@ -9,6 +9,7 @@ import datetime as dt
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -16,6 +17,7 @@ REPO = HERE.parents[1]
 RUNS = HERE / "runs"
 ACCOUNTING = HERE / "n83_verified_solve_accounting.json"
 SCREEN = HERE / "n83_full_spill_screen.json"
+LOCAL_HOST = RUNS / "n83_local_resource_host_audit_20261001.json"
 OUTPUT = HERE / "n83_verified_solve_resource_envelope.json"
 UTC = dt.timezone.utc
 WINDOW_START = dt.datetime(2026, 9, 29, 0, 0, tzinfo=UTC)
@@ -23,6 +25,10 @@ WINDOW_END = dt.datetime(2026, 10, 1, 15, 30, tzinfo=UTC)
 CORES_PER_RECORD = 16
 EXTRA_LANES = 8
 CLOCK_HZ_CEILING = 7_000_000_000
+POOL_RUNS_CEILING = 32
+POOL_JOBS_PER_RUN_CEILING = 8
+POOL_VCPU_PER_JOB = 4
+POOL_CLOCK_HZ_CEILING = 8_000_000_000
 
 
 def sha(path):
@@ -60,6 +66,10 @@ def main():
     assert accounting["factor_base_enumerated_set_sha256"] == digest
     assert accounting["independent_sage_scalar_replay"]
     assert accounting["natural_four_point_relation_count"] == 1
+    host = json.loads(LOCAL_HOST.read_text())
+    assert host["architecture"] == "arm64"
+    assert host["chip_type"] == "Apple M4 Pro"
+    assert host["physical_core_count"] == 14
     window_seconds = math.ceil((WINDOW_END - WINDOW_START).total_seconds())
     assert window_seconds == 228600
 
@@ -135,6 +145,36 @@ def main():
     core_seconds = CORES_PER_RECORD * host_seconds
     cycle_capacity = core_seconds * CLOCK_HZ_CEILING
     assert cycle_capacity < 1 << 61
+
+    archived_ci_run_ids = sorted({
+        found for path in RUNS.rglob("*")
+        for found in re.findall(r"ci_(\d{10,})", str(path))})
+    assert len(archived_ci_run_ids) == 16
+    assert "36817149475" in archived_ci_run_ids
+    workflow_files = sorted((REPO / ".github/workflows").glob("*n83*"))
+    assert len(workflow_files) == 14
+    workflow_sources = []
+    for path in workflow_files:
+        source = path.read_text()
+        parallel = [int(value) for value in re.findall(
+            r"max-parallel:\s*(\d+)", source)]
+        labels = re.findall(r"runs-on:\s*([^\s#]+)", source)
+        assert all(0 < value <= POOL_JOBS_PER_RUN_CEILING
+                   for value in parallel)
+        assert "matrix:" not in source or parallel
+        assert all(label == "ubuntu-24.04" for label in labels)
+        assert labels or (
+            "uses: ./.github/workflows/n83-portable-quotient-segment.yml"
+            in source)
+        workflow_sources.append({"path": repo_path(path),
+                                 "sha256": sha(path),
+                                 "max_parallel": max(parallel, default=1),
+                                 "runner_labels": labels})
+    pool_cores = (POOL_RUNS_CEILING * POOL_JOBS_PER_RUN_CEILING *
+                  POOL_VCPU_PER_JOB + host["physical_core_count"])
+    pool_cycle_capacity = (window_seconds * pool_cores *
+                           POOL_CLOCK_HZ_CEILING)
+    assert pool_cycle_capacity < 1 << 61
     report = {
         "kind": "n83_verified_one_target_conditional_cpu_resource_envelope",
         "curve_id": screen["curve_id"], "isogeny": "none",
@@ -156,6 +196,8 @@ def main():
         "clock_hz_per_core_ceiling": CLOCK_HZ_CEILING,
         "github_standard_runner_spec_url":
             "https://docs.github.com/en/actions/reference/runners/github-hosted-runners",
+        "github_runner_vcpu_per_job": POOL_VCPU_PER_JOB,
+        "local_host_audit_sha256": sha(LOCAL_HOST),
         "direct_charged_host_seconds": direct_seconds,
         "other_charged_host_seconds": other_seconds,
         "reserve_charged_host_seconds": reserve_seconds,
@@ -164,12 +206,31 @@ def main():
         "core_cycle_capacity_ceiling": str(cycle_capacity),
         "core_cycle_capacity_ceiling_log2": math.log2(cycle_capacity),
         "below_2_61_under_stated_resource_assumptions": True,
+        "global_pool_cross_check": {
+            "archived_distinct_ci_run_ids": archived_ci_run_ids,
+            "archived_distinct_ci_run_count": len(archived_ci_run_ids),
+            "assumed_ci_run_count_ceiling_including_unarchived":
+                POOL_RUNS_CEILING,
+            "assumed_extra_full_window_ci_run_reserve":
+                POOL_RUNS_CEILING - len(archived_ci_run_ids),
+            "max_jobs_per_ci_run": POOL_JOBS_PER_RUN_CEILING,
+            "standard_runner_vcpu_per_job": POOL_VCPU_PER_JOB,
+            "local_physical_cpu_cores": host["physical_core_count"],
+            "total_simultaneous_core_ceiling": pool_cores,
+            "clock_hz_per_core_ceiling": POOL_CLOCK_HZ_CEILING,
+            "full_window_core_cycle_capacity": str(pool_cycle_capacity),
+            "full_window_core_cycle_capacity_log2":
+                math.log2(pool_cycle_capacity),
+            "below_2_61_under_stated_pool_assumptions": True,
+            "workflow_sources": workflow_sources,
+        },
         "assumptions": [
             "All target-dependent n=83 work for this experiment occurred between the stated UTC boundaries; the window begins over six hours before the first experiment commit and ends after the verified-solve archive commit.",
             "Each direct receipt or start is charged its full wrapper duration; missing terminal times are charged through the window end. Every other JSON record containing the exact public target's x coordinate is charged the entire window, including earlier factor-base variants, nested benchmark controls, summaries, preflights, and duplicates.",
             "Each charged record and each of eight extra reserve lanes occupies at most sixteen simultaneously active CPU cores; the native query plans use at most fourteen worker threads. Nested jobs in one summary must fit that per-record concurrency cap.",
             "Every active core is assigned seven billion cycles per second, a deliberately loose assumed clock ceiling for the archived ARM and x86 hosts. The result counts cycle capacity, including idle and stalled time, rather than retired instructions or field API calls.",
             "The eight extra full-window lanes cover target-dependent activity without a matching receipt, base construction, independent Sage verification, and orchestration. Work on a different target or outside this window is outside this one-target envelope.",
+            "The independent global-pool cross-check assumes at most thirty-two n=83 standard-runner CI runs (sixteen archived plus sixteen reserved), eight simultaneous jobs per run, four vCPUs per job, and this fourteen-core local Mac, all busy for the entire window at eight GHz. It covers all CPU phases within that host pool even when an individual receipt is missing.",
         ],
         "boundary": "conditional whole-experiment CPU core-cycle capacity upper, including setup and failed work; not a pre-registered calibrated IC total_operations measurement or an IC/rho speedup",
         "complete_calibrated_solve_operations": None,
