@@ -43,8 +43,12 @@ def freeze():
         "design_waiting_for_Q1074_and_Q1081_terminal_audits")
     assert design["candidate_id"] is None and design["run_id"] is None
     assert design["Q1074_plan_sha256"] == sha(Q1074_PLAN)
+    assert design["Q1081_plan_sha256"] == sha(
+        HERE / "n83_q1081_m32_wave_plan.json")
     assert design["Q1083_design_sha256"] == sha(
         HERE / "n83_m32_wave_q1083_design.json")
+    assert design["source_sha256"] == sha(
+        HERE / "n83_q1084_local_m33_design.py")
     for row in (design, ledger, q1074_plan):
         assert row["curve_id"] == screen["curve_id"]
         assert row["isogeny"] == "none"

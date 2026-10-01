@@ -68,6 +68,17 @@ def preflight(plan, spill_dir, binary):
                plan["Q1084_design_sha256"])
     check_file(HERE / "n83_q1084_full_plan.py", plan["source_sha256"])
     check_file(Path(__file__), plan["local_launcher_source_sha256"])
+    current = plan_builder.freeze()
+    for key in ("curve_id", "isogeny", "factor_base_enumerated_set_sha256",
+                "actual_usable_points_B_before_folding",
+                "signed_frobenius_columns", "public_target", "target_count",
+                "table_start", "table_descriptors", "query_start",
+                "query_representatives", "query_end_exclusive",
+                "cpu_backend", "query_workers", "representative_batch",
+                "bits_per_key", "hashes", "Q1074_terminal_audit",
+                "Q1071_terminal_audit", "terminal_prior_Q1081_audits",
+                "M33_vs_four_M32_same_host_online_time_ratio"):
+        assert plan[key] == current[key], key
     check_file(WRAPPER, plan["portable_wrapper_source_sha256"])
     for key, path in (
         ("portable_native_source_sha256", HERE /
