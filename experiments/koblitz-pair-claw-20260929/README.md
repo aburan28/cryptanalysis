@@ -2354,6 +2354,34 @@ uncredited. The successful bounded control establishes source-path
 correctness at small size; M34 memory, wall time, natural yield, and a complete
 DLP remain unmeasured.
 
+The [Q1087 eight-job M34/R31 projection](n83_q1087_m34_wave_projection.json)
+extends that screen to eight successive, disjoint query ranges. It uses the
+same exact n=83 field, curve `EC1N83Ckb1h876c2921cb64`, public target,
+8,000,204-point enumerated factor base (48,194 signed-Frobenius columns),
+and `isogeny: "none"`. This is a design proposal with `candidate_id: null`
+and `run_id: null`; the first range is Q1086's frozen range. Each projected
+job rebuilds its M34 table and charges $2^{41.371}$ modeled native field API
+calls. At the post-Q1081 coverage snapshot (2,574 credited M28-by-R27
+cells), the finite-support placement model gives:
+
+| Successive M34/R31 jobs | Conditional model probability of at least one hit | Credited-history plus projected search calls |
+| ---: | ---: | ---: |
+| 1 | 33.91% | $2^{45.055}$ |
+| 4 | 80.69% | $2^{45.357}$ |
+| 8 | 96.15% | $2^{45.682}$ |
+
+The conditional expected first-hit search cost, **given a hit within these
+eight jobs**, is $2^{45.229}$ modeled calls including credited history. The
+95% model quantile is reached on job 8 at $2^{45.682}$; a 3.85% modeled
+no-hit outcome remains. The comparable selected M32/R29 route reaches its
+95% model quantile at $2^{46.740}$ on the same frozen ledger. This is an
+arithmetic model comparison, not a same-host wall-time comparison. Q1074
+and Q1083 are active and excluded from the frozen snapshot until audited;
+failed-attempt work and non-field costs are also unknown. No natural n=83
+relation, measured complete-solve exponent, or full-size M34 memory and
+wall-time result follows from this projection. A further wave requires a
+separate audited plan after Q1086's first terminal receipt.
+
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
 The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
