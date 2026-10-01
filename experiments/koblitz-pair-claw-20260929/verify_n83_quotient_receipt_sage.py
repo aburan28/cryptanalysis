@@ -193,15 +193,34 @@ def verify(receipt_path, runtime_path):
         pairs = [key_point_and_log(int(index), data, cycle, eigenvalue,
                                    subgroup_order) for index in indices]
         base_points = [point_from_coords(coords) for coords, _ in pairs]
-        raw_points = [point_from_raw(encoded) for encoded in certificate[
-            "verified_relation_points"]]
-        assert sorted(str(point) for point in base_points) == sorted(
-            str(point) for point in raw_points)
         for point, (_, logarithm) in zip(base_points, pairs):
             assert logarithm * generator == point
+        shift = int(certificate["frobenius_shift"])
+        sign = int(certificate["sign"])
+        assert 0 <= shift < N and sign in (-1, 1)
+        # The certificate stores indices for the unshifted table pair. Its
+        # actual first two relation points have the common Frobenius/sign
+        # transform that matched the target complement's quotient key.
+        relation_points = [
+            curve(base_points[i][0] ** (1 << shift),
+                  base_points[i][1] ** (1 << shift))
+            for i in (0, 1)
+        ] + base_points[2:]
+        if sign < 0:
+            relation_points[:2] = [-point for point in relation_points[:2]]
+        relation_logs = [
+            (sign * pow(eigenvalue, shift, subgroup_order) * logarithm)
+            % subgroup_order for _, logarithm in pairs[:2]
+        ] + [logarithm for _, logarithm in pairs[2:]]
+        raw_points = [point_from_raw(encoded) for encoded in certificate[
+            "verified_relation_points"]]
+        assert sorted(str(point) for point in relation_points) == sorted(
+            str(point) for point in raw_points)
+        for point, logarithm in zip(relation_points, relation_logs):
+            assert logarithm * generator == point
         scalar = int(certificate["recovered_scalar"])
-        assert sum(base_points, curve(0)) == target
-        assert scalar == sum(log for _, log in pairs) % subgroup_order
+        assert sum(relation_points, curve(0)) == target
+        assert scalar == sum(relation_logs) % subgroup_order
         assert scalar * generator == target
         verified.append({"recovered_scalar": str(scalar),
                          "factor_base_indices": indices,

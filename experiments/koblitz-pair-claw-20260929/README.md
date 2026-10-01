@@ -1,4 +1,11 @@
-# Four-point pair claw: n=53 DLP controls and n=83 work screens
+# Four-point pair claw: n=53 controls and a verified n=83 DLP
+
+**Current n=83 result:** Q1083 found one natural four-point relation and a
+complete public-target DLP, independently replayed in checked Sage. The
+[result and accounting](#first-natural-n83-four-point-relation-and-exact-one-target-dlp)
+give an overcounting $2^{45.761}$ search field-call shape estimate. A
+calibrated complete-solve operation total and paired one-target rho speedup
+remain unmeasured. This result makes no sub-$2^{61}$ ECC2K-130 claim.
 
 This experiment tests a two-color pair-sum distinguished-point walk for an
 ordinary four-point relation. At a state $X$, a fixed hash selects a color
@@ -8,13 +15,15 @@ merge with opposite colors, the two pairs sum to $Q$. The witness is checked
 with the curve group law. Only distinguished endpoints are retained between
 trails; replay recovers the collision predecessors.
 
-This is a group-law search, not a quotient-summation polynomial solver. Its
-large-instance cost remains unknown. In particular, a small-base step timing
-does not establish relation yield or a sub-$2^{61}$ solve at n=83.
+This is a group-law search, not a quotient-summation polynomial solver. The
+early small-base timing below was a stage measurement; the later Q1083
+receipts establish natural n=83 relation yield and a verified DLP, subject
+to the accounting boundary stated above.
 The local [stage proposal registry](stage_proposals.json) assigns `Q1036`
 to the completed toy pipeline and `Q1037`–`Q1043` to the later work.
-`Q1036` and the complete n=53 known-log control `Q1042` have final `IC1`
-candidate identities; the remaining stage proposals do not.
+`Q1036`, the complete n=53 known-log control `Q1042`, and the now verified
+n=83 Q1083 quotient-table method have final `IC1` candidate identities.
+The other stage proposals retain their proposal IDs.
 
 ### Idealized ECC2K-130 pair-table scaling screen
 
@@ -2445,12 +2454,13 @@ free SSD spill, saved the checked-Sage runtime, and launched one 16-bit
 Bloom job on a disjoint range beginning at query representative
 53,687,091,200. Its [start record](runs/n83_local_arm_m34_r31_q1086.started.json)
 pins the source and binary hashes, target, curve, base, and absent isogeny.
-The job models $2^{41.371}$ native field calls for 1,024 fresh cells and
+The job modeled $2^{41.371}$ native field calls for 1,024 fresh cells and
 33.88% hit probability under the frozen placement heuristic conditioned
-on audited zero hits through Q1074. It is **active and uncredited**: full
-M34 memory, wall time, natural relation yield, and complete-solve work
-are not yet measured. The earlier Q1087/Q1088 screens remain frozen
-pre-Q1074 comparisons and must be recalculated before a follow-on dispatch.
+on audited zero hits through Q1074. It was [stopped after Q1083 found a
+verified hit](runs/n83_local_arm_m34_r31_q1086.json). Its native operation
+counts remain unknown; the accounting below charges its full planned
+rectangle in the search shape model. The earlier Q1087/Q1088 screens remain
+frozen pre-Q1074 comparisons and no longer describe a needed follow-on run.
 
 The [Q1089 post-Q1074 projection](n83_q1089_post_q1074_projection.json)
 recalculates the eight disjoint M34/R31 jobs from the audited ledger while
@@ -2540,6 +2550,63 @@ passed the [independent checked-Sage replay](runs/n83_q1082_smoke_b16_M20_R14_sa
 checks the derived runner's executable path and gives no paired timing
 result. The earlier Q1066 small ARM screen favored 16 bits; the paired
 M28/R24 x86 result leaves the 20-bit setting in the next full-size plan.
+
+### First natural n=83 four-point relation and exact one-target DLP
+
+The physical x86 [Q1083 run 36817149475](https://github.com/aburan28/cryptanalysis/actions/runs/36817149475)
+found one natural exact relation in its query rectangle beginning at
+27,380,416,512. The archived [full receipt](runs/n83_zero_run_q1083_M32_R29_ci_36817149475_qstart27380416512/full.json)
+has one exact-hit key and one exact-hit query. Its four distinct base indices
+are 888,930, 5,691,738, 5,630,426, and 6,682,824. The first two points
+are transformed by a common Frobenius shift of 79 and positive sign. Their
+sum equals the fixed public target, and their known base logs give
+`467066815623456506232910` modulo the subgroup order. The
+[independent checked-Sage audit](runs/n83_zero_run_q1083_M32_R29_ci_36817149475_qstart27380416512/sage_verify.json)
+reconstructed the points from the archived base file, checked each log
+against the generator, checked the four-point sum, and replayed the recovered
+scalar against the public target. The checked Sage runtime was archived before
+that audit. The previously known rho scalar was used only as a post-hit
+assertion in the runner; it was not used to search for the relation.
+
+The exact instance is `EC1N83Ckb1h876c2921cb64`: a degree-83 binary field,
+the Koblitz `b=1` curve, and its declared prime-order subgroup. The factor
+base has **8,000,204 actual usable points before folding**, represented by
+48,194 signed-Frobenius orbit columns, with enumerated-set digest
+`7e3c95f988225da1d586578529953ad61ae5ed62ca740eb92c2aea6d841a5a02`.
+There is no isogeny transport. The [exact method manifest](candidates/IC1N83Ckb1fb8000204PDP4qtableRCdirectLAnoneTDdirectISO0hfb53252590b0.json)
+and [one-target workload link](n83_verified_solve_named_run.json) apply the
+`IC1` curve/base/stage digest and `W...R1` run naming convention. The raw
+Q1083 artifacts retain their original proposal IDs and null candidate IDs;
+they are linked rather than rewritten.
+
+Seven Q1083 full rectangles completed, one with this hit. Four other jobs
+were cancelled during full search and five before full search began. The
+Q1083 [terminal job inventory](runs/n83_q1083_ci_36817149475_terminal_jobs.json)
+and [artifact inventory](runs/n83_q1083_ci_36817149475_terminal_artifacts.json)
+preserve those censored outcomes. The
+[coverage ledger](n83_full_spill_segment_work.json) now records one verified
+public-target DLP and no unverified hit. The successful chunk took
+7,974.63 seconds target-online on its x86 host and has a regular-path model
+of $2^{39.371}$ expanded native field API calls. This is one chunk, not the
+campaign cost.
+
+The [search accountant](n83_verified_solve_accounting.py) charges every
+archived direct attempt on this exact target and base, including failed
+receipts, redundant archived copies, and unfinished start markers, at a full
+planned rectangle. Older orbit-query shapes receive twice the signed-x
+regular-path formula. Across 155 directly identified receipts or starts,
+this deliberately overcounting **search arithmetic shape estimate** is
+$2^{45.761}$ native field API calls. The selected-route completed receipts
+alone account for $2^{45.188}$. This is below $2^{61}$ in the declared
+field-call model, but it is not a calibrated complete-solve operation bound:
+the model excludes key canonicalization, Bloom work, allocation, memory and
+SSD traffic, exceptional branches, nested stage controls, and independent
+verification. The [machine-readable accounting](n83_verified_solve_accounting.json)
+keeps `complete_calibrated_solve_work_log2: null` and
+`online_speedup_vs_paired_rho: null`. A complete one-target IC/rho speedup
+claim therefore remains open even though the relation and scalar are
+verified. None of these n=83 measurements transfer to ECC2K-130 without
+a separate argument and full-size measurement.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
