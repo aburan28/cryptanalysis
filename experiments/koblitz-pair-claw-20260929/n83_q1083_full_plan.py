@@ -201,6 +201,7 @@ def freeze():
         "Q1074_state": q1074,
         "Q1083_design_sha256": sha(DESIGN),
         "prior_Q1081_plan_sha256": sha(PRIOR),
+        "q1074_state_source_sha256": sha(Path(prior_builder.__file__)),
         "coverage_ledger_sha256": sha(LEDGER),
         "screen_sha256": sha(SCREEN),
         **{key: sha(path) for key, path in source_paths.items()},

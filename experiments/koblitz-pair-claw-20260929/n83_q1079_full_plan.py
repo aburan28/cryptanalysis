@@ -108,6 +108,10 @@ def q1074_state(screen, design):
     assert not audit.exists(), "Q1074 live marker already has a terminal audit"
     try:
         os.kill(marker["wrapper_pid"], 0)
+    except PermissionError:
+        # A sandbox may forbid signaling an existing process. EPERM still
+        # proves that this PID exists; ESRCH below means it does not.
+        pass
     except ProcessLookupError as exc:
         raise AssertionError(
             "Q1074 start marker exists but wrapper process is missing; adjudicate attempt"
