@@ -1,0 +1,71 @@
+name: Symmetric Boolean transform kernels
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round46/**'
+      - '.github/workflows/symmetric-transform-kernels.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round46/**'
+      - '.github/workflows/symmetric-transform-kernels.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: symmetric-transform-kernels-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Symmetric transform kernels (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build standalone optimized and sanitized CPU kernels
+        run: |
+          mkdir -p symmetric-transform-evidence
+          python -u experiments/groebner-perf-20260924/round46/build.py > symmetric-transform-evidence/build.log 2>&1
+      - name: Validate the independent mathematical reference
+        run: python -u experiments/groebner-perf-20260924/round46/reference.py > symmetric-transform-evidence/reference.log 2>&1
+      - name: Compare every native coefficient and exact operation count
+        run: python -u experiments/groebner-perf-20260924/round46/validate.py > symmetric-transform-evidence/validation.log 2>&1
+      - name: Retain reports, executed binaries and runner identity
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, platform, shutil
+          package = pathlib.Path('experiments/groebner-perf-20260924/round46')
+          out = pathlib.Path('symmetric-transform-evidence')
+          out.mkdir(exist_ok=True)
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          metadata.update(platform=platform.platform(), architecture=platform.machine(), scope='Standalone CPU kernel correctness; no GPU or timing claim.')
+          (out/'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          for name in ('reference.json', 'native-validation.json'):
+              if (package/name).exists():
+                  shutil.copyfile(package/name, out/name)
+          if (package/'build').exists():
+              shutil.copytree(package/'build', out/'native', dirs_exist_ok=True)
+          for pattern in ('*.py', '*.h', '*.cpp', 'kernel-plan.json'):
+              for source in package.glob(pattern):
+                  (out/'source').mkdir(exist_ok=True)
+                  shutil.copyfile(source, out/'source'/source.name)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: symmetric-transform-${{ matrix.os }}
+          path: symmetric-transform-evidence/
+          if-no-files-found: error
+          retention-days: 14
