@@ -1,31 +1,31 @@
-name: n83 Q1081 conditional zero-run M32 wave
+name: n83 Q1079 source-bound zero-run M32 wave
 
 on:
   pull_request:
     paths:
-      - ".github/workflows/n83-q1081-zero-run-m32-wave.yml"
+      - ".github/workflows/n83-q1079-zero-run-m32-wave.yml"
 
 permissions:
   contents: read
 
 jobs:
   physical-x86-m32-wave:
-    # One-shot dispatch from eight terminal Q1079 Sage audits and a frozen
-    # Q1081 executable plan. Disable before later workflow changes.
+    # One-shot dispatch from the frozen nine-audit source-bound plan.
+    # Disable before any later change to this workflow file.
     if: true
     strategy:
       fail-fast: false
       max-parallel: 8
       matrix:
         query_start:
-          - "22548578304"
-          - "23085449216"
-          - "23622320128"
-          - "24159191040"
-          - "24696061952"
-          - "25232932864"
-          - "25769803776"
-          - "26306674688"
+          - "18253611008"
+          - "18790481920"
+          - "19327352832"
+          - "19864223744"
+          - "20401094656"
+          - "20937965568"
+          - "21474836480"
+          - "22011707392"
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
@@ -38,16 +38,14 @@ jobs:
           python3 - <<'PY'
           import hashlib, json, os, pathlib, platform, shutil, subprocess
           root = pathlib.Path('experiments/koblitz-pair-claw-20260929')
-          plan_path = root / 'n83_q1081_m32_wave_plan.json'
+          plan_path = root / 'n83_q1079_m32_wave_plan.json'
           screen_path = root / 'n83_full_spill_screen.json'
-          workflow_path = pathlib.Path('.github/workflows/n83-q1081-zero-run-m32-wave.yml')
+          workflow_path = pathlib.Path('.github/workflows/n83-q1079-zero-run-m32-wave.yml')
           plan = json.loads(plan_path.read_text())
           screen = json.loads(screen_path.read_text())
           start = int(os.environ['QUERY_START'])
           sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
           assert plan['proposal_id'] == 'Q1079' and plan['status'] == 'ready_for_dispatch'
-          assert plan['wave_proposal_id'] == 'Q1081'
-          assert plan['executable_proposal_id'] == 'Q1079'
           assert plan['candidate_id'] is None and plan['run_id'] is None
           assert plan['curve_id'] == screen['curve_id'] == 'EC1N83Ckb1h876c2921cb64'
           assert plan['isogeny'] == screen['isogeny'] == 'none'
@@ -56,19 +54,19 @@ jobs:
           assert plan['signed_frobenius_columns'] == 48194
           assert plan['public_target'] == screen['public_target']
           assert start in plan['query_starts'] and len(plan['query_starts']) == 8
-          assert plan['query_starts'] == [22548578304 + i * (1 << 29) for i in range(8)]
+          assert plan['query_starts'] == [18253611008 + i * (1 << 29) for i in range(8)]
           assert plan['table_start'] == 0 and plan['table_descriptors'] == 1 << 32
           assert plan['query_representatives'] == 1 << 29
-          assert plan['query_end_exclusive'] == 26843545600
+          assert plan['query_end_exclusive'] == 22548578304
           assert plan['cpu_backend'] == 'x86_pclmul'
           assert plan['workers'] == 4 and plan['representative_batch'] == 8
           assert plan['bits_per_key'] == 20 and plan['hashes'] == 10
           for key, path in (
               ('screen_sha256', screen_path),
-              ('Q1081_design_sha256', root / 'n83_m32_wave_q1081_design.json'),
-              ('prior_Q1079_plan_sha256', root / 'n83_q1079_m32_wave_plan.json'),
+              ('Q1077_design_sha256', root / 'n83_m32_wave_q1077_design.json'),
+              ('Q1075_plan_sha256', root / 'n83_m32_wave_q1075_plan.json'),
+              ('Q1080_plan_sha256', root / 'n83_q1080_m28_r24_paired_plan.json'),
               ('coverage_ledger_sha256', root / 'n83_full_spill_segment_work.json'),
-              ('source_sha256', root / 'n83_q1081_full_plan.py'),
               ('runner_source_sha256', root / 'run_n83_zero_run_chunk.py'),
               ('source_generator_sha256', root / 'bench_n83_zero_run_stage.py'),
               ('portable_native_source_sha256', root / 'native_n83_orbit_query_spill_portable.cpp'),
@@ -77,20 +75,21 @@ jobs:
               ('generated_field_sha256', pathlib.Path('ecc2k130/runner/generated/eccF83.h')),
           ):
               assert plan[key] == sha(path), key
+          q1080_audit = root / plan['Q1080_terminal_audit_path']
+          assert plan['Q1080_terminal_audit_sha256'] == sha(q1080_audit)
           q1074 = plan['Q1074_state']
           assert q1074['plan_sha256'] == sha(root / 'n83_local_arm_m33_r30_q1074_plan.json')
           assert not q1074['completed_coverage_credited_here']
           assert q1074['query_end_exclusive'] <= min(plan['query_starts'])
-          assert q1074['status'] in ('active_uncredited','completed_zero_audited')
+          assert q1074['status'] in ('not_started','active_uncredited','completed_zero_audited')
           if q1074['status'] == 'completed_zero_audited':
               terminal = q1074['terminal_audit']
               assert terminal['receipt_sha256'] == sha(root / terminal['receipt'])
               assert terminal['sage_audit_sha256'] == sha(root / terminal['sage_audit'])
-          assert len(plan['terminal_prior_Q1079_audits']) == 8
-          for item in plan['terminal_prior_Q1079_audits']:
+          assert len(plan['terminal_prior_audits']) == 9
+          for item in plan['terminal_prior_audits']:
               assert item['receipt_sha256'] == sha(root / item['receipt'])
               assert item['sage_audit_sha256'] == sha(root / item['sage_audit'])
-              assert item['bundle_sha256'] == sha(root / item['bundle'])
           assert platform.machine().lower() in ('x86_64', 'amd64')
           cpu = pathlib.Path('/proc/cpuinfo').read_text().lower()
           assert 'pclmulqdq' in cpu or 'pclmul' in cpu
@@ -98,14 +97,13 @@ jobs:
                     for line in pathlib.Path('/proc/meminfo').read_text().splitlines()
                     if ':' in line}
           root_free = shutil.disk_usage('/').free
-          dest = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-q1081-m32'
+          dest = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-q1079-m32'
           dest.mkdir()
           for name in ('control-sources','full-sources','control-spill','full-spill'):
               (dest / name).mkdir()
           report = {
-              'kind':'n83_q1081_M32_R29_physical_x86_preflight',
-              'proposal_id':'Q1081','executable_proposal_id':'Q1079',
-              'candidate_id':None,'run_id':None,
+              'kind':'n83_q1079_M32_R29_physical_x86_preflight',
+              'proposal_id':'Q1079','candidate_id':None,'run_id':None,
               'curve_id':plan['curve_id'],'isogeny':'none',
               'factor_base_enumerated_set_sha256':plan['factor_base_enumerated_set_sha256'],
               'actual_usable_points_B_before_folding':8000204,
@@ -137,36 +135,35 @@ jobs:
         run: |
           python3 experiments/koblitz-pair-claw-20260929/run_n83_zero_run_chunk.py \
             --cpu-backend x86_pclmul --cxx clang++ \
-            --spill-dir "$RUNNER_TEMP/n83-q1081-m32/control-spill" \
-            --source-dir "$RUNNER_TEMP/n83-q1081-m32/control-sources" \
-            --binary "$RUNNER_TEMP/n83-q1081-m32/control-bin" \
+            --spill-dir "$RUNNER_TEMP/n83-q1079-m32/control-spill" \
+            --source-dir "$RUNNER_TEMP/n83-q1079-m32/control-sources" \
+            --binary "$RUNNER_TEMP/n83-q1079-m32/control-bin" \
             --table-log2 20 --query-reps-log2 14 \
             --table-start 0 --query-start "$QUERY_START" \
             --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
-            --out "$RUNNER_TEMP/n83-q1081-m32/control.json"
+            --out "$RUNNER_TEMP/n83-q1079-m32/control.json"
 
       - name: Full M32 public-target search
         run: |
           python3 experiments/koblitz-pair-claw-20260929/run_n83_zero_run_chunk.py \
             --cpu-backend x86_pclmul --cxx clang++ \
-            --spill-dir "$RUNNER_TEMP/n83-q1081-m32/full-spill" \
-            --source-dir "$RUNNER_TEMP/n83-q1081-m32/full-sources" \
-            --frozen-plan experiments/koblitz-pair-claw-20260929/n83_q1081_m32_wave_plan.json \
-            --binary "$RUNNER_TEMP/n83-q1081-m32/full-bin" \
+            --spill-dir "$RUNNER_TEMP/n83-q1079-m32/full-spill" \
+            --source-dir "$RUNNER_TEMP/n83-q1079-m32/full-sources" \
+            --frozen-plan experiments/koblitz-pair-claw-20260929/n83_q1079_m32_wave_plan.json \
+            --binary "$RUNNER_TEMP/n83-q1079-m32/full-bin" \
             --table-log2 32 --query-reps-log2 29 \
             --table-start 0 --query-start "$QUERY_START" \
             --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
-            --out "$RUNNER_TEMP/n83-q1081-m32/full.json"
+            --out "$RUNNER_TEMP/n83-q1079-m32/full.json"
 
       - name: Check terminal receipt
         run: |
           python3 - <<'PY'
           import json,os,pathlib
-          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'n83-q1081-m32'
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'n83-q1079-m32'
           host=json.loads((root/'host.json').read_text())
           control=json.loads((root/'control.json').read_text())
           full=json.loads((root/'full.json').read_text())
-          assert host['proposal_id']=='Q1081' and host['executable_proposal_id']=='Q1079'
           assert control['proposal_id']==full['proposal_id']=='Q1079'
           assert control['curve_id']==full['curve_id']==host['curve_id']
           assert control['factor_base']==full['factor_base']
@@ -188,6 +185,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: n83-q1081-M32-R29-start-${{ matrix.query_start }}
-          path: ${{ runner.temp }}/n83-q1081-m32/
+          name: n83-q1079-M32-R29-start-${{ matrix.query_start }}
+          path: ${{ runner.temp }}/n83-q1079-m32/
           retention-days: 7

@@ -2142,24 +2142,25 @@ pin the enabled dispatch and its original work ledger after later updates.
 The [coverage/work ledger](n83_full_spill_segment_work.py) recognizes
 Q1079's full-size bundles and Q1074's local terminal receipt. It credits
 successful rectangles only after independent checked-Sage replay and keeps
-failed or pending audits visible without credit. Seven Q1079 M32/R29 jobs
+failed or pending audits visible without credit. All eight Q1079 M32/R29 jobs
 have completed and passed that replay at query starts 18,253,611,008,
 18,790,481,920, 19,327,352,832, 19,864,223,744, 20,401,094,656,
-20,937,965,568, and 22,011,707,392. All seven reported zero exact hits
-and zero verified relations. Their separate target-online intervals range
-from 7,753.74 to 9,197.34 seconds; these are physical x86 jobs, not one
+20,937,965,568, 21,474,836,480, and 22,011,707,392. All eight reported
+zero exact hits and zero verified relations. Their separate target-online
+intervals range from 7,753.74 to 9,705.08 seconds, with median 8,787.42
+seconds; these are physical x86 jobs, not one
 continuous solve interval.
 Their [archived receipts](runs/n83_zero_run_q1079_M32_R29_ci_36784663720_qstart18790481920/bundle.json)
 include the full artifact, source and binary identity, runtime information,
-and independent checked-Sage result. The last Q1079 job and local Q1074
-remain active and uncredited. The dispatch plan remains bound to the frozen
+and independent checked-Sage result. Local Q1074 remains active and
+uncredited. The dispatch plan remains bound to the frozen
 pre-dispatch coverage snapshot.
 
 Across successful terminal receipts, the refreshed ledger charges
-3,364,301,570,048 lifted query-pair tests ($2^{41.613}$), including repeated
-work. The selected-route arithmetic model charges $2^{44.634}$ native field
+3,453,422,141,440 lifted query-pair tests ($2^{41.651}$), including repeated
+work. The selected-route arithmetic model charges $2^{44.671}$ native field
 calls already completed; its conditional expected first-hit work is now
-$2^{45.630}$ native field calls, with a 95% model quantile of $2^{46.660}$.
+$2^{45.649}$ native field calls, with a 95% model quantile of $2^{46.669}$.
 Those are finite-support placement projections, not measured natural yield or
 a complete DLP work estimate. `complete_solve_work_log2` stays null.
 
@@ -2167,25 +2168,25 @@ The [Q1081 conditional design](n83_m32_wave_q1081_design.json) reserves the
 next eight aligned M32/R29 intervals, starting exactly at Q1079's end. It
 does not dispatch or credit them. The first interval repeats Q1080's bounded
 M28/R24 keyer-control range; that earlier work stays separately charged.
-Q1081 can become an executable wave only after all Q1079 terminal receipts
-are independently audited and the coverage ledger and source hashes are
-refrozen. Its additional eight-job arithmetic model is $2^{42.371}$ native
-field calls, with natural hit probability and complete solve work unknown.
-The [Q1081 plan builder](n83_q1081_full_plan.py) enforces those gates and
-refuses to overwrite a frozen plan. Its current negative control refuses to
-freeze while the eight Q1079 audits are missing; no Q1081 executable plan
-or job has been created.
+After all eight Q1079 terminal receipts passed independent checked-Sage
+replay, the [Q1081 plan builder](n83_q1081_full_plan.py) froze the
+[source-bound executable plan](n83_q1081_m32_wave_plan.json). It verified
+Q1074's live wrapper and disjoint interval, all eight prior terminal audits,
+the refreshed ledger, exact curve and factor base, and native source hashes.
+Its additional eight-job arithmetic model is $2^{42.371}$ native field
+calls; the finite-support placement model predicts an 18.8% hit probability
+for that wave. These are search-stage predictions, not measured natural yield
+or complete solve work. The builder refuses to overwrite the frozen plan.
 The [Q1081 one-shot workflow](../../.github/workflows/n83-q1081-zero-run-m32-wave.yml)
-is committed with `if: false`. Its eight matrix starts, source and audit
-hash checks, physical x86 resource gate, bounded control, and terminal
-artifact retention are reviewable now; it cannot start until a frozen plan
-exists and a later change explicitly enables that one-shot dispatch.
+has eight matrix starts, source and audit hash checks, a physical x86
+resource gate, bounded control, and terminal artifact retention. It is ready
+for one-shot dispatch from the frozen plan.
 The [Q1081 artifact ingester](n83_q1081_full_ci_ingest.py) is staged
 for terminal source and identity checks. It reuses the hash-checked Q1079
 receipt verifier while preserving `Q1081` as the wave ID and `Q1079` as
 the executable solver ID. Its negative gate rejects input before any
 archive mutation while the Q1081 executable plan is absent; full-size
-ingestion remains untested until that plan is frozen and a job finishes.
+ingestion remains untested until a job finishes.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
