@@ -2247,6 +2247,17 @@ calculation](n83_m33_vs_m32_placement_screen.py) records its ledger, base,
 and Q1074 plan hashes; candidate and run IDs remain null while this is a
 proposal comparison.
 
+The [Q1084 conditional local design](n83_q1084_local_m33_design.json)
+reserves one M33/R30 interval starting at 35,433,480,192, after Q1083's
+reserved range. It models $2^{40.371}$ native field calls and prefers the
+SSD spill volume, which currently has substantially more free space than
+the system volume used by live Q1074. Q1084 is not an executable plan or
+a launched search. Freezing it requires terminal checked-Sage zero-hit
+audits for Q1074 and all eight Q1081 jobs, a refreshed overlap check, and
+Q1074's measured wall-time and memory result. The [design generator](n83_q1084_local_m33_design.py)
+binds the Q1074 and Q1081 plans, Q1083 reservation, and current ledger;
+its probability and complete-solve work remain null until those gates pass.
+
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
 The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
