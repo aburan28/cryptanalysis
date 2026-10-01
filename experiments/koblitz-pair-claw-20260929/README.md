@@ -2230,6 +2230,12 @@ exist. It preserves `Q1083` as the wave ID and `Q1079` as the executable
 solver ID when real terminal artifacts arrive.
 Any Q1083 hit probability and complete-solve work remain unknown until the
 prior results and coverage ledger are refreshed.
+The [coverage ledger](n83_full_spill_segment_work.py) now recognizes
+archived Q1083 bundles only after the frozen plan, run/workflow source,
+artifact hashes, full native receipt, and independent checked-Sage replay
+agree. Its missing-plan gate rejects a synthetic bundle; with no Q1083
+artifacts yet, refreshing the ledger leaves every prior completed-work and
+coverage value unchanged.
 
 The [Q1074 versus Q1079 placement screen](n83_m33_vs_m32_placement_screen.json)
 compares fresh, disjoint query ranges under the same frozen finite-support

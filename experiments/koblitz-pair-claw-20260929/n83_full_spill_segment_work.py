@@ -12,6 +12,7 @@ import n83_m32_wave_ci_ingest as m32_wave
 import n83_m32_wave_q1075_ci_ingest as m32_wave_q1075
 import n83_q1079_full_ci_ingest as q1079_full
 import n83_q1081_full_ci_ingest as q1081_full
+import n83_q1083_full_ci_ingest as q1083_full
 import n83_portable_ci_ingest as portable
 from n83_full_spill_screen import field_calls
 from n83_identity_contract import validate_receipt, validate_reference
@@ -488,6 +489,147 @@ def q1081_ci_rows(screen):
     return completed, failed, noncompleted, proposal_by_path, sage_paths
 
 
+def q1083_ci_rows(screen):
+    """Credit a Q1083 rectangle only after its Q1079 receipt has Sage replay."""
+    completed, failed, noncompleted = [], [], []
+    proposal_by_path, sage_paths = {}, {}
+    bundles = sorted(RUNS.glob(
+        "n83_zero_run_q1083_M32_R29_ci_*_qstart*/bundle.json"))
+    if not bundles:
+        return completed, failed, noncompleted, proposal_by_path, sage_paths
+    assert q1083_full.PLAN.is_file(), (
+        "Q1083 bundles require a frozen executable plan")
+    plan = json.loads(q1083_full.PLAN.read_text())
+    assert plan["proposal_id"] == plan["executable_proposal_id"] == "Q1079"
+    assert plan["wave_proposal_id"] == "Q1083"
+    assert plan["status"] == "ready_for_dispatch"
+    assert plan["candidate_id"] is None and plan["run_id"] is None
+    assert plan["curve_id"] == screen["curve_id"]
+    assert plan["isogeny"] == "none"
+    assert plan["factor_base_enumerated_set_sha256"] == screen[
+        "factor_base"]["enumerated_set_sha256"]
+    assert plan["actual_usable_points_B_before_folding"] == screen[
+        "factor_base"]["actual_usable_points_B_before_folding"]
+    assert plan["signed_frobenius_columns"] == screen[
+        "factor_base"]["signed_frobenius_columns"]
+    assert len(plan["query_starts"]) == 16
+    seen_starts, run_ids = set(), set()
+    for bundle_path in bundles:
+        bundle = json.loads(bundle_path.read_text())
+        assert bundle["kind"] == "n83_q1083_physical_x86_M32_R29_ci_bundle"
+        assert bundle["proposal_id"] == "Q1083"
+        assert bundle["executable_proposal_id"] == "Q1079"
+        assert bundle["candidate_id"] is None and bundle["run_id"] is None
+        assert bundle["curve_id"] == screen["curve_id"]
+        assert bundle["isogeny"] == "none"
+        assert bundle["factor_base_enumerated_set_sha256"] == plan[
+            "factor_base_enumerated_set_sha256"]
+        assert bundle["actual_usable_points_B_before_folding"] == plan[
+            "actual_usable_points_B_before_folding"]
+        assert bundle["signed_frobenius_columns"] == plan[
+            "signed_frobenius_columns"]
+        assert bundle["table_descriptors"] == M32
+        assert bundle["query_representatives"] == 1 << 29
+        assert bundle["query_start"] in plan["query_starts"]
+        assert str(bundle["query_start"]) in str(bundle_path)
+        assert bundle["query_start"] not in seen_starts
+        seen_starts.add(bundle["query_start"])
+        run_id = bundle["github_run_id"]
+        assert isinstance(run_id, int) and run_id > 0
+        assert str(run_id) in str(bundle_path)
+        assert bundle["github_run_url"] == (
+            "https://github.com/aburan28/cryptanalysis/actions/runs/"
+            f"{run_id}")
+        assert bundle["github_artifact_digest"].startswith("sha256:")
+        run_ids.add(run_id)
+        snapshot = RUNS / f"n83_q1083_ci_{run_id}_workflow_snapshot.yml"
+        assert snapshot.is_file()
+        assert bundle["plan_sha256"] == work.sha(q1083_full.PLAN)
+        assert bundle["screen_sha256"] == work.sha(q1083_full.SCREEN)
+        assert bundle["runner_source_sha256"] == work.sha(q1079_full.RUNNER)
+        assert bundle["source_generator_sha256"] == work.sha(
+            q1079_full.GENERATOR)
+        assert bundle["source_sha256"] == work.sha(Path(q1083_full.__file__))
+        assert bundle["workflow_snapshot_sha256"] == work.sha(snapshot)
+        assert work.sha(bundle_path.parent / "workflow_snapshot.yml") == (
+            work.sha(snapshot))
+        for name, digest in bundle["artifact_sha256"].items():
+            artifact_path = bundle_path.parent / name
+            if isinstance(digest, dict):
+                assert artifact_path.is_dir()
+                observed = {str(path.relative_to(artifact_path)): work.sha(path)
+                            for path in artifact_path.rglob("*")
+                            if path.is_file()}
+                assert observed == digest
+            else:
+                assert work.sha(artifact_path) == digest
+        control_path = bundle_path.parent / "control.json"
+        control = (json.loads(control_path.read_text())
+                   if control_path.exists() else None)
+        if control is not None:
+            assert control["proposal_id"] == "Q1079"
+            assert control["query_start"] == bundle["query_start"]
+            if control["kind"] == work.SUCCESS_KIND:
+                assert control["native_result"]["exact_hit_queries"] == 0, (
+                    "Q1083 bounded-control exact hit requires review")
+        full_path = bundle_path.parent / "full.json"
+        if not full_path.exists():
+            noncompleted.append({"bundle": repo_path(bundle_path),
+                                 "sha256": work.sha(bundle_path),
+                                 "status": bundle["status"]})
+            continue
+        assert control is not None and control["kind"] == work.SUCCESS_KIND
+        row = json.loads(full_path.read_text())
+        validate_receipt(screen, row)
+        assert row["proposal_id"] == "Q1079"
+        assert row["table_start"] == 0
+        assert row["table_descriptors"] == M32
+        assert row["query_start"] == bundle["query_start"]
+        assert row["query_representatives"] == 1 << 29
+        query_segments(row["query_start"], row["query_representatives"])
+        if row["kind"] == work.FAILED_KIND:
+            assert bundle["status"] == "failed_full_segment_unknown_work"
+            assert row["native_phase_counts"] is None
+            failed.append((full_path, row))
+            continue
+        assert row["kind"] == work.SUCCESS_KIND
+        q1079_full.verify_row(
+            screen, plan, full_path, bundle_path.parent / "full-sources",
+            bundle_path.parent / "full-bin", full=True,
+            start=bundle["query_start"])
+        assert bundle["status"] in (
+            "completed_zero_hit", "native_verified_hit_needs_independent_sage",
+            "unverified_exact_hit_requires_review",
+            "bounded_control_exact_hit_requires_review")
+        sage_path = bundle_path.parent / "sage_verify.json"
+        runtime_path = bundle_path.parent / "runtime_info.json"
+        if not sage_path.exists() or not runtime_path.exists():
+            assert not row["native_result"]["exact_hit_queries"], (
+                "Q1083 exact hit requires independent Sage audit")
+            noncompleted.append({"bundle": repo_path(bundle_path),
+                                 "sha256": work.sha(bundle_path),
+                                 "status": "pending_independent_sage_audit"})
+            continue
+        sage = json.loads(sage_path.read_text())
+        runtime = json.loads(runtime_path.read_text())
+        assert runtime["status"] == "verified"
+        assert sage["receipt_sha256"] == work.sha(full_path)
+        assert sage["sage_runtime_info_sha256"] == work.sha(runtime_path)
+        assert sage["curve_id"] == screen["curve_id"]
+        assert sage["proposal_id"] == "Q1079"
+        assert sage["verified_relation_count"] == len(
+            row["verified_public_target_relations"])
+        assert sage["natural_public_target_relation_verified"] == bool(
+            row["verified_public_target_relations"])
+        if row["native_result"]["exact_hit_queries"]:
+            assert sage["natural_public_target_relation_verified"]
+        completed.append((full_path, row))
+        proposal_by_path[full_path] = "Q1083"
+        sage_paths[full_path] = sage_path
+    assert len(run_ids) == 1, "one-shot Q1083 bundles must share one run ID"
+    return completed, failed, noncompleted, proposal_by_path, sage_paths
+
+
 def local_m32_rows(screen):
     """Credit Q1071 only from its terminal receipt on the frozen ARM range."""
     plan_path = HERE / "n83_local_arm_m32_q1071_plan.json"
@@ -769,6 +911,9 @@ def main():
     (q1081_ci, failed_q1081_ci, noncompleted_q1081_ci,
      q1081_proposals, q1081_sage_paths) = q1081_ci_rows(screen)
     table_proposals.update(q1081_proposals)
+    (q1083_ci, failed_q1083_ci, noncompleted_q1083_ci,
+     q1083_proposals, q1083_sage_paths) = q1083_ci_rows(screen)
+    table_proposals.update(q1083_proposals)
     local_m32, failed_local_m32, local_m32_proposals, local_sage_paths = (
         local_m32_rows(screen))
     table_proposals.update(local_m32_proposals)
@@ -782,7 +927,9 @@ def main():
     local_sage_paths.update(q1074_sage_paths)
     local_sage_paths.update(q1079_sage_paths)
     local_sage_paths.update(q1081_sage_paths)
-    m32_paths = {path for path, _ in m32_ci + q1079_ci + q1081_ci + local_m32}
+    local_sage_paths.update(q1083_sage_paths)
+    m32_paths = {path for path, _ in m32_ci + q1079_ci + q1081_ci +
+                 q1083_ci + local_m32}
     m33_paths = {path for path, _ in local_m33 + q1074}
     covered = {(0, segment, shard)
                for segment in range(SEGMENTS_PER_RANGE)
@@ -819,7 +966,8 @@ def main():
     verified_dlp = []
     unverified_hits = []
     for path, row in sorted(q1060 + q1062_full + q1062_seg + q1061_ci +
-                            m32_ci + q1079_ci + q1081_ci + local_m32 + local_m33 +
+                            m32_ci + q1079_ci + q1081_ci + q1083_ci +
+                            local_m32 + local_m33 +
                             q1074,
                             key=lambda item: (item[1]["finished_at_utc"],
                                               str(item[0]))):
@@ -892,7 +1040,8 @@ def main():
         completed.append(entry)
     failures = [failed_record(path, row) for path, row in
                 failed_q1060 + failed_full + failed_seg + failed_q1061_ci +
-                failed_m32_ci + failed_q1079_ci + failed_q1081_ci + failed_local_m32 +
+                failed_m32_ci + failed_q1079_ci + failed_q1081_ci +
+                failed_q1083_ci + failed_local_m32 +
                 failed_local_m33 + failed_q1074]
     interrupted_markers = set()
     interrupted_q1073 = RUNS / "n83_local_arm_m33_q1073_interrupted.json"
@@ -1163,6 +1312,7 @@ def main():
         "noncompleted_M32_ci_bundles": noncompleted_m32_ci,
         "noncompleted_Q1079_ci_bundles": noncompleted_q1079_ci,
         "noncompleted_Q1081_ci_bundles": noncompleted_q1081_ci,
+        "noncompleted_Q1083_ci_bundles": noncompleted_q1083_ci,
         "pending_Q1074_terminal_receipts": pending_q1074,
         "active_start_markers_excluded": [repo_path(path) for path in sorted(
             RUNS.glob("n83_*.started.json")) if path not in
@@ -1240,6 +1390,8 @@ def main():
             HERE / "n83_q1079_full_ci_ingest.py"),
         "q1081_full_ci_ingest_source_sha256": work.sha(
             HERE / "n83_q1081_full_ci_ingest.py"),
+        "q1083_full_ci_ingest_source_sha256": work.sha(
+            HERE / "n83_q1083_full_ci_ingest.py"),
         "local_M32_Q1071_plan_sha256": work.sha(
             HERE / "n83_local_arm_m32_q1071_plan.json"),
         "local_M33_Q1073_plan_sha256": work.sha(
