@@ -2328,9 +2328,21 @@ control by the 128-fold query count predicts 192.7 million Bloom positives,
 independent 20-bit positive-count scaling from Q1073's physical ARM M33/R29
 result agrees with Q1082's 20-bit scaling within 0.21%, but neither validates
 full-size 16-bit ARM memory or wall time. The host has 48 GiB physical memory;
-Q1086 has no executable plan or run. A launch gate must wait for terminal
+Q1086 has no full-size executable plan or run. A launch gate must wait for terminal
 Q1074 and Q1081 audits, extend the coverage ledger for M34 shards, verify a
 bounded compatible control, and check free memory and SSD space.
+
+The bounded 16-bit physical ARM control now passes using a
+[one-line derived portable wrapper](generate_n83_q1086_portable_b16_runner.py)
+and the same native C++ source as Q1074. Its [source-bound bundle](runs/n83_q1086_b16_arm_control_v2_bundle.json)
+records M20/R14 on the future Q1086 query range, zero exact hits, 0.733 s
+target-online time, the checked-Sage runtime, and an independent zero-relation
+Sage audit. The initial frozen control attempt hit the original wrapper's
+20-bit-only preflight assertion before any native work; its
+[failure record](runs/n83_q1086_b16_arm_control_attempt1_gate.json) remains
+uncredited. The successful bounded control establishes source-path
+correctness at small size; M34 memory, wall time, natural yield, and a complete
+DLP remain unmeasured.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
