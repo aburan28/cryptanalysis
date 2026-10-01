@@ -2289,10 +2289,15 @@ M32/R29 intervals after Q1084's reserved end, from query position
 36,507,222,016 through 53,687,091,200. They would add 2,048 fresh
 M28-by-R27 cells for $2^{44.371}$ modeled native field calls. The
 [source-bound generator](n83_q1085_m32_wave_design.py) fixes the same curve,
-target, factor base, and disjoint range. It does not freeze or dispatch a
-workflow; Q1083's 16 jobs, Q1074, Q1081, and any launched Q1084 must first
-have terminal independent audits with no verified or unresolved hit. Its
-hit probability and complete-solve work remain null until then.
+target, factor base, and disjoint range. The
+[Q1085 plan builder](n83_q1085_full_plan.py) now checks all 16 Q1083
+terminal checked-Sage audits against the refreshed coverage ledger, requires
+Q1074's terminal zero-hit audit, and refuses any launched Q1084 job without
+a terminal zero-hit audit. It also checks source hashes, identifier fields,
+and disjoint completed and active ranges before writing a plan. Its current
+negative gate refuses the missing Q1083 plan without writing output. Q1085
+has no executable plan or workflow yet; the design's hit probability and
+complete-solve work remain null until the prior audits exist.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
