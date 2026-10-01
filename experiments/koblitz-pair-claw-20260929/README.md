@@ -1753,9 +1753,9 @@ $n=83$ curve and base; they are not an $n=131$ projection. The first
 interrupted Q1073 attempt has unknown arithmetic work and receives no
 coverage credit;
 its independently audited retry is charged and credited. The active Q1074
-attempt receives no work or coverage credit yet. Q1080's
-partial R24 interval is charged separately and is omitted from this R27
-grid's placement model.
+attempt receives no work or coverage credit yet. Q1080's partial R24
+interval and Q1082's four repetitions are charged separately and omitted
+from this R27 grid's placement model.
 The same frozen placement heuristic assigns 0.608 expected hits to the
 1,486 unique completed primary and M32-extension cells, giving a 54.4%
 model probability of the observed zero-hit count. This is a check of the
@@ -1768,16 +1768,18 @@ independence assumption is unvalidated, so this is a conditional uncertainty
 calculation, not an empirical yield calibration. In particular, zero hits
 provide no finite data-only upper estimate for first-hit solve work.
 
-The work exponent has a fixed boundary in this ledger:
+The work exponent has a fixed boundary in the ledger and paired-run receipts:
 
 | Quantity | $2^x$ native field calls | Status |
 | --- | ---: | --- |
 | One complete M32/R29 rectangle | $2^{39.371}$ | Modeled attempt cost, with no hit required |
 | Completed R27-grid search receipts | $2^{44.344}$ | Modeled calls over audited terminal grid coverage, including Q1073 retry and eight Q1075 jobs |
 | Q1080 four paired M28/R24 attempts | $2^{36.582}$ | Charged separately; one novel partial rectangle, zero full R27 cells |
-| All successful terminal attempts through Q1073, Q1075, and Q1080 | $2^{44.350}$ | Sum of the preceding charged work; Q1074 active work excluded |
+| Audited full-grid and Q1080 ABBA attempts | $2^{44.350}$ | Sum of the preceding charged work; bounded smokes and Q1074 active work excluded |
+| Q1082 four repeated M28/R24 attempts | $2^{36.582}$ | Charged separately; zero novel coverage and zero exact hits |
+| Audited full-grid and Q1080/Q1082 ABBA attempts | $2^{44.357}$ | Modeled field calls across these terminal attempts; bounded smokes, Q1074/Q1079 active, and failed attempts excluded |
 | First hit on the selected M32 route | $2^{45.494}$ | Finite-support expectation, conditional on a hit by plan end |
-| Exhaust all 217 selected M32 rectangles, plus completed grid receipts | $2^{47.327}$ | Finite search-stage arithmetic model, including a no-hit outcome; excludes Q1080 partial work, active and failed attempts, non-field costs, and complete DLP recovery |
+| Exhaust all 217 selected M32 rectangles, plus completed grid receipts | $2^{47.327}$ | Finite search-stage arithmetic model, including a no-hit outcome; excludes Q1080/Q1082 partial work, active and failed attempts, non-field costs, and complete DLP recovery |
 | Complete one-target IC solve | unknown | No natural n=83 relation or independently verified IC scalar yet |
 
 The n=53 control did recover and independently verify one target in
@@ -2196,7 +2198,7 @@ audited Q1080 public target and M28/R24 rectangle as a performance
 control. Four physical x86 runs use the Q1079 keyer in 20, 16, 16, 20
 bits-per-key order with ten hashes and identical schedules. Since the
 query interval is repeated, it earns **zero new coverage**. All four
-attempts would charge $2^{36.582}$ modeled native field calls together.
+attempts charge $2^{36.582}$ modeled native field calls together.
 The plan pins the Q1080 audit, exact curve and base, source hashes, and
 absent isogeny; `candidate_id` and `run_id` stay null.
 
@@ -2208,17 +2210,25 @@ checks physical x86 resources and exact identities, archives the derived
 runner and every source and binary, and compares exact outcomes despite
 the expected difference in Bloom positives. [Run 36792009510](https://github.com/aburan28/cryptanalysis/actions/runs/36792009510)
 started from the [frozen enabled workflow](runs/n83_q1082_ci_36792009510_workflow_snapshot.yml);
-the live workflow is disabled for later PR synchronizations. Any paired
-performance result is pending. The [terminal audit](audit_n83_q1082_bloom_paired.py)
-will check archived sources and binaries, same-instance outcomes, and four
-independent checked-Sage replays before reporting a ratio. A
+the live workflow is disabled for later PR synchronizations. The
+[terminal audit](runs/n83_q1082_x86_ci_36792009510/audit.json) checked archived
+sources and binaries, same-instance outcomes, and four independent
+checked-Sage replays. All four runs had **zero exact hits**. The 16-bit
+filter yielded 1,505,563 Bloom positives per run versus 304,862 at 20
+bits, or 4.94 times as many. Median target-online time was 285.24 s at
+16 bits and 282.29 s at 20 bits; the 20/16 ratio was 0.9896, with an
+all-cross-pair range of 0.9756–1.0040. Full-wrapper medians gave a
+0.9908 ratio. With two repetitions per setting, this bounded control
+shows no speed gain from 16 bits and does not establish full M32/R29
+throughput. The [charged-work receipt](n83_q1082_repeated_work.json) counts
+all four attempts as $2^{36.582}$ modeled field calls and grants zero
+new coverage. A
 [local M20/R14 16-bit smoke](runs/n83_q1082_smoke_b16_M20_R14.json)
 passed the [independent checked-Sage replay](runs/n83_q1082_smoke_b16_M20_R14_sage_verify.json):
 1,144 Bloom positives, zero exact hits, and no verified relation. It
 checks the derived runner's executable path and gives no paired timing
-result. The earlier Q1066 small ARM screen favored 16 bits, but did
-not establish full-size x86 behavior. This control will determine whether
-that setting merits a full-size test after Q1079 terminal audits.
+result. The earlier Q1066 small ARM screen favored 16 bits; the paired
+M28/R24 x86 result leaves the 20-bit setting in the next full-size plan.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
