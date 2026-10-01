@@ -378,8 +378,9 @@ measurement rows:
 the [measurement contract](../ic-candidate-catalog/MEASUREMENT.md)
 requires exactly one of those IDs to be non-null. New comparison rows
 must use the `IC1` ID and carry the old `Q` lineage separately. The
-current n=83 search records use `Q` proposal IDs with `candidate_id: null`
-until a complete method and verified target solve are recorded.
+historical Q1062-Q1089 n=83 search records retain their `Q` proposal IDs
+and null candidate IDs. Q1090 fixes the complete method before its new
+holdout search and carries the hashed `IC1` ID in its frozen plan and runs.
 
 The [n=83 known-log base](runs/n83_knownlog_orbit_base.json) independently
 replays 24,097 seeded scalar orbits, again giving **actual B=4,000,102**
