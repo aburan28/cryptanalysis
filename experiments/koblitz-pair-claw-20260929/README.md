@@ -2194,6 +2194,11 @@ receipt verifier while preserving `Q1081` as the wave ID and `Q1079` as
 the executable solver ID. Its negative gate rejects input before any
 archive mutation while the Q1081 executable plan is absent; full-size
 ingestion remains untested until a job finishes.
+The coverage ledger now recognizes Q1081 bundles and checks the frozen
+workflow, source digests, bounded control, full receipt, runtime, and
+independent checked-Sage replay before crediting successful rectangles.
+Pending audits and failed full searches remain visible without coverage or
+modeled completed-work credit.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
