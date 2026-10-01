@@ -2231,6 +2231,22 @@ solver ID when real terminal artifacts arrive.
 Any Q1083 hit probability and complete-solve work remain unknown until the
 prior results and coverage ledger are refreshed.
 
+The [Q1074 versus Q1079 placement screen](n83_m33_vs_m32_placement_screen.json)
+compares fresh, disjoint query ranges under the same frozen finite-support
+model. One M33/R30 interval and four M32/R29 intervals each add 256
+M28-by-R27 cells. Each therefore has a 9.88% modeled probability of an exact
+hit at the currently audited 2,062-cell coverage, while the M33/R30 route
+models $2^{40.371}$ native field calls versus $2^{41.371}$ for the four M32
+jobs. One M32/R29 interval adds 64 cells for a 2.57% modeled hit probability
+and $2^{39.371}$ field calls. The M33 arithmetic advantage is conditional:
+the live Q1074 M33/R30 run has no terminal wall-time or memory result yet,
+and the active Q1074 and Q1081 ranges receive neither coverage nor completed
+work credit here. These probabilities are placement predictions, not natural
+relation measurements or complete-DLP work. The [source-bound
+calculation](n83_m33_vs_m32_placement_screen.py) records its ledger, base,
+and Q1074 plan hashes; candidate and run IDs remain null while this is a
+proposal comparison.
+
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
 The [Q1080 plan](n83_q1080_m28_r24_paired_plan.json) freezes one novel
