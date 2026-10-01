@@ -1,7 +1,9 @@
 name: n83 Q1090 fresh holdout M32 wave
 
 on:
-  pull_request:
+  push:
+    branches:
+      - codex/koblitz-pair-claw-toy
     paths:
       - ".github/workflows/n83-q1090-holdout-wave.yml"
 
@@ -10,7 +12,7 @@ permissions:
 
 jobs:
   physical-x86-holdout-wave:
-    if: github.event.pull_request.number == 175
+    if: github.ref == 'refs/heads/codex/koblitz-pair-claw-toy'
     strategy:
       fail-fast: false
       max-parallel: 8

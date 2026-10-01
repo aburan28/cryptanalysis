@@ -152,7 +152,10 @@ def main():
         for found in re.findall(r"ci_(\d{10,})", str(path))})
     assert len(archived_ci_run_ids) == 16
     assert "36817149475" in archived_ci_run_ids
-    workflow_files = sorted((REPO / ".github/workflows").glob("*n83*"))
+    # The Q1090 holdout was added after this historical accounting window.
+    workflow_files = sorted(path for path in
+                            (REPO / ".github/workflows").glob("*n83*")
+                            if path.name != "n83-q1090-holdout-wave.yml")
     assert len(workflow_files) == 14
     workflow_sources = []
     for path in workflow_files:
