@@ -2227,10 +2227,15 @@ adjudicated. These gates passed and it froze the
 [source-bound 16-job plan](n83_q1083_m32_wave_plan.json), retaining Q1074's
 active interval as uncredited work.
 The [Q1083 one-shot workflow](../../.github/workflows/n83-q1083-zero-run-m32-wave.yml)
-has its one-shot dispatch gate enabled. Its 16 exact starts, source and
+dispatched [run 36817149475](https://github.com/aburan28/cryptanalysis/actions/runs/36817149475)
+from commit `efeb97ef`. Its 16 exact starts, source and
 prior-audit hash checks, physical x86 resource gate, bounded control, and
-terminal artifact retention bind the frozen plan. It must be disabled after
-the run starts so later PR synchronizations cannot repeat the intervals.
+terminal artifact retention bind the frozen plan. Eight jobs entered execution
+and eight queued under the eight-worker limit. The
+[enabled workflow snapshot](runs/n83_q1083_ci_36817149475_workflow_snapshot.yml)
+and [pre-dispatch coverage snapshot](runs/n83_q1083_ci_36817149475_coverage_snapshot.json)
+retain the launch inputs. The workflow is now disabled so later PR
+synchronizations cannot repeat the intervals.
 The [Q1083 ingester](n83_q1083_full_ci_ingest.py) is also staged; its
 [negative gate](runs/n83_q1083_missing_plan_gate.json) rejected a synthetic
 artifact before mutating the archive because the executable plan did not
