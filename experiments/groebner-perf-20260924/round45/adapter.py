@@ -17,6 +17,9 @@ def load(name, path):
 
 accepted_checker = load('symmetry_prior_checker44', PRIOR / 'checker_base.py')
 producer = load('symmetry_prior_producer44', PRIOR / 'normalized.py')
+# Bind the temporary setup checker as well as the producer. A comparator
+# may already have imported another module named checker_base.
+producer.Checker = accepted_checker.Checker
 query_base = load('symmetry_prior_query44', PRIOR / 'normalized_query.py')
 # Pin the producer factory even when another experimental normalized module
 # was already imported by a comparator in this process. This baseline module

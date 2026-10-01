@@ -16,7 +16,7 @@ for version in 20 23 31 32 33 34 35 36 37 38 44; do
 done
 python3 experiments/groebner-perf-20260924/round45/build.py
 cd experiments/groebner-perf-20260924/round45
-python3 -m unittest -v test_symmetry.py test_sparse_guard.py
+python3 -m unittest -v test_symmetry.py test_sparse_guard.py test_adapter_isolation.py
 python3 validate_native.py --output /tmp/symmetry-correctness.json.gz
 python3 audit_queries.py --input /tmp/symmetry-correctness.json.gz --output /tmp/symmetry-audit.json
 ```
@@ -25,9 +25,9 @@ On macOS, build round44 with `--metal` and pass `--metal` to `validate_native.py
 
 The validator runs all 6,001 frozen systems with partial-affine production and checker symmetry each enabled and disabled, on optimized CPU and UBSan, plus the selected Metal producer when available. It compares with round44's independent checker, brute truth and reduced bases, the original-ANF witness oracle, and the immutable physical reference. Root-limit cases remain inconclusive records. It also executes all 18 frozen public-point inputs in every configuration. The separate Python audit checks every full proof from original equations, recomputes symmetry and alias matching using dictionaries and tuples, checks complete roots and reduced bases, and reconciles physical and inferred work.
 
-## Physical prototype evidence and measurement limits
+## Physical evidence and measurement limits
 
-The physical Apple M4 Pro prototype passed 72,012 system records: 71,796 verified and 216 expected producer root-limit records. It passed 216 fresh complete queries with 47 distinct proofs and 12 targeted test groups. The packaged implementation independently passed the same 72,012 records and 216 complete queries. Its separate Python original-ANF audit passed all 216 query records and 47 distinct proofs, including independently derived symmetry and avoided-work accounting. [The retained physical evidence](evidence/physical-m4-correctness.json.gz) identifies exact sources and binaries; full proof payloads remain in local and CI artifacts.
+The physical Apple M4 Pro implementation passed 72,012 system records: 71,796 verified and 216 expected producer root-limit records. It passed 216 fresh complete queries with 47 distinct proofs and 13 targeted test groups. The packaged implementation independently passed the same 72,012 records and 216 complete queries. Its separate Python original-ANF audit passed all 216 query records and 47 distinct proofs, including independently derived symmetry and avoided-work accounting. [The retained physical evidence](evidence/physical-m4-correctness.json.gz) identifies exact sources and binaries; full proof payloads remain in local and CI artifacts.
 
 On the three 27-variable controls, enabling symmetry changed physically enumerated assignments from 57,388 / 56,314 / 57,540 to 28,756 / 28,202 / 28,818. Partial-affine work changed from 16,394,615 / 16,117,783 / 16,507,779 to 8,215,996 / 8,072,767 / 8,267,885. The new guard costs roughly 1.53 million additional abstract units and 1,310,720 auxiliary bytes. These counts have different meanings and are not wall-time speedups.
 
