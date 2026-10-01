@@ -2156,6 +2156,12 @@ is committed with `if: false`. Its eight matrix starts, source and audit
 hash checks, physical x86 resource gate, bounded control, and terminal
 artifact retention are reviewable now; it cannot start until a frozen plan
 exists and a later change explicitly enables that one-shot dispatch.
+The [Q1081 artifact ingester](n83_q1081_full_ci_ingest.py) is staged
+for terminal source and identity checks. It reuses the hash-checked Q1079
+receipt verifier while preserving `Q1081` as the wave ID and `Q1079` as
+the executable solver ID. Its negative gate rejects input before any
+archive mutation while the Q1081 executable plan is absent; full-size
+ingestion remains untested until that plan is frozen and a job finishes.
 
 ### Same-host M28/R24 keyer scaling gate (Q1080)
 
