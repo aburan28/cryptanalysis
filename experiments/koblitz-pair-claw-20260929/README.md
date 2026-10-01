@@ -2686,6 +2686,14 @@ workload. Every full exact hit needs the
 [holdout Sage verifier](verify_n83_holdout_receipt_sage.py) before promotion
 to a verified DLP result.
 
+The [Q1090 resource budget](n83_q1090_resource_budget.json) also charges
+all sixteen jobs their full six-hour timeout, four vCPUs each, and an
+assumed 8 GHz per vCPU. That gives $2^{53.296}$ CPU core-cycle capacity for
+the wave, including its native non-field work and failed jobs under those
+resource assumptions. It excludes the earlier reusable factor-base build.
+This is a planned conditional capacity, not a measured solve or a calibration
+from CPU cycles to field operations.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
