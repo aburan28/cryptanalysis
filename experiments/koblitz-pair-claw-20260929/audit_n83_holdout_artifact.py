@@ -66,8 +66,17 @@ def audit(artifact_dir, plan_path, runtime_path,
 
     control_path = artifact_dir / "control.json"
     full_path = artifact_dir / "full.json"
-    if not control_path.exists() or not full_path.exists():
-        partial_full = load(full_path) if full_path.is_file() else None
+    def optional_json(path):
+        if not path.is_file():
+            return None
+        try:
+            return load(path)
+        except (ValueError, UnicodeDecodeError):
+            return None
+
+    control = optional_json(control_path)
+    full = optional_json(full_path)
+    if control is None or full is None:
         return {
             "kind": "n83_holdout_artifact_audit",
             "scope": "one terminal CI job; no coverage credit without a full receipt",
@@ -84,10 +93,13 @@ def audit(artifact_dir, plan_path, runtime_path,
             "terminal_status": "incomplete_artifact",
             "control_receipt_present": control_path.is_file(),
             "full_receipt_present": full_path.is_file(),
+            "control_receipt_json_valid": control is not None,
+            "full_receipt_json_valid": full is not None,
             "reported_full_exact_hit_queries": (
-                partial_full["native_result"]["exact_hit_queries"]
-                if partial_full else None),
-            "full_receipt_sha256": sha(full_path) if partial_full else None,
+                full.get("native_result", {}).get("exact_hit_queries")
+                if isinstance(full, dict) else None),
+            "full_receipt_sha256": sha(full_path) if full_path.is_file()
+                else None,
             "coverage_credit": 0,
             "actual_field_api_calls": None,
             "verified_relations": None,
@@ -99,8 +111,6 @@ def audit(artifact_dir, plan_path, runtime_path,
             "source_sha256": sha(Path(__file__)),
         }
 
-    control = load(control_path)
-    full = load(full_path)
     runtime = load(runtime_path)
     assert runtime["status"] == "verified"
     assert control["proposal_id"] == full["proposal_id"] == plan[

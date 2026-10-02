@@ -90,14 +90,14 @@ def ingest(shard, item, plan):
             download_dir.rename(artifact_dir)
     host = json.loads((artifact_dir / "host.json").read_text())
     assert host["query_start"] == plan["query_starts"][shard]
-    if (artifact_dir / "full.json").is_file():
+    control = artifact_dir / "control.json"
+    full = artifact_dir / "full.json"
+    if control.is_file() and full.is_file():
         if not (artifact_dir / "sage_verify.json").exists():
             verify_receipt(artifact_dir, "full")
-    control = artifact_dir / "control.json"
-    if control.is_file() and json.loads(control.read_text())[
-            "native_result"]["exact_hit_queries"]:
-        if not (artifact_dir / "control_sage_verify.json").exists():
-            verify_receipt(artifact_dir, "control")
+        if json.loads(control.read_text())["native_result"]["exact_hit_queries"]:
+            if not (artifact_dir / "control_sage_verify.json").exists():
+                verify_receipt(artifact_dir, "control")
     row = audit(artifact_dir, PLAN, RUNTIME, SNAPSHOT)
     assert row["query_start"] == plan["query_starts"][shard]
     audit_dir.mkdir(exist_ok=True)
