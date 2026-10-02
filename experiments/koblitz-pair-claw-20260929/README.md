@@ -2720,7 +2720,8 @@ The [first-range M20/R14 control](runs/n83_q1091_first_range_smoke_M20_R14.json)
 and [checked-Sage replay](runs/n83_q1091_first_range_smoke_M20_R14_sage_verify.json)
 validated the new query boundary with zero exact hits before dispatch.
 The [per-artifact auditor](audit_n83_holdout_artifact.py) checks a downloaded
-Q1091 job against the frozen curve, base, candidate, workload, run, workflow,
+Q1091 job against the frozen curve, base, candidate, workload, run,
+[triggering workflow snapshot](runs/q1091_raw_ci_37069216423/workflow_snapshot.yml),
 source hashes, and query range. Save the checked launcher's
 `/Volumes/SSD990/cryptanalysis/sage --runtime-info` output before using
 `/Volumes/SSD990/cryptanalysis/sage -python` with

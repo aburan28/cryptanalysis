@@ -24,7 +24,8 @@ def load(path):
     return json.loads(path.read_text())
 
 
-def audit(artifact_dir, plan_path, runtime_path):
+def audit(artifact_dir, plan_path, runtime_path,
+          workflow_snapshot_path=None):
     plan = load(plan_path)
     target = load(TARGET)
     host_path = artifact_dir / "host.json"
@@ -58,9 +59,10 @@ def audit(artifact_dir, plan_path, runtime_path):
     if "wave_proposal_id" in plan:
         assert host["wave_proposal_id"] == plan["wave_proposal_id"]
         if plan["wave_proposal_id"] == "Q1091":
-            workflow_path = (HERE.parents[1] / ".github/workflows" /
-                             "n83-q1091-holdout-continuation.yml")
-            assert host["workflow_sha256"] == sha(workflow_path)
+            snapshot = (workflow_snapshot_path or artifact_dir.parent /
+                        "workflow_snapshot.yml")
+            assert snapshot.is_file(), "missing triggering workflow snapshot"
+            assert host["workflow_sha256"] == sha(snapshot)
 
     control_path = artifact_dir / "control.json"
     full_path = artifact_dir / "full.json"
@@ -90,6 +92,9 @@ def audit(artifact_dir, plan_path, runtime_path):
             "actual_field_api_calls": None,
             "verified_relations": None,
             "host_sha256": sha(host_path),
+            "workflow_snapshot_sha256": (
+                sha(snapshot) if plan.get("wave_proposal_id") == "Q1091"
+                else None),
             "plan_sha256": sha(plan_path),
             "source_sha256": sha(Path(__file__)),
         }
@@ -248,6 +253,9 @@ def audit(artifact_dir, plan_path, runtime_path):
             "wrapper_subprocess_wall_seconds"],
         "peak_rss_bytes": native["peak_rss_bytes"],
         "host_sha256": sha(host_path),
+        "workflow_snapshot_sha256": (
+            sha(snapshot) if plan.get("wave_proposal_id") == "Q1091"
+            else None),
         "control_sha256": sha(control_path),
         "full_sha256": sha(full_path),
         "sage_verify_sha256": sha(sage_path),
@@ -263,10 +271,12 @@ def main():
     parser.add_argument("--artifact-dir", type=Path, required=True)
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--runtime-info", type=Path, required=True)
+    parser.add_argument("--workflow-snapshot", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     assert not args.out.exists(), "refusing to overwrite artifact audit"
-    result = audit(args.artifact_dir, args.plan, args.runtime_info)
+    result = audit(args.artifact_dir, args.plan, args.runtime_info,
+                   args.workflow_snapshot)
     args.out.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps({key: result.get(key) for key in (
         "terminal_status", "query_start", "independently_verified_relations",
