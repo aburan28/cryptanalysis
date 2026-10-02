@@ -24,7 +24,8 @@ cryptanalysis) that grew up alongside it.
 > (about 2^15.6 field multiplications) maps any instance back to E0.
 > A census of full-density factor-base subspaces at n = 11, 13, 17 and 19 shows
 > curve-derived sets at or slightly below a random set of the same density, so
-> adapted factor bases give no structural gain.
+> adapted factor bases give no structural gain (scripts and raw data:
+> [`experiments/factorbase-census`](experiments/factorbase-census/README.md)).
 >
 > We know of no public 2025-2026 result in classical index calculus for binary
 > elliptic curves that says otherwise. If you have a source for one, please open
