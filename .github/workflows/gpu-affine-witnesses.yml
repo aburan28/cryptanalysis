@@ -98,6 +98,9 @@ jobs:
           (out / 'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
           for build in pathlib.Path('experiments/groebner-perf-20260924').glob('round*/build'):
               shutil.copytree(build, out / 'native' / build.parent.name, dirs_exist_ok=True)
+          kernel = pathlib.Path('experiments/pdp-degree-heuristics/build')
+          if kernel.exists():
+              shutil.copytree(kernel, out / 'native' / 'pdp-degree-heuristics', dirs_exist_ok=True)
           PY
       - uses: actions/upload-artifact@v4
         if: always()
