@@ -2678,12 +2678,17 @@ finished with zero exact hits and an
 This control establishes target encoding and source compatibility; it is
 not a relation-yield estimate.
 
-The planned sixteen full jobs have a $2^{43.371}$ native field API-call
-model if all finish. This is a point-decomposition stage estimate, not a
-measured complete-solve exponent. The full one-target online wall time,
-failed-attempt work, memory and disk work, target scalar replay, and a
-same-point rho online wall comparison remain unmeasured for this new
-workload. Every full exact hit needs the
+All sixteen Q1090 full jobs [completed on physical x86 runners](https://github.com/aburan28/cryptanalysis/actions/runs/36891418377).
+The [terminal audit](n83_q1090_terminal_wave_audit.json) verifies their
+disjoint ranges, source and host receipts, and sixteen independent
+checked-Sage zero-hit audits. Across $2^{33}$ query representatives and
+1,425,929,142,272 lifted query pairs, they found **zero exact hits** and
+zero natural relations. Their full-shape native field API-call model totals
+$2^{43.371}$, summed target-phase host time is 130,782.75 seconds, and the
+largest single-job RSS is 11,061,760,000 bytes. Parallel host seconds are
+not the one-target online wall time. No scalar has been recovered for this
+fresh target. Memory and disk operation costs and a same-point rho online
+wall comparison remain unmeasured. Every later exact hit needs the
 [holdout Sage verifier](verify_n83_holdout_receipt_sage.py) before promotion
 to a verified DLP result.
 
@@ -2694,6 +2699,22 @@ the wave, including its native non-field work and failed jobs under those
 resource assumptions. It excludes the earlier reusable factor-base build.
 This is a planned conditional capacity, not a measured solve or a calibration
 from CPU cycles to field operations.
+
+The [Q1091 continuation plan](n83_q1091_holdout_m32_continuation_plan.json)
+requires the terminal Q1090 audit and freezes another 64 disjoint M32/R29
+rectangles. It keeps the same exact curve, base, `IC1` candidate, one public
+point, and `W9ccc27baec79R1` run. The [cumulative resource budget](n83_q1091_resource_budget.json)
+prices all 80 full shapes plus their bounded controls and two local controls
+at $2^{45.693}$ regular-path field API calls and,
+if all 80 jobs use their full six-hour limits, $2^{55.618}$ CI-job CPU
+core-cycle capacity at four vCPUs per job and an assumed 8 GHz ceiling.
+The cycle capacity excludes the two local controls and the reusable base
+build. These are
+conditional budgets for a proposed continuation. The measured yield remains
+zero until a new terminal receipt and independent Sage replay say otherwise.
+The [first-range M20/R14 control](runs/n83_q1091_first_range_smoke_M20_R14.json)
+and [checked-Sage replay](runs/n83_q1091_first_range_smoke_M20_R14_sage_verify.json)
+validated the new query boundary with zero exact hits before dispatch.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py

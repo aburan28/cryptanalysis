@@ -147,15 +147,20 @@ def main():
     cycle_capacity = core_seconds * CLOCK_HZ_CEILING
     assert cycle_capacity < 1 << 61
 
+    inventory = json.loads(CI_INVENTORY.read_text())
+    inventoried_ids = {str(row["databaseId"]) for row in
+                       inventory["rows"]}
     archived_ci_run_ids = sorted({
         found for path in RUNS.rglob("*")
-        for found in re.findall(r"ci_(\d{10,})", str(path))})
+        for found in re.findall(r"ci_(\d{10,})", str(path))
+        if found in inventoried_ids})
     assert len(archived_ci_run_ids) == 16
     assert "36817149475" in archived_ci_run_ids
-    # The Q1090 holdout was added after this historical accounting window.
-    workflow_files = sorted(path for path in
-                            (REPO / ".github/workflows").glob("*n83*")
-                            if path.name != "n83-q1090-holdout-wave.yml")
+    # The frozen inventory defines the workflows active in this window;
+    # later holdout workflows must not enter its historical host pool.
+    workflow_files = [REPO / ".github/workflows" / name for name in
+                      sorted(inventory["workflow_row_counts"])]
+    assert all(path.is_file() for path in workflow_files)
     assert len(workflow_files) == 14
     workflow_sources = []
     for path in workflow_files:
@@ -175,7 +180,6 @@ def main():
                                  "max_parallel": max(parallel, default=1),
                                  "runner_labels": labels})
 
-    inventory = json.loads(CI_INVENTORY.read_text())
     assert inventory["repository"] == "aburan28/cryptanalysis"
     assert inventory["branch"] == "codex/koblitz-pair-claw-toy"
     assert inventory["per_workflow_limit"] == 500
