@@ -1400,6 +1400,88 @@ def verify_n83_rho_solved():
             "independent_scalar_replay_passed": True}
 
 
+def verify_weight4_s3_stage():
+    import sys
+
+    path = HERE / "runs" / "n83_weight4_s3_stage.json"
+    report = json.loads(path.read_text())
+    reference_path = HERE / "runs" / "n83_perf_prefix.json"
+    reference = json.loads(reference_path.read_text())
+    assert report["source_sha256"] == sha(HERE / "n83_weight4_s3_stage.py")
+    assert report["reference_sha256"] == sha(reference_path)
+    codegen = HERE.parents[1] / "ecc2k130" / "runner" / "codegen"
+    for name, digest in report["dependency_sha256"].items():
+        assert digest == sha(codegen / name)
+    assert report["curve_id"] == reference["curve_id"] == "EC1N83Ckb1h876c2921cb64"
+    assert report["curve_identity_record"] == reference["curve_identity_record"]
+    assert report["isogeny"] == "none" and report["candidate_id"] is None
+    assert report["proposal_id"] == "Q1035"
+    assert report["workload_id"] == hashlib.sha256(frozen(
+        report["workload"])).hexdigest()[:12]
+    assert report["run_id"] == f"Q1035W{report['workload_id']}R1"
+    assert report["workload"]["target_count"] == 1
+    assert report["workload"]["target"] == reference["workload"]["target"]
+    order = int(reference["subgroup_order"])
+    base = report["factor_base"]
+    assert base["actual_usable_points_B_before_folding"] == 935742
+    assert base["signed_frobenius_columns"] == 5637
+    assert len(base["enumerated_set_sha256"]) == 64
+    cap = base["uniform_query_hit_probability_upper"]
+    assert int(cap["numerator"]) == math.comb(935742 + 3, 4)
+    assert int(cap["denominator"]) == order
+    assert math.isclose(cap["decimal"], int(cap["numerator"]) / order)
+    assert math.isclose(cap[
+        "expected_queries_for_at_least_columns_plus_target_hits_lower"],
+        5638 * order / int(cap["numerator"]))
+    curve = curves.Curve(field.Onb(83))
+    generator = tuple(reference["curve_identity_record"]["curve"]["generator"])
+    target = tuple(reference["workload"]["target"])
+    assert curve.mul(generator, order) is None
+    assert curve.mul(target, order) is None
+    sys.path.insert(0, str(codegen))
+    import indexcalc_e2e
+    eigen = int(base["frobenius_eigenvalue_mod_r"])
+    assert curve.mul(generator, eigen) == curve.frob(generator)
+    reps, lookup = indexcalc_e2e.subgroupBase(curve.f, curve, order, eigen, 4)
+    assert len(reps) == base["signed_frobenius_columns"]
+    assert len(lookup) == base["actual_usable_points_B_before_folding"]
+    point_hash = hashlib.sha256()
+    for x, y in sorted(lookup):
+        point_hash.update(f"{x},{y}\n".encode())
+    assert point_hash.hexdigest() == base["enumerated_set_sha256"]
+    planted = None
+    for point in report["planted_input_points_after_lex_order"]:
+        p = tuple(point)
+        assert curve.mul(p, order) is None
+        planted = curve.add(planted, p)
+    assert planted == tuple(report["planted_target"])
+    for name in ("ordinary_public_target", "planted_correctness_control",
+                 "pinned_planted_encoding_control"):
+        row = report[name]
+        assert row["status"] in ("sat", "unsat", "budget_or_unknown",
+                                  "external_timeout")
+        assert row["formula"]["vars"] > 0
+        assert row["formula"]["clauses"] > 0
+        assert row["formula"]["xors"] > 0
+        assert row["dimacs_bytes"] > 0
+        if row["verified_subgroup_relation"]:
+            total = None
+            for point, sign in zip(row["verified_points"], row["signs"]):
+                p = tuple(point)
+                assert curve.mul(p, order) is None
+                total = curve.add(total, p if sign == 1 else curve.neg(p))
+            assert total == tuple(row["target"])
+    assert report["pinned_planted_encoding_control"]["status"] == "sat"
+    assert report["pinned_planted_encoding_control"]["verified_subgroup_relation"]
+    assert report["verified_natural_relation"] == report[
+        "ordinary_public_target"]["verified_subgroup_relation"]
+    assert report["verified_single_target_dlp"] is False
+    assert report["complete_work_log2"] is None
+    return {"base_points": 935742, "columns": 5637,
+            "ordinary_status": report["ordinary_public_target"]["status"],
+            "pinned_control": "sat_verified"}
+
+
 def main():
     geometry = {}
     for n in (53, 83):
@@ -1472,6 +1554,7 @@ def main():
     affine_restart_n53 = verify_affine_restart(53, 128, "Q1034")
     affine_restart_n83 = verify_affine_restart(83, 1000, "Q1033")
     affine_restart_candidate = verify_affine_restart_candidate()
+    weight4_s3 = verify_weight4_s3_stage()
     rho_attempt = verify_n83_rho_stopped_attempt()
     rho_solved = verify_n83_rho_solved()
     print(json.dumps({"n53_curve_id": geometry[53]["report"]["curve_id"],
@@ -1501,6 +1584,7 @@ def main():
                       "n83_affine_restart_L1000": affine_restart_n83,
                       "n53_affine_restart_candidate_id":
                           affine_restart_candidate,
+                      "n83_weight4_s3": weight4_s3,
                       "n83_rho_attempt": rho_attempt,
                       "n83_rho_solved": rho_solved}))
 

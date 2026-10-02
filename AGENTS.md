@@ -79,7 +79,8 @@ There are no separators or zero-padded numbers in an ID. Structural tags
 (`kb1`, `f4`, `walk`, `bw`, etc.), the `fb` tag, and hex digits are lowercase.
 The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
-Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, `PDP4root`
+Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, `PDP4sat`
+for a four-summand chained-S3 SAT solver, `PDP4root`
 for the compact four-summand S3 root index, and `PDP4qpair` for a complete
 four-summand signed-Frobenius quotient pair-sum index; `PDP5q23` for a
 five-summand two-G pair quotient index queried by three target-seed points;
