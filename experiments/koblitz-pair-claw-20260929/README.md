@@ -2738,6 +2738,17 @@ a complete independent artifact audit gets coverage credit. It leaves
 complete calibrated work and the one-target online wall interval unknown
 until their measurements exist.
 
+The [Q1091 artifact intake](ingest_n83_q1091_artifacts.py) can be rerun while
+the workflow is live with `python3
+experiments/koblitz-pair-claw-20260929/ingest_n83_q1091_artifacts.py --max-new 8`.
+It checks the artifact's workflow run and triggering head, downloads each new
+receipt once, invokes the checked repository Sage launcher for independent
+replay, and writes an immutable per-shard audit. The already saved
+`sage_runtime_info.json` must match the current accepted build. It stops
+after an independently verified hit so the remaining active jobs can be
+inventoried before a cancellation decision. Partial artifacts remain
+explicitly incomplete and receive no coverage credit.
+
 The [conditional first-hit projection](n83_q1091_conditional_first_hit_projection.json)
 answers the narrower $2^x$ search question after the **measured** 16 zero-hit
 rectangles. Under the finite-support random-placement model, the chance of
