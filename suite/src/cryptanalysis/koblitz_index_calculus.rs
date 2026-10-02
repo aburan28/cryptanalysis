@@ -14018,3 +14018,226 @@ mod admissibility_walk_differential {
         assert!(answers[0] > 0 && answers[1] > 0, "{answers:?}");
     }
 }
+
+/// Differential checks of the single-word enumeration and of
+/// `m_can_decompose`'s dispatch, on the widths the tests above leave
+/// alone: the widest field `FastCurve` takes (`n = 62`), the first one it
+/// refuses (`n = 63`, where both fall back to the general arithmetic),
+/// subfield curves, indices that name the point at infinity, and `m` up
+/// to four.
+#[cfg(test)]
+mod fast_enumeration_differential {
+    use super::*;
+
+    fn word_basis(n: u32, dim: usize) -> Vec<F2mElement> {
+        (0..dim.min(n as usize))
+            .map(|i| F2mElement::from_bit_positions(&[i as u32], n))
+            .collect()
+    }
+
+    /// Targets that decompose, targets that cannot, and the degenerate
+    /// ones: `O`, the 2-torsion point, factor-base points and their
+    /// negations, and pairwise sums with repeated summands.
+    fn targets_of(kc: &KoblitzCurve, fb: &FrobeniusFactorBase, pairs: usize) -> Vec<BinaryPoint> {
+        let two_torsion = points_with_x(&kc.curve, &F2mElement::zero(kc.n)).remove(0);
+        let mut targets = vec![BinaryPoint::Infinity, two_torsion.clone()];
+        let r = kc.subgroup_order.to_u64_digits()[0];
+        for k in 1u64..=6 {
+            targets.push(kc.mul(kc.generator(), &BigUint::from((k * 7919 + 3) % r.max(2))));
+        }
+        let len = fb.points.len();
+        for (i, p) in fb.points.iter().enumerate().take(pairs) {
+            let q = &fb.points[(i * 5 + 1) % len];
+            targets.push(p.clone());
+            targets.push(point_neg(p));
+            targets.push(kc.add(p, q));
+            targets.push(kc.add(p, &point_neg(q)));
+            targets.push(kc.add(p, p));
+            targets.push(kc.add(&two_torsion, p));
+            targets.push(kc.add(&kc.add(p, q), &fb.points[(i * 3 + 2) % len]));
+        }
+        targets
+    }
+
+    fn indices_of(fb: &FrobeniusFactorBase) -> Vec<HashMap<(BigUint, BigUint), usize>> {
+        let full = fb.index_map();
+        let restricted: HashMap<_, _> = full
+            .iter()
+            .filter(|(_, &i)| i % 3 != 1)
+            .map(|(k, &i)| (k.clone(), i))
+            .collect();
+        // The point at infinity named as a (last) summand, and a map
+        // keyed only by the negated points.
+        let mut with_infinity = full.clone();
+        with_infinity.insert(point_key(&BinaryPoint::Infinity), fb.points.len());
+        let negated: HashMap<_, _> = fb
+            .points
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (point_key(&point_neg(p)), i))
+            .collect();
+        vec![full, restricted, with_infinity, negated]
+    }
+
+    /// Fast against generic on every (index, `m`, target); returns how
+    /// many answered `Some` and how many `None`.
+    fn check(
+        kc: &KoblitzCurve,
+        fb: &FrobeniusFactorBase,
+        ms: &[usize],
+        pairs: usize,
+        tag: &str,
+    ) -> (usize, usize) {
+        let targets = targets_of(kc, fb, pairs);
+        let mut some = 0usize;
+        let mut none = 0usize;
+        for index in &indices_of(fb) {
+            for &m in ms {
+                for t in &targets {
+                    let fast = enumerate_decompose(kc, fb, index, t, m);
+                    let slow = decompose(kc, fb, index, t, m, 0);
+                    assert_eq!(fast, slow, "{tag} m={m} target={t:?}");
+                    if slow.is_some() {
+                        some += 1;
+                    } else {
+                        none += 1;
+                    }
+                }
+            }
+        }
+        (some, none)
+    }
+
+    #[test]
+    fn enumeration_matches_on_koblitz_curves_up_to_m4() {
+        let mut answers = (0usize, 0usize);
+        for a in [0u8, 1] {
+            for (n, dim, ms) in [
+                (5u32, 2usize, vec![2usize, 3, 4]),
+                (7, 3, vec![2, 3, 4]),
+                (9, 2, vec![2, 3]),
+                (15, 2, vec![2, 3]),
+                (23, 2, vec![2]),
+                (31, 1, vec![2]),
+                (59, 2, vec![2]),
+                (61, 2, vec![2]),
+            ] {
+                let Some(kc) = KoblitzCurve::new(a, n) else {
+                    continue;
+                };
+                assert!(FastCurve::new(&kc.curve).is_some());
+                let basis = word_basis(n, dim);
+                let fb = build_frobenius_union_factor_base(&kc, &basis).unwrap();
+                let (some, none) = check(&kc, &fb, &ms, 4, &format!("K_{a}/2^{n}"));
+                answers = (answers.0 + some, answers.1 + none);
+            }
+        }
+        assert!(answers.0 > 0 && answers.1 > 0, "{answers:?}");
+    }
+
+    #[test]
+    fn enumeration_matches_on_subfield_curves_and_at_the_word_limit() {
+        let mut answers = (0usize, 0usize);
+        let mut widest = 0;
+        for (k, n, ai, bi, dim, ms) in [
+            (2u32, 10u32, 1u64, 3u64, 2usize, vec![2usize, 3]),
+            (2, 14, 0, 2, 2, vec![2, 3]),
+            (3, 9, 5, 1, 2, vec![2, 3]),
+            // n = 62 = 2 · 31: the widest field FastCurve takes, so
+            // `2(x + 1)` is as large as a packed identity gets.
+            (2, 62, 0, 2, 3, vec![2]),
+            (2, 62, 1, 3, 3, vec![2]),
+        ] {
+            let Some(kc) = KoblitzCurve::subfield(k, n, ai, bi) else {
+                continue;
+            };
+            let Some(fb) = build_frobenius_union_factor_base(&kc, &word_basis(n, dim)) else {
+                continue;
+            };
+            assert!(FastCurve::new(&kc.curve).is_some());
+            let (some, none) = check(&kc, &fb, &ms, 3, &format!("E_({ai},{bi})/2^{n} k={k}"));
+            answers = (answers.0 + some, answers.1 + none);
+            if fb.points.len() >= 100 {
+                widest = widest.max(n);
+            }
+        }
+        assert!(answers.0 > 0 && answers.1 > 0, "{answers:?}");
+        assert_eq!(widest, 62, "no n = 62 base with a hundred points");
+    }
+
+    /// `n = 63` is `MAX_N` but one past `FastCurve::MAX_DEGREE`, so this is
+    /// the production fallback of both ports: `enumerate_decompose` runs
+    /// the general recursion and `m_can_decompose` the general walk, and
+    /// both must still answer.
+    #[test]
+    fn the_fallback_at_n_63_still_answers() {
+        let kc = KoblitzCurve::subfield(3, 63, 0, 2).expect("an n = 63 subfield curve");
+        assert!(FastCurve::new(&kc.curve).is_none());
+        let fb = (2..=6)
+            .find_map(|dim| {
+                build_frobenius_union_factor_base(&kc, &word_basis(63, dim))
+                    .filter(|fb| fb.points.len() >= 8)
+            })
+            .expect("a factor base with a few points");
+        let classes = fb.distinct_cofactor_classes(&kc);
+        for m in 2..=3 {
+            assert_eq!(
+                fb.m_can_decompose(&kc, m),
+                fb.m_can_decompose_reference(&kc, m),
+                "m = {m}"
+            );
+            assert_eq!(
+                fb.m_can_decompose(&kc, m),
+                classes_can_cancel(&kc, &classes, m),
+                "m = {m}"
+            );
+        }
+        let index = fb.index_map();
+        let planted = kc.add(&fb.points[0], &fb.points[1]);
+        let other = kc.mul(kc.generator(), &BigUint::from(12345u32));
+        for target in [&planted, &other, &BinaryPoint::Infinity] {
+            assert_eq!(
+                enumerate_decompose(&kc, &fb, &index, target, 2),
+                decompose(&kc, &fb, &index, target, 2, 0)
+            );
+        }
+        assert!(enumerate_decompose(&kc, &fb, &index, &planted, 2).is_some());
+    }
+
+    /// `m_can_decompose` against the general walk on unions at the larger
+    /// widths, where the cofactor is tiny but the field is wide.
+    #[test]
+    fn m_can_decompose_dispatch_matches_at_wide_fields() {
+        let mut curves: Vec<KoblitzCurve> = Vec::new();
+        for n in [23u32, 29, 31, 37, 41] {
+            for a in [0u8, 1] {
+                curves.extend(KoblitzCurve::new(a, n));
+            }
+        }
+        for (k, n, ai, bi) in [(2u32, 62u32, 0u64, 2u64), (2, 62, 1, 1)] {
+            curves.extend(KoblitzCurve::subfield(k, n, ai, bi));
+        }
+        let mut answers = [0usize; 2];
+        for kc in &curves {
+            for dim in 1..=3 {
+                let Some(fb) = build_frobenius_union_factor_base(kc, &word_basis(kc.n, dim)) else {
+                    continue;
+                };
+                let classes = fb.distinct_cofactor_classes(kc);
+                if classes.len() > 300 {
+                    continue;
+                }
+                for m in 0..=6 {
+                    let want = match m {
+                        0 => true,
+                        1 => classes.contains(&BinaryPoint::Infinity),
+                        _ => classes_can_cancel(kc, &classes, m),
+                    };
+                    assert_eq!(fb.m_can_decompose(kc, m), want, "n={} m={m}", kc.n);
+                    answers[usize::from(want)] += 1;
+                }
+            }
+        }
+        assert!(answers[0] > 0 && answers[1] > 0, "{answers:?}");
+    }
+}
