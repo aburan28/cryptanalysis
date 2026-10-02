@@ -2729,6 +2729,14 @@ verifier's output to the auditor. A missing full receipt gets zero coverage
 credit and unknown actual work. A reported hit requires its own Sage replay,
 including one found during the bounded control.
 
+The [one-run reconciler](aggregate_n83_holdout_run.py) combines the audited
+Q1090 zero-hit prefix, the frozen Q1091 job inventory, and per-artifact
+audits under the same `IC1...W9ccc27baec79R1` identifier. Live, missing,
+failed, and canceled jobs remain separate records; only a terminal job with
+a complete independent artifact audit gets coverage credit. It leaves
+complete calibrated work and the one-target online wall interval unknown
+until their measurements exist.
+
 The [conditional first-hit projection](n83_q1091_conditional_first_hit_projection.json)
 answers the narrower $2^x$ search question after the **measured** 16 zero-hit
 rectangles. Under the finite-support random-placement model, the chance of
