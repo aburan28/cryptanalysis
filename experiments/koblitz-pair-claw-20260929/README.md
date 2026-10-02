@@ -2712,9 +2712,10 @@ at $2^{45.693}$ regular-path field API calls and,
 if all 80 jobs use their full six-hour limits, $2^{55.618}$ CI-job CPU
 core-cycle capacity at four vCPUs per job and an assumed 8 GHz ceiling.
 The cycle capacity excludes the two local controls and the reusable base
-build. These are
-conditional budgets for a proposed continuation. The measured yield remains
-zero until a new terminal receipt and independent Sage replay say otherwise.
+build. These are conditional budgets for the
+[active Q1091 Actions run](https://github.com/aburan28/cryptanalysis/actions/runs/37069216423).
+The measured yield remains zero until a new terminal receipt and independent
+Sage replay say otherwise.
 The [first-range M20/R14 control](runs/n83_q1091_first_range_smoke_M20_R14.json)
 and [checked-Sage replay](runs/n83_q1091_first_range_smoke_M20_R14_sage_verify.json)
 validated the new query boundary with zero exact hits before dispatch.
