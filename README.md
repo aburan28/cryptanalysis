@@ -5,6 +5,32 @@ Rust, Go and Python bindings, and, in [`suite/`](suite/README.md), the Rust
 attack suite (symmetric, hash, ECDLP, nonce, lattice and post-quantum
 cryptanalysis) that grew up alongside it.
 
+> **Status note on ECC2K-130 and isogeny-volcano work (as of 2026-10-01).**
+> This repository contains no ECDLP speedup, and none is claimed. The
+> volcano / descendant-curve experiments (`experiments/volcano-ic`, and the
+> ECC2K-130 pull requests, for example #62, #65, #66, #70 and #116) are
+> measurements, and every one of them is a null or negative result:
+> no descendant curve is easier than E0, E0 needs 0.996x the attempts of its
+> descendants in the n = 19 end-to-end study (95% CI 0.976-1.017), and the
+> Groebner degree stays the same on every curve tested. Pull requests that
+> propose further experiments are plans, not results, and say so in their
+> descriptions. Pull request titles alone are not evidence of a finding.
+>
+> Why curve choice cannot help here, in short: every constructible curve in the
+> ECC2K-130 isogeny class other than E0 sits one 263-isogeny below it; the
+> remaining ~2^65 curves require an isogeny of 57-bit prime degree whose kernel
+> lives in a degree-~2^53 extension field; the curve enters the Gaudry-Diem
+> algorithm only through one field element c = a6^(1/2); and a 263-isogeny
+> (about 2^15.6 field multiplications) maps any instance back to E0.
+> A census of full-density factor-base subspaces at n = 11, 13, 17 and 19 shows
+> curve-derived sets at or slightly below a random set of the same density, so
+> adapted factor bases give no structural gain (scripts and raw data:
+> [`experiments/factorbase-census`](experiments/factorbase-census/README.md)).
+>
+> We know of no public 2025-2026 result in classical index calculus for binary
+> elliptic curves that says otherwise. If you have a source for one, please open
+> an issue with the link.
+
 | algorithm | header | problem | cost |
 |-----------|--------|---------|------|
 | Baby-step giant-step (Shanks), amortised tables | `ca_bsgs.h` | interval / whole group | `1.5 sqrt(N)` ops, `O(sqrt N)` memory |
