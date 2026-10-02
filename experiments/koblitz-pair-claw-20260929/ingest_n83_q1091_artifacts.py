@@ -7,6 +7,7 @@ receipts and audits immutable, and never grants coverage to a partial shard.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -106,8 +107,10 @@ def ingest(shard, item, plan):
         json.dump(row, handle, indent=2)
         handle.write("\n")
         temp_path = Path(handle.name)
-    assert not audit_path.exists(), "refusing to overwrite immutable audit"
-    temp_path.rename(audit_path)
+    try:
+        os.link(temp_path, audit_path)  # atomic create; never replace an audit
+    finally:
+        temp_path.unlink()
     return row["terminal_status"]
 
 
