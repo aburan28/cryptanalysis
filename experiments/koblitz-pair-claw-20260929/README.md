@@ -2703,7 +2703,10 @@ from CPU cycles to field operations.
 The [Q1091 continuation plan](n83_q1091_holdout_m32_continuation_plan.json)
 requires the terminal Q1090 audit and freezes another 64 disjoint M32/R29
 rectangles. It keeps the same exact curve, base, `IC1` candidate, one public
-point, and `W9ccc27baec79R1` run. The [cumulative resource budget](n83_q1091_resource_budget.json)
+point, and `W9ccc27baec79R1` run. The frozen raw runner retains
+`proposal_id: Q1090` while `wave_proposal_id: Q1091` identifies this
+dispatch; neither label replaces the immutable `IC1` candidate or `W...R1`
+run ID. The [cumulative resource budget](n83_q1091_resource_budget.json)
 prices all 80 full shapes plus their bounded controls and two local controls
 at $2^{45.693}$ regular-path field API calls and,
 if all 80 jobs use their full six-hour limits, $2^{55.618}$ CI-job CPU
@@ -2715,6 +2718,22 @@ zero until a new terminal receipt and independent Sage replay say otherwise.
 The [first-range M20/R14 control](runs/n83_q1091_first_range_smoke_M20_R14.json)
 and [checked-Sage replay](runs/n83_q1091_first_range_smoke_M20_R14_sage_verify.json)
 validated the new query boundary with zero exact hits before dispatch.
+
+The [conditional first-hit projection](n83_q1091_conditional_first_hit_projection.json)
+answers the narrower $2^x$ search question after the **measured** 16 zero-hit
+rectangles. Under the finite-support random-placement model, the chance of
+at least one hit in the 64 additional rectangles is **80.9%**. Conditional
+on a hit within those 64, its mean index is 23.94 additional rectangles,
+corresponding to **$2^{44.691}$ modeled regular-path field API calls**
+cumulative from the start of this holdout run, including bounded controls.
+The model reaches a 50% future-hit chance at 27 additional rectangles;
+it does not reach 90% in the frozen wave. Completing all 80 rectangles
+would cost $2^{45.693}$ in the same API-call model. These first-hit indices
+assume query order; up to eight concurrent jobs can consume work past an
+early hit. This is a model prediction conditioned on the observed zero-hit
+prefix, not a measured yield rate or complete DLP work estimate. The
+**complete-solve exponent remains unknown** until a fresh scalar is
+independently verified and all charged work is accounted for.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
