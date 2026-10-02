@@ -2765,6 +2765,18 @@ within the reserve. It is a capacity assumption, not a measured instruction
 count or a verified successful solve. A completed Q1091 artifact and a
 fresh-scalar audit are still required.
 
+If all 64 Q1091 rectangles are independently audited as zero-hit, the
+[Q1092 design screen](n83_q1092_conditional_same_candidate_fallback.json)
+places another 128 disjoint M32/R29 rectangles after query position
+$80\cdot2^{29}$. It keeps the exact `IC1` candidate and `W...R1` run;
+its query end remains inside the manifest's representative domain. The
+finite-support model gives a **95.99% conditional hit chance** in that
+additional wave. All 208 jobs would have $2^{47.071}$ regular-path
+field-call shape and $2^{57.091}$ conditional CI-plus-local CPU core-cycle
+capacity under the same resource assumptions. Q1091 has no terminal
+result yet, and this screen has no executable plan or workflow. It is not
+measured yield or a successful solve.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
