@@ -518,4 +518,73 @@ mod tests {
         assert!(descend(&inst.gf, inst.b, 3, &standard_basis(22), 3).is_err());
         assert!(descend(&inst.gf, inst.b, 3, &standard_basis(4), 4).is_err());
     }
+
+    /// **`split` returns what the base revision's `split` returned**,
+    /// equation for equation and term for term, on the polynomials the
+    /// descent actually splits (`S_3` and `S_4` over random curves and
+    /// bases) and on random ones with `n` up to and past the 64
+    /// coefficient bits.  The reference is the base revision's body and
+    /// its `from_monos`, copied verbatim.
+    #[test]
+    fn split_matches_the_base_revision() {
+        fn base_from_monos(mut monos: Vec<F2BoolMono>, n_vars: usize) -> F2BoolPoly {
+            monos.sort_unstable_by_key(|m| std::cmp::Reverse(mono_key(*m)));
+            let mut out: Vec<F2BoolMono> = Vec::with_capacity(monos.len());
+            for m in monos {
+                if out.last() == Some(&m) {
+                    out.pop(); // 1 + 1 = 0
+                } else {
+                    out.push(m);
+                }
+            }
+            F2BoolPoly { terms: out, n_vars }
+        }
+        fn base_split(p: &FieldBoolPoly, n: u32, n_vars: usize) -> Vec<F2BoolPoly> {
+            let mut monos: Vec<Vec<F2BoolMono>> = (0..n).map(|_| Vec::new()).collect();
+            for (&m, &c) in &p.terms {
+                let mut bits = c;
+                while bits != 0 {
+                    let j = bits.trailing_zeros();
+                    if j < n {
+                        monos[j as usize].push(F2BoolMono::from_mask(m));
+                    }
+                    bits &= bits - 1;
+                }
+            }
+            monos
+                .into_iter()
+                .map(|ms| base_from_monos(ms, n_vars))
+                .collect()
+        }
+        let mut rng = StdRng::seed_from_u64(0x5011);
+        for &(n, seed) in &[(7u32, 1u64), (11, 2), (17, 3), (23, 4), (31, 5)] {
+            let inst = random_binary_instance(n, seed, 1 << 20).expect("a curve");
+            let gf = &inst.gf;
+            for np in [1u32, 2, 3, 5, 6, 9, 16] {
+                let basis: Vec<u64> = (0..np).map(|_| rng.gen::<u64>() & gf.mask).collect();
+                let x_r = rng.gen::<u64>() & gf.mask;
+                let s3 = s3_symbolic(gf, inst.b, x_r, &basis);
+                let n_vars = 2 * np as usize;
+                assert_eq!(s3.split(gf.n, n_vars), base_split(&s3, gf.n, n_vars));
+                if np <= 6 {
+                    let s4 = s4_symbolic(gf, inst.b, x_r, &basis);
+                    let n_vars = 3 * np as usize;
+                    assert_eq!(s4.split(gf.n, n_vars), base_split(&s4, gf.n, n_vars));
+                }
+            }
+        }
+        for trial in 0..400u32 {
+            let span = match trial % 5 {
+                0 => u64::MAX,
+                1 => (1u64 << 58) - 1,
+                _ => (1u64 << (1 + trial % 57)) - 1,
+            };
+            let n = trial % 71;
+            let mut p = FieldBoolPoly::default();
+            for _ in 0..rng.gen_range(0..600) {
+                p.add_term(rng.gen::<u64>() & rng.gen::<u64>() & span, rng.gen());
+            }
+            assert_eq!(p.split(n, 64), base_split(&p, n, 64), "trial {trial}");
+        }
+    }
 }

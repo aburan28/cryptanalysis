@@ -1465,4 +1465,81 @@ mod tests {
             assert_eq!(solution_set(&gb, n), truth, "case {case}");
         }
     }
+
+    /// **`from_monos` builds what the base revision's `from_monos`
+    /// built**, term for term: at lengths either side of
+    /// `FROM_MONOS_KEYED` and up to a couple of thousand, on spans either
+    /// side of the packed key's 57 variables (the boundary masks among
+    /// them), with masks drawn from small pools so that odd and even
+    /// repeats are common.  The reference is the base revision's body,
+    /// copied verbatim.
+    #[test]
+    fn from_monos_matches_the_base_revision() {
+        fn base_from_monos(mut monos: Vec<F2BoolMono>, n_vars: usize) -> F2BoolPoly {
+            // descending; equal keys are equal monomials, so unstable is exact
+            monos.sort_unstable_by_key(|m| std::cmp::Reverse(mono_key(*m)));
+            let mut out: Vec<F2BoolMono> = Vec::with_capacity(monos.len());
+            for m in monos {
+                if out.last() == Some(&m) {
+                    out.pop(); // 1 + 1 = 0
+                } else {
+                    out.push(m);
+                }
+            }
+            F2BoolPoly { terms: out, n_vars }
+        }
+        let mut x = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        let specials = [
+            0,
+            1,
+            1 << 56,
+            (1 << 57) - 1,
+            1 << 57,
+            (1 << 58) - 1,
+            1 << 63,
+            !(1u64 << 57),
+            u64::MAX,
+        ];
+        let widths = [1usize, 2, 7, 16, 31, 55, 56, 57, 58, 63, 64];
+        for trial in 0..6_000usize {
+            let bits = widths[trial % widths.len()];
+            let span = if bits == 64 {
+                u64::MAX
+            } else {
+                (1u64 << bits) - 1
+            };
+            let len = match trial % 5 {
+                0 => next() % 17,
+                1 => 15 + next() % 4,
+                2 => next() % 64,
+                3 => next() % 400,
+                _ => next() % 2_000,
+            };
+            let pool: Vec<u64> = (0..1 + next() % 24)
+                .map(|_| next() & next() & span)
+                .collect();
+            let monos: Vec<F2BoolMono> = (0..len)
+                .map(|_| {
+                    let r = next();
+                    let pick = (r >> 8) as usize;
+                    F2BoolMono::from_mask(match r % 8 {
+                        0 => specials[pick % specials.len()] & span,
+                        1..=4 => pool[pick % pool.len()],
+                        _ => next() & span,
+                    })
+                })
+                .collect();
+            assert_eq!(
+                F2BoolPoly::from_monos(monos.clone(), bits),
+                base_from_monos(monos, bits),
+                "trial {trial}"
+            );
+        }
+    }
 }
