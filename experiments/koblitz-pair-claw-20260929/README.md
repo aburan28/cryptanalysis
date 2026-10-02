@@ -2736,6 +2736,17 @@ prefix, not a measured yield rate or complete DLP work estimate. The
 **complete-solve exponent remains unknown** until a fresh scalar is
 independently verified and all charged work is accounted for.
 
+The [whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
+also reserves a full 24 hours on the audited 14-core local host for the
+measured 129.52-second factor-base build, both measured local controls, and
+future independent replay. Adding that reserve to all 80 CI jobs at their
+full six-hour limits gives **$2^{55.851}$ conditional CPU core-cycle
+capacity** at an assumed 8 GHz per core. The ceiling is below $2^{61}$
+if no other target-dependent attempt is omitted and the local work stays
+within the reserve. It is a capacity assumption, not a measured instruction
+count or a verified successful solve. A completed Q1091 artifact and a
+fresh-scalar audit are still required.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
