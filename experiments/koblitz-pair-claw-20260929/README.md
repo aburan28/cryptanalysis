@@ -2719,6 +2719,15 @@ Sage replay say otherwise.
 The [first-range M20/R14 control](runs/n83_q1091_first_range_smoke_M20_R14.json)
 and [checked-Sage replay](runs/n83_q1091_first_range_smoke_M20_R14_sage_verify.json)
 validated the new query boundary with zero exact hits before dispatch.
+The [per-artifact auditor](audit_n83_holdout_artifact.py) checks a downloaded
+Q1091 job against the frozen curve, base, candidate, workload, run, workflow,
+source hashes, and query range. Save the checked launcher's
+`/Volumes/SSD990/cryptanalysis/sage --runtime-info` output before using
+`/Volumes/SSD990/cryptanalysis/sage -python` with
+[the independent verifier](verify_n83_holdout_receipt_sage.py); give that
+verifier's output to the auditor. A missing full receipt gets zero coverage
+credit and unknown actual work. A reported hit requires its own Sage replay,
+including one found during the bounded control.
 
 The [conditional first-hit projection](n83_q1091_conditional_first_hit_projection.json)
 answers the narrower $2^x$ search question after the **measured** 16 zero-hit
