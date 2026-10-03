@@ -86,6 +86,8 @@ def aggregate(workflow_path, audit_dir):
     rows = []
     verified_scalars = set()
     verified_relations = 0
+    control_verified_scalars = set()
+    control_verified_relations = 0
     credited_representatives = prior["total_query_representatives"]
     modeled_calls = int(prior["combined_full_and_control_field_api_call_model"])
     modeled_calls += (budget["local_bounded_controls_completed"] * int(
@@ -105,10 +107,17 @@ def aggregate(workflow_path, audit_dir):
         if terminal and job["conclusion"] != "success":
             failed_or_canceled += 1
         complete_audit = bool(audit and audit["terminal_status"] in (
-            "completed_verified_hit", "completed_independently_verified_zero"))
+            "completed_verified_hit", "completed_control_verified_hit",
+            "completed_independently_verified_zero"))
         if audit and not complete_audit:
             reported_unverified_hits += (audit.get(
                 "reported_full_exact_hit_queries") or 0)
+            if audit["terminal_status"] == (
+                    "incomplete_artifact_control_verified_hit"):
+                control_verified_relations += audit[
+                    "control_independently_verified_relations"]
+                control_verified_scalars.update(audit[
+                    "control_verified_scalars"])
         if terminal and job["conclusion"] == "success" and not complete_audit:
             incomplete_terminal_artifacts += 1
         # A complete independently audited receipt proves coverage even if
@@ -123,6 +132,10 @@ def aggregate(workflow_path, audit_dir):
                 "control_regular_path_field_api_call_model"])
             verified_relations += audit["independently_verified_relations"]
             verified_scalars.update(audit["verified_scalars"])
+            control_verified_relations += audit.get(
+                "control_independently_verified_relations", 0)
+            control_verified_scalars.update(audit.get(
+                "control_verified_scalars", []))
         rows.append({
             "shard": shard,
             "query_start": start,
@@ -138,6 +151,10 @@ def aggregate(workflow_path, audit_dir):
             "actual_work_for_unfinished_attempt": None,
         })
     assert len(verified_scalars) <= 1, "conflicting target scalars"
+    assert len(control_verified_scalars) <= 1, "conflicting control scalars"
+    if verified_scalars and control_verified_scalars:
+        assert verified_scalars == control_verified_scalars, (
+            "candidate and control recovered different scalars")
     all_jobs_terminal = terminal_jobs == 64
     final_audits_ready = (workflow["status"] == "completed" and
                           all_jobs_terminal and
@@ -156,6 +173,9 @@ def aggregate(workflow_path, audit_dir):
                 "no_verified_dlp",
             "independently_verified_relation_count": verified_relations,
             "recovered_scalar": next(iter(verified_scalars), None),
+            "control_verified_relation_count": control_verified_relations,
+            "control_recovered_scalar": next(iter(control_verified_scalars),
+                                                 None),
             "scheduled_ci_jobs": 80,
             "terminal_ci_job_records": 16 + terminal_jobs,
             "attempts_that_started_native_work": None,
@@ -192,6 +212,9 @@ def aggregate(workflow_path, audit_dir):
             reported_unverified_hits,
         "Q1091_verified_relations": verified_relations,
         "verified_fresh_target_scalar": next(iter(verified_scalars), None),
+        "Q1091_control_verified_relations": control_verified_relations,
+        "control_verified_fresh_target_scalar": next(
+            iter(control_verified_scalars), None),
         "credited_disjoint_query_representatives": credited_representatives,
         "completed_receipts_regular_path_field_api_call_model": str(
             modeled_calls),
@@ -218,6 +241,7 @@ def aggregate(workflow_path, audit_dir):
         "jobs": rows,
         "limits": [
             "Only terminal Q1091 jobs with complete independent artifact audits receive disjoint coverage credit, even if the CI wrapper subsequently failed.",
+            "The M20/R14 control has no candidate ID. Its verified relations and scalar are reported separately and never credited to the M32/R29 IC1 candidate.",
             "Active, failed, canceled, and missing-artifact attempts remain visible; their actual consumed field work is unknown unless separately recovered.",
             "The field-call sum is a regular-path shape model for completed receipts, plus two local bounded controls. It excludes non-field work and is not a complete-solve operation count.",
             "The CPU figure is a conditional physical capacity under the frozen host, clock, timeout, and local-reserve assumptions.",

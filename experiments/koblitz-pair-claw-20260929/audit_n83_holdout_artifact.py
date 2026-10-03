@@ -77,6 +77,33 @@ def audit(artifact_dir, plan_path, runtime_path,
     control = optional_json(control_path)
     full = optional_json(full_path)
     if control is None or full is None:
+        control_verified = []
+        control_sage_path = artifact_dir / "control_sage_verify.json"
+        if isinstance(control, dict) and control.get("native_result", {}).get(
+                "exact_hit_queries", 0):
+            assert control["candidate_id"] is None
+            assert control["run_id"] is None
+            assert control["curve_id"] == plan["curve_id"]
+            assert control["workload_id"] == plan["workload_id"]
+            assert control["public_target"] == plan["public_target"]
+            assert control["query_start"] == start
+            assert control["factor_base"]["enumerated_set_sha256"] == plan[
+                "factor_base_enumerated_set_sha256"]
+            assert control_sage_path.is_file(), (
+                "partial control hit also needs independent Sage replay")
+            replay = load(control_sage_path)
+            assert replay["receipt_sha256"] == sha(control_path)
+            assert replay["sage_runtime_info_sha256"] == sha(runtime_path)
+            assert replay["holdout_target_sha256"] == sha(TARGET)
+            assert replay["candidate_id"] is None
+            assert replay["curve_id"] == plan["curve_id"]
+            assert replay["workload_id"] == plan["workload_id"]
+            assert replay["verified_relation_count"] == len(
+                control["verified_public_target_relations"])
+            assert replay["verified_relation_count"] == len(
+                replay["verified_relations"])
+            assert replay["natural_public_target_relation_verified"]
+            control_verified = replay["verified_relations"]
         return {
             "kind": "n83_holdout_artifact_audit",
             "scope": "one terminal CI job; no coverage credit without a full receipt",
@@ -90,7 +117,8 @@ def audit(artifact_dir, plan_path, runtime_path,
             "isogeny": "none",
             "query_start": start,
             "query_end_exclusive": start + plan["query_representatives"],
-            "terminal_status": "incomplete_artifact",
+            "terminal_status": ("incomplete_artifact_control_verified_hit"
+                                if control_verified else "incomplete_artifact"),
             "control_receipt_present": control_path.is_file(),
             "full_receipt_present": full_path.is_file(),
             "control_receipt_json_valid": control is not None,
@@ -103,6 +131,11 @@ def audit(artifact_dir, plan_path, runtime_path,
             "coverage_credit": 0,
             "actual_field_api_calls": None,
             "verified_relations": None,
+            "control_independently_verified_relations": len(control_verified),
+            "control_verified_scalars": sorted({row["recovered_scalar"]
+                                                for row in control_verified}),
+            "control_sage_verify_sha256": (
+                sha(control_sage_path) if control_verified else None),
             "host_sha256": sha(host_path),
             "workflow_snapshot_sha256": (
                 sha(snapshot) if plan.get("wave_proposal_id") == "Q1091"
@@ -210,6 +243,7 @@ def audit(artifact_dir, plan_path, runtime_path,
     assert sage["isogeny"] == "none"
     assert sage["verified_relation_count"] == len(
         full["verified_public_target_relations"])
+    assert sage["verified_relation_count"] == len(sage["verified_relations"])
     assert sage["natural_public_target_relation_verified"] == bool(
         sage["verified_relation_count"])
     control_sage = None
@@ -221,11 +255,17 @@ def audit(artifact_dir, plan_path, runtime_path,
         assert control_sage["receipt_sha256"] == sha(control_path)
         assert control_sage["sage_runtime_info_sha256"] == sha(runtime_path)
         assert control_sage["holdout_target_sha256"] == sha(TARGET)
+        assert control_sage["candidate_id"] is None
+        assert control_sage["curve_id"] == plan["curve_id"]
+        assert control_sage["workload_id"] == plan["workload_id"]
+        assert control_sage["isogeny"] == "none"
         assert control_sage["verified_relation_count"] == len(
             control["verified_public_target_relations"])
+        assert control_sage["verified_relation_count"] == len(
+            control_sage["verified_relations"])
         assert control_sage["natural_public_target_relation_verified"]
-    all_verified = sage["verified_relations"] + (
-        control_sage["verified_relations"] if control_sage else [])
+    candidate_verified = sage["verified_relations"]
+    control_verified = control_sage["verified_relations"] if control_sage else []
     return {
         "kind": "n83_holdout_artifact_audit",
         "scope": "one completed CI job, not a run-level measurement row",
@@ -244,14 +284,18 @@ def audit(artifact_dir, plan_path, runtime_path,
         "signed_frobenius_columns": plan["signed_frobenius_columns"],
         "query_start": start,
         "query_end_exclusive": start + plan["query_representatives"],
-        "terminal_status": "completed_verified_hit" if all_verified else
-            "completed_independently_verified_zero",
+        "terminal_status": ("completed_verified_hit" if candidate_verified else
+                            "completed_control_verified_hit" if control_verified
+                            else "completed_independently_verified_zero"),
         "coverage_credit": plan["query_representatives"],
         "exact_hit_queries": native["exact_hit_queries"],
         "control_exact_hit_queries": control_native["exact_hit_queries"],
-        "independently_verified_relations": len(all_verified),
+        "independently_verified_relations": len(candidate_verified),
         "verified_scalars": sorted({row["recovered_scalar"]
-                                    for row in all_verified}),
+                                    for row in candidate_verified}),
+        "control_independently_verified_relations": len(control_verified),
+        "control_verified_scalars": sorted({row["recovered_scalar"]
+                                            for row in control_verified}),
         "lifted_query_pairs": native["lifted_query_pairs"],
         "bloom_positive_queries": native["bloom_positive_queries"],
         "false_positive_queries": native["false_positive_queries"],

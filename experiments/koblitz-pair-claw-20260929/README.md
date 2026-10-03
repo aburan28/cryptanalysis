@@ -2739,6 +2739,12 @@ source hashes, and query range. Save the checked launcher's
 verifier's output to the auditor. A missing full receipt gets zero coverage
 credit and unknown actual work. A reported hit requires its own Sage replay,
 including one found during the bounded control.
+The bounded M20/R14 control has `candidate_id: null`, unlike the named
+M32/R29 `IC1` candidate. The auditor keeps their independently replayed
+relations and recovered scalars in separate fields. A control hit stops the
+intake for review, even if the full receipt is missing, but never becomes an
+`IC1` DLP result or earns full-range coverage. A successful control needs
+its own exact candidate manifest and run attribution before comparison.
 
 The [one-run reconciler](aggregate_n83_holdout_run.py) combines the audited
 Q1090 zero-hit prefix, the frozen Q1091 job inventory, and per-artifact

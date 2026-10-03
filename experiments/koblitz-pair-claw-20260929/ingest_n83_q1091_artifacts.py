@@ -93,12 +93,13 @@ def ingest(shard, item, plan):
     assert host["query_start"] == plan["query_starts"][shard]
     control = artifact_dir / "control.json"
     full = artifact_dir / "full.json"
-    if control.is_file() and full.is_file():
-        if not (artifact_dir / "sage_verify.json").exists():
-            verify_receipt(artifact_dir, "full")
+    if control.is_file():
         if json.loads(control.read_text())["native_result"]["exact_hit_queries"]:
             if not (artifact_dir / "control_sage_verify.json").exists():
                 verify_receipt(artifact_dir, "control")
+    if control.is_file() and full.is_file():
+        if not (artifact_dir / "sage_verify.json").exists():
+            verify_receipt(artifact_dir, "full")
     row = audit(artifact_dir, PLAN, RUNTIME, SNAPSHOT)
     assert row["query_start"] == plan["query_starts"][shard]
     audit_dir.mkdir(exist_ok=True)
@@ -127,9 +128,12 @@ def scan(plan, max_new, continue_after_hit):
         status = ingest(shard, item, plan)
         results.append({"shard": shard, "status": status,
                         "already_audited": already})
-        print(json.dumps(results[-1]), flush=True)
-        if status == "completed_verified_hit" and not continue_after_hit:
-            print("Verified hit found; inspect its Sage replay and account "
+        if not already:
+            print(json.dumps(results[-1]), flush=True)
+        if status in ("completed_verified_hit", "completed_control_verified_hit",
+                      "incomplete_artifact_control_verified_hit") and not continue_after_hit:
+            print("Verified hit found; inspect its Sage replay, attribute the "
+                  "exact candidate, and account "
                   "for all started jobs before stopping the wave.", flush=True)
             return True
     print(json.dumps({"available_artifacts": len(artifacts),
