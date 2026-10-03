@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 
 from chain_s3 import build, evaluate_s3, multiplication_table
+from chain_s3_factored import build_factored
+from chain_s3_multitarget import build_multitarget, decode_choice
 from run_probe import lift, parse_model
 from ecc2k130.codegen import curves, field
 
@@ -71,6 +73,106 @@ class ChainS3Tests(unittest.TestCase):
         self.assertEqual(status, "verified_four_point_relation")
         self.assertEqual(coords, [onb.toCoords(p[0]) for p in chosen])
         self.assertIsNotNone(relation)
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_factored_chain_accepts_witness_and_rejects_wrong_target(self):
+        onb = field.Onb(5)
+        curve = curves.Curve(onb)
+        points = [curve.pointFromX(onb.fromCoords(x))
+                  for x in range(1, 1 << 5) if x.bit_count() <= 2]
+        points = [point for point in points if point is not None]
+        rng = random.Random(29)
+        while True:
+            leaves = [rng.choice(points) for _ in range(4)]
+            first = curve.add(leaves[0], leaves[1])
+            if first is None:
+                continue
+            second = curve.add(first, leaves[2])
+            if second is None:
+                continue
+            target = curve.add(second, leaves[3])
+            if target is not None and target[0]:
+                break
+        target_x = onb.toCoords(target[0])
+        bad_x = next(x for x in range(1, 1 << 5) if
+                     evaluate_s3(onb, second[0], leaves[3][0],
+                                 onb.fromCoords(x)) != 0)
+
+        def locked_result(x):
+            formula, leaf_variables, mids = build_factored(5, 2, x)
+            for variables, point in zip(leaf_variables, leaves):
+                value = onb.toCoords(point[0])
+                formula.clauses.extend(([var if value >> i & 1 else -var]
+                                        for i, var in enumerate(variables)))
+            for variables, point in zip(mids, (first, second)):
+                value = onb.toCoords(point[0])
+                formula.clauses.extend(([var if value >> i & 1 else -var]
+                                        for i, var in enumerate(variables)))
+            with tempfile.TemporaryDirectory() as name:
+                path = Path(name) / "factored.xcnf"
+                formula.write(path)
+                return subprocess.run(["cryptominisat5", "--verb", "0",
+                                       "--threads", "1", str(path)],
+                                      capture_output=True, text=True,
+                                      timeout=20).returncode
+
+        self.assertEqual(locked_result(target_x), 10)
+        self.assertEqual(locked_result(bad_x), 20)
+
+    def test_factored_formula_reduces_non_linear_gates(self):
+        for n, weight in ((53, 3), (83, 4)):
+            old, _, _ = build(n, weight, 123456789)
+            new, _, _ = build_factored(n, weight, 123456789)
+            self.assertLess(len(new.and_cache), len(old.and_cache))
+            self.assertLess(len(new.clauses), len(old.clauses))
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_multitarget_selector_finds_only_valid_raw_sum(self):
+        onb = field.Onb(5)
+        curve = curves.Curve(onb)
+        points = [curve.pointFromX(onb.fromCoords(x))
+                  for x in range(1, 1 << 5) if x.bit_count() <= 2]
+        points = [point for point in points if point is not None]
+        rng = random.Random(31)
+        while True:
+            leaves = [rng.choice(points) for _ in range(4)]
+            first = curve.add(leaves[0], leaves[1])
+            if first is None:
+                continue
+            second = curve.add(first, leaves[2])
+            if second is None:
+                continue
+            total = curve.add(second, leaves[3])
+            if total is not None and total[0]:
+                break
+        correct = onb.toCoords(total[0])
+        wrong = next(x for x in range(1, 1 << 5)
+                     if evaluate_s3(onb, second[0], leaves[3][0],
+                                    onb.fromCoords(x)) != 0)
+
+        def solve(targets):
+            formula, leaf_variables, mids, _, selector = build_multitarget(
+                5, 2, targets)
+            for variables, point in zip(leaf_variables, leaves):
+                x = onb.toCoords(point[0])
+                formula.clauses.extend(([bit if x >> i & 1 else -bit]
+                                        for i, bit in enumerate(variables)))
+            for variables, point in zip(mids, (first, second)):
+                x = onb.toCoords(point[0])
+                formula.clauses.extend(([bit if x >> i & 1 else -bit]
+                                        for i, bit in enumerate(variables)))
+            with tempfile.TemporaryDirectory() as name:
+                path = Path(name) / "choice.xcnf"
+                formula.write(path)
+                result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                         "--threads", "1", str(path)],
+                                        capture_output=True, text=True,
+                                        timeout=20)
+            return result.returncode, decode_choice(
+                selector, parse_model(result.stdout) or {})
+
+        self.assertEqual(solve([wrong, correct]), (10, 1))
+        self.assertEqual(solve([wrong])[0], 20)
 
 
 if __name__ == "__main__":

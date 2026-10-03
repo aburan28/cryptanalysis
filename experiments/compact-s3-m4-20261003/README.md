@@ -4,7 +4,9 @@ This experiment tests one point-decomposition stage of ECC2K-130 index
 calculus. It uses three compact S3 links and two free intermediate x
 coordinates, so it does not expand S5. The experiment is **not** a complete
 ECDLP solver. The frozen ordinary n=53 and n=83 SAT queries both exhausted a
-20-second target-PDP cap without a model. Consequently there is no measured
+20-second target-PDP cap without a model. A follow-up corrected the target
+coverage to include **all** raw preimages under the curve cofactor; those
+ordinary queries also remained censored. Consequently there is no measured
 degree-131 complete-solve work exponent, and no sub-\(2^{61}\) claim.
 
 ## Identity and comparable inputs
@@ -51,6 +53,12 @@ are single-target stage diagnostics, not online DLP timings.
 | n=53 | `74f2979b3e68` | censored at 20 s | censored at 20 s | 26,860 / 77,292 / 795 | 20.071 s |
 | n=83 | `bab50a1e5f66` | censored at 20 s | censored at 20 s | 64,808 / 188,944 / 1,245 | 20.168 s |
 
+The original circuit fixes one raw subgroup preimage of the public target.
+For n=53, that is only **one of 428** raw targets whose cofactor projection
+is the same public point; for n=83 it is one of four. This makes the original
+SAT stage a narrower diagnostic than the matched pair-table public-target
+search. The correction below closes that comparison gap.
+
 The four frozen receipts, gzip-archived XCNFs, and solver logs are in `runs/`
 with names `n{53,83}_{planted,ordinary}_frozen.*`. The archive verifier
 decompresses each formula and checks its exact SHA-256 and byte count against
@@ -59,6 +67,46 @@ observed zero natural-relation rate. The solver produced no model and no
 field-operation count before the cap. Failed attempts are charged to the
 target-PDP stage. The checked Sage runtime snapshot used for measured local
 jobs is [`sage_runtime_info.json`](sage_runtime_info.json).
+
+## Full cofactor-preimage SAT stage
+
+[`cofactor_preimages.py`](cofactor_preimages.py) enumerates the complete
+kernel of multiplication by the exact curve cofactor and constructs every
+raw point mapping to each frozen public target. It found 428 distinct raw
+x coordinates at n=53 and four at n=83. The enumeration checks every point
+under the cofactor map. [`chain_s3_multitarget.py`](chain_s3_multitarget.py)
+adds a selector so one S3 chain can choose any of those raw target points.
+Its links use the equivalent three-product identity
+\(ab+ac+bc=ab+(a+b)c\).
+
+The matched n=53 pair-table relation was lifted back to four raw weight-three
+leaves. Their raw sum is **preimage 201**, whereas the original frozen SAT
+query fixed a different preimage. With those four leaves and the two
+intermediate x coordinates locked, the full n=53 formula returns SAT and
+reconstructs the correct public relation. The full-size planted n=53 and
+n=83 controls also return SAT when their witness coordinates are locked.
+These controls verify the encoding; they are not natural solver successes.
+
+| Public target | Raw preimages allowed | Ordinary formula (vars / CNF / XOR) | Ordinary bounded result | Longer diagnostic |
+| --- | ---: | --- | --- | --- |
+| n=53, Q1306 | 428 | 26,922 / 100,060 / 795 | 100,002 conflicts, 11.57 s, no model | 1,000,002 conflicts, 84.15 s, no model |
+| n=83, Q1307 | 4 | 64,893 / 189,276 / 1,245 | 20.11 s wall cap, no model | 100,002 conflicts, 23.79 s, no model; solver displayed about 145M propagations |
+
+The longer diagnostics reuse a precomputed formula, so their wall intervals
+exclude formula construction. The bounded runs charge formula construction
+and all attempts. Neither query produced a natural relation. Conflict counts
+and SAT propagations are solver-specific Boolean work units; they are not
+field-operation equivalents. The cofactor-coset construction is recorded
+separately and must be charged under target-query preparation in any
+one-target online study. Formula and log receipts are in `runs/`; the checked
+runtime snapshot is `factored_sage_runtime_info.json`.
+
+[`chain_s3_factored.py`](chain_s3_factored.py) also tests the three-product
+identity with one fixed raw target. It reduced n=53 AND gates from 25,281
+to 19,663, but reached the 100,000-conflict cap without a model. Allowing
+the target to vary restores nonlinear products in the final S3 link; the
+complete n=53 preimage formula uses 25,281 AND gates. Formula size reduction
+alone did not establish a useful decomposition solver.
 
 ## Matched pair-table stage
 
@@ -91,17 +139,19 @@ This is a heuristic for the sampled pair-table method, not a measured lower
 bound, a field-operation conversion, or a projection for the SAT solver.
 It already excludes base construction, final LA, and target recovery.
 
-The complete n=131 work exponent remains **unknown**. The SAT stage is
-censored at both measured field degrees; natural relation yield, novel rank,
+The complete n=131 work exponent remains **unknown**. The corrected SAT stage
+is censored at both measured field degrees; natural relation yield, novel rank,
 cost per useful row, final matrix solving, target descent, and independent
 scalar replay are absent. There is therefore no defensible complete-solve
 upper projection below \(2^{61}\), and the degree-131 challenge gate remains
 closed. Existing complete ECDLP claims cannot be inferred from a relation
 stage or a planted witness.
 
-The next useful goal is a **noncensored, operation-metered ordinary S3
-decomposition**, first at n=53 and then at n=83, on these frozen bases and
-targets. Keep all failed attempts; collect enough independent ordinary
+The next useful goal is a **noncensored ordinary public-target S3
+decomposition**, first at n=53 and then at n=83, using the complete cofactor
+preimage coset. The n=53 frozen point is known to have a valid raw witness,
+so it gives a direct search test. Keep all failed attempts and measure
+Boolean operations, field-operation conversion, and wall time; collect enough independent ordinary
 queries to estimate useful relation and novel-rank rates with uncertainty.
 Only then fit an n=131 stage cost and add matrix, descent, and replay charges.
 If the fitted complete cost is credibly below \(2^{61}\) in a named operation
