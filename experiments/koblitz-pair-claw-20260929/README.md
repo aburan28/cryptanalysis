@@ -2782,6 +2782,9 @@ replay, and writes an immutable per-shard audit. The already saved
 after an independently verified hit so the remaining active jobs can be
 inventoried before a cancellation decision. Partial artifacts remain
 explicitly incomplete and receive no coverage credit.
+The watcher runs the checked-Sage runtime comparison before ingesting a new
+artifact; ordinary polls with no new artifact do not launch Sage or consume
+that startup work from the local reserve.
 
 The [conditional first-hit projection](n83_q1091_conditional_first_hit_projection.json)
 answers the narrower $2^x$ search question after the **measured** 16 zero-hit

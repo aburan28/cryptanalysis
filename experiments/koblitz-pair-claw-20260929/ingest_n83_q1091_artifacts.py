@@ -128,7 +128,10 @@ def ingest(shard, item, plan):
 
 def scan(plan, max_new, continue_after_hit):
     artifacts = available_artifacts()
-    if artifacts:
+    pending = [shard for shard in artifacts
+               if not (ARCHIVE / "audits" /
+                       f"shard-{shard}.json").exists()]
+    if pending and max_new:
         runtime_is_current()
     results = []
     for shard, item in sorted(artifacts.items()):
