@@ -2837,6 +2837,13 @@ The [frozen 16-shard stage diagnostic](n83_q1091_first16_stage_diagnostic.json)
 records 311,603,459 Bloom positives, all exact-replay false positives,
 8,363.98 seconds mean Q1091 target-phase host time (range
 7,798.07–9,658.97), and 11,061,764,096 bytes peak single-job RSS.
+Across these 16 shards, 111,455.72 host-seconds were in native query work
+and 22,367.95 in exact replay of Bloom positives; another 23,747.08
+host-seconds built the target-independent filter. Exact replay accounts for
+**16.7%** of the target-phase time. Even making replay free while holding
+query time fixed would speed this measured stage by at most **1.201×**;
+changing the filter can also change query cost and memory, so this is a
+diagnostic ceiling rather than a predicted variant speedup.
 The updated exchangeable-placement model gives a **71.1%** hit chance in the
 remaining 48 rectangles and **$2^{45.060}$** cumulative regular-path field
 API calls conditional on a hit within this wave. The full 80-job plus local

@@ -8,6 +8,7 @@ one-target solve row. Raw receipts remain in the triggering CI run.
 import argparse
 import hashlib
 import json
+import math
 import statistics
 from pathlib import Path
 
@@ -81,6 +82,14 @@ def summarize(audit_dir, prefix_shards):
             "target_phase_seconds_on_this_host"]
         assert full["wrapper_subprocess_wall_seconds"] == row[
             "wrapper_subprocess_wall_seconds"]
+        assert math.isclose(full["target_online_seconds"],
+                            native["query_seconds"] +
+                            native["exact_replay_seconds"],
+                            rel_tol=0, abs_tol=1e-6)
+        assert math.isclose(full["target_independent_filter_build_seconds"],
+                            native["allocation_seconds"] +
+                            native["build_seconds"],
+                            rel_tol=0, abs_tol=1e-6)
         for receipt_key, audit_key in (
             ("bloom_positive_queries", "bloom_positive_queries"),
             ("false_positive_queries", "false_positive_queries"),
@@ -94,6 +103,10 @@ def summarize(audit_dir, prefix_shards):
                 "target_phase_seconds_on_this_host"],
             "wrapper_subprocess_host_seconds": row[
                 "wrapper_subprocess_wall_seconds"],
+            "query_seconds": native["query_seconds"],
+            "exact_replay_seconds": native["exact_replay_seconds"],
+            "filter_build_seconds": full[
+                "target_independent_filter_build_seconds"],
             "bloom_positives": row["bloom_positive_queries"],
             "false_positives": row["false_positive_queries"],
             "peak_rss_bytes": row["peak_rss_bytes"],
@@ -101,6 +114,12 @@ def summarize(audit_dir, prefix_shards):
         })
     q1091_target = [row["target_phase_host_seconds"] for row in rows]
     q1091_wrapper = [row["wrapper_subprocess_host_seconds"] for row in rows]
+    query_seconds = sum(row["query_seconds"] for row in rows)
+    replay_seconds = sum(row["exact_replay_seconds"] for row in rows)
+    build_seconds = sum(row["filter_build_seconds"] for row in rows)
+    target_seconds = sum(q1091_target)
+    assert math.isclose(target_seconds, query_seconds + replay_seconds,
+                        rel_tol=0, abs_tol=1e-5)
     q1091_lifted = len(rows) * plan["query_representatives"] * 166
     q1091_positives = sum(row["bloom_positives"] for row in rows)
     combined_positives = prior["total_bloom_positives"] + q1091_positives
@@ -131,10 +150,21 @@ def summarize(audit_dir, prefix_shards):
         "combined_bloom_positive_fraction_per_lifted_pair": (
             combined_positives / combined_lifted),
         "combined_independently_verified_natural_relations": 0,
-        "Q1091_target_phase_host_seconds_sum": sum(q1091_target),
+        "Q1091_target_phase_host_seconds_sum": target_seconds,
         "Q1091_target_phase_host_seconds_mean": statistics.mean(q1091_target),
         "Q1091_target_phase_host_seconds_min": min(q1091_target),
         "Q1091_target_phase_host_seconds_max": max(q1091_target),
+        "Q1091_query_seconds_sum": query_seconds,
+        "Q1091_query_seconds_mean": query_seconds / len(rows),
+        "Q1091_exact_replay_seconds_sum": replay_seconds,
+        "Q1091_exact_replay_seconds_mean": replay_seconds / len(rows),
+        "Q1091_target_independent_filter_build_seconds_sum": build_seconds,
+        "Q1091_target_independent_filter_build_seconds_mean": (
+            build_seconds / len(rows)),
+        "Q1091_exact_replay_fraction_of_target_phase": (
+            replay_seconds / target_seconds),
+        "Q1091_fixed_query_time_hypothetical_replay_free_speedup_ceiling": (
+            target_seconds / query_seconds),
         "Q1091_wrapper_subprocess_host_seconds_sum": sum(q1091_wrapper),
         "Q1091_peak_single_job_rss_bytes": max(
             row["peak_rss_bytes"] for row in rows),
@@ -146,6 +176,7 @@ def summarize(audit_dir, prefix_shards):
         "limits": [
             "Only the requested consecutive prefix of terminal, independently replayed zero-hit Q1091 artifacts is summarized; later completed shards are excluded from this frozen checkpoint.",
             "Host seconds are summed stage diagnostics, not a continuous one-target online wall interval.",
+            "The replay-free speedup ceiling holds query time fixed and makes exact replay cost zero; a changed filter can alter query time, memory, and work, so this is not a predicted variant speedup.",
             "Bloom positives are false positives in these zero-hit receipts; they do not estimate natural relation yield.",
             "The positive fraction divides by lifted signed-query-pair probes and is descriptive for the completed ranges only.",
             "No complete DLP, calibrated field-operation total, or one-target rho speedup follows from this partial diagnostic.",
