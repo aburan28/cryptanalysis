@@ -2726,6 +2726,18 @@ full-run work total, or single-target online speedup is claimed. The raw
 receipts remain in the [Q1091 Actions run](https://github.com/aburan28/cryptanalysis/actions/runs/37069216423);
 the checked-Sage replays and per-shard audits are retained locally and can
 be reproduced with the intake command above.
+The [source-bound eight-shard stage diagnostic](n83_q1091_first8_stage_diagnostic.json)
+combines these audits with the Q1090 terminal audit. Across the 24 completed
+full shards, 2,138,893,713,408 lifted signed-query-pair probes produced
+233,702,193 Bloom positives, all exact-replay false positives; no natural
+relation was independently verified. For the eight Q1091 shards, mean
+target-phase host time was 8,324.24 seconds (range 7,865.40–9,658.97),
+and peak single-job RSS was 11,061,755,904 bytes. These are stage costs from
+completed hosts, not a continuous one-target online interval. The
+[stage summarizer](summarize_n83_q1091_live_stages.py) requires a consecutive
+source-bound zero prefix before making this compact diagnostic. Its frozen
+checkpoint is reproduced with `--prefix-shards 8` against the local Q1091
+audit directory; later out-of-order audits do not change the eight-shard file.
 The [first-range M20/R14 control](runs/n83_q1091_first_range_smoke_M20_R14.json)
 and [checked-Sage replay](runs/n83_q1091_first_range_smoke_M20_R14_sage_verify.json)
 validated the new query boundary with zero exact hits before dispatch.
@@ -2787,10 +2799,12 @@ prefix, not a measured yield rate or complete DLP work estimate. The
 **complete-solve exponent remains unknown** until a fresh scalar is
 independently verified and all charged work is accounted for.
 The [live first-hit projection](n83_q1091_live_first_hit_projection.py)
-recomputes that same model from an independently audited zero-hit checkpoint.
-It requires the audited rectangles to form a consecutive prefix; an
-out-of-order CI completion waits for the missing earlier audit before the
-query-order first-hit estimate is updated.
+recomputes that same model from an independently audited zero-hit set. It
+records the exact completed shard indices and the length of their consecutive
+prefix. Under its explicit exchangeable-placement assumption, the count of
+disjoint zero-hit rectangles is sufficient for the remaining hit-probability
+model even when CI jobs finish out of order; its first-hit index means
+additional unsearched rectangles, not an index in query order.
 After the first eight Q1091 shards also found zero, it gives **76.5%**
 conditional hit probability in the remaining 56 rectangles and
 **$2^{44.891}$** cumulative regular-path field API calls conditional on a
@@ -2802,6 +2816,14 @@ of cumulative regular-path field API calls are respectively
 **$2^{44.071}$**, **$2^{44.797}$**, and **$2^{45.599}$** in query order.
 Eight concurrent jobs can consume additional work after the first hit;
 these conditional quantiles are not full-solve work quantiles.
+At the 2026-10-03 03:14 UTC checkpoint, Q1091 shard 9 passed independent
+checked-Sage zero-hit replay before shard 8 finished. The audited zero set is
+Q1091 shards 0–7 and 9, plus all 16 Q1090 shards: 25 disjoint rectangles,
+while the consecutive Q1091 prefix remains eight. The updated
+exchangeable-placement model gives **75.9%** hit probability in the 55
+remaining rectangles and **$2^{44.914}$** cumulative regular-path field API
+calls conditional on a hit within the 80-job wave. The full-run cycle-capacity
+ceiling remains $2^{55.851}$; neither figure is measured complete-solve work.
 
 The [whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
 also reserves a full 24 hours on the audited 14-core local host for the

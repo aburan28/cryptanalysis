@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Update the Q1091 first-hit model from an audited zero-hit checkpoint.
+"""Update the Q1091 first-hit model from an audited zero-hit set.
 
-Only independently credited complete rectangles enter the zero-hit prefix.
+Only independently credited complete rectangles enter the zero-hit set.
 The output remains a placement-model diagnostic, not measured solve work.
 """
 
@@ -61,10 +61,17 @@ def project(reconciliation_path):
     assert all(row["coverage_credit"] in (0, reps) for row in run["jobs"])
     assert sum(row["coverage_credit"] for row in run["jobs"]) == (
         (credited - PRIOR_JOBS) * reps)
-    assert [row["coverage_credit"] for row in run["jobs"]] == (
-        [reps] * (credited - PRIOR_JOBS) +
-        [0] * (TOTAL_JOBS - credited)), (
-            "first-hit projection requires a consecutive audited zero prefix")
+    assert [row["shard"] for row in run["jobs"]] == list(range(64))
+    zero_shards = [row["shard"] for row in run["jobs"]
+                   if row["coverage_credit"] == reps]
+    assert len(zero_shards) == credited - PRIOR_JOBS
+    assert all(run["jobs"][shard]["artifact_audit_status"] ==
+               "completed_independently_verified_zero"
+               for shard in zero_shards)
+    remaining_shards = [shard for shard in range(64)
+                        if shard not in set(zero_shards)]
+    prefix_shards = next((shard for shard in range(64)
+                          if shard not in set(zero_shards)), 64)
 
     orbit_size = base["factor_base"]["signed_frobenius_orbit_size"]
     key_fraction = (plan["table_descriptors"] /
@@ -110,7 +117,7 @@ def project(reconciliation_path):
     assert math.isclose(math.log2(all_80_calls), budget[
         "all_80_jobs_plus_local_controls_field_api_call_model_log2"])
     return {
-        "kind": "n83_q1091_audited_zero_prefix_conditional_first_hit_projection",
+        "kind": "n83_q1091_audited_zero_set_conditional_first_hit_projection",
         "status": "model_only_no_fresh_dlp",
         "curve_id": plan["curve_id"],
         "isogeny": "none",
@@ -124,6 +131,9 @@ def project(reconciliation_path):
         "signed_frobenius_columns": plan["signed_frobenius_columns"],
         "independently_audited_zero_rectangles": credited,
         "Q1091_audited_zero_rectangles": credited - PRIOR_JOBS,
+        "Q1091_audited_zero_shard_indices": zero_shards,
+        "Q1091_consecutive_zero_prefix_shards": prefix_shards,
+        "Q1091_remaining_shard_indices": remaining_shards,
         "remaining_planned_rectangles": TOTAL_JOBS - credited,
         "model_conditional_hit_probability_by_80": hit_probability,
         "model_no_hit_probability_by_80": 1 - hit_probability,
@@ -146,7 +156,8 @@ def project(reconciliation_path):
         "limits": [
             "The finite-support random-placement intensity is a heuristic, not an empirical rate for this fixed target.",
             "Only independently audited zero-hit rectangles are conditioned on; live and missing-artifact jobs are not treated as zero hits.",
-            "The first-hit index treats disjoint rectangles in query order. Concurrent jobs can consume additional work before cancellation.",
+            "The finite-support model treats disjoint rectangles as exchangeable, so it conditions on the exact zero-shard set and uses its count in the placement intensity; an out-of-order completion is never described as a consecutive zero prefix.",
+            "The first-hit index counts additional unsearched rectangles, independent of their query positions. Concurrent jobs can consume additional work before cancellation.",
             "The conditional quantiles exclude the explicit no-hit mass at rectangle 80; they are not unconditional solve-work quantiles.",
             "Field API calls model the regular native path; non-field work, incomplete attempts, and replay are outside this search-shape figure.",
             "A verified scalar and an audit of all charged work are required for a measured complete-solve exponent.",
