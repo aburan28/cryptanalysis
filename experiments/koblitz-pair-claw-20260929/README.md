@@ -2795,6 +2795,13 @@ if no other target-dependent attempt is omitted and the local work stays
 within the reserve. It is a capacity assumption, not a measured instruction
 count or a verified successful solve. A completed Q1091 artifact and a
 fresh-scalar audit are still required.
+The [job-inventory cycle envelope](audit_n83_holdout_cycle_envelope.py)
+reconciles both waves and charges every scheduled CI job at least its full
+six-hour limit, using a longer observed terminal wall if present, plus the
+same full local-host reserve. Its live eight-shard preview remains
+$2^{55.851}$ conditional CPU cycles and **does not** claim a completed DLP;
+after a verified hit it can bind that resource bound to the terminal run
+inventory while keeping measured field operations and online speed unknown.
 
 If all 64 Q1091 rectangles are independently audited as zero-hit, the
 [Q1092 design screen](n83_q1092_conditional_same_candidate_fallback.json)
