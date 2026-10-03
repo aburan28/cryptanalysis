@@ -18,6 +18,7 @@ HERE = Path(__file__).resolve().parent
 Q1091 = HERE / "n83_q1091_holdout_m32_continuation_plan.json"
 DESIGN = HERE / "n83_q1092_conditional_same_candidate_fallback.json"
 REVISION = HERE / "n83_holdout_revised_30day_resource_ceiling.json"
+EXTENDED = HERE / "n83_holdout_extended_resource_ceiling.json"
 PRIOR_JOBS = 80
 ADDITIONAL_JOBS = 128
 
@@ -37,6 +38,7 @@ def freeze(workflow_path, audit_dir):
     prior = json.loads(Q1091.read_text())
     design = json.loads(DESIGN.read_text())
     revised = json.loads(REVISION.read_text())
+    extended = json.loads(EXTENDED.read_text())
     reps = prior["query_representatives"]
     assert terminal["status"] == "terminal_inventory_reconciled", (
         "Q1091 must have a terminal independently audited result")
@@ -84,6 +86,20 @@ def freeze(workflow_path, audit_dir):
     assert datetime.now(timezone.utc) < datetime.fromisoformat(
         revised["local_reserve_end_utc"]), (
             "revised local reserve interval expired before Q1092 freeze")
+    for key in ("curve_id", "workload_id", "isogeny",
+                "factor_base_enumerated_set_sha256",
+                "actual_usable_points_B_before_folding",
+                "signed_frobenius_columns"):
+        assert extended[key] == design[key], key
+    assert extended["candidate_ids"][0] == design["candidate_id"]
+    assert extended["run_ids"][0] == design["run_id"]
+    assert extended["input_sha256"][REVISION.name] == sha(REVISION)
+    assert extended["scenarios"]["208"]["scheduled_ci_jobs"] == 208
+    assert extended["scenarios"]["208"][
+        "total_conditional_cycle_capacity_log2"] < 61
+    assert datetime.now(timezone.utc) < datetime.fromisoformat(
+        extended["local_reserve_end_utc"]), (
+            "extended local reserve interval expired before Q1092 freeze")
     starts = design["additional_query_starts"]
     assert len(starts) == ADDITIONAL_JOBS
     assert starts == [(PRIOR_JOBS + i) * reps
@@ -115,6 +131,7 @@ def freeze(workflow_path, audit_dir):
         "prior_Q1091_plan_sha256": sha(Q1091),
         "Q1092_design_screen_sha256": sha(DESIGN),
         "revised_resource_ceiling_sha256": sha(REVISION),
+        "extended_resource_ceiling_sha256": sha(EXTENDED),
         "modeled_native_field_calls_added_jobs_log2": math.log2(
             ADDITIONAL_JOBS * int(prior[
                 "modeled_native_field_calls_per_job"])),
@@ -128,7 +145,7 @@ def freeze(workflow_path, audit_dir):
             "The Q1092 rectangles preserve the exact curve, factor base, candidate, workload, one target, M32/R29 method, and run ID.",
             "The additional ranges do not overlap the 80 audited Q1090/Q1091 rectangles and remain inside the candidate's representative domain.",
             "The field-call figures model regular-path shape, not a calibrated complete solve.",
-            "The revised 30-day local-host resource ceiling supersedes the refuted 24-hour assumption and remains conditional, not a measured solve.",
+            "The revised 30-day dispatch ceiling and superseding extended local-host accounting both remain conditional capacity screens, not measured solve work.",
             "This file freezes ranges only; a separately reviewed workflow and resource budget are required before dispatch.",
         ],
     })

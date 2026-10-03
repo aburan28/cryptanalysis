@@ -171,6 +171,8 @@ jobs:
           design = json.loads(design_path.read_text())
           revised_path = root / 'n83_holdout_revised_30day_resource_ceiling.json'
           revised = json.loads(revised_path.read_text())
+          extended_path = root / 'n83_holdout_extended_resource_ceiling.json'
+          extended = json.loads(extended_path.read_text())
           start = int(os.environ['QUERY_START'])
           sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
           assert len(os.environ['EXPECTED_FROZEN_PLAN_SHA256']) == 64
@@ -186,6 +188,7 @@ jobs:
           assert plan['prior_Q1091_plan_sha256'] == sha(root / 'n83_q1091_holdout_m32_continuation_plan.json')
           assert plan['Q1092_design_screen_sha256'] == sha(design_path)
           assert plan['revised_resource_ceiling_sha256'] == sha(revised_path)
+          assert plan['extended_resource_ceiling_sha256'] == sha(extended_path)
           assert design['candidate_id'] == plan['candidate_id']
           assert design['workload_id'] == plan['workload_id']
           assert design['run_id'] == plan['run_id']
@@ -198,6 +201,18 @@ jobs:
           assert revised['isogeny'] == 'none'
           assert revised['q1090_q1091_q1092_plus_local_cycle_capacity_log2'] < 61
           assert datetime.datetime.now(datetime.timezone.utc) < datetime.datetime.fromisoformat(revised['local_reserve_end_utc'])
+          assert extended['input_sha256'][revised_path.name] == sha(revised_path)
+          assert extended['curve_id'] == plan['curve_id']
+          assert extended['workload_id'] == plan['workload_id']
+          assert extended['isogeny'] == 'none'
+          assert extended['factor_base_enumerated_set_sha256'] == plan['factor_base_enumerated_set_sha256']
+          assert extended['actual_usable_points_B_before_folding'] == plan['actual_usable_points_B_before_folding']
+          assert extended['signed_frobenius_columns'] == plan['signed_frobenius_columns']
+          assert extended['candidate_ids'][0] == plan['candidate_id']
+          assert extended['run_ids'][0] == plan['run_id']
+          assert extended['scenarios']['208']['scheduled_ci_jobs'] == 208
+          assert extended['scenarios']['208']['total_conditional_cycle_capacity_log2'] < 61
+          assert datetime.datetime.now(datetime.timezone.utc) < datetime.datetime.fromisoformat(extended['local_reserve_end_utc'])
           assert len(plan['prior_Q1091_artifact_audit_sha256']) == 64
           assert all(len(digest) == 64 for digest in plan['prior_Q1091_artifact_audit_sha256'])
           assert len(plan['prior_Q1091_terminal_reconciliation_sha256']) == 64

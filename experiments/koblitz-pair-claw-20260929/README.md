@@ -2916,7 +2916,8 @@ field-call shape and **$2^{59.802}$** conditional CI-plus-local CPU core-cycle
 capacity under the extended reservation. The original
 [Q1092 design screen](n83_q1092_conditional_same_candidate_fallback.json)
 retains its superseded 24-hour figure for provenance; the plan freezer and
-workflow preflight bind the revised ceiling before any dispatch. Q1091 has no terminal
+workflow preflight bind both the revised dispatch ceiling and the extended
+resource ceiling before any dispatch. Q1091 has no terminal
 result yet, and this screen has no executable plan or workflow. It is not
 measured yield or a successful solve.
 The [Q1092 plan freezer](freeze_n83_q1092_after_zero.py) accepts only a
@@ -2924,6 +2925,8 @@ terminal Q1091 workflow with all 64 full receipts independently audited as
 zero-hit and no missing or failed job. It then binds the next 128 disjoint
 M32/R29 ranges to the same curve, factor base, candidate, workload, and run.
 It cannot freeze a plan from a live or partial wave and does not dispatch jobs.
+The frozen plan also binds the extended resource-ceiling digest and checks
+that the conditional 208-job capacity remains below $2^{61}$.
 The [Q1092 workflow template](../../.github/workflows/n83-q1092-holdout-continuation.yml)
 only triggers when the freezer's source-bound plan is added to this research
 branch; that plan does not exist while Q1091 is live. The plan SHA-256
