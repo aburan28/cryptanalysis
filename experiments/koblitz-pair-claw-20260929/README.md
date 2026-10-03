@@ -2879,6 +2879,23 @@ and **$2^{45.206}$** cumulative regular-path field API calls conditional
 on a hit within this wave. The projection is not measured relation yield
 or a complete-solve work exponent.
 
+The [frozen Q1091/Q1092 horizon projection](n83_q1091_q1092_first24_conditional_first_hit_projection.json)
+extends that same model through the *conditional* 128-rectangle Q1092
+fallback, without crediting any pending job with a hit. Conditioned on the
+40 audited zeros, it gives **98.57%** modeled hit probability by rectangle
+208 and a **1.43% no-hit chance**. Conditional on a hit by that horizon,
+the expected first-hit index is 77.04 and cumulative regular-path work is
+**$2^{45.638}$ field API calls** in the Q1090/Q1091/Q1092 candidate.
+Charging both separately named Q1093 ARM rectangles at their full modeled
+work raises the conditional figure to **$2^{45.706}$**; it grants them no
+relation credit. All 208 jobs plus both local rectangles have a
+**$2^{47.096}$** full-shape field-call model and **$2^{59.802}$** conditional
+CPU core-cycle capacity under the extended resource assumptions. The
+[source-bound generator](project_n83_q1091_q1092_frozen_stage.py) checks its
+Q1092 probability against the existing design screen. These are sequential
+first-hit estimates; concurrent jobs can consume more, Q1092 is dormant,
+and neither the field model nor the capacity is measured complete-solve work.
+
 The original [24-hour whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
 claimed $2^{55.851}$ conditional CPU core-cycle capacity, but its local-window
 condition is **false**: the two measured local controls alone are 106,478.18
@@ -2935,7 +2952,8 @@ capacity under the extended reservation. The original
 retains its superseded 24-hour figure for provenance; the plan freezer and
 workflow preflight bind both the revised dispatch ceiling and the extended
 resource ceiling before any dispatch. Q1091 has no terminal
-result yet, and this screen has no executable plan or workflow. It is not
+result yet, and this screen has no executable plan. The workflow template
+below cannot dispatch without a frozen plan. It is not
 measured yield or a successful solve.
 The [Q1092 plan freezer](freeze_n83_q1092_after_zero.py) accepts only a
 terminal Q1091 workflow with all 64 full receipts independently audited as
