@@ -1,0 +1,30 @@
+name: curve-identities
+on:
+  pull_request:
+    paths:
+      - 'tools/curve_identity.py'
+      - 'tools/export_benchmark_snapshot.py'
+      - 'tests/test_curve_identity.py'
+      - 'tests/test_benchmark_export.py'
+      - '.github/workflows/curve-identities.yml'
+  push:
+    paths:
+      - 'tools/curve_identity.py'
+      - 'tools/export_benchmark_snapshot.py'
+      - 'tests/test_curve_identity.py'
+      - 'tests/test_benchmark_export.py'
+      - '.github/workflows/curve-identities.yml'
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check metadata identities without running experiments
+        run: |
+          python tests/test_curve_identity.py
+          python tests/test_benchmark_export.py
