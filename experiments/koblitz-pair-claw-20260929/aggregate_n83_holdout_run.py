@@ -18,6 +18,7 @@ PRIOR = HERE / "n83_q1090_terminal_wave_audit.json"
 PLAN = HERE / "n83_q1091_holdout_m32_continuation_plan.json"
 BUDGET = HERE / "n83_q1091_resource_budget.json"
 CEILING = HERE / "n83_q1091_total_resource_ceiling.json"
+REVISION = HERE / "n83_holdout_revised_30day_resource_ceiling.json"
 RUN_ID = 37069216423
 RUN_HEAD = "26fb34f3ae66ac6442245f24c4eb4c3552f9d328"
 
@@ -35,6 +36,7 @@ def aggregate(workflow_path, audit_dir):
     plan = load(PLAN)
     budget = load(BUDGET)
     ceiling = load(CEILING)
+    revision = load(REVISION)
     workflow = load(workflow_path)
     assert workflow["databaseId"] == RUN_ID
     assert workflow["headSha"] == RUN_HEAD
@@ -43,7 +45,9 @@ def aggregate(workflow_path, audit_dir):
     assert budget["prior_audit_sha256"] == sha(PRIOR)
     assert budget["continuation_plan_sha256"] == sha(PLAN)
     assert ceiling["resource_budget_sha256"] == sha(BUDGET)
-    for row in (prior, budget, ceiling):
+    assert revision["legacy_24_hour_ceiling_sha256"] == sha(CEILING)
+    assert revision["legacy_24_hour_condition_refuted_by_controls"]
+    for row in (prior, budget, ceiling, revision):
         assert row["curve_id"] == plan["curve_id"]
         assert row["isogeny"] == plan["isogeny"] == "none"
         assert row["candidate_id"] == plan["candidate_id"]
@@ -237,7 +241,9 @@ def aggregate(workflow_path, audit_dir):
         "incomplete_attempt_actual_work": None if (
             not all_jobs_terminal or failed_or_canceled or
             incomplete_terminal_artifacts) else "none",
-        "conditional_whole_run_cpu_cycle_capacity_log2": ceiling[
+        "conditional_whole_run_cpu_cycle_capacity_log2": revision[
+            "q1090_q1091_plus_local_cycle_capacity_log2"],
+        "legacy_24_hour_cycle_capacity_log2_refuted": ceiling[
             "whole_run_conditional_cycle_capacity_log2"],
         "measured_complete_solve_operations_log2": None,
         "one_target_online_wall_ms": None,
@@ -251,6 +257,7 @@ def aggregate(workflow_path, audit_dir):
         "continuation_plan_sha256": sha(PLAN),
         "resource_budget_sha256": sha(BUDGET),
         "whole_run_ceiling_sha256": sha(CEILING),
+        "revised_30day_ceiling_sha256": sha(REVISION),
         "source_sha256": sha(Path(__file__)),
         "jobs": rows,
         "limits": [
@@ -259,7 +266,8 @@ def aggregate(workflow_path, audit_dir):
             "A full-receipt hit replayed in Sage from a partial artifact is reported provisionally; it receives no candidate coverage or completed-run credit until the missing source-bound evidence is audited.",
             "Active, failed, canceled, and missing-artifact attempts remain visible; their actual consumed field work is unknown unless separately recovered.",
             "The field-call sum is a regular-path shape model for completed receipts, plus two local bounded controls. It excludes non-field work and is not a complete-solve operation count.",
-            "The CPU figure is a conditional physical capacity under the frozen host, clock, timeout, and local-reserve assumptions.",
+            "The CPU figure uses the revised 30-day local reservation; the earlier 24-hour assumption was contradicted by control timestamps and is retained only as provenance.",
+            "The revised CPU figure remains conditional on the declared host, clock, CI timeout, and local-reserve interval assumptions.",
             "The primary one-target online interval and same-point rho baseline remain unmeasured; no speedup claim follows from this reconciliation.",
         ],
     }

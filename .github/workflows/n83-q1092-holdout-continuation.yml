@@ -160,7 +160,7 @@ jobs:
       - name: Check the frozen instance, source, and host
         run: |
           python3 - <<'PY'
-          import hashlib, json, os, pathlib, platform, shutil, subprocess
+          import datetime, hashlib, json, os, pathlib, platform, shutil, subprocess
           root = pathlib.Path('experiments/koblitz-pair-claw-20260929')
           plan_path = root / 'n83_q1092_holdout_m32_continuation_plan.json'
           target_path = root / 'n83_holdout_target_20261001.json'
@@ -169,6 +169,8 @@ jobs:
           target = json.loads(target_path.read_text())
           design_path = root / 'n83_q1092_conditional_same_candidate_fallback.json'
           design = json.loads(design_path.read_text())
+          revised_path = root / 'n83_holdout_revised_30day_resource_ceiling.json'
+          revised = json.loads(revised_path.read_text())
           start = int(os.environ['QUERY_START'])
           sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
           assert len(os.environ['EXPECTED_FROZEN_PLAN_SHA256']) == 64
@@ -183,11 +185,19 @@ jobs:
           assert plan['prior_Q1090_terminal_audit_sha256'] == sha(root / 'n83_q1090_terminal_wave_audit.json')
           assert plan['prior_Q1091_plan_sha256'] == sha(root / 'n83_q1091_holdout_m32_continuation_plan.json')
           assert plan['Q1092_design_screen_sha256'] == sha(design_path)
+          assert plan['revised_resource_ceiling_sha256'] == sha(revised_path)
           assert design['candidate_id'] == plan['candidate_id']
           assert design['workload_id'] == plan['workload_id']
           assert design['run_id'] == plan['run_id']
           assert design['below_2_61_under_stated_resource_assumptions'] is True
           assert design['all_208_plus_local_reserve_cycle_capacity_log2'] < 61
+          assert revised['legacy_24_hour_condition_refuted_by_controls'] is True
+          assert revised['candidate_id'] == plan['candidate_id']
+          assert revised['workload_id'] == plan['workload_id']
+          assert revised['run_id'] == plan['run_id']
+          assert revised['isogeny'] == 'none'
+          assert revised['q1090_q1091_q1092_plus_local_cycle_capacity_log2'] < 61
+          assert datetime.datetime.now(datetime.timezone.utc) < datetime.datetime.fromisoformat(revised['local_reserve_end_utc'])
           assert len(plan['prior_Q1091_artifact_audit_sha256']) == 64
           assert all(len(digest) == 64 for digest in plan['prior_Q1091_artifact_audit_sha256'])
           assert len(plan['prior_Q1091_terminal_reconciliation_sha256']) == 64

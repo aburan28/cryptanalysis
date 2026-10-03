@@ -2826,7 +2826,8 @@ while the consecutive Q1091 prefix remains eight. The updated
 exchangeable-placement model gives **75.9%** hit probability in the 55
 remaining rectangles and **$2^{44.914}$** cumulative regular-path field API
 calls conditional on a hit within the 80-job wave. The full-run cycle-capacity
-ceiling remains $2^{55.851}$; neither figure is measured complete-solve work.
+figure at that checkpoint used a 24-hour local reservation later contradicted
+by control timestamps; the corrected bound is below.
 By 2026-10-03 03:54 UTC, all Q1091 shards 0–15 had completed and passed
 independent checked-Sage zero-hit replay. The 32 total Q1090/Q1091 rectangles
 cover $2^{34}$ query representatives and 2,851,858,284,544 lifted signed-pair
@@ -2839,24 +2840,29 @@ records 311,603,459 Bloom positives, all exact-replay false positives,
 The updated exchangeable-placement model gives a **71.1%** hit chance in the
 remaining 48 rectangles and **$2^{45.060}$** cumulative regular-path field
 API calls conditional on a hit within this wave. The full 80-job plus local
-reserve capacity remains $2^{55.851}$ assumed CPU core cycles. These stage
+reserve capacity is **$2^{58.262}$** assumed CPU core cycles under the corrected
+30-day local reservation. These stage
 measurements and predictions do not establish a complete-solve work exponent.
 
-The [whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
-also reserves a full 24 hours on the audited 14-core local host for the
-measured 129.52-second factor-base build, both measured local controls, and
-future independent replay. Adding that reserve to all 80 CI jobs at their
-full six-hour limits gives **$2^{55.851}$ conditional CPU core-cycle
-capacity** at an assumed 8 GHz per core. The ceiling is below $2^{61}$
-if no other target-dependent attempt is omitted and the local work stays
-within the reserve. It is a capacity assumption, not a measured instruction
-count or a verified successful solve. A completed Q1091 artifact and a
-fresh-scalar audit are still required.
+The original [24-hour whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
+claimed $2^{55.851}$ conditional CPU core-cycle capacity, but its local-window
+condition is **false**: the two measured local controls alone are 106,478.18
+seconds (29.58 hours) apart. That artifact remains as historical provenance
+and cannot support a complete-work claim. The
+[revised ceiling](n83_holdout_revised_30day_resource_ceiling.json) charges
+all 14 local cores continuously from 2026-09-29 00:00 UTC to
+2026-10-29 00:00 UTC at an
+assumed 8 GHz, including base preparation, local controls, artifact intake,
+and independent replay, plus every one of the 80 CI jobs for a full six hours
+on four vCPUs. It gives **$2^{58.262}$ conditional CPU core-cycle capacity**,
+still below $2^{61}$ if all local work stays in the stated interval and no
+other host or attempt is omitted. This is a capacity assumption, not measured
+instructions, field operations, or a verified successful solve.
 The [job-inventory cycle envelope](audit_n83_holdout_cycle_envelope.py)
 reconciles both waves and charges every scheduled CI job at least its full
 six-hour limit, using a longer observed terminal wall if present, plus the
-same full local-host reserve. Its live eight-shard preview remains
-$2^{55.851}$ conditional CPU cycles and **does not** claim a completed DLP;
+corrected 30-day local-host reserve. Its live 16-shard preview is
+$2^{58.262}$ conditional CPU cycles and **does not** claim a completed DLP;
 after a verified hit it can bind that resource bound to the terminal run
 inventory while keeping measured field operations and online speed unknown.
 At the 2026-10-03 01:04 UTC checkpoint, the 24 completed CI jobs across
@@ -2873,8 +2879,11 @@ $80\cdot2^{29}$. It keeps the exact `IC1` candidate and `W...R1` run;
 its query end remains inside the manifest's representative domain. The
 finite-support model gives a **95.99% conditional hit chance** in that
 additional wave. All 208 jobs would have $2^{47.071}$ regular-path
-field-call shape and $2^{57.091}$ conditional CI-plus-local CPU core-cycle
-capacity under the same resource assumptions. Q1091 has no terminal
+field-call shape and **$2^{58.591}$** conditional CI-plus-local CPU core-cycle
+capacity under the revised local reservation. The original
+[Q1092 design screen](n83_q1092_conditional_same_candidate_fallback.json)
+retains its superseded 24-hour figure for provenance; the plan freezer and
+workflow preflight bind the revised ceiling before any dispatch. Q1091 has no terminal
 result yet, and this screen has no executable plan or workflow. It is not
 measured yield or a successful solve.
 The [Q1092 plan freezer](freeze_n83_q1092_after_zero.py) accepts only a

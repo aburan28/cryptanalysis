@@ -9,6 +9,7 @@ import copy
 import hashlib
 import json
 import math
+from datetime import datetime, timezone
 from pathlib import Path
 
 from aggregate_n83_holdout_run import aggregate
@@ -16,6 +17,7 @@ from aggregate_n83_holdout_run import aggregate
 HERE = Path(__file__).resolve().parent
 Q1091 = HERE / "n83_q1091_holdout_m32_continuation_plan.json"
 DESIGN = HERE / "n83_q1092_conditional_same_candidate_fallback.json"
+REVISION = HERE / "n83_holdout_revised_30day_resource_ceiling.json"
 PRIOR_JOBS = 80
 ADDITIONAL_JOBS = 128
 
@@ -34,6 +36,7 @@ def freeze(workflow_path, audit_dir):
     terminal = aggregate(workflow_path, audit_dir)
     prior = json.loads(Q1091.read_text())
     design = json.loads(DESIGN.read_text())
+    revised = json.loads(REVISION.read_text())
     reps = prior["query_representatives"]
     assert terminal["status"] == "terminal_inventory_reconciled", (
         "Q1091 must have a terminal independently audited result")
@@ -70,6 +73,17 @@ def freeze(workflow_path, audit_dir):
     assert design["prior_jobs_if_Q1091_terminal_zero"] == PRIOR_JOBS
     assert design["additional_conditional_jobs"] == ADDITIONAL_JOBS
     assert design["below_2_61_under_stated_resource_assumptions"]
+    for key in ("curve_id", "candidate_id", "workload_id", "run_id",
+                "isogeny", "actual_usable_points_B_before_folding",
+                "signed_frobenius_columns"):
+        assert revised[key] == design[key]
+    assert revised["legacy_24_hour_condition_refuted_by_controls"]
+    assert revised["below_2_61_under_stated_resource_assumptions"]
+    assert revised[
+        "q1090_q1091_q1092_plus_local_cycle_capacity_log2"] < 61
+    assert datetime.now(timezone.utc) < datetime.fromisoformat(
+        revised["local_reserve_end_utc"]), (
+            "revised local reserve interval expired before Q1092 freeze")
     starts = design["additional_query_starts"]
     assert len(starts) == ADDITIONAL_JOBS
     assert starts == [(PRIOR_JOBS + i) * reps
@@ -100,6 +114,7 @@ def freeze(workflow_path, audit_dir):
             job["artifact_audit_sha256"] for job in terminal["jobs"]],
         "prior_Q1091_plan_sha256": sha(Q1091),
         "Q1092_design_screen_sha256": sha(DESIGN),
+        "revised_resource_ceiling_sha256": sha(REVISION),
         "modeled_native_field_calls_added_jobs_log2": math.log2(
             ADDITIONAL_JOBS * int(prior[
                 "modeled_native_field_calls_per_job"])),
@@ -113,6 +128,7 @@ def freeze(workflow_path, audit_dir):
             "The Q1092 rectangles preserve the exact curve, factor base, candidate, workload, one target, M32/R29 method, and run ID.",
             "The additional ranges do not overlap the 80 audited Q1090/Q1091 rectangles and remain inside the candidate's representative domain.",
             "The field-call figures model regular-path shape, not a calibrated complete solve.",
+            "The revised 30-day local-host resource ceiling supersedes the refuted 24-hour assumption and remains conditional, not a measured solve.",
             "This file freezes ranges only; a separately reviewed workflow and resource budget are required before dispatch.",
         ],
     })
