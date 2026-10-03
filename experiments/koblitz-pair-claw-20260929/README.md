@@ -2862,6 +2862,23 @@ CPU core cycles. The extended screen below gives the current conservative
 capacity estimate. These stage
 measurements and predictions do not establish a complete-solve work exponent.
 
+At the next complete eight-shard boundary, Q1091 shards 0–23 had all passed
+independent zero-hit replay. Together with Q1090, **40 disjoint rectangles**
+cover 21,474,836,480 query representatives and 3,564,822,855,680 lifted
+signed-pair probes, with no natural relation or fresh scalar. The
+[frozen 24-shard diagnostic](n83_q1091_first24_stage_diagnostic.json)
+records 8,230.45 seconds mean target-phase host time per Q1091 shard,
+164,474.13 host-seconds in native query work, 33,056.70 in exact replay,
+and 34,954.87 in target-independent filter building. Replay is **16.73%**
+of the target phase; making it free at fixed query time would improve that
+stage by at most **1.201×**. The separate
+[source-bound first-hit projection](n83_q1091_first24_conditional_first_hit_projection.json)
+conditions the same frozen placement model on these 40 audited zeros:
+**64.36%** modeled hit probability in the 40 remaining Q1091 rectangles
+and **$2^{45.206}$** cumulative regular-path field API calls conditional
+on a hit within this wave. The projection is not measured relation yield
+or a complete-solve work exponent.
+
 The original [24-hour whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
 claimed $2^{55.851}$ conditional CPU core-cycle capacity, but its local-window
 condition is **false**: the two measured local controls alone are 106,478.18
