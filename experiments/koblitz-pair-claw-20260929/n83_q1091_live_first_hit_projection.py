@@ -86,11 +86,23 @@ def project(reconciliation_path):
     per_control = int(budget[
         "per_bounded_control_regular_path_field_api_call_model"])
     local_controls = budget["local_bounded_controls_completed"]
+    def cumulative_calls(jobs):
+        return (jobs * per_full +
+                (jobs + local_controls) * per_control)
+
+    conditional_quantiles = {}
+    for label, quantile in (("p05", 0.05), ("p50", 0.50),
+                            ("p95", 0.95)):
+        added = next(i for i in range(1, len(probabilities))
+                     if probabilities[i] >= quantile * hit_probability)
+        conditional_quantiles[label] = {
+            "additional_rectangle_index": added,
+            "cumulative_regular_path_field_api_calls_log2": math.log2(
+                cumulative_calls(credited + added)),
+        }
     expected_total_jobs = credited + expected_added_given_hit
-    expected_calls = (expected_total_jobs * per_full +
-                      (expected_total_jobs + local_controls) * per_control)
-    all_80_calls = (TOTAL_JOBS * per_full +
-                    (TOTAL_JOBS + local_controls) * per_control)
+    expected_calls = cumulative_calls(expected_total_jobs)
+    all_80_calls = cumulative_calls(TOTAL_JOBS)
     assert math.isclose(math.log2(all_80_calls), budget[
         "all_80_jobs_plus_local_controls_field_api_call_model_log2"])
     return {
@@ -110,10 +122,13 @@ def project(reconciliation_path):
         "Q1091_audited_zero_rectangles": credited - PRIOR_JOBS,
         "remaining_planned_rectangles": TOTAL_JOBS - credited,
         "model_conditional_hit_probability_by_80": hit_probability,
+        "model_no_hit_probability_by_80": 1 - hit_probability,
         "model_expected_additional_rectangle_index_given_hit_by_80":
             expected_added_given_hit,
         "model_expected_cumulative_regular_path_field_api_calls_given_hit_log2":
             math.log2(expected_calls),
+        "model_first_hit_work_quantiles_given_hit_by_80":
+            conditional_quantiles,
         "all_80_jobs_plus_controls_regular_path_field_api_call_model_log2":
             math.log2(all_80_calls),
         "predicted_complete_solve_operations_log2": None,
@@ -128,6 +143,7 @@ def project(reconciliation_path):
             "The finite-support random-placement intensity is a heuristic, not an empirical rate for this fixed target.",
             "Only independently audited zero-hit rectangles are conditioned on; live and missing-artifact jobs are not treated as zero hits.",
             "The first-hit index treats disjoint rectangles in query order. Concurrent jobs can consume additional work before cancellation.",
+            "The conditional quantiles exclude the explicit no-hit mass at rectangle 80; they are not unconditional solve-work quantiles.",
             "Field API calls model the regular native path; non-field work, incomplete attempts, and replay are outside this search-shape figure.",
             "A verified scalar and an audit of all charged work are required for a measured complete-solve exponent.",
         ],

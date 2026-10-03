@@ -2793,6 +2793,12 @@ conditional hit probability in the remaining 56 rectangles and
 **$2^{44.891}$** cumulative regular-path field API calls conditional on a
 hit by rectangle 80. These are updated model predictions for the observed
 24-rectangle zero prefix, not measured solve work or a positive yield rate.
+The model leaves an explicit **23.5% no-hit chance** at rectangle 80. Among
+only the modeled hit cases in this wave, the 5th, 50th, and 95th percentiles
+of cumulative regular-path field API calls are respectively
+**$2^{44.071}$**, **$2^{44.797}$**, and **$2^{45.599}$** in query order.
+Eight concurrent jobs can consume additional work after the first hit;
+these conditional quantiles are not full-solve work quantiles.
 
 The [whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
 also reserves a full 24 hours on the audited 14-core local host for the
