@@ -1,19 +1,19 @@
 #pragma once
 #include <cstdint>
 #ifndef CHECKED_CHAIN_MODE
-#define CHECKED_CHAIN_MODE 1
+#    define CHECKED_CHAIN_MODE 1
 #endif
 #ifndef CHAIN_SCAN_LIMIT
-#define CHAIN_SCAN_LIMIT 64
+#    define CHAIN_SCAN_LIMIT 64
 #endif
 #ifndef CHAIN_PROBE_LIMIT
-#define CHAIN_PROBE_LIMIT 2
+#    define CHAIN_PROBE_LIMIT 2
 #endif
 #ifndef CHAIN_PROBE_WORK
-#define CHAIN_PROBE_WORK 4096
+#    define CHAIN_PROBE_WORK 4096
 #endif
 #ifndef CHAIN_CACHE_LIMIT
-#define CHAIN_CACHE_LIMIT 65536
+#    define CHAIN_CACHE_LIMIT 65536
 #endif
 struct ChainStats {
     uint64_t mode = 0, candidate_pairs = 0, scanned_leaders = 0, eligible_chains = 0;
