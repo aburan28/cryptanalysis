@@ -2926,6 +2926,9 @@ preflight passed with 28.3 GB estimated free memory and 30.3 GB free on
 the `/private/tmp` spill volume. The measured result and independent
 Sage replay remain pending; this plan does not establish natural yield
 or a fresh discrete logarithm.
+The [terminal watcher](watch_n83_q1093_local_result.py) waits for the
+local receipt, checks its candidate and source bindings, and invokes the
+separate checked-Sage verifier for either a hit or a zero-hit outcome.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
