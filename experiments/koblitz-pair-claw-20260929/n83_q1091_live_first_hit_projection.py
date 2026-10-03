@@ -61,6 +61,10 @@ def project(reconciliation_path):
     assert all(row["coverage_credit"] in (0, reps) for row in run["jobs"])
     assert sum(row["coverage_credit"] for row in run["jobs"]) == (
         (credited - PRIOR_JOBS) * reps)
+    assert [row["coverage_credit"] for row in run["jobs"]] == (
+        [reps] * (credited - PRIOR_JOBS) +
+        [0] * (TOTAL_JOBS - credited)), (
+            "first-hit projection requires a consecutive audited zero prefix")
 
     orbit_size = base["factor_base"]["signed_frobenius_orbit_size"]
     key_fraction = (plan["table_descriptors"] /

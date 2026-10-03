@@ -2788,6 +2788,9 @@ prefix, not a measured yield rate or complete DLP work estimate. The
 independently verified and all charged work is accounted for.
 The [live first-hit projection](n83_q1091_live_first_hit_projection.py)
 recomputes that same model from an independently audited zero-hit checkpoint.
+It requires the audited rectangles to form a consecutive prefix; an
+out-of-order CI completion waits for the missing earlier audit before the
+query-order first-hit estimate is updated.
 After the first eight Q1091 shards also found zero, it gives **76.5%**
 conditional hit probability in the remaining 56 rectangles and
 **$2^{44.891}$** cumulative regular-path field API calls conditional on a
