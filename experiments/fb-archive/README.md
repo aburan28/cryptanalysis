@@ -3,13 +3,15 @@
 Reproducible, content-addressed copies of the factor bases used by the IC
 experiments: the full AGENTS.md `factor_base` record, the exact `field` and
 `curve` records it belongs to, and (when enumerated) the sorted usable point set
-whose SHA-256 is the record's `enumerated_set_sha256`.
+or a declared lossless orbit encoding. The digest uses the encoding stated in
+each factor-base record.
 
 ```bash
 python3 fbarchive.py export --n 19 --family geomtrace --l 5              # one toy base (pdpkernel.c)
 python3 fbarchive.py export-suite --suite full                           # every ic-bench base
 python3 fbarchive.py export --n 131 --family geomtraceu --l 12           # ECC2K-130, pure Python
 python3 fbarchive.py export --n 131 --family prefix --l 28 --no-points   # recipe and basis only
+python3 orbit_base_archive.py                                             # n83 known-log orbit base
 python3 fbarchive.py verify [--rebuild [--rebuild-max-points 300]]      # check the index
 python3 fbarchive.py upload [--dry-run] [--require]                     # to $IC_ARCHIVE_S3_URI
 python3 -m pytest -q .
@@ -28,10 +30,28 @@ python3 -m pytest -q .
 - `large/`: archives above `--max-git-bytes` (1 MiB) get `storage` `s3`. They
   are git-ignored and must be uploaded; `verify` skips them when absent.
 
+The [n83 known-log orbit archive](bases/EC1N83Ckb1h876c2921cb64/knownlogorbit-s831043-7056f3b1f520.json.gz)
+uses `ic-factor-base-orbit-archive/1` and has `points_included` set to
+`orbit-compressed` in the same index. Its 48,194 strictly sorted canonical
+keys are packed as 21-byte little-endian integers, then base64-encoded in
+the compressed archive. Together with the exact n83 curve and the declared
+sign/Frobenius action, they define 8,000,204 distinct subgroup points.
+The index's `l` cell and the recipe's `l` value are empty and null because
+this orbit family has no nominal subspace dimension.
+`enumerated_set_sha256` hashes the packed representative keys; it is not a
+bytewise hash of an expanded eight-million-point list. The archive includes
+the exact candidate factor-base record, field and curve records, builder and
+binary hashes, and the source-bound independent checked-Sage replay receipt.
+`verify` checks the compressed representation, identity, digest and count;
+`verify --rebuild` also compares it with the tracked source binary and replay
+receipt. The expanded points are not materialized in the archive.
+
 `verify` rechecks every digest and count, and flags files that are not in the index.
-`--rebuild` also regenerates each base from its recipe and requires byte-identical
-content. CI rebuilds everything up to 300 points; a full rebuild takes a few
-minutes, most of it the N131 `l = 12` bases.
+`--rebuild` also regenerates ordinary bases from their recipes and requires
+byte-identical content. For the n83 orbit base it rechecks the tracked
+representative binary and the independent Sage replay receipt. CI rebuilds
+ordinary bases up to 300 points; a full rebuild takes a few minutes, most of
+it the N131 `l = 12` bases.
 
 ## Builders
 

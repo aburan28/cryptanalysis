@@ -782,10 +782,11 @@ This digest hashes the **48,194 sorted canonical orbit keys** in the
 using 21 little-endian bytes per key. It is a digest of the compressed
 orbit representation, not a separate bytewise digest of all 8,000,204
 expanded points. The full point count follows from the 166-point
-signed-Frobenius orbit size and distinct canonical keys. The shared
-`fb-archive` does not yet have an n=83 orbit-base entry; that archive
-step remains open even though the representative binary and its digest
-are tracked here.
+signed-Frobenius orbit size and distinct canonical keys. The
+[shared `fb-archive` entry](../fb-archive/bases/EC1N83Ckb1h876c2921cb64/knownlogorbit-s831043-7056f3b1f520.json.gz)
+stores those canonical keys in compressed form, with the exact field,
+curve, factor-base record and independent Sage replay source hashes.
+It does not materialize a separate expanded-point list.
 The [independent replay](runs/n83_knownlog_orbit_base_k48194_verified.json)
 checked every canonical key and log against the seeded scalar stream and
 confirmed that all 24,097 original orbits and logs are a subset. A
