@@ -2741,6 +2741,9 @@ until their measurements exist.
 The [Q1091 artifact intake](ingest_n83_q1091_artifacts.py) can be rerun while
 the workflow is live with `python3
 experiments/koblitz-pair-claw-20260929/ingest_n83_q1091_artifacts.py --max-new 8`.
+Add `--watch --poll-seconds 45` to keep ingesting new uploads; the watcher
+stops after a verified hit or two observations of a terminal workflow and
+retries transient GitHub observation failures.
 It checks the artifact's workflow run and triggering head, downloads each new
 receipt once, invokes the checked repository Sage launcher for independent
 replay, and writes an immutable per-shard audit. The already saved

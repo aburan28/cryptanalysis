@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from audit_n83_holdout_artifact import audit
@@ -114,37 +115,70 @@ def ingest(shard, item, plan):
     return row["terminal_status"]
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--max-new", type=int, default=64)
-    parser.add_argument("--continue-after-hit", action="store_true")
-    args = parser.parse_args()
-    assert 0 <= args.max_new <= 64
-    assert RUNTIME.is_file() and SNAPSHOT.is_file()
-    plan = json.loads(PLAN.read_text())
-    assert plan["candidate_id"].startswith("IC1N83Ckb1fb8000204")
-    assert plan["run_id"] == (plan["candidate_id"] + "W" +
-                              plan["workload_id"] + "R1")
-    assert plan["isogeny"] == "none"
+def scan(plan, max_new, continue_after_hit):
     artifacts = available_artifacts()
     if artifacts:
         runtime_is_current()
     results = []
     for shard, item in sorted(artifacts.items()):
         already = (ARCHIVE / "audits" / f"shard-{shard}.json").exists()
-        if not already and sum(not row["already_audited"] for row in results) >= args.max_new:
+        if not already and sum(not row["already_audited"] for row in results) >= max_new:
             continue
         status = ingest(shard, item, plan)
         results.append({"shard": shard, "status": status,
                         "already_audited": already})
         print(json.dumps(results[-1]), flush=True)
-        if status == "completed_verified_hit" and not args.continue_after_hit:
+        if status == "completed_verified_hit" and not continue_after_hit:
             print("Verified hit found; inspect its Sage replay and account "
                   "for all started jobs before stopping the wave.", flush=True)
-            break
+            return True
     print(json.dumps({"available_artifacts": len(artifacts),
                       "audited_this_invocation": sum(
-                          not row["already_audited"] for row in results)}))
+                          not row["already_audited"] for row in results)}),
+          flush=True)
+    return False
+
+
+def workflow_terminal():
+    row = json.loads(command(["gh", "run", "view", str(RUN_ID), "--repo",
+                              "aburan28/cryptanalysis", "--json", "status"],
+                             capture=True))
+    return row["status"] == "completed"
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--max-new", type=int, default=64)
+    parser.add_argument("--continue-after-hit", action="store_true")
+    parser.add_argument("--watch", action="store_true")
+    parser.add_argument("--poll-seconds", type=int, default=45)
+    args = parser.parse_args()
+    assert 0 <= args.max_new <= 64
+    assert args.poll_seconds in range(1, 61)
+    assert RUNTIME.is_file() and SNAPSHOT.is_file()
+    plan = json.loads(PLAN.read_text())
+    assert plan["candidate_id"].startswith("IC1N83Ckb1fb8000204")
+    assert plan["run_id"] == (plan["candidate_id"] + "W" +
+                              plan["workload_id"] + "R1")
+    assert plan["isogeny"] == "none"
+    terminal_observations = 0
+    while True:
+        try:
+            if scan(plan, args.max_new, args.continue_after_hit):
+                return
+            if not args.watch:
+                return
+            terminal_observations = (terminal_observations + 1 if
+                                     workflow_terminal() else 0)
+            if terminal_observations >= 2:
+                print("Q1091 workflow terminal; inspect the complete run "
+                      "inventory and reconcile all attempts.", flush=True)
+                return
+        except subprocess.CalledProcessError as exc:
+            if not args.watch:
+                raise
+            print(f"GitHub observation failed ({exc}); retrying", flush=True)
+        time.sleep(args.poll_seconds)
 
 
 if __name__ == "__main__":
