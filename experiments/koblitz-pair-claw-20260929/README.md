@@ -1,14 +1,18 @@
 # Four-point pair claw: n=53 controls and a verified n=83 DLP
 
-**Current n=83 result:** Q1083 found one natural four-point relation and a
-complete public-target DLP, independently replayed in checked Sage. The
-[result and accounting](#first-natural-n83-four-point-relation-and-exact-one-target-dlp)
-give an overcounting $2^{45.761}$ search field-call shape estimate. Separate,
-conditional whole-campaign CPU capacity checks give $2^{60.810}$ from the
-receipt inventory and $2^{60.719}$ from the host pool. A calibrated
-complete-solve operation total and
-paired one-target rho speedup remain unmeasured. This result makes no
-sub-$2^{61}$ ECC2K-130 claim.
+**Current fresh n=83 one-target result:** Q1091 shard 46 found a natural
+four-point relation and recovered scalar `1228047131163538399404643` on
+the previously unseen public point. Independent checked Sage replay verified
+the relation and scalar. The [terminal reconciliation](n83_q1091_terminal_reconciliation.json)
+accounts for all 80 scheduled Q1090/Q1091 jobs: 72 succeeded and eight
+were canceled after the hit. The [extended whole-work audit](n83_fresh_terminal_extended_capacity.json)
+also binds two completed local Q1093 zero-hit jobs. Under its explicit
+14-core local-host and four-vCPU CI ceilings at an assumed 8 GHz, the entire
+program has **$2^{59.669}$ CPU core-cycle capacity**, below $2^{61}$.
+This is a conditional physical resource bound, not measured field operations
+or a paired one-target rho speedup. The earlier Q1083 result and its
+[accounting](#first-natural-n83-four-point-relation-and-exact-one-target-dlp)
+remain separate. Neither result makes a sub-$2^{61}$ ECC2K-130 claim.
 
 This experiment tests a two-color pair-sum distinguished-point walk for an
 ordinary four-point relation. At a state $X$, a fixed hash selects a color
@@ -2663,6 +2667,51 @@ calibrated field-operation total or a one-target speedup measurement.
 
 ### Fresh n=83 holdout for the one-target protocol
 
+#### Terminal fresh-target result and work boundary
+
+The [Q1091 Actions run](https://github.com/aburan28/cryptanalysis/actions/runs/37069216423)
+finished with 56 successful full shards and eight canceled shards. All 56
+successful artifacts passed the [source-bound per-artifact auditor](audit_n83_holdout_artifact.py)
+and independent checked-Sage replay. Shard 46 has the one natural relation;
+its [full receipt and replay](n83_fresh_terminal_evidence.tar.gz) agree on
+scalar **`1228047131163538399404643`** and verify both the four-point sum
+and $[k]G=Q$ on the exact curve
+`EC1N83Ckb1h876c2921cb64`. A second replay through the checked repository
+Sage launcher reproduced the audit byte for byte. The [evidence manifest](n83_fresh_terminal_evidence_manifest.json)
+hashes all 866 archived files, including the terminal workflow inventory,
+56 complete artifact bundles, and both local Q1093 receipts and Sage audits.
+The [archive generator and verifier](freeze_n83_fresh_terminal_evidence.py)
+rechecks every member hash; the [extended capacity auditor](audit_n83_fresh_terminal_extended_capacity.py)
+was also rerun successfully from an extracted copy of the bundle.
+
+The [terminal reconciliation](n83_q1091_terminal_reconciliation.json)
+records one independently verified relation, 38,654,705,664 credited
+disjoint query representatives across Q1090/Q1091, and **$2^{45.541}$**
+regular-path field API calls for completed receipts and bounded controls.
+The eight canceled attempts have unknown actual field-operation counts, so
+that model is **not** a complete-solve work total. Both local Q1093 M32/R30
+jobs completed with zero natural relations and independent Sage zero replay;
+their measured target phases were 16,597.69 and 15,894.13 seconds.
+
+The [terminal extended work audit](n83_fresh_terminal_extended_capacity.json)
+charges every one of the 80 scheduled CI jobs at least its full six-hour
+limit on four vCPUs, increasing the charge for any longer observed job. It
+charges all 14 local cores continuously from 2026-08-01 through
+2026-10-29 at an assumed 8 GHz, plus 130 seconds of base construction
+again, even if double counted. Both local Q1093 jobs, setup, controls, and
+independent replay fit inside this reserve. The resulting conservative
+capacity is **916,545,760,000,000,000 CPU core cycles = $2^{59.669}$**,
+about 0.3975 of $2^{61}$. The bound depends on the declared host/time/clock
+assumptions and excludes work on any unlisted host or outside the reserve;
+it is not a measured instruction or field-operation count. The primary
+one-target IC online wall interval and a paired same-point rho wall time
+remain unavailable, so no speedup is claimed. Q1092 was never dispatched:
+its freezer requires a terminal zero-hit Q1091 wave and rejects this hit.
+
+The paragraphs below preserve the earlier frozen plans and intermediate
+measurements as dated checkpoints; their pending-status language describes
+the state when those artifacts were made.
+
 The verified Q1083 point was already used in the earlier rho run and search
 probes. It is a valid natural relation and DLP certificate, but it is not a
 previously unseen target under the repository's primary workload contract.
@@ -2696,8 +2745,8 @@ checked-Sage zero-hit audits. Across $2^{33}$ query representatives and
 zero natural relations. Their full-shape native field API-call model totals
 $2^{43.371}$, summed target-phase host time is 130,782.75 seconds, and the
 largest single-job RSS is 11,061,760,000 bytes. Parallel host seconds are
-not the one-target online wall time. No scalar has been recovered for this
-fresh target. Memory and disk operation costs and a same-point rho online
+not the one-target online wall time. At this Q1090 checkpoint, no scalar had
+been recovered for the fresh target. Memory and disk operation costs and a same-point rho online
 wall comparison remain unmeasured. Every later exact hit needs the
 [holdout Sage verifier](verify_n83_holdout_receipt_sage.py) before promotion
 to a verified DLP result.
@@ -2809,8 +2858,8 @@ would cost $2^{45.693}$ in the same API-call model. These first-hit indices
 assume query order; up to eight concurrent jobs can consume work past an
 early hit. This is a model prediction conditioned on the observed zero-hit
 prefix, not a measured yield rate or complete DLP work estimate. The
-**complete-solve exponent remains unknown** until a fresh scalar is
-independently verified and all charged work is accounted for.
+complete-solve exponent was unknown at that checkpoint; the terminal
+result and conditional capacity audit are recorded above.
 The [live first-hit projection](n83_q1091_live_first_hit_projection.py)
 recomputes that same model from an independently audited zero-hit set. It
 records the exact completed shard indices and the length of their consecutive
@@ -2920,7 +2969,7 @@ base-build loop an additional 130 seconds even if this counts it twice.
 They charge all 80 CI jobs for six hours on four vCPUs, yielding
 **$2^{59.669}$ conditional CPU core-cycle capacity**. Charging the
 additional 128 conditional Q1092 jobs yields **$2^{59.802}$**. Both
-scenarios include the two live local Q1093 rectangles under the continuous
+scenarios include the two then-live local Q1093 rectangles under the continuous
 host reserve. The extended bound assumes all other local work for this
 target occurs in that interval; work before August 1, from October 29 onward, on
 another host, or beyond a CI job's six-hour limit must be added. Neither
@@ -2951,9 +3000,10 @@ capacity under the extended reservation. The original
 [Q1092 design screen](n83_q1092_conditional_same_candidate_fallback.json)
 retains its superseded 24-hour figure for provenance; the plan freezer and
 workflow preflight bind both the revised dispatch ceiling and the extended
-resource ceiling before any dispatch. Q1091 has no terminal
-result yet, and this screen has no executable plan. The workflow template
-below cannot dispatch without a frozen plan. It is not
+resource ceiling before any dispatch. At design time Q1091 had no terminal
+result. It later finished with a verified hit, so this screen has no
+executable plan. The workflow template below cannot dispatch without a
+frozen plan. It is not
 measured yield or a successful solve.
 The [Q1092 plan freezer](freeze_n83_q1092_after_zero.py) accepts only a
 terminal Q1091 workflow with all 64 full receipts independently audited as
@@ -2964,7 +3014,7 @@ The frozen plan also binds the extended resource-ceiling digest and checks
 that the conditional 208-job capacity remains below $2^{61}$.
 The [Q1092 workflow template](../../.github/workflows/n83-q1092-holdout-continuation.yml)
 only triggers when the freezer's source-bound plan is added to this research
-branch; that plan does not exist while Q1091 is live. The plan SHA-256
+branch; that plan was never frozen because Q1091 found a hit. The plan SHA-256
 placeholder in the workflow must be replaced with the frozen file's digest
 in the same commit. Its 128 starts follow the 80 audited
 Q1090/Q1091 ranges and its preflight checks the exact `IC1` run identifiers,
@@ -2994,9 +3044,9 @@ and replay; it is **not** a measured complete-solve exponent. The
 extended local-host reservation charges all local work on this
 host, including Q1093, as conditional CPU cycle capacity. Its launch
 preflight passed with 28.3 GB estimated free memory and 30.3 GB free on
-the `/private/tmp` spill volume. The measured result and independent
-Sage replay remain pending; this plan does not establish natural yield
-or a fresh discrete logarithm.
+the `/private/tmp` spill volume. The job later completed with zero exact
+hits and independent checked-Sage zero replay. Its stage measurement alone
+does not establish natural yield or a fresh discrete logarithm.
 The [terminal watcher](watch_n83_q1093_local_result.py) waits for the
 local receipt, checks its candidate and source bindings, and invokes the
 separate checked-Sage verifier for either a hit or a zero-hit outcome.
@@ -3010,9 +3060,9 @@ receipt and both nonoverlapping ranges. Its [launcher](launch_n83_q1093_second_l
 requires at least 24 GiB estimated free memory and 16 GiB free spill
 space before concurrent launch. It passed those gates and started at
 2026-10-03 05:11 UTC. The [independent replay watcher](watch_n83_q1093_second_local_result.py)
-handles its separate terminal receipt. Both local rectangles remain
-within the same extended 14-core capacity reservation; their measured
-yield and combined complete-solve work remain pending.
+handled its separate terminal receipt. Both local rectangles completed
+with zero exact hits and checked-Sage zero replay. Their work is included
+in the terminal extended 14-core capacity audit above.
 The [combined search-work screen](n83_q1093_combined_search_work_screen.json)
 keeps the x86 and ARM candidate IDs separate while charging both local
 rectangles. Their joint regular-path model is $2^{41.252}$ field API calls.
@@ -3021,8 +3071,9 @@ model $2^{45.758}$ calls; adding all 128 conditional Q1092 jobs models
 $2^{47.096}$. These are full-shape models, not measured operation totals
 for canceled or incomplete work. The conservative 208-job plus full local
 reserve is $2^{59.802}$ **assumed CPU core-cycle capacity**; it
-establishes no complete-solve exponent until a fresh scalar and all attempt
-boundaries are independently reconciled.
+was frozen before the hit. The fresh scalar and terminal capacity audit are
+recorded above. Its field-call column remains a regular-path model rather
+than a measured complete field-operation total.
 The [reconciled work estimate](n83_holdout_work_estimate_reconciled.json)
 and its [generator](n83_holdout_work_estimate_reconciled.py) bind that
 extended capacity to the immutable search screen. The 80-job scenario has
