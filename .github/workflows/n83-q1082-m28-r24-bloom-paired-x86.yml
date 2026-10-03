@@ -1,0 +1,156 @@
+name: n83 Q1082 M28 R24 same-host Bloom comparison
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/n83-q1082-m28-r24-bloom-paired-x86.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  physical-x86-pclmul:
+    # One-shot run 36792009510 started from the frozen enabled workflow.
+    if: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Freeze exact instance, sources, prior control, and host resources
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, platform, shutil
+          root = pathlib.Path('experiments/koblitz-pair-claw-20260929')
+          plan_path = root / 'n83_q1082_m28_r24_bloom_paired_plan.json'
+          plan = json.loads(plan_path.read_text())
+          prior_path = root / 'n83_q1080_m28_r24_paired_plan.json'
+          prior = json.loads(prior_path.read_text())
+          archive = root / 'runs/n83_q1080_x86_ci_36770585105'
+          screen_path = root / 'n83_full_spill_screen.json'
+          screen = json.loads(screen_path.read_text())
+          sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+          assert plan['proposal_id'] == 'Q1082'
+          assert plan['status'] == 'ready_for_bounded_paired_dispatch'
+          assert plan['candidate_id'] is None and plan['run_id'] is None
+          assert plan['curve_id'] == prior['curve_id'] == screen['curve_id']
+          assert plan['isogeny'] == prior['isogeny'] == screen['isogeny'] == 'none'
+          assert plan['factor_base_enumerated_set_sha256'] == screen['factor_base']['enumerated_set_sha256']
+          assert plan['actual_usable_points_B_before_folding'] == 8000204
+          assert plan['signed_frobenius_columns'] == 48194
+          assert plan['public_target'] == prior['public_target'] == screen['public_target']
+          for key in ('table_start','table_descriptors','query_start','query_representatives','query_end_exclusive'):
+              assert plan[key] == prior[key], key
+          assert plan['execution_order'] == ['b20a','b16a','b16b','b20b']
+          assert [plan['bits_per_key_by_run'][name] for name in plan['execution_order']] == [20,16,16,20]
+          assert plan['hashes'] == 10 and plan['workers'] == 4
+          assert plan['Q1080_plan_sha256'] == sha(prior_path)
+          assert plan['Q1080_audit_sha256'] == sha(archive / 'audit.json')
+          assert plan['Q1080_paired_sha256'] == sha(archive / 'paired.json')
+          assert plan['screen_sha256'] == sha(screen_path)
+          for key, name in (
+              ('Q1079_runner_sha256','run_n83_zero_run_chunk.py'),
+              ('Q1082_generator_sha256','generate_n83_q1082_bloom_runner.py'),
+              ('Q1078_generator_sha256','bench_n83_zero_run_stage.py'),
+              ('portable_native_source_sha256','native_n83_orbit_query_spill_portable.cpp'),
+              ('portable_core_source_sha256','native_n83_bloom_core_portable.hpp'),
+              ('portable_pairs_source_sha256','native_n83_pairs_portable.cpp')):
+              assert plan[key] == sha(root / name), key
+          assert plan['generated_field_sha256'] == sha(pathlib.Path('ecc2k130/runner/generated/eccF83.h'))
+          assert platform.machine().lower() in ('x86_64','amd64')
+          cpu = pathlib.Path('/proc/cpuinfo').read_text().lower()
+          assert 'pclmulqdq' in cpu or 'pclmul' in cpu
+          info = pathlib.Path('/proc/meminfo').read_text()
+          available_kib = int(next(line.split()[1] for line in info.splitlines() if line.startswith('MemAvailable:')))
+          mem_available = available_kib * 1024
+          root_free = shutil.disk_usage(os.environ['RUNNER_TEMP']).free
+          assert mem_available >= plan['minimum_mem_available_bytes']
+          assert root_free >= plan['minimum_root_free_bytes']
+          dest = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-q1082-paired'
+          dest.mkdir()
+          for name in plan['execution_order']:
+              (dest / f'sources-{name}').mkdir()
+              (dest / f'spill-{name}').mkdir()
+          host = {
+              'kind':'n83_q1082_physical_x86_M28_R24_bloom_paired_preflight',
+              'proposal_id':'Q1082','candidate_id':None,'run_id':None,
+              'curve_id':plan['curve_id'],'isogeny':'none',
+              'factor_base_enumerated_set_sha256':plan['factor_base_enumerated_set_sha256'],
+              'actual_usable_points_B_before_folding':8000204,
+              'signed_frobenius_columns':48194,
+              'host_arch':platform.machine(),'host_os':platform.platform(),
+              'cpu_pclmul_available':True,
+              'mem_available_bytes':mem_available,'root_free_bytes':root_free,
+              'plan_sha256':sha(plan_path),
+              'workflow_sha256':sha(pathlib.Path('.github/workflows/n83-q1082-m28-r24-bloom-paired-x86.yml')),
+          }
+          (dest / 'host.json').write_text(json.dumps(host,indent=2)+'\n')
+          PY
+
+      - name: Run same-host ABBA public-target rectangles
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/n83-q1082-paired"
+          PYROOT="experiments/koblitz-pair-claw-20260929"
+          python3 "$PYROOT/generate_n83_q1082_bloom_runner.py" \
+            --out "$PYROOT/_q1082_generated_bloom_runner.py"
+          cp "$PYROOT/_q1082_generated_bloom_runner.py" \
+            "$ROOT/q1082_generated_bloom_runner.py"
+          for SPEC in b20a:20 b16a:16 b16b:16 b20b:20; do
+            NAME="${SPEC%%:*}"
+            BITS="${SPEC##*:}"
+            python3 "$PYROOT/_q1082_generated_bloom_runner.py" \
+              --table-log2 28 --query-reps-log2 24 \
+              --table-start 0 --query-start 22548578304 \
+              --workers 4 --rep-batch 8 --bits-per-key "$BITS" --hashes 10 \
+              --cpu-backend x86_pclmul --cxx clang++ \
+              --spill-dir "$ROOT/spill-$NAME" --source-dir "$ROOT/sources-$NAME" \
+              --binary "$ROOT/$NAME-bin" --out "$ROOT/$NAME.json"
+          done
+
+      - name: Check exact outcomes and paired cost boundary
+        run: |
+          python3 - <<'PY'
+          import json, math, os, pathlib, statistics
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'n83-q1082-paired'
+          names=('b20a','b16a','b16b','b20b')
+          rows=[json.loads((root/f'{name}.json').read_text()) for name in names]
+          plan=json.loads(pathlib.Path('experiments/koblitz-pair-claw-20260929/n83_q1082_m28_r24_bloom_paired_plan.json').read_text())
+          exact_keys=('actual_B','table_descriptors','query_representatives','lifted_query_pairs',
+                      'exact_hit_keys','exact_hit_queries','complement_identity_queries','hits')
+          for name,row in zip(names,rows):
+              assert row['curve_id']==plan['curve_id'] and row['isogeny']=='none'
+              assert row['candidate_id'] is None and row['run_id'] is None
+              assert row['factor_base']['enumerated_set_sha256']==plan['factor_base_enumerated_set_sha256']
+              assert row['factor_base']['actual_usable_points_B_before_folding']==plan['actual_usable_points_B_before_folding']
+              assert row['factor_base']['signed_frobenius_columns']==plan['signed_frobenius_columns']
+              assert row['table_start']==plan['table_start'] and row['table_descriptors']==plan['table_descriptors']
+              assert row['query_start']==plan['query_start'] and row['query_representatives']==plan['query_representatives']
+              assert row['cpu_backend']=='x86_pclmul' and row['proposal_id']=='Q1079'
+              assert row['bits_per_key']==plan['bits_per_key_by_run'][name] and row['hashes']==10
+              assert row['wrapper_source_sha256']==plan['Q1082_derived_runner_sha256']
+              assert row['native_field_add_mul_sqr_call_model']==plan['modeled_native_field_calls_per_run']
+          assert all(all(row['native_result'][key]==rows[0]['native_result'][key] for key in exact_keys) for row in rows[1:])
+          result={'kind':'n83_q1082_M28_R24_bloom_paired_native_outcome',
+                  'proposal_id':'Q1082','candidate_id':None,'run_id':None,
+                  'curve_id':plan['curve_id'],'isogeny':'none',
+                  'query_start':plan['query_start'],
+                  'exact_hit_queries':rows[0]['native_result']['exact_hit_queries'],
+                  'bloom_positive_queries':{name:row['native_result']['bloom_positive_queries'] for name,row in zip(names,rows)},
+                  'query_seconds':{name:row['native_result']['query_seconds'] for name,row in zip(names,rows)},
+                  'exact_replay_seconds':{name:row['native_result']['exact_replay_seconds'] for name,row in zip(names,rows)},
+                  'target_online_seconds':{name:row['target_online_seconds'] for name,row in zip(names,rows)},
+                  'wrapper_subprocess_wall_seconds':{name:row['wrapper_subprocess_wall_seconds'] for name,row in zip(names,rows)},
+                  'median_target_online_speedup_b20_over_b16':statistics.median(rows[i]['target_online_seconds'] for i in (0,3))/statistics.median(rows[i]['target_online_seconds'] for i in (1,2)),
+                  'modeled_four_run_field_calls_log2':plan['modeled_four_run_field_calls_log2'],
+                  'novel_coverage_cells':0,'complete_solve_work_log2':None}
+          (root/'paired.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: n83-q1082-M28-R24-physical-x86-bloom-paired
+          path: ${{ runner.temp }}/n83-q1082-paired/
+          retention-days: 7

@@ -81,7 +81,10 @@ The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
 Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, `PDP4root`
 for the compact four-summand S3 root index, and `PDP4qpair` for a complete
-four-summand signed-Frobenius quotient pair-sum index; `PDP5q23` for a
+four-summand signed-Frobenius quotient pair-sum index; `PDP4claw` for a
+two-color four-summand pair-sum distinguished-point claw; `PDP4qclaw` for its
+signed-Frobenius quotient walk; `PDP4qtable` for a signed-Frobenius quotient
+pair table matched against target-complement pairs; `PDP5q23` for a
 five-summand two-G pair quotient index queried by three target-seed points;
 `PDP3qpair` for a three-summand two-G quotient lookup with one target point;
 `PDP2xl` for a dense Macaulay/XL
@@ -90,6 +93,7 @@ degree scan and `PDP2xlsym` for the same scan over the symmetric-function
 `RCwalk`, `RCsample`, `RCdirect`; `RCguided` for pivot-guided relation
 collection; `RCaffine` for random-start nonzero-stride known-log query blocks;
 `LAbw`, `LAwied`, `LAgauss` for **final sparse relation-matrix** solving;
+`LAnone` when all factor-base logs are known and there is no final matrix;
 `TDdirect`, `TDpdp`, `TDdescent` for target handling; `ISO0` for no isogeny
 transport and `ISO1` for a specified route. A solver's internal Macaulay
 matrix reduction belongs under `PDP`, including its RREF/M4RI/GPU kernel. It
