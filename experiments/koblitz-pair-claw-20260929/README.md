@@ -2847,8 +2847,9 @@ diagnostic ceiling rather than a predicted variant speedup.
 The updated exchangeable-placement model gives a **71.1%** hit chance in the
 remaining 48 rectangles and **$2^{45.060}$** cumulative regular-path field
 API calls conditional on a hit within this wave. The full 80-job plus local
-reserve capacity is **$2^{58.262}$** assumed CPU core cycles under the corrected
-30-day local reservation. These stage
+reserve capacity in the historical 30-day screen is **$2^{58.262}$** assumed
+CPU core cycles. The extended screen below gives the current conservative
+capacity estimate. These stage
 measurements and predictions do not establish a complete-solve work exponent.
 
 The original [24-hour whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
@@ -2865,6 +2866,21 @@ on four vCPUs. It gives **$2^{58.262}$ conditional CPU core-cycle capacity**,
 still below $2^{61}$ if all local work stays in the stated interval and no
 other host or attempt is omitted. This is a capacity assumption, not measured
 instructions, field operations, or a verified successful solve.
+The base-build receipt measures 129.525 seconds but has no start timestamp,
+so its membership in the 30-day interval cannot be proved from that receipt.
+The superseding [extended resource ceiling](n83_holdout_extended_resource_ceiling.json)
+and its [source-bound generator](n83_holdout_extended_resource_ceiling.py)
+charge all 14 host cores continuously from **2026-08-01 00:00 UTC to
+2026-10-29 00:00 UTC** at the same assumed 8 GHz, then charge the measured
+base-build loop an additional 130 seconds even if this counts it twice.
+They charge all 80 CI jobs for six hours on four vCPUs, yielding
+**$2^{59.669}$ conditional CPU core-cycle capacity**. Charging the
+additional 128 conditional Q1092 jobs yields **$2^{59.802}$**. Both
+scenarios include the two live local Q1093 rectangles under the continuous
+host reserve. The extended bound assumes all other local work for this
+target occurs in that interval; work before August 1, from October 29 onward, on
+another host, or beyond a CI job's six-hour limit must be added. Neither
+number is a measured solve exponent or a field-operation count.
 The [job-inventory cycle envelope](audit_n83_holdout_cycle_envelope.py)
 reconciles both waves and charges every scheduled CI job at least its full
 six-hour limit, using a longer observed terminal wall if present, plus the
@@ -2886,8 +2902,8 @@ $80\cdot2^{29}$. It keeps the exact `IC1` candidate and `W...R1` run;
 its query end remains inside the manifest's representative domain. The
 finite-support model gives a **95.99% conditional hit chance** in that
 additional wave. All 208 jobs would have $2^{47.071}$ regular-path
-field-call shape and **$2^{58.591}$** conditional CI-plus-local CPU core-cycle
-capacity under the revised local reservation. The original
+field-call shape and **$2^{59.802}$** conditional CI-plus-local CPU core-cycle
+capacity under the extended reservation. The original
 [Q1092 design screen](n83_q1092_conditional_same_candidate_fallback.json)
 retains its superseded 24-hour figure for provenance; the plan freezer and
 workflow preflight bind the revised ceiling before any dispatch. Q1091 has no terminal
@@ -2927,7 +2943,7 @@ source hash because Q1090's verifier accepts only Q1090 receipts.
 Q1093's regular-path one-job model is $2^{40.252}$ field API calls. It
 omits Bloom and keying work, memory traffic, candidate spill, failures,
 and replay; it is **not** a measured complete-solve exponent. The
-30-day local-host reservation already charges all local work on this
+extended local-host reservation charges all local work on this
 host, including Q1093, as conditional CPU cycle capacity. Its launch
 preflight passed with 28.3 GB estimated free memory and 30.3 GB free on
 the `/private/tmp` spill volume. The measured result and independent
@@ -2947,7 +2963,7 @@ requires at least 24 GiB estimated free memory and 16 GiB free spill
 space before concurrent launch. It passed those gates and started at
 2026-10-03 05:11 UTC. The [independent replay watcher](watch_n83_q1093_second_local_result.py)
 handles its separate terminal receipt. Both local rectangles remain
-within the same 30-day, 14-core capacity reservation; their measured
+within the same extended 14-core capacity reservation; their measured
 yield and combined complete-solve work remain pending.
 The [combined search-work screen](n83_q1093_combined_search_work_screen.json)
 keeps the x86 and ARM candidate IDs separate while charging both local
@@ -2956,7 +2972,7 @@ All 80 planned Q1090/Q1091 CI jobs, controls, and both local rectangles
 model $2^{45.758}$ calls; adding all 128 conditional Q1092 jobs models
 $2^{47.096}$. These are full-shape models, not measured operation totals
 for canceled or incomplete work. The conservative 208-job plus full local
-reserve remains $2^{58.591}$ **assumed CPU core-cycle capacity**; it
+reserve is $2^{59.802}$ **assumed CPU core-cycle capacity**; it
 establishes no complete-solve exponent until a fresh scalar and all attempt
 boundaries are independently reconciled.
 
