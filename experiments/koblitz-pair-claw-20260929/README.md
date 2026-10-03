@@ -2824,6 +2824,20 @@ exchangeable-placement model gives **75.9%** hit probability in the 55
 remaining rectangles and **$2^{44.914}$** cumulative regular-path field API
 calls conditional on a hit within the 80-job wave. The full-run cycle-capacity
 ceiling remains $2^{55.851}$; neither figure is measured complete-solve work.
+By 2026-10-03 03:54 UTC, all Q1091 shards 0–15 had completed and passed
+independent checked-Sage zero-hit replay. The 32 total Q1090/Q1091 rectangles
+cover $2^{34}$ query representatives and 2,851,858,284,544 lifted signed-pair
+probes; **no natural relation or fresh-target scalar was recovered**. The
+completed-receipt regular-path model is $2^{44.371}$ field API calls.
+The [frozen 16-shard stage diagnostic](n83_q1091_first16_stage_diagnostic.json)
+records 311,603,459 Bloom positives, all exact-replay false positives,
+8,363.98 seconds mean Q1091 target-phase host time (range
+7,798.07–9,658.97), and 11,061,764,096 bytes peak single-job RSS.
+The updated exchangeable-placement model gives a **71.1%** hit chance in the
+remaining 48 rectangles and **$2^{45.060}$** cumulative regular-path field
+API calls conditional on a hit within this wave. The full 80-job plus local
+reserve capacity remains $2^{55.851}$ assumed CPU core cycles. These stage
+measurements and predictions do not establish a complete-solve work exponent.
 
 The [whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
 also reserves a full 24 hours on the audited 14-core local host for the
