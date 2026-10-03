@@ -777,6 +777,15 @@ uses the same n=83 field, curve, generator, seed stream, and
 orbits**, or **B=8,000,204 actual subgroup points before folding**.
 Its enumerated-set digest is
 `7e3c95f988225da1d586578529953ad61ae5ed62ca740eb92c2aea6d841a5a02`.
+This digest hashes the **48,194 sorted canonical orbit keys** in the
+[tracked representative and log binary](runs/n83_knownlog_orbit_keys_and_logs_k48194.bin),
+using 21 little-endian bytes per key. It is a digest of the compressed
+orbit representation, not a separate bytewise digest of all 8,000,204
+expanded points. The full point count follows from the 166-point
+signed-Frobenius orbit size and distinct canonical keys. The shared
+`fb-archive` does not yet have an n=83 orbit-base entry; that archive
+step remains open even though the representative binary and its digest
+are tracked here.
 The [independent replay](runs/n83_knownlog_orbit_base_k48194_verified.json)
 checked every canonical key and log against the seeded scalar stream and
 confirmed that all 24,097 original orbits and logs are a subset. A
