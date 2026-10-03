@@ -88,6 +88,8 @@ def aggregate(workflow_path, audit_dir):
     verified_relations = 0
     control_verified_scalars = set()
     control_verified_relations = 0
+    partial_full_replay_scalars = set()
+    partial_full_replay_relations = 0
     credited_representatives = prior["total_query_representatives"]
     modeled_calls = int(prior["combined_full_and_control_field_api_call_model"])
     modeled_calls += (budget["local_bounded_controls_completed"] * int(
@@ -110,14 +112,17 @@ def aggregate(workflow_path, audit_dir):
             "completed_verified_hit", "completed_control_verified_hit",
             "completed_independently_verified_zero"))
         if audit and not complete_audit:
-            reported_unverified_hits += (audit.get(
-                "reported_full_exact_hit_queries") or 0)
-            if audit["terminal_status"] == (
-                    "incomplete_artifact_control_verified_hit"):
-                control_verified_relations += audit[
-                    "control_independently_verified_relations"]
-                control_verified_scalars.update(audit[
-                    "control_verified_scalars"])
+            partial_count = audit.get(
+                "partial_full_sage_verified_relations", 0)
+            reported_unverified_hits += max(0, (audit.get(
+                "reported_full_exact_hit_queries") or 0) - partial_count)
+            partial_full_replay_relations += partial_count
+            partial_full_replay_scalars.update(audit.get(
+                "partial_full_sage_verified_scalars", []))
+            control_verified_relations += audit.get(
+                "control_independently_verified_relations", 0)
+            control_verified_scalars.update(audit.get(
+                "control_verified_scalars", []))
         if terminal and job["conclusion"] == "success" and not complete_audit:
             incomplete_terminal_artifacts += 1
         # A complete independently audited receipt proves coverage even if
@@ -152,9 +157,14 @@ def aggregate(workflow_path, audit_dir):
         })
     assert len(verified_scalars) <= 1, "conflicting target scalars"
     assert len(control_verified_scalars) <= 1, "conflicting control scalars"
+    assert len(partial_full_replay_scalars) <= 1, (
+        "conflicting partial full-replay scalars")
     if verified_scalars and control_verified_scalars:
         assert verified_scalars == control_verified_scalars, (
             "candidate and control recovered different scalars")
+    if verified_scalars and partial_full_replay_scalars:
+        assert verified_scalars == partial_full_replay_scalars, (
+            "complete and partial full replays recovered different scalars")
     all_jobs_terminal = terminal_jobs == 64
     final_audits_ready = (workflow["status"] == "completed" and
                           all_jobs_terminal and
@@ -215,6 +225,10 @@ def aggregate(workflow_path, audit_dir):
         "Q1091_control_verified_relations": control_verified_relations,
         "control_verified_fresh_target_scalar": next(
             iter(control_verified_scalars), None),
+        "Q1091_partial_full_sage_replay_relations":
+            partial_full_replay_relations,
+        "partial_full_sage_replay_scalar": next(
+            iter(partial_full_replay_scalars), None),
         "credited_disjoint_query_representatives": credited_representatives,
         "completed_receipts_regular_path_field_api_call_model": str(
             modeled_calls),
@@ -242,6 +256,7 @@ def aggregate(workflow_path, audit_dir):
         "limits": [
             "Only terminal Q1091 jobs with complete independent artifact audits receive disjoint coverage credit, even if the CI wrapper subsequently failed.",
             "The M20/R14 control has no candidate ID. Its verified relations and scalar are reported separately and never credited to the M32/R29 IC1 candidate.",
+            "A full-receipt hit replayed in Sage from a partial artifact is reported provisionally; it receives no candidate coverage or completed-run credit until the missing source-bound evidence is audited.",
             "Active, failed, canceled, and missing-artifact attempts remain visible; their actual consumed field work is unknown unless separately recovered.",
             "The field-call sum is a regular-path shape model for completed receipts, plus two local bounded controls. It excludes non-field work and is not a complete-solve operation count.",
             "The CPU figure is a conditional physical capacity under the frozen host, clock, timeout, and local-reserve assumptions.",

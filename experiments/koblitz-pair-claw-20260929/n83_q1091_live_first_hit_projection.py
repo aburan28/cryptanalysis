@@ -41,6 +41,8 @@ def project(reconciliation_path):
         "signed_frobenius_columns"]
     assert run["prior_Q1090_completed_jobs"] == PRIOR_JOBS
     assert run["Q1091_verified_relations"] == 0
+    assert run.get("Q1091_control_verified_relations", 0) == 0
+    assert run.get("Q1091_partial_full_sage_replay_relations", 0) == 0
     assert run["verified_fresh_target_scalar"] is None
     assert run["Q1091_reported_unverified_hits_in_partial_artifacts"] == 0
     assert run["Q1091_failed_or_canceled_jobs"] == 0

@@ -79,6 +79,34 @@ def audit(artifact_dir, plan_path, runtime_path,
     if control is None or full is None:
         control_verified = []
         control_sage_path = artifact_dir / "control_sage_verify.json"
+        partial_full_verified = []
+        full_sage_path = artifact_dir / "sage_verify.json"
+        if isinstance(full, dict) and full.get("native_result", {}).get(
+                "exact_hit_queries", 0):
+            assert full["candidate_id"] == plan["candidate_id"]
+            assert full["run_id"] == plan["run_id"]
+            assert full["curve_id"] == plan["curve_id"]
+            assert full["workload_id"] == plan["workload_id"]
+            assert full["isogeny"] == "none"
+            assert full["public_target"] == plan["public_target"]
+            assert full["query_start"] == start
+            assert full["factor_base"]["enumerated_set_sha256"] == plan[
+                "factor_base_enumerated_set_sha256"]
+            assert full_sage_path.is_file(), (
+                "partial full-receipt hit also needs independent Sage replay")
+            replay = load(full_sage_path)
+            assert replay["receipt_sha256"] == sha(full_path)
+            assert replay["sage_runtime_info_sha256"] == sha(runtime_path)
+            assert replay["holdout_target_sha256"] == sha(TARGET)
+            assert replay["candidate_id"] == plan["candidate_id"]
+            assert replay["curve_id"] == plan["curve_id"]
+            assert replay["workload_id"] == plan["workload_id"]
+            assert replay["verified_relation_count"] == len(
+                full["verified_public_target_relations"])
+            assert replay["verified_relation_count"] == len(
+                replay["verified_relations"])
+            assert replay["natural_public_target_relation_verified"]
+            partial_full_verified = replay["verified_relations"]
         if isinstance(control, dict) and control.get("native_result", {}).get(
                 "exact_hit_queries", 0):
             assert control["candidate_id"] is None
@@ -117,8 +145,11 @@ def audit(artifact_dir, plan_path, runtime_path,
             "isogeny": "none",
             "query_start": start,
             "query_end_exclusive": start + plan["query_representatives"],
-            "terminal_status": ("incomplete_artifact_control_verified_hit"
-                                if control_verified else "incomplete_artifact"),
+            "terminal_status": (
+                "incomplete_artifact_candidate_replay_hit"
+                if partial_full_verified else
+                "incomplete_artifact_control_verified_hit"
+                if control_verified else "incomplete_artifact"),
             "control_receipt_present": control_path.is_file(),
             "full_receipt_present": full_path.is_file(),
             "control_receipt_json_valid": control is not None,
@@ -131,6 +162,12 @@ def audit(artifact_dir, plan_path, runtime_path,
             "coverage_credit": 0,
             "actual_field_api_calls": None,
             "verified_relations": None,
+            "partial_full_sage_verified_relations": len(
+                partial_full_verified),
+            "partial_full_sage_verified_scalars": sorted({
+                row["recovered_scalar"] for row in partial_full_verified}),
+            "partial_full_sage_verify_sha256": (
+                sha(full_sage_path) if partial_full_verified else None),
             "control_independently_verified_relations": len(control_verified),
             "control_verified_scalars": sorted({row["recovered_scalar"]
                                                 for row in control_verified}),

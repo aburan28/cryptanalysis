@@ -2745,6 +2745,9 @@ relations and recovered scalars in separate fields. A control hit stops the
 intake for review, even if the full receipt is missing, but never becomes an
 `IC1` DLP result or earns full-range coverage. A successful control needs
 its own exact candidate manifest and run attribution before comparison.
+The intake also replays a full-search receipt when the control file is
+missing. Such a scalar is flagged for source-bound review; the incomplete
+artifact remains uncredited until the full evidence is recovered.
 
 The [one-run reconciler](aggregate_n83_holdout_run.py) combines the audited
 Q1090 zero-hit prefix, the frozen Q1091 job inventory, and per-artifact
