@@ -47,7 +47,7 @@ def charged_job_seconds(job, minimum_seconds):
     start = parse_utc(job.get("startedAt"))
     end = parse_utc(job.get("completedAt"))
     observed = None
-    if start and end:
+    if job["status"] == "completed" and start and end:
         observed = max(0.0, (end - start).total_seconds())
     return max(minimum_seconds, observed or 0.0), observed
 
@@ -87,12 +87,14 @@ def audit(workflow_path, artifact_audits):
     jobs = []
     charged_seconds = 0.0
     observed_seconds = 0.0
+    observed_terminal_jobs = 0
     for wave, inventory in (("Q1090", prior_workflow), ("Q1091", workflow)):
         for job in inventory["jobs"]:
             charged, observed = charged_job_seconds(
                 job, plan["timeout_seconds_per_job"])
             charged_seconds += charged
             observed_seconds += observed or 0.0
+            observed_terminal_jobs += int(observed is not None)
             jobs.append({
                 "wave": wave,
                 "github_job_id": job["databaseId"],
@@ -102,6 +104,8 @@ def audit(workflow_path, artifact_audits):
                 "charged_job_wall_seconds": charged,
             })
     assert len(jobs) == 80
+    observed_terminal_cycles = math.ceil(
+        observed_seconds * CI_VCPU * ASSUMED_CLOCK_HZ)
     ci_cycles = math.ceil(charged_seconds * CI_VCPU * ASSUMED_CLOCK_HZ)
     local_cycles = LOCAL_SECONDS * LOCAL_CORES * ASSUMED_CLOCK_HZ
     total_cycles = ci_cycles + local_cycles
@@ -125,7 +129,13 @@ def audit(workflow_path, artifact_audits):
         "independently_verified_relation_count": reconciliation[
             "Q1091_verified_relations"],
         "scheduled_ci_jobs_charged": len(jobs),
+        "observed_terminal_ci_jobs": observed_terminal_jobs,
         "observed_terminal_ci_job_wall_seconds_sum": observed_seconds,
+        "observed_terminal_ci_job_cycle_capacity": str(
+            observed_terminal_cycles),
+        "observed_terminal_ci_job_cycle_capacity_log2": (
+            math.log2(observed_terminal_cycles)
+            if observed_terminal_cycles else None),
         "charged_ci_job_wall_seconds_sum": charged_seconds,
         "assumed_vcpu_per_ci_job": CI_VCPU,
         "assumed_clock_hz_ceiling_per_vcpu": ASSUMED_CLOCK_HZ,
@@ -150,6 +160,7 @@ def audit(workflow_path, artifact_audits):
         "source_sha256": sha(Path(__file__)),
         "limits": [
             "Every one of the 80 scheduled CI jobs is charged at least its full six-hour limit, including queued, failed, and canceled jobs; longer observed terminal job walls supersede that limit.",
+            "The observed-terminal-job capacity uses recorded job elapsed wall time and the same assumed vCPU clock. It excludes active, queued, and local work and is not a measured cycle counter or complete-solve cost.",
             "The 8 GHz per-vCPU figure is an assumed ceiling, not a measured clock or an equivalence to field operations.",
             "The local 24-hour, 14-core reserve is conditional on all local work for this workload remaining within that reservation.",
             "A CPU-cycle capacity below 2^61 is not a successful-solve result until a fresh scalar is independently verified and the complete terminal inventory is reconciled.",
@@ -171,6 +182,8 @@ def main():
     args.out.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps({key: result[key] for key in (
         "status", "verified_fresh_target_scalar",
+        "observed_terminal_ci_jobs",
+        "observed_terminal_ci_job_cycle_capacity_log2",
         "whole_run_conditional_cycle_envelope_log2",
         "below_2_61_under_stated_resource_assumptions")}))
 

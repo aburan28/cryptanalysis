@@ -2817,6 +2817,12 @@ same full local-host reserve. Its live eight-shard preview remains
 $2^{55.851}$ conditional CPU cycles and **does not** claim a completed DLP;
 after a verified hit it can bind that resource bound to the terminal run
 inventory while keeping measured field operations and online speed unknown.
+At the 2026-10-03 01:04 UTC checkpoint, the 24 completed CI jobs across
+Q1090 and Q1091 had 232,701 recorded job-wall seconds. Applying the same
+four-vCPU, assumed 8 GHz capacity model to only those elapsed intervals gives
+$2^{52.725}$ CPU core-cycle capacity. This completed-job diagnostic excludes
+the live and queued jobs and the local reserve; it is not a measured cycle
+counter or complete-solve cost.
 
 If all 64 Q1091 rectangles are independently audited as zero-hit, the
 [Q1092 design screen](n83_q1092_conditional_same_candidate_fallback.json)
