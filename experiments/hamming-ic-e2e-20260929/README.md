@@ -1,5 +1,10 @@
 # FC-Hamming in a complete toy index-calculus DLP
 
+The later, separate [N53 weight-three root-index study](N53_W3_ROOT.md)
+completed three independently replayed one-target DLPs. It uses a
+four-summand root index rather than this FC-Hamming SAT method; rho was faster
+on all three paired targets.
+
 This experiment puts the factorized-convolution (FC) Hamming predicate from
 La Scala, Marchesin, and Tiwari's [*Hamming Ideals and Gröbner Bases for
 ISD-like Syndrome Decoding*](https://arxiv.org/abs/2609.18866) into a complete
