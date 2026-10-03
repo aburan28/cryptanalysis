@@ -201,6 +201,82 @@ def main():
     assert rational_control["stage_receipt_sha256"] == next(
         row["receipt_sha256"] for row in rational_results
         if row["kind"] == "ordinary")
+    orbit_variants = []
+    for n in (53, 83):
+        for kind in ("planted", "ordinary"):
+            baseline_path, baseline = read(f"n{n}_{kind}_frozen.json")
+            coset_path, coset = read(f"n{n}_{kind}_raw_preimages.json")
+            for variant in ("orbit", "ordered"):
+                path, stage = read(f"n{n}_{kind}_{variant}.json")
+                assert stage["protocol_sha256"] == sha(protocol_path)
+                assert stage["matched_baseline_receipt_sha256"] == sha(
+                    baseline_path)
+                assert stage["raw_preimage_receipt_sha256"] == sha(coset_path)
+                assert stage["curve_id"] == baseline["curve_id"]
+                assert stage["public_target"] == baseline[
+                    "public_subgroup_target"]
+                assert stage["factor_base_enumerated_set_sha256"] == baseline[
+                    "factor_base_enumerated_set_sha256"]
+                assert stage["target_orbit_x_count"] == n * coset[
+                    "raw_target_preimage_count"]
+                assert stage["verified_relation"] is None
+                assert len(stage["attempts"]) == 1
+                orbit_variants.append({
+                    "proposal_id": stage["proposal_id"],
+                    "candidate_id": None,
+                    "workload_id": stage["workload_id"],
+                    "run_id": None,
+                    "curve_id": stage["curve_id"],
+                    "n": n,
+                    "kind": kind,
+                    "variant": variant,
+                    "raw_target_policy": "all exact cofactor preimages and their Frobenius conjugates for one public target",
+                    "cofactor_preimage_count": stage["raw_preimage_count"],
+                    "target_orbit_x_count": stage["target_orbit_x_count"],
+                    "factor_base_B": stage["factor_base_actual_B"],
+                    "folded_columns": stage["factor_base_folded_columns"],
+                    "formula_and_gates": stage["formula_and_gates"],
+                    "formula_cnf_clauses": stage["formula_cnf_clauses"],
+                    "status": stage["attempts"][0]["status"],
+                    "solver_conflicts_reported": stage["attempts"][0][
+                        "solver_conflicts_reported"],
+                    "target_orbit_generation_seconds": stage[
+                        "target_orbit_generation_seconds"],
+                    "target_pdp_wall_seconds": stage["target_pdp_wall_seconds"],
+                    "verified_relation_count": 0,
+                    "natural_relation_yield_estimate": None,
+                    "field_operations": None,
+                    "complete_solve_work_log2": None,
+                    "receipt_sha256": sha(path),
+                })
+    orbit_controls = []
+    for variant in ("orbit", "ordered"):
+        for n, kind in ((53, "ordinary"), (53, "planted"), (83, "planted")):
+            path, control = read(f"n{n}_{kind}_{variant}_locked_verify.json")
+            stage = next(row for row in orbit_variants
+                         if row["variant"] == variant and row["n"] == n
+                         and row["kind"] == kind)
+            assert control["status"] == (
+                "verified_locked_sat_relation_mapped_back")
+            assert control["matched_" + variant + "_receipt_sha256"] == (
+                stage["receipt_sha256"])
+            assert control["frobenius_shift"] == 1
+            orbit_controls.append({
+                "n": n, "kind": kind, "variant": variant,
+                "preimage_index": control["preimage_index"],
+                "frobenius_shift": control["frobenius_shift"],
+                "verified_relation_count": 1,
+                "is_natural_solver_measurement": False,
+                "receipt_sha256": sha(path),
+            })
+    orbit_extended_path, orbit_extended = read(
+        "n53_ordinary_orbit_extended.json")
+    assert orbit_extended["matched_stage_receipt_sha256"] == next(
+        row["receipt_sha256"] for row in orbit_variants
+        if row["n"] == 53 and row["kind"] == "ordinary"
+        and row["variant"] == "orbit")
+    assert orbit_extended["solver_conflicts_reported"] >= 1_000_000
+    assert orbit_extended["verified_relation"] is None
     order131 = protocol["degree_131_design"]["curve"]["subgroup_order"]
     heuristic_samples131 = 2 * math.sqrt(order131 / (2 * 131))
     ledger = {
@@ -259,6 +335,19 @@ def main():
                 rational_control_path),
             "conclusion": "exact rationality clauses preserve the known ordinary relation but did not produce a natural solve within the paired 100000-conflict and 20-second caps; one timing per variant is not a stable speed ratio",
         },
+        "frobenius_orbit_stage_measurements": orbit_variants,
+        "frobenius_orbit_locked_witness_controls": orbit_controls,
+        "n53_ordinary_orbit_extended": {
+            "status": orbit_extended["status"],
+            "solver_conflicts_reported": orbit_extended[
+                "solver_conflicts_reported"],
+            "solver_conflicts_log2": math.log2(orbit_extended[
+                "solver_conflicts_reported"]),
+            "solver_wall_seconds_with_formula_precomputed": orbit_extended[
+                "solver_wall_seconds"],
+            "verified_relation_count": 0,
+            "receipt_sha256": sha(orbit_extended_path),
+        },
         "matched_pair_table": {
             "n53": {
                 "status": n53["status"],
@@ -290,7 +379,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "even after all cofactor preimages are included, n53 and n83 ordinary S3 runs remain censored; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary S3 runs remain censored with the complete cofactor and Frobenius target orbit, including ordered-leaf symmetry breaking; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,

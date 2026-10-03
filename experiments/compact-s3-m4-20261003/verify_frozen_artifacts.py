@@ -142,6 +142,83 @@ def verify():
             HERE / "verify_multitarget_witness.py")
         assert receipt["relation"] is not None
         rows.append({"variant": stem, "receipt_sha256": sha(path)})
+    for n in (53, 83):
+        for kind in ("planted", "ordinary"):
+            baseline_path = HERE / "runs" / f"n{n}_{kind}_frozen.json"
+            coset_path = HERE / "runs" / f"n{n}_{kind}_raw_preimages.json"
+            for variant in ("orbit", "ordered"):
+                stem = f"n{n}_{kind}_{variant}"
+                path = HERE / "runs" / f"{stem}.json"
+                receipt = json.loads(path.read_text())
+                assert receipt["protocol_sha256"] == protocol_digest
+                assert receipt["matched_baseline_receipt_sha256"] == sha(
+                    baseline_path)
+                assert receipt["raw_preimage_receipt_sha256"] == sha(
+                    coset_path)
+                assert receipt["target_orbit_x_count"] == (
+                    receipt["cofactor"] * n)
+                assert receipt["orbit_source_sha256"] == sha(
+                    HERE / "chain_s3_orbit.py")
+                assert receipt["multitarget_source_sha256"] == sha(
+                    HERE / "chain_s3_multitarget.py")
+                assert receipt["factored_source_sha256"] == sha(
+                    HERE / "chain_s3_factored.py")
+                assert receipt["core_source_sha256"] == sha(
+                    HERE / "chain_s3.py")
+                runner = ("run_orbit_probe.py" if variant == "orbit"
+                          else "run_ordered_probe.py")
+                assert receipt["runner_source_sha256"] == sha(HERE / runner)
+                if variant == "ordered":
+                    assert receipt["ordered_source_sha256"] == sha(
+                        HERE / "chain_s3_ordered.py")
+                assert len(receipt["attempts"]) == 1
+                assert receipt["verified_relation"] is None
+                digest = hashlib.sha256()
+                size = 0
+                with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+                    for chunk in iter(lambda: stream.read(1 << 20), b""):
+                        digest.update(chunk)
+                        size += len(chunk)
+                assert digest.hexdigest() == receipt["xcnf_sha256"]
+                assert size == receipt["xcnf_bytes"]
+                for attempt in receipt["attempts"]:
+                    index = attempt["index"]
+                    assert attempt["xcnf_sha256"] == receipt["xcnf_sha256"]
+                    assert sha(HERE / "runs" / f"{stem}.attempt{index}.stdout.txt") == (
+                        attempt["solver_stdout_sha256"])
+                    assert sha(HERE / "runs" / f"{stem}.attempt{index}.stderr.txt") == (
+                        attempt["solver_stderr_sha256"])
+                rows.append({"variant": stem, "receipt_sha256": sha(path),
+                             "formula_sha256": digest.hexdigest(),
+                             "formula_bytes": size})
+    extended_path = HERE / "runs/n53_ordinary_orbit_extended.json"
+    extended = json.loads(extended_path.read_text())
+    assert extended["runner_source_sha256"] == sha(
+        HERE / "run_extended_orbit.py")
+    assert extended["matched_stage_receipt_sha256"] == sha(
+        HERE / "runs/n53_ordinary_orbit.json")
+    assert extended["formula_sha256"] == json.loads(
+        (HERE / "runs/n53_ordinary_orbit.json").read_text())["xcnf_sha256"]
+    assert extended["stdout_sha256"] == sha(
+        HERE / "runs/n53_ordinary_orbit_extended.stdout.txt")
+    assert extended["stderr_sha256"] == sha(
+        HERE / "runs/n53_ordinary_orbit_extended.stderr.txt")
+    assert extended["verified_relation"] is None
+    rows.append({"variant": "n53_ordinary_orbit_extended",
+                 "receipt_sha256": sha(extended_path)})
+    for variant in ("orbit", "ordered"):
+        source = ("verify_orbit_witness.py" if variant == "orbit"
+                  else "verify_ordered_witness.py")
+        for n, kind in ((53, "ordinary"), (53, "planted"), (83, "planted")):
+            stem = f"n{n}_{kind}_{variant}_locked_verify"
+            path = HERE / "runs" / f"{stem}.json"
+            receipt = json.loads(path.read_text())
+            assert receipt["source_sha256"] == sha(HERE / source)
+            assert receipt["matched_" + variant + "_receipt_sha256"] == sha(
+                HERE / "runs" / f"n{n}_{kind}_{variant}.json")
+            assert receipt["status"] == "verified_locked_sat_relation_mapped_back"
+            assert receipt["frobenius_shift"] == 1
+            rows.append({"variant": stem, "receipt_sha256": sha(path)})
     return rows
 
 

@@ -8,6 +8,8 @@ ECDLP solver. The frozen ordinary n=53 and n=83 SAT queries both exhausted a
 coverage to include **all** raw preimages under the curve cofactor; those
 ordinary queries also remained censored. Consequently there is no measured
 degree-131 complete-solve work exponent, and no sub-\(2^{61}\) claim.
+Later probes also covered every Frobenius conjugate of those preimages and
+tested ordered leaves; neither produced an unassisted ordinary relation.
 
 ## Identity and comparable inputs
 
@@ -120,6 +122,50 @@ timing difference is a diagnostic, not a stable speed ratio. The planted
 filtered run also exhausted its wall cap. The exact support archive and
 receipts are retained as a negative solver variant.
 
+## Frobenius target orbit and ordered leaves
+
+[`chain_s3_orbit.py`](chain_s3_orbit.py) adds a compact Frobenius shift to
+the complete cofactor-preimage selector. This admits all **22,684** distinct
+raw target x coordinates at n=53 (428 preimages times 53 shifts) and **332**
+at n=83 (4 times 83). Q1309 and Q1310 name these stage proposals. The
+base, public point, and workload remain exactly the same as in the full
+preimage comparison. The extra targets are equivalent under the Frobenius
+action on this base; their count is not an independent relation-yield
+multiplier.
+
+[`chain_s3_ordered.py`](chain_s3_ordered.py) also requires the four leaf x
+coordinates to be in nondecreasing numeric order, removing their permutation
+symmetry. Q1311 and Q1312 name the n=53 and n=83 ordered proposals. Exhaustive
+small-bit tests check the comparator. At full size, the known n=53 ordinary
+four-point relation and the planted n=53/n=83 relations solve with their
+coordinates, preimage, and Frobenius shift locked. Each locked result maps
+back to its original public target. The leaves are shifted before sorting,
+because numeric order is not Frobenius invariant. These are encoding controls,
+not unassisted solver successes.
+
+| Curve and target | Orbit target choices | Orbit result | Ordered result |
+| --- | ---: | --- | --- |
+| n=53 ordinary, known satisfiable | 22,684 | 20.13 s wall cap; no model | 100,001 conflicts in 15.27 s; no model |
+| n=53 planted | 22,684 | 100,002 conflicts in 16.68 s; no model | 20.45 s wall cap; no model |
+| n=83 ordinary | 332 | 20.12 s wall cap; no model | 20.10 s wall cap; no model |
+| n=83 planted | 332 | 20.12 s wall cap; no model | 20.39 s wall cap; no model |
+
+The n=53 ordinary orbit formula also reached **1,000,002 conflicts** in
+86.08 s with its formula precomputed and returned no model. That case has
+a known raw relation, so the run measures a censored search on a satisfiable
+instance, not mathematical nonexistence. Formula construction and all
+failed attempts are charged in the bounded stage receipts; the extended
+solver-only interval is labeled separately. Solver conflicts are Boolean
+events and have no established field-operation conversion. These runs do
+not support a degree-131 \(2^x\) complete-solve estimate.
+
+The source-bound receipts, exact solver logs, and verified gzip XCNFs are
+in `runs/`. Checked Sage runtime snapshots are
+`orbit_sage_runtime_info.json` and `ordered_sage_runtime_info.json`.
+Relation receipts store `projected_points` as the unsigned cofactor
+projections of x lifts and store their signs separately; the sign must be
+applied before adding or mapping projected points back by Frobenius.
+
 ## Matched pair-table stage
 
 [`matched_n53_pair_table.py`](matched_n53_pair_table.py) reuses the prior
@@ -159,12 +205,16 @@ upper projection below \(2^{61}\), and the degree-131 challenge gate remains
 closed. Existing complete ECDLP claims cannot be inferred from a relation
 stage or a planted witness.
 
-The next useful goal is a **noncensored ordinary public-target S3
-decomposition**, first at n=53 and then at n=83, using the complete cofactor
-preimage coset. The n=53 frozen point is known to have a valid raw witness,
-so it gives a direct search test. Keep all failed attempts and measure
-Boolean operations, field-operation conversion, and wall time; collect enough independent ordinary
-queries to estimate useful relation and novel-rank rates with uncertainty.
+The next useful goal is a **noncensored ordinary public-target
+four-summand decomposition**, first at n=53 and then at n=83, using the exact
+same base and cofactor-preimage policy. The n=53 frozen point is known to have
+a valid raw witness, so it gives a direct search test. The orbit and leaf
+ordering SAT variants are now tested without a natural success; a new
+solver mechanism should be benchmarked against the matched n=53 pair index
+and the full-coset SAT circuit on the same target. Keep all failed attempts
+and measure Boolean operations, field-operation conversion, and wall time;
+collect enough independent ordinary queries to estimate useful relation and
+novel-rank rates with uncertainty.
 Only then fit an n=131 stage cost and add matrix, descent, and replay charges.
 If the fitted complete cost is credibly below \(2^{61}\) in a named operation
 unit, the challenge run is justified; otherwise the experiment is a no-go

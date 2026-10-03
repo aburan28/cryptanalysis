@@ -7,9 +7,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from chain_s3 import Formula, build, evaluate_s3, multiplication_table
+from chain_s3 import (Formula, build, evaluate_s3, multiplication_table,
+                      square_destinations)
 from chain_s3_factored import build_factored
-from chain_s3_multitarget import build_multitarget, decode_choice
+from chain_s3_multitarget import (build_multitarget, choose_target_x,
+                                  decode_choice)
+from chain_s3_orbit import frobenius_barrel
+from chain_s3_ordered import less_or_equal
 from chain_s3_rational import add_rationality_filter
 from run_probe import lift, parse_model
 from ecc2k130.codegen import curves, field
@@ -200,6 +204,60 @@ class ChainS3Tests(unittest.TestCase):
                                         timeout=20)
             self.assertEqual(result.returncode, 20 if mask in invalid else 10,
                              mask)
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_frobenius_barrel_matches_field_on_every_small_shift(self):
+        onb = field.Onb(5)
+        xs = (3, 19)
+        for choice, x in enumerate(xs):
+            for shift in range(5):
+                formula = Formula()
+                base, base_selector = choose_target_x(formula, 5, xs)
+                output, shift_selector = frobenius_barrel(
+                    formula, base, square_destinations(onb))
+                formula.clauses.extend(([
+                    bit if choice >> i & 1 else -bit]
+                    for i, bit in enumerate(base_selector)))
+                formula.clauses.extend(([
+                    bit if shift >> i & 1 else -bit]
+                    for i, bit in enumerate(shift_selector)))
+                with tempfile.TemporaryDirectory() as name:
+                    path = Path(name) / "frob.xcnf"
+                    formula.write(path)
+                    result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                             "--threads", "1", str(path)],
+                                            capture_output=True, text=True,
+                                            timeout=20)
+                self.assertEqual(result.returncode, 10)
+                values = parse_model(result.stdout)
+                got = sum(1 << i for i, bit in enumerate(output)
+                          if values.get(bit, False))
+                want = onb.toCoords(onb.frob(onb.fromCoords(x), shift))
+                self.assertEqual(got, want)
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_leaf_order_comparator_accepts_exactly_non_decreasing_values(self):
+        for left_value in range(8):
+            for right_value in range(8):
+                formula = Formula()
+                left = [formula.new() for _ in range(3)]
+                right = [formula.new() for _ in range(3)]
+                less_or_equal(formula, left, right)
+                for variables, value in ((left, left_value),
+                                         (right, right_value)):
+                    formula.clauses.extend(([
+                        bit if value >> i & 1 else -bit]
+                        for i, bit in enumerate(variables)))
+                with tempfile.TemporaryDirectory() as name:
+                    path = Path(name) / "ordered.xcnf"
+                    formula.write(path)
+                    result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                             "--threads", "1", str(path)],
+                                            capture_output=True, text=True,
+                                            timeout=20)
+                self.assertEqual(result.returncode,
+                                 10 if left_value <= right_value else 20,
+                                 (left_value, right_value))
 
 
 if __name__ == "__main__":
