@@ -2716,14 +2716,14 @@ build. These are conditional budgets for the
 [active Q1091 Actions run](https://github.com/aburan28/cryptanalysis/actions/runs/37069216423).
 The measured yield remains zero until a new terminal receipt and independent
 Sage replay say otherwise.
-The first seven Q1091 shard artifacts (indices 0–6) completed by
-2026-10-03 00:38 UTC and passed independent checked-Sage replay with zero
-exact hits. The local live reconciliation credits $12,348,030,976$ disjoint
-query representatives across Q1090 and these Q1091 shards, and $2^{43.894}$
+The first eight Q1091 shard artifacts (indices 0–7) completed by
+2026-10-03 01:04 UTC and passed independent checked-Sage replay with zero
+exact hits. The local live reconciliation credits $12,884,901,888$ disjoint
+query representatives across Q1090 and these Q1091 shards, and $2^{43.956}$
 completed-receipt regular-path field API calls including bounded controls.
-Shard 7 and the remaining Q1091 jobs were still live at that checkpoint;
-no fresh scalar, full-run work total, or single-target online speedup is
-claimed. The raw receipts remain in the [Q1091 Actions run](https://github.com/aburan28/cryptanalysis/actions/runs/37069216423);
+The remaining Q1091 jobs were still live at that checkpoint; no fresh scalar,
+full-run work total, or single-target online speedup is claimed. The raw
+receipts remain in the [Q1091 Actions run](https://github.com/aburan28/cryptanalysis/actions/runs/37069216423);
 the checked-Sage replays and per-shard audits are retained locally and can
 be reproduced with the intake command above.
 The [first-range M20/R14 control](runs/n83_q1091_first_range_smoke_M20_R14.json)
@@ -2779,11 +2779,11 @@ prefix, not a measured yield rate or complete DLP work estimate. The
 independently verified and all charged work is accounted for.
 The [live first-hit projection](n83_q1091_live_first_hit_projection.py)
 recomputes that same model from an independently audited zero-hit checkpoint.
-After the first seven Q1091 shards also found zero, it gives **77.1%**
-conditional hit probability in the remaining 57 rectangles and
-**$2^{44.868}$** cumulative regular-path field API calls conditional on a
+After the first eight Q1091 shards also found zero, it gives **76.5%**
+conditional hit probability in the remaining 56 rectangles and
+**$2^{44.891}$** cumulative regular-path field API calls conditional on a
 hit by rectangle 80. These are updated model predictions for the observed
-23-rectangle zero prefix, not measured solve work or a positive yield rate.
+24-rectangle zero prefix, not measured solve work or a positive yield rate.
 
 The [whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
 also reserves a full 24 hours on the audited 14-core local host for the
