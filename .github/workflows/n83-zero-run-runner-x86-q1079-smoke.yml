@@ -1,0 +1,99 @@
+name: n83 zero-run rectangle runner physical x86 smoke Q1079
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/n83-zero-run-runner-x86-q1079-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  physical-x86-pclmul:
+    # One-shot bounded runner control completed and independently audited.
+    if: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Freeze host and exact instance
+        run: |
+          mkdir -p "$RUNNER_TEMP/n83-q1079-smoke/sources" "$RUNNER_TEMP/n83-q1079-smoke/spill"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, platform
+          root = pathlib.Path('experiments/koblitz-pair-claw-20260929')
+          screen_path = root / 'n83_full_spill_screen.json'
+          screen = json.loads(screen_path.read_text())
+          assert screen['curve_id'] == 'EC1N83Ckb1h876c2921cb64'
+          assert screen['factor_base']['enumerated_set_sha256'] == '7e3c95f988225da1d586578529953ad61ae5ed62ca740eb92c2aea6d841a5a02'
+          assert screen['factor_base']['actual_usable_points_B_before_folding'] == 8000204
+          assert screen['factor_base']['signed_frobenius_columns'] == 48194
+          assert screen['isogeny'] == 'none' and screen['candidate_id'] is None
+          assert platform.machine().lower() in ('x86_64', 'amd64')
+          flags = pathlib.Path('/proc/cpuinfo').read_text().lower()
+          assert 'pclmulqdq' in flags or 'pclmul' in flags
+          def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
+          report = {
+              'kind': 'n83_q1079_physical_x86_bounded_preflight',
+              'curve_id': screen['curve_id'], 'isogeny': 'none',
+              'factor_base_enumerated_set_sha256': screen['factor_base']['enumerated_set_sha256'],
+              'host_arch': platform.machine(), 'host_os': platform.platform(),
+              'cpu_pclmul_available': True,
+              'screen_sha256': sha(screen_path),
+              'runner_source_sha256': sha(root / 'run_n83_zero_run_chunk.py'),
+              'source_generator_sha256': sha(root / 'bench_n83_zero_run_stage.py'),
+              'workflow_sha256': sha(pathlib.Path('.github/workflows/n83-zero-run-runner-x86-q1079-smoke.yml')),
+          }
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-q1079-smoke/host.json'
+          out.write_text(json.dumps(report, indent=2) + '\n')
+          PY
+
+      - name: Run bounded public-target rectangle
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/run_n83_zero_run_chunk.py \
+            --table-log2 20 --query-reps-log2 14 \
+            --table-start 0 --query-start 1073741824 \
+            --workers 4 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$RUNNER_TEMP/n83-q1079-smoke/spill" \
+            --source-dir "$RUNNER_TEMP/n83-q1079-smoke/sources" \
+            --binary "$RUNNER_TEMP/n83-q1079-smoke/ecc2k83-zero-run" \
+            --out "$RUNNER_TEMP/n83-q1079-smoke/full.json"
+
+      - name: Check frozen public outcomes
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-q1079-smoke'
+          row = json.loads((root / 'full.json').read_text())
+          host = json.loads((root / 'host.json').read_text())
+          ref = json.loads(pathlib.Path('experiments/koblitz-pair-claw-20260929/runs/n83_portable_controls_r3.json').read_text())['public_native_result']
+          assert row['proposal_id'] == 'Q1079'
+          assert row['candidate_id'] is None and row['run_id'] is None
+          assert row['curve_id'] == host['curve_id']
+          assert row['factor_base']['enumerated_set_sha256'] == host['factor_base_enumerated_set_sha256']
+          assert row['isogeny'] == 'none'
+          assert row['cpu_backend'] == 'x86_pclmul'
+          assert row['keyer_variant'] == 'exact_longest_zero_run'
+          assert row['wrapper_source_sha256'] == host['runner_source_sha256']
+          assert row['zero_run_source_generator_sha256'] == host['source_generator_sha256']
+          for key in ('actual_B', 'table_descriptors', 'query_representatives',
+                      'lifted_query_pairs', 'bloom_positive_queries',
+                      'duplicate_positive_keys', 'exact_hit_keys',
+                      'exact_hit_queries', 'false_positive_queries',
+                      'complement_identity_queries', 'hits'):
+              assert row['native_result'][key] == ref[key], key
+          assert row['native_result']['bloom_positive_queries'] == 247
+          assert row['native_result']['exact_hit_queries'] == 0
+          assert not row['verified_public_target_quotient_table_dlp']
+          print(json.dumps({'bloom_positives': 247, 'exact_hits': 0,
+                            'online_seconds': row['target_online_seconds']}))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: n83-q1079-zero-run-runner-physical-x86-smoke
+          path: ${{ runner.temp }}/n83-q1079-smoke/
+          retention-days: 7
