@@ -33,9 +33,8 @@
 //! test suite checks that they do, on random curves, at every
 //! dimension the truth table can still reach.
 
-use std::collections::HashMap;
-
-use crate::cryptanalysis::pq_groebner_f2::{F2BoolMono, F2BoolPoly};
+use crate::cryptanalysis::fx_hash::MaskMap;
+use crate::cryptanalysis::pq_groebner_f2::{mono_key, F2BoolMono, F2BoolPoly};
 use crate::cryptanalysis::semaev_decomp::Gf2;
 
 /// The most boolean variables a system may have: one bit of a
@@ -54,10 +53,11 @@ pub fn max_n_prime(summands: u32) -> u32 {
 // ── F_{2^n}[v] / (v² − v) ──────────────────────────────────────────
 
 /// A polynomial over `F_{2^n}` in boolean variables: monomial mask to
-/// non-zero coefficient.
+/// non-zero coefficient.  Keyed with the mask hasher: every operation here
+/// accumulates by XOR, so the map's iteration order never reaches a result.
 #[derive(Clone, Debug, Default)]
 pub struct FieldBoolPoly {
-    terms: HashMap<u64, u64>,
+    terms: MaskMap<u64>,
 }
 
 impl FieldBoolPoly {
@@ -150,21 +150,33 @@ impl FieldBoolPoly {
 
     /// The `n` boolean coordinate polynomials: equation `j` holds the
     /// monomials whose coefficient has bit `j` set.
+    ///
+    /// The terms are sorted once into canonical (descending) order and dealt
+    /// out in that order, so each equation's list is already canonical —
+    /// its masks are distinct, being keys of one map — and is taken as is,
+    /// instead of `n` separate sorts of about half the terms each.
     pub fn split(&self, n: u32, n_vars: usize) -> Vec<F2BoolPoly> {
+        let mut keyed: Vec<(u128, u64)> = self
+            .terms
+            .iter()
+            .map(|(&m, &c)| (mono_key(F2BoolMono::from_mask(m)), c))
+            .collect();
+        keyed.sort_unstable_by_key(|a| std::cmp::Reverse(a.0));
         let mut monos: Vec<Vec<F2BoolMono>> = (0..n).map(|_| Vec::new()).collect();
-        for (&m, &c) in &self.terms {
+        for &(key, c) in &keyed {
+            let m = F2BoolMono::from_mask(!(key as u64));
             let mut bits = c;
             while bits != 0 {
                 let j = bits.trailing_zeros();
                 if j < n {
-                    monos[j as usize].push(F2BoolMono::from_mask(m));
+                    monos[j as usize].push(m);
                 }
                 bits &= bits - 1;
             }
         }
         monos
             .into_iter()
-            .map(|ms| F2BoolPoly::from_monos(ms, n_vars))
+            .map(|terms| F2BoolPoly { terms, n_vars })
             .collect()
     }
 }
@@ -333,6 +345,42 @@ mod tests {
         v
     }
 
+    /// **`split` lists every equation as `from_monos` does**, term for
+    /// term: one sort of the whole polynomial, dealt out by coefficient
+    /// bit, leaves each equation in canonical order (the descent checks
+    /// below compare the equations only as sets of monomials).
+    #[test]
+    fn split_lists_each_equation_in_canonical_order() {
+        let mut rng = StdRng::seed_from_u64(29);
+        for trial in 0..300u32 {
+            // Every fourth polynomial reaches past the 57 variables a
+            // packed key covers; coefficient bits at or past `n` are
+            // dropped.
+            let span = if trial % 4 == 3 {
+                u64::MAX
+            } else {
+                (1u64 << (1 + trial % 40)) - 1
+            };
+            let n = 1 + trial % 64;
+            let mut p = FieldBoolPoly::default();
+            for _ in 0..rng.gen_range(0..400) {
+                p.add_term(rng.gen::<u64>() & rng.gen::<u64>() & span, rng.gen());
+            }
+            let expected: Vec<F2BoolPoly> = (0..n)
+                .map(|j| {
+                    let monos = p
+                        .terms
+                        .iter()
+                        .filter(|&(_, &c)| (c >> j) & 1 == 1)
+                        .map(|(&m, _)| F2BoolMono::from_mask(m))
+                        .collect();
+                    F2BoolPoly::from_monos(monos, 64)
+                })
+                .collect();
+            assert_eq!(p.split(n, 64), expected, "trial {trial}");
+        }
+    }
+
     /// **The word formulas agree with the `F2mElement` ones**, so a
     /// descent checked against them is checked against the
     /// repository's summation polynomials.
@@ -469,5 +517,74 @@ mod tests {
         assert!(descend(&inst.gf, inst.b, 3, &standard_basis(33), 2).is_err());
         assert!(descend(&inst.gf, inst.b, 3, &standard_basis(22), 3).is_err());
         assert!(descend(&inst.gf, inst.b, 3, &standard_basis(4), 4).is_err());
+    }
+
+    /// **`split` returns what the base revision's `split` returned**,
+    /// equation for equation and term for term, on the polynomials the
+    /// descent actually splits (`S_3` and `S_4` over random curves and
+    /// bases) and on random ones with `n` up to and past the 64
+    /// coefficient bits.  The reference is the base revision's body and
+    /// its `from_monos`, copied verbatim.
+    #[test]
+    fn split_matches_the_base_revision() {
+        fn base_from_monos(mut monos: Vec<F2BoolMono>, n_vars: usize) -> F2BoolPoly {
+            monos.sort_unstable_by_key(|m| std::cmp::Reverse(mono_key(*m)));
+            let mut out: Vec<F2BoolMono> = Vec::with_capacity(monos.len());
+            for m in monos {
+                if out.last() == Some(&m) {
+                    out.pop(); // 1 + 1 = 0
+                } else {
+                    out.push(m);
+                }
+            }
+            F2BoolPoly { terms: out, n_vars }
+        }
+        fn base_split(p: &FieldBoolPoly, n: u32, n_vars: usize) -> Vec<F2BoolPoly> {
+            let mut monos: Vec<Vec<F2BoolMono>> = (0..n).map(|_| Vec::new()).collect();
+            for (&m, &c) in &p.terms {
+                let mut bits = c;
+                while bits != 0 {
+                    let j = bits.trailing_zeros();
+                    if j < n {
+                        monos[j as usize].push(F2BoolMono::from_mask(m));
+                    }
+                    bits &= bits - 1;
+                }
+            }
+            monos
+                .into_iter()
+                .map(|ms| base_from_monos(ms, n_vars))
+                .collect()
+        }
+        let mut rng = StdRng::seed_from_u64(0x5011);
+        for &(n, seed) in &[(7u32, 1u64), (11, 2), (17, 3), (23, 4), (31, 5)] {
+            let inst = random_binary_instance(n, seed, 1 << 20).expect("a curve");
+            let gf = &inst.gf;
+            for np in [1u32, 2, 3, 5, 6, 9, 16] {
+                let basis: Vec<u64> = (0..np).map(|_| rng.gen::<u64>() & gf.mask).collect();
+                let x_r = rng.gen::<u64>() & gf.mask;
+                let s3 = s3_symbolic(gf, inst.b, x_r, &basis);
+                let n_vars = 2 * np as usize;
+                assert_eq!(s3.split(gf.n, n_vars), base_split(&s3, gf.n, n_vars));
+                if np <= 6 {
+                    let s4 = s4_symbolic(gf, inst.b, x_r, &basis);
+                    let n_vars = 3 * np as usize;
+                    assert_eq!(s4.split(gf.n, n_vars), base_split(&s4, gf.n, n_vars));
+                }
+            }
+        }
+        for trial in 0..400u32 {
+            let span = match trial % 5 {
+                0 => u64::MAX,
+                1 => (1u64 << 58) - 1,
+                _ => (1u64 << (1 + trial % 57)) - 1,
+            };
+            let n = trial % 71;
+            let mut p = FieldBoolPoly::default();
+            for _ in 0..rng.gen_range(0..600) {
+                p.add_term(rng.gen::<u64>() & rng.gen::<u64>() & span, rng.gen());
+            }
+            assert_eq!(p.split(n, 64), base_split(&p, n, 64), "trial {trial}");
+        }
     }
 }

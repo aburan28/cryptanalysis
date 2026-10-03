@@ -166,6 +166,15 @@ pub fn cmp_mono(a: F2BoolMono, b: F2BoolMono) -> Ordering {
     }
 }
 
+/// A monomial within the low this-many variables has a canonical key that
+/// fits one `u64`: its degree (at most 57, six bits) above the low 57 bits
+/// of its complemented mask (see [`sort_masks_descending`]).
+const PACKED_KEY_VARS: usize = 57;
+
+/// Terms up to which [`F2BoolPoly::from_monos`] sorts with a per-comparison
+/// key; longer lists are keyed once each by [`sort_masks_descending`].
+const FROM_MONOS_KEYED: usize = 16;
+
 /// An integer key whose natural order is [`cmp_mono`]: degree first, and
 /// within a degree the monomial lacking the highest differing variable is
 /// larger, i.e. the one with the *smaller* mask.  Sorting by the key is a
@@ -173,6 +182,33 @@ pub fn cmp_mono(a: F2BoolMono, b: F2BoolMono) -> Ordering {
 #[inline]
 pub fn mono_key(m: F2BoolMono) -> u128 {
     (u128::from(m.degree()) << 64) | u128::from(!m.mask)
+}
+
+/// Sort monomial masks into canonical order, highest first (the order of
+/// `Reverse(mono_key)`), keying each mask once rather than once per
+/// comparison.  Duplicates stay adjacent.
+pub(crate) fn sort_masks_descending(masks: &mut [u64]) {
+    let span = masks.iter().fold(0u64, |acc, &m| acc | m);
+    if span >> PACKED_KEY_VARS == 0 {
+        let low = (1u64 << PACKED_KEY_VARS) - 1;
+        let mut keys: Vec<u64> = masks
+            .iter()
+            .map(|&u| (u64::from(u.count_ones()) << PACKED_KEY_VARS) | (!u & low))
+            .collect();
+        keys.sort_unstable_by(|a, b| b.cmp(a));
+        for (m, k) in masks.iter_mut().zip(keys) {
+            *m = !k & low;
+        }
+    } else {
+        let mut keys: Vec<u128> = masks
+            .iter()
+            .map(|&u| mono_key(F2BoolMono::from_mask(u)))
+            .collect();
+        keys.sort_unstable_by(|a, b| b.cmp(a));
+        for (m, k) in masks.iter_mut().zip(keys) {
+            *m = !(k as u64);
+        }
+    }
 }
 
 // ── Polynomial ─────────────────────────────────────────────────────
@@ -215,7 +251,17 @@ impl F2BoolPoly {
     /// duplicate pairs (since `1 + 1 = 0` in `F_2`).
     pub fn from_monos(mut monos: Vec<F2BoolMono>, n_vars: usize) -> Self {
         // descending; equal keys are equal monomials, so unstable is exact
-        monos.sort_unstable_by_key(|m| std::cmp::Reverse(mono_key(*m)));
+        if monos.len() <= FROM_MONOS_KEYED {
+            monos.sort_unstable_by_key(|m| std::cmp::Reverse(mono_key(*m)));
+        } else {
+            // A long list is keyed once per mask rather than once per
+            // comparison (the u128 key above was half of a large rebuild).
+            let mut masks: Vec<u64> = monos.iter().map(|m| m.mask).collect();
+            sort_masks_descending(&mut masks);
+            for (m, mask) in monos.iter_mut().zip(masks) {
+                *m = F2BoolMono::from_mask(mask);
+            }
+        }
         let mut out: Vec<F2BoolMono> = Vec::with_capacity(monos.len());
         for m in monos {
             if out.last() == Some(&m) {
@@ -1114,6 +1160,76 @@ mod tests {
         }
     }
 
+    /// [`sort_masks_descending`] keys each mask once, packed into a `u64`
+    /// within 57 variables and as [`mono_key`] past them; either way the
+    /// order is `Reverse(mono_key)`, repeats included.
+    #[test]
+    fn sort_masks_descending_orders_by_mono_key() {
+        let mut x = 0x2545_f491_4f6c_dd1du64;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        for trial in 0..2_000 {
+            // Every fourth trial reaches past the packed key's 57 variables;
+            // the others cover 1..=57, small supports repeating masks often.
+            let span = if trial % 4 == 3 {
+                u64::MAX
+            } else {
+                (1u64 << (1 + trial % 57)) - 1
+            };
+            let mut masks: Vec<u64> = (0..(next() % 80)).map(|_| next() & next() & span).collect();
+            let mut expected = masks.clone();
+            expected
+                .sort_unstable_by_key(|&u| std::cmp::Reverse(mono_key(F2BoolMono::from_mask(u))));
+            sort_masks_descending(&mut masks);
+            assert_eq!(masks, expected, "trial {trial}");
+        }
+    }
+
+    /// [`F2BoolPoly::from_monos`] sorts a list longer than
+    /// `FROM_MONOS_KEYED` through [`sort_masks_descending`]; at every
+    /// length, packed or wide, it builds what the per-comparison sort and
+    /// pair cancellation built.
+    #[test]
+    fn from_monos_matches_the_per_comparison_sort() {
+        fn per_comparison(mut monos: Vec<F2BoolMono>, n_vars: usize) -> F2BoolPoly {
+            monos.sort_unstable_by_key(|m| std::cmp::Reverse(mono_key(*m)));
+            let mut terms: Vec<F2BoolMono> = Vec::new();
+            for m in monos {
+                if terms.last() == Some(&m) {
+                    terms.pop();
+                } else {
+                    terms.push(m);
+                }
+            }
+            F2BoolPoly { terms, n_vars }
+        }
+        let mut x = 0x0123_4567_89ab_cdefu64;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        for trial in 0..3_000 {
+            // Mostly small supports, so that repeats (odd and even) are
+            // common; every fourth trial reaches past 57 variables.
+            let n: usize = if trial % 4 == 3 { 64 } else { 1 + trial % 20 };
+            let span = if n == 64 { u64::MAX } else { (1u64 << n) - 1 };
+            let monos: Vec<F2BoolMono> = (0..(next() % 64))
+                .map(|_| F2BoolMono::from_mask(next() & span))
+                .collect();
+            assert_eq!(
+                F2BoolPoly::from_monos(monos.clone(), n),
+                per_comparison(monos.clone(), n),
+                "{monos:?}"
+            );
+        }
+    }
+
     /// Monomial constructors and basic operators.
     #[test]
     fn mono_basics() {
@@ -1347,6 +1463,83 @@ mod tests {
             assert!(is_boolean_groebner_basis(&gb), "case {case}: not closed");
             assert_eq!(standard_monomial_count(&gb, n), truth.len(), "case {case}");
             assert_eq!(solution_set(&gb, n), truth, "case {case}");
+        }
+    }
+
+    /// **`from_monos` builds what the base revision's `from_monos`
+    /// built**, term for term: at lengths either side of
+    /// `FROM_MONOS_KEYED` and up to a couple of thousand, on spans either
+    /// side of the packed key's 57 variables (the boundary masks among
+    /// them), with masks drawn from small pools so that odd and even
+    /// repeats are common.  The reference is the base revision's body,
+    /// copied verbatim.
+    #[test]
+    fn from_monos_matches_the_base_revision() {
+        fn base_from_monos(mut monos: Vec<F2BoolMono>, n_vars: usize) -> F2BoolPoly {
+            // descending; equal keys are equal monomials, so unstable is exact
+            monos.sort_unstable_by_key(|m| std::cmp::Reverse(mono_key(*m)));
+            let mut out: Vec<F2BoolMono> = Vec::with_capacity(monos.len());
+            for m in monos {
+                if out.last() == Some(&m) {
+                    out.pop(); // 1 + 1 = 0
+                } else {
+                    out.push(m);
+                }
+            }
+            F2BoolPoly { terms: out, n_vars }
+        }
+        let mut x = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        let specials = [
+            0,
+            1,
+            1 << 56,
+            (1 << 57) - 1,
+            1 << 57,
+            (1 << 58) - 1,
+            1 << 63,
+            !(1u64 << 57),
+            u64::MAX,
+        ];
+        let widths = [1usize, 2, 7, 16, 31, 55, 56, 57, 58, 63, 64];
+        for trial in 0..6_000usize {
+            let bits = widths[trial % widths.len()];
+            let span = if bits == 64 {
+                u64::MAX
+            } else {
+                (1u64 << bits) - 1
+            };
+            let len = match trial % 5 {
+                0 => next() % 17,
+                1 => 15 + next() % 4,
+                2 => next() % 64,
+                3 => next() % 400,
+                _ => next() % 2_000,
+            };
+            let pool: Vec<u64> = (0..1 + next() % 24)
+                .map(|_| next() & next() & span)
+                .collect();
+            let monos: Vec<F2BoolMono> = (0..len)
+                .map(|_| {
+                    let r = next();
+                    let pick = (r >> 8) as usize;
+                    F2BoolMono::from_mask(match r % 8 {
+                        0 => specials[pick % specials.len()] & span,
+                        1..=4 => pool[pick % pool.len()],
+                        _ => next() & span,
+                    })
+                })
+                .collect();
+            assert_eq!(
+                F2BoolPoly::from_monos(monos.clone(), bits),
+                base_from_monos(monos, bits),
+                "trial {trial}"
+            );
         }
     }
 }
