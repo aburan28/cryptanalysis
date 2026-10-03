@@ -2777,6 +2777,13 @@ early hit. This is a model prediction conditioned on the observed zero-hit
 prefix, not a measured yield rate or complete DLP work estimate. The
 **complete-solve exponent remains unknown** until a fresh scalar is
 independently verified and all charged work is accounted for.
+The [live first-hit projection](n83_q1091_live_first_hit_projection.py)
+recomputes that same model from an independently audited zero-hit checkpoint.
+After the first seven Q1091 shards also found zero, it gives **77.1%**
+conditional hit probability in the remaining 57 rectangles and
+**$2^{44.868}$** cumulative regular-path field API calls conditional on a
+hit by rectangle 80. These are updated model predictions for the observed
+23-rectangle zero prefix, not measured solve work or a positive yield rate.
 
 The [whole-run resource ceiling](n83_q1091_total_resource_ceiling.json)
 also reserves a full 24 hours on the audited 14-core local host for the
