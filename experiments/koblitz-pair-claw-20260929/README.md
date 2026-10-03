@@ -2807,6 +2807,11 @@ field-call shape and $2^{57.091}$ conditional CI-plus-local CPU core-cycle
 capacity under the same resource assumptions. Q1091 has no terminal
 result yet, and this screen has no executable plan or workflow. It is not
 measured yield or a successful solve.
+The [Q1092 plan freezer](freeze_n83_q1092_after_zero.py) accepts only a
+terminal Q1091 workflow with all 64 full receipts independently audited as
+zero-hit and no missing or failed job. It then binds the next 128 disjoint
+M32/R29 ranges to the same curve, factor base, candidate, workload, and run.
+It cannot freeze a plan from a live or partial wave and does not dispatch jobs.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
