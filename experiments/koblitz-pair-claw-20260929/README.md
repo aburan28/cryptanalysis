@@ -2937,6 +2937,19 @@ The [terminal watcher](watch_n83_q1093_local_result.py) waits for the
 local receipt, checks its candidate and source bindings, and invokes the
 separate checked-Sage verifier for either a hit or a zero-hit outcome.
 
+The [second Q1093 local plan](n83_q1093_second_local_arm_m32_r30_plan.json)
+adds another $2^{30}$ representatives in
+`[112742891520, 113816633344)`, directly after the first local
+rectangle. It uses the **same** candidate and one-target `W...R1` run ID;
+the [freezer](freeze_n83_q1093_second_local.py) binds the first started
+receipt and both nonoverlapping ranges. Its [launcher](launch_n83_q1093_second_local_arm.py)
+requires at least 24 GiB estimated free memory and 16 GiB free spill
+space before concurrent launch. It passed those gates and started at
+2026-10-03 05:11 UTC. The [independent replay watcher](watch_n83_q1093_second_local_result.py)
+handles its separate terminal receipt. Both local rectangles remain
+within the same 30-day, 14-core capacity reservation; their measured
+yield and combined complete-solve work remain pending.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
