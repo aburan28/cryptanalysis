@@ -2975,6 +2975,13 @@ for canceled or incomplete work. The conservative 208-job plus full local
 reserve is $2^{59.802}$ **assumed CPU core-cycle capacity**; it
 establishes no complete-solve exponent until a fresh scalar and all attempt
 boundaries are independently reconciled.
+The [reconciled work estimate](n83_holdout_work_estimate_reconciled.json)
+and its [generator](n83_holdout_work_estimate_reconciled.py) bind that
+extended capacity to the immutable search screen. The 80-job scenario has
+$2^{45.758}$ modeled regular-path field API calls alongside $2^{59.669}$
+conditional CPU core-cycle capacity; the dormant 208-job scenario has
+$2^{47.096}$ and $2^{59.802}$, respectively. These are different units,
+and neither column is measured complete-solve work.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
