@@ -277,8 +277,64 @@ def main():
         and row["variant"] == "orbit")
     assert orbit_extended["solver_conflicts_reported"] >= 1_000_000
     assert orbit_extended["verified_relation"] is None
+    fixed_witness_targets = []
+    for n, stem, kind in (
+            (53, "n53_ordinary_known_preimage_fixed", "ordinary"),
+            (83, "n83_planted_raw_target_fixed", "planted")):
+        path, diagnostic = read(f"{stem}.json")
+        baseline_path, baseline = read(f"n{n}_{kind}_frozen.json")
+        assert diagnostic["baseline_receipt_sha256"] == sha(baseline_path)
+        assert diagnostic["curve_id"] == baseline["curve_id"]
+        assert diagnostic["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"]
+        assert diagnostic["candidate_id"] is None
+        assert diagnostic["workload_id"] is None
+        assert diagnostic["is_natural_relation_yield_measurement"] is False
+        assert diagnostic["status"] == "censored"
+        assert diagnostic["verified_relation"] is None
+        assert diagnostic["locked_control"]["status"] == (
+            "locked_sat_verified_relation")
+        fixed_witness_targets.append({
+            "proposal_id": diagnostic["proposal_id"],
+            "candidate_id": None, "workload_id": None, "run_id": None,
+            "curve_id": diagnostic["curve_id"], "n": n,
+            "kind": kind,
+            "oracle_assisted_raw_target_selection": diagnostic[
+                "oracle_assisted_raw_target_selection"],
+            "raw_preimage_index": diagnostic["raw_preimage_index"],
+            "factor_base_B": diagnostic["factor_base_actual_B"],
+            "folded_columns": diagnostic["factor_base_folded_columns"],
+            "formula_and_gates": diagnostic["formula_and_gates"],
+            "status": diagnostic["status"],
+            "solver_conflicts_reported": diagnostic[
+                "solver_conflicts_reported"],
+            "target_pdp_wall_seconds": diagnostic["target_pdp_wall_seconds"],
+            "locked_control_status": diagnostic["locked_control"]["status"],
+            "verified_unassisted_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "field_operations": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
     order131 = protocol["degree_131_design"]["curve"]["subgroup_order"]
     heuristic_samples131 = 2 * math.sqrt(order131 / (2 * 131))
+    relation_density_heuristic = []
+    for n in (53, 83):
+        profile = profile_for(protocol, n)
+        base_size = profile["factor_base"][
+            "actual_usable_points_B_before_folding"]
+        subgroup_order = profile["curve"]["subgroup_order"]
+        expected = math.comb(base_size, 4) / subgroup_order
+        relation_density_heuristic.append({
+            "n": n,
+            "curve_id": profile["curve"]["curve_id"],
+            "factor_base_B": base_size,
+            "subgroup_order": subgroup_order,
+            "expected_distinct_unordered_four_point_subsets_per_uniform_target": expected,
+            "poisson_approximate_probability_at_least_one": -math.expm1(-expected),
+            "assumption": "each distinct four-point subset sum is independently uniform in the subgroup; sign/Frobenius and base structure can violate this model",
+            "is_empirical_yield_estimate": False,
+        })
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -348,6 +404,8 @@ def main():
             "verified_relation_count": 0,
             "receipt_sha256": sha(orbit_extended_path),
         },
+        "fixed_witness_target_search_diagnostics": fixed_witness_targets,
+        "relation_density_planning_heuristic": relation_density_heuristic,
         "matched_pair_table": {
             "n53": {
                 "status": n53["status"],
@@ -379,7 +437,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary S3 runs remain censored with the complete cofactor and Frobenius target orbit, including ordered-leaf symmetry breaking; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary S3 runs remain censored with the complete cofactor and Frobenius target orbit, including ordered-leaf symmetry breaking; the separately fixed known-satisfiable targets also remain censored and are not natural-yield measurements; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,

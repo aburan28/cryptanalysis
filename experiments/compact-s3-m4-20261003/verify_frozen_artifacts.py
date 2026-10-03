@@ -219,6 +219,53 @@ def verify():
             assert receipt["status"] == "verified_locked_sat_relation_mapped_back"
             assert receipt["frobenius_shift"] == 1
             rows.append({"variant": stem, "receipt_sha256": sha(path)})
+    for stem in ("n53_ordinary_known_preimage_fixed",
+                 "n83_planted_raw_target_fixed"):
+        path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(path.read_text())
+        n = receipt["n"]
+        kind = "ordinary" if n == 53 else "planted"
+        assert receipt["candidate_id"] is None
+        assert receipt["workload_id"] is None
+        assert receipt["is_natural_relation_yield_measurement"] is False
+        assert receipt["oracle_assisted_raw_target_selection"] == (n == 53)
+        assert receipt["baseline_receipt_sha256"] == sha(
+            HERE / "runs" / f"n{n}_{kind}_frozen.json")
+        assert receipt["coset_receipt_sha256"] == sha(
+            HERE / "runs" / f"n{n}_{kind}_raw_preimages.json")
+        witness = ("n53_ordinary_raw_pair_witness.json" if n == 53
+                   else f"n{n}_{kind}_frozen.json")
+        assert receipt["witness_receipt_sha256"] == sha(
+            HERE / "runs" / witness)
+        assert receipt["runtime_info_sha256"] == sha(
+            HERE / "fixed_sage_runtime_info.json")
+        assert receipt["core_source_sha256"] == sha(HERE / "chain_s3.py")
+        assert receipt["factored_source_sha256"] == sha(
+            HERE / "chain_s3_factored.py")
+        assert receipt["runner_source_sha256"] == sha(
+            HERE / "run_fixed_witness_target.py")
+        assert receipt["solver_binary_sha256"] == sha(
+            Path("/opt/homebrew/bin/cryptominisat5"))
+        assert receipt["stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stdout.txt")
+        assert receipt["stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stderr.txt")
+        assert receipt["status"] == "censored"
+        assert receipt["verified_relation"] is None
+        assert receipt["locked_control"]["status"] == (
+            "locked_sat_verified_relation")
+        assert receipt["locked_control"]["relation"] is not None
+        digest = hashlib.sha256()
+        size = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        assert digest.hexdigest() == receipt["xcnf_sha256"]
+        assert size == receipt["xcnf_bytes"]
+        rows.append({"variant": stem, "receipt_sha256": sha(path),
+                     "formula_sha256": digest.hexdigest(),
+                     "formula_bytes": size})
     return rows
 
 

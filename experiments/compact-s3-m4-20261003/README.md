@@ -166,6 +166,30 @@ Relation receipts store `projected_points` as the unsigned cofactor
 projections of x lifts and store their signs separately; the sign must be
 applied before adding or mapping projected points back by Frobenius.
 
+## Fixed known-witness target diagnostic
+
+[`run_fixed_witness_target.py`](run_fixed_witness_target.py) removes the
+cofactor selector and Frobenius barrel from the solver formula, then fixes
+just one raw target x coordinate. For n=53, it selects **preimage 201** using
+the relation independently found by the pair table. For n=83, it uses the
+planted fixture's raw target. These are Q1313 and Q1314 stage diagnostics,
+with `candidate_id` and `workload_id` both null; selecting a known-satisfiable
+n=53 preimage is oracle assistance and is not an ordinary public-target yield
+or online IC measurement.
+
+| Diagnostic | Formula vars / CNF / XOR | Unassisted search | Post-run locked control |
+| --- | --- | --- | --- |
+| n=53 known ordinary relation, preimage 201 | 21,242 / 60,438 / 795 | 1,000,001 conflicts, 119.48 s charged PDP; no model | SAT, exact raw/public relation verified |
+| n=83 planted raw target | 51,030 / 147,610 / 1,245 | 100,002 conflicts, 24.23 s charged PDP; no model | SAT, exact raw/public relation verified |
+
+Each charged PDP interval includes formula construction and the unassisted
+solver call; the locked control runs afterward and is reported separately.
+The formulas, solver logs, checked Sage runtime snapshot, and receipts are
+source-bound and archive-verified. Removing target selection did not recover
+either witness within these caps. The result locates a solver search
+bottleneck in the core chained-S3 formula; it does not establish a lower
+bound on every solver or prove that a raw target lacks a decomposition.
+
 ## Matched pair-table stage
 
 [`matched_n53_pair_table.py`](matched_n53_pair_table.py) reuses the prior
@@ -197,6 +221,15 @@ This is a heuristic for the sampled pair-table method, not a measured lower
 bound, a field-operation conversion, or a projection for the SAT solver.
 It already excludes base construction, final LA, and target recovery.
 
+For planning n=83 ordinary-target panels, the exact base count and subgroup
+order give \(\binom{B}{4}/r=0.2411\) distinct unordered four-point subsets
+per uniform target under an independent-uniform subset-sum model. A Poisson
+approximation then gives about a 21.4% chance that one ordinary target has
+any four-point representation in this base. The base's sign/Frobenius
+structure can violate that model, so these are heuristics rather than
+measured relation yield. One n=83 timeout cannot distinguish a hard solver
+from a target with no representation; an ordinary-target panel is needed.
+
 The complete n=131 work exponent remains **unknown**. The corrected SAT stage
 is censored at both measured field degrees; natural relation yield, novel rank,
 cost per useful row, final matrix solving, target descent, and independent
@@ -208,10 +241,10 @@ stage or a planted witness.
 The next useful goal is a **noncensored ordinary public-target
 four-summand decomposition**, first at n=53 and then at n=83, using the exact
 same base and cofactor-preimage policy. The n=53 frozen point is known to have
-a valid raw witness, so it gives a direct search test. The orbit and leaf
-ordering SAT variants are now tested without a natural success; a new
-solver mechanism should be benchmarked against the matched n=53 pair index
-and the full-coset SAT circuit on the same target. Keep all failed attempts
+a valid raw witness, so it gives a direct search test. The orbit, leaf
+ordering, and fixed-witness-target SAT variants now show that a new solver
+mechanism should be benchmarked against the matched n=53 pair index and the
+full-coset SAT circuit on the same target. Keep all failed attempts
 and measure Boolean operations, field-operation conversion, and wall time;
 collect enough independent ordinary queries to estimate useful relation and
 novel-rank rates with uncertainty.
