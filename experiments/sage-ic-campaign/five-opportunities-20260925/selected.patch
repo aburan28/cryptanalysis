@@ -1,0 +1,484 @@
+--- a/src/sage/schemes/elliptic_curves/binary_batch.py
++++ b/src/sage/schemes/elliptic_curves/binary_batch.py
+@@ -6,10 +6,9 @@
+ field of characteristic two. This includes both Koblitz curves (b=1,
+ a in GF(2)) and ordinary binary curves in this model.
+ 
+-This module is opt-in and does not change the scalar point API. It is
+-intended for independent public mathematical computations, such as pair
+-construction and checking sums. Its branches and field operations are
+-variable-time.
++These batch APIs support independent public mathematical computations,
++such as pair construction and checking sums. The optional native helpers also
++support scalar point arithmetic. Branches and field operations are variable-time.
+ 
+ When the optional native extension is installed, NTL-backed binary fields
+ use compiled batch arithmetic with reusable C++ field temporaries. Other
+@@ -139,6 +138,8 @@
+     independent additions; it cannot batch dependent steps of a walk.
+     """
+     a2 = _curve_coefficient(curve)
++    if _native is not None and _native.supports(curve.base_ring()):
++        return _native._add_pairs(curve, pairs, a2)
+     prepared = ((_point_data(curve, P), _point_data(curve, Q)) for P, Q in pairs)
+     return _add_prepared(curve, prepared, a2)
+ 
+@@ -165,6 +166,8 @@
+     if block_size <= 0:
+         raise ValueError('block_size must be a positive integer')
+     a2 = _curve_coefficient(curve)
++    if _native is not None and _native.supports(curve.base_ring()):
++        return _native._add_cartesian(curve, left, right, a2, block_size)
+     left = [_point_data(curve, P) for P in left]
+     right = [_point_data(curve, Q) for Q in right]
+     pairs = product(left, right)
+@@ -216,3 +219,32 @@
+             x, y = x.frobenius(power), y.frobenius(power)
+         output.append(point_class(curve, [x, y, one], check=False))
+     return output
++
++
++def frobenius_add_pairs(curve, pairs, power=1):
++    r"""Return ``Frobenius^power(P) + Q`` for each pair on a Koblitz curve.
++
++    Input validation, output ordering and exceptional points follow
++    :func:`add_pairs`. Intermediate coordinate field elements are retained
++    natively; the usual Sage point is constructed only for each final result.
++    Negative powers are reduced modulo the field degree.
++
++    EXAMPLES::
++
++        sage: from sage.schemes.elliptic_curves.binary_batch import frobenius_add_pairs
++        sage: E = EllipticCurve(GF(2**5, 'z'), [1, 1, 0, 0, 1])
++        sage: P = E.random_point()
++        sage: frobenius_add_pairs(E, [(P, -P)], 0) == [E(0)]
++        True
++    """
++    a2 = _curve_coefficient(curve)
++    if (a2 != 0 and a2 != 1) or curve.a6() != 1:
++        raise ValueError('Frobenius point maps require a Koblitz curve')
++    power = integer_index(power) % int(curve.base_ring().degree())
++    from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint_finite_field
++    if (_native is not None and _native.supports(curve.base_ring())
++            and curve._point is EllipticCurvePoint_finite_field):
++        return _native._add_pairs(curve, pairs, a2, power)
++    pairs = list(pairs)
++    mapped = frobenius_points(curve, (P for P, Q in pairs), power)
++    return add_pairs(curve, zip(mapped, (Q for P, Q in pairs)))
+--- a/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
++++ b/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
+@@ -1,7 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0-or-later
+ # cython: fast_getattr=False
+ # distutils: language = c++
+-# distutils: libraries = ntl gmp
++# distutils: libraries = ntl gmp pari
+ r"""
+ Native arithmetic for the ordinary binary-curve batch APIs.
+ 
+@@ -11,12 +11,16 @@
+ """
+ 
+ from libcpp.vector cimport vector
+-from cysignals.signals cimport sig_check
++from cysignals.signals cimport sig_check, sig_on
++from cypari2.gen cimport Gen
++from cypari2.stack cimport new_gen
++from cypari2.paridecl cimport GEN
++import numpy as np
+ from sage.libs.ntl.types cimport GF2E_c
+ from sage.rings.finite_rings.element_ntl_gf2e cimport FiniteField_ntl_gf2eElement
+ from sage.structure.element cimport Element
+ from sage.structure.parent cimport Parent
+-from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint_finite_field
++from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint_finite_field, EllipticCurvePoint_field
+ 
+ cdef extern from "NTL/GF2E.h" namespace "NTL":
+     void add(GF2E_c&, const GF2E_c&, const GF2E_c&) except +
+@@ -258,3 +262,342 @@
+     point._normalized = True
+     point._coords = (x, y, one)
+     return point
++
++
++cdef _point_data_fast(curve, P):
++    """Extract standard affine state, preserving custom normalization hooks."""
++    if type(P) is EllipticCurvePoint_finite_field:
++        if P._codomain is not curve:
++            raise ValueError('each input must be a Sage point on this curve')
++        coords = P._coords
++        if not coords[2]:
++            return P, None, None
++        if not coords[2].is_one():
++            coords = P.xy()
++    else:
++        if not isinstance(P, EllipticCurvePoint_field) or P.curve() is not curve:
++            raise ValueError('each input must be a Sage point on this curve')
++        if not P:
++            return P, None, None
++        coords = P.xy()
++    return P, coords[0], coords[1]
++
++
++def _add_one(curve, P, Q, FiniteField_ntl_gf2eElement a2):
++    """Direct addition after the public scalar method's curve/model guards."""
++    if (type(P) is not EllipticCurvePoint_finite_field
++            or type(Q) is not EllipticCurvePoint_finite_field
++            or curve._point is not EllipticCurvePoint_finite_field):
++        raise ValueError('expected standard finite-field points')
++    P, px, py = _point_data_fast(curve, P)
++    Q, qx, qy = _point_data_fast(curve, Q)
++    if px is None:
++        return Q
++    if qx is None:
++        return P
++    field = curve.base_ring()
++    cdef FiniteField_ntl_gf2eElement x1 = px, y1 = py, x2 = qx, y2 = qy
++    if (a2.parent() is not field or x1.parent() is not field
++            or y1.parent() is not field or x2.parent() is not field
++            or y2.parent() is not field):
++        raise ValueError('coordinates belong to a different field')
++    cdef GF2E_c numerator, denominator, xsum, slope, rx, ry, temporary
++    cdef FiniteField_ntl_gf2eElement x3, y3
++    x1._cache.F.restore()
++    sig_check()
++    if x1.x == x2.x:
++        if y1.x != y2.x or IsZero(x1.x):
++            return curve(0)
++        sqr(numerator, x1.x)
++        add(numerator, numerator, y1.x)
++        denominator = x1.x
++        clear(xsum)
++    else:
++        add(numerator, y1.x, y2.x)
++        add(denominator, x1.x, x2.x)
++        xsum = denominator
++    inv(temporary, denominator)
++    mul(slope, numerator, temporary)
++    sqr(rx, slope)
++    add(rx, rx, slope)
++    add(rx, rx, xsum)
++    add(rx, rx, a2.x)
++    add(temporary, x1.x, rx)
++    mul(ry, slope, temporary)
++    add(ry, ry, rx)
++    add(ry, ry, y1.x)
++    x3, y3 = x1._new(), y1._new()
++    x3.x, y3.x = rx, ry
++    return _construct_standard_point(curve, x3, y3, field.one())
++
++
++def _add_pairs(curve, pairs, FiniteField_ntl_gf2eElement a2, Py_ssize_t power=0):
++    """Consume callbacks before restoring the native field context."""
++    prepared = []
++    for P, Q in pairs:
++        prepared.append((_point_data_fast(curve, P), _point_data_fast(curve, Q)))
++    return _add_fast_prepared(curve, prepared, a2, None, 0, len(prepared), power)
++
++
++def _add_cartesian(curve, left, right, FiniteField_ntl_gf2eElement a2,
++                   Py_ssize_t block_size):
++    """Enumerate Cartesian blocks without allocating pair tuples or lists."""
++    if block_size <= 0:
++        raise ValueError('block_size must be a positive integer')
++    left = [_point_data_fast(curve, P) for P in left]
++    right = [_point_data_fast(curve, Q) for Q in right]
++    cdef Py_ssize_t count = len(left) * len(right)
++    cdef Py_ssize_t start
++    output = []
++    for start in range(0, count, block_size):
++        output.extend(_add_fast_prepared(curve, left, a2, right, start,
++                                        min(block_size, count-start), 0))
++    return output
++
++
++cdef extern from *:
++    """
++    #include <NTL/GF2E.h>
++    #include <pari/pari.h>
++    #include <pari/paripriv.h>
++    static GEN bb_pari_element(const NTL::GF2E& x, GEN generator) {
++        // The same FFELT representation used by element_pari_ffelt.pyx.
++        const NTL::GF2X& polynomial = NTL::rep(x);
++        const long bits = NTL::deg(polynomial) + 1;
++        const long wordbits = 8 * sizeof(unsigned long);
++        const long words = (bits + wordbits - 1) / wordbits;
++        GEN f = cgetg(words + 2, t_VECSMALL);
++        f[1] = gel(generator, 2)[1];
++        for (long i = 0; i < words; ++i) {
++            unsigned long word = 0;
++            for (long j = 0; j < wordbits && i*wordbits+j < bits; ++j)
++                if (NTL::IsOne(NTL::coeff(polynomial, i*wordbits+j)))
++                    word |= 1UL << j;
++            f[i+2] = (long)word;
++        }
++        GEN result = cgetg(5, t_FFELT);
++        result[1] = generator[1];
++        gel(result, 2) = f;
++        gel(result, 3) = gel(generator, 3);
++        gel(result, 4) = gel(generator, 4);
++        return result;
++    }
++    static bool bb_pari_binary(GEN g) {
++        return typ(g) == t_FFELT && g[1] == t_FF_F2xq;
++    }
++    static GEN bb_pari_point(const NTL::GF2E& x, const NTL::GF2E& y, GEN g) {
++        GEN result = cgetg(3, t_VEC);
++        gel(result, 1) = bb_pari_element(x, g);
++        gel(result, 2) = bb_pari_element(y, g);
++        return result;
++    }
++    static void bb_basis_words(unsigned int* output, long degree, long power, long words) {
++        NTL::GF2X polynomial;
++        NTL::GF2E value;
++        std::vector<unsigned char> bytes(4 * words);
++        for (long bit = 0; bit < degree; ++bit) {
++            clear(polynomial);
++            SetCoeff(polynomial, bit);
++            conv(value, polynomial);
++            for (long j = 0; j < power; ++j) sqr(value, value);
++            BytesFromGF2X(bytes.data(), rep(value), 4 * words);
++            for (long j = 0; j < words; ++j) {
++                unsigned int word = 0;
++                for (long k = 0; k < 4; ++k)
++                    word |= ((unsigned int)bytes[4*j+k]) << (8*k);
++                output[bit*words+j] = word;
++            }
++        }
++    }
++    """
++    bint bb_pari_binary(GEN)
++    GEN bb_pari_point(const GF2E_c&, const GF2E_c&, GEN)
++    void bb_basis_words(unsigned int*, long, long, long) except +
++
++
++def _pari_point(curve, P):
++    """Convert NTL point coordinates directly into owned PARI FFELTs."""
++    from sage.libs.pari import pari
++    P, px, py = _point_data_fast(curve, P)
++    if px is None:
++        return pari([0])
++    field = curve.base_ring()
++    cdef FiniteField_ntl_gf2eElement x = px, y = py
++    if x.parent() is not field or y.parent() is not field:
++        raise ValueError('coordinates belong to a different field')
++    cdef Gen generator
++    try:
++        generator = field._binary_batch_pari_generator
++    except AttributeError:
++        generator = field.modulus()._pari_with_name(field.variable_name()).ffgen()
++        field._binary_batch_pari_generator = generator
++    if not bb_pari_binary(generator.g):
++        raise TypeError('expected a PARI binary extension field')
++    sig_on()
++    return new_gen(bb_pari_point(x.x, y.x, generator.g))
++
++
++def _frobenius_table(field, Py_ssize_t power):
++    """Build an immutable byte lookup table directly from NTL basis images."""
++    cdef Py_ssize_t degree = field.degree()
++    if degree < 2 or degree > 256 or power < 0 or power >= degree:
++        raise ValueError('unsupported field degree or unreduced power')
++    cdef Py_ssize_t words = (degree+31)//32
++    cdef Py_ssize_t byte_count = (degree+7)//8
++    cdef Py_ssize_t byte, digit, bit, word, low
++    basis = np.zeros((byte_count*8, words), dtype=np.uint32)
++    table = np.zeros((byte_count, 256, words), dtype=np.uint32)
++    cdef unsigned int[:, ::1] b = basis
++    cdef unsigned int[:, :, ::1] t = table
++    cdef FiniteField_ntl_gf2eElement model = field.zero()
++    model._cache.F.restore()
++    bb_basis_words(&b[0, 0], degree, power, words)
++    for byte in range(byte_count):
++        sig_check()
++        for bit in range(8):
++            low = 1 << bit
++            for digit in range(low):
++                for word in range(words):
++                    t[byte, low+digit, word] = t[byte, digit, word] ^ b[byte*8+bit, word]
++    result = table.reshape(-1)
++    result.setflags(write=False)
++    return result
++
++
++cdef _add_fast_prepared(curve, list pairs, FiniteField_ntl_gf2eElement a2,
++                        list right, Py_ssize_t start, Py_ssize_t count,
++                        Py_ssize_t power):
++    """Add validated point/coordinate triples; called by ``binary_batch``."""
++    # Consume the generator before restoring NTL's modulus. Arbitrary input
++    # iterators may perform arithmetic over a different NTL field.
++    field = curve.base_ring()
++    if a2.parent() is not field:
++        raise ValueError('coefficient belongs to a different field')
++    cdef FiniteField_ntl_gf2eElement model = field.zero()
++    cdef FiniteField_ntl_gf2eElement x1, y1, x2, y2, x3, y3
++    cdef vector[binary_batch_entry] active
++    cdef binary_batch_entry entry
++    cdef GF2E_c inverse, reciprocal, slope, result_x, result_y, temporary
++    cdef Py_ssize_t i, n, j
++    cdef Py_ssize_t width = len(right) if right is not None else 0
++    cdef Py_ssize_t left_index = start // width if width else 0
++    cdef Py_ssize_t right_index = start % width if width else 0
++    cdef Element point
++    cdef Parent point_parent
++    cdef bint standard_points
++    output = [None] * count
++    zero_point = None
++    one = field.one()
++    constructor = curve._point
++    model._cache.F.restore()
++
++    for i in range(count):
++        sig_check()
++        if right is None:
++            (P, px, py), (Q, qx, qy) = pairs[i]
++        else:
++            P, px, py = pairs[left_index]
++            Q, qx, qy = right[right_index]
++            right_index += 1
++            if right_index == width:
++                right_index = 0
++                left_index += 1
++        if px is None:
++            output[i] = Q
++            continue
++        x1, y1 = px, py
++        if power:
++            if x1.parent() is not field or y1.parent() is not field:
++                raise ValueError('coordinates belong to a different field')
++            # Field temporaries are sufficient; no intermediate Sage point.
++            x3, y3 = model._new(), model._new()
++            x3.x, y3.x = x1.x, y1.x
++            for j in range(power):
++                sig_check()
++                sqr(x3.x, x3.x)
++                sqr(y3.x, y3.x)
++            x1, y1 = x3, y3
++        if qx is None:
++            output[i] = (_construct_standard_point(curve, x1, y1, one)
++                         if power else P)
++            continue
++        x2, y2 = qx, qy
++        if (x1.parent() is not field or y1.parent() is not field
++                or x2.parent() is not field or y2.parent() is not field):
++            raise ValueError('coordinates belong to a different field')
++        if x1.x == x2.x:
++            if y1.x != y2.x or IsZero(x1.x):
++                if zero_point is None:
++                    zero_point = curve(0)
++                    model._cache.F.restore()
++                output[i] = zero_point
++                continue
++            sqr(entry.numerator, x1.x)
++            add(entry.numerator, entry.numerator, y1.x)
++            entry.denominator = x1.x
++            clear(entry.xsum)
++        else:
++            add(entry.numerator, y1.x, y2.x)
++            add(entry.denominator, x1.x, x2.x)
++            entry.xsum = entry.denominator
++        entry.index = i
++        entry.x = x1.x
++        entry.y = y1.x
++        active.push_back(entry)
++
++    n = active.size()
++    if not n:
++        return output
++    # No zero denominator reaches this block. Montgomery inversion costs
++    # one field inverse and exactly 3*(n-1) field multiplications.
++    active[0].prefix = active[0].denominator
++    for i in range(1, n):
++        sig_check()
++        mul(active[i].prefix, active[i-1].prefix, active[i].denominator)
++    inv(inverse, active[n-1].prefix)
++    for i in range(n-1, -1, -1):
++        sig_check()
++        if i:
++            mul(reciprocal, inverse, active[i-1].prefix)
++            mul(inverse, inverse, active[i].denominator)
++        else:
++            reciprocal = inverse
++        mul(slope, active[i].numerator, reciprocal)
++        sqr(result_x, slope)
++        add(result_x, result_x, slope)
++        add(result_x, result_x, active[i].xsum)
++        add(result_x, result_x, a2.x)
++        add(temporary, active[i].x, result_x)
++        mul(result_y, slope, temporary)
++        add(result_y, result_y, result_x)
++        add(result_y, result_y, active[i].y)
++        active[i].x = result_x
++        active[i].y = result_y
++
++    # Finish native arithmetic before allocating Python output points.
++    # The standard field-point constructor initializes Element._parent,
++    # SchemeMorphism._codomain, and projective _coords/_normalized. The
++    # generated coordinates already belong to this field and have z=1.
++    # Initialize exactly that state, as Element.__copy__ does for its parent,
++    # without repeating homset/value-ring lookup or normalization per point.
++    # Custom point classes must retain their own allocation/initialization.
++    standard_points = constructor is EllipticCurvePoint_finite_field
++    if standard_points:
++        point_parent = curve.point_homset()
++        allocate = constructor.__new__
++    for i in range(n):
++        sig_check()
++        x3 = model._new()
++        y3 = model._new()
++        x3.x = active[i].x
++        y3.x = active[i].y
++        if standard_points:
++            point = allocate(constructor)
++            point._parent = point_parent
++            point._codomain = curve
++            point._normalized = True
++            point._coords = (x3, y3, one)
++            output[active[i].index] = point
++        else:
++            output[active[i].index] = constructor(curve, [x3, y3, one], check=False)
++    return output
+--- a/src/sage/schemes/elliptic_curves/ell_point.py
++++ b/src/sage/schemes/elliptic_curves/ell_point.py
+@@ -133,6 +133,11 @@
+ 
+ from sage.groups import generic
+ import sage.rings.abc
++
++try:
++    from sage.rings.finite_rings.element_ntl_gf2e import FiniteField_ntl_gf2eElement
++except ImportError:
++    FiniteField_ntl_gf2eElement = ()
+ 
+ from sage.misc.lazy_import import lazy_import
+ from sage.rings.finite_rings.integer_mod import Mod
+@@ -4519,6 +4524,18 @@
+         x, y = self.xy()
+         return "%s![%s,%s]" % (E, x, y)
+ 
++    def __pari__(self):
++        """Convert standard NTL coordinates directly to the PARI field."""
++        if (isinstance(self._coords[0], FiniteField_ntl_gf2eElement)
++                and type(self) is EllipticCurvePoint_finite_field):
++            from sage.schemes.elliptic_curves import binary_batch
++            if binary_batch._native is not None:
++                return binary_batch._native._pari_point(self.curve(), self)
++        x, y, z = self._coords
++        if z:
++            return pari([x/z, y/z])
++        return pari([0])
++
+     def _acted_upon_(self, other, side):
+         r"""
+         We implement ``_acted_upon_`` to make use of the specialized faster
+--- a/src/sage/schemes/elliptic_curves/meson.build
++++ b/src/sage/schemes/elliptic_curves/meson.build
+@@ -113,7 +113,7 @@
+     install: true,
+     override_options: ['cython_language=cpp'],
+     include_directories: [inc_cpython, inc_rings, inc_ntl],
+-    dependencies: [py_dep, ntl, gmp, cysignals],
++    dependencies: [py_dep, ntl, gmp, cysignals, cypari2],
+   )
+   py.extension_module(
+     'binary_hardware_codec',

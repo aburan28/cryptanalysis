@@ -67,3 +67,41 @@ machine-specific binary is committed. The portable verifier checks patch
 reconstruction and receipt consistency; it cannot reproduce GPU timings on
 another machine. This package accelerates one public point-map operation.
 It does not establish a complete index-calculus speedup.
+
+## Current compatibility gate
+
+The [2026-09-28 check](compatibility-20260928/RESULT.md) covers the latest
+accepted scalar/batch changes and the installed CPU and Metal backends.
+Run the suite through the checked launcher for a rebuilt current release:
+
+```sh
+python3 scripts/sage_release.py run --sage /path/to/built/sage -- -python \
+  experiments/sage-binary-hardware/validate_compatibility.py \
+  --backends cpu,metal --out /tmp/new-sage-compatibility
+```
+
+Use `--backends cpu` on CPU-only hosts; select `cuda` or `opencl` when those
+devices are available. On the primary local workspace the equivalent
+launcher is `./sage`. The suite imports installed modules and uses an
+independent affine-arithmetic reference. Every requested backend must run
+successfully; failures and missing devices are retained. Source snapshots,
+per-backend test logs, imported module hashes and runtime details are saved.
+The experiment's separate `run_tests.py` and `benchmark.py` still require
+`SAGE_BINARY_USE_INSTALLED=1`; the new gate sets that flag itself.
+
+The portable CPU component can be checked without Sage:
+
+```sh
+python3 experiments/sage-binary-hardware/validate_native.py \
+  --ubsan --out /tmp/new-native-compatibility
+```
+
+It defaults to the shipped, measured CPU source snapshot. Use `--source DIR`
+to validate a newer directory containing `binary_hardware_cpu.cpp` and its
+header. On macOS, `--arch arm64` or `--arch x86_64` builds that architecture;
+the receipt identifies x86 execution on Apple Silicon as Rosetta. Linux uses
+the native architecture; `CXX` selects the compiler. Component checks and
+translated execution do not establish full Sage or physical x86 coverage.
+
+Run `python3 experiments/sage-binary-hardware/verify_compatibility_archive.py`
+to check the published evidence and both new arithmetic-patch archives.
