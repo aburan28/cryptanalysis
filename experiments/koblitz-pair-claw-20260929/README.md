@@ -2901,6 +2901,32 @@ factor base, source hashes, frozen-plan SHA-256, and conditional
 resource screen before native work. The artifact auditor also binds Q1092
 receipts to the workflow snapshot. The template has not been dispatched.
 
+The [Q1093 local ARM plan](n83_q1093_local_arm_m32_r30_plan.json)
+tests one further rectangle on the **same previously unseen n=83 point**.
+It begins at query representative 111,669,149,696, exactly the end of
+Q1092's conditional design range, and covers the next $2^{30}$
+representatives. Its M32/R30, 20-bit Bloom, four-worker ARM PMULL pipeline
+has a separate immutable [candidate manifest](candidates/IC1N83Ckb1fb8000204PDP4qtableRCdirectLAnoneTDdirectISO0h946c5d4ef6ee.json)
+and `W9ccc27baec79R1` run ID. The manifest retains the exact type-II ONB
+field, curve `EC1N83Ckb1h876c2921cb64`, base-set digest, actual
+`B = 8,000,204` usable points, 48,194 folded columns, and
+`isogeny: "none"`. The [freezer](freeze_n83_q1093_local_arm.py) and
+[launcher](launch_n83_q1093_local_arm.py) bind the code and coverage
+sources, check memory and spill space, and save checked-Sage runtime
+information before native work. The independent
+[Q1093 verifier](verify_n83_holdout_q1093_receipt_sage.py) has its own
+source hash because Q1090's verifier accepts only Q1090 receipts.
+
+Q1093's regular-path one-job model is $2^{40.252}$ field API calls. It
+omits Bloom and keying work, memory traffic, candidate spill, failures,
+and replay; it is **not** a measured complete-solve exponent. The
+30-day local-host reservation already charges all local work on this
+host, including Q1093, as conditional CPU cycle capacity. Its launch
+preflight passed with 28.3 GB estimated free memory and 30.3 GB free on
+the `/private/tmp` spill volume. The measured result and independent
+Sage replay remain pending; this plan does not establish natural yield
+or a fresh discrete logarithm.
+
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
 ./sage -python experiments/koblitz-pair-claw-20260929/verify_knownlog_n53.py
