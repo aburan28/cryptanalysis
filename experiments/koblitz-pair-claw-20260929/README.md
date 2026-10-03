@@ -2834,6 +2834,15 @@ terminal Q1091 workflow with all 64 full receipts independently audited as
 zero-hit and no missing or failed job. It then binds the next 128 disjoint
 M32/R29 ranges to the same curve, factor base, candidate, workload, and run.
 It cannot freeze a plan from a live or partial wave and does not dispatch jobs.
+The [Q1092 workflow template](../../.github/workflows/n83-q1092-holdout-continuation.yml)
+only triggers when the freezer's source-bound plan is added to this research
+branch; that plan does not exist while Q1091 is live. The plan SHA-256
+placeholder in the workflow must be replaced with the frozen file's digest
+in the same commit. Its 128 starts follow the 80 audited
+Q1090/Q1091 ranges and its preflight checks the exact `IC1` run identifiers,
+factor base, source hashes, frozen-plan SHA-256, and conditional
+resource screen before native work. The artifact auditor also binds Q1092
+receipts to the workflow snapshot. The template has not been dispatched.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py

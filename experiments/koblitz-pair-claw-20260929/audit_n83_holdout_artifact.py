@@ -58,7 +58,7 @@ def audit(artifact_dir, plan_path, runtime_path,
     assert host["workflow_sha256"]
     if "wave_proposal_id" in plan:
         assert host["wave_proposal_id"] == plan["wave_proposal_id"]
-        if plan["wave_proposal_id"] == "Q1091":
+        if plan["wave_proposal_id"] in ("Q1091", "Q1092"):
             snapshot = (workflow_snapshot_path or artifact_dir.parent /
                         "workflow_snapshot.yml")
             assert snapshot.is_file(), "missing triggering workflow snapshot"
@@ -175,7 +175,8 @@ def audit(artifact_dir, plan_path, runtime_path,
                 sha(control_sage_path) if control_verified else None),
             "host_sha256": sha(host_path),
             "workflow_snapshot_sha256": (
-                sha(snapshot) if plan.get("wave_proposal_id") == "Q1091"
+                sha(snapshot) if plan.get("wave_proposal_id") in
+                ("Q1091", "Q1092")
                 else None),
             "plan_sha256": sha(plan_path),
             "source_sha256": sha(Path(__file__)),
@@ -345,7 +346,8 @@ def audit(artifact_dir, plan_path, runtime_path,
         "peak_rss_bytes": native["peak_rss_bytes"],
         "host_sha256": sha(host_path),
         "workflow_snapshot_sha256": (
-            sha(snapshot) if plan.get("wave_proposal_id") == "Q1091"
+            sha(snapshot) if plan.get("wave_proposal_id") in
+            ("Q1091", "Q1092")
             else None),
         "control_sha256": sha(control_path),
         "full_sha256": sha(full_path),
