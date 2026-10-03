@@ -2949,6 +2949,16 @@ space before concurrent launch. It passed those gates and started at
 handles its separate terminal receipt. Both local rectangles remain
 within the same 30-day, 14-core capacity reservation; their measured
 yield and combined complete-solve work remain pending.
+The [combined search-work screen](n83_q1093_combined_search_work_screen.json)
+keeps the x86 and ARM candidate IDs separate while charging both local
+rectangles. Their joint regular-path model is $2^{41.252}$ field API calls.
+All 80 planned Q1090/Q1091 CI jobs, controls, and both local rectangles
+model $2^{45.758}$ calls; adding all 128 conditional Q1092 jobs models
+$2^{47.096}$. These are full-shape models, not measured operation totals
+for canceled or incomplete work. The conservative 208-job plus full local
+reserve remains $2^{58.591}$ **assumed CPU core-cycle capacity**; it
+establishes no complete-solve exponent until a fresh scalar and all attempt
+boundaries are independently reconciled.
 
 ```sh
 ./sage -python experiments/koblitz-pair-claw-20260929/knownlog_n53.py
