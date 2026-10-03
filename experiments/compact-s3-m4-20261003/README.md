@@ -108,6 +108,18 @@ the target to vary restores nonlinear products in the final S3 link; the
 complete n=53 preimage formula uses 25,281 AND gates. Formula size reduction
 alone did not establish a useful decomposition solver.
 
+An additional n=53 variant, Q1308, precomputes all 12,826 nonrational
+weight-at-most-three x supports and forbids those exact leaf assignments.
+[`chain_s3_rational.py`](chain_s3_rational.py) retains the 12,031 rational
+supports and the same 428 raw target preimages. The known ordinary relation
+at preimage 201 still solves when locked. In the unassisted ordinary run,
+the filter increased the formula to 151,364 CNF clauses and reached 100,002
+conflicts in 18.81 s without a model; the unfiltered complete-preimage run
+reached the same conflict cap in 11.57 s. These are single runs, so the
+timing difference is a diagnostic, not a stable speed ratio. The planted
+filtered run also exhausted its wall cap. The exact support archive and
+receipts are retained as a negative solver variant.
+
 ## Matched pair-table stage
 
 [`matched_n53_pair_table.py`](matched_n53_pair_table.py) reuses the prior

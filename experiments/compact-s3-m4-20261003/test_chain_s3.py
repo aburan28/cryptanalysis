@@ -7,9 +7,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from chain_s3 import build, evaluate_s3, multiplication_table
+from chain_s3 import Formula, build, evaluate_s3, multiplication_table
 from chain_s3_factored import build_factored
 from chain_s3_multitarget import build_multitarget, decode_choice
+from chain_s3_rational import add_rationality_filter
 from run_probe import lift, parse_model
 from ecc2k130.codegen import curves, field
 
@@ -173,6 +174,32 @@ class ChainS3Tests(unittest.TestCase):
 
         self.assertEqual(solve([wrong, correct]), (10, 1))
         self.assertEqual(solve([wrong])[0], 20)
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_rational_support_filter_is_exact_under_weight_bound(self):
+        onb = field.Onb(5)
+        curve = curves.Curve(onb)
+        masks = [mask for mask in range(1, 1 << 5)
+                 if mask.bit_count() <= 2]
+        invalid = [mask for mask in masks if curve.pointFromX(
+            onb.fromCoords(mask)) is None]
+        for mask in masks:
+            formula = Formula()
+            variables = [formula.new() for _ in range(5)]
+            formula.at_most(variables, 2)
+            formula.clauses.append(variables[:])
+            add_rationality_filter(formula, [variables], invalid, 2)
+            formula.clauses.extend(([var if mask >> i & 1 else -var]
+                                    for i, var in enumerate(variables)))
+            with tempfile.TemporaryDirectory() as name:
+                path = Path(name) / "filter.xcnf"
+                formula.write(path)
+                result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                         "--threads", "1", str(path)],
+                                        capture_output=True, text=True,
+                                        timeout=20)
+            self.assertEqual(result.returncode, 20 if mask in invalid else 10,
+                             mask)
 
 
 if __name__ == "__main__":

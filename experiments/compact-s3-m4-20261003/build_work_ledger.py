@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import math
 import re
@@ -168,6 +169,38 @@ def main():
         if row["n"] == 83 and row["kind"] == "ordinary")
     assert meter["solver_conflicts_reported"] >= 100_000
     assert meter["verified_relation"] is None
+    rational_support_path = HERE / "bases/n53_weight3_nonrational_supports.json.gz"
+    with gzip.open(rational_support_path, "rt") as stream:
+        rational_support = json.load(stream)
+    assert rational_support["rational_x_masks"] == 12031
+    assert rational_support["nonrational_x_masks"] == 12826
+    rational_results = []
+    for kind in ("planted", "ordinary"):
+        rational_path, rational = read(f"n53_{kind}_rational.json")
+        assert rational["proposal_id"] == "Q1308"
+        assert rational["rational_support_archive_sha256"] == sha(
+            rational_support_path)
+        assert rational["raw_preimage_receipt_sha256"] == next(
+            row["coset_receipt_sha256"] for row in corrected
+            if row["n"] == 53 and row["kind"] == kind)
+        assert rational["verified_relation"] is None
+        rational_results.append({
+            "kind": kind,
+            "status": rational["attempts"][0]["status"],
+            "solver_conflicts_reported": rational["attempts"][0][
+                "solver_conflicts_reported"],
+            "target_pdp_wall_seconds": rational["target_pdp_wall_seconds"],
+            "formula_cnf_clauses": rational["formula_cnf_clauses"],
+            "verified_relation_count": 0,
+            "receipt_sha256": sha(rational_path),
+        })
+    rational_control_path, rational_control = read(
+        "n53_ordinary_rational_locked_verify.json")
+    assert rational_control["status"] == "verified_locked_sat_relation"
+    assert rational_control["choice_index"] == 201
+    assert rational_control["stage_receipt_sha256"] == next(
+        row["receipt_sha256"] for row in rational_results
+        if row["kind"] == "ordinary")
     order131 = protocol["degree_131_design"]["curve"]["subgroup_order"]
     heuristic_samples131 = 2 * math.sqrt(order131 / (2 * 131))
     ledger = {
@@ -215,6 +248,16 @@ def main():
                 "receipt_sha256": sha(meter_path),
             },
             "operation_unit_boundary": "CryptoMiniSat conflicts are exact solver events; propagation display is rounded; neither is a calibrated field-operation count or complete-solve work",
+        },
+        "n53_exact_sparse_x_rational_filter": {
+            "proposal_id": "Q1308",
+            "rational_x_masks": rational_support["rational_x_masks"],
+            "nonrational_x_masks": rational_support["nonrational_x_masks"],
+            "support_archive_sha256": sha(rational_support_path),
+            "bounded_stage_results": rational_results,
+            "known_ordinary_witness_locked_control_receipt_sha256": sha(
+                rational_control_path),
+            "conclusion": "exact rationality clauses preserve the known ordinary relation but did not produce a natural solve within the paired 100000-conflict and 20-second caps; one timing per variant is not a stable speed ratio",
         },
         "matched_pair_table": {
             "n53": {

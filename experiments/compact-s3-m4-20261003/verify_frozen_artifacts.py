@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check source, solver logs, and gzip XCNF archives against frozen receipts."""
 
+import base64
 import gzip
 import hashlib
 import json
@@ -84,6 +85,54 @@ def verify():
             HERE / "runs" / f"{stem}.stderr.txt")
         rows.append({"variant": stem, "receipt_sha256": sha(path),
                      "formula_sha256": receipt["formula_sha256"]})
+    for kind in ("planted", "ordinary"):
+        stem = f"n53_{kind}_rational"
+        path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(path.read_text())
+        support_path = HERE / "bases/n53_weight3_nonrational_supports.json.gz"
+        with gzip.open(support_path, "rt") as stream:
+            support = json.load(stream)
+        assert support["source_sha256"] == sha(
+            HERE / "enumerate_rational_supports.py")
+        packed_supports = base64.b64decode(
+            support["nonrational_supports_base64"], validate=True)
+        assert hashlib.sha256(packed_supports).hexdigest() == support[
+            "nonrational_supports_sha256"]
+        assert receipt["proposal_id"] == "Q1308"
+        assert receipt["protocol_sha256"] == protocol_digest
+        assert receipt["rational_filter_source_sha256"] == sha(
+            HERE / "chain_s3_rational.py")
+        assert receipt["rational_support_archive_sha256"] == sha(support_path)
+        assert receipt["wrapper_source_sha256"] == sha(
+            HERE / "run_rational_probe.py")
+        assert receipt["runner_source_sha256"] == sha(
+            HERE / "run_multitarget_probe.py")
+        formula_digest = hashlib.sha256()
+        formula_bytes = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                formula_digest.update(chunk)
+                formula_bytes += len(chunk)
+        assert formula_digest.hexdigest() == receipt["xcnf_sha256"]
+        assert formula_bytes == receipt["xcnf_bytes"]
+        assert len(receipt["attempts"]) == 1
+        attempt = receipt["attempts"][0]
+        assert sha(HERE / "runs" / f"{stem}.attempt0.stdout.txt") == (
+            attempt["solver_stdout_sha256"])
+        assert sha(HERE / "runs" / f"{stem}.attempt0.stderr.txt") == (
+            attempt["solver_stderr_sha256"])
+        rows.append({"variant": stem, "receipt_sha256": sha(path),
+                     "formula_sha256": formula_digest.hexdigest(),
+                     "formula_bytes": formula_bytes})
+    rational_control_path = HERE / "runs/n53_ordinary_rational_locked_verify.json"
+    rational_control = json.loads(rational_control_path.read_text())
+    assert rational_control["source_sha256"] == sha(
+        HERE / "verify_rational_witness.py")
+    assert rational_control["stage_receipt_sha256"] == sha(
+        HERE / "runs/n53_ordinary_rational.json")
+    assert rational_control["relation"] is not None
+    rows.append({"variant": "n53_ordinary_rational_locked_verify",
+                 "receipt_sha256": sha(rational_control_path)})
     for stem in ("n53_planted_multitarget_locked_verify",
                  "n53_ordinary_multitarget_locked_verify",
                  "n83_planted_multitarget_locked_verify"):
