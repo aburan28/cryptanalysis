@@ -2716,6 +2716,16 @@ build. These are conditional budgets for the
 [active Q1091 Actions run](https://github.com/aburan28/cryptanalysis/actions/runs/37069216423).
 The measured yield remains zero until a new terminal receipt and independent
 Sage replay say otherwise.
+The first seven Q1091 shard artifacts (indices 0–6) completed by
+2026-10-03 00:38 UTC and passed independent checked-Sage replay with zero
+exact hits. The local live reconciliation credits $12,348,030,976$ disjoint
+query representatives across Q1090 and these Q1091 shards, and $2^{43.894}$
+completed-receipt regular-path field API calls including bounded controls.
+Shard 7 and the remaining Q1091 jobs were still live at that checkpoint;
+no fresh scalar, full-run work total, or single-target online speedup is
+claimed. The raw receipts remain in the [Q1091 Actions run](https://github.com/aburan28/cryptanalysis/actions/runs/37069216423);
+the checked-Sage replays and per-shard audits are retained locally and can
+be reproduced with the intake command above.
 The [first-range M20/R14 control](runs/n83_q1091_first_range_smoke_M20_R14.json)
 and [checked-Sage replay](runs/n83_q1091_first_range_smoke_M20_R14_sage_verify.json)
 validated the new query boundary with zero exact hits before dispatch.
