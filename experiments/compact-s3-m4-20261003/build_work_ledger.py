@@ -2440,6 +2440,113 @@ def main():
     assert all(row["solver_status"] == "censored" and
                row["solver_stop_reason"] == "wall_cap" for row in
                q1422_cells if row["cell"] == "ordinary")
+    q1423_dir = HERE / "q1423_target_coupled"
+    q1423_protocol_path = q1423_dir / "protocol.json"
+    q1423_verification_path = q1423_dir / "verification.json"
+    q1423_protocol = json.loads(q1423_protocol_path.read_text())
+    q1423_verification = json.loads(q1423_verification_path.read_text())
+    assert q1423_protocol["proposal_id"] == "Q1423"
+    assert q1423_protocol["candidate_id"] is None
+    assert q1423_protocol["isogeny"] == "none"
+    assert q1423_verification["complete"] is True
+    assert q1423_verification["missing"] == []
+    assert q1423_verification["protocol_sha256"] == sha(q1423_protocol_path)
+    assert q1423_verification["verifier_source_sha256"] == sha(
+        q1423_dir / "verify_archive.py")
+    q1423_cells = []
+    for key in q1423_protocol["run_order"]:
+        path = q1423_dir / "runs" / key / "receipt.json"
+        stage = json.loads(path.read_text())
+        workload = q1423_protocol["workloads"][key]
+        check = next(row for row in q1423_verification["checks"]
+                     if row["key"] == key)
+        assert check["receipt_sha256"] == sha(path)
+        assert check["verified_relation_count"] == stage[
+            "verified_relation_count"]
+        assert stage["proposal_id"] == "Q1423"
+        assert stage["candidate_id"] is None and stage["isogeny"] == "none"
+        assert stage["stage_config_id"] == workload["stage_config_id"]
+        assert stage["workload_id"] == workload["workload_id"]
+        assert stage["stage_run_id"] == workload["stage_run_id"]
+        assert stage["curve_id"] == workload["curve_id"]
+        assert stage["factor_base_actual_B"] == workload[
+            "factor_base_actual_B"]
+        assert stage["folded_columns_K"] == workload["folded_columns_K"]
+        assert stage["factor_base_enumerated_set_sha256"] == workload[
+            "factor_base_enumerated_set_sha256"]
+        assert stage["target_input_sha256"] == workload[
+            "target_input_sha256"]
+        assert stage["protocol_sha256"] == sha(q1423_protocol_path)
+        assert stage["natural_relation_yield_estimate"] is None
+        assert stage["complete_solve_work_log2"] is None
+        matched_path = (q1422_dir / "runs" /
+                        workload["matched_q1422_key"] / "receipt.json")
+        assert sha(matched_path) == workload["matched_q1422_receipt_sha256"]
+        matched = json.loads(matched_path.read_text())
+        assert matched["workload_id"] == stage["workload_id"]
+        assert matched["curve_id"] == stage["curve_id"]
+        assert matched["factor_base_enumerated_set_sha256"] == stage[
+            "factor_base_enumerated_set_sha256"]
+        report = stage["solver_report"]
+        assert report is not None and report["lift_gate_active"] is True
+        assert report["target_coupled_active"] is True
+        assert report["target_preimage_count"] == stage[
+            "target_preimage_x_count"]
+        assert report["final_root_calls"] == (
+            report["final_zero_roots"] + report["final_one_root"] +
+            report["final_two_roots"])
+        q1423_cells.append({
+            "proposal_id": "Q1423", "candidate_id": None,
+            "stage_config_id": stage["stage_config_id"],
+            "workload_id": stage["workload_id"],
+            "stage_run_id": stage["stage_run_id"],
+            "matched_q1422_stage_run_id": stage[
+                "matched_q1422_stage_run_id"],
+            "curve_id": stage["curve_id"],
+            "degree_n": stage["degree_n"],
+            "cell": stage["cell"],
+            "decision_policy": stage["decision_policy"],
+            "input_law": stage["input_law"],
+            "factor_base_actual_B": stage["factor_base_actual_B"],
+            "folded_columns_K": stage["folded_columns_K"],
+            "target_preimage_x_count": stage["target_preimage_x_count"],
+            "target_input_sha256": stage["target_input_sha256"],
+            "solver_status": stage["solver_status"],
+            "solver_stop_reason": report["stop_reason"],
+            "solver_process_wall_seconds_exploratory": stage[
+                "solver_process_wall_seconds_exploratory"],
+            "solver_conflicts": report["conflicts"],
+            "solver_decisions": report["decisions"],
+            "checked_single_leaf_values": report[
+                "checked_single_leaf_values"],
+            "invalid_single_leaf_values": report[
+                "invalid_single_leaf_values"],
+            "distinct_pair_assignments": report[
+                "cached_pair_assignments"],
+            "final_root_calls": report["final_root_calls"],
+            "s3_root_calls": report["s3_root_calls"],
+            "external_clauses": report["external_clauses"],
+            "field_mul_calls": report["field_mul_calls"],
+            "field_sqr_calls": report["field_sqr_calls"],
+            "field_inv_calls": report["field_inv_calls"],
+            "matched_q1422_root_calls": matched[
+                "solver_report"]["s3_root_calls"],
+            "matched_q1422_receipt_sha256": sha(matched_path),
+            "parent_formula_build_wall_seconds_exploratory": stage[
+                "parent_formula_build_wall_seconds_exploratory"],
+            "peak_child_rss_raw": stage["peak_child_rss_raw"],
+            "peak_child_rss_units": stage["peak_child_rss_units"],
+            "verified_relation_count": stage["verified_relation_count"],
+            "natural_relation_yield_estimate": None,
+            "complete_field_operation_equivalent_count": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
+    assert len(q1423_cells) == 4
+    assert sum(row["verified_relation_count"] for row in q1423_cells) == 2
+    assert all(row["solver_status"] == "censored" and
+               row["solver_stop_reason"] == "wall_cap" for row in
+               q1423_cells if row["cell"] == "ordinary")
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -3150,6 +3257,34 @@ def main():
             "n83_lift_validation_sha256": sha(
                 q1422_dir / "n83_lift_validation.json"),
         },
+        "q1423_target_coupled_exact_root_stage": {
+            "proposal_id": "Q1423",
+            "candidate_id": None,
+            "isogeny": "none",
+            "controlled_variable": (
+                "pair-first target-coupled final S3 root propagation "
+                "versus matched Q1422 leaf-first lift-gated search on "
+                "identical CNF/target/cap"),
+            "cells": q1423_cells,
+            "verified_known_satisfiable_control_cells": 2,
+            "verified_ordinary_n53_relation_count": 0,
+            "verified_ordinary_n83_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "Both known-witness controls verify, and the exact "
+                "target-coupled final root rule activates. The two "
+                "ordinary queries still hit the 60-second cap without "
+                "a relation. Pair-first search computes 62,269 and "
+                "66,824 distinct pair assignments at N53/N83, yet "
+                "the target-coupled final-root rule activates only once "
+                "per ordinary query. This decision order enumerates "
+                "too many complete first pairs before target pruning; "
+                "a sound partial-pair target condition or a different "
+                "search mechanism is the next gate."),
+            "protocol_sha256": sha(q1423_protocol_path),
+            "verification_sha256": sha(q1423_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -3486,7 +3621,11 @@ def main():
                 "an exact single-leaf curve-lift gate, rejecting many "
                 "nonrational raw x candidates at both degrees, but its "
                 "ordinary N53/N83 cells also hit the wall cap without a "
-                "model; Q1333/Q1334 use "
+                "model; Q1423 adds exact target-coupled final S3 roots "
+                "and verifies both controls, but its ordinary cells "
+                "enumerate over 62,000 first-pair assignments each "
+                "while final-root propagation activates just once per "
+                "query, with no relation at either wall cap; Q1333/Q1334 use "
                 "an adaptive target-local inversion "
                 "window and reproduce the fixed-window ordinary outcomes; "
                 "Q1336/Q1337 fuse one field multiplication per S3 root but "

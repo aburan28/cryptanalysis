@@ -1410,11 +1410,25 @@ The [Q1422 result table](q1422_leaf_lift_gate/README.md) retains all field
 calls, memory, and censored outcomes. Curve-lift feasibility alone does not
 supply an ordinary relation or a complete degree-131 \(2^x\).
 
+### Q1423 target-coupled final S3 roots
+
+The [pre-registered Q1423 protocol](q1423_target_coupled/protocol.json)
+adds sound exact roots for the last S3 link once the first pair
+intermediate and the public target-preimage selector are assigned. Both
+known-witness controls verify. The [four-cell archive](q1423_target_coupled/verification.json)
+records no ordinary N53 or N83 relation at the 60-second caps. Pair-first
+search makes 62,269 and 66,824 distinct pair assignments respectively,
+but the target-coupled final-root rule activates only once per ordinary
+query. The [Q1423 result table](q1423_target_coupled/README.md) retains
+field operations, conflicts, exploratory walls, and memory. The new rule
+is sound, but this search order reaches it too late to constrain the
+ordinary queries. A complete degree-131 `2^x` remains unknown.
+
 ## Next goal
 
 The next solver must use the public target **before** enumerating many full
-leaf values. Derive a compact target-coupled necessary condition on partial
-leaf pairs, prove that it preserves all four-point solutions, and test it
+first-pair assignments. Derive a compact target-coupled necessary condition
+on partial leaf pairs, prove that it preserves all four-point solutions, and test it
 against exhaustive small-field cases and the archived N53/N83 controls.
 Freeze the exact stage and use the same N53/N83 ordinary targets first, then
 a pre-registered fresh panel if a fixed target has no representation.

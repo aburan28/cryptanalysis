@@ -52,6 +52,32 @@ python3 experiments/compact-s3-m4-20261003/q1423_target_coupled/build_binaries.p
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1423_target_coupled/verify_archive.py --require-complete --emit
 ```
 
-The runner refuses to overwrite existing rows. The frozen controls and
-ordinary measurements will be added to this page after the pre-registration
-commit and draft PR are published.
+The runner refuses to overwrite existing rows. The frozen protocol was
+committed and published as draft PR #245 before any ordinary cell ran.
+
+## Frozen outcomes
+
+The [four-cell archive verifier](verification.json) passed. Both `free_mids`
+known-witness controls returned exact-base relations. Both ordinary queries
+reached the synchronous 60-second wall cap without a model; the external
+75-second safeguard did not fire. No ordinary relation was recovered.
+
+| Degree | Ordinary status | Distinct leaf-pair assignments | Final-root calls | Conflicts | Field mul/sqr/inv | Peak RSS |
+| --- | --- | ---: | ---: | ---: | --- | ---: |
+| 53 | capped, no relation | 62,269 | 1 | 127 | 2,004,733 / 11,505,062 / 149,409 | 665 MB |
+| 83 | capped, no relation | 66,824 | 1 | 143 | 3,273,124 / 27,920,948 / 267,157 | 1,284 MB |
+
+The matched Q1422 leaf-first ordinary cells reached 49 N53 pair roots and
+2,645 N83 pair roots under the same caps. The changed decision order makes
+Q1423 enumerate first-pair assignments rapidly, but it almost never gets
+far enough to use the target-coupled final-root rule. These counts do not
+demonstrate a speedup: solver policies differ, both runs are censored, and
+the host is not isolated for CPU timing claims. The exact final-root clauses
+are sound and exercised by the controls; their placement in this search
+order is ineffective.
+
+The next gate is a **target-dependent condition that fires before a full
+first leaf pair is enumerated**, or a different search that indexes both
+pair outputs. It must preserve the archived controls and recover verified
+ordinary N53 and N83 relations on frozen exact bases. Until then, no solve
+growth fit, natural useful-row rate, or complete N131 `2^x` is justified.
