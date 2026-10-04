@@ -22,6 +22,8 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
+
 from build_m5 import (ROOT, build_formula, canonical_projected_x,
                       pin_bits, replay_model)
 
@@ -117,30 +119,48 @@ def raw_preimage_coset(onb, curve, order: int, cofactor: int,
 
 
 def solve_limited(path: Path, binary: Path, seconds: float,
-                  max_conflicts: int, address_space_bytes: int) -> dict:
-    """Run one solver attempt with an external time and address-space cap."""
+                  max_conflicts: int, rss_cap_bytes: int) -> dict:
+    """Run one attempt with external time and sampled child-RSS guards.
+
+    macOS rejects the attempted RLIMIT_AS/DATA cap on this host. Sampling
+    every 50 ms can overshoot the threshold, so the receipt reports the
+    observed peak and never calls it a hard memory limit.
+    """
     command = [str(binary), "--verb", "1", "--threads", "1",
                "--maxconfl", str(max_conflicts), str(path)]
-
-    def cap_memory():
-        resource.setrlimit(resource.RLIMIT_AS,
-                           (address_space_bytes, address_space_bytes))
-
     started = time.perf_counter_ns()
-    try:
-        completed = subprocess.run(
-            command, capture_output=True, text=True,
-            timeout=max(0.01, seconds), preexec_fn=cap_memory,
-            check=False)
-        stdout, stderr, code = (completed.stdout, completed.stderr,
-                                completed.returncode)
-        status = ("sat" if code == 10 else "unsat" if code == 20 else
-                  "solver_failure" if code not in (0, 10, 20) else
-                  "censored")
-    except subprocess.TimeoutExpired as error:
-        stdout = (error.stdout or b"").decode(errors="replace")
-        stderr = (error.stderr or b"").decode(errors="replace")
-        code, status = None, "external_timeout"
+    deadline = started + int(max(0.01, seconds) * 1e9)
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    monitor = psutil.Process(process.pid)
+    observed_peak_rss = 0
+    status = None
+    while True:
+        try:
+            observed_peak_rss = max(
+                observed_peak_rss, monitor.memory_info().rss)
+        except psutil.NoSuchProcess:
+            pass
+        if observed_peak_rss > rss_cap_bytes:
+            process.kill()
+            stdout, stderr = process.communicate()
+            code, status = process.returncode, "sampled_rss_cap_exceeded"
+            break
+        remaining = (deadline - time.perf_counter_ns()) / 1e9
+        if remaining <= 0:
+            process.kill()
+            stdout, stderr = process.communicate()
+            code, status = process.returncode, "external_timeout"
+            break
+        try:
+            stdout, stderr = process.communicate(timeout=min(0.05, remaining))
+            code = process.returncode
+            status = ("sat" if code == 10 else "unsat" if code == 20 else
+                      "solver_failure" if code not in (0, 10, 20) else
+                      "censored")
+            break
+        except subprocess.TimeoutExpired:
+            continue
     matches = re.findall(r"conflicts\s*[:=]\s*([0-9]+)", stdout,
                          flags=re.IGNORECASE)
     return {
@@ -152,6 +172,8 @@ def solve_limited(path: Path, binary: Path, seconds: float,
         "stdout": stdout,
         "stderr": stderr,
         "model": parse_model(stdout),
+        "observed_peak_solver_rss_bytes": observed_peak_rss,
+        "rss_sample_interval_ms": 50,
     }
 
 
@@ -191,6 +213,8 @@ def run(n: int, mode: str, output_dir: Path):
     binary = Path(shutil.which("cryptominisat5") or "")
     assert binary.is_file() and sha(binary) == protocol["solver"]["binary_sha256"]
     assert str(binary) == protocol["solver"]["binary_path"]
+    assert protocol["solver"]["rss_monitor_library"] == (
+        f"psutil {psutil.__version__}")
 
     setup_started = time.perf_counter_ns()
     kernel, generators, kernel_trials = kernel_of_cofactor(
@@ -207,6 +231,7 @@ def run(n: int, mode: str, output_dir: Path):
     assert curve.onCurve(public) and curve.mul(public, order) is None
 
     limits = protocol["limits"]
+    assert limits["solver_rss_sample_interval_ms"] == 50
     cap_seconds = limits["external_wall_seconds"][mode]
     output_dir.mkdir(parents=True, exist_ok=True)
     stem = f"n{n}_{mode}"
@@ -258,7 +283,7 @@ def run(n: int, mode: str, output_dir: Path):
         else:
             result = solve_limited(
                 formula_path, binary, remaining, limits["max_conflicts"],
-                limits["solver_address_space_limit_bytes"])
+                limits["solver_sampled_rss_stop_bytes"])
         check_started = time.perf_counter_ns()
         replay = None
         if result["model"] is not None:
@@ -281,6 +306,9 @@ def run(n: int, mode: str, output_dir: Path):
             "solver_command": result["command"],
             "solver_wall_seconds": result["wall_seconds"],
             "solver_conflicts_reported": result["conflicts_reported"],
+            "observed_peak_solver_rss_bytes": result.get(
+                "observed_peak_solver_rss_bytes"),
+            "rss_sample_interval_ms": result.get("rss_sample_interval_ms"),
             "formula_write_ns": write_ns,
             "relation_check_ns": check_ns,
             "formula_path": formula_path,
@@ -364,6 +392,7 @@ def run(n: int, mode: str, output_dir: Path):
         "online_pdp_phase_ns": phases_ns,
         "peak_rss_raw": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
         "peak_rss_units": "bytes on Darwin, KiB on Linux",
+        "solver_rss_cap_type": "sampled child RSS with 50 ms polling; overshoot possible",
         "verified_single_target_dlp": False,
         "complete_solve_work_log2": None,
         "is_natural_relation_yield_measurement": mode == "ordinary",

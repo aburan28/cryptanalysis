@@ -70,6 +70,9 @@ def build() -> dict:
         }
     return {
         "schema_version": 1,
+        "revision": 2,
+        "supersedes_protocol_sha256": sha(
+            HERE / "protocol_preexec_failure.json"),
         "kind": "frozen_bounded_five_summand_s3_pdp_gate",
         "proposal_id": "Q1417",
         "candidate_id": None,
@@ -91,7 +94,8 @@ def build() -> dict:
             },
             "max_conflicts": 1_000_000,
             "max_models": 3,
-            "solver_address_space_limit_bytes": 4 * (1 << 30),
+            "solver_sampled_rss_stop_bytes": 4 * (1 << 30),
+            "solver_rss_sample_interval_ms": 50,
         },
         "solver": {
             "family": "cryptominisat5",
@@ -99,6 +103,7 @@ def build() -> dict:
             "binary_sha256": sha(binary),
             "version_first_lines": version[:2],
             "threads": 1,
+            "rss_monitor_library": "psutil 7.2.2",
         },
         "source_sha256": {name: sha(ROOT / name) for name in SOURCES},
         "sage_runtime_info_sha256": sha(runtime_path),
