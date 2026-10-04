@@ -1182,6 +1182,224 @@ def verify():
                      "formula_bytes": size,
                      "observed_verified_relation_count": receipt[
                          "observed_verified_relation_count"]})
+    from run_q1326_nested_base_probe import frozen_protocol as q1326_frozen
+    from run_q1326_nested_base_probe import inputs as q1326_inputs
+    from run_q1326_nested_base_probe import selected_keys as q1326_keys
+    from run_probe import curves as q1326_curves, field as q1326_field
+    q1326_protocol_path = HERE / "q1326_protocol.json"
+    q1326_protocol = json.loads(q1326_protocol_path.read_text())
+    assert q1326_protocol == q1326_frozen()
+    assert q1326_protocol["proposal_id"] == "Q1326"
+    assert q1326_protocol["candidate_id"] is None
+    assert q1326_protocol["isogeny"] == "none"
+    (q1326_baseline_path, q1326_baseline, q1326_base_path,
+     q1326_base, q1326_all_keys, q1326_stages) = q1326_inputs()
+    assert q1326_protocol["ordinary_workload_id"] == q1326_baseline[
+        "workload_id"] == "74f2979b3e68"
+    assert q1326_protocol["search_restrictions"] == q1326_stages
+    assert q1326_protocol["parent_factor_base"][
+        "actual_usable_points_B_before_folding"] == 24062
+    assert q1326_protocol["parent_factor_base"][
+        "signed_frobenius_columns"] == 227
+    q1326_runtime_path = HERE / "q1326_sage_runtime_info.json"
+    assert json.loads(q1326_runtime_path.read_text())["status"] == "verified"
+    q1326_onb = q1326_field.Onb(53)
+    q1326_curve = q1326_curves.Curve(q1326_onb)
+    q1326_order = q1326_base["curve"]["subgroup_order"]
+
+    def q1326_replay_relation(relation, target, stage):
+        allowed_x = {q1326_onb.toCoords(q1326_onb.frob(
+            q1326_onb.fromCoords(key), shift))
+            for key in q1326_keys(q1326_all_keys, stage)
+            for shift in range(53)}
+        points = [tuple(map(int, point)) for point in relation["leaf_points"]]
+        assert len(points) == 4 and len(relation["signs"]) == 4
+        total = None
+        for point, sign in zip(points, relation["signs"]):
+            assert q1326_curve.onCurve(point)
+            assert q1326_curve.mul(point, q1326_order) is None
+            assert q1326_onb.toCoords(point[0]) in allowed_x
+            assert sign in (-1, 1)
+            total = q1326_curve.add(total, point if sign == 1 else
+                                     q1326_curve.neg(point))
+        assert total == target
+
+    def q1326_check_formula(receipt, stem):
+        assert receipt["solver_binary_sha256"] == sha(
+            Path(receipt["solver_command"][0]))
+        assert receipt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stdout.txt")
+        assert receipt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stderr.txt")
+        digest = hashlib.sha256()
+        size = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        assert receipt["xcnf_sha256"] == digest.hexdigest()
+        assert receipt["xcnf_bytes"] == size
+        return digest.hexdigest(), size
+
+    planted_path = HERE / "runs/n53_q1326_planted_locked.json"
+    planted = json.loads(planted_path.read_text())
+    assert planted["proposal_id"] == "Q1326"
+    assert planted["candidate_id"] is None
+    assert planted["workload_id"] is None
+    assert planted["oracle_assisted"] is True
+    assert planted["eligible_actual_B_before_folding"] == 6784
+    assert planted["eligible_folded_columns"] == 64
+    assert planted["eligible_set_sha256"] == q1326_stages[0][
+        "eligible_set_sha256"]
+    assert planted["status"] == "locked_sat_verified_public_relation"
+    assert planted["protocol_sha256"] == sha(q1326_protocol_path)
+    assert planted["runtime_info_sha256"] == sha(q1326_runtime_path)
+    assert planted["runner_source_sha256"] == sha(
+        HERE / "run_q1326_nested_base_probe.py")
+    assert planted["base_chain_source_sha256"] == sha(
+        HERE / "chain_s3_base_orbit.py")
+    assert planted["control"]["witness_receipt_sha256"] == sha(
+        q1326_protocol_path)
+    planted_target = tuple(map(int, planted["public_target"]))
+    q1326_replay_relation(planted["control"]["relation"], planted_target,
+                          q1326_stages[0])
+    rows.append({"variant": "n53_q1326_planted_locked",
+                 "receipt_sha256": sha(planted_path),
+                 "verified_relation_count": 1,
+                 "oracle_assisted": True})
+
+    q1326_attempts = []
+    for stage in q1326_stages:
+        stem = f"n53_q1326_ordinary_{stage['stage']}"
+        path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(path.read_text())
+        assert receipt["proposal_id"] == "Q1326"
+        assert receipt["candidate_id"] is None
+        assert receipt["workload_id"] == q1326_baseline["workload_id"]
+        assert receipt["oracle_assisted"] is False
+        assert receipt["curve_id"] == q1326_baseline["curve_id"]
+        assert receipt["isogeny"] == "none"
+        assert receipt["stage"] == stage["stage"]
+        assert receipt["parent_base_actual_B"] == 24062
+        assert receipt["parent_base_folded_columns"] == 227
+        assert receipt["parent_base_enumerated_set_sha256"] == q1326_base[
+            "factor_base"]["enumerated_set_sha256"]
+        assert receipt["eligible_actual_B_before_folding"] == stage[
+            "eligible_actual_B_before_folding"]
+        assert receipt["eligible_folded_columns"] == stage[
+            "eligible_folded_columns"]
+        assert receipt["eligible_set_sha256"] == stage[
+            "eligible_set_sha256"]
+        assert receipt["uniform_target_mean_distinct_four_subsets_exact"] == (
+            stage["uniform_target_mean_distinct_four_subsets_exact"])
+        assert receipt["public_target"] == list(map(
+            int, q1326_baseline["public_subgroup_target"]))
+        assert receipt["protocol_sha256"] == sha(q1326_protocol_path)
+        assert receipt["runtime_info_sha256"] == sha(q1326_runtime_path)
+        assert receipt["ordinary_target_receipt_sha256"] == sha(
+            q1326_baseline_path)
+        assert receipt["parent_base_archive_sha256"] == sha(
+            q1326_base_path)
+        assert receipt["runner_source_sha256"] == sha(
+            HERE / "run_q1326_nested_base_probe.py")
+        assert receipt["base_chain_source_sha256"] == sha(
+            HERE / "chain_s3_base_orbit.py")
+        assert receipt["verified_relation"] is None
+        assert receipt["observed_verified_relation_count"] == 0
+        assert receipt["field_operations"] is None
+        assert receipt["complete_solve_work_log2"] is None
+        assert receipt["target_pdp_wall_seconds"] > 0
+        assert receipt["target_relation_check_wall_seconds"] >= 0
+        digest, size = q1326_check_formula(receipt, stem)
+        q1326_attempts.append((path, receipt))
+        rows.append({"variant": stem, "receipt_sha256": sha(path),
+                     "formula_sha256": digest, "formula_bytes": size,
+                     "verified_relation_count": 0})
+    assert [receipt["status"] for _, receipt in q1326_attempts] == [
+        "external_timeout", "censored", "censored"]
+    assert [receipt["solver_conflicts_reported"]
+            for _, receipt in q1326_attempts][1:] == [1000001, 1000001]
+    summary_path = HERE / "runs/n53_q1326_ordinary_summary.json"
+    summary = json.loads(summary_path.read_text())
+    assert summary["status"] == "censored"
+    assert summary["verified_stage"] is None
+    assert summary["observed_verified_relation_count"] == 0
+    assert summary["workload_id"] == q1326_baseline["workload_id"]
+    assert summary["protocol_sha256"] == sha(q1326_protocol_path)
+    assert summary["runner_source_sha256"] == sha(
+        HERE / "run_q1326_nested_base_probe.py")
+    assert summary["stage_attempts"] == [{
+        "stage": receipt["stage"], "receipt_sha256": sha(path),
+        "status": receipt["status"],
+        "verified_relation_count": 0,
+        "target_pdp_wall_seconds": receipt["target_pdp_wall_seconds"],
+        "target_relation_check_wall_seconds": receipt[
+            "target_relation_check_wall_seconds"],
+    } for path, receipt in q1326_attempts]
+    assert math.isclose(summary["total_target_pdp_wall_seconds"], sum(
+        receipt["target_pdp_wall_seconds"]
+        for _, receipt in q1326_attempts), rel_tol=1e-12)
+    rows.append({"variant": "n53_q1326_ordinary_summary",
+                 "receipt_sha256": sha(summary_path),
+                 "verified_relation_count": 0})
+
+    unpinned_stem = "n53_q1326_planted_unpinned"
+    unpinned_path = HERE / "runs" / f"{unpinned_stem}.json"
+    unpinned = json.loads(unpinned_path.read_text())
+    assert unpinned["planted_target"] is True
+    assert unpinned["oracle_assisted_solver"] is False
+    assert unpinned["workload_id"] is None
+    assert unpinned["public_target"] == list(planted_target)
+    assert unpinned["eligible_set_sha256"] == q1326_stages[0][
+        "eligible_set_sha256"]
+    assert unpinned["status"] == "censored"
+    assert 1000000 <= unpinned["solver_conflicts_reported"] <= 1000010
+    assert unpinned["verified_relation"] is None
+    assert unpinned["observed_verified_relation_count"] == 0
+    assert unpinned["planted_control_receipt_sha256"] == sha(planted_path)
+    assert unpinned["protocol_sha256"] == sha(q1326_protocol_path)
+    assert unpinned["runtime_info_sha256"] == sha(q1326_runtime_path)
+    assert unpinned["runner_source_sha256"] == sha(
+        HERE / "diagnose_q1326_planted_unpinned.py")
+    digest, size = q1326_check_formula(unpinned, unpinned_stem)
+    rows.append({"variant": unpinned_stem,
+                 "receipt_sha256": sha(unpinned_path),
+                 "formula_sha256": digest, "formula_bytes": size,
+                 "verified_relation_count": 0})
+
+    support_path = HERE / "runs/n53_q1326_k128_support_diagnostic.json"
+    support = json.loads(support_path.read_text())
+    assert support["proposal_id"] == "Q1326"
+    assert support["candidate_id"] is None
+    assert support["workload_id"] == q1326_baseline["workload_id"]
+    assert support["curve_id"] == q1326_baseline["curve_id"]
+    assert support["isogeny"] == "none"
+    assert support["eligible_actual_B_before_folding"] == 13568
+    assert support["eligible_folded_columns"] == 128
+    assert support["eligible_set_sha256"] == q1326_stages[-1][
+        "eligible_set_sha256"]
+    assert support["status"] == "budget"
+    assert support["relation"] is None
+    assert support["observed_verified_relation_count"] == 0
+    assert support["total_logical_pair_samples"] == 2000000
+    assert support["protocol_sha256"] == sha(q1326_protocol_path)
+    assert support["runtime_info_sha256"] == sha(q1326_runtime_path)
+    assert support["ordinary_target_receipt_sha256"] == sha(
+        q1326_baseline_path)
+    assert support["parent_base_archive_sha256"] == sha(
+        q1326_base_path)
+    assert support["runner_source_sha256"] == sha(
+        HERE / "diagnose_q1326_subset_support.py")
+    pair_path = HERE.parent / "koblitz-pair-claw-20260929"
+    assert support["prior_pair_search_source_sha256"] == sha(
+        pair_path / "probe_n53_table.py")
+    assert support["prior_base_source_sha256"] == sha(
+        pair_path / "probe_n53_relation.py")
+    assert support["orbit_key_source_sha256"] == sha(
+        pair_path / "orbit_key.py")
+    rows.append({"variant": "n53_q1326_k128_support_diagnostic",
+                 "receipt_sha256": sha(support_path),
+                 "verified_relation_count": 0})
     return rows
 
 

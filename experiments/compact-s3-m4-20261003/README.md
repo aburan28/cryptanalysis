@@ -575,6 +575,44 @@ n=131 per-decomposition cost or success rate. It isolates a leaf-choice
 search problem on a comparatively dense base; it does not establish an
 n=131 stage exponent.
 
+## Nested exact N53 base search and Q1326 diagnostic
+
+Q1326 freezes a seed-ordered, nested search over Q1301's **same exact n=53
+parent base and public target**. The parent remains B=24,062/K=227, curve
+`EC1N53Ckb1hf77aab617904`, and ordinary workload `74f2979b3e68`.
+Each attempt permits an exact subset of parent signed-Frobenius orbits; its
+actual eligible B, K, orbit-key digest, seed, and cap are in the
+[Q1326 protocol](q1326_protocol.json). Subsets restrict the solver's leaf
+choices and do not redefine a successful point as outside the parent base.
+
+| Attempt | Eligible B / K | Exact uniform-target four-subset mean, rounded | Ordinary result | Charged target PDP |
+| --- | ---: | ---: | --- | ---: |
+| 64 columns | 6,784 / 64 | 4.19 | 30 s timeout, no model | 30.02 s |
+| 96 columns | 10,176 / 96 | 21.22 | 1,000,001 conflicts, no model | 18.81 s |
+| 128 columns | 13,568 / 128 | 67.07 | 1,000,001 conflicts, no model | 18.82 s |
+
+The three attempts charged **67.65 seconds** in total to that one target.
+Their exact subset means are averages over uniform subgroup targets; none
+proves that this target has a relation inside one of the restrictions. A
+post-run [pair-table support diagnostic](runs/n53_q1326_k128_support_diagnostic.json)
+used 500,000 table and 1,500,000 query samples on the 128-column subset
+without a match. That bounded search does not prove absence and is not
+credited to the compact-S3 solver.
+
+The 64-column subset also has a **known-satisfiable planted target** built
+from four of its points. Locking the leaves and intermediate x coordinates
+returned and independently replayed a relation in **0.054 s**. On that
+same target, the [unpinned formula](runs/n53_q1326_planted_unpinned.json)
+reached **1,000,002 conflicts** in **22.97 s** without a model. This is a
+direct solver-search diagnostic on a restricted satisfiable instance, not
+an ordinary relation-yield estimate. It shows that shrinking the leaf list
+alone did not make this chained-S3 encoding recover a witness at the tested
+cap. Timings are exploratory because the host has no CPU isolation receipt.
+The source-bound XCNFs, logs, checked Sage runtime, and independent replay
+are retained with the seven Q1326 receipts.
+
+## Next goal
+
 The next useful goal is a **noncensored, independently verified ordinary
 public-target four-summand decomposition from a new leaf-choice solver**.
 First recover the known-satisfiable n=53 target without pinning a leaf under
@@ -582,7 +620,8 @@ the frozen exact base, charging every attempt and comparing the same public
 point with the matched pair table. Then use the exact Q1325 n=83 base to
 recover the frozen ordinary public target, or preserve a censored result
 with its complete work receipt. A bounded partial-leaf or hybrid root
-search is a concrete candidate; it must select leaves without oracle
+search is a concrete candidate, but Q1326 shows that a smaller leaf list
+by itself is insufficient. It must select leaves without oracle
 knowledge and verify all four signed subgroup points independently. Measure
 operation counts, memory, natural useful-row and novel-rank rates, including
 failed attempts. A pure pair-index method is already screened as too
@@ -603,6 +642,7 @@ From this repository worktree, first save checked runtime information:
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1324_inputs.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/enumerate_n83_weight5_full.py --self-test
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1325_inputs.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/run_q1326_nested_base_probe.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/screen_n83_four_point_support.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1324_base.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1325_full_base.py --check

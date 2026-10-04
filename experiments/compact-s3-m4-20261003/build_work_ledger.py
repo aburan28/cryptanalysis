@@ -761,6 +761,81 @@ def main():
     q1325_b = q1325_fb["actual_usable_points_B_before_folding"]
     q1325_r = q1325_base["curve"]["subgroup_order"]
     q1325_mean = math.comb(q1325_b, 4) / q1325_r
+    q1326_protocol_path = HERE / "q1326_protocol.json"
+    q1326_protocol = json.loads(q1326_protocol_path.read_text())
+    assert q1326_protocol["proposal_id"] == "Q1326"
+    assert q1326_protocol["candidate_id"] is None
+    assert q1326_protocol["ordinary_workload_id"] == "74f2979b3e68"
+    q1326_summary_path, q1326_summary = read(
+        "n53_q1326_ordinary_summary.json")
+    assert q1326_summary["status"] == "censored"
+    assert q1326_summary["observed_verified_relation_count"] == 0
+    assert len(q1326_summary["stage_attempts"]) == 3
+    q1326_stages = []
+    for stage in q1326_protocol["search_restrictions"]:
+        path, attempt = read(f"n53_q1326_ordinary_{stage['stage']}.json")
+        assert attempt["proposal_id"] == "Q1326"
+        assert attempt["candidate_id"] is None
+        assert attempt["workload_id"] == q1326_protocol[
+            "ordinary_workload_id"]
+        assert attempt["eligible_actual_B_before_folding"] == stage[
+            "eligible_actual_B_before_folding"]
+        assert attempt["eligible_folded_columns"] == stage[
+            "eligible_folded_columns"]
+        assert attempt["eligible_set_sha256"] == stage[
+            "eligible_set_sha256"]
+        assert attempt["observed_verified_relation_count"] == 0
+        assert attempt["field_operations"] is None
+        assert attempt["complete_solve_work_log2"] is None
+        q1326_stages.append({
+            "proposal_id": "Q1326", "candidate_id": None,
+            "workload_id": attempt["workload_id"], "run_id": None,
+            "curve_id": attempt["curve_id"], "isogeny": "none",
+            "stage": stage["stage"],
+            "eligible_actual_B_before_folding": stage[
+                "eligible_actual_B_before_folding"],
+            "eligible_folded_columns": stage[
+                "eligible_folded_columns"],
+            "eligible_set_sha256": stage["eligible_set_sha256"],
+            "uniform_target_mean_distinct_four_subsets_exact": stage[
+                "uniform_target_mean_distinct_four_subsets_exact"],
+            "status": attempt["status"],
+            "solver_conflicts_reported": attempt[
+                "solver_conflicts_reported"],
+            "formula": attempt["formula"],
+            "target_pdp_wall_seconds": attempt[
+                "target_pdp_wall_seconds"],
+            "target_relation_check_wall_seconds": attempt[
+                "target_relation_check_wall_seconds"],
+            "peak_parent_rss_raw": attempt["peak_parent_rss_raw"],
+            "peak_child_rss_raw_cumulative": attempt[
+                "peak_child_rss_raw_cumulative"],
+            "peak_rss_units": attempt["peak_rss_units"],
+            "observed_verified_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "field_operations": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
+    assert math.isclose(q1326_summary[
+        "total_target_pdp_wall_seconds"], sum(row[
+            "target_pdp_wall_seconds"] for row in q1326_stages),
+        rel_tol=1e-12)
+    q1326_planted_path, q1326_planted = read(
+        "n53_q1326_planted_locked.json")
+    q1326_unpinned_path, q1326_unpinned = read(
+        "n53_q1326_planted_unpinned.json")
+    assert q1326_planted["status"] == (
+        "locked_sat_verified_public_relation")
+    assert q1326_unpinned["status"] == "censored"
+    assert q1326_unpinned["public_target"] == q1326_planted[
+        "public_target"]
+    assert q1326_unpinned["observed_verified_relation_count"] == 0
+    q1326_support_path, q1326_support = read(
+        "n53_q1326_k128_support_diagnostic.json")
+    assert q1326_support["status"] == "budget"
+    assert q1326_support["observed_verified_relation_count"] == 0
+    assert q1326_support["total_logical_pair_samples"] == 2000000
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -899,6 +974,52 @@ def main():
         },
         "q1325_full_weight5_stage_measurements": q1325_stage,
         "q1325_protocol_sha256": sha(q1325_protocol_path),
+        "q1326_nested_n53_stage_measurements": q1326_stages,
+        "q1326_ordinary_search_summary": {
+            "status": q1326_summary["status"],
+            "attempt_count": len(q1326_stages),
+            "total_target_pdp_wall_seconds": q1326_summary[
+                "total_target_pdp_wall_seconds"],
+            "total_target_relation_check_wall_seconds": q1326_summary[
+                "total_target_relation_check_wall_seconds"],
+            "observed_verified_relation_count": 0,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(q1326_summary_path),
+        },
+        "q1326_known_satisfiable_planted_diagnostics": {
+            "eligible_actual_B_before_folding": q1326_planted[
+                "eligible_actual_B_before_folding"],
+            "eligible_folded_columns": q1326_planted[
+                "eligible_folded_columns"],
+            "same_planted_public_target": q1326_planted["public_target"],
+            "locked_status": q1326_planted["status"],
+            "locked_verified_relation_count": 1,
+            "locked_oracle_control_wall_seconds": q1326_planted[
+                "oracle_control_wall_seconds"],
+            "unpinned_status": q1326_unpinned["status"],
+            "unpinned_solver_conflicts_reported": q1326_unpinned[
+                "solver_conflicts_reported"],
+            "unpinned_target_pdp_wall_seconds": q1326_unpinned[
+                "target_pdp_wall_seconds"],
+            "unpinned_peak_child_rss_raw_cumulative": q1326_unpinned[
+                "peak_child_rss_raw_cumulative"],
+            "unpinned_verified_relation_count": 0,
+            "is_natural_relation_yield_estimate": False,
+            "locked_receipt_sha256": sha(q1326_planted_path),
+            "unpinned_receipt_sha256": sha(q1326_unpinned_path),
+        },
+        "q1326_post_run_k128_support_diagnostic": {
+            "method": q1326_support["method"],
+            "status": q1326_support["status"],
+            "total_logical_pair_samples": q1326_support[
+                "total_logical_pair_samples"],
+            "peak_parent_rss_raw": q1326_support["peak_parent_rss_raw"],
+            "peak_rss_units": q1326_support["peak_rss_units"],
+            "observed_verified_relation_count": 0,
+            "proves_target_has_no_representation": False,
+            "receipt_sha256": sha(q1326_support_path),
+        },
+        "q1326_protocol_sha256": sha(q1326_protocol_path),
         "n131_weight6_geometry_estimate": {
             "proposal_id": "Q1303",
             "candidate_id": None,
@@ -992,7 +1113,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, full group-addition, and reverse-link encodings; Q1324's selected n83 weight-five base and Q1325's complete structured n83 weight-five base both passed locked witness controls but their ordinary runs reached 120-second caps without models; reverse-link arithmetic recovers the last n53 leaf with three oracle-pinned leaves but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, full group-addition, reverse-link, and nested-sub-base encodings; Q1324's selected n83 weight-five base and Q1325's complete structured n83 weight-five base passed locked witness controls but their ordinary runs reached 120-second caps without models; Q1326's known-satisfiable restricted n53 planted target also hit one million conflicts unpinned; reverse-link arithmetic recovers the last n53 leaf with three oracle-pinned leaves but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,
