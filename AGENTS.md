@@ -32,7 +32,10 @@ contains design proposals; its [measurement contract](experiments/ic-candidate-c
 specifies the empirical stage record and promotion gates.
 The [curve and artifact storage contract](experiments/ic-candidate-catalog/CURVE_STORAGE.md)
 links exact EC1/UID records to crypto's ICV1 registry, bulk factor-base
-archives, and verified isogeny walks. Keep unresolved links and traits as
+archives, and verified isogeny walks.
+The [typed curve-link rules](experiments/ic-candidate-catalog/curve-links/README.md)
+keep twists, same-field isomorphisms, base changes, and isogenies distinct;
+only verified maps with subgroup/log transport may enter an IC route. Keep unresolved links and traits as
 explicit `null` plus status; never infer a factor-base or curve equivalence
 from matching field degree or ICV1 model name. The
 [IC benchmark](experiments/ic-bench/README.md) is the reference harness for

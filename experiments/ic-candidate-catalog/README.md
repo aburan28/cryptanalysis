@@ -1,6 +1,7 @@
 # Index-calculus candidate catalog
 
-[Curve and artifact storage](CURVE_STORAGE.md) explains the ICV1/EC1 crosswalk,
+[Curve and artifact storage](CURVE_STORAGE.md) and
+[typed curve links](curve-links/README.md) explain the ICV1/EC1 crosswalk,
 large factor bases, exact isogeny links, and explicit unknown trait statuses.
 The [curve YAML](curves.yaml) is mirrored in crypto's `docs/curves/ic/`.
 
