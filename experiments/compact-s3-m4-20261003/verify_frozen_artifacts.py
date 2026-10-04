@@ -1849,6 +1849,58 @@ def verify():
     rows.append({"variant": "n83_q1331_uniform_target_coverage_bound",
                  "receipt_sha256": sha(coverage_path),
                  "is_natural_yield_measurement": False})
+    primitives_path = HERE / "runs/n53_n83_s3_primitive_field_calls.json"
+    primitives = json.loads(primitives_path.read_text())
+    assert primitives["kind"] == (
+        "source_level_primitive_field_call_expansion_for_s3_stages")
+    assert primitives["candidate_id"] is primitives["run_id"] is None
+    assert primitives["isogeny"] == "none"
+    assert primitives["source_sha256"] == sha(
+        HERE / "derive_s3_primitive_calls.py")
+    assert primitives["native_build_receipt_sha256"] == sha(
+        native_batch_build_path)
+    assert primitives["native_source_sha256"] == native_batch_build[
+        "source_sha256"]
+    assert primitives["field_implementation_source_sha256"] == (
+        native_batch_build["crypto_arithmetic_sources_sha256"][
+            "src/cryptanalysis/semaev_decomp.rs"])
+    assert primitives["is_common_weighted_field_operation_unit"] is False
+    assert primitives["is_complete_solve_projection"] is False
+    primitive_inputs = (
+        (53, "Q1327", "n53_native_root_full.json"),
+        (53, "Q1330", "n53_batch_root_full.json"),
+        (83, "Q1328", "n83_native_root_capped_2m.json"),
+        (83, "Q1331", "n83_batch_root_capped_2m.json"),
+    )
+    assert len(primitives["rows"]) == len(primitive_inputs)
+    for row, (degree, proposal, stage_name) in zip(
+            primitives["rows"], primitive_inputs):
+        stage_path = HERE / "runs" / stage_name
+        stage = json.loads(stage_path.read_text())
+        assert row["proposal_id"] == stage["proposal_id"] == proposal
+        assert row["n"] == stage["field_degree"] == degree
+        assert row["curve_id"] == stage["curve_id"]
+        assert row["workload_id"] == stage["workload_id"]
+        assert row["stage_receipt_sha256"] == sha(stage_path)
+        inner_mul = (degree - 1).bit_length() + (degree - 1).bit_count() - 2
+        inner_sqr = degree - 1
+        for phase, raw in stage["operation_counts"].items():
+            expanded = row["phase_call_vectors"][phase]
+            assert expanded["inner_mul_calls_per_nonzero_inv"] == inner_mul
+            assert expanded["inner_sqr_calls_per_nonzero_inv"] == inner_sqr
+            assert expanded["top_level_field_mul_calls"] == raw[
+                "field_mul_calls"]
+            assert expanded["top_level_field_sqr_calls"] == raw[
+                "field_sqr_calls"]
+            assert expanded["top_level_field_inv_calls"] == raw[
+                "field_inv_calls"]
+            assert expanded["expanded_primitive_field_mul_calls"] == (
+                raw["field_mul_calls"] + inner_mul * raw["field_inv_calls"])
+            assert expanded["expanded_primitive_field_sqr_calls"] == (
+                raw["field_sqr_calls"] + inner_sqr * raw["field_inv_calls"])
+    rows.append({"variant": "n53_n83_s3_primitive_field_calls",
+                 "receipt_sha256": sha(primitives_path),
+                 "is_complete_solve_projection": False})
     planted_protocol_path = HERE / "q1332_batch_planted_control_protocol.json"
     planted_protocol = json.loads(planted_protocol_path.read_text())
     planted_manifest_path = HERE / "native_inputs/n83_batch_planted_manifest.json"

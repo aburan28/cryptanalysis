@@ -752,6 +752,28 @@ The window trades extra multiplications for fewer inversions. At N53 the
 match occurs inside a window, so 53,248 states are prepared even though only
 49,228 are inspected before the relation.
 
+The [source-level arithmetic expansion](runs/n53_n83_s3_primitive_field_calls.json)
+charges the multiplications and squarings *inside* each field inversion in
+the pinned `crypto` implementation. Its nonzero Itoh–Tsujii chain uses
+`bit_length(n-1)+popcount(n-1)-2` multiplication calls and `n-1` squaring
+calls per inverse. The native source guards every inversion input against
+zero. These are exact counts of calls to the pinned field methods, including
+failed target probes; they are not CPU instructions or a weighted field-
+operation equivalent.
+
+| Stage | Index primitive mul / sqr calls | One-target primitive mul / sqr calls |
+| --- | ---: | ---: |
+| Q1327 N53 direct | 40,964,193 / 142,013,924 | 1,476,888 / 5,120,035 |
+| Q1330 N53 window 4,096 | 30,042,713 / 34,684 | 1,171,571 / 1,051 |
+| Q1328 N83 direct | 32,000,000 / 164,000,000 | 64,000,000 / 328,000,000 |
+| Q1331 N83 window 4,096 | 22,002,445 / 40,098 | 44,002,445 / 40,098 |
+
+Basis conversions, canonical rotations, hash probes, memory traffic, and
+other work remain separate. The exact call vector improves stage accounting;
+it does not supply natural relation yield or the complete \(2^x\) cost.
+Regenerate it with
+`python3 experiments/compact-s3-m4-20261003/derive_s3_primitive_calls.py --check`.
+
 The separate [Q1332 planted one-target control](runs/n83_q1332_batch_planted_unpinned.json)
 uses Q1329's single planted target, the exact Q1325 base, all 83 orientations,
 and a 4,096-state inversion window. Its [independent replay](runs/n83_q1332_batch_planted_independent_replay.json)

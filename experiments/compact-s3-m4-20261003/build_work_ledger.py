@@ -1205,6 +1205,21 @@ def main():
         batch_protocol_path)
     assert coverage["is_empirical_relation_yield"] is False
     assert coverage["is_complete_solve_projection"] is False
+    primitives_path, primitives = read(
+        "n53_n83_s3_primitive_field_calls.json")
+    assert primitives["kind"] == (
+        "source_level_primitive_field_call_expansion_for_s3_stages")
+    assert primitives["source_sha256"] == sha(
+        HERE / "derive_s3_primitive_calls.py")
+    assert primitives["native_build_receipt_sha256"] == sha(
+        native_build_path)
+    assert primitives["field_implementation_source_sha256"] == (
+        native_build["crypto_arithmetic_sources_sha256"][
+            "src/cryptanalysis/semaev_decomp.rs"])
+    assert [row["proposal_id"] for row in primitives["rows"]] == [
+        "Q1327", "Q1330", "Q1328", "Q1331"]
+    assert primitives["is_common_weighted_field_operation_unit"] is False
+    assert primitives["is_complete_solve_projection"] is False
     conditional_root_states131 = n131_sample[
         "conditional_folded_columns_estimate"] ** 2 * 131
     conditional_batch_count131 = (conditional_root_states131 + 4095) // 4096
@@ -1417,6 +1432,13 @@ def main():
             "is_complete_solve_projection": False,
             "receipt_sha256": sha(coverage_path),
         },
+        "n53_n83_native_s3_primitive_field_call_vectors": {
+            "unit_boundary": primitives["unit_boundary"],
+            "is_common_weighted_field_operation_unit": False,
+            "is_complete_solve_projection": False,
+            "rows": primitives["rows"],
+            "receipt_sha256": sha(primitives_path),
+        },
         "q1327_q1328_native_root_protocol_sha256": sha(
             native_protocol_path),
         "q1330_q1331_batch_root_protocol_sha256": sha(batch_protocol_path),
@@ -1562,7 +1584,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "Q1327 and Q1330 independently verified the same unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328 and Q1331 both exhausted the same 2,000,000-pair-state n83 ordinary cap without a relation, covering only about 6.9e-7 of the full quotient pair-state space; the exact fixed-state counting screen bounds uniform-target support of that cap by 9.12e-8 even with every Frobenius orientation, so this no-hit cannot estimate typical natural yield; Q1329 and Q1332 independently verified an unpinned n83 four-leaf relation on an index-aware planted target, but neither control estimates ordinary-query yield; older n53/n83 SAT variants remain censored; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and censored n83 ordinary runs do not measure natural useful-row or novel-rank rates; top-level field inversion/multiplication calls lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
+            "reason_unestimated": "Q1327 and Q1330 independently verified the same unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328 and Q1331 both exhausted the same 2,000,000-pair-state n83 ordinary cap without a relation, covering only about 6.9e-7 of the full quotient pair-state space; the exact fixed-state counting screen bounds uniform-target support of that cap by 9.12e-8 even with every Frobenius orientation, so this no-hit cannot estimate typical natural yield; Q1329 and Q1332 independently verified an unpinned n83 four-leaf relation on an index-aware planted target, but neither control estimates ordinary-query yield; older n53/n83 SAT variants remain censored; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and censored n83 ordinary runs do not measure natural useful-row or novel-rank rates; exact primitive mul/sqr call vectors now include inversions but conversions, hashing, memory and arithmetic types still lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,
