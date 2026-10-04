@@ -54,3 +54,29 @@ python3 experiments/compact-s3-m4-20261003/q1422_leaf_lift_gate/build_binaries.p
 
 The frozen cells run through `run_stage.py --degree N --cell CELL` in the
 protocol's order. The runner refuses to overwrite a result.
+
+## Frozen outcomes
+
+The [four-cell archive verifier](verification.json) passed. Both `free_mids`
+known-witness controls return exact-base relations. Both unpinned ordinary
+queries stop at the synchronous 60-second wall cap with no model. Every
+solver process returned its counters; the external safeguard never fired.
+
+| Degree | Ordinary status | Completed leaf x values | Rejected nonrational x | Pair-root calls | Conflicts | Field mul/sqr/inv | Peak RSS |
+| --- | --- | ---: | ---: | ---: | ---: | --- | ---: |
+| 53 | capped, no relation | 109 | 58 | 49 | 94,810 | 2,263 / 13,484 / 205 | 291 MB |
+| 83 | capped, no relation | 5,269 | 2,622 | 2,645 | 22,248 | 129,384 / 1,103,548 / 10,557 | 516 MB |
+
+The matched Q1421 leaf-first ordinary cells reached 62 pair roots and
+111,577 conflicts at N53, and 5,167 pair roots and 21,900 conflicts at
+N83. Q1422 removes many nonrational leaves and roughly halves N83 pair-root
+calls, but it does not recover a relation. The N83 conflict count is
+similar, and the native gate adds field inversions. Process wall times are
+about 60 seconds by design and do not establish a CPU speedup on this
+unisolated host. Counts cover solver field calls; target-dependent Q1420
+formula construction remains a separate charged term.
+
+The exact rationality test is sound and useful as a filter, but the next
+solver must make stronger use of the public target before enumerating large
+numbers of sparse leaf candidates. These censored runs cannot yield a
+solve-growth fit, natural useful-row rate, or complete N131 `2^x`.
