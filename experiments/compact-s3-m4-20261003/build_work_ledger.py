@@ -1000,7 +1000,7 @@ def main():
         "folded_columns_K": control_stage["folded_columns_K"],
         "status": control_stage["status"],
         "is_known_satisfiable_planted_control": True,
-        "solver_received_only_public_target": True,
+        "solver_received_no_witness_or_index_positions": True,
         "is_natural_relation_yield_measurement": False,
         "index_pair_states_examined": control_stage[
             "index_pair_states_examined"],
