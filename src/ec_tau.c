@@ -628,82 +628,84 @@ int ca_ec_tau4_pos_prepare(const ca_group *g, const ca_elem *point,
  * the canonical identity in the output. */
 int ca_ec_tau4_pos_global_prepare(const ca_group *g, const ca_elem *point,
                                   ca_tau4_pos_precomp *out,
-                                  uint64_t *precompute_triples)
-{
-    if (!g || !point || !out) return 0;
-    if (precompute_triples) *precompute_triples = 0;
-    ca_tau4_pos_precomp pre = {0};
-    if (!ca_ec_tau4_prepare(g, point, &pre.base, NULL)) return 0;
-    if (pre.base.identity) {
-        ca_elem identity;
-        ca_group_identity(g, &identity);
-        for (size_t q = 0; q < CA_TAU_POS_Q; q++)
-            for (size_t parity = 0; parity < 2; parity++)
-                for (size_t j = 0; j < 9; j++)
-                    pre.point[q][parity][j] = identity;
-        *out = pre;
-        return 1;
-    }
-    const size_t count = CA_TAU_POS_Q * 2 * 9;
-    tau_jac *projective = malloc(count * sizeof(*projective));
-    uint64_t *prefixes = malloc(count * sizeof(*prefixes));
-    if (!projective || !prefixes) {
-        free(prefixes);
-        free(projective);
-        return 0;
-    }
-    for (size_t parity = 0; parity < 2; parity++) {
-        for (size_t j = 0; j < 9; j++) {
-            const ca_elem *seed = parity ? &pre.base.tau_seed[j] :
-                                           &pre.base.seed[j];
-            projective[parity * 9 + j] = seed->w[2] ?
-                (tau_jac){0, g->mont.r1, 0} :
-                (tau_jac){seed->w[0], seed->w[1], g->mont.r1};
-        }
-    }
-    uint64_t triples = 0;
-    for (size_t q = 1; q < CA_TAU_POS_Q; q++) {
-        for (size_t slot = 0; slot < 18; slot++) {
-            tau_jac prior = projective[(q - 1) * 18 + slot];
-            if (prior.z) {
-                projective[q * 18 + slot] = jac_triple(g, prior);
-                triples++;
-            } else {
-                projective[q * 18 + slot] = (tau_jac){0, g->mont.r1, 0};
-            }
-        }
-    }
-    uint64_t product = g->mont.r1;
-    for (size_t i = 0; i < count; i++) {
-        uint64_t z = projective[i].z ? projective[i].z : g->mont.r1;
-        product = fm(g, product, z);
-        prefixes[i] = product;
-    }
-    uint64_t inverse = ca_mont_inv(&g->mont, product);
-    if (!inverse) {
-        free(prefixes);
-        free(projective);
-        return 0;
-    }
-    ca_elem *affine = &pre.point[0][0][0];
-    for (size_t i = count; i-- > 0;) {
-        tau_jac p = projective[i];
-        uint64_t invz = fm(g, inverse, i ? prefixes[i - 1] : g->mont.r1);
-        inverse = fm(g, inverse, p.z ? p.z : g->mont.r1);
-        if (!p.z) {
-            affine[i] = (ca_elem){{0, 0, 1, 0}};
-            continue;
-        }
-        uint64_t invz2 = fq(g, invz);
-        affine[i].w[0] = fm(g, p.x, invz2);
-        affine[i].w[1] = fm(g, p.y, fm(g, invz2, invz));
-        affine[i].w[2] = affine[i].w[3] = 0;
-    }
+                                  uint64_t *precompute_triples) {
+  if (!g || !point || !out)
+    return 0;
+  if (precompute_triples)
+    *precompute_triples = 0;
+  ca_tau4_pos_precomp pre = {0};
+  if (!ca_ec_tau4_prepare(g, point, &pre.base, NULL))
+    return 0;
+  if (pre.base.identity) {
+    ca_elem identity;
+    ca_group_identity(g, &identity);
+    for (size_t q = 0; q < CA_TAU_POS_Q; q++)
+      for (size_t parity = 0; parity < 2; parity++)
+        for (size_t j = 0; j < 9; j++)
+          pre.point[q][parity][j] = identity;
+    *out = pre;
+    return 1;
+  }
+  const size_t count = CA_TAU_POS_Q * 2 * 9;
+  tau_jac *projective = malloc(count * sizeof(*projective));
+  uint64_t *prefixes = malloc(count * sizeof(*prefixes));
+  if (!projective || !prefixes) {
     free(prefixes);
     free(projective);
-    *out = pre;
-    if (precompute_triples) *precompute_triples = triples;
-    return 1;
+    return 0;
+  }
+  for (size_t parity = 0; parity < 2; parity++) {
+    for (size_t j = 0; j < 9; j++) {
+      const ca_elem *seed = parity ? &pre.base.tau_seed[j] : &pre.base.seed[j];
+      projective[parity * 9 + j] =
+          seed->w[2] ? (tau_jac){0, g->mont.r1, 0}
+                     : (tau_jac){seed->w[0], seed->w[1], g->mont.r1};
+    }
+  }
+  uint64_t triples = 0;
+  for (size_t q = 1; q < CA_TAU_POS_Q; q++) {
+    for (size_t slot = 0; slot < 18; slot++) {
+      tau_jac prior = projective[(q - 1) * 18 + slot];
+      if (prior.z) {
+        projective[q * 18 + slot] = jac_triple(g, prior);
+        triples++;
+      } else {
+        projective[q * 18 + slot] = (tau_jac){0, g->mont.r1, 0};
+      }
+    }
+  }
+  uint64_t product = g->mont.r1;
+  for (size_t i = 0; i < count; i++) {
+    uint64_t z = projective[i].z ? projective[i].z : g->mont.r1;
+    product = fm(g, product, z);
+    prefixes[i] = product;
+  }
+  uint64_t inverse = ca_mont_inv(&g->mont, product);
+  if (!inverse) {
+    free(prefixes);
+    free(projective);
+    return 0;
+  }
+  ca_elem *affine = &pre.point[0][0][0];
+  for (size_t i = count; i-- > 0;) {
+    tau_jac p = projective[i];
+    uint64_t invz = fm(g, inverse, i ? prefixes[i - 1] : g->mont.r1);
+    inverse = fm(g, inverse, p.z ? p.z : g->mont.r1);
+    if (!p.z) {
+      affine[i] = (ca_elem){{0, 0, 1, 0}};
+      continue;
+    }
+    uint64_t invz2 = fq(g, invz);
+    affine[i].w[0] = fm(g, p.x, invz2);
+    affine[i].w[1] = fm(g, p.y, fm(g, invz2, invz));
+    affine[i].w[2] = affine[i].w[3] = 0;
+  }
+  free(prefixes);
+  free(projective);
+  *out = pre;
+  if (precompute_triples)
+    *precompute_triples = triples;
+  return 1;
 }
 
 int ca_ec_tau4_pos_mul(const ca_group *g, const ca_tau4_pos_precomp *pre,
