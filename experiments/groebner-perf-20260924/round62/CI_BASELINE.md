@@ -1,4 +1,11 @@
-# Qualified Linux measurement of the preceding F4 changes
+# Exploratory Linux measurement of the preceding F4 changes
+
+Re-evaluated on 2026-10-04 under the repository's CPU isolation gate: this
+hosted runner has no auditable host-level isolation receipt. All wall-time
+ratios below are exploratory; aggregate speedup and promotion eligibility are
+unknown. The archived `qualified` labels mean only that the older load and
+sampling gates passed. They do not establish exclusive physical cores, fixed
+frequency, IRQ isolation or an eligible controlled speedup.
 
 This is evidence for round 57's comparison of prior, checked-chain, reducer-filter,
 combined chain/filter and evaluation paths. It is not a timing result for the

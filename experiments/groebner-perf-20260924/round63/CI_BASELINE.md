@@ -1,5 +1,9 @@
 # Required evidence
 
+Any CPU wall-time promotion also requires the host-isolation receipt described
+in `docs/ISOLATED_BENCHMARKS.md`. Passing a hosted runner's load/affinity gate
+alone leaves aggregate speedup unknown; its timings remain exploratory.
+
 Optimized and UBSan replay must match the Python witness producer exactly.
 All 14 test groups must pass. The full preflight has 92 records: 40 verified
 (including 20 complete PDP queries) and 52 retained algebraic budget failures.

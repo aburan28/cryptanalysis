@@ -1,5 +1,9 @@
 # CI contract
 
+Any CPU wall-time promotion also requires the host-isolation receipt described
+in `docs/ISOLATED_BENCHMARKS.md`. Passing a hosted runner's load/affinity gate
+alone leaves aggregate speedup unknown; its timings remain exploratory.
+
 Run all 16 unit groups, including the explicit packing-carry counterexample.
 Native dependencies must be rebuilt for each platform. Preserve all 138
 preflight records: 60 verified (30 complete PDP) and 78 budget failures.
