@@ -1458,6 +1458,151 @@ def verify():
                      "receipt_sha256": sha(replay_path),
                      "all_basis_products_checked": n * n,
                      "factor_base_representatives_checked": expected_reps})
+    native_protocol_path = HERE / "q1327_q1328_native_root_protocol.json"
+    native_protocol = json.loads(native_protocol_path.read_text())
+    assert native_protocol["kind"] == (
+        "bounded_native_four_summand_s3_root_stage_protocol")
+    assert native_protocol["candidate_id"] is None
+    assert native_protocol["isogeny"] == "none"
+    assert native_protocol["point_decomposition"]["stage_code"] == (
+        "PDP4root")
+    assert len(native_protocol["profiles"]) == 2
+    rows.append({"variant": "q1327_q1328_native_root_protocol",
+                 "receipt_sha256": sha(native_protocol_path)})
+    native_runtime_path = HERE / "native_root_sage_runtime_info.json"
+    assert json.loads(native_runtime_path.read_text())[
+        "status"] == "verified"
+    native_build_path = HERE / "native_build_receipt.json"
+    native_build = json.loads(native_build_path.read_text())
+    assert native_build["status"] == "PASS"
+    assert native_build["source_sha256"] == sha(
+        HERE / "native_s3_root.rs")
+    assert native_build["build_script_sha256"] == sha(
+        HERE / "build_native_s3_root.py")
+    rows.append({"variant": "native_s3_root_build",
+                 "receipt_sha256": sha(native_build_path),
+                 "source_sha256": native_build["source_sha256"]})
+    for (n, proposal, parent, expected_curve, expected_workload, b, k, cap,
+         expected_status) in (
+        (53, "Q1327", "Q1301", "EC1N53Ckb1hf77aab617904",
+         "74f2979b3e68", 24062, 227, 2731037,
+         "native_relation_found"),
+        (83, "Q1328", "Q1325", "EC1N83Ckb1h876c2921cb64",
+         "bab50a1e5f66", 30977592, 186612, 2000000,
+         "state_cap_no_relation"),
+    ):
+        stage_profile = next(profile for profile in native_protocol[
+            "profiles"] if profile["field_degree"] == n)
+        manifest_path = HERE / "native_inputs" / f"n{n}_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        reps_path = HERE / "native_inputs" / f"n{n}_x_representatives.bin"
+        assert manifest["proposal_id"] == stage_profile[
+            "proposal_id"] == proposal
+        assert manifest["parent_factor_base_proposal_id"] == (
+            stage_profile["parent_factor_base_proposal_id"])
+        assert manifest["parent_factor_base_proposal_id"] == parent
+        assert manifest["curve_id"] == stage_profile[
+            "curve_id"] == expected_curve
+        assert manifest["workload_id"] == stage_profile[
+            "workload_id"] == expected_workload
+        assert manifest["actual_usable_points_B"] == (
+            stage_profile["factor_base_actual_B"])
+        assert manifest["actual_usable_points_B"] == b
+        assert manifest["representative_count_K"] == (
+            stage_profile["factor_base_folded_columns_K"])
+        assert manifest["representative_count_K"] == k
+        assert manifest["pair_state_cap"] == stage_profile[
+            "pair_state_cap"] == cap
+        assert manifest["peak_rss_cap_mib"] == stage_profile[
+            "peak_rss_cap_mib"] == 1024
+        assert manifest["stage_protocol_sha256"] == sha(
+            native_protocol_path)
+        assert manifest["runtime_info_sha256"] == sha(
+            native_runtime_path)
+        assert manifest["source_sha256"] == sha(
+            HERE / "export_native_root_inputs.py")
+        assert manifest["bridge_sha256"] == sha(
+            HERE / "field_bridges" / f"n{n}_onb_poly.json")
+        assert manifest["target_source_receipt_sha256"] == sha(
+            HERE / "runs" / f"n{n}_ordinary_frozen.json")
+        assert manifest["representatives_file_sha256"] == sha(reps_path)
+        assert reps_path.stat().st_size == 16 * k
+        base_path = HERE / "bases" / (
+            "n53_weight3_orbits.json.gz" if n == 53
+            else "n83_weight5_full_orbits.json")
+        assert manifest["source_base_archive_sha256"] == sha(base_path)
+        rows.append({"variant": f"n{n}_native_root_input",
+                     "receipt_sha256": sha(manifest_path),
+                     "representatives_sha256": sha(reps_path),
+                     "factor_base_B": b, "folded_columns_K": k})
+        stage_path = HERE / "runs" / (
+            "n53_native_root_full.json" if n == 53
+            else "n83_native_root_capped_2m.json")
+        stage = json.loads(stage_path.read_text())
+        assert stage["proposal_id"] == proposal
+        assert stage["parent_factor_base_proposal_id"] == parent
+        assert stage["curve_id"] == expected_curve
+        assert stage["workload_id"] == expected_workload
+        assert stage["status"] == expected_status
+        assert stage["native_source_sha256"] == native_build[
+            "source_sha256"]
+        assert stage["cargo_manifest_sha256"] == native_build[
+            "cargo_manifest_sha256"]
+        assert stage["stage_protocol_sha256"] == sha(
+            native_protocol_path)
+        assert stage["input_representatives_sha256"] == sha(reps_path)
+        assert stage["actual_usable_points_B"] == b
+        assert stage["folded_columns_K"] == k
+        assert stage["limits"]["pair_state_cap"] == cap
+        assert stage["limits"]["peak_rss_cap_bytes"] == 1024 ** 3
+        assert stage["peak_rss_bytes"] <= 1024 ** 3
+        assert stage["index_pair_states_examined"] == cap
+        assert stage["operation_counts"]["index_build"][
+            "s3_root_calls"] == cap
+        assert stage["native_s3_generator_target_control"][
+            "status"] == "PASS"
+        assert stage["verified_single_target_dlp"] is False
+        assert stage["complete_work_log2"] is None
+        if n == 53:
+            assert stage["relation"] is not None
+            assert stage["target_states_scanned"] == 49228
+        else:
+            assert stage["relation"] is None
+            assert stage["target_states_scanned"] == cap
+        rows.append({"variant": f"n{n}_native_root_stage",
+                     "receipt_sha256": sha(stage_path),
+                     "status": expected_status,
+                     "peak_rss_bytes": stage["peak_rss_bytes"]})
+        replay_path = HERE / "runs" / (
+            f"n{n}_native_root_independent_replay.json")
+        replay = json.loads(replay_path.read_text())
+        assert replay["status"] == "PASS"
+        assert replay["proposal_id"] == proposal
+        assert replay["parent_factor_base_proposal_id"] == parent
+        assert replay["curve_id"] == expected_curve
+        assert replay["workload_id"] == expected_workload
+        assert replay["native_stage_status"] == expected_status
+        assert replay["native_receipt_sha256"] == sha(stage_path)
+        assert replay["native_build_receipt_sha256"] == sha(
+            native_build_path)
+        assert replay["native_input_manifest_sha256"] == sha(
+            manifest_path)
+        assert replay["native_input_representatives_sha256"] == sha(
+            reps_path)
+        assert replay["stage_protocol_sha256"] == sha(
+            native_protocol_path)
+        assert replay["source_sha256"] == sha(
+            HERE / "verify_native_s3_root.py")
+        assert replay["ordinary_relation_independently_verified"] is (n == 53)
+        if n == 53:
+            assert replay["subgroup_points_checked"] == 4
+            assert replay["rank_of_native_and_matched_pair_rows"] == 2
+        else:
+            assert replay["censored_ordinary_query"] is True
+            assert replay["proves_target_unsupported"] is False
+        rows.append({"variant": f"n{n}_native_root_independent_replay",
+                     "receipt_sha256": sha(replay_path),
+                     "verified_relation_count": int(n == 53)})
     return rows
 
 

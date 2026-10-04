@@ -32,6 +32,10 @@ its ordinary n=83 query also remained censored.
 A full point-addition circuit then made the intermediate sums deterministic
 once all four leaf points were fixed. Its unassisted n=53 and n=83 queries
 also remained censored at 120 seconds.
+A subsequent native S3 root index recovered an unpinned ordinary n=53
+relation on the same exact base and public target. Its bounded n=83 run
+exhausted a 2,000,000-state cap without a relation. These are stage results;
+neither supplies a complete discrete-logarithm work exponent.
 
 ## Identity and comparable inputs
 
@@ -561,8 +565,9 @@ not a measured solver cost or a complete-solve projection.
 
 The complete n=131 work exponent remains **unknown**. The corrected,
 exact-base, selected and complete n=83 weight-five, and implicit projected-base
-SAT stages are censored; natural
-relation yield, novel rank, cost per useful row, final matrix solving, target
+SAT stages are censored. The native root search below verifies one n=53
+ordinary relation and an independent row, but its n=83 run is capped without
+a relation. Natural useful-row yield at n=83, final matrix solving, target
 descent, and independent scalar replay are absent. There is therefore no
 defensible complete-solve upper projection below \(2^{61}\), and the
 degree-131 challenge gate remains closed. Existing complete ECDLP claims
@@ -632,41 +637,86 @@ public targets, and all archived base representatives (227 at N53 and
 [N53](runs/n53_onb_poly_bridge_replay.json) and
 [N83](runs/n83_onb_poly_bridge_replay.json) receipts both pass; the
 [runtime record](bridge_sage_runtime_info.json) was saved before the jobs.
-The artifact audit now validates 83 receipts.
+The artifact audit now validates 91 receipts including the native stage.
 
-This bridge enables a native root-search implementation on the same frozen
-inputs; it is **not** a measured decomposition. A full pair-root index scales
+The bridge itself is a field-conversion control. A full pair-root index scales
 roughly as \(K^2n\) states: about 2.7 million for Q1301's 227 columns at
 N53, but about 2.9 trillion for Q1325's 186,612 columns at N83. The N83
-solver therefore needs a bounded or streaming search, with counted work and
-memory, before it can support a scaling claim.
+solver therefore uses a bounded search. Its cap covers only a small part of
+that state space.
+
+## Q1327/Q1328 bounded native S3 root search
+
+The [stage protocol](q1327_q1328_native_root_protocol.json) gives the native
+`PDP4root` solver its own proposal IDs. Q1327 reuses Q1301's exact N53 base;
+Q1328 reuses Q1325's exact N83 base. Both retain their original EC1 curve
+IDs, public targets, workload IDs, and `isogeny: "none"`. Their
+`candidate_id` and `run_id` remain `null` because the full IC pipeline is
+not specified or measured. The [exporter](export_native_root_inputs.py)
+converts the exact archived orbit representatives through the verified
+field bridge; the [native source](native_s3_root.rs) indexes S3 roots in an
+open-addressing table and tests one target-seeded Frobenius orientation per
+state. All four signs are tested on a table hit.
+
+| Proposal | Exact base B / K | Indexed pair states | Target states scanned | Target PDP and native check | Peak RSS | Ordinary result |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Q1327 N53 | 24,062 / 227 | 2,731,037 (complete) | 49,228 | 0.103 s | 285 MB | one relation, independently verified |
+| Q1328 N83 | 30,977,592 / 186,612 | 2,000,000 (capped) | 2,000,000 | 9.169 s | 755 MB | no relation under this cap |
+
+Index preparation was target independent and took 2.711 s at N53 and
+4.819 s at N83, including the N83 representative-shift table. The native
+[N53](runs/n53_native_root_full.json) and
+[N83](runs/n83_native_root_capped_2m.json) receipts retain separate setup,
+index, and target-dependent operation counts. N53's target work includes
+**98,455 S3 calls, 787,654 top-level field multiplications, 98,462
+top-level inversions**, all failed probes before the match, and the native
+four-point check. The N83 target spent **4,000,000 S3 calls, 32,000,000
+top-level multiplications, and 4,000,000 top-level inversions**. These
+counts are not yet calibrated into one field-operation-equivalent unit; the
+reported wall times are exploratory because this host lacks an isolation
+receipt. Neither row is a single-target IC or rho speedup measurement.
+
+Independent checked-Sage [N53 replay](runs/n53_native_root_independent_replay.json)
+checks every leaf against the exact signed-Frobenius base and subgroup,
+re-adds the four points to the frozen public target, derives the quotient
+relation row, and finds rank **2** for that row paired with the existing
+matched pair-table row. The [N83 replay](runs/n83_native_root_independent_replay.json)
+checks a native generator-plus-target S3 control and the source-bound cap;
+it records the no-hit result as censored. It does not prove that the public
+target lacks a four-point representation. The N83 cap is only
+\(2{,}000{,}000/(186{,}612^2\cdot83)\approx6.92\times10^{-7}\) of the
+full quotient pair-state count.
+
+Conditionally applying Q1303's estimated N131 W≤6 column count to this
+**full-index design** gives about \(2^{56.20}\) pair states before target
+queries. Applying the observed nondegenerate kernel's eight multiplication
+calls and one inversion call per state gives about \(2^{59.20}\) top-level
+multiplications plus \(2^{56.20}\) top-level inversions for index construction
+alone. This conditional arithmetic count excludes batch inversion and other
+root kernels. It is not a calibrated N131 operation-equivalent cost, a bound
+on other solvers, or a complete \(2^x\) solve projection. The actual N131
+base count and digest remain unknown.
 
 ## Next goal
 
-The next useful goal is a **bounded native root-search stage with an
-independently verified, unassisted ordinary four-point relation and a charged
-work receipt**. Use the exact bridge above and Q1301 N53 base to recover the
-known-satisfiable frozen ordinary target without pinning any leaf. Charge
-every attempt, compare the same public point with the matched pair table,
-and independently verify all four signed subgroup points. Then run the same
-algorithm on the complete Q1325 N83 base and frozen ordinary target with a
-declared work and memory cap. Preserve a censored result if it does not
-recover a relation; use a separate known-satisfiable unpinned control to
-distinguish search failure from lack of support.
+The next gate is an **unpinned N83 four-point relation on the exact Q1325
+base from a search that avoids the full \(K^2n\) index**. First replay an
+N83 known-satisfiable target with all leaves free under the same bounded
+solver; the current generator-plus-target S3 control checks arithmetic but
+does not show four-leaf search success at N83. Then run frozen ordinary
+single-target workloads under identical operation and memory limits,
+retaining all zero-yield cells and independently verifying any relations.
+The design needs measurable useful-row yield and novel rank per query,
+including failed attempts. Merely increasing the current sampled index cap
+cannot justify extrapolation to its 2.9-trillion-state N83 full index.
 
-The work receipt should count field multiplications, squarings, inversions,
-point additions, basis conversions, root attempts, and memory peak as well
-as target-dependent wall time. Q1326 shows that shrinking the leaf list
-alone is insufficient. A full N83 pair-root index is far beyond a practical
-memory cap, and the pure pair-index N131 screen is already unfavorable under
-its assumptions. A bounded partial-leaf or hybrid root search must show
-its own scaling and natural relation yield. Freeze repeated ordinary inputs
-and comparable limits before fitting an N131 stage exponent; report failures
-and zero-yield cells. Only then add factor-base construction, final matrix
-rank and solve, target descent, and scalar replay to a complete \(2^x\)
-ledger. Keep \(x\) unknown until every required term is measured or bounded.
-A challenge run is justified only if the **complete** fitted cost is
-credibly below \(2^{61}\) in a named operation unit.
+After that, freeze an exact or certified N131 base and calibrate inversion,
+multiplication, conversion, hashing, and point costs in a common operation
+unit. Add base construction, relation collection, final matrix rank and
+solve, target descent, and scalar replay to a complete \(2^x\) ledger.
+Keep \(x\) unknown until every required term is measured or bounded. A
+challenge run is justified only if the **complete** fitted cost is
+credibly below \(2^{61}\).
 
 ## Reproduction
 
@@ -687,6 +737,10 @@ From this repository worktree, first save checked runtime information:
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/derive_onb_poly_bridge.py --n 83 --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_onb_poly_bridge.py --n 53 --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_onb_poly_bridge.py --n 83 --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/export_native_root_inputs.py --n 53 --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/export_native_root_inputs.py --n 83 --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 53 --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 83 --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```

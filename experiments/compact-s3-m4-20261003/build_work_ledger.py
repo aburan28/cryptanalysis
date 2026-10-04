@@ -858,11 +858,100 @@ def main():
             "all_basis_products_checked": n * n,
             "factor_base_representatives_checked": replay[
                 "factor_base_representatives_checked_on_polynomial_curve"],
-            "native_root_solver_invoked": False,
-            "native_root_solver_field_operations": None,
+            "native_root_solver_invoked": True,
+            "native_root_stage_proposal_id": (
+                "Q1327" if n == 53 else "Q1328"),
+            "native_root_solver_field_operation_equivalent_cost": None,
+            "native_root_top_level_operation_counts_recorded_below": True,
             "bridge_receipt_sha256": sha(bridge_path),
             "independent_replay_receipt_sha256": sha(replay_path),
         })
+    native_protocol_path = HERE / "q1327_q1328_native_root_protocol.json"
+    native_protocol = json.loads(native_protocol_path.read_text())
+    assert native_protocol["candidate_id"] is None
+    assert native_protocol["point_decomposition"]["stage_code"] == (
+        "PDP4root")
+    native_build_path = HERE / "native_build_receipt.json"
+    native_build = json.loads(native_build_path.read_text())
+    assert native_build["status"] == "PASS"
+    assert native_build["source_sha256"] == sha(
+        HERE / "native_s3_root.rs")
+    native_root_stages = []
+    for n, expected_status in ((53, "native_relation_found"),
+                               (83, "state_cap_no_relation")):
+        profile = next(row for row in native_protocol["profiles"]
+                       if row["field_degree"] == n)
+        manifest_path = HERE / "native_inputs" / f"n{n}_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        reps_path = HERE / "native_inputs" / f"n{n}_x_representatives.bin"
+        stage_path, stage = read(
+            "n53_native_root_full.json" if n == 53
+            else "n83_native_root_capped_2m.json")
+        replay_path, replay = read(
+            f"n{n}_native_root_independent_replay.json")
+        assert manifest["stage_protocol_sha256"] == sha(
+            native_protocol_path)
+        assert manifest["representatives_file_sha256"] == sha(reps_path)
+        assert manifest["proposal_id"] == stage["proposal_id"]
+        assert stage["proposal_id"] == replay["proposal_id"]
+        assert replay["proposal_id"] == profile["proposal_id"]
+        assert stage["status"] == replay[
+            "native_stage_status"] == expected_status
+        assert stage["native_source_sha256"] == native_build[
+            "source_sha256"]
+        assert stage["cargo_manifest_sha256"] == native_build[
+            "cargo_manifest_sha256"]
+        assert replay["native_receipt_sha256"] == sha(stage_path)
+        assert replay["native_build_receipt_sha256"] == sha(
+            native_build_path)
+        assert replay["ordinary_relation_independently_verified"] is (
+            n == 53)
+        assert stage["complete_work_log2"] is None
+        assert stage["verified_single_target_dlp"] is False
+        native_root_stages.append({
+            "proposal_id": profile["proposal_id"],
+            "parent_factor_base_proposal_id": profile[
+                "parent_factor_base_proposal_id"],
+            "candidate_id": None,
+            "run_id": None,
+            "curve_id": stage["curve_id"],
+            "workload_id": stage["workload_id"],
+            "field_degree": n,
+            "actual_usable_points_B": stage["actual_usable_points_B"],
+            "folded_columns_K": stage["folded_columns_K"],
+            "status": expected_status,
+            "index_pair_states_examined": stage[
+                "index_pair_states_examined"],
+            "target_states_scanned": stage["target_states_scanned"],
+            "index_distinct_root_keys": stage[
+                "index_distinct_root_keys"],
+            "target_table_hits": stage["target_table_hits"],
+            "target_pdp_and_native_check_wall_seconds_exploratory": (
+                int(stage["timing_ns"]["target_pdp_and_native_check"]) / 1e9),
+            "target_independent_setup_and_index_wall_seconds_exploratory": (
+                (int(stage["timing_ns"]["setup"]) +
+                 int(stage["timing_ns"]["index_build"])) / 1e9),
+            "peak_rss_bytes": stage["peak_rss_bytes"],
+            "memory_cap_bytes": stage["limits"]["peak_rss_cap_bytes"],
+            "operation_counts_by_phase": stage["operation_counts"],
+            "index_hash_probes": stage["root_table_hash_probes"][
+                "index_insert_and_rehash"],
+            "target_hash_probes": stage["root_table_hash_probes"][
+                "target_lookup"],
+            "verified_ordinary_relation_count": int(n == 53),
+            "observed_rank_of_native_and_matched_pair_rows": (
+                replay["rank_of_native_and_matched_pair_rows"]
+                if n == 53 else None),
+            "natural_relation_yield_rate_estimate": None,
+            "common_field_operation_equivalent_calibration": None,
+            "verified_single_target_dlp": False,
+            "complete_solve_work_log2": None,
+            "source_bound_native_receipt_sha256": sha(stage_path),
+            "independent_replay_receipt_sha256": sha(replay_path),
+            "native_input_manifest_sha256": sha(manifest_path),
+        })
+    conditional_root_states131 = n131_sample[
+        "conditional_folded_columns_estimate"] ** 2 * 131
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -1048,6 +1137,34 @@ def main():
         },
         "q1326_protocol_sha256": sha(q1326_protocol_path),
         "native_onb_polynomial_field_bridges": native_bridge_profiles,
+        "q1327_q1328_bounded_native_s3_root_stages": native_root_stages,
+        "q1327_q1328_native_root_protocol_sha256": sha(
+            native_protocol_path),
+        "native_s3_root_build_receipt_sha256": sha(native_build_path),
+        "degree131_conditional_full_s3_root_index_screen": {
+            "proposal_id": "Q1303",
+            "candidate_id": None,
+            "condition": "Q1303 W<=6 folded-column estimate and a complete K^2*n pair-root index like Q1327, without base or key collisions credited",
+            "folded_columns_estimate_not_exact": n131_sample[
+                "conditional_folded_columns_estimate"],
+            "pair_state_count_estimate": conditional_root_states131,
+            "pair_state_count_log2": math.log2(
+                conditional_root_states131),
+            "same_non_degenerate_root_kernel_assumption": (
+                "one S3 root call per pair state, with eight top-level field multiplications and one top-level inversion as observed on the N83 capped stage; excludes batch inversion and alternative root kernels"),
+            "conditional_index_field_mul_calls": (
+                8 * conditional_root_states131),
+            "conditional_index_field_mul_calls_log2": math.log2(
+                8 * conditional_root_states131),
+            "conditional_index_field_inv_calls": (
+                conditional_root_states131),
+            "conditional_index_field_inv_calls_log2": math.log2(
+                conditional_root_states131),
+            "full_index_memory_estimate_bytes": None,
+            "field_operation_equivalent_calibration": None,
+            "is_lower_bound_on_other_solver_families": False,
+            "is_complete_solve_projection": False,
+        },
         "n131_weight6_geometry_estimate": {
             "proposal_id": "Q1303",
             "candidate_id": None,
@@ -1141,7 +1258,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, full group-addition, reverse-link, and nested-sub-base encodings; Q1324's selected n83 weight-five base and Q1325's complete structured n83 weight-five base passed locked witness controls but their ordinary runs reached 120-second caps without models; Q1326's known-satisfiable restricted n53 planted target also hit one million conflicts unpinned; exact n53/n83 ONB-to-polynomial implementation bridges are verified but no native root solve has been measured; reverse-link arithmetic recovers the last n53 leaf with three oracle-pinned leaves but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "Q1327's native compact-S3 root index recovered one independently verified unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328's exact-base n83 ordinary run exhausted a 2,000,000-pair-state cap without a relation, covering only about 6.9e-7 of its full quotient pair-state space; older n53/n83 SAT variants remain censored, and Q1326's restricted known-satisfiable planted n53 target hit one million conflicts unpinned; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and one censored n83 run do not measure natural useful-row or novel-rank rates; top-level field inversion/multiplication calls lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,
