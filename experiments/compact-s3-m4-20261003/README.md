@@ -829,12 +829,55 @@ the one frozen target or a bound on target-adaptive or algebraic solvers.
 The screen is regenerated with
 `python3 experiments/compact-s3-m4-20261003/screen_q1331_target_coverage.py --check`.
 
+### Q1400 matched Q1325 quotient-pair comparator
+
+Q1400 is a separate `PDP4mitm` stage proposal on the **same exact**
+`EC1N83Ckb1h876c2921cb64` curve, Q1325 base
+(\(B=30{,}977{,}592\), \(K=186{,}612\), the same set digest), and ordinary
+public target as Q1331. Its [input exporter](export_q1400_pair_inputs.py)
+losslessly pads each 21-byte canonical point key into the 32-byte native
+record consumed by the [frozen group-law engine](native_q1400_pair_comparator.cpp).
+The [protocol](q1400_pair_protocol.json) fixes two million table descriptors
+and 16,384 query representatives, which expand to 2,719,744 signed target-
+side pair checks. The method and memory cap differ from Q1331, so its wall
+times are stage diagnostics, not a controlled solver speed comparison.
+
+The [ordinary run](runs/n83_q1400_pair_comparator.json) found **zero exact
+hits**. It recorded 258 Bloom positives, all rejected by exact replay.
+Target-dependent query plus exact replay took 0.634 s; target-independent
+native table construction took 0.407 s, native base loading 0.272 s, and
+peak RSS was 1,246,986,240 bytes. The checked-launcher base export cost was
+separately recorded, including startup. CPU wall times are exploratory on
+this unisolated ARM64 host. The run has no field-operation-equivalent count,
+verified relation, useful-row yield estimate, or complete DLP result.
+
+The separate [Q1401 planted control](runs/n83_q1401_pair_planted_native.json)
+passes only its public target and the same Q1325 base to the native engine.
+It returned one exact hit. [Independent checked-Sage replay](runs/n83_q1401_pair_planted_independent_replay.json)
+reconstructed all four subgroup/base points from the reported table/query
+positions, checked four distinct signed-Frobenius columns, and re-added them
+to the public target. The witness metadata stayed in the verifier's
+[fixture](runs/n83_q1401_pair_planted_fixture.json), outside the native
+input. This is a correctness control, not ordinary relation-yield evidence.
+
+For this *fixed* Q1400 rectangle, the table side contains at most \(2nM\)
+group pair points after sign and Frobenius folding, and the query side at
+most \(2nR\), where \(M=2{,}000{,}000\) table descriptors and
+\(R=16{,}384\) query representatives. Thus its support over a uniformly
+drawn nonidentity subgroup target is at most
+\((2nM)(2nR)/(r-1)=3.735\times10^{-10}\). This exact counting bound
+explains why the ordinary no-hit under this small cap is not a natural-yield
+measurement. It does not apply to a larger or target-adaptive rectangle.
+
 ## Next goal
 
 The next gate is an **ordinary N83 four-point relation on the exact Q1325
 base from a search that avoids both the full \(K^2n\) index and Q1331's
 fixed two-million-state support limit**. Q1329 has now
-validated the native search on an unpinned, known-satisfiable N83 target.
+validated the native S3 search on an unpinned, known-satisfiable N83 target;
+Q1401 has independently validated the quotient-pair search on the exact
+Q1325 base with a planted public target. Q1400's ordinary no-hit and tiny
+fixed-rectangle support bound leave ordinary relation yield unmeasured.
 Run frozen ordinary single-target workloads under identical operation and
 memory limits, retaining all zero-yield cells and independently verifying
 any relations.
@@ -881,6 +924,11 @@ From this repository worktree, first save checked runtime information:
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 53 --variant batch --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 83 --variant batch --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_n83_q1329_native_control.py --variant batch --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/export_q1400_pair_inputs.py --check
+python3 experiments/compact-s3-m4-20261003/build_q1400_pair_comparator.py --check
+python3 experiments/compact-s3-m4-20261003/run_q1400_pair_comparator.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/make_q1401_pair_control.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1401_pair_control.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```

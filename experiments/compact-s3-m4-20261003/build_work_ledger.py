@@ -7,6 +7,7 @@ import gzip
 import json
 import math
 import re
+from decimal import Decimal, localcontext
 from pathlib import Path
 
 from run_probe import HERE, sha
@@ -1220,6 +1221,65 @@ def main():
         "Q1327", "Q1330", "Q1328", "Q1331"]
     assert primitives["is_common_weighted_field_operation_unit"] is False
     assert primitives["is_complete_solve_projection"] is False
+    q1400_protocol_path = HERE / "q1400_pair_protocol.json"
+    q1400_protocol = json.loads(q1400_protocol_path.read_text())
+    q1400_input_path = HERE / "native_inputs/n83_q1400_pair_manifest.json"
+    q1400_input = json.loads(q1400_input_path.read_text())
+    q1400_build_path = HERE / "native_q1400_pair_build_receipt.json"
+    q1400_build = json.loads(q1400_build_path.read_text())
+    q1400_stage_path, q1400_stage = read("n83_q1400_pair_comparator.json")
+    q1331_run_path, q1331_run = read("n83_batch_root_capped_2m.json")
+    q1401_protocol_path = HERE / "q1401_pair_control_protocol.json"
+    q1401_protocol = json.loads(q1401_protocol_path.read_text())
+    q1401_fixture_path, q1401_fixture = read(
+        "n83_q1401_pair_planted_fixture.json")
+    q1401_stage_path, q1401_stage = read(
+        "n83_q1401_pair_planted_native.json")
+    q1401_replay_path, q1401_replay = read(
+        "n83_q1401_pair_planted_independent_replay.json")
+    assert q1400_protocol["proposal_id"] == q1400_input[
+        "proposal_id"] == q1400_build["proposal_id"] == q1400_stage[
+            "proposal_id"] == "Q1400"
+    assert q1400_protocol["curve_id"] == q1400_input[
+        "curve_id"] == q1400_stage["curve_id"] == q1331_stage["curve_id"]
+    assert q1400_protocol["workload_id"] == q1400_stage[
+        "workload_id"] == q1331_stage["workload_id"]
+    assert q1400_protocol["factor_base_enumerated_set_sha256"] == q1400_stage[
+        "factor_base_enumerated_set_sha256"] == q1331_run[
+            "factor_base_enumerated_set_sha256"]
+    assert q1400_stage["status"] == "no_exact_hit_at_cap"
+    assert q1400_stage["native_output"]["exact_hit_keys"] == 0
+    assert q1400_stage["matched_s3_stage_receipt_sha256"] == q1331_stage[
+        "stage_receipt_sha256"]
+    assert q1331_stage["stage_receipt_sha256"] == sha(q1331_run_path)
+    assert q1400_stage["stage_protocol_sha256"] == sha(q1400_protocol_path)
+    assert q1400_stage["input_manifest_sha256"] == sha(q1400_input_path)
+    assert q1400_stage["native_build_receipt_sha256"] == sha(q1400_build_path)
+    assert q1400_stage["source_sha256"] == sha(
+        HERE / "run_q1400_pair_comparator.py")
+    assert q1401_protocol["proposal_id"] == q1401_fixture[
+        "proposal_id"] == q1401_stage["proposal_id"] == q1401_replay[
+            "proposal_id"] == "Q1401"
+    assert q1401_protocol["parent_solver_proposal_id"] == "Q1400"
+    assert q1401_protocol["workload_id"] == q1401_fixture[
+        "workload_id"] == q1401_replay["workload_id"]
+    assert q1401_stage["status"] == "native_hit_pending_independent_replay"
+    assert q1401_replay["status"] == "PASS"
+    assert q1401_replay["verified_relation_count"] >= 1
+    assert all(hit["target_sum_verified"] and hit[
+        "four_distinct_signed_frobenius_columns"]
+               for hit in q1401_replay["verified_hits"])
+    assert q1401_replay["native_receipt_sha256"] == sha(q1401_stage_path)
+    assert q1401_replay["fixture_sha256"] == sha(q1401_fixture_path)
+    assert q1401_replay["source_sha256"] == sha(
+        HERE / "verify_q1401_pair_control.py")
+    q1400_pdp = q1400_protocol["point_decomposition"]
+    q1400_order = int(q1400_input["subgroup_order_r"])
+    q1400_support_cap = ((2 * 83 * q1400_pdp["table_descriptors"])
+                         * (2 * 83 * q1400_pdp["query_representatives"]))
+    with localcontext() as decimal_context:
+        decimal_context.prec = 35
+        q1400_coverage_text = f"{Decimal(q1400_support_cap) / Decimal(q1400_order - 1):.14E}"
     conditional_root_states131 = n131_sample[
         "conditional_folded_columns_estimate"] ** 2 * 131
     conditional_batch_count131 = (conditional_root_states131 + 4095) // 4096
@@ -1439,6 +1499,73 @@ def main():
             "rows": primitives["rows"],
             "receipt_sha256": sha(primitives_path),
         },
+        "q1400_matched_n83_q1325_native_pair_table_stage": {
+            "proposal_id": "Q1400",
+            "candidate_id": None,
+            "run_id": None,
+            "isogeny": "none",
+            "curve_id": q1400_stage["curve_id"],
+            "workload_id": q1400_stage["workload_id"],
+            "factor_base_actual_B": q1400_stage["factor_base_actual_B"],
+            "factor_base_folded_columns_K": q1400_stage[
+                "factor_base_folded_columns_K"],
+            "factor_base_enumerated_set_sha256": q1400_stage[
+                "factor_base_enumerated_set_sha256"],
+            "status": q1400_stage["status"],
+            "table_descriptors": q1400_stage["table_descriptors_charged"],
+            "target_lifted_pair_queries": q1400_stage[
+                "target_lifted_pair_queries_charged"],
+            "base_export_wall_ns_including_checked_launcher": q1400_stage[
+                "base_export_wall_ns_including_checked_launcher"],
+            "native_base_load_seconds_exploratory": q1400_stage[
+                "native_output"]["base_load_seconds"],
+            "table_build_seconds_exploratory": q1400_stage[
+                "native_output"]["build_seconds"],
+            "target_online_seconds_exploratory": q1400_stage[
+                "target_online_seconds_exploratory"],
+            "peak_rss_bytes": q1400_stage["peak_rss_bytes"],
+            "bloom_positives": q1400_stage["native_output"][
+                "bloom_positive_queries"],
+            "exact_hit_keys": q1400_stage["native_output"][
+                "exact_hit_keys"],
+            "verified_ordinary_relation_count": 0,
+            "natural_relation_yield_rate_estimate": None,
+            "cost_per_useful_relation": None,
+            "uniform_target_support_upper_bound_fixed_rectangle": {
+                "numerator_cap": q1400_support_cap,
+                "denominator": q1400_order - 1,
+                "probability_upper_bound": q1400_coverage_text,
+                "is_empirical_relation_yield": False,
+            },
+            "matched_s3_proposal_id": "Q1331",
+            "controlled_wall_speedup_claim_allowed": False,
+            "complete_solve_work_log2": None,
+            "protocol_sha256": sha(q1400_protocol_path),
+            "input_manifest_sha256": sha(q1400_input_path),
+            "build_receipt_sha256": sha(q1400_build_path),
+            "stage_receipt_sha256": sha(q1400_stage_path),
+        },
+        "q1401_n83_q1325_native_pair_planted_control": {
+            "proposal_id": "Q1401",
+            "parent_solver_proposal_id": "Q1400",
+            "candidate_id": None,
+            "run_id": None,
+            "isogeny": "none",
+            "curve_id": q1401_replay["curve_id"],
+            "workload_id": q1401_replay["workload_id"],
+            "status": q1401_replay["status"],
+            "native_exact_hit_keys": q1401_stage["native_output"][
+                "exact_hit_keys"],
+            "independently_verified_four_point_relation_count": q1401_replay[
+                "verified_relation_count"],
+            "is_natural_relation_yield_measurement": False,
+            "verified_single_target_dlp": False,
+            "complete_solve_work_log2": None,
+            "protocol_sha256": sha(q1401_protocol_path),
+            "fixture_sha256": sha(q1401_fixture_path),
+            "native_stage_receipt_sha256": sha(q1401_stage_path),
+            "independent_replay_receipt_sha256": sha(q1401_replay_path),
+        },
         "q1327_q1328_native_root_protocol_sha256": sha(
             native_protocol_path),
         "q1330_q1331_batch_root_protocol_sha256": sha(batch_protocol_path),
@@ -1584,7 +1711,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "Q1327 and Q1330 independently verified the same unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328 and Q1331 both exhausted the same 2,000,000-pair-state n83 ordinary cap without a relation, covering only about 6.9e-7 of the full quotient pair-state space; the exact fixed-state counting screen bounds uniform-target support of that cap by 9.12e-8 even with every Frobenius orientation, so this no-hit cannot estimate typical natural yield; Q1329 and Q1332 independently verified an unpinned n83 four-leaf relation on an index-aware planted target, but neither control estimates ordinary-query yield; older n53/n83 SAT variants remain censored; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and censored n83 ordinary runs do not measure natural useful-row or novel-rank rates; exact primitive mul/sqr call vectors now include inversions but conversions, hashing, memory and arithmetic types still lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
+            "reason_unestimated": "Q1327 and Q1330 independently verified the same unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328 and Q1331 both exhausted the same 2,000,000-pair-state n83 ordinary cap without a relation, covering only about 6.9e-7 of the full quotient pair-state space; the exact fixed-state counting screen bounds uniform-target support of that cap by 9.12e-8 even with every Frobenius orientation, so this no-hit cannot estimate typical natural yield; Q1400 also found no exact hit on the matched Q1325 ordinary target and its fixed quotient-pair rectangle covers at most 3.735e-10 of uniform targets; Q1329, Q1332, and Q1401 independently verified planted n83 four-leaf controls, but none estimates ordinary-query yield; older n53/n83 SAT variants remain censored; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and censored n83 ordinary runs do not measure natural useful-row or novel-rank rates; exact primitive mul/sqr call vectors now include inversions but conversions, hashing, memory and arithmetic types still lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,
