@@ -42,8 +42,10 @@ of Bailey et al. (so every distinguished point is compatible with theirs):
 | GTX 295 (2010) | 0.063 B | ePrint 2012/002 |
 
 Per card, that is about **280× the 2010 GPU**. Per SM clock cycle, one
-iteration went from roughly 1,180 cycles to about 25 (188 SMs at about 2.36 GHz). On the same GPU, native
-carry-less multiply beats 2009-style bitslicing by about 20×.
+iteration went from roughly 1,180 cycles to about 25 (188 SMs at about 2.36 GHz). On the same GPU, the
+packed design runs about 21× faster than a 2009-style bitsliced kernel. `clmad` is
+only part of that: on its own it bought 22%, and most of the rest came from the
+memory layout and batching it made possible.
 
 ## So what does it cost?
 
@@ -83,4 +85,5 @@ instruction.
 - [ ] Fix stale pages that contradict this post: `crypto/docs/performance-gains.html`
       and `crypto/hdl/ecc2k130/README.md` (the latter still says the GPU runs at 6.9 G/s).
 - [ ] Decide what to say about the live campaign, e.g. a public progress page.
-- [ ] Link the ePrint paper once it is posted.
+- [ ] Link the ePrint paper once it is posted. Revision 2 of the paper
+      (`docs/papers/ecc2k130-blackwell/`) now uses the same headline numbers.

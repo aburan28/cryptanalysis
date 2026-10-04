@@ -37,19 +37,32 @@ def contains_sorted_key(packed, key):
 
 
 def replay(variant="scalar"):
-    assert variant in ("scalar", "batch")
+    assert variant in ("scalar", "batch", "adaptive", "fast")
     started = time.perf_counter_ns()
     fixture_path = HERE / "runs/n83_q1329_planted_fixture.json"
     fixture = json.loads(fixture_path.read_text())
-    manifest_path = HERE / "native_inputs" / (
-        "n83_planted_control_manifest.json" if variant == "scalar"
-        else "n83_batch_planted_manifest.json")
+    manifest_name = {
+        "scalar": "n83_planted_control_manifest.json",
+        "batch": "n83_batch_planted_manifest.json",
+        "adaptive": "n83_adaptive_planted_manifest.json",
+        "fast": "n83_fast_planted_manifest.json",
+    }[variant]
+    manifest_path = HERE / "native_inputs" / manifest_name
     manifest = json.loads(manifest_path.read_text())
-    native_path = HERE / "runs" / (
-        "n83_q1329_planted_unpinned.json" if variant == "scalar"
-        else "n83_q1332_batch_planted_unpinned.json")
+    native_name = {
+        "scalar": "n83_q1329_planted_unpinned.json",
+        "batch": "n83_q1332_batch_planted_unpinned.json",
+        "adaptive": "n83_q1335_adaptive_planted_unpinned.json",
+        "fast": "n83_q1338_fast_planted_unpinned.json",
+    }[variant]
+    native_path = HERE / "runs" / native_name
     native = json.loads(native_path.read_text())
-    build_path = HERE / "native_build_receipt.json"
+    build_path = HERE / {
+        "scalar": "native_build_receipt.json",
+        "batch": "native_build_receipt.json",
+        "adaptive": "native_adaptive_build_receipt.json",
+        "fast": "native_fast_build_receipt.json",
+    }[variant]
     build = json.loads(build_path.read_text())
     bridge_path = HERE / "field_bridges/n83_onb_poly.json"
     bridge = json.loads(bridge_path.read_text())
@@ -67,12 +80,15 @@ def replay(variant="scalar"):
     assert fixture["ordinary_input_manifest_sha256"] == sha(ordinary_path)
     assert fixture["representatives_file_sha256"] == sha(reps_path)
     assert fixture["bridge_sha256"] == sha(bridge_path)
-    proposal = "Q1329" if variant == "scalar" else "Q1332"
+    proposal = {"scalar": "Q1329", "batch": "Q1332",
+                "adaptive": "Q1335", "fast": "Q1338"}[variant]
     assert fixture["proposal_id"] == "Q1329"
     assert manifest["proposal_id"] == native["proposal_id"] == proposal
     assert fixture["parent_solver_proposal_id"] == "Q1328"
-    assert manifest["parent_solver_proposal_id"] == (
-        "Q1328" if variant == "scalar" else "Q1331")
+    assert manifest["parent_solver_proposal_id"] == {
+        "scalar": "Q1328", "batch": "Q1331", "adaptive": "Q1334",
+        "fast": "Q1337",
+    }[variant]
     assert fixture["parent_factor_base_proposal_id"] == manifest[
         "parent_factor_base_proposal_id"] == "Q1325"
     assert fixture["candidate_id"] is manifest["candidate_id"] is None
@@ -100,13 +116,16 @@ def replay(variant="scalar"):
     assert fixture["solver_receives_witness_or_index_positions"] is False
     assert fixture["is_natural_yield_measurement"] is False
     assert manifest["target_source_receipt_sha256"] == sha(fixture_path)
-    protocol_path = (fixture_path if variant == "scalar"
-                     else HERE / "q1332_batch_planted_control_protocol.json")
+    protocol_path = (fixture_path if variant == "scalar" else HERE / {
+        "batch": "q1332_batch_planted_control_protocol.json",
+        "adaptive": "q1333_q1334_adaptive_window_protocol.json",
+        "fast": "q1336_q1337_fast_root_protocol.json",
+    }[variant])
     assert manifest["stage_protocol_sha256"] == native[
         "stage_protocol_sha256"] == sha(protocol_path)
     if variant == "scalar":
         assert manifest["source_sha256"] == fixture["source_sha256"]
-    else:
+    elif variant == "batch":
         protocol = json.loads(protocol_path.read_text())
         assert protocol["proposal_id"] == proposal
         assert protocol["parent_solver_proposal_id"] == "Q1331"
@@ -118,16 +137,59 @@ def replay(variant="scalar"):
         assert manifest["planted_fixture_sha256"] == sha(fixture_path)
         assert manifest["parent_manifest_sha256"] == sha(
             HERE / "native_inputs/n83_planted_control_manifest.json")
+    elif variant == "adaptive":
+        protocol = json.loads(protocol_path.read_text())
+        control = protocol["planted_control"]
+        assert control["proposal_id"] == proposal
+        assert control["parent_solver_proposal_id"] == "Q1334"
+        assert control["target_count"] == manifest["target_count"] == 1
+        assert control["target_s3_window_schedule"] == manifest[
+            "target_s3_window_schedule"] == [1, 16, 64, 256, 1024, 4096]
+        assert control["parent_input_manifest_sha256"] == sha(
+            HERE / "native_inputs/n83_batch_planted_manifest.json")
+        assert protocol["native_source_sha256"] == sha(
+            HERE / "native_s3_root_adaptive.rs")
+        assert manifest["source_sha256"] == sha(
+            HERE / "freeze_adaptive_window_protocol.py")
+    elif variant == "fast":
+        protocol = json.loads(protocol_path.read_text())
+        control = protocol["planted_control"]
+        assert control["proposal_id"] == proposal
+        assert control["parent_solver_proposal_id"] == "Q1337"
+        assert control["target_count"] == manifest["target_count"] == 1
+        assert control["target_s3_window_schedule"] == manifest[
+            "target_s3_window_schedule"] == [1, 16, 64, 256, 1024, 4096]
+        adaptive_manifest_path = HERE / "native_inputs/n83_adaptive_planted_manifest.json"
+        assert manifest["parent_adaptive_input_manifest_sha256"] == sha(
+            adaptive_manifest_path)
+        assert protocol["native_source_sha256"] == sha(
+            HERE / "native_s3_root_fast.rs")
+        assert manifest["source_sha256"] == sha(
+            HERE / "freeze_fast_root_protocol.py")
     assert native["input_representatives_sha256"] == sha(reps_path)
-    build_source = HERE / "native_s3_root.rs"
+    build_source = HERE / {
+        "scalar": "native_s3_root.rs",
+        "batch": "native_s3_root.rs",
+        "adaptive": "native_s3_root_adaptive.rs",
+        "fast": "native_s3_root_fast.rs",
+    }[variant]
     assert native["native_source_sha256"] == build[
         "source_sha256"] == sha(build_source)
+    assert build["build_script_sha256"] == sha(HERE / (
+        "build_native_s3_root.py" if variant in ("scalar", "batch") else
+        "build_native_s3_root_adaptive.py" if variant == "adaptive" else
+        "build_native_s3_root_fast.py"))
     assert native["cargo_manifest_sha256"] == build[
         "cargo_manifest_sha256"]
     assert native["sampling"]["orientations_per_state"] == manifest[
         "orientations_per_state"] == 83
-    assert native["s3_batch_size"] == (
-        1 if variant == "scalar" else 4096)
+    if variant in ("adaptive", "fast"):
+        assert manifest["index_s3_window_size"] == 4096
+        assert native["index_s3_window_size"] == 4096
+        assert "s3_batch_size" not in manifest
+    else:
+        assert native["s3_batch_size"] == (
+            1 if variant == "scalar" else 4096)
     assert native["index_pair_states_examined"] == 2_000_000
     assert native["target_states_scanned"] == 1
     assert 1 <= native["target_state_orientations_tested"] <= 83
@@ -143,6 +205,26 @@ def replay(variant="scalar"):
             "target_states_scanned"]
         assert native["target_state_orientations_tested"] == unbatched[
             "target_state_orientations_tested"]
+    if variant in ("adaptive", "fast"):
+        assert native["target_s3_window_schedule"] == manifest[
+            "target_s3_window_schedule"]
+        assert native["target_states_prepared"] == 1
+        assert native["target_state_orientations_prepared"] == 83
+        assert native["target_state_orientations_tested"] == 34
+        assert native["target_root_windows"] == 1
+        scalar_path = HERE / "runs/n83_q1329_planted_unpinned.json"
+        scalar = json.loads(scalar_path.read_text())
+        assert native["relation"] == scalar["relation"]
+        if variant == "fast":
+            adaptive_path = HERE / "runs/n83_q1335_adaptive_planted_unpinned.json"
+            adaptive = json.loads(adaptive_path.read_text())
+            assert native["target_states_scanned"] == adaptive[
+                "target_states_scanned"] == 1
+            assert native["target_states_prepared"] == adaptive[
+                "target_states_prepared"] == 1
+            assert native["target_state_orientations_tested"] == adaptive[
+                "target_state_orientations_tested"] == 34
+            assert native["relation"] == adaptive["relation"]
 
     canonical = json.dumps(fixture["workload_record"], sort_keys=True,
                            separators=(",", ":"), ensure_ascii=False).encode()
@@ -241,18 +323,48 @@ def replay(variant="scalar"):
             "batch_protocol_sha256": sha(protocol_path),
             "matched_unbatched_relation_receipt_sha256": sha(unbatched_path),
         })
+    if variant == "adaptive":
+        result.update({
+            "target_count": 1,
+            "target_s3_window_schedule": manifest[
+                "target_s3_window_schedule"],
+            "target_states_prepared": native["target_states_prepared"],
+            "target_state_orientations_prepared": native[
+                "target_state_orientations_prepared"],
+            "target_root_windows": native["target_root_windows"],
+            "adaptive_protocol_sha256": sha(protocol_path),
+            "matched_window_1_relation_receipt_sha256": sha(scalar_path),
+        })
+    if variant == "fast":
+        adaptive_path = HERE / "runs/n83_q1335_adaptive_planted_unpinned.json"
+        result.update({
+            "target_count": 1,
+            "target_s3_window_schedule": manifest[
+                "target_s3_window_schedule"],
+            "target_states_prepared": native["target_states_prepared"],
+            "target_state_orientations_prepared": native[
+                "target_state_orientations_prepared"],
+            "target_root_windows": native["target_root_windows"],
+            "target_field_multiplications": native["operation_counts"][
+                "target_pdp_and_native_check"]["field_mul_calls"],
+            "fast_protocol_sha256": sha(protocol_path),
+            "matched_adaptive_relation_receipt_sha256": sha(adaptive_path),
+        })
     return result
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--variant", choices=("scalar", "batch"),
+    parser.add_argument("--variant", choices=("scalar", "batch", "adaptive",
+                                                "fast"),
                         default="scalar")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    path = HERE / "runs" / (
-        "n83_q1329_planted_independent_replay.json"
-        if args.variant == "scalar" else
-        "n83_q1332_batch_planted_independent_replay.json")
+    path = HERE / "runs" / {
+        "scalar": "n83_q1329_planted_independent_replay.json",
+        "batch": "n83_q1332_batch_planted_independent_replay.json",
+        "adaptive": "n83_q1335_adaptive_planted_independent_replay.json",
+        "fast": "n83_q1338_fast_planted_independent_replay.json",
+    }[args.variant]
     report = replay(args.variant)
     if args.check:
         expected = json.loads(path.read_text())
