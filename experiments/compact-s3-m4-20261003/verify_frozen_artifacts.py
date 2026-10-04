@@ -2687,6 +2687,90 @@ def verify():
     rows.append({"variant": "q1407_compact_s3_formula_shape",
                  "receipt_sha256": sha(q1407_path),
                  "is_natural_yield_measurement": False})
+    q1412_protocol_path = HERE / "q1412_ordered_balanced_n53_protocol.json"
+    q1412_protocol = json.loads(q1412_protocol_path.read_text())
+    q1412_runtime_path = HERE / "q1412_sage_runtime_info.json"
+    assert json.loads(q1412_runtime_path.read_text())["status"] == "verified"
+    assert q1412_protocol["proposal_id"] == "Q1412"
+    assert q1412_protocol["candidate_id"] is None
+    assert q1412_protocol["isogeny"] == "none"
+    assert q1412_protocol["parent_solver_proposal_id"] == "Q1410"
+    assert q1412_protocol["q1410_protocol_sha256"] == sha(q1410_protocol_path)
+    for name in ("curve_id", "factor_base_actual_B",
+                 "factor_base_folded_columns",
+                 "factor_base_enumerated_set_sha256",
+                 "ordinary_workload_id", "ordinary_witness_sha256"):
+        assert q1412_protocol[name] == q1410_protocol[name]
+    for source, digest in q1412_protocol["source_sha256"].items():
+        assert digest == sha(HERE.parents[1] / source)
+    for mode, expected_status, expected_hits in (
+        ("witness_locked", "sat", 1),
+        ("ordinary", "censored", 0),
+    ):
+        stem = f"n53_q1412_{mode}"
+        path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(path.read_text())
+        assert receipt["proposal_id"] == "Q1412"
+        assert receipt["candidate_id"] is receipt["run_id"] is None
+        assert receipt["curve_id"] == q1412_protocol["curve_id"]
+        assert receipt["mode"] == mode
+        assert receipt["status"] == expected_status
+        assert receipt["observed_verified_relation_count"] == expected_hits
+        assert receipt["protocol_sha256"] == sha(q1412_protocol_path)
+        assert receipt["runtime_info_sha256"] == sha(q1412_runtime_path)
+        assert receipt["source_sha256"] == q1412_protocol["source_sha256"]
+        assert receipt["complete_solve_work_log2"] is None
+        assert receipt["raw_preimage_count"] == 428
+        assert len(receipt["attempts"]) == 1
+        attempt = receipt["attempts"][0]
+        assert attempt["status"] == expected_status
+        assert attempt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.attempt0.stdout.txt")
+        assert attempt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.attempt0.stderr.txt")
+        formula_digest = hashlib.sha256()
+        formula_bytes = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                formula_digest.update(chunk)
+                formula_bytes += len(chunk)
+        assert formula_digest.hexdigest() == attempt["xcnf_sha256"]
+        assert formula_bytes == attempt["xcnf_bytes"]
+        if mode == "ordinary":
+            assert receipt["workload_id"] == q1412_protocol[
+                "ordinary_workload_id"]
+            assert attempt["solver_conflicts_reported"] > 1_000_000
+            assert math.isclose(
+                receipt["target_dependent_stage_wall_seconds"],
+                receipt["target_preimage_wall_seconds"]
+                + receipt["target_pdp_wall_seconds"]
+                + receipt["target_relation_check_wall_seconds"],
+                rel_tol=0, abs_tol=1e-9)
+        else:
+            assert receipt["workload_id"] is None
+            assert attempt["four_distinct_columns"] is True
+        rows.append({"variant": stem, "receipt_sha256": sha(path),
+                     "formula_sha256": formula_digest.hexdigest(),
+                     "is_natural_yield_measurement": False})
+    q1412_replay_path = HERE / "runs/n53_q1412_ordered_control_replay.json"
+    q1412_replay = json.loads(q1412_replay_path.read_text())
+    assert q1412_replay["status"] == "PASS"
+    assert q1412_replay["proposal_id"] == "Q1412"
+    assert q1412_replay["locked_control_distinct_columns"] == 4
+    assert q1412_replay["ordinary_relation_count"] == 0
+    assert q1412_replay["source_sha256"] == sha(
+        HERE / "verify_q1412_n53_ordered.py")
+    from build_q1412_stage_comparison import build as build_q1412_comparison
+    q1412_comparison_path = HERE / "runs/n53_q1410_q1412_named_stage_comparison.json"
+    assert json.loads(q1412_comparison_path.read_text()) == build_q1412_comparison()
+    for variant, path in (
+        ("q1412_ordered_balanced_protocol", q1412_protocol_path),
+        ("q1412_checked_sage_runtime", q1412_runtime_path),
+        ("q1412_independent_control_replay", q1412_replay_path),
+        ("q1410_q1412_named_stage_comparison", q1412_comparison_path),
+    ):
+        rows.append({"variant": variant, "receipt_sha256": sha(path),
+                     "is_natural_yield_measurement": False})
     from screen_q1405_m5_chain import build as build_q1405_screen
     q1405_screen_path = HERE / "runs/n83_n131_q1405_m5_chain_screen.json"
     q1405_screen = json.loads(q1405_screen_path.read_text())
