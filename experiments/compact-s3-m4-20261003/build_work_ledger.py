@@ -3181,6 +3181,91 @@ def main():
         assert item["folded_columns_K"] == screen["folded_columns_K"]
         assert item["factor_base_enumerated_set_sha256"] == screen[
             "factor_base_enumerated_set_sha256"]
+    q1430_dir = HERE / "q1430_partial_trail"
+    q1430_protocol_path = q1430_dir / "protocol.json"
+    q1430_audit_path = q1430_dir / "audit_verification.json"
+    q1430_protocol = json.loads(q1430_protocol_path.read_text())
+    q1430_audit = json.loads(q1430_audit_path.read_text())
+    assert q1430_protocol["proposal_id"] == q1430_audit[
+        "proposal_id"] == "Q1430"
+    assert q1430_protocol["candidate_id"] is q1430_audit[
+        "candidate_id"] is None
+    assert q1430_protocol["isogeny"] == "none"
+    assert q1430_protocol["matched_q1427_protocol_sha256"] == sha(
+        q1427_protocol_path)
+    assert q1430_protocol["q1429_protocol_sha256"] == sha(
+        q1429_protocol_path)
+    assert q1430_audit["protocol_sha256"] == sha(q1430_protocol_path)
+    assert q1430_audit["verifier_source_sha256"] == sha(
+        q1430_dir / "audit_archive.py")
+    assert q1430_audit["frozen_verifier_source_sha256"] == (
+        q1430_protocol["source_sha256"]["verify_archive.py"])
+    assert q1430_audit["complete"] is True
+    assert q1430_audit["missing"] == []
+    q1430_cells = []
+    for key in q1430_protocol["run_order"]:
+        workload = q1430_protocol["workloads"][key]
+        receipt_path = q1430_dir / "runs" / key / "receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        check = next(row for row in q1430_audit["checks"]
+                     if row["key"] == key)
+        assert check["receipt_sha256"] == sha(receipt_path)
+        assert receipt["proposal_id"] == "Q1430"
+        assert receipt["candidate_id"] is None
+        assert receipt["isogeny"] == "none"
+        assert receipt["protocol_sha256"] == sha(q1430_protocol_path)
+        assert receipt["stage_run_id"] == workload["stage_run_id"]
+        assert receipt["workload_id"] == workload["workload_id"]
+        assert receipt["factor_base_actual_B"] == workload[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == workload["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == workload[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["complete_solve_work_log2"] is None
+        report = receipt["solver_report"]
+        assert report is not None
+        q1430_cells.append({
+            "key": key,
+            "degree_n": receipt["degree_n"],
+            "cell": receipt["cell"],
+            "curve_id": receipt["curve_id"],
+            "factor_base_actual_B": receipt["factor_base_actual_B"],
+            "folded_columns_K": receipt["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": receipt[
+                "factor_base_enumerated_set_sha256"],
+            "workload_id": receipt["workload_id"],
+            "stage_run_id": receipt["stage_run_id"],
+            "solver_status": receipt["solver_status"],
+            "stop_reason": report["stop_reason"],
+            "verified_relation_count": receipt[
+                "verified_relation_count"],
+            "both_partial_mid1_notification_events": report[
+                "both_partial_mid1_events"],
+            "weight_unsaturated_notification_events": report[
+                "unsaturated_mid1_events"],
+            "screen_window_notification_events": report[
+                "screen_window_events"],
+            "first_distinct_states_retained_capped": report[
+                "screen_window_distinct_capped"],
+            "first_snapshots_span_checked": check[
+                "sampled_span_checks"],
+            "first_snapshots_span_rejected": check[
+                "sampled_span_rejections"],
+            "reverse_pair1_calls": report["reverse_pair1_calls"],
+            "field_mul_calls": report["field_mul_calls"],
+            "field_sqr_calls": report["field_sqr_calls"],
+            "field_inv_calls": report["field_inv_calls"],
+            "solver_process_wall_seconds_exploratory": receipt[
+                "solver_process_wall_seconds_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["solver_status"] for row in q1430_cells] == [
+        "sat", "censored", "sat", "censored"]
+    assert [row["verified_relation_count"] for row in q1430_cells] == [
+        1, 0, 1, 0]
+    assert [row["first_snapshots_span_rejected"] for row in q1430_cells] == [
+        0, 16, 0, 16]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -4082,6 +4167,40 @@ def main():
                 "queries; no complete-work projection follows."),
             "protocol_sha256": sha(q1429_protocol_path),
             "result_sha256": sha(q1429_result_path),
+        },
+        "q1430_actual_partial_trail_observation": {
+            "proposal_id": "Q1430",
+            "candidate_id": None,
+            "isogeny": "none",
+            "controlled_variable": (
+                "observation-only counters and first 16 partial-state "
+                "snapshots on the exact Q1427 CNF, ordinary targets, "
+                "factor bases, decision order, and 60-second limits"),
+            "cells": q1430_cells,
+            "is_empirical_solver_stage_measurement": True,
+            "is_controlled_cpu_wall_speedup": False,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "Both archived known-witness controls verify; both "
+                "ordinary searches remain censored with no relation. "
+                "Within their respective 60-second caps, N53 and N83 "
+                "record 207,522 and 81,765 notification events in which "
+                "both second-pair leaves are partial with 1-2 weight "
+                "units left and at most 14/20 free bits each. These are "
+                "events, not distinct states or independent samples. "
+                "An independent post-run audit applies the sound Q1428 "
+                "span check to the first 16 saved distinct states per "
+                "ordinary cell and rejects all 16 in each. The frozen "
+                "verifier had a Boolean-parentheses typo, preserved in "
+                "the preregistered source; the separate audit fixes only "
+                "verification. This establishes filter reachability, "
+                "not net savings, natural yield, a solve-growth exponent, "
+                "or complete N131 work. The next gate is a guarded "
+                "span propagator with charged field work on matched "
+                "ordinary N53/N83 queries."),
+            "protocol_sha256": sha(q1430_protocol_path),
+            "audit_verification_sha256": sha(q1430_audit_path),
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
