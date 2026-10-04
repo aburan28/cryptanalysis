@@ -78,14 +78,17 @@ cost of an unpinned ordinary query. No ordinary N83 relation was found.
 
 ## Next solver gate
 
-Eliminate each pair-intermediate SAT search by solving the fixed-pair
-`S3(x1,x2,z)=0` quadratic in the field and branching explicitly over its
-roots. The first correctness gate is the same frozen known-satisfiable
-N53/N83 controls with all pair intermediates free. Then require an unpinned
+Test an **external S3 root propagator** during free-leaf search: when a leaf
+pair becomes fixed, call the existing exact field root oracle and pass its
+zero or two possible pair-intermediate coordinates back to the solver. The
+new ingredient is coupling those field roots to leaf search without the
+Boolean inverse/half-trace circuit of Q1319 or the target-independent
+`K²n` pair index of Q1327/Q1328. The first correctness gate is the frozen
+N53/N83 known-satisfiable `free_mids` controls. Then require an unpinned
 ordinary N53 relation, followed by at least one ordinary N83 four-point
 relation on exact Q1325 W≤5. Preserve every failed query and operation count,
 independently replay the N83 relation, and measure useful-row and novel-rank
-rates on fresh ordinary targets. Pair the N53/N83 costs with the existing
-pair-table stages on the same curves, targets and base policies. A degree-131
-`2^x` fit remains unknown until those rates and all setup, matrix, descent,
-and replay costs are present in one calibrated unit.
+rates on fresh ordinary targets. Pair the N53/N83 costs with Q1319 and the
+native root and pair-table stages on matched curves, targets and bases. A
+degree-131 `2^x` fit remains unknown until those rates and all setup, matrix,
+descent, and replay costs are present in one calibrated unit.

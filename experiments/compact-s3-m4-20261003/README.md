@@ -1365,16 +1365,20 @@ degree-131 work exponent remains unknown.
 
 ## Next goal
 
-The next experiment should replace the pair-intermediate Boolean search in
-the four-summand balanced-S3 chain with exact field quadratic-root branching.
-First recover the frozen N53/N83 known-satisfiable controls with the pair
-intermediates free, then an unpinned ordinary N53 relation, then an unpinned
-ordinary N83 relation on exact Q1325 W≤5. Preserve all failed queries,
-operation counts, memory and independent group-law replays. The N83 result
-is the first decisive method gate; a fresh ordinary-query panel must then
-measure useful-row yield and novel rank per query. Compare against the
-pair-table on matched inputs. Q1419 does not establish that this mechanism
-will scale; the gate tests that hypothesis.
+The next experiment should couple the existing exact S3 field-root oracle
+to **free-leaf search as an external propagator**. When a leaf pair becomes
+fixed, compute its zero or two pair-intermediate roots in the field and
+constrain the solver. Q1319 already encoded those roots as Boolean circuits,
+and Q1327/Q1328 already enumerated a native pair index; the proposed hybrid
+must avoid both circuit expansion and a complete `K²n` table. First recover
+Q1419's frozen N53/N83 `free_mids` controls, then an unpinned ordinary N53
+relation, then an unpinned ordinary N83 relation on exact Q1325 W≤5. Preserve
+all failed queries, operation counts, memory and independent group-law
+replays. The N83 result is the first decisive method gate; a fresh ordinary
+query panel must then measure useful-row yield and novel rank per query.
+Compare against Q1319, the native root index, and the pair-table on matched
+inputs. Q1419 does not establish that this hybrid will scale; the gate tests
+that hypothesis.
 
 For the existing m=4 path, an ordinary N83 four-point relation on the exact
 Q1325 base still requires a search that avoids both the full \(K^2n\) index
