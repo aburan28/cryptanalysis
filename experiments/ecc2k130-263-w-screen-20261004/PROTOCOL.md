@@ -6,9 +6,11 @@ codomain might admit materially more rational polynomial-W base parameters
 than the Koblitz source at the same nominal dimension. The reference is the
 source on the **same masks**, not a separately sampled base. The exact route
 manifest is `experiments/koblitz-polynomial-w-pair-20260925/ecc2k130_degree263_route_manifest.json`,
-SHA-256 `f9975148e86349840f0efcf42b602d0cb5676a2e06344a16ca2c3096c47e96f4`.
+SHA-256 `4b8ce3b607f9fd34c64a157cc904a00b8350e48570d1eaac7b4ca0646f296075`.
 This protocol and [CONFIG.json](CONFIG.json) are committed before any new
-mask or outcome is generated. Prior untracked exploratory screens suggested
+mask or outcome is generated. The original pin to an older local copy failed
+at the first hash assertion, before any mask generation; the preflight and
+correction are retained in [PRECHECK.md](PRECHECK.md). Prior untracked exploratory screens suggested
 roughly one-half rationality; they are not accepted input data for this run.
 
 For each `d` in 24, 28 and 35, let
