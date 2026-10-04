@@ -45,3 +45,47 @@ recovery are absent. No cell measures natural relation yield or a complete
 known satisfiable search hit the cap, and whether N53 and N83 agree. A new
 search method must then recover an unpinned ordinary N53 relation and an
 ordinary N83 relation on Q1325 before fitting any N131 solver growth.
+
+## Frozen results
+
+The [archive verifier](verification.json) checked all 16 receipts, exact
+formula archives and solver logs. Every SAT assignment satisfies the
+serialized CNF and XOR rows and replays to a four-distinct-column relation
+in the exact base. The three SAT cells all use the already archived witness
+leaf coordinates, which have independent checked-Sage replays in the parent
+Q1410 and Q1408 records. The times below are solver-only, exploratory
+seconds; `cap` is the one-million-conflict stop, and `wall` is the external
+60-second stop.
+
+| Pinning cell | N53 result / seconds | N83 result / seconds |
+| --- | --- | --- |
+| `full_lock` | verified SAT / 0.029 | verified SAT / 0.084 |
+| `free_mids` | cap / 15.382 | cap / 19.653 |
+| `free_target` | verified SAT / 3.528 | cap / 55.361 |
+| `three_leaves` | cap / 15.887 | cap / 23.293 |
+| `two_split` | cap / 55.739 | wall / 60.005 |
+| `two_same` | cap / 13.751 | cap / 26.397 |
+| `one_leaf` | cap / 55.097 | wall / 60.007 |
+| `target_only` | cap / 42.028 | wall / 60.005 |
+
+Releasing the two pair-intermediate x coordinates alone stalls this SAT
+encoding at both degrees even while all four leaf x coordinates remain
+fixed. Freeing the target selector makes the N53 case easy again, showing
+that the search behavior is not monotone in the number of free variables.
+The N83 free-target case stays censored. These controls identify a useful
+engineering target, but do not show that pair intermediates dominate the
+cost of an unpinned ordinary query. No ordinary N83 relation was found.
+
+## Next solver gate
+
+Eliminate each pair-intermediate SAT search by solving the fixed-pair
+`S3(x1,x2,z)=0` quadratic in the field and branching explicitly over its
+roots. The first correctness gate is the same frozen known-satisfiable
+N53/N83 controls with all pair intermediates free. Then require an unpinned
+ordinary N53 relation, followed by at least one ordinary N83 four-point
+relation on exact Q1325 W≤5. Preserve every failed query and operation count,
+independently replay the N83 relation, and measure useful-row and novel-rank
+rates on fresh ordinary targets. Pair the N53/N83 costs with the existing
+pair-table stages on the same curves, targets and base policies. A degree-131
+`2^x` fit remains unknown until those rates and all setup, matrix, descent,
+and replay costs are present in one calibrated unit.
