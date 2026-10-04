@@ -316,6 +316,58 @@ def main():
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(path),
         })
+    exact_base_orbit = []
+    for n, kind in ((53, "ordinary"), (83, "planted"),
+                    (83, "ordinary")):
+        path, stage = read(f"n{n}_{kind}_exact_base_orbit.json")
+        baseline_path, baseline = read(f"n{n}_{kind}_frozen.json")
+        assert stage["proposal_id"] == ("Q1315" if n == 53 else "Q1316")
+        assert stage["baseline_receipt_sha256"] == sha(baseline_path)
+        assert stage["protocol_sha256"] == sha(protocol_path)
+        assert stage["curve_id"] == baseline["curve_id"]
+        assert stage["workload_id"] == baseline["workload_id"]
+        assert stage["public_target"] == baseline["public_subgroup_target"]
+        assert stage["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"]
+        assert stage["factor_base_actual_B"] == baseline[
+            "factor_base_actual_B"]
+        assert stage["factor_base_folded_columns"] == baseline[
+            "factor_base_folded_columns"]
+        assert stage["observed_verified_relation_count"] == int(
+            stage["verified_relation"] is not None)
+        control = stage["locked_control"]
+        if n == 53 or kind == "planted":
+            assert control["status"] == "locked_sat_verified_public_relation"
+        else:
+            assert control is None
+        exact_base_orbit.append({
+            "proposal_id": stage["proposal_id"],
+            "candidate_id": None,
+            "workload_id": stage["workload_id"],
+            "run_id": None,
+            "curve_id": stage["curve_id"],
+            "n": n, "kind": kind,
+            "target_policy": stage["target_policy"],
+            "leaf_policy": stage["leaf_policy"],
+            "factor_base_B": stage["factor_base_actual_B"],
+            "folded_columns": stage["factor_base_folded_columns"],
+            "status": stage["status"],
+            "formula": stage["formula"],
+            "solver_conflicts_reported": stage[
+                "solver_conflicts_reported"],
+            "target_pdp_wall_seconds": stage["target_pdp_wall_seconds"],
+            "peak_child_rss_raw_before_control": stage[
+                "peak_child_rss_raw_before_control"],
+            "peak_child_rss_units": stage["peak_child_rss_units"],
+            "observed_verified_relation_count": stage[
+                "observed_verified_relation_count"],
+            "locked_control_status": control["status"] if control else None,
+            "natural_relation_yield_estimate": stage[
+                "natural_relation_yield_estimate"],
+            "field_operations": stage["field_operations"],
+            "complete_solve_work_log2": stage["complete_solve_work_log2"],
+            "receipt_sha256": sha(path),
+        })
     order131 = protocol["degree_131_design"]["curve"]["subgroup_order"]
     heuristic_samples131 = 2 * math.sqrt(order131 / (2 * 131))
     relation_density_heuristic = []
@@ -419,6 +471,7 @@ def main():
             "receipt_sha256": sha(orbit_extended_path),
         },
         "fixed_witness_target_search_diagnostics": fixed_witness_targets,
+        "exact_base_orbit_stage_measurements": exact_base_orbit,
         "relation_density_planning_heuristic": relation_density_heuristic,
         "n131_weight6_geometry_estimate": {
             "proposal_id": "Q1303",
@@ -474,7 +527,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary S3 runs remain censored with the complete cofactor and Frobenius target orbit, including ordered-leaf symmetry breaking; the separately fixed known-satisfiable targets also remain censored and are not natural-yield measurements; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary S3 runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, and exact subgroup-base-orbit encodings; the n53 known-satisfiable target and n83 planted controls establish formula consistency but no unassisted four-point relation; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,

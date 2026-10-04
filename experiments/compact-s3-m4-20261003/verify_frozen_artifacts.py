@@ -266,6 +266,72 @@ def verify():
         rows.append({"variant": stem, "receipt_sha256": sha(path),
                      "formula_sha256": digest.hexdigest(),
                      "formula_bytes": size})
+    for n, kind in ((53, "ordinary"), (83, "planted"),
+                    (83, "ordinary")):
+        stem = f"n{n}_{kind}_exact_base_orbit"
+        path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(path.read_text())
+        baseline_path = HERE / "runs" / f"n{n}_{kind}_frozen.json"
+        baseline = json.loads(baseline_path.read_text())
+        archive_path = HERE / "bases" / (
+            f"n{n}_weight{3 if n == 53 else 4}_orbits.json.gz")
+        assert receipt["proposal_id"] == ("Q1315" if n == 53 else "Q1316")
+        assert receipt["candidate_id"] is None
+        assert receipt["run_id"] is None
+        assert receipt["complete_solve_work_log2"] is None
+        assert receipt["workload_id"] == baseline["workload_id"]
+        assert receipt["curve_id"] == baseline["curve_id"]
+        assert receipt["public_target"] == baseline["public_subgroup_target"]
+        assert receipt["factor_base_actual_B"] == baseline[
+            "factor_base_actual_B"]
+        assert receipt["factor_base_folded_columns"] == baseline[
+            "factor_base_folded_columns"]
+        assert receipt["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["base_archive_sha256"] == sha(archive_path)
+        assert receipt["baseline_receipt_sha256"] == sha(baseline_path)
+        assert receipt["protocol_sha256"] == protocol_digest
+        assert receipt["runtime_info_sha256"] == sha(
+            HERE / "base_orbit_sage_runtime_info.json")
+        for key, source in (("core_source_sha256", "chain_s3.py"),
+                            ("factored_source_sha256", "chain_s3_factored.py"),
+                            ("orbit_source_sha256", "chain_s3_orbit.py"),
+                            ("ordered_source_sha256", "chain_s3_ordered.py"),
+                            ("base_orbit_source_sha256", "chain_s3_base_orbit.py"),
+                            ("runner_source_sha256", "run_base_orbit_probe.py")):
+            assert receipt[key] == sha(HERE / source)
+        assert receipt["solver_binary_sha256"] == sha(
+            Path(receipt["solver_command"][0]))
+        assert receipt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stdout.txt")
+        assert receipt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stderr.txt")
+        assert receipt["status"] in ("censored", "external_timeout", "sat")
+        assert receipt["observed_verified_relation_count"] == int(
+            receipt["verified_relation"] is not None)
+        control = receipt["locked_control"]
+        if kind == "planted" or n == 53:
+            assert control["status"] == "locked_sat_verified_public_relation"
+            assert control["relation"] is not None
+            witness = ("n53_ordinary_matched_pair_table.json" if n == 53
+                       else "n83_planted_frozen.json")
+            assert control["witness_receipt_sha256"] == sha(
+                HERE / "runs" / witness)
+        else:
+            assert control is None
+        digest = hashlib.sha256()
+        size = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        assert digest.hexdigest() == receipt["xcnf_sha256"]
+        assert size == receipt["xcnf_bytes"]
+        rows.append({"variant": stem, "receipt_sha256": sha(path),
+                     "formula_sha256": digest.hexdigest(),
+                     "formula_bytes": size,
+                     "observed_verified_relation_count": receipt[
+                         "observed_verified_relation_count"]})
     sample_path = HERE / "runs/n131_weight6_stratified_sample.json"
     sample = json.loads(sample_path.read_text())
     runtime = HERE / "n131_sample_sage_runtime_info.json"

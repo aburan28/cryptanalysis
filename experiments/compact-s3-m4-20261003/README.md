@@ -10,6 +10,11 @@ ordinary queries also remained censored. Consequently there is no measured
 degree-131 complete-solve work exponent, and no sub-\(2^{61}\) claim.
 Later probes also covered every Frobenius conjugate of those preimages and
 tested ordered leaves; neither produced an unassisted ordinary relation.
+An exact subgroup-base-orbit encoding then tested the public target directly.
+Its known-satisfiable n=53 ordinary query reached one million conflicts
+without a model, and its n=83 planted and ordinary queries reached the
+120-second cap without a model. Locked witness controls passed where a
+witness is known.
 
 ## Identity and comparable inputs
 
@@ -190,6 +195,36 @@ either witness within these caps. The result locates a solver search
 bottleneck in the core chained-S3 formula; it does not establish a lower
 bound on every solver or prove that a raw target lacks a decomposition.
 
+## Exact subgroup-base-orbit SAT stage
+
+[`chain_s3_base_orbit.py`](chain_s3_base_orbit.py) selects each leaf from the
+**exact archived subgroup factor base**: one canonical signed-Frobenius
+x-orbit key plus a Frobenius shift. The SAT formula uses the x coordinate of
+the public subgroup point directly. This avoids both the raw cofactor-
+preimage selector and sparse x assignments that do not lift into the usable
+base. Four leaf choices are ordered by `(orbit index, shift)`; all sign
+choices and the final group sum are checked after a model. The same curve,
+public point, base digest, and workload IDs are retained. These variants
+are Q1315 at n=53 and Q1316 at n=83, with `candidate_id: null` and
+`isogeny: "none"`.
+
+| Stage query | Exact base B / folded columns | Formula vars / CNF / XOR | Unassisted result | Charged target-PDP wall | Post-run locked control |
+| --- | ---: | --- | --- | ---: | --- |
+| n=53 ordinary, known satisfiable | 24,062 / 227 | 23,055 / 72,902 / 1,037 | 1,000,001 conflicts, no model | 33.30 s | SAT; public relation replayed |
+| n=83 planted | 1,934,066 / 11,651 | 99,036 / 872,878 / 1,632 | 120 s cap, no model | 120.04 s | SAT; public relation replayed |
+| n=83 ordinary | 1,934,066 / 11,651 | 99,036 / 872,878 / 1,632 | 120 s cap, no model | 120.02 s | no witness available |
+
+The charged interval starts at target-dependent formula construction and
+includes the unassisted solver call; the locked controls run afterward. The
+n=53 control uses the independent pair-table relation. The n=83 planted
+control uses four projected subgroup leaves from the frozen fixture. Neither
+control measures unassisted solver success. The n=83 ordinary target may
+have no representation in the base; one capped query cannot determine that.
+No row establishes a natural relation yield, field-operation conversion, or
+complete ECDLP solve cost. Source-bound receipts, solver logs, and gzip XCNFs
+are in `runs/`, with the checked runtime snapshot at
+`base_orbit_sage_runtime_info.json`.
+
 ## Matched pair-table stage
 
 [`matched_n53_pair_table.py`](matched_n53_pair_table.py) reuses the prior
@@ -261,28 +296,28 @@ replay, and conversion work cost zero, it leaves an optimistic ceiling near
 \(2^{61}\) total cap. This is a design budget from explicit assumptions,
 not a measured solver cost or a complete-solve projection.
 
-The complete n=131 work exponent remains **unknown**. The corrected SAT stage
-is censored at both measured field degrees; natural relation yield, novel rank,
-cost per useful row, final matrix solving, target descent, and independent
-scalar replay are absent. There is therefore no defensible complete-solve
-upper projection below \(2^{61}\), and the degree-131 challenge gate remains
-closed. Existing complete ECDLP claims cannot be inferred from a relation
-stage or a planted witness.
+The complete n=131 work exponent remains **unknown**. The corrected and
+exact-base SAT stages are censored at both measured field degrees; natural
+relation yield, novel rank, cost per useful row, final matrix solving, target
+descent, and independent scalar replay are absent. There is therefore no
+defensible complete-solve upper projection below \(2^{61}\), and the
+degree-131 challenge gate remains closed. Existing complete ECDLP claims
+cannot be inferred from a relation stage or a planted witness.
 
-The next useful goal is a **noncensored ordinary public-target
-four-summand decomposition**, first at n=53 and then at n=83, using the exact
-same base and cofactor-preimage policy. The n=53 frozen point is known to have
-a valid raw witness, so it gives a direct search test. The orbit, leaf
-ordering, and fixed-witness-target SAT variants now show that a new solver
-mechanism should be benchmarked against the matched n=53 pair index and the
-full-coset SAT circuit on the same target. Keep all failed attempts
-and measure Boolean operations, field-operation conversion, and wall time;
-collect enough independent ordinary queries to estimate useful relation and
-novel-rank rates with uncertainty.
-Only then fit an n=131 stage cost and add matrix, descent, and replay charges.
-If the fitted complete cost is credibly below \(2^{61}\) in a named operation
-unit, the challenge run is justified; otherwise the experiment is a no-go
-for this solver family.
+The next useful goal is a **noncensored, independently verified ordinary
+public-target four-summand decomposition**, first at n=53 and then in an
+ordinary n=83 target panel, using the exact archived subgroup base. The n=53
+frozen target is known to have a witness, so it isolates solver search from
+representation probability. A new mechanism, such as a bounded-memory pair
+index or a hybrid pair-index/S3 solver, should beat the matched n=53 pair
+table on the same public point before scaling. At n=83, freeze multiple
+independent public targets because the uniform-subset screen predicts only
+about 21.4% representation probability per target. Keep all failed attempts;
+measure actual stage work, memory, natural yield, rank contribution, and
+uncertainty. Then fit an n=131 stage cost and add base construction, final
+matrix, target descent, and scalar replay charges. A challenge run is
+justified only if the **complete** fitted cost is credibly below \(2^{61}\)
+in a named operation unit.
 
 ## Reproduction
 

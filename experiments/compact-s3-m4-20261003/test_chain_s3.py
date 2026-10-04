@@ -10,6 +10,8 @@ from pathlib import Path
 from chain_s3 import (Formula, build, evaluate_s3, multiplication_table,
                       square_destinations)
 from chain_s3_factored import build_factored
+from chain_s3_base_orbit import (build_base_orbit_chain,
+                                 choose_base_orbit_x, decode_base_choice)
 from chain_s3_multitarget import (build_multitarget, choose_target_x,
                                   decode_choice)
 from chain_s3_orbit import frobenius_barrel
@@ -234,6 +236,101 @@ class ChainS3Tests(unittest.TestCase):
                           if values.get(bit, False))
                 want = onb.toCoords(onb.frob(onb.fromCoords(x), shift))
                 self.assertEqual(got, want)
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_exact_base_orbit_selector(self):
+        onb = field.Onb(5)
+        keys = (3, 5, 11)
+        for index, key in enumerate(keys):
+            for shift in range(5):
+                formula = Formula()
+                output, index_vars, shift_vars = choose_base_orbit_x(
+                    formula, 5, keys, square_destinations(onb))
+                for variables, value in ((index_vars, index),
+                                         (shift_vars, shift)):
+                    formula.clauses.extend(([
+                        bit if value >> i & 1 else -bit]
+                        for i, bit in enumerate(variables)))
+                with tempfile.TemporaryDirectory() as name:
+                    path = Path(name) / "base-orbit.xcnf"
+                    formula.write(path)
+                    result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                             "--threads", "1", str(path)],
+                                            capture_output=True, text=True,
+                                            timeout=20)
+                self.assertEqual(result.returncode, 10)
+                values = parse_model(result.stdout)
+                self.assertEqual(decode_base_choice(
+                    (index_vars, shift_vars), values), (index, shift))
+                got = sum(1 << i for i, bit in enumerate(output)
+                          if values.get(bit, False))
+                want = onb.toCoords(onb.frob(onb.fromCoords(key), shift))
+                self.assertEqual(got, want)
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_exact_base_orbit_chain_accepts_group_witness(self):
+        onb = field.Onb(5)
+        curve = curves.Curve(onb)
+        points = [curve.pointFromX(onb.fromCoords(x))
+                  for x in range(1, 1 << 5)]
+        points = [point for point in points if point is not None]
+        canonical = {}
+        for point in points:
+            x = onb.toCoords(point[0])
+            orbit = [onb.toCoords(onb.frob(point[0], shift))
+                     for shift in range(5)]
+            canonical[x] = min(orbit)
+        keys = sorted(set(canonical.values()))
+        rng = random.Random(130315)
+        while True:
+            selected = [rng.choice(points) for _ in range(4)]
+            choices = []
+            for point in selected:
+                key = canonical[onb.toCoords(point[0])]
+                shift = next(shift for shift in range(5)
+                             if onb.toCoords(onb.frob(
+                                 onb.fromCoords(key), shift)) == (
+                                     onb.toCoords(point[0])))
+                choices.append((keys.index(key), shift))
+            selected = [point for _, point in sorted(zip(choices, selected))]
+            choices.sort()
+            first = curve.add(selected[0], selected[1])
+            if first is None:
+                continue
+            second = curve.add(first, selected[2])
+            if second is None:
+                continue
+            target = curve.add(second, selected[3])
+            if target is not None and target[0]:
+                break
+        formula, leaves, mids, selectors = build_base_orbit_chain(
+            5, keys, onb.toCoords(target[0]))
+        for (index, shift), (index_vars, shift_vars) in zip(choices, selectors):
+            for variables, value in ((index_vars, index),
+                                     (shift_vars, shift)):
+                formula.clauses.extend(([
+                    bit if value >> i & 1 else -bit]
+                    for i, bit in enumerate(variables)))
+        for row, point in zip(mids, (first, second)):
+            value = onb.toCoords(point[0])
+            formula.clauses.extend(([
+                bit if value >> i & 1 else -bit]
+                for i, bit in enumerate(row)))
+        with tempfile.TemporaryDirectory() as name:
+            path = Path(name) / "base-orbit-chain.xcnf"
+            formula.write(path)
+            result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                     "--threads", "1", str(path)],
+                                    capture_output=True, text=True,
+                                    timeout=20)
+        self.assertEqual(result.returncode, 10, result.stdout[-500:])
+        values = parse_model(result.stdout)
+        coords, relation, status = lift(
+            onb, curve, leaves, values, target, target, 1)
+        self.assertEqual(status, "verified_four_point_relation")
+        self.assertEqual(coords, [onb.toCoords(point[0])
+                                  for point in selected])
+        self.assertIsNotNone(relation)
 
     @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
     def test_leaf_order_comparator_accepts_exactly_non_decreasing_values(self):
