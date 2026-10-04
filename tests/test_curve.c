@@ -1,4 +1,7 @@
 #include "test_fixtures.h"
+#include "ec_tau_internal.h"
+
+static int tau_cost_cases;
 
 /* Solve `reps` random logs on the group with ca_curve_solve and return the
  * mean group operations / sqrt(n). */
@@ -51,6 +54,69 @@ static void by_name(const char *name, ca_curve_endo want_endo, uint32_t want_m, 
     CHECK(s < max_s);
 }
 
+/* Compare complete point outputs for the baseline and schedule-selected
+ * representatives.  These are correctness controls, not timing claims. */
+static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples)
+{
+    ca_tau4_precomp pre;
+    CHECK(ca_ec_tau4_prepare(g, point, &pre, NULL));
+    ca_rng rng;
+    ca_rng_seed(&rng, UINT64_C(0x20261004) ^ g->order);
+    for (int i = 0; i < samples; i++) {
+        uint64_t k = i < 8 ? (uint64_t[]){0, 1, 2, 3, g->order - 2,
+                                            g->order - 1, g->order,
+                                            UINT64_MAX}[i] : ca_rng_next(&rng);
+        ca_elem expected, baseline = *point, selected = *point;
+        uint64_t base_triples = UINT64_MAX, base_adds = UINT64_MAX;
+        uint64_t cost_triples = UINT64_MAX, cost_adds = UINT64_MAX;
+        ca_group_mul(g, &expected, point, k % g->order, NULL);
+        CHECK(ca_ec_tau4_mul_prepared(g, &pre, &baseline, k,
+                                      &base_triples, &base_adds));
+        CHECK(ca_ec_tau4_mul_prepared_cost(g, &pre, &selected, k,
+                                           &cost_triples, &cost_adds));
+        CHECK(ca_group_equal(g, &baseline, &expected));
+        CHECK(ca_group_equal(g, &selected, &expected));
+        CHECK(base_triples < 256 && base_adds < 256);
+        CHECK(cost_triples < 256 && cost_adds < 256);
+        tau_cost_cases++;
+    }
+}
+
+static void tau_cost_named(const char *name)
+{
+    uint64_t p, a, b, order;
+    CHECK(ca_curve_by_name(name, &p, &a, &b, &order) == CA_OK);
+    ca_group g;
+    ca_curve_info info;
+    CHECK(ca_curve_group(&g, p, a, b, order, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J0);
+    ca_elem generator;
+    CHECK(ca_group_find_generator(&g, &generator, 1) == CA_OK);
+    tau_cost_checks(&g, &generator, 256);
+    ca_elem second_point;
+    ca_group_mul(&g, &second_point, &generator, 37, NULL);
+    tau_cost_checks(&g, &second_point, 128);
+}
+
+static void tau_cost_boundary_curves(void)
+{
+    const struct { uint64_t p, b, order; int samples; } cases[] = {
+        {97, 10, 103, 103},
+        {UINT64_C(2305843009213693951), 7,
+         UINT64_C(53624256071278747), 128}
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        ca_group g;
+        ca_curve_info info;
+        CHECK(ca_curve_group(&g, cases[i].p, 0, cases[i].b,
+                             cases[i].order, &info) == CA_OK);
+        CHECK(info.endo == CA_CURVE_ENDO_J0);
+        ca_elem generator;
+        CHECK(ca_group_find_generator(&g, &generator, 1) == CA_OK);
+        tau_cost_checks(&g, &generator, cases[i].samples);
+    }
+}
+
 int main(void)
 {
     /* Detection from parameters, no group handling by the caller. */
@@ -78,6 +144,10 @@ int main(void)
 
     /* Named curves: the two GLV families and a generic one, all solved. */
     by_name("glv-j0-26", CA_CURVE_ENDO_J0, 6, 2.2);
+    tau_cost_named("glv-j0-26");
+    tau_cost_named("glv-j0-32");
+    tau_cost_boundary_curves();
+    printf("cost-aware tau point cases=%d\n", tau_cost_cases);
     by_name("glv-j1728-26", CA_CURVE_ENDO_J1728, 4, 2.5);
     by_name("generic-26", CA_CURVE_ENDO_NONE, 2, 3.0);
     /* Challenge corpus: anomalous (trace 1, negation only), a j = 0 twist

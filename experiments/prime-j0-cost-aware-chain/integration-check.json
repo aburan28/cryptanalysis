@@ -1,0 +1,39 @@
+{
+  "build": "cmake --build build-cost-aware -j 4",
+  "claim": "point correctness only; no CPU timing or speedup",
+  "configure": "cmake -S . -B build-cost-aware -DCA_BUILD_TOOLS=OFF -DCA_BUILD_SHARED=OFF -DCA_BUILD_STATIC=ON -DCA_BUILD_TESTS=ON -DCA_WERROR=ON",
+  "host": {
+    "architecture": "arm64",
+    "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)",
+    "os": "macOS-26.6-arm64-arm-64bit-Mach-O"
+  },
+  "imported_reference_ec_tau_sha256": "128003abecae34fd715e7e5c82020ac79fd8ef2b4a42d1ee5f1be03c8bc410c3",
+  "parent_head": "21a7d21f42dc665b9b59db6c35b7a062172cff98",
+  "point_check": {
+    "cases": 999,
+    "checks_including_existing_curve_controls": 6150,
+    "command": "build-cost-aware/test_curve",
+    "exit_code": 0
+  },
+  "schema": 1,
+  "sha256": {
+    "CMakeLists.txt": "370768f6bb90ad02c701227e26c1378ef48e9810a9e7390c617d4212fc7ff7e9",
+    "experiments/prime-j0-cost-aware-chain/integration-ctest.log": "4146b9d62fce79cc91957b2842d269a82d6f1a2c05bc6f95f239bfe02df0d401",
+    "experiments/prime-j0-cost-aware-chain/integration-test-curve.log": "6c26e6a0705b2bcd6f2485e85baeb83d3d113761c955ef62bef466ee1d10598f",
+    "include/cryptanalysis/ca_group.h": "a7a7598702e954f91a8c511c005797c66e6efcd681dfd3a08c2cf6c4273be831",
+    "src/ec_tau.c": "9f7d65e779d277349ab01c511359b8015fd631b9228fd7810656b046f82d0337",
+    "src/ec_tau_internal.h": "efb161db6527872f5e6a7dec9868f696efac99d8f8e6c8a2ca38f6b66a22b8ea",
+    "tests/test_curve.c": "7f108cb51344f054ebf7ef9d44d1050dd8ef475d269d3552dd92e5d318b798ed"
+  },
+  "status": "correctness_pass_full_suite_incomplete",
+  "suite": {
+    "command": "ctest --test-dir build-cost-aware --output-on-failure -j 4",
+    "exit_code": 8,
+    "failed": [
+      "coord"
+    ],
+    "failure_observation": "test_coord.c:1219 bind(127.0.0.1) failed; independent Python socket bind returned PermissionError errno 1 in this sandbox",
+    "passed": 14,
+    "total": 15
+  }
+}

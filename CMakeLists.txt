@@ -50,6 +50,7 @@ set(CA_SOURCES
   src/group_common.c
   src/group_zp.c
   src/group_ec.c
+  src/ec_tau.c
   src/bsgs.c
   src/rho.c
   src/kangaroo.c
