@@ -1063,6 +1063,29 @@ does not measure solve growth, natural relation yield, or cost per useful
 row. Q1327/Q1330's native N53 root method found an ordinary relation on
 this exact base; Q1410's censored SAT row illustrates its search limit at
 the frozen cap. The complete N131 work exponent stays unknown.
+
+### Q1412 ordered balanced-S3 N53 method gate
+
+Q1412 keeps Q1410's exact Q1301 curve, base, ordinary target, complete
+428-preimage selector, solver, and one-million-conflict cap. It adds unsigned
+`x1 <= x2 <= x3 <= x4` constraints to remove leaf permutation symmetry.
+The [protocol](q1412_ordered_balanced_n53_protocol.json) pins the formula
+and runner sources. The locked control sorts the known ordinary relation's
+four raw x coordinates and recomputes both balanced pair sums. Its
+[independent replay](runs/n53_q1412_ordered_control_replay.json) verifies
+the public sum and four distinct exact Q1301 columns.
+
+| Q1412 N53 query | Charged stage wall (exploratory) | Solver result | Ordinary relation |
+| --- | ---: | --- | ---: |
+| Sorted known witness locked | 0.274 s | SAT, verified control | control only |
+| Same ordinary public target, unpinned | 95.875 s | 1,000,001 conflicts, censored | 0 |
+
+The [named matched stage comparison](runs/n53_q1410_q1412_named_stage_comparison.json)
+assigns Q1412 `PS1N53Ckb1fb24062PDP4sath25a3d6a29f3e`. Both Q1410 and
+Q1412 fail to return a model at the frozen conflict cap; their unisolated
+wall times do not measure a solve speed ratio. The locked control establishes
+that ordering retained a known relation. The N53 method gate failed, so
+Q1412 does not advance to an N83 run or a degree-131 work projection.
 ### Q1406 uniform-query relation-supply bound for Q1303
 
 The [Q1406 counting screen](runs/n131_q1406_uniform_query_bound.json)
@@ -1135,6 +1158,8 @@ ordinary target within the frozen caps. Q1408's balanced tree reaches the
 same one-million-conflict cap on the ordinary target, with no relation.
 Q1410 reaches that cap without recovering an independently known ordinary
 N53 relation, so the next design needs a different search mechanism.
+Q1412's leaf-ordering control also preserves the known relation but reaches
+the ordinary N53 conflict cap without a model.
 Q1400's ordinary no-hit and tiny fixed-rectangle support bound leave
 ordinary relation yield unmeasured.
 Run frozen ordinary single-target workloads under identical operation and
@@ -1198,6 +1223,8 @@ python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --che
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1408_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1410_n53_balanced.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1410_stage_comparison.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1412_n53_ordered.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1412_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
