@@ -1466,16 +1466,35 @@ expectation to land in *any* sparse-pair support. This is a conditional
 uniform-sampling lower bound, not a cost bound for target-guided
 intermediates or a complete ECDLP projection.
 
+### Q1426 symbolic second-pair equations
+
+The [frozen Q1426 protocol](q1426_symbolic_pair/protocol.json) inserts all
+factored binary equations for `S3(leaf2, leaf3, mid1)=0` into the SAT
+formula before decisions. It retains Q1425's exact reverse-root propagator
+and uses the same ordinary targets, exact bases, and 60-second caps. The
+[four-cell archive](q1426_symbolic_pair/verification.json) verifies both
+freed-partner controls, with one independently replayed relation each.
+Neither ordinary N53 nor ordinary N83 found a relation before its cap.
+The N53 ordinary cell made 1,080,547 reverse partner calls, and the N83
+cell made 485,107; every reverse candidate was rejected by the sparse
+weight rule. The [Q1426 result table](q1426_symbolic_pair/README.md) and
+work ledger retain the raw field-operation and memory counts. The symbolic
+equation alone did not change the decisive rejection pattern. These
+censored cells leave the degree-131 complete `2^x` unknown.
+
 ## Next goal
 
-The next solver should build a **compact structured pair-sum membership and
-witness method**. It must avoid Q1425's million-call reverse-root rejection
-loop and the full quotient-pair index screened by Q1416 at roughly
+The next solver should build a **compact target-conditioned pair-sum
+membership and witness method**. It must avoid the Q1425/Q1426 reverse-root
+rejection loop and the full quotient-pair index screened by Q1416 at roughly
 `2^89.36` logical actions on the exact N131 base under its uniform-key
 model. This is a model for that pure-index family, not a lower bound on
 other decomposition methods. State an exact membership
-or necessary-condition theorem, prove solution preservation, and verify it
-against exhaustive small-field cases and the archived N53/N83 witnesses.
+or necessary-condition theorem that jointly uses the target's final S3
+link and both sparse pair constraints. Prove solution preservation, and
+verify it against exhaustive small-field cases and the archived N53/N83
+witnesses. A new SAT clause set without a changed ordinary-query search
+pattern does not pass this gate.
 Freeze the stage before ordinary queries. The first measurable gate is the
 unpinned archived N53 ordinary target, which Q1301 already proved
 representable. The second is an independently verified relation on the
