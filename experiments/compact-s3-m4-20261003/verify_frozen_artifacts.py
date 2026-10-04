@@ -2431,6 +2431,17 @@ def verify():
     ):
         rows.append({"variant": variant, "receipt_sha256": sha(path),
                      "is_natural_yield_measurement": False})
+    from screen_q1405_m5_chain import build as build_q1405_screen
+    q1405_screen_path = HERE / "runs/n83_n131_q1405_m5_chain_screen.json"
+    q1405_screen = json.loads(q1405_screen_path.read_text())
+    assert q1405_screen == build_q1405_screen()
+    assert q1405_screen["proposal_id"] == "Q1405"
+    assert q1405_screen["candidate_id"] is None
+    assert q1405_screen["complete_solve_work_log2"] is None
+    assert q1405_screen["challenge_dispatch_allowed"] is False
+    rows.append({"variant": "q1405_m5_geometry_screen",
+                 "receipt_sha256": sha(q1405_screen_path),
+                 "is_natural_yield_measurement": False})
     return rows
 
 
