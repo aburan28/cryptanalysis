@@ -448,11 +448,13 @@ int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point,
 
 static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
                                   ca_elem *out, uint64_t k, uint64_t *triples,
-                                  uint64_t *adds, int cost_aware)
+                                  uint64_t *adds, uint64_t *rotations,
+                                  int cost_aware)
 {
     if (!g || !pre || !out || pre->g != g) return 0;
     if (triples) *triples = 0;
     if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
     if (pre->identity || k % g->order == 0) {
         *out = (ca_elem){{0, 0, 1, 0}};
         return 1;
@@ -472,7 +474,7 @@ static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
     }
     if (!nd) return 0;
     tau_jac acc = {0, g->mont.r1, 0};
-    uint64_t na = 0, n3 = 0;
+    uint64_t na = 0, n3 = 0, nr = 0;
     size_t nq = (nd + 1) / 2;
     for (size_t qi = nq; qi-- > 0;) {
         if (acc.z) { acc = jac_triple(g, acc); n3++; }
@@ -486,6 +488,7 @@ static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
         if (seed.w[2]) continue;
         int power = (d.power + (int)(qi % 3)) % 3;
         int sign = d.sign * ((qi & 1) ? -1 : 1);
+        nr += power != 0;
         if (power == 1) seed.w[0] = fm(g, pre->beta, seed.w[0]);
         else if (power == 2) seed.w[0] = fm(g, pre->beta2, seed.w[0]);
         if (sign < 0 && seed.w[1]) seed.w[1] = g->p - seed.w[1];
@@ -495,6 +498,7 @@ static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
     jac_to_affine(g, out, acc);
     if (triples) *triples = n3;
     if (adds) *adds = na;
+    if (rotations) *rotations = nr;
     return 1;
 }
 
@@ -502,14 +506,25 @@ int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre,
                             ca_elem *out, uint64_t k, uint64_t *triples,
                             uint64_t *adds)
 {
-    return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, 0);
+    return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, NULL, 0);
 }
 
 int ca_ec_tau4_mul_prepared_cost(const ca_group *g, const ca_tau4_precomp *pre,
                                  ca_elem *out, uint64_t k, uint64_t *triples,
                                  uint64_t *adds)
 {
-    return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, 1);
+    return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, NULL, 1);
+}
+
+int ca_ec_tau4_mul_prepared_profile(const ca_group *g,
+                                    const ca_tau4_precomp *pre, ca_elem *out,
+                                    uint64_t k, int cost_aware,
+                                    uint64_t *triples, uint64_t *adds,
+                                    uint64_t *rotations)
+{
+    if (cost_aware != 0 && cost_aware != 1) return 0;
+    return tau4_mul_prepared_impl(g, pre, out, k, triples, adds,
+                                  rotations, cost_aware);
 }
 
 int ca_ec_mul_tau4(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,

@@ -65,3 +65,40 @@ preparation. A faster modeled chain or an ordinary-host timing ratio does not
 promote a CPU speedup claim. The `nohz_full`, exclusive partition, NUMA,
 frequency, IRQ, and correctness receipt gates in
 [ISOLATED_BENCHMARKS.md](../../docs/ISOLATED_BENCHMARKS.md) apply.
+
+## Frozen input and full C operation result
+
+PR #252 was opened before [make_inputs.py](make_inputs.py) generated the four
+4,096-scalar files in [inputs/](inputs/) under the protocol above. Each file
+is exactly 4,096 unsigned 64-bit words in little-endian order; the binary
+format keeps the exact frozen inputs compact in the PR.
+[inputs.json](inputs.json) records each exact curve, public point, scalar-file
+SHA-256, input digest, and independently generated reference output digest.
+The [benchmark executable](bench.c) accepts `reference`, `baseline`, or
+`cost` as its first argument. It prepares the τ seed table before its online
+timer, then charges representative selection and the complete point path.
+Every baseline/candidate output is replayed with `ca_group_mul` after the
+timer; replay time is reported separately. [check_panel.py](check_panel.py)
+ran both arms on the frozen inputs for **correctness and operation counts
+only**. Its [native-panel.json](native-panel.json) retains raw stdout,
+stderr, return codes, source hashes, and operation totals. All four cases
+verified against the frozen output digests.
+
+| Curve and point | Baseline weight | Cost-aware weight | Saved model weight |
+| --- | ---: | ---: | ---: |
+| `glv-j0-32`, generator | 518,207 | 485,166 | 6.38% |
+| `glv-j0-32`, `37P` | 516,218 | 483,589 | 6.32% |
+| 56-bit subgroup, generator | 1,213,102 | 1,168,091 | 3.71% |
+| 56-bit subgroup, `37P` | 1,211,747 | 1,166,601 | 3.73% |
+
+These are exact counts of the executed prepared C schedules under the frozen
+weights. The local wall times appearing in raw stdout were obtained on an
+unverified host and do not support a speedup claim. The 25-schedule search
+cost is included in the benchmark's timer and will decide the actual result.
+
+On a qualifying Linux host, build with `CA_BUILD_TAU_CHAIN_BENCH=ON`, run
+[make_isolated_manifest.py](make_isolated_manifest.py) with that host's
+absolute checkout, binary, isolated cgroup, CPU partition, execution CPU,
+and NUMA node, then submit its JSON to `scripts/isolated_bench.py`. A local
+schema check confirmed that the generated manifest passes the runner's
+`require_manifest`; only the host-side preflight can authorize a measurement.

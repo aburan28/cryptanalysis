@@ -12,6 +12,7 @@ option(CA_BUILD_SHARED "Build the shared library" ON)
 option(CA_BUILD_STATIC "Build the static library" ON)
 option(CA_BUILD_TOOLS "Build the ca CLI and benchmark" ON)
 option(CA_BUILD_TESTS "Build the C test-suite" ON)
+option(CA_BUILD_TAU_CHAIN_BENCH "Build the isolated tau scalar-chain workload" OFF)
 option(CA_NATIVE "Compile with -march=native" OFF)
 # OFF, ON (= address,undefined), or an explicit -fsanitize= list such as
 # "thread" or "memory".  ON is kept so existing invocations keep working.
@@ -150,6 +151,15 @@ if(CA_BUILD_TOOLS)
   target_include_directories(ca_bench PRIVATE src cuda)
   target_compile_options(ca_bench PRIVATE ${CA_WARNINGS})
   ca_sanitize(ca_bench)
+endif()
+
+if(CA_BUILD_TAU_CHAIN_BENCH)
+  add_executable(ca_tau_chain_bench
+                 experiments/prime-j0-cost-aware-chain/bench.c)
+  target_link_libraries(ca_tau_chain_bench PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_tau_chain_bench PRIVATE src)
+  target_compile_options(ca_tau_chain_bench PRIVATE ${CA_WARNINGS})
+  ca_sanitize(ca_tau_chain_bench)
 endif()
 
 if(CA_BUILD_TESTS)
