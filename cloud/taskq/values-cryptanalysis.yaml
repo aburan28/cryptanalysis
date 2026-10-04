@@ -1,0 +1,54 @@
+# Helm values for cryptanalysis's taskq worker pools. The chart is crypto's:
+# taskq/deploy/helm/taskq in https://github.com/aburan28/crypto.
+#
+#   helm upgrade --install taskq <crypto>/taskq/deploy/helm/taskq \
+#       -f cloud/taskq/values-cryptanalysis.yaml
+#
+# `pools` is a list, and Helm replaces lists rather than merging them: this
+# file defines exactly the ca-cpu and ca-gpu-sm120 pools. To run them next to
+# other repos' pools in one release, list those pools here too (or in a later
+# -f file that repeats all of them). To share another release's Redis instead,
+# add `redis: {enabled: false, externalUrlSecret: {name: ..., key: url}}`.
+#
+# Images: cloud/taskq/Dockerfile.cpu and Dockerfile.gpu, published by the
+# `taskq images` workflow as :latest and :<commit sha>. Pin the sha tag in
+# production so every result's TASKQ_IMAGE names what really ran.
+
+pools:
+  # CPU solver and benchmark jobs. Guaranteed QoS (requests == limits, integer
+  # CPUs) under the static CPU manager policy gives each pod exclusive cores;
+  # without that, timings from this pool are not comparable across pods.
+  - name: ca-cpu
+    queues: [ca-cpu]
+    replicas: 2
+    labels: {pool: ca-cpu, arch: amd64}
+    image:
+      repository: ghcr.io/aburan28/cryptanalysis-taskq-cpu
+      tag: latest
+    resources:
+      requests: {cpu: "4", memory: 8Gi}
+      limits: {cpu: "4", memory: 8Gi}
+    cacheSize: 20Gi
+    nodeSelector: {}            # e.g. {node.kubernetes.io/instance-type: c7i.2xlarge}
+    tolerations: []
+
+  # One sm_120 (Blackwell) GPU per pod: the RTX PRO 4500 class the repository
+  # targets (cloud/fleet.json rp-gpu-1). Specs select it with
+  # placement.require_labels {gpu: sm120}. GPU timing comparisons need the
+  # node to themselves: one GPU pod per node, nothing else scheduled beside it.
+  - name: ca-gpu-sm120
+    queues: [ca-gpu-sm120]
+    replicas: 1
+    labels: {gpu: sm120, pool: ca-gpu-sm120}
+    image:
+      repository: ghcr.io/aburan28/cryptanalysis-taskq-gpu
+      tag: latest
+    resources:
+      requests: {cpu: "8", memory: 60Gi, nvidia.com/gpu: 1}
+      limits: {cpu: "8", memory: 60Gi, nvidia.com/gpu: 1}
+    cacheSize: 20Gi
+    # Placeholders: set to your cluster's GPU node labels and taints.
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-RTX-PRO-4500-Blackwell
+    tolerations:
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
