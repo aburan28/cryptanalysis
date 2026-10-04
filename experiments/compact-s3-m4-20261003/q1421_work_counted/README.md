@@ -46,3 +46,35 @@ python3 experiments/compact-s3-m4-20261003/q1421_work_counted/build_binaries.py 
 Each frozen cell is run by `run_stage.py --degree N --cell CELL --policy
 POLICY` through the same checked launcher. The exact run order is stored in
 `protocol.json`; the runner refuses to overwrite existing results.
+
+## Frozen outcomes
+
+The [eight-cell archive verifier](verification.json) passed. Four
+`free_mids` control cells returned SAT and reused the two archived N53/N83
+relations. All four ordinary cells stopped synchronously at the 60-second
+wall cap, printed complete solver counters, and returned no model. No
+external process safeguard fired.
+
+| Degree | Policy | Ordinary status | Process wall | Conflicts | Distinct pair assignments/root calls | Forced leaf decisions | Field mul/sqr/inv | Peak RSS |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | ---: |
+| 53 | default | capped, no relation | 60.085 s | 397,862 | 31,532 | 0 | 623,236 / 4,297,412 / 46,886 | 1,394 MB |
+| 53 | leaf first | capped, no relation | 60.090 s | 111,577 | 62 | 101,076 | 1,282 / 8,490 / 95 | 543 MB |
+| 83 | default | capped, no relation | 60.110 s | 365,794 | 2 | 0 | 30 / 168 / 2 | 173 MB |
+| 83 | leaf first | capped, no relation | 60.112 s | 21,900 | 5,167 | 5,490 | 111,391 / 1,096,534 / 7,766 | 491 MB |
+
+Counts above are the solver's field API calls. The archived Q1420 formula
+build adds 2,809 multiply and 53 square calls at N53, or 6,889 multiply and
+83 square calls at N83, before any solver process. Control process walls
+were 0.114–0.172 seconds under these runs. The peak RSS values are decimal
+megabytes on Darwin. Wall observations on this unisolated host are
+exploratory, and a common weighted operation unit is still missing.
+
+Leaf-first branching makes roots reachable at N83: 5,167 distinct pair
+assignments versus 2 under default decisions. It does not recover an
+ordinary relation at either degree. At N53 it sharply reduces root calls
+but also yields no model. Both variants are censored, so their conflict
+counts and wall times cannot be fitted into a solve-growth exponent. The
+next solver change must constrain **partial** leaf pairs or use a different
+target-coupled search so that algebraic information arrives before exhaustive
+leaf assignments. An unpinned ordinary N83 relation and fresh natural
+useful-row/rank measurements remain open gates.
