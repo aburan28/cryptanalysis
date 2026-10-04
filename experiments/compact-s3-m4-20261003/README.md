@@ -637,7 +637,8 @@ public targets, and all archived base representatives (227 at N53 and
 [N53](runs/n53_onb_poly_bridge_replay.json) and
 [N83](runs/n83_onb_poly_bridge_replay.json) receipts both pass; the
 [runtime record](bridge_sage_runtime_info.json) was saved before the jobs.
-The artifact audit now validates 91 receipts including the native stage.
+The artifact audit now validates 129 receipts including the native stages,
+single-target adaptive-window probes, and fused-root diagnostics.
 
 The bridge itself is a field-conversion control. A full pair-root index scales
 roughly as \(K^2n\) states: about 2.7 million for Q1301's 227 columns at
@@ -783,6 +784,63 @@ found at state one after 34 orientations, but the fixed window prepares
 0.178 ms for the window-1 planted control exposes a severe early-hit penalty.
 Q1332 is a correctness control, not a natural-yield estimate; this one-target
 result motivates an adaptive per-target window schedule.
+
+### Q1333–Q1335 adaptive windows for one target
+
+The [adaptive protocol](q1333_q1334_adaptive_window_protocol.json) keeps one
+frozen target in every run and grows the target-query inversion window through
+`[1, 16, 64, 256, 1024, 4096]` states. The reusable pair index still uses a
+4,096-state arithmetic window. This schedule changes how root equations for
+one target are grouped; it never processes multiple target points together.
+Q1333 and Q1334 use the exact Q1330/Q1331 ordinary points, bases, state order,
+and caps. Q1335 replays Q1329's single planted target as an early-hit control.
+
+| Run | Target count | Scanned / prepared target states | Target PDP and relation check | Exploratory ratio vs window 1 | Exploratory ratio vs fixed 4,096 window | Outcome |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Q1333 N53 ordinary | 1 | 49,228 / 50,513 | 50.60 ms | 2.09x | 1.02x | same verified relation as Q1330 |
+| Q1334 N83 ordinary | 1 | 2,000,000 / 2,000,000 | 3,261.38 ms | 2.87x | 1.00x | no relation at cap |
+| Q1335 N83 planted control | 1 | 1 / 1; 34 / 83 orientations tested / prepared | 0.102 ms | 1.75x | 1,376x | same verified planted relation |
+
+The ordinary rows remain target-stage diagnostics, not recovered DLPs. The
+N53 and N83 ratios are exploratory single-run wall-time ratios on an
+unisolated host, not CPU speedup claims. Q1335 is a synthetic correctness
+control and cannot estimate natural relation yield. It shows the early-hit
+cost change clearly: the fixed window prepared 4,096 target states and
+339,968 orientations for this state-one hit; the schedule prepared one state
+and 83 orientations. The adaptive build and all three run manifests record
+`target_count: 1`; the independent Sage replays check the N53 ordinary and
+N83 planted relations against the frozen target and exact factor base.
+None of these stages includes a complete relation matrix, target descent,
+recovered scalar, or paired rho measurement, so the ECC2K-130 single-target
+end-to-end speedup remains unknown.
+
+### Q1336–Q1338 fused regular-root formula
+
+The [Q1336/Q1337 protocol](q1336_q1337_fast_root_protocol.json) keeps the same
+one-target workloads and adaptive target-local window schedule, but rewrites
+the regular S3 root calculation from
+`d = (c*a) * (a/(a*ps))` to `d = c*a^2/(a*ps)`. The denominator inverse is
+already shared, so the fused form saves exactly one field multiplication per
+regular S3 root. The native exhaustive test again matches the independent
+direct-root implementation for all 1,024 input pairs in \(\mathbf F_{2^5}\).
+
+| Proposal | Target count | S3 roots | Field multiplications, adaptive → fused | Target PDP / relation-check time, adaptive → fused | Adaptive / fused stage-time ratio | Outcome |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Q1336 N53 ordinary | 1 | 101,026 | 1,111,249 → 1,010,223 | 50.60 → 51.66 ms | 0.979x | same independently verified relation; slower in this observation |
+| Q1337 N83 ordinary | 1 | 4,000,000 | 43,998,521 → 39,998,521 | 3,261.38 → 3,253.02 ms | 1.003x | both capped without a relation |
+| Q1338 N83 planted control | 1 | 166 | 1,837 → 1,671 | 0.102 → 0.105 ms | 0.974x | same independently verified planted relation |
+
+The stage ratio is adaptive elapsed time divided by fused elapsed time, so
+values above one favor the fused formula. These are single
+observations on an unisolated host: the small N83 difference is not a
+repeatable speedup, and N53 plus the early-hit planted control are slower.
+This kernel change is a no-go for a wall-time claim despite its exact
+operation-count reduction. The [ordinary replays](runs/n53_fast_root_independent_replay.json)
+and [planted replay](runs/n83_q1338_fast_planted_independent_replay.json) are
+source-bound checked-Sage records; the N53 relation matches and the N83
+ordinary result remains censored. The fused variant still reports only a
+bounded point-decomposition stage: no complete DLP, final relation-matrix
+solve, target descent, or paired single-target rho solve was measured.
 
 Conditionally applying Q1303's estimated N131 W≤6 column count to this
 **full-index design** gives about \(2^{56.20}\) pair states before target
