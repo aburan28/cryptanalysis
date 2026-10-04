@@ -46,6 +46,12 @@ int ca_ec_tau4_mul_prepared_profile(const ca_group *g,
 int ca_ec_tau4_pos_prepare(const ca_group *g, const ca_elem *point,
                            ca_tau4_pos_precomp *out,
                            uint64_t *precompute_triples);
+/* Same affine table, built with one global normalization inversion.
+ * Temporary heap scratch is (sizeof(tau_jac) + sizeof(uint64_t)) *
+ * CA_TAU_POS_Q * 2 * 9 bytes. */
+int ca_ec_tau4_pos_global_prepare(const ca_group *g, const ca_elem *point,
+                                  ca_tau4_pos_precomp *out,
+                                  uint64_t *precompute_triples);
 int ca_ec_tau4_pos_mul(const ca_group *g, const ca_tau4_pos_precomp *pre,
                        ca_elem *out, uint64_t k, uint64_t *adds,
                        uint64_t *rotations);

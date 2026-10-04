@@ -61,17 +61,30 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
     ca_tau4_precomp pre;
     CHECK(ca_ec_tau4_prepare(g, point, &pre, NULL));
     ca_tau4_pos_precomp positional_pre;
+    ca_tau4_pos_precomp global_pre;
     uint64_t prep_triples = 0;
+    uint64_t global_triples = 0;
     CHECK(sizeof(positional_pre.point) == 36864);
     CHECK(ca_ec_tau4_pos_prepare(g, point, &positional_pre, &prep_triples));
+    CHECK(ca_ec_tau4_pos_global_prepare(g, point, &global_pre, &global_triples));
+    CHECK_EQ_U64(global_triples, prep_triples);
     CHECK(prep_triples > 0);
+    for (size_t q = 0; q < CA_TAU_POS_Q; q++)
+        for (size_t parity = 0; parity < 2; parity++)
+            for (size_t j = 0; j < 9; j++) {
+                const ca_elem *old = &positional_pre.point[q][parity][j];
+                const ca_elem *fresh = &global_pre.point[q][parity][j];
+                for (size_t word = 0; word < 4; word++)
+                    CHECK_EQ_U64(old->w[word], fresh->w[word]);
+            }
     ca_rng rng;
     ca_rng_seed(&rng, UINT64_C(0x20261004) ^ g->order);
     for (int i = 0; i < samples; i++) {
         uint64_t k = i < 8 ? (uint64_t[]){0, 1, 2, 3, g->order - 2,
                                             g->order - 1, g->order,
                                             UINT64_MAX}[i] : ca_rng_next(&rng);
-        ca_elem expected, baseline = *point, selected = *point, positional = *point;
+        ca_elem expected, baseline = *point, selected = *point;
+        ca_elem positional = *point, global = *point;
         uint64_t base_triples = UINT64_MAX, base_adds = UINT64_MAX;
         uint64_t cost_triples = UINT64_MAX, cost_adds = UINT64_MAX;
         ca_group_mul(g, &expected, point, k % g->order, NULL);
@@ -82,9 +95,11 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
         uint64_t positional_adds = UINT64_MAX, positional_rotations = UINT64_MAX;
         CHECK(ca_ec_tau4_pos_mul(g, &positional_pre, &positional, k,
                                  &positional_adds, &positional_rotations));
+        CHECK(ca_ec_tau4_pos_mul(g, &global_pre, &global, k, NULL, NULL));
         CHECK(ca_group_equal(g, &baseline, &expected));
         CHECK(ca_group_equal(g, &selected, &expected));
         CHECK(ca_group_equal(g, &positional, &expected));
+        CHECK(ca_group_equal(g, &global, &expected));
         CHECK(base_triples < 256 && base_adds < 256);
         CHECK(cost_triples < 256 && cost_adds < 256);
         CHECK(positional_adds < 256 && positional_rotations < 256);
@@ -128,10 +143,17 @@ static void tau_cost_boundary_curves(void)
         ca_elem identity, got;
         ca_group_identity(&g, &identity);
         ca_tau4_pos_precomp identity_pre;
+        ca_tau4_pos_precomp global_identity_pre;
         uint64_t triples = UINT64_MAX;
         CHECK(ca_ec_tau4_pos_prepare(&g, &identity, &identity_pre, &triples));
         CHECK_EQ_U64(triples, 0);
+        triples = UINT64_MAX;
+        CHECK(ca_ec_tau4_pos_global_prepare(&g, &identity,
+                                             &global_identity_pre, &triples));
+        CHECK_EQ_U64(triples, 0);
         CHECK(ca_ec_tau4_pos_mul(&g, &identity_pre, &got, 123, NULL, NULL));
+        CHECK(ca_group_is_identity(&g, &got));
+        CHECK(ca_ec_tau4_pos_mul(&g, &global_identity_pre, &got, 123, NULL, NULL));
         CHECK(ca_group_is_identity(&g, &got));
     }
 }

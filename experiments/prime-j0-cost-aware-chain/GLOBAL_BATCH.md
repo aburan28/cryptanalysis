@@ -49,3 +49,36 @@ preparation wall time improves and no significant online regression appears.
 The implementation is variable-time and intended for public research
 scalars. Table preparation is charged to the cold and break-even accounting;
 it is outside the existing prepared online interval.
+
+## Frozen-panel result and limits
+
+The protocol was committed as `71f4e265` and opened as PR #255 before the
+new scalar files were generated. [make_global_inputs.py](make_global_inputs.py)
+produced four 4,096-scalar files under [global-inputs/](global-inputs/),
+with hashes and independent generic-output digests in
+[global-inputs.json](global-inputs.json). The panel checker preserves stdout,
+stderr, return codes, source hashes, and operations in
+[global-panel.json](global-panel.json). All four cases passed: each builder
+independently reproduced all 16,384 frozen scalar outputs, the online
+operations matched exactly, and both builders used 1,134 table triplings per
+build. Layer normalization changed from 63 inversions to one. The global
+builder requires 36,864 bytes of temporary heap scratch in addition to the
+unchanged 37,968-byte persistent table. The 256-build preparation controls
+also passed, with 16,128 versus 256 inversions per case.
+
+The C curve test passed 43,607 checks, including all 1,152 affine table
+entries per tested point and 1,012 direct scalar point comparisons. The
+complete CTest suite passed 14 of 15 tests. `coord` failed because this
+sandbox denied localhost `bind()`; the raw failure is retained in
+[global-ctest.log](global-ctest.log). The passing logs are
+[global-test-curve.log](global-test-curve.log) and
+[global-runner-tests.log](global-runner-tests.log).
+
+[make_global_isolated_manifest.py](make_global_isolated_manifest.py) produces
+a five-repetition AB/BA host-bound comparison for the 256-build preparation
+arms. The isolated runner now accepts `metric_field: "prep_ms"` and labels
+the result `table_preparation_256_repeats`; its default remains `online_ms`.
+The generated manifest passed schema validation, but no qualifying host was
+available for preflight or timing. The ordinary-host timing values preserved
+in the panel are exploratory. Preparation speedup, cold break-even count,
+and any CPU wall-time claim remain unknown.

@@ -68,9 +68,12 @@ int main(int argc, char **argv)
     if (argc != 5 || (strcmp(argv[1], "reference") != 0 &&
                       strcmp(argv[1], "baseline") != 0 &&
                       strcmp(argv[1], "cost") != 0 &&
-                      strcmp(argv[1], "pos") != 0) ||
+                      strcmp(argv[1], "pos") != 0 &&
+                      strcmp(argv[1], "pos-global") != 0 &&
+                      strcmp(argv[1], "pos-prep") != 0 &&
+                      strcmp(argv[1], "pos-global-prep") != 0) ||
         (strcmp(argv[3], "0") != 0 && strcmp(argv[3], "1") != 0)) {
-        fprintf(stderr, "usage: %s reference|baseline|cost|pos glv-j0-32|j0-56 0|1 INPUT\n",
+        fprintf(stderr, "usage: %s reference|baseline|cost|pos|pos-global|pos-prep|pos-global-prep glv-j0-32|j0-56 0|1 INPUT\n",
                 argv[0]);
         return 2;
     }
@@ -78,7 +81,13 @@ int main(int argc, char **argv)
     if (!select_curve(argv[2], &p, &b, &order)) return 2;
     int mode = strcmp(argv[1], "reference") == 0 ? 0 :
                strcmp(argv[1], "baseline") == 0 ? 1 :
-               strcmp(argv[1], "cost") == 0 ? 2 : 3;
+               strcmp(argv[1], "cost") == 0 ? 2 :
+               strcmp(argv[1], "pos") == 0 ? 3 :
+               strcmp(argv[1], "pos-global") == 0 ? 4 :
+               strcmp(argv[1], "pos-prep") == 0 ? 5 : 6;
+    int global_builder = mode == 4 || mode == 6;
+    int positional = mode >= 3;
+    int prep_repeats = mode >= 5 ? 256 : 1;
     uint64_t scalars[SCALARS], input_digest;
     if (!read_scalars(argv[4], order, scalars, &input_digest)) {
         fprintf(stderr, "invalid scalar input: expected exactly %d little-endian u64 values < r\n", SCALARS);
@@ -104,20 +113,29 @@ int main(int argc, char **argv)
     double prep_ms = 0;
     uint64_t prep_triples = 0;
     uint64_t prep_layer_inversions = 0;
-    size_t prep_bytes = mode == 3 ? sizeof(positional_pre) :
+    size_t prep_temp_heap_bytes = global_builder ?
+        CA_TAU_POS_Q * 2 * 9 * (3 * sizeof(uint64_t) + sizeof(uint64_t)) : 0;
+    size_t prep_bytes = positional ? sizeof(positional_pre) :
                         mode == 0 ? 0 : sizeof(pre);
     if (mode != 0) {
         double t0 = ca_now();
-        int prepared = mode == 3 ?
-            ca_ec_tau4_pos_prepare(&group, &point, &positional_pre,
-                                   &prep_triples) :
-            ca_ec_tau4_prepare(&group, &point, &pre, NULL);
-        if (!prepared) {
-            free(outputs);
-            return 2;
+        for (int repeat = 0; repeat < prep_repeats; repeat++) {
+            uint64_t current_triples = 0;
+            int prepared = global_builder ?
+                ca_ec_tau4_pos_global_prepare(&group, &point,
+                                              &positional_pre,
+                                              &current_triples) : positional ?
+                ca_ec_tau4_pos_prepare(&group, &point, &positional_pre,
+                                       &current_triples) :
+                ca_ec_tau4_prepare(&group, &point, &pre, NULL);
+            if (!prepared) {
+                free(outputs);
+                return 2;
+            }
+            prep_triples += current_triples;
+            if (positional && !positional_pre.base.identity)
+                prep_layer_inversions += global_builder ? 1 : CA_TAU_POS_Q - 1;
         }
-        if (mode == 3 && !positional_pre.base.identity)
-            prep_layer_inversions = CA_TAU_POS_Q - 1;
         prep_ms = 1000 * (ca_now() - t0);
     }
     uint64_t triples = 0, adds = 0, rotations = 0;
@@ -125,7 +143,7 @@ int main(int argc, char **argv)
     for (size_t i = 0; i < SCALARS; i++) {
         if (mode == 0) {
             ca_group_mul(&group, &outputs[i], &point, scalars[i], NULL);
-        } else if (mode == 3) {
+        } else if (positional) {
             uint64_t a = 0, r = 0;
             if (!ca_ec_tau4_pos_mul(&group, &positional_pre, &outputs[i],
                                     scalars[i], &a, &r)) {
@@ -170,12 +188,13 @@ int main(int argc, char **argv)
            " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
            " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
            " prep_triples=%" PRIu64 " prep_layer_inversions=%" PRIu64
-           " prep_bytes=%zu"
+           " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_repeats=%d"
            " triples=%" PRIu64 " adds=%" PRIu64 " rotations=%" PRIu64
            " verified=1\n",
            argv[2], argv[3], SCALARS, point_words[0], point_words[1],
            input_digest, output_digest, online_ms, prep_ms, verify_ms,
            prep_triples, prep_layer_inversions, prep_bytes,
+           prep_temp_heap_bytes, prep_repeats,
            triples, adds, rotations);
     return 0;
 }
