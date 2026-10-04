@@ -869,6 +869,35 @@ drawn nonidentity subgroup target is at most
 explains why the ordinary no-hit under this small cap is not a natural-yield
 measurement. It does not apply to a larger or target-adaptive rectangle.
 
+### Q1402 fixed-pair family counting screen
+
+The [Q1402 screen](runs/n83_n131_q1402_fixed_pair_family_screen.json)
+extends the Q1400 counting argument to any **fixed, target-independent**
+signed-Frobenius table of \(M\) full-point pair descriptors and fixed query
+schedule of \(R\) descriptors. Each side contributes at most \(2n\)
+signed/Frobenius group points per descriptor. Hence a uniformly drawn
+nonidentity subgroup target has support probability at most
+\(\min(1,4n^2MR/(r-1))\), without assuming that pair sums are random.
+An S3 state that emits both relative signs counts as two full-point
+descriptors in this screen.
+At Q1400's measured \(M=2{,}000{,}000\), even the ceiling cannot reach 1%
+at N83 until \(R\geq438{,}716{,}003{,}635\) representatives; for 50%, it
+requires \(R\geq21{,}935{,}800{,}181{,}729\). Q1400 used 16,384.
+
+For Q1303's **sampled** N131 weight-at-most-six base estimate, the screen
+grants the fixed table every ordered orbit pair and both relative signs,
+\(M=\lceil2nK^2\rceil\), or about \(2^{57.20}\) descriptors. Even then,
+1% uniform-target support requires at least \(5.993\times10^{14}\)
+(\(2^{49.09}\)) fixed query representatives, and 50% requires
+\(2.996\times10^{16}\) (\(2^{54.73}\)). Granting \(2^{31}\) query
+representatives leaves a support ceiling of \(3.5833\times10^{-8}\).
+The upper end of the sampled 95% base-size interval changes that ceiling
+to only \(3.6257\times10^{-8}\); the interval is statistical, not a hard
+bound on the actual N131 base. Descriptors are not calibrated field
+operations, so this is a conditional family screen and not a complete
+\(2^x\) work projection. Target-adaptive schedules, guided query laws, and
+algebraic solvers lie outside its scope.
+
 ## Next goal
 
 The next gate is an **ordinary N83 four-point relation on the exact Q1325
@@ -929,6 +958,7 @@ python3 experiments/compact-s3-m4-20261003/build_q1400_pair_comparator.py --chec
 python3 experiments/compact-s3-m4-20261003/run_q1400_pair_comparator.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/make_q1401_pair_control.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1401_pair_control.py --check
+python3 experiments/compact-s3-m4-20261003/screen_q1402_fixed_pair_family.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```

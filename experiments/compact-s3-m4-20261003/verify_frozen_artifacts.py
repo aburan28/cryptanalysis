@@ -2064,6 +2064,48 @@ def verify():
     ):
         rows.append({"variant": variant, "receipt_sha256": sha(path),
                      "is_natural_yield_measurement": False})
+    from screen_q1402_fixed_pair_family import build as build_q1402_screen
+    q1402_path = HERE / "runs/n83_n131_q1402_fixed_pair_family_screen.json"
+    q1402 = json.loads(q1402_path.read_text())
+    assert q1402 == build_q1402_screen()
+    assert q1402["source_sha256"] == sha(
+        HERE / "screen_q1402_fixed_pair_family.py")
+    assert q1402["q1400_protocol_sha256"] == sha(q1400_protocol_path)
+    assert q1402["q1400_ordinary_stage_sha256"] == sha(q1400_stage_path)
+    assert q1402["proposal_id"] == "Q1402"
+    assert q1402["candidate_id"] is q1402["run_id"] is None
+    assert q1402["isogeny"] == "none"
+    assert q1402["n83_exact_q1325_measured_rectangle"]["support_ceiling"][
+        "uniform_nonidentity_target_support_numerator_cap"] == (
+            4 * 83 * 83 * 2_000_000 * 16_384)
+    n131_screen = q1402["n131_conditional_q1303_full_table"]
+    assert n131_screen["exact_factor_base_B"] is None
+    n131 = n131_screen["field_degree_n"]
+    r131 = n131_screen["subgroup_order_r"]
+    assert n131 == 131
+    for case_name in ("estimated_K_case",
+                      "upper_95_percent_K_case_not_hard_bound"):
+        case = n131_screen[case_name]
+        m = case["generous_full_table_descriptor_cap_M"]
+        for threshold, numerator, denominator in (("one_percent", 1, 100),
+                                                  ("fifty_percent", 1, 2)):
+            necessary_r = case[
+                "necessary_queries_for_uniform_target_support"][threshold][
+                    "necessary_query_representatives"]
+            capacity = denominator * 4 * n131 * n131 * m
+            assert necessary_r * capacity >= numerator * (r131 - 1)
+            assert (necessary_r - 1) * capacity < numerator * (r131 - 1)
+        online_cap = n131_screen["query_representative_cap_for_screen"]
+        assert online_cap == 1 << 31
+        assert case["support_ceiling_at_2pow31_query_representatives"][
+            "uniform_nonidentity_target_support_numerator_cap"] == (
+                min(r131 - 1, 4 * n131 * n131 * m * online_cap))
+    assert q1402["is_empirical_relation_yield"] is False
+    assert q1402["is_complete_solve_projection"] is False
+    assert q1402["challenge_dispatch_allowed"] is False
+    rows.append({"variant": "q1402_fixed_pair_family_counting_screen",
+                 "receipt_sha256": sha(q1402_path),
+                 "is_natural_yield_measurement": False})
     planted_protocol_path = HERE / "q1332_batch_planted_control_protocol.json"
     planted_protocol = json.loads(planted_protocol_path.read_text())
     planted_manifest_path = HERE / "native_inputs/n83_batch_planted_manifest.json"

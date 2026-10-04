@@ -1280,6 +1280,29 @@ def main():
     with localcontext() as decimal_context:
         decimal_context.prec = 35
         q1400_coverage_text = f"{Decimal(q1400_support_cap) / Decimal(q1400_order - 1):.14E}"
+    q1402_path, q1402 = read("n83_n131_q1402_fixed_pair_family_screen.json")
+    assert q1402["proposal_id"] == "Q1402"
+    assert q1402["parent_stage_proposal_id"] == "Q1400"
+    assert q1402["n131_factor_base_proposal_id"] == "Q1303"
+    assert q1402["candidate_id"] is None and q1402["run_id"] is None
+    assert q1402["isogeny"] == "none"
+    assert q1402["source_sha256"] == sha(
+        HERE / "screen_q1402_fixed_pair_family.py")
+    assert q1402["q1400_protocol_sha256"] == sha(q1400_protocol_path)
+    assert q1402["q1400_ordinary_stage_sha256"] == sha(q1400_stage_path)
+    assert q1402["n131_protocol_sha256"] == sha(protocol_path)
+    assert q1402["n131_sample_sha256"] == sha(n131_sample_path)
+    assert q1402["n131_independent_sample_replay_sha256"] == sha(
+        n131_replay_path)
+    assert q1402["n83_exact_q1325_measured_rectangle"][
+        "support_ceiling"][
+            "uniform_nonidentity_target_support_numerator_cap"] == (
+                q1400_support_cap)
+    assert q1402["n131_conditional_q1303_full_table"]["subgroup_order_r"] == (
+        protocol["degree_131_design"]["curve"]["subgroup_order"])
+    assert q1402["is_empirical_relation_yield"] is False
+    assert q1402["is_complete_solve_projection"] is False
+    assert q1402["challenge_dispatch_allowed"] is False
     conditional_root_states131 = n131_sample[
         "conditional_folded_columns_estimate"] ** 2 * 131
     conditional_batch_count131 = (conditional_root_states131 + 4095) // 4096
@@ -1565,6 +1588,20 @@ def main():
             "fixture_sha256": sha(q1401_fixture_path),
             "native_stage_receipt_sha256": sha(q1401_stage_path),
             "independent_replay_receipt_sha256": sha(q1401_replay_path),
+        },
+        "q1402_fixed_pair_family_counting_screen": {
+            "proposal_id": "Q1402",
+            "candidate_id": None,
+            "run_id": None,
+            "isogeny": "none",
+            "n83_exact_q1325_measured_rectangle": q1402[
+                "n83_exact_q1325_measured_rectangle"],
+            "n131_conditional_q1303_full_table": q1402[
+                "n131_conditional_q1303_full_table"],
+            "is_empirical_relation_yield": False,
+            "is_complete_solve_projection": False,
+            "challenge_dispatch_allowed": False,
+            "receipt_sha256": sha(q1402_path),
         },
         "q1327_q1328_native_root_protocol_sha256": sha(
             native_protocol_path),
