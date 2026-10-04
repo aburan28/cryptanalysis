@@ -898,6 +898,26 @@ operations, so this is a conditional family screen and not a complete
 \(2^x\) work projection. Target-adaptive schedules, guided query laws, and
 algebraic solvers lie outside its scope.
 
+### Q1400 primitive field-call accounting
+
+The [source-bound call expansion](runs/n83_q1400_primitive_field_calls.json)
+counts Q1400's recorded no-hit path through the pinned N83 native source.
+Table construction used 10,003,912 field multiplication calls and 2,040,098
+squaring calls, including its batch inversions. The target-dependent pair
+query, signed complement, exact replay, and Frobenius setup together used
+16,901,576 multiplications and 4,944,328 squarings. The replay includes the
+second full table pass triggered by 258 Bloom positives. Base-orbit
+expansion separately used 30,977,592 squarings before the target.
+
+The recorded 0.634 s times target query and exact replay, but omits the
+166 target-dependent Frobenius setup squarings before the native query timer.
+It is therefore a **partial stage wall interval**, not a complete target
+online wall time. Native controls, conversion, canonicalization, hashing,
+memory traffic, and calibration into a common weighted operation unit remain
+separate. Q1331's matched-target vector has 44,002,445 multiplications and
+40,098 squarings for its different two-million-state S3 search; neither
+vector gives cost per useful row because both N83 runs found none.
+
 ## Next goal
 
 The next gate is an **ordinary N83 four-point relation on the exact Q1325
@@ -959,6 +979,7 @@ python3 experiments/compact-s3-m4-20261003/run_q1400_pair_comparator.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/make_q1401_pair_control.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1401_pair_control.py --check
 python3 experiments/compact-s3-m4-20261003/screen_q1402_fixed_pair_family.py --check
+python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```

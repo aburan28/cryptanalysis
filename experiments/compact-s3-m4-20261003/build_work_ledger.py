@@ -1303,6 +1303,30 @@ def main():
     assert q1402["is_empirical_relation_yield"] is False
     assert q1402["is_complete_solve_projection"] is False
     assert q1402["challenge_dispatch_allowed"] is False
+    q1400_calls_path, q1400_calls = read(
+        "n83_q1400_primitive_field_calls.json")
+    assert q1400_calls["proposal_id"] == "Q1400"
+    assert q1400_calls["candidate_id"] is None
+    assert q1400_calls["run_id"] is None
+    assert q1400_calls["isogeny"] == "none"
+    assert q1400_calls["curve_id"] == q1400_stage["curve_id"]
+    assert q1400_calls["workload_id"] == q1400_stage["workload_id"]
+    assert q1400_calls["factor_base_enumerated_set_sha256"] == q1400_stage[
+        "factor_base_enumerated_set_sha256"]
+    assert q1400_calls["source_sha256"] == sha(
+        HERE / "derive_q1400_primitive_calls.py")
+    assert q1400_calls["q1400_protocol_sha256"] == sha(q1400_protocol_path)
+    assert q1400_calls["q1400_stage_receipt_sha256"] == sha(q1400_stage_path)
+    assert q1400_calls["q1400_native_build_receipt_sha256"] == sha(
+        q1400_build_path)
+    assert q1400_calls["target_dependent_phase_sum_including_untimed_frobenius"][
+        "expanded_primitive_field_mul_calls"] == 16_901_576
+    assert q1400_calls["target_dependent_phase_sum_including_untimed_frobenius"][
+        "expanded_primitive_field_sqr_calls"] == 4_944_328
+    assert q1400_calls["wall_timing_boundary"][
+        "all_target_dependent_wall_seconds"] is None
+    assert q1400_calls["is_common_weighted_field_operation_unit"] is False
+    assert q1400_calls["is_complete_solve_projection"] is False
     conditional_root_states131 = n131_sample[
         "conditional_folded_columns_estimate"] ** 2 * 131
     conditional_batch_count131 = (conditional_root_states131 + 4095) // 4096
@@ -1602,6 +1626,22 @@ def main():
             "is_complete_solve_projection": False,
             "challenge_dispatch_allowed": False,
             "receipt_sha256": sha(q1402_path),
+        },
+        "q1400_native_pair_primitive_field_call_vectors": {
+            "proposal_id": "Q1400",
+            "candidate_id": None,
+            "run_id": None,
+            "curve_id": q1400_calls["curve_id"],
+            "workload_id": q1400_calls["workload_id"],
+            "phase_call_vectors": q1400_calls["phase_call_vectors"],
+            "target_dependent_phase_sum_including_untimed_frobenius": (
+                q1400_calls[
+                    "target_dependent_phase_sum_including_untimed_frobenius"]),
+            "wall_timing_boundary": q1400_calls["wall_timing_boundary"],
+            "unit_boundary": q1400_calls["unit_boundary"],
+            "is_common_weighted_field_operation_unit": False,
+            "is_complete_solve_projection": False,
+            "receipt_sha256": sha(q1400_calls_path),
         },
         "q1327_q1328_native_root_protocol_sha256": sha(
             native_protocol_path),

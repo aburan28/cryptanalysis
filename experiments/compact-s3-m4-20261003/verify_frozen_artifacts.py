@@ -2106,6 +2106,50 @@ def verify():
     rows.append({"variant": "q1402_fixed_pair_family_counting_screen",
                  "receipt_sha256": sha(q1402_path),
                  "is_natural_yield_measurement": False})
+    from derive_q1400_primitive_calls import build as build_q1400_calls
+    q1400_calls_path = HERE / "runs/n83_q1400_primitive_field_calls.json"
+    q1400_calls = json.loads(q1400_calls_path.read_text())
+    assert q1400_calls == build_q1400_calls()
+    assert q1400_calls["source_sha256"] == sha(
+        HERE / "derive_q1400_primitive_calls.py")
+    assert q1400_calls["q1400_protocol_sha256"] == sha(q1400_protocol_path)
+    assert q1400_calls["q1400_stage_receipt_sha256"] == sha(q1400_stage_path)
+    assert q1400_calls["proposal_id"] == "Q1400"
+    assert q1400_calls["candidate_id"] is q1400_calls["run_id"] is None
+    assert q1400_calls["isogeny"] == "none"
+    calls = q1400_calls["phase_call_vectors"]
+    m = q1400_protocol["point_decomposition"]["table_descriptors"]
+    r = q1400_protocol["point_decomposition"]["query_representatives"]
+    table_batches = (m + 4095) // 4096
+    query_batches = (r + 15) // 16
+    assert calls["target_independent_base_orbit_expansion"][
+        "expanded_primitive_field_sqr_calls"] == (
+            2 * 83 * q1400_protocol["factor_base_folded_columns_K"])
+    assert calls["target_independent_table_build"][
+        "expanded_primitive_field_mul_calls"] == 5 * m + 8 * table_batches
+    assert calls["target_independent_table_build"][
+        "expanded_primitive_field_sqr_calls"] == m + 82 * table_batches
+    assert calls["target_query_pair_build"][
+        "expanded_primitive_field_mul_calls"] == 5 * r + 8 * query_batches
+    assert calls["target_signed_complement"][
+        "expanded_primitive_field_mul_calls"] == 5 * r * 83 + 8 * query_batches
+    assert calls["target_signed_complement"][
+        "expanded_primitive_field_sqr_calls"] == 2 * r * 83 + 82 * query_batches
+    assert calls["target_frobenius_setup_untimed"][
+        "expanded_primitive_field_sqr_calls"] == 2 * 83
+    assert calls["target_exact_table_replay"] == calls[
+        "target_independent_table_build"]
+    assert q1400_calls["target_dependent_phase_sum_including_untimed_frobenius"][
+        "expanded_primitive_field_mul_calls"] == 16_901_576
+    assert q1400_calls["target_dependent_phase_sum_including_untimed_frobenius"][
+        "expanded_primitive_field_sqr_calls"] == 4_944_328
+    assert q1400_calls["wall_timing_boundary"][
+        "all_target_dependent_wall_seconds"] is None
+    assert q1400_calls["is_common_weighted_field_operation_unit"] is False
+    assert q1400_calls["is_complete_solve_projection"] is False
+    rows.append({"variant": "q1400_primitive_field_calls",
+                 "receipt_sha256": sha(q1400_calls_path),
+                 "is_natural_yield_measurement": False})
     planted_protocol_path = HERE / "q1332_batch_planted_control_protocol.json"
     planted_protocol = json.loads(planted_protocol_path.read_text())
     planted_manifest_path = HERE / "native_inputs/n83_batch_planted_manifest.json"
