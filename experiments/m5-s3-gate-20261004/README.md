@@ -70,14 +70,23 @@ result, not evidence that five-summand relations are rare or that SAT cannot
 work after structural changes.
 
 The next controlled experiment should retain these exact N53/N83 bases,
-public targets, complete cofactor cosets, source-bound receipts, and caps,
-then introduce a **proved permutation symmetry break** on five leaves.
-First establish equivalence on all permutations of archived planted
-relations, including exceptional intermediate sums. Then run the same
-unpinned planted controls; promote the method to additional held-out
-ordinary targets only if it verifies a relation without planted pins.
-Record conflicts, elapsed PDP time, memory, zero-yield cells, and group-law
-replay for each target. If the unpinned control still fails, the next
-investigation should measure a staged hybrid or algebraic decomposition on
-this same workload before attempting N131 transfer. Do not infer N131
-feasibility from these smaller-field stage timings.
+public targets, complete cofactor cosets, source-bound receipts, and caps.
+Run a **partial-pinning ladder** on the same planted fixture: release the
+intermediate and preimage variables throughout, then fix five, four, three,
+two, one, and zero known leaf coordinates in a frozen order. This diagnoses
+whether the unconstrained leaf search, intermediate chain, or preimage
+choice dominates the conflict budget. It is a correctness and search-cost
+diagnostic; its pinned rows are not natural-yield observations.
+
+Use those results to cost a 2+3 hybrid: enumerate or index a bounded,
+target-independent set of first-pair states, then solve the remaining
+three leaves against the matched intermediate target. Include pair-state
+construction and memory in cold accounting and every target-dependent
+lookup and failed residual solve in online accounting. Reject the hybrid
+before a large build if the measured pair coverage and total work cannot
+fit the declared budget. Promote it to held-out ordinary targets only after
+an unpinned control verifies. PR #231's Q1412 four-leaf ordering control
+still reached the one-million-conflict cap, so leaf permutation ordering
+alone is a lower-priority m5 variation, even though its five-leaf effect
+has not been measured. Do not infer N131 feasibility from these
+smaller-field stage timings.
