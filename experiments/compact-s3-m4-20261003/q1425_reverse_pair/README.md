@@ -33,6 +33,7 @@ because this is not a complete IC pipeline, and `isogeny` is `none`.
 Use the repository's checked Sage launcher for every Sage job:
 
 ```sh
+python3 experiments/compact-s3-m4-20261003/q1425_reverse_pair/build_binaries.py --rebuild
 python3 experiments/compact-s3-m4-20261003/q1425_reverse_pair/build_binaries.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1425_reverse_pair/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1425_reverse_pair/run_stage.py --degree 53 --cell free_partner --policy reverse_target
