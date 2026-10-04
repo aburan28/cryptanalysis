@@ -1443,18 +1443,36 @@ the prior pair-table stages: Q1301 found a relation on the N53 target, while
 Q1400's fixed N83 rectangle had no hit. Their workloads and resource limits
 differ, so neither gives a controlled wall-time speedup for Q1424.
 
+### Q1425 exact reverse pair roots
+
+The [pre-registered Q1425 protocol](q1425_reverse_pair/protocol.json) adds
+exact symmetric `S3` partner roots once a pair intermediate and one leaf are
+fixed. The [eight-cell archive](q1425_reverse_pair/verification.json)
+verifies all four controls with the partner leaves freed. All four ordinary
+N53/N83 cells still hit the 60-second cap without a relation. Complete pair
+root evaluations fall to 0–21 per ordinary cell, but reverse-root calls rise
+to 562,424–1,008,552, and every ordinary reverse candidate examined is
+rejected by the sparse weight bound. The [Q1425 result table](q1425_reverse_pair/README.md)
+summarizes the caps; the ledger and receipts retain exact operation counts,
+memory, and paired Q1424 identities. The
+degree-131 complete `2^x` remains unknown.
+
 ## Next goal
 
-The next solver must test **bidirectional pair feasibility** using the
-public target before enumerating many full leaf-pair assignments. Derive a
-compact necessary condition on partial pair coordinates or an exact indexed
-partner test, prove that it preserves all four-point solutions, and test it
-against exhaustive small-field cases and the archived N53/N83 controls.
-Freeze the exact stage and use the same N53/N83 ordinary targets first, then
-a pre-registered fresh panel if a fixed target has no representation.
-Record every failed query, operation count, memory peak, and matched
-pair-table comparison. The method gates are an unpinned independently
-verified N53 relation, then one at N83 on the exact Q1325 base.
+The next solver should build a **compact structured pair-sum membership and
+witness method**. It must avoid Q1425's million-call reverse-root rejection
+loop and the full quotient-pair index screened by Q1416 at roughly
+`2^89.36` logical actions on the exact N131 base under its uniform-key
+model. This is a model for that pure-index family, not a lower bound on
+other decomposition methods. State an exact membership
+or necessary-condition theorem, prove solution preservation, and verify it
+against exhaustive small-field cases and the archived N53/N83 witnesses.
+Freeze the stage before ordinary queries. The first measurable gate is the
+unpinned archived N53 ordinary target, which Q1301 already proved
+representable. The second is an independently verified relation on the
+exact Q1325 N83 base, with a pre-registered fresh-target panel if the fixed
+N83 target has no representation. Keep failed queries, raw operations,
+memory, and matched pair-table receipts.
 
 Only after the N83 gate passes should a fresh ordinary-query panel measure
 verified useful-row yield, novel rank per query, and charged cost per useful

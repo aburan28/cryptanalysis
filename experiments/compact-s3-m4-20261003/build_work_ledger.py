@@ -2695,6 +2695,143 @@ def main():
     assert all(row["solver_status"] == "censored" and
                row["solver_stop_reason"] == "wall_cap" for row in
                q1424_cells if row["cell"] == "ordinary")
+    q1425_dir = HERE / "q1425_reverse_pair"
+    q1425_protocol_path = q1425_dir / "protocol.json"
+    q1425_verification_path = q1425_dir / "verification.json"
+    q1425_protocol = json.loads(q1425_protocol_path.read_text())
+    q1425_verification = json.loads(q1425_verification_path.read_text())
+    assert q1425_protocol["proposal_id"] == "Q1425"
+    assert q1425_protocol["candidate_id"] is None
+    assert q1425_protocol["isogeny"] == "none"
+    assert q1425_verification["complete"] is True
+    assert q1425_verification["missing"] == []
+    assert q1425_verification["protocol_sha256"] == sha(q1425_protocol_path)
+    assert q1425_verification["verifier_source_sha256"] == sha(
+        q1425_dir / "verify_archive.py")
+    q1425_cells = []
+    for key in q1425_protocol["run_order"]:
+        path = q1425_dir / "runs" / key / "receipt.json"
+        stage = json.loads(path.read_text())
+        workload = q1425_protocol["workloads"][key]
+        check = next(row for row in q1425_verification["checks"]
+                     if row["key"] == key)
+        assert check["receipt_sha256"] == sha(path)
+        assert check["verified_relation_count"] == stage[
+            "verified_relation_count"]
+        assert stage["proposal_id"] == "Q1425"
+        assert stage["candidate_id"] is None and stage["isogeny"] == "none"
+        for name in ("stage_config_id", "workload_id", "stage_run_id",
+                     "curve_id", "factor_base_actual_B", "folded_columns_K",
+                     "factor_base_enumerated_set_sha256", "public_target",
+                     "target_input_sha256", "solver_cnf_raw_sha256",
+                     "solver_cnf_variables", "solver_cnf_clauses",
+                     "removed_partner_pin_units"):
+            assert stage[name] == workload[name]
+        assert stage["protocol_sha256"] == sha(q1425_protocol_path)
+        assert stage["natural_relation_yield_estimate"] is None
+        assert stage["complete_solve_work_log2"] is None
+        matched_path = (q1424_dir / "runs" /
+                        workload["matched_q1424_key"] / "receipt.json")
+        assert sha(matched_path) == workload["matched_q1424_receipt_sha256"]
+        matched = json.loads(matched_path.read_text())
+        for name in ("workload_id", "curve_id", "factor_base_actual_B",
+                     "folded_columns_K", "factor_base_enumerated_set_sha256",
+                     "public_target", "target_input_sha256"):
+            assert matched[name] == stage[name]
+        if stage["cell"] == "ordinary":
+            assert stage["solver_cnf_raw_sha256"] == matched[
+                "parent_cnf_raw_sha256"]
+            assert stage["removed_partner_pin_units"] == 0
+        else:
+            assert stage["cell"] == "free_partner"
+            assert stage["removed_partner_pin_units"] == 2 * stage[
+                "degree_n"]
+        report = stage["solver_report"]
+        assert report is not None and report["reverse_pair_active"] is True
+        assert report["cached_pair_assignments"] == (
+            report["pair0_root_calls"] + report["pair1_root_calls"])
+        assert report["cached_reverse_assignments"] == (
+            report["reverse_pair0_calls"] + report["reverse_pair1_calls"])
+        assert report["cached_reverse_assignments"] == (
+            report["reverse_zero_candidates"] +
+            report["reverse_one_candidate"] +
+            report["reverse_two_candidates"])
+        assert report["field_mul_calls"] >= 0
+        assert report["field_sqr_calls"] >= 0
+        assert report["field_inv_calls"] >= 0
+        matched_cell = next(row for row in q1424_cells
+                            if row["stage_run_id"] == matched[
+                                "stage_run_id"])
+        q1425_cells.append({
+            "proposal_id": "Q1425", "candidate_id": None,
+            "stage_config_id": stage["stage_config_id"],
+            "workload_id": stage["workload_id"],
+            "stage_run_id": stage["stage_run_id"],
+            "matched_q1424_stage_run_id": stage[
+                "matched_q1424_stage_run_id"],
+            "curve_id": stage["curve_id"],
+            "degree_n": stage["degree_n"],
+            "cell": stage["cell"],
+            "decision_policy": stage["decision_policy"],
+            "input_law": stage["input_law"],
+            "factor_base_actual_B": stage["factor_base_actual_B"],
+            "folded_columns_K": stage["folded_columns_K"],
+            "target_preimage_x_count": stage["target_preimage_x_count"],
+            "target_input_sha256": stage["target_input_sha256"],
+            "solver_cnf_raw_sha256": stage["solver_cnf_raw_sha256"],
+            "removed_partner_pin_units": stage[
+                "removed_partner_pin_units"],
+            "solver_status": stage["solver_status"],
+            "solver_stop_reason": report["stop_reason"],
+            "solver_process_wall_seconds_exploratory": stage[
+                "solver_process_wall_seconds_exploratory"],
+            "solver_conflicts": report["conflicts"],
+            "solver_decisions": report["decisions"],
+            "pair0_root_calls": report["pair0_root_calls"],
+            "pair1_root_calls": report["pair1_root_calls"],
+            "reverse_pair0_calls": report["reverse_pair0_calls"],
+            "reverse_pair1_calls": report["reverse_pair1_calls"],
+            "reverse_raw_roots": report["reverse_raw_roots"],
+            "reverse_weight_rejects": report["reverse_weight_rejects"],
+            "reverse_lift_rejects": report["reverse_lift_rejects"],
+            "reverse_zero_candidates": report["reverse_zero_candidates"],
+            "reverse_one_candidate": report["reverse_one_candidate"],
+            "reverse_two_candidates": report["reverse_two_candidates"],
+            "final_root_calls": report["final_root_calls"],
+            "s3_root_calls": report["s3_root_calls"],
+            "external_clauses": report["external_clauses"],
+            "field_mul_calls": report["field_mul_calls"],
+            "field_sqr_calls": report["field_sqr_calls"],
+            "field_inv_calls": report["field_inv_calls"],
+            "partial_raw_field_primitive_calls": sum(
+                report[f"field_{name}_calls"]
+                for name in ("mul", "sqr", "inv")),
+            "partial_raw_field_primitive_calls_log2": math.log2(sum(
+                report[f"field_{name}_calls"]
+                for name in ("mul", "sqr", "inv"))),
+            "matched_q1424_pair0_root_calls": matched_cell[
+                "pair0_root_calls"],
+            "matched_q1424_pair1_root_calls": matched_cell[
+                "pair1_root_calls"],
+            "matched_q1424_receipt_sha256": sha(matched_path),
+            "same_curve_base_target_pair_table_stage": matched_cell[
+                "same_curve_base_target_pair_table_stage"],
+            "pair_table_speedup_comparison_valid": False,
+            "parent_formula_build_wall_seconds_exploratory": stage[
+                "parent_formula_build_wall_seconds_exploratory"],
+            "peak_child_rss_raw": stage["peak_child_rss_raw"],
+            "peak_child_rss_units": stage["peak_child_rss_units"],
+            "verified_relation_count": stage["verified_relation_count"],
+            "natural_relation_yield_estimate": None,
+            "complete_field_operation_equivalent_count": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
+    assert len(q1425_cells) == 8
+    assert sum(row["verified_relation_count"] for row in q1425_cells) == 4
+    assert all(row["solver_status"] == "censored" and
+               row["solver_stop_reason"] == "wall_cap" for row in
+               q1425_cells if row["cell"] == "ordinary")
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -3460,6 +3597,35 @@ def main():
             "protocol_sha256": sha(q1424_protocol_path),
             "verification_sha256": sha(q1424_verification_path),
         },
+        "q1425_reverse_pair_root_stage": {
+            "proposal_id": "Q1425",
+            "candidate_id": None,
+            "isogeny": "none",
+            "controlled_variable": (
+                "exact reverse S3 partner-root propagation versus matched "
+                "Q1424 decision orders on identical ordinary CNF, target, "
+                "factor base and caps; controls free two archived partner "
+                "leaf pin sets and are correctness checks only"),
+            "cells": q1425_cells,
+            "verified_known_satisfiable_control_cells": 4,
+            "verified_ordinary_n53_relation_count": 0,
+            "verified_ordinary_n83_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "All four freed-partner known-witness controls verify. "
+                "All four ordinary N53/N83 queries hit the 60-second cap "
+                "without a relation. Reverse propagation nearly removes "
+                "complete pair-root enumeration in these caps, but "
+                "generates hundreds of thousands to over one million "
+                "reverse-root checks and more field operations than "
+                "the matched Q1424 cells. No natural relation yield, "
+                "solver scaling exponent or degree-131 complete-work "
+                "projection follows from censored runs. An indexed "
+                "two-sided pair search is the next method gate."),
+            "protocol_sha256": sha(q1425_protocol_path),
+            "verification_sha256": sha(q1425_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -3804,7 +3970,11 @@ def main():
                 "two target-first orders verify all controls and show "
                 "which pair link consumes the search, yet all ordinary "
                 "cells again cap with one final-root activation and no "
-                "relation; Q1333/Q1334 use "
+                "relation; Q1425's exact reverse-S3 partner roots verify "
+                "four freed-partner controls and reject nearly all "
+                "complete pair attempts early, yet four ordinary cells "
+                "still cap without a relation and consume many reverse "
+                "root calls; Q1333/Q1334 use "
                 "an adaptive target-local inversion "
                 "window and reproduce the fixed-window ordinary outcomes; "
                 "Q1336/Q1337 fuse one field multiplication per S3 root but "

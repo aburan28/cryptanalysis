@@ -49,3 +49,41 @@ CPU wall times on this host are exploratory. Complete relation collection,
 natural yield, useful rank, matrix work, target descent, scalar replay, and
 the degree-131 `2^x` total remain unknown at this stage. No below-`2^61`
 claim follows from a solver-only result.
+
+## Frozen outcomes
+
+The [archive verifier](verification.json) checked all eight cells. All four
+`free_partner` controls returned independently verified exact-base relations,
+and both reverse gates fired in each control. All four ordinary cells hit the
+internal 60-second wall cap without a model or verified relation. The outer
+safeguard did not fire.
+
+| Degree | Policy | Matched Q1424 forward pair roots | Q1425 forward pair roots | Q1425 reverse calls | Sparse partners kept | `log2` raw mul+sqr+inv calls | Peak RSS |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 53 | `reverse_target` | 58,515 | 21 | 985,233 | 0 | 27.53 | 1,504 MB |
+| 53 | `reverse_mid` | 225,790 | 0 | 1,008,552 | 0 | 27.56 | 1,390 MB |
+| 83 | `reverse_target` | 65,290 | 1 | 569,521 | 0 | 28.00 | 550 MB |
+| 83 | `reverse_mid` | 135,141 | 0 | 562,424 | 0 | 27.98 | 542 MB |
+
+The [work ledger](../work_ledger.json) and per-cell receipts retain each
+mul/square/inversion count, conflicts, exploratory wall time, and raw memory
+peak. The reverse rule eliminates almost all **complete** pair-root evaluations in
+these capped paths. It does so by computing many reverse roots: every tested
+ordinary reverse-root candidate exceeded the sparse weight bound, whereas
+the known-witness controls retained the correct candidate. The field-call
+totals are larger than in the matched Q1424 caps. These are partial costs of
+unsuccessful attempts, in raw primitive counts; they are neither calibrated
+field-operation equivalents nor completed decomposition costs. There is no
+N53-to-N83 solve-growth fit and no degree-131 complete `2^x` estimate.
+
+The next method gate is a compact, **structured pair-sum membership and
+witness method**. It must preserve exact four-point solutions while avoiding
+both Q1425's random reverse-root rejection loop and a full quotient-pair
+index. The [Q1416 exact-base screen](../runs/n131_q1416_exact_base_pair_index_screen.json)
+models a pure full pair index at roughly `2^89.36` logical actions and at
+least `2^60.28` bytes for keys alone under its stated uniform-key law;
+the model is not a bound on other decomposition methods. That pure-index
+family is not a credible below-`2^61` route. First reproduce the
+archived representable N53 ordinary target without witness pins; then test
+the exact Q1325 N83 base and public target. Only if that stage passes should
+a frozen fresh-target panel estimate natural yield and cost per useful row.
