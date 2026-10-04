@@ -57,3 +57,43 @@ memory costs visible. Ordinary-host times are exploratory diagnostics.
 
 Reference for simultaneous inversion and projective-to-affine conversion:
 [ePrint 2008/100](https://eprint.iacr.org/2008/100.pdf), Chapter 3.
+
+## Frozen-panel correctness and operation result
+
+This protocol was committed as `6f7e4b48` and opened as PR #258 before the
+new inputs were generated. [make_batch_inputs.py](make_batch_inputs.py)
+materialized the four frozen files under [batch-inputs/](batch-inputs/);
+[batch-inputs.json](batch-inputs.json) records their SHA-256 hashes and the
+independent generic-output digests. [check_batch_panel.py](check_batch_panel.py)
+ran the reference and four block sizes on every case. All 20 arm/case runs
+passed independent generic point replay, for **81,920 verified outputs**.
+The raw commands, stdout, stderr, return codes, input/source hashes, and
+counts are preserved in [batch-panel.json](batch-panel.json).
+
+| Block size | Output inversions per 4,096-result case | Online scratch |
+| ---: | ---: | ---: |
+| Per-result reference | 4,096 | 0 bytes |
+| 32 | 128 | 1,024 bytes |
+| 128 | 32 | 4,096 bytes |
+| 512 | 8 | 16,384 bytes |
+| 4,096 | 1 | 131,072 bytes |
+
+Every arm used exactly the same positional additions and unit rotations on
+each case. The curve test passed 43,880 checks, including zero-length,
+identity-only, small-order, and partial-block controls; its raw output is
+[batch-test-curve.log](batch-test-curve.log). The online scratch allocation is
+included in the candidate's timed interval. The table's persistent 37,968
+bytes and construction remain separate preparation costs. The ordinary-host
+`online_ms` values in the raw panel are exploratory and establish no CPU
+speedup.
+
+The full local CTest run passed 14 of 15 tests. `coord` again failed because
+this sandbox denied localhost `bind()`; the raw failure is in
+[batch-ctest.log](batch-ctest.log). The changed-line C formatting check passed.
+[batch-check.json](batch-check.json) binds the compiler, exact checks, inputs,
+source, panel, and raw test logs by SHA-256.
+
+[make_isolated_manifest.py](make_isolated_manifest.py) now generates one
+five-repetition AB/BA manifest for each block size with `pos-global` as the
+reference. All four generated manifests passed the isolated runner's schema
+and paired-arm checks. Host preflight and isolated wall timing remain pending.

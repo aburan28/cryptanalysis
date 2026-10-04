@@ -17,6 +17,10 @@ def make(args):
     if args.candidate_arm == "pos":
         artifacts += [experiment / "POSITIONAL.md",
                       experiment / "make_pos_inputs.py"]
+    if args.candidate_arm.startswith("pos-batch"):
+        artifacts += [experiment / "BATCH_OUTPUT.md",
+                      experiment / "make_batch_inputs.py",
+                      experiment / "check_batch_panel.py"]
     artifacts += sorted((root / "src").glob("*.c"))
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
@@ -35,7 +39,10 @@ def make(args):
                           "base_y": case["base_y"],
                           "input_digest": case["input_digest"]},
                       "expected_result": case["expected_output_digest"],
-                      "reference": [base[0], "baseline", *base[2:]],
+                      "reference": [base[0],
+                                    "pos-global" if args.candidate_arm.startswith(
+                                        "pos-batch") else "baseline",
+                                    *base[2:]],
                       "candidate": [base[0], args.candidate_arm, *base[2:]]})
     manifest = {
         "schema": 1,
@@ -47,6 +54,12 @@ def make(args):
         "timeout_s": 120,
         "repetitions": 5,
         "measurement_boundary": (
+            "After identical per-point global-batch table preparation: "
+            "first public scalar representative selection through last "
+            "affine output; includes all recoding, rotations, additions, "
+            "candidate scratch allocation and block normalization; excludes "
+            "loading, preparation, and independent replay"
+            if args.candidate_arm.startswith("pos-batch") else
             "After all per-point preparation: first public scalar "
             "representative selection through last affine output; includes "
             "all recoding, unit rotations, tripling, additions, conversions, "
@@ -75,7 +88,9 @@ if __name__ == "__main__":
     parser.add_argument("--bench", type=Path, required=True)
     parser.add_argument("--fixture", default="inputs.json")
     parser.add_argument("--input-dir", default="inputs")
-    parser.add_argument("--candidate-arm", choices=("cost", "pos"), default="cost")
+    parser.add_argument("--candidate-arm", choices=(
+        "cost", "pos", "pos-batch32", "pos-batch128",
+        "pos-batch512", "pos-batch4096"), default="cost")
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)

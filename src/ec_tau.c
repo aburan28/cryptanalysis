@@ -168,6 +168,48 @@ static void jac_batch_to_affine(const ca_group *g, ca_elem *out,
   }
 }
 
+/* Normalize an arbitrary output block with caller-owned prefix scratch.
+ * An all-identity block avoids inversion entirely. */
+static int jac_batch_to_affine_scratch(const ca_group *g, ca_elem *out,
+                                       const tau_jac *in, size_t n,
+                                       uint64_t *prefixes,
+                                       uint64_t *inversions) {
+  uint64_t product = g->mont.r1;
+  int has_point = 0;
+  for (size_t i = 0; i < n; i++) {
+    uint64_t z = in[i].z ? in[i].z : g->mont.r1;
+    has_point |= in[i].z != 0;
+    product = fm(g, product, z);
+    prefixes[i] = product;
+  }
+  if (!has_point) {
+    for (size_t i = 0; i < n; i++)
+      out[i] = (ca_elem){{0, 0, 1, 0}};
+    if (inversions)
+      *inversions = 0;
+    return 1;
+  }
+  uint64_t inverse = ca_mont_inv(&g->mont, product);
+  if (!inverse)
+    return 0;
+  for (size_t i = n; i-- > 0;) {
+    tau_jac p = in[i];
+    uint64_t invz = fm(g, inverse, i ? prefixes[i - 1] : g->mont.r1);
+    inverse = fm(g, inverse, p.z ? p.z : g->mont.r1);
+    if (!p.z) {
+      out[i] = (ca_elem){{0, 0, 1, 0}};
+      continue;
+    }
+    uint64_t invz2 = fq(g, invz);
+    out[i].w[0] = fm(g, p.x, invz2);
+    out[i].w[1] = fm(g, p.y, fm(g, invz2, invz));
+    out[i].w[2] = out[i].w[3] = 0;
+  }
+  if (inversions)
+    *inversions = 1;
+  return 1;
+}
+
 int ca_ec_triple_j0(const ca_group *g, ca_elem *r, const ca_elem *a) {
   if (!g || !r || !a || g->kind != CA_GROUP_EC || g->a != 0 || g->b == 0 ||
       g->p % 3 != 1)
@@ -708,9 +750,9 @@ int ca_ec_tau4_pos_global_prepare(const ca_group *g, const ca_elem *point,
   return 1;
 }
 
-int ca_ec_tau4_pos_mul(const ca_group *g, const ca_tau4_pos_precomp *pre,
-                       ca_elem *out, uint64_t k, uint64_t *adds,
-                       uint64_t *rotations) {
+static int tau4_pos_mul_jac(const ca_group *g, const ca_tau4_pos_precomp *pre,
+                            tau_jac *out, uint64_t k, uint64_t *adds,
+                            uint64_t *rotations) {
   if (!g || !pre || !out || pre->base.g != g)
     return 0;
   if (adds)
@@ -718,7 +760,7 @@ int ca_ec_tau4_pos_mul(const ca_group *g, const ca_tau4_pos_precomp *pre,
   if (rotations)
     *rotations = 0;
   if (pre->base.identity || k % g->order == 0) {
-    *out = (ca_elem){{0, 0, 1, 0}};
+    *out = (tau_jac){0, g->mont.r1, 0};
     return 1;
   }
   k %= g->order;
@@ -753,11 +795,82 @@ int ca_ec_tau4_pos_mul(const ca_group *g, const ca_tau4_pos_precomp *pre,
     acc = jac_add_mixed(g, acc, &seed);
     na++;
   }
-  jac_to_affine(g, out, acc);
+  *out = acc;
   if (adds)
     *adds = na;
   if (rotations)
     *rotations = nr;
+  return 1;
+}
+
+int ca_ec_tau4_pos_mul(const ca_group *g, const ca_tau4_pos_precomp *pre,
+                       ca_elem *out, uint64_t k, uint64_t *adds,
+                       uint64_t *rotations) {
+  if (!out)
+    return 0;
+  tau_jac projective;
+  if (!tau4_pos_mul_jac(g, pre, &projective, k, adds, rotations))
+    return 0;
+  jac_to_affine(g, out, projective);
+  return 1;
+}
+
+int ca_ec_tau4_pos_mul_batch(const ca_group *g, const ca_tau4_pos_precomp *pre,
+                             ca_elem *out, const uint64_t *scalars,
+                             size_t count, size_t block_size, uint64_t *adds,
+                             uint64_t *rotations, uint64_t *output_inversions) {
+  if (adds)
+    *adds = 0;
+  if (rotations)
+    *rotations = 0;
+  if (output_inversions)
+    *output_inversions = 0;
+  if (!count)
+    return 1;
+  if (!g || !pre || !out || !scalars || pre->base.g != g || block_size == 0 ||
+      block_size > 4096)
+    return 0;
+  tau_jac *projective = malloc(block_size * sizeof(*projective));
+  uint64_t *prefixes = malloc(block_size * sizeof(*prefixes));
+  if (!projective || !prefixes) {
+    free(prefixes);
+    free(projective);
+    return 0;
+  }
+  uint64_t total_adds = 0, total_rotations = 0, total_inversions = 0;
+  for (size_t offset = 0; offset < count;) {
+    size_t n = count - offset;
+    if (n > block_size)
+      n = block_size;
+    for (size_t i = 0; i < n; i++) {
+      uint64_t a = 0, r = 0;
+      if (!tau4_pos_mul_jac(g, pre, &projective[i], scalars[offset + i], &a,
+                            &r)) {
+        free(prefixes);
+        free(projective);
+        return 0;
+      }
+      total_adds += a;
+      total_rotations += r;
+    }
+    uint64_t inversions = 0;
+    if (!jac_batch_to_affine_scratch(g, out + offset, projective, n, prefixes,
+                                     &inversions)) {
+      free(prefixes);
+      free(projective);
+      return 0;
+    }
+    total_inversions += inversions;
+    offset += n;
+  }
+  free(prefixes);
+  free(projective);
+  if (adds)
+    *adds = total_adds;
+  if (rotations)
+    *rotations = total_rotations;
+  if (output_inversions)
+    *output_inversions = total_inversions;
   return 1;
 }
 

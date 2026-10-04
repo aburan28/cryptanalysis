@@ -55,5 +55,11 @@ int ca_ec_tau4_pos_global_prepare(const ca_group *g, const ca_elem *point,
 int ca_ec_tau4_pos_mul(const ca_group *g, const ca_tau4_pos_precomp *pre,
                        ca_elem *out, uint64_t k, uint64_t *adds,
                        uint64_t *rotations);
+/* Public-scalar batch. Each block shares one affine-output inversion.
+ * block_size is in [1,4096]; scratch is block_size * 32 bytes. */
+int ca_ec_tau4_pos_mul_batch(const ca_group *g, const ca_tau4_pos_precomp *pre,
+                             ca_elem *out, const uint64_t *scalars,
+                             size_t count, size_t block_size, uint64_t *adds,
+                             uint64_t *rotations, uint64_t *output_inversions);
 
 #endif
