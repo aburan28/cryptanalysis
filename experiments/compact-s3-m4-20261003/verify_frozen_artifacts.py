@@ -2234,6 +2234,110 @@ def verify():
     ):
         rows.append({"variant": variant, "receipt_sha256": sha(path),
                      "is_natural_yield_measurement": False})
+    q1403_protocol_path = HERE / "q1403_ordered_q1325_protocol.json"
+    q1403_protocol = json.loads(q1403_protocol_path.read_text())
+    q1403_runtime_path = HERE / "q1403_sage_runtime_info.json"
+    assert json.loads(q1403_runtime_path.read_text())["status"] == "verified"
+    assert q1403_protocol["proposal_id"] == "Q1403"
+    assert q1403_protocol["candidate_id"] is None
+    assert q1403_protocol["isogeny"] == "none"
+    assert q1403_protocol["parent_factor_base_proposal_id"] == "Q1325"
+    assert q1403_protocol["ordinary_workload_id"] == "bab50a1e5f66"
+    assert q1403_protocol["factor_base_actual_B"] == 30_977_592
+    assert q1403_protocol["factor_base_folded_columns"] == 186_612
+    for source, digest in q1403_protocol["source_sha256"].items():
+        assert digest == sha(HERE / source)
+    for mode, expected_status, expected_hits in (
+        ("planted_locked", "sat", 1),
+        ("planted_unpinned", "external_timeout", 0),
+        ("ordinary", "external_timeout", 0),
+    ):
+        stem = f"n83_q1403_{mode}"
+        receipt_path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(receipt_path.read_text())
+        assert receipt["proposal_id"] == "Q1403"
+        assert receipt["candidate_id"] is receipt["run_id"] is None
+        assert receipt["curve_id"] == q1403_protocol["curve_id"]
+        assert receipt["isogeny"] == "none"
+        assert receipt["mode"] == mode
+        assert receipt["status"] == expected_status
+        assert receipt["observed_verified_relation_count"] == expected_hits
+        assert receipt["factor_base_actual_B"] == q1403_protocol[
+            "factor_base_actual_B"]
+        assert receipt["factor_base_folded_columns"] == q1403_protocol[
+            "factor_base_folded_columns"]
+        assert receipt["factor_base_enumerated_set_sha256"] == (
+            q1403_protocol["factor_base_enumerated_set_sha256"])
+        assert receipt["protocol_sha256"] == sha(q1403_protocol_path)
+        assert receipt["runtime_info_sha256"] == sha(q1403_runtime_path)
+        assert receipt["source_sha256"] == q1403_protocol["source_sha256"]
+        assert receipt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stdout.txt")
+        assert receipt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stderr.txt")
+        assert receipt["complete_solve_work_log2"] is None
+        assert receipt["natural_relation_yield_estimate"] is None
+        if mode == "ordinary":
+            assert receipt["workload_id"] == q1403_protocol[
+                "ordinary_workload_id"]
+            assert [str(v) for v in receipt["public_target"]] == (
+                q1403_protocol["ordinary_public_target"])
+            assert receipt["target_pdp_wall_seconds"] >= 120
+        else:
+            assert receipt["workload_id"] is None
+            assert receipt["control_pdp_wall_seconds"] is not None
+        formula_digest = hashlib.sha256()
+        formula_bytes = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                formula_digest.update(chunk)
+                formula_bytes += len(chunk)
+        assert formula_digest.hexdigest() == receipt["xcnf_sha256"]
+        assert formula_bytes == receipt["xcnf_bytes"]
+        rows.append({"variant": stem, "receipt_sha256": sha(receipt_path),
+                     "formula_sha256": formula_digest.hexdigest(),
+                     "is_natural_yield_measurement": False})
+    q1403_replay_path = HERE / "runs/n83_q1403_ordered_control_replay.json"
+    q1403_replay = json.loads(q1403_replay_path.read_text())
+    assert q1403_replay["status"] == "PASS"
+    assert q1403_replay["proposal_id"] == "Q1403"
+    assert q1403_replay["protocol_sha256"] == sha(q1403_protocol_path)
+    assert q1403_replay["source_sha256"] == sha(
+        HERE / "verify_q1403_ordered_control.py")
+    assert q1403_replay["locked_stage_sha256"] == sha(
+        HERE / "runs/n83_q1403_planted_locked.json")
+    assert q1403_replay["ordinary_stage_sha256"] == sha(
+        HERE / "runs/n83_q1403_ordinary.json")
+    assert q1403_replay["unpinned_stage_sha256"] == sha(
+        HERE / "runs/n83_q1403_planted_unpinned.json")
+    assert q1403_replay["verified_control_relation_count"] == 1
+    assert q1403_replay["ordinary_relation_count"] == 0
+    assert q1403_replay["complete_work_log2"] is None
+    for variant, path in (
+        ("q1403_ordered_protocol", q1403_protocol_path),
+        ("q1403_checked_sage_runtime", q1403_runtime_path),
+        ("q1403_independent_control_replay", q1403_replay_path),
+    ):
+        rows.append({"variant": variant, "receipt_sha256": sha(path),
+                     "is_natural_yield_measurement": False})
+    from build_q1403_stage_comparison import build as build_q1403_comparison
+    q1403_comparison_path = HERE / "runs/n83_q1325_q1403_named_stage_comparison.json"
+    q1403_comparison = json.loads(q1403_comparison_path.read_text())
+    assert q1403_comparison == build_q1403_comparison()
+    assert q1403_comparison["source_sha256"] == sha(
+        HERE / "build_q1403_stage_comparison.py")
+    assert [row["proposal_id"] for row in q1403_comparison[
+        "stage_profiles"]] == ["Q1325", "Q1403"]
+    assert len(set(row["stage_config_id"] for row in q1403_comparison[
+        "stage_profiles"])) == 2
+    for profile in q1403_comparison["stage_profiles"]:
+        assert profile["candidate_id"] is None
+        assert profile["run_id"] == (profile["stage_config_id"] + "W"
+                                     + profile["workload_id"] + "R1")
+        assert profile["complete_solve_work_log2"] is None
+    rows.append({"variant": "q1325_q1403_named_stage_comparison",
+                 "receipt_sha256": sha(q1403_comparison_path),
+                 "is_natural_yield_measurement": False})
     adaptive_protocol_path = HERE / "q1333_q1334_adaptive_window_protocol.json"
     adaptive_protocol = json.loads(adaptive_protocol_path.read_text())
     assert adaptive_protocol["kind"] == (

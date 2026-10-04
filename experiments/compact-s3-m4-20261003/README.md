@@ -976,6 +976,48 @@ separate. Q1331's matched-target vector has 44,002,445 multiplications and
 40,098 squarings for its different two-million-state S3 search; neither
 vector gives cost per useful row because both N83 runs found none.
 
+### Q1403 ordered implicit Q1325 S3 stage
+
+Q1403 tests one specific symmetry reduction in the compact SAT formula:
+sort the four **raw normal-basis x masks** before applying Q1325's exact
+cofactor-four projection and three-link S3 chain. The original Q1325
+source remains unchanged. Q1403 uses the same exact N83 curve, full
+weight-at-most-five base (\(B=30{,}977{,}592\), \(K=186{,}612\), the same
+set digest), and ordinary public-target workload `bab50a1e5f66`.
+Its [frozen protocol](q1403_ordered_q1325_protocol.json) keeps
+`candidate_id: null` and `isogeny: "none"`.
+The [named PDP-stage comparison](runs/n83_q1325_q1403_named_stage_comparison.json)
+assigns `PS1N83Ckb1fb30977592PDP4sathfa12f6d598da` to the existing
+Q1325 ordinary receipt and `PS1N83Ckb1fb30977592PDP4sath59cbea1842cc`
+to Q1403. Their stage run IDs append `Wbab50a1e5f66R1`. These `PS1`
+labels identify exact-base decomposition profiles, not complete `IC1`
+candidates; the original `Q` receipts retain their names.
+
+| Q1403 query | Formula vars / CNF / XOR / AND | Result | Charged PDP wall | Verified relation |
+| --- | --- | --- | ---: | --- |
+| N83 planted, fully locked | 123,310 / 358,560 / 3,158 / 117,934 | SAT, 56,001 reported conflicts | 2.411 s control | one, independently replayed |
+| N83 planted, unpinned | 123,310 / 357,730 / 3,158 / 117,934 | 60 s external cap, no model | 60.010 s control | none |
+| N83 ordinary | 123,310 / 357,730 / 3,158 / 117,934 | 120 s external cap, no model | 120.013 s target PDP | none |
+
+The ordinary Q1325 formula without raw-leaf ordering had 122,074 variables,
+354,766 CNF clauses, 2,909 XOR rows, and 116,947 AND gates; it also
+reached the 120 s cap without a model. Q1403's ordinary child-process peak
+RSS was 695,042,048 bytes, with 128,843,776 bytes for the parent process.
+These exploratory wall measurements on an unisolated host are not a
+controlled speed comparison. The [independent checked-Sage replay](runs/n83_q1403_ordered_control_replay.json)
+reconstructed the four subgroup points from the sorted raw masks, checked
+their exact base membership, applied the solver-reported signs, and re-added
+them to the planted public target. Its planted relation is a correctness
+control, not a natural-yield sample.
+
+Ordering preserves the nondegenerate four-point group relations represented
+by this chain because group addition is commutative and the S3 intermediates
+can be rebuilt in sorted order. The
+ordinary no-model result remains censored; the unpinned planted timeout
+shows that this encoding still has a search bottleneck on a satisfiable
+N83 instance at the frozen cap. No ordinary useful row, natural yield,
+field-operation conversion, or complete \(2^x\) solve cost follows.
+
 ## Next goal
 
 The next gate is an **ordinary N83 four-point relation on the exact Q1325
@@ -983,8 +1025,11 @@ base from a search that avoids both the full \(K^2n\) index and Q1331's
 fixed two-million-state support limit**. Q1329 has now
 validated the native S3 search on an unpinned, known-satisfiable N83 target;
 Q1401 has independently validated the quotient-pair search on the exact
-Q1325 base with a planted public target. Q1400's ordinary no-hit and tiny
-fixed-rectangle support bound leave ordinary relation yield unmeasured.
+Q1325 base with a planted public target. Q1403's ordered implicit-base
+SAT formula still cannot recover its unpinned known-satisfiable control
+within 60 seconds or the ordinary target within 120 seconds. Q1400's
+ordinary no-hit and tiny fixed-rectangle support bound leave ordinary
+relation yield unmeasured.
 Run frozen ordinary single-target workloads under identical operation and
 memory limits, retaining all zero-yield cells and independently verifying
 any relations.
@@ -1038,6 +1083,8 @@ python3 experiments/compact-s3-m4-20261003/run_q1400_pair_comparator.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1401_pair_control.py --check
 python3 experiments/compact-s3-m4-20261003/screen_q1402_fixed_pair_family.py --check
 python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1403_ordered_control.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1403_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
