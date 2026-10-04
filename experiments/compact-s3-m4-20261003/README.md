@@ -1424,12 +1424,28 @@ field operations, conflicts, exploratory walls, and memory. The new rule
 is sound, but this search order reaches it too late to constrain the
 ordinary queries. A complete degree-131 `2^x` remains unknown.
 
+### Q1424 early-target decision orders
+
+The [pre-registered Q1424 protocol](q1424_early_target/protocol.json)
+compares two decision orders that choose the public target selector before
+leaf-pair search. Its [eight-cell archive](q1424_early_target/verification.json)
+verifies all four known-witness controls. All four ordinary N53/N83 cells
+still hit the 60-second wall cap without a relation. The new per-pair
+counters show `target_first` spends the cap on pair 1 (58,514 and 65,289
+root calls), while `target_mid_first` spends it on pair 0 (225,790 and
+135,141 root calls). The final target-coupled root rule activates once in
+each ordinary cell. The [Q1424 result table](q1424_early_target/README.md)
+retains field operations, memory, and every censored outcome. Moving SAT
+decisions alone does not solve the pair-feasibility problem or support a
+complete degree-131 `2^x`.
+
 ## Next goal
 
-The next solver must use the public target **before** enumerating many full
-leaf-pair assignments. Derive a compact target-coupled necessary condition
-on partial leaf pairs, prove that it preserves all four-point solutions, and
-test it against exhaustive small-field cases and the archived N53/N83 controls.
+The next solver must test **bidirectional pair feasibility** using the
+public target before enumerating many full leaf-pair assignments. Derive a
+compact necessary condition on partial pair coordinates or an exact indexed
+partner test, prove that it preserves all four-point solutions, and test it
+against exhaustive small-field cases and the archived N53/N83 controls.
 Freeze the exact stage and use the same N53/N83 ordinary targets first, then
 a pre-registered fresh panel if a fixed target has no representation.
 Record every failed query, operation count, memory peak, and matched

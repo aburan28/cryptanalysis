@@ -49,5 +49,35 @@ python3 experiments/compact-s3-m4-20261003/q1424_early_target/build_binaries.py 
 ```
 
 Run `target_mid_first` for the same degree/cell combinations in the frozen
-protocol. The runner refuses to overwrite any completed row. The ordinary
-outcomes will be recorded after the pre-registration is published.
+protocol. The runner refuses to overwrite any completed row. The protocol
+was committed and published in draft PR #246 before ordinary runs began.
+
+## Frozen outcomes
+
+The [eight-cell archive verifier](verification.json) passed. All four
+known-witness controls produced verified exact-base relations. All four
+ordinary queries reached the internal 60-second wall cap without a model;
+the outer safeguard did not fire.
+
+| Degree | Policy | Pair-0 roots | Pair-1 roots | Final-root calls | Field mul/sqr/inv | Peak RSS |
+| --- | --- | ---: | ---: | ---: | --- | ---: |
+| 53 | `target_first` | 1 | 58,514 | 1 | 1,895,858 / 10,889,360 / 141,899 | 626 MB |
+| 53 | `target_mid_first` | 225,790 | 0 | 1 | 6,746,854 / 38,322,434 / 476,463 | 2,293 MB |
+| 83 | `target_first` | 1 | 65,289 | 1 | 3,197,391 / 27,274,570 / 260,958 | 1,205 MB |
+| 83 | `target_mid_first` | 135,141 | 0 | 1 | 6,622,968 / 56,498,534 / 540,681 | 2,496 MB |
+
+Moving the target selector earlier does not by itself increase final-root
+activation. The two orders move the large enumeration between the two pair
+links. Q1423's combined pair count did not identify which link dominated;
+these new separate counters do. The `target_mid_first` order spends more
+field calls and memory within the same cap, and neither policy recovers an
+ordinary relation. Counts are stage diagnostics, not a wall-time speedup or
+natural-yield estimate. The complete degree-131 `2^x` remains unknown.
+
+The next solver should test **bidirectional pair feasibility**: given a
+target and an intermediate, reject a branch before enumerating many full
+two-leaf pairs, while proving that no valid factor-base decomposition is
+lost. A matched pair-index method is the natural comparator. A successful
+N53 control must recover the archived ordinary witness without its pins;
+N83 then needs a verified ordinary relation or a preregistered fresh panel
+that measures nonrepresentable targets and natural yield.
