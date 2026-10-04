@@ -63,3 +63,6 @@ symmetry guard and CPU proof paths. That requires explicit current-invocation
 ownership, failure invalidation, full query checks, independent original-ANF
 replay, and measurements that charge all copies, synchronization and verification.
 Standalone kernel time cannot establish that integration's benefit.
+
+The completed physical Apple M4 Pro experiment and its integration decision
+are recorded in [RESULTS.md](RESULTS.md), with frozen evidence under `results/`.
