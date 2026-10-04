@@ -26,6 +26,32 @@ do not measure ordinary relation yield or a complete N131 solve.
 The stage is proposal `Q1429`, with `candidate_id: null` and
 `isogeny: "none"`.
 
+## Frozen result
+
+The [268-sample result](result.json) has zero cases where the span filter
+rejects a valid exact sparse partner. The exact enumerator found no pair
+in these independently uniform intermediates; that is expected to be rare
+under the prior pair-support screen and says nothing about a
+target-conditioned ordinary query. Selected two-unit weight-slack cells:
+
+| Degree | Free bits per leaf | Span rejections | Exact root calls avoided if filtered first | Bilinear columns tested |
+| --- | ---: | ---: | ---: | ---: |
+| 53 | 14 | 5/16 | 530/1,696 | 1,442 |
+| 53 | 12 | 16/16 | 1,264/1,264 | 2,304 |
+| 83 | 24 | 0/16 | 0/4,816 | 591 |
+| 83 | 20 | 14/16 | 2,954/3,376 | 6,400 |
+| 131 | 36 | 0/4 | 0/2,668 | 243 |
+| 131 | 32 | 4/4 | 2,116/2,116 | 4,096 |
+
+At N131 with 32 free bits and two remaining one bits, an exact check
+needs at most `1+32+choose(32,2)=529` first-leaf root calls per sample.
+The rank filter rejected all four such samples while testing 1,024
+bilinear columns per sample. A bilinear-column test and an exact root call
+have different arithmetic costs; this table is not a speed ratio. The
+next gate is to observe whether Q1427's actual target-conditioned SAT
+trail reaches unsaturated states of this shape, then test a sound partial
+filter on the same archived ordinary queries. No N131 `2^x` follows.
+
 ## Reproduction
 
 Use the checked repository Sage launcher:

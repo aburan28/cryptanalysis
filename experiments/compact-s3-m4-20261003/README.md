@@ -1511,6 +1511,22 @@ solver pruning. It is neither an ordinary-query measurement nor a
 degree-131 work estimate. The next test must leave weight capacity and
 compare its rejection benefit with exact completion enumeration.
 
+### Q1429 unsaturated partial-pair screen
+
+The [frozen Q1429 protocol](q1429_unsaturated_span/protocol.json) leaves
+one or two one bits available on each partial leaf and compares Q1428's
+sound span condition with exact sparse completion and reverse `S3` roots.
+Its [268-sample result](q1429_unsaturated_span/result.json) includes the
+exact N53/N83 fields and an N131 W≤6 structural screen tied to Q1413's
+exact base identity. At N131 with 32 free bits and two remaining one bits,
+all four synthetic samples were rejected by the span test; an exact
+enumeration would have made 529 reverse-root calls per sample. The filter
+tested 1,024 bilinear columns per sample, a different work unit. No exact
+pair occurred in any uniform-intermediate sample. These are not ordinary
+queries, and the next gate is whether target-conditioned solver trails
+actually reach such unsaturated states. The degree-131 complete `2^x`
+remains unknown.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum

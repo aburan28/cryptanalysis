@@ -3136,6 +3136,51 @@ def main():
             item["free_suffix_sizes"])
         assert all(row["samples"] == q1428_protocol["samples_per_cell"]
                    for row in cell_rows)
+    q1429_dir = HERE / "q1429_unsaturated_span"
+    q1429_protocol_path = q1429_dir / "protocol.json"
+    q1429_result_path = q1429_dir / "result.json"
+    q1429_protocol = json.loads(q1429_protocol_path.read_text())
+    q1429_result = json.loads(q1429_result_path.read_text())
+    assert q1429_protocol["proposal_id"] == q1429_result[
+        "proposal_id"] == "Q1429"
+    assert q1429_protocol["candidate_id"] is q1429_result[
+        "candidate_id"] is None
+    assert q1429_protocol["isogeny"] == q1429_result["isogeny"] == "none"
+    assert q1429_protocol["source_sha256"] == q1429_result[
+        "source_sha256"] == sha(q1429_dir / "run_screen.py")
+    assert q1429_protocol["q1428_protocol_sha256"] == sha(
+        q1428_protocol_path)
+    assert q1429_protocol["q1427_protocol_sha256"] == sha(
+        q1427_protocol_path)
+    assert q1429_protocol["q1425_pair_support_sha256"] == sha(
+        q1425_support_path)
+    assert q1429_protocol["runtime_info_sha256"] == sha(
+        q1429_dir / "sage_runtime_info.json")
+    assert q1429_protocol["field_source_sha256"] == sha(
+        ROOT / "ecc2k130/codegen/field.py")
+    for name, digest in q1429_protocol["dependency_sha256"].items():
+        assert sha(HERE / name) == digest
+    assert q1429_result["protocol_sha256"] == sha(q1429_protocol_path)
+    assert q1429_result["complete_solve_work_log2"] is None
+    assert q1429_result["is_empirical_solver_measurement"] is False
+    assert len(q1429_result["samples"]) == 268
+    assert len(q1429_result["cells"]) == 19
+    assert sum(row["span_rejections"] for row in
+               q1429_result["cells"]) == 174
+    assert sum(row["exact_pairs_found"] for row in
+               q1429_result["cells"]) == 0
+    assert all(not row["span_rejects"] or not row["has_pair"]
+               for row in q1429_result["samples"])
+    for item in q1429_protocol["degrees"]:
+        n = item["degree_n"]
+        screen = next(row for row in q1425_support["rows"]
+                      if row["field_degree_n"] == n)
+        assert item["curve_id"] == screen["curve_id"]
+        assert item["factor_base_actual_B"] == screen[
+            "actual_usable_factor_base_points_B"]
+        assert item["folded_columns_K"] == screen["folded_columns_K"]
+        assert item["factor_base_enumerated_set_sha256"] == screen[
+            "factor_base_enumerated_set_sha256"]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -4015,6 +4060,28 @@ def main():
             "protocol_sha256": sha(q1428_protocol_path),
             "result_sha256": sha(q1428_result_path),
             "self_test_sha256": sha(q1428_test_path),
+        },
+        "q1429_unsaturated_span_vs_exact_completion_screen": {
+            "proposal_id": "Q1429",
+            "candidate_id": None,
+            "isogeny": "none",
+            "cells": q1429_result["cells"],
+            "is_empirical_solver_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "The sound partial-pair span filter rejects synthetic "
+                "weight-unsaturated states, including all four N131 "
+                "samples with 32 free bits and two one bits remaining. "
+                "Each such rejection saves at most 529 exact root calls "
+                "after testing 1,024 bilinear columns, which are not "
+                "equivalent work units. No exact pair occurred under "
+                "the uniform-intermediate law. The next gate must check "
+                "whether target-conditioned Q1427 trails reach these "
+                "partial states and measure a sound filter on ordinary "
+                "queries; no complete-work projection follows."),
+            "protocol_sha256": sha(q1429_protocol_path),
+            "result_sha256": sha(q1429_result_path),
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
