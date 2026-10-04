@@ -1018,6 +1018,47 @@ shows that this encoding still has a search bottleneck on a satisfiable
 N83 instance at the frozen cap. No ordinary useful row, natural yield,
 field-operation conversion, or complete \(2^x\) solve cost follows.
 
+### Q1404 raw-preimage W≤5 S3 stage
+
+Q1404 keeps the **same** exact Q1325 N83 base, curve, and ordinary public
+target, but applies the compact S3 chain to four sparse **raw** x masks.
+It computes all four `[4]` preimages of the public target and selects one
+inside the SAT formula. This removes the four nonlinear cofactor-projection
+circuits from Q1325's implicit formula; each SAT relation is projected and
+checked against Q1325's exact point-key set afterward. The ordinary
+preimage computation is charged to that target. The construction is the
+weight-five counterpart of the earlier weight-four Q1307 raw-preimage
+encoding. See the [frozen protocol](q1404_raw_preimage_w5_protocol.json).
+
+| Q1404 N83 query | Formula vars / CNF / XOR / AND | Result | Charged stage wall | Verified relation |
+| --- | --- | --- | ---: | --- |
+| Planted, fully locked | 65,221 / 190,428 / 1,245 / 62,001 | SAT | 0.173 s control | one, independently replayed |
+| Planted, unpinned | 65,221 / 189,928 / 1,245 / 62,001 | 60 s external cap, no model | 60.009 s control | none |
+| Ordinary | 65,221 / 189,928 / 1,245 / 62,001 | 1,000,001 conflicts, no model | 90.930 s target stage | none |
+
+For the ordinary target, 0.006 s was charged to public-point validation
+and complete preimage construction, and 90.924 s to exact input checks,
+formula construction, writing, and the SAT attempt. The ordinary
+child-process peak RSS was
+802,373,632 bytes; the parent peak was 95,715,328 bytes. These are
+exploratory wall measurements on an unisolated host. CryptoMiniSat's
+conflicts and propagations are solver-specific diagnostics, not calibrated
+field operations. The [independent checked-Sage replay](runs/n83_q1404_raw_control_replay.json)
+reconstructed all four target preimages from their x coordinates, checked
+the raw and projected sums, and verified four distinct Q1325 columns for
+the locked planted relation.
+
+The [named PDP-stage comparison](runs/n83_q1325_q1404_named_stage_comparison.json)
+retains Q1325's `PS1N83Ckb1fb30977592PDP4sathfa12f6d598da` and gives
+Q1404 `PS1N83Ckb1fb30977592PDP4satha37fe097800f`; each ordinary run ID
+appends `Wbab50a1e5f66R1`. Both keep `candidate_id: null` and
+`isogeny: "none"`. The raw-preimage formula has roughly half as many
+variables and AND gates as Q1325's implicit formula, but neither found an
+ordinary model within its frozen cap. The unpinned planted timeout shows
+that removing the projection circuits alone did not clear the N83 search
+bottleneck. No natural yield, cost per useful row, or complete solve
+exponent can be estimated from these censored runs.
+
 ## Next goal
 
 The next gate is an **ordinary N83 four-point relation on the exact Q1325
@@ -1027,7 +1068,9 @@ validated the native S3 search on an unpinned, known-satisfiable N83 target;
 Q1401 has independently validated the quotient-pair search on the exact
 Q1325 base with a planted public target. Q1403's ordered implicit-base
 SAT formula still cannot recover its unpinned known-satisfiable control
-within 60 seconds or the ordinary target within 120 seconds. Q1400's
+within 60 seconds or the ordinary target within 120 seconds. Q1404 removes
+the projection circuits yet also cannot recover its unpinned planted or
+ordinary target within the frozen caps. Q1400's
 ordinary no-hit and tiny fixed-rectangle support bound leave ordinary
 relation yield unmeasured.
 Run frozen ordinary single-target workloads under identical operation and
@@ -1085,6 +1128,8 @@ python3 experiments/compact-s3-m4-20261003/screen_q1402_fixed_pair_family.py --c
 python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1403_ordered_control.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1403_stage_comparison.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1404_raw_control.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1404_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
