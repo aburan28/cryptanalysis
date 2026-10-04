@@ -21,8 +21,8 @@ typedef struct ca_tau4_precomp {
 
 #define CA_TAU_POS_Q 64
 typedef struct ca_tau4_pos_precomp {
-    ca_tau4_precomp base;
-    ca_elem point[CA_TAU_POS_Q][2][9];
+  ca_tau4_precomp base;
+  ca_elem point[CA_TAU_POS_Q][2][9];
 } ca_tau4_pos_precomp;
 
 int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point,
