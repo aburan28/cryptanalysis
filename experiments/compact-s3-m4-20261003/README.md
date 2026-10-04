@@ -656,15 +656,15 @@ not specified or measured. The [exporter](export_native_root_inputs.py)
 converts the exact archived orbit representatives through the verified
 field bridge; the [native source](native_s3_root.rs) indexes S3 roots in an
 open-addressing table and tests one target-seeded Frobenius orientation per
-state. All four signs are tested on a table hit.
+state on ordinary workloads. All four signs are tested on a table hit.
 
 | Proposal | Exact base B / K | Indexed pair states | Target states scanned | Target PDP and native check | Peak RSS | Ordinary result |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Q1327 N53 | 24,062 / 227 | 2,731,037 (complete) | 49,228 | 0.103 s | 285 MB | one relation, independently verified |
-| Q1328 N83 | 30,977,592 / 186,612 | 2,000,000 (capped) | 2,000,000 | 9.169 s | 755 MB | no relation under this cap |
+| Q1327 N53 | 24,062 / 227 | 2,731,037 (complete) | 49,228 | 0.104 s | 285 MB | one relation, independently verified |
+| Q1328 N83 | 30,977,592 / 186,612 | 2,000,000 (capped) | 2,000,000 | 9.175 s | 755 MB | no relation under this cap |
 
-Index preparation was target independent and took 2.711 s at N53 and
-4.819 s at N83, including the N83 representative-shift table. The native
+Index preparation was target independent and took 2.716 s at N53 and
+4.880 s at N83, including the N83 representative-shift table. The native
 [N53](runs/n53_native_root_full.json) and
 [N83](runs/n83_native_root_capped_2m.json) receipts retain separate setup,
 index, and target-dependent operation counts. N53's target work includes
@@ -692,6 +692,31 @@ separate [Q1091 quotient-pair campaign](../koblitz-pair-claw-20260929/README.md)
 recovered an N83 relation and scalar on a different exact factor base and
 workload. Its measured yield and work do not transfer to Q1328.
 
+### Q1329 N83 unpinned four-leaf correctness control
+
+The [Q1329 fixture](runs/n83_q1329_planted_fixture.json) plants one target
+from two states in the same 2,000,000-state Q1328 sampled index. The
+[control manifest](native_inputs/n83_planted_control_manifest.json) passes
+the public target and frozen base metadata to the native solver; it contains
+no leaf coordinates or index positions. This is a separate one-target
+planted workload
+`c530b6f0b4dd`, using the same curve ID, exact Q1325 base
+\(B=30{,}977{,}592\), and \(K=186{,}612\). It keeps `candidate_id` and
+`run_id` null and `isogeny: "none"`.
+
+The [native run](runs/n83_q1329_planted_unpinned.json) indexed 2,000,000
+states, then found a four-point relation after one target state and 34 of
+83 Frobenius orientations. Target-dependent native work counted 67 S3 calls,
+550 top-level multiplications, 74 inversions, and 0.000177 s. Target-
+independent setup plus index construction took 4.959 s and peak RSS was
+691 MB. The [independent checked-Sage replay](runs/n83_q1329_planted_independent_replay.json)
+verifies all four recovered subgroup points against the exact archived base
+and independently adds them to the target. The four points occupy distinct
+signed-Frobenius columns. This is an unpinned search correctness result, not
+an ordinary-query yield measurement or a complete DLP solve. Q1329 tries all
+83 orientations per state, while the ordinary Q1328 run tries one; its time
+cannot be used as a paired ordinary speed comparison.
+
 Conditionally applying Q1303's estimated N131 W≤6 column count to this
 **full-index design** gives about \(2^{56.20}\) pair states before target
 queries. Applying the observed nondegenerate kernel's eight multiplication
@@ -704,13 +729,12 @@ base count and digest remain unknown.
 
 ## Next goal
 
-The next gate is an **unpinned N83 four-point relation on the exact Q1325
-base from a search that avoids the full \(K^2n\) index**. First replay an
-N83 known-satisfiable target with all leaves free under the same bounded
-solver; the current generator-plus-target S3 control checks arithmetic but
-does not show four-leaf search success at N83. Then run frozen ordinary
-single-target workloads under identical operation and memory limits,
-retaining all zero-yield cells and independently verifying any relations.
+The next gate is an **ordinary N83 four-point relation on the exact Q1325
+base from a search that avoids the full \(K^2n\) index**. Q1329 has now
+validated the native search on an unpinned, known-satisfiable N83 target.
+Run frozen ordinary single-target workloads under identical operation and
+memory limits, retaining all zero-yield cells and independently verifying
+any relations.
 The design needs measurable useful-row yield and novel rank per query,
 including failed attempts. Merely increasing the current sampled index cap
 cannot justify extrapolation to its 2.9-trillion-state N83 full index.
@@ -746,6 +770,8 @@ From this repository worktree, first save checked runtime information:
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/export_native_root_inputs.py --n 83 --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 53 --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 83 --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/make_n83_native_planted_control.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_n83_q1329_native_control.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```

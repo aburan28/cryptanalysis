@@ -478,6 +478,9 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
     let target_array = manifest["target_poly_xy"].as_array().unwrap();
     let target_xy = (exact_integer(&target_array[0]), exact_integer(&target_array[1]));
     let target: Point = Some(target_xy);
+    let orientations_per_state = manifest["orientations_per_state"]
+        .as_u64().unwrap_or(1) as u32;
+    assert!((1..=n).contains(&orientations_per_state));
     let mut ctx = Counted { field, ops: Ops::default() };
     let start = Instant::now();
     let cycle = Cycle::from_bridge(bridge, n);
@@ -544,6 +547,7 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
     let index_table_probes = table.insert_probes + table.rehash_probes;
     let online_start = Instant::now();
     let mut scanned = 0u64;
+    let mut oriented_states = 0u64;
     let mut partner_roots = 0u64;
     let mut table_hits = 0u64;
     let mut relation: Option<[Point; 4]> = None;
@@ -558,37 +562,42 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
                 ^ ((state.left as u64) << 32)
                 ^ ((state.right as u64) << 16)
                 ^ state.relative as u64;
-            let shift = (splitmix64(&mut seed) % n as u64) as usize;
-            let left_x = shifted[state.left * n as usize + shift];
-            let right_x = shifted[state.right * n as usize
-                + (shift + state.relative) % n as usize];
-            for &root_cycle in &state.roots_cycle {
-                let absolute = cycle.to_poly.apply(cycle.rotate(root_cycle, shift as u32));
-                ctx.ops.basis_conversions += 1;
-                if let Some(partners) = solver.roots(&mut ctx, absolute, target_xy.0) {
-                    for partner in partners {
-                        partner_roots += 1;
-                        let partner_cycle = cycle.to_cycle.apply(partner);
-                        ctx.ops.basis_conversions += 1;
-                        let (key, partner_shift) =
-                            cycle.canonical(partner_cycle, &mut ctx.ops);
-                        if let Some(value) = table.get(key) {
-                            table_hits += 1;
-                            let other_index = (value >> 7) as usize;
-                            let stored_shift = (value & 127) as u32;
-                            let other = &states[other_index];
-                            let shift2 = ((stored_shift + n - partner_shift) % n) as usize;
-                            let xs = [left_x, right_x,
-                                shifted[other.left * n as usize + shift2],
-                                shifted[other.right * n as usize
-                                    + (shift2 + other.relative) % n as usize]];
-                            if let Some(points) = lift_relation(&mut ctx, &solver, xs, target) {
-                                relation = Some(points);
-                                relation_xs = xs;
-                                break;
+            let first_shift = (splitmix64(&mut seed) % n as u64) as usize;
+            for orientation in 0..orientations_per_state as usize {
+                oriented_states += 1;
+                let shift = (first_shift + orientation) % n as usize;
+                let left_x = shifted[state.left * n as usize + shift];
+                let right_x = shifted[state.right * n as usize
+                    + (shift + state.relative) % n as usize];
+                for &root_cycle in &state.roots_cycle {
+                    let absolute = cycle.to_poly.apply(cycle.rotate(root_cycle, shift as u32));
+                    ctx.ops.basis_conversions += 1;
+                    if let Some(partners) = solver.roots(&mut ctx, absolute, target_xy.0) {
+                        for partner in partners {
+                            partner_roots += 1;
+                            let partner_cycle = cycle.to_cycle.apply(partner);
+                            ctx.ops.basis_conversions += 1;
+                            let (key, partner_shift) =
+                                cycle.canonical(partner_cycle, &mut ctx.ops);
+                            if let Some(value) = table.get(key) {
+                                table_hits += 1;
+                                let other_index = (value >> 7) as usize;
+                                let stored_shift = (value & 127) as u32;
+                                let other = &states[other_index];
+                                let shift2 = ((stored_shift + n - partner_shift) % n) as usize;
+                                let xs = [left_x, right_x,
+                                    shifted[other.left * n as usize + shift2],
+                                    shifted[other.right * n as usize
+                                        + (shift2 + other.relative) % n as usize]];
+                                if let Some(points) = lift_relation(&mut ctx, &solver, xs, target) {
+                                    relation = Some(points);
+                                    relation_xs = xs;
+                                    break;
+                                }
                             }
                         }
                     }
+                    if relation.is_some() { break; }
                 }
                 if relation.is_some() { break; }
             }
@@ -644,7 +653,7 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
                              else { "complete_lexicographic" },
                       "origin": if sampled { origin } else { 0 },
                       "step": if sampled { step } else { 1 },
-                      "orientations_per_state": 1 },
+                      "orientations_per_state": orientations_per_state },
         "total_quotient_pair_states": total,
         "index_pair_states_examined": examined,
         "index_satisfiable_s3_states": states.len(),
@@ -655,6 +664,7 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
             "target_lookup": table.lookup_probes,
         },
         "target_states_scanned": scanned,
+        "target_state_orientations_tested": oriented_states,
         "target_partner_roots": partner_roots,
         "target_table_hits": table_hits,
         "native_s3_generator_target_control": control_json,

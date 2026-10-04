@@ -1559,6 +1559,9 @@ def verify():
         assert stage["index_pair_states_examined"] == cap
         assert stage["operation_counts"]["index_build"][
             "s3_root_calls"] == cap
+        assert stage["sampling"]["orientations_per_state"] == 1
+        assert stage["target_state_orientations_tested"] == stage[
+            "target_states_scanned"]
         assert stage["native_s3_generator_target_control"][
             "status"] == "PASS"
         assert stage["verified_single_target_dlp"] is False
@@ -1603,6 +1606,102 @@ def verify():
         rows.append({"variant": f"n{n}_native_root_independent_replay",
                      "receipt_sha256": sha(replay_path),
                      "verified_relation_count": int(n == 53)})
+    control_fixture_path = HERE / "runs/n83_q1329_planted_fixture.json"
+    control_fixture = json.loads(control_fixture_path.read_text())
+    control_manifest_path = HERE / "native_inputs/n83_planted_control_manifest.json"
+    control_manifest = json.loads(control_manifest_path.read_text())
+    control_stage_path = HERE / "runs/n83_q1329_planted_unpinned.json"
+    control_stage = json.loads(control_stage_path.read_text())
+    control_replay_path = HERE / "runs/n83_q1329_planted_independent_replay.json"
+    control_replay = json.loads(control_replay_path.read_text())
+    ordinary_manifest_path = HERE / "native_inputs/n83_manifest.json"
+    reps_path = HERE / "native_inputs/n83_x_representatives.bin"
+    base_path = HERE / "bases/n83_weight5_full_orbits.json"
+    assert control_fixture["proposal_id"] == control_manifest[
+        "proposal_id"] == control_stage["proposal_id"] == control_replay[
+            "proposal_id"] == "Q1329"
+    assert control_fixture["parent_solver_proposal_id"] == control_manifest[
+        "parent_solver_proposal_id"] == "Q1328"
+    assert control_fixture["parent_factor_base_proposal_id"] == (
+        control_manifest["parent_factor_base_proposal_id"])
+    assert control_fixture["parent_factor_base_proposal_id"] == (
+        control_stage["parent_factor_base_proposal_id"])
+    assert control_fixture["parent_factor_base_proposal_id"] == "Q1325"
+    assert control_fixture["curve_id"] == control_manifest[
+        "curve_id"] == control_stage["curve_id"] == control_replay[
+            "curve_id"] == "EC1N83Ckb1h876c2921cb64"
+    assert control_fixture["workload_id"] == control_manifest[
+        "workload_id"] == control_stage["workload_id"] == control_replay[
+            "workload_id"] == "c530b6f0b4dd"
+    assert control_fixture["candidate_id"] is control_manifest[
+        "candidate_id"] is control_stage["candidate_id"] is control_replay[
+            "candidate_id"] is None
+    assert control_fixture["run_id"] is control_manifest[
+        "run_id"] is control_stage["run_id"] is control_replay[
+            "run_id"] is None
+    assert control_fixture["isogeny"] == control_manifest[
+        "isogeny"] == control_stage["isogeny"] == control_replay[
+            "isogeny"] == "none"
+    assert control_fixture["source_sha256"] == sha(
+        HERE / "make_n83_native_planted_control.py")
+    assert control_fixture["ordinary_input_manifest_sha256"] == sha(
+        ordinary_manifest_path)
+    assert control_fixture["representatives_file_sha256"] == sha(reps_path)
+    assert control_fixture["factor_base_actual_B"] == control_manifest[
+        "actual_usable_points_B"] == control_stage[
+            "actual_usable_points_B"] == 30977592
+    assert control_fixture["factor_base_folded_columns_K"] == (
+        control_manifest["representative_count_K"])
+    assert control_fixture["factor_base_folded_columns_K"] == (
+        control_stage["folded_columns_K"])
+    assert control_fixture["factor_base_folded_columns_K"] == 186612
+    assert control_manifest["source_base_archive_sha256"] == sha(base_path)
+    assert control_manifest["runtime_info_sha256"] == sha(native_runtime_path)
+    assert control_manifest["target_source_receipt_sha256"] == sha(
+        control_fixture_path)
+    assert control_manifest["stage_protocol_sha256"] == (
+        control_stage["stage_protocol_sha256"])
+    assert control_manifest["stage_protocol_sha256"] == sha(control_fixture_path)
+    assert control_manifest["source_sha256"] == control_fixture[
+        "source_sha256"]
+    assert control_stage["native_source_sha256"] == native_build[
+        "source_sha256"]
+    assert control_stage["cargo_manifest_sha256"] == native_build[
+        "cargo_manifest_sha256"]
+    assert control_stage["input_representatives_sha256"] == sha(reps_path)
+    assert control_stage["status"] == "native_relation_found"
+    assert control_stage["relation"]["native_group_sum_verified"] is True
+    assert control_stage["index_pair_states_examined"] == 2000000
+    assert control_stage["sampling"]["orientations_per_state"] == 83
+    assert control_stage["target_states_scanned"] == 1
+    assert 1 <= control_stage["target_state_orientations_tested"] <= 83
+    assert control_stage["peak_rss_bytes"] <= 1024 ** 3
+    assert control_fixture["solver_receives_witness_or_index_positions"] is False
+    assert control_fixture["is_natural_yield_measurement"] is False
+    assert control_replay["status"] == "PASS"
+    assert control_replay["is_natural_yield_measurement"] is False
+    assert control_replay["native_relation_independently_verified"] is True
+    assert control_replay["four_recovered_points_in_exact_q1325_factor_base"] is True
+    assert control_replay["recovered_signed_frobenius_columns"] == 4
+    assert control_replay["native_receipt_sha256"] == sha(control_stage_path)
+    assert control_replay["native_build_receipt_sha256"] == sha(
+        native_build_path)
+    assert control_replay["fixture_sha256"] == sha(control_fixture_path)
+    assert control_replay["manifest_sha256"] == sha(control_manifest_path)
+    assert control_replay["source_sha256"] == sha(
+        HERE / "verify_n83_q1329_native_control.py")
+    assert control_stage["verified_single_target_dlp"] is False
+    assert control_replay["verified_single_target_dlp"] is False
+    assert control_stage["complete_work_log2"] is None
+    assert control_replay["complete_work_log2"] is None
+    for variant, path in (
+        ("n83_q1329_planted_fixture", control_fixture_path),
+        ("n83_q1329_planted_input", control_manifest_path),
+        ("n83_q1329_planted_stage", control_stage_path),
+        ("n83_q1329_planted_independent_replay", control_replay_path),
+    ):
+        rows.append({"variant": variant, "receipt_sha256": sha(path),
+                     "is_natural_yield_measurement": False})
     return rows
 
 

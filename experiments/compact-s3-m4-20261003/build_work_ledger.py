@@ -923,6 +923,8 @@ def main():
             "index_pair_states_examined": stage[
                 "index_pair_states_examined"],
             "target_states_scanned": stage["target_states_scanned"],
+            "target_state_orientations_tested": stage[
+                "target_state_orientations_tested"],
             "index_distinct_root_keys": stage[
                 "index_distinct_root_keys"],
             "target_table_hits": stage["target_table_hits"],
@@ -950,6 +952,73 @@ def main():
             "independent_replay_receipt_sha256": sha(replay_path),
             "native_input_manifest_sha256": sha(manifest_path),
         })
+    control_fixture_path, control_fixture = read(
+        "n83_q1329_planted_fixture.json")
+    control_manifest_path = HERE / "native_inputs/n83_planted_control_manifest.json"
+    control_manifest = json.loads(control_manifest_path.read_text())
+    control_stage_path, control_stage = read(
+        "n83_q1329_planted_unpinned.json")
+    control_replay_path, control_replay = read(
+        "n83_q1329_planted_independent_replay.json")
+    assert control_fixture["proposal_id"] == control_manifest[
+        "proposal_id"] == control_stage["proposal_id"] == control_replay[
+            "proposal_id"] == "Q1329"
+    assert control_fixture["parent_solver_proposal_id"] == control_manifest[
+        "parent_solver_proposal_id"] == "Q1328"
+    assert control_fixture["parent_factor_base_proposal_id"] == (
+        control_manifest["parent_factor_base_proposal_id"])
+    assert control_fixture["parent_factor_base_proposal_id"] == (
+        control_stage["parent_factor_base_proposal_id"])
+    assert control_fixture["parent_factor_base_proposal_id"] == "Q1325"
+    assert control_fixture["candidate_id"] is control_manifest[
+        "candidate_id"] is control_stage["candidate_id"] is control_replay[
+            "candidate_id"] is None
+    assert control_fixture["is_natural_yield_measurement"] is False
+    assert control_replay["is_natural_yield_measurement"] is False
+    assert control_stage["status"] == "native_relation_found"
+    assert control_replay["status"] == "PASS"
+    assert control_replay["native_relation_independently_verified"] is True
+    assert control_replay["four_recovered_points_in_exact_q1325_factor_base"] is True
+    assert control_replay["native_receipt_sha256"] == sha(control_stage_path)
+    assert control_replay["native_build_receipt_sha256"] == sha(native_build_path)
+    assert control_stage["native_source_sha256"] == native_build[
+        "source_sha256"]
+    assert control_stage["sampling"]["orientations_per_state"] == 83
+    assert control_stage["index_pair_states_examined"] == 2_000_000
+    assert control_stage["verified_single_target_dlp"] is False
+    assert control_stage["complete_work_log2"] is None
+    q1329_control = {
+        "proposal_id": "Q1329",
+        "parent_solver_proposal_id": "Q1328",
+        "parent_factor_base_proposal_id": "Q1325",
+        "candidate_id": None,
+        "run_id": None,
+        "curve_id": control_stage["curve_id"],
+        "workload_id": control_stage["workload_id"],
+        "isogeny": "none",
+        "actual_usable_points_B": control_stage["actual_usable_points_B"],
+        "folded_columns_K": control_stage["folded_columns_K"],
+        "status": control_stage["status"],
+        "is_known_satisfiable_planted_control": True,
+        "solver_received_only_public_target": True,
+        "is_natural_relation_yield_measurement": False,
+        "index_pair_states_examined": control_stage[
+            "index_pair_states_examined"],
+        "target_states_scanned": control_stage["target_states_scanned"],
+        "target_state_orientations_tested": control_stage[
+            "target_state_orientations_tested"],
+        "target_pdp_and_native_check_wall_seconds_exploratory": (
+            int(control_stage["timing_ns"]["target_pdp_and_native_check"]) / 1e9),
+        "peak_rss_bytes": control_stage["peak_rss_bytes"],
+        "operation_counts_by_phase": control_stage["operation_counts"],
+        "native_relation_independently_verified": True,
+        "verified_single_target_dlp": False,
+        "complete_solve_work_log2": None,
+        "fixture_sha256": sha(control_fixture_path),
+        "manifest_sha256": sha(control_manifest_path),
+        "native_receipt_sha256": sha(control_stage_path),
+        "independent_replay_receipt_sha256": sha(control_replay_path),
+    }
     conditional_root_states131 = n131_sample[
         "conditional_folded_columns_estimate"] ** 2 * 131
     ledger = {
@@ -1138,6 +1207,7 @@ def main():
         "q1326_protocol_sha256": sha(q1326_protocol_path),
         "native_onb_polynomial_field_bridges": native_bridge_profiles,
         "q1327_q1328_bounded_native_s3_root_stages": native_root_stages,
+        "q1329_n83_unpinned_planted_control": q1329_control,
         "q1327_q1328_native_root_protocol_sha256": sha(
             native_protocol_path),
         "native_s3_root_build_receipt_sha256": sha(native_build_path),
@@ -1258,7 +1328,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "Q1327's native compact-S3 root index recovered one independently verified unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328's exact-base n83 ordinary run exhausted a 2,000,000-pair-state cap without a relation, covering only about 6.9e-7 of its full quotient pair-state space; older n53/n83 SAT variants remain censored, and Q1326's restricted known-satisfiable planted n53 target hit one million conflicts unpinned; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and one censored n83 run do not measure natural useful-row or novel-rank rates; top-level field inversion/multiplication calls lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
+            "reason_unestimated": "Q1327's native compact-S3 root index recovered one independently verified unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328's exact-base n83 ordinary run exhausted a 2,000,000-pair-state cap without a relation, covering only about 6.9e-7 of its full quotient pair-state space; Q1329 independently verified an unpinned n83 four-leaf relation on an index-aware planted target, but that correctness control does not estimate ordinary-query yield; older n53/n83 SAT variants remain censored, and Q1326's restricted known-satisfiable planted n53 target hit one million conflicts unpinned; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and one censored n83 ordinary run do not measure natural useful-row or novel-rank rates; top-level field inversion/multiplication calls lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,
