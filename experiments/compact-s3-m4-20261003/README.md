@@ -15,6 +15,10 @@ Its known-satisfiable n=53 ordinary query reached one million conflicts
 without a model, and its n=83 planted and ordinary queries reached the
 120-second cap without a model. Locked witness controls passed where a
 witness is known.
+An exact, larger n=83 weight-five base later passed a fully locked control,
+but its unassisted ordinary target also reached a 120-second cap without a
+model. The larger base changes the factor-base policy; it is recorded as
+Q1324 with its own exact digest.
 A second n=83 encoding represents the same exact base implicitly through
 cofactor-four projection of sparse rational x values. It reduced the CNF
 clause count but also produced no unassisted relation within its caps.
@@ -392,6 +396,54 @@ size. These times include lazy representative lifting in the table phase.
 They are a throughput diagnostic, not a complete pair-table search or a
 relation-yield estimate.
 
+## N83 target coverage and exact weight-five follow-up
+
+[`screen_n83_four_point_support.py`](screen_n83_four_point_support.py)
+audits the exact subgroup-base sizes before interpreting the n=83 timeouts.
+For a uniformly selected nonidentity target and **any fixed base** of size
+\(B\), there are at most \(\binom{B+3}{4}\) four-point multisets, each
+summing to at most one target. Thus the target's chance of having any
+four-leaf representation is at most
+\(\binom{B+3}{4}/(r-1)\), without an independence assumption. For Q1302's
+exact n=83 weight-four base (\(B=1{,}934{,}066\), \(K=11{,}651\)), the bound is
+**0.24113**. At least **75.887%** of uniform nonidentity targets have no
+four-leaf representation in that base. The \(\binom{B}{4}/r=0.2411\)
+distinct-subset mean is also an exact average over uniform subgroup targets;
+only converting that mean to a 21.4% coverage probability uses a Poisson
+model. This bound does not prove whether the one frozen Q1302 target is
+representable.
+
+Q1324 changes the factor base while keeping curve
+`EC1N83Ckb1h876c2921cb64`, the same ordinary public point and workload
+`bab50a1e5f66`, the one-thread solver, and a 120-second target-PDP cap. Its
+Q1041 selected weight-five base is already frozen in the repository with
+**B=4,000,102**, **K=24,097**, and point-set digest
+`e6ea595bbd32b3f2a17a0a913962cc961b3acdc7ff70d8859fb74f1ad20f2c62`.
+The exact base construction uses 24,097 distinct projected signed-Frobenius
+orbits from a seeded stream of five-bit normal-x supports. The Q1324 input
+manifest retains that construction, the original point-key digest, and a
+separate derived representative-x digest. It remains a `Q` proposal with
+`candidate_id: null`, `run_id: null`, and `isogeny: "none"`.
+The checked-Sage [full base replay](runs/n83_q1324_q1041_full_base_verification.json)
+verified all 24,097 projected representatives on the exact curve and in the
+declared subgroup, and checked their signed-Frobenius orbit keys.
+
+| Q1324 stage | Formula variables / CNF / XOR | Result | Charged stage wall | Verified relation |
+| --- | ---: | --- | ---: | --- |
+| Four leaves and both middle x values locked | 148,839 / 1,732,068 / 1,635 | SAT | 3.91 s oracle control | yes, planted |
+| Ordinary public target, no locks | 148,839 / 1,731,814 / 1,635 | 120-second timeout | 120.02 s target PDP | none |
+
+The locked result independently replays the four subgroup points and their
+signed sum. It checks that the larger exact base is present in the encoding;
+it is not ordinary yield. For this base the exact average distinct-subset
+count is **4.412** per uniform target. A Poisson model gives 98.8% coverage,
+but the bound cannot establish coverage of the particular frozen target.
+The ordinary run has no model, field-operation count, rank row, or DLP. Its
+wall times are exploratory stage diagnostics on a host without a CPU
+isolation receipt, so no CPU speedup ratio is claimed. The checked Sage
+runtime, compressed XCNFs, solver logs, source hashes, and independent
+artifact audit are retained.
+
 ## Work accounting and decision
 
 [`work_ledger.json`](work_ledger.json) separates the measured pair counts
@@ -417,14 +469,11 @@ out that pure indexed-pair family under its stated model; it is neither a
 lower bound on other decomposition algorithms nor a complete field-operation
 projection. Q1303's exact \(B\) and digest remain unknown.
 
-For planning n=83 ordinary-target panels, the exact base count and subgroup
-order give \(\binom{B}{4}/r=0.2411\) distinct unordered four-point subsets
-per uniform target under an independent-uniform subset-sum model. A Poisson
-approximation then gives about a 21.4% chance that one ordinary target has
-any four-point representation in this base. The base's sign/Frobenius
-structure can violate that model, so these are heuristics rather than
-measured relation yield. One n=83 timeout cannot distinguish a hard solver
-from a target with no representation; an ordinary-target panel is needed.
+For n=83, the exact counting bound above shows why Q1302's weight-four
+ordinary timeout is ambiguous. Q1324's larger base raises the modeled
+target coverage but also timed out without a natural relation. Neither
+timeout is an observed zero relation rate for a complete collector; both
+are censored solver attempts on one frozen target.
 
 For the proposed n=131 W≤6 base, [`estimate_n131_weight6_base.py`](estimate_n131_weight6_base.py)
 enumerates every weight-one and weight-two x support and draws distinct,
@@ -458,7 +507,8 @@ replay, and conversion work cost zero, it leaves an optimistic ceiling near
 not a measured solver cost or a complete-solve projection.
 
 The complete n=131 work exponent remains **unknown**. The corrected,
-exact-base, and implicit projected-base SAT stages are censored; natural
+exact-base, larger n=83 weight-five, and implicit projected-base SAT stages
+are censored; natural
 relation yield, novel rank, cost per useful row, final matrix solving, target
 descent, and independent scalar replay are absent. There is therefore no
 defensible complete-solve upper projection below \(2^{61}\), and the
@@ -469,10 +519,10 @@ The next useful goal is a **noncensored, independently verified ordinary
 public-target four-summand decomposition from an improved leaf-choice
 solver**. First recover the known-satisfiable n=53 target without pinning a
 leaf, under the frozen exact base, and compare total attempts and work with
-the matched pair table. Then recover at least one target in a frozen n=83
-ordinary panel; about 21.4% representation probability per target is only a
-uniform-subset planning heuristic, so preserve zero-yield targets. A pure
-pair-index method is already screened as too expensive at n=131; a new
+the matched pair table. Then recover at least one target on Q1324's larger
+n=83 base, keeping the original Q1302 target as the matched public point
+and preserving zero-yield targets in any later panel. A pure pair-index
+method is already screened as too expensive at n=131; a new
 hybrid or algebraic search must show a different scaling mechanism. Measure
 operations, memory, natural useful-row and novel-rank rates, including all
 failed attempts. Only then fit a degree-131 stage cost and add base
@@ -485,13 +535,14 @@ below \(2^{61}\) in a named operation unit.
 From this repository worktree, first save checked runtime information:
 
 ```sh
-/Volumes/SSD990/cryptanalysis/sage --runtime-info > /private/tmp/s3-m4-runtime-info.json
+/Volumes/SSD990/cryptanalysis/sage --runtime-info > experiments/compact-s3-m4-20261003/q1324_sage_runtime_info.json
 /Volumes/SSD990/cryptanalysis/sage -python -m unittest discover -s experiments/compact-s3-m4-20261003 -p test_chain_s3.py -v
-python3 experiments/compact-s3-m4-20261003/freeze_protocol.py --check
-python3 experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
-python3 -c 'import sys; sys.path.insert(0, "experiments/compact-s3-m4-20261003"); from verify_weight_base import verify; assert verify("experiments/compact-s3-m4-20261003/bases/n53_weight3_orbits.json.gz")["pass"]'
-python3 -c 'import sys; sys.path.insert(0, "experiments/compact-s3-m4-20261003"); from verify_weight_base import verify; assert verify("experiments/compact-s3-m4-20261003/bases/n83_weight4_orbits.json.gz")["pass"]'
-python3 experiments/compact-s3-m4-20261003/build_work_ledger.py
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1324_inputs.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/screen_n83_four_point_support.py
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1324_base.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 
 All new or resumed local Sage jobs use the repository's checked launcher.

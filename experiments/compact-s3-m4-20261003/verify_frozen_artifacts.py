@@ -913,6 +913,145 @@ def verify():
     assert pair_screen["optimistic_total_pair_actions_log2"] > 89
     rows.append({"variant": "n131_weight6_pure_pair_index_screen",
                  "receipt_sha256": sha(pair_screen_path)})
+    from q1324_inputs import frozen_protocol, read_inputs
+    support_path = HERE / "runs/n83_four_point_support_screen.json"
+    support = json.loads(support_path.read_text())
+    assert support["source_sha256"] == sha(
+        HERE / "screen_n83_four_point_support.py")
+    assert support["protocol_sha256"] == protocol_digest
+    assert support["status"] == (
+        "exact_count_bound_plus_separately_labeled_heuristic")
+    q1324_protocol_path = HERE / "q1324_protocol.json"
+    q1324_protocol = json.loads(q1324_protocol_path.read_text())
+    assert q1324_protocol == frozen_protocol()
+    (q1041_path, q1041, point_key_path, baseline_path, baseline, xkeys,
+     x_digest) = read_inputs()
+    base_replay_path = HERE / "runs/n83_q1324_q1041_full_base_verification.json"
+    base_replay = json.loads(base_replay_path.read_text())
+    assert base_replay["status"] == "PASS"
+    assert base_replay["proposal_id"] == "Q1324"
+    assert base_replay["candidate_id"] is None
+    assert base_replay["curve_id"] == baseline["curve_id"]
+    assert base_replay["actual_usable_points_B_before_folding"] == 4000102
+    assert base_replay["signed_frobenius_columns"] == 24097
+    assert base_replay["verified_projected_representatives"] == 24097
+    assert base_replay["factor_base_enumerated_set_sha256"] == q1041[
+        "factor_base"]["enumerated_set_sha256"]
+    assert base_replay["derived_representative_x_sha256"] == x_digest
+    assert base_replay["base_receipt_sha256"] == sha(q1041_path)
+    assert base_replay["point_key_file_sha256"] == sha(point_key_path)
+    assert base_replay["q1041_verifier_source_sha256"] == sha(
+        q1041_path.parent.parent / "verify_n83_base.py")
+    assert base_replay["q1324_input_source_sha256"] == sha(
+        HERE / "q1324_inputs.py")
+    assert base_replay["runtime_info_sha256"] == sha(
+        HERE / "q1324_sage_runtime_info.json")
+    assert base_replay["source_sha256"] == sha(HERE / "verify_q1324_base.py")
+    rows.append({"variant": "n83_q1324_q1041_full_base_verification",
+                 "receipt_sha256": sha(base_replay_path)})
+    for row, b, digest in zip(support["profiles"],
+                              (24062, 1934066, 4000102),
+                              (json.loads((HERE / "protocol.json").read_text())[
+                                  "profiles"][0]["factor_base"][
+                                      "enumerated_set_sha256"],
+                               baseline["factor_base_enumerated_set_sha256"],
+                               q1041["factor_base"]["enumerated_set_sha256"])):
+        r = row["subgroup_order_r"]
+        assert row["actual_usable_points_B_before_folding"] == b
+        assert row["factor_base_enumerated_set_sha256"] == digest
+        assert row["distinct_unordered_four_subsets"] == str(math.comb(b, 4))
+        assert row["four_multisets_allowing_repeated_leaves"] == str(
+            math.comb(b + 3, 4))
+        assert math.isclose(row[
+            "uniform_nonidentity_target_coverage_upper_bound"], min(
+                1.0, math.comb(b + 3, 4) / (r - 1)), rel_tol=1e-14)
+    assert support["profiles"][1][
+        "uniform_nonidentity_target_coverage_upper_bound"] < 0.242
+    assert support["q1041_receipt_sha256"] == sha(q1041_path)
+    assert support["q1041_point_key_sha256"] == sha(point_key_path)
+    rows.append({"variant": "n83_four_point_support_screen",
+                 "receipt_sha256": sha(support_path)})
+
+    from run_probe import curves, field
+    onb = field.Onb(83)
+    curve = curves.Curve(onb)
+    order = q1041["curve_identity_record"]["curve"]["subgroup_order"]
+    for mode in ("planted_locked", "ordinary"):
+        stem = f"n83_q1324_{mode}"
+        receipt_path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(receipt_path.read_text())
+        assert receipt["proposal_id"] == "Q1324"
+        assert receipt["candidate_id"] is None and receipt["run_id"] is None
+        assert receipt["isogeny"] == "none"
+        assert receipt["curve_id"] == baseline["curve_id"]
+        assert receipt["mode"] == mode
+        assert receipt["oracle_assisted"] == (mode == "planted_locked")
+        assert receipt["workload_id"] == (
+            baseline["workload_id"] if mode == "ordinary" else None)
+        assert receipt["factor_base_actual_B"] == 4000102
+        assert receipt["factor_base_folded_columns"] == 24097
+        assert receipt["factor_base_enumerated_set_sha256"] == q1041[
+            "factor_base"]["enumerated_set_sha256"]
+        assert receipt["derived_representative_x_sha256"] == x_digest
+        assert receipt["base_receipt_sha256"] == sha(q1041_path)
+        assert receipt["base_point_key_file_sha256"] == sha(point_key_path)
+        assert receipt["ordinary_target_receipt_sha256"] == sha(baseline_path)
+        assert receipt["protocol_sha256"] == sha(q1324_protocol_path)
+        assert receipt["runtime_info_sha256"] == sha(
+            HERE / "q1324_sage_runtime_info.json")
+        assert receipt["runner_source_sha256"] == sha(
+            HERE / "run_q1324_weight5_probe.py")
+        assert receipt["base_selector_source_sha256"] == sha(
+            HERE / "chain_s3_base_orbit.py")
+        assert receipt["solver_binary_sha256"] == sha(
+            Path(receipt["solver_command"][0]))
+        assert receipt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stdout.txt")
+        assert receipt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stderr.txt")
+        digest = hashlib.sha256()
+        size = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        assert digest.hexdigest() == receipt["xcnf_sha256"]
+        assert size == receipt["xcnf_bytes"]
+        relation = receipt["verified_relation"]
+        assert receipt["observed_verified_relation_count"] == int(
+            relation is not None)
+        assert receipt["field_operations"] is None
+        assert receipt["complete_solve_work_log2"] is None
+        if relation is not None:
+            target = tuple(map(int, receipt["public_target"]))
+            points = [tuple(map(int, point)) for point in relation[
+                "leaf_points"]]
+            assert len(points) == 4
+            total = None
+            for point, sign in zip(points, relation["signs"]):
+                assert curve.onCurve(point) and curve.mul(point, order) is None
+                assert sign in (1, -1)
+                total = curve.add(total, point if sign == 1 else
+                                  curve.neg(point))
+            assert total == target
+            for point, (index, shift) in zip(points, receipt[
+                    "chosen_orbit_choices"]):
+                expected = onb.frob(onb.fromCoords(xkeys[index]), shift)
+                assert point[0] == expected
+        if mode == "planted_locked":
+            assert receipt["status"] == "sat" and relation is not None
+            assert receipt["target_pdp_wall_seconds"] is None
+            assert receipt["oracle_control_wall_seconds"] > 0
+        else:
+            assert receipt["target_pdp_wall_seconds"] > 0
+            assert receipt["oracle_control_wall_seconds"] is None
+            assert receipt["public_target"] == list(map(
+                int, baseline["public_subgroup_target"]))
+        rows.append({"variant": stem, "receipt_sha256": sha(receipt_path),
+                     "formula_sha256": digest.hexdigest(),
+                     "formula_bytes": size,
+                     "observed_verified_relation_count": receipt[
+                         "observed_verified_relation_count"]})
     return rows
 
 

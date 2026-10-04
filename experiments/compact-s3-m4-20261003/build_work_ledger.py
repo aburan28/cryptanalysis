@@ -645,6 +645,61 @@ def main():
     assert n131_pair_screen["independent_replay_receipt_sha256"] == sha(
         n131_replay_path)
     assert n131_pair_screen["is_complete_solve_projection"] is False
+    support_path, support = read("n83_four_point_support_screen.json")
+    assert support["status"] == (
+        "exact_count_bound_plus_separately_labeled_heuristic")
+    assert support["profiles"][1]["actual_usable_points_B_before_folding"] == (
+        profile_for(protocol, 83)["factor_base"][
+            "actual_usable_points_B_before_folding"])
+    assert support["profiles"][1][
+        "uniform_nonidentity_target_coverage_upper_bound"] < 0.242
+    q1324_protocol_path = HERE / "q1324_protocol.json"
+    q1324_protocol = json.loads(q1324_protocol_path.read_text())
+    assert q1324_protocol["proposal_id"] == "Q1324"
+    assert q1324_protocol["candidate_id"] is None
+    assert q1324_protocol["factor_base"][
+        "actual_usable_points_B_before_folding"] == 4000102
+    q1324_replay_path, q1324_replay = read(
+        "n83_q1324_q1041_full_base_verification.json")
+    assert q1324_replay["status"] == "PASS"
+    assert q1324_replay["actual_usable_points_B_before_folding"] == 4000102
+    assert q1324_replay["signed_frobenius_columns"] == 24097
+    assert q1324_replay["verified_projected_representatives"] == 24097
+    q1324_stage = []
+    for mode in ("planted_locked", "ordinary"):
+        path, stage = read(f"n83_q1324_{mode}.json")
+        assert stage["proposal_id"] == "Q1324"
+        assert stage["candidate_id"] is None
+        assert stage["protocol_sha256"] == sha(q1324_protocol_path)
+        assert stage["factor_base_actual_B"] == 4000102
+        assert stage["factor_base_folded_columns"] == 24097
+        assert stage["factor_base_enumerated_set_sha256"] == q1324_protocol[
+            "factor_base"]["enumerated_set_sha256"]
+        assert stage["complete_solve_work_log2"] is None
+        assert stage["field_operations"] is None
+        q1324_stage.append({
+            "proposal_id": "Q1324", "candidate_id": None,
+            "workload_id": stage["workload_id"], "run_id": None,
+            "curve_id": stage["curve_id"], "mode": mode,
+            "factor_base_B": stage["factor_base_actual_B"],
+            "folded_columns": stage["factor_base_folded_columns"],
+            "factor_base_digest": stage[
+                "factor_base_enumerated_set_sha256"],
+            "oracle_assisted": stage["oracle_assisted"],
+            "status": stage["status"],
+            "formula": stage["formula"],
+            "target_pdp_wall_seconds": stage["target_pdp_wall_seconds"],
+            "oracle_control_wall_seconds": stage[
+                "oracle_control_wall_seconds"],
+            "solver_conflicts_reported": stage[
+                "solver_conflicts_reported"],
+            "observed_verified_relation_count": stage[
+                "observed_verified_relation_count"],
+            "natural_relation_yield_estimate": None,
+            "field_operations": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -735,6 +790,24 @@ def main():
         },
         "reverse_group_addition_stage_measurements": reverse_stage,
         "relation_density_planning_heuristic": relation_density_heuristic,
+        "four_summand_target_support_screen": {
+            "rigorous_bound": support["bound_scope"],
+            "poisson_model_scope": support["poisson_scope"],
+            "profiles": support["profiles"],
+            "receipt_sha256": sha(support_path),
+        },
+        "q1324_exact_n83_weight5_stage_measurements": q1324_stage,
+        "q1324_protocol_sha256": sha(q1324_protocol_path),
+        "q1324_independent_full_base_replay": {
+            "status": q1324_replay["status"],
+            "actual_usable_points_B_before_folding": q1324_replay[
+                "actual_usable_points_B_before_folding"],
+            "signed_frobenius_columns": q1324_replay[
+                "signed_frobenius_columns"],
+            "verified_projected_representatives": q1324_replay[
+                "verified_projected_representatives"],
+            "receipt_sha256": sha(q1324_replay_path),
+        },
         "n131_weight6_geometry_estimate": {
             "proposal_id": "Q1303",
             "candidate_id": None,
@@ -828,7 +901,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, full group-addition, and reverse-link encodings; reverse-link arithmetic recovers the last n53 leaf with three oracle-pinned leaves but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, full group-addition, and reverse-link encodings; the larger exact Q1041 n83 weight-five base also passed a locked witness control but its ordinary Q1324 run reached the 120-second cap without a model; reverse-link arithmetic recovers the last n53 leaf with three oracle-pinned leaves but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,
