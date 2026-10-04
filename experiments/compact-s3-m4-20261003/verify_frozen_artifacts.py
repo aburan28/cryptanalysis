@@ -8,7 +8,7 @@ import json
 import math
 from pathlib import Path
 
-from run_probe import HERE, sha
+from run_probe import HERE, sha, field
 
 
 def verify():
@@ -1926,6 +1926,255 @@ def verify():
     rows.append({"variant": "n53_n83_s3_primitive_field_calls",
                  "receipt_sha256": sha(primitives_path),
                  "is_complete_solve_projection": False})
+    q1400_protocol_path = HERE / "q1400_pair_protocol.json"
+    q1400_protocol = json.loads(q1400_protocol_path.read_text())
+    q1400_input_path = HERE / "native_inputs/n83_q1400_pair_manifest.json"
+    q1400_input = json.loads(q1400_input_path.read_text())
+    q1400_build_path = HERE / "native_q1400_pair_build_receipt.json"
+    q1400_build = json.loads(q1400_build_path.read_text())
+    q1400_stage_path = HERE / "runs/n83_q1400_pair_comparator.json"
+    q1400_stage = json.loads(q1400_stage_path.read_text())
+    q1400_stdout_path = HERE / "runs/n83_q1400_pair_comparator.stdout.txt"
+    q1400_stderr_path = HERE / "runs/n83_q1400_pair_comparator.stderr.txt"
+    q1400_runtime_path = HERE / "q1400_sage_runtime_info.json"
+    q1400_native_source = HERE / "native_q1400_pair_comparator.cpp"
+    assert q1400_protocol["proposal_id"] == q1400_input[
+        "proposal_id"] == q1400_build["proposal_id"] == q1400_stage[
+            "proposal_id"] == "Q1400"
+    assert q1400_protocol["candidate_id"] is q1400_input[
+        "candidate_id"] is q1400_build["candidate_id"] is q1400_stage[
+            "candidate_id"] is None
+    assert q1400_protocol["isogeny"] == q1400_input[
+        "isogeny"] == q1400_build["isogeny"] == q1400_stage[
+            "isogeny"] == "none"
+    assert q1400_protocol["curve_id"] == q1400_input[
+        "curve_id"] == q1400_stage["curve_id"] == base_protocol[
+            "curve"]["curve_id"]
+    assert q1400_protocol["workload_id"] == q1400_input[
+        "workload_id"] == q1400_stage["workload_id"] == base_protocol[
+            "ordinary_workload_id"]
+    assert (q1400_protocol["factor_base_enumerated_set_sha256"] ==
+            q1400_input["factor_base_enumerated_set_sha256"] ==
+            q1400_stage["factor_base_enumerated_set_sha256"] ==
+            base_protocol["factor_base"]["enumerated_set_sha256"])
+    assert q1400_protocol["point_decomposition"][
+        "native_source_sha256"] == sha(q1400_native_source)
+    for name, digest in q1400_protocol["point_decomposition"][
+            "native_dependency_sha256"].items():
+        assert sha(HERE.parents[1] / name) == digest
+    assert q1400_protocol["checks"]["native_input_manifest_sha256"] == sha(
+        q1400_input_path)
+    assert q1400_protocol["checks"]["input_exporter_sha256"] == sha(
+        HERE / "export_q1400_pair_inputs.py")
+    assert q1400_input["checked_sage_runtime_info_sha256"] == sha(
+        q1400_runtime_path)
+    assert q1400_input["source_sha256"] == sha(
+        HERE / "export_q1400_pair_inputs.py")
+    q1400_point_keys_path = HERE / "bases/n83_weight5_full_point_orbits.bin"
+    point_keys = q1400_point_keys_path.read_bytes()
+    assert len(point_keys) == 21 * q1400_protocol[
+        "factor_base_folded_columns_K"]
+    padded_hash = hashlib.sha256()
+    for offset in range(0, len(point_keys), 21):
+        padded_hash.update(point_keys[offset:offset + 21] + b"\0" * 11)
+    assert padded_hash.hexdigest() == q1400_input["base_binary_sha256"]
+    assert q1400_input["base_binary_bytes"] == 32 * q1400_protocol[
+        "factor_base_folded_columns_K"]
+    onb83 = field.Onb(83)
+    q1325_target = [int(value) for value in base_protocol[
+        "ordinary_public_target"]]
+    assert q1400_input["ordinary_public_target_onb_hex"] == [
+        format(onb83.toCoords(value), "x") for value in q1325_target]
+    assert q1400_build["stage_protocol_sha256"] == sha(q1400_protocol_path)
+    assert q1400_build["native_source_sha256"] == sha(q1400_native_source)
+    assert q1400_build["source_sha256"] == sha(
+        HERE / "build_q1400_pair_comparator.py")
+    assert q1400_stage["stage_protocol_sha256"] == sha(q1400_protocol_path)
+    assert q1400_stage["input_manifest_sha256"] == sha(q1400_input_path)
+    assert q1400_stage["native_build_receipt_sha256"] == sha(q1400_build_path)
+    assert q1400_stage["source_sha256"] == sha(
+        HERE / "run_q1400_pair_comparator.py")
+    assert q1400_stage["raw_stdout_sha256"] == sha(q1400_stdout_path)
+    assert q1400_stage["raw_stderr_sha256"] == sha(q1400_stderr_path)
+    assert q1400_stage["native_output"] == json.loads(
+        q1400_stdout_path.read_text())
+    assert q1400_stage["status"] == "no_exact_hit_at_cap"
+    assert q1400_stage["native_output"]["exact_hit_keys"] == 0
+    assert q1400_stage["native_output"]["exact_hit_queries"] == 0
+    assert q1400_stage["native_output"]["hits"] == []
+    assert q1400_stage["native_output"]["table_descriptors"] == 2_000_000
+    assert q1400_stage["native_output"]["lifted_query_pairs"] == 2_719_744
+    assert q1400_stage["native_output"]["peak_rss_bytes"] <= 4096 * 1024 ** 2
+    q1400_pdp = q1400_protocol["point_decomposition"]
+    expected_common_args = [str(q1400_pdp[name]) for name in (
+        "table_descriptors", "query_representatives", "table_batch",
+        "table_step", "table_offset", "query_step", "query_offset",
+        "bloom_bits_per_key", "bloom_hashes", "table_start",
+        "query_start", "query_workers", "representative_batch")]
+    assert len(q1400_stage["command"]) == 17
+    assert q1400_stage["command"][2:4] == q1400_input[
+        "ordinary_public_target_onb_hex"]
+    assert q1400_stage["command"][4:] == expected_common_args
+    assert q1400_stage["target_online_seconds_exploratory"] == (
+        q1400_stage["native_output"]["query_seconds"] +
+        q1400_stage["native_output"]["exact_replay_seconds"])
+    assert q1400_stage["natural_relation_yield_rate_estimate"] is None
+    assert q1400_stage["complete_work_log2"] is None
+    q1401_protocol_path = HERE / "q1401_pair_control_protocol.json"
+    q1401_protocol = json.loads(q1401_protocol_path.read_text())
+    q1401_fixture_path = HERE / "runs/n83_q1401_pair_planted_fixture.json"
+    q1401_fixture = json.loads(q1401_fixture_path.read_text())
+    q1401_stage_path = HERE / "runs/n83_q1401_pair_planted_native.json"
+    q1401_stage = json.loads(q1401_stage_path.read_text())
+    q1401_stdout_path = HERE / "runs/n83_q1401_pair_planted_native.stdout.txt"
+    q1401_stderr_path = HERE / "runs/n83_q1401_pair_planted_native.stderr.txt"
+    q1401_replay_path = HERE / "runs/n83_q1401_pair_planted_independent_replay.json"
+    q1401_replay = json.loads(q1401_replay_path.read_text())
+    assert q1401_protocol["proposal_id"] == q1401_fixture[
+        "proposal_id"] == q1401_stage["proposal_id"] == q1401_replay[
+            "proposal_id"] == "Q1401"
+    assert q1401_protocol["parent_solver_proposal_id"] == "Q1400"
+    assert q1401_protocol["workload_id"] == q1401_fixture[
+        "workload_id"] == q1401_stage["workload_id"] == q1401_replay[
+            "workload_id"]
+    assert q1401_protocol["planted_fixture_sha256"] == sha(q1401_fixture_path)
+    assert q1401_protocol["fixture_source_sha256"] == sha(
+        HERE / "make_q1401_pair_control.py")
+    assert q1401_fixture["source_sha256"] == sha(
+        HERE / "make_q1401_pair_control.py")
+    canonical_workload = json.dumps(
+        q1401_fixture["canonical_workload_record"], sort_keys=True,
+        separators=(",", ":"), ensure_ascii=False).encode()
+    assert hashlib.sha256(canonical_workload).hexdigest()[:12] == (
+        q1401_fixture["workload_id"])
+    assert q1401_stage["status"] == "native_hit_pending_independent_replay"
+    assert q1401_stage["stage_protocol_sha256"] == sha(q1401_protocol_path)
+    assert q1401_stage["planted_fixture_sha256"] == sha(q1401_fixture_path)
+    assert q1401_stage["raw_stdout_sha256"] == sha(q1401_stdout_path)
+    assert q1401_stage["raw_stderr_sha256"] == sha(q1401_stderr_path)
+    assert q1401_stage["source_sha256"] == sha(
+        HERE / "run_q1401_pair_control.py")
+    assert q1401_stage["native_output"] == json.loads(
+        q1401_stdout_path.read_text())
+    assert len(q1401_stage["command"]) == 17
+    assert q1401_stage["command"][2:4] == q1401_fixture[
+        "target_onb_coordinate_hex"]
+    assert q1401_stage["command"][4:] == expected_common_args
+    assert q1401_stage["native_output"]["exact_hit_keys"] >= 1
+    assert q1401_replay["status"] == "PASS"
+    assert q1401_replay["native_receipt_sha256"] == sha(q1401_stage_path)
+    assert q1401_replay["fixture_sha256"] == sha(q1401_fixture_path)
+    assert q1401_replay["source_sha256"] == sha(
+        HERE / "verify_q1401_pair_control.py")
+    assert q1401_replay["verified_relation_count"] >= 1
+    assert all(hit["target_sum_verified"] and hit[
+        "four_distinct_signed_frobenius_columns"]
+               for hit in q1401_replay["verified_hits"])
+    assert q1401_replay["is_natural_relation_yield_measurement"] is False
+    assert q1401_replay["verified_single_target_dlp"] is False
+    for variant, path in (
+        ("q1400_pair_protocol", q1400_protocol_path),
+        ("q1400_checked_sage_runtime", q1400_runtime_path),
+        ("q1400_native_input", q1400_input_path),
+        ("q1400_native_build", q1400_build_path),
+        ("q1400_ordinary_stage", q1400_stage_path),
+        ("q1400_ordinary_stdout", q1400_stdout_path),
+        ("q1400_ordinary_stderr", q1400_stderr_path),
+        ("q1401_control_protocol", q1401_protocol_path),
+        ("q1401_planted_fixture", q1401_fixture_path),
+        ("q1401_native_stage", q1401_stage_path),
+        ("q1401_native_stdout", q1401_stdout_path),
+        ("q1401_native_stderr", q1401_stderr_path),
+        ("q1401_independent_replay", q1401_replay_path),
+    ):
+        rows.append({"variant": variant, "receipt_sha256": sha(path),
+                     "is_natural_yield_measurement": False})
+    from screen_q1402_fixed_pair_family import build as build_q1402_screen
+    q1402_path = HERE / "runs/n83_n131_q1402_fixed_pair_family_screen.json"
+    q1402 = json.loads(q1402_path.read_text())
+    assert q1402 == build_q1402_screen()
+    assert q1402["source_sha256"] == sha(
+        HERE / "screen_q1402_fixed_pair_family.py")
+    assert q1402["q1400_protocol_sha256"] == sha(q1400_protocol_path)
+    assert q1402["q1400_ordinary_stage_sha256"] == sha(q1400_stage_path)
+    assert q1402["proposal_id"] == "Q1402"
+    assert q1402["candidate_id"] is q1402["run_id"] is None
+    assert q1402["isogeny"] == "none"
+    assert q1402["n83_exact_q1325_measured_rectangle"]["support_ceiling"][
+        "uniform_nonidentity_target_support_numerator_cap"] == (
+            4 * 83 * 83 * 2_000_000 * 16_384)
+    n131_screen = q1402["n131_conditional_q1303_full_table"]
+    assert n131_screen["exact_factor_base_B"] is None
+    n131 = n131_screen["field_degree_n"]
+    r131 = n131_screen["subgroup_order_r"]
+    assert n131 == 131
+    for case_name in ("estimated_K_case",
+                      "upper_95_percent_K_case_not_hard_bound"):
+        case = n131_screen[case_name]
+        m = case["generous_full_table_descriptor_cap_M"]
+        for threshold, numerator, denominator in (("one_percent", 1, 100),
+                                                  ("fifty_percent", 1, 2)):
+            necessary_r = case[
+                "necessary_queries_for_uniform_target_support"][threshold][
+                    "necessary_query_representatives"]
+            capacity = denominator * 4 * n131 * n131 * m
+            assert necessary_r * capacity >= numerator * (r131 - 1)
+            assert (necessary_r - 1) * capacity < numerator * (r131 - 1)
+        online_cap = n131_screen["query_representative_cap_for_screen"]
+        assert online_cap == 1 << 31
+        assert case["support_ceiling_at_2pow31_query_representatives"][
+            "uniform_nonidentity_target_support_numerator_cap"] == (
+                min(r131 - 1, 4 * n131 * n131 * m * online_cap))
+    assert q1402["is_empirical_relation_yield"] is False
+    assert q1402["is_complete_solve_projection"] is False
+    assert q1402["challenge_dispatch_allowed"] is False
+    rows.append({"variant": "q1402_fixed_pair_family_counting_screen",
+                 "receipt_sha256": sha(q1402_path),
+                 "is_natural_yield_measurement": False})
+    from derive_q1400_primitive_calls import build as build_q1400_calls
+    q1400_calls_path = HERE / "runs/n83_q1400_primitive_field_calls.json"
+    q1400_calls = json.loads(q1400_calls_path.read_text())
+    assert q1400_calls == build_q1400_calls()
+    assert q1400_calls["source_sha256"] == sha(
+        HERE / "derive_q1400_primitive_calls.py")
+    assert q1400_calls["q1400_protocol_sha256"] == sha(q1400_protocol_path)
+    assert q1400_calls["q1400_stage_receipt_sha256"] == sha(q1400_stage_path)
+    assert q1400_calls["proposal_id"] == "Q1400"
+    assert q1400_calls["candidate_id"] is q1400_calls["run_id"] is None
+    assert q1400_calls["isogeny"] == "none"
+    calls = q1400_calls["phase_call_vectors"]
+    m = q1400_protocol["point_decomposition"]["table_descriptors"]
+    r = q1400_protocol["point_decomposition"]["query_representatives"]
+    table_batches = (m + 4095) // 4096
+    query_batches = (r + 15) // 16
+    assert calls["target_independent_base_orbit_expansion"][
+        "expanded_primitive_field_sqr_calls"] == (
+            2 * 83 * q1400_protocol["factor_base_folded_columns_K"])
+    assert calls["target_independent_table_build"][
+        "expanded_primitive_field_mul_calls"] == 5 * m + 8 * table_batches
+    assert calls["target_independent_table_build"][
+        "expanded_primitive_field_sqr_calls"] == m + 82 * table_batches
+    assert calls["target_query_pair_build"][
+        "expanded_primitive_field_mul_calls"] == 5 * r + 8 * query_batches
+    assert calls["target_signed_complement"][
+        "expanded_primitive_field_mul_calls"] == 5 * r * 83 + 8 * query_batches
+    assert calls["target_signed_complement"][
+        "expanded_primitive_field_sqr_calls"] == 2 * r * 83 + 82 * query_batches
+    assert calls["target_frobenius_setup_untimed"][
+        "expanded_primitive_field_sqr_calls"] == 2 * 83
+    assert calls["target_exact_table_replay"] == calls[
+        "target_independent_table_build"]
+    assert q1400_calls["target_dependent_phase_sum_including_untimed_frobenius"][
+        "expanded_primitive_field_mul_calls"] == 16_901_576
+    assert q1400_calls["target_dependent_phase_sum_including_untimed_frobenius"][
+        "expanded_primitive_field_sqr_calls"] == 4_944_328
+    assert q1400_calls["wall_timing_boundary"][
+        "all_target_dependent_wall_seconds"] is None
+    assert q1400_calls["is_common_weighted_field_operation_unit"] is False
+    assert q1400_calls["is_complete_solve_projection"] is False
+    rows.append({"variant": "q1400_primitive_field_calls",
+                 "receipt_sha256": sha(q1400_calls_path),
+                 "is_natural_yield_measurement": False})
     planted_protocol_path = HERE / "q1332_batch_planted_control_protocol.json"
     planted_protocol = json.loads(planted_protocol_path.read_text())
     planted_manifest_path = HERE / "native_inputs/n83_batch_planted_manifest.json"

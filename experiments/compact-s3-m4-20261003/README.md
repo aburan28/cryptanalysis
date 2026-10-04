@@ -887,12 +887,104 @@ the one frozen target or a bound on target-adaptive or algebraic solvers.
 The screen is regenerated with
 `python3 experiments/compact-s3-m4-20261003/screen_q1331_target_coverage.py --check`.
 
+### Q1400 matched Q1325 quotient-pair comparator
+
+Q1400 is a separate `PDP4mitm` stage proposal on the **same exact**
+`EC1N83Ckb1h876c2921cb64` curve, Q1325 base
+(\(B=30{,}977{,}592\), \(K=186{,}612\), the same set digest), and ordinary
+public target as Q1331. Its [input exporter](export_q1400_pair_inputs.py)
+losslessly pads each 21-byte canonical point key into the 32-byte native
+record consumed by the [frozen group-law engine](native_q1400_pair_comparator.cpp).
+The [protocol](q1400_pair_protocol.json) fixes two million table descriptors
+and 16,384 query representatives, which expand to 2,719,744 signed target-
+side pair checks. The method and memory cap differ from Q1331, so its wall
+times are stage diagnostics, not a controlled solver speed comparison.
+
+The [ordinary run](runs/n83_q1400_pair_comparator.json) found **zero exact
+hits**. It recorded 258 Bloom positives, all rejected by exact replay.
+Target-dependent query plus exact replay took 0.634 s; target-independent
+native table construction took 0.407 s, native base loading 0.272 s, and
+peak RSS was 1,246,986,240 bytes. The checked-launcher base export cost was
+separately recorded, including startup. CPU wall times are exploratory on
+this unisolated ARM64 host. The run has no field-operation-equivalent count,
+verified relation, useful-row yield estimate, or complete DLP result.
+
+The separate [Q1401 planted control](runs/n83_q1401_pair_planted_native.json)
+passes only its public target and the same Q1325 base to the native engine.
+It returned one exact hit. [Independent checked-Sage replay](runs/n83_q1401_pair_planted_independent_replay.json)
+reconstructed all four subgroup/base points from the reported table/query
+positions, checked four distinct signed-Frobenius columns, and re-added them
+to the public target. The witness metadata stayed in the verifier's
+[fixture](runs/n83_q1401_pair_planted_fixture.json), outside the native
+input. This is a correctness control, not ordinary relation-yield evidence.
+
+For this *fixed* Q1400 rectangle, the table side contains at most \(2nM\)
+group pair points after sign and Frobenius folding, and the query side at
+most \(2nR\), where \(M=2{,}000{,}000\) table descriptors and
+\(R=16{,}384\) query representatives. Thus its support over a uniformly
+drawn nonidentity subgroup target is at most
+\((2nM)(2nR)/(r-1)=3.735\times10^{-10}\). This exact counting bound
+explains why the ordinary no-hit under this small cap is not a natural-yield
+measurement. It does not apply to a larger or target-adaptive rectangle.
+
+### Q1402 fixed-pair family counting screen
+
+The [Q1402 screen](runs/n83_n131_q1402_fixed_pair_family_screen.json)
+extends the Q1400 counting argument to any **fixed, target-independent**
+signed-Frobenius table of \(M\) full-point pair descriptors and fixed query
+schedule of \(R\) descriptors. Each side contributes at most \(2n\)
+signed/Frobenius group points per descriptor. Hence a uniformly drawn
+nonidentity subgroup target has support probability at most
+\(\min(1,4n^2MR/(r-1))\), without assuming that pair sums are random.
+An S3 state that emits both relative signs counts as two full-point
+descriptors in this screen.
+At Q1400's measured \(M=2{,}000{,}000\), even the ceiling cannot reach 1%
+at N83 until \(R\geq438{,}716{,}003{,}635\) representatives; for 50%, it
+requires \(R\geq21{,}935{,}800{,}181{,}729\). Q1400 used 16,384.
+
+For Q1303's **sampled** N131 weight-at-most-six base estimate, the screen
+grants the fixed table every ordered orbit pair and both relative signs,
+\(M=\lceil2nK^2\rceil\), or about \(2^{57.20}\) descriptors. Even then,
+1% uniform-target support requires at least \(5.993\times10^{14}\)
+(\(2^{49.09}\)) fixed query representatives, and 50% requires
+\(2.996\times10^{16}\) (\(2^{54.73}\)). Granting \(2^{31}\) query
+representatives leaves a support ceiling of \(3.5833\times10^{-8}\).
+The upper end of the sampled 95% base-size interval changes that ceiling
+to only \(3.6257\times10^{-8}\); the interval is statistical, not a hard
+bound on the actual N131 base. Descriptors are not calibrated field
+operations, so this is a conditional family screen and not a complete
+\(2^x\) work projection. Target-adaptive schedules, guided query laws, and
+algebraic solvers lie outside its scope.
+
+### Q1400 primitive field-call accounting
+
+The [source-bound call expansion](runs/n83_q1400_primitive_field_calls.json)
+counts Q1400's recorded no-hit path through the pinned N83 native source.
+Table construction used 10,003,912 field multiplication calls and 2,040,098
+squaring calls, including its batch inversions. The target-dependent pair
+query, signed complement, exact replay, and Frobenius setup together used
+16,901,576 multiplications and 4,944,328 squarings. The replay includes the
+second full table pass triggered by 258 Bloom positives. Base-orbit
+expansion separately used 30,977,592 squarings before the target.
+
+The recorded 0.634 s times target query and exact replay, but omits the
+166 target-dependent Frobenius setup squarings before the native query timer.
+It is therefore a **partial stage wall interval**, not a complete target
+online wall time. Native controls, conversion, canonicalization, hashing,
+memory traffic, and calibration into a common weighted operation unit remain
+separate. Q1331's matched-target vector has 44,002,445 multiplications and
+40,098 squarings for its different two-million-state S3 search; neither
+vector gives cost per useful row because both N83 runs found none.
+
 ## Next goal
 
 The next gate is an **ordinary N83 four-point relation on the exact Q1325
 base from a search that avoids both the full \(K^2n\) index and Q1331's
 fixed two-million-state support limit**. Q1329 has now
-validated the native search on an unpinned, known-satisfiable N83 target.
+validated the native S3 search on an unpinned, known-satisfiable N83 target;
+Q1401 has independently validated the quotient-pair search on the exact
+Q1325 base with a planted public target. Q1400's ordinary no-hit and tiny
+fixed-rectangle support bound leave ordinary relation yield unmeasured.
 Run frozen ordinary single-target workloads under identical operation and
 memory limits, retaining all zero-yield cells and independently verifying
 any relations.
@@ -939,6 +1031,13 @@ From this repository worktree, first save checked runtime information:
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 53 --variant batch --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 83 --variant batch --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_n83_q1329_native_control.py --variant batch --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/export_q1400_pair_inputs.py --check
+python3 experiments/compact-s3-m4-20261003/build_q1400_pair_comparator.py --check
+python3 experiments/compact-s3-m4-20261003/run_q1400_pair_comparator.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/make_q1401_pair_control.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1401_pair_control.py --check
+python3 experiments/compact-s3-m4-20261003/screen_q1402_fixed_pair_family.py --check
+python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
