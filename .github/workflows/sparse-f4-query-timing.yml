@@ -1,0 +1,70 @@
+name: Sparse F4 complete query timing
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/sparse-f4-query-timing.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - '.github/workflows/sparse-f4-query-timing.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sparse-f4-query-timing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness-and-timing:
+    name: Sparse F4 complete query (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rebuild native engines and test measurement rejection rules
+        run: |
+          mkdir query-timing-evidence
+          python -u experiments/groebner-perf-20260924/round57/build.py > query-timing-evidence/build.log 2>&1
+          python -m unittest discover -s experiments/groebner-perf-20260924/round57 -p 'test_*.py' -v > query-timing-evidence/unit-tests.log 2>&1
+      - name: Independently validate fresh complete queries
+        run: python -u experiments/groebner-perf-20260924/round57/preflight.py --output query-timing-evidence/preflight.json.gz > query-timing-evidence/preflight.log 2>&1
+      - name: Retain one frozen paired attempt and its analysis
+        run: |
+          python -u experiments/groebner-perf-20260924/round57/measure.py --preflight query-timing-evidence/preflight.json.gz --output query-timing-evidence/panel > query-timing-evidence/measure.log 2>&1
+          python experiments/groebner-perf-20260924/round57/analyze.py --input query-timing-evidence/panel --output query-timing-evidence/analysis.json > query-timing-evidence/analysis.log 2>&1
+      - name: Retain actual runner and rebuilt artifacts
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, platform, shutil
+          out = pathlib.Path('query-timing-evidence')
+          out.mkdir(exist_ok=True)
+          runner = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          runner.update(platform=platform.platform(), architecture=platform.machine())
+          (out / 'runner.json').write_text(json.dumps(runner, indent=2)+'\n')
+          for version in (4, 56, 57):
+              source = pathlib.Path(f'experiments/groebner-perf-20260924/round{version}/build')
+              if source.exists():
+                  shutil.copytree(source, out / 'native' / f'round{version}', dirs_exist_ok=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sparse-f4-query-timing-${{ matrix.os }}
+          path: query-timing-evidence/
+          if-no-files-found: error
+          retention-days: 14
