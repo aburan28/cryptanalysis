@@ -76,6 +76,14 @@ unsuccessful attempts, in raw primitive counts; they are neither calibrated
 field-operation equivalents nor completed decomposition costs. There is no
 N53-to-N83 solve-growth fit and no degree-131 complete `2^x` estimate.
 
+The exact nominal nonzero sparse-x sets contain 24,857 of `2^53` field
+elements and 30,967,383 of `2^83` elements. If reverse roots behaved as
+independent uniform field elements, two roots per call would suggest about
+`2^37.40` and `2^57.12` calls respectively before one sparse x appears.
+That is a stated uniform-root heuristic, not a measured solve cost or a
+claim that the adaptive solver's roots are independent. It explains why
+speeding up the same rejection loop alone is an unpromising next gate.
+
 The next method gate is a compact, **structured pair-sum membership and
 witness method**. It must preserve exact four-point solutions while avoiding
 both Q1425's random reverse-root rejection loop and a full quotient-pair
