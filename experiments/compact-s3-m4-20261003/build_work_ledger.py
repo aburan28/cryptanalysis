@@ -2171,6 +2171,7 @@ def main():
     assert q1420_verification["verifier_source_sha256"] == sha(
         q1420_dir / "verify_archive.py")
     q1420_cells = []
+    q1420_control_relations = {}
     for key in q1420_protocol["run_order"]:
         path = q1420_dir / "runs" / key / "receipt.json"
         stage = json.loads(path.read_text())
@@ -2198,6 +2199,13 @@ def main():
             assert stage["verified_relation_count"] == 0
         else:
             assert report is not None
+        if stage["cell"] != "ordinary":
+            assert stage["solver_status"] == "sat"
+            assert stage["verified_relation_count"] == 1
+            relation = stage["model_check"]
+            previous = q1420_control_relations.setdefault(stage["degree_n"],
+                                                          relation)
+            assert relation == previous
         q1420_cells.append({
             "proposal_id": "Q1420", "candidate_id": None,
             "stage_config_id": stage["stage_config_id"],
@@ -2241,6 +2249,7 @@ def main():
             "receipt_sha256": sha(path),
         })
     assert len(q1420_cells) == 6
+    assert len(q1420_control_relations) == 2
     assert sum(row["verified_relation_count"] for row in q1420_cells) == 4
     assert all(row["solver_status"] == "external_timeout" for row in
                q1420_cells if row["cell"] == "ordinary")
@@ -2885,7 +2894,9 @@ def main():
             "candidate_id": None,
             "isogeny": "none",
             "cells": q1420_cells,
-            "known_satisfiable_control_relation_count": 4,
+            "verified_known_satisfiable_control_cells": 4,
+            "distinct_archived_relations_reused": 2,
+            "verified_ordinary_n53_relation_count": 0,
             "verified_ordinary_n83_relation_count": 0,
             "natural_relation_yield_estimate": None,
             "degree131_complete_solve_work_log2": None,
