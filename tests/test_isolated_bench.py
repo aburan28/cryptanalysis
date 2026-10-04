@@ -63,6 +63,10 @@ class IsolatedBenchTests(unittest.TestCase):
                                    "reference": [str(binary)],
                                    "candidate": [str(binary)]}]}
             bench.require_manifest(manifest)
+            manifest["cases"][0]["candidate"].append("7")
+            with self.assertRaises(ValueError):
+                bench.require_manifest(manifest)
+            manifest["cases"][0]["candidate"].pop()
             manifest["pair_fields"] = []
             with self.assertRaises(ValueError):
                 bench.require_manifest(manifest)

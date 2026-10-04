@@ -138,6 +138,9 @@ def require_manifest(manifest):
             raise ValueError("each case needs expected_fields for every pair field")
         if not isinstance(case.get("expected_result"), str) or not case["expected_result"]:
             raise ValueError("each case needs an expected_result")
+        if any(case["expected_result"] in case[variant][1:]
+               for variant in ("reference", "candidate")):
+            raise ValueError("expected_result must not be passed to solver argv")
     if not isinstance(manifest.get("artifacts"), list) or not manifest["artifacts"]:
         raise ValueError("artifacts must list at least one source or build file")
     for item in manifest["artifacts"]:
