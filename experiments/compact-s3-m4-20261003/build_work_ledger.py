@@ -335,6 +335,20 @@ def main():
             "assumption": "each distinct four-point subset sum is independently uniform in the subgroup; sign/Frobenius and base structure can violate this model",
             "is_empirical_yield_estimate": False,
         })
+    n131_sample_path, n131_sample = read(
+        "n131_weight6_stratified_sample.json")
+    n131_replay_path, n131_replay = read(
+        "n131_weight6_sage_independent_replay.json")
+    assert n131_sample["proposal_id"] == "Q1303"
+    assert n131_sample["candidate_id"] is None
+    assert n131_sample["protocol_sha256"] == sha(protocol_path)
+    assert n131_replay["status"] == "PASS"
+    assert n131_replay["sample_receipt_sha256"] == sha(n131_sample_path)
+    assert n131_replay["exact_rational_x_counts_weights_one_two"] == {
+        "1": n131_sample["strata"][0]["rational_x_count_in_sample"],
+        "2": n131_sample["strata"][1]["rational_x_count_in_sample"],
+    }
+    assert n131_replay["distinct_weight_two_control_projected_points"] == 16
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -406,6 +420,29 @@ def main():
         },
         "fixed_witness_target_search_diagnostics": fixed_witness_targets,
         "relation_density_planning_heuristic": relation_density_heuristic,
+        "n131_weight6_geometry_estimate": {
+            "proposal_id": "Q1303",
+            "candidate_id": None,
+            "curve_id": n131_sample["curve_id"],
+            "exact_enumerated_base_B": None,
+            "exact_enumerated_base_digest": None,
+            "rational_x_count_estimate": n131_sample[
+                "rational_x_count_estimate"],
+            "conditional_B_estimate": n131_sample[
+                "conditional_B_estimate"],
+            "conditional_B_normal_95_percent_interval": n131_sample[
+                "conditional_B_normal_95_percent_interval"],
+            "conditional_folded_columns_estimate": n131_sample[
+                "conditional_folded_columns_estimate"],
+            "conditional_assumptions": n131_sample[
+                "conditional_B_assumptions"],
+            "independent_sage_replay_status": n131_replay["status"],
+            "sample_receipt_sha256": sha(n131_sample_path),
+            "replay_receipt_sha256": sha(n131_replay_path),
+            "optimistic_uniform_subset_screen": n131_sample[
+                "uniform_subset_sum_planning_heuristic"],
+            "is_complete_solve_projection": False,
+        },
         "matched_pair_table": {
             "n53": {
                 "status": n53["status"],

@@ -230,6 +230,37 @@ structure can violate that model, so these are heuristics rather than
 measured relation yield. One n=83 timeout cannot distinguish a hard solver
 from a target with no representation; an ordinary-target panel is needed.
 
+For the proposed n=131 W≤6 base, [`estimate_n131_weight6_base.py`](estimate_n131_weight6_base.py)
+enumerates every weight-one and weight-two x support and draws distinct,
+seeded supports at weights three through six. On 208,646 checked supports it
+estimates **6.584 billion** cofactor-projected usable points, conditional on
+the two lifts remaining distinct and cofactor projection being injective on
+the full sparse set. The normal-approximation 95% interval from sampling is
+**6.545–6.622 billion** under those conditions, giving about **25.13 million**
+signed-Frobenius columns. The weight-at-most-two sub-base is exact in this
+representation: **B=8,384**, **K=32**. The higher-weight base has not been
+enumerated, so Q1303 retains `candidate_id: null`, exact `B: null`, and a
+null enumerated-set digest.
+This projected-raw-x W≤2 control is a different factor-base policy from the
+separate N131 base that selects subgroup points whose **projected point's** x
+has weight exactly two (`B=3,668`, `K=14`); the latter also has a different
+exact curve ID. Their `fb` counts must not be interchanged.
+
+An independent checked-Sage replay verifies the type-II normal-basis
+generator polynomial, all 131 gamma squaring images, sampled rationality
+classifications, and the exhaustive weight-one/two rationality counts. It
+also checks 16 distinct weight-two projected control points and subgroup
+membership on bounded controls. The exact W≤2 projected B=8,384 is a
+producer enumeration; Sage has not exhaustively replayed every projected
+point. Both source-bound receipts are in `runs/` and use
+`n131_sample_sage_runtime_info.json`. The derived uniform-subset screen
+assumes every four-point subset sum is independently uniform and every hit
+adds one rank. Even if **all** base construction, final matrix, descent,
+replay, and conversion work cost zero, it leaves an optimistic ceiling near
+\(2^{33.2}\) field-operation equivalents per ordinary query under a
+\(2^{61}\) total cap. This is a design budget from explicit assumptions,
+not a measured solver cost or a complete-solve projection.
+
 The complete n=131 work exponent remains **unknown**. The corrected SAT stage
 is censored at both measured field degrees; natural relation yield, novel rank,
 cost per useful row, final matrix solving, target descent, and independent

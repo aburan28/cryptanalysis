@@ -266,6 +266,47 @@ def verify():
         rows.append({"variant": stem, "receipt_sha256": sha(path),
                      "formula_sha256": digest.hexdigest(),
                      "formula_bytes": size})
+    sample_path = HERE / "runs/n131_weight6_stratified_sample.json"
+    sample = json.loads(sample_path.read_text())
+    runtime = HERE / "n131_sample_sage_runtime_info.json"
+    assert sample["protocol_sha256"] == protocol_digest
+    assert sample["proposal_id"] == "Q1303"
+    assert sample["candidate_id"] is None
+    assert sample["complete_solve_work_log2"] is None
+    assert sample["runtime_info_sha256"] == sha(runtime)
+    assert sample["source_sha256"] == sha(
+        HERE / "estimate_n131_weight6_base.py")
+    assert sample["field_source_sha256"] == sha(
+        HERE.parent.parent / "ecc2k130/codegen/field.py")
+    assert sample["curve_source_sha256"] == sha(
+        HERE.parent.parent / "ecc2k130/codegen/curves.py")
+    assert len(sample["strata"]) == 6
+    assert sum(row["sample_size"] for row in sample["strata"]) == 208646
+    assert sample["exact_weight_at_most_two_projected_B"] == 8384
+    assert sample["exact_weight_at_most_two_folded_columns"] == 32
+    assert sample["uniform_subset_sum_planning_heuristic"][
+        "is_complete_solve_projection"] is False
+    rows.append({"variant": "n131_weight6_stratified_sample",
+                 "receipt_sha256": sha(sample_path)})
+    replay_path = HERE / "runs/n131_weight6_sage_independent_replay.json"
+    replay = json.loads(replay_path.read_text())
+    assert replay["status"] == "PASS"
+    assert replay["protocol_sha256"] == protocol_digest
+    assert replay["sample_receipt_sha256"] == sha(sample_path)
+    assert replay["runtime_info_sha256"] == sha(runtime)
+    assert replay["source_sha256"] == sha(
+        HERE / "replay_n131_weight6_sample_sage.py")
+    assert replay["normal_basis_gamma_squaring_checks"] == 131
+    assert replay["exact_rational_x_counts_weights_one_two"] == {
+        "1": sample["strata"][0]["rational_x_count_in_sample"],
+        "2": sample["strata"][1]["rational_x_count_in_sample"],
+    }
+    assert replay["distinct_weight_two_control_projected_points"] == 16
+    assert replay["producer_exact_weight_at_most_two_projected_B"] == (
+        sample["exact_weight_at_most_two_projected_B"])
+    assert replay["producer_w2_projected_B_exhaustively_replayed"] is False
+    rows.append({"variant": "n131_weight6_sage_independent_replay",
+                 "receipt_sha256": sha(replay_path)})
     return rows
 
 
