@@ -9,7 +9,10 @@ from pathlib import Path
 def make(args):
     root = args.repo_root.resolve()
     experiment = root / "experiments" / "prime-j0-cost-aware-chain"
-    fixture_path = experiment / args.fixture
+    atlas = args.candidate_arm == "atlas"
+    fixture_name = "atlas-inputs.json" if atlas and args.fixture == "inputs.json" else args.fixture
+    input_dir = "atlas-inputs" if atlas and args.input_dir == "inputs" else args.input_dir
+    fixture_path = experiment / fixture_name
     fixture = json.loads(fixture_path.read_text())
     bench = args.bench.resolve()
     artifacts = [root / "CMakeLists.txt", experiment / "bench.c",
@@ -21,12 +24,18 @@ def make(args):
         artifacts += [experiment / "BATCH_OUTPUT.md",
                       experiment / "make_batch_inputs.py",
                       experiment / "check_batch_panel.py"]
+    if atlas:
+        artifacts += [experiment / "RESIDUE_ATLAS.md",
+                      experiment / "make_residue_atlas.py",
+                      experiment / "run.py",
+                      experiment / "make_atlas_inputs.py",
+                      root / "src" / "generated" / "tau4_residue_atlas.h"]
     artifacts += sorted((root / "src").glob("*.c"))
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
     cases = []
     for case in fixture["cases"]:
-        scalar_path = experiment / args.input_dir / case["scalar_file"]
+        scalar_path = experiment / input_dir / case["scalar_file"]
         artifacts.append(scalar_path)
         base = [str(bench), None, case["curve"]["name"],
                 str(case["point_index"]), str(scalar_path)]
@@ -88,9 +97,9 @@ if __name__ == "__main__":
     parser.add_argument("--bench", type=Path, required=True)
     parser.add_argument("--fixture", default="inputs.json")
     parser.add_argument("--input-dir", default="inputs")
-    parser.add_argument("--candidate-arm", choices=(
+    parser.add_argument("--candidate-arm", "--arm", choices=(
         "cost", "pos", "pos-batch32", "pos-batch128",
-        "pos-batch512", "pos-batch4096"), default="cost")
+        "pos-batch512", "pos-batch4096", "atlas"), default="cost")
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)

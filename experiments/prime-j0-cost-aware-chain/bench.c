@@ -76,7 +76,8 @@ static int select_mode(const char *name) {
                                 "pos-batch32",
                                 "pos-batch128",
                                 "pos-batch512",
-                                "pos-batch4096"};
+                                "pos-batch4096",
+                                "atlas"};
   for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
     if (strcmp(name, names[i]) == 0)
       return (int)i;
@@ -90,7 +91,7 @@ int main(int argc, char **argv) {
     fprintf(stderr,
             "usage: %s "
             "reference|baseline|cost|pos|pos-global|pos-prep|pos-global-prep|"
-            "pos-batch32|pos-batch128|pos-batch512|pos-batch4096 "
+            "pos-batch32|pos-batch128|pos-batch512|pos-batch4096|atlas "
             "glv-j0-32|j0-56 0|1 INPUT\n",
             argv[0]);
     return 2;
@@ -98,10 +99,11 @@ int main(int argc, char **argv) {
   uint64_t p, b, order;
   if (!select_curve(argv[2], &p, &b, &order))
     return 2;
-  int global_builder = mode == 4 || mode == 6 || mode >= 7;
-  int positional = mode >= 3;
+  int global_builder = mode == 4 || mode == 6 || (mode >= 7 && mode <= 10);
+  int positional = mode >= 3 && mode <= 10;
   int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
-  size_t block_size = mode >= 7 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
+  size_t block_size =
+      mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
   uint64_t scalars[SCALARS], input_digest;
   if (!read_scalars(argv[4], order, scalars, &input_digest)) {
     fprintf(stderr,
@@ -162,9 +164,9 @@ int main(int argc, char **argv) {
     prep_ms = 1000 * (ca_now() - t0);
   }
   uint64_t triples = 0, adds = 0, rotations = 0, output_inversions = 0;
-  size_t online_scratch_bytes = mode >= 7 ? block_size * 32 : 0;
+  size_t online_scratch_bytes = mode >= 7 && mode <= 10 ? block_size * 32 : 0;
   double start = ca_now();
-  if (mode >= 7) {
+  if (mode >= 7 && mode <= 10) {
     if (!ca_ec_tau4_pos_mul_batch(&group, &positional_pre, outputs, scalars,
                                   SCALARS, block_size, &adds, &rotations,
                                   &output_inversions)) {
@@ -190,7 +192,8 @@ int main(int argc, char **argv) {
       } else {
         uint64_t t = 0, a = 0, r = 0;
         if (!ca_ec_tau4_mul_prepared_profile(
-                &group, &pre, &outputs[i], scalars[i], mode == 2, &t, &a, &r)) {
+                &group, &pre, &outputs[i], scalars[i],
+                mode == 11 ? 2 : mode == 2, &t, &a, &r)) {
           fprintf(stderr, "scalar evaluation failed at index %zu\n", i);
           free(outputs);
           return 1;
@@ -206,6 +209,11 @@ int main(int argc, char **argv) {
   uint64_t output_digest = FNV_OFFSET;
   for (size_t i = 0; i < SCALARS; i++) {
     if (mode != 0) {
+      if (mode == 11 && !ca_ec_tau4_recode_compare_scalar(&pre, scalars[i])) {
+        fprintf(stderr, "digit stream mismatch at index %zu\n", i);
+        free(outputs);
+        return 1;
+      }
       ca_elem expected;
       ca_group_mul(&group, &expected, &point, scalars[i], NULL);
       if (!ca_group_equal(&group, &outputs[i], &expected)) {

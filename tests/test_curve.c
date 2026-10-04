@@ -115,28 +115,58 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point,
                                       g->order,
                                       UINT64_MAX}[i]
                        : ca_rng_next(&rng);
-    ca_elem expected, baseline = *point, selected = *point;
+    ca_elem expected, baseline = *point, selected = *point, atlas = *point;
     ca_elem positional = *point, global = *point;
     uint64_t base_triples = UINT64_MAX, base_adds = UINT64_MAX;
     uint64_t cost_triples = UINT64_MAX, cost_adds = UINT64_MAX;
+    uint64_t atlas_triples = UINT64_MAX, atlas_adds = UINT64_MAX;
+    uint64_t base_rotations = UINT64_MAX, atlas_rotations = UINT64_MAX;
     ca_group_mul(g, &expected, point, k % g->order, NULL);
-    CHECK(ca_ec_tau4_mul_prepared(g, &pre, &baseline, k, &base_triples,
-                                  &base_adds));
+    CHECK(ca_ec_tau4_mul_prepared_profile(
+        g, &pre, &baseline, k, 0, &base_triples, &base_adds, &base_rotations));
     CHECK(ca_ec_tau4_mul_prepared_cost(g, &pre, &selected, k, &cost_triples,
                                        &cost_adds));
+    CHECK(ca_ec_tau4_mul_prepared_profile(g, &pre, &atlas, k, 2, &atlas_triples,
+                                          &atlas_adds, &atlas_rotations));
     uint64_t positional_adds = UINT64_MAX, positional_rotations = UINT64_MAX;
     CHECK(ca_ec_tau4_pos_mul(g, &positional_pre, &positional, k,
                              &positional_adds, &positional_rotations));
     CHECK(ca_ec_tau4_pos_mul(g, &global_pre, &global, k, NULL, NULL));
     CHECK(ca_group_equal(g, &baseline, &expected));
     CHECK(ca_group_equal(g, &selected, &expected));
+    CHECK(ca_group_equal(g, &atlas, &expected));
     CHECK(ca_group_equal(g, &positional, &expected));
     CHECK(ca_group_equal(g, &global, &expected));
+    CHECK_EQ_U64(base_triples, atlas_triples);
+    CHECK_EQ_U64(base_adds, atlas_adds);
+    CHECK_EQ_U64(base_rotations, atlas_rotations);
     CHECK(base_triples < 256 && base_adds < 256);
     CHECK(cost_triples < 256 && cost_adds < 256);
     CHECK(positional_adds < 256 && positional_rotations < 256);
     tau_cost_cases++;
   }
+}
+
+static void tau_atlas_recode_checks(void) {
+  const int offsets[] = {-162, -81, 0, 81, 162};
+  for (int a = 0; a < 81; a++)
+    for (int b = 0; b < 81; b++)
+      for (size_t i = 0; i < 5; i++)
+        for (size_t j = 0; j < 5; j++)
+          CHECK(ca_ec_tau4_recode_compare(a + offsets[i], b + offsets[j]));
+  ca_rng rng;
+  ca_rng_seed(&rng, UINT64_C(0x20261008));
+  for (int i = 0; i < 10000; i++) {
+    int64_t a = (int64_t)(ca_rng_next(&rng) >> 9);
+    int64_t b = (int64_t)(ca_rng_next(&rng) >> 9);
+    if (i & 1)
+      a = -a;
+    if (i & 2)
+      b = -b;
+    CHECK(ca_ec_tau4_recode_compare(a, b));
+  }
+  CHECK(ca_ec_tau4_recode_compare(INT64_MAX, INT64_MIN + 1));
+  CHECK(ca_ec_tau4_recode_compare(0, 0));
 }
 
 static void tau_cost_named(const char *name) {
@@ -203,6 +233,7 @@ static void tau_cost_boundary_curves(void) {
 }
 
 int main(void) {
+  tau_atlas_recode_checks();
   /* Detection from parameters, no group handling by the caller. */
   ca_curve_info info;
   CHECK(ca_curve_detect(67108933, 0, 7, 16773703, &info) == CA_OK);

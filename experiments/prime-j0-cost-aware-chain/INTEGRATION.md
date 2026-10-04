@@ -74,8 +74,8 @@ is exactly 4,096 unsigned 64-bit words in little-endian order; the binary
 format keeps the exact frozen inputs compact in the PR.
 [inputs.json](inputs.json) records each exact curve, public point, scalar-file
 SHA-256, input digest, and independently generated reference output digest.
-The [benchmark executable](bench.c) accepts `reference`, `baseline`, or
-`cost` as its first argument. It prepares the τ seed table before its online
+The [benchmark executable](bench.c) accepts `reference`, `baseline`, `cost`,
+or the later `atlas` experiment as its first argument. It prepares the τ seed table before its online
 timer, then charges representative selection and the complete point path.
 Every baseline/candidate output is replayed with `ca_group_mul` after the
 timer; replay time is reported separately. [check_panel.py](check_panel.py)
@@ -102,3 +102,37 @@ absolute checkout, binary, isolated cgroup, CPU partition, execution CPU,
 and NUMA node, then submit its JSON to `scripts/isolated_bench.py`. A local
 schema check confirmed that the generated manifest passes the runner's
 `require_manifest`; only the host-side preflight can authorize a measurement.
+
+## Four-step residue atlas follow-up
+
+The separate [residue-atlas protocol](RESIDUE_ATLAS.md) was committed before
+the new input panel. [make_residue_atlas.py](make_residue_atlas.py) generates
+the deterministic 7,429-byte [C atlas](../../src/generated/tau4_residue_atlas.h)
+from the exact digit rule. The recoder reduces four τ digits per lookup and
+preserves the same minimum-L1 representative and point schedule.
+
+[make_atlas_inputs.py](make_atlas_inputs.py) froze four new 4,096-scalar
+workloads in [atlas-inputs/](atlas-inputs/) and [atlas-inputs.json](atlas-inputs.json).
+[check_atlas_panel.py](check_atlas_panel.py) replayed all 16,384 atlas point
+outputs independently, compared each scalar's digit stream with the baseline
+outside the timer, and matched each case's complete `triples`, `adds`, and
+`rotations` totals. [atlas-panel.json](atlas-panel.json) retains the raw
+results and source hashes. C tests additionally checked all 6,561 residue
+pairs across signed translations and 10,000 random signed coefficient pairs.
+
+| Frozen case | Triples in each arm | Adds in each arm | Rotations in each arm |
+| --- | ---: | ---: | ---: |
+| `glv-j0-32`, generator | 25,668 | 15,635 | 10,225 |
+| `glv-j0-32`, `37P` | 25,715 | 15,621 | 10,211 |
+| 56-bit subgroup, generator | 65,684 | 33,557 | 21,764 |
+| 56-bit subgroup, `37P` | 65,641 | 33,531 | 21,830 |
+
+The exact operation counts are unchanged, as intended; any benefit must come
+from lower recoding overhead. Local wall times are exploratory because this
+host lacks the isolation receipt required for a CPU speedup claim.
+
+Generate a Linux-host manifest with `make_isolated_manifest.py --arm atlas`
+and that host's checkout, binary, cgroup, CPUs, and NUMA node. The manifest
+generator includes the protocol, input files, generator, and generated atlas
+as hashed artifacts. The 4,096-scalar panel is a throughput experiment and
+does not establish one-call latency.
