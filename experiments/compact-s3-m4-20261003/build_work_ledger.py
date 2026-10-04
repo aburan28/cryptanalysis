@@ -419,6 +419,85 @@ def main():
             "complete_solve_work_log2": stage["complete_solve_work_log2"],
             "receipt_sha256": sha(path),
         })
+    projected_sparse_pin_diagnostics = []
+    for stem, expected_status in (
+            ("n83_planted_projected_sparse_rawpin4", "censored"),
+            ("n83_planted_projected_sparse_leaf_x_pin", "censored"),
+            ("n83_planted_projected_sparse_leaf_x_mid1_pin", "sat"),
+            ("n83_planted_projected_sparse_full_pin", "sat")):
+        path, diagnostic = read(f"{stem}.json")
+        assert diagnostic["proposal_id"] == "Q1317"
+        assert diagnostic["candidate_id"] is None
+        assert diagnostic["workload_id"] is None
+        assert diagnostic["is_natural_relation_yield_measurement"] is False
+        assert diagnostic["matched_unassisted_receipt_sha256"] == (
+            next(row["receipt_sha256"] for row in projected_sparse
+                 if row["kind"] == "planted"))
+        assert diagnostic["status"] == expected_status
+        projected_sparse_pin_diagnostics.append({
+            "variant": stem,
+            "proposal_id": "Q1317",
+            "candidate_id": None,
+            "workload_id": None,
+            "run_id": None,
+            "oracle_assisted": True,
+            "raw_leaf_count_pinned": diagnostic.get(
+                "raw_leaf_count_pinned", diagnostic.get("pin_count")),
+            "projected_leaf_count_pinned": diagnostic.get(
+                "projected_leaf_count_pinned", 0),
+            "intermediate_x_count_pinned": diagnostic.get(
+                "intermediate_x_count_pinned", 0),
+            "status": diagnostic["status"],
+            "solver_conflicts_reported": diagnostic[
+                "solver_conflicts_reported"],
+            "target_pdp_wall_seconds": diagnostic["target_pdp_wall_seconds"],
+            "verified_relation_count": int(
+                diagnostic["verified_relation"] is not None),
+            "field_operations": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
+    rooted_stage = []
+    for stem, kind, links, pinned in (
+            ("n83_planted_rooted1_rawpin4", "planted", 1, True),
+            ("n83_planted_rooted2_rawpin4", "planted", 2, True),
+            ("n83_ordinary_rooted2", "ordinary", 2, False)):
+        path, stage = read(f"{stem}.json")
+        baseline_path, baseline = read(f"n83_{kind}_frozen.json")
+        assert stage["proposal_id"] == "Q1319"
+        assert stage["baseline_receipt_sha256"] == sha(baseline_path)
+        assert stage["curve_id"] == baseline["curve_id"]
+        assert stage["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"]
+        assert stage["rooted_links"] == links
+        assert stage["oracle_assisted_raw_leaf_choices"] == pinned
+        assert stage["observed_verified_relation_count"] == int(
+            stage["verified_relation"] is not None)
+        rooted_stage.append({
+            "variant": stem,
+            "proposal_id": "Q1319", "candidate_id": None,
+            "workload_id": stage["workload_id"], "run_id": None,
+            "curve_id": stage["curve_id"],
+            "n": 83, "kind": kind,
+            "rooted_links": links,
+            "oracle_assisted": pinned,
+            "factor_base_B": stage["factor_base_actual_B"],
+            "folded_columns": stage["factor_base_folded_columns"],
+            "status": stage["status"],
+            "formula": stage["formula"],
+            "solver_conflicts_reported": stage[
+                "solver_conflicts_reported"],
+            "target_pdp_wall_seconds": stage["target_pdp_wall_seconds"],
+            "observed_verified_relation_count": stage[
+                "observed_verified_relation_count"],
+            "locked_control_status": (stage["locked_control"]["status"]
+                                      if stage["locked_control"] else None),
+            "natural_relation_yield_estimate": stage[
+                "natural_relation_yield_estimate"],
+            "field_operations": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
     order131 = protocol["degree_131_design"]["curve"]["subgroup_order"]
     heuristic_samples131 = 2 * math.sqrt(order131 / (2 * 131))
     relation_density_heuristic = []
@@ -536,6 +615,9 @@ def main():
         "fixed_witness_target_search_diagnostics": fixed_witness_targets,
         "exact_base_orbit_stage_measurements": exact_base_orbit,
         "projected_sparse_stage_measurements": projected_sparse,
+        "projected_sparse_planted_pin_diagnostics": (
+            projected_sparse_pin_diagnostics),
+        "half_trace_rooted_stage_measurements": rooted_stage,
         "relation_density_planning_heuristic": relation_density_heuristic,
         "n131_weight6_geometry_estimate": {
             "proposal_id": "Q1303",
@@ -611,7 +693,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary S3 runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, and implicit cofactor-four projected-base encodings; the n53 known-satisfiable target and n83 planted controls establish formula consistency but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary S3 runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, and half-trace-rooted encodings; the n53 known-satisfiable target and n83 planted controls establish formula consistency but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,

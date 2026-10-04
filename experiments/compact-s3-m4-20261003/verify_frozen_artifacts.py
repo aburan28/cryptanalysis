@@ -396,6 +396,151 @@ def verify():
                      "formula_bytes": size,
                      "observed_verified_relation_count": receipt[
                          "observed_verified_relation_count"]})
+    pin_variants = (
+        ("n83_planted_projected_sparse_rawpin4", 0, "censored"),
+        ("n83_planted_projected_sparse_leaf_x_pin", 0, "censored"),
+        ("n83_planted_projected_sparse_leaf_x_mid1_pin", 1, "sat"),
+        ("n83_planted_projected_sparse_full_pin", 2, "sat"),
+    )
+    for stem, mids_pinned, expected_status in pin_variants:
+        path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(path.read_text())
+        assert receipt["proposal_id"] == "Q1317"
+        assert receipt["candidate_id"] is None
+        assert receipt["workload_id"] is None
+        assert receipt["run_id"] is None
+        assert receipt["is_natural_relation_yield_measurement"] is False
+        assert receipt["status"] == expected_status
+        assert receipt["complete_solve_work_log2"] is None
+        assert receipt["curve_id"] == json.loads((
+            HERE / "runs/n83_planted_frozen.json").read_text())["curve_id"]
+        assert receipt["baseline_receipt_sha256"] == sha(
+            HERE / "runs/n83_planted_frozen.json")
+        assert receipt["base_archive_sha256"] == sha(
+            HERE / "bases/n83_weight4_orbits.json.gz")
+        assert receipt["matched_unassisted_receipt_sha256"] == sha(
+            HERE / "runs/n83_planted_projected_sparse.json")
+        assert receipt["protocol_sha256"] == protocol_digest
+        assert receipt["runtime_info_sha256"] == sha(
+            HERE / "projected_sparse_sage_runtime_info.json")
+        for key, source in (("core_source_sha256", "chain_s3.py"),
+                            ("factored_source_sha256", "chain_s3_factored.py"),
+                            ("projected_source_sha256",
+                             "chain_s3_projected_sparse.py"),
+                            ("base_probe_source_sha256",
+                             "run_base_orbit_probe.py"),
+                            ("stage_probe_source_sha256",
+                             "run_projected_sparse_probe.py")):
+            assert receipt[key] == sha(HERE / source)
+        if stem.endswith("rawpin4"):
+            assert receipt["pin_count"] == 4
+            assert receipt["intermediate_x_coordinates_pinned"] is False
+            assert receipt["projected_x_coordinates_pinned"] is False
+            assert receipt["oracle_assisted_raw_leaf_choices"] is True
+            source = "run_projected_sparse_pin.py"
+        else:
+            assert receipt["raw_leaf_count_pinned"] == 4
+            assert receipt["projected_leaf_count_pinned"] == 4
+            assert receipt["intermediate_x_count_pinned"] == mids_pinned
+            assert receipt["oracle_assisted_raw_and_projected_leaves"] is True
+            assert receipt["witness_receipt_sha256"] == sha(
+                HERE / "runs/n83_planted_frozen.json")
+            source = "run_projected_sparse_midfree.py"
+        assert receipt["source_sha256"] == sha(HERE / source)
+        assert receipt["solver_binary_sha256"] == sha(
+            Path(receipt["solver_command"][0]))
+        assert receipt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stdout.txt")
+        assert receipt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stderr.txt")
+        assert (receipt["verified_relation"] is not None) == (
+            expected_status == "sat")
+        digest = hashlib.sha256()
+        size = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        assert digest.hexdigest() == receipt["xcnf_sha256"]
+        assert size == receipt["xcnf_bytes"]
+        rows.append({"variant": stem, "receipt_sha256": sha(path),
+                     "formula_sha256": digest.hexdigest(),
+                     "formula_bytes": size})
+    for stem, kind, links, pinned in (
+            ("n83_planted_rooted1_rawpin4", "planted", 1, True),
+            ("n83_planted_rooted2_rawpin4", "planted", 2, True),
+            ("n83_ordinary_rooted2", "ordinary", 2, False)):
+        path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(path.read_text())
+        baseline_path = HERE / "runs" / f"n83_{kind}_frozen.json"
+        baseline = json.loads(baseline_path.read_text())
+        assert receipt["proposal_id"] == "Q1319"
+        assert receipt["candidate_id"] is None
+        assert receipt["run_id"] is None
+        assert receipt["workload_id"] == (
+            None if pinned else baseline["workload_id"])
+        assert receipt["is_natural_relation_yield_measurement"] == (
+            kind == "ordinary" and not pinned)
+        assert receipt["oracle_assisted_raw_leaf_choices"] == pinned
+        assert receipt["rooted_links"] == links
+        assert receipt["curve_id"] == baseline["curve_id"]
+        assert receipt["public_target"] == baseline["public_subgroup_target"]
+        assert receipt["factor_base_actual_B"] == baseline[
+            "factor_base_actual_B"]
+        assert receipt["factor_base_folded_columns"] == baseline[
+            "factor_base_folded_columns"]
+        assert receipt["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["base_archive_sha256"] == sha(
+            HERE / "bases/n83_weight4_orbits.json.gz")
+        assert receipt["baseline_receipt_sha256"] == sha(baseline_path)
+        assert receipt["protocol_sha256"] == protocol_digest
+        assert receipt["runtime_info_sha256"] == sha(
+            HERE / "projected_sparse_sage_runtime_info.json")
+        assert receipt["complete_solve_work_log2"] is None
+        assert receipt["observed_verified_relation_count"] == int(
+            receipt["verified_relation"] is not None)
+        for key, source in (("core_source_sha256", "chain_s3.py"),
+                            ("factored_source_sha256", "chain_s3_factored.py"),
+                            ("projected_source_sha256",
+                             "chain_s3_projected_sparse.py"),
+                            ("oracle_source_sha256", "s3_root_oracle.py"),
+                            ("rooted_source_sha256", "chain_s3_rooted.py"),
+                            ("base_probe_source_sha256",
+                             "run_base_orbit_probe.py"),
+                            ("stage_probe_source_sha256",
+                             "run_projected_sparse_probe.py"),
+                            ("runner_source_sha256", "run_rooted_probe.py")):
+            assert receipt[key] == sha(HERE / source)
+        assert receipt["solver_binary_sha256"] == sha(
+            Path(receipt["solver_command"][0]))
+        assert receipt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stdout.txt")
+        assert receipt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stderr.txt")
+        if pinned:
+            assert receipt["status"] == "censored"
+            assert receipt["verified_relation"] is None
+            control = receipt["locked_control"]
+            assert control["status"] == "locked_sat_verified_public_relation"
+            assert control["relation"] is not None
+            assert control["witness_receipt_sha256"] == sha(baseline_path)
+        else:
+            assert receipt["locked_control"] is None
+            assert receipt["status"] in ("censored", "external_timeout", "sat")
+        digest = hashlib.sha256()
+        size = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        assert digest.hexdigest() == receipt["xcnf_sha256"]
+        assert size == receipt["xcnf_bytes"]
+        rows.append({"variant": stem, "receipt_sha256": sha(path),
+                     "formula_sha256": digest.hexdigest(),
+                     "formula_bytes": size,
+                     "observed_verified_relation_count": receipt[
+                         "observed_verified_relation_count"]})
     geometry_path = HERE / "runs/n131_projected_sparse_geometry.json"
     geometry = json.loads(geometry_path.read_text())
     assert geometry["proposal_id"] == "Q1318"

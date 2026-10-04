@@ -15,10 +15,13 @@ from chain_s3_base_orbit import (build_base_orbit_chain,
 from chain_s3_multitarget import (build_multitarget, choose_target_x,
                                   decode_choice)
 from chain_s3_projected_sparse import projected_sparse_leaf
+from s3_root_oracle import half_trace, s3_roots
+from chain_s3_rooted import half_trace_columns, s3_root_link
 from chain_s3_orbit import frobenius_barrel
 from chain_s3_ordered import less_or_equal
 from chain_s3_rational import add_rationality_filter
 from run_probe import lift, parse_model
+from run_base_orbit_probe import read_inputs, witness_points
 from ecc2k130.codegen import curves, field
 
 
@@ -391,6 +394,102 @@ class ChainS3Tests(unittest.TestCase):
                 else:
                     self.assertEqual(onb.mul(projected[0], denominator),
                                      numerator)
+
+    def test_exact_s3_root_oracle_matches_group_sums(self):
+        rng = random.Random(131718)
+        for n in (5, 11):
+            onb = field.Onb(n)
+            curve = curves.Curve(onb)
+            x_values = list(range(1, 1 << n))
+            if n == 11:
+                x_values = rng.sample(x_values, 80)
+            rational = [curve.pointFromX(onb.fromCoords(x))
+                        for x in x_values]
+            rational = [point for point in rational if point is not None]
+            if n == 5:
+                pairs = ((i, j) for i in range(len(rational))
+                         for j in range(len(rational)))
+            else:
+                pairs = ((rng.randrange(len(rational)),
+                          rng.randrange(len(rational))) for _ in range(160))
+            for i, j in pairs:
+                a, b = rational[i], rational[j]
+                roots = {onb.toCoords(root) for root in
+                         s3_roots(onb, a[0], b[0])}
+                group_x = set()
+                for left in (a, curve.neg(a)):
+                    for right in (b, curve.neg(b)):
+                        total = curve.add(left, right)
+                        if total is not None:
+                            group_x.add(onb.toCoords(total[0]))
+                self.assertEqual(roots, group_x)
+            for x_bits in x_values[:100]:
+                value = onb.fromCoords(x_bits)
+                got = onb.add(onb.sqr(half_trace(onb, value)),
+                              half_trace(onb, value))
+                want = onb.add(value, onb.one() if onb.trace(value) else 0)
+                self.assertEqual(got, want)
+
+    def test_s3_root_oracle_contains_full_size_known_chains(self):
+        for n, kind in ((53, "ordinary"), (83, "planted")):
+            _, baseline, _, archive, _ = read_inputs(n, kind)
+            onb = field.Onb(n)
+            curve = curves.Curve(onb)
+            _, points = witness_points(
+                n, kind, onb, curve, baseline,
+                int(archive["curve"]["cofactor"]))
+            public = tuple(map(int, baseline["public_subgroup_target"]))
+            first = curve.add(points[0], points[1])
+            second = curve.add(first, points[2])
+            self.assertEqual(curve.add(second, points[3]), public)
+            for left, right, expected in (
+                    (points[0], points[1], first),
+                    (first, points[2], second),
+                    (second, points[3], public)):
+                roots = {onb.toCoords(root) for root in
+                         s3_roots(onb, left[0], right[0])}
+                self.assertIn(onb.toCoords(expected[0]), roots)
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_half_trace_s3_root_circuit_selects_exact_roots(self):
+        onb = field.Onb(5)
+        curve = curves.Curve(onb)
+        table = multiplication_table(onb)
+        destinations = square_destinations(onb)
+        columns = half_trace_columns(onb)
+        rational_x = [x for x in range(1, 1 << 5)
+                      if curve.pointFromX(onb.fromCoords(x)) is not None]
+        pairs = [(a, b) for a in rational_x[:4]
+                 for b in rational_x[4:8]]
+        for a, b in pairs:
+            observed = set()
+            for branch_value in (0, 1):
+                formula = Formula()
+                left = [formula.new() for _ in range(5)]
+                right = [formula.new() for _ in range(5)]
+                root, branch = s3_root_link(
+                    formula, left, right, table, destinations, columns)
+                for variables, value in ((left, a), (right, b)):
+                    formula.clauses.extend(([
+                        bit if value >> position & 1 else -bit]
+                        for position, bit in enumerate(variables)))
+                formula.clauses.append([
+                    branch if branch_value else -branch])
+                with tempfile.TemporaryDirectory() as name:
+                    path = Path(name) / "root-circuit.xcnf"
+                    formula.write(path)
+                    result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                             "--threads", "1", str(path)],
+                                            capture_output=True, text=True,
+                                            timeout=20)
+                self.assertEqual(result.returncode, 10,
+                                 (a, b, branch_value, result.stdout[-500:]))
+                model = parse_model(result.stdout)
+                observed.add(sum(1 << position for position, bit in
+                                 enumerate(root) if model.get(bit, False)))
+            expected = {onb.toCoords(value) for value in s3_roots(
+                onb, onb.fromCoords(a), onb.fromCoords(b))}
+            self.assertEqual(observed, expected)
 
     @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
     def test_leaf_order_comparator_accepts_exactly_non_decreasing_values(self):

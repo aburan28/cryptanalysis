@@ -18,6 +18,8 @@ witness is known.
 A second n=83 encoding represents the same exact base implicitly through
 cofactor-four projection of sparse rational x values. It reduced the CNF
 clause count but also produced no unassisted relation within its caps.
+An exact half-trace root circuit for the first two S3 links was tested next;
+its ordinary n=83 query also remained censored.
 
 ## Identity and comparable inputs
 
@@ -257,6 +259,41 @@ the planted control is a correctness check, not a relation-yield measurement.
 The source-bound receipts, logs, gzip XCNFs, and checked Sage runtime are
 archived under `runs/n83_*_projected_sparse.*` and
 `projected_sparse_sage_runtime_info.json`.
+
+The planted n=83 witness was also used for **oracle-assisted localization**.
+All four raw leaf x values were pinned, leaving projected x and both S3
+intermediates free; the formula reached 200,002 conflicts in 15.24 s without
+a model. Pinning all four projected leaf x values as well still reached
+200,001 conflicts in 21.74 s without a model. Pinning the first S3
+intermediate x in addition returned a verified public relation after 56,002
+reported conflicts and 5.31 s; pinning both intermediates returned the same
+relation in 3.42 s. These four single-run controls use known witness
+coordinates, have `workload_id: null`, and say nothing about natural
+relation yield. They identify the free first S3 root as a useful target for
+a deterministic field-root circuit or propagator; they are not a lower bound
+on other solvers.
+
+[`s3_root_oracle.py`](s3_root_oracle.py) now computes both exact roots of
+`S3(a,b,c)` as a quadratic in `c`, using an odd-degree half trace for
+distinct nonzero `a,b`. Exhaustive n=5 and sampled n=11 group-sum tests,
+plus the known n=53 and n=83 relation chains, check those roots.
+[`chain_s3_rooted.py`](chain_s3_rooted.py) encodes each early root with one
+branch bit in place of a free n-bit intermediate. Q1319 is the n=83 stage
+proposal for this method; it uses the same exact projected W≤4 base and
+public target as Q1317 and keeps `candidate_id: null`.
+
+| Rooted n=83 diagnostic | Formula vars / CNF / XOR / AND | Unassisted result | Charged PDP wall | Locked full-size control |
+| --- | --- | --- | ---: | --- |
+| Planted, first root encoded, four raw leaves pinned | 135,940 / 395,864 / 3,242 / 130,725 | 200,001 conflicts; no model | 17.75 s | SAT; public relation replayed |
+| Planted, first two roots encoded, four raw leaves pinned | 150,134 / 437,282 / 3,575 / 144,503 | 200,002 conflicts; no model | 20.06 s | SAT; public relation replayed |
+| Ordinary, first two roots encoded, no pins | 150,134 / 436,950 / 3,575 / 144,503 | 1,000,002 conflicts; no model | 90.68 s | no witness available |
+
+The rooted formulas are mathematically consistent on the pinned controls,
+but the Boolean search still did not recover a relation at these caps.
+The pinned rows are oracle-assisted diagnostics, with `workload_id: null`;
+the ordinary row retains the frozen n=83 workload ID. Conflict counts are
+solver-specific Boolean events, not field-operation equivalents. Encoding
+one or two roots does not yet give a measured n=131 solve cost.
 
 At n=131, Q1318 uses the proposed W≤6 projected base and the same
 cofactor-four identity. [`screen_n131_projected_sparse.py`](screen_n131_projected_sparse.py)
