@@ -778,10 +778,40 @@ or other solver families. None of these counts is a calibrated
 operation-equivalent or complete \(2^x\) solve projection. The actual N131
 base count and digest remain unknown.
 
+### Fixed-state target-coverage bound for Q1331
+
+The [exact counting screen](runs/n83_q1331_uniform_target_coverage_bound.json)
+puts the two-million-state N83 cap in context without assuming random root
+keys. Each indexed pair state names two exact-base x coordinates. Their signs
+give at most four subgroup pair sums; all 83 global Frobenius rotations give
+at most \(4n\) pair-sum points per state. Let \(U\) be their union over the
+fixed \(M\) index states. A four-leaf relation found by this design must
+write the target as a sum of two points in \(U\). Because the group is
+abelian, at most \(|U|(|U|+1)/2\) distinct targets can have that form.
+The frozen state order is target independent, so a uniformly drawn
+nonidentity subgroup target has the rigorous coverage upper bound
+
+\[
+\Pr[Q\in U+U]\leq
+\min\!\left(1,\frac{(4nM)(4nM+1)}{2(r-1)}\right).
+\]
+
+For Q1331, \(n=83\), \(r=2{,}417{,}851{,}639{,}230{,}796{,}216{,}685{,}689\),
+and \(M=2{,}000{,}000\), yielding **at most \(9.118\times10^{-8}\)** of
+uniform nonidentity targets. Even the *upper bound* cannot reach 50% until
+\(M\geq4{,}683{,}567{,}037\) states, 2,342 times the measured cap. This
+counts all 83 orientations and assumes a perfect collision check, so better
+inversion scheduling alone does not change it. It is a support bound for a
+fixed, target-independent pair-state set, not an estimate of the hit rate on
+the one frozen target or a bound on target-adaptive or algebraic solvers.
+The screen is regenerated with
+`python3 experiments/compact-s3-m4-20261003/screen_q1331_target_coverage.py --check`.
+
 ## Next goal
 
 The next gate is an **ordinary N83 four-point relation on the exact Q1325
-base from a search that avoids the full \(K^2n\) index**. Q1329 has now
+base from a search that avoids both the full \(K^2n\) index and Q1331's
+fixed two-million-state support limit**. Q1329 has now
 validated the native search on an unpinned, known-satisfiable N83 target.
 Run frozen ordinary single-target workloads under identical operation and
 memory limits, retaining all zero-yield cells and independently verifying

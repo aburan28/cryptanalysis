@@ -1804,6 +1804,51 @@ def verify():
         ):
             rows.append({"variant": variant, "receipt_sha256": sha(path),
                          "proposal_id": proposal})
+    coverage_path = HERE / "runs/n83_q1331_uniform_target_coverage_bound.json"
+    coverage = json.loads(coverage_path.read_text())
+    base_protocol_path = HERE / "q1325_protocol.json"
+    base_protocol = json.loads(base_protocol_path.read_text())
+    q1331_stage_path = HERE / "runs/n83_batch_root_capped_2m.json"
+    q1331_stage = json.loads(q1331_stage_path.read_text())
+    n = base_protocol["field"]["n"]
+    r = base_protocol["curve"]["subgroup_order"]
+    m = q1331_stage["index_pair_states_examined"]
+    pair_point_cap = 4 * n * m
+    support_cap = min(r - 1, pair_point_cap * (pair_point_cap + 1) // 2)
+    assert coverage["kind"] == "fixed_pair_state_uniform_target_support_upper_bound"
+    assert coverage["proposal_id"] == q1331_stage["proposal_id"] == "Q1331"
+    assert coverage["candidate_id"] is coverage["run_id"] is None
+    assert coverage["curve_id"] == q1331_stage["curve_id"] == base_protocol[
+        "curve"]["curve_id"]
+    assert coverage["workload_id"] == q1331_stage["workload_id"]
+    assert coverage["factor_base_enumerated_set_sha256"] == q1331_stage[
+        "factor_base_enumerated_set_sha256"]
+    assert coverage["field_degree_n"] == n == 83
+    assert coverage["subgroup_order_r"] == r
+    assert coverage["fixed_index_pair_states_M"] == m == 2_000_000
+    assert coverage["pair_group_points_cap_4nM"] == pair_point_cap
+    assert coverage["uniform_nonidentity_target_support_cap"] == support_cap
+    assert coverage["uniform_nonidentity_target_count"] == r - 1
+    assert coverage["q1325_protocol_sha256"] == sha(base_protocol_path)
+    assert coverage["q1330_q1331_protocol_sha256"] == sha(batch_protocol_path)
+    assert coverage["q1331_stage_receipt_sha256"] == sha(q1331_stage_path)
+    assert coverage["source_sha256"] == sha(
+        HERE / "screen_q1331_target_coverage.py")
+    assert coverage["is_empirical_relation_yield"] is False
+    assert coverage["is_complete_solve_projection"] is False
+    for label, numerator, denominator in (("50_percent", 1, 2),
+                                          ("95_percent", 19, 20)):
+        threshold = coverage["necessary_state_count_thresholds"][label][
+            "necessary_pair_state_count"]
+        for checked_m, should_reach in ((threshold - 1, False),
+                                        (threshold, True)):
+            candidate_u = 4 * n * checked_m
+            reaches = (denominator * candidate_u * (candidate_u + 1)
+                       >= 2 * numerator * (r - 1))
+            assert reaches is should_reach
+    rows.append({"variant": "n83_q1331_uniform_target_coverage_bound",
+                 "receipt_sha256": sha(coverage_path),
+                 "is_natural_yield_measurement": False})
     planted_protocol_path = HERE / "q1332_batch_planted_control_protocol.json"
     planted_protocol = json.loads(planted_protocol_path.read_text())
     planted_manifest_path = HERE / "native_inputs/n83_batch_planted_manifest.json"
