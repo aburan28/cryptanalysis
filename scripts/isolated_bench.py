@@ -124,6 +124,11 @@ def require_manifest(manifest):
             raise ValueError("invalid pair field")
     if len(set(manifest["pair_fields"])) != len(manifest["pair_fields"]):
         raise ValueError("pair_fields must be unique")
+    result_field = manifest.get("result_field")
+    if not isinstance(result_field, str) or not result_field or any(
+        char.isspace() or char == "=" for char in result_field
+    ):
+        raise ValueError("result_field must name the independently checked answer")
     for case in manifest["cases"]:
         expected = case.get("expected_fields")
         if not isinstance(expected, dict) or any(
@@ -131,6 +136,8 @@ def require_manifest(manifest):
             for field in manifest["pair_fields"]
         ):
             raise ValueError("each case needs expected_fields for every pair field")
+        if not isinstance(case.get("expected_result"), str) or not case["expected_result"]:
+            raise ValueError("each case needs an expected_result")
     if not isinstance(manifest.get("artifacts"), list) or not manifest["artifacts"]:
         raise ValueError("artifacts must list at least one source or build file")
     for item in manifest["artifacts"]:
@@ -569,6 +576,9 @@ def execute(manifest, output):
                                        for row in pair.values())]
                     if mismatch:
                         issues.append("frozen-input mismatch: " + ",".join(mismatch))
+                    if any(row["fields"].get(manifest["result_field"]) !=
+                           case["expected_result"] for row in pair.values()):
+                        issues.append("answer differs from frozen expected_result")
                 record = {"case": case["id"], "repeat": repeat,
                           "run_serials": {variant: row["serial"] for variant, row in pair.items()},
                           "status": "valid" if not issues else "invalid", "issues": issues,

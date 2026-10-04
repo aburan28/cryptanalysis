@@ -54,11 +54,12 @@ class IsolatedBenchTests(unittest.TestCase):
             binary.chmod(0o755)
             manifest = {"schema": 1, "workdir": str(root), "timeout_s": 1,
                         "measurement_boundary": "self reported online_ms",
-                        "pair_fields": ["target_x"],
+                        "pair_fields": ["target_x"], "result_field": "scalar",
                         "artifacts": [str(binary)],
                         "isolation": {"cpus": "4", "execution_cpu": 4, "mem_nodes": "0",
                                       "cgroup": "/sys/fs/cgroup/bench"},
                         "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
+                                   "expected_result": "7",
                                    "reference": [str(binary)],
                                    "candidate": [str(binary)]}]}
             bench.require_manifest(manifest)
@@ -100,11 +101,12 @@ class IsolatedBenchTests(unittest.TestCase):
             executable.chmod(0o755)
             manifest = {"schema": 1, "workdir": str(root), "timeout_s": 1,
                         "measurement_boundary": "internal online_ms",
-                        "pair_fields": ["target_x"],
+                        "pair_fields": ["target_x"], "result_field": "scalar",
                         "artifacts": [str(executable)],
                         "isolation": {"cpus": "99999", "execution_cpu": 99999,
                                       "mem_nodes": "0", "cgroup": "/sys/fs/cgroup/no-such-partition"},
                         "cases": [{"id": "t0", "expected_fields": {"target_x": "9"},
+                                   "expected_result": "7",
                                    "reference": [str(executable)],
                                    "candidate": [str(executable)]}]}
             db = bench.database(root)
@@ -125,7 +127,7 @@ class IsolatedBenchTests(unittest.TestCase):
             self.assertFalse(marker.exists())
             self.assertFalse((root / "results" / "a" / "runs.jsonl").exists())
 
-    def test_shared_wrong_target_cannot_produce_speedup(self):
+    def test_shared_wrong_target_or_answer_cannot_produce_speedup(self):
         with tempfile.TemporaryDirectory() as dirname:
             root = Path(dirname)
             binary = root / "bench"
@@ -133,30 +135,39 @@ class IsolatedBenchTests(unittest.TestCase):
             binary.chmod(0o755)
             manifest = {"schema": 1, "workdir": str(root), "timeout_s": 1,
                         "measurement_boundary": "internal online_ms",
-                        "pair_fields": ["target_x"],
+                        "pair_fields": ["target_x"], "result_field": "scalar",
                         "artifacts": [str(binary)],
                         "isolation": {"cpus": "4", "execution_cpu": 4,
                                       "mem_nodes": "0", "cgroup": "/sys/fs/cgroup/bench"},
                         "cases": [{"id": "t0", "expected_fields": {"target_x": "1"},
+                                   "expected_result": "7",
                                    "reference": [str(binary), "reference"],
                                    "candidate": [str(binary), "candidate"]}]}
             original_preflight, original_run = bench.preflight, bench.one_run
             try:
                 bench.preflight = lambda _: {"ok": True, "problems": [], "evidence": {}}
-                def fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
-                    reference = argv[-1] == "reference"
-                    return {"serial": serial, "status": "valid", "issues": [],
-                            "online_ms": 2.0 if reference else 1.0,
-                            "fields": {"target_x": "2"}}
-                bench.one_run = fake_run
-                summary = bench.execute(manifest, root / "result")
+                for wrong in ("target", "answer", "none"):
+                    def fake_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder, serial):
+                        reference = argv[-1] == "reference"
+                        return {"serial": serial, "status": "valid", "issues": [],
+                                "online_ms": 2.0 if reference else 1.0,
+                                "fields": {"target_x": "2" if wrong == "target" else "1",
+                                           "scalar": "8" if wrong == "answer" else "7"}}
+                    bench.one_run = fake_run
+                    summary = bench.execute(manifest, root / wrong)
+                    pair = json.loads((root / wrong / "pairs.jsonl").read_text())
+                    if wrong == "none":
+                        self.assertEqual(summary["status"], "completed")
+                        self.assertEqual(summary["paired_speedup"], 2.0)
+                        self.assertEqual(pair["status"], "valid")
+                    else:
+                        self.assertEqual(summary["status"], "invalid")
+                        self.assertIsNone(summary["paired_speedup"])
+                        self.assertEqual(pair["status"], "invalid")
+                        self.assertIn("target_x" if wrong == "target" else "expected_result",
+                                      pair["issues"][0])
             finally:
                 bench.preflight, bench.one_run = original_preflight, original_run
-            self.assertEqual(summary["status"], "invalid")
-            self.assertIsNone(summary["paired_speedup"])
-            pair = json.loads((root / "result" / "pairs.jsonl").read_text())
-            self.assertEqual(pair["status"], "invalid")
-            self.assertIn("target_x", pair["issues"][0])
 
 
 if __name__ == "__main__":

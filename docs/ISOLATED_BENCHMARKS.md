@@ -110,8 +110,10 @@ Each `cases` entry is one previously unseen target. Freeze its exact input
 point in `expected_fields`; the reference and candidate must both echo those
 fields in the final timed output row. The runner rejects a pair even when
 both programs report the same wrong target. The executable must print
-`online_ms=<positive number> verified=1` after independently checking its
-answer. The runner records the complete stdout/stderr and hashes the listed
+`online_ms=<positive number> verified=1` and a result field after checking its
+answer. The runner also compares that result to the frozen `expected_result`
+in the manifest; keep that expected answer out of the solver command line.
+The runner records the complete stdout/stderr and hashes the listed
 source/build artifacts and each executable. For example:
 
 ```json
@@ -129,10 +131,12 @@ source/build artifacts and each executable. For example:
   "repetitions": 3,
   "measurement_boundary": "First target-dependent step through scalar replay",
   "pair_fields": ["curve", "target_x", "target_y"],
+  "result_field": "scalar",
   "cases": [
     {
       "id": "target-0",
       "expected_fields": {"curve": "curve-id", "target_x": "123", "target_y": "456"},
+      "expected_result": "789",
       "reference": ["/workspace/bin/reference", "--target", "target-0"],
       "candidate": ["/workspace/bin/candidate", "--target", "target-0"]
     }
