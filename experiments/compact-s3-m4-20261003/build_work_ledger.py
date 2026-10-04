@@ -2832,6 +2832,39 @@ def main():
     assert all(row["solver_status"] == "censored" and
                row["solver_stop_reason"] == "wall_cap" for row in
                q1425_cells if row["cell"] == "ordinary")
+    q1425_support_path = q1425_dir / "pair_support_screen.json"
+    q1425_support = json.loads(q1425_support_path.read_text())
+    assert q1425_support["proposal_id"] == "Q1425"
+    assert q1425_support["candidate_id"] is None
+    assert q1425_support["isogeny"] == "none"
+    assert q1425_support["status"] == "PASS_EXACT_CARDINALITY_SCREEN"
+    assert q1425_support["protocol_sha256"] == sha(q1425_protocol_path)
+    assert q1425_support["n131_exact_base_receipt_sha256"] == sha(
+        q1413_full_path)
+    assert q1425_support["source_sha256"] == sha(
+        q1425_dir / "screen_pair_support.py")
+    assert q1425_support["is_empirical_solver_measurement"] is False
+    assert q1425_support["degree131_complete_solve_work_log2"] is None
+    for item in q1425_support["rows"]:
+        n = item["field_degree_n"]
+        m = item["nominal_nonzero_sparse_x_count"]
+        assert m == sum(math.comb(n, j) for j in range(
+            1, item["normal_basis_weight_bound"] + 1))
+        assert item["fixed_a_pair_intermediate_support_cardinality_upper"] == 2 * m
+        assert item["any_sparse_a_pair_intermediate_support_cardinality_upper"] == 2 * m * m
+        assert item["field_element_count"] == 1 << n
+        if n == 131:
+            assert item["curve_id"] == q1413_full["curve_id"]
+            assert item["factor_base_enumerated_set_sha256"] == q1413_full[
+                "enumerated_set_sha256"]
+        else:
+            matched_workload = q1425_protocol["workloads"][
+                f"n{n}_ordinary_reverse_target"]
+            assert item["curve_id"] == matched_workload["curve_id"]
+            assert item["factor_base_enumerated_set_sha256"] == matched_workload[
+                "factor_base_enumerated_set_sha256"]
+    assert [item["field_degree_n"] for item in q1425_support["rows"]] == [
+        53, 83, 131]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -3625,6 +3658,16 @@ def main():
                 "two-sided pair search is the next method gate."),
             "protocol_sha256": sha(q1425_protocol_path),
             "verification_sha256": sha(q1425_verification_path),
+            "exact_uniform_mid_pair_support_screen": {
+                "status": q1425_support["status"],
+                "rows": q1425_support["rows"],
+                "sampling_law": q1425_support[
+                    "sampling_law_for_probability_and_trials"],
+                "scope_limit": q1425_support["scope_limit"],
+                "is_empirical_solver_measurement": False,
+                "degree131_complete_solve_work_log2": None,
+                "receipt_sha256": sha(q1425_support_path),
+            },
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,

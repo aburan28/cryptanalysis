@@ -1457,6 +1457,15 @@ summarizes the caps; the ledger and receipts retain exact operation counts,
 memory, and paired Q1424 identities. The
 degree-131 complete `2^x` remains unknown.
 
+An [exact sparse-pair support screen](q1425_reverse_pair/pair_support_screen.json)
+counts at most `2M²` possible pair-intermediate x coordinates for `M`
+nonzero sparse x choices, because each ordered pair has at most two `S3`
+roots. On the exact N131 W≤6 base, an independently uniform field
+intermediate therefore needs at least `2^64.78` logical trials in
+expectation to land in *any* sparse-pair support. This is a conditional
+uniform-sampling lower bound, not a cost bound for target-guided
+intermediates or a complete ECDLP projection.
+
 ## Next goal
 
 The next solver should build a **compact structured pair-sum membership and

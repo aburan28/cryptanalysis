@@ -39,6 +39,7 @@ python3 experiments/compact-s3-m4-20261003/q1425_reverse_pair/build_binaries.py 
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1425_reverse_pair/run_stage.py --degree 53 --cell free_partner --policy reverse_target
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1425_reverse_pair/run_stage.py --degree 53 --cell ordinary --policy reverse_target
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1425_reverse_pair/verify_archive.py --require-complete --emit
+python3 experiments/compact-s3-m4-20261003/q1425_reverse_pair/screen_pair_support.py --check
 ```
 
 Run all eight cells in `run_order` for a complete archive. The runner refuses
@@ -77,13 +78,26 @@ unsuccessful attempts, in raw primitive counts; they are neither calibrated
 field-operation equivalents nor completed decomposition costs. There is no
 N53-to-N83 solve-growth fit and no degree-131 complete `2^x` estimate.
 
-The exact nominal nonzero sparse-x sets contain 24,857 of `2^53` field
-elements and 30,967,383 of `2^83` elements. If reverse roots behaved as
-independent uniform field elements, two roots per call would suggest about
-`2^37.40` and `2^57.12` calls respectively before one sparse x appears.
-That is a stated uniform-root heuristic, not a measured solve cost or a
-claim that the adaptive solver's roots are independent. It explains why
-speeding up the same rejection loop alone is an unpromising next gate.
+The [exact pair-support screen](pair_support_screen.json) proves a sharper
+conditional statement. For fixed nonzero sparse coordinates `a,b`, the
+`S3(a,b,m)` polynomial has at most two roots in `m`; hence a fixed `a`
+admits at most `2M` intermediate coordinates with a sparse partner, and
+all sparse pairs together admit at most `2M²`, where `M` is the exact
+number of nominal nonzero sparse x coordinates. The bounds include
+non-lifting coordinates, so they are generous to the solver.
+
+| Degree and weight | Exact nominal `M` | Independent uniform-`m` trials before a sparse partner, at least | Independent uniform-`m` trials before *any* sparse pair, at least |
+| --- | ---: | ---: | ---: |
+| N53, W≤3 | 24,857 | `2^37.40` | `2^22.80` |
+| N83, W≤5 | 30,967,383 | `2^57.12` | `2^32.23` |
+| N131, W≤6 | 6,559,349,863 | `2^97.39` | `2^64.78` |
+
+The trial values follow only when each proposed intermediate is independent
+and uniform over the full field. Q1425's SAT search uses target-coupled,
+adaptive intermediates, so these are **not** its measured solve costs or a
+complete degree-131 work estimate. The N131 all-pair figure does show why a
+random-intermediate membership strategy cannot be the intended next method:
+it exceeds `2^61` logical trials before collection under that sampling law.
 
 The next method gate is a compact, **structured pair-sum membership and
 witness method**. It must preserve exact four-point solutions while avoiding
