@@ -31,9 +31,7 @@ jobs:
           python3 experiments/compact-s3-m4-20261003/screen_q1416_exact_pair_index.py --check
           python3 experiments/compact-s3-m4-20261003/build_q1415_stage_comparison.py --check
       - name: Validate frozen source and artifact hashes
-        run: |
-          python3 experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py > "$RUNNER_TEMP/compact-s3-verify.json"
-          python3 -c 'import json,sys; rows=json.load(open(sys.argv[1]))["verified"]; print(f"PASS: {len(rows)} frozen evidence rows")' "$RUNNER_TEMP/compact-s3-verify.json"
+        run: python3 experiments/compact-s3-m4-20261003/verify_q1413_q1416_archive.py
       - name: Rebuild the work ledger exactly
         run: |
           python3 experiments/compact-s3-m4-20261003/build_work_ledger.py

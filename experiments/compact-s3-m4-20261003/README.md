@@ -1336,6 +1336,7 @@ python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --che
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/screen_q1416_exact_pair_index.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1415_gauss_n53.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1415_stage_comparison.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1413_q1416_archive.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
