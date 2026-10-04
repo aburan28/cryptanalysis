@@ -836,6 +836,33 @@ def main():
     assert q1326_support["status"] == "budget"
     assert q1326_support["observed_verified_relation_count"] == 0
     assert q1326_support["total_logical_pair_samples"] == 2000000
+    native_bridge_profiles = []
+    for n in (53, 83):
+        bridge_path = HERE / "field_bridges" / f"n{n}_onb_poly.json"
+        bridge = json.loads(bridge_path.read_text())
+        replay_path, replay = read(f"n{n}_onb_poly_bridge_replay.json")
+        assert bridge["status"] == replay["status"] == "PASS"
+        assert bridge["field_degree"] == replay["field_degree"] == n
+        assert bridge["curve_id"] == replay["curve_id"]
+        assert bridge["changes_curve_identity"] is False
+        assert replay["all_basis_products_checked"] == n * n
+        assert replay["bridge_sha256"] == sha(bridge_path)
+        native_bridge_profiles.append({
+            "field_degree": n,
+            "curve_id": bridge["curve_id"],
+            "isogeny": "none",
+            "polynomial_modulus": bridge[
+                "target_implementation_basis"]["defining_modulus"],
+            "field_isomorphism_exact": True,
+            "changes_curve_or_base_identity": False,
+            "all_basis_products_checked": n * n,
+            "factor_base_representatives_checked": replay[
+                "factor_base_representatives_checked_on_polynomial_curve"],
+            "native_root_solver_invoked": False,
+            "native_root_solver_field_operations": None,
+            "bridge_receipt_sha256": sha(bridge_path),
+            "independent_replay_receipt_sha256": sha(replay_path),
+        })
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -1020,6 +1047,7 @@ def main():
             "receipt_sha256": sha(q1326_support_path),
         },
         "q1326_protocol_sha256": sha(q1326_protocol_path),
+        "native_onb_polynomial_field_bridges": native_bridge_profiles,
         "n131_weight6_geometry_estimate": {
             "proposal_id": "Q1303",
             "candidate_id": None,
@@ -1113,7 +1141,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, full group-addition, reverse-link, and nested-sub-base encodings; Q1324's selected n83 weight-five base and Q1325's complete structured n83 weight-five base passed locked witness controls but their ordinary runs reached 120-second caps without models; Q1326's known-satisfiable restricted n53 planted target also hit one million conflicts unpinned; reverse-link arithmetic recovers the last n53 leaf with three oracle-pinned leaves but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, full group-addition, reverse-link, and nested-sub-base encodings; Q1324's selected n83 weight-five base and Q1325's complete structured n83 weight-five base passed locked witness controls but their ordinary runs reached 120-second caps without models; Q1326's known-satisfiable restricted n53 planted target also hit one million conflicts unpinned; exact n53/n83 ONB-to-polynomial implementation bridges are verified but no native root solve has been measured; reverse-link arithmetic recovers the last n53 leaf with three oracle-pinned leaves but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,

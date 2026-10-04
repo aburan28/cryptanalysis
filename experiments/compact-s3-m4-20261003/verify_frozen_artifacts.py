@@ -1400,6 +1400,64 @@ def verify():
     rows.append({"variant": "n53_q1326_k128_support_diagnostic",
                  "receipt_sha256": sha(support_path),
                  "verified_relation_count": 0})
+    for n, expected_curve, expected_reps in (
+        (53, "EC1N53Ckb1hf77aab617904", 227),
+        (83, "EC1N83Ckb1h876c2921cb64", 186612),
+    ):
+        bridge_path = HERE / "field_bridges" / f"n{n}_onb_poly.json"
+        bridge = json.loads(bridge_path.read_text())
+        replay_path = HERE / "runs" / f"n{n}_onb_poly_bridge_replay.json"
+        replay = json.loads(replay_path.read_text())
+        bridge_runtime_path = HERE / "bridge_sage_runtime_info.json"
+        assert json.loads(bridge_runtime_path.read_text())[
+            "status"] == "verified"
+        assert bridge["status"] == replay["status"] == "PASS"
+        assert bridge["field_degree"] == replay["field_degree"] == n
+        assert bridge["curve_id"] == replay["curve_id"] == expected_curve
+        assert bridge["isogeny"] == replay["isogeny"] == "none"
+        assert bridge["changes_curve_identity"] is False
+        assert len(bridge["onb_to_poly_basis_images"]) == n
+        assert len(bridge["poly_to_onb_basis_images"]) == n
+        assert bridge["multiplication_square_inverse_controls"] == 128
+        assert bridge["group_addition_controls"] == 9
+        assert bridge["runtime_info_sha256"] == sha(bridge_runtime_path)
+        assert bridge["field_source_sha256"] == sha(
+            HERE.parent.parent / "ecc2k130/codegen/field.py")
+        assert bridge["curve_source_sha256"] == sha(
+            HERE.parent.parent / "ecc2k130/codegen/curves.py")
+        assert bridge["source_sha256"] == sha(
+            HERE / "derive_onb_poly_bridge.py")
+        assert replay["bridge_sha256"] == sha(bridge_path)
+        assert replay["all_basis_products_checked"] == n * n
+        assert replay[
+            "factor_base_representatives_checked_on_polynomial_curve"] == (
+                expected_reps)
+        assert replay["ordinary_target_checked_on_polynomial_curve"] is True
+        assert replay["runtime_info_sha256"] == sha(bridge_runtime_path)
+        assert replay["field_source_sha256"] == bridge[
+            "field_source_sha256"]
+        assert replay["orbit_source_sha256"] == sha(
+            HERE.parent / "koblitz-pair-claw-20260929/orbit_key.py")
+        assert replay["source_sha256"] == sha(
+            HERE / "verify_onb_poly_bridge.py")
+        source_base = HERE / "bases" / (
+            f"n{n}_weight{3 if n == 53 else 4}_orbits.json.gz")
+        checked_base = (source_base if n == 53 else
+                        HERE / "bases/n83_weight5_full_orbits.json")
+        assert bridge["base_archive_sha256"] == sha(source_base)
+        assert replay["bridge_source_base_archive_sha256"] == sha(
+            source_base)
+        assert replay["base_archive_sha256"] == sha(checked_base)
+        assert bridge["baseline_receipt_sha256"] == replay[
+            "baseline_receipt_sha256"] == sha(
+                HERE / "runs" / f"n{n}_ordinary_frozen.json")
+        rows.append({"variant": f"n{n}_onb_poly_bridge",
+                     "receipt_sha256": sha(bridge_path),
+                     "status": "PASS"})
+        rows.append({"variant": f"n{n}_onb_poly_bridge_replay",
+                     "receipt_sha256": sha(replay_path),
+                     "all_basis_products_checked": n * n,
+                     "factor_base_representatives_checked": expected_reps})
     return rows
 
 

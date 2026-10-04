@@ -611,25 +611,62 @@ cap. Timings are exploratory because the host has no CPU isolation receipt.
 The source-bound XCNFs, logs, checked Sage runtime, and independent replay
 are retained with the seven Q1326 receipts.
 
+## Exact native arithmetic bridge
+
+The [N53](field_bridges/n53_onb_poly.json) and
+[N83](field_bridges/n83_onb_poly.json) bridge records map the frozen type-II
+normal-basis coordinates into polynomial bit coordinates. The respective
+internal moduli are \(z^{53}+z^6+z^2+z+1\) and
+\(z^{83}+z^7+z^4+z^2+1\). The canonical instance still uses the original
+normal-basis field record and the same EC1 curve ID; the polynomial encoding
+is an implementation detail for native field and root arithmetic. It is not
+an isogeny (`isogeny: "none"`). A separately catalogued polynomial-basis
+curve would need its own curve ID under the naming protocol.
+
+The checked-Sage derivation verifies 128 random multiply, square, and inverse
+controls and nine group-addition controls at each degree. An independent
+bit-polynomial [replay](verify_onb_poly_bridge.py) checks every basis-pair
+product (2,809 at N53 and 6,889 at N83), both conversion directions, the
+public targets, and all archived base representatives (227 at N53 and
+186,612 in the complete Q1325 N83 base). The source-bound
+[N53](runs/n53_onb_poly_bridge_replay.json) and
+[N83](runs/n83_onb_poly_bridge_replay.json) receipts both pass; the
+[runtime record](bridge_sage_runtime_info.json) was saved before the jobs.
+The artifact audit now validates 83 receipts.
+
+This bridge enables a native root-search implementation on the same frozen
+inputs; it is **not** a measured decomposition. A full pair-root index scales
+roughly as \(K^2n\) states: about 2.7 million for Q1301's 227 columns at
+N53, but about 2.9 trillion for Q1325's 186,612 columns at N83. The N83
+solver therefore needs a bounded or streaming search, with counted work and
+memory, before it can support a scaling claim.
+
 ## Next goal
 
-The next useful goal is a **noncensored, independently verified ordinary
-public-target four-summand decomposition from a new leaf-choice solver**.
-First recover the known-satisfiable n=53 target without pinning a leaf under
-the frozen exact base, charging every attempt and comparing the same public
-point with the matched pair table. Then use the exact Q1325 n=83 base to
-recover the frozen ordinary public target, or preserve a censored result
-with its complete work receipt. A bounded partial-leaf or hybrid root
-search is a concrete candidate, but Q1326 shows that a smaller leaf list
-by itself is insufficient. It must select leaves without oracle
-knowledge and verify all four signed subgroup points independently. Measure
-operation counts, memory, natural useful-row and novel-rank rates, including
-failed attempts. A pure pair-index method is already screened as too
-expensive at n=131, so another sampled pair table alone does not establish
-the required scaling. Fit n=131 stage cost only after uncensored paired
-measurements, then add base construction, final matrix, target descent, and
-scalar replay. A challenge run is justified only if the **complete** fitted
-cost is credibly below \(2^{61}\) in a named operation unit.
+The next useful goal is a **bounded native root-search stage with an
+independently verified, unassisted ordinary four-point relation and a charged
+work receipt**. Use the exact bridge above and Q1301 N53 base to recover the
+known-satisfiable frozen ordinary target without pinning any leaf. Charge
+every attempt, compare the same public point with the matched pair table,
+and independently verify all four signed subgroup points. Then run the same
+algorithm on the complete Q1325 N83 base and frozen ordinary target with a
+declared work and memory cap. Preserve a censored result if it does not
+recover a relation; use a separate known-satisfiable unpinned control to
+distinguish search failure from lack of support.
+
+The work receipt should count field multiplications, squarings, inversions,
+point additions, basis conversions, root attempts, and memory peak as well
+as target-dependent wall time. Q1326 shows that shrinking the leaf list
+alone is insufficient. A full N83 pair-root index is far beyond a practical
+memory cap, and the pure pair-index N131 screen is already unfavorable under
+its assumptions. A bounded partial-leaf or hybrid root search must show
+its own scaling and natural relation yield. Freeze repeated ordinary inputs
+and comparable limits before fitting an N131 stage exponent; report failures
+and zero-yield cells. Only then add factor-base construction, final matrix
+rank and solve, target descent, and scalar replay to a complete \(2^x\)
+ledger. Keep \(x\) unknown until every required term is measured or bounded.
+A challenge run is justified only if the **complete** fitted cost is
+credibly below \(2^{61}\) in a named operation unit.
 
 ## Reproduction
 
@@ -646,6 +683,10 @@ From this repository worktree, first save checked runtime information:
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/screen_n83_four_point_support.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1324_base.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1325_full_base.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/derive_onb_poly_bridge.py --n 53 --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/derive_onb_poly_bridge.py --n 83 --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_onb_poly_bridge.py --n 53 --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_onb_poly_bridge.py --n 83 --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
