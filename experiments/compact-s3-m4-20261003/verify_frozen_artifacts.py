@@ -2431,6 +2431,18 @@ def verify():
     ):
         rows.append({"variant": variant, "receipt_sha256": sha(path),
                      "is_natural_yield_measurement": False})
+    from screen_q1406_uniform_query_bound import build as build_q1406_bound
+    q1406_path = HERE / "runs/n131_q1406_uniform_query_bound.json"
+    q1406 = json.loads(q1406_path.read_text())
+    assert q1406 == build_q1406_bound()
+    assert q1406["proposal_id"] == "Q1406"
+    assert q1406["parent_base_proposal_id"] == "Q1303"
+    assert q1406["candidate_id"] is None
+    assert q1406["complete_solve_work_log2"] is None
+    assert q1406["challenge_dispatch_allowed"] is False
+    rows.append({"variant": "q1406_uniform_query_rank_supply_bound",
+                 "receipt_sha256": sha(q1406_path),
+                 "is_natural_yield_measurement": False})
     return rows
 
 

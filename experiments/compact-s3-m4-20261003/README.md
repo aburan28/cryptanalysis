@@ -1001,6 +1001,41 @@ that removing the projection circuits alone did not clear the N83 search
 bottleneck. No natural yield, cost per useful row, or complete solve
 exponent can be estimated from these censored runs.
 
+### Q1406 uniform-query relation-supply bound for Q1303
+
+The [Q1406 counting screen](runs/n131_q1406_uniform_query_bound.json)
+adds a necessary budget for **the proposed N131 W≤6, m=4 base** without a
+Poisson or independent-subset-sum assumption. With `B` distinct usable
+base points, there are at most \(\binom{B+3}{4}\) unordered four-point
+multisets, including repeated points. Their sums distribute over the
+subgroup of order `r`. A uniform nonidentity query therefore has at most
+\(\binom{B+3}{4}/(r-1)\) expected decompositions, regardless of how those
+sums are distributed. This also bounds its probability of having any
+decomposition. Every decomposition can add at most one relation row.
+
+Conditionally rounding Q1303's sampled base estimate to full 262-point
+signed-Frobenius orbits gives `B=6,583,581,064` and
+`K=25,128,172`. The uniform-query representation mean and coverage
+ceiling are **0.1150186**. For a collector that obtains all `K` required
+independent rows from uniform nonidentity four-summand queries, Markov's
+inequality requires at least **207,546,988 queries** for a 95% chance of
+rank `K`, even if it returns every representation and every row is novel.
+The condition that expected rank reaches `K` requires at least
+**218,470,513 queries**. Correlation between queries does not weaken these
+bounds when each query has the declared uniform marginal.
+
+Dividing an abstract `2^61` total-work cap by the 95%-rank necessary
+query count leaves at most **`2^33.37`** work units per query when all
+other costs are set to zero; the expected-rank version gives
+`2^33.30`. Across Q1303's conditional normal-approximation 95% base
+interval, the 95%-rank ceiling varies from `2^33.35` to `2^33.40`.
+These are affordability ceilings, **not** measured solver costs or a
+complete `2^x` projection. The actual N131 base count and digest are
+unknown, the statistical interval is not a hard bound, and a nonuniform
+guided query law or an external source of factor-base rank rows lies outside
+this screen. Recompute it with
+`python3 experiments/compact-s3-m4-20261003/screen_q1406_uniform_query_bound.py --check`.
+
 ## Next goal
 
 The next gate is an **ordinary N83 four-point relation on the exact Q1325
