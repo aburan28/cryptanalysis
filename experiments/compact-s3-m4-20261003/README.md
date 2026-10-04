@@ -1077,9 +1077,10 @@ within 60 seconds or the ordinary target within 120 seconds. Q1404 removes
 the projection circuits yet also cannot recover its unpinned planted or
 ordinary target within the frozen caps. Q1408's balanced tree reaches the
 same one-million-conflict cap on the ordinary target, with no relation.
-Q1400's
-ordinary no-hit and tiny fixed-rectangle support bound leave ordinary
-relation yield unmeasured.
+Q1410 reaches that cap without recovering an independently known ordinary
+N53 relation, so the next design needs a different search mechanism.
+Q1400's ordinary no-hit and tiny fixed-rectangle support bound leave
+ordinary relation yield unmeasured.
 Run frozen ordinary single-target workloads under identical operation and
 memory limits, retaining all zero-yield cells and independently verifying
 any relations.
