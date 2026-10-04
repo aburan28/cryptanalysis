@@ -61,7 +61,7 @@ def main():
         for name, digest in receipt[group].items():
             assert sha(evidence/'native/round68'/name) == digest, name
     unit_log=(evidence/'unit-tests.log').read_text()
-    assert 'Ran 7 tests' in unit_log and '\nOK\n' in unit_log
+    assert 'Ran 8 tests' in unit_log and '\nOK\n' in unit_log
     available = report['metal']['status'] == 'AVAILABLE'
     if available:
         for name in ('test-backend.log','test-backend-ubsan.log','test-backend-setup-failure.log'):
@@ -97,8 +97,12 @@ def main():
     rows = 756 if available else 108
     assert audit['status'] == 'PASS' and len(audit['records']) == rows
     assert len(report['queries']) == rows and audit['independent_proofs'] == (35 if available else 18)
-    result = {'status': 'PASS', 'rows': rows, 'verified': rows, 'inconclusive': 0,
-              'complete_pdp_successes': rows, 'bindings': len(bound), 'source_blob_bindings': len(source_bindings), 'metal': report['metal'],
+    unsupported = 24 if available else 0
+    verified = rows - unsupported
+    assert sum(row['result']['verified'] for row in report['queries']) == verified
+    result = {'status': 'PASS', 'rows': rows, 'verified': verified, 'inconclusive': 0,
+              'unsupported': unsupported, 'rejected_setups': len(report['unsupported_setups']),
+              'complete_pdp_successes': verified, 'bindings': len(bound), 'source_blob_bindings': len(source_bindings), 'metal': report['metal'],
               'original_anf_audit': audit, 'report_sha256': sha(report_path),
               'runner_sha256': sha(evidence/'runner.json'), 'auditor_sha256': sha(Path(__file__)),
               'native_artifacts_loaded': False, 'performance_claim': None}

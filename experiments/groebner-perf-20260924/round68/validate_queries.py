@@ -61,7 +61,7 @@ def main():
     report = {'schema': 'shared-producer-transform-query-validation/1', 'status': 'RUNNING',
               'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=HERE, text=True).strip(),
               'metal': availability, 'executed_bindings': frozen, 'fixture_sha256': sha(fixture),
-              'validator_sha256': sha(Path(__file__)), 'queries': [], 'proofs': {},
+              'validator_sha256': sha(Path(__file__)), 'queries': [], 'proofs': {}, 'unsupported_setups': {},
               'timing_eligible': False, 'host_isolation_receipt': None, 'candidate_id': None, 'online_speedup': None}
     modes = query_modes(availability['status'] == 'AVAILABLE')
     with gzip.open(args.output.with_suffix('.jsonl.gz'), 'xt', compresslevel=1) as journal:
@@ -73,17 +73,47 @@ def main():
                     if shape not in contexts:
                         config = dict(backend=backend, identity='factored_local', transform='full',
                                       transform_backend=checker_backend, constant_identity='prepared')
-                        actual = stack.enter_context(ProjectionQuery(*shape, sanitizer=sanitizer,
-                                                                     producer_transform=transform, **config))
+                        setup_started = time.perf_counter_ns()
+                        try:
+                            actual = stack.enter_context(ProjectionQuery(*shape, sanitizer=sanitizer,
+                                                                         producer_transform=transform, **config))
+                        except RuntimeError as error:
+                            if not (backend == 'metal' and transform != 'cpu' and item['n'] > 32 and
+                                    str(error) == 'producer transform requires a compatible Metal producer'):
+                                raise
+                            setup_id = hashlib.sha256(json.dumps([shape, backend, checker_backend, sanitizer, transform]).encode()).hexdigest()
+                            report['unsupported_setups'][setup_id] = {
+                                'shape': shape, 'backend': backend, 'transform_backend': checker_backend,
+                                'sanitizer': sanitizer, 'producer_transform': transform,
+                                'detail': str(error), 'wall_ns': time.perf_counter_ns() - setup_started,
+                                'stage': 'target-independent setup', 'queries_executed': 0,
+                            }
+                            contexts[shape] = None, setup_id
+                            actual = None
                         # The unchanged Metal wrapper has no sanitizer build;
                         # compare its exact output/counters to the new sanitized code.
-                        expected = stack.enter_context(base.ProjectionQuery(*shape,
-                            sanitizer=sanitizer if backend == 'cpu' else False, **config))
-                        assert actual.basis.producer.path.parent.parent.name == 'round68'
-                        assert expected.basis.producer.path.parent.parent.name == 'round51'
-                        assert actual.checker.path.parent.parent.name == expected.checker.path.parent.parent.name == 'round66'
-                        contexts[shape] = actual, expected
+                        if actual is not None:
+                            expected = stack.enter_context(base.ProjectionQuery(*shape,
+                                sanitizer=sanitizer if backend == 'cpu' else False, **config))
+                            assert actual.basis.producer.path.parent.parent.name == 'round68'
+                            assert expected.basis.producer.path.parent.parent.name == 'round51'
+                            assert actual.checker.path.parent.parent.name == expected.checker.path.parent.parent.name == 'round66'
+                            contexts[shape] = actual, expected
                     new, old = contexts[shape]
+                    if new is None:
+                        # One rejected invariant setup makes three planned
+                        # preparation cells unavailable, not three query attempts.
+                        for preparation in ('serial', 'prepared', 'overlap'):
+                            row = {'name': item['name'], 'workload_sha256': item['workload_sha256'],
+                                   'backend': backend, 'transform_backend': checker_backend, 'sanitizer': sanitizer,
+                                   'producer_transform': transform, 'constant_identity': 'prepared', 'preparation': preparation,
+                                   'attempted_query': False, 'wall_ns': None, 'setup_failure_id': old,
+                                   'result': {'status': 'unsupported', 'complete': False, 'verified': False,
+                                              'detail': report['unsupported_setups'][old]['detail']}}
+                            report['queries'].append(row)
+                            journal.write(json.dumps(row, separators=(',', ':')) + '\n'); journal.flush()
+                        print('UNSUPPORTED_SETUP_RETAINED', item['name'], checker_backend, sanitizer, transform, flush=True)
+                        continue
                     target = Point(**item['target'])
                     expected = old.solve(target)
                     assert expected['verified'] and expected['status'] == 'solved'
@@ -103,7 +133,7 @@ def main():
                         row = {'name': item['name'], 'workload_sha256': item['workload_sha256'],
                                'backend': backend, 'transform_backend': checker_backend, 'sanitizer': sanitizer,
                                'producer_transform': transform, 'constant_identity': 'prepared', 'preparation': preparation,
-                               'wall_ns': elapsed, 'load_start': load, 'load_end': os.getloadavg(), 'result': actual}
+                               'attempted_query': True, 'wall_ns': elapsed, 'load_start': load, 'load_end': os.getloadavg(), 'result': actual}
                         report['queries'].append(row)
                         journal.write(json.dumps(row, separators=(',', ':')) + '\n'); journal.flush()
                     print('COMPLETE_QUERY_PASS', item['name'], backend, checker_backend, sanitizer, transform, flush=True)
@@ -111,7 +141,10 @@ def main():
     for path, digest in frozen.items(): assert sha(Path(path)) == digest, path
     report['status'] = 'PASS'
     args.output.write_bytes(gzip.compress(json.dumps(report, separators=(',', ':')).encode(), mtime=0))
-    print('SHARED_PRODUCER_QUERY_PASS', len(report['queries']), 'fresh complete queries', flush=True)
+    verified = sum(row['result']['verified'] for row in report['queries'])
+    print('SHARED_PRODUCER_QUERY_PASS', verified, 'fresh complete queries;',
+          len(report['queries']) - verified, 'unsupported planned cells;',
+          len(report['unsupported_setups']), 'rejected setups', flush=True)
 
 
 if __name__ == '__main__': main()

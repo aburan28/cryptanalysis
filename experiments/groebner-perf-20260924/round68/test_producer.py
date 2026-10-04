@@ -8,6 +8,7 @@ import unittest
 
 from adapter import HERE, Checker, ProjectionQuery, base, producer
 from public_replay import Point
+from query_cases import check_accounting
 
 METAL = os.environ.get('PRODUCER_TEST_METAL') == '1'
 BACKENDS = ('cpu', 'metal') if METAL else ('cpu',)
@@ -20,6 +21,20 @@ def logical(record):
 
 
 class SharedProducerTests(unittest.TestCase):
+    def test_wide_query_fallback_and_rejected_gpu_requests(self):
+        inputs = json.loads(gzip.decompress((HERE.parent / 'round40/fixtures/inputs.json.gz').read_bytes()))
+        item = next(row for row in inputs if row['n'] == 83)
+        shape = tuple(item[key] for key in ('n', 'mod', 'b', 'm', 'ell'))
+        for backend in BACKENDS:
+            with ProjectionQuery(*shape, backend=backend, constant_identity='prepared') as query:
+                answer = query.solve(Point(**item['target']))
+                self.assertTrue(answer['verified'])
+                self.assertEqual(answer['metrics']['gpu_used'], 0)
+                check_accounting(answer, item, backend, 'cpu')
+            for mode in ('metal', 'metal_tiled'):
+                with self.assertRaisesRegex(RuntimeError, 'compatible Metal producer'):
+                    ProjectionQuery(*shape, backend=backend, producer_transform=mode)
+
     def test_query_factories_keep_the_unchanged_reference(self):
         item = json.loads(gzip.decompress((HERE.parent / 'round40/fixtures/inputs.json.gz').read_bytes()))[0]
         shape = tuple(item[key] for key in ('n', 'mod', 'b', 'm', 'ell'))

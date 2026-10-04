@@ -45,6 +45,26 @@ def main():
             seen.add(key)
             item, answer = fixtures[row['name']], row['result']
             assert row['workload_sha256'] == item['workload_sha256']
+            if answer['status'] == 'unsupported':
+                assert row['backend'] == 'metal' and item['n'] > 32 and row['producer_transform'] != 'cpu'
+                assert row['attempted_query'] is False and row['wall_ns'] is None
+                assert answer['complete'] is False and answer['verified'] is False
+                setup = report['unsupported_setups'][row['setup_failure_id']]
+                shape = [item[key] for key in ('n', 'mod', 'b', 'm', 'ell')]
+                setup_id = hashlib.sha256(json.dumps([shape, row['backend'], row['transform_backend'],
+                                                     row['sanitizer'], row['producer_transform']]).encode()).hexdigest()
+                assert setup_id == row['setup_failure_id'] and setup['shape'] == shape
+                assert setup['detail'] == answer['detail'] == 'producer transform requires a compatible Metal producer'
+                for field in ('backend', 'transform_backend', 'sanitizer', 'producer_transform'):
+                    assert setup[field] == row[field]
+                assert setup['queries_executed'] == 0 and setup['wall_ns'] >= 0
+                record = {key: row[key] for key in fields}
+                record.update(status='unsupported', exact_basis_verified=False, attempted_query=False,
+                              setup_failure_id=setup_id)
+                records.append(record)
+                journal.write(json.dumps(record, separators=(',', ':'))+'\n'); journal.flush()
+                continue
+            assert row['attempted_query'] is True
             assert answer['status'] == 'solved' and answer['verified']
             raw = base64.b64decode(report['proofs'][answer['proof_sha256']], validate=True)
             assert hashlib.sha256(raw).hexdigest() == answer['proof_sha256']
@@ -87,6 +107,12 @@ def main():
             records.append(record)
             journal.write(json.dumps(record, separators=(',', ':'))+'\n'); journal.flush()
     assert seen == expected
+    unavailable = [row for row in report['queries'] if not row['attempted_query']]
+    assert len(unavailable) == (24 if report['metal']['status'] == 'AVAILABLE' else 0)
+    assert len(report['unsupported_setups']) == (8 if unavailable else 0)
+    assert set(report['unsupported_setups']) == {row['setup_failure_id'] for row in unavailable}
+    for setup_id in report['unsupported_setups']:
+        assert sum(row['setup_failure_id'] == setup_id for row in unavailable) == 3
     for path, digest in report['executed_bindings'].items(): assert sha(Path(path)) == digest, path
     output = {'status': 'PASS', 'input_sha256': sha(args.input), 'records': records,
               'independent_proofs': len(audited), 'timing_eligible': False,

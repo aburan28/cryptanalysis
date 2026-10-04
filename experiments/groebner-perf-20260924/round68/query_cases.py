@@ -14,14 +14,16 @@ def query_modes(available):
 def check_accounting(answer, item, backend, transform):
     stats = answer['producer_transform_stats']
     mode = MODES.index(transform)
+    compatible = backend == 'metal' and item['n'] <= 32
+    assert not mode or compatible
     assert stats['requested_mode'] == stats['executed_mode'] == mode
     assert stats['additional_table_bytes'] == 0
     size = (1 << (2 * item['ell'])) * (1 + item['ell'] * (item['ell'] + 1) // 2) * 4
     kernel = stats['kernel']
-    assert stats['projection_uploaded_bytes'] == (size if backend == 'metal' and not mode else 0)
+    assert stats['projection_uploaded_bytes'] == (size if compatible and not mode else 0)
     assert stats['projection_reused_bytes'] == (size if mode else 0)
     assert kernel['input_bytes'] == kernel['output_bytes'] == kernel['scratch_bytes'] == (size if mode else 0)
-    if backend == 'metal': assert stats['generation'] > 0
+    if compatible: assert stats['generation'] > 0
     else: assert stats['generation'] == 0
     if mode:
         x = 2 * item['ell']

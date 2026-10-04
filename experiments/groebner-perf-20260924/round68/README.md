@@ -57,8 +57,13 @@ Validation covers:
   failure/budget behavior, independent malformed-proof rejection, concurrent
   callers, fresh inputs, and exact old-producer outputs and counters.
 - The 18 frozen original-ANF workloads spanning 6–27 total variables, with
-  serial/prepared/overlapped independent verification. There are 756 complete
-  query controls when Metal is available and 108 CPU controls otherwise.
+  serial/prepared/overlapped independent verification. With Metal available,
+  there are 732 complete queries and 24 unsupported planned cells: eight
+  explicit GPU-transform setup requests on the 83-equation control each make
+  three preparation schedules unavailable. Each setup is attempted and timed
+  once; those cells execute no query and do not count as verified results.
+  The CPU-only panel has 108 complete queries. The wide control still has
+  successful portable CPU and explicit Metal-backend CPU-fallback controls.
 - A separate pure-Python original-ANF replay of every distinct proof and exact
   Boolean basis. Retained artifacts are checked by hashes and Git source blobs;
   downloaded native binaries are never executed by the artifact auditor.
