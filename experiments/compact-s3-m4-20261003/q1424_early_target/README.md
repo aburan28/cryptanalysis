@@ -74,6 +74,19 @@ field calls and memory within the same cap, and neither policy recovers an
 ordinary relation. Counts are stage diagnostics, not a wall-time speedup or
 natural-yield estimate. The complete degree-131 `2^x` remains unknown.
 
+The existing pair-table stages are matched on the **exact public target,
+curve, and enumerated base digest**. [Q1301 at N53](../runs/n53_ordinary_matched_pair_table.json)
+found a verified relation after 500,000 table samples and 171,218 query
+samples, so the ordinary N53 target is representable even though Q1424 did
+not recover it. [Q1400 at N83](../runs/n83_q1400_pair_comparator.json) used
+the same Q1325 base and target, built 2,000,000 table descriptors, charged
+2,719,744 target-lifted pair queries, and found no exact hit in that fixed
+rectangle. Its miss does not show that the N83 target is nonrepresentable.
+The pair-table workload IDs, limits, and timing boundaries differ from
+Q1424's; these are matched-target stage diagnostics, not a controlled
+wall-time speedup comparison. The ledger checks all shared identities and
+retains the separate workload IDs.
+
 The next solver should test **bidirectional pair feasibility**: given a
 target and an intermediate, reject a branch before enumerating many full
 two-leaf pairs, while proving that no valid factor-base decomposition is

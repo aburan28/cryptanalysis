@@ -1438,6 +1438,10 @@ each ordinary cell. The [Q1424 result table](q1424_early_target/README.md)
 retains field operations, memory, and every censored outcome. Moving SAT
 decisions alone does not solve the pair-feasibility problem or support a
 complete degree-131 `2^x`.
+The ledger also verifies exact curve, base digest, and target agreement with
+the prior pair-table stages: Q1301 found a relation on the N53 target, while
+Q1400's fixed N83 rectangle had no hit. Their workloads and resource limits
+differ, so neither gives a controlled wall-time speedup for Q1424.
 
 ## Next goal
 

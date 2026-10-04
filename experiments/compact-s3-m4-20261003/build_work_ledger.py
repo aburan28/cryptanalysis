@@ -2594,6 +2594,47 @@ def main():
         assert matched["curve_id"] == stage["curve_id"]
         assert matched["factor_base_enumerated_set_sha256"] == stage[
             "factor_base_enumerated_set_sha256"]
+        pair_comparator = None
+        if stage["cell"] == "ordinary":
+            if stage["degree_n"] == 53:
+                assert n53["curve_id"] == stage["curve_id"]
+                assert n53["factor_base_actual_B"] == stage[
+                    "factor_base_actual_B"]
+                assert n53["factor_base_folded_columns"] == stage[
+                    "folded_columns_K"]
+                assert n53["factor_base_enumerated_set_sha256"] == stage[
+                    "factor_base_enumerated_set_sha256"]
+                assert [int(x) for x in n53["target"]] == stage[
+                    "public_target"]
+                pair_comparator = {
+                    "proposal_id": "Q1301",
+                    "status": n53["status"],
+                    "verified_relation_count": n53[
+                        "verified_relation_count"],
+                    "workload_id": n53["workload_id"],
+                    "receipt_sha256": sha(n53_path),
+                }
+            else:
+                assert stage["degree_n"] == 83
+                assert q1400_stage["curve_id"] == stage["curve_id"]
+                assert q1400_stage["factor_base_actual_B"] == stage[
+                    "factor_base_actual_B"]
+                assert q1400_stage[
+                    "factor_base_folded_columns_K"] == stage[
+                    "folded_columns_K"]
+                assert q1400_stage[
+                    "factor_base_enumerated_set_sha256"] == stage[
+                    "factor_base_enumerated_set_sha256"]
+                assert [int(x) for x in q1400_input[
+                    "ordinary_public_target_onb_native_decimal"]] == stage[
+                    "public_target"]
+                pair_comparator = {
+                    "proposal_id": "Q1400",
+                    "status": q1400_stage["status"],
+                    "verified_relation_count": 0,
+                    "workload_id": q1400_stage["workload_id"],
+                    "receipt_sha256": sha(q1400_stage_path),
+                }
         report = stage["solver_report"]
         assert report is not None and report["lift_gate_active"] is True
         assert report["target_coupled_active"] is True
@@ -2637,6 +2678,8 @@ def main():
             "matched_q1423_combined_pair_root_calls": matched[
                 "solver_report"]["cached_pair_assignments"],
             "matched_q1423_receipt_sha256": sha(matched_path),
+            "same_curve_base_target_pair_table_stage": pair_comparator,
+            "pair_table_speedup_comparison_valid": False,
             "parent_formula_build_wall_seconds_exploratory": stage[
                 "parent_formula_build_wall_seconds_exploratory"],
             "peak_child_rss_raw": stage["peak_child_rss_raw"],
