@@ -498,6 +498,55 @@ def main():
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(path),
         })
+    group_add_stage = []
+    for n, kind in ((53, "ordinary"), (83, "planted"),
+                    (83, "ordinary")):
+        path, stage = read(f"n{n}_{kind}_group_add.json")
+        baseline_path, baseline = read(f"n{n}_{kind}_frozen.json")
+        assert stage["proposal_id"] == ("Q1320" if n == 53 else "Q1321")
+        assert stage["baseline_receipt_sha256"] == sha(baseline_path)
+        assert stage["curve_id"] == baseline["curve_id"]
+        assert stage["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"]
+        assert stage["status"] == "external_timeout"
+        assert stage["verified_relation"] is None
+        group_add_stage.append({
+            "proposal_id": stage["proposal_id"],
+            "candidate_id": None,
+            "workload_id": stage["workload_id"], "run_id": None,
+            "curve_id": stage["curve_id"],
+            "n": n, "kind": kind,
+            "factor_base_B": stage["factor_base_actual_B"],
+            "folded_columns": stage["factor_base_folded_columns"],
+            "formula": stage["formula"],
+            "status": stage["status"],
+            "target_pdp_wall_seconds": stage["target_pdp_wall_seconds"],
+            "solver_conflicts_reported": stage[
+                "solver_conflicts_reported"],
+            "observed_verified_relation_count": 0,
+            "locked_control_status": (stage["control"]["status"]
+                                      if stage["control"] else None),
+            "locked_control_solver_wall_seconds": (
+                stage["control"]["solver_wall_seconds"]
+                if stage["control"] else None),
+            "natural_relation_yield_estimate": None,
+            "field_operations": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
+    incomplete_path, incomplete = read(
+        "n83_planted_group_add_incomplete.json")
+    assert incomplete["status"] == "artifact_write_failure"
+    group_add_stage.append({
+        "proposal_id": "Q1321", "candidate_id": None,
+        "workload_id": None, "run_id": None,
+        "n": 83, "kind": "planted",
+        "status": incomplete["status"],
+        "target_pdp_wall_seconds": None,
+        "observed_verified_relation_count": 0,
+        "complete_solve_work_log2": None,
+        "receipt_sha256": sha(incomplete_path),
+    })
     order131 = protocol["degree_131_design"]["curve"]["subgroup_order"]
     heuristic_samples131 = 2 * math.sqrt(order131 / (2 * 131))
     relation_density_heuristic = []
@@ -618,6 +667,7 @@ def main():
         "projected_sparse_planted_pin_diagnostics": (
             projected_sparse_pin_diagnostics),
         "half_trace_rooted_stage_measurements": rooted_stage,
+        "full_group_addition_stage_measurements": group_add_stage,
         "relation_density_planning_heuristic": relation_density_heuristic,
         "n131_weight6_geometry_estimate": {
             "proposal_id": "Q1303",
@@ -693,7 +743,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary S3 runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, and half-trace-rooted encodings; the n53 known-satisfiable target and n83 planted controls establish formula consistency but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, and full group-addition encodings; the full group-addition n53 known-satisfiable and n83 planted controls recover leaf-fixed witnesses but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,

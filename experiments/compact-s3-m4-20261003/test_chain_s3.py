@@ -17,6 +17,7 @@ from chain_s3_multitarget import (build_multitarget, choose_target_x,
 from chain_s3_projected_sparse import projected_sparse_leaf
 from s3_root_oracle import half_trace, s3_roots
 from chain_s3_rooted import half_trace_columns, s3_root_link
+from chain_group_add import add_four_to_target, inverse_circuit
 from chain_s3_orbit import frobenius_barrel
 from chain_s3_ordered import less_or_equal
 from chain_s3_rational import add_rationality_filter
@@ -26,6 +27,35 @@ from ecc2k130.codegen import curves, field
 
 
 class ChainS3Tests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_forward_inverse_circuit_matches_field(self):
+        for n, samples in ((5, range(1, 1 << 5)),
+                           (11, (1, 2, 3, 17, 1023))):
+            onb = field.Onb(n)
+            table = multiplication_table(onb)
+            destinations = square_destinations(onb)
+            for value in samples:
+                formula = Formula()
+                bits = [formula.new() for _ in range(n)]
+                inverse = inverse_circuit(formula, bits, table, destinations)
+                formula.clauses.extend(([
+                    bit if value >> position & 1 else -bit]
+                    for position, bit in enumerate(bits)))
+                with tempfile.TemporaryDirectory() as name:
+                    path = Path(name) / "inverse.xcnf"
+                    formula.write(path)
+                    result = subprocess.run(
+                        ["cryptominisat5", "--verb", "0", "--threads", "1",
+                         str(path)], capture_output=True, text=True,
+                        timeout=20)
+                self.assertEqual(result.returncode, 10,
+                                 (n, value, result.stdout[-500:]))
+                model = parse_model(result.stdout)
+                got = sum(1 << position for position, bit in
+                          enumerate(inverse) if model.get(bit, False))
+                expected = onb.toCoords(onb.inv(onb.fromCoords(value)))
+                self.assertEqual(got, expected, (n, value))
+
     def test_multiplication_table(self):
         for n in (5, 53, 83):
             onb = field.Onb(n)
@@ -490,6 +520,62 @@ class ChainS3Tests(unittest.TestCase):
             expected = {onb.toCoords(value) for value in s3_roots(
                 onb, onb.fromCoords(a), onb.fromCoords(b))}
             self.assertEqual(observed, expected)
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_full_group_addition_circuit_recovers_known_point_sum(self):
+        onb = field.Onb(5)
+        curve = curves.Curve(onb)
+        table = multiplication_table(onb)
+        destinations = square_destinations(onb)
+        points = [curve.pointFromX(onb.fromCoords(x))
+                  for x in range(1, 1 << 5)]
+        points = [point for point in points if point is not None]
+        rng = random.Random(132021)
+        while True:
+            chosen = [rng.choice(points) for _ in range(4)]
+            first = curve.add(chosen[0], chosen[1])
+            if first is None or chosen[0][0] == chosen[1][0]:
+                continue
+            second = curve.add(first, chosen[2])
+            if second is None or first[0] == chosen[2][0]:
+                continue
+            target = curve.add(second, chosen[3])
+            if target is not None and second[0] != chosen[3][0]:
+                break
+        formula = Formula()
+        leaf_x = [[formula.new() for _ in range(5)] for _ in range(4)]
+        leaves, mids, slopes = add_four_to_target(
+            formula, leaf_x,
+            tuple(onb.toCoords(value) for value in target),
+            table, destinations)
+        self.assertEqual(len(slopes), 3)
+        for variables, point in zip(leaf_x, chosen):
+            value = onb.toCoords(point[0])
+            formula.clauses.extend(([
+                bit if value >> position & 1 else -bit]
+                for position, bit in enumerate(variables)))
+        with tempfile.TemporaryDirectory() as name:
+            path = Path(name) / "group-chain.xcnf"
+            formula.write(path)
+            result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                     "--threads", "1", str(path)],
+                                    capture_output=True, text=True,
+                                    timeout=20)
+        self.assertEqual(result.returncode, 10, result.stdout[-500:])
+        model = parse_model(result.stdout)
+        decoded = []
+        for x_bits, y_bits in leaves:
+            x = sum(1 << position for position, bit in enumerate(x_bits)
+                    if model.get(bit, False))
+            y = sum(1 << position for position, bit in enumerate(y_bits)
+                    if model.get(bit, False))
+            point = (onb.fromCoords(x), onb.fromCoords(y))
+            self.assertTrue(curve.onCurve(point))
+            decoded.append(point)
+        total = None
+        for point in decoded:
+            total = curve.add(total, point)
+        self.assertEqual(total, target)
 
     @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
     def test_leaf_order_comparator_accepts_exactly_non_decreasing_values(self):

@@ -20,6 +20,9 @@ cofactor-four projection of sparse rational x values. It reduced the CNF
 clause count but also produced no unassisted relation within its caps.
 An exact half-trace root circuit for the first two S3 links was tested next;
 its ordinary n=83 query also remained censored.
+A full point-addition circuit then made the intermediate sums deterministic
+once all four leaf points were fixed. Its unassisted n=53 and n=83 queries
+also remained censored at 120 seconds.
 
 ## Identity and comparable inputs
 
@@ -295,6 +298,35 @@ the ordinary row retains the frozen n=83 workload ID. Conflict counts are
 solver-specific Boolean events, not field-operation equivalents. Encoding
 one or two roots does not yet give a measured n=131 solve cost.
 
+## Full group-addition circuit
+
+[`chain_group_add.py`](chain_group_add.py) encodes the complete affine point
+sum, including each leaf's y coordinate and the public target's x and y.
+The three addition slopes use a forward exponentiation circuit for field
+inversion, so the intermediate points are determined when the leaves are
+fixed. Every link requires distinct input x coordinates. This excludes
+doubling and cancellation cases; the known n=53 and planted n=83 witnesses
+are nondegenerate. Q1320 uses the exact archived n=53 subgroup-orbit selector.
+Q1321 uses Q1317's exact implicit cofactor-four projected W≤4 n=83 base.
+Both are stage proposals, with `candidate_id: null` and `isogeny: "none"`.
+
+| Stage query | Exact base B / folded columns | Formula vars / CNF / XOR / AND | Unassisted result | Charged target-PDP wall | Leaf-fixed control |
+| --- | ---: | --- | --- | ---: | --- |
+| Q1320 n=53 ordinary, known satisfiable | 24,062 / 227 | 76,437 / 226,920 / 3,062 / 71,126 | 120 s external cap; no model | 120.02 s | SAT and public-sum replay in 0.29 s solver wall |
+| Q1321 n=83 planted, known satisfiable | 1,934,066 / 11,651 | 262,182 / 764,884 / 6,395 / 253,814 | 120 s external cap; no model | 120.02 s | SAT and public-sum replay in 3.40 s solver wall |
+| Q1321 n=83 ordinary | 1,934,066 / 11,651 | 262,182 / 764,884 / 6,395 / 253,814 | 120 s external cap; no model | 120.03 s | no witness available |
+
+The controls pin the four known leaf points but leave both intermediate sums
+and all slopes free. They validate full-size arithmetic propagation; their
+times are excluded from the unassisted stage costs. A first n=83 planted
+attempt lost its timing receipt when the filesystem filled while writing the
+locked-control formula. Its primary formula and solver log are preserved as
+an `artifact_write_failure` row with a null timing; the clean planted run above
+was repeated afterward. All complete rows preserve the checked Sage runtime,
+source and solver hashes, solver logs, and compressed formulas. No unassisted
+query returned a verified relation, so these censored attempts do not yield a
+success-cost estimate or a degree-131 \(2^x\) projection.
+
 At n=131, Q1318 uses the proposed W≤6 projected base and the same
 cofactor-four identity. [`screen_n131_projected_sparse.py`](screen_n131_projected_sparse.py)
 assembled a formula with **300,098 variables, 881,690 CNF clauses, 4,589
@@ -390,27 +422,27 @@ degree-131 challenge gate remains closed. Existing complete ECDLP claims
 cannot be inferred from a relation stage or a planted witness.
 
 The next useful goal is a **noncensored, independently verified ordinary
-public-target four-summand decomposition**, first at n=53 and then in an
-ordinary n=83 target panel, using the exact archived subgroup base. The n=53
-frozen target is known to have a witness, so it isolates solver search from
-representation probability. A new implicit algebraic solver should be
-compared with the matched n=53 pair table on the same public point before
-scaling. At n=83, freeze multiple
-independent public targets because the uniform-subset screen predicts only
-about 21.4% representation probability per target. Keep all failed attempts;
-measure actual stage work, memory, natural yield, rank contribution, and
-uncertainty. Then fit an n=131 stage cost and add base construction, final
-matrix, target descent, and scalar replay charges. A challenge run is
-justified only if the **complete** fitted cost is credibly below \(2^{61}\)
-in a named operation unit.
+public-target four-summand decomposition from an improved leaf-choice
+solver**. First recover the known-satisfiable n=53 target without pinning a
+leaf, under the frozen exact base, and compare total attempts and work with
+the matched pair table. Then recover at least one target in a frozen n=83
+ordinary panel; about 21.4% representation probability per target is only a
+uniform-subset planning heuristic, so preserve zero-yield targets. A pure
+pair-index method is already screened as too expensive at n=131; a new
+hybrid or algebraic search must show a different scaling mechanism. Measure
+operations, memory, natural useful-row and novel-rank rates, including all
+failed attempts. Only then fit a degree-131 stage cost and add base
+construction, final matrix, target descent, and scalar replay charges. A
+challenge run is justified only if the **complete** fitted cost is credibly
+below \(2^{61}\) in a named operation unit.
 
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
 
 ```sh
-/Volumes/SSD990/cryptanalysis/sage --runtime-info > experiments/compact-s3-m4-20261003/sage_runtime_info.json
-python3 -m unittest discover -s experiments/compact-s3-m4-20261003 -p test_chain_s3.py -v
+/Volumes/SSD990/cryptanalysis/sage --runtime-info > /private/tmp/s3-m4-runtime-info.json
+/Volumes/SSD990/cryptanalysis/sage -python -m unittest discover -s experiments/compact-s3-m4-20261003 -p test_chain_s3.py -v
 python3 experiments/compact-s3-m4-20261003/freeze_protocol.py --check
 python3 experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 python3 -c 'import sys; sys.path.insert(0, "experiments/compact-s3-m4-20261003"); from verify_weight_base import verify; assert verify("experiments/compact-s3-m4-20261003/bases/n53_weight3_orbits.json.gz")["pass"]'
