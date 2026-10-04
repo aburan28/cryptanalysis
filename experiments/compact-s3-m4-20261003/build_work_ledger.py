@@ -3654,8 +3654,11 @@ def main():
                 "reverse-root checks and more field operations than "
                 "the matched Q1424 cells. No natural relation yield, "
                 "solver scaling exponent or degree-131 complete-work "
-                "projection follows from censored runs. An indexed "
-                "two-sided pair search is the next method gate."),
+                "projection follows from censored runs. A compact "
+                "target-guided pair-sum membership and witness method "
+                "is the next gate; independent uniform intermediate "
+                "sampling is outside the 2^61 logical-trial target "
+                "under the exact pair-support screen."),
             "protocol_sha256": sha(q1425_protocol_path),
             "verification_sha256": sha(q1425_verification_path),
             "exact_uniform_mid_pair_support_screen": {
