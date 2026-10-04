@@ -1387,6 +1387,345 @@ def main():
                 "observed_verified_relation_count"],
             "receipt_sha256": sha(stage_path),
         })
+    adaptive_protocol_path = HERE / "q1333_q1334_adaptive_window_protocol.json"
+    adaptive_protocol = json.loads(adaptive_protocol_path.read_text())
+    adaptive_build_path = HERE / "native_adaptive_build_receipt.json"
+    adaptive_build = json.loads(adaptive_build_path.read_text())
+    assert adaptive_protocol["native_source_sha256"] == adaptive_build[
+        "source_sha256"] == sha(HERE / "native_s3_root_adaptive.rs")
+    assert adaptive_build["build_script_sha256"] == sha(
+        HERE / "build_native_s3_root_adaptive.py")
+    adaptive_schedule = [1, 16, 64, 256, 1024, 4096]
+    assert adaptive_protocol["target_count"] == 1
+    assert adaptive_protocol["target_s3_window_schedule"] == adaptive_schedule
+    adaptive_stages = []
+    for n, proposal, parent, status, stage_name in (
+        (53, "Q1333", "Q1330", "native_relation_found",
+         "n53_adaptive_root_full.json"),
+        (83, "Q1334", "Q1331", "state_cap_no_relation",
+         "n83_adaptive_root_capped_2m.json"),
+    ):
+        profile = next(row for row in adaptive_protocol["profiles"]
+                       if row["field_degree"] == n)
+        manifest_path = HERE / "native_inputs" / f"n{n}_adaptive_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        stage_path, stage = read(stage_name)
+        replay_path, replay = read(
+            f"n{n}_adaptive_root_independent_replay.json")
+        fixed = next(row for row in batch_stages
+                     if row["field_degree"] == n)
+        fixed_run_path = HERE / "runs" / (
+            "n53_batch_root_full.json" if n == 53 else
+            "n83_batch_root_capped_2m.json")
+        fixed_run = json.loads(fixed_run_path.read_text())
+        window_one = next(row for row in native_root_stages
+                          if row["field_degree"] == n)
+        assert profile["proposal_id"] == manifest["proposal_id"] == (
+            stage["proposal_id"]) == replay["proposal_id"] == proposal
+        assert profile["parent_solver_proposal_id"] == manifest[
+            "parent_solver_proposal_id"] == replay[
+                "parent_solver_proposal_id"] == parent
+        assert profile["target_count"] == manifest["target_count"] == (
+            stage["target_count"]) == replay["target_count"] == 1
+        assert profile["target_s3_window_schedule"] == manifest[
+            "target_s3_window_schedule"] == stage[
+                "target_s3_window_schedule"] == adaptive_schedule
+        assert manifest["stage_protocol_sha256"] == stage[
+            "stage_protocol_sha256"] == sha(adaptive_protocol_path)
+        assert manifest["source_sha256"] == sha(
+            HERE / "freeze_adaptive_window_protocol.py")
+        assert stage["native_source_sha256"] == adaptive_build[
+            "source_sha256"]
+        assert stage["cargo_manifest_sha256"] == adaptive_build[
+            "cargo_manifest_sha256"]
+        assert stage["status"] == replay["native_stage_status"] == status
+        for key in ("curve_id", "workload_id", "actual_usable_points_B",
+                    "folded_columns_K", "index_pair_states_examined",
+                    "index_distinct_root_keys", "target_states_scanned",
+                    "target_table_hits", "relation", "status"):
+            assert stage[key] == fixed_run[key]
+        assert replay["status"] == "PASS"
+        assert replay["native_receipt_sha256"] == sha(stage_path)
+        assert replay["native_build_receipt_sha256"] == sha(
+            adaptive_build_path)
+        assert replay["matched_fixed_window_stage_sha256"] == fixed[
+            "stage_receipt_sha256"]
+        assert replay["ordinary_relation_independently_verified"] is (n == 53)
+        assert stage["verified_single_target_dlp"] is False
+        assert stage["complete_work_log2"] is None
+        window = int(stage["timing_ns"]["target_pdp_and_native_check"])
+        adaptive_stages.append({
+            "proposal_id": proposal,
+            "parent_solver_proposal_id": parent,
+            "candidate_id": None,
+            "run_id": None,
+            "curve_id": stage["curve_id"],
+            "workload_id": stage["workload_id"],
+            "target_count": 1,
+            "target_policy": "one frozen ordinary public target; no target batching",
+            "target_local_inversion_window_schedule": adaptive_schedule,
+            "measurement_scope": "target-dependent PDP and native relation-check stage only",
+            "field_degree": n,
+            "actual_usable_points_B": stage["actual_usable_points_B"],
+            "folded_columns_K": stage["folded_columns_K"],
+            "status": status,
+            "target_states_scanned": stage["target_states_scanned"],
+            "target_states_prepared": stage["target_states_prepared"],
+            "target_state_orientations_tested": stage[
+                "target_state_orientations_tested"],
+            "target_state_orientations_prepared": stage[
+                "target_state_orientations_prepared"],
+            "target_stage_wall_seconds_exploratory": window / 1e9,
+            "ratio_vs_window_1_exploratory": (
+                window_one["target_pdp_and_native_check_wall_seconds_exploratory"] /
+                (window / 1e9)),
+            "ratio_vs_fixed_window_4096_exploratory": (
+                fixed["target_pdp_and_native_check_wall_seconds_exploratory"] /
+                (window / 1e9)),
+            "fixed_window_4096_stage_wall_seconds_exploratory": fixed[
+                "target_pdp_and_native_check_wall_seconds_exploratory"],
+            "window_1_stage_wall_seconds_exploratory": window_one[
+                "target_pdp_and_native_check_wall_seconds_exploratory"],
+            "operation_counts_by_phase": stage["operation_counts"],
+            "verified_ordinary_relation_count": int(n == 53),
+            "natural_relation_yield_rate_estimate": None,
+            "common_field_operation_equivalent_calibration": None,
+            "verified_single_target_dlp": False,
+            "complete_solve_work_log2": None,
+            "stage_receipt_sha256": sha(stage_path),
+            "replay_receipt_sha256": sha(replay_path),
+            "manifest_sha256": sha(manifest_path),
+        })
+    adaptive_planted_path = HERE / "native_inputs/n83_adaptive_planted_manifest.json"
+    adaptive_planted = json.loads(adaptive_planted_path.read_text())
+    adaptive_planted_stage_path, adaptive_planted_stage = read(
+        "n83_q1335_adaptive_planted_unpinned.json")
+    adaptive_planted_replay_path, adaptive_planted_replay = read(
+        "n83_q1335_adaptive_planted_independent_replay.json")
+    adaptive_control_profile = adaptive_protocol["planted_control"]
+    assert adaptive_control_profile["proposal_id"] == adaptive_planted[
+        "proposal_id"] == adaptive_planted_stage["proposal_id"] == (
+            adaptive_planted_replay["proposal_id"]) == "Q1335"
+    assert adaptive_control_profile["target_count"] == adaptive_planted[
+        "target_count"] == adaptive_planted_stage["target_count"] == (
+            adaptive_planted_replay["target_count"]) == 1
+    assert adaptive_planted["target_s3_window_schedule"] == (
+        adaptive_planted_stage["target_s3_window_schedule"]) == (
+            adaptive_schedule)
+    assert adaptive_planted_stage["relation"] == q1332_stage["relation"]
+    assert adaptive_planted_stage["target_states_scanned"] == 1
+    assert adaptive_planted_stage["target_states_prepared"] == 1
+    assert adaptive_planted_stage["target_state_orientations_tested"] == 34
+    assert adaptive_planted_stage["target_state_orientations_prepared"] == 83
+    assert adaptive_planted_stage["verified_single_target_dlp"] is False
+    assert adaptive_planted_replay["status"] == "PASS"
+    assert adaptive_planted_replay[
+        "native_relation_independently_verified"] is True
+    q1335_control = {
+        "proposal_id": "Q1335",
+        "parent_solver_proposal_id": "Q1334",
+        "parent_planted_control_proposal_id": "Q1329",
+        "candidate_id": None,
+        "run_id": None,
+        "curve_id": adaptive_planted_stage["curve_id"],
+        "workload_id": adaptive_planted_stage["workload_id"],
+        "target_count": 1,
+        "target_policy": "one planted target used only as an early-hit and correctness control",
+        "target_local_inversion_window_schedule": adaptive_schedule,
+        "target_states_scanned": adaptive_planted_stage[
+            "target_states_scanned"],
+        "target_states_prepared": adaptive_planted_stage[
+            "target_states_prepared"],
+        "target_state_orientations_tested": adaptive_planted_stage[
+            "target_state_orientations_tested"],
+        "target_state_orientations_prepared": adaptive_planted_stage[
+            "target_state_orientations_prepared"],
+        "target_pdp_and_native_check_wall_seconds_exploratory": (
+            int(adaptive_planted_stage["timing_ns"][
+                "target_pdp_and_native_check"]) / 1e9),
+        "fixed_window_4096_target_stage_seconds_exploratory": (
+            int(q1332_stage["timing_ns"][
+                "target_pdp_and_native_check"]) / 1e9),
+        "window_1_target_stage_seconds_exploratory": (
+            int(control_stage["timing_ns"][
+                "target_pdp_and_native_check"]) / 1e9),
+        "is_natural_relation_yield_measurement": False,
+        "native_relation_independently_verified": True,
+        "verified_single_target_dlp": False,
+        "complete_solve_work_log2": None,
+        "protocol_sha256": sha(adaptive_protocol_path),
+        "manifest_sha256": sha(adaptive_planted_path),
+        "stage_receipt_sha256": sha(adaptive_planted_stage_path),
+        "replay_receipt_sha256": sha(adaptive_planted_replay_path),
+    }
+    fast_protocol_path = HERE / "q1336_q1337_fast_root_protocol.json"
+    fast_protocol = json.loads(fast_protocol_path.read_text())
+    fast_build_path = HERE / "native_fast_build_receipt.json"
+    fast_build = json.loads(fast_build_path.read_text())
+    assert fast_protocol["native_source_sha256"] == fast_build[
+        "source_sha256"] == sha(HERE / "native_s3_root_fast.rs")
+    assert fast_build["build_script_sha256"] == sha(
+        HERE / "build_native_s3_root_fast.py")
+    assert fast_protocol["target_count"] == 1
+    assert fast_protocol["target_s3_window_schedule"] == adaptive_schedule
+    fused_stages = []
+    for n, proposal, parent, expected_status, stage_name in (
+        (53, "Q1336", "Q1333", "native_relation_found",
+         "n53_fast_root_full.json"),
+        (83, "Q1337", "Q1334", "state_cap_no_relation",
+         "n83_fast_root_capped_2m.json"),
+    ):
+        profile = next(row for row in fast_protocol["profiles"]
+                       if row["field_degree"] == n)
+        manifest_path = HERE / "native_inputs" / f"n{n}_fast_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        stage_path, stage = read(stage_name)
+        replay_path, replay = read(f"n{n}_fast_root_independent_replay.json")
+        adaptive_row = next(row for row in adaptive_stages
+                            if row["field_degree"] == n)
+        adaptive_path = HERE / "runs" / (
+            "n53_adaptive_root_full.json" if n == 53 else
+            "n83_adaptive_root_capped_2m.json")
+        adaptive_run = json.loads(adaptive_path.read_text())
+        assert profile["proposal_id"] == manifest["proposal_id"] == (
+            stage["proposal_id"]) == replay["proposal_id"] == proposal
+        assert profile["parent_solver_proposal_id"] == manifest[
+            "parent_solver_proposal_id"] == replay[
+                "parent_solver_proposal_id"] == parent
+        assert profile["target_count"] == manifest["target_count"] == (
+            stage["target_count"]) == replay["target_count"] == 1
+        assert manifest["stage_protocol_sha256"] == stage[
+            "stage_protocol_sha256"] == sha(fast_protocol_path)
+        assert manifest["source_sha256"] == sha(
+            HERE / "freeze_fast_root_protocol.py")
+        assert manifest["parent_adaptive_input_manifest_sha256"] == sha(
+            HERE / "native_inputs" / f"n{n}_adaptive_manifest.json")
+        assert stage["native_source_sha256"] == fast_build[
+            "source_sha256"]
+        assert stage["cargo_manifest_sha256"] == fast_build[
+            "cargo_manifest_sha256"]
+        assert stage["status"] == replay["native_stage_status"] == (
+            expected_status)
+        assert stage["verified_single_target_dlp"] is False
+        assert stage["complete_work_log2"] is None
+        for key in ("curve_id", "workload_id", "actual_usable_points_B",
+                    "folded_columns_K", "index_pair_states_examined",
+                    "index_distinct_root_keys", "target_states_scanned",
+                    "target_states_prepared", "target_root_windows",
+                    "target_table_hits", "relation", "status"):
+            assert stage[key] == adaptive_run[key]
+        ops = stage["operation_counts"]["target_pdp_and_native_check"]
+        adaptive_ops = adaptive_run["operation_counts"][
+            "target_pdp_and_native_check"]
+        assert adaptive_ops["field_mul_calls"] - ops["field_mul_calls"] == (
+            ops["s3_root_calls"])
+        assert replay["status"] == "PASS"
+        assert replay["native_receipt_sha256"] == sha(stage_path)
+        assert replay["matched_adaptive_stage_sha256"] == sha(adaptive_path)
+        assert replay["native_build_receipt_sha256"] == sha(fast_build_path)
+        assert replay["target_field_multiplications"] == ops[
+            "field_mul_calls"]
+        window = int(stage["timing_ns"]["target_pdp_and_native_check"])
+        fused_stages.append({
+            "proposal_id": proposal,
+            "parent_solver_proposal_id": parent,
+            "candidate_id": None,
+            "run_id": None,
+            "curve_id": stage["curve_id"],
+            "workload_id": stage["workload_id"],
+            "target_count": 1,
+            "target_policy": "one frozen ordinary public target; no target batching",
+            "measurement_scope": "target-dependent PDP and native relation-check stage only",
+            "field_degree": n,
+            "status": expected_status,
+            "adaptive_target_stage_wall_seconds_exploratory": (
+                adaptive_row["target_stage_wall_seconds_exploratory"]),
+            "fused_target_stage_wall_seconds_exploratory": window / 1e9,
+            "adaptive_over_fused_stage_ratio_exploratory": (
+                adaptive_row["target_stage_wall_seconds_exploratory"] /
+                (window / 1e9)),
+            "paired_single_observation_is_repeatable": False,
+            "s3_root_calls": ops["s3_root_calls"],
+            "field_mul_calls_adaptive": adaptive_ops["field_mul_calls"],
+            "field_mul_calls_fused": ops["field_mul_calls"],
+            "field_mul_calls_saved": (adaptive_ops["field_mul_calls"] -
+                                      ops["field_mul_calls"]),
+            "field_mul_savings_are_exactly_one_per_s3_root": True,
+            "operation_counts_by_phase": stage["operation_counts"],
+            "ordinary_relation_independently_verified": bool(n == 53),
+            "verified_single_target_dlp": False,
+            "complete_solve_work_log2": None,
+            "stage_receipt_sha256": sha(stage_path),
+            "replay_receipt_sha256": sha(replay_path),
+            "manifest_sha256": sha(manifest_path),
+        })
+    fast_planted_path = HERE / "native_inputs/n83_fast_planted_manifest.json"
+    fast_planted = json.loads(fast_planted_path.read_text())
+    fast_planted_stage_path, fast_planted_stage = read(
+        "n83_q1338_fast_planted_unpinned.json")
+    fast_planted_replay_path, fast_planted_replay = read(
+        "n83_q1338_fast_planted_independent_replay.json")
+    fast_planted_profile = fast_protocol["planted_control"]
+    assert fast_planted_profile["proposal_id"] == fast_planted[
+        "proposal_id"] == fast_planted_stage["proposal_id"] == (
+            fast_planted_replay["proposal_id"]) == "Q1338"
+    assert fast_planted_profile["parent_solver_proposal_id"] == (
+        fast_planted["parent_solver_proposal_id"]) == "Q1337"
+    assert fast_planted["target_count"] == fast_planted_stage[
+        "target_count"] == fast_planted_replay["target_count"] == 1
+    assert fast_planted["stage_protocol_sha256"] == (
+        fast_planted_stage["stage_protocol_sha256"]) == sha(
+            fast_protocol_path)
+    assert fast_planted_stage["native_source_sha256"] == fast_build[
+        "source_sha256"]
+    assert fast_planted_stage["relation"] == adaptive_planted_stage[
+        "relation"]
+    assert fast_planted_stage["status"] == "native_relation_found"
+    assert fast_planted_stage["target_states_scanned"] == 1
+    assert fast_planted_stage["target_states_prepared"] == 1
+    assert fast_planted_stage["target_state_orientations_tested"] == 34
+    assert fast_planted_stage["target_state_orientations_prepared"] == 83
+    assert fast_planted_replay["status"] == "PASS"
+    assert fast_planted_replay[
+        "native_relation_independently_verified"] is True
+    assert fast_planted_replay["native_receipt_sha256"] == sha(
+        fast_planted_stage_path)
+    assert fast_planted_replay["native_build_receipt_sha256"] == sha(
+        fast_build_path)
+    adaptive_planted_ops = adaptive_planted_stage["operation_counts"][
+        "target_pdp_and_native_check"]
+    fast_planted_ops = fast_planted_stage["operation_counts"][
+        "target_pdp_and_native_check"]
+    assert adaptive_planted_ops["field_mul_calls"] - fast_planted_ops[
+        "field_mul_calls"] == fast_planted_ops["s3_root_calls"]
+    fast_planted_control = {
+        "proposal_id": "Q1338",
+        "parent_solver_proposal_id": "Q1337",
+        "parent_planted_control_proposal_id": "Q1329",
+        "candidate_id": None,
+        "run_id": None,
+        "curve_id": fast_planted_stage["curve_id"],
+        "workload_id": fast_planted_stage["workload_id"],
+        "target_count": 1,
+        "target_policy": "one planted target used only as an early-hit and correctness control",
+        "target_local_inversion_window_schedule": adaptive_schedule,
+        "target_pdp_and_native_check_wall_seconds_exploratory": (
+            int(fast_planted_stage["timing_ns"][
+                "target_pdp_and_native_check"]) / 1e9),
+        "target_field_multiplications_adaptive": adaptive_planted_ops[
+            "field_mul_calls"],
+        "target_field_multiplications_fused": fast_planted_ops[
+            "field_mul_calls"],
+        "target_s3_root_calls": fast_planted_ops["s3_root_calls"],
+        "is_natural_relation_yield_measurement": False,
+        "native_relation_independently_verified": True,
+        "verified_single_target_dlp": False,
+        "complete_solve_work_log2": None,
+        "protocol_sha256": sha(fast_protocol_path),
+        "manifest_sha256": sha(fast_planted_path),
+        "stage_receipt_sha256": sha(fast_planted_stage_path),
+        "replay_receipt_sha256": sha(fast_planted_replay_path),
+    }
     conditional_root_states131 = n131_sample[
         "conditional_folded_columns_estimate"] ** 2 * 131
     conditional_batch_count131 = (conditional_root_states131 + 4095) // 4096
@@ -1757,10 +2096,19 @@ def main():
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(q1403_comparison_path),
         },
+        "q1333_q1334_adaptive_single_target_window_stages": adaptive_stages,
+        "q1335_n83_adaptive_single_target_planted_control": q1335_control,
+        "q1336_q1337_fused_root_single_target_stages": fused_stages,
+        "q1338_n83_fused_root_planted_control": fast_planted_control,
         "q1327_q1328_native_root_protocol_sha256": sha(
             native_protocol_path),
         "q1330_q1331_batch_root_protocol_sha256": sha(batch_protocol_path),
+        "q1333_q1334_adaptive_window_protocol_sha256": sha(
+            adaptive_protocol_path),
+        "q1336_q1337_fused_root_protocol_sha256": sha(fast_protocol_path),
         "native_s3_root_build_receipt_sha256": sha(native_build_path),
+        "native_s3_adaptive_build_receipt_sha256": sha(adaptive_build_path),
+        "native_s3_fused_root_build_receipt_sha256": sha(fast_build_path),
         "degree131_conditional_full_s3_root_index_screen": {
             "proposal_id": "Q1303",
             "candidate_id": None,
@@ -1902,7 +2250,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "Q1327 and Q1330 independently verified the same unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328 and Q1331 both exhausted the same 2,000,000-pair-state n83 ordinary cap without a relation, covering only about 6.9e-7 of the full quotient pair-state space; the exact fixed-state counting screen bounds uniform-target support of that cap by 9.12e-8 even with every Frobenius orientation, so this no-hit cannot estimate typical natural yield; Q1400 also found no exact hit on the matched Q1325 ordinary target and its fixed quotient-pair rectangle covers at most 3.735e-10 of uniform targets; Q1329, Q1332, Q1401, and Q1403 independently verified planted n83 four-leaf controls, but none estimates ordinary-query yield; Q1403's ordered implicit Q1325 SAT formula timed out on both its ordinary target and an unpinned satisfiable planted target; older n53/n83 SAT variants remain censored; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and censored n83 ordinary runs do not measure natural useful-row or novel-rank rates; exact primitive mul/sqr call vectors now include inversions but conversions, hashing, memory and arithmetic types still lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
+            "reason_unestimated": "Q1327, Q1330, and Q1333 used the same one-target ordinary N53 workload and independently verified the same four-point relation with a nonzero row independent of the matched pair-table row; Q1328, Q1331, Q1334, and Q1337 exhausted the same one-target ordinary N83 cap without a relation, covering only about 6.9e-7 of the full quotient pair-state space; the exact fixed-state counting screen bounds uniform-target support of Q1331's cap by 9.12e-8 even with every Frobenius orientation, so its no-hit cannot estimate typical natural yield; Q1400 also found no exact hit on the matched Q1325 ordinary target, and its fixed quotient-pair rectangle covers at most 3.735e-10 of uniform targets; Q1329, Q1332, Q1335, Q1338, Q1401, and Q1403 independently verified planted N83 four-leaf controls, but none estimates ordinary-query yield; Q1333/Q1334 use an adaptive target-local inversion window and reproduce the fixed-window ordinary outcomes; Q1336/Q1337 fuse the regular S3 formula to save exactly one field multiplication per root but show no repeatable wall-time gain in one unisolated observation per field; Q1403's ordered implicit Q1325 SAT formula timed out on both its ordinary target and an unpinned satisfiable planted target; older N53/N83 SAT variants remain censored; the N131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one ordinary N53 success and censored N83 ordinary runs do not measure natural useful-row or novel-rank rates; exact primitive multiplication/squaring call vectors include inversions, but conversions, hashing, memory and arithmetic types lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,

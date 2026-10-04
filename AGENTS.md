@@ -204,6 +204,16 @@ F4/F5/SAT solve time, coverage, or cost per useful row are stage diagnostics.
 Label predictions and extrapolations separately from measurements. A row with
 an unverified answer is not a verified single-target result.
 
+When a wall time or a comparison has to hold across hosts or repositories,
+measure it through crypto's [ICMS](https://github.com/aburan28/crypto/blob/main/docs/ic/measurement/README.md)
+([crypto#1177](https://github.com/aburan28/crypto/pull/1177)).
+It runs one ic-bench cell per run, pinned to a reserved core with the frozen
+calibration, and records the host and the isolation level the run earned. It
+refuses a comparison whose unit, window, reference, stop rule or workload
+differ. See [Running a cell under ICMS](experiments/ic-bench/README.md#running-a-cell-under-icms),
+which also lists how this harness's figures differ from crypto's and
+crypto-autoresearcher's.
+
 Every empirical comparison must also retain stage measurements: actual base
 size and folded columns, base construction and memory, ordinary-query PDP
 status mix and cost (including failed attempts), verified relation yield,

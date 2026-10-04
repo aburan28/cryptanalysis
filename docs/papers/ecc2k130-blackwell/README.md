@@ -2,9 +2,21 @@
 
 **Author:** Adam Buran  
 **Intended destination:** IACR Cryptology ePrint Archive  
-**Status:** Research preprint draft, September 21, 2026. Prepared locally; not submitted or published.
+**Status:** Research preprint draft, revision 2, October 1, 2026. Not submitted or published. Revision 2 follows the arithmetic review in `REVIEW-20261001.md`.
 
-The manuscript reports the frozen `warps4_poly_compact640` acceptance result:
+Revision 2 leads with the campaign's Frobenius walk, Bailey et al.'s iteration function, whose collision behaviour is established:
+
+| Measure | Result |
+| --- | ---: |
+| Frobenius walk, median of five paired runs, collecting DP32 | **17.625650 billion iterations/s** |
+| Deployed control, same session | 17.156838 billion iterations/s |
+| Paired gain, median of five ratios | 2.7734% |
+| Records per run / drops | 705 (identical corpus) / 0 |
+| Expected work at that rate, `2^60.9` iterations | about 3.9 GPU-years |
+
+Source: `ecc2k130/runner/research/production/2026-09-21-frobenius-fused-confirm.json`.
+
+It also reports the table-walk `warps4_poly_compact640` acceptance result. That figure is an arithmetic ceiling, because the measured cycle rule admits Frobenius-relation cycles (paper §3.5):
 
 | Measure | Result |
 | --- | ---: |
@@ -56,7 +68,7 @@ To recheck the archived implementation and regenerate the figure in the original
 python3 docs/papers/ecc2k130-blackwell/analyze_evidence.py
 ```
 
-This analysis expects `ecc2k130/research/candidates/goal22/` in the same repository. It verifies every source hash, exact timing counts, medians, corpus identities, checkpoint results, the generated square header, general polynomial reduction, and the internal polynomial's irreducibility. GPU checks are read from the archived receipt, not rerun locally.
+This analysis expects `ecc2k130/runner/research/candidates/goal22/` in the same repository. It verifies every source hash, exact timing counts, medians, corpus identities, checkpoint results, the generated square header, general polynomial reduction, and the internal polynomial's irreducibility. GPU checks are read from the archived receipt, not rerun locally.
 
 ## Editorial boundary
 
