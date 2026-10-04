@@ -1427,9 +1427,9 @@ ordinary queries. A complete degree-131 `2^x` remains unknown.
 ## Next goal
 
 The next solver must use the public target **before** enumerating many full
-first-pair assignments. Derive a compact target-coupled necessary condition
-on partial leaf pairs, prove that it preserves all four-point solutions, and test it
-against exhaustive small-field cases and the archived N53/N83 controls.
+leaf-pair assignments. Derive a compact target-coupled necessary condition
+on partial leaf pairs, prove that it preserves all four-point solutions, and
+test it against exhaustive small-field cases and the archived N53/N83 controls.
 Freeze the exact stage and use the same N53/N83 ordinary targets first, then
 a pre-registered fresh panel if a fixed target has no representation.
 Record every failed query, operation count, memory peak, and matched

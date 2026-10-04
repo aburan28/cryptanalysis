@@ -68,16 +68,16 @@ reached the synchronous 60-second wall cap without a model; the external
 | 83 | capped, no relation | 66,824 | 1 | 143 | 3,273,124 / 27,920,948 / 267,157 | 1,284 MB |
 
 The matched Q1422 leaf-first ordinary cells reached 49 N53 pair roots and
-2,645 N83 pair roots under the same caps. The changed decision order makes
-Q1423 enumerate first-pair assignments rapidly, but it almost never gets
-far enough to use the target-coupled final-root rule. These counts do not
-demonstrate a speedup: solver policies differ, both runs are censored, and
-the host is not isolated for CPU timing claims. The exact final-root clauses
-are sound and exercised by the controls; their placement in this search
-order is ineffective.
+2,645 N83 pair roots under the same caps. Q1423's pair count combines both
+leaf-pair links; it does not establish which pair dominates. The
+target-coupled final-root rule activates only once per ordinary query.
+These counts do not demonstrate a speedup: solver policies differ, both runs
+are censored, and the host is not isolated for CPU timing claims. The exact
+final-root clauses are sound and exercised by the controls; their placement
+in this search order is ineffective.
 
-The next gate is a **target-dependent condition that fires before a full
-first leaf pair is enumerated**, or a different search that indexes both
-pair outputs. It must preserve the archived controls and recover verified
+The next gate is a **target-dependent condition that fires before many full
+leaf-pair assignments are enumerated**, or a different search that indexes
+both pair outputs. It must preserve the archived controls and recover verified
 ordinary N53 and N83 relations on frozen exact bases. Until then, no solve
 growth fit, natural useful-row rate, or complete N131 `2^x` is justified.
