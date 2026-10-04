@@ -3278,10 +3278,10 @@ def main():
                 "a relation. Pair-first search computes 62,269 and "
                 "66,824 distinct pair assignments at N53/N83, yet "
                 "the target-coupled final-root rule activates only once "
-                "per ordinary query. This decision order enumerates "
-                "too many complete first pairs before target pruning; "
-                "a sound partial-pair target condition or a different "
-                "search mechanism is the next gate."),
+                "per ordinary query. These counts combine both leaf-pair "
+                "links and do not identify which pair dominates; a "
+                "sound earlier target condition or a different search "
+                "mechanism is the next gate."),
             "protocol_sha256": sha(q1423_protocol_path),
             "verification_sha256": sha(q1423_verification_path),
         },
@@ -3623,7 +3623,7 @@ def main():
                 "ordinary N53/N83 cells also hit the wall cap without a "
                 "model; Q1423 adds exact target-coupled final S3 roots "
                 "and verifies both controls, but its ordinary cells "
-                "enumerate over 62,000 first-pair assignments each "
+                "enumerate over 62,000 leaf-pair assignments each "
                 "while final-root propagation activates just once per "
                 "query, with no relation at either wall cap; Q1333/Q1334 use "
                 "an adaptive target-local inversion "
