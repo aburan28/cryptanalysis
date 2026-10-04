@@ -39,9 +39,12 @@ def main():
         raw = base64.b64decode(report['proofs'][digest], validate=True)
         assert hashlib.sha256(raw).hexdigest() == digest and item['n'] <= 32
         coefficients = {}
-        for equation, monomials in enumerate(item['reference_anf']):
-            for mask in monomials:
-                coefficients[mask] = coefficients.get(mask, 0) ^ (1 << equation)
+        # The frozen ANF is (monomial mask, packed equation coefficients),
+        # not a list of per-equation monomial supports.
+        for mask, value in item['reference_anf']:
+            assert type(mask) is int and 0 <= mask < (1 << item['nvars'])
+            assert type(value) is int and 0 <= value < (1 << item['n'])
+            coefficients[mask] = coefficients.get(mask, 0) ^ value
         terms = sorted((m, c) for m, c in coefficients.items() if c)
         x, y = 2*item['ell'], item['ell']
         prefix = [int.from_bytes(raw[i*8:i*8+8], answer['proof_byteorder']) for i in range(1 << x)]
