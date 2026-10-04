@@ -1,0 +1,126 @@
+name: Shared producer coefficient transform
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/shared-producer-transform.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/shared-producer-transform.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-producer-transform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Shared producer coefficient transform (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build portable dependencies and selected backend
+        shell: bash
+        run: |
+          mkdir -p shared-producer-transform-evidence
+          for version in 20 23 31 32 33 34 35 36 37 38; do
+            python "experiments/groebner-perf-20260924/round${version}/build.py" > "shared-producer-transform-evidence/build-${version}.log" 2>&1
+          done
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          python experiments/groebner-perf-20260924/round44/build.py "${flags[@]}" > shared-producer-transform-evidence/build-44.log 2>&1
+          python experiments/groebner-perf-20260924/round48/build.py > shared-producer-transform-evidence/build-48.log 2>&1
+          python experiments/groebner-perf-20260924/round49/build.py "${flags[@]}" > shared-producer-transform-evidence/build-49.log 2>&1
+          python experiments/groebner-perf-20260924/round51/build.py "${flags[@]}" > shared-producer-transform-evidence/build-51.log 2>&1
+          python experiments/groebner-perf-20260924/round52/build.py > shared-producer-transform-evidence/build-52.log 2>&1
+          python experiments/groebner-perf-20260924/round53/build.py > shared-producer-transform-evidence/build-53.log 2>&1
+          python experiments/groebner-perf-20260924/round54/build.py > shared-producer-transform-evidence/build-54.log 2>&1
+          python experiments/groebner-perf-20260924/round65/build.py "${flags[@]}" > shared-producer-transform-evidence/build-65.log 2>&1
+          python experiments/groebner-perf-20260924/round66/build.py > shared-producer-transform-evidence/kernel-build.log 2>&1
+          python experiments/groebner-perf-20260924/round66/native_build.py "${flags[@]}" > shared-producer-transform-evidence/native-build.log 2>&1
+          python experiments/groebner-perf-20260924/round68/build.py "${flags[@]}" > shared-producer-transform-evidence/producer-build.log 2>&1
+      - name: Detect actual producer Metal availability
+        if: runner.os == 'macOS'
+        working-directory: experiments/groebner-perf-20260924/round68
+        run: |
+          python - <<'PYTHON'
+          import os
+          from adapter import producer
+          try:
+              with producer.Producer(2, 3, 3, backend='metal') as probe:
+                  probe.configure_producer_transform('metal_tiled')
+                  print('METAL_AVAILABLE', probe.device)
+          except ValueError as error:
+              if str(error) != 'requested Metal device unavailable':
+                  raise
+              print('METAL_UNAVAILABLE', error)
+          else:
+              with open(os.environ['GITHUB_ENV'], 'a') as output:
+                  output.write('PRODUCER_TEST_METAL=1\n')
+          PYTHON
+      - name: Exercise shared buffers and full producer failure paths
+        shell: bash
+        run: |
+          if [[ "${PRODUCER_TEST_METAL:-0}" == 1 ]]; then
+            for variant in test-backend test-backend-ubsan test-backend-setup-failure; do
+              "experiments/groebner-perf-20260924/round68/build/${variant}" > "shared-producer-transform-evidence/${variant}.log" 2>&1
+            done
+          fi
+          python -m unittest discover -s experiments/groebner-perf-20260924/round68 -p 'test_producer.py' -v > shared-producer-transform-evidence/unit-tests.log 2>&1
+      - name: Validate fresh complete queries
+        shell: bash
+        run: |
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          python -u experiments/groebner-perf-20260924/round68/validate_queries.py "${flags[@]}" --output shared-producer-transform-evidence/correctness.json.gz > shared-producer-transform-evidence/validation.log 2>&1
+      - name: Retain rebuilt binaries and actual runner identity
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, platform, shutil, subprocess
+          out = pathlib.Path('shared-producer-transform-evidence')
+          out.mkdir(exist_ok=True)
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          metadata.update(platform=platform.platform(), architecture=platform.machine(),
+              git_head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              worktree_status=subprocess.check_output(['git', 'status', '--porcelain', '--', '.', ':!shared-producer-transform-evidence'], text=True))
+          (out / 'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          for build in pathlib.Path('experiments/groebner-perf-20260924').glob('round*/build'):
+              shutil.copytree(build, out / 'native' / build.parent.name, dirs_exist_ok=True)
+          kernel = pathlib.Path('experiments/pdp-degree-heuristics/build')
+          if kernel.exists():
+              shutil.copytree(kernel, out / 'native' / 'pdp-degree-heuristics', dirs_exist_ok=True)
+          PY
+      - name: Audit retained sources, binaries and original polynomial identities
+        run: python -u experiments/groebner-perf-20260924/round68/audit.py --evidence shared-producer-transform-evidence --output shared-producer-transform-evidence/retained-artifact-audit.json > shared-producer-transform-evidence/retained-artifact-audit.log 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shared-producer-transform-${{ matrix.os }}
+          path: shared-producer-transform-evidence/
+          if-no-files-found: error
+          retention-days: 14
