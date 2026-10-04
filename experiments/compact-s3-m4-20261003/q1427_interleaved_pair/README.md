@@ -54,9 +54,10 @@ There is no measured natural relation yield or cost per useful row. A
 complete degree-131 `2^x` still cannot be projected from these censored
 cells. The next solver change must test pair-sum feasibility without
 enumerating target-derived reverse roots one fully assigned leaf at a
-time, for example by preserving the binary XOR structure during algebraic
-elimination. That mechanism needs its own exactness proof and ordinary
-query measurements.
+time. Q1415 already tried global native XOR Gaussian reasoning on an N53
+ordinary formula and capped without a relation. A new method therefore
+needs a stronger target-conditioned algebraic filter or witness procedure,
+with its own exactness proof and ordinary-query measurements.
 
 ## Reproduction
 

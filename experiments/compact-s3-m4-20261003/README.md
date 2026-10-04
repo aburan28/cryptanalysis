@@ -1509,7 +1509,9 @@ or necessary-condition theorem that jointly uses the target's final S3
 link and both sparse pair constraints. Prove solution preservation, and
 verify it against exhaustive small-field cases and the archived N53/N83
 witnesses. A new SAT clause set without a changed ordinary-query search
-pattern does not pass this gate.
+pattern does not pass this gate. Q1415's global native XOR Gaussian solver
+also capped on an N53 ordinary formula; repeating that setting alone is
+not a new feasibility method.
 Freeze the stage before ordinary queries. The first measurable gate is the
 unpinned archived N53 ordinary target, which Q1301 already proved
 representable. The second is an independently verified relation on the
