@@ -753,6 +753,28 @@ The window trades extra multiplications for fewer inversions. At N53 the
 match occurs inside a window, so 53,248 states are prepared even though only
 49,228 are inspected before the relation.
 
+The [source-level arithmetic expansion](runs/n53_n83_s3_primitive_field_calls.json)
+charges the multiplications and squarings *inside* each field inversion in
+the pinned `crypto` implementation. Its nonzero Itoh–Tsujii chain uses
+`bit_length(n-1)+popcount(n-1)-2` multiplication calls and `n-1` squaring
+calls per inverse. The native source guards every inversion input against
+zero. These are exact counts of calls to the pinned field methods, including
+failed target probes; they are not CPU instructions or a weighted field-
+operation equivalent.
+
+| Stage | Index primitive mul / sqr calls | One-target primitive mul / sqr calls |
+| --- | ---: | ---: |
+| Q1327 N53 direct | 40,964,193 / 142,013,924 | 1,476,888 / 5,120,035 |
+| Q1330 N53 window 4,096 | 30,042,713 / 34,684 | 1,171,571 / 1,051 |
+| Q1328 N83 direct | 32,000,000 / 164,000,000 | 64,000,000 / 328,000,000 |
+| Q1331 N83 window 4,096 | 22,002,445 / 40,098 | 44,002,445 / 40,098 |
+
+Basis conversions, canonical rotations, hash probes, memory traffic, and
+other work remain separate. The exact call vector improves stage accounting;
+it does not supply natural relation yield or the complete \(2^x\) cost.
+Regenerate it with
+`python3 experiments/compact-s3-m4-20261003/derive_s3_primitive_calls.py --check`.
+
 The separate [Q1332 planted one-target control](runs/n83_q1332_batch_planted_unpinned.json)
 uses Q1329's single planted target, the exact Q1325 base, all 83 orientations,
 and a 4,096-state inversion window. Its [independent replay](runs/n83_q1332_batch_planted_independent_replay.json)
@@ -836,10 +858,40 @@ or other solver families. None of these counts is a calibrated
 operation-equivalent or complete \(2^x\) solve projection. The actual N131
 base count and digest remain unknown.
 
+### Fixed-state target-coverage bound for Q1331
+
+The [exact counting screen](runs/n83_q1331_uniform_target_coverage_bound.json)
+puts the two-million-state N83 cap in context without assuming random root
+keys. Each indexed pair state names two exact-base x coordinates. Their signs
+give at most four subgroup pair sums; all 83 global Frobenius rotations give
+at most \(4n\) pair-sum points per state. Let \(U\) be their union over the
+fixed \(M\) index states. A four-leaf relation found by this design must
+write the target as a sum of two points in \(U\). Because the group is
+abelian, at most \(|U|(|U|+1)/2\) distinct targets can have that form.
+The frozen state order is target independent, so a uniformly drawn
+nonidentity subgroup target has the rigorous coverage upper bound
+
+\[
+\Pr[Q\in U+U]\leq
+\min\!\left(1,\frac{(4nM)(4nM+1)}{2(r-1)}\right).
+\]
+
+For Q1331, \(n=83\), \(r=2{,}417{,}851{,}639{,}230{,}796{,}216{,}685{,}689\),
+and \(M=2{,}000{,}000\), yielding **at most \(9.118\times10^{-8}\)** of
+uniform nonidentity targets. Even the *upper bound* cannot reach 50% until
+\(M\geq4{,}683{,}567{,}037\) states, 2,342 times the measured cap. This
+counts all 83 orientations and assumes a perfect collision check, so better
+inversion scheduling alone does not change it. It is a support bound for a
+fixed, target-independent pair-state set, not an estimate of the hit rate on
+the one frozen target or a bound on target-adaptive or algebraic solvers.
+The screen is regenerated with
+`python3 experiments/compact-s3-m4-20261003/screen_q1331_target_coverage.py --check`.
+
 ## Next goal
 
 The next gate is an **ordinary N83 four-point relation on the exact Q1325
-base from a search that avoids the full \(K^2n\) index**. Q1329 has now
+base from a search that avoids both the full \(K^2n\) index and Q1331's
+fixed two-million-state support limit**. Q1329 has now
 validated the native search on an unpinned, known-satisfiable N83 target.
 Run frozen ordinary single-target workloads under identical operation and
 memory limits, retaining all zero-yield cells and independently verifying

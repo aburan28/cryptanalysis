@@ -1182,6 +1182,44 @@ def main():
         "stage_receipt_sha256": sha(q1332_stage_path),
         "replay_receipt_sha256": sha(q1332_replay_path),
     }
+    coverage_path, coverage = read(
+        "n83_q1331_uniform_target_coverage_bound.json")
+    q1331_stage = next(row for row in batch_stages
+                       if row["proposal_id"] == "Q1331")
+    assert coverage["proposal_id"] == q1331_stage["proposal_id"]
+    assert coverage["candidate_id"] is None and coverage["run_id"] is None
+    assert coverage["isogeny"] == q1331_stage["isogeny"] == "none"
+    assert coverage["curve_id"] == q1331_stage["curve_id"]
+    assert coverage["workload_id"] == q1331_stage["workload_id"]
+    assert coverage["factor_base_actual_B"] == q1331_stage[
+        "actual_usable_points_B"]
+    assert coverage["factor_base_folded_columns_K"] == q1331_stage[
+        "folded_columns_K"]
+    assert coverage["fixed_index_pair_states_M"] == q1331_stage[
+        "index_pair_states_examined"]
+    assert coverage["q1331_stage_receipt_sha256"] == q1331_stage[
+        "stage_receipt_sha256"]
+    assert coverage["source_sha256"] == sha(
+        HERE / "screen_q1331_target_coverage.py")
+    assert coverage["q1330_q1331_protocol_sha256"] == sha(
+        batch_protocol_path)
+    assert coverage["is_empirical_relation_yield"] is False
+    assert coverage["is_complete_solve_projection"] is False
+    primitives_path, primitives = read(
+        "n53_n83_s3_primitive_field_calls.json")
+    assert primitives["kind"] == (
+        "source_level_primitive_field_call_expansion_for_s3_stages")
+    assert primitives["source_sha256"] == sha(
+        HERE / "derive_s3_primitive_calls.py")
+    assert primitives["native_build_receipt_sha256"] == sha(
+        native_build_path)
+    assert primitives["field_implementation_source_sha256"] == (
+        native_build["crypto_arithmetic_sources_sha256"][
+            "src/cryptanalysis/semaev_decomp.rs"])
+    assert [row["proposal_id"] for row in primitives["rows"]] == [
+        "Q1327", "Q1330", "Q1328", "Q1331"]
+    assert primitives["is_common_weighted_field_operation_unit"] is False
+    assert primitives["is_complete_solve_projection"] is False
     adaptive_protocol_path = HERE / "q1333_q1334_adaptive_window_protocol.json"
     adaptive_protocol = json.loads(adaptive_protocol_path.read_text())
     adaptive_build_path = HERE / "native_adaptive_build_receipt.json"
@@ -1717,6 +1755,29 @@ def main():
         "q1329_n83_unpinned_planted_control": q1329_control,
         "q1330_q1331_single_target_inversion_window_stages": batch_stages,
         "q1332_n83_single_target_inversion_window_planted_control": q1332_control,
+        "q1331_fixed_state_uniform_target_coverage_bound": {
+            "proposal_id": "Q1331",
+            "curve_id": coverage["curve_id"],
+            "workload_id": coverage["workload_id"],
+            "factor_base_actual_B": coverage["factor_base_actual_B"],
+            "factor_base_folded_columns_K": coverage[
+                "factor_base_folded_columns_K"],
+            "fixed_index_pair_states_M": coverage["fixed_index_pair_states_M"],
+            "uniform_target_hit_probability_upper_bound": coverage[
+                "uniform_target_hit_probability_upper_bound"],
+            "necessary_state_count_thresholds": coverage[
+                "necessary_state_count_thresholds"],
+            "is_empirical_relation_yield": False,
+            "is_complete_solve_projection": False,
+            "receipt_sha256": sha(coverage_path),
+        },
+        "n53_n83_native_s3_primitive_field_call_vectors": {
+            "unit_boundary": primitives["unit_boundary"],
+            "is_common_weighted_field_operation_unit": False,
+            "is_complete_solve_projection": False,
+            "rows": primitives["rows"],
+            "receipt_sha256": sha(primitives_path),
+        },
         "q1333_q1334_adaptive_single_target_window_stages": adaptive_stages,
         "q1335_n83_adaptive_single_target_planted_control": q1335_control,
         "q1336_q1337_fused_root_single_target_stages": fused_stages,
@@ -1871,7 +1932,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "Q1327, Q1330, and Q1333 used the same one-target ordinary N53 workload and independently verified the same four-point relation with a nonzero row independent of the matched pair-table row; Q1328, Q1331, Q1334, and Q1337 exhausted the same one-target ordinary N83 cap without a relation, covering only about 6.9e-7 of the full quotient pair-state space; Q1329, Q1332, Q1335, and Q1338 independently verified an unpinned N83 four-leaf relation on one planted target, but none estimates ordinary-query yield; Q1333/Q1334 use an adaptive target-local inversion window and reproduce the fixed-window ordinary outcomes; Q1336/Q1337 fuse the regular S3 formula to save exactly one field multiplication per root but show no repeatable wall-time gain in one unisolated observation per field; older n53/n83 SAT variants remain censored; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one ordinary N53 success and censored N83 ordinary runs do not measure natural useful-row or novel-rank rates; top-level field inversion/multiplication calls lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
+            "reason_unestimated": "Q1327, Q1330, and Q1333 used the same one-target ordinary N53 workload and independently verified the same four-point relation with a nonzero row independent of the matched pair-table row; Q1328, Q1331, Q1334, and Q1337 exhausted the same one-target ordinary N83 cap without a relation, covering only about 6.9e-7 of the full quotient pair-state space; the exact fixed-state counting screen bounds uniform-target support of Q1331's cap by 9.12e-8 even with every Frobenius orientation, so its no-hit cannot estimate typical natural yield; Q1329, Q1332, Q1335, and Q1338 independently verified an unpinned N83 four-leaf relation on one planted target, but none estimates ordinary-query yield; Q1333/Q1334 use an adaptive target-local inversion window and reproduce the fixed-window ordinary outcomes; Q1336/Q1337 fuse the regular S3 formula to save exactly one field multiplication per root but show no repeatable wall-time gain in one unisolated observation per field; older N53/N83 SAT variants remain censored; the N131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one ordinary N53 success and censored N83 ordinary runs do not measure natural useful-row or novel-rank rates; exact primitive multiplication/squaring call vectors include inversions, but conversions, hashing, memory and arithmetic types lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,
