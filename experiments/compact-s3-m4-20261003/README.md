@@ -1059,6 +1059,32 @@ that removing the projection circuits alone did not clear the N83 search
 bottleneck. No natural yield, cost per useful row, or complete solve
 exponent can be estimated from these censored runs.
 
+### Q1408 balanced W≤5 S3 tree
+
+Q1408 keeps Q1404's exact `EC1N83Ckb1h876c2921cb64` curve, Q1325
+factor base (B = 30,977,592; K = 186,612), complete raw target-preimage
+selector, ordinary workload `bab50a1e5f66`, solver, and limits. It changes
+the three S3 links from a left-associated chain to the balanced tree
+`S3(x1,x2,u), S3(x3,x4,v), S3(u,v,target)`. See the
+[frozen protocol](q1408_balanced_s3_w5_protocol.json) and
+[named stage comparison](runs/n83_q1404_q1408_named_stage_comparison.json).
+
+| Q1408 N83 query | Charged stage wall (exploratory) | Solver result | Verified relation |
+| --- | ---: | --- | ---: |
+| Planted, leaves and pair sums locked | 0.173 s | SAT | 1 control |
+| Same planted target, unpinned | 60.010 s | external timeout | 0 |
+| Matched ordinary target | 90.501 s | 1,000,001 conflicts, censored | 0 |
+
+The ordinary and unpinned formulas each have 65,221 variables, 189,928 CNF
+clauses, 1,245 XOR rows, and 62,001 AND gates, equal to Q1404's shape. The
+[independent checked-Sage replay](runs/n83_q1408_balanced_control_replay.json)
+verified the locked witness, both raw pair sums, the public-point sum, and
+four distinct exact Q1325 columns. Neither unpinned search returned a model.
+The two ordinary no-hit rows are censored stage measurements. Q1408's stage
+ID is `PS1N83Ckb1fb30977592PDP4sath0c555b4e4d40`; its ordinary run ID
+adds `Wbab50a1e5f66R1`. `candidate_id` remains null. CPU wall ratios on
+this unisolated host are exploratory, and a complete solve exponent remains
+unknown.
 ### Q1406 uniform-query relation-supply bound for Q1303
 
 The [Q1406 counting screen](runs/n131_q1406_uniform_query_bound.json)
@@ -1180,7 +1206,9 @@ Q1325 base with a planted public target. Q1403's ordered implicit-base
 SAT formula still cannot recover its unpinned known-satisfiable control
 within 60 seconds or the ordinary target within 120 seconds. Q1404 removes
 the projection circuits yet also cannot recover its unpinned planted or
-ordinary target within the frozen caps. Q1400's
+ordinary target within the frozen caps. Q1408's balanced tree reaches the
+same one-million-conflict cap on the ordinary target, with no relation.
+Q1400's
 ordinary no-hit and tiny fixed-rectangle support bound leave ordinary
 relation yield unmeasured.
 Run frozen ordinary single-target workloads under identical operation and
@@ -1240,6 +1268,8 @@ python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --che
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1403_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1404_raw_control.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1404_stage_comparison.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1408_balanced_control.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1408_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```

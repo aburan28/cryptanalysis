@@ -1479,6 +1479,70 @@ def main():
                 "observed_verified_relation_count"],
             "receipt_sha256": sha(stage_path),
         })
+    q1408_protocol_path = HERE / "q1408_balanced_s3_w5_protocol.json"
+    q1408_protocol = json.loads(q1408_protocol_path.read_text())
+    q1408_runtime_path = HERE / "q1408_sage_runtime_info.json"
+    q1408_replay_path, q1408_replay = read(
+        "n83_q1408_balanced_control_replay.json")
+    q1408_comparison_path, q1408_comparison = read(
+        "n83_q1404_q1408_named_stage_comparison.json")
+    assert q1408_protocol["proposal_id"] == q1408_replay[
+        "proposal_id"] == "Q1408"
+    assert q1408_protocol["curve_id"] == q1404_protocol["curve_id"]
+    assert q1408_protocol["ordinary_workload_id"] == q1404_protocol[
+        "ordinary_workload_id"]
+    assert q1408_protocol["factor_base_enumerated_set_sha256"] == (
+        q1404_protocol["factor_base_enumerated_set_sha256"])
+    assert q1408_protocol["factor_base_actual_B"] == q1404_protocol[
+        "factor_base_actual_B"]
+    assert q1408_protocol["factor_base_folded_columns"] == q1404_protocol[
+        "factor_base_folded_columns"]
+    assert q1408_replay["status"] == "PASS"
+    assert q1408_replay["verified_control_relation_count"] == 1
+    assert q1408_replay["ordinary_relation_count"] == 0
+    assert q1408_replay["four_distinct_columns"] is True
+    assert q1408_replay["protocol_sha256"] == sha(q1408_protocol_path)
+    assert q1408_replay["source_sha256"] == sha(
+        HERE / "verify_q1408_balanced_control.py")
+    assert q1408_comparison["source_sha256"] == sha(
+        HERE / "build_q1408_stage_comparison.py")
+    assert [profile["proposal_id"] for profile in q1408_comparison[
+        "stage_profiles"]] == ["Q1404", "Q1408"]
+    q1408_stages = []
+    for mode, expected_status in (
+        ("planted_locked", "sat"),
+        ("planted_unpinned", "external_timeout"),
+        ("ordinary", "censored"),
+    ):
+        stage_path, stage = read(f"n83_q1408_{mode}.json")
+        assert stage["proposal_id"] == "Q1408"
+        assert stage["status"] == expected_status
+        assert stage["protocol_sha256"] == sha(q1408_protocol_path)
+        assert stage["runtime_info_sha256"] == sha(q1408_runtime_path)
+        assert stage["complete_solve_work_log2"] is None
+        q1408_stages.append({
+            "mode": mode,
+            "workload_id": stage["workload_id"],
+            "status": stage["status"],
+            "solver_conflicts_reported": stage["attempts"][0][
+                "solver_conflicts_reported"],
+            "target_preimage_wall_seconds_exploratory": stage[
+                "target_preimage_wall_seconds"],
+            "target_pdp_wall_seconds_exploratory": stage[
+                "target_pdp_wall_seconds"],
+            "target_relation_check_wall_seconds_exploratory": stage[
+                "target_relation_check_wall_seconds"],
+            "target_dependent_stage_wall_seconds_exploratory": stage[
+                "target_dependent_stage_wall_seconds"],
+            "control_stage_wall_seconds_exploratory": stage[
+                "control_stage_wall_seconds"],
+            "formula": stage["formula"],
+            "peak_parent_rss_raw": stage["peak_parent_rss_raw"],
+            "peak_child_rss_raw": stage["peak_child_rss_raw"],
+            "observed_verified_relation_count": stage[
+                "observed_verified_relation_count"],
+            "receipt_sha256": sha(stage_path),
+        })
     adaptive_protocol_path = HERE / "q1333_q1334_adaptive_window_protocol.json"
     adaptive_protocol = json.loads(adaptive_protocol_path.read_text())
     adaptive_build_path = HERE / "native_adaptive_build_receipt.json"
@@ -2242,6 +2306,58 @@ def main():
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(q1404_comparison_path),
         },
+        "q1408_balanced_s3_w5_stage": {
+            "proposal_id": "Q1408",
+            "candidate_id": None,
+            "stage_config_id": q1408_comparison["stage_profiles"][1][
+                "stage_config_id"],
+            "run_id": q1408_comparison["stage_profiles"][1]["run_id"],
+            "curve_id": q1408_protocol["curve_id"],
+            "isogeny": "none",
+            "factor_base_actual_B": q1408_protocol[
+                "factor_base_actual_B"],
+            "factor_base_folded_columns_K": q1408_protocol[
+                "factor_base_folded_columns"],
+            "factor_base_enumerated_set_sha256": q1408_protocol[
+                "factor_base_enumerated_set_sha256"],
+            "matched_ordinary_workload_id": q1408_protocol[
+                "ordinary_workload_id"],
+            "stages": q1408_stages,
+            "independently_verified_planted_control_relation_count": (
+                q1408_replay["verified_control_relation_count"]),
+            "verified_ordinary_relation_count": 0,
+            "natural_relation_yield_rate_estimate": None,
+            "cost_per_useful_relation": None,
+            "field_operations": None,
+            "verified_single_target_dlp": False,
+            "complete_solve_work_log2": None,
+            "controlled_wall_speedup_claim_allowed": False,
+            "protocol_sha256": sha(q1408_protocol_path),
+            "runtime_info_sha256": sha(q1408_runtime_path),
+            "independent_replay_receipt_sha256": sha(q1408_replay_path),
+        },
+        "q1404_q1408_named_stage_comparison": {
+            "candidate_id": None,
+            "curve_id": q1408_comparison["curve_id"],
+            "workload_id": q1408_comparison["workload_id"],
+            "factor_base_enumerated_set_sha256": q1408_comparison[
+                "factor_base_enumerated_set_sha256"],
+            "controlled_variable": q1408_comparison[
+                "controlled_variable"],
+            "profiles": [{
+                "proposal_id": profile["proposal_id"],
+                "stage_config_id": profile["stage_config_id"],
+                "run_id": profile["run_id"],
+                "ordinary_stage_status": profile[
+                    "ordinary_stage_status"],
+                "observed_verified_relation_count": profile[
+                    "observed_verified_relation_count"],
+            } for profile in q1408_comparison["stage_profiles"]],
+            "is_complete_ic_comparison": False,
+            "is_controlled_cpu_wall_speedup": False,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(q1408_comparison_path),
+        },
         "q1333_q1334_adaptive_single_target_window_stages": adaptive_stages,
         "q1335_n83_adaptive_single_target_planted_control": q1335_control,
         "q1336_q1337_fused_root_single_target_stages": fused_stages,
@@ -2436,7 +2552,8 @@ def main():
                 "no-hit cannot estimate typical natural yield; Q1400 found "
                 "no exact hit on the matched Q1325 ordinary target and its "
                 "fixed quotient-pair rectangle covers at most 3.735e-10 of "
-                "uniform targets; Q1329, Q1332, Q1335, Q1338, Q1401, Q1403, and Q1404 "
+                "uniform targets; Q1329, Q1332, Q1335, Q1338, Q1401, "
+                "Q1403, Q1404, and Q1408 "
                 "independently verified planted n83 four-leaf controls, but "
                 "none estimates ordinary-query yield; Q1403's ordered "
                 "implicit Q1325 SAT formula timed out on both its ordinary "
@@ -2444,6 +2561,9 @@ def main():
                 "smaller raw-preimage W<=5 SAT formula stopped at one million "
                 "conflicts on the ordinary target and timed out on an unpinned "
                 "satisfiable planted target, with no model in either run; "
+                "Q1408's balanced raw-preimage S3 tree also timed out on "
+                "the unpinned planted target and exhausted one million "
+                "ordinary-target conflicts without a model; "
                 "Q1333/Q1334 use an adaptive target-local inversion window "
                 "and reproduce the fixed-window ordinary outcomes; Q1336/Q1337 "
                 "fuse one field multiplication per S3 root but show no repeatable "
