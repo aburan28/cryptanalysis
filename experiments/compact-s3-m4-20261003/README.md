@@ -19,6 +19,11 @@ An exact, larger n=83 weight-five base later passed a fully locked control,
 but its unassisted ordinary target also reached a 120-second cap without a
 model. The larger base changes the factor-base policy; it is recorded as
 Q1324 with its own exact digest.
+A complete n=83 weight-at-most-five base, Q1325, was then enumerated and
+independently replayed. Its locked control passed, while the same ordinary
+public target again reached a 120-second cap without a model. The full base
+is denser than Q1324's selected base, but neither result supplies an
+ordinary four-point relation or a complete DLP cost.
 A second n=83 encoding represents the same exact base implicitly through
 cofactor-four projection of sparse rational x values. It reduced the CNF
 clause count but also produced no unassisted relation within its caps.
@@ -30,24 +35,27 @@ also remained censored at 120 seconds.
 
 ## Identity and comparable inputs
 
-[`protocol.json`](protocol.json) freezes each curve, subgroup, weight-base
-policy, one-target ordinary workload, and SAT cap. The exact enumerated bases
-are in `bases/`. Their compact archives contain every canonical signed-
-Frobenius x-orbit key and its length, allowing reconstruction of the actual
-point set and its pre-fold size. [`verify_weight_base.py`](verify_weight_base.py)
-checks the archive structure, orbit arithmetic, counts, and sampled subgroup
-membership. The n=53 pair-table comparator also recomputes the orbit-key
-digest independently from the prior full-base enumerator.
+[`protocol.json`](protocol.json) freezes the original curve, subgroup,
+weight-base policy, one-target ordinary workload, and SAT cap. Q1301 and
+Q1302's exact enumerated bases are in `bases/`; their compact archives
+contain every canonical signed-Frobenius x-orbit key and its length.
+[`verify_weight_base.py`](verify_weight_base.py) checks archive structure,
+orbit arithmetic, counts, and sampled subgroup membership. Q1324 uses the
+separately frozen selected weight-five point base; Q1325's full point-key
+archive is in `bases/`. The n=53 pair-table comparator independently
+recomputes its original orbit-key digest.
 
-| Proposal | Exact curve ID | Weight bound | Actual usable points \(B\) | Folded columns | Base-key SHA-256 prefix |
+| Proposal | Exact curve ID | Weight policy | Actual usable points \(B\) | Folded columns | Base-key SHA-256 prefix |
 | --- | --- | ---: | ---: | ---: | --- |
 | Q1301 | `EC1N53Ckb1hf77aab617904` | 3 | 24,062 | 227 | `05b75578ee58` |
 | Q1302 | `EC1N83Ckb1h876c2921cb64` | 4 | 1,934,066 | 11,651 | `800a59307125` |
+| Q1324 | `EC1N83Ckb1h876c2921cb64` | selected 5 | 4,000,102 | 24,097 | `e6ea595bbd32` |
+| Q1325 | `EC1N83Ckb1h876c2921cb64` | all ≤5 | 30,977,592 | 186,612 | `56c951ad78cc` |
 | Q1303 | `EC1N131Ckb1h6816f880945e` | proposed 6 | unknown | unknown | unknown |
 
 The exact n=53 curve cofactor is **428**; the n=83 cofactor is **4**.
 These values are read from the curve manifests when constructing raw target
-preimages and subgroup points. All three designs use `isogeny: "none"`. They
+preimages and subgroup points. All listed designs use `isogeny: "none"`. They
 remain `Q` proposals with `candidate_id: null` because relation collection,
 final relation-matrix LA, target descent, and complete recovery are not wired
 or measured. A base size or nominal weight bound is not an `IC1` candidate ID.
@@ -444,6 +452,51 @@ isolation receipt, so no CPU speedup ratio is claimed. The checked Sage
 runtime, compressed XCNFs, solver logs, source hashes, and independent
 artifact audit are retained.
 
+## Complete N83 weight-five base and Q1325 stage
+
+[`enumerate_n83_weight5_full.py`](enumerate_n83_weight5_full.py) enumerates
+every nonzero normal-basis x mask of weight at most five using one necklace
+per Frobenius orbit. It found **373,101** raw x orbits and **186,612**
+rational, nonidentity signed-Frobenius point orbits after cofactor-four
+projection. There were no duplicate projected orbits. The exact subgroup
+base has **B=30,977,592** usable points before folding and **K=186,612**
+columns. Its sorted full-point-key digest is
+`56c951ad78cc4036d3e8ff70bcb9d7feccacc6c763220b285def056cba30afb8`.
+The field degree is the odd prime 83, and this curve has only four points
+over F₂, so no nonidentity point in the odd-order subgroup is Frobenius
+fixed. Each such point has 83 distinct Frobenius images, none equal to its
+negative; each stored column therefore represents 166 points.
+All Q1324 selected-base columns and all Q1302 weight-four columns are
+subsets. The [independent replay](runs/n83_q1325_full_base_replay.json)
+checked every stored representative on the curve and against its canonical
+key, sampled subgroup membership, and reconstructed both subset bases.
+Base enumeration took 66.25 seconds and peaked at 85,835,776 bytes RSS on
+this unisolated host; this target-independent preparation is outside the
+one-target online interval.
+
+Q1325 keeps exact curve `EC1N83Ckb1h876c2921cb64`, ordinary workload
+`bab50a1e5f66`, public target, and one-thread CryptoMiniSat setting. Its
+implicit cofactor-projected sparse-leaf encoding has four leaves and three
+compact S3 links; it does not expand S5. The [protocol](q1325_protocol.json)
+retains `candidate_id: null`, `run_id: null`, and `isogeny: "none"` because
+the rest of the IC pipeline is incomplete.
+
+| Q1325 stage | Formula variables / CNF / XOR | Result | Charged stage wall | Verified relation |
+| --- | ---: | --- | ---: | --- |
+| Planted, all leaves and middle x values locked | 122,074 / 355,596 / 2,909 | SAT | 2.07 s oracle control | yes, planted |
+| Ordinary public target, no locks | 122,074 / 354,766 / 2,909 | 120-second timeout | 120.01 s target PDP | none |
+
+The planted witness independently replays as four subgroup points summing
+to its target. It is an encoding check, not a natural relation. For this
+base, \(\binom{B}{4}/r=15{,}869.003\) is the **exact mean** number of
+distinct four-point subsets over uniformly chosen subgroup targets. It
+does not prove that this particular target has a representation; a Poisson
+coverage conversion would add an independence assumption. The ordinary
+receipt contains no model, relation, field-operation count, or rank row.
+All wall times here are exploratory diagnostics without a host isolation
+receipt. The solver logs, compressed formulas, source digests, and checked
+Sage runtime are retained with the receipts in `runs/`.
+
 ## Work accounting and decision
 
 [`work_ledger.json`](work_ledger.json) separates the measured pair counts
@@ -470,10 +523,10 @@ lower bound on other decomposition algorithms nor a complete field-operation
 projection. Q1303's exact \(B\) and digest remain unknown.
 
 For n=83, the exact counting bound above shows why Q1302's weight-four
-ordinary timeout is ambiguous. Q1324's larger base raises the modeled
-target coverage but also timed out without a natural relation. Neither
-timeout is an observed zero relation rate for a complete collector; both
-are censored solver attempts on one frozen target.
+ordinary timeout is ambiguous. Q1324's selected base and Q1325's complete
+weight-five base raise the four-subset mean, but both timed out without a
+natural relation. These are censored solver attempts on one frozen target,
+not measured zero relation rates for a complete collector.
 
 For the proposed n=131 W≤6 base, [`estimate_n131_weight6_base.py`](estimate_n131_weight6_base.py)
 enumerates every weight-one and weight-two x support and draws distinct,
@@ -507,28 +560,37 @@ replay, and conversion work cost zero, it leaves an optimistic ceiling near
 not a measured solver cost or a complete-solve projection.
 
 The complete n=131 work exponent remains **unknown**. The corrected,
-exact-base, larger n=83 weight-five, and implicit projected-base SAT stages
-are censored; natural
+exact-base, selected and complete n=83 weight-five, and implicit projected-base
+SAT stages are censored; natural
 relation yield, novel rank, cost per useful row, final matrix solving, target
 descent, and independent scalar replay are absent. There is therefore no
 defensible complete-solve upper projection below \(2^{61}\), and the
 degree-131 challenge gate remains closed. Existing complete ECDLP claims
 cannot be inferred from a relation stage or a planted witness.
 
+Q1325's exact n=83 four-subset mean is about 15,869. Q1303's conditional
+n=131 W≤6 estimate gives only about **0.115** under its stated geometry
+assumptions. The n=83 timeout therefore cannot be fitted directly as an
+n=131 per-decomposition cost or success rate. It isolates a leaf-choice
+search problem on a comparatively dense base; it does not establish an
+n=131 stage exponent.
+
 The next useful goal is a **noncensored, independently verified ordinary
-public-target four-summand decomposition from an improved leaf-choice
-solver**. First recover the known-satisfiable n=53 target without pinning a
-leaf, under the frozen exact base, and compare total attempts and work with
-the matched pair table. Then recover at least one target on Q1324's larger
-n=83 base, keeping the original Q1302 target as the matched public point
-and preserving zero-yield targets in any later panel. A pure pair-index
-method is already screened as too expensive at n=131; a new
-hybrid or algebraic search must show a different scaling mechanism. Measure
-operations, memory, natural useful-row and novel-rank rates, including all
-failed attempts. Only then fit a degree-131 stage cost and add base
-construction, final matrix, target descent, and scalar replay charges. A
-challenge run is justified only if the **complete** fitted cost is credibly
-below \(2^{61}\) in a named operation unit.
+public-target four-summand decomposition from a new leaf-choice solver**.
+First recover the known-satisfiable n=53 target without pinning a leaf under
+the frozen exact base, charging every attempt and comparing the same public
+point with the matched pair table. Then use the exact Q1325 n=83 base to
+recover the frozen ordinary public target, or preserve a censored result
+with its complete work receipt. A bounded partial-leaf or hybrid root
+search is a concrete candidate; it must select leaves without oracle
+knowledge and verify all four signed subgroup points independently. Measure
+operation counts, memory, natural useful-row and novel-rank rates, including
+failed attempts. A pure pair-index method is already screened as too
+expensive at n=131, so another sampled pair table alone does not establish
+the required scaling. Fit n=131 stage cost only after uncensored paired
+measurements, then add base construction, final matrix, target descent, and
+scalar replay. A challenge run is justified only if the **complete** fitted
+cost is credibly below \(2^{61}\) in a named operation unit.
 
 ## Reproduction
 
@@ -539,8 +601,11 @@ From this repository worktree, first save checked runtime information:
 /Volumes/SSD990/cryptanalysis/sage -python -m unittest discover -s experiments/compact-s3-m4-20261003 -p test_chain_s3.py -v
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1324_inputs.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/enumerate_n83_weight5_full.py --self-test
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1325_inputs.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/screen_n83_four_point_support.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1324_base.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1325_full_base.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```

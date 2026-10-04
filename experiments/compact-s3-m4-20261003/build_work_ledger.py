@@ -700,6 +700,67 @@ def main():
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(path),
         })
+    q1325_base_path = HERE / "bases/n83_weight5_full_orbits.json"
+    q1325_base = json.loads(q1325_base_path.read_text())
+    q1325_key_path = HERE / "bases/n83_weight5_full_point_orbits.bin"
+    q1325_fb = q1325_base["factor_base"]
+    assert q1325_base["proposal_id"] == "Q1325"
+    assert q1325_base["candidate_id"] is None
+    assert q1325_fb["actual_usable_points_B_before_folding"] == 30977592
+    assert q1325_fb["signed_frobenius_columns"] == 186612
+    assert q1325_fb["enumerated_set_sha256"] == sha(q1325_key_path)
+    assert q1325_base["q1041_subset"]["subset_columns_verified"] == 24097
+    q1325_replay_path, q1325_replay = read("n83_q1325_full_base_replay.json")
+    assert q1325_replay["status"] == "PASS"
+    assert q1325_replay["q1302_weight4_subset_columns_verified"] == 11651
+    assert q1325_replay["q1041_subset_columns_verified"] == 24097
+    q1325_protocol_path = HERE / "q1325_protocol.json"
+    q1325_protocol = json.loads(q1325_protocol_path.read_text())
+    assert q1325_protocol["proposal_id"] == "Q1325"
+    assert q1325_protocol["candidate_id"] is None
+    assert q1325_protocol["factor_base"][
+        "actual_usable_points_B_before_folding"] == 30977592
+    q1325_stage = []
+    for mode in ("planted_locked", "ordinary"):
+        path, stage = read(f"n83_q1325_{mode}.json")
+        assert stage["proposal_id"] == "Q1325"
+        assert stage["candidate_id"] is None
+        assert stage["protocol_sha256"] == sha(q1325_protocol_path)
+        assert stage["factor_base_actual_B"] == 30977592
+        assert stage["factor_base_folded_columns"] == 186612
+        assert stage["factor_base_enumerated_set_sha256"] == q1325_fb[
+            "enumerated_set_sha256"]
+        assert stage["complete_solve_work_log2"] is None
+        assert stage["field_operations"] is None
+        q1325_stage.append({
+            "proposal_id": "Q1325", "candidate_id": None,
+            "workload_id": stage["workload_id"], "run_id": None,
+            "curve_id": stage["curve_id"], "mode": mode,
+            "factor_base_B": stage["factor_base_actual_B"],
+            "folded_columns": stage["factor_base_folded_columns"],
+            "factor_base_digest": stage[
+                "factor_base_enumerated_set_sha256"],
+            "oracle_assisted": stage["oracle_assisted"],
+            "status": stage["status"],
+            "formula": stage["formula"],
+            "target_pdp_wall_seconds": stage["target_pdp_wall_seconds"],
+            "oracle_control_wall_seconds": stage[
+                "oracle_control_wall_seconds"],
+            "solver_conflicts_reported": stage[
+                "solver_conflicts_reported"],
+            "peak_parent_rss_raw": stage["peak_parent_rss_raw"],
+            "peak_child_rss_raw": stage["peak_child_rss_raw"],
+            "peak_rss_units": stage["peak_rss_units"],
+            "observed_verified_relation_count": stage[
+                "observed_verified_relation_count"],
+            "natural_relation_yield_estimate": None,
+            "field_operations": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
+    q1325_b = q1325_fb["actual_usable_points_B_before_folding"]
+    q1325_r = q1325_base["curve"]["subgroup_order"]
+    q1325_mean = math.comb(q1325_b, 4) / q1325_r
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -808,6 +869,36 @@ def main():
                 "verified_projected_representatives"],
             "receipt_sha256": sha(q1324_replay_path),
         },
+        "q1325_exact_n83_weight5_base": {
+            "proposal_id": "Q1325", "candidate_id": None,
+            "curve_id": q1325_base["curve"]["curve_id"],
+            "isogeny": "none",
+            "normal_basis_weight_bound": 5,
+            "nominal_x_mask_count": q1325_fb["nominal_x_mask_count"],
+            "geometric_point_count_before_projection": q1325_fb[
+                "geometric_point_count_before_projection"],
+            "actual_usable_points_B_before_folding": q1325_b,
+            "signed_frobenius_columns": q1325_fb[
+                "signed_frobenius_columns"],
+            "enumerated_set_sha256": q1325_fb["enumerated_set_sha256"],
+            "uniform_target_mean_distinct_four_subsets": q1325_mean,
+            "is_empirical_relation_yield": False,
+            "base_enumeration_wall_seconds": q1325_base[
+                "enumeration_wall_seconds"],
+            "base_peak_rss_raw": q1325_base["peak_rss_raw"],
+            "base_peak_rss_units": q1325_base["peak_rss_units"],
+            "point_keys_independently_replayed": q1325_replay[
+                "point_keys_replayed_on_curve_and_canonical"],
+            "q1041_subset_columns_verified": q1325_replay[
+                "q1041_subset_columns_verified"],
+            "q1302_weight4_subset_columns_verified": q1325_replay[
+                "q1302_weight4_subset_columns_verified"],
+            "base_receipt_sha256": sha(q1325_base_path),
+            "point_key_file_sha256": sha(q1325_key_path),
+            "independent_replay_receipt_sha256": sha(q1325_replay_path),
+        },
+        "q1325_full_weight5_stage_measurements": q1325_stage,
+        "q1325_protocol_sha256": sha(q1325_protocol_path),
         "n131_weight6_geometry_estimate": {
             "proposal_id": "Q1303",
             "candidate_id": None,
@@ -901,7 +992,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, full group-addition, and reverse-link encodings; the larger exact Q1041 n83 weight-five base also passed a locked witness control but its ordinary Q1324 run reached the 120-second cap without a model; reverse-link arithmetic recovers the last n53 leaf with three oracle-pinned leaves but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, full group-addition, and reverse-link encodings; Q1324's selected n83 weight-five base and Q1325's complete structured n83 weight-five base both passed locked witness controls but their ordinary runs reached 120-second caps without models; reverse-link arithmetic recovers the last n53 leaf with three oracle-pinned leaves but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,

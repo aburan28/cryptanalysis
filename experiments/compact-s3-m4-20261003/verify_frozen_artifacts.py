@@ -1052,6 +1052,136 @@ def verify():
                      "formula_bytes": size,
                      "observed_verified_relation_count": receipt[
                          "observed_verified_relation_count"]})
+    from q1325_inputs import frozen_protocol as q1325_frozen_protocol
+    from q1325_inputs import read_inputs as q1325_read_inputs
+    q1325_protocol_path = HERE / "q1325_protocol.json"
+    q1325_protocol = json.loads(q1325_protocol_path.read_text())
+    assert q1325_protocol == q1325_frozen_protocol()
+    (q1325_base_path, q1325_base, q1325_key_path, q1325_keys,
+     q1325_baseline_path, q1325_baseline) = q1325_read_inputs()
+    q1325_fb = q1325_base["factor_base"]
+    assert q1325_base["source_sha256"] == sha(
+        HERE / "enumerate_n83_weight5_full.py")
+    assert q1325_base["runtime_info_sha256"] == sha(
+        HERE / "q1325_sage_runtime_info.json")
+    assert q1325_base["field_source_sha256"] == sha(
+        HERE.parent.parent / "ecc2k130/codegen/field.py")
+    assert q1325_base["curve_source_sha256"] == sha(
+        HERE.parent.parent / "ecc2k130/codegen/curves.py")
+    assert q1325_fb["actual_usable_points_B_before_folding"] == 30977592
+    assert q1325_fb["signed_frobenius_columns"] == 186612
+    assert q1325_fb["enumerated_set_sha256"] == sha(q1325_key_path)
+    assert q1325_fb["duplicate_projection_orbits"] == 0
+    assert q1325_fb["identity_projection_orbits"] == 0
+    assert q1325_base["q1041_subset"]["subset_columns_verified"] == 24097
+    assert math.isclose(math.comb(30977592, 4) / q1325_base[
+        "curve"]["subgroup_order"], 15869.003181863845, rel_tol=1e-12)
+    rows.append({"variant": "n83_q1325_full_weight5_base",
+                 "receipt_sha256": sha(q1325_base_path),
+                 "point_key_file_sha256": sha(q1325_key_path)})
+    q1325_replay_path = HERE / "runs/n83_q1325_full_base_replay.json"
+    q1325_replay = json.loads(q1325_replay_path.read_text())
+    assert q1325_replay["status"] == "PASS"
+    assert q1325_replay["actual_usable_points_B_before_folding"] == 30977592
+    assert q1325_replay["signed_frobenius_columns"] == 186612
+    assert q1325_replay["point_keys_replayed_on_curve_and_canonical"] == 186612
+    assert q1325_replay["q1041_subset_columns_verified"] == 24097
+    assert q1325_replay["q1302_weight4_subset_columns_verified"] == 11651
+    assert q1325_replay["factor_base_enumerated_set_sha256"] == q1325_fb[
+        "enumerated_set_sha256"]
+    assert q1325_replay["base_receipt_sha256"] == sha(q1325_base_path)
+    assert q1325_replay["point_key_file_sha256"] == sha(q1325_key_path)
+    assert q1325_replay["runtime_info_sha256"] == sha(
+        HERE / "q1325_sage_runtime_info.json")
+    assert q1325_replay["source_sha256"] == sha(
+        HERE / "verify_q1325_full_base.py")
+    rows.append({"variant": "n83_q1325_full_base_replay",
+                 "receipt_sha256": sha(q1325_replay_path)})
+    from q1324_inputs import OrbitKey
+    q1325_orbit = OrbitKey(onb)
+    q1325_key_set = set(q1325_keys)
+    for mode in ("planted_locked", "ordinary"):
+        stem = f"n83_q1325_{mode}"
+        receipt_path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(receipt_path.read_text())
+        assert receipt["proposal_id"] == "Q1325"
+        assert receipt["candidate_id"] is None and receipt["run_id"] is None
+        assert receipt["isogeny"] == "none"
+        assert receipt["curve_id"] == q1325_baseline["curve_id"]
+        assert receipt["mode"] == mode
+        assert receipt["oracle_assisted"] == (mode == "planted_locked")
+        assert receipt["workload_id"] == (q1325_baseline["workload_id"]
+                                         if mode == "ordinary" else None)
+        assert receipt["factor_base_actual_B"] == 30977592
+        assert receipt["factor_base_folded_columns"] == 186612
+        assert receipt["factor_base_enumerated_set_sha256"] == q1325_fb[
+            "enumerated_set_sha256"]
+        assert receipt["base_receipt_sha256"] == sha(q1325_base_path)
+        assert receipt["base_point_key_file_sha256"] == sha(q1325_key_path)
+        assert receipt["ordinary_target_receipt_sha256"] == sha(
+            q1325_baseline_path)
+        assert receipt["protocol_sha256"] == sha(q1325_protocol_path)
+        assert receipt["runtime_info_sha256"] == sha(
+            HERE / "q1325_sage_runtime_info.json")
+        assert receipt["runner_source_sha256"] == sha(
+            HERE / "run_q1325_full_weight5_probe.py")
+        assert receipt["projected_source_sha256"] == sha(
+            HERE / "chain_s3_projected_sparse.py")
+        assert receipt["solver_binary_sha256"] == sha(
+            Path(receipt["solver_command"][0]))
+        assert receipt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stdout.txt")
+        assert receipt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stderr.txt")
+        digest = hashlib.sha256()
+        size = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        assert digest.hexdigest() == receipt["xcnf_sha256"]
+        assert size == receipt["xcnf_bytes"]
+        relation = receipt["verified_relation"]
+        assert receipt["observed_verified_relation_count"] == int(
+            relation is not None)
+        assert receipt["field_operations"] is None
+        assert receipt["complete_solve_work_log2"] is None
+        if relation is not None:
+            target = tuple(map(int, receipt["public_target"]))
+            points = [tuple(map(int, point)) for point in relation[
+                "leaf_points"]]
+            assert len(points) == 4
+            total = None
+            for point, sign in zip(points, relation["signs"]):
+                assert curve.onCurve(point) and curve.mul(point, order) is None
+                total = curve.add(total, point if sign == 1 else
+                                  curve.neg(point))
+                assert q1325_orbit.canonical(point)[0] in q1325_key_set
+            assert total == target
+            for raw, expected in zip(receipt["raw_leaf_x_coordinates"],
+                                     receipt["projected_leaf_x_coordinates"]):
+                assert raw and raw.bit_count() <= 5
+                raw_point = curve.pointFromX(onb.fromCoords(raw))
+                assert raw_point is not None
+                projected = curve.mul(raw_point, 4)
+                assert projected is not None
+                assert onb.toCoords(projected[0]) == expected
+        if mode == "planted_locked":
+            assert receipt["status"] == "sat" and relation is not None
+            assert receipt["target_pdp_wall_seconds"] is None
+            assert receipt["oracle_control_wall_seconds"] > 0
+        else:
+            assert receipt["status"] == "external_timeout"
+            assert receipt["target_pdp_wall_seconds"] > 0
+            assert receipt["oracle_control_wall_seconds"] is None
+            assert relation is None
+            assert receipt["public_target"] == list(map(
+                int, q1325_baseline["public_subgroup_target"]))
+        rows.append({"variant": stem, "receipt_sha256": sha(receipt_path),
+                     "formula_sha256": digest.hexdigest(),
+                     "formula_bytes": size,
+                     "observed_verified_relation_count": receipt[
+                         "observed_verified_relation_count"]})
     return rows
 
 
