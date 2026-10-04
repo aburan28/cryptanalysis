@@ -1059,11 +1059,65 @@ that removing the projection circuits alone did not clear the N83 search
 bottleneck. No natural yield, cost per useful row, or complete solve
 exponent can be estimated from these censored runs.
 
+### Q1405 compact five-summand planning screen
+
+The [source-bound Q1405 screen](runs/n83_n131_q1405_m5_chain_screen.json)
+tests whether **one more short S3 link** is a better next solver target. A
+five-leaf chain uses four S3 links and three free intermediate x coordinates;
+it need not expand or materialize S6. Q1405 uses the exact Q1302 N83
+weight-at-most-four base, not Q1325's weight-five base. Thus the N83 m4/m5
+comparison changes both arity and factor-base policy and compares two full
+PDP designs rather than SAT speed alone. Both use curve
+`EC1N83Ckb1h876c2921cb64`, ordinary workload `bab50a1e5f66`, and
+`isogeny: "none"`. Q1405 is a `PDP5sat` **proposal**, with
+`candidate_id: null` and no measured solver run.
+
+| Exact N83 base and method | B before folding | Folded K | Mean distinct subsets per uniform target |
+| --- | ---: | ---: | ---: |
+| Q1302 W≤4, m=5 | 1,934,066 | 11,651 | 93,270 |
+| Q1325 W≤5, m=4 | 30,977,592 | 186,612 | 15,869 |
+
+| Conditional N131 design | Sampled B | Estimated folded K | Mean distinct subsets per uniform target | Optimistic queries for K novel rows | Zero-other-cost per-query ceiling under 2^61 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Q1405 W≤5, m=5 | 308.7 million | 1.178 million | 34.31 | 2^20.17 | 2^40.83 |
+| Q1303 W≤6, m=4 | 6.584 billion | 25.13 million | 0.115 | 2^27.79 | 2^33.21 |
+
+For N131, the W≤5 row reuses **only strata one through five** of Q1303's
+weight-stratified rationality sample, whose bounded controls passed an
+independent checked-Sage replay. Its conditional
+normal-approximation 95% B interval is 306.1–311.3 million. The exact W≤5
+point set, its digest, and its folded column count have **not** been
+enumerated. The subset mean is a uniform-target average conditional on B;
+the queries and ceiling additionally assume a Poisson hit law, one novel
+rank row per hit, and zero base construction, matrix, descent, replay,
+conversion, and failed-attempt overhead. They are planning screens, not a
+measured relation yield or a complete work exponent. Q1303's conditional
+numbers use the same assumptions for comparison.
+
+The compact Q1405 formula shape on the **actual N83 ordinary raw target
+preimages** has 86,386 variables, 252,012 CNF clauses, 1,660 XOR rows, and
+82,668 shared AND gates. A formula-shape construction at N131 W≤5 using
+four distinct placeholder x values has 212,460 variables, 625,451 CNF
+clauses, 2,620 XOR rows, and 205,932 AND gates. The N131 placeholders are
+not curve preimages, no SAT solve was attempted, and formula construction
+does not establish solve cost. Reproduce the screen with
+`python3 experiments/compact-s3-m4-20261003/screen_q1405_m5_chain.py --check`.
+
 ## Next goal
 
-The next gate is an **ordinary N83 four-point relation on the exact Q1325
-base from a search that avoids both the full \(K^2n\) index and Q1331's
-fixed two-million-state support limit**. Q1329 has now
+The next experiment is a frozen **five-summand compact-S3 PDP stage** on the
+exact N53 Q1301 W≤3 and N83 Q1302 W≤4 bases. It should use the same ordinary
+public targets as the four-summand stages, attempt an unpinned planted
+control and ordinary target, independently replay every accepted relation,
+and charge all failed attempts. The first decisive gate is one unpinned
+ordinary N83 relation with recorded cost and memory; after that, a panel of
+fresh ordinary targets must measure useful-row yield and novel rank per query.
+The m=4 exact-Q1325 gate remains open and should not be silently counted as
+solved by the different Q1405 base/arity combination.
+
+For the existing m=4 path, an ordinary N83 four-point relation on the exact
+Q1325 base still requires a search that avoids both the full \(K^2n\) index
+and Q1331's fixed two-million-state support limit. Q1329 has now
 validated the native S3 search on an unpinned, known-satisfiable N83 target;
 Q1401 has independently validated the quotient-pair search on the exact
 Q1325 base with a planted public target. Q1403's ordered implicit-base
@@ -1080,8 +1134,8 @@ The design needs measurable useful-row yield and novel rank per query,
 including failed attempts. Merely increasing the current sampled index cap
 cannot justify extrapolation to its 2.9-trillion-state N83 full index.
 
-After that, freeze an exact or certified N131 base and calibrate inversion,
-multiplication, conversion, hashing, and point costs in a common operation
+If the m=5 stage succeeds, freeze an exact or certified N131 W≤5 base and
+calibrate inversion, multiplication, conversion, hashing, and point costs in a common operation
 unit. Add base construction, relation collection, final matrix rank and
 solve, target descent, and scalar replay to a complete \(2^x\) ledger.
 Keep \(x\) unknown until every required term is measured or bounded. A
