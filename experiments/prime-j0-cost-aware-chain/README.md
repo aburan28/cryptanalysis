@@ -105,3 +105,19 @@ and full scalar multiplication measurement. This panel supplies no wall-time
 ratio: it omits the cost of 24 extra recodings and uses modeled field-operation
 weights. The existing C τ path is still outside `main`, so production
 integration must be based on its eventual reviewed source snapshot.
+
+## Standalone native selector
+
+[native.c](native.c) implements the same 25-coset search and schedule-cost
+decision with signed 128-bit lattice arithmetic. It has no curve arithmetic
+or timing path. [native_check.py](native_check.py) compiles it with C11,
+`-O2 -Wall -Wextra -Werror`, compares its exact representatives and each
+operation count against `run.py`, and writes [native-check.json](native-check.json)
+with compiler, architecture, source hashes, and every check row. The native
+check passed 1,764 paired scalars: all scalars on the two toy subgroup orders,
+the six panel order/eigenvalue arms, and both eigenvalues of a near-`2^64`
+order. This establishes implementation agreement and 64-bit input handling
+for those controls; it is not a full elliptic-curve or timing measurement.
+The search has scalar-dependent branches and work. It is intended for public
+scalars in research and rho setup; a private-scalar API would require a
+separate constant-time design and review.
