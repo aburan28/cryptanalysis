@@ -63,7 +63,8 @@
         "factor_base_link_status",
         "endomorphism",
         "isogeny_routes",
-        "evidence_ref"
+        "evidence_ref",
+        "representation_links"
       ],
       "properties": {
         "label": {
@@ -181,9 +182,79 @@
         },
         "legacy_evidence": {
           "type": "object"
+        },
+        "representation_links": {
+          "type": "object",
+          "required": [
+            "same_field_isomorphisms",
+            "twists",
+            "base_changes"
+          ],
+          "properties": {
+            "same_field_isomorphisms": {
+              "$ref": "#/$defs/linkInventory"
+            },
+            "twists": {
+              "$ref": "#/$defs/linkInventory"
+            },
+            "base_changes": {
+              "$ref": "#/$defs/linkInventory"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": true
+    },
+    "linkInventory": {
+      "type": "object",
+      "required": [
+        "status",
+        "scope",
+        "links"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "not_enumerated",
+            "partial",
+            "complete_for_declared_scope"
+          ]
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "complete_for_declared_scope"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

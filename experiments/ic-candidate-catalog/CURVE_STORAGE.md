@@ -12,6 +12,7 @@ uses the mirror as a crosswalk to its ICV1 registry.
 | Object | Authoritative path | Identity and rule |
 | --- | --- | --- |
 | Exact curve representation | `curves.yaml` | `EC1...` and full `curve_uid` hash only `field` and `curve`. A change of basis, model, subgroup, or generator gets a new identity. |
+| Typed representation links | `curve-links/` | Same-field isomorphisms, twists, and base changes are separate link records with map and subgroup proofs; see [typed link rules](curve-links/README.md). Isogeny edges stay in the graph. |
 | Curve display name | `crypto/docs/curves/registry.json` | ICV1 slug/full string identifies the registered model. It is a model match, not an EC1 representation match. Keep the exact ICV1 snapshot and status in `curves.yaml`. |
 | Isogeny graph | `isogeny_routes.json` | Each exact curve is a node; each directed edge carries degree, direction, source/target, map and certificates. An `IW1...` route has ordered edge IDs. The current degree-263 map lives in `../koblitz-polynomial-w-pair-20260925/ecc2k130_degree263_route_manifest.json`. |
 | Factor base | `../fb-archive/index.csv`, `../fb-archive/bases/<curve-id>/` | The exact point set or lossless orbit encoding is compressed and content addressed. Large shards live in the archive's object store with hashes in manifests. Never inline a large base in YAML or infer `fb<B>` from a dimension. |
@@ -27,8 +28,9 @@ Check the `EC1` suffix and full UID against sorted-key compact UTF-8 JSON of
 `{"field": ..., "curve": ...}`. Keep the mutable annotations outside those
 two hash fields: ICV1 crosswalk, endomorphism order conductor, Frobenius order
 conductor, prime-specific volcano levels, proof references, and ordered
-incoming/outgoing route IDs. Register a newly proved neighbor as its own curve,
-even if it has the same order or lies in the same isogeny class.
+incoming/outgoing route IDs. Register a newly proved neighbor or twist as its own curve,
+even if it shares a j-invariant or lies in the same isogeny class. Keep
+unsearched relationships as `not_enumerated` inventories with `scope: null`.
 
 For each tracked optional trait, use `{value: null, status: unknown|unmeasured|
 not_evaluated|unproved_in_this_registry|not_applicable}` until evidence
