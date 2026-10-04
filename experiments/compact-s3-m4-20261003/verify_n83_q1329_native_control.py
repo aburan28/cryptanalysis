@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independently replay the unpinned Q1329 N83 planted control."""
+"""Independently replay Q1329/Q1332 unpinned N83 planted controls."""
 
 from __future__ import annotations
 
@@ -36,13 +36,18 @@ def contains_sorted_key(packed, key):
         packed[21 * low:21 * (low + 1)], "little") == key
 
 
-def replay():
+def replay(variant="scalar"):
+    assert variant in ("scalar", "batch")
     started = time.perf_counter_ns()
     fixture_path = HERE / "runs/n83_q1329_planted_fixture.json"
     fixture = json.loads(fixture_path.read_text())
-    manifest_path = HERE / "native_inputs/n83_planted_control_manifest.json"
+    manifest_path = HERE / "native_inputs" / (
+        "n83_planted_control_manifest.json" if variant == "scalar"
+        else "n83_batch_planted_manifest.json")
     manifest = json.loads(manifest_path.read_text())
-    native_path = HERE / "runs/n83_q1329_planted_unpinned.json"
+    native_path = HERE / "runs" / (
+        "n83_q1329_planted_unpinned.json" if variant == "scalar"
+        else "n83_q1332_batch_planted_unpinned.json")
     native = json.loads(native_path.read_text())
     build_path = HERE / "native_build_receipt.json"
     build = json.loads(build_path.read_text())
@@ -62,10 +67,12 @@ def replay():
     assert fixture["ordinary_input_manifest_sha256"] == sha(ordinary_path)
     assert fixture["representatives_file_sha256"] == sha(reps_path)
     assert fixture["bridge_sha256"] == sha(bridge_path)
-    assert fixture["proposal_id"] == manifest["proposal_id"] == native[
-        "proposal_id"] == "Q1329"
-    assert fixture["parent_solver_proposal_id"] == manifest[
-        "parent_solver_proposal_id"] == "Q1328"
+    proposal = "Q1329" if variant == "scalar" else "Q1332"
+    assert fixture["proposal_id"] == "Q1329"
+    assert manifest["proposal_id"] == native["proposal_id"] == proposal
+    assert fixture["parent_solver_proposal_id"] == "Q1328"
+    assert manifest["parent_solver_proposal_id"] == (
+        "Q1328" if variant == "scalar" else "Q1331")
     assert fixture["parent_factor_base_proposal_id"] == manifest[
         "parent_factor_base_proposal_id"] == "Q1325"
     assert fixture["candidate_id"] is manifest["candidate_id"] is None
@@ -93,16 +100,34 @@ def replay():
     assert fixture["solver_receives_witness_or_index_positions"] is False
     assert fixture["is_natural_yield_measurement"] is False
     assert manifest["target_source_receipt_sha256"] == sha(fixture_path)
+    protocol_path = (fixture_path if variant == "scalar"
+                     else HERE / "q1332_batch_planted_control_protocol.json")
     assert manifest["stage_protocol_sha256"] == native[
-        "stage_protocol_sha256"] == sha(fixture_path)
-    assert manifest["source_sha256"] == fixture["source_sha256"]
+        "stage_protocol_sha256"] == sha(protocol_path)
+    if variant == "scalar":
+        assert manifest["source_sha256"] == fixture["source_sha256"]
+    else:
+        protocol = json.loads(protocol_path.read_text())
+        assert protocol["proposal_id"] == proposal
+        assert protocol["parent_solver_proposal_id"] == "Q1331"
+        assert protocol["planted_fixture_sha256"] == sha(fixture_path)
+        assert protocol["native_source_sha256"] == sha(
+            HERE / "native_s3_root.rs")
+        assert manifest["source_sha256"] == sha(
+            HERE / "freeze_batch_planted_control.py")
+        assert manifest["planted_fixture_sha256"] == sha(fixture_path)
+        assert manifest["parent_manifest_sha256"] == sha(
+            HERE / "native_inputs/n83_planted_control_manifest.json")
     assert native["input_representatives_sha256"] == sha(reps_path)
+    build_source = HERE / "native_s3_root.rs"
     assert native["native_source_sha256"] == build[
-        "source_sha256"] == sha(HERE / "native_s3_root.rs")
+        "source_sha256"] == sha(build_source)
     assert native["cargo_manifest_sha256"] == build[
         "cargo_manifest_sha256"]
     assert native["sampling"]["orientations_per_state"] == manifest[
         "orientations_per_state"] == 83
+    assert native["s3_batch_size"] == (
+        1 if variant == "scalar" else 4096)
     assert native["index_pair_states_examined"] == 2_000_000
     assert native["target_states_scanned"] == 1
     assert 1 <= native["target_state_orientations_tested"] <= 83
@@ -110,6 +135,14 @@ def replay():
     assert native["relation"]["native_group_sum_verified"] is True
     assert native["verified_single_target_dlp"] is False
     assert native["complete_work_log2"] is None
+    if variant == "batch":
+        unbatched_path = HERE / "runs/n83_q1329_planted_unpinned.json"
+        unbatched = json.loads(unbatched_path.read_text())
+        assert native["relation"] == unbatched["relation"]
+        assert native["target_states_scanned"] == unbatched[
+            "target_states_scanned"]
+        assert native["target_state_orientations_tested"] == unbatched[
+            "target_state_orientations_tested"]
 
     canonical = json.dumps(fixture["workload_record"], sort_keys=True,
                            separators=(",", ":"), ensure_ascii=False).encode()
@@ -172,10 +205,10 @@ def replay():
         "poly_points_xy_decimal"]), poly_curve(0)) == poly_point(
             manifest["target_poly_xy"])
 
-    return {
+    result = {
         "kind": "independent_sage_n83_native_four_leaf_planted_control_replay",
         "status": "PASS",
-        "proposal_id": "Q1329",
+        "proposal_id": proposal,
         "candidate_id": None,
         "run_id": None,
         "curve_id": fixture["curve_id"],
@@ -199,14 +232,28 @@ def replay():
         "source_sha256": sha(Path(__file__)),
         "orbit_source_sha256": sha(PAIR / "orbit_key.py"),
     }
-
+    if variant == "batch":
+        result.update({
+            "s3_batch_size": 4096,
+            "target_states_prepared": native["target_states_prepared"],
+            "target_state_orientations_prepared": native[
+                "target_state_orientations_prepared"],
+            "batch_protocol_sha256": sha(protocol_path),
+            "matched_unbatched_relation_receipt_sha256": sha(unbatched_path),
+        })
+    return result
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--variant", choices=("scalar", "batch"),
+                        default="scalar")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    path = HERE / "runs/n83_q1329_planted_independent_replay.json"
-    report = replay()
+    path = HERE / "runs" / (
+        "n83_q1329_planted_independent_replay.json"
+        if args.variant == "scalar" else
+        "n83_q1332_batch_planted_independent_replay.json")
+    report = replay(args.variant)
     if args.check:
         expected = json.loads(path.read_text())
         report.pop("verification_wall_ns")
@@ -215,7 +262,7 @@ def main():
     else:
         assert not path.exists()
         path.write_text(json.dumps(report, indent=2) + "\n")
-    print(json.dumps({"proposal_id": "Q1329", "status": "PASS",
+    print(json.dumps({"proposal_id": report["proposal_id"], "status": "PASS",
                       "verified_relation": report[
                           "native_relation_independently_verified"]}))
 

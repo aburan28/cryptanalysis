@@ -1479,9 +1479,21 @@ def verify():
         HERE / "native_s3_root.rs")
     assert native_build["build_script_sha256"] == sha(
         HERE / "build_native_s3_root.py")
-    rows.append({"variant": "native_s3_root_build",
+    rows.append({"variant": "native_s3_root_window_build",
                  "receipt_sha256": sha(native_build_path),
                  "source_sha256": native_build["source_sha256"]})
+    legacy_build_path = HERE / "native_legacy_scalar_build_receipt.json"
+    legacy_build = json.loads(legacy_build_path.read_text())
+    assert legacy_build["status"] == "PASS"
+    assert legacy_build["source_sha256"] == sha(
+        HERE / "native_s3_root_scalar.rs")
+    assert legacy_build["binary_sha256"] == (
+        "6ea85faa454eabe0a2a811a4045fe74dedb85f53ccdd51d62038a5ee159403c5")
+    rows.append({"variant": "native_s3_root_historical_scalar_build",
+                 "receipt_sha256": sha(legacy_build_path),
+                 "source_sha256": legacy_build["source_sha256"]})
+    native_batch_build_path = native_build_path
+    native_batch_build = native_build
     for (n, proposal, parent, expected_curve, expected_workload, b, k, cap,
          expected_status) in (
         (53, "Q1327", "Q1301", "EC1N53Ckb1hf77aab617904",
@@ -1699,6 +1711,155 @@ def verify():
         ("n83_q1329_planted_input", control_manifest_path),
         ("n83_q1329_planted_stage", control_stage_path),
         ("n83_q1329_planted_independent_replay", control_replay_path),
+    ):
+        rows.append({"variant": variant, "receipt_sha256": sha(path),
+                     "is_natural_yield_measurement": False})
+    batch_protocol_path = HERE / "q1330_q1331_batch_root_protocol.json"
+    batch_protocol = json.loads(batch_protocol_path.read_text())
+    assert batch_protocol["kind"] == (
+        "bounded_native_four_summand_s3_batch_inversion_stage_protocol")
+    assert batch_protocol["candidate_id"] is None
+    assert batch_protocol["isogeny"] == "none"
+    assert batch_protocol["parent_stage_protocol_sha256"] == sha(
+        native_protocol_path)
+    assert batch_protocol["native_source_sha256"] == native_batch_build[
+        "source_sha256"]
+    assert batch_protocol["point_decomposition"]["stage_code"] == "PDP4root"
+    assert len(batch_protocol["profiles"]) == 2
+    rows.append({"variant": "q1330_q1331_batch_root_protocol",
+                 "receipt_sha256": sha(batch_protocol_path)})
+    for n, proposal, parent, expected_status, stage_name in (
+        (53, "Q1330", "Q1327", "native_relation_found",
+         "n53_batch_root_full.json"),
+        (83, "Q1331", "Q1328", "state_cap_no_relation",
+         "n83_batch_root_capped_2m.json"),
+    ):
+        profile = next(row for row in batch_protocol["profiles"]
+                       if row["field_degree"] == n)
+        manifest_path = HERE / "native_inputs" / f"n{n}_batch_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        scalar_manifest_path = HERE / "native_inputs" / f"n{n}_manifest.json"
+        scalar_path = HERE / "runs" / (
+            "n53_native_root_full.json" if n == 53
+            else "n83_native_root_capped_2m.json")
+        scalar = json.loads(scalar_path.read_text())
+        stage_path = HERE / "runs" / stage_name
+        stage = json.loads(stage_path.read_text())
+        replay_path = HERE / "runs" / f"n{n}_batch_root_independent_replay.json"
+        replay = json.loads(replay_path.read_text())
+        assert profile["proposal_id"] == manifest["proposal_id"] == (
+            stage["proposal_id"])
+        assert profile["proposal_id"] == replay["proposal_id"] == proposal
+        assert profile["parent_solver_proposal_id"] == manifest[
+            "parent_solver_proposal_id"] == replay[
+                "parent_solver_proposal_id"] == parent
+        assert manifest["ordinary_input_manifest_sha256"] == profile[
+            "ordinary_input_manifest_sha256"] == sha(scalar_manifest_path)
+        assert manifest["stage_protocol_sha256"] == stage[
+            "stage_protocol_sha256"] == sha(batch_protocol_path)
+        assert manifest["source_sha256"] == sha(
+            HERE / "freeze_batch_root_protocol.py")
+        assert manifest["runtime_info_sha256"] == sha(native_runtime_path)
+        assert manifest["s3_batch_size"] == stage[
+            "s3_batch_size"] == profile["s3_batch_size"] == 4096
+        assert manifest["candidate_id"] is stage["candidate_id"] is None
+        assert manifest["run_id"] is stage["run_id"] is None
+        assert manifest["isogeny"] == stage["isogeny"] == "none"
+        assert stage["native_source_sha256"] == native_batch_build[
+            "source_sha256"]
+        assert stage["cargo_manifest_sha256"] == native_batch_build[
+            "cargo_manifest_sha256"]
+        assert stage["status"] == replay[
+            "native_stage_status"] == expected_status
+        assert stage["verified_single_target_dlp"] is False
+        assert stage["complete_work_log2"] is None
+        assert stage["peak_rss_bytes"] <= 1024 ** 3
+        assert stage["target_states_prepared"] >= stage[
+            "target_states_scanned"]
+        assert stage["target_state_orientations_prepared"] >= stage[
+            "target_state_orientations_tested"]
+        assert stage["operation_counts"]["index_build"][
+            "s3_root_calls"] == stage["index_pair_states_examined"]
+        for key in ("curve_id", "workload_id", "actual_usable_points_B",
+                    "folded_columns_K", "index_pair_states_examined",
+                    "index_distinct_root_keys", "target_states_scanned",
+                    "target_table_hits", "relation"):
+            assert stage[key] == scalar[key]
+        assert replay["status"] == "PASS"
+        assert replay["native_receipt_sha256"] == sha(stage_path)
+        assert replay["matched_scalar_stage_sha256"] == sha(scalar_path)
+        assert replay["native_build_receipt_sha256"] == sha(
+            native_batch_build_path)
+        assert replay["source_sha256"] == sha(HERE / "verify_native_s3_root.py")
+        assert replay["ordinary_relation_independently_verified"] is (n == 53)
+        if n == 53:
+            assert replay["rank_of_native_and_matched_pair_rows"] == 2
+        else:
+            assert replay["censored_ordinary_query"] is True
+            assert replay["proves_target_unsupported"] is False
+        for variant, path in (
+            (f"n{n}_batch_root_input", manifest_path),
+            (f"n{n}_batch_root_stage", stage_path),
+            (f"n{n}_batch_root_independent_replay", replay_path),
+        ):
+            rows.append({"variant": variant, "receipt_sha256": sha(path),
+                         "proposal_id": proposal})
+    planted_protocol_path = HERE / "q1332_batch_planted_control_protocol.json"
+    planted_protocol = json.loads(planted_protocol_path.read_text())
+    planted_manifest_path = HERE / "native_inputs/n83_batch_planted_manifest.json"
+    planted_manifest = json.loads(planted_manifest_path.read_text())
+    planted_stage_path = HERE / "runs/n83_q1332_batch_planted_unpinned.json"
+    planted_stage = json.loads(planted_stage_path.read_text())
+    planted_replay_path = HERE / "runs/n83_q1332_batch_planted_independent_replay.json"
+    planted_replay = json.loads(planted_replay_path.read_text())
+    assert planted_protocol["proposal_id"] == planted_manifest[
+        "proposal_id"] == planted_stage["proposal_id"] == planted_replay[
+            "proposal_id"] == "Q1332"
+    assert planted_protocol["parent_solver_proposal_id"] == planted_manifest[
+        "parent_solver_proposal_id"] == "Q1331"
+    assert planted_protocol["parent_planted_control_proposal_id"] == (
+        planted_manifest["parent_planted_control_proposal_id"])
+    assert planted_protocol["parent_planted_control_proposal_id"] == "Q1329"
+    assert planted_protocol["planted_fixture_sha256"] == planted_manifest[
+        "planted_fixture_sha256"] == planted_replay["fixture_sha256"] == sha(
+            control_fixture_path)
+    assert planted_protocol["parent_manifest_sha256"] == planted_manifest[
+        "parent_manifest_sha256"] == sha(control_manifest_path)
+    assert planted_protocol["batch_protocol_sha256"] == sha(batch_protocol_path)
+    assert planted_protocol["native_source_sha256"] == native_batch_build[
+        "source_sha256"]
+    assert planted_manifest["stage_protocol_sha256"] == planted_stage[
+        "stage_protocol_sha256"] == planted_replay[
+            "batch_protocol_sha256"] == sha(planted_protocol_path)
+    assert planted_manifest["source_sha256"] == sha(
+        HERE / "freeze_batch_planted_control.py")
+    assert planted_stage["native_source_sha256"] == native_batch_build[
+        "source_sha256"]
+    assert planted_stage["s3_batch_size"] == planted_protocol[
+        "s3_batch_size"] == 4096
+    assert planted_stage["sampling"]["orientations_per_state"] == 83
+    assert planted_stage["status"] == "native_relation_found"
+    assert planted_stage["relation"] == control_stage["relation"]
+    assert planted_stage["target_states_scanned"] == 1
+    assert planted_stage["target_state_orientations_tested"] == 34
+    assert planted_stage["target_states_prepared"] == 4096
+    assert planted_stage["peak_rss_bytes"] <= 1024 ** 3
+    assert planted_replay["status"] == "PASS"
+    assert planted_replay["is_natural_yield_measurement"] is False
+    assert planted_replay["native_relation_independently_verified"] is True
+    assert planted_replay["four_recovered_points_in_exact_q1325_factor_base"] is True
+    assert planted_replay["native_receipt_sha256"] == sha(planted_stage_path)
+    assert planted_replay["matched_unbatched_relation_receipt_sha256"] == sha(
+        control_stage_path)
+    assert planted_replay["source_sha256"] == sha(
+        HERE / "verify_n83_q1329_native_control.py")
+    assert planted_stage["verified_single_target_dlp"] is False
+    assert planted_stage["complete_work_log2"] is None
+    for variant, path in (
+        ("q1332_batch_planted_protocol", planted_protocol_path),
+        ("n83_q1332_batch_planted_input", planted_manifest_path),
+        ("n83_q1332_batch_planted_stage", planted_stage_path),
+        ("n83_q1332_batch_planted_independent_replay", planted_replay_path),
     ):
         rows.append({"variant": variant, "receipt_sha256": sha(path),
                      "is_natural_yield_measurement": False})

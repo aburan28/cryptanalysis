@@ -1,12 +1,8 @@
 //! Bounded four-leaf S3 root-index search on the frozen Q1301/Q1325 inputs.
 //!
 //! This is a point-decomposition stage, not a complete index-calculus solve.
-//! Index construction is target independent. Ordinary queries sample one
-//! global Frobenius orientation per indexed pair state. The manifest can
-//! request full orientations and Montgomery-batched S3 roots for controls
-//! and matched implementation variants. Every arithmetic call is charged.
-
-#![recursion_limit = "256"]
+//! Index construction is target independent. The query samples one global
+//! Frobenius orientation per indexed pair state and charges every attempt.
 
 use crypto_lib::binary_ecc::IrreduciblePoly;
 use crypto_lib::cryptanalysis::semaev_decomp::{Gf2, Gf2_128};
@@ -212,13 +208,6 @@ struct S3 {
     trace_mask: u128,
 }
 
-enum PreparedS3 {
-    NoRoot,
-    EqualInputs { ps: u128 },
-    ZeroProduct,
-    Regular { a: u128, p: u128, ps: u128 },
-}
-
 impl S3 {
     fn new<F: Field>(ctx: &mut Counted<F>, n: u32) -> Self {
         assert!(n % 2 == 1);
@@ -279,92 +268,6 @@ impl S3 {
         if (d & self.trace_mask).count_ones() & 1 == 1 { return None; }
         let first = ctx.mul(q, self.half_trace.apply(d));
         Some([first, first ^ q])
-    }
-
-    /// Evaluate independent S3 quadratics with one inversion per batch.
-    /// Every field multiplication inside Montgomery's trick is charged.
-    fn roots_batch<F: Field>(&self, ctx: &mut Counted<F>,
-                             inputs: &[(u128, u128)]) -> Vec<Option<[u128; 2]>> {
-        let mut prepared = Vec::with_capacity(inputs.len());
-        let mut denoms = Vec::with_capacity(inputs.len());
-        for &(left, right) in inputs {
-            ctx.ops.s3_calls += 1;
-            let a = self.square.apply(left ^ right);
-            let p = ctx.mul(left, right);
-            let ps = self.square.apply(p);
-            if a == 0 {
-                if left == 0 {
-                    prepared.push(PreparedS3::NoRoot);
-                    denoms.push(0);
-                } else {
-                    prepared.push(PreparedS3::EqualInputs { ps });
-                    denoms.push(p);
-                }
-            } else if ps == 0 {
-                prepared.push(PreparedS3::ZeroProduct);
-                denoms.push(a);
-            } else {
-                prepared.push(PreparedS3::Regular { a, p, ps });
-                denoms.push(ctx.mul(a, ps));
-            }
-        }
-        let mut prefix = Vec::with_capacity(denoms.len());
-        let mut acc = 1u128;
-        let mut first_nonzero = None;
-        for (index, &denom) in denoms.iter().enumerate() {
-            prefix.push(acc);
-            if denom != 0 {
-                if first_nonzero.is_none() {
-                    first_nonzero = Some(index);
-                    acc = denom;
-                } else {
-                    acc = ctx.mul(acc, denom);
-                }
-            }
-        }
-        let mut inverses = vec![0u128; denoms.len()];
-        if let Some(first) = first_nonzero {
-            let mut inverse_acc = ctx.inv(acc);
-            for index in (first..denoms.len()).rev() {
-                let denom = denoms[index];
-                if denom == 0 { continue; }
-                if index == first {
-                    inverses[index] = inverse_acc;
-                } else {
-                    inverses[index] = ctx.mul(inverse_acc, prefix[index]);
-                    inverse_acc = ctx.mul(inverse_acc, denom);
-                }
-            }
-        }
-        prepared.into_iter().zip(inverses).map(|(state, inverse)| {
-            match state {
-                PreparedS3::NoRoot => None,
-                PreparedS3::EqualInputs { ps } => {
-                    let root = ctx.mul(ps ^ 1, inverse);
-                    Some([root, root])
-                }
-                PreparedS3::ZeroProduct => {
-                    let mut root = ctx.mul(1, inverse);
-                    for _ in 0..(ctx.field_degree() - 1) {
-                        root = ctx.sqr(root);
-                    }
-                    Some([root, root])
-                }
-                PreparedS3::Regular { a, p, ps } => {
-                    let ps_over_combined = ctx.mul(ps, inverse);
-                    let q = ctx.mul(p, ps_over_combined);
-                    let c = ps ^ 1;
-                    let ca = ctx.mul(c, a);
-                    let a_over_combined = ctx.mul(a, inverse);
-                    let d = ctx.mul(ca, a_over_combined);
-                    if (d & self.trace_mask).count_ones() & 1 == 1 {
-                        return None;
-                    }
-                    let first = ctx.mul(q, self.half_trace.apply(d));
-                    Some([first, first ^ q])
-                }
-            }
-        }).collect()
     }
 }
 
@@ -438,53 +341,6 @@ struct State {
     right: usize,
     relative: usize,
     roots_cycle: [u128; 2],
-}
-
-struct TargetQuery {
-    state_offset: usize,
-    orientation: usize,
-    left_x: u128,
-    right_x: u128,
-}
-
-fn insert_index_state<F: Field>(ctx: &mut Counted<F>, cycle: &Cycle,
-                                states: &mut Vec<State>, table: &mut RootTable,
-                                left: usize, right: usize, relative: usize,
-                                roots: Option<[u128; 2]>) {
-    if let Some(roots) = roots {
-        let roots_cycle = roots.map(|root| {
-            ctx.ops.basis_conversions += 1;
-            cycle.to_cycle.apply(root)
-        });
-        let index = states.len();
-        states.push(State { left, right, relative, roots_cycle });
-        for &root_cycle in &roots_cycle {
-            let (key, shift) = cycle.canonical(root_cycle, &mut ctx.ops);
-            table.insert_if_absent(key, ((index as u64) << 7) | shift as u64);
-        }
-    }
-}
-
-fn check_partner<F: Field>(ctx: &mut Counted<F>, cycle: &Cycle,
-                           table: &mut RootTable, states: &[State],
-                           shifted: &[u128], solver: &S3, partner: u128,
-                           left_x: u128, right_x: u128, target: Point,
-                           table_hits: &mut u64) -> Option<([Point; 4], [u128; 4])> {
-    let partner_cycle = cycle.to_cycle.apply(partner);
-    ctx.ops.basis_conversions += 1;
-    let (key, partner_shift) = cycle.canonical(partner_cycle, &mut ctx.ops);
-    let value = table.get(key)?;
-    *table_hits += 1;
-    let other_index = (value >> 7) as usize;
-    let stored_shift = (value & 127) as u32;
-    let other = &states[other_index];
-    let n = cycle.n;
-    let shift2 = ((stored_shift + n - partner_shift) % n) as usize;
-    let xs = [left_x, right_x,
-              shifted[other.left * n as usize + shift2],
-              shifted[other.right * n as usize
-                  + (shift2 + other.relative) % n as usize]];
-    lift_relation(ctx, solver, xs, target).map(|points| (points, xs))
 }
 
 /// Open-addressing root table. Separate key/value arrays avoid HashMap's
@@ -625,8 +481,6 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
     let orientations_per_state = manifest["orientations_per_state"]
         .as_u64().unwrap_or(1) as u32;
     assert!((1..=n).contains(&orientations_per_state));
-    let batch_size = manifest["s3_batch_size"].as_u64().unwrap_or(1) as usize;
-    assert!((1..=65_536).contains(&batch_size));
     let mut ctx = Counted { field, ops: Ops::default() };
     let start = Instant::now();
     let cycle = Cycle::from_bridge(bridge, n);
@@ -662,47 +516,28 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
     let mut table = RootTable::new(state_cap as usize);
     let index_start = Instant::now();
     let mut examined = 0u64;
-    let mut index_root_batches = 0u64;
     let mut memory_exceeded = false;
-    if batch_size == 1 {
-        for position in 0..state_cap {
-            let id = state_id(position, total, sampled, origin, step);
-            let (left, right, relative) = decode_state(id, k, n as usize);
-            let left_x = shifted[left * n as usize];
-            let right_x = shifted[right * n as usize + relative];
-            examined += 1;
-            index_root_batches += 1;
-            let roots = solver.roots(&mut ctx, left_x, right_x);
-            insert_index_state(&mut ctx, &cycle, &mut states, &mut table,
-                               left, right, relative, roots);
-            if position % 10_000 == 0 && peak_rss_bytes() > memory_cap_bytes {
-                memory_exceeded = true;
-                break;
+    for position in 0..state_cap {
+        let id = state_id(position, total, sampled, origin, step);
+        let (left, right, relative) = decode_state(id, k, n as usize);
+        let left_x = shifted[left * n as usize];
+        let right_x = shifted[right * n as usize + relative];
+        examined += 1;
+        if let Some(roots) = solver.roots(&mut ctx, left_x, right_x) {
+            let roots_cycle = roots.map(|root| {
+                ctx.ops.basis_conversions += 1;
+                cycle.to_cycle.apply(root)
+            });
+            let index = states.len();
+            states.push(State { left, right, relative, roots_cycle });
+            for &root_cycle in &roots_cycle {
+                let (key, shift) = cycle.canonical(root_cycle, &mut ctx.ops);
+                table.insert_if_absent(key, ((index as u64) << 7) | shift as u64);
             }
         }
-    } else {
-        for start in (0..state_cap).step_by(batch_size) {
-            let end = (start + batch_size as u64).min(state_cap);
-            let mut meta = Vec::with_capacity((end - start) as usize);
-            let mut inputs = Vec::with_capacity((end - start) as usize);
-            for position in start..end {
-                let id = state_id(position, total, sampled, origin, step);
-                let (left, right, relative) = decode_state(id, k, n as usize);
-                meta.push((left, right, relative));
-                inputs.push((shifted[left * n as usize],
-                             shifted[right * n as usize + relative]));
-            }
-            let roots = solver.roots_batch(&mut ctx, &inputs);
-            index_root_batches += 1;
-            for ((left, right, relative), roots) in meta.into_iter().zip(roots) {
-                examined += 1;
-                insert_index_state(&mut ctx, &cycle, &mut states, &mut table,
-                                   left, right, relative, roots);
-            }
-            if peak_rss_bytes() > memory_cap_bytes {
-                memory_exceeded = true;
-                break;
-            }
+        if position % 10_000 == 0 && peak_rss_bytes() > memory_cap_bytes {
+            memory_exceeded = true;
+            break;
         }
     }
     let index_ns = index_start.elapsed().as_nanos();
@@ -713,9 +548,6 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
     let online_start = Instant::now();
     let mut scanned = 0u64;
     let mut oriented_states = 0u64;
-    let mut prepared_states = 0u64;
-    let mut prepared_orientations = 0u64;
-    let mut target_root_batches = 0u64;
     let mut partner_roots = 0u64;
     let mut table_hits = 0u64;
     let mut relation: Option<[Point; 4]> = None;
@@ -723,123 +555,61 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
     if !memory_exceeded {
         let target_seed = (target_xy.0 as u64) ^ ((target_xy.1 >> 64) as u64)
             ^ (target_xy.1 as u64).rotate_left(29) ^ 0xd6e8_feb8_6659_fd93;
-        if batch_size == 1 {
-            for (offset, state) in states.iter().enumerate() {
-                scanned += 1;
-                let mut seed = target_seed
-                    ^ (offset as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
-                    ^ ((state.left as u64) << 32)
-                    ^ ((state.right as u64) << 16)
-                    ^ state.relative as u64;
-                let first_shift = (splitmix64(&mut seed) % n as u64) as usize;
-                for orientation in 0..orientations_per_state as usize {
-                    oriented_states += 1;
-                    let shift = (first_shift + orientation) % n as usize;
-                    let left_x = shifted[state.left * n as usize + shift];
-                    let right_x = shifted[state.right * n as usize
-                        + (shift + state.relative) % n as usize];
-                    for &root_cycle in &state.roots_cycle {
-                        let absolute = cycle.to_poly.apply(cycle.rotate(root_cycle, shift as u32));
-                        ctx.ops.basis_conversions += 1;
-                        if let Some(partners) = solver.roots(&mut ctx, absolute, target_xy.0) {
-                            for partner in partners {
-                                partner_roots += 1;
-                                if let Some((points, xs)) = check_partner(
-                                    &mut ctx, &cycle, &mut table, &states, &shifted,
-                                    &solver, partner, left_x, right_x, target,
-                                    &mut table_hits) {
+        for (offset, state) in states.iter().enumerate() {
+            scanned += 1;
+            let mut seed = target_seed
+                ^ (offset as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
+                ^ ((state.left as u64) << 32)
+                ^ ((state.right as u64) << 16)
+                ^ state.relative as u64;
+            let first_shift = (splitmix64(&mut seed) % n as u64) as usize;
+            for orientation in 0..orientations_per_state as usize {
+                oriented_states += 1;
+                let shift = (first_shift + orientation) % n as usize;
+                let left_x = shifted[state.left * n as usize + shift];
+                let right_x = shifted[state.right * n as usize
+                    + (shift + state.relative) % n as usize];
+                for &root_cycle in &state.roots_cycle {
+                    let absolute = cycle.to_poly.apply(cycle.rotate(root_cycle, shift as u32));
+                    ctx.ops.basis_conversions += 1;
+                    if let Some(partners) = solver.roots(&mut ctx, absolute, target_xy.0) {
+                        for partner in partners {
+                            partner_roots += 1;
+                            let partner_cycle = cycle.to_cycle.apply(partner);
+                            ctx.ops.basis_conversions += 1;
+                            let (key, partner_shift) =
+                                cycle.canonical(partner_cycle, &mut ctx.ops);
+                            if let Some(value) = table.get(key) {
+                                table_hits += 1;
+                                let other_index = (value >> 7) as usize;
+                                let stored_shift = (value & 127) as u32;
+                                let other = &states[other_index];
+                                let shift2 = ((stored_shift + n - partner_shift) % n) as usize;
+                                let xs = [left_x, right_x,
+                                    shifted[other.left * n as usize + shift2],
+                                    shifted[other.right * n as usize
+                                        + (shift2 + other.relative) % n as usize]];
+                                if let Some(points) = lift_relation(&mut ctx, &solver, xs, target) {
                                     relation = Some(points);
                                     relation_xs = xs;
                                     break;
                                 }
                             }
                         }
-                        if relation.is_some() { break; }
                     }
                     if relation.is_some() { break; }
                 }
                 if relation.is_some() { break; }
-                if offset % 10_000 == 0 && peak_rss_bytes() > memory_cap_bytes {
-                    memory_exceeded = true;
-                    break;
-                }
             }
-            prepared_states = scanned;
-            prepared_orientations = oriented_states;
-        } else {
-            for start in (0..states.len()).step_by(batch_size) {
-                let end = (start + batch_size).min(states.len());
-                let mut inputs = Vec::with_capacity(
-                    2 * (end - start) * orientations_per_state as usize);
-                let mut queries = Vec::with_capacity(inputs.capacity());
-                for (local, state) in states[start..end].iter().enumerate() {
-                    let offset = start + local;
-                    let mut seed = target_seed
-                        ^ (offset as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
-                        ^ ((state.left as u64) << 32)
-                        ^ ((state.right as u64) << 16)
-                        ^ state.relative as u64;
-                    let first_shift = (splitmix64(&mut seed) % n as u64) as usize;
-                    for orientation in 0..orientations_per_state as usize {
-                        let shift = (first_shift + orientation) % n as usize;
-                        let left_x = shifted[state.left * n as usize + shift];
-                        let right_x = shifted[state.right * n as usize
-                            + (shift + state.relative) % n as usize];
-                        for &root_cycle in &state.roots_cycle {
-                            let absolute = cycle.to_poly.apply(
-                                cycle.rotate(root_cycle, shift as u32));
-                            ctx.ops.basis_conversions += 1;
-                            inputs.push((absolute, target_xy.0));
-                            queries.push(TargetQuery {
-                                state_offset: offset, orientation,
-                                left_x, right_x,
-                            });
-                        }
-                    }
-                }
-                prepared_states += (end - start) as u64;
-                prepared_orientations += (
-                    (end - start) * orientations_per_state as usize) as u64;
-                let roots = solver.roots_batch(&mut ctx, &inputs);
-                target_root_batches += 1;
-                if peak_rss_bytes() > memory_cap_bytes {
-                    memory_exceeded = true;
-                    break;
-                }
-                let mut last_orientation = None;
-                for (query, roots) in queries.into_iter().zip(roots) {
-                    scanned = query.state_offset as u64 + 1;
-                    let marker = (query.state_offset, query.orientation);
-                    if last_orientation != Some(marker) {
-                        oriented_states += 1;
-                        last_orientation = Some(marker);
-                    }
-                    if let Some(partners) = roots {
-                        for partner in partners {
-                            partner_roots += 1;
-                            if let Some((points, xs)) = check_partner(
-                                &mut ctx, &cycle, &mut table, &states, &shifted,
-                                &solver, partner, query.left_x, query.right_x,
-                                target, &mut table_hits) {
-                                relation = Some(points);
-                                relation_xs = xs;
-                                break;
-                            }
-                        }
-                    }
-                    if relation.is_some() { break; }
-                }
-                if relation.is_some() { break; }
-                if peak_rss_bytes() > memory_cap_bytes {
-                    memory_exceeded = true;
-                    break;
-                }
+            if relation.is_some() { break; }
+            if offset % 10_000 == 0 && peak_rss_bytes() > memory_cap_bytes {
+                memory_exceeded = true;
+                break;
             }
         }
     }
     let online_ns = online_start.elapsed().as_nanos();
     let target_ops = ctx.ops.minus(after_index_ops);
-    if batch_size == 1 { target_root_batches = target_ops.s3_calls; }
     let relation_json = relation.map(|points| {
         json!({
             "poly_points_xy_decimal": points.map(|p| {
@@ -884,8 +654,6 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
                       "origin": if sampled { origin } else { 0 },
                       "step": if sampled { step } else { 1 },
                       "orientations_per_state": orientations_per_state },
-        "s3_batch_size": batch_size,
-        "index_root_batches": index_root_batches,
         "total_quotient_pair_states": total,
         "index_pair_states_examined": examined,
         "index_satisfiable_s3_states": states.len(),
@@ -897,9 +665,6 @@ fn run<F: Field>(field: F, manifest: &Value, bridge: &Value,
         },
         "target_states_scanned": scanned,
         "target_state_orientations_tested": oriented_states,
-        "target_states_prepared": prepared_states,
-        "target_state_orientations_prepared": prepared_orientations,
-        "target_root_batches": target_root_batches,
         "target_partner_roots": partner_roots,
         "target_table_hits": table_hits,
         "native_s3_generator_target_control": control_json,
@@ -954,34 +719,4 @@ fn main() {
                           "index_states": report["index_pair_states_examined"],
                           "target_states": report["target_states_scanned"],
                           "peak_rss_bytes": report["peak_rss_bytes"]}));
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn batch_roots_match_direct_for_every_gf32_input_pair() {
-        let modulus = IrreduciblePoly { degree: 5, low_terms: vec![0, 2] };
-        let mut direct = Counted {
-            field: Gf2::new(&modulus), ops: Ops::default(),
-        };
-        let solver = S3::new(&mut direct, 5);
-        let inputs: Vec<(u128, u128)> = (0..32u128)
-            .flat_map(|left| (0..32u128).map(move |right| (left, right)))
-            .collect();
-        let expected: Vec<_> = inputs.iter().map(|&(left, right)| {
-            solver.roots(&mut direct, left, right)
-        }).collect();
-        for size in [1, 2, 7, 128, 1024] {
-            let mut batched = Counted {
-                field: Gf2::new(&modulus), ops: Ops::default(),
-            };
-            let got: Vec<_> = inputs.chunks(size).flat_map(|chunk| {
-                solver.roots_batch(&mut batched, chunk)
-            }).collect();
-            assert_eq!(got, expected, "batch size {size}");
-            assert_eq!(batched.ops.s3_calls, 1024);
-        }
-    }
 }

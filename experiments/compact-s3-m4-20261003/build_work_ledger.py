@@ -916,6 +916,9 @@ def main():
             "run_id": None,
             "curve_id": stage["curve_id"],
             "workload_id": stage["workload_id"],
+            "target_count": 1,
+            "target_policy": "one frozen ordinary public target; no target batching",
+            "measurement_scope": "target-dependent PDP and native relation-check stage only",
             "field_degree": n,
             "actual_usable_points_B": stage["actual_usable_points_B"],
             "folded_columns_K": stage["folded_columns_K"],
@@ -995,6 +998,8 @@ def main():
         "run_id": None,
         "curve_id": control_stage["curve_id"],
         "workload_id": control_stage["workload_id"],
+        "target_count": 1,
+        "target_policy": "one planted target used only as a correctness control",
         "isogeny": "none",
         "actual_usable_points_B": control_stage["actual_usable_points_B"],
         "folded_columns_K": control_stage["folded_columns_K"],
@@ -1019,8 +1024,171 @@ def main():
         "native_receipt_sha256": sha(control_stage_path),
         "independent_replay_receipt_sha256": sha(control_replay_path),
     }
+    batch_protocol_path = HERE / "q1330_q1331_batch_root_protocol.json"
+    batch_protocol = json.loads(batch_protocol_path.read_text())
+    assert batch_protocol["candidate_id"] is None
+    assert batch_protocol["parent_stage_protocol_sha256"] == sha(
+        native_protocol_path)
+    assert batch_protocol["native_source_sha256"] == native_build[
+        "source_sha256"]
+    assert batch_protocol["point_decomposition"]["stage_code"] == "PDP4root"
+    batch_stages = []
+    for n, proposal, parent, stage_name in (
+        (53, "Q1330", "Q1327", "n53_batch_root_full.json"),
+        (83, "Q1331", "Q1328", "n83_batch_root_capped_2m.json"),
+    ):
+        profile = next(row for row in batch_protocol["profiles"]
+                       if row["field_degree"] == n)
+        manifest_path = HERE / "native_inputs" / f"n{n}_batch_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        stage_path, stage = read(stage_name)
+        replay_path, replay = read(
+            f"n{n}_batch_root_independent_replay.json")
+        scalar = next(row for row in native_root_stages
+                      if row["field_degree"] == n)
+        assert profile["proposal_id"] == manifest["proposal_id"] == (
+            stage["proposal_id"])
+        assert profile["proposal_id"] == replay["proposal_id"] == proposal
+        assert profile["parent_solver_proposal_id"] == manifest[
+            "parent_solver_proposal_id"] == parent
+        assert manifest["stage_protocol_sha256"] == stage[
+            "stage_protocol_sha256"] == sha(batch_protocol_path)
+        assert manifest["s3_batch_size"] == stage["s3_batch_size"] == 4096
+        assert stage["native_source_sha256"] == native_build[
+            "source_sha256"]
+        assert stage["candidate_id"] is None
+        assert stage["verified_single_target_dlp"] is False
+        assert stage["complete_work_log2"] is None
+        assert replay["ordinary_relation_independently_verified"] is (
+            n == 53)
+        assert replay["native_receipt_sha256"] == sha(stage_path)
+        assert replay["native_build_receipt_sha256"] == sha(native_build_path)
+        assert replay["matched_scalar_stage_sha256"] == scalar[
+            "source_bound_native_receipt_sha256"]
+        assert stage["curve_id"] == scalar["curve_id"]
+        assert stage["workload_id"] == scalar["workload_id"]
+        assert stage["index_pair_states_examined"] == scalar[
+            "index_pair_states_examined"]
+        assert stage["target_states_scanned"] == scalar[
+            "target_states_scanned"]
+        batch_stages.append({
+            "proposal_id": proposal,
+            "parent_solver_proposal_id": parent,
+            "parent_factor_base_proposal_id": profile[
+                "parent_factor_base_proposal_id"],
+            "candidate_id": None,
+            "run_id": None,
+            "curve_id": stage["curve_id"],
+            "workload_id": stage["workload_id"],
+            "target_count": 1,
+            "target_policy": "one frozen ordinary public target; no target batching",
+            "measurement_scope": "target-dependent PDP and native relation-check stage only",
+            "isogeny": "none",
+            "field_degree": n,
+            "actual_usable_points_B": stage["actual_usable_points_B"],
+            "folded_columns_K": stage["folded_columns_K"],
+            "status": stage["status"],
+            "s3_batch_size": 4096,
+            "target_local_inversion_window_states": 4096,
+            "window_scope": "groups S3 root-equation field arithmetic for this one target; it is not a target batch",
+            "index_pair_states_examined": stage[
+                "index_pair_states_examined"],
+            "target_states_scanned": stage["target_states_scanned"],
+            "target_states_prepared": stage["target_states_prepared"],
+            "target_state_orientations_tested": stage[
+                "target_state_orientations_tested"],
+            "target_state_orientations_prepared": stage[
+                "target_state_orientations_prepared"],
+            "target_pdp_and_native_check_wall_seconds_exploratory": (
+                int(stage["timing_ns"]["target_pdp_and_native_check"]) / 1e9),
+            "window_1_target_stage_wall_seconds_exploratory": scalar[
+                "target_pdp_and_native_check_wall_seconds_exploratory"],
+            "target_stage_ratio_vs_window_1_exploratory": (
+                scalar["target_pdp_and_native_check_wall_seconds_exploratory"] /
+                (int(stage["timing_ns"]["target_pdp_and_native_check"]) /
+                 1e9)),
+            "index_build_wall_seconds_exploratory": (
+                int(stage["timing_ns"]["index_build"]) / 1e9),
+            "peak_rss_bytes": stage["peak_rss_bytes"],
+            "operation_counts_by_phase": stage["operation_counts"],
+            "matched_scalar_operation_counts_by_phase": scalar[
+                "operation_counts_by_phase"],
+            "verified_ordinary_relation_count": int(n == 53),
+            "observed_rank_of_native_and_matched_pair_rows": (
+                replay["rank_of_native_and_matched_pair_rows"]
+                if n == 53 else None),
+            "natural_relation_yield_rate_estimate": None,
+            "common_field_operation_equivalent_calibration": None,
+            "verified_single_target_dlp": False,
+            "complete_solve_work_log2": None,
+            "stage_receipt_sha256": sha(stage_path),
+            "replay_receipt_sha256": sha(replay_path),
+            "manifest_sha256": sha(manifest_path),
+        })
+    q1332_protocol_path = HERE / "q1332_batch_planted_control_protocol.json"
+    q1332_protocol = json.loads(q1332_protocol_path.read_text())
+    q1332_manifest_path = HERE / "native_inputs/n83_batch_planted_manifest.json"
+    q1332_manifest = json.loads(q1332_manifest_path.read_text())
+    q1332_stage_path, q1332_stage = read(
+        "n83_q1332_batch_planted_unpinned.json")
+    q1332_replay_path, q1332_replay = read(
+        "n83_q1332_batch_planted_independent_replay.json")
+    assert q1332_protocol["proposal_id"] == q1332_manifest[
+        "proposal_id"] == q1332_stage["proposal_id"] == q1332_replay[
+            "proposal_id"] == "Q1332"
+    assert q1332_protocol["parent_solver_proposal_id"] == "Q1331"
+    assert q1332_protocol["planted_fixture_sha256"] == sha(
+        control_fixture_path)
+    assert q1332_protocol["native_source_sha256"] == native_build[
+        "source_sha256"]
+    assert q1332_stage["relation"] == control_stage["relation"]
+    assert q1332_replay["native_relation_independently_verified"] is True
+    assert q1332_replay["is_natural_yield_measurement"] is False
+    assert q1332_replay["native_receipt_sha256"] == sha(q1332_stage_path)
+    assert q1332_stage["verified_single_target_dlp"] is False
+    assert q1332_stage["complete_work_log2"] is None
+    q1332_control = {
+        "proposal_id": "Q1332",
+        "parent_solver_proposal_id": "Q1331",
+        "parent_planted_control_proposal_id": "Q1329",
+        "candidate_id": None,
+        "run_id": None,
+        "curve_id": q1332_stage["curve_id"],
+        "workload_id": q1332_stage["workload_id"],
+        "target_count": 1,
+        "target_policy": "one planted target used only as a correctness control",
+        "isogeny": "none",
+        "s3_batch_size": 4096,
+        "target_local_inversion_window_states": 4096,
+        "window_scope": "groups S3 root-equation field arithmetic for this one target; it is not a target batch",
+        "status": q1332_stage["status"],
+        "index_pair_states_examined": q1332_stage[
+            "index_pair_states_examined"],
+        "target_states_scanned": q1332_stage["target_states_scanned"],
+        "target_states_prepared": q1332_stage["target_states_prepared"],
+        "target_state_orientations_tested": q1332_stage[
+            "target_state_orientations_tested"],
+        "target_state_orientations_prepared": q1332_stage[
+            "target_state_orientations_prepared"],
+        "target_pdp_and_native_check_wall_seconds_exploratory": (
+            int(q1332_stage["timing_ns"]["target_pdp_and_native_check"]) / 1e9),
+        "peak_rss_bytes": q1332_stage["peak_rss_bytes"],
+        "is_natural_relation_yield_measurement": False,
+        "native_relation_independently_verified": True,
+        "verified_single_target_dlp": False,
+        "complete_solve_work_log2": None,
+        "protocol_sha256": sha(q1332_protocol_path),
+        "manifest_sha256": sha(q1332_manifest_path),
+        "stage_receipt_sha256": sha(q1332_stage_path),
+        "replay_receipt_sha256": sha(q1332_replay_path),
+    }
     conditional_root_states131 = n131_sample[
         "conditional_folded_columns_estimate"] ** 2 * 131
+    conditional_batch_count131 = (conditional_root_states131 + 4095) // 4096
+    conditional_batch_mul131 = 8 * conditional_root_states131 + 3 * (
+        conditional_root_states131 - conditional_batch_count131)
+    conditional_batch_full_target_mul131 = 16 * conditional_root_states131 + 3 * (
+        2 * conditional_root_states131 - conditional_batch_count131)
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -1208,8 +1376,11 @@ def main():
         "native_onb_polynomial_field_bridges": native_bridge_profiles,
         "q1327_q1328_bounded_native_s3_root_stages": native_root_stages,
         "q1329_n83_unpinned_planted_control": q1329_control,
+        "q1330_q1331_single_target_inversion_window_stages": batch_stages,
+        "q1332_n83_single_target_inversion_window_planted_control": q1332_control,
         "q1327_q1328_native_root_protocol_sha256": sha(
             native_protocol_path),
+        "q1330_q1331_batch_root_protocol_sha256": sha(batch_protocol_path),
         "native_s3_root_build_receipt_sha256": sha(native_build_path),
         "degree131_conditional_full_s3_root_index_screen": {
             "proposal_id": "Q1303",
@@ -1230,6 +1401,30 @@ def main():
                 conditional_root_states131),
             "conditional_index_field_inv_calls_log2": math.log2(
                 conditional_root_states131),
+            "conditional_target_local_inversion_window_4096_screen": {
+                "proposal_ids_measured_at_n53_n83": ["Q1330", "Q1331"],
+                "target_count": 1,
+                "assumption": "same nondegenerate two-root S3 path as the measured N83 run, exact Q1303 K estimate, one complete K^2*n index and a 4096-state field-arithmetic inversion window for the single target; no target batching, claim about earlier hits, collisions, base construction, or alternative solvers",
+                "index_root_batches_estimate": conditional_batch_count131,
+                "index_field_mul_calls_estimate": conditional_batch_mul131,
+                "index_field_mul_calls_log2": math.log2(
+                    conditional_batch_mul131),
+                "index_field_inv_calls_estimate": conditional_batch_count131,
+                "index_field_inv_calls_log2": math.log2(
+                    conditional_batch_count131),
+                "one_full_target_scan_field_mul_calls_estimate": (
+                    conditional_batch_full_target_mul131),
+                "one_full_target_scan_field_mul_calls_log2": math.log2(
+                    conditional_batch_full_target_mul131),
+                "index_plus_one_full_target_scan_field_mul_calls_estimate": (
+                    conditional_batch_mul131 +
+                    conditional_batch_full_target_mul131),
+                "index_plus_one_full_target_scan_field_mul_calls_log2": math.log2(
+                    conditional_batch_mul131 +
+                    conditional_batch_full_target_mul131),
+                "is_complete_solve_projection": False,
+                "is_lower_bound_on_other_solver_families": False,
+            },
             "full_index_memory_estimate_bytes": None,
             "field_operation_equivalent_calibration": None,
             "is_lower_bound_on_other_solver_families": False,
@@ -1328,7 +1523,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "Q1327's native compact-S3 root index recovered one independently verified unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328's exact-base n83 ordinary run exhausted a 2,000,000-pair-state cap without a relation, covering only about 6.9e-7 of its full quotient pair-state space; Q1329 independently verified an unpinned n83 four-leaf relation on an index-aware planted target, but that correctness control does not estimate ordinary-query yield; older n53/n83 SAT variants remain censored, and Q1326's restricted known-satisfiable planted n53 target hit one million conflicts unpinned; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and one censored n83 ordinary run do not measure natural useful-row or novel-rank rates; top-level field inversion/multiplication calls lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
+            "reason_unestimated": "Q1327 and Q1330 independently verified the same unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328 and Q1331 both exhausted the same 2,000,000-pair-state n83 ordinary cap without a relation, covering only about 6.9e-7 of the full quotient pair-state space; Q1329 and Q1332 independently verified an unpinned n83 four-leaf relation on an index-aware planted target, but neither control estimates ordinary-query yield; older n53/n83 SAT variants remain censored; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and censored n83 ordinary runs do not measure natural useful-row or novel-rank rates; top-level field inversion/multiplication calls lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,

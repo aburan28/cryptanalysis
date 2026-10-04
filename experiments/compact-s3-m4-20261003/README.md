@@ -660,11 +660,11 @@ state on ordinary workloads. All four signs are tested on a table hit.
 
 | Proposal | Exact base B / K | Indexed pair states | Target states scanned | Target PDP and native check | Peak RSS | Ordinary result |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Q1327 N53 | 24,062 / 227 | 2,731,037 (complete) | 49,228 | 0.104 s | 285 MB | one relation, independently verified |
-| Q1328 N83 | 30,977,592 / 186,612 | 2,000,000 (capped) | 2,000,000 | 9.175 s | 755 MB | no relation under this cap |
+| Q1327 N53 | 24,062 / 227 | 2,731,037 (complete) | 49,228 | 0.106 s | 285 MB | one relation, independently verified |
+| Q1328 N83 | 30,977,592 / 186,612 | 2,000,000 (capped) | 2,000,000 | 9.355 s | 755 MB | no relation under this cap |
 
-Index preparation was target independent and took 2.716 s at N53 and
-4.880 s at N83, including the N83 representative-shift table. The native
+Index preparation was target independent and took 2.779 s at N53 and
+4.849 s at N83, including the N83 representative-shift table. The native
 [N53](runs/n53_native_root_full.json) and
 [N83](runs/n83_native_root_capped_2m.json) receipts retain separate setup,
 index, and target-dependent operation counts. N53's target work includes
@@ -707,8 +707,8 @@ planted workload
 The [native run](runs/n83_q1329_planted_unpinned.json) indexed 2,000,000
 states, then found a four-point relation after one target state and 34 of
 83 Frobenius orientations. Target-dependent native work counted 67 S3 calls,
-550 top-level multiplications, 74 inversions, and 0.000177 s. Target-
-independent setup plus index construction took 4.959 s and peak RSS was
+550 top-level multiplications, 74 inversions, and 0.000178 s. Target-
+independent setup plus index construction took 5.033 s and peak RSS was
 691 MB. The [independent checked-Sage replay](runs/n83_q1329_planted_independent_replay.json)
 verifies all four recovered subgroup points against the exact archived base
 and independently adds them to the target. The four points occupy distinct
@@ -717,14 +717,65 @@ an ordinary-query yield measurement or a complete DLP solve. Q1329 tries all
 83 orientations per state, while the ordinary Q1328 run tries one; its time
 cannot be used as a paired ordinary speed comparison.
 
+### Q1330/Q1331 single-target S3 inversion-window comparison
+
+Every Q1327–Q1332 workload here contains exactly one frozen public target.
+The `s3_batch_size=4096` field in the newer records is an internal inversion
+window over S3 root equations while building the reusable pair index and
+scanning that one target. It never groups targets, shares work across target
+points, or measures target-batch throughput. The historical filenames and
+proposal IDs retain “batch” for artifact continuity; their workload is still
+one target. Q1327/Q1328 use the same evaluator with a one-state window, while
+Q1330/Q1331 use a 4,096-state window. The [protocol](q1330_q1331_batch_root_protocol.json)
+freezes the same curves, bases, public targets, workload IDs, state order,
+and caps. A native exhaustive test matched the windowed and direct roots
+for all 1,024 input pairs over \(\mathbf F_{2^5}\) at window sizes 1, 2, 7,
+128, and 1,024.
+
+| One-target ordinary stage | Inversion window | Target mul / inv calls | Target states scanned / prepared | Target-dependent PDP and relation check | Exploratory stage ratio vs window 1 | Peak RSS | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Q1327 N53 | 1 | 787,654 / 98,462 | 49,228 / 49,228 | 105.81 ms | 1.00x | 285 MB | one relation, verified |
+| Q1330 N53 | 4,096 | 1,171,431 / 20 | 49,228 / 53,248 | 51.57 ms | 2.05x | 288 MB | same relation |
+| Q1328 N83 | 1 | 32,000,000 / 4,000,000 | 2,000,000 / 2,000,000 | 9,355.02 ms | 1.00x | 755 MB | no relation under cap |
+| Q1331 N83 | 4,096 | 43,998,533 / 489 | 2,000,000 / 2,000,000 | 3,250.87 ms | 2.88x | 759 MB | same censored no-hit result |
+
+These are target-stage observations for one point, after the target-independent
+pair index is ready. The target clock covers PDP scanning and the native
+relation check; it excludes process launch and index construction. The ratios
+are exploratory only: the host has no isolation receipt, and no complete
+target DLP or paired rho solve was measured. They are not single-target
+end-to-end speedup claims. The one-target [N53 replay](runs/n53_batch_root_independent_replay.json)
+checks the same four subgroup/base points and rank-two pairing with the
+matched pair-table row. The one-target [N83 replay](runs/n83_batch_root_independent_replay.json)
+checks the same exact-base, source-bound cap and retains its censored result.
+The window trades extra multiplications for fewer inversions. At N53 the
+match occurs inside a window, so 53,248 states are prepared even though only
+49,228 are inspected before the relation.
+
+The separate [Q1332 planted one-target control](runs/n83_q1332_batch_planted_unpinned.json)
+uses Q1329's single planted target, the exact Q1325 base, all 83 orientations,
+and a 4,096-state inversion window. Its [independent replay](runs/n83_q1332_batch_planted_independent_replay.json)
+checks all four subgroup/base points and their sum. The planted relation is
+found at state one after 34 orientations, but the fixed window prepares
+4,096 states and 339,968 orientations. Its 140.09 ms target stage versus
+0.178 ms for the window-1 planted control exposes a severe early-hit penalty.
+Q1332 is a correctness control, not a natural-yield estimate; this one-target
+result motivates an adaptive per-target window schedule.
+
 Conditionally applying Q1303's estimated N131 W≤6 column count to this
 **full-index design** gives about \(2^{56.20}\) pair states before target
 queries. Applying the observed nondegenerate kernel's eight multiplication
 calls and one inversion call per state gives about \(2^{59.20}\) top-level
 multiplications plus \(2^{56.20}\) top-level inversions for index construction
-alone. This conditional arithmetic count excludes batch inversion and other
-root kernels. It is not a calibrated N131 operation-equivalent cost, a bound
-on other solvers, or a complete \(2^x\) solve projection. The actual N131
+alone. Under the separately measured 4,096-state inversion window and the
+same all-regular root assumption, the conditional index calls become
+\(2^{59.66}\)
+multiplications plus \(2^{44.20}\) inversions. One complete target scan would
+add \(2^{60.66}\) multiplications; index plus that scan would call for
+\(2^{61.24}\) multiplications before relation collection or matrix work.
+This is a conditional full-scan scenario, not a lower bound on earlier hits
+or other solver families. None of these counts is a calibrated
+operation-equivalent or complete \(2^x\) solve projection. The actual N131
 base count and digest remain unknown.
 
 ## Next goal
@@ -753,6 +804,7 @@ From this repository worktree, first save checked runtime information:
 
 ```sh
 /Volumes/SSD990/cryptanalysis/sage --runtime-info > experiments/compact-s3-m4-20261003/q1324_sage_runtime_info.json
+/Volumes/SSD990/cryptanalysis/sage --runtime-info > experiments/compact-s3-m4-20261003/native_root_sage_runtime_info.json
 /Volumes/SSD990/cryptanalysis/sage -python -m unittest discover -s experiments/compact-s3-m4-20261003 -p test_chain_s3.py -v
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1324_inputs.py --check
@@ -772,6 +824,11 @@ From this repository worktree, first save checked runtime information:
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 83 --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/make_n83_native_planted_control.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_n83_q1329_native_control.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/freeze_batch_root_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/freeze_batch_planted_control.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 53 --variant batch --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_native_s3_root.py --n 83 --variant batch --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_n83_q1329_native_control.py --variant batch --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```

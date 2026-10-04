@@ -90,15 +90,22 @@ def independent_rank_two(left, right, r):
                     for col in left.keys() | right.keys()) else 2
 
 
-def replay(n):
+def replay(n, variant="scalar"):
+    assert variant in ("scalar", "batch")
     started = time.perf_counter_ns()
     source_path = HERE / "runs" / (
-        "n53_native_root_full.json" if n == 53
-        else "n83_native_root_capped_2m.json")
+        ("n53_native_root_full.json" if n == 53
+         else "n83_native_root_capped_2m.json") if variant == "scalar"
+        else ("n53_batch_root_full.json" if n == 53
+              else "n83_batch_root_capped_2m.json"))
     source = json.loads(source_path.read_text())
-    manifest_path = HERE / "native_inputs" / f"n{n}_manifest.json"
+    manifest_path = HERE / "native_inputs" / (
+        f"n{n}_manifest.json" if variant == "scalar"
+        else f"n{n}_batch_manifest.json")
     manifest = json.loads(manifest_path.read_text())
-    protocol_path = HERE / "q1327_q1328_native_root_protocol.json"
+    protocol_path = HERE / (
+        "q1327_q1328_native_root_protocol.json" if variant == "scalar"
+        else "q1330_q1331_batch_root_protocol.json")
     protocol = json.loads(protocol_path.read_text())
     stage = next(row for row in protocol["profiles"]
                  if row["field_degree"] == n)
@@ -111,6 +118,13 @@ def replay(n):
     assert json.loads(runtime_path.read_text())["status"] == "verified"
     assert manifest["runtime_info_sha256"] == sha(runtime_path)
     assert manifest["stage_protocol_sha256"] == sha(protocol_path)
+    if variant == "batch":
+        assert protocol["native_source_sha256"] == sha(
+            HERE / "native_s3_root.rs")
+        assert manifest["ordinary_input_manifest_sha256"] == sha(
+            HERE / "native_inputs" / f"n{n}_manifest.json")
+        assert manifest["parent_solver_proposal_id"] == (
+            "Q1327" if n == 53 else "Q1328")
     assert manifest["proposal_id"] == stage["proposal_id"]
     assert manifest["parent_factor_base_proposal_id"] == stage[
         "parent_factor_base_proposal_id"]
@@ -126,7 +140,9 @@ def replay(n):
     binary_path = Path(build["binary_path"])
     if binary_path.exists():
         assert sha(binary_path) == build["binary_sha256"]
-    assert manifest["source_sha256"] == sha(HERE / "export_native_root_inputs.py")
+    assert manifest["source_sha256"] == sha(HERE / (
+        "export_native_root_inputs.py" if variant == "scalar"
+        else "freeze_batch_root_protocol.py"))
     assert manifest["representatives_file_sha256"] == sha(reps_path)
     assert manifest["bridge_sha256"] == sha(bridge_path)
     assert source["input_representatives_sha256"] == sha(reps_path)
@@ -147,6 +163,25 @@ def replay(n):
     assert source["limits"]["peak_rss_cap_bytes"] == (
         stage["peak_rss_cap_mib"] * 1024 * 1024)
     assert source["sampling"]["orientations_per_state"] == 1
+    assert source["s3_batch_size"] == (1 if variant == "scalar" else 4096)
+    assert source["target_states_prepared"] >= source[
+        "target_states_scanned"]
+    assert source["target_state_orientations_prepared"] >= source[
+        "target_state_orientations_tested"]
+    if variant == "batch":
+        assert source["index_root_batches"] == (
+            source["index_pair_states_examined"] + 4095) // 4096
+        assert source["target_root_batches"] == (
+            source["target_states_prepared"] + 4095) // 4096
+        scalar_path = HERE / "runs" / (
+            "n53_native_root_full.json" if n == 53
+            else "n83_native_root_capped_2m.json")
+        scalar = json.loads(scalar_path.read_text())
+        for key in ("curve_id", "workload_id", "actual_usable_points_B",
+                    "folded_columns_K", "index_pair_states_examined",
+                    "index_distinct_root_keys", "target_states_scanned",
+                    "status", "relation", "target_table_hits"):
+            assert source[key] == scalar[key]
     assert source["index_pair_states_examined"] <= source["limits"][
         "pair_state_cap"]
     assert source["target_states_scanned"] <= source[
@@ -194,6 +229,12 @@ def replay(n):
         "verified_single_target_dlp": False,
         "complete_work_log2": None,
     }
+    if variant == "batch":
+        result.update({
+            "s3_batch_size": 4096,
+            "parent_solver_proposal_id": manifest["parent_solver_proposal_id"],
+            "matched_scalar_stage_sha256": sha(scalar_path),
+        })
     if n == 53:
         assert source["status"] == "native_relation_found"
         assert source["relation"]["native_group_sum_verified"] is True
@@ -272,10 +313,15 @@ def replay(n):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, choices=(53, 83), required=True)
+    parser.add_argument("--variant", choices=("scalar", "batch"),
+                        default="scalar")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    path = HERE / "runs" / f"n{args.n}_native_root_independent_replay.json"
-    report = replay(args.n)
+    path = HERE / "runs" / (
+        f"n{args.n}_native_root_independent_replay.json"
+        if args.variant == "scalar" else
+        f"n{args.n}_batch_root_independent_replay.json")
+    report = replay(args.n, args.variant)
     content = json.dumps(report, indent=2) + "\n"
     if args.check:
         stable = json.loads(path.read_text())
@@ -285,7 +331,7 @@ def main():
     else:
         assert not path.exists()
         path.write_text(content)
-    print(json.dumps({"n": args.n, "status": "PASS",
+    print(json.dumps({"n": args.n, "variant": args.variant, "status": "PASS",
                       "native_stage_status": report["native_stage_status"],
                       "verified_relation": report[
                           "ordinary_relation_independently_verified"]}))
