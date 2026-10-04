@@ -2313,6 +2313,124 @@ def verify():
     rows.append({"variant": "q1325_q1403_named_stage_comparison",
                  "receipt_sha256": sha(q1403_comparison_path),
                  "is_natural_yield_measurement": False})
+    q1404_protocol_path = HERE / "q1404_raw_preimage_w5_protocol.json"
+    q1404_protocol = json.loads(q1404_protocol_path.read_text())
+    q1404_runtime_path = HERE / "q1404_sage_runtime_info.json"
+    assert json.loads(q1404_runtime_path.read_text())["status"] == "verified"
+    assert q1404_protocol["proposal_id"] == "Q1404"
+    assert q1404_protocol["candidate_id"] is None
+    assert q1404_protocol["isogeny"] == "none"
+    assert q1404_protocol["parent_factor_base_proposal_id"] == "Q1325"
+    assert q1404_protocol["ordinary_workload_id"] == "bab50a1e5f66"
+    assert q1404_protocol["factor_base_actual_B"] == 30_977_592
+    assert q1404_protocol["factor_base_folded_columns"] == 186_612
+    assert q1404_protocol["ordinary_coset_receipt_sha256"] == sha(
+        HERE / "runs/n83_ordinary_raw_preimages.json")
+    for source, digest in q1404_protocol["source_sha256"].items():
+        assert digest == sha(HERE.parents[1] / source)
+    for mode, expected_status, expected_hits in (
+        ("planted_locked", "sat", 1),
+        ("planted_unpinned", "external_timeout", 0),
+        ("ordinary", "censored", 0),
+    ):
+        stem = f"n83_q1404_{mode}"
+        receipt_path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(receipt_path.read_text())
+        assert receipt["proposal_id"] == "Q1404"
+        assert receipt["candidate_id"] is receipt["run_id"] is None
+        assert receipt["curve_id"] == q1404_protocol["curve_id"]
+        assert receipt["isogeny"] == "none"
+        assert receipt["mode"] == mode
+        assert receipt["status"] == expected_status
+        assert receipt["observed_verified_relation_count"] == expected_hits
+        assert receipt["factor_base_actual_B"] == q1404_protocol[
+            "factor_base_actual_B"]
+        assert receipt["factor_base_folded_columns"] == q1404_protocol[
+            "factor_base_folded_columns"]
+        assert receipt["factor_base_enumerated_set_sha256"] == (
+            q1404_protocol["factor_base_enumerated_set_sha256"])
+        assert receipt["raw_preimage_count"] == 4
+        assert len(set(receipt["raw_preimage_x_coordinates"])) == 4
+        assert receipt["protocol_sha256"] == sha(q1404_protocol_path)
+        assert receipt["runtime_info_sha256"] == sha(q1404_runtime_path)
+        assert receipt["source_sha256"] == q1404_protocol["source_sha256"]
+        assert receipt["complete_solve_work_log2"] is None
+        assert receipt["natural_relation_yield_rate_estimate"] is None
+        assert len(receipt["attempts"]) == 1
+        attempt = receipt["attempts"][0]
+        assert attempt["status"] == expected_status
+        assert attempt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.attempt0.stdout.txt")
+        assert attempt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.attempt0.stderr.txt")
+        formula_digest = hashlib.sha256()
+        formula_bytes = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                formula_digest.update(chunk)
+                formula_bytes += len(chunk)
+        assert formula_digest.hexdigest() == attempt["xcnf_sha256"]
+        assert formula_bytes == attempt["xcnf_bytes"]
+        if mode == "ordinary":
+            assert receipt["workload_id"] == q1404_protocol[
+                "ordinary_workload_id"]
+            assert attempt["solver_conflicts_reported"] > 1_000_000
+            assert receipt["target_preimage_wall_seconds"] > 0
+            assert receipt["target_pdp_wall_seconds"] > 0
+            assert receipt["target_dependent_stage_wall_seconds"] >= 0
+            assert math.isclose(
+                receipt["target_dependent_stage_wall_seconds"],
+                receipt["target_preimage_wall_seconds"]
+                + receipt["target_pdp_wall_seconds"]
+                + receipt["target_relation_check_wall_seconds"],
+                rel_tol=0, abs_tol=1e-9)
+            assert receipt["artifact_instrument_wall_seconds_excluded"] > 0
+            assert receipt["ordinary_coset_receipt_sha256"] == sha(
+                HERE / "runs/n83_ordinary_raw_preimages.json")
+        else:
+            assert receipt["workload_id"] is None
+            assert receipt["control_stage_wall_seconds"] > 0
+        rows.append({"variant": stem, "receipt_sha256": sha(receipt_path),
+                     "formula_sha256": formula_digest.hexdigest(),
+                     "is_natural_yield_measurement": False})
+    q1404_replay_path = HERE / "runs/n83_q1404_raw_control_replay.json"
+    q1404_replay = json.loads(q1404_replay_path.read_text())
+    assert q1404_replay["status"] == "PASS"
+    assert q1404_replay["proposal_id"] == "Q1404"
+    assert q1404_replay["protocol_sha256"] == sha(q1404_protocol_path)
+    assert q1404_replay["source_sha256"] == sha(
+        HERE / "verify_q1404_raw_control.py")
+    assert q1404_replay["locked_stage_sha256"] == sha(
+        HERE / "runs/n83_q1404_planted_locked.json")
+    assert q1404_replay["ordinary_stage_sha256"] == sha(
+        HERE / "runs/n83_q1404_ordinary.json")
+    assert q1404_replay["unpinned_stage_sha256"] == sha(
+        HERE / "runs/n83_q1404_planted_unpinned.json")
+    assert q1404_replay["verified_control_relation_count"] == 1
+    assert q1404_replay["ordinary_relation_count"] == 0
+    assert q1404_replay["four_distinct_columns"] is True
+    assert q1404_replay["complete_work_log2"] is None
+    from build_q1404_stage_comparison import build as build_q1404_comparison
+    q1404_comparison_path = HERE / "runs/n83_q1325_q1404_named_stage_comparison.json"
+    q1404_comparison = json.loads(q1404_comparison_path.read_text())
+    assert q1404_comparison == build_q1404_comparison()
+    assert q1404_comparison["source_sha256"] == sha(
+        HERE / "build_q1404_stage_comparison.py")
+    assert [row["proposal_id"] for row in q1404_comparison[
+        "stage_profiles"]] == ["Q1325", "Q1404"]
+    for profile in q1404_comparison["stage_profiles"]:
+        assert profile["candidate_id"] is None
+        assert profile["run_id"] == (profile["stage_config_id"] + "W"
+                                     + profile["workload_id"] + "R1")
+        assert profile["complete_solve_work_log2"] is None
+    for variant, path in (
+        ("q1404_raw_preimage_protocol", q1404_protocol_path),
+        ("q1404_checked_sage_runtime", q1404_runtime_path),
+        ("q1404_independent_control_replay", q1404_replay_path),
+        ("q1325_q1404_named_stage_comparison", q1404_comparison_path),
+    ):
+        rows.append({"variant": variant, "receipt_sha256": sha(path),
+                     "is_natural_yield_measurement": False})
     return rows
 
 

@@ -1387,6 +1387,73 @@ def main():
                 "observed_verified_relation_count"],
             "receipt_sha256": sha(stage_path),
         })
+    q1404_protocol_path = HERE / "q1404_raw_preimage_w5_protocol.json"
+    q1404_protocol = json.loads(q1404_protocol_path.read_text())
+    q1404_runtime_path = HERE / "q1404_sage_runtime_info.json"
+    q1404_replay_path, q1404_replay = read(
+        "n83_q1404_raw_control_replay.json")
+    q1404_comparison_path, q1404_comparison = read(
+        "n83_q1325_q1404_named_stage_comparison.json")
+    assert q1404_protocol["proposal_id"] == q1404_replay[
+        "proposal_id"] == "Q1404"
+    assert q1404_protocol["parent_factor_base_proposal_id"] == "Q1325"
+    assert q1404_protocol["curve_id"] == q1325_protocol["curve"]["curve_id"]
+    assert q1404_protocol["ordinary_workload_id"] == q1325_protocol[
+        "ordinary_workload_id"]
+    assert q1404_protocol["factor_base_enumerated_set_sha256"] == q1325_fb[
+        "enumerated_set_sha256"]
+    assert q1404_protocol["factor_base_actual_B"] == q1325_b
+    assert q1404_protocol["factor_base_folded_columns"] == q1325_fb[
+        "signed_frobenius_columns"]
+    assert q1404_replay["status"] == "PASS"
+    assert q1404_replay["verified_control_relation_count"] == 1
+    assert q1404_replay["ordinary_relation_count"] == 0
+    assert q1404_replay["four_distinct_columns"] is True
+    assert q1404_replay["protocol_sha256"] == sha(q1404_protocol_path)
+    assert q1404_replay["source_sha256"] == sha(
+        HERE / "verify_q1404_raw_control.py")
+    assert q1404_comparison["source_sha256"] == sha(
+        HERE / "build_q1404_stage_comparison.py")
+    assert q1404_comparison["curve_id"] == q1404_protocol["curve_id"]
+    assert q1404_comparison["workload_id"] == q1404_protocol[
+        "ordinary_workload_id"]
+    assert [profile["proposal_id"] for profile in q1404_comparison[
+        "stage_profiles"]] == ["Q1325", "Q1404"]
+    q1404_stages = []
+    for mode, expected_status in (
+        ("planted_locked", "sat"),
+        ("planted_unpinned", "external_timeout"),
+        ("ordinary", "censored"),
+    ):
+        stage_path, stage = read(f"n83_q1404_{mode}.json")
+        assert stage["proposal_id"] == "Q1404"
+        assert stage["status"] == expected_status
+        assert stage["protocol_sha256"] == sha(q1404_protocol_path)
+        assert stage["runtime_info_sha256"] == sha(q1404_runtime_path)
+        assert stage["complete_solve_work_log2"] is None
+        q1404_stages.append({
+            "mode": mode,
+            "workload_id": stage["workload_id"],
+            "status": stage["status"],
+            "solver_conflicts_reported": stage["attempts"][0][
+                "solver_conflicts_reported"],
+            "target_preimage_wall_seconds_exploratory": stage[
+                "target_preimage_wall_seconds"],
+            "target_pdp_wall_seconds_exploratory": stage[
+                "target_pdp_wall_seconds"],
+            "target_relation_check_wall_seconds_exploratory": stage[
+                "target_relation_check_wall_seconds"],
+            "target_dependent_stage_wall_seconds_exploratory": stage[
+                "target_dependent_stage_wall_seconds"],
+            "control_stage_wall_seconds_exploratory": stage[
+                "control_stage_wall_seconds"],
+            "formula": stage["formula"],
+            "peak_parent_rss_raw": stage["peak_parent_rss_raw"],
+            "peak_child_rss_raw": stage["peak_child_rss_raw"],
+            "observed_verified_relation_count": stage[
+                "observed_verified_relation_count"],
+            "receipt_sha256": sha(stage_path),
+        })
     conditional_root_states131 = n131_sample[
         "conditional_folded_columns_estimate"] ** 2 * 131
     conditional_batch_count131 = (conditional_root_states131 + 4095) // 4096
@@ -1757,6 +1824,60 @@ def main():
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(q1403_comparison_path),
         },
+        "q1404_raw_preimage_w5_s3_stage": {
+            "proposal_id": "Q1404",
+            "candidate_id": None,
+            "stage_config_id": q1404_comparison["stage_profiles"][1][
+                "stage_config_id"],
+            "run_id": q1404_comparison["stage_profiles"][1]["run_id"],
+            "curve_id": q1404_protocol["curve_id"],
+            "isogeny": "none",
+            "factor_base_actual_B": q1404_protocol[
+                "factor_base_actual_B"],
+            "factor_base_folded_columns_K": q1404_protocol[
+                "factor_base_folded_columns"],
+            "factor_base_enumerated_set_sha256": q1404_protocol[
+                "factor_base_enumerated_set_sha256"],
+            "matched_ordinary_workload_id": q1404_protocol[
+                "ordinary_workload_id"],
+            "target_preimage_rule": q1404_protocol[
+                "point_decomposition"]["target_rule"],
+            "stages": q1404_stages,
+            "independently_verified_planted_control_relation_count": (
+                q1404_replay["verified_control_relation_count"]),
+            "verified_ordinary_relation_count": 0,
+            "natural_relation_yield_rate_estimate": None,
+            "cost_per_useful_relation": None,
+            "field_operations": None,
+            "verified_single_target_dlp": False,
+            "complete_solve_work_log2": None,
+            "controlled_wall_speedup_claim_allowed": False,
+            "protocol_sha256": sha(q1404_protocol_path),
+            "runtime_info_sha256": sha(q1404_runtime_path),
+            "independent_replay_receipt_sha256": sha(q1404_replay_path),
+        },
+        "q1325_q1404_named_stage_comparison": {
+            "candidate_id": None,
+            "curve_id": q1404_comparison["curve_id"],
+            "workload_id": q1404_comparison["workload_id"],
+            "factor_base_enumerated_set_sha256": q1404_comparison[
+                "factor_base_enumerated_set_sha256"],
+            "controlled_variable": q1404_comparison[
+                "controlled_variable"],
+            "profiles": [{
+                "proposal_id": profile["proposal_id"],
+                "stage_config_id": profile["stage_config_id"],
+                "run_id": profile["run_id"],
+                "ordinary_stage_status": profile[
+                    "ordinary_stage_status"],
+                "observed_verified_relation_count": profile[
+                    "observed_verified_relation_count"],
+            } for profile in q1404_comparison["stage_profiles"]],
+            "is_complete_ic_comparison": False,
+            "is_controlled_cpu_wall_speedup": False,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(q1404_comparison_path),
+        },
         "q1327_q1328_native_root_protocol_sha256": sha(
             native_protocol_path),
         "q1330_q1331_batch_root_protocol_sha256": sha(batch_protocol_path),
@@ -1902,7 +2023,35 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "Q1327 and Q1330 independently verified the same unassisted ordinary n53 four-point relation and a nonzero row independent of the matched pair-table row; Q1328 and Q1331 both exhausted the same 2,000,000-pair-state n83 ordinary cap without a relation, covering only about 6.9e-7 of the full quotient pair-state space; the exact fixed-state counting screen bounds uniform-target support of that cap by 9.12e-8 even with every Frobenius orientation, so this no-hit cannot estimate typical natural yield; Q1400 also found no exact hit on the matched Q1325 ordinary target and its fixed quotient-pair rectangle covers at most 3.735e-10 of uniform targets; Q1329, Q1332, Q1401, and Q1403 independently verified planted n83 four-leaf controls, but none estimates ordinary-query yield; Q1403's ordered implicit Q1325 SAT formula timed out on both its ordinary target and an unpinned satisfiable planted target; older n53/n83 SAT variants remain censored; the n131 W<=6 base B/K remain conditional estimates rather than an exact enumerated base; one n53 success and censored n83 ordinary runs do not measure natural useful-row or novel-rank rates; exact primitive mul/sqr call vectors now include inversions but conversions, hashing, memory and arithmetic types still lack a common calibrated unit; complete relation collection, final matrix solve, target descent, and scalar replay are absent",
+            "reason_unestimated": (
+                "Q1327 and Q1330 independently verified the same unassisted "
+                "ordinary n53 four-point relation and a nonzero row "
+                "independent of the matched pair-table row; Q1328 and Q1331 "
+                "both exhausted the same 2,000,000-pair-state n83 ordinary "
+                "cap without a relation, covering only about 6.9e-7 of the "
+                "full quotient pair-state space; the exact fixed-state "
+                "counting screen bounds uniform-target support of that cap "
+                "by 9.12e-8 even with every Frobenius orientation, so this "
+                "no-hit cannot estimate typical natural yield; Q1400 found "
+                "no exact hit on the matched Q1325 ordinary target and its "
+                "fixed quotient-pair rectangle covers at most 3.735e-10 of "
+                "uniform targets; Q1329, Q1332, Q1401, Q1403, and Q1404 "
+                "independently verified planted n83 four-leaf controls, but "
+                "none estimates ordinary-query yield; Q1403's ordered "
+                "implicit Q1325 SAT formula timed out on both its ordinary "
+                "target and an unpinned satisfiable planted target; Q1404's "
+                "smaller raw-preimage W<=5 SAT formula stopped at one million "
+                "conflicts on the ordinary target and timed out on an unpinned "
+                "satisfiable planted target, with no model in either run; "
+                "older n53/n83 SAT variants remain censored; the n131 W<=6 "
+                "base B/K remain conditional estimates rather than an exact "
+                "enumerated base; one n53 success and censored n83 ordinary "
+                "runs do not measure natural useful-row or novel-rank rates; "
+                "exact primitive mul/sqr call vectors now include inversions "
+                "but conversions, hashing, memory and arithmetic types still "
+                "lack a common calibrated unit; complete relation collection, "
+                "final matrix solve, target descent, and scalar replay are absent"
+            ),
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,
