@@ -1059,6 +1059,62 @@ that removing the projection circuits alone did not clear the N83 search
 bottleneck. No natural yield, cost per useful row, or complete solve
 exponent can be estimated from these censored runs.
 
+### Q1406 uniform-query relation-supply bound for Q1303
+
+The [Q1406 counting screen](runs/n131_q1406_uniform_query_bound.json)
+adds a necessary budget for **the proposed N131 W≤6, m=4 base** without a
+Poisson or independent-subset-sum assumption. With `B` distinct usable
+base points, there are at most \(\binom{B+3}{4}\) unordered four-point
+multisets, including repeated points. Their sums distribute over the
+subgroup of order `r`. A uniform nonidentity query therefore has at most
+\(\binom{B+3}{4}/(r-1)\) expected decompositions, regardless of how those
+sums are distributed. This also bounds its probability of having any
+decomposition. Every decomposition can add at most one relation row.
+
+Conditionally rounding Q1303's sampled base estimate to full 262-point
+signed-Frobenius orbits gives `B=6,583,581,064` and
+`K=25,128,172`. The uniform-query representation mean and coverage
+ceiling are **0.1150186**. For a collector that obtains all `K` required
+independent rows from uniform nonidentity four-summand queries, Markov's
+inequality requires at least **207,546,988 queries** for a 95% chance of
+rank `K`, even if it returns every representation and every row is novel.
+The condition that expected rank reaches `K` requires at least
+**218,470,513 queries**. Correlation between queries does not weaken these
+bounds when each query has the declared uniform marginal.
+
+Dividing an abstract `2^61` total-work cap by the 95%-rank necessary
+query count leaves at most **`2^33.37`** work units per query when all
+other costs are set to zero; the expected-rank version gives
+`2^33.30`. Across Q1303's conditional normal-approximation 95% base
+interval, the 95%-rank ceiling varies from `2^33.35` to `2^33.40`.
+These are affordability ceilings, **not** measured solver costs or a
+complete `2^x` projection. The actual N131 base count and digest are
+unknown, the statistical interval is not a hard bound, and a nonuniform
+guided query law or an external source of factor-base rank rows lies outside
+this screen. Recompute it with
+`python3 experiments/compact-s3-m4-20261003/screen_q1406_uniform_query_bound.py --check`.
+
+### Q1407 compact S3 formula-size control
+
+The [Q1407 source-bound screen](runs/n53_n83_n131_q1407_compact_formula_shape.json)
+rebuilds the raw-preimage compact S3 formula and matches the earlier
+ordinary N53 and N83 formula counts exactly. Those real-target controls use
+the frozen Q1301 W≤3 and Q1325 W≤5 bases and all their respective raw
+cofactor preimages. The N131 row uses four distinct **placeholder** x values
+to fix the selector shape; it is not a curve target or a solver run.
+
+| Formula shape | Variables | CNF clauses | XOR rows | AND gates | Total literal occurrences |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| N53 W≤3, 428 actual raw preimages | 26,922 | 100,060 | 795 | 25,281 | 459,580 |
+| N83 W≤5, four actual raw preimages | 65,221 | 189,928 | 1,245 | 62,001 | 569,288 |
+| N131 W≤6, four placeholder x values | 160,061 | 470,612 | 1,965 | 154,449 | 1,410,528 |
+
+The N131 row is about `2^20.43` emitted literal occurrences and never
+materializes expanded S5. Thus the earlier expanded-S5 construction cost
+does not apply to this compact encoding. The row measures formula **shape**,
+not SAT search work, successful decomposition cost, exact N131 base
+membership, or a complete solve. Recompute it with
+`python3 experiments/compact-s3-m4-20261003/screen_q1407_compact_formula_shape.py --check`.
 ### Q1405 compact five-summand planning screen
 
 The [source-bound Q1405 screen](runs/n83_n131_q1405_m5_chain_screen.json)

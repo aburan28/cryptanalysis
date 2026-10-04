@@ -10,7 +10,7 @@ import re
 from decimal import Decimal, localcontext
 from pathlib import Path
 
-from run_probe import HERE, sha
+from run_probe import HERE, ROOT, sha
 
 
 def read(name):
@@ -622,9 +622,34 @@ def main():
         "n131_projected_sparse_sage_replay.json")
     n131_pair_screen_path, n131_pair_screen = read(
         "n131_weight6_pure_pair_index_screen.json")
+    q1406_bound_path, q1406_bound = read(
+        "n131_q1406_uniform_query_bound.json")
+    q1407_shape_path, q1407_shape = read(
+        "n53_n83_n131_q1407_compact_formula_shape.json")
     assert n131_sample["proposal_id"] == "Q1303"
     assert n131_sample["candidate_id"] is None
     assert n131_sample["protocol_sha256"] == sha(protocol_path)
+    assert q1406_bound["proposal_id"] == "Q1406"
+    assert q1406_bound["parent_base_proposal_id"] == "Q1303"
+    assert q1406_bound["candidate_id"] is None
+    assert q1406_bound["curve_id"] == n131_sample["curve_id"]
+    assert q1406_bound["isogeny"] == "none"
+    assert q1406_bound["input_sha256"][str(
+        n131_sample_path.relative_to(ROOT))] == sha(n131_sample_path)
+    assert q1406_bound["input_sha256"][str(
+        protocol_path.relative_to(ROOT))] == sha(protocol_path)
+    assert q1406_bound["source_sha256"] == sha(
+        HERE / "screen_q1406_uniform_query_bound.py")
+    assert q1406_bound["complete_solve_work_log2"] is None
+    assert q1407_shape["proposal_id"] == "Q1407"
+    assert q1407_shape["candidate_id"] is None
+    assert q1407_shape["isogeny"] == "none"
+    assert q1407_shape["n131_placeholder_formula_shape"]["curve_id"] == (
+        n131_sample["curve_id"])
+    assert q1407_shape["source_sha256"][
+        "experiments/compact-s3-m4-20261003/screen_q1407_compact_formula_shape.py"
+    ] == sha(HERE / "screen_q1407_compact_formula_shape.py")
+    assert q1407_shape["complete_solve_work_log2"] is None
     assert n131_replay["status"] == "PASS"
     assert n131_replay["sample_receipt_sha256"] == sha(n131_sample_path)
     assert n131_replay["exact_rational_x_counts_weights_one_two"] == {
@@ -2339,6 +2364,34 @@ def main():
             "is_empirical_relation_yield": False,
             "is_complete_solve_projection": False,
             "receipt_sha256": sha(n131_pair_screen_path),
+        },
+        "q1406_n131_uniform_query_rank_supply_bound": {
+            "proposal_id": "Q1406",
+            "parent_base_proposal_id": "Q1303",
+            "candidate_id": None,
+            "curve_id": q1406_bound["curve_id"],
+            "base_status": q1406_bound["base_status"],
+            "scope": q1406_bound["scope"],
+            "proof": q1406_bound["proof"],
+            "conditional_scenarios": q1406_bound["conditional_scenarios"],
+            "budget_interpretation": q1406_bound["budget_interpretation"],
+            "is_empirical_relation_yield": False,
+            "is_complete_solve_projection": False,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(q1406_bound_path),
+        },
+        "q1407_compact_s3_formula_shape": {
+            "proposal_id": "Q1407",
+            "candidate_id": None,
+            "isogeny": "none",
+            "n53": q1407_shape["n53_matched_measured_formula_shape"],
+            "n83": q1407_shape["n83_matched_measured_formula_shape"],
+            "n131": q1407_shape["n131_placeholder_formula_shape"],
+            "interpretation": q1407_shape["interpretation"],
+            "is_decomposition_cost_measurement": False,
+            "is_complete_solve_projection": False,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(q1407_shape_path),
         },
         "matched_pair_table": {
             "n53": {
