@@ -54,6 +54,8 @@ python3 experiments/compact-s3-m4-20261003/q1420_root_theory/build_binaries.py -
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1420_root_theory/validate_root_field.py --degree 83 --samples 64
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1420_root_theory/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1420_root_theory/build_formula.py --degree 83 --kind ordinary --cell ordinary --preflight
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1420_root_theory/verify_archive.py --require-complete --emit
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 
 After protocol publication, execute each frozen cell with `run_stage.py`
@@ -65,3 +67,41 @@ N83 relation as verified. CPU wall times from this unisolated host are
 exploratory. Formula-building and callback operation counts are separate;
 their weighted total, natural yield, final matrix, descent, and complete
 degree-131 `2^x` remain unknown until measured or bounded.
+
+## Frozen results
+
+All six cells in the pre-registered run order completed, including two
+preserved external timeouts. The [archive verifier](verification.json)
+rechecked the serialized CNFs and every returned SAT model against both
+omitted S3 pair links and the exact factor-base group relation.
+
+| Degree | Cell | Status | Verified control relation | Formula build | Solver process | Peak child RSS | Root calls | External clauses |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 53 | full lock | SAT | 1 | 0.110 s | 0.306 s | 14.0 MB | 4 | 148 |
+| 53 | free mids | SAT | 1 | 0.080 s | 0.134 s | 20.9 MB | 4 | 148 |
+| 53 | ordinary | external timeout | 0 | 0.057 s | 60.014 s | 1,444.9 MB | unknown | unknown |
+| 83 | full lock | SAT | 1 | 0.156 s | 0.120 s | 21.5 MB | 4 | 246 |
+| 83 | free mids | SAT | 1 | 0.147 s | 0.243 s | 41.0 MB | 4 | 246 |
+| 83 | ordinary | external timeout | 0 | 0.105 s | 60.006 s | 165.9 MB | unknown | unknown |
+
+Times and decimal MB values above are exploratory observations on an
+unisolated Darwin host. Each degree's two SAT rows recover the same archived
+witness, so four verified cells are only two known relations reused as
+controls. The `free_mids` cells validate the external-root mechanism with
+fixed leaves. They do not test free-leaf search or natural relation yield.
+The exact field API call counts for each N53 SAT cell are 116 multiply, 656
+square, and 8 inverse inside the callback; each N83 SAT cell records 124,
+1,016, and 8 respectively. Formula construction separately records
+`n²` multiply and `n` square calls. The external timeout terminates the
+ordinary solver process before it prints its callback counters, so those
+counts are **unknown**, not zero. The N53 ordinary target is known to have
+a relation from earlier work, but this solver did not recover it.
+
+The result passes the known-witness mechanism gate and fails the ordinary
+method gate at both degrees. It does not support an N53-to-N83 solve-growth
+fit, a degree-131 per-query `2^x`, or a complete ECDLP projection. A next
+version should stop gracefully at its cap and print search/conflict,
+complete-pair, root, memory, and field-call counters; then test a sound
+partial-pair or leaf-first search rule on the same archived ordinary targets.
+That version needs a new frozen protocol and stage ID, leaving these six
+receipts untouched.

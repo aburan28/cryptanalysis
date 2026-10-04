@@ -1363,58 +1363,44 @@ The [cell table and next gate](q1419_partial_pin/README.md) preserve every
 failure, formula, log, named `PS1` stage and source hash. The complete
 degree-131 work exponent remains unknown.
 
+### Q1420 N53/N83 external exact-S3 root propagation
+
+The [pre-registered Q1420 protocol](q1420_root_theory/protocol.json) replaces
+both pair-intermediate S3 Boolean circuits with exact external field-root
+clauses. Its [six-cell archive](q1420_root_theory/verification.json) verifies
+the known-witness `full_lock` and `free_mids` controls at both N53 and N83.
+Those four SAT cells reuse two archived relations. The two unpinned ordinary
+targets each reach the external 60-second cap with no model or verified
+relation. The N53 ordinary solver's peak child RSS was 1.445 GB and the N83
+ordinary solver's was 166 MB on this unisolated Darwin host. Their callback
+operation counts are unknown because the external timeout kills the process
+before it prints them. The [Q1420 result table](q1420_root_theory/README.md)
+and ledger preserve the full per-cell costs and raw artifacts. This method
+passes the fixed-leaf mechanism check but does not establish ordinary N83
+yield, a solve-growth fit, or a complete \(2^x\) cost.
+
 ## Next goal
 
-The next experiment should couple the existing exact S3 field-root oracle
-to **free-leaf search as an external propagator**. When a leaf pair becomes
-fixed, compute its zero or two pair-intermediate roots in the field and
-constrain the solver. Q1319 already encoded those roots as Boolean circuits,
-and Q1327/Q1328 already enumerated a native pair index; the proposed hybrid
-must avoid both circuit expansion and a complete `K²n` table. First recover
-Q1419's frozen N53/N83 `free_mids` controls, then an unpinned ordinary N53
-relation, then an unpinned ordinary N83 relation on exact Q1325 W≤5. Preserve
-all failed queries, operation counts, memory and independent group-law
-replays. The N83 result is the first decisive method gate; a fresh ordinary
-query panel must then measure useful-row yield and novel rank per query.
-Compare against Q1319, the native root index, and the pair-table on matched
-inputs. Q1419 does not establish that this hybrid will scale; the gate tests
-that hypothesis.
+The next goal is a **work-counted ordinary four-summand method gate**. Freeze
+a Q1421 stage with graceful in-process termination so every capped attempt
+reports conflicts, complete leaf-pair assignments, exact S3 root calls,
+field operations, clauses, and memory. Use the Q1420 archived N53/N83
+ordinary targets and exact Q1301/Q1325 bases. Test one sound change to the
+free-leaf search, such as a validated partial-pair root gate or leaf-first
+branch rule, against the unchanged Q1420 method on the same inputs and caps.
+Preserve all failures. The first success gate is an unpinned N53 relation
+with independent checked-Sage replay; the next is the same at N83. A pair
+index limited to a tiny fixed target-support rectangle does not satisfy the
+N83 method gate.
 
-For the existing m=4 path, an ordinary N83 four-point relation on the exact
-Q1325 base still requires a search that avoids both the full \(K^2n\) index
-and Q1331's fixed two-million-state support limit. Q1329 has now
-validated the native S3 search on an unpinned, known-satisfiable N83 target;
-Q1401 has independently validated the quotient-pair search on the exact
-Q1325 base with a planted public target. Q1403's ordered implicit-base
-SAT formula still cannot recover its unpinned known-satisfiable control
-within 60 seconds or the ordinary target within 120 seconds. Q1404 removes
-the projection circuits yet also cannot recover its unpinned planted or
-ordinary target within the frozen caps. Q1408's balanced tree reaches the
-same one-million-conflict cap on the ordinary target, with no relation.
-Q1410 reaches that cap without recovering an independently known ordinary
-N53 relation, so the next design needs a different search mechanism.
-Q1412's leaf-ordering control also preserves the known relation but reaches
-the ordinary N53 conflict cap without a model.
-Q1415 activates XOR Gaussian matrices on the exact Q1410 N53 ordinary
-formula but reaches its 120-second cap without a model. A new mechanism
-should first recover an unpinned ordinary N53 relation, then an ordinary
-N83 relation on the exact Q1325 base, with failed attempts and field API
-work charged to the query.
-Q1400's ordinary no-hit and tiny fixed-rectangle support bound leave
-ordinary relation yield unmeasured.
-Run frozen ordinary single-target workloads under identical operation and
-memory limits, retaining all zero-yield cells and independently verifying
-any relations.
-The design needs measurable useful-row yield and novel rank per query,
-including failed attempts. Merely increasing the current sampled index cap
-cannot justify extrapolation to its 2.9-trillion-state N83 full index.
-
-Use the exact Q1413 N131 W≤5 and W≤6 bases to calibrate inversion,
-multiplication, conversion, hashing, and point costs in a common operation
-unit. Add base construction, relation collection, final matrix rank and
-solve, target descent, and scalar replay to a complete \(2^x\) ledger.
-Keep \(x\) unknown until every required term is measured or bounded. A
-challenge run is justified only if the **complete** fitted cost is
+Only after the N83 gate passes should a fresh, pre-registered ordinary-query
+panel estimate verified useful-row yield, novel rank per query, and charged
+cost per useful row, including failures. Calibrate multiply, square,
+inverse, conversion, hashing, and point costs into a declared common work
+unit. Then add exact-base construction, relation collection, final matrix
+build/solve, target descent, and scalar replay to the degree-131 ledger.
+The complete work exponent stays unknown until those terms are measured or
+bounded. Dispatch the challenge only if the **complete** projection is
 credibly below \(2^{61}\).
 
 ## Reproduction
