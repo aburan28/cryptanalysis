@@ -687,6 +687,11 @@ target lacks a four-point representation. The N83 cap is only
 \(2{,}000{,}000/(186{,}612^2\cdot83)\approx6.92\times10^{-7}\) of the
 full quotient pair-state count.
 
+This no-hit row is specific to Q1328's Q1325 base and frozen target. The
+separate [Q1091 quotient-pair campaign](../koblitz-pair-claw-20260929/README.md)
+recovered an N83 relation and scalar on a different exact factor base and
+workload. Its measured yield and work do not transfer to Q1328.
+
 Conditionally applying Q1303's estimated N131 W≤6 column count to this
 **full-index design** gives about \(2^{56.20}\) pair states before target
 queries. Applying the observed nondegenerate kernel's eight multiplication
