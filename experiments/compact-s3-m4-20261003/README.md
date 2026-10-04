@@ -1474,6 +1474,13 @@ exact Q1325 N83 base, with a pre-registered fresh-target panel if the fixed
 N83 target has no representation. Keep failed queries, raw operations,
 memory, and matched pair-table receipts.
 
+For work planning, Q1414's exact-base uniform-query model allows less than
+`2^33.36` abstract work units per query under a `2^61` total cap **even
+when every other phase costs zero**. This is a necessary affordability
+ceiling for that model, not a measured point-decomposition cost or a
+complete solve projection. The new method needs a measured natural yield
+and a calibrated N53/N83 cost trend before any degree-131 `2^x` is credible.
+
 Only after the N83 gate passes should a fresh ordinary-query panel measure
 verified useful-row yield, novel rank per query, and charged cost per useful
 row. Calibrate field arithmetic, conversion, hashing and point work into a
