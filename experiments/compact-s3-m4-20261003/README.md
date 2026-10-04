@@ -1185,6 +1185,42 @@ not curve preimages, no SAT solve was attempted, and formula construction
 does not establish solve cost. Reproduce the screen with
 `python3 experiments/compact-s3-m4-20261003/screen_q1405_m5_chain.py --check`.
 
+### Q1410 paired N53 balanced-S3 stage
+
+Q1410 uses the same balanced S3 builder and one-million-conflict ordinary
+limit as Q1408. Its exact N53 input is Q1301's
+`EC1N53Ckb1hf77aab617904` curve and W≤3 factor base: B = 24,062 actual
+usable points, K = 227 signed-Frobenius columns, and a complete 428-point
+raw target-preimage coset. The ordinary public target has workload ID
+`74f2979b3e68`. The [protocol](q1410_balanced_s3_n53_protocol.json) pins
+the source hashes and separates its locked control from the ordinary run.
+
+The first verifier preflight, Q1409, returned a SAT model but rejected it
+because it compared Q1325-style packed full-point keys with Q1301's
+canonical **x-coordinate** keys. Its [failure receipt](runs/n53_q1409_planted_locked_verification_failure.json)
+retains the source, protocol, solver log, and formula archive; it counts as
+no verified relation. Q1410 corrects that key check. Its locked control
+uses the existing, independently checked relation on the **same ordinary
+N53 public target**, with four distinct Q1301 columns. The
+[independent replay](runs/n53_q1410_balanced_control_replay.json) verifies
+both signed pair sums, the public-point sum, the exact base membership, and
+the four distinct columns.
+
+| Balanced-S3 stage | Charged target-stage wall (exploratory) | Solver result | Ordinary relation |
+| --- | ---: | --- | ---: |
+| Q1410 N53 locked witness | 0.269 s | SAT, independently verified control | control only |
+| Q1410 N53 ordinary | 69.581 s | 1,000,002 conflicts, censored | 0 |
+| Q1408 N83 ordinary | 90.501 s | 1,000,001 conflicts, censored | 0 |
+
+The [named cross-degree stage record](runs/n53_q1410_n83_q1408_balanced_stage_comparison.json)
+assigns Q1410 `PS1N53Ckb1fb24062PDP4sath3630c237df8c`, with run ID
+suffix `W74f2979b3e68R1`. The curves and bases differ, and both ordinary
+runs stop at a conflict cap without a model. Their wall ratio therefore
+does not measure solve growth, natural relation yield, or cost per useful
+row. Q1327/Q1330's native N53 root method found an ordinary relation on
+this exact base; Q1410's censored SAT row illustrates its search limit at
+the frozen cap. The complete N131 work exponent stays unknown.
+
 ## Next goal
 
 The next experiment is a frozen **five-summand compact-S3 PDP stage** on the
@@ -1208,9 +1244,10 @@ within 60 seconds or the ordinary target within 120 seconds. Q1404 removes
 the projection circuits yet also cannot recover its unpinned planted or
 ordinary target within the frozen caps. Q1408's balanced tree reaches the
 same one-million-conflict cap on the ordinary target, with no relation.
-Q1400's
-ordinary no-hit and tiny fixed-rectangle support bound leave ordinary
-relation yield unmeasured.
+Q1410 reaches that cap without recovering an independently known ordinary
+N53 relation, so the next design needs a different search mechanism.
+Q1400's ordinary no-hit and tiny fixed-rectangle support bound leave
+ordinary relation yield unmeasured.
 Run frozen ordinary single-target workloads under identical operation and
 memory limits, retaining all zero-yield cells and independently verifying
 any relations.
@@ -1270,6 +1307,8 @@ python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --che
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1404_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1408_balanced_control.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1408_stage_comparison.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1410_n53_balanced.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1410_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```

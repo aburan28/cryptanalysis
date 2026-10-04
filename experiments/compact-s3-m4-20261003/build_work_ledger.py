@@ -1543,6 +1543,68 @@ def main():
                 "observed_verified_relation_count"],
             "receipt_sha256": sha(stage_path),
         })
+    q1409_protocol_path = HERE / "q1409_balanced_s3_n53_protocol.json"
+    q1409_failure_path, q1409_failure = read(
+        "n53_q1409_planted_locked_verification_failure.json")
+    assert q1409_failure["status"] == "verification_failed"
+    assert q1409_failure["protocol_sha256"] == sha(q1409_protocol_path)
+    q1410_protocol_path = HERE / "q1410_balanced_s3_n53_protocol.json"
+    q1410_protocol = json.loads(q1410_protocol_path.read_text())
+    q1410_runtime_path = HERE / "q1410_sage_runtime_info.json"
+    q1410_replay_path, q1410_replay = read(
+        "n53_q1410_balanced_control_replay.json")
+    q1410_comparison_path, q1410_comparison = read(
+        "n53_q1410_n83_q1408_balanced_stage_comparison.json")
+    assert q1410_protocol["proposal_id"] == q1410_replay[
+        "proposal_id"] == "Q1410"
+    assert q1410_protocol["parent_factor_base_proposal_id"] == "Q1301"
+    assert q1410_protocol["curve_id"] == protocol["profiles"][0]["curve"][
+        "curve_id"]
+    assert q1410_protocol["factor_base_enumerated_set_sha256"] == protocol[
+        "profiles"][0]["factor_base"]["enumerated_set_sha256"]
+    assert q1410_replay["status"] == "PASS"
+    assert q1410_replay["locked_control_distinct_columns"] == 4
+    assert q1410_replay["ordinary_relation_count"] == 0
+    assert q1410_replay["source_sha256"] == sha(
+        HERE / "verify_q1410_n53_balanced.py")
+    assert q1410_comparison["source_sha256"] == sha(
+        HERE / "build_q1410_stage_comparison.py")
+    assert [profile["proposal_id"] for profile in q1410_comparison[
+        "stage_profiles"]] == ["Q1410", "Q1408"]
+    q1410_stages = []
+    for mode, expected_status in (
+        ("witness_locked", "sat"),
+        ("ordinary", "censored"),
+    ):
+        stage_path, stage = read(f"n53_q1410_{mode}.json")
+        assert stage["proposal_id"] == "Q1410"
+        assert stage["status"] == expected_status
+        assert stage["protocol_sha256"] == sha(q1410_protocol_path)
+        assert stage["runtime_info_sha256"] == sha(q1410_runtime_path)
+        assert stage["complete_solve_work_log2"] is None
+        q1410_stages.append({
+            "mode": mode,
+            "workload_id": stage["workload_id"],
+            "status": stage["status"],
+            "solver_conflicts_reported": stage["attempts"][0][
+                "solver_conflicts_reported"],
+            "target_preimage_wall_seconds_exploratory": stage[
+                "target_preimage_wall_seconds"],
+            "target_pdp_wall_seconds_exploratory": stage[
+                "target_pdp_wall_seconds"],
+            "target_relation_check_wall_seconds_exploratory": stage[
+                "target_relation_check_wall_seconds"],
+            "target_dependent_stage_wall_seconds_exploratory": stage[
+                "target_dependent_stage_wall_seconds"],
+            "control_stage_wall_seconds_exploratory": stage[
+                "control_stage_wall_seconds"],
+            "formula": stage["formula"],
+            "peak_parent_rss_raw": stage["peak_parent_rss_raw"],
+            "peak_child_rss_raw": stage["peak_child_rss_raw"],
+            "observed_verified_relation_count": stage[
+                "observed_verified_relation_count"],
+            "receipt_sha256": sha(stage_path),
+        })
     adaptive_protocol_path = HERE / "q1333_q1334_adaptive_window_protocol.json"
     adaptive_protocol = json.loads(adaptive_protocol_path.read_text())
     adaptive_build_path = HERE / "native_adaptive_build_receipt.json"
@@ -2358,6 +2420,65 @@ def main():
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(q1408_comparison_path),
         },
+        "q1409_n53_verifier_preflight_failure": {
+            "proposal_id": "Q1409",
+            "candidate_id": None,
+            "status": "verification_failed",
+            "reason": q1409_failure["failure"],
+            "ordinary_relation_count": None,
+            "complete_solve_work_log2": None,
+            "protocol_sha256": sha(q1409_protocol_path),
+            "failure_receipt_sha256": sha(q1409_failure_path),
+        },
+        "q1410_balanced_s3_n53_stage": {
+            "proposal_id": "Q1410",
+            "candidate_id": None,
+            "stage_config_id": q1410_comparison["stage_profiles"][0][
+                "stage_config_id"],
+            "run_id": q1410_comparison["stage_profiles"][0]["run_id"],
+            "curve_id": q1410_protocol["curve_id"],
+            "isogeny": "none",
+            "factor_base_actual_B": q1410_protocol["factor_base_actual_B"],
+            "factor_base_folded_columns_K": q1410_protocol[
+                "factor_base_folded_columns"],
+            "factor_base_enumerated_set_sha256": q1410_protocol[
+                "factor_base_enumerated_set_sha256"],
+            "matched_ordinary_workload_id": q1410_protocol[
+                "ordinary_workload_id"],
+            "stages": q1410_stages,
+            "independently_verified_locked_control_relation_count": (
+                q1410_replay["verified_locked_control_relation_count"]),
+            "locked_control_distinct_columns": q1410_replay[
+                "locked_control_distinct_columns"],
+            "verified_ordinary_relation_count": 0,
+            "natural_relation_yield_rate_estimate": None,
+            "cost_per_useful_relation": None,
+            "field_operations": None,
+            "verified_single_target_dlp": False,
+            "complete_solve_work_log2": None,
+            "controlled_wall_speedup_claim_allowed": False,
+            "protocol_sha256": sha(q1410_protocol_path),
+            "runtime_info_sha256": sha(q1410_runtime_path),
+            "independent_replay_receipt_sha256": sha(q1410_replay_path),
+        },
+        "q1410_q1408_named_cross_degree_stage_comparison": {
+            "candidate_id": None,
+            "different_curves_and_factor_bases": True,
+            "profiles": [{
+                "proposal_id": profile["proposal_id"],
+                "stage_config_id": profile["stage_config_id"],
+                "run_id": profile["run_id"],
+                "ordinary_stage_status": profile[
+                    "ordinary_stage_status"],
+                "observed_verified_relation_count": profile[
+                    "observed_verified_relation_count"],
+            } for profile in q1410_comparison["stage_profiles"]],
+            "is_solve_growth_measurement": False,
+            "is_complete_ic_comparison": False,
+            "is_controlled_cpu_wall_speedup": False,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(q1410_comparison_path),
+        },
         "q1333_q1334_adaptive_single_target_window_stages": adaptive_stages,
         "q1335_n83_adaptive_single_target_planted_control": q1335_control,
         "q1336_q1337_fused_root_single_target_stages": fused_stages,
@@ -2564,6 +2685,11 @@ def main():
                 "Q1408's balanced raw-preimage S3 tree also timed out on "
                 "the unpinned planted target and exhausted one million "
                 "ordinary-target conflicts without a model; "
+                "Q1410's same balanced solver independently verifies a "
+                "locked four-distinct-column N53 ordinary witness but also "
+                "exhausts one million conflicts unpinned on that ordinary "
+                "target without a model, so the two censored rows cannot "
+                "fit a solve-growth exponent; "
                 "Q1333/Q1334 use an adaptive target-local inversion window "
                 "and reproduce the fixed-window ordinary outcomes; Q1336/Q1337 "
                 "fuse one field multiplication per S3 root but show no repeatable "
