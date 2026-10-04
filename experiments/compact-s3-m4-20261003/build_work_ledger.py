@@ -547,6 +547,51 @@ def main():
         "complete_solve_work_log2": None,
         "receipt_sha256": sha(incomplete_path),
     })
+    forward_pin_path, forward_pin = read(
+        "n53_ordinary_group_add_forward_pin3.json")
+    assert forward_pin["proposal_id"] == "Q1320"
+    assert forward_pin["status"] == "external_timeout"
+    assert forward_pin["pin_leaves"] == 3
+    assert forward_pin["target_pdp_wall_seconds"] is None
+    reverse_stage = []
+    for n, kind, pinned, expected_status in (
+            (53, "ordinary", 3, "sat"),
+            (53, "ordinary", 2, "external_timeout"),
+            (53, "ordinary", 0, "external_timeout"),
+            (83, "planted", 3, "external_timeout"),
+            (83, "ordinary", 0, "external_timeout")):
+        path, stage = read(
+            f"n{n}_{kind}_group_add_reverse_pin{pinned}.json")
+        baseline_path, baseline = read(f"n{n}_{kind}_frozen.json")
+        assert stage["proposal_id"] == ("Q1322" if n == 53 else "Q1323")
+        assert stage["baseline_receipt_sha256"] == sha(baseline_path)
+        assert stage["curve_id"] == baseline["curve_id"]
+        assert stage["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"]
+        assert stage["pin_leaves"] == pinned
+        assert stage["status"] == expected_status
+        reverse_stage.append({
+            "proposal_id": stage["proposal_id"],
+            "candidate_id": None,
+            "workload_id": stage["workload_id"], "run_id": None,
+            "curve_id": stage["curve_id"],
+            "n": n, "kind": kind,
+            "pin_leaves": pinned,
+            "oracle_assisted": stage["oracle_assisted"],
+            "factor_base_B": stage["factor_base_actual_B"],
+            "folded_columns": stage["factor_base_folded_columns"],
+            "formula": stage["formula"],
+            "status": stage["status"],
+            "target_pdp_wall_seconds": stage["target_pdp_wall_seconds"],
+            "oracle_diagnostic_wall_seconds": stage[
+                "oracle_diagnostic_wall_seconds"],
+            "observed_verified_relation_count": stage[
+                "observed_verified_relation_count"],
+            "natural_relation_yield_estimate": None,
+            "field_operations": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
     order131 = protocol["degree_131_design"]["curve"]["subgroup_order"]
     heuristic_samples131 = 2 * math.sqrt(order131 / (2 * 131))
     relation_density_heuristic = []
@@ -574,6 +619,8 @@ def main():
         "n131_projected_sparse_geometry.json")
     n131_projected_replay_path, n131_projected_replay = read(
         "n131_projected_sparse_sage_replay.json")
+    n131_pair_screen_path, n131_pair_screen = read(
+        "n131_weight6_pure_pair_index_screen.json")
     assert n131_sample["proposal_id"] == "Q1303"
     assert n131_sample["candidate_id"] is None
     assert n131_sample["protocol_sha256"] == sha(protocol_path)
@@ -592,6 +639,12 @@ def main():
     assert n131_projected_replay["status"] == "PASS"
     assert n131_projected_replay["screen_receipt_sha256"] == sha(
         n131_projected_path)
+    assert n131_pair_screen["proposal_id"] == "Q1303"
+    assert n131_pair_screen["base_sample_receipt_sha256"] == sha(
+        n131_sample_path)
+    assert n131_pair_screen["independent_replay_receipt_sha256"] == sha(
+        n131_replay_path)
+    assert n131_pair_screen["is_complete_solve_projection"] is False
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -668,6 +721,19 @@ def main():
             projected_sparse_pin_diagnostics),
         "half_trace_rooted_stage_measurements": rooted_stage,
         "full_group_addition_stage_measurements": group_add_stage,
+        "n53_forward_group_addition_three_pin_diagnostic": {
+            "proposal_id": "Q1320", "candidate_id": None,
+            "workload_id": None, "run_id": None,
+            "curve_id": forward_pin["curve_id"],
+            "oracle_assisted": True,
+            "pin_leaves": 3,
+            "status": forward_pin["status"],
+            "oracle_diagnostic_wall_seconds": forward_pin[
+                "oracle_diagnostic_wall_seconds"],
+            "verified_relation_count": 0,
+            "receipt_sha256": sha(forward_pin_path),
+        },
+        "reverse_group_addition_stage_measurements": reverse_stage,
         "relation_density_planning_heuristic": relation_density_heuristic,
         "n131_weight6_geometry_estimate": {
             "proposal_id": "Q1303",
@@ -712,6 +778,25 @@ def main():
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(n131_projected_path),
         },
+        "n131_weight6_pure_pair_index_screen": {
+            "proposal_id": "Q1303",
+            "candidate_id": None,
+            "curve_id": n131_pair_screen["curve_id"],
+            "factor_base_exact_B": None,
+            "factor_base_exact_digest": None,
+            "method_family": n131_pair_screen["method_family"],
+            "estimate": n131_pair_screen["estimate"],
+            "sampling_95_percent_B_interval_cases": n131_pair_screen[
+                "sampling_95_percent_B_interval_cases"],
+            "optimistic_total_pair_actions_log2": n131_pair_screen[
+                "optimistic_total_pair_actions_log2"],
+            "gap_above_2pow61_pair_actions_log2": n131_pair_screen[
+                "gap_above_2pow61_pair_actions_log2"],
+            "model_assumptions": n131_pair_screen["model_assumptions"],
+            "is_empirical_relation_yield": False,
+            "is_complete_solve_projection": False,
+            "receipt_sha256": sha(n131_pair_screen_path),
+        },
         "matched_pair_table": {
             "n53": {
                 "status": n53["status"],
@@ -743,7 +828,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, and full group-addition encodings; the full group-addition n53 known-satisfiable and n83 planted controls recover leaf-fixed witnesses but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary four-point runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, implicit cofactor-four projected-base, half-trace-rooted, full group-addition, and reverse-link encodings; reverse-link arithmetic recovers the last n53 leaf with three oracle-pinned leaves but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,

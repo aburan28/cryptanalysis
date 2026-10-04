@@ -5,6 +5,7 @@ import base64
 import gzip
 import hashlib
 import json
+import math
 from pathlib import Path
 
 from run_probe import HERE, sha
@@ -656,6 +657,148 @@ def verify():
                  "receipt_sha256": sha(incomplete_path),
                  "formula_sha256": digest.hexdigest(),
                  "formula_bytes": size})
+    forward_pin_path = HERE / "runs/n53_ordinary_group_add_forward_pin3.json"
+    forward_pin = json.loads(forward_pin_path.read_text())
+    assert forward_pin["proposal_id"] == "Q1320"
+    assert forward_pin["candidate_id"] is None
+    assert forward_pin["workload_id"] is None
+    assert forward_pin["pin_leaves"] == 3
+    assert forward_pin["oracle_assisted"] is True
+    assert forward_pin["status"] == "external_timeout"
+    assert forward_pin["verified_relation"] is None
+    assert forward_pin["target_pdp_wall_seconds"] is None
+    assert forward_pin["oracle_diagnostic_wall_seconds"] >= 20
+    assert forward_pin["curve_id"] == json.loads((
+        HERE / "runs/n53_ordinary_frozen.json").read_text())["curve_id"]
+    assert forward_pin["baseline_receipt_sha256"] == sha(
+        HERE / "runs/n53_ordinary_frozen.json")
+    assert forward_pin["known_witness_receipt_sha256"] == sha(
+        HERE / "runs/n53_ordinary_matched_pair_table.json")
+    assert forward_pin["runtime_info_sha256"] == sha(
+        HERE / "group_add_reverse_sage_runtime_info.json")
+    for key, source in (("core_source_sha256", "chain_s3.py"),
+                        ("group_add_source_sha256", "chain_group_add.py"),
+                        ("base_orbit_source_sha256",
+                         "chain_s3_base_orbit.py"),
+                        ("base_probe_source_sha256",
+                         "run_base_orbit_probe.py"),
+                        ("group_probe_source_sha256",
+                         "run_group_add_probe.py"),
+                        ("reverse_probe_source_sha256",
+                         "run_group_add_reverse_probe.py"),
+                        ("runner_source_sha256",
+                         "run_group_add_forward_pin3.py")):
+        assert forward_pin[key] == sha(HERE / source)
+    assert forward_pin["solver_binary_sha256"] == sha(
+        Path(forward_pin["solver_command"][0]))
+    assert forward_pin["solver_stdout_sha256"] == sha(
+        HERE / "runs/n53_ordinary_group_add_forward_pin3.stdout.txt")
+    assert forward_pin["solver_stderr_sha256"] == sha(
+        HERE / "runs/n53_ordinary_group_add_forward_pin3.stderr.txt")
+    digest = hashlib.sha256()
+    size = 0
+    with gzip.open(HERE / "runs" / forward_pin["xcnf_archive"],
+                   "rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+            size += len(chunk)
+    assert digest.hexdigest() == forward_pin["xcnf_sha256"]
+    assert size == forward_pin["xcnf_bytes"]
+    rows.append({"variant": "n53_ordinary_group_add_forward_pin3",
+                 "receipt_sha256": sha(forward_pin_path),
+                 "formula_sha256": digest.hexdigest(),
+                 "formula_bytes": size})
+    for n, kind, pinned, expected_status in (
+            (53, "ordinary", 3, "sat"),
+            (53, "ordinary", 2, "external_timeout"),
+            (53, "ordinary", 0, "external_timeout"),
+            (83, "planted", 3, "external_timeout"),
+            (83, "ordinary", 0, "external_timeout")):
+        stem = f"n{n}_{kind}_group_add_reverse_pin{pinned}"
+        path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(path.read_text())
+        baseline_path = HERE / "runs" / f"n{n}_{kind}_frozen.json"
+        baseline = json.loads(baseline_path.read_text())
+        archive_path = HERE / "bases" / (
+            f"n{n}_weight{3 if n == 53 else 4}_orbits.json.gz")
+        assert receipt["proposal_id"] == ("Q1322" if n == 53 else "Q1323")
+        assert receipt["candidate_id"] is None
+        assert receipt["run_id"] is None
+        assert receipt["isogeny"] == "none"
+        assert receipt["complete_solve_work_log2"] is None
+        assert receipt["pin_leaves"] == pinned
+        assert receipt["oracle_assisted"] == (pinned > 0)
+        assert receipt["workload_id"] == (
+            None if pinned else baseline["workload_id"])
+        assert receipt["curve_id"] == baseline["curve_id"]
+        assert receipt["public_target"] == baseline["public_subgroup_target"]
+        assert receipt["factor_base_actual_B"] == baseline[
+            "factor_base_actual_B"]
+        assert receipt["factor_base_folded_columns"] == baseline[
+            "factor_base_folded_columns"]
+        assert receipt["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["base_archive_sha256"] == sha(archive_path)
+        assert receipt["baseline_receipt_sha256"] == sha(baseline_path)
+        assert receipt["protocol_sha256"] == protocol_digest
+        assert receipt["runtime_info_sha256"] == sha(
+            HERE / "group_add_reverse_sage_runtime_info.json")
+        for key, source in (("core_source_sha256", "chain_s3.py"),
+                            ("group_add_source_sha256", "chain_group_add.py"),
+                            ("reverse_source_sha256",
+                             "chain_group_add_reverse.py"),
+                            ("base_orbit_source_sha256",
+                             "chain_s3_base_orbit.py"),
+                            ("base_probe_source_sha256",
+                             "run_base_orbit_probe.py"),
+                            ("group_probe_source_sha256",
+                             "run_group_add_probe.py"),
+                            ("probe_source_sha256", "run_probe.py"),
+                            ("runner_source_sha256",
+                             "run_group_add_reverse_probe.py")):
+            assert receipt[key] == sha(HERE / source)
+        if n == 83:
+            assert receipt["projected_source_sha256"] == sha(
+                HERE / "chain_s3_projected_sparse.py")
+        else:
+            assert receipt["projected_source_sha256"] is None
+        assert receipt["solver_binary_sha256"] == sha(
+            Path(receipt["solver_command"][0]))
+        assert receipt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stdout.txt")
+        assert receipt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stderr.txt")
+        assert receipt["status"] == expected_status
+        assert receipt["observed_verified_relation_count"] == int(
+            expected_status == "sat")
+        if expected_status == "sat":
+            assert receipt["verified_relation"] is not None
+            assert receipt["verified_relation"]["verified_public_sum"] == (
+                list(map(int, baseline["public_subgroup_target"])))
+        else:
+            assert receipt["verified_relation"] is None
+        if pinned:
+            assert receipt["known_witness_receipt_sha256"] == sha(
+                HERE / "runs" / ("n53_ordinary_matched_pair_table.json"
+                                  if n == 53 else "n83_planted_frozen.json"))
+            assert receipt["target_pdp_wall_seconds"] is None
+            assert receipt["oracle_diagnostic_wall_seconds"] > 0
+        else:
+            assert receipt["known_witness_receipt_sha256"] is None
+            assert receipt["target_pdp_wall_seconds"] > 0
+        digest = hashlib.sha256()
+        size = 0
+        with gzip.open(HERE / "runs" / receipt["xcnf_archive"], "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        assert digest.hexdigest() == receipt["xcnf_sha256"]
+        assert size == receipt["xcnf_bytes"]
+        rows.append({"variant": stem, "receipt_sha256": sha(path),
+                     "formula_sha256": digest.hexdigest(),
+                     "formula_bytes": size,
+                     "observed_verified_relation_count": receipt[
+                         "observed_verified_relation_count"]})
     geometry_path = HERE / "runs/n131_projected_sparse_geometry.json"
     geometry = json.loads(geometry_path.read_text())
     assert geometry["proposal_id"] == "Q1318"
@@ -743,6 +886,33 @@ def verify():
     assert replay["producer_w2_projected_B_exhaustively_replayed"] is False
     rows.append({"variant": "n131_weight6_sage_independent_replay",
                  "receipt_sha256": sha(replay_path)})
+    pair_screen_path = HERE / "runs/n131_weight6_pure_pair_index_screen.json"
+    pair_screen = json.loads(pair_screen_path.read_text())
+    assert pair_screen["proposal_id"] == "Q1303"
+    assert pair_screen["candidate_id"] is None
+    assert pair_screen["isogeny"] == "none"
+    assert pair_screen["curve_id"] == sample["curve_id"]
+    assert pair_screen["factor_base_exact_B"] is None
+    assert pair_screen["factor_base_exact_digest"] is None
+    assert pair_screen["protocol_sha256"] == protocol_digest
+    assert pair_screen["base_sample_receipt_sha256"] == sha(sample_path)
+    assert pair_screen["independent_replay_receipt_sha256"] == sha(
+        replay_path)
+    assert pair_screen["source_sha256"] == sha(
+        HERE / "screen_n131_weight6_pair_index.py")
+    assert pair_screen["is_empirical_relation_yield"] is False
+    assert pair_screen["is_complete_solve_projection"] is False
+    assert pair_screen["challenge_dispatch_allowed"] is False
+    estimate = pair_screen["estimate"]
+    assert estimate["conditional_B"] == sample["conditional_B_estimate"]
+    assert estimate["conditional_folded_columns_K"] == sample[
+        "conditional_folded_columns_estimate"]
+    assert math.isclose(estimate["index_states"], 131 * estimate[
+        "conditional_folded_columns_K"] ** 2, rel_tol=1e-14)
+    assert estimate["K_rank_rows_pair_probes"] > 2 ** 89
+    assert pair_screen["optimistic_total_pair_actions_log2"] > 89
+    rows.append({"variant": "n131_weight6_pure_pair_index_screen",
+                 "receipt_sha256": sha(pair_screen_path)})
     return rows
 
 

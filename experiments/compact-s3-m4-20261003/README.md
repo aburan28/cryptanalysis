@@ -327,6 +327,35 @@ source and solver hashes, solver logs, and compressed formulas. No unassisted
 query returned a verified relation, so these censored attempts do not yield a
 success-cost estimate or a degree-131 \(2^x\) projection.
 
+## Reverse-link group propagation
+
+[`chain_group_add_reverse.py`](chain_group_add_reverse.py) adds the redundant
+equation \(P_4=T-P_{123}\) to the exact four-point circuit. It computes the
+right side through another forward field-inversion circuit. Q1322 is the
+n=53 exact-base stage; Q1323 is the n=83 implicit projected-base stage.
+The extra affine link requires \(x(T)\ne x(P_{123})\), so these variants cover
+a narrower nondegenerate subset. Both known full-size witnesses satisfy that
+restriction. Pinned diagnostics set `workload_id: null`; the unpinned ordinary
+rows retain their frozen one-target workload IDs.
+
+| Reverse-link query | Unassisted or oracle-pinned result | Charged PDP or diagnostic wall | Verified relation |
+| --- | --- | ---: | --- |
+| Q1322 n=53 ordinary, first 3 leaves pinned | SAT | 0.57 s diagnostic | known public relation; fourth leaf recovered |
+| Q1322 n=53 ordinary, first 2 leaves pinned | 20 s cap | 20.01 s diagnostic | none |
+| Q1322 n=53 ordinary, no pins | 60 s cap | 60.01 s target PDP | none |
+| Q1323 n=83 planted, first 3 leaves pinned | 30 s cap | 30.01 s diagnostic | none |
+| Q1323 n=83 ordinary, no pins | 60 s cap | 60.04 s target PDP | none |
+
+The n=53 three-pin result is a concrete propagation improvement: the same
+known witness with three leaves pinned timed out after 20 seconds before the
+reverse equation was added. The n=83 full formula accepts its witness when
+all four raw and projected leaves are fixed, and exact group replay passes.
+Its three-pin timeout is therefore a censored search on a satisfiable
+instance, consistent with a remaining sparse-raw-x preimage/base-selection
+bottleneck. No unassisted query succeeded. The formulas, logs, checked Sage
+runtime, and source hashes are retained for all five rows; the full-size
+locked n=83 control is in the circuit test suite.
+
 At n=131, Q1318 uses the proposed W≤6 projected base and the same
 cofactor-four identity. [`screen_n131_projected_sparse.py`](screen_n131_projected_sparse.py)
 assembled a formula with **300,098 variables, 881,690 CNF clauses, 4,589
@@ -372,6 +401,21 @@ need roughly \(2^{61.48}\) *logical pair samples* for one expected match.
 This is a heuristic for the sampled pair-table method, not a measured lower
 bound, a field-operation conversion, or a projection for the SAT solver.
 It already excludes base construction, final LA, and target recovery.
+
+[`screen_n131_weight6_pair_index.py`](screen_n131_weight6_pair_index.py)
+applies the separate pure pair-index rank-collection law to Q1303's proposed
+W≤6 base estimate. With conditional \(B\approx6.584\) billion and
+\(K\approx25.13\) million, building all \(nK^2\) quotient pair states is
+about \(2^{56.20}\) states. Storing just one 17-byte 131-bit key per state
+would take about \(2^{60.29}\) bytes, before witnesses or table overhead.
+Under uniform pair keys and the optimistic assumption that each match adds
+one rank row, collecting \(K\) rows costs about \(2^{89.35}\) logical pair
+probes. Propagating only the sample's conditional 95% \(B\) interval gives
+\(2^{89.34}\)–\(2^{89.36}\) probes. This screen is 28.35 bits above a
+\(2^{61}\) *pair-action* budget before final LA and target recovery. It rules
+out that pure indexed-pair family under its stated model; it is neither a
+lower bound on other decomposition algorithms nor a complete field-operation
+projection. Q1303's exact \(B\) and digest remain unknown.
 
 For planning n=83 ordinary-target panels, the exact base count and subgroup
 order give \(\binom{B}{4}/r=0.2411\) distinct unordered four-point subsets

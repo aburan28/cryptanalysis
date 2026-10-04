@@ -18,6 +18,8 @@ from chain_s3_projected_sparse import projected_sparse_leaf
 from s3_root_oracle import half_trace, s3_roots
 from chain_s3_rooted import half_trace_columns, s3_root_link
 from chain_group_add import add_four_to_target, inverse_circuit
+from chain_group_add_reverse import (build_projected_sparse_reverse_chain,
+                                     reverse_last_link)
 from chain_s3_orbit import frobenius_barrel
 from chain_s3_ordered import less_or_equal
 from chain_s3_rational import add_rationality_filter
@@ -576,6 +578,98 @@ class ChainS3Tests(unittest.TestCase):
         for point in decoded:
             total = curve.add(total, point)
         self.assertEqual(total, target)
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_reverse_last_link_recovers_unknown_fourth_point(self):
+        onb = field.Onb(5)
+        curve = curves.Curve(onb)
+        table = multiplication_table(onb)
+        destinations = square_destinations(onb)
+        points = [curve.pointFromX(onb.fromCoords(x))
+                  for x in range(1, 1 << 5)]
+        points = [point for point in points if point is not None]
+        rng = random.Random(132022)
+        while True:
+            chosen = [rng.choice(points) for _ in range(4)]
+            first = curve.add(chosen[0], chosen[1])
+            if first is None or chosen[0][0] == chosen[1][0]:
+                continue
+            second = curve.add(first, chosen[2])
+            if second is None or first[0] == chosen[2][0]:
+                continue
+            target = curve.add(second, chosen[3])
+            if (target is not None and second[0] != chosen[3][0]
+                    and target[0] != second[0]):
+                break
+        formula = Formula()
+        leaf_x = [[formula.new() for _ in range(5)] for _ in range(4)]
+        leaves, mids, _ = add_four_to_target(
+            formula, leaf_x,
+            tuple(onb.toCoords(value) for value in target),
+            table, destinations)
+        reverse_last_link(formula, mids[-1], leaves[-1],
+                          tuple(onb.toCoords(value) for value in target),
+                          table, destinations)
+        for (x_bits, y_bits), point in zip(leaves[:3], chosen[:3]):
+            for bits, value in ((x_bits, onb.toCoords(point[0])),
+                                (y_bits, onb.toCoords(point[1]))):
+                formula.clauses.extend(([
+                    bit if value >> position & 1 else -bit]
+                    for position, bit in enumerate(bits)))
+        with tempfile.TemporaryDirectory() as name:
+            path = Path(name) / "reverse-last.xcnf"
+            formula.write(path)
+            result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                     "--threads", "1", str(path)],
+                                    capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 10, result.stdout[-500:])
+        model = parse_model(result.stdout)
+        recovered = tuple(onb.fromCoords(sum(
+            1 << position for position, bit in enumerate(bits)
+            if model.get(bit, False))) for bits in leaves[-1])
+        self.assertEqual(recovered, chosen[-1])
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_n83_reverse_chain_accepts_locked_planted_witness(self):
+        _, baseline, _, archive, keys = read_inputs(83, "planted")
+        onb = field.Onb(83)
+        curve = curves.Curve(onb)
+        public = tuple(map(int, baseline["public_subgroup_target"]))
+        _, points = witness_points(
+            83, "planted", onb, curve, baseline,
+            int(archive["curve"]["cofactor"]))
+        third = curve.add(curve.add(points[0], points[1]), points[2])
+        self.assertNotEqual(public[0], third[0])
+        formula, raw_leaves, leaves, _, _, _, _ = (
+            build_projected_sparse_reverse_chain(83, 4, public))
+        for bits, value in zip(raw_leaves,
+                               baseline["fixture"]["planted_leaf_x"]):
+            formula.clauses.extend(([
+                bit if value >> position & 1 else -bit]
+                for position, bit in enumerate(bits)))
+        for (x_bits, y_bits), point in zip(leaves, points):
+            for bits, value in ((x_bits, onb.toCoords(point[0])),
+                                (y_bits, onb.toCoords(point[1]))):
+                formula.clauses.extend(([
+                    bit if value >> position & 1 else -bit]
+                    for position, bit in enumerate(bits)))
+        with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as name:
+            path = Path(name) / "n83-locked-reverse.xcnf"
+            formula.write(path)
+            result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                     "--threads", "1", str(path)],
+                                    capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 10, result.stdout[-500:])
+        model = parse_model(result.stdout)
+        recovered = [tuple(onb.fromCoords(sum(
+            1 << position for position, bit in enumerate(bits)
+            if model.get(bit, False))) for bits in leaf)
+            for leaf in leaves]
+        self.assertEqual(recovered, points)
+        total = None
+        for point in recovered:
+            total = curve.add(total, point)
+        self.assertEqual(total, public)
 
     @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
     def test_leaf_order_comparator_accepts_exactly_non_decreasing_values(self):
