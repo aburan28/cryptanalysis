@@ -15,6 +15,9 @@ Its known-satisfiable n=53 ordinary query reached one million conflicts
 without a model, and its n=83 planted and ordinary queries reached the
 120-second cap without a model. Locked witness controls passed where a
 witness is known.
+A second n=83 encoding represents the same exact base implicitly through
+cofactor-four projection of sparse rational x values. It reduced the CNF
+clause count but also produced no unassisted relation within its caps.
 
 ## Identity and comparable inputs
 
@@ -225,6 +228,51 @@ complete ECDLP solve cost. Source-bound receipts, solver logs, and gzip XCNFs
 are in `runs/`, with the checked runtime snapshot at
 `base_orbit_sage_runtime_info.json`.
 
+## Implicit cofactor-four projected base
+
+For this exact curve model, `y² + xy = x³ + 1`, the projected x coordinate
+of a point with raw x coordinate `x` satisfies
+
+`x([4]P) · (x¹² + x⁴) = x¹⁶ + x⁸ + 1`.
+
+[`chain_s3_projected_sparse.py`](chain_s3_projected_sparse.py) restricts raw
+`x` to normal-basis weight at most four, requires `x · z = 1` and
+`Tr(x + z) = 0` for a rational curve lift, then constrains the projected
+subgroup x by this equation. The test suite checks every nonzero x at n=5
+and n=11 against exact group multiplication, and the n=5 SAT control
+checks every nonzero x. The n=131 controls receive independent Sage replay.
+This Q1317 stage represents the **same n=83 factor-base policy, exact base
+digest, and ordinary public target** as Q1316. Its raw leaf choices are
+verified against the archived projected base after any SAT model.
+
+| n=83 query | Formula vars / CNF / XOR / AND | Unassisted result | Charged target-PDP wall | Post-run control |
+| --- | --- | --- | ---: | --- |
+| Planted | 121,746 / 354,114 / 2,909 / 116,947 | 120 s cap; no model | 120.05 s | SAT; raw, projected, and public points replayed |
+| Ordinary | 121,746 / 354,114 / 2,909 / 116,947 | 1,000,002 conflicts; no model | 109.61 s | no witness available |
+
+The exact-base-orbit formula on this same target has 872,878 CNF clauses
+and 48,466 AND gates. The implicit variant has fewer clauses and more field
+multiplication gates. The ordinary n=83 run still yields no natural relation;
+the planted control is a correctness check, not a relation-yield measurement.
+The source-bound receipts, logs, gzip XCNFs, and checked Sage runtime are
+archived under `runs/n83_*_projected_sparse.*` and
+`projected_sparse_sage_runtime_info.json`.
+
+At n=131, Q1318 uses the proposed W≤6 projected base and the same
+cofactor-four identity. [`screen_n131_projected_sparse.py`](screen_n131_projected_sparse.py)
+assembled a formula with **300,098 variables, 881,690 CNF clauses, 4,589
+XOR rows, and 291,475 AND gates**; 40 seeded sparse rational x values
+passed both producer group controls and an independent checked-Sage replay
+of the two lifts, fourfold projection, and subgroup membership. No solver
+was invoked. Conditional on Q1303's
+sample-based **25.13 million** folded-column estimate, the four one-hot
+exact-base selectors alone would emit about **2.647 billion CNF clauses**
+(sampling-only 95% normal interval 2.632–2.662 billion), roughly 3,000
+times this implicit formula's clause count. This is a formula-size
+comparison, not a solver-work ratio or a complete-solve projection. The
+full W≤6 base is still unenumerated, so both Q1303 and Q1318 keep
+`candidate_id: null` and an unknown exact base digest.
+
 ## Matched pair-table stage
 
 [`matched_n53_pair_table.py`](matched_n53_pair_table.py) reuses the prior
@@ -296,8 +344,8 @@ replay, and conversion work cost zero, it leaves an optimistic ceiling near
 \(2^{61}\) total cap. This is a design budget from explicit assumptions,
 not a measured solver cost or a complete-solve projection.
 
-The complete n=131 work exponent remains **unknown**. The corrected and
-exact-base SAT stages are censored at both measured field degrees; natural
+The complete n=131 work exponent remains **unknown**. The corrected,
+exact-base, and implicit projected-base SAT stages are censored; natural
 relation yield, novel rank, cost per useful row, final matrix solving, target
 descent, and independent scalar replay are absent. There is therefore no
 defensible complete-solve upper projection below \(2^{61}\), and the
@@ -308,9 +356,9 @@ The next useful goal is a **noncensored, independently verified ordinary
 public-target four-summand decomposition**, first at n=53 and then in an
 ordinary n=83 target panel, using the exact archived subgroup base. The n=53
 frozen target is known to have a witness, so it isolates solver search from
-representation probability. A new mechanism, such as a bounded-memory pair
-index or a hybrid pair-index/S3 solver, should beat the matched n=53 pair
-table on the same public point before scaling. At n=83, freeze multiple
+representation probability. A new implicit algebraic solver should be
+compared with the matched n=53 pair table on the same public point before
+scaling. At n=83, freeze multiple
 independent public targets because the uniform-subset screen predicts only
 about 21.4% representation probability per target. Keep all failed attempts;
 measure actual stage work, memory, natural yield, rank contribution, and

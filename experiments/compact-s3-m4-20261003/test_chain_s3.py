@@ -14,6 +14,7 @@ from chain_s3_base_orbit import (build_base_orbit_chain,
                                  choose_base_orbit_x, decode_base_choice)
 from chain_s3_multitarget import (build_multitarget, choose_target_x,
                                   decode_choice)
+from chain_s3_projected_sparse import projected_sparse_leaf
 from chain_s3_orbit import frobenius_barrel
 from chain_s3_ordered import less_or_equal
 from chain_s3_rational import add_rationality_filter
@@ -331,6 +332,65 @@ class ChainS3Tests(unittest.TestCase):
         self.assertEqual(coords, [onb.toCoords(point[0])
                                   for point in selected])
         self.assertIsNotNone(relation)
+
+    @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
+    def test_sparse_raw_x_projects_to_exact_cofactor_four_base(self):
+        onb = field.Onb(5)
+        curve = curves.Curve(onb)
+        table = multiplication_table(onb)
+        destinations = square_destinations(onb)
+        for x_bits in range(1, 1 << 5):
+            formula = Formula()
+            raw, projected = projected_sparse_leaf(
+                formula, 5, 5, table, destinations)
+            formula.clauses.extend(([
+                bit if x_bits >> position & 1 else -bit]
+                for position, bit in enumerate(raw)))
+            point = curve.pointFromX(onb.fromCoords(x_bits))
+            expected = curve.mul(point, 4) if point is not None else None
+            if expected is not None:
+                projected_bits = onb.toCoords(expected[0])
+                formula.clauses.extend(([
+                    bit if projected_bits >> position & 1 else -bit]
+                    for position, bit in enumerate(projected)))
+            with tempfile.TemporaryDirectory() as name:
+                path = Path(name) / "projected-sparse.xcnf"
+                formula.write(path)
+                result = subprocess.run(["cryptominisat5", "--verb", "0",
+                                         "--threads", "1", str(path)],
+                                        capture_output=True, text=True,
+                                        timeout=20)
+            self.assertEqual(result.returncode, 10 if expected else 20,
+                             (x_bits, result.stdout[-500:]))
+            if expected is not None:
+                values = parse_model(result.stdout)
+                got = sum(1 << position for position, bit in
+                          enumerate(projected) if values.get(bit, False))
+                self.assertEqual(got, projected_bits)
+
+    def test_cofactor_four_projection_identity(self):
+        for n in (5, 11):
+            onb = field.Onb(n)
+            curve = curves.Curve(onb)
+            for x_bits in range(1, 1 << n):
+                x = onb.fromCoords(x_bits)
+                inverse = onb.inv(x)
+                point = curve.pointFromX(x)
+                self.assertEqual(onb.trace(onb.add(x, inverse)) == 0,
+                                 point is not None)
+                if point is None:
+                    continue
+                projected = curve.mul(point, 4)
+                x4 = onb.frob(x, 2)
+                x8 = onb.frob(x, 3)
+                x16 = onb.frob(x, 4)
+                denominator = onb.add(onb.mul(x8, x4), x4)
+                numerator = onb.add(onb.add(x16, x8), onb.one())
+                if projected is None:
+                    self.assertEqual(denominator, 0)
+                else:
+                    self.assertEqual(onb.mul(projected[0], denominator),
+                                     numerator)
 
     @unittest.skipUnless(shutil.which("cryptominisat5"), "CryptoMiniSat absent")
     def test_leaf_order_comparator_accepts_exactly_non_decreasing_values(self):

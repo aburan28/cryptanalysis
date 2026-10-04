@@ -332,6 +332,116 @@ def verify():
                      "formula_bytes": size,
                      "observed_verified_relation_count": receipt[
                          "observed_verified_relation_count"]})
+    for kind in ("planted", "ordinary"):
+        stem = f"n83_{kind}_projected_sparse"
+        path = HERE / "runs" / f"{stem}.json"
+        receipt = json.loads(path.read_text())
+        baseline_path = HERE / "runs" / f"n83_{kind}_frozen.json"
+        baseline = json.loads(baseline_path.read_text())
+        archive_path = HERE / "bases/n83_weight4_orbits.json.gz"
+        assert receipt["proposal_id"] == "Q1317"
+        assert receipt["candidate_id"] is None
+        assert receipt["run_id"] is None
+        assert receipt["complete_solve_work_log2"] is None
+        assert receipt["workload_id"] == baseline["workload_id"]
+        assert receipt["curve_id"] == baseline["curve_id"]
+        assert receipt["public_target"] == baseline["public_subgroup_target"]
+        assert receipt["factor_base_actual_B"] == baseline[
+            "factor_base_actual_B"]
+        assert receipt["factor_base_folded_columns"] == baseline[
+            "factor_base_folded_columns"]
+        assert receipt["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["base_archive_sha256"] == sha(archive_path)
+        assert receipt["baseline_receipt_sha256"] == sha(baseline_path)
+        assert receipt["protocol_sha256"] == protocol_digest
+        assert receipt["runtime_info_sha256"] == sha(
+            HERE / "projected_sparse_sage_runtime_info.json")
+        for key, source in (("core_source_sha256", "chain_s3.py"),
+                            ("factored_source_sha256", "chain_s3_factored.py"),
+                            ("projected_source_sha256",
+                             "chain_s3_projected_sparse.py"),
+                            ("base_probe_source_sha256",
+                             "run_base_orbit_probe.py"),
+                            ("runner_source_sha256",
+                             "run_projected_sparse_probe.py")):
+            assert receipt[key] == sha(HERE / source)
+        assert receipt["solver_binary_sha256"] == sha(
+            Path(receipt["solver_command"][0]))
+        assert receipt["solver_stdout_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stdout.txt")
+        assert receipt["solver_stderr_sha256"] == sha(
+            HERE / "runs" / f"{stem}.stderr.txt")
+        assert receipt["status"] in ("censored", "external_timeout", "sat")
+        assert receipt["observed_verified_relation_count"] == int(
+            receipt["verified_relation"] is not None)
+        control = receipt["locked_control"]
+        if kind == "planted":
+            assert control["status"] == "locked_sat_verified_public_relation"
+            assert control["relation"] is not None
+            assert control["witness_receipt_sha256"] == sha(
+                HERE / "runs/n83_planted_frozen.json")
+        else:
+            assert control is None
+        digest = hashlib.sha256()
+        size = 0
+        with gzip.open(HERE / "runs" / f"{stem}.xcnf.gz", "rb") as stream:
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        assert digest.hexdigest() == receipt["xcnf_sha256"]
+        assert size == receipt["xcnf_bytes"]
+        rows.append({"variant": stem, "receipt_sha256": sha(path),
+                     "formula_sha256": digest.hexdigest(),
+                     "formula_bytes": size,
+                     "observed_verified_relation_count": receipt[
+                         "observed_verified_relation_count"]})
+    geometry_path = HERE / "runs/n131_projected_sparse_geometry.json"
+    geometry = json.loads(geometry_path.read_text())
+    assert geometry["proposal_id"] == "Q1318"
+    assert geometry["candidate_id"] is None
+    assert geometry["workload_id"] is None
+    assert geometry["run_id"] is None
+    assert geometry["exact_full_base_B"] is None
+    assert geometry["exact_full_base_digest"] is None
+    assert geometry["solver_invoked"] is False
+    assert geometry["verified_relation"] is None
+    assert geometry["complete_solve_work_log2"] is None
+    assert geometry["group_control_count"] == 40
+    assert geometry["protocol_sha256"] == protocol_digest
+    assert geometry["n131_base_sample_receipt_sha256"] == sha(
+        HERE / "runs/n131_weight6_stratified_sample.json")
+    assert geometry["n131_base_replay_receipt_sha256"] == sha(
+        HERE / "runs/n131_weight6_sage_independent_replay.json")
+    assert geometry["runtime_info_sha256"] == sha(
+        HERE / "projected_sparse_sage_runtime_info.json")
+    for key, source in (("core_source_sha256", "chain_s3.py"),
+                        ("factored_source_sha256", "chain_s3_factored.py"),
+                        ("projected_source_sha256",
+                         "chain_s3_projected_sparse.py"),
+                        ("source_sha256",
+                         "screen_n131_projected_sparse.py")):
+        assert geometry[key] == sha(HERE / source)
+    rows.append({"variant": "n131_projected_sparse_geometry",
+                 "receipt_sha256": sha(geometry_path)})
+    projected_replay_path = HERE / (
+        "runs/n131_projected_sparse_sage_replay.json")
+    projected_replay = json.loads(projected_replay_path.read_text())
+    assert projected_replay["proposal_id"] == "Q1318"
+    assert projected_replay["curve_id"] == geometry["curve_id"]
+    assert projected_replay["status"] == "PASS"
+    assert projected_replay["control_masks_checked"] == 40
+    assert projected_replay[
+        "both_lifts_projected_and_subgroup_checked"] == 40
+    assert projected_replay["screen_receipt_sha256"] == sha(geometry_path)
+    assert projected_replay["protocol_sha256"] == protocol_digest
+    assert projected_replay["runtime_info_sha256"] == sha(
+        HERE / "projected_sparse_sage_runtime_info.json")
+    assert projected_replay["source_sha256"] == sha(
+        HERE / "replay_n131_projected_sparse_sage.py")
+    assert projected_replay["complete_solve_work_log2"] is None
+    rows.append({"variant": "n131_projected_sparse_sage_replay",
+                 "receipt_sha256": sha(projected_replay_path)})
     sample_path = HERE / "runs/n131_weight6_stratified_sample.json"
     sample = json.loads(sample_path.read_text())
     runtime = HERE / "n131_sample_sage_runtime_info.json"

@@ -368,6 +368,57 @@ def main():
             "complete_solve_work_log2": stage["complete_solve_work_log2"],
             "receipt_sha256": sha(path),
         })
+    projected_sparse = []
+    for kind in ("planted", "ordinary"):
+        path, stage = read(f"n83_{kind}_projected_sparse.json")
+        baseline_path, baseline = read(f"n83_{kind}_frozen.json")
+        assert stage["proposal_id"] == "Q1317"
+        assert stage["baseline_receipt_sha256"] == sha(baseline_path)
+        assert stage["protocol_sha256"] == sha(protocol_path)
+        assert stage["curve_id"] == baseline["curve_id"]
+        assert stage["workload_id"] == baseline["workload_id"]
+        assert stage["public_target"] == baseline["public_subgroup_target"]
+        assert stage["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"]
+        assert stage["factor_base_actual_B"] == baseline[
+            "factor_base_actual_B"]
+        assert stage["factor_base_folded_columns"] == baseline[
+            "factor_base_folded_columns"]
+        assert stage["observed_verified_relation_count"] == int(
+            stage["verified_relation"] is not None)
+        control = stage["locked_control"]
+        if kind == "planted":
+            assert control["status"] == "locked_sat_verified_public_relation"
+        else:
+            assert control is None
+        projected_sparse.append({
+            "proposal_id": stage["proposal_id"],
+            "candidate_id": None,
+            "workload_id": stage["workload_id"],
+            "run_id": None,
+            "curve_id": stage["curve_id"],
+            "n": 83, "kind": kind,
+            "target_policy": stage["target_policy"],
+            "leaf_policy": stage["leaf_policy"],
+            "factor_base_B": stage["factor_base_actual_B"],
+            "folded_columns": stage["factor_base_folded_columns"],
+            "status": stage["status"],
+            "formula": stage["formula"],
+            "solver_conflicts_reported": stage[
+                "solver_conflicts_reported"],
+            "target_pdp_wall_seconds": stage["target_pdp_wall_seconds"],
+            "peak_child_rss_raw_before_control": stage[
+                "peak_child_rss_raw_before_control"],
+            "peak_child_rss_units": stage["peak_child_rss_units"],
+            "observed_verified_relation_count": stage[
+                "observed_verified_relation_count"],
+            "locked_control_status": control["status"] if control else None,
+            "natural_relation_yield_estimate": stage[
+                "natural_relation_yield_estimate"],
+            "field_operations": stage["field_operations"],
+            "complete_solve_work_log2": stage["complete_solve_work_log2"],
+            "receipt_sha256": sha(path),
+        })
     order131 = protocol["degree_131_design"]["curve"]["subgroup_order"]
     heuristic_samples131 = 2 * math.sqrt(order131 / (2 * 131))
     relation_density_heuristic = []
@@ -391,6 +442,10 @@ def main():
         "n131_weight6_stratified_sample.json")
     n131_replay_path, n131_replay = read(
         "n131_weight6_sage_independent_replay.json")
+    n131_projected_path, n131_projected = read(
+        "n131_projected_sparse_geometry.json")
+    n131_projected_replay_path, n131_projected_replay = read(
+        "n131_projected_sparse_sage_replay.json")
     assert n131_sample["proposal_id"] == "Q1303"
     assert n131_sample["candidate_id"] is None
     assert n131_sample["protocol_sha256"] == sha(protocol_path)
@@ -401,6 +456,14 @@ def main():
         "2": n131_sample["strata"][1]["rational_x_count_in_sample"],
     }
     assert n131_replay["distinct_weight_two_control_projected_points"] == 16
+    assert n131_projected["proposal_id"] == "Q1318"
+    assert n131_projected["candidate_id"] is None
+    assert n131_projected["solver_invoked"] is False
+    assert n131_projected["n131_base_sample_receipt_sha256"] == sha(
+        n131_sample_path)
+    assert n131_projected_replay["status"] == "PASS"
+    assert n131_projected_replay["screen_receipt_sha256"] == sha(
+        n131_projected_path)
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -472,6 +535,7 @@ def main():
         },
         "fixed_witness_target_search_diagnostics": fixed_witness_targets,
         "exact_base_orbit_stage_measurements": exact_base_orbit,
+        "projected_sparse_stage_measurements": projected_sparse,
         "relation_density_planning_heuristic": relation_density_heuristic,
         "n131_weight6_geometry_estimate": {
             "proposal_id": "Q1303",
@@ -495,6 +559,26 @@ def main():
             "optimistic_uniform_subset_screen": n131_sample[
                 "uniform_subset_sum_planning_heuristic"],
             "is_complete_solve_projection": False,
+        },
+        "n131_projected_sparse_formula_geometry": {
+            "proposal_id": "Q1318",
+            "candidate_id": None,
+            "curve_id": n131_projected["curve_id"],
+            "factor_base_exact_B": None,
+            "factor_base_exact_digest": None,
+            "formula": n131_projected["formula"],
+            "one_hot_exact_base_selector_screen": n131_projected[
+                "one_hot_exact_base_selector_screen"],
+            "group_control_count": n131_projected[
+                "group_control_count"],
+            "independent_sage_replay_status": n131_projected_replay[
+                "status"],
+            "independent_sage_replay_receipt_sha256": sha(
+                n131_projected_replay_path),
+            "solver_invoked": False,
+            "field_operations": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(n131_projected_path),
         },
         "matched_pair_table": {
             "n53": {
@@ -527,7 +611,7 @@ def main():
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
-            "reason_unestimated": "n53 and n83 ordinary S3 runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, and exact subgroup-base-orbit encodings; the n53 known-satisfiable target and n83 planted controls establish formula consistency but no unassisted four-point relation; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
+            "reason_unestimated": "n53 and n83 ordinary S3 runs remain censored across raw cofactor-preimage, Frobenius-orbit, ordered-leaf, exact subgroup-base-orbit, and implicit cofactor-four projected-base encodings; the n53 known-satisfiable target and n83 planted controls establish formula consistency but no unassisted four-point relation; the n131 implicit formula was only assembled, not solved; no field-operation calibration, natural yield, novel-rank contribution, matrix cost, or target descent is measured on this pipeline",
             "balanced_random_quotient_pair_table_heuristic": {
                 "assumption": "independent uniform pair-sum orbit keys of size approximately r/(2n); one expected match when table_samples*query_samples approximately r/(2n)",
                 "total_logical_pair_samples": heuristic_samples131,
