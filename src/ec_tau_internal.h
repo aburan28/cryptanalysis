@@ -19,6 +19,12 @@ typedef struct ca_tau4_precomp {
     int identity;
 } ca_tau4_precomp;
 
+#define CA_TAU_POS_Q 64
+typedef struct ca_tau4_pos_precomp {
+    ca_tau4_precomp base;
+    ca_elem point[CA_TAU_POS_Q][2][9];
+} ca_tau4_pos_precomp;
+
 int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point,
                        ca_tau4_precomp *out, uint64_t *ops);
 int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre,
@@ -34,5 +40,14 @@ int ca_ec_tau4_mul_prepared_profile(const ca_group *g,
                                     uint64_t k, int cost_aware,
                                     uint64_t *triples, uint64_t *adds,
                                     uint64_t *rotations);
+
+/* Fixed-base positional table: 3^q times each seed and tau-seed point.
+ * precompute_triples excludes the 19 operations in the base preparation. */
+int ca_ec_tau4_pos_prepare(const ca_group *g, const ca_elem *point,
+                           ca_tau4_pos_precomp *out,
+                           uint64_t *precompute_triples);
+int ca_ec_tau4_pos_mul(const ca_group *g, const ca_tau4_pos_precomp *pre,
+                       ca_elem *out, uint64_t k, uint64_t *adds,
+                       uint64_t *rotations);
 
 #endif

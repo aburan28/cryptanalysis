@@ -67,16 +67,18 @@ int main(int argc, char **argv)
 {
     if (argc != 5 || (strcmp(argv[1], "reference") != 0 &&
                       strcmp(argv[1], "baseline") != 0 &&
-                      strcmp(argv[1], "cost") != 0) ||
+                      strcmp(argv[1], "cost") != 0 &&
+                      strcmp(argv[1], "pos") != 0) ||
         (strcmp(argv[3], "0") != 0 && strcmp(argv[3], "1") != 0)) {
-        fprintf(stderr, "usage: %s reference|baseline|cost glv-j0-32|j0-56 0|1 INPUT\n",
+        fprintf(stderr, "usage: %s reference|baseline|cost|pos glv-j0-32|j0-56 0|1 INPUT\n",
                 argv[0]);
         return 2;
     }
     uint64_t p, b, order;
     if (!select_curve(argv[2], &p, &b, &order)) return 2;
     int mode = strcmp(argv[1], "reference") == 0 ? 0 :
-               strcmp(argv[1], "baseline") == 0 ? 1 : 2;
+               strcmp(argv[1], "baseline") == 0 ? 1 :
+               strcmp(argv[1], "cost") == 0 ? 2 : 3;
     uint64_t scalars[SCALARS], input_digest;
     if (!read_scalars(argv[4], order, scalars, &input_digest)) {
         fprintf(stderr, "invalid scalar input: expected exactly %d little-endian u64 values < r\n", SCALARS);
@@ -98,13 +100,24 @@ int main(int argc, char **argv)
     ca_elem *outputs = calloc(SCALARS, sizeof(*outputs));
     if (!outputs) return 2;
     ca_tau4_precomp pre;
+    ca_tau4_pos_precomp positional_pre;
     double prep_ms = 0;
+    uint64_t prep_triples = 0;
+    uint64_t prep_layer_inversions = 0;
+    size_t prep_bytes = mode == 3 ? sizeof(positional_pre) :
+                        mode == 0 ? 0 : sizeof(pre);
     if (mode != 0) {
         double t0 = ca_now();
-        if (!ca_ec_tau4_prepare(&group, &point, &pre, NULL)) {
+        int prepared = mode == 3 ?
+            ca_ec_tau4_pos_prepare(&group, &point, &positional_pre,
+                                   &prep_triples) :
+            ca_ec_tau4_prepare(&group, &point, &pre, NULL);
+        if (!prepared) {
             free(outputs);
             return 2;
         }
+        if (mode == 3 && !positional_pre.base.identity)
+            prep_layer_inversions = CA_TAU_POS_Q - 1;
         prep_ms = 1000 * (ca_now() - t0);
     }
     uint64_t triples = 0, adds = 0, rotations = 0;
@@ -112,6 +125,15 @@ int main(int argc, char **argv)
     for (size_t i = 0; i < SCALARS; i++) {
         if (mode == 0) {
             ca_group_mul(&group, &outputs[i], &point, scalars[i], NULL);
+        } else if (mode == 3) {
+            uint64_t a = 0, r = 0;
+            if (!ca_ec_tau4_pos_mul(&group, &positional_pre, &outputs[i],
+                                    scalars[i], &a, &r)) {
+                fprintf(stderr, "positional evaluation failed at index %zu\n", i);
+                free(outputs);
+                return 1;
+            }
+            adds += a; rotations += r;
         } else {
             uint64_t t = 0, a = 0, r = 0;
             if (!ca_ec_tau4_mul_prepared_profile(&group, &pre, &outputs[i],
@@ -147,10 +169,13 @@ int main(int argc, char **argv)
     printf("curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
            " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
            " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
+           " prep_triples=%" PRIu64 " prep_layer_inversions=%" PRIu64
+           " prep_bytes=%zu"
            " triples=%" PRIu64 " adds=%" PRIu64 " rotations=%" PRIu64
            " verified=1\n",
            argv[2], argv[3], SCALARS, point_words[0], point_words[1],
            input_digest, output_digest, online_ms, prep_ms, verify_ms,
+           prep_triples, prep_layer_inversions, prep_bytes,
            triples, adds, rotations);
     return 0;
 }
