@@ -626,6 +626,18 @@ def main():
         "n131_q1406_uniform_query_bound.json")
     q1407_shape_path, q1407_shape = read(
         "n53_n83_n131_q1407_compact_formula_shape.json")
+    q1413_prefix_path, q1413_prefix = read(
+        "n131_q1413_projected_x_w5.json")
+    q1413_full_path, q1413_full = read(
+        "n131_q1413_projected_x_w6.json")
+    q1413_replay_path, q1413_replay = read(
+        "n131_q1413_sage_projection_replay.json")
+    q1413_calls_path, q1413_calls = read(
+        "q1413_exact_base_api_call_vectors.json")
+    q1414_bound_path, q1414_bound = read(
+        "n131_q1414_exact_uniform_query_bound.json")
+    q1416_pair_path, q1416_pair = read(
+        "n131_q1416_exact_base_pair_index_screen.json")
     assert n131_sample["proposal_id"] == "Q1303"
     assert n131_sample["candidate_id"] is None
     assert n131_sample["protocol_sha256"] == sha(protocol_path)
@@ -650,6 +662,56 @@ def main():
         "experiments/compact-s3-m4-20261003/screen_q1407_compact_formula_shape.py"
     ] == sha(HERE / "screen_q1407_compact_formula_shape.py")
     assert q1407_shape["complete_solve_work_log2"] is None
+    q1413_protocol_path = HERE / "q1413_projected_x_protocol.json"
+    assert q1413_prefix["proposal_id"] == q1413_full["proposal_id"] == "Q1413"
+    assert q1413_full["parent_base_proposal_id"] == "Q1303"
+    assert q1413_full["candidate_id"] is None
+    assert q1413_full["curve_id"] == n131_sample["curve_id"]
+    assert q1413_full["normal_basis_weight_bound"] == 6
+    assert q1413_full["protocol_sha256"] == sha(q1413_protocol_path)
+    assert q1413_full["actual_usable_points_B_before_folding"] == (
+        262 * q1413_full["signed_frobenius_columns_K"])
+    assert len(q1413_prefix["strata"]) == 5
+    for full_row, prefix_row in zip(q1413_full["strata"][:5],
+                                    q1413_prefix["strata"]):
+        for field_name in ("weight", "x_orbits", "rational_x_orbits",
+                           "identity_projection_orbits"):
+            assert full_row[field_name] == prefix_row[field_name]
+    assert q1413_replay["status"] == "PASS"
+    assert q1413_replay["q1413_protocol_sha256"] == sha(q1413_protocol_path)
+    assert q1413_calls["proposal_id"] == "Q1413"
+    assert q1413_calls["rows"][-1]["base_receipt_sha256"] == sha(
+        q1413_full_path)
+    assert q1413_calls["source_sha256"] == sha(
+        HERE / "derive_q1413_base_calls.py")
+    assert q1414_bound["proposal_id"] == "Q1414"
+    assert q1414_bound["parent_base_proposal_id"] == "Q1303"
+    assert q1414_bound["base_receipt_sha256"] == sha(q1413_full_path)
+    assert q1414_bound["base_set_sha256"] == q1413_full[
+        "enumerated_set_sha256"]
+    assert q1414_bound["actual_usable_points_B_before_folding"] == (
+        q1413_full["actual_usable_points_B_before_folding"])
+    assert q1414_bound["folded_columns_K"] == q1413_full[
+        "signed_frobenius_columns_K"]
+    assert q1414_bound["source_sha256"] == sha(
+        HERE / "screen_q1414_exact_uniform_query_bound.py")
+    assert q1414_bound["complete_solve_work_log2"] is None
+    assert q1414_bound["challenge_dispatch_allowed"] is False
+    assert q1416_pair["proposal_id"] == "Q1416"
+    assert q1416_pair["parent_base_proposal_id"] == "Q1303"
+    assert q1416_pair["candidate_id"] is None
+    assert q1416_pair["curve_id"] == q1413_full["curve_id"]
+    assert q1416_pair["base_receipt_sha256"] == sha(q1413_full_path)
+    assert q1416_pair["base_set_sha256"] == q1413_full[
+        "enumerated_set_sha256"]
+    assert q1416_pair["actual_usable_points_B_before_folding"] == (
+        q1413_full["actual_usable_points_B_before_folding"])
+    assert q1416_pair["folded_columns_K"] == q1413_full[
+        "signed_frobenius_columns_K"]
+    assert q1416_pair["source_sha256"] == sha(
+        HERE / "screen_q1416_exact_pair_index.py")
+    assert q1416_pair["complete_solve_work_log2"] is None
+    assert q1416_pair["challenge_dispatch_allowed"] is False
     assert n131_replay["status"] == "PASS"
     assert n131_replay["sample_receipt_sha256"] == sha(n131_sample_path)
     assert n131_replay["exact_rational_x_counts_weights_one_two"] == {
@@ -1605,6 +1667,35 @@ def main():
                 "observed_verified_relation_count"],
             "receipt_sha256": sha(stage_path),
         })
+    q1415_protocol_path = HERE / "q1415_gauss_n53_protocol.json"
+    q1415_protocol = json.loads(q1415_protocol_path.read_text())
+    q1415_runtime_path = HERE / "q1415_sage_runtime_info.json"
+    q1415_path, q1415 = read("n53_q1415_gauss_ordinary.json")
+    q1415_comparison_path, q1415_comparison = read(
+        "n53_q1410_q1415_named_stage_comparison.json")
+    assert q1415_protocol["proposal_id"] == q1415["proposal_id"] == "Q1415"
+    assert q1415_protocol["parent_solver_proposal_id"] == "Q1410"
+    assert q1415_protocol["candidate_id"] is q1415["candidate_id"] is None
+    assert q1415_protocol["curve_id"] == q1410_protocol["curve_id"]
+    assert q1415["workload_id"] == q1410_protocol["ordinary_workload_id"]
+    assert q1415["formula_raw_sha256"] == q1415_protocol[
+        "formula_raw_sha256"]
+    assert q1415["solver_status"] == "external_timeout"
+    assert q1415["gaussian_matrix_reported_active"] is True
+    assert q1415["observed_verified_relation_count"] == 0
+    assert q1415["complete_solve_work_log2"] is None
+    assert q1415["protocol_sha256"] == sha(q1415_protocol_path)
+    assert q1415["runtime_info_sha256"] == sha(q1415_runtime_path)
+    assert q1415_comparison["source_sha256"] == sha(
+        HERE / "build_q1415_stage_comparison.py")
+    assert [profile["proposal_id"] for profile in q1415_comparison[
+        "stage_profiles"]] == ["Q1410", "Q1415"]
+    assert q1415_comparison["stage_profiles"][1][
+        "legacy_stage_config_id"] == q1415["stage_config_id"]
+    assert q1415_comparison["stage_profiles"][1][
+        "legacy_stage_run_id"] == q1415["stage_run_id"]
+    assert q1415_comparison["is_controlled_cpu_wall_speedup"] is False
+    assert q1415_comparison["is_solve_growth_measurement"] is False
     q1412_protocol_path = HERE / "q1412_ordered_balanced_n53_protocol.json"
     q1412_protocol = json.loads(q1412_protocol_path.read_text())
     q1412_runtime_path = HERE / "q1412_sage_runtime_info.json"
@@ -2590,6 +2681,57 @@ def main():
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(q1412_comparison_path),
         },
+        "q1415_xor_gaussian_n53_ordinary_solver_stage": {
+            "proposal_id": "Q1415",
+            "candidate_id": None,
+            "stage_config_id": q1415_comparison["stage_profiles"][1][
+                "stage_config_id"],
+            "stage_run_id": q1415_comparison["stage_profiles"][1][
+                "stage_run_id"],
+            "legacy_stage_config_id": q1415["stage_config_id"],
+            "legacy_stage_run_id": q1415["stage_run_id"],
+            "curve_id": q1415["curve_id"],
+            "isogeny": "none",
+            "factor_base_actual_B": q1415["factor_base_actual_B"],
+            "factor_base_folded_columns_K": q1415[
+                "factor_base_folded_columns"],
+            "factor_base_enumerated_set_sha256": q1415[
+                "factor_base_enumerated_set_sha256"],
+            "ordinary_workload_id": q1415["workload_id"],
+            "same_ordinary_target_and_formula_as_q1410": True,
+            "solver_status": q1415["solver_status"],
+            "solver_only_wall_seconds_exploratory": q1415[
+                "solver_wall_seconds_exploratory"],
+            "gaussian_matrix_reported_active": True,
+            "verified_ordinary_relation_count": 0,
+            "solver_conflicts_reported": q1415[
+                "solver_conflicts_reported"],
+            "natural_relation_yield_rate_estimate": None,
+            "cost_per_useful_relation": None,
+            "field_operations": None,
+            "verified_single_target_dlp": False,
+            "complete_solve_work_log2": None,
+            "controlled_wall_speedup_claim_allowed": False,
+            "protocol_sha256": sha(q1415_protocol_path),
+            "runtime_info_sha256": sha(q1415_runtime_path),
+            "receipt_sha256": sha(q1415_path),
+        },
+        "q1410_q1415_named_solver_only_method_gate": {
+            "candidate_id": None,
+            "curve_id": q1415_comparison["curve_id"],
+            "workload_id": q1415_comparison["workload_id"],
+            "factor_base_enumerated_set_sha256": q1415_comparison[
+                "factor_base_enumerated_set_sha256"],
+            "controlled_variable": q1415_comparison[
+                "controlled_variable"],
+            "profiles": q1415_comparison["stage_profiles"],
+            "timing_boundaries_differ": True,
+            "is_complete_ic_comparison": False,
+            "is_controlled_cpu_wall_speedup": False,
+            "is_solve_growth_measurement": False,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(q1415_comparison_path),
+        },
         "q1333_q1334_adaptive_single_target_window_stages": adaptive_stages,
         "q1335_n83_adaptive_single_target_planted_control": q1335_control,
         "q1336_q1337_fused_root_single_target_stages": fused_stages,
@@ -2655,8 +2797,12 @@ def main():
             "proposal_id": "Q1303",
             "candidate_id": None,
             "curve_id": n131_sample["curve_id"],
-            "exact_enumerated_base_B": None,
-            "exact_enumerated_base_digest": None,
+            "status": "historical_sample_superseded_by_q1413_exact_enumeration",
+            "exact_enumerated_base_B": q1413_full[
+                "actual_usable_points_B_before_folding"],
+            "exact_enumerated_base_digest": q1413_full[
+                "enumerated_set_sha256"],
+            "exact_enumeration_receipt_sha256": sha(q1413_full_path),
             "rational_x_count_estimate": n131_sample[
                 "rational_x_count_estimate"],
             "conditional_B_estimate": n131_sample[
@@ -2728,6 +2874,84 @@ def main():
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(q1406_bound_path),
         },
+        "q1413_exact_n131_weight6_factor_base": {
+            "proposal_id": "Q1413",
+            "parent_base_proposal_id": "Q1303",
+            "candidate_id": None,
+            "curve_id": q1413_full["curve_id"],
+            "isogeny": "none",
+            "normal_basis_weight_bound": 6,
+            "actual_usable_points_B_before_folding": q1413_full[
+                "actual_usable_points_B_before_folding"],
+            "folded_columns_K": q1413_full[
+                "signed_frobenius_columns_K"],
+            "enumerated_set_encoding": q1413_full[
+                "enumerated_set_encoding"],
+            "enumerated_set_sha256": q1413_full[
+                "enumerated_set_sha256"],
+            "weight_strata": q1413_full["strata"],
+            "exact_weight5_prefix_B": q1413_prefix[
+                "actual_usable_points_B_before_folding"],
+            "n83_reference_orbit_sets_verified": True,
+            "independent_sage_projection_replay_status": q1413_replay[
+                "status"],
+            "independent_sage_projection_replay_sha256": sha(
+                q1413_replay_path),
+            "base_core_api_call_vector": q1413_calls["rows"][-1][
+                "base_core_api_calls"],
+            "base_core_api_call_boundary": q1413_calls[
+                "accounting_boundary"],
+            "base_core_api_call_receipt_sha256": sha(q1413_calls_path),
+            "is_empirical_relation_yield": False,
+            "is_complete_solve_projection": False,
+            "receipt_sha256": sha(q1413_full_path),
+        },
+        "q1414_n131_exact_base_uniform_query_rank_supply_bound": {
+            "proposal_id": "Q1414",
+            "parent_base_proposal_id": "Q1303",
+            "candidate_id": None,
+            "curve_id": q1414_bound["curve_id"],
+            "isogeny": "none",
+            "actual_usable_points_B_before_folding": q1414_bound[
+                "actual_usable_points_B_before_folding"],
+            "folded_columns_K": q1414_bound["folded_columns_K"],
+            "base_set_sha256": q1414_bound["base_set_sha256"],
+            "scope": q1414_bound["scope"],
+            "proof": q1414_bound["proof"],
+            "uniform_nonidentity_target_mean_relations_upper_decimal":
+                q1414_bound[
+                    "uniform_nonidentity_target_mean_relations_upper_decimal"],
+            "query_bounds": q1414_bound["query_bounds"],
+            "budget_interpretation": q1414_bound["budget_interpretation"],
+            "is_empirical_relation_yield": False,
+            "is_complete_solve_projection": False,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(q1414_bound_path),
+        },
+        "q1416_n131_exact_base_pure_pair_index_model": {
+            "proposal_id": "Q1416",
+            "parent_base_proposal_id": "Q1303",
+            "candidate_id": None,
+            "curve_id": q1416_pair["curve_id"],
+            "isogeny": "none",
+            "actual_usable_points_B_before_folding": q1416_pair[
+                "actual_usable_points_B_before_folding"],
+            "folded_columns_K": q1416_pair["folded_columns_K"],
+            "base_set_sha256": q1416_pair["base_set_sha256"],
+            "index_states_exact": q1416_pair["index_states_exact"],
+            "index_states_log2": q1416_pair["index_states_log2"],
+            "minimum_17_byte_key_storage_log2_bytes": q1416_pair[
+                "minimum_17_byte_key_storage_log2_bytes"],
+            "K_rows_pair_probes_model_log2": q1416_pair[
+                "K_rows_pair_probes_model_log2"],
+            "index_plus_K_rows_pair_actions_model_log2": q1416_pair[
+                "index_plus_K_rows_pair_actions_model_log2"],
+            "scope": q1416_pair["scope"],
+            "is_empirical_relation_yield": False,
+            "is_complete_solve_projection": False,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(q1416_pair_path),
+        },
         "q1407_compact_s3_formula_shape": {
             "proposal_id": "Q1407",
             "candidate_id": None,
@@ -2770,6 +2994,12 @@ def main():
             "proposal_id": "Q1303",
             "candidate_id": None,
             "curve_id": protocol["degree_131_design"]["curve"]["curve_id"],
+            "factor_base_actual_B": q1413_full[
+                "actual_usable_points_B_before_folding"],
+            "factor_base_folded_columns_K": q1413_full[
+                "signed_frobenius_columns_K"],
+            "factor_base_enumerated_set_sha256": q1413_full[
+                "enumerated_set_sha256"],
             "four_summand_s3_complete_solve_work_log2": None,
             "four_summand_s3_per_decomposition_field_ops_log2": None,
             "reason_unestimated": (
@@ -2804,13 +3034,20 @@ def main():
                 "Q1412's unsigned leaf ordering preserves the locked N53 "
                 "witness but also exhausts one million ordinary-target "
                 "conflicts without a model; "
-                "Q1333/Q1334 use an adaptive target-local inversion window "
-                "and reproduce the fixed-window ordinary outcomes; Q1336/Q1337 "
-                "fuse one field multiplication per S3 root but show no repeatable "
-                "wall-time gain in one unisolated observation per field; "
-                "older n53/n83 SAT variants remain censored; the n131 W<=6 "
-                "base B/K remain conditional estimates rather than an exact "
-                "enumerated base; one n53 success and censored n83 ordinary "
+                "Q1415 activates XOR Gaussian matrices on Q1410's exact "
+                "ordinary N53 formula but reaches the external 120-second "
+                "cap without a model, so it provides no N83 solve-growth "
+                "estimate; Q1333/Q1334 use an adaptive target-local inversion "
+                "window and reproduce the fixed-window ordinary outcomes; "
+                "Q1336/Q1337 fuse one field multiplication per S3 root but "
+                "show no repeatable wall-time gain in one unisolated "
+                "observation per field; older n53/n83 SAT variants remain "
+                "censored; Q1413 now "
+                "enumerates the exact n131 W<=6 base B/K/digest and Q1414 "
+                "recomputes the uniform-query rank-supply bound from it; "
+                "Q1416 recomputes the pure pair-index model on the exact "
+                "base, but none supplies a decomposition-cost measurement; "
+                "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
                 "but conversions, hashing, memory and arithmetic types still "

@@ -57,7 +57,8 @@ recomputes its original orbit-key digest.
 | Q1325 | `EC1N83Ckb1h876c2921cb64` | all ≤5 | 30,977,592 | 186,612 | `56c951ad78cc` |
 | Q1303 | `EC1N131Ckb1h6816f880945e` | proposed 6 | unknown | unknown | unknown |
 
-The exact n=53 curve cofactor is **428**; the n=83 cofactor is **4**.
+The exact n=53 curve cofactor is **428**; the n=83 and n=131 cofactors are
+**4**.
 These values are read from the curve manifests when constructing raw target
 preimages and subgroup points. All listed designs use `isogeny: "none"`. They
 remain `Q` proposals with `candidate_id: null` because relation collection,
@@ -383,9 +384,11 @@ sample-based **25.13 million** folded-column estimate, the four one-hot
 exact-base selectors alone would emit about **2.647 billion CNF clauses**
 (sampling-only 95% normal interval 2.632–2.662 billion), roughly 3,000
 times this implicit formula's clause count. This is a formula-size
-comparison, not a solver-work ratio or a complete-solve projection. The
-full W≤6 base is still unenumerated, so both Q1303 and Q1318 keep
-`candidate_id: null` and an unknown exact base digest.
+comparison, not a solver-work ratio or a complete-solve projection. This
+Q1318 screen predates the exact Q1413 base enumeration below. Its
+sample-based selector count remains a historical conditional calculation;
+both Q1303 and Q1318 still have `candidate_id: null` because the complete IC
+pipeline is not specified or measured.
 
 ## Matched pair-table stage
 
@@ -524,7 +527,9 @@ probes. Propagating only the sample's conditional 95% \(B\) interval gives
 \(2^{61}\) *pair-action* budget before final LA and target recovery. It rules
 out that pure indexed-pair family under its stated model; it is neither a
 lower bound on other decomposition algorithms nor a complete field-operation
-projection. Q1303's exact \(B\) and digest remain unknown.
+projection. This historical sample-based screen is superseded for base
+geometry by the exact Q1413 enumeration below; Q1416 recomputes the same
+pair-action model against that exact base.
 
 For n=83, the exact counting bound above shows why Q1302's weight-four
 ordinary timeout is ambiguous. Q1324's selected base and Q1325's complete
@@ -541,8 +546,9 @@ the full sparse set. The normal-approximation 95% interval from sampling is
 **6.545–6.622 billion** under those conditions, giving about **25.13 million**
 signed-Frobenius columns. The weight-at-most-two sub-base is exact in this
 representation: **B=8,384**, **K=32**. The higher-weight base has not been
-enumerated, so Q1303 retains `candidate_id: null`, exact `B: null`, and a
-null enumerated-set digest.
+enumerated **in this sampling receipt**. Q1413 below supplies the exact
+base count and digest separately. Q1303 retains `candidate_id: null` because
+the full IC pipeline is not specified or measured.
 This projected-raw-x W≤2 control is a different factor-base policy from the
 separate N131 base that selects subgroup points whose **projected point's** x
 has weight exactly two (`B=3,668`, `K=14`); the latter also has a different
@@ -856,7 +862,8 @@ add \(2^{60.66}\) multiplications; index plus that scan would call for
 This is a conditional full-scan scenario, not a lower bound on earlier hits
 or other solver families. None of these counts is a calibrated
 operation-equivalent or complete \(2^x\) solve projection. The actual N131
-base count and digest remain unknown.
+base count and digest in this historical screen were sample estimates; the
+exact Q1413 enumeration below supersedes them for base geometry.
 
 ### Fixed-state target-coverage bound for Q1331
 
@@ -1247,6 +1254,99 @@ that ordering retained a known relation. The N53 method gate failed, so
 Q1412 does not advance to an N83 run or a degree-131 work projection.
 
 
+### Q1413 exact projected-x base enumeration
+
+For this characteristic-two curve, rationality of a nonzero raw x is
+equivalent to `Tr(x + x^-1) = 0`, and `x([2]P) = x(P)^2 + x(P)^(-2)`.
+Applying that doubling identity twice computes the x-coordinate of the
+cofactor-four projection without lifting both signed points for every raw
+support. The [Q1413 source](enumerate_q1413_projected_x.py) enumerates one
+normal-basis necklace per Frobenius orbit, checks rationality, discards
+identity projections, and deduplicates the projected x orbits. Its
+[protocol](q1413_projected_x_protocol.json) binds the exact curve, source,
+reference bases, and checked Sage runtime. The digest encoding is **sorted
+canonical cyclic-Frobenius x keys**; it differs from Q1302's ONB-coordinate
+x-key encoding and Q1325's full-point-key encoding.
+
+| Exact enumeration | Actual usable points B | Folded columns K | Control |
+| --- | ---: | ---: | --- |
+| [N83 W≤4](runs/n83_q1413_projected_x_w4.json) | 1,934,066 | 11,651 | Same orbit set as Q1302 |
+| [N83 W≤5](runs/n83_q1413_projected_x_w5.json) | 30,977,592 | 186,612 | Same orbit set as Q1325 |
+| [N131 W≤5 prefix](runs/n131_q1413_projected_x_w5.json) | 309,633,434 | 1,181,807 | Exact subset of proposed Q1303 W≤6 base |
+| [N131 W≤6 full](runs/n131_q1413_projected_x_w6.json) | 6,559,634,788 | 25,036,774 | Exact Q1303 projected base; digest `e5f66c394406…` |
+
+The n=83 checks compare the **entire** computed orbit sets with the
+separately archived Q1302 and Q1325 sets, beyond matching counts. The
+[independent Sage replay](runs/n131_q1413_sage_projection_replay.json)
+checks rationality on 80 fresh n=131 sparse x supports and compares every
+rational support's projection with Sage's fourfold group multiplication,
+including 16 subgroup-order checks. These controls
+validate the projection formula and the declared encoding; they are not
+ordinary decomposition attempts or relation-yield measurements. The full
+W≤6 run examined 50,071,373 raw x-orbits and retained 25,036,774 distinct
+projected subgroup x-orbits. Its 5,667-second L0 enumeration interval stops
+before sorting and digesting the final key set, so it is not complete base
+construction cost. The [API-call vector](runs/q1413_exact_base_api_call_vectors.json)
+records 75,108,147 direct field-inverse calls, 100,142,746 traces, and
+3,254,780,620 canonical-rotation steps for this run; it omits internal
+arithmetic, hashing, sorting and conversion costs. No common work unit or
+complete solve exponent follows from this base receipt.
+The n=131 W≤6 digest has one complete enumeration pass. The frozen-artifact
+verifier checks its source/protocol hashes, weight-five prefix, and accounting;
+the n=83 controls compare complete sets, while the independent Sage replay
+checks sampled n=131 points. These checks do not constitute a second full
+n=131 enumeration. The protocol and receipts are first published together,
+so this is a reproducible computational geometry result rather than a
+precommitted selection experiment.
+
+### Q1414 and Q1416 exact-base work screens
+
+The [Q1414 uniform-query bound](runs/n131_q1414_exact_uniform_query_bound.json)
+uses the exact W≤6 base and all unordered four-point multisets, including
+repeated points. Their count divided by the nonidentity subgroup target
+count is at most **0.11335429** representations per uniformly distributed
+query. If all 25,036,774 rank rows must come from such queries, every
+representation is returned, and every row is optimistically novel, Markov's
+inequality still requires at least **209,828,278 queries** for a 95% chance
+of full rank. Under an abstract `2^61` total-work target with all other
+costs set to zero, this leaves less than `2^33.36` work units per query.
+This is a necessary affordability ceiling for the stated uniform marginal,
+not a measured solver cost or a bound on guided nonuniform collectors.
+
+The [Q1416 pure quotient-pair-index model](runs/n131_q1416_exact_base_pair_index_screen.json)
+builds `nK² = 82,116,046,854,846,956` raw pair states (`2^56.19`).
+Materializing one 17-byte key for each state alone would occupy
+1,395,972,796,532,398,252 bytes (`2^60.28`), before witnesses or index
+overhead. Under its stated uniform pair-key and one-novel-row-per-match
+model, the index plus K rows needs about `2^89.36` logical pair actions,
+`2^28.36` above the abstract `2^61` target. The storage figure applies to
+this uncompressed materialization, and the action count is a model, not a
+lower bound on other PDP families or a calibrated complete-solve estimate.
+
+### Q1415 N53 XOR Gaussian solver method gate
+
+The [Q1415 protocol](q1415_gauss_n53_protocol.json) reruns the exact Q1410
+ordinary N53 XCNF on the same curve, 24,062-point base, target, and formula
+with CryptoMiniSat's `maxmatrixcols=10000` and `autodisablegauss=0`.
+Q1410's default 1,000-column limit discarded its 212-by-8,586 XOR matrix;
+the [Q1415 log](runs/n53_q1415_gauss_ordinary.stdout.txt) confirms that
+three such matrices were active. The [frozen run](runs/n53_q1415_gauss_ordinary.json)
+still reached the external 120-second cap without a SAT model or verified
+relation. Its conflict count is unreported because the process timed out
+before final solver statistics. The [named stage comparison](runs/n53_q1410_q1415_named_stage_comparison.json)
+uses distinct canonical `PS1` stage IDs and keeps both failures. It records
+the older stage IDs as aliases: those archived IDs hashed run limits and a
+target-specific formula. The canonical stage hash includes the exact curve,
+field, base, formula method, source components, solver binary, and algorithmic
+XOR-Gauss flags; it leaves caps, thread count, and target formula in the run
+record. The timing intervals differ, and the host is unisolated, so they
+provide no controlled wall-time speed ratio. This flag change did not pass
+the N53 ordinary method gate;
+there is no Q1415 N83 solver result or solve-growth estimate.
+The Q1415 protocol and result are first published together. This bounded
+negative run is exploratory; it was not a precommitted statistical selection
+test.
+
 ## Next goal
 
 The next experiment is a frozen **five-summand compact-S3 PDP stage** on the
@@ -1274,6 +1374,11 @@ Q1410 reaches that cap without recovering an independently known ordinary
 N53 relation, so the next design needs a different search mechanism.
 Q1412's leaf-ordering control also preserves the known relation but reaches
 the ordinary N53 conflict cap without a model.
+Q1415 activates XOR Gaussian matrices on the exact Q1410 N53 ordinary
+formula but reaches its 120-second cap without a model. A new mechanism
+should first recover an unpinned ordinary N53 relation, then an ordinary
+N83 relation on the exact Q1325 base, with failed attempts and field API
+work charged to the query.
 Q1400's ordinary no-hit and tiny fixed-rectangle support bound leave
 ordinary relation yield unmeasured.
 Run frozen ordinary single-target workloads under identical operation and
@@ -1283,8 +1388,8 @@ The design needs measurable useful-row yield and novel rank per query,
 including failed attempts. Merely increasing the current sampled index cap
 cannot justify extrapolation to its 2.9-trillion-state N83 full index.
 
-If the m=5 stage succeeds, freeze an exact or certified N131 W≤5 base and
-calibrate inversion, multiplication, conversion, hashing, and point costs in a common operation
+Use the exact Q1413 N131 W≤5 and W≤6 bases to calibrate inversion,
+multiplication, conversion, hashing, and point costs in a common operation
 unit. Add base construction, relation collection, final matrix rank and
 solve, target descent, and scalar replay to a complete \(2^x\) ledger.
 Keep \(x\) unknown until every required term is measured or bounded. A
@@ -1339,6 +1444,12 @@ python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --che
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1410_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1412_n53_ordered.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1412_stage_comparison.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/derive_q1413_base_calls.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/screen_q1414_exact_uniform_query_bound.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/screen_q1416_exact_pair_index.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1415_gauss_n53.py
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1415_stage_comparison.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1413_q1416_archive.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```

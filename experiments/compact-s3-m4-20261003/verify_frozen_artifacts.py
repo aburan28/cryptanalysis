@@ -2771,6 +2771,184 @@ def verify():
     ):
         rows.append({"variant": variant, "receipt_sha256": sha(path),
                      "is_natural_yield_measurement": False})
+    q1413_protocol_path = HERE / "q1413_projected_x_protocol.json"
+    q1413 = json.loads(q1413_protocol_path.read_text())
+    q1413_runtime_path = HERE / "q1413_sage_runtime_info.json"
+    assert json.loads(q1413_runtime_path.read_text())["status"] == "verified"
+    assert q1413["proposal_id"] == "Q1413"
+    assert q1413["candidate_id"] is None and q1413["isogeny"] == "none"
+    assert q1413["source_sha256"] == sha(
+        HERE / "enumerate_q1413_projected_x.py")
+    assert q1413["parent_protocol_sha256"] == sha(HERE / "protocol.json")
+    assert q1413["runtime_info_sha256"] == sha(q1413_runtime_path)
+    assert q1413["reference_artifact_sha256"] == {
+        "q1302": sha(HERE / "bases/n83_weight4_orbits.json.gz"),
+        "q1325": sha(HERE / "bases/n83_weight5_full_point_orbits.bin")}
+    for source, digest in q1413["dependency_sha256"].items():
+        assert digest == sha(HERE.parents[1] / source)
+    q1413_runs = {}
+    for item in q1413["run_grid"]:
+        n, weight = item["n"], item["weight"]
+        path = HERE / "runs" / f"n{n}_q1413_projected_x_w{weight}.json"
+        receipt = json.loads(path.read_text())
+        q1413_runs[n, weight] = receipt
+        assert receipt["proposal_id"] == "Q1413"
+        assert receipt["candidate_id"] is receipt["run_id"] is None
+        assert receipt["curve_id"] == q1413["instances"][str(n)]["curve_id"]
+        assert receipt["parent_base_proposal_id"] == q1413[
+            "instances"][str(n)]["base_proposal_ids"][str(weight)]
+        assert receipt["field_degree_n"] == n
+        assert receipt["normal_basis_weight_bound"] == weight
+        assert receipt["cofactor"] == 4 and receipt["isogeny"] == "none"
+        assert receipt["protocol_sha256"] == sha(q1413_protocol_path)
+        assert receipt["runtime_info_sha256"] == sha(q1413_runtime_path)
+        assert receipt["source_sha256"] == q1413["source_sha256"]
+        assert receipt["actual_usable_points_B_before_folding"] == 2 * n * (
+            receipt["signed_frobenius_columns_K"])
+        assert len(receipt["strata"]) == weight
+        assert receipt["nominal_x_mask_count"] == sum(
+            math.comb(n, i) for i in range(1, weight + 1))
+        assert all(row["weight"] == i and
+                   row["x_orbits"] == math.comb(n, i) // n and
+                   0 <= row["sampled_group_controls"] <= 16
+                   for i, row in enumerate(receipt["strata"], 1))
+        assert receipt["signed_frobenius_columns_K"] == sum(
+            row["rational_x_orbits"] -
+            row["identity_projection_orbits"] -
+            row["duplicate_projection_orbits"]
+            for row in receipt["strata"])
+        assert len(receipt["enumerated_set_sha256"]) == 64
+        assert receipt["n83_reference_set_equal"] == (n == 83)
+        assert receipt["is_empirical_relation_yield"] is False
+        assert receipt["is_complete_solve_projection"] is False
+        rows.append({"variant": f"q1413_n{n}_w{weight}_exact_base",
+                     "receipt_sha256": sha(path),
+                     "is_natural_yield_measurement": False})
+    assert q1413_runs[83, 4]["signed_frobenius_columns_K"] == 11651
+    assert q1413_runs[83, 5]["signed_frobenius_columns_K"] == 186612
+    assert q1413_runs[131, 5]["signed_frobenius_columns_K"] == 1181807
+    assert len(q1413_runs[131, 5]["strata"]) == 5
+    for full_row, prefix_row in zip(q1413_runs[131, 6]["strata"][:5],
+                                    q1413_runs[131, 5]["strata"]):
+        for field_name in ("weight", "x_orbits", "rational_x_orbits",
+                           "identity_projection_orbits"):
+            assert full_row[field_name] == prefix_row[field_name]
+    assert q1413_runs[131, 6]["signed_frobenius_columns_K"] >= 1181807
+    q1413_replay_path = HERE / "runs/n131_q1413_sage_projection_replay.json"
+    q1413_replay = json.loads(q1413_replay_path.read_text())
+    assert q1413_replay["status"] == "PASS"
+    assert q1413_replay["proposal_id"] == "Q1413"
+    assert q1413_replay["parent_base_proposal_id"] == "Q1303"
+    assert q1413_replay["candidate_id"] is None
+    assert q1413_replay["curve_id"] == q1413[
+        "instances"]["131"]["curve_id"]
+    assert q1413_replay["q1413_protocol_sha256"] == sha(q1413_protocol_path)
+    assert q1413_replay["runtime_info_sha256"] == sha(q1413_runtime_path)
+    assert q1413_replay["producer_source_sha256"] == q1413["source_sha256"]
+    assert q1413_replay["source_sha256"] == sha(
+        HERE / "verify_q1413_projection_sage.py")
+    assert sum(row["sampled_supports"] for row in q1413_replay["rows"]) == 80
+    assert q1413_replay["independent_subgroup_checks"] == 16
+    for variant, path in (
+        ("q1413_projected_x_protocol", q1413_protocol_path),
+        ("q1413_checked_sage_runtime", q1413_runtime_path),
+        ("q1413_independent_sage_projection_replay", q1413_replay_path),
+    ):
+        rows.append({"variant": variant, "receipt_sha256": sha(path),
+                     "is_natural_yield_measurement": False})
+    from screen_q1414_exact_uniform_query_bound import build as build_q1414
+    q1414_path = HERE / "runs/n131_q1414_exact_uniform_query_bound.json"
+    q1414 = json.loads(q1414_path.read_text())
+    assert q1414 == build_q1414()
+    assert q1414["proposal_id"] == "Q1414"
+    assert q1414["parent_base_proposal_id"] == "Q1303"
+    assert q1414["candidate_id"] is None
+    assert q1414["base_receipt_sha256"] == sha(
+        HERE / "runs/n131_q1413_projected_x_w6.json")
+    assert q1414["base_set_sha256"] == q1413_runs[131, 6][
+        "enumerated_set_sha256"]
+    assert q1414["complete_solve_work_log2"] is None
+    assert q1414["challenge_dispatch_allowed"] is False
+    rows.append({"variant": "q1414_exact_base_uniform_query_bound",
+                 "receipt_sha256": sha(q1414_path),
+                 "is_natural_yield_measurement": False})
+    from derive_q1413_base_calls import build as build_q1413_calls
+    q1413_calls_path = HERE / "runs/q1413_exact_base_api_call_vectors.json"
+    q1413_calls = json.loads(q1413_calls_path.read_text())
+    assert q1413_calls == build_q1413_calls()
+    assert q1413_calls["proposal_id"] == "Q1413"
+    assert q1413_calls["candidate_id"] is None
+    assert q1413_calls["is_complete_base_work_equivalent"] is False
+    assert q1413_calls["is_complete_solve_projection"] is False
+    assert q1413_calls["rows"][-1]["base_receipt_sha256"] == sha(
+        HERE / "runs/n131_q1413_projected_x_w6.json")
+    rows.append({"variant": "q1413_exact_base_api_call_vectors",
+                 "receipt_sha256": sha(q1413_calls_path),
+                 "is_natural_yield_measurement": False})
+    from screen_q1416_exact_pair_index import build as build_q1416
+    q1416_path = HERE / "runs/n131_q1416_exact_base_pair_index_screen.json"
+    q1416 = json.loads(q1416_path.read_text())
+    assert q1416 == build_q1416()
+    assert q1416["proposal_id"] == "Q1416"
+    assert q1416["parent_base_proposal_id"] == "Q1303"
+    assert q1416["candidate_id"] is None and q1416["isogeny"] == "none"
+    assert q1416["base_receipt_sha256"] == sha(
+        HERE / "runs/n131_q1413_projected_x_w6.json")
+    assert q1416["base_set_sha256"] == q1413_runs[131, 6][
+        "enumerated_set_sha256"]
+    assert q1416["complete_solve_work_log2"] is None
+    assert q1416["challenge_dispatch_allowed"] is False
+    rows.append({"variant": "q1416_exact_base_pure_pair_index_model",
+                 "receipt_sha256": sha(q1416_path),
+                 "is_natural_yield_measurement": False})
+    q1415_protocol_path = HERE / "q1415_gauss_n53_protocol.json"
+    q1415_protocol = json.loads(q1415_protocol_path.read_text())
+    q1415_runtime_path = HERE / "q1415_sage_runtime_info.json"
+    q1415_path = HERE / "runs/n53_q1415_gauss_ordinary.json"
+    q1415 = json.loads(q1415_path.read_text())
+    q1415_stdout = HERE / "runs/n53_q1415_gauss_ordinary.stdout.txt"
+    q1415_stderr = HERE / "runs/n53_q1415_gauss_ordinary.stderr.txt"
+    q1415_comparison_path = HERE / "runs/n53_q1410_q1415_named_stage_comparison.json"
+    from build_q1415_stage_comparison import build as build_q1415
+    q1415_comparison = json.loads(q1415_comparison_path.read_text())
+    assert q1415_comparison == build_q1415()
+    assert q1415_protocol["proposal_id"] == q1415["proposal_id"] == "Q1415"
+    assert q1415_protocol["candidate_id"] is q1415["candidate_id"] is None
+    assert q1415["run_id"] is None and q1415["isogeny"] == "none"
+    assert q1415["curve_id"] == q1415_protocol["curve_id"]
+    assert q1415["factor_base_actual_B"] == 24062
+    assert q1415["factor_base_folded_columns"] == 227
+    assert q1415["workload_id"] == q1415_protocol["ordinary_workload_id"]
+    assert q1415_protocol["source_sha256"] == sha(
+        HERE / "run_q1415_gauss_n53.py")
+    assert q1415["source_sha256"] == q1415_protocol["source_sha256"]
+    assert q1415["protocol_sha256"] == sha(q1415_protocol_path)
+    assert q1415["runtime_info_sha256"] == sha(q1415_runtime_path)
+    assert q1415["solver_stdout_sha256"] == sha(q1415_stdout)
+    assert q1415["solver_stderr_sha256"] == sha(q1415_stderr)
+    assert q1415["formula_raw_sha256"] == q1415_protocol[
+        "formula_raw_sha256"]
+    assert q1415["solver_status"] == "external_timeout"
+    assert q1415["gaussian_matrix_reported_active"] is True
+    assert "Using 3 matrices recovered" in q1415_stdout.read_text()
+    q1410_stdout = HERE / "runs/n53_q1410_ordinary.attempt0.stdout.txt"
+    assert "Using 0 matrices recovered" in q1410_stdout.read_text()
+    assert q1415["observed_verified_relation_count"] == 0
+    assert q1415["complete_solve_work_log2"] is None
+    assert q1415_comparison["stage_profiles"][1]["legacy_stage_config_id"] == (
+        q1415["stage_config_id"])
+    assert q1415_comparison["stage_profiles"][1]["stage_config_id"] != (
+        q1415["stage_config_id"])
+    for variant, path in (
+        ("q1415_xor_gauss_protocol", q1415_protocol_path),
+        ("q1415_xor_gauss_checked_sage_runtime", q1415_runtime_path),
+        ("q1415_xor_gauss_n53_ordinary", q1415_path),
+        ("q1415_xor_gauss_n53_stdout", q1415_stdout),
+        ("q1415_xor_gauss_n53_stderr", q1415_stderr),
+        ("q1410_q1415_named_stage_comparison", q1415_comparison_path),
+    ):
+        rows.append({"variant": variant, "receipt_sha256": sha(path),
+                     "is_natural_yield_measurement": False})
     from screen_q1405_m5_chain import build as build_q1405_screen
     q1405_screen_path = HERE / "runs/n83_n131_q1405_m5_chain_screen.json"
     q1405_screen = json.loads(q1405_screen_path.read_text())
