@@ -78,3 +78,30 @@ recoding and preparation. Any CPU wall-time claim must use the
 [isolated benchmark service](../../docs/ISOLATED_BENCHMARKS.md) or an
 equivalent host-level receipt with paired inputs, failures, and source
 hashes. A measured comparison belongs in a follow-up PR.
+
+## Frozen-panel result (2026-10-04)
+
+The protocol above was committed as `0722e112` and opened as PR #250 before
+the panel was run. The complete machine-readable summary is [panel.json](panel.json).
+Each row covers the same 10,006 scalars for the indicated order and examines
+25 congruent representatives per scalar. All recodings reconstructed their
+chosen representative exactly, and all representatives preserved the scalar
+modulo the subgroup order. No panel failure or timeout occurred.
+
+| Subgroup order | `ω` eigenvalue | Lower modeled cost | Mean baseline | Mean candidate | Modeled saving |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 51131959441 | 11367182710 | 4,069 / 10,006 | 196.92 | 191.15 | 2.93% |
+| 51131959441 | 39764776730 | 5,356 / 10,006 | 185.91 | 176.10 | 5.28% |
+| 157632877033 | 31861365824 | 6,257 / 10,006 | 195.74 | 185.47 | 5.24% |
+| 157632877033 | 125771511208 | 6,051 / 10,006 | 195.58 | 185.57 | 5.12% |
+| 42111239174233 | 1380964599821 | 6,260 / 10,006 | 239.28 | 229.14 | 4.24% |
+| 42111239174233 | 40730274574411 | 3,514 / 10,006 | 241.75 | 236.65 | 2.11% |
+
+There were no higher modeled costs because the selection set includes the
+baseline and ties prefer it. Median saving was zero on two rows, so the
+benefit is not uniform across scalars. The predeclared model gate passes on
+all three orders and both roots. **Decision:** advance to native integration
+and full scalar multiplication measurement. This panel supplies no wall-time
+ratio: it omits the cost of 24 extra recodings and uses modeled field-operation
+weights. The existing C τ path is still outside `main`, so production
+integration must be based on its eventual reviewed source snapshot.
