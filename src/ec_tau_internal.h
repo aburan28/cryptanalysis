@@ -6,17 +6,17 @@
 /* Per-point width-4 table for repeated scalar multiplications within one rho
  * solve.  It is private to the C implementation and tied to its group. */
 typedef struct ca_tau4_digit {
-    int8_t a, b, seed, power, sign;
+  int8_t a, b, seed, power, sign;
 } ca_tau4_digit;
 
 typedef struct ca_tau4_precomp {
-    const ca_group *g;
-    ca_elem seed[9];
-    ca_elem tau_seed[9];
-    ca_tau4_digit digit[81];
-    uint64_t beta, beta2;
-    __int128 v1x, v1y, v2x, v2y, det;
-    int identity;
+  const ca_group *g;
+  ca_elem seed[9];
+  ca_elem tau_seed[9];
+  ca_tau4_digit digit[81];
+  uint64_t beta, beta2;
+  __int128 v1x, v1y, v2x, v2y, det;
+  int identity;
 } ca_tau4_precomp;
 
 #define CA_TAU_POS_Q 64
