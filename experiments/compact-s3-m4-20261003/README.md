@@ -1497,6 +1497,20 @@ and work ledger retain exact field-operation and memory counts. This
 decision-order improvement is a stage diagnostic; natural yield and the
 complete degree-131 `2^x` remain unknown.
 
+### Q1428 partial-pair bilinear-span screen
+
+The [Q1428 protocol](q1428_bilinear_span/protocol.json) tests a sound
+linear-span necessary condition derived from the exact fixed-intermediate
+`S3(a,b,m)` equation. Its [result](q1428_bilinear_span/result.json) shows
+rank deficiency and correct rejections on synthetic N53/N83 partial
+leaves; exhaustive N3/N5 checks validate the algebra and soundness.
+However, the frozen sampling law has already fixed each leaf's full
+weight allowance when rank first drops. The cardinality constraints would
+then fix the remaining bits, so this screen does **not** establish early
+solver pruning. It is neither an ordinary-query measurement nor a
+degree-131 work estimate. The next test must leave weight capacity and
+compare its rejection benefit with exact completion enumeration.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum

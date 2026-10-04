@@ -36,6 +36,24 @@ mirrors Q1427's interleaved bit order but is not a sample of its SAT trail.
 The exhaustive N3/N5 self-test checks the expansion and confirms that every
 span rejection is sound. The result records rank and rejection counts.
 
+## Frozen screen result
+
+The [result](result.json) has 24 cells with 16 samples each. At N53, all
+sampled spans had full rank with 16 free suffix bits per leaf; with 12 free
+bits, rank was 47 of 53 and 14 of 16 constants fell outside the span. At
+N83, all spans were full rank with 24 free bits; with 16 free bits, rank
+was 63 of 83 and all 16 samples rejected. The small-field expansion and
+soundness self-test passed.
+
+These rejections **do not demonstrate useful early solver pruning**. The
+frozen law fixes `min(w, n-k)` one bits in the prefix. At the first
+rank-deficient cells it has already fixed all `w` allowed one bits on each
+leaf, so the SAT cardinality clauses would force every suffix bit to zero.
+An exact root check can already run at that point. The next screen must
+retain an unsaturated weight budget and compare rank filtering with exact
+completion enumeration on the same partial states before integration into
+the four-point solver.
+
 This is a method screen, not an `IC1` candidate or an empirical solver
 measurement. Its identity is proposal `Q1428`, `candidate_id: null`, and
 `isogeny: "none"`. It cannot establish ordinary relation yield, cost per

@@ -3098,6 +3098,44 @@ def main():
     assert all(row["solver_status"] == "censored" and
                row["solver_stop_reason"] == "wall_cap" for row in
                q1427_cells if row["cell"] == "ordinary")
+    q1428_dir = HERE / "q1428_bilinear_span"
+    q1428_protocol_path = q1428_dir / "protocol.json"
+    q1428_result_path = q1428_dir / "result.json"
+    q1428_test_path = q1428_dir / "self_test.json"
+    q1428_protocol = json.loads(q1428_protocol_path.read_text())
+    q1428_result = json.loads(q1428_result_path.read_text())
+    q1428_test = json.loads(q1428_test_path.read_text())
+    assert q1428_protocol["proposal_id"] == q1428_result[
+        "proposal_id"] == "Q1428"
+    assert q1428_protocol["candidate_id"] is q1428_result[
+        "candidate_id"] is None
+    assert q1428_protocol["isogeny"] == q1428_result["isogeny"] == "none"
+    assert q1428_protocol["source_sha256"] == q1428_result[
+        "source_sha256"] == sha(q1428_dir / "screen.py")
+    assert q1428_protocol["q1427_protocol_sha256"] == sha(
+        q1427_protocol_path)
+    assert q1428_protocol["runtime_info_sha256"] == sha(
+        q1428_dir / "sage_runtime_info.json")
+    assert q1428_result["protocol_sha256"] == sha(q1428_protocol_path)
+    assert q1428_result["complete_solve_work_log2"] is None
+    assert q1428_result["is_empirical_solver_measurement"] is False
+    assert len(q1428_result["rows"]) == 24
+    assert sum(row["linear_relaxation_reject_count"] for row in
+               q1428_result["rows"]) == 238
+    assert q1428_test == {"status": "PASS", "degrees": [3, 5],
+                          "rejected_partial_states": 37193}
+    for item in q1428_protocol["degrees"]:
+        n = item["degree_n"]
+        matched = q1427_protocol["workloads"][f"n{n}_ordinary"]
+        for name in ("curve_id", "factor_base_actual_B", "folded_columns_K",
+                     "factor_base_enumerated_set_sha256"):
+            assert item[name] == matched[name]
+        cell_rows = [row for row in q1428_result["rows"]
+                     if row["degree_n"] == n]
+        assert [row["free_suffix_size_each_leaf"] for row in cell_rows] == (
+            item["free_suffix_sizes"])
+        assert all(row["samples"] == q1428_protocol["samples_per_cell"]
+                   for row in cell_rows)
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -3957,6 +3995,26 @@ def main():
                 "algebraic pair-sum feasibility before a leaf is fixed."),
             "protocol_sha256": sha(q1427_protocol_path),
             "verification_sha256": sha(q1427_verification_path),
+        },
+        "q1428_bilinear_partial_pair_span_screen": {
+            "proposal_id": "Q1428",
+            "candidate_id": None,
+            "isogeny": "none",
+            "rows": q1428_result["rows"],
+            "small_field_self_test": q1428_test,
+            "is_empirical_solver_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "The linearized S3 span condition is sound and can reject "
+                "synthetic partial states. In this frozen law, each leaf "
+                "has already exhausted its weight allowance at the first "
+                "rank-deficient cells, so it demonstrates no early solver "
+                "pruning. A weight-unsaturated comparison with exact "
+                "completion enumeration is required before integration."),
+            "protocol_sha256": sha(q1428_protocol_path),
+            "result_sha256": sha(q1428_result_path),
+            "self_test_sha256": sha(q1428_test_path),
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
