@@ -637,7 +637,8 @@ public targets, and all archived base representatives (227 at N53 and
 [N53](runs/n53_onb_poly_bridge_replay.json) and
 [N83](runs/n83_onb_poly_bridge_replay.json) receipts both pass; the
 [runtime record](bridge_sage_runtime_info.json) was saved before the jobs.
-The artifact audit now validates 91 receipts including the native stage.
+The artifact audit now validates 129 receipts including the native stages,
+single-target adaptive-window probes, and fused-root diagnostics.
 
 The bridge itself is a field-conversion control. A full pair-root index scales
 roughly as \(K^2n\) states: about 2.7 million for Q1301's 227 columns at
@@ -783,6 +784,63 @@ found at state one after 34 orientations, but the fixed window prepares
 0.178 ms for the window-1 planted control exposes a severe early-hit penalty.
 Q1332 is a correctness control, not a natural-yield estimate; this one-target
 result motivates an adaptive per-target window schedule.
+
+### Q1333–Q1335 adaptive windows for one target
+
+The [adaptive protocol](q1333_q1334_adaptive_window_protocol.json) keeps one
+frozen target in every run and grows the target-query inversion window through
+`[1, 16, 64, 256, 1024, 4096]` states. The reusable pair index still uses a
+4,096-state arithmetic window. This schedule changes how root equations for
+one target are grouped; it never processes multiple target points together.
+Q1333 and Q1334 use the exact Q1330/Q1331 ordinary points, bases, state order,
+and caps. Q1335 replays Q1329's single planted target as an early-hit control.
+
+| Run | Target count | Scanned / prepared target states | Target PDP and relation check | Exploratory ratio vs window 1 | Exploratory ratio vs fixed 4,096 window | Outcome |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Q1333 N53 ordinary | 1 | 49,228 / 50,513 | 50.60 ms | 2.09x | 1.02x | same verified relation as Q1330 |
+| Q1334 N83 ordinary | 1 | 2,000,000 / 2,000,000 | 3,261.38 ms | 2.87x | 1.00x | no relation at cap |
+| Q1335 N83 planted control | 1 | 1 / 1; 34 / 83 orientations tested / prepared | 0.102 ms | 1.75x | 1,376x | same verified planted relation |
+
+The ordinary rows remain target-stage diagnostics, not recovered DLPs. The
+N53 and N83 ratios are exploratory single-run wall-time ratios on an
+unisolated host, not CPU speedup claims. Q1335 is a synthetic correctness
+control and cannot estimate natural relation yield. It shows the early-hit
+cost change clearly: the fixed window prepared 4,096 target states and
+339,968 orientations for this state-one hit; the schedule prepared one state
+and 83 orientations. The adaptive build and all three run manifests record
+`target_count: 1`; the independent Sage replays check the N53 ordinary and
+N83 planted relations against the frozen target and exact factor base.
+None of these stages includes a complete relation matrix, target descent,
+recovered scalar, or paired rho measurement, so the ECC2K-130 single-target
+end-to-end speedup remains unknown.
+
+### Q1336–Q1338 fused regular-root formula
+
+The [Q1336/Q1337 protocol](q1336_q1337_fast_root_protocol.json) keeps the same
+one-target workloads and adaptive target-local window schedule, but rewrites
+the regular S3 root calculation from
+`d = (c*a) * (a/(a*ps))` to `d = c*a^2/(a*ps)`. The denominator inverse is
+already shared, so the fused form saves exactly one field multiplication per
+regular S3 root. The native exhaustive test again matches the independent
+direct-root implementation for all 1,024 input pairs in \(\mathbf F_{2^5}\).
+
+| Proposal | Target count | S3 roots | Field multiplications, adaptive → fused | Target PDP / relation-check time, adaptive → fused | Adaptive / fused stage-time ratio | Outcome |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Q1336 N53 ordinary | 1 | 101,026 | 1,111,249 → 1,010,223 | 50.60 → 51.66 ms | 0.979x | same independently verified relation; slower in this observation |
+| Q1337 N83 ordinary | 1 | 4,000,000 | 43,998,521 → 39,998,521 | 3,261.38 → 3,253.02 ms | 1.003x | both capped without a relation |
+| Q1338 N83 planted control | 1 | 166 | 1,837 → 1,671 | 0.102 → 0.105 ms | 0.974x | same independently verified planted relation |
+
+The stage ratio is adaptive elapsed time divided by fused elapsed time, so
+values above one favor the fused formula. These are single
+observations on an unisolated host: the small N83 difference is not a
+repeatable speedup, and N53 plus the early-hit planted control are slower.
+This kernel change is a no-go for a wall-time claim despite its exact
+operation-count reduction. The [ordinary replays](runs/n53_fast_root_independent_replay.json)
+and [planted replay](runs/n83_q1338_fast_planted_independent_replay.json) are
+source-bound checked-Sage records; the N53 relation matches and the N83
+ordinary result remains censored. The fused variant still reports only a
+bounded point-decomposition stage: no complete DLP, final relation-matrix
+solve, target descent, or paired single-target rho solve was measured.
 
 Conditionally applying Q1303's estimated N131 W≤6 column count to this
 **full-index design** gives about \(2^{56.20}\) pair states before target
@@ -1028,6 +1086,107 @@ adds `Wbab50a1e5f66R1`. `candidate_id` remains null. CPU wall ratios on
 this unisolated host are exploratory, and a complete solve exponent remains
 unknown.
 
+### Q1406 uniform-query relation-supply bound for Q1303
+
+The [Q1406 counting screen](runs/n131_q1406_uniform_query_bound.json)
+adds a necessary budget for **the proposed N131 W≤6, m=4 base** without a
+Poisson or independent-subset-sum assumption. With `B` distinct usable
+base points, there are at most \(\binom{B+3}{4}\) unordered four-point
+multisets, including repeated points. Their sums distribute over the
+subgroup of order `r`. A uniform nonidentity query therefore has at most
+\(\binom{B+3}{4}/(r-1)\) expected decompositions, regardless of how those
+sums are distributed. This also bounds its probability of having any
+decomposition. Every decomposition can add at most one relation row.
+
+Conditionally rounding Q1303's sampled base estimate to full 262-point
+signed-Frobenius orbits gives `B=6,583,581,064` and
+`K=25,128,172`. The uniform-query representation mean and coverage
+ceiling are **0.1150186**. For a collector that obtains all `K` required
+independent rows from uniform nonidentity four-summand queries, Markov's
+inequality requires at least **207,546,988 queries** for a 95% chance of
+rank `K`, even if it returns every representation and every row is novel.
+The condition that expected rank reaches `K` requires at least
+**218,470,513 queries**. Correlation between queries does not weaken these
+bounds when each query has the declared uniform marginal.
+
+Dividing an abstract `2^61` total-work cap by the 95%-rank necessary
+query count leaves at most **`2^33.37`** work units per query when all
+other costs are set to zero; the expected-rank version gives
+`2^33.30`. Across Q1303's conditional normal-approximation 95% base
+interval, the 95%-rank ceiling varies from `2^33.35` to `2^33.40`.
+These are affordability ceilings, **not** measured solver costs or a
+complete `2^x` projection. The actual N131 base count and digest are
+unknown, the statistical interval is not a hard bound, and a nonuniform
+guided query law or an external source of factor-base rank rows lies outside
+this screen. Recompute it with
+`python3 experiments/compact-s3-m4-20261003/screen_q1406_uniform_query_bound.py --check`.
+
+### Q1407 compact S3 formula-size control
+
+The [Q1407 source-bound screen](runs/n53_n83_n131_q1407_compact_formula_shape.json)
+rebuilds the raw-preimage compact S3 formula and matches the earlier
+ordinary N53 and N83 formula counts exactly. Those real-target controls use
+the frozen Q1301 W≤3 and Q1325 W≤5 bases and all their respective raw
+cofactor preimages. The N131 row uses four distinct **placeholder** x values
+to fix the selector shape; it is not a curve target or a solver run.
+
+| Formula shape | Variables | CNF clauses | XOR rows | AND gates | Total literal occurrences |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| N53 W≤3, 428 actual raw preimages | 26,922 | 100,060 | 795 | 25,281 | 459,580 |
+| N83 W≤5, four actual raw preimages | 65,221 | 189,928 | 1,245 | 62,001 | 569,288 |
+| N131 W≤6, four placeholder x values | 160,061 | 470,612 | 1,965 | 154,449 | 1,410,528 |
+
+The N131 row is about `2^20.43` emitted literal occurrences and never
+materializes expanded S5. Thus the earlier expanded-S5 construction cost
+does not apply to this compact encoding. The row measures formula **shape**,
+not SAT search work, successful decomposition cost, exact N131 base
+membership, or a complete solve. Recompute it with
+`python3 experiments/compact-s3-m4-20261003/screen_q1407_compact_formula_shape.py --check`.
+
+### Q1405 compact five-summand planning screen
+
+The [source-bound Q1405 screen](runs/n83_n131_q1405_m5_chain_screen.json)
+tests whether **one more short S3 link** is a better next solver target. A
+five-leaf chain uses four S3 links and three free intermediate x coordinates;
+it need not expand or materialize S6. Q1405 uses the exact Q1302 N83
+weight-at-most-four base, not Q1325's weight-five base. Thus the N83 m4/m5
+comparison changes both arity and factor-base policy and compares two full
+PDP designs rather than SAT speed alone. Both use curve
+`EC1N83Ckb1h876c2921cb64`, ordinary workload `bab50a1e5f66`, and
+`isogeny: "none"`. Q1405 is a `PDP5sat` **proposal**, with
+`candidate_id: null` and no measured solver run.
+
+| Exact N83 base and method | B before folding | Folded K | Mean distinct subsets per uniform target |
+| --- | ---: | ---: | ---: |
+| Q1302 W≤4, m=5 | 1,934,066 | 11,651 | 93,270 |
+| Q1325 W≤5, m=4 | 30,977,592 | 186,612 | 15,869 |
+
+| Conditional N131 design | Sampled B | Estimated folded K | Mean distinct subsets per uniform target | Optimistic queries for K novel rows | Zero-other-cost per-query ceiling under 2^61 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Q1405 W≤5, m=5 | 308.7 million | 1.178 million | 34.31 | 2^20.17 | 2^40.83 |
+| Q1303 W≤6, m=4 | 6.584 billion | 25.13 million | 0.115 | 2^27.79 | 2^33.21 |
+
+For N131, the W≤5 row reuses **only strata one through five** of Q1303's
+weight-stratified rationality sample, whose bounded controls passed an
+independent checked-Sage replay. Its conditional
+normal-approximation 95% B interval is 306.1–311.3 million. The exact W≤5
+point set, its digest, and its folded column count have **not** been
+enumerated. The subset mean is a uniform-target average conditional on B;
+the queries and ceiling additionally assume a Poisson hit law, one novel
+rank row per hit, and zero base construction, matrix, descent, replay,
+conversion, and failed-attempt overhead. They are planning screens, not a
+measured relation yield or a complete work exponent. Q1303's conditional
+numbers use the same assumptions for comparison.
+
+The compact Q1405 formula shape on the **actual N83 ordinary raw target
+preimages** has 86,386 variables, 252,012 CNF clauses, 1,660 XOR rows, and
+82,668 shared AND gates. A formula-shape construction at N131 W≤5 using
+four distinct placeholder x values has 212,460 variables, 625,451 CNF
+clauses, 2,620 XOR rows, and 205,932 AND gates. The N131 placeholders are
+not curve preimages, no SAT solve was attempted, and formula construction
+does not establish solve cost. Reproduce the screen with
+`python3 experiments/compact-s3-m4-20261003/screen_q1405_m5_chain.py --check`.
+
 ### Q1410 paired N53 balanced-S3 stage
 
 Q1410 uses the same balanced S3 builder and one-million-conflict ordinary
@@ -1086,68 +1245,23 @@ Q1412 fail to return a model at the frozen conflict cap; their unisolated
 wall times do not measure a solve speed ratio. The locked control establishes
 that ordering retained a known relation. The N53 method gate failed, so
 Q1412 does not advance to an N83 run or a degree-131 work projection.
-### Q1406 uniform-query relation-supply bound for Q1303
 
-The [Q1406 counting screen](runs/n131_q1406_uniform_query_bound.json)
-adds a necessary budget for **the proposed N131 W≤6, m=4 base** without a
-Poisson or independent-subset-sum assumption. With `B` distinct usable
-base points, there are at most \(\binom{B+3}{4}\) unordered four-point
-multisets, including repeated points. Their sums distribute over the
-subgroup of order `r`. A uniform nonidentity query therefore has at most
-\(\binom{B+3}{4}/(r-1)\) expected decompositions, regardless of how those
-sums are distributed. This also bounds its probability of having any
-decomposition. Every decomposition can add at most one relation row.
-
-Conditionally rounding Q1303's sampled base estimate to full 262-point
-signed-Frobenius orbits gives `B=6,583,581,064` and
-`K=25,128,172`. The uniform-query representation mean and coverage
-ceiling are **0.1150186**. For a collector that obtains all `K` required
-independent rows from uniform nonidentity four-summand queries, Markov's
-inequality requires at least **207,546,988 queries** for a 95% chance of
-rank `K`, even if it returns every representation and every row is novel.
-The condition that expected rank reaches `K` requires at least
-**218,470,513 queries**. Correlation between queries does not weaken these
-bounds when each query has the declared uniform marginal.
-
-Dividing an abstract `2^61` total-work cap by the 95%-rank necessary
-query count leaves at most **`2^33.37`** work units per query when all
-other costs are set to zero; the expected-rank version gives
-`2^33.30`. Across Q1303's conditional normal-approximation 95% base
-interval, the 95%-rank ceiling varies from `2^33.35` to `2^33.40`.
-These are affordability ceilings, **not** measured solver costs or a
-complete `2^x` projection. The actual N131 base count and digest are
-unknown, the statistical interval is not a hard bound, and a nonuniform
-guided query law or an external source of factor-base rank rows lies outside
-this screen. Recompute it with
-`/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/screen_q1406_uniform_query_bound.py --check`.
-
-### Q1407 compact S3 formula-size control
-
-The [Q1407 source-bound screen](runs/n53_n83_n131_q1407_compact_formula_shape.json)
-rebuilds the raw-preimage compact S3 formula and matches the earlier
-ordinary N53 and N83 formula counts exactly. Those real-target controls use
-the frozen Q1301 W≤3 and Q1325 W≤5 bases and all their respective raw
-cofactor preimages. The N131 row uses four distinct **placeholder** x values
-to fix the selector shape; it is not a curve target or a solver run.
-
-| Formula shape | Variables | CNF clauses | XOR rows | AND gates | Total literal occurrences |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| N53 W≤3, 428 actual raw preimages | 26,922 | 100,060 | 795 | 25,281 | 459,580 |
-| N83 W≤5, four actual raw preimages | 65,221 | 189,928 | 1,245 | 62,001 | 569,288 |
-| N131 W≤6, four placeholder x values | 160,061 | 470,612 | 1,965 | 154,449 | 1,410,528 |
-
-The N131 row is about `2^20.43` emitted literal occurrences and never
-materializes expanded S5. Thus the earlier expanded-S5 construction cost
-does not apply to this compact encoding. The row measures formula **shape**,
-not SAT search work, successful decomposition cost, exact N131 base
-membership, or a complete solve. Recompute it with
-`/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/screen_q1407_compact_formula_shape.py --check`.
 
 ## Next goal
 
-The next gate is an **ordinary N83 four-point relation on the exact Q1325
-base from a search that avoids both the full \(K^2n\) index and Q1331's
-fixed two-million-state support limit**. Q1329 has now
+The next experiment is a frozen **five-summand compact-S3 PDP stage** on the
+exact N53 Q1301 W≤3 and N83 Q1302 W≤4 bases. It should use the same ordinary
+public targets as the four-summand stages, attempt an unpinned planted
+control and ordinary target, independently replay every accepted relation,
+and charge all failed attempts. The first decisive gate is one unpinned
+ordinary N83 relation with recorded cost and memory; after that, a panel of
+fresh ordinary targets must measure useful-row yield and novel rank per query.
+The m=4 exact-Q1325 gate remains open and should not be silently counted as
+solved by the different Q1405 base/arity combination.
+
+For the existing m=4 path, an ordinary N83 four-point relation on the exact
+Q1325 base still requires a search that avoids both the full \(K^2n\) index
+and Q1331's fixed two-million-state support limit. Q1329 has now
 validated the native S3 search on an unpinned, known-satisfiable N83 target;
 Q1401 has independently validated the quotient-pair search on the exact
 Q1325 base with a planted public target. Q1403's ordered implicit-base
@@ -1169,8 +1283,8 @@ The design needs measurable useful-row yield and novel rank per query,
 including failed attempts. Merely increasing the current sampled index cap
 cannot justify extrapolation to its 2.9-trillion-state N83 full index.
 
-After that, freeze an exact or certified N131 base and calibrate inversion,
-multiplication, conversion, hashing, and point costs in a common operation
+If the m=5 stage succeeds, freeze an exact or certified N131 W≤5 base and
+calibrate inversion, multiplication, conversion, hashing, and point costs in a common operation
 unit. Add base construction, relation collection, final matrix rank and
 solve, target descent, and scalar replay to a complete \(2^x\) ledger.
 Keep \(x\) unknown until every required term is measured or bounded. A
