@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aburan28/cryptanalysis/blob/main/experiments/ic-candidate-catalog/curves.schema.json",
+  "title": "IC curve registry metadata schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "identity_rule",
+    "curves"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "identity_rule": {
+      "const": "sha256_sorted_key_compact_utf8_json_of_field_and_curve"
+    },
+    "curves": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/curve"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "trait": {
+      "type": "object",
+      "required": [
+        "value",
+        "status"
+      ],
+      "properties": {
+        "value": {},
+        "status": {
+          "enum": [
+            "proved",
+            "derived_from_model",
+            "unknown",
+            "unmeasured",
+            "not_evaluated",
+            "unproved_in_this_registry",
+            "not_applicable"
+          ]
+        },
+        "proof_ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "curve": {
+      "type": "object",
+      "required": [
+        "curve_id",
+        "curve_uid",
+        "field",
+        "curve",
+        "icv1_identity",
+        "trait_status",
+        "factor_base_refs",
+        "factor_base_link_status",
+        "endomorphism",
+        "isogeny_routes",
+        "evidence_ref"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "curve_tag": {
+          "type": "string"
+        },
+        "curve_ref": {
+          "type": "string"
+        },
+        "curve_id": {
+          "type": "string",
+          "pattern": "^EC1[NQP][0-9A-Za-z]+C[a-z0-9]+h[0-9a-f]{12,}$"
+        },
+        "curve_uid": {
+          "type": "string",
+          "pattern": "^urn:ec-record:1:sha256:[0-9a-f]{64}$"
+        },
+        "field": {
+          "type": "object",
+          "minProperties": 4
+        },
+        "curve": {
+          "type": "object",
+          "minProperties": 4
+        },
+        "icv1_identity": {
+          "type": "object",
+          "required": [
+            "slug",
+            "full",
+            "status"
+          ],
+          "properties": {
+            "slug": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "full": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "enum": [
+                "model_match_only",
+                "registered_representation",
+                "unregistered_general_binary_model",
+                "unresolved"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "trait_status": {
+          "type": "object",
+          "required": [
+            "ordinary",
+            "j_invariant",
+            "endomorphism_discriminant",
+            "volcano_component",
+            "volcano_total_depth"
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/trait"
+          }
+        },
+        "factor_base_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "factor_base_link_status": {
+          "enum": [
+            "not_reconciled",
+            "verified"
+          ]
+        },
+        "endomorphism": {
+          "type": "object"
+        },
+        "isogeny_routes": {
+          "type": "object",
+          "required": [
+            "incoming",
+            "outgoing"
+          ],
+          "properties": {
+            "incoming": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "outgoing": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "evidence_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "legacy_evidence": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

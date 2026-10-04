@@ -29,7 +29,12 @@ they enter a new comparison. **Always** use the candidate and measurement
 rules below when comparing IC variants. A campaign may impose stricter claim
 rules. The [candidate catalog](experiments/ic-candidate-catalog/README.md)
 contains design proposals; its [measurement contract](experiments/ic-candidate-catalog/MEASUREMENT.md)
-specifies the empirical stage record and promotion gates. The
+specifies the empirical stage record and promotion gates.
+The [curve and artifact storage contract](experiments/ic-candidate-catalog/CURVE_STORAGE.md)
+links exact EC1/UID records to crypto's ICV1 registry, bulk factor-base
+archives, and verified isogeny walks. Keep unresolved links and traits as
+explicit `null` plus status; never infer a factor-base or curve equivalence
+from matching field degree or ICV1 model name. The
 [IC benchmark](experiments/ic-bench/README.md) is the reference harness for
 named, fully charged, verified toy-curve runs. It holds the calibrated `rps` unit,
 candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a new
