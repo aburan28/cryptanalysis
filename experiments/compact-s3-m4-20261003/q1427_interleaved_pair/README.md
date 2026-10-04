@@ -27,6 +27,37 @@ natural relation yield or a complete degree-131 work projection. Record
 timeouts, operation counts, and memory. CPU walls on this host are
 exploratory under the repository isolation rule.
 
+## Frozen results
+
+The [four-cell verification](verification.json) reconstructs each CNF and
+independently replays both SAT controls. Each control returned one verified
+four-point relation. The two ordinary cells remained censored at the
+60-second internal wall cap:
+
+| Degree | Cell | Status | Verified relations | Reverse pair-1 calls | Field calls `(mul, square, inverse)` | Peak child RSS, bytes |
+| --- | --- | --- | ---: | ---: | --- | ---: |
+| 53 | Freed-partner control | SAT | 1 | 1 | `(283, 1,668, 24)` | 25,444,352 |
+| 53 | Ordinary | Censored | 0 | 135,226 | `(4,287,739, 24,557,058, 316,213)` | 256,786,432 |
+| 83 | Freed-partner control | SAT | 1 | 1 | `(307, 2,598, 24)` | 46,202,880 |
+| 83 | Ordinary | Censored | 0 | 71,988 | `(3,527,899, 30,095,340, 288,004)` | 162,594,816 |
+
+The matched Q1426 ordinary cells made 1,080,547 and 485,107 reverse
+pair-1 calls at N53 and N83. Interleaving reduced those counts by factors
+of 7.99 and 6.74 within the same cap, and reduced the partial raw field
+call totals by factors of 7.28 and 6.74. All 270,452 N53 and 143,976 N83
+reverse roots still failed the sparse weight rule. Neither stage completed
+an ordinary decomposition in its cap. These are algorithmic diagnostics;
+raw multiplication, squaring, and inversion counts are not equal-cost
+operations, and this host does not meet the CPU isolation gate.
+
+There is no measured natural relation yield or cost per useful row. A
+complete degree-131 `2^x` still cannot be projected from these censored
+cells. The next solver change must test pair-sum feasibility without
+enumerating target-derived reverse roots one fully assigned leaf at a
+time, for example by preserving the binary XOR structure during algebraic
+elimination. That mechanism needs its own exactness proof and ordinary
+query measurements.
+
 ## Reproduction
 
 From the repository worktree, before any measured cell:
