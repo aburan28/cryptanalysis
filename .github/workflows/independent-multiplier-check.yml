@@ -1,0 +1,69 @@
+name: Independent multiplier identity checking
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - '.github/workflows/independent-multiplier-check.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - '.github/workflows/independent-multiplier-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: independent-multiplier-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Independent multiplier identities (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build native controls and selected backend
+        shell: bash
+        run: |
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          python experiments/groebner-perf-20260924/round69/build.py "${flags[@]}"
+      - name: Run exact controls and retain balanced stage diagnostics
+        run: python -u experiments/groebner-perf-20260924/round69/run.py --allow-unavailable --output independent-multiplier-evidence
+      - name: Audit artifacts and independently replay original ANF
+        run: python -u experiments/groebner-perf-20260924/round69/audit.py --evidence independent-multiplier-evidence --output independent-multiplier-evidence/audit.json > independent-multiplier-evidence/audit.log 2>&1
+      - name: Retain actual runner identity
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, platform, subprocess
+          out = pathlib.Path('independent-multiplier-evidence')
+          out.mkdir(exist_ok=True)
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          metadata.update(platform=platform.platform(), architecture=platform.machine(),
+              git_head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              worktree_status=subprocess.check_output(['git', 'status', '--porcelain', '--', '.', ':!independent-multiplier-evidence'], text=True))
+          (out / 'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: independent-multiplier-check-${{ matrix.os }}
+          path: independent-multiplier-evidence/
+          if-no-files-found: error
+          retention-days: 14
