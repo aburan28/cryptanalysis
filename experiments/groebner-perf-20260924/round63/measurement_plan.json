@@ -1,0 +1,48 @@
+{
+  "schema": "sparse-f4-complete-query-plan/1",
+  "fixture_sha256": "618bd6d141a06ce55fdeb3e6fc72f4903fc83e3d2ee317dfbcde5b25a78548cf",
+  "arms": [
+    "baseline",
+    "native"
+  ],
+  "primary": "native",
+  "confirmatory_comparators": [
+    "baseline"
+  ],
+  "primary_cases": [
+    "pdp-6-seed-1",
+    "pdp-6-seed-2",
+    "pdp-6-seed-3",
+    "pdp-6-seed-4",
+    "pdp-6-seed-5"
+  ],
+  "case_order": "primary_cases in listed order, then remaining frozen fixture order",
+  "primary_trials": 3,
+  "primary_pairs": 7,
+  "secondary_trials": 1,
+  "secondary_pairs": 3,
+  "warmups": 1,
+  "order_seed": 202610036302,
+  "bootstrap_seed": 202610036303,
+  "bootstrap_samples": 20000,
+  "max_load_per_logical_cpu": 1,
+  "max_rejected_admissions": 2,
+  "limits": {
+    "max_work": 20000000,
+    "max_nodes": 500000,
+    "max_rows": 4096,
+    "batch": 64,
+    "max_check_work": 20000000,
+    "max_retained_terms": 2000000
+  },
+  "boundary": "PDP: supplied full public point through fresh target-dependent descent, packed F4 solve, independent algebraic certificate, root extraction, curve witness production, independent multiplication-only witness and equation checks, and independent replay against frozen equations. Field validation, fixture construction and ring-only layouts stay outside both arms. Four exclusive phases sum to the full query wall interval.",
+  "cache_policy": "Only field validation, ring layouts, declared support and input allocations persist. Each call has fresh coefficients, solving, algebraic certification, lifts, sign search, witness and independent verification. Neither runtime query type nor replay producer has planted points or a planted assignment.",
+  "resource_envelope": "One process, one sequential query at a time, one CPU query thread. No GPU, target batching or cross-target answer cache. Native work/node/row limits, not a hard wall timeout.",
+  "primary_acceptance": "All three qualified trials on all five primary cases must contain seven verified measured pairs, with the lower paired-bootstrap median-ratio 95% bound above one for baseline/native. No routing promotion follows a partial panel.",
+  "two_times_target": "A target only: report whether every primary lower bound for baseline/native reaches two, separately from measured central ratios.",
+  "uncertainty": "Per-case/trial descriptive paired bootstrap intervals. No familywise or population guarantee. Repeated fixtures do not constitute natural-yield observations.",
+  "candidate_id": null,
+  "online_speedup": null,
+  "comparison": "Both arms use identical round62 packed F4. Baseline produces the public-target curve witness using prepared Python GF2n; candidate uses portable native uint64 arithmetic. The SAME independent Python checker validates both. This compares the new public-input pipeline fairly; it does not claim all differences from historical fixture-reconstructing verification are arithmetic speedups.",
+  "public_targets_sha256": "3cf21cde33631fc534111ba140e3e9f428a80176cb3ec44383cf457bc231f66f"
+}
