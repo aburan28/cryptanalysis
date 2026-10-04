@@ -624,6 +624,8 @@ def main():
         "n131_weight6_pure_pair_index_screen.json")
     q1406_bound_path, q1406_bound = read(
         "n131_q1406_uniform_query_bound.json")
+    q1407_shape_path, q1407_shape = read(
+        "n53_n83_n131_q1407_compact_formula_shape.json")
     assert n131_sample["proposal_id"] == "Q1303"
     assert n131_sample["candidate_id"] is None
     assert n131_sample["protocol_sha256"] == sha(protocol_path)
@@ -639,6 +641,15 @@ def main():
     assert q1406_bound["source_sha256"] == sha(
         HERE / "screen_q1406_uniform_query_bound.py")
     assert q1406_bound["complete_solve_work_log2"] is None
+    assert q1407_shape["proposal_id"] == "Q1407"
+    assert q1407_shape["candidate_id"] is None
+    assert q1407_shape["isogeny"] == "none"
+    assert q1407_shape["n131_placeholder_formula_shape"]["curve_id"] == (
+        n131_sample["curve_id"])
+    assert q1407_shape["source_sha256"][
+        "experiments/compact-s3-m4-20261003/screen_q1407_compact_formula_shape.py"
+    ] == sha(HERE / "screen_q1407_compact_formula_shape.py")
+    assert q1407_shape["complete_solve_work_log2"] is None
     assert n131_replay["status"] == "PASS"
     assert n131_replay["sample_receipt_sha256"] == sha(n131_sample_path)
     assert n131_replay["exact_rational_x_counts_weights_one_two"] == {
@@ -2020,6 +2031,19 @@ def main():
             "is_complete_solve_projection": False,
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(q1406_bound_path),
+        },
+        "q1407_compact_s3_formula_shape": {
+            "proposal_id": "Q1407",
+            "candidate_id": None,
+            "isogeny": "none",
+            "n53": q1407_shape["n53_matched_measured_formula_shape"],
+            "n83": q1407_shape["n83_matched_measured_formula_shape"],
+            "n131": q1407_shape["n131_placeholder_formula_shape"],
+            "interpretation": q1407_shape["interpretation"],
+            "is_decomposition_cost_measurement": False,
+            "is_complete_solve_projection": False,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(q1407_shape_path),
         },
         "matched_pair_table": {
             "n53": {

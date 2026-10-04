@@ -1036,6 +1036,28 @@ guided query law or an external source of factor-base rank rows lies outside
 this screen. Recompute it with
 `python3 experiments/compact-s3-m4-20261003/screen_q1406_uniform_query_bound.py --check`.
 
+### Q1407 compact S3 formula-size control
+
+The [Q1407 source-bound screen](runs/n53_n83_n131_q1407_compact_formula_shape.json)
+rebuilds the raw-preimage compact S3 formula and matches the earlier
+ordinary N53 and N83 formula counts exactly. Those real-target controls use
+the frozen Q1301 W≤3 and Q1325 W≤5 bases and all their respective raw
+cofactor preimages. The N131 row uses four distinct **placeholder** x values
+to fix the selector shape; it is not a curve target or a solver run.
+
+| Formula shape | Variables | CNF clauses | XOR rows | AND gates | Total literal occurrences |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| N53 W≤3, 428 actual raw preimages | 26,922 | 100,060 | 795 | 25,281 | 459,580 |
+| N83 W≤5, four actual raw preimages | 65,221 | 189,928 | 1,245 | 62,001 | 569,288 |
+| N131 W≤6, four placeholder x values | 160,061 | 470,612 | 1,965 | 154,449 | 1,410,528 |
+
+The N131 row is about `2^20.43` emitted literal occurrences and never
+materializes expanded S5. Thus the earlier expanded-S5 construction cost
+does not apply to this compact encoding. The row measures formula **shape**,
+not SAT search work, successful decomposition cost, exact N131 base
+membership, or a complete solve. Recompute it with
+`python3 experiments/compact-s3-m4-20261003/screen_q1407_compact_formula_shape.py --check`.
+
 ## Next goal
 
 The next gate is an **ordinary N83 four-point relation on the exact Q1325
