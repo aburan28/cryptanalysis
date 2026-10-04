@@ -17,6 +17,8 @@
 #include "cryptanalysis/ca_curve.h"
 #include "cryptanalysis/ca_rho.h"
 #include "dlog_internal.h"
+#include "ec_tau_internal.h"
+#include "curve_internal.h"
 
 #include <math.h>
 
@@ -238,11 +240,37 @@ ca_status ca_curve_group(ca_group *g, uint64_t p, uint64_t a, uint64_t b, uint64
 
 /* ---- GLV endomorphism-accelerated rho --------------------------------- */
 
+uint32_t ca_ec_j0_coord_canonicalize(const ca_group *g, ca_elem *Y)
+{
+    if (!g || !Y || g->endo_kind != 1 || g->aut_order != 6 || Y->w[2])
+        return 0;
+    /* In the sixfold j=0 orbit, x takes three beta rotations and y
+     * takes two signs.  Choose the minimum encoded coordinate in each
+     * orbit independently.  Montgomery encoding is a bijection, so this
+     * gives one deterministic point per orbit without six point hashes. */
+    uint64_t xs[3];
+    xs[0] = Y->w[0];
+    xs[1] = ca_mont_mul(&g->mont, xs[0], g->endo_c_mont);
+    xs[2] = ca_mont_mul(&g->mont, xs[1], g->endo_c_mont);
+    uint32_t x_power = 0;
+    if (xs[1] < xs[x_power]) x_power = 1;
+    if (xs[2] < xs[x_power]) x_power = 2;
+    uint64_t neg_y = Y->w[1] ? g->p - Y->w[1] : 0;
+    uint32_t negate = neg_y < Y->w[1];
+    Y->w[0] = xs[x_power];
+    if (negate) Y->w[1] = neg_y;
+    /* psi^k applies beta^(k mod 3) to x and (-1)^k to y. */
+    return ((x_power & 1u) == negate) ? x_power : x_power + 3;
+}
+
 /* Reduce Y to the canonical representative of its automorphism class {Y,
- * psi(Y), ..., psi^{m-1}(Y)} (the minimum by hash) and return the power k of
- * psi applied, so the caller can multiply the exponents by lambda^k. */
+ * psi(Y), ..., psi^{m-1}(Y)} and return the power k of psi applied. */
 static uint32_t glv_class_reduce(const ca_group *g, ca_elem *Y, uint32_t m)
 {
+#ifdef CA_J0_RHO_COORD_CANON
+    if (g->endo_kind == 1 && m == 6)
+        return ca_ec_j0_coord_canonicalize(g, Y);
+#endif
     ca_elem cur = *Y, best = *Y;
     uint64_t best_h = ca_group_hash(g, Y);
     uint32_t best_k = 0;
@@ -304,7 +332,52 @@ typedef struct glv_ctx {
     int dp_bits;
     uint64_t dp_mask;
     uint64_t abandon;
+#ifdef CA_J0_TAU_RHO_WIDTH4
+    ca_tau4_precomp base_pre, target_pre;
+    int pre_ready;
+#endif
 } glv_ctx;
+
+#ifdef CA_J0_TAU_RHO_WIDTH4
+#define GLV_BASE_PRE(c) ((c)->pre_ready ? &(c)->base_pre : NULL)
+#define GLV_TARGET_PRE(c) ((c)->pre_ready ? &(c)->target_pre : NULL)
+#else
+#define GLV_BASE_PRE(c) NULL
+#define GLV_TARGET_PRE(c) NULL
+#endif
+
+/* The sixfold automorphism still defines the walk.  Xu et al.'s tau-adic
+ * scalar path only accelerates its target-dependent jump table and restart
+ * points on j=0 curves; each walk step remains the same batched affine
+ * addition, so the collision distribution and certificates are unchanged.
+ * For this solver, group_ops counts one tau evaluation, tripling, or group
+ * addition as one transformation during this setup, then one affine addition per
+ * walk step.  Use wall time for comparisons across scalar implementations. */
+static void glv_mul(const ca_group *g, ca_elem *r, const ca_elem *a,
+                    const ca_tau4_precomp *pre, uint64_t k, uint64_t *ops)
+{
+#ifdef CA_J0_TAU_RHO
+    uint64_t tau_steps = 0, adds = 0;
+#ifdef CA_J0_TAU_RHO_WIDTH4
+    uint64_t triples = 0;
+    if (pre && ca_ec_tau4_mul_prepared(g, pre, r, k, &triples, &adds)) {
+        if (ops) *ops += adds + triples;
+        return;
+    }
+    if (ca_ec_mul_tau4_tripling(g, r, a, k, &tau_steps, &adds, &triples)) {
+        if (ops) *ops += tau_steps + adds + triples;
+        return;
+    }
+#else
+    if (ca_ec_mul_tau2(g, r, a, k, &tau_steps, &adds)) {
+        if (ops) *ops += tau_steps + adds;
+        return;
+    }
+#endif
+#endif
+    (void)pre;
+    ca_group_mul(g, r, a, k, ops);
+}
 
 static void glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
 {
@@ -313,8 +386,8 @@ static void glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *op
     w->a = ca_rng_below(rng, n);
     w->b = ca_rng_below(rng, n);
     ca_elem t1, t2;
-    ca_group_mul(g, &t1, &c->base, w->a, ops);
-    ca_group_mul(g, &t2, &c->target, w->b, ops);
+    glv_mul(g, &t1, &c->base, GLV_BASE_PRE(c), w->a, ops);
+    glv_mul(g, &t2, &c->target, GLV_TARGET_PRE(c), w->b, ops);
     ca_group_op(g, &w->Y, &t1, &t2);
     (*ops)++;
     uint32_t k = glv_class_reduce(g, &w->Y, c->m);
@@ -396,12 +469,22 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
     ca_htab tab;
     int have_tab = 0;
     if (!c.M || !c.alpha || !c.beta || !scratch || !walks || !Yn || !B) goto nomem;
+#ifdef CA_J0_TAU_RHO_WIDTH4
+    if (g->endo_kind == 1) {
+        uint64_t base_ops = 0, target_ops = 0;
+        if (ca_ec_tau4_prepare(g, base, &c.base_pre, &base_ops) &&
+            ca_ec_tau4_prepare(g, target, &c.target_pre, &target_ops)) {
+            c.pre_ready = 1;
+            ops += base_ops + target_ops;
+        }
+    }
+#endif
     for (uint32_t i = 0; i < c.r; i++) {
         c.alpha[i] = ca_rng_below(&rng, n);
         c.beta[i] = ca_rng_below(&rng, n);
         ca_elem t1, t2;
-        ca_group_mul(g, &t1, base, c.alpha[i], &ops);
-        ca_group_mul(g, &t2, target, c.beta[i], &ops);
+        glv_mul(g, &t1, base, GLV_BASE_PRE(&c), c.alpha[i], &ops);
+        glv_mul(g, &t2, target, GLV_TARGET_PRE(&c), c.beta[i], &ops);
         ca_group_op(g, &c.M[i], &t1, &t2);
         ops++;
     }
@@ -490,6 +573,200 @@ nomem:
     return CA_ERR_NOMEM;
 }
 
+#ifdef CA_J0_RHO_COVARIANT_WALK
+typedef struct glv_cov_walk {
+    ca_elem Y;
+    uint64_t a, b, since_dp;
+    uint32_t idx;
+    uint8_t orient, retry;
+} glv_cov_walk;
+
+/* The minimum of y and -y in Montgomery encoding uniquely labels a
+ * nonexceptional j=0 sixfold orbit before mixing.  It is invariant under
+ * psi, so both the partition and distinguished-point predicate are defined
+ * on the quotient without canonicalizing the walking point. */
+static uint64_t glv_j0_orbit_hash(const ca_group *g, const ca_elem *Y)
+{
+    if (Y->w[2]) return 0x9e3779b97f4a7c15ULL;
+    uint64_t y = Y->w[1];
+    uint64_t neg = y ? g->p - y : 0;
+    return ca_mix64(y < neg ? y : neg);
+}
+
+static void glv_covariant_restart(const glv_ctx *c, glv_cov_walk *w,
+                                   ca_rng *rng, uint64_t *ops)
+{
+    const ca_group *g = c->g;
+    w->a = ca_rng_below(rng, g->order);
+    w->b = ca_rng_below(rng, g->order);
+    ca_elem t1, t2;
+    glv_mul(g, &t1, &c->base, GLV_BASE_PRE(c), w->a, ops);
+    glv_mul(g, &t2, &c->target, GLV_TARGET_PRE(c), w->b, ops);
+    ca_group_op(g, &w->Y, &t1, &t2);
+    (*ops)++;
+    ca_elem canonical = w->Y;
+    uint32_t forward = ca_ec_j0_coord_canonicalize(g, &canonical);
+    w->orient = (uint8_t)((6u - forward) % 6u);
+    w->since_dp = 0;
+    w->retry = 0;
+}
+
+/* Equivariant r-adding walk on sixfold j=0 classes.  If Y=psi^e(C), add
+ * psi^e(M_i), leaving Y in its current orientation.  The precomputed
+ * coefficients for that jump are lambda^e(alpha_i,beta_i).  Class matching
+ * and coefficient transport happen only at distinguished points. */
+static ca_status glv_covariant_rho_solve(const ca_group *g, const ca_elem *base,
+                                         const ca_elem *target, uint64_t seed,
+                                         uint64_t *x, ca_stats *st)
+{
+    double t0 = ca_now();
+    uint64_t n = g->order;
+    if (ca_group_is_identity(g, target)) {
+        *x = 0;
+        return CA_OK;
+    }
+    if (n < 64) return glv_rho_solve(g, base, target, seed, x, st);
+    glv_ctx c;
+    memset(&c, 0, sizeof(c));
+    c.g = g;
+    c.base = *base;
+    c.target = *target;
+    c.m = 6;
+    c.lam_pow[0] = 1 % n;
+    for (uint32_t k = 1; k < 6; k++)
+        c.lam_pow[k] = ca_mulmod(c.lam_pow[k - 1], g->endo_lambda, n);
+    uint64_t sqrt_nm = ca_isqrt(n / 6) + 1;
+    int lg = glv_ilog2(n) + 1;
+    uint64_t rbudget = sqrt_nm / (48u * (uint64_t)lg);
+    c.r = 8;
+    while ((uint64_t)c.r * 2 <= rbudget && c.r * 2 <= 32) c.r *= 2;
+    uint64_t wcap = sqrt_nm / (24u * (uint64_t)lg);
+    uint32_t W = wcap < 1 ? 1 : (wcap > GLV_MAX_WALKS ? GLV_MAX_WALKS : (uint32_t)wcap);
+    int dp = 0;
+    double per_walk = 1.25 * (double)sqrt_nm / (32.0 * (double)W);
+    if (per_walk >= 2.0) dp = glv_ilog2((uint64_t)per_walk);
+    int min_dp = glv_ilog2(sqrt_nm) - 24;
+    if (dp < min_dp) dp = min_dp;
+    if (dp < 0) dp = 0;
+    if (dp > 48) dp = 48;
+    c.dp_bits = dp;
+    c.dp_mask = dp ? ((1ULL << dp) - 1) : 0;
+    c.abandon = (uint64_t)24 << dp;
+    ca_rng rng;
+    ca_rng_seed(&rng, ca_seed_or_random(seed));
+    uint64_t ops = 0;
+    size_t slots = (size_t)6 * c.r;
+    c.M = calloc(slots, sizeof(ca_elem));
+    c.alpha = calloc(slots, sizeof(uint64_t));
+    c.beta = calloc(slots, sizeof(uint64_t));
+    uint64_t *scratch = calloc(2 * (size_t)W, sizeof(uint64_t));
+    glv_cov_walk *walks = calloc(W, sizeof(glv_cov_walk));
+    ca_elem *Yn = calloc(W, sizeof(ca_elem));
+    ca_elem *B = calloc(W, sizeof(ca_elem));
+    ca_htab tab;
+    int have_tab = 0;
+    if (!c.M || !c.alpha || !c.beta || !scratch || !walks || !Yn || !B) goto nomem;
+#ifdef CA_J0_TAU_RHO_WIDTH4
+    uint64_t base_ops = 0, target_ops = 0;
+    if (ca_ec_tau4_prepare(g, base, &c.base_pre, &base_ops) &&
+        ca_ec_tau4_prepare(g, target, &c.target_pre, &target_ops)) {
+        c.pre_ready = 1;
+        ops += base_ops + target_ops;
+    }
+#endif
+    for (uint32_t i = 0; i < c.r; i++) {
+        uint64_t alpha = ca_rng_below(&rng, n);
+        uint64_t beta = ca_rng_below(&rng, n);
+        ca_elem t1, t2;
+        glv_mul(g, &t1, base, GLV_BASE_PRE(&c), alpha, &ops);
+        glv_mul(g, &t2, target, GLV_TARGET_PRE(&c), beta, &ops);
+        ca_group_op(g, &c.M[i], &t1, &t2);
+        ops++;
+        c.alpha[i] = alpha;
+        c.beta[i] = beta;
+        for (uint32_t e = 1; e < 6; e++) {
+            size_t slot = (size_t)e * c.r + i;
+            size_t prev = slot - c.r;
+            ca_ec_endo(g, &c.M[slot], &c.M[prev]);
+            c.alpha[slot] = ca_mulmod(c.lam_pow[e], alpha, n);
+            c.beta[slot] = ca_mulmod(c.lam_pow[e], beta, n);
+        }
+    }
+    double exp_dps = 1.25 * (double)sqrt_nm / (double)(1ULL << dp) + 1024;
+    if (ca_htab_init(&tab, (size_t)(exp_dps < 1e8 ? exp_dps : 1e8)) != CA_OK) goto nomem;
+    have_tab = 1;
+    for (uint32_t w = 0; w < W; w++)
+        glv_covariant_restart(&c, &walks[w], &rng, &ops);
+    ca_status rc = CA_ERR_NOT_FOUND;
+    uint64_t cap = 64 * sqrt_nm * 6 + (1ULL << 20);
+    while (ops < cap) {
+        for (uint32_t w = 0; w < W; w++) {
+            glv_cov_walk *wk = &walks[w];
+            if (!wk->retry)
+                wk->idx = (uint32_t)(ca_mix64(glv_j0_orbit_hash(g, &wk->Y)) % c.r);
+            B[w] = c.M[(size_t)wk->orient * c.r + wk->idx];
+            Yn[w] = wk->Y;
+        }
+        ca_group_batch_op(g, Yn, Yn, B, W, scratch);
+        ops += W;
+        for (uint32_t w = 0; w < W; w++) {
+            glv_cov_walk *wk = &walks[w];
+            uint64_t orbit_h = glv_j0_orbit_hash(g, &Yn[w]);
+            if ((uint32_t)(ca_mix64(orbit_h) % c.r) == wk->idx) {
+                wk->idx = (wk->idx + 1) % c.r;
+                wk->retry = 1;
+                continue;
+            }
+            wk->retry = 0;
+            size_t slot = (size_t)wk->orient * c.r + wk->idx;
+            wk->a = ca_addmod(wk->a, c.alpha[slot], n);
+            wk->b = ca_addmod(wk->b, c.beta[slot], n);
+            wk->Y = Yn[w];
+            ca_elem canonical = wk->Y;
+            uint32_t forward = ca_ec_j0_coord_canonicalize(g, &canonical);
+            wk->orient = (uint8_t)((6u - forward) % 6u);
+            wk->since_dp++;
+            if ((orbit_h & c.dp_mask) == 0) {
+                uint64_t a = ca_mulmod(wk->a, c.lam_pow[forward], n);
+                uint64_t b = ca_mulmod(wk->b, c.lam_pow[forward], n);
+                uint64_t key = ca_group_hash(g, &canonical), oa, ob;
+                int ins = ca_htab_insert(&tab, key, a, b, &oa, &ob);
+                if (ins < 0) goto nomem;
+                wk->since_dp = 0;
+                if (ins == 1) {
+                    if (!(oa == a && ob == b) &&
+                        glv_recover(g, base, target, n, oa, ob, a, b, x)) {
+                        rc = CA_OK;
+                        goto done_covariant;
+                    }
+                    glv_covariant_restart(&c, wk, &rng, &ops);
+                }
+            } else if (wk->since_dp > c.abandon) {
+                glv_covariant_restart(&c, wk, &rng, &ops);
+            }
+        }
+    }
+done_covariant:
+    if (st) {
+        st->group_ops += ops;
+        st->table_entries = ca_max_u64(st->table_entries, tab.count);
+        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&tab) +
+                                     (uint64_t)slots * (sizeof(ca_elem) + 2 * sizeof(uint64_t)));
+        st->seconds += ca_now() - t0;
+        st->threads = 1;
+    }
+    ca_htab_free(&tab);
+    free(c.M); free(c.alpha); free(c.beta); free(scratch);
+    free(walks); free(Yn); free(B);
+    return rc;
+nomem:
+    if (have_tab) ca_htab_free(&tab);
+    free(c.M); free(c.alpha); free(c.beta); free(scratch);
+    free(walks); free(Yn); free(B);
+    return CA_ERR_NOMEM;
+}
+#endif
+
 ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
                          uint64_t seed, uint64_t *x, ca_curve_info *info, ca_stats *st)
 {
@@ -502,8 +779,13 @@ ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *
     }
     if (g->order && !ca_check_members(g, base, target, g->order, "glv rho"))
         return CA_ERR_NOT_FOUND;
-    if (g->kind == CA_GROUP_EC && g->endo_kind != 0)
+    if (g->kind == CA_GROUP_EC && g->endo_kind != 0) {
+#ifdef CA_J0_RHO_COVARIANT_WALK
+        if (g->endo_kind == 1)
+            return glv_covariant_rho_solve(g, base, target, seed, x, st);
+#endif
         return glv_rho_solve(g, base, target, seed, x, st);
+    }
     ca_rho_params rp;
     ca_rho_params_default(&rp);
     rp.seed = seed;

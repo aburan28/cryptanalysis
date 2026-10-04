@@ -284,18 +284,44 @@ Wiener-Zuccherato / Duursma-Gaudry-Morain automorphism-class idea, and the
 Frobenius speed-up on binary Koblitz curves (the `fpga/` ECC2K-130 core) is
 the same idea over an extension field, out of scope for this `F_p` core.
 
-**The walk.**  `glv_rho_solve` walks canonical representatives of the
-automorphism classes `{Y, psi(Y), ..., psi^{m-1}(Y)}`: it reduces to the
-minimum-hash member, tracking the power `k` of `psi` applied so the exponents
-`(a, b)` in `Y = a G + b H` are multiplied by `lambda^k`.  The step is a
-function of the class (index and distinguished-point test read the canonical
-hash, and multipliers are always added to the canonical point), so walks that
-meet stay merged.  Folding by `m` costs a few field multiplications per step
-(applying `psi`) but shrinks the space by `m`, for `sqrt(m)` fewer
-operations.  Automorphism walks fall into fruitless cycles far more often
-than a plain walk, so the same 2-cycle look-ahead the negation map uses is
-carried over (if the reduced point would pick the multiplier just used,
-advance to the next one); without it the cycles dominate and erase the gain.
+**The walk.**  The reference `glv_rho_solve` walks canonical representatives
+of `{Y, psi(Y), ..., psi^{m-1}(Y)}`: it selects the minimum-hash member and
+multiplies `(a, b)` by `lambda^k` after applying `psi^k`.  For j=0 the
+default `glv_covariant_rho_solve` instead leaves the walking point in its
+current orientation.  The minimum of `y` and `-y` is invariant under all six
+automorphisms and supplies its partition and distinguished-point hash.  If
+`Y = psi^e(C)` for the coordinate-canonical member `C`, it adds the
+precomputed `psi^e(M_i)` and adds `lambda^e(alpha_i, beta_i)` to the tracked
+coefficients.  Thus applying `psi` to the input applies `psi` to the output;
+two walks that meet in a class remain in that class.  At a distinguished
+point, the solver transports its coefficients to the canonical member and
+checks the collision.  The 2-cycle look-ahead remains defined on the class.
+`CA_J0_RHO_COVARIANT_WALK=OFF` selects the former minimum-hash walk.
+`CA_J0_RHO_COORD_CANON=ON` with the covariant flag off is a coordinate-only
+ablation that canonicalizes every step.
+
+**Prime-field j0 setup.**  For `p = 1 mod 3`, the rho jump table and walk
+restarts use `ca_ec_mul_tau2` by default when the configured subgroup admits
+the endomorphism.  It represents a scalar as a short element of `Z[omega]`,
+expands it with width-2 digits from the six units, and evaluates the paper's
+Jacobian `tau = 1 - omega` formula.  The width-4 table from the paper is
+available in `ca_ec_mul_tau4`; `ca_ec_mul_tau4_tripling` rewrites pairs of
+tau powers as powers of 3.  Set `CA_J0_TAU_RHO_WIDTH=4` to prepare reusable
+width-4 tables for the base and target, then use the tripling path for jump
+and restart scalars.  This preparation is inside the timed rho solve.  The
+width setting does not change the selected rho walk.  `ca_ec_triple_j0`
+exposes the Jacobian tripling formula for curve
+arithmetic.  `CA_J0_TAU_RHO=OFF` reproduces the old setup.  The measured
+default remains width 2 on the registered 64-bit prime-field groups.  The
+one-shot width-4 tripling implementation uses general projective addition
+for odd digits; the prepared path caches their affine tau images and uses
+mixed addition.  These field-operation costs differ from the paper's
+augmented-tau variant.  Counts from different scalar backends use different
+primitive operations, so compare their paired online wall times;
+see [the recorded exploratory measurements](../experiments/prime-j0-tau-20260930/README.md).
+The separate [oriented-walk experiment](../experiments/prime-j0-rho-coordinate-canon-20261002/README.md)
+measures the walk change on frozen one-target workloads. Its wall ratios
+await [isolated replay](ISOLATED_BENCHMARKS.md).
 
 `ca_curve_detect` reports the structure from parameters, `ca_curve_group`
 builds a group with the endomorphism enabled, and `ca_curve_solve` dispatches
