@@ -1,5 +1,24 @@
 # Agent rules for cryptanalysis experiments
 
+## Track research work in pull requests
+
+Put every agent-authored code, protocol, frozen input, run receipt, verifier,
+decision, documentation, and agent-rule change on a branch and open a pull
+request in the repository that owns it. Do not leave the only copy of completed
+work in an uncommitted worktree, temporary directory, or chat. Keep unrelated
+pre-existing user changes out of the branch. For stacked work, target the
+immediate parent branch, name that dependency in the PR, then retarget to
+`main` and rerun checks after the parent merges.
+
+Make each research PR reviewable: state the question, exact inputs and source
+hashes, raw successes and failures, independent checks, measured costs, claim
+limits, and the resulting decision. Update the relevant result index or
+scoreboard in the same PR. Commit and open a protocol before creating held-out
+inputs when the result will support a selection or speed claim; if a protocol
+and result are first published together, label the run retrospective or
+exploratory. When a task authorizes merging, check the exact head and all
+applicable CI results, merge with a head guard, and verify the merge commit.
+
 ## Index-calculus candidate names and measurements
 
 Use this convention for new elliptic-curve index-calculus (IC) candidate
