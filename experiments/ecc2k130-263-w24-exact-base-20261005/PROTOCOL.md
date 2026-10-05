@@ -29,8 +29,18 @@ they are equal or related by this reciprocal involution. The independent
 Sage replay must check the full point law and this equivalence before the
 count is accepted.
 
-The producer will compute all inverses in bounded batches. For each curve
-it will retain the number `R` of rational `w` values, the number `P` of
+For this frozen polynomial basis, all `w` in W24 have degree at most 24.
+The descendant `alpha` has degree 130, while `deg(w*w') <= 48 < 131`, so
+`w*w'=alpha` is impossible within W24. On the source `alpha=1`, and the
+only polynomial factors of 1 over `GF(2)` are 1; constant 1 has trace
+one in this odd-degree field and is not in W24. Thus the predeclared
+exact collision count is zero on both curves, and `C=R`, `B=2R` here.
+The producer still evaluates every reciprocal membership to test this
+invariant; a nonzero result fails rather than being silently discounted.
+
+The producer will compute all inverses in bounded batches and write one
+flag byte per nonzero mask plus ascending canonical-mask streams. For each
+curve it will retain the number `R` of rational `w` values, the number `P` of
 two-element reciprocal pairs wholly inside `W24`, and any fixed points.
 The exact sign-folded column count is `C=R-P`, and the actual number of
 distinct nonidentity subgroup points before sign folding is `B=2C`.
@@ -42,8 +52,8 @@ the count is rejected pending a revised proof.
 
 An independent Sage verifier will exhaust all masks at small dimensions,
 check each full-width sampled representative using curve points and
-`T4`, and independently rederive the exact `R`, `P`, `C`, and `B` from
-the producer's canonical mask streams. The full census is repeated with
+`T4`, and independently summarize `R`, `P`, `C`, and `B` from the
+per-mask flags and canonical streams. The full census is repeated with
 two batch sizes and compared byte for byte. The two native runs share
 field code, so the Sage controls remain necessary. The checked repository
 `sage` launcher and saved `--runtime-info` receipt are mandatory for
