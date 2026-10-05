@@ -98,3 +98,39 @@ case. A CPU speedup remains **unknown** without at least five paired AB/BA
 repetitions on a host with an auditable isolation receipt meeting
 `docs/ISOLATED_BENCHMARKS.md`. This protocol does not treat the 32,768-output
 batch as a one-target rho or index-calculus result.
+
+## Pre-heldout implementation result and stop decision
+
+The native generator reproduced SHA-256
+`3d26ba583cbbfee4d13948ddb7bb0c0760f1bff68d176a27800b74a9a7f5e86b`
+for the bounded action and high-order choice header twice. The
+[cross-language design check](global-pair-native-design.json) matched exact
+word digests, triplings, additions, and trial counts for both arms on all 128
+old design scalars. The direct curve test passed 2,293,050 checks, including
+new zero, subgroup-order, identity-point, and random controls. The local
+CTest suite passed its 14 non-coordinator tests; the coordinator test failed
+to bind its loopback socket inside the sandbox, then passed when rerun with
+loopback access. These are correctness checks, not timing claims.
+
+The [paired old-data diagnostic](global-pair-native-old-panel.json) used the
+4,096-scalar `point0` files from the earlier orbit-pair fixture, so it is
+design data. Both arms independently replayed all outputs and verified the
+726 prepared exact points. The table below reports deterministic counters;
+the receipt also preserves raw commands, statuses, stdout, stderr, local
+intervals, code hashes, and input hashes.
+
+| Curve | Canonical group score | Beam group score | Modeled saving | Beam digit trials | Beam completion-state visits |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| glv-j0-32 | 431,560 | 397,268 | 7.95% | 263,703 | 1,319,622 |
+| j0-56 | 1,124,088 | 1,082,502 | 3.70% | 807,802 | 8,097,560 |
+
+The implementation has a large online recoding workload even though it
+reduces the modeled group-operation score. Local wall intervals vary with
+host contention and cannot establish a speedup or precise slowdown. We are
+stopping this beam candidate before the prospective held-out fixture is
+created: the experiment's real aim is faster complete scalar multiplication,
+and the observed trial/completion work makes this direct search a poor online
+format. The frozen protocol and negative design evidence remain here; no
+held-out result or operation-gate pass is claimed. The next design question
+is whether a 3-adic residue action atlas can compile the search decisions
+into one lookup per high-order pair.

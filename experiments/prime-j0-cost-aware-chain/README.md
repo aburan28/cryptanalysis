@@ -250,4 +250,7 @@ the modeled gain. These are exploratory operation counts; no native or
 isolated CPU speedup is established. The
 [prospective native protocol](GLOBAL_PAIR_NATIVE_PROTOCOL.md) freezes the
 32-choice, width-one candidate and its held-out comparison before input
-generation.
+generation. Its native design-data follow-up confirms exact word streams and
+the modeled group-operation saving, but exposes hundreds of thousands of
+online trial digits per 4,096-scalar case. The direct beam was stopped before
+held-out input generation; no CPU speedup claim follows from it.

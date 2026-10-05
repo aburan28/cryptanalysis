@@ -160,6 +160,13 @@ if(CA_BUILD_TAU_CHAIN_BENCH)
   target_include_directories(ca_tau_chain_bench PRIVATE src)
   target_compile_options(ca_tau_chain_bench PRIVATE ${CA_WARNINGS})
   ca_sanitize(ca_tau_chain_bench)
+  add_executable(ca_tau_chain_design64
+                 experiments/prime-j0-cost-aware-chain/bench.c)
+  target_compile_definitions(ca_tau_chain_design64 PRIVATE SCALARS=64)
+  target_link_libraries(ca_tau_chain_design64 PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_tau_chain_design64 PRIVATE src)
+  target_compile_options(ca_tau_chain_design64 PRIVATE ${CA_WARNINGS})
+  ca_sanitize(ca_tau_chain_design64)
 endif()
 
 if(CA_BUILD_TESTS)

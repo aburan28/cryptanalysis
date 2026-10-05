@@ -19,6 +19,7 @@
 #include "generated/tau_tail_double_fold.h"
 #include "generated/tau_tail_double_residue.h"
 #include "generated/tau_pair_fused.h"
+#include "generated/tau_pair_global.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -1449,6 +1450,275 @@ int ca_ec_tau_pair_complete_mul_profile(const ca_group *g, const ca_tau_pair_com
     tau_jac acc = {0, g->mont.r1, 0};
     uint64_t na = 0, n3 = 0;
     for (size_t i = pairs; i-- > 0;) {
+        if (acc.z) {
+            acc = jac_triple(g, acc);
+            n3++;
+        }
+        uint16_t word = words[i];
+        if (word == CA_TAU_PAIR_FUSED_ZERO) continue;
+        unsigned orbit = word & 127u, power = (word >> 7) & 3u;
+        if (orbit >= CA_TAU_PAIR_FUSED_REPS || power >= 3) return 0;
+        unsigned negative = ((word & 512u) != 0) ^ ((i & 1) != 0);
+        size_t index = 6 * orbit + 3 * negative + (power + (unsigned)(i % 3)) % 3;
+        const ca_elem *point = &pre->exact[index];
+        if (point->w[2]) continue;
+        acc = jac_add_mixed(g, acc, point);
+        na++;
+    }
+    jac_to_affine(g, out, acc);
+    if (triples) *triples = n3;
+    if (adds) *adds = na;
+    return 1;
+}
+
+static int tau_pair_global_bounded(ca_i128 a, ca_i128 b)
+{
+    return a >= -CA_TAU_PAIR_GLOBAL_BOUND && a <= CA_TAU_PAIR_GLOBAL_BOUND &&
+           b >= -CA_TAU_PAIR_GLOBAL_BOUND && b <= CA_TAU_PAIR_GLOBAL_BOUND;
+}
+
+static size_t tau_pair_global_index(ca_i128 a, ca_i128 b)
+{
+    return (size_t)(a + CA_TAU_PAIR_GLOBAL_BOUND) * CA_TAU_PAIR_GLOBAL_SIDE +
+           (size_t)(b + CA_TAU_PAIR_GLOBAL_BOUND);
+}
+
+static ca_i128 tau_pair_global_norm(ca_i128 a, ca_i128 b)
+{
+    return a * a + 3 * a * b + 3 * b * b;
+}
+
+static unsigned tau_pair_global_score(const uint16_t words[128], size_t count)
+{
+    if (!count) return 0;
+    unsigned nonzero = 0;
+    for (size_t i = 0; i < count; i++) nonzero += words[i] != CA_TAU_PAIR_FUSED_ZERO;
+    return 10 * (unsigned)(count - 1) + 16 * nonzero;
+}
+
+static int tau_pair_global_quotient(ca_i128 a, ca_i128 b, ca_i128 da, ca_i128 db,
+                                    ca_i128 *qa, ca_i128 *qb)
+{
+    ca_i128 ax = a - da, by = b - db;
+    if (ax % 3 || by % 3) return 0;
+    *qa = 2 * (ax / 3) + by;
+    *qb = -(ax + by) / 3;
+    return 1;
+}
+
+static int tau_pair_global_canonical_step(ca_i128 *a, ca_i128 *b,
+                                           const ca_tau4_digit digit[81], uint16_t *word)
+{
+    uint8_t slots[2] = {255, 255};
+    for (size_t j = 0; j < 2; j++) {
+        if (residue3(*a)) {
+            int slot = 9 * (int)((*a % 9 + 9) % 9) + (int)((*b % 9 + 9) % 9);
+            if (digit[slot].seed < 0) return 0;
+            slots[j] = (uint8_t)slot;
+            *a -= digit[slot].a;
+            *b -= digit[slot].b;
+        }
+        ca_i128 old_a = *a;
+        if (old_a % 3) return 0;
+        *a += *b;
+        *b = -old_a / 3;
+    }
+    *word = tau_pair_single_word(slots[0], slots[1]);
+    return *word != CA_TAU_PAIR_FUSED_UNREACHABLE;
+}
+
+static int tau_pair_global_reference(ca_i128 a, ca_i128 b,
+                                     const ca_tau4_digit digit[81], uint16_t words[128],
+                                     size_t *count, uint64_t *states, uint64_t *fallbacks)
+{
+    size_t length = 0;
+    while (a || b) {
+        if (length == 128) return 0;
+        if (states) (*states)++;
+        uint16_t word = CA_TAU_PAIR_FUSED_UNREACHABLE;
+        if (tau_pair_global_bounded(a, b)) {
+            word = ca_tau_pair_global_action[tau_pair_global_index(a, b)];
+            if (word == CA_TAU_PAIR_FUSED_UNREACHABLE && fallbacks) (*fallbacks)++;
+        }
+        if (word != CA_TAU_PAIR_FUSED_UNREACHABLE) {
+            ca_i128 da, db, qa, qb;
+            if (!tau_pair_contribution(word, &da, &db) ||
+                !tau_pair_global_quotient(a, b, da, db, &qa, &qb) ||
+                !tau_pair_global_bounded(qa, qb))
+                return 0;
+            a = qa;
+            b = qb;
+        } else if (!tau_pair_global_canonical_step(&a, &b, digit, &word)) {
+            return 0;
+        }
+        words[length++] = word;
+    }
+    if (states) (*states)++;
+    while (length && words[length - 1] == CA_TAU_PAIR_FUSED_ZERO) length--;
+    *count = length;
+    return 1;
+}
+
+typedef struct tau_pair_global_rank {
+    unsigned score;
+    ca_i128 norm, a, b;
+    unsigned nonzero;
+    uint16_t path[128];
+    size_t length;
+    int valid;
+} tau_pair_global_rank;
+
+static int tau_pair_global_rank_less(const tau_pair_global_rank *a,
+                                     const tau_pair_global_rank *b)
+{
+    if (!b->valid) return 1;
+    if (a->score != b->score) return a->score < b->score;
+    if (a->norm != b->norm) return a->norm < b->norm;
+    if (a->a != b->a) return a->a < b->a;
+    if (a->b != b->b) return a->b < b->b;
+    if (a->nonzero != b->nonzero) return a->nonzero < b->nonzero;
+    for (size_t i = 0; i < a->length && i < b->length; i++)
+        if (a->path[i] != b->path[i]) return a->path[i] < b->path[i];
+    return a->length < b->length;
+}
+
+static int tau_pair_global_beam(ca_i128 x, ca_i128 y, const ca_tau4_digit digit[81],
+                                uint16_t words[128], size_t *count, uint64_t *trials,
+                                uint64_t *states, uint64_t *fallbacks)
+{
+    uint16_t best[128], path[128];
+    size_t best_len = 0, path_len = 0;
+    if (!tau_pair_global_reference(x, y, digit, best, &best_len, states, fallbacks)) return 0;
+    unsigned best_score = tau_pair_global_score(best, best_len), used = 0;
+    ca_i128 a = x, b = y;
+    for (size_t depth = 0; depth < 32; depth++) {
+        unsigned residue = 3 * residue3(a) + residue3(b);
+        tau_pair_global_rank next = {0};
+        for (size_t j = 0; j < ca_tau_pair_global_count[residue]; j++) {
+            ca_tau_pair_global_option option = ca_tau_pair_global_option_set[residue][j];
+            ca_i128 qa, qb;
+            if (!tau_pair_global_quotient(a, b, option.a, option.b, &qa, &qb)) return 0;
+            if (trials) (*trials)++;
+            if (path_len >= 128) return 0;
+            uint16_t candidate[128], completion[128];
+            size_t completion_len = 0, candidate_len = path_len + 1;
+            memcpy(candidate, path, path_len * sizeof(*path));
+            candidate[path_len] = option.word;
+            if ((qa || qb) &&
+                !tau_pair_global_reference(qa, qb, digit, completion, &completion_len, states,
+                                           fallbacks))
+                return 0;
+            if (completion_len > 128 - candidate_len) return 0;
+            memcpy(candidate + candidate_len, completion, completion_len * sizeof(*completion));
+            candidate_len += completion_len;
+            unsigned candidate_score = tau_pair_global_score(candidate, candidate_len);
+            if (candidate_score < best_score) {
+                memcpy(best, candidate, candidate_len * sizeof(*best));
+                best_len = candidate_len;
+                best_score = candidate_score;
+            }
+            if (tau_pair_global_bounded(qa, qb)) continue;
+            tau_pair_global_rank rank = {.score = candidate_score,
+                                         .norm = tau_pair_global_norm(qa, qb),
+                                         .a = qa,
+                                         .b = qb,
+                                         .nonzero = used + (option.word != CA_TAU_PAIR_FUSED_ZERO),
+                                         .length = path_len + 1,
+                                         .valid = 1};
+            memcpy(rank.path, path, path_len * sizeof(*path));
+            rank.path[path_len] = option.word;
+            if (tau_pair_global_rank_less(&rank, &next)) next = rank;
+        }
+        if (!next.valid) break;
+        a = next.a;
+        b = next.b;
+        used = next.nonzero;
+        path_len = next.length;
+        memcpy(path, next.path, path_len * sizeof(*path));
+    }
+    memcpy(words, best, best_len * sizeof(*words));
+    *count = best_len;
+    return 1;
+}
+
+int ca_ec_tau_pair_global_recode_words(const ca_tau_pair_complete_precomp *pre, uint64_t k,
+                                        int beam, uint16_t words[128], size_t *count,
+                                        uint64_t *trials, uint64_t *states,
+                                        uint64_t *fallbacks)
+{
+    if (!pre || !pre->base.g || !words || !count || (beam != 0 && beam != 1)) return 0;
+    if (trials) *trials = 0;
+    if (states) *states = 0;
+    if (fallbacks) *fallbacks = 0;
+    *count = 0;
+    const ca_group *g = pre->base.g;
+    if (k % g->order == 0) return 1;
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->base.v1x, pre->base.v1y},
+                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det, k % g->order,
+                        &x, &y);
+    const ca_i128 limit = (ca_i128)1 << 55;
+    if (x <= -limit || x >= limit || y <= -limit || y >= limit) {
+        *count = tau_pair_canonical_words(x, y, pre->base.digit, words);
+        return *count != 0;
+    }
+    return beam ? tau_pair_global_beam(x, y, pre->base.digit, words, count, trials, states,
+                                       fallbacks)
+                : tau_pair_global_reference(x, y, pre->base.digit, words, count, states,
+                                            fallbacks);
+}
+
+int ca_ec_tau_pair_global_recode_verify_scalar(const ca_tau_pair_complete_precomp *pre,
+                                                uint64_t k, int beam)
+{
+    if (!pre || !pre->base.g) return 0;
+    uint16_t words[128];
+    size_t count = 0;
+    if (!ca_ec_tau_pair_global_recode_words(pre, k, beam, words, &count, NULL, NULL, NULL))
+        return 0;
+    ca_i128 a = 0, b = 0, da, db;
+    for (size_t i = count; i-- > 0;) {
+        ca_i128 next_a = -3 * a - 9 * b, next_b = 3 * a + 6 * b;
+        if (!tau_pair_contribution(words[i], &da, &db)) return 0;
+        a = next_a + da;
+        b = next_b + db;
+    }
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->base.v1x, pre->base.v1y},
+                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det,
+                        k % pre->base.g->order, &x, &y);
+    return a == x && b == y;
+}
+
+size_t ca_ec_tau_pair_global_static_bytes(void)
+{
+    return ca_ec_tau_pair_complete_static_bytes() + sizeof(ca_tau_pair_global_action) +
+           sizeof(ca_tau_pair_global_count) + sizeof(ca_tau_pair_global_option_set);
+}
+
+int ca_ec_tau_pair_global_mul_profile(const ca_group *g, const ca_tau_pair_complete_precomp *pre,
+                                       ca_elem *out, uint64_t k, int beam, uint64_t *triples,
+                                       uint64_t *adds, uint64_t *trials, uint64_t *states,
+                                       uint64_t *fallbacks)
+{
+    if (!g || !pre || !out || pre->base.g != g) return 0;
+    if (triples) *triples = 0;
+    if (adds) *adds = 0;
+    if (trials) *trials = 0;
+    if (states) *states = 0;
+    if (fallbacks) *fallbacks = 0;
+    if (pre->base.identity || k % g->order == 0) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    uint16_t words[128];
+    size_t count = 0;
+    if (!ca_ec_tau_pair_global_recode_words(pre, k, beam, words, &count, trials, states,
+                                              fallbacks) || !count)
+        return 0;
+    tau_jac acc = {0, g->mont.r1, 0};
+    uint64_t na = 0, n3 = 0;
+    for (size_t i = count; i-- > 0;) {
         if (acc.z) {
             acc = jac_triple(g, acc);
             n3++;
