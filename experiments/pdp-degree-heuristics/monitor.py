@@ -311,11 +311,12 @@ class CollectionMonitor:
 def collect(args, workload: dict | None = None, meter: opcount.Meter | None = None) -> dict:
     """Collect relations to the achievable rank, solve mod r, and descend fresh targets.
 
-    Every phase runs inside `meter` (exclusive wall time and operation counters).  When a
-    query has S >= 1 solutions, the exhaustive enumeration supplies the count the degree scan
-    uses as its completion test and the solutions read off after it, so it is charged to the
-    phase it serves (pdp or target_descent) as `anf_op`.  With S = 0 the scan refutes without
-    reading S, so that enumeration stays in `instrument` with the diagnostics.
+    Every phase runs inside `meter` (exclusive wall time and operation counters).  The
+    exhaustive solution enumeration supplies the count the degree scan uses as its completion
+    test and the solutions read off after it.  It runs only when the scan first needs the count
+    (after a degree that ends without refutation) and is charged as `anf_op` to the phase it
+    serves (pdp, or target_pdp for target attempts).  A query refuted at its first degree is
+    never enumerated.
 
     `workload` (see ../ic-bench) fixes the query stream, the targets and their
     rerandomization streams independently of the factor base, so bases pair on it.
@@ -354,16 +355,17 @@ def collect(args, workload: dict | None = None, meter: opcount.Meter | None = No
         target = charge == "target_descent"
         with meter.phase("target_query" if target else "queries"):
             s = P.system(R[0])
-        with meter.phase("target_pdp" if target else "instrument") as ops:
-            before, t0 = ops.copy(), time.perf_counter_ns()
-            S, sols = s.solutions()
-            enum_ops, enum_ns = ops - before, time.perf_counter_ns() - t0
-        # with S = 0 the scan never reads S (it runs to its refutation), so the enumeration is a check
-        if S >= 1 and not target:
-            meter.move("instrument", charge, enum_ops, enum_ns)
+        enumerated: dict = {}
+
+        def count() -> int:
+            # runs inside the PDP phase below, so the enumeration is charged where the scan reads it
+            enumerated["S"], enumerated["sols"] = s.solutions()
+            return enumerated["S"]
+
         with meter.phase("target_pdp" if target else charge) as ops:
-            scan = macaulay.degree_scan(s, S, limits, mode=args.mode)
+            scan = macaulay.degree_scan(s, count, limits, mode=args.mode)
             ops["mac_op"] += scan["xors"] + scan["build_ops"]
+        sols = enumerated.get("sols")
         rows: set = set()
         status = {"refuted": "proved_unsat", "solved": "solved"}.get(scan["status"], "budget")
         if status == "solved":
