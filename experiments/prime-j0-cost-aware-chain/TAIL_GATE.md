@@ -75,3 +75,41 @@ python3 experiments/prime-j0-cost-aware-chain/check_tail_gated_panel.py \
 This protocol and the fresh scalar fixture are committed before running the
 new arm on that fixture. Append results below without changing the
 prospective section.
+
+## Fixture collision and invalidation (2026-10-05)
+
+The first panel passed correctness and mode-3/mode-4 operation equality, but
+its planned fresh-input claim failed. Seeds `20280105` and `20280106` differ
+only in low bits also XORed with `point_index` (0..3). Consequently, the four
+v1 scalar files on each curve are a permutation of the earlier
+`tail-inputs.json` files. The v1 report, `tail-gated-panel.json`, is retained
+as a diagnostic and must not be cited as held-out evidence or a second
+independent trial. This was discovered before promoting its result.
+
+## Replacement prospective v2 fixture
+
+`make_tail_gated_v2_inputs.py` uses SplitMix64 seed
+`0xA7395C41D8420F60`. It excludes, by scalar value on each curve, all
+scalars from the frozen `orbit-graph-inputs.json`, `tail-inputs.json`, and
+invalid v1 `tail-gated-inputs.json` fixtures, plus any scalar already
+accepted into an earlier v2 point case. It checks every prior file SHA-256
+against its manifest and records all prior-manifest hashes. The resulting
+4,096 unique scalars per point are conditionally sampled from the remaining
+subgroup scalars. This explicit exclusion changes the input law slightly;
+it makes every v2 scalar unseen in the known design data. The verifier
+independently checks the exclusion and uniqueness before running any arm.
+
+The v2 acceptance criteria remain the original correctness, digit-stream,
+operation-equality, and baseline-cost gates. The fixture and this deviation
+are committed before evaluating `tail-oracle-gated` on v2. The report goes
+to `tail-gated-v2-panel.json`. Reproduce it with:
+
+```sh
+python3 experiments/prime-j0-cost-aware-chain/make_tail_gated_v2_inputs.py \
+  --bench build-cost-aware/ca_tau_chain_bench
+python3 experiments/prime-j0-cost-aware-chain/check_tail_gated_panel.py \
+  --bench build-cost-aware/ca_tau_chain_bench \
+  --test-curve build-cost-aware/test_curve \
+  --fixture tail-gated-v2-inputs.json \
+  --output tail-gated-v2-panel.json
+```

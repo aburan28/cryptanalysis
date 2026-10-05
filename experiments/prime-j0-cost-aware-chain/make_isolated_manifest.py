@@ -37,7 +37,7 @@ def make(args):
                                    "tapered-residue-wavefront-batch128")
     if args.reference_arm and not (gated or gated2 or tapered):
         raise ValueError("--reference-arm is only supported for gated or tapered candidates")
-    default_prefix = ("tail-gated" if tail_gated else "tail" if tail else
+    default_prefix = ("tail-gated-v2" if tail_gated else "tail" if tail else
                       "orbit-graph" if graph or packed or wavefront else "tapered" if tapered else
                       "gated2-steer" if gated2 else
                       "steer" if steer else "gated" if gated else
@@ -83,8 +83,11 @@ def make(args):
         artifacts += [experiment / "TAIL_GATE.md",
                       experiment / "make_tau_tail_gate.py",
                       experiment / "make_tail_gated_inputs.py",
+                      experiment / "make_tail_gated_v2_inputs.py",
                       experiment / "check_tail_gated_panel.py",
+                      experiment / "tail-gated-inputs.json",
                       experiment / "tail-gated-panel.json",
+                      experiment / "tail-gated-v2-panel.json",
                       root / "src" / "generated" / "tau_tail_gate.h"]
     if fused:
         artifacts += [experiment / "FUSED_TAU_PAIRS.md",
