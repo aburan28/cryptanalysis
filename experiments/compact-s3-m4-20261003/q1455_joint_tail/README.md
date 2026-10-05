@@ -50,6 +50,33 @@ The N131 challenge remains closed until ordinary N53/N83 costs, natural
 yield, useful rank, and the remaining IC phases support a complete work
 estimate.
 
+## Frozen native outcome
+
+The [five-cell archive audit](native_verification.json) regenerated every
+CNF and target list, checked all raw hashes and models, independently replayed
+both returned four-point group relations, and recomputed every retained
+native rejection/hit snapshot with the separate Python join. The two
+partially freed witness controls pass. Every unpinned cell reaches its
+60-second native wall cap without a relation.
+
+| Cell | Status | Partial states / cap skips | Joint checks / rejections | Verified relations | Stage wall, exploratory |
+| --- | --- | ---: | ---: | ---: | ---: |
+| N53 partial witness control | SAT | 14 / 0 | 13 / 4 | 1 | 2.719 s |
+| N83 partial witness control | SAT | 26 / 0 | 25 / 12 | 1 | 2.604 s |
+| N53 known-satisfiable, unpinned | capped | 325 / 325 | 0 / 0 | 0 | 60.604 s |
+| N53 full ordinary target | capped | 333 / 333 | 0 / 0 | 0 | 60.752 s |
+| N83 full ordinary target | capped | 421 / 421 | 0 / 0 | 0 | 61.143 s |
+
+The ordinary rows are censored solver attempts. The joint feasibility rule
+does work on the controls, but the declared 256-pair N53 and 1,024-pair N83
+domain caps admit none of the observed unpinned partial states. Therefore
+these rows measure neither a successful ordinary decomposition nor natural
+yield or cost per useful rank row. The next experiment must record the
+actual pair-domain sizes and test a solution-preserving way to process a
+larger set of pair outputs before spending another full query cap. A longer
+wall cap with this unchanged eligibility rule cannot make the join fire in
+the already observed prefixes. The complete N131 `2^x` remains unknown.
+
 Use the accepted Sage launcher for all Sage work:
 
 ```sh
@@ -57,4 +84,5 @@ Use the accepted Sage launcher for all Sage work:
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1455_joint_tail/run_controls.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1455_joint_tail/build_native.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1455_joint_tail/freeze_native_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1455_joint_tail/verify_native_stage.py --check
 ```
