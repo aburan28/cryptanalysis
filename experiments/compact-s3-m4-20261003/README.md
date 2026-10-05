@@ -1947,18 +1947,34 @@ its known-satisfiable preimage 201, N83 on ordinary preimage 0. The
 charged stage intervals are 65.276 and 67.119 seconds on an unisolated
 host. The complete N131 `2^x` remains unknown.
 
+### Q1454 measured N53 conflict-cap search
+
+The [Q1454 frozen stage](q1454_phi5_conflict_cap/README.md) gives
+Q1452's byte-identical, known-satisfiable N53 ordinary XCNF enough
+wall time to reach its one-million-conflict cap. CryptoMiniSat exits
+`INDETERMINATE` after exactly 1,000,002 conflicts and 1,367,589
+decisions without a model. The target-dependent stage wall interval is
+136.863 seconds on an unisolated host. A supplementary audit explains
+the native exit code 15 while preserving the frozen runner's raw
+`solver_error` label. This is a lower bound on this solver's search
+prefix in SAT conflict units, not a successful decomposition cost or
+a degree-131 field-operation estimate. The complete `2^x` remains
+unknown.
+
 ## Next goal
 
 Q1452 tested the **known-satisfiable N53 ordinary target preimage 201**
 with all four leaves unpinned, and it still reached the cap without a
 model. Q1453 proved and measured a division-free representation but
-also capped at N53 and N83. The next solver needs a solution-preserving
+also capped at N53 and N83. Q1454 reaches 1,000,002 exact conflicts on
+the same known-satisfiable N53 slice without a model. The next solver
+needs a solution-preserving
 target-conditioned rule that constrains several sparse leaves or pair
 outputs **together** before generic Boolean branching. Prove it on
 exhaustive small fields and the archived N53/N83 witnesses, then show
 a changed search pattern on unpinned ordinary queries. Q1447 excludes
-uniformly restarting
-first-pair midpoints under the declared bases, and Q1416's pure pair-index
+uniformly restarting first-pair midpoints under the declared bases, and
+Q1416's pure pair-index
 model costs roughly `2^89.36` logical actions at N131; neither is a
 lower bound on target-guided algebraic search. Q1415's global native XOR
 Gaussian solver also capped on N53, so repeating that setting alone is
