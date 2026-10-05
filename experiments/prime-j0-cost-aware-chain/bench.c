@@ -69,14 +69,18 @@ int main(int argc, char **argv)
 {
     if (argc != 5 ||
         (strcmp(argv[1], "reference") != 0 && strcmp(argv[1], "baseline") != 0 &&
-         strcmp(argv[1], "cost") != 0) ||
+         strcmp(argv[1], "cost") != 0 && strcmp(argv[1], "atlas") != 0) ||
         (strcmp(argv[3], "0") != 0 && strcmp(argv[3], "1") != 0)) {
-        fprintf(stderr, "usage: %s reference|baseline|cost glv-j0-32|j0-56 0|1 INPUT\n", argv[0]);
+        fprintf(stderr, "usage: %s reference|baseline|cost|atlas glv-j0-32|j0-56 0|1 INPUT\n",
+                argv[0]);
         return 2;
     }
     uint64_t p, b, order;
     if (!select_curve(argv[2], &p, &b, &order)) return 2;
-    int mode = strcmp(argv[1], "reference") == 0 ? 0 : strcmp(argv[1], "baseline") == 0 ? 1 : 2;
+    int mode = strcmp(argv[1], "reference") == 0  ? 0
+               : strcmp(argv[1], "baseline") == 0 ? 1
+               : strcmp(argv[1], "cost") == 0     ? 2
+                                                  : 3;
     uint64_t scalars[SCALARS], input_digest;
     if (!read_scalars(argv[4], order, scalars, &input_digest)) {
         fprintf(stderr,
@@ -117,7 +121,7 @@ int main(int argc, char **argv)
             ca_group_mul(&group, &outputs[i], &point, scalars[i], NULL);
         } else {
             uint64_t t = 0, a = 0, r = 0;
-            if (!ca_ec_tau4_mul_prepared_profile(&group, &pre, &outputs[i], scalars[i], mode == 2,
+            if (!ca_ec_tau4_mul_prepared_profile(&group, &pre, &outputs[i], scalars[i], mode - 1,
                                                  &t, &a, &r)) {
                 fprintf(stderr, "scalar evaluation failed at index %zu\n", i);
                 free(outputs);
@@ -133,6 +137,11 @@ int main(int argc, char **argv)
     uint64_t output_digest = FNV_OFFSET;
     for (size_t i = 0; i < SCALARS; i++) {
         if (mode != 0) {
+            if (mode == 3 && !ca_ec_tau4_recode_compare_scalar(&pre, scalars[i])) {
+                fprintf(stderr, "digit stream mismatch at index %zu\n", i);
+                free(outputs);
+                return 1;
+            }
             ca_elem expected;
             ca_group_mul(&group, &expected, &point, scalars[i], NULL);
             if (!ca_group_equal(&group, &outputs[i], &expected)) {

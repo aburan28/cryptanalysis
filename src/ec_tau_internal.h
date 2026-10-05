@@ -28,7 +28,10 @@ int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre, ca_el
 int ca_ec_tau4_mul_prepared_cost(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
                                  uint64_t k, uint64_t *triples, uint64_t *adds);
 int ca_ec_tau4_mul_prepared_profile(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
-                                    uint64_t k, int cost_aware, uint64_t *triples, uint64_t *adds,
+                                    uint64_t k, int recoder, uint64_t *triples, uint64_t *adds,
                                     uint64_t *rotations);
+/* Private exhaustive/differential test hook for signed tau coordinates. */
+int ca_ec_tau4_recode_compare(int64_t x, int64_t y);
+int ca_ec_tau4_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k);
 
 #endif

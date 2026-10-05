@@ -12,6 +12,7 @@
 #include "ca_internal.h"
 #include "cryptanalysis/ca_group.h"
 #include "ec_tau_internal.h"
+#include "generated/tau4_residue_atlas.h"
 
 typedef __int128 ca_i128;
 
@@ -342,6 +343,54 @@ static size_t gen_tau4_digits_fast(ca_i128 wide_x, ca_i128 wide_y, const ca_tau4
     return nd;
 }
 
+/* Four width-4 decisions in one lookup.  Congruence modulo 81 preserves the
+ * first four digits because 81 is associated to tau^8.  The correction is
+ * the exact contribution of those digits, not a representative modulo 81. */
+static size_t gen_tau4_digits_atlas(ca_i128 wide_x, ca_i128 wide_y, const ca_tau4_digit table[81],
+                                    uint8_t digits[256])
+{
+    const ca_i128 limit = (ca_i128)1 << 55;
+    if (wide_x <= -limit || wide_x >= limit || wide_y <= -limit || wide_y >= limit)
+        return gen_tau4_digits(wide_x, wide_y, table, digits);
+    int64_t x = (int64_t)wide_x, y = (int64_t)wide_y;
+    size_t nd = 0;
+    while (x || y) {
+        if (nd > 252) return 0;
+        int ax = (int)((x % 81 + 81) % 81);
+        int by = (int)((y % 81 + 81) % 81);
+        ca_tau4_atlas_pattern p = ca_tau4_atlas_patterns[ca_tau4_atlas_index[81 * ax + by]];
+        for (size_t j = 0; j < 4; j++) digits[nd + j] = j == p.position ? p.slot : 255;
+        nd += 4;
+        int64_t a = x - p.correction_a, b = y - p.correction_b;
+        int64_t nx = a + 3 * b, ny = -a - 2 * b;
+        if (nx % 9 || ny % 9) return 0;
+        x = nx / 9;
+        y = ny / 9;
+    }
+    while (nd && digits[nd - 1] == 255) nd--;
+    return nd;
+}
+
+int ca_ec_tau4_recode_compare(int64_t x, int64_t y)
+{
+    ca_tau4_digit table[81];
+    uint8_t baseline[256], atlas[256];
+    if (!make_tau4_table(table)) return 0;
+    size_t a = gen_tau4_digits_fast(x, y, table, baseline);
+    size_t b = gen_tau4_digits_atlas(x, y, table, atlas);
+    return (a || !(x || y)) && a == b && memcmp(baseline, atlas, a) == 0;
+}
+
+int ca_ec_tau4_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k)
+{
+    if (!pre || !pre->g) return 0;
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
+                        k % pre->g->order, &x, &y);
+    if (x < INT64_MIN || x > INT64_MAX || y < INT64_MIN || y > INT64_MAX) return 0;
+    return ca_ec_tau4_recode_compare((int64_t)x, (int64_t)y);
+}
+
 /* Search the same 25 lattice representatives as reduce_with_lattice, but
  * score their actual prepared width-4 evaluation schedules.  The selected
  * digit stream is retained so it is not recoded a 26th time. */
@@ -450,7 +499,7 @@ int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point, ca_tau4_precomp 
 
 static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
                                   uint64_t k, uint64_t *triples, uint64_t *adds,
-                                  uint64_t *rotations, int cost_aware)
+                                  uint64_t *rotations, int recoder)
 {
     if (!g || !pre || !out || pre->g != g) return 0;
     if (triples) *triples = 0;
@@ -463,14 +512,15 @@ static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
     k %= g->order;
     uint8_t digits[256];
     size_t nd;
-    if (cost_aware) {
+    if (recoder == 1) {
         nd = reduce_with_lattice_cost((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y},
                                       pre->det, k, pre->digit, digits);
     } else {
         ca_i128 x, y;
         reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
                             k, &x, &y);
-        nd = gen_tau4_digits_fast(x, y, pre->digit, digits);
+        nd = recoder == 2 ? gen_tau4_digits_atlas(x, y, pre->digit, digits)
+                          : gen_tau4_digits_fast(x, y, pre->digit, digits);
     }
     if (!nd) return 0;
     tau_jac acc = {0, g->mont.r1, 0};
@@ -520,11 +570,11 @@ int ca_ec_tau4_mul_prepared_cost(const ca_group *g, const ca_tau4_precomp *pre, 
 }
 
 int ca_ec_tau4_mul_prepared_profile(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
-                                    uint64_t k, int cost_aware, uint64_t *triples, uint64_t *adds,
+                                    uint64_t k, int recoder, uint64_t *triples, uint64_t *adds,
                                     uint64_t *rotations)
 {
-    if (cost_aware != 0 && cost_aware != 1) return 0;
-    return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, rotations, cost_aware);
+    if (recoder < 0 || recoder > 2) return 0;
+    return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, rotations, recoder);
 }
 
 int ca_ec_mul_tau4(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k, uint64_t *tau_steps,
