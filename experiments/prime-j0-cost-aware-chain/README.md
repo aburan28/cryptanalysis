@@ -189,3 +189,10 @@ panel matches all prepared table entries and 32,768 generic outputs while
 retaining the same graph-addition and online counts. It adds three or four
 preparation inversions and 157,488 or 1,417,200 scratch bytes. Isolated
 preparation time and single-scalar latency are unmeasured.
+
+The [bounded τ-tail shortest-path oracle](TAIL_ORACLE.md) recodes only a
+small-coefficient tail using a 49,923-byte offline action table and the same
+prepared seed points. Its frozen 32,768-output panel matches generic
+multiplication, saving 7.48%–7.75% weighted evaluation operations on
+`glv-j0-32` and 2.84%–2.98% on `j0-56`. A second online recode is charged;
+isolated CPU speed and impact on rho remain unknown.

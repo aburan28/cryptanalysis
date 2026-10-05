@@ -91,3 +91,46 @@ python3 experiments/prime-j0-cost-aware-chain/check_tail_panel.py \
 This protocol is frozen before executing the new candidate on the fresh
 panel. Results and any deviations must be appended below, leaving this
 prospective section intact.
+
+## Held-out operation result (2026-10-05)
+
+The frozen generator reproduced SHA-256
+`fa5d1600004d25acbedcc0ec72e5c89b6438194c742a2ee4e17fd521f5263d3d`
+for the generated header. Its exhaustive check found 42,867 reachable and
+7,056 unreachable states; the longest checked path was five τ pairs. The
+unreachable cells are explicit fallback markers. The fresh eight-case panel
+passed: both arms matched generic scalar multiplication and the frozen output
+digest for all 32,768 curve outputs. The direct curve test passed 2,263,268
+checks. The full CTest suite had 14 passes and a coordinator loopback-bind
+failure under the sandbox; rerunning that one test with loopback permission
+passed, giving 15/15 passing test cases across the two executions.
+
+Each row aggregates 4,096 public scalar multiplications. Costs are the
+predeclared `10 × triples + 16 × mixed adds + rotations` model, with the same
+per-point prepared seed table in both arms. The tail arm adds 49,923 static
+action bytes and no prepared curve points.
+
+| Curve and point | Triples, baseline → tail | Mixed adds, baseline → tail | Weighted cost, baseline → tail | Saving |
+| --- | ---: | ---: | ---: | ---: |
+| glv-j0-32, P | 25,612 → 21,957 | 15,593 → 15,563 | 515,792 → 477,193 | 7.48% |
+| glv-j0-32, 37P | 25,703 → 21,933 | 15,651 → 15,603 | 517,625 → 477,520 | 7.75% |
+| glv-j0-32, 101P | 25,702 → 21,954 | 15,666 → 15,622 | 517,960 → 478,139 | 7.69% |
+| glv-j0-32, 103P | 25,641 → 21,965 | 15,614 → 15,574 | 516,483 → 477,446 | 7.56% |
+| j0-56, P | 65,679 → 62,270 | 33,525 → 33,497 | 1,215,011 → 1,178,788 | 2.98% |
+| j0-56, 37P | 65,639 → 62,320 | 33,437 → 33,404 | 1,213,053 → 1,177,590 | 2.92% |
+| j0-56, 101P | 65,558 → 62,315 | 33,511 → 33,481 | 1,213,576 → 1,179,146 | 2.84% |
+| j0-56, 103P | 65,588 → 62,311 | 33,539 → 33,523 | 1,214,505 → 1,179,738 | 2.86% |
+
+All eight cases passed the prospective operation gate. [tail-panel.json](tail-panel.json)
+retains rotations, exact outputs, source and binary hashes, raw execution
+rows, and exploratory timings. Local `online_ms` values varied enough to
+change which arm appeared faster across points; no wall-time winner is
+reported. The oracle's second recode and lookups are charged to that interval
+and may overwhelm the saved curve operations. The next empirical gate is an
+isolated, paired `baseline`/`tail-oracle` run using the manifest service.
+Related work on [τ-adic wNAF weight
+optimality](https://arxiv.org/abs/1110.0966), [symmetric digit
+sets](https://pmc.ncbi.nlm.nih.gov/articles/PMC4144834/), and [dynamic
+programming for minimal-weight digital
+expansions](https://dmtcs.episciences.org/en/articles/3009) means this
+implementation result does not establish a new mathematical recoding result.

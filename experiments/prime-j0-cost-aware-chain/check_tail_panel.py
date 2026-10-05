@@ -76,6 +76,8 @@ def check(bench, test_curve, root):
     sources = [repo / "CMakeLists.txt", repo / "src/ec_tau.c",
                repo / "src/ec_tau_internal.h", repo / "src/generated/tau_tail_oracle.h",
                repo / "tests/test_curve.c", root / "bench.c", root / "TAIL_ORACLE.md",
+               root / "README.md", root / "make_isolated_manifest.py",
+               repo / "scripts/isolated_bench.py",
                root / "make_tau_tail_oracle.py", root / "make_tail_inputs.py",
                Path(__file__), fixture_path, bench, test_curve,
                bench.parent / "CMakeCache.txt"]
