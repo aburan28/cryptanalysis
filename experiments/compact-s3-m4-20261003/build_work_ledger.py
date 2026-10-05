@@ -4239,6 +4239,31 @@ def main():
                for row in q1441_result["rows"][1:])
     assert all(row["one_action_scan_below_budget"] is False
                for row in q1441_result["rows"][1:])
+    q1442_dir = HERE / "q1442_selected_base_screen"
+    q1442_protocol_path = q1442_dir / "protocol.json"
+    q1442_result_path = q1442_dir / "result.json"
+    q1442_verification_path = q1442_dir / "verification.json"
+    q1442_protocol = json.loads(q1442_protocol_path.read_text())
+    q1442_result = json.loads(q1442_result_path.read_text())
+    q1442_verification = json.loads(q1442_verification_path.read_text())
+    assert q1442_protocol["proposal_id"] == q1442_result[
+        "proposal_id"] == "Q1442"
+    assert q1442_protocol["candidate_id"] is q1442_result[
+        "candidate_id"] is None
+    assert q1442_protocol["isogeny"] == q1442_result[
+        "isogeny"] == "none"
+    assert q1442_result["protocol_sha256"] == sha(q1442_protocol_path)
+    assert q1442_result["source_sha256"] == sha(q1442_dir / "screen.py")
+    assert q1442_verification["status"] == "passed"
+    assert q1442_verification["result_sha256"] == sha(q1442_result_path)
+    assert q1442_verification["protocol_sha256"] == sha(
+        q1442_protocol_path)
+    assert q1442_result["actual_selected_B"] is None
+    assert q1442_result["actual_selected_K"] is None
+    assert q1442_result["selected_base_set_sha256"] is None
+    assert q1442_result["complete_solve_work_log2"] is None
+    assert q1442_result["challenge_dispatch_allowed"] is False
+    assert len(q1442_result["rows"]) == 3
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -5500,6 +5525,33 @@ def main():
             "result_sha256": sha(q1441_result_path),
             "verification_sha256": sha(q1441_verification_path),
         },
+        "q1442_n131_conditional_selected_base_screen": {
+            "proposal_id": "Q1442",
+            "candidate_id": None,
+            "curve_id": q1442_result["curve_id"],
+            "isogeny": "none",
+            "actual_selected_B": None,
+            "actual_selected_K": None,
+            "selected_base_set_sha256": None,
+            "lambda_continuous_optimum_model": q1442_result[
+                "lambda_continuous_optimum_model"],
+            "continuous_optimum_B_model": q1442_result[
+                "continuous_optimum_B_model"],
+            "selected_orbit_count_model": q1442_result[
+                "selected_orbit_count_model"],
+            "rows": q1442_result["rows"],
+            "work_unit": q1442_result["work_unit"],
+            "assumptions": q1442_result["assumptions"],
+            "is_empirical_solver_stage_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "calibrated_field_operation_cost": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": q1442_result["decision"],
+            "protocol_sha256": sha(q1442_protocol_path),
+            "result_sha256": sha(q1442_result_path),
+            "verification_sha256": sha(q1442_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -5889,6 +5941,9 @@ def main():
                 "recomputes the uniform-query rank-supply bound from it; "
                 "Q1416 recomputes the pure pair-index model on the exact "
                 "base, but none supplies a decomposition-cost measurement; "
+                "Q1442's selected W7 optimum is a conditional Poisson and "
+                "novel-row model with actual B/K/digest unknown, not a "
+                "measured relation yield or complete work charge; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
