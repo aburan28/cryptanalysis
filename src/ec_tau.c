@@ -13,6 +13,7 @@
 #include "cryptanalysis/ca_group.h"
 #include "ec_tau_internal.h"
 #include "generated/tau4_residue_atlas.h"
+#include "generated/tau8_orbit_map.h"
 #include "generated/tau8_pair_map.h"
 #include <stdlib.h>
 
@@ -968,10 +969,21 @@ void ca_ec_tau8_fused_clear(ca_tau8_fused_precomp *pre) {
   }
 }
 
-int ca_ec_tau8_fused_prepare(const ca_group *g, const ca_elem *point,
-                             size_t blocks, ca_tau8_fused_precomp *out,
-                             uint64_t *triples, uint64_t *adds,
-                             uint64_t *rotations, uint64_t *inversions) {
+static tau_jac tau8_pair_point(const ca_group *g, const ca_elem *first,
+                               const ca_elem *second, uint64_t *adds) {
+  tau_jac p = jac_from_affine(g, first);
+  if (!second->w[2]) {
+    if (p.z)
+      (*adds)++;
+    p = jac_add_mixed(g, p, second);
+  }
+  return p;
+}
+
+static int tau8_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
+                        ca_tau8_fused_precomp *out, uint64_t *triples,
+                        uint64_t *adds, uint64_t *rotations,
+                        uint64_t *inversions, int orbit) {
   if (triples)
     *triples = 0;
   if (adds)
@@ -987,14 +999,16 @@ int ca_ec_tau8_fused_prepare(const ca_group *g, const ca_elem *point,
   if (!ca_ec_tau4_pos_global_prepare(g, point, &pre.pos, &n3))
     return 0;
   pre.blocks = blocks;
+  pre.orbit = orbit;
   if (pre.pos.base.identity) {
     *out = pre;
     return 1;
   }
-  size_t count = blocks * CA_TAU8_PAIR_COUNT;
+  size_t entries = orbit ? CA_TAU8_ORBIT_COUNT : CA_TAU8_PAIR_COUNT;
+  size_t count = blocks * entries;
   pre.point = malloc(count * sizeof(*pre.point));
-  tau_jac *projective = malloc(CA_TAU8_PAIR_COUNT * sizeof(*projective));
-  uint64_t *prefixes = malloc(CA_TAU8_PAIR_COUNT * sizeof(*prefixes));
+  tau_jac *projective = malloc(entries * sizeof(*projective));
+  uint64_t *prefixes = malloc(entries * sizeof(*prefixes));
   if (!pre.point || !projective || !prefixes) {
     free(prefixes);
     free(projective);
@@ -1008,24 +1022,25 @@ int ca_ec_tau8_fused_prepare(const ca_group *g, const ca_elem *point,
       first[id] = tau8_pattern_point(g, &pre.pos, block, 0, pattern, &nr);
       second[id] = tau8_pattern_point(g, &pre.pos, block, 1, pattern, &nr);
     }
-    for (size_t u = 0; u < 217; u++) {
-      for (size_t v = 0; v < 217; v++) {
-        uint16_t index = ca_tau8_pair_map[217 * u + v];
-        if (index == UINT16_MAX)
-          continue;
-        tau_jac p = jac_from_affine(g, &first[u]);
-        if (!second[v].w[2]) {
-          if (p.z)
-            na++;
-          p = jac_add_mixed(g, p, &second[v]);
+    if (orbit) {
+      for (size_t id = 0; id < entries; id++) {
+        uint8_t u = ca_tau8_orbit_rep_u[id];
+        uint8_t v = ca_tau8_orbit_rep_v[id];
+        projective[id] = tau8_pair_point(g, &first[u], &second[v], &na);
+      }
+    } else {
+      for (size_t u = 0; u < 217; u++) {
+        for (size_t v = 0; v < 217; v++) {
+          uint16_t index = ca_tau8_pair_map[217 * u + v];
+          if (index == UINT16_MAX)
+            continue;
+          projective[index] = tau8_pair_point(g, &first[u], &second[v], &na);
         }
-        projective[index] = p;
       }
     }
     uint64_t normalized = 0;
-    if (!jac_batch_to_affine_scratch(g, pre.point + block * CA_TAU8_PAIR_COUNT,
-                                     projective, CA_TAU8_PAIR_COUNT, prefixes,
-                                     &normalized)) {
+    if (!jac_batch_to_affine_scratch(g, pre.point + block * entries, projective,
+                                     entries, prefixes, &normalized)) {
       free(prefixes);
       free(projective);
       ca_ec_tau8_fused_clear(&pre);
@@ -1045,6 +1060,22 @@ int ca_ec_tau8_fused_prepare(const ca_group *g, const ca_elem *point,
   if (inversions)
     *inversions = ni + 1; /* global positional preparation */
   return 1;
+}
+
+int ca_ec_tau8_fused_prepare(const ca_group *g, const ca_elem *point,
+                             size_t blocks, ca_tau8_fused_precomp *out,
+                             uint64_t *triples, uint64_t *adds,
+                             uint64_t *rotations, uint64_t *inversions) {
+  return tau8_prepare(g, point, blocks, out, triples, adds, rotations,
+                      inversions, 0);
+}
+
+int ca_ec_tau8_orbit_prepare(const ca_group *g, const ca_elem *point,
+                             size_t blocks, ca_tau8_fused_precomp *out,
+                             uint64_t *triples, uint64_t *adds,
+                             uint64_t *rotations, uint64_t *inversions) {
+  return tau8_prepare(g, point, blocks, out, triples, adds, rotations,
+                      inversions, 1);
 }
 
 static int tau8_atlas_step(int64_t *x, int64_t *y, uint8_t *pattern_id) {
@@ -1084,6 +1115,7 @@ static int tau8_fused_mul_jac(const ca_group *g,
     goto fallback;
   int64_t x = (int64_t)wide_x, y = (int64_t)wide_y;
   uint16_t ids[CA_TAU_POS_Q / 4];
+  uint8_t units[CA_TAU_POS_Q / 4];
   size_t length = 0;
   while (x || y) {
     if (length >= pre->blocks)
@@ -1091,17 +1123,28 @@ static int tau8_fused_mul_jac(const ca_group *g,
     uint8_t u, v;
     if (!tau8_atlas_step(&x, &y, &u) || !tau8_atlas_step(&x, &y, &v))
       return 0;
-    uint16_t id = ca_tau8_pair_map[217 * u + v];
+    size_t pair = 217 * u + v;
+    uint16_t id = pre->orbit ? ca_tau8_orbit_id[pair] : ca_tau8_pair_map[pair];
     if (id == UINT16_MAX)
       return 0;
+    units[length] = pre->orbit ? ca_tau8_orbit_unit[pair] : 0;
     ids[length++] = id;
   }
   tau_jac acc = {0, g->mont.r1, 0};
+  size_t entries = pre->orbit ? CA_TAU8_ORBIT_COUNT : CA_TAU8_PAIR_COUNT;
   for (size_t i = length; i-- > 0;) {
-    const ca_elem *point = &pre->point[i * CA_TAU8_PAIR_COUNT + ids[i]];
-    if (point->w[2])
+    ca_elem point = pre->point[i * entries + ids[i]];
+    if (point.w[2])
       continue;
-    acc = jac_add_mixed(g, acc, point);
+    unsigned power = units[i] % 3;
+    if (power == 1)
+      point.w[0] = fm(g, base->beta, point.w[0]);
+    else if (power == 2)
+      point.w[0] = fm(g, base->beta2, point.w[0]);
+    *rotations += power != 0;
+    if (units[i] >= 3 && point.w[1])
+      point.w[1] = g->p - point.w[1];
+    acc = jac_add_mixed(g, acc, &point);
     (*adds)++;
   }
   *out = acc;

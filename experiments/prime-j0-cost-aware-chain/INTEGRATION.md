@@ -177,3 +177,37 @@ Generate the Linux-host manifest with `make_isolated_manifest.py
 binary, cgroup, CPU partition, execution CPU, and NUMA node. A local schema
 check passed `scripts/isolated_bench.py`'s `require_manifest`; only its
 host-side preflight and noise gates can authorize a speedup claim.
+
+## Six-unit orbit-folded fused-table follow-up
+
+The separate [orbit protocol](FUSED_TAU_ORBITS.md) was committed in PR #264
+before the generated [orbit map](../../src/generated/tau8_orbit_map.h), C
+implementation, or new scalar files. Each nonzero fused-pair point belongs
+to a six-element orbit under sign and the cheap `ω` endomorphism. The
+candidate stores only 4,933 representatives per eight-digit position and
+reconstructs the requested point with a unit action at lookup time.
+
+[make_orbit_inputs.py](make_orbit_inputs.py) froze four fresh 4,096-scalar
+workloads in [orbit-inputs/](orbit-inputs/) and
+[orbit-inputs.json](orbit-inputs.json). [check_orbit_panel.py](check_orbit_panel.py)
+verified all 16,384 folded outputs against the independent generic digest.
+[orbit-panel.json](orbit-panel.json) retains raw output, failures, and hashes.
+The folded and full tables used **identical online mixed-addition and
+output-inversion counts** with zero fallbacks in every case. The folded
+candidate trades unit rotations for lower setup and memory:
+
+| Frozen case | Online adds in each arm | Folded rotations | Setup adds, full → folded | Affine table, full → folded |
+| --- | ---: | ---: | ---: | ---: |
+| `glv-j0-32`, generator | 8,331 | 5,600 | 116,640 → 19,440 | 3,787,904 → 631,424 B |
+| `glv-j0-32`, `37P` | 8,325 | 5,581 | 116,640 → 19,440 | 3,787,904 → 631,424 B |
+| 56-bit subgroup, generator | 19,391 | 13,160 | 174,960 → 29,160 | 5,681,856 → 947,136 B |
+| 56-bit subgroup, `37P` | 19,445 | 13,263 | 174,960 → 29,160 | 5,681,856 → 947,136 B |
+
+The C small-order control independently checked every valid pair at two
+positions against generic multiplication, including orbit reconstruction.
+The local wall times in the raw receipt are exploratory. The isolated
+manifest generator accepts `--candidate-arm fused-orbit-batch128` and pairs
+it with `fused-batch128` on the same frozen inputs; its output passed the
+runner's schema check. Whether smaller cache footprint and setup overcome
+the added rotations requires a qualifying isolated Linux run, with
+target-dependent table setup charged to a one-target rho solve.
