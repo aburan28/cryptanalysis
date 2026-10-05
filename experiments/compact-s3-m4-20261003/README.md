@@ -1697,10 +1697,63 @@ A fixed anchor can miss a four-point solution, so these censored ordinary
 runs cannot separate coverage from solver cost. The known N53 four-point
 relation does not establish that the independent Q1439 anchor belongs to a
 relation. The results therefore leave ordinary useful-row yield, successful
-three-leaf cost, and complete N131 `2^x` unknown. A witness-informed
-anchor with the other leaves freed is the narrow next diagnostic; the main
-solver gate remains a target-conditioned method that finds a witness for
-both sparse pairs without enumerating a full pair table.
+three-leaf cost, and complete N131 `2^x` unknown. Q1440 checks the
+witness-informed anchor diagnostic below.
+
+### Q1440 witness-informed anchor, other three leaves free
+
+The [Q1440 frozen gate](q1440_witness_anchor/README.md) uses Q1439's exact
+bases and two-S3 formula with an anchor from a known relation. N53 uses the
+archived ordinary public point but reveals its known first leaf; N83 uses an
+archived planted point. The remaining three leaves are unpinned. At each
+degree, one cell pins the archived adjusted-target selector and one leaves it
+free. Q1439's verified control model satisfies all four Q1440 XCNFs and
+replays to the public point, proving that every cell is satisfiable.
+
+Neither N53 cell finds a relation before 1,000,001/1,000,002 conflicts;
+N83's two cells reach their 60-second wall caps with no relation. This shows
+that Q1439's ordinary failures cannot be attributed solely to choosing an
+anchor with no representation: this particular three-leaf SAT search also
+stalls when a witness exists. These are witness-informed diagnostics, not
+natural-yield or successful-cost measurements. The complete N131 `2^x`
+remains unknown. The next solver gate remains a target-conditioned method
+that obtains witnesses for both sparse pairs before a full pair assignment.
+
+### Q1441 N131 full-base-scan budget screen
+
+The [Q1441 frozen screen](q1441_full_scan_budget/README.md) puts a declared
+abstract work unit on a solver that traverses every usable factor-base point
+for each relation query. On the exact W≤6 base, Q1414's uniform-marginal
+95%-rank floor requires at least 209,828,278 queries. One full scan per
+query already costs `2^60.256` actions at one action per point; two actions
+per point exceed `2^61` before matrix, descent, or verification. On the
+conditional Q1437 W≤7 base, a one-row-per-query solver needs at least
+`ceil(K)` queries, and one full scan per query costs about `2^65.542`
+actions at the sample center. The result holds across Q1437's conditional
+Wilson endpoints under the same no-collision assumption.
+
+This excludes those specified full-scan families in the named abstract unit;
+it does not measure a decomposition, calibrate a field operation, or bound a
+compressed or multirow solver. Q1441 leaves complete N131 `2^x` null and
+strengthens the need for a target-conditioned witness method that avoids a
+base traversal on every query.
+
+### Q1442 conditional selected-W7 base-size screen
+
+The [Q1442 frozen model](q1442_selected_base_screen/README.md) tests a
+deterministically selectable *partial* W7 orbit family as a future N131 base
+design. Under its unverified Poisson coverage, collision-free orbit, and
+one-novel-row-per-covered-query assumptions, a selected base around 11.969
+billion points and 45.683 million folded columns minimizes the model's
+one-action full-scan total near `2^59.407`. Its all-other-costs-zero budget
+allows only about 3.017 abstract actions per scanned point. The full W7
+sample center requires `2^65.542` in the same optimistic model.
+
+The selected base has **not** been enumerated: actual B, K, and its set
+digest remain null. The model is neither measured ordinary yield nor a
+field-operation or complete-solve projection. It narrows a possible future
+base choice while the target-conditioned pair solver remains the decisive
+missing measurement.
 
 ## Next goal
 
@@ -1724,10 +1777,11 @@ also capped on an N53 ordinary formula; repeating that setting alone is
 not a new feasibility method.
 Freeze the stage before ordinary queries. The first measurable gate is the
 unpinned archived N53 ordinary target, which Q1301 already proved
-representable. The second is an independently verified relation on the
-exact Q1325 N83 base, with a pre-registered fresh-target panel if the fixed
-N83 target has no representation. Keep failed queries, raw operations,
-memory, and matched pair-table receipts.
+representable. The second is an independently verified ordinary relation on
+the exact Q1438 N83 W≤6 base, with a pre-registered fresh-target panel if
+the fixed N83 target has no representation. Keep the older Q1325 W≤5 base as
+a separately labeled factor-base comparison. Preserve failed queries, raw
+operations, memory, and matched pair-table receipts.
 
 For work planning, Q1414's exact-base uniform-query model allows less than
 `2^33.36` abstract work units per query under a `2^61` total cap **even
