@@ -4480,6 +4480,40 @@ def main():
             "cpu_isolation_receipt": None,
             "receipt_sha256": sha(receipt_path),
         })
+    q1447_dir = HERE / "q1447_midpoint_support"
+    q1447_protocol_path = q1447_dir / "protocol.json"
+    q1447_result_path = q1447_dir / "result.json"
+    q1447_verification_path = q1447_dir / "verification.json"
+    q1447_protocol = json.loads(q1447_protocol_path.read_text())
+    q1447_result = json.loads(q1447_result_path.read_text())
+    q1447_verification = json.loads(q1447_verification_path.read_text())
+    assert q1447_protocol["proposal_id"] == q1447_result[
+        "proposal_id"] == q1447_verification["proposal_id"] == "Q1447"
+    assert q1447_protocol["candidate_id"] is q1447_result[
+        "candidate_id"] is None
+    assert q1447_result["isogeny"] == "none"
+    assert q1447_verification["status"] == "pass"
+    assert q1447_result["protocol_sha256"] == sha(q1447_protocol_path)
+    assert q1447_verification["result_sha256"] == sha(q1447_result_path)
+    assert q1447_result["complete_n131_log2_work"] is None
+    assert q1447_result["challenge_run_admitted"] is False
+    assert len(q1447_result["rows"]) == 4
+    for i, n in enumerate((53, 83)):
+        screen = q1447_result["rows"][i]
+        matched = q1445_protocol["cells"][str(n)]
+        assert screen["curve_id"] == matched["curve_id"]
+        assert screen["actual_B"] == matched["factor_base_actual_B"]
+        assert screen["actual_K"] == matched["folded_columns_K"]
+        assert screen["base_set_sha256"] == matched[
+            "factor_base_enumerated_set_sha256"]
+    assert q1447_result["rows"][2]["curve_id"] == q1443_result[
+        "rows"][2]["curve_id"]
+    assert q1447_result["rows"][2]["actual_B"] == q1443_result[
+        "rows"][2]["actual_B"]
+    assert q1447_result["rows"][2]["base_set_sha256"] == q1443_result[
+        "rows"][2]["base_set_sha256"]
+    assert q1447_result["rows"][3]["conditional_base_model"] is True
+    assert q1447_result["rows"][3]["actual_B"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -5859,6 +5893,23 @@ def main():
             "protocol_sha256": sha(q1446_protocol_path),
             "verification_sha256": sha(q1446_verification_path),
         },
+        "q1447_uniform_midpoint_support_bound": {
+            "proposal_id": "Q1447", "candidate_id": None,
+            "isogeny": "none",
+            "kind": "analytic_support_bound_not_solver_measurement",
+            "work_unit": q1447_result["work_unit"],
+            "input_law": q1447_result["input_law"],
+            "scope": q1447_result["scope"],
+            "proof": q1447_result["proof"],
+            "rows": q1447_result["rows"],
+            "ordinary_N83_relation_measured_here": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": q1447_result["decision"],
+            "protocol_sha256": sha(q1447_protocol_path),
+            "result_sha256": sha(q1447_result_path),
+            "verification_sha256": sha(q1447_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -6262,6 +6313,9 @@ def main():
                 "Q1446 fires sound cached span filters on both partial "
                 "pairs but each 60-second ordinary cell still reaches only "
                 "one target-linked intermediate choice and no relation; "
+                "Q1447 excludes uniform midpoint restarts on the exact "
+                "N131 W<=6 base in an abstract trial unit but does not "
+                "bound target-guided joint search or measure its cost; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

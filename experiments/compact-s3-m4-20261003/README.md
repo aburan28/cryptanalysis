@@ -1834,6 +1834,21 @@ rows provide operation and memory diagnostics, not a successful-cost or
 natural-yield measurement. The complete N131 `2^x` remains null and the
 challenge gate stays closed.
 
+### Q1447 uniform-midpoint support screen
+
+The [Q1447 analytic screen](q1447_midpoint_support/README.md) tests a
+tempting repair to Q1446: restart with uniformly sampled first-pair
+intermediate x coordinates. On the exact N131 W≤6 base, at most
+`2^-67.778` of raw x choices can be first-pair sums, even after allowing
+repeated leaves and giving all later search a free oracle. For any fixed
+public target, 95% success therefore needs at least `2^67.704`
+abstract midpoint trials under this random-choice policy. The conditional
+selected W7 size still needs `2^65.969`. The pinned N53/N83 bounds are
+`2^18.314` and `2^27.717` trials. These are support bounds, not solver
+timings or calibrated field operations. They exclude uniform restarts as
+the next N131 method; target-guided joint search remains outside the bound.
+No complete N131 `2^x` has been measured.
+
 ## Next goal
 
 The next solver should build a **compact joint target-conditioned four-point
@@ -1850,7 +1865,8 @@ must avoid the Q1425–Q1427 reverse-root
 rejection loop and the full quotient-pair index screened by Q1416 at roughly
 `2^89.36` logical actions on the exact N131 base under its uniform-key
 model. This is a model for that pure-index family, not a lower bound on
-other decomposition methods. State an exact membership
+other decomposition methods. Q1447 also excludes uniformly restarting
+first-pair midpoints under the declared bases. State an exact membership
 or necessary-condition theorem that jointly uses the target's final S3
 link and both sparse pair constraints. Prove solution preservation, and
 verify it against exhaustive small-field cases and the archived N53/N83
