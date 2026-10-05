@@ -106,6 +106,24 @@ def main():
         small_native["orbit_representatives"]
     assert full_sage["point_checks"]["sampled_edges"] == 256
     assert full_native["reciprocal_hits"] == 0
+    independent_path = HERE / "independent_direct.json"
+    independent = json.loads(independent_path.read_text())
+    assert independent["status"] == \
+        "PASS_INDEPENDENT_DIRECT_AND_PARTITION_GIVEN_RECIPROCAL_ZERO"
+    assert independent["verifier_source_sha256"] == sha256(
+        HERE / "independent_direct.py")
+    assert independent["source_masks_gzip_sha256"] == sha256(compressed)
+    assert independent["native_receipt_sha256"] == sha256(
+        runs / "w24-native/native.json")
+    assert independent["native_component_map_sha256"] == full_artifacts[
+        "nontrivial-components.bin"]
+    assert independent["checked_powers"] == 65
+    assert independent["direct_hits"] == full_native["direct_hits"]
+    assert independent["orbit_representatives_from_direct_edges"] == \
+        full_native["orbit_representatives"]
+    assert independent["nontrivial_component_masks"] == full_native[
+        "nontrivial_masks"]
+    assert independent["reciprocal_hits_independently_checked"] is False
     columns = full_native["source_signed_columns"]
     representatives = full_native["orbit_representatives"]
     saved = full_native["saved_columns"]
@@ -130,6 +148,7 @@ def main():
         "producer": sha256(HERE / "orbit.cpp"),
         "reused_field_core": sha256(W24_SOURCE),
         "verifier": sha256(HERE / "verify_sage.py"),
+        "independent_direct_verifier": sha256(HERE / "independent_direct.py"),
         "analyzer": sha256(Path(__file__)),
         "route_manifest": sha256(ROUTE),
         "source_masks_gzip": sha256(compressed),
@@ -186,6 +205,9 @@ def main():
                 "exhaustive_point_orbits"],
             "full_forest_edges_structurally_checked": full_sage["forest_edges_checked"],
             "full_point_edges_checked": full_sage["point_checks"]["sampled_edges"],
+            "independent_linear_direct_hits": independent["direct_hits"],
+            "independent_linear_component_representatives": independent[
+                "orbit_representatives_from_direct_edges"],
         },
         "backend_artifact_sha256": {"w10": small_artifacts,
                                     "w24": full_artifacts},
@@ -196,12 +218,14 @@ def main():
         "verification_sha256": {
             "w10": sha256(runs / "d10-native/verification.json"),
             "w24": sha256(runs / "w24-native/verification.json"),
+            "independent_direct": sha256(independent_path),
         },
         "source_sha256": source_hashes,
         "raw_failures": [],
         "limitations": [
             "No natural PDP, rank, matrix, target, or rho interval was measured.",
             "Full W24 point-law checks cover a frozen 256-edge sample; both complete native backends match exactly.",
+            "The independent GF(2) nullspace replay covers every direct overlap but does not independently re-enumerate the zero reciprocal channel.",
             "The orbit closure is a mathematical set, not a materialized factor base or an activated IC candidate.",
             "CPU timings are unisolated diagnostics, not a speedup comparison.",
         ],

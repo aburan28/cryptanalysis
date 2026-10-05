@@ -36,6 +36,14 @@ matrix still needs scalar/sign labels, efficient orbit recognition, row
 rewriting, verified novel rank, and its own accounting. The native ARM PMULL
 and portable bitwise builds gave byte-identical spanning forests and
 canonical nontrivial-component maps on the complete W24 stream. An
+independent pure-Python GF(2) nullspace replay enumerated the intersection
+`W24 ∩ Frobenius^(-k)(W24)` for every `k=1,...,65` and recovered all 2,096
+direct hits and exactly the same 8,391,166-component partition without
+using the native field code or an eight-million-mask scan. It does not
+independently enumerate the zero reciprocal-hit channel; that result rests
+on the two complete native backends. The direct hits occur only at powers
+1, 2, and 3 (2,064, 28, and 4 hits respectively); powers 4 through 65
+have no rational intersection with this base. An
 independent checked-Sage verifier exhausted the 492-mask W10 control and
 reconstructed all 481 point-orbit classes, including 16 reciprocal
 point-law controls. At full W24 it checked all 2,066 forest edges
@@ -49,7 +57,9 @@ The native and portable scan times were 27.38 and 127.01 seconds, with
 peak RSS near 236 MB, on this unisolated Apple ARM host. These are
 reproducibility diagnostics, not controlled performance ratios. The exact
 source, reused field-core, input, output, runtime, executable, and verifier
-hashes are in [analysis.json](analysis.json). The archived executables
+hashes are in [analysis.json](analysis.json). The
+[independent direct-overlap receipt](independent_direct.json) retains the
+intersection dimension and rational hit count at each Frobenius power. The archived executables
 identify the ones that produced the receipts; a fresh Apple Clang build
 can have a different Mach-O UUID, while a fresh d10 build reproduced the
 same forest and component bytes. The compiler was Apple Clang 17.0.0
@@ -115,6 +125,16 @@ python3 experiments/ecc2k130-263-w24-orbit-columns-20261005/analyze.py \
   --out /tmp/w24-orbit-analysis-replay.json
 cmp /tmp/w24-orbit-analysis-replay.json \
   experiments/ecc2k130-263-w24-orbit-columns-20261005/analysis.json
+```
+
+The independent direct-overlap replay does not need Sage or the decompressed
+mask stream:
+
+```sh
+python3 experiments/ecc2k130-263-w24-orbit-columns-20261005/independent_direct.py \
+  --out /tmp/w24-orbit-independent-direct-replay.json
+cmp /tmp/w24-orbit-independent-direct-replay.json \
+  experiments/ecc2k130-263-w24-orbit-columns-20261005/independent_direct.json
 ```
 
 To regenerate the producer files, build `orbit.cpp` with the stated flags
