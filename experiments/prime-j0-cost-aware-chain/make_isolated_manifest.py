@@ -10,7 +10,8 @@ def make(args):
     root = args.repo_root.resolve()
     experiment = root / "experiments" / "prime-j0-cost-aware-chain"
     atlas = args.candidate_arm == "atlas"
-    tail = args.candidate_arm == "tail-oracle"
+    tail_gated = args.candidate_arm == "tail-oracle-gated"
+    tail = args.candidate_arm == "tail-oracle" or tail_gated
     orbit = args.candidate_arm == "fused-orbit-batch128"
     adapt2 = args.candidate_arm == "fused-hot-adapt2-batch128"
     gated = args.candidate_arm == "fused-hot-gated-batch128"
@@ -36,7 +37,7 @@ def make(args):
                                    "tapered-residue-wavefront-batch128")
     if args.reference_arm and not (gated or gated2 or tapered):
         raise ValueError("--reference-arm is only supported for gated or tapered candidates")
-    default_prefix = ("tail" if tail else
+    default_prefix = ("tail-gated" if tail_gated else "tail" if tail else
                       "orbit-graph" if graph or packed or wavefront else "tapered" if tapered else
                       "gated2-steer" if gated2 else
                       "steer" if steer else "gated" if gated else
@@ -78,6 +79,13 @@ def make(args):
                       bench.parent / "CMakeCache.txt",
                       root / "scripts" / "isolated_bench.py",
                       experiment / "make_isolated_manifest.py"]
+    if tail_gated:
+        artifacts += [experiment / "TAIL_GATE.md",
+                      experiment / "make_tau_tail_gate.py",
+                      experiment / "make_tail_gated_inputs.py",
+                      experiment / "check_tail_gated_panel.py",
+                      experiment / "tail-gated-panel.json",
+                      root / "src" / "generated" / "tau_tail_gate.h"]
     if fused:
         artifacts += [experiment / "FUSED_TAU_PAIRS.md",
                       bench.parent / "CMakeCache.txt",
@@ -269,7 +277,7 @@ if __name__ == "__main__":
         "fused-hot-steer-batch128", "fused-hot-steer-gated2-batch128",
         "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128",
         "tapered-residue-packed-batch128",
-        "tapered-residue-wavefront-batch128", "tail-oracle"),
+        "tapered-residue-wavefront-batch128", "tail-oracle", "tail-oracle-gated"),
                         default="cost")
     parser.add_argument("--reference-arm", choices=(
         "fused-hot-batch128", "fused-hot-adapt2-batch128",
