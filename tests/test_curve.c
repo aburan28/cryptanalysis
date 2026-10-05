@@ -360,6 +360,21 @@ static void tau_fused_named(const char *name, size_t blocks)
                                                  &steered_blocks));
         CHECK(steer_adds < hot_adds && steered_blocks > 0);
         for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_tau8_fused_precomp gated2_steer = {0};
+        uint64_t gated2_prep_adds = 0, gated2_adds = 0, gated2_recodes = 0;
+        uint64_t gated2_steered_blocks = 0;
+        CHECK(ca_ec_tau8_hot_gated2_steer_prepare(&g, &point, blocks, &gated2_steer, NULL,
+                                                  &gated2_prep_adds, NULL, NULL));
+        CHECK_EQ_U64(gated2_prep_adds, hot_prep_adds);
+        CHECK(gated2_steer.selector == 4 && gated2_steer.orbit == 2);
+        CHECK(ca_ec_tau8_fused_mul_batch_profile(&g, &gated2_steer, outputs, scalars, 256, 128,
+                                                 &gated2_adds, NULL, NULL, NULL, &gated2_recodes,
+                                                 &gated2_steered_blocks));
+        CHECK(gated2_adds <= steer_adds);
+        CHECK(gated2_recodes > 0 && gated2_recodes < 256);
+        CHECK(gated2_steered_blocks > 0);
+        for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_ec_tau8_fused_clear(&gated2_steer);
         ca_ec_tau8_fused_clear(&steer);
         ca_ec_tau8_fused_clear(&gated);
         ca_ec_tau8_fused_clear(&adapt2);
@@ -410,6 +425,15 @@ static void tau_fused_named(const char *name, size_t blocks)
             CHECK(fallbacks > 0);
             for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
             ca_ec_tau8_fused_clear(&short_steer);
+            ca_tau8_fused_precomp short_gated2_steer = {0};
+            CHECK(ca_ec_tau8_hot_gated2_steer_prepare(&g, &point, 1, &short_gated2_steer, NULL,
+                                                      NULL, NULL, NULL));
+            fallbacks = 0;
+            CHECK(ca_ec_tau8_fused_mul_batch(&g, &short_gated2_steer, outputs, scalars, 256, 128,
+                                             NULL, NULL, NULL, &fallbacks));
+            CHECK(fallbacks > 0);
+            for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+            ca_ec_tau8_fused_clear(&short_gated2_steer);
         }
     }
     ca_elem identity;
@@ -424,6 +448,12 @@ static void tau_fused_named(const char *name, size_t blocks)
     ca_ec_tau8_fused_clear(&empty);
     CHECK(ca_ec_tau8_hot_steer_prepare(&g, &identity, blocks, &empty, NULL, NULL, NULL, NULL));
     CHECK(empty.point == NULL && empty.selector == 3);
+    CHECK(ca_ec_tau8_fused_mul_batch(&g, &empty, outputs, scalars, 3, 2, NULL, NULL, NULL, NULL));
+    for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
+    ca_ec_tau8_fused_clear(&empty);
+    CHECK(
+        ca_ec_tau8_hot_gated2_steer_prepare(&g, &identity, blocks, &empty, NULL, NULL, NULL, NULL));
+    CHECK(empty.point == NULL && empty.selector == 4);
     CHECK(ca_ec_tau8_fused_mul_batch(&g, &empty, outputs, scalars, 3, 2, NULL, NULL, NULL, NULL));
     for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
     ca_ec_tau8_fused_clear(&empty);
@@ -468,6 +498,9 @@ static void tau_fused_small_order(void)
     CHECK(ca_ec_tau8_hot_gated_prepare(&g, &point, 2, &gated, NULL, NULL, NULL, NULL));
     ca_tau8_fused_precomp steer = {0};
     CHECK(ca_ec_tau8_hot_steer_prepare(&g, &point, 2, &steer, NULL, NULL, NULL, NULL));
+    ca_tau8_fused_precomp gated2_steer = {0};
+    CHECK(
+        ca_ec_tau8_hot_gated2_steer_prepare(&g, &point, 2, &gated2_steer, NULL, NULL, NULL, NULL));
     uint64_t beta = g.endo_c_mont;
     uint64_t beta2 = ca_mont_mul(&g.mont, beta, beta);
     uint64_t tau_lambda = (1 + g.endo_lambda) % g.order;
@@ -541,6 +574,13 @@ static void tau_fused_small_order(void)
         CHECK(ca_group_equal(&g, &outputs[i], &expected));
     }
     ca_ec_tau8_fused_clear(&steer);
+    CHECK(ca_ec_tau8_fused_mul_batch(&g, &gated2_steer, outputs, scalars, 27, 7, NULL, NULL, NULL,
+                                     NULL));
+    for (size_t i = 0; i < 27; i++) {
+        ca_group_mul(&g, &expected, &point, scalars[i] % 13, NULL);
+        CHECK(ca_group_equal(&g, &outputs[i], &expected));
+    }
+    ca_ec_tau8_fused_clear(&gated2_steer);
     ca_ec_tau8_fused_clear(&gated);
     ca_ec_tau8_fused_clear(&adapt2);
     ca_ec_tau8_fused_clear(&hot);

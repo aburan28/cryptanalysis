@@ -84,7 +84,8 @@ static int select_mode(const char *name)
                                   "fused-hot-batch128",
                                   "fused-hot-adapt2-batch128",
                                   "fused-hot-gated-batch128",
-                                  "fused-hot-steer-batch128"};
+                                  "fused-hot-steer-batch128",
+                                  "fused-hot-steer-gated2-batch128"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -100,7 +101,7 @@ int main(int argc, char **argv)
                 "pos-batch32|pos-batch128|pos-batch512|pos-batch4096|atlas|"
                 "fused-batch128|fused-orbit-batch128|fused-hot-batch128|"
                 "fused-hot-adapt2-batch128|fused-hot-gated-batch128|"
-                "fused-hot-steer-batch128 "
+                "fused-hot-steer-batch128|fused-hot-steer-gated2-batch128 "
                 "glv-j0-32|j0-56 0|1 INPUT\n",
                 argv[0]);
         return 2;
@@ -109,12 +110,13 @@ int main(int argc, char **argv)
     if (!select_curve(argv[2], &p, &b, &order)) return 2;
     int global_builder = mode == 4 || mode == 6 || (mode >= 7 && mode <= 10);
     int positional = mode >= 3 && mode <= 10;
-    int fused = mode >= 12 && mode <= 17;
+    int fused = mode >= 12 && mode <= 18;
     int orbit = mode == 13;
-    int hot = mode >= 14 && mode <= 17;
+    int hot = mode >= 14 && mode <= 18;
     int adapt2 = mode == 15;
     int gated = mode == 16;
     int steer = mode == 17;
+    int gated2_steer = mode == 18;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
     size_t block_size = mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
     uint64_t scalars[SCALARS], input_digest;
@@ -160,7 +162,11 @@ int main(int argc, char **argv)
         double t0 = ca_now();
         if (fused) {
             int prepared =
-                steer    ? ca_ec_tau8_hot_steer_prepare(&group, &point, fused_blocks, &fused_pre,
+                gated2_steer
+                    ? ca_ec_tau8_hot_gated2_steer_prepare(&group, &point, fused_blocks, &fused_pre,
+                                                          &prep_triples, &prep_adds,
+                                                          &prep_rotations, &prep_layer_inversions)
+                : steer  ? ca_ec_tau8_hot_steer_prepare(&group, &point, fused_blocks, &fused_pre,
                                                         &prep_triples, &prep_adds, &prep_rotations,
                                                         &prep_layer_inversions)
                 : gated  ? ca_ec_tau8_hot_gated_prepare(&group, &point, fused_blocks, &fused_pre,
@@ -203,7 +209,7 @@ int main(int argc, char **argv)
     }
     uint64_t triples = 0, adds = 0, rotations = 0, output_inversions = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
-    size_t static_map_bytes = steer ? ca_ec_tau8_steer_static_bytes() : 0;
+    size_t static_map_bytes = steer || gated2_steer ? ca_ec_tau8_steer_static_bytes() : 0;
     size_t online_scratch_bytes = fused ? 128 * 32 : mode >= 7 && mode <= 10 ? block_size * 32 : 0;
     double start = ca_now();
     if (fused) {

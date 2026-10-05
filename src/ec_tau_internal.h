@@ -64,7 +64,8 @@ typedef struct ca_tau8_fused_precomp {
     ca_elem *point;
     size_t blocks;
     int orbit; /* 0: full pair table; 1: all unit orbits; 2: hot orbits */
-    int selector; /* 0: shortest L1; 1: always two; 2: gated second; 3: carry steering */
+    int selector; /* 0: shortest L1; 1: always two; 2: gated second; 3: carry steering;
+                   * 4: gated second after carry steering */
 } ca_tau8_fused_precomp;
 
 int ca_ec_tau8_fused_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
@@ -85,6 +86,9 @@ int ca_ec_tau8_hot_gated_prepare(const ca_group *g, const ca_elem *point, size_t
 int ca_ec_tau8_hot_steer_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
                                  ca_tau8_fused_precomp *out, uint64_t *triples, uint64_t *adds,
                                  uint64_t *rotations, uint64_t *inversions);
+int ca_ec_tau8_hot_gated2_steer_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
+                                        ca_tau8_fused_precomp *out, uint64_t *triples,
+                                        uint64_t *adds, uint64_t *rotations, uint64_t *inversions);
 size_t ca_ec_tau8_steer_static_bytes(void);
 void ca_ec_tau8_fused_clear(ca_tau8_fused_precomp *pre);
 int ca_ec_tau8_fused_mul_batch(const ca_group *g, const ca_tau8_fused_precomp *pre, ca_elem *out,
