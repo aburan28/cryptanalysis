@@ -1622,12 +1622,31 @@ Both queries again reach the 60-second cap with zero relations. The
 preserve skipped domains, raw work and memory. All N53 2/2 domains exceed
 the cap. No ordinary solved-query cost or complete N131 `2^x` follows.
 
+### Q1436 one-sided affine sparse-pair feasibility
+
+The [frozen Q1436 protocol](q1436_affine_pair/protocol.json) solves the
+second leaf's free bits as an exact GF(2) linear system for each allowed
+completion of the first leaf, using the fixed target-linked intermediate.
+It preserves consistent rank-deficient systems as unknown. The [49-case
+native/Sage validation](q1436_affine_pair/affine_validation.json) retains
+all nine known witnesses, and the [archive verifier](q1436_affine_pair/verification.json)
+independently replays sampled ordinary zero claims. Both controls return
+verified relations. Ordinary N53/N83 searches cap at 60 seconds with zero
+relations, after soundly rejecting 395,906/75,525 partial domains with
+18/24 free bits per leaf. They charge 1,335,395,670/571,525,667 affine
+XORs and still complete only one first pair each. The first v1 control had
+a malformed JSON report and is [archived separately](q1436_affine_pair/failed_v1/README.md);
+the v2 protocol was frozen before these four runs. The [result table](q1436_affine_pair/README.md)
+and ledger preserve operations, memory, failures, and claim limits. No
+successful ordinary-query cost or complete N131 `2^x` follows.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum
-membership and witness method**. Q1435 rejects more late false positives,
-but spends up to 354 million expansion XORs in an N53 censored prefix and
-still produces no ordinary relation. The next method must use the public
+membership and witness method**. Q1436 rejects partial second-pair domains
+four free bits earlier per leaf than Q1435, but spends over 1.3 billion
+affine XORs in an N53 censored prefix and still produces no ordinary
+relation or second first-pair assignment. The next method must use the public
 target to constrain both sparse pairs before completing either pair. It
 must avoid the Q1425–Q1427 reverse-root
 rejection loop and the full quotient-pair index screened by Q1416 at roughly
