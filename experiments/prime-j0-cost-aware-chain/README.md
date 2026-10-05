@@ -175,3 +175,10 @@ eight-point frozen panel verifies 32,768 graph outputs and reduces preparation
 additions by 37.4% and 47.2% for the two schedules. Preparation rotations
 also fall, while static recipes add 78,744 and 717,360 bytes. No controlled
 CPU timing is available.
+
+The [implicit graph variant](IMPLICIT_ORBIT_GRAPH.md) derives predecessor
+recipes during setup using a two-byte descriptor per orbit. Its eight-point
+panel verifies the same outputs and curve operation counts, but requires
+39,368 and 267,910 recodes plus many integer τ steps. It remains opt-in;
+the paired executable still includes the reference recipe arrays, and no
+isolated CPU speed or standalone memory saving has been measured.

@@ -113,16 +113,29 @@ typedef struct ca_tau_wide_precomp {
     int schedule;
 } ca_tau_wide_precomp;
 
+typedef struct ca_tau_wide_derive_stats {
+    uint64_t recode_calls;
+    uint64_t digit_slots_scanned;
+    uint64_t integer_tau_steps;
+    uint64_t parent_index_lookups;
+    uint64_t exact_parent_checks;
+} ca_tau_wide_derive_stats;
+
 int ca_ec_tau_wide_prepare(const ca_group *g, const ca_elem *point, int schedule,
                            ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
                            uint64_t *rotations, uint64_t *inversions);
 int ca_ec_tau_wide_prepare_graph(const ca_group *g, const ca_elem *point, int schedule,
                                  ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
                                  uint64_t *rotations, uint64_t *inversions);
+int ca_ec_tau_wide_prepare_implicit(const ca_group *g, const ca_elem *point, int schedule,
+                                    ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
+                                    uint64_t *rotations, uint64_t *inversions,
+                                    ca_tau_wide_derive_stats *stats);
 void ca_ec_tau_wide_clear(ca_tau_wide_precomp *pre);
 size_t ca_ec_tau_wide_entries(int schedule);
 size_t ca_ec_tau_wide_static_bytes(int schedule);
 size_t ca_ec_tau_wide_graph_recipe_bytes(int schedule);
+size_t ca_ec_tau_wide_implicit_temp_bytes(int schedule);
 size_t ca_ec_tau_wide_temp_bytes(int schedule);
 int ca_ec_tau_wide_mul_batch_profile(const ca_group *g, const ca_tau_wide_precomp *pre,
                                      ca_elem *out, const uint64_t *scalars, size_t count,

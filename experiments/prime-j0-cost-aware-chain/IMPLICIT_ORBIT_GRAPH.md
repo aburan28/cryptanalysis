@@ -36,3 +36,27 @@ paired binary's actual inclusion separately. Public research scalars only.
 
 Existing work on τ-adic digit sets and unit actions remains relevant prior
 art; this protocol does not assert academic novelty.
+
+## Frozen native panel
+
+Draft PR #295 contained this protocol and exhaustive screen before the native
+builder was evaluated. The eight-point paired panel verified all 32,768
+implicit-arm outputs against generic multiplication and found identical
+online operations and preparation curve additions/rotations to the static
+graph builder. The Python model matched every C recode, digit scan, integer
+τ step, index lookup, exact parent check, and descriptor byte count. A curve
+test independently compared all 307,287 prepared entries for generators on
+the two curves; its full run passed 1,030,895 checks.
+
+| Schedule | Curve prep additions | Curve prep rotations | Extra implicit preparation | Temporary descriptor | Static recipe lookup bytes used |
+| --- | ---: | ---: | --- | ---: | ---: |
+| `(10,10,10,10)` | 39,096 | 44,453 | 39,368 recodes; 291,168 integer τ steps; 39,096 parent lookups | 19,686 bytes | 0 |
+| `(12,12,12,8,8)` | 267,552 | 248,427 | 267,910 recodes; 2,382,300 integer τ steps; 267,552 parent lookups | 177,150 bytes | 0 |
+
+The reference arm uses 78,744 and 717,360 static recipe bytes. The paired
+benchmark executable contains those arrays even when running the implicit
+arm, so this panel does **not** measure a smaller standalone binary or lower
+resident memory. Its raw local setup times are exploratory and show no basis
+for calling this a speed improvement. Keep the implicit arm opt-in while an
+isolated host and standalone build are unavailable. Raw runs and hashes are
+in `implicit-orbit-graph-panel.json`.

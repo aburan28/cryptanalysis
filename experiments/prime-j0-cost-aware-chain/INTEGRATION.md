@@ -335,3 +335,17 @@ Setup rotations fall from 63,194 to 44,453 and from 409,586 to 248,427.
 The curve test matched all 307,287 prepared entries for generators on the
 two curves and passed 722,512 checks. The host isolation gate still controls
 any CPU wall-time claim.
+
+## Implicit orbit graph preparation
+
+The [implicit protocol](IMPLICIT_ORBIT_GRAPH.md) was frozen in draft PR #295
+before native evaluation. It derives each graph edge from the existing
+correction and residue index, then verifies the exact parent coefficient.
+Its [eight-point panel](implicit-orbit-graph-panel.json) matches all 32,768
+generic outputs and the static graph arm's curve and online counters. The
+temporary descriptor needs 19,686 or 177,150 bytes, while preparation adds
+39,368 or 267,910 recodes and 291,168 or 2,382,300 integer τ steps. The
+paired executable still carries the reference recipe arrays, so a binary
+memory improvement has not been demonstrated. The full curve test passed
+1,030,895 checks. Keep this arm opt-in pending controlled timing and a
+standalone build.
