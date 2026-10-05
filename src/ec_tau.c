@@ -16,6 +16,8 @@
 #include "generated/tau_tail_oracle.h"
 #include "generated/tau_tail_gate.h"
 #include "generated/tau_tail_double.h"
+#include "generated/tau_tail_double_fold.h"
+#include "generated/tau_tail_double_residue.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -435,11 +437,9 @@ static int tau_tail_step(ca_i128 *x, ca_i128 *y, unsigned phase, const ca_tau4_d
            *y <= CA_TAU_TAIL_BOUND;
 }
 
-static int tau_double_step(ca_i128 *x, ca_i128 *y, unsigned phase, const ca_tau4_digit table[81],
-                           uint8_t *even, uint8_t *odd)
+static int tau_double_apply(ca_i128 *x, ca_i128 *y, const ca_tau4_digit table[81],
+                            uint16_t action, uint8_t *even, uint8_t *odd)
 {
-    uint16_t action =
-        ca_tau_double_action[phase][(int)*x + CA_TAU_DOUBLE_BOUND][(int)*y + CA_TAU_DOUBLE_BOUND];
     if (action == UINT16_C(0xfefe)) return 0;
     *even = (uint8_t)(action >> 8);
     *odd = (uint8_t)action;
@@ -462,6 +462,84 @@ static int tau_double_step(ca_i128 *x, ca_i128 *y, unsigned phase, const ca_tau4
     *y = -(ax + by) / 3;
     return *x >= -CA_TAU_DOUBLE_BOUND && *x <= CA_TAU_DOUBLE_BOUND && *y >= -CA_TAU_DOUBLE_BOUND &&
            *y <= CA_TAU_DOUBLE_BOUND;
+}
+
+static int tau_double_step(ca_i128 *x, ca_i128 *y, unsigned phase, const ca_tau4_digit table[81],
+                           uint8_t *even, uint8_t *odd)
+{
+    uint16_t action =
+        ca_tau_double_action[phase][(int)*x + CA_TAU_DOUBLE_BOUND][(int)*y + CA_TAU_DOUBLE_BOUND];
+    return tau_double_apply(x, y, table, action, even, odd);
+}
+
+static size_t tau_double_fold_index(ca_i128 x, ca_i128 y, unsigned phase, int *negative)
+{
+    *negative = x < 0 || (x == 0 && y < 0);
+    if (*negative) {
+        x = -x;
+        y = -y;
+    }
+    size_t half = x == 0 ? (size_t)y
+                         : (size_t)(CA_TAU_DOUBLE_BOUND + 1 + (x - 1) * CA_TAU_DOUBLE_SIDE +
+                                    y + CA_TAU_DOUBLE_BOUND);
+    return phase * CA_TAU_DOUBLE_HALF + half;
+}
+
+static int tau_double_fold_step(ca_i128 *x, ca_i128 *y, unsigned phase,
+                                const ca_tau4_digit table[81], uint8_t *even, uint8_t *odd)
+{
+    int negative;
+    size_t pos = tau_double_fold_index(*x, *y, phase, &negative);
+    size_t bit = 10 * pos, byte = bit >> 3;
+    uint32_t word = (uint32_t)ca_tau_double_fold_code[byte] |
+                    (uint32_t)ca_tau_double_fold_code[byte + 1] << 8 |
+                    (uint32_t)ca_tau_double_fold_code[byte + 2] << 16;
+    unsigned code = (word >> (bit & 7)) & 1023u;
+    if (code >= CA_TAU_DOUBLE_FOLD_DICT_WIDTH) return 0;
+    uint16_t action = ca_tau_double_fold_dictionary[phase][code];
+    if (negative && action != UINT16_C(0xfefe)) {
+        uint8_t e = (uint8_t)(action >> 8), o = (uint8_t)action;
+        if (e != 255) e = ca_tau_double_fold_negate[e];
+        if (o != 255) o = ca_tau_double_fold_negate[o];
+        action = ((uint16_t)e << 8) | o;
+    }
+    return tau_double_apply(x, y, table, action, even, odd);
+}
+
+size_t ca_ec_tau4_fold_static_bytes(void)
+{
+    return sizeof(ca_tau_double_fold_code) + sizeof(ca_tau_double_fold_gate) +
+           sizeof(ca_tau_double_fold_negate) + sizeof(ca_tau_double_fold_dictionary);
+}
+
+static int tau_double_residue_step(ca_i128 *x, ca_i128 *y, unsigned phase,
+                                   const ca_tau4_digit table[81], uint8_t *even, uint8_t *odd)
+{
+    int negative;
+    size_t pos = tau_double_fold_index(*x, *y, phase, &negative);
+    ca_i128 ra = negative ? -*x : *x;
+    ca_i128 rb = negative ? -*y : *y;
+    int bmod = (int)(rb % 3);
+    if (bmod < 0) bmod += 3;
+    unsigned residue = (unsigned)(ra % 3) * 3 + (unsigned)bmod;
+    unsigned code = ca_tau_double_residue_code[pos];
+    if (code >= ca_tau_double_residue_length[phase][residue]) return 0;
+    uint16_t action = ca_tau_double_residue_dictionary[
+        ca_tau_double_residue_offset[phase][residue] + code];
+    if (negative && action != UINT16_C(0xfefe)) {
+        uint8_t e = (uint8_t)(action >> 8), o = (uint8_t)action;
+        if (e != 255) e = ca_tau_double_residue_negate[e];
+        if (o != 255) o = ca_tau_double_residue_negate[o];
+        action = ((uint16_t)e << 8) | o;
+    }
+    return tau_double_apply(x, y, table, action, even, odd);
+}
+
+size_t ca_ec_tau4_residue_static_bytes(void)
+{
+    return sizeof(ca_tau_double_residue_code) + sizeof(ca_tau_double_residue_gate) +
+           sizeof(ca_tau_double_residue_negate) + sizeof(ca_tau_double_residue_offset) +
+           sizeof(ca_tau_double_residue_length) + sizeof(ca_tau_double_residue_dictionary);
 }
 
 /* A small offline shortest-path oracle changes only the low-coefficient tail.
@@ -549,14 +627,28 @@ static size_t gen_tau4_digits_tail_gated_impl(ca_i128 x, ca_i128 y, const ca_tau
         size_t pos =
             ((nd / 2) % 3 * CA_TAU_TAIL_SIDE + (size_t)(x + CA_TAU_TAIL_BOUND)) * CA_TAU_TAIL_SIDE +
             (size_t)(y + CA_TAU_TAIL_BOUND);
-        uint8_t gate = double_policy ? ca_tau_double_gate[pos >> 3] : ca_tau_tail_gate[pos >> 3];
-        if (gate & (uint8_t)(1u << (pos & 7))) {
+        int selected;
+        if (double_policy >= 2) {
+            int negative;
+            size_t folded = tau_double_fold_index(x, y, (unsigned)((nd / 2) % 3), &negative);
+            uint8_t gate = double_policy == 3 ? ca_tau_double_residue_gate[folded >> 3]
+                                               : ca_tau_double_fold_gate[folded >> 3];
+            selected = (gate >> (folded & 7)) & 1;
+        } else {
+            uint8_t gate = double_policy ? ca_tau_double_gate[pos >> 3] : ca_tau_tail_gate[pos >> 3];
+            selected = (gate >> (pos & 7)) & 1;
+        }
+        if (selected) {
             while (x || y) {
                 if (nd > 253) goto canonical_fallback;
                 uint8_t even, odd;
                 unsigned phase = (unsigned)((nd / 2) % 3);
-                int good = double_policy ? tau_double_step(&x, &y, phase, table, &even, &odd)
-                                         : tau_tail_step(&x, &y, phase, table, &even, &odd);
+                int good = double_policy == 3
+                               ? tau_double_residue_step(&x, &y, phase, table, &even, &odd)
+                           : double_policy == 2
+                               ? tau_double_fold_step(&x, &y, phase, table, &even, &odd)
+                           : double_policy ? tau_double_step(&x, &y, phase, table, &even, &odd)
+                                           : tau_tail_step(&x, &y, phase, table, &even, &odd);
                 if (!good) goto canonical_fallback;
                 digits[nd++] = even;
                 digits[nd++] = odd;
@@ -587,6 +679,18 @@ static size_t gen_tau4_digits_double_gated(ca_i128 x, ca_i128 y, const ca_tau4_d
     return gen_tau4_digits_tail_gated_impl(x, y, table, digits, 1);
 }
 
+static size_t gen_tau4_digits_double_fold(ca_i128 x, ca_i128 y, const ca_tau4_digit table[81],
+                                          uint8_t digits[256])
+{
+    return gen_tau4_digits_tail_gated_impl(x, y, table, digits, 2);
+}
+
+static size_t gen_tau4_digits_double_residue(ca_i128 x, ca_i128 y,
+                                             const ca_tau4_digit table[81], uint8_t digits[256])
+{
+    return gen_tau4_digits_tail_gated_impl(x, y, table, digits, 3);
+}
+
 int ca_ec_tau4_tail_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k)
 {
     if (!pre || !pre->g) return 0;
@@ -610,6 +714,62 @@ int ca_ec_tau4_double_recode_verify_scalar(const ca_tau4_precomp *pre, uint64_t 
     size_t new_nd = gen_tau4_digits_double_gated(x, y, pre->digit, candidate);
     if ((!old_nd || !new_nd) && (x || y)) return 0;
     if (tau4_weighted_cost(candidate, new_nd, pre->digit) >
+        tau4_weighted_cost(prior, old_nd, pre->digit))
+        return 0;
+    ca_i128 a = 0, b = 0;
+    for (size_t i = new_nd; i-- > 0;) {
+        ca_i128 next_a = -3 * b, next_b = a + 3 * b;
+        if (candidate[i] != 255) {
+            ca_tau4_digit digit = pre->digit[candidate[i]];
+            if (digit.seed < 0) return 0;
+            next_a += digit.a;
+            next_b += digit.b;
+        }
+        a = next_a;
+        b = next_b;
+    }
+    return a == x && b == y;
+}
+
+int ca_ec_tau4_fold_recode_verify_scalar(const ca_tau4_precomp *pre, uint64_t k)
+{
+    if (!pre || !pre->g) return 0;
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
+                        k % pre->g->order, &x, &y);
+    uint8_t prior[256], candidate[256];
+    size_t old_nd = gen_tau4_digits_double_gated(x, y, pre->digit, prior);
+    size_t new_nd = gen_tau4_digits_double_fold(x, y, pre->digit, candidate);
+    if ((!old_nd || !new_nd) && (x || y)) return 0;
+    if (tau4_weighted_cost(candidate, new_nd, pre->digit) !=
+        tau4_weighted_cost(prior, old_nd, pre->digit))
+        return 0;
+    ca_i128 a = 0, b = 0;
+    for (size_t i = new_nd; i-- > 0;) {
+        ca_i128 next_a = -3 * b, next_b = a + 3 * b;
+        if (candidate[i] != 255) {
+            ca_tau4_digit digit = pre->digit[candidate[i]];
+            if (digit.seed < 0) return 0;
+            next_a += digit.a;
+            next_b += digit.b;
+        }
+        a = next_a;
+        b = next_b;
+    }
+    return a == x && b == y;
+}
+
+int ca_ec_tau4_residue_recode_verify_scalar(const ca_tau4_precomp *pre, uint64_t k)
+{
+    if (!pre || !pre->g) return 0;
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
+                        k % pre->g->order, &x, &y);
+    uint8_t prior[256], candidate[256];
+    size_t old_nd = gen_tau4_digits_double_fold(x, y, pre->digit, prior);
+    size_t new_nd = gen_tau4_digits_double_residue(x, y, pre->digit, candidate);
+    if ((!old_nd || !new_nd) && (x || y)) return 0;
+    if (tau4_weighted_cost(candidate, new_nd, pre->digit) !=
         tau4_weighted_cost(prior, old_nd, pre->digit))
         return 0;
     ca_i128 a = 0, b = 0;
@@ -803,7 +963,9 @@ static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
         ca_i128 x, y;
         reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
                             k, &x, &y);
-        nd = recoder == 5   ? gen_tau4_digits_double_gated(x, y, pre->digit, digits)
+        nd = recoder == 7   ? gen_tau4_digits_double_residue(x, y, pre->digit, digits)
+             : recoder == 6 ? gen_tau4_digits_double_fold(x, y, pre->digit, digits)
+             : recoder == 5 ? gen_tau4_digits_double_gated(x, y, pre->digit, digits)
              : recoder == 4 ? gen_tau4_digits_tail_gated(x, y, pre->digit, digits)
              : recoder == 3 ? gen_tau4_digits_tail(x, y, pre->digit, digits)
              : recoder == 2 ? gen_tau4_digits_atlas(x, y, pre->digit, digits)
@@ -823,7 +985,7 @@ static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
         int slot = has_odd ? digits[odd] : digits[even];
         if (slot == 255) continue;
         if (has_odd && digits[even] != 255) {
-            if (recoder != 5) return 0;
+            if (recoder != 5 && recoder != 6 && recoder != 7) return 0;
             ca_tau4_digit first = pre->digit[digits[even]];
             ca_elem first_seed = pre->seed[first.seed];
             if (!first_seed.w[2]) {
@@ -876,7 +1038,7 @@ int ca_ec_tau4_mul_prepared_profile(const ca_group *g, const ca_tau4_precomp *pr
                                     uint64_t k, int recoder, uint64_t *triples, uint64_t *adds,
                                     uint64_t *rotations)
 {
-    if (recoder < 0 || recoder > 5) return 0;
+    if (recoder < 0 || recoder > 7) return 0;
     return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, rotations, recoder);
 }
 

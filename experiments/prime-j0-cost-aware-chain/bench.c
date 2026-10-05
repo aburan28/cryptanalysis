@@ -92,7 +92,9 @@ static int select_mode(const char *name)
                                   "tapered-residue-wavefront-batch128",
                                   "tail-oracle",
                                   "tail-oracle-gated",
-                                  "tail-double"};
+                                  "tail-double",
+                                  "tail-double-fold",
+                                  "tail-double-residue"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -113,7 +115,7 @@ int main(int argc, char **argv)
                 "fused-hot-steer-batch128|fused-hot-steer-gated2-batch128|"
                 "tapered-residue-orbit-batch128|tapered-residue-graph-batch128|"
                 "tapered-residue-packed-batch128|tapered-residue-wavefront-batch128|"
-                "tail-oracle|tail-oracle-gated|tail-double "
+                "tail-oracle|tail-oracle-gated|tail-double|tail-double-fold|tail-double-residue "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -257,7 +259,9 @@ int main(int argc, char **argv)
     }
     uint64_t triples = 0, adds = 0, rotations = 0, output_inversions = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
-    size_t static_map_bytes = mode == 25              ? 2 * 3 * 129 * 129 + (3 * 129 * 129 + 7) / 8
+    size_t static_map_bytes = mode == 27              ? ca_ec_tau4_residue_static_bytes()
+                              : mode == 26            ? ca_ec_tau4_fold_static_bytes()
+                              : mode == 25            ? 2 * 3 * 129 * 129 + (3 * 129 * 129 + 7) / 8
                               : mode == 24            ? 3 * 129 * 129 + (3 * 129 * 129 + 7) / 8
                               : mode == 23            ? 3 * 129 * 129
                               : tapered               ? ca_ec_tau_wide_static_bytes(wide_schedule)
@@ -311,7 +315,9 @@ int main(int argc, char **argv)
             } else {
                 uint64_t t = 0, a = 0, r = 0;
                 if (!ca_ec_tau4_mul_prepared_profile(&group, &pre, &outputs[i], scalars[i],
-                                                     mode == 25   ? 5
+                                                     mode == 27   ? 7
+                                                     : mode == 26 ? 6
+                                                     : mode == 25 ? 5
                                                      : mode == 24 ? 4
                                                      : mode == 23 ? 3
                                                      : mode == 11 ? 2
@@ -351,6 +357,18 @@ int main(int argc, char **argv)
                 return 1;
             }
             tail_double_checks += mode == 25;
+            if (mode == 26 && !ca_ec_tau4_fold_recode_verify_scalar(&pre, scalars[i])) {
+                fprintf(stderr, "folded double-pair digit reconstruction mismatch at index %zu\n", i);
+                free(outputs);
+                return 1;
+            }
+            tail_double_checks += mode == 26;
+            if (mode == 27 && !ca_ec_tau4_residue_recode_verify_scalar(&pre, scalars[i])) {
+                fprintf(stderr, "residue-local double-pair reconstruction mismatch at index %zu\n", i);
+                free(outputs);
+                return 1;
+            }
+            tail_double_checks += mode == 27;
             ca_elem expected;
             ca_group_mul(&group, &expected, &point, scalars[i], NULL);
             if (!ca_group_equal(&group, &outputs[i], &expected)) {

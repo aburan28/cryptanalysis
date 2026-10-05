@@ -35,12 +35,17 @@ int ca_ec_tau4_mul_prepared_cost(const ca_group *g, const ca_tau4_precomp *pre, 
                                  uint64_t k, uint64_t *triples, uint64_t *adds);
 /* Public-scalar research modes: 0 canonical, 1 cost-aware representative,
  * 2 residue atlas, 3 bounded tail oracle, 4 pre-gated tail oracle,
- * 5 two-digit-pair shortest-path tail. */
+ * 5 two-digit-pair shortest-path tail, 6 sign-folded 10-bit policy,
+ * 7 sign-folded residue-local byte policy. */
 int ca_ec_tau4_mul_prepared_profile(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
                                     uint64_t k, int recoder, uint64_t *triples, uint64_t *adds,
                                     uint64_t *rotations);
 int ca_ec_tau4_tail_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k);
 int ca_ec_tau4_double_recode_verify_scalar(const ca_tau4_precomp *pre, uint64_t k);
+int ca_ec_tau4_fold_recode_verify_scalar(const ca_tau4_precomp *pre, uint64_t k);
+size_t ca_ec_tau4_fold_static_bytes(void);
+int ca_ec_tau4_residue_recode_verify_scalar(const ca_tau4_precomp *pre, uint64_t k);
+size_t ca_ec_tau4_residue_static_bytes(void);
 /* Private exhaustive/differential test hook for signed tau coordinates. */
 int ca_ec_tau4_recode_compare(int64_t x, int64_t y);
 int ca_ec_tau4_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k);
