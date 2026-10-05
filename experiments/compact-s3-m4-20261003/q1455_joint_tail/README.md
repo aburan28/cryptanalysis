@@ -33,16 +33,28 @@ by 256, and checks that the previously verified witness remains recoverable.
 These are correctness controls, not ordinary-query performance, natural
 relation yield, or a complete N131 work estimate.
 
-After this gate, the next implementation step is a native incremental
-propagator that applies the join to actual target-dependent SAT trails while
-both pair intermediates remain unfixed. It must record eligible states,
-skips, rejections, output-set sizes, field operations, wall time, memory, and
-independently replayed ordinary relations on frozen N53/N83 workloads. The
-N131 challenge remains closed until the full work ledger is measured.
+The [native stage protocol](native_protocol.json) freezes a CaDiCaL external
+propagator built on the archived compact-`S3` CNF. It decides the target
+selector first, then interleaves leaf bits across both pairs. When all four
+leaves remain partial and neither intermediate is fully fixed, it applies
+the exact bounded join. A `no_chain` result emits a clause guarded by every
+currently fixed leaf bit and the selected target. The stage records eligible
+states, cap skips, rejections, output-set sizes, field calls, wall time,
+memory, and sampled guards for independent replay. Its two partial-witness
+controls were checked before freezing: both return group-verified relations,
+and the Python join independently confirms sampled native rejections and
+hits. The frozen run order adds an unpinned known-satisfiable N53 slice and
+full ordinary N53/N83 public-target cells.
+
+The N131 challenge remains closed until ordinary N53/N83 costs, natural
+yield, useful rank, and the remaining IC phases support a complete work
+estimate.
 
 Use the accepted Sage launcher for all Sage work:
 
 ```sh
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1455_joint_tail/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1455_joint_tail/run_controls.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1455_joint_tail/build_native.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1455_joint_tail/freeze_native_protocol.py --check
 ```
