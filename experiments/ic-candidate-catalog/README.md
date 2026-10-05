@@ -42,7 +42,7 @@ have `candidate_id: null` and do not issue an `IC1` result.
 | `n131_onb_hw2_m4` | N131 | Normal-basis Hamming weight ≤2, m=4 | Construction code exists; exact base count for this proposal is unresolved. |
 | `n131_onb_hw3_m5` | N131 | Normal-basis Hamming weight ≤3, m=5 | Construction code exists; exact base count for this proposal is unresolved. |
 | `n131_poly_d28_m5` | N131 | Polynomial subspace d=28, m=5 | Illustrative large-base budget in PDP scaling; full-width factor base and end-to-end costs unmeasured. |
-| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | Same status; the bounded materialization ledger admitted no degree-131 candidate. |
+| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | One exact trace-zero W24 policy has 16,786,464 source or 16,772,828 first-descendant usable points, but no natural m6 PDP yield or complete IC run. Other d24 bases remain unresolved. |
 | `n131_iso2_d28_m5` | N131 | Proposed degree-2 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 | `n131_iso3_d28_m5` | N131 | Proposed degree-3 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 
@@ -68,6 +68,15 @@ the collision-free multiset bound requires 60,591,280 points for m5 or
 measured relation yields. The gate leaves both proposals unactivated and
 identifies actual `B`, orbit columns and held-out natural PDP/rank cost as
 the next measurements.
+
+The [exact paired W24 census](../ecc2k130-263-w24-exact-base-20261005/RESULT.md)
+now supplies actual `B` and sign-folded columns for one explicit trace-zero
+base on both source and first degree-263 descendant. Both pass the W24/m6
+1% *necessary* size gate; neither has a measured ordinary-query yield or
+rank. The same exact counts tighten the W24/m5 one-shot support upper bound
+to about `1.63e-5`, below the 1% objective. The records remain proposals
+with `candidate_id: null` until the missing stages and exact manifest are
+resolved.
 
 ## Code reviewed for the design axes
 
