@@ -68,10 +68,12 @@ scalars separately for independent replay, and do not pass them to a PDP
 solver. Target zero is the sole primary one-target input. The other 511
 public points are dormant reproducibility controls; do not run or report a
 batch IC workload before the primary single-target study is complete.
-Hash the
-sorted-key compact UTF-8 workload record excluding `workload_id` to form
-its 12-hex workload ID under `AGENTS.md`. Freeze the target count and
-sequence before measuring any PDP.
+Publish a separate `primary_workload.json` containing exactly target zero
+and `target_count=1`. Hash its sorted-key compact UTF-8 record excluding
+`workload_id` to form the primary 12-hex workload ID under `AGENTS.md`.
+The 512-point control corpus has a separate identity and must never be used
+as the one-target comparison ID. Freeze both sequences before measuring
+any PDP.
 
 An independent verifier must regenerate both mask-set digests directly
 from the pinned gzip streams, reconstruct the maps from the saved kernel
