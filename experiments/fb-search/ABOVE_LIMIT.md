@@ -240,6 +240,40 @@ ratio grows from 25x to 30x.
 
 **Verdict:** rejected. It shows no sub-`2^d` behaviour against a fair baseline.
 
+## 4e. What the best exact oracle gives online, against rho (n = 41, exploratory)
+
+`online_above.py` combines, for geomtraceu seed 1:
+
+- the predicted `p_dec` (psi-class formula), giving the number of attempts;
+- the per-attempt cost of the fastest exact oracle here: projection plus `htenum.c` over the
+  residual space;
+- an **assumed** 2 us for the per-target linear solve and the walk step. That part is not
+  measured; the Python version of the linear solve is slower.
+
+It compares the result with plain rho measured on this host (`bench.rho_one_target`, two verified
+solves; the expected cost is `sqrt(pi r / 2)` times the measured time per step) and with the
+Bernstein-Lange online estimate `1.77 r^(1/3)` times the same time per step. These are wall times
+on an unisolated host, so they are exploratory (AGENTS.md CPU isolation gate). Data:
+`results/online-above-n41.jsonl`.
+
+| l | relative to the limit (n + 2)/3 = 14.3 | d | attempts | per attempt | one-target online (estimate) | vs expected plain rho (3.3 s) | vs Bernstein-Lange (52 ms) |
+|---|---|---|---|---|---|---|---|
+| 13 | below | 0 | 3.3e4 | 2 us | 66 ms | 50x faster | 1.3x slower |
+| 15 | at | 3 | 2.1e3 | 75 us | 153 ms | 22x faster | 3.0x slower |
+| 16 | +1.7 | 6 | 508 | 170 us | 86 ms | 38x faster | 1.7x slower |
+| 17 | +2.7 | 9 | 128 | 0.90 ms | 116 ms | 28x faster | 2.3x slower |
+| 18 | +3.7 | 12 | 33 | 6.9 ms | 225 ms | 15x faster | 4.4x slower |
+| 19 | +4.7 | 15 | 8.5 | 55 ms | 471 ms | 7x faster | 9x slower |
+| 20 | +5.7 | 18 | 2.5 | 439 ms | 1.12 s | 3x faster | 22x slower |
+
+(At l = 14, with d = 1, the per-attempt fixed cost of the enumerator call dominates: 302 ms.)
+
+As Sec. 2 predicts, the online cost has its minimum near the limit. Past it, the cost roughly
+doubles per added dimension, because each step adds 8x to the residual search and cuts the
+attempts only 4x. **Nowhere is the Bernstein-Lange reference beaten.** The plain-rho margin
+shrinks from about 50x to 3x as l rises above the limit. It is the precomputation that buys that
+margin, and precomputation is equally available to generic rho.
+
 ## 5. Open leads (not yet novelty-checked)
 
 1. **Explain the degree-3 refutations.** Find which degree-3 multiples yield the refutation, and
