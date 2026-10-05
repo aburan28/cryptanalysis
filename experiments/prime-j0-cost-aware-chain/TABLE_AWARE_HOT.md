@@ -62,3 +62,33 @@ predicted 5.25%, 5.60%, 6.30%, and 6.78% fewer mixed additions for the four
 subgroup/eigenvalue laws. The two-candidate rule roughly doubled atlas
 recoding steps; that online overhead could erase the point-operation saving.
 The exact row counts and source hashes are in `table-aware-screen.json`.
+
+## Executed frozen panel
+
+The protocol was committed as `cbbae51b` and opened in draft PR #275 before
+`make_adapt_inputs.py` generated the candidate-evaluation files. The
+implementation uses the same point table as the ordinary hot arm and retains
+the chosen atlas stream without a third recode. All 16,384 candidate results
+matched independent generic multiplication. A separate Python implementation
+of the frozen selector predicted **exactly** the executed addition counts in
+all four cases.
+
+| Case | Ordinary hot adds | Two-representative adds | Saved additions | Saving | Second chosen | Identical prep bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 32-bit subgroup, generator | 9,144 | 8,631 | 513 | 5.61% | 499 | 300,144 |
+| 32-bit subgroup, `37P` | 9,236 | 8,681 | 555 | 6.01% | 538 | 300,144 |
+| 56-bit subgroup, generator | 23,544 | 21,943 | 1,601 | 6.80% | 1,195 | 431,216 |
+| 56-bit subgroup, `37P` | 23,560 | 21,955 | 1,605 | 6.81% | 1,171 | 431,216 |
+
+The preregistered 3% addition gate passes in every case. Setup additions
+remain 8,192 or 12,288 per point, respectively, and the table bytes are
+identical between arms. `fallbacks` counts cold eight-digit blocks plus any
+out-of-span scalar fallback, so it is not a count of failed scalar outputs.
+`adapt2-panel.json` preserves raw stdout, source and input hashes, all
+operation counts, failures, and selector-prediction checks.
+
+The local host is contended. Its raw wall intervals are exploratory and
+cannot establish that this candidate is faster. The extra recoding is
+charged inside the online interval and may outweigh the saved additions.
+A physical isolated-host AB/BA comparison remains necessary before any
+wall-time or rho impact claim.

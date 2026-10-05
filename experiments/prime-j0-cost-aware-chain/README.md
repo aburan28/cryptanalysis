@@ -131,3 +131,9 @@ The one-inversion table builder and its separate preparation metric are in
 [GLOBAL_BATCH.md](GLOBAL_BATCH.md).
 The block-normalized output format for public scalar batches is in
 [BATCH_OUTPUT.md](BATCH_OUTPUT.md).
+
+The optional [table-aware hot-orbit format](TABLE_AWARE_HOT.md) compares the
+two shortest equivalent Eisenstein representatives against the same bounded
+point table. Its fresh 16,384-output panel verifies exactly and saves
+5.61%–6.81% of mixed additions, while charging an extra online recode;
+isolated CPU speed remains unmeasured.

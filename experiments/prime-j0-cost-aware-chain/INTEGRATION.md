@@ -225,3 +225,25 @@ retains the paired raw results. All 16,384 candidate outputs verify, and the
 hot table retains 70.75–88.66% of the full folded table's saved online
 additions while reducing its setup pair additions by about 58%. These are
 operation results; local CPU times remain exploratory until an isolated run.
+
+## Table-aware representative selection
+
+The [two-representative protocol](TABLE_AWARE_HOT.md) in PR #275 freezes
+the choice of the two shortest lattice representatives and selects the one
+with fewer predicted hot-table additions. It reuses exactly the same
+2,048-entry-per-block table as `fused-hot-batch128`. The second atlas recode
+is charged inside the online timer.
+
+The new [adapt2-inputs.json](adapt2-inputs.json) freezes four independent
+4,096-scalar workloads created after the protocol PR opened.
+[check_adapt_panel.py](check_adapt_panel.py) verifies every output against
+generic multiplication and independently reimplements the selector in Python.
+All 16,384 outputs and all four C addition totals agree. The new arm saves
+5.61%–6.81% of online mixed additions over the ordinary hot arm with
+identical table bytes and setup operations; [adapt2-panel.json](adapt2-panel.json)
+retains the raw evidence and failures. The predeclared 3% addition gate
+passes. The updated `test_curve` passed 407,658 checks, and all 14 locally
+runnable CTest cases passed; `coord` requires a localhost bind denied in
+this sandbox. No wall-time speedup is claimed on this contended host.
+`make_isolated_manifest.py --candidate-arm fused-hot-adapt2-batch128`
+pairs the two arms on identical scalar files for an isolated host.

@@ -81,7 +81,8 @@ static int select_mode(const char *name)
                                   "atlas",
                                   "fused-batch128",
                                   "fused-orbit-batch128",
-                                  "fused-hot-batch128"};
+                                  "fused-hot-batch128",
+                                  "fused-hot-adapt2-batch128"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -95,7 +96,8 @@ int main(int argc, char **argv)
                 "usage: %s "
                 "reference|baseline|cost|pos|pos-global|pos-prep|pos-global-prep|"
                 "pos-batch32|pos-batch128|pos-batch512|pos-batch4096|atlas|"
-                "fused-batch128|fused-orbit-batch128|fused-hot-batch128 "
+                "fused-batch128|fused-orbit-batch128|fused-hot-batch128|"
+                "fused-hot-adapt2-batch128 "
                 "glv-j0-32|j0-56 0|1 INPUT\n",
                 argv[0]);
         return 2;
@@ -104,9 +106,10 @@ int main(int argc, char **argv)
     if (!select_curve(argv[2], &p, &b, &order)) return 2;
     int global_builder = mode == 4 || mode == 6 || (mode >= 7 && mode <= 10);
     int positional = mode >= 3 && mode <= 10;
-    int fused = mode >= 12 && mode <= 14;
+    int fused = mode >= 12 && mode <= 15;
     int orbit = mode == 13;
-    int hot = mode == 14;
+    int hot = mode == 14 || mode == 15;
+    int adapt2 = mode == 15;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
     size_t block_size = mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
     uint64_t scalars[SCALARS], input_digest;
@@ -151,16 +154,19 @@ int main(int argc, char **argv)
     if (mode != 0) {
         double t0 = ca_now();
         if (fused) {
-            int prepared = hot ? ca_ec_tau8_hot_prepare(&group, &point, fused_blocks, &fused_pre,
+            int prepared =
+                adapt2  ? ca_ec_tau8_hot_adapt2_prepare(&group, &point, fused_blocks, &fused_pre,
                                                         &prep_triples, &prep_adds, &prep_rotations,
                                                         &prep_layer_inversions)
-                           : orbit
-                               ? ca_ec_tau8_orbit_prepare(&group, &point, fused_blocks, &fused_pre,
-                                                          &prep_triples, &prep_adds,
-                                                          &prep_rotations, &prep_layer_inversions)
-                               : ca_ec_tau8_fused_prepare(&group, &point, fused_blocks, &fused_pre,
-                                                          &prep_triples, &prep_adds,
-                                                          &prep_rotations, &prep_layer_inversions);
+                : hot   ? ca_ec_tau8_hot_prepare(&group, &point, fused_blocks, &fused_pre,
+                                                 &prep_triples, &prep_adds, &prep_rotations,
+                                                 &prep_layer_inversions)
+                : orbit ? ca_ec_tau8_orbit_prepare(&group, &point, fused_blocks, &fused_pre,
+                                                   &prep_triples, &prep_adds, &prep_rotations,
+                                                   &prep_layer_inversions)
+                        : ca_ec_tau8_fused_prepare(&group, &point, fused_blocks, &fused_pre,
+                                                   &prep_triples, &prep_adds, &prep_rotations,
+                                                   &prep_layer_inversions);
             if (!prepared) {
                 free(outputs);
                 return 2;
@@ -258,7 +264,7 @@ int main(int argc, char **argv)
     ca_ec_tau8_fused_clear(&fused_pre);
     free(outputs);
     printf("curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
-           " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
+           " endo_lambda=%" PRIu64 " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
            " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
            " prep_triples=%" PRIu64 " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64
            " prep_layer_inversions=%" PRIu64
@@ -266,9 +272,9 @@ int main(int argc, char **argv)
            " triples=%" PRIu64 " adds=%" PRIu64 " rotations=%" PRIu64 " output_inversions=%" PRIu64
            " fallbacks=%" PRIu64 " online_scratch_bytes=%zu"
            " verified=1\n",
-           argv[2], argv[3], SCALARS, point_words[0], point_words[1], input_digest, output_digest,
-           online_ms, prep_ms, verify_ms, prep_triples, prep_adds, prep_rotations,
-           prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats, triples, adds,
-           rotations, output_inversions, fallbacks, online_scratch_bytes);
+           argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda,
+           input_digest, output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_adds,
+           prep_rotations, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats,
+           triples, adds, rotations, output_inversions, fallbacks, online_scratch_bytes);
     return 0;
 }

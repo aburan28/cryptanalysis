@@ -11,10 +11,13 @@ def make(args):
     experiment = root / "experiments" / "prime-j0-cost-aware-chain"
     atlas = args.candidate_arm == "atlas"
     orbit = args.candidate_arm == "fused-orbit-batch128"
-    hot = args.candidate_arm == "fused-hot-batch128"
+    adapt2 = args.candidate_arm == "fused-hot-adapt2-batch128"
+    hot = args.candidate_arm == "fused-hot-batch128" or adapt2
     fused = args.candidate_arm in ("fused-batch128", "fused-orbit-batch128",
-                                   "fused-hot-batch128")
-    default_prefix = ("hot" if hot else "orbit" if orbit else "fused"
+                                   "fused-hot-batch128",
+                                   "fused-hot-adapt2-batch128")
+    default_prefix = ("adapt2" if adapt2 else "hot" if hot else
+                      "orbit" if orbit else "fused"
                       if fused else "atlas" if atlas else None)
     fixture_name = (f"{default_prefix}-inputs.json"
                     if default_prefix and args.fixture == "inputs.json"
@@ -69,6 +72,14 @@ def make(args):
                       experiment / "make_hot_inputs.py",
                       experiment / "check_hot_panel.py",
                       root / "src" / "generated" / "tau8_hot_map.h"]
+    if adapt2:
+        artifacts += [experiment / "README.md",
+                      experiment / "INTEGRATION.md",
+                      experiment / "TABLE_AWARE_HOT.md",
+                      experiment / "screen_table_aware.py",
+                      experiment / "table-aware-screen.json",
+                      experiment / "make_adapt_inputs.py",
+                      experiment / "check_adapt_panel.py"]
     artifacts += sorted((root / "src").glob("*.c"))
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
@@ -88,6 +99,7 @@ def make(args):
                           "input_digest": case["input_digest"]},
                       "expected_result": case["expected_output_digest"],
                       "reference": [base[0],
+                                    "fused-hot-batch128" if adapt2 else
                                     "fused-orbit-batch128" if hot else
                                     "fused-batch128" if orbit else
                                     "pos-batch128" if fused else
@@ -148,7 +160,8 @@ if __name__ == "__main__":
     parser.add_argument("--candidate-arm", "--arm", choices=(
         "cost", "pos", "pos-batch32", "pos-batch128",
         "pos-batch512", "pos-batch4096", "atlas", "fused-batch128",
-        "fused-orbit-batch128", "fused-hot-batch128"),
+        "fused-orbit-batch128", "fused-hot-batch128",
+        "fused-hot-adapt2-batch128"),
                         default="cost")
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)

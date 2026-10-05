@@ -323,6 +323,17 @@ static void tau_fused_named(const char *name, size_t blocks)
         CHECK(hot_adds >= folded_adds && hot_adds <= base_adds);
         CHECK(hot_fallbacks > 0);
         for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_tau8_fused_precomp adapt2 = {0};
+        uint64_t adapt2_prep_adds = 0, adapt2_adds = 0;
+        CHECK(ca_ec_tau8_hot_adapt2_prepare(&g, &point, blocks, &adapt2, NULL, &adapt2_prep_adds,
+                                            NULL, NULL));
+        CHECK_EQ_U64(adapt2_prep_adds, hot_prep_adds);
+        CHECK(adapt2.selector == 1 && adapt2.orbit == 2);
+        CHECK(ca_ec_tau8_fused_mul_batch(&g, &adapt2, outputs, scalars, 256, 128, &adapt2_adds,
+                                         NULL, NULL, NULL));
+        CHECK(adapt2_adds < hot_adds);
+        for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_ec_tau8_fused_clear(&adapt2);
         ca_ec_tau8_fused_clear(&hot);
         ca_ec_tau8_fused_clear(&folded);
         ca_ec_tau8_fused_clear(&fused);
@@ -343,6 +354,15 @@ static void tau_fused_named(const char *name, size_t blocks)
             CHECK(fallbacks > 0);
             for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
             ca_ec_tau8_fused_clear(&short_orbit);
+            ca_tau8_fused_precomp short_adapt2 = {0};
+            CHECK(ca_ec_tau8_hot_adapt2_prepare(&g, &point, 1, &short_adapt2, NULL, NULL, NULL,
+                                                NULL));
+            fallbacks = 0;
+            CHECK(ca_ec_tau8_fused_mul_batch(&g, &short_adapt2, outputs, scalars, 256, 128, NULL,
+                                             NULL, NULL, &fallbacks));
+            CHECK(fallbacks > 0);
+            for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+            ca_ec_tau8_fused_clear(&short_adapt2);
         }
     }
     ca_elem identity;
@@ -352,6 +372,11 @@ static void tau_fused_named(const char *name, size_t blocks)
     CHECK(empty.point == NULL);
     const uint64_t scalars[] = {0, 1, UINT64_MAX};
     ca_elem outputs[3];
+    CHECK(ca_ec_tau8_fused_mul_batch(&g, &empty, outputs, scalars, 3, 2, NULL, NULL, NULL, NULL));
+    for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
+    ca_ec_tau8_fused_clear(&empty);
+    CHECK(ca_ec_tau8_hot_adapt2_prepare(&g, &identity, blocks, &empty, NULL, NULL, NULL, NULL));
+    CHECK(empty.point == NULL && empty.selector == 1);
     CHECK(ca_ec_tau8_fused_mul_batch(&g, &empty, outputs, scalars, 3, 2, NULL, NULL, NULL, NULL));
     for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
     ca_ec_tau8_fused_clear(&empty);
@@ -380,6 +405,8 @@ static void tau_fused_small_order(void)
     CHECK(ca_ec_tau8_orbit_prepare(&g, &point, 2, &orbit, NULL, NULL, NULL, NULL));
     ca_tau8_fused_precomp hot = {0};
     CHECK(ca_ec_tau8_hot_prepare(&g, &point, 2, &hot, NULL, NULL, NULL, NULL));
+    ca_tau8_fused_precomp adapt2 = {0};
+    CHECK(ca_ec_tau8_hot_adapt2_prepare(&g, &point, 2, &adapt2, NULL, NULL, NULL, NULL));
     uint64_t beta = g.endo_c_mont;
     uint64_t beta2 = ca_mont_mul(&g.mont, beta, beta);
     uint64_t tau_lambda = (1 + g.endo_lambda) % g.order;
@@ -437,6 +464,12 @@ static void tau_fused_small_order(void)
         ca_group_mul(&g, &expected, &point, scalars[i] % 13, NULL);
         CHECK(ca_group_equal(&g, &outputs[i], &expected));
     }
+    CHECK(ca_ec_tau8_fused_mul_batch(&g, &adapt2, outputs, scalars, 27, 7, NULL, NULL, NULL, NULL));
+    for (size_t i = 0; i < 27; i++) {
+        ca_group_mul(&g, &expected, &point, scalars[i] % 13, NULL);
+        CHECK(ca_group_equal(&g, &outputs[i], &expected));
+    }
+    ca_ec_tau8_fused_clear(&adapt2);
     ca_ec_tau8_fused_clear(&hot);
     ca_ec_tau8_fused_clear(&orbit);
     ca_ec_tau8_fused_clear(&pre);
