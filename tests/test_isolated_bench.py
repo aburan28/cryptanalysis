@@ -63,6 +63,16 @@ class IsolatedBenchTests(unittest.TestCase):
                                    "reference": [str(binary)],
                                    "candidate": [str(binary)]}]}
             bench.require_manifest(manifest)
+            manifest["metric_field"] = "prep_ms"
+            with self.assertRaises(ValueError):
+                bench.require_manifest(manifest)
+            manifest["measurement_kind"] = "table_preparation"
+            bench.require_manifest(manifest)
+            manifest["metric_field"] = "../prep_ms"
+            with self.assertRaises(ValueError):
+                bench.require_manifest(manifest)
+            manifest.pop("metric_field")
+            manifest.pop("measurement_kind")
             manifest["cases"][0]["candidate"].append("7")
             with self.assertRaises(ValueError):
                 bench.require_manifest(manifest)
@@ -84,6 +94,9 @@ class IsolatedBenchTests(unittest.TestCase):
         fields = bench.output_fields("setup\ncurve=c online_ms=12.5 verified=1 target_x=9\ndone")
         self.assertEqual(fields["online_ms"], "12.5")
         self.assertEqual(fields["target_x"], "9")
+        prep = bench.output_fields("setup\ncurve=c prep_ms=4.5 verified=1\ndone",
+                                   "prep_ms")
+        self.assertEqual(prep["prep_ms"], "4.5")
 
     def test_provisioning_key_is_not_in_benchmark_environment(self):
         previous = os.environ.get("RUNPOD_API_KEY")
@@ -170,6 +183,20 @@ class IsolatedBenchTests(unittest.TestCase):
                         self.assertEqual(pair["status"], "invalid")
                         self.assertIn("target_x" if wrong == "target" else "expected_result",
                                       pair["issues"][0])
+                manifest["metric_field"] = "prep_ms"
+                manifest["measurement_kind"] = "table_preparation"
+                def fake_prep_run(argv, _manifest, _cpus, _nodes, _cgroup, _folder,
+                                  serial):
+                    reference = argv[-1] == "reference"
+                    return {"serial": serial, "status": "valid", "issues": [],
+                            "online_ms": None,
+                            "metric_ms": 3.0 if reference else 1.0,
+                            "fields": {"target_x": "1", "scalar": "7"}}
+                bench.one_run = fake_prep_run
+                summary = bench.execute(manifest, root / "preparation")
+                self.assertEqual(summary["paired_speedup"], 3.0)
+                self.assertEqual(summary["metric_field"], "prep_ms")
+                self.assertEqual(summary["measurement_kind"], "table_preparation")
             finally:
                 bench.preflight, bench.one_run = original_preflight, original_run
 
