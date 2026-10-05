@@ -407,6 +407,28 @@ static void tau_fused_named(const char *name, size_t blocks)
         CHECK_EQ_U64(graph_rotations, wide_rotations);
         CHECK_EQ_U64(graph_fallbacks, wide_fallbacks);
         for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_tau_wide_precomp packed_graph = {0};
+        uint64_t packed_prep_adds = 0, packed_adds = 0, packed_rotations = 0;
+        uint64_t packed_inversions = 0, packed_fallbacks = 0, packed_slot_lookups = 0;
+        CHECK(ca_ec_tau_wide_prepare_packed(&g, &point, wide_schedule, &packed_graph, NULL,
+                                            &packed_prep_adds, NULL, &packed_inversions,
+                                            &packed_slot_lookups));
+        CHECK_EQ_U64(packed_prep_adds, graph_prep_adds);
+        CHECK_EQ_U64(packed_inversions, graph_inversions);
+        CHECK_EQ_U64(packed_slot_lookups, wide_schedule ? 267910 : 39368);
+        CHECK_EQ_U64(ca_ec_tau_wide_packed_recipe_bytes(wide_schedule),
+                     wide_schedule ? 358734 : 39426);
+        if (point_index == 0)
+            for (size_t i = 0; i < ca_ec_tau_wide_entries(wide_schedule); i++)
+                CHECK(ca_group_equal(&g, &packed_graph.point[i], &graph.point[i]));
+        CHECK(ca_ec_tau_wide_mul_batch_profile(&g, &packed_graph, outputs, scalars, 256, 128,
+                                               &packed_adds, &packed_rotations, NULL,
+                                               &packed_fallbacks));
+        CHECK_EQ_U64(packed_adds, graph_adds);
+        CHECK_EQ_U64(packed_rotations, graph_rotations);
+        CHECK_EQ_U64(packed_fallbacks, graph_fallbacks);
+        for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_ec_tau_wide_clear(&packed_graph);
         ca_ec_tau_wide_clear(&graph);
         if (point_index == 0) {
             tapered.blocks = 1;
@@ -504,6 +526,15 @@ static void tau_fused_named(const char *name, size_t blocks)
         ca_tau_wide_precomp empty_wide = {0};
         CHECK(ca_ec_tau_wide_prepare(&g, &identity, schedule, &empty_wide, NULL, NULL, NULL, NULL));
         CHECK(empty_wide.point == NULL);
+        CHECK(ca_ec_tau_wide_mul_batch_profile(&g, &empty_wide, outputs, scalars, 3, 2, NULL, NULL,
+                                               NULL, NULL));
+        for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
+        ca_ec_tau_wide_clear(&empty_wide);
+        uint64_t packed_slot_lookups = 99;
+        CHECK(ca_ec_tau_wide_prepare_packed(&g, &identity, schedule, &empty_wide, NULL, NULL, NULL,
+                                            NULL, &packed_slot_lookups));
+        CHECK(empty_wide.point == NULL);
+        CHECK_EQ_U64(packed_slot_lookups, 0);
         CHECK(ca_ec_tau_wide_mul_batch_profile(&g, &empty_wide, outputs, scalars, 3, 2, NULL, NULL,
                                                NULL, NULL));
         for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));

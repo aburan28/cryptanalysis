@@ -335,3 +335,16 @@ Setup rotations fall from 63,194 to 44,453 and from 409,586 to 248,427.
 The curve test matched all 307,287 prepared entries for generators on the
 two curves and passed 722,512 checks. The host isolation gate still controls
 any CPU wall-time claim.
+
+## One-word orbit graph recipes
+
+The [packed protocol](PACKED_ORBIT_GRAPH.md) was frozen in draft PR #297
+before native evaluation. It maps all 99,513 exact predecessor recipes to
+one 32-bit word each plus a 54-byte digit-slot map. The
+[eight-point panel](packed-orbit-graph-panel.json) verifies 32,768 generic
+outputs, identical curve-preparation and online operations, 39,368 and
+267,910 candidate slot lookups, and recipe-byte totals of 39,426 and
+358,734. All 307,287 prepared point entries for generator cases match the
+stored graph builder; `test_curve` passed 1,030,887 checks. Both formats
+are present in the paired binary, and no isolated CPU timing or standalone
+binary-memory saving has been established.

@@ -32,3 +32,22 @@ lookup per nonzero orbit, and exact static recipe-byte accounting. Preserve
 raw failures. Measure timing only on a physical host that passes
 `docs/ISOLATED_BENCHMARKS.md`; local timing is exploratory. Do not claim
 academic novelty from bit packing. Public research scalars only.
+
+## Frozen native panel
+
+Draft PR #297 contained this protocol, header, and exhaustive round-trip
+report before native evaluation. On generator, `37P`, `101P`, and `103P` for
+both curves, all 32,768 packed-arm outputs matched independent generic
+digests and all online and curve-preparation counters matched the stored
+graph arm. The candidate performed exactly 39,368 and 267,910 compact
+digit-slot lookups during preparation. Its recipe arrays plus shared slot
+map occupy 39,426 and 358,734 bytes, compared with 78,744 and 717,360
+bytes for the structure recipes. Preparation heap and point-table bytes are
+unchanged. The native curve test matched all 307,287 prepared table entries
+for generators on both curves and passed 1,030,887 checks.
+
+The paired executable contains both recipe representations, so it does not
+demonstrate lower total binary or resident memory. Raw runs, hashes, and
+exploratory local times are in `packed-orbit-graph-panel.json`. No physical
+host has passed the isolation gate, so CPU speed and one-target rho impact
+remain unknown.
