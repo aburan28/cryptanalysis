@@ -1264,11 +1264,10 @@ canonical_fallback:
     return tau_pair_canonical_words(original_x, original_y, digit, words);
 }
 
-int ca_ec_tau_pair_fused_recode_verify_scalar(const ca_tau_pair_fused_precomp *pre, uint64_t k)
+static int tau_pair_recode_verify_base(const ca_tau4_precomp *base, uint64_t k)
 {
-    if (!pre || !pre->base.g) return 0;
+    if (!base || !base->g) return 0;
     ca_i128 x, y;
-    const ca_tau4_precomp *base = &pre->base;
     reduce_with_lattice((tau_vec){base->v1x, base->v1y}, (tau_vec){base->v2x, base->v2y}, base->det,
                         k % base->g->order, &x, &y);
     uint16_t words[128];
@@ -1294,6 +1293,11 @@ int ca_ec_tau_pair_fused_recode_verify_scalar(const ca_tau_pair_fused_precomp *p
     if (!old_nd && (x || y)) return 0;
     return 10 * triples + 16 * additions + rotations <=
            tau4_weighted_cost(old_digits, old_nd, base->digit);
+}
+
+int ca_ec_tau_pair_fused_recode_verify_scalar(const ca_tau_pair_fused_precomp *pre, uint64_t k)
+{
+    return pre && tau_pair_recode_verify_base(&pre->base, k);
 }
 
 int ca_ec_tau_pair_fused_mul_profile(const ca_group *g, const ca_tau_pair_fused_precomp *pre,
@@ -1343,6 +1347,126 @@ int ca_ec_tau_pair_fused_mul_profile(const ca_group *g, const ca_tau_pair_fused_
     if (triples) *triples = n3;
     if (adds) *adds = na;
     if (rotations) *rotations = nr;
+    return 1;
+}
+
+int ca_ec_tau_pair_complete_prepare(const ca_group *g, const ca_elem *point,
+                                    ca_tau_pair_complete_precomp *out, uint64_t *seed_ops,
+                                    uint64_t *pair_adds, uint64_t *pair_rotations,
+                                    uint64_t *inversions)
+{
+    if (!g || !point || !out) return 0;
+    _Static_assert(CA_TAU_PAIR_COMPLETE_COUNT == 726, "exact pair count changed");
+    ca_tau_pair_fused_precomp folded;
+    uint64_t base_ops = 0, additions = 0, rotations = 0, base_inversions = 0;
+    if (!ca_ec_tau_pair_fused_prepare(g, point, &folded, &base_ops, &additions, &rotations,
+                                      &base_inversions))
+        return 0;
+    ca_tau_pair_complete_precomp pre = {0};
+    pre.base = folded.base;
+    for (size_t i = 0; i < CA_TAU_PAIR_FUSED_REPS; i++) {
+        ca_elem original = folded.orbit[i];
+        pre.exact[6 * i] = original;
+        ca_elem first = original, second = original;
+        if (!original.w[2]) {
+            first.w[0] = fm(g, folded.base.beta, original.w[0]);
+            second.w[0] = fm(g, folded.base.beta2, original.w[0]);
+            rotations += 2;
+        }
+        pre.exact[6 * i + 1] = first;
+        pre.exact[6 * i + 2] = second;
+        for (size_t power = 0; power < 3; power++) {
+            ca_elem negative = pre.exact[6 * i + power];
+            if (!negative.w[2] && negative.w[1]) negative.w[1] = g->p - negative.w[1];
+            pre.exact[6 * i + 3 + power] = negative;
+        }
+    }
+    *out = pre;
+    if (seed_ops) *seed_ops = base_ops;
+    if (pair_adds) *pair_adds = additions;
+    if (pair_rotations) *pair_rotations = rotations;
+    if (inversions) *inversions = base_inversions;
+    return 1;
+}
+
+size_t ca_ec_tau_pair_complete_static_bytes(void) { return ca_ec_tau_pair_fused_static_bytes(); }
+
+int ca_ec_tau_pair_complete_prepare_verify(const ca_tau_pair_complete_precomp *pre)
+{
+    if (!pre || !pre->base.g) return 0;
+    const ca_group *g = pre->base.g;
+    if (pre->base.identity) {
+        for (size_t i = 0; i < CA_TAU_PAIR_COMPLETE_COUNT; i++)
+            if (!ca_group_is_identity(g, &pre->exact[i])) return 0;
+        return 1;
+    }
+    ca_i128 lambda_tau = (ca_i128)1 + g->endo_lambda;
+    for (size_t i = 0; i < CA_TAU_PAIR_FUSED_REPS; i++) {
+        ca_i128 a = ca_tau_pair_fused_rep_a[i], b = ca_tau_pair_fused_rep_b[i];
+        for (size_t power = 0; power < 3; power++) {
+            ca_i128 scalar = (a + b * lambda_tau) % g->order;
+            if (scalar < 0) scalar += g->order;
+            for (size_t negative = 0; negative < 2; negative++) {
+                ca_i128 signed_scalar = negative && scalar ? g->order - scalar : scalar;
+                ca_elem expected;
+                ca_group_mul(g, &expected, &pre->base.seed[0], (uint64_t)signed_scalar, NULL);
+                if (!ca_group_equal(g, &expected, &pre->exact[6 * i + 3 * negative + power]))
+                    return 0;
+            }
+            ca_i128 next_a = a + 3 * b, next_b = -a - 2 * b;
+            a = next_a;
+            b = next_b;
+        }
+    }
+    return 1;
+}
+
+int ca_ec_tau_pair_complete_recode_verify_scalar(const ca_tau_pair_complete_precomp *pre,
+                                                 uint64_t k)
+{
+    return pre && tau_pair_recode_verify_base(&pre->base, k);
+}
+
+int ca_ec_tau_pair_complete_mul_profile(const ca_group *g, const ca_tau_pair_complete_precomp *pre,
+                                        ca_elem *out, uint64_t k, uint64_t *triples, uint64_t *adds,
+                                        uint64_t *rotations)
+{
+    if (!g || !pre || !out || pre->base.g != g) return 0;
+    if (triples) *triples = 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (pre->base.identity || k % g->order == 0) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->base.v1x, pre->base.v1y},
+                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det, k % g->order, &x,
+                        &y);
+    uint16_t words[128];
+    size_t pairs = tau_pair_fused_plan(x, y, pre->base.digit, words);
+    if (!pairs) return 0;
+    tau_jac acc = {0, g->mont.r1, 0};
+    uint64_t na = 0, n3 = 0;
+    for (size_t i = pairs; i-- > 0;) {
+        if (acc.z) {
+            acc = jac_triple(g, acc);
+            n3++;
+        }
+        uint16_t word = words[i];
+        if (word == CA_TAU_PAIR_FUSED_ZERO) continue;
+        unsigned orbit = word & 127u, power = (word >> 7) & 3u;
+        if (orbit >= CA_TAU_PAIR_FUSED_REPS || power >= 3) return 0;
+        unsigned negative = ((word & 512u) != 0) ^ ((i & 1) != 0);
+        size_t index = 6 * orbit + 3 * negative + (power + (unsigned)(i % 3)) % 3;
+        const ca_elem *point = &pre->exact[index];
+        if (point->w[2]) continue;
+        acc = jac_add_mixed(g, acc, point);
+        na++;
+    }
+    jac_to_affine(g, out, acc);
+    if (triples) *triples = n3;
+    if (adds) *adds = na;
     return 1;
 }
 
