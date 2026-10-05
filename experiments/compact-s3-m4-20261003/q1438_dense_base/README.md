@@ -61,3 +61,40 @@ python3 experiments/compact-s3-m4-20261003/q1438_dense_base/freeze_protocol.py
 ```
 
 The scripts refuse to overwrite evidence. Use a scratch checkout for replay.
+
+## Frozen result
+
+The [exact base receipts](n53_w4_base.json) and
+[N83 receipt](n83_w6_base.json) retain every weight stratum, old-base prefix
+check, set digest, exploratory construction time, and peak memory. The
+[base verifier](verification.json) replayed 16 rational and 16 nonrational
+x-orbits per degree through Sage's group law. The [solver verifier](solver_verification.json)
+reconstructed every CNF, checked both returned models, and preserved both
+censored ordinary rows.
+
+| Degree and base | Actual usable `B` | Folded `K` | Old-base `B` / `K` | New set SHA-256 |
+| --- | ---: | ---: | ---: | --- |
+| N53 W≤4 | 324,042 | 3,057 | 24,062 / 227 | `9e12afb51aaf2bbf47640554ce88b3653903375c33489ce8b1e07abe6a649cae` |
+| N83 W≤6 | 408,131,750 | 2,458,625 | 30,977,592 / 186,612 | `c1ee6d1064935976fc0d3e479f895fe4832722b5991ba148a6d6cb003b76330d` |
+
+| Frozen cell | Status | Verified relations | First/second pair root calls | Field mul / sqr / inv | Affine XORs | Peak child RSS |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| N53 known-witness control | SAT | 1 | 1 / 1 | 283 / 1,668 / 24 | 0 | 25,477,120 bytes |
+| N53 ordinary | 60-second cap | 0 | 1 / 0 | 4,686,366 / 9,506,332 / 118,391 | 1,300,519,118 | 1,250,361,344 bytes |
+| N83 known-witness control | SAT | 1 | 1 / 1 | 307 / 2,598 / 24 | 0 | 46,465,024 bytes |
+| N83 ordinary | 60-second cap | 0 | 1 / 0 | 2,343,613 / 12,029,211 / 110,773 | 856,544,631 | 658,554,880 bytes |
+
+The larger base raises `B` and `K` about thirteenfold at each degree.
+Under the exact counts, the mean number of distinct unordered four-point
+subsets per uniformly chosen subgroup target rises by roughly 30,000-fold.
+That is a counting average, not evidence that either particular ordinary
+target has a solution or that this solver can find one. The N53 ordinary
+target is already known to be representable on the old subset from Q1327,
+yet the denser Q1438 solver still does not complete a second first-pair
+assignment inside its cap. Both ordinary rows remain censored lower bounds
+on unsuccessful attempts. They give no natural relation yield, cost per
+useful row, N53-to-N83 successful-solve growth, or complete N131 `2^x`.
+
+The next solver gate remains a target-conditioned method that uses both
+sparse-pair constraints before a full first-pair assignment. A larger base
+alone did not change the observed bottleneck.

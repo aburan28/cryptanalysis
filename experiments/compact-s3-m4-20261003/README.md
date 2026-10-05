@@ -1660,6 +1660,25 @@ retains actual W≤7 counts and N131 `2^x` as null. A larger base may make
 relations more plentiful, but the compact solver still needs a target-
 conditioned pair witness method and calibrated complete-work accounting.
 
+### Q1438 exact denser N53/N83 bases and solver panel
+
+The [Q1438 frozen panel](q1438_dense_base/README.md) enumerates the exact
+N53 W≤4 and N83 W≤6 projected bases and reruns Q1436's native compact-S3
+solver on the archived targets with the same decision policy and caps.
+N53 has `B=324,042`, `K=3,057`, digest `9e12afb51aaf…`; N83 has
+`B=408,131,750`, `K=2,458,625`, digest `c1ee6d106493…`. The old sets
+are checked as exact prefixes, and four old-weight control/ordinary formulas
+match Q1426 byte for byte. Both known-witness controls independently verify.
+Both unpinned ordinary queries reach the 60-second cap without a relation;
+each completes only one first-pair root call. The N53 public point is known
+representable even on its old subset, so that censored N53 outcome directly
+shows the current search failing to find an existing decomposition within
+the cap. N83's particular target representability remains unproved. The
+base change increases the uniform-target four-subset counting mean by about
+30,000-fold at both degrees, but gives no measured successful-query cost or
+degree-131 complete-work exponent. The [ledger](work_ledger.json) retains
+the failed attempts and null claim fields.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum

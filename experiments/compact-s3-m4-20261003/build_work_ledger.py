@@ -3917,6 +3917,129 @@ def main():
         1, 0, 1, 0]
     assert [row["stop_reason"] for row in q1436_cells] == [
         "sat", "wall_cap", "sat", "wall_cap"]
+    q1438_dir = HERE / "q1438_dense_base"
+    q1438_base_protocol_path = q1438_dir / "protocol.json"
+    q1438_base_verification_path = q1438_dir / "verification.json"
+    q1438_formula_validation_path = q1438_dir / "formula_validation.json"
+    q1438_solver_protocol_path = q1438_dir / "solver_protocol.json"
+    q1438_solver_verification_path = q1438_dir / "solver_verification.json"
+    q1438_base_protocol = json.loads(q1438_base_protocol_path.read_text())
+    q1438_base_verification = json.loads(
+        q1438_base_verification_path.read_text())
+    q1438_formula_validation = json.loads(
+        q1438_formula_validation_path.read_text())
+    q1438_solver_protocol = json.loads(q1438_solver_protocol_path.read_text())
+    q1438_solver_verification = json.loads(
+        q1438_solver_verification_path.read_text())
+    assert q1438_base_protocol["proposal_id"] == q1438_solver_protocol[
+        "proposal_id"] == "Q1438"
+    assert q1438_base_protocol["candidate_id"] is q1438_solver_protocol[
+        "candidate_id"] is None
+    assert q1438_base_protocol["isogeny"] == q1438_solver_protocol[
+        "isogeny"] == "none"
+    assert q1438_base_verification["status"] == "passed"
+    assert q1438_formula_validation["status"] == "passed"
+    assert q1438_solver_verification["status"] == "passed"
+    assert q1438_solver_protocol["base_protocol_sha256"] == sha(
+        q1438_base_protocol_path)
+    assert q1438_solver_protocol["base_verification_sha256"] == sha(
+        q1438_base_verification_path)
+    assert q1438_solver_protocol["formula_validation_sha256"] == sha(
+        q1438_formula_validation_path)
+    assert q1438_solver_protocol["matched_q1436_protocol_sha256"] == sha(
+        q1436_protocol_path)
+    assert q1438_solver_verification["protocol_sha256"] == sha(
+        q1438_solver_protocol_path)
+    assert q1438_solver_protocol["solver_binary_sha256"] == q1436_protocol[
+        "solver_binary_sha256"]
+    assert q1438_solver_protocol["solver_wall_cap_seconds"] == q1436_protocol[
+        "solver_wall_cap_seconds"]
+    assert q1438_solver_protocol["solver_conflict_cap"] == q1436_protocol[
+        "solver_conflict_cap"]
+    q1438_base_rows = []
+    for n in (53, 83):
+        instance = q1438_base_protocol["instances"][str(n)]
+        base_path = q1438_dir / f"n{n}_w{instance['new_weight_bound']}_base.json"
+        base = json.loads(base_path.read_text())
+        checked = next(row for row in q1438_base_verification["rows"]
+                       if row["degree_n"] == n)
+        assert base["protocol_sha256"] == sha(q1438_base_protocol_path)
+        assert base["actual_usable_points_B_before_folding"] == (
+            2 * n * base["signed_frobenius_columns_K"])
+        assert base["reference_exact_set_checked"] is True
+        assert checked["receipt_sha256"] == sha(base_path)
+        assert checked["enumerated_set_sha256"] == base[
+            "enumerated_set_sha256"]
+        q1438_base_rows.append({
+            "degree_n": n, "curve_id": base["curve_id"],
+            "cofactor": base["cofactor"],
+            "normal_basis_weight_bound": base[
+                "normal_basis_weight_bound"],
+            "nominal_x_mask_count": base["nominal_x_mask_count"],
+            "actual_usable_points_B_before_folding": base[
+                "actual_usable_points_B_before_folding"],
+            "folded_columns_K": base["signed_frobenius_columns_K"],
+            "enumerated_set_sha256": base["enumerated_set_sha256"],
+            "reference_exact_set_checked": True,
+            "enumeration_wall_seconds_exploratory": base[
+                "enumeration_wall_seconds"],
+            "peak_rss_raw": base["peak_rss_raw"],
+            "receipt_sha256": sha(base_path),
+        })
+    q1438_cells = []
+    for key in q1438_solver_protocol["run_order"]:
+        workload = q1438_solver_protocol["workloads"][key]
+        receipt_path = q1438_dir / "runs" / key / "receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        checked = next(row for row in q1438_solver_verification["rows"]
+                       if row["key"] == key)
+        matched = next(row for row in q1436_cells if row["key"] == key)
+        report = receipt["solver_report"]
+        assert report is not None and receipt["solver_report_error"] is None
+        assert receipt["protocol_sha256"] == sha(q1438_solver_protocol_path)
+        assert receipt["stage_run_id"] == workload["stage_run_id"]
+        assert receipt["workload_id"] == matched["workload_id"]
+        assert receipt["curve_id"] == matched["curve_id"]
+        assert receipt["factor_base_actual_B"] == workload[
+            "factor_base_actual_B"]
+        assert receipt["factor_base_enumerated_set_sha256"] == workload[
+            "factor_base_enumerated_set_sha256"]
+        assert checked["receipt_sha256"] == sha(receipt_path)
+        assert receipt["complete_solve_work_log2"] is None
+        q1438_cells.append({
+            "key": key, "degree_n": receipt["field_degree_n"],
+            "cell": receipt["cell"], "curve_id": receipt["curve_id"],
+            "factor_base_actual_B": receipt["factor_base_actual_B"],
+            "folded_columns_K": receipt["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": receipt[
+                "factor_base_enumerated_set_sha256"],
+            "workload_id": receipt["workload_id"],
+            "stage_run_id": receipt["stage_run_id"],
+            "matched_q1436_stage_run_id": matched["stage_run_id"],
+            "solver_status": receipt["solver_status"],
+            "stop_reason": report["stop_reason"],
+            "verified_relation_count": receipt["verified_relation_count"],
+            "decisions": report["decisions"],
+            "conflicts": report["conflicts"],
+            "pair0_root_calls": report["pair0_root_calls"],
+            "pair1_root_calls": report["pair1_root_calls"],
+            "affine_checks": report["affine_checks"],
+            "affine_zero": report["affine_zero"],
+            "affine_xor_ops": report["affine_xor_ops"],
+            "field_mul_calls": report["field_mul_calls"],
+            "field_sqr_calls": report["field_sqr_calls"],
+            "field_inv_calls": report["field_inv_calls"],
+            "solver_process_wall_seconds_exploratory": receipt[
+                "solver_process_wall_seconds_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["solver_status"] for row in q1438_cells] == [
+        "sat", "censored", "sat", "censored"]
+    assert [row["verified_relation_count"] for row in q1438_cells] == [
+        1, 0, 1, 0]
+    assert [row["stop_reason"] for row in q1438_cells] == [
+        "sat", "wall_cap", "sat", "wall_cap"]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -5049,6 +5172,43 @@ def main():
             "affine_validation_sha256": sha(q1436_validation_path),
             "archived_v1_control_report_failure_sha256": sha(
                 q1436_dir / "failed_v1/n53_free_partner/receipt.json"),
+        },
+        "q1438_exact_dense_base_solver_stage": {
+            "proposal_id": "Q1438",
+            "candidate_id": None,
+            "isogeny": "none",
+            "controlled_variable": (
+                "N53 W<=3 to W<=4 and N83 W<=5 to W<=6 exact "
+                "factor-base construction, size, and digest; Q1436's "
+                "native compact-S3 binary, public target, decision "
+                "policy, and resource caps are unchanged"),
+            "exact_base_rows": q1438_base_rows,
+            "formula_byte_equivalence_cells": len(
+                q1438_formula_validation["rows"]),
+            "cells": q1438_cells,
+            "is_empirical_solver_stage_measurement": True,
+            "is_controlled_cpu_wall_speedup": False,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "Both denser-base known-witness controls verify, but "
+                "both unpinned ordinary N53/N83 cells hit the 60-second "
+                "cap with zero relations. Each completed only one "
+                "first-pair root call. The exact B and K increase "
+                "about thirteenfold at each degree; this base change "
+                "does not make Q1436's search leave its first pair "
+                "within the cap. These are censored stage costs, not "
+                "successful PDP costs, relation yield, novel rank, "
+                "or a complete N131 exponent. Prioritize a target-"
+                "conditioned pair witness method."),
+            "base_protocol_sha256": sha(q1438_base_protocol_path),
+            "base_verification_sha256": sha(
+                q1438_base_verification_path),
+            "formula_validation_sha256": sha(
+                q1438_formula_validation_path),
+            "solver_protocol_sha256": sha(q1438_solver_protocol_path),
+            "solver_verification_sha256": sha(
+                q1438_solver_verification_path),
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
