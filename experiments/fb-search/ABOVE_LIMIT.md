@@ -202,6 +202,42 @@ the degree grows about linearly, roughly `2 + d/9`.
 
 It does not meet the goal: it does not stay cheap above the limit.
 
+## 4d. Candidate 3: CDCL with XOR reasoning on the residual system (tested; rejected)
+
+**Method.** Encode each residual equation as a native XOR clause, with one AND-gate variable per
+`x_i t_k` product, and solve with CryptoMiniSat 5.15 (`pycryptosat`, Gauss-Jordan on). This is
+`residual.cms_solve`, run by `cms_scan.py`. A SAT answer is checked by rebuilding X, Y from the
+model and testing `P1 + P2 = R` (`verify_model`).
+
+**Novelty check.** SAT / XOR-SAT for the PDP is published: WDSat (Trimoska-Ionica-Dequen 2019,
+2020), Galbraith-Gebregiyorgis 2014, and `../pdp-scaling` (CryptoMiniSat). All of these solve the
+full descent system, `2l` variables with worst case `2^l` after vertex-cover preprocessing. Running
+it on the projected residual (`l + d` variables, worst case `2^d`) is a new combination at most.
+
+**Fair baseline.** `htenum.c` is an optimized C enumeration of the residual space. It uses
+Gray-code updates of `u`, `u^2` and `p(u)`, Montgomery batch inversion, pclmul multiplication, and
+byte tables for the half-trace and the V-syndrome. It runs at about 1.8 us per candidate (both eps
+branches), 15x faster than the Python `PDP2ht` path, and agrees with the half-trace solver on 30/30
+targets. Timings: `results/enum-scan.jsonl` (`enum_scan.py`, same target streams as `cms_scan.py`).
+
+**Measurements** (`results/cms-scan.jsonl`). All CMS answers agree with the half-trace solver
+wherever both ran (32/32), and every SAT model verifies.
+
+| n | l | d | decomposable targets | CMS median | C enumeration median | CMS / enumeration |
+|---|---|---|---|---|---|---|
+| 41 | 17 | 9 | 0/8 | 0.04 s | 1.1 ms | 40 |
+| 41 | 18 | 12 | 0/8 | 1.9 s | 7.5 ms | 250 |
+| 41 | 19 | 15 | 2/8 | 1.4 s | 62 ms | 23 |
+| 41 | 20 | 18 | 5/8 | 8.7 s | 0.46 s | 19 |
+| 59 | 26 | 18 | 0/6 | 16.6 s | (see enum-scan) | about 35 |
+| 59 | 27 | 21 | 0/6 | 165 s | (see enum-scan) | — |
+
+Against the slow Python enumeration CMS seemed to grow more slowly than `2^d`. Against the C
+baseline it is a constant 20-35x slower from `d = 15` on. On the unsatisfiable n = 59 cells its time
+grows 9.9x per 3 dimensions from `d = 18` to `d = 21`, which is at least as steep as `2^d`.
+
+**Verdict:** rejected. It shows no sub-`2^d` behaviour against a fair baseline.
+
 ## 5. Open leads (not yet novelty-checked)
 
 1. **Explain the degree-3 refutations.** Find which degree-3 multiples yield the refutation, and

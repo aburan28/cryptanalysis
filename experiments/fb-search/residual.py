@@ -81,7 +81,7 @@ def residual_systems(sv: HalfTraceSolver, S: int) -> list[dict]:
             masks = np.array(sorted(mono), dtype=np.uint32)
             coeffs = np.array([mono[int(m)] for m in masks], dtype=np.uint64)
             system = BooleanSystem(N, n, masks, coeffs)
-        out.append({"eps": eps, "d": d, "N": N, "system": system, "mono": mono})
+        out.append({"eps": eps, "d": d, "N": N, "system": system, "mono": mono, "u0": u0, "fs": fs})
     return out
 
 
@@ -214,6 +214,129 @@ def smxl(N: int, eqs: list[list[int]], d_max: int = 5, max_cols: int = 120_000, 
     status = {1: "refuted", 0: "degree_limit", -1: "budget", -2: "memory"}[int(out[0])]
     return {"status": status, "degree": int(out[1]), "cols": int(out[2]), "rank": int(out[3]),
             "xors": int(out[4]), "rows_in": int(out[5]), "linear_pivots": int(out[6])}
+
+
+def cms_solve(N: int, eqs: list[list[int]], threads: int = 1) -> dict:
+    """CryptoMiniSat with native XOR clauses (Gauss-Jordan) on the residual system: one variable
+    per bit, one AND-gate variable per degree-2 monomial, one XOR clause per equation."""
+    import time
+
+    import pycryptosat
+
+    s = pycryptosat.Solver(threads=threads)
+    aux: dict[int, int] = {}
+    nxt = N + 1
+
+    def var(m: int) -> int:
+        nonlocal nxt
+        if bin(m).count("1") == 1:
+            return m.bit_length()
+        if m not in aux:
+            a = nxt
+            nxt += 1
+            i, j = [k + 1 for k in range(N) if (m >> k) & 1]
+            s.add_clause([-a, i])
+            s.add_clause([-a, j])
+            s.add_clause([a, -i, -j])
+            aux[m] = a
+        return aux[m]
+
+    for f in eqs:
+        rhs = False  # XOR of the non-constant monomials equals the constant term
+        vs = []
+        for m in f:
+            if m == 0:
+                rhs = not rhs
+            else:
+                vs.append(var(m))
+        if vs:
+            s.add_xor_clause(vs, rhs)
+        elif rhs:
+            return {"status": "refuted", "wall_ns": 0}
+    t0 = time.perf_counter_ns()
+    sat, model = s.solve()
+    wall = time.perf_counter_ns() - t0
+    bits = [bool(model[i + 1]) for i in range(N)] if sat else None
+    return {"status": "sat" if sat else "refuted", "wall_ns": wall, "aux_vars": len(aux), "bits": bits}
+
+
+def verify_model(sv: HalfTraceSolver, rs: dict, bits: list[bool], R: tuple[int, int]) -> bool:
+    """Rebuild X, Y from a residual solution and check that signed lifts sum to R."""
+    from htsolver import _reduce, _signed
+
+    K, l = sv.K, sv.l
+    X = 0
+    for i, v in enumerate(sv.basis):
+        if bits[i]:
+            X ^= v
+    u = rs["u0"]
+    for k, f in enumerate(rs["fs"]):
+        if bits[l + k]:
+            u ^= f
+    Y = X ^ u
+    if _reduce(sv.V, X) or _reduce(sv.V, Y):
+        return False
+    return any(K.add(P, Q) == R for P in _signed(K, X) for Q in _signed(K, Y))
+
+
+_HTENUM = None
+_TABLES: dict = {}
+
+
+def htenum(sv: HalfTraceSolver, rs: dict, S: int) -> dict:
+    """Optimized C enumeration of the residual space of one eps branch (htenum.c)."""
+    import ctypes
+    import subprocess
+    import time
+
+    from factor_base import _columns_of_rows, kernel_basis
+
+    global _HTENUM
+    if _HTENUM is None:
+        so = HERE / "build" / "libhtenum.so"
+        src = HERE / "htenum.c"
+        if not so.exists() or so.stat().st_mtime < src.stat().st_mtime:
+            so.parent.mkdir(exist_ok=True)
+            subprocess.run(["cc", "-O3", "-march=native", "-mpclmul", "-shared", "-fPIC", "-o", str(so), str(src)],
+                           check=True)
+        _HTENUM = ctypes.CDLL(str(so))
+        _HTENUM.ht_enum.restype = ctypes.c_longlong
+    K, n = sv.K, sv.n
+    key = (n, tuple(sv.basis))
+    if key not in _TABLES:
+        nb = (n + 7) // 8
+        ht = np.zeros(nb * 256, dtype=np.uint64)
+        checks = kernel_basis(_columns_of_rows(sv.basis, n), n)
+        syn = np.zeros(nb * 256, dtype=np.uint64)
+        for j in range(nb):
+            for b in range(256):
+                z = (b << (8 * j)) & ((1 << n) - 1)
+                ht[j * 256 + b] = K.half_trace(z) if z else 0
+                syn[j * 256 + b] = sum((bin(h & z).count("1") & 1) << r for r, h in enumerate(checks))
+        trmask = sum(K.trace(1 << j) << j for j in range(n))
+        _TABLES[key] = (ht, syn, trmask)
+    ht, syn, trmask = _TABLES[key]
+    c0 = K.mul(sv.sqrt_b, K.inv(S))
+    eps = rs["eps"]
+    u0, fs = rs["u0"], rs["fs"]
+    d = len(fs)
+    p0 = K.mul(S, K.half_trace(K.sqr(u0 ^ c0)) ^ (1 if eps else 0))
+    pk = np.array([K.mul(S, K.half_trace(K.sqr(f))) for f in fs] or [0], dtype=np.uint64)
+    sk = np.array([K.sqr(f) for f in fs] or [0], dtype=np.uint64)
+    fa = np.array(fs or [0], dtype=np.uint64)
+    hits = np.zeros(64, dtype=np.uint64)
+    cand = ctypes.c_longlong(0)
+    P = ctypes.POINTER
+    U = ctypes.c_uint64
+    mod = sv.C.mod
+    t0 = time.perf_counter_ns()
+    nh = _HTENUM.ht_enum(ctypes.c_int(n), U(mod & ((1 << n) - 1)), ctypes.c_int(d), U(u0), U(p0), U(K.sqr(u0)),
+                         fa.ctypes.data_as(P(U)), pk.ctypes.data_as(P(U)), sk.ctypes.data_as(P(U)),
+                         ht.ctypes.data_as(P(U)), syn.ctypes.data_as(P(U)), U(trmask),
+                         hits.ctypes.data_as(P(U)), ctypes.c_int(64), ctypes.byref(cand))
+    wall = time.perf_counter_ns() - t0
+    return {"hits": int(nh), "candidates": int(cand.value), "wall_ns": wall,
+            "u_hits": [int(h) for h in hits[: min(nh, 64)]]}
 
 
 def bilinear_degree(nx: int, ny: int, m: int) -> int | None:
