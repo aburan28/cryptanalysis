@@ -64,6 +64,25 @@ class HalfTraceTest(unittest.TestCase):
             dims = [sv.candidates(C.random_subgroup_point(rng)[1][0])[1] for _ in range(60)]
             self.assertAlmostEqual(sum(dims) / len(dims), pred, delta=0.25, msg=(fam, l))
 
+    def test_residual_system_solvable_iff_decomposable(self):
+        import macaulay
+        from residual import residual_systems
+
+        C = ToyCurve(19)
+        fb = FactorBase(C, "geomtraceu", 8, 1)
+        sv = HalfTraceSolver(fb)
+        truth = decomposition_lookup(fb)
+        rng = random.Random("residual-test")
+        pts = list(truth)
+        targets = [pts[rng.randrange(len(pts))] for _ in range(6)] + [C.random_subgroup_point(rng)[1] for _ in range(6)]
+        for R in targets:
+            solved = False
+            for rs in residual_systems(sv, R[0]):
+                s = rs["system"]
+                scan = macaulay.degree_scan(s, lambda s=s: s.solutions()[0], macaulay.Limits(d_max=6), mode="mxl")
+                solved |= scan["status"] == "solved"
+            self.assertEqual(solved, R in truth)
+
     def test_cheaper_than_macaulay_per_attempt(self):
         import json
 
