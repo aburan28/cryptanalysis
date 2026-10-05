@@ -1,0 +1,74 @@
+name: P-256 isogeny search
+
+"on":
+  push:
+    paths:
+      - "experiments/p256-isogeny-search-20261005/**"
+      - ".github/workflows/p256-isogeny-search.yml"
+  pull_request:
+    paths:
+      - "experiments/p256-isogeny-search-20261005/**"
+      - ".github/workflows/p256-isogeny-search.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-control-run:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: experiments/p256-isogeny-search-20261005
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: experiments/p256-isogeny-search-20261005/pyproject.toml
+      - run: python -m pip install -e .
+      - run: python -m unittest discover -s tests -v
+      - run: python scripts/verify_frozen.py
+      - name: Run reproducible control experiment
+        run: p256-isogeny run --output-dir runs/ci --seconds 0.1 --trials 2
+      - uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.12'
+        with:
+          name: p256-control-run
+          path: experiments/p256-isogeny-search-20261005/runs/ci
+
+  sage-depth-one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: sagemath/sagemath:10.6
+    defaults:
+      run:
+        working-directory: experiments/p256-isogeny-search-20261005
+    steps:
+      - uses: actions/checkout@v4
+      - name: Explore the first horizontal neighborhood
+        env:
+          PYTHONPATH: src
+        run: >-
+          sage -python scripts/explore_sage.py
+          --ells 3,5,11,13
+          --depth 1
+          --max-nodes 12
+          --output runs/ci-sage/candidates.json
+      - name: Benchmark generated candidates
+        env:
+          PYTHONPATH: src
+        run: >-
+          sage -python -m p256_isogeny_search benchmark
+          --candidates runs/ci-sage/candidates.json
+          --seconds 0.1
+          --trials 2
+          --output runs/ci-sage/benchmark.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p256-sage-depth-one
+          path: experiments/p256-isogeny-search-20261005/runs/ci-sage

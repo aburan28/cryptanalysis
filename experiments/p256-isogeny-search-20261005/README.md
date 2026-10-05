@@ -1,0 +1,183 @@
+# P-256 isogeny search
+
+This experiment turns a proposed search for exceptional curves in the NIST
+P-256 isogeny class into a reproducible experiment. It separates structural
+facts, reusable discovery work, per-instance mapping cost, and Pollard-rho walk
+speed instead of treating scalar-multiplication benchmarks as ECDLP results.
+
+## First structural result
+
+For P-256,
+
+```text
+t = p + 1 - n
+D_pi = t^2 - 4p
+     = -455213823400003756884736869668539463648899917731097708475249543966132856781915
+```
+
+The repository contains and verifies the complete factorization
+
+```text
+|D_pi| =
+  3
+  * 5
+  * 456597257999
+  * 1428624589419343516204097
+  * 46523541035814968339936406074986559003387.
+```
+
+The factors are distinct and their primality is checked with recursive
+Pocklington certificates and deterministic 64-bit Miller-Rabin leaves. Since
+`D_pi` is a fundamental discriminant,
+
+```text
+Z[pi] = O_K.
+```
+
+Consequently every curve in the `F_p`-isogeny class has the same maximal
+endomorphism order. There are no vertical volcano levels to explore. The CM
+field is neither `Q(sqrt(-3))` nor `Q(i)`, excluding `j = 0`, `j = 1728`, and
+extra geometric automorphisms. A non-scalar endomorphism has norm at least
+`ceil(|D_pi|/4)`, a 256-bit lower bound, so a useful low-degree GLV-style
+endomorphism is also excluded.
+
+The remaining search is therefore a horizontal class-group search for:
+
+- an explicit low-cost path from P-256;
+- measurable constant-factor arithmetic improvements; or
+- evidence for a genuinely non-generic ECDLP algorithm.
+
+Absence of such a result in a finite traversal is not proof that none exists.
+
+## Frozen exploratory result
+
+The protocol and first run were developed together, so the frozen run is
+**retrospective and exploratory**, not a held-out speed experiment. The exact
+structural conclusions do not depend on host timing. On the unisolated initial
+host, five baseline trials averaged 139,559 canonical rho iterations/s with a
+nominal 95% interval of 137,887–141,232 iterations/s. This is a Python control
+measurement only. No isogenous candidate was timed, no mapping cost was
+measured, and no ECDLP speedup is claimed. The toy control recovered scalar
+4242 in 55 iterations.
+
+The frozen artifacts are in [`results/initial`](results/initial), the experiment
+contract is [`protocol.json`](protocol.json), and the run accounting is
+[`receipt-initial.json`](receipt-initial.json). Verify them with:
+
+```bash
+python scripts/verify_frozen.py
+```
+
+## Quick start
+
+Python 3.11 or newer is required.
+
+```bash
+cd experiments/p256-isogeny-search-20261005
+python -m pip install -e .
+p256-isogeny run --output-dir runs/latest --seconds 1 --trials 3
+```
+
+The run creates:
+
+- `structural-report.json`: exact invariants and eliminated structures;
+- `benchmark.json`: repeated rho iteration measurements with a 95% interval;
+- `toy-rho.json`: a completed small-curve collision and recovered logarithm;
+- `summary.md`: a compact human-readable report.
+
+To independently rediscover the discriminant factorization rather than verify
+the checked certificate:
+
+```bash
+p256-isogeny analyze --refactor
+```
+
+This can take several minutes.
+
+Run the tests with:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+## Horizontal exploration with SageMath
+
+The first useful rational prime degrees are classified from the Kronecker
+symbol `(D_pi / ell)`. Up to 13:
+
+- `3, 5` are ramified and give one horizontal direction;
+- `11, 13` split and give two horizontal directions;
+- `2, 7` are inert and give no horizontal edge.
+
+With SageMath installed:
+
+```bash
+sage -python scripts/explore_sage.py \
+  --ells 3,5,11,13 \
+  --depth 2 \
+  --max-nodes 100 \
+  --output data/candidates/generated/depth-2.json
+
+p256-isogeny benchmark \
+  --candidates data/candidates/generated/depth-2.json \
+  --seconds 2 \
+  --trials 5
+```
+
+Each candidate retains:
+
+- its short-Weierstrass coefficients and mapped P-256 generator;
+- every edge degree and kernel polynomial;
+- the isogeny and model-isomorphism rational maps;
+- elapsed reusable discovery time and total path degree;
+- a separate placeholder for the two per-instance map evaluations.
+
+The `P-256 Sage horizontal search` GitHub Actions workflow exposes the same search as
+a manual, parameterized job and uploads both candidates and benchmark results.
+
+## Interpreting the benchmark
+
+The reference implementation runs parallel `r`-adding walks. It batch-normalizes
+their projective points with one inversion per batch, ensuring that partition
+choices depend on canonical affine `x` and define a legitimate rho iteration.
+For a prime-order group its generic expected work is reported as
+
+```text
+sqrt(pi*n/2)
+```
+
+before automorphism quotients. Candidate speed is compared using the identical
+walk and repeated wall-clock trials. The security change attributable to a
+constant-factor rate difference is `log2(candidate_rate / baseline_rate)` bits.
+
+The benchmark intentionally reports these cost categories separately:
+
+1. discovery and reusable precomputation;
+2. per-instance evaluation of the explicit path on `P` and `Q`;
+3. ECDLP walk iterations on the candidate.
+
+An end-to-end P-256 speedup must include all three. The Python implementation is
+control code, not a claim about the fastest available P-256 attack; serious
+candidates should be reproduced in an optimized constant-quality backend.
+
+## Repository layout
+
+```text
+src/p256_isogeny_search/   exact analysis, curve arithmetic, rho harness
+data/candidates/           versioned candidate/path interchange files
+scripts/explore_sage.py    explicit horizontal path explorer
+tests/                     structural and collision regression tests
+../../.github/workflows/   path-scoped CI and manual Sage exploration
+```
+
+## Scope
+
+This is cryptanalytic research tooling. It does not implement signing, key
+generation, or production cryptography. The in-tree elliptic-curve arithmetic
+is variable-time and must not process secrets in a real system.
+
+This experiment complements the broader Rust profiler in
+[`suite/src/cryptanalysis/p256_structural.rs`](../../suite/src/cryptanalysis/p256_structural.rs).
+That module covers twist and extension-field structure; this experiment adds a
+certified complete Frobenius-discriminant factorization, explicit horizontal
+path retention, and separate discovery/mapping/ECDLP cost accounting.

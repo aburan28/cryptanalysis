@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "publication_status": "retrospective_exploratory",
+  "protocol_frozen_before_first_run": false,
+  "question": "Does the F_p-isogeny class of NIST P-256 contain reachable exceptional structure that materially lowers the end-to-end ECDLP work factor?",
+  "source_curve": "NIST P-256 / secp256r1",
+  "structural_checks": [
+    "compute t = p + 1 - n and D_pi = t^2 - 4p",
+    "verify a complete prime factorization of |D_pi| with recursive Pocklington certificates",
+    "classify all endomorphism orders between Z[pi] and O_K",
+    "exclude or retain exceptional j-invariants and low-norm non-scalar endomorphisms",
+    "classify small horizontal prime degrees using the Kronecker symbol"
+  ],
+  "candidate_acceptance": [
+    "retain the complete ordered isogeny path from P-256",
+    "retain kernel polynomials and rational maps for every edge",
+    "verify transport of the P-256 generator into the prime-order target group",
+    "measure candidate and P-256 rho iterations with the same implementation",
+    "keep discovery/precomputation, per-instance point mapping, and ECDLP costs separate"
+  ],
+  "timing_protocol": {
+    "walk": "parallel r-adding walks with batch affine normalization",
+    "baseline_trials": 5,
+    "seconds_per_trial": 1,
+    "host_isolation": "unverified; all wall-time results are exploratory",
+    "uncertainty": "normal-approximation 95% interval over trial iteration rates"
+  },
+  "controls": [
+    "validate curve constants and generator order",
+    "recover a known logarithm on a small prime-order analogue",
+    "check the tracked rho linear relation after every timed trial",
+    "replay the frozen structural report and toy collision independently"
+  ],
+  "claim_gate": "Do not claim an end-to-end P-256 speedup unless an explicit path is verified, both source points are mapped, all online mapping work is charged, a candidate ECDLP is verified, and paired measurements pass the repository isolation gate.",
+  "current_scope": "structural classification plus reference baseline; no candidate speedup result"
+}

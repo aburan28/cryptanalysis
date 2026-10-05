@@ -5,6 +5,16 @@ Rust, Go and Python bindings, and, in [`suite/`](suite/README.md), the Rust
 attack suite (symmetric, hash, ECDLP, nonce, lattice and post-quantum
 cryptanalysis) that grew up alongside it.
 
+> **P-256 isogeny-class status (2026-10-05).** The complete,
+> certificate-checked factorization of the Frobenius discriminant is frozen in
+> [`experiments/p256-isogeny-search-20261005`](experiments/p256-isogeny-search-20261005/README.md).
+> It is fundamental, so `Z[pi]` is already the maximal order: this class has no
+> vertical volcano levels, no `j=0` or `j=1728` member, and no useful low-degree
+> non-scalar endomorphism. The remaining work is a horizontal explicit-path
+> search with separately charged discovery, mapping, and ECDLP costs. The
+> initial timing is an unisolated Python control; no P-256 ECDLP speedup is
+> claimed.
+
 | algorithm | header | problem | cost |
 |-----------|--------|---------|------|
 | Baby-step giant-step (Shanks), amortised tables | `ca_bsgs.h` | interval / whole group | `1.5 sqrt(N)` ops, `O(sqrt N)` memory |
