@@ -109,8 +109,12 @@ jobs:
         # New and edited code still has to match the style.
         run: |
           set -eu
-          base="${{ github.event.pull_request.base.sha }}"
-          if [ -z "$base" ]; then
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            # A PR checkout is a synthetic merge. Its first parent is the
+            # exact base used for this checkout, even if the base branch
+            # advanced while the workflow waited for a runner.
+            base=$(git rev-parse "HEAD^1")
+          else
             base=$(git rev-parse "HEAD^" 2>/dev/null || git rev-parse HEAD)
           fi
           echo "comparing against $base"
