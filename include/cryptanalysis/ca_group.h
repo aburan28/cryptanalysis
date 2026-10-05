@@ -145,6 +145,17 @@ CA_API void ca_group_format(const ca_group *g, const ca_elem *a, char *buf, size
 CA_API int ca_ec_lift_x(const ca_group *g, ca_elem *r, uint64_t x);
 /* Apply the curve's endomorphism psi once (a copy when none is enabled). */
 CA_API void ca_ec_endo(const ca_group *g, ca_elem *r, const ca_elem *a);
+/* Variable-time j=0 tau-adic scalar multiplication for public scalars.
+ * Returns 0 without changing r when this curve has no compatible
+ * endomorphism. The counts distinguish tau, mixed-addition, and tripling
+ * operations; they are not generic group-op counts. */
+CA_API int ca_ec_mul_tau2(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
+                          uint64_t *tau_steps, uint64_t *adds);
+CA_API int ca_ec_mul_tau4(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
+                          uint64_t *tau_steps, uint64_t *adds);
+CA_API int ca_ec_mul_tau4_tripling(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
+                                   uint64_t *tau_steps, uint64_t *adds, uint64_t *triples);
+CA_API int ca_ec_triple_j0(const ca_group *g, ca_elem *r, const ca_elem *a);
 /* Random point on the curve. */
 CA_API void ca_ec_random_point(const ca_group *g, ca_elem *r, uint64_t seed);
 /* Count points on E(F_p) using Mestre's baby-step giant-step method.

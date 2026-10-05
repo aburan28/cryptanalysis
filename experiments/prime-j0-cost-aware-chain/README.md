@@ -121,3 +121,7 @@ for those controls; it is not a full elliptic-curve or timing measurement.
 The search has scalar-dependent branches and work. It is intended for public
 scalars in research and rho setup; a private-scalar API would require a
 separate constant-time design and review.
+
+The stacked C integration and its exact-output receipt are documented in
+[INTEGRATION.md](INTEGRATION.md). It keeps the baseline prepared evaluator
+available and adds the cost-aware choice as an explicit opt-in function.
