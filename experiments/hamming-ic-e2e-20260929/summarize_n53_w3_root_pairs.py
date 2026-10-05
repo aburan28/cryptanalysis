@@ -6,9 +6,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
-import math
 from pathlib import Path
-import random
 import statistics
 
 HERE = Path(__file__).resolve().parent
@@ -34,23 +32,6 @@ def canonical(obj):
 
 def digest(obj):
     return hashlib.sha256(canonical(obj)).hexdigest()
-
-
-def wilson95(successes, trials):
-    z = 1.959963984540054
-    p = successes / trials
-    denominator = 1 + z*z/trials
-    center = (p + z*z/(2*trials)) / denominator
-    half = z*math.sqrt(p*(1-p)/trials + z*z/(4*trials*trials))/denominator
-    return [max(0.0, center-half), min(1.0, center+half)]
-
-
-def bootstrap95_geometric(values):
-    rng = random.Random(53053)
-    logs = [math.log(value) for value in values]
-    draws = sorted(math.exp(statistics.mean(rng.choices(logs, k=len(logs))))
-                   for _ in range(10000))
-    return [draws[249], draws[9749]]
 
 
 def contract_row(directory, receipt, ic, replay):
@@ -84,6 +65,9 @@ def contract_row(directory, receipt, ic, replay):
                                          "pdp_budget", "pdp_error", "pdp_lift_rejected")) == counts["pdp_attempts"]
     return {"schema_version": 2, "kind": "full_dlp" if verified else "stage",
             "status": "complete" if verified else "error", "candidate_id": receipt["candidate_id"],
+            "cpu_isolation_status": "unverified_mac_host",
+            "controlled_speedup_eligible": False,
+            "online_interval_qualification": "in_process_scalar_replay; independent_sage_replay_after_online_unpriced",
             "exclusion_reason": "target_reused_after_harness_failure"
                                 if replay_verified and not verified else
                                 "harness_wrapper_exit_nonzero" if not replay_verified else None,
@@ -140,7 +124,11 @@ def main():
             "wall_limit_seconds_each": receipt["resource_envelope"]["wall_limit_seconds_each"],
             "ic_online_ms": replay["ic_online_ms"] if verified else None,
             "rho_online_ms": replay["rho_online_ms"] if verified else None,
-            "rho_over_ic_online": replay["online_speedup"] if verified else None,
+            "rho_over_ic_online": None,
+            "observed_rho_over_ic_exploratory": replay["online_speedup"] if verified else None,
+            "cpu_isolation_status": "unverified_mac_host",
+            "independent_sage_replay_charged_online": False if replay_verified else None,
+            "controlled_speedup_eligible": False,
             "raw_ic_online_ms_diagnostic": ic["timing_ms"]["target_online_after_reusable_setup"],
             "raw_rho_online_ms_diagnostic": rho["online_ms"],
             "curve_id": receipt["curve_id"],
@@ -185,7 +173,7 @@ def main():
     assert len(completed) == 3
     assert len({row["workload_id"] for row in completed}) == 3
     assert len({row["target_point"] for row in completed}) == 3
-    ratios = [row["rho_over_ic_online"] for row in completed]
+    ratios = [row["observed_rho_over_ic_exploratory"] for row in completed]
     yields = [row["novel_rows_per_query"] for row in completed]
     summary = {
         "kind": "n53_w3_root_independent_one_target_pairs",
@@ -195,28 +183,32 @@ def main():
         "verified_reuse_controls": sum(row["status"] == "VERIFIED_REUSE_CONTROL" for row in rows),
         "verified_one_target_pairs": len(completed),
         "different_frozen_targets": len({row["target_point"] for row in completed}),
-        "median_ic_online_ms": statistics.median(row["ic_online_ms"] for row in completed),
-        "ic_online_ms_range": [min(row["ic_online_ms"] for row in completed),
-                               max(row["ic_online_ms"] for row in completed)],
-        "median_rho_online_ms": statistics.median(row["rho_online_ms"] for row in completed),
-        "rho_online_ms_range": [min(row["rho_online_ms"] for row in completed),
-                                max(row["rho_online_ms"] for row in completed)],
-        "median_paired_rho_over_ic": statistics.median(ratios),
-        "paired_ratio_range": [min(ratios), max(ratios)],
+        "controlled_online_speedup": None,
+        "controlled_speedup_eligible_pairs": 0,
+        "cpu_isolation_status": "unverified_mac_host",
+        "independent_sage_replay_charged_online": False,
+        "observed_median_ic_in_process_online_ms_exploratory": statistics.median(
+            row["ic_online_ms"] for row in completed),
+        "observed_ic_in_process_online_ms_range_exploratory": [
+            min(row["ic_online_ms"] for row in completed),
+            max(row["ic_online_ms"] for row in completed)],
+        "observed_median_rho_online_ms_exploratory": statistics.median(
+            row["rho_online_ms"] for row in completed),
+        "observed_rho_online_ms_range_exploratory": [
+            min(row["rho_online_ms"] for row in completed),
+            max(row["rho_online_ms"] for row in completed)],
+        "observed_median_rho_over_ic_exploratory": statistics.median(ratios),
+        "observed_paired_ratio_range_exploratory": [min(ratios), max(ratios)],
         "verified_ordinary_queries": sum(row["ordinary_query_verified_relations"] for row in completed),
         "ordinary_query_attempts": sum(row["ordinary_query_attempts"] for row in completed),
-        "verified_query_rate_wilson95_naive": wilson95(
-            sum(row["ordinary_query_verified_relations"] for row in completed),
-            sum(row["ordinary_query_attempts"] for row in completed)),
+        "ordinary_query_generalization_rate": None,
         "novel_rows": sum(row["novel_relation_rows"] for row in completed),
-        "novel_row_rate_wilson95_naive": wilson95(
-            sum(row["novel_relation_rows"] for row in completed),
-            sum(row["ordinary_query_attempts"] for row in completed)),
-        "geometric_mean_paired_rho_over_ic": math.exp(statistics.mean(math.log(x) for x in ratios)),
-        "paired_ratio_bootstrap95": bootstrap95_geometric(ratios),
+        "controlled_paired_cost_ci95": None,
         "novel_row_yield_per_query_range": [min(yields), max(yields)],
-        "uncertainty": "The paired 95% interval is a three-target percentile bootstrap and is exploratory. Wilson query-rate intervals assume independent Bernoulli attempts, which this adaptive rank-stopped stream does not establish; use them only as descriptive diagnostics.",
-        "claim": "The root-index IC completed all three N53 targets, but rho was faster on every paired online wall clock. These results do not measure FC-Hamming SAT scaling or N83.",
+        "four_point_multisets_with_repetition": "12551410757022501",
+        "mean_four_point_multisets_per_subgroup_element": "596.4122274090428",
+        "uncertainty": "Three selected target seeds and an adaptive rank-stopped relation stream do not support a population yield interval. No CPU isolation receipt exists, so paired costs have no controlled confidence interval. Independent Sage replay was outside the recorded online interval and its cost was not measured.",
+        "claim": "Independent Sage replay validates the three N53 DLP answers and all recorded relation witnesses. The archived IC and rho timings are exploratory process-internal diagnostics; controlled online speedup and general ordinary-query yield are unknown. This is not FC-Hamming SAT or N83 evidence.",
     }
     OUT.mkdir(exist_ok=True)
     with (OUT / "rows.csv").open("w", newline="") as stream:

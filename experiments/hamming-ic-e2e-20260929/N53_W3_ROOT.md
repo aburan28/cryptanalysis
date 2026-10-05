@@ -1,10 +1,12 @@
 # N53 weight-three root-index IC: three one-target pairs
 
-This is a complete index-calculus DLP experiment on the N53 Koblitz subgroup.
+This is a mathematical end-to-end index-calculus DLP control on the N53
+Koblitz subgroup, with exploratory process-internal timing diagnostics.
 It uses a four-summand S3 root index over the normal-basis Hamming-weight-three
 factor base. It is a separate candidate from the five-summand FC-Hamming SAT
 probe in this directory. The latter still has no successful unpinned N53 PDP
-model under its tested bounds.
+model under its tested bounds. `N53` names the field size; this subgroup has
+prime order `21044858204113`, about 44.26 bits.
 
 ## Frozen method
 
@@ -31,29 +33,35 @@ model under its tested bounds.
   outside both online clocks. Each solver had a 120-second external wall
   limit and no imposed memory limit on macOS ARM64.
 
-## Verified one-target online results
+## Replayed one-target DLPs and exploratory timings
 
 Each row is a separate workload containing exactly one previously unseen
 public target. The target scalar is retained only for fixture validation;
 neither solver receives it. Independent checked Sage replay reconstructed the
 base, verified every retained relation as a curve-group equality, recomputed
 the relation rank and target-span log, and replayed both recovered scalars.
+That Sage replay ran **after** each Rust process's online clock and its cost
+was not measured. The Rust IC clock ends after an in-process scalar replay.
+No host-level CPU isolation or noise-gate receipt was recorded on this Mac.
+The values below are therefore exploratory internal intervals, and the
+controlled single-target online speedup is **unknown**.
 
-| Run | Workload | IC online | Same-point rho online | rho / IC | Ordinary queries / verified / novel rank |
+| Run | Workload | IC internal interval | Rho internal interval | Observed rho / IC | Ordinary queries / verified / novel rank |
 | --- | --- | ---: | ---: | ---: | ---: |
 | `v3` | `bd9c9a1dff79` | 3,202.635 ms | 1,023.159 ms | 0.319× | 219 / 219 / 219 |
 | `v4` | `247f33e06393` | 4,572.414 ms | 1,460.097 ms | 0.319× | 286 / 286 / 221 |
 | `v5` | `c6f52be49d30` | 3,146.958 ms | 804.337 ms | 0.256× | 216 / 216 / 216 |
 
-The paired ratio range is **0.256–0.319**, and rho is faster on every target.
-The median ratio is 0.319; the three-target percentile bootstrap 95% interval
-for the geometric mean paired ratio is also 0.256–0.319. That interval is
-exploratory with only three targets. Across the three relation streams,
-721/721 ordinary queries produced group-verified relations; 656 added rank.
-The nominal Wilson 95% interval for the verified-query fraction is
-0.995–1.000, but its independent-query assumption is unproved for this
-adaptive, rank-stopped stream. These observations do not establish a
-natural-query success rate for another curve or for the SAT variant.
+The observed ratios range from **0.256 to 0.319**; no controlled speedup or
+confidence interval is available. Across these three adaptive relation
+streams, 721/721 ordinary queries produced group-verified relations and 656
+added rank. This is a count of successful searches over a large precomputed
+index, not a cheap per-query success probability. The base has
+`C(23426+3,4) = 12,551,410,757,022,501` four-point multisets, about 596 per
+subgroup element on average. This makes high coverage plausible **if** sums
+are well distributed, but the average alone does not prove coverage. The
+three selected target seeds and rank-stopped query streams do not provide a
+general natural-query yield or a valid binomial interval.
 
 The [measurement rows](runs/n53_w3_root_pair_summary/rows.csv) retain each
 target point, exact online phases, base and index construction, rank yield,
@@ -65,8 +73,11 @@ clock in each [Sage replay](runs/n53_w3_root_pair_v3/sage_replay.json).
 The [summary JSON](runs/n53_w3_root_pair_summary/summary.json) carries the
 observed ranges and claim boundary.
 The [schema-v2 rows](runs/n53_w3_root_pair_summary/contract_v2.jsonl) pass
-`experiments/ic-candidate-catalog/analyze_v2.py`; operations and complete
-cold phase costs stay `null` because they were not fully calibrated.
+`experiments/ic-candidate-catalog/analyze_v2.py`. That analyzer checks the
+measurement schema but does not establish CPU isolation or include the later
+Sage replay in the Rust interval. The derived summary keeps controlled
+speedup and its confidence interval `null`; operations and complete cold
+phase costs also remain `null` because they were not fully calibrated.
 
 The first fresh-target attempt (`v1`, run `R1` on workload `32611ba1c3e1`)
 is retained as `HARNESS_FAILURE` in the rows. Its `/usr/bin/time -l` wrapper
@@ -80,8 +91,9 @@ produced the `v3`–`v5` primary workloads. An earlier published target was
 used only for a root-index smoke control and has its own independent Sage
 replay.
 
-This is N53 evidence only. N51 and N83 remain unmeasured, and these results
-do not support an IC speedup claim. Setup-inclusive cost and a normalized
+This is a synthetic N53 correctness control only. N51 and N83 remain
+unmeasured, and these results do not support an IC speedup claim.
+Setup-inclusive cost and a normalized
 operation count `S` are not headline metrics here; no operation-count
 boundary was frozen for a comparable `S` across the Rust IC and rho solvers.
 
