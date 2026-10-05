@@ -1679,6 +1679,29 @@ base change increases the uniform-target four-subset counting mean by about
 degree-131 complete-work exponent. The [ledger](work_ledger.json) retains
 the failed attempts and null claim fields.
 
+### Q1439 fixed-leaf three-summand reduction
+
+The [frozen Q1439 experiment](q1439_fixed_leaf/README.md) fixes one usable
+raw factor-base leaf independently of each ordinary public target, subtracts
+it from every raw cofactor preimage, and searches the remaining three leaves
+with two compact factored S3 links. The exact Q1438 N53 W≤4 and N83 W≤6
+bases, their B/K counts and digests, and the archived public targets are
+preserved. The selected ordinary anchors and all adjusted targets are bound
+in the protocol before execution. Both planted controls return independently
+replayed four-point relations. The unpinned ordinary N53 and N83 cells each
+reach the 60-second external cap with zero relations. A small-field check
+covers every triple for the selected anchors at N3/N5, with exceptional
+identity states counted separately.
+
+A fixed anchor can miss a four-point solution, so these censored ordinary
+runs cannot separate coverage from solver cost. The known N53 four-point
+relation does not establish that the independent Q1439 anchor belongs to a
+relation. The results therefore leave ordinary useful-row yield, successful
+three-leaf cost, and complete N131 `2^x` unknown. A witness-informed
+anchor with the other leaves freed is the narrow next diagnostic; the main
+solver gate remains a target-conditioned method that finds a witness for
+both sparse pairs without enumerating a full pair table.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum

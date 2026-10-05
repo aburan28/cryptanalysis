@@ -4040,6 +4040,99 @@ def main():
         1, 0, 1, 0]
     assert [row["stop_reason"] for row in q1438_cells] == [
         "sat", "wall_cap", "sat", "wall_cap"]
+    q1439_dir = HERE / "q1439_fixed_leaf"
+    q1439_protocol_path = q1439_dir / "protocol.json"
+    q1439_verification_path = q1439_dir / "verification.json"
+    q1439_protocol = json.loads(q1439_protocol_path.read_text())
+    q1439_verification = json.loads(q1439_verification_path.read_text())
+    q1439_small_path = q1439_dir / "small_field_verification.json"
+    q1439_small = json.loads(q1439_small_path.read_text())
+    assert q1439_small["status"] == "passed"
+    assert [row["nonexceptional_checked"] for row in q1439_small["rows"]] == [
+        8, 70644]
+    assert q1439_protocol["proposal_id"] == "Q1439"
+    assert q1439_protocol["candidate_id"] is None
+    assert q1439_protocol["isogeny"] == "none"
+    assert q1439_verification["status"] == "passed"
+    assert q1439_verification["protocol_sha256"] == sha(q1439_protocol_path)
+    q1439_cells = []
+    for key in q1439_protocol["run_order"]:
+        frozen = q1439_protocol["cells"][key]
+        receipt_path = q1439_dir / "runs" / key / "receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        checked = next(row for row in q1439_verification["rows"]
+                       if row["key"] == key)
+        assert checked["receipt_sha256"] == sha(receipt_path)
+        assert receipt["protocol_sha256"] == sha(q1439_protocol_path)
+        assert receipt["stage_run_id"] == frozen["stage_run_id"]
+        assert receipt["curve_id"] == frozen["curve_id"]
+        assert receipt["factor_base_actual_B"] == frozen[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == frozen["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == frozen[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["verified_relation_count"] == checked[
+            "verified_relation_count"]
+        assert receipt["complete_solve_work_log2"] is None
+        q1439_cells.append({
+            "key": key, "degree_n": receipt["degree_n"],
+            "cell": receipt["cell"], "curve_id": receipt["curve_id"],
+            "factor_base_actual_B": receipt["factor_base_actual_B"],
+            "folded_columns_K": receipt["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": receipt[
+                "factor_base_enumerated_set_sha256"],
+            "workload_id": receipt["workload_id"],
+            "stage_run_id": receipt["stage_run_id"],
+            "anchor_raw_x": receipt["anchor_raw_x"],
+            "adjustment_case_count": receipt["adjustment_case_count"],
+            "adjusted_target_x_count": receipt["adjusted_target_x_count"],
+            "solver_status": receipt["solver_status"],
+            "verified_relation_count": receipt["verified_relation_count"],
+            "solver_conflicts_reported": receipt[
+                "solver_conflicts_reported"],
+            "formula_and_gates": receipt["formula"]["and_gates"],
+            "formula_xor_rows": receipt["formula"]["xor_rows"],
+            "target_preparation_and_formula_wall_seconds_exploratory": receipt[
+                "target_preparation_and_formula_wall_seconds_exploratory"],
+            "solver_wall_seconds_exploratory": receipt[
+                "solver_wall_seconds_exploratory"],
+            "charged_stage_wall_seconds_exploratory": receipt[
+                "charged_stage_wall_seconds_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["solver_status"] for row in q1439_cells] == [
+        "sat", "external_timeout", "sat", "external_timeout"]
+    assert [row["verified_relation_count"] for row in q1439_cells] == [
+        1, 0, 1, 0]
+    fixed_anchor_model = []
+    for n in (53, 83):
+        b = q1438_solver_protocol["workloads"][f"n{n}_ordinary"][
+            "factor_base_actual_B"]
+        r = q1438_solver_protocol["instances"][str(n)]["subgroup_order"]
+        mean = math.comb(b, 3) / r
+        fixed_anchor_model.append({
+            "degree_n": n, "base_source": "Q1438 exact",
+            "factor_base_actual_B": b,
+            "mean_unordered_three_subsets_per_uniform_target_and_fixed_anchor": mean,
+            "log2_mean": math.log2(mean),
+            "anchors_per_expected_hit": 1 / mean,
+            "log2_anchors_per_expected_hit": -math.log2(mean),
+        })
+    for label, b in (("Q1413 exact W<=6", q1413_full[
+            "actual_usable_points_B_before_folding"]),
+            ("Q1437 conditional W<=7", q1437_sample[
+                "conditional_estimate"]["conditional_B"])):
+        mean = (b * (b - 1) * (b - 2) / 6) / order131
+        fixed_anchor_model.append({
+            "degree_n": 131, "base_source": label,
+            "factor_base_actual_B": (b if "exact" in label else None),
+            "conditional_factor_base_B": (b if "conditional" in label else None),
+            "mean_unordered_three_subsets_per_uniform_target_and_fixed_anchor": mean,
+            "log2_mean": math.log2(mean),
+            "anchors_per_expected_hit": 1 / mean,
+            "log2_anchors_per_expected_hit": -math.log2(mean),
+        })
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -5209,6 +5302,42 @@ def main():
             "solver_protocol_sha256": sha(q1438_solver_protocol_path),
             "solver_verification_sha256": sha(
                 q1438_solver_verification_path),
+        },
+        "q1439_fixed_leaf_three_sum_stage": {
+            "proposal_id": "Q1439",
+            "candidate_id": None,
+            "isogeny": "none",
+            "controlled_question": (
+                "One target-independent usable anchor reduces a four-point "
+                "query to a three-leaf two-S3 chain. The exact Q1438 "
+                "bases and public targets are retained; anchor-restricted "
+                "coverage differs from the complete Q1438 search."),
+            "cells": q1439_cells,
+            "uniform_fixed_anchor_representation_model": fixed_anchor_model,
+            "uniform_model_assumptions": (
+                "Distinct unordered triples from the B subgroup-usable "
+                "points have independently uniform sums in the r-order "
+                "subgroup. This is a counting mean, not a measured hit "
+                "probability, solver cost, or complete work bound. The "
+                "Q1437 W<=7 B is conditional on no unsampled collisions."),
+            "is_empirical_solver_stage_measurement": True,
+            "is_controlled_cpu_wall_speedup": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "Both planted controls verify, but independent ordinary "
+                "anchors at N53/N83 reach 60-second external timeouts with "
+                "zero relations. A fixed anchor can miss a representation "
+                "even when the target has a four-point relation, so these "
+                "censored cells cannot distinguish anchor coverage from "
+                "three-leaf search cost. They do not establish ordinary "
+                "yield, useful-row cost, N53-to-N83 successful-solve growth, "
+                "or a complete N131 work exponent."),
+            "protocol_sha256": sha(q1439_protocol_path),
+            "verification_sha256": sha(q1439_verification_path),
+            "small_field_verification_sha256": sha(q1439_small_path),
+            "small_field_nonexceptional_cases": 70652,
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
