@@ -1579,15 +1579,25 @@ all four cells. These are different censored search prefixes on an unisolated
 host; no cost per useful relation, natural yield, or complete N131 `2^x`
 can be inferred.
 
+### Q1433 longer cached-solver ordinary queries
+
+The [frozen Q1433 protocol](q1433_long_cached/protocol.json) runs the exact
+Q1432 binary and public targets under 300-second/five-million-conflict caps.
+Both known-witness controls independently verify. Both ordinary N53/N83
+targets again reach the wall cap with zero relations: N53 records 903,175
+decisions and 4,753,049 field multiplications; N83 records 677,658
+decisions and 4,490,849 multiplications. Peak RSS reaches 1.56/2.22 GB.
+The [result table](q1433_long_cached/README.md) and [archive verification](q1433_long_cached/verification.json)
+retain the censored rows and exact factor-base identities. They are lower
+bounds for those attempts, not solved-query costs or a natural-yield sample.
+The complete N131 `2^x` remains unknown.
+
 ## Next goal
 
-The immediate solver gate is a longer preregistered unpinned N53 ordinary
-solve attempt with Q1432's exact cache. Q1301 proves this public target
-representable. A verified return would supply a real solver-cost point;
-another timeout supplies only a lower bound. The exact Q1325 N83 ordinary
-base still needs an independently verified relation before a growth fit.
-If the cached solver remains censored, the next solver should build a
-**compact target-conditioned pair-sum membership and witness method**. It
+The next solver should build a **compact target-conditioned pair-sum
+membership and witness method**. Q1433's larger cap leaves both ordinary
+targets censored and memory growing, so another cap increase on the same
+search order is unlikely to answer the feasibility question. The method
 must avoid the Q1425–Q1427 reverse-root
 rejection loop and the full quotient-pair index screened by Q1416 at roughly
 `2^89.36` logical actions on the exact N131 base under its uniform-key
