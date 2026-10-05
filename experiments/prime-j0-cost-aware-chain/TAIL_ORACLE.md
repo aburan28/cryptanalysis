@@ -134,3 +134,14 @@ sets](https://pmc.ncbi.nlm.nih.gov/articles/PMC4144834/), and [dynamic
 programming for minimal-weight digital
 expansions](https://dmtcs.episciences.org/en/articles/3009) means this
 implementation result does not establish a new mathematical recoding result.
+
+## Rho relevance
+
+The j=0 `glv_rho_solve` path in `src/curve.c` performs scalar multiplications
+when it builds its walk-multiplier table and starts or restarts walks. Its
+repeated walk step uses batched point additions. This tail oracle therefore
+cannot reduce the cost of every rho step by the percentages above. Wiring an
+opt-in public-scalar backend into setup and restarts would need a paired,
+verified one-target rho experiment that charges preparation and all restarts.
+The current PR leaves rho's default walk and scalar backend unchanged until
+that end-to-end benefit is established on an isolated host.
