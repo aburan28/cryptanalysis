@@ -61,12 +61,13 @@ The fixed replay has 45 rational quartic points, 79 certified sections,
 22 distinct nonidentity norm images, 11 folded matrix columns and rank
 11 (one anchor plus ten independent line rows). All eleven factor-base
 logs replay, and the supplied target returns the verified scalar 17.
-The native tests cover every scalar in the order-59 correctness fixture,
+The native tests cover all 59 scalars with each of two supplied generators,
 all 990 secant pairs, certificate tampering, repeated intersections,
 infinity, unsupported input and failure budgets. These are known-answer
 controls, not a natural-yield or performance benchmark.
 
 The [correctness record](evidence/correctness-control.json),
+[second generator control](evidence/generator-control.json),
 [failed controls](evidence/failure-controls.json) and
 [local verification receipt](evidence/receipt.json) retain exact outputs
 and source hashes. Repository CI validates the delivered snapshot separately.

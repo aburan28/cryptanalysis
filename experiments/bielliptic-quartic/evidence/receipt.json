@@ -17,23 +17,60 @@
     "crypto",
     "cryptanalysis/suite"
   ],
-  "native_test_count": 8,
-  "known_answer_controls": 59,
+  "native_test_count": 9,
+  "known_answer_controls": 118,
   "independent_secant_pair_controls": 990,
   "sources": {
-    "src/cryptanalysis/bielliptic_quartic.rs": "5c0a3cef09947d05222b9463158d0394ba1c1c164694fdc605419f8c32d22727",
+    "src/cryptanalysis/bielliptic_quartic.rs": "54ef65c7325a7c850741a8def84ee2b2ceddcc3689a0879afd2796eb7cb01e52",
     "src/bin/quartic_ic.rs": "0f71936014b3ff54dacc9dc6b642c88bea60b70a658f6e42c467aab73f11a069",
     "src/hash/sha256.rs": "82d7513e6e0de8d7bb8d2c33d3e4697ded9e32f7db70e733e56fb14efabb2b4a"
   },
   "protocol_sha256": "d4f6ca4e9a5cacecff96608a643e6c45c092997bb049e3b8a094cd20f36b08f4",
   "replay_command": "bash tools/check_bielliptic_quartic.sh",
   "raw_results": {
-    "correctness-control.json": "9286c0aff43145cf1106128d0c76f79f8506aab18609749d9a63f5aca2626d02",
-    "failure-controls.json": "466ed17d636a9a760a8b9fa86067d7b1f7e6639565fdf6b9de23f1477c8d8f57"
+    "correctness-control.json": "a20d13e8182bd09d13e7390a90f4d10a333a23b15d1429040e10f549decc0a9a",
+    "generator-control.json": "45e1b77476421776903d526123cb0349c66a6075ce600c7555b40a26222c4e33",
+    "failure-controls.json": "f8aa39836f18e446c2944b4d0fd1a88749ae8e3a48d7e0a8c08350f6237c62b8"
   },
   "timing": null,
   "comparison": null,
   "speedup": null,
   "decision": "Certified tiny-field norm projection implemented; general Jacobian and performance work remains unimplemented.",
-  "source_paths": "relative to Rust crate root"
+  "source_paths": "relative to Rust crate root",
+  "control_generators": [
+    [
+      0,
+      1
+    ],
+    [
+      29,
+      42
+    ]
+  ],
+  "fixed_regression": {
+    "before_kernel_sha256": "5c0a3cef09947d05222b9463158d0394ba1c1c164694fdc605419f8c32d22727",
+    "generator": [
+      29,
+      42
+    ],
+    "target": [
+      0,
+      1
+    ],
+    "before_exit_code": 2,
+    "before_error": "InvalidFactorBaseLog",
+    "after_scalar": 7,
+    "after_verified": true,
+    "fix": "Eliminate all existing pivots before selecting a new pivot."
+  },
+  "additional_lint": {
+    "toolchain": "1.98",
+    "msrv": "1.87",
+    "status": "passed",
+    "inherited_allowances": [
+      "needless_range_loop",
+      "too_many_arguments",
+      "type_complexity"
+    ]
+  }
 }

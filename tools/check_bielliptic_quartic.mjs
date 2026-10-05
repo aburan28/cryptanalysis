@@ -50,6 +50,10 @@ assert.ok(Object.values(record.costs).every((value) => value === null));
 // A supplied target follows exactly the same path as the fixture demonstration.
 const supplied = invoke(['solve', '--p', '53', '--a', '2', '--b', '1', '--generator', '0,1', '--target', '29,42']);
 assert.equal(supplied.stdout, demonstration.stdout);
+const changedGenerator = JSON.parse(invoke(['solve', '--p', '53', '--a', '2', '--b', '1', '--generator', '29,42', '--target', '0,1']).stdout);
+assert.equal(changedGenerator.recovery.scalar, 7);
+assert.equal(changedGenerator.recovery.verified, true);
+assert.equal(changedGenerator.precomputation.replayed_factor_logs, 11);
 const rankFailure = JSON.parse(invoke(['demo', '--max-pairs', '0'], 2).stdout);
 assert.equal(rankFailure.recovery.status, 'rank_deficient');
 assert.equal(rankFailure.recovery.scalar, null);

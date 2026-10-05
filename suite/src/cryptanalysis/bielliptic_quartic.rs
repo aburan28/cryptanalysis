@@ -600,30 +600,31 @@ impl RowReduction {
     }
 
     fn insert(&mut self, mut row: Vec<u64>) -> Result<bool, Error> {
+        // Eliminate every existing pivot before selecting a new one. An anchor
+        // can occupy a later column, so the first free column is not necessarily
+        // later than all existing pivots.
         for column in 0..self.columns {
-            let coefficient = row[column];
-            if coefficient == 0 {
-                continue;
-            }
             if let Some(pivot) = &self.pivots[column] {
+                let coefficient = row[column];
                 for i in column..=self.columns {
                     row[i] = sub(row[i], coefficient * pivot[i] % self.modulus, self.modulus);
                 }
-            } else {
-                let inv = pow(coefficient, self.modulus - 2, self.modulus);
-                for value in &mut row {
-                    *value = *value * inv % self.modulus;
-                }
-                for pivot in self.pivots.iter_mut().flatten() {
-                    let coefficient = pivot[column];
-                    for i in column..=self.columns {
-                        pivot[i] = sub(pivot[i], coefficient * row[i] % self.modulus, self.modulus);
-                    }
-                }
-                self.pivots[column] = Some(row);
-                self.rank += 1;
-                return Ok(true);
             }
+        }
+        if let Some(column) = (0..self.columns).find(|&column| row[column] != 0) {
+            let inv = pow(row[column], self.modulus - 2, self.modulus);
+            for value in &mut row {
+                *value = *value * inv % self.modulus;
+            }
+            for pivot in self.pivots.iter_mut().flatten() {
+                let coefficient = pivot[column];
+                for i in column..=self.columns {
+                    pivot[i] = sub(pivot[i], coefficient * row[i] % self.modulus, self.modulus);
+                }
+            }
+            self.pivots[column] = Some(row);
+            self.rank += 1;
+            return Ok(true);
         }
         if row[self.columns] != 0 {
             Err(Error::InconsistentRelations)
@@ -1158,5 +1159,25 @@ mod tests {
             matrix.insert(vec![0, 0, 1]),
             Err(Error::InconsistentRelations)
         );
+        let mut reverse = RowReduction::new(59, 2);
+        reverse.insert(vec![0, 1, 58]).unwrap();
+        reverse.insert(vec![1, 2, 3]).unwrap();
+        assert_eq!(reverse.solution(), Some(vec![5, 58]));
+    }
+
+    #[test]
+    fn later_anchor_column_recovers_with_a_different_generator() {
+        let cover = fixture();
+        let changed_generator = cover.mul(generator(), 17).unwrap();
+        let precomputed = prepare(cover.clone(), changed_generator, Limits::default()).unwrap();
+        let anchor = folded(&cover, changed_generator).unwrap().0;
+        assert!(precomputed.factor_base().binary_search(&anchor).unwrap() > 0);
+        assert!(precomputed.is_complete());
+        for scalar in 0..59 {
+            let target = cover.mul(changed_generator, scalar).unwrap();
+            let recovered = recover(&precomputed, target, Limits::default()).unwrap();
+            assert_eq!(recovered.scalar, Some(scalar));
+            assert!(recovered.verified);
+        }
     }
 }
