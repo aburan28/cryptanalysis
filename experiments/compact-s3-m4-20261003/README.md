@@ -1920,19 +1920,29 @@ target-dependent stage intervals are 66.001 and 68.361 seconds on an
 unisolated host. The successful-solve growth rate and complete N131
 `2^x` remain unknown.
 
+### Q1452 known-satisfiable N53 target preimage
+
+The [Q1452 frozen stage](q1452_known_satisfiable_phi5/README.md) keeps
+Q1451's exact N53 ordinary target and solver but selects raw preimage
+201, whose four-point witness is archived and group-verified. All four
+leaves remain unpinned in the ordinary run. Five Gaussian matrices
+activate and the solver reaches about 369K rounded conflicts before
+the 65-second external safeguard, without a model. The target-dependent
+stage interval is 65.263 seconds; child CPU is 50.491 seconds on this
+unisolated host. A valid relation exists in this selected slice, so
+constant-target substitution alone has not produced a successful
+ordinary decomposition under the frozen cap. The cost of a successful
+decomposition and complete N131 `2^x` remain unknown.
+
 ## Next goal
 
-First test Q1451's constant-target circuit on the **known-satisfiable
-N53 ordinary target preimage 201**, leaving all four leaves unpinned.
-Q1451's index-0 timeout cannot decide that question. Freeze the slice,
-solver cap, and accounting before the query. A verified relation would
-give the first unpinned ordinary phi5 success and justify a paired
-N83/fresh-target panel. If that known-satisfiable slice still caps,
-develop a solution-preserving field-level elimination or propagation
-rule that couples several sparse leaves before generic Boolean
-branching. Prove it on exhaustive small fields and the archived
-N53/N83 witnesses, then show a changed search pattern on unpinned
-ordinary queries. Q1447 excludes uniformly restarting
+Q1452 tested the **known-satisfiable N53 ordinary target preimage 201**
+with all four leaves unpinned, and it still reached the cap without a
+model. The next solver should introduce a solution-preserving field-level
+elimination or propagation rule that couples several sparse leaves
+before generic Boolean branching. Prove it on exhaustive small fields
+and the archived N53/N83 witnesses, then show a changed search pattern
+on unpinned ordinary queries. Q1447 excludes uniformly restarting
 first-pair midpoints under the declared bases, and Q1416's pure pair-index
 model costs roughly `2^89.36` logical actions at N131; neither is a
 lower bound on target-guided algebraic search. Q1415's global native XOR

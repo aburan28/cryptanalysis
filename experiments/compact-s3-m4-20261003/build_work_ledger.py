@@ -4897,6 +4897,113 @@ def main():
             "cpu_isolation_receipt": None,
             "receipt_sha256": sha(receipt_path),
         })
+    q1452_dir = HERE / "q1452_known_satisfiable_phi5"
+    q1452_protocol_path = q1452_dir / "protocol.json"
+    q1452_controls_path = q1452_dir / "controls.json"
+    q1452_verification_path = q1452_dir / "verification.json"
+    q1452_protocol = json.loads(q1452_protocol_path.read_text())
+    q1452_controls = json.loads(q1452_controls_path.read_text())
+    q1452_verification = json.loads(q1452_verification_path.read_text())
+    assert q1452_protocol["proposal_id"] == q1452_controls[
+        "proposal_id"] == q1452_verification["proposal_id"] == "Q1452"
+    assert q1452_protocol["candidate_id"] is q1452_verification[
+        "candidate_id"] is None
+    assert q1452_protocol["isogeny"] == q1452_verification[
+        "isogeny"] == "none"
+    assert q1452_protocol["point_decomposition_stage_code"] == "PDP4phi5"
+    assert q1452_controls["status"] == q1452_verification[
+        "status"] == "pass"
+    assert q1452_protocol["parent_q1451_protocol_sha256"] == sha(
+        q1451_protocol_path)
+    assert q1452_protocol["controls_sha256"] == sha(q1452_controls_path)
+    assert q1452_verification["protocol_sha256"] == sha(
+        q1452_protocol_path)
+    assert q1452_verification["ordinary_n53_relation_measured"] is False
+    assert q1452_verification["complete_n131_log2_work"] is None
+    assert q1452_verification["challenge_run_admitted"] is False
+    assert q1452_controls["target_preimage_index"] == 201
+    assert q1452_controls["witness_not_supplied_to_ordinary_solver"] is True
+    assert q1452_controls["archived_pinned_verified_relation"]["status"] == (
+        "verified_four_point_relation")
+    q1452_cell = q1452_protocol["cells"]["53"]
+    q1451_cell = q1451_protocol["cells"]["53"]
+    for name in ("curve_id", "factor_base_actual_B", "folded_columns_K",
+                 "factor_base_enumerated_set_sha256", "public_target",
+                 "workload_id", "and_gates", "xcnf_variables",
+                 "cnf_clauses", "native_xor_rows"):
+        assert q1452_cell[name] == q1451_cell[name], name
+    assert q1452_cell["target_preimage_index"] == 201
+    assert q1452_cell["selected_raw_target_x"] == q1452_controls[
+        "selected_raw_target_x"]
+    assert q1452_cell["full_target_preimage_x_count"] == 428
+    q1452_receipt_path = (q1452_dir /
+                          "runs/n53_known_satisfiable_ordinary/receipt.json")
+    q1452_stdout_path = (q1452_dir /
+                         "runs/n53_known_satisfiable_ordinary/attempt_000.stdout.txt")
+    q1452_receipt = json.loads(q1452_receipt_path.read_text())
+    q1452_verified = q1452_verification["rows"][0]
+    assert q1452_verified["receipt_sha256"] == sha(q1452_receipt_path)
+    assert q1452_verified["status"] == q1452_receipt[
+        "status"] == "solver_censored"
+    assert q1452_receipt["protocol_sha256"] == sha(q1452_protocol_path)
+    assert q1452_receipt["cms_binary_sha256"] == q1452_protocol[
+        "cms_binary_sha256"]
+    assert q1452_receipt["selected_slice_known_satisfiable_by_archived_witness"] is True
+    assert q1452_receipt["witness_leaf_values_supplied_to_solver"] is False
+    assert q1452_receipt["verified_relation_count"] == 0
+    assert q1452_receipt["complete_n131_log2_work"] is None
+    assert len(q1452_receipt["attempts"]) == 1
+    q1452_attempt = q1452_receipt["attempts"][0]
+    assert q1452_attempt["solver_status"] == "external_timeout"
+    assert q1452_attempt["stdout_sha256"] == sha(q1452_stdout_path)
+    assert q1452_attempt["initial_gaussian_matrices_used"] == 5
+    assert q1452_attempt["last_progress_conflicts_rounded"] == "369K"
+    q1452_rows = [{
+        "proposal_id": "Q1452", "candidate_id": None,
+        "run_id": None, "isogeny": "none",
+        "point_decomposition_stage_code": "PDP4phi5",
+        "degree": 53, "curve_id": q1452_cell["curve_id"],
+        "workload_id": q1452_cell["workload_id"],
+        "factor_base_actual_B": q1452_cell["factor_base_actual_B"],
+        "folded_columns_K": q1452_cell["folded_columns_K"],
+        "factor_base_enumerated_set_sha256": q1452_cell[
+            "factor_base_enumerated_set_sha256"],
+        "public_target": q1452_cell["public_target"],
+        "target_preimage_index": 201,
+        "selected_raw_target_x": q1452_cell["selected_raw_target_x"],
+        "selected_slice_known_satisfiable_by_archived_witness": True,
+        "witness_leaf_values_supplied_to_solver": False,
+        "and_gates": q1452_cell["and_gates"],
+        "xcnf_variables": q1452_cell["xcnf_variables"],
+        "cnf_clauses": q1452_cell["cnf_clauses"],
+        "native_xor_rows": q1452_cell["native_xor_rows"],
+        "status": q1452_receipt["status"],
+        "attempt_count": 1,
+        "gaussian_matrices_used": 5,
+        "last_progress_conflicts_rounded": "369K",
+        "exact_final_solver_operation_counts": None,
+        "solver_child_user_cpu_ns": q1452_attempt[
+            "solver_child_user_cpu_ns"],
+        "solver_child_system_cpu_ns": q1452_attempt[
+            "solver_child_system_cpu_ns"],
+        "formula_build_wall_ns_exploratory": q1452_receipt[
+            "formula_build_wall_ns_exploratory"],
+        "solver_process_wall_ns_exploratory": q1452_receipt[
+            "solver_process_wall_ns_exploratory"],
+        "target_dependent_stage_wall_ns_exploratory": q1452_receipt[
+            "target_dependent_stage_wall_ns_exploratory"],
+        "archive_wall_ns_outside_stage": q1452_receipt[
+            "archive_wall_ns_outside_stage"],
+        "peak_child_rss_raw": q1452_receipt["peak_child_rss_raw"],
+        "peak_child_rss_units": q1452_receipt["peak_child_rss_units"],
+        "verified_relation_count": 0,
+        "natural_relation_yield_estimate": None,
+        "novel_rank_per_query": None,
+        "cost_per_useful_row": None,
+        "complete_n131_log2_work": None,
+        "cpu_isolation_receipt": None,
+        "receipt_sha256": sha(q1452_receipt_path),
+    }]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -6392,6 +6499,33 @@ def main():
             "controls_sha256": sha(q1451_controls_path),
             "verification_sha256": sha(q1451_verification_path),
         },
+        "q1452_known_satisfiable_phi5_stage": {
+            "proposal_id": "Q1452", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4phi5",
+            "method": q1452_protocol["method"],
+            "controlled_variable": q1452_protocol["controlled_variable"],
+            "rows": q1452_rows,
+            "ordinary_N53_relation_measured": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "A fully pinned, exact group-verified witness proves "
+                "that the archived N53 ordinary target has a four-point "
+                "relation at raw preimage 201. Q1452 leaves all four "
+                "leaves unpinned and reaches the external safeguard "
+                "without a model, despite five active Gaussian "
+                "matrices and about 369K rounded partial conflicts. "
+                "The successful-solve cost remains unmeasured; "
+                "field-level target-coupled pruning is required "
+                "before a credible growth projection."),
+            "protocol_sha256": sha(q1452_protocol_path),
+            "controls_sha256": sha(q1452_controls_path),
+            "verification_sha256": sha(q1452_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -6813,6 +6947,10 @@ def main():
                 "public-target preimage, but both ordinary index-0 "
                 "slices still time out without a model and do not "
                 "measure whole-target relation yield; "
+                "Q1452 selects the archived known-satisfiable N53 "
+                "preimage 201 with four unpinned leaves, yet also "
+                "times out without a model after about 369K rounded "
+                "partial conflicts; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
