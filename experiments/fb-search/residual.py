@@ -159,7 +159,34 @@ def boolean_equations(n: int, mono: dict[int, int]) -> list[list[int]]:
 _SMXL = None
 
 
-def smxl(N: int, eqs: list[list[int]], d_max: int = 5, max_cols: int = 120_000) -> dict:
+def tmxl(N: int, l: int, eqs: list[list[int]], d_max: int = 5, max_cols: int = 2_000_000) -> dict:
+    """Mutant closure in the residual variables t only (bits l..N-1), on the columns of x-degree <= 1:
+    a y-MXL in the sense of arXiv 2006.09442 applied to the residual bilinear system."""
+    import ctypes
+
+    smxl(1, [[0]], 0, 1)  # load the library
+    flat = np.array([m for f in eqs for m in f], dtype=np.uint64)
+    off = np.zeros(len(eqs) + 1, dtype=np.int32)
+    off[1:] = np.cumsum([len(f) for f in eqs])
+    out = np.zeros(8, dtype=np.int64)
+    P = ctypes.POINTER
+    xm = (1 << l) - 1
+    tm = ((1 << N) - 1) ^ xm
+    cap = N + 1
+    lin = np.zeros(2 * cap, dtype=np.uint64)
+    _SMXL.smxl_run_restricted(ctypes.c_int(N), flat.ctypes.data_as(P(ctypes.c_uint64)),
+                              off.ctypes.data_as(P(ctypes.c_int32)), ctypes.c_int(len(eqs)), ctypes.c_int(d_max),
+                              ctypes.c_longlong(max_cols), ctypes.c_uint64(tm), ctypes.c_uint64(xm), ctypes.c_int(1),
+                              out.ctypes.data_as(P(ctypes.c_longlong)), lin.ctypes.data_as(P(ctypes.c_uint64)),
+                              ctypes.c_int(cap))
+    status = {1: "refuted", 0: "degree_limit", -1: "budget", -2: "memory"}[int(out[0])]
+    k = min(int(out[6]), cap)
+    return {"status": status, "degree": int(out[1]), "cols": int(out[2]), "rank": int(out[3]),
+            "xors": int(out[4]), "rows_in": int(out[5]), "linear_pivots": int(out[6]),
+            "linear_rows": [(int(lin[2 * i]), int(lin[2 * i + 1])) for i in range(k)]}
+
+
+def smxl(N: int, eqs: list[list[int]], d_max: int = 5, max_cols: int = 120_000, mult_vars: int | None = None) -> dict:
     """Sparse-column MXL closure (smxl.c), up to 64 variables."""
     import ctypes
     import subprocess
@@ -173,14 +200,17 @@ def smxl(N: int, eqs: list[list[int]], d_max: int = 5, max_cols: int = 120_000) 
             subprocess.run(["cc", "-O3", "-march=native", "-shared", "-fPIC", "-o", str(so), str(src)], check=True)
         _SMXL = ctypes.CDLL(str(so))
         _SMXL.smxl_run.restype = ctypes.c_longlong
+        _SMXL.smxl_run_masked.restype = ctypes.c_longlong
+        _SMXL.smxl_run_restricted.restype = ctypes.c_longlong
     flat = np.array([m for f in eqs for m in f], dtype=np.uint64)
     off = np.zeros(len(eqs) + 1, dtype=np.int32)
     off[1:] = np.cumsum([len(f) for f in eqs])
     out = np.zeros(8, dtype=np.int64)
     P = ctypes.POINTER
-    _SMXL.smxl_run(ctypes.c_int(N), flat.ctypes.data_as(P(ctypes.c_uint64)), off.ctypes.data_as(P(ctypes.c_int32)),
-                   ctypes.c_int(len(eqs)), ctypes.c_int(d_max), ctypes.c_longlong(max_cols),
-                   out.ctypes.data_as(P(ctypes.c_longlong)))
+    mv = (1 << 64) - 1 if mult_vars is None else mult_vars
+    _SMXL.smxl_run_masked(ctypes.c_int(N), flat.ctypes.data_as(P(ctypes.c_uint64)),
+                          off.ctypes.data_as(P(ctypes.c_int32)), ctypes.c_int(len(eqs)), ctypes.c_int(d_max),
+                          ctypes.c_longlong(max_cols), ctypes.c_uint64(mv), out.ctypes.data_as(P(ctypes.c_longlong)))
     status = {1: "refuted", 0: "degree_limit", -1: "budget", -2: "memory"}[int(out[0])]
     return {"status": status, "degree": int(out[1]), "cols": int(out[2]), "rank": int(out[3]),
             "xors": int(out[4]), "rows_in": int(out[5]), "linear_pivots": int(out[6])}
@@ -204,30 +234,43 @@ def main() -> None:
     ap.add_argument("--mode", default="mxl", choices=macaulay.MODES)
     ap.add_argument("--d-max", type=int, default=6)
     ap.add_argument("--max-cols", type=int, default=400_000)
-    ap.add_argument("--solver", default="mxl", choices=("mxl", "yxl", "smxl"),
+    ap.add_argument("--solver", default="mxl", choices=("mxl", "yxl", "smxl", "tmxl"),
                     help="mxl: degree scan of the residual Boolean system (N <= 26); yxl: y-XL in t")
     ap.add_argument("--k-max", type=int, default=4)
     ap.add_argument("--only-refutations", action="store_true", help="skip decomposable targets")
+    ap.add_argument("--no-truth", dest="truth", action="store_false",
+                    help="skip the 2^d half-trace check of decomposability (large d)")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
     C = ToyCurve(args.n)
     limits = macaulay.Limits(d_max=args.d_max, max_cols=args.max_cols, max_rows=4_000_000)
     for l in args.l:
-        fb = FactorBase(C, args.family, l, args.seed)
+        if args.truth:
+            fb = FactorBase(C, args.family, l, args.seed)
+        else:
+            # the residual algebra needs only the basis; enumerating 2^l points is skipped
+            from types import SimpleNamespace
+
+            from factor_base import family_basis
+            from toycurve import sha256_hex
+
+            basis, _ = family_basis(C, args.family, l, args.seed)
+            fb = SimpleNamespace(curve=C, basis=basis, l=l, digest=sha256_hex([args.family, l, args.seed, basis]))
         sv = HalfTraceSolver(fb)
         rng = random.Random(f"residual|{fb.digest}")
         for _ in range(args.targets):
             _, R = C.random_subgroup_point(rng)
-            truth = bool(sv.decompose(R))
+            truth = bool(sv.decompose(R)) if args.truth else None
             if truth and args.only_refutations:
                 continue
             for rs in residual_systems(sv, R[0]):
                 s = rs["system"]
-                if args.solver == "smxl":
+                if args.solver in ("smxl", "tmxl"):
                     eqs = boolean_equations(sv.n, rs["mono"])
-                    sm = smxl(rs["N"], eqs, args.d_max, args.max_cols)
+                    sm = (smxl(rs["N"], eqs, args.d_max, args.max_cols) if args.solver == "smxl"
+                          else tmxl(rs["N"], l, eqs, args.d_max, args.max_cols))
                     rec = {"n": args.n, "l": l, "family": args.family, "eps": rs["eps"], "d": rs["d"], "N": rs["N"],
-                           "equations": len(eqs), "decomposable": truth, "solver": "smxl", **sm,
+                           "equations": len(eqs), "decomposable": truth, "solver": args.solver, **sm,
                            "enum_candidates": 2 ** rs["d"], "generic_deg_y_t": bilinear_degree(l, rs["d"], len(eqs))}
                     print(canonical(rec), flush=True)
                     if args.out:

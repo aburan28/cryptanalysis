@@ -124,6 +124,11 @@ static int cmp_u64(const void *a, const void *b)
     return x < y ? -1 : x > y;
 }
 
+static u64 *g_lin_out = NULL;  /* if set: (variable mask, constant) of every basis row of degree <= 1 */
+static int g_lin_cap = 0;
+static u64 g_xmask = 0;     /* variables whose degree is bounded by g_xdeg in every column */
+static int g_xdeg = 64;
+
 static int cols_build(cols_t *c, int N, int D)
 {
     long long total = 0;
@@ -141,7 +146,7 @@ static int cols_build(cols_t *c, int N, int D)
         u64 s = (k == 64) ? ~(u64)0 : (((u64)1 << k) - 1);
         u64 lim = (N == 64) ? 0 : ((u64)1 << N);
         while (1) {
-            c->mask[pos++] = s;
+            if (__builtin_popcountll(s & g_xmask) <= g_xdeg) c->mask[pos++] = s;
             u64 cc = s & -s, r = s + cc;
             if (r == 0) break;
             s = (((r ^ s) >> 2) / cc) | r;
@@ -180,8 +185,34 @@ static int col_deg(const cols_t *c, int col)
  * out[2] = columns, out[3] = rank, out[4] = word xors, out[5] = rows added (incl. dependent),
  * out[6] = number of linear (degree <= 1) pivots at the end.
  */
+long long smxl_run_masked(int N, const u64 *eq_masks, const int32_t *eq_off, int neq, int d_max,
+                          long long max_cols, u64 mult_vars, long long *out);
+
 long long smxl_run(int N, const u64 *eq_masks, const int32_t *eq_off, int neq, int d_max,
                    long long max_cols, long long *out)
+{
+    return smxl_run_masked(N, eq_masks, eq_off, neq, d_max, max_cols, ~(u64)0, out);
+}
+
+long long smxl_run_restricted(int N, const u64 *eq_masks, const int32_t *eq_off, int neq, int d_max,
+                              long long max_cols, u64 mult_vars, u64 xmask, int xdeg, long long *out,
+                              u64 *lin_out, int lin_cap)
+{
+    g_lin_out = lin_out;
+    g_lin_cap = lin_cap;
+    g_xmask = xmask;
+    g_xdeg = xdeg;
+    long long r = smxl_run_masked(N, eq_masks, eq_off, neq, d_max, max_cols, mult_vars, out);
+    g_xmask = 0;
+    g_xdeg = 64;
+    g_lin_out = NULL;
+    g_lin_cap = 0;
+    return r;
+}
+
+/* As smxl_run, but the closure multiplies only by the variables in mult_vars. */
+long long smxl_run_masked(int N, const u64 *eq_masks, const int32_t *eq_off, int neq, int d_max,
+                          long long max_cols, u64 mult_vars, long long *out)
 {
     int D0 = 0;
     for (int i = 0; i < neq; i++)
@@ -193,10 +224,9 @@ long long smxl_run(int N, const u64 *eq_masks, const int32_t *eq_off, int neq, i
     ech_t e;
     cols_t c = {0};
     int status = 0, D = D0;
-    long long need = 0;
-    for (int k = 0; k <= D0; k++) need += binom(N, k);
-    if (need > max_cols) { out[0] = -1; out[1] = D0; out[2] = need; return 0; }
-    if (cols_build(&c, N, D0) || ech_init(&e, c.deg_lo[D0 + 1])) { out[0] = -2; return 0; }
+    if (cols_build(&c, N, D0)) { out[0] = -2; return 0; }
+    if (c.deg_lo[D0 + 1] > max_cols) { out[0] = -1; out[1] = D0; out[2] = c.deg_lo[D0 + 1]; free(c.mask); free(c.deg_lo); return 0; }
+    if (ech_init(&e, c.deg_lo[D0 + 1])) { out[0] = -2; return 0; }
     for (int i = 0; i < neq; i++) {
         memset(e.work, 0, sizeof(u64) * e.words);
         for (int j = eq_off[i]; j < eq_off[i + 1]; j++) {
@@ -208,11 +238,9 @@ long long smxl_run(int N, const u64 *eq_masks, const int32_t *eq_off, int neq, i
     }
     for (D = D0; D <= d_max; D++) {
         if (D > D0) {
-            long long ncol = 0;
-            for (int k = 0; k <= D; k++) ncol += binom(N, k);
-            if (ncol > max_cols) { status = -1; D--; break; }
             cols_t c2;
             if (cols_build(&c2, N, D)) { status = -2; goto done; }
+            if (c2.deg_lo[D + 1] > max_cols) { status = -1; D--; free(c2.mask); free(c2.deg_lo); break; }
             /* the degree <= D-1 prefix of c2 equals c: same enumeration and sort */
             free(c.mask); free(c.deg_lo);
             c = c2;
@@ -231,6 +259,7 @@ long long smxl_run(int N, const u64 *eq_masks, const int32_t *eq_off, int neq, i
                 memcpy(src, e.rows + (size_t)r * e.words, sizeof(u64) * e.words);
                 for (int v = 0; v < N && e.pivot[0] < 0; v++) {
                     u64 bit = (u64)1 << v;
+                    if (!(mult_vars & bit)) continue;
                     memset(e.work, 0, sizeof(u64) * e.words);
                     for (int w = 0; w < e.words; w++) {
                         u64 x = src[w];
@@ -255,7 +284,22 @@ long long smxl_run(int N, const u64 *eq_masks, const int32_t *eq_off, int neq, i
 done:
     {
         int lin = 0;
-        for (int col = 0; col < c.deg_lo[2 <= c.D + 1 ? 2 : c.D + 1]; col++) lin += e.pivot[col] >= 0;
+        int lo2 = c.deg_lo[2 <= c.D + 1 ? 2 : c.D + 1];
+        for (int col = 0; col < lo2; col++) {
+            int r = e.pivot[col];
+            if (r < 0) continue;
+            if (g_lin_out && lin < g_lin_cap) {
+                const u64 *row = e.rows + (size_t)r * e.words;
+                u64 vm = 0, cst = 0;
+                for (int cc = 0; cc < lo2; cc++)
+                    if ((row[cc >> 6] >> (cc & 63)) & 1) {
+                        if (c.mask[cc] == 0) cst = 1; else vm |= c.mask[cc];
+                    }
+                g_lin_out[2 * lin] = vm;
+                g_lin_out[2 * lin + 1] = cst;
+            }
+            lin++;
+        }
         out[0] = status; out[1] = D; out[2] = e.ncols; out[3] = e.nrows; out[4] = xors; out[5] = rows_in;
         out[6] = lin;
     }

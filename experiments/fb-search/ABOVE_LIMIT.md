@@ -156,16 +156,58 @@ Reading:
   degree up to `d = 18` and the cost against `2^d`. The open question it isolates: **is the
   solving degree of the m = 2 descent system bounded, or logarithmic, in d?** If it is bounded,
   the m = 2 PDP is polynomial time at every l, which would contradict the expectation in
-  [KY15]/[Cou16]. If it grows linearly, Macaulay never wins. Runs at `d = 20`
-  (n = 47, l = 23, N = 43, unsaturated) and `d = 21` (n = 41, l = 21, saturated `V^(2)`) are queued;
-  they write to `results/residual-smxl-n47.jsonl` and `results/residual-smxl-n41.jsonl`.
+  [KY15]/[Cou16]. If it grows linearly, Macaulay never wins. Sec. 4c answers
+  it at the sizes reachable here: the degree rises to at least 5 by `d = 21`, so the growth is
+  about linear.
+
+## 4c. Candidate 2: one-block mutant closure on the residual system (tested; rejected)
+
+**Method.** Multiply only by the residual variables t (`smxl.c`, `smxl_run_restricted`) and keep
+only columns of X-degree <= 1. That is exactly the set of monomials the t-closure can reach,
+because every equation is linear in X. Then read the linear relations in t off the closure and
+split each surviving candidate by one half-trace, as `PDP2ht` does. Run it as
+`residual.py --solver tmxl`.
+
+**Novelty check.** y-XL / y-MXL for overdetermined bilinear systems is published
+(arXiv 2006.09442, AMC 2021). Block-structured Gröbner bases for this PDP are in
+Faugère-Perret-Petit-Renault 2012. We found no use of a one-block closure on the projected m = 2
+residual system, so this is at most a new combination of known parts.
+
+**Measurements**, against the full closure. All are non-decomposable targets refuted by both,
+geomtraceu seed 1, at n = 41 unless marked. Data: `results/residual-tmxl.jsonl`.
+
+| d | N | degree (t-closure) | columns (t-closure / full) | word operations (t-closure / full) | t-closure (rps) | `2^d` enumeration (rps) |
+|---|---|---|---|---|---|---|
+| 9 | 26 | 3 | 912 / 2952 | 5.2e5 / 2.7e7 | 1.6e8 | 2.3e9 |
+| 12 | 30 | 4 | 6176 / 31931 | 2.1e8 / 4.2e10 | 6.3e10 | 1.8e10 |
+| 15 | 34 | 4 | 12885 / 52956 | 1.6e9 / 2.2e11 | 4.7e11 | 1.4e11 |
+| 18 | 38 | 4 | 23808 / 82993 | 8.9e9 / 9.3e11 | 2.7e12 | 1.2e12 |
+| 21 (n = 47, l = 23) | 44 | **>= 5** (degree 4: rank 28684 of 43473, no linear pivot) | 43473 at degree 4 | 3.4e10 | — | — |
+| 24 (n = 53, l = 26) | 50 | **>= 5** (degree 4: rank 42088 of 73401) | 73401 at degree 4 | 1.3e11 | — | — |
+
+The t-only closure needs the same degree as the full closure, at 14-100x less work. The degree
+steps from 4 to 5 between `d = 18` and `d = 21`, nine dimensions after the step from 3 to 4. So
+the degree grows about linearly, roughly `2 + d/9`.
+
+**Verdict.**
+
+- **Exponent.** With degree about `d/9`, the t-closure has about `l C(d, d/9) ~ 2^(0.5 d)` columns,
+  and elimination costs `2^d` (sparse) to `2^(1.5 d)` (dense). That is no exponent below
+  enumeration.
+- **Measured.** It is cheaper than enumeration only at `d <= 9`, where `PDP2ht` is already cheap,
+  and 2-3.5x costlier at `d = 12-18`.
+- **Hybrid.** The best use is a hybrid: guess `d - 9` of the t bits and close the remaining 9 at
+  degree 3. That keeps the `2^d` slope and changes only the constant: 14x in calibrated rps at
+  `d = 9`, and about 1x against a well-optimized enumeration in raw word operations.
+
+It does not meet the goal: it does not stay cheap above the limit.
 
 ## 5. Open leads (not yet novelty-checked)
 
 1. **Explain the degree-3 refutations.** Find which degree-3 multiples yield the refutation, and
    turn that mechanism into a direct algorithm without a Macaulay matrix.
-2. **Measure the degree trend beyond `d = 13`** with a sparse-layout MXL. This needs a pdpkernel.c
-   change, because the layout is a dense `2^N` table.
+2. ~~Measure the degree trend beyond `d = 13`~~: done in Sec. 4b-4c with `smxl.c`. The degree is 3
+   for `d <= 9`, 4 for `d = 12-18`, and >= 5 for `d = 21, 24`.
 3. **Other decomposition shapes.** Pairs from two subspaces, cosets, and Frobenius twists were
    checked on paper: each needs more unknowns per pair than one subspace. Candidates that change
    the shape fundamentally (not m = 2 over one subspace) still need a literature check.
