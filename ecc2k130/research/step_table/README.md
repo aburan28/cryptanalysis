@@ -192,9 +192,12 @@ is needed. Reference CPU timings must not be compared to the GPU engine.
 
 ## Remaining research questions
 
-1. Implement and measure a correct intermediate selector before enabling pair
-   sums in a walk. The current Metal kernel deliberately executes one ordinary
-   addition per point-dependent update.
+1. The exact intermediate selector and full h128 Metal A/B are now implemented
+   in `metal/fused_reference.py` and `metal-fused-benchmark`. Exact selection
+   still needs the first complete addition; the pair candidate charges two
+   additions for two logical updates and measured 1.035749x baseline time over
+   18 paired warm samples. It is rejected for collection, and the current Metal
+   kernel deliberately remains on one ordinary addition per update.
 2. Resolve distributed trail coalescence before considering a new campaign.
    History-based avoidance depends on more than the current point; equal
    point orbits alone do not prove that subsequent trails will remain merged.
