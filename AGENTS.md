@@ -44,6 +44,11 @@ candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a 
 baseline there when a change is intended. Archive factor bases (record, point set,
 digests) with [fb-archive](experiments/fb-archive/README.md); a recipe-only
 archive keeps `B` null.
+Run `python3 experiments/ic-candidate-catalog/validate_semantics.py` after
+changing curve records, typed links, isogeny routes, factor-base references,
+or IC1 candidate/workload manifests. CI runs the same metadata gate. Update
+`mirror-lock.json` only when the mirrored source files deliberately change,
+and update crypto's mirror in a paired PR.
 
 ### Three distinct identifiers
 
