@@ -212,3 +212,11 @@ and saves another 2.39%–2.49% weighted evaluation operations on `glv-j0-32`
 and 0.99%–1.04% on `j0-56` beyond the one-digit tail oracle. It adds no
 prepared points but increases static policy data to 106,087 bytes. Isolated
 CPU speed and rho impact are unmeasured.
+
+The [sign-folded packed two-digit policy](TAIL_DOUBLE_FOLD.md) stores one
+representative of each `z`/`-z` state pair and uses phase-local 10-bit action
+codes. Exhaustive state checks establish the same optimal modeled score and
+gate decisions; a regression replay on the existing 32,768 scalar-point
+inputs matches outputs and operation counts. Active policy data falls from
+106,087 to 37,918 bytes. An isolated paired run is needed to learn whether
+the extra decode work and smaller table improve CPU wall time.
