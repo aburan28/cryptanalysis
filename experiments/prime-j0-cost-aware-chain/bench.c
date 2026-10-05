@@ -89,7 +89,8 @@ static int select_mode(const char *name)
                                   "tapered-residue-orbit-batch128",
                                   "tapered-residue-graph-batch128",
                                   "tapered-residue-packed-batch128",
-                                  "tapered-residue-wavefront-batch128"};
+                                  "tapered-residue-wavefront-batch128",
+                                  "tail-oracle"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -109,7 +110,8 @@ int main(int argc, char **argv)
                 "fused-hot-adapt2-batch128|fused-hot-gated-batch128|"
                 "fused-hot-steer-batch128|fused-hot-steer-gated2-batch128|"
                 "tapered-residue-orbit-batch128|tapered-residue-graph-batch128|"
-                "tapered-residue-packed-batch128|tapered-residue-wavefront-batch128 "
+                "tapered-residue-packed-batch128|tapered-residue-wavefront-batch128|"
+                "tail-oracle "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -253,7 +255,8 @@ int main(int argc, char **argv)
     }
     uint64_t triples = 0, adds = 0, rotations = 0, output_inversions = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
-    size_t static_map_bytes = tapered                 ? ca_ec_tau_wide_static_bytes(wide_schedule)
+    size_t static_map_bytes = mode == 23              ? 3 * 129 * 129
+                              : tapered               ? ca_ec_tau_wide_static_bytes(wide_schedule)
                               : steer || gated2_steer ? ca_ec_tau8_steer_static_bytes()
                                                       : 0;
     size_t recipe_bytes = packed || wavefront ? ca_ec_tau_wide_packed_recipe_bytes(wide_schedule)
@@ -304,7 +307,10 @@ int main(int argc, char **argv)
             } else {
                 uint64_t t = 0, a = 0, r = 0;
                 if (!ca_ec_tau4_mul_prepared_profile(&group, &pre, &outputs[i], scalars[i],
-                                                     mode == 11 ? 2 : mode == 2, &t, &a, &r)) {
+                                                     mode == 23   ? 3
+                                                     : mode == 11 ? 2
+                                                                  : mode == 2,
+                                                     &t, &a, &r)) {
                     fprintf(stderr, "scalar evaluation failed at index %zu\n", i);
                     free(outputs);
                     return 1;

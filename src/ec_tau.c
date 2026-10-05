@@ -13,6 +13,7 @@
 #include "cryptanalysis/ca_group.h"
 #include "ec_tau_internal.h"
 #include "generated/tau4_residue_atlas.h"
+#include "generated/tau_tail_oracle.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -388,6 +389,93 @@ static size_t gen_tau4_digits_fast(ca_i128 wide_x, ca_i128 wide_y, const ca_tau4
     return nd;
 }
 
+static unsigned tau4_weighted_cost(const uint8_t digits[256], size_t nd,
+                                   const ca_tau4_digit table[81])
+{
+    unsigned triples = 0, adds = 0, rotations = 0;
+    for (size_t i = 0; i < nd; i++) {
+        if (digits[i] == 255) continue;
+        ca_tau4_digit d = table[digits[i]];
+        triples = (unsigned)(i / 2);
+        adds++;
+        rotations += (unsigned)((d.power + (int)((i / 2) % 3)) % 3 != 0);
+    }
+    return 10 * triples + 16 * adds + rotations;
+}
+
+/* A small offline shortest-path oracle changes only the low-coefficient tail.
+ * Each two-tau step keeps the width-four one-digit-per-pair property and uses
+ * the same 18 prepared seed/odd-seed points.  Recode cost is charged online;
+ * a path is accepted only when its exact modeled evaluation cost is lower. */
+static size_t gen_tau4_digits_tail(ca_i128 x, ca_i128 y, const ca_tau4_digit table[81],
+                                   uint8_t digits[256])
+{
+    uint8_t baseline[256], candidate[256];
+    size_t base_nd = gen_tau4_digits_fast(x, y, table, baseline);
+    if (!base_nd) return 0;
+    const ca_i128 limit = (ca_i128)1 << 55;
+    if (x <= -limit || x >= limit || y <= -limit || y >= limit) {
+        memcpy(digits, baseline, base_nd);
+        return base_nd;
+    }
+    size_t nd = 0;
+    while (x < -CA_TAU_TAIL_BOUND || x > CA_TAU_TAIL_BOUND || y < -CA_TAU_TAIL_BOUND ||
+           y > CA_TAU_TAIL_BOUND) {
+        if (nd > 253) goto baseline_fallback;
+        for (size_t j = 0; j < 2; j++) {
+            uint8_t slot = nd < base_nd ? baseline[nd] : 255;
+            candidate[nd++] = slot;
+            if (slot != 255) {
+                x -= table[slot].a;
+                y -= table[slot].b;
+            }
+            ca_i128 old_x = x;
+            if (old_x % 3) goto baseline_fallback;
+            x += y;
+            y = -old_x / 3;
+        }
+    }
+    while (x || y) {
+        if (nd > 253) goto baseline_fallback;
+        unsigned phase = (unsigned)((nd / 2) % 3);
+        uint8_t action =
+            ca_tau_tail_action[phase][(int)x + CA_TAU_TAIL_BOUND][(int)y + CA_TAU_TAIL_BOUND];
+        if (action == 254) goto baseline_fallback;
+        uint8_t slot = action == 255 ? 255 : action >= 128 ? action - 128 : action;
+        int odd = action >= 128 && action != 254 && action != 255;
+        if (slot != 255 && table[slot].seed < 0) goto baseline_fallback;
+        candidate[nd++] = odd ? 255 : slot;
+        candidate[nd++] = odd ? slot : 255;
+        ca_i128 da = 0, db = 0;
+        if (slot != 255) {
+            da = table[slot].a;
+            db = table[slot].b;
+            if (odd) {
+                ca_i128 old_a = da;
+                da = -3 * db;
+                db = old_a + 3 * db;
+            }
+        }
+        ca_i128 ax = x - da, by = y - db;
+        if (ax % 3 || by % 3) goto baseline_fallback;
+        x = 2 * (ax / 3) + by;
+        y = -(ax + by) / 3;
+        if (odd && x % 3) goto baseline_fallback;
+        if (x < -CA_TAU_TAIL_BOUND || x > CA_TAU_TAIL_BOUND || y < -CA_TAU_TAIL_BOUND ||
+            y > CA_TAU_TAIL_BOUND)
+            goto baseline_fallback;
+    }
+    while (nd && candidate[nd - 1] == 255) nd--;
+    if (nd &&
+        tau4_weighted_cost(candidate, nd, table) < tau4_weighted_cost(baseline, base_nd, table)) {
+        memcpy(digits, candidate, nd);
+        return nd;
+    }
+baseline_fallback:
+    memcpy(digits, baseline, base_nd);
+    return base_nd;
+}
+
 /* Four width-4 decisions in one lookup.  Congruence modulo 81 preserves the
  * first four digits because 81 is associated to tau^8.  The correction is
  * the exact contribution of those digits, not a representative modulo 81. */
@@ -564,8 +652,9 @@ static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
         ca_i128 x, y;
         reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
                             k, &x, &y);
-        nd = recoder == 2 ? gen_tau4_digits_atlas(x, y, pre->digit, digits)
-                          : gen_tau4_digits_fast(x, y, pre->digit, digits);
+        nd = recoder == 3   ? gen_tau4_digits_tail(x, y, pre->digit, digits)
+             : recoder == 2 ? gen_tau4_digits_atlas(x, y, pre->digit, digits)
+                            : gen_tau4_digits_fast(x, y, pre->digit, digits);
     }
     if (!nd) return 0;
     tau_jac acc = {0, g->mont.r1, 0};
@@ -618,7 +707,7 @@ int ca_ec_tau4_mul_prepared_profile(const ca_group *g, const ca_tau4_precomp *pr
                                     uint64_t k, int recoder, uint64_t *triples, uint64_t *adds,
                                     uint64_t *rotations)
 {
-    if (recoder < 0 || recoder > 2) return 0;
+    if (recoder < 0 || recoder > 3) return 0;
     return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, rotations, recoder);
 }
 
