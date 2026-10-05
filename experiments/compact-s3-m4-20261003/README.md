@@ -1775,6 +1775,23 @@ next solver must couple both sparse pairs to the public target *before*
 enumerating first-pair candidates. Q1443 still records no ordinary N83
 relation, no complete-solve exponent, and no challenge permission.
 
+### Q1444 sound WDSat adapter diagnostic
+
+The [Q1444 adapter stage](q1444_wdsat_adapter/README.md) checked a dedicated
+XOR-aware SAT solver against four archived compact chained-`S3` formulas on
+the exact Q1438 N53/N83 bases. A direct input would silently drop CNF clauses
+longer than four in this upstream solver. Q1444 uses audited shared-prefix OR
+gates to preserve every clause and XOR row, fixes its ignored unit-propagation
+failure, and independently checks known-witness models. The frozen binary
+and formula hashes are in its protocol. Both known-satisfiable controls and
+both ordinary cells reached the 60-second cap without a model. The ordinary
+N53/N83 branch-counter checkpoint lower bounds are 917,504 and 524,288;
+these are search-node diagnostics, not field operations or successful solve
+costs. The Q1444 method keeps one witness or independent anchor fixed and
+does not change the joint ordinary-query search pattern. It therefore does
+not pass the target-conditioned four-point witness gate or support a complete
+N131 projection.
+
 ## Next goal
 
 The next solver should build a **compact joint target-conditioned four-point

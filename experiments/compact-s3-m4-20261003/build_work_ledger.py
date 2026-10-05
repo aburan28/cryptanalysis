@@ -4289,6 +4289,25 @@ def main():
     assert q1443_result["rows"][-1]["actual_B"] is None
     assert q1443_result["complete_solve_work_log2"] is None
     assert q1443_result["challenge_dispatch_allowed"] is False
+    q1444_dir = HERE / "q1444_wdsat_adapter"
+    q1444_protocol_path = q1444_dir / "protocol.json"
+    q1444_verification_path = q1444_dir / "verification.json"
+    q1444_protocol = json.loads(q1444_protocol_path.read_text())
+    q1444_verification = json.loads(q1444_verification_path.read_text())
+    assert q1444_protocol["proposal_id"] == q1444_verification[
+        "proposal_id"] == "Q1444"
+    assert q1444_protocol["candidate_id"] is None
+    assert q1444_protocol["isogeny"] == "none"
+    assert q1444_verification["status"] == "passed"
+    assert q1444_verification["protocol_sha256"] == sha(
+        q1444_protocol_path)
+    assert set(q1444_verification["rows"]) == set(q1444_protocol[
+        "run_order"])
+    assert q1444_verification["ordinary_verified_relations"] == 0
+    assert q1444_verification["natural_relation_yield"] is None
+    assert q1444_verification["cost_per_useful_row"] is None
+    assert q1444_verification["complete_n131_log2_work"] is None
+    assert q1444_verification["challenge_run_admitted"] is False
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -5598,6 +5617,38 @@ def main():
             "result_sha256": sha(q1443_result_path),
             "verification_sha256": sha(q1443_verification_path),
         },
+        "q1444_wdsat_sound_adapter_stage": {
+            "proposal_id": "Q1444",
+            "candidate_id": None,
+            "isogeny": "none",
+            "solver_family": "wdsat_sat_xor",
+            "solver_xor_gaussian_elimination": False,
+            "input_curve_ids": {
+                cell: q1444_protocol["cells"][cell]["curve_id"]
+                for cell in q1444_protocol["run_order"]},
+            "input_base_actual_B": {
+                cell: q1444_protocol["cells"][cell][
+                    "factor_base_actual_B"]
+                for cell in q1444_protocol["run_order"]},
+            "input_folded_columns_K": {
+                cell: q1444_protocol["cells"][cell]["folded_columns_K"]
+                for cell in q1444_protocol["run_order"]},
+            "rows": q1444_verification["rows"],
+            "ordinary_N83_relation_measured": False,
+            "is_empirical_solver_stage_measurement": True,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_solve_growth_measurement": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "Four soundly adapted 60-second N53/N83 controls and "
+                "ordinary cells all censor without a model; the dedicated "
+                "SAT solver remains a diagnostic, not a measured useful-row "
+                "or complete-work path."),
+            "protocol_sha256": sha(q1444_protocol_path),
+            "verification_sha256": sha(q1444_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -5992,6 +6043,8 @@ def main():
                 "measured relation yield or complete work charge; "
                 "Q1443 bounds target-oblivious first-pair trials but does "
                 "not measure a joint target-guided solver; "
+                "Q1444's sound WDSat adapter reaches all four N53/N83 "
+                "control and ordinary caps with no model or relation; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

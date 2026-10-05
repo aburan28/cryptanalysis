@@ -62,3 +62,34 @@ only a verified relation after the Sage curve replay. The final N131
 complete-work exponent, natural yield, cost per useful row, and challenge
 gate remain unknown until a joint target-conditioned method succeeds on
 ordinary N53/N83 queries and all later pipeline stages are charged.
+
+## Frozen result
+
+The [post-run archive audit](verification.json) rechecks all four frozen
+inputs and every receipt, including the source and converted XCNF hashes,
+gate equivalences, XOR rows, binary identities, raw solver output, and
+branch-counter checkpoints. Each cell reached its 60-second external cap
+without a Boolean model. The branch count is the last checkpoint and is a
+**lower bound** on this WDSat build's search-node counter, not a field-operation
+count. Peak RSS is the child-process high-water value on this macOS host.
+
+| Cell | Input role | Result | Branch-counter lower bound | Peak RSS |
+| --- | --- | --- | ---: | ---: |
+| N53 choice pinned | known satisfiable control | timeout; 0 relations | 5,505,024 | 106,020,864 bytes |
+| N53 ordinary | independent anchor | timeout; 0 relations | 917,504 | 95,371,264 bytes |
+| N83 choice pinned | known satisfiable control | timeout; 0 relations | 786,432 | 374,587,392 bytes |
+| N83 ordinary | independent anchor | timeout; 0 relations | 524,288 | 327,712,768 bytes |
+
+The controls were known satisfiable before solving because archived,
+independently verified witnesses satisfy their original and converted
+formulas. Their timeouts are evidence about this bounded solver run, not
+mathematical evidence of nonexistence. The ordinary cells likewise provide
+no natural relation yield or successful-solve cost. A longer cap or another
+SAT encoding does not address the missing target-conditioned search rule.
+The archived pair-table comparator uses the older W≤3/W≤5 bases, while these
+cells use Q1438's W≤4/W≤6 bases, so they do not support a controlled solver
+speed ratio on matched factor-base inputs.
+The next method must constrain both sparse pairs with the public target
+before completing either pair, then recover an ordinary relation and measure
+useful rank on a frozen target panel. The complete N131 `2^x` remains null
+and the challenge gate stays closed.
