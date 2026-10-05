@@ -34,7 +34,41 @@ Use the repository's checked Sage launcher for every run:
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1440_witness_anchor/experiment.py run --degree 83 --cell choice_pinned
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1440_witness_anchor/experiment.py run --degree 83 --cell choice_free
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1440_witness_anchor/experiment.py verify --emit
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1440_witness_anchor/verify_known_witness.py
 ```
 
 The commands refuse to overwrite frozen evidence. Use a fresh worktree for
 reproduction. The Sage runtime check is outside the stage timer.
+
+## Frozen result
+
+The [archive replay](verification.json) rebuilds all four XCNFs byte for
+byte. The separate [known-witness replay](known_witness_verification.json)
+loads each Q1439 control SAT model and checks that it satisfies **both**
+Q1440 formulas at that degree, including the selector-pinned formula. The
+same model independently replays to the public point with four distinct
+projected columns. Thus all four Q1440 cells are demonstrably satisfiable;
+none relies only on a statistical representation assumption.
+
+| Cell | Solver result | Exact conflicts reported | Verified relations | Solver wall | Peak child RSS |
+| --- | --- | ---: | ---: | ---: | ---: |
+| N53 known anchor, choice pinned | conflict cap | 1,000,001 | 0 | 39.373 s | 161.8 MB |
+| N53 known anchor, choice free | conflict cap | 1,000,002 | 0 | 56.832 s | 201.3 MB |
+| N83 known anchor, choice pinned | 60 s external timeout | null | 0 | 60.006 s | 198.3 MB |
+| N83 known anchor, choice free | 60 s external timeout | null | 0 | 60.005 s | 274.8 MB |
+
+The N83 child was terminated before a final conflict summary; the raw logs
+retain progress, but the exact conflict counts stay null. Formula construction
+and target preparation take about 0.25 s at N53 and 0.05 s at N83 per cell.
+These times include target-independent multiplication-table construction and
+are unisolated stage diagnostics, not one-target IC online speed measurements.
+The formulas have 16,854/41,334 AND gates and 530/830 XOR rows at N53/N83.
+
+This closes the specific Q1439 ambiguity: one anchor is guaranteed to occur
+in a relation, yet the unpinned three-leaf SAT search still fails within its
+bounded run. It does not prove an asymptotic lower bound or exclude a
+different three-sum algorithm. The N83 target is planted and the N53 anchor
+is witness-informed, so no ordinary N83 useful-row yield, rank gain, or
+complete N131 `2^x` can be inferred. Further selector-only SAT variations
+should give way to a method that obtains a target-conditioned sparse-pair
+witness before enumerating full pair assignments.

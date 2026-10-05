@@ -4133,6 +4133,79 @@ def main():
             "anchors_per_expected_hit": 1 / mean,
             "log2_anchors_per_expected_hit": -math.log2(mean),
         })
+    q1440_dir = HERE / "q1440_witness_anchor"
+    q1440_protocol_path = q1440_dir / "protocol.json"
+    q1440_verification_path = q1440_dir / "verification.json"
+    q1440_witness_path = q1440_dir / "known_witness_verification.json"
+    q1440_protocol = json.loads(q1440_protocol_path.read_text())
+    q1440_verification = json.loads(q1440_verification_path.read_text())
+    q1440_witness = json.loads(q1440_witness_path.read_text())
+    assert q1440_protocol["proposal_id"] == "Q1440"
+    assert q1440_protocol["candidate_id"] is None
+    assert q1440_protocol["isogeny"] == "none"
+    assert q1440_verification["status"] == q1440_witness["status"] == "passed"
+    assert q1440_verification["protocol_sha256"] == sha(q1440_protocol_path)
+    assert q1440_witness["protocol_sha256"] == sha(q1440_protocol_path)
+    q1440_cells = []
+    for key in q1440_protocol["run_order"]:
+        frozen = q1440_protocol["cells"][key]
+        receipt_path = q1440_dir / "runs" / key / "receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        checked = next(row for row in q1440_verification["rows"]
+                       if row["key"] == key)
+        witness = next(row for row in q1440_witness["rows"]
+                       if row["key"] == key)
+        assert checked["receipt_sha256"] == sha(receipt_path)
+        assert witness["verified_relation_status"] == (
+            "verified_four_point_relation")
+        assert receipt["protocol_sha256"] == sha(q1440_protocol_path)
+        assert receipt["stage_run_id"] == frozen["stage_run_id"]
+        assert receipt["curve_id"] == frozen["curve_id"]
+        assert receipt["factor_base_actual_B"] == frozen[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == frozen["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == frozen[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["formula_raw_sha256"] == frozen[
+            "formula_raw_sha256"]
+        assert receipt["verified_relation_count"] == 0
+        assert receipt["complete_solve_work_log2"] is None
+        q1440_cells.append({
+            "key": key, "degree_n": receipt["degree_n"],
+            "cell": receipt["cell"], "curve_id": receipt["curve_id"],
+            "target_origin": receipt["target_origin"],
+            "input_law": receipt["input_law"],
+            "public_target": receipt["public_target"],
+            "factor_base_actual_B": receipt["factor_base_actual_B"],
+            "folded_columns_K": receipt["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": receipt[
+                "factor_base_enumerated_set_sha256"],
+            "workload_id": receipt["workload_id"],
+            "stage_run_id": receipt["stage_run_id"],
+            "anchor_raw_x": receipt["anchor_raw_x"],
+            "adjusted_target_x_count": receipt[
+                "adjusted_target_x_count"],
+            "known_witness_model_satisfies_formula": True,
+            "solver_status": receipt["solver_status"],
+            "solver_conflicts_reported": receipt[
+                "solver_conflicts_reported"],
+            "verified_relation_count": receipt[
+                "verified_relation_count"],
+            "formula_and_gates": receipt["formula"]["and_gates"],
+            "formula_xor_rows": receipt["formula"]["xor_rows"],
+            "target_preparation_and_formula_wall_seconds_exploratory": receipt[
+                "target_preparation_and_formula_wall_seconds_exploratory"],
+            "solver_wall_seconds_exploratory": receipt[
+                "solver_wall_seconds_exploratory"],
+            "charged_stage_wall_seconds_exploratory": receipt[
+                "charged_stage_wall_seconds_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["solver_status"] for row in q1440_cells] == [
+        "censored", "censored", "external_timeout", "external_timeout"]
+    assert [row["solver_conflicts_reported"] for row in q1440_cells] == [
+        1000001, 1000002, None, None]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -5338,6 +5411,37 @@ def main():
             "verification_sha256": sha(q1439_verification_path),
             "small_field_verification_sha256": sha(q1439_small_path),
             "small_field_nonexceptional_cases": 70652,
+        },
+        "q1440_known_witness_anchor_search_gate": {
+            "proposal_id": "Q1440",
+            "candidate_id": None,
+            "isogeny": "none",
+            "controlled_question": (
+                "With one anchor and an adjusted-target choice known to "
+                "belong to a valid relation, can the two-S3 SAT solver "
+                "recover the other three leaves within fixed caps? Both "
+                "selector-pinned and selector-free variants are tested."),
+            "cells": q1440_cells,
+            "known_witness_satisfiability_proved_for_all_cells": True,
+            "is_empirical_solver_stage_measurement": True,
+            "is_ordinary_yield_measurement": False,
+            "is_controlled_cpu_wall_speedup": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "All four formulas contain an independently replayed "
+                "four-point witness. Both N53 cells consume more than "
+                "one million SAT conflicts without finding a model; both "
+                "N83 cells reach 60-second external timeouts without a "
+                "model. This removes anchor absence as the sole explanation "
+                "for Q1439's ordinary failures, but supplies no successful "
+                "three-leaf cost, natural yield, rank gain, or complete "
+                "N131 exponent. Prioritize an exact target-conditioned "
+                "sparse-pair witness method over selector-only SAT variants."),
+            "protocol_sha256": sha(q1440_protocol_path),
+            "verification_sha256": sha(q1440_verification_path),
+            "known_witness_verification_sha256": sha(q1440_witness_path),
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,

@@ -1697,10 +1697,27 @@ A fixed anchor can miss a four-point solution, so these censored ordinary
 runs cannot separate coverage from solver cost. The known N53 four-point
 relation does not establish that the independent Q1439 anchor belongs to a
 relation. The results therefore leave ordinary useful-row yield, successful
-three-leaf cost, and complete N131 `2^x` unknown. A witness-informed
-anchor with the other leaves freed is the narrow next diagnostic; the main
-solver gate remains a target-conditioned method that finds a witness for
-both sparse pairs without enumerating a full pair table.
+three-leaf cost, and complete N131 `2^x` unknown. Q1440 checks the
+witness-informed anchor diagnostic below.
+
+### Q1440 witness-informed anchor, other three leaves free
+
+The [Q1440 frozen gate](q1440_witness_anchor/README.md) uses Q1439's exact
+bases and two-S3 formula with an anchor from a known relation. N53 uses the
+archived ordinary public point but reveals its known first leaf; N83 uses an
+archived planted point. The remaining three leaves are unpinned. At each
+degree, one cell pins the archived adjusted-target selector and one leaves it
+free. Q1439's verified control model satisfies all four Q1440 XCNFs and
+replays to the public point, proving that every cell is satisfiable.
+
+Neither N53 cell finds a relation before 1,000,001/1,000,002 conflicts;
+N83's two cells reach their 60-second wall caps with no relation. This shows
+that Q1439's ordinary failures cannot be attributed solely to choosing an
+anchor with no representation: this particular three-leaf SAT search also
+stalls when a witness exists. These are witness-informed diagnostics, not
+natural-yield or successful-cost measurements. The complete N131 `2^x`
+remains unknown. The next solver gate remains a target-conditioned method
+that obtains witnesses for both sparse pairs before a full pair assignment.
 
 ## Next goal
 
