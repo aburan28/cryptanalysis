@@ -74,8 +74,9 @@ is exactly 4,096 unsigned 64-bit words in little-endian order; the binary
 format keeps the exact frozen inputs compact in the PR.
 [inputs.json](inputs.json) records each exact curve, public point, scalar-file
 SHA-256, input digest, and independently generated reference output digest.
-The [benchmark executable](bench.c) accepts `reference`, `baseline`, or
-`cost` as its first argument. It prepares the τ seed table before its online
+The [benchmark executable](bench.c) accepts `reference`, `baseline`, `cost`,
+and later positional, batch, atlas, and fused modes as its first argument. It
+prepares the τ seed table before its online
 timer, then charges representative selection and the complete point path.
 Every baseline/candidate output is replayed with `ca_group_mul` after the
 timer; replay time is reported separately. [check_panel.py](check_panel.py)
@@ -102,3 +103,111 @@ absolute checkout, binary, isolated cgroup, CPU partition, execution CPU,
 and NUMA node, then submit its JSON to `scripts/isolated_bench.py`. A local
 schema check confirmed that the generated manifest passes the runner's
 `require_manifest`; only the host-side preflight can authorize a measurement.
+
+## Four-step residue atlas follow-up
+
+The separate [residue-atlas protocol](RESIDUE_ATLAS.md) was committed before
+the new input panel. [make_residue_atlas.py](make_residue_atlas.py) generates
+the deterministic 7,429-byte [C atlas](../../src/generated/tau4_residue_atlas.h)
+from the exact digit rule. The recoder reduces four τ digits per lookup and
+preserves the same minimum-L1 representative and point schedule.
+
+[make_atlas_inputs.py](make_atlas_inputs.py) froze four new 4,096-scalar
+workloads in [atlas-inputs/](atlas-inputs/) and [atlas-inputs.json](atlas-inputs.json).
+[check_atlas_panel.py](check_atlas_panel.py) replayed all 16,384 atlas point
+outputs independently, compared each scalar's digit stream with the baseline
+outside the timer, and matched each case's complete `triples`, `adds`, and
+`rotations` totals. [atlas-panel.json](atlas-panel.json) retains the raw
+results and source hashes. C tests additionally checked all 6,561 residue
+pairs across signed translations and 10,000 random signed coefficient pairs.
+
+| Frozen case | Triples in each arm | Adds in each arm | Rotations in each arm |
+| --- | ---: | ---: | ---: |
+| `glv-j0-32`, generator | 25,668 | 15,635 | 10,225 |
+| `glv-j0-32`, `37P` | 25,715 | 15,621 | 10,211 |
+| 56-bit subgroup, generator | 65,684 | 33,557 | 21,764 |
+| 56-bit subgroup, `37P` | 65,641 | 33,531 | 21,830 |
+
+The exact operation counts are unchanged, as intended; any benefit must come
+from lower recoding overhead. Local wall times are exploratory because this
+host lacks the isolation receipt required for a CPU speedup claim.
+
+Generate a Linux-host manifest with `make_isolated_manifest.py --arm atlas`
+and that host's checkout, binary, cgroup, CPUs, and NUMA node. The manifest
+generator includes the protocol, input files, generator, and generated atlas
+as hashed artifacts. The 4,096-scalar panel is a throughput experiment and
+does not establish one-call latency.
+
+## Fused eight-digit fixed-base follow-up
+
+The [fused-pair protocol](FUSED_TAU_PAIRS.md) was committed and PR #260 was
+opened before [make_tau8_pairs.py](make_tau8_pairs.py) generated the
+[compact pair map](../../src/generated/tau8_pair_map.h) and before the new
+[fused-inputs/](fused-inputs/) panel was materialized. The map enumerates
+29,593 valid ordered pairs of four-step atlas patterns. Per point, the
+candidate constructs one affine point for each valid pair and eight-digit
+position, then applies one mixed addition per nonzero block. The benchmark
+uses four blocks for `glv-j0-32` and six for `j0-56`, with exact positional
+fallback for longer representatives.
+
+[check_fused_panel.py](check_fused_panel.py) compared `pos-batch128` with
+`fused-batch128` on four newly frozen 4,096-scalar workloads. All 16,384
+fused outputs replayed against generic multiplication and matched the
+independently frozen digests. [fused-panel.json](fused-panel.json) retains
+the raw runs, failures, source hashes, operation counts, and setup figures.
+
+| Frozen case | Positional adds | Fused adds | Adds saved | Fused table |
+| --- | ---: | ---: | ---: | ---: |
+| `glv-j0-32`, generator | 15,563 | 8,325 | 46.51% | 3,787,904 B |
+| `glv-j0-32`, `37P` | 15,571 | 8,331 | 46.50% | 3,787,904 B |
+| 56-bit subgroup, generator | 33,527 | 19,445 | 42.00% | 5,681,856 B |
+| 56-bit subgroup, `37P` | 33,456 | 19,391 | 42.04% | 5,681,856 B |
+
+Every fused case used zero online unit rotations, zero fallbacks, and the
+same 32 output inversions as the paired positional batch. Fused preparation
+charged 116,640 or 174,960 pair additions, respectively, plus global
+positional setup and normalization. Those are exact executed operation
+counts; they do not establish a wall-time win. The raw local wall times are
+exploratory because this host lacks a host-level isolation receipt. This
+format targets repeated multiplication with a fixed public point, and any
+new-target table setup must be charged inside a one-target rho solve.
+
+Generate the Linux-host manifest with `make_isolated_manifest.py
+--candidate-arm fused-batch128` and the host's own absolute checkout,
+binary, cgroup, CPU partition, execution CPU, and NUMA node. A local schema
+check passed `scripts/isolated_bench.py`'s `require_manifest`; only its
+host-side preflight and noise gates can authorize a speedup claim.
+
+## Six-unit orbit-folded fused-table follow-up
+
+The separate [orbit protocol](FUSED_TAU_ORBITS.md) was committed in PR #264
+before the generated [orbit map](../../src/generated/tau8_orbit_map.h), C
+implementation, or new scalar files. Each nonzero fused-pair point belongs
+to a six-element orbit under sign and the cheap `ω` endomorphism. The
+candidate stores only 4,933 representatives per eight-digit position and
+reconstructs the requested point with a unit action at lookup time.
+
+[make_orbit_inputs.py](make_orbit_inputs.py) froze four fresh 4,096-scalar
+workloads in [orbit-inputs/](orbit-inputs/) and
+[orbit-inputs.json](orbit-inputs.json). [check_orbit_panel.py](check_orbit_panel.py)
+verified all 16,384 folded outputs against the independent generic digest.
+[orbit-panel.json](orbit-panel.json) retains raw output, failures, and hashes.
+The folded and full tables used **identical online mixed-addition and
+output-inversion counts** with zero fallbacks in every case. The folded
+candidate trades unit rotations for lower setup and memory:
+
+| Frozen case | Online adds in each arm | Folded rotations | Setup adds, full → folded | Affine table, full → folded |
+| --- | ---: | ---: | ---: | ---: |
+| `glv-j0-32`, generator | 8,331 | 5,600 | 116,640 → 19,440 | 3,787,904 → 631,424 B |
+| `glv-j0-32`, `37P` | 8,325 | 5,581 | 116,640 → 19,440 | 3,787,904 → 631,424 B |
+| 56-bit subgroup, generator | 19,391 | 13,160 | 174,960 → 29,160 | 5,681,856 → 947,136 B |
+| 56-bit subgroup, `37P` | 19,445 | 13,263 | 174,960 → 29,160 | 5,681,856 → 947,136 B |
+
+The C small-order control independently checked every valid pair at two
+positions against generic multiplication, including orbit reconstruction.
+The local wall times in the raw receipt are exploratory. The isolated
+manifest generator accepts `--candidate-arm fused-orbit-batch128` and pairs
+it with `fused-batch128` on the same frozen inputs; its output passed the
+runner's schema check. Whether smaller cache footprint and setup overcome
+the added rotations requires a qualifying isolated Linux run, with
+target-dependent table setup charged to a one-target rho solve.
