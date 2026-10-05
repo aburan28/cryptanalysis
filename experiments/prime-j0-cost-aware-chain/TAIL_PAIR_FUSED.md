@@ -111,3 +111,53 @@ python3 experiments/prime-j0-cost-aware-chain/make_tail_pair_fused_inputs.py \
 ```
 
 Append held-out results below without changing this prospective protocol.
+
+## Frozen-panel operation result (2026-10-05)
+
+The generator reproduced header SHA-256
+`d12f6ef77d8c1070e385d765eecec15765ba378477e94a630ff110ca2b5fb839`.
+Its exhaustive search reached 45,129 bounded states, at most four pairs per
+path, with no state costlier than the prior two-digit policy. The independent
+fixture audit confirmed 32,768 unique curve-scalars disjoint from the five
+pinned earlier fixture manifests. The native arm was first exercised on the
+old `tail-inputs.json` design data after the freeze commit, then evaluated on
+the new fixture with the paired verifier.
+
+All eight new cases passed their generic output digest and independent point
+replay. Outside the online interval, each candidate scalar passed exact
+pair-word reconstruction and modeled nonregression against
+`tail-double-residue`; all 121 prepared orbit points passed generic scalar
+replay per case. The direct curve test passed 2,285,740 checks, including
+identity, scalar edges, and small-order point controls. The complete local
+CTest suite passed all 15 cases, with the coordinator's loopback test run
+with socket access. Each arm performed
+4,096 nonidentity output inversions per case. The [raw
+receipt](tail-pair-fused-panel.json) retains commands, outputs, statuses,
+source and binary hashes, setup counts, and exploratory local timing.
+
+Each score aggregates 4,096 scalar multiplications and uses the predeclared
+`10 × triples + 16 × mixed additions + rotations`. It does not include
+online recoder arithmetic or point-dependent setup.
+
+| Curve and point | Prior two-digit score | Orbit-pair score | Modeled saving |
+| --- | ---: | ---: | ---: |
+| glv-j0-32, P | 465,167 | 438,829 | 5.66% |
+| glv-j0-32, 37P | 463,782 | 438,334 | 5.49% |
+| glv-j0-32, 101P | 464,641 | 438,557 | 5.61% |
+| glv-j0-32, 103P | 465,503 | 439,789 | 5.52% |
+| j0-56, P | 1,168,765 | 1,143,155 | 2.19% |
+| j0-56, 37P | 1,166,099 | 1,140,821 | 2.17% |
+| j0-56, 101P | 1,166,105 | 1,140,081 | 2.23% |
+| j0-56, 103P | 1,166,372 | 1,141,026 | 2.17% |
+
+All eight cases passed the prospective operation gate. Per prepared point,
+the candidate added 103 mixed point additions, 148 unit rotations, and one
+extra batch inversion beyond the common seed preparation; it recorded 19
+seed-preparation operations and two total preparation inversions. The
+121-point affine table is 3,872 bytes, the full prepared structure is 4,976
+bytes, and generated policy arrays are 33,289 bytes. The extra setup may
+erase the online gain for a single scalar or a new rho target. The benchmark
+binary also retains earlier research arms; `static_map_bytes` counts this
+arm's active policy data, not total binary `.rodata`. There is no isolated
+host receipt, calibrated CPU timing ratio, or end-to-end rho solve for this
+arm. Academic novelty also remains unproven.
