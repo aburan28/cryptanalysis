@@ -113,3 +113,34 @@ python3 experiments/prime-j0-cost-aware-chain/check_tail_gated_panel.py \
   --fixture tail-gated-v2-inputs.json \
   --output tail-gated-v2-panel.json
 ```
+
+## Disjoint v2 operation result (2026-10-05)
+
+The v2 verifier confirmed every scalar is absent from all three pinned
+design fixtures and is unique within its curve's four v2 point cases. All
+three arms matched generic multiplication and the frozen digest on all
+32,768 new outputs. The direct curve test passed 2,269,368 checks, including
+exact mode-3/mode-4 digit-stream comparisons. The gated arm and original
+oracle had identical tripling, mixed-addition, rotation, point-preparation,
+and output-inversion counts on every case. The candidate uses the same
+49,923-byte oracle and 6,241 gate bytes, with no additional prepared points.
+The complete CTest suite passed all 15 cases on the local macOS host with
+loopback permission for the coordinator test.
+
+| Curve and point | Baseline weighted cost | Original = gated weighted cost | Gated saving |
+| --- | ---: | ---: | ---: |
+| glv-j0-32, P | 513,803 | 475,554 | 7.44% |
+| glv-j0-32, 37P | 514,254 | 476,857 | 7.27% |
+| glv-j0-32, 101P | 517,048 | 477,297 | 7.69% |
+| glv-j0-32, 103P | 517,847 | 478,230 | 7.65% |
+| j0-56, P | 1,212,693 | 1,177,466 | 2.90% |
+| j0-56, 37P | 1,212,169 | 1,177,362 | 2.87% |
+| j0-56, 101P | 1,214,813 | 1,178,945 | 2.95% |
+| j0-56, 103P | 1,213,363 | 1,178,471 | 2.88% |
+
+[tail-gated-v2-panel.json](tail-gated-v2-panel.json) preserves each raw run,
+the exclusion result, source and binary hashes, all operation counts, and
+exploratory `online_ms`. The pre-gated recoder removes duplicate work in its
+control flow, but the local times give no stable wall-time ordering against
+either arm. An isolated, paired full-scalar run is still required before
+claiming CPU speed.

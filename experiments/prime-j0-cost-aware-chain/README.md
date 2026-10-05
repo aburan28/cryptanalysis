@@ -196,3 +196,11 @@ prepared seed points. Its frozen 32,768-output panel matches generic
 multiplication, saving 7.48%–7.75% weighted evaluation operations on
 `glv-j0-32` and 2.84%–2.98% on `j0-56`. A second online recode is charged;
 isolated CPU speed and impact on rho remain unknown.
+
+The [pre-gated τ-tail arm](TAIL_GATE.md) moves the oracle-versus-canonical
+choice into a 6,241-byte offline bitset and emits the selected digit stream
+once. Its genuinely disjoint 32,768-output panel verifies exact mode-3/mode-4
+digit and operation agreement while retaining the original modeled saving.
+The first attempted fixture was invalidated because its seed permuted the
+older files; both the failure and replacement are recorded. Isolated CPU
+speed is still unknown.
