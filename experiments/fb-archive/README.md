@@ -73,6 +73,30 @@ No subgroup projection is applied, matching how the ladder uses it, so subgroup
 order, generator and strict counts are null. Columns are x-classes under sign
 and Frobenius.
 
+## Citation guard: `refs.py`, `unarchived.csv`, `backfill.py`
+
+`refs.py check` (CI workflow `fb-refs`) reads every committed JSON / JSONL
+result under `experiments/` and `ecc2k130/research/`, including `.gz` and `.xz`,
+and collects each `factor_base_sha256`. Every cited digest must be a row of
+`index.csv` or of `unarchived.csv`, the closed list of known, not-yet-archived
+bases. The list is exact both ways: a new unarchived citation fails, and so does
+a debt row that has since been archived or is no longer cited. It can only
+shrink. `refs.py report` prints the per-experiment counts.
+
+`backfill.py <experiment-dir> ...` archives cited bases from the recipe recorded
+beside each citation (a `cell` or `recipe` object with n, family, l, seed). It
+stores a base only when the rebuilt `factor_base_sha256` equals the cited one,
+and reports anything it cannot rebuild. It backfilled 2,466 bases from
+`fb-search` (scans and trace-equation runs) and `pdp-degree-heuristics`
+(per-attempt profiling), all of them byte-exact.
+
+The remaining debt (`unarchived.csv`) is bases that no builder here can
+reproduce: a prime-field base (`bielliptic-quartic`), the Frobenius-invariant
+Rust-built bases on the `Cka0`/`Cka1` curves (`f4-gpu-20260925`) and a rational
+"fraction" base (`homogeneous-fraction`). Results that record a base under
+another key (`point_set_sha256`, `base_sha256`, inline point lists) or record
+only counts are not seen by the guard; see the audit in the PR that added it.
+
 ## Linking experiment cells: `ps1.py`
 
 `ps1.cell_manifest(n, family, l, pdp)` returns an experiment cell's archive row
