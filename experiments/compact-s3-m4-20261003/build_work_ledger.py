@@ -5004,6 +5004,125 @@ def main():
         "cpu_isolation_receipt": None,
         "receipt_sha256": sha(q1452_receipt_path),
     }]
+    q1453_dir = HERE / "q1453_projective_phi5"
+    q1453_protocol_path = q1453_dir / "protocol.json"
+    q1453_controls_path = q1453_dir / "controls.json"
+    q1453_algebra_path = q1453_dir / "algebra_validation.json"
+    q1453_verification_path = q1453_dir / "verification.json"
+    q1453_protocol = json.loads(q1453_protocol_path.read_text())
+    q1453_controls = json.loads(q1453_controls_path.read_text())
+    q1453_algebra = json.loads(q1453_algebra_path.read_text())
+    q1453_verification = json.loads(q1453_verification_path.read_text())
+    assert q1453_protocol["proposal_id"] == q1453_controls[
+        "proposal_id"] == q1453_algebra["proposal_id"] == (
+            q1453_verification["proposal_id"]) == "Q1453"
+    assert q1453_protocol["candidate_id"] is q1453_verification[
+        "candidate_id"] is None
+    assert q1453_protocol["isogeny"] == q1453_verification[
+        "isogeny"] == "none"
+    assert q1453_protocol["point_decomposition_stage_code"] == "PDP4phi5"
+    assert q1453_controls["status"] == q1453_algebra[
+        "status"] == q1453_verification["status"] == "pass"
+    assert q1453_protocol["parent_q1452_protocol_sha256"] == sha(
+        q1452_protocol_path)
+    assert q1453_protocol["n83_parent_q1451_protocol_sha256"] == sha(
+        q1451_protocol_path)
+    assert q1453_protocol["controls_sha256"] == sha(q1453_controls_path)
+    assert q1453_protocol["algebra_validation_sha256"] == sha(
+        q1453_algebra_path)
+    assert q1453_verification["protocol_sha256"] == sha(
+        q1453_protocol_path)
+    assert q1453_verification["ordinary_n53_relation_measured"] is False
+    assert q1453_verification["ordinary_n83_relation_measured"] is False
+    assert q1453_verification["complete_n131_log2_work"] is None
+    assert q1453_verification["challenge_run_admitted"] is False
+    assert all(row["all_projective_equal_D8_times_original"] and
+               row["archived_witness_zero_in_both_forms"]
+               for row in q1453_algebra["rows"])
+    assert all(row["verified_relation"]["status"] ==
+               "verified_four_point_relation" for row in q1453_controls[
+                   "rows"])
+    q1453_rows = []
+    for n in (53, 83):
+        cell = q1453_protocol["cells"][str(n)]
+        matched = (q1452_protocol if n == 53 else
+                   q1451_protocol)["cells"][str(n)]
+        for name in ("curve_id", "factor_base_actual_B",
+                     "folded_columns_K",
+                     "factor_base_enumerated_set_sha256", "public_target",
+                     "workload_id", "target_preimage_index",
+                     "selected_raw_target_x",
+                     "full_target_preimage_x_count"):
+            assert cell[name] == matched[name], name
+        assert cell["and_gates"] > matched["and_gates"]
+        assert cell["cnf_clauses"] > matched["cnf_clauses"]
+        receipt_path = q1453_dir / "runs" / cell["run_label"] / "receipt.json"
+        stdout_path = (q1453_dir / "runs" / cell["run_label"] /
+                       "attempt_000.stdout.txt")
+        receipt = json.loads(receipt_path.read_text())
+        verified = next(row for row in q1453_verification["rows"]
+                        if row["degree_n"] == n)
+        assert verified["receipt_sha256"] == sha(receipt_path)
+        assert verified["status"] == receipt["status"] == "solver_censored"
+        assert receipt["protocol_sha256"] == sha(q1453_protocol_path)
+        assert receipt["cms_binary_sha256"] == q1453_protocol[
+            "cms_binary_sha256"]
+        assert receipt["verified_relation_count"] == 0
+        assert receipt["complete_n131_log2_work"] is None
+        assert len(receipt["attempts"]) == 1
+        attempt = receipt["attempts"][0]
+        assert attempt["solver_status"] == "external_timeout"
+        assert attempt["stdout_sha256"] == sha(stdout_path)
+        assert attempt["initial_gaussian_matrices_used"] > 0
+        q1453_rows.append({
+            "proposal_id": "Q1453", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4phi5",
+            "degree": n, "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "target_preimage_index": cell["target_preimage_index"],
+            "selected_raw_target_x": cell["selected_raw_target_x"],
+            "selected_slice_known_satisfiable_by_archived_witness": cell[
+                "selected_slice_known_satisfiable_by_archived_witness"],
+            "witness_leaf_values_supplied_to_solver": False,
+            "and_gates": cell["and_gates"],
+            "xcnf_variables": cell["xcnf_variables"],
+            "cnf_clauses": cell["cnf_clauses"],
+            "native_xor_rows": cell["native_xor_rows"],
+            "status": receipt["status"],
+            "attempt_count": 1,
+            "gaussian_matrices_used": attempt[
+                "initial_gaussian_matrices_used"],
+            "last_progress_conflicts_rounded": attempt[
+                "last_progress_conflicts_rounded"],
+            "exact_final_solver_operation_counts": None,
+            "solver_child_user_cpu_ns": attempt[
+                "solver_child_user_cpu_ns"],
+            "solver_child_system_cpu_ns": attempt[
+                "solver_child_system_cpu_ns"],
+            "formula_build_wall_ns_exploratory": receipt[
+                "formula_build_wall_ns_exploratory"],
+            "solver_process_wall_ns_exploratory": receipt[
+                "solver_process_wall_ns_exploratory"],
+            "target_dependent_stage_wall_ns_exploratory": receipt[
+                "target_dependent_stage_wall_ns_exploratory"],
+            "archive_wall_ns_outside_stage": receipt[
+                "archive_wall_ns_outside_stage"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -6526,6 +6645,34 @@ def main():
             "controls_sha256": sha(q1452_controls_path),
             "verification_sha256": sha(q1452_verification_path),
         },
+        "q1453_projective_phi5_stage": {
+            "proposal_id": "Q1453", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4phi5",
+            "method": q1453_protocol["method"],
+            "controlled_variable": q1453_protocol["controlled_variable"],
+            "rows": q1453_rows,
+            "ordinary_N53_relation_measured": False,
+            "ordinary_N83_relation_measured": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "The denominator-cleared phi5 identity is exact and "
+                "both pinned controls replay verified relations. "
+                "Removing four inverse constraints grows the Boolean "
+                "circuits by about 70 percent in AND gates, and both "
+                "ordinary cells reach the external safeguard without "
+                "a model. The N53 slice is known satisfiable. This "
+                "representation does not measure a successful "
+                "decomposition or a complete-work exponent."),
+            "protocol_sha256": sha(q1453_protocol_path),
+            "algebra_validation_sha256": sha(q1453_algebra_path),
+            "controls_sha256": sha(q1453_controls_path),
+            "verification_sha256": sha(q1453_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -6951,6 +7098,9 @@ def main():
                 "preimage 201 with four unpinned leaves, yet also "
                 "times out without a model after about 369K rounded "
                 "partial conflicts; "
+                "Q1453 clears phi5 denominators exactly and passes "
+                "N53/N83 pinned controls, but its larger projective "
+                "circuits also time out on both ordinary cells; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
