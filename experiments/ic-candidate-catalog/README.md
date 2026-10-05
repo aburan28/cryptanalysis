@@ -78,6 +78,14 @@ to about `1.63e-5`, below the 1% objective. The records remain proposals
 with `candidate_id: null` until the missing stages and exact manifest are
 resolved.
 
+The [equal-size W24 orbit-column audit](../ecc2k130-equal-w24-orbit-columns-20261005/RESULT.md)
+restricts the full source Frobenius partition to the separately frozen
+8,386,414-class source prefix. It saves only 2,066 potential columns
+(0.0246351%). Checked Sage confirms the degree-263 native codomain has
+`j != j²`, so direct coordinate Frobenius is not its endomorphism; any
+transport-induced quotient still needs a priced implementation. This is
+matrix geometry for proposal `Q1420`, not a PDP or IC speed result.
+
 ## Code reviewed for the design axes
 
 | Stage | Existing code and evidence | What can be reused / what is missing |
