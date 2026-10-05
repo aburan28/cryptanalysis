@@ -80,7 +80,8 @@ static int select_mode(const char *name)
                                   "pos-batch4096",
                                   "atlas",
                                   "fused-batch128",
-                                  "fused-orbit-batch128"};
+                                  "fused-orbit-batch128",
+                                  "fused-hot-batch128"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -94,7 +95,7 @@ int main(int argc, char **argv)
                 "usage: %s "
                 "reference|baseline|cost|pos|pos-global|pos-prep|pos-global-prep|"
                 "pos-batch32|pos-batch128|pos-batch512|pos-batch4096|atlas|"
-                "fused-batch128|fused-orbit-batch128 "
+                "fused-batch128|fused-orbit-batch128|fused-hot-batch128 "
                 "glv-j0-32|j0-56 0|1 INPUT\n",
                 argv[0]);
         return 2;
@@ -103,8 +104,9 @@ int main(int argc, char **argv)
     if (!select_curve(argv[2], &p, &b, &order)) return 2;
     int global_builder = mode == 4 || mode == 6 || (mode >= 7 && mode <= 10);
     int positional = mode >= 3 && mode <= 10;
-    int fused = mode == 12 || mode == 13;
+    int fused = mode >= 12 && mode <= 14;
     int orbit = mode == 13;
+    int hot = mode == 14;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
     size_t block_size = mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
     uint64_t scalars[SCALARS], input_digest;
@@ -140,7 +142,7 @@ int main(int argc, char **argv)
     uint64_t prep_adds = 0, prep_rotations = 0;
     size_t prep_temp_heap_bytes =
         global_builder ? CA_TAU_POS_Q * 2 * 9 * (3 * sizeof(uint64_t) + sizeof(uint64_t)) : 0;
-    size_t fused_entries = orbit ? 4933 : 29593;
+    size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
     size_t prep_bytes = fused ? sizeof(fused_pre) + fused_blocks * fused_entries * sizeof(ca_elem)
                         : positional ? sizeof(positional_pre)
                         : mode == 0  ? 0
@@ -149,7 +151,10 @@ int main(int argc, char **argv)
     if (mode != 0) {
         double t0 = ca_now();
         if (fused) {
-            int prepared = orbit
+            int prepared = hot ? ca_ec_tau8_hot_prepare(&group, &point, fused_blocks, &fused_pre,
+                                                        &prep_triples, &prep_adds, &prep_rotations,
+                                                        &prep_layer_inversions)
+                           : orbit
                                ? ca_ec_tau8_orbit_prepare(&group, &point, fused_blocks, &fused_pre,
                                                           &prep_triples, &prep_adds,
                                                           &prep_rotations, &prep_layer_inversions)

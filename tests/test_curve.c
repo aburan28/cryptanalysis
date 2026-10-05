@@ -1,6 +1,7 @@
 #include "ec_tau_internal.h"
 #include "generated/tau4_residue_atlas.h"
 #include "generated/tau8_orbit_map.h"
+#include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
 #include "test_fixtures.h"
 
@@ -313,6 +314,16 @@ static void tau_fused_named(const char *name, size_t blocks)
         CHECK_EQ_U64(folded_inversions, inversions);
         CHECK_EQ_U64(folded_fallbacks, 0);
         for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_tau8_fused_precomp hot = {0};
+        uint64_t hot_prep_adds = 0, hot_adds = 0, hot_fallbacks = 0;
+        CHECK(ca_ec_tau8_hot_prepare(&g, &point, blocks, &hot, NULL, &hot_prep_adds, NULL, NULL));
+        CHECK_EQ_U64(hot_prep_adds, blocks * CA_TAU8_HOT_COUNT);
+        CHECK(ca_ec_tau8_fused_mul_batch(&g, &hot, outputs, scalars, 256, 128, &hot_adds, NULL,
+                                         NULL, &hot_fallbacks));
+        CHECK(hot_adds >= folded_adds && hot_adds <= base_adds);
+        CHECK(hot_fallbacks > 0);
+        for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_ec_tau8_fused_clear(&hot);
         ca_ec_tau8_fused_clear(&folded);
         ca_ec_tau8_fused_clear(&fused);
         if (point_index == 0) {
@@ -344,6 +355,11 @@ static void tau_fused_named(const char *name, size_t blocks)
     CHECK(ca_ec_tau8_fused_mul_batch(&g, &empty, outputs, scalars, 3, 2, NULL, NULL, NULL, NULL));
     for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
     ca_ec_tau8_fused_clear(&empty);
+    CHECK(ca_ec_tau8_hot_prepare(&g, &identity, blocks, &empty, NULL, NULL, NULL, NULL));
+    CHECK(empty.point == NULL);
+    CHECK(ca_ec_tau8_fused_mul_batch(&g, &empty, outputs, scalars, 3, 2, NULL, NULL, NULL, NULL));
+    for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
+    ca_ec_tau8_fused_clear(&empty);
     CHECK(ca_ec_tau8_orbit_prepare(&g, &identity, blocks, &empty, NULL, NULL, NULL, NULL));
     CHECK(empty.point == NULL);
     CHECK(ca_ec_tau8_fused_mul_batch(&g, &empty, outputs, scalars, 3, 2, NULL, NULL, NULL, NULL));
@@ -362,6 +378,8 @@ static void tau_fused_small_order(void)
     CHECK(ca_ec_tau8_fused_prepare(&g, &point, 2, &pre, NULL, NULL, NULL, NULL));
     ca_tau8_fused_precomp orbit = {0};
     CHECK(ca_ec_tau8_orbit_prepare(&g, &point, 2, &orbit, NULL, NULL, NULL, NULL));
+    ca_tau8_fused_precomp hot = {0};
+    CHECK(ca_ec_tau8_hot_prepare(&g, &point, 2, &hot, NULL, NULL, NULL, NULL));
     uint64_t beta = g.endo_c_mont;
     uint64_t beta2 = ca_mont_mul(&g.mont, beta, beta);
     uint64_t tau_lambda = (1 + g.endo_lambda) % g.order;
@@ -414,6 +432,12 @@ static void tau_fused_small_order(void)
         ca_group_mul(&g, &expected, &point, scalars[i] % 13, NULL);
         CHECK(ca_group_equal(&g, &outputs[i], &expected));
     }
+    CHECK(ca_ec_tau8_fused_mul_batch(&g, &hot, outputs, scalars, 27, 7, NULL, NULL, NULL, NULL));
+    for (size_t i = 0; i < 27; i++) {
+        ca_group_mul(&g, &expected, &point, scalars[i] % 13, NULL);
+        CHECK(ca_group_equal(&g, &outputs[i], &expected));
+    }
+    ca_ec_tau8_fused_clear(&hot);
     ca_ec_tau8_fused_clear(&orbit);
     ca_ec_tau8_fused_clear(&pre);
 }

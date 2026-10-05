@@ -48,21 +48,39 @@ two-digit additions among 4,933 full folded entries. Both formats also need
 the same positional base and its preparation. The 32-byte point size is the
 current `ca_elem` layout and must be checked on the target build.
 
-## Next experimental gate
+## Executed gate after protocol freeze
 
-Commit this protocol before generating any candidate evaluation fixture.
-Then implement a compact orbit-ID-to-hot-index map and the exact positional
-miss path. Generate four new 4,096-scalar curve/point cases with seed
-`20261211`, using the same public points as the fused and orbit panels but
-new scalar streams. Freeze scalar files and independent generic-multiplier
-digests before running the candidate. Pair `fused-orbit-batch128`, the hot
-candidate, and `pos-batch128` on each input. Preserve operation counts,
-setup counts, table bytes, misses, failures, and raw timings. Require every
-output to match independent generic multiplication and require at least half
-of the full folded table's saved online additions to remain in each case.
+The protocol and selection list landed in commit `0d7e6171` and draft PR
+#274 before any candidate evaluation fixture was generated. The new fixture
+uses seed `20261211`, the same four public curve/point cases as the earlier
+panels, and separate scalar streams with exact uniform sampling by
+rejection. `make_hot_inputs.py` froze the scalar files and generic-multiplier
+output digests before the hot candidate was compared. The generated hot map
+binds the exact 2,048 selected orbit IDs.
 
-The operation gate is a reason to continue testing, not a speedup claim.
-Only an isolated host receipt and paired one-target rho accounting can
-support a CPU wall-time claim. Charge this fixed-point table's setup when a
-rho target or base point makes it target-dependent. Academic novelty also
+`check_hot_panel.py` paired `pos-batch128`, `fused-orbit-batch128`, and
+`fused-hot-batch128` on all four inputs. Every one of the 16,384 hot outputs
+matched the frozen generic digest and passed scalar replay. The table reports
+executed counts; the retained saving is
+`(pos_adds - hot_adds) / (pos_adds - full_orbit_adds)`:
+
+| Frozen case | Positional adds | Full orbit adds | Hot adds | Retained saving | Full → hot setup adds | Full → hot total prep bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 32-bit subgroup, generator | 15,637 | 8,336 | 9,164 | 88.66% | 19,440 → 8,192 | 669,424 → 300,144 |
+| 32-bit subgroup, `37P` | 15,630 | 8,322 | 9,176 | 88.31% | 19,440 → 8,192 | 669,424 → 300,144 |
+| 56-bit subgroup, generator | 33,501 | 19,400 | 23,524 | 70.75% | 29,160 → 12,288 | 985,136 → 431,216 |
+| 56-bit subgroup, `37P` | 33,521 | 19,451 | 23,533 | 70.99% | 29,160 → 12,288 | 985,136 → 431,216 |
+
+All four cases pass the preregistered gate of retaining at least half of the
+full folded table's saved additions. `hot-panel.json` retains raw outputs,
+operation counts, failures, timings, and source hashes. Its `fallbacks` field
+counts cold eight-digit blocks in the hot mode, including one-digit and zero
+blocks that need no extra addition, plus any out-of-span scalar fallbacks.
+The full folded mode retains its original scalar-fallback meaning. No panel
+case had an out-of-span fallback in the full folded arm.
+
+The local CPU timings remain exploratory because this host lacks the required
+isolation receipt. Only a qualifying isolated host and paired one-target rho
+accounting can support a wall-time claim. Charge this fixed-point table's
+setup when a target or base point makes it target-dependent. Academic novelty
 remains unestablished.

@@ -218,7 +218,10 @@ The [hot-orbit protocol](HOT_ORBIT_TABLE.md) combines the folded table with
 an exact positional miss path. Its [deterministic screen](screen_hot_orbits.py)
 selects 2,048 two-digit orbits from separate training scalar streams and
 records exploratory coverage in [hot-orbit-screen.json](hot-orbit-screen.json).
-The proposed table would cut the folded table's incremental point storage
-and pair-addition setup by about 58% while retaining most fused hits on the
-screened laws. No candidate C path or CPU wall-time result exists yet; the
-protocol fixes a fresh evaluation fixture for that next implementation.
+The implemented C path prepares the selected 2,048 orbit entries per block
+and uses positional points for cold pairs. [hot-inputs.json](hot-inputs.json)
+freezes new scalars and independent generic digests; [hot-panel.json](hot-panel.json)
+retains the paired raw results. All 16,384 candidate outputs verify, and the
+hot table retains 70.75–88.66% of the full folded table's saved online
+additions while reducing its setup pair additions by about 58%. These are
+operation results; local CPU times remain exploratory until an isolated run.

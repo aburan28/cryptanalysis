@@ -63,7 +63,7 @@ typedef struct ca_tau8_fused_precomp {
     ca_tau4_pos_precomp pos;
     ca_elem *point;
     size_t blocks;
-    int orbit;
+    int orbit; /* 0: full pair table; 1: all unit orbits; 2: hot orbits */
 } ca_tau8_fused_precomp;
 
 int ca_ec_tau8_fused_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
@@ -72,6 +72,9 @@ int ca_ec_tau8_fused_prepare(const ca_group *g, const ca_elem *point, size_t blo
 int ca_ec_tau8_orbit_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
                              ca_tau8_fused_precomp *out, uint64_t *triples, uint64_t *adds,
                              uint64_t *rotations, uint64_t *inversions);
+int ca_ec_tau8_hot_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
+                           ca_tau8_fused_precomp *out, uint64_t *triples, uint64_t *adds,
+                           uint64_t *rotations, uint64_t *inversions);
 void ca_ec_tau8_fused_clear(ca_tau8_fused_precomp *pre);
 int ca_ec_tau8_fused_mul_batch(const ca_group *g, const ca_tau8_fused_precomp *pre, ca_elem *out,
                                const uint64_t *scalars, size_t count, size_t block_size,

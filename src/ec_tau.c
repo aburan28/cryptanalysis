@@ -14,6 +14,7 @@
 #include "ec_tau_internal.h"
 #include "generated/tau4_residue_atlas.h"
 #include "generated/tau8_orbit_map.h"
+#include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
 #include <stdlib.h>
 
@@ -906,7 +907,9 @@ static int tau8_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
         *out = pre;
         return 1;
     }
-    size_t entries = orbit ? CA_TAU8_ORBIT_COUNT : CA_TAU8_PAIR_COUNT;
+    size_t entries = orbit == 2   ? CA_TAU8_HOT_COUNT
+                     : orbit == 1 ? CA_TAU8_ORBIT_COUNT
+                                  : CA_TAU8_PAIR_COUNT;
     size_t count = blocks * entries;
     pre.point = malloc(count * sizeof(*pre.point));
     tau_jac *projective = malloc(entries * sizeof(*projective));
@@ -924,7 +927,13 @@ static int tau8_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
             first[id] = tau8_pattern_point(g, &pre.pos, block, 0, pattern, &nr);
             second[id] = tau8_pattern_point(g, &pre.pos, block, 1, pattern, &nr);
         }
-        if (orbit) {
+        if (orbit == 2) {
+            for (size_t id = 0; id < entries; id++) {
+                uint8_t u = ca_tau8_hot_rep_u[id];
+                uint8_t v = ca_tau8_hot_rep_v[id];
+                projective[id] = tau8_pair_point(g, &first[u], &second[v], &na);
+            }
+        } else if (orbit == 1) {
             for (size_t id = 0; id < entries; id++) {
                 uint8_t u = ca_tau8_orbit_rep_u[id];
                 uint8_t v = ca_tau8_orbit_rep_v[id];
@@ -973,6 +982,13 @@ int ca_ec_tau8_orbit_prepare(const ca_group *g, const ca_elem *point, size_t blo
     return tau8_prepare(g, point, blocks, out, triples, adds, rotations, inversions, 1);
 }
 
+int ca_ec_tau8_hot_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
+                           ca_tau8_fused_precomp *out, uint64_t *triples, uint64_t *adds,
+                           uint64_t *rotations, uint64_t *inversions)
+{
+    return tau8_prepare(g, point, blocks, out, triples, adds, rotations, inversions, 2);
+}
+
 static int tau8_atlas_step(int64_t *x, int64_t *y, uint8_t *pattern_id)
 {
     int ax = (int)((*x % 81 + 81) % 81);
@@ -1006,22 +1022,54 @@ static int tau8_fused_mul_jac(const ca_group *g, const ca_tau8_fused_precomp *pr
     int64_t x = (int64_t)wide_x, y = (int64_t)wide_y;
     uint16_t ids[CA_TAU_POS_Q / 4];
     uint8_t units[CA_TAU_POS_Q / 4];
+    uint8_t cold_first[CA_TAU_POS_Q / 4], cold_second[CA_TAU_POS_Q / 4];
     size_t length = 0;
     while (x || y) {
         if (length >= pre->blocks) goto fallback;
         uint8_t u, v;
         if (!tau8_atlas_step(&x, &y, &u) || !tau8_atlas_step(&x, &y, &v)) return 0;
         size_t pair = 217 * u + v;
-        uint16_t id = pre->orbit ? ca_tau8_orbit_id[pair] : ca_tau8_pair_map[pair];
+        uint16_t orbit_id = pre->orbit ? ca_tau8_orbit_id[pair] : 0;
+        if (pre->orbit && orbit_id >= CA_TAU8_ORBIT_COUNT) return 0;
+        uint16_t id = pre->orbit == 2   ? ca_tau8_hot_id[orbit_id]
+                      : pre->orbit == 1 ? orbit_id
+                                        : ca_tau8_pair_map[pair];
         uint8_t unit = pre->orbit ? ca_tau8_orbit_unit[pair] : 0;
-        size_t entries = pre->orbit ? CA_TAU8_ORBIT_COUNT : CA_TAU8_PAIR_COUNT;
+        size_t entries = pre->orbit == 2   ? CA_TAU8_HOT_COUNT
+                         : pre->orbit == 1 ? CA_TAU8_ORBIT_COUNT
+                                           : CA_TAU8_PAIR_COUNT;
+        if (pre->orbit == 2 && id == UINT16_MAX) {
+            ids[length] = id;
+            units[length] = 0;
+            cold_first[length] = u;
+            cold_second[length++] = v;
+            continue;
+        }
         if (id >= entries || unit >= 6) return 0;
         units[length] = unit;
         ids[length++] = id;
     }
     tau_jac acc = {0, g->mont.r1, 0};
-    size_t entries = pre->orbit ? CA_TAU8_ORBIT_COUNT : CA_TAU8_PAIR_COUNT;
+    size_t entries = pre->orbit == 2   ? CA_TAU8_HOT_COUNT
+                     : pre->orbit == 1 ? CA_TAU8_ORBIT_COUNT
+                                       : CA_TAU8_PAIR_COUNT;
     for (size_t i = length; i-- > 0;) {
+        if (pre->orbit == 2 && ids[i] == UINT16_MAX) {
+            ca_elem first = tau8_pattern_point(g, &pre->pos, i, 0,
+                                               ca_tau4_atlas_patterns[cold_first[i]], rotations);
+            ca_elem second = tau8_pattern_point(g, &pre->pos, i, 1,
+                                                ca_tau4_atlas_patterns[cold_second[i]], rotations);
+            if (!first.w[2]) {
+                acc = jac_add_mixed(g, acc, &first);
+                (*adds)++;
+            }
+            if (!second.w[2]) {
+                acc = jac_add_mixed(g, acc, &second);
+                (*adds)++;
+            }
+            (*fallbacks)++;
+            continue;
+        }
         ca_elem point = pre->point[i * entries + ids[i]];
         if (point.w[2]) continue;
         unsigned power = units[i] % 3;
