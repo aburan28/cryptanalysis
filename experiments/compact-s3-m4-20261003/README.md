@@ -1738,6 +1738,23 @@ compressed or multirow solver. Q1441 leaves complete N131 `2^x` null and
 strengthens the need for a target-conditioned witness method that avoids a
 base traversal on every query.
 
+### Q1442 conditional selected-W7 base-size screen
+
+The [Q1442 frozen model](q1442_selected_base_screen/README.md) tests a
+deterministically selectable *partial* W7 orbit family as a future N131 base
+design. Under its unverified Poisson coverage, collision-free orbit, and
+one-novel-row-per-covered-query assumptions, a selected base around 11.969
+billion points and 45.683 million folded columns minimizes the model's
+one-action full-scan total near `2^59.407`. Its all-other-costs-zero budget
+allows only about 3.017 abstract actions per scanned point. The full W7
+sample center requires `2^65.542` in the same optimistic model.
+
+The selected base has **not** been enumerated: actual B, K, and its set
+digest remain null. The model is neither measured ordinary yield nor a
+field-operation or complete-solve projection. It narrows a possible future
+base choice while the target-conditioned pair solver remains the decisive
+missing measurement.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum
@@ -1760,10 +1777,11 @@ also capped on an N53 ordinary formula; repeating that setting alone is
 not a new feasibility method.
 Freeze the stage before ordinary queries. The first measurable gate is the
 unpinned archived N53 ordinary target, which Q1301 already proved
-representable. The second is an independently verified relation on the
-exact Q1325 N83 base, with a pre-registered fresh-target panel if the fixed
-N83 target has no representation. Keep failed queries, raw operations,
-memory, and matched pair-table receipts.
+representable. The second is an independently verified ordinary relation on
+the exact Q1438 N83 W≤6 base, with a pre-registered fresh-target panel if
+the fixed N83 target has no representation. Keep the older Q1325 W≤5 base as
+a separately labeled factor-base comparison. Preserve failed queries, raw
+operations, memory, and matched pair-table receipts.
 
 For work planning, Q1414's exact-base uniform-query model allows less than
 `2^33.36` abstract work units per query under a `2^61` total cap **even
