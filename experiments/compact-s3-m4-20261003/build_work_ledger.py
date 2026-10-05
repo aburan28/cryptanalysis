@@ -4264,6 +4264,31 @@ def main():
     assert q1442_result["complete_solve_work_log2"] is None
     assert q1442_result["challenge_dispatch_allowed"] is False
     assert len(q1442_result["rows"]) == 3
+    q1443_dir = HERE / "q1443_residual_pair_bound"
+    q1443_protocol_path = q1443_dir / "protocol.json"
+    q1443_result_path = q1443_dir / "result.json"
+    q1443_verification_path = q1443_dir / "verification.json"
+    q1443_protocol = json.loads(q1443_protocol_path.read_text())
+    q1443_result = json.loads(q1443_result_path.read_text())
+    q1443_verification = json.loads(q1443_verification_path.read_text())
+    assert q1443_protocol["proposal_id"] == q1443_result[
+        "proposal_id"] == "Q1443"
+    assert q1443_protocol["candidate_id"] is q1443_result[
+        "candidate_id"] is None
+    assert q1443_protocol["isogeny"] == q1443_result[
+        "isogeny"] == "none"
+    assert q1443_result["protocol_sha256"] == sha(q1443_protocol_path)
+    assert q1443_result["source_sha256"] == sha(q1443_dir / "screen.py")
+    assert q1443_verification["status"] == "passed"
+    assert q1443_verification["protocol_sha256"] == sha(
+        q1443_protocol_path)
+    assert q1443_verification["result_sha256"] == sha(
+        q1443_result_path)
+    assert len(q1443_result["rows"]) == 4
+    assert q1443_result["rows"][-1]["conditional_base_model"] is True
+    assert q1443_result["rows"][-1]["actual_B"] is None
+    assert q1443_result["complete_solve_work_log2"] is None
+    assert q1443_result["challenge_dispatch_allowed"] is False
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -5552,6 +5577,27 @@ def main():
             "result_sha256": sha(q1442_result_path),
             "verification_sha256": sha(q1442_verification_path),
         },
+        "q1443_residual_pair_support_bound": {
+            "proposal_id": "Q1443",
+            "candidate_id": None,
+            "isogeny": "none",
+            "budget_abstract_first_pair_trials": q1443_result[
+                "budget_abstract_first_pair_trials"],
+            "work_unit": q1443_result["work_unit"],
+            "law": q1443_result["law"],
+            "scope": q1443_result["scope"],
+            "proof": q1443_result["proof"],
+            "rows": q1443_result["rows"],
+            "ordinary_N83_relation_measured": False,
+            "is_empirical_solver_stage_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": q1443_result["decision"],
+            "protocol_sha256": sha(q1443_protocol_path),
+            "result_sha256": sha(q1443_result_path),
+            "verification_sha256": sha(q1443_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -5944,6 +5990,8 @@ def main():
                 "Q1442's selected W7 optimum is a conditional Poisson and "
                 "novel-row model with actual B/K/digest unknown, not a "
                 "measured relation yield or complete work charge; "
+                "Q1443 bounds target-oblivious first-pair trials but does "
+                "not measure a joint target-guided solver; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

@@ -58,15 +58,16 @@ neither a field-operation budget nor evidence that an actual full scan fits.
 
 The selected-W7 range is worth retaining as a possible N131 factor-base
 design; the sampled full W7 base is too wide for a one-row-per-query full
-scan under Q1441's abstract budget. The **next solver gate** remains an exact
-target-conditioned sparse-pair witness method on the exact N53/N83 bases.
-It must first recover known pair witnesses without leaf pins, then produce
-ordinary four-point relations with all failed attempts charged. A verified
-ordinary N83 relation and novel-rank panel are needed before replacing this
-coverage model with measured useful-row rates. Constructing a selected N131
-base or launching a challenge before that would not close the missing solver
-cost. The complete N131 `2^x` and challenge gate remain null/false in the
-[result](result.json) and [work ledger](../work_ledger.json).
+scan under Q1441's abstract budget. The [Q1443 pair-support bound](../q1443_residual_pair_bound/README.md)
+shows that a target-oblivious first-pair search followed by even a free exact
+residual-pair oracle is also unaffordable at this selected size. The **next
+solver gate** is a joint target-conditioned four-point witness method on the
+exact N53/N83 bases. It must produce ordinary four-point relations with all
+failed attempts charged. A verified ordinary N83 relation and novel-rank
+panel are needed before replacing this coverage model with measured useful-row
+rates. Constructing a selected N131 base or launching a challenge before that
+would not close the missing solver cost. The complete N131 `2^x` and challenge
+gate remain null/false in the [result](result.json) and [work ledger](../work_ledger.json).
 
 The [protocol](protocol.json) was committed before emitting the result. The
 calculation uses Python's standard library only; it is not a Sage job. It

@@ -1752,13 +1752,33 @@ sample center requires `2^65.542` in the same optimistic model.
 The selected base has **not** been enumerated: actual B, K, and its set
 digest remain null. The model is neither measured ordinary yield nor a
 field-operation or complete-solve projection. It narrows a possible future
-base choice while the target-conditioned pair solver remains the decisive
-missing measurement.
+base choice while the joint target-conditioned four-point solver remains the
+decisive missing measurement.
+
+### Q1443 residual-pair support bound
+
+The [Q1443 exact-family screen](q1443_residual_pair_bound/README.md) corrects
+the next-method requirement. At Q1442's conditional selected-W7 size, a
+uniform N131 target's residual after a target-independent first pair lies in
+the factor-base pair-sum support with probability at most `2^-63.043`. Even
+with a free exact residual-pair oracle, 95% chance of one relation needs at
+least `2^62.969` individually tested first pairs in the screen's abstract
+trial unit. For the exact W≤6 base, the corresponding necessary count is
+`2^64.704`. Under a one-row-per-trial policy, the 95%-rank trial bounds are
+far higher. These statements apply to the declared uniform-target,
+target-oblivious-first-pair family; they do not bound a joint target-guided
+search or compressed batch-pair method.
+
+Thus an isolated fixed-residual pair oracle can calibrate a kernel, but
+cannot by itself provide a plausible complete `2^x` below `2^61`. The
+next solver must couple both sparse pairs to the public target *before*
+enumerating first-pair candidates. Q1443 still records no ordinary N83
+relation, no complete-solve exponent, and no challenge permission.
 
 ## Next goal
 
-The next solver should build a **compact target-conditioned pair-sum
-membership and witness method**. Q1436 rejects partial second-pair domains
+The next solver should build a **compact joint target-conditioned four-point
+witness method**. Q1436 rejects partial second-pair domains
 four free bits earlier per leaf than Q1435, but spends over 1.3 billion
 affine XORs in an N53 censored prefix and still produces no ordinary
 relation or second first-pair assignment. The next method must use the public
