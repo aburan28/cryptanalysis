@@ -1043,7 +1043,7 @@ int main(int argc, char **argv) {
                       << q1420::hex(swapped ? result.unique_a : result.unique_b)
                       << "\"}";
         }
-        std::cout << "}\n";
+        std::cout << "]}\n";
         solver.disconnect_terminator();
         solver.disconnect_external_propagator();
         return status == 10 ? 0 : status == 20 ? 20 : 10;
