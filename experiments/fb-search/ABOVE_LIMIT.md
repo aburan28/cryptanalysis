@@ -111,14 +111,52 @@ What this shows:
   the Macaulay matrices jump by three orders of magnitude.
 - y-XL in t needs t-degree `k + 1 = 4`, about `d/2`, at `d = 9`. That spans half the t-cube
   (4608 columns), and its total work (9.2e7 word operations) exceeds MXL (1.5e7).
-- If the degree keeps growing about linearly (roughly `2 + d/6`, as these points and the
-  Kosters-Yeo table suggest), Macaulay costs about `C(N, d/6)^omega`, which is exponentially
-  worse than `2^d`. Only a degree that grows logarithmically would win. The 26-variable limit of
-  the Macaulay layout stops us measuring beyond `d = 13`; a sparse layout would be needed.
+- At the time, the n = 23 points suggested roughly linear growth (`2 + d/6`), under which
+  Macaulay costs about `C(N, d/6)^omega`, exponentially worse than `2^d`. Sec. 4b measures beyond
+  the 26-variable limit and finds slower growth, so that extrapolation is **superseded**.
 
-**Verdict:** rejected as a cheaper method. The non-generic low degree is a real structural fact
+**Verdict (at the sizes measured):** not cheaper than `2^d` in any cell. The non-generic low degree is a real structural fact
 about the residual system, and the measurement is new as far as we know. It does not give a
 solver below `2^d` in any measured cell, and the trend points the wrong way.
+
+### 4b. The degree beyond 26 variables (`smxl.c`)
+
+`smxl.c` is a standalone sparse-column MXL closure: 64-bit monomial masks and a sorted column
+map, with no `2^N` table. It uses the same closure rule as `macaulay.py` mode `mxl`, and agrees
+with it on degree and order of work at `d = 6, 9`. It runs as `residual.py --solver smxl`. Data:
+`results/residual-smxl-n41.jsonl`. All targets below are on n = 41, geomtraceu seed 1. For
+non-decomposable targets (checked against the half-trace solver), "refuted at D" means 1 is in
+the degree-D closure.
+
+| l | d | N | MXL degree that refutes (every target) | columns at that degree | word operations (median) | MXL cost (rps) | `2^d` enumeration (rps, at about 4.4e6 per candidate) | ratio |
+|---|---|---|---|---|---|---|---|---|
+| 17 | 9 | 26 | 3 | 2952 | 2.7e7 | 8.3e9 | 2.3e9 | 3.6 |
+| 18 | 12 | 30 | **4** (3 is not enough: rank 3796 of 4526) | 31931 | 4.2e10 | 1.3e13 | 1.8e10 | 700 |
+| 19 | 15 | 34 | 4 | 52956 | 2.2e11 | 6.6e13 | 1.4e11 | 470 |
+| 20 | 18 | 38 | 4 | 82993 | 9.3e11 | 2.8e14 | 1.2e12 | 240 |
+
+For decomposable (planted) targets the same degree solves the system. The closure ends with
+`N - 1` linear pivots and two standard monomials, the swapped pair `(X, Y)`, at `d = 9` (degree 3)
+and `d = 12` (degree 4).
+
+Reading:
+
+- At the sizes measured, the degree grows **slower than the linear extrapolation in Sec. 4**: 3 up
+  to `d = 9`, then 4 up to at least `d = 18`. `d = 18` is `l = 20` at n = 41, essentially the
+  Kosters-Yeo point `n = 40, l = n/2`, where they report an F4 degree of regularity of at least 5.
+  Our measure is different: the MXL refutation or solving degree, close to a last fall degree in
+  the sense of [HKY15], not the highest degree that F4 processes.
+- **MXL is still much costlier than enumeration** in every cell. The ratio falls only while the
+  degree stays fixed: 700, 470, 240 across `d = 12, 15, 18`, about 1.5x per 3 dimensions. Parity
+  needs roughly 15 more such steps (`d ~ 60`) at degree 4. For n = 131 at `l = n/2` that would
+  mean degree <= 4 at `d ~ 62`, with about 1e7 columns.
+- Gröbner bases on the descent system are not new [FPPR12, PQ12, KY15]; the residual system is the
+  same system with its linear part eliminated. What this adds is the measured refutation/solving
+  degree up to `d = 18` and the cost against `2^d`. The open question it isolates: **is the
+  solving degree of the m = 2 descent system bounded, or logarithmic, in d?** If it is bounded,
+  the m = 2 PDP is polynomial time at every l, which would contradict the expectation in
+  [KY15]/[Cou16]. If it grows linearly, Macaulay never wins. Measurements at `d ~ 20-21` are
+  running.
 
 ## 5. Open leads (not yet novelty-checked)
 

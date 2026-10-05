@@ -76,9 +76,12 @@ def residual_systems(sv: HalfTraceSolver, S: int) -> list[dict]:
             for i, v in enumerate(sv.basis):
                 m = (1 << i) | (1 << (l + k))
                 mono[m] = mono.get(m, 0) ^ K.mul(f, v)
-        masks = np.array(sorted(mono), dtype=np.uint32)
-        coeffs = np.array([mono[int(m)] for m in masks], dtype=np.uint64)
-        out.append({"eps": eps, "d": d, "N": N, "system": BooleanSystem(N, n, masks, coeffs)})
+        system = None
+        if N <= 32:
+            masks = np.array(sorted(mono), dtype=np.uint32)
+            coeffs = np.array([mono[int(m)] for m in masks], dtype=np.uint64)
+            system = BooleanSystem(N, n, masks, coeffs)
+        out.append({"eps": eps, "d": d, "N": N, "system": system, "mono": mono})
     return out
 
 
@@ -143,6 +146,46 @@ def y_xl(l: int, d: int, eqs, k_max: int = 4, max_cols: int = 2_000_000) -> dict
     return out
 
 
+def boolean_equations(n: int, mono: dict[int, int]) -> list[list[int]]:
+    """Coordinate functions over F_2 of sum_m mono[m] * m, as lists of 64-bit monomial masks."""
+    eqs = []
+    for bit in range(n):
+        f = [m for m, c in mono.items() if (c >> bit) & 1]
+        if f:
+            eqs.append(sorted(f))
+    return eqs
+
+
+_SMXL = None
+
+
+def smxl(N: int, eqs: list[list[int]], d_max: int = 5, max_cols: int = 120_000) -> dict:
+    """Sparse-column MXL closure (smxl.c), up to 64 variables."""
+    import ctypes
+    import subprocess
+
+    global _SMXL
+    if _SMXL is None:
+        so = HERE / "build" / "libsmxl.so"
+        src = HERE / "smxl.c"
+        if not so.exists() or so.stat().st_mtime < src.stat().st_mtime:
+            so.parent.mkdir(exist_ok=True)
+            subprocess.run(["cc", "-O3", "-march=native", "-shared", "-fPIC", "-o", str(so), str(src)], check=True)
+        _SMXL = ctypes.CDLL(str(so))
+        _SMXL.smxl_run.restype = ctypes.c_longlong
+    flat = np.array([m for f in eqs for m in f], dtype=np.uint64)
+    off = np.zeros(len(eqs) + 1, dtype=np.int32)
+    off[1:] = np.cumsum([len(f) for f in eqs])
+    out = np.zeros(8, dtype=np.int64)
+    P = ctypes.POINTER
+    _SMXL.smxl_run(ctypes.c_int(N), flat.ctypes.data_as(P(ctypes.c_uint64)), off.ctypes.data_as(P(ctypes.c_int32)),
+                   ctypes.c_int(len(eqs)), ctypes.c_int(d_max), ctypes.c_longlong(max_cols),
+                   out.ctypes.data_as(P(ctypes.c_longlong)))
+    status = {1: "refuted", 0: "degree_limit", -1: "budget", -2: "memory"}[int(out[0])]
+    return {"status": status, "degree": int(out[1]), "cols": int(out[2]), "rank": int(out[3]),
+            "xors": int(out[4]), "rows_in": int(out[5]), "linear_pivots": int(out[6])}
+
+
 def bilinear_degree(nx: int, ny: int, m: int) -> int | None:
     """Generic y-semiregular degree for an overdetermined bilinear system (arXiv 2006.09442):
     ceil(n_x (n_y - 1) / (m - n_x)) + 1, multiplying by y-monomials only."""
@@ -161,7 +204,7 @@ def main() -> None:
     ap.add_argument("--mode", default="mxl", choices=macaulay.MODES)
     ap.add_argument("--d-max", type=int, default=6)
     ap.add_argument("--max-cols", type=int, default=400_000)
-    ap.add_argument("--solver", default="mxl", choices=("mxl", "yxl"),
+    ap.add_argument("--solver", default="mxl", choices=("mxl", "yxl", "smxl"),
                     help="mxl: degree scan of the residual Boolean system (N <= 26); yxl: y-XL in t")
     ap.add_argument("--k-max", type=int, default=4)
     ap.add_argument("--only-refutations", action="store_true", help="skip decomposable targets")
@@ -180,6 +223,17 @@ def main() -> None:
                 continue
             for rs in residual_systems(sv, R[0]):
                 s = rs["system"]
+                if args.solver == "smxl":
+                    eqs = boolean_equations(sv.n, rs["mono"])
+                    sm = smxl(rs["N"], eqs, args.d_max, args.max_cols)
+                    rec = {"n": args.n, "l": l, "family": args.family, "eps": rs["eps"], "d": rs["d"], "N": rs["N"],
+                           "equations": len(eqs), "decomposable": truth, "solver": "smxl", **sm,
+                           "enum_candidates": 2 ** rs["d"], "generic_deg_y_t": bilinear_degree(l, rs["d"], len(eqs))}
+                    print(canonical(rec), flush=True)
+                    if args.out:
+                        with open(args.out, "a") as fh:
+                            fh.write(canonical(rec) + "\n")
+                    continue
                 if args.solver == "yxl":
                     _, d, eqs = bilinear_equations(sv, R[0], rs)
                     yx = y_xl(l, d, eqs, args.k_max)
