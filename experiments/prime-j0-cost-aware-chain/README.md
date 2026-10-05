@@ -137,3 +137,9 @@ two shortest equivalent Eisenstein representatives against the same bounded
 point table. Its fresh 16,384-output panel verifies exactly and saves
 5.61%–6.81% of mixed additions, while charging an extra online recode;
 isolated CPU speed remains unmeasured.
+
+The [demand-gated selector](GATED_TABLE_AWARE.md) recodes a second
+representative only after a cold two-digit block or span overflow.
+Its fresh 16,384-output panel retains 81.35%–99.88% of the always-two
+selector's addition saving while skipping 32%–79% of second recodes;
+CPU speed awaits an isolated host.

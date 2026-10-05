@@ -247,3 +247,19 @@ runnable CTest cases passed; `coord` requires a localhost bind denied in
 this sandbox. No wall-time speedup is claimed on this contended host.
 `make_isolated_manifest.py --candidate-arm fused-hot-adapt2-batch128`
 pairs the two arms on identical scalar files for an isolated host.
+
+## Demand-gated second recode
+
+The [gated protocol](GATED_TABLE_AWARE.md) in PR #277 skips the second
+atlas recode unless the first stream has a cold two-digit block or exceeds
+the prepared span. [gated-inputs.json](gated-inputs.json) freezes four fresh
+4,096-scalar cases created after the protocol PR opened.
+[check_gated_panel.py](check_gated_panel.py) verifies every output against
+generic multiplication and independently checks executed additions and
+actual second-recode counts. The gated arm retains 81.35%–99.88% of the
+always-two selector's addition saving while invoking the second recode on
+20.51%–67.94% of nonzero scalars. Setup is identical across the three
+arms; [gated-panel.json](gated-panel.json) retains the raw evidence.
+The updated curve test passed 409,269 checks. An isolated host must compare
+the gated arm separately with ordinary hot and with always-two before
+judging CPU speed.

@@ -44,3 +44,32 @@ performing second recodes for 20.54%–65.98% of scalars. These numbers
 helped freeze the gate and are exploratory, not candidate evaluation
 evidence. `gated-table-aware-screen.json` records all four law rows and
 source hashes. Academic novelty is not established.
+
+## Executed frozen panel
+
+Protocol commit `68b7d231` and draft PR #277 preceded the fresh scalar files.
+`check_gated_panel.py` ran all three arms on each file, replayed every
+output against generic multiplication, and independently predicted both
+executed additions and actual second-recode counts. All 16,384 gated
+outputs and all four selector-count rows verify.
+
+| Case | Ordinary hot adds | Always-two adds | Gated adds | Always-two saving retained | Gated second recodes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 32-bit subgroup, generator | 9,201 | 8,664 | 8,764 | 81.38% | 840 / 4,096 |
+| 32-bit subgroup, `37P` | 9,181 | 8,661 | 8,758 | 81.35% | 841 / 4,096 |
+| 56-bit subgroup, generator | 23,576 | 21,933 | 21,935 | 99.88% | 2,698 / 4,096 |
+| 56-bit subgroup, `37P` | 23,730 | 22,007 | 22,010 | 99.83% | 2,783 / 4,096 |
+
+The gated arm saves 4.61%–7.25% of ordinary-hot mixed additions and
+meets every prospective operation and recode gate. All three arms have
+identical preparation additions, 8,192 or 12,288 per point, and identical
+prepared bytes, 300,144 or 431,216. `gated-panel.json` retains raw stdout,
+failures, input and source hashes, selector counter checks, and all phase
+operations. The local `test_curve` passed 409,269 checks.
+
+The raw wall intervals in that receipt are exploratory because this host
+is contended. The smaller subgroup's gated interval happened to be near
+the ordinary-hot interval; the larger subgroup's remained above it.
+Neither observation authorizes a speedup or slowdown claim. The two
+isolated AB/BA comparisons, gated against ordinary hot and gated against
+always-two, remain unrun.
