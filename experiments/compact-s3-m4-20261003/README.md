@@ -1592,12 +1592,33 @@ retain the censored rows and exact factor-base identities. They are lower
 bounds for those attempts, not solved-query costs or a natural-yield sample.
 The complete N131 `2^x` remains unknown.
 
+### Q1434 exact sparse-tail membership
+
+The [frozen Q1434 protocol](q1434_exact_tail/protocol.json) adds an exact
+weight-one completion check after Q1432's cached span screen. The
+[60-case native/Sage validation](q1434_exact_tail/tail_validation.json)
+matches direct `S3` enumeration and preserves verified witnesses. Both
+known-witness controls verify. On ordinary N53/N83 queries, the new check
+rejects 42,903/3,180 span-accepted states with no actual completion, but
+both queries still hit the 60-second cap without a relation. Total charged
+field multiplications are 2,036,720/1,372,405 on these different censored
+prefixes. The [result table](q1434_exact_tail/README.md) and
+[archive verification](q1434_exact_tail/verification.json) retain all four
+cells, exact factor-base identities, raw operation counts and memory. No
+ordinary solved-query cost or complete N131 `2^x` follows.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum
-membership and witness method**. Q1433's larger cap leaves both ordinary
-targets censored and memory growing, so another cap increase on the same
-search order is unlikely to answer the feasibility question. The method
+membership and witness method**. Q1434 removes many false-positive late
+span states but still leaves both ordinary targets censored. The immediate
+Q1435 experiment should extend exact completion to partial leaves with one
+or two weight units left, using a frozen candidate-count cap and charging
+enumeration, coefficients, clauses and memory. It should measure whether
+the gate fires earlier than Q1434 and changes the ordinary search pattern.
+If that extension still only prunes late states, the next method must use
+the public target to constrain both sparse pairs before completing either
+pair. The method
 must avoid the Q1425–Q1427 reverse-root
 rejection loop and the full quotient-pair index screened by Q1416 at roughly
 `2^89.36` logical actions on the exact N131 base under its uniform-key

@@ -3561,6 +3561,113 @@ def main():
         1, 0, 1, 0]
     assert [row["stop_reason"] for row in q1433_cells] == [
         "sat", "wall_cap", "sat", "wall_cap"]
+    q1434_dir = HERE / "q1434_exact_tail"
+    q1434_protocol_path = q1434_dir / "protocol.json"
+    q1434_verification_path = q1434_dir / "verification.json"
+    q1434_validation_path = q1434_dir / "tail_validation.json"
+    q1434_protocol = json.loads(q1434_protocol_path.read_text())
+    q1434_verification = json.loads(q1434_verification_path.read_text())
+    q1434_validation = json.loads(q1434_validation_path.read_text())
+    assert q1434_protocol["proposal_id"] == q1434_verification[
+        "proposal_id"] == q1434_validation["proposal_id"] == "Q1434"
+    assert q1434_protocol["candidate_id"] is q1434_verification[
+        "candidate_id"] is q1434_validation["candidate_id"] is None
+    assert q1434_protocol["isogeny"] == q1434_validation[
+        "isogeny"] == "none"
+    assert q1434_protocol["matched_q1432_protocol_sha256"] == sha(
+        q1432_protocol_path)
+    assert q1434_protocol["tail_validation_sha256"] == sha(
+        q1434_validation_path)
+    assert q1434_verification["protocol_sha256"] == sha(
+        q1434_protocol_path)
+    assert q1434_verification["verifier_source_sha256"] == sha(
+        q1434_dir / "verify_archive.py")
+    assert q1434_verification["complete"] is True
+    assert q1434_verification["missing"] == []
+    assert q1434_validation["total_cases"] == 60
+    assert q1434_validation["total_witness_false_rejections"] == 0
+    q1434_cells = []
+    for key in q1434_protocol["run_order"]:
+        workload = q1434_protocol["workloads"][key]
+        receipt_path = q1434_dir / "runs" / key / "receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        check = next(row for row in q1434_verification["checks"]
+                     if row["key"] == key)
+        matched = next(row for row in q1432_cells if row["key"] == key)
+        assert check["receipt_sha256"] == sha(receipt_path)
+        assert receipt["proposal_id"] == "Q1434"
+        assert receipt["candidate_id"] is None
+        assert receipt["isogeny"] == "none"
+        assert receipt["protocol_sha256"] == sha(q1434_protocol_path)
+        assert receipt["stage_run_id"] == workload["stage_run_id"]
+        assert receipt["workload_id"] == matched["workload_id"]
+        assert receipt["curve_id"] == matched["curve_id"]
+        assert receipt["factor_base_actual_B"] == matched[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == matched["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == matched[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["matched_q1432_receipt_sha256"] == matched[
+            "receipt_sha256"]
+        assert receipt["complete_solve_work_log2"] is None
+        report = receipt["solver_report"]
+        assert report is not None
+        assert check["sampled_rejection_false_claims"] == 0
+        assert check["sampled_tail_zero_checks"] == min(
+            16, report["tail_zero"])
+        assert check["sampled_tail_unique_checks"] == min(
+            16, report["tail_unique"])
+        q1434_cells.append({
+            "key": key,
+            "degree_n": receipt["degree_n"],
+            "cell": receipt["cell"],
+            "curve_id": receipt["curve_id"],
+            "factor_base_actual_B": receipt["factor_base_actual_B"],
+            "folded_columns_K": receipt["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": receipt[
+                "factor_base_enumerated_set_sha256"],
+            "workload_id": receipt["workload_id"],
+            "stage_run_id": receipt["stage_run_id"],
+            "matched_q1432_stage_run_id": receipt[
+                "matched_q1432_stage_run_id"],
+            "solver_status": receipt["solver_status"],
+            "stop_reason": report["stop_reason"],
+            "verified_relation_count": receipt[
+                "verified_relation_count"],
+            "decisions": report["decisions"],
+            "conflicts": report["conflicts"],
+            "span_checks": report["span_checks"],
+            "span_rejections": report["span_rejections"],
+            "tail_checks": report["tail_checks"],
+            "tail_zero": report["tail_zero"],
+            "tail_unique": report["tail_unique"],
+            "tail_multiple": report["tail_multiple"],
+            "tail_candidate_pairs": report["tail_candidate_pairs"],
+            "tail_forced_literals": report["tail_forced_literals"],
+            "tail_field_mul_calls": report["tail_field_mul_calls"],
+            "tail_field_sqr_calls": report["tail_field_sqr_calls"],
+            "sampled_tail_zero_independently_checked": check[
+                "sampled_tail_zero_checks"],
+            "sampled_tail_unique_independently_checked": check[
+                "sampled_tail_unique_checks"],
+            "cache_payload_bytes_lower_bound": report[
+                "cache_payload_bytes_lower_bound"],
+            "reverse_pair1_calls": report["reverse_pair1_calls"],
+            "field_mul_calls": report["field_mul_calls"],
+            "field_sqr_calls": report["field_sqr_calls"],
+            "field_inv_calls": report["field_inv_calls"],
+            "matched_q1432_field_mul_calls": matched["field_mul_calls"],
+            "solver_process_wall_seconds_exploratory": receipt[
+                "solver_process_wall_seconds_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["solver_status"] for row in q1434_cells] == [
+        "sat", "censored", "sat", "censored"]
+    assert [row["verified_relation_count"] for row in q1434_cells] == [
+        1, 0, 1, 0]
+    assert [row["stop_reason"] for row in q1434_cells] == [
+        "sat", "wall_cap", "sat", "wall_cap"]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -4596,6 +4703,38 @@ def main():
                 "the complete N131 exponent unknown."),
             "protocol_sha256": sha(q1433_protocol_path),
             "verification_sha256": sha(q1433_verification_path),
+        },
+        "q1434_exact_sparse_tail_stage": {
+            "proposal_id": "Q1434",
+            "candidate_id": None,
+            "isogeny": "none",
+            "controlled_variable": (
+                "exact weight-one tail membership and unique-witness "
+                "clauses after the Q1432 cached span screen, on identical "
+                "CNF, curve, base, public target, decision policy and "
+                "60-second cap"),
+            "cells": q1434_cells,
+            "native_vs_direct_sage_validation_cases": 60,
+            "verified_witness_false_rejections": 0,
+            "is_empirical_solver_stage_measurement": True,
+            "is_controlled_cpu_wall_speedup": False,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "Both known-witness controls verify and both ordinary "
+                "N53/N83 queries remain censored at 60 seconds. Exact "
+                "tail checks reject 42,903/3,180 span-accepted states "
+                "with zero S3 completions; no ordinary unique completion "
+                "or verified relation occurs. Charged total field "
+                "multiplications are 2,036,720/1,372,405 on different "
+                "censored prefixes. This proves useful local pruning, "
+                "not a solved-query cost, natural yield, CPU wall "
+                "speedup, or complete N131 exponent. The next gate is "
+                "earlier target-conditioned sparse-pair membership with "
+                "witness recovery."),
+            "protocol_sha256": sha(q1434_protocol_path),
+            "verification_sha256": sha(q1434_verification_path),
+            "tail_validation_sha256": sha(q1434_validation_path),
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
