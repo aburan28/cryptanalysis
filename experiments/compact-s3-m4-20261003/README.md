@@ -1792,6 +1792,27 @@ does not change the joint ordinary-query search pattern. It therefore does
 not pass the target-conditioned four-point witness gate or support a complete
 N131 projection.
 
+### Q1445 pair-table control on the exact dense bases
+
+The [Q1445 matched-input control](q1445_matched_pair_table/README.md) runs
+the signed-Frobenius four-point pair table on Q1438's exact W≤4 N53 and
+W≤6 N83 bases and the same ordinary public targets as Q1444. Its frozen
+N53 cell builds 500,000 target-independent pair samples, then finds one
+independently verified four-distinct-column ordinary relation after 54,545
+target-dependent pair samples. The query interval is 6.748 exploratory
+seconds; table preparation is a separate 43.188 seconds. The N83 cell
+builds 10,000 pair samples and stops after 10,000 target-dependent samples
+with zero key hits and no relation. Its table and query intervals are 9.582
+and 10.032 exploratory seconds. Q1445's N83 sampler draws from the complete
+exact base by uniform sparse-x rejection, not from a smaller cached subset.
+
+This provides the previously missing matched-base pair-table comparator,
+but no N83 successful solve, population relation yield, novel-row rate, or
+N53-to-N83 successful-cost fit. The N53 relation is one stage witness; the
+pair-table method remains subject to Q1443's target-oblivious-first-pair
+bound. Q1445 keeps `candidate_id: null`, complete N131 `2^x: null`, and the
+challenge gate closed.
+
 ## Next goal
 
 The next solver should build a **compact joint target-conditioned four-point
