@@ -220,8 +220,8 @@ byte tables for the half-trace and the V-syndrome. It runs at about 1.8 us per c
 branches), 15x faster than the Python `PDP2ht` path, and agrees with the half-trace solver on 30/30
 targets. Timings: `results/enum-scan.jsonl` (`enum_scan.py`, same target streams as `cms_scan.py`).
 
-**Measurements** (`results/cms-scan.jsonl`). All CMS answers agree with the half-trace solver
-wherever both ran (32/32), and every SAT model verifies.
+**Measurements** (`results/cms-scan.jsonl`). All CMS answers agree with the exact enumeration
+wherever both ran (45/45), and every SAT model verifies.
 
 | n | l | d | decomposable targets | CMS median | C enumeration median | CMS / enumeration |
 |---|---|---|---|---|---|---|
@@ -229,12 +229,14 @@ wherever both ran (32/32), and every SAT model verifies.
 | 41 | 18 | 12 | 0/8 | 1.9 s | 7.5 ms | 250 |
 | 41 | 19 | 15 | 2/8 | 1.4 s | 62 ms | 23 |
 | 41 | 20 | 18 | 5/8 | 8.7 s | 0.46 s | 19 |
-| 59 | 26 | 18 | 0/6 | 16.6 s | (see enum-scan) | about 35 |
-| 59 | 27 | 21 | 0/6 | 165 s | (see enum-scan) | — |
+| 59 | 26 | 18 | 0/6 | 16.6 s | 0.65 s | 25 |
+| 59 | 27 | 21 | 0/6 | 165 s | 5.5 s | 30 |
+| 59 | 28 | 24 | 0/2 (enumeration only) | not run | 42.5 s | — |
 
 Against the slow Python enumeration CMS seemed to grow more slowly than `2^d`. Against the C
 baseline it is a constant 20-35x slower from `d = 15` on. On the unsatisfiable n = 59 cells its time
-grows 9.9x per 3 dimensions from `d = 18` to `d = 21`, which is at least as steep as `2^d`.
+grows 9.9x per 3 dimensions from `d = 18` to `d = 21`, against 8.4x for the enumeration, so the
+ratio grows from 25x to 30x.
 
 **Verdict:** rejected. It shows no sub-`2^d` behaviour against a fair baseline.
 
