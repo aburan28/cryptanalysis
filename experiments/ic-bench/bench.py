@@ -176,9 +176,12 @@ def cells(n, m, l, families, workload_seeds, targets=3, max_attempts=200_000, mo
 
 
 SEARCH_SELECTION = HERE.parent / "fb-search" / "selected.json"
+ONLINE_SELECTION = HERE.parent / "fb-search" / "online-selected.json"
+# suites whose runs have one prepared target and a measured online interval paired with rho
+ONLINE_SUITES = ("primary", "online")
 
 
-def search_cells(path: Path = SEARCH_SELECTION, workload_seeds=(1, 2, 3)) -> list[dict]:
+def search_cells(path: Path = SEARCH_SELECTION, workload_seeds=(1, 2, 3), targets: int | None = None) -> list[dict]:
     """Factor bases picked by ../fb-search (family, l, seed), each on the same frozen workloads."""
     if not path.exists():
         return []
@@ -186,7 +189,7 @@ def search_cells(path: Path = SEARCH_SELECTION, workload_seeds=(1, 2, 3)) -> lis
     for pick in json.loads(path.read_text())["picks"]:
         c = pick["cell"]
         n = c["n"]
-        out += cells(n, c["m"], c["l"], [c["family"]], list(workload_seeds), targets=c["targets"],
+        out += cells(n, c["m"], c["l"], [c["family"]], list(workload_seeds), targets=targets or c["targets"],
                      max_attempts=200_000 if n < 23 else 800_000, mode=c["mode"], seed=c["seed"])
     return out
 
@@ -201,6 +204,8 @@ SUITES = {
     + cells(19, 2, 6, ["prefix", "geometric", "geomtrace", "geomtraceu", "random"], [1, 2, 3])
     + cells(23, 2, 6, ["prefix", "geomtrace", "random"], [1], max_attempts=800_000),
     "search": search_cells(),
+    # one-target online runs of the bases ../fb-search/online.py ranks best for T_online,1
+    "online": search_cells(ONLINE_SELECTION, targets=1),
     # Long multi-target runs. One 2^16-target receipt yields exact prefix points
     # 1,2,4,...,2^16 without repaying the shared relation database at each size.
     "batch": cells(13, 3, 3, ["geomtrace"], [1], targets=1 << 16)
@@ -414,7 +419,7 @@ def run_cell(cell: dict, calibration: dict) -> dict:
 
     t_all = time.perf_counter_ns()
     curve = ToyCurve(cell["n"])
-    primary = cell.get("suite") == "primary"
+    primary = cell.get("suite") in ONLINE_SUITES
     wid, wrec = workload(curve, cell["workload_seed"], cell["targets"],
                          "prepared" if primary else "cold")
     fb = FactorBase(curve, cell["family"], cell["l"], cell["seed"])
