@@ -16,11 +16,10 @@ ROOT = HERE.parents[2]
 sys.path.insert(0, str(PARENT))
 
 from q1420_root_theory.build_formula import convert_to_cnf  # noqa: E402
-from q1420_root_theory.verify_archive import (  # noqa: E402
-    check_cnf, model_from_file)
 from q1425_reverse_pair.relax_control import serialize_cnf  # noqa: E402
 from q1448_torsion_phi5.build_formula import build  # noqa: E402
-from q1448_torsion_phi5.verify_model import replay  # noqa: E402
+from q1448_torsion_phi5.verify_model import (  # noqa: E402
+    model_from_file, replay)
 
 PROTOCOL = HERE / "protocol.json"
 OUTPUT = HERE / "verification.json"
@@ -28,6 +27,19 @@ OUTPUT = HERE / "verification.json"
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def check_cnf(raw: bytes, model: dict[int, bool], variables: int,
+              clause_count: int) -> None:
+    lines = raw.decode("ascii").splitlines()
+    assert lines.pop(0).split() == ["p", "cnf", str(variables),
+                                    str(clause_count)]
+    assert set(model) == set(range(1, variables + 1))
+    assert len(lines) == clause_count
+    for line in lines:
+        lits = [int(token) for token in line.split()]
+        assert lits and lits[-1] == 0
+        assert any(model[abs(lit)] == (lit > 0) for lit in lits[:-1])
 
 
 def audit() -> dict:

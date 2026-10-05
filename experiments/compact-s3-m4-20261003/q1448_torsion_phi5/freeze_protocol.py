@@ -32,7 +32,6 @@ SOURCE_PATHS = (
     "experiments/compact-s3-m4-20261003/chain_s3_multitarget.py",
     "experiments/compact-s3-m4-20261003/q1419_partial_pin/run_cell.py",
     "experiments/compact-s3-m4-20261003/q1420_root_theory/build_formula.py",
-    "experiments/compact-s3-m4-20261003/q1420_root_theory/verify_archive.py",
     "experiments/compact-s3-m4-20261003/q1425_reverse_pair/relax_control.py",
     "experiments/compact-s3-m4-20261003/enumerate_q1413_projected_x.py",
     "experiments/koblitz-pair-claw-20260929/orbit_key.py",
@@ -41,6 +40,8 @@ SOURCE_PATHS = (
 )
 INPUT_PATHS = (
     "AGENTS.md",
+    "experiments/compact-s3-m4-20261003/q1448_torsion_phi5/protocol_v1_failed.json",
+    "experiments/compact-s3-m4-20261003/q1448_torsion_phi5/failed_preflight.json",
     "experiments/compact-s3-m4-20261003/q1438_dense_base/solver_protocol.json",
     "experiments/compact-s3-m4-20261003/q1438_dense_base/n53_w4_base.json",
     "experiments/compact-s3-m4-20261003/q1438_dense_base/n83_w6_base.json",

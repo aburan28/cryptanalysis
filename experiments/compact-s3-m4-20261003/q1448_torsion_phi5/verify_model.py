@@ -17,8 +17,21 @@ import curves  # noqa: E402
 import field  # noqa: E402
 from orbit_key import OrbitKey  # noqa: E402
 from enumerate_q1413_projected_x import canonical_rotation  # noqa: E402
-from q1420_root_theory.verify_archive import model_from_file  # noqa: E402
 from q1448_torsion_phi5.build_formula import transformed_targets  # noqa: E402
+
+
+def model_from_file(path: Path) -> dict[int, bool]:
+    content = path.read_text()
+    assert "s SATISFIABLE" in content
+    model = {}
+    for line in content.splitlines():
+        if line.startswith("v "):
+            for token in line[2:].split():
+                lit = int(token)
+                if lit:
+                    assert abs(lit) not in model
+                    model[abs(lit)] = lit > 0
+    return model
 
 
 def decode(bits, model):
