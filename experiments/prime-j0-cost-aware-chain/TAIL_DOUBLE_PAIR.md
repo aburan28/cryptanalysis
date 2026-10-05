@@ -102,3 +102,46 @@ python3 experiments/prime-j0-cost-aware-chain/check_tail_double_panel.py \
 This protocol, generator, design screen, and new generic-output fixture are
 committed before the new candidate is evaluated on the frozen panel. Append
 the results below without changing this prospective section.
+
+## Held-out operation result (2026-10-05)
+
+The frozen generator reproduced header SHA-256
+`2f2ebd44ccaf5dda7abfa7abf91289a2b4075c255b0f32656319ae3f625205ad`.
+Its exhaustive replay reached 45,129 bounded states, with at most four τ
+pairs per policy path; the statewise cost was never higher than the
+one-digit policy. The verifier independently confirmed scalar-value
+disjointness from all four pinned design fixtures. On all 32,768 new
+scalar-point inputs, `baseline`, `tail-oracle-gated`, and `tail-double`
+matched generic multiplication and the frozen output digest. The new arm
+passed 32,768 exact digit-reconstruction and modeled-nonregression checks
+outside the online interval; the direct curve test passed 2,273,444 checks.
+Point preparation and output-inversion counts matched across all arms.
+The complete CTest suite passed all 15 cases on the local macOS host with
+loopback permission for the coordinator test. Both paired isolated-runner
+manifests (`baseline` versus `tail-double`, and `tail-oracle-gated` versus
+`tail-double`) validated against the runner schema; no isolated job has run.
+
+Each row aggregates 4,096 scalars. The score is the predeclared
+`10 × triples + 16 × mixed additions + rotations`; it excludes online
+recoder work and is not a wall-time measurement.
+
+| Curve and point | Baseline score | One-digit score | Two-digit score | Extra saving vs one-digit | Saving vs baseline |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| glv-j0-32, P | 517,128 | 477,939 | 466,210 | 2.45% | 9.85% |
+| glv-j0-32, 37P | 516,918 | 478,095 | 466,486 | 2.43% | 9.76% |
+| glv-j0-32, 101P | 514,461 | 476,230 | 464,870 | 2.39% | 9.64% |
+| glv-j0-32, 103P | 516,561 | 477,212 | 465,347 | 2.49% | 9.91% |
+| j0-56, P | 1,214,457 | 1,179,148 | 1,167,428 | 0.99% | 3.87% |
+| j0-56, 37P | 1,214,018 | 1,179,052 | 1,167,256 | 1.00% | 3.85% |
+| j0-56, 101P | 1,212,044 | 1,177,190 | 1,165,242 | 1.01% | 3.86% |
+| j0-56, 103P | 1,215,045 | 1,179,206 | 1,166,901 | 1.04% | 3.96% |
+
+All eight cases passed the prospective operation gate. The [raw
+receipt](tail-double-panel.json) retains triples, additions, rotations,
+static bytes, every command's output and failure status, input/source/binary
+hashes, and exploratory local timing. The two-digit policy replaces some
+tripling steps with additional mixed additions; its compiled action and gate
+data total 106,087 bytes, versus 56,164 for the pre-gated one-digit arm.
+The extra table footprint and recoding can erase the evaluation-operation
+saving on a CPU. No isolated host receipt or rho solve exists for this arm,
+so neither a CPU wall-time nor an end-to-end rho speedup is claimed.
