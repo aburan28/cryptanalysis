@@ -58,9 +58,13 @@ the portable build additionally used `-U__ARM_FEATURE_CRYPTO`.
 
 ## A separate orbit-closure hypothesis
 
-The same exact partition identifies a different policy worth testing. Every
-nonidentity signed class in this prime-order subgroup has a 131-element
-Frobenius orbit. Closing the *set* of W24 classes under that action would
+The same exact partition identifies a different policy worth testing. The
+source has four `F_2`-rational points, none in its odd prime-order target
+subgroup except infinity. Since the field Frobenius has prime order 131 on
+`F_(2^131)` points, every nonidentity subgroup point has orbit length 131.
+Sign folding does not shorten it: an odd-order Frobenius power cannot send
+an odd-order point to its negative. Closing the *set* of W24 classes under
+that action would
 therefore contain exactly `131 * 8,391,166 = 1,099,242,746` signed classes,
 or **2,198,485,492 geometric subgroup points**, a 130.97-fold expansion
 over the original W24 base. It would still have 8,391,166 orbit
