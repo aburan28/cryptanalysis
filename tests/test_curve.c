@@ -539,6 +539,15 @@ static void tau_fused_named(const char *name, size_t blocks)
                                                NULL, NULL));
         for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
         ca_ec_tau_wide_clear(&empty_wide);
+        ca_tau_wide_wavefront_stats wavefront_stats = {99, 99, 99, 99};
+        CHECK(ca_ec_tau_wide_prepare_wavefront(&g, &identity, schedule, &empty_wide, NULL, NULL,
+                                               NULL, NULL, &wavefront_stats));
+        CHECK(empty_wide.point == NULL);
+        CHECK_EQ_U64(wavefront_stats.slot_lookups, 0);
+        CHECK_EQ_U64(wavefront_stats.denominators, 0);
+        CHECK_EQ_U64(wavefront_stats.exceptional_edges, 0);
+        CHECK_EQ_U64(wavefront_stats.doubling_edges, 0);
+        ca_ec_tau_wide_clear(&empty_wide);
         CHECK(ca_ec_tau_wide_prepare_graph(&g, &identity, schedule, &empty_wide, NULL, NULL, NULL,
                                            NULL));
         CHECK(empty_wide.point == NULL);
@@ -567,6 +576,54 @@ static void tau_fused_named(const char *name, size_t blocks)
     CHECK(ca_ec_tau8_fused_mul_batch(&g, &empty, outputs, scalars, 3, 2, NULL, NULL, NULL, NULL));
     for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
     ca_ec_tau8_fused_clear(&empty);
+}
+
+static void tau_wavefront_tables(void)
+{
+    for (int curve_index = 0; curve_index < 2; curve_index++) {
+        uint64_t p, a, b, order;
+        if (curve_index) {
+            p = UINT64_C(2305843009213693951);
+            a = 0;
+            b = 7;
+            order = UINT64_C(53624256071278747);
+        } else {
+            CHECK(ca_curve_by_name("glv-j0-32", &p, &a, &b, &order) == CA_OK);
+        }
+        ca_group g;
+        ca_curve_info info;
+        CHECK(ca_curve_group(&g, p, a, b, order, &info) == CA_OK);
+        ca_elem generator;
+        CHECK(ca_group_find_generator(&g, &generator, 1) == CA_OK);
+        int schedule = curve_index;
+        const uint64_t multiples[] = {1, 37, 101, 103};
+        for (size_t case_index = 0; case_index < 4; case_index++) {
+            ca_elem point;
+            ca_group_mul(&g, &point, &generator, multiples[case_index], NULL);
+            ca_tau_wide_precomp packed = {0}, wavefront = {0};
+            ca_tau_wide_wavefront_stats stats = {0};
+            uint64_t packed_adds = 0, packed_rotations = 0, packed_inversions = 0;
+            uint64_t wavefront_adds = 0, wavefront_rotations = 0, wavefront_inversions = 0;
+            CHECK(ca_ec_tau_wide_prepare_packed(&g, &point, schedule, &packed, NULL, &packed_adds,
+                                                &packed_rotations, &packed_inversions, NULL));
+            CHECK(ca_ec_tau_wide_prepare_wavefront(&g, &point, schedule, &wavefront, NULL,
+                                                   &wavefront_adds, &wavefront_rotations,
+                                                   &wavefront_inversions, &stats));
+            CHECK_EQ_U64(wavefront_adds, packed_adds);
+            CHECK_EQ_U64(wavefront_rotations, packed_rotations);
+            CHECK_EQ_U64(wavefront_inversions, 9);
+            CHECK_EQ_U64(stats.slot_lookups, curve_index ? 267910 : 39368);
+            CHECK_EQ_U64(stats.denominators, packed_adds);
+            CHECK_EQ_U64(stats.exceptional_edges, 0);
+            CHECK_EQ_U64(stats.doubling_edges, 0);
+            CHECK(ca_ec_tau_wide_wavefront_temp_bytes(schedule) >
+                  ca_ec_tau_wide_temp_bytes(schedule));
+            for (size_t i = 0; i < ca_ec_tau_wide_entries(schedule); i++)
+                CHECK(ca_group_equal(&g, &wavefront.point[i], &packed.point[i]));
+            ca_ec_tau_wide_clear(&wavefront);
+            ca_ec_tau_wide_clear(&packed);
+        }
+    }
 }
 
 static void tau_fused_small_order(void)
@@ -633,6 +690,20 @@ static void tau_fused_small_order(void)
     ca_elem outputs[27], expected;
     for (size_t i = 0; i < 26; i++) scalars[i] = i;
     scalars[26] = UINT64_MAX;
+    for (int wide_schedule = 0; wide_schedule < 2; wide_schedule++) {
+        ca_tau_wide_precomp wavefront = {0};
+        ca_tau_wide_wavefront_stats wavefront_stats = {0};
+        CHECK(ca_ec_tau_wide_prepare_wavefront(&g, &point, wide_schedule, &wavefront, NULL, NULL,
+                                               NULL, NULL, &wavefront_stats));
+        CHECK(wavefront_stats.exceptional_edges > 0);
+        CHECK(ca_ec_tau_wide_mul_batch_profile(&g, &wavefront, outputs, scalars, 27, 7, NULL, NULL,
+                                               NULL, NULL));
+        for (size_t i = 0; i < 27; i++) {
+            ca_group_mul(&g, &expected, &point, scalars[i] % 13, NULL);
+            CHECK(ca_group_equal(&g, &outputs[i], &expected));
+        }
+        ca_ec_tau_wide_clear(&wavefront);
+    }
     CHECK(ca_ec_tau8_fused_mul_batch(&g, &pre, outputs, scalars, 27, 7, NULL, NULL, NULL, NULL));
     for (size_t i = 0; i < 27; i++) {
         ca_group_mul(&g, &expected, &point, scalars[i] % 13, NULL);
@@ -722,6 +793,7 @@ int main(void)
     tau_cost_boundary_curves();
     tau_fused_named("glv-j0-32", 4);
     tau_fused_named("j0-56", 6);
+    tau_wavefront_tables();
     tau_fused_small_order();
     printf("cost-aware tau point cases=%d\n", tau_cost_cases);
     by_name("glv-j1728-26", CA_CURVE_ENDO_J1728, 4, 2.5);

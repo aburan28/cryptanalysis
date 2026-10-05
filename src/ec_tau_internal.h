@@ -123,12 +123,20 @@ int ca_ec_tau_wide_prepare_packed(const ca_group *g, const ca_elem *point, int s
                                   ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
                                   uint64_t *rotations, uint64_t *inversions,
                                   uint64_t *slot_lookups);
+typedef struct ca_tau_wide_wavefront_stats {
+    uint64_t slot_lookups, denominators, exceptional_edges, doubling_edges;
+} ca_tau_wide_wavefront_stats;
+int ca_ec_tau_wide_prepare_wavefront(const ca_group *g, const ca_elem *point, int schedule,
+                                     ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
+                                     uint64_t *rotations, uint64_t *inversions,
+                                     ca_tau_wide_wavefront_stats *stats);
 void ca_ec_tau_wide_clear(ca_tau_wide_precomp *pre);
 size_t ca_ec_tau_wide_entries(int schedule);
 size_t ca_ec_tau_wide_static_bytes(int schedule);
 size_t ca_ec_tau_wide_graph_recipe_bytes(int schedule);
 size_t ca_ec_tau_wide_packed_recipe_bytes(int schedule);
 size_t ca_ec_tau_wide_temp_bytes(int schedule);
+size_t ca_ec_tau_wide_wavefront_temp_bytes(int schedule);
 int ca_ec_tau_wide_mul_batch_profile(const ca_group *g, const ca_tau_wide_precomp *pre,
                                      ca_elem *out, const uint64_t *scalars, size_t count,
                                      size_t block_size, uint64_t *adds, uint64_t *rotations,

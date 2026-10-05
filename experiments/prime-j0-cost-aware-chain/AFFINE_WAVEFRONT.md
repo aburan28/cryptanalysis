@@ -54,3 +54,34 @@ only with the physical host isolation receipt and noise gates in
 `docs/ISOLATED_BENCHMARKS.md`. A RunPod container's affinity alone does not
 establish exclusive host use. This algorithm is variable-time and intended
 for public research scalars.
+
+## Native diagnostic
+
+The generic edge formula in the native candidate uses five field
+multiplications and one squaring per nonexceptional edge, including the three
+multiplications used to share the inverse. Doubling needs one additional
+squaring. This model excludes positional-digit construction, unit rotations,
+and the batch inversions; those remain separate counters. It also avoids the
+reference builder's final projective-to-affine normalization pass. These are
+source-level operation models, not measured CPU savings.
+
+The [source-hashed panel](affine-wavefront-panel.json) passed all eight frozen
+point/scalar cases. All 1,229,148 prepared affine entries across those points
+matched the packed graph, and all 32,768 candidate outputs matched the
+independent generic digests. Graph additions and unit rotations were equal
+on every pair, with no fallbacks or exceptional additions on these two prime
+subgroups. An additional order-13 curve test exercised exceptional edges on
+both schedules and verified all 27 tested scalar outputs per schedule.
+`test_curve` passed 2,260,204 checks.
+
+| Schedule | Graph additions / batch denominators | Packed / wavefront inversions | Extra temporary heap | Candidate edge model |
+| --- | ---: | ---: | ---: | ---: |
+| `glv-j0-32` | 39,096 | 5 / 9 | 157,488 bytes | 195,480 M + 39,096 S |
+| `j0-56` | 267,552 | 6 / 9 | 1,417,200 bytes | 1,337,760 M + 267,552 S |
+
+The temporary heap figures describe simultaneously allocated scratch; the
+unchanged affine point tables occupy 1,259,904 and 8,573,280 bytes. The
+manifest for this candidate selects `prep_ms` with a per-point preparation
+boundary. No physical host passed the isolation gate, so a preparation-time
+speedup, complete one-scalar latency, break-even target count, and rho impact
+remain unmeasured.
