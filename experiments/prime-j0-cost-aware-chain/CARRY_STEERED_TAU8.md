@@ -80,3 +80,32 @@ laws. The smallest subgroup had zero span fallbacks in either arm. On one
 other root had none. These are model diagnostics that helped set the gate,
 not candidate evaluation results. Exact counts and source hashes are in
 `carry-steer-screen.json`.
+
+## Frozen operation result
+
+The protocol was committed as `c9ad36d5` and opened as draft PR #281
+before the `20270417` evaluation seed was used. `steer-inputs.json` records
+the four scalar files, SHA-256 hashes, and generic-multiplication digests.
+`check_steer_panel.py` alternates arm order and independently models every
+scalar's additions, carry substitutions, and prepared-span fallback. All
+16,384 outputs matched generic multiplication and all C operation totals
+matched the Python model. No run failed or timed out.
+
+| Frozen case | Hot additions | Steered additions | Saved | Steered blocks | Span fallbacks, hot → steer |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `glv-j0-32`, generator | 9,147 | 8,632 | 5.63% | 582 | 0 → 0 |
+| `glv-j0-32`, `37P` | 9,210 | 8,662 | 5.95% | 615 | 0 → 0 |
+| `j0-56`, generator | 23,611 | 20,842 | 11.73% | 2,880 | 0 → 0 |
+| `j0-56`, `37P` | 23,557 | 20,776 | 11.81% | 2,907 | 0 → 0 |
+
+The per-point table costs are identical between the arms: 8,192 and
+12,288 preparation additions for the two curves, respectively, and
+300,144 and 431,216 prepared bytes. The steered arm additionally stores
+the 13,122-byte static residue map. Its substitutions replace cold
+two-addition blocks with one-addition blocks; both arms retain other cold
+blocks. The prospective 3% addition gate passes in each case.
+`steer-panel.json` preserves raw benchmark output, verification, predicted
+and executed counts, hashes, and any failures. These results establish
+fewer additions in this workload. Recoding arithmetic and memory access
+can offset those savings, so CPU wall speed and one-target rho impact remain
+unknown pending a qualifying isolated host run.

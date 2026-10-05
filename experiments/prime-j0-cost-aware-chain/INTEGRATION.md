@@ -263,3 +263,20 @@ arms; [gated-panel.json](gated-panel.json) retains the raw evidence.
 The updated curve test passed 409,269 checks. An isolated host must compare
 the gated arm separately with ordinary hot and with always-two before
 judging CPU speed.
+
+## Carry-steered eight-digit blocks
+
+The [carry-steering protocol](CARRY_STEERED_TAU8.md) in draft PR #281
+selects a lower-addition valid pair in the same residue modulo `τ^8` and
+propagates the resulting exact carry. It uses the same prepared 2,048-orbit
+hot table, plus a 13,122-byte static residue map. The fresh
+[steer-inputs.json](steer-inputs.json) fixes four 4,096-scalar workloads.
+[check_steer_panel.py](check_steer_panel.py) verifies all 16,384 results
+against independent generic multiplication and matches every C addition
+and substitution count to a separate Python recoder. Savings against the
+ordinary hot arm are 5.63%, 5.95%, 11.73%, and 11.81%, exceeding the
+prospective 3% gate in every case. Per-point setup operations and prepared
+bytes are unchanged. [steer-panel.json](steer-panel.json) preserves raw
+outputs and hashes. `test_curve` passed 410,876 checks. The isolated
+manifest pairs this arm with the ordinary hot arm; no CPU wall-time or rho
+speedup is claimed before a physical isolation receipt.

@@ -13,14 +13,17 @@ def make(args):
     orbit = args.candidate_arm == "fused-orbit-batch128"
     adapt2 = args.candidate_arm == "fused-hot-adapt2-batch128"
     gated = args.candidate_arm == "fused-hot-gated-batch128"
-    hot = args.candidate_arm == "fused-hot-batch128" or adapt2 or gated
+    steer = args.candidate_arm == "fused-hot-steer-batch128"
+    hot = args.candidate_arm == "fused-hot-batch128" or adapt2 or gated or steer
     fused = args.candidate_arm in ("fused-batch128", "fused-orbit-batch128",
                                    "fused-hot-batch128",
                                    "fused-hot-adapt2-batch128",
-                                   "fused-hot-gated-batch128")
+                                   "fused-hot-gated-batch128",
+                                   "fused-hot-steer-batch128")
     if args.reference_arm and not gated:
         raise ValueError("--reference-arm is only supported for the gated candidate")
-    default_prefix = ("gated" if gated else "adapt2" if adapt2 else "hot" if hot else
+    default_prefix = ("steer" if steer else "gated" if gated else
+                      "adapt2" if adapt2 else "hot" if hot else
                       "orbit" if orbit else "fused"
                       if fused else "atlas" if atlas else None)
     fixture_name = (f"{default_prefix}-inputs.json"
@@ -90,6 +93,16 @@ def make(args):
                       experiment / "gated-table-aware-screen.json",
                       experiment / "make_gated_inputs.py",
                       experiment / "check_gated_panel.py"]
+    if steer:
+        artifacts += [experiment / "README.md", experiment / "INTEGRATION.md",
+                      experiment / "CARRY_STEERED_TAU8.md",
+                      experiment / "make_tau8_steer.py",
+                      experiment / "screen_carry_steer.py",
+                      experiment / "carry-steer-screen.json",
+                      experiment / "make_steer_inputs.py",
+                      experiment / "check_steer_panel.py",
+                      experiment / "steer-panel.json",
+                      root / "src" / "generated" / "tau8_steer_map.h"]
     artifacts += sorted((root / "src").glob("*.c"))
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
@@ -111,7 +124,7 @@ def make(args):
                       "reference": [base[0],
                                     (args.reference_arm or
                                      "fused-hot-adapt2-batch128") if gated else
-                                    "fused-hot-batch128" if adapt2 else
+                                    "fused-hot-batch128" if adapt2 or steer else
                                     "fused-orbit-batch128" if hot else
                                     "fused-batch128" if orbit else
                                     "pos-batch128" if fused else
@@ -173,7 +186,8 @@ if __name__ == "__main__":
         "cost", "pos", "pos-batch32", "pos-batch128",
         "pos-batch512", "pos-batch4096", "atlas", "fused-batch128",
         "fused-orbit-batch128", "fused-hot-batch128",
-        "fused-hot-adapt2-batch128", "fused-hot-gated-batch128"),
+        "fused-hot-adapt2-batch128", "fused-hot-gated-batch128",
+        "fused-hot-steer-batch128"),
                         default="cost")
     parser.add_argument("--reference-arm", choices=(
         "fused-hot-batch128", "fused-hot-adapt2-batch128"))

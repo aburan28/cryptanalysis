@@ -143,3 +143,10 @@ representative only after a cold two-digit block or span overflow.
 Its fresh 16,384-output panel retains 81.35%–99.88% of the always-two
 selector's addition saving while skipping 32%–79% of second recodes;
 CPU speed awaits an isolated host.
+
+The [carry-steered eight-digit format](CARRY_STEERED_TAU8.md) changes the
+carry to the next τ block when a cold two-digit pair has a one-addition
+representative in the same residue class. Its frozen 16,384-output panel
+verifies exactly and saves 5.63%–11.81% of online mixed additions versus
+the ordinary hot table, with identical per-point setup and a 13,122-byte
+static map. Isolated CPU wall speed remains unmeasured.
