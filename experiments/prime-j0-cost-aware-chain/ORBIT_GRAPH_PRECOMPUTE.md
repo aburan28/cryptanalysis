@@ -40,3 +40,27 @@ extra point-table bytes, and correct raw failure retention. Do not claim a
 setup wall-time win without a physical host that passes
 `docs/ISOLATED_BENCHMARKS.md`. Local timing remains exploratory. This format
 is variable-time and restricted to public research scalars.
+
+## Frozen native preparation panel
+
+Draft PR #293 contained this protocol and the exhaustive recipe header before
+the native builder or eight-point fixture was evaluated. The fixture uses
+generator, `37P`, `101P`, and `103P` on each curve and reuses already frozen
+4,096-scalar files. Generic multiplication fixed each expected output digest
+before graph replay. The paired panel alternated execution order by case.
+All 32,768 graph outputs matched generic multiplication, and every online
+operation counter matched the direct builder. An independent Python model
+predicted both builders' preparation additions and rotations exactly.
+
+| Schedule | Direct / graph prep additions | Saved | Direct / graph prep rotations | Extra static recipe bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `(10,10,10,10)` | 62,424 / 39,096 | 37.4% | 63,194 / 44,453 | 78,744 |
+| `(12,12,12,8,8)` | 506,664 / 267,552 | 47.2% | 409,586 / 248,427 | 717,360 |
+
+Prepared point-table bytes, temporary heap, and layer inversions are
+unchanged. Raw runs, source and binary hashes, local exploratory times, and
+failures are retained in `orbit-graph-panel.json`. No qualifying isolated-host
+timing exists, so CPU speed and one-target rho impact remain unknown.
+The native curve test also compared all 307,287 prepared point entries for a
+generator on the two curves against the direct builder and passed 722,512
+checks, including graph identity-point handling.

@@ -18,6 +18,7 @@
 #include "generated/tau8_pair_map.h"
 #include "generated/tau8_steer_map.h"
 #include "generated/tau_wide_orbits.h"
+#include "generated/tau_wide_graph.h"
 #include <stdlib.h>
 
 typedef __int128 ca_i128;
@@ -1493,6 +1494,14 @@ static tau_wide_atlas tau_wide_atlas_for(int width)
     }
 }
 
+static const ca_tau_wide_recipe *tau_wide_recipe_for(int width)
+{
+    if (width == 8) return ca_tau_wide8_recipe;
+    if (width == 10) return ca_tau_wide10_recipe;
+    if (width == 12) return ca_tau_wide12_recipe;
+    return NULL;
+}
+
 static void tau_wide_apply_unit(int64_t *a, int64_t *b, unsigned code)
 {
     for (unsigned i = 0; i < code % 3; i++) {
@@ -1541,6 +1550,13 @@ size_t ca_ec_tau_wide_static_bytes(int schedule)
     return 0;
 }
 
+size_t ca_ec_tau_wide_graph_recipe_bytes(int schedule)
+{
+    if (schedule == 0) return sizeof(ca_tau_wide10_recipe);
+    if (schedule == 1) return sizeof(ca_tau_wide12_recipe) + sizeof(ca_tau_wide8_recipe);
+    return 0;
+}
+
 size_t ca_ec_tau_wide_temp_bytes(int schedule)
 {
     size_t entries = schedule == 0   ? CA_TAU_WIDE10_ORBIT_COUNT
@@ -1557,9 +1573,9 @@ void ca_ec_tau_wide_clear(ca_tau_wide_precomp *pre)
     }
 }
 
-int ca_ec_tau_wide_prepare(const ca_group *g, const ca_elem *point, int schedule,
-                           ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
-                           uint64_t *rotations, uint64_t *inversions)
+static int tau_wide_prepare_impl(const ca_group *g, const ca_elem *point, int schedule,
+                                 ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
+                                 uint64_t *rotations, uint64_t *inversions, int graph)
 {
     if (triples) *triples = 0;
     if (adds) *adds = 0;
@@ -1594,42 +1610,73 @@ int ca_ec_tau_wide_prepare(const ca_group *g, const ca_elem *point, int schedule
     }
     for (size_t block = 0; block < pre.blocks; block++) {
         tau_wide_atlas atlas = tau_wide_atlas_for(pre.width[block]);
-        for (size_t id = 0; id < atlas.entries; id++) {
-            int64_t a = atlas.correction[id].a, b = atlas.correction[id].b;
-            if (!a && !b) {
-                projective[id] = (tau_jac){0, g->mont.r1, 0};
-                continue;
-            }
-            uint8_t digits[256];
-            size_t nd = gen_tau4_digits_fast(a, b, pre.pos.base.digit, digits);
-            if (!nd || nd > pre.width[block]) {
-                free(prefixes);
-                free(projective);
-                ca_ec_tau_wide_clear(&pre);
-                return 0;
-            }
-            tau_jac acc = {0, g->mont.r1, 0};
-            for (size_t position = 0; position < nd; position++) {
-                if (digits[position] == 255) continue;
-                ca_elem seed = tau_wide_digit_point(g, &pre.pos, pre.position[block] + position,
-                                                    digits[position], &nr);
-                if (seed.w[2]) continue;
-                if (acc.z) {
-                    acc = jac_add_mixed(g, acc, &seed);
-                    na++;
-                } else {
-                    acc = jac_from_affine(g, &seed);
+        if (graph) {
+            const ca_tau_wide_recipe *recipes = tau_wide_recipe_for(pre.width[block]);
+            if (!recipes || recipes[0].depth != 0) goto fail;
+            for (size_t id = 1; id < atlas.entries; id++)
+                if (recipes[id].depth < 1 || recipes[id].depth > 3) goto fail;
+            projective[0] = (tau_jac){0, g->mont.r1, 0};
+            for (unsigned depth = 1; depth <= 3; depth++) {
+                for (size_t id = 1; id < atlas.entries; id++) {
+                    ca_tau_wide_recipe recipe = recipes[id];
+                    if (recipe.depth != depth) continue;
+                    if (recipe.digit_slot >= 81 || recipe.position >= pre.width[block]) goto fail;
+                    ca_elem digit = tau_wide_digit_point(
+                        g, &pre.pos, pre.position[block] + recipe.position, recipe.digit_slot, &nr);
+                    if (digit.w[2]) goto fail;
+                    if (depth == 1) {
+                        if (recipe.parent_packed != 0) goto fail;
+                        projective[id] = jac_from_affine(g, &digit);
+                    } else {
+                        unsigned parent_id =
+                            recipe.parent_packed & ((1u << CA_TAU_WIDE_ID_BITS) - 1);
+                        unsigned unit = recipe.parent_packed >> CA_TAU_WIDE_ID_BITS;
+                        if (parent_id >= atlas.entries || unit > 5 ||
+                            recipes[parent_id].depth != depth - 1)
+                            goto fail;
+                        tau_jac parent = projective[parent_id];
+                        if (!parent.z) goto fail;
+                        unsigned power = unit % 3;
+                        if (power == 1)
+                            parent.x = fm(g, pre.pos.base.beta, parent.x);
+                        else if (power == 2)
+                            parent.x = fm(g, pre.pos.base.beta2, parent.x);
+                        nr += power != 0;
+                        if (unit >= 3 && parent.y) parent.y = g->p - parent.y;
+                        projective[id] = jac_add_mixed(g, parent, &digit);
+                        na++;
+                    }
                 }
             }
-            projective[id] = acc;
-        }
+        } else
+            for (size_t id = 0; id < atlas.entries; id++) {
+                int64_t a = atlas.correction[id].a, b = atlas.correction[id].b;
+                if (!a && !b) {
+                    projective[id] = (tau_jac){0, g->mont.r1, 0};
+                    continue;
+                }
+                uint8_t digits[256];
+                size_t nd = gen_tau4_digits_fast(a, b, pre.pos.base.digit, digits);
+                if (!nd || nd > pre.width[block]) goto fail;
+                tau_jac acc = {0, g->mont.r1, 0};
+                for (size_t position = 0; position < nd; position++) {
+                    if (digits[position] == 255) continue;
+                    ca_elem seed = tau_wide_digit_point(g, &pre.pos, pre.position[block] + position,
+                                                        digits[position], &nr);
+                    if (seed.w[2]) continue;
+                    if (acc.z) {
+                        acc = jac_add_mixed(g, acc, &seed);
+                        na++;
+                    } else {
+                        acc = jac_from_affine(g, &seed);
+                    }
+                }
+                projective[id] = acc;
+            }
         uint64_t normalized = 0;
         if (!jac_batch_to_affine_scratch(g, pre.point + pre.point_offset[block], projective,
                                          atlas.entries, prefixes, &normalized)) {
-            free(prefixes);
-            free(projective);
-            ca_ec_tau_wide_clear(&pre);
-            return 0;
+            goto fail;
         }
         ni += normalized;
     }
@@ -1641,6 +1688,25 @@ int ca_ec_tau_wide_prepare(const ca_group *g, const ca_elem *point, int schedule
     if (rotations) *rotations = nr;
     if (inversions) *inversions = ni + 1;
     return 1;
+fail:
+    free(prefixes);
+    free(projective);
+    ca_ec_tau_wide_clear(&pre);
+    return 0;
+}
+
+int ca_ec_tau_wide_prepare(const ca_group *g, const ca_elem *point, int schedule,
+                           ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
+                           uint64_t *rotations, uint64_t *inversions)
+{
+    return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 0);
+}
+
+int ca_ec_tau_wide_prepare_graph(const ca_group *g, const ca_elem *point, int schedule,
+                                 ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
+                                 uint64_t *rotations, uint64_t *inversions)
+{
+    return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 1);
 }
 
 static int tau_wide_mul_jac(const ca_group *g, const ca_tau_wide_precomp *pre, tau_jac *out,
