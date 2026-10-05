@@ -136,6 +136,16 @@ isogenies without a conventional `2`-volcano up/down label.
 
 ## Choosing what to run
 
+The [exact W24 Frobenius-orbit scan](../ecc2k130-263-w24-orbit-columns-20261005/RESULT.md)
+found only 2,066 potential column savings among 8,393,232 signed columns
+of the original source base (0.0246151%). The source-transported copy has
+the same group partition. Explicitly closing W24 under Frobenius would
+instead form a different, mathematically 2,198,485,492-point base with
+8,391,166 orbit representatives. Its implicit membership and m5 PDP/rank
+costs have not been measured. The unchanged W24 quotient is deprioritized;
+the orbit-closed W24/m5 policy remains a `candidate_id: null` proposal,
+separate from both the original W24/m6 and W28/m5 policies.
+
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
 ordinary and planted-control corpora. Advance only variants with verified
