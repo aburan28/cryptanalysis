@@ -101,7 +101,7 @@ def decomposition_table(fb: FactorBase) -> tuple[int, list[list[dict[int, int]]]
 
 
 def replay_workload(fb: FactorBase, workload: dict, target_rank: int | None = None,
-                    max_attempts: int = 200_000) -> dict:
+                    max_attempts: int = 200_000, rerandomize: str = "uniform") -> dict:
     """The exact query counts monitor.collect makes on an ic-bench workload, assuming a complete PDP
     solver (every decomposition of every query found; the Macaulay closure has no budget failures at
     these sizes).  Replays the workload's query and rerandomization streams through the lookup."""
@@ -126,10 +126,15 @@ def replay_workload(fb: FactorBase, workload: dict, target_rank: int | None = No
             for i, (_, qx, qy) in enumerate(workload["targets"]):
                 arng = random.Random(f"{workload['rerandomization_stream']}|{i}")
                 tries = 0
+                if rerandomize == "walk":
+                    step = C.K.smul(C.G, arng.randrange(1, C.r))
+                    Qa = (qx, qy)
                 while tries < max_attempts:
                     tries += 1
-                    a = arng.randrange(1, C.r)
-                    Qa = C.K.add((qx, qy), C.K.smul(C.G, a))
+                    if rerandomize == "walk":
+                        Qa = C.K.add(Qa, step)
+                    else:
+                        Qa = C.K.add((qx, qy), C.K.smul(C.G, arng.randrange(1, C.r)))
                     if Qa[0] != kernel.INF_X and table.get(Qa):
                         break
                 descents.append(tries)
@@ -429,10 +434,11 @@ def cmd_check(args) -> None:
         p = preds.get(rec["candidate_id"]) or {}
         pr, pb = p.get("predicted") or {}, p.get("probe")
         curve = curves.setdefault(c["n"], ToyCurve(c["n"]))
-        wid, wrec = bench.workload(curve, c["workload_seed"], c["targets"])
+        cache = "prepared" if rec.get("suite") in getattr(bench, "ONLINE_SUITES", ("primary",)) else "cold"
+        wid, wrec = bench.workload(curve, c["workload_seed"], c["targets"], cache)
         assert wid == rec["workload_id"], "workload record drifted"
         fb = FactorBase(curve, c["family"], c["l"], c["seed"])
-        rp = replay_workload(fb, wrec)
+        rp = replay_workload(fb, wrec, rerandomize=c.get("rerandomize", "uniform"))
         coll, desc = cnt["ordinary_queries"], cnt["descent_attempts"]
         z = ((coll - pr["collection_queries_mean"]) / pr["collection_queries_sd"]
              if pr.get("collection_queries_sd") else None)

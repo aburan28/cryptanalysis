@@ -184,6 +184,90 @@ def probe(fb: FactorBase, weights: dict, fails: int = 120, successes: int = 40, 
     }
 
 
+def probe_ht(fb: FactorBase, weights: dict, fails: int = 200, successes: int = 60,
+             D: np.ndarray | None = None, rerandomize: str = "walk") -> dict:
+    """Target-attempt prices on the monitor.collect `ht` path (PDP2ht).  With rerandomize="walk" an
+    attempt is one group addition plus one half-trace decomposition; the step [a0]G (one scalar
+    multiplication per target) is folded into c_recovery with the scalar replay."""
+    from htsolver import HalfTraceSolver
+    from relations import relation_row
+
+    C, K = fb.curve, fb.curve.K
+    rng = random.Random(f"fbsearch-online-ht|{C.curve_id}|{fb.digest}")
+    with opcount.Meter().phase("precompute"):
+        sv = HalfTraceSolver(fb)
+
+    def priced(fn):
+        m = opcount.Meter()
+        t0 = time.perf_counter_ns()
+        with m.phase("x"):
+            out = fn()
+        return out, sum(m.priced(weights).values()), time.perf_counter_ns() - t0
+
+    def attempt(Qa):
+        def run():
+            pairs = sv.decompose(Qa)
+            rows = {tuple(sorted(relation_row(fb, list(pts)).items())) for pts in pairs}
+            if rows:
+                opcount.charge("modr_mul", len(next(iter(rows))))
+            return bool(rows)
+        return priced(run)
+
+    dset = None if D is None else {(int(x), int(y)) for x, y in D.tolist()}
+    step, c_init, w_init = priced(lambda: K.smul(C.G, rng.randrange(1, C.r)))
+    _, Q = C.random_subgroup_point(rng)
+    Qa = Q
+    rr_ops, rr_wall, fail_ops, fail_wall = [], [], [], []
+    while len(fail_ops) < fails:
+        if rerandomize == "walk":
+            Qa, o, w = priced(lambda: K.add(Qa, step))
+        else:
+            Qa, o, w = priced(lambda: K.add(Q, K.smul(C.G, rng.randrange(1, C.r))))
+        rr_ops.append(o)
+        rr_wall.append(w)
+        if Qa[0] == kernel.INF_X or (dset is not None and Qa in dset):
+            continue
+        ok, o, w = attempt(Qa)
+        if ok:
+            assert dset is None, "a point outside D decomposed: the decomposition table is incomplete"
+            continue
+        fail_ops.append(o)
+        fail_wall.append(w)
+    px, py = C.psi(fb.xs, fb.ys)
+    psi = list(zip(px.tolist(), py.tolist()))
+    succ_ops, succ_wall = [], []
+    while len(succ_ops) < successes:
+        if D is not None and len(D):
+            x, y = D[rng.randrange(len(D))].tolist()
+            R = (int(x), int(y))
+        else:
+            i, j = rng.randrange(len(fb.xs)), rng.randrange(len(fb.xs))
+            if K.add(psi[i], psi[j])[0] != kernel.INF_X:
+                continue
+            R = K.add((int(fb.xs[i]), int(fb.ys[i])), (int(fb.xs[j]), int(fb.ys[j])))
+            if R[0] == kernel.INF_X:
+                continue
+        ok, o, w = attempt(R)
+        assert ok, "a point in D did not decompose: the half-trace solver missed a decomposition"
+        succ_ops.append(o)
+        succ_wall.append(w)
+    s_true, Qr = C.random_subgroup_point(rng)
+    _, c_rec, w_rec = priced(lambda: K.smul(C.G, s_true) == Qr)
+    mean = statistics.fmean
+    walk_init = (c_init, w_init) if rerandomize == "walk" else (0, 0)
+    return {
+        "solver": "PDP2ht", "rerandomize": rerandomize, "fail_attempts": len(fail_ops),
+        "success_attempts": len(succ_ops), "c_rerandomize_ops": mean(rr_ops),
+        "c_fail_ops": mean(rr_ops) + mean(fail_ops), "c_success_ops": mean(rr_ops) + mean(succ_ops),
+        "c_recovery_ops": c_rec + walk_init[0],
+        "c_fail_wall_ns": mean(rr_wall) + mean(fail_wall), "c_success_wall_ns": mean(rr_wall) + mean(succ_wall),
+        "c_recovery_wall_ns": w_rec + walk_init[1],
+        "residual_search_dimension": max(0, fb.l + sv.dim_V2 - C.n - 1 + int(all(K.trace(b) == 0 for b in fb.basis))),
+        "dim_V2": sv.dim_V2,
+        "wall_note": "exploratory: ordinary shared host, not the isolated benchmark service",
+    }
+
+
 def online_prediction(p: float, pb: dict, key: str = "ops") -> dict:
     """Mean and sd of the one-target online cost from the geometric attempt law."""
     if not p or pb["c_success_" + key] is None:
@@ -194,14 +278,17 @@ def online_prediction(p: float, pb: dict, key: str = "ops") -> dict:
 
 def score(curve: ToyCurve, family: str, l: int, seed: int, weights: dict, fails: int = 120,
           successes: int = 40, mode: str = "mxl", setup: bool = True, lazy: bool = True,
-          max_pairs: int = 12_000_000) -> dict:
+          max_pairs: int = 12_000_000, rerandomize: str = "uniform") -> dict:
     """max_pairs bounds the exact pair table; above it p_dec is the psi-class prediction
     (relations.predicted_yield) and successful attempts are planted."""
     from relations import predicted_yield
 
     t0 = time.perf_counter_ns()
     fb = FactorBase(curve, family, l, seed)
-    cid, _ = bench.candidate_manifest(curve, fb, {"m": 2, "mode": mode})
+    cell = {"m": 2, "mode": mode}
+    if rerandomize != "uniform":
+        cell["rerandomize"] = rerandomize
+    cid, _ = bench.candidate_manifest(curve, fb, cell)
     pred_y = predicted_yield(fb, 2)["p_decomposable"]
     exact = len(fb.xs) * (len(fb.xs) + 1) // 2 <= max_pairs
     if exact:
@@ -209,7 +296,10 @@ def score(curve: ToyCurve, family: str, l: int, seed: int, weights: dict, fails:
         p = len(D) / (curve.r - 1)
     else:
         D, p = None, pred_y
-    pb = probe(fb, weights, fails, successes, mode, D, lazy, planted=not exact)
+    if mode == "ht":
+        pb = probe_ht(fb, weights, fails, successes, D, rerandomize)
+    else:
+        pb = probe(fb, weights, fails, successes, mode, D, lazy, planted=not exact)
     ops, wall = online_prediction(p, pb, "ops"), online_prediction(p, pb, "wall_ns")
     rho_ops = round(math.sqrt(math.pi * curve.r / 2)) * weights["ec_add"]
     floor_ops = round(math.sqrt(math.pi * curve.r / (4 * curve.n))) * weights["ec_add"]
@@ -220,7 +310,8 @@ def score(curve: ToyCurve, family: str, l: int, seed: int, weights: dict, fails:
         "solution_count": "lazy" if lazy else "eager",
         "candidate_id": cid,
         "curve_id": curve.curve_id,
-        "cell": {"n": curve.n, "m": 2, "l": l, "family": family, "seed": seed, "mode": mode, "targets": 1},
+        "cell": {"n": curve.n, "m": 2, "l": l, "family": family, "seed": seed, "mode": mode, "targets": 1,
+                 **({"rerandomize": rerandomize} if rerandomize != "uniform" else {})},
         "factor_base_sha256": fb.digest,
         "stage": {"fb_points": fb.usable_points, "effective_columns": fb.effective_columns,
                   "trace_zero": all(curve.K.trace(b) == 0 for b in fb.basis),
@@ -239,7 +330,8 @@ def score(curve: ToyCurve, family: str, l: int, seed: int, weights: dict, fails:
     if setup:
         from search import score as cold_score
 
-        cs = cold_score(curve, family, l, seed, targets=1, runs=200, probe_queries=100, weights=weights, mode=mode)
+        cs = cold_score(curve, family, l, seed, targets=1, runs=200, probe_queries=100, weights=weights,
+                        mode="mxl" if mode == "ht" else mode)
         cp = cs["predicted"]
         out["setup"] = {
             "note": "target-independent preparation, excluded from the online figure",
@@ -271,7 +363,8 @@ def cmd_scan(args) -> None:
     from concurrent.futures import ProcessPoolExecutor
     import multiprocessing
 
-    kw = {"fails": args.fails, "successes": args.successes, "setup": not args.no_setup, "lazy": not args.eager}
+    kw = {"fails": args.fails, "successes": args.successes, "setup": not args.no_setup, "lazy": not args.eager,
+          "mode": args.mode, "rerandomize": args.rerandomize}
     jobs = [(args.n, f, l, s, kw, args.calibration) for l in args.l for f in args.families
             for s in ([1] if f == "prefix" else parse_seeds(args.seeds))]
     out = Path(args.out or RESULTS / f"online-n{args.n}m2.jsonl")
@@ -305,12 +398,17 @@ def cmd_check(args) -> None:
             continue
         curve = curves.setdefault(c["n"], ToyCurve(c["n"]))
         fb = FactorBase(curve, c["family"], c["l"], c["seed"])
-        if fb.digest not in probes:
-            probes[fb.digest] = probe(fb, weights_for(calibration, c["n"]), args.fails, args.successes, c["mode"],
-                                      lazy=not args.eager)
-        pb = probes[fb.digest]
+        key = (fb.digest, c["mode"], c.get("rerandomize", "uniform"))
+        if key not in probes:
+            if c["mode"] == "ht":
+                probes[key] = probe_ht(fb, weights_for(calibration, c["n"]), args.fails, args.successes,
+                                       decomposable_points(fb), c.get("rerandomize", "uniform"))
+            else:
+                probes[key] = probe(fb, weights_for(calibration, c["n"]), args.fails, args.successes, c["mode"],
+                                    lazy=not args.eager)
+        pb = probes[key]
         _, wrec = bench.workload(curve, c["workload_seed"], c["targets"])
-        attempts = replay_workload(fb, wrec)["descent_attempts"]
+        attempts = replay_workload(fb, wrec, rerandomize=c.get("rerandomize", "uniform"))["descent_attempts"]
         measured = rec["warm"]["per_target_operations"]
         for a, mt in zip(attempts, measured):
             pred = (a - 1) * pb["c_fail_ops"] + pb["c_success_ops"] + pb["c_recovery_ops"]
@@ -399,6 +497,8 @@ def main() -> None:
     s.add_argument("--successes", type=int, default=40)
     s.add_argument("--no-setup", action="store_true", help="skip the setup (collection) prediction")
     s.add_argument("--eager", action="store_true", help="price the earlier always-enumerate target path")
+    s.add_argument("--mode", default="mxl", choices=("xl", "mxl", "ht"), help="PDP solver (ht = PDP2ht)")
+    s.add_argument("--rerandomize", default="uniform", choices=("uniform", "walk"))
     s.add_argument("--jobs", type=int, default=4)
     s.add_argument("--out", default="")
     s.add_argument("--calibration", default="", help="calibration file (default: ../ic-bench/calibration.json)")
