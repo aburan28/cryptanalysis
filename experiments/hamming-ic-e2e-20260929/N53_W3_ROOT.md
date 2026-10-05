@@ -131,8 +131,10 @@ used only for a root-index smoke control and has its own independent Sage
 replay.
 
 This is a synthetic N53 correctness and ordinary-query stage control only.
-N51 and N83 remain unmeasured, and these results do not support an IC speedup
-claim.
+N51 remains unmeasured. The separate [N83 weight-three geometry gate](N83_W3_GEOMETRY.md)
+measures the exact four-sum support ceiling and rules out a direct ordinary-
+target transfer of this base; it does not solve an N83 DLP. These results do
+not support an IC speedup claim.
 Setup-inclusive cost and a normalized
 operation count `S` are not headline metrics here; no operation-count
 boundary was frozen for a comparable `S` across the Rust IC and rho solvers.
