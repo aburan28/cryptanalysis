@@ -78,6 +78,14 @@ to about `1.63e-5`, below the 1% objective. The records remain proposals
 with `candidate_id: null` until the missing stages and exact manifest are
 resolved.
 
+The [equal-size W24 four-policy input gate](../ecc2k130-263-equal-w24-workload-20261005/RESULT.md)
+freezes `Q1420` on the exact degree-263 route: source-prefix and native
+descendant bases each have `B=16,772,828` before sign folding, and the
+primary workload ID `eee7f6ee5f6b` contains exactly one target. Full mask
+streams, sampled point maps, and public fixture scalars have independent
+replays. Natural W24/m6 PDP yield, useful rank, and complete DLP costs remain
+unmeasured; this is an input activation gate, not an `IC1` result.
+
 ## Code reviewed for the design axes
 
 | Stage | Existing code and evidence | What can be reused / what is missing |
