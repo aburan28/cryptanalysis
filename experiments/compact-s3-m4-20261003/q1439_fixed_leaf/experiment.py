@@ -269,18 +269,23 @@ def check_relation(prepared, formula, leaves, mid, selector, model):
 def frozen_cell(prepared, cap):
     n, cell = prepared["n"], prepared["cell"]
     instance, base = prepared["instance"], prepared["base"]
+    target_source = (Q1419 if cell == "control" else ORDINARY[n])
     workload = {
         "curve_id": instance["curve_id"],
+        "subgroup_order_r": instance["subgroup_order"],
         "factor_base_enumerated_set_sha256": base["enumerated_set_sha256"],
         "public_target": point_record(prepared["public"]),
+        "target_source_sha256": sha(target_source),
+        "raw_target_preimage_x_sha256": digest(
+            prepared["parent"]["raw_preimage_x_coordinates"]),
         "input_law": ("archived planted witness; first leaf and other three "
                       "x coordinates pinned" if cell == "control" else
                       "one archived ordinary public target; independent "
                       "fixed-leaf seed; no witness pins"),
+        "anchor_seed": SEEDS[n] if cell == "ordinary" else None,
         "anchor_raw_x": prepared["anchor_mask"],
-        "wall_cap_seconds": cap["wall_seconds"],
-        "conflict_cap": cap["conflicts"],
         "cold_or_warm_target_count": 1,
+        "cache_state": "cold",
     }
     config = {
         "curve_id": instance["curve_id"],
