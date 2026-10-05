@@ -42,6 +42,12 @@ def main():
     assert parent["control_sha256"] == digest(INPUT / "point_controls.json")
     assert primary["target_count"] == 1
     assert primary["targets"][0] == workload["targets"][0]
+    primary_identity = dict(primary)
+    primary_id = primary_identity.pop("workload_id")
+    primary_hash = hashlib.sha256(json.dumps(
+        primary_identity, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False).encode("utf-8")).hexdigest()
+    assert primary_id == primary_hash[:12]
     assert workload["route_manifest_sha256"] == digest(ROUTE)
     assert controls["route_manifest_sha256"] == digest(ROUTE)
     assert result["schema"] == "ecc2k130-263-transport-cost-v1"
