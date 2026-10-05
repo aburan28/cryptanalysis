@@ -61,13 +61,47 @@ constants, to serve as the reference implementation that research code is
 compared against, and to give higher-level languages a fast native core;
 it is not an attack tool for cryptographic sizes.
 
+For prime-field `j=0` curves, rho now uses a Jacobian `tau = 1-omega`
+scalar path when building its jump table and restarting walks.  Width 2 is
+the measured default; width 4 with cached base and target tables and
+tripling is selectable using
+`-DCA_J0_TAU_RHO_WIDTH=4`.  The
+[paper integration and paired measurements](experiments/prime-j0-tau-20260930/README.md)
+describe the scope and timing interval.  Configure `-DCA_J0_TAU_RHO=OFF`
+to build the affine setup reference.
+
+The j=0 rho walk now keeps each point in its current sixfold orientation and
+adds a matching precomputed jump.  It checks orbit collisions at distinguished
+points and showed an exploratory gain over the former per-step canonical walk
+on a frozen 36/38/46-bit one-target panel.  That contended-host timing needs
+replay through the [isolated benchmark service](docs/ISOLATED_BENCHMARKS.md).
+The
+[oriented-walk experiment](experiments/prime-j0-rho-coordinate-canon-20261002/README.md)
+contains the derivation, raw results, and limits.  Set
+`-DCA_J0_RHO_COVARIANT_WALK=OFF` to build the former walk.
+
 ## Build
 
-Requirements: CMake >= 3.16 and a C11 compiler with `__int128` (gcc or
-clang; pthreads).
+Local Sage experiments use the optimized workspace build through `./sage`:
+run `./sage --runtime-info` to verify its installed modules and native
+arithmetic, or `./sage -python path/to/job.py` to start a job. The launcher
+checks the accepted build before each run and gives child processes the
+same Sage. See [the Sage runtime instructions](experiments/sage-binary-arithmetic/README.md#current-apis)
+for installation receipts, the user-level `sage` command, and available APIs.
+For local workers, subprocesses, and jobs launched from another directory,
+use `/Volumes/SSD990/cryptanalysis/sage -python /absolute/path/to/job.py`.
+Save `./sage --runtime-info` with measured results before starting their
+timed workload. The [local Sage rules](AGENTS.md#local-sage-runs) apply to
+new and resumed agent-run jobs as well.
+
+Requirements for the core library: CMake >= 3.16 and a C11 compiler with
+`__int128` (gcc or clang; pthreads). The optional cuPQC example
+(`-DCA_CUPQC=ON`) needs a Linux CUDA host, CMake >= 3.24 and a separately
+installed SDK; see [docs/CUPQC.md](docs/CUPQC.md) for setup. The CPU-only
+build is:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCA_CUPQC=OFF
 cmake --build build -j
 ctest --test-dir build            # 11 test programs, ~1 minute
 sudo cmake --install build        # headers, library, cryptanalysis, ca, pkg-config
@@ -76,6 +110,9 @@ sudo cmake --install build        # headers, library, cryptanalysis, ca, pkg-con
 Useful options: `-DCA_NATIVE=ON` (`-march=native`), `-DCA_SANITIZE=ON`
 (ASan + UBSan), `-DCA_WERROR=ON`, `-DCA_BUILD_SHARED/STATIC/TOOLS/TESTS`,
 and `-DCA_CUDA=ON` for the GPU backend (see [docs/GPU.md](docs/GPU.md)).
+The independent `CA_CUPQC` option defaults to OFF; when ON it builds NVIDIA's batched
+ML-KEM example using a separately installed cuPQC SDK; see [docs/CUPQC.md](docs/CUPQC.md)
+for dependencies, build commands and validation limits.
 `make test`, `make bench`, `make asan`, `make cuda`, `make cuda-kernel`,
 `make bindings` wrap the common invocations.
 
@@ -289,6 +326,10 @@ Docs: [docs/CLOUD_LAUNCH.md](docs/CLOUD_LAUNCH.md). Usecase notes and the
 one-click: Actions → **Cloud ECC2K-130** → Run workflow.
 
 ## Hardware
+
+The migrated [ECC2K-130 CPU/CUDA runner](ecc2k130/README.md) includes a shared
+Modal/Runpod container path, S3 checkpoint recovery, and direct reporting to an
+existing RDS rho-dp store. Its cloud worker does not require a separate ingester.
 
 `fpga/` is a synthesisable Pollard rho core for the Certicom **ECC2K-130**
 challenge -- the Koblitz curve `y^2 + xy = x^3 + 1` over `F_2^131` -- with a
