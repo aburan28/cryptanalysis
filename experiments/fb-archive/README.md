@@ -59,6 +59,30 @@ suites but does not finish at N131 beyond `l = 12`. `geomtraceu` samples the sam
 subspace law with `c` uniform on the kernel (an XOR of a random subset). It
 is a different family with different digests; use it for large `l`.
 
+## `nbweight`: the normal-basis weight base
+
+`--family nbweight --l w` archives `{P : 1 <= HW(x(P)) <= w}`, the Hamming weight
+taken in the normal basis of `ecc2k130/runner/codegen/curves.NormalView` (normal
+element seeded by `n`). It is Frobenius stable but not a subspace, so `basis` and
+`nominal_dimension` are null and `l` is `w`. It is built through the same
+`NormalView` and `CurvePb` that `indexcalc.factorBase` and
+`experiments/frobenius-quotient-m4/ladder.py` use, and carries its own field and
+curve records: `NormalView` picks its own modulus, which is not always
+`ToyCurve`'s (n = 13), and `ToyCurve` refuses n where r^2 divides #E (n = 11).
+No subgroup projection is applied, matching how the ladder uses it, so subgroup
+order, generator and strict counts are null. Columns are x-classes under sign
+and Frobenius.
+
+## Linking experiment cells: `ps1.py`
+
+`ps1.cell_manifest(n, family, l, pdp)` returns an experiment cell's archive row
+(curve ID, `factor_base_sha256`, path) and its `PS1N<n>C<tag>fb<B>PDP<m><solver>h<12hex>`
+label, hashing the archived factor-base digest with the experiment's
+point-decomposition record. `experiments/frobenius-quotient-m4` and
+`experiments/linearized-half-decomposition` write theirs to
+`results/factor_bases.json` (`python3 fb_manifest.py`), and their tests rebuild
+each base with the experiment's own code and compare it with the archive.
+
 ## Existing N131 artifacts
 
 The catalog's N131 proposals (`ic-candidate-catalog/README.md`, `profiles.json`)

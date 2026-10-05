@@ -146,6 +146,15 @@ What the completed cells show, and do not:
   `log2 B` on subspace bases; nothing measured here suggests the Frobenius
   quotient base is cheaper per decomposition.
 
+## Factor bases
+
+Every cell's base is archived in `../fb-archive` (family `nbweight`, `l = w`).
+`results/factor_bases.json` (`python3 fb_manifest.py`) lists each cell's curve
+ID, `factor_base_sha256`, archive path and PS1 label, and
+`test_fqm4_factor_bases.py` checks that `indexcalc.factorBase` rebuilds exactly
+the archived set. The curves here carry their own IDs (`EC1N<n>Ckb1h...`):
+`NormalView`'s field is not always `ToyCurve`'s.
+
 ## What this does not claim
 
 - No attack, no relation collection, no discrete logarithm, nothing run on
