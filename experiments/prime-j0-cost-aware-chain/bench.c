@@ -77,7 +77,8 @@ static int select_mode(const char *name) {
                                 "pos-batch128",
                                 "pos-batch512",
                                 "pos-batch4096",
-                                "atlas"};
+                                "atlas",
+                                "fused-batch128"};
   for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
     if (strcmp(name, names[i]) == 0)
       return (int)i;
@@ -91,7 +92,8 @@ int main(int argc, char **argv) {
     fprintf(stderr,
             "usage: %s "
             "reference|baseline|cost|pos|pos-global|pos-prep|pos-global-prep|"
-            "pos-batch32|pos-batch128|pos-batch512|pos-batch4096|atlas "
+            "pos-batch32|pos-batch128|pos-batch512|pos-batch4096|atlas|"
+            "fused-batch128 "
             "glv-j0-32|j0-56 0|1 INPUT\n",
             argv[0]);
     return 2;
@@ -132,41 +134,69 @@ int main(int argc, char **argv) {
     return 2;
   ca_tau4_precomp pre;
   ca_tau4_pos_precomp positional_pre;
+  ca_tau8_fused_precomp fused_pre = {0};
+  size_t fused_blocks = strcmp(argv[2], "j0-56") == 0 ? 6 : 4;
   double prep_ms = 0;
   uint64_t prep_triples = 0;
   uint64_t prep_layer_inversions = 0;
+  uint64_t prep_adds = 0, prep_rotations = 0;
   size_t prep_temp_heap_bytes =
       global_builder
           ? CA_TAU_POS_Q * 2 * 9 * (3 * sizeof(uint64_t) + sizeof(uint64_t))
           : 0;
-  size_t prep_bytes = positional  ? sizeof(positional_pre)
-                      : mode == 0 ? 0
-                                  : sizeof(pre);
+  size_t prep_bytes =
+      mode == 12   ? sizeof(fused_pre) + fused_blocks * 29593 * sizeof(ca_elem)
+      : positional ? sizeof(positional_pre)
+      : mode == 0  ? 0
+                   : sizeof(pre);
+  if (mode == 12)
+    prep_temp_heap_bytes = 29593 * (3 * sizeof(uint64_t) + sizeof(uint64_t));
   if (mode != 0) {
     double t0 = ca_now();
-    for (int repeat = 0; repeat < prep_repeats; repeat++) {
-      uint64_t current_triples = 0;
-      int prepared =
-          global_builder
-              ? ca_ec_tau4_pos_global_prepare(&group, &point, &positional_pre,
-                                              &current_triples)
-          : positional ? ca_ec_tau4_pos_prepare(&group, &point, &positional_pre,
-                                                &current_triples)
-                       : ca_ec_tau4_prepare(&group, &point, &pre, NULL);
-      if (!prepared) {
+    if (mode == 12) {
+      if (!ca_ec_tau8_fused_prepare(&group, &point, fused_blocks, &fused_pre,
+                                    &prep_triples, &prep_adds, &prep_rotations,
+                                    &prep_layer_inversions)) {
         free(outputs);
         return 2;
       }
-      prep_triples += current_triples;
-      if (positional && !positional_pre.base.identity)
-        prep_layer_inversions += global_builder ? 1 : CA_TAU_POS_Q - 1;
-    }
+    } else
+      for (int repeat = 0; repeat < prep_repeats; repeat++) {
+        uint64_t current_triples = 0;
+        int prepared =
+            global_builder
+                ? ca_ec_tau4_pos_global_prepare(&group, &point, &positional_pre,
+                                                &current_triples)
+            : positional
+                ? ca_ec_tau4_pos_prepare(&group, &point, &positional_pre,
+                                         &current_triples)
+                : ca_ec_tau4_prepare(&group, &point, &pre, NULL);
+        if (!prepared) {
+          free(outputs);
+          return 2;
+        }
+        prep_triples += current_triples;
+        if (positional && !positional_pre.base.identity)
+          prep_layer_inversions += global_builder ? 1 : CA_TAU_POS_Q - 1;
+      }
     prep_ms = 1000 * (ca_now() - t0);
   }
   uint64_t triples = 0, adds = 0, rotations = 0, output_inversions = 0;
-  size_t online_scratch_bytes = mode >= 7 && mode <= 10 ? block_size * 32 : 0;
+  uint64_t fallbacks = 0;
+  size_t online_scratch_bytes = mode == 12                ? 128 * 32
+                                : mode >= 7 && mode <= 10 ? block_size * 32
+                                                          : 0;
   double start = ca_now();
-  if (mode >= 7 && mode <= 10) {
+  if (mode == 12) {
+    if (!ca_ec_tau8_fused_mul_batch(&group, &fused_pre, outputs, scalars,
+                                    SCALARS, 128, &adds, &rotations,
+                                    &output_inversions, &fallbacks)) {
+      fprintf(stderr, "fused batched evaluation failed\n");
+      ca_ec_tau8_fused_clear(&fused_pre);
+      free(outputs);
+      return 1;
+    }
+  } else if (mode >= 7 && mode <= 10) {
     if (!ca_ec_tau4_pos_mul_batch(&group, &positional_pre, outputs, scalars,
                                   SCALARS, block_size, &adds, &rotations,
                                   &output_inversions)) {
@@ -218,6 +248,7 @@ int main(int argc, char **argv) {
       ca_group_mul(&group, &expected, &point, scalars[i], NULL);
       if (!ca_group_equal(&group, &outputs[i], &expected)) {
         fprintf(stderr, "independent replay mismatch at index %zu\n", i);
+        ca_ec_tau8_fused_clear(&fused_pre);
         free(outputs);
         return 1;
       }
@@ -228,19 +259,22 @@ int main(int argc, char **argv) {
       output_digest = digest_word(output_digest, words[j]);
   }
   double verify_ms = 1000 * (ca_now() - verify_start);
+  ca_ec_tau8_fused_clear(&fused_pre);
   free(outputs);
   printf("curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
          " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
          " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
-         " prep_triples=%" PRIu64 " prep_layer_inversions=%" PRIu64
+         " prep_triples=%" PRIu64 " prep_adds=%" PRIu64
+         " prep_rotations=%" PRIu64 " prep_layer_inversions=%" PRIu64
          " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_repeats=%d"
          " triples=%" PRIu64 " adds=%" PRIu64 " rotations=%" PRIu64
-         " output_inversions=%" PRIu64 " online_scratch_bytes=%zu"
+         " output_inversions=%" PRIu64 " fallbacks=%" PRIu64
+         " online_scratch_bytes=%zu"
          " verified=1\n",
          argv[2], argv[3], SCALARS, point_words[0], point_words[1],
          input_digest, output_digest, online_ms, prep_ms, verify_ms,
-         prep_triples, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes,
-         prep_repeats, triples, adds, rotations, output_inversions,
-         online_scratch_bytes);
+         prep_triples, prep_adds, prep_rotations, prep_layer_inversions,
+         prep_bytes, prep_temp_heap_bytes, prep_repeats, triples, adds,
+         rotations, output_inversions, fallbacks, online_scratch_bytes);
   return 0;
 }

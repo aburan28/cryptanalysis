@@ -13,6 +13,7 @@
 #include "cryptanalysis/ca_group.h"
 #include "ec_tau_internal.h"
 #include "generated/tau4_residue_atlas.h"
+#include "generated/tau8_pair_map.h"
 #include <stdlib.h>
 
 typedef __int128 ca_i128;
@@ -928,6 +929,252 @@ int ca_ec_tau4_pos_mul_batch(const ca_group *g, const ca_tau4_pos_precomp *pre,
     *rotations = total_rotations;
   if (output_inversions)
     *output_inversions = total_inversions;
+  return 1;
+}
+
+static tau_jac jac_from_affine(const ca_group *g, const ca_elem *p) {
+  return p->w[2] ? (tau_jac){0, g->mont.r1, 0}
+                 : (tau_jac){p->w[0], p->w[1], g->mont.r1};
+}
+
+static ca_elem tau8_pattern_point(const ca_group *g,
+                                  const ca_tau4_pos_precomp *pre, size_t block,
+                                  size_t half, ca_tau4_atlas_pattern pattern,
+                                  uint64_t *rotations) {
+  if (pattern.slot == 255)
+    return (ca_elem){{0, 0, 1, 0}};
+  size_t position = 8 * block + 4 * half + pattern.position;
+  size_t q = position / 2;
+  ca_tau4_digit d = pre->base.digit[pattern.slot];
+  ca_elem seed = pre->point[q][position & 1][d.seed];
+  if (seed.w[2])
+    return seed;
+  int power = (d.power + (int)(q % 3)) % 3;
+  int sign = d.sign * ((q & 1) ? -1 : 1);
+  if (power == 1)
+    seed.w[0] = fm(g, pre->base.beta, seed.w[0]);
+  else if (power == 2)
+    seed.w[0] = fm(g, pre->base.beta2, seed.w[0]);
+  *rotations += power != 0;
+  if (sign < 0 && seed.w[1])
+    seed.w[1] = g->p - seed.w[1];
+  return seed;
+}
+
+void ca_ec_tau8_fused_clear(ca_tau8_fused_precomp *pre) {
+  if (pre) {
+    free(pre->point);
+    memset(pre, 0, sizeof(*pre));
+  }
+}
+
+int ca_ec_tau8_fused_prepare(const ca_group *g, const ca_elem *point,
+                             size_t blocks, ca_tau8_fused_precomp *out,
+                             uint64_t *triples, uint64_t *adds,
+                             uint64_t *rotations, uint64_t *inversions) {
+  if (triples)
+    *triples = 0;
+  if (adds)
+    *adds = 0;
+  if (rotations)
+    *rotations = 0;
+  if (inversions)
+    *inversions = 0;
+  if (!g || !point || !out || blocks < 1 || blocks > CA_TAU_POS_Q / 4)
+    return 0;
+  ca_tau8_fused_precomp pre = {0};
+  uint64_t n3 = 0, na = 0, nr = 0, ni = 0;
+  if (!ca_ec_tau4_pos_global_prepare(g, point, &pre.pos, &n3))
+    return 0;
+  pre.blocks = blocks;
+  if (pre.pos.base.identity) {
+    *out = pre;
+    return 1;
+  }
+  size_t count = blocks * CA_TAU8_PAIR_COUNT;
+  pre.point = malloc(count * sizeof(*pre.point));
+  tau_jac *projective = malloc(CA_TAU8_PAIR_COUNT * sizeof(*projective));
+  uint64_t *prefixes = malloc(CA_TAU8_PAIR_COUNT * sizeof(*prefixes));
+  if (!pre.point || !projective || !prefixes) {
+    free(prefixes);
+    free(projective);
+    ca_ec_tau8_fused_clear(&pre);
+    return 0;
+  }
+  for (size_t block = 0; block < blocks; block++) {
+    ca_elem first[217], second[217];
+    for (size_t id = 0; id < 217; id++) {
+      ca_tau4_atlas_pattern pattern = ca_tau4_atlas_patterns[id];
+      first[id] = tau8_pattern_point(g, &pre.pos, block, 0, pattern, &nr);
+      second[id] = tau8_pattern_point(g, &pre.pos, block, 1, pattern, &nr);
+    }
+    for (size_t u = 0; u < 217; u++) {
+      for (size_t v = 0; v < 217; v++) {
+        uint16_t index = ca_tau8_pair_map[217 * u + v];
+        if (index == UINT16_MAX)
+          continue;
+        tau_jac p = jac_from_affine(g, &first[u]);
+        if (!second[v].w[2]) {
+          if (p.z)
+            na++;
+          p = jac_add_mixed(g, p, &second[v]);
+        }
+        projective[index] = p;
+      }
+    }
+    uint64_t normalized = 0;
+    if (!jac_batch_to_affine_scratch(g, pre.point + block * CA_TAU8_PAIR_COUNT,
+                                     projective, CA_TAU8_PAIR_COUNT, prefixes,
+                                     &normalized)) {
+      free(prefixes);
+      free(projective);
+      ca_ec_tau8_fused_clear(&pre);
+      return 0;
+    }
+    ni += normalized;
+  }
+  free(prefixes);
+  free(projective);
+  *out = pre;
+  if (triples)
+    *triples = n3;
+  if (adds)
+    *adds = na;
+  if (rotations)
+    *rotations = nr;
+  if (inversions)
+    *inversions = ni + 1; /* global positional preparation */
+  return 1;
+}
+
+static int tau8_atlas_step(int64_t *x, int64_t *y, uint8_t *pattern_id) {
+  int ax = (int)((*x % 81 + 81) % 81);
+  int by = (int)((*y % 81 + 81) % 81);
+  *pattern_id = ca_tau4_atlas_index[81 * ax + by];
+  ca_tau4_atlas_pattern p = ca_tau4_atlas_patterns[*pattern_id];
+  int64_t a = *x - p.correction_a, b = *y - p.correction_b;
+  int64_t nx = a + 3 * b, ny = -a - 2 * b;
+  if (nx % 9 || ny % 9)
+    return 0;
+  *x = nx / 9;
+  *y = ny / 9;
+  return 1;
+}
+
+static int tau8_fused_mul_jac(const ca_group *g,
+                              const ca_tau8_fused_precomp *pre, tau_jac *out,
+                              uint64_t k, uint64_t *adds, uint64_t *rotations,
+                              uint64_t *fallbacks) {
+  if (!g || !pre || !out || pre->pos.base.g != g)
+    return 0;
+  *adds = *rotations = *fallbacks = 0;
+  if (pre->pos.base.identity || k % g->order == 0) {
+    *out = (tau_jac){0, g->mont.r1, 0};
+    return 1;
+  }
+  k %= g->order;
+  ca_i128 wide_x, wide_y;
+  const ca_tau4_precomp *base = &pre->pos.base;
+  reduce_with_lattice((tau_vec){base->v1x, base->v1y},
+                      (tau_vec){base->v2x, base->v2y}, base->det, k, &wide_x,
+                      &wide_y);
+  const ca_i128 limit = (ca_i128)1 << 55;
+  if (wide_x <= -limit || wide_x >= limit || wide_y <= -limit ||
+      wide_y >= limit)
+    goto fallback;
+  int64_t x = (int64_t)wide_x, y = (int64_t)wide_y;
+  uint16_t ids[CA_TAU_POS_Q / 4];
+  size_t length = 0;
+  while (x || y) {
+    if (length >= pre->blocks)
+      goto fallback;
+    uint8_t u, v;
+    if (!tau8_atlas_step(&x, &y, &u) || !tau8_atlas_step(&x, &y, &v))
+      return 0;
+    uint16_t id = ca_tau8_pair_map[217 * u + v];
+    if (id == UINT16_MAX)
+      return 0;
+    ids[length++] = id;
+  }
+  tau_jac acc = {0, g->mont.r1, 0};
+  for (size_t i = length; i-- > 0;) {
+    const ca_elem *point = &pre->point[i * CA_TAU8_PAIR_COUNT + ids[i]];
+    if (point->w[2])
+      continue;
+    acc = jac_add_mixed(g, acc, point);
+    (*adds)++;
+  }
+  *out = acc;
+  return 1;
+fallback:
+  *fallbacks = 1;
+  return tau4_pos_mul_jac(g, &pre->pos, out, k, adds, rotations);
+}
+
+int ca_ec_tau8_fused_mul_batch(const ca_group *g,
+                               const ca_tau8_fused_precomp *pre, ca_elem *out,
+                               const uint64_t *scalars, size_t count,
+                               size_t block_size, uint64_t *adds,
+                               uint64_t *rotations, uint64_t *output_inversions,
+                               uint64_t *fallbacks) {
+  if (adds)
+    *adds = 0;
+  if (rotations)
+    *rotations = 0;
+  if (output_inversions)
+    *output_inversions = 0;
+  if (fallbacks)
+    *fallbacks = 0;
+  if (!count)
+    return 1;
+  if (!g || !pre || !out || !scalars || pre->pos.base.g != g ||
+      (!pre->point && !pre->pos.base.identity) || block_size == 0 ||
+      block_size > 4096)
+    return 0;
+  tau_jac *projective = malloc(block_size * sizeof(*projective));
+  uint64_t *prefixes = malloc(block_size * sizeof(*prefixes));
+  if (!projective || !prefixes) {
+    free(prefixes);
+    free(projective);
+    return 0;
+  }
+  uint64_t na = 0, nr = 0, ni = 0, nf = 0;
+  for (size_t offset = 0; offset < count;) {
+    size_t n = count - offset;
+    if (n > block_size)
+      n = block_size;
+    for (size_t i = 0; i < n; i++) {
+      uint64_t a, r, f;
+      if (!tau8_fused_mul_jac(g, pre, &projective[i], scalars[offset + i], &a,
+                              &r, &f)) {
+        free(prefixes);
+        free(projective);
+        return 0;
+      }
+      na += a;
+      nr += r;
+      nf += f;
+    }
+    uint64_t current_inversions = 0;
+    if (!jac_batch_to_affine_scratch(g, out + offset, projective, n, prefixes,
+                                     &current_inversions)) {
+      free(prefixes);
+      free(projective);
+      return 0;
+    }
+    ni += current_inversions;
+    offset += n;
+  }
+  free(prefixes);
+  free(projective);
+  if (adds)
+    *adds = na;
+  if (rotations)
+    *rotations = nr;
+  if (output_inversions)
+    *output_inversions = ni;
+  if (fallbacks)
+    *fallbacks = nf;
   return 1;
 }
 

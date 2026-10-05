@@ -10,6 +10,13 @@ speedup or academic novelty claim before controlled evidence and prior-art
 review. The table's construction belongs to setup and is charged when it
 depends on the target point, including a rho solve involving a new `Q`.
 
+The related prior art includes [endomorphism-based symmetric digit sets on
+ordinary prime-field curves](https://eprint.iacr.org/2013/705.pdf) and
+[τ-adic/double-base scalar expansions](https://eprint.iacr.org/2008/388.pdf).
+These establish the broader recoding and precomputation setting. The
+particular atlas-indexed pair table here is an implementation hypothesis;
+its academic novelty remains unresolved.
+
 This protocol is frozen before its held-out scalar files, generated pair
 map, C fused table, or benchmark results are produced. It builds on the
 four-step residue-atlas protocol and the positional/batch-output branches.

@@ -10,8 +10,14 @@ def make(args):
     root = args.repo_root.resolve()
     experiment = root / "experiments" / "prime-j0-cost-aware-chain"
     atlas = args.candidate_arm == "atlas"
-    fixture_name = "atlas-inputs.json" if atlas and args.fixture == "inputs.json" else args.fixture
-    input_dir = "atlas-inputs" if atlas and args.input_dir == "inputs" else args.input_dir
+    fused = args.candidate_arm == "fused-batch128"
+    default_prefix = "fused" if fused else "atlas" if atlas else None
+    fixture_name = (f"{default_prefix}-inputs.json"
+                    if default_prefix and args.fixture == "inputs.json"
+                    else args.fixture)
+    input_dir = (f"{default_prefix}-inputs"
+                 if default_prefix and args.input_dir == "inputs"
+                 else args.input_dir)
     fixture_path = experiment / fixture_name
     fixture = json.loads(fixture_path.read_text())
     bench = args.bench.resolve()
@@ -30,6 +36,21 @@ def make(args):
                       experiment / "run.py",
                       experiment / "make_atlas_inputs.py",
                       root / "src" / "generated" / "tau4_residue_atlas.h"]
+    if fused:
+        artifacts += [experiment / "FUSED_TAU_PAIRS.md",
+                      bench.parent / "CMakeCache.txt",
+                      root / "scripts" / "isolated_bench.py",
+                      experiment / "make_isolated_manifest.py",
+                      experiment / "RESIDUE_ATLAS.md",
+                      experiment / "make_tau8_pairs.py",
+                      experiment / "make_residue_atlas.py",
+                      experiment / "make_fused_inputs.py",
+                      experiment / "make_inputs.py",
+                      experiment / "check_fused_panel.py",
+                      experiment / "check_panel.py",
+                      experiment / "run.py",
+                      root / "src" / "generated" / "tau4_residue_atlas.h",
+                      root / "src" / "generated" / "tau8_pair_map.h"]
     artifacts += sorted((root / "src").glob("*.c"))
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
@@ -49,6 +70,7 @@ def make(args):
                           "input_digest": case["input_digest"]},
                       "expected_result": case["expected_output_digest"],
                       "reference": [base[0],
+                                    "pos-batch128" if fused else
                                     "pos-global" if args.candidate_arm.startswith(
                                         "pos-batch") else "baseline",
                                     *base[2:]],
@@ -69,6 +91,12 @@ def make(args):
             "candidate scratch allocation and block normalization; excludes "
             "loading, preparation, and independent replay"
             if args.candidate_arm.startswith("pos-batch") else
+            "After each arm's per-point table preparation: first scalar "
+            "reduction through last affine output; includes atlas lookups, "
+            "all point additions, fallback work, output normalization, "
+            "scratch allocation, and storage; excludes loading, preparation, "
+            "and independent replay; setup is reported separately"
+            if fused else
             "After all per-point preparation: first public scalar "
             "representative selection through last affine output; includes "
             "all recoding, unit rotations, tripling, additions, conversions, "
@@ -99,7 +127,8 @@ if __name__ == "__main__":
     parser.add_argument("--input-dir", default="inputs")
     parser.add_argument("--candidate-arm", "--arm", choices=(
         "cost", "pos", "pos-batch32", "pos-batch128",
-        "pos-batch512", "pos-batch4096", "atlas"), default="cost")
+        "pos-batch512", "pos-batch4096", "atlas", "fused-batch128"),
+                        default="cost")
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)
