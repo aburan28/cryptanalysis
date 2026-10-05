@@ -225,3 +225,10 @@ An [8-bit residue-local encoding](TAIL_DOUBLE_FOLD.md#residue-local-byte-format)
 of the same sign-folded policy brings active data to 31,660 bytes. It keeps
 the same modeled evaluation score; the extra residue calculation leaves the
 CPU wall-time ordering unresolved until isolated paired measurement.
+
+The [orbit-pair point dictionary proposal](TAIL_PAIR_FUSED.md) goes further:
+the 727 exact two-digit pair contributions form 121 sign/unit orbits. One
+prepared affine point per orbit could evaluate a two-digit pair with one
+mixed addition. Its bounded shortest-path design screen lowers modeled tail
+cost on two old scalar sets, but excludes point setup and recoder time. A
+disjoint 32,768-input validation fixture is frozen before native evaluation.
