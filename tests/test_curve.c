@@ -166,7 +166,7 @@ static void tau_atlas_recode_checks(void)
     CHECK(ca_ec_tau4_recode_compare(0, 0));
 }
 
-/* Exercise the three direct tau evaluators and both profile modes against
+/* Exercise the three direct tau evaluators and all four profile modes against
  * independently computed points, including the identity and scalar edges. */
 static void tau_direct_checks(const ca_group *g, const ca_elem *point)
 {
