@@ -61,6 +61,11 @@ and native/pullback equality checks remain represented by the verified N39
 toy panel and the exact route, while an **equal-actual-B, four-policy N131
 PDP comparison** is still an open goal.
 
+The [follow-on exact capacity gate](../ecc2k130-263-capacity-gate-20261004/RESULT.md)
+quantifies the minimum actual base sizes for m3–m8 and separates sign-only
+from explicitly orbit-closed relation-column policies. It does not turn
+this screen into an IC result or close the four-policy PDP gap.
+
 This result deprioritizes W24 five-summand and W28 four-summand native-base
 claims as routes to a high one-shot yield. The next informative degree-263
 gate is a base whose exact useful size and folded columns can be charged,

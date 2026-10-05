@@ -60,6 +60,15 @@ The N131 `fb26` count is tied to the encoded point list in
 Neither count licenses copying that base to another curve, isogeny codomain,
 field representation, or factor-base recipe.
 
+The [exact ECC2K-130 degree-263 capacity gate](../ecc2k130-263-capacity-gate-20261004/RESULT.md)
+puts necessary actual-base thresholds next to the `n131_poly_d28_m5` and
+`n131_poly_d24_m6` proposals. At 1% one-shot uniform-target support, even
+the collision-free multiset bound requires 60,591,280 points for m5 or
+4,121,293 for m6. These are prerequisites, not actual `fb` counts or
+measured relation yields. The gate leaves both proposals unactivated and
+identifies actual `B`, orbit columns and held-out natural PDP/rank cost as
+the next measurements.
+
 ## Code reviewed for the design axes
 
 | Stage | Existing code and evidence | What can be reused / what is missing |
