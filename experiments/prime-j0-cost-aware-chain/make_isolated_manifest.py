@@ -16,8 +16,10 @@ def make(args):
     steer = args.candidate_arm == "fused-hot-steer-batch128"
     gated2 = args.candidate_arm == "fused-hot-steer-gated2-batch128"
     graph = args.candidate_arm == "tapered-residue-graph-batch128"
+    implicit = args.candidate_arm == "tapered-residue-implicit-batch128"
     tapered = args.candidate_arm in ("tapered-residue-orbit-batch128",
-                                     "tapered-residue-graph-batch128")
+                                     "tapered-residue-graph-batch128",
+                                     "tapered-residue-implicit-batch128")
     hot = args.candidate_arm == "fused-hot-batch128" or adapt2 or gated or steer or gated2 or tapered
     fused = args.candidate_arm in ("fused-batch128", "fused-orbit-batch128",
                                    "fused-hot-batch128",
@@ -26,10 +28,11 @@ def make(args):
                                    "fused-hot-steer-batch128",
                                    "fused-hot-steer-gated2-batch128",
                                    "tapered-residue-orbit-batch128",
-                                   "tapered-residue-graph-batch128")
+                                   "tapered-residue-graph-batch128",
+                                   "tapered-residue-implicit-batch128")
     if args.reference_arm and not (gated or gated2 or tapered):
         raise ValueError("--reference-arm is only supported for gated or tapered candidates")
-    default_prefix = ("orbit-graph" if graph else "tapered" if tapered else
+    default_prefix = ("orbit-graph" if graph or implicit else "tapered" if tapered else
                       "gated2-steer" if gated2 else
                       "steer" if steer else "gated" if gated else
                       "adapt2" if adapt2 else "hot" if hot else
@@ -129,7 +132,7 @@ def make(args):
                       experiment / "check_tapered_panel.py",
                       experiment / "tapered-panel.json",
                       root / "src" / "generated" / "tau_wide_orbits.h"]
-    if graph:
+    if graph or implicit:
         artifacts += [experiment / "ORBIT_GRAPH_PRECOMPUTE.md",
                       experiment / "make_tau_wide_graph.py",
                       experiment / "orbit-graph-screen.json",
@@ -137,11 +140,18 @@ def make(args):
                       experiment / "check_orbit_graph_panel.py",
                       experiment / "orbit-graph-panel.json",
                       root / "src" / "generated" / "tau_wide_graph.h"]
+    if implicit:
+        artifacts += [experiment / "IMPLICIT_ORBIT_GRAPH.md",
+                      experiment / "screen_implicit_orbit_graph.py",
+                      experiment / "implicit-orbit-graph-screen.json",
+                      experiment / "check_implicit_orbit_graph_panel.py",
+                      experiment / "implicit-orbit-graph-panel.json"]
     artifacts += sorted((root / "src").glob("*.c"))
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
     cases = []
-    default_reference = ("tapered-residue-orbit-batch128" if graph else
+    default_reference = ("tapered-residue-graph-batch128" if implicit else
+                         "tapered-residue-orbit-batch128" if graph else
                          "fused-hot-steer-gated2-batch128" if tapered else
                          "fused-hot-steer-batch128" if gated2 else
                          "fused-hot-adapt2-batch128" if gated else
@@ -152,7 +162,7 @@ def make(args):
                          "pos-global" if args.candidate_arm.startswith("pos-batch") else
                          "baseline")
     for case in fixture["cases"]:
-        scalar_path = (experiment / case["scalar_file"] if graph else
+        scalar_path = (experiment / case["scalar_file"] if graph or implicit else
                        experiment / input_dir / case["scalar_file"])
         artifacts.append(scalar_path)
         base = [str(bench), None, case["curve"]["name"],
@@ -225,12 +235,13 @@ if __name__ == "__main__":
         "fused-orbit-batch128", "fused-hot-batch128",
         "fused-hot-adapt2-batch128", "fused-hot-gated-batch128",
         "fused-hot-steer-batch128", "fused-hot-steer-gated2-batch128",
-        "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128"),
+        "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128",
+        "tapered-residue-implicit-batch128"),
                         default="cost")
     parser.add_argument("--reference-arm", choices=(
         "fused-hot-batch128", "fused-hot-adapt2-batch128",
         "fused-hot-steer-batch128", "fused-hot-steer-gated2-batch128",
-        "tapered-residue-orbit-batch128"))
+        "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128"))
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)
