@@ -56,6 +56,7 @@ PHASES = ("setup", "isogeny", "factor_base", "precompute", "queries", "pdp", "re
 SOURCES = [
     PDP / "pdpkernel.c", PDP / "kernel.py", PDP / "opcount.py", PDP / "toycurve.py", PDP / "factor_base.py",
     PDP / "descent.py", PDP / "macaulay.py", PDP / "relations.py", PDP / "monitor.py", PDP / "profile.py",
+    PDP / "htsolver.py",
     HERE.parent / "pdp-scaling" / "sumpoly.py", HERE.parent / "pdp-scaling" / "gf2n.py", HERE / "bench.py",
 ]
 CALIBRATION = HERE / "calibration.json"
@@ -169,16 +170,22 @@ def warm_accounting(total: int | None, per_target: list[int], rho: int, rho_floo
     }
 
 
-def cells(n, m, l, families, workload_seeds, targets=3, max_attempts=200_000, mode="mxl", seed=1):
-    return [{"n": n, "m": m, "l": l, "family": f, "seed": seed, "mode": mode, "workload_seed": w,
-             "targets": targets, "max_attempts": max_attempts}
-            for w in workload_seeds for f in families]
+def cells(n, m, l, families, workload_seeds, targets=3, max_attempts=200_000, mode="mxl", seed=1,
+          rerandomize="uniform"):
+    out = [{"n": n, "m": m, "l": l, "family": f, "seed": seed, "mode": mode, "workload_seed": w,
+            "targets": targets, "max_attempts": max_attempts}
+           for w in workload_seeds for f in families]
+    if rerandomize != "uniform":
+        for c in out:
+            c["rerandomize"] = rerandomize
+    return out
 
 
 SEARCH_SELECTION = HERE.parent / "fb-search" / "selected.json"
 ONLINE_SELECTION = HERE.parent / "fb-search" / "online-selected.json"
 # suites whose runs have one prepared target and a measured online interval paired with rho
-ONLINE_SUITES = ("primary", "online")
+ONLINE_SUITES = ("primary", "online", "online-ht")
+HT_SELECTION = HERE.parent / "fb-search" / "online-ht-selected.json"
 
 
 def search_cells(path: Path = SEARCH_SELECTION, workload_seeds=(1, 2, 3), targets: int | None = None) -> list[dict]:
@@ -190,7 +197,8 @@ def search_cells(path: Path = SEARCH_SELECTION, workload_seeds=(1, 2, 3), target
         c = pick["cell"]
         n = c["n"]
         out += cells(n, c["m"], c["l"], [c["family"]], list(workload_seeds), targets=targets or c["targets"],
-                     max_attempts=200_000 if n < 23 else 800_000, mode=c["mode"], seed=c["seed"])
+                     max_attempts=200_000 if n < 23 else 800_000, mode=c["mode"], seed=c["seed"],
+                     rerandomize=c.get("rerandomize", "uniform"))
     return out
 
 
@@ -206,6 +214,8 @@ SUITES = {
     "search": search_cells(),
     # one-target online runs of the bases ../fb-search/online.py ranks best for T_online,1
     "online": search_cells(ONLINE_SELECTION, targets=1),
+    # the same one-target protocol with the half-trace PDP solver (PDP2ht) and walk rerandomization
+    "online-ht": search_cells(HT_SELECTION, targets=1),
     # Long multi-target runs. One 2^16-target receipt yields exact prefix points
     # 1,2,4,...,2^16 without repaying the shared relation database at each size.
     "batch": cells(13, 3, 3, ["geomtrace"], [1], targets=1 << 16)
@@ -244,7 +254,8 @@ def implementation_sha256() -> str:
 
 
 def cell_label(c: dict) -> str:
-    return f"n{c['n']}m{c['m']}l{c['l']}-{c['family']}-s{c['seed']}-{c['mode']}-w{c['workload_seed']}"
+    walk = "-walk" if c.get("rerandomize", "uniform") == "walk" else ""
+    return f"n{c['n']}m{c['m']}l{c['l']}-{c['family']}-s{c['seed']}-{c['mode']}{walk}-w{c['workload_seed']}"
 
 
 def workload(curve: ToyCurve, seed: int, count: int, cache_state: str = "cold") -> tuple[str, dict]:
@@ -301,16 +312,36 @@ def endomorphism_record(curve: ToyCurve) -> dict:
 
 def candidate_manifest(curve: ToyCurve, fb: FactorBase, cell: dict) -> tuple[str, dict]:
     m = cell["m"]
-    pdp = pdp_config(m, macaulay.Limits(**LIMITS))
-    pdp.update({
-        "stage_code": f"PDP{m}xl",
-        "modes": [cell["mode"]],
-        "completion_test": "refutation (1 in the row space) needs no oracle; for S >= 1 solutions the scan "
-        "stops when the standard monomials number S, with S and the solutions read off an exhaustive "
-        "enumeration (Moebius transform) that is charged to the phase it serves",
-        "summation_polynomials": "curve-independent symbolic S_k from pdp-scaling/sumpoly.py, loaded once per "
-        "process before the run (not charged)",
-    })
+    if cell["mode"] == "ht":
+        pdp = {
+            "stage_code": f"PDP{m}ht",
+            "summand_count": m,
+            "summation_polynomial": "S_3(X, Y, S) = (XY + S(X + Y))^2 + XYS + b, rewritten with u = X + Y, p = XY as "
+            "the Artin-Schreier equation (p/S)^2 + p/S = (u + sqrt(b)/S)^2 (Courtois, ePrint 2016/003, Sec. 2)",
+            "solver": "half-trace projection: p is F_2-affine in u; projecting X^2 + uX + p(u) = 0 onto F/V^(2) "
+            "gives n - dim V^(2) linear equations in u plus Tr(u) = Tr(sqrt(b)/S); each solution u yields at most "
+            "one {X, Y} by one half-trace, kept if X, Y lie in V and the signed lifts sum to R",
+            "residual_search_dimension": "max(0, dim V + dim V^(2) - n - 1 + [V in ker Tr])",
+            "completeness": "every decomposition is returned; no decomposition is proved by an inconsistent "
+            "system or an empty candidate set",
+            "internal_kernel": "F_2 bit-vector elimination (charged as mac_op word operations); field operations "
+            "in pdpkernel.c (gf_mul, gf_inv, gf_lin for trace, half-trace and square root)",
+            "monomial_order": "none",
+            "limits": "none",
+            "cache_policy": "V^(2), its parity checks and HT(v_j^2) precomputed per factor base (precompute phase)",
+            "implementation": "experiments/pdp-degree-heuristics/htsolver.py",
+        }
+    else:
+        pdp = pdp_config(m, macaulay.Limits(**LIMITS))
+        pdp.update({
+            "stage_code": f"PDP{m}xl",
+            "modes": [cell["mode"]],
+            "completion_test": "refutation (1 in the row space) needs no oracle; for S >= 1 solutions the scan "
+            "stops when the standard monomials number S, with S and the solutions read off an exhaustive "
+            "enumeration (Moebius transform) that is charged to the phase it serves",
+            "summation_polynomials": "curve-independent symbolic S_k from pdp-scaling/sumpoly.py, loaded once per "
+            "process before the run (not charged)",
+        })
     record = {
         "schema": "ic-candidate/1",
         "field": curve.field_record(),
@@ -341,7 +372,10 @@ def candidate_manifest(curve: ToyCurve, fb: FactorBase, cell: dict) -> tuple[str
         },
         "target_descent": {
             "stage_code": "TDpdp",
-            "policy": "Q + [a]G with a from the workload's rerandomization stream, decomposed by the same PDP "
+            "policy": ("Q + i [a0]G for i = 1, 2, ... with a0 from the workload's rerandomization stream (one group "
+                       "addition per attempt), decomposed by the same PDP solver until a verified relation appears; "
+                       "log Q = sum c_j log_j - i a0 mod r") if cell.get("rerandomize") == "walk" else
+            "Q + [a]G with a from the workload's rerandomization stream, decomposed by the same PDP "
             "solver until a verified relation appears; log Q = sum c_j log_j - a mod r",
             "recursive_solvers": "none",
             "success": "[log Q]G = Q",
@@ -353,7 +387,8 @@ def candidate_manifest(curve: ToyCurve, fb: FactorBase, cell: dict) -> tuple[str
         },
     }
     digest = sha256_hex(record)
-    cid = (f"IC1N{curve.n}C{curve.tag}fb{fb.usable_points}PDP{m}xlRCsampleLAgaussTDpdpISO0h{digest[:12]}")
+    solver = "ht" if cell["mode"] == "ht" else "xl"
+    cid = (f"IC1N{curve.n}C{curve.tag}fb{fb.usable_points}PDP{m}{solver}RCsampleLAgaussTDpdpISO0h{digest[:12]}")
     return cid, record
 
 
@@ -427,7 +462,8 @@ def run_cell(cell: dict, calibration: dict) -> dict:
     eid, env = resource_envelope(cell)
     weights = weights_for(calibration, cell["n"])
     args = SimpleNamespace(n=cell["n"], m=cell["m"], l=cell["l"], family=cell["family"], seed=cell["seed"],
-                           mode=cell["mode"], abort_degree=0, max_attempts=cell["max_attempts"],
+                           mode=cell["mode"], rerandomize=cell.get("rerandomize", "uniform"), abort_degree=0,
+                           max_attempts=cell["max_attempts"],
                            workload_seed=cell["workload_seed"], descent_targets=cell["targets"],
                            report_every=0, out="", trace="", **LIMITS)
     meter = opcount.Meter()
@@ -509,7 +545,8 @@ def run_cell(cell: dict, calibration: dict) -> dict:
         "isogeny_route_ref": "none",
         "bench_cell": cell_label(cell),
         "suite": cell.get("suite"),
-        "cell": {k: cell[k] for k in ("n", "m", "l", "family", "seed", "mode", "workload_seed", "targets")},
+        "cell": {**{k: cell[k] for k in ("n", "m", "l", "family", "seed", "mode", "workload_seed", "targets")},
+                 "rerandomize": cell.get("rerandomize", "uniform")},
         "subgroup_order": str(r),
         "counts": {
             "ordinary_queries": mon["attempts"],
