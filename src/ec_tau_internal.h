@@ -46,6 +46,22 @@ int ca_ec_tau4_fold_recode_verify_scalar(const ca_tau4_precomp *pre, uint64_t k)
 size_t ca_ec_tau4_fold_static_bytes(void);
 int ca_ec_tau4_residue_recode_verify_scalar(const ca_tau4_precomp *pre, uint64_t k);
 size_t ca_ec_tau4_residue_static_bytes(void);
+/* Public-scalar fixed-point experiment: 121 prepared pair-contribution orbits. */
+#define CA_TAU_PAIR_FUSED_REP_COUNT 121
+typedef struct ca_tau_pair_fused_precomp {
+    ca_tau4_precomp base;
+    ca_elem orbit[CA_TAU_PAIR_FUSED_REP_COUNT];
+} ca_tau_pair_fused_precomp;
+int ca_ec_tau_pair_fused_prepare(const ca_group *g, const ca_elem *point,
+                                 ca_tau_pair_fused_precomp *out, uint64_t *seed_ops,
+                                 uint64_t *pair_adds, uint64_t *pair_rotations,
+                                 uint64_t *inversions);
+int ca_ec_tau_pair_fused_mul_profile(const ca_group *g, const ca_tau_pair_fused_precomp *pre,
+                                     ca_elem *out, uint64_t k, uint64_t *triples, uint64_t *adds,
+                                     uint64_t *rotations);
+int ca_ec_tau_pair_fused_recode_verify_scalar(const ca_tau_pair_fused_precomp *pre, uint64_t k);
+int ca_ec_tau_pair_fused_prepare_verify(const ca_tau_pair_fused_precomp *pre);
+size_t ca_ec_tau_pair_fused_static_bytes(void);
 /* Private exhaustive/differential test hook for signed tau coordinates. */
 int ca_ec_tau4_recode_compare(int64_t x, int64_t y);
 int ca_ec_tau4_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k);

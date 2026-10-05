@@ -18,6 +18,7 @@
 #include "generated/tau_tail_double.h"
 #include "generated/tau_tail_double_fold.h"
 #include "generated/tau_tail_double_residue.h"
+#include "generated/tau_pair_fused.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -1040,6 +1041,309 @@ int ca_ec_tau4_mul_prepared_profile(const ca_group *g, const ca_tau4_precomp *pr
 {
     if (recoder < 0 || recoder > 7) return 0;
     return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, rotations, recoder);
+}
+
+static int tau_pair_seed_point(const ca_group *g, const ca_tau4_precomp *base, uint8_t slot,
+                               int odd, ca_elem *out, uint64_t *rotations)
+{
+    if (slot >= 81 || base->digit[slot].seed < 0) return 0;
+    ca_tau4_digit digit = base->digit[slot];
+    *out = odd ? base->tau_seed[digit.seed] : base->seed[digit.seed];
+    if (out->w[2]) return 1;
+    if (digit.power == 1)
+        out->w[0] = fm(g, base->beta, out->w[0]);
+    else if (digit.power == 2)
+        out->w[0] = fm(g, base->beta2, out->w[0]);
+    if (digit.sign < 0 && out->w[1]) out->w[1] = g->p - out->w[1];
+    if (rotations) *rotations += digit.power != 0;
+    return 1;
+}
+
+int ca_ec_tau_pair_fused_prepare(const ca_group *g, const ca_elem *point,
+                                 ca_tau_pair_fused_precomp *out, uint64_t *seed_ops,
+                                 uint64_t *pair_adds, uint64_t *pair_rotations,
+                                 uint64_t *inversions)
+{
+    if (!g || !point || !out) return 0;
+    _Static_assert(CA_TAU_PAIR_FUSED_REP_COUNT == CA_TAU_PAIR_FUSED_REPS,
+                   "pair-point orbit count changed");
+    ca_tau_pair_fused_precomp pre = {0};
+    uint64_t base_ops = 0, additions = 0, rotations = 0, extra_inversions = 0;
+    if (!ca_ec_tau4_prepare(g, point, &pre.base, &base_ops)) return 0;
+    if (pre.base.identity) {
+        for (size_t i = 0; i < CA_TAU_PAIR_FUSED_REPS; i++) pre.orbit[i] = (ca_elem){{0, 0, 1, 0}};
+    } else {
+        tau_jac projective[CA_TAU_PAIR_FUSED_REPS];
+        uint64_t prefixes[CA_TAU_PAIR_FUSED_REPS];
+        for (size_t i = 0; i < CA_TAU_PAIR_FUSED_REPS; i++) {
+            uint8_t even = ca_tau_pair_fused_rep_even[i];
+            uint8_t odd = ca_tau_pair_fused_rep_odd[i];
+            tau_jac q = {0, g->mont.r1, 0};
+            if (even != 255) {
+                ca_elem first;
+                if (!tau_pair_seed_point(g, &pre.base, even, 0, &first, &rotations)) return 0;
+                if (!first.w[2]) q = (tau_jac){first.w[0], first.w[1], g->mont.r1};
+            }
+            if (odd != 255) {
+                ca_elem second;
+                if (!tau_pair_seed_point(g, &pre.base, odd, 1, &second, &rotations)) return 0;
+                if (!second.w[2]) {
+                    if (q.z) {
+                        q = jac_add_mixed(g, q, &second);
+                        additions++;
+                    } else {
+                        q = (tau_jac){second.w[0], second.w[1], g->mont.r1};
+                    }
+                }
+            }
+            projective[i] = q;
+        }
+        if (!jac_batch_to_affine_scratch(g, pre.orbit, projective, CA_TAU_PAIR_FUSED_REPS, prefixes,
+                                         &extra_inversions))
+            return 0;
+    }
+    *out = pre;
+    if (seed_ops) *seed_ops = base_ops;
+    if (pair_adds) *pair_adds = additions;
+    if (pair_rotations) *pair_rotations = rotations;
+    if (inversions) *inversions = (pre.base.identity ? 0 : 1) + extra_inversions;
+    return 1;
+}
+
+size_t ca_ec_tau_pair_fused_static_bytes(void)
+{
+    return sizeof(ca_tau_pair_fused_code) + sizeof(ca_tau_pair_fused_gate) +
+           sizeof(ca_tau_pair_fused_dictionary) + sizeof(ca_tau_pair_fused_rep_a) +
+           sizeof(ca_tau_pair_fused_rep_b) + sizeof(ca_tau_pair_fused_rep_even) +
+           sizeof(ca_tau_pair_fused_rep_odd) + sizeof(ca_tau_pair_fused_even_word) +
+           sizeof(ca_tau_pair_fused_odd_word) + sizeof(ca_tau_pair_fused_offset) +
+           sizeof(ca_tau_pair_fused_length);
+}
+
+int ca_ec_tau_pair_fused_prepare_verify(const ca_tau_pair_fused_precomp *pre)
+{
+    if (!pre || !pre->base.g) return 0;
+    const ca_group *g = pre->base.g;
+    if (pre->base.identity) {
+        for (size_t i = 0; i < CA_TAU_PAIR_FUSED_REPS; i++)
+            if (!ca_group_is_identity(g, &pre->orbit[i])) return 0;
+        return 1;
+    }
+    /* The group's j=0 eigenvalue is for psi = -omega, so tau = 1 + psi. */
+    ca_i128 lambda_tau = (ca_i128)1 + g->endo_lambda;
+    for (size_t i = 0; i < CA_TAU_PAIR_FUSED_REPS; i++) {
+        ca_i128 scalar =
+            (ca_i128)ca_tau_pair_fused_rep_a[i] + (ca_i128)ca_tau_pair_fused_rep_b[i] * lambda_tau;
+        scalar %= g->order;
+        if (scalar < 0) scalar += g->order;
+        ca_elem expected;
+        ca_group_mul(g, &expected, &pre->base.seed[0], (uint64_t)scalar, NULL);
+        if (!ca_group_equal(g, &expected, &pre->orbit[i])) return 0;
+    }
+    return 1;
+}
+
+static int tau_pair_contribution(uint16_t word, ca_i128 *a, ca_i128 *b)
+{
+    if (word == CA_TAU_PAIR_FUSED_ZERO) {
+        *a = *b = 0;
+        return 1;
+    }
+    unsigned id = word & 127u, power = (word >> 7) & 3u;
+    if (word == CA_TAU_PAIR_FUSED_UNREACHABLE || id >= CA_TAU_PAIR_FUSED_REPS || power >= 3)
+        return 0;
+    ca_i128 x = ca_tau_pair_fused_rep_a[id], y = ca_tau_pair_fused_rep_b[id];
+    for (unsigned j = 0; j < power; j++) {
+        ca_i128 next_x = x + 3 * y, next_y = -x - 2 * y;
+        x = next_x;
+        y = next_y;
+    }
+    if (word & 512u) x = -x, y = -y;
+    *a = x;
+    *b = y;
+    return 1;
+}
+
+static uint16_t tau_pair_single_word(uint8_t even, uint8_t odd)
+{
+    if (even != 255 && odd != 255) return CA_TAU_PAIR_FUSED_UNREACHABLE;
+    if (even != 255) return ca_tau_pair_fused_even_word[even];
+    if (odd != 255) return ca_tau_pair_fused_odd_word[odd];
+    return CA_TAU_PAIR_FUSED_ZERO;
+}
+
+static uint16_t tau_pair_policy_word(ca_i128 x, ca_i128 y, unsigned phase)
+{
+    int negative;
+    size_t pos = tau_double_fold_index(x, y, phase, &negative);
+    ca_i128 a = negative ? -x : x, b = negative ? -y : y;
+    unsigned residue = residue3(a) * 3 + residue3(b);
+    unsigned code = ca_tau_pair_fused_code[pos];
+    if (code >= ca_tau_pair_fused_length[phase][residue]) return CA_TAU_PAIR_FUSED_UNREACHABLE;
+    uint16_t word = ca_tau_pair_fused_dictionary[ca_tau_pair_fused_offset[phase][residue] + code];
+    if (negative && word != CA_TAU_PAIR_FUSED_ZERO && word != CA_TAU_PAIR_FUSED_UNREACHABLE)
+        word ^= 512u;
+    return word;
+}
+
+static size_t tau_pair_canonical_words(ca_i128 x, ca_i128 y, const ca_tau4_digit digit[81],
+                                       uint16_t words[128])
+{
+    uint8_t digits[256];
+    size_t nd = gen_tau4_digits_fast(x, y, digit, digits);
+    if (!nd && (x || y)) return 0;
+    size_t pairs = (nd + 1) / 2;
+    for (size_t i = 0; i < pairs; i++) {
+        uint8_t even = digits[2 * i], odd = 2 * i + 1 < nd ? digits[2 * i + 1] : 255;
+        words[i] = tau_pair_single_word(even, odd);
+        if (words[i] == CA_TAU_PAIR_FUSED_UNREACHABLE) return 0;
+    }
+    return pairs;
+}
+
+static size_t tau_pair_fused_plan(ca_i128 x, ca_i128 y, const ca_tau4_digit digit[81],
+                                  uint16_t words[128])
+{
+    ca_i128 original_x = x, original_y = y;
+    const ca_i128 limit = (ca_i128)1 << 55;
+    if (x <= -limit || x >= limit || y <= -limit || y >= limit)
+        return tau_pair_canonical_words(x, y, digit, words);
+    size_t pairs = 0;
+    while (x < -CA_TAU_DOUBLE_BOUND || x > CA_TAU_DOUBLE_BOUND || y < -CA_TAU_DOUBLE_BOUND ||
+           y > CA_TAU_DOUBLE_BOUND) {
+        if (pairs >= 127) goto canonical_fallback;
+        uint8_t slots[2] = {255, 255};
+        for (size_t j = 0; j < 2; j++) {
+            if (x % 3) {
+                int xm = (int)((x % 9 + 9) % 9);
+                int ym = (int)((y % 9 + 9) % 9);
+                slots[j] = (uint8_t)(9 * xm + ym);
+                if (digit[slots[j]].seed < 0) goto canonical_fallback;
+                x -= digit[slots[j]].a;
+                y -= digit[slots[j]].b;
+            }
+            ca_i128 old_x = x;
+            if (old_x % 3) goto canonical_fallback;
+            x += y;
+            y = -old_x / 3;
+        }
+        words[pairs] = tau_pair_single_word(slots[0], slots[1]);
+        if (words[pairs] == CA_TAU_PAIR_FUSED_UNREACHABLE) goto canonical_fallback;
+        pairs++;
+    }
+    if (x || y) {
+        int negative;
+        size_t pos = tau_double_fold_index(x, y, (unsigned)(pairs % 3), &negative);
+        int selected = (ca_tau_pair_fused_gate[pos >> 3] >> (pos & 7)) & 1;
+        if (selected) {
+            while (x || y) {
+                if (pairs >= 128) goto canonical_fallback;
+                uint16_t word = tau_pair_policy_word(x, y, (unsigned)(pairs % 3));
+                ca_i128 da, db;
+                if (!tau_pair_contribution(word, &da, &db)) goto canonical_fallback;
+                ca_i128 ax = x - da, by = y - db;
+                if (ax % 3 || by % 3) goto canonical_fallback;
+                x = 2 * (ax / 3) + by;
+                y = -(ax + by) / 3;
+                if (x < -CA_TAU_DOUBLE_BOUND || x > CA_TAU_DOUBLE_BOUND ||
+                    y < -CA_TAU_DOUBLE_BOUND || y > CA_TAU_DOUBLE_BOUND)
+                    goto canonical_fallback;
+                words[pairs++] = word;
+            }
+        } else {
+            uint16_t tail[128];
+            size_t remaining = tau_pair_canonical_words(x, y, digit, tail);
+            if (!remaining || remaining > 128 - pairs) goto canonical_fallback;
+            memcpy(words + pairs, tail, remaining * sizeof(*words));
+            pairs += remaining;
+        }
+    }
+    while (pairs && words[pairs - 1] == CA_TAU_PAIR_FUSED_ZERO) pairs--;
+    return pairs;
+canonical_fallback:
+    return tau_pair_canonical_words(original_x, original_y, digit, words);
+}
+
+int ca_ec_tau_pair_fused_recode_verify_scalar(const ca_tau_pair_fused_precomp *pre, uint64_t k)
+{
+    if (!pre || !pre->base.g) return 0;
+    ca_i128 x, y;
+    const ca_tau4_precomp *base = &pre->base;
+    reduce_with_lattice((tau_vec){base->v1x, base->v1y}, (tau_vec){base->v2x, base->v2y}, base->det,
+                        k % base->g->order, &x, &y);
+    uint16_t words[128];
+    size_t pairs = tau_pair_fused_plan(x, y, base->digit, words);
+    if (!pairs && (x || y)) return 0;
+    ca_i128 a = 0, b = 0;
+    unsigned additions = 0, triples = 0, rotations = 0;
+    for (size_t i = pairs; i-- > 0;) {
+        ca_i128 next_a = -3 * a - 9 * b, next_b = 3 * a + 6 * b;
+        ca_i128 da, db;
+        if (!tau_pair_contribution(words[i], &da, &db)) return 0;
+        a = next_a + da;
+        b = next_b + db;
+        if (words[i] != CA_TAU_PAIR_FUSED_ZERO) {
+            if (!additions) triples = (unsigned)i;
+            additions++;
+            rotations += (unsigned)((((words[i] >> 7) & 3u) + i % 3) % 3 != 0);
+        }
+    }
+    if (a != x || b != y) return 0;
+    uint8_t old_digits[256];
+    size_t old_nd = gen_tau4_digits_double_residue(x, y, base->digit, old_digits);
+    if (!old_nd && (x || y)) return 0;
+    return 10 * triples + 16 * additions + rotations <=
+           tau4_weighted_cost(old_digits, old_nd, base->digit);
+}
+
+int ca_ec_tau_pair_fused_mul_profile(const ca_group *g, const ca_tau_pair_fused_precomp *pre,
+                                     ca_elem *out, uint64_t k, uint64_t *triples, uint64_t *adds,
+                                     uint64_t *rotations)
+{
+    if (!g || !pre || !out || pre->base.g != g) return 0;
+    if (triples) *triples = 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (pre->base.identity || k % g->order == 0) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->base.v1x, pre->base.v1y},
+                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det, k % g->order, &x,
+                        &y);
+    uint16_t words[128];
+    size_t pairs = tau_pair_fused_plan(x, y, pre->base.digit, words);
+    if (!pairs) return 0;
+    tau_jac acc = {0, g->mont.r1, 0};
+    uint64_t na = 0, n3 = 0, nr = 0;
+    for (size_t i = pairs; i-- > 0;) {
+        if (acc.z) {
+            acc = jac_triple(g, acc);
+            n3++;
+        }
+        uint16_t word = words[i];
+        if (word == CA_TAU_PAIR_FUSED_ZERO) continue;
+        unsigned id = word & 127u, power = (word >> 7) & 3u;
+        if (id >= CA_TAU_PAIR_FUSED_REPS || power >= 3) return 0;
+        ca_elem point = pre->orbit[id];
+        if (point.w[2]) continue;
+        power = (power + (unsigned)(i % 3)) % 3;
+        nr += power != 0;
+        if (power == 1)
+            point.w[0] = fm(g, pre->base.beta, point.w[0]);
+        else if (power == 2)
+            point.w[0] = fm(g, pre->base.beta2, point.w[0]);
+        int negative = ((word & 512u) != 0) != ((i & 1) != 0);
+        if (negative && point.w[1]) point.w[1] = g->p - point.w[1];
+        acc = jac_add_mixed(g, acc, &point);
+        na++;
+    }
+    jac_to_affine(g, out, acc);
+    if (triples) *triples = n3;
+    if (adds) *adds = na;
+    if (rotations) *rotations = nr;
+    return 1;
 }
 
 int ca_ec_tau4_pos_prepare(const ca_group *g, const ca_elem *point, ca_tau4_pos_precomp *out,
