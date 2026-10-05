@@ -1,0 +1,46 @@
+name: cairn-seed
+
+# Rents the cairn seed pod. The Runpod key lives in this repository's
+# Actions secrets; the cairn repo does not have it. Push to this branch
+# runs it once. workflow_dispatch runs it again. The cap inside create.py
+# deletes a quote above $0.10/hour.
+on:
+  push:
+    branches: [cursor/cairn-seed-launch-46c6]
+    paths: [".github/workflows/cairn-seed.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: cairn launcher
+        uses: actions/checkout@v4
+        with:
+          repository: aburan28/cairn
+          ref: cursor/cheap-runpod-seed-46c6
+          path: cairn
+
+      - name: rent the CPU pod
+        working-directory: cairn
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          set -euo pipefail
+          if python3 launch/runpod-seed/create.py; then
+            exit 0
+          fi
+          echo "community create did not keep a pod; trying secure cloud under the same cap"
+          CAIRN_SEED_CLOUD=SECURE python3 launch/runpod-seed/create.py
+
+      - name: keep the public key
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-out
+          path: cairn/launch/runpod-seed/out/
+          if-no-files-found: ignore
