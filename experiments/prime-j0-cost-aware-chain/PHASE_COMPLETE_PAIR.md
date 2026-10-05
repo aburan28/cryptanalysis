@@ -93,3 +93,44 @@ python3 experiments/prime-j0-cost-aware-chain/make_phase_complete_pair_inputs.py
 ```
 
 Append the held-out result below without changing the protocol above.
+
+## Frozen-panel operation result (2026-10-05)
+
+The disjointness audit confirmed 32,768 unique curve-scalars absent from all
+six pinned earlier fixture manifests. The native evaluator passed generic
+output and exact recode checks for every input; all 726 prepared exact points
+per case matched generic scalar multiplication. The direct curve test passed
+2,291,922 checks, including identity and small-order controls. The complete
+local CTest suite passed 15/15. An optional address/undefined-behavior
+sanitizer build succeeded, but its full curve test was stopped after more
+than seven minutes of severe host contention and has no pass result. The
+[raw receipt](phase-complete-pair-panel.json)
+retains the paired commands, statuses, outputs, operation counts, exploratory
+local timings, and source/binary hashes.
+
+Each score covers 4,096 public scalar multiplications and uses the frozen
+`10 × triples + 16 × mixed additions + rotations` model. The two arms have
+identical triples and mixed additions on every case; the complete table
+removes all recorded online rotations. The model excludes online recoder
+arithmetic and point-dependent preparation.
+
+| Curve and point | 121-orbit score | Complete-table score | Modeled saving |
+| --- | ---: | ---: | ---: |
+| glv-j0-32, P | 439,025 | 432,036 | 1.59% |
+| glv-j0-32, 37P | 439,568 | 432,514 | 1.60% |
+| glv-j0-32, 101P | 439,206 | 432,168 | 1.60% |
+| glv-j0-32, 103P | 439,579 | 432,544 | 1.60% |
+| j0-56, P | 1,139,921 | 1,121,042 | 1.66% |
+| j0-56, 37P | 1,139,990 | 1,121,190 | 1.65% |
+| j0-56, 101P | 1,141,683 | 1,122,790 | 1.65% |
+| j0-56, 103P | 1,140,982 | 1,122,230 | 1.64% |
+
+All eight cases passed the prospective operation gate. Per prepared point,
+the complete table has the same 103 extra mixed additions and two total
+preparation inversions as the orbit table; setup rotations increase from
+148 to 390. The affine table grows from 3,872 to 23,232 bytes, and the full
+prepared structure from 4,976 to 24,336 bytes. Both arms use the same
+33,289-byte generated policy. Their benchmark binary retains earlier arms,
+so these sizes describe active arm data rather than the whole binary.
+There is no qualified isolation receipt, calibrated CPU timing ratio,
+single-target rho solve, or academic novelty claim for this format.

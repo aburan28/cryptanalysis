@@ -11,12 +11,15 @@ def make(args):
     experiment = root / "experiments" / "prime-j0-cost-aware-chain"
     atlas = args.candidate_arm == "atlas"
     pair_fused = args.candidate_arm == "tail-pair-fused"
+    pair_complete = args.candidate_arm == "tail-pair-complete"
     tail_gated = args.candidate_arm == "tail-oracle-gated"
-    tail_residue = args.candidate_arm in ("tail-double-residue", "tail-pair-fused")
+    tail_residue = args.candidate_arm in ("tail-double-residue", "tail-pair-fused",
+                                          "tail-pair-complete")
     tail_fold = args.candidate_arm in ("tail-double-fold", "tail-double-residue",
-                                       "tail-pair-fused")
+                                       "tail-pair-fused", "tail-pair-complete")
     tail_double = args.candidate_arm in ("tail-double", "tail-double-fold",
-                                         "tail-double-residue", "tail-pair-fused")
+                                         "tail-double-residue", "tail-pair-fused",
+                                         "tail-pair-complete")
     tail = args.candidate_arm == "tail-oracle" or tail_gated or tail_double
     orbit = args.candidate_arm == "fused-orbit-batch128"
     adapt2 = args.candidate_arm == "fused-hot-adapt2-batch128"
@@ -45,12 +48,15 @@ def make(args):
         raise ValueError("--reference-arm is unsupported for this candidate")
     if pair_fused and args.reference_arm and args.reference_arm != "tail-double-residue":
         raise ValueError("tail-pair-fused requires tail-double-residue as reference")
-    if tail_fold and not pair_fused and args.reference_arm and args.reference_arm not in (
+    if pair_complete and args.reference_arm and args.reference_arm != "tail-pair-fused":
+        raise ValueError("tail-pair-complete requires tail-pair-fused as reference")
+    if tail_fold and not pair_fused and not pair_complete and args.reference_arm and args.reference_arm not in (
             ("tail-double", "tail-double-fold") if tail_residue else ("tail-double",)):
         raise ValueError("folded two-digit arms require a two-digit alternate reference")
     if tail_double and not tail_fold and args.reference_arm and args.reference_arm != "tail-oracle-gated":
         raise ValueError("tail-double only supports tail-oracle-gated as its alternate reference")
-    default_prefix = ("tail-pair-fused" if pair_fused else
+    default_prefix = ("phase-complete-pair" if pair_complete else
+                      "tail-pair-fused" if pair_fused else
                       "tail-double" if tail_double else
                       "tail-gated-v2" if tail_gated else "tail" if tail else
                       "orbit-graph" if graph or packed or wavefront else "tapered" if tapered else
@@ -126,7 +132,7 @@ def make(args):
     if tail_residue:
         artifacts += [experiment / "make_tau_tail_double_residue.py",
                       root / "src" / "generated" / "tau_tail_double_residue.h"]
-    if pair_fused:
+    if pair_fused or pair_complete:
         artifacts += [experiment / "TAIL_PAIR_FUSED.md",
                       experiment / "make_tau_pair_fused.py",
                       experiment / "screen_tau_pair_fused.py",
@@ -135,6 +141,13 @@ def make(args):
                       experiment / "check_tail_pair_fused_panel.py",
                       experiment / "tail-pair-fused-panel.json",
                       root / "src" / "generated" / "tau_pair_fused.h"]
+    if pair_complete:
+        artifacts += [experiment / "PHASE_COMPLETE_PAIR.md",
+                      experiment / "screen_phase_complete_pair.py",
+                      experiment / "phase-complete-pair-screen.json",
+                      experiment / "make_phase_complete_pair_inputs.py",
+                      experiment / "check_phase_complete_pair_panel.py",
+                      experiment / "phase-complete-pair-panel.json"]
     if fused:
         artifacts += [experiment / "FUSED_TAU_PAIRS.md",
                       bench.parent / "CMakeCache.txt",
@@ -229,7 +242,8 @@ def make(args):
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
     cases = []
-    default_reference = ("tail-double-residue" if pair_fused else
+    default_reference = ("tail-pair-fused" if pair_complete else
+                         "tail-double-residue" if pair_fused else
                          "tapered-residue-packed-batch128" if wavefront else
                          "tapered-residue-graph-batch128" if packed else
                          "tapered-residue-orbit-batch128" if graph else
@@ -328,14 +342,15 @@ if __name__ == "__main__":
         "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128",
         "tapered-residue-packed-batch128",
         "tapered-residue-wavefront-batch128", "tail-oracle", "tail-oracle-gated",
-        "tail-double", "tail-double-fold", "tail-double-residue", "tail-pair-fused"),
+        "tail-double", "tail-double-fold", "tail-double-residue", "tail-pair-fused",
+        "tail-pair-complete"),
                         default="cost")
     parser.add_argument("--reference-arm", choices=(
         "fused-hot-batch128", "fused-hot-adapt2-batch128",
         "fused-hot-steer-batch128", "fused-hot-steer-gated2-batch128",
         "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128",
         "tapered-residue-packed-batch128", "tail-oracle-gated", "tail-double",
-        "tail-double-fold", "tail-double-residue"))
+        "tail-double-fold", "tail-double-residue", "tail-pair-fused"))
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)
