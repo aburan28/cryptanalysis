@@ -269,28 +269,26 @@ static int digit_for(ca_i128 a, ca_i128 b) {
 /* Table 5 in the paper: one seed in each orbit under the six units.  The
  * residue slots are (a mod 9, b mod 9), since tau^4 is associated to 9. */
 static int make_tau4_table(ca_tau4_digit table[81]) {
-  static const int8_t seeds[9][2] = {{1, 0}, {2, 0}, {4, 0}, {1, 1}, {2, 2},
-                                     {1, 2}, {2, 4}, {2, 1}, {1, -2}};
-  for (size_t i = 0; i < 81; i++)
-    table[i].seed = -1;
-  for (int s = 0; s < 9; s++) {
-    int a = seeds[s][0], b = seeds[s][1];
-    for (int power = 0; power < 3; power++) {
-      for (int sign = -1; sign <= 1; sign += 2) {
-        int x = sign * a, y = sign * b;
-        int xm = (x % 9 + 9) % 9, ym = (y % 9 + 9) % 9;
-        int slot = 9 * xm + ym;
-        if (xm % 3 == 0 || table[slot].seed >= 0)
-          return 0;
-        table[slot] = (ca_tau4_digit){(int8_t)x, (int8_t)y, (int8_t)s,
-                                      (int8_t)power, (int8_t)sign};
-      }
-      /* omega * (a+b*tau) = (a+3b) + (-a-2b)*tau. */
-      int next_a = a + 3 * b, next_b = -a - 2 * b;
-      a = next_a;
-      b = next_b;
+    static const int seeds[9][2] = {{1, 0}, {2, 0}, {4, 0}, {1, 1}, {2, 2},
+                                    {1, 2}, {2, 4}, {2, 1}, {1, -2}};
+    for (size_t i = 0; i < 81; i++) table[i].seed = -1;
+    for (int s = 0; s < 9; s++) {
+        int a = seeds[s][0], b = seeds[s][1];
+        for (int power = 0; power < 3; power++) {
+            for (int sign = -1; sign <= 1; sign += 2) {
+                int x = sign * a, y = sign * b;
+                int xm = (x % 9 + 9) % 9, ym = (y % 9 + 9) % 9;
+                int slot = 9 * xm + ym;
+                if (xm % 3 == 0 || table[slot].seed >= 0) return 0;
+                table[slot] =
+                    (ca_tau4_digit){(int8_t)x, (int8_t)y, (int8_t)s, (int8_t)power, (int8_t)sign};
+            }
+            /* omega * (a+b*tau) = (a+3b) + (-a-2b)*tau. */
+            int next_a = a + 3 * b, next_b = -a - 2 * b;
+            a = next_a;
+            b = next_b;
+        }
     }
-  }
   for (int x = 0; x < 9; x++) {
     if (x % 3 == 0)
       continue;
@@ -364,57 +362,49 @@ static size_t gen_tau4_digits_fast(ca_i128 wide_x, ca_i128 wide_y,
 /* Four width-4 decisions in one lookup.  Congruence modulo 81 preserves the
  * first four digits because 81 is associated to tau^8.  The correction is
  * the exact contribution of those digits, not a representative modulo 81. */
-static size_t gen_tau4_digits_atlas(ca_i128 wide_x, ca_i128 wide_y,
-                                    const ca_tau4_digit table[81],
-                                    uint8_t digits[256]) {
-  const ca_i128 limit = (ca_i128)1 << 55;
-  if (wide_x <= -limit || wide_x >= limit || wide_y <= -limit ||
-      wide_y >= limit)
-    return gen_tau4_digits(wide_x, wide_y, table, digits);
-  int64_t x = (int64_t)wide_x, y = (int64_t)wide_y;
-  size_t nd = 0;
-  while (x || y) {
-    if (nd > 252)
-      return 0;
-    int ax = (int)((x % 81 + 81) % 81);
-    int by = (int)((y % 81 + 81) % 81);
-    ca_tau4_atlas_pattern p =
-        ca_tau4_atlas_patterns[ca_tau4_atlas_index[81 * ax + by]];
-    for (size_t j = 0; j < 4; j++)
-      digits[nd + j] = j == p.position ? p.slot : 255;
-    nd += 4;
-    int64_t a = x - p.correction_a, b = y - p.correction_b;
-    int64_t nx = a + 3 * b, ny = -a - 2 * b;
-    if (nx % 9 || ny % 9)
-      return 0;
-    x = nx / 9;
-    y = ny / 9;
-  }
-  while (nd && digits[nd - 1] == 255)
-    nd--;
-  return nd;
+static size_t gen_tau4_digits_atlas(ca_i128 wide_x, ca_i128 wide_y, const ca_tau4_digit table[81],
+                                    uint8_t digits[256])
+{
+    const ca_i128 limit = (ca_i128)1 << 55;
+    if (wide_x <= -limit || wide_x >= limit || wide_y <= -limit || wide_y >= limit)
+        return gen_tau4_digits(wide_x, wide_y, table, digits);
+    int64_t x = (int64_t)wide_x, y = (int64_t)wide_y;
+    size_t nd = 0;
+    while (x || y) {
+        if (nd > 252) return 0;
+        int ax = (int)((x % 81 + 81) % 81);
+        int by = (int)((y % 81 + 81) % 81);
+        ca_tau4_atlas_pattern p = ca_tau4_atlas_patterns[ca_tau4_atlas_index[81 * ax + by]];
+        for (size_t j = 0; j < 4; j++) digits[nd + j] = j == p.position ? p.slot : 255;
+        nd += 4;
+        int64_t a = x - p.correction_a, b = y - p.correction_b;
+        int64_t nx = a + 3 * b, ny = -a - 2 * b;
+        if (nx % 9 || ny % 9) return 0;
+        x = nx / 9;
+        y = ny / 9;
+    }
+    while (nd && digits[nd - 1] == 255) nd--;
+    return nd;
 }
 
-int ca_ec_tau4_recode_compare(int64_t x, int64_t y) {
-  ca_tau4_digit table[81];
-  uint8_t baseline[256], atlas[256];
-  if (!make_tau4_table(table))
-    return 0;
-  size_t a = gen_tau4_digits_fast(x, y, table, baseline);
-  size_t b = gen_tau4_digits_atlas(x, y, table, atlas);
-  return (a || !(x || y)) && a == b && memcmp(baseline, atlas, a) == 0;
+int ca_ec_tau4_recode_compare(int64_t x, int64_t y)
+{
+    ca_tau4_digit table[81];
+    uint8_t baseline[256], atlas[256];
+    if (!make_tau4_table(table)) return 0;
+    size_t a = gen_tau4_digits_fast(x, y, table, baseline);
+    size_t b = gen_tau4_digits_atlas(x, y, table, atlas);
+    return (a || !(x || y)) && a == b && memcmp(baseline, atlas, a) == 0;
 }
 
-int ca_ec_tau4_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k) {
-  if (!pre || !pre->g)
-    return 0;
-  ca_i128 x, y;
-  reduce_with_lattice((tau_vec){pre->v1x, pre->v1y},
-                      (tau_vec){pre->v2x, pre->v2y}, pre->det,
-                      k % pre->g->order, &x, &y);
-  if (x < INT64_MIN || x > INT64_MAX || y < INT64_MIN || y > INT64_MAX)
-    return 0;
-  return ca_ec_tau4_recode_compare((int64_t)x, (int64_t)y);
+int ca_ec_tau4_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k)
+{
+    if (!pre || !pre->g) return 0;
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
+                        k % pre->g->order, &x, &y);
+    if (x < INT64_MIN || x > INT64_MAX || y < INT64_MIN || y > INT64_MAX) return 0;
+    return ca_ec_tau4_recode_compare((int64_t)x, (int64_t)y);
 }
 
 /* Search the same 25 lattice representatives as reduce_with_lattice, but
@@ -531,77 +521,64 @@ int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point,
   return 1;
 }
 
-static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre,
-                                  ca_elem *out, uint64_t k, uint64_t *triples,
-                                  uint64_t *adds, uint64_t *rotations,
-                                  int recoder) {
-  if (!g || !pre || !out || pre->g != g)
-    return 0;
-  if (triples)
-    *triples = 0;
-  if (adds)
-    *adds = 0;
-  if (rotations)
-    *rotations = 0;
-  if (pre->identity || k % g->order == 0) {
-    *out = (ca_elem){{0, 0, 1, 0}};
-    return 1;
-  }
-  k %= g->order;
-  uint8_t digits[256];
-  size_t nd;
-  if (recoder == 1) {
-    nd = reduce_with_lattice_cost((tau_vec){pre->v1x, pre->v1y},
-                                  (tau_vec){pre->v2x, pre->v2y}, pre->det, k,
-                                  pre->digit, digits);
-  } else {
-    ca_i128 x, y;
-    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y},
-                        (tau_vec){pre->v2x, pre->v2y}, pre->det, k, &x, &y);
-    nd = recoder == 2 ? gen_tau4_digits_atlas(x, y, pre->digit, digits)
-                      : gen_tau4_digits_fast(x, y, pre->digit, digits);
-  }
-  if (!nd)
-    return 0;
-  tau_jac acc = {0, g->mont.r1, 0};
-  uint64_t na = 0, n3 = 0, nr = 0;
-  size_t nq = (nd + 1) / 2;
-  for (size_t qi = nq; qi-- > 0;) {
-    if (acc.z) {
-      acc = jac_triple(g, acc);
-      n3++;
+static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
+                                  uint64_t k, uint64_t *triples, uint64_t *adds,
+                                  uint64_t *rotations, int recoder)
+{
+    if (!g || !pre || !out || pre->g != g) return 0;
+    if (triples) *triples = 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (pre->identity || k % g->order == 0) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
     }
-    size_t even = 2 * qi, odd = even + 1;
-    int has_odd = odd < nd && digits[odd] != 255;
-    int slot = has_odd ? digits[odd] : digits[even];
-    if (slot == 255)
-      continue;
-    if (has_odd && digits[even] != 255)
-      return 0;
-    ca_tau4_digit d = pre->digit[slot];
-    ca_elem seed = has_odd ? pre->tau_seed[d.seed] : pre->seed[d.seed];
-    if (seed.w[2])
-      continue;
-    int power = (d.power + (int)(qi % 3)) % 3;
-    int sign = d.sign * ((qi & 1) ? -1 : 1);
-    nr += power != 0;
-    if (power == 1)
-      seed.w[0] = fm(g, pre->beta, seed.w[0]);
-    else if (power == 2)
-      seed.w[0] = fm(g, pre->beta2, seed.w[0]);
-    if (sign < 0 && seed.w[1])
-      seed.w[1] = g->p - seed.w[1];
-    acc = jac_add_mixed(g, acc, &seed);
-    na++;
-  }
-  jac_to_affine(g, out, acc);
-  if (triples)
-    *triples = n3;
-  if (adds)
-    *adds = na;
-  if (rotations)
-    *rotations = nr;
-  return 1;
+    k %= g->order;
+    uint8_t digits[256];
+    size_t nd;
+    if (recoder == 1) {
+        nd = reduce_with_lattice_cost((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y},
+                                      pre->det, k, pre->digit, digits);
+    } else {
+        ca_i128 x, y;
+        reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
+                            k, &x, &y);
+        nd = recoder == 2 ? gen_tau4_digits_atlas(x, y, pre->digit, digits)
+                          : gen_tau4_digits_fast(x, y, pre->digit, digits);
+    }
+    if (!nd) return 0;
+    tau_jac acc = {0, g->mont.r1, 0};
+    uint64_t na = 0, n3 = 0, nr = 0;
+    size_t nq = (nd + 1) / 2;
+    for (size_t qi = nq; qi-- > 0;) {
+        if (acc.z) {
+            acc = jac_triple(g, acc);
+            n3++;
+        }
+        size_t even = 2 * qi, odd = even + 1;
+        int has_odd = odd < nd && digits[odd] != 255;
+        int slot = has_odd ? digits[odd] : digits[even];
+        if (slot == 255) continue;
+        if (has_odd && digits[even] != 255) return 0;
+        ca_tau4_digit d = pre->digit[slot];
+        ca_elem seed = has_odd ? pre->tau_seed[d.seed] : pre->seed[d.seed];
+        if (seed.w[2]) continue;
+        int power = (d.power + (int)(qi % 3)) % 3;
+        int sign = d.sign * ((qi & 1) ? -1 : 1);
+        nr += power != 0;
+        if (power == 1)
+            seed.w[0] = fm(g, pre->beta, seed.w[0]);
+        else if (power == 2)
+            seed.w[0] = fm(g, pre->beta2, seed.w[0]);
+        if (sign < 0 && seed.w[1]) seed.w[1] = g->p - seed.w[1];
+        acc = jac_add_mixed(g, acc, &seed);
+        na++;
+    }
+    jac_to_affine(g, out, acc);
+    if (triples) *triples = n3;
+    if (adds) *adds = na;
+    if (rotations) *rotations = nr;
+    return 1;
 }
 
 int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre,
@@ -616,14 +593,12 @@ int ca_ec_tau4_mul_prepared_cost(const ca_group *g, const ca_tau4_precomp *pre,
   return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, NULL, 1);
 }
 
-int ca_ec_tau4_mul_prepared_profile(const ca_group *g,
-                                    const ca_tau4_precomp *pre, ca_elem *out,
-                                    uint64_t k, int recoder, uint64_t *triples,
-                                    uint64_t *adds, uint64_t *rotations) {
-  if (recoder < 0 || recoder > 2)
-    return 0;
-  return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, rotations,
-                                recoder);
+int ca_ec_tau4_mul_prepared_profile(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
+                                    uint64_t k, int recoder, uint64_t *triples, uint64_t *adds,
+                                    uint64_t *rotations)
+{
+    if (recoder < 0 || recoder > 2) return 0;
+    return tau4_mul_prepared_impl(g, pre, out, k, triples, adds, rotations, recoder);
 }
 
 int ca_ec_mul_tau4(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
@@ -787,21 +762,20 @@ int ca_ec_mul_tau2(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
   ca_i128 x, y;
   if (!reduce_scalar(g->order, lambda_omega, k, &x, &y))
     return 0;
-  int8_t digits[256];
+  int digits[256];
   size_t nd = 0;
   while (x || y) {
-    if (nd == sizeof(digits))
-      return 0;
-    int d = digit_for(x, y);
-    digits[nd++] = (int8_t)d;
-    if (d) {
-      /* In the tau basis: omega=1-tau, omega^2=-2+tau. */
-      const int dx[4] = {0, 1, 1, -2};
-      const int dy[4] = {0, 0, -1, 1};
-      int sign = d < 0 ? -1 : 1, j = d < 0 ? -d : d;
-      x -= sign * dx[j];
-      y -= sign * dy[j];
-    }
+      if (nd == sizeof(digits) / sizeof(digits[0])) return 0;
+      int d = digit_for(x, y);
+      digits[nd++] = d;
+      if (d) {
+          /* In the tau basis: omega=1-tau, omega^2=-2+tau. */
+          const int dx[4] = {0, 1, 1, -2};
+          const int dy[4] = {0, 0, -1, 1};
+          int sign = d < 0 ? -1 : 1, j = d < 0 ? -d : d;
+          x -= (ca_i128)sign * dx[j];
+          y -= (ca_i128)sign * dy[j];
+      }
     ca_i128 old_x = x;
     if (old_x % 3)
       return 0;

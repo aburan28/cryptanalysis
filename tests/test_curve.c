@@ -78,12 +78,12 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point,
     uint64_t atlas_triples = UINT64_MAX, atlas_adds = UINT64_MAX;
     uint64_t base_rotations = UINT64_MAX, atlas_rotations = UINT64_MAX;
     ca_group_mul(g, &expected, point, k % g->order, NULL);
-    CHECK(ca_ec_tau4_mul_prepared_profile(
-        g, &pre, &baseline, k, 0, &base_triples, &base_adds, &base_rotations));
+    CHECK(ca_ec_tau4_mul_prepared_profile(g, &pre, &baseline, k, 0, &base_triples, &base_adds,
+                                          &base_rotations));
     CHECK(ca_ec_tau4_mul_prepared_cost(g, &pre, &selected, k, &cost_triples,
                                        &cost_adds));
-    CHECK(ca_ec_tau4_mul_prepared_profile(g, &pre, &atlas, k, 2, &atlas_triples,
-                                          &atlas_adds, &atlas_rotations));
+    CHECK(ca_ec_tau4_mul_prepared_profile(g, &pre, &atlas, k, 2, &atlas_triples, &atlas_adds,
+                                          &atlas_rotations));
     CHECK(ca_group_equal(g, &baseline, &expected));
     CHECK(ca_group_equal(g, &selected, &expected));
     CHECK(ca_group_equal(g, &atlas, &expected));
@@ -96,26 +96,25 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point,
   }
 }
 
-static void tau_atlas_recode_checks(void) {
-  const int offsets[] = {-162, -81, 0, 81, 162};
-  for (int a = 0; a < 81; a++)
-    for (int b = 0; b < 81; b++)
-      for (size_t i = 0; i < 5; i++)
-        for (size_t j = 0; j < 5; j++)
-          CHECK(ca_ec_tau4_recode_compare(a + offsets[i], b + offsets[j]));
-  ca_rng rng;
-  ca_rng_seed(&rng, UINT64_C(0x20261008));
-  for (int i = 0; i < 10000; i++) {
-    int64_t a = (int64_t)(ca_rng_next(&rng) >> 9);
-    int64_t b = (int64_t)(ca_rng_next(&rng) >> 9);
-    if (i & 1)
-      a = -a;
-    if (i & 2)
-      b = -b;
-    CHECK(ca_ec_tau4_recode_compare(a, b));
-  }
-  CHECK(ca_ec_tau4_recode_compare(INT64_MAX, INT64_MIN + 1));
-  CHECK(ca_ec_tau4_recode_compare(0, 0));
+static void tau_atlas_recode_checks(void)
+{
+    const int offsets[] = {-162, -81, 0, 81, 162};
+    for (int a = 0; a < 81; a++)
+        for (int b = 0; b < 81; b++)
+            for (size_t i = 0; i < 5; i++)
+                for (size_t j = 0; j < 5; j++)
+                    CHECK(ca_ec_tau4_recode_compare(a + offsets[i], b + offsets[j]));
+    ca_rng rng;
+    ca_rng_seed(&rng, UINT64_C(0x20261008));
+    for (int i = 0; i < 10000; i++) {
+        int64_t a = (int64_t)(ca_rng_next(&rng) >> 9);
+        int64_t b = (int64_t)(ca_rng_next(&rng) >> 9);
+        if (i & 1) a = -a;
+        if (i & 2) b = -b;
+        CHECK(ca_ec_tau4_recode_compare(a, b));
+    }
+    CHECK(ca_ec_tau4_recode_compare(INT64_MAX, INT64_MIN + 1));
+    CHECK(ca_ec_tau4_recode_compare(0, 0));
 }
 
 static void tau_cost_named(const char *name) {
@@ -154,65 +153,65 @@ static void tau_cost_boundary_curves(void) {
 
 int main(void)
 {
-  tau_atlas_recode_checks();
-  /* Detection from parameters, no group handling by the caller. */
-  ca_curve_info info;
-  CHECK(ca_curve_detect(67108933, 0, 7, 16773703, &info) == CA_OK);
-  CHECK(info.endo == CA_CURVE_ENDO_J0);
-  CHECK(info.aut_order == 6);
-  CHECK(info.beta != 0);
-  CHECK(info.lambda > 1);
+    tau_atlas_recode_checks();
+    /* Detection from parameters, no group handling by the caller. */
+    ca_curve_info info;
+    CHECK(ca_curve_detect(67108933, 0, 7, 16773703, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J0);
+    CHECK(info.aut_order == 6);
+    CHECK(info.beta != 0);
+    CHECK(info.lambda > 1);
 
-  CHECK(ca_curve_detect(67108933, 6, 0, 6712457, &info) == CA_OK);
-  CHECK(info.endo == CA_CURVE_ENDO_J1728);
-  CHECK(info.aut_order == 4);
+    CHECK(ca_curve_detect(67108933, 6, 0, 6712457, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J1728);
+    CHECK(info.aut_order == 4);
 
-  /* A generic curve has only the negation map. */
-  CHECK(ca_curve_detect(67108879, 2, 3, 0, &info) == CA_OK);
-  CHECK(info.endo == CA_CURVE_ENDO_NONE);
-  CHECK(info.aut_order == 2);
+    /* A generic curve has only the negation map. */
+    CHECK(ca_curve_detect(67108879, 2, 3, 0, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_NONE);
+    CHECK(info.aut_order == 2);
 
-  /* An unknown name is reported, not guessed. */
-  CHECK(ca_curve_by_name("nope", NULL, NULL, NULL, NULL) == CA_ERR_NOT_FOUND);
-  const char *names[8];
-  size_t nc = ca_curve_list(names, 8);
-  CHECK(nc >= 4);
+    /* An unknown name is reported, not guessed. */
+    CHECK(ca_curve_by_name("nope", NULL, NULL, NULL, NULL) == CA_ERR_NOT_FOUND);
+    const char *names[8];
+    size_t nc = ca_curve_list(names, 8);
+    CHECK(nc >= 4);
 
-  /* Named curves: the two GLV families and a generic one, all solved. */
-  by_name("glv-j0-26", CA_CURVE_ENDO_J0, 6, 2.2);
-  tau_cost_named("glv-j0-26");
-  tau_cost_named("glv-j0-32");
-  tau_cost_boundary_curves();
-  printf("cost-aware tau point cases=%d\n", tau_cost_cases);
-  by_name("glv-j1728-26", CA_CURVE_ENDO_J1728, 4, 2.5);
-  by_name("generic-26", CA_CURVE_ENDO_NONE, 2, 3.0);
-  /* Challenge corpus: anomalous (trace 1, negation only), a j = 0 twist
-   * whose subgroup is 1 mod 3, and a supersingular j = 0 curve.  p = 2 mod 3
-   * so the order-6 automorphism is not rational and must not be reported. */
-  /* Small orders: the walk's setup cost dominates sqrt(n), so S sits
-   * well above the large-group constants used above. */
-  by_name("pf-anomalous-b9", CA_CURVE_ENDO_NONE, 2, 40.0);
-  by_name("pf-j0-twist-b27", CA_CURVE_ENDO_J0, 6, 40.0);
-  by_name("pf-ssj0-b7", CA_CURVE_ENDO_NONE, 2, 40.0);
+    /* Named curves: the two GLV families and a generic one, all solved. */
+    by_name("glv-j0-26", CA_CURVE_ENDO_J0, 6, 2.2);
+    tau_cost_named("glv-j0-26");
+    tau_cost_named("glv-j0-32");
+    tau_cost_boundary_curves();
+    printf("cost-aware tau point cases=%d\n", tau_cost_cases);
+    by_name("glv-j1728-26", CA_CURVE_ENDO_J1728, 4, 2.5);
+    by_name("generic-26", CA_CURVE_ENDO_NONE, 2, 3.0);
+    /* Challenge corpus: anomalous (trace 1, negation only), a j = 0 twist
+     * whose subgroup is 1 mod 3, and a supersingular j = 0 curve.  p = 2 mod 3
+     * so the order-6 automorphism is not rational and must not be reported. */
+    /* Small orders: the walk's setup cost dominates sqrt(n), so S sits
+     * well above the large-group constants used above. */
+    by_name("pf-anomalous-b9", CA_CURVE_ENDO_NONE, 2, 40.0);
+    by_name("pf-j0-twist-b27", CA_CURVE_ENDO_J0, 6, 40.0);
+    by_name("pf-ssj0-b7", CA_CURVE_ENDO_NONE, 2, 40.0);
 
-  /* The endomorphism must not change the answer: cross-check GLV against a
-   * plain solve on the same instance. */
-  uint64_t p, a, b, order;
-  ca_curve_by_name("glv-j0-26", &p, &a, &b, &order);
-  ca_group g;
-  CHECK(ca_curve_group(&g, p, a, b, order, &info) == CA_OK);
-  ca_elem gen, h;
-  CHECK(ca_group_find_generator(&g, &gen, 1) == CA_OK);
-  uint64_t x = 12345678 % order;
-  ca_group_mul(&g, &h, &gen, x, NULL);
-  uint64_t got = 0;
-  CHECK(ca_curve_solve(&g, &gen, &h, 3, &got, &info, NULL) == CA_OK);
-  CHECK_EQ_U64(got, x);
-  /* identity target */
-  ca_elem id;
-  ca_group_identity(&g, &id);
-  CHECK(ca_curve_solve(&g, &gen, &id, 3, &got, NULL, NULL) == CA_OK);
-  CHECK_EQ_U64(got, 0);
+    /* The endomorphism must not change the answer: cross-check GLV against a
+     * plain solve on the same instance. */
+    uint64_t p, a, b, order;
+    ca_curve_by_name("glv-j0-26", &p, &a, &b, &order);
+    ca_group g;
+    CHECK(ca_curve_group(&g, p, a, b, order, &info) == CA_OK);
+    ca_elem gen, h;
+    CHECK(ca_group_find_generator(&g, &gen, 1) == CA_OK);
+    uint64_t x = 12345678 % order;
+    ca_group_mul(&g, &h, &gen, x, NULL);
+    uint64_t got = 0;
+    CHECK(ca_curve_solve(&g, &gen, &h, 3, &got, &info, NULL) == CA_OK);
+    CHECK_EQ_U64(got, x);
+    /* identity target */
+    ca_elem id;
+    ca_group_identity(&g, &id);
+    CHECK(ca_curve_solve(&g, &gen, &id, 3, &got, NULL, NULL) == CA_OK);
+    CHECK_EQ_U64(got, 0);
 
-  TEST_MAIN_END();
+    TEST_MAIN_END();
 }
