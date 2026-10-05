@@ -88,7 +88,8 @@ Recoding may outweigh every saved group operation on these small curves.
 
 Before a held-out native comparison, freeze the exact selector and its
 implementation, disjoint scalar fixture, paired arm order, operation and
-memory accounting, and correctness checks in a separate prospective protocol.
+memory accounting, and correctness checks in a
+[separate prospective protocol](GLOBAL_PAIR_NATIVE_PROTOCOL.md).
 Charge online recoding, point lookup, group operations, and output conversion
 inside the same timed interval for both arms. Preserve point-table preparation
 separately. Use host-level isolation receipts for any CPU speedup claim.

@@ -79,6 +79,18 @@ int ca_ec_tau_pair_complete_recode_verify_scalar(const ca_tau_pair_complete_prec
                                                  uint64_t k);
 int ca_ec_tau_pair_complete_prepare_verify(const ca_tau_pair_complete_precomp *pre);
 size_t ca_ec_tau_pair_complete_static_bytes(void);
+/* Frozen exact-pair tail with canonical or width-one high-order search. */
+int ca_ec_tau_pair_global_recode_words(const ca_tau_pair_complete_precomp *pre, uint64_t k,
+                                        int beam, uint16_t words[128], size_t *count,
+                                        uint64_t *trials, uint64_t *states,
+                                        uint64_t *fallbacks);
+int ca_ec_tau_pair_global_recode_verify_scalar(const ca_tau_pair_complete_precomp *pre,
+                                                uint64_t k, int beam);
+int ca_ec_tau_pair_global_mul_profile(const ca_group *g, const ca_tau_pair_complete_precomp *pre,
+                                       ca_elem *out, uint64_t k, int beam, uint64_t *triples,
+                                       uint64_t *adds, uint64_t *trials, uint64_t *states,
+                                       uint64_t *fallbacks);
+size_t ca_ec_tau_pair_global_static_bytes(void);
 /* Private exhaustive/differential test hook for signed tau coordinates. */
 int ca_ec_tau4_recode_compare(int64_t x, int64_t y);
 int ca_ec_tau4_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k);
