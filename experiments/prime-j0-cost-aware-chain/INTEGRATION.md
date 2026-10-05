@@ -302,3 +302,20 @@ The temporary RunPod CPU-pod preflight in
 found cgroup v1, no isolated CPU partition, and no `nohz_full` CPUs. The pod
 was stopped and deleted before any timing panel. These operation results
 do not establish CPU speed or a complete one-target rho speedup.
+
+## Tapered complete residue-orbit follow-up
+
+The [tapered protocol](TAPERED_RESIDUE_ORBITS.md) was frozen in draft PR #287
+before its fresh inputs were generated. `make_tau_wide_orbits.py` produces a
+complete six-unit residue map for widths 8, 10, and 12. The native arm uses
+the fixed schedules `(10,10,10,10)` and `(12,12,12,8,8)` and one mixed
+addition per nonzero block. Its verified [tapered-panel.json](tapered-panel.json)
+records 16,384 generic-matching outputs, raw runs, and independent operation
+models. The new arm saves 3.76%–3.94% and 39.14%–39.16% online additions
+against `fused-hot-steer-gated2-batch128`, but setup additions grow from
+8,192 to 62,424 and 12,288 to 506,664. Prepared point tables grow from
+262,144 to 1,259,904 bytes and 393,216 to 8,573,280 bytes. The local
+`test_curve` passed 414,141 checks. Generate an isolated-host manifest using
+`make_isolated_manifest.py --candidate-arm tapered-residue-orbit-batch128`;
+the host must pass its isolation gate before any wall-time claim. The table
+cost precludes a present claim about one-target rho benefit.

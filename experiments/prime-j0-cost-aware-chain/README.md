@@ -159,3 +159,12 @@ multiplication and an independent operation model; it saves 1.72%–2.56%
 more mixed additions than carry steering alone while recoding a second
 representative on 5.96%–19.92% of scalars. A temporary RunPod CPU pod failed
 the host isolation gate, so CPU wall speed and rho impact remain unknown.
+
+The [tapered complete residue-orbit format](TAPERED_RESIDUE_ORBITS.md) uses
+large complete τ windows followed by narrow tail blocks. Its fresh
+16,384-output panel verifies exactly and saves 3.76%–3.94% online additions
+on the smaller subgroup and 39.14%–39.16% on the larger one versus gated
+dual steering. Preparation rises to 62,424 and 506,664 additions and the
+prepared point tables reach 1.26 MB and 8.57 MB. This is a reused-point
+batch diagnostic; isolated CPU speed and one-target rho benefit remain
+unmeasured.

@@ -101,4 +101,28 @@ int ca_ec_tau8_fused_mul_batch_profile(const ca_group *g, const ca_tau8_fused_pr
                                        uint64_t *output_inversions, uint64_t *fallbacks,
                                        uint64_t *second_recodes, uint64_t *steered_blocks);
 
+/* Complete residue-orbit tables with an exact narrow tail. Schedule 0 is
+ * (10,10,10,10), schedule 1 is (12,12,12,8,8). Public scalars only. */
+typedef struct ca_tau_wide_precomp {
+    ca_tau4_pos_precomp pos;
+    ca_elem *point;
+    size_t point_offset[6];
+    uint8_t width[5];
+    uint8_t position[5];
+    size_t blocks;
+    int schedule;
+} ca_tau_wide_precomp;
+
+int ca_ec_tau_wide_prepare(const ca_group *g, const ca_elem *point, int schedule,
+                           ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
+                           uint64_t *rotations, uint64_t *inversions);
+void ca_ec_tau_wide_clear(ca_tau_wide_precomp *pre);
+size_t ca_ec_tau_wide_entries(int schedule);
+size_t ca_ec_tau_wide_static_bytes(int schedule);
+size_t ca_ec_tau_wide_temp_bytes(int schedule);
+int ca_ec_tau_wide_mul_batch_profile(const ca_group *g, const ca_tau_wide_precomp *pre,
+                                     ca_elem *out, const uint64_t *scalars, size_t count,
+                                     size_t block_size, uint64_t *adds, uint64_t *rotations,
+                                     uint64_t *output_inversions, uint64_t *fallbacks);
+
 #endif

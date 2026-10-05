@@ -87,3 +87,31 @@ The screen also replayed 232 exact point results on two small j=0 subgroup
 controls. These savings exclude point-table construction and were obtained
 without a qualifying CPU host. They justify a native implementation and a
 fresh panel; they do not establish a wall-time improvement.
+
+## Fresh frozen operation panel
+
+Draft PR #287 contained the frozen protocol before `make_tapered_inputs.py`
+materialized any evaluation scalars. `tapered-inputs.json` fixes four new
+4,096-scalar workloads. `check_tapered_panel.py` alternated the two arms on
+each case, checked every output against its independently frozen generic
+digest, and independently predicted the new arm's additions, rotations,
+fallbacks, table entries, static map, setup additions and rotations, setup
+inversions, temporary memory, and scratch bytes. All 16,384 outputs and
+operation gates passed. Raw stdout, stderr, return codes, hashes, and local
+timings are preserved in `tapered-panel.json`; its timing claim is null.
+
+| Public point | Reference online adds | Tapered online adds | Saved | Reference / tapered setup adds |
+| --- | ---: | ---: | ---: | ---: |
+| glv-j0-32 generator | 8,502 | 8,182 | 3.76% | 8,192 / 62,424 |
+| glv-j0-32 37P | 8,519 | 8,183 | 3.94% | 8,192 / 62,424 |
+| j0-56 generator | 20,281 | 12,338 | 39.16% | 12,288 / 506,664 |
+| j0-56 37P | 20,286 | 12,346 | 39.14% | 12,288 / 506,664 |
+
+The new table occupies 1,259,904 point bytes on the smaller subgroup and
+8,573,280 on the larger, versus 262,144 and 393,216 reference point bytes.
+Its full prepared allocation is 1,297,968 and 8,611,344 bytes, respectively,
+with 275,568 and 2,510,688 additional static index/correction bytes. The
+larger setup and memory cost make this format unsuitable as an automatic
+one-target choice on present evidence. Its potential use is a reused public
+point with enough scalar calls to repay preparation; that break-even must be
+measured on a qualifying isolated host with a declared batch workload.
