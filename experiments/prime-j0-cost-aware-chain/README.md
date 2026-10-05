@@ -129,3 +129,5 @@ The fixed-base positional τ table is a separate candidate with its own
 prospective protocol and results in [POSITIONAL.md](POSITIONAL.md).
 The one-inversion table builder and its separate preparation metric are in
 [GLOBAL_BATCH.md](GLOBAL_BATCH.md).
+The block-normalized output format for public scalar batches is in
+[BATCH_OUTPUT.md](BATCH_OUTPUT.md).
