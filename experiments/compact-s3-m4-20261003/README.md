@@ -1562,15 +1562,31 @@ a relation-cost measurement. The [result table](q1431_guarded_span/README.md)
 and ledger retain failures, operation counts, and claim limits. Complete
 N131 `2^x` remains unknown.
 
+### Q1432 exact span-coefficient cache
+
+The [frozen Q1432 protocol](q1432_coefficient_cache/protocol.json) keeps
+Q1431's rejection and clause semantics while reusing pair-basis products,
+intermediate-keyed bilinear columns, and lazily computed linear columns.
+The [112-case native/Sage validation](q1432_coefficient_cache/cache_validation.json)
+matches the independent oracle and retains verified witnesses. Both controls
+verify; both ordinary N53/N83 searches still reach the 60-second cap without
+a relation. Total field multiplications fall to 1,457,636/1,296,699,
+including 905,700/349,603 filter multiplications and cache construction,
+from Q1431's 68,182,727/54,467,127. Retained cache payload lower bounds
+are 2.21/4.56 MB; the receipts also preserve peak RSS. The [result table](q1432_coefficient_cache/README.md)
+and [archive verification](q1432_coefficient_cache/verification.json) retain
+all four cells. These are different censored search prefixes on an unisolated
+host; no cost per useful relation, natural yield, or complete N131 `2^x`
+can be inferred.
+
 ## Next goal
 
-The immediate solver gate is to reuse Q1431's bilinear span columns for
-each exact intermediate `m`, because `γ_ij` does not depend on fixed leaf
-values. Charge cache construction and memory, then repeat the frozen
-ordinary N53/N83 targets with independently verified controls. A lower
-reverse-root count alone is insufficient; the total charged work must
-fall, or an ordinary relation must be found. If the cached filter cannot
-change the ordinary-query search economics, the next solver should build a
+The immediate solver gate is a longer preregistered unpinned N53 ordinary
+solve attempt with Q1432's exact cache. Q1301 proves this public target
+representable. A verified return would supply a real solver-cost point;
+another timeout supplies only a lower bound. The exact Q1325 N83 ordinary
+base still needs an independently verified relation before a growth fit.
+If the cached solver remains censored, the next solver should build a
 **compact target-conditioned pair-sum membership and witness method**. It
 must avoid the Q1425–Q1427 reverse-root
 rejection loop and the full quotient-pair index screened by Q1416 at roughly
