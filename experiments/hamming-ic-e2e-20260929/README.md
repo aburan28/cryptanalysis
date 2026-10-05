@@ -10,7 +10,10 @@ witness replay; two earlier exploratory panels are also retained. These are
 stage observations, not full DLP speedups. An exact, independently replayed
 [N83 weight-three geometry gate](N83_W3_GEOMETRY.md) finds 89,474 usable
 points and a rigorous four-sum support ceiling of about 1.10 in a million
-uniform subgroup targets. No N83 DLP or speedup was measured.
+uniform subgroup targets. The independent [N83 next-calculus screen](N83_NEXT_CALCULUS.md)
+measures deterministic W4 base expansions and ranks six-summand W3 ahead of
+five-summand hybrid and four-summand enlargement pilots by counting and
+root-index size. No N83 PDP, DLP, or speedup was measured.
 
 This experiment puts the factorized-convolution (FC) Hamming predicate from
 La Scala, Marchesin, and Tiwari's [*Hamming Ideals and Gröbner Bases for
