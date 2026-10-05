@@ -11,7 +11,8 @@ def make(args):
     experiment = root / "experiments" / "prime-j0-cost-aware-chain"
     atlas = args.candidate_arm == "atlas"
     tail_gated = args.candidate_arm == "tail-oracle-gated"
-    tail = args.candidate_arm == "tail-oracle" or tail_gated
+    tail_double = args.candidate_arm == "tail-double"
+    tail = args.candidate_arm == "tail-oracle" or tail_gated or tail_double
     orbit = args.candidate_arm == "fused-orbit-batch128"
     adapt2 = args.candidate_arm == "fused-hot-adapt2-batch128"
     gated = args.candidate_arm == "fused-hot-gated-batch128"
@@ -35,9 +36,12 @@ def make(args):
                                    "tapered-residue-graph-batch128",
                                    "tapered-residue-packed-batch128",
                                    "tapered-residue-wavefront-batch128")
-    if args.reference_arm and not (gated or gated2 or tapered):
-        raise ValueError("--reference-arm is only supported for gated or tapered candidates")
-    default_prefix = ("tail-gated-v2" if tail_gated else "tail" if tail else
+    if args.reference_arm and not (gated or gated2 or tapered or tail_double):
+        raise ValueError("--reference-arm is unsupported for this candidate")
+    if tail_double and args.reference_arm and args.reference_arm != "tail-oracle-gated":
+        raise ValueError("tail-double only supports tail-oracle-gated as its alternate reference")
+    default_prefix = ("tail-double" if tail_double else
+                      "tail-gated-v2" if tail_gated else "tail" if tail else
                       "orbit-graph" if graph or packed or wavefront else "tapered" if tapered else
                       "gated2-steer" if gated2 else
                       "steer" if steer else "gated" if gated else
@@ -89,6 +93,19 @@ def make(args):
                       experiment / "tail-gated-panel.json",
                       experiment / "tail-gated-v2-panel.json",
                       root / "src" / "generated" / "tau_tail_gate.h"]
+    if tail_double:
+        artifacts += [experiment / "TAIL_GATE.md", experiment / "TAIL_DOUBLE_PAIR.md",
+                      experiment / "make_tau_tail_gate.py",
+                      experiment / "make_tau_tail_double.py",
+                      experiment / "make_tail_double_inputs.py",
+                      experiment / "screen_tau_tail_double.py",
+                      experiment / "tail-double-screen.json",
+                      experiment / "check_tail_double_panel.py",
+                      experiment / "tail-double-panel.json",
+                      experiment / "tail-gated-v2-inputs.json",
+                      experiment / "tail-gated-v2-panel.json",
+                      root / "src" / "generated" / "tau_tail_gate.h",
+                      root / "src" / "generated" / "tau_tail_double.h"]
     if fused:
         artifacts += [experiment / "FUSED_TAU_PAIRS.md",
                       bench.parent / "CMakeCache.txt",
@@ -280,13 +297,14 @@ if __name__ == "__main__":
         "fused-hot-steer-batch128", "fused-hot-steer-gated2-batch128",
         "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128",
         "tapered-residue-packed-batch128",
-        "tapered-residue-wavefront-batch128", "tail-oracle", "tail-oracle-gated"),
+        "tapered-residue-wavefront-batch128", "tail-oracle", "tail-oracle-gated",
+        "tail-double"),
                         default="cost")
     parser.add_argument("--reference-arm", choices=(
         "fused-hot-batch128", "fused-hot-adapt2-batch128",
         "fused-hot-steer-batch128", "fused-hot-steer-gated2-batch128",
         "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128",
-        "tapered-residue-packed-batch128"))
+        "tapered-residue-packed-batch128", "tail-oracle-gated"))
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)
