@@ -211,3 +211,14 @@ it with `fused-batch128` on the same frozen inputs; its output passed the
 runner's schema check. Whether smaller cache footprint and setup overcome
 the added rotations requires a qualifying isolated Linux run, with
 target-dependent table setup charged to a one-target rho solve.
+
+## Budgeted hot-orbit proposal
+
+The [hot-orbit protocol](HOT_ORBIT_TABLE.md) combines the folded table with
+an exact positional miss path. Its [deterministic screen](screen_hot_orbits.py)
+selects 2,048 two-digit orbits from separate training scalar streams and
+records exploratory coverage in [hot-orbit-screen.json](hot-orbit-screen.json).
+The proposed table would cut the folded table's incremental point storage
+and pair-addition setup by about 58% while retaining most fused hits on the
+screened laws. No candidate C path or CPU wall-time result exists yet; the
+protocol fixes a fresh evaluation fixture for that next implementation.
