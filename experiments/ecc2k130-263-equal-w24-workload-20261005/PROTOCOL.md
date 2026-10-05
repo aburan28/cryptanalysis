@@ -20,16 +20,20 @@ four policies using the same two geometries:
 
 * `source`: the selected source `[4]`-projected W24 classes on the Koblitz
   curve;
-* `transported`: their exact forward-isogeny images on the normalized
-  descendant;
+* `transported`: their exact forward-isogeny images on the route's
+  unnormalized descendant codomain;
 * `descendant_native`: the selected native `[4]`-projected W24 classes on
-  the normalized descendant;
+  the normalized descendant, inverse-shifted onto the route's exact
+  unnormalized codomain before they are stored or assigned a curve ID;
 * `pullback`: the native classes returned to the source by the oriented
   dual and `263^(-1) mod r`.
 
 The route's codomain model has `a4=A`; normalize it by `(x,y) -> (x,y+A)`
 so `a4=0` and `b=a6+A^2`, exactly as in the W24 census. The inverse shift
-is the same. Check the forward kernel, dual kernel, model coefficients,
+is the same. The route's curve ID names the **unnormalized** model. Treat the
+normalized model solely as an intermediate construction model and never
+label its points with the route's curve ID. Check the forward kernel, dual
+kernel, model coefficients,
 generator transport, and both `263` composition identities before using
 the maps. The transport is a group isomorphism on the prime-order subgroup,
 so `source`/`transported` and `descendant_native`/`pullback` must later have
@@ -58,9 +62,10 @@ big-endian bytes; take the first 17 digest bytes, mask to 130 bits,
 and reject zero, values at least the exact subgroup order, and duplicate
 accepted scalars. The first 512 accepted values multiply the route's
 source generator. This is fixture construction outside any future target
-online interval. Store source public points and their normalized forward
-images in the workload; store the known fixture scalars separately for
-independent replay, and do not pass them to a PDP solver. Hash the
+online interval. Store source public points and their forward images on the
+route's exact unnormalized codomain in the workload; store the known fixture
+scalars separately for independent replay, and do not pass them to a PDP
+solver. Hash the
 sorted-key compact UTF-8 workload record excluding `workload_id` to form
 its 12-hex workload ID under `AGENTS.md`. Freeze the target count and
 sequence before measuring any PDP.
