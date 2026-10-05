@@ -72,29 +72,84 @@ paying for target queries. The existing N53 Rust index uses 64-bit field
 words; a N83 version also needs its 128-bit path and separate resource
 measurement.
 
+## Native W3 pair-root gate
+
+The [frozen W3 probe](n83_w3_pair_root_probe_protocol.json) checks the
+necessary N83 S3 pair-root kernel before an index build. Its 16-left and
+64-left [runs](runs/n83_w3_pair_root_probe_v1/receipt.json) completed; Sage
+independently replayed 64 sampled roots from each as exact group sums. The
+64-left kernel used 13.62 seconds of exploratory wall time. That met the
+protocol's projected 240-second gate, so the separate [full 539-left
+run](runs/n83_w3_pair_root_full_v1/receipt.json) executed all **24,113,243**
+pair states under a 300-second external limit. It returned two roots for
+every state and [64 sampled roots replayed](runs/n83_w3_pair_root_full_v1/left539_sage_replay.json)
+as exact group sums. The full kernel took 197.92 seconds internal wall time,
+198.18 seconds external wall time, and 83.84 seconds of child user CPU time
+on a contended Mac. These timings are exploratory. The samples all occur at
+the start of the enumeration, so the replay does not independently certify
+every state. No searchable index or ordinary-target query was built.
+
+## Fixed-offset search gate
+
+The exact [offset-cost screen](runs/n83_next_offset_cost_v1.json) analyzes
+one straightforward continuation of the N53 four-sum root index: try fixed,
+target-independent one-point offsets for a five-summand query, or two-point
+offsets for six summands, and search each residual with the same four-sum
+index. For a uniform subgroup target, at most `C(B+3,4)` of `r` residuals
+have a four-sum witness. A union bound therefore requires at least
+`ceil(r/(2 C(B+3,4)))` distinct fixed offsets before even 50% target
+coverage is possible. A failed exhaustive query scans all `83 K²` states.
+
+| Method | Necessary offsets for 50% coverage | States per complete miss | States in preceding misses for a median target |
+| --- | ---: | ---: | ---: |
+| W3, six summands | 452,684 | 24,113,243 | 10,915,655,180,969 |
+| W3 + 1,600 W4, five summands | 11,369 | 152,165,228 | 1,729,814,311,904 |
+| W3 + 2,000 W4, five summands | 6,403 | 202,766,427 | 1,298,110,665,654 |
+| W3 + 4,000 W4, five summands | 899 | 541,402,028 | 486,179,021,144 |
+
+The existing root query makes two target S3 calls per state on a full miss;
+even the 4,000-orbit option would make **972,358,042,288** such calls across
+the preceding misses at this 50% counting gate. These are exact counts for
+the specified fixed-offset and complete-scan scheme, **not** measured query
+times or a lower bound on all possible five- or six-summand algorithms. The
+existing N53 query samples one global orientation per state, so its actual
+coverage can be lower than the optimistic four-sum support ceiling. The
+full N83 root index, its memory, and any target query remain unmeasured.
+
+An earlier [N83 five-summand MITM trial](../pdp-scaling/five-sum-20260928/RESULTS.md)
+replayed a planted solution but found no ordinary relation on its 128-point
+subset; its full 130,604-point base required 8.53 billion unordered pair
+entries, above its memory cap. That is a different base and solver, not a
+yield measurement for the W3/W4 hybrid. It is evidence against assuming a
+plain quadratic pair table will rescue this screen.
+
 ## Decision and next gate
 
-1. **First pilot: W3, six summands.** It keeps the smallest measured base and
-   the smallest pair-index loop among the methods whose multiset count clears
-   the necessary gate. Build a bounded N83 point-decomposition feasibility
-   run with planted correctness controls and frozen ordinary public queries.
-   The principal risk is the extra two-summand search beyond the pair index;
-   the 294.78 ratio gives no algorithm or yield guarantee.
-2. **Backup: W3 plus 1,600–2,000 W4 mask orbits, five summands.** Its exact
-   base clears the counting gate with one fewer summand. The pair-index loop
-   is 6.3–8.4 times W3's, so measure memory and solver cost before building
-   a full relation matrix. The 1,000-orbit prefix remains below the counting
-   gate for direct ordinary targets.
-3. **Hold: W5-style four-summand enlargement.** Its minimum index loop is
-   orders of magnitude larger than either measured option. Reconsider only
-   with a materially different, bounded-memory index or a new structural
-   reduction, not by copying the N53 root table.
+1. **Best geometry to investigate: W3 plus 4,000 W4 mask orbits, five
+   summands.** It has a measured 423,964-point base, 2,554 folded columns,
+   and a five-sum multiset ratio of 47.21. Its fixed-offset root-index path
+   still has prohibitive exploratory work, so the next useful gate is a
+   bounded-memory algebraic or structurally different PDP on this *exact*
+   base, with planted controls and frozen ordinary public queries. A solver
+   that only handles a tiny subset does not promote it.
+2. **Smaller five-sum fallback: W3 plus 2,000 W4 orbits.** Its 259,458-point
+   base has a lower index state count, but only 4.05 five-point multisets
+   per subgroup element on average. Measure ordinary yield; that average
+   cannot certify target coverage.
+3. **Deprioritize W3 six-summand root-index offsets.** The full pair-root
+   kernel works on sampled controls, but the fixed-offset path needs at
+   least 452,684 residuals for the 50% counting gate. Revive six summands
+   only with an algorithm that avoids that scan. The 294.78 multiset ratio
+   alone is not a workable search method.
+4. **Hold W5-style four-summand enlargement.** Its minimum root-index loop
+   is about 952 times W3's before memory and query costs. A new compact or
+   distributed index design would need its own measured resource gate.
 
-These rankings are research priorities, not IC speedup claims. The next
-promotion gate is an independently replayed PDP pilot with ordinary-query
-status mix, failed attempts, time and memory limits, and planted controls
-reported separately. A complete one-target DLP and same-point rho comparison
-remain downstream.
+These are research priorities with `candidate_id: null`, not IC speedup
+claims. The next promotion gate is an independently replayed PDP pilot with
+ordinary-query status mix, failed attempts, time and memory limits, and
+planted controls reported separately. A complete one-target DLP and
+same-point rho comparison remain downstream.
 
 ## Reproduce
 
