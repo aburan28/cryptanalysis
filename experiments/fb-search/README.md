@@ -19,6 +19,62 @@ python3 trace_equation.py --n 19 --l 6 7 --out results/trace-equation.jsonl
 python3 -m pytest -q test_fb_search.py
 ```
 
+## Prior art first
+
+See [`PRIOR_ART.md`](PRIOR_ART.md). Most structural results here are already known:
+
+- The trace morphism and the trace-zero base are Kosters-Yeo 2015.
+- The linear two-point oracle and the `2^(n/3)` splitting are Courtois 2016. This repository's
+  [`../linearized-half-decomposition`](../linearized-half-decomposition/README.md) already
+  implements that oracle, with its linearization bound.
+- The online/precomputation exponent is Bernstein-Lange 2012.
+
+What this directory adds is measurement: exact cost models, the integrated one-target pipeline,
+and verified runs. It adds no new exponent.
+
+## The linear two-point oracle in the pipeline (`PDP2ht`)
+
+[`../pdp-degree-heuristics/htsolver.py`](../pdp-degree-heuristics/htsolver.py) is the
+linearized S_3 oracle, for an arbitrary subspace V:
+
+1. `p = x1 x2` is F_2-affine in `u = x1 + x2`.
+2. Projecting onto `F / V^(2)` gives `n - dim V^(2)` linear equations in `u` alone.
+3. Each solution `u` is split by one half-trace and checked for membership in V.
+
+It is a complete PDP solver: it finds exactly the decompositions in the exact pair table on every
+tested base (`test_halftrace.py`, and `halftrace.py check`). `monitor.collect --mode ht` uses it
+for collection and descent, and `--rerandomize walk` replaces the per-attempt scalar multiplication
+`Q + [a]G` by one addition, `Q + i [a0]G`. Over 3000 targets per base, the walk's mean attempt
+count matches `1/p_dec` within error.
+
+Beyond the linearization limit the search dimension is, measured on 54 bases
+(`results/halftrace-compare.jsonl`; the mean matches within 0.1 wherever it is positive):
+
+    max(0, dim V + dim V^(2) - n - 1 + [V in ker Tr]).
+
+The `+[V in ker Tr]` is the [KY15] trace row becoming vacuous. So once the dimension is positive,
+the trace-zero yield gain and the lost row cancel exactly. Since `dim V^(2) >= 2l - 1` for
+every subspace at prime n, the online cost is at least about `2^(n/3)`: this family cannot beat
+the [BL12] exponent.
+
+**Measured, one target per run** (`online-ht` suite, 30 runs, every IC answer and every paired rho
+verified, replay exact 30/30). The per-target operations match the model (median 0.999, pooled
+0.998). Full table: `results/online-ht-measured.md`. Best bases, in calibrated operations
+(predicted expectation, frozen calibration):
+
+| n | plain rho `sqrt(pi r/2)` | precomputation rho, Bernstein-Lange `1.77 r^(1/3)` | best `PDP2xl` online | best `PDP2ht` online (walk) |
+|---|---|---|---|---|
+| 19 | 5.3e7 | 1.05e7 | 2.2e9 (41x rho, 206x BL) | 1.44e8, geomtraceu l6 (2.7x rho, 14x BL) |
+| 23 | 2.6e8 | 3.26e7 | 9.0e9 (35x rho, 276x BL) | 4.44e8, geomtraceu l8 (1.7x rho, 14x BL) |
+
+- The oracle cuts the best online cost 15-20x against our Gröbner pipeline.
+- The gap to Bernstein-Lange stays at 14x at both sizes, as the shared exponent predicts.
+- The product-set criterion now dominates the base choice: random and kertrace bases, with
+  saturated `V^(2)`, are predicted to be 7-13x worse than the best progression at the same n.
+- Measured wall-time speedups over this host's Python rho reach a geometric mean of 1.75
+  (geomtraceu l8, n = 23). That number is exploratory: one target per run, an unisolated host, and
+  a rho whose per-call overhead its batch price omits. It is not a claim that IC beats rho.
+
 ## Single-target online objective (the AGENTS.md default)
 
 AGENTS.md makes one previously unseen target the default IC objective. The
@@ -136,7 +192,8 @@ The best ratio falls from 43 to 33 to 28.5 as `n` goes 19, 23, 41. At
 is within 2% of the exact yield wherever both exist, with successes planted as
 psi-compatible pair sums (their cost is within 0.5% of uniform-`D` successes).
 
-**The next bottleneck is the one successful attempt.** Its exhaustive
+**The next bottleneck was the one successful attempt** (resolved by `PDP2ht` above, which reads
+the solutions off a linear system instead of enumerating them). Its exhaustive
 enumeration costs `(N + 2) 2^(N-1)` at `N = 2l`: 1.3e12 rps at `n = 41, l = 13`,
 4.5 times the whole rho reference. It also caps `l` at 13, the 26-variable
 limit. The `l ≈ n/3` regime needs the solutions read from the Macaulay echelon

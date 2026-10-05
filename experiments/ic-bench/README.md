@@ -140,6 +140,9 @@ measure this implementation, not an asymptotic XL cost.
   for `T_online,1` (`online-selected.json`): the best `(l, seed)` per family at
   `n = 19` and 23, on workloads 1-3. That is 10 candidates and 30 runs. It is not
   gated in CI, and its wall times are exploratory on unisolated hosts.
+- `online-ht` is the same one-target protocol with the linearized two-point oracle (`--mode ht`,
+  stage code `PDP2ht`) and walk rerandomization (`Q + i[a0]G`, cell label `-ht-walk-`), for the
+  bases in `../fb-search/online-ht-selected.json`. That is 10 candidates and 30 runs, not gated.
 - `batch` is the long multi-target suite. It runs one `n=13,m=3` geomtrace
   candidate and one `n=19,m=2` geomtraceu candidate on **2^16 targets each**.
   A single receipt records every marginal target cost, so `amortize.py`
