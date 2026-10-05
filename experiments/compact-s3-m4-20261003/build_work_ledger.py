@@ -4206,6 +4206,39 @@ def main():
         "censored", "censored", "external_timeout", "external_timeout"]
     assert [row["solver_conflicts_reported"] for row in q1440_cells] == [
         1000001, 1000002, None, None]
+    q1441_dir = HERE / "q1441_full_scan_budget"
+    q1441_protocol_path = q1441_dir / "protocol.json"
+    q1441_result_path = q1441_dir / "result.json"
+    q1441_verification_path = q1441_dir / "verification.json"
+    q1441_protocol = json.loads(q1441_protocol_path.read_text())
+    q1441_result = json.loads(q1441_result_path.read_text())
+    q1441_verification = json.loads(q1441_verification_path.read_text())
+    assert q1441_protocol["proposal_id"] == q1441_result[
+        "proposal_id"] == "Q1441"
+    assert q1441_protocol["candidate_id"] is q1441_result[
+        "candidate_id"] is None
+    assert q1441_protocol["isogeny"] == q1441_result[
+        "isogeny"] == "none"
+    assert q1441_result["protocol_sha256"] == sha(q1441_protocol_path)
+    assert q1441_result["source_sha256"] == sha(q1441_dir / "screen.py")
+    assert q1441_verification["status"] == "passed"
+    assert q1441_verification["result_sha256"] == sha(q1441_result_path)
+    assert q1441_verification["protocol_sha256"] == sha(
+        q1441_protocol_path)
+    assert q1441_result["complete_solve_work_log2"] is None
+    assert q1441_result["challenge_dispatch_allowed"] is False
+    assert len(q1441_result["rows"]) == 4
+    assert q1441_result["rows"][0][
+        "actual_usable_points_B_before_folding"] == q1413_full[
+            "actual_usable_points_B_before_folding"]
+    assert q1441_result["rows"][0][
+        "minimum_queries_for_declared_policy"] == q1414_bound[
+            "query_bounds"]["rank_success_95_percent"][
+                "minimum_uniform_nonidentity_queries"]
+    assert all(row["actual_usable_points_B_before_folding"] is None
+               for row in q1441_result["rows"][1:])
+    assert all(row["one_action_scan_below_budget"] is False
+               for row in q1441_result["rows"][1:])
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -5442,6 +5475,30 @@ def main():
             "protocol_sha256": sha(q1440_protocol_path),
             "verification_sha256": sha(q1440_verification_path),
             "known_witness_verification_sha256": sha(q1440_witness_path),
+        },
+        "q1441_n131_full_base_scan_budget_screen": {
+            "proposal_id": "Q1441",
+            "candidate_id": None,
+            "curve_id": q1441_result["curve_id"],
+            "isogeny": "none",
+            "budget_abstract_work_units": q1441_result[
+                "budget_abstract_work_units"],
+            "work_unit": q1441_result["work_unit"],
+            "w6_query_policy": q1441_result["w6_query_policy"],
+            "w7_query_policy": q1441_result["w7_query_policy"],
+            "scan_policy": q1441_result["scan_policy"],
+            "matrix_scenario": q1441_result["matrix_scenario"],
+            "scope": q1441_result["scope"],
+            "rows": q1441_result["rows"],
+            "is_empirical_solver_stage_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "calibrated_field_operation_cost": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": q1441_result["decision"],
+            "protocol_sha256": sha(q1441_protocol_path),
+            "result_sha256": sha(q1441_result_path),
+            "verification_sha256": sha(q1441_verification_path),
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,

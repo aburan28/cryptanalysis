@@ -1719,6 +1719,25 @@ natural-yield or successful-cost measurements. The complete N131 `2^x`
 remains unknown. The next solver gate remains a target-conditioned method
 that obtains witnesses for both sparse pairs before a full pair assignment.
 
+### Q1441 N131 full-base-scan budget screen
+
+The [Q1441 frozen screen](q1441_full_scan_budget/README.md) puts a declared
+abstract work unit on a solver that traverses every usable factor-base point
+for each relation query. On the exact W≤6 base, Q1414's uniform-marginal
+95%-rank floor requires at least 209,828,278 queries. One full scan per
+query already costs `2^60.256` actions at one action per point; two actions
+per point exceed `2^61` before matrix, descent, or verification. On the
+conditional Q1437 W≤7 base, a one-row-per-query solver needs at least
+`ceil(K)` queries, and one full scan per query costs about `2^65.542`
+actions at the sample center. The result holds across Q1437's conditional
+Wilson endpoints under the same no-collision assumption.
+
+This excludes those specified full-scan families in the named abstract unit;
+it does not measure a decomposition, calibrate a field operation, or bound a
+compressed or multirow solver. Q1441 leaves complete N131 `2^x` null and
+strengthens the need for a target-conditioned witness method that avoids a
+base traversal on every query.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum

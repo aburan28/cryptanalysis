@@ -39,6 +39,14 @@ bound every possible factor base.
 | Conditional W≤7, one row/query, sample center | 452,809,356 | `2^65.542` | 0.0429 |
 | Conditional W≤7, one row/query, Wilson upper B/K | 455,449,278 | `2^65.559` | 0.0424 |
 
+To translate this screen into field-operation work, measure the direct
+scan's charge `c` in **field-operation equivalents per tested point**. If
+`c≥2`, the exact W≤6 uniform-query scan family exceeds `2^61` field
+operations. If `c≥1`, the conditional W≤7 one-row scan family exceeds it.
+No such `c` has been measured for a new target-conditioned solver, so these
+remain conditional implementation gates, not an unconditional field-operation
+lower bound.
+
 The [result](result.json) also shows an **optional matrix scenario**: if the
 Q1437 optimistic `4K²` logical row-action proxy were calibrated into the
 same abstract unit, subtracting it would leave about `2^31.612` actions per
@@ -61,6 +69,7 @@ screen calculation):
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1441_full_scan_budget/screen.py --freeze
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1441_full_scan_budget/screen.py --emit
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1441_full_scan_budget/screen.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1441_full_scan_budget/verify_budget.py
 ```
 
 The freeze and emit commands refuse to overwrite evidence. Use a fresh
