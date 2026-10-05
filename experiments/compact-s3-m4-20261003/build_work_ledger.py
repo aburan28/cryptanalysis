@@ -4696,6 +4696,99 @@ def main():
             "cpu_isolation_receipt": None,
             "receipt_sha256": sha(receipt_path),
         })
+    q1450_dir = HERE / "q1450_phi5_gauss"
+    q1450_protocol_path = q1450_dir / "protocol.json"
+    q1450_controls_path = q1450_dir / "controls.json"
+    q1450_verification_path = q1450_dir / "verification.json"
+    q1450_protocol = json.loads(q1450_protocol_path.read_text())
+    q1450_controls = json.loads(q1450_controls_path.read_text())
+    q1450_verification = json.loads(q1450_verification_path.read_text())
+    assert q1450_protocol["proposal_id"] == q1450_controls[
+        "proposal_id"] == q1450_verification["proposal_id"] == "Q1450"
+    assert q1450_protocol["candidate_id"] is q1450_verification[
+        "candidate_id"] is None
+    assert q1450_protocol["isogeny"] == q1450_verification[
+        "isogeny"] == "none"
+    assert q1450_protocol["point_decomposition_stage_code"] == "PDP4phi5"
+    assert q1450_controls["status"] == q1450_verification[
+        "status"] == "pass"
+    assert q1450_protocol["parent_q1449_protocol_sha256"] == sha(
+        q1449_protocol_path)
+    assert q1450_protocol["controls_sha256"] == sha(q1450_controls_path)
+    assert q1450_verification["protocol_sha256"] == sha(q1450_protocol_path)
+    assert q1450_verification["ordinary_n83_relation_measured"] is False
+    assert q1450_verification["complete_n131_log2_work"] is None
+    assert q1450_verification["challenge_run_admitted"] is False
+    assert [row["gaussian_matrices_used"] for row in q1450_controls[
+        "rows"]] == [8, 6]
+    q1450_rows = []
+    for n in (53, 83):
+        cell = q1450_protocol["cells"][str(n)]
+        matched = q1449_protocol["cells"][str(n)]
+        for name in ("curve_id", "factor_base_actual_B",
+                     "folded_columns_K",
+                     "factor_base_enumerated_set_sha256", "public_target",
+                     "workload_id", "target_preimage_x_count",
+                     "initial_xcnf_sha256", "xcnf_variables",
+                     "cnf_clauses", "native_xor_rows"):
+            assert cell[name] == matched[name], name
+        receipt_path = q1450_dir / f"runs/n{n}_ordinary/receipt.json"
+        stdout_path = q1450_dir / f"runs/n{n}_ordinary/attempt_000.stdout.txt"
+        receipt = json.loads(receipt_path.read_text())
+        stdout = stdout_path.read_text()
+        verified = next(row for row in q1450_verification["rows"]
+                        if row["degree_n"] == n)
+        assert verified["receipt_sha256"] == sha(receipt_path)
+        assert verified["status"] == receipt["status"] == "solver_censored"
+        assert receipt["protocol_sha256"] == sha(q1450_protocol_path)
+        assert receipt["cms_binary_sha256"] == q1450_protocol[
+            "cms_binary_sha256"]
+        assert receipt["verified_relation_count"] == 0
+        assert receipt["complete_n131_log2_work"] is None
+        assert len(receipt["attempts"]) == 1
+        attempt = receipt["attempts"][0]
+        assert attempt["solver_status"] == "external_timeout"
+        assert attempt["stdout_sha256"] == sha(stdout_path)
+        assert attempt["initial_gaussian_matrices_used"] > 0
+        progress = re.findall(r"^c rst\s+.*$", stdout, re.M)
+        assert progress
+        last_conflicts_rounded = progress[-1].split()[6]
+        assert last_conflicts_rounded.endswith("K")
+        q1450_rows.append({
+            "proposal_id": "Q1450", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4phi5",
+            "degree": n, "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "status": receipt["status"],
+            "attempt_count": len(receipt["attempts"]),
+            "gaussian_matrices_used": attempt[
+                "initial_gaussian_matrices_used"],
+            "last_progress_conflicts_rounded": last_conflicts_rounded,
+            "exact_final_solver_operation_counts": None,
+            "formula_build_wall_ns_exploratory": receipt[
+                "formula_build_wall_ns_exploratory"],
+            "solver_process_wall_ns_exploratory": receipt[
+                "solver_process_wall_ns_exploratory"],
+            "target_dependent_stage_wall_ns_exploratory": receipt[
+                "target_dependent_stage_wall_ns_exploratory"],
+            "archive_wall_ns_outside_stage": receipt[
+                "archive_wall_ns_outside_stage"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -6141,6 +6234,29 @@ def main():
             "controls_sha256": sha(q1449_controls_path),
             "verification_sha256": sha(q1449_verification_path),
         },
+        "q1450_phi5_bounded_gaussian_stage": {
+            "proposal_id": "Q1450", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4phi5",
+            "method": q1450_protocol["method"],
+            "controlled_variable": q1450_protocol["controlled_variable"],
+            "rows": q1450_rows,
+            "ordinary_N83_relation_measured": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "Bounded Gaussian matrices activate on both partial "
+                "controls and on both unpinned ordinary queries. The "
+                "ordinary cells nevertheless hit the external wall "
+                "safeguard without a model or verified relation, so no "
+                "natural rate or complete-work exponent follows."),
+            "protocol_sha256": sha(q1450_protocol_path),
+            "controls_sha256": sha(q1450_controls_path),
+            "verification_sha256": sha(q1450_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -6555,6 +6671,9 @@ def main():
                 "controls, but CryptoMiniSat uses zero Gaussian matrices "
                 "at its default column limit and both ordinary cells "
                 "reach the external timeout without a model; "
+                "Q1450 activates bounded Gaussian matrices at both "
+                "degrees, yet both ordinary cells still reach the "
+                "external timeout without a model; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
