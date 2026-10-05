@@ -1347,17 +1347,38 @@ The Q1415 protocol and result are first published together. This bounded
 negative run is exploratory; it was not a precommitted statistical selection
 test.
 
+### Q1419 N53/N83 balanced-S3 partial-pinning controls
+
+The [pre-registered Q1419 protocol](q1419_partial_pin/protocol.json) and
+[16-cell archive verification](q1419_partial_pin/verification.json) test the
+same balanced-S3 encoding on exact Q1301 N53 and Q1325 N83 bases. All cells
+are known satisfiable controls; none measures ordinary relation yield. Both
+fully locked cells return and verify the archived relation. Releasing only
+the two pair-intermediate x coordinates reaches one million conflicts at
+both degrees (15.382 and 19.653 exploratory solver seconds). Every N83
+cell beyond full lock is censored under the 60-second/one-million-conflict
+caps. N53 `free_target` returns the same archived witness leaves in 3.528
+seconds, so difficulty is not monotone in the number of free variables.
+The [cell table and next gate](q1419_partial_pin/README.md) preserve every
+failure, formula, log, named `PS1` stage and source hash. The complete
+degree-131 work exponent remains unknown.
+
 ## Next goal
 
-The next experiment is a frozen **five-summand compact-S3 PDP stage** on the
-exact N53 Q1301 W≤3 and N83 Q1302 W≤4 bases. It should use the same ordinary
-public targets as the four-summand stages, attempt an unpinned planted
-control and ordinary target, independently replay every accepted relation,
-and charge all failed attempts. The first decisive gate is one unpinned
-ordinary N83 relation with recorded cost and memory; after that, a panel of
-fresh ordinary targets must measure useful-row yield and novel rank per query.
-The m=4 exact-Q1325 gate remains open and should not be silently counted as
-solved by the different Q1405 base/arity combination.
+The next experiment should couple the existing exact S3 field-root oracle
+to **free-leaf search as an external propagator**. When a leaf pair becomes
+fixed, compute its zero or two pair-intermediate roots in the field and
+constrain the solver. Q1319 already encoded those roots as Boolean circuits,
+and Q1327/Q1328 already enumerated a native pair index; the proposed hybrid
+must avoid both circuit expansion and a complete `K²n` table. First recover
+Q1419's frozen N53/N83 `free_mids` controls, then an unpinned ordinary N53
+relation, then an unpinned ordinary N83 relation on exact Q1325 W≤5. Preserve
+all failed queries, operation counts, memory and independent group-law
+replays. The N83 result is the first decisive method gate; a fresh ordinary
+query panel must then measure useful-row yield and novel rank per query.
+Compare against Q1319, the native root index, and the pair-table on matched
+inputs. Q1419 does not establish that this hybrid will scale; the gate tests
+that hypothesis.
 
 For the existing m=4 path, an ordinary N83 four-point relation on the exact
 Q1325 base still requires a search that avoids both the full \(K^2n\) index

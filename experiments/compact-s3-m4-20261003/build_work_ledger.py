@@ -2099,6 +2099,64 @@ def main():
         conditional_root_states131 - conditional_batch_count131)
     conditional_batch_full_target_mul131 = 16 * conditional_root_states131 + 3 * (
         2 * conditional_root_states131 - conditional_batch_count131)
+    q1419_dir = HERE / "q1419_partial_pin"
+    q1419_protocol_path = q1419_dir / "protocol.json"
+    q1419_verification_path = q1419_dir / "verification.json"
+    q1419_protocol = json.loads(q1419_protocol_path.read_text())
+    q1419_verification = json.loads(q1419_verification_path.read_text())
+    assert q1419_protocol["proposal_id"] == "Q1419"
+    assert q1419_protocol["candidate_id"] is None
+    assert q1419_protocol["isogeny"] == "none"
+    assert q1419_verification["complete"] is True
+    assert q1419_verification["missing"] == []
+    assert q1419_verification["protocol_sha256"] == sha(q1419_protocol_path)
+    assert q1419_verification["verifier_source_sha256"] == sha(
+        q1419_dir / "verify_archive.py")
+    q1419_cells = []
+    for n in (53, 83):
+        profile = q1419_protocol["profiles"][str(n)]
+        for cell in q1419_protocol["run_order"]:
+            path = q1419_dir / "runs" / f"n{n}_{cell}" / "receipt.json"
+            stage = json.loads(path.read_text())
+            check = next(row for row in q1419_verification["checks"]
+                         if row["degree"] == n and row["cell"] == cell)
+            assert check["receipt_sha256"] == sha(path)
+            assert stage["proposal_id"] == "Q1419"
+            assert stage["candidate_id"] is None
+            assert stage["curve_id"] == profile["curve_id"]
+            assert stage["factor_base_actual_B"] == profile[
+                "factor_base_actual_B"]
+            assert stage["folded_columns_K"] == profile["folded_columns_K"]
+            assert stage["workload_id"] == profile["workload_id"]
+            assert stage["protocol_sha256"] == sha(q1419_protocol_path)
+            assert stage["natural_relation_yield_estimate"] is None
+            assert stage["complete_solve_work_log2"] is None
+            q1419_cells.append({
+                "proposal_id": "Q1419", "candidate_id": None,
+                "stage_config_id": stage["stage_config_id"],
+                "workload_id": stage["workload_id"],
+                "stage_run_id": stage["stage_run_id"],
+                "curve_id": stage["curve_id"], "degree_n": n,
+                "cell": cell, "input_law": stage["input_law"],
+                "factor_base_actual_B": stage["factor_base_actual_B"],
+                "folded_columns_K": stage["folded_columns_K"],
+                "solver_status": stage["solver_status"],
+                "solver_conflicts_reported": stage[
+                    "solver_conflicts_reported"],
+                "solver_wall_seconds_exploratory": stage[
+                    "solver_wall_seconds_exploratory"],
+                "peak_child_rss_raw": stage["peak_child_rss_raw"],
+                "peak_child_rss_units": stage["peak_child_rss_units"],
+                "verified_relation_count": stage[
+                    "verified_relation_count"],
+                "natural_relation_yield_estimate": None,
+                "complete_solve_work_log2": None,
+                "receipt_sha256": sha(path),
+            })
+    assert len(q1419_cells) == 16
+    assert sum(row["verified_relation_count"] for row in q1419_cells) == 3
+    assert all(row["verified_relation_count"] == 0 for row in q1419_cells
+               if row["degree_n"] == 83 and row["cell"] != "full_lock")
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -2716,6 +2774,25 @@ def main():
             "runtime_info_sha256": sha(q1415_runtime_path),
             "receipt_sha256": sha(q1415_path),
         },
+        "q1419_known_satisfiable_partial_pinning_controls": {
+            "proposal_id": "Q1419",
+            "candidate_id": None,
+            "isogeny": "none",
+            "cells": q1419_cells,
+            "n53_ordinary_target_is_known_satisfiable": True,
+            "n83_target_is_planted_known_satisfiable": True,
+            "n53_free_target_reuses_known_witness_leaves": True,
+            "verified_n83_ordinary_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "The balanced-S3 CryptoMiniSat encoding fails the N53 and "
+                "N83 free-pair-intermediate controls at the frozen cap. "
+                "It does not establish ordinary N83 yield or solver growth; "
+                "replace the search mechanism before a degree-131 fit."),
+            "protocol_sha256": sha(q1419_protocol_path),
+            "verification_sha256": sha(q1419_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -3037,7 +3114,11 @@ def main():
                 "Q1415 activates XOR Gaussian matrices on Q1410's exact "
                 "ordinary N53 formula but reaches the external 120-second "
                 "cap without a model, so it provides no N83 solve-growth "
-                "estimate; Q1333/Q1334 use an adaptive target-local inversion "
+                "estimate; Q1419's 16 pinned controls show that freeing pair "
+                "intermediates already hits the SAT cap at both N53 and N83, "
+                "while all N83 cells beyond full lock remain censored; these "
+                "known-satisfiable controls do not measure natural yield or "
+                "growth; Q1333/Q1334 use an adaptive target-local inversion "
                 "window and reproduce the fixed-window ordinary outcomes; "
                 "Q1336/Q1337 fuse one field multiplication per S3 root but "
                 "show no repeatable wall-time gain in one unisolated "
