@@ -4383,6 +4383,103 @@ def main():
             "receipt_sha256": sha(receipt_path),
         })
     assert [row["verified_relation_count"] for row in q1445_rows] == [1, 0]
+    q1446_dir = HERE / "q1446_joint_pair_span"
+    q1446_protocol_path = q1446_dir / "protocol.json"
+    q1446_verification_path = q1446_dir / "verification.json"
+    q1446_protocol = json.loads(q1446_protocol_path.read_text())
+    q1446_verification = json.loads(q1446_verification_path.read_text())
+    assert q1446_protocol["proposal_id"] == q1446_verification[
+        "proposal_id"] == "Q1446"
+    assert q1446_protocol["candidate_id"] is None
+    assert q1446_protocol["isogeny"] == "none"
+    assert q1446_verification["status"] == "pass"
+    assert q1446_verification["protocol_sha256"] == sha(q1446_protocol_path)
+    assert q1446_verification["complete_n131_log2_work"] is None
+    assert q1446_verification["challenge_run_admitted"] is False
+    q1446_rows = []
+    for n in (53, 83):
+        cell = q1446_protocol["cells"][str(n)]
+        matched = q1445_protocol["cells"][str(n)]
+        for name, q1445_name in (
+            ("curve_id", "curve_id"),
+            ("factor_base_actual_B", "factor_base_actual_B"),
+            ("folded_columns_K", "folded_columns_K"),
+            ("factor_base_enumerated_set_sha256",
+             "factor_base_enumerated_set_sha256"),
+            ("public_target", "public_target"),
+        ):
+            assert cell[name] == matched[q1445_name], name
+        receipt_path = q1446_dir / f"runs/n{n}_ordinary/receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        verified = next(row for row in q1446_verification["rows"]
+                        if row["degree"] == n)
+        assert verified["receipt_sha256"] == sha(receipt_path)
+        assert receipt["protocol_sha256"] == sha(q1446_protocol_path)
+        assert receipt["curve_id"] == cell["curve_id"]
+        assert receipt["factor_base_actual_B"] == cell[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == cell["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == cell[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["public_target"] == cell["public_target"]
+        assert receipt["verified_relation_count"] == verified[
+            "verified_relation_count"] == 0
+        report = receipt["solver_report"]
+        assert report is not None
+        assert report["stop_reason"] == "wall_cap"
+        assert report["final_root_calls"] == 1
+        assert report["complete_pair_visits"] == 0
+        sampled_rejections_by_pair = [sum(
+            row["pair"] == pair
+            for row in report["span_rejection_snapshots"])
+            for pair in (0, 1)]
+        assert all(sampled_rejections_by_pair)
+        assert sum(sampled_rejections_by_pair) == verified[
+            "sampled_span_replay"]["sampled_rejections_replayed"]
+        q1446_rows.append({
+            "proposal_id": "Q1446", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "degree": n, "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "matched_q1445_public_target": matched["public_target"],
+            "status": receipt["solver_status"],
+            "native_stop_reason": report["stop_reason"],
+            "native_decisions": report["decisions"],
+            "native_conflicts": report["conflicts"],
+            "final_root_calls": report["final_root_calls"],
+            "complete_pair_visits": report["complete_pair_visits"],
+            "span_checks_pair0": report["span_checks_pair0"],
+            "span_checks_pair1": report["span_checks_pair1"],
+            "span_rejections_pair0": report["span_rejections_pair0"],
+            "span_rejections_pair1": report["span_rejections_pair1"],
+            "span_field_mul_calls": report["span_field_mul_calls"],
+            "field_mul_calls": report["field_mul_calls"],
+            "field_sqr_calls": report["field_sqr_calls"],
+            "field_inv_calls": report["field_inv_calls"],
+            "formula_build_wall_ns_exploratory": receipt[
+                "formula_build_wall_ns_exploratory"],
+            "solver_process_wall_ns_exploratory": receipt[
+                "solver_process_wall_ns_exploratory"],
+            "online_stage_wall_ns_exploratory": receipt[
+                "online_stage_wall_ns_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "sampled_span_replay": verified["sampled_span_replay"],
+            "sampled_rejection_replay_counts_by_pair":
+                sampled_rejections_by_pair,
+            "verified_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -5741,6 +5838,27 @@ def main():
             "protocol_sha256": sha(q1445_protocol_path),
             "verification_sha256": sha(q1445_verification_path),
         },
+        "q1446_joint_target_linked_pair_span_stage": {
+            "proposal_id": "Q1446", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "method": q1446_protocol["method"],
+            "rows": q1446_rows,
+            "ordinary_N83_relation_measured": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "Both sound partial-pair filters fire and reject many states, "
+                "but each 60-second ordinary cell explores just one "
+                "target-linked intermediate choice, completes no pair, "
+                "and yields no relation. The next method must process "
+                "intermediate choices in shared target-conditioned work."),
+            "protocol_sha256": sha(q1446_protocol_path),
+            "verification_sha256": sha(q1446_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -6141,6 +6259,9 @@ def main():
                 "relation, but its N83 10000-query control has zero hits "
                 "and the target-independent first-pair method remains outside "
                 "the N131 affordability path; "
+                "Q1446 fires sound cached span filters on both partial "
+                "pairs but each 60-second ordinary cell still reaches only "
+                "one target-linked intermediate choice and no relation; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

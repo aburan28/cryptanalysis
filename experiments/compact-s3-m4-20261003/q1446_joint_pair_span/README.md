@@ -58,3 +58,33 @@ The runner refuses to overwrite measured rows. A fresh checkout needs a
 locally rebuilt native binary from the pinned source and dependency hashes,
 plus an accepted checked Sage runtime receipt, before reproducing the
 ordinary cells.
+
+## Frozen ordinary result
+
+The [archive audit](verification.json) rebuilds both exact CNFs, checks the
+source and output hashes, and independently replays 16 sampled span
+rejections at each degree. The samples include both pairs. No sampled false
+rejection occurred. Both cells reached the native 60-second wall cap with no
+model and no relation; they are censored lower bounds on unsuccessful
+attempts.
+
+| Degree | Pair-0 span checks / rejections | Pair-1 span checks / rejections | Final roots; completed pair visits | Field mul / sqr / inv | Charged stage wall | Peak child RSS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| N53 | 265,256 / 257,392 | 4,612 / 4,237 | 1; 0 | 1,920,918 / 5,269,709 / 70,371 | 62.125 s | 885,391,360 bytes |
+| N83 | 56,491 / 55,977 | 5,509 / 5,393 | 1; 0 | 2,177,153 / 15,323,711 / 145,376 | 63.002 s | 288,096,256 bytes |
+
+The charged stage wall includes formula construction, native solving,
+artifact materialization, and replay. The native solver itself spent about
+60 seconds in each cell. The source receipts retain additional SAT decisions,
+cache work, exact per-phase intervals, memory, and raw failures.
+
+The new order successfully applies both sparse-pair filters before either
+pair is complete, but it spends the cap exploring leaf assignments under a
+single target-linked intermediate choice. It has not measured the cost of a
+successful ordinary decomposition. More filtering of leaves under one
+intermediate is unlikely to fix the observed coverage bottleneck by itself;
+the next method needs to constrain or process many intermediate choices
+together without enumerating target-independent first pairs. Q1445's
+matched-base pair table remains the comparison. Natural relation yield,
+novel rank, cost per useful row, and complete N131 `2^x` remain unknown; no
+challenge run is admitted.
