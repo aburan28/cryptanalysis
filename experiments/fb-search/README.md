@@ -19,6 +19,131 @@ python3 trace_equation.py --n 19 --l 6 7 --out results/trace-equation.jsonl
 python3 -m pytest -q test_fb_search.py
 ```
 
+## Single-target online objective (the AGENTS.md default)
+
+AGENTS.md makes one previously unseen target the default IC objective. The
+headline is that target's verified online time, paired with rho on the same
+point. Factor base, collection and relation linear algebra are setup, excluded
+from the online interval. [`online.py`](online.py) predicts
+`T_online,1` from the factor base:
+
+```bash
+python3 online.py scan --n 19 --l 4 5 6 7 8 9 --families prefix geometric geomtraceu kertrace random --seeds 1-8
+python3 online.py select results/online-n19m2.jsonl results/online-n23m2.jsonl      # -> online-selected.json
+(cd ../ic-bench && python3 bench.py run --suite online --jobs 4 --record)            # one target per run, paired rho
+python3 online.py check ../ic-bench/baseline/online.jsonl                           # per-target ops, model vs measured
+python3 online.py report ../ic-bench/baseline/online.jsonl > results/online-measured.md
+```
+
+**The model is exact in law.** Each attempt `Q + [a]G` is uniform on the
+subgroup, so the attempt count is geometric in `p_dec`. The online cost is
+`(1/p_dec - 1) c_fail + c_success + c_recovery`. The three prices are probed on
+the exact `monitor.collect` code path: failed attempts on rerandomized probe
+targets, successful attempts on points uniform on `D`, and one scalar replay.
+With the replayed attempt count of each target, the model matches the measured
+per-target operations as follows:
+
+| receipts | targets | measured / predicted per target, median [p10, p90] | pooled |
+|---|---|---|---|
+| `search` suite (earlier always-enumerate path, `--eager`) | 351 | 1.000 [0.995, 1.008] | 1.0002 |
+| `online` suite (current path) | 30 | 1.001 [0.959, 1.159] | 1.013 |
+
+**Count solutions only when the scan asks.** Target attempts used to run the
+exhaustive `(N + 2) 2^(N-1)` solution enumeration before every scan. A
+refutation never reads the count, so `macaulay.degree_scan` now takes the count
+lazily. The enumeration runs only when a degree ends without refutation, and
+the scan output is identical; a test checks this on random systems. Collection
+queries now also pay for every count the scan consults. Before, an
+unsatisfiable query refuted above its first degree read the count for free.
+That raises the ci-suite cold totals by at most 0.75%, and both baselines are
+re-recorded. Median eager/lazy predicted online cost on the same bases:
+
+| n | l | geomtraceu | prefix |
+|---|---|---|---|
+| 19 | 6 / 7 / 8 | 1.69 / 1.49 / 1.01 | 1.70 / 2.91 / 1.07 |
+| 23 | 7 / 8 / 9 | 3.16 / 5.01 / 1.01 | 3.15 / 7.93 / 1.36 |
+
+At `n = 13, m = 3` (9 variables) the saving is 1% of the target operations.
+
+**Online-optimal bases (predictions).** Median predicted online operations ÷ rho
+reference operations over 8 seeds (`results/online-n19m2.jsonl`,
+`results/online-n23m2.jsonl`):
+
+| n | l | prefix | geometric | geomtraceu | kertrace | random |
+|---|---|---|---|---|---|---|
+| 19 | 5 | 389 | 464 | 170 | 157 | 439 |
+| 19 | 6 | 115 | 129 | 57 | 121 | 224 |
+| 19 | 7 | **43** | 54 | 56 | 97 | 181 |
+| 19 | 8 | 133 | 162 | 110 | 109 | 200 |
+| 23 | 7 | 118 | 141 | 82 | 242 | 550 |
+| 23 | 8 | 48 | 57 | **41** | 277 | 527 |
+| 23 | 9 | 323 | 408 | 256 | 286 | 565 |
+
+The online objective is not the cold objective. Larger `l` cuts the number of
+attempts by about 4×, and costs nothing until the first degree stops refuting.
+That happens near `n - l - (2l - 1) = 0`, i.e. `l ≈ n/3`; one step past it the
+failed-attempt cost jumps 10-25×. Online attempts are nearly all refutations,
+so the trace-zero base's dearer refutation (the lost equation, below) counts in
+full, while its doubled yield only halves the attempt count. At `n = 19, l = 7`
+the prefix base therefore beats geomtraceu.
+
+**Measured one-target runs.** The `online` suite ran the best predicted base per
+family and `n` on workloads 1-3, one target each: 10 candidates, 30 runs, all
+**complete and verified, and every paired rho also verified**. The full table,
+in the AGENTS.md one-target form, is in `results/online-measured.md`. The best
+rows by expected cost:
+
+| candidate | base | per workload w1 / w2 / w3: attempts, IC ms vs rho ms, online_speedup | expected online_speedup (model) | online ops / rho ops (model) |
+|---|---|---|---|---|
+| `IC1N19Ckb1fb150PDP2xlRCsampleLAgaussTDpdpISO0h9c8c71c913e2` | geometric l7 s6 | 50: 30.1 vs 1.39, 0.046 / 23: 14.6 vs 3.05, 0.21 / 14: 9.1 vs 10.30, 1.14 | 0.175 | 41 |
+| `IC1N19Ckb1fb136PDP2xlRCsampleLAgaussTDpdpISO0h3cf513e2b056` | prefix l7 s1 | 23: 13.9 vs 1.61, 0.12 / 50: 29.6 vs 2.97, 0.10 / 32: 20.1 vs 10.64, 0.53 | 0.160 | 43 |
+| `IC1N23Ckb1fb286PDP2xlRCsampleLAgaussTDpdpISO0hd5e542c02ca3` | geomtraceu l8 s5 | 83: 64.8 vs 38.23, 0.59 / 329: 234.2 vs 8.59, 0.037 / 1: 2.1 vs 7.59, 3.68 | 0.212 | 35 |
+
+These wall times are **exploratory**: the host is shared and unisolated, so they
+are not a controlled speedup claim. One target is a single draw from a geometric
+law, as rho's own time also is, so single-run speedups range from 0.002 to 3.7
+across the 30 runs. One geomtraceu target decomposed on its first attempt. The
+expected speedup column is the mean measured rho time of the three targets
+divided by the model's expected IC online time (probed wall prices). It is about
+0.2: IC online is about 5× slower than this host's Python rho. In calibrated operations it is 35-43× rho. The pure-Python
+rho loop pays per-call overhead that its batch-calibrated `ec_add` price does
+not include, which is why the wall and operation ratios differ.
+
+**Scaling (predictions).** All costs below are under one calibration measured
+on this host for `n = 19, 23, 41` (`results/calibration-n19-23-41.json`,
+`ICBCAL1h4bd79b3f965c`). Its weights are 1.03-1.18× the frozen ic-bench
+calibration (except `gf_lin`), so ratios carry over. The next toy sizes with
+cofactor 4 are `n = 41` (40-bit `r`) and 131; `n = 29` and 31 have cofactors
+33412 and 1492 and are not comparable. Best base per `(n, l)`, from
+`results/online-scale.jsonl`:
+
+| n | l | best | attempts | c_fail | c_success | online / rho |
+|---|---|---|---|---|---|---|
+| 19 | 7 | prefix | 53 | 4.4e7 | 2.5e8 | 43 |
+| 23 | 8 | geomtraceu | 116 | 7.9e7 | 1.0e9 | 33 |
+| 41 | 11 | geomtraceu | 5.1e5 | 1.6e8 | 7.0e10 | 276 |
+| 41 | 12 | geomtraceu | 1.3e5 | 1.8e8 | 3.0e11 | 81 |
+| 41 | 13 | geomtraceu | 3.3e4 | 2.1e8 | 1.3e12 | **28.5** |
+
+For trace-zero bases, `p_dec ≈ 2^(2l - n)`. While the first degree refutes
+(`l ≲ n/3`), the failed-attempt cost grows only polynomially, so the online
+attempts scale like `2^(n/3)` against rho's `2^(n/2)`. This is the classic
+precomputation trade-off: setup grows like `2^(2n/3)` and is excluded from the
+online metric.
+
+The best ratio falls from 43 to 33 to 28.5 as `n` goes 19, 23, 41. At
+`n = 41, l = 13` the `l = 12-13` yields come from the psi-class formula, which
+is within 2% of the exact yield wherever both exist, with successes planted as
+psi-compatible pair sums (their cost is within 0.5% of uniform-`D` successes).
+
+**The next bottleneck is the one successful attempt.** Its exhaustive
+enumeration costs `(N + 2) 2^(N-1)` at `N = 2l`: 1.3e12 rps at `n = 41, l = 13`,
+4.5 times the whole rho reference. It also caps `l` at 13, the 26-variable
+limit. The `l ≈ n/3` regime needs the solutions read from the Macaulay echelon
+form (standard monomials and multiplication matrices) instead of enumerated.
+
+The cold, three-target material below is supplementary under the one-target rules.
+
 Scope: m = 2 point decomposition (`PDP2xl`) on the toy Koblitz curves
 `EC1N19Ckb1ha7a2e0b48125` and `EC1N23Ckb1h32a1300cea95`
 (`y^2 + xy = x^3 + 1`, cofactor 4), with the ic-bench pipeline

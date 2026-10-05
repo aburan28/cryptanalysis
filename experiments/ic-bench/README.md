@@ -105,19 +105,21 @@ use `ratio_to_batch_floor`; the older `ratio_to_rho` remains a cold whole-run /
 one-target diagnostic and is not a batch crossover metric.
 
 **Instrument** work is recorded but not charged to supplementary cold operations.
-It covers structure checks, exact-yield enumeration, and predictions. All
-target PDP enumeration, including unsuccessful attempts, remains inside the
-primary online interval.
+It covers structure checks, exact-yield enumeration, and predictions. Every
+target PDP enumeration that runs, including those of unsuccessful attempts, is
+inside the primary online interval.
 
 ### Oracle-assisted completion
 
 For systems with `S >= 1` solutions, the Macaulay scan stops when the standard
 monomials number `S`. `S` and the solutions are read from an exhaustive Moebius
-enumeration. That enumeration is **charged** to the phase it serves (`pdp` or
-`target_descent`) at `(N + 2) 2^(N-1)` `anf_op`, so no oracle work is free.
-Refutations (`1` in the row space) need no enumeration. At these toy sizes the
-enumeration is cheap, but it would dominate at cryptographic sizes. These totals
-therefore measure this implementation, not an asymptotic XL cost.
+enumeration. The scan asks for `S` only after a degree that ends without
+refutation, and the enumeration runs then, lazily, charged to the phase it serves
+(`pdp` or `target_pdp`) at `(N + 2) 2^(N-1)` `anf_op`, so no oracle work is free.
+A system refuted at its first degree is never enumerated; one refuted at a later
+degree has paid for the count it consulted. At these toy sizes the enumeration
+is cheap, but it would dominate at cryptographic sizes. These totals therefore
+measure this implementation, not an asymptotic XL cost.
 
 ## Suites
 
@@ -131,7 +133,13 @@ therefore measure this implementation, not an asymptotic XL cost.
 - `search` runs the factor bases chosen by [`../fb-search`](../fb-search/README.md)
   (`selected.json`: family, `l` and seed) on workloads 1-3. Cells carry the seed
   (`-s<seed>-` in the cell label). The current selection is 39 bases, 117 runs, at
-  `n = 19`. It is not gated in CI.
+  `n = 19`. It is not gated in CI. Its three-target cold totals are supplementary.
+- `online` is the one-target counterpart, measured like `primary` (prepared
+  target, online interval paired with rho on the same point). It runs the bases
+  that [`../fb-search/online.py`](../fb-search/online.py) predicts are cheapest
+  for `T_online,1` (`online-selected.json`): the best `(l, seed)` per family at
+  `n = 19` and 23, on workloads 1-3. That is 10 candidates and 30 runs. It is not
+  gated in CI, and its wall times are exploratory on unisolated hosts.
 - `batch` is the long multi-target suite. It runs one `n=13,m=3` geomtrace
   candidate and one `n=19,m=2` geomtraceu candidate on **2^16 targets each**.
   A single receipt records every marginal target cost, so `amortize.py`
