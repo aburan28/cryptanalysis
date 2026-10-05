@@ -54,6 +54,8 @@ def main():
     bench = args.bench.resolve()
     source = [Path(__file__).resolve(), directory / "make_tau_tail_double_fold.py",
               root / "src" / "generated" / "tau_tail_double_fold.h",
+              directory / "make_tau_tail_double_residue.py",
+              root / "src" / "generated" / "tau_tail_double_residue.h",
               root / "src" / "ec_tau.c", root / "src" / "ec_tau_internal.h",
               directory / "bench.c"]
     receipt = {"schema": 1, "status": "running", "cpu_timing_claim": False,
@@ -66,7 +68,7 @@ def main():
     for case in fixture["cases"]:
         scalar_path = directory / case["scalar_file"]
         rows = [run(bench, arm, case, scalar_path)
-                for arm in ("tail-double", "tail-double-fold")]
+                for arm in ("tail-double", "tail-double-fold", "tail-double-residue")]
         record = {"id": case["id"], "scalar_sha256": sha(scalar_path),
                   "runs": {row["arm"]: row for row in rows}}
         receipt["cases"].append(record)
@@ -79,12 +81,15 @@ def main():
                 assert f["output_digest"] == case["expected_output_digest"]
                 assert f["input_digest"] == case["input_digest"]
                 assert int(f["count"]) == case["scalars"]
-            assert score(rows[0]) == score(rows[1])
+            assert score(rows[0]) == score(rows[1]) == score(rows[2])
+            for metric in ("triples", "adds", "rotations"):
+                assert len({row["fields"][metric] for row in rows}) == 1
             assert score(rows[0]) == sum(
                 int(prior[case["id"]]["runs"]["tail-double"]["operations"][key]) * weight
                 for key, weight in (("triples", 10), ("adds", 16), ("rotations", 1)))
             assert int(rows[0]["fields"]["static_map_bytes"]) == 106087
             assert int(rows[1]["fields"]["static_map_bytes"]) == 37918
+            assert int(rows[2]["fields"]["static_map_bytes"]) == 31660
             record["weighted_score"] = score(rows[1])
             record["status"] = "pass"
         except (AssertionError, KeyError, ValueError) as exc:
@@ -96,7 +101,8 @@ def main():
         receipt["failure"] = failure
     args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"status": receipt["status"], "cases": len(receipt["cases"]),
-                      "fold_bytes": 37918, "original_bytes": 106087,
+                      "fold_bytes": 37918, "residue_bytes": 31660,
+                      "original_bytes": 106087,
                       "failure": failure}, sort_keys=True))
     if failure:
         raise SystemExit(1)

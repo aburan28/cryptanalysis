@@ -32,27 +32,48 @@ evaluation score; it does not establish equal recoding time or CPU speed.
 Its scalar-dependent branches and memory accesses are unsuitable for secret
 scalars without a separate side-channel design and review.
 
+## Residue-local byte format
+
+For any state `a+bτ`, an action's admissibility is constrained by
+`(a mod 3,b mod 3)`. Partitioning each phase's selected actions by these nine
+residue classes leaves at most **96 actions in any class**. The
+`tail-double-residue` arm stores one byte per sign-folded state and selects a
+small dictionary using its normalized state's phase and residue. Its active
+data is 24,963 code bytes, 3,414 action-dictionary bytes, 3,121 gate bytes,
+81 digit-negation bytes, 54 dictionary-offset bytes, and 27 dictionary-length
+bytes: **31,660 bytes total**. That is 74,427 bytes (70.2%) less than the
+original two-digit policy and 6,258 bytes less than the 10-bit folded arm.
+The count lies below a 32 KiB L1 data-cache capacity, but other live data
+also occupies cache and actual cache behavior must be measured.
+
+The residue generator repeats the exhaustive 49,923-state sign/gate and
+shortest-path proof with its own byte decoder. This is a second encoding of
+the same optimal policy and keeps the 10-bit arm available for paired timing:
+the byte lookup saves bit unpacking but adds two modulo-three operations and
+one dictionary offset lookup per selected pair.
+
 ## Regression receipt
 
-The [regression receipt](tail-double-fold-regression.json) replays both
+The [regression receipt](tail-double-fold-regression.json) replays all three
 two-digit arms on the eight previously frozen `tail-double-inputs.json`
 cases. All 32,768 scalar-point outputs match the generic output digests.
 Each new-arm scalar passes an independent digit-reconstruction check and a
 modeled-cost equality check against the unfurled arm outside the online
 interval. Every case has identical aggregate triples, mixed additions,
 rotations, and weighted evaluation score. The direct curve test passes
-2,277,520 checks. These are **regression inputs already used by the parent
+2,281,596 checks. These are **regression inputs already used by the parent
 experiment**, not fresh held-out evidence for a CPU speedup. The local
 macOS timings in the receipt are exploratory because the host lacks the
 required isolation record.
 
 The [isolated benchmark service](../../docs/ISOLATED_BENCHMARKS.md) can pair
-`tail-double-fold` with `tail-double` on the same inputs using
-`make_isolated_manifest.py --candidate-arm tail-double-fold --reference-arm
-tail-double`. The timed interval includes the folded lookup, sign transform,
+`tail-double-fold` or `tail-double-residue` with `tail-double` on the same
+inputs using `make_isolated_manifest.py --candidate-arm
+tail-double-residue --reference-arm tail-double`. The timed interval includes
+the folded lookup, sign transform,
 recoding, curve operations, and output conversion. A CPU wall-time result
 requires a host-level isolation receipt and noise gates; no such run has
-been completed. The benchmark binary retains both research arms, so the
+been completed. The benchmark binary retains all three research arms, so the
 `static_map_bytes` field describes the *active arm's policy data*, not total
 binary `.rodata`. A deployment wanting the smaller binary should compile
 out the old arm and verify the linked section size separately.
@@ -67,6 +88,7 @@ restart boundaries.
 
 ```sh
 python3 experiments/prime-j0-cost-aware-chain/make_tau_tail_double_fold.py
+python3 experiments/prime-j0-cost-aware-chain/make_tau_tail_double_residue.py
 cmake --build build-cost-aware --target test_curve ca_tau_chain_bench -j 4
 ./build-cost-aware/test_curve
 python3 experiments/prime-j0-cost-aware-chain/check_tail_double_fold.py \

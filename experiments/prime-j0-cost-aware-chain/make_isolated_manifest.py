@@ -11,8 +11,10 @@ def make(args):
     experiment = root / "experiments" / "prime-j0-cost-aware-chain"
     atlas = args.candidate_arm == "atlas"
     tail_gated = args.candidate_arm == "tail-oracle-gated"
-    tail_fold = args.candidate_arm == "tail-double-fold"
-    tail_double = args.candidate_arm in ("tail-double", "tail-double-fold")
+    tail_residue = args.candidate_arm == "tail-double-residue"
+    tail_fold = args.candidate_arm in ("tail-double-fold", "tail-double-residue")
+    tail_double = args.candidate_arm in ("tail-double", "tail-double-fold",
+                                         "tail-double-residue")
     tail = args.candidate_arm == "tail-oracle" or tail_gated or tail_double
     orbit = args.candidate_arm == "fused-orbit-batch128"
     adapt2 = args.candidate_arm == "fused-hot-adapt2-batch128"
@@ -39,8 +41,9 @@ def make(args):
                                    "tapered-residue-wavefront-batch128")
     if args.reference_arm and not (gated or gated2 or tapered or tail_double):
         raise ValueError("--reference-arm is unsupported for this candidate")
-    if tail_fold and args.reference_arm and args.reference_arm != "tail-double":
-        raise ValueError("tail-double-fold only supports tail-double as its alternate reference")
+    if tail_fold and args.reference_arm and args.reference_arm not in (
+            ("tail-double", "tail-double-fold") if tail_residue else ("tail-double",)):
+        raise ValueError("folded two-digit arms require a two-digit alternate reference")
     if tail_double and not tail_fold and args.reference_arm and args.reference_arm != "tail-oracle-gated":
         raise ValueError("tail-double only supports tail-oracle-gated as its alternate reference")
     default_prefix = ("tail-double" if tail_double else
@@ -115,6 +118,9 @@ def make(args):
                       experiment / "check_tail_double_fold.py",
                       experiment / "tail-double-fold-regression.json",
                       root / "src" / "generated" / "tau_tail_double_fold.h"]
+    if tail_residue:
+        artifacts += [experiment / "make_tau_tail_double_residue.py",
+                      root / "src" / "generated" / "tau_tail_double_residue.h"]
     if fused:
         artifacts += [experiment / "FUSED_TAU_PAIRS.md",
                       bench.parent / "CMakeCache.txt",
@@ -307,13 +313,14 @@ if __name__ == "__main__":
         "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128",
         "tapered-residue-packed-batch128",
         "tapered-residue-wavefront-batch128", "tail-oracle", "tail-oracle-gated",
-        "tail-double", "tail-double-fold"),
+        "tail-double", "tail-double-fold", "tail-double-residue"),
                         default="cost")
     parser.add_argument("--reference-arm", choices=(
         "fused-hot-batch128", "fused-hot-adapt2-batch128",
         "fused-hot-steer-batch128", "fused-hot-steer-gated2-batch128",
         "tapered-residue-orbit-batch128", "tapered-residue-graph-batch128",
-        "tapered-residue-packed-batch128", "tail-oracle-gated", "tail-double"))
+        "tapered-residue-packed-batch128", "tail-oracle-gated", "tail-double",
+        "tail-double-fold"))
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)

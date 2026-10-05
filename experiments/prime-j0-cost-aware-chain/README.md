@@ -220,3 +220,8 @@ gate decisions; a regression replay on the existing 32,768 scalar-point
 inputs matches outputs and operation counts. Active policy data falls from
 106,087 to 37,918 bytes. An isolated paired run is needed to learn whether
 the extra decode work and smaller table improve CPU wall time.
+
+An [8-bit residue-local encoding](TAIL_DOUBLE_FOLD.md#residue-local-byte-format)
+of the same sign-folded policy brings active data to 31,660 bytes. It keeps
+the same modeled evaluation score; the extra residue calculation leaves the
+CPU wall-time ordering unresolved until isolated paired measurement.
