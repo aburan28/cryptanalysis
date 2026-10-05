@@ -4,9 +4,10 @@ The later, separate [N53 weight-three root-index study](N53_W3_ROOT.md)
 completed three independently replayed one-target DLPs. It uses a
 four-summand root index rather than this FC-Hamming SAT method. Its Mac CPU
 timings lack an isolation receipt and are exploratory; controlled speedup is
-unknown. A separate frozen 256-point ordinary-query holdout completed 256/256
-root-index decompositions with independent Sage witness replay. That is a
-stage observation, not a full DLP speedup or an N83 result.
+unknown. A prospective 512-point ordinary-query panel, committed before
+execution, completed 512/512 root-index decompositions with independent Sage
+witness replay; two earlier exploratory panels are also retained. These are
+stage observations, not full DLP speedups or N83 results.
 
 This experiment puts the factorized-convolution (FC) Hamming predicate from
 La Scala, Marchesin, and Tiwari's [*Hamming Ideals and Gröbner Bases for

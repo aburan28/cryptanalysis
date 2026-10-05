@@ -9,6 +9,7 @@ import hashlib
 import json
 from math import sqrt
 from pathlib import Path
+import subprocess
 
 from sage.all import EllipticCurve, GF, PolynomialRing, is_prime
 
@@ -59,6 +60,38 @@ def main(run):
     assert workload["record"]["public_points"] == public_points
     assert len(audit["scalars_not_given_to_solver"]) == len(public_points)
     assert len(entries) == len(public_points) + 1
+
+    precommit = None
+    if (run / "precommit_provenance.json").exists():
+        precommit = json.loads((run / "precommit_provenance.json").read_text())
+        manifest_bytes = (run / "precommit_manifest.json").read_bytes()
+        committed_bytes = subprocess.check_output(
+            ["git", "show", f"{precommit['freeze_commit']}:{precommit['manifest_repo_path']}"],
+            cwd=HERE.parents[1],
+        )
+        assert manifest_bytes == committed_bytes
+        assert hashlib.sha256(committed_bytes).hexdigest() == precommit["manifest_sha256"]
+        manifest = json.loads(manifest_bytes)
+        assert manifest["kind"] == "n53_w3_root_precommitted_ordinary_query_panel"
+        assert manifest["public_points"] == public_points
+        assert manifest["query_count"] == len(public_points)
+        assert manifest["solver_input_sha256"] == receipt["public_input_sha256"]
+        assert precommit["executed_public_input_sha256"] == receipt["public_input_sha256"]
+        assert precommit["run_workload_id"] == receipt["workload_id"]
+        source_commit = manifest["source_commit_before_panel_freeze"]
+        material = f"N53-W3-ROOT-PRECOMMITTED-HOLDOUT-v1|{source_commit}".encode()
+        assert int.from_bytes(hashlib.sha256(material).digest(), "big") == \
+               manifest["fixture_seed_decimal"] == workload["record"]["fixture_seed"]
+        subprocess.run(["git", "merge-base", "--is-ancestor", source_commit,
+                        precommit["freeze_commit"]], cwd=HERE.parents[1], check=True)
+        for key, relative in (("runner", "run_n53_w3_root_holdout.py"),
+                              ("rust_example", "koblitz_w3_root_holdout.rs")):
+            old = subprocess.check_output(
+                ["git", "show", f"{precommit['freeze_commit']}:"
+                 f"experiments/hamming-ic-e2e-20260929/{relative}"],
+                cwd=HERE.parents[1],
+            )
+            assert hashlib.sha256(old).hexdigest() == receipt["source_sha256"][key]
 
     ring = PolynomialRing(GF(2), "u")
     u = ring.gen()
@@ -138,7 +171,14 @@ def main(run):
         "independently_verified_witnesses": successes,
         "ordinary_query_completion_fraction": successes / len(rows),
         "wilson_95_for_frozen_pseudorandom_fixture_law": wilson(successes, len(rows)),
-        "interval_caveat": "Descriptive binomial interval under an independent-uniform-point approximation; seed was not externally committed and this is not a population guarantee",
+        "interval_caveat": (
+            "Descriptive binomial interval under an independent-uniform-point approximation; exact public points were committed before execution, but this is not a population guarantee"
+            if precommit else
+            "Descriptive binomial interval under an independent-uniform-point approximation; exact public points were not committed before execution, and this is not a population guarantee"
+        ),
+        "precommit_verified": precommit is not None,
+        "precommit_freeze_commit": precommit["freeze_commit"] if precommit else None,
+        "precommit_provenance_sha256": sha(run / "precommit_provenance.json") if precommit else None,
         "miss_semantics": "No decomposition found by this solver's full sampled-orientation index scan; not a mathematical nonexistence proof",
         "claim_boundary": "Stage diagnostic only; no DLP recovery, natural population theorem, or controlled CPU speedup",
         "result_sha256": sha(run / "result.jsonl"),

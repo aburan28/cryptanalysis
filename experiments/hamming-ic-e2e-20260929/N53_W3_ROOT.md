@@ -63,39 +63,44 @@ are well distributed, but the average alone does not prove coverage. The
 three selected target seeds and rank-stopped query streams do not provide a
 general natural-query yield or a valid binomial interval.
 
-## Frozen ordinary-query holdout
+## Frozen ordinary-query holdouts
 
-A separate [256-point stage run](runs/n53_w3_root_holdout_v3/receipt.json)
-tests the root-index point-decomposition step without a relation-rank stop.
-Its SHA-256-derived nonzero scalars are fixture data only. The executable
-received the frozen public points, the same 221 factor-base representatives,
-and no scalars. Every point was processed; there were no adaptive stops,
-discarded misses, external timeouts, or incomplete rows. The query panel
-excludes the three primary one-target benchmark points. This is a secondary
-multi-query *stage diagnostic*, performed after the one-target study; it is
-not a multi-target DLP benchmark or a replacement for the single-target
-online metric.
+These secondary stage runs test root-index point decomposition without a
+relation-rank stop. Each executable receives only public points and the same
+221 representatives. The SHA-256-derived fixture scalars remain outside its
+input. Every point is processed, and misses, invalid inputs, timeouts, and
+incomplete rows would remain in the raw JSONL and receipt. None occurred.
+The panels have no point in common with each other or with the three primary
+one-target benchmark points. They are multi-query *stage diagnostics*, not
+multi-target DLP benchmarks or replacements for the single-target metric.
 
-| Frozen ordinary points | Root-index completions | Independent Sage group-sum replays | Misses / invalid / incomplete |
-| ---: | ---: | ---: | ---: |
-| 256 | 256 | 256 | 0 / 0 / 0 |
+| Panel and workload | Public points | Root-index completions | Independent Sage group-sum replays | Freeze status |
+| --- | ---: | ---: | ---: | --- |
+| [Initial](runs/n53_w3_root_holdout_v3/receipt.json), `ac55eb9ebb6a` | 256 | 256 | 256 | Seed selected before local execution; exact points not precommitted |
+| [Commit-derived](runs/n53_w3_root_holdout_commitseed_v1/receipt.json), `ae4151006286` | 512 | 512 | 512 | Source commit fixed; exact derivation rule not precommitted |
+| [Prospective](runs/n53_w3_root_holdout_precommitted_v1/receipt.json), `e837254308c6` | 512 | 512 | 512 | Exact point list committed and pushed before execution |
 
-The [checked-Sage replay](runs/n53_w3_root_holdout_v3/sage_replay.json)
-rebuilt the exact 23,426-point base, checked all 256 input scalars against
-their public points, and independently verified every four-point witness.
-The workload ID is `ac55eb9ebb6a`. The fixed executable scanned one
-target-seeded Frobenius orientation per quotient state and would scan all
-2,588,573 states on a miss. It is therefore an operational completion rate
-for this fixed index and query law, not a proof that every subgroup point
-decomposes. An exploratory Wilson interval under an independent-uniform-point
-approximation is 98.52–100%; the seed was not externally committed, so this
-interval is not a population guarantee. Median query interval was 11.610 ms,
-maximum 77.397 ms, and the 256 query intervals summed to 4.128 s. These
-are unisolated Mac CPU stage timings and carry no controlled speedup claim.
-The reusable index setup took 1.007 s outside those query intervals; peak
-solver RSS was 341.6 MB. The [raw JSONL](runs/n53_w3_root_holdout_v3/result.jsonl),
-[frozen workload](runs/n53_w3_root_holdout_v3/workload.json), receipt, Sage
-runtime identity, and exact executable snapshot retain the full panel.
+The [prospective manifest](n53_w3_root_precommitted_panel_v1.json) was
+published in commit `b979dccf4d1df0d0308a67a71ed417cdea92d99a` before
+the final panel ran. Its 512 public points and input SHA-256 match the bytes
+read by the executable. [Independent replay](runs/n53_w3_root_holdout_precommitted_v1/sage_replay.json)
+checked that Git commit, the seed derivation, all 512 public-point fixtures,
+the exact 23,426-point base, and every four-point group-sum witness. The
+first two panels also have independent Sage replays and remain visible as
+earlier exploratory attempts; they are not pooled into a confidence bound.
+
+The fixed executable samples one target-seeded Frobenius orientation per
+quotient state and would scan all 2,588,573 states on a miss. Completion is
+therefore an operational observation for this search rule, not proof that
+every subgroup point decomposes. On the prospective 512-point panel, a
+descriptive Wilson interval is 99.26–100% *if* the deterministic hash-derived
+points behave as independent uniform subgroup draws. It is not a theorem or
+a guarantee about all N53 points. The prospective run's unisolated Mac median
+query interval was 11.148 ms; its 512 query intervals summed to 8.422 s.
+Reusable index setup took 0.964 s outside those intervals, and peak solver
+RSS was 341.6 MB. These stage timings carry no controlled speedup claim.
+Each run directory retains the raw JSONL, frozen workload, source and binary
+hashes, exact executed binary, Sage runtime identity, and replay.
 
 The [measurement rows](runs/n53_w3_root_pair_summary/rows.csv) retain each
 target point, exact online phases, base and index construction, rank yield,
