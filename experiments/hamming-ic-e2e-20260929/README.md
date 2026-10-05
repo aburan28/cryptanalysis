@@ -1,5 +1,17 @@
 # FC-Hamming in a complete toy index-calculus DLP
 
+The later, separate [N53 weight-three root-index study](N53_W3_ROOT.md)
+completed three independently replayed one-target DLPs. It uses a
+four-summand root index rather than this FC-Hamming SAT method. Its Mac CPU
+timings lack an isolation receipt and are exploratory; controlled speedup is
+unknown. A prospective 512-point ordinary-query panel, committed before
+execution, completed 512/512 root-index decompositions with independent Sage
+witness replay; two earlier exploratory panels are also retained. These are
+stage observations, not full DLP speedups. An exact, independently replayed
+[N83 weight-three geometry gate](N83_W3_GEOMETRY.md) finds 89,474 usable
+points and a rigorous four-sum support ceiling of about 1.10 in a million
+uniform subgroup targets. No N83 DLP or speedup was measured.
+
 This experiment puts the factorized-convolution (FC) Hamming predicate from
 La Scala, Marchesin, and Tiwari's [*Hamming Ideals and Gröbner Bases for
 ISD-like Syndrome Decoding*](https://arxiv.org/abs/2609.18866) into a complete
