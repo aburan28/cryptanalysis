@@ -63,6 +63,40 @@ are well distributed, but the average alone does not prove coverage. The
 three selected target seeds and rank-stopped query streams do not provide a
 general natural-query yield or a valid binomial interval.
 
+## Frozen ordinary-query holdout
+
+A separate [256-point stage run](runs/n53_w3_root_holdout_v3/receipt.json)
+tests the root-index point-decomposition step without a relation-rank stop.
+Its SHA-256-derived nonzero scalars are fixture data only. The executable
+received the frozen public points, the same 221 factor-base representatives,
+and no scalars. Every point was processed; there were no adaptive stops,
+discarded misses, external timeouts, or incomplete rows. The query panel
+excludes the three primary one-target benchmark points. This is a secondary
+multi-query *stage diagnostic*, performed after the one-target study; it is
+not a multi-target DLP benchmark or a replacement for the single-target
+online metric.
+
+| Frozen ordinary points | Root-index completions | Independent Sage group-sum replays | Misses / invalid / incomplete |
+| ---: | ---: | ---: | ---: |
+| 256 | 256 | 256 | 0 / 0 / 0 |
+
+The [checked-Sage replay](runs/n53_w3_root_holdout_v3/sage_replay.json)
+rebuilt the exact 23,426-point base, checked all 256 input scalars against
+their public points, and independently verified every four-point witness.
+The workload ID is `ac55eb9ebb6a`. The fixed executable scanned one
+target-seeded Frobenius orientation per quotient state and would scan all
+2,588,573 states on a miss. It is therefore an operational completion rate
+for this fixed index and query law, not a proof that every subgroup point
+decomposes. An exploratory Wilson interval under an independent-uniform-point
+approximation is 98.52–100%; the seed was not externally committed, so this
+interval is not a population guarantee. Median query interval was 11.610 ms,
+maximum 77.397 ms, and the 256 query intervals summed to 4.128 s. These
+are unisolated Mac CPU stage timings and carry no controlled speedup claim.
+The reusable index setup took 1.007 s outside those query intervals; peak
+solver RSS was 341.6 MB. The [raw JSONL](runs/n53_w3_root_holdout_v3/result.jsonl),
+[frozen workload](runs/n53_w3_root_holdout_v3/workload.json), receipt, Sage
+runtime identity, and exact executable snapshot retain the full panel.
+
 The [measurement rows](runs/n53_w3_root_pair_summary/rows.csv) retain each
 target point, exact online phases, base and index construction, rank yield,
 matrix construction, incremental linear algebra, target descent and replay,
@@ -91,8 +125,9 @@ produced the `v3`–`v5` primary workloads. An earlier published target was
 used only for a root-index smoke control and has its own independent Sage
 replay.
 
-This is a synthetic N53 correctness control only. N51 and N83 remain
-unmeasured, and these results do not support an IC speedup claim.
+This is a synthetic N53 correctness and ordinary-query stage control only.
+N51 and N83 remain unmeasured, and these results do not support an IC speedup
+claim.
 Setup-inclusive cost and a normalized
 operation count `S` are not headline metrics here; no operation-count
 boundary was frozen for a comparable `S` across the Rust IC and rho solvers.
@@ -121,3 +156,20 @@ are immutable evidence. For the archived runs, source snapshots and binary
 hashes are in each run directory and receipt. The actual Rust build used a
 dirty sibling checkout, so the captured source and binary hashes are the
 reproducibility boundary; a clean-checkout build has not been established.
+
+To reproduce the separate holdout from a checkout containing this change,
+copy its Rust example into the sibling `crypto` repository, build it, then
+use a fresh output directory:
+
+```sh
+cp /Volumes/SSD990/cryptanalysis/experiments/hamming-ic-e2e-20260929/koblitz_w3_root_holdout.rs /Volumes/SSD990/crypto/examples/koblitz_w3_root_holdout.rs
+cd /Volumes/SSD990/crypto
+cargo build --release --example koblitz_w3_root_holdout
+cd /Volumes/SSD990/cryptanalysis
+python3 experiments/hamming-ic-e2e-20260929/run_n53_w3_root_holdout.py --out /private/tmp/new-n53-w3-holdout --count 256 --seed 20261004 --wall-seconds 300
+/Volumes/SSD990/cryptanalysis/sage -python experiments/hamming-ic-e2e-20260929/sage_replay_n53_w3_root_holdout.py /private/tmp/new-n53-w3-holdout
+```
+
+The runner saves checked Sage runtime identity before executing the panel;
+the replay requires a byte-identical executable snapshot and all source and
+input hashes to match its receipt. Run output is immutable.
