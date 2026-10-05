@@ -36,7 +36,9 @@ reciprocal hits, so this selected subset has zero as well.
 
 The exact descendant codomain has coefficients `[1,0,0,A,a6]` and a
 previously proved endomorphism-order conductor of 263, one `V263` level below
-the source's conductor-one surface. Its normalized constant is
+the source's conductor-one surface. The endomorphism-order discriminant
+therefore changes from `−7` to `−7·263² = −484183`; that ring difference
+does not by itself imply an easier PDP. Its normalized constant is
 `b=a6+A²=1747379673771491065504088712547138692381`. In this
 characteristic-two model, `j=1/b`. Checked Sage found
 `j=586960249075303795058305401016131957337` and
