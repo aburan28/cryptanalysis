@@ -242,8 +242,7 @@ ca_status ca_curve_group(ca_group *g, uint64_t p, uint64_t a, uint64_t b, uint64
 
 uint32_t ca_ec_j0_coord_canonicalize(const ca_group *g, ca_elem *Y)
 {
-    if (!g || !Y || g->endo_kind != 1 || g->aut_order != 6 || Y->w[2])
-        return 0;
+    if (!g || !Y || g->endo_kind != 1 || g->aut_order != 6 || Y->w[2]) return 0;
     /* In the sixfold j=0 orbit, x takes three beta rotations and y
      * takes two signs.  Choose the minimum encoded coordinate in each
      * orbit independently.  Montgomery encoding is a bijection, so this
@@ -268,8 +267,7 @@ uint32_t ca_ec_j0_coord_canonicalize(const ca_group *g, ca_elem *Y)
 static uint32_t glv_class_reduce(const ca_group *g, ca_elem *Y, uint32_t m)
 {
 #ifdef CA_J0_RHO_COORD_CANON
-    if (g->endo_kind == 1 && m == 6)
-        return ca_ec_j0_coord_canonicalize(g, Y);
+    if (g->endo_kind == 1 && m == 6) return ca_ec_j0_coord_canonicalize(g, Y);
 #endif
     ca_elem cur = *Y, best = *Y;
     uint64_t best_h = ca_group_hash(g, Y);
@@ -339,11 +337,11 @@ typedef struct glv_ctx {
 } glv_ctx;
 
 #ifdef CA_J0_TAU_RHO_WIDTH4
-#define GLV_BASE_PRE(c) ((c)->pre_ready ? &(c)->base_pre : NULL)
-#define GLV_TARGET_PRE(c) ((c)->pre_ready ? &(c)->target_pre : NULL)
+#    define GLV_BASE_PRE(c)   ((c)->pre_ready ? &(c)->base_pre : NULL)
+#    define GLV_TARGET_PRE(c) ((c)->pre_ready ? &(c)->target_pre : NULL)
 #else
-#define GLV_BASE_PRE(c) NULL
-#define GLV_TARGET_PRE(c) NULL
+#    define GLV_BASE_PRE(c)   NULL
+#    define GLV_TARGET_PRE(c) NULL
 #endif
 
 /* The sixfold automorphism still defines the walk.  Xu et al.'s tau-adic
@@ -353,12 +351,12 @@ typedef struct glv_ctx {
  * For this solver, group_ops counts one tau evaluation, tripling, or group
  * addition as one transformation during this setup, then one affine addition per
  * walk step.  Use wall time for comparisons across scalar implementations. */
-static void glv_mul(const ca_group *g, ca_elem *r, const ca_elem *a,
-                    const ca_tau4_precomp *pre, uint64_t k, uint64_t *ops)
+static void glv_mul(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_tau4_precomp *pre,
+                    uint64_t k, uint64_t *ops)
 {
 #ifdef CA_J0_TAU_RHO
     uint64_t tau_steps = 0, adds = 0;
-#ifdef CA_J0_TAU_RHO_WIDTH4
+#    ifdef CA_J0_TAU_RHO_WIDTH4
     uint64_t triples = 0;
     if (pre && ca_ec_tau4_mul_prepared(g, pre, r, k, &triples, &adds)) {
         if (ops) *ops += adds + triples;
@@ -368,12 +366,12 @@ static void glv_mul(const ca_group *g, ca_elem *r, const ca_elem *a,
         if (ops) *ops += tau_steps + adds + triples;
         return;
     }
-#else
+#    else
     if (ca_ec_mul_tau2(g, r, a, k, &tau_steps, &adds)) {
         if (ops) *ops += tau_steps + adds;
         return;
     }
-#endif
+#    endif
 #endif
     (void)pre;
     ca_group_mul(g, r, a, k, ops);
@@ -593,8 +591,7 @@ static uint64_t glv_j0_orbit_hash(const ca_group *g, const ca_elem *Y)
     return ca_mix64(y < neg ? y : neg);
 }
 
-static void glv_covariant_restart(const glv_ctx *c, glv_cov_walk *w,
-                                   ca_rng *rng, uint64_t *ops)
+static void glv_covariant_restart(const glv_ctx *c, glv_cov_walk *w, ca_rng *rng, uint64_t *ops)
 {
     const ca_group *g = c->g;
     w->a = ca_rng_below(rng, g->order);
@@ -616,8 +613,8 @@ static void glv_covariant_restart(const glv_ctx *c, glv_cov_walk *w,
  * coefficients for that jump are lambda^e(alpha_i,beta_i).  Class matching
  * and coefficient transport happen only at distinguished points. */
 static ca_status glv_covariant_rho_solve(const ca_group *g, const ca_elem *base,
-                                         const ca_elem *target, uint64_t seed,
-                                         uint64_t *x, ca_stats *st)
+                                         const ca_elem *target, uint64_t seed, uint64_t *x,
+                                         ca_stats *st)
 {
     double t0 = ca_now();
     uint64_t n = g->order;
@@ -633,8 +630,7 @@ static ca_status glv_covariant_rho_solve(const ca_group *g, const ca_elem *base,
     c.target = *target;
     c.m = 6;
     c.lam_pow[0] = 1 % n;
-    for (uint32_t k = 1; k < 6; k++)
-        c.lam_pow[k] = ca_mulmod(c.lam_pow[k - 1], g->endo_lambda, n);
+    for (uint32_t k = 1; k < 6; k++) c.lam_pow[k] = ca_mulmod(c.lam_pow[k - 1], g->endo_lambda, n);
     uint64_t sqrt_nm = ca_isqrt(n / 6) + 1;
     int lg = glv_ilog2(n) + 1;
     uint64_t rbudget = sqrt_nm / (48u * (uint64_t)lg);
@@ -666,14 +662,14 @@ static ca_status glv_covariant_rho_solve(const ca_group *g, const ca_elem *base,
     ca_htab tab;
     int have_tab = 0;
     if (!c.M || !c.alpha || !c.beta || !scratch || !walks || !Yn || !B) goto nomem;
-#ifdef CA_J0_TAU_RHO_WIDTH4
+#    ifdef CA_J0_TAU_RHO_WIDTH4
     uint64_t base_ops = 0, target_ops = 0;
     if (ca_ec_tau4_prepare(g, base, &c.base_pre, &base_ops) &&
         ca_ec_tau4_prepare(g, target, &c.target_pre, &target_ops)) {
         c.pre_ready = 1;
         ops += base_ops + target_ops;
     }
-#endif
+#    endif
     for (uint32_t i = 0; i < c.r; i++) {
         uint64_t alpha = ca_rng_below(&rng, n);
         uint64_t beta = ca_rng_below(&rng, n);
@@ -695,15 +691,13 @@ static ca_status glv_covariant_rho_solve(const ca_group *g, const ca_elem *base,
     double exp_dps = 1.25 * (double)sqrt_nm / (double)(1ULL << dp) + 1024;
     if (ca_htab_init(&tab, (size_t)(exp_dps < 1e8 ? exp_dps : 1e8)) != CA_OK) goto nomem;
     have_tab = 1;
-    for (uint32_t w = 0; w < W; w++)
-        glv_covariant_restart(&c, &walks[w], &rng, &ops);
+    for (uint32_t w = 0; w < W; w++) glv_covariant_restart(&c, &walks[w], &rng, &ops);
     ca_status rc = CA_ERR_NOT_FOUND;
     uint64_t cap = 64 * sqrt_nm * 6 + (1ULL << 20);
     while (ops < cap) {
         for (uint32_t w = 0; w < W; w++) {
             glv_cov_walk *wk = &walks[w];
-            if (!wk->retry)
-                wk->idx = (uint32_t)(ca_mix64(glv_j0_orbit_hash(g, &wk->Y)) % c.r);
+            if (!wk->retry) wk->idx = (uint32_t)(ca_mix64(glv_j0_orbit_hash(g, &wk->Y)) % c.r);
             B[w] = c.M[(size_t)wk->orient * c.r + wk->idx];
             Yn[w] = wk->Y;
         }
@@ -734,8 +728,7 @@ static ca_status glv_covariant_rho_solve(const ca_group *g, const ca_elem *base,
                 if (ins < 0) goto nomem;
                 wk->since_dp = 0;
                 if (ins == 1) {
-                    if (!(oa == a && ob == b) &&
-                        glv_recover(g, base, target, n, oa, ob, a, b, x)) {
+                    if (!(oa == a && ob == b) && glv_recover(g, base, target, n, oa, ob, a, b, x)) {
                         rc = CA_OK;
                         goto done_covariant;
                     }
@@ -750,19 +743,30 @@ done_covariant:
     if (st) {
         st->group_ops += ops;
         st->table_entries = ca_max_u64(st->table_entries, tab.count);
-        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&tab) +
-                                     (uint64_t)slots * (sizeof(ca_elem) + 2 * sizeof(uint64_t)));
+        st->bytes_peak = ca_max_u64(st->bytes_peak,
+                                    ca_htab_bytes(&tab) +
+                                        (uint64_t)slots * (sizeof(ca_elem) + 2 * sizeof(uint64_t)));
         st->seconds += ca_now() - t0;
         st->threads = 1;
     }
     ca_htab_free(&tab);
-    free(c.M); free(c.alpha); free(c.beta); free(scratch);
-    free(walks); free(Yn); free(B);
+    free(c.M);
+    free(c.alpha);
+    free(c.beta);
+    free(scratch);
+    free(walks);
+    free(Yn);
+    free(B);
     return rc;
 nomem:
     if (have_tab) ca_htab_free(&tab);
-    free(c.M); free(c.alpha); free(c.beta); free(scratch);
-    free(walks); free(Yn); free(B);
+    free(c.M);
+    free(c.alpha);
+    free(c.beta);
+    free(scratch);
+    free(walks);
+    free(Yn);
+    free(B);
     return CA_ERR_NOMEM;
 }
 #endif
@@ -781,8 +785,7 @@ ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *
         return CA_ERR_NOT_FOUND;
     if (g->kind == CA_GROUP_EC && g->endo_kind != 0) {
 #ifdef CA_J0_RHO_COVARIANT_WALK
-        if (g->endo_kind == 1)
-            return glv_covariant_rho_solve(g, base, target, seed, x, st);
+        if (g->endo_kind == 1) return glv_covariant_rho_solve(g, base, target, seed, x, st);
 #endif
         return glv_rho_solve(g, base, target, seed, x, st);
     }

@@ -19,10 +19,9 @@ typedef struct ca_tau4_precomp {
     int identity;
 } ca_tau4_precomp;
 
-int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point,
-                       ca_tau4_precomp *out, uint64_t *ops);
-int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre,
-                            ca_elem *out, uint64_t k, uint64_t *triples,
-                            uint64_t *adds);
+int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point, ca_tau4_precomp *out,
+                       uint64_t *ops);
+int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out, uint64_t k,
+                            uint64_t *triples, uint64_t *adds);
 
 #endif

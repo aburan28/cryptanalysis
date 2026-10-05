@@ -24,21 +24,22 @@ typedef struct tau_vec {
 } tau_vec;
 
 static inline uint64_t fa(const ca_group *g, uint64_t x, uint64_t y)
-{ return ca_addmod(x, y, g->p); }
+{
+    return ca_addmod(x, y, g->p);
+}
 static inline uint64_t fs(const ca_group *g, uint64_t x, uint64_t y)
-{ return ca_submod(x, y, g->p); }
+{
+    return ca_submod(x, y, g->p);
+}
 static inline uint64_t fm(const ca_group *g, uint64_t x, uint64_t y)
-{ return ca_mont_mul(&g->mont, x, y); }
-static inline uint64_t fq(const ca_group *g, uint64_t x)
-{ return ca_mont_sqr(&g->mont, x); }
-static inline uint64_t f2(const ca_group *g, uint64_t x)
-{ return fa(g, x, x); }
-static inline uint64_t f3(const ca_group *g, uint64_t x)
-{ return fa(g, f2(g, x), x); }
-static inline uint64_t f4(const ca_group *g, uint64_t x)
-{ return f2(g, f2(g, x)); }
-static inline uint64_t f8(const ca_group *g, uint64_t x)
-{ return f2(g, f4(g, x)); }
+{
+    return ca_mont_mul(&g->mont, x, y);
+}
+static inline uint64_t fq(const ca_group *g, uint64_t x) { return ca_mont_sqr(&g->mont, x); }
+static inline uint64_t f2(const ca_group *g, uint64_t x) { return fa(g, x, x); }
+static inline uint64_t f3(const ca_group *g, uint64_t x) { return fa(g, f2(g, x), x); }
+static inline uint64_t f4(const ca_group *g, uint64_t x) { return f2(g, f2(g, x)); }
+static inline uint64_t f8(const ca_group *g, uint64_t x) { return f2(g, f4(g, x)); }
 
 static tau_jac jac_double(const ca_group *g, tau_jac p)
 {
@@ -136,8 +137,7 @@ static void jac_to_affine(const ca_group *g, ca_elem *r, tau_jac p)
 
 /* Normalize up to 18 projective seed points with one inversion.  Replacing
  * zero Z by one in the inversion product keeps subgroup edge cases valid. */
-static void jac_batch_to_affine(const ca_group *g, ca_elem *out,
-                                const tau_jac *in, size_t n)
+static void jac_batch_to_affine(const ca_group *g, ca_elem *out, const tau_jac *in, size_t n)
 {
     uint64_t zs[18], prefixes[18], product = g->mont.r1;
     for (size_t i = 0; i < n; i++) {
@@ -162,8 +162,8 @@ static void jac_batch_to_affine(const ca_group *g, ca_elem *out,
 
 int ca_ec_triple_j0(const ca_group *g, ca_elem *r, const ca_elem *a)
 {
-    if (!g || !r || !a || g->kind != CA_GROUP_EC || g->a != 0 ||
-        g->b == 0 || g->p % 3 != 1) return 0;
+    if (!g || !r || !a || g->kind != CA_GROUP_EC || g->a != 0 || g->b == 0 || g->p % 3 != 1)
+        return 0;
     if (a->w[2]) {
         *r = *a;
         return 1;
@@ -176,7 +176,10 @@ static ca_i128 iabs128(ca_i128 a) { return a < 0 ? -a : a; }
 
 static ca_i128 round_div(ca_i128 a, ca_i128 b)
 {
-    if (b < 0) { a = -a; b = -b; }
+    if (b < 0) {
+        a = -a;
+        b = -b;
+    }
     return a < 0 ? -((-a + b / 2) / b) : (a + b / 2) / b;
 }
 
@@ -185,8 +188,7 @@ static ca_i128 round_div(ca_i128 a, ca_i128 b)
  * (k,0), then check nearby lattice points for a shorter representative.
  * All products here fit signed 128 bits for 64-bit n: at the sqrt(n)
  * crossing, the Euclidean coefficients are O(sqrt(n)). */
-static int make_lattice(uint64_t n, uint64_t lambda,
-                        tau_vec *v1, tau_vec *v2, ca_i128 *det)
+static int make_lattice(uint64_t n, uint64_t lambda, tau_vec *v1, tau_vec *v2, ca_i128 *det)
 {
     if (n < 5 || lambda <= 1 || lambda >= n) return 0;
     ca_i128 r0 = n, r1 = lambda, t0 = 0, t1 = 1;
@@ -194,7 +196,10 @@ static int make_lattice(uint64_t n, uint64_t lambda,
     while (r1 > root) {
         ca_i128 q = r0 / r1;
         ca_i128 r2 = r0 - q * r1, t2 = t0 - q * t1;
-        r0 = r1; r1 = r2; t0 = t1; t1 = t2;
+        r0 = r1;
+        r1 = r2;
+        t0 = t1;
+        t1 = t2;
         if (!r1) return 0;
     }
     *v1 = (tau_vec){r1, -t1};
@@ -203,8 +208,8 @@ static int make_lattice(uint64_t n, uint64_t lambda,
     return *det == (ca_i128)n || *det == -(ca_i128)n;
 }
 
-static void reduce_with_lattice(tau_vec v1, tau_vec v2, ca_i128 det,
-                                uint64_t k, ca_i128 *out_a, ca_i128 *out_b)
+static void reduce_with_lattice(tau_vec v1, tau_vec v2, ca_i128 det, uint64_t k, ca_i128 *out_a,
+                                ca_i128 *out_b)
 {
     ca_i128 u0 = round_div((ca_i128)k * v2.y, det);
     ca_i128 v0 = round_div(-(ca_i128)k * v1.y, det);
@@ -215,7 +220,11 @@ static void reduce_with_lattice(tau_vec v1, tau_vec v2, ca_i128 det,
             ca_i128 x = (ca_i128)k - u * v1.x - v * v2.x;
             ca_i128 y = -u * v1.y - v * v2.y;
             ca_i128 score = iabs128(x) + iabs128(y);
-            if (best < 0 || score < best) { best = score; bx = x; by = y; }
+            if (best < 0 || score < best) {
+                best = score;
+                bx = x;
+                by = y;
+            }
         }
     }
     /* omega = 1 - tau, hence x + y*omega = (x+y) - y*tau. */
@@ -223,8 +232,7 @@ static void reduce_with_lattice(tau_vec v1, tau_vec v2, ca_i128 det,
     *out_b = -by;
 }
 
-static int reduce_scalar(uint64_t n, uint64_t lambda, uint64_t k,
-                         ca_i128 *out_a, ca_i128 *out_b)
+static int reduce_scalar(uint64_t n, uint64_t lambda, uint64_t k, ca_i128 *out_a, ca_i128 *out_b)
 {
     tau_vec v1, v2;
     ca_i128 det;
@@ -253,10 +261,8 @@ static int digit_for(ca_i128 a, ca_i128 b)
  * residue slots are (a mod 9, b mod 9), since tau^4 is associated to 9. */
 static int make_tau4_table(ca_tau4_digit table[81])
 {
-    static const int8_t seeds[9][2] = {
-        {1, 0}, {2, 0}, {4, 0}, {1, 1}, {2, 2},
-        {1, 2}, {2, 4}, {2, 1}, {1, -2}
-    };
+    static const int seeds[9][2] = {{1, 0}, {2, 0}, {4, 0}, {1, 1}, {2, 2},
+                                    {1, 2}, {2, 4}, {2, 1}, {1, -2}};
     for (size_t i = 0; i < 81; i++) table[i].seed = -1;
     for (int s = 0; s < 9; s++) {
         int a = seeds[s][0], b = seeds[s][1];
@@ -266,23 +272,25 @@ static int make_tau4_table(ca_tau4_digit table[81])
                 int xm = (x % 9 + 9) % 9, ym = (y % 9 + 9) % 9;
                 int slot = 9 * xm + ym;
                 if (xm % 3 == 0 || table[slot].seed >= 0) return 0;
-                table[slot] = (ca_tau4_digit){(int8_t)x, (int8_t)y,
-                                           (int8_t)s, (int8_t)power, (int8_t)sign};
+                table[slot] =
+                    (ca_tau4_digit){(int8_t)x, (int8_t)y, (int8_t)s, (int8_t)power, (int8_t)sign};
             }
             /* omega * (a+b*tau) = (a+3b) + (-a-2b)*tau. */
             int next_a = a + 3 * b, next_b = -a - 2 * b;
-            a = next_a; b = next_b;
+            a = next_a;
+            b = next_b;
         }
     }
     for (int x = 0; x < 9; x++) {
         if (x % 3 == 0) continue;
-        for (int y = 0; y < 9; y++) if (table[9 * x + y].seed < 0) return 0;
+        for (int y = 0; y < 9; y++)
+            if (table[9 * x + y].seed < 0) return 0;
     }
     return 1;
 }
 
-static size_t gen_tau4_digits(ca_i128 x, ca_i128 y,
-                              const ca_tau4_digit table[81], uint8_t digits[256])
+static size_t gen_tau4_digits(ca_i128 x, ca_i128 y, const ca_tau4_digit table[81],
+                              uint8_t digits[256])
 {
     size_t nd = 0;
     while (x || y) {
@@ -306,13 +314,11 @@ static size_t gen_tau4_digits(ca_i128 x, ca_i128 y,
 /* Scalar reduction normally leaves coordinates near sqrt(order).  Keep the
  * prepared hot path in native signed arithmetic; the explicit bound leaves
  * ample headroom for x+y and the small digit corrections. */
-static size_t gen_tau4_digits_fast(ca_i128 wide_x, ca_i128 wide_y,
-                                   const ca_tau4_digit table[81],
+static size_t gen_tau4_digits_fast(ca_i128 wide_x, ca_i128 wide_y, const ca_tau4_digit table[81],
                                    uint8_t digits[256])
 {
     const ca_i128 limit = (ca_i128)1 << 55;
-    if (wide_x <= -limit || wide_x >= limit ||
-        wide_y <= -limit || wide_y >= limit)
+    if (wide_x <= -limit || wide_x >= limit || wide_y <= -limit || wide_y >= limit)
         return gen_tau4_digits(wide_x, wide_y, table, digits);
     int64_t x = (int64_t)wide_x, y = (int64_t)wide_y;
     size_t nd = 0;
@@ -336,30 +342,29 @@ static size_t gen_tau4_digits_fast(ca_i128 wide_x, ca_i128 wide_y,
     return nd;
 }
 
-static uint64_t tau4_seed_jac(const ca_group *g, const ca_elem *p,
-                              uint64_t one_minus_beta, tau_jac q[9])
+static uint64_t tau4_seed_jac(const ca_group *g, const ca_elem *p, uint64_t one_minus_beta,
+                              tau_jac q[9])
 {
     tau_jac base = {p->w[0], p->w[1], g->mont.r1};
     tau_jac t = jac_tau(g, base, one_minus_beta);
     ca_elem neg = *p;
     if (neg.w[1]) neg.w[1] = g->p - neg.w[1];
     q[0] = base;
-    q[1] = jac_double(g, base);                     /* 2 */
-    q[2] = jac_double(g, q[1]);                    /* 4 */
-    q[3] = jac_add_mixed(g, t, p);                 /* 1+tau */
-    q[4] = jac_double(g, q[3]);                    /* 2+2tau */
-    q[5] = jac_add_mixed(g, q[4], &neg);           /* 1+2tau */
-    q[6] = jac_double(g, q[5]);                    /* 2+4tau */
-    q[7] = jac_add_mixed(g, q[3], p);              /* 2+tau */
+    q[1] = jac_double(g, base);          /* 2 */
+    q[2] = jac_double(g, q[1]);          /* 4 */
+    q[3] = jac_add_mixed(g, t, p);       /* 1+tau */
+    q[4] = jac_double(g, q[3]);          /* 2+2tau */
+    q[5] = jac_add_mixed(g, q[4], &neg); /* 1+2tau */
+    q[6] = jac_double(g, q[5]);          /* 2+4tau */
+    q[7] = jac_add_mixed(g, q[3], p);    /* 2+tau */
     tau_jac minus_two_tau = jac_double(g, t);
-    if (minus_two_tau.z && minus_two_tau.y)
-        minus_two_tau.y = g->p - minus_two_tau.y;
-    q[8] = jac_add_mixed(g, minus_two_tau, p);    /* 1-2tau */
-    return 9; /* five doublings, four mixed additions */
+    if (minus_two_tau.z && minus_two_tau.y) minus_two_tau.y = g->p - minus_two_tau.y;
+    q[8] = jac_add_mixed(g, minus_two_tau, p); /* 1-2tau */
+    return 9;                                  /* five doublings, four mixed additions */
 }
 
-static uint64_t tau4_precompute(const ca_group *g, const ca_elem *p,
-                                uint64_t one_minus_beta, ca_elem seeds[9])
+static uint64_t tau4_precompute(const ca_group *g, const ca_elem *p, uint64_t one_minus_beta,
+                                ca_elem seeds[9])
 {
     tau_jac q[9];
     uint64_t ops = tau4_seed_jac(g, p, one_minus_beta, q);
@@ -367,11 +372,10 @@ static uint64_t tau4_precompute(const ca_group *g, const ca_elem *p,
     return ops;
 }
 
-int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point,
-                       ca_tau4_precomp *out, uint64_t *ops)
+int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point, ca_tau4_precomp *out, uint64_t *ops)
 {
-    if (!g || !point || !out || g->kind != CA_GROUP_EC || g->endo_kind != 1 ||
-        g->a != 0 || g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
+    if (!g || !point || !out || g->kind != CA_GROUP_EC || g->endo_kind != 1 || g->a != 0 ||
+        g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
         return 0;
     ca_tau4_precomp pre = {0};
     if (!make_tau4_table(pre.digit)) return 0;
@@ -380,17 +384,17 @@ int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point,
     pre.beta = g->endo_c_mont;
     pre.beta2 = fm(g, pre.beta, pre.beta);
     tau_vec v1, v2;
-    if (!make_lattice(g->order, g->order - g->endo_lambda,
-                      &v1, &v2, &pre.det)) return 0;
-    pre.v1x = v1.x; pre.v1y = v1.y;
-    pre.v2x = v2.x; pre.v2y = v2.y;
+    if (!make_lattice(g->order, g->order - g->endo_lambda, &v1, &v2, &pre.det)) return 0;
+    pre.v1x = v1.x;
+    pre.v1y = v1.y;
+    pre.v2x = v2.x;
+    pre.v2y = v2.y;
     uint64_t count = 0;
     if (!pre.identity) {
         uint64_t one_minus_beta = fs(g, g->mont.r1, pre.beta);
         tau_jac q[18];
         count = tau4_seed_jac(g, point, one_minus_beta, q) + 1;
-        for (size_t i = 0; i < 9; i++)
-            q[9 + i] = jac_tau(g, q[i], one_minus_beta);
+        for (size_t i = 0; i < 9; i++) q[9 + i] = jac_tau(g, q[i], one_minus_beta);
         count += 9;
         ca_elem affine[18];
         jac_batch_to_affine(g, affine, q, 18);
@@ -404,9 +408,8 @@ int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point,
     return 1;
 }
 
-int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre,
-                            ca_elem *out, uint64_t k, uint64_t *triples,
-                            uint64_t *adds)
+int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out, uint64_t k,
+                            uint64_t *triples, uint64_t *adds)
 {
     if (!g || !pre || !out || pre->g != g) return 0;
     if (triples) *triples = 0;
@@ -417,8 +420,8 @@ int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre,
     }
     k %= g->order;
     ca_i128 x, y;
-    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y},
-                        (tau_vec){pre->v2x, pre->v2y}, pre->det, k, &x, &y);
+    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det, k,
+                        &x, &y);
     uint8_t digits[256];
     size_t nd = gen_tau4_digits_fast(x, y, pre->digit, digits);
     if (!nd) return 0;
@@ -426,7 +429,10 @@ int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre,
     uint64_t na = 0, n3 = 0;
     size_t nq = (nd + 1) / 2;
     for (size_t qi = nq; qi-- > 0;) {
-        if (acc.z) { acc = jac_triple(g, acc); n3++; }
+        if (acc.z) {
+            acc = jac_triple(g, acc);
+            n3++;
+        }
         size_t even = 2 * qi, odd = even + 1;
         int has_odd = odd < nd && digits[odd] != 255;
         int slot = has_odd ? digits[odd] : digits[even];
@@ -437,8 +443,10 @@ int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre,
         if (seed.w[2]) continue;
         int power = (d.power + (int)(qi % 3)) % 3;
         int sign = d.sign * ((qi & 1) ? -1 : 1);
-        if (power == 1) seed.w[0] = fm(g, pre->beta, seed.w[0]);
-        else if (power == 2) seed.w[0] = fm(g, pre->beta2, seed.w[0]);
+        if (power == 1)
+            seed.w[0] = fm(g, pre->beta, seed.w[0]);
+        else if (power == 2)
+            seed.w[0] = fm(g, pre->beta2, seed.w[0]);
         if (sign < 0 && seed.w[1]) seed.w[1] = g->p - seed.w[1];
         acc = jac_add_mixed(g, acc, &seed);
         na++;
@@ -449,11 +457,11 @@ int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre,
     return 1;
 }
 
-int ca_ec_mul_tau4(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
-                   uint64_t *tau_steps, uint64_t *adds)
+int ca_ec_mul_tau4(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k, uint64_t *tau_steps,
+                   uint64_t *adds)
 {
-    if (!g || !r || !a || g->kind != CA_GROUP_EC || g->endo_kind != 1 ||
-        g->a != 0 || g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
+    if (!g || !r || !a || g->kind != CA_GROUP_EC || g->endo_kind != 1 || g->a != 0 ||
+        g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
         return 0;
     if (tau_steps) *tau_steps = 0;
     if (adds) *adds = 0;
@@ -476,14 +484,19 @@ int ca_ec_mul_tau4(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
     uint64_t na = tau4_precompute(g, a, one_minus_beta, seeds);
     tau_jac acc = {0, g->mont.r1, 0};
     for (size_t i = nd; i-- > 0;) {
-        if (acc.z) { acc = jac_tau(g, acc, one_minus_beta); nt++; }
+        if (acc.z) {
+            acc = jac_tau(g, acc, one_minus_beta);
+            nt++;
+        }
         int slot = digits[i];
         if (slot == 255) continue;
         ca_tau4_digit d = table[slot];
         ca_elem q = seeds[d.seed];
         if (q.w[2]) continue;
-        if (d.power == 1) q.w[0] = fm(g, beta, q.w[0]);
-        else if (d.power == 2) q.w[0] = fm(g, beta2, q.w[0]);
+        if (d.power == 1)
+            q.w[0] = fm(g, beta, q.w[0]);
+        else if (d.power == 2)
+            q.w[0] = fm(g, beta2, q.w[0]);
         if (d.sign < 0 && q.w[1]) q.w[1] = g->p - q.w[1];
         acc = jac_add_mixed(g, acc, &q);
         na++;
@@ -494,12 +507,11 @@ int ca_ec_mul_tau4(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
     return 1;
 }
 
-int ca_ec_mul_tau4_tripling(const ca_group *g, ca_elem *r, const ca_elem *a,
-                            uint64_t k, uint64_t *tau_steps, uint64_t *adds,
-                            uint64_t *triples)
+int ca_ec_mul_tau4_tripling(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
+                            uint64_t *tau_steps, uint64_t *adds, uint64_t *triples)
 {
-    if (!g || !r || !a || g->kind != CA_GROUP_EC || g->endo_kind != 1 ||
-        g->a != 0 || g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
+    if (!g || !r || !a || g->kind != CA_GROUP_EC || g->endo_kind != 1 || g->a != 0 ||
+        g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
         return 0;
     if (tau_steps) *tau_steps = 0;
     if (adds) *adds = 0;
@@ -523,7 +535,10 @@ int ca_ec_mul_tau4_tripling(const ca_group *g, ca_elem *r, const ca_elem *a,
     tau_jac acc = {0, g->mont.r1, 0};
     size_t nq = (nd + 1) / 2;
     for (size_t qi = nq; qi-- > 0;) {
-        if (acc.z) { acc = jac_triple(g, acc); n3++; }
+        if (acc.z) {
+            acc = jac_triple(g, acc);
+            n3++;
+        }
         size_t even = 2 * qi, odd = even + 1;
         int slot = odd < nd && digits[odd] != 255 ? digits[odd] : digits[even];
         if (slot == 255) continue;
@@ -534,16 +549,19 @@ int ca_ec_mul_tau4_tripling(const ca_group *g, ca_elem *r, const ca_elem *a,
         int power = (d.power + (int)(qi % 3)) % 3;
         int sign = d.sign * ((qi & 1) ? -1 : 1);
         if (odd < nd && digits[odd] != 255) {
-            tau_jac q = jac_tau(g, (tau_jac){seed.w[0], seed.w[1], g->mont.r1},
-                                one_minus_beta);
+            tau_jac q = jac_tau(g, (tau_jac){seed.w[0], seed.w[1], g->mont.r1}, one_minus_beta);
             nt++;
-            if (power == 1) q.x = fm(g, beta, q.x);
-            else if (power == 2) q.x = fm(g, beta2, q.x);
+            if (power == 1)
+                q.x = fm(g, beta, q.x);
+            else if (power == 2)
+                q.x = fm(g, beta2, q.x);
             if (sign < 0 && q.y) q.y = g->p - q.y;
             acc = jac_add(g, acc, q);
         } else {
-            if (power == 1) seed.w[0] = fm(g, beta, seed.w[0]);
-            else if (power == 2) seed.w[0] = fm(g, beta2, seed.w[0]);
+            if (power == 1)
+                seed.w[0] = fm(g, beta, seed.w[0]);
+            else if (power == 2)
+                seed.w[0] = fm(g, beta2, seed.w[0]);
             if (sign < 0 && seed.w[1]) seed.w[1] = g->p - seed.w[1];
             acc = jac_add_mixed(g, acc, &seed);
         }
@@ -556,11 +574,11 @@ int ca_ec_mul_tau4_tripling(const ca_group *g, ca_elem *r, const ca_elem *a,
     return 1;
 }
 
-int ca_ec_mul_tau2(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
-                   uint64_t *tau_steps, uint64_t *adds)
+int ca_ec_mul_tau2(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k, uint64_t *tau_steps,
+                   uint64_t *adds)
 {
-    if (!g || !r || !a || g->kind != CA_GROUP_EC || g->endo_kind != 1 ||
-        g->a != 0 || g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
+    if (!g || !r || !a || g->kind != CA_GROUP_EC || g->endo_kind != 1 || g->a != 0 ||
+        g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
         return 0;
     if (tau_steps) *tau_steps = 0;
     if (adds) *adds = 0;
@@ -574,19 +592,19 @@ int ca_ec_mul_tau2(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
     uint64_t lambda_omega = g->order - g->endo_lambda;
     ca_i128 x, y;
     if (!reduce_scalar(g->order, lambda_omega, k, &x, &y)) return 0;
-    int8_t digits[256];
+    int digits[256];
     size_t nd = 0;
     while (x || y) {
-        if (nd == sizeof(digits)) return 0;
+        if (nd == sizeof(digits) / sizeof(digits[0])) return 0;
         int d = digit_for(x, y);
-        digits[nd++] = (int8_t)d;
+        digits[nd++] = d;
         if (d) {
             /* In the tau basis: omega=1-tau, omega^2=-2+tau. */
             const int dx[4] = {0, 1, 1, -2};
             const int dy[4] = {0, 0, -1, 1};
             int sign = d < 0 ? -1 : 1, j = d < 0 ? -d : d;
-            x -= sign * dx[j];
-            y -= sign * dy[j];
+            x -= (ca_i128)sign * dx[j];
+            y -= (ca_i128)sign * dy[j];
         }
         ca_i128 old_x = x;
         if (old_x % 3) return 0;
@@ -601,7 +619,10 @@ int ca_ec_mul_tau2(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
     uint64_t nt = 0, na = 0;
     uint64_t one_minus_beta = fs(g, g->mont.r1, beta);
     for (size_t i = nd; i-- > 0;) {
-        if (acc.z) { acc = jac_tau(g, acc, one_minus_beta); nt++; }
+        if (acc.z) {
+            acc = jac_tau(g, acc, one_minus_beta);
+            nt++;
+        }
         int d = digits[i];
         if (d) {
             ca_elem q = units[d < 0 ? -d - 1 : d - 1];

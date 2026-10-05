@@ -160,9 +160,8 @@ CA_API int ca_ec_mul_tau4(const ca_group *g, ca_elem *r, const ca_elem *a, uint6
                           uint64_t *tau_steps, uint64_t *adds);
 /* Rewrites pairs of tau powers as powers of 3 and evaluates them with the
  * Jacobian tripling formula.  `triples` counts those evaluations separately. */
-CA_API int ca_ec_mul_tau4_tripling(const ca_group *g, ca_elem *r, const ca_elem *a,
-                                   uint64_t k, uint64_t *tau_steps, uint64_t *adds,
-                                   uint64_t *triples);
+CA_API int ca_ec_mul_tau4_tripling(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k,
+                                   uint64_t *tau_steps, uint64_t *adds, uint64_t *triples);
 /* Paper's 4S+6M Jacobian tripling formula for a=0, converted back to the
  * library's affine representation.  Returns 1 on a supported curve and 0
  * otherwise; valid for any curve point, with aliasing allowed. */

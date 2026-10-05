@@ -94,8 +94,8 @@ static void tau_scalar_checks(const char *name)
     ca_rng rng;
     ca_rng_seed(&rng, 0x74a2ULL ^ order);
     for (int i = 0; i < 256; i++) {
-        uint64_t k = i < 8 ? (uint64_t[]){0, 1, 2, 3, order - 2, order - 1, order,
-                                            UINT64_MAX}[i] : ca_rng_next(&rng);
+        uint64_t k = i < 8 ? (uint64_t[]){0, 1, 2, 3, order - 2, order - 1, order, UINT64_MAX}[i]
+                           : ca_rng_next(&rng);
         ca_elem want, got = gen;
         uint64_t nt = UINT64_MAX, na = UINT64_MAX;
         ca_group_mul(&g, &want, &gen, k % order, NULL);
@@ -203,9 +203,8 @@ static void tau_large_curve_checks(void)
     ca_rng rng;
     ca_rng_seed(&rng, UINT64_C(0x56c0ffee));
     for (int i = 0; i < 128; i++) {
-        uint64_t k = i < 6 ? (uint64_t[]){0, 1, order - 1, order,
-                                            order + 1, UINT64_MAX}[i]
-                             : ca_rng_next(&rng);
+        uint64_t k = i < 6 ? (uint64_t[]){0, 1, order - 1, order, order + 1, UINT64_MAX}[i]
+                           : ca_rng_next(&rng);
         ca_elem want, got;
         ca_group_mul(&g, &want, &gen, k % order, NULL);
         CHECK(ca_ec_mul_tau2(&g, &got, &gen, k, NULL, NULL));
