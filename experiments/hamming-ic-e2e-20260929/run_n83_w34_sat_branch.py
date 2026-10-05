@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import itertools
 import json
+import os
 from pathlib import Path
 import platform
 import re
@@ -196,9 +197,9 @@ def main(public_path: Path, out: Path, branch_x: int, private_path: Path | None)
     })
     report = {"status": "INCOMPLETE", "claim_boundary": protocol["claim_boundary"]}
     try:
-        # The limit is on this process (including circuit generation), not just CMS.
-        limit = protocol["max_rss_bytes_per_branch"]
-        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+        if os.environ.get("N83_SAT_EXTERNAL_RSS_GUARD") != "1":
+            raise RuntimeError("run through bounded_n83_w34_sat.py for process-tree RSS control")
+        report["memory_guard"] = "external_process_tree_rss_watchdog"
         before = time.perf_counter_ns()
         conjugates = [int(value) for value in public["normal_conjugates_polynomial_bits_decimal"]]
         assert len(conjugates) == 83
