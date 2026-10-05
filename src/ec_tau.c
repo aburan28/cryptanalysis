@@ -1125,9 +1125,11 @@ static int tau8_fused_mul_jac(const ca_group *g,
       return 0;
     size_t pair = 217 * u + v;
     uint16_t id = pre->orbit ? ca_tau8_orbit_id[pair] : ca_tau8_pair_map[pair];
-    if (id == UINT16_MAX)
+    uint8_t unit = pre->orbit ? ca_tau8_orbit_unit[pair] : 0;
+    size_t entries = pre->orbit ? CA_TAU8_ORBIT_COUNT : CA_TAU8_PAIR_COUNT;
+    if (id >= entries || unit >= 6)
       return 0;
-    units[length] = pre->orbit ? ca_tau8_orbit_unit[pair] : 0;
+    units[length] = unit;
     ids[length++] = id;
   }
   tau_jac acc = {0, g->mont.r1, 0};
