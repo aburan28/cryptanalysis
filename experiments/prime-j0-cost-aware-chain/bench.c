@@ -66,38 +66,37 @@ static int select_curve(const char *name, uint64_t *p, uint64_t *b,
 }
 
 static int select_mode(const char *name) {
-  static const char *names[] = {"reference",
-                                "baseline",
-                                "cost",
-                                "pos",
-                                "pos-global",
-                                "pos-prep",
-                                "pos-global-prep",
-                                "pos-batch32",
-                                "pos-batch128",
-                                "pos-batch512",
-                                "pos-batch4096",
-                                "atlas",
-                                "fused-batch128",
-                                "fused-orbit-batch128"};
-  for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
-    if (strcmp(name, names[i]) == 0)
-      return (int)i;
-  return -1;
+    static const char *names[] = {"reference",
+                                  "baseline",
+                                  "cost",
+                                  "pos",
+                                  "pos-global",
+                                  "pos-prep",
+                                  "pos-global-prep",
+                                  "pos-batch32",
+                                  "pos-batch128",
+                                  "pos-batch512",
+                                  "pos-batch4096",
+                                  "atlas",
+                                  "fused-batch128",
+                                  "fused-orbit-batch128"};
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+        if (strcmp(name, names[i]) == 0) return (int)i;
+    return -1;
 }
 
 int main(int argc, char **argv) {
   int mode = argc > 1 ? select_mode(argv[1]) : -1;
   if (argc != 5 || mode < 0 ||
       (strcmp(argv[3], "0") != 0 && strcmp(argv[3], "1") != 0)) {
-    fprintf(stderr,
-            "usage: %s "
-            "reference|baseline|cost|pos|pos-global|pos-prep|pos-global-prep|"
-            "pos-batch32|pos-batch128|pos-batch512|pos-batch4096|atlas|"
-            "fused-batch128|fused-orbit-batch128 "
-            "glv-j0-32|j0-56 0|1 INPUT\n",
-            argv[0]);
-    return 2;
+      fprintf(stderr,
+              "usage: %s "
+              "reference|baseline|cost|pos|pos-global|pos-prep|pos-global-prep|"
+              "pos-batch32|pos-batch128|pos-batch512|pos-batch4096|atlas|"
+              "fused-batch128|fused-orbit-batch128 "
+              "glv-j0-32|j0-56 0|1 INPUT\n",
+              argv[0]);
+      return 2;
   }
   uint64_t p, b, order;
   if (!select_curve(argv[2], &p, &b, &order))
@@ -107,8 +106,7 @@ int main(int argc, char **argv) {
   int fused = mode == 12 || mode == 13;
   int orbit = mode == 13;
   int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
-  size_t block_size =
-      mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
+  size_t block_size = mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
   uint64_t scalars[SCALARS], input_digest;
   if (!read_scalars(argv[4], order, scalars, &input_digest)) {
     fprintf(stderr,
@@ -148,112 +146,100 @@ int main(int argc, char **argv) {
           ? CA_TAU_POS_Q * 2 * 9 * (3 * sizeof(uint64_t) + sizeof(uint64_t))
           : 0;
   size_t fused_entries = orbit ? 4933 : 29593;
-  size_t prep_bytes =
-      fused ? sizeof(fused_pre) + fused_blocks * fused_entries * sizeof(ca_elem)
-      : positional ? sizeof(positional_pre)
-      : mode == 0  ? 0
-                   : sizeof(pre);
-  if (fused)
-    prep_temp_heap_bytes =
-        fused_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
+  size_t prep_bytes = fused ? sizeof(fused_pre) + fused_blocks * fused_entries * sizeof(ca_elem)
+                      : positional ? sizeof(positional_pre)
+                      : mode == 0  ? 0
+                                   : sizeof(pre);
+  if (fused) prep_temp_heap_bytes = fused_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
   if (mode != 0) {
     double t0 = ca_now();
     if (fused) {
-      int prepared =
-          orbit ? ca_ec_tau8_orbit_prepare(
-                      &group, &point, fused_blocks, &fused_pre, &prep_triples,
-                      &prep_adds, &prep_rotations, &prep_layer_inversions)
-                : ca_ec_tau8_fused_prepare(
-                      &group, &point, fused_blocks, &fused_pre, &prep_triples,
-                      &prep_adds, &prep_rotations, &prep_layer_inversions);
-      if (!prepared) {
-        free(outputs);
-        return 2;
-      }
-    } else
-      for (int repeat = 0; repeat < prep_repeats; repeat++) {
-        uint64_t current_triples = 0;
         int prepared =
-            global_builder
-                ? ca_ec_tau4_pos_global_prepare(&group, &point, &positional_pre,
-                                                &current_triples)
-            : positional
-                ? ca_ec_tau4_pos_prepare(&group, &point, &positional_pre,
-                                         &current_triples)
-                : ca_ec_tau4_prepare(&group, &point, &pre, NULL);
+            orbit
+                ? ca_ec_tau8_orbit_prepare(&group, &point, fused_blocks, &fused_pre, &prep_triples,
+                                           &prep_adds, &prep_rotations, &prep_layer_inversions)
+                : ca_ec_tau8_fused_prepare(&group, &point, fused_blocks, &fused_pre, &prep_triples,
+                                           &prep_adds, &prep_rotations, &prep_layer_inversions);
         if (!prepared) {
-          free(outputs);
-          return 2;
+            free(outputs);
+            return 2;
         }
-        prep_triples += current_triples;
-        if (positional && !positional_pre.base.identity)
-          prep_layer_inversions += global_builder ? 1 : CA_TAU_POS_Q - 1;
-      }
+    } else
+        for (int repeat = 0; repeat < prep_repeats; repeat++) {
+            uint64_t current_triples = 0;
+            int prepared =
+                global_builder ? ca_ec_tau4_pos_global_prepare(&group, &point, &positional_pre,
+                                                               &current_triples)
+                : positional
+                    ? ca_ec_tau4_pos_prepare(&group, &point, &positional_pre, &current_triples)
+                    : ca_ec_tau4_prepare(&group, &point, &pre, NULL);
+            if (!prepared) {
+                free(outputs);
+                return 2;
+            }
+            prep_triples += current_triples;
+            if (positional && !positional_pre.base.identity)
+                prep_layer_inversions += global_builder ? 1 : CA_TAU_POS_Q - 1;
+        }
     prep_ms = 1000 * (ca_now() - t0);
   }
   uint64_t triples = 0, adds = 0, rotations = 0, output_inversions = 0;
   uint64_t fallbacks = 0;
-  size_t online_scratch_bytes = fused                     ? 128 * 32
-                                : mode >= 7 && mode <= 10 ? block_size * 32
-                                                          : 0;
+  size_t online_scratch_bytes = fused ? 128 * 32 : mode >= 7 && mode <= 10 ? block_size * 32 : 0;
   double start = ca_now();
   if (fused) {
-    if (!ca_ec_tau8_fused_mul_batch(&group, &fused_pre, outputs, scalars,
-                                    SCALARS, 128, &adds, &rotations,
-                                    &output_inversions, &fallbacks)) {
-      fprintf(stderr, "fused batched evaluation failed\n");
-      ca_ec_tau8_fused_clear(&fused_pre);
-      free(outputs);
-      return 1;
-    }
-  } else if (mode >= 7 && mode <= 10) {
-    if (!ca_ec_tau4_pos_mul_batch(&group, &positional_pre, outputs, scalars,
-                                  SCALARS, block_size, &adds, &rotations,
-                                  &output_inversions)) {
-      fprintf(stderr, "batched positional evaluation failed\n");
-      free(outputs);
-      return 1;
-    }
-  } else {
-    for (size_t i = 0; i < SCALARS; i++) {
-      if (mode == 0) {
-        ca_group_mul(&group, &outputs[i], &point, scalars[i], NULL);
-      } else if (positional) {
-        uint64_t a = 0, r = 0;
-        if (!ca_ec_tau4_pos_mul(&group, &positional_pre, &outputs[i],
-                                scalars[i], &a, &r)) {
-          fprintf(stderr, "positional evaluation failed at index %zu\n", i);
+      if (!ca_ec_tau8_fused_mul_batch(&group, &fused_pre, outputs, scalars, SCALARS, 128, &adds,
+                                      &rotations, &output_inversions, &fallbacks)) {
+          fprintf(stderr, "fused batched evaluation failed\n");
+          ca_ec_tau8_fused_clear(&fused_pre);
           free(outputs);
           return 1;
-        }
-        adds += a;
-        rotations += r;
-        output_inversions += !outputs[i].w[2];
-      } else {
-        uint64_t t = 0, a = 0, r = 0;
-        if (!ca_ec_tau4_mul_prepared_profile(
-                &group, &pre, &outputs[i], scalars[i],
-                mode == 11 ? 2 : mode == 2, &t, &a, &r)) {
-          fprintf(stderr, "scalar evaluation failed at index %zu\n", i);
-          free(outputs);
-          return 1;
-        }
-        triples += t;
-        adds += a;
-        rotations += r;
       }
-    }
+  } else if (mode >= 7 && mode <= 10) {
+      if (!ca_ec_tau4_pos_mul_batch(&group, &positional_pre, outputs, scalars, SCALARS, block_size,
+                                    &adds, &rotations, &output_inversions)) {
+          fprintf(stderr, "batched positional evaluation failed\n");
+          free(outputs);
+          return 1;
+      }
+  } else {
+      for (size_t i = 0; i < SCALARS; i++) {
+          if (mode == 0) {
+              ca_group_mul(&group, &outputs[i], &point, scalars[i], NULL);
+          } else if (positional) {
+              uint64_t a = 0, r = 0;
+              if (!ca_ec_tau4_pos_mul(&group, &positional_pre, &outputs[i], scalars[i], &a, &r)) {
+                  fprintf(stderr, "positional evaluation failed at index %zu\n", i);
+                  free(outputs);
+                  return 1;
+              }
+              adds += a;
+              rotations += r;
+              output_inversions += !outputs[i].w[2];
+          } else {
+              uint64_t t = 0, a = 0, r = 0;
+              if (!ca_ec_tau4_mul_prepared_profile(&group, &pre, &outputs[i], scalars[i],
+                                                   mode == 11 ? 2 : mode == 2, &t, &a, &r)) {
+                  fprintf(stderr, "scalar evaluation failed at index %zu\n", i);
+                  free(outputs);
+                  return 1;
+              }
+              triples += t;
+              adds += a;
+              rotations += r;
+          }
+      }
   }
   double online_ms = 1000 * (ca_now() - start);
   double verify_start = ca_now();
   uint64_t output_digest = FNV_OFFSET;
   for (size_t i = 0; i < SCALARS; i++) {
     if (mode != 0) {
-      if (mode == 11 && !ca_ec_tau4_recode_compare_scalar(&pre, scalars[i])) {
-        fprintf(stderr, "digit stream mismatch at index %zu\n", i);
-        free(outputs);
-        return 1;
-      }
+        if (mode == 11 && !ca_ec_tau4_recode_compare_scalar(&pre, scalars[i])) {
+            fprintf(stderr, "digit stream mismatch at index %zu\n", i);
+            free(outputs);
+            return 1;
+        }
       ca_elem expected;
       ca_group_mul(&group, &expected, &point, scalars[i], NULL);
       if (!ca_group_equal(&group, &outputs[i], &expected)) {
@@ -274,17 +260,15 @@ int main(int argc, char **argv) {
   printf("curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
          " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
          " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
-         " prep_triples=%" PRIu64 " prep_adds=%" PRIu64
-         " prep_rotations=%" PRIu64 " prep_layer_inversions=%" PRIu64
+         " prep_triples=%" PRIu64 " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64
+         " prep_layer_inversions=%" PRIu64
          " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_repeats=%d"
-         " triples=%" PRIu64 " adds=%" PRIu64 " rotations=%" PRIu64
-         " output_inversions=%" PRIu64 " fallbacks=%" PRIu64
-         " online_scratch_bytes=%zu"
+         " triples=%" PRIu64 " adds=%" PRIu64 " rotations=%" PRIu64 " output_inversions=%" PRIu64
+         " fallbacks=%" PRIu64 " online_scratch_bytes=%zu"
          " verified=1\n",
-         argv[2], argv[3], SCALARS, point_words[0], point_words[1],
-         input_digest, output_digest, online_ms, prep_ms, verify_ms,
-         prep_triples, prep_adds, prep_rotations, prep_layer_inversions,
-         prep_bytes, prep_temp_heap_bytes, prep_repeats, triples, adds,
+         argv[2], argv[3], SCALARS, point_words[0], point_words[1], input_digest, output_digest,
+         online_ms, prep_ms, verify_ms, prep_triples, prep_adds, prep_rotations,
+         prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats, triples, adds,
          rotations, output_inversions, fallbacks, online_scratch_bytes);
   return 0;
 }
