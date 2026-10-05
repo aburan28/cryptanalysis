@@ -1,0 +1,353 @@
+[
+ {
+  "topic": "ring invariants: F_2 points, trace, tau^131 coefficients, conductor 263*p, Lucas cert of p, 4 orders (disc, class number, min non-integer norm), gcd obstructions, ord_131(2), x^131-1 factorisation, invariant subspace dims",
+  "codex_source": "ecc2k130-ring-invariants.json, ecc2k130-ring-homomorphism-obstructions.json, ecc2k130-frobenius-subspaces.json",
+  "codex": "all fields",
+  "ours": "49/49 fields equal",
+  "script": "c01_ring_invariants.py",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "embedding degree ord_N(q)",
+  "codex_source": "run-05 embedding-result.json",
+  "codex": "216464610000596986937760855436835237 (118 bits, (N-1)/k=3144)",
+  "ours": "216464610000596986937760855436835237 (118 bits, log2 117.38, (N-1)/k=3144)",
+  "script": "c02_curves_orders_torsion.py",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "N-1 factorisation",
+  "codex_source": "run-05 embedding-result.json",
+  "codex": "2^3*3*11*109*131*263*32326729*21234899465981031419669",
+  "ours": "2^3 * 3 * 11 * 109 * 131 * 263 * 32326729 * 21234899465981031419669",
+  "script": "c02",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "q mod 263, t mod 263, charpoly of pi mod 263",
+  "codex_source": "run-05",
+  "codex": "1, 261, (X+1)^2",
+  "ours": "1, 261, x^2 - (t mod 263) x + (q mod 263) = (x + 1)^2",
+  "script": "c02",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "local 263-torsion: E0 (Z/263)^2 over F_q^2, 264 stable lines; floor Z/263^2 over F_q^2, 1 stable line, full E[263] only over F_q^526",
+  "codex_source": "run-05 (tested E0, A090, B021, B067 only)",
+  "codex": "4 curves",
+  "ours": "all 263: {'(Z/263)^2': 1, 'Z/263^2': 262}; direct F_q^2 check on E0,A000,A090,B000,B021,B067 agrees",
+  "script": "c02",
+  "verdict": "AGREE",
+  "note": "Codex tested 4 curves; we checked all 263 via the quadratic twist plus char-poly (X+1)^2 argument"
+ },
+ {
+  "topic": "#E(F_q) = 4N for every curve (a2=0 models)",
+  "codex_source": "inventory.json (A000,B000), run-01 models",
+  "codex": "4N",
+  "ours": "263/263 by point-order proof",
+  "script": "c02",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "labels: inventory rule X_k = X000^(2^k)",
+  "codex_source": "inventory.json + run-01 executed-source.py",
+  "codex": "labels",
+  "ours": "263/263 j,b equal to ground truth",
+  "script": "c02",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "run-04 Velu codomain inventory (264 kernel lines)",
+  "codex_source": "run-04 velu-line-enumeration.json",
+  "codex": "2 horizontal + 262 distinct descendants",
+  "ours": "2 rows j=1, 262/262 floor rows label+j equal GT",
+  "script": "c07_explicit_maps.py",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "run-01 per-curve j,b (summary.json, 789 rows)",
+  "codex_source": "run-01 summary.json",
+  "codex": "789 rows",
+  "ours": "789/789 rows equal GT",
+  "script": "c13",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "explicit degree-263 map E0->A090",
+  "codex_source": "run-04 A090-explicit-map.json",
+  "codex": "kernel poly deg 131 (line 152), images of challenge P,Q",
+  "ours": "kernel poly == our independent twist-enumerated line 218; Sage isogeny degree 263; codomain j == GT; P,Q images equal Codex's exactly",
+  "script": "c07",
+  "verdict": "AGREE",
+  "note": "Codex line ids are basis-dependent; kernel SHA-256 serialisation not reproduced (coefficients compared directly)"
+ },
+ {
+  "topic": "explicit degree-263 map E0->B021",
+  "codex_source": "run-04 B021-explicit-map.json",
+  "codex": "kernel poly deg 131 (line 115), images of challenge P,Q",
+  "ours": "kernel poly == our independent twist-enumerated line 235; Sage isogeny degree 263; codomain j == GT; P,Q images equal Codex's exactly",
+  "script": "c07",
+  "verdict": "AGREE",
+  "note": "Codex line ids are basis-dependent; kernel SHA-256 serialisation not reproduced (coefficients compared directly)"
+ },
+ {
+  "topic": "explicit degree-263 map E0->B067",
+  "codex_source": "run-04 B067-explicit-map.json",
+  "codex": "kernel poly deg 131 (line 40), images of challenge P,Q",
+  "ours": "kernel poly == our independent twist-enumerated line 216; Sage isogeny degree 263; codomain j == GT; P,Q images equal Codex's exactly",
+  "script": "c07",
+  "verdict": "AGREE",
+  "note": "Codex line ids are basis-dependent; kernel SHA-256 serialisation not reproduced (coefficients compared directly)"
+ },
+ {
+  "topic": "degree-11 map A000->A016",
+  "codex_source": "run-10 l11-generator-maps.json",
+  "codex": "degree-5 kernel poly, images of P,Q",
+  "ours": "kernel == a degree-5 factor of psi_11 (factor degrees [5, 5, 10, 10, 10, 10, 10]); P,Q images equal; scalar on N-subgroup = ['beta'] (other iso gives the negative)",
+  "script": "c07",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "degree-11 map A000->A115",
+  "codex_source": "run-10 l11-generator-maps.json",
+  "codex": "degree-5 kernel poly, images of P,Q",
+  "ours": "kernel == a degree-5 factor of psi_11 (factor degrees [5, 5, 10, 10, 10, 10, 10]); P,Q images equal; scalar on N-subgroup = ['gamma'] (other iso gives the negative)",
+  "script": "c07",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "degree-11 map B000->B016",
+  "codex_source": "run-10 l11-generator-maps.json",
+  "codex": "degree-5 kernel poly, images of P,Q",
+  "ours": "kernel == a degree-5 factor of psi_11 (factor degrees [5, 5, 10, 10, 10, 10, 10]); P,Q images equal; scalar on N-subgroup = ['beta'] (other iso gives the negative)",
+  "script": "c07",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "degree-11 map B000->B115",
+  "codex_source": "run-10 l11-generator-maps.json",
+  "codex": "degree-5 kernel poly, images of P,Q",
+  "ours": "kernel == a degree-5 factor of psi_11 (factor degrees [5, 5, 10, 10, 10, 10, 10]); P,Q images equal; scalar on N-subgroup = ['gamma'] (other iso gives the negative)",
+  "script": "c07",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "11-torsion field and v_11",
+  "codex_source": "run-10 l11-generator-maps.json",
+  "codex": "F_(2^1310), v11=2",
+  "ours": "F_q^10 = F_(2^1310), v11=2",
+  "script": "c07",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "CM scalars beta, gamma, delta, omega roots, norm-equation solutions, 262 chart alignment scalars",
+  "codex_source": "run-11 cm-alignment.json",
+  "codex": "beta=352131806444148496925169449605823512480, gamma=40507279511179139861778375210528148470, beta*gamma=-11",
+  "ours": "22/22 algebraic checks equal; geometric: Frob^(131-16) o phi_11 acts as +-beta (A and B), reverse as +-gamma; mean/max shortest path 32.748/65",
+  "script": "c08_cm_scalar_algebra.py, c07",
+  "verdict": "AGREE",
+  "note": "the -11 sign is a normalisation convention: the other codomain isomorphism flips beta -> -beta (c07)"
+ },
+ {
+  "topic": "horizontal graphs l in {11,23,29,37,43,53}",
+  "codex_source": "run-10 horizontal-graph.json",
+  "codex": "1572 edges, shifts +-16,+-50,+-61,+-24; 29,53 cross-orbit 262-cycles",
+  "ours": "edge sets identical for all 6 l (from Phi_l mod 2 roots over F_q); class-group dlogs 16,50,70/61,24; [29],[53] order 262",
+  "script": "c03, c04",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "Phi_263(1,Y) mod 2 = (Y+1)^2 H_D(Y)",
+  "codex_source": "run-04 phi263-specialization.json",
+  "codex": "exponent list",
+  "ours": "exponents equal (from GT hex H_D and fresh PARI polmodular)",
+  "script": "c09",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "S_3 formula and F_8 control",
+  "codex_source": "ecc2k130-volcano-structural-assessment.md",
+  "codex": "56 models x 56 triples, 416 zeros, 208/208",
+  "ours": "S_3 vanishes on random collinear triples on all 263 curves: True; F_8: 416 zeros, 208/208",
+  "script": "c06",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "rho baselines",
+  "codex_source": "run-06 REPORT",
+  "codex": "2^64.826, 2^64.326, 2^60.809",
+  "ours": "2^64.826, 2^64.326, 2^60.809",
+  "script": "c05",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "run-06 k=8,9,10 four-summand bounds",
+  "codex_source": "run-06 REPORT",
+  "codex": "x counts 126-132/249-255/491-516; coverage 2^-95.84..2^-95.56; LB 2^104.92 (E0), 2^104.71 (A090); +22.05%; 44-50 bits above rho",
+  "ours": "coverage -95.84 / -95.56; LB 104.92 / 104.71; +22.05%; 43.90..50.05 bits above rho",
+  "script": "c12_run06_bounds.py",
+  "verdict": "AGREE",
+  "note": "lowest gap 43.90 (A090,k=10) rounds to Codex's '44'"
+ },
+ {
+  "topic": "E0 Frobenius duplicates 2P3+P5+P17=O; k=7 E0 eligible 79848 distinct 79788",
+  "codex_source": "run-02/run-03 REPORT",
+  "codex": "as stated",
+  "ours": "relation holds: True; k=7: eligible 79848 distinct 79788 max multiplicity 2",
+  "script": "c15",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "run-11 overlap identity 130*16*C(c,4) and modeled edge counts",
+  "codex_source": "run-11 REPORT",
+  "codex": "2080/145600/1029600/3785600; 17160..68640",
+  "ours": "identical",
+  "script": "c17",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "run-13 horizontal-edge equality rates (from Codex's own hashes, our edge lists)",
+  "codex_source": "run-13 REPORT + floor-solver-results.json",
+  "codex": "equal-top 3.82%..6.87%, global 5.50%; equal F4 94.46%; 262/160/261 unique",
+  "ours": "top 3.82%..6.87%, global 5.50%; F4 94.46% (comparable pairs only; F4 degree missing for 120 of 262 charts)",
+  "script": "c16",
+  "verdict": "AGREE",
+  "note": "internal-consistency check only (hashes are Codex's)"
+ },
+ {
+  "topic": "run-01/EXPLOITABILITY k4 aggregates (E0 coverage, range, #descendants above E0, size-matched range, best same-size)",
+  "codex_source": "run-01 REPORT / EXPLOITABILITY.md",
+  "codex": "{\"E0\": 80, \"range\": [0, 584], \"higher\": \"155/262\", \"size_matched_range\": [56, 80], \"best_same_size\": \"A010 80\"}",
+  "ours": "{\"E0_targets\": 80, \"all_curves_target_range\": [0, 584], \"descendants_with_higher_coverage_than_E0\": 155, \"size_matched_descendants\": 61, \"size_matched_target_range\": [56, 80], \"best_size_matched\": [80, \"B119\"]}",
+  "script": "c10c/c10d + c13",
+  "verdict": "AGREE",
+  "note": "k=4 polynomial: 30 size-matched descendants tie at 80 (A010 is one of them)"
+ },
+ {
+  "topic": "run-01/EXPLOITABILITY k5 aggregates (E0 coverage, range, #descendants above E0, size-matched range, best same-size)",
+  "codex_source": "run-01 REPORT / EXPLOITABILITY.md",
+  "codex": "{\"E0\": 660, \"range\": [168, 3632], \"higher\": \"215/262\", \"size_matched_range\": [680, 832], \"best_same_size\": \"B067 832\"}",
+  "ours": "{\"E0_targets\": 660, \"all_curves_target_range\": [168, 3632], \"descendants_with_higher_coverage_than_E0\": 215, \"size_matched_descendants\": 24, \"size_matched_target_range\": [680, 832], \"best_size_matched\": [832, \"B067\"]}",
+  "script": "c10c/c10d + c13",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "run-01/EXPLOITABILITY k4_random aggregates (E0 coverage, range, #descendants above E0, size-matched range, best same-size)",
+  "codex_source": "run-01 REPORT / EXPLOITABILITY.md",
+  "codex": "{\"E0\": 184, \"range\": [0, 440], \"higher\": \"39/262\", \"size_matched_range\": [152, 192], \"best_same_size\": \"B023 192\"}",
+  "ours": "{\"E0_targets\": 184, \"all_curves_target_range\": [0, 440], \"descendants_with_higher_coverage_than_E0\": 39, \"size_matched_descendants\": 62, \"size_matched_target_range\": [152, 192], \"best_size_matched\": [192, \"B023\"]}",
+  "script": "c10c/c10d + c13",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "run-03 k=6 census aggregates",
+  "codex_source": "run-03 REPORT / EXPLOITABILITY.md",
+  "codex": "{\"x_range\": [22, 42], \"target_range\": [2992, 23008], \"E0\": \"eligible 10868 distinct 10840 excess 28\", \"only_collision_row\": \"E0\", \"best_same_size\": \"A092 11080\"}",
+  "ours": "{\"x_range\": [22, 42], \"target_range\": [2992, 23008], \"infinity_triples_total\": 0, \"collision_rows\": [\"E0\"], \"E0\": {\"factor_base_x_count\": 33, \"factor_base_signed_point_count\": 66, \"all_signed_triples\": 43648, \"eligible_signed_triples\": 10868, \"infinity_triples\": 0, \"prime_subgroup_distinct_targets\": 10840, \"tag_split_n0_n2_nodd\": [4, 7, 22]}, \"best_size_matched\": [11080, \"A092\"]}",
+  "script": "c10c + c13",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "EXPLOITABILITY size-matched ratios (A090 +9.09%/+1.70%, B021 0.700/1.073/1.018, B081 +12.12%/-0.15%, only B021 size-matched at k=4,5,6; best reductions 20.67%/4.17%/2.17%)",
+  "codex_source": "EXPLOITABILITY.md",
+  "codex": "as stated",
+  "ours": "{\"matched_k5_and_k6\": [\"A090\", \"B021\", \"B081\"], \"matched_k4_k5_k6\": [\"B021\"], \"ratios\": {\"A090\": {\"4\": 3.0, \"5\": 1.0909, \"6\": 1.017}, \"B021\": {\"4\": 0.7, \"5\": 1.0727, \"6\": 1.0185}, \"B081\": {\"4\": 2.2, \"5\": 1.1212, \"6\": 0.9985}, \"A092\": {\"4\": 0.6, \"5\": 2.1515, \"6\": 1.0221}, \"B067\": {\"4\": 1.0, \"5\": 1.2606, \"6\": 0.738}}, \"k5_B067_reduction_percent\": 20.673076923076927, \"k4random_reduction_percent\": 4.1666666666666625, \"k6_best_reduction_percent\": 2.166064981949456}",
+  "script": "c20_exploitability_sizes.py",
+  "verdict": "AGREE",
+  "note": ""
+ },
+ {
+  "topic": "run-13 per-chart distinct_reachable_targets (524 chart rows)",
+  "codex_source": "run-13 floor-solver-results.json",
+  "codex": "e.g. 280 per 7-x chart; sum over adapted charts 177960",
+  "ours": "x-sets lift on A090/B021 in 524/524; Codex count == our UNFILTERED distinct 3-sum count in 524/524, == order-N-subgroup count in 0/524; adapted-panel sum 177960 unfiltered vs 48336 in the challenge subgroup",
+  "script": "c11d_run13_charts_ref_A090_B021.py",
+  "verdict": "DEFINITIONAL DISCREPANCY",
+  "note": "run-13 counts relation images in all of E(F_q) (order 4N); run-01 counts only the order-N subgroup where the public targets live; about 27% of run-13's images are subgroup-compatible. Conclusions (negative) unaffected."
+ },
+ {
+  "topic": "run-11 'minus-dual sign' (beta*gamma = -11)",
+  "codex_source": "run-11 REPORT / cm-alignment.json",
+  "codex": "normalized reverse map contains a minus-dual sign",
+  "ours": "with Codex's normalised codomain points the scalars are exactly beta and gamma; each map has two codomain isomorphisms (identity and negation), and the other choice gives -beta / -gamma (c07)",
+  "script": "c07",
+  "verdict": "NOTE",
+  "note": "the sign is a model-normalisation convention, not an intrinsic property; Codex's calibration against public P is the right fix"
+ },
+ {
+  "topic": "run-04 A090.json / B021.json / B067.json",
+  "codex_source": "run-04",
+  "codex": "status implementation_error (Sage known-codomain constructor unavailable in char 2)",
+  "ours": "no numeric content; the verified maps are in *-explicit-map.json (checked above)",
+  "script": "-",
+  "verdict": "NOTE",
+  "note": ""
+ },
+ {
+  "topic": "kernel-polynomial SHA-256 values",
+  "codex_source": "run-04 *-explicit-map.json, run-10 l11-generator-maps.json",
+  "codex": "sha256 strings",
+  "ours": "serialisation not documented; JSON-list and newline-joined hashes do not reproduce them; coefficients compared directly instead",
+  "script": "c07",
+  "verdict": "NOT REPRODUCED (format unknown)",
+  "note": ""
+ },
+ {
+  "topic": "run-10 'isogenies_prime_degree interrupted after ~90 s while factoring a division polynomial'",
+  "codex_source": "run-10 REPORT",
+  "codex": "engineering censor",
+  "ours": "factoring psi_11 of A000/B000 over F_q took 1.7 s / 1.4 s in Sage 10.9 here (machine load ~170)",
+  "script": "c07",
+  "verdict": "NOTE",
+  "note": "the censor was not caused by the factorisation itself; no mathematical consequence"
+ },
+ {
+  "topic": "run-13 F4 statistics",
+  "codex_source": "run-13 REPORT",
+  "codex": "equal F4-degree rates track a 94.46% global baseline",
+  "ours": "reproduced 94.46% but only over comparable pairs: max_f4_degree is missing (None) for 120 of 262 adapted charts",
+  "script": "c16",
+  "verdict": "NOTE",
+  "note": ""
+ },
+ {
+  "topic": "run-13 'zero natural rows in 8,384 public chart-target cells'",
+  "codex_source": "run-13 REPORT",
+  "codex": "0",
+  "ours": "not recomputed: each chart image has <= 280 points in a group of order 4N ~ 2^131, so the expected number of hits over 8,384 cells is at most 280*8384/(N-1) = 2^-107.8; zero is the only plausible outcome and carries no information",
+  "script": "-",
+  "verdict": "NOTE",
+  "note": ""
+ },
+ {
+  "topic": "per-curve summary (per_curve.json)",
+  "codex_source": "all per-curve Codex data",
+  "codex": "263 curves",
+  "ours": "label match 263/263, values match 263/263",
+  "script": "c14",
+  "verdict": "AGREE",
+  "note": ""
+ }
+]
