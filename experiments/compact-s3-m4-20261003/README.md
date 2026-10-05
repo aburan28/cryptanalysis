@@ -1482,10 +1482,25 @@ work ledger retain the raw field-operation and memory counts. The symbolic
 equation alone did not change the decisive rejection pattern. These
 censored cells leave the degree-131 complete `2^x` unknown.
 
+### Q1427 interleaved target-conditioned partner bits
+
+The [frozen Q1427 protocol](q1427_interleaved_pair/protocol.json) keeps
+Q1426's exact symbolic and external root constraints but alternates bits
+of the two second-pair leaves after the target and intermediates are
+constrained. Its [four-cell verification](q1427_interleaved_pair/verification.json)
+independently replays both freed-partner controls. Both ordinary N53/N83
+cells still hit the 60-second cap without a relation. Within that cap,
+reverse partner calls fell to 135,226 at N53 and 71,988 at N83, factors
+of 7.99 and 6.74 fewer than Q1426. Every reverse candidate still failed
+the sparse weight rule. The [Q1427 result table](q1427_interleaved_pair/README.md)
+and work ledger retain exact field-operation and memory counts. This
+decision-order improvement is a stage diagnostic; natural yield and the
+complete degree-131 `2^x` remain unknown.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum
-membership and witness method**. It must avoid the Q1425/Q1426 reverse-root
+membership and witness method**. It must avoid the Q1425–Q1427 reverse-root
 rejection loop and the full quotient-pair index screened by Q1416 at roughly
 `2^89.36` logical actions on the exact N131 base under its uniform-key
 model. This is a model for that pure-index family, not a lower bound on
@@ -1494,7 +1509,9 @@ or necessary-condition theorem that jointly uses the target's final S3
 link and both sparse pair constraints. Prove solution preservation, and
 verify it against exhaustive small-field cases and the archived N53/N83
 witnesses. A new SAT clause set without a changed ordinary-query search
-pattern does not pass this gate.
+pattern does not pass this gate. Q1415's global native XOR Gaussian solver
+also capped on an N53 ordinary formula; repeating that setting alone is
+not a new feasibility method.
 Freeze the stage before ordinary queries. The first measurable gate is the
 unpinned archived N53 ordinary target, which Q1301 already proved
 representable. The second is an independently verified relation on the
