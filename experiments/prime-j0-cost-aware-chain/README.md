@@ -247,4 +247,7 @@ modeled group-operation score 7.93% and 3.39% against its canonical-plus-oracle
 comparator. The beam also evaluates 63 and 195 trial digits per scalar on the
 two curves, plus canonical completions. A norm-greedy rule loses nearly all
 the modeled gain. These are exploratory operation counts; no native or
-isolated CPU speedup is established.
+isolated CPU speedup is established. The
+[prospective native protocol](GLOBAL_PAIR_NATIVE_PROTOCOL.md) freezes the
+32-choice, width-one candidate and its held-out comparison before input
+generation.
