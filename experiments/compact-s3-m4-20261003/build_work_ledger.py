@@ -638,6 +638,13 @@ def main():
         "n131_q1414_exact_uniform_query_bound.json")
     q1416_pair_path, q1416_pair = read(
         "n131_q1416_exact_base_pair_index_screen.json")
+    q1437_dir = HERE / "q1437_weight7_frontier"
+    q1437_protocol_path = q1437_dir / "protocol.json"
+    q1437_sample_path = q1437_dir / "sample.json"
+    q1437_verification_path = q1437_dir / "verification.json"
+    q1437_protocol = json.loads(q1437_protocol_path.read_text())
+    q1437_sample = json.loads(q1437_sample_path.read_text())
+    q1437_verification = json.loads(q1437_verification_path.read_text())
     assert n131_sample["proposal_id"] == "Q1303"
     assert n131_sample["candidate_id"] is None
     assert n131_sample["protocol_sha256"] == sha(protocol_path)
@@ -712,6 +719,21 @@ def main():
         HERE / "screen_q1416_exact_pair_index.py")
     assert q1416_pair["complete_solve_work_log2"] is None
     assert q1416_pair["challenge_dispatch_allowed"] is False
+    assert q1437_protocol["proposal_id"] == q1437_sample["proposal_id"] == "Q1437"
+    assert q1437_protocol["candidate_id"] is q1437_sample["candidate_id"] is None
+    assert q1437_sample["curve_id"] == q1413_full["curve_id"]
+    assert q1437_sample["isogeny"] == "none"
+    assert q1437_protocol["exact_w6_base_receipt_sha256"] == sha(q1413_full_path)
+    assert q1437_sample["protocol_sha256"] == sha(q1437_protocol_path)
+    assert q1437_sample["source_sha256"] == sha(q1437_dir / "screen.py")
+    assert q1437_sample["sample_size"] == q1437_protocol["sample_size"]
+    assert q1437_sample["actual_usable_points_B_before_folding"] is None
+    assert q1437_sample["actual_signed_frobenius_columns_K"] is None
+    assert q1437_sample["complete_solve_work_log2"] is None
+    assert q1437_verification["status"] == "passed"
+    assert q1437_verification["sample_sha256"] == sha(q1437_sample_path)
+    assert q1437_verification["controls"] == q1437_protocol[
+        "independent_control_count"]
     assert n131_replay["status"] == "PASS"
     assert n131_replay["sample_receipt_sha256"] == sha(n131_sample_path)
     assert n131_replay["exact_rational_x_counts_weights_one_two"] == {
@@ -5263,6 +5285,36 @@ def main():
             "is_complete_solve_projection": False,
             "complete_solve_work_log2": None,
             "receipt_sha256": sha(q1416_pair_path),
+        },
+        "q1437_n131_conditional_weight7_frontier": {
+            "proposal_id": "Q1437",
+            "candidate_id": None,
+            "curve_id": q1437_sample["curve_id"],
+            "isogeny": "none",
+            "normal_basis_weight_bound": 7,
+            "actual_usable_points_B_before_folding": None,
+            "folded_columns_K": None,
+            "enumerated_set_sha256": None,
+            "sample_size": q1437_sample["sample_size"],
+            "rational_x_orbits_in_sample": q1437_sample[
+                "rational_x_orbits_in_sample"],
+            "duplicate_projected_x_orbits_in_sample": q1437_sample[
+                "duplicate_projected_x_orbits_in_sample"],
+            "sample_wilson_95_interval": q1437_sample[
+                "sample_wilson_95_interval"],
+            "conditional_estimate": q1437_sample["conditional_estimate"],
+            "conditional_wilson_interval_endpoints": q1437_sample[
+                "conditional_wilson_interval_endpoints"],
+            "conditional_assumptions": q1437_sample[
+                "conditional_assumptions"],
+            "independent_group_control_count": q1437_verification[
+                "controls"],
+            "is_empirical_relation_yield": False,
+            "is_complete_solve_projection": False,
+            "complete_solve_work_log2": None,
+            "protocol_sha256": sha(q1437_protocol_path),
+            "sample_sha256": sha(q1437_sample_path),
+            "verification_sha256": sha(q1437_verification_path),
         },
         "q1407_compact_s3_formula_shape": {
             "proposal_id": "Q1407",

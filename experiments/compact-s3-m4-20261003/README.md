@@ -1640,6 +1640,26 @@ the v2 protocol was frozen before these four runs. The [result table](q1436_affi
 and ledger preserve operations, memory, failures, and claim limits. No
 successful ordinary-query cost or complete N131 `2^x` follows.
 
+### Q1437 N131 W≤7 frontier sample
+
+The [frozen Q1437 screen](q1437_weight7_frontier/README.md) samples 100,000
+distinct weight-seven Frobenius x-orbits on the exact N131 curve. It finds
+50,213 rational orbits, all with nonidentity fourfold projection and no
+projected-key collision *within the sample*. An independent Sage group-law
+replay passes on 32 controls. Conditional on no unsampled or cross-weight
+projection collisions, the W≤7 base would have about 118.64 billion usable
+points and 452.81 million folded columns. Its average unordered distinct
+four-point subsets per uniform target would be about 12,128, versus 0.11335
+for the exact W≤6 base. The optimistic `4K²` sparse-matrix proxy is
+`2^59.51` logical row actions, only 1.49 bits below `2^61` before
+modular arithmetic, relation collection, decomposition, and descent.
+
+This is a conditional geometry screen, not actual W≤7 `B` or `K`, a measured
+ordinary-query yield, or a complete solve projection. The [ledger](work_ledger.json)
+retains actual W≤7 counts and N131 `2^x` as null. A larger base may make
+relations more plentiful, but the compact solver still needs a target-
+conditioned pair witness method and calibrated complete-work accounting.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum

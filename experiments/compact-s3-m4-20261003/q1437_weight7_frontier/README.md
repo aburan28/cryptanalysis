@@ -9,6 +9,29 @@ weight-seven mask and rejecting an already seen orbit therefore samples
 uniformly among the W7 orbits. The [protocol](protocol.json) fixes the seed,
 100,000-orbit panel, dependencies, and accepted Sage runtime before execution.
 
+## Frozen result
+
+The [sample](sample.json) classified 100,000 distinct W7 x-orbits in 8.25 s
+of exploratory local wall time. Exactly 50,213 were rational; all 50,213
+had nonidentity cofactor-four projections, and none of their projected
+signed-Frobenius keys collided *within the sample*. The [independent Sage
+replay](verification.json) checked 32 archived masks against point lifting,
+fourfold group multiplication, and the N131 subgroup order; all passed.
+
+| W≤7 conditional quantity | Estimate | 95% sample-rate endpoints |
+| --- | ---: | ---: |
+| Rationality rate on W7 x-orbits | 0.50213 | 0.49903–0.50523 |
+| Usable points `B` **if projection is collision-free** | 118.64 billion | 117.94–119.33 billion |
+| Folded columns `K` **under the same assumption** | 452.81 million | 450.17–455.45 million |
+| Mean distinct four-point subsets per uniform target | 12,128 | 11,848–12,413 |
+| Optimistic `4K²` matrix proxy, log₂ logical row actions | 59.509 | 59.492–59.525 |
+
+The matrix proxy sits only 1.49 bits below the `2^61` target in its own
+logical-action unit. It therefore needs calibrated modular arithmetic and
+the other phases before any total comparison. A pure quotient-pair index
+would have about `131K² ≈ 2^64.54` pair states under this conditional K,
+so the larger base does not rescue that construction.
+
 The screen measures the rate of rational sparse x-orbits and records
 nonidentity cofactor-four projections and collisions *within the sample*.
 Its conditional W≤7 point and folded-column estimates add a projected new
