@@ -1813,14 +1813,39 @@ pair-table method remains subject to Q1443's target-oblivious-first-pair
 bound. Q1445 keeps `candidate_id: null`, complete N131 `2^x: null`, and the
 challenge gate closed.
 
+### Q1446 target-linked span checks on both pairs
+
+The [Q1446 frozen solver](q1446_joint_pair_span/README.md) fixes the
+target-linked pair intermediates, interleaves decisions across all four
+leaves, and applies Q1432's sound cached sparse-pair span check to both
+partial pairs. Its exact Q1438 N53/N83 known-witness controls pass; a
+separate partially pinned N53 control invokes both pair filters while
+preserving the witness. This is a changed search order on the same dense
+bases and ordinary public targets as Q1445, still using a compact chained
+`S3` rather than expanded `S5`.
+
+Both unpinned ordinary cells reach the 60-second native cap without a
+relation. N53 performs 265,256/4,612 span checks on pairs 0/1; N83 performs
+56,491/5,509. The independent audit replays sampled rejection claims from
+both pairs. Neither cell completes a pair or activates more than one
+target-linked final root. The new filter therefore reaches both partial
+pairs but does not solve the intermediate-choice bottleneck. These censored
+rows provide operation and memory diagnostics, not a successful-cost or
+natural-yield measurement. The complete N131 `2^x` remains null and the
+challenge gate stays closed.
+
 ## Next goal
 
 The next solver should build a **compact joint target-conditioned four-point
-witness method**. Q1436 rejects partial second-pair domains
+witness method that processes many target-linked intermediate choices in a
+shared computation**. Q1446 already checks both partial pairs under a
+target-linked intermediate choice, but its ordinary cells spend the cap on
+one final-root call and complete no pair. Q1436 rejects partial second-pair domains
 four free bits earlier per leaf than Q1435, but spends over 1.3 billion
 affine XORs in an N53 censored prefix and still produces no ordinary
 relation or second first-pair assignment. The next method must use the public
-target to constrain both sparse pairs before completing either pair. It
+target to constrain both sparse pairs across many intermediates before
+completing either pair. It
 must avoid the Q1425–Q1427 reverse-root
 rejection loop and the full quotient-pair index screened by Q1416 at roughly
 `2^89.36` logical actions on the exact N131 base under its uniform-key
