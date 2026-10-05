@@ -1,5 +1,8 @@
 # Exact W24/m6 materialized MITM capacity screen
 
+This is a retrospective, deterministic arithmetic audit of an already
+frozen factor-base input, not a preregistered solver or timing experiment.
+
 **Decision:** do not build a full raw-point pair table for a 2+4 join or a
 full raw-point triple table for a 3+3 join under the frozen 4-GiB envelope.
 The four `Q1420` policies have the same actual usable `B=16,772,828` points
