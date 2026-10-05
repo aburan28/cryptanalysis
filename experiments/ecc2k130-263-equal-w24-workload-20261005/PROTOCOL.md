@@ -65,7 +65,10 @@ source generator. This is fixture construction outside any future target
 online interval. Store source public points and their forward images on the
 route's exact unnormalized codomain in the workload; store the known fixture
 scalars separately for independent replay, and do not pass them to a PDP
-solver. Hash the
+solver. Target zero is the sole primary one-target input. The other 511
+public points are dormant reproducibility controls; do not run or report a
+batch IC workload before the primary single-target study is complete.
+Hash the
 sorted-key compact UTF-8 workload record excluding `workload_id` to form
 its 12-hex workload ID under `AGENTS.md`. Freeze the target count and
 sequence before measuring any PDP.
