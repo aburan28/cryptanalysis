@@ -67,11 +67,15 @@ def decomposable_points(fb: FactorBase) -> np.ndarray:
 
 
 def probe(fb: FactorBase, weights: dict, fails: int = 120, successes: int = 40, mode: str = "mxl",
-          D: np.ndarray | None = None, lazy: bool = True) -> dict:
+          D: np.ndarray | None = None, lazy: bool = True, planted: bool = False) -> dict:
     """Priced cost and wall time of failed and successful target attempts, and of scalar replay.
 
     lazy=True is the monitor.collect path (the solution count is enumerated only when the scan reads
-    it); lazy=False replays the earlier path that enumerated before every target scan."""
+    it); lazy=False replays the earlier path that enumerated before every target scan.
+
+    planted=True is for bases too large to enumerate D: failures are rerandomized probe targets that
+    did not decompose, and successes are P_i + P_j for uniform pairs of base points whose psi
+    components cancel (weighted by decomposition count rather than uniform on D)."""
     import macaulay
     from descent import Pieces
     from relations import classify_solution, relation_row
@@ -80,7 +84,8 @@ def probe(fb: FactorBase, weights: dict, fails: int = 120, successes: int = 40, 
     m = 2
     P = Pieces(fb, m)
     limits = macaulay.Limits(**bench.LIMITS)
-    D = decomposable_points(fb) if D is None else D
+    if D is None and not planted:
+        D = decomposable_points(fb)
     rng = random.Random(f"fbsearch-online|{C.curve_id}|{fb.digest}")
 
     def attempt(Qa) -> tuple[bool, int, int]:
@@ -121,23 +126,40 @@ def probe(fb: FactorBase, weights: dict, fails: int = 120, successes: int = 40, 
             Qa = K.add(Q, K.smul(C.G, a))
         return Qa, sum(meter.priced(weights).values()), time.perf_counter_ns() - t0
 
-    dset = {(int(x), int(y)) for x, y in D.tolist()}
+    dset = None if planted else {(int(x), int(y)) for x, y in D.tolist()}
     fail_ops, fail_wall, rr_ops, rr_wall = [], [], [], []
     _, Q = C.random_subgroup_point(rng)
     while len(fail_ops) < fails:
         Qa, o, w = rerandomize(Q)
         rr_ops.append(o)
         rr_wall.append(w)
-        if Qa[0] == kernel.INF_X or Qa in dset:
+        if Qa[0] == kernel.INF_X or (dset is not None and Qa in dset):
             continue
         ok, o, w = attempt(Qa)
+        if planted and ok:
+            continue
         assert not ok, "a point outside D decomposed: the decomposition table is incomplete"
         fail_ops.append(o)
         fail_wall.append(w)
     succ_ops, succ_wall = [], []
-    for _ in range(successes if len(D) else 0):
-        x, y = D[rng.randrange(len(D))].tolist()
-        ok, o, w = attempt((int(x), int(y)))
+    if planted:
+        px, py = C.psi(fb.xs, fb.ys)
+        psi = list(zip(px.tolist(), py.tolist()))
+
+    def success_point() -> tuple[int, int]:
+        if not planted:
+            x, y = D[rng.randrange(len(D))].tolist()
+            return int(x), int(y)
+        while True:
+            i, j = rng.randrange(len(fb.xs)), rng.randrange(len(fb.xs))
+            if K.add(psi[i], psi[j])[0] != kernel.INF_X:
+                continue
+            R = K.add((int(fb.xs[i]), int(fb.ys[i])), (int(fb.xs[j]), int(fb.ys[j])))
+            if R[0] != kernel.INF_X:
+                return R
+
+    for _ in range(successes if planted or len(D) else 0):
+        ok, o, w = attempt(success_point())
         assert ok, "a point in D did not decompose: the PDP solver missed a decomposition"
         succ_ops.append(o)
         succ_wall.append(w)
@@ -171,13 +193,23 @@ def online_prediction(p: float, pb: dict, key: str = "ops") -> dict:
 
 
 def score(curve: ToyCurve, family: str, l: int, seed: int, weights: dict, fails: int = 120,
-          successes: int = 40, mode: str = "mxl", setup: bool = True, lazy: bool = True) -> dict:
+          successes: int = 40, mode: str = "mxl", setup: bool = True, lazy: bool = True,
+          max_pairs: int = 12_000_000) -> dict:
+    """max_pairs bounds the exact pair table; above it p_dec is the psi-class prediction
+    (relations.predicted_yield) and successful attempts are planted."""
+    from relations import predicted_yield
+
     t0 = time.perf_counter_ns()
     fb = FactorBase(curve, family, l, seed)
     cid, _ = bench.candidate_manifest(curve, fb, {"m": 2, "mode": mode})
-    D = decomposable_points(fb)
-    p = len(D) / (curve.r - 1)
-    pb = probe(fb, weights, fails, successes, mode, D, lazy)
+    pred_y = predicted_yield(fb, 2)["p_decomposable"]
+    exact = len(fb.xs) * (len(fb.xs) + 1) // 2 <= max_pairs
+    if exact:
+        D = decomposable_points(fb)
+        p = len(D) / (curve.r - 1)
+    else:
+        D, p = None, pred_y
+    pb = probe(fb, weights, fails, successes, mode, D, lazy, planted=not exact)
     ops, wall = online_prediction(p, pb, "ops"), online_prediction(p, pb, "wall_ns")
     rho_ops = round(math.sqrt(math.pi * curve.r / 2)) * weights["ec_add"]
     floor_ops = round(math.sqrt(math.pi * curve.r / (4 * curve.n))) * weights["ec_add"]
@@ -192,7 +224,8 @@ def score(curve: ToyCurve, family: str, l: int, seed: int, weights: dict, fails:
         "factor_base_sha256": fb.digest,
         "stage": {"fb_points": fb.usable_points, "effective_columns": fb.effective_columns,
                   "trace_zero": all(curve.K.trace(b) == 0 for b in fb.basis),
-                  "p_decomposable": p, "decomposable_targets": int(len(D))},
+                  "p_decomposable": p, "p_decomposable_source": "exact" if exact else "psi_class_prediction",
+                  "p_decomposable_predicted": pred_y, "decomposable_targets": int(len(D)) if exact else None},
         "probe": pb,
         "predicted": {
             "online_attempts_mean": 1 / p if p else None,
@@ -219,8 +252,8 @@ def score(curve: ToyCurve, family: str, l: int, seed: int, weights: dict, fails:
 
 
 def _job(job) -> dict:
-    n, family, l, seed, kw = job
-    calibration = json.loads(bench.CALIBRATION.read_text())
+    n, family, l, seed, kw, cal_path = job
+    calibration = json.loads(Path(cal_path or bench.CALIBRATION).read_text())
     rec = score(ToyCurve(n), family, l, seed, weights_for(calibration, n), **kw)
     rec["calibration_id"] = calibration["calibration_id"]
     rec["implementation_sha256"] = sha256_hex({"online": implementation_sha256(), "search": search_sha256()})
@@ -239,7 +272,7 @@ def cmd_scan(args) -> None:
     import multiprocessing
 
     kw = {"fails": args.fails, "successes": args.successes, "setup": not args.no_setup, "lazy": not args.eager}
-    jobs = [(args.n, f, l, s, kw) for l in args.l for f in args.families
+    jobs = [(args.n, f, l, s, kw, args.calibration) for l in args.l for f in args.families
             for s in ([1] if f == "prefix" else parse_seeds(args.seeds))]
     out = Path(args.out or RESULTS / f"online-n{args.n}m2.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -321,6 +354,39 @@ def cmd_select(args) -> None:
               f"online={p['predicted']['online_operations_mean']:.3e} x rho={p['predicted']['online_ratio_to_rho']:.1f}")
 
 
+def cmd_report(args) -> None:
+    """The AGENTS.md one-target table from ic-bench receipts of one-target suites."""
+    sel = {p["candidate_id"]: p for p in json.loads(Path(args.selection).read_text())["picks"]}
+    by: dict[str, list] = {}
+    for r in load_jsonl(args.receipts):
+        by.setdefault(r["candidate_id"], []).append(r)
+    print("| candidate | n | base | targets verified (IC / rho) | IC online ms, mean [min, max] | "
+          "rho online ms, mean | online_speedup = rho/IC, geo-mean [min, max] | measured online ops | "
+          "predicted online ops | online ops / rho ops | setup ops (excluded) |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|")
+    order = sorted(by, key=lambda c: (by[c][0]["cell"]["n"], -statistics.geometric_mean(
+        [x["online"]["speedup"] for x in by[c] if x["online"]["speedup"]] or [1e-9])))
+    for cid in order:
+        rs = by[cid]
+        c = rs[0]["cell"]
+        ok_ic = sum(1 for x in rs if x["status"] == "complete" and x["verified_scalar"])
+        ok_rho = sum(1 for x in rs if x["rho_measured"]["verified"])
+        ic = [x["online"]["ic_online_ns"] / 1e6 for x in rs]
+        rho = [x["online"]["rho_online_ns"] / 1e6 for x in rs]
+        sp = [x["online"]["speedup"] for x in rs if x["online"]["speedup"]]
+        ops = statistics.fmean(x["warm"]["per_target_operations"][0] for x in rs)
+        rho_ops = rs[0]["rho_operations"]
+        shared = statistics.fmean(x["warm"]["shared_operations"] for x in rs)
+        pred = (sel.get(cid) or {}).get("predicted", {}).get("online_operations_mean")
+        print(f"| `{cid}` | {c['n']} | {c['family']} l{c['l']} s{c['seed']} | {ok_ic}/{len(rs)} / {ok_rho}/{len(rs)} "
+              f"| {statistics.fmean(ic):.1f} [{min(ic):.1f}, {max(ic):.1f}] | {statistics.fmean(rho):.2f} "
+              f"| {statistics.geometric_mean(sp):.3f} [{min(sp):.3f}, {max(sp):.3f}] | {ops:.3e} "
+              f"| {pred:.3e} | {ops / rho_ops:.1f} | {shared:.2e} |" if pred else
+              f"| `{cid}` | {c['n']} | {c['family']} l{c['l']} s{c['seed']} | {ok_ic}/{len(rs)} / {ok_rho}/{len(rs)} "
+              f"| {statistics.fmean(ic):.1f} | {statistics.fmean(rho):.2f} | {statistics.geometric_mean(sp):.3f} "
+              f"| {ops:.3e} | - | {ops / rho_ops:.1f} | {shared:.2e} |")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -335,6 +401,7 @@ def main() -> None:
     s.add_argument("--eager", action="store_true", help="price the earlier always-enumerate target path")
     s.add_argument("--jobs", type=int, default=4)
     s.add_argument("--out", default="")
+    s.add_argument("--calibration", default="", help="calibration file (default: ../ic-bench/calibration.json)")
     ch = sub.add_parser("check", help="per-target online cost, predicted vs measured receipts")
     ch.add_argument("receipts", nargs="+")
     ch.add_argument("--fails", type=int, default=120)
@@ -345,8 +412,11 @@ def main() -> None:
     se.add_argument("scans", nargs="+")
     se.add_argument("--n", type=int, nargs="*", default=[])
     se.add_argument("--out", default=str(HERE / "online-selected.json"))
+    rp = sub.add_parser("report", help="one-target table from ic-bench receipts")
+    rp.add_argument("receipts", nargs="+")
+    rp.add_argument("--selection", default=str(HERE / "online-selected.json"))
     args = ap.parse_args()
-    {"scan": cmd_scan, "check": cmd_check, "select": cmd_select}[args.cmd](args)
+    {"scan": cmd_scan, "check": cmd_check, "select": cmd_select, "report": cmd_report}[args.cmd](args)
 
 
 if __name__ == "__main__":
