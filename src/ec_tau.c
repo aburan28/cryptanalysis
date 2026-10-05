@@ -1526,8 +1526,9 @@ static ca_elem tau_wide_digit_point(const ca_group *g, const ca_tau4_pos_precomp
 
 size_t ca_ec_tau_wide_entries(int schedule)
 {
-    if (schedule == 0) return 4 * CA_TAU_WIDE10_ORBIT_COUNT;
-    if (schedule == 1) return 3 * CA_TAU_WIDE12_ORBIT_COUNT + 2 * CA_TAU_WIDE8_ORBIT_COUNT;
+    if (schedule == 0) return (size_t)4 * CA_TAU_WIDE10_ORBIT_COUNT;
+    if (schedule == 1)
+        return (size_t)3 * CA_TAU_WIDE12_ORBIT_COUNT + (size_t)2 * CA_TAU_WIDE8_ORBIT_COUNT;
     return 0;
 }
 
@@ -1662,6 +1663,7 @@ static int tau_wide_mul_jac(const ca_group *g, const ca_tau_wide_precomp *pre, t
     uint8_t units[5] = {0};
     for (size_t block = 0; block < pre->blocks && (a || b); block++) {
         tau_wide_atlas atlas = tau_wide_atlas_for(pre->width[block]);
+        if (!atlas.modulus) return 0;
         int ra = (int)((a % atlas.modulus + atlas.modulus) % atlas.modulus);
         int rb = (int)((b % atlas.modulus + atlas.modulus) % atlas.modulus);
         uint32_t packed = atlas.index[(size_t)atlas.modulus * ra + rb];
