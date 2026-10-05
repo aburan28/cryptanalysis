@@ -16,6 +16,11 @@ on:
       - "experiments/pdp-scaling/gf2n.py"
       - "experiments/pdp-scaling/descend.py"
       - "experiments/ic-candidate-catalog/**"
+      - "experiments/frobenius-quotient-m4/**"
+      - "experiments/linearized-half-decomposition/**"
+      - "ecc2k130/runner/codegen/curves.py"
+      - "ecc2k130/runner/codegen/field.py"
+      - "ecc2k130/runner/codegen/indexcalc.py"
       - ".github/workflows/ic-bench.yml"
   push:
     branches: ["**"]
@@ -28,6 +33,11 @@ on:
       - "experiments/pdp-scaling/gf2n.py"
       - "experiments/pdp-scaling/descend.py"
       - "experiments/ic-candidate-catalog/**"
+      - "experiments/frobenius-quotient-m4/**"
+      - "experiments/linearized-half-decomposition/**"
+      - "ecc2k130/runner/codegen/curves.py"
+      - "ecc2k130/runner/codegen/field.py"
+      - "ecc2k130/runner/codegen/indexcalc.py"
       - ".github/workflows/ic-bench.yml"
   workflow_dispatch:
 
@@ -63,6 +73,8 @@ jobs:
           python -m pytest -q experiments/ic-bench
           python -m pytest -q experiments/fb-archive
           python -m pytest -q experiments/fb-search
+          python -m pytest -q experiments/frobenius-quotient-m4/test_fqm4_factor_bases.py
+          python -m pytest -q experiments/linearized-half-decomposition/test_lhd_factor_bases.py
 
       - name: Candidate catalog
         working-directory: experiments/ic-candidate-catalog

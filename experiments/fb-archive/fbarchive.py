@@ -5,6 +5,7 @@
     python3 fbarchive.py export-suite --suite full                       # every ic-bench base
     python3 fbarchive.py export --n 131 --family geomtrace --l 12        # ECC2K-130, pure Python
     python3 fbarchive.py export --n 131 --family geomtraceu --l 24 --no-points   # recipe only
+    python3 fbarchive.py export --n 13 --family nbweight --l 2           # weight base, l = w
     python3 fbarchive.py verify [--rebuild]                              # check every index row
     python3 fbarchive.py upload [--dry-run] [--require]                  # to $IC_ARCHIVE_S3_URI
 
@@ -137,6 +138,130 @@ def py_factor_base(C, family: str, l: int, seed: int, points: bool, strict_limit
     }
 
 
+WEIGHT_FAMILY = "nbweight"
+
+
+def weight_archive(n: int, w: int, seed: int, points: bool) -> dict:
+    """{P : 1 <= HW(x(P)) <= w}, the Hamming weight taken in a normal basis.
+
+    This is the Frobenius-stable, non-linear base of ecc2k130/runner/codegen/indexcalc.py
+    (--basis pb), built through the same curves.NormalView (normal element seeded by n)
+    and CurvePb, so the archived point set is exactly the one indexcalc.factorBase and
+    experiments/frobenius-quotient-m4/ladder.py use.  It is not a subspace, so it gets
+    its own field and curve records: NormalView chooses its own modulus, which is not
+    always ToyCurve's, and ToyCurve refuses n where r^2 divides #E.  `l` is w here.
+    Columns are x-classes under sign and Frobenius (weight is sigma-invariant); no
+    subgroup projection is applied, matching how ladder.py uses the base, so
+    strict-subgroup counts are null (unknown)."""
+    if seed != 1:
+        raise ValueError("nbweight has no seed: NormalView is seeded by n; use --seed 1")
+    if n % 2 == 0:
+        raise ValueError("nbweight needs odd n (half-trace point recovery)")
+    sys.path.insert(0, str(ROOT / "ecc2k130" / "runner" / "codegen"))
+    import curves
+
+    nv = curves.NormalView(n)
+    E = curves.CurvePb(nv.pb)
+    exps = sorted({n, 0, *[t for t in nv.taps if t >= 0]}, reverse=True)
+    mod = sum(1 << e for e in exps)
+    if mod != nv.poly:
+        raise ValueError("NormalView modulus does not match its taps")
+    field_rec = {
+        "characteristic": 2,
+        "degree": n,
+        "representation": "polynomial_basis",
+        "modulus_exponents": exps,
+        "element_encoding": "unsigned integer; bit i is the coefficient of z^i",
+        "normal_view": {"builder": "ecc2k130/runner/codegen/curves.py NormalView", "seed": n,
+                        "tries": 400, "normal_element": nv.conj[0]},
+    }
+    order = curves.curveOrder(n)
+    curve_rec = {
+        "model": "y^2 + x*y = x^3 + a2*x^2 + a6",
+        "a2": 0,
+        "a6": 1,
+        "order": order,
+        "trace": (1 << n) + 1 - order,
+        "subgroup_order": None,
+        "cofactor": None,
+        "generator": None,
+        "target_group": "full group E(F_2^n): ladder.py draws planted and uniformly random targets",
+    }
+    curve_id = f"EC1N{n}Ckb1h{sha256_hex({'field': field_rec, 'curve': curve_rec})[:12]}"
+    xs = []
+    for k in range(1, w + 1):
+        for sup in _combinations(n, k):
+            c = 0
+            for i in sup:
+                c |= 1 << i
+            xs.append(nv.fromCoords(c))
+    pts = []
+    for x in xs:
+        P = E.pointFromX(x)
+        if P is not None:
+            pts.append((P[0], P[1]))
+            pts.append((P[0], P[0] ^ P[1]))
+    pts = sorted(set(pts))
+    base_x = {x for x, _ in pts}
+    seen, orbits = set(), 0
+    for x in sorted(base_x):
+        if x in seen:
+            continue
+        orbits += 1
+        y = x
+        for _ in range(n):
+            seen.add(y)
+            y = nv.pb.sqr(y)
+    rec_points = [[x, y] for x, y in pts]
+    rec = {
+        "curve_id": curve_id,
+        "construction": {
+            "family": WEIGHT_FAMILY,
+            "basis": None,
+            "params": {"w": w, "normal_element": nv.conj[0]},
+            "polynomial_constraint": "1 <= Hamming weight of the normal-basis coordinates of x <= w",
+            "shifted_bases": "none",
+        },
+        "subgroup_policy": "none",
+        "enumerated_set_sha256": sha256_hex(rec_points) if points else None,
+        "nominal_dimension": None,
+        "geometric_point_count": len(pts) if points else None,
+        "actual_usable_point_count": len(pts) if points else None,
+        "strict_subgroup_point_count": None,
+        "quotient_rule": "sign+frobenius",
+        "effective_columns": orbits if points else None,
+        "x_classes": len(base_x) if points else None,
+    }
+    return {
+        "field": field_rec,
+        "curve": {**curve_rec, "curve_id": curve_id},
+        "factor_base": rec,
+        "points": rec_points if points else None,
+        "point_columns": None,
+        "column_representatives": None,
+        "builder": "fb-archive/fbarchive.py weight_archive via codegen curves.NormalView + CurvePb",
+    }
+
+
+def _combinations(n: int, k: int):
+    """Index subsets of size exactly k, lexicographic."""
+    if k == 0:
+        yield []
+        return
+    for first in range(n):
+        for rest in _combinations_from(first + 1, n, k - 1):
+            yield [first] + rest
+
+
+def _combinations_from(start: int, n: int, k: int):
+    if k == 0:
+        yield []
+        return
+    for i in range(start, n):
+        for rest in _combinations_from(i + 1, n, k - 1):
+            yield [i] + rest
+
+
 def _span(basis: list[int]):
     out = [0]
     for b in basis:
@@ -145,7 +270,12 @@ def _span(basis: list[int]):
 
 
 def build(n: int, family: str, l: int, seed: int, points: bool = True, strict_limit: int = 10_000) -> dict:
-    doc = toy_archive(n, family, l, seed, points) if n <= TOY_MAX_N else big_factor_base(n, family, l, seed, points, strict_limit)
+    if family == WEIGHT_FAMILY:
+        doc = weight_archive(n, l, seed, points)
+    elif n <= TOY_MAX_N:
+        doc = toy_archive(n, family, l, seed, points)
+    else:
+        doc = big_factor_base(n, family, l, seed, points, strict_limit)
     doc = {"schema": SCHEMA, **doc, "factor_base_sha256": sha256_hex(doc["factor_base"]),
            "points_encoding": "[x, y] unsigned integers in the field's element encoding, sorted",
            "recipe": {"n": n, "family": family, "l": l, "seed": seed}}
