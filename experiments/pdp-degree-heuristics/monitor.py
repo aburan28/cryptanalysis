@@ -330,11 +330,19 @@ def collect(args, workload: dict | None = None, meter: opcount.Meter | None = No
         raise ValueError(f"workload is for {workload['curve_id']}, not {C.curve_id}")
     with meter.phase("factor_base"):
         fb = FactorBase(C, args.family, args.l, args.seed)
+    ht = args.mode == "ht"
+    if ht and args.m != 2:
+        raise ValueError("the half-trace solver (mode ht) is for m = 2")
     with meter.phase("precompute"):
-        P = Pieces(fb, args.m)
+        if ht:
+            from htsolver import HalfTraceSolver
+
+            P, solver = None, HalfTraceSolver(fb)
+        else:
+            P, solver = Pieces(fb, args.m), None
         achievable = achievable_rank(fb, args.m)
     with meter.phase("instrument"):
-        struct = P.structure()
+        struct = (P or Pieces(fb, args.m)).structure()
         exact = exact_subgroup_yield(fb, args.m)
         pred = {**predictions(args.n, args.m, args.l, struct), **predicted_yield(fb, args.m)}
         if exact:
@@ -351,8 +359,23 @@ def collect(args, workload: dict | None = None, meter: opcount.Meter | None = No
     else:
         rng = random.Random(workload["query_stream"])
 
+    def decompose_ht(R: tuple[int, int], target: bool, charge: str) -> tuple[dict, set]:
+        with meter.phase("target_pdp" if target else charge) as ops:
+            before, t0 = ops["mac_op"], time.perf_counter_ns()
+            pairs = solver.decompose(R)
+            scan = {"status": "solved" if pairs else "refuted", "D_solve": None, "xors": ops["mac_op"] - before,
+                    "build_ops": 0, "wall_ns": time.perf_counter_ns() - t0, "per_degree": []}
+        rows: set = set()
+        if pairs:
+            with meter.phase("target_relation_check" if target else "relation_check"):
+                for pts in pairs:
+                    rows.add(tuple(sorted(relation_row(fb, list(pts)).items())))
+        return {"status": "verified_decomposition" if rows else "proved_unsat", "scan": scan}, rows
+
     def decompose(R: tuple[int, int], charge: str) -> tuple[dict, set]:
         target = charge == "target_descent"
+        if ht:
+            return decompose_ht(R, target, charge)
         with meter.phase("target_query" if target else "queries"):
             s = P.system(R[0])
         enumerated: dict = {}
@@ -431,6 +454,8 @@ def collect(args, workload: dict | None = None, meter: opcount.Meter | None = No
             for i, (s_true, qx, qy) in enumerate(workload["targets"]):
                 yield s_true, (qx, qy), random.Random(f"{workload['rerandomization_stream']}|{i}")
 
+    # "walk" rerandomizes additively, Q + i [a0]G, one group addition per attempt
+    walk = getattr(args, "rerandomize", "uniform") == "walk"
     descents = []
     for s_true, Q, arng in target_stream() if complete else []:
         target_start = time.perf_counter_ns()
@@ -439,11 +464,18 @@ def collect(args, workload: dict | None = None, meter: opcount.Meter | None = No
         target_phases = ("target_query", "target_pdp", "target_relation_check", "target_descent",
                          "target_recovery_check")
         before = {p: meter.ops.get(p, Counter()).copy() for p in target_phases}
+        if walk:
+            with meter.phase("target_descent"):
+                a0 = arng.randrange(1, C.r)
+                step, Qa, a = C.K.smul(C.G, a0), Q, 0
         while tries < args.max_attempts and found is None:
             tries += 1
             with meter.phase("target_descent"):
-                a = arng.randrange(1, C.r)
-                Qa = C.K.add(Q, C.K.smul(C.G, a))
+                if walk:
+                    Qa, a = C.K.add(Qa, step), (a + a0) % C.r
+                else:
+                    a = arng.randrange(1, C.r)
+                    Qa = C.K.add(Q, C.K.smul(C.G, a))
             if Qa[0] == kernel.INF_X:
                 continue
             res, rows = decompose(Qa, "target_descent")
@@ -471,6 +503,7 @@ def collect(args, workload: dict | None = None, meter: opcount.Meter | None = No
         "candidate_id": None,
         "curve_id": C.curve_id,
         "cell": {"n": args.n, "m": args.m, "l": args.l, "family": args.family, "seed": args.seed, "mode": args.mode,
+                 "rerandomize": getattr(args, "rerandomize", "uniform"),
                  "abort_degree": args.abort_degree, "workload_seed": args.workload_seed},
         "factor_base": fb.record(),
         "factor_base_sha256": fb.digest,
@@ -512,7 +545,8 @@ def main() -> None:
     c.add_argument("--l", type=int, required=True)
     c.add_argument("--family", default="prefix")
     c.add_argument("--seed", type=int, default=1)
-    c.add_argument("--mode", default="mxl", choices=macaulay.MODES)
+    c.add_argument("--mode", default="mxl", choices=macaulay.MODES + ("ht",))
+    c.add_argument("--rerandomize", default="uniform", choices=("uniform", "walk"))
     c.add_argument("--abort-degree", type=int, default=0, help="stop each query at this degree (0 = no abort)")
     c.add_argument("--d-max", type=int, default=10)
     c.add_argument("--max-cols", type=int, default=40_000)
