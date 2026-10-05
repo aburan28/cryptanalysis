@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "status": "failed_host_isolation_preflight",
+  "date_utc": "2026-10-05",
+  "provider": "RunPod",
+  "existing_pod_start": {
+    "pod_id": "ppgkq14ya0jekx",
+    "request": "POST /v2/pods/{id}/action with action=start",
+    "http_status": 400,
+    "response_detail": "There are not enough free vcpu on the host machine to start this pod."
+  },
+  "temporary_pod": {
+    "pod_id": "x4lnfn6xnjvy7l",
+    "cpu_flavor": "cpu5c",
+    "vcpu_count": 2,
+    "image": "ubuntu:22.04",
+    "data_center_id": "EUR-IS-1",
+    "create_http_status": 201,
+    "initial_status": "RUNNING",
+    "probe_commands": [
+      "cat /proc/1/cgroup",
+      "cat /sys/fs/cgroup/cpuset.cpus.partition",
+      "cat /sys/fs/cgroup/cpuset.cpus.isolated",
+      "cat /sys/devices/system/cpu/nohz_full",
+      "cat /sys/fs/cgroup/cpu.max"
+    ],
+    "raw_evidence": {
+      "proc_1_cgroup_unified_line": "0::/docker/e3bbb7ad50522bb0ae8fd5a6bcc06e219922dd58515e1d080981657a95534408",
+      "proc_1_cgroup_legacy_controllers": [
+        "freezer", "rdma", "hugetlb", "blkio", "cpu,cpuacct",
+        "perf_event", "devices", "net_cls,net_prio", "pids",
+        "cpuset", "misc", "memory", "name=systemd"
+      ],
+      "cpuset_cpus_partition": "No such file or directory",
+      "cpuset_cpus_isolated": "No such file or directory",
+      "nohz_full": "(null)",
+      "cpu_max": "No such file or directory"
+    },
+    "strict_gate_ok": false,
+    "timing_panel_started": false,
+    "stop_http_status": 200,
+    "stop_status": "EXITED",
+    "delete_http_status": 204
+  },
+  "cpu_wall_speedup_claim": null,
+  "api_key_stored": false
+}

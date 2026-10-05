@@ -16,6 +16,7 @@
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
+#include "generated/tau8_steer_map.h"
 #include <stdlib.h>
 
 typedef __int128 ca_i128;
@@ -989,6 +990,44 @@ int ca_ec_tau8_hot_prepare(const ca_group *g, const ca_elem *point, size_t block
     return tau8_prepare(g, point, blocks, out, triples, adds, rotations, inversions, 2);
 }
 
+int ca_ec_tau8_hot_adapt2_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
+                                  ca_tau8_fused_precomp *out, uint64_t *triples, uint64_t *adds,
+                                  uint64_t *rotations, uint64_t *inversions)
+{
+    if (!tau8_prepare(g, point, blocks, out, triples, adds, rotations, inversions, 2)) return 0;
+    out->selector = 1;
+    return 1;
+}
+
+int ca_ec_tau8_hot_gated_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
+                                 ca_tau8_fused_precomp *out, uint64_t *triples, uint64_t *adds,
+                                 uint64_t *rotations, uint64_t *inversions)
+{
+    if (!tau8_prepare(g, point, blocks, out, triples, adds, rotations, inversions, 2)) return 0;
+    out->selector = 2;
+    return 1;
+}
+
+int ca_ec_tau8_hot_steer_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
+                                 ca_tau8_fused_precomp *out, uint64_t *triples, uint64_t *adds,
+                                 uint64_t *rotations, uint64_t *inversions)
+{
+    if (!tau8_prepare(g, point, blocks, out, triples, adds, rotations, inversions, 2)) return 0;
+    out->selector = 3;
+    return 1;
+}
+
+int ca_ec_tau8_hot_gated2_steer_prepare(const ca_group *g, const ca_elem *point, size_t blocks,
+                                        ca_tau8_fused_precomp *out, uint64_t *triples,
+                                        uint64_t *adds, uint64_t *rotations, uint64_t *inversions)
+{
+    if (!tau8_prepare(g, point, blocks, out, triples, adds, rotations, inversions, 2)) return 0;
+    out->selector = 4;
+    return 1;
+}
+
+size_t ca_ec_tau8_steer_static_bytes(void) { return sizeof(ca_tau8_steer_pair); }
+
 static int tau8_atlas_step(int64_t *x, int64_t *y, uint8_t *pattern_id)
 {
     int ax = (int)((*x % 81 + 81) % 81);
@@ -1003,10 +1042,277 @@ static int tau8_atlas_step(int64_t *x, int64_t *y, uint8_t *pattern_id)
     return 1;
 }
 
+typedef struct tau8_hot_plan {
+    uint16_t ids[CA_TAU_POS_Q / 4];
+    uint8_t units[CA_TAU_POS_Q / 4];
+    uint8_t cold_first[CA_TAU_POS_Q / 4];
+    uint8_t cold_second[CA_TAU_POS_Q / 4];
+    size_t length;
+    uint64_t predicted_adds;
+    uint64_t cold_two_digit_blocks;
+    uint64_t substitutions;
+    int fits;
+} tau8_hot_plan;
+
+/* Count the complete stream before choosing a representative.  An out-of-span
+ * baseline is evaluated by the positional path, whose additions are counted
+ * separately here.  A second candidate outside the span is ineligible. */
+static int tau8_hot_build_plan(const ca_tau8_fused_precomp *pre, int64_t x, int64_t y,
+                               tau8_hot_plan *plan)
+{
+    *plan = (tau8_hot_plan){0};
+    uint64_t positional_adds = 0;
+    plan->fits = 1;
+    while (x || y) {
+        if (pre->selector >= 3 && plan->length >= pre->blocks) {
+            plan->fits = 0;
+            return 1;
+        }
+        if (plan->length >= CA_TAU_POS_Q / 4) return 0;
+        int64_t old_x = x, old_y = y;
+        uint8_t u, v;
+        if (!tau8_atlas_step(&x, &y, &u) || !tau8_atlas_step(&x, &y, &v)) return 0;
+        size_t pair = 217 * (size_t)u + v;
+        uint16_t orbit_id = ca_tau8_orbit_id[pair];
+        if (orbit_id >= CA_TAU8_ORBIT_COUNT) return 0;
+        uint16_t id = ca_tau8_hot_id[orbit_id];
+        if (pre->selector >= 3 && id == UINT16_MAX && u && v) {
+            int ra = (int)((old_x % 81 + 81) % 81);
+            int rb = (int)((old_y % 81 + 81) % 81);
+            uint16_t alternative = ca_tau8_steer_pair[81 * ra + rb];
+            if (alternative != UINT16_MAX) {
+                if (alternative >= 217 * 217 || ca_tau8_pair_map[alternative] == UINT16_MAX)
+                    return 0;
+                u = (uint8_t)(alternative / 217);
+                v = (uint8_t)(alternative % 217);
+                ca_tau4_atlas_pattern first = ca_tau4_atlas_patterns[u];
+                ca_tau4_atlas_pattern second = ca_tau4_atlas_patterns[v];
+                int64_t ca =
+                    first.correction_a - 18 * second.correction_a - 27 * second.correction_b;
+                int64_t cb = first.correction_b + 9 * second.correction_a + 9 * second.correction_b;
+                int64_t da = old_x - ca, db = old_y - cb;
+                if (da % 81 || db % 81) return 0;
+                x = (-2 * da - 3 * db) / 81;
+                y = (da + db) / 81;
+                pair = alternative;
+                orbit_id = ca_tau8_orbit_id[pair];
+                if (orbit_id >= CA_TAU8_ORBIT_COUNT) return 0;
+                id = ca_tau8_hot_id[orbit_id];
+                if (id == UINT16_MAX && u && v) return 0;
+                plan->substitutions++;
+            }
+        }
+        if (id != UINT16_MAX && id >= CA_TAU8_HOT_COUNT) return 0;
+        if (id == UINT16_MAX && u && v) plan->cold_two_digit_blocks++;
+        positional_adds += (u != 0) + (v != 0);
+        plan->predicted_adds += id == UINT16_MAX ? (u != 0) + (v != 0) : 1;
+        if (plan->length >= pre->blocks) plan->fits = 0;
+        plan->ids[plan->length] = id;
+        plan->units[plan->length] = ca_tau8_orbit_unit[pair];
+        plan->cold_first[plan->length] = u;
+        plan->cold_second[plan->length] = v;
+        plan->length++;
+    }
+    if (!plan->fits) plan->predicted_adds = positional_adds;
+    return 1;
+}
+
+static int tau8_hot_evaluate_plan(const ca_group *g, const ca_tau8_fused_precomp *pre,
+                                  const tau8_hot_plan *plan, tau_jac *out, uint64_t *adds,
+                                  uint64_t *rotations, uint64_t *fallbacks)
+{
+    const ca_tau4_precomp *base = &pre->pos.base;
+    tau_jac acc = {0, g->mont.r1, 0};
+    for (size_t i = plan->length; i-- > 0;) {
+        if (plan->ids[i] == UINT16_MAX) {
+            ca_elem first = tau8_pattern_point(
+                g, &pre->pos, i, 0, ca_tau4_atlas_patterns[plan->cold_first[i]], rotations);
+            ca_elem second = tau8_pattern_point(
+                g, &pre->pos, i, 1, ca_tau4_atlas_patterns[plan->cold_second[i]], rotations);
+            if (!first.w[2]) {
+                acc = jac_add_mixed(g, acc, &first);
+                (*adds)++;
+            }
+            if (!second.w[2]) {
+                acc = jac_add_mixed(g, acc, &second);
+                (*adds)++;
+            }
+            (*fallbacks)++;
+            continue;
+        }
+        ca_elem point = pre->point[i * CA_TAU8_HOT_COUNT + plan->ids[i]];
+        if (point.w[2]) continue;
+        unsigned power = plan->units[i] % 3;
+        if (power == 1)
+            point.w[0] = fm(g, base->beta, point.w[0]);
+        else if (power == 2)
+            point.w[0] = fm(g, base->beta2, point.w[0]);
+        *rotations += power != 0;
+        if (plan->units[i] >= 3 && point.w[1]) point.w[1] = g->p - point.w[1];
+        acc = jac_add_mixed(g, acc, &point);
+        (*adds)++;
+    }
+    *out = acc;
+    return 1;
+}
+
+static int tau8_hot_adapt2_mul_jac(const ca_group *g, const ca_tau8_fused_precomp *pre,
+                                   tau_jac *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                   uint64_t *fallbacks, uint64_t *second_recodes)
+{
+    *adds = *rotations = *fallbacks = 0;
+    *second_recodes = 0;
+    if (pre->pos.base.identity || k % g->order == 0) {
+        *out = (tau_jac){0, g->mont.r1, 0};
+        return 1;
+    }
+    k %= g->order;
+    const ca_tau4_precomp *base = &pre->pos.base;
+    tau_vec v1 = {base->v1x, base->v1y}, v2 = {base->v2x, base->v2y};
+    ca_i128 u0 = round_div((ca_i128)k * v2.y, base->det);
+    ca_i128 v0 = round_div(-(ca_i128)k * v1.y, base->det);
+    ca_i128 best_l1 = -1, second_l1 = -1;
+    ca_i128 first_a = 0, first_b = 0, second_a = 0, second_b = 0;
+    for (int du = -2; du <= 2; du++) {
+        for (int dv = -2; dv <= 2; dv++) {
+            ca_i128 u = u0 + du, v = v0 + dv;
+            ca_i128 x = (ca_i128)k - u * v1.x - v * v2.x;
+            ca_i128 y = -u * v1.y - v * v2.y;
+            ca_i128 l1 = iabs128(x) + iabs128(y);
+            if (best_l1 < 0 || l1 < best_l1) {
+                second_l1 = best_l1;
+                second_a = first_a;
+                second_b = first_b;
+                best_l1 = l1;
+                first_a = x + y;
+                first_b = -y;
+            } else if (second_l1 < 0 || l1 < second_l1) {
+                second_l1 = l1;
+                second_a = x + y;
+                second_b = -y;
+            }
+        }
+    }
+    const ca_i128 limit = (ca_i128)1 << 55;
+    if (first_a <= -limit || first_a >= limit || first_b <= -limit || first_b >= limit)
+        goto fallback;
+    tau8_hot_plan first;
+    if (!tau8_hot_build_plan(pre, (int64_t)first_a, (int64_t)first_b, &first)) return 0;
+    tau8_hot_plan second;
+    int recode_second = (pre->selector == 1 || !first.fits || first.cold_two_digit_blocks > 0) &&
+                        second_a > -limit && second_a < limit && second_b > -limit &&
+                        second_b < limit;
+    if (recode_second) *second_recodes = 1;
+    int second_eligible = recode_second &&
+                          tau8_hot_build_plan(pre, (int64_t)second_a, (int64_t)second_b, &second) &&
+                          second.fits;
+    const tau8_hot_plan *chosen = &first;
+    if (second_eligible && second.predicted_adds < first.predicted_adds) chosen = &second;
+    if (!chosen->fits) goto fallback;
+    return tau8_hot_evaluate_plan(g, pre, chosen, out, adds, rotations, fallbacks);
+fallback:
+    *fallbacks = 1;
+    return tau4_pos_mul_jac(g, &pre->pos, out, k, adds, rotations);
+}
+
+static int tau8_hot_steer_mul_jac(const ca_group *g, const ca_tau8_fused_precomp *pre, tau_jac *out,
+                                  uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                  uint64_t *fallbacks, uint64_t *steered_blocks)
+{
+    *adds = *rotations = *fallbacks = *steered_blocks = 0;
+    if (pre->pos.base.identity || k % g->order == 0) {
+        *out = (tau_jac){0, g->mont.r1, 0};
+        return 1;
+    }
+    k %= g->order;
+    const ca_tau4_precomp *base = &pre->pos.base;
+    ca_i128 wide_x, wide_y;
+    reduce_with_lattice((tau_vec){base->v1x, base->v1y}, (tau_vec){base->v2x, base->v2y}, base->det,
+                        k, &wide_x, &wide_y);
+    const ca_i128 limit = (ca_i128)1 << 55;
+    if (wide_x <= -limit || wide_x >= limit || wide_y <= -limit || wide_y >= limit) goto fallback;
+    tau8_hot_plan plan;
+    if (!tau8_hot_build_plan(pre, (int64_t)wide_x, (int64_t)wide_y, &plan)) return 0;
+    if (!plan.fits) goto fallback;
+    *steered_blocks = plan.substitutions;
+    return tau8_hot_evaluate_plan(g, pre, &plan, out, adds, rotations, fallbacks);
+fallback:
+    *fallbacks = 1;
+    return tau4_pos_mul_jac(g, &pre->pos, out, k, adds, rotations);
+}
+
+static int tau8_hot_gated2_steer_mul_jac(const ca_group *g, const ca_tau8_fused_precomp *pre,
+                                         tau_jac *out, uint64_t k, uint64_t *adds,
+                                         uint64_t *rotations, uint64_t *fallbacks,
+                                         uint64_t *second_recodes, uint64_t *steered_blocks)
+{
+    *adds = *rotations = *fallbacks = *second_recodes = *steered_blocks = 0;
+    if (pre->pos.base.identity || k % g->order == 0) {
+        *out = (tau_jac){0, g->mont.r1, 0};
+        return 1;
+    }
+    k %= g->order;
+    const ca_tau4_precomp *base = &pre->pos.base;
+    tau_vec v1 = {base->v1x, base->v1y}, v2 = {base->v2x, base->v2y};
+    ca_i128 u0 = round_div((ca_i128)k * v2.y, base->det);
+    ca_i128 v0 = round_div(-(ca_i128)k * v1.y, base->det);
+    ca_i128 best_l1 = -1, second_l1 = -1;
+    ca_i128 first_a = 0, first_b = 0, second_a = 0, second_b = 0;
+    for (int du = -2; du <= 2; du++) {
+        for (int dv = -2; dv <= 2; dv++) {
+            ca_i128 u = u0 + du, v = v0 + dv;
+            ca_i128 x = (ca_i128)k - u * v1.x - v * v2.x;
+            ca_i128 y = -u * v1.y - v * v2.y;
+            ca_i128 l1 = iabs128(x) + iabs128(y);
+            if (best_l1 < 0 || l1 < best_l1) {
+                second_l1 = best_l1;
+                second_a = first_a;
+                second_b = first_b;
+                best_l1 = l1;
+                first_a = x + y;
+                first_b = -y;
+            } else if (second_l1 < 0 || l1 < second_l1) {
+                second_l1 = l1;
+                second_a = x + y;
+                second_b = -y;
+            }
+        }
+    }
+    const ca_i128 limit = (ca_i128)1 << 55;
+    if (first_a <= -limit || first_a >= limit || first_b <= -limit || first_b >= limit)
+        goto fallback;
+    tau8_hot_plan first;
+    if (!tau8_hot_build_plan(pre, (int64_t)first_a, (int64_t)first_b, &first)) return 0;
+    const tau8_hot_plan *chosen = &first;
+    tau8_hot_plan second;
+    if ((!first.fits || first.cold_two_digit_blocks > 0) && second_a > -limit && second_a < limit &&
+        second_b > -limit && second_b < limit) {
+        *second_recodes = 1;
+        if (!tau8_hot_build_plan(pre, (int64_t)second_a, (int64_t)second_b, &second)) return 0;
+        if (second.fits && (!first.fits || second.predicted_adds < first.predicted_adds))
+            chosen = &second;
+    }
+    if (!chosen->fits) goto fallback;
+    *steered_blocks = chosen->substitutions;
+    return tau8_hot_evaluate_plan(g, pre, chosen, out, adds, rotations, fallbacks);
+fallback:
+    *fallbacks = 1;
+    return tau4_pos_mul_jac(g, &pre->pos, out, k, adds, rotations);
+}
+
 static int tau8_fused_mul_jac(const ca_group *g, const ca_tau8_fused_precomp *pre, tau_jac *out,
-                              uint64_t k, uint64_t *adds, uint64_t *rotations, uint64_t *fallbacks)
+                              uint64_t k, uint64_t *adds, uint64_t *rotations, uint64_t *fallbacks,
+                              uint64_t *second_recodes, uint64_t *steered_blocks)
 {
     if (!g || !pre || !out || pre->pos.base.g != g) return 0;
+    *second_recodes = *steered_blocks = 0;
+    if (pre->selector == 1 || pre->selector == 2)
+        return tau8_hot_adapt2_mul_jac(g, pre, out, k, adds, rotations, fallbacks, second_recodes);
+    if (pre->selector == 3)
+        return tau8_hot_steer_mul_jac(g, pre, out, k, adds, rotations, fallbacks, steered_blocks);
+    if (pre->selector == 4)
+        return tau8_hot_gated2_steer_mul_jac(g, pre, out, k, adds, rotations, fallbacks,
+                                             second_recodes, steered_blocks);
     *adds = *rotations = *fallbacks = 0;
     if (pre->pos.base.identity || k % g->order == 0) {
         *out = (tau_jac){0, g->mont.r1, 0};
@@ -1089,17 +1395,23 @@ fallback:
     return tau4_pos_mul_jac(g, &pre->pos, out, k, adds, rotations);
 }
 
-int ca_ec_tau8_fused_mul_batch(const ca_group *g, const ca_tau8_fused_precomp *pre, ca_elem *out,
-                               const uint64_t *scalars, size_t count, size_t block_size,
-                               uint64_t *adds, uint64_t *rotations, uint64_t *output_inversions,
-                               uint64_t *fallbacks)
+int ca_ec_tau8_fused_mul_batch_profile(const ca_group *g, const ca_tau8_fused_precomp *pre,
+                                       ca_elem *out, const uint64_t *scalars, size_t count,
+                                       size_t block_size, uint64_t *adds, uint64_t *rotations,
+                                       uint64_t *output_inversions, uint64_t *fallbacks,
+                                       uint64_t *second_recodes, uint64_t *steered_blocks)
 {
     if (adds) *adds = 0;
     if (rotations) *rotations = 0;
     if (output_inversions) *output_inversions = 0;
     if (fallbacks) *fallbacks = 0;
+    if (second_recodes) *second_recodes = 0;
+    if (steered_blocks) *steered_blocks = 0;
     if (!count) return 1;
     if (!g || !pre || !out || !scalars || pre->pos.base.g != g ||
+        (pre->selector != 0 &&
+         ((pre->selector != 1 && pre->selector != 2 && pre->selector != 3 && pre->selector != 4) ||
+          pre->orbit != 2)) ||
         (!pre->point && !pre->pos.base.identity) || block_size == 0 || block_size > 4096)
         return 0;
     tau_jac *projective = malloc(block_size * sizeof(*projective));
@@ -1109,13 +1421,14 @@ int ca_ec_tau8_fused_mul_batch(const ca_group *g, const ca_tau8_fused_precomp *p
         free(projective);
         return 0;
     }
-    uint64_t na = 0, nr = 0, ni = 0, nf = 0;
+    uint64_t na = 0, nr = 0, ni = 0, nf = 0, ns = 0, nt = 0;
     for (size_t offset = 0; offset < count;) {
         size_t n = count - offset;
         if (n > block_size) n = block_size;
         for (size_t i = 0; i < n; i++) {
-            uint64_t a, r, f;
-            if (!tau8_fused_mul_jac(g, pre, &projective[i], scalars[offset + i], &a, &r, &f)) {
+            uint64_t a, r, f, s, t;
+            if (!tau8_fused_mul_jac(g, pre, &projective[i], scalars[offset + i], &a, &r, &f, &s,
+                                    &t)) {
                 free(prefixes);
                 free(projective);
                 return 0;
@@ -1123,6 +1436,8 @@ int ca_ec_tau8_fused_mul_batch(const ca_group *g, const ca_tau8_fused_precomp *p
             na += a;
             nr += r;
             nf += f;
+            ns += s;
+            nt += t;
         }
         uint64_t current_inversions = 0;
         if (!jac_batch_to_affine_scratch(g, out + offset, projective, n, prefixes,
@@ -1140,7 +1455,18 @@ int ca_ec_tau8_fused_mul_batch(const ca_group *g, const ca_tau8_fused_precomp *p
     if (rotations) *rotations = nr;
     if (output_inversions) *output_inversions = ni;
     if (fallbacks) *fallbacks = nf;
+    if (second_recodes) *second_recodes = ns;
+    if (steered_blocks) *steered_blocks = nt;
     return 1;
+}
+
+int ca_ec_tau8_fused_mul_batch(const ca_group *g, const ca_tau8_fused_precomp *pre, ca_elem *out,
+                               const uint64_t *scalars, size_t count, size_t block_size,
+                               uint64_t *adds, uint64_t *rotations, uint64_t *output_inversions,
+                               uint64_t *fallbacks)
+{
+    return ca_ec_tau8_fused_mul_batch_profile(g, pre, out, scalars, count, block_size, adds,
+                                              rotations, output_inversions, fallbacks, NULL, NULL);
 }
 
 int ca_ec_mul_tau4(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k, uint64_t *tau_steps,

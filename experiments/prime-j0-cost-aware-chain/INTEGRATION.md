@@ -225,3 +225,80 @@ retains the paired raw results. All 16,384 candidate outputs verify, and the
 hot table retains 70.75–88.66% of the full folded table's saved online
 additions while reducing its setup pair additions by about 58%. These are
 operation results; local CPU times remain exploratory until an isolated run.
+
+## Table-aware representative selection
+
+The [two-representative protocol](TABLE_AWARE_HOT.md) in PR #275 freezes
+the choice of the two shortest lattice representatives and selects the one
+with fewer predicted hot-table additions. It reuses exactly the same
+2,048-entry-per-block table as `fused-hot-batch128`. The second atlas recode
+is charged inside the online timer.
+
+The new [adapt2-inputs.json](adapt2-inputs.json) freezes four independent
+4,096-scalar workloads created after the protocol PR opened.
+[check_adapt_panel.py](check_adapt_panel.py) verifies every output against
+generic multiplication and independently reimplements the selector in Python.
+All 16,384 outputs and all four C addition totals agree. The new arm saves
+5.61%–6.81% of online mixed additions over the ordinary hot arm with
+identical table bytes and setup operations; [adapt2-panel.json](adapt2-panel.json)
+retains the raw evidence and failures. The predeclared 3% addition gate
+passes. The updated `test_curve` passed 407,658 checks, and all 14 locally
+runnable CTest cases passed; `coord` requires a localhost bind denied in
+this sandbox. No wall-time speedup is claimed on this contended host.
+`make_isolated_manifest.py --candidate-arm fused-hot-adapt2-batch128`
+pairs the two arms on identical scalar files for an isolated host.
+
+## Demand-gated second recode
+
+The [gated protocol](GATED_TABLE_AWARE.md) in PR #277 skips the second
+atlas recode unless the first stream has a cold two-digit block or exceeds
+the prepared span. [gated-inputs.json](gated-inputs.json) freezes four fresh
+4,096-scalar cases created after the protocol PR opened.
+[check_gated_panel.py](check_gated_panel.py) verifies every output against
+generic multiplication and independently checks executed additions and
+actual second-recode counts. The gated arm retains 81.35%–99.88% of the
+always-two selector's addition saving while invoking the second recode on
+20.51%–67.94% of nonzero scalars. Setup is identical across the three
+arms; [gated-panel.json](gated-panel.json) retains the raw evidence.
+The updated curve test passed 409,269 checks. An isolated host must compare
+the gated arm separately with ordinary hot and with always-two before
+judging CPU speed.
+
+## Carry-steered eight-digit blocks
+
+The [carry-steering protocol](CARRY_STEERED_TAU8.md) in draft PR #281
+selects a lower-addition valid pair in the same residue modulo `τ^8` and
+propagates the resulting exact carry. It uses the same prepared 2,048-orbit
+hot table, plus a 13,122-byte static residue map. The fresh
+[steer-inputs.json](steer-inputs.json) fixes four 4,096-scalar workloads.
+[check_steer_panel.py](check_steer_panel.py) verifies all 16,384 results
+against independent generic multiplication and matches every C addition
+and substitution count to a separate Python recoder. Savings against the
+ordinary hot arm are 5.63%, 5.95%, 11.73%, and 11.81%, exceeding the
+prospective 3% gate in every case. Per-point setup operations and prepared
+bytes are unchanged. [steer-panel.json](steer-panel.json) preserves raw
+outputs and hashes. `test_curve` passed 410,876 checks. The isolated
+manifest pairs this arm with the ordinary hot arm; no CPU wall-time or rho
+speedup is claimed before a physical isolation receipt.
+
+## Gated second representative after carry steering
+
+The [gated dual protocol](GATED_DUAL_STEER.md) was frozen in draft PR #284
+before its fresh inputs were generated. `fused-hot-steer-gated2-batch128`
+keeps the carry-steered table and static map, and asks for the next-shortest
+Eisenstein representative only if the first recode leaves a cold pair or
+overflows its span. The second recode and any fallback are inside the online
+timer. [gated2-steer-panel.json](gated2-steer-panel.json) preserves both arms'
+raw outputs and counters for four 4,096-scalar cases; all 16,384 outputs and
+all model predictions verify. The new arm saved 1.72%–2.56% of executed
+mixed additions versus carry steering and recoded the second representative
+on 5.96%–19.92% of nonzero scalars. Setup operations and bytes are identical.
+`test_curve` passed 412,487 checks; the 14 locally runnable CTest cases
+passed. `make_isolated_manifest.py --candidate-arm
+fused-hot-steer-gated2-batch128` pairs the two arms on the frozen inputs.
+
+The temporary RunPod CPU-pod preflight in
+[runpod-isolation-preflight-20261004.json](runpod-isolation-preflight-20261004.json)
+found cgroup v1, no isolated CPU partition, and no `nohz_full` CPUs. The pod
+was stopped and deleted before any timing panel. These operation results
+do not establish CPU speed or a complete one-target rho speedup.
