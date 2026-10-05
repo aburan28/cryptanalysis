@@ -1527,9 +1527,32 @@ queries, and the next gate is whether target-conditioned solver trails
 actually reach such unsaturated states. The degree-131 complete `2^x`
 remains unknown.
 
+### Q1430 actual target-conditioned partial-pair trail
+
+The [frozen Q1430 protocol](q1430_partial_trail/protocol.json) adds
+observation-only counters to Q1427 on its exact N53/N83 ordinary targets.
+Both known-witness controls verify, and both ordinary cells still hit the
+60-second cap without a relation. The actual search reached 207,522 N53 and
+81,765 N83 notification events with both second-pair leaves partial, one or
+two weight units available on each, and at most 14/20 free bits respectively.
+These are event counts, not distinct-state counts. The first 16 saved
+distinct states per ordinary cell were all rejected by the independently
+replayed sound span test. The [result table](q1430_partial_trail/README.md)
+and [post-run audit](q1430_partial_trail/audit_verification.json) retain
+the exact identities and failure rows. A typo in the frozen verifier was
+repaired only in a separate audit; the solver, protocol, and receipts remain
+unchanged. Reachability and selected-state rejection do not show net solver
+savings, natural relation yield, or a complete N131 `2^x`.
+
 ## Next goal
 
-The next solver should build a **compact target-conditioned pair-sum
+The immediate solver gate is to integrate Q1428's sound partial-span
+condition as a guarded propagator on Q1430's matched ordinary N53/N83
+targets. Charge every filter field operation, column, clause, and memory
+cost alongside saved reverse-root work; verify the archived controls and
+any ordinary relation independently. A first-16 rejection observation is
+not a speedup. If a charged filter cannot change the ordinary-query search
+economics, the next solver should build a **compact target-conditioned pair-sum
 membership and witness method**. It must avoid the Q1425–Q1427 reverse-root
 rejection loop and the full quotient-pair index screened by Q1416 at roughly
 `2^89.36` logical actions on the exact N131 base under its uniform-key
