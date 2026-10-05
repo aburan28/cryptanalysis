@@ -136,8 +136,9 @@ the degree-D closure.
 | 20 | 18 | 38 | 4 | 82993 | 9.3e11 | 2.8e14 | 1.2e12 | 240 |
 
 For decomposable (planted) targets the same degree solves the system. The closure ends with
-`N - 1` linear pivots and two standard monomials, the swapped pair `(X, Y)`, at `d = 9` (degree 3)
-and `d = 12` (degree 4).
+`N - 1` linear pivots and two standard monomials, the swapped pair `(X, Y)`, at `d = 9` (degree 3),
+`d = 12` (degree 4) and `d = 15` (degree 4: 33 linear pivots, rank 52954 of 52956). The other `eps`
+branch of a planted target is refuted at the same degree.
 
 Reading:
 
@@ -155,8 +156,9 @@ Reading:
   degree up to `d = 18` and the cost against `2^d`. The open question it isolates: **is the
   solving degree of the m = 2 descent system bounded, or logarithmic, in d?** If it is bounded,
   the m = 2 PDP is polynomial time at every l, which would contradict the expectation in
-  [KY15]/[Cou16]. If it grows linearly, Macaulay never wins. Measurements at `d ~ 20-21` are
-  running.
+  [KY15]/[Cou16]. If it grows linearly, Macaulay never wins. Runs at `d = 20`
+  (n = 47, l = 23, N = 43, unsaturated) and `d = 21` (n = 41, l = 21, saturated `V^(2)`) are queued;
+  they write to `results/residual-smxl-n47.jsonl` and `results/residual-smxl-n41.jsonl`.
 
 ## 5. Open leads (not yet novelty-checked)
 
