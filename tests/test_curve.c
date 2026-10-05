@@ -107,18 +107,28 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
         uint64_t k =
             i < 8 ? (uint64_t[]){0, 1, 2, 3, g->order - 2, g->order - 1, g->order, UINT64_MAX}[i]
                   : ca_rng_next(&rng);
-        ca_elem expected, baseline = *point, selected = *point, atlas = *point;
+        ca_elem expected, baseline = *point, selected = *point, atlas = *point, tail = *point;
+        ca_elem gated = *point;
         ca_elem positional = *point, global = *point;
         uint64_t base_triples = UINT64_MAX, base_adds = UINT64_MAX;
         uint64_t cost_triples = UINT64_MAX, cost_adds = UINT64_MAX;
         uint64_t atlas_triples = UINT64_MAX, atlas_adds = UINT64_MAX;
         uint64_t base_rotations = UINT64_MAX, atlas_rotations = UINT64_MAX;
+        uint64_t tail_triples = UINT64_MAX, tail_adds = UINT64_MAX;
+        uint64_t tail_rotations = UINT64_MAX;
+        uint64_t gated_triples = UINT64_MAX, gated_adds = UINT64_MAX;
+        uint64_t gated_rotations = UINT64_MAX;
         ca_group_mul(g, &expected, point, k % g->order, NULL);
         CHECK(ca_ec_tau4_mul_prepared_profile(g, &pre, &baseline, k, 0, &base_triples, &base_adds,
                                               &base_rotations));
         CHECK(ca_ec_tau4_mul_prepared_cost(g, &pre, &selected, k, &cost_triples, &cost_adds));
         CHECK(ca_ec_tau4_mul_prepared_profile(g, &pre, &atlas, k, 2, &atlas_triples, &atlas_adds,
                                               &atlas_rotations));
+        CHECK(ca_ec_tau4_mul_prepared_profile(g, &pre, &tail, k, 3, &tail_triples, &tail_adds,
+                                              &tail_rotations));
+        CHECK(ca_ec_tau4_mul_prepared_profile(g, &pre, &gated, k, 4, &gated_triples, &gated_adds,
+                                              &gated_rotations));
+        CHECK(ca_ec_tau4_tail_recode_compare_scalar(&pre, k));
         uint64_t positional_adds = UINT64_MAX, positional_rotations = UINT64_MAX;
         CHECK(ca_ec_tau4_pos_mul(g, &positional_pre, &positional, k, &positional_adds,
                                  &positional_rotations));
@@ -126,6 +136,13 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
         CHECK(ca_group_equal(g, &baseline, &expected));
         CHECK(ca_group_equal(g, &selected, &expected));
         CHECK(ca_group_equal(g, &atlas, &expected));
+        CHECK(ca_group_equal(g, &tail, &expected));
+        CHECK(ca_group_equal(g, &gated, &expected));
+        CHECK_EQ_U64(gated_triples, tail_triples);
+        CHECK_EQ_U64(gated_adds, tail_adds);
+        CHECK_EQ_U64(gated_rotations, tail_rotations);
+        CHECK(10 * tail_triples + 16 * tail_adds + tail_rotations <=
+              10 * base_triples + 16 * base_adds + base_rotations);
         CHECK(ca_group_equal(g, &positional, &expected));
         CHECK(ca_group_equal(g, &global, &expected));
         CHECK_EQ_U64(base_triples, atlas_triples);
@@ -159,7 +176,7 @@ static void tau_atlas_recode_checks(void)
     CHECK(ca_ec_tau4_recode_compare(0, 0));
 }
 
-/* Exercise the three direct tau evaluators and both profile modes against
+/* Exercise the three direct tau evaluators and all five profile modes against
  * independently computed points, including the identity and scalar edges. */
 static void tau_direct_checks(const ca_group *g, const ca_elem *point)
 {
@@ -176,7 +193,7 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_mul_tau4_tripling(g, &got, point, k, &steps, &adds, &triples));
         CHECK(ca_group_equal(g, &got, &expected));
-        for (int mode = 0; mode <= 2; mode++) {
+        for (int mode = 0; mode <= 4; mode++) {
             uint64_t rotations;
             CHECK(ca_ec_tau4_mul_prepared_profile(g, &pre, &got, k, mode, &triples, &adds,
                                                   &rotations));
@@ -190,7 +207,7 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK_EQ_U64(setup_ops, 0);
     CHECK(ca_ec_tau4_mul_prepared_cost(g, &pre, &got, 17, NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
-    CHECK(!ca_ec_tau4_mul_prepared_profile(g, &pre, &got, 17, 3, NULL, NULL, NULL));
+    CHECK(!ca_ec_tau4_mul_prepared_profile(g, &pre, &got, 17, 5, NULL, NULL, NULL));
 }
 
 static void tau_cost_named(const char *name)
