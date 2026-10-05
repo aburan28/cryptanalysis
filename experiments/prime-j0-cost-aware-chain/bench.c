@@ -327,6 +327,7 @@ int main(int argc, char **argv)
     double online_ms = 1000 * (ca_now() - start);
     double verify_start = ca_now();
     uint64_t output_digest = FNV_OFFSET;
+    uint64_t tail_stream_checks = 0;
     for (size_t i = 0; i < SCALARS; i++) {
         if (mode != 0) {
             if (mode == 11 && !ca_ec_tau4_recode_compare_scalar(&pre, scalars[i])) {
@@ -334,6 +335,12 @@ int main(int argc, char **argv)
                 free(outputs);
                 return 1;
             }
+            if (mode == 24 && !ca_ec_tau4_tail_recode_compare_scalar(&pre, scalars[i])) {
+                fprintf(stderr, "tail oracle digit stream mismatch at index %zu\n", i);
+                free(outputs);
+                return 1;
+            }
+            tail_stream_checks += mode == 24;
             ca_elem expected;
             ca_group_mul(&group, &expected, &point, scalars[i], NULL);
             if (!ca_group_equal(&group, &outputs[i], &expected)) {
@@ -365,7 +372,7 @@ int main(int argc, char **argv)
            " prep_batch_denominators=%" PRIu64 " prep_affine_exceptions=%" PRIu64
            " prep_affine_doublings=%" PRIu64 " prep_affine_edge_mults_model=%" PRIu64
            " prep_affine_edge_squarings_model=%" PRIu64 " online_scratch_bytes=%zu"
-           " verified=1\n",
+           " tail_stream_checks=%" PRIu64 " verified=1\n",
            argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda,
            input_digest, output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_adds,
            prep_rotations, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats,
@@ -373,6 +380,7 @@ int main(int argc, char **argv)
            second_recodes, steered_blocks, static_map_bytes, recipe_bytes, prep_slot_lookups,
            wavefront_stats.denominators, wavefront_stats.exceptional_edges,
            wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
-           wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes);
+           wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
+           tail_stream_checks);
     return 0;
 }

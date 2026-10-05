@@ -124,6 +124,8 @@ exact mode-3/mode-4 digit-stream comparisons. The gated arm and original
 oracle had identical tripling, mixed-addition, rotation, point-preparation,
 and output-inversion counts on every case. The candidate uses the same
 49,923-byte oracle and 6,241 gate bytes, with no additional prepared points.
+The final v2 receipt also compares both recoders' digit streams on every
+frozen scalar outside the timed interval; all 32,768 stream checks passed.
 The complete CTest suite passed all 15 cases on the local macOS host with
 loopback permission for the coordinator test.
 

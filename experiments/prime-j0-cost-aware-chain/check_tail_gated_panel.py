@@ -88,10 +88,13 @@ def check(bench, test_curve, root, fixture_name, report_name):
                             "base_x": case["base_x"], "base_y": case["base_y"],
                             "input_digest": case["input_digest"],
                             "output_digest": case["expected_output_digest"],
-                            "verified": "1", "prep_repeats": "1"}
+                            "verified": "1", "prep_repeats": "1",
+                            "tail_stream_checks": str(case["scalars"] if arm ==
+                                                      "tail-oracle-gated" else 0)}
                 row["verified"] = all(got.get(key) == value for key, value in expected.items())
                 if row["verified"]:
                     row["operations"] = {key: int(got[key]) for key in OPERATIONS}
+                    row["tail_stream_checks"] = int(got["tail_stream_checks"])
                     row["timings_exploratory_ms"] = {
                         key: got[key] for key in ("prep_ms", "online_ms", "verify_ms")}
             runs[arm] = row
