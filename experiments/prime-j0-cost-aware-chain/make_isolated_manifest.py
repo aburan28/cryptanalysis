@@ -10,8 +10,9 @@ def make(args):
     root = args.repo_root.resolve()
     experiment = root / "experiments" / "prime-j0-cost-aware-chain"
     atlas = args.candidate_arm == "atlas"
-    fused = args.candidate_arm == "fused-batch128"
-    default_prefix = "fused" if fused else "atlas" if atlas else None
+    orbit = args.candidate_arm == "fused-orbit-batch128"
+    fused = args.candidate_arm in ("fused-batch128", "fused-orbit-batch128")
+    default_prefix = "orbit" if orbit else "fused" if fused else "atlas" if atlas else None
     fixture_name = (f"{default_prefix}-inputs.json"
                     if default_prefix and args.fixture == "inputs.json"
                     else args.fixture)
@@ -51,6 +52,12 @@ def make(args):
                       experiment / "run.py",
                       root / "src" / "generated" / "tau4_residue_atlas.h",
                       root / "src" / "generated" / "tau8_pair_map.h"]
+    if orbit:
+        artifacts += [experiment / "FUSED_TAU_ORBITS.md",
+                      experiment / "make_tau8_orbits.py",
+                      experiment / "make_orbit_inputs.py",
+                      experiment / "check_orbit_panel.py",
+                      root / "src" / "generated" / "tau8_orbit_map.h"]
     artifacts += sorted((root / "src").glob("*.c"))
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
@@ -70,6 +77,7 @@ def make(args):
                           "input_digest": case["input_digest"]},
                       "expected_result": case["expected_output_digest"],
                       "reference": [base[0],
+                                    "fused-batch128" if orbit else
                                     "pos-batch128" if fused else
                                     "pos-global" if args.candidate_arm.startswith(
                                         "pos-batch") else "baseline",
@@ -127,7 +135,8 @@ if __name__ == "__main__":
     parser.add_argument("--input-dir", default="inputs")
     parser.add_argument("--candidate-arm", "--arm", choices=(
         "cost", "pos", "pos-batch32", "pos-batch128",
-        "pos-batch512", "pos-batch4096", "atlas", "fused-batch128"),
+        "pos-batch512", "pos-batch4096", "atlas", "fused-batch128",
+        "fused-orbit-batch128"),
                         default="cost")
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
