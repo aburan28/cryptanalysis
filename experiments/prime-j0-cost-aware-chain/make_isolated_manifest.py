@@ -12,11 +12,20 @@ def make(args):
     atlas = args.candidate_arm == "atlas"
     orbit = args.candidate_arm == "fused-orbit-batch128"
     adapt2 = args.candidate_arm == "fused-hot-adapt2-batch128"
-    hot = args.candidate_arm == "fused-hot-batch128" or adapt2
+    gated = args.candidate_arm == "fused-hot-gated-batch128"
+    steer = args.candidate_arm == "fused-hot-steer-batch128"
+    gated2 = args.candidate_arm == "fused-hot-steer-gated2-batch128"
+    hot = args.candidate_arm == "fused-hot-batch128" or adapt2 or gated or steer or gated2
     fused = args.candidate_arm in ("fused-batch128", "fused-orbit-batch128",
                                    "fused-hot-batch128",
-                                   "fused-hot-adapt2-batch128")
-    default_prefix = ("adapt2" if adapt2 else "hot" if hot else
+                                   "fused-hot-adapt2-batch128",
+                                   "fused-hot-gated-batch128",
+                                   "fused-hot-steer-batch128",
+                                   "fused-hot-steer-gated2-batch128")
+    if args.reference_arm and not (gated or gated2):
+        raise ValueError("--reference-arm is only supported for gated candidates")
+    default_prefix = ("gated2-steer" if gated2 else "steer" if steer else "gated" if gated else
+                      "adapt2" if adapt2 else "hot" if hot else
                       "orbit" if orbit else "fused"
                       if fused else "atlas" if atlas else None)
     fixture_name = (f"{default_prefix}-inputs.json"
@@ -72,7 +81,7 @@ def make(args):
                       experiment / "make_hot_inputs.py",
                       experiment / "check_hot_panel.py",
                       root / "src" / "generated" / "tau8_hot_map.h"]
-    if adapt2:
+    if adapt2 or gated:
         artifacts += [experiment / "README.md",
                       experiment / "INTEGRATION.md",
                       experiment / "TABLE_AWARE_HOT.md",
@@ -80,6 +89,30 @@ def make(args):
                       experiment / "table-aware-screen.json",
                       experiment / "make_adapt_inputs.py",
                       experiment / "check_adapt_panel.py"]
+    if gated:
+        artifacts += [experiment / "GATED_TABLE_AWARE.md",
+                      experiment / "screen_gated_table_aware.py",
+                      experiment / "gated-table-aware-screen.json",
+                      experiment / "make_gated_inputs.py",
+                      experiment / "check_gated_panel.py"]
+    if steer or gated2:
+        artifacts += [experiment / "README.md", experiment / "INTEGRATION.md",
+                      experiment / "CARRY_STEERED_TAU8.md",
+                      experiment / "make_tau8_steer.py",
+                      experiment / "screen_carry_steer.py",
+                      experiment / "carry-steer-screen.json",
+                      experiment / "make_steer_inputs.py",
+                      experiment / "check_steer_panel.py",
+                      experiment / "steer-panel.json",
+                      root / "src" / "generated" / "tau8_steer_map.h"]
+    if gated2:
+        artifacts += [experiment / "GATED_DUAL_STEER.md",
+                      experiment / "screen_gated_dual_steer.py",
+                      experiment / "gated-dual-steer-screen.json",
+                      experiment / "runpod-isolation-preflight-20261004.json",
+                      experiment / "make_gated2_steer_inputs.py",
+                      experiment / "check_gated2_steer_panel.py",
+                      experiment / "gated2-steer-panel.json"]
     artifacts += sorted((root / "src").glob("*.c"))
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
@@ -99,7 +132,10 @@ def make(args):
                           "input_digest": case["input_digest"]},
                       "expected_result": case["expected_output_digest"],
                       "reference": [base[0],
-                                    "fused-hot-batch128" if adapt2 else
+                                    (args.reference_arm or
+                                    "fused-hot-steer-batch128" if gated2 else
+                                    "fused-hot-adapt2-batch128") if gated or gated2 else
+                                    "fused-hot-batch128" if adapt2 or steer else
                                     "fused-orbit-batch128" if hot else
                                     "fused-batch128" if orbit else
                                     "pos-batch128" if fused else
@@ -125,7 +161,7 @@ def make(args):
             if args.candidate_arm.startswith("pos-batch") else
             "After each arm's per-point table preparation: first scalar "
             "reduction through last affine output; includes atlas lookups, "
-            "all point additions, fallback work, output normalization, "
+            "all candidate recoding, point additions, fallback work, output normalization, "
             "scratch allocation, and storage; excludes loading, preparation, "
             "and independent replay; setup is reported separately"
             if fused else
@@ -161,8 +197,12 @@ if __name__ == "__main__":
         "cost", "pos", "pos-batch32", "pos-batch128",
         "pos-batch512", "pos-batch4096", "atlas", "fused-batch128",
         "fused-orbit-batch128", "fused-hot-batch128",
-        "fused-hot-adapt2-batch128"),
+        "fused-hot-adapt2-batch128", "fused-hot-gated-batch128",
+        "fused-hot-steer-batch128", "fused-hot-steer-gated2-batch128"),
                         default="cost")
+    parser.add_argument("--reference-arm", choices=(
+        "fused-hot-batch128", "fused-hot-adapt2-batch128",
+        "fused-hot-steer-batch128"))
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)
