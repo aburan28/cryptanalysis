@@ -2253,6 +2253,92 @@ def main():
     assert sum(row["verified_relation_count"] for row in q1420_cells) == 4
     assert all(row["solver_status"] == "external_timeout" for row in
                q1420_cells if row["cell"] == "ordinary")
+    q1421_dir = HERE / "q1421_work_counted"
+    q1421_protocol_path = q1421_dir / "protocol.json"
+    q1421_verification_path = q1421_dir / "verification.json"
+    q1421_protocol = json.loads(q1421_protocol_path.read_text())
+    q1421_verification = json.loads(q1421_verification_path.read_text())
+    assert q1421_protocol["proposal_id"] == "Q1421"
+    assert q1421_protocol["candidate_id"] is None
+    assert q1421_protocol["isogeny"] == "none"
+    assert q1421_verification["complete"] is True
+    assert q1421_verification["missing"] == []
+    assert q1421_verification["protocol_sha256"] == sha(q1421_protocol_path)
+    assert q1421_verification["verifier_source_sha256"] == sha(
+        q1421_dir / "verify_archive.py")
+    q1421_cells = []
+    for key in q1421_protocol["run_order"]:
+        path = q1421_dir / "runs" / key / "receipt.json"
+        stage = json.loads(path.read_text())
+        workload = q1421_protocol["workloads"][key]
+        check = next(row for row in q1421_verification["checks"]
+                     if row["key"] == key)
+        assert check["receipt_sha256"] == sha(path)
+        assert check["verified_relation_count"] == stage[
+            "verified_relation_count"]
+        assert stage["proposal_id"] == "Q1421"
+        assert stage["candidate_id"] is None and stage["isogeny"] == "none"
+        assert stage["stage_config_id"] == workload["stage_config_id"]
+        assert stage["workload_id"] == workload["workload_id"]
+        assert stage["stage_run_id"] == workload["stage_run_id"]
+        assert stage["curve_id"] == workload["curve_id"]
+        assert stage["factor_base_actual_B"] == workload[
+            "factor_base_actual_B"]
+        assert stage["folded_columns_K"] == workload["folded_columns_K"]
+        assert stage["protocol_sha256"] == sha(q1421_protocol_path)
+        assert stage["natural_relation_yield_estimate"] is None
+        assert stage["complete_solve_work_log2"] is None
+        report = stage["solver_report"]
+        assert report is not None
+        assert report["decision_policy"] == stage["decision_policy"]
+        assert report["s3_root_calls"] == report[
+            "cached_pair_assignments"] or stage["cell"] == "free_mids"
+        q1421_cells.append({
+            "proposal_id": "Q1421", "candidate_id": None,
+            "stage_config_id": stage["stage_config_id"],
+            "workload_id": stage["workload_id"],
+            "stage_run_id": stage["stage_run_id"],
+            "parent_stage_run_id": stage["parent_stage_run_id"],
+            "curve_id": stage["curve_id"],
+            "degree_n": stage["degree_n"],
+            "cell": stage["cell"],
+            "decision_policy": stage["decision_policy"],
+            "input_law": stage["input_law"],
+            "factor_base_actual_B": stage["factor_base_actual_B"],
+            "folded_columns_K": stage["folded_columns_K"],
+            "solver_status": stage["solver_status"],
+            "solver_stop_reason": report["stop_reason"],
+            "solver_process_wall_seconds_exploratory": stage[
+                "solver_process_wall_seconds_exploratory"],
+            "solver_conflicts": report["conflicts"],
+            "solver_decisions": report["decisions"],
+            "forced_leaf_decisions": report["forced_leaf_decisions"],
+            "distinct_pair_assignments": report[
+                "cached_pair_assignments"],
+            "s3_root_calls": report["s3_root_calls"],
+            "external_clauses": report["external_clauses"],
+            "field_mul_calls": report["field_mul_calls"],
+            "field_sqr_calls": report["field_sqr_calls"],
+            "field_inv_calls": report["field_inv_calls"],
+            "parent_formula_build_wall_seconds_exploratory": stage[
+                "parent_formula_build_wall_seconds_exploratory"],
+            "parent_formula_build_field_mul_calls": stage[
+                "parent_formula_build_field_mul_calls"],
+            "parent_formula_build_field_sqr_calls": stage[
+                "parent_formula_build_field_sqr_calls"],
+            "peak_child_rss_raw": stage["peak_child_rss_raw"],
+            "peak_child_rss_units": stage["peak_child_rss_units"],
+            "verified_relation_count": stage["verified_relation_count"],
+            "natural_relation_yield_estimate": None,
+            "complete_field_operation_equivalent_count": None,
+            "complete_solve_work_log2": None,
+            "receipt_sha256": sha(path),
+        })
+    assert len(q1421_cells) == 8
+    assert sum(row["verified_relation_count"] for row in q1421_cells) == 4
+    assert all(row["solver_status"] == "censored" and
+               row["solver_stop_reason"] == "wall_cap" for row in
+               q1421_cells if row["cell"] == "ordinary")
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -2911,6 +2997,30 @@ def main():
             "protocol_sha256": sha(q1420_protocol_path),
             "verification_sha256": sha(q1420_verification_path),
         },
+        "q1421_counted_root_theory_decision_policy_stage": {
+            "proposal_id": "Q1421",
+            "candidate_id": None,
+            "isogeny": "none",
+            "controlled_variable": (
+                "CaDiCaL default versus first-unassigned-leaf positive "
+                "decision policy on the same archived Q1420 CNF and target"),
+            "cells": q1421_cells,
+            "verified_known_satisfiable_control_cells": 4,
+            "verified_ordinary_n53_relation_count": 0,
+            "verified_ordinary_n83_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "Both policies verify the fixed-leaf controls. All four "
+                "ordinary runs hit the synchronous 60-second wall cap with "
+                "complete operation counters and no model. At N83 default "
+                "only two distinct leaf-pair assignments reach the root "
+                "oracle; leaf-first reaches 5,167 but still no relation. "
+                "A sound earlier partial-leaf gate or different target-"
+                "coupled search is needed before a solve-growth fit."),
+            "protocol_sha256": sha(q1421_protocol_path),
+            "verification_sha256": sha(q1421_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -3239,7 +3349,11 @@ def main():
                 "growth; Q1420's exact external S3 root clauses recover "
                 "both N53/N83 free-mid known-witness controls, but its two "
                 "ordinary targets time out before solver operation counts "
-                "are reported, with no verified relation; Q1333/Q1334 use "
+                "are reported, with no verified relation; Q1421 counts "
+                "those missing operations under matched default and "
+                "leaf-first policies, but all ordinary N53/N83 cells hit "
+                "the wall cap with no model, so no solve-growth fit or "
+                "natural useful-row rate follows; Q1333/Q1334 use "
                 "an adaptive target-local inversion "
                 "window and reproduce the fixed-window ordinary outcomes; "
                 "Q1336/Q1337 fuse one field multiplication per S3 root but "

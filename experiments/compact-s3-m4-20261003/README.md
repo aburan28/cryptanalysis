@@ -1379,29 +1379,44 @@ and ledger preserve the full per-cell costs and raw artifacts. This method
 passes the fixed-leaf mechanism check but does not establish ordinary N83
 yield, a solve-growth fit, or a complete \(2^x\) cost.
 
+### Q1421 work-counted root-theory decision-policy comparison
+
+The [pre-registered Q1421 protocol](q1421_work_counted/protocol.json) reuses
+the exact Q1420 CNFs and ordinary public targets under CaDiCaL default and
+leaf-first decisions. Its [eight-cell archive](q1421_work_counted/verification.json)
+verifies all four fixed-leaf controls. All four unpinned ordinary cells reach
+the synchronous 60-second wall cap without a model. Unlike Q1420, every
+capped solver returns conflicts, decisions, pair assignments, exact-root and
+field-operation counts. N83 default reaches only 2 distinct pair assignments
+in 365,794 conflicts; leaf-first reaches 5,167 in 21,900 conflicts, but no
+ordinary relation. At N53, default reaches 31,532 pair assignments and
+leaf-first 62, again without a relation. The [Q1421 result table](q1421_work_counted/README.md)
+preserves all field calls, exploratory walls, and memory. Both ordinary
+variants are censored; neither a solve-growth fit nor a complete degree-131
+\(2^x\) follows.
+
 ## Next goal
 
-The next goal is a **work-counted ordinary four-summand method gate**. Freeze
-a Q1421 stage with graceful in-process termination so every capped attempt
-reports conflicts, complete leaf-pair assignments, exact S3 root calls,
-field operations, clauses, and memory. Use the Q1420 archived N53/N83
-ordinary targets and exact Q1301/Q1325 bases. Test one sound change to the
-free-leaf search, such as a validated partial-pair root gate or leaf-first
-branch rule, against the unchanged Q1420 method on the same inputs and caps.
-Preserve all failures. The first success gate is an unpinned N53 relation
-with independent checked-Sage replay; the next is the same at N83. A pair
-index limited to a tiny fixed target-support rectangle does not satisfy the
-N83 method gate.
+The next solver goal is a **sound earlier algebraic gate** for free-leaf
+search. Derive a necessary partial-assignment condition that combines the
+bounded-weight leaves, exact pair S3 roots, and target link before both
+leaves of a pair are fixed. Prove the condition preserves every solution on
+small exhaustive fields and archived planted controls, and meter its cost
+before integrating it into a new frozen N53/N83 comparison. The alternative
+is a target-coupled decomposition search with the same exact-base and cost
+gates; a full \(K^2n\) pair table is outside the intended compact method.
 
-Only after the N83 gate passes should a fresh, pre-registered ordinary-query
-panel estimate verified useful-row yield, novel rank per query, and charged
-cost per useful row, including failures. Calibrate multiply, square,
-inverse, conversion, hashing, and point costs into a declared common work
-unit. Then add exact-base construction, relation collection, final matrix
-build/solve, target descent, and scalar replay to the degree-131 ledger.
-The complete work exponent stays unknown until those terms are measured or
-bounded. Dispatch the challenge only if the **complete** projection is
-credibly below \(2^{61}\).
+First recover an unpinned N53 ordinary relation that is independently
+verified, then an N83 ordinary relation on a pre-registered target panel,
+charging every failed query. An archived fixed target might have no relation,
+so preserve its no-hit and use a frozen fresh panel rather than choosing a
+target after seeing results. After the N83 method gate, measure verified
+useful-row yield, novel rank per query, and cost per useful row. Calibrate
+field operations, conversion, hashing, and point work into a declared unit;
+add exact-base construction, collection, final matrix build/solve, descent,
+and scalar replay. Keep the complete \(2^x\) unknown until all terms are
+measured or bounded. Dispatch the challenge only if the complete degree-131
+projection is credibly below \(2^{61}\).
 
 ## Reproduction
 
