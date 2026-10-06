@@ -16,12 +16,15 @@
 // one for the even elements (imm 0x00), one for the odd (0x11) -- as
 // [lo, hi] pairs that an unpacklo/unpackhi sort back into a `lo` and a `hi`
 // register.  N is 2 on PCLMULQDQ alone (SSE), 4 with VPCLMULQDQ on AVX2, 8
-// with VPCLMULQDQ on AVX-512.  The product keeps f131.h's Karatsuba on the two
-// full limbs and takes the four cross products of the 3-bit limbs through the
-// multiplier too (eight instructions for N lanes), where f131.h's scalar
-// path shifts and masks: a vector shift-and-mask is five times the
-// instructions of a multiply here, and the multiplier's port has them to
-// spare.
+// with VPCLMULQDQ on AVX-512.  The product is Karatsuba on the two full limbs
+// and Karatsuba again between each full limb and the 3-bit limbs: five
+// multiplies for N lanes, their sums sorted once per output limb, where
+// f131.h's scalar path shifts and masks.  On AVX-512 the multiplies and the
+// shuffles that sort them share one port and the shifts have one of their
+// own, which is what the instruction choices below are about: funnel shifts
+// (VBMI2) for the reduction's shifts across a limb, byte and qword permutes
+// (VBMI) for the small products and spreads that would otherwise be masks,
+// and as few sorts as the sums allow.
 //
 // This header selects itself only on x86-64 with a hardware multiplier; the
 // scalar path of f131.h stays what AArch64 (PMULL) and the software product
@@ -34,7 +37,7 @@
 #include "f131.h"
 
 #ifndef ECC_F131_LANES
-#    if ECC_HOST_CLMUL && defined(__x86_64__) && defined(__AVX512F__) && defined(__AVX512BW__) && \
+#    if ECC_HOST_CLMUL && defined(__x86_64__) && defined(__AVX512F__) && defined(__AVX512BW__) &&  \
         defined(__VPCLMULQDQ__)
 #        define ECC_F131_LANES 8
 #    elif ECC_HOST_CLMUL && defined(__x86_64__) && defined(__AVX2__) && defined(__VPCLMULQDQ__)
@@ -84,37 +87,82 @@ template <> struct Limbs<8> {
 
 #    define F131X_INLINE inline __attribute__((always_inline))
 
-// The N-lane carry-less multiply: lo and hi halves of a[i] * b[i].
-template <int N>
-F131X_INLINE void clmul(typename Limbs<N>::V a, typename Limbs<N>::V b, typename Limbs<N>::V *lo,
-                        typename Limbs<N>::V *hi);
+// Which of the AVX-512 extensions beyond F/BW the build may use.  Each has a
+// fallback in plain vector arithmetic, so a width is never refused for want
+// of one; they only shorten what the fallback spells out.
+#    if defined(__AVX512VBMI2__)
+#        define F131X_VBMI2 1 // funnel shifts across a limb boundary
+#    else
+#        define F131X_VBMI2 0
+#    endif
+#    if defined(__AVX512VBMI__)
+#        define F131X_VBMI 1 // byte permutes: a 64-entry table lookup in a register
+#    else
+#        define F131X_VBMI 0
+#    endif
+#    if defined(__AVX512VL__)
+#        define F131X_VL 1 // the above on 128- and 256-bit vectors
+#    else
+#        define F131X_VL 0
+#    endif
 
-template <>
-F131X_INLINE void clmul<2>(Limbs<2>::V a, Limbs<2>::V b, Limbs<2>::V *lo, Limbs<2>::V *hi)
+// The N-lane carry-less multiply as the instruction leaves it.  PCLMULQDQ
+// multiplies one chosen 64-bit half of each 128-bit lane, so the N products
+// of a limb pair come out of two instructions as [lo, hi] pairs: `e` holds
+// the even elements' products, `o` the odd ones'.  lo() and hi() sort them
+// back into element order with an unpack.  The unpack is a shuffle, and on a
+// 512-bit register the shuffles and the multiplies share one port, so the
+// product xors as much as it can in this form and sorts the sums: eight
+// unpacks for five limbs instead of two per multiply.
+template <int N> struct Prod {
+    typename Limbs<N>::V e, o;
+    F131X_INLINE Prod operator^(const Prod &p) const { return Prod{e ^ p.e, o ^ p.o}; }
+};
+template <int N> F131X_INLINE Prod<N> clmul(typename Limbs<N>::V a, typename Limbs<N>::V b);
+template <int N> F131X_INLINE typename Limbs<N>::V lo(const Prod<N> &p);
+template <int N> F131X_INLINE typename Limbs<N>::V hi(const Prod<N> &p);
+
+template <> F131X_INLINE Prod<2> clmul<2>(Limbs<2>::V a, Limbs<2>::V b)
 {
-    const __m128i e = _mm_clmulepi64_si128((__m128i)a, (__m128i)b, 0x00),
-                  o = _mm_clmulepi64_si128((__m128i)a, (__m128i)b, 0x11);
-    *lo = (Limbs<2>::V)_mm_unpacklo_epi64(e, o);
-    *hi = (Limbs<2>::V)_mm_unpackhi_epi64(e, o);
+    return Prod<2>{(Limbs<2>::V)_mm_clmulepi64_si128((__m128i)a, (__m128i)b, 0x00),
+                   (Limbs<2>::V)_mm_clmulepi64_si128((__m128i)a, (__m128i)b, 0x11)};
+}
+template <> F131X_INLINE Limbs<2>::V lo<2>(const Prod<2> &p)
+{
+    return (Limbs<2>::V)_mm_unpacklo_epi64((__m128i)p.e, (__m128i)p.o);
+}
+template <> F131X_INLINE Limbs<2>::V hi<2>(const Prod<2> &p)
+{
+    return (Limbs<2>::V)_mm_unpackhi_epi64((__m128i)p.e, (__m128i)p.o);
 }
 #    if ECC_F131_LANES >= 4
-template <>
-F131X_INLINE void clmul<4>(Limbs<4>::V a, Limbs<4>::V b, Limbs<4>::V *lo, Limbs<4>::V *hi)
+template <> F131X_INLINE Prod<4> clmul<4>(Limbs<4>::V a, Limbs<4>::V b)
 {
-    const __m256i e = _mm256_clmulepi64_epi128((__m256i)a, (__m256i)b, 0x00),
-                  o = _mm256_clmulepi64_epi128((__m256i)a, (__m256i)b, 0x11);
-    *lo = (Limbs<4>::V)_mm256_unpacklo_epi64(e, o);
-    *hi = (Limbs<4>::V)_mm256_unpackhi_epi64(e, o);
+    return Prod<4>{(Limbs<4>::V)_mm256_clmulepi64_epi128((__m256i)a, (__m256i)b, 0x00),
+                   (Limbs<4>::V)_mm256_clmulepi64_epi128((__m256i)a, (__m256i)b, 0x11)};
+}
+template <> F131X_INLINE Limbs<4>::V lo<4>(const Prod<4> &p)
+{
+    return (Limbs<4>::V)_mm256_unpacklo_epi64((__m256i)p.e, (__m256i)p.o);
+}
+template <> F131X_INLINE Limbs<4>::V hi<4>(const Prod<4> &p)
+{
+    return (Limbs<4>::V)_mm256_unpackhi_epi64((__m256i)p.e, (__m256i)p.o);
 }
 #    endif
 #    if ECC_F131_LANES >= 8
-template <>
-F131X_INLINE void clmul<8>(Limbs<8>::V a, Limbs<8>::V b, Limbs<8>::V *lo, Limbs<8>::V *hi)
+template <> F131X_INLINE Prod<8> clmul<8>(Limbs<8>::V a, Limbs<8>::V b)
 {
-    const __m512i e = _mm512_clmulepi64_epi128((__m512i)a, (__m512i)b, 0x00),
-                  o = _mm512_clmulepi64_epi128((__m512i)a, (__m512i)b, 0x11);
-    *lo = (Limbs<8>::V)_mm512_unpacklo_epi64(e, o);
-    *hi = (Limbs<8>::V)_mm512_unpackhi_epi64(e, o);
+    return Prod<8>{(Limbs<8>::V)_mm512_clmulepi64_epi128((__m512i)a, (__m512i)b, 0x00),
+                   (Limbs<8>::V)_mm512_clmulepi64_epi128((__m512i)a, (__m512i)b, 0x11)};
+}
+template <> F131X_INLINE Limbs<8>::V lo<8>(const Prod<8> &p)
+{
+    return (Limbs<8>::V)_mm512_unpacklo_epi64((__m512i)p.e, (__m512i)p.o);
+}
+template <> F131X_INLINE Limbs<8>::V hi<8>(const Prod<8> &p)
+{
+    return (Limbs<8>::V)_mm512_unpackhi_epi64((__m512i)p.e, (__m512i)p.o);
 }
 #    endif
 
@@ -164,23 +212,123 @@ template <int N> F131X_INLINE F131x<N> add(const F131x<N> &a, const F131x<N> &b)
     return F131x<N>{a.w0 ^ b.w0, a.w1 ^ b.w1, a.w2 ^ b.w2};
 }
 
-// f131::reduce, limb for limb, over N lanes.
+// A shift across a limb boundary: (hi:lo) >> S, and the upper half of
+// (hi:lo) << S.  One funnel-shift instruction on VBMI2; two shifts and an
+// or without, which on a 512-bit register are three instructions on the one
+// port that shifts.  The reduction is mostly these.
+template <int N, int S>
+F131X_INLINE typename Limbs<N>::V shr(typename Limbs<N>::V lo, typename Limbs<N>::V hi)
+{
+    typedef typename Limbs<N>::V V;
+    typedef typename Limbs<N>::M M;
+#    if F131X_VBMI2
+    if constexpr (N == 8) return (V)_mm512_shrdi_epi64((M)lo, (M)hi, S);
+#    endif
+#    if F131X_VBMI2 && F131X_VL
+    if constexpr (N == 4) return (V)_mm256_shrdi_epi64((M)lo, (M)hi, S);
+    if constexpr (N == 2) return (V)_mm_shrdi_epi64((M)lo, (M)hi, S);
+#    endif
+    return (lo >> S) | (hi << (64 - S));
+}
+template <int N, int S>
+F131X_INLINE typename Limbs<N>::V shl(typename Limbs<N>::V hi, typename Limbs<N>::V lo)
+{
+    typedef typename Limbs<N>::V V;
+    typedef typename Limbs<N>::M M;
+#    if F131X_VBMI2
+    if constexpr (N == 8) return (V)_mm512_shldi_epi64((M)hi, (M)lo, S);
+#    endif
+#    if F131X_VBMI2 && F131X_VL
+    if constexpr (N == 4) return (V)_mm256_shldi_epi64((M)hi, (M)lo, S);
+    if constexpr (N == 2) return (V)_mm_shldi_epi64((M)hi, (M)lo, S);
+#    endif
+    return (hi << S) | (lo >> (64 - S));
+}
+
+// t[idx[i] & 7] for each element, t eight 64-bit words: a register permute
+// where the width allows one (eight 64-bit elements: the 512-bit permute's
+// own table; two 256-bit halves through the two-table permute), N loads
+// otherwise.
+template <int N>
+F131X_INLINE typename Limbs<N>::V lookup8(const uint64_t t[8], typename Limbs<N>::V idx)
+{
+    typedef typename Limbs<N>::V V;
+    typedef typename Limbs<N>::M M;
+    if constexpr (N == 8) {
+        return (V)_mm512_permutexvar_epi64((M)idx, _mm512_loadu_si512((const void *)t));
+    }
+#    if F131X_VL
+    if constexpr (N == 4) {
+        return (V)_mm256_permutex2var_epi64(_mm256_loadu_si256((const __m256i *)t), (M)idx,
+                                            _mm256_loadu_si256((const __m256i *)(t + 4)));
+    }
+#    endif
+    V r;
+    for (int i = 0; i < N; ++i) r[i] = t[idx[i] & 7];
+    return r;
+}
+
+// The 3 x 3 carry-less product of the top limbs, a value below 64: a table of
+// 64 bytes indexed by (a << 3 | b), through a byte permute where there is one
+// over 64 bytes (the other seven bytes of each element index entry 0, which
+// is 0 * 0), else the three masked shifts of f131::mulTiny.
+struct TinyTable {
+    uint8_t t[64];
+    constexpr TinyTable() : t{}
+    {
+        for (int a = 0; a < 8; ++a)
+            for (int b = 0; b < 8; ++b) {
+                int p = 0;
+                for (int k = 0; k < 3; ++k)
+                    if ((a >> k) & 1) p ^= b << k;
+                t[a * 8 + b] = uint8_t(p);
+            }
+    }
+};
+alignas(64) static constexpr TinyTable kTiny{};
+
+template <int N>
+F131X_INLINE typename Limbs<N>::V tinyProduct(typename Limbs<N>::V a2, typename Limbs<N>::V b2)
+{
+    typedef typename Limbs<N>::V V;
+    typedef typename Limbs<N>::M M;
+#    if F131X_VBMI
+    if constexpr (N == 8) {
+        return (V)_mm512_permutexvar_epi8((M)((a2 << 3) | b2),
+                                          _mm512_load_si512((const void *)kTiny.t));
+    }
+#    endif
+#    if F131X_VBMI && F131X_VL
+    if constexpr (N == 4) {
+        return (V)_mm256_permutex2var_epi8(_mm256_load_si256((const __m256i *)kTiny.t),
+                                           (M)((a2 << 3) | b2),
+                                           _mm256_load_si256((const __m256i *)(kTiny.t + 32)));
+    }
+#    endif
+    return (b2 & (V{} - (a2 & F131x<N>::splat(1u)))) ^
+           ((b2 << 1) & (V{} - ((a2 >> 1) & F131x<N>::splat(1u)))) ^
+           ((b2 << 2) & (V{} - ((a2 >> 2) & F131x<N>::splat(1u))));
+}
+
+// f131::reduce, limb for limb, over N lanes: every shift that crosses a limb
+// is a funnel shift here, and the compiler folds the xor chains into
+// three-input logic.
 template <int N> F131X_INLINE F131x<N> reduce(const typename Limbs<N>::V h[5])
 {
     typedef typename Limbs<N>::V V;
-    const V d0 = (h[2] >> 3) | (h[3] << 61), d1 = (h[3] >> 3) | (h[4] << 61),
+    const V d0 = shr<N, 3>(h[2], h[3]), d1 = shr<N, 3>(h[3], h[4]),
             d2 = (h[4] >> 3) & F131x<N>::splat(3u);
-    const V r0 = d0 ^ (d0 >> 1) ^ (d1 << 63) ^ (d0 >> 3) ^ (d1 << 61);
-    const V r1 = d1 ^ (d1 >> 1) ^ (d2 << 63) ^ (d1 >> 3) ^ (d2 << 61);
+    const V r0 = d0 ^ shr<N, 1>(d0, d1) ^ shr<N, 3>(d0, d1);
+    const V r1 = d1 ^ shr<N, 1>(d1, d2) ^ shr<N, 3>(d1, d2);
     const V r2 = d2 ^ (d2 >> 1);
-    const V q0 = d0 ^ (r0 >> 1) ^ (r1 << 63) ^ (r0 >> 9) ^ (r1 << 55) ^ (r0 >> 25) ^ (r1 << 39) ^
-                 (r0 >> 57) ^ (r1 << 7) ^ (r1 >> 57) ^ (r2 << 7);
-    const V q1 = d1 ^ (r1 >> 1) ^ (r2 << 63) ^ (r1 >> 9) ^ (r2 << 55) ^ (r1 >> 25) ^ (r2 << 39) ^
-                 (r1 >> 57) ^ (r2 << 7);
+    const V q0 = d0 ^ shr<N, 1>(r0, r1) ^ shr<N, 9>(r0, r1) ^ shr<N, 25>(r0, r1) ^
+                 shr<N, 57>(r0, r1) ^ shr<N, 57>(r1, r2);
+    const V q1 = d1 ^ shr<N, 1>(r1, r2) ^ shr<N, 9>(r1, r2) ^ shr<N, 25>(r1, r2) ^
+                 shr<N, 57>(r1, r2);
     const V q2 = d2 ^ (r2 >> 1);
     const V t0 = q0 ^ (q0 << 2) ^ (q0 << 3);
-    const V t1 = q1 ^ (q1 << 2) ^ (q0 >> 62) ^ (q1 << 3) ^ (q0 >> 61);
-    const V t2 = q2 ^ (q2 << 2) ^ (q1 >> 62) ^ (q2 << 3) ^ (q1 >> 61);
+    const V t1 = q1 ^ shl<N, 2>(q1, q0) ^ shl<N, 3>(q1, q0);
+    const V t2 = q2 ^ shl<N, 2>(q2, q1) ^ shl<N, 3>(q2, q1);
     F131x<N> out;
     out.w0 = h[0] ^ t0;
     out.w1 = h[1] ^ t1 ^ t0 ^ (t0 << 32) ^ (t0 << 48) ^ (t0 << 56) ^ (q0 << 60);
@@ -189,33 +337,29 @@ template <int N> F131X_INLINE F131x<N> reduce(const typename Limbs<N>::V h[5])
     return out;
 }
 
-// The unreduced product, five limbs: Karatsuba on the two full limbs, the
-// 3-bit limbs' cross terms through the multiplier as well (each is a 64 x 3
-// product whose high half is below 4), and their 3 x 3 product by shifts.
+// The unreduced product, five limbs, from five multiplies: Karatsuba on the
+// two full limbs, and Karatsuba again for each full limb's cross terms with
+// the 3-bit limbs -- (a0 + a2)(b0 + b2) is a0 b0 + a0 b2 + a2 b0 + a2 b2, and
+// the first and last are already known -- where f131.h multiplies the four
+// cross terms separately.  A multiply here is two instructions on the
+// shuffles' port plus the sort; the xors it saves them with are on the ports
+// with room.  The 3 x 3 product T lands in the low half of both cross sums
+// and is taken back out of limbs 2 and 3; it belongs in limb 4.
 template <int N>
 F131X_INLINE void product(const F131x<N> &a, const F131x<N> &b, typename Limbs<N>::V h[5])
 {
     typedef typename Limbs<N>::V V;
-    V l0, l1, h0, h1, m0, m1;
-    clmul<N>(a.w0, b.w0, &l0, &l1);
-    clmul<N>(a.w1, b.w1, &h0, &h1);
-    clmul<N>(a.w0 ^ a.w1, b.w0 ^ b.w1, &m0, &m1);
-    m0 ^= l0 ^ h0;
-    m1 ^= l1 ^ h1;
-    V x0, x1, y0, y1, u0, u1, v0, v1;
-    clmul<N>(a.w2, b.w0, &x0, &x1);
-    clmul<N>(b.w2, a.w0, &y0, &y1);
-    clmul<N>(a.w2, b.w1, &u0, &u1);
-    clmul<N>(b.w2, a.w1, &v0, &v1);
-    const V a2 = a.w2, b2 = b.w2;
-    const V top = (b2 & (V{} - (a2 & F131x<N>::splat(1u)))) ^
-                  ((b2 << 1) & (V{} - ((a2 >> 1) & F131x<N>::splat(1u)))) ^
-                  ((b2 << 2) & (V{} - ((a2 >> 2) & F131x<N>::splat(1u))));
-    h[0] = l0;
-    h[1] = l1 ^ m0;
-    h[2] = h0 ^ m1 ^ x0 ^ y0;
-    h[3] = h1 ^ x1 ^ y1 ^ u0 ^ v0;
-    h[4] = u1 ^ v1 ^ top;
+    const Prod<N> L = clmul<N>(a.w0, b.w0), H = clmul<N>(a.w1, b.w1);
+    const Prod<N> M = clmul<N>(a.w0 ^ a.w1, b.w0 ^ b.w1) ^ L ^ H;
+    const Prod<N> X = clmul<N>(a.w0 ^ a.w2, b.w0 ^ b.w2) ^ L;
+    const Prod<N> U = clmul<N>(a.w1 ^ a.w2, b.w1 ^ b.w2) ^ H;
+    const Prod<N> HX = H ^ X;
+    const V T = tinyProduct<N>(a.w2, b.w2);
+    h[0] = lo<N>(L);
+    h[1] = hi<N>(L) ^ lo<N>(M);
+    h[2] = lo<N>(HX) ^ hi<N>(M) ^ T;
+    h[3] = hi<N>(HX) ^ lo<N>(U) ^ T;
+    h[4] = hi<N>(U) ^ T;
 }
 
 template <int N> F131X_INLINE F131x<N> mul(const F131x<N> &a, const F131x<N> &b)
@@ -225,15 +369,19 @@ template <int N> F131X_INLINE F131x<N> mul(const F131x<N> &a, const F131x<N> &b)
     return reduce<N>(h);
 }
 
-// The square: the multiplier spreads each full limb, the 3-bit limb by shifts.
+// The square: the multiplier spreads each full limb; the 3-bit limb's spread
+// (bit i to bit 2i) is an eight-entry table.
+static const uint64_t kSpread3[8] = {0, 1, 4, 5, 16, 17, 20, 21};
 template <int N> F131X_INLINE F131x<N> sqr(const F131x<N> &a)
 {
     typedef typename Limbs<N>::V V;
     V h[5];
-    clmul<N>(a.w0, a.w0, &h[0], &h[1]);
-    clmul<N>(a.w1, a.w1, &h[2], &h[3]);
-    h[4] = (a.w2 & F131x<N>::splat(1u)) | ((a.w2 & F131x<N>::splat(2u)) << 1) |
-           ((a.w2 & F131x<N>::splat(4u)) << 2);
+    const Prod<N> l = clmul<N>(a.w0, a.w0), u = clmul<N>(a.w1, a.w1);
+    h[0] = lo<N>(l);
+    h[1] = hi<N>(l);
+    h[2] = lo<N>(u);
+    h[3] = hi<N>(u);
+    h[4] = lookup8<N>(kSpread3, a.w2);
     return reduce<N>(h);
 }
 
@@ -245,18 +393,18 @@ template <int N> F131X_INLINE F131x<N> fromPolynomial(const F131x<N> &a)
     V w0 = a.w0, w1 = a.w1;
     const V w2 = a.w2;
     w0 ^= w1 & F131X_C(0xffffffff00000000ull);
-    w0 ^= ((w0 >> 32) | (w1 << 32)) & F131X_C(0xffff0000ffff0000ull);
-    w1 ^= ((w1 >> 32) | (w2 << 32)) & F131X_C(0x00000000ffff0000ull);
-    w0 ^= ((w0 >> 16) | (w1 << 48)) & F131X_C(0xff00ff00ff00ff00ull);
-    w1 ^= ((w1 >> 16) | (w2 << 48)) & F131X_C(0x0000ff00ff00ff00ull);
-    w0 ^= ((w0 >> 8) | (w1 << 56)) & F131X_C(0xf0f0f0f0f0f0f0f0ull);
-    w1 ^= ((w1 >> 8) | (w2 << 56)) & F131X_C(0x00f0f0f0f0f0f0f0ull);
-    w0 ^= ((w0 >> 4) | (w1 << 60)) & F131X_C(0xccccccccccccccccull);
-    w1 ^= ((w1 >> 4) | (w2 << 60)) & F131X_C(0x4cccccccccccccccull);
-    w0 ^= ((w0 >> 2) | (w1 << 62)) & F131X_C(0xaaaaaaaaaaaaaaaaull);
-    w1 ^= ((w1 >> 2) | (w2 << 62)) & F131X_C(0xaaaaaaaaaaaaaaaaull);
+    w0 ^= shr<N, 32>(w0, w1) & F131X_C(0xffff0000ffff0000ull);
+    w1 ^= shr<N, 32>(w1, w2) & F131X_C(0x00000000ffff0000ull);
+    w0 ^= shr<N, 16>(w0, w1) & F131X_C(0xff00ff00ff00ff00ull);
+    w1 ^= shr<N, 16>(w1, w2) & F131X_C(0x0000ff00ff00ff00ull);
+    w0 ^= shr<N, 8>(w0, w1) & F131X_C(0xf0f0f0f0f0f0f0f0ull);
+    w1 ^= shr<N, 8>(w1, w2) & F131X_C(0x00f0f0f0f0f0f0f0ull);
+    w0 ^= shr<N, 4>(w0, w1) & F131X_C(0xccccccccccccccccull);
+    w1 ^= shr<N, 4>(w1, w2) & F131X_C(0x4cccccccccccccccull);
+    w0 ^= shr<N, 2>(w0, w1) & F131X_C(0xaaaaaaaaaaaaaaaaull);
+    w1 ^= shr<N, 2>(w1, w2) & F131X_C(0xaaaaaaaaaaaaaaaaull);
     const V sign = V{} - (w0 & F131X_C(1u));
-    return F131x<N>{((w0 >> 1) | (w1 << 63)) ^ sign, ((w1 >> 1) | (w2 << 63)) ^ sign,
+    return F131x<N>{shr<N, 1>(w0, w1) ^ sign, shr<N, 1>(w1, w2) ^ sign,
                     ((w2 >> 1) ^ sign) & F131X_C(7u)};
 #    undef F131X_C
 }
@@ -327,7 +475,8 @@ template <> F131X_INLINE Limbs<2>::V popcnt<2>(Limbs<2>::V v)
 #    endif
 
 // The low 32 bits of each element of a times those of b, as a 64-bit product.
-template <int N> F131X_INLINE typename Limbs<N>::V mul32(typename Limbs<N>::V a, typename Limbs<N>::V b);
+template <int N>
+F131X_INLINE typename Limbs<N>::V mul32(typename Limbs<N>::V a, typename Limbs<N>::V b);
 template <> F131X_INLINE Limbs<2>::V mul32<2>(Limbs<2>::V a, Limbs<2>::V b)
 {
     return (Limbs<2>::V)_mm_mul_epu32((__m128i)a, (__m128i)b);
@@ -346,7 +495,8 @@ template <> F131X_INLINE Limbs<8>::V mul32<8>(Limbs<8>::V a, Limbs<8>::V b)
 #    endif
 
 // t[idx[i]] for each element, t a table of 32-bit words.
-template <int N> F131X_INLINE typename Limbs<N>::V gather32(const uint32_t *t, typename Limbs<N>::V idx);
+template <int N>
+F131X_INLINE typename Limbs<N>::V gather32(const uint32_t *t, typename Limbs<N>::V idx);
 template <> F131X_INLINE Limbs<2>::V gather32<2>(const uint32_t *t, Limbs<2>::V idx)
 {
     const Limbs<2>::V r = {t[idx[0]], t[idx[1]]};
@@ -382,10 +532,13 @@ template <int N> F131X_INLINE void storeBytes(typename Limbs<N>::V v, unsigned c
 }
 
 // The selection's constants in the form the vector stages read: the eight bit
-// planes of L, limb by limb, from the shared constant buffer's L^-1 table, and
-// its HW^-1 table in place.
+// planes of L, limb by limb, from the shared constant buffer's L^-1 table;
+// for the 3-bit limb, whose eight values are fewer than its planes, a table
+// of its phase sum (low half) and weight (high half); and the HW^-1 table in
+// place.
 struct SelectConsts {
     uint64_t plane[8][3];
+    uint64_t top[8];
     const uint32_t *inv;
 
     void build(const uint32_t *tw)
@@ -393,10 +546,14 @@ struct SelectConsts {
         using namespace eccPacked131;
         const uint8_t *linv = reinterpret_cast<const uint8_t *>(tw) + 4 * TW_LINV_OFF;
         memset(plane, 0, sizeof(plane));
+        memset(top, 0, sizeof(top));
         for (int l = 0; l < 131; ++l) {
             const int e = linv[l];
             for (int j = 0; j < 8; ++j)
                 if ((l >> j) & 1) plane[j][e >> 6] |= 1ull << (e & 63);
+            if (e >= 128)
+                for (int v = 0; v < 8; ++v)
+                    if ((v >> (e - 128)) & 1) top[v] += uint64_t(l) + (1ull << 32);
         }
         inv = tw + TW_INV_OFF;
     }
@@ -412,12 +569,13 @@ F131X_INLINE void select(const F131x<N> &xn, const F131x<N> &yp, const SelectCon
 {
     typedef typename Limbs<N>::V V;
 #    define F131X_C(x) F131x<N>::splat(x)
-    const V hw = popcnt<N>(xn.w0) + popcnt<N>(xn.w1) + popcnt<N>(xn.w2);
+    // The 3-bit limb's share of the weight and of the phase sum, from its table.
+    const V top = lookup8<N>(c.top, xn.w2);
+    const V hw = popcnt<N>(xn.w0) + popcnt<N>(xn.w1) + (top >> 32);
     // The phase sum, sum_e L(e) x_e = sum_j 2^j |x & plane_j|, below 131^2.
-    V s = V{};
+    V s = top & F131X_C(0xffffffffu);
     for (int j = 0; j < 8; ++j)
-        s += (popcnt<N>(xn.w0 & F131X_C(c.plane[j][0])) + popcnt<N>(xn.w1 & F131X_C(c.plane[j][1])) +
-              popcnt<N>(xn.w2 & F131X_C(c.plane[j][2])))
+        s += (popcnt<N>(xn.w0 & F131X_C(c.plane[j][0])) + popcnt<N>(xn.w1 & F131X_C(c.plane[j][1])))
              << j;
     const V k = mod131<N>(mul32<N>(mod131<N>(s), gather32<N>(c.inv, hw)));
     // The pivot's mask, the coordinates with L(e) < k: a bitwise comparison

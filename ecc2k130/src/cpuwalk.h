@@ -138,7 +138,7 @@ class CpuEngine
     // Interleaved inversion chains: on the scalar path four, whose accumulators
     // the compiler keeps in registers; on the vector path a register of
     // accumulators per N lanes, ECC_F131_CHAIN_VECTORS of them.
-    static const int kChains = kLanes > 1 ? kLanes * ECC_F131_CHAIN_VECTORS : 4;
+    static const int kChains = kLanes > 1 ? kLanes *ECC_F131_CHAIN_VECTORS : 4;
     // Lanes per inversion when neither the options nor the geometry say.  The
     // vector path's lane step is short enough that the batch's fixed cost (the
     // inversion and the 3(K-1) scalar products that peel the K chains) shows:
@@ -340,7 +340,10 @@ class CpuEngine
         void setY(int i, const F131 &a) const { Y0[i] = a.w[0], Y1[i] = a.w[1], Y2[i] = a.w[2]; }
         void setW(int i, const F131 &a) const { W0[i] = a.w[0], W1[i] = a.w[1], W2[i] = a.w[2]; }
         void setD(int i, const F131 &a) const { D0[i] = a.w[0], D1[i] = a.w[1], D2[i] = a.w[2]; }
-        void setXN(int i, const F131 &a) const { XN0[i] = a.w[0], XN1[i] = a.w[1], XN2[i] = a.w[2]; }
+        void setXN(int i, const F131 &a) const
+        {
+            XN0[i] = a.w[0], XN1[i] = a.w[1], XN2[i] = a.w[2];
+        }
     };
 
     // Stage 1 of a step: the normal-basis x of every lane into XN and its
@@ -398,8 +401,8 @@ class CpuEngine
         // warrants (f131.h), so each stage gets its own loop.
         for (int j = i; j < B; ++j) KK[j] = (unsigned char)f131::selectPhase(b.XN(j), HW[j], tw);
         for (int j = i; j < B; ++j)
-            EPS[j] = (unsigned char)f131::coordinate(
-                b.Y(j), f131::selectPivot(b.XN(j), KK[j], tw), tw);
+            EPS[j] =
+                (unsigned char)f131::coordinate(b.Y(j), f131::selectPivot(b.XN(j), KK[j], tw), tw);
     }
 
     // Stages 5 and 6: Montgomery's trick over the batch as kChains interleaved
@@ -409,6 +412,7 @@ class CpuEngine
     // additions, which depend on nothing but their own lane.
     void chainsAndAdd(const Batch &b, int B)
     {
+        if (B <= 0) return;
         const int K = B < kChains ? B : kChains;
         F131 prod[kChains];
         for (int i = 0; i < K; ++i) prod[i] = b.D(i);
@@ -516,7 +520,8 @@ class CpuEngine
                      d = FX::load(b.D0 + i, b.D1 + i, b.D2 + i),
                      x = FX::load(b.X0 + i, b.X1 + i, b.X2 + i),
                      y = FX::load(b.Y0 + i, b.Y1 + i, b.Y2 + i);
-            const FX nx = f131x::add<kLanes>(f131x::add<kLanes>(f131x::sqr<kLanes>(lambda), lambda), d);
+            const FX nx =
+                f131x::add<kLanes>(f131x::add<kLanes>(f131x::sqr<kLanes>(lambda), lambda), d);
             const FX ny = f131x::add<kLanes>(
                 f131x::add<kLanes>(f131x::mul<kLanes>(lambda, f131x::add<kLanes>(x, nx)), nx), y);
             nx.store(b.X0 + i, b.X1 + i, b.X2 + i);
@@ -545,10 +550,9 @@ class CpuEngine
             ready_[size_t(c)] = 1;
         }
         local->scratch(B);
-        const Batch b = {x_.w0 + base,      x_.w1 + base,      x_.w2 + base,     y_.w0 + base,
-                         y_.w1 + base,      y_.w2 + base,      w_.w0 + base,     w_.w1 + base,
-                         w_.w2 + base,      d_.w0 + base,      d_.w1 + base,     d_.w2 + base,
-                         local->xn.w0,      local->xn.w1,      local->xn.w2};
+        const Batch b = {x_.w0 + base, x_.w1 + base, x_.w2 + base, y_.w0 + base, y_.w1 + base,
+                         y_.w2 + base, w_.w0 + base, w_.w1 + base, w_.w2 + base, d_.w0 + base,
+                         d_.w1 + base, d_.w2 + base, local->xn.w0, local->xn.w1, local->xn.w2};
         unsigned char *__restrict HW = local->hw.data(), *__restrict KK = local->k.data(),
                                   *__restrict EPS = local->eps.data();
         for (int s = 0; s < steps && !local->exhausted; ++s, ++now) {
