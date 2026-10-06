@@ -53,8 +53,10 @@ def main(label: str, out: Path) -> int:
                 rss = sum(process.memory_info().rss for process in members
                           if process.is_running())
                 peak = max(peak, rss)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+            except psutil.NoSuchProcess:
                 pass
+            except (psutil.AccessDenied, PermissionError):
+                guard = "process_tree_inspection_unavailable"
             if peak >= protocol["max_process_tree_rss_bytes"]:
                 guard = "process_tree_rss_guard"
             elif (time.perf_counter_ns() - start) / 1e9 >= protocol["max_total_wall_seconds"]:
