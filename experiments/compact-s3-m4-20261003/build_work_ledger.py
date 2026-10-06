@@ -6451,6 +6451,95 @@ def main():
             "wall_ns_exploratory": audit["wall_ns_exploratory"],
             "receipt_sha256": sha(audit_path),
         })
+    q1467_dir = HERE / "q1467_density_bridge"
+    q1467_base_protocol_path = q1467_dir / "protocol.json"
+    q1467_solver_protocol_path = q1467_dir / "solver_protocol.json"
+    q1467_verification_path = q1467_dir / "archive_verification.json"
+    q1467_base_protocol = json.loads(q1467_base_protocol_path.read_text())
+    q1467_solver_protocol = json.loads(q1467_solver_protocol_path.read_text())
+    q1467_verification = json.loads(q1467_verification_path.read_text())
+    assert q1467_base_protocol["proposal_id"] == q1467_solver_protocol[
+        "proposal_id"] == q1467_verification["proposal_id"] == "Q1467"
+    assert q1467_solver_protocol["protocol_revision"] == 2
+    assert q1467_base_protocol["candidate_id"] is q1467_solver_protocol[
+        "candidate_id"] is q1467_verification["candidate_id"] is None
+    assert q1467_base_protocol["isogeny"] == q1467_solver_protocol[
+        "isogeny"] == q1467_verification["isogeny"] == "none"
+    assert q1467_verification["status"] == "passed"
+    assert q1467_solver_protocol["base_protocol_sha256"] == sha(
+        q1467_base_protocol_path)
+    assert q1467_verification["protocol_sha256"] == sha(
+        q1467_solver_protocol_path)
+    q1467_rows = []
+    for name in q1467_solver_protocol["run_order"]:
+        cell = q1467_solver_protocol["cells"][name]
+        receipt_path = q1467_dir / "runs" / name / "receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        verified = next(row for row in q1467_verification["rows"]
+                        if row["case"] == name)
+        assert verified["receipt_sha256"] == sha(receipt_path)
+        assert receipt["protocol_sha256"] == sha(q1467_solver_protocol_path)
+        assert receipt["solver_status"] == verified["solver_status"]
+        for key in ("curve_id", "degree_n", "factor_base_actual_B",
+                    "folded_columns_K", "factor_base_enumerated_set_sha256",
+                    "public_target", "workload_id", "input_role",
+                    "leaves_pinned"):
+            assert receipt[key] == cell[key]
+        report = receipt["solver_report"]
+        assert report is not None
+        assert receipt["verified_relation_count"] == verified[
+            "verified_relation_count"]
+        assert report["joint_eligible_checks"] == verified[
+            "joint_eligible_checks"]
+        assert report["joint_eligible_checks"] == report[
+            "joint_no_chain_rejections"]
+        assert report["joint_x_only_hits"] == 0
+        profile = next(p for p in q1467_base_protocol["profiles"]
+                       if p["degree_n"] == cell["degree_n"])
+        q1467_rows.append({
+            "proposal_id": "Q1467", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "diagnostic_only": True,
+            "case": name, "degree_n": cell["degree_n"],
+            "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "uniform_nonidentity_target_mean_multisets_upper_decimal":
+                profile["uniform_nonidentity_target_mean_multisets_upper_decimal"],
+            "public_target": cell["public_target"],
+            "input_role": cell["input_role"],
+            "leaves_pinned": cell["leaves_pinned"],
+            "known_representable_control": cell["input_role"] == "planted",
+            "solver_status": receipt["solver_status"],
+            "joint_checks": report["joint_eligible_checks"],
+            "joint_no_chain_rejections": report[
+                "joint_no_chain_rejections"],
+            "cached_root_computations": report["batch_root_inputs"],
+            "field_operation_calls": {
+                key: report[f"field_{key}_calls"]
+                for key in ("mul", "sqr", "inv")},
+            "sat_conflicts": report["conflicts"],
+            "online_stage_wall_ns_exploratory": receipt[
+                "solver_process_wall_ns_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": receipt["verified_relation_count"],
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "successful_ordinary_decomposition_cost": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["verified_relation_count"] for row in q1467_rows] == [
+        1, 1, 0, 0, 0, 0]
+    assert [row["joint_checks"] for row in q1467_rows] == [0, 0, 49,
+                                                            1, 49, 1]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -8405,6 +8494,42 @@ def main():
             "serial_audit_protocol_sha256": sha(
                 q1466_serial_protocol_path),
         },
+        "q1467_density_matched_solver_gate": {
+            "proposal_id": "Q1467", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "controlled_variable": (
+                "exact factor-base policy and pinning; the ordinary "
+                "public targets and curve IDs are retained from Q1466, "
+                "but factor-base sizes and CNFs differ"),
+            "rows": q1467_rows,
+            "ordinary_verified_relations": 0,
+            "known_representable_unpinned_controls_recovered": 0,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "matched_pair_table_comparison": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "The density-matched N53 B=2756/K=26 base and exact "
+                "N83 W<=4 B=1934066/K=11651 base each pass a fully "
+                "pinned four-point correctness control. With all four "
+                "leaves unpinned, both planted known-representable "
+                "controls and both ordinary targets reach the frozen "
+                "60-second cap without a model. The ordinary N53/N83 "
+                "cells make 49/1 exact no-chain checks, respectively. "
+                "This is a no-go for this frozen solver under this cap, "
+                "not a proof of target unrepresentability or a bound on "
+                "a different target-guided algorithm. No natural yield, "
+                "cost per useful row, N131 complete 2^x, or challenge "
+                "admission follows."),
+            "base_protocol_sha256": sha(q1467_base_protocol_path),
+            "solver_protocol_sha256": sha(q1467_solver_protocol_path),
+            "archive_verification_sha256": sha(q1467_verification_path),
+            "superseded_v1_protocol_sha256": q1467_solver_protocol[
+                "supersedes_protocol_sha256"],
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -8887,6 +9012,11 @@ def main():
                 "independent serial-root audit confirms the first "
                 "ordinary N53/N83 no-chain states, and all matched "
                 "cells remain censored without a relation; "
+                "Q1467 matches the N53 four-point counting bound to "
+                "the N131 W<=6 base and tests a lower-density exact "
+                "N83 W<=4 base: pinned controls verify, while both "
+                "known-representable unpinned controls and both "
+                "ordinary queries censor at 60 seconds; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
