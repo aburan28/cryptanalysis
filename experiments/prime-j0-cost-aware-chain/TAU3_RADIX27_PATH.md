@@ -73,3 +73,34 @@ curve and 254,295 states on the larger curve across four point cases. That
 shared exploratory cache is not a native online memory measurement. A
 bounded per-scalar native solver and a new disjoint fixture are still needed
 before evaluating speed or prospective operation savings.
+
+## Bounded native control and decision
+
+The native recoder uses a per-scalar memoized shortest path with at most
+1,024 states and a fixed 2,048-slot hash index. Because correction
+coefficients have maximum absolute values 96 and 54, reachable states at
+one depth differ by less than `192/26` and `108/26` in the two coordinates.
+There are therefore at most 9 × 6 integer states at a depth and at most
+864 over 16 depths. The prepared sparse point table and its generic fallback
+are reused. The complete online interval includes the path search, its
+53,312 bytes of stack scratch, and point evaluation. The added action pool
+raises compiled static map data from 45,550 to 55,222 bytes.
+
+The release curve suite passes 2,308,672 checks, including map reconstruction,
+boundary scalars, forced fallback, identity, and 128 seeded exact-output
+comparisons per study curve. The [old-data native
+receipt](tau3-radix27-native-design.json) and [read-only
+audit](audit_tau3_radix27_native_design.py) verify all 16 raw arms, 32,768
+generic point outputs, zero radix-27 fallbacks, and exact equality between
+Python-optimal and native additions in every case. Across four old point
+cases, the native path explored 127,726 / 369,511 states and considered
+247,900 / 906,805 options on the two curves.
+
+The local, unisolated median online times were 1.3055 ms for sparse versus
+2.8215 ms for radix-27 on `glv-j0-32`, and 2.8245 versus 8.2395 ms on
+`j0-56`. These single executions on a contended host do **not** establish
+controlled speed ratios. They are sufficient to flag substantial recoding
+overhead for this implementation. The receipt keeps `cpu_timing_claim` and
+`isolated_receipt` null. The next design task is to reduce online path
+search cost before investing in a prospective speedup panel; the present
+branch is an exact operation-bound control rather than a faster solver.

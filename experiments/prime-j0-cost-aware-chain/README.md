@@ -343,3 +343,13 @@ Against compact width-four it saved 14.40% and 8.51% of online mixed
 additions, with point tables twice compact's size: 12,672 and 24,192 bytes.
 The compiled static maps add 45,550 bytes. Local timing did not establish a
 CPU win; controlled CPU speed and one-target rho impact remain unknown.
+
+The [direct radix-27 shortest-path recoder](TAU3_RADIX27_PATH.md) searches
+the 1–9 valid six-step actions in each of 729 coefficient residue classes
+for the minimum additions under the sparse table's fixed block budget.
+On 32,768 older design scalars, Python and native agree exactly: additions
+fall by 1.82% and 6.41% beyond the sparse recoder, with zero fallback and
+verified generic outputs. The native path's per-scalar search uses 53,312
+bytes of scratch and had substantially higher exploratory local latency.
+This is an exact operation-bound result; no CPU speedup or academic novelty
+is claimed.
