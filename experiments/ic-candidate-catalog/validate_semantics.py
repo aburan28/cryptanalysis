@@ -23,8 +23,18 @@ import yaml
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 CURVE_ID = re.compile(r"EC1(N[1-9][0-9]*|P[1-9][0-9]*|Q[1-9][0-9]*D[1-9][0-9]*)C([a-z][a-z0-9]*)h([0-9a-f]{12,64})\Z")
 UNKNOWN = {"unknown", "unmeasured", "not_evaluated", "unproved_in_this_registry", "not_applicable"}
-PINNED = ("curves.yaml", "curves.schema.json", "curve-links/link.schema.json")
-PEER_FILES = PINNED + ("validate_semantics.py", "test_validate_semantics.py")
+PINNED = ("curves.yaml", "curves.schema.json", "curve-links/link.schema.json",
+          "scalar-multiplication.schema.json")
+PEER_FILES = PINNED + ("validate_semantics.py", "test_validate_semantics.py",
+                       "SCALAR_MULTIPLICATION.md")
+LEGACY_CANDIDATES = frozenset({
+    "IC1N13Ckb1fb4PDP3xlRCsampleLAgaussTDpdpISO0h957295ed6625.json",
+    "IC1N13Ckb1fb8PDP3xlRCsampleLAgaussTDpdpISO0h959303d8f465.json",
+    "IC1N13Ckb1fb8PDP3xlRCsampleLAgaussTDpdpISO0ha447bc4ea8f5.json",
+    "IC1N19Ckb1fb26PDP2xlRCsampleLAgaussTDpdpISO0h62049d59b199.json",
+    "IC1N19Ckb1fb32PDP2xlRCsampleLAgaussTDpdpISO0h49c12bf7c849.json",
+    "IC1N19Ckb1fb34PDP2xlRCsampleLAgaussTDpdpISO0hc5261983d0cf.json",
+})
 
 
 def canonical(value: object) -> bytes:
@@ -132,6 +142,59 @@ def check_curve_math_metadata(entry: dict, errors: list[str], where: str) -> Non
         check(order == p**n + 1 - trace, errors, where, "curve order and trace disagree")
 
 
+def check_endomorphism_actions(entry: dict, root: Path, errors: list[str], where: str,
+                               check_artifacts: bool = True) -> None:
+    endo = entry.get("endomorphism", {})
+    if not isinstance(endo, dict):
+        return
+    actions = endo.get("actions", {})
+    if not isinstance(actions, dict):
+        return
+    inventory = endo.get("actions_status")
+    if inventory == "not_enumerated":
+        check(not actions and endo.get("actions_scope") is None, errors, where,
+              "not_enumerated actions need an empty inventory and null scope")
+    elif inventory == "complete_for_declared_scope":
+        check(bool(endo.get("actions_scope")), errors, where,
+              "complete endomorphism action inventory needs a declared scope")
+    r = entry["curve"].get("subgroup_order", entry["curve"].get("r"))
+    for name, action in actions.items():
+        if not isinstance(action, dict):
+            continue
+        place = f"{where}/endomorphism/actions/{name}"
+        status, eigenvalue = action.get("status"), action.get("subgroup_eigenvalue_mod_r")
+        if status != "verified":
+            check(eigenvalue is None, errors, place,
+                  "unverified action must have null subgroup eigenvalue")
+            continue
+        check(type(r) is int and type(eigenvalue) is int and 0 <= eigenvalue < r,
+              errors, place, "verified action needs an eigenvalue modulo the named subgroup order")
+        check(bool(action.get("map_rule")) or bool(action.get("map_artifact_ref")),
+              errors, place, "verified action needs an explicit map rule or artifact")
+        for key in ("proof_ref", "verification_ref"):
+            ref = action.get(key)
+            check(isinstance(ref, str) and bool(ref), errors, place,
+                  f"verified action needs an existing {key}")
+            if check_artifacts:
+                artifact = repo_artifact(root, ref)
+                check(artifact is not None and artifact.is_file(), errors, place,
+                      f"verified action needs an existing {key}")
+        ref, sha = action.get("map_artifact_ref"), action.get("map_sha256")
+        if ref is not None:
+            artifact = repo_artifact(root, ref) if check_artifacts else None
+            check(isinstance(ref, str) and bool(ref) and isinstance(sha, str)
+                  and bool(HEX64.fullmatch(sha)), errors, place,
+                  "verified action map artifact and SHA-256 are required together")
+            if check_artifacts:
+                check(artifact is not None and artifact.is_file(), errors, place,
+                      "endomorphism map artifact is absent from source repository")
+            if check_artifacts and artifact is not None and artifact.is_file() and isinstance(sha, str):
+                check(hashlib.sha256(artifact.read_bytes()).hexdigest() == sha,
+                      errors, place, "endomorphism map artifact SHA-256 differs")
+        else:
+            check(sha is None, errors, place, "map SHA-256 needs a map artifact")
+
+
 def validate_registry(directory: Path, errors: list[str]) -> tuple[dict, dict, dict]:
     data = yaml.safe_load((directory / "curves.yaml").read_text(encoding="utf-8"))
     schema = read_json(directory / "curves.schema.json")
@@ -148,6 +211,9 @@ def validate_registry(directory: Path, errors: list[str]) -> tuple[dict, dict, d
         check_curve_identity(entry["field"], entry["curve"], entry.get("curve_id"),
                              entry.get("curve_tag"), entry.get("curve_uid"), errors, where)
         check_curve_math_metadata(entry, errors, where)
+        check_endomorphism_actions(entry, directory.parents[1] if directory.name == "ic-candidate-catalog"
+                                   else directory.parents[2], errors, where,
+                                   check_artifacts=directory.name == "ic-candidate-catalog")
         uid, ref, cid = entry.get("curve_uid"), entry.get("curve_ref"), entry.get("curve_id")
         for key, table, label in ((uid, by_uid, "UID"), (ref, by_ref, "curve_ref"), (cid, by_id, "curve ID")):
             if key is not None:
@@ -360,7 +426,75 @@ def validate_routes(directory: Path, by_ref: dict, errors: list[str]) -> dict:
     return routes
 
 
-def validate_candidates(root: Path, routes: dict, errors: list[str]) -> None:
+def validate_scalar_multiplication(item: dict, root: Path, by_uid: dict,
+                                   errors: list[str], where: str) -> None:
+    policy = item.get("scalar_multiplication")
+    if not isinstance(policy, dict):
+        errors.append(f"{where}: ic-candidate/2 needs scalar_multiplication")
+        return
+    schema = read_json(root / "experiments/ic-candidate-catalog/scalar-multiplication.schema.json")
+    for issue in jsonschema.Draft202012Validator(schema).iter_errors(policy):
+        errors.append(f"{where}/scalar_multiplication/{'/'.join(map(str, issue.absolute_path))}: {issue.message}")
+    uid = f"urn:ec-record:1:sha256:{curve_hash(item['field'], item['curve'])}"
+    entry = by_uid.get(uid)
+    check(entry is not None, errors, where, "scalar policy curve UID is absent from the registry")
+    r = item["curve"].get("subgroup_order", item["curve"].get("r"))
+    source_hashes = set(item.get("implementation", {}).get("sources_sha256", {}).values())
+    seen = set()
+    for use in policy.get("uses", []):
+        if not isinstance(use, dict):
+            continue
+        role = use.get("role")
+        place = f"{where}/scalar_multiplication/{role}"
+        check(role not in seen, errors, place, "duplicate scalar multiplication role")
+        seen.add(role)
+        selection = use.get("selection", {})
+        if isinstance(selection, dict):
+            check(selection.get("curve_uid") == uid and selection.get("subgroup_order") == r,
+                  errors, place, "selection must name the candidate's exact curve and subgroup")
+            check(selection.get("resolved_backend_required") is True, errors, place,
+                  "scalar policy must require the resolved backend in every run")
+        method, action_ref = use.get("method"), use.get("endomorphism_action_ref")
+        recoding = use.get("recoding", {})
+        if isinstance(recoding, dict) and method in {"wnaf", "sliding_window", "tau_adic"}:
+            check(type(recoding.get("window")) is int and recoding["window"] >= 2,
+                  errors, place, f"{method} needs a window of at least two")
+        if method in {"glv", "gls", "tau_adic"} or action_ref is not None:
+            actions = entry.get("endomorphism", {}).get("actions", {}) if entry else {}
+            action = actions.get(action_ref) if isinstance(actions, dict) else None
+            check(isinstance(action, dict) and action.get("status") == "verified", errors, place,
+                  "endomorphism scalar method needs a verified action on this exact curve")
+            check(bool(recoding.get("decomposition_ref")) if isinstance(recoding, dict) else False,
+                  errors, place,
+                  "endomorphism scalar method needs its decomposition rule")
+        else:
+            check(action_ref is None, errors, place,
+                  "non-endomorphism scalar method must have null action reference")
+        precompute = use.get("precomputation", {})
+        if isinstance(precompute, dict) and precompute.get("scope") == "none":
+            check(precompute.get("table_entries") == 0 and precompute.get("cache_key_rule") is None,
+                  errors, place, "no precomputation needs zero table entries and null cache key")
+        if use.get("timing_behavior") == "constant_time_claimed":
+            evidence_sha = use.get("timing_evidence_sha256")
+            check(isinstance(evidence_sha, str) and bool(HEX64.fullmatch(evidence_sha)),
+                  errors, place, "constant-time claim needs an evidence SHA-256")
+        else:
+            check(use.get("timing_evidence_sha256") is None, errors, place,
+                  "unclaimed constant-time evidence must be null")
+        implementation = use.get("implementation", {})
+        if isinstance(implementation, dict):
+            check(implementation.get("source_sha256") in source_hashes, errors, place,
+                  "scalar implementation SHA-256 must occur in candidate implementation sources")
+        fallback = use.get("fallback")
+        if isinstance(selection, dict) and selection.get("mode") == "runtime_dispatch":
+            check(isinstance(fallback, dict), errors, place,
+                  "runtime dispatch needs an explicit portable fallback")
+        if isinstance(fallback, dict):
+            check(fallback.get("implementation_sha256") in source_hashes, errors, place,
+                  "fallback implementation SHA-256 must occur in candidate implementation sources")
+
+
+def validate_candidates(root: Path, routes: dict, by_uid: dict, errors: list[str]) -> None:
     base = root / "experiments/ic-bench"
     archive = root / "experiments/fb-archive/index.csv"
     indexed = set()
@@ -372,6 +506,16 @@ def validate_candidates(root: Path, routes: dict, errors: list[str]) -> None:
     for path in sorted((base / "candidates").glob("*.json")):
         where = str(path.relative_to(root))
         item = read_json(path)
+        schema_version = item.get("schema")
+        if schema_version == "ic-candidate/1":
+            check(path.name in LEGACY_CANDIDATES, errors, where,
+                  "ic-candidate/1 is frozen; new candidates need ic-candidate/2")
+            check("scalar_multiplication" not in item, errors, where,
+                  "legacy candidate cannot change its hashed record")
+        elif schema_version == "ic-candidate/2":
+            validate_scalar_multiplication(item, root, by_uid, errors, where)
+        else:
+            errors.append(f"{where}: unsupported candidate schema version")
         curve, field, fb = item["curve"], item["field"], item["factor_base"]
         cid = curve.get("curve_id")
         m = CURVE_ID.fullmatch(cid) if isinstance(cid, str) else None
@@ -443,7 +587,7 @@ def validate(root: Path, peer: Path | None = None) -> list[str]:
     validate_links(directory, by_uid, errors)
     if directory == ca:
         routes = validate_routes(directory, by_ref, errors)
-        validate_candidates(root, routes, errors)
+        validate_candidates(root, routes, by_uid, errors)
     else:
         registry = read_json(root / "docs/curves/registry.json")
         identities = {record["slug"]: record for record in registry.get("curves", [])}

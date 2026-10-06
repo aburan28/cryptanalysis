@@ -150,7 +150,18 @@
           ]
         },
         "endomorphism": {
-          "type": "object"
+          "type": "object",
+          "required": ["actions_status", "actions"],
+          "properties": {
+            "actions_status": {"enum": ["not_enumerated", "partial", "complete_for_declared_scope"]},
+            "actions_scope": {"type": ["string", "null"]},
+            "actions": {
+              "type": "object",
+              "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+              "additionalProperties": {"$ref": "#/$defs/endomorphismAction"}
+            }
+          },
+          "additionalProperties": true
         },
         "isogeny_routes": {
           "type": "object",
@@ -205,6 +216,24 @@
         }
       },
       "additionalProperties": true
+    },
+    "endomorphismAction": {
+      "type": "object",
+      "required": [
+        "status", "kind", "map_rule", "map_artifact_ref", "map_sha256",
+        "subgroup_eigenvalue_mod_r", "proof_ref", "verification_ref"
+      ],
+      "properties": {
+        "status": {"enum": ["unknown", "proposed", "verified"]},
+        "kind": {"enum": ["frobenius", "j0", "j1728", "explicit"]},
+        "map_rule": {"type": ["string", "null"]},
+        "map_artifact_ref": {"type": ["string", "null"]},
+        "map_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "subgroup_eigenvalue_mod_r": {"type": ["integer", "null"], "minimum": 0},
+        "proof_ref": {"type": ["string", "null"]},
+        "verification_ref": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
     },
     "linkInventory": {
       "type": "object",

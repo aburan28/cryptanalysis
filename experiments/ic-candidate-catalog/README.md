@@ -136,6 +136,11 @@ isogenies without a conventional `2`-volcano up/down label.
 
 ## Choosing what to run
 
+Before promoting a new proposal to `IC1`, declare every scalar multiplication
+role under `ic-candidate/2` and validate it against the
+[scalar multiplication policy](SCALAR_MULTIPLICATION.md). A conductor or
+endomorphism discriminant alone cannot activate a GLV, GLS, or τ-adic method.
+
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
 ordinary and planted-control corpora. Advance only variants with verified

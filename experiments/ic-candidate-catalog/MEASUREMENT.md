@@ -21,6 +21,15 @@ comparison fixes the **source** DLP and
 counts transport plus all work on the codomain. Use independent holdouts
 after choosing a survivor; preserve failed, timed-out, and OOM runs.
 
+For `ic-candidate/2`, freeze the embedded
+[scalar multiplication policy](SCALAR_MULTIPLICATION.md) as part of the
+candidate hash. Record each run's resolved scalar backend by role, including
+automatic dispatch and fallback, and record the rho reference's scalar setup
+separately. Charge table preparation, coordinate/basis conversion, device
+transfer, and fallback work in the phase where they occur. A changed scalar
+algorithm is a different candidate even if the compact `IC1` stage codes
+remain the same.
+
 Use ordinary uniform nonzero subgroup points for relation-yield estimates.
 Planted positive instances check completeness and lifting, but do not estimate
 natural yield. Exhaustive small-field or certified UNSAT controls can assess

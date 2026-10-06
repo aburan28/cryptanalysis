@@ -20,11 +20,12 @@ curve traits, link inventories, graph endpoints, ordered routes and proved
 volcano directions. Historical multi-target workload files retain their
 original IDs; the separate measurement contract governs new primary runs.
 
-`mirror-lock.json` pins the bytes of `curves.yaml`, `curves.schema.json`, and
-`curve-links/link.schema.json`. Change it only with a reviewed edit to those
-files and copy the same files and lock into crypto's `docs/curves/ic/`. With
-both checkouts available, pass `--peer /path/to/crypto` to compare the three
-source files byte for byte. Crypto CI also checks its mirror against this
+`mirror-lock.json` pins the bytes of `curves.yaml`, `curves.schema.json`,
+`curve-links/link.schema.json`, and `scalar-multiplication.schema.json`.
+Change it only with a reviewed edit to those files and copy the same files
+and lock into crypto's `docs/curves/ic/`. With
+both checkouts available, pass `--peer /path/to/crypto` to compare the mirrored
+source files and policy guide byte for byte. Crypto CI also checks its mirror against this
 repository's `main` branch, including the validator implementation itself.
 Keep its negative tests mirrored as well. Merge a source update here before
 its mirror PR.
@@ -42,6 +43,7 @@ run receipt.
 | Isogeny graph | `isogeny_routes.json` | Each exact curve is a node; each directed edge carries degree, direction, source/target, map and certificates. An `IW1...` route has ordered edge IDs. The current degree-263 map lives in `../koblitz-polynomial-w-pair-20260925/ecc2k130_degree263_route_manifest.json`. |
 | Factor base | `../fb-archive/index.csv`, `../fb-archive/bases/<curve-id>/` | The exact point set or lossless orbit encoding is compressed and content addressed. Large shards live in the archive's object store with hashes in manifests. Never inline a large base in YAML or infer `fb<B>` from a dimension. |
 | Candidate and workload | `../ic-bench/candidates/`, `../ic-bench/workloads/` | Immutable method and input manifests. A proposed `Q...` is not an `IC1...` candidate. |
+| Scalar multiplication policy | `scalar-multiplication.schema.json` and the candidate's `scalar_multiplication` field | New `/2` candidates declare every scalar role and a proved action reference for endomorphism methods; the exact policy enters the IC1 hash. See [policy rules](SCALAR_MULTIPLICATION.md). |
 | Measurement | `../ic-bench/results/` and catalog run receipts | Every run preserves status, stage costs, correctness, resources and paired one-target rho evidence. No measured cost is inferred from a curve or candidate label. |
 
 ## Required curve record
@@ -65,7 +67,9 @@ A status such as `proved` or `derived_from_model` needs a proof/source
 reference or an explicit derivation rule. The trait list is extensible;
 `curves.yaml` currently tracks ordinary status, j-invariant,
 endomorphism discriminant, volcano component and total depth alongside
-the exact record's order, trace and subgroup data. Algorithm stages and
+the exact record's order, trace and subgroup data. The
+`endomorphism.actions` inventory tracks verified maps and subgroup eigenvalues
+separately from conductor data. Algorithm stages and
 their costs belong to candidate/run manifests, not to a curve trait.
 
 ## Linking the existing stores

@@ -54,6 +54,103 @@ class SemanticValidatorTests(unittest.TestCase):
         gate.validate_registry(self.directory, errors)
         self.assertTrue(any("unmeasured needs value: null" in error for error in errors))
 
+    def test_unverified_endomorphism_action_cannot_claim_eigenvalue(self):
+        data = self.data()
+        entry = data["curves"]["toy13_kb1"]
+        entry["endomorphism"]["actions_status"] = "partial"
+        entry["endomorphism"]["actions"]["tau"] = {
+            "status": "proposed", "kind": "frobenius", "map_rule": "(x,y)->(x^2,y^2)",
+            "map_artifact_ref": None, "map_sha256": None,
+            "subgroup_eigenvalue_mod_r": 1, "proof_ref": None, "verification_ref": None}
+        errors = []
+        gate.check_endomorphism_actions(entry, ROOT, errors, "toy13")
+        self.assertTrue(any("unverified action must have null" in error for error in errors))
+
+    def test_verified_endomorphism_action_needs_proof_and_subgroup_action(self):
+        data = self.data()
+        entry = data["curves"]["toy13_kb1"]
+        entry["endomorphism"]["actions_status"] = "partial"
+        entry["endomorphism"]["actions"]["tau"] = {
+            "status": "verified", "kind": "frobenius", "map_rule": "(x,y)->(x^2,y^2)",
+            "map_artifact_ref": None, "map_sha256": None,
+            "subgroup_eigenvalue_mod_r": entry["curve"]["r"],
+            "proof_ref": None, "verification_ref": None}
+        errors = []
+        gate.check_endomorphism_actions(entry, ROOT, errors, "toy13")
+        self.assertTrue(any("eigenvalue modulo" in error for error in errors))
+        self.assertTrue(any("existing proof_ref" in error for error in errors))
+
+    def scalar_item(self):
+        data = yaml.safe_load((DIRECTORY / "curves.yaml").read_text())
+        entry = data["curves"]["toy13_kb1"]
+        sha = "a" * 64
+        item = {"field": entry["field"], "curve": entry["curve"],
+                "implementation": {"sources_sha256": {"reference": sha}},
+                "scalar_multiplication": {
+                    "schema_version": 1, "coverage": "all_executed_scalar_multiplications",
+                    "uses": [{
+                        "role": "relation_query", "point_kind": "fixed_base",
+                        "method": "double_and_add", "algorithm_ref": "reference binary method",
+                        "endomorphism_action_ref": None,
+                        "recoding": {"kind": "binary", "window": None,
+                                     "decomposition_ref": None, "parameters": {}},
+                        "arithmetic": {"coordinates": "affine", "field_backend": "reference",
+                                       "inversion_rule": "per group addition"},
+                        "precomputation": {"scope": "none", "table_entries": 0,
+                                           "cache_key_rule": None},
+                        "selection": {"mode": "explicit", "curve_uid": entry["curve_uid"],
+                                      "subgroup_order": entry["curve"]["r"],
+                                      "eligibility_rule": "all subgroup scalars",
+                                      "resolved_backend_required": True},
+                        "fallback": "none",
+                        "implementation": {"entry_point": "reference", "source_sha256": sha,
+                                           "flags": []},
+                        "timing_behavior": "variable_time", "timing_evidence_sha256": None
+                    }]}}
+        return item, {entry["curve_uid"]: entry}
+
+    @unittest.skipUnless(IS_CRYPTANALYSIS, "IC1 candidates live in cryptanalysis")
+    def test_scalar_policy_accepts_exact_unaccelerated_method(self):
+        item, by_uid = self.scalar_item()
+        errors = []
+        gate.validate_scalar_multiplication(item, ROOT, by_uid, errors, "candidate")
+        self.assertEqual(errors, [])
+
+    @unittest.skipUnless(IS_CRYPTANALYSIS, "IC1 candidates live in cryptanalysis")
+    def test_scalar_policy_rejects_unproved_endomorphism_and_wrong_subgroup(self):
+        item, by_uid = self.scalar_item()
+        use = item["scalar_multiplication"]["uses"][0]
+        use["method"] = "tau_adic"
+        use["endomorphism_action_ref"] = "tau"
+        use["selection"]["subgroup_order"] += 1
+        errors = []
+        gate.validate_scalar_multiplication(item, ROOT, by_uid, errors, "candidate")
+        self.assertTrue(any("exact curve and subgroup" in error for error in errors))
+        self.assertTrue(any("verified action" in error for error in errors))
+        self.assertTrue(any("decomposition rule" in error for error in errors))
+        self.assertTrue(any("window of at least two" in error for error in errors))
+
+    @unittest.skipUnless(IS_CRYPTANALYSIS, "IC1 candidates live in cryptanalysis")
+    def test_runtime_dispatch_must_report_resolved_backend(self):
+        item, by_uid = self.scalar_item()
+        use = item["scalar_multiplication"]["uses"][0]
+        use["selection"]["mode"] = "runtime_dispatch"
+        use["selection"]["resolved_backend_required"] = False
+        errors = []
+        gate.validate_scalar_multiplication(item, ROOT, by_uid, errors, "candidate")
+        self.assertTrue(any("resolved backend" in error for error in errors))
+        self.assertTrue(any("portable fallback" in error for error in errors))
+
+    @unittest.skipUnless(IS_CRYPTANALYSIS, "IC1 candidates live in cryptanalysis")
+    def test_fallback_cannot_hide_unproved_endomorphism_method(self):
+        item, by_uid = self.scalar_item()
+        item["scalar_multiplication"]["uses"][0]["fallback"] = {
+            "method": "glv", "trigger": "backend unavailable",
+            "implementation_sha256": "a" * 64}
+        errors = []
+        gate.validate_scalar_multiplication(item, ROOT, by_uid, errors, "candidate")
+        self.assertTrue(any("/fallback:" in error for error in errors))
+
     def test_verified_link_needs_real_endpoint_and_map(self):
         data = self.data()
         errors = []
@@ -131,8 +228,58 @@ class SemanticValidatorTests(unittest.TestCase):
         archive.parent.mkdir(parents=True)
         shutil.copyfile(ROOT / "experiments/fb-archive/index.csv", archive)
         errors = []
-        gate.validate_candidates(root, {}, errors)
+        gate.validate_candidates(root, {}, {}, errors)
         self.assertTrue(any("factor base is absent from archive" in error for error in errors))
+        self.assertTrue(any("IC1 name disagrees" in error for error in errors))
+
+    @unittest.skipUnless(IS_CRYPTANALYSIS, "IC1 archives live in cryptanalysis")
+    def test_new_candidate_cannot_reuse_legacy_schema(self):
+        root = Path(self.temp.name) / "repo"
+        candidate_dir = root / "experiments/ic-bench/candidates"
+        candidate_dir.mkdir(parents=True)
+        source = next((ROOT / "experiments/ic-bench/candidates").glob("IC1*.json"))
+        (candidate_dir / "new.json").write_bytes(source.read_bytes())
+        errors = []
+        gate.validate_candidates(root, {}, {}, errors)
+        self.assertTrue(any("ic-candidate/1 is frozen" in error for error in errors))
+
+    @unittest.skipUnless(IS_CRYPTANALYSIS, "IC1 archives live in cryptanalysis")
+    def test_v2_candidate_policy_participates_in_identity(self):
+        root = Path(self.temp.name) / "repo"
+        candidate_dir = root / "experiments/ic-bench/candidates"
+        candidate_dir.mkdir(parents=True)
+        catalog = root / "experiments/ic-candidate-catalog"
+        catalog.mkdir(parents=True)
+        shutil.copyfile(DIRECTORY / "scalar-multiplication.schema.json",
+                        catalog / "scalar-multiplication.schema.json")
+        source = next((ROOT / "experiments/ic-bench/candidates").glob("IC1N13*.json"))
+        candidate = json.loads(source.read_text())
+        scalar_item, by_uid = self.scalar_item()
+        candidate["schema"] = "ic-candidate/2"
+        candidate["field"] = scalar_item["field"]
+        candidate["curve"] = dict(scalar_item["curve"])
+        candidate["curve"]["curve_id"] = next(iter(by_uid.values()))["curve_id"]
+        candidate["scalar_multiplication"] = scalar_item["scalar_multiplication"]
+        candidate["implementation"]["sources_sha256"]["reference"] = "a" * 64
+        base = candidate["factor_base"]
+        base["curve_id"] = candidate["curve"]["curve_id"]
+        base["enumerated_set_sha256"] = "b" * 64
+        archive = root / "experiments/fb-archive/index.csv"
+        archive.parent.mkdir(parents=True)
+        archive.write_text("curve_id,enumerated_set_sha256,fb_points\n"
+                           f"{base['curve_id']},{base['enumerated_set_sha256']},"
+                           f"{base['actual_usable_point_count']}\n")
+        stem = (f"IC1N13Ckb1fb{base['actual_usable_point_count']}"
+                f"PDP3xlRCsampleLAgaussTDpdpISO0h{gate.digest(candidate)[:12]}")
+        path = candidate_dir / f"{stem}.json"
+        path.write_text(json.dumps(candidate))
+        errors = []
+        gate.validate_candidates(root, {}, by_uid, errors)
+        self.assertEqual(errors, [])
+        candidate["scalar_multiplication"]["uses"][0]["recoding"]["kind"] = "wnaf"
+        path.write_text(json.dumps(candidate))
+        errors = []
+        gate.validate_candidates(root, {}, by_uid, errors)
         self.assertTrue(any("IC1 name disagrees" in error for error in errors))
 
 
