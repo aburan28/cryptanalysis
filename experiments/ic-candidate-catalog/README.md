@@ -181,6 +181,17 @@ costs have not been measured. The unchanged W24 quotient is deprioritized;
 the orbit-closed W24/m5 policy remains a `candidate_id: null` proposal,
 separate from both the original W24/m6 and W28/m5 policies.
 
+The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
+assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
+four-summand exact-support recoveries; its n53 cell is a preserved 180-second
+timeout with no emitted target. On the unisolated host, corrected exclusive cold
+costs were 556.629 ms (n37) and 28,308.249 ms (n41), while the n41 support
+index alone cost 25,902.961 ms. The pinned producer's published online timer
+double-counted final solving and solution validation; the archived verifier
+recomputes exclusive phase costs. These are stage diagnostics, not controlled
+speedups or evidence for n131. Next test a compact-orbit n53 support index with
+streaming setup receipts and corrected producer timers before any cold claim.
+
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
 ordinary and planted-control corpora. Advance only variants with verified
