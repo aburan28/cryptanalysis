@@ -82,6 +82,52 @@ as they would be in an attack.
 * `sat` — CryptoMiniSat 5.15 (`pycryptosat`), one thread.  Every monomial
   of degree >= 2 is a Tseitin AND variable and each of the `n` equations is
   one native XOR clause; this is the plain ANF-to-CNF+XOR route.
+* `f5b` — SymPy's signature-based F5B implementation on the complete descended
+  Boolean ideal, including all field equations `v_i^2 + v_i`. Descended
+  equations are ordered by ascending total degree and term count, with field
+  equations last. A hard worker-process timeout bounds basis construction.
+  Linear basis assignments are extracted, at most 20 remaining variables are
+  enumerated, and every root is replayed through both the original ANF and the
+  elliptic-curve group law. `complete=true` means this extraction covered the
+  remaining Boolean assignment space; larger free-variable sets are censored.
+* `polybori` — Sage/PolyBoRi on the same complete direct ANF ideal using its
+  native squarefree Boolean representation. It uses the same hard timeout,
+  exhaustive bounded extraction, ANF check, and curve replay. It is a Boolean
+  performance reference rather than an F5 implementation and requires running
+  `solve.py` under `sage -python`.
+* `boolean-f5b` — the repository's packed squarefree signature implementation.
+  Monomials are variable bit sets and each polynomial is one integer bit vector
+  indexed by grevlex monomial rank, so addition is one integer XOR and leading
+  selection is `bit_length()`. Multiplication is squarefree union, and critical
+  pairs carry F5B-style signatures and rewrite numbers. The ordinary comparable
+  criterion is disabled because exhaustive tests found it unsound in the
+  Boolean quotient. A Boolean Buchberger completion tail and final S-pair check
+  certify the reported basis. Root extraction and curve replay match `f5b`.
+  The signature phase defaults to 128 insertions before certified completion;
+  tune and record it with `--signature-limit`.
+  Packed reducer rows map each reducible leading monomial directly to a GF(2)
+  XOR row. Signature rewrites and proven zero syzygies use divisibility-indexed
+  lookup tables. Signature and completion candidates are row-reduced in bounded
+  batches before insertion; final completion remains the correctness gate.
+* `boolean-f5b-native` — the same bounded signature/completion design moved to
+  an O3 C++ backend for up to 12 variables. The binary is content-addressed by
+  source hash and built outside the measured basis interval. Python reparses
+  the returned basis, verifies every S-pair and input generator, exhaustively
+  extracts bounded roots, and independently replays the elliptic-curve sum.
+  Optional persistent monomial and reducer-row reuse is available through
+  `--macaulay-cache-dir PATH`; see [Macaulay caching](MACAULAY_CACHE.md) for
+  precomputation, exact reuse rules, resource limits, and cache cost reporting.
+  The same artifacts also use the existing Redis/ElastiCache offering when
+  `IC_GROEBNER_CACHE_URL` is set, with a dedicated Macaulay key prefix.
+* `boolean-f5b-m4ri` — a bounded F5 signature prepass feeding a degree-limited
+  Boolean Macaulay matrix reduced by M4RI, followed by exact certified
+  completion. The content-addressed build hashes the hybrid source, shared
+  native engine, and M4RI library. Python independently verifies all S-pairs,
+  input generators, roots, and the curve relation. The default is one
+  signature insertion because later profiled insertions contributed no
+  additional matrix row; matrix degree defaults to eight. Record alternatives with
+  `--m4ri-signature-limit` and `--m4ri-degree`. Set `M4RI_PREFIX` when M4RI is
+  outside the bundled Sage prefix.
 * `msolve` — msolve 0.10.1 (F4-style Gröbner basis, grevlex) over `F_2`
   with the field equations `v^2 + v` added, one thread; the solution is
   read off the reduced basis, brute-forcing the few free variables when the
@@ -568,3 +614,9 @@ python3 fb_yield.py 17 5 4000                 # factor-base subspace yields
 ```
 
 `run.py` resumes: rows already in the CSV are skipped.
+
+# Exact five-summand subset pilot
+
+The [frozen five-summand pilot](five-sum-20260928/README.md) uses the archived
+ECC2K83 factor base in a bounded exact point solver. Its source and receipts
+separate planted controls, ordinary target outcomes, and independent row rank.

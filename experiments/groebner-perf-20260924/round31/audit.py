@@ -1,0 +1,224 @@
+"""Audit trusted-source binding, independent mathematics, timing and device use."""
+import argparse
+from collections import Counter
+from functools import lru_cache
+import gzip
+import hashlib
+import importlib.util
+import json
+import math
+from pathlib import Path
+import random
+import statistics
+
+from measure import ARMS, CPU_ARMS, SHAPES, ROOT, HERE, digest, sources, timing_eligible
+from branch_journal import recover
+from quadratic_reference import branch_counts, truth_roots, evaluate, verify_basis
+from sparse_checker import Curve, GF2n, Point
+from descend import make_instance
+
+PREFIX = 'experiments/groebner-perf-20260924/'
+
+
+def ratio_interval(ratios):
+    logs = [math.log(v) for v in ratios]
+    rng = random.Random(2026092931)
+    boot = sorted(math.exp(statistics.mean(rng.choices(logs, k=len(logs)))) for _ in range(2000))
+    return {'pairs': len(logs), 'paired_geomean': math.exp(statistics.mean(logs)),
+            'bootstrap95': [boot[49], boot[1949]]}
+
+
+def audit_sources(report):
+    snapshot = report['source_snapshot']
+    assert snapshot == sources(), 'audit requires the same trusted checkout; archived source is never executed'
+    assert report['source_sha256'] == {k: hashlib.sha256(v.encode()).hexdigest() for k, v in snapshot.items()}
+    receipts = report['build_receipts']
+    for version in ('17', '18', '20', '23'):
+        current = json.loads((HERE.parent/f'round{version}/build/receipt.json').read_text())
+        assert receipts[version]['source_sha256'] == current['source_sha256']
+        for name, expected in receipts[version]['source_sha256'].items():
+            assert report['source_sha256'][name] == expected
+    assert receipts['14']['source_sha256'] == report['source_sha256'][PREFIX+'round14/contraction.cpp']
+    assert receipts['15']['ordered_source_sha256'] == report['source_sha256'][PREFIX+'round15/ordered_certificate.cpp']
+    for name, value in receipts['15']['reference_sha256'].items():
+        assert value == report['source_sha256'][PREFIX+'round15/reference/'+name]
+    expected = {k.removeprefix(PREFIX): v for k, v in report['source_sha256'].items()
+                if k.startswith(PREFIX+'round31/')}
+    expected['round27/interpolation.hpp'] = report['source_sha256'][PREFIX+'round27/interpolation.hpp']
+    assert receipts['31']['sources'] == expected
+    if any('producer-metal' in k for k in receipts['31']['binaries']):
+        shader = snapshot[PREFIX+'round31/quadratic.metal']
+        assert receipts['31']['generated'] == {'kernel.inc': hashlib.sha256(
+            ('static const char* quadratic_kernel = R"QUADRATIC('+shader+')QUADRATIC";\n').encode()).hexdigest()}
+    else:
+        assert receipts['31']['generated'] == {}
+    spec = importlib.util.spec_from_file_location('round31_sparse_build', HERE.parent/'round23/build.py')
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    assert receipts['23']['generated_sha256'] == {
+        k: hashlib.sha256(v.encode()).hexdigest() for k, v in build.generated_sources(snapshot).items()}
+    reference = snapshot[PREFIX+'round15/reference/boolean_certificate.cpp']
+    helpers = reference.split('extern "C" int boolean_certificate(', 1)[0]
+    checks = '        out->roots = alive;'+reference.split('        out->roots = alive;', 1)[1].split(
+        '    } catch (const std::invalid_argument&)', 1)[0]
+    assert receipts['18']['generated_sha256'] == {k: hashlib.sha256(v.encode()).hexdigest()
+        for k, v in (('certificate_helpers.inc', helpers), ('basis_checks.inc', checks))}
+
+
+@lru_cache(maxsize=16)
+def mathematics(n, m, ell, seed):
+    # Cache only offline audit reconstruction, never timed target solving.
+    original = make_instance(n, m, ell, seed=seed)
+    curve = Curve(GF2n(original.n, original.mod), original.b)
+    items = sorted(original.anf.items())
+    return (original, curve, truth_roots(original.nvars, n, items),
+            branch_counts(2*ell, ell, n, items))
+
+
+def audit_report(report, *, check_sources=True):
+    assert report['schema'] == 'round31-conditional-quadratic/1' and report['status'] == 'RECORDED'
+    assert report['candidate_id'] is report['IC_online_ms'] is report['rho_online_ms'] is None
+    arms = tuple(report['arms'])
+    assert report['candidates'] == {} and arms in (CPU_ARMS, ARMS)
+    assert type(report['repetitions']) is int and 2 <= report['repetitions'] <= 101
+    if check_sources:
+        audit_sources(report)
+    receipts = report['build_receipts']
+    inputs = {}
+    assert [(v['n'], v['m'], v['ell'], v['seed']) for v in report['inputs']] == SHAPES
+    for item in report['inputs']:
+        frozen = {k: v for k, v in item.items() if k not in ('fixture_ns', 'workload_sha256')}
+        assert item['workload_sha256'] == digest(frozen) and item['name'] not in inputs
+        original, curve, _, _ = mathematics(item['n'], item['m'], item['ell'], item['seed'])
+        assert item['reference_anf'] == [list(p) for p in sorted(original.anf.items())]
+        assert item['fixture_points'] == [vars(p) for p in original.points]
+        assert item['target'] == vars(curve.sum(original.points))
+        assert (item['mod'], item['b'], item['nvars']) == (original.mod, original.b, original.nvars)
+        inputs[item['name']] = item
+    proofs, groups, statuses = set(), {}, Counter()
+    verifier_binaries = {v for k, v in receipts['23']['binaries'].items()
+                         if k in ('sparse-verifier.so', 'sparse-verifier.dylib')}
+    for row in report['rows']:
+        item = inputs[row['name']]
+        _, curve, expected_roots, counts = mathematics(item['n'], item['m'], item['ell'], item['seed'])
+        assert row['workload_id'] == row['workload_sha256'] == item['workload_sha256']
+        assert sorted(row['order']) == sorted(arms)
+        assert type(row['repetition']) is int and row['warmup'] == (row['repetition'] == 0)
+        group = groups.setdefault(row['name'], {})
+        assert row['repetition'] not in group
+        group[row['repetition']] = row
+        for arm in arms:
+            sample, answer = row[arm], row[arm]['result']
+            statuses[arm+':'+answer['status']] += 1
+            assert type(sample['wall_ns']) is int and sample['wall_ns'] > 0
+            assert all(type(v) is int and v >= 0 for v in sample['phases_ns'].values())
+            assert sample['wall_ns'] == sum(sample['phases_ns'].values())
+            assert type(sample['cpu_ns']) is int and sample['cpu_ns'] >= 0
+            if not answer.get('verified'):
+                continue  # Retained failures cannot contribute a speedup.
+            assert answer['status'] == 'solved' and answer['complete'] and answer['groebner_verified']
+            assert answer['query_arm'] == arm and answer['public_target'] == item['target']
+            assert all(type(v) is int and v >= 0 for v in answer['phases_ns'].values())
+            assert answer['complete_query_ns'] == sum(answer['phases_ns'].values())
+            assert answer['complete_query_ns'] <= sample['phases_ns']['public_query']
+            basis, certificate = answer['basis_terms'], answer['basis_certificate']
+            assert answer['basis_sha256'] == hashlib.sha256(json.dumps(basis, sort_keys=True).encode()).hexdigest()
+            assert certificate['verified'] and certificate['ideal_equality'] and certificate['reduced_groebner_basis']
+            assert certificate['backend'] == 'independent-packed-sparse-proof' and certificate['proof_stats']['mode'] == 2
+            roots = certificate['solutions']
+            assert roots == expected_roots
+            assert certificate['root_count'] == certificate['standard_monomials'] == len(roots)
+            proof = (row['workload_id'], answer['basis_sha256'], tuple(roots))
+            if proof not in proofs:
+                assert verify_basis(item['nvars'], item['reference_anf'], roots, basis, len(expected_roots))
+                proofs.add(proof)
+            metrics = answer['metrics']
+            assert metrics['roots'] == len(roots)
+            if arm != 'sparse':
+                assert all(metrics[k] == v for k, v in counts.items())
+                assert metrics['standard'] == len(roots)
+                assert all(type(v) is int and v >= 0 for k, v in metrics.items()
+                           if k not in ('specialization', 'evaluation', 'interpolation', 'gpu_wall', 'gpu_device'))
+                assert all(math.isfinite(metrics[k]) and metrics[k] >= 0 for k in
+                           ('specialization', 'evaluation', 'interpolation', 'gpu_wall', 'gpu_device'))
+                assert metrics['gpu_wall'] <= metrics['evaluation']
+                assert answer['coefficient_copy'] is False
+                metal = arm.endswith('-metal')
+                supported = item['n'] <= 32 and counts['features'] <= 31
+                assert metrics['gpu_used'] == int(metal and supported)
+                assert metrics['gpu_shape_fallback'] == int(metal and not supported)
+                assert answer['backend_requested'] == ('metal' if metal else 'cpu')
+                if metal and supported:
+                    assert not answer['device'].startswith('cpu') and metrics['gpu_wall'] > 0
+                else:
+                    assert answer['device'].startswith('cpu') and metrics['gpu_wall'] == metrics['gpu_device'] == 0
+                tag = '-metal' if metal else ''
+                assert answer['binary_sha256'] in {v for k, v in receipts['31']['binaries'].items()
+                                                  if k in ('producer'+tag+'.so', 'producer'+tag+'.dylib')}
+            else:
+                assert answer['binary_sha256'] in {v for k, v in receipts['20']['binaries'].items()
+                                                  if '/round4/build/packed_dual.' in k}
+            assert answer['verifier_binary_sha256'] in verifier_binaries
+            assert answer['equation_binary_sha256'] in verifier_binaries
+            assert answer['descent_binary_sha256'] in receipts['14']['binaries'].values()
+            if item['n'] <= 63:
+                assert answer['replay_backend'] == 'native-public-point'
+                assert answer['replay_binary_sha256'] in receipts['17']['binaries'].values()
+            else:
+                assert answer['replay_backend'] == 'python-public-point-wide-field-fallback'
+                assert answer['replay_binary_sha256'] is None
+            assignment = answer['assignment']
+            assert assignment in roots and evaluate(item['reference_anf'], assignment) == 0
+            assert answer['assignments_checked'] == roots.index(assignment)+1
+            points = [Point(**p) for p in answer['curve_witness']['points']]
+            assert answer['curve_witness']['verified'] and answer['curve_witness']['code'] == 0
+            assert [p.x for p in points] == [(assignment >> (j*item['ell'])) & ((1 << item['ell'])-1) for j in range(item['m'])]
+            assert all(curve.on_curve(p) for p in points) and vars(curve.sum(points)) == item['target']
+            assert sample['outside_timing_witness_audit']['verified']
+        if all(row[a]['result'].get('verified') for a in arms):
+            for key in ('basis_sha256', 'assignment', 'curve_witness'):
+                assert all(row[a]['result'][key] == row[arms[0]]['result'][key] for a in arms)
+    assert set(groups) == set(inputs)
+    assert report['admission']['timed_attempts'] == len(report['rows'])*len(arms)
+    assert report['admission']['logical_cpus'] == report['host']['logical_cpus']
+    limit = report['admission']['max_load_per_cpu']
+    assert math.isfinite(limit) and limit > 0
+    for load in [report['admission']['load'], report['host']['load_end'],
+                 *(r[k] for r in report['rows'] for k in ('load', 'load_end'))]:
+        assert len(load) == 3 and all(math.isfinite(v) and v >= 0 for v in load)
+    eligible = timing_eligible(report, report['host']['logical_cpus'], limit)
+    assert report['timing_qualification']['eligible'] == eligible
+    summaries = []
+    for name, rows in groups.items():
+        assert set(rows) == set(range(report['repetitions']+1))
+        good = all(row[a]['result'].get('verified') for row in rows.values() for a in arms)
+        summary = {'name': name, 'workload_id': inputs[name]['workload_sha256'], 'all_attempts_verified': good,
+                   'timing_eligible': eligible, 'wins': {a: False for a in arms[1:]}}
+        if good:
+            measured = [r for rep, r in rows.items() if rep]
+            summary['median_ms'] = {a: statistics.median(r[a]['wall_ns'] for r in measured)/1e6 for a in arms}
+            summary['sparse_over_candidate'] = {a: ratio_interval([r['sparse']['wall_ns']/r[a]['wall_ns'] for r in measured]) for a in arms[1:]}
+            summary['wins'] = {a: eligible and summary['sparse_over_candidate'][a]['bootstrap95'][0] > 1 for a in arms[1:]}
+            if ARMS[-1] in arms:
+                summary['best_cpu_over_metal'] = ratio_interval([
+                    min(r[a]['wall_ns'] for a in CPU_ARMS)/r[ARMS[-1]]['wall_ns'] for r in measured])
+                summary['gpu_executed'] = all(r[ARMS[-1]]['result']['metrics']['gpu_used'] for r in measured)
+                summary['gpu_beats_best_cpu'] = bool(eligible and summary['gpu_executed'] and summary['best_cpu_over_metal']['bootstrap95'][0] > 1)
+        summaries.append(summary)
+    return {'schema': 'round31-audit/1', 'timing_eligible': eligible, 'statuses': dict(statuses),
+            'unique_exact_basis_proofs': len(proofs), 'controls': summaries,
+            'scope': 'Frozen planted PDP controls; not full IC recovery or natural relation yield.'}
+
+
+def audit(path):
+    report = json.loads(gzip.decompress(Path(path).read_bytes()))
+    restored, info = recover(str(path)+'.journal.gz')
+    assert not info['truncated_tail'] and restored == report
+    return audit_report(report)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('report', type=Path)
+    args = parser.parse_args()
+    print(json.dumps(audit(args.report), indent=2))

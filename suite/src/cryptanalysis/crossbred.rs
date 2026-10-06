@@ -571,8 +571,11 @@ pub fn solve_crossbred(
     // Separate the filters (specialised degree 0 throughout) from the
     // polynomials that carry a linear part.  Filters are swept 64
     // points at a time; the rest are assembled per surviving point.
+    // A polynomial with a linear part is stored word-major, `n_slots`
+    // words per 64-point word, so assembling a point's row reads one
+    // contiguous block instead of one word from each slot's own buffer.
     let mut filter_tables: Vec<Vec<u64>> = Vec::new();
-    let mut linear_tables: Vec<Vec<Vec<u64>>> = Vec::new();
+    let mut linear_tables: Vec<Vec<u64>> = Vec::new();
 
     for p in &xb.polys {
         let mut slots: Vec<Vec<u64>> = vec![vec![0u64; words]; n_slots];
@@ -602,7 +605,13 @@ pub fn solve_crossbred(
         if is_filter {
             filter_tables.push(std::mem::take(&mut slots[0]));
         } else {
-            linear_tables.push(slots);
+            let mut flat = vec![0u64; words * n_slots];
+            for (j, slot) in slots.iter().enumerate() {
+                for (w, &word) in slot.iter().enumerate() {
+                    flat[w * n_slots + j] = word;
+                }
+            }
+            linear_tables.push(flat);
         }
     }
 
@@ -623,6 +632,7 @@ pub fn solve_crossbred(
     }
 
     let mut out: Vec<u64> = Vec::new();
+    let mut rows: Vec<(u64, bool)> = Vec::with_capacity(linear_tables.len());
     'points: for w in 0..words {
         let mut live = alive[w];
         while live != 0 {
@@ -632,15 +642,14 @@ pub fn solve_crossbred(
             stats.survivors += 1;
 
             // Assemble the linear system at this assignment.
-            let mut rows: Vec<(u64, bool)> = Vec::with_capacity(linear_tables.len());
-            for slots in &linear_tables {
+            rows.clear();
+            for flat in &linear_tables {
+                let block = &flat[w * n_slots..(w + 1) * n_slots];
+                let rhs = (block[0] >> bit) & 1 != 0;
                 let mut coeffs = 0u64;
-                for (j, slot) in slots.iter().enumerate().skip(1) {
-                    if slot[w] & (1u64 << bit) != 0 {
-                        coeffs |= 1u64 << (j - 1);
-                    }
+                for (j, &word) in block[1..].iter().enumerate() {
+                    coeffs |= ((word >> bit) & 1) << j;
                 }
-                let rhs = slots[0][w] & (1u64 << bit) != 0;
                 if coeffs != 0 || rhs {
                     rows.push((coeffs, rhs));
                 }

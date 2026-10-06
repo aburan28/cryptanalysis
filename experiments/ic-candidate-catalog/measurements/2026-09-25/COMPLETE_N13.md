@@ -111,3 +111,8 @@ PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3 experiments/ic-candidate-cat
 To remeasure, use a separate copy of the workspace with the three saved
 output files removed. The runner deliberately will not replace these raw
 receipts.
+
+The six-point base is archived as `nbstride` in `../../../fb-archive` (curve
+`EC1N13Ckb1h15003cfcdb23`, recipe n = 13, l = 3, seed 87006, stride 4).
+`../../../fb-archive/test_external.py` checks that the candidate's
+`encoded_points` and `point_set_sha256` equal the archive's.

@@ -1,0 +1,69 @@
+name: Partial affine residual certificates
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round43/**'
+      - 'experiments/groebner-perf-20260924/round40/fixtures/**'
+      - '.github/workflows/partial-affine-certificates.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round43/**'
+      - 'experiments/groebner-perf-20260924/round40/fixtures/**'
+      - '.github/workflows/partial-affine-certificates.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partial-affine-certificates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Partial affine (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build separate optimized and UBSan libraries
+        shell: bash
+        env:
+          CXX: ${{ runner.os == 'Linux' && 'g++' || 'clang++' }}
+        run: |
+          mkdir -p partial-affine-evidence
+          python experiments/groebner-perf-20260924/round43/build.py > partial-affine-evidence/build.log 2>&1
+      - name: Validate complete residuals and failure guards
+        run: python -u experiments/groebner-perf-20260924/round43/validate_native.py --output partial-affine-evidence/correctness.json.gz > partial-affine-evidence/validation.log 2>&1
+      - name: Independently audit witnesses and complete roots
+        run: python -u experiments/groebner-perf-20260924/round43/audit.py --input partial-affine-evidence/correctness.json.gz --output partial-affine-evidence/audit.json > partial-affine-evidence/audit.log 2>&1
+      - name: Retain actual binaries and runner identity
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, platform, shutil
+          out = pathlib.Path('partial-affine-evidence')
+          out.mkdir(exist_ok=True)
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          metadata.update(platform=platform.platform(), architecture=platform.machine())
+          (out / 'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          build = pathlib.Path('experiments/groebner-perf-20260924/round43/build')
+          if build.exists():
+              shutil.copytree(build, out / 'build', dirs_exist_ok=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: partial-affine-${{ matrix.os }}
+          path: partial-affine-evidence/
+          if-no-files-found: error
+          retention-days: 14

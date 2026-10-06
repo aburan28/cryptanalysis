@@ -16,7 +16,12 @@ named, fully charged, verified toy-curve runs. It holds the calibrated `rps` uni
 candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a new
 baseline there when a change is intended. Archive factor bases (record, point set,
 digests) with [fb-archive](experiments/fb-archive/README.md); a recipe-only
-archive keeps `B` null.
+archive keeps `B` null. CI (`fb-refs`) fails when a committed result cites a
+`factor_base_sha256` or point-set digest (`point_set_sha256`,
+`enumerated_set_sha256`, `base_digest`) that is neither archived (directly or through
+`experiments/fb-archive/aliases.csv`) nor listed in
+`experiments/fb-archive/unarchived.csv`; record bases under that key and archive
+them in the same change.
 
 ### Three distinct identifiers
 
@@ -54,6 +59,17 @@ archive keeps `B` null.
    Form the workload ID from the first 12 hex digits of SHA-256 over its
    canonical workload record.
 
+For each new finalized curve, add a readable entry to the
+[`curves.yaml` registry](experiments/ic-candidate-catalog/curves.yaml).
+Use a short alias such as `ecc2k130_pb` in prose, but retain the full
+`EC1...h...` ID in candidate manifests, run records, and isogeny links.
+The YAML entry contains the exact `field` and `curve` hash input, with
+`curve_id` stored separately, plus provenance, endomorphism status, and
+incoming/outgoing route references. Hash only `{"field": ..., "curve": ...}`
+using the canonical JSON rule above; alias, evidence, and route metadata
+never change the curve ID. Unknown values remain `null`. A readable alias
+cannot stand in for an exact field representation or subgroup.
+
 A design proposal may use a `Q<number>` catalog ID while exact base points,
 algorithm wiring, or isogeny maps are unresolved. Keep `candidate_id: null`
 and all measured costs null until those gates are satisfied. A proposal ID is
@@ -85,18 +101,31 @@ There are no separators or zero-padded numbers in an ID. Structural tags
 (`kb1`, `f4`, `walk`, `bw`, etc.), the `fb` tag, and hex digits are lowercase.
 The stage codes are short, stable, and recorded in the candidate manifest.
 The compact ID is a label; load the manifest for the exact configuration.
-Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`, `PDP4root`,
-`PDP3direct` for exact same-base point-pair lookup, and
-`PDP2orbit` for the prime-field two-summand automorphism-orbit peel/lookup oracle
-for the compact four-summand S3 root index; `PDP2xl` for a dense Macaulay/XL
-degree scan and `PDP2xlsym` for the same scan over the symmetric-function
-(`e_k` in `V^(k)`) formulation, with the XL or closure mode in the manifest;
-`PDP3eval` for Boolean evaluation with Buchberger-Moeller basis construction
-and an independently checked exact Boolean basis certificate;
+Suggested codes: `PDP5f4`, `PDP5f5`, `PDP5sat`, `PDP5hybrid`,
+`PDP5mitm` for five-summand group meet in the middle, `PDP4mitm` for
+four-summand pair-index meet in the middle, `PDP8mitm` for eight-summand
+four-pair indexed meet in the middle, and `PDP4root` for the compact
+four-summand S3 root index; `PDP3direct` for exact same-base point-pair
+lookup, and `PDP2orbit` for the prime-field two-summand automorphism-orbit
+peel/lookup oracle for the compact four-summand S3 root index; `PDP2xl` for a
+dense Macaulay/XL degree scan and `PDP2xlsym` for the same scan over the
+symmetric-function (`e_k` in `V^(k)`) formulation, with the XL or closure mode
+in the manifest; `PDP3eval` for Boolean evaluation with Buchberger-Moeller
+basis construction and an independently checked exact Boolean basis
+certificate; `PDP2eval` for the corresponding two-summand evaluation method,
+and `PDP2cond` for two-summand conditional linear solving with independent
+branch-count and exact Boolean basis certification;
 `RCwalk`, `RCsample`, `RCdirect`, `RClp` for single-large-prime collection,
-and `RCguided` for pivot-guided relation collection;
-`LAbw`, `LAwied`, `LAgauss`, `LAgraph` for exact one/two-term gain-graph solving, for **final sparse relation-matrix** solving;
-`TDdirect`, `TDpdp`, `TDdescent`, `TDlearn` for an ordered descent that adds verified differences to a shared logarithm database, for target handling; `ISO0` for no isogeny
+and `RCguided` for pivot-guided relation collection; `RCstream` for verified
+relations inserted in worker-completion order until target-span recovery,
+including cooperative cancellation and worker drain; `RCenum` for verified
+distinct decompositions enumerated for one fixed known-scalar setup target,
+inserting rank-increasing rows until the factor-base log system is solved;
+`LAbw`, `LAwied`, `LAgauss`, `LAgraph` for exact one/two-term gain-graph
+solving, for **final sparse relation-matrix** solving;
+`TDdirect`, `TDpdp`, `TDdescent`, `TDlearn` for an ordered descent that adds
+verified differences to a shared logarithm database, for target handling;
+`ISO0` for no isogeny
 transport and `ISO1` for a specified route. A solver's internal Macaulay
 matrix reduction belongs under `PDP`, including its RREF/M4RI/GPU kernel. It
 is not the `LA` stage. Extend the vocabulary in this file when a genuinely
@@ -154,6 +183,16 @@ construction and stays outside both timed intervals. Keep all correctness
 checks, including scalar replay, in the result record; if they are outside the
 online interval, report their timing separately and do not imply they were
 charged to it.
+
+The paired Pollard-rho reference must solve that same single target. Its clock
+starts at the first target-dependent walk computation and stops when the
+scalar is recovered and independently verified; exclude launch and fixture
+construction. Parallel workers are allowed when they work on the same target
+within the frozen resource envelope. Do not use multi-target rho batches,
+cross-target distinguished-point tables, batch throughput divided by target
+count, or shared collision work as the one-target baseline. Record rho's
+target, walk and collision policy, worker count, distinguished-point memory,
+online interval, and correctness certificate alongside the IC row.
 
 Multi-target or batch workloads are secondary only. Run them only after the
 single-target measurement has been completed and explicitly identify a
@@ -235,6 +274,22 @@ up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
 credentials into the tree, and copy the hardware from each shard's
 `status.json` into the run record.
 
+## CPU performance isolation gate
+
+Treat CPU timing ratios from a contended or unverified host as exploratory.
+Promote a new CPU wall-time speedup claim only with a receipt from the
+[isolated benchmark service](docs/ISOLATED_BENCHMARKS.md), or an equivalent
+auditable host-level isolation record. The record must identify the physical
+CPU model, core and SMT topology, NUMA node, exclusive CPU partition,
+execution CPU affinity, memory policy, fixed frequency, IRQ routing, CPU
+quota, code and workload hashes, paired run order, raw failures, throttling,
+steal time, interrupts, and correctness. A container's visible affinity mask
+does not establish host-wide isolation. If the isolation preflight or any
+noise gate fails, preserve the row and keep aggregate speedup unknown.
+Re-evaluate earlier measurements lacking this evidence before citing them as
+controlled speedup results. Correctness runs and algorithmic diagnostics may
+still run on ordinary hosts when labeled accordingly.
+
 ## Local Sage runs
 
 **Required rule:** Agents must launch all new and resumed local Sage jobs
@@ -286,7 +341,8 @@ they load its new modules.
 Import the installed `sage.schemes.elliptic_curves` modules for ordinary
 local work. Eligible scalar operations use the installed acceleration
 automatically; independent point batches can use the public `binary_batch`
-APIs documented in the installed module and `docs/SAGE_RELEASE.md`.
+APIs documented in the installed module, `docs/SAGE_RELEASE.md`, and
+`experiments/sage-binary-arithmetic/README.md`.
 When running the hardware experiment harness against the accepted build,
 set `SAGE_BINARY_USE_INSTALLED=1`; its default loader selects a development
 prototype. Prototype loaders and `SAGE_BINARY_CANDIDATE`,

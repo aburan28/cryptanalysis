@@ -81,14 +81,14 @@ static ca_status orbit_bsgs(const ca_group *g, const ca_elem *base, const ca_ele
     if (ord == 0) return CA_ERR_INVALID; /* callers pass a divisor of p-1 */
     uint64_t m = ca_isqrt(ord - 1) + 1;
     if (m > ord) m = ord;
-    ca_htab tab;
-    if (ca_htab_init(&tab, (size_t)m) != CA_OK) return CA_ERR_NOMEM;
+    ca_htab1 tab;
+    if (ca_htab1_init(&tab, (size_t)m) != CA_OK) return CA_ERR_NOMEM;
     uint64_t exps = 0, ops = 0;
     /* baby steps: cur = base^(eta^j) ; next = cur^eta */
     ca_elem cur = *base;
     for (uint64_t j = 0; j < m; j++) {
-        if (ca_htab_insert(&tab, ca_group_hash(g, &cur), j, 0, NULL, NULL) < 0) {
-            ca_htab_free(&tab);
+        if (ca_htab1_insert(&tab, ca_group_hash(g, &cur), j, NULL) < 0) {
+            ca_htab1_free(&tab);
             return CA_ERR_NOMEM;
         }
         ca_group_mul(g, &cur, &cur, eta, &ops);
@@ -101,7 +101,7 @@ static ca_status orbit_bsgs(const ca_group *g, const ca_elem *base, const ca_ele
     ca_status rc = CA_ERR_NOT_FOUND;
     for (uint64_t i = 0; i < steps; i++) {
         uint64_t j;
-        if (ca_htab_find(&tab, ca_group_hash(g, &gt), &j, NULL)) {
+        if (ca_htab1_find(&tab, ca_group_hash(g, &gt), &j)) {
             ca_u128 cand = (ca_u128)j + (ca_u128)m * i;
             uint64_t c = (uint64_t)(cand % ord);
             /* verify: base^(eta^c) == target */
@@ -118,9 +118,9 @@ static ca_status orbit_bsgs(const ca_group *g, const ca_elem *base, const ca_ele
         st->group_ops += ops;
         st->iterations += exps;
         st->table_entries = ca_max_u64(st->table_entries, tab.count);
-        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&tab));
+        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab1_bytes(&tab));
     }
-    ca_htab_free(&tab);
+    ca_htab1_free(&tab);
     return rc;
 }
 

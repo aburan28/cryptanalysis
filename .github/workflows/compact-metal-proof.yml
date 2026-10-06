@@ -1,0 +1,128 @@
+name: Compact Metal symmetry dispatch
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/round38/**'
+      - 'experiments/groebner-perf-20260924/round37/**'
+      - 'experiments/groebner-perf-20260924/round36/**'
+      - 'experiments/groebner-perf-20260924/round35/**'
+      - 'experiments/groebner-perf-20260924/round34/**'
+      - 'experiments/groebner-perf-20260924/round33/**'
+      - 'experiments/groebner-perf-20260924/round32/**'
+      - 'experiments/groebner-perf-20260924/round31/**'
+      - 'experiments/groebner-perf-20260924/round27/**'
+      - 'experiments/groebner-perf-20260924/round23/**'
+      - 'experiments/groebner-perf-20260924/round20/**'
+      - 'experiments/groebner-perf-20260924/round18/**'
+      - 'experiments/groebner-perf-20260924/round17/**'
+      - 'experiments/groebner-perf-20260924/round15/**'
+      - 'experiments/groebner-perf-20260924/round14/**'
+      - 'experiments/groebner-perf-20260924/round4/**'
+      - 'experiments/groebner-perf-20260924/round2/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/compact-metal-proof.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/round38/**'
+      - 'experiments/groebner-perf-20260924/round37/**'
+      - 'experiments/groebner-perf-20260924/round36/**'
+      - 'experiments/groebner-perf-20260924/round35/**'
+      - 'experiments/groebner-perf-20260924/round34/**'
+      - 'experiments/groebner-perf-20260924/round33/**'
+      - 'experiments/groebner-perf-20260924/round32/**'
+      - 'experiments/groebner-perf-20260924/round31/**'
+      - '.github/workflows/compact-metal-proof.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compact-metal-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Compact Metal proof (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build independent CPU dependencies
+        run: |
+          mkdir -p compact-metal-evidence
+          python experiments/groebner-perf-20260924/round20/build.py > compact-metal-evidence/dependency-build.log 2>&1
+          python experiments/groebner-perf-20260924/round23/build.py > compact-metal-evidence/checker-build.log 2>&1
+      - name: Build portable producer
+        if: runner.os == 'Linux'
+        run: |
+          python experiments/groebner-perf-20260924/round31/build.py > compact-metal-evidence/baseline-build.log 2>&1
+          python experiments/groebner-perf-20260924/round32/build.py > compact-metal-evidence/certified-build.log 2>&1
+          python experiments/groebner-perf-20260924/round33/build.py > compact-metal-evidence/narrow-build.log 2>&1
+          python experiments/groebner-perf-20260924/round34/build.py > compact-metal-evidence/multiplier-build.log 2>&1
+          python experiments/groebner-perf-20260924/round35/build.py > compact-metal-evidence/symmetry-build.log 2>&1
+          python experiments/groebner-perf-20260924/round36/build.py > compact-metal-evidence/deferred-build.log 2>&1
+          python experiments/groebner-perf-20260924/round37/build.py > compact-metal-evidence/fixed-width-build.log 2>&1
+          python experiments/groebner-perf-20260924/round38/build.py > compact-metal-evidence/producer-build.log 2>&1
+      - name: Build requested Metal producer
+        if: runner.os == 'macOS'
+        run: |
+          python experiments/groebner-perf-20260924/round31/build.py --metal > compact-metal-evidence/baseline-build.log 2>&1
+          python experiments/groebner-perf-20260924/round32/build.py --metal > compact-metal-evidence/certified-build.log 2>&1
+          python experiments/groebner-perf-20260924/round33/build.py --metal > compact-metal-evidence/narrow-build.log 2>&1
+          python experiments/groebner-perf-20260924/round34/build.py --metal > compact-metal-evidence/multiplier-build.log 2>&1
+          python experiments/groebner-perf-20260924/round35/build.py --metal > compact-metal-evidence/symmetry-build.log 2>&1
+          python experiments/groebner-perf-20260924/round36/build.py --metal > compact-metal-evidence/deferred-build.log 2>&1
+          python experiments/groebner-perf-20260924/round37/build.py --metal > compact-metal-evidence/fixed-width-build.log 2>&1
+          python experiments/groebner-perf-20260924/round38/build.py --metal > compact-metal-evidence/producer-build.log 2>&1
+          echo "QUADRATIC_TEST_METAL=1" >> "$GITHUB_ENV"
+      - name: Exact queries, exhaustive functions, sanitizer and corruption controls
+        run: python -m unittest discover -s experiments/groebner-perf-20260924/round38 -p 'test_*.py' -v > compact-metal-evidence/tests.log 2>&1
+      - name: Check the deferred-proof research hypothesis
+        run: python experiments/groebner-perf-20260924/round35/research/deferred_proof_pilot.py --output compact-metal-evidence/deferred-proof-pilot.json
+      - name: Retain source-bound complete-query correctness evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          root = pathlib.Path('experiments/groebner-perf-20260924/round38')
+          out = pathlib.Path('compact-metal-evidence')
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          (out/'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          command = [sys.executable, str(root/'measure_compact.py'), '--correctness-only', '--repetitions', '2', '--output', str(out/'correctness.json.gz')]
+          if sys.platform == 'darwin':
+              command.append('--metal')
+          for name, flags in (('correctness', []), ('wide-correctness', ['--large-controls'])):
+              command[command.index('--output')+1] = str(out/(name+'.json.gz'))
+              subprocess.run(command+flags, check=True)
+          # Import the trusted auditor once. Its offline exact-input caches
+          # are reused across evidence bundles; timed queries never use them.
+          sys.path.insert(0, str(root.resolve()))
+          from audit_compact import audit
+          reports = [(out/(name+'.json.gz'), out/(name+'-audit.json'))
+                     for name in ('correctness', 'wide-correctness')]
+          reports += [(report, out/('retained-'+report.name+'.audit.json'))
+                      for report in sorted((root/'results').glob('*.json.gz'))
+                      if not report.name.endswith('.journal.gz')]
+          for report, summary in reports:
+              summary.write_text(json.dumps(audit(report), indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compact-metal-proof-${{ matrix.os }}
+          path: compact-metal-evidence/
+          if-no-files-found: error
+          retention-days: 14
