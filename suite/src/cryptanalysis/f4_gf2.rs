@@ -982,9 +982,10 @@ fn echelon(m: &mut [u64], rows: usize, stride: usize, stop: usize, s: &mut Scrat
 /// Eliminate the built matrix over columns `..low_start` and leave in
 /// `s.low` the linear blocks of the rows reduced to zero there, the zero
 /// ones dropped; returns the number of pivots and the word XORs.  A matrix
-/// of at least `F4_F2_ECHELON_MIN_WORDS` words goes to the device named by
-/// `F4_F2_ECHELON` ([`super::f4_gpu::offload_echelon`]) when one is set;
-/// it eliminates with other pivots, so only the word count can differ.
+/// of at least `F4_F2_ECHELON_MIN_WORDS` words goes to a CUDA device when
+/// one opens, unless `F4_F2_ECHELON` says otherwise
+/// ([`super::f4_gpu::offload_echelon`]); it eliminates with other pivots,
+/// so only the word count can differ.
 fn eliminate_high(
     s: &mut Scratch,
     rows: usize,

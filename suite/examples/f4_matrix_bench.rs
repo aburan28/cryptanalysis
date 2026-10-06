@@ -3,17 +3,19 @@
 //! solving-degree sweeps and `f4_degree_bench` reach at high degree.
 //!
 //! ```bash
-//! cargo run --release --example f4_matrix_bench -- --cell 0:13:2:1234 --degree 5
-//! F4_F2_ECHELON=cuda cargo run --release --example f4_matrix_bench -- \
-//!     --cell 0:13:2:1234 --degree 6 --out /tmp/k0n13d6.json        # on a GPU
+//! cargo run --release --example f4_matrix_bench -- \
+//!     --cell 0:13:2:1234 --degree 6 --out /tmp/k0n13d6.json       # a GPU if there is one
+//! F4_F2_ECHELON=host cargo run --release --example f4_matrix_bench -- \
+//!     --cell 0:13:2:1234 --degree 6 --out /tmp/k0n13d6-host.json  # the host's control
 //! ```
 //!
 //! `--cell a:n:m:x` is the decomposition system of the Koblitz curve
 //! `K_a/2^n` for `m` summands at the target abscissa `x`, as in
 //! `f4_degree_bench`; `--f5 0` turns F5 off.  The caps are raised to two
-//! million rows and columns.  With `F4_F2_ECHELON` set, a matrix of at least
-//! `F4_F2_ECHELON_MIN_WORDS` words is eliminated on that device and built
-//! without F5's symbolic half (`f4_gf2::decide_with`).
+//! million rows and columns.  A matrix of at least `F4_F2_ECHELON_MIN_WORDS`
+//! words is eliminated on a CUDA device when one opens (`F4_F2_ECHELON`)
+//! and built without F5's symbolic half (`f4_gf2::decide_with`); the report
+//! names where it ran.
 //!
 //! Stage diagnostic only: one oracle matrix, not an ECDLP cost.
 
@@ -67,7 +69,8 @@ fn main() {
     );
     let wall = t.elapsed().as_secs_f64();
     let decision = decision.expect("over the raised caps");
-    let backend = std::env::var("F4_F2_ECHELON").unwrap_or_else(|_| "host".into());
+    let offload = cryptanalysis_suite::cryptanalysis::f4_gpu::offload_summary();
+    let backend = offload.device.clone().unwrap_or_else(|| "host".into());
     println!(
         "K_{a}/2^{n} m={m} x={raw} D={degree} f5={f5} [{backend}]: {} x {} (eliminated {} rows), \
          rank {}, refuted {}, pinned {}; build {:.3} s, eliminate {:.3} s, total {:.3} s, \
@@ -93,7 +96,8 @@ fn main() {
             "harness": "f4_matrix_bench",
             "scope": "one decomposition-system Macaulay matrix; stage diagnostic, not an ECDLP cost",
             "curve": format!("K_{a}/2^{n}"), "m": m, "target_x": raw, "degree": degree,
-            "n_vars": sys.n_vars, "f5_requested": f5, "echelon_backend": backend,
+            "n_vars": sys.n_vars, "f5_requested": f5, "echelon_mode": offload.mode,
+            "echelon_backend": backend,
             "echelon_min_words": std::env::var("F4_F2_ECHELON_MIN_WORDS").ok(),
             "rows": k.rows, "cols": k.cols, "eliminated_rows": k.eliminated_rows,
             "f5_skipped": k.f5_skipped, "rank": k.rank, "refuted": decision.refuted,
