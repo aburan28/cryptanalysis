@@ -93,3 +93,25 @@ Reproduce the old-data screen and audit without Sage:
 python3 experiments/prime-j0-cost-aware-chain/screen_firstword_pair_gate.py
 python3 experiments/prime-j0-cost-aware-chain/audit_firstword_pair_screen.py
 ```
+
+## Native old-data controls
+
+The [native differential receipt](firstword-pair-native-design.json) retains
+all 256 command statuses, stdout, raw word traces, input and source hashes,
+and the exact design64 executable hash. Its
+[read-only audit](audit_firstword_pair_native_design.py) confirmed all
+**16,384** Python-selected word streams exactly, including 8,192 training
+and 8,192 point-1 validation scalars. The four native group-operation
+scores and selector counts match the table above; all generic scalar
+replays and all 726 prepared-point checks passed. The candidate recorded
+zero 128-word fallbacks. Its 68,157 static-map bytes are the prior 68,029
+bytes plus the 128-byte gate. The direct curve test passed 2,293,682 checks,
+including identity and small-order controls. Fourteen CTests passed together;
+the coordinator loopback test passed separately with socket access.
+
+`periodic_lookups` for this mode includes the gate's initial atlas read and
+any atlas reads made while constructing a selected periodic schedule. The
+native receipt records 9,885 and 9,469 such reads on the two `glv-j0-32`
+old cases, and 25,041 and 24,296 on the two `j0-56` cases. These old-data
+controls establish correctness of the native policy. The new held-out
+fixture has not yet been generated or used, and CPU speed remains unknown.

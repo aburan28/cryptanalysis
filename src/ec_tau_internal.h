@@ -91,6 +91,7 @@ int ca_ec_tau_pair_periodic_mul_profile(const ca_group *g, const ca_tau_pair_com
                                         uint64_t *adds, uint64_t *lookups,
                                         uint64_t *accepted, uint64_t *fallbacks);
 size_t ca_ec_tau_pair_periodic_static_bytes(void);
+size_t ca_ec_tau_pair_firstword_static_bytes(void);
 /* Private exhaustive/differential test hook for signed tau coordinates. */
 int ca_ec_tau4_recode_compare(int64_t x, int64_t y);
 int ca_ec_tau4_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k);

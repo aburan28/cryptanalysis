@@ -100,7 +100,8 @@ static int select_mode(const char *name)
                                   "tail-pair-fused",
                                   "tail-pair-complete",
                                   "tail-pair-periodic-canonical",
-                                  "tail-pair-periodic-gated27"};
+                                  "tail-pair-periodic-gated27",
+                                  "tail-pair-periodic-firstword27"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -123,7 +124,8 @@ int main(int argc, char **argv)
                 "tapered-residue-packed-batch128|tapered-residue-wavefront-batch128|"
                 "tail-oracle|tail-oracle-gated|tail-double|tail-double-fold|"
                 "tail-double-residue|tail-pair-fused|tail-pair-complete|"
-                "tail-pair-periodic-canonical|tail-pair-periodic-gated27 "
+                "tail-pair-periodic-canonical|tail-pair-periodic-gated27|"
+                "tail-pair-periodic-firstword27 "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -144,7 +146,8 @@ int main(int argc, char **argv)
     int packed = mode == 21;
     int wavefront = mode == 22;
     int pair_fused = mode == 28;
-    int pair_periodic = mode == 30 || mode == 31;
+    int pair_periodic = mode >= 30 && mode <= 32;
+    int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
     size_t block_size = mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
@@ -291,7 +294,8 @@ int main(int argc, char **argv)
     uint64_t triples = 0, adds = 0, rotations = 0, output_inversions = 0;
     uint64_t periodic_lookups = 0, periodic_accepted = 0, periodic_fallbacks = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
-    size_t static_map_bytes = pair_periodic           ? ca_ec_tau_pair_periodic_static_bytes()
+    size_t static_map_bytes = mode == 32              ? ca_ec_tau_pair_firstword_static_bytes()
+                              : pair_periodic         ? ca_ec_tau_pair_periodic_static_bytes()
                               : pair_complete         ? ca_ec_tau_pair_complete_static_bytes()
                               : pair_fused            ? ca_ec_tau_pair_fused_static_bytes()
                               : mode == 27            ? ca_ec_tau4_residue_static_bytes()
@@ -352,9 +356,8 @@ int main(int argc, char **argv)
             } else if (pair_periodic) {
                 uint64_t t = 0, a = 0, lookups = 0, accepted = 0, fallbacks_local = 0;
                 if (!ca_ec_tau_pair_periodic_mul_profile(&group, &complete_pre, &outputs[i],
-                                                          scalars[i], mode == 31, &t, &a,
-                                                          &lookups, &accepted,
-                                                          &fallbacks_local)) {
+                                                         scalars[i], periodic_policy, &t, &a,
+                                                         &lookups, &accepted, &fallbacks_local)) {
                     fprintf(stderr, "periodic pair evaluation failed at index %zu\n", i);
                     free(outputs);
                     return 1;
@@ -475,10 +478,10 @@ int main(int argc, char **argv)
                 uint16_t pair_words[128];
                 size_t pair_count = 0;
                 if (!ca_ec_tau_pair_periodic_recode_verify_scalar(&complete_pre, scalars[i],
-                                                                   mode == 31) ||
-                    !ca_ec_tau_pair_periodic_recode_words(&complete_pre, scalars[i], mode == 31,
-                                                           pair_words, &pair_count, NULL, NULL,
-                                                           NULL)) {
+                                                                  periodic_policy) ||
+                    !ca_ec_tau_pair_periodic_recode_words(&complete_pre, scalars[i],
+                                                          periodic_policy, pair_words, &pair_count,
+                                                          NULL, NULL, NULL)) {
                     fprintf(stderr, "periodic pair recode mismatch at index %zu\n", i);
                     free(outputs);
                     return 1;

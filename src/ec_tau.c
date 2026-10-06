@@ -20,6 +20,7 @@
 #include "generated/tau_tail_double_residue.h"
 #include "generated/tau_pair_fused.h"
 #include "generated/tau_pair_periodic.h"
+#include "generated/tau_pair_firstword_gate.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -1579,7 +1580,8 @@ int ca_ec_tau_pair_periodic_recode_words(const ca_tau_pair_complete_precomp *pre
                                          uint64_t *lookups, uint64_t *accepted,
                                          uint64_t *fallbacks)
 {
-    if (!pre || !pre->base.g || !words || !count || (gated != 0 && gated != 1)) return 0;
+    if (!pre || !pre->base.g || !words || !count || (gated != 0 && gated != 1 && gated != 2))
+        return 0;
     if (lookups) *lookups = 0;
     if (accepted) *accepted = 0;
     if (fallbacks) *fallbacks = 0;
@@ -1588,21 +1590,42 @@ int ca_ec_tau_pair_periodic_recode_words(const ca_tau_pair_complete_precomp *pre
     if (k % g->order == 0) return 1;
     ca_i128 x, y;
     reduce_with_lattice((tau_vec){pre->base.v1x, pre->base.v1y},
-                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det, k % g->order,
-                        &x, &y);
+                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det, k % g->order, &x,
+                        &y);
     const ca_i128 limit = (ca_i128)1 << 55;
     if (x <= -limit || x >= limit || y <= -limit || y >= limit) {
         *count = tau_pair_canonical_words(x, y, pre->base.digit, words);
         return *count != 0;
     }
-    int status = tau_pair_periodic_plan((int64_t)x, (int64_t)y, pre->base.digit, 0, words,
-                                        count, NULL);
+    if (gated == 2) {
+        int64_t a = (int64_t)x, b = (int64_t)y;
+        uint16_t first = CA_TAU_PAIR_FUSED_UNREACHABLE;
+        if (tau_pair_periodic_bounded(a, b))
+            first = ca_tau_pair_periodic_tail[tau_pair_periodic_tail_index(a, b)];
+        if (first == CA_TAU_PAIR_FUSED_UNREACHABLE) {
+            first = ca_tau_pair_periodic_atlas[tau_pair_periodic_atlas_index(a, b)];
+            if (lookups) (*lookups)++;
+        }
+        if (first >= 1024) return 0;
+        if (ca_tau_pair_firstword_gate[first >> 3] & (1u << (first & 7))) {
+            int status = tau_pair_periodic_plan(a, b, pre->base.digit, 1, words, count, lookups);
+            if (status == 1) {
+                if (accepted) *accepted = 1;
+                return 1;
+            }
+            if (status != 2) return 0;
+            if (fallbacks) *fallbacks = 1;
+        }
+        return tau_pair_periodic_plan(a, b, pre->base.digit, 0, words, count, NULL) == 1;
+    }
+    int status =
+        tau_pair_periodic_plan((int64_t)x, (int64_t)y, pre->base.digit, 0, words, count, NULL);
     if (status != 1) return 0;
     if (!gated) return 1;
     uint16_t periodic_words[128];
     size_t periodic_count = 0;
-    status = tau_pair_periodic_plan((int64_t)x, (int64_t)y, pre->base.digit, 1,
-                                    periodic_words, &periodic_count, lookups);
+    status = tau_pair_periodic_plan((int64_t)x, (int64_t)y, pre->base.digit, 1, periodic_words,
+                                    &periodic_count, lookups);
     if (status == 2) {
         if (fallbacks) *fallbacks = 1;
         return 1;
@@ -1645,10 +1668,15 @@ size_t ca_ec_tau_pair_periodic_static_bytes(void)
            sizeof(ca_tau_pair_periodic_atlas);
 }
 
+size_t ca_ec_tau_pair_firstword_static_bytes(void)
+{
+    return ca_ec_tau_pair_periodic_static_bytes() + sizeof(ca_tau_pair_firstword_gate);
+}
+
 int ca_ec_tau_pair_periodic_mul_profile(const ca_group *g, const ca_tau_pair_complete_precomp *pre,
                                         ca_elem *out, uint64_t k, int gated, uint64_t *triples,
-                                        uint64_t *adds, uint64_t *lookups,
-                                        uint64_t *accepted, uint64_t *fallbacks)
+                                        uint64_t *adds, uint64_t *lookups, uint64_t *accepted,
+                                        uint64_t *fallbacks)
 {
     if (!g || !pre || !out || pre->base.g != g) return 0;
     if (triples) *triples = 0;

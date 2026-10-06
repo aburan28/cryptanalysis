@@ -281,3 +281,5 @@ older point-1 validation scalars, it saves modeled group-operation score
 2.21% on `glv-j0-32` and 0.77% on `j0-56` against the single-pass
 canonical arm. This is a design screen; a frozen native held-out panel and
 isolated CPU timing are still required.
+Its native arm now matches all 16,384 selected old-data word streams and
+generic outputs; the disjoint panel remains pending.
