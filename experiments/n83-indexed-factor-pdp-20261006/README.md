@@ -39,3 +39,23 @@ one unseen target's verified online DLP after reusable index/log preparation,
 paired with rho on the same point and isolated host. Factor logs, final
 relation matrix, target descent, recovery replay, and same-point rho are not
 provided by this pilot; their times and any speedup remain unknown.
+
+## First N83 gate
+
+The [pinned-factor run](runs/pinned_planted_f0_v1/receipt.json) returned
+`BOUNDED_UNKNOWN` at CryptoMiniSat's 120-second internal limit. It built
+606,796 variables, 585,565 AND gates, 1,823,055 CNF clauses, and 19,421
+XOR rows; its XCNF occupies 46,038,785 bytes. The complete watchdog interval
+was 126.839 seconds with no resource guard and 664.1 MB sampled peak RSS.
+Its raw solver stdout is archived as deterministic gzip with a receipt hash.
+This result supplies no model or UNSAT proof. The older direct-mask circuit
+had 610,956 variables,
+588,330 AND gates, 1,766,030 CNF clauses, and 22,201 XOR rows on the same
+pinned raw fiber; these are circuit-size diagnostics, not a speed ratio.
+
+The next [frozen control](sign_enum_protocol.json) tries all 32 sign-bit
+assignments in public order on the same pinned-mask XCNF, with the sign wire
+IDs independently regenerated from the selector source. Each branch has a
+10-second solver limit and the whole sequence has a 600-second process-tree
+wall limit. A found model still requires complete XCNF, group, and checked-
+Sage replay before any unpinned search is promoted.
