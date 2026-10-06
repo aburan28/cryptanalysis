@@ -1871,13 +1871,37 @@ are exploratory stage diagnostics on an unisolated CPU. They do not give
 a natural relation rate, successful N53-to-N83 solve growth, or a complete
 N131 `2^x`.
 
+### Q1449 native-XOR representation of the phi5 stage
+
+The [Q1449 frozen stage](q1449_phi5_native_xor/README.md) keeps Q1448's
+exact ordinary N53/N83 queries and compact field circuit, but passes its
+XOR equations directly to CryptoMiniSat. Fully pinned controls replay as
+verified relations at both degrees. The ordinary XCNFs have 62,428 /
+150,707 variables and 2,226 / 3,486 native XOR rows at N53 / N83,
+respectively. Both ordinary processes reach the external 65-second
+safeguard without a model or relation. Their target-dependent stage
+intervals are 65.850 / 65.874 seconds on an unisolated host.
+
+The logs explain why native XOR alone did not test the intended field
+linear algebra: CryptoMiniSat used **zero** Gaussian matrices. Its
+default 1,000-column limit rejects even the small N53 53×2,809 and N83
+83×6,889 multiplication components. Final exact operation counters are
+missing because the external safeguard terminated each process; last
+restart conflict counts are only rounded partial progress. Q1449 does
+not measure natural yield or a successful-solve growth rate. The
+complete N131 `2^x` remains null.
+
 ## Next goal
 
 The next solver should exploit Q1448's **shared five-input field
 invariants before Boolean branching**. Q1448 supplies a compact joint
 constraint, but direct bit-blasting still caps on the known-satisfiable
-N53 ordinary target. A useful next method should eliminate or propagate
-some symmetric field variables against the public target and sparse-x
+N53 ordinary target. Q1449 keeps native XOR equations but its default
+Gaussian cutoff prevents all matrices from activating. First freeze a
+bounded larger-column configuration and verify that the intended
+field-product matrices actually activate on controls. A useful method
+must then eliminate or propagate some symmetric field variables against
+the public target and sparse-x
 conditions, then show a changed search pattern on unpinned ordinary
 queries. Prove solution preservation and verify it against exhaustive
 small-field cases and the archived N53/N83 witnesses. A new SAT clause
