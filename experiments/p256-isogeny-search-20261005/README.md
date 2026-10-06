@@ -189,6 +189,26 @@ verifier are frozen in
 This is a depth-five result for four low degrees, not a full class-group
 enumeration. Per-key evaluation of the added paths was not timed.
 
+## Resumed low-degree paths through depth seven
+
+The frozen depth-five frontier was resumed through depths six and seven without
+duplicating prior candidate records. It added 176 curves—80 at depth six and 96
+at depth seven—with no overlap against the prior 210-curve union. The combined
+explicit registry now contains P-256 plus 385 distinct neighbors.
+
+All additions were screened with the matched native backend while pinned to a
+CPU separate from the concurrent class-group computation. One unadjusted screen
+hit triggered a fresh 30-trial, two-second holdout and did not reproduce: its
+estimate was `0.9886x` with paired 95% interval `0.9628x–1.0151x`. All 385
+retained non-root curves now have native measurements and zero reproducible
+speedups.
+
+The delta registry, 30 screening blocks, holdout, receipt, and verifier are
+frozen in
+[`results/sage-low-degree-depth-seven-20261006`](results/sage-low-degree-depth-seven-20261006).
+This remains a bounded low-degree traversal, not the entire isogeny class, and
+per-key map evaluation was not timed for the additions.
+
 ## Quick start
 
 Python 3.11 or newer is required.
