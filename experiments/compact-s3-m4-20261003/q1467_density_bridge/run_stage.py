@@ -37,6 +37,7 @@ def sha(path: Path) -> str:
 def run(name: str) -> None:
     protocol = json.loads(PROTOCOL.read_text())
     assert protocol["proposal_id"] == "Q1467"
+    assert protocol["protocol_revision"] == 2
     assert protocol["candidate_id"] is None
     assert protocol["isogeny"] == "none"
     assert name in protocol["run_order"]
@@ -141,7 +142,7 @@ def run(name: str) -> None:
             instance = dict(instances[str(cell["degree_n"])])
             instance["new_weight_bound"] = meta["normal_basis_weight_bound"]
             relation = model_relation(
-                raw, formula, meta, variables, clauses, model, instance)
+                raw, formula, meta, variables, len(clauses), model, instance)
             if relation["status"] == "verified_four_point_relation" and (
                     cell["degree_n"] == 53):
                 allowed = set(base(53)["allowed"])

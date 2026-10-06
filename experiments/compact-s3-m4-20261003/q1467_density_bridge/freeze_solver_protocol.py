@@ -104,6 +104,8 @@ def describe() -> dict:
         "n83_planted_unpinned"]["workload_id"]
     return {
         "kind": "q1467_chained_s3_density_bridge_solver_protocol",
+        "protocol_revision": 2,
+        "supersedes_protocol_sha256": sha(HERE / "solver_protocol_v1.json"),
         "proposal_id": "Q1467", "candidate_id": None, "run_id": None,
         "isogeny": "none", "point_decomposition_stage_code": "PDP4hybrid",
         "run_order": list(ORDER), "cells": cells,
