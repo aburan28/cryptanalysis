@@ -228,6 +228,30 @@ frozen in
 This remains a bounded low-degree traversal, not the entire isogeny class, and
 per-key map evaluation was not timed for the additions.
 
+## Resumed low-degree paths through depth eleven
+
+The next extension reached 144 curves at depth ten and 160 at depth eleven,
+with no overlap against the prior 626-curve union. The combined explicit
+registry now contains P-256 plus 929 distinct neighbors, each with its complete
+ordered path, edge maps, short-model isomorphisms, and transported generator.
+
+All 304 additions received CPU-separated matched-native measurements. Eight
+unadjusted short-screen hits entered a fresh 30-trial, two-second holdout, and
+none reproduced. The largest holdout point estimate was `1.0220x` with paired
+95% interval `0.9918x-1.0531x`; all 929 retained non-root curves now have
+native measurements and zero reproducible iteration-rate improvements.
+
+The delta registry, 51 screening blocks, holdout, typed transfer assessment,
+receipt, and verifier are frozen in
+[`results/sage-low-degree-depth-eleven-20261006`](results/sage-low-degree-depth-eleven-20261006).
+This remains a bounded traversal over degrees 3, 5, 11, and 13. The default
+exact class-group computation continues separately, and its unsuccessful and
+running attempts are recorded in
+[`results/sage-class-group-20261006/attempts.json`](results/sage-class-group-20261006/attempts.json).
+Per-key map evaluation was not timed for the 304 additions, and the ordinary
+host does not satisfy the repository's isolation gate for a promoted timing
+claim.
+
 ## Quick start
 
 Python 3.11 or newer is required.
