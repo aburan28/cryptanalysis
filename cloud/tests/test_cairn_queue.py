@@ -20,22 +20,21 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 import cairn_queue  # noqa: E402
-import tree  # noqa: E402
 
 CAIRN = os.environ.get("CAIRN_BIN") or shutil.which("cairn")
 
 
 def make_tree(root):
-    """A checkout with the two scripts every job runs, a stub toolchain, and a stale build."""
+    """A shipped tree, as ship.py leaves it on a runner: the two scripts every job
+    runs, a stub toolchain, and some files."""
     (root / "cloud").mkdir(parents=True)
     shutil.copy(HERE / "job_runner.sh", root / "cloud" / "job_runner.sh")
+    shutil.copy(HERE / "install_tree.py", root / "cloud" / "install_tree.py")
     (root / "cloud" / "pod_env.sh").write_text("export POD_ENV_SOURCED=yes\n")
     (root / "suite").mkdir()
     (root / "suite" / "Cargo.toml").write_text("[package]\n")
     (root / "notes.txt").write_text("from the tree\n")
-    files = ["cloud/job_runner.sh", "cloud/pod_env.sh", "suite/Cargo.toml", "notes.txt"]
-    data, _ = tree.pack(root, names=files)
-    return data
+    return root
 
 
 class SpecTest(unittest.TestCase):
@@ -45,8 +44,8 @@ class SpecTest(unittest.TestCase):
                                     git={"commit": "c0ffee", "branch": "b", "dirty": True})
         self.assertEqual((spec["sandbox"], spec["rootfs"], spec["gpus"]), ("none", "/", 0))
         self.assertEqual(spec["argv"], ["bash", "-c", cairn_queue.JOB_SCRIPT])
-        self.assertEqual(spec["inputs"], [{"source": f"/root/runner/trees/{'k' * 20}.tar.gz",
-                                           "target": "/in/tree.tar.gz"}])
+        self.assertEqual(spec["inputs"], [{"source": f"/root/runner/trees/{'k' * 20}",
+                                           "target": "/in/tree"}])
         self.assertEqual(spec["env"]["JOB_CMD"], "nvidia-smi")
         self.assertEqual(spec["env"]["JOB_OUTS"], "results/a.json\nlogs")
         self.assertEqual((spec["env"]["JOB_COMMIT"], spec["env"]["JOB_DIRTY"]), ("c0ffee", "1"))
@@ -61,7 +60,7 @@ class SpecTest(unittest.TestCase):
 
     def test_the_job_reads_its_tree_where_cairn_exports_the_input(self):
         # cairn names an unconfined job's input CAIRN_LAB_MOUNT_<TARGET>.
-        self.assertIn("$CAIRN_LAB_MOUNT_IN_TREE_TAR_GZ", cairn_queue.JOB_SCRIPT)
+        self.assertIn('install_tree.py" "$CAIRN_LAB_MOUNT_IN_TREE" "$work"', cairn_queue.JOB_SCRIPT)
         self.assertIn("JOB_DIR=$CAIRN_LAB_OUT", cairn_queue.JOB_SCRIPT)
 
     def test_a_runner_is_a_pod_whose_boot_script_is_the_runner(self):
@@ -133,8 +132,7 @@ class JobScriptTest(unittest.TestCase):
     def test_the_job_replaces_the_checkout_but_keeps_the_build_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
-            src = tmp / "tree.tar.gz"
-            src.write_bytes(make_tree(tmp / "repo"))
+            src = make_tree(tmp / "tree")
             work, out = tmp / "checkout", tmp / "out"
             (work / "suite" / "target").mkdir(parents=True)
             (work / "suite" / "target" / "kept.o").write_text("warm")
@@ -143,7 +141,7 @@ class JobScriptTest(unittest.TestCase):
             command = ("mkdir -p results && echo $POD_ENV_SOURCED > results/a.txt && "
                        "ls suite/target && cat notes.txt && test ! -e stale.txt")
             env = {**os.environ, "RUNNER_CHECKOUT": str(work), "CAIRN_LAB_OUT": str(out),
-                   "CAIRN_LAB_MOUNT_IN_TREE_TAR_GZ": str(src), "JOB_ID": "j1",
+                   "CAIRN_LAB_MOUNT_IN_TREE": str(src), "JOB_ID": "j1",
                    "JOB_CMD": command, "JOB_OUTS": "results", "JOB_CHANGED": "0"}
             proc = subprocess.run(["bash", "-c", cairn_queue.JOB_SCRIPT], env=env,
                                   capture_output=True, text=True, check=False)
@@ -183,8 +181,7 @@ class CairnAgentTest(unittest.TestCase):
                         break
                     except OSError:
                         time.sleep(0.5)
-                src = tmp / "tree.tar.gz"
-                src.write_bytes(make_tree(tmp / "repo"))
+                src = make_tree(tmp / "tree")
                 spool = tmp / "agent"
                 for job_id in ("first", "second"):
                     spec = cairn_queue.job_spec(job_id, "k", f"sleep 1; echo {job_id} > out.txt",

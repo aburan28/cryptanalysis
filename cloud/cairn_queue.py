@@ -16,9 +16,11 @@
 A runner is a Runpod pod (cloud/runpod_pod.py) whose start runs
 cloud/cairn_runner.sh: cairn's host agent from a pinned release, registering
 the machine with a cairn node every minute and running the job specs in its
-spool one at a time, each to a receipt.  `submit` ships this checkout (edits
-included; once per distinct tree), writes a cairn job spec whose command
-unpacks it into the runner's checkout, sources cloud/pod_env.sh (Rust,
+spool one at a time, each to a receipt.  `submit` puts this checkout (edits
+included) on the runner once per distinct tree, as cloud/ship.py does: the
+runner fetches the upstream commit from GitHub and only the differences are
+sent.  It then writes a cairn job spec whose command makes the runner's
+checkout that tree (cloud/install_tree.py), sources cloud/pod_env.sh (Rust,
 NVRTC) and runs CMD under cloud/job_runner.sh, and queues the spec with
 `cairn agent submit`.  `fetch` merges each job's --out paths into this
 checkout and keeps its receipt, spec, logs and status.json under
@@ -45,6 +47,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 sys.path.insert(0, str(HERE))
 import runpod_pod  # noqa: E402
+import ship  # noqa: E402
 import tree  # noqa: E402
 
 CAIRN_VERSION = "1.17.0"
@@ -52,28 +55,25 @@ RUNNER = "/root/runner"
 SPOOL = f"{RUNNER}/agent"
 PRIVATE_NODE = "http://127.0.0.1:8080"
 RECORDS = REPO / ".cairn-jobs"
-# Every job runs these two from its own tree, so a subset always carries them.
-JOB_SCRIPTS = ("cloud/job_runner.sh", "cloud/pod_env.sh")
+# Every job runs these from its own tree, so a subset always carries them.
+JOB_SCRIPTS = ("cloud/install_tree.py", "cloud/job_runner.sh", "cloud/pod_env.sh")
 DEFAULT_TIMEOUT = 4 * 3600
 
 GPU_NOTE = ("Unconfined (sandbox none) on a Runpod pod, a container with no engine inside: "
             "cairn passes a GPU only to a job an engine runs, so the spec asks for none, "
             "and the job uses the pod's GPU directly.")
 
-# The command of every job.  The job's tree replaces the runner's checkout
-# (RUNNER_CHECKOUT, which jobs inherit from the agent) except the suite's
-# build tree, which stays so builds are warm; then the toolchain, then
+# The command of every job.  install_tree.py makes the runner's checkout
+# (RUNNER_CHECKOUT, which jobs inherit from the agent) the job's tree,
+# rewriting only what differs and keeping the suite's build tree, so builds
+# are warm and see exactly what changed; then the toolchain, then
 # job_runner.sh, which runs JOB_CMD and packs JOB_OUTS and a status.json into
 # the job's out/ directory.
 JOB_SCRIPT = r"""
 set -euo pipefail
 work=${RUNNER_CHECKOUT:-/root/runner/checkout}
 mkdir -p "$work"
-find "$work" -mindepth 1 -maxdepth 1 ! -name suite -exec rm -rf {} +
-if [ -d "$work/suite" ]; then
-  find "$work/suite" -mindepth 1 -maxdepth 1 ! -name target -exec rm -rf {} +
-fi
-tar --no-same-owner -xzf "$CAIRN_LAB_MOUNT_IN_TREE_TAR_GZ" -C "$work"
+python3 "$CAIRN_LAB_MOUNT_IN_TREE/cloud/install_tree.py" "$CAIRN_LAB_MOUNT_IN_TREE" "$work"
 cd "$work"
 source cloud/pod_env.sh
 JOB_DIR=$CAIRN_LAB_OUT JOB_WORKDIR=$work exec bash cloud/job_runner.sh
@@ -123,8 +123,7 @@ def job_spec(job_id, key, command, outs=(), changed=False, timeout=DEFAULT_TIMEO
         env.update(JOB_COMMIT=git.get("commit") or "", JOB_BRANCH=git.get("branch") or "",
                    JOB_DIRTY="1" if git.get("dirty") else "0")
     spec = {"id": job_id, "rootfs": "/", "sandbox": "none", "argv": ["bash", "-c", JOB_SCRIPT],
-            "env": env, "inputs": [{"source": f"{RUNNER}/trees/{key}.tar.gz",
-                                    "target": "/in/tree.tar.gz"}],
+            "env": env, "inputs": [{"source": f"{RUNNER}/trees/{key}", "target": "/in/tree"}],
             "timeout_seconds": timeout, "network": True, "gpus": 0, "pids": 0, "note": GPU_NOTE}
     if objective:
         spec.update(objective_id=objective, task=task)
@@ -234,17 +233,15 @@ def cmd_submit(args):
     pod = runner(args.name)
     files = tree_files(REPO, args.only)
     key = tree_key(REPO, files)
-    remote_tree = f"{RUNNER}/trees/{key}.tar.gz"
-    if remote(pod, f"test -s {remote_tree}", capture=True).returncode == 0:
+    remote_tree = f"{RUNNER}/trees/{key}"
+    if remote(pod, f"test -d {remote_tree}", capture=True).returncode == 0:
         print(f"tree {key} is already on {args.name}", file=sys.stderr)
     else:
-        data, summary = tree.pack(REPO, names=files)
-        print(f"shipping {summary['files']} files, {summary['bytes'] / 1e6:.1f} MB as tree {key}",
-              file=sys.stderr, flush=True)
+        summary = ship.ship(runpod_pod.ssh_args(pod), REPO, remote_tree, files,
+                            env=ssh_environ(), log=lambda m: print(m, file=sys.stderr, flush=True))
         for skipped in summary["skipped"]:
             print(f"  skipped large file {skipped}", file=sys.stderr)
-        script = f"mkdir -p {RUNNER}/trees && cat > {remote_tree}.part && mv {remote_tree}.part {remote_tree}"
-        if remote(pod, script, data=data).returncode != 0:
+        if summary["returncode"] != 0:
             sys.exit("could not ship the tree")
     job_id = args.id or new_job_id()
     spec = job_spec(job_id, key, command, args.out, args.changed, args.timeout,
