@@ -110,6 +110,28 @@ class ShipTest(unittest.TestCase):
             self.assertEqual(contents(tmp / "dest"),
                              {n: (clone / n).read_bytes() for n in tree.checkout_files(clone)})
 
+    def test_a_new_pod_is_told_which_commit_to_fetch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            clone, _, pushed = make_clone(Path(tmp))
+            self.assertEqual(ship.prefetch_env(clone), {})   # origin is not on GitHub
+            git(clone, "remote", "set-url", "origin", "https://github.com/owner/repo.git")
+            self.assertEqual(ship.prefetch_env(clone),
+                             {"SHIP_PREFETCH": f"https://github.com/owner/repo.git {pushed}"})
+
+    def test_a_ship_builds_on_what_the_boot_fetch_cached(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            clone, remote, pushed = make_clone(tmp)
+            env = {**os.environ, "SHIP_CACHE": str(tmp / "cache.git")}
+            subprocess.run(["bash", "-c", ship.FETCH + '\nfetch_base "$1" "$2"', "prefetch",
+                            str(remote), pushed], env=env, check=True, capture_output=True)
+            # The remote is gone; the cached commit is enough.
+            summary = ship.ship(None, clone, str(tmp / "dest"), env=env,
+                                url=str(tmp / "nowhere.git"))
+            self.assertEqual((summary["returncode"], summary["base"]), (0, pushed))
+            self.assertEqual(contents(tmp / "dest"),
+                             {n: (clone / n).read_bytes() for n in tree.checkout_files(clone)})
+
     def test_a_subset_is_checked_as_a_subset(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

@@ -22,19 +22,30 @@ from pathlib import Path
 
 import tree
 
+# `fetch_base URL COMMIT` puts COMMIT in the pod's cache repository once.  A
+# pod starts it at boot for SHIP_PREFETCH (runpod_pod.py's STAGE0), and the
+# lock makes a ship that arrives meanwhile wait for that fetch, not repeat it.
+FETCH = r"""
+cache=${SHIP_CACHE:-/root/.cache/checkout.git}
+fetch_base() {
+  mkdir -p "$(dirname "$cache")"
+  (
+    flock 9
+    [ -d "$cache" ] || git init -q --bare "$cache"
+    git -C "$cache" cat-file -e "$2^{commit}" 2>/dev/null ||
+      git -C "$cache" fetch -q --depth=1 "$1" "$2"
+  ) 9>"$cache.lock"
+}
+""".strip()
+
 # Run on the pod as `bash -c SCRIPT ship DEST BASE URL DIGEST`, the overlay on
 # stdin.  Exit 3 means the tree it built is not the checkout.
-SCRIPT = r"""
-set -euo pipefail
-dest=$1 base=$2 url=$3 want=$4
-cache=${SHIP_CACHE:-/root/.cache/checkout.git}
+SCRIPT = "set -euo pipefail\ndest=$1 base=$2 url=$3 want=$4\n" + FETCH + "\n" + r"""
 tmp=$dest.part
 rm -rf "$tmp"
 mkdir -p "$tmp"
 if [ -n "$base" ]; then
-  [ -d "$cache" ] || git init -q --bare "$cache"
-  git -C "$cache" cat-file -e "$base^{commit}" 2>/dev/null ||
-    git -C "$cache" fetch -q --depth=1 "$url" "$base"
+  fetch_base "$url" "$base"
   git -C "$cache" archive "$base" | tar -x -C "$tmp"
 fi
 tar --no-same-owner -xzf - -C "$tmp"
@@ -87,6 +98,13 @@ def base_commit(root):
     if not upstream:
         return None
     return (git(root, "merge-base", "HEAD", upstream) or "").strip() or None
+
+
+def prefetch_env(root):
+    """SHIP_PREFETCH for a new pod, "URL COMMIT": the base a ship of this checkout
+    builds on, fetched at boot so the first ship need not wait for all of it."""
+    base, url = base_commit(root), public_url(root)
+    return {"SHIP_PREFETCH": f"{url} {base}"} if base and url else {}
 
 
 def manifest_digest(root, names):

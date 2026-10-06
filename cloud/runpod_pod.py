@@ -45,6 +45,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 sys.path.insert(0, str(HERE))
+import ship  # noqa: E402
 
 REST = "https://rest.runpod.io/v1"
 GRAPHQL = "https://api.runpod.io/graphql"
@@ -59,22 +60,28 @@ DEFAULT_GPUS = [
     "NVIDIA H100 80GB HBM3",
 ]
 
-# PID 1: a lifetime cap that stops the pod; the script in POD_BOOT_B64, if
-# any, in the background (how cairn_queue.py makes a runner); then the
-# image's /start.sh, which installs PUBLIC_KEY and starts sshd.
-STAGE0 = r"""
-( sleep "$POD_MAX_SECONDS"
+# PID 1: a lifetime cap that stops the pod; the fetch of the checkout's
+# GitHub commit (ship.py) and the script in POD_BOOT_B64 (how cairn_queue.py
+# makes a runner), if any, in the background; then the image's /start.sh,
+# which installs PUBLIC_KEY and starts sshd.
+STAGE0 = r"""( sleep "$POD_MAX_SECONDS"
   curl -s https://api.runpod.io/graphql -H 'Content-Type: application/json' \
     -H "Authorization: Bearer $RUNPOD_API_KEY" \
     -d "{\"query\":\"mutation { podStop(input: {podId: \\\"$RUNPOD_POD_ID\\\"}) { id } }\"}"
 ) >/tmp/pod-lifetime.log 2>&1 &
+if [ -n "${SHIP_PREFETCH:-}" ]; then
+  (
+""" + ship.FETCH + r"""
+    read -r url commit <<<"$SHIP_PREFETCH"
+    fetch_base "$url" "$commit"
+  ) >/root/ship-prefetch.log 2>&1 &
+fi
 if [ -n "${POD_BOOT_B64:-}" ]; then
   echo "$POD_BOOT_B64" | base64 -d >/root/pod-boot.sh
   setsid bash /root/pod-boot.sh >>/root/pod-boot.log 2>&1 </dev/null &
 fi
 [ -x /start.sh ] && exec /start.sh
-exec sleep infinity
-""".strip()
+exec sleep infinity"""
 
 # Before CMD on the pod, in the shipped checkout: Rust and NVRTC when missing,
 # and the variables the suite's CUDA paths read.
@@ -184,7 +191,8 @@ def create(args, extra_env=None):
     """Create pod `args.name` and wait until it answers on ssh."""
     if find(args.name):
         sys.exit(f"a pod named {args.name} exists; `down` it first")
-    pod = api("POST", f"{REST}/pods", pod_body(args, public_keys(), extra_env))
+    env = {**ship.prefetch_env(REPO), **(extra_env or {})}
+    pod = api("POST", f"{REST}/pods", pod_body(args, public_keys(), env))
     print(f"created {pod['id']} ({pod.get('costPerHr')} $/hr); waiting for ssh", flush=True)
     deadline = time.time() + args.wait
     while time.time() < deadline:
@@ -203,7 +211,6 @@ def create(args, extra_env=None):
 def sync(pod, dest=REMOTE):
     """Make `dest` this checkout: built beside it by cloud/ship.py, then
     installed by cloud/install_tree.py, which keeps the suite's build tree."""
-    import ship
     staged = f"{dest}.tree"
     summary = ship.ship(ssh_args(pod), REPO, staged, log=lambda m: print(m, flush=True))
     if summary["returncode"] != 0:

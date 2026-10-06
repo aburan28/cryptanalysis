@@ -60,10 +60,12 @@ class PodBodyTest(unittest.TestCase):
         self.assertIn("podStop", runpod_pod.STAGE0)
         self.assertTrue(runpod_pod.STAGE0.rstrip().endswith("exec sleep infinity"))
         self.assertIn("exec /start.sh", runpod_pod.STAGE0)
-        # The boot script starts before sshd, detached from PID 1's session.
-        self.assertLess(runpod_pod.STAGE0.index("POD_BOOT_B64"),
-                        runpod_pod.STAGE0.index("exec /start.sh"))
-        self.assertIn("setsid bash /root/pod-boot.sh", runpod_pod.STAGE0)
+        # The checkout's commit is fetched and the boot script started before
+        # sshd, both in the background.
+        stage0 = runpod_pod.STAGE0
+        self.assertLess(stage0.index('fetch_base "$url" "$commit"'), stage0.index("exec /start.sh"))
+        self.assertLess(stage0.index("POD_BOOT_B64"), stage0.index("exec /start.sh"))
+        self.assertIn("setsid bash /root/pod-boot.sh", stage0)
 
     def test_bootstrap_sources_the_toolchain_in_the_checkout(self):
         lines = runpod_pod.BOOTSTRAP.splitlines()
