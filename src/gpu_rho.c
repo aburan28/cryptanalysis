@@ -94,6 +94,7 @@ ca_status ca_gpu_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem
     }
     double t0 = ca_now();
     uint64_t n = g->order;
+    if (!ca_check_members(g, base, target, n, "gpu rho")) return CA_ERR_NOT_FOUND;
 
     /* Backend selection happens before the shortcuts below, so that asking
      * explicitly for CUDA fails predictably when CUDA is unavailable instead

@@ -1,0 +1,25 @@
+name: ECC2K-130 runner
+on:
+  push:
+    paths: ['ecc2k130/runner/**', '.github/workflows/ecc2k130-runner.yml']
+  pull_request:
+    paths: ['ecc2k130/runner/**', '.github/workflows/ecc2k130-runner.yml']
+permissions:
+  contents: read
+jobs:
+  local-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cloud persistence and CLI checks
+        run: make -C ecc2k130/runner check-cloud check-cli
+      - name: Build and validate the CPU engine
+        run: |
+          make -C ecc2k130/runner cpu
+          ./ecc2k130/runner/ecc2k130-cpu --test
+      - name: Rehearse shutdown and remote checkpoint recovery
+        run: bash ecc2k130/runner/aws/rehearse_worker.sh

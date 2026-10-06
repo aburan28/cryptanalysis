@@ -1,7 +1,9 @@
 # cryptanalysis
 
 A fast, self-contained C11 library of discrete-logarithm algorithms with
-Rust, Go and Python bindings.
+Rust, Go and Python bindings, and, in [`suite/`](suite/README.md), the Rust
+attack suite (symmetric, hash, ECDLP, nonce, lattice and post-quantum
+cryptanalysis) that grew up alongside it.
 
 | algorithm | header | problem | cost |
 |-----------|--------|---------|------|
@@ -14,6 +16,7 @@ Rust, Go and Python bindings.
 | Pohlig-Hellman + solver dispatch (`ca_dlog`) | `ca_pohlig.h` | composite order | sum over prime factors |
 | Cheon's attack on the strong Diffie-Hellman problem (`d \| p-1`) | `ca_cheon.h` | recover `alpha` from `g, g^alpha, g^(alpha^d)` | `2 sqrt((p-1)/d) + 2 sqrt(d)` exponentiations |
 | Index calculus in `(Z/pZ)^*`: linear sieve, Pohlig-Hellman for small factors, structured elimination + Lanczos, Hensel lifting, verified logs | `ca_indexcalc.h` | `Z_p^*`, `p < 2^63` | `L_p[1/2, 1]`; 56-bit `p` in 1.3 s |
+| **Distributed Pollard rho**: one coordinator with a URL, agents that dial out to it and are pushed to over the same socket (van Oorschot-Wiener check-ins, a CRDT over self-verifying distinguished points) | `ca_coord.h` | whole group, many machines | the same `sqrt(n)` split `m` ways across machines that cannot reach each other |
 | **GPU Pollard rho**: a CUDA kernel (CUDA C) with 8 walks per thread sharing one modular inversion, atomic distinguished-point output, plus a host emulator that runs the same code | `ca_gpu.h` | whole group | same `sqrt(n)` with tens of thousands of concurrent walks |
 
 Everything is written against one generic cyclic-group interface
@@ -41,7 +44,7 @@ clang; pthreads).
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ctest --test-dir build            # 11 test programs, ~1 minute
-sudo cmake --install build        # headers, libcryptanalysis.{a,so}, ca, pkg-config
+sudo cmake --install build        # headers, library, cryptanalysis, ca, pkg-config
 ```
 
 Useful options: `-DCA_NATIVE=ON` (`-march=native`), `-DCA_SANITIZE=ON`
@@ -56,7 +59,39 @@ sm_90 and reports registers, local memory and spills.
 
 ## Command line
 
-`ca` prints one JSON object per invocation.
+**`crax` is the toolkit's single command line**: one subcommand per attack,
+over both halves of the repository — the generic discrete-log solvers of
+this C library (through the Rust bindings), and the suite's weak-curve,
+factoring (GNFS, SNFS, SIQS, ECM, p−1), RSA, index-calculus, symmetric,
+hash, lattice and isogeny attacks.  Every command takes `--json`, and every
+answer it reports has been verified independently of the solver.  See
+[docs/CRAX.md](docs/CRAX.md).
+
+```sh
+cd suite && cargo build --release --bin crax
+./target/release/crax rho --p 2000000579 --order 1000000289 --x 123456789
+./target/release/crax challenge solve fp-anomalous-b128     # Smart's attack, 62 ms
+./target/release/crax ecdlp --curve p256 --x 5 --analyze-only
+./target/release/crax factor '2^128+1'
+./target/release/crax snfs '2^227-1'
+./target/release/crax rsa wiener <n> --e <e>
+./target/release/crax ic prime --curve secp256k1 --bits 20 --targets 4
+```
+
+The C tools below remain for the library on its own. `cryptanalysis` is
+the main C command; `ca` remains a compatible alias. Generic
+BSGS and rho are top-level algorithm commands. `ic` currently solves DLPs in
+the multiplicative group of a prime field; the experimental binary-curve IC
+pipeline is separate and has no complete released DLP command yet.
+
+```sh
+./build/cryptanalysis bsgs --group zp --p 1000003 --order 166667 --g 533154 --h 579795
+./build/cryptanalysis rho --group zp --p 1000003 --order 166667 --g 533154 --h 579795 --seed 1
+./build/cryptanalysis ic --p 1099511627791 --g 3 --h 123456789 --threads 2
+```
+
+Each generic command prints one JSON object per invocation. The existing
+`solve --alg ...` form remains available:
 
 ```sh
 $ ./build/ca gen --group zp --p 2000000579 --order 1000000289 --x 123456789 --seed 1
@@ -134,10 +169,10 @@ $ ./build/ca group exp --group zp --p 1000003 --order 1000002 --elem 2 --k 100
 $ ./build/ca group order --group zp --p 1000003 --order 1000002 --elem 2
 {"order":"1000002","divides_group_order":true}
 
-# A campaign's identity and expected cost, before spending a fleet's time on it
-$ ./build/ca dist-info --group zp --p 1000003 --order 1000002 --g 858101 --h 57332 \
-      --campaign-seed 42
-{"campaign_id":"3264688662440439473","dp_bits":0,"r":32,"expected_points":1250.000}
+# A job's identity and expected cost, before spending a fleet's time on it
+$ ./build/ca coord-job --group zp --p 1000003 --order 1000002 --g 858101 --h 57332 \
+      --dp-bits 5 --seed 42
+{"status":"ok","job_id":"...","order":1000002,"dp_bits":5,"r":32,...}
 ```
 
 Full list: `num powmod|invmod|gcd|isqrt|iroot|sqrtmod|legendre|crt|next-prime|
@@ -159,33 +194,55 @@ there, and `make cli` runs it.
 
 ## Many machines
 
-One process solving one instance is `ca solve`.  A *fleet* needs the
-van Oorschot-Wiener protocol, where every walker iterates the same function
-and reports only its distinguished points, so that P machines finish in
-expected `1/P` of the time for the same total work -- rather than running P
-independent searches, which is what P copies of `ca solve` are.
+One process solving one instance is `ca solve`.  A *fleet* needs the van
+Oorschot-Wiener protocol, where every walker iterates the same function and
+reports only its distinguished points, so that P machines finish in expected
+`1/P` of the time for the same total work -- rather than running P independent
+searches, which is what P copies of `ca solve` are.
+
+The shape that deploys is a hub: on a cloud fleet the workers sit in private
+subnets, behind NAT or on spot instances and cannot accept connections, while
+one host is reachable by all of them.  So agents **dial out**, and the
+coordinator answers on the same socket -- the *reverse channel* -- pushing
+everyone else's points and the solution to a machine it could never have
+dialled.
 
 ```sh
-$ ./build/ca dist-walk  --group zp --p 2000000579 --order 1000000289 --g G --h H \
-      --campaign-seed 12345 --dp-bits 6 --unit 3 --steps 20000 --out unit-3.bin
-{"status":"ok","campaign":3904165131322950742,"unit":3,"points":333,...}
+# Anywhere: the job document every participant shares.
+$ ./build/ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
+      --g 1456600859624672 --h 4047005209878851 --dp-bits 16 --out job.txt
 
-$ ./build/ca dist-merge --group zp --p 2000000579 --order 1000000289 --g G --h H \
-      --campaign-seed 12345 --dp-bits 6 unit-*.bin
-{"status":"ok","accepted":2513,"duplicates":0,"rejected":0,"stored":2449,"solved":true,"x":821034685}
+# On the reachable host: the coordinator.  It is a Go service -- deployed,
+# fronted and restarted by a scheduler -- and it reuses this library through
+# cgo rather than reimplementing any of it.
+$ make coordinator && ./build/ca-coordinator -job job.txt -listen :8080 \
+      -token-file /etc/ca/token
+
+# On every agent, anywhere.  The URL is the whole configuration: no inbound
+# rule, no address of its own, not even a copy of the job document.
+$ export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=...
+$ ./build/ca work --node "$(hostname)" --threads "$(nproc)"
+$ ./build/ca coord-status
 ```
 
-A unit is replayable (its points are a function of the campaign seed and the
-unit id) and the merger verifies every point before storing it and every
-answer before reporting it, so the two halves survive a scheduler that
-delivers at least once and agents that are not trusted.  See
-[docs/DISTRIBUTED.md](docs/DISTRIBUTED.md) for the protocol and
-[orchestrator/](orchestrator/README.md) for the control plane and agents that
-run it on Kubernetes or on EC2 with systemd:
+On Kubernetes that is one command:
 
 ```sh
-make orchestrator && make smoke     # one control plane, two agents, a real answer
+helm install rho deploy/helm/ca-coordinator \
+    --set-file job.document=job.txt \
+    --set auth.token="$(openssl rand -hex 32)" --set agents.replicaCount=10
 ```
+
+The coordinator is a rendezvous, not an authority: it holds the same CRDT
+every agent holds, verifies every point the way an agent does, assigns no
+work, and losing it costs only reachability -- agents keep walking and
+reconverge when it returns.  Every check-in is self-certifying
+(`a*G + b*H == point`, two scalar multiplications to check work worth
+`2^dp_bits` steps), so a participant who lies can only waste their own time.
+See [docs/COORDINATOR.md](docs/COORDINATOR.md) for the protocol, the CRDT and
+the trust model, [deploy/helm/ca-coordinator/](deploy/helm/ca-coordinator/)
+for the chart, and [deploy/ca-coordinator/](deploy/ca-coordinator/) for
+systemd units on a plain VM.
 
 ## Cloud GPU (ECC2K-130)
 
@@ -229,6 +286,167 @@ vendor place-and-route this flow does not run.  See
 [fpga/README.md](fpga/README.md) for the derivation of the curve's group
 order, what each testbench establishes, and what the next improvement is
 (batched inversion, ~3x).
+
+## GPU client for ECC2K-130
+
+`ecc2k130/` is a rho walker for the same challenge on a CUDA device, over the
+packed GF(2^131) arithmetic from
+[aburan28/crypto](https://github.com/aburan28/crypto): one walk per
+thread-slot, products on the carry-less multiplier (`clmad`, sm_80+, CUDA
+13.3), one batched inversion per 16 slots.  Its default build walks what the
+live [ecc2k-130 campaign](https://aburan28.github.io/crypto/status/) walks --
+the FPGA core's `sigma^j(R) + R` from Certicom's challenge points,
+distinguished at weight 32 -- so its points are that campaign's, record for
+record; `make test` proves it on 48 records the campaign's own client wrote.
+The Linux release packages that curve-specific CUDA kernel as a private
+backend of `cryptanalysis rho --curve ecc2k130`. The existing `ec2k-gpu`
+archive remains available for current runners. The unified command dispatches
+to the campaign walk; it does not turn it into an arbitrary-target DLP solver.
+`WALK=table` builds an r-adding table walk instead, measured on one RTX PRO
+6000 Blackwell at **20.08 billion iterations per second**, 0.90 of the
+carry-less unit's ceiling for the 33 `clmad` an iteration costs; it is a
+different iteration function, so its points do not meet the campaign's.  The
+arithmetic is checked against the golden model in `fpga/model` -- the same
+field, two implementations, compared bit for bit -- and every report the
+device makes can be re-walked on that model:
+
+```sh
+make ecc2k130                   # host test against the golden model, no CUDA needed
+make ecc2k130-gpu               # with nvcc >= 13.3 on PATH, or:
+make ecc2k130-gpu NVCC=$(ecc2k130/scripts/fetch_cuda.sh)/bin/nvcc   # CUDA 13.3 from pip wheels
+ecc2k130/build/ec2k-gpu walk --run-id R --dp-file dps.bin --checkpoint state.ck   # collect
+ecc2k130/build/ec2k-gpu bench                                         # iterations per second
+```
+
+For a downloaded `cryptanalysis` release archive, use
+`bin/cryptanalysis rho --curve ecc2k130 --check --kat
+share/cryptanalysis/campaign-kat.hex` before starting a walk, then
+`bin/cryptanalysis rho --curve ecc2k130 --run-id R --dp-file dps.bin
+--checkpoint state.ck`. The release also includes a pinned Sage source patch
+kit; [docs/SAGE_RELEASE.md](docs/SAGE_RELEASE.md) explains how to build and use
+the optimized local Sage for elliptic-curve experiments.
+
+Two more clients run the table walk from the same headers and write the same
+reports, for developing and testing a campaign's pipeline without renting a
+card: `ec2k-cpu` on host cores, its products on PMULL (AArch64) or PCLMULQDQ
+(x86-64), and `ec2k-metal` on an Apple GPU, the kernel rewritten as Metal
+Shading Language and compiled at start-up.  Measured on an M4 Pro: 145 M
+iterations per second on its 14 cores, 390 M on its 20-core GPU.
+
+```sh
+make ecc2k130-cpu   && ecc2k130/build/ec2k-cpu bench
+make ecc2k130-metal && ecc2k130/build/ec2k-metal bench       # macOS
+```
+
+See [ecc2k130/README.md](ecc2k130/README.md) for the measurement, the
+boundary it is measured against, and how the last 15% was found.
+
+The same walk is also a GPU health check. `ec2k-gpu health` loads a GPU for a
+fixed time at a test weight and checks every point the GPU reports on the
+host: the point is on the curve, its weight and bookkeeping are right, and a
+sample is re-walked on the golden model. It also reports a throughput that
+barely moves between runs. [deploy/gpu-health/](deploy/gpu-health/README.md)
+packages it as a container that checks every GPU of a node in 60-120 s and
+returns one verdict. Its README covers what the check establishes, what it
+does not (tensor cores, memory, interconnect), and how close it comes to each
+part's power limit. The Helm chart
+[deploy/helm/gpu-health/](deploy/helm/gpu-health/README.md) uses a
+MutatingAdmissionPolicy to inject the check into the NVIDIA device plugin's
+pods. A node that comes up then offers no GPU to the scheduler until its
+GPUs have passed.
+
+The [ECC2K-130 cloud runner](ecc2k130/runner/README.md) packages the deployed
+120,320-worker Frobenius profile with Modal/Runpod launch support, durable S3
+checkpoints, and direct reporting to the existing RDS collision pool. Its
+source, DP32 compatibility checks, and four-GPU deployment receipts live in
+`ecc2k130/runner/` alongside the standalone clients above.
+
+## Running it across machines
+
+`ca_rho_solve` divides one instance across the threads of one process.
+`ca_coord.h` divides it across machines that cannot reach each other —
+the usual cloud case, where the workers are in private subnets or behind
+NAT and only one host is reachable by all of them.  Agents **dial out**
+to that host and it pushes everyone else's distinguished points and the
+solution back down the connection each agent opened (a *reverse
+channel*, opened with an HTTP upgrade so it passes through an ALB or
+nginx), so no agent needs an inbound rule, a public address, or even a
+copy of the job document:
+
+```sh
+# Anywhere: the job document everyone shares.
+ca coord-job --group zp --p 4503599627372423 --order 2251799813686211 \
+    --g 1456600859624672 --h 4047005209878851 --dp-bits 16 --out job.txt
+
+# On the reachable host: the coordinator.  It is a Go service -- it has
+# to be deployed, fronted and restarted by a scheduler -- and it reuses
+# this library through cgo rather than reimplementing any of it.
+cd bindings/go && go build ./cmd/ca-coordinator
+./ca-coordinator -job ../../job.txt -listen :8080 -token-file /etc/ca/token
+
+# On every agent, anywhere.  The URL is the whole configuration.
+export CA_COORDINATOR_URL=https://rho.example.com CA_COORDINATOR_TOKEN=…
+ca work --node "$(hostname)" --threads "$(nproc)"
+ca coord-status
+```
+
+On Kubernetes that is one command:
+
+```sh
+helm install rho deploy/helm/ca-coordinator \
+    --set-file job.document=job.txt \
+    --set auth.token="$(openssl rand -hex 32)" --set agents.replicaCount=10
+```
+
+The hub is a rendezvous, not an authority: it holds the same CRDT every
+agent holds, verifies every point the way an agent does, assigns no
+work, and losing it costs only reachability — agents keep walking and
+reconverge when it returns.  Every check-in is self-certifying
+(`a*G + b*H == point`, two scalar multiplications to check work worth
+`2^dp_bits` steps), so a participant who lies can only waste their own
+time.  Design notes: [docs/COORDINATOR.md](./docs/COORDINATOR.md);
+Helm chart: [deploy/helm/ca-coordinator/](./deploy/helm/ca-coordinator/);
+images: [deploy/docker/](./deploy/docker/); systemd units for a plain VM:
+[deploy/ca-coordinator/](./deploy/ca-coordinator/).
+
+## The attack suite
+
+The C library is the narrow, fast end: one group interface, a handful of
+solvers, 64-bit groups, measured constants.  [`suite/`](suite/README.md) is
+the wide end -- a Rust crate of about 150 attack modules with the primitives they
+target, moved here from the [crypto](https://github.com/aburan28/crypto)
+study repository and put under this repository's checks: S-box, Boolean
+and statistical primitives; the reduced-round AES catalogue and the
+boomerang / rectangle framework; MD5 and SHA-1 differentials and the
+hash-attack runner; Pollard rho variants, index calculus on prime-field,
+`F_{p^3}`, binary Koblitz and hyperelliptic curves, Weil descent, the
+Smart attack and its p-adic relatives; hidden-number-problem and
+Bleichenbacher nonce attacks; and lattice estimators plus working
+key-recovery attacks against ML-KEM and ML-DSA.
+
+```sh
+cd suite && cargo build --release
+./target/release/ca-suite auto --cipher aes-2r          # every applicable attack, as a report
+./target/release/ca-suite mlwe margins                  # ML-KEM / ML-DSA against the NIST floors
+./target/release/ca-suite rho-collab init --curve demo-32 --secret 0x1234567 --out job.json
+./target/release/ca-suite ec-challenges summary         # curve corpus: shapes, j, endomorphisms, volcanoes
+./target/release/ca-ic run --degree 11 --curve-a 1 --known-log 53 --solver enumerate
+./target/release/ca-ic prime --curve secp256k1 --bits 28      # prime-field IC by curve type, against rho
+```
+
+The curve corpus is [`challenges/elliptic/`](challenges/elliptic/README.md):
+known-answer discrete logs, and order-known parameter sets up to 768 bits,
+across prime fields, `F_{2^m}` (prime and composite `m`, Koblitz and proper
+subfields), `F_{3^m}`, and odd extensions `F_{p^n}`.  j-invariants 0, 1728
+and generic; supersingular, anomalous and twist-insecure pairs; isogeny
+volcanoes with more than one level.  `open` instances are there to be
+solved, `bench` instances to time a faster implementation of the same
+solver, `shape` instances to check field arithmetic at the large end.
+
+`make suite` runs its gates (fmt, clippy `-D warnings`, rustdoc `-D
+warnings`, cargo-deny, the release test suite, the Python engine's lint and
+tests).  The suite links the C library through `bindings/rust` for
+`crax`'s generic solvers; the C library does not depend on the suite.
 
 ## C API in one screen
 
@@ -344,16 +562,25 @@ src/                     library sources (+ internal linalg.h, ca_internal.h)
 cuda/                    the CUDA kernel (ca_device.cuh is shared C11/CUDA code)
 tests/                   C test programs (ctest)
 tools/                   ca (CLI) and ca_bench
-orchestrator/            Go control plane and agents (deploy/{k8s,systemd,docker})
 fpga/                    ECC2K-130 rho core: golden C model, Verilog, testbenches, host tool
+ecc2k130/                ECC2K-130 clients: packed GF(2^131) table walk (CUDA, CPU, Metal), host tests vs the model
 scripts/                 build_cuda_kernel.sh, cli_smoke.sh (every ca subcommand)
 bindings/{rust,go,python} plus bindings/rust/cryptanalysis-cuda (Rust GPU driver)
-docs/                    ALGORITHMS.md, BENCHMARKS.md, DISTRIBUTED.md, FFI.md, GPU.md,
+suite/                   the attack suite: Rust crate cryptanalysis-suite, ca-suite / ca-ic / ca-curves CLIs, Python engine
+challenges/ecc/          elliptic-curve challenge corpus (Koblitz, CM, char 3, extensions, volcanoes)
+docs/                    ALGORITHMS.md, BENCHMARKS.md, FFI.md, GPU.md, COORDINATOR.md,
                          CLOUD_LAUNCH.md (Modal + RunPod + ingest MiG),
                          RUNPOD_CURSOR_WORKER.md (Cursor My Machines on a RunPod)
 usecases/ecc2k130-gpu/   ECC2K-130 20 B/s GPU rho notes and patches
+bindings/go/cmd/ca-coordinator  the coordinator service (Go, cgo onto this library)
+deploy/helm/ca-coordinator      Helm chart: the coordinator and its agents
+deploy/docker/                  one Dockerfile, two images (coordinator, agent)
+deploy/ca-coordinator/          systemd units and EC2 user-data for a plain VM
+deploy/gpu-health/              GPU health-check image (ec2k-gpu health) and a workload init-container manifest
+deploy/helm/gpu-health          Helm chart: the check injected into the device plugin by a MutatingAdmissionPolicy, or a node gate
+cloud/                   Runpod pods hosting Cursor workers, and Modal jobs, for work too big for an agent VM (cloud/README.md)
 fuzz/                    libFuzzer harnesses and their seed corpora
-.github/workflows/       ci, analysis, bindings, orchestrator, fpga, fuzz, codeql,
+.github/workflows/       ci, analysis, bindings, suite, deploy, fpga, ecc2k130, fuzz, codeql,
                          nightly, cloud-ecc2k130 (manual Modal/RunPod launch)
 ```
 
@@ -368,9 +595,12 @@ set locally, in the order that fails fastest.
 | `ci` | gcc, clang, macOS and arm64 builds with `-Werror`; ctest; every `ca` subcommand via `scripts/cli_smoke.sh`, with the answers checked where they are known in closed form; AddressSanitizer plus UndefinedBehaviorSanitizer; ThreadSanitizer over the pthreads solvers; valgrind memcheck on the fast suites; install and consume through both `find_package` and a relocated `pkg-config` prefix; the CUDA kernel compiled for sm_70 to sm_90 with a register report |
 | `analysis` | clang-tidy (warnings are errors), cppcheck, `gcc -fanalyzer`, clang-format on the lines a change touches, shellcheck, actionlint, and coverage with a floor |
 | `bindings` | Rust fmt/clippy/doc/tests and a measured MSRV floor, cargo-deny, Go across three toolchains with the race detector and golangci-lint, Python 3.8 to 3.13 plus an installed-package run, ruff and mypy |
-| `fuzz` | six libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
-| `orchestrator` | the Go control plane and agents: vet, gofmt, no third-party dependencies, `go test -race` (including the cross-checks against the C library), and an end-to-end smoke run of a real fleet |
+| `suite` | the attack suite: fmt, clippy `-D warnings` over every target, rustdoc `-D warnings`, the release test suite (2,395 unit and 31 integration tests), a checked answer from each tool, the declared MSRV rebuilt and tested, cargo-deny, and the Python engine's ruff and unit tests on three interpreters |
+| `fuzz` | seven libFuzzer harnesses: corpus replay and a one-minute run per harness on every change, a ten-minute soak per harness nightly |
 | `fpga` | the ECC2K-130 core: the golden model's own checks, then every testbench against the vectors it produces, at three multiplier widths; verilator `-Wall`; a yosys area report |
+| `ecc2k130` | the GPU client: the packed arithmetic, the table walk's selection and the walk itself against `fpga/model` on gcc and clang; the kernel compiled for sm_120 with CUDA 13.3 from pip wheels, with its register and spill report |
+| `deploy` | the Helm chart and the container images: `helm lint`, a render with every optional piece enabled whose manifests are parsed and asserted (one coordinator replica, `Recreate`, and an agent NetworkPolicy that allows no ingress at all), the three configurations the chart must refuse, and a build of both image targets that then runs each one |
+| `gpu-health` | the health-check orchestrator's tests on Python 3.8 and 3.12; the Helm chart linted, and its MutatingAdmissionPolicy run on a real kube-apiserver; the image built on x86_64 and aarch64 (which compiles `ec2k-gpu` for sm_80 to sm_120 and runs the host test and `check --kat`) and smoke-run: without a GPU it must fail and say why, against scripted GPUs it must pass; then, on x86_64, the chart on kind, where the injected check gates a stand-in device plugin |
 | `codeql` | C, Go and Python, with the `security-and-quality` query pack |
 | `nightly` | valgrind on the two slow suites, the benchmarks under both sanitizer sets, a recorded benchmark run, and a wider OS matrix |
 

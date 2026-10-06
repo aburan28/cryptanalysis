@@ -1,0 +1,39 @@
+# An agent.  Needs no inbound rule, no public address and no job file:
+# it dials the coordinator, and the job document comes back down the
+# same connection.  Identical on an EC2 worker, a spot instance, a
+# laptop behind NAT and a container.
+#
+#   cp ca-agent.service /etc/systemd/system/
+#   cat > /etc/ca/agent.env <<'ENV'
+#   CA_COORDINATOR_URL=http://hub.internal:8080
+#   CA_COORDINATOR_TOKEN=…
+#   CA_NODE=%H
+#   CA_THREADS=8
+#   ENV
+#   systemctl enable --now ca-agent
+[Unit]
+Description=libcryptanalysis distributed rho agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ca
+Group=ca
+WorkingDirectory=/var/lib/ca
+EnvironmentFile=/etc/ca/agent.env
+# Lanes check in as <node>.<lane>, so every machine in the fleet needs a
+# name no other machine uses; %H (the hostname) is the usual choice.
+ExecStart=/usr/local/bin/ca work --node ${CA_NODE} --threads ${CA_THREADS} --idle-when-solved
+Restart=always
+RestartSec=10
+# Walking is the whole workload; leave the box usable for anything else.
+Nice=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+StateDirectory=ca
+ReadWritePaths=/var/lib/ca
+
+[Install]
+WantedBy=multi-user.target

@@ -161,6 +161,15 @@ for alg in bsgs rho kangaroo grumpy dlog; do
     --h "$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')" \
     --lo 0 --hi 1000002 --seed 1
 done
+# The public algorithm commands share the solver implementation and result
+# contract with `solve --alg`, including exact scalar recovery.
+want '"x":123456' bsgs "${ZP[@]}" --g 858101 \
+  --h "$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')"
+want '"x":123456' rho "${ZP[@]}" --g 858101 \
+  --h "$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')" \
+  --seed 1
+want_fail bsgs --alg rho "${ZP[@]}" --g 858101 --h 123456
+want_fail rho --curve unknown
 want '"x":123456' solve --alg gpu-rho "${ZP[@]}" --g 858101 \
   --h "$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')" \
   --seed 1
@@ -201,18 +210,51 @@ SUBG=$("$CA" group exp "${ZP[@]}" --elem 858101 --k 6 | sed 's/.*"\([0-9]*\)".*/
 want '"status":"ok"' cheon --group zp --p 1000003 --order 166667 --g "$SUBG" --d 2 --alpha 4242
 
 # ── the distributed protocol ────────────────────────────────────────────────
-DIST=("${ZP[@]}" --g 858101 --campaign-seed 42)
+# The job document is the whole agreement between participants, so the smoke
+# test covers minting one, refusing a malformed one, and walking it: `work`
+# with no --coordinator walks alone, which is the same code path a fleet
+# runs, minus the socket.
 H=$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')
-want '"campaign_id"' dist-info "${DIST[@]}" --h "$H"
-want_fail dist-info "${ZP[@]}" --g 858101 --h "$H"   # campaign seed is required
-
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-for unit in 1 2 3 4; do
-  "$CA" dist-walk "${DIST[@]}" --h "$H" --unit "$unit" --steps 400000 \
-    --out "$tmp/u$unit.bin" >/dev/null
-done
-want '"x":123456' dist-merge "${DIST[@]}" --h "$H" "$tmp"/u*.bin
+
+want '"job_id"' coord-job "${ZP[@]}" --g 858101 --h "$H" --dp-bits 4 --unit-size 64 \
+  --seed 42 --out "$tmp/job.txt"
+want_fail coord-job "${ZP[@]}" --g 858101            # --h is required
+want_fail coord-job "${ZP[@]}" --g 858101 --h "$H" --r 2   # r must be in [4, 4096]
+
+# The same job twice is the same id: that is what lets two agents agree
+# without exchanging anything.
+first=$("$CA" coord-job "${ZP[@]}" --g 858101 --h "$H" --dp-bits 4 --unit-size 64 --seed 42)
+second=$("$CA" coord-job "${ZP[@]}" --g 858101 --h "$H" --dp-bits 4 --unit-size 64 --seed 42)
+checks=$((checks + 1))
+if [ "$first" != "$second" ]; then
+  printf 'FAIL: the same job minted two different ids\n' >&2
+  fail=$((fail + 1))
+fi
+
+want '"x":123456' work --job "$tmp/job.txt" --node solo --threads 2 --max-seconds 60
+
+# Sharding: the count rides in the document, so it changes the id, and a
+# document that declares it says so.
+sharded=$("$CA" coord-job "${ZP[@]}" --g 858101 --h "$H" --dp-bits 4 --unit-size 64 --seed 42 --shards 4)
+checks=$((checks + 1))
+if [ "$sharded" = "$first" ]; then
+  printf 'FAIL: --shards did not change the job id\n' >&2
+  fail=$((fail + 1))
+fi
+want 'sh=4' coord-job "${ZP[@]}" --g 858101 --h "$H" --dp-bits 4 --unit-size 64 --seed 42 --shards 4
+want_fail coord-job "${ZP[@]}" --g 858101 --h "$H" --shards 0
+want_fail coord-job "${ZP[@]}" --g 858101 --h "$H" --shards 99999
+# A sharded job needs one coordinator URL per shard, in shard order; one
+# URL for four shards is refused rather than silently under-split.
+"$CA" coord-job "${ZP[@]}" --g 858101 --h "$H" --dp-bits 4 --unit-size 64 --seed 42 \
+    --shards 4 --out "$tmp/sharded.txt" >/dev/null 2>&1
+want_fail work --job "$tmp/sharded.txt" --coordinator http://127.0.0.1:1 --max-seconds 1
+# And with no coordinator at all it still walks: sharding is about where
+# points are sent, not whether they are found.
+want '"shards":4' work --job "$tmp/sharded.txt" --node solo --threads 2 --max-seconds 60
+want_fail coord-status --coordinator http://127.0.0.1:1   # nothing is listening
 
 # ── usage and unknown commands ──────────────────────────────────────────────
 want_fail

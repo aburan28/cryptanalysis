@@ -1,0 +1,97 @@
+\section{Introduction}
+\label{sec:intro}
+
+The discrete logarithm in a group of prime order $n$ has a generic
+cost of $\Theta(\sqrt{n})$ group operations. Pollard's rho method
+makes the leading constant about $\sqrt{\pi/2}\approx 1.25$ without
+automorphisms and about $\sqrt{\pi/4}\approx 0.89$ with the negation
+map~\cite{pollard1978,teske2001,bls2011}. Every subsequent algorithm
+that claims to be faster is a claim about that constant, or about the
+exponent. This paper measures both.
+
+The work is a study library, not an attack on cryptographic sizes.
+Field arithmetic is 64-bit Montgomery arithmetic; every problem the
+library solves lives in a group of order below $2^{64}$. That bound is
+deliberate. The purpose is to put every variant on one axis, with
+every phase inside the cost, and to read off whether the constant in
+front of $\sqrt{n}$ actually moved.
+
+Three families are priced.
+
+\paragraph{Pollard rho, and the square-root neighbours.}
+Teske's $r$-adding walk, the negation map with Bernstein--Lange--Schwabe
+cycle handling, one inversion per 256 additions, parameters chosen from
+$n$. Baby-step giant-step, two grumpy giants and a baby, Pollard
+kangaroo, Bernstein--Lange free precomputation, GLV folding, Cheon's
+auxiliary-input attack, a CUDA kernel verified through a host emulator,
+and a fleet protocol. The unit
+\[
+  S \;=\; \frac{\text{group operations}}{\sqrt{n}}
+\]
+makes rho a flat line. Everything else is a row.
+
+\paragraph{ECC2K-130.}
+The Certicom Koblitz challenge $y^2+xy=x^3+1$ over $\FF_{2^{131}}$,
+group order $4\cdot r$ with $r$ a 129-bit prime, expected
+$2^{60.9}$ iterations~\cite{bailey2009,certicom1997}. Optimal-normal-basis
+arithmetic, three multiplier realisations, a golden C model, a bitsliced
+client, a packed CUDA walk measured from $0.85$ to $14.64$~billion
+iterations per second, a measured pipe floor that rules out $28$~B/s on
+one GPU, a table walk declined at $16.56$ against a pre-declared $17.0$,
+a per-GPU survey, a digit-serial FPGA core in this library ($362$
+cycles/step, $7{,}941$ LUT4) and a companion engine measured on an AWS
+F2 at $8.25$~G steps/s, and a live campaign at cutoff $32$ with
+$2^{28.41}$ iterations per point, about $124$ million points, and no
+collision.
+
+\paragraph{Index calculus over prime fields.}
+A Coppersmith--Odlyzko--Schroeppel linear sieve in $(\ZZ/p\ZZ)^*$ with
+Lanczos and Hensel lifting, whose crossover with rho is near $56$~bits
+and which we re-ran through $60$ and $62$~bits. Then the elliptic
+negative: Semaev summation polynomials on $E(\FF_p)$ and residual walks
+on $E(\FF_{p^3})$, priced phase by phase with fitted exponents, a
+Joux--Vitse pair-only row, oracle rounds labelled as stage diagnostics,
+and a genus-3/4 Jacobian positive control whose ratio to rho falls as
+the exponent law predicts.
+
+\subsection{What a number is allowed to mean}
+
+A ratio to a boundary is the result; a constant that moved while the
+ratio stayed flat is engineering; a headline count that fell while
+total $S$ rose is relabelling; a number that changed because the
+accounting did is a correction. Section~\ref{sec:method} states the
+rule and works two cases. The residual-walk thread is the cautionary
+one: its relation phase crosses rho near $2^{96}$ in isolation, while
+the whole method never does, because the linear algebra it had left
+out grows as $n^{0.68}$ against relations at $n^{1/3}$.
+
+Wall-clock time is a practicality note. Operation counts survive
+hardware. A run whose answer was not checked against a planted secret
+is not a result. Companion CUDA rho over 256-bit primes, the ECC2K-95
+kernel, and kangaroo code whose READMEs record that they have run only
+through CPU emulation are kept out of headline claims; they appear as
+cross-checks of the walk, not as device throughputs.
+
+\subsection{Two repositories}
+\label{sec:tworepos}
+
+The measurements span two checkouts. This library (\thislib) is the
+64-bit C11 reference: generic cyclic groups, the solvers of
+Section~\ref{sec:rho}, the ECC2K-130 golden model and digit-serial FPGA
+core, the imported packed GPU client held to that model, and the
+$(\ZZ/p\ZZ)^*$ sieve. The sibling study library (\sibling), named from
+\texttt{docs/ALGORITHMS.md}, is where the ECC2K-130 campaign, the GPU
+ledger, the F2 FPGA engine, the residual-walk and hyperelliptic notes,
+and the index-calculus scoreboard live. Paths in footnotes without a
+prefix are in this library; paths beginning \texttt{crypto:} are in
+the sibling. The paper covers both and says so here, once.
+
+\subsection{What is not claimed}
+
+No elliptic-curve index-calculus variant measured end to end sits
+below matched rho. No one-addition-per-step walk on ECC2K-130 reaches
+$28$~B/s on one GPU. No Modal SKU in the survey beats the RTX~PRO~6000
+at the campaign recipe. The 256-bit CUDA rho of \texttt{crypto:gpu/ecc/}
+and the ECC2K-95 kernel of \texttt{crypto:gpu/ecc2k/} are emulator-verified
+walks, not device-throughput results. Extrapolations are marked as
+such and carry the exponents they rest on.

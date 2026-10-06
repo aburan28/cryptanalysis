@@ -1,0 +1,34 @@
+name: Sage binary batch evidence
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/sage-binary-batch/**'
+      - 'experiments/sage-binary-native-addition/**'
+      - 'experiments/sage-binary-point-construction/**'
+      - 'experiments/sage-binary-native-frobenius/**'
+      - 'experiments/sage-binary-storage/**'
+      - '.github/workflows/sage-binary-batch.yml'
+  push:
+    paths:
+      - 'experiments/sage-binary-batch/**'
+      - 'experiments/sage-binary-native-addition/**'
+      - 'experiments/sage-binary-point-construction/**'
+      - 'experiments/sage-binary-native-frobenius/**'
+      - 'experiments/sage-binary-storage/**'
+      - '.github/workflows/sage-binary-batch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recorded-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the source patch and recorded measurements
+        run: python3 experiments/sage-binary-batch/verify_archive.py
+      - name: Check the native Frobenius archive
+        run: python3 experiments/sage-binary-native-frobenius/verify_archive.py

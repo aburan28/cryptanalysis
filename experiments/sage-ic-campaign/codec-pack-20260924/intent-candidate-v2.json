@@ -1,0 +1,58 @@
+{
+  "status": "frozen before v2 source edit and timing",
+  "step_id": "sage-hardware-codec-pack-candidate-v2",
+  "reason": "v1 exact but two full-API cells below 0.98 under a high shared-host load; add an exact-standard-point validation path that avoids repeated Python methods, then repeat the full gate with fresh seeds",
+  "incumbent": {
+    "source_sha256": "a6598dff3d95f01f7f432bf0a49d697e995681fd6ca1a9426b1bf3db3f6b151b",
+    "binary_sha256": "7e3f5a366d568ff30d2bcdd3374e787e402804c8a2c45f42ef61de760069d00a"
+  },
+  "v1_candidate": {
+    "source_sha256": "bd1f0b784eb37933ffdfeb3fc35d0447f79736ac239d1ba747e690dfc14836cf",
+    "binary_sha256": "d12c8615a2c3742dc5f7e2da93a9d19784f611f288c9d042779c56ef8e4ef334"
+  },
+  "mechanism": "For exact standard finite-field points, inspect native point state for curve identity and infinity; read normalized coordinates directly, falling back to xy() for non-normalized points. Other subclasses retain prior validation and xy() calls.",
+  "primary_cases": [
+    {
+      "degree": 19,
+      "points": 1024,
+      "power": 1
+    },
+    {
+      "degree": 131,
+      "points": 4096,
+      "power": 1
+    },
+    {
+      "degree": 131,
+      "points": 4096,
+      "power": 65
+    },
+    {
+      "degree": 131,
+      "points": 16384,
+      "power": 65
+    }
+  ],
+  "confirmation_cases": [
+    {
+      "degree": 31,
+      "points": 2304,
+      "power": 7
+    },
+    {
+      "degree": 163,
+      "points": 2304,
+      "power": 65
+    }
+  ],
+  "backends": [
+    "cpu",
+    "metal"
+  ],
+  "rounds": 12,
+  "calls_target_outputs": 131072,
+  "seed_base_primary": 2026093601,
+  "seed_base_confirmation": 2026093701,
+  "acceptance": "Exact output and custom semantics tests; full-API primary and confirmation geomean >1.05x, no cell below 0.98x, peak RSS within 5% or 2 MiB",
+  "cloud_spend": 0
+}

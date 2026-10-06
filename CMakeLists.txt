@@ -52,7 +52,6 @@ set(CA_SOURCES
   src/group_ec.c
   src/bsgs.c
   src/rho.c
-  src/dist.c
   src/kangaroo.c
   src/grumpy.c
   src/precomp.c
@@ -61,6 +60,8 @@ set(CA_SOURCES
   src/cheon.c
   src/linalg.c
   src/indexcalc.c
+  src/coord.c
+  src/coord_net.c
   src/ffi.c
   src/gpu_rho.c
   src/gpu_emulate.c
@@ -132,6 +133,12 @@ else()
 endif()
 
 if(CA_BUILD_TOOLS)
+  add_executable(cryptanalysis_cli tools/ca_cli.c)
+  set_target_properties(cryptanalysis_cli PROPERTIES OUTPUT_NAME cryptanalysis)
+  target_link_libraries(cryptanalysis_cli PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(cryptanalysis_cli PRIVATE src cuda)
+  target_compile_options(cryptanalysis_cli PRIVATE ${CA_WARNINGS})
+  ca_sanitize(cryptanalysis_cli)
   add_executable(ca tools/ca_cli.c)
   target_link_libraries(ca PRIVATE ${CA_LINK_TARGET})
   target_include_directories(ca PRIVATE src cuda)
@@ -146,7 +153,7 @@ endif()
 
 if(CA_BUILD_TESTS)
   enable_testing()
-  set(CA_TESTS modarith group bsgs rho dist kangaroo grumpy precomp curve pohlig cheon linalg indexcalc ffi gpu)
+  set(CA_TESTS modarith group bsgs rho kangaroo grumpy precomp curve pohlig cheon linalg indexcalc ffi gpu coord)
   foreach(t ${CA_TESTS})
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${t}.c)
       add_executable(test_${t} tests/test_${t}.c)
@@ -193,7 +200,7 @@ if(CA_BUILD_STATIC)
           ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
 if(CA_BUILD_TOOLS)
-  install(TARGETS ca RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(TARGETS cryptanalysis_cli ca RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 # The .pc file locates the install tree relative to itself, so that
 # `cmake --install --prefix DIR` is correct even when DIR differs from the

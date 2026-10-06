@@ -1,0 +1,13 @@
+diff --git a/src/sage/schemes/elliptic_curves/ell_point.py b/src/sage/schemes/elliptic_curves/ell_point.py
+--- a/src/sage/schemes/elliptic_curves/ell_point.py
++++ b/src/sage/schemes/elliptic_curves/ell_point.py
+@@ -1097,0 +1098,9 @@
++        if (a1 == 1 and not a3 and not a4
++                and E.base_ring().characteristic() == 2
++                and type(self) is EllipticCurvePoint_finite_field
++                and type(other) is EllipticCurvePoint_finite_field
++                and E._point is EllipticCurvePoint_finite_field):
++            from sage.schemes.elliptic_curves import binary_batch
++            if (binary_batch._native is not None
++                    and binary_batch._native.supports(E.base_ring())):
++                return binary_batch.add_pairs(E, ((self, other),))[0]

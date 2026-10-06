@@ -148,7 +148,9 @@ int ca_sqrtmod_prime(uint64_t a, uint64_t p, uint64_t *root)
 
 uint64_t ca_crt2(uint64_t r1, uint64_t m1, uint64_t r2, uint64_t m2)
 {
-    /* x = r1 + m1 * ((r2 - r1) * m1^{-1} mod m2) */
+    /* x = r1 + m1 * ((r2 - r1) * m1^{-1} mod m2), with r1 reduced first:
+     * an unreduced r1 gave a result outside [0, m1 m2). */
+    r1 %= m1;
     uint64_t inv = ca_invmod(m1 % m2, m2);
     uint64_t d = ca_submod(r2 % m2, r1 % m2, m2);
     uint64_t k = ca_mulmod(d, inv, m2);

@@ -1,0 +1,33 @@
+{{- if .Values.rbac.labelNodes.enabled }}
+{{- $name := include "gpu-health.suffixed" (list . "label-nodes") }}
+# Lets the injected check record its verdict on its node (inject.labelNode):
+# the label gpu-health/verdict and an annotation with the verdict line.  It runs
+# as the device plugin's service account, so that is what this binds.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "gpu-health.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "gpu-health.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}
+subjects:
+  {{- range .Values.rbac.labelNodes.serviceAccounts }}
+  - kind: ServiceAccount
+    name: {{ .name }}
+    namespace: {{ .namespace }}
+  {{- end }}
+{{- end }}
