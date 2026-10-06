@@ -38,10 +38,11 @@ It preserves a receipt on timeout, OOM, or runner failure. A SAT result must
 pass every CNF/XOR row, independent integer-field group replay, measured
 factor-base orbit membership, and then a separate installed-Sage replay.
 
-Only a passing planted control justifies unpinned planted attempts. Only a
-passing unpinned control and exceptional-case accounting justify ordinary
-public-target fibers. Every attempted branch must retain its cap and
-failure status. No complete IC candidate ID, natural relation yield,
+Only a passing planted control justifies unpinned planted attempts. Ordinary
+public-target fibers attempted before a passing unpinned control and
+exceptional-case accounting are exploratory diagnostics, not accepted
+natural-relation-yield measurements. Every attempted branch must retain its
+cap and failure status. No complete IC candidate ID, natural relation yield,
 factor-log matrix, one-target DLP, same-point rho comparison, or speedup is
 claimed by this design and control stage.
 
@@ -107,3 +108,12 @@ It charges every attempted branch under a 600-second whole-run cap and a
 replay and independent checked-Sage replay before it qualifies as a planted
 control. If the bounded attempt remains unresolved, ordinary-query yield
 and a complete IC pipeline remain unmeasured.
+
+The [unpinned sign-enumeration receipt](runs/unpinned_sign_enum_v1/receipt.json)
+records all 32 branches in fixed public order. Every branch reached its
+10-second internal solver limit with `BOUNDED_UNKNOWN`; none returned a
+model. The whole run took 397.616 seconds, including 389.997 seconds of
+solver wall time, and sampled at most 307 MB process-tree RSS on this
+contended host. Each branch receipt and compressed raw solver log is
+archived. This is a bounded failure to find the known planted witness, not
+an UNSAT result or a natural-query yield estimate.
