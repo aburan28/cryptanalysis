@@ -64,5 +64,8 @@ The [public-order sign run](runs/sign_enum_v1/receipt.json) found a
 CNF/XOR- and integer-group-verified model at branch 17 after 17
 solver-reported UNSAT branches, in 11.439 seconds for the complete run.
 Its SAT model and raw stdout remain local because they contain the planted
-witness; the 17 bounded failure logs are archived with hashes. An
-independent checked-Sage replay is the remaining positive-control gate.
+witness; the 17 solver-reported UNSAT logs are archived with hashes. The
+[independent checked-Sage replay](runs/sign_enum_v1/sage_replay.json) passed:
+all five points lie on the curve and in the measured base after projection,
+the four additions are regular, and the exact raw fiber maps to the public
+subgroup target. This clears the pinned correctness control only.
