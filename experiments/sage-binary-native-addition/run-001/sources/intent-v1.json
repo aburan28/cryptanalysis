@@ -1,0 +1,228 @@
+{
+  "step_id": "sage-native-binary-addition-v1",
+  "status": "frozen before implementation and timing",
+  "created_utc": "2026-09-24T13:36:54.362320+00:00",
+  "incumbent_revision_and_binary_hash": {
+    "source_sha256": "d306dfc5fb039d0e061820cb42113dfd36332bfa6582a943bab2f2205b1d7fe1",
+    "runtime": "local installed Sage 10.10.rc0; incumbent loaded from immutable source snapshot"
+  },
+  "candidate_patch_hash": null,
+  "hypothesis_and_mechanism": "Move prepared binary batch addition into Cython/NTL, reusing native GF2E scratch objects and prefix products instead of allocating Python finite-field elements for every intermediate. Preserve output construction and Python fallback for non-NTL fields.",
+  "profile_evidence_and_hotspot_share": {
+    "path": "experiments/sage-binary-arithmetic/run-002/profile-v2_cartesian.txt",
+    "arithmetic_and_inversion_self_seconds": 0.115,
+    "total_seconds": 0.222,
+    "share": 0.518
+  },
+  "predicted_complete_component_gain": "A 25% reduction in the profiled 51.8% arithmetic share predicts ~1.15x component speed; a 2% complete gain needs ~3.8% reduction in that share. Profile is diagnostic, not a timing gate.",
+  "mathematical_invariants": [
+    "exact Sage sums and point types/parents",
+    "input/output ordering and duplicates",
+    "infinity, inverse, doubling and order-two handling",
+    "one inversion and 3*(n-1) products for n active denominators",
+    "validate all inputs, retain non-NTL fallback",
+    "no scalar point API changes"
+  ],
+  "internal_counters_intentionally_changed": [
+    "Python intermediate object allocation and NTL context restore counts"
+  ],
+  "edge_cases_modes_and_architectures": [
+    "local ARM64 CPU",
+    "Givaro and NTL small fields",
+    "non-prime coefficients",
+    "alternate moduli",
+    "generators that change active NTL context",
+    "invalid points/curves",
+    "empty and singleton batches",
+    "Cartesian block boundaries"
+  ],
+  "primary_cases": [
+    {
+      "degree": 19,
+      "side": 8,
+      "api": "pairs",
+      "seed": 2026092401
+    },
+    {
+      "degree": 19,
+      "side": 8,
+      "api": "cartesian",
+      "seed": 2026092401
+    },
+    {
+      "degree": 19,
+      "side": 32,
+      "api": "pairs",
+      "seed": 2026092401
+    },
+    {
+      "degree": 19,
+      "side": 32,
+      "api": "cartesian",
+      "seed": 2026092401
+    },
+    {
+      "degree": 19,
+      "side": 64,
+      "api": "pairs",
+      "seed": 2026092401
+    },
+    {
+      "degree": 19,
+      "side": 64,
+      "api": "cartesian",
+      "seed": 2026092401
+    },
+    {
+      "degree": 67,
+      "side": 8,
+      "api": "pairs",
+      "seed": 2026092401
+    },
+    {
+      "degree": 67,
+      "side": 8,
+      "api": "cartesian",
+      "seed": 2026092401
+    },
+    {
+      "degree": 67,
+      "side": 32,
+      "api": "pairs",
+      "seed": 2026092401
+    },
+    {
+      "degree": 67,
+      "side": 32,
+      "api": "cartesian",
+      "seed": 2026092401
+    },
+    {
+      "degree": 67,
+      "side": 64,
+      "api": "pairs",
+      "seed": 2026092401
+    },
+    {
+      "degree": 67,
+      "side": 64,
+      "api": "cartesian",
+      "seed": 2026092401
+    },
+    {
+      "degree": 131,
+      "side": 8,
+      "api": "pairs",
+      "seed": 2026092401
+    },
+    {
+      "degree": 131,
+      "side": 8,
+      "api": "cartesian",
+      "seed": 2026092401
+    },
+    {
+      "degree": 131,
+      "side": 32,
+      "api": "pairs",
+      "seed": 2026092401
+    },
+    {
+      "degree": 131,
+      "side": 32,
+      "api": "cartesian",
+      "seed": 2026092401
+    },
+    {
+      "degree": 131,
+      "side": 64,
+      "api": "pairs",
+      "seed": 2026092401
+    },
+    {
+      "degree": 131,
+      "side": 64,
+      "api": "cartesian",
+      "seed": 2026092401
+    }
+  ],
+  "new_confirmation_cases": [
+    {
+      "degree": 31,
+      "side": 16,
+      "api": "pairs",
+      "seed": 2026092402
+    },
+    {
+      "degree": 31,
+      "side": 16,
+      "api": "cartesian",
+      "seed": 2026092402
+    },
+    {
+      "degree": 31,
+      "side": 48,
+      "api": "pairs",
+      "seed": 2026092402
+    },
+    {
+      "degree": 31,
+      "side": 48,
+      "api": "cartesian",
+      "seed": 2026092402
+    },
+    {
+      "degree": 131,
+      "side": 16,
+      "api": "pairs",
+      "seed": 2026092402
+    },
+    {
+      "degree": 131,
+      "side": 16,
+      "api": "cartesian",
+      "seed": 2026092402
+    },
+    {
+      "degree": 131,
+      "side": 48,
+      "api": "pairs",
+      "seed": 2026092402
+    },
+    {
+      "degree": 131,
+      "side": 48,
+      "api": "cartesian",
+      "seed": 2026092402
+    }
+  ],
+  "construction_reset_cleanup_and_verification_accounting": "Primary warm API time includes pair creation where applicable, validation, native allocation, full point construction, exact equality to precomputed scalar Sage reference, and output destruction. Common field/fixture/scalar-reference setup recorded separately. Startup/import and compile excluded. CPU measured alongside wall time. Separate fresh-worker maximum-size RSS comparison includes identical setup. Profile separately after timings.",
+  "criteria_version": "sage-native-addition-v1: local component criteria adapted from GNFS v1, because this is a mathematical arithmetic API rather than LAS; RSS measured in separate fresh workers, timing processes fresh per cell with balanced paired rounds.",
+  "criteria": {
+    "primary_geomean_speedup_min": 1.02,
+    "confirmation_geomean_speedup_min": 1.01,
+    "paired_bootstrap_95_lower_min": 1.0,
+    "per_cell_speedup_min": 0.9803921568627451,
+    "cpu_candidate_over_incumbent_max": 1.05,
+    "rss_candidate_max": "max(1.05*incumbent, incumbent+2 MiB)",
+    "bootstrap_samples": 10000
+  },
+  "rounds_and_order": "12 paired rounds per cell, 6 AB and 6 BA shuffled deterministically; one fresh process per cell; 4 complete calls per sample. Confirmation sources frozen before execution.",
+  "CPU_RAM_disk_and_timeout_budgets": {
+    "local_cpu_workers": 1,
+    "build_jobs": 6,
+    "wall_seconds_per_worker": 180,
+    "benchmark_total_seconds": 1200,
+    "memory_bytes": 2147483648,
+    "disk_bytes": 1073741824,
+    "cloud_spend_usd": 0
+  },
+  "rejection_conditions": [
+    "incorrect output",
+    "missing work",
+    "crash/timeout",
+    "undeclared effort reduction",
+    "provenance mismatch"
+  ],
+  "result_and_decision": null
+}

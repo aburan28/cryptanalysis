@@ -1,0 +1,55 @@
+--- a/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
++++ b/src/sage/schemes/elliptic_curves/binary_batch_ntl.pyx
+@@ -14,6 +14,9 @@
+ from cysignals.signals cimport sig_check
+ from sage.libs.ntl.types cimport GF2E_c
+ from sage.rings.finite_rings.element_ntl_gf2e cimport FiniteField_ntl_gf2eElement
++from sage.structure.element cimport Element
++from sage.structure.parent cimport Parent
++from sage.schemes.elliptic_curves.ell_point import EllipticCurvePoint_finite_field
+ 
+ cdef extern from "NTL/GF2E.h" namespace "NTL":
+     void add(GF2E_c&, const GF2E_c&, const GF2E_c&) except +
+@@ -55,6 +58,9 @@
+     cdef binary_batch_entry entry
+     cdef GF2E_c inverse, reciprocal, slope, result_x, result_y, temporary
+     cdef Py_ssize_t i, n
++    cdef Element point
++    cdef Parent point_parent
++    cdef bint standard_points
+     output = [None] * len(pairs)
+     zero_point = None
+     one = field.one()
+@@ -122,12 +128,30 @@
+         active[i].x = result_x
+         active[i].y = result_y
+ 
+-    # Finish native arithmetic before invoking Python point constructors.
++    # Finish native arithmetic before allocating Python output points.
++    # The standard field-point constructor initializes Element._parent,
++    # SchemeMorphism._codomain, and projective _coords/_normalized. The
++    # generated coordinates already belong to this field and have z=1.
++    # Initialize exactly that state, as Element.__copy__ does for its parent,
++    # without repeating homset/value-ring lookup or normalization per point.
++    # Custom point classes must retain their own allocation/initialization.
++    standard_points = constructor is EllipticCurvePoint_finite_field
++    if standard_points:
++        point_parent = curve.point_homset()
++        allocate = constructor.__new__
+     for i in range(n):
+         sig_check()
+         x3 = model._new()
+         y3 = model._new()
+         x3.x = active[i].x
+         y3.x = active[i].y
+-        output[active[i].index] = constructor(curve, [x3, y3, one], check=False)
++        if standard_points:
++            point = allocate(constructor)
++            point._parent = point_parent
++            point._codomain = curve
++            point._normalized = True
++            point._coords = (x3, y3, one)
++            output[active[i].index] = point
++        else:
++            output[active[i].index] = constructor(curve, [x3, y3, one], check=False)
+     return output

@@ -6,7 +6,7 @@ use std::ptr::NonNull;
 use cryptanalysis_sys as sys;
 
 use crate::error::{check, last_error_message, Error, Result};
-use crate::options::{Options, Stats};
+use crate::options::{Options, PrecompOptions, Stats};
 
 /// The kind of group a [`Group`] represents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -497,6 +497,82 @@ impl Group {
             )
         })?;
         Ok((x, Stats::from_raw(&st)))
+    }
+
+    /// Discrete logarithm with precomputation (Bernstein-Lange free
+    /// precomputation): a one-time table for `base` (built with
+    /// `opts.threads` workers), then this `target` solved online.
+    ///
+    /// One-shot — it builds the table, solves once and frees it — so the
+    /// returned [`Stats`] cover the whole `n^{2/3}` build plus the `n^{1/3}`
+    /// online phase; the reusable-table API is C-only.  `base` must generate
+    /// the group of order [`Group::order`].
+    pub fn precomp(
+        &self,
+        base: &Elem,
+        target: &Elem,
+        opts: &PrecompOptions,
+    ) -> Result<(u64, Stats)> {
+        let mut x = 0u64;
+        let mut st = sys::CaStats::default();
+        // SAFETY: all pointers are valid for the duration of the call.
+        check(unsafe {
+            sys::ca_ffi_precomp(
+                self.raw(),
+                base.as_ptr(),
+                target.as_ptr(),
+                opts.dp_bits,
+                opts.table_size,
+                opts.coverage,
+                opts.threads,
+                opts.seed,
+                &mut x,
+                &mut st,
+            )
+        })?;
+        Ok((x, Stats::from_raw(&st)))
+    }
+
+    /// Solve `base^x == target` folding the Pollard rho walk by the curve's
+    /// GLV endomorphism when it has one, else the negation-map rho.
+    ///
+    /// Returns `x`, the [`CurveInfo`](crate::curve::CurveInfo) reporting which
+    /// path ran (its `beta` is left 0 -- use [`curve::detect`](crate::curve::detect)
+    /// for the field constant), and the work statistics.  Elliptic-curve
+    /// groups only (`CA_ERR_UNSUPPORTED` for `Z_p^*`).
+    pub fn curve_solve(
+        &self,
+        base: &Elem,
+        target: &Elem,
+        seed: u64,
+    ) -> Result<(u64, crate::curve::CurveInfo, Stats)> {
+        let mut x = 0u64;
+        let mut st = sys::CaStats::default();
+        let mut endo = 0i32;
+        let mut aut_order = 0u32;
+        let mut lambda = 0u64;
+        // SAFETY: all pointers are valid for the duration of the call.
+        check(unsafe {
+            sys::ca_ffi_curve_solve(
+                self.raw(),
+                base.as_ptr(),
+                target.as_ptr(),
+                seed,
+                &mut x,
+                &mut endo,
+                &mut aut_order,
+                &mut lambda,
+                &mut st,
+            )
+        })?;
+        let info = crate::curve::CurveInfo {
+            endo: crate::curve::Endo::from_raw(endo),
+            aut_order,
+            beta: 0,
+            lambda,
+            rho_speedup: f64::from(aut_order).sqrt(),
+        };
+        Ok((x, info, Stats::from_raw(&st)))
     }
 
     // ---- Cheon -------------------------------------------------------------

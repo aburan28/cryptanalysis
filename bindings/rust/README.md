@@ -5,7 +5,7 @@ Two crates in a Cargo workspace:
 | crate | what it is |
 |---|---|
 | `cryptanalysis-sys` | raw `extern "C"` declarations for the flat ABI in `include/cryptanalysis/ca_ffi.h` (+ `ca_types.h`, `ca_indexcalc.h`); `build.rs` compiles the C sources with the [`cc`](https://crates.io/crates/cc) crate |
-| `cryptanalysis`     | safe, idiomatic wrapper: `Group`, `Elem`, `Options`, `Stats`, `Error`, the solvers, Cheon's attack, `index_calculus`, number-theory helpers |
+| `cryptanalysis`     | safe, idiomatic wrapper: `Group`, `Elem`, `Options`, `Stats`, `Error`, the solvers, Cheon's attack, the `curve` GLV dispatch, `index_calculus`, number-theory helpers |
 
 ## Build requirements
 

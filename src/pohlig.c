@@ -95,7 +95,15 @@ ca_status ca_pohlig_hellman(const ca_group *g, const ca_elem *base, const ca_ele
         return CA_ERR_INVALID;
     }
     double t0 = ca_now();
-    uint64_t n = g->order;
+    /* Decompose by ord(base), not by the group order: when base generates a
+     * proper subgroup (a non-cyclic curve group, or a base of smaller order)
+     * some q^(e-1) * base_e is the identity and the digit solve below has no
+     * answer.  The logarithm is only defined modulo ord(base) anyway. */
+    uint64_t n = ca_group_elem_order(g, base);
+    if (n == 0) n = g->order;
+    /* ord(target) must divide ord(base); otherwise a rho digit solve in some
+     * large prime subgroup would walk forever. */
+    if (!ca_check_members(g, base, target, n, "Pohlig-Hellman")) return CA_ERR_NOT_FOUND;
     ca_factorization f;
     ca_factorize(n, &f);
     uint64_t result = 0, modulus = 1;
@@ -134,7 +142,7 @@ ca_status ca_pohlig_hellman(const ca_group *g, const ca_elem *base, const ca_ele
         return CA_ERR_NOT_FOUND;
     }
     *x = result;
-    (void)t0;
+    if (st) st->seconds = ca_now() - t0;
     return CA_OK;
 }
 

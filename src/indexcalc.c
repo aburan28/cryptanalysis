@@ -359,9 +359,7 @@ static ca_status build_matrix(const rel_list *rels, uint32_t ncols, uint64_t pm1
 {
     ca_status rc = ca_spmat_init(A, ncols, rels->n, rels->n * 16);
     if (rc != CA_OK) return rc;
-    /* calloc: A->rows tracks the rows actually added below, so every entry the
-     * solver reads has been written -- but a zero rhs is the harmless value if
-     * a future caller ever hands us a matrix with more rows than relations. */
+    /* calloc: zero is the harmless rhs for any entry that is never written. */
     uint64_t *b = calloc(rels->n ? rels->n : 1, sizeof(uint64_t));
     if (!b) { ca_spmat_free(A); return CA_ERR_NOMEM; }
     for (uint32_t i = 0; i < rels->n; i++) {
@@ -369,6 +367,15 @@ static ca_status build_matrix(const rel_list *rels, uint32_t ncols, uint64_t pm1
         rc = ca_spmat_add_row(A, r->col, r->val, r->n);
         if (rc != CA_OK) { free(b); ca_spmat_free(A); return rc; }
         b[i] = r->rhs % pm1;
+    }
+    /* The solvers read b[0..A->rows) and x/known[0..A->cols), and those
+     * buffers are sized from rels->n and ncols here: check that the matrix
+     * agrees rather than trust bookkeeping done on the other side of the
+     * sparse-matrix module boundary. */
+    if (A->rows != rels->n || A->cols != ncols) {
+        free(b);
+        ca_spmat_free(A);
+        return CA_ERR_INTERNAL;
     }
     *b_out = b;
     return CA_OK;
@@ -379,6 +386,9 @@ static ca_status large_part_logs(const ca_spmat *A, const uint64_t *b, uint64_t 
                                  uint64_t *x, uint8_t *known, uint64_t seed,
                                  ca_linsolve_report *rep)
 {
+    /* b has rows entries and x/known have cols: fix the dimensions here, once,
+     * rather than re-reading them through A across the solver calls. */
+    const uint32_t rows = A->rows, cols = A->cols;
     ca_status rc = ca_linsolve_mod_prime(A, b, q, x, known, seed, rep);
     if (rc != CA_OK) return rc;
     uint64_t qk = q;
@@ -386,18 +396,18 @@ static ca_status large_part_logs(const ca_spmat *A, const uint64_t *b, uint64_t 
         /* residual r_i = (b_i - A_i x) / q^k  (exact integer division) */
         /* calloc, not malloc: nothing may read an entry the solver leaves
          * untouched, and zero is the harmless value if one ever did. */
-        uint64_t *r = calloc(A->rows, sizeof(uint64_t));
-        uint64_t *x1 = calloc(A->cols, sizeof(uint64_t));
-        uint8_t *kn1 = calloc(A->cols, 1);
+        uint64_t *r = calloc(rows, sizeof(uint64_t));
+        uint64_t *x1 = calloc(cols, sizeof(uint64_t));
+        uint8_t *kn1 = calloc(cols, 1);
         if (!r || !x1 || !kn1) { free(r); free(x1); free(kn1); return CA_ERR_NOMEM; }
         uint64_t qk1 = qk * q;
-        for (uint32_t i = 0; i < A->rows; i++) {
+        for (uint32_t i = 0; i < rows; i++) {
             ca_i128 acc = (ca_i128)(b[i] % qk1);
             for (uint32_t kk = A->row_ptr[i]; kk < A->row_ptr[i + 1]; kk++) {
                 uint32_t j = A->col[kk];
-                /* j < A->cols by construction; the bound is checked anyway so
+                /* j < cols by construction; the bound is checked anyway so
                  * that a malformed matrix cannot index out of the solution. */
-                if (j >= A->cols || !known[j]) {
+                if (j >= cols || !known[j]) {
                     acc = 0;
                     break;
                 }
@@ -412,7 +422,7 @@ static ca_status large_part_logs(const ca_spmat *A, const uint64_t *b, uint64_t 
         }
         rc = ca_linsolve_mod_prime(A, r, q, x1, kn1, seed + k, NULL);
         if (rc != CA_OK) { free(r); free(x1); free(kn1); return rc; }
-        for (uint32_t j = 0; j < A->cols; j++) {
+        for (uint32_t j = 0; j < cols; j++) {
             if (known[j] && kn1[j]) x[j] = (x[j] + qk * x1[j]) % qk1;
             else known[j] = 0;
         }

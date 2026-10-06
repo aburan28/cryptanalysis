@@ -1,0 +1,107 @@
+[package]
+name = "cryptanalysis-suite"
+version = "0.1.0"
+edition = "2021"
+# Verified floor, re-checked by the `suite` workflow's MSRV job: the tree
+# uses `u64::is_multiple_of` (1.87); clap 4.6 needs 1.85.
+rust-version = "1.87"
+license = "MIT"
+repository = "https://github.com/aburan28/cryptanalysis"
+description = "Attack library and command-line tools: symmetric, hash, ECDLP, lattice and post-quantum cryptanalysis"
+readme = "README.md"
+default-run = "ca-suite"
+publish = false
+
+[lib]
+name = "cryptanalysis_suite"
+path = "src/lib.rs"
+
+# The unified command line: one subcommand per attack.
+[[bin]]
+name = "crax"
+path = "src/bin/crax.rs"
+
+# The attack CLI: auto-attack, boomerang / rectangle / S-box analysis, hash
+# attacks, ML-KEM / ML-DSA cryptanalysis, and the collaborative Pollard rho.
+[[bin]]
+name = "ca-suite"
+path = "src/main.rs"
+
+# Curve inspection and bounded known-answer index-calculus experiments.
+[[bin]]
+name = "ca-ic"
+path = "src/bin/ic.rs"
+
+# Index calculus across every standardized curve: the curve catalog, the
+# engine that picks an attack per curve, and the configurable framework.
+[[bin]]
+name = "ca-icx"
+path = "src/bin/icx.rs"
+
+# Sealed-oracle / blind-bundle Phase-A point-decomposition artifact sets.
+[[bin]]
+name = "ca-koblitz-pdp-prepare"
+path = "src/bin/koblitz_pdp_prepare.rs"
+
+# Challenge-corpus index: list curves, show a record, emit a rho job.
+[[bin]]
+name = "ca-curves"
+path = "src/bin/curves.rs"
+
+[features]
+default = []
+# Back the algebra cache with a Redis server instead of the local directory.
+redis-cache = ["dep:redis"]
+# Compile the GPU F4 kernel's source (cuda/f4_gf2_device.cuh) as C and link
+# it, so the tests run the device algorithm on the host.  Needs a C compiler
+# at build time and no new crate.  The CUDA backend needs no feature at all:
+# libcuda and NVRTC are opened at run time.
+gpu-emulator = []
+# Verbose tracing in the isogeny rho attack's linear-algebra step.
+rho_debug = []
+
+[dependencies]
+redis = { version = "0.32", optional = true, default-features = false, features = ["tls-rustls"] }
+# Portable CPU-time and peak-RSS measurements for the ic reports.
+libc = "0.2"
+num-bigint = { version = "0.4", features = ["rand"] }
+num-traits = "0.2"
+num-integer = "0.1"
+# Also the source of OS randomness (`rand::rngs::OsRng`).
+rand = { version = "0.8", features = ["small_rng"] }
+# Constant-time equality for MAC/tag verification.
+subtle = "2.5"
+hex = "0.4"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Data-parallel sweeps in the F4 engine and the isogeny harnesses.
+rayon = "1.10"
+# BLAKE3 is a dependency rather than a reimplementation: its Merkle-tree
+# construction is not what any attack here studies.
+blake3 = "1.5"
+# The C library (64-bit groups, Montgomery arithmetic) behind `crax`'s generic
+# discrete-log solvers, compiled from ../src by its own build script.
+libca = { package = "cryptanalysis", path = "../bindings/rust/cryptanalysis" }
+
+[lints.rust]
+# md5_hashclash_ffi links the external HashClash library only when a build
+# script sets this cfg; the default build compiles the fallback path.
+# `suite_avx512` is set by build.rs on toolchains (1.89+) where AVX-512
+# target features are stable.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(hashclash_linked)", "cfg(suite_avx512)"] }
+
+[lints.clippy]
+# The tree is clean under `clippy --all-targets -- -D warnings` with exactly
+# these three lints allowed, each for a stated reason; do not widen the list.
+#
+# Field and linear-algebra code indexes several arrays with one loop variable
+# (a[i] * b[i] -> c[i]); iterator rewrites of a few hundred such loops buy
+# nothing and are where transcription errors creep in.
+needless_range_loop = "allow"
+# Attack entry points take the whole problem instance as parameters, and the
+# option structs that would replace them exist where a caller needs them.
+too_many_arguments = "allow"
+# Relation tables and oracle return values are nested tuples by construction;
+# a type alias for each would name a shape that appears exactly once.
+type_complexity = "allow"

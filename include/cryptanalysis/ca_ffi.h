@@ -102,6 +102,36 @@ CA_API int ca_ffi_rho(const ca_ctx *ctx, const uint64_t base[4], const uint64_t 
 CA_API int ca_ffi_dlog(const ca_ctx *ctx, const uint64_t base[4], const uint64_t target[4],
                        const ca_ffi_options *o, uint64_t *x, ca_stats *st);
 
+/* Discrete logs with precomputation (Bernstein-Lange free precomputation).
+ * One-shot: build a table for `base`, solve `target`, free it; the combined
+ * precomputation + online cost goes into *st.  dp_bits < 0, table_size == 0,
+ * coverage == 0 and threads == 0 select the library defaults; seed 0 =>
+ * random.  The reusable-table API (ca_precomp_table_*) is C-only. */
+CA_API int ca_ffi_precomp(const ca_ctx *ctx, const uint64_t base[4], const uint64_t target[4],
+                          int32_t dp_bits, uint64_t table_size, double coverage, uint32_t threads,
+                          uint64_t seed, uint64_t *x, ca_stats *st);
+
+/* ---- curve-aware dispatch (GLV endomorphism) ---------------------------- */
+/* Detect the endomorphism structure of y^2 = x^3 + a x + b over F_p for the
+ * order-`order` subgroup (order 0 => geometric structure only).  Any out
+ * pointer may be NULL.  endo: 0 none, 1 j-invariant 0, 2 j-invariant 1728;
+ * aut_order is the automorphism-group size (2/4/6); lambda is the eigenvalue
+ * mod order (0 if unresolved). */
+CA_API int ca_ffi_curve_detect(uint64_t p, uint64_t a, uint64_t b, uint64_t order, int32_t *endo,
+                               uint32_t *aut_order, uint64_t *beta, uint64_t *lambda,
+                               double *rho_speedup);
+/* Named registry.  Fills the non-NULL outputs; CA_ERR_NOT_FOUND if unknown. */
+CA_API int ca_ffi_curve_by_name(const char *name, uint64_t *p, uint64_t *a, uint64_t *b,
+                                uint64_t *order);
+/* The index-th registry name, or NULL past the end (for enumeration). */
+CA_API const char *ca_ffi_curve_name(size_t index);
+/* Solve base^x == target on the EC context, folding the rho walk by the
+ * curve's endomorphism when it has one (else negation-map rho).  The endo
+ * outputs (any may be NULL) report which path ran. */
+CA_API int ca_ffi_curve_solve(const ca_ctx *ctx, const uint64_t base[4], const uint64_t target[4],
+                              uint64_t seed, uint64_t *x, int32_t *endo, uint32_t *aut_order,
+                              uint64_t *lambda, ca_stats *st);
+
 /* ---- Cheon ---------------------------------------------------------------- */
 CA_API int ca_ffi_cheon(const ca_ctx *ctx, const uint64_t gen[4], const uint64_t g_alpha[4],
                         const uint64_t g_alpha_d[4], uint64_t d, uint64_t max_exps,

@@ -110,6 +110,8 @@ int main(void)
     CHECK_EQ_U64(ca_crt2(2, 3, 3, 5), 8);
     CHECK_EQ_U64(ca_crt2(1, 1000003, 5, 999983) % 1000003, 1);
     CHECK_EQ_U64(ca_crt2(1, 1000003, 5, 999983) % 999983, 5);
+    /* an unreduced r1 is reduced first (used to give 5, outside [0, 15)) */
+    CHECK_EQ_U64(ca_crt2(UINT64_MAX, 3, 1, 5), 6);
     /* sieve */
     uint32_t pr[200];
     CHECK_EQ_U64(ca_sieve_primes(100, pr, 200), 25);

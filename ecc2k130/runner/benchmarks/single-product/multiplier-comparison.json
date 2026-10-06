@@ -1,0 +1,187 @@
+{
+  "sourceCommit": "29bf9d8771daabb6d477e6ea12403f068a4dd50b",
+  "gpu": {
+    "command": [
+      "nvidia-smi",
+      "--query-gpu=name,uuid,driver_version",
+      "--format=csv"
+    ],
+    "returncode": 0,
+    "output": "name, uuid, driver_version\nNVIDIA RTX PRO 6000 Blackwell Server Edition, GPU-82e79f45-c331-4296-29fc-70915f135864, 580.95.05\n",
+    "seconds": 0.024813175201416016
+  },
+  "integration": {
+    "command": [
+      "python3",
+      "codegen/testpackedclient.py",
+      "/root/single"
+    ],
+    "returncode": 0,
+    "output": "PASS: DP replay across launch boundaries, restart and checkpoint resume\nPASS: byte-identical resume, scalar iteration count, incompatible checkpoint preserved\nPASS: overdue walks restart without false distinguished-point reports\n",
+    "seconds": 143.08178281784058
+  },
+  "remoteArtifact": "/data/sixty-billion/1788927131772358983.json",
+  "crossImplementationResume": {
+    "calls": [
+      {
+        "command": [
+          "/root/control",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--threads",
+          "8",
+          "--steps",
+          "16",
+          "--verify",
+          "0",
+          "--launches",
+          "2",
+          "--checkpoint",
+          "/tmp/tmpvl3__wha/split.ck"
+        ],
+        "returncode": 0,
+        "output": "packed kernel: 203 registers/thread, 304 local bytes/thread, 0 shared bytes/block\nbackend cuda-packed131: 8 threads x 32 slots x 1 lanes = 256 walks, dp weight 0, 16 steps per launch\nno checkpoint at /tmp/tmpvl3__wha/split.ck, starting fresh\n       0.0 s       0.854 M it/s        8192 iterations         0 dp         0 stored         0 dropped\n  finished: 0.812 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "seconds": 0.47178101539611816
+      },
+      {
+        "command": [
+          "/root/single",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--threads",
+          "8",
+          "--steps",
+          "16",
+          "--verify",
+          "0",
+          "--launches",
+          "2",
+          "--checkpoint",
+          "/tmp/tmpvl3__wha/split.ck"
+        ],
+        "returncode": 0,
+        "output": "packed kernel: 180 registers/thread, 304 local bytes/thread, 0 shared bytes/block\nbackend cuda-packed131: 8 threads x 32 slots x 1 lanes = 256 walks, dp weight 0, 16 steps per launch\nresumed from /tmp/tmpvl3__wha/split.ck at iteration 32\n       0.0 s       0.996 M it/s        8192 iterations         0 dp         0 stored         0 dropped\n  finished: 0.917 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "seconds": 0.544140100479126
+      },
+      {
+        "command": [
+          "/root/control",
+          "--packed",
+          "--curve",
+          "131",
+          "--bench",
+          "--threads",
+          "8",
+          "--steps",
+          "16",
+          "--verify",
+          "0",
+          "--launches",
+          "4",
+          "--checkpoint",
+          "/tmp/tmpvl3__wha/whole.ck"
+        ],
+        "returncode": 0,
+        "output": "packed kernel: 203 registers/thread, 304 local bytes/thread, 0 shared bytes/block\nbackend cuda-packed131: 8 threads x 32 slots x 1 lanes = 256 walks, dp weight 0, 16 steps per launch\nno checkpoint at /tmp/tmpvl3__wha/whole.ck, starting fresh\n       0.0 s       0.857 M it/s       16384 iterations         0 dp         0 stored         0 dropped\n  finished: 0.829 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+        "seconds": 0.5609264373779297
+      }
+    ],
+    "identical": true
+  },
+  "benchmarks": [
+    {
+      "command": [
+        "/root/control",
+        "--packed",
+        "--curve",
+        "131",
+        "--bench",
+        "--steps",
+        "1024",
+        "--launches",
+        "32",
+        "--verify",
+        "0"
+      ],
+      "returncode": 0,
+      "output": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 2 block(s) of 128 packed threads resident per SM\npacked kernel: 203 registers/thread, 304 local bytes/thread, 0 shared bytes/block\nbackend cuda-packed131: 48128 threads x 32 slots x 1 lanes = 1540096 walks, dp weight 0, 1024 steps per launch\n       2.1 s    2952.307 M it/s  6308233216 iterations         0 dp         0 stored         0 dropped\n       4.3 s    2952.159 M it/s  12616466432 iterations         0 dp         0 stored         0 dropped\n       6.4 s    2952.075 M it/s  18924699648 iterations         0 dp         0 stored         0 dropped\n       8.5 s    2953.251 M it/s  25232932864 iterations         0 dp         0 stored         0 dropped\n      10.7 s    2954.332 M it/s  31541166080 iterations         0 dp         0 stored         0 dropped\n      12.8 s    2955.063 M it/s  37849399296 iterations         0 dp         0 stored         0 dropped\n      14.9 s    2955.570 M it/s  44157632512 iterations         0 dp         0 stored         0 dropped\n      17.1 s    2955.963 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n  finished: 2955.948 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+      "seconds": 17.77784776687622
+    },
+    {
+      "command": [
+        "/root/single",
+        "--packed",
+        "--curve",
+        "131",
+        "--bench",
+        "--steps",
+        "1024",
+        "--launches",
+        "32",
+        "--verify",
+        "0"
+      ],
+      "returncode": 0,
+      "output": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 2 block(s) of 128 packed threads resident per SM\npacked kernel: 180 registers/thread, 304 local bytes/thread, 0 shared bytes/block\nbackend cuda-packed131: 48128 threads x 32 slots x 1 lanes = 1540096 walks, dp weight 0, 1024 steps per launch\n       2.3 s    3367.788 M it/s  7885291520 iterations         0 dp         0 stored         0 dropped\n       4.7 s    3367.750 M it/s  15770583040 iterations         0 dp         0 stored         0 dropped\n       7.0 s    3367.735 M it/s  23655874560 iterations         0 dp         0 stored         0 dropped\n       9.4 s    3367.717 M it/s  31541166080 iterations         0 dp         0 stored         0 dropped\n      11.7 s    3367.719 M it/s  39426457600 iterations         0 dp         0 stored         0 dropped\n      14.0 s    3367.714 M it/s  47311749120 iterations         0 dp         0 stored         0 dropped\n      15.0 s    3367.690 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n  finished: 3367.673 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+      "seconds": 15.679008483886719
+    },
+    {
+      "command": [
+        "/root/control",
+        "--packed",
+        "--curve",
+        "131",
+        "--bench",
+        "--steps",
+        "1024",
+        "--launches",
+        "32",
+        "--verify",
+        "0"
+      ],
+      "returncode": 0,
+      "output": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 2 block(s) of 128 packed threads resident per SM\npacked kernel: 203 registers/thread, 304 local bytes/thread, 0 shared bytes/block\nbackend cuda-packed131: 48128 threads x 32 slots x 1 lanes = 1540096 walks, dp weight 0, 1024 steps per launch\n       2.1 s    2958.233 M it/s  6308233216 iterations         0 dp         0 stored         0 dropped\n       4.3 s    2958.145 M it/s  12616466432 iterations         0 dp         0 stored         0 dropped\n       6.4 s    2958.101 M it/s  18924699648 iterations         0 dp         0 stored         0 dropped\n       8.5 s    2958.047 M it/s  25232932864 iterations         0 dp         0 stored         0 dropped\n      10.7 s    2958.032 M it/s  31541166080 iterations         0 dp         0 stored         0 dropped\n      12.8 s    2958.041 M it/s  37849399296 iterations         0 dp         0 stored         0 dropped\n      14.9 s    2958.046 M it/s  44157632512 iterations         0 dp         0 stored         0 dropped\n      17.1 s    2958.027 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n  finished: 2958.013 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+      "seconds": 17.820828676223755
+    },
+    {
+      "command": [
+        "/root/single",
+        "--packed",
+        "--curve",
+        "131",
+        "--bench",
+        "--steps",
+        "1024",
+        "--launches",
+        "32",
+        "--verify",
+        "0"
+      ],
+      "returncode": 0,
+      "output": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 2 block(s) of 128 packed threads resident per SM\npacked kernel: 180 registers/thread, 304 local bytes/thread, 0 shared bytes/block\nbackend cuda-packed131: 48128 threads x 32 slots x 1 lanes = 1540096 walks, dp weight 0, 1024 steps per launch\n       2.3 s    3366.674 M it/s  7885291520 iterations         0 dp         0 stored         0 dropped\n       4.7 s    3366.679 M it/s  15770583040 iterations         0 dp         0 stored         0 dropped\n       7.0 s    3366.629 M it/s  23655874560 iterations         0 dp         0 stored         0 dropped\n       9.4 s    3366.640 M it/s  31541166080 iterations         0 dp         0 stored         0 dropped\n      11.7 s    3366.627 M it/s  39426457600 iterations         0 dp         0 stored         0 dropped\n      14.1 s    3366.597 M it/s  47311749120 iterations         0 dp         0 stored         0 dropped\n      15.0 s    3366.588 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n  finished: 3366.572 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+      "seconds": 15.668762683868408
+    },
+    {
+      "command": [
+        "/root/single",
+        "--packed",
+        "--curve",
+        "131",
+        "--bench",
+        "--steps",
+        "1024",
+        "--launches",
+        "32",
+        "--verify",
+        "0"
+      ],
+      "returncode": 0,
+      "output": "device: NVIDIA RTX PRO 6000 Blackwell Server Edition, 188 SMs, 2 block(s) of 128 packed threads resident per SM\npacked kernel: 180 registers/thread, 304 local bytes/thread, 0 shared bytes/block\nbackend cuda-packed131: 48128 threads x 32 slots x 1 lanes = 1540096 walks, dp weight 0, 1024 steps per launch\n       2.3 s    3365.532 M it/s  7885291520 iterations         0 dp         0 stored         0 dropped\n       4.7 s    3365.372 M it/s  15770583040 iterations         0 dp         0 stored         0 dropped\n       7.0 s    3365.245 M it/s  23655874560 iterations         0 dp         0 stored         0 dropped\n       9.4 s    3365.193 M it/s  31541166080 iterations         0 dp         0 stored         0 dropped\n      11.7 s    3365.121 M it/s  39426457600 iterations         0 dp         0 stored         0 dropped\n      14.1 s    3365.075 M it/s  47311749120 iterations         0 dp         0 stored         0 dropped\n      15.0 s    3365.055 M it/s  50465865728 iterations         0 dp         0 stored         0 dropped\n  finished: 3365.041 M it/s, 0 distinguished points (0 verified against the reference, 0 dropped)\n",
+      "seconds": 15.649336576461792
+    }
+  ]
+}

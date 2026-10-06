@@ -42,6 +42,10 @@ int main(void)
     x = 0;
     CHECK(ca_ffi_dlog(z, g, h, &o, &x, NULL) == CA_OK);
     CHECK_EQ_U64(x, 123456789);
+    /* precomputation solver through the FFI (one-shot, threaded build) */
+    x = 0;
+    CHECK(ca_ffi_precomp(z, g, h, -1, 0, 0.0, 4, 7, &x, &st) == CA_OK);
+    CHECK_EQ_U64(x, 123456789);
     /* element ops */
     CHECK(ca_ctx_op(z, t, g, g) == CA_OK);
     uint64_t g2[4];
@@ -81,12 +85,40 @@ int main(void)
     x = 0;
     CHECK(ca_ffi_dlog(e, P, Q, NULL, &x, NULL) == CA_OK);
     CHECK_EQ_U64(x, 4242 % ord);
+    x = 0;
+    CHECK(ca_ffi_precomp(e, P, Q, -1, 0, 0.0, 1, 7, &x, NULL) == CA_OK);
+    CHECK_EQ_U64(x, 4242 % ord);
     uint64_t inf[4];
     CHECK(ca_ctx_identity(e, inf) == CA_OK);
     CHECK(inf[2] == 1);
     CHECK(ca_ctx_lift_x(e, Q, P[0]) == CA_OK);
     CHECK(Q[0] == P[0] && (Q[1] == P[1] || Q[1] == 1000003 - P[1]));
     ca_ctx_free(e);
+
+    /* curve-aware dispatch (GLV) through the FFI */
+    int32_t endo = 0;
+    uint32_t am = 0;
+    uint64_t beta = 0, lam = 0;
+    double sp = 0;
+    CHECK(ca_ffi_curve_detect(67108933, 0, 7, 16773703, &endo, &am, &beta, &lam, &sp) == CA_OK);
+    CHECK(endo == 1 && am == 6 && lam > 1 && beta != 0);
+    uint64_t cp = 0, cca = 0, ccb = 0, cco = 0;
+    CHECK(ca_ffi_curve_by_name("glv-j0-26", &cp, &cca, &ccb, &cco) == CA_OK);
+    CHECK(cp == 67108933 && cco == 16773703);
+    CHECK(ca_ffi_curve_by_name("nope", &cp, &cca, &ccb, &cco) == CA_ERR_NOT_FOUND);
+    CHECK(ca_ffi_curve_name(0) != NULL);
+    ca_ctx *cc = ca_ctx_new_ec(67108933, 0, 7, 16773703);
+    CHECK(cc != NULL);
+    uint64_t Pc[4], Qc[4], gx = 0;
+    CHECK(ca_ctx_find_generator(cc, Pc, 1) == CA_OK);
+    CHECK(ca_ctx_mul(cc, Qc, Pc, 424242) == CA_OK);
+    int32_t e2 = 0;
+    uint32_t a2 = 0;
+    uint64_t l2 = 0;
+    CHECK(ca_ffi_curve_solve(cc, Pc, Qc, 5, &gx, &e2, &a2, &l2, NULL) == CA_OK);
+    CHECK_EQ_U64(gx, 424242);
+    CHECK(e2 == 1 && a2 == 6 && l2 > 1);
+    ca_ctx_free(cc);
 
     /* GPU rho through the FFI (emulator backend: always available) */
     CHECK(ca_ffi_gpu_options_size() == sizeof(ca_ffi_gpu_options));

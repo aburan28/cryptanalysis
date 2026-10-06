@@ -1,0 +1,76 @@
+\appendix
+\section{Reproduction commands}
+\label{app:repro}
+
+Commands below are from the two repository roots. They reproduce the
+tables, not the GPU or F2 measurements: those need the named card or
+image. Every answer the library returns is checked against a planted
+secret inside the tool; a row that is not \texttt{ok} is not a result.
+
+\subsection{This library}
+
+\begin{verbatim}
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+ctest --test-dir build
+
+# Table 1, Table 2 (S and fitted exponents)
+./build/ca_bench generic --threads 4
+./build/ca_bench complexity --bits 20,24,28,32,36 --reps 5
+./build/ca_bench ops
+./build/ca_bench interval
+./build/ca_bench precomp --threads 1
+./build/ca_bench glv
+./build/ca_bench cheon
+./build/ca_bench gpu          # host emulator; no device required
+
+# Table 5, including the 60/62-bit extension
+./build/ca_bench ic --bits 32,40,48,56,60,62 --threads 4
+
+# Golden model and FPGA vectors (no vendor tools)
+make -C fpga test            # or: fpga/scripts/run_sim.sh
+make -C ecc2k130             # 1,904 checks, no CUDA
+\end{verbatim}
+
+\noindent Sources: \texttt{docs/BENCHMARKS.md},
+\texttt{docs/ALGORITHMS.md}, \texttt{fpga/README.md},
+\texttt{ecc2k130/README.md}.
+
+\subsection{Sibling study library}
+
+\begin{verbatim}
+# Rho / BSGS walk-check (CPU emulation of the kernels)
+make -C gpu/ecc test
+make -C gpu/ecc2k test
+
+# Boundary ledger (the three-regime elliptic table)
+cargo build --release --bin ic
+./target/release/ic boundary --oracles --out /tmp/ledger.json
+
+# Hyperelliptic positive control
+cargo run --release --example hyperelliptic_ic_vs_rho
+python3 scripts/hyperelliptic_exponent_fit.py
+
+# Residual-walk note: the commands are in
+# research/notes/index-calculus/RESEARCH_RESIDUAL_WALKS.md §11
+# Frozen scoreboard (read, do not recompute):
+# docs/index-calculus-scoreboard.html
+\end{verbatim}
+
+GPU throughput rows need an RTX~PRO~6000 (or the named Modal SKU) and
+CUDA ${}\ge 13.3$ for \texttt{clmad}. The F2 row needs the 128-engine
+image in \texttt{hdl/ecc2k130/aws/}. The campaign counters are frozen
+in \texttt{ecc2k130/benchmarks/dp-interval/raw/}.
+
+\subsection{This paper}
+
+\begin{verbatim}
+cd paper
+make            # ecdlp.pdf
+make check      # unresolved refs, overfull boxes, page count
+make arxiv      # arxiv-submission.tar.gz
+make eprint     # eprint-submission.zip
+\end{verbatim}
+
+Restore authors with \texttt{cp AUTHORS.example AUTHORS}, edit, and
+\texttt{make deanonymize}.

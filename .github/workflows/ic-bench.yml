@@ -1,0 +1,127 @@
+name: ic-bench
+
+# End-to-end index-calculus benchmark on toy Koblitz curves (experiments/ic-bench).
+# Every run must be a complete verified DLP; exact operation counters are
+# compared with the committed baseline, and growth beyond the tolerance fails.
+# Re-record the baseline with `bench.py run --suite ci --record` when a change is
+# intentional.
+on:
+  pull_request:
+    paths:
+      - "experiments/ic-bench/**"
+      - "experiments/fb-archive/**"
+      - "experiments/pdp-degree-heuristics/**"
+      - "experiments/pdp-scaling/sumpoly.py"
+      - "experiments/pdp-scaling/gf2n.py"
+      - "experiments/pdp-scaling/descend.py"
+      - "experiments/ic-candidate-catalog/**"
+      - ".github/workflows/ic-bench.yml"
+  push:
+    branches: ["**"]
+    paths:
+      - "experiments/ic-bench/**"
+      - "experiments/fb-archive/**"
+      - "experiments/pdp-degree-heuristics/**"
+      - "experiments/pdp-scaling/sumpoly.py"
+      - "experiments/pdp-scaling/gf2n.py"
+      - "experiments/pdp-scaling/descend.py"
+      - "experiments/ic-candidate-catalog/**"
+      - ".github/workflows/ic-bench.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ic-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  bench:
+    name: tests and CI benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install --quiet numpy pytest
+
+      - name: Unit tests
+        run: |
+          python -m pytest -q experiments/pdp-degree-heuristics
+          python -m pytest -q experiments/ic-bench
+          python -m pytest -q experiments/fb-archive
+
+      - name: Candidate catalog
+        working-directory: experiments/ic-candidate-catalog
+        run: |
+          python -m unittest -q
+          python generate.py --check
+
+      - name: Run the CI suite
+        working-directory: experiments/ic-bench
+        run: python bench.py run --suite ci --jobs "$(nproc)" --out-dir bench-out
+
+      - name: Validate receipts against the measurement contract
+        run: python experiments/ic-candidate-catalog/analyze.py experiments/ic-bench/bench-out/ci.jsonl > experiments/ic-bench/bench-out/analysis.json
+
+      - name: Compare with the baseline
+        working-directory: experiments/ic-bench
+        run: python compare.py baseline/ci.csv bench-out/ci.csv --tolerance 0.05 --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Paired factor-base report
+        if: always()
+        working-directory: experiments/ic-bench
+        run: |
+          if [ -f bench-out/ci.csv ]; then
+            { echo "## Paired factor-base table"; echo; python report.py bench-out/ci.csv; } | tee bench-out/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Verify the factor-base archive
+        working-directory: experiments/fb-archive
+        run: python fbarchive.py verify --rebuild --rebuild-max-points 300
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ic-bench-ci
+          path: experiments/ic-bench/bench-out/
+          if-no-files-found: warn
+
+  archive-upload:
+    name: upload factor-base archive to S3
+    # Only pushes to the default branch, and only when the bucket and credentials
+    # are configured as repository secrets; otherwise the step is skipped.
+    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    needs: bench
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      IC_ARCHIVE_S3_URI: ${{ secrets.IC_ARCHIVE_S3_URI }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Upload
+        if: env.IC_ARCHIVE_S3_URI != '' && env.AWS_ACCESS_KEY_ID != ''
+        working-directory: experiments/fb-archive
+        run: python fbarchive.py upload --require
+
+      - name: Report a skipped upload
+        if: env.IC_ARCHIVE_S3_URI == '' || env.AWS_ACCESS_KEY_ID == ''
+        run: echo "IC_ARCHIVE_S3_URI or AWS credentials are not configured; skipping the archive upload." >> "$GITHUB_STEP_SUMMARY"

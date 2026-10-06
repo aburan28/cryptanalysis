@@ -29,6 +29,7 @@ from ._types import (
     Solver,
     Stats,
 )
+from .curve import CurveEndo, CurveInfo, curve_by_name, curve_detect, curve_names
 from .errors import (
     CryptanalysisError,
     InternalError,
@@ -55,6 +56,8 @@ def version() -> str:
 __all__ = [
     "ENV_VAR",
     "CryptanalysisError",
+    "CurveEndo",
+    "CurveInfo",
     "Elem",
     "ElemLike",
     "Group",
@@ -76,6 +79,9 @@ __all__ = [
     "UnsupportedError",
     "__version__",
     "cheon_best_divisor",
+    "curve_by_name",
+    "curve_detect",
+    "curve_names",
     "factorize",
     "ic_auto_params",
     "ic_solve",

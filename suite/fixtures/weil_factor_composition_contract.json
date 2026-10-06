@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "reference_revision": "c5d86171608af64353da1a2ade61f20538ee1527",
+  "classification": "engineering experiment and structural bound; no advance assumed",
+  "parent_contract": "../index_calculus_baseline_20260914/ec_index_calculus_contract.json",
+  "hypothesis": "Compose a factor base as the Frobenius closure of a small seed space. Preserve that union exactly, solve S3 in component coordinates, and expose linear consequences before F4. Scaled proper-subfield seed spaces keep every mixed product space small; power-span seeds need mixed-Frobenius product ranks checked, not only their square-span rank.",
+  "construction": "V_j=Frob_q^j(V), F={P:x(P) in union_j V_j}. Include every unordered component pair. Normalize (i,j) to (0,j-i) while applying inverse Frob_q^i to the target; store only one tensor per relative offset. Rational point lifting and group verification remain mandatory.",
+  "boundaries": {
+    "prime_product_span": "For nonzero U,V in GF(2^n), n prime, dim(UV)>=min(n,dim(U)+dim(V)-1), by linear Kneser. A proper subfield stabilizer can lower this bound only at composite extension degree.",
+    "subfield_product": "For K=GF(2^d) and V_i=alpha_i*K, span_F2(V_i*V_j)=alpha_i*alpha_j*K has dimension d for all i,j. This does not prove useful elliptic-curve relation yield.",
+    "coverage": "For B signed factor-base points, at most B(B+1)/2 distinct unordered pair sums are available. Uniform nonzero subgroup targets therefore have success probability <=min(1,B(B+1)/(2*(N-1))). Same-component-only pruning is an ablation and cannot claim completeness for the full union.",
+    "chart_budget": "With c distinct components, complete two-point coverage requires up to c(c+1)/2 component queries. All construction, rejected component pairs, failed targets, lifting and relation-matrix costs are charged.",
+    "rho": "Matched full-DLP rho is a reference where supported; total calibrated operation conversions remain unmeasured. No baseline or rho speedup is inferred from a smaller product span alone."
+  },
+  "scope": "Native binary S3 two-summand decomposition. The external frozen WDSat S4 executable does not call this encoding. Higher-arity chart composition and prime-field lifting are not implemented in this round.",
+  "structural": {
+    "toy_degrees": [7,9,11,13,15,21],
+    "large_degree": 131,
+    "large_dimensions": [8,16,32,44],
+    "families": ["power_span", "frobenius_span", "random", "scaled_subfield"],
+    "random_seeds": [17,937],
+    "metrics": ["seed_dimension","component_count","relative_product_ranks","pair_weighted_product_rank","signed_orbit_count","projected_columns","exact_pair_coverage"],
+    "large_limit": "131-bit measurements are field-linear-algebra diagnostics only, never a DLP solve or runtime extrapolation. Verify field irreducibility first."
+  },
+  "stage_cases": [
+    {"n":7,"k":1,"a":1,"b":1,"ell":2,"family":"power_span"},
+    {"n":9,"k":1,"a":0,"b":1,"ell":3,"family":"power_span"},
+    {"n":9,"k":1,"a":0,"b":1,"ell":3,"family":"scaled_subfield"},
+    {"n":9,"k":1,"a":0,"b":1,"ell":3,"family":"subfield_control"},
+    {"n":11,"k":1,"a":1,"b":1,"ell":3,"family":"power_span"},
+    {"n":11,"k":1,"a":1,"b":1,"ell":3,"family":"random"},
+    {"n":13,"k":1,"a":0,"b":1,"ell":3,"family":"power_span"},
+    {"n":15,"k":3,"a":1,"b":2,"ell":3,"family":"power_span"},
+    {"n":15,"k":3,"a":1,"b":2,"ell":3,"family":"scaled_subfield"},
+    {"n":15,"k":3,"a":1,"b":2,"ell":5,"family":"subfield_control"}
+  ],
+  "stage": {
+    "variants": ["ambient_f4","charts_f4","charts_linear","enumerate"],
+    "seeds": [17,937],
+    "split": "17 development, 937 fresh; same group targets for every factor-base family at fixed curve. Random seed spaces likewise use independent seeds.",
+    "targets_per_process": 8,
+    "repetitions": 3,
+    "target_recipe": "Seeded distinct nonzero prime-subgroup scalars, no planted decomposition bias. Complete unordered factor-base point-pair truth collected separately and withheld from solvers. Compare complete polynomial pair sets for charts, and first group witness for every oracle.",
+    "node_budget_per_target": 20000,
+    "timeout_seconds": 8,
+    "same_component_ablation": "Record how much exact coverage is lost if only same-component summands are allowed; do not use this incomplete ablation as the candidate."
+  },
+  "frozen_regression": {
+    "native_cases": [[3,1,2],[3,2,2],[5,2,2],[7,3,2],[9,3,2],[3,1,3],[5,2,3]],
+    "source": "../f4_linear_algebra_20260914/contract.json",
+    "comparison": "Rerun reference and candidate native S3 harness on every frozen and fresh target; existing default solver path remains off for chart experiments. Retain hashes and complete solution-set matches."
+  },
+  "dlp": {
+    "variants": ["ambient_f4","charts_linear","enumerate","pair_table"],
+    "seeds_and_logs": [[101,5],[202,5],[503,7],[607,11]],
+    "repetitions": 3,
+    "max_trials": 256,
+    "timeout_seconds": 10,
+    "selection": "Run all stage cases, including zero-column and low-yield controls; do not select winners by timing. Preserve incomplete and timed-out attempts.",
+    "verification": "Disable direct-relation shortcuts; every claimed solve must recover the planted scalar and verify [k]P=Q. Same curve, base, target, seed, batch size and resources within each pair."
+  },
+  "resources": {"address_space_mib":2048,"threads":1,"cache":"off","runtime":"Rust 1.90.0 release"},
+  "acceptance": "Every completed root set and group witness must match independent truth. Treat as promising engineering only if fresh-target cold cost per verified relation improves >=20% over ambient F4 without lost coverage. Beating the strongest enumeration/pair-table baseline is a separate gate. An end-to-end advance requires calibrated total-cost, matched rho/floor ratios and preserved verified workload; otherwise leave those metrics null.",
+  "abandon": "Reject any root loss, false refutation, uncharged chart branch, dropped timeout, silent fallback, mismatched field/curve/domain, or a subfield factor base whose projected columns vanish. A small product rank without net relation-cost benefit is a structural diagnostic, not a result.",
+  "total_calibrated_operations":null,"S":null,"rho_ratio":null,"floor_ratio":null
+}

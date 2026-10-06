@@ -1,0 +1,65 @@
+{
+  "status": "frozen before rebaseline timing",
+  "objective": "Compare installed portable CPU and Apple Metal Frobenius plans against the newly accepted native NTL frobenius_points API, including full Sage-point work. No kernel change in this run.",
+  "source_sha256": {
+    "binary_batch.py": "a64e09c1be17ff092c1a8ba6019f927af4f7ac88bac23dc9dd439be1b16904da",
+    "binary_batch_ntl.pyx": "da105a36281474c56b986923f14734cb46fbe89d646d6fea35036671120331dc",
+    "binary_hardware.py": "8536968a324539fa2df075c3c2d222c136071b1277c766d15279657772ebe83e",
+    "binary_hardware_metal.mm": "6b51818209aa01b889dcd65fcdd26a87f2bc4dd0f75c4b256a012148f67a33bd",
+    "binary_hardware_codec.pyx": "3f94b8e434bfb2f788d4960ad35e0b0f1613cae64682a9ca6c0c945e83835990",
+    "binary_batch_ntl.cpython-314-darwin.so": "9d1590362d08d3beb83127c84463ae88da1f4db2a07344f01787f5c1b773eb9d",
+    "_binary_hardware_native.dylib": "7ae8510c922b5ba3ee127c6b56333bab5a742fc049fd1b3b37ffa4c4d1ef6a8e",
+    "binary_hardware_codec.cpython-314-darwin.so": "0e2694cd0b1cd4328260cca30efc45664dab7939369152013d169bf1a0a8c978"
+  },
+  "cases": [
+    {
+      "degree": 19,
+      "points": 1024,
+      "power": 1,
+      "seed": 2026092601
+    },
+    {
+      "degree": 131,
+      "points": 1024,
+      "power": 1,
+      "seed": 2026092602
+    },
+    {
+      "degree": 131,
+      "points": 4096,
+      "power": 1,
+      "seed": 2026092603
+    },
+    {
+      "degree": 131,
+      "points": 16384,
+      "power": 1,
+      "seed": 2026092604
+    },
+    {
+      "degree": 131,
+      "points": 4096,
+      "power": 65,
+      "seed": 2026092605
+    },
+    {
+      "degree": 131,
+      "points": 16384,
+      "power": 65,
+      "seed": 2026092606
+    },
+    {
+      "degree": 67,
+      "points": 4096,
+      "power": 7,
+      "seed": 2026092701
+    }
+  ],
+  "measurement": "Fresh process per cell. Twelve balanced permutations of native Sage, table CPU, and Metal; exact output verification and cleanup charged in the full API metric. Retain cold setup, packed diagnostics, memory, and all raw failures.",
+  "decision": "Use full-API native-Sage-versus-Metal/CPU results to select the next Metal mechanism; require exact agreement. A GPU kernel timing alone cannot promote routing.",
+  "resource_budget": {
+    "per_cell_timeout_seconds": 300,
+    "cloud_spend": 0,
+    "memory_bytes_max": 536870912
+  }
+}

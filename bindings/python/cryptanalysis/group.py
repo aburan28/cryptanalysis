@@ -13,6 +13,8 @@ from .errors import InvalidError, Status
 if TYPE_CHECKING:
     from ctypes import _CArgObject  # only exists for type checkers
 
+    from .curve import CurveInfo
+
 
 def _opts(options: Optional[Options]) -> Optional[_CArgObject]:
     """``ca_ffi_options *`` for the call (NULL => library defaults)."""
@@ -329,6 +331,79 @@ class Group:
     ) -> tuple[int, Stats]:
         """Pohlig-Hellman driver using the solver selected in ``options.solver``."""
         return self._whole(lib.ca_ffi_dlog, base, target, options)
+
+    def precomp(
+        self,
+        base: ElemLike,
+        target: ElemLike,
+        dp_bits: int = -1,
+        table_size: int = 0,
+        coverage: float = 0.0,
+        threads: int = 1,
+        seed: int = 0,
+    ) -> tuple[int, Stats]:
+        """Discrete log with precomputation (Bernstein-Lange free precomputation).
+
+        Builds a one-time distinguished-point table for ``base`` (with
+        ``threads`` build workers), solves this ``target`` online, and frees the
+        table; the returned :class:`Stats` therefore cover the whole ~n^(2/3)
+        build plus the ~n^(1/3) online phase.  ``dp_bits < 0``, ``table_size ==
+        0`` and ``coverage == 0.0`` select the defaults; ``seed`` 0 is random.
+        ``base`` must generate the whole group of order :attr:`order`.
+        """
+        x = ctypes.c_uint64(0)
+        st = CStats()
+        _lib.arm()
+        rc = lib.ca_ffi_precomp(
+            self._ctx,
+            self._w(base, "base"),
+            self._w(target, "target"),
+            _lib.i32(dp_bits, "dp_bits"),
+            _lib.u64(table_size, "table_size"),
+            float(coverage),
+            _lib.u32(threads, "threads"),
+            _lib.u64(seed, "seed"),
+            ctypes.byref(x),
+            ctypes.byref(st),
+        )
+        _lib.check(rc)
+        return x.value, Stats.from_c(st)
+
+    def curve_solve(
+        self, base: ElemLike, target: ElemLike, seed: int = 0
+    ) -> tuple[int, CurveInfo, Stats]:
+        """Solve base^x == target with the GLV endomorphism-accelerated rho.
+
+        Folds the Pollard rho walk by the curve's endomorphism when it has one,
+        else the negation-map rho.  Returns ``(x, info, stats)``; ``info``
+        reports which path ran (its ``beta`` is 0 -- use
+        :func:`cryptanalysis.curve_detect`).  Elliptic curves only (raises
+        UnsupportedError for Z_p^*).
+        """
+        from .curve import CurveEndo, CurveInfo
+
+        x = ctypes.c_uint64(0)
+        st = CStats()
+        endo = ctypes.c_int32(0)
+        aut_order = ctypes.c_uint32(0)
+        lam = ctypes.c_uint64(0)
+        _lib.arm()
+        rc = lib.ca_ffi_curve_solve(
+            self._ctx,
+            self._w(base, "base"),
+            self._w(target, "target"),
+            _lib.u64(seed, "seed"),
+            ctypes.byref(x),
+            ctypes.byref(endo),
+            ctypes.byref(aut_order),
+            ctypes.byref(lam),
+            ctypes.byref(st),
+        )
+        _lib.check(rc)
+        info = CurveInfo(
+            CurveEndo(endo.value), aut_order.value, 0, lam.value, float(aut_order.value) ** 0.5
+        )
+        return x.value, info, Stats.from_c(st)
 
     # ---- Cheon ------------------------------------------------------------
 

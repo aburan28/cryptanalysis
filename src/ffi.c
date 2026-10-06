@@ -264,6 +264,77 @@ int ca_ffi_dlog(const ca_ctx *ctx, const uint64_t base[4], const uint64_t target
     return ca_pohlig_hellman(&ctx->g, &b, &t, &d, x, st);
 }
 
+int ca_ffi_precomp(const ca_ctx *ctx, const uint64_t base[4], const uint64_t target[4],
+                   int32_t dp_bits, uint64_t table_size, double coverage, uint32_t threads,
+                   uint64_t seed, uint64_t *x, ca_stats *st)
+{
+    ca_clear_error();
+    ca_elem b, t;
+    ENC(ctx, b, base);
+    ENC(ctx, t, target);
+    ca_precomp_params p;
+    ca_precomp_params_default(&p);
+    p.dp_bits = dp_bits;
+    p.table_size = table_size;
+    p.coverage = coverage;
+    p.threads = threads;
+    p.seed = seed;
+    return ca_precomp_solve(&ctx->g, &b, &t, &p, x, st);
+}
+
+int ca_ffi_curve_detect(uint64_t p, uint64_t a, uint64_t b, uint64_t order, int32_t *endo,
+                        uint32_t *aut_order, uint64_t *beta, uint64_t *lambda, double *rho_speedup)
+{
+    ca_clear_error();
+    ca_curve_info info;
+    ca_status rc = ca_curve_detect(p, a, b, order, &info);
+    if (rc != CA_OK) return rc;
+    if (endo) *endo = (int32_t)info.endo;
+    if (aut_order) *aut_order = info.aut_order;
+    if (beta) *beta = info.beta;
+    if (lambda) *lambda = info.lambda;
+    if (rho_speedup) *rho_speedup = info.rho_speedup;
+    return CA_OK;
+}
+
+int ca_ffi_curve_by_name(const char *name, uint64_t *p, uint64_t *a, uint64_t *b, uint64_t *order)
+{
+    ca_clear_error();
+    return ca_curve_by_name(name, p, a, b, order);
+}
+
+const char *ca_ffi_curve_name(size_t index)
+{
+    const char *names[64];
+    size_t n = ca_curve_list(names, 64);
+    return index < n ? names[index] : NULL;
+}
+
+int ca_ffi_curve_solve(const ca_ctx *ctx, const uint64_t base[4], const uint64_t target[4],
+                       uint64_t seed, uint64_t *x, int32_t *endo, uint32_t *aut_order,
+                       uint64_t *lambda, ca_stats *st)
+{
+    ca_clear_error();
+    if (ctx->g.kind != CA_GROUP_EC) {
+        ca_set_error("curve solve requires an elliptic-curve context");
+        return CA_ERR_UNSUPPORTED;
+    }
+    ca_group g;
+    ca_curve_info info;
+    ca_status rc = ca_curve_group(&g, ctx->g.p, ctx->g.a, ctx->g.b, ctx->g.order, &info);
+    if (rc != CA_OK) return rc;
+    ca_elem b, t;
+    if (!ca_group_encode(&g, &b, base) || !ca_group_encode(&g, &t, target)) {
+        ca_set_error("base or target is not on the curve");
+        return CA_ERR_INVALID;
+    }
+    rc = ca_curve_solve(&g, &b, &t, seed, x, &info, st);
+    if (endo) *endo = (int32_t)info.endo;
+    if (aut_order) *aut_order = info.aut_order;
+    if (lambda) *lambda = info.lambda;
+    return rc;
+}
+
 int ca_ffi_cheon(const ca_ctx *ctx, const uint64_t gen[4], const uint64_t g_alpha[4],
                  const uint64_t g_alpha_d[4], uint64_t d, uint64_t max_exps, uint64_t *alpha,
                  ca_stats *st)

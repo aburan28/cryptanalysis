@@ -1,0 +1,234 @@
+# ca-coordinator: one hub, many dial-out agents.
+#
+# The only value you must set is the job document (or a ConfigMap that
+# already holds one) -- everything else has a working default.
+
+# The job every participant shares: the output of
+#   ca coord-job --group zp --p P --order N --g G --h H --out job.txt
+# Paste that one line here, or point existingConfigMap at a ConfigMap
+# with a `job.txt` key.
+job:
+  document: ""
+  existingConfigMap: ""
+  key: job.txt
+
+# The bearer token agents present.  It is access control, not integrity:
+# every record on the wire is self-verifying, so the token keeps
+# strangers from flooding the log and buys nothing else.
+#
+# Prefer existingSecret -- a value here lands in the release's stored
+# manifest, which anyone who can read Secrets in the namespace can read.
+auth:
+  # Generate with: openssl rand -hex 32
+  token: ""
+  existingSecret: ""
+  key: token
+  # Refuse to start without a token.  Leave this on unless the hub is
+  # only reachable from inside the cluster and you have accepted that.
+  required: true
+
+coordinator:
+  image:
+    # Nothing publishes this yet: build and push it (deploy/docker/Dockerfile,
+    # target `coordinator`) or point this at a registry you control, or the
+    # pod will sit in ImagePullBackOff.
+    repository: ghcr.io/aburan28/ca-coordinator
+    tag: ""            # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  # Exactly one.  Two replicas would each hold half the distinguished
+  # points and miss every collision that spans them, which is the one
+  # thing this service exists to catch.  The chart refuses anything else.
+  replicaCount: 1
+  # How often an idle channel is examined for check-ins to push.
+  pushInterval: 500ms
+  # A channel silent this long is dropped; the hub pings at a third of
+  # it, so any proxy in front must allow a longer idle timeout.
+  idleTimeout: 5m
+  # Seconds a silent claim still counts as active, for reporting.
+  leaseSecs: 120
+  reportInterval: 30s
+  logFormat: json      # json | text
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      memory: 2Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  extraArgs: []
+
+  # An append-only file of accepted check-ins, replayed at start.
+  #
+  # Losing the coordinator costs no work either way: agents keep their
+  # own tables and re-push.  What this buys is that a replacement pod
+  # starts where the last one stopped instead of waiting for the fleet
+  # to refill it.  Replay is safe at any time -- the merge is idempotent.
+  persistence:
+    enabled: false
+    size: 8Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    path: /var/lib/ca/checkins.log
+
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# The ingress is only needed for agents outside the cluster.  Agents
+# inside it reach the Service directly and need nothing here.
+ingress:
+  enabled: false
+  className: nginx
+  host: rho.example.com
+  path: /
+  pathType: Prefix
+  # The reverse channel is an HTTP/1.1 upgrade.  A proxy that does not
+  # pass Upgrade/Connection through turns it into a 426 and the fleet
+  # silently falls back to nothing; one whose read timeout is below the
+  # hub's ping period closes idle channels under the agents.  These
+  # annotations are the nginx spelling of both.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  tls:
+    enabled: true
+    secretName: ca-coordinator-tls
+
+agents:
+  enabled: true
+  replicaCount: 3
+  image:
+    # As above: built by deploy/docker/Dockerfile, target `agent`, and not
+    # published by anything yet.
+    repository: ghcr.io/aburan28/ca-agent
+    tag: ""
+    pullPolicy: IfNotPresent
+  # Walking lanes per pod.  One per allotted CPU is the usual choice.
+  threads: 2
+  # Walkers between check-ins: how much work is at risk if a pod dies.
+  checkinEvery: 64
+  # Agents exit when the instance is solved.  Under a Deployment that
+  # is a restart loop -- they come back, are pushed the answer they
+  # already had, and exit again -- so they idle instead and you scale
+  # them to zero when the campaign is over.
+  idleWhenSolved: true
+  resources:
+    requests:
+      cpu: "1"
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  extraArgs: []
+  # Agents are interruptible by construction: a lease expires and
+  # another agent resumes the unit from the last reported cursor, so
+  # spot or preemptible capacity costs only the unfinished part of one
+  # unit.
+  priorityClassName: ""
+
+# A NetworkPolicy that writes the topology down: the coordinator accepts
+# connections, agents only make them.
+# Splitting the point space across several hubs.
+#
+# A hub holds every point it is told about, so one machine's memory is the
+# ceiling on a campaign.  Sharding raises it: the point space is split
+# `count` ways, and this release's coordinator holds shard `index`.
+#
+# Install one release per shard, each with its own index, and give every
+# one of them the same `urls` list -- the agents in each release dial all
+# of the shards, and the Nth URL must be shard N in every release.  Get
+# that order wrong in one release and its points go to the wrong hubs,
+# where their collision partners will never look; the coordinator counts
+# that as carho_misrouted_checkins_total, which is the only sign.
+#
+# `count` must match the `sh=` in the job document, which the chart
+# checks: the number rides inside the job id, so a fleet cannot
+# half-agree about its own topology.
+#
+#   sharding:
+#     count: 4
+#     index: 2
+#     urls:
+#       - http://rho-shard-0:8080
+#       - http://rho-shard-1:8080
+#       - http://rho-shard-2:8080
+#       - http://rho-shard-3:8080
+sharding:
+  count: 1
+  index: 0
+  urls: []
+
+# Other coordinators this one gossips with.
+#
+# Federation is multi-leader and needs no protocol of its own: /v1/sync is
+# already a symmetric anti-entropy exchange, the merge is commutative and
+# idempotent, and every record carries its own proof.  So peers are simply
+# listed, in any shape -- a pair, a ring, a full mesh -- with no leader to
+# elect and no quorum to lose.  A hub that cannot reach a peer keeps
+# working and keeps retrying.
+#
+# Each entry is {name, url}.  Peers share this release's auth.token, which
+# is the usual case: one campaign, one secret.  Point these at the other
+# clusters' coordinator Services or Ingresses:
+#
+#   federation:
+#     peers:
+#       - name: eu-west-1
+#         url: http://rho.eu-west-1.internal:8080
+#       - name: us-east-1
+#         url: https://rho.us-east-1.example.com
+federation:
+  peers: []
+  interval: 5s
+  # How long one exchange may take before it is abandoned and counted as
+  # an error.  This bounds the peer that accepts the connection and then
+  # never answers -- the one failure mode that would otherwise stall a
+  # peer loop silently, rather than showing up as an error to retry.
+  timeout: 30s
+
+networkPolicy:
+  enabled: false
+  # Extra sources allowed to reach the coordinator (the ingress
+  # controller's namespace, a bastion, another namespace's agents).
+  #
+  # Kubelet probes are deliberately not listed.  Most CNIs exempt the
+  # node's own probe traffic from NetworkPolicy, so /healthz and /readyz
+  # keep working; on a CNI that does not, add the node CIDR here, since
+  # only the cluster operator knows it.
+  extraIngressFrom: []
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
