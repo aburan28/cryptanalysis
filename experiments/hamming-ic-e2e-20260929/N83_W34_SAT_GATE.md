@@ -68,6 +68,29 @@ the intermediate values are supplied. It suggests that discovering those
 values is the difficult part of the current SAT formulation. It does not
 change the failed frozen gate or estimate ordinary-query cost.
 
+## Scope of the Hamming-ideal paper transfer
+
+The [full paper by La Scala, Marchesin, and Tiwari](https://arxiv.org/html/2609.18866)
+defines exact Boolean Hamming-weight ideals through the elementary symmetric
+functions of degrees `1, 2, 4, ...`, then gives bounded-degree factorizations
+with auxiliary variables. That construction addresses the **factor-mask
+weight predicate** in this elliptic-curve PDP. Our current weight-three-or-four
+counter is already an exact Boolean predicate; its seven-input truth table
+was exhaustively checked. The paper's algebraic factoring could still be a
+useful F4/F5 comparison, but no such N83 implementation or timing exists.
+
+The paper's MultiSolve analysis explicitly treats systems with at most one
+solution. The unpinned N83 five-summand system has a five-point multiset/r
+average of 93,832.98 across subgroup targets before considering orderings or
+signs. This average does not establish coverage of any particular target, but
+it rules out simply assuming a unique-witness formulation. More directly,
+the pinned-factor SAT attempt failed while the same circuit solved instantly
+after its intermediate x values were supplied. A different encoding of the
+already fixed weight predicate would therefore need a measured improvement
+on the frozen positive control before this paper transfer is promoted. The
+paper's results for binary syndrome decoding do not supply an ECDLP PDP or
+an IC speedup.
+
 ## Small-field ideal-equivalence control
 
 The [exhaustive checked-Sage control](sage_small_s3_chain_equivalence.py)
