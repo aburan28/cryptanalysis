@@ -102,7 +102,8 @@ static int select_mode(const char *name)
                                   "tail-pair-periodic-canonical",
                                   "tail-pair-periodic-gated27",
                                   "tail-pair-periodic-firstword27",
-                                  "tail-pair-mixed-radix"};
+                                  "tail-pair-mixed-radix",
+                                  "tail-pair-mixed-full-digits"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -126,7 +127,8 @@ int main(int argc, char **argv)
                 "tail-oracle|tail-oracle-gated|tail-double|tail-double-fold|"
                 "tail-double-residue|tail-pair-fused|tail-pair-complete|"
                 "tail-pair-periodic-canonical|tail-pair-periodic-gated27|"
-                "tail-pair-periodic-firstword27|tail-pair-mixed-radix "
+                "tail-pair-periodic-firstword27|tail-pair-mixed-radix|"
+                "tail-pair-mixed-full-digits "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -148,7 +150,8 @@ int main(int argc, char **argv)
     int wavefront = mode == 22;
     int pair_fused = mode == 28;
     int pair_periodic = mode >= 30 && mode <= 32;
-    int pair_mixed = mode == 33;
+    int pair_full = mode == 34;
+    int pair_mixed = mode == 33 || pair_full;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -298,7 +301,8 @@ int main(int argc, char **argv)
     uint64_t periodic_lookups = 0, periodic_accepted = 0, periodic_fallbacks = 0;
     uint64_t mixed_lookups = 0, mixed_fallbacks = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
-    size_t static_map_bytes = pair_mixed              ? ca_ec_tau_pair_mixed_static_bytes()
+    size_t static_map_bytes = pair_full               ? ca_ec_tau_pair_mixed_full_static_bytes()
+                              : pair_mixed            ? ca_ec_tau_pair_mixed_static_bytes()
                               : mode == 32            ? ca_ec_tau_pair_firstword_static_bytes()
                               : pair_periodic         ? ca_ec_tau_pair_periodic_static_bytes()
                               : pair_complete         ? ca_ec_tau_pair_complete_static_bytes()
@@ -361,9 +365,14 @@ int main(int argc, char **argv)
                 output_inversions += !outputs[i].w[2];
             } else if (pair_mixed) {
                 uint64_t t3 = 0, tt = 0, td = 0, a = 0, lookups = 0, fallback = 0;
-                if (!ca_ec_tau_pair_mixed_mul_profile(&group, &complete_pre, &outputs[i],
-                                                      scalars[i], &t3, &tt, &td, &a,
-                                                      &lookups, &fallback)) {
+                int success = pair_full
+                                  ? ca_ec_tau_pair_mixed_full_mul_profile(
+                                        &group, &complete_pre, &outputs[i], scalars[i],
+                                        &t3, &tt, &td, &a, &lookups, &fallback)
+                                  : ca_ec_tau_pair_mixed_mul_profile(
+                                        &group, &complete_pre, &outputs[i], scalars[i],
+                                        &t3, &tt, &td, &a, &lookups, &fallback);
+                if (!success) {
                     fprintf(stderr, "mixed-radix pair evaluation failed at index %zu\n", i);
                     free(outputs);
                     return 1;
@@ -499,9 +508,18 @@ int main(int argc, char **argv)
             if (pair_mixed) {
                 uint16_t actions[128];
                 size_t action_count = 0;
-                if (!ca_ec_tau_pair_mixed_recode_verify_scalar(&complete_pre, scalars[i]) ||
-                    !ca_ec_tau_pair_mixed_recode_actions(&complete_pre, scalars[i], actions,
-                                                         &action_count, NULL, NULL)) {
+                int valid = pair_full
+                                ? ca_ec_tau_pair_mixed_full_recode_verify_scalar(
+                                      &complete_pre, scalars[i]) &&
+                                      ca_ec_tau_pair_mixed_full_recode_actions(
+                                          &complete_pre, scalars[i], actions, &action_count,
+                                          NULL, NULL)
+                                : ca_ec_tau_pair_mixed_recode_verify_scalar(
+                                      &complete_pre, scalars[i]) &&
+                                      ca_ec_tau_pair_mixed_recode_actions(
+                                          &complete_pre, scalars[i], actions, &action_count,
+                                          NULL, NULL);
+                if (!valid) {
                     fprintf(stderr, "mixed-radix reconstruction mismatch at index %zu\n", i);
                     free(outputs);
                     return 1;
