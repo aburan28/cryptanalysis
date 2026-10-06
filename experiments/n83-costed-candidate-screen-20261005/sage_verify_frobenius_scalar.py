@@ -55,13 +55,16 @@ def main(out: Path) -> None:
     identity = curve(0)
     assert generator != identity and r * generator == identity
     frobenius_g = curve(generator[0]**2, generator[1]**2)
-    t = ZZ(record["curve"]["trace"])
     q = ZZ(1) << n
+    t = ZZ(record["curve"]["trace"])
     assert t == q + 1 - curve.cardinality()
+    base_curve = EllipticCurve(GF(2), [1, 0, 0, 0, 1])
+    t_one = ZZ(3) - base_curve.cardinality()
+    assert t_one == -1
     fr = GF(r)
     ring = PolynomialRing(fr, "u")
     u = ring.gen()
-    roots = (u**2 - fr(t)*u + fr(q)).roots()
+    roots = (u**2 - fr(t_one)*u + fr(2)).roots()
     assert len(roots) == 2 and all(multiplicity == 1 for _, multiplicity in roots)
     matching = [ZZ(value) for value, _ in roots
                 if ZZ(value) * generator == frobenius_g]
@@ -76,8 +79,9 @@ def main(out: Path) -> None:
         "schema_version": 1, "kind": "n83_frobenius_subgroup_scalar",
         "status": "VERIFIED", "candidate_id": None,
         "curve_id": protocol["curve_id"], "subgroup_order": str(r),
-        "field_cardinality": str(q), "trace": str(t),
-        "characteristic_polynomial_mod_r": "u^2-trace*u+2^83",
+        "field_cardinality": str(q), "extension_trace": str(t),
+        "base_field_trace": str(t_one),
+        "characteristic_polynomial_mod_r": "u^2+u+2",
         "roots_mod_r_decimal": [str(ZZ(value)) for value, _ in roots],
         "lambda_decimal": str(scalar), "lambda_order": n,
         "certificate": "F(G)=[lambda]G; lambda^83=1 mod r; r prime and G has order r. "
