@@ -5683,6 +5683,97 @@ def main():
         })
     assert [row["joint_eligible_checks"] for row in q1458_rows] == [2, 2, 1]
     assert [row["joint_field_inv_calls"] for row in q1458_rows] == [12, 12, 6]
+    q1459_dir = HERE / "q1459_leaf_lift_screen"
+    q1459_protocol_path = q1459_dir / "protocol.json"
+    q1459_result_path = q1459_dir / "result.json"
+    q1459_verification_path = q1459_dir / "verification.json"
+    q1459_protocol = json.loads(q1459_protocol_path.read_text())
+    q1459_result = json.loads(q1459_result_path.read_text())
+    q1459_verification = json.loads(q1459_verification_path.read_text())
+    assert q1459_protocol["proposal_id"] == q1459_result[
+        "proposal_id"] == q1459_verification["proposal_id"] == "Q1459"
+    assert q1459_protocol["candidate_id"] is q1459_result[
+        "candidate_id"] is q1459_verification["candidate_id"] is None
+    assert q1459_protocol["isogeny"] == q1459_result[
+        "isogeny"] == q1459_verification["isogeny"] == "none"
+    assert q1459_protocol["point_decomposition_stage_code"] == "PDP4hybrid"
+    assert q1459_result["status"] == q1459_verification["status"] == "pass"
+    assert q1459_result["protocol_sha256"] == sha(q1459_protocol_path)
+    assert q1459_verification["protocol_sha256"] == sha(q1459_protocol_path)
+    assert q1459_verification["result_sha256"] == sha(q1459_result_path)
+    assert q1459_protocol["parent_q1456_protocol_sha256"] == sha(
+        q1456_protocol_path)
+    assert q1459_protocol["baseline_q1458_protocol_sha256"] == sha(
+        q1458_protocol_path)
+    assert q1459_protocol["run_order"] == q1458_protocol["run_order"]
+    assert q1459_verification["new_admissions"] == [0, 0, 1]
+    q1459_rows = []
+    for name, result in zip(q1459_protocol["run_order"],
+                            q1459_result["rows"]):
+        cell = q1459_protocol["cells"][name]
+        baseline = next(row for row in q1458_rows if row["case"] == name)
+        assert result["case"] == name
+        assert result["curve_id"] == baseline["curve_id"] == cell[
+            "curve_id"]
+        assert result["workload_id"] == baseline["workload_id"] == cell[
+            "workload_id"]
+        assert result["factor_base_actual_B"] == baseline[
+            "factor_base_actual_B"] == cell["factor_base_actual_B"]
+        assert result["folded_columns_K"] == baseline[
+            "folded_columns_K"] == cell["folded_columns_K"]
+        assert result["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"] == cell[
+                "factor_base_enumerated_set_sha256"]
+        assert result["parent_receipt_sha256"] == cell[
+            "parent_receipt_sha256"]
+        assert result["raw_pair_cap_admissions"] <= result[
+            "lift_filtered_pair_cap_admissions"]
+        q1459_rows.append({
+            "proposal_id": "Q1459", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "diagnostic_only": True,
+            "case": name, "input_role": cell["input_role"],
+            "degree": cell["degree_n"], "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "leaf_option_cap": q1459_protocol["leaf_option_cap"],
+            "pair_candidate_cap": q1459_protocol["pair_candidate_cap"],
+            "total_unique_partial_states": result[
+                "total_unique_partial_states"],
+            "screened_partial_states": result["screened_partial_states"],
+            "raw_pair_cap_admissions": result["raw_pair_cap_admissions"],
+            "lift_filtered_pair_cap_admissions": result[
+                "lift_filtered_pair_cap_admissions"],
+            "new_admissions_due_to_lift_filter": result[
+                "new_admissions_due_to_lift_filter"],
+            "empty_liftable_leaf_states": result[
+                "empty_liftable_leaf_states"],
+            "distinct_leaf_domains_evaluated": result[
+                "distinct_leaf_domains_evaluated"],
+            "leaf_lift_tests": result["leaf_lift_tests"],
+            "leaf_lift_field_inversions": result[
+                "leaf_lift_field_inversions"],
+            "screen_wall_ns_exploratory": result[
+                "screen_wall_ns_exploratory"],
+            "native_independent_x_checked": next(row[
+                "unique_nonzero_x_native_checked"] for row in
+                q1459_verification["degrees"] if row["degree_n"] ==
+                cell["degree_n"]),
+            "baseline_q1458_receipt_sha256": baseline["receipt_sha256"],
+            "successful_decomposition_cost_measured": False,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+        })
+    assert [row["new_admissions_due_to_lift_filter"] for row in
+            q1459_rows] == [0, 0, 1]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -7384,6 +7475,38 @@ def main():
             "verification_sha256": sha(q1458_verification_path),
             "paired_comparison_sha256": sha(q1458_comparison_path),
         },
+        "q1459_leaf_lift_cap_screen": {
+            "proposal_id": "Q1459", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "method": q1459_protocol["method"],
+            "controlled_variable": q1459_protocol["controlled_variable"],
+            "diagnostic_only": True,
+            "rows": q1459_rows,
+            "raw_pair_cap_admissions": [6, 6, 1],
+            "lift_filtered_pair_cap_admissions": [6, 6, 2],
+            "new_admissions": [0, 0, 1],
+            "ordinary_verified_relations": 0,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "Independent native curve-lift checks reproduce every "
+                "lift-filtered leaf count on the archived Q1456 N53/N83 "
+                "partial states. Exact single-leaf filtering admits no "
+                "additional N53 state and one N83 state under the 4096 "
+                "pair cap: four 79-option leaves shrink to 39 each, "
+                "and both pair products fall from 6241 to 1521. This "
+                "does not run a changed solver or measure a relation. "
+                "The one extra admission is too narrow to resolve the "
+                "large-domain eligibility bottleneck or produce an "
+                "N131 complete-work estimate."),
+            "protocol_sha256": sha(q1459_protocol_path),
+            "result_sha256": sha(q1459_result_path),
+            "verification_sha256": sha(q1459_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -7830,6 +7953,10 @@ def main():
                 "joint-rule field calls on the same audited rejection "
                 "states, but all matched unpinned cells remain censored "
                 "and most partial pair domains exceed the cap; "
+                "Q1459 independently checks exact leaf-lift filtering "
+                "on archived partial states and gains zero N53 and one "
+                "N83 pair-cap admission, without running a changed "
+                "solver or measuring natural yield; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

@@ -2016,6 +2016,18 @@ unpinned cells still hit the 60-second cap without a relation, so this
 is a measured arithmetic improvement on censored prefixes, not a
 successful-decomposition cost or a controlled wall-time speedup.
 
+### Q1459 exact leaf-lift admission screen
+
+The [Q1459 frozen diagnostic](q1459_leaf_lift_screen/README.md) applies
+the exact nonzero-x curve-lift test to each manageable sparse leaf domain
+before forming pair candidate products. An independent native field
+implementation checks every distinct x in the screened domains. On the
+archived Q1456 partial states, the unchanged 4,096 pair cap admits
+6→6 N53 known-satisfiable states, 6→6 N53 ordinary states, and 1→2 N83
+ordinary states after filtering. The new N83 admission reduces each pair
+product from `79²=6,241` to `39²=1,521`. This is a sound but narrow
+eligibility gain, not a solver run or a measured relation.
+
 ## Next goal
 
 The next goal is **one independently verified four-point relation from the
@@ -2029,6 +2041,8 @@ million native field squares in that censored interval. Another blind cap
 increase is not an adequate solver strategy. Q1458 removes nearly all
 joint-rule inversions on those same states but still recovers no unpinned
 relation, so arithmetic-only tuning also leaves the main gap.
+Q1459 shows that exact single-leaf curve-lift filtering adds only one
+admitted N83 state in the archived prefixes and none at N53.
 
 A concrete successor should process **large partial pair-output domains**
 without enumerating every pair combination. First derive and independently
