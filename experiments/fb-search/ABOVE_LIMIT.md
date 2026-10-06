@@ -402,7 +402,7 @@ understate the gap by about 28x.
 rho with the Python implementation (3.5 us per step) against a C oracle, and assumed 2 us for the
 projection. That inflated IC's margin over rho by about 4x in most rows, and 88x at `l = 13`.
 
-## 5. Open leads (not yet novelty-checked)
+## 5. Further leads (all checked: on paper, measured, or against the literature)
 
 1. ~~Explain the degree-3 refutations~~: there is no degree-3 identity behind them. The plain
    t-Macaulay certificate needs degree 4-5 where the mutant closure refutes at degree 3
@@ -412,8 +412,9 @@ projection. That inflated IC's margin over rho by about 4x in most rows, and 88x
    for `d <= 9`, 4 for `d = 12-18`, 5 at `d = 21` and >= 5 at `d = 24`. Sec. 4c turns this into an
    exponent bound for the whole closure family.
 3. **Other decomposition shapes.** Pairs from two subspaces, cosets, and Frobenius twists were
-   checked on paper: each needs more unknowns per pair than one subspace. Candidates that change
-   the shape fundamentally (not m = 2 over one subspace) still need a literature check.
+   checked on paper: each needs more unknowns per pair than one subspace. Shapes that are not
+   m = 2 over one subspace (k >= 3 summands, non-subspace bases) are covered by the literature
+   table in Sec. 1 and by Sec. 5b.
 4. **Further on-paper checks (2026-10-06), none giving a candidate:**
    - **Möbius images of a subspace**, `x in M(V)`. Translations, scalings and the inversion
      `x -> 1/x` all keep S_3 F_2-linear in `(e1, e2)`, for example
