@@ -16,6 +16,10 @@ kernel probe, and bounds the fixed-offset search cost. Its best research
 lead is a five-summand W3/W4 hybrid with a new bounded-memory PDP; the
 straightforward root-index offset paths remain too costly to promote.
 No N83 ordinary-query PDP, DLP, or speedup was measured.
+The subsequent [complete N83 W4 screen](N83_FULL_W4.md) independently
+replayed a 1,936,390-point weight-three-or-four projected base and checked an
+exact Boolean weight-three-or-four counter. It provides a simpler algebraic
+PDP input rule, with no ordinary relation or DLP yet.
 
 This experiment puts the factorized-convolution (FC) Hamming predicate from
 La Scala, Marchesin, and Tiwari's [*Hamming Ideals and Gröbner Bases for
