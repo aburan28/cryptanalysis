@@ -54,12 +54,21 @@
 //!   constant-time discipline.  Suitable for prover-side reference
 //!   computation; not for attacker-controlled timing contexts.
 
+pub mod cover_transfer;
 pub mod curve;
 pub mod f2m;
 pub mod hyperelliptic;
 pub mod poly_f2m;
 
+pub use cover_transfer::{
+    BinaryCoverCertificate, BinaryCoverPoint, CoverTransferError, OrdinaryBinaryCover,
+    PullPushCompositionCertificate, PullbackFiberKind, SubgroupTransferStatus,
+    UnsupportedCoverOperation,
+};
 pub use curve::{BinaryCurve, BinaryPoint};
 pub use f2m::{F2mElement, IrreduciblePoly};
-pub use hyperelliptic::{hcdlp_bsgs, hcdlp_pollard_rho, HyperellipticCurve, MumfordDivisor};
+pub use hyperelliptic::{
+    hcdlp_bsgs, hcdlp_pollard_rho, HyperellipticCurve, HyperellipticError, MumfordDivisor,
+    MAX_CHECKED_FIELD_DEGREE,
+};
 pub use poly_f2m::F2mPoly;
