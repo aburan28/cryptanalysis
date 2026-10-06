@@ -7,9 +7,10 @@
 
 `run` creates the pod NAME unless it exists, ships this checkout (edits
 included, as cloud/tree.py packs it) to /root/cryptanalysis, installs Rust
-and NVRTC when they are missing, runs CMD there with CA_NVRTC_LIB set, copies
-the --out paths back into this checkout, and deletes the pod it created
-unless --keep.  Its exit status is CMD's.  The pieces are commands too:
+and NVRTC when they are missing (cloud/pod_env.sh), runs CMD there with
+CA_NVRTC_LIB set, copies the --out paths back into this checkout, and
+deletes the pod it created unless --keep.  Its exit status is CMD's.  The
+pieces are commands too:
 
     cloud/runpod_pod.py up NAME [--gpu TYPE ...] [--min-vcpu N] | [--cpu N]
     cloud/runpod_pod.py sync NAME
@@ -18,13 +19,14 @@ unless --keep.  Its exit status is CMD's.  The pieces are commands too:
     cloud/runpod_pod.py down NAME
     cloud/runpod_pod.py list
 
-Needs RUNPOD_API_KEY.  SSH uses ~/.ssh/id_ed25519 (created if missing): the
-pod receives it, beside the account's registered keys, through its
-PUBLIC_KEY variable, so nothing is added to the account.  Every pod stops
-itself after --max-hours (default 6) through the pod-scoped key Runpod
-injects, in case nobody deletes it.  Pods are found by name; `up` refuses a
-name in use.  Without --gpu, a GPU pod takes the first of DEFAULT_GPUS in
-stock with at least --min-vcpu vCPUs.
+Needs RUNPOD_API_KEY.  SSH uses the key fleet.py uses (RUNPOD_SSH_KEY or
+RUNPOD_SSH_PRIVATE_KEY) when one is set, else ~/.ssh/id_ed25519 (created if
+missing): the pod receives its public half, beside the account's registered
+keys, through its PUBLIC_KEY variable, so nothing is added to the account.
+Every pod stops itself after --max-hours (default 6) through the pod-scoped
+key Runpod injects, in case nobody deletes it.  Pods are found by name; `up`
+refuses a name in use.  Without --gpu, a GPU pod takes the first of
+DEFAULT_GPUS in stock with at least --min-vcpu vCPUs.
 """
 
 import argparse
@@ -55,33 +57,31 @@ DEFAULT_GPUS = [
     "NVIDIA H100 80GB HBM3",
 ]
 
-# PID 1: a lifetime cap that stops the pod, then the image's /start.sh, which
-# installs PUBLIC_KEY and starts sshd.
+# PID 1: a lifetime cap that stops the pod; the script in POD_BOOT_B64, if
+# any, in the background (how cairn_queue.py makes a runner); then the
+# image's /start.sh, which installs PUBLIC_KEY and starts sshd.
 STAGE0 = r"""
-( sleep "$F4_MAX_SECONDS"
+( sleep "$POD_MAX_SECONDS"
   curl -s https://api.runpod.io/graphql -H 'Content-Type: application/json' \
     -H "Authorization: Bearer $RUNPOD_API_KEY" \
     -d "{\"query\":\"mutation { podStop(input: {podId: \\\"$RUNPOD_POD_ID\\\"}) { id } }\"}"
-) >/tmp/f4-lifetime.log 2>&1 &
+) >/tmp/pod-lifetime.log 2>&1 &
+if [ -n "${POD_BOOT_B64:-}" ]; then
+  echo "$POD_BOOT_B64" | base64 -d >/root/pod-boot.sh
+  setsid bash /root/pod-boot.sh >>/root/pod-boot.log 2>&1 </dev/null &
+fi
 [ -x /start.sh ] && exec /start.sh
 exec sleep infinity
 """.strip()
 
-# Before CMD on the pod: Rust and NVRTC when missing, and the variables the
-# suite's CUDA paths read.
+# Before CMD on the pod, in the shipped checkout: Rust and NVRTC when missing,
+# and the variables the suite's CUDA paths read.
 BOOTSTRAP = r"""
 set -e
-export LC_ALL=C.UTF-8 PATH="$HOME/.cargo/bin:$PATH"
-command -v cargo >/dev/null || curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs |
-  sh -s -- -y -q --profile minimal --default-toolchain stable >/dev/null
-python3 -c 'import nvidia.cuda_nvrtc' 2>/dev/null ||
-  pip3 install -q --break-system-packages nvidia-cuda-nvrtc-cu12 >/dev/null
-CA_NVRTC_LIB=$(python3 -c 'import glob, nvidia.cuda_nvrtc as m
-print(glob.glob(m.__path__[0] + "/lib/libnvrtc.so.12")[0])')
-export CA_NVRTC_LIB
+cd /root/cryptanalysis
+source cloud/pod_env.sh
 nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>/dev/null | sed 's/^/gpu: /' || true
 echo "rustc: $(rustc --version)"
-cd /root/cryptanalysis
 """.strip()
 
 
@@ -118,10 +118,24 @@ def need(name):
     return pod
 
 
+def key_path():
+    """The private key ssh uses: fleet.py's (RUNPOD_SSH_KEY, RUNPOD_SSH_PRIVATE_KEY)
+    when one is set, else ~/.ssh/id_ed25519, created if missing."""
+    if os.environ.get("RUNPOD_SSH_KEY") or os.environ.get("RUNPOD_SSH_PRIVATE_KEY", "").strip():
+        import fleet
+        return Path(fleet.ssh_key_path())
+    if not KEY.exists():
+        KEY.parent.mkdir(mode=0o700, exist_ok=True)
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(KEY)], check=True)
+    return KEY
+
+
 def public_keys():
     out = api("POST", GRAPHQL, {"query": "query { myself { pubKey } }"})
     keys = (out["data"]["myself"].get("pubKey") or "").splitlines()
-    keys.append(Path(f"{KEY}.pub").read_text().strip())
+    mine = subprocess.run(["ssh-keygen", "-y", "-f", str(key_path())], capture_output=True,
+                          text=True, check=True)
+    keys.append(mine.stdout.strip())
     seen, kept = set(), []
     for key in (k.strip() for k in keys if k.strip()):
         body = " ".join(key.split()[:2])
@@ -131,13 +145,15 @@ def public_keys():
     return "\n".join(kept)
 
 
-def pod_body(args, keys):
-    """The REST request that creates pod `args.name`."""
+def pod_body(args, keys, extra_env=None):
+    """The REST request that creates pod `args.name`; `extra_env` adds to its
+    environment (POD_BOOT_B64 starts a script at every container start)."""
     body = {
         "name": args.name, "cloudType": args.cloud, "containerDiskInGb": args.disk,
         "volumeInGb": 0, "ports": ["22/tcp"], "dockerEntrypoint": ["bash", "-c"],
         "dockerStartCmd": [STAGE0],
-        "env": {"PUBLIC_KEY": keys, "F4_MAX_SECONDS": str(int(args.max_hours * 3600))},
+        "env": {"PUBLIC_KEY": keys, "POD_MAX_SECONDS": str(int(args.max_hours * 3600)),
+                **(extra_env or {})},
     }
     if args.cpu:
         body.update(computeType="CPU", imageName=args.image or CPU_IMAGE,
@@ -155,19 +171,18 @@ def ssh_args(pod):
     port = (pod.get("portMappings") or {}).get("22")
     if not pod.get("publicIp") or not port:
         sys.exit(f"{pod['name']}: no public ssh port yet")
-    return ["ssh", "-i", str(KEY), "-p", str(port), "-o", "StrictHostKeyChecking=no",
+    # Host keys are regenerated at every container start, so they cannot be pinned.
+    return ["ssh", "-i", str(key_path()), "-p", str(port), "-o", "IdentitiesOnly=yes",
+            "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
             "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
             "-o", "ServerAliveInterval=30", f"root@{pod['publicIp']}"]
 
 
-def create(args):
+def create(args, extra_env=None):
     """Create pod `args.name` and wait until it answers on ssh."""
     if find(args.name):
         sys.exit(f"a pod named {args.name} exists; `down` it first")
-    if not KEY.exists():
-        KEY.parent.mkdir(mode=0o700, exist_ok=True)
-        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(KEY)], check=True)
-    pod = api("POST", f"{REST}/pods", pod_body(args, public_keys()))
+    pod = api("POST", f"{REST}/pods", pod_body(args, public_keys(), extra_env))
     print(f"created {pod['id']} ({pod.get('costPerHr')} $/hr); waiting for ssh", flush=True)
     deadline = time.time() + args.wait
     while time.time() < deadline:

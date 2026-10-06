@@ -20,14 +20,22 @@ class PodBodyTest(unittest.TestCase):
         self.assertNotIn("vcpuCount", body)
         self.assertEqual(body["ports"], ["22/tcp"])
         self.assertEqual(body["env"]["PUBLIC_KEY"], KEY)
-        self.assertEqual(body["env"]["F4_MAX_SECONDS"], str(6 * 3600))
+        self.assertEqual(body["env"]["POD_MAX_SECONDS"], str(6 * 3600))
+        self.assertNotIn("POD_BOOT_B64", body["env"])
+
+    def test_extra_environment_joins_the_pod_variables(self):
+        args = runpod_pod.parse(["up", "runner"])
+        body = runpod_pod.pod_body(args, KEY, {"POD_BOOT_B64": "ZWNobw==", "X": "1"})
+        self.assertEqual(body["env"]["POD_BOOT_B64"], "ZWNobw==")
+        self.assertEqual(body["env"]["X"], "1")
+        self.assertEqual(body["env"]["PUBLIC_KEY"], KEY)
 
     def test_named_gpus_keep_their_order(self):
         args = runpod_pod.parse(["up", "ic", "--gpu", "NVIDIA GeForce RTX 4090",
                                  "--gpu", "NVIDIA GeForce RTX 5090", "--max-hours", "1.5"])
         body = runpod_pod.pod_body(args, KEY)
         self.assertEqual(body["gpuTypeIds"], ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 5090"])
-        self.assertEqual(body["env"]["F4_MAX_SECONDS"], "5400")
+        self.assertEqual(body["env"]["POD_MAX_SECONDS"], "5400")
 
     def test_cpu_pod(self):
         args = runpod_pod.parse(["up", "cpu", "--cpu", "32"])
@@ -52,10 +60,17 @@ class PodBodyTest(unittest.TestCase):
         self.assertIn("podStop", runpod_pod.STAGE0)
         self.assertTrue(runpod_pod.STAGE0.rstrip().endswith("exec sleep infinity"))
         self.assertIn("exec /start.sh", runpod_pod.STAGE0)
+        # The boot script starts before sshd, detached from PID 1's session.
+        self.assertLess(runpod_pod.STAGE0.index("POD_BOOT_B64"),
+                        runpod_pod.STAGE0.index("exec /start.sh"))
+        self.assertIn("setsid bash /root/pod-boot.sh", runpod_pod.STAGE0)
 
-    def test_bootstrap_ends_in_the_checkout(self):
-        self.assertTrue(runpod_pod.BOOTSTRAP.rstrip().endswith(f"cd {runpod_pod.REMOTE}"))
-        self.assertIn("CA_NVRTC_LIB", runpod_pod.BOOTSTRAP)
+    def test_bootstrap_sources_the_toolchain_in_the_checkout(self):
+        lines = runpod_pod.BOOTSTRAP.splitlines()
+        self.assertEqual(lines[1], f"cd {runpod_pod.REMOTE}")
+        self.assertEqual(lines[2], "source cloud/pod_env.sh")
+        env = (Path(runpod_pod.HERE) / "pod_env.sh").read_text()
+        self.assertIn("export CA_NVRTC_LIB", env)
 
 
 if __name__ == "__main__":
