@@ -2041,6 +2041,11 @@ and one N83 state. These are **fixed-state** x-only coverage bounds, not
 ordinary-query success probabilities or an adaptive target-guided solver
 lower bound. No new relation, successful-decomposition cost, or N131
 complete-work exponent follows.
+The [post-result exact-set audit](q1460_fixed_state_support/overlap_result.json)
+also finds that Q1459's newly admitted N83 state has the same two
+midpoint sets as an already admitted raw state. It adds no new x-only
+target support in that archived prefix, although earlier propagation on
+a changed solver trail remains unmeasured.
 
 ## Next goal
 

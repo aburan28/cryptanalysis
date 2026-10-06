@@ -54,6 +54,21 @@ by the target-dependent CNF. It is also not a bound on an adaptive
 target-guided algorithm, a public-subgroup target yield, or the chance that
 the frozen target has a representation.
 
+## Post-result N83 overlap audit
+
+The primary result showed equal midpoint **counts** for the new N83
+lift-admitted state 20 and the previously admitted raw state 22. A
+separately [frozen post-result audit](overlap_protocol.json) compares the
+actual sets with independent Sage roots. Its [result](overlap_result.json)
+finds identical 1,521-element midpoint sets on **both** sides for state
+20 lift, state 22 raw, and state 22 lift; each set has the same SHA-256
+digest under the declared fixed-width ONB encoding. Consequently, the
+new archived admission adds no x-only final-link target support beyond
+the already admitted raw state. An earlier rejection on a changed solver
+trail could still affect search work; this audit does not measure that.
+The follow-up was selected after the primary Q1460 counts were visible,
+and its source/protocol were committed before the exact-set comparison.
+
 The screen supplies no new verified relation or successful-decomposition
 cost. The complete N131 `2^x` remains unknown, and the challenge stays
 closed. The result strengthens the case for a rule that reasons about large
@@ -63,8 +78,10 @@ small-domain admission alone does not establish useful target coverage.
 Reproduce using the accepted Sage launcher for the independent replay:
 
 ```sh
-python3 experiments/compact-s3-m4-20261003/q1460_fixed_state_support/build.py --check
+python3 experiments/compact-s3-m4-20261003/q1460_fixed_state_support/rebuild.py
 python3 experiments/compact-s3-m4-20261003/q1460_fixed_state_support/freeze_protocol.py --check
 python3 experiments/compact-s3-m4-20261003/q1460_fixed_state_support/screen.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1460_fixed_state_support/verify_archive.py --check
+python3 experiments/compact-s3-m4-20261003/q1460_fixed_state_support/freeze_overlap_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1460_fixed_state_support/audit_overlap.py --check
 ```

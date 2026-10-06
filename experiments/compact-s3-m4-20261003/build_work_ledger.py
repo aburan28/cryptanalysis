@@ -5852,6 +5852,25 @@ def main():
         })
     assert [(row["raw_states"], row["lift_states"]) for row in
             q1460_rows] == [(6, 6), (6, 6), (1, 2)]
+    q1460_overlap_protocol_path = q1460_dir / "overlap_protocol.json"
+    q1460_overlap_result_path = q1460_dir / "overlap_result.json"
+    q1460_overlap_protocol = json.loads(
+        q1460_overlap_protocol_path.read_text())
+    q1460_overlap_result = json.loads(q1460_overlap_result_path.read_text())
+    assert q1460_overlap_protocol["proposal_id"] == q1460_overlap_result[
+        "proposal_id"] == "Q1460"
+    assert q1460_overlap_protocol["post_result_follow_up"] is True
+    assert q1460_overlap_result["post_result_follow_up"] is True
+    assert q1460_overlap_result["protocol_sha256"] == sha(
+        q1460_overlap_protocol_path)
+    assert q1460_overlap_result["parent_result_sha256"] == sha(
+        q1460_result_path)
+    assert q1460_overlap_protocol["case"] == q1460_overlap_result[
+        "case"] == "n83_ordinary"
+    assert q1460_overlap_result[
+        "exact_midpoint_sets_equal_by_pair"] == [True, True]
+    assert q1460_overlap_result[
+        "new_n83_admission_adds_midpoint_x"] is False
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -7595,6 +7614,16 @@ def main():
             "rows": q1460_rows,
             "independent_sage_replays": q1460_verification[
                 "independent_sage_replays"],
+            "post_result_n83_overlap": {
+                "selected_state_modes": q1460_overlap_protocol[
+                    "selected_state_modes"],
+                "exact_midpoint_sets_equal_by_pair": q1460_overlap_result[
+                    "exact_midpoint_sets_equal_by_pair"],
+                "new_admission_adds_midpoint_x": q1460_overlap_result[
+                    "new_n83_admission_adds_midpoint_x"],
+                "protocol_sha256": sha(q1460_overlap_protocol_path),
+                "result_sha256": sha(q1460_overlap_result_path),
+            },
             "ordinary_verified_relations": 0,
             "successful_N53_N83_solve_growth_measurement": False,
             "natural_relation_yield_estimate": None,
@@ -7606,7 +7635,11 @@ def main():
                 "fixed-state raw-target-x support ceiling from the "
                 "generic 2^27 to at most 3,385,202 at N53 before lift "
                 "filtering, 781,250 at N53 after lift filtering, and "
-                "4,626,882 at N83. These are bounds for fixed partial "
+                "4,626,882 at N83. A post-result independent Sage audit "
+                "shows the one newly admitted N83 state has exactly the "
+                "same midpoint sets on both sides as an already "
+                "admitted raw state, adding no x-only target coverage "
+                "in this archive. These are facts about fixed partial "
                 "states, not probabilities for a target-adaptive SAT "
                 "trail, natural relation yield, or successful solver work."),
             "protocol_sha256": sha(q1460_protocol_path),
@@ -8064,7 +8097,9 @@ def main():
                 "N83 pair-cap admission, without running a changed "
                 "solver or measuring natural yield; "
                 "Q1460 measures actual midpoint sets on those admitted "
-                "fixed states and bounds each raw-target x support, "
+                "fixed states, bounds each raw-target x support, and "
+                "shows the new N83 admission duplicates an earlier "
+                "midpoint set, "
                 "but does not bound target-adaptive SAT search or "
                 "measure a successful solve; "
                 "one n53 success and censored n83 ordinary "
