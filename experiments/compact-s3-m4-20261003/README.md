@@ -2028,6 +2028,25 @@ ordinary states after filtering. The new N83 admission reduces each pair
 product from `79²=6,241` to `39²=1,521`. This is a sound but narrow
 eligibility gain, not a solver run or a measured relation.
 
+### Q1460 fixed-state target-x support screen
+
+The [Q1460 frozen diagnostic](q1460_fixed_state_support/README.md)
+enumerates the exact pair-intermediate `S3` x sets on every Q1459
+cap-admitted archived state. A fixed state with at most 4,096 completed
+leaf pairs on each side can support no more than `2^27` raw target x
+values. The observed maximum is 3,385,202 for N53 raw states (781,250
+after lift filtering) and 4,626,882 for N83 raw or lift-filtered states.
+Independent Sage replay matches the native midpoint counts on one N53
+and one N83 state. These are **fixed-state** x-only coverage bounds, not
+ordinary-query success probabilities or an adaptive target-guided solver
+lower bound. No new relation, successful-decomposition cost, or N131
+complete-work exponent follows.
+The [post-result exact-set audit](q1460_fixed_state_support/overlap_result.json)
+also finds that Q1459's newly admitted N83 state has the same two
+midpoint sets as an already admitted raw state. It adds no new x-only
+target support in that archived prefix, although earlier propagation on
+a changed solver trail remains unmeasured.
+
 ## Next goal
 
 The next goal is **one independently verified four-point relation from the
@@ -2043,6 +2062,10 @@ joint-rule inversions on those same states but still recovers no unpinned
 relation, so arithmetic-only tuning also leaves the main gap.
 Q1459 shows that exact single-leaf curve-lift filtering adds only one
 admitted N83 state in the archived prefixes and none at N53.
+Q1460 bounds each admitted fixed state's raw-target x support and
+quantifies why bounded admission alone is a limited search mechanism;
+the target-dependent SAT trail prevents interpreting that bound as a
+natural relation-yield estimate.
 
 A concrete successor should process **large partial pair-output domains**
 without enumerating every pair combination. First derive and independently
