@@ -175,3 +175,10 @@ eight-point frozen panel verifies 32,768 graph outputs and reduces preparation
 additions by 37.4% and 47.2% for the two schedules. Preparation rotations
 also fall, while static recipes add 78,744 and 717,360 bytes. No controlled
 CPU timing is available.
+
+The [one-word orbit graph format](PACKED_ORBIT_GRAPH.md) stores each verified
+predecessor recipe in 32 bits. Its eight-point panel matches all 32,768
+generic outputs and both arms' operations while cutting recipe data nearly
+in half: 78,744→39,426 bytes and 717,360→358,734 bytes. The paired binary
+contains both formats; controlled CPU and standalone memory gains are
+unmeasured.

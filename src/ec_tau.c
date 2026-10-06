@@ -19,6 +19,7 @@
 #include "generated/tau8_steer_map.h"
 #include "generated/tau_wide_orbits.h"
 #include "generated/tau_wide_graph.h"
+#include "generated/tau_wide_packed_graph.h"
 #include <stdlib.h>
 
 typedef __int128 ca_i128;
@@ -1502,6 +1503,14 @@ static const ca_tau_wide_recipe *tau_wide_recipe_for(int width)
     return NULL;
 }
 
+static const uint32_t *tau_wide_packed_recipe_for(int width)
+{
+    if (width == 8) return ca_tau_wide8_packed_recipe;
+    if (width == 10) return ca_tau_wide10_packed_recipe;
+    if (width == 12) return ca_tau_wide12_packed_recipe;
+    return NULL;
+}
+
 static void tau_wide_apply_unit(int64_t *a, int64_t *b, unsigned code)
 {
     for (unsigned i = 0; i < code % 3; i++) {
@@ -1557,6 +1566,15 @@ size_t ca_ec_tau_wide_graph_recipe_bytes(int schedule)
     return 0;
 }
 
+size_t ca_ec_tau_wide_packed_recipe_bytes(int schedule)
+{
+    if (schedule == 0) return sizeof(ca_tau_wide10_packed_recipe) + sizeof(ca_tau_wide_packed_slot);
+    if (schedule == 1)
+        return sizeof(ca_tau_wide12_packed_recipe) + sizeof(ca_tau_wide8_packed_recipe) +
+               sizeof(ca_tau_wide_packed_slot);
+    return 0;
+}
+
 size_t ca_ec_tau_wide_temp_bytes(int schedule)
 {
     size_t entries = schedule == 0   ? CA_TAU_WIDE10_ORBIT_COUNT
@@ -1575,12 +1593,14 @@ void ca_ec_tau_wide_clear(ca_tau_wide_precomp *pre)
 
 static int tau_wide_prepare_impl(const ca_group *g, const ca_elem *point, int schedule,
                                  ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
-                                 uint64_t *rotations, uint64_t *inversions, int graph)
+                                 uint64_t *rotations, uint64_t *inversions, int graph,
+                                 uint64_t *slot_lookups)
 {
     if (triples) *triples = 0;
     if (adds) *adds = 0;
     if (rotations) *rotations = 0;
     if (inversions) *inversions = 0;
+    if (slot_lookups) *slot_lookups = 0;
     if (!g || !point || !out || (schedule != 0 && schedule != 1)) return 0;
     ca_tau_wide_precomp pre = {0};
     uint64_t n3 = 0, na = 0, nr = 0, ni = 0;
@@ -1611,15 +1631,36 @@ static int tau_wide_prepare_impl(const ca_group *g, const ca_elem *point, int sc
     for (size_t block = 0; block < pre.blocks; block++) {
         tau_wide_atlas atlas = tau_wide_atlas_for(pre.width[block]);
         if (graph) {
-            const ca_tau_wide_recipe *recipes = tau_wide_recipe_for(pre.width[block]);
-            if (!recipes || recipes[0].depth != 0) goto fail;
-            for (size_t id = 1; id < atlas.entries; id++)
-                if (recipes[id].depth < 1 || recipes[id].depth > 3) goto fail;
+            const ca_tau_wide_recipe *recipes =
+                graph == 1 ? tau_wide_recipe_for(pre.width[block]) : NULL;
+            const uint32_t *packed =
+                graph == 2 ? tau_wide_packed_recipe_for(pre.width[block]) : NULL;
+            if ((!recipes && !packed) || (recipes && recipes[0].depth != 0) ||
+                (packed && packed[0] != 0))
+                goto fail;
+            for (size_t id = 1; id < atlas.entries; id++) {
+                unsigned candidate_depth = recipes ? recipes[id].depth : packed[id] >> 30;
+                if (candidate_depth < 1 || candidate_depth > 3) goto fail;
+            }
             projective[0] = (tau_jac){0, g->mont.r1, 0};
             for (unsigned depth = 1; depth <= 3; depth++) {
                 for (size_t id = 1; id < atlas.entries; id++) {
-                    ca_tau_wide_recipe recipe = recipes[id];
-                    if (recipe.depth != depth) continue;
+                    ca_tau_wide_recipe recipe;
+                    if (recipes) {
+                        recipe = recipes[id];
+                        if (recipe.depth != depth) continue;
+                    } else {
+                        uint32_t word = packed[id];
+                        if (word >> 30 != depth) continue;
+                        unsigned digit_id = (word >> 20) & 63u;
+                        if (digit_id >= sizeof(ca_tau_wide_packed_slot)) goto fail;
+                        recipe.parent_packed = word & ((1u << 20) - 1);
+                        recipe.digit_slot = ca_tau_wide_packed_slot[digit_id];
+                        recipe.position = (uint8_t)((word >> 26) & 15u);
+                        recipe.depth = (uint8_t)depth;
+                        recipe.reserved = 0;
+                        if (slot_lookups) (*slot_lookups)++;
+                    }
                     if (recipe.digit_slot >= 81 || recipe.position >= pre.width[block]) goto fail;
                     ca_elem digit = tau_wide_digit_point(
                         g, &pre.pos, pre.position[block] + recipe.position, recipe.digit_slot, &nr);
@@ -1631,9 +1672,10 @@ static int tau_wide_prepare_impl(const ca_group *g, const ca_elem *point, int sc
                         unsigned parent_id =
                             recipe.parent_packed & ((1u << CA_TAU_WIDE_ID_BITS) - 1);
                         unsigned unit = recipe.parent_packed >> CA_TAU_WIDE_ID_BITS;
-                        if (parent_id >= atlas.entries || unit > 5 ||
-                            recipes[parent_id].depth != depth - 1)
-                            goto fail;
+                        if (parent_id >= atlas.entries || unit > 5) goto fail;
+                        unsigned parent_depth =
+                            recipes ? recipes[parent_id].depth : packed[parent_id] >> 30;
+                        if (parent_depth != depth - 1) goto fail;
                         tau_jac parent = projective[parent_id];
                         if (!parent.z) goto fail;
                         unsigned power = unit % 3;
@@ -1699,14 +1741,24 @@ int ca_ec_tau_wide_prepare(const ca_group *g, const ca_elem *point, int schedule
                            ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
                            uint64_t *rotations, uint64_t *inversions)
 {
-    return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 0);
+    return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 0,
+                                 NULL);
 }
 
 int ca_ec_tau_wide_prepare_graph(const ca_group *g, const ca_elem *point, int schedule,
                                  ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
                                  uint64_t *rotations, uint64_t *inversions)
 {
-    return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 1);
+    return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 1,
+                                 NULL);
+}
+
+int ca_ec_tau_wide_prepare_packed(const ca_group *g, const ca_elem *point, int schedule,
+                                  ca_tau_wide_precomp *out, uint64_t *triples, uint64_t *adds,
+                                  uint64_t *rotations, uint64_t *inversions, uint64_t *slot_lookups)
+{
+    return tau_wide_prepare_impl(g, point, schedule, out, triples, adds, rotations, inversions, 2,
+                                 slot_lookups);
 }
 
 static int tau_wide_mul_jac(const ca_group *g, const ca_tau_wide_precomp *pre, tau_jac *out,
