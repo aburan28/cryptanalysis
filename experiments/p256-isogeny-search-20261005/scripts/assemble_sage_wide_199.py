@@ -16,11 +16,17 @@ PRIOR_WIDE = RESULTS / "sage-wide-depth-one-20261006" / "candidates.json"
 DEPTH_THREE = RESULTS / "sage-depth-three-20261006" / "depth-three-candidates.json"
 PANEL_4G = OUTPUT / "degrees" / "panel-status.json"
 PANEL_8G = OUTPUT / "degrees-8g" / "panel-status.json"
-NEW_DEGREES = {
+PRIOR_EXTENSION_DEGREES = {
     59: OUTPUT / "degrees" / "degree-59.json",
     97: OUTPUT / "degrees" / "degree-97.json",
     101: OUTPUT / "degrees-8g" / "degree-101.json",
     103: OUTPUT / "degrees" / "degree-103.json",
+}
+MODULAR_VALIDATION = OUTPUT / "modular-degrees" / "degree-103.json"
+MODULAR_PANEL = OUTPUT / "modular-degrees" / "panel-status.json"
+MODULAR_DEGREES = {
+    ell: OUTPUT / "modular-degrees" / f"degree-{ell}.json"
+    for ell in [137, 149, 151, 157, 163, 179, 181, 191, 197, 199]
 }
 
 ATTEMPTED_DEGREES = [
@@ -102,7 +108,11 @@ def compact_records(panel: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def main() -> None:
-    source_paths = [PRIOR_WIDE, *NEW_DEGREES.values()]
+    source_paths = [
+        PRIOR_WIDE,
+        *PRIOR_EXTENSION_DEGREES.values(),
+        *MODULAR_DEGREES.values(),
+    ]
     candidates: list[dict[str, Any]] = []
     by_id: dict[str, dict[str, Any]] = {}
     for path in source_paths:
@@ -150,26 +160,69 @@ def main() -> None:
         if candidate_id not in seen:
             union_ids.append(candidate_id)
             seen.add(candidate_id)
-    new_ids = [
+    prior_extension_ids = [
         candidate["candidate_id"]
-        for ell in NEW_DEGREES
-        for candidate in load(NEW_DEGREES[ell])["candidates"]
+        for ell in PRIOR_EXTENSION_DEGREES
+        for candidate in load(PRIOR_EXTENSION_DEGREES[ell])["candidates"]
         if candidate["candidate_id"] != "p256-root"
     ]
+    modular_ids = [
+        candidate["candidate_id"]
+        for ell in MODULAR_DEGREES
+        for candidate in load(MODULAR_DEGREES[ell])["candidates"]
+        if candidate["candidate_id"] != "p256-root"
+    ]
+    new_ids = [*prior_extension_ids, *modular_ids]
     union = {
         "schema_version": 1,
         "description": "Unique retained curves across depth three and the extended one-hop scan",
         "inputs": [source(DEPTH_THREE), source(extended_path)],
         "unique_curves_including_p256": len(union_ids),
         "unique_non_root_curves": len(union_ids) - 1,
-        "new_one_hop_non_root_curves": len(new_ids),
+        "new_since_degree_47_non_root_curves": len(new_ids),
+        "new_modular_recovery_non_root_curves": len(modular_ids),
         "new_candidate_ids": new_ids,
+        "new_modular_candidate_ids": modular_ids,
         "candidate_ids": union_ids,
     }
     write(OUTPUT / "retained-union.json", union)
 
+    high_candidates = [candidates[0]] + [by_id[candidate_id] for candidate_id in modular_ids]
+    write(
+        OUTPUT / "new-high-candidates.json",
+        {
+            "schema_version": 1,
+            "description": "P-256 plus the 20 newly recovered degree-137 through degree-199 neighbors",
+            "search": {
+                "algorithm": "selection from the complete one-hop registry",
+                "ells": list(MODULAR_DEGREES),
+                "nodes_found": len(high_candidates),
+                "source": source(extended_path),
+            },
+            "candidates": high_candidates,
+        },
+    )
+
     panel_4g = load(PANEL_4G)
     panel_8g = load(PANEL_8G)
+    modular_panel = load(MODULAR_PANEL)
+    legacy_103 = {
+        candidate["candidate_id"]: candidate
+        for candidate in load(PRIOR_EXTENSION_DEGREES[103])["candidates"]
+    }
+    modular_103 = {
+        candidate["candidate_id"]: candidate
+        for candidate in load(MODULAR_VALIDATION)["candidates"]
+    }
+    validation_matches = (
+        legacy_103.keys() == modular_103.keys()
+        and all(
+            legacy_103[candidate_id]["curve"] == modular_103[candidate_id]["curve"]
+            and legacy_103[candidate_id]["path"] == modular_103[candidate_id]["path"]
+            for candidate_id in legacy_103
+        )
+    )
+    assert validation_matches
     boundary = {
         "schema_version": 1,
         "description": "Exact success and resource boundary for the attempted one-hop extension",
@@ -177,7 +230,7 @@ def main() -> None:
             "classification": "every rational prime degree <= 199 with Kronecker symbol 0 or 1",
             "attempted_ells": ATTEMPTED_DEGREES,
             "successful_ells": completed_degrees,
-            "unresolved_ells": [137, 149, 151, 157, 163, 179, 181, 191, 197, 199],
+            "unresolved_ells": [],
         },
         "unretained_preliminary_attempts": [
             {
@@ -195,7 +248,7 @@ def main() -> None:
                 "raw_artifact_retained": False,
             },
         ],
-        "independent_panels": [
+        "superseded_division_polynomial_panels": [
             {
                 "pari_stack_gib": panel_4g["pari_stack_gib"],
                 "requested_ells": panel_4g["requested_ells"],
@@ -220,10 +273,25 @@ def main() -> None:
                 },
             },
         ],
+        "successful_modular_recovery": {
+            "method": (
+                "instantiated classical modular polynomial, first-partial "
+                "normalized codomain formula, and BMSS kernel recovery"
+            ),
+            "pari_stack_gib": modular_panel["pari_stack_gib"],
+            "requested_ells": modular_panel["requested_ells"],
+            "records": compact_records(modular_panel),
+            "raw_status": source(MODULAR_PANEL),
+            "degree_103_validation": {
+                "legacy_artifact": source(PRIOR_EXTENSION_DEGREES[103]),
+                "modular_artifact": source(MODULAR_VALIDATION),
+                "candidate_ids_curves_and_paths_match_exactly": validation_matches,
+            },
+        },
         "claim_boundary": (
-            "Explicit one-hop paths are retained through degree 103 where Sage "
-            "completed. Degrees 137 and above remain unresolved; this is not a "
-            "complete one-hop enumeration through 199."
+            "Every rational ramified or split prime degree through 199 is "
+            "explicitly enumerated. This does not cover larger prime degrees "
+            "or the entire P-256 isogeny class."
         ),
     }
     write(OUTPUT / "resource-boundary.json", boundary)
@@ -232,7 +300,8 @@ def main() -> None:
         json.dumps(
             {
                 "extended_one_hop_curves": len(candidates),
-                "new_neighbors": len(new_ids),
+                "new_since_degree_47_neighbors": len(new_ids),
+                "new_modular_neighbors": len(modular_ids),
                 "retained_union_curves": len(union_ids),
                 "completed_degrees": completed_degrees,
             },

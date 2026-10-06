@@ -150,22 +150,24 @@ verifier are frozen in
 [`results/sage-native-full-screen-20261006`](results/sage-native-full-screen-20261006).
 This covers the explicit 70-curve registry, not the entire isogeny class.
 
-## Attempted one-hop extension through degree 199
+## Complete one-hop enumeration through degree 199
 
-Every ramified or split rational prime degree through 199 was then attempted
-in independent Sage panels. Degrees 59, 97, 101, and 103 completed and added
-eight explicit direct neighbors, bringing the union to 78 curves. A matched
-native screen found no significant iteration-rate advantage for any of the
-eight, so all 77 retained non-root curves now have native measurements and no
-reproducible speedup remains.
+Every ramified or split rational prime degree through 199 is now explicitly
+enumerated. The standard division-polynomial route exhausted an 8 GiB PARI
+stack at degree 137, but a lower-memory modular-polynomial method reproduced
+the legacy degree-103 maps exactly and recovered both explicit neighbors at
+every remaining degree. Peak RSS was about 293 MiB. The combined registry now
+contains 98 curves.
 
-This is deliberately reported as an attempted extension, not a complete scan:
-degrees 137, 149, and 151 exhausted an 8 GiB PARI stack, while the larger
-degrees failed at 4 GiB and were not all retried at 8 GiB. The successful
-registries, raw stack-overflow tracebacks, exact stopping boundary, native
-screen, receipt, and verifier are frozen in
+The 28 additions beyond degree 47 were all screened with the matched native
+backend. No paired 95% interval triggered a holdout, so all 97 retained
+non-root curves now have native measurements and no reproducible speedup
+remains. The completed registries, superseded stack-overflow tracebacks,
+modular-method regression check, native screens, receipt, and verifier are in
 [`results/sage-wide-depth-one-199-20261006`](results/sage-wide-depth-one-199-20261006).
-Per-key evaluation of the new higher-degree maps was not timed.
+This is complete for the classified degrees through 199, not for larger prime
+degrees or the entire isogeny class. Per-key evaluation of the new maps was not
+timed.
 
 ## Quick start
 
