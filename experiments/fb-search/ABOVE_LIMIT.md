@@ -28,6 +28,7 @@ much less than `2^d`, for `l` clearly above `(n + 2)/3`.
 | Generic lower bound with preprocessing | Corrigan-Gibbs-Kogan 2018 | `S T^2 = Omega(eps N)` | Reference point (Sec. 2) |
 | Structured generic-group model | Corrigan-Gibbs-Henzinger-Wu, ePrint 2026/384 | `T = Omega(min(sqrt(q), 1/delta))` queries to a free structure oracle (`delta` = structured fraction) | Treats the oracle as free, so it does not forbid a cheap oracle above the limit |
 | In this repository | `../linearized-half-decomposition` (k-point budget, at least `2^(2n/3)` total); `../pdp-scaling`; `../frobenius-quotient-m4` (nonlinear weight base, m = 4); `../factorbase-census`; `../homogeneous-fraction`; `../hamming-ic-e2e-20260929` | All stay at or above the known exponents | No |
+| In this repository: `../groebner-perf-20260924`, rounds 27-40 | `PDP2cond` (round 27): Gray-code enumeration of one summand's block, then the other block by linear algebra. `PDP2eval`/`PDP3eval`: full-cube evaluation and interpolation. Round 31 onward: conditional quadratic lifting (fix two blocks of a three-summand query, linearize the quadratic remainder, crossbred style), with affine certificates | Guess-and-linearize on the full descent system: at least `2^l` (m = 2, one block fixed) or `2^(2l)` (m = 3, two blocks) | No: `2^l > 2^d = 2^(3l - n - 2)` for every `l < (n + 2)/2`. The same bound as the SAT vertex-cover route above |
 
 ## 2. Why the limit is a real barrier: the generic preprocessing curve
 
