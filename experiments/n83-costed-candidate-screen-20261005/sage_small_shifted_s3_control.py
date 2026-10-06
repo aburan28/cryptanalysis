@@ -89,7 +89,7 @@ def main(degree: int, arity: int, out: Path) -> None:
         assert a != b
         choices = tuple(sorted((x for x in (a, b, a + b) if x != 0 and lifts[x]),
                                key=word))
-        assert choices and len(choices) == len(set(choices))
+        assert len(choices) == len(set(choices))
         slots.append(choices)
     total_tuples = 1
     for choices in slots:
@@ -154,16 +154,19 @@ def main(degree: int, arity: int, out: Path) -> None:
                                          "total_tuples": total_tuples, "counters": counters})
             raise TimeoutError("small-field frozen wall cap exceeded")
     assert counters["factor_x_tuples"] == total_tuples
-    regular_pass = (counters["chain_spurious_pairs"] == 0 and
+    regular_pass = (total_tuples > 0 and counters["chain_spurious_pairs"] == 0 and
                     counters["regular_chain_missed_pairs"] == 0)
     report = {
         "schema_version": 1, "kind": "small_shifted_s3_chain_equivalence",
-        "status": "PASS_REGULAR" if regular_pass else "COUNTEREXAMPLE_REGULAR",
+        "status": ("VACUOUS_NO_RATIONAL_TUPLES" if total_tuples == 0 else
+                   "PASS_REGULAR" if regular_pass else "COUNTEREXAMPLE_REGULAR"),
         "degree": degree, "arity": arity,
         "field_modulus": str(field.modulus()),
         "normal_element_polynomial_bits": word(normal),
         "curve_order": int(curve.cardinality()),
         "slot_rational_x_counts": [len(choices) for choices in slots],
+        "empty_slot_indices": [index for index, choices in enumerate(slots)
+                               if not choices],
         "counters": counters, "first_mismatches": examples,
         "full_locus_equivalence": not counters["chain_spurious_pairs"] and
                                   not counters["chain_missed_pairs"],
