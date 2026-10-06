@@ -162,3 +162,16 @@ pairs. The macOS host has no host-level isolation receipt, and these
 single-pass timings are exploratory. The controlled CPU wall-time effect
 is **unknown**. The operation gate passes; an end-to-end CPU speedup,
 one-target rho benefit, and academic novelty are not established.
+
+The committed panel can be audited from a fresh checkout without rebuilding
+the host-specific executable:
+
+```sh
+python3 experiments/prime-j0-cost-aware-chain/audit_periodic_pair_panel.py
+```
+
+When the exact original executable and CMake cache are available, add
+`--bench PATH` and `--build-cache PATH` to check their bytes against the
+recorded hashes. The fixture's generic-reference replay additionally needs
+the exact reference binary, as described by `check_periodic_pair_inputs.py
+--help`.

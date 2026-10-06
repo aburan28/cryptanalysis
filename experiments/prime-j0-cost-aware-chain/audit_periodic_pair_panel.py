@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only audit of the frozen periodic-pair native operation panel."""
 
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -18,7 +19,7 @@ def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def audit():
+def audit(bench=None, build_cache=None):
     fixture_path = ROOT / "periodic-pair-native-inputs.json"
     panel_path = ROOT / "periodic-pair-native-panel.json"
     fixture = json.loads(fixture_path.read_text())
@@ -29,8 +30,10 @@ def audit():
     assert panel["cpu_timing_claim"] is None and panel["isolated_receipt"] is None
     assert panel["protocol_freeze_commit"] == "e4178e1e02393ae33bd01b98af2243cb011c17cb"
     assert panel["schema"] == 1 and panel["timeout_seconds_per_arm"] == 120
-    assert sha256(REPO / "build-cost-aware/ca_tau_chain_bench") == panel["bench_sha256"]
-    assert sha256(REPO / "build-cost-aware/CMakeCache.txt") == panel["build_cache_sha256"]
+    if bench is not None:
+        assert sha256(bench) == panel["bench_sha256"]
+    if build_cache is not None:
+        assert sha256(build_cache) == panel["build_cache_sha256"]
     for name, digest in panel["source_sha256"].items():
         assert sha256(REPO / name) == digest, name
     assert len(panel["rows"]) == 16 and len(panel["pairs"]) == 8
@@ -48,10 +51,15 @@ def audit():
         for row in rows:
             assert row["curve"] == case["curve"]["name"]
             assert row["point_index"] == case["point_index"]
-            assert row["command"] == [str(REPO / "build-cost-aware/ca_tau_chain_bench"),
+            recorded_bench = Path(row["command"][0])
+            assert recorded_bench.is_absolute()
+            assert recorded_bench.parts[-2:] == ("build-cost-aware", "ca_tau_chain_bench")
+            recorded_root = recorded_bench.parent.parent / \
+                "experiments/prime-j0-cost-aware-chain"
+            assert row["command"] == [str(recorded_bench),
                                       row["arm"], case["curve"]["name"],
                                       str(case["point_index"]),
-                                      str(ROOT / case["scalar_file"])]
+                                      str(recorded_root / case["scalar_file"])]
             assert row["status"] == "exited" and row["returncode"] == 0
             assert row["verified"] and not row["failures"] and not row["stderr"]
             fields = read_fields(row["stdout"])
@@ -92,4 +100,8 @@ def audit():
 
 
 if __name__ == "__main__":
-    audit()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bench", type=Path, help="optional exact panel executable")
+    parser.add_argument("--build-cache", type=Path, help="optional exact CMake cache")
+    args = parser.parse_args()
+    audit(args.bench, args.build_cache)
