@@ -44,6 +44,22 @@ parameter space allows. Wall-time measurements use a fresh process per run
 receipt, so per AGENTS.md "CPU performance isolation gate" every wall-time
 ratio here is **exploratory**. Operation counts are exact and host-independent.
 
+Both benchmark records embed a machine-readable hardware and execution
+manifest (`hardware_manifest.py`, AGENTS.md "Hardware and placement for
+empirical benchmarks"): CPU vendor, reported model string, CPUID
+family/model/stepping with the microarchitecture decoded from them (Emerald
+Rapids, labelled as a CPUID lookup, not independently documented),
+architecture and feature flags, cores/threads/sockets, per-level cache
+topology, kernel/OS, virtualization (`kvm`, no container), cgroup v2 CPU quota
+and memory limit (`max 100000`, `max`), the single exposed NUMA node, allowed
+CPUs and the fact that no affinity or memory policy was selected, and DIMM
+technology/speed/channels written as `unknown` (a VM exposes no verifiable
+evidence). Each run additionally records process CPU time beside wall time,
+peak RSS, page faults and context switches, and the host's steal-time
+fraction from `/proc/stat` over the run (0.0 for every S4 regime; at most
+0.4 % for one SSS run). Nothing is pinned and no core is reserved, so these
+are execution records, not isolation receipts.
+
 ## Sources
 
 | Source | Role | How it was used |
@@ -129,13 +145,15 @@ returned verified proper factors.
 
 | Algorithm | verified | total of per-fixture medians (s) | geometric-mean ratio to SSS |
 | --- | --- | --- | --- |
-| SSS | 15/15 | 0.525 | 1.00 |
-| bundled pSIQS | 15/15 | 3.503 | 6.37x |
-| SymPy SIQS | 15/15 | 8.013 | 12.60x |
+| SSS | 15/15 | 0.519 | 1.00 |
+| bundled pSIQS | 15/15 | 3.582 | 6.58x |
+| SymPy SIQS | 15/15 | 8.111 | 12.87x |
 
-Per-fixture medians (s): SSS 0.086 / 0.112 / 0.117 / 0.122 / 0.088; pSIQS
-0.390 / 0.660 / 1.000 / 0.911 / 0.542; SymPy SIQS 0.622 / 0.982 / 3.015 /
-2.589 / 0.805. Versions: Python 3.12.3, gmpy2 2.3.2, sympy 1.14.0, numpy
+Per-fixture medians (s): SSS 0.091 / 0.110 / 0.111 / 0.118 / 0.090; pSIQS
+0.412 / 0.639 / 1.046 / 0.909 / 0.576; SymPy SIQS 0.634 / 0.982 / 3.047 /
+2.619 / 0.830. Process CPU time equals wall time to within 1 ms on every run
+(single-threaded, no waiting); peak RSS 56 MB (SSS, pSIQS) and 64 MB (SymPy
+SIQS). Versions: Python 3.12.3, gmpy2 2.3.2, sympy 1.14.0, numpy
 2.4.4. This is a positive control that the harness measures a real
 constant-factor gain where one is known to exist; it says nothing about AVW,
 and the wall times are exploratory (shared VM). Figure:
@@ -239,17 +257,19 @@ precomputation (Montgomery batch inversion) charged, medians:
 
 | regime | sizes of L, R | raw fused 7M+1S | monic fused 3M+1S | rank-six dot 6M | two-product 2M | raw/2P | monic/2P |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| reuse 1 (loss case) | 2^20, 2^20 | 35.0 ms | 66.3 ms | 82.5 ms | 60.5 ms | 0.58 | 1.10 |
-| fresh right (loss case) | 2^14, 2^20 | 33.8 ms | 39.4 ms | 47.7 ms | 33.3 ms | 1.02 | 1.19 |
-| reuse 16 | 2^16, 2^16 | 19.1 ms | 10.9 ms | 26.6 ms | 15.0 ms | 1.27 | 0.73 |
-| reuse 64 | 2^14, 2^14 | 13.0 ms | 8.9 ms | 13.8 ms | 7.6 ms | 1.72 | 1.18 |
-| indexed 1024 x 1024 | 2^10, 2^10 | 12.2 ms | 8.1 ms | 11.6 ms | 6.6 ms | 1.85 | 1.23 |
+| reuse 1 (loss case) | 2^20, 2^20 | 39.0 ms | 67.0 ms | 84.9 ms | 64.9 ms | 0.60 | 1.03 |
+| fresh right (loss case) | 2^14, 2^20 | 35.8 ms | 39.1 ms | 61.8 ms | 39.2 ms | 0.91 | 1.00 |
+| reuse 16 | 2^16, 2^16 | 20.2 ms | 11.6 ms | 29.1 ms | 16.6 ms | 1.22 | 0.70 |
+| reuse 64 | 2^14, 2^14 | 13.2 ms | 9.0 ms | 14.0 ms | 7.7 ms | 1.71 | 1.16 |
+| indexed 1024 x 1024 | 2^10, 2^10 | 12.3 ms | 8.2 ms | 11.8 ms | 6.6 ms | 1.87 | 1.24 |
 
 All four evaluators agreed on every pair in every regime (checksums and
 pairwise comparison). The crossover is where endpoint reuse pays for the
 feature precomputation: with no reuse the raw evaluator wins; in the
 cache-resident indexed regime the two-product loop runs at 6.3 ns per pair
-against 7.7 (monic fused) and 11.7 (raw). The `reuse 16` row shows the gain
+against 7.8 (monic fused) and 11.7 (raw). Process CPU time equals wall time
+in every regime (0.30–2.16 s per regime, single thread), peak RSS 17–264 MB
+depending on the endpoint tables, steal fraction 0.0 throughout. The `reuse 16` row shows the gain
 is memory-bound at that size (32-byte features versus 16-byte monic pairs
 streamed from a 2 MB table), so the arithmetic saving does not always
 convert to time. **Claim boundary:** this lowers the constant of the
@@ -295,4 +315,6 @@ python3 build_pdf.py    # regenerates speedup_search_followup.pdf
 
 Dependencies: Python 3.12, sympy, numpy, gmpy2, matplotlib, reportlab, gcc.
 Every result file under `results/` is written by the module of the same
-name; `results/s4_bench.json` records the host, compiler and seed.
+name; `results/s4_bench.json` and `results/sss/summary.json` carry the
+hardware and execution manifest, the source hash of `s4_bench.c`, and the
+per-run process/steal records.
