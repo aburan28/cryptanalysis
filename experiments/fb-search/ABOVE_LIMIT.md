@@ -20,6 +20,10 @@ much less than `2^d`, for `l` clearly above `(n + 2)/3`.
 | Overdetermined bilinear solvers (y-XL, y-MXL, y-HXL) | "On the complexity of solving generic overdetermined bilinear systems" (AMC 2021, arXiv 2006.09442); Faugère-Safey El Din-Spaenlehauer 2011 | Degree about `ceil(n_x (n_y - 1)/(m - n_x)) + 1` | Not on generic counts for our residual system (Sec. 3) |
 | Hybrid exhaustive search plus Macaulay (BooleanSolve) | Bardet-Faugère-Salvy-Spaenlehauer 2013 | `2^((1 - 0.208 alpha) N)` for `m = alpha N` | No: about `2^(0.58 (l + d))` here, against `2^d` |
 | Non-subspace factor bases (`L(x) = 0` for compositions of low-degree maps; quasi-subfield polynomials) | Petit-Kosters-Messeng 2016; Huang-Kosters-Petit-Yeo-Yun 2020 | Other bases, solved with Gröbner or resultants | Not as a linear oracle: these bases break the linearization |
+| Summation-polynomial evaluation instead of Gröbner bases; `(m - 1)`-subset enumeration plus factor-base lookup | McGuire-Mueller, ePrint 2017/1262; Amadori-Pintore-Sala 2018 | Prime fields; `O(p)` total | No: an enumeration of factor-base subsets, not a solver for the residual |
+| NP-completeness of `S_r` zero-testing; first fall degree 2 | Kosters-Yeo, arXiv 1503.08001 | Worst-case hardness under an assumption | No (a limitation, not a method) |
+| Frobenius-invariant factor bases for Koblitz curves | ePrint 2020/1315 | Fewer systems to solve (factor `1/n'`), faster linear algebra | No: a constant factor, and the same solvers |
+| Web search for 2022-2026 binary-field PDP work (2026-10-06) | ePrint, arXiv | Found only prime-field or unrelated work, such as ePrint 2024/1923, 2025/015, 2026/1299 | Nothing newer than WDSat for prime-degree binary fields |
 | Rho with precomputation | Bernstein-Lange 2012 | `1.77 r^(1/3)` online after `1.24 r^(2/3)` precomputation | Reference point |
 | Generic lower bound with preprocessing | Corrigan-Gibbs-Kogan 2018 | `S T^2 = Omega(eps N)` | Reference point (Sec. 2) |
 | Structured generic-group model | Corrigan-Gibbs-Henzinger-Wu, ePrint 2026/384 | `T = Omega(min(sqrt(q), 1/delta))` queries to a free structure oracle (`delta` = structured fraction) | Treats the oracle as free, so it does not forbid a cheap oracle above the limit |
@@ -55,6 +59,34 @@ A method that stays cheap above the limit, with `T ~ 2^(n - 2l) poly`, would giv
 principle, since IC is not generic, but it would be a non-generic preprocessing advantage for
 prime-degree binary curves, which no source above reports. We did not find this
 framing of the linearization limit in the sources above.
+
+**Graded targets for an above-limit oracle.** Suppose an oracle costs `c(d)` per attempt. Then
+`T ~ 2^(n - 2l) c(d)`, so `S T^2 / r ~ 2^(n - 3l + 2) c(d)^2 = c(d)^2 / 2^d`. Three regimes
+follow:
+
+- `c = 2^d` is the enumeration.
+- Any `c` well below `2^d` meets the goal's "cheap" criterion.
+- `c = 2^(d/2)`, a square-root or meet-in-the-middle speed-up, would put above-limit IC exactly
+  **on** the generic preprocessing curve.
+
+Only `c < 2^(d/2)` would beat the Corrigan-Gibbs-Kogan curve, and with it Bernstein-Lange at equal
+advice. So even a successful birthday-type residual solver would tie with generic rho with
+precomputation, not beat it.
+
+**The symmetric linear oracle is optimal among linear subspace-pair oracles.**
+
+- **Setup.** Take subspaces A, B of dimensions a, b, with `k = dim(A ∩ B)`. An oracle that is
+  linear in `(x1 + x2, x1 x2)` over `(A + B) x (A B)` is linear only if
+  `dim(A + B) + dim(A B) <= n + 1`.
+- **Bound.** By Hou-Leung-Xiang (n prime), `dim(A B) >= a + b - 1`. So `2(a + b) - k <= n + 2`.
+- **Optimum.** With `k <= (a + b)/2`, the number of pairs covered, `2^(a + b)`, is at most
+  `2^(2(n + 2)/3)`. Equality holds only for `A = B`, the symmetric oracle at the limit.
+- **Unions of subspaces.** Cross pairs between two progressions `xi_i P`, `xi_j P` have a poly-time
+  linear oracle for `l0 <= (n + 1)/4`, but they cost `2^(n - 2 l0) >= 2^(n/2)` per relation,
+  against `2^(n/3)` at the symmetric limit.
+
+So nothing linear goes past the limit. An above-limit method has to be genuinely nonlinear, as in
+`../linearized-half-decomposition`, which reaches the same conclusion through its k-point budget.
 
 ## 3. The residual problem, exactly
 
