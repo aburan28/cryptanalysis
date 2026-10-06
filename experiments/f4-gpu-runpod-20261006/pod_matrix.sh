@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 # The measurements in RESULT.md, on a Runpod GPU pod.  From the repository:
 #
-#   B=experiments/f4-gpu-20260925/runpod_bench.py
-#   python3 $B up f4 --gpu "NVIDIA GeForce RTX 5090" --min-vcpu 16 \
-#       --image runpod/base:1.0.2-ubuntu2404
-#   python3 $B sync f4
-#   python3 $B ssh f4 -- 'bash /root/cryptanalysis/experiments/f4-gpu-runpod-20261006/pod_matrix.sh /root/receipts'
-#   python3 $B fetch f4 /root/receipts /tmp/f4-runpod && python3 $B down f4
+#   cloud/runpod_pod.py run f4 --gpu "NVIDIA GeForce RTX 5090" \
+#       --out experiments/f4-gpu-runpod-20261006/rerun -- \
+#       'bash experiments/f4-gpu-runpod-20261006/pod_matrix.sh experiments/f4-gpu-runpod-20261006/rerun'
 #
 # Installs Rust 1.99.0 and NVRTC 12 (pip) when missing, builds the suite,
 # and writes every report and log under OUT.  The host runs come first, so
@@ -53,8 +50,9 @@ timed() {
   python3 -c "print(f'$name: {$t1 - $t0:.2f} s')" | tee -a "$OUT/walls.txt"
 }
 
-# One matrix per degree, every path asserted against the others.
-timed degree-host "$EX/f4_degree_bench" --max-degree 5 --out "$OUT/degree-host"
+# One matrix per degree, every path asserted against the others.  The host
+# runs say so: an unset F4_F2_ECHELON uses any device that opens.
+F4_F2_ECHELON=host timed degree-host "$EX/f4_degree_bench" --max-degree 5 --out "$OUT/degree-host"
 F4_F2_ECHELON=cuda timed degree-gpu "$EX/f4_degree_bench" --max-degree 5 --out "$OUT/degree-gpu"
 
 # Single large matrices.
@@ -62,15 +60,15 @@ for cell in 0:13:2:1234:5 0:9:3:77:5 1:11:2:301:5 1:11:2:301:6 0:13:2:1234:6; do
   IFS=: read -r a n m x d <<<"$cell"
   tag="k${a}n${n}m${m}d${d}"
   if [ "$tag" != k0n13m2d6 ] || [ "${SKIP_HOST_D6:-0}" != 1 ]; then
-    timed "matrix-$tag-host" "$EX/f4_matrix_bench" --cell "$a:$n:$m:$x" --degree "$d" \
-      --out "$OUT/matrix-$tag-host.json"
+    F4_F2_ECHELON=host timed "matrix-$tag-host" "$EX/f4_matrix_bench" --cell "$a:$n:$m:$x" \
+      --degree "$d" --out "$OUT/matrix-$tag-host.json"
   fi
   F4_F2_ECHELON=cuda timed "matrix-$tag-gpu" "$EX/f4_matrix_bench" --cell "$a:$n:$m:$x" \
     --degree "$d" --out "$OUT/matrix-$tag-gpu.json"
 done
 
 # The solving-degree sweep, default arguments: the tables must agree.
-timed dreg-host "$EX/dreg_sweep"
+F4_F2_ECHELON=host timed dreg-host "$EX/dreg_sweep"
 F4_F2_ECHELON=cuda timed dreg-gpu "$EX/dreg_sweep"
 if diff <(grep -v '^n=' "$OUT/dreg-host.log") <(grep -v '^n=' "$OUT/dreg-gpu.log") >/dev/null; then
   echo "dreg tables identical" | tee -a "$OUT/walls.txt"
