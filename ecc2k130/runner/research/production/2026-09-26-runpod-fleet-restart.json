@@ -1,0 +1,63 @@
+{
+  "status": "critical_host_terminated_fleet_partially_restored",
+  "performed_at": "2026-09-26T03:55:00+00:00",
+  "runpod_api": "REST https://rest.runpod.io/v1 with Bearer auth; Cloudflare 1010 without a browser-like User-Agent",
+  "account": {
+    "balance_usd_after": 197.09,
+    "spend_per_hour_usd": 7.51
+  },
+  "actions": [
+    {
+      "action": "terminate",
+      "pod": "ecc2k-5090-b",
+      "id": "s3jd3num7vnfjy",
+      "machine": "cqn1dqd9kcqh",
+      "reason": "Runpod critical machine error; 3/6 GPUs idle on seed fatals; $5.94/hr"
+    },
+    {
+      "action": "create",
+      "pod": "ecc2k-5090-b-x1",
+      "id": "cdcbyk9ke89d1l",
+      "gpu": "1x NVIDIA GeForce RTX 5090",
+      "cost_per_hour_usd": 0.99,
+      "note": "6x/4x/2x 5090 capacity unavailable on SECURE; 1x succeeded"
+    },
+    {
+      "action": "start",
+      "pods": ["ecc2k-pro6000-b (pvs4ulshdj1m9a)", "ecc2k-pro6000-c (4uzzz0rpm6inuq)"]
+    },
+    {
+      "action": "recreate",
+      "pod": "ecc2k-pro6000-wk",
+      "old_id": "onxwqhe0c583dh",
+      "new_id": "6270vais0qo2rf",
+      "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "reason": "pinned host had no free GPUs; WK SKU unavailable, used Server Edition"
+    },
+    {
+      "action": "recreate",
+      "pod": "ecc2k-cpu-1",
+      "old_id": "zpbmgpbg1jb8j2",
+      "new_id": "lfcxbmngfo2tmk",
+      "reason": "pinned host had no free vCPUs"
+    },
+    {
+      "action": "seed_floor_repair",
+      "runs": [6, 7, 8],
+      "detail": "checkpoint_floor sat 2–10k iterations above the S3 checkpoint with null owner; resume fatal loop"
+    }
+  ],
+  "running_after": [
+    {"name": "ecc2k-5090-b-x1", "id": "cdcbyk9ke89d1l", "usd_per_hour": 0.99},
+    {"name": "ecc2k-pro6000-b", "id": "pvs4ulshdj1m9a", "usd_per_hour": 2.09},
+    {"name": "ecc2k-pro6000-c", "id": "4uzzz0rpm6inuq", "usd_per_hour": 2.09},
+    {"name": "ecc2k-pro6000-wk", "id": "6270vais0qo2rf", "usd_per_hour": 2.09},
+    {"name": "ecc2k-cpu-1", "id": "lfcxbmngfo2tmk", "usd_per_hour": 0.14}
+  ],
+  "not_started": [
+    "ecc2k-pro6000-d/e/f: start command is not the ECC2K worker boot",
+    "ecc2k-mig8 / remaining 5090 / pro4500: left EXITED to control spend",
+    "6x RTX 5090: no SECURE capacity at recreate time"
+  ],
+  "security_note": "Pod env vars include long-lived AWS access keys. Rotate the IAM key used in Runpod pod env; prefer short-lived credentials or an instance role pattern. Do not commit pod env dumps."
+}

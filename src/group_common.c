@@ -8,6 +8,15 @@
 
 void ca_group_mul(const ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k, uint64_t *ops)
 {
+    /* Curves take the Jacobian ladder and Z_p^* an inline Montgomery
+     * ladder; ops still counts what the double-and-add below would: one
+     * op per set bit, one dbl per bit after the lowest. */
+    if ((g->kind == CA_GROUP_EC && ca_ec_group_mul(g, r, a, k)) ||
+        (g->kind == CA_GROUP_ZP && ca_zp_group_mul(g, r, a, k))) {
+        if (ops && k)
+            *ops += (uint64_t)__builtin_popcountll(k) + (uint64_t)(63 - __builtin_clzll(k));
+        return;
+    }
     ca_elem acc, base = *a;
     ca_group_identity(g, &acc);
     uint64_t n = 0;
@@ -26,6 +35,26 @@ void ca_group_div(const ca_group *g, ca_elem *r, const ca_elem *a, const ca_elem
     ca_elem bi;
     ca_group_inv(g, &bi, b);
     ca_group_op(g, r, a, &bi);
+}
+
+int ca_check_members(const ca_group *g, const ca_elem *base, const ca_elem *target, uint64_t n,
+                     const char *solver)
+{
+    ca_elem t;
+    ca_group_mul(g, &t, base, n, NULL);
+    if (!ca_group_is_identity(g, &t)) {
+        ca_set_error("%s: the base is not in the subgroup of order %llu", solver,
+                     (unsigned long long)n);
+        return 0;
+    }
+    ca_group_mul(g, &t, target, n, NULL);
+    if (!ca_group_is_identity(g, &t)) {
+        ca_set_error("%s: the target is not in the subgroup of order %llu, so it is not a "
+                     "power of the base",
+                     solver, (unsigned long long)n);
+        return 0;
+    }
+    return 1;
 }
 
 uint64_t ca_group_elem_order(const ca_group *g, const ca_elem *a)

@@ -29,3 +29,13 @@ python3 experiments/f4-gpu-20260925/gpu_bench.py --out /tmp/f4-gpu   # any CUDA 
 `records.py` hashes the measured sources as of `SOURCE_COMMIT`, so the
 candidate IDs do not drift with later edits; every record it writes passes
 `../ic-candidate-catalog/analyze.py`.
+
+## Factor bases
+
+The `Cka0` and `Cka1` bases (`build_frobenius_factor_base(kc, 0)`, 2025 and 2071
+points) are archived as `kerfrob` in `../fb-archive`, rebuilt in Python. The
+`factor_base_sha256` in `receipts/batch/*/f4_batch.json` is the Rust digest of
+sorted `"0x<x>,0x<y>"` lines; `../fb-archive/aliases.csv` maps each to its archive
+and `fbarchive.py verify` recomputes it from the archived points.
+`../fb-archive/test_external.py` checks the receipts and manifests against the
+archive.

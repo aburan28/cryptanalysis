@@ -576,6 +576,13 @@ ca_status ca_precomp_table_solve(const ca_precomp_table *t, const ca_elem *targe
     const ca_group *g = t->g;
     double t0 = ca_now();
     uint64_t n = t->n;
+    ca_elem nt;
+    ca_group_mul(g, &nt, target, n, NULL);
+    if (!ca_group_is_identity(g, &nt)) {
+        ca_set_error("precomp: the target is not in the subgroup of order %llu",
+                     (unsigned long long)n);
+        return CA_ERR_NOT_FOUND;
+    }
 
     if (ca_group_is_identity(g, target)) {
         *x = 0;

@@ -170,6 +170,8 @@ want '"x":123456' rho "${ZP[@]}" --g 858101 \
   --seed 1
 want_fail bsgs --alg rho "${ZP[@]}" --g 858101 --h 123456
 want_fail rho --curve unknown
+want_fail rho --curve ecc2k130 --backend unknown
+want_fail rho --curve ecc2k130 --backend metal --kat fixture
 want '"x":123456' solve --alg gpu-rho "${ZP[@]}" --g 858101 \
   --h "$("$CA" group exp "${ZP[@]}" --elem 858101 --k 123456 | sed 's/.*"\([0-9]*\)".*/\1/')" \
   --seed 1

@@ -17,7 +17,21 @@ option(CA_NATIVE "Compile with -march=native" OFF)
 # "thread" or "memory".  ON is kept so existing invocations keep working.
 set(CA_SANITIZE OFF CACHE STRING "Sanitizers: OFF, ON (address,undefined), or a -fsanitize= list")
 option(CA_WERROR "Treat warnings as errors" OFF)
+option(CA_J0_TAU_RHO "Use tau-adic scalar multiplication in j=0 rho setup" ON)
+set(CA_J0_TAU_RHO_WIDTH "2" CACHE STRING "Tau window for j=0 rho setup (2 or 4)")
+option(CA_J0_RHO_COORD_CANON "Use direct coordinate orbit representative in j=0 GLV rho" OFF)
+option(CA_J0_RHO_COVARIANT_WALK "Use oriented quotient walk in j=0 GLV rho" ON)
+if(CA_J0_RHO_COORD_CANON AND CA_J0_RHO_COVARIANT_WALK)
+  message(FATAL_ERROR "Select only one j=0 rho walk: coordinate-only or covariant")
+endif()
+if(NOT CA_J0_TAU_RHO_WIDTH MATCHES "^(2|4)$")
+  message(FATAL_ERROR "CA_J0_TAU_RHO_WIDTH must be 2 or 4")
+endif()
 option(CA_CUDA "Build the CUDA backend for the GPU solvers (needs nvcc or clang with CUDA)" OFF)
+option(CA_CUPQC "Build the NVIDIA cuPQC ML-KEM example (needs the separately installed SDK; see docs/CUPQC.md)" OFF)
+if(CA_CUPQC)
+  include(cmake/CuPQC.cmake)
+endif()
 option(CA_FUZZ "Build the libFuzzer harnesses in fuzz/ (needs clang)" OFF)
 set(CA_CUDA_ARCHITECTURES "70;80;89;90" CACHE STRING "CUDA architectures for CA_CUDA")
 
@@ -50,6 +64,7 @@ set(CA_SOURCES
   src/group_common.c
   src/group_zp.c
   src/group_ec.c
+  src/ec_tau.c
   src/bsgs.c
   src/rho.c
   src/kangaroo.c
@@ -95,6 +110,18 @@ function(ca_configure_target tgt)
   endif()
   target_compile_options(${tgt} PRIVATE $<$<COMPILE_LANGUAGE:C>:${CA_WARNINGS}>)
   target_compile_definitions(${tgt} PRIVATE CA_BUILDING _GNU_SOURCE)
+  if(CA_J0_TAU_RHO)
+    target_compile_definitions(${tgt} PRIVATE CA_J0_TAU_RHO=1)
+    if(CA_J0_TAU_RHO_WIDTH STREQUAL "4")
+      target_compile_definitions(${tgt} PRIVATE CA_J0_TAU_RHO_WIDTH4=1)
+    endif()
+  endif()
+  if(CA_J0_RHO_COORD_CANON)
+    target_compile_definitions(${tgt} PRIVATE CA_J0_RHO_COORD_CANON=1)
+  endif()
+  if(CA_J0_RHO_COVARIANT_WALK)
+    target_compile_definitions(${tgt} PRIVATE CA_J0_RHO_COVARIANT_WALK=1)
+  endif()
   target_link_libraries(${tgt} PUBLIC Threads::Threads m)
   if(CA_NATIVE)
     target_compile_options(${tgt} PRIVATE -march=native)
@@ -149,6 +176,14 @@ if(CA_BUILD_TOOLS)
   target_include_directories(ca_bench PRIVATE src cuda)
   target_compile_options(ca_bench PRIVATE ${CA_WARNINGS})
   ca_sanitize(ca_bench)
+  # Fixed-input kernels for the performance index (docs/perf/PERFORMANCE_INDEX.md);
+  # speaks the same protocol as suite/examples/perfbench, driven by
+  # scripts/perf/perfindex.py.
+  add_executable(ca_perfbench tools/ca_perfbench.c)
+  target_link_libraries(ca_perfbench PRIVATE ${CA_LINK_TARGET})
+  target_include_directories(ca_perfbench PRIVATE src cuda)
+  target_compile_options(ca_perfbench PRIVATE ${CA_WARNINGS})
+  ca_sanitize(ca_perfbench)
 endif()
 
 if(CA_BUILD_TESTS)

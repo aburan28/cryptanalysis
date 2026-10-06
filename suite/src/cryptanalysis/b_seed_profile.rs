@@ -115,7 +115,7 @@ pub fn ks_statistic_uniform(samples: &[f64]) -> f64 {
 /// Pr[√n · D > t] ≈ 2 · Σ_{k=1}^∞ (-1)^{k-1} · exp(-2 k² t²)
 /// ```
 ///
-/// For large `n`, this converges fast.
+/// For large `n`, this converges fast.  A NaN statistic gives `0`.
 pub fn ks_pvalue(d: f64, n: usize) -> f64 {
     let t = (n as f64).sqrt() * d;
     if t == 0.0 {
@@ -129,7 +129,13 @@ pub fn ks_pvalue(d: f64, n: usize) -> f64 {
             break;
         }
     }
-    (2.0 * sum).clamp(0.0, 1.0)
+    let p = 2.0 * sum;
+    // `clamp` alone would keep a NaN; a NaN statistic reads as p = 0.
+    if p.is_nan() {
+        0.0
+    } else {
+        p.clamp(0.0, 1.0)
+    }
 }
 
 /// Run the deep profile: sieve primes, compute `b mod q` ratios,

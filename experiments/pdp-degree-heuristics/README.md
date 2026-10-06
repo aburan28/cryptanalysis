@@ -54,8 +54,8 @@ alone.  It also provides an online monitor for a relation-collection run.
    solve modulo the kernel and verify fresh targets by descent.
 
 None of this is an IC result.  Every profile row is a PDP-stage profile
-(`candidate_id: null`), the collections are toy DLPs without one calibrated cost unit,
-and the fields are far from ECC2K-130.  Section 8 applies the structure-only parts at
+(`candidate_id: null`), the recorded collections are toy DLPs without one calibrated cost
+unit (`../ic-bench` reruns them as named, calibrated `IC1` runs), and the fields are far from ECC2K-130.  Section 8 applies the structure-only parts at
 `n = 131`, and section 9 lists the limits.
 
 ## 1. Quick start
@@ -101,6 +101,12 @@ otherwise).  Every curve carries its AGENTS.md curve ID, `EC1N<n>Ckb1h<12hex>`.
 | `kertrace` | a random subspace of `ker(Tr)` (every point in `2E`) | generic |
 | `random` | a uniform random subspace | generic, `min(n, C(l+k−1, k))` |
 | `invariant` | a Frobenius-stable subspace (`n = 31`: dims 5, 6) | — |
+| `geomtraceu` | `geomtrace` with `c` uniform on the solution space | minimal |
+
+`geomtrace` draws `c` as an integer (not XOR) sum of solution vectors and rejects any base
+outside `ker(Tr)`, so each draw succeeds with probability about `2^-l`.  The recorded
+receipts replay that sampler, so it is unchanged.  `geomtraceu` is the corrected sampler for
+large `l` (for example N131 in `../fb-archive`); its digests differ.
 
 A point is usable when its `r`-component `π_r(P) = [h·(h⁻¹ mod r)]P` is not the identity.
 Its relation-matrix column is the `±`-orbit of `π_r(P)`, and also the `τ`-orbit when `V^2 = V`.
@@ -675,8 +681,14 @@ Reading the table:
   relation linear algebra and target descent are `none`, so no end-to-end cost or speedup
   is claimed.  The collection runs go further.  They solve the relation matrix modulo its
   kernel and verify three fresh targets by descent (`[log]G = Q`), so each is a complete
-  toy DLP.  They are still not `IC1` results: their phases are charged in wall time and in
-  separate operation units, not one calibrated unit.
+  toy DLP.  The recorded collections are still not `IC1` results: their phases are charged
+  in wall time and in separate operation units, not one calibrated unit.
+* `monitor.collect` now meters every exclusive phase with `opcount.py`'s deterministic
+  counters (field, curve, Macaulay, enumeration and mod-`r` classes).  Enumerations that
+  the scan's completion test reads are charged to PDP or descent; diagnostics go to
+  `instrument`.  `../ic-bench` prices these counters in one calibrated unit, writes
+  candidate manifests and emits `IC1` runs.  The recorded receipts above keep their old
+  names.
 * `ops/relation` in the profile tables is **derived**: mean ordinary-query cost divided by
   the exact decomposition probability.  The collection table measures it.
 * Each receipt keeps exclusive phase wall times (setup, factor base, precompute, queries,
@@ -702,10 +714,9 @@ Reading the table:
 
 ## Next steps
 
-* Promote one `geomtrace` base on a toy curve to a full `IC1` candidate.  The collection
-  run already has relation LA, descent and verification.  It still needs one calibrated
-  operation unit across phases and a candidate manifest.  Then pair it with the `prefix`
-  base on one workload.
+* Done in `../ic-bench`: toy `geomtrace`, `prefix` and `random` bases are `IC1`
+  candidates with calibrated totals, paired on frozen workloads.  Next, widen the paired
+  workloads at `n = 19, 23` (the `full` suite) and add `m = 3` cells beyond `n = 13`.
 * Test whether the excess rule survives beyond `N = 18` with an external F4 (msolve,
   already wired in `../pdp-scaling`).  The rule is a fit, and the thresholds may drift with
   `N`.

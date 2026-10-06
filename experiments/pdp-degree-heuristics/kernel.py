@@ -16,6 +16,8 @@ from pathlib import Path
 
 import numpy as np
 
+import opcount
+
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE / "pdpkernel.c"
 SOURCE_SHA256 = hashlib.sha256(SOURCE.read_bytes()).hexdigest()
@@ -113,14 +115,17 @@ class Field:
 
     # field
     def mul(self, a: int, b: int) -> int:
+        opcount.charge("gf_mul")
         return self.L.gf_mul_x(self._ctx, a, b)
 
     def sqr(self, a: int) -> int:
+        opcount.charge("gf_mul")
         return self.L.gf_mul_x(self._ctx, a, a)
 
     def inv(self, a: int) -> int:
         if a == 0:
             raise ZeroDivisionError
+        opcount.charge("gf_inv")
         return self.L.gf_inv_x(self._ctx, a)
 
     def pow(self, a: int, e: int) -> int:
@@ -138,17 +143,21 @@ class Field:
         return a
 
     def trace(self, a: int) -> int:
+        opcount.charge("gf_lin")
         return self.L.gf_trace_x(self._ctx, a)
 
     def half_trace(self, a: int) -> int:
+        opcount.charge("gf_lin")
         return self.L.gf_halftrace_x(self._ctx, a)
 
     def sqrt(self, a: int) -> int:
+        opcount.charge("gf_lin")
         return self.L.gf_sqrt_x(self._ctx, a)
 
     def mul_const(self, a: np.ndarray, k: int) -> np.ndarray:
         a = u64(a)
         out = np.empty_like(a)
+        opcount.charge("gf_mul", len(a))
         if len(a):
             self.L.gf_mul_const_batch(self._ctx, _p(a, _u64p), len(a), k, _p(out, _u64p))
         return out
@@ -156,12 +165,14 @@ class Field:
     def mul_vec(self, a: np.ndarray, b: np.ndarray) -> np.ndarray:
         a, b = u64(a), u64(b)
         out = np.empty_like(a)
+        opcount.charge("gf_mul", len(a))
         if len(a):
             self.L.gf_mul_vec(self._ctx, _p(a, _u64p), _p(b, _u64p), len(a), _p(out, _u64p))
         return out
 
     # curve (points are (x, y) with x == INF_X for the identity)
     def add(self, P: tuple[int, int], Q: tuple[int, int]) -> tuple[int, int]:
+        opcount.charge("ec_add")
         self.L.ec_add_x(self._ctx, P[0], P[1], Q[0], Q[1], _p(self._out, _u64p))
         return int(self._out[0]), int(self._out[1])
 
@@ -173,12 +184,14 @@ class Field:
             return self.smul(self.neg(P), -k)
         if k >= 1 << 64:
             raise ValueError("scalar exceeds 64 bits")
+        opcount.charge("ec_add", opcount.smul_cost(k))
         self.L.ec_mul_x(self._ctx, P[0], P[1], k, _p(self._out, _u64p))
         return int(self._out[0]), int(self._out[1])
 
     def smul_batch(self, xs: np.ndarray, ys: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
         xs, ys = u64(xs), u64(ys)
         ox, oy = np.empty_like(xs), np.empty_like(ys)
+        opcount.charge("ec_add", len(xs) * opcount.smul_cost(k))
         if len(xs):
             self.L.ec_mul_batch(self._ctx, _p(xs, _u64p), _p(ys, _u64p), len(xs), k, _p(ox, _u64p), _p(oy, _u64p))
         return ox, oy
@@ -187,6 +200,7 @@ class Field:
         xs = u64(xs)
         ys = np.empty_like(xs)
         ok = np.empty(len(xs), dtype=np.uint8)
+        opcount.charge("ec_lift", len(xs))
         if len(xs):
             self.L.ec_lift_batch(self._ctx, _p(xs, _u64p), len(xs), _p(ys, _u64p), _p(ok, _u8p))
         return ys, ok.astype(bool)
@@ -205,6 +219,7 @@ class Field:
         xs, ys = u64(xs), u64(ys)
         k = len(xs) * (len(xs) + 1) // 2
         ox, oy = np.empty(k, dtype=np.uint64), np.empty(k, dtype=np.uint64)
+        opcount.charge("ec_add", k)
         if k:
             self.L.ec_pair_sums(self._ctx, _p(xs, _u64p), _p(ys, _u64p), len(xs), _p(ox, _u64p), _p(oy, _u64p))
         return ox, oy
@@ -212,6 +227,7 @@ class Field:
     def sub_from(self, R: tuple[int, int], xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         xs, ys = u64(xs), u64(ys)
         ox, oy = np.empty_like(xs), np.empty_like(ys)
+        opcount.charge("ec_add", len(xs))
         if len(xs):
             self.L.ec_sub_from(self._ctx, R[0], R[1], _p(xs, _u64p), _p(ys, _u64p), len(xs), _p(ox, _u64p), _p(oy, _u64p))
         return ox, oy
@@ -323,6 +339,7 @@ def anf_zeros(table: np.ndarray, nv: int, max_out: int = 1 << 16) -> tuple[int, 
 
 def count_standard(leading: np.ndarray, nv: int) -> int:
     leading = np.ascontiguousarray(leading, dtype=np.uint32)
+    opcount.charge("anf_op", len(leading) + ((nv + 2) << max(0, nv - 1)))
     s = lib().count_standard(_p(leading, _u32p), len(leading), nv)
     if s < 0:
         raise MemoryError("count_standard")

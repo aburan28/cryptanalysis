@@ -93,7 +93,7 @@ def http(method, url, headers, body=None, timeout=60):
     data = None if body is None else json.dumps(body).encode()
     request = urllib.request.Request(url, data=data, method=method, headers={
         **headers, "Content-Type": "application/json", "Accept": "application/json",
-        "User-Agent": "cryptanalysis-fleet/1"})
+        "User-Agent": "Mozilla/5.0 cryptanalysis-fleet/1.0"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             raw = response.read()

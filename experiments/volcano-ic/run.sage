@@ -245,6 +245,49 @@ def interleave(ids, rounds):
             print('round', rd, flush=True)
 
 
+def taucmp(shard, shards, only=None):
+    """E0 with a tau-invariant factor base (k' = 6, 7) against the baseline
+    polynomial-subspace base, same 10 scalars, jobs interleaved across shards
+    so every variant runs in the same time window."""
+    load(os.path.join(HERE, 'tau.sage'))
+    load(os.path.join(HERE, 'nbsat.sage'))
+    ss = scalars()
+    jobs = [(v, ii) for ii in range(len(ss)) for v in ('tau6', 'tau7', 'base')]
+    # Appended so earlier job indices, and therefore shard assignments, are unchanged.
+    jobs += [('nb3sat', ii) for ii in range(len(ss))]
+    path = os.path.join(HERE, 'results', 'tau-%d.jsonl' % shard)
+    skip = done(os.path.join(HERE, 'results', 'tau-*.jsonl'))
+    fields = {}
+    with open(path, 'a') as out:
+        for jn, (v, ii) in enumerate(jobs):
+            if jn % shards != shard or (v, ii) in skip or (only and v != only):
+                continue
+            if v == 'base':
+                fld = fields.setdefault(v, Field(N_BITS, MODULUS, K))
+                cur = Curve(fld, 0, fld.F(1), ORDER, COFACTOR)
+            elif v == 'nb3sat':
+                fld = fields.setdefault(v, NormalBasisField(N_BITS, MODULUS))
+                cur = NormalBasisCurve(fld, 3, ORDER, COFACTOR)
+            else:
+                fld = fields.setdefault(v, TauField(N_BITS, MODULUS, int(v[3:])))
+                cur = TauCurve(fld, ORDER, COFACTOR)
+            # Same generator and instance as the E0 tier-B runs.
+            P = generator(cur, 'E0')
+            Q = ss[ii] * P
+            rng = random.Random('tau:%s:%d' % (v, ii))
+            if v == 'base':
+                st = solveDlp(cur, P, Q, rng)
+            elif v == 'nb3sat':
+                st = nbDlp(cur, P, Q, rng)
+            else:
+                st = tauDlp(cur, P, Q, rng)
+            st.update({'curve': v, 'instance': ii, 'scalar': int(ss[ii]),
+                       'correct': st['log'] == ss[ii] % cur.p})
+            out.write(json.dumps(st, default=plain) + '\n')
+            out.flush()
+            print(v, ii, st['correct'], st['gb_calls'], '%.1f cpu s' % st['total_cpu_s'], flush=True)
+
+
 def ecdlp(shard, shards, ids):
     fld = Field(N_BITS, MODULUS, K)
     curves = {c[0]: c for c in loadCurves(fld)}
@@ -278,5 +321,7 @@ if __name__ == '__main__' and len(sys.argv) > 1:
         gbcpu(int(sys.argv[2]), int(sys.argv[3]))
     elif mode == 'interleave':
         interleave(sys.argv[2].split(','), int(sys.argv[3]))
+    elif mode == 'taucmp':
+        taucmp(int(sys.argv[2]), int(sys.argv[3]), sys.argv[4] if len(sys.argv) > 4 else None)
     elif mode == 'ecdlp':
         ecdlp(int(sys.argv[2]), int(sys.argv[3]), sys.argv[4].split(','))

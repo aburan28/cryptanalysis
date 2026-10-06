@@ -101,6 +101,41 @@ impl IrreduciblePoly {
             low_terms: vec![0, 74],
         }
     }
+    /// `z¹⁹³ + z¹⁵ + 1` — SECG sect193r1/r2.
+    pub fn deg_193() -> Self {
+        Self {
+            degree: 193,
+            low_terms: vec![0, 15],
+        }
+    }
+    /// `z²³⁹ + z¹⁵⁸ + 1` — SECG sect239k1.
+    pub fn deg_239() -> Self {
+        Self {
+            degree: 239,
+            low_terms: vec![0, 158],
+        }
+    }
+    /// `z²⁸³ + z¹² + z⁷ + z⁵ + 1` — NIST B-283 / K-283.
+    pub fn deg_283() -> Self {
+        Self {
+            degree: 283,
+            low_terms: vec![0, 5, 7, 12],
+        }
+    }
+    /// `z⁴⁰⁹ + z⁸⁷ + 1` — NIST B-409 / K-409.
+    pub fn deg_409() -> Self {
+        Self {
+            degree: 409,
+            low_terms: vec![0, 87],
+        }
+    }
+    /// `z⁵⁷¹ + z¹⁰ + z⁵ + z² + 1` — NIST B-571 / K-571.
+    pub fn deg_571() -> Self {
+        Self {
+            degree: 571,
+            low_terms: vec![0, 2, 5, 10],
+        }
+    }
 }
 
 /// Words stored inline before an element falls back to the heap:

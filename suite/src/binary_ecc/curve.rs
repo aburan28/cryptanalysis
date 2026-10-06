@@ -305,6 +305,187 @@ impl BinaryCurve {
         }
     }
 
+    /// Build a curve from hex parameter strings.  All of `a, b, gx, gy` are
+    /// parsed as `F_{2^m}` elements and `n` as the subgroup order; this keeps
+    /// the many standardized-curve constructors below terse and uniform.
+    fn from_hex_parts(
+        m: u32,
+        irr: IrreduciblePoly,
+        a: &str,
+        b: &str,
+        gx: &str,
+        gy: &str,
+        n: &str,
+        h: u32,
+    ) -> Self {
+        Self {
+            m,
+            irreducible: irr,
+            a: F2mElement::from_hex(a, m),
+            b: F2mElement::from_hex(b, m),
+            generator: BinaryPoint::Affine {
+                x: F2mElement::from_hex(gx, m),
+                y: F2mElement::from_hex(gy, m),
+            },
+            order: BigUint::parse_bytes(n.as_bytes(), 16).expect("valid order hex"),
+            cofactor: BigUint::from(h),
+        }
+    }
+
+    /// **sect193r1** (SEC 2 v2 §3.2.1). Random binary curve over `F_{2^193}`.
+    pub fn sect193r1() -> Self {
+        Self::from_hex_parts(
+            193,
+            IrreduciblePoly::deg_193(),
+            "0017858feb7a98975169e171f77b4087de098ac8a911df7b01",
+            "00fdfb49bfe6c3a89facadaa7a1e5bbc7cc1c2e5d831478814",
+            "01f481bc5f0ff84a74ad6cdf6fdef4bf6179625372d8c0c5e1",
+            "0025e399f2903712ccf3ea9e3a1ad17fb0b3201b6af7ce1b05",
+            "01000000000000000000000000c7f34a778f443acc920eba49",
+            2,
+        )
+    }
+
+    /// **sect193r2** (SEC 2 v2 §3.2.2). Random binary curve over `F_{2^193}`.
+    pub fn sect193r2() -> Self {
+        Self::from_hex_parts(
+            193,
+            IrreduciblePoly::deg_193(),
+            "0163f35a5137c2ce3ea6ed8667190b0bc43ecd69977702709b",
+            "00c9bb9e8927d4d64c377e2ab2856a5b16e3efb7f61d4316ae",
+            "00d9b67d192e0367c803f39e1a7e82ca14a651350aae617e8f",
+            "01ce94335607c304ac29e7defbd9ca01f596f927224cdecf6c",
+            "010000000000000000000000015aab561b005413ccd4ee99d5",
+            2,
+        )
+    }
+
+    /// **NIST K-233 / sect233k1** (FIPS 186-4, SEC 2). Koblitz, `a=0, b=1`.
+    pub fn sect233k1() -> Self {
+        Self::from_hex_parts(
+            233,
+            IrreduciblePoly::deg_233(),
+            "0",
+            "1",
+            "017232ba853a7e731af129f22ff4149563a419c26bf50a4c9d6eefad6126",
+            "01db537dece819b7f70f555a67c427a8cd9bf18aeb9b56e0c11056fae6a3",
+            "8000000000000000000000000000069d5bb915bcd46efb1ad5f173abdf",
+            4,
+        )
+    }
+
+    /// **NIST B-233 / sect233r1** (FIPS 186-4, SEC 2). Random binary curve.
+    pub fn sect233r1() -> Self {
+        Self::from_hex_parts(
+            233,
+            IrreduciblePoly::deg_233(),
+            "1",
+            "0066647ede6c332c7f8c0923bb58213b333b20e9ce4281fe115f7d8f90ad",
+            "00fac9dfcbac8313bb2139f1bb755fef65bc391f8b36f8f8eb7371fd558b",
+            "01006a08a41903350678e58528bebf8a0beff867a7ca36716f7e01f81052",
+            "1000000000000000000000000000013e974e72f8a6922031d2603cfe0d7",
+            2,
+        )
+    }
+
+    /// **sect239k1** (SEC 2 v2 §3.4.1). Koblitz over `F_{2^239}`, `a=0, b=1`.
+    pub fn sect239k1() -> Self {
+        Self::from_hex_parts(
+            239,
+            IrreduciblePoly::deg_239(),
+            "0",
+            "1",
+            "29a0b6a887a983e9730988a68727a8b2d126c44cc2cc7b2a6555193035dc",
+            "76310804f12e549bdb011c103089e73510acb275fc312a5dc6b76553f0ca",
+            "2000000000000000000000000000005a79fec67cb6e91f1c1da800e478a5",
+            4,
+        )
+    }
+
+    /// **NIST K-283 / sect283k1** (FIPS 186-4, SEC 2). Koblitz, `a=0, b=1`.
+    pub fn sect283k1() -> Self {
+        Self::from_hex_parts(
+            283,
+            IrreduciblePoly::deg_283(),
+            "0",
+            "1",
+            "503213f78ca44883f1a3b8162f188e553cd265f23c1567a16876913b0c2ac2458492836",
+            "1ccda380f1c9e318d90f95d07e5426fe87e45c0e8184698e45962364e34116177dd2259",
+            "1ffffffffffffffffffffffffffffffffffe9ae2ed07577265dff7f94451e061e163c61",
+            4,
+        )
+    }
+
+    /// **NIST B-283 / sect283r1** (FIPS 186-4, SEC 2). Random binary curve.
+    pub fn sect283r1() -> Self {
+        Self::from_hex_parts(
+            283,
+            IrreduciblePoly::deg_283(),
+            "1",
+            "27b680ac8b8596da5a4af8a19a0303fca97fd7645309fa2a581485af6263e313b79a2f5",
+            "5f939258db7dd90e1934f8c70b0dfec2eed25b8557eac9c80e2e198f8cdbecd86b12053",
+            "3676854fe24141cb98fe6d4b20d02b4516ff702350eddb0826779c813f0df45be8112f4",
+            "3ffffffffffffffffffffffffffffffffffef90399660fc938a90165b042a7cefadb307",
+            2,
+        )
+    }
+
+    /// **NIST K-409 / sect409k1** (FIPS 186-4, SEC 2). Koblitz, `a=0, b=1`.
+    pub fn sect409k1() -> Self {
+        Self::from_hex_parts(
+            409,
+            IrreduciblePoly::deg_409(),
+            "0",
+            "1",
+            "060f05f658f49c1ad3ab1890f7184210efd0987e307c84c27accfb8f9f67cc2c460189eb5aaaa62ee222eb1b35540cfe9023746",
+            "1e369050b7c4e42acba1dacbf04299c3460782f918ea427e6325165e9ea10e3da5f6c42e9c55215aa9ca27a5863ec48d8e0286b",
+            "7ffffffffffffffffffffffffffffffffffffffffffffffffffe5f83b2d4ea20400ec4557d5ed3e3e7ca5b4b5c83b8e01e5fcf",
+            4,
+        )
+    }
+
+    /// **NIST B-409 / sect409r1** (FIPS 186-4, SEC 2). Random binary curve.
+    pub fn sect409r1() -> Self {
+        Self::from_hex_parts(
+            409,
+            IrreduciblePoly::deg_409(),
+            "1",
+            "021a5c2c8ee9feb5c4b9a753b7b476b7fd6422ef1f3dd674761fa99d6ac27c8a9a197b272822f6cd57a55aa4f50ae317b13545f",
+            "15d4860d088ddb3496b0c6064756260441cde4af1771d4db01ffe5b34e59703dc255a868a1180515603aeab60794e54bb7996a7",
+            "061b1cfab6be5f32bbfa78324ed106a7636b9c5a7bd198d0158aa4f5488d08f38514f1fdf4b4f40d2181b3681c364ba0273c706",
+            "10000000000000000000000000000000000000000000000000001e2aad6a612f33307be5fa47c3c9e052f838164cd37d9a21173",
+            2,
+        )
+    }
+
+    /// **NIST K-571 / sect571k1** (FIPS 186-4, SEC 2). Koblitz, `a=0, b=1`.
+    pub fn sect571k1() -> Self {
+        Self::from_hex_parts(
+            571,
+            IrreduciblePoly::deg_571(),
+            "0",
+            "1",
+            "26eb7a859923fbc82189631f8103fe4ac9ca2970012d5d46024804801841ca44370958493b205e647da304db4ceb08cbbd1ba39494776fb988b47174dca88c7e2945283a01c8972",
+            "349dc807f4fbf374f4aeade3bca95314dd58cec9f307a54ffc61efc006d8a2c9d4979c0ac44aea74fbebbb9f772aedcb620b01a7ba7af1b320430c8591984f601cd4c143ef1c7a3",
+            "20000000000000000000000000000000000000000000000000000000000000000000000131850e1f19a63e4b391a8db917f4138b630d84be5d639381e91deb45cfe778f637c1001",
+            4,
+        )
+    }
+
+    /// **NIST B-571 / sect571r1** (FIPS 186-4, SEC 2). Random binary curve.
+    pub fn sect571r1() -> Self {
+        Self::from_hex_parts(
+            571,
+            IrreduciblePoly::deg_571(),
+            "1",
+            "2f40e7e2221f295de297117b7f3d62f5c6a97ffcb8ceff1cd6ba8ce4a9a18ad84ffabbd8efa59332be7ad6756a66e294afd185a78ff12aa520e4de739baca0c7ffeff7f2955727a",
+            "303001d34b856296c16c0d40d3cd7750a93d1d2955fa80aa5f40fc8db7b2abdbde53950f4c0d293cdd711a35b67fb1499ae60038614f1394abfa3b4c850d927e1e7769c8eec2d19",
+            "37bf27342da639b6dccfffeb73d69d78c6c27a6009cbbca1980f8533921e8a684423e43bab08a576291af8f461bb2a8b3531d2f0485c19b16e2f1516e23dd3c1a4827af1b8ac15b",
+            "3ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe661ce18ff55987308059b186823851ec7dd9ca1161de93d5174d66e8382e9bb2fe84e47",
+            2,
+        )
+    }
+
     /// Tiny test curve over `F_{2^8}` with `a = 1, b = 1`.  Used
     /// for unit-testing without depending on the full sect163k1
     /// parameters.

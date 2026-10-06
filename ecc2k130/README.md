@@ -249,7 +249,22 @@ make gpu WALK=table          # build/ec2k-gpu-table; every target takes WALK=
 build/ec2k-gpu walk --run-id R --dp-file dps.bin --checkpoint state.ck
 build/ec2k-gpu walk --run-id R --dp-weight 46 --dp-file64 full.bin --verify 100 --launches 4
 build/ec2k-gpu check --rounds 256                    # the host test, from the client binary
+build/ec2k-gpu health --seconds 60                   # a timed load that checks every report
+build/ec2k-gpu devices                               # the CUDA devices, as JSON
 ```
+
+`health` walks the sigma walk from the challenge points at weight 42, where a
+lane reports every 2^14.86 steps, for `--seconds`. While the device runs the
+next launch, the host checks every report: its seed and restart counter, that
+its step lands inside the launch that reported it, its weight, and that it is
+on the curve. A flipped bit anywhere in a trail leaves its point off the curve,
+so that one check covers every step of the trail. It also re-walks each
+launch's longest report of at most 512 steps on the golden model. It prints
+the rate over 10 s windows after a warm-up, and one JSON object at the end.
+Exit 0 means every check passed, 1 a report failed one, 4 the run proved
+nothing. It keeps no points: run id 65535, nothing written. The container that
+runs it on every GPU of a node and gives a verdict is
+[deploy/gpu-health/](../deploy/gpu-health/README.md).
 
 `bench` counts iterations with no lane ever reporting, for 32 launches.
 `walk` collects until it is stopped, or for `--launches L`. It needs a

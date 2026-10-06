@@ -10,6 +10,7 @@
 //! | `hash`               | SHA-1/2/3, MD4, MD5, SM3, Streebog, BLAKE3 — the targets of the hash attacks |
 //! | `ecc`, `binary_ecc`  | prime-field and binary-field curve arithmetic the ECDLP attacks run on   |
 //! | `prime_hyperelliptic`| hyperelliptic Jacobians over prime fields for the descent attacks         |
+//! | `isogeny`            | CM discriminants, class groups, Vélu isogenies, ℓ-isogeny volcanoes and ECDLP sweeps across an isogeny class |
 //! | `asymmetric`         | RSA, Paillier, ElGamal — targets of Bleichenbacher and the factoring demos |
 //! | `pqc`                | ML-KEM, ML-DSA, SQIsign, toy Kyber and McEliece — targets of the lattice and implementation attacks |
 //! | `kdf`                | HKDF and PBKDF2, exercised by the TLS key-schedule analyses               |
@@ -23,11 +24,13 @@
 
 pub mod asymmetric;
 pub mod binary_ecc;
+pub mod cli;
 pub mod cryptanalysis;
 pub mod ct_bignum;
 pub mod ecc;
 pub mod ecc_safety;
 pub mod hash;
+pub mod isogeny;
 pub mod kdf;
 pub mod pqc;
 pub mod prime_hyperelliptic;

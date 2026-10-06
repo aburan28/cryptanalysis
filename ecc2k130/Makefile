@@ -7,6 +7,8 @@
 #   make gpu        the CUDA client, ec2k-gpu (needs nvcc >= 13.3 for clmad)
 #   make bench      throughput on the device (make gpu first)
 #   make verify     a short collection with every report re-walked on the host
+#   make health     a 60 s load whose every report is checked on the host
+#                   (deploy/gpu-health/ runs it on every GPU of a node)
 #   make cpu        the CPU client, ec2k-cpu: the table walk and its reports on
 #                   host cores, over PMULL (AArch64) or PCLMULQDQ (x86-64) where
 #                   the host has one
@@ -64,7 +66,7 @@ BUILD ?= build
 OBJ   := $(BUILD)/$(WALK)
 
 MODEL := ../fpga/model/ecc2k130.c
-HDRS  := $(wildcard include/*.h include/*.cuh) src/hostcheck.h
+HDRS  := $(wildcard include/*.h include/*.cuh) src/hostcheck.h src/healthcheck.h
 KAT   := tests/campaign-kat.hex
 
 # The kernel's configuration.  Every flag is documented in include/packed131.h,
@@ -78,7 +80,7 @@ DEFS := -DECC_BATCH=$(BATCH) -DECC_THREADS=$(THREADS) -DECC_MINBLOCKS=$(MINBLOCK
         -DECC_PACKED_GENERATED_PRODUCT=1 -DECC_PACKED_CLMAD=1 -DECC_PACKED_STATE_TILE=256 \
         -DECC_PACKED_WEIGHTED_PREFIX=2 -DECC_PACKED_COMPACT_STATE=1 $(WALKDEFS)
 
-.PHONY: all test gpu bench verify cpu cpu-bench cpu-verify metal metal-test metal-bench \
+.PHONY: all test gpu bench verify health cpu cpu-bench cpu-verify metal metal-test metal-bench \
         metal-verify clean
 
 all: test
@@ -209,6 +211,12 @@ bench: $(CLIENT)
 verify: $(CLIENT)
 	$(CLIENT) walk --run-id 4242 --dp-weight 46 --dp-cap 1048576 --steps 96 \
 	    --launches 6 --verify 300
+
+# Weight 42 and 4096-step launches, the health command's defaults: every
+# report checked (on the curve, weight, restart counter, step window), the
+# shortest of each launch re-walked on the model.
+health: $(CLIENT)
+	$(CLIENT) health --seconds 60
 
 clean:
 	rm -rf $(BUILD)

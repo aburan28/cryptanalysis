@@ -45,8 +45,17 @@
 //!   on `F_x = {x(P) ∈ V}` — `S₃` for `m = 2`, chained `S₃` links with
 //!   `(m − 2)·n` free intermediate unknowns for `m = 3`;
 //! - **x-direct** (`m = 3`): the 24-term `S₄` in `x`, no chaining, Boolean
-//!   degree 7 — separates "no chaining" from "symmetry";
-//! - **sym**: the symmetrised system on `F_u`.
+//!   degree 6 — separates "no chaining" from "symmetry";
+//! - **sym**: the symmetrised system on `F_u`, Boolean degree 4.
+//!
+//! Both degrees are counted over the unknowns only, and are what `system_degree`
+//! reports in the `deg` column: at `K₁/F₂⁹`, `m = 3` the arms print 9 vars /
+//! deg 6 and 7 vars / deg 4.  The target is fixed when a decomposition is
+//! attempted, so it is not an unknown; counting it as a variable gives 7 and 5
+//! instead, which is the convention
+//! `coordinate_search::boolean_degree` uses for the *polynomial* and what
+//! `RESEARCH_EXOTIC_COORDINATES.md` §3.2's table reports.  The gap is 2 either
+//! way; mixing the two reports it as 3.
 //!
 //! Every verdict is gated against exhaustive enumeration on its own base,
 //! every returned relation is re-summed in the group, and timings are
@@ -70,15 +79,18 @@ use rand::{Rng, SeedableRng};
 
 use crate::binary_ecc::curve::point_neg;
 use crate::binary_ecc::{BinaryPoint, F2mElement};
+use crate::cryptanalysis::ic_boundary::calibrate_word_xor;
+use crate::cryptanalysis::koblitz_fast::{FastCurve, FastPoint};
 use crate::cryptanalysis::koblitz_groebner::{
-    build_decomposition_system, first_fall_degree, solve_boolean_system_filtered,
-    split_rule_default, FieldStructure, SolveOptions, SolveStats, SolverEngine, SymElement,
-    MAX_VARS,
+    build_decomposition_system, f4_word_ops_thread, first_fall_degree,
+    solve_boolean_system_filtered, split_rule_default, FieldStructure, SolveOptions, SolveStats,
+    SolverEngine, SymElement, MAX_VARS,
 };
 use crate::cryptanalysis::koblitz_index_calculus::{
     all_factors_of_x_n_minus_1, build_explicit_frobenius_orbit_factor_base,
     build_frobenius_factor_base_from_divisor, enumerate_decompose, groebner_decompose, point_key,
-    points_with_x, span_f2, subspace_basis_for_divisor, FrobeniusFactorBase, KoblitzCurve,
+    points_with_x, span_f2, subspace_basis_for_divisor, FactorBaseDomain, FrobeniusFactorBase,
+    KoblitzCurve,
 };
 use crate::cryptanalysis::pq_groebner_f2::{F2BoolMono, F2BoolPoly};
 use crate::cryptanalysis::sat::SolveResult;
@@ -203,10 +215,47 @@ pub fn build_symmetrised_factor_base(
         current.extend(added);
         v_basis.push(b.clone());
     }
-    let ell = v_basis.len();
-    if ell != raw.len() {
+    if v_basis.len() != raw.len() {
         return None;
     }
+    // Points in the raw basis's span order, as before the explicit-basis
+    // constructor existed, so indices into `points` do not move.
+    finish_symmetrised_factor_base(kc, v_basis, span)
+}
+
+/// Build `F_u` over an explicit `F₂`-basis of `V` with `v_basis[0] = 1`.
+///
+/// `V` need not be Frobenius-stable: the symmetrised system uses only
+/// `1 ∈ V`, which makes `AS` drop the parity bit.  A non-invariant `V`
+/// has no `π`-orbits, so [`frobenius_view_of_symmetrised`] does not apply
+/// to it — and on the prime degrees where `2` is primitive, ECC2K-130's
+/// `n = 131` among them, a non-invariant `V` is the only kind with more
+/// than one point (the invariant `V ∋ 1` are `F₂`, giving `F_u = {T}`, and
+/// the whole field).  `None` if the basis is dependent or does not start
+/// with `1`.
+pub fn build_symmetrised_factor_base_from_basis(
+    kc: &KoblitzCurve,
+    v_basis: Vec<F2mElement>,
+) -> Option<SymmetrisedFactorBase> {
+    let n = kc.n;
+    if v_basis.first().map(bits_of) != Some(1) {
+        return None;
+    }
+    let span = span_f2(&v_basis, n);
+    let span_bits: std::collections::HashSet<u64> = span.iter().map(bits_of).collect();
+    if span_bits.len() != 1 << v_basis.len() {
+        return None;
+    }
+    finish_symmetrised_factor_base(kc, v_basis, span)
+}
+
+fn finish_symmetrised_factor_base(
+    kc: &KoblitzCurve,
+    v_basis: Vec<F2mElement>,
+    span: Vec<F2mElement>,
+) -> Option<SymmetrisedFactorBase> {
+    let n = kc.n;
+    let ell = v_basis.len();
     let w_basis: Vec<F2mElement> = v_basis[1..].iter().map(|b| artin_schreier(b, kc)).collect();
     if span_f2(&w_basis, n).len() != 1 << (ell - 1) {
         return None;
@@ -838,7 +887,6 @@ pub fn symmetrised_groebner_decompose(
 /// As [`symmetrised_groebner_decompose`], but a lifted decomposition is
 /// returned only if `accept` approves its factor-base indices; otherwise
 /// the search continues to the next root.
-#[allow(clippy::too_many_arguments)]
 pub fn symmetrised_groebner_decompose_accepting(
     kc: &KoblitzCurve,
     fb: &SymmetrisedFactorBase,
@@ -2244,5 +2292,1164 @@ mod transport_tests {
             assert_eq!(sum, kc.add(&target, &kk));
         }
         assert!(tried >= 4 && lifted == tried, "{lifted}/{tried} lifted");
+    }
+}
+
+// ── X4′: both frames on one non-invariant `V ∋ 1` ──────────────────
+//
+// `research/notes/ecc2k130/RESEARCH_ECC2K130_ROUTE_TARGETS.md` §X4′.  On a
+// prime degree where 2 is primitive — ECC2K-130's `n = 131`, and the E1
+// rungs 13 and 19 — the only Frobenius-stable `V ∋ 1` are `F₂` and the
+// field, so both frames must use a non-invariant `V` and both sit on the
+// floor `Λ = m`.  What is left is the per-target cost of each oracle, which
+// [`subspace_gate_bench`] measures on one shared `V` against the enumeration
+// E1's product law charges.
+
+/// A uniformly random `l`-dimensional subspace of `F_{2^n}` that contains
+/// `1` and is **not** Frobenius-stable, as a basis with `1` first.
+pub fn random_subspace_containing_one(
+    kc: &KoblitzCurve,
+    l: usize,
+    rng: &mut StdRng,
+) -> Vec<F2mElement> {
+    let n = kc.n;
+    assert!(l >= 2 && (l as u32) < n && n < 64, "need 2 ≤ l < n < 64");
+    loop {
+        let mut basis = vec![F2mElement::one(n)];
+        let mut span: std::collections::HashSet<u64> = [0u64, 1].into_iter().collect();
+        while basis.len() < l {
+            let v = rng.gen_range(2..(1u64 << n));
+            if span.contains(&v) {
+                continue;
+            }
+            let added: Vec<u64> = span.iter().map(|&c| c ^ v).collect();
+            span.extend(added);
+            basis.push(from_bits(v, n));
+        }
+        let stable = basis
+            .iter()
+            .all(|b| span.contains(&bits_of(&b.square(&kc.curve.irreducible))));
+        if !stable {
+            return basis;
+        }
+    }
+}
+
+/// `F_x = { P : x(P) ∈ V }` over a basis of a **non-invariant** `V`, in the
+/// shape the `x`-frame oracles take ([`groebner_decompose`],
+/// [`enumerate_decompose`] read only the basis and the points).  With no
+/// `π`-orbits every point is its own orbit and `±P` its signed orbit, so the
+/// base carries `≈ |F|/2` unknowns, not `|F|/2n`.
+pub fn plain_subspace_factor_base(
+    kc: &KoblitzCurve,
+    basis: &[F2mElement],
+) -> Option<FrobeniusFactorBase> {
+    let n = kc.n;
+    let subspace = span_f2(basis, n);
+    if subspace.len() != 1 << basis.len() {
+        return None;
+    }
+    let mut points = Vec::new();
+    let mut signed_orbits = Vec::new();
+    let mut signed_orbit_of = Vec::new();
+    for x in &subspace {
+        let lifts = points_with_x(&kc.curve, x);
+        let o = signed_orbits.len();
+        let mut orbit = Vec::new();
+        for (k, p) in lifts.into_iter().enumerate() {
+            orbit.push(points.len());
+            signed_orbit_of.push((o, 0u32, k == 1));
+            points.push(p);
+        }
+        if !orbit.is_empty() {
+            signed_orbits.push(orbit);
+        }
+    }
+    let orbits: Vec<Vec<usize>> = (0..points.len()).map(|i| vec![i]).collect();
+    let orbit_of: Vec<(usize, u32)> = (0..points.len()).map(|i| (i, 0)).collect();
+    Some(FrobeniusFactorBase {
+        domain: FactorBaseDomain::LinearSubspace,
+        ell: basis.len() as u32,
+        f_j: 0,
+        linearised_exponents: Vec::new(),
+        subspace,
+        subspace_basis: basis.to_vec(),
+        points,
+        orbits,
+        orbit_of,
+        signed_orbits,
+        signed_orbit_of,
+    })
+}
+
+/// Exhaustive `m = 3` enumeration of one target over `points`, the way E1's
+/// product law prices it: every unordered pair `{i ≤ j}` is one step, one
+/// single-word curve addition `(R − P_i) − P_j` and one packed lookup in the
+/// base.  Returns `(steps to the first decomposition, decompositions)`,
+/// counting each multiset once.
+fn enumerate_pairs(
+    fc: &FastCurve,
+    points: &[FastPoint],
+    index_of: &HashMap<u64, usize>,
+    target: FastPoint,
+) -> (Option<u64>, u64) {
+    let mut steps = 0u64;
+    let mut first = None;
+    let mut found = 0u64;
+    for i in 0..points.len() {
+        let a = fc.add(target, fc.neg(points[i]));
+        for (j, &p) in points.iter().enumerate().skip(i) {
+            steps += 1;
+            let b = fc.add(a, fc.neg(p));
+            if let Some(&k) = index_of.get(&b.pack()) {
+                if first.is_none() {
+                    first = Some(steps);
+                }
+                if k >= j {
+                    found += 1;
+                }
+            }
+        }
+    }
+    (first, found)
+}
+
+/// Wall time of one single-word curve addition on this host — the
+/// group-addition equivalent (GAE) every other cost is converted into.
+fn measure_ns_per_add(fc: &FastCurve, points: &[FastPoint], reps: usize) -> f64 {
+    let mut acc = points[0];
+    let t0 = Instant::now();
+    for k in 0..reps {
+        acc = fc.add(acc, points[k % points.len()]);
+    }
+    let ns = t0.elapsed().as_nanos() as f64 / reps as f64;
+    std::hint::black_box(acc);
+    ns
+}
+
+/// One target under one oracle.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct GateTarget {
+    /// `found`, `refuted` or `budget` (the node budget ran out).
+    pub verdict: &'static str,
+    /// Word XORs charged to this thread by the solve: elimination and
+    /// specialisation, not the matrix build or the substitutions.
+    pub word_xors: u64,
+    pub splits: usize,
+    pub ms: f64,
+    /// Verdict agrees with exhaustive enumeration on the arm's own base, and
+    /// a returned relation re-sums to the target.
+    pub gate_ok: bool,
+}
+
+/// One oracle at one Macaulay cap on every target.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct GateArm {
+    pub arm: &'static str,
+    pub cap: u32,
+    pub n_vars: usize,
+    /// The engine builds only the top-degree Macaulay matrix at each node
+    /// (its default at `24` unknowns and above, `KIC_F4_MAX_DEGREE_ONLY`
+    /// unset) rather than every degree from the system's own up to the cap.
+    pub top_degree_only: bool,
+    pub degree: u32,
+    pub found: usize,
+    pub refuted: usize,
+    pub budget: usize,
+    pub gate_failures: usize,
+    /// Mean over every target, budget-limited ones at what they spent.
+    pub mean_word_xors: f64,
+    pub median_found_word_xors: f64,
+    pub median_refuted_word_xors: f64,
+    pub mean_splits: f64,
+    pub mean_ms: f64,
+    pub built_degree: u32,
+    pub oversize_targets: usize,
+    pub targets: Vec<GateTarget>,
+}
+
+/// Enumeration on one base: the reference the product law charges.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct GateEnumeration {
+    pub base: &'static str,
+    pub points: usize,
+    /// Steps per target of the full enumeration, `|F|(|F| + 1)/2`.
+    pub full_steps: u64,
+    /// Mean steps to the first decomposition over the decomposable targets.
+    pub mean_first_hit_steps: f64,
+    /// Steps of the first-hit rule over every target: to the first
+    /// decomposition, or the full enumeration where there is none.
+    pub first_hit_steps_total: u64,
+    pub decomposable: usize,
+    pub mean_decompositions: f64,
+    /// Decompositions over every target, each multiset once: what the full
+    /// rule harvests.
+    pub decompositions_total: u64,
+    /// Wall time per step of the full enumeration on this host: one curve
+    /// addition and one lookup.
+    pub ns_per_step: f64,
+    /// The same step in group-addition equivalents, `ns_per_step / ns_per_add`.
+    pub gae_per_step: f64,
+}
+
+/// The X4′ gate on one rung.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct GateBench {
+    pub a: u8,
+    pub n: u32,
+    pub l: usize,
+    pub m: usize,
+    pub seed: u64,
+    /// `V`'s basis as integers, `1` first.
+    pub v_basis: Vec<u64>,
+    pub v_frobenius_stable: bool,
+    pub targets: usize,
+    pub node_budget: usize,
+    pub engine: String,
+    pub enumeration: Vec<GateEnumeration>,
+    /// Wall time of one raw 64-bit word XOR on this host, measured as the
+    /// boundary ledger measures it ([`calibrate_word_xor`]) — the price the
+    /// repository puts on the `word XORs` unit.
+    pub ns_per_word_xor: f64,
+    /// Wall time per counted word XOR inside the solver's own dense
+    /// elimination: what the implementation actually pays, for comparison.
+    /// Practicality only; the conversion uses the raw price.
+    pub ns_per_word_xor_in_rref: f64,
+    /// Wall time of one single-word curve addition on this host.
+    pub ns_per_add: f64,
+    /// The conversion of the oracles' unit into group-addition equivalents,
+    /// `ns_per_word_xor / ns_per_add`, measured with the run.
+    pub gae_per_word_xor: f64,
+    pub arms: Vec<GateArm>,
+}
+
+/// Knobs for [`subspace_gate_bench`].
+#[derive(Clone, Debug)]
+pub struct GateOptions {
+    pub targets: usize,
+    pub seed: u64,
+    pub node_budget: usize,
+    /// `x`-chained Macaulay caps; the symmetrised arm runs at each plus one.
+    pub x_caps: Vec<u32>,
+}
+
+/// Wall time per counted word XOR inside the solver's own dense elimination
+/// of random `size × size` bit matrices.
+pub fn measure_ns_per_word_xor_in_rref(size: usize, reps: usize, seed: u64) -> f64 {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let words = size.div_ceil(64);
+    let (mut ns, mut ops) = (0u128, 0u64);
+    for _ in 0..reps {
+        let mut m: Vec<Vec<u64>> = (0..size)
+            .map(|_| (0..words).map(|_| rng.gen::<u64>()).collect())
+            .collect();
+        let w0 = f4_word_ops_thread();
+        let t0 = Instant::now();
+        crate::cryptanalysis::koblitz_groebner::rref_f2(&mut m, size);
+        ns += t0.elapsed().as_nanos();
+        ops += f4_word_ops_thread() - w0;
+    }
+    ns as f64 / ops.max(1) as f64
+}
+
+/// **The X4′ gate on one rung**: the `x`-chained oracle over `F_x` and the
+/// symmetrised oracle over `F_u`, both on one random non-invariant `V ∋ 1`
+/// of dimension `l`, on the same targets, each verdict gated against
+/// exhaustive enumeration on its own base, costs in word XORs per target.
+/// The engine is the production default, `InheritedF4`, whose split rule
+/// `Auto` resolves to `HighestFree`; the symmetrised arm runs at each
+/// `x`-cap plus one (the fair diagonal of the exotic-coordinates note §17).
+pub fn subspace_gate_bench(a: u8, n: u32, l: usize, opts: &GateOptions) -> Option<GateBench> {
+    let m = 3usize;
+    let kc = KoblitzCurve::new(a, n)?;
+    let mut rng = StdRng::seed_from_u64(opts.seed ^ ((n as u64) << 32));
+    let v = random_subspace_containing_one(&kc, l, &mut rng);
+    let fb_u = build_symmetrised_factor_base_from_basis(&kc, v.clone())?;
+    let fb_x = plain_subspace_factor_base(&kc, &v)?;
+    let index_x = fb_x.index_map();
+    let st = FieldStructure::new(kc.n, &kc.curve.irreducible);
+
+    let g = kc.generator().clone();
+    let r_u64 = kc
+        .subgroup_order
+        .to_u64_digits()
+        .first()
+        .copied()
+        .unwrap_or(2)
+        .max(2);
+    let mut targets: Vec<BinaryPoint> = Vec::new();
+    while targets.len() < opts.targets {
+        let p = kc.mul(&g, &BigUint::from(rng.gen_range(1..r_u64)));
+        // Both systems need u(R) finite and non-zero.
+        match &p {
+            BinaryPoint::Affine { x, .. } if *x != F2mElement::one(n) => targets.push(p),
+            _ => {}
+        }
+    }
+
+    // The reference: full enumeration on each base, timed, and the truth.
+    let fc = FastCurve::new(&kc.curve)?;
+    let fast = |pts: &[BinaryPoint]| -> (Vec<FastPoint>, HashMap<u64, usize>) {
+        let v: Vec<FastPoint> = pts.iter().map(|p| fc.lift(p)).collect();
+        let idx = v.iter().enumerate().map(|(i, p)| (p.pack(), i)).collect();
+        (v, idx)
+    };
+    let fast_targets: Vec<FastPoint> = targets.iter().map(|t| fc.lift(t)).collect();
+    let ns_per_add = measure_ns_per_add(&fc, &fast(&fb_x.points).0, 2_000_000);
+    let mut enumeration = Vec::new();
+    let mut truth: Vec<(bool, bool)> = vec![(false, false); targets.len()];
+    for (base, pts) in [("x", &fb_x.points), ("u", &fb_u.points)] {
+        let (points, index) = fast(pts);
+        let t0 = Instant::now();
+        let full = (points.len() * (points.len() + 1) / 2) as u64;
+        let (mut first, mut dec, mut decomposable) = (Vec::new(), 0u64, 0usize);
+        let mut first_total = 0u64;
+        for (ti, &t) in fast_targets.iter().enumerate() {
+            let (f, d) = enumerate_pairs(&fc, &points, &index, t);
+            first_total += f.unwrap_or(full);
+            if let Some(s) = f {
+                first.push(s as f64);
+                decomposable += 1;
+            }
+            dec += d;
+            if base == "x" {
+                truth[ti].0 = f.is_some();
+            } else {
+                truth[ti].1 = f.is_some();
+            }
+        }
+        let ns_per_step = t0.elapsed().as_nanos() as f64 / (full * targets.len() as u64) as f64;
+        enumeration.push(GateEnumeration {
+            base,
+            points: points.len(),
+            full_steps: full,
+            mean_first_hit_steps: if first.is_empty() {
+                f64::NAN
+            } else {
+                first.iter().sum::<f64>() / first.len() as f64
+            },
+            first_hit_steps_total: first_total,
+            decomposable,
+            mean_decompositions: dec as f64 / targets.len() as f64,
+            decompositions_total: dec,
+            ns_per_step,
+            gae_per_step: ns_per_step / ns_per_add,
+        });
+    }
+    // Cross-check the pair enumeration against the library's.
+    for (ti, t) in targets.iter().enumerate() {
+        assert_eq!(
+            truth[ti].0,
+            enumerate_decompose(&kc, &fb_x, &index_x, t, m).is_some()
+        );
+        assert_eq!(
+            truth[ti].1,
+            enumerate_symmetrised(&kc, &fb_u, t, m).is_some()
+        );
+    }
+
+    let mut arms = Vec::new();
+    for &cap in &opts.x_caps {
+        for (arm, sym) in [("x-chained", false), ("symmetrised", true)] {
+            let arm_cap = if sym { cap + 1 } else { cap };
+            let engine = SolverEngine::InheritedF4 {
+                max_degree: arm_cap,
+            };
+            let mut rows = Vec::new();
+            let (mut n_vars, mut degree, mut built, mut oversize) = (0, 0, 0, 0);
+            for (ti, target) in targets.iter().enumerate() {
+                let w0 = f4_word_ops_thread();
+                let t0 = Instant::now();
+                let (relation_ok, found, complete, splits) = if sym {
+                    let o = symmetrised_groebner_decompose(
+                        &kc,
+                        &fb_u,
+                        &st,
+                        target,
+                        m,
+                        engine,
+                        opts.node_budget,
+                    )?;
+                    n_vars = o.n_vars;
+                    degree = o.degree;
+                    built = built.max(o.built_degree);
+                    oversize += usize::from(o.oversize > 0);
+                    let ok = o.relation.as_ref().map(|idx| {
+                        let s = fb_u.sum(&kc, idx);
+                        s == *target || (o.used_t && s == kc.add(target, &fb_u.two_torsion))
+                    });
+                    (ok, o.relation.is_some(), o.complete, o.effort as usize)
+                } else {
+                    let (rel, stats) = groebner_decompose(
+                        &kc,
+                        &fb_x,
+                        &index_x,
+                        &st,
+                        target,
+                        m,
+                        engine,
+                        opts.node_budget,
+                    );
+                    let x_r = match target {
+                        BinaryPoint::Affine { x, .. } => x.clone(),
+                        BinaryPoint::Infinity => unreachable!(),
+                    };
+                    let sys = build_decomposition_system(
+                        &fb_x.subspace_basis,
+                        &x_r,
+                        &kc.curve.b,
+                        m,
+                        &st,
+                    )?;
+                    n_vars = sys.n_vars;
+                    degree = system_degree(&sys.equations);
+                    built = built.max(stats.max_degree_built);
+                    oversize += usize::from(stats.oversize > 0);
+                    let ok = rel.as_ref().map(|idx| {
+                        idx.iter().fold(BinaryPoint::Infinity, |acc, &i| {
+                            kc.add(&acc, &fb_x.points[i])
+                        }) == *target
+                    });
+                    (ok, rel.is_some(), !stats.exhausted, stats.splits)
+                };
+                let ms = t0.elapsed().as_secs_f64() * 1e3;
+                let word_xors = f4_word_ops_thread() - w0;
+                let exists = if sym { truth[ti].1 } else { truth[ti].0 };
+                let (verdict, gate_ok) = match (found, complete) {
+                    (true, _) => ("found", exists && relation_ok == Some(true)),
+                    (false, true) => ("refuted", !exists),
+                    (false, false) => ("budget", true),
+                };
+                rows.push(GateTarget {
+                    verdict,
+                    word_xors,
+                    splits,
+                    ms,
+                    gate_ok,
+                });
+            }
+            let by = |v: &str| -> Vec<f64> {
+                rows.iter()
+                    .filter(|r| r.verdict == v)
+                    .map(|r| r.word_xors as f64)
+                    .collect()
+            };
+            let k = rows.len() as f64;
+            arms.push(GateArm {
+                arm,
+                cap: arm_cap,
+                n_vars,
+                top_degree_only: match std::env::var("KIC_F4_MAX_DEGREE_ONLY").as_deref() {
+                    Ok("1") => true,
+                    Ok("0") => false,
+                    _ => n_vars >= 24,
+                },
+                degree,
+                found: rows.iter().filter(|r| r.verdict == "found").count(),
+                refuted: rows.iter().filter(|r| r.verdict == "refuted").count(),
+                budget: rows.iter().filter(|r| r.verdict == "budget").count(),
+                gate_failures: rows.iter().filter(|r| !r.gate_ok).count(),
+                mean_word_xors: rows.iter().map(|r| r.word_xors as f64).sum::<f64>() / k,
+                median_found_word_xors: median(by("found")),
+                median_refuted_word_xors: median(by("refuted")),
+                mean_splits: rows.iter().map(|r| r.splits as f64).sum::<f64>() / k,
+                mean_ms: rows.iter().map(|r| r.ms).sum::<f64>() / k,
+                built_degree: built,
+                oversize_targets: oversize,
+                targets: rows,
+            });
+        }
+    }
+
+    let ns_per_word_xor = calibrate_word_xor();
+    let ns_per_word_xor_in_rref = measure_ns_per_word_xor_in_rref(1024, 8, opts.seed);
+    Some(GateBench {
+        a,
+        n,
+        l,
+        m,
+        seed: opts.seed,
+        v_basis: v.iter().map(bits_of).collect(),
+        v_frobenius_stable: false,
+        targets: targets.len(),
+        node_budget: opts.node_budget,
+        engine: "InheritedF4, split rule Auto (HighestFree)".into(),
+        enumeration,
+        ns_per_word_xor,
+        ns_per_word_xor_in_rref,
+        ns_per_add,
+        gae_per_word_xor: ns_per_word_xor / ns_per_add,
+        arms,
+    })
+}
+
+#[cfg(test)]
+mod gate_tests {
+    use super::*;
+
+    #[test]
+    fn non_invariant_bases_exist_where_invariant_ones_degenerate() {
+        // n = 13: 2 is primitive, so the only invariant V ∋ 1 of dimension
+        // below n is F₂, and F_u over it is {T} alone.
+        let kc = KoblitzCurve::new(0, 13).unwrap();
+        let one = build_symmetrised_factor_base_from_basis(&kc, vec![F2mElement::one(13)]).unwrap();
+        assert_eq!(one.points.len(), 1);
+        assert_eq!(one.points[0], one.two_torsion);
+        let mut rng = StdRng::seed_from_u64(7);
+        let v = random_subspace_containing_one(&kc, 6, &mut rng);
+        let fb_u = build_symmetrised_factor_base_from_basis(&kc, v.clone()).unwrap();
+        let fb_x = plain_subspace_factor_base(&kc, &v).unwrap();
+        assert!(fb_u.points.len() > 16 && fb_x.points.len() > 16);
+        // F_u is closed under translation by T, since u ↦ u + 1 and 1 ∈ V —
+        // except T itself, whose translate O is u = 0, which F_u leaves out.
+        for p in fb_u.points.iter().filter(|p| **p != fb_u.two_torsion) {
+            let q = kc.add(p, &fb_u.two_torsion);
+            assert!(fb_u.index_of.contains_key(&point_key(&q)));
+        }
+        let signed: usize = fb_x.signed_orbits.iter().map(Vec::len).sum();
+        assert_eq!(signed, fb_x.points.len());
+    }
+
+    #[test]
+    fn pair_enumeration_over_r_covers_the_decompositions_through_t() {
+        // The symmetrised oracle also returns 3-sums to R + T.  F_u is closed
+        // under + T away from T itself and contains T, so R and R + T are
+        // 3-sums over F_u together, and enumerating R alone decides the
+        // question the oracle answers.  Checked on every subgroup target
+        // drawn, and against the library's two-pass enumeration.
+        for (n, l, count) in [(13u32, 6usize, 300), (15, 6, 300), (19, 8, 100)] {
+            let kc = KoblitzCurve::new(0, n).unwrap();
+            let mut rng = StdRng::seed_from_u64(0xA7 ^ n as u64);
+            let v = random_subspace_containing_one(&kc, l, &mut rng);
+            let fb = build_symmetrised_factor_base_from_basis(&kc, v).unwrap();
+            let fc = FastCurve::new(&kc.curve).unwrap();
+            let pts: Vec<FastPoint> = fb.points.iter().map(|p| fc.lift(p)).collect();
+            let idx: HashMap<u64, usize> =
+                pts.iter().enumerate().map(|(i, p)| (p.pack(), i)).collect();
+            let t2 = fc.lift(&fb.two_torsion);
+            let g = kc.generator().clone();
+            let r = kc.subgroup_order.to_u64_digits()[0];
+            let (mut checked, mut decomposable) = (0, 0);
+            while checked < count {
+                let t = kc.mul(&g, &BigUint::from(rng.gen_range(1..r)));
+                if !matches!(&t, BinaryPoint::Affine { x, .. } if *x != F2mElement::one(n)) {
+                    continue;
+                }
+                let ft = fc.lift(&t);
+                let over_r = enumerate_pairs(&fc, &pts, &idx, ft).0.is_some();
+                let over_rt = enumerate_pairs(&fc, &pts, &idx, fc.add(ft, t2)).0.is_some();
+                assert_eq!(over_r, over_rt, "n = {n}, target {t:?}");
+                assert_eq!(over_r, enumerate_symmetrised(&kc, &fb, &t, 3).is_some());
+                decomposable += usize::from(over_r);
+                checked += 1;
+            }
+            assert!(
+                decomposable > count / 10 && decomposable < count,
+                "n = {n}: {decomposable}/{count}"
+            );
+        }
+    }
+
+    #[test]
+    fn gate_bench_agrees_with_enumeration_and_counts_its_work() {
+        let opts = GateOptions {
+            targets: 4,
+            seed: 11,
+            node_budget: 20_000,
+            x_caps: vec![3],
+        };
+        let b = subspace_gate_bench(0, 13, 6, &opts).unwrap();
+        assert_eq!(b.arms.len(), 2);
+        for arm in &b.arms {
+            assert_eq!(arm.gate_failures, 0, "{arm:?}");
+            assert_eq!(arm.found + arm.refuted + arm.budget, 4);
+            assert!(arm.mean_word_xors > 0.0, "{arm:?}");
+        }
+        assert!(b.gae_per_word_xor > 0.0 && b.enumeration.iter().all(|e| e.gae_per_step > 0.5));
+    }
+}
+
+// ── X5′: the symmetrised `S₃` chained at `m = 4` ───────────────────
+//
+// `research/notes/ecc2k130/RESEARCH_ECC2K130_ROUTE_TARGETS.md` §X5′.  Three
+// symmetrised `S₃` links through two intermediate points,
+//
+//   P₁ + P₂ + Q₁,   Q₁ + P₃ + Q₂,   Q₂ + P₄ + R,
+//
+// each of Boolean degree 3, the degree of the `x`-chained links H1 measured.
+// `AS` is `F₂`-linear, so `w_Q = AS(u_Q)` is linear in `u_Q`'s free bits, and
+// `AS(u + 1) = AS(u)` lets the parity bits fold: `U₁ = u(Q₁) + ε₁ + ε₂` and
+// `U₂ = u(Q₂) + ε₁ + ε₂ + ε₃` leave `ε = Σ εᵢ` on the last link alone.
+// Layout: the four summands' `ℓ − 1` bits, then `ε`, then `U₁`, then `U₂` —
+// so [`SymmetrisedSystem::summand_u0`] and [`SymmetrisedSystem::parity`] read
+// a root as they do at `m = 4`, and the four-summand lift applies unchanged.
+
+/// Artin–Schreier `u² + u` in a field given by its modulus alone.
+fn artin_schreier_in(u: &F2mElement, irr: &crate::binary_ecc::IrreduciblePoly) -> F2mElement {
+    u.square(irr).add(u)
+}
+
+/// A uniformly random `l`-dimensional `V ∋ 1` of `F_{2^n}` that is not
+/// Frobenius-stable, in a field given by its modulus: the curve-free form of
+/// [`random_subspace_containing_one`], for measurements that need only the
+/// field.
+pub fn random_subspace_containing_one_in(
+    n: u32,
+    irr: &crate::binary_ecc::IrreduciblePoly,
+    l: usize,
+    rng: &mut StdRng,
+) -> Vec<F2mElement> {
+    assert!(l >= 2 && (l as u32) < n && n < 64, "need 2 ≤ l < n < 64");
+    loop {
+        let mut basis = vec![F2mElement::one(n)];
+        let mut span: std::collections::HashSet<u64> = [0u64, 1].into_iter().collect();
+        while basis.len() < l {
+            let v = rng.gen_range(2..(1u64 << n));
+            if span.contains(&v) {
+                continue;
+            }
+            let added: Vec<u64> = span.iter().map(|&c| c ^ v).collect();
+            span.extend(added);
+            basis.push(from_bits(v, n));
+        }
+        if !basis
+            .iter()
+            .all(|b| span.contains(&bits_of(&b.square(irr))))
+        {
+            return basis;
+        }
+    }
+}
+
+/// **The symmetrised `S₃` chained at `m = 4`** for a target abscissa `x_R`,
+/// over `V = span(v_basis)` with `v_basis[0] = 1`: `3n` equations of Boolean
+/// degree 3 in `4(ℓ − 1) + 1 + 2n` unknowns.  `None` if `u(R)` is `0` or
+/// `∞`, or the layout exceeds [`MAX_VARS`].
+pub fn build_chained_symmetrised_system(
+    v_basis: &[F2mElement],
+    irr: &crate::binary_ecc::IrreduciblePoly,
+    x_r: &F2mElement,
+    st: &FieldStructure,
+) -> Option<SymmetrisedSystem> {
+    let n = st.n;
+    if v_basis.first().map(bits_of) != Some(1) {
+        return None;
+    }
+    let u_r = x_r.add(&F2mElement::one(n)).flt_inverse(irr)?;
+    if u_r.is_zero() {
+        return None;
+    }
+    let terms = symmetrised_terms(2)?;
+    let ell_w = v_basis.len() - 1;
+    let n_vars = 4 * ell_w + 1 + 2 * n as usize;
+    if n_vars > MAX_VARS {
+        return None;
+    }
+    let eps = 4 * ell_w;
+    let (off1, off2) = (eps + 1, eps + 1 + n as usize);
+    let w_basis: Vec<F2mElement> = v_basis[1..]
+        .iter()
+        .map(|b| artin_schreier_in(b, irr))
+        .collect();
+    let unit: Vec<F2mElement> = (0..n)
+        .map(|k| F2mElement::from_bit_positions(&[k], n))
+        .collect();
+    let as_unit: Vec<F2mElement> = unit.iter().map(|e| artin_schreier_in(e, irr)).collect();
+    let w: Vec<SymElement> = (0..4)
+        .map(|i| SymElement::from_subspace_vars(&w_basis, i * ell_w, n, n_vars))
+        .collect();
+    let u: Vec<SymElement> = (0..4)
+        .map(|i| SymElement::from_subspace_vars(&v_basis[1..], i * ell_w, n, n_vars))
+        .collect();
+    let u_q1 = SymElement::from_free_vars(off1, n, n_vars);
+    let u_q2 = SymElement::from_free_vars(off2, n, n_vars);
+    let w_q1 = SymElement::from_subspace_vars(&as_unit, off1, n, n_vars);
+    let w_q2 = SymElement::from_subspace_vars(&as_unit, off2, n, n_vars);
+    let w_r = SymElement::constant(&artin_schreier_in(&u_r, irr), n, n_vars);
+    let mut eps_el = SymElement::zero(n, n_vars);
+    eps_el.coords[0] = F2BoolPoly::from_monos(vec![F2BoolMono::var(eps as u32)], n_vars);
+    let s1 = u[0].add(&u[1]).add(&u_q1);
+    let s2 = u_q1.add(&u[2]).add(&u_q2);
+    let s3 = u_q2
+        .add(&u[3])
+        .add(&SymElement::constant(&u_r, n, n_vars))
+        .add(&eps_el);
+    let mut equations = sym_polynomial(&[w[0].clone(), w[1].clone(), w_q1.clone(), s1], &terms, st);
+    equations.extend(sym_polynomial(
+        &[w_q1, w[2].clone(), w_q2.clone(), s2],
+        &terms,
+        st,
+    ));
+    equations.extend(sym_polynomial(&[w_q2, w[3].clone(), w_r, s3], &terms, st));
+    Some(SymmetrisedSystem {
+        equations,
+        n_vars,
+        ell_w,
+        m: 4,
+        u_r,
+    })
+}
+
+/// The chained symmetrised oracle at `m = 4`: solve, then lift each root
+/// through the four-summand lift, gated by `accept`.
+pub fn chained_symmetrised_groebner_decompose(
+    kc: &KoblitzCurve,
+    fb: &SymmetrisedFactorBase,
+    st: &FieldStructure,
+    target: &BinaryPoint,
+    engine: SolverEngine,
+    node_budget: usize,
+) -> Option<OracleOutcome> {
+    let x_r = match target {
+        BinaryPoint::Affine { x, .. } => x,
+        BinaryPoint::Infinity => return None,
+    };
+    let sys = build_chained_symmetrised_system(&fb.v_basis, &kc.curve.irreducible, x_r, st)?;
+    let opts = SolveOptions {
+        engine,
+        max_solutions: usize::MAX,
+        node_budget,
+        split_rule: split_rule_default(),
+    };
+    let mut found: Option<(Vec<usize>, bool)> = None;
+    let (_, stats): (Vec<u64>, SolveStats) =
+        solve_boolean_system_filtered(&sys.equations, sys.n_vars, &opts, |root| {
+            match lift_symmetrised_root_accepting(kc, fb, &sys, root, target, |_| true) {
+                Some(r) => {
+                    found = Some(r);
+                    true
+                }
+                None => false,
+            }
+        });
+    let used_t = found.as_ref().map(|r| r.1).unwrap_or(false);
+    Some(OracleOutcome {
+        relation: found.map(|r| r.0),
+        used_t,
+        complete: !stats.exhausted,
+        n_vars: sys.n_vars,
+        n_equations: sys.equations.len(),
+        degree: system_degree(&sys.equations),
+        effort: stats.splits as u64,
+        built_degree: stats.max_degree_built,
+        oversize: stats.oversize,
+    })
+}
+
+/// Fall-degree statistics of one system family over its draws.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct FallCell {
+    pub arm: &'static str,
+    pub n_vars: usize,
+    pub n_eqs: usize,
+    pub degree: u32,
+    /// First fall degree per draw; `None` is no fall up to the highest
+    /// degree profiled.
+    pub falls: Vec<Option<u32>>,
+    /// Highest Macaulay degree profiled per draw: below `d_max` means the
+    /// matrix exceeded the size caps there and the draw is censored.
+    pub profiled_to: Vec<u32>,
+    pub fall_min: Option<u32>,
+    pub fall_max: Option<u32>,
+    pub no_fall: usize,
+    pub censored: usize,
+    /// Mean rank deficit (rows − rank) of the Macaulay matrix at `D = 2`, `3`.
+    pub mean_deficit: Vec<(u32, f64)>,
+    pub ms: f64,
+}
+
+/// One X5′ rung: both arms on one `V`, the same target abscissae.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct X5Rung {
+    pub n: u32,
+    pub ell: usize,
+    pub v_basis: Vec<u64>,
+    pub v_frobenius_stable: bool,
+    pub draws: usize,
+    pub d_max: u32,
+    pub seed: u64,
+    pub arms: Vec<FallCell>,
+}
+
+fn fall_cell(
+    arm: &'static str,
+    systems: &[(Vec<F2BoolPoly>, usize)],
+    d_max: u32,
+    ms: f64,
+) -> FallCell {
+    let mut falls = Vec::new();
+    let mut profiled_to = Vec::new();
+    let mut deficits: Vec<(u32, Vec<f64>)> = (2..=3).map(|d| (d, Vec::new())).collect();
+    for (eqs, n_vars) in systems {
+        let (fall, profiles) = first_fall_degree(eqs, *n_vars, d_max);
+        falls.push(fall);
+        profiled_to.push(profiles.iter().map(|p| p.degree).max().unwrap_or(0));
+        for (d, acc) in deficits.iter_mut() {
+            if let Some(p) = profiles.iter().find(|p| p.degree == *d) {
+                acc.push((p.rows - p.rank) as f64);
+            }
+        }
+    }
+    let seen: Vec<u32> = falls.iter().flatten().copied().collect();
+    let censored = falls
+        .iter()
+        .zip(&profiled_to)
+        .filter(|(f, &top)| f.is_none() && top < d_max)
+        .count();
+    let (n_vars, n_eqs, degree) = systems
+        .first()
+        .map(|(e, v)| (*v, e.len(), system_degree(e)))
+        .unwrap_or((0, 0, 0));
+    FallCell {
+        arm,
+        n_vars,
+        n_eqs,
+        degree,
+        fall_min: seen.iter().copied().min(),
+        fall_max: seen.iter().copied().max(),
+        no_fall: falls.iter().filter(|f| f.is_none()).count(),
+        censored,
+        mean_deficit: deficits
+            .into_iter()
+            .map(|(d, v)| {
+                (
+                    d,
+                    if v.is_empty() {
+                        f64::NAN
+                    } else {
+                        v.iter().sum::<f64>() / v.len() as f64
+                    },
+                )
+            })
+            .collect(),
+        falls,
+        profiled_to,
+        ms,
+    }
+}
+
+/// **One X5′ rung**: the symmetrised chain and the `x`-chained `m = 4`
+/// system on one `V`, over `draws` uniform target abscissae (`u(R)` finite
+/// and non-zero, `b = 1`, no curve), first fall degree to `d_max`.  `V` is
+/// random and non-invariant unless `invariant_divisor` names a divisor of
+/// `xⁿ − 1` (indices as in [`all_factors_of_x_n_minus_1`]) — the cross-check.
+pub fn x5_fall_rung(
+    n: u32,
+    ell: usize,
+    draws: usize,
+    d_max: u32,
+    seed: u64,
+    invariant_divisor: Option<&[usize]>,
+) -> Option<X5Rung> {
+    use crate::cryptanalysis::koblitz_index_calculus::find_irreducible_sparse;
+    let irr = find_irreducible_sparse(n)?;
+    let st = FieldStructure::new(n, &irr);
+    let mut rng = StdRng::seed_from_u64(seed ^ ((n as u64) << 32));
+    let (v, stable) = match invariant_divisor {
+        None => (
+            random_subspace_containing_one_in(n, &irr, ell, &mut rng),
+            false,
+        ),
+        Some(idx) => {
+            let raw = subspace_basis_for_divisor(n, idx, &irr)?;
+            let span = span_f2(&raw, n);
+            if !span.iter().any(|e| bits_of(e) == 1) {
+                return None;
+            }
+            // Re-basis with 1 first.
+            let mut basis = vec![F2mElement::one(n)];
+            let mut cur: std::collections::HashSet<u64> = [0u64, 1].into_iter().collect();
+            for b in &raw {
+                let bb = bits_of(b);
+                if !cur.contains(&bb) {
+                    let added: Vec<u64> = cur.iter().map(|&c| c ^ bb).collect();
+                    cur.extend(added);
+                    basis.push(b.clone());
+                }
+            }
+            (basis, true)
+        }
+    };
+    let b = F2mElement::one(n);
+    let mut xs = Vec::new();
+    while xs.len() < draws {
+        let x = from_bits(rng.gen_range(0..(1u64 << n)), n);
+        if x.is_zero() || x == F2mElement::one(n) {
+            continue; // u(R) must be finite and non-zero
+        }
+        xs.push(x);
+    }
+    let t0 = Instant::now();
+    let sym: Vec<(Vec<F2BoolPoly>, usize)> = xs
+        .iter()
+        .map(|x| {
+            build_chained_symmetrised_system(&v, &irr, x, &st).map(|s| (s.equations, s.n_vars))
+        })
+        .collect::<Option<_>>()?;
+    let sym_cell = {
+        let mut c = fall_cell("symmetrised chain", &sym, d_max, 0.0);
+        c.ms = t0.elapsed().as_secs_f64() * 1e3;
+        c
+    };
+    let t1 = Instant::now();
+    let xch: Vec<(Vec<F2BoolPoly>, usize)> = xs
+        .iter()
+        .map(|x| build_decomposition_system(&v, x, &b, 4, &st).map(|s| (s.equations, s.n_vars)))
+        .collect::<Option<_>>()?;
+    let x_cell = {
+        let mut c = fall_cell("x-chained", &xch, d_max, 0.0);
+        c.ms = t1.elapsed().as_secs_f64() * 1e3;
+        c
+    };
+    Some(X5Rung {
+        n,
+        ell: v.len(),
+        v_basis: v.iter().map(bits_of).collect(),
+        v_frobenius_stable: stable,
+        draws,
+        d_max,
+        seed,
+        arms: vec![sym_cell, x_cell],
+    })
+}
+
+/// The X5′ solve at one small rung: the chained symmetrised oracle on
+/// `targets` subgroup targets of `K_a/F_{2^n}` over a random non-invariant
+/// `V ∋ 1`, every verdict checked against exhaustive 4-sum enumeration over
+/// `F_u` and every relation re-summed.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct X5Solve {
+    pub a: u8,
+    pub n: u32,
+    pub ell: usize,
+    pub points: usize,
+    pub targets: usize,
+    pub found: usize,
+    pub refuted: usize,
+    pub budget: usize,
+    pub decomposable: usize,
+    pub gate_failures: usize,
+    pub mean_splits: f64,
+    pub mean_word_xors: f64,
+    pub mean_ms: f64,
+}
+
+pub fn x5_solve_gate(
+    a: u8,
+    n: u32,
+    ell: usize,
+    targets: usize,
+    node_budget: usize,
+    seed: u64,
+) -> Option<X5Solve> {
+    let kc = KoblitzCurve::new(a, n)?;
+    let st = FieldStructure::new(n, &kc.curve.irreducible);
+    let mut rng = StdRng::seed_from_u64(seed ^ ((n as u64) << 32));
+    let v = random_subspace_containing_one(&kc, ell, &mut rng);
+    let fb = build_symmetrised_factor_base_from_basis(&kc, v)?;
+    let fc = FastCurve::new(&kc.curve)?;
+    let pts: Vec<FastPoint> = fb.points.iter().map(|p| fc.lift(p)).collect();
+    let index: HashMap<u64, usize> = pts.iter().enumerate().map(|(i, p)| (p.pack(), i)).collect();
+    let g = kc.generator().clone();
+    let r = kc
+        .subgroup_order
+        .to_u64_digits()
+        .first()
+        .copied()
+        .unwrap_or(2)
+        .max(2);
+    let (mut found, mut refuted, mut budget, mut decomposable, mut gate_failures) = (0, 0, 0, 0, 0);
+    let (mut splits, mut xors, mut ms) = (0.0, 0.0, 0.0);
+    let mut drawn = 0;
+    while drawn < targets {
+        let t = kc.mul(&g, &BigUint::from(rng.gen_range(1..r)));
+        if !matches!(&t, BinaryPoint::Affine { x, .. } if *x != F2mElement::one(n) && !x.is_zero())
+        {
+            continue;
+        }
+        drawn += 1;
+        // Exhaustive 4-sums over F_u: R − P_i − P_j − P_k ∈ F_u.
+        let ft = fc.lift(&t);
+        let mut exists = false;
+        'outer: for i in 0..pts.len() {
+            let a1 = fc.add(ft, fc.neg(pts[i]));
+            for j in i..pts.len() {
+                let a2 = fc.add(a1, fc.neg(pts[j]));
+                for k in j..pts.len() {
+                    if index.contains_key(&fc.add(a2, fc.neg(pts[k])).pack()) {
+                        exists = true;
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        decomposable += usize::from(exists);
+        let w0 = f4_word_ops_thread();
+        let t0 = Instant::now();
+        let o = chained_symmetrised_groebner_decompose(
+            &kc,
+            &fb,
+            &st,
+            &t,
+            SolverEngine::default(),
+            node_budget,
+        )?;
+        ms += t0.elapsed().as_secs_f64() * 1e3;
+        xors += (f4_word_ops_thread() - w0) as f64;
+        splits += o.effort as f64;
+        match (&o.relation, o.complete) {
+            (Some(idx), _) => {
+                found += 1;
+                let sum = fb.sum(&kc, idx);
+                let ok = sum == t || (o.used_t && sum == kc.add(&t, &fb.two_torsion));
+                if !exists || !ok {
+                    gate_failures += 1;
+                }
+            }
+            (None, true) => {
+                refuted += 1;
+                if exists {
+                    gate_failures += 1;
+                }
+            }
+            (None, false) => budget += 1,
+        }
+    }
+    let k = targets as f64;
+    Some(X5Solve {
+        a,
+        n,
+        ell: fb.ell,
+        points: fb.points.len(),
+        targets,
+        found,
+        refuted,
+        budget,
+        decomposable,
+        gate_failures,
+        mean_splits: splits / k,
+        mean_word_xors: xors / k,
+        mean_ms: ms / k,
+    })
+}
+
+#[cfg(test)]
+mod x5_tests {
+    use super::*;
+
+    #[test]
+    fn chained_symmetrised_system_vanishes_at_a_planted_four_sum_and_lifts_it() {
+        // K₁/F₂¹¹: plant R = P₁ + P₂ + P₃ + P₄ over F_u and evaluate the
+        // chain at the root the planted points give; then lift it.
+        let kc = KoblitzCurve::new(1, 11).unwrap();
+        let st = FieldStructure::new(11, &kc.curve.irreducible);
+        let mut rng = StdRng::seed_from_u64(0x55);
+        let v = random_subspace_containing_one(&kc, 4, &mut rng);
+        let fb = build_symmetrised_factor_base_from_basis(&kc, v.clone()).unwrap();
+        let irr = &kc.curve.irreducible;
+        let n = 11u32;
+        let mut planted = 0;
+        for trial in 0..200 {
+            let idx: Vec<usize> = (0..4).map(|_| rng.gen_range(0..fb.points.len())).collect();
+            let pts: Vec<BinaryPoint> = idx.iter().map(|&i| fb.points[i].clone()).collect();
+            let q1 = kc.add(&pts[0], &pts[1]);
+            let q2 = kc.add(&q1, &pts[2]);
+            let r = kc.add(&q2, &pts[3]);
+            let (x1, x2, xr) = match (&q1, &q2, &r) {
+                (
+                    BinaryPoint::Affine { x: a, .. },
+                    BinaryPoint::Affine { x: b, .. },
+                    BinaryPoint::Affine { x: c, .. },
+                ) => (a.clone(), b.clone(), c.clone()),
+                _ => continue,
+            };
+            if [&x1, &x2, &xr]
+                .iter()
+                .any(|x| x.is_zero() || **x == F2mElement::one(n))
+                || pts.contains(&fb.two_torsion)
+            {
+                continue;
+            }
+            let sys = build_chained_symmetrised_system(&fb.v_basis, irr, &xr, &st).unwrap();
+            // The root: each summand's coordinates over v_basis[1..] with
+            // parities ε_i, and the folded intermediates U₁, U₂.
+            let ell_w = sys.ell_w;
+            let mut root = 0u64;
+            let mut eps = [false; 4];
+            for (i, p) in pts.iter().enumerate() {
+                let u = match p {
+                    BinaryPoint::Affine { x, .. } => u_of_x(x, &kc).unwrap(),
+                    _ => unreachable!(),
+                };
+                // Solve u = ε·1 + Σ c_t b_{t+1} over the basis by brute force.
+                let mut hit = false;
+                for mask in 0..(1u64 << (ell_w + 1)) {
+                    let mut acc = F2mElement::zero(n);
+                    if mask & 1 == 1 {
+                        acc = acc.add(&F2mElement::one(n));
+                    }
+                    for t in 0..ell_w {
+                        if (mask >> (t + 1)) & 1 == 1 {
+                            acc = acc.add(&fb.v_basis[t + 1]);
+                        }
+                    }
+                    if acc == u {
+                        eps[i] = mask & 1 == 1;
+                        root |= (mask >> 1) << (i * ell_w);
+                        hit = true;
+                        break;
+                    }
+                }
+                assert!(hit, "u(P_{i}) lies in V");
+            }
+            let e = eps.iter().fold(false, |a, &b| a ^ b);
+            if e {
+                root |= 1 << (4 * ell_w);
+            }
+            let one = F2mElement::one(n);
+            let mut uq1 = u_of_x(&x1, &kc).unwrap();
+            if eps[0] ^ eps[1] {
+                uq1 = uq1.add(&one);
+            }
+            let mut uq2 = u_of_x(&x2, &kc).unwrap();
+            if eps[0] ^ eps[1] ^ eps[2] {
+                uq2 = uq2.add(&one);
+            }
+            root |= bits_of(&uq1) << (4 * ell_w + 1);
+            root |= bits_of(&uq2) << (4 * ell_w + 1 + n as usize);
+            for (k, eq) in sys.equations.iter().enumerate() {
+                assert_eq!(
+                    eq.eval(root),
+                    0,
+                    "trial {trial}: equation {k} does not vanish"
+                );
+            }
+            let lifted =
+                lift_symmetrised_root(&kc, &fb, &sys, root, &r).expect("the planted root lifts");
+            assert_eq!(fb.sum(&kc, &lifted.0), r);
+            planted += 1;
+            if planted == 8 {
+                break;
+            }
+        }
+        assert_eq!(planted, 8);
+    }
+
+    #[test]
+    fn x5_solve_agrees_with_four_sum_enumeration() {
+        let r = x5_solve_gate(1, 11, 4, 6, 20_000, 0x5EED0005).unwrap();
+        assert_eq!(r.gate_failures, 0, "{r:?}");
+        assert_eq!(r.found + r.refuted + r.budget, 6);
+    }
+
+    #[test]
+    fn x5_rung_profiles_both_arms_on_one_v() {
+        let r = x5_fall_rung(9, 4, 4, 3, 0x5EED0005, None).unwrap();
+        assert_eq!(r.arms.len(), 2);
+        assert_eq!(r.arms[0].n_vars, 4 * 3 + 1 + 18);
+        assert_eq!(r.arms[1].n_vars, 4 * 4 + 2 * 9);
+        assert_eq!(r.arms[0].degree, 3);
+        assert_eq!(r.arms[0].n_eqs, 27);
+        assert!(r.arms.iter().all(|a| a.falls.len() == 4));
     }
 }

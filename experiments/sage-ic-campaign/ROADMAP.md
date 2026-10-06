@@ -5,7 +5,8 @@ a concrete implementation site and a complete-operation boundary. Promote a
 change only after exact output checks, paired incumbent/candidate measurements
 with independent confirmation inputs, resource accounting, and a source/binary
 binding. Keep failed attempts. For an IC claim, use the repository's candidate
-IDs and charge every exclusive phase through verified logarithm recovery.
+IDs and charge every exclusive phase through verified logarithm recovery;
+`experiments/ic-bench` is the reference harness for such runs.
 Metal kernel timing is diagnostic; a PR must report complete Sage-point or
 solver cost, including packing, transfers, construction and verification.
 

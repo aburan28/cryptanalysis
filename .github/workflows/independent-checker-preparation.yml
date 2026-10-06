@@ -1,0 +1,112 @@
+name: Independent checker preparation
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/independent-checker-preparation.yml'
+  push:
+    paths:
+      - 'experiments/groebner-perf-20260924/**'
+      - 'experiments/pdp-scaling/**'
+      - 'experiments/pdp-degree-heuristics/**'
+      - '.github/workflows/independent-checker-preparation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: independent-checker-preparation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  correctness:
+    name: Independent checker preparation (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependency
+        run: python -m pip install numpy==2.4.0
+      - name: Build portable dependencies and selected backend
+        shell: bash
+        run: |
+          mkdir -p independent-preparation-evidence
+          for version in 20 23 31 32 33 34 35 36 37 38; do
+            python "experiments/groebner-perf-20260924/round${version}/build.py" > "independent-preparation-evidence/build-${version}.log" 2>&1
+          done
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          python experiments/groebner-perf-20260924/round44/build.py "${flags[@]}" > independent-preparation-evidence/build-44.log 2>&1
+          python experiments/groebner-perf-20260924/round48/build.py > independent-preparation-evidence/build-48.log 2>&1
+          python experiments/groebner-perf-20260924/round49/build.py "${flags[@]}" > independent-preparation-evidence/build-49.log 2>&1
+          python experiments/groebner-perf-20260924/round51/build.py "${flags[@]}" > independent-preparation-evidence/build-51.log 2>&1
+          python experiments/groebner-perf-20260924/round52/build.py > independent-preparation-evidence/build-52.log 2>&1
+          python experiments/groebner-perf-20260924/round53/build.py > independent-preparation-evidence/build-53.log 2>&1
+      - name: Detect actual Metal availability
+        if: runner.os == 'macOS'
+        working-directory: experiments/groebner-perf-20260924/round53
+        run: |
+          python - <<'PY'
+          import os
+          from adapter import producer
+          Producer = producer.Producer
+          try:
+              with Producer(2, 3, 3, backend='metal') as probe:
+                  print('METAL_AVAILABLE', probe.device)
+          except ValueError as error:
+              if str(error) != 'requested Metal device unavailable':
+                  raise
+              print('METAL_UNAVAILABLE', error)
+          else:
+              with open(os.environ['GITHUB_ENV'], 'a') as output:
+                  output.write('QUADRATIC_TEST_METAL=1\n')
+          PY
+      - name: Exercise proof semantics and charged failure boundaries
+        run: python -m unittest discover -s experiments/groebner-perf-20260924/round53 -p 'test_*.py' -v > independent-preparation-evidence/unit-tests.log 2>&1
+      - name: Validate frozen systems and fresh complete queries
+        shell: bash
+        run: |
+          flags=()
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            flags+=(--metal)
+          fi
+          python -u experiments/groebner-perf-20260924/round53/validate_native.py "${flags[@]}" --output independent-preparation-evidence/correctness.json.gz > independent-preparation-evidence/validation.log 2>&1
+      - name: Independently audit every complete proof from original equations
+        run: python -u experiments/groebner-perf-20260924/round53/audit_queries.py --input independent-preparation-evidence/correctness.json.gz --output independent-preparation-evidence/independent-audit.json > independent-preparation-evidence/independent-audit.log 2>&1
+      - name: Retain rebuilt binaries and actual runner identity
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, platform, shutil
+          out = pathlib.Path('independent-preparation-evidence')
+          out.mkdir(exist_ok=True)
+          metadata = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RUNNER_OS', 'RUNNER_ARCH')}
+          metadata.update(platform=platform.platform(), architecture=platform.machine())
+          (out / 'runner.json').write_text(json.dumps(metadata, indent=2)+'\n')
+          for build in pathlib.Path('experiments/groebner-perf-20260924').glob('round*/build'):
+              shutil.copytree(build, out / 'native' / build.parent.name, dirs_exist_ok=True)
+          kernel = pathlib.Path('experiments/pdp-degree-heuristics/build')
+          if kernel.exists():
+              shutil.copytree(kernel, out / 'native' / 'pdp-degree-heuristics', dirs_exist_ok=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: independent-preparation-${{ matrix.os }}
+          path: independent-preparation-evidence/
+          if-no-files-found: error
+          retention-days: 14

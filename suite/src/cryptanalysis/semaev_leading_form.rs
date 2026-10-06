@@ -160,6 +160,7 @@
 //! 1146 of them and on no tuple lacking a decomposition.
 
 use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasherDefault, Hasher};
 
 /// Variable slots: `0..=7` are `X₁..X₈`, `8` is `a₆`, `9` is the resultant
 /// variable `Y`, `10` is a scratch elimination variable.
@@ -184,27 +185,68 @@ pub const MAX_REVERSED_M: usize = 7;
 /// Exponent vector of one monomial.
 pub type Mono = [u8; NVARS];
 
+/// Hasher for [`Mono`] keys.
+///
+/// A monomial is eleven small exponents, and the ring operations below do
+/// little besides hash them: under SipHash, the standard library's default,
+/// hashing was most of the cost of a resultant.  Nothing adversarial reaches
+/// these sets.  Each 8-byte word is folded in by one 64×64→128-bit multiply
+/// whose halves are XORed, so every input bit reaches the low bits the table
+/// picks a bucket from; a multiply-rotate hash (`FxHasher`) would leave those
+/// bits depending on the first two exponents and the `a₆`/`Y` slots alone.
+/// A set iterates in a different order under a different hasher and holds the
+/// same monomials under any.
+#[derive(Default, Clone, Copy)]
+pub struct MonoHasher(u64);
+
+impl Hasher for MonoHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut w = [0u8; 8];
+            w[..chunk.len()].copy_from_slice(chunk);
+            self.write_u64(u64::from_le_bytes(w));
+        }
+    }
+    #[inline]
+    fn write_u64(&mut self, x: u64) {
+        let p = u128::from(self.0 ^ x) * 0x9e37_79b9_7f4a_7c15;
+        self.0 = (p as u64) ^ ((p >> 64) as u64);
+    }
+    #[inline]
+    fn write_usize(&mut self, x: usize) {
+        self.write_u64(x as u64);
+    }
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+/// A set of monomials, hashed by [`MonoHasher`].
+pub type MonoSet = HashSet<Mono, BuildHasherDefault<MonoHasher>>;
+
 /// A polynomial over `F_2`: the set of monomials with coefficient 1.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct F2Poly {
-    pub terms: HashSet<Mono>,
+    pub terms: MonoSet,
 }
 
 impl F2Poly {
     pub fn zero() -> Self {
         F2Poly {
-            terms: HashSet::new(),
+            terms: MonoSet::default(),
         }
     }
     pub fn one() -> Self {
-        let mut t = HashSet::new();
+        let mut t = MonoSet::default();
         t.insert([0u8; NVARS]);
         F2Poly { terms: t }
     }
     pub fn var(i: usize) -> Self {
         let mut m = [0u8; NVARS];
         m[i] = 1;
-        let mut t = HashSet::new();
+        let mut t = MonoSet::default();
         t.insert(m);
         F2Poly { terms: t }
     }
@@ -232,7 +274,7 @@ impl F2Poly {
         if self.is_zero() || other.is_zero() {
             return Self::zero();
         }
-        let mut t: HashSet<Mono> = HashSet::new();
+        let mut t = MonoSet::default();
         for a in &self.terms {
             for b in &other.terms {
                 let mut m = [0u8; NVARS];
@@ -249,7 +291,7 @@ impl F2Poly {
     /// `self²`.  In characteristic 2 squaring is a relabelling — every cross
     /// term cancels — so it just doubles each exponent.
     pub fn square(&self) -> Self {
-        let mut t = HashSet::with_capacity(self.terms.len());
+        let mut t = MonoSet::with_capacity_and_hasher(self.terms.len(), Default::default());
         for a in &self.terms {
             let mut m = [0u8; NVARS];
             for k in 0..NVARS {
@@ -280,7 +322,7 @@ impl F2Poly {
     }
     /// Permute the variable slots.
     pub fn permute(&self, perm: &[usize]) -> Self {
-        let mut t: HashSet<Mono> = HashSet::new();
+        let mut t = MonoSet::default();
         for m in &self.terms {
             let mut m2 = *m;
             for (i, &j) in perm.iter().enumerate() {
@@ -419,7 +461,7 @@ impl F2Poly {
         if self.is_zero() || other.is_zero() {
             return Self::zero();
         }
-        let mut acc: HashSet<Mono> = HashSet::new();
+        let mut acc = MonoSet::default();
         for a in &self.terms {
             let da = t.degree(a);
             if da > t.max {
@@ -447,7 +489,7 @@ impl F2Poly {
     /// polynomial's degree in that slot and the reversal is not a
     /// polynomial.
     pub fn reverse_in(&self, slots: &[usize], d: u8) -> Self {
-        let mut t: HashSet<Mono> = HashSet::new();
+        let mut t = MonoSet::default();
         for m in &self.terms {
             let mut m2 = *m;
             for &i in slots {
@@ -464,7 +506,7 @@ impl F2Poly {
     /// The coefficient of `Π_{i∈slots} Zᵢ^{k}`, as a polynomial in the
     /// remaining slots.
     pub fn diagonal_coeff(&self, slots: &[usize], k: u8) -> Self {
-        let mut t: HashSet<Mono> = HashSet::new();
+        let mut t = MonoSet::default();
         for m in &self.terms {
             if !slots.iter().all(|&i| m[i] == k) {
                 continue;
@@ -1089,5 +1131,662 @@ mod tests {
         assert_eq!(boolean_degree(&cube, 1), 2);
         // And the m = 3 a₆ reach is 4.
         assert_eq!(leading_form_profile(3, false).a6_carrying_max, 4);
+    }
+}
+
+// ── cross-process caching of the symbolic forms ──────────────────────────
+//
+// `semaev(m)` takes no curve parameters: it is S_{m+1} over F_2[a6], so one
+// build serves every curve in the family and specialising a6 is the per-curve
+// step. That makes it worth sharing between processes -- but only at m = 5.
+// Measured on a 4-core x86_64 container, rustc 1.90.0, release:
+//
+//     S_3   0.01 ms        5 monomials
+//     S_4   0.01 ms       24
+//     S_5   0.96 ms      729
+//     S_6 503.48 ms  190,252
+//
+// S_3..S_5 cost less than a cache round trip in this repository (a local hit
+// measures 3.7-167 us, a Redis hit 250 us-5 ms), so caching them would be a
+// loss. S_6 is the one that pays.
+
+use crate::cryptanalysis::algebra_cache::{self, Layer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+/// Bumped when the packing below changes, so old bytes are never decoded by a
+/// reader that would read them differently.
+const ENCODER_TAG: &str = "f2poly-mask-packed-v1";
+
+/// `F2Poly` in a form the shared cache can hold.
+///
+/// The cache encodes with `serde_json`, and S_6 is 190,252 monomials. As a JSON
+/// array of `NVARS`-element arrays that is about 5 MB, past the 4 MB value cap
+/// -- which is fatal by default, so the obvious encoding would stop the run
+/// rather than cache. Packed over live slots it is 1.33 MB, and base64 adds a
+/// third, leaving the stored artifact under the cap with room rather than
+/// against it.
+///
+/// Two properties the encoding has to have:
+///
+/// * **Deterministic.** `terms` is a `HashSet`, whose iteration order depends
+///   on how the set was built (and depended on the process too, under the
+///   standard library's seeded hasher). Encoding it unsorted would give one
+///   polynomial many encodings, so each process would write a different
+///   artifact for the same value and the checksum would describe the run
+///   rather than the polynomial.
+///   Monomials are sorted before packing.
+/// * **Self-describing.** Only the slots a polynomial actually uses are
+///   stored, behind a mask header -- S_6 lives in 7 of `NVARS` -- so the
+///   encoding adapts to what it is given instead of hard-coding one
+///   polynomial's shape.
+///
+/// Layout: `u16` slot mask, `u32` monomial count, then `count` monomials of
+/// one byte per set bit. The count is not redundant with the mask: a mask of
+/// zero is the zero polynomial *and* the constant 1, and only the count tells
+/// them apart.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompactF2Poly(pub F2Poly);
+
+impl CompactF2Poly {
+    /// Pack to bytes. Sorted, so one polynomial has exactly one encoding.
+    pub fn pack(&self) -> Vec<u8> {
+        let mut mask: u16 = 0;
+        for t in &self.0.terms {
+            for (i, &e) in t.iter().enumerate() {
+                if e != 0 {
+                    mask |= 1 << i;
+                }
+            }
+        }
+        let live: Vec<usize> = (0..NVARS).filter(|&i| mask & (1 << i) != 0).collect();
+
+        let mut monos: Vec<&Mono> = self.0.terms.iter().collect();
+        monos.sort_unstable();
+
+        let mut out = Vec::with_capacity(6 + monos.len() * live.len());
+        out.extend_from_slice(&mask.to_le_bytes());
+        out.extend_from_slice(&(monos.len() as u32).to_le_bytes());
+        for m in monos {
+            for &i in &live {
+                out.push(m[i]);
+            }
+        }
+        out
+    }
+
+    /// Unpack, refusing anything whose length does not match its own header.
+    pub fn unpack(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < 6 {
+            return None;
+        }
+        let mask = u16::from_le_bytes([bytes[0], bytes[1]]);
+        let count = u32::from_le_bytes([bytes[2], bytes[3], bytes[4], bytes[5]]) as usize;
+        let live: Vec<usize> = (0..NVARS).filter(|&i| mask & (1 << i) != 0).collect();
+        if bytes.len() != 6 + count.checked_mul(live.len())? {
+            return None;
+        }
+        let mut terms = MonoSet::with_capacity_and_hasher(count, Default::default());
+        for c in 0..count {
+            let mut m: Mono = [0u8; NVARS];
+            for (j, &i) in live.iter().enumerate() {
+                m[i] = bytes[6 + c * live.len() + j];
+            }
+            terms.insert(m);
+        }
+        Some(CompactF2Poly(F2Poly { terms }))
+    }
+}
+
+/// The standard base64 alphabet (RFC 4648 §4).
+const BASE64_ALPHABET: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// Standard padded base64 (RFC 4648 §4) of `bytes`.
+fn base64_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            chunk.get(1).copied().unwrap_or(0),
+            chunk.get(2).copied().unwrap_or(0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for k in 0..4 {
+            if k <= chunk.len() {
+                out.push(BASE64_ALPHABET[((n >> (18 - 6 * k)) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+/// Inverse of [`base64_encode`]: `None` on a length that is not a multiple
+/// of four, a character outside the alphabet, misplaced padding, or nonzero
+/// padding bits — so every byte string has exactly one accepted encoding.
+fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let text = text.as_bytes();
+    if !text.len().is_multiple_of(4) {
+        return None;
+    }
+    let value = |c: u8| {
+        BASE64_ALPHABET
+            .iter()
+            .position(|&a| a == c)
+            .map(|v| v as u32)
+    };
+    let mut out = Vec::with_capacity(text.len() / 4 * 3);
+    let quads = text.len() / 4;
+    for (q, quad) in text.chunks(4).enumerate() {
+        let pad = quad.iter().rev().take_while(|&&c| c == b'=').count();
+        if pad > 2 || (pad > 0 && q + 1 != quads) {
+            return None;
+        }
+        let mut n = 0u32;
+        for &c in &quad[..4 - pad] {
+            n = (n << 6) | value(c)?;
+        }
+        n <<= 6 * pad as u32;
+        let bytes = [(n >> 16) as u8, (n >> 8) as u8, n as u8];
+        if pad > 0 && n & ((1u32 << (8 * pad)) - 1) != 0 {
+            return None;
+        }
+        out.extend_from_slice(&bytes[..3 - pad]);
+    }
+    Some(out)
+}
+
+impl Serialize for CompactF2Poly {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        // base64 rather than a byte array: `serde_json` renders `Vec<u8>` as
+        // one decimal number per byte, which is larger than the packing saved.
+        s.serialize_str(&base64_encode(&self.pack()))
+    }
+}
+
+impl<'de> Deserialize<'de> for CompactF2Poly {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        let bytes = base64_decode(&text)
+            .ok_or_else(|| serde::de::Error::custom("invalid base64 in F2Poly packing"))?;
+        CompactF2Poly::unpack(&bytes)
+            .ok_or_else(|| serde::de::Error::custom("F2Poly packing is malformed"))
+    }
+}
+
+/// [`semaev`], shared between processes through the algebra cache.
+///
+/// Keyed on `m` and the encoder tag only, because the polynomial depends on
+/// nothing else -- not the curve, not the factor base. Keying it per curve
+/// would store one identical artifact per curve.
+///
+/// A cache that cannot answer is not an error: this falls back to computing,
+/// like every other path in `algebra_cache`.
+pub fn semaev_cached(m: usize) -> F2Poly {
+    assert!((2..=5).contains(&m), "supported for m in 2..=5");
+    let key = serde_json::to_vec(&("semaev-leading-form", m, ENCODER_TAG))
+        .expect("key inputs are plain data");
+    algebra_cache::memoize(Layer::Preprocessing, &key, || {
+        Some(CompactF2Poly(semaev(m)))
+    })
+    .map(|c| c.0)
+    .unwrap_or_else(|| semaev(m))
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    /// Exactness, at every supported index. A lossy packing would be worse
+    /// than no cache: it would hand back a polynomial that is not S_{m+1}.
+    #[test]
+    fn packing_round_trips_every_supported_index() {
+        for m in 2..=5 {
+            let original = semaev(m);
+            let packed = CompactF2Poly(original.clone()).pack();
+            let back = CompactF2Poly::unpack(&packed).expect("well-formed").0;
+            assert_eq!(back, original, "S_{} did not survive the round trip", m + 1);
+        }
+    }
+
+    /// `terms` is a `HashSet`, so an unsorted encoding would vary run to run:
+    /// one polynomial, many artifacts, and a checksum describing the run
+    /// rather than the value. Build the same polynomial twice and require the
+    /// bytes to agree.
+    #[test]
+    fn the_packing_is_deterministic() {
+        for m in 2..=4 {
+            let first = CompactF2Poly(semaev(m)).pack();
+            let second = CompactF2Poly(semaev(m)).pack();
+            assert_eq!(first, second, "S_{} packed two ways", m + 1);
+        }
+        // And a set built in a different insertion order packs identically.
+        let p = semaev(3);
+        let mut reversed: Vec<Mono> = p.terms.iter().copied().collect();
+        reversed.reverse();
+        let shuffled = F2Poly {
+            terms: reversed.into_iter().collect(),
+        };
+        assert_eq!(
+            CompactF2Poly(p).pack(),
+            CompactF2Poly(shuffled).pack(),
+            "insertion order leaked into the encoding"
+        );
+    }
+
+    /// A mask of zero is both the zero polynomial and the constant 1; only the
+    /// count separates them, which is why the header carries one.
+    #[test]
+    fn zero_and_one_are_distinguishable() {
+        let zero = CompactF2Poly(F2Poly::zero());
+        let one = CompactF2Poly(F2Poly::one());
+        assert_ne!(zero.pack(), one.pack());
+        assert_eq!(
+            CompactF2Poly::unpack(&zero.pack()).unwrap().0,
+            F2Poly::zero()
+        );
+        assert_eq!(CompactF2Poly::unpack(&one.pack()).unwrap().0, F2Poly::one());
+    }
+
+    /// Malformed input is refused rather than decoded into a wrong polynomial.
+    #[test]
+    fn a_truncated_packing_is_refused() {
+        let good = CompactF2Poly(semaev(3)).pack();
+        assert!(CompactF2Poly::unpack(&good[..good.len() - 1]).is_none());
+        assert!(CompactF2Poly::unpack(&good[..3]).is_none());
+        assert!(CompactF2Poly::unpack(&[]).is_none());
+    }
+
+    /// The whole reason for the packing: S_6 has to fit under the value cap,
+    /// which is fatal to exceed. Checks the serialized form the cache actually
+    /// stores, not the raw bytes.
+    #[test]
+    fn s6_fits_under_the_cache_value_cap() {
+        const MAX_VALUE: usize = 4 * 1024 * 1024;
+        let encoded = serde_json::to_string(&CompactF2Poly(semaev(5))).unwrap();
+        assert!(
+            encoded.len() < MAX_VALUE,
+            "S_6 encodes to {} bytes, at or past the {MAX_VALUE} byte cap",
+            encoded.len()
+        );
+        // As a plain JSON array of monomials it would not fit -- that is the
+        // comparison the packing exists to win.
+        let naive: usize = semaev(5).terms.len() * (2 + NVARS * 2);
+        assert!(
+            naive > MAX_VALUE,
+            "naive encoding is only {naive} bytes; the packing may no longer be needed"
+        );
+    }
+
+    /// The cached accessor must agree with the function it caches.
+    #[test]
+    fn cached_matches_uncached() {
+        for m in 2..=4 {
+            assert_eq!(semaev_cached(m), semaev(m), "S_{} disagreed", m + 1);
+        }
+    }
+}
+
+#[cfg(test)]
+mod base64_tests {
+    use super::{base64_decode, base64_encode};
+
+    /// RFC 4648 §10 test vectors, both directions, and the malformed
+    /// inputs the decoder must refuse.
+    #[test]
+    fn base64_matches_rfc4648_vectors() {
+        let vectors = [
+            ("", ""),
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("foob", "Zm9vYg=="),
+            ("fooba", "Zm9vYmE="),
+            ("foobar", "Zm9vYmFy"),
+        ];
+        for (plain, encoded) in vectors {
+            assert_eq!(base64_encode(plain.as_bytes()), encoded);
+            assert_eq!(base64_decode(encoded).as_deref(), Some(plain.as_bytes()));
+        }
+        let all: Vec<u8> = (0..=255u8).collect();
+        assert_eq!(base64_decode(&base64_encode(&all)), Some(all));
+        for bad in ["Zg=", "Zg=a", "Z===", "Zh==", "Zm9v!A==", "Zg==Zg=="] {
+            assert_eq!(base64_decode(bad), None, "{bad}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod mono_hasher_tests {
+    //! The monomial sets moved from SipHash to [`MonoHasher`]. A set holds
+    //! the same monomials under any hasher, but that is a property of
+    //! `Hash`/`Eq` agreeing, which is worth checking rather than assuming:
+    //! every ring operation is run against its pre-change body over the
+    //! standard library's `HashSet`, on random and edge-case polynomials.
+    use super::*;
+    use std::hash::BuildHasher;
+
+    /// The set `F2Poly::terms` was before the hasher changed.
+    type StdSet = HashSet<Mono>;
+
+    fn std_set(p: &F2Poly) -> StdSet {
+        p.terms.iter().copied().collect()
+    }
+
+    fn sorted<'a>(terms: impl IntoIterator<Item = &'a Mono>) -> Vec<Mono> {
+        let mut v: Vec<Mono> = terms.into_iter().copied().collect();
+        v.sort_unstable();
+        v
+    }
+
+    // The bodies below are the pre-change `F2Poly` methods, verbatim but for
+    // taking the old set type directly.
+
+    fn old_add(a: &StdSet, b: &StdSet) -> StdSet {
+        let mut t = a.clone();
+        for m in b {
+            if !t.remove(m) {
+                t.insert(*m);
+            }
+        }
+        t
+    }
+
+    fn old_mul(a_terms: &StdSet, b_terms: &StdSet) -> StdSet {
+        if a_terms.is_empty() || b_terms.is_empty() {
+            return StdSet::new();
+        }
+        let mut t: StdSet = HashSet::new();
+        for a in a_terms {
+            for b in b_terms {
+                let mut m = [0u8; NVARS];
+                for k in 0..NVARS {
+                    m[k] = a[k] + b[k];
+                }
+                if !t.remove(&m) {
+                    t.insert(m);
+                }
+            }
+        }
+        t
+    }
+
+    fn old_square(terms: &StdSet) -> StdSet {
+        let mut t = HashSet::with_capacity(terms.len());
+        for a in terms {
+            let mut m = [0u8; NVARS];
+            for k in 0..NVARS {
+                m[k] = a[k] * 2;
+            }
+            t.insert(m);
+        }
+        t
+    }
+
+    fn old_coeffs_in(terms: &StdSet, v: usize) -> HashMap<u8, StdSet> {
+        let mut out: HashMap<u8, StdSet> = HashMap::new();
+        for m in terms {
+            let d = m[v];
+            let mut m2 = *m;
+            m2[v] = 0;
+            let e = out.entry(d).or_default();
+            if !e.remove(&m2) {
+                e.insert(m2);
+            }
+        }
+        out.retain(|_, p| !p.is_empty());
+        out
+    }
+
+    fn old_permute(terms: &StdSet, perm: &[usize]) -> StdSet {
+        let mut t: StdSet = HashSet::new();
+        for m in terms {
+            let mut m2 = *m;
+            for (i, &j) in perm.iter().enumerate() {
+                m2[j] = m[i];
+            }
+            if !t.remove(&m2) {
+                t.insert(m2);
+            }
+        }
+        t
+    }
+
+    fn old_truncate(terms: &StdSet, t: &ZTrunc) -> StdSet {
+        terms.iter().copied().filter(|m| t.keeps(m)).collect()
+    }
+
+    fn old_mul_trunc(a_terms: &StdSet, b_terms: &StdSet, t: &ZTrunc) -> StdSet {
+        if a_terms.is_empty() || b_terms.is_empty() {
+            return StdSet::new();
+        }
+        let mut acc: StdSet = HashSet::new();
+        for a in a_terms {
+            let da = t.degree(a);
+            if da > t.max {
+                continue;
+            }
+            for b in b_terms {
+                if da + t.degree(b) > t.max {
+                    continue;
+                }
+                let mut m = [0u8; NVARS];
+                for k in 0..NVARS {
+                    m[k] = a[k] + b[k];
+                }
+                if !acc.remove(&m) {
+                    acc.insert(m);
+                }
+            }
+        }
+        acc
+    }
+
+    fn old_reverse_in(terms: &StdSet, slots: &[usize], d: u8) -> StdSet {
+        let mut t: StdSet = HashSet::new();
+        for m in terms {
+            let mut m2 = *m;
+            for &i in slots {
+                assert!(m[i] <= d, "exponent {} exceeds reversal degree {d}", m[i]);
+                m2[i] = d - m[i];
+            }
+            if !t.remove(&m2) {
+                t.insert(m2);
+            }
+        }
+        t
+    }
+
+    fn old_diagonal_coeff(terms: &StdSet, slots: &[usize], k: u8) -> StdSet {
+        let mut t: StdSet = HashSet::new();
+        for m in terms {
+            if !slots.iter().all(|&i| m[i] == k) {
+                continue;
+            }
+            let mut m2 = *m;
+            for &i in slots {
+                m2[i] = 0;
+            }
+            if !t.remove(&m2) {
+                t.insert(m2);
+            }
+        }
+        t
+    }
+
+    fn splitmix(state: &mut u64) -> u64 {
+        *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = *state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    }
+
+    fn below(rng: &mut u64, n: usize) -> usize {
+        (splitmix(rng) % n as u64) as usize
+    }
+
+    /// Up to `max_terms` monomials over a random subset of the slots, each
+    /// exponent at most `max_e`. Draws are toggled in, so a repeat cancels
+    /// as it would over `F_2`. Small `max_e` makes products collide and
+    /// cancel, which is the path a broken `Eq`/`Hash` pairing would get
+    /// wrong.
+    fn random_poly(rng: &mut u64, max_terms: usize, max_e: u8) -> F2Poly {
+        let n = below(rng, max_terms + 1);
+        let live = splitmix(rng);
+        let mut p = F2Poly::zero();
+        for _ in 0..n {
+            let mut m = [0u8; NVARS];
+            for (i, e) in m.iter_mut().enumerate() {
+                if live >> i & 1 == 1 {
+                    *e = below(rng, max_e as usize + 1) as u8;
+                }
+            }
+            if !p.terms.remove(&m) {
+                p.terms.insert(m);
+            }
+        }
+        p
+    }
+
+    /// Edge cases first (zero, one, every variable, the all-slots monomial
+    /// at the largest exponent a product can double without overflowing a
+    /// `u8`, and every multilinear monomial in eight slots), then random
+    /// polynomials at three densities.
+    fn pool() -> Vec<F2Poly> {
+        let mut pool = vec![F2Poly::zero(), F2Poly::one()];
+        pool.extend((0..NVARS).map(F2Poly::var));
+        pool.push(F2Poly {
+            terms: [[127u8; NVARS]].into_iter().collect(),
+        });
+        pool.push(F2Poly {
+            terms: (0..256u32)
+                .map(|bits| {
+                    let mut m = [0u8; NVARS];
+                    for (i, e) in m.iter_mut().take(8).enumerate() {
+                        *e = (bits >> i & 1) as u8;
+                    }
+                    m
+                })
+                .collect(),
+        });
+        let mut rng = 0x5eed_u64;
+        for _ in 0..12 {
+            pool.push(random_poly(&mut rng, 8, 2));
+            pool.push(random_poly(&mut rng, 40, 3));
+            pool.push(random_poly(&mut rng, 60, 63));
+        }
+        pool
+    }
+
+    #[test]
+    fn ring_operations_match_the_std_hashset_versions() {
+        let pool = pool();
+        let mut rng = 0xd1ff_u64;
+        for a in &pool {
+            let sa = std_set(a);
+            assert_eq!(sorted(&a.square().terms), sorted(&old_square(&sa)));
+            for v in 0..NVARS {
+                let new = a.coeffs_in(v);
+                let old = old_coeffs_in(&sa, v);
+                let mut keys: Vec<u8> = new.keys().copied().collect();
+                keys.sort_unstable();
+                let mut old_keys: Vec<u8> = old.keys().copied().collect();
+                old_keys.sort_unstable();
+                assert_eq!(keys, old_keys, "coeffs_in({v}) degrees");
+                for k in keys {
+                    assert_eq!(
+                        sorted(&new[&k].terms),
+                        sorted(&old[&k]),
+                        "coeffs_in({v})[{k}]"
+                    );
+                }
+            }
+            let mut perm: Vec<usize> = (0..NVARS).collect();
+            for i in (1..NVARS).rev() {
+                perm.swap(i, below(&mut rng, i + 1));
+            }
+            assert_eq!(
+                sorted(&a.permute(&perm).terms),
+                sorted(&old_permute(&sa, &perm))
+            );
+            // A partial permutation copies some slots onto others and can
+            // merge monomials, so cancellation runs through it too.
+            let short = [3usize, 3, 0];
+            assert_eq!(
+                sorted(&a.permute(&short).terms),
+                sorted(&old_permute(&sa, &short))
+            );
+
+            let slots: Vec<usize> = (0..NVARS).filter(|_| below(&mut rng, 2) == 1).collect();
+            let t = ZTrunc::new(slots.clone(), below(&mut rng, 40) as u32);
+            assert_eq!(
+                sorted(&a.truncate(&t).terms),
+                sorted(&old_truncate(&sa, &t))
+            );
+            let d = slots.iter().map(|&i| a.degree_in(i)).max().unwrap_or(0);
+            assert_eq!(
+                sorted(&a.reverse_in(&slots, d).terms),
+                sorted(&old_reverse_in(&sa, &slots, d))
+            );
+            let k = below(&mut rng, d as usize + 1) as u8;
+            assert_eq!(
+                sorted(&a.diagonal_coeff(&slots, k).terms),
+                sorted(&old_diagonal_coeff(&sa, &slots, k))
+            );
+
+            for b in &pool {
+                let sb = std_set(b);
+                assert_eq!(sorted(&a.add(b).terms), sorted(&old_add(&sa, &sb)));
+                assert_eq!(sorted(&a.mul(b).terms), sorted(&old_mul(&sa, &sb)));
+                assert_eq!(
+                    sorted(&a.mul_trunc(b, &t).terms),
+                    sorted(&old_mul_trunc(&sa, &sb, &t))
+                );
+                // And equality itself, which `HashSet` decides through the
+                // hasher: two sets that agree as sorted lists must be equal.
+                assert_eq!(a == b, sorted(&a.terms) == sorted(&b.terms));
+            }
+        }
+    }
+
+    /// `write` pads a short final chunk with zeros, so the eleven bytes of a
+    /// monomial fold in as two words, and an empty write changes nothing.
+    #[test]
+    fn write_folds_zero_padded_words() {
+        let bytes: Vec<u8> = (1..=11u8).collect();
+        let mut by_bytes = MonoHasher::default();
+        by_bytes.write(&bytes);
+        let mut by_words = MonoHasher::default();
+        by_words.write_u64(u64::from_le_bytes(bytes[..8].try_into().unwrap()));
+        by_words.write_u64(u64::from_le_bytes([9, 10, 11, 0, 0, 0, 0, 0]));
+        assert_eq!(by_bytes.finish(), by_words.finish());
+        let mut empty = MonoHasher::default();
+        empty.write(&[]);
+        assert_eq!(empty.finish(), MonoHasher::default().finish());
+    }
+
+    /// The reason for the folded multiply: the low bits a table indexes by
+    /// must depend on every slot. Varying one exponent over `0..64` with the
+    /// others zero has to spread across a 64-bucket table, not pile into a
+    /// few buckets.
+    #[test]
+    fn every_slot_reaches_the_bucket_bits() {
+        let build = BuildHasherDefault::<MonoHasher>::default();
+        for slot in 0..NVARS {
+            let buckets: HashSet<u64> = (0..64u8)
+                .map(|e| {
+                    let mut m = [0u8; NVARS];
+                    m[slot] = e;
+                    build.hash_one(m) & 63
+                })
+                .collect();
+            assert!(
+                buckets.len() >= 16,
+                "slot {slot}: 64 exponents hit only {} of 64 buckets",
+                buckets.len()
+            );
+        }
     }
 }

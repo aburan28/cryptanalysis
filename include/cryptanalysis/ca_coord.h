@@ -362,6 +362,33 @@ CA_API size_t ca_coord_log_count(ca_coord_state *st);
 CA_API int ca_coord_log_get(ca_coord_state *st, size_t index, char *line, size_t cap, char *peer,
                             size_t peer_cap, uint64_t *seq);
 
+/* ---- per-process instance identity ------------------------------------- *
+ *
+ * A check-in is deduplicated on (peer, seq): a peer's log is a set keyed on
+ * exactly that.  The peer name is "<node>.<lane>", and `--node` defaults to
+ * a fixed string, so two agent processes started with the same node name --
+ * two pods from one Deployment, two shells that both forgot `--node` -- mint
+ * the same peer names and the same seqs, and each silently drops the other's
+ * check-ins as duplicates.
+ *
+ * The fix is a random per-process instance tag folded into the node name, so
+ * that identity -- and therefore the (peer, seq) dedup key it is interned
+ * into -- is distinct per process.  This closes the *accidental* collision.
+ * It does not make the tag a secret: names and version vectors are broadcast
+ * in the clear, so an authenticated peer that observes another's tag can
+ * still replay its (name, instance, seq); see docs/COORDINATOR.md sec. 7.
+ */
+
+/* A random, non-zero identifier for this process, generated once on first
+ * call and stable thereafter.  Thread-safe. */
+CA_API uint64_t ca_coord_instance_id(void);
+
+/* Write "<node>~<instance-hex>" into `out`, the per-process node identity.
+ * The tag is dropped (leaving `node` unchanged) only if there is no room
+ * for it, which for a name near CA_COORD_PEER_MAX keeps the node readable
+ * at the cost of the collision guard.  Always NUL-terminates. */
+CA_API void ca_coord_node_instanced(char *out, size_t cap, const char *node, uint64_t instance);
+
 /* ---- claiming and walking ---------------------------------------------- */
 
 /* Tuning for one lane (one thread's worth of sequential walking). */

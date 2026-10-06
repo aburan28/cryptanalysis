@@ -47,6 +47,79 @@ int main(void)
             if (a) CHECK_EQ_U64(ca_mont_from(&m2, ca_mont_inv(&m2, am)), ca_invmod(a, mods[i]));
         }
     }
+    /* REDC against the addition form it replaced, on every modulus class
+     * (tiny, 32-bit, 63-bit, the largest 64-bit prime) and on t at the
+     * edges of its domain t < p * 2^64: 0, 1, p*2^64 - 1, multiples of
+     * 2^64, and random products of two residues. */
+    {
+        uint64_t rmods[] = {3,
+                            5,
+                            1000003,
+                            4294967311ULL,
+                            9223372036854775837ULL,
+                            18446744073709551557ULL,
+                            18446744073709551615ULL};
+        for (size_t i = 0; i < sizeof(rmods) / sizeof(rmods[0]); i++) {
+            ca_mont m3;
+            CHECK(ca_mont_init(&m3, rmods[i]));
+            const uint64_t q = rmods[i];
+            ca_u128 edge[] = {0,
+                              1,
+                              ((ca_u128)q << 64) - 1,
+                              (ca_u128)(q - 1) << 64,
+                              ((ca_u128)(q - 1) << 64) | UINT64_MAX,
+                              (ca_u128)(q - 1) * (q - 1)};
+            for (int k = 0; k < 20000 + 6; k++) {
+                ca_u128 t;
+                if (k < 6) {
+                    t = edge[k];
+                } else {
+                    uint64_t a = ca_rng_below(&rng, q), b = ca_rng_below(&rng, q);
+                    t = k & 1 ? (ca_u128)a * b
+                              : ((ca_u128)ca_rng_below(&rng, q) << 64) | ca_rng_next(&rng);
+                }
+                uint64_t u = (uint64_t)t * m3.pinv;
+                ca_u128 sum = t + (ca_u128)u * q;
+                uint64_t want = (uint64_t)(sum >> 64);
+                if (sum < t) want += (uint64_t)0 - q;
+                if (want >= q) want -= q;
+                CHECK_EQ_U64(ca_mont_redc(&m3, t), want);
+            }
+        }
+    }
+    /* ca_powmod (Montgomery for odd moduli and long exponents) against the
+     * plain square-and-multiply ladder, and ca_is_prime against trial
+     * division below 200000. */
+    {
+        uint64_t pmods[] = {3,
+                            9,
+                            15,
+                            1000003,
+                            4294967296ULL,
+                            4294967311ULL,
+                            9223372036854775837ULL,
+                            18446744073709551557ULL,
+                            18446744073709551615ULL,
+                            18446744073709551614ULL};
+        for (size_t i = 0; i < sizeof(pmods) / sizeof(pmods[0]); i++) {
+            for (int k = 0; k < 3000; k++) {
+                uint64_t b = ca_rng_next(&rng), e = k < 40 ? (uint64_t)k : ca_rng_next(&rng);
+                uint64_t want = 1 % pmods[i], bb = b % pmods[i], ee = e;
+                while (ee) {
+                    if (ee & 1) want = ca_mulmod(want, bb, pmods[i]);
+                    bb = ca_mulmod(bb, bb, pmods[i]);
+                    ee >>= 1;
+                }
+                CHECK_EQ_U64(ca_powmod(b, e, pmods[i]), want);
+            }
+        }
+        for (uint64_t n = 0; n < 200000; n++) {
+            int naive = n >= 2;
+            for (uint64_t d = 2; d * d <= n && naive; d++) naive = n % d != 0;
+            CHECK(ca_is_prime(n) == naive);
+        }
+        CHECK(!ca_is_prime(3825123056546413051ULL)); /* spsp to bases 2..23 */
+    }
     /* isqrt / iroot */
     CHECK_EQ_U64(ca_isqrt(0), 0);
     CHECK_EQ_U64(ca_isqrt(1), 1);
@@ -110,6 +183,8 @@ int main(void)
     CHECK_EQ_U64(ca_crt2(2, 3, 3, 5), 8);
     CHECK_EQ_U64(ca_crt2(1, 1000003, 5, 999983) % 1000003, 1);
     CHECK_EQ_U64(ca_crt2(1, 1000003, 5, 999983) % 999983, 5);
+    /* an unreduced r1 is reduced first (used to give 5, outside [0, 15)) */
+    CHECK_EQ_U64(ca_crt2(UINT64_MAX, 3, 1, 5), 6);
     /* sieve */
     uint32_t pr[200];
     CHECK_EQ_U64(ca_sieve_primes(100, pr, 200), 25);

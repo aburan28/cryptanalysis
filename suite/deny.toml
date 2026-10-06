@@ -51,6 +51,12 @@ exceptions = []
 [bans]
 multiple-versions = "deny"
 wildcards = "deny"
+# The suite depends on the in-repository Rust bindings of the C library
+# (bindings/rust, for `crax`'s generic solvers) by path with no version
+# requirement, as the bindings' own members do; that is not the
+# `version = "*"` sloppiness the wildcards check is aimed at.  Only applies
+# to unpublished crates, which both are.
+allow-wildcard-paths = true
 allow = []
 deny = []
 skip = []

@@ -24,9 +24,9 @@ use rayon::prelude::*;
 
 use super::f4_gf2::{self, Decision, KernelCounters, MacaulayCaps};
 use super::koblitz_groebner::{
-    choose_split, f4_caps, f4_kernel, f4_profile_add_kernel, is_constant_one,
-    solve_boolean_system_filtered, substitute, system_degree, F4Kernel, SolveOptions, SolveStats,
-    SolverEngine,
+    choose_split, f4_caps, f4_profile_add_kernel, fast_decisions, is_constant_one,
+    linear_elimination_enabled, solve_boolean_system_filtered, solver_degree_ladder, substitute,
+    SolveOptions, SolveStats, SolverEngine,
 };
 use super::pq_groebner_f2::F2BoolPoly;
 
@@ -190,6 +190,12 @@ impl<'o> Search<'o> {
                     if self.stop || self.out.solutions.len() >= opts.max_solutions {
                         continue;
                     }
+                    // A fully assigned branch needs no Macaulay matrix: the
+                    // recursive solver verifies the point directly.
+                    if assignment.iter().all(Option::is_some) {
+                        self.leaf(&assignment, accept);
+                        continue;
+                    }
                     if self.out.stats.reductions >= opts.node_budget {
                         self.out.stats.exhausted = true;
                         continue;
@@ -206,33 +212,24 @@ impl<'o> Search<'o> {
                         continue;
                     }
                     self.out.stats.reductions += 1;
-                    let base = system_degree(&system).max(2);
+                    let ladder = solver_degree_ladder(
+                        SolverEngine::MatrixF4 { max_degree },
+                        &system,
+                        self.n_vars,
+                    )
+                    .expect("matrix engines have a ladder");
                     self.stack.push(Frame::Reducing {
                         system,
                         assignment,
-                        degree: base,
-                        top: max_degree.max(base),
+                        degree: *ladder.start(),
+                        top: *ladder.end(),
                         best: None,
                     });
                 }
                 Frame::Reducing { .. } => unreachable!("handled above"),
                 Frame::Split { system, assignment } => {
                     match choose_split(&system, &assignment, opts.split_rule) {
-                        None => {
-                            let mut pt = 0u64;
-                            for (i, a) in assignment.iter().enumerate() {
-                                if *a == Some(true) {
-                                    pt |= 1 << i;
-                                }
-                            }
-                            if self.original.iter().all(|e| e.eval(pt) == 0) {
-                                self.out.solutions.push(pt);
-                                if accept(pt) {
-                                    self.out.accepted = Some(pt);
-                                    self.stop = true;
-                                }
-                            }
-                        }
+                        None => self.leaf(&assignment, accept),
                         Some(free) => {
                             self.out.stats.splits += 1;
                             self.stack.push(Frame::Branch {
@@ -274,6 +271,24 @@ impl<'o> Search<'o> {
                         assignment: branch,
                     });
                 }
+            }
+        }
+    }
+
+    /// Verify a full assignment against the untouched equations and record
+    /// it if it holds.
+    fn leaf(&mut self, assignment: &[Option<bool>], accept: &dyn Fn(u64) -> bool) {
+        let mut pt = 0u64;
+        for (i, a) in assignment.iter().enumerate() {
+            if *a == Some(true) {
+                pt |= 1 << i;
+            }
+        }
+        if self.original.iter().all(|e| e.eval(pt) == 0) {
+            self.out.solutions.push(pt);
+            if accept(pt) {
+                self.out.accepted = Some(pt);
+                self.stop = true;
             }
         }
     }
@@ -338,6 +353,7 @@ impl<'o> Search<'o> {
                     stats.propagations += 1;
                     assignment[v as usize] = Some(val);
                     system = system.iter().map(|p| substitute(p, v, val)).collect();
+                    system.retain(|p| !p.is_zero());
                 }
             }
         }
@@ -350,12 +366,16 @@ impl<'o> Search<'o> {
 }
 
 /// Whether [`solve_lockstep`] can run `opts` in lockstep: the matrix-F4
-/// engine on the fast kernel, with the reduction cache off.  Anything else
-/// is solved system by system with the recursive solver.
+/// engine (after [`SolveOptions::resolve`]) on the fast kernel's decision
+/// path, without linear elimination, with the reduction cache off.
+/// Anything else — the inherited and F5 engines included — is solved
+/// system by system with the recursive solver.
 pub fn lockstep_supported(opts: &SolveOptions) -> bool {
     use super::algebra_cache::{self, Layer};
+    let opts = opts.resolve();
     matches!(opts.engine, SolverEngine::MatrixF4 { .. })
-        && f4_kernel() == F4Kernel::Fast
+        && fast_decisions()
+        && !linear_elimination_enabled(opts.engine)
         && !algebra_cache::enabled(Layer::ExactReduction)
 }
 
@@ -398,6 +418,7 @@ pub fn solve_lockstep(
             .collect();
         return (outcomes, report);
     }
+    let opts = &opts.resolve();
     let SolverEngine::MatrixF4 { max_degree } = opts.engine else {
         unreachable!("checked by lockstep_supported");
     };

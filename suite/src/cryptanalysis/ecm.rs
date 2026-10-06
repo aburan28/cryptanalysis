@@ -205,7 +205,7 @@ pub fn ecm_one_curve(n: &BigUint, b1: u64, seed: u64) -> EcmResult {
 }
 
 /// Sieve primes up to `n` via simple sieve of Eratosthenes.
-fn primes_up_to(n: u64) -> Vec<u64> {
+pub fn primes_up_to(n: u64) -> Vec<u64> {
     if n < 2 {
         return vec![];
     }

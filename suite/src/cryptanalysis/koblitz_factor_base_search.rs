@@ -1218,6 +1218,9 @@ mod tests {
         assert!(cost_pick.expected_trials() > trials_pick.expected_trials());
 
         // And the pick is really cheaper, measured the same way on both.
+        // The margin depends on the engine doing the measuring: 5.1× with
+        // the from-scratch matrix-F4 and 3.6× with the inherited engine
+        // splitting on the smallest free variable, both deterministic.
         let measured = |spec: &FactorBaseSpec| {
             by_cost
                 .candidates
@@ -1227,7 +1230,7 @@ mod tests {
                 .expect("every linear-subspace candidate is priced")
         };
         assert!(
-            measured(&cost_pick.spec) * 4.0 < measured(&trials_pick.spec),
+            measured(&cost_pick.spec) * 2.0 < measured(&trials_pick.spec),
             "cost pick {:?} at {:e} word XORs must beat trials pick {:?} at {:e}",
             cost_pick.spec,
             measured(&cost_pick.spec),

@@ -2,12 +2,14 @@
 //! Uses the production research library; JSON stdin contains no known scalar.
 use cryptanalysis_suite::binary_ecc::{BinaryPoint, F2mElement};
 use cryptanalysis_suite::cryptanalysis::koblitz_factor_base_search::FactorBaseSpec;
+use cryptanalysis_suite::cryptanalysis::koblitz_groebner::SolverEngine;
 use cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::{
     koblitz_signed_frobenius_rho_with_progress, point_key, points_with_x, DecompositionStrategy,
     FactorBaseLogSolver, IndividualLogSolver, KoblitzCurve, KoblitzIcOptions,
     KoblitzSignedRhoOptions, LinearAlgebra, PairSumTable, RelationCollector, RelationWorkUnit,
 };
 use cryptanalysis_suite::cryptanalysis::koblitz_sparse_la::SparseSolveOptions;
+use cryptanalysis_suite::cryptanalysis::semaev_sat::XorEncoding;
 use num_bigint::BigUint;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -56,6 +58,11 @@ struct Config {
     sparse: SparseSolveOptions,
     factor_base_orbits: Option<usize>,
     factor_base_cube_root: bool,
+    factor_base: Option<FactorBaseSpec>,
+    groebner_degree: u32,
+    node_budget: usize,
+    conflict_budget: u64,
+    rho_parallel_walks: usize,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -69,6 +76,11 @@ impl Default for Config {
             sparse: SparseSolveOptions::default(),
             factor_base_orbits: None,
             factor_base_cube_root: false,
+            factor_base: None,
+            groebner_degree: 3,
+            node_budget: 4096,
+            conflict_budget: 100_000,
+            rho_parallel_walks: 32,
         }
     }
 }
@@ -121,6 +133,13 @@ fn run(job: &Job) -> Result<Value, String> {
         return Err("target count must be 1..100".into());
     }
     let cfg = &job.config;
+    if !(1..=256).contains(&cfg.rho_parallel_walks)
+        || !(2..=4).contains(&cfg.groebner_degree)
+        || cfg.node_budget == 0
+        || cfg.conflict_budget == 0
+    {
+        return Err("invalid solver or rho limits".into());
+    }
     if cfg.batch_trials == 0
         || cfg.batch_trials > 4096
         || cfg.max_trials > 65536
@@ -154,6 +173,7 @@ fn run(job: &Job) -> Result<Value, String> {
             let options = KoblitzSignedRhoOptions {
                 seed: job.algorithm_seed ^ (i as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15),
                 max_iterations_per_restart: cfg.max_trials,
+                parallel_walks: cfg.rho_parallel_walks,
                 ..KoblitzSignedRhoOptions::default()
             };
             let r = koblitz_signed_frobenius_rho_with_progress(&c, q, &options, &mut |_| {});
@@ -183,27 +203,49 @@ fn run(job: &Job) -> Result<Value, String> {
     let strategy = match cfg.solver.as_str() {
         "pair_table" => DecompositionStrategy::PairTable,
         "enumerate" => DecompositionStrategy::Enumerate,
-        _ => return Err("this worker supports pair_table and enumerate".into()),
+        "f4" | "f5" | "inherited_f4" => DecompositionStrategy::Groebner,
+        "sat_xor" | "sat_cnf" => DecompositionStrategy::Sat,
+        _ => return Err("unsupported decomposition backend".into()),
     };
     let la = match cfg.linear_algebra.as_str() {
         "dense" => LinearAlgebra::Dense,
         "sparse" => LinearAlgebra::Sparse(cfg.sparse),
         _ => return Err("unknown linear algebra mode".into()),
     };
-    let opts = KoblitzIcOptions {
+    let mut opts = KoblitzIcOptions {
         m: cfg.summands,
         seed: job.algorithm_seed,
         max_trials: cfg.max_trials as usize,
         strategy,
         linear_algebra: la,
+        node_budget: cfg.node_budget,
         collection_window: cfg.collection_window,
         allow_direct_relation: false,
         ..KoblitzIcOptions::default()
+    };
+    opts.engine = match cfg.solver.as_str() {
+        "f5" => SolverEngine::MatrixF5 {
+            max_degree: cfg.groebner_degree,
+        },
+        "inherited_f4" => SolverEngine::InheritedF4 {
+            max_degree: cfg.groebner_degree,
+        },
+        _ => SolverEngine::MatrixF4 {
+            max_degree: cfg.groebner_degree,
+        },
+    };
+    opts.sat_options.conflict_budget = cfg.conflict_budget;
+    opts.sat_options.encoding = if cfg.solver == "sat_cnf" {
+        XorEncoding::Cnf
+    } else {
+        XorEncoding::Native
     };
     if cfg
         .factor_base_orbits
         .is_some_and(|n| !(1..=8).contains(&n))
         || (cfg.factor_base_orbits.is_some() && cfg.factor_base_cube_root)
+        || (cfg.factor_base.is_some()
+            && (cfg.factor_base_orbits.is_some() || cfg.factor_base_cube_root))
     {
         return Err("invalid factor-base policy".into());
     }
@@ -226,7 +268,9 @@ fn run(job: &Job) -> Result<Value, String> {
             points,
         }
     } else {
-        job.factor_base.clone()
+        cfg.factor_base
+            .clone()
+            .unwrap_or_else(|| job.factor_base.clone())
     };
     let fb = effective_base.materialize(&c)?;
     let pair = if strategy == DecompositionStrategy::PairTable {
@@ -283,7 +327,8 @@ fn run(job: &Job) -> Result<Value, String> {
         let answer = solver.solve(q);
         solutions.push(
             json!({"index":i,"recovered":answer.as_ref().map(|(d,_)|d.to_string()),
-            "trials":answer.as_ref().map(|(_,r)|r.trials)}),
+            "trials":answer.as_ref().map(|(_,r)|r.trials),
+            "relation":answer.as_ref().and_then(|(_,r)|r.relation.as_ref())}),
         );
     }
     dump(b"individual_log\0");

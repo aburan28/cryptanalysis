@@ -5,6 +5,9 @@
  *   ec2k-gpu bench   [--steps S] [--launches L] [--threads T]
  *   ec2k-gpu check   [--rounds N] [--kat F]   (host only: arithmetic vs the model,
  *                                             and the campaign's known answers)
+ *   ec2k-gpu health  [--seconds S] [--device D] (a timed, self-checking load: see
+ *                                             cmdHealth and deploy/gpu-health/)
+ *   ec2k-gpu devices                          (the CUDA devices, as JSON)
  *
  * One process drives one device.  The kernel (include/packedkernels.cuh) is
  * the packed GF(2^131) walk imported from github.com/aburan28/crypto: one walk
@@ -29,7 +32,7 @@
  * on SIGINT or SIGTERM, it syncs the corpus and then saves every lane, so a
  * stopped run resumes where it was and loses no work it has reported.
  */
-#include "hostcheck.h"
+#include "healthcheck.h"
 
 #include <cuda_runtime.h>
 
@@ -94,12 +97,28 @@ struct Options {
     uint64_t pSeed = 1, qSeed = 2;
     std::string dpFile, dpFile64, checkpoint, kat;
     int checkpointEvery = 600;
+    // health: which of the walk's defaults the command line set, the timed
+    // load's length, and its re-walk sample on the golden model.
+    bool stepsGiven = false, dpWeightGiven = false;
+    double seconds = 60, warmup = -1, window = 10;
+    int rewalkThreads = 1;
+    unsigned long long rewalkMaxIters = 512;
 };
+
+// A health run's defaults.  Weight 42 ends a trail every 2^14.86 steps, so a
+// lane reports every few seconds on any part and nearly every step a run takes
+// is in a trail whose report the host checks; 4096-step launches keep the
+// reseed kernel, whose lanes diverge, to a few percent of the device's time.
+// Run id 65535 is one the campaign never hands out (its fleets use 1.. and
+// 8000-9999, contributors 10000-65534), and a health run keeps no points.
+const int HEALTH_DP_WEIGHT = 42;
+const int HEALTH_STEPS = 4096;
+const unsigned HEALTH_RUN_ID = 0xFFFFu;
 
 int usage()
 {
     fprintf(stderr,
-            "usage: ec2k-gpu <walk|bench|check> [options]\n"
+            "usage: ec2k-gpu <walk|bench|check|health|devices> [options]\n"
             "  --run-id R       16-bit run id; distinct runs never share a trail\n"
             "  --dp-file F      append 32-byte campaign records (seed, orbit-minimum x) to F\n"
             "  --dp-file64 F    append 64-byte (seed, iters, x, y) records to F\n"
@@ -119,8 +138,17 @@ int usage()
             "  --kat F          check: also replay the campaign's known answers in F\n"
             "                   (campaign-kat.hex, shipped beside the binary)\n"
             "  --device D       CUDA device index\n"
+            "health: a timed load whose every report is checked on the host (seed, restart\n"
+            "  counter, step window, weight, on the curve) and a sample re-walked on the\n"
+            "  golden model; defaults --dp-weight %d --steps %d, run id %u, nothing kept\n"
+            "  --seconds S      length of the load (default 60)\n"
+            "  --warmup S       seconds left out of the steady rate (default: S/6, at most 10)\n"
+            "  --window S       length of the rate windows (default 10)\n"
+            "  --rewalk-threads N    host threads re-walking reports (default 1; 0 none)\n"
+            "  --rewalk-max-iters N  longest report worth a re-walk (default 512)\n"
             "walk: %s\n",
-            DEFAULT_DP_WEIGHT, DEFAULT_MAX_ITERS, WALK_NAME);
+            DEFAULT_DP_WEIGHT, DEFAULT_MAX_ITERS, HEALTH_DP_WEIGHT, HEALTH_STEPS, HEALTH_RUN_ID,
+            WALK_NAME);
     return 2;
 }
 
@@ -709,6 +737,230 @@ int cmdRun(Options o, const HostWalk &walk, bool bench)
     return rc;
 }
 
+/* ---- health -------------------------------------------------------------- */
+
+std::string jsonString(const char *s)
+{
+    std::string r = "\"";
+    for (; *s; ++s) {
+        const unsigned char c = (unsigned char)*s;
+        if (c == '"' || c == '\\') {
+            r += '\\';
+            r += char(c);
+        } else if (c < 0x20) {
+            char b[8];
+            snprintf(b, sizeof(b), "\\u%04x", c);
+            r += b;
+        } else {
+            r += char(c);
+        }
+    }
+    return r + "\"";
+}
+
+// A device as NVML names it too, so that a caller can join this with
+// nvidia-smi: the UUID in "GPU-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" form and
+// the PCI bus id.
+std::string deviceJson(int d)
+{
+    cudaDeviceProp p;
+    CUDA_CHECK(cudaGetDeviceProperties(&p, d));
+    char bus[32] = "";
+    CUDA_CHECK(cudaDeviceGetPCIBusId(bus, sizeof(bus), d));
+    int clockKHz = 0;
+    CUDA_CHECK(cudaDeviceGetAttribute(&clockKHz, cudaDevAttrClockRate, d));
+    const unsigned char *u = reinterpret_cast<const unsigned char *>(p.uuid.bytes);
+    char uuid[48];
+    snprintf(uuid, sizeof(uuid),
+             "GPU-%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", u[0], u[1],
+             u[2], u[3], u[4], u[5], u[6], u[7], u[8], u[9], u[10], u[11], u[12], u[13], u[14],
+             u[15]);
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+             "{\"index\":%d,\"name\":%s,\"uuid\":\"%s\",\"pciBusId\":\"%s\","
+             "\"computeCapability\":\"%d.%d\",\"sms\":%d,\"clockKHz\":%d,\"memoryBytes\":%zu}",
+             d, jsonString(p.name).c_str(), uuid, bus, p.major, p.minor, p.multiProcessorCount,
+             clockKHz, p.totalGlobalMem);
+    return buf;
+}
+
+// The CUDA devices this process can see, one JSON object; a node that should
+// have eight GPUs and shows seven fails here, before any load.
+int cmdDevices()
+{
+    int driver = 0, runtime = 0, n = 0;
+    cudaDriverGetVersion(&driver);
+    cudaRuntimeGetVersion(&runtime);
+    const cudaError_t err = cudaGetDeviceCount(&n);
+    if (err != cudaSuccess) {
+        printf("{\"status\":\"error\",\"error\":%s,\"driverVersion\":%d,\"runtimeVersion\":%d,"
+               "\"devices\":[]}\n",
+               jsonString(cudaGetErrorString(err)).c_str(), driver, runtime);
+        return 3;
+    }
+    printf("{\"status\":\"ok\",\"driverVersion\":%d,\"runtimeVersion\":%d,\"devices\":[", driver,
+           runtime);
+    for (int d = 0; d < n; ++d) printf("%s%s", d ? "," : "", deviceJson(d).c_str());
+    printf("]}\n");
+    return 0;
+}
+
+// A timed load that checks itself, for telling whether a GPU is fit to use.
+//
+// It walks the campaign's sigma walk (the challenge points unless --p-seed or
+// --q-seed) at weight 42, where a lane reports every 2^14.86 steps, so every
+// lane reports every few seconds.  The host checks every report while the
+// device runs the next launch (healthcheck.h: seed, restart counter, step
+// window, weight, on the curve) and re-walks on the golden model the longest
+// report of each launch within --rewalk-max-iters.
+// The rate is complete iterations per second, as for bench and walk, with a
+// warm-up left out and the rest cut into windows, so that a card that slows
+// as it heats shows it.  Nothing is written to disk.
+//
+// Exit status: 0 every check passed; 1 a report failed a check or a re-walk;
+// 4 the run proves nothing (stopped early, no report checked, none re-walked,
+// or a report lost); 3 a CUDA error, from CUDA_CHECK: the device faulted, is
+// not there, or the driver is too old.
+int cmdHealth(Options o, const HostWalk &walk)
+{
+    if (!o.stepsGiven) o.steps = HEALTH_STEPS;
+    if (!o.dpWeightGiven) o.dpWeight = HEALTH_DP_WEIGHT;
+    if (!o.runIdGiven) o.runId = HEALTH_RUN_ID;
+    if (o.warmup < 0) o.warmup = std::min(10.0, o.seconds / 6);
+    if (!(o.seconds > 0) || !(o.warmup >= 0) || o.warmup >= o.seconds || !(o.window > 0) ||
+        o.rewalkThreads < 0 || o.dpWeight > 131) {
+        fprintf(stderr, "health: needs --seconds > --warmup >= 0, --window > 0, "
+                        "--rewalk-threads >= 0 and --dp-weight <= 131\n");
+        return 2;
+    }
+    // Wait on the device by blocking rather than spinning: a node checks all
+    // of its GPUs at once, and the host's cores are for the checks.
+    if (cudaInitDevice(o.device, cudaDeviceScheduleBlockingSync, 0) != cudaSuccess)
+        (void)cudaGetLastError();
+    CUDA_CHECK(cudaSetDevice(o.device));
+    if (o.threads <= 0) o.threads = Engine::autoThreads(o.device);
+    if (o.threads % 256) {
+        fprintf(stderr, "--threads must be a multiple of 256 (compact state tiles)\n");
+        return 2;
+    }
+    // No restart limit, so a lane's counter moves only when it reports; and a
+    // lane reports at most once a launch (it is dead until revived), so one
+    // record per lane is a report buffer that cannot drop one.
+    o.maxIters = 0;
+    o.dpCap = unsigned(size_t(o.threads) * ECC_BATCH);
+    const std::string device = deviceJson(o.device);
+    Engine e;
+    e.setup(o, walk);
+    e.init(false, 0);
+    const size_t lanes = e.laneCount();
+    const unsigned long long perLaunch = (unsigned long long)lanes * (unsigned long long)o.steps;
+    ReportChecker checker;
+    checker.reset(o.runId, o.dpWeight, (unsigned long long)o.steps, lanes);
+    Rewalker rewalker;
+    rewalker.start(walk, o.rewalkThreads, o.rewalkMaxIters);
+    signal(SIGINT, onStop);
+    signal(SIGTERM, onStop);
+    printf("health: %s walk, %zu lanes, %d steps per launch, dp weight %d, run id %u, %.0f s "
+           "with %.0f s warm-up\n",
+           WALK_NAME, lanes, o.steps, o.dpWeight, o.runId, o.seconds, o.warmup);
+    fflush(stdout);
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    const double t0 = now();
+    std::vector<double> at = {0.0};                // launch boundaries, seconds from t0
+    std::vector<unsigned long long> done = {0ull}; // iterations completed by each
+    std::vector<DpRecord> recs;
+    unsigned long long reports = 0;
+    const char *lost = nullptr;
+    double lastPrint = 0;
+    e.launch(0);
+    for (unsigned launch = 0;; ++launch) {
+        unsigned counts[3] = {0, 0, 0};
+        e.fetch(recs, counts);
+        const double t = now() - t0;
+        at.push_back(t);
+        done.push_back(done.back() + perLaunch);
+        reports += recs.size();
+        if (counts[0] > recs.size())
+            lost = "the report buffer overflowed";
+        else if (counts[1])
+            lost = "a lane was restarted without reporting";
+        else if (counts[2])
+            lost = "a lane exhausted its 16-bit restart counter";
+        const bool last = lost || stopRequested || t >= o.seconds;
+        if (!last) {
+            const unsigned long long next = (unsigned long long)(launch + 1) * o.steps;
+            if (!recs.empty()) e.init(true, next);
+            e.launch(next);
+        }
+
+        // The host's share, while the device runs the next launch: every report
+        // checked, and the longest within the re-walk limit sampled.
+        const DpRecord *sample = nullptr;
+        for (const DpRecord &r : recs) {
+            const ReportChecker::Fault f = checker.check(r, launch);
+            if (f != ReportChecker::OK && checker.totalFaults() <= 8)
+                fprintf(stderr,
+                        "launch %u: report fails the %s check: seed %016llx, %llu iterations, "
+                        "x %016llx%016llx%016llx, y %016llx%016llx%016llx\n",
+                        launch, ReportChecker::name(f), r.seed, r.iters, r.x[2], r.x[1], r.x[0],
+                        r.y[2], r.y[1], r.y[0]);
+            if (r.iters <= o.rewalkMaxIters && (!sample || r.iters > sample->iters)) sample = &r;
+        }
+        if (sample) rewalker.offer(*sample);
+        if (t - lastPrint >= 5 || last) {
+            unsigned long long rewalked = 0, mismatched = 0;
+            rewalker.progress(&rewalked, &mismatched);
+            printf("  %7.1f s  %10.3f M it/s  %llu reports  %llu checked  %llu re-walked  "
+                   "%llu faults\n",
+                   t, t > 0 ? (double)done.back() / t / 1e6 : 0.0, reports, checker.checked,
+                   rewalked, checker.totalFaults() + mismatched);
+            fflush(stdout);
+            lastPrint = t;
+        }
+        if (last) break;
+    }
+    CUDA_CHECK(cudaDeviceSynchronize());
+    rewalker.finish();
+
+    const RateSummary rs = summarizeRates(at, done, o.warmup, o.window);
+    std::string wjson;
+    for (size_t k = 0; k < rs.windows.size(); ++k) {
+        char b[128];
+        snprintf(b, sizeof(b), "%s{\"start\":%.3f,\"end\":%.3f,\"iterationsPerSecond\":%.0f}",
+                 k ? "," : "", at[rs.windows[k].first], at[rs.windows[k].second], rs.rates[k]);
+        wjson += b;
+    }
+    const unsigned long long faults = checker.totalFaults() + rewalker.mismatches;
+    const bool proved = !lost && !stopRequested && checker.checked > 0 &&
+                        (o.rewalkThreads == 0 || rewalker.rewalked > 0);
+    const char *status = faults ? "fault" : !proved ? "inconclusive" : "ok";
+    std::string fjson;
+    for (int f = ReportChecker::SEED; f < ReportChecker::KINDS; ++f) {
+        char b[64];
+        snprintf(b, sizeof(b), "\"%s\":%llu,", ReportChecker::name(f), checker.faults[f]);
+        fjson += b;
+    }
+    printf("{\"status\":\"%s\",\"cmd\":\"health\",\"walk\":\"%s\",\"device\":%s,"
+           "\"seconds\":%.3f,\"warmupSeconds\":%.3f,\"launches\":%zu,\"iterations\":%llu,"
+           "\"iterationsPerSecond\":%.0f,\"steadyIterationsPerSecond\":%.0f,"
+           "\"windowMinOverMax\":%.4f,\"windowLastOverFirst\":%.4f,\"windows\":[%s],"
+           "\"reports\":%llu,\"checked\":%llu,\"checkedSteps\":%llu,\"checkedFraction\":%.4f,"
+           "\"faults\":{%s\"rewalk\":%llu},\"rewalk\":{\"offered\":%llu,\"skipped\":%llu,"
+           "\"rewalked\":%llu,\"steps\":%llu,\"threads\":%d,\"maxIters\":%llu},"
+           "\"lanes\":%zu,\"threads\":%d,\"batch\":%d,\"steps\":%d,\"dpWeight\":%d,\"runId\":%u,"
+           "\"stopped\":%s,\"lost\":%s}\n",
+           status, WALK_NAME, device.c_str(), at.back(), at[rs.steadyFrom], at.size() - 1,
+           done.back(), at.back() > 0 ? (double)done.back() / at.back() : 0.0, rs.steady,
+           rs.minOverMax, rs.lastOverFirst, wjson.c_str(), reports, checker.checked,
+           checker.checkedSteps, done.back() ? (double)checker.checkedSteps / done.back() : 0.0,
+           fjson.c_str(), rewalker.mismatches, rewalker.offered, rewalker.skipped,
+           rewalker.rewalked, rewalker.rewalkedSteps, o.rewalkThreads, o.rewalkMaxIters, lanes,
+           o.threads, ECC_BATCH, o.steps, o.dpWeight, o.runId, stopRequested ? "true" : "false",
+           lost ? jsonString(lost).c_str() : "null");
+    return faults ? 1 : proved ? 0 : 4;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -735,12 +987,21 @@ int main(int argc, char **argv)
     if (const char *v = opt(argc, argv, "--dp-file64")) o.dpFile64 = v;
     if (const char *v = opt(argc, argv, "--checkpoint")) o.checkpoint = v;
     if (const char *v = opt(argc, argv, "--kat")) o.kat = v;
+    o.stepsGiven = opt(argc, argv, "--steps") != nullptr;
+    o.dpWeightGiven = opt(argc, argv, "--dp-weight") != nullptr;
+    if (const char *v = opt(argc, argv, "--seconds")) o.seconds = strtod(v, nullptr);
+    if (const char *v = opt(argc, argv, "--warmup")) o.warmup = strtod(v, nullptr);
+    if (const char *v = opt(argc, argv, "--window")) o.window = strtod(v, nullptr);
+    o.rewalkThreads =
+        (int)optU64(argc, argv, "--rewalk-threads", (unsigned long long)o.rewalkThreads);
+    o.rewalkMaxIters = optU64(argc, argv, "--rewalk-max-iters", o.rewalkMaxIters);
     if (o.steps <= 0 || o.dpCap == 0 || o.checkpointEvery <= 0) return usage();
     if (runId > 0xFFFFu) {
         fprintf(stderr, "--run-id is 16 bits: at most 65535\n");
         return 2;
     }
     o.runId = unsigned(runId);
+    if (o.cmd == "devices") return cmdDevices();
 
     ec2k_pt P, Q;
     if (o.testPoints) {
@@ -759,6 +1020,8 @@ int main(int argc, char **argv)
         rc = cmdRun(o, *walk, true);
     else if (o.cmd == "walk")
         rc = cmdRun(o, *walk, false);
+    else if (o.cmd == "health")
+        rc = cmdHealth(o, *walk);
     else
         rc = usage();
     delete walk;

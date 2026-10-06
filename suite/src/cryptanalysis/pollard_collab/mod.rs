@@ -74,7 +74,7 @@ pub mod worker;
 
 pub use job::{demo_curve, JobContext, JobSpec, DEMO_CURVES, PROTOCOL_VERSION};
 pub use mailbox::Mailbox;
-pub use net::{sync_with_peer, Message, PeerServer, SyncReport};
+pub use net::{sync_with_peer, sync_with_peer_auth, Message, PeerServer, SyncReport};
 pub use state::{CheckIn, Progress, SharedState, UnitReport, UnitView};
 pub use walk::{run_walker, DpRecord, WalkerOutcome};
 pub use worker::{run_lane, LaneOptions, LaneSummary};

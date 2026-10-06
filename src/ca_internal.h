@@ -110,10 +110,49 @@ int ca_htab_insert(ca_htab *t, uint64_t key, uint64_t v0, uint64_t v1,
 int ca_htab_find(const ca_htab *t, uint64_t key, uint64_t *v0, uint64_t *v1);
 size_t ca_htab_bytes(const ca_htab *t);
 
+/* ---- open addressing hash table: u64 key to one u64 value ------------- */
+/* The single-value tables (BSGS, Cheon, Mestre) take 16 bytes an entry
+ * instead of 24, so there is a third less to zero and to walk.  Keys are
+ * element hashes, already well mixed, so they index the table directly.
+ * Semantics as ca_htab: key 0 is stored as 1, and inserting a present key
+ * reports its value without replacing it. */
+typedef struct ca_htab1_entry {
+    uint64_t key; /* 0 = empty */
+    uint64_t v0;
+} ca_htab1_entry;
+
+typedef struct ca_htab1 {
+    ca_htab1_entry *e;
+    size_t cap; /* power of two */
+    size_t count;
+    size_t max_count;
+} ca_htab1;
+
+ca_status ca_htab1_init(ca_htab1 *t, size_t expected);
+void ca_htab1_free(ca_htab1 *t);
+int ca_htab1_insert(ca_htab1 *t, uint64_t key, uint64_t v0, uint64_t *old0);
+int ca_htab1_find(const ca_htab1 *t, uint64_t key, uint64_t *v0);
+size_t ca_htab1_bytes(const ca_htab1 *t);
+
 /* ---- misc -------------------------------------------------------------- */
 static inline uint64_t ca_max_u64(uint64_t a, uint64_t b) { return a > b ? a : b; }
 static inline uint64_t ca_min_u64(uint64_t a, uint64_t b) { return a < b ? a : b; }
 
 void ca_set_error(const char *fmt, ...);
+
+/* Whether n * base = n * target = O, i.e. both lie in the order-n subgroup.
+ * When n is prime and base is not the identity this is exactly target in
+ * <base>; a walk started without it never collides and never stops.  Sets
+ * the error message and returns 0 on failure. */
+struct ca_group;
+/* k*a on a curve made by ca_group_ec_init, in Jacobian coordinates with one
+ * inversion; returns 0 (and does nothing) for any other vtable. */
+/* k*a in a group made by ca_group_zp_init, without the vtable; returns 0
+ * (and does nothing) for any other vtable. */
+int ca_zp_group_mul(const struct ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k);
+int ca_ec_group_mul(const struct ca_group *g, ca_elem *r, const ca_elem *a, uint64_t k);
+
+int ca_check_members(const struct ca_group *g, const ca_elem *base, const ca_elem *target,
+                     uint64_t n, const char *solver);
 
 #endif /* CA_INTERNAL_H */

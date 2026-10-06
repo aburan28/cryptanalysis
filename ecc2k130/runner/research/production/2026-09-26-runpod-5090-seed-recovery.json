@@ -1,0 +1,48 @@
+{
+  "status": "seed_owners_cleared_pod_restart_required",
+  "performed_at": "2026-09-26T03:45:00+00:00",
+  "system": "legacy root-level campaign (bucket-root campaign.json, aws/worker.py, seed-registry/curve-131/)",
+  "pod": {
+    "name": "ecc2k-5090-b",
+    "container": "93f92a3d2cc9",
+    "gpus": "6x RTX 5090",
+    "list_price_usd_per_hour": 5.95,
+    "runpod_machine_status": "critical error banner on the host",
+    "boot": "2026-09-26T03:26:35Z",
+    "start_command": "ECC_ALL_GPUS=1 python3 aws/worker.py against the bucket-root campaign"
+  },
+  "problem": "Three of the six GPU workers claimed slots 197–199 (runs 198–200), downloaded their checkpoints, then fatal'd with 'run N already has an owner'. The multi-GPU supervisor does not restart individual children, so those three GPUs stay idle until the whole worker.py exits. The other three claimed fresh slots 209–211 (runs 210–212) and began uploading at 2026-09-26T03:43:52Z.",
+  "runs_cleared": [
+    {
+      "run_id": 198,
+      "slot": 197,
+      "previous_owner": "5b1eb696fd304621ae8da1a2c…",
+      "owner_acquired_at": "2026-09-22T23:44:40Z",
+      "checkpoint_floor": 884601856,
+      "threads": 87040
+    },
+    {
+      "run_id": 199,
+      "slot": 198,
+      "previous_owner": "7cd78120c7824d7280002203c…",
+      "owner_acquired_at": "2026-09-22T23:44:52Z",
+      "checkpoint_floor": 862769152,
+      "threads": 87040
+    },
+    {
+      "run_id": 200,
+      "slot": 199,
+      "previous_owner": "aa035ccc9a7f48f7b6f0fd4d8…",
+      "owner_acquired_at": "2026-09-22T23:47:55Z",
+      "checkpoint_floor": 862853120,
+      "threads": 87040
+    }
+  ],
+  "evidence": "Owners acquired 2026-09-22 with no release. Every Runpod log stream except 93f92a3d2cc9 stopped by 2026-09-25T23:04Z. Conditional IfMatch writes; floors taken from the matching checkpoints.",
+  "still_required": [
+    "Restart or recreate ecc2k-5090-b so the three fatal'd GPU children start again (seeds are clear). Prefer terminate+recreate: Runpod marked the host critical.",
+    "RUNPOD_API_KEY in Cloud Agent secrets so this session can stop/recreate pods.",
+    "Enable Runpod account MFA (dashboard Settings → Security); an agent cannot do that."
+  ],
+  "other_pods": "No other Runpod pod has shipped a log since 2026-09-25T23:04Z. The Modal eight-worker fleet and Modal dp_ingest remain the live producers for the namespaced campaign and the status page."
+}

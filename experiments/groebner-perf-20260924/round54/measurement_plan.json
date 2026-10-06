@@ -1,0 +1,35 @@
+{
+  "schema": "partial-work-reservation-paired-plan/1",
+  "primary": "reserved-serial-full-metal",
+  "arms": [
+    "prior-serial-full-cpu",
+    "prior-serial-full-metal",
+    "prior-overlap-full-metal",
+    "direct-serial-full-metal",
+    "reserved-serial-full-metal",
+    "reserved-overlap-full-metal",
+    "reserved-serial-full-cpu"
+  ],
+  "confirmatory_comparators": [
+    "prior-serial-full-metal",
+    "direct-serial-full-metal"
+  ],
+  "fixture_order": "descending nvars, then name",
+  "trials_per_input": 2,
+  "warmups": 1,
+  "measured_pairs": 7,
+  "order_seed": 202610035401,
+  "bootstrap_seed": 202610035402,
+  "bootstrap_samples": 20000,
+  "max_load_per_logical_cpu": 1,
+  "admission_wait_seconds": 20,
+  "admission_poll_seconds": 5,
+  "max_rejected_admissions": 2,
+  "primary_acceptance": "Both qualified trials on all three 27-variable frozen inputs must have lower paired 95% bootstrap median-ratio bound > 1 against every confirmatory comparator; no automatic routing promotion on a partial panel.",
+  "uncertainty": "Per-input descriptive paired bootstrap intervals; no familywise or population guarantee.",
+  "boundary": "Wrap the already loaded public coordinates in Point and execute one fresh q.solve(public_point), including native coefficient reconstruction, solving, device transfer and synchronization, complete independent original-ANF proof/root/basis checks, direct witness equation checks and signed curve replay. Reusable setup, fixture loading and evidence serialization are outside. The tiny Point wrapper allocation is charged equally to every arm. Offline Python proof replay is correctness evidence, not part of this interval.",
+  "candidate_id": null,
+  "online_speedup": null,
+  "arms_definition": "All arms use the unchanged round51 producer and the round53 preparation scheduler. Prior uses checker53; direct and reserved use checker54 with row reservations disabled or enabled. Full transforms, factored_local identities and local partial coefficients are fixed. Serial versus overlap is explicit; the confirmatory comparisons isolate reserved serial checking. CPU and overlap results are secondary. No target answer is cached.",
+  "resource_envelope": "One host and the same Metal device; at most two CPU query threads plus the GPU for every arm. Serial uses one thread; overlap uses one additional checker worker started in reusable setup. CPU arms explicitly use the portable CPU backend. No cross-target work."
+}
