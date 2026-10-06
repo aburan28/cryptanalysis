@@ -1424,17 +1424,107 @@ field operations, conflicts, exploratory walls, and memory. The new rule
 is sound, but this search order reaches it too late to constrain the
 ordinary queries. A complete degree-131 `2^x` remains unknown.
 
+### Q1424 early-target decision orders
+
+The [pre-registered Q1424 protocol](q1424_early_target/protocol.json)
+compares two decision orders that choose the public target selector before
+leaf-pair search. Its [eight-cell archive](q1424_early_target/verification.json)
+verifies all four known-witness controls. All four ordinary N53/N83 cells
+still hit the 60-second wall cap without a relation. The new per-pair
+counters show `target_first` spends the cap on pair 1 (58,514 and 65,289
+root calls), while `target_mid_first` spends it on pair 0 (225,790 and
+135,141 root calls). The final target-coupled root rule activates once in
+each ordinary cell. The [Q1424 result table](q1424_early_target/README.md)
+retains field operations, memory, and every censored outcome. Moving SAT
+decisions alone does not solve the pair-feasibility problem or support a
+complete degree-131 `2^x`.
+The ledger also verifies exact curve, base digest, and target agreement with
+the prior pair-table stages: Q1301 found a relation on the N53 target, while
+Q1400's fixed N83 rectangle had no hit. Their workloads and resource limits
+differ, so neither gives a controlled wall-time speedup for Q1424.
+
+### Q1425 exact reverse pair roots
+
+The [pre-registered Q1425 protocol](q1425_reverse_pair/protocol.json) adds
+exact symmetric `S3` partner roots once a pair intermediate and one leaf are
+fixed. The [eight-cell archive](q1425_reverse_pair/verification.json)
+verifies all four controls with the partner leaves freed. All four ordinary
+N53/N83 cells still hit the 60-second cap without a relation. Complete pair
+root evaluations fall to 0–21 per ordinary cell, but reverse-root calls rise
+to 562,424–1,008,552, and every ordinary reverse candidate examined is
+rejected by the sparse weight bound. The [Q1425 result table](q1425_reverse_pair/README.md)
+summarizes the caps; the ledger and receipts retain exact operation counts,
+memory, and paired Q1424 identities. The
+degree-131 complete `2^x` remains unknown.
+
+An [exact sparse-pair support screen](q1425_reverse_pair/pair_support_screen.json)
+counts at most `2M²` possible pair-intermediate x coordinates for `M`
+nonzero sparse x choices, because each ordered pair has at most two `S3`
+roots. On the exact N131 W≤6 base, an independently uniform field
+intermediate therefore needs at least `2^64.78` logical trials in
+expectation to land in *any* sparse-pair support. This is a conditional
+uniform-sampling lower bound, not a cost bound for target-guided
+intermediates or a complete ECDLP projection.
+
+### Q1426 symbolic second-pair equations
+
+The [frozen Q1426 protocol](q1426_symbolic_pair/protocol.json) inserts all
+factored binary equations for `S3(leaf2, leaf3, mid1)=0` into the SAT
+formula before decisions. It retains Q1425's exact reverse-root propagator
+and uses the same ordinary targets, exact bases, and 60-second caps. The
+[four-cell archive](q1426_symbolic_pair/verification.json) verifies both
+freed-partner controls, with one independently replayed relation each.
+Neither ordinary N53 nor ordinary N83 found a relation before its cap.
+The N53 ordinary cell made 1,080,547 reverse partner calls, and the N83
+cell made 485,107; every reverse candidate was rejected by the sparse
+weight rule. The [Q1426 result table](q1426_symbolic_pair/README.md) and
+work ledger retain the raw field-operation and memory counts. The symbolic
+equation alone did not change the decisive rejection pattern. These
+censored cells leave the degree-131 complete `2^x` unknown.
+
+### Q1427 interleaved target-conditioned partner bits
+
+The [frozen Q1427 protocol](q1427_interleaved_pair/protocol.json) keeps
+Q1426's exact symbolic and external root constraints but alternates bits
+of the two second-pair leaves after the target and intermediates are
+constrained. Its [four-cell verification](q1427_interleaved_pair/verification.json)
+independently replays both freed-partner controls. Both ordinary N53/N83
+cells still hit the 60-second cap without a relation. Within that cap,
+reverse partner calls fell to 135,226 at N53 and 71,988 at N83, factors
+of 7.99 and 6.74 fewer than Q1426. Every reverse candidate still failed
+the sparse weight rule. The [Q1427 result table](q1427_interleaved_pair/README.md)
+and work ledger retain exact field-operation and memory counts. This
+decision-order improvement is a stage diagnostic; natural yield and the
+complete degree-131 `2^x` remain unknown.
+
 ## Next goal
 
-The next solver must use the public target **before** enumerating many full
-leaf-pair assignments. Derive a compact target-coupled necessary condition
-on partial leaf pairs, prove that it preserves all four-point solutions, and
-test it against exhaustive small-field cases and the archived N53/N83 controls.
-Freeze the exact stage and use the same N53/N83 ordinary targets first, then
-a pre-registered fresh panel if a fixed target has no representation.
-Record every failed query, operation count, memory peak, and matched
-pair-table comparison. The method gates are an unpinned independently
-verified N53 relation, then one at N83 on the exact Q1325 base.
+The next solver should build a **compact target-conditioned pair-sum
+membership and witness method**. It must avoid the Q1425–Q1427 reverse-root
+rejection loop and the full quotient-pair index screened by Q1416 at roughly
+`2^89.36` logical actions on the exact N131 base under its uniform-key
+model. This is a model for that pure-index family, not a lower bound on
+other decomposition methods. State an exact membership
+or necessary-condition theorem that jointly uses the target's final S3
+link and both sparse pair constraints. Prove solution preservation, and
+verify it against exhaustive small-field cases and the archived N53/N83
+witnesses. A new SAT clause set without a changed ordinary-query search
+pattern does not pass this gate. Q1415's global native XOR Gaussian solver
+also capped on an N53 ordinary formula; repeating that setting alone is
+not a new feasibility method.
+Freeze the stage before ordinary queries. The first measurable gate is the
+unpinned archived N53 ordinary target, which Q1301 already proved
+representable. The second is an independently verified relation on the
+exact Q1325 N83 base, with a pre-registered fresh-target panel if the fixed
+N83 target has no representation. Keep failed queries, raw operations,
+memory, and matched pair-table receipts.
+
+For work planning, Q1414's exact-base uniform-query model allows less than
+`2^33.36` abstract work units per query under a `2^61` total cap **even
+when every other phase costs zero**. This is a necessary affordability
+ceiling for that model, not a measured point-decomposition cost or a
+complete solve projection. The new method needs a measured natural yield
+and a calibrated N53/N83 cost trend before any degree-131 `2^x` is credible.
 
 Only after the N83 gate passes should a fresh ordinary-query panel measure
 verified useful-row yield, novel rank per query, and charged cost per useful
