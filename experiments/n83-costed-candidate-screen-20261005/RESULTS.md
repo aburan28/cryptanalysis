@@ -7,7 +7,10 @@ target-online phase costs, the cold pipeline total, ordinary-query PDP yield,
 final relation rank, and a same-point rho reference remain `null` in the
 [machine ledger](cost_screen.json). Thus every online speedup is unknown.
 The checked Sage runtime receipts, producer logs, exact geometry, and
-representative sets are in [`runs/`](runs/). Timing on this ordinary macOS
+losslessly packed representative sets are in [`runs/`](runs/). Run
+[`pack_representatives.py`](pack_representatives.py) to verify the unpacked
+SHA-256 of every set against its original immutable geometry receipt; the
+`.json.gz` payloads use deterministic gzip headers. Timing on this ordinary macOS
 host is exploratory and cannot support a controlled speed claim.
 
 | Base and arity | Factor coordinates | Actual usable `B` per slot | Folded `K` | Exact tuple count / `r` | One explicit distinct-slot pair table, raw payload | Frozen geometry gate |
