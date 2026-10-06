@@ -89,3 +89,21 @@ The unpinned planted and ordinary runner paths read only the identical
 public fixtures, measured representatives, solver binary, and protocol.
 The local private fixture is opened only for the explicitly pinned planted
 mode; an unpinned receipt records its private-fixture input as `null`.
+
+The first [public-only unpinned planted attempt](runs/unpinned_planted_f0_v1/receipt.json)
+used raw fiber 0 with all five factor masks and signs free. It built a
+610,956-variable circuit with 1,765,615 CNF clauses and 22,201 XOR rows.
+CryptoMiniSat returned `BOUNDED_UNKNOWN` at its 120-second internal limit;
+the bounded process-tree interval was 136.214 seconds with 572 MB sampled
+peak RSS. No witness or UNSAT proof was produced. The receipt's inherited
+claim-boundary sentence mentions a pinned result, but its mode and inputs
+identify this as an unpinned attempt; neither supports a natural-yield or
+speedup claim.
+
+The [next frozen diagnostic](unpinned_sign_enum_protocol.json) enumerates
+the same 32 public-order sign branches with every factor mask still free.
+It charges every attempted branch under a 600-second whole-run cap and a
+2 GiB process-tree RSS cap. A solved branch must pass full XCNF and group
+replay and independent checked-Sage replay before it qualifies as a planted
+control. If the bounded attempt remains unresolved, ordinary-query yield
+and a complete IC pipeline remain unmeasured.

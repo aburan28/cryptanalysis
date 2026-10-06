@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enumerate five public-order lift-sign assignments on pinned N83 masks."""
+"""Enumerate five public-order lift-sign assignments on a frozen N83 circuit."""
 
 from __future__ import annotations
 
@@ -21,8 +21,6 @@ from run_direct_point_branch import parse_model, replay
 HERE = Path(__file__).resolve().parent
 PROTOCOL = HERE / "sign_enum_protocol.json"
 BASE_PROTOCOL = HERE / "protocol.json"
-SOURCE = HERE / "runs/pinned_planted_f0_v2"
-SOURCE_XCNF = SOURCE / "branch.xcnf"
 PUBLIC = HERE.parent / "hamming-ic-e2e-20260929/runs/n83_w34_sat_fixture_v1/public_input.json"
 SOLVER = Path("/opt/homebrew/bin/cryptominisat5")
 
@@ -124,26 +122,38 @@ def run_solver(xcnf: Path, folder: Path, protocol: dict,
     }
 
 
-def main(out: Path) -> None:
+def main(out: Path, protocol_path: Path = PROTOCOL) -> None:
     out = out.resolve()
     if out.exists():
         raise FileExistsError("sign-enumeration output is immutable")
-    protocol = json.loads(PROTOCOL.read_text())
+    protocol_path = protocol_path.resolve()
+    if protocol_path not in (PROTOCOL, HERE / "unpinned_sign_enum_protocol.json"):
+        raise ValueError("unsupported frozen sign-enumeration protocol")
+    protocol = json.loads(protocol_path.read_text())
+    mode = protocol.get("source_mode", "pinned_planted")
+    fiber_index = protocol.get("source_fiber_index", 0)
+    source_names = {
+        "pinned_planted": ("pinned_planted_f0_v2", "source_pinned_masks"),
+        "unpinned_planted": ("unpinned_planted_f0_v1", "source_unpinned"),
+    }
+    source_name, source_key = source_names[mode]
+    source = HERE / "runs" / source_name
+    source_xcnf = source / "branch.xcnf"
     assert sha(BASE_PROTOCOL) == protocol["source_direct_point_protocol_sha256"]
-    assert sha(SOURCE / "receipt.json") == protocol["source_pinned_masks_receipt_sha256"]
-    assert sha(SOURCE_XCNF) == protocol["source_pinned_masks_xcnf_sha256"]
+    assert sha(source / "receipt.json") == protocol[f"{source_key}_receipt_sha256"]
+    assert sha(source_xcnf) == protocol[f"{source_key}_xcnf_sha256"]
     assert sha(PUBLIC) == protocol["source_public_fixture_sha256"]
     assert sha(SOLVER) == protocol["solver_binary_sha256"]
     public = json.loads(PUBLIC.read_text())
-    source_receipt = json.loads((SOURCE / "receipt.json").read_text())
-    assert source_receipt["mode"] == "pinned_planted"
-    assert source_receipt["fiber_index"] == 0
+    source_receipt = json.loads((source / "receipt.json").read_text())
+    assert source_receipt["mode"] == mode
+    assert source_receipt["fiber_index"] == fiber_index
     assert source_receipt["status"] == "BOUNDED_UNKNOWN"
     sign_wires = protocol["sign_wires"]
     assert sign_wires == list(range(416, 421))
-    with SOURCE_XCNF.open("rb") as source:
-        header = source.readline().split()
-        base_body = source.read()
+    with source_xcnf.open("rb") as stream:
+        header = stream.readline().split()
+        base_body = stream.read()
     assert header[:2] == [b"p", b"cnf"] and len(header) == 4
     variables, rows = int(header[2]), int(header[3])
     assert variables == source_receipt["circuit"]["variables"]
@@ -151,11 +161,11 @@ def main(out: Path) -> None:
                     source_receipt["circuit"]["xor_rows"])
     out.mkdir(parents=True)
     save(out / "started.json", {
-        "kind": "n83_w34_public_order_sign_enumeration_start",
+        "kind": protocol["kind"] + "_start",
         "candidate_id": None, "curve_id": protocol["curve_id"],
-        "protocol_sha256": sha(PROTOCOL),
-        "source_xcnf_sha256": sha(SOURCE_XCNF),
-        "source_receipt_sha256": sha(SOURCE / "receipt.json"),
+        "protocol_sha256": sha(protocol_path),
+        "source_xcnf_sha256": sha(source_xcnf),
+        "source_receipt_sha256": sha(source / "receipt.json"),
         "runner_sha256": sha(Path(__file__)),
         "solver_binary_sha256": sha(SOLVER),
         "architecture": platform.machine(), "os": platform.platform(),
@@ -163,7 +173,7 @@ def main(out: Path) -> None:
     started = time.perf_counter_ns()
     result = {
         "schema_version": 1,
-        "kind": "n83_w34_public_order_sign_enumeration",
+        "kind": protocol["kind"],
         "candidate_id": None, "curve_id": protocol["curve_id"],
         "status": "INCOMPLETE", "branch_count": 0,
         "branches": [], "verified_group_model": False,
@@ -172,7 +182,7 @@ def main(out: Path) -> None:
         "claim_boundary": protocol["claim_boundary"],
     }
     try:
-        fiber = public["planted"]["raw_target_fiber"][0]
+        fiber = public["planted"]["raw_target_fiber"][fiber_index]
         mask_rows = [[1 + 83 * slot + bit for bit in range(83)]
                      for slot in range(5)]
         conjugates = [int(value) for value in
@@ -232,7 +242,7 @@ def main(out: Path) -> None:
         raise
     finally:
         result["attempt_wall_ns"] = time.perf_counter_ns() - started
-        result["protocol_sha256"] = sha(PROTOCOL)
+        result["protocol_sha256"] = sha(protocol_path)
         result["started_sha256"] = sha(out / "started.json")
         save(out / "receipt.json", result)
         print(json.dumps({"status": result["status"],
@@ -242,6 +252,6 @@ def main(out: Path) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: run_sign_enum.py OUTPUT_DIRECTORY")
-    main(Path(sys.argv[1]))
+    if len(sys.argv) not in (2, 3):
+        raise SystemExit("usage: run_sign_enum.py OUTPUT_DIRECTORY [FROZEN_PROTOCOL]")
+    main(Path(sys.argv[1]), Path(sys.argv[2]) if len(sys.argv) == 3 else PROTOCOL)
