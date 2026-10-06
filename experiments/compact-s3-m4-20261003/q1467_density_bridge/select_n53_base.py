@@ -97,7 +97,7 @@ def generate() -> dict:
                 assert mask.bit_count() <= 3 and mask != 0
                 seen.add(mask)
                 allowed.add(mask)
-                current = current * current
+                current = onb.sqr(current)
                 bits = ((bits << 1) | (bits >> (N - 1))) & ((1 << N) - 1)
             assert len(seen) == N
     allowed = sorted(allowed)
