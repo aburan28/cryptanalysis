@@ -2352,15 +2352,11 @@ static ca_i128 tau3_residue(ca_i128 value, unsigned modulus)
     return r < 0 ? r + modulus : r;
 }
 
-static tau_vec tau3_mul_tau(tau_vec v)
-{
-    return (tau_vec){-3 * v.y, v.x + 3 * v.y};
-}
+static tau_vec tau3_mul_tau(tau_vec v) { return (tau_vec){-3 * v.y, v.x + 3 * v.y}; }
 
 static tau_vec tau3_apply_unit_coeff(tau_vec v, unsigned code)
 {
-    for (unsigned i = 0; i < code % 3; i++)
-        v = (tau_vec){v.x + 3 * v.y, -v.x - 2 * v.y};
+    for (unsigned i = 0; i < code % 3; i++) v = (tau_vec){v.x + 3 * v.y, -v.x - 2 * v.y};
     if (code >= 3) v.x = -v.x, v.y = -v.y;
     return v;
 }
@@ -2400,9 +2396,8 @@ size_t ca_ec_tau3_fused_blocks(const ca_group *g)
 
 size_t ca_ec_tau3_fused_static_bytes(void)
 {
-    return sizeof(ca_tau3_digit_a) + sizeof(ca_tau3_digit_b) +
-           sizeof(ca_tau3_residue) + sizeof(ca_tau3_orbit_id) +
-           sizeof(ca_tau3_orbit_unit) + sizeof(ca_tau3_rep_u) +
+    return sizeof(ca_tau3_digit_a) + sizeof(ca_tau3_digit_b) + sizeof(ca_tau3_residue) +
+           sizeof(ca_tau3_orbit_id) + sizeof(ca_tau3_orbit_unit) + sizeof(ca_tau3_rep_u) +
            sizeof(ca_tau3_rep_v);
 }
 
@@ -2435,8 +2430,8 @@ int ca_ec_tau3_fused_verify_map(void)
             }
             if (id >= CA_TAU3_FUSED_ORBITS || code >= 6) return 0;
             tau_vec expected = tau3_pair_coeff(u, v);
-            tau_vec actual = tau3_apply_unit_coeff(
-                tau3_pair_coeff(ca_tau3_rep_u[id], ca_tau3_rep_v[id]), code);
+            tau_vec actual =
+                tau3_apply_unit_coeff(tau3_pair_coeff(ca_tau3_rep_u[id], ca_tau3_rep_v[id]), code);
             if (actual.x != expected.x || actual.y != expected.y) return 0;
         }
     return 1;
@@ -2458,8 +2453,7 @@ static size_t tau3_recode(ca_i128 a, ca_i128 b, uint8_t digits[128])
         b = -old_a / 3;
     }
     for (size_t i = 0; i < count; i++)
-        if (digits[i] && ((i + 1 < count && digits[i + 1]) ||
-                          (i + 2 < count && digits[i + 2])))
+        if (digits[i] && ((i + 1 < count && digits[i + 1]) || (i + 2 < count && digits[i + 2])))
             return 0;
     return count;
 }
@@ -2586,8 +2580,8 @@ int ca_ec_tau3_fused_recode_verify_scalar(const ca_tau3_fused_precomp *pre, uint
     for (size_t block = 0; block < count; block++) {
         unsigned id = actions[block] >> 3, code = actions[block] & 7;
         if (id >= CA_TAU3_FUSED_ORBITS || code >= 6) return 0;
-        tau_vec value = tau3_apply_unit_coeff(
-            tau3_pair_coeff(ca_tau3_rep_u[id], ca_tau3_rep_v[id]), code);
+        tau_vec value =
+            tau3_apply_unit_coeff(tau3_pair_coeff(ca_tau3_rep_u[id], ca_tau3_rep_v[id]), code);
         for (size_t i = 0; i < 6 * block; i++) value = tau3_mul_tau(value);
         total.x += value.x;
         total.y += value.y;
@@ -2595,8 +2589,8 @@ int ca_ec_tau3_fused_recode_verify_scalar(const ca_tau3_fused_precomp *pre, uint
     return tau3_coeff_scalar(pre->base.g, total) == k % pre->base.g->order;
 }
 
-static tau_jac tau3_apply_unit_jac(const ca_group *g, tau_jac point, unsigned code,
-                                   uint64_t beta, uint64_t beta2, uint64_t *rotations)
+static tau_jac tau3_apply_unit_jac(const ca_group *g, tau_jac point, unsigned code, uint64_t beta,
+                                   uint64_t beta2, uint64_t *rotations)
 {
     if (!point.z) return point;
     unsigned power = code % 3;
@@ -2614,15 +2608,12 @@ static tau_jac tau3_pattern_point(const ca_group *g, tau_jac basis[6][3], unsign
     if (!pattern) return (tau_jac){0, g->mont.r1, 0};
     unsigned position = (pattern - 1) / 18 + position_offset;
     unsigned digit = (pattern - 1) % 18;
-    return tau3_apply_unit_jac(g, basis[position][digit / 6], digit % 6,
-                                beta, beta2, rotations);
+    return tau3_apply_unit_jac(g, basis[position][digit / 6], digit % 6, beta, beta2, rotations);
 }
 
-int ca_ec_tau3_fused_prepare(const ca_group *g, const ca_elem *point,
-                             ca_tau3_fused_precomp *out, uint64_t *seed_ops,
-                             uint64_t *triples, uint64_t *tau_steps,
-                             uint64_t *adds, uint64_t *rotations,
-                             uint64_t *inversions)
+int ca_ec_tau3_fused_prepare(const ca_group *g, const ca_elem *point, ca_tau3_fused_precomp *out,
+                             uint64_t *seed_ops, uint64_t *triples, uint64_t *tau_steps,
+                             uint64_t *adds, uint64_t *rotations, uint64_t *inversions)
 {
     if (!g || !point || !out) return 0;
     if (seed_ops) *seed_ops = 0;
@@ -2671,10 +2662,8 @@ int ca_ec_tau3_fused_prepare(const ca_group *g, const ca_elem *point,
                 nt += basis[position - 1][seed].z != 0;
             }
         for (unsigned id = 0; id < CA_TAU3_FUSED_ORBITS; id++) {
-            tau_jac first = tau3_pattern_point(g, basis, ca_tau3_rep_u[id], 0,
-                                                beta, beta2, &nr);
-            tau_jac second = tau3_pattern_point(g, basis, ca_tau3_rep_v[id], 3,
-                                                 beta, beta2, &nr);
+            tau_jac first = tau3_pattern_point(g, basis, ca_tau3_rep_u[id], 0, beta, beta2, &nr);
+            tau_jac second = tau3_pattern_point(g, basis, ca_tau3_rep_v[id], 3, beta, beta2, &nr);
             if (first.z && second.z) {
                 projective[block * CA_TAU3_FUSED_ORBITS + id] = jac_add(g, first, second);
                 na++;
@@ -2694,8 +2683,8 @@ int ca_ec_tau3_fused_prepare(const ca_group *g, const ca_elem *point,
             }
     }
     uint64_t table_inversions = 0;
-    int ok = jac_batch_to_affine_scratch(g, pre.point, projective, count,
-                                         prefixes, &table_inversions);
+    int ok =
+        jac_batch_to_affine_scratch(g, pre.point, projective, count, prefixes, &table_inversions);
     free(prefixes);
     free(projective);
     if (!ok) {
@@ -2723,8 +2712,7 @@ int ca_ec_tau3_fused_prepare_verify(const ca_tau3_fused_precomp *pre)
             for (size_t i = 0; i < 6 * block; i++) value = tau3_mul_tau(value);
             ca_elem expected;
             ca_group_mul(g, &expected, &pre->base_point, tau3_coeff_scalar(g, value), NULL);
-            if (!ca_group_equal(g, &expected,
-                                &pre->point[block * CA_TAU3_FUSED_ORBITS + id]))
+            if (!ca_group_equal(g, &expected, &pre->point[block * CA_TAU3_FUSED_ORBITS + id]))
                 return 0;
         }
     return 1;

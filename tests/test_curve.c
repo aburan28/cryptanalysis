@@ -305,8 +305,7 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
 {
     const uint64_t scalars[] = {0, 1, 2, 3, 17, g->order - 1, UINT64_MAX};
     ca_tau3_fused_precomp tau3_pre = {0};
-    CHECK(ca_ec_tau3_fused_prepare(g, point, &tau3_pre, NULL, NULL, NULL, NULL,
-                                    NULL, NULL));
+    CHECK(ca_ec_tau3_fused_prepare(g, point, &tau3_pre, NULL, NULL, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_tau3_fused_prepare_verify(&tau3_pre));
     ca_tau4_pos_compact_precomp compact_pre = {0};
     CHECK(ca_ec_tau4_pos_compact_prepare(g, point, &compact_pre, NULL, NULL));
@@ -374,8 +373,8 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     size_t tau3_saved_blocks = tau3_pre.blocks;
     tau3_pre.blocks = 1;
     uint64_t tau3_fallback = 0;
-    CHECK(ca_ec_tau3_fused_mul_profile(g, &tau3_pre, &got, g->order / 2,
-                                       NULL, NULL, &tau3_fallback));
+    CHECK(
+        ca_ec_tau3_fused_mul_profile(g, &tau3_pre, &got, g->order / 2, NULL, NULL, &tau3_fallback));
     ca_elem tau3_expected_fallback;
     ca_group_mul(g, &tau3_expected_fallback, point, g->order / 2, NULL);
     CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
@@ -400,8 +399,7 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     compact_pre.layers = saved_layers;
     ca_ec_tau4_pos_compact_clear(&compact_pre);
     ca_group_identity(g, &identity);
-    CHECK(ca_ec_tau3_fused_prepare(g, &identity, &tau3_pre, NULL, NULL, NULL,
-                                    NULL, NULL, NULL));
+    CHECK(ca_ec_tau3_fused_prepare(g, &identity, &tau3_pre, NULL, NULL, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_tau3_fused_prepare_verify(&tau3_pre));
     CHECK(ca_ec_tau3_fused_mul_profile(g, &tau3_pre, &got, 17, NULL, NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
@@ -895,8 +893,7 @@ static void tau_fused_small_order(void)
     ca_tau_pair_complete_precomp mixed_pre;
     CHECK(ca_ec_tau_pair_complete_prepare(&g, &point, &mixed_pre, NULL, NULL, NULL, NULL));
     ca_tau3_fused_precomp tau3 = {0};
-    CHECK(ca_ec_tau3_fused_prepare(&g, &point, &tau3, NULL, NULL, NULL, NULL,
-                                    NULL, NULL));
+    CHECK(ca_ec_tau3_fused_prepare(&g, &point, &tau3, NULL, NULL, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_tau3_fused_prepare_verify(&tau3));
     for (uint64_t k = 0; k < 3 * g.order; k++) {
         ca_elem got, want;

@@ -71,11 +71,9 @@ typedef struct ca_tau3_fused_precomp {
 } ca_tau3_fused_precomp;
 size_t ca_ec_tau3_fused_blocks(const ca_group *g);
 int ca_ec_tau3_fused_verify_map(void);
-int ca_ec_tau3_fused_prepare(const ca_group *g, const ca_elem *point,
-                             ca_tau3_fused_precomp *out, uint64_t *seed_ops,
-                             uint64_t *triples, uint64_t *tau_steps,
-                             uint64_t *adds, uint64_t *rotations,
-                             uint64_t *inversions);
+int ca_ec_tau3_fused_prepare(const ca_group *g, const ca_elem *point, ca_tau3_fused_precomp *out,
+                             uint64_t *seed_ops, uint64_t *triples, uint64_t *tau_steps,
+                             uint64_t *adds, uint64_t *rotations, uint64_t *inversions);
 int ca_ec_tau3_fused_prepare_verify(const ca_tau3_fused_precomp *pre);
 int ca_ec_tau3_fused_recode_actions(const ca_tau3_fused_precomp *pre, uint64_t k,
                                     uint16_t actions[16], size_t *count);

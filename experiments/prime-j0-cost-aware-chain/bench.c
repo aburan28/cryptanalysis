@@ -214,25 +214,25 @@ int main(int argc, char **argv)
     size_t prep_temp_stack_bytes =
         comb ? (CA_FIXED_COMB_ENTRIES * 4 + CA_FIXED_COMB_WIDTH * 3) * sizeof(uint64_t) : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
-    size_t point_entries = tau3          ? ca_ec_tau3_fused_blocks(&group) * 343
+    size_t point_entries = tau3            ? ca_ec_tau3_fused_blocks(&group) * 343
                            : compact       ? ca_ec_tau4_pos_compact_layers(&group) * 18
                            : comb          ? CA_FIXED_COMB_ENTRIES
                            : pair_complete ? CA_TAU_PAIR_COMPLETE_COUNT
-                           : pair_fused  ? CA_TAU_PAIR_FUSED_REP_COUNT
-                           : tapered     ? ca_ec_tau_wide_entries(wide_schedule)
-                           : fused       ? fused_blocks * fused_entries
-                                         : 0;
+                           : pair_fused    ? CA_TAU_PAIR_FUSED_REP_COUNT
+                           : tapered       ? ca_ec_tau_wide_entries(wide_schedule)
+                           : fused         ? fused_blocks * fused_entries
+                                           : 0;
     size_t point_table_bytes = point_entries * sizeof(ca_elem);
-    size_t prep_bytes = tau3          ? sizeof(tau3_pre) + point_table_bytes
+    size_t prep_bytes = tau3            ? sizeof(tau3_pre) + point_table_bytes
                         : compact       ? sizeof(compact_pre) + point_table_bytes
                         : comb          ? sizeof(comb_pre)
                         : pair_complete ? sizeof(complete_pre)
-                        : pair_fused  ? sizeof(pair_pre)
-                        : tapered     ? sizeof(wide_pre) + point_table_bytes
-                        : fused       ? sizeof(fused_pre) + point_table_bytes
-                        : positional  ? sizeof(positional_pre)
-                        : mode == 0   ? 0
-                                      : sizeof(pre);
+                        : pair_fused    ? sizeof(pair_pre)
+                        : tapered       ? sizeof(wide_pre) + point_table_bytes
+                        : fused         ? sizeof(fused_pre) + point_table_bytes
+                        : positional    ? sizeof(positional_pre)
+                        : mode == 0     ? 0
+                                        : sizeof(pre);
     if (fused) prep_temp_heap_bytes = fused_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (compact) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (tau3) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
@@ -241,9 +241,9 @@ int main(int argc, char **argv)
     if (mode != 0) {
         double t0 = ca_now();
         if (tau3) {
-            if (!ca_ec_tau3_fused_prepare(&group, &point, &tau3_pre, &prep_seed_ops,
-                                           &prep_triples, &prep_tau_steps, &prep_adds,
-                                           &prep_rotations, &prep_layer_inversions)) {
+            if (!ca_ec_tau3_fused_prepare(&group, &point, &tau3_pre, &prep_seed_ops, &prep_triples,
+                                          &prep_tau_steps, &prep_adds, &prep_rotations,
+                                          &prep_layer_inversions)) {
                 free(outputs);
                 return 2;
             }
@@ -363,13 +363,13 @@ int main(int argc, char **argv)
     size_t recipe_bytes = packed || wavefront ? ca_ec_tau_wide_packed_recipe_bytes(wide_schedule)
                           : graph             ? ca_ec_tau_wide_graph_recipe_bytes(wide_schedule)
                                               : 0;
-    size_t online_scratch_bytes = tau3 ? 160
-                                  : pair_periodic ? 1024
-                                  : pair_mixed ? 384
+    size_t online_scratch_bytes = tau3                          ? 160
+                                  : pair_periodic               ? 1024
+                                  : pair_mixed                  ? 384
                                   : pair_complete || pair_fused ? 512
-                                  : fused || tapered          ? 128 * 32
-                                  : mode >= 7 && mode <= 10   ? block_size * 32
-                                                              : 0;
+                                  : fused || tapered            ? 128 * 32
+                                  : mode >= 7 && mode <= 10     ? block_size * 32
+                                                                : 0;
     double start = ca_now();
     if (tapered) {
         if (!ca_ec_tau_wide_mul_batch_profile(&group, &wide_pre, outputs, scalars, SCALARS, 128,
