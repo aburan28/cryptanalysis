@@ -161,23 +161,35 @@ replays the matrices real searches request through every backend and checks
 each answer against the host kernel. See
 [`experiments/f4-gpu-20260925`](../../../experiments/f4-gpu-20260925/RESULT.md)
 for the measurements. Lockstep implements the from-scratch engine
-(`KIC_F4_INHERIT=0`): under the default inherited engine `--f4-backend` is
-ignored and `f4_batch.rounds` stays 0. On an RTX 5090 the device decides
-these small matrices no faster than 13 host threads, and the inherited
-engine on the host is about five times faster than either
-([`experiments/f4-gpu-runpod-20261006`](../../../experiments/f4-gpu-runpod-20261006/RESULT.md)).
+(`KIC_F4_INHERIT=0`), so `--f4-backend` switches a run on the default
+inherited engine to it and says so on stderr; `f4_batch.engine` in the
+report names the engine that ran. On an RTX 5090 the device decides these
+small matrices no faster than 13 host threads, and the inherited engine on
+the host is about five times faster than either
+([`experiments/f4-gpu-runpod-20261006`](../../../experiments/f4-gpu-runpod-20261006/RESULT.md)),
+so leave `--f4-backend` off unless lockstep itself is under study.
 
-**Large matrices on a GPU.** `F4_F2_ECHELON=cuda[:N]` eliminates every
-`f4_gf2` matrix of at least `F4_F2_ECHELON_MIN_WORDS` words (default
-`1 << 20`, 8 MiB) on the device, one 64-column panel at a time
-(`suite/cuda/f4_gf2_echelon.cuh`), and builds it without F5's symbolic
-half, which costs more host time than the rows it drops save there. These
-are the matrices of the solving- and first-fall-degree sweeps
-(`dreg_sweep`) and of `f4_degree_bench` and `f4_matrix_bench` at degree 5
-and above. Rank, refutation and pinned variables are the host's; only the
-word count differs. `F4_F2_ECHELON=emulate[:threads]` runs the same source
-on the host, `F4_F2_ECHELON_VERBOSE` prints each matrix's upload, device
-and download time, and `F4_F2_ECHELON_PROFILE` each kernel's.
+**Large matrices on a GPU.** Every `f4_gf2` matrix of at least
+`F4_F2_ECHELON_MIN_WORDS` words (default `1 << 20`, 8 MiB) is eliminated on
+CUDA device 0 whenever the driver opens one, and on the host otherwise,
+one 64-column panel at a time (`suite/cuda/f4_gf2_echelon.cuh`). Such a
+matrix is built without F5's symbolic half, which costs more host time
+than the rows it drops save there. These are the matrices of the solving-
+and first-fall-degree sweeps (`dreg_sweep`) and of `f4_degree_bench` and
+`f4_matrix_bench` at degree 5 and above. Rank, refutation and pinned
+variables are the host's; only the word count differs. `F4_F2_ECHELON`
+picks the backend: `auto` (the default, silent when no device opens),
+`cuda[:N]` (device `N`, and a message when it cannot be opened),
+`emulate[:threads]` (the same source on the host), or `host` (never
+offload). `F4_F2_ECHELON_VERBOSE` prints each matrix's upload, device and
+download time, and `F4_F2_ECHELON_PROFILE` each kernel's.
+
+Every `ca-ic run` report has a `gpu` block: `devices` lists the CUDA
+devices the driver reports (empty on a machine without one), and
+`f4_echelon` gives the offload's mode, the device that eliminated, and the
+matrices, words and seconds it took. A report whose `gpu.devices` is empty
+is a CPU-only measurement. Index-calculus runs belong on a GPU host
+([`AGENTS.md`](../../../AGENTS.md#run-index-calculus-on-a-gpu)).
 
 Not every degree/coefficient combination has a usable subgroup. A valid
 curve does not guarantee successful collection or an invertible relation

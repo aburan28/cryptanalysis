@@ -750,6 +750,44 @@ mod cuda {
         }
     }
 
+    /// The driver's CUDA devices as `name (sm_XY, N SMs)`, without creating
+    /// a context or compiling anything.
+    pub(super) fn device_names() -> Result<Vec<String>, String> {
+        let driver = Driver::load()?;
+        // SAFETY: plain driver API queries with valid out-pointers.
+        unsafe {
+            driver.check((driver.init)(0), "cuInit")?;
+            let mut count = 0;
+            driver.check((driver.device_get_count)(&mut count), "cuDeviceGetCount")?;
+            let mut out = Vec::new();
+            for ordinal in 0..count {
+                let mut device = 0;
+                driver.check((driver.device_get)(&mut device, ordinal), "cuDeviceGet")?;
+                let attr = |a: c_int| -> Result<i32, String> {
+                    let mut v = 0;
+                    driver.check(
+                        (driver.device_get_attribute)(&mut v, a, device),
+                        "cuDeviceGetAttribute",
+                    )?;
+                    Ok(v)
+                };
+                let mut raw = [0 as c_char; 256];
+                driver.check(
+                    (driver.device_get_name)(raw.as_mut_ptr(), 256, device),
+                    "cuDeviceGetName",
+                )?;
+                out.push(format!(
+                    "{} (sm_{}{}, {} SMs)",
+                    CStr::from_ptr(raw.as_ptr()).to_string_lossy(),
+                    attr(75)?,
+                    attr(76)?,
+                    attr(16)?
+                ));
+            }
+            Ok(out)
+        }
+    }
+
     /// Compile the kernel with NVRTC for `compute_{arch}` and return its
     /// NUL-terminated PTX.  Needs only NVRTC (`CA_NVRTC_LIB` or
     /// `libnvrtc.so.*`), not a device, so it is the check that a machine's
@@ -1317,8 +1355,8 @@ mod cuda {
     }
 }
 
-/// Where `f4_gf2` eliminates large matrices: `F4_F2_ECHELON=cuda[:N]`
-/// (device `N`) or `emulate[:threads]` (feature `gpu-emulator`).
+/// Where `f4_gf2` eliminates large matrices: a CUDA device, or the
+/// device source emulated on the host (feature `gpu-emulator`).
 enum Offload {
     #[cfg(unix)]
     Cuda(Box<CudaDecider>),
@@ -1326,13 +1364,31 @@ enum Offload {
     Emulate(u32),
 }
 
-/// `F4_F2_ECHELON_MIN_WORDS` when `F4_F2_ECHELON` is set, read once and
+/// `F4_F2_ECHELON`: `auto` (the default) uses CUDA device 0 when one opens
+/// and the host otherwise, without a word; `cuda[:N]` asks for device `N`
+/// and reports when it cannot be opened; `emulate[:threads]` runs the
+/// device source on the host; `host` (or `cpu`, `off`) never offloads.
+fn offload_mode() -> &'static str {
+    static MODE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    MODE.get_or_init(|| {
+        let spec = std::env::var("F4_F2_ECHELON").unwrap_or_default();
+        match spec.as_str() {
+            "" => "auto".into(),
+            "cpu" | "off" | "none" | "0" => "host".into(),
+            _ => spec,
+        }
+    })
+}
+
+/// `F4_F2_ECHELON_MIN_WORDS` unless offloading is off, read once and
 /// without touching a device, so a run whose matrices all stay small never
 /// opens one.
 fn offload_min_words() -> Option<usize> {
     static MIN: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
     *MIN.get_or_init(|| {
-        std::env::var_os("F4_F2_ECHELON")?;
+        if offload_mode() == "host" {
+            return None;
+        }
         Some(
             std::env::var("F4_F2_ECHELON_MIN_WORDS")
                 .ok()
@@ -1347,14 +1403,16 @@ fn offload_backend() -> Option<&'static std::sync::Mutex<Offload>> {
         std::sync::OnceLock::new();
     OFFLOAD
         .get_or_init(|| {
-            let spec = std::env::var("F4_F2_ECHELON").ok()?;
-            let (kind, arg) = spec.split_once(':').unwrap_or((spec.as_str(), ""));
+            let spec = offload_mode();
+            let (kind, arg) = spec.split_once(':').unwrap_or((spec, ""));
             let backend = match kind {
                 #[cfg(unix)]
-                "cuda" => match CudaDecider::new(arg.parse().unwrap_or(0)) {
+                "auto" | "cuda" => match CudaDecider::new(arg.parse().unwrap_or(0)) {
                     Ok(d) => Offload::Cuda(Box::new(d)),
                     Err(e) => {
-                        eprintln!("F4_F2_ECHELON={spec}: {e}; eliminating on the host");
+                        if kind == "cuda" || std::env::var_os("F4_F2_ECHELON_VERBOSE").is_some() {
+                            eprintln!("F4_F2_ECHELON={spec}: {e}; eliminating on the host");
+                        }
                         return None;
                     }
                 },
@@ -1367,15 +1425,86 @@ fn offload_backend() -> Option<&'static std::sync::Mutex<Offload>> {
         .as_ref()
 }
 
-/// Whether a matrix of `words` words would be eliminated on the backend
-/// `F4_F2_ECHELON` names (see [`offload_echelon`]); reads no device.
+/// Matrices eliminated on the device, their words, and the nanoseconds
+/// spent copying and eliminating them, since the process started.
+static OFFLOADED: [std::sync::atomic::AtomicU64; 3] = [
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+];
+
+/// What the large-matrix offload has done in this process, for reports.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct OffloadSummary {
+    /// `F4_F2_ECHELON` as resolved: `auto`, `cuda[:N]`, `emulate[...]` or
+    /// `host`.
+    pub mode: String,
+    /// The device that eliminated, once one was opened.
+    pub device: Option<String>,
+    /// Matrices eliminated there.
+    pub matrices: u64,
+    /// Their 64-bit words.
+    pub words: u64,
+    /// Seconds uploading, eliminating and downloading them.
+    pub seconds: f64,
+}
+
+/// The large-matrix offload's mode, device and work so far.  Opens no
+/// device that no matrix needed.
+pub fn offload_summary() -> OffloadSummary {
+    use std::sync::atomic::Ordering::Relaxed;
+    let matrices = OFFLOADED[0].load(Relaxed);
+    // Only a backend that has eliminated something is already open.
+    let device = (matrices > 0)
+        .then(offload_backend)
+        .flatten()
+        .and_then(|b| {
+            b.lock().ok().map(|g| match &*g {
+                #[cfg(unix)]
+                Offload::Cuda(d) => d.name(),
+                #[cfg(feature = "gpu-emulator")]
+                Offload::Emulate(t) => format!("emulate:{t}"),
+                #[allow(unreachable_patterns)]
+                _ => String::new(),
+            })
+        });
+    OffloadSummary {
+        mode: offload_mode().to_string(),
+        device,
+        matrices,
+        words: OFFLOADED[1].load(Relaxed),
+        seconds: OFFLOADED[2].load(Relaxed) as f64 / 1e9,
+    }
+}
+
+/// The CUDA devices this host's driver reports, by name; empty without a
+/// driver or a device.  Probed once, without compiling anything.
+pub fn cuda_devices() -> Vec<String> {
+    static DEVICES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    DEVICES
+        .get_or_init(|| {
+            #[cfg(unix)]
+            {
+                cuda::device_names().unwrap_or_default()
+            }
+            #[cfg(not(unix))]
+            {
+                Vec::new()
+            }
+        })
+        .clone()
+}
+
+/// Whether a matrix of `words` words would be eliminated on a device (see
+/// [`offload_echelon`]).  Under `auto` and `cuda` the first such question
+/// opens the device, so the answer is whether one is there.
 pub fn offload_expected(words: u64) -> bool {
-    offload_min_words().is_some_and(|min| words >= min as u64)
+    offload_min_words().is_some_and(|min| words >= min as u64) && offload_backend().is_some()
 }
 
 /// Eliminate one large `f4_gf2` matrix on the backend `F4_F2_ECHELON`
-/// names, if it names one and the matrix has at least
-/// `F4_F2_ECHELON_MIN_WORDS` words (default `1 << 20`, 8 MiB); `None`
+/// selects (by default any CUDA device that opens), if the matrix has at
+/// least `F4_F2_ECHELON_MIN_WORDS` words (default `1 << 20`, 8 MiB); `None`
 /// leaves it to the host, as does a backend error, which is reported.
 /// `matrix` is `rows × stride` words; columns `..low_start` are eliminated
 /// and the `width` columns from `low_start` are the linear block; rows set
@@ -1404,6 +1533,10 @@ pub fn offload_echelon(
     };
     match result {
         Ok(e) => {
+            use std::sync::atomic::Ordering::Relaxed;
+            OFFLOADED[0].fetch_add(1, Relaxed);
+            OFFLOADED[1].fetch_add((rows * stride) as u64, Relaxed);
+            OFFLOADED[2].fetch_add((e.upload_ns + e.device_ns + e.download_ns) as u64, Relaxed);
             if std::env::var_os("F4_F2_ECHELON_VERBOSE").is_some() {
                 eprintln!(
                     "F4_F2_ECHELON: {rows} x {stride} words, {} pivots: upload {:.1} ms, \
