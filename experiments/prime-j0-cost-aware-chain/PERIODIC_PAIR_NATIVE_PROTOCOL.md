@@ -89,3 +89,32 @@ under `docs/ISOLATED_BENCHMARKS.md`; local timing and operation scores alone
 cannot establish it. This repeated-fixed-point workload does not answer
 a one-target rho or index-calculus speed question. Academic novelty is a
 separate prior-art question and is not claimed by this gate.
+
+## Native implementation and old-design controls
+
+The generated bounded-tail and modulus-27 header reproduced SHA-256
+`232a09169126b103f3cca1c2efb3aef0d8a6c8f3aca5565630286e99d911f399`
+on two runs. The [exact cross-language control](periodic-pair-native-design.json)
+compared all 2,048 native word streams, one for each arm on each of the
+1,024 old design scalars, directly against the frozen Python schedules.
+It also matched per-run triple/add counts, atlas lookup counts, gate
+acceptances, and zero fallbacks. The [raw word rows](periodic-pair-native-design-words.csv)
+and full native stdout/stderr/status remain available. The direct curve test
+passed 2,293,207 checks. The 14 tests that do not need a loopback socket
+passed together; the coordinator socket test passed separately with loopback
+access. These controls precede held-out input generation.
+
+An additional [paired old-data diagnostic](periodic-pair-native-old-panel.json)
+ran 4,096 scalars from the prior orbit-pair `point0` fixture on each curve.
+Both arms independently replayed every output and verified the 726 prepared
+points. Its raw commands, statuses, stdout/stderr, exploratory local intervals,
+source hashes, and binary hash are retained. The deterministic counters are:
+
+| Curve | Canonical score | Gated periodic score | Modeled saving | Atlas lookups | Periodic schedules accepted | Fallbacks |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| glv-j0-32 | 431,560 | 412,918 | 4.32% | 15,010 | 1,200 | 0 |
+| j0-56 | 1,124,088 | 1,093,796 | 2.69% | 55,254 | 1,572 | 0 |
+
+This old-data result verifies the intended operation saving with low search
+work and justifies proceeding to the frozen disjoint panel. It does not
+establish an isolated CPU speedup. The protocol above remains unchanged.
