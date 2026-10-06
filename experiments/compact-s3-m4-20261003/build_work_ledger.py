@@ -4480,6 +4480,129 @@ def main():
             "cpu_isolation_receipt": None,
             "receipt_sha256": sha(receipt_path),
         })
+    q1447_dir = HERE / "q1447_midpoint_support"
+    q1447_protocol_path = q1447_dir / "protocol.json"
+    q1447_result_path = q1447_dir / "result.json"
+    q1447_verification_path = q1447_dir / "verification.json"
+    q1447_protocol = json.loads(q1447_protocol_path.read_text())
+    q1447_result = json.loads(q1447_result_path.read_text())
+    q1447_verification = json.loads(q1447_verification_path.read_text())
+    assert q1447_protocol["proposal_id"] == q1447_result[
+        "proposal_id"] == q1447_verification["proposal_id"] == "Q1447"
+    assert q1447_protocol["candidate_id"] is q1447_result[
+        "candidate_id"] is None
+    assert q1447_result["isogeny"] == "none"
+    assert q1447_verification["status"] == "pass"
+    assert q1447_result["protocol_sha256"] == sha(q1447_protocol_path)
+    assert q1447_verification["result_sha256"] == sha(q1447_result_path)
+    assert q1447_result["complete_n131_log2_work"] is None
+    assert q1447_result["challenge_run_admitted"] is False
+    assert len(q1447_result["rows"]) == 4
+    for i, n in enumerate((53, 83)):
+        screen = q1447_result["rows"][i]
+        matched = q1445_protocol["cells"][str(n)]
+        assert screen["curve_id"] == matched["curve_id"]
+        assert screen["actual_B"] == matched["factor_base_actual_B"]
+        assert screen["actual_K"] == matched["folded_columns_K"]
+        assert screen["base_set_sha256"] == matched[
+            "factor_base_enumerated_set_sha256"]
+    assert q1447_result["rows"][2]["curve_id"] == q1443_result[
+        "rows"][2]["curve_id"]
+    assert q1447_result["rows"][2]["actual_B"] == q1443_result[
+        "rows"][2]["actual_B"]
+    assert q1447_result["rows"][2]["base_set_sha256"] == q1443_result[
+        "rows"][2]["base_set_sha256"]
+    assert q1447_result["rows"][3]["conditional_base_model"] is True
+    assert q1447_result["rows"][3]["actual_B"] is None
+    q1448_dir = HERE / "q1448_torsion_phi5"
+    q1448_protocol_path = q1448_dir / "protocol.json"
+    q1448_verification_path = q1448_dir / "verification.json"
+    q1448_protocol = json.loads(q1448_protocol_path.read_text())
+    q1448_verification = json.loads(q1448_verification_path.read_text())
+    assert q1448_protocol["proposal_id"] == q1448_verification[
+        "proposal_id"] == "Q1448"
+    assert q1448_protocol["candidate_id"] is q1448_verification[
+        "candidate_id"] is None
+    assert q1448_protocol["isogeny"] == q1448_verification[
+        "isogeny"] == "none"
+    assert q1448_protocol["point_decomposition_stage_code"] == "PDP4phi5"
+    assert q1448_verification["status"] == "pass"
+    assert q1448_verification["protocol_sha256"] == sha(q1448_protocol_path)
+    assert q1448_verification["complete_n131_log2_work"] is None
+    assert q1448_verification["challenge_run_admitted"] is False
+    q1448_rows = []
+    for n in (53, 83):
+        cell = q1448_protocol["cells"][str(n)]
+        matched = q1445_protocol["cells"][str(n)]
+        for name in ("curve_id", "factor_base_actual_B",
+                     "folded_columns_K",
+                     "factor_base_enumerated_set_sha256", "public_target"):
+            assert cell[name] == matched[name], name
+        assert cell["workload_id"] == q1438_solver_protocol[
+            "workloads"][f"n{n}_ordinary"]["workload_id"]
+        receipt_path = q1448_dir / f"runs/n{n}_ordinary/receipt.json"
+        stdout_path = q1448_dir / f"runs/n{n}_ordinary/solver.stdout.txt"
+        receipt = json.loads(receipt_path.read_text())
+        stdout = stdout_path.read_text()
+        verified = next(row for row in q1448_verification["rows"]
+                        if row["degree_n"] == n)
+        assert verified["receipt_sha256"] == sha(receipt_path)
+        assert verified["solver_status"] == receipt["solver_status"] == "censored"
+        assert receipt["protocol_sha256"] == sha(q1448_protocol_path)
+        assert receipt["solver_stdout_sha256"] == sha(stdout_path)
+        assert receipt["cadical_binary_sha256"] == q1448_protocol[
+            "cadical_binary_sha256"]
+        for name in ("curve_id", "factor_base_actual_B",
+                     "folded_columns_K",
+                     "factor_base_enumerated_set_sha256", "public_target",
+                     "workload_id", "cnf_variables", "cnf_clauses",
+                     "cnf_raw_bytes"):
+            assert receipt[name] == cell[name], name
+        assert receipt["verified_relation_count"] == verified[
+            "verified_relation_count"] == 0
+        assert receipt["complete_n131_log2_work"] is None
+        assert receipt["cost_per_useful_row"] is None
+        stats = {}
+        for name in ("conflicts", "decisions", "propagations"):
+            match = re.search(rf"^c {name}:\s+(\d+)\s", stdout, re.M)
+            assert match is not None, name
+            stats[name] = int(match.group(1))
+        q1448_rows.append({
+            "proposal_id": "Q1448", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4phi5",
+            "degree": n, "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "target_preimage_x_count": receipt["target_preimage_x_count"],
+            "status": "censored_at_60_second_solver_wall_cap",
+            "cnf_variables": receipt["cnf_variables"],
+            "cnf_clauses": receipt["cnf_clauses"],
+            "cnf_raw_bytes": receipt["cnf_raw_bytes"],
+            "solver_conflicts": stats["conflicts"],
+            "solver_decisions": stats["decisions"],
+            "solver_propagations": stats["propagations"],
+            "formula_build_wall_ns_exploratory": receipt[
+                "formula_build_wall_ns_exploratory"],
+            "solver_process_wall_ns_exploratory": receipt[
+                "solver_process_wall_ns_exploratory"],
+            "instrumentation_inclusive_stage_wall_ns_exploratory": receipt[
+                "charged_target_dependent_stage_wall_ns_exploratory"],
+            "stage_interval_includes_cnf_archive_compression": True,
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -5859,6 +5982,47 @@ def main():
             "protocol_sha256": sha(q1446_protocol_path),
             "verification_sha256": sha(q1446_verification_path),
         },
+        "q1447_uniform_midpoint_support_bound": {
+            "proposal_id": "Q1447", "candidate_id": None,
+            "isogeny": "none",
+            "kind": "analytic_support_bound_not_solver_measurement",
+            "work_unit": q1447_result["work_unit"],
+            "input_law": q1447_result["input_law"],
+            "scope": q1447_result["scope"],
+            "proof": q1447_result["proof"],
+            "rows": q1447_result["rows"],
+            "ordinary_N83_relation_measured_here": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": q1447_result["decision"],
+            "protocol_sha256": sha(q1447_protocol_path),
+            "result_sha256": sha(q1447_result_path),
+            "verification_sha256": sha(q1447_verification_path),
+        },
+        "q1448_torsion_symmetrized_phi5_sat_stage": {
+            "proposal_id": "Q1448", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4phi5",
+            "method": q1448_protocol["method"],
+            "rows": q1448_rows,
+            "ordinary_N83_relation_measured": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "The compact invariant directly couples four sparse leaves "
+                "and the target without enumerating pair midpoints or "
+                "expanding ordinary S5. Fully pinned N53/N83 controls pass, "
+                "but both ordinary SAT cells reach the 60-second solver "
+                "cap without a model or verified relation. The archived "
+                "N53 ordinary target has a known witness. Censored stage "
+                "runs cannot establish natural yield or a complete work "
+                "exponent."),
+            "protocol_sha256": sha(q1448_protocol_path),
+            "verification_sha256": sha(q1448_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -6262,6 +6426,13 @@ def main():
                 "Q1446 fires sound cached span filters on both partial "
                 "pairs but each 60-second ordinary cell still reaches only "
                 "one target-linked intermediate choice and no relation; "
+                "Q1447 excludes uniform midpoint restarts on the exact "
+                "N131 W<=6 base in an abstract trial unit but does not "
+                "bound target-guided joint search or measure its cost; "
+                "Q1448's compact torsion-symmetrized five-input SAT "
+                "circuit passes pinned N53/N83 controls but both ordinary "
+                "cells hit the 60-second solver cap without a model, so "
+                "it yields no natural rate or successful-solve trend; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

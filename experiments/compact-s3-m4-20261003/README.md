@@ -1834,30 +1834,60 @@ rows provide operation and memory diagnostics, not a successful-cost or
 natural-yield measurement. The complete N131 `2^x` remains null and the
 challenge gate stays closed.
 
+### Q1447 uniform-midpoint support screen
+
+The [Q1447 analytic screen](q1447_midpoint_support/README.md) tests a
+tempting repair to Q1446: restart with uniformly sampled first-pair
+intermediate x coordinates. On the exact N131 W≤6 base, at most
+`2^-67.778` of raw x choices can be first-pair sums, even after allowing
+repeated leaves and giving all later search a free oracle. For any fixed
+public target, 95% success therefore needs at least `2^67.704`
+abstract midpoint trials under this random-choice policy. The conditional
+selected W7 size still needs `2^65.969`. The pinned N53/N83 bounds are
+`2^18.314` and `2^27.717` trials. These are support bounds, not solver
+timings or calibrated field operations. They exclude uniform restarts as
+the next N131 method; target-guided joint search remains outside the bound.
+No complete N131 `2^x` has been measured.
+
+### Q1448 torsion-symmetrized five-input SAT stage
+
+The [Q1448 frozen stage](q1448_torsion_phi5/README.md) applies the
+published characteristic-two, two-torsion symmetrized polynomial to four
+sparse leaves and every archived raw target preimage. It keeps the exact
+Q1438 N53 W≤4 and N83 W≤6 factor bases, curves, public targets, and
+workload IDs. The compact invariant circuit directly couples all five x
+coordinates, without sampling a pair midpoint or expanding ordinary `S5`.
+Independent pinned controls pass on both curves.
+
+The ordinary N53 formula has 184,858 variables and 695,821 clauses;
+N83 has 451,997 variables and 1,650,799 clauses. CaDiCaL reaches its
+60-second wall cap on both without a model or verified relation. N53 is
+known satisfiable from an archived ordinary witness, so its censored run
+exposes solver cost rather than a missing decomposition. The measured
+solver intervals are 60.115 and 60.205 seconds, with 193,838 and 37,648
+conflicts respectively. The runner's larger inclusive intervals include
+CNF archive compression and are not headline one-target IC times. These
+are exploratory stage diagnostics on an unisolated CPU. They do not give
+a natural relation rate, successful N53-to-N83 solve growth, or a complete
+N131 `2^x`.
+
 ## Next goal
 
-The next solver should build a **compact joint target-conditioned four-point
-witness method that processes many target-linked intermediate choices in a
-shared computation**. Q1446 already checks both partial pairs under a
-target-linked intermediate choice, but its ordinary cells spend the cap on
-one final-root call and complete no pair. Q1436 rejects partial second-pair domains
-four free bits earlier per leaf than Q1435, but spends over 1.3 billion
-affine XORs in an N53 censored prefix and still produces no ordinary
-relation or second first-pair assignment. The next method must use the public
-target to constrain both sparse pairs across many intermediates before
-completing either pair. It
-must avoid the Q1425–Q1427 reverse-root
-rejection loop and the full quotient-pair index screened by Q1416 at roughly
-`2^89.36` logical actions on the exact N131 base under its uniform-key
-model. This is a model for that pure-index family, not a lower bound on
-other decomposition methods. State an exact membership
-or necessary-condition theorem that jointly uses the target's final S3
-link and both sparse pair constraints. Prove solution preservation, and
-verify it against exhaustive small-field cases and the archived N53/N83
-witnesses. A new SAT clause set without a changed ordinary-query search
-pattern does not pass this gate. Q1415's global native XOR Gaussian solver
-also capped on an N53 ordinary formula; repeating that setting alone is
+The next solver should exploit Q1448's **shared five-input field
+invariants before Boolean branching**. Q1448 supplies a compact joint
+constraint, but direct bit-blasting still caps on the known-satisfiable
+N53 ordinary target. A useful next method should eliminate or propagate
+some symmetric field variables against the public target and sparse-x
+conditions, then show a changed search pattern on unpinned ordinary
+queries. Prove solution preservation and verify it against exhaustive
+small-field cases and the archived N53/N83 witnesses. A new SAT clause
+order alone does not pass this gate. Q1447 excludes uniformly restarting
+first-pair midpoints under the declared bases, and Q1416's pure pair-index
+model costs roughly `2^89.36` logical actions at N131; neither is a
+lower bound on target-guided algebraic search. Q1415's global native XOR
+Gaussian solver also capped on N53, so repeating that setting alone is
 not a new feasibility method.
+
 Freeze the stage before ordinary queries. The first measurable gate is the
 unpinned archived N53 ordinary target, which Q1301 already proved
 representable. The second is an independently verified ordinary relation on
