@@ -77,3 +77,30 @@ Local runs may check correctness but cannot promote a wall-time result.
 The fixed-base repeated-point workload does not establish a one-target rho
 or index-calculus speedup. The arithmetic optimization itself is not an
 academic novelty claim.
+
+## Frozen fixture status
+
+The generator and read-only verifier were published as commit `a8913c55`
+before input creation. The eight scalar files and
+[fixture manifest](periodic-pair-int64-inputs.json) were then committed and
+published as `f63f7b36`, before either comparison arm ran. The manifest
+SHA-256 is `7037c34c8a1a29e58a0831f9767f8828e32d57fa6b18f485e2b26359df46548e`.
+The verifier reproduced all 32,768 values, checked their file and pinned
+predecessor hashes, confirmed 16,384 new unique scalars per curve, and
+matched the generic-reference output digest in every case. It excluded
+106,485 prior values on `glv-j0-32` and 106,496 on `j0-56`. No candidate
+arm has been run on this fixture; the isolated timing question remains open.
+
+The [isolated manifest builder](make_periodic_int64_isolated_manifest.py)
+accepts two absolute benchmark binaries and their separate source/build
+trees. It checks the frozen fixture, baseline commit, both recoder source
+hashes, and identical benchmark timer source; then it writes eight cases,
+five AB/BA repetitions, fixed expected output digests, source/build
+artifacts, and the one-CPU/one-NUMA-node isolation request for
+`scripts/isolated_bench.py`. The [receipt auditor](audit_periodic_int64_isolated.py)
+will additionally require exact operation and word-digest equality in all
+40 pairs. Build both binaries on the same Linux host with identical compiler
+and flags, then run `probe` before submitting to the single-worker service.
+The builder was schema-checked with separate old/new builds locally; the
+Mac host's `probe` correctly rejected it with `requires Linux; this host
+cannot certify CPU/NUMA isolation`. No CPU ratio from that host is promoted.

@@ -272,3 +272,5 @@ periodic-atlas words and point evaluator while replacing wide remainder
 arithmetic in the online recoder. It matches all 2,048 frozen design word
 streams exactly. A new disjoint, isolated CPU panel is required to learn
 whether the lower recoding overhead improves wall time.
+Its new disjoint 32,768-scalar fixture is committed before either
+comparison arm runs; no isolated CPU result exists yet.
