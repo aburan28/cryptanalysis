@@ -104,3 +104,23 @@ overhead for this implementation. The receipt keeps `cpu_timing_claim` and
 `isolated_receipt` null. The next design task is to reduce online path
 search cost before investing in a prospective speedup panel; the present
 branch is an exact operation-bound control rather than a faster solver.
+
+## Prospective operation gate
+
+The [fixture generator](make_tau3_radix27_inputs.py) uses seed
+`0x27A61C0B6E8F904D` and excludes every earlier scalar fixture, including
+the sparse panel. Commit the generator, [fixture audit](audit_tau3_radix27_inputs.py),
+[paired runner](check_tau3_radix27_panel.py), and [raw-result
+audit](audit_tau3_radix27_panel.py) before generating inputs. Commit the
+eight generic reference digests and scalar files before either candidate
+arm runs. The paired sparse/radix-27 order alternates by point case.
+
+The operation gate requires all 16 raw arms to match generic point outputs,
+zero radix-27 fallbacks, the same prepared point counts, and strictly fewer
+radix-27 additions in each of the eight cases. Keep all failures and
+timeouts. Record DP states and options evaluated. The online interval must
+include lattice reduction, the complete per-scalar path search, point
+evaluation, and final affine conversion; point preparation and independent
+scalar replay are separate. CPU ratios remain exploratory without repeated
+paired runs and a host-level isolation receipt. A successful operation gate
+does not override the native old-data latency warning.
