@@ -9,6 +9,7 @@ import struct
 
 from check_tau3_fused_native_design import expected_actions
 from make_tau3_fused import build
+from audit_tau3_fused_format import verify_format_equivalence
 
 
 ROOT = Path(__file__).resolve().parent
@@ -29,6 +30,8 @@ def main():
         (ROOT / "check_tau3_fused_native_design.py").read_bytes())
     assert report["fixture_sha256"] == sha256(fixture_path.read_bytes())
     assert report["screen_sha256"] == sha256(screen_path.read_bytes())
+    panel = json.loads((ROOT / "tau3-fused-panel.json").read_text())
+    verify_format_equivalence(panel["ec_tau_source_sha256"], report["bench_sha256"])
     assert report["cpu_timing_claim"] is None and len(report["rows"]) == 8
     cases = {case["id"]: case for case in fixture["cases"]}
     designs = {row["case_id"]: row for row in screen["rows"]}

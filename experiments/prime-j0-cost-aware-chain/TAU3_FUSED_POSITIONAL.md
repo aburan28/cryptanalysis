@@ -133,3 +133,12 @@ in all eight cases**; the raw values are in the receipt. Thus the measured
 operation saving has not translated into a measured CPU speedup. These local
 times are exploratory because the host lacks an isolation receipt, and no
 controlled speedup or one-target rho claim follows from this panel.
+
+After the panel, the repository's changed-line `clang-format` gate required
+formatting in four C files. The frozen panel retains its original source
+hashes. The [format custody receipt](tau3-fused-format-equivalence.json)
+records the historical and formatted source hashes; the rebuilt benchmark
+binary is **byte-identical** to the measured binary. The curve test was
+rerun and still passes 2,306,609 checks. The [read-only format
+audit](audit_tau3_fused_format.py) checks the historical Git blobs and
+current sources without altering the original measurement receipt.
