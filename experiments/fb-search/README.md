@@ -32,6 +32,34 @@ See [`PRIOR_ART.md`](PRIOR_ART.md). Most structural results here are already kno
 What this directory adds is measurement: exact cost models, the integrated one-target pipeline,
 and verified runs. It adds no new exponent.
 
+## One-target IC versus rho, exploratory panel (harness: [`isolated/`](isolated/README.md))
+
+`isolated/` packages the one-target comparison for the isolated benchmark service that AGENTS.md
+requires for any CPU speedup claim:
+
+- a benchmark executable with an internal online timer and scalar replay;
+- a frozen 96-target panel manifest that passes the runner's schema;
+- tests.
+
+**No controlled result exists yet.** This VM fails the service's preflight on 18 counts
+(`results/isolated-probe-cursor-vm.json`): it is a KVM guest with no root, no isolated cgroup
+partition, no `nohz_full`, no fixed frequency and no `numactl`.
+
+The same cases, run directly here (`results/ic-rho-exploratory.jsonl`, `"controlled": false`), give:
+
+| base | verified pairs | IC online ms, median / mean | rho online ms, median / mean | rho/IC, geometric mean [bootstrap 95%] |
+|---|---|---|---|---|
+| `IC1N19Ckb1fb78PDP2htRCsampleLAgaussTDpdpISO0h286621b6083e` (n = 19) | 32/32 | 4.82 / 7.00 | 4.64 / 4.75 | 0.97 [0.62, 1.46] |
+| `IC1N23Ckb1fb266PDP2htRCsampleLAgaussTDpdpISO0h33de8ed9a126` (n = 23) | 12/12 | 5.68 / 10.09 | 20.66 / 18.77 | 2.69 [1.45, 5.31] |
+
+**Caveats.**
+
+- Both variants use the same Python and ctypes arithmetic, which taxes rho's single walk most.
+- Setup is excluded from IC's interval (about 5 s at n = 19, 30 s at n = 23). It is
+  precomputation, so the fair generic comparison is Bernstein-Lange, which these tables do not beat
+  (Sec. 4e of `ABOVE_LIMIT.md`).
+- Single targets vary by over an order of magnitude, in both directions.
+
 ## Above the linearization limit (search record: [`ABOVE_LIMIT.md`](ABOVE_LIMIT.md))
 
 **Question.** Is there a decomposition method that stays cheap past the linearization limit,
