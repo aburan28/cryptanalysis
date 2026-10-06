@@ -312,6 +312,41 @@ ratio grows from 25x to 30x.
 
 **Verdict:** rejected. It shows no sub-`2^d` behaviour against a fair baseline.
 
+## 4d'. Against the repository's F4 above the limit (same factor base, `f4_pair.py`)
+
+**The F4 reference.** `../f4-gpu-20260925` holds the repository's fastest Gröbner decomposition
+oracle, measured inside complete, verified DLPs. Its runs `IC1N23Cka1fb2071PDP2f4...` use, on
+`y^2 + xy = x^3 + x^2 + 1` over `F_2[z]/(z^23 + z^5 + 1)`, the Frobenius-stable base
+`ker g(tau)`, with g irreducible factor 0 of `x^23 - 1`.
+
+**The rebuilt base.** `f4_pair.py` rebuilds that base: 2071 geometric points and 45 effective
+columns, as in the manifest. The manifest's B = 2071 also counts the 2-torsion point at `x = 0`,
+which `FactorBase` excludes, giving 2070. Its `dim V^(2) = 22`, so `d = 10`, above the limit
+`(n + 2)/3 = 8.3`.
+
+**Exactness.** `PDP2ht`, both the Python half-trace solver and the C enumeration, agrees with
+the exact pair table on 100 planted and 300 ordinary targets (0 mismatches). Of the ordinary
+targets, 0.433 decompose, against F4's recorded 26/63 = 0.41.
+
+**Per-attempt cost**, one core, on the same VM class as the F4 records:
+
+| PDP oracle on this base | ms per attempt | vs optimized F4 |
+|---|---|---|
+| F4, reference kernel (`...h573364f3659b`, 3 runs) | 608-614 | 0.1x |
+| F4, `f4_gf2` + F5 (`...h45c66064bdd9`, 3 runs) | 59.3-59.5 | 1x |
+| `PDP2ht`, Python (`PS1N23Cka1fb2070PDP2hth064cba3edc38`) | 21.5 | 2.8x faster |
+| `PDP2ht` + `htenum.c` (`PS1N23Cka1fb2070PDP2hth03b11d151182`) | 1.63 | 36x faster |
+
+- **Workload.** `W4dc3a8a66d6c`; both PS1 rows are run R1 on it.
+- **What the F4 timing includes.** It covers query generation and relation checks, as the F4
+  records note. The F4 solver stops at the first root that lifts, while `PDP2ht` returns every
+  decomposition.
+- **Pairing limits.** The queries are not the same points: the F4 runs used Rust's StdRng. Both
+  are wall times on unisolated hosts, so the comparison is exploratory.
+
+So the residual enumeration (`2^10` candidates here) is also well ahead of the repository's best
+Gröbner oracle above the limit. That makes it the right baseline for the candidates in Sec. 4.
+
 ## 4e. What the best exact oracle gives online, against rho (n = 41, exploratory)
 
 `online_above.py` combines, for geomtraceu seed 1:
