@@ -118,3 +118,47 @@ source hashes, and binary hash are retained. The deterministic counters are:
 This old-data result verifies the intended operation saving with low search
 work and justifies proceeding to the frozen disjoint panel. It does not
 establish an isolated CPU speedup. The protocol above remains unchanged.
+
+## Frozen disjoint panel result
+
+The protocol was committed as `e4178e1e`, the native implementation as
+`5024a385`, the fixture generator as `760270cf`, the fixture as `f29b3106`,
+and the sequential runner as `675a2722`, in that order. Each was pushed
+before the dependent held-out step. The [fixture manifest](periodic-pair-native-inputs.json)
+has SHA-256 `70e2dbf16f8efd40e6e179a02f0aced1c6a99eab75a3ff9584fc7b0bf1de5a14`.
+The [fixture check](check_periodic_pair_inputs.py) reproduced all 32,768
+scalars, verified disjointness from 90,101 and 90,112 prior scalar values
+on the two curves, and matched the generic-reference output digest of all
+eight cases.
+
+The [raw paired panel](periodic-pair-native-panel.json) and its
+[read-only audit](audit_periodic_pair_panel.py) record 16 successful arms,
+eight verified pairs, and a strict modeled-operation gain in every pair.
+The score is `10 × triples + 16 × additions`; it excludes table setup and
+recoding work, both of which remain recorded separately. Each arm verified
+its 4,096 scalar-point outputs by generic replay and all 726 prepared points.
+
+| Frozen case | Canonical score | Gated periodic score | Saved score | Modeled saving |
+| --- | ---: | ---: | ---: | ---: |
+| glv-j0-32-point0 | 435,424 | 415,932 | 19,492 | 4.48% |
+| glv-j0-32-point1 | 432,470 | 414,064 | 18,406 | 4.26% |
+| glv-j0-32-point2 | 431,264 | 413,288 | 17,976 | 4.17% |
+| glv-j0-32-point3 | 429,412 | 410,690 | 18,722 | 4.36% |
+| j0-56-point0 | 1,123,616 | 1,094,226 | 29,390 | 2.62% |
+| j0-56-point1 | 1,120,898 | 1,091,348 | 29,550 | 2.64% |
+| j0-56-point2 | 1,122,782 | 1,092,562 | 30,220 | 2.69% |
+| j0-56-point3 | 1,124,212 | 1,093,804 | 30,408 | 2.70% |
+
+Over four cases per curve, the score falls from 1,728,570 to 1,653,974
+(4.32%) on `glv-j0-32` and from 4,491,508 to 4,371,940 (2.66%) on
+`j0-56`. The candidate made 59,871 and 220,887 atlas lookups, accepted
+4,751 and 6,199 periodic schedules, and had zero 128-word fallbacks.
+Both arms used 726 exact points (23,232 bytes), 24,336 prepared bytes,
+68,029 static map bytes, and 1,024 online scratch bytes per case. Table
+preparation recorded 103 additions, 390 rotations, and two inversions.
+
+The candidate's raw local online interval was longer in seven of eight
+pairs. The macOS host has no host-level isolation receipt, and these
+single-pass timings are exploratory. The controlled CPU wall-time effect
+is **unknown**. The operation gate passes; an end-to-end CPU speedup,
+one-target rho benefit, and academic novelty are not established.
