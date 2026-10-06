@@ -117,6 +117,19 @@ int ca_ec_tau3_sparse_mul_profile(const ca_group *g, const ca_tau3_sparse_precom
                                   uint64_t *cold_pairs, uint64_t *fallbacks);
 void ca_ec_tau3_sparse_clear(ca_tau3_sparse_precomp *pre);
 
+/* Exact minimum-addition public-scalar recoder over the same sparse table.
+ * Its bounded per-scalar shortest path is charged inside online time. */
+size_t ca_ec_tau3_radix27_static_bytes(void);
+size_t ca_ec_tau3_radix27_online_scratch_bytes(void);
+int ca_ec_tau3_radix27_verify_map(void);
+int ca_ec_tau3_radix27_recode_actions(const ca_tau3_sparse_precomp *pre, uint64_t k,
+                                      uint16_t actions[16], size_t *count, uint64_t *dp_states,
+                                      uint64_t *dp_options);
+int ca_ec_tau3_radix27_mul_profile(const ca_group *g, const ca_tau3_sparse_precomp *pre,
+                                   ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                   uint64_t *cold_pairs, uint64_t *fallbacks, uint64_t *dp_states,
+                                   uint64_t *dp_options);
+
 int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point, ca_tau4_precomp *out,
                        uint64_t *ops);
 int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out, uint64_t k,

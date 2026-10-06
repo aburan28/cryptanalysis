@@ -341,6 +341,9 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         CHECK(ca_ec_tau3_atlas_recode_verify_scalar(&tau3_pre, k));
         CHECK(ca_ec_tau3_sparse_mul_profile(g, &sparse_pre, &got, k, NULL, NULL, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
+        CHECK(ca_ec_tau3_radix27_mul_profile(g, &sparse_pre, &got, k, NULL, NULL, NULL, NULL, NULL,
+                                             NULL));
+        CHECK(ca_group_equal(g, &got, &expected));
         uint64_t compact_fallbacks = UINT64_MAX;
         CHECK(ca_ec_tau4_pos_compact_mul_profile(g, &compact_pre, &got, k, NULL, NULL,
                                                  &compact_fallbacks));
@@ -391,6 +394,11 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
                                         &sparse_fallback));
     CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
     CHECK_EQ_U64(sparse_fallback, 1);
+    uint64_t radix_fallback = 0;
+    CHECK(ca_ec_tau3_radix27_mul_profile(g, &sparse_pre, &got, g->order / 2, NULL, NULL, NULL,
+                                         &radix_fallback, NULL, NULL));
+    CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
+    CHECK_EQ_U64(radix_fallback, 1);
     sparse_pre.blocks = sparse_saved_blocks;
     ca_ec_tau3_sparse_clear(&sparse_pre);
     tau3_fallback = 0;
@@ -422,6 +430,9 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_tau3_sparse_prepare(g, &identity, &sparse_pre, NULL, NULL, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_tau3_sparse_prepare_verify(&sparse_pre));
     CHECK(ca_ec_tau3_sparse_mul_profile(g, &sparse_pre, &got, 17, NULL, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    CHECK(ca_ec_tau3_radix27_mul_profile(g, &sparse_pre, &got, 17, NULL, NULL, NULL, NULL, NULL,
+                                         NULL));
     CHECK(ca_group_is_identity(g, &got));
     ca_ec_tau3_sparse_clear(&sparse_pre);
     ca_ec_tau3_fused_clear(&tau3_pre);
@@ -1082,6 +1093,25 @@ static void tau3_sparse_action_maps(void)
         CHECK_EQ_U64(pre.hot_entries, curve_index ? 630 : 324);
         CHECK(ca_ec_tau3_sparse_prepare_verify(&pre));
         CHECK(ca_ec_tau3_sparse_verify_actions(&pre));
+        uint64_t state = UINT64_C(0xb47e2d19ca8f435b);
+        for (unsigned i = 0; i < 128; i++) {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            uint64_t scalar = 1 + state % (order - 1);
+            ca_elem expected, got;
+            ca_group_mul(&g, &expected, &point, scalar, NULL);
+            uint64_t sparse_adds = 0, optimal_adds = 0, fallback = 0, dp_states = 0;
+            CHECK(ca_ec_tau3_sparse_mul_profile(&g, &pre, &got, scalar, &sparse_adds, NULL, NULL,
+                                                NULL));
+            CHECK(ca_group_equal(&g, &got, &expected));
+            CHECK(ca_ec_tau3_radix27_mul_profile(&g, &pre, &got, scalar, &optimal_adds, NULL, NULL,
+                                                 &fallback, &dp_states, NULL));
+            CHECK(ca_group_equal(&g, &got, &expected));
+            CHECK_EQ_U64(fallback, 0);
+            CHECK(optimal_adds <= sparse_adds);
+            CHECK(dp_states > 0);
+        }
         ca_ec_tau3_sparse_clear(&pre);
     }
 }
@@ -1106,6 +1136,7 @@ int main(void)
     CHECK(ca_ec_tau3_fused_verify_map());
     CHECK(ca_ec_tau3_atlas_verify_map());
     CHECK(ca_ec_tau3_sparse_verify_map());
+    CHECK(ca_ec_tau3_radix27_verify_map());
     /* Detection from parameters, no group handling by the caller. */
     ca_curve_info info;
     CHECK(ca_curve_detect(67108933, 0, 7, 16773703, &info) == CA_OK);

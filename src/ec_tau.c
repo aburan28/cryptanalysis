@@ -26,6 +26,7 @@
 #include "generated/tau3_fused.h"
 #include "generated/tau3_atlas.h"
 #include "generated/tau3_sparse.h"
+#include "generated/tau3_radix27.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -3116,6 +3117,228 @@ void ca_ec_tau3_sparse_clear(ca_tau3_sparse_precomp *pre)
     if (!pre) return;
     free(pre->point);
     *pre = (ca_tau3_sparse_precomp){0};
+}
+
+/* Each correction has |a| <= 96 and |b| <= 54. For one starting state,
+ * successors at any fixed depth differ by < 192/26 and < 108/26 in the
+ * two integer coordinates, respectively. Thus at most 9*6=54 states can
+ * occur per depth; 16 depths fit within 1024 memo entries. */
+#define CA_TAU3_RADIX27_MEMO_MAX  1024
+#define CA_TAU3_RADIX27_HASH_SIZE 2048
+#define CA_TAU3_RADIX27_INF       UINT16_MAX
+
+typedef struct tau3_radix27_state {
+    ca_i128 a, b;
+    uint16_t cost, option;
+    uint8_t block;
+} tau3_radix27_state;
+
+typedef struct tau3_radix27_memo {
+    tau3_radix27_state state[CA_TAU3_RADIX27_MEMO_MAX];
+    uint16_t bucket[CA_TAU3_RADIX27_HASH_SIZE];
+    size_t count;
+    uint64_t options;
+    int overflow;
+} tau3_radix27_memo;
+
+size_t ca_ec_tau3_radix27_static_bytes(void)
+{
+    return ca_ec_tau3_sparse_static_bytes() + sizeof(ca_tau3_radix27_offsets) +
+           sizeof(ca_tau3_radix27_options);
+}
+
+size_t ca_ec_tau3_radix27_online_scratch_bytes(void)
+{
+    return sizeof(tau3_radix27_memo) + 16 * sizeof(uint16_t);
+}
+
+int ca_ec_tau3_radix27_verify_map(void)
+{
+    if (!ca_ec_tau3_sparse_verify_map() || ca_tau3_radix27_offsets[0] != 0 ||
+        ca_tau3_radix27_offsets[729] != CA_TAU3_RADIX27_OPTIONS)
+        return 0;
+    uint8_t seen[CA_TAU3_FUSED_ORBITS * 8] = {0};
+    unsigned multiplicity[10] = {0};
+    for (unsigned residue = 0; residue < 729; residue++) {
+        unsigned first = ca_tau3_radix27_offsets[residue];
+        unsigned last = ca_tau3_radix27_offsets[residue + 1];
+        if (last > CA_TAU3_RADIX27_OPTIONS || first >= last || last - first > 9) return 0;
+        multiplicity[last - first]++;
+        for (unsigned i = first; i < last; i++) {
+            const ca_tau3_radix27_option *option = &ca_tau3_radix27_options[i];
+            unsigned id = option->action >> 3, code = option->action & 7;
+            if (id >= CA_TAU3_FUSED_ORBITS || code >= 6 || seen[option->action] ||
+                (unsigned)tau3_residue(option->a, 27) != residue / 27 ||
+                (unsigned)tau3_residue(option->b, 27) != residue % 27 || option->a < -96 ||
+                option->a > 96 || option->b < -54 || option->b > 54)
+                return 0;
+            seen[option->action] = 1;
+            tau_vec expected =
+                tau3_apply_unit_coeff(tau3_pair_coeff(ca_tau3_rep_u[id], ca_tau3_rep_v[id]), code);
+            if (expected.x != option->a || expected.y != option->b) return 0;
+        }
+    }
+    return multiplicity[1] == 397 && multiplicity[3] == 222 && multiplicity[9] == 110;
+}
+
+static uint64_t tau3_radix27_hash(ca_i128 a, ca_i128 b, unsigned block)
+{
+    uint64_t x =
+        (uint64_t)a ^ ((uint64_t)((unsigned __int128)a >> 64) * UINT64_C(0x9e3779b97f4a7c15));
+    uint64_t y =
+        (uint64_t)b ^ ((uint64_t)((unsigned __int128)b >> 64) * UINT64_C(0xbf58476d1ce4e5b9));
+    uint64_t h =
+        x ^ (y + UINT64_C(0x94d049bb133111eb)) ^ ((uint64_t)block * UINT64_C(0x632be59bd9b4e019));
+    h ^= h >> 30;
+    h *= UINT64_C(0xbf58476d1ce4e5b9);
+    h ^= h >> 27;
+    return h ^ (h >> 31);
+}
+
+static tau3_radix27_state *tau3_radix27_find(tau3_radix27_memo *memo, ca_i128 a, ca_i128 b,
+                                             unsigned block, size_t *empty)
+{
+    size_t slot = tau3_radix27_hash(a, b, block) & (CA_TAU3_RADIX27_HASH_SIZE - 1);
+    while (memo->bucket[slot]) {
+        tau3_radix27_state *state = &memo->state[memo->bucket[slot] - 1];
+        if (state->a == a && state->b == b && state->block == block) return state;
+        slot = (slot + 1) & (CA_TAU3_RADIX27_HASH_SIZE - 1);
+    }
+    if (empty) *empty = slot;
+    return NULL;
+}
+
+static uint16_t tau3_radix27_charge(const ca_tau3_sparse_precomp *pre, unsigned block,
+                                    unsigned action)
+{
+    unsigned id = action >> 3;
+    if (!id) return 0;
+    if (!ca_tau3_rep_u[id] || !ca_tau3_rep_v[id] ||
+        (pre->hot_slots && pre->hot_slots[343 * block + id] != UINT16_MAX))
+        return 1;
+    return 2;
+}
+
+static uint16_t tau3_radix27_solve(const ca_tau3_sparse_precomp *pre, tau3_radix27_memo *memo,
+                                   ca_i128 a, ca_i128 b, unsigned block)
+{
+    if (!a && !b) return 0;
+    if (block >= pre->blocks || memo->overflow) return CA_TAU3_RADIX27_INF;
+    tau3_radix27_state *cached = tau3_radix27_find(memo, a, b, block, NULL);
+    if (cached) return cached->cost;
+    unsigned residue = 27 * (unsigned)tau3_residue(a, 27) + (unsigned)tau3_residue(b, 27);
+    unsigned first = ca_tau3_radix27_offsets[residue];
+    unsigned last = ca_tau3_radix27_offsets[residue + 1];
+    uint16_t best_cost = CA_TAU3_RADIX27_INF, best_option = UINT16_MAX;
+    unsigned best_norm = UINT_MAX;
+    unsigned best_action = UINT_MAX;
+    int best_a = INT_MAX, best_b = INT_MAX;
+    for (unsigned i = first; i < last; i++) {
+        const ca_tau3_radix27_option *option = &ca_tau3_radix27_options[i];
+        ca_i128 next_a = ((ca_i128)option->a - a) / 27;
+        ca_i128 next_b = ((ca_i128)option->b - b) / 27;
+        memo->options++;
+        uint16_t tail = tau3_radix27_solve(pre, memo, next_a, next_b, block + 1);
+        if (tail == CA_TAU3_RADIX27_INF) continue;
+        uint16_t charge = tau3_radix27_charge(pre, block, option->action);
+        uint16_t total = (uint16_t)(charge + tail);
+        unsigned norm = (unsigned)abs(option->a) + (unsigned)abs(option->b);
+        if (total < best_cost ||
+            (total == best_cost &&
+             (norm < best_norm ||
+              (norm == best_norm &&
+               (option->action < best_action ||
+                (option->action == best_action &&
+                 (option->a < best_a || (option->a == best_a && option->b < best_b)))))))) {
+            best_cost = total;
+            best_option = (uint16_t)i;
+            best_norm = norm;
+            best_action = option->action;
+            best_a = option->a;
+            best_b = option->b;
+        }
+    }
+    if (memo->overflow || memo->count >= CA_TAU3_RADIX27_MEMO_MAX) {
+        memo->overflow = 1;
+        return CA_TAU3_RADIX27_INF;
+    }
+    size_t empty;
+    if (tau3_radix27_find(memo, a, b, block, &empty)) return CA_TAU3_RADIX27_INF;
+    memo->state[memo->count] = (tau3_radix27_state){a, b, best_cost, best_option, (uint8_t)block};
+    memo->bucket[empty] = (uint16_t)(memo->count + 1);
+    memo->count++;
+    return best_cost;
+}
+
+int ca_ec_tau3_radix27_recode_actions(const ca_tau3_sparse_precomp *pre, uint64_t k,
+                                      uint16_t actions[16], size_t *count, uint64_t *dp_states,
+                                      uint64_t *dp_options)
+{
+    if (!pre || !pre->base.g || !pre->blocks || !actions || !count) return 0;
+    if (dp_states) *dp_states = 0;
+    if (dp_options) *dp_options = 0;
+    *count = 0;
+    const ca_group *g = pre->base.g;
+    k %= g->order;
+    if (!k) return 1;
+    ca_i128 a, b;
+    reduce_with_lattice((tau_vec){pre->base.v1x, pre->base.v1y},
+                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det, k, &a, &b);
+    tau3_radix27_memo memo;
+    for (size_t i = 0; i < CA_TAU3_RADIX27_HASH_SIZE; i++) memo.bucket[i] = 0;
+    memo.count = 0;
+    memo.options = 0;
+    memo.overflow = 0;
+    uint16_t minimum = tau3_radix27_solve(pre, &memo, a, b, 0);
+    if (dp_states) *dp_states = memo.count;
+    if (dp_options) *dp_options = memo.options;
+    if (memo.overflow || minimum == CA_TAU3_RADIX27_INF) return 0;
+    for (unsigned block = 0; a || b; block++) {
+        if (block >= pre->blocks || block >= 16) return 0;
+        tau3_radix27_state *state = tau3_radix27_find(&memo, a, b, block, NULL);
+        if (!state || state->option >= CA_TAU3_RADIX27_OPTIONS) return 0;
+        const ca_tau3_radix27_option *option = &ca_tau3_radix27_options[state->option];
+        if (((ca_i128)option->a - a) % 27 || ((ca_i128)option->b - b) % 27) return 0;
+        actions[(*count)++] = option->action;
+        a = ((ca_i128)option->a - a) / 27;
+        b = ((ca_i128)option->b - b) / 27;
+    }
+    return 1;
+}
+
+int ca_ec_tau3_radix27_mul_profile(const ca_group *g, const ca_tau3_sparse_precomp *pre,
+                                   ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                   uint64_t *cold_pairs, uint64_t *fallbacks, uint64_t *dp_states,
+                                   uint64_t *dp_options)
+{
+    if (!g || !pre || !out || pre->base.g != g || !pre->blocks) return 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (cold_pairs) *cold_pairs = 0;
+    if (fallbacks) *fallbacks = 0;
+    if (dp_states) *dp_states = 0;
+    if (dp_options) *dp_options = 0;
+    if (pre->base.identity || k % g->order == 0) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    uint16_t actions[16];
+    size_t count = 0;
+    if (!ca_ec_tau3_radix27_recode_actions(pre, k, actions, &count, dp_states, dp_options)) {
+        if (fallbacks) *fallbacks = 1;
+        ca_group_mul(g, out, &pre->base_point, k % g->order, NULL);
+        return 1;
+    }
+    if (!pre->point) return 0;
+    tau_jac acc = {0, g->mont.r1, 0};
+    uint64_t na = 0, nr = 0, nc = 0;
+    for (size_t block = count; block-- > 0;)
+        if (!tau3_sparse_add_action(g, pre, &acc, block, actions[block], &na, &nr, &nc)) return 0;
+    jac_to_affine(g, out, acc);
+    if (adds) *adds = na;
+    if (rotations) *rotations = nr;
+    if (cold_pairs) *cold_pairs = nc;
+    return 1;
 }
 
 static int tau4_pos_mul_jac(const ca_group *g, const ca_tau4_pos_precomp *pre, tau_jac *out,
