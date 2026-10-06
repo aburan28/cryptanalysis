@@ -126,6 +126,9 @@ def main():
     parser.add_argument("--out-dir", type=Path, required=True)
     args = parser.parse_args()
     source = args.source_root.resolve()
+    ambient_kic = {key: value for key, value in os.environ.items() if key.startswith("KIC_")}
+    if ambient_kic:
+        raise SystemExit("unexpected inherited KIC_* environment keys: " + ", ".join(sorted(ambient_kic)))
     source_hashes = check_source(source)
     binaries = {name: source / "target/release/examples" / f"koblitz_{name}_fixture" for name in ("rank", "rho")}
     if any(not path.is_file() for path in binaries.values()):
@@ -138,6 +141,7 @@ def main():
         "binary_hashes": {name: digest(path) for name, path in binaries.items()},
         "host": {"platform": platform.platform(), "machine": platform.machine(), "processor": platform.processor(), "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(), "cargo": subprocess.check_output(["cargo", "--version"], text=True).strip()},
         "cpu_isolation": "unverified",
+        "ambient_kic_environment": {},
     }
     (args.out_dir / "BUILD.json").write_text(json.dumps(metadata, sort_keys=True, indent=2)+"\n")
     cap = CONFIG["resource_cap_bytes"]
