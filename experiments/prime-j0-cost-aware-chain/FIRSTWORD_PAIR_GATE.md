@@ -113,5 +113,57 @@ the coordinator loopback test passed separately with socket access.
 any atlas reads made while constructing a selected periodic schedule. The
 native receipt records 9,885 and 9,469 such reads on the two `glv-j0-32`
 old cases, and 25,041 and 24,296 on the two `j0-56` cases. These old-data
-controls establish correctness of the native policy. The new held-out
-fixture has not yet been generated or used, and CPU speed remains unknown.
+controls establish correctness of the native policy.
+
+## Frozen held-out result
+
+The [input generator](make_firstword_pair_inputs.py), its
+[read-only audit](check_firstword_pair_inputs.py), and the
+[paired runner](check_firstword_pair_panel.py) were committed before either
+paired arm ran. The [fixture](firstword-pair-inputs.json) was committed as
+`9823bf47` before the paired runner executed. It contains 32,768 new
+scalars, with earlier fixtures excluded by the generator. The fixture
+manifest SHA-256 is
+`d144189c6b53317c9380515baecb3ea3aec41fc00d8b82b367dba808eb0eaaf5`.
+
+The [raw paired receipt](firstword-pair-native-panel.json) preserves all 16
+command statuses, stdout and stderr, hashes, arm order, operation counts,
+selector counts, exploratory intervals, and correctness results. Its
+[read-only audit](audit_firstword_pair_panel.py) independently checks all
+eight pairings, output digests, 726 prepared points per arm, source and
+executable hashes, operation scores, and the strict gate. Every arm exited
+successfully and verified its 4,096 outputs; all eight candidate scores were
+strictly lower than the paired canonical score.
+
+| Curve | Point | Canonical score | First-word score | Modeled saving | Selected scalars | Candidate atlas reads |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| glv-j0-32 | 0 | 433,754 | 424,628 | 2.10% | 1,510 | 9,614 |
+| glv-j0-32 | 1 | 431,986 | 423,610 | 1.94% | 1,492 | 9,571 |
+| glv-j0-32 | 2 | 431,476 | 422,286 | 2.13% | 1,567 | 9,779 |
+| glv-j0-32 | 3 | 431,798 | 423,064 | 2.02% | 1,551 | 9,779 |
+| j0-56 | 0 | 1,122,588 | 1,114,820 | 0.69% | 1,506 | 24,382 |
+| j0-56 | 1 | 1,121,570 | 1,111,826 | 0.87% | 1,535 | 24,772 |
+| j0-56 | 2 | 1,120,150 | 1,111,662 | 0.76% | 1,495 | 24,243 |
+| j0-56 | 3 | 1,122,308 | 1,113,490 | 0.79% | 1,493 | 24,246 |
+
+There were no 128-word fallbacks. The separate
+[native word-stream receipt](firstword-pair-native-heldout-words.json) and
+[audit](audit_firstword_pair_native_heldout_words.py) check every one of the
+32,768 selected streams against the frozen Python policy in 512 raw 64-scalar
+runs. Their aggregate scores, selections, and atlas reads match the paired
+receipt. The operation gate therefore passes on the prospective fixture.
+
+These scores are a fixed group-operation model, not CPU wall-time speedups.
+The local macOS host has no qualifying isolation receipt, and this panel has
+one arm execution per case rather than five AB/BA repetitions. The recorded
+local intervals are exploratory; controlled CPU effect and academic novelty
+remain unknown. The candidate uses 68,157 static-map bytes versus 68,029 for
+the canonical arm, with the same 24,336-byte prepared state and 726 points.
+
+Recheck the frozen evidence without running a new panel:
+
+```sh
+python3 experiments/prime-j0-cost-aware-chain/check_firstword_pair_inputs.py --bench build-cost-aware/ca_tau_chain_bench
+python3 experiments/prime-j0-cost-aware-chain/audit_firstword_pair_panel.py --bench build-cost-aware/ca_tau_chain_bench
+python3 experiments/prime-j0-cost-aware-chain/audit_firstword_pair_native_heldout_words.py --bench build-cost-aware/ca_tau_chain_design64
+```
