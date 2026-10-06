@@ -1607,18 +1607,47 @@ prefixes. The [result table](q1434_exact_tail/README.md) and
 cells, exact factor-base identities, raw operation counts and memory. No
 ordinary solved-query cost or complete N131 `2^x` follows.
 
+### Q1435 bounded one/two-weight completion
+
+The [frozen Q1435 protocol](q1435_bounded_tail/protocol.json) extends the
+exact completion check to one or two remaining weight units per leaf, with
+a 4,096-candidate-pair cap. The [103-case native/Sage validation](q1435_bounded_tail/tail_validation.json)
+covers all four slack patterns and preserves verified witnesses. Both
+known-witness controls verify. On ordinary N53/N83 queries, the gate checks
+328,408/3,067 span-accepted states and rejects every checked completion
+domain. It tests 110,100,907/1,405,528 candidate pairs and charges
+354,587,110/4,152,415 expansion XORs in addition to field arithmetic.
+Both queries again reach the 60-second cap with zero relations. The
+[result table](q1435_bounded_tail/README.md) and [archive verification](q1435_bounded_tail/verification.json)
+preserve skipped domains, raw work and memory. All N53 2/2 domains exceed
+the cap. No ordinary solved-query cost or complete N131 `2^x` follows.
+
+### Q1436 one-sided affine sparse-pair feasibility
+
+The [frozen Q1436 protocol](q1436_affine_pair/protocol.json) solves the
+second leaf's free bits as an exact GF(2) linear system for each allowed
+completion of the first leaf, using the fixed target-linked intermediate.
+It preserves consistent rank-deficient systems as unknown. The [49-case
+native/Sage validation](q1436_affine_pair/affine_validation.json) retains
+all nine known witnesses, and the [archive verifier](q1436_affine_pair/verification.json)
+independently replays sampled ordinary zero claims. Both controls return
+verified relations. Ordinary N53/N83 searches cap at 60 seconds with zero
+relations, after soundly rejecting 395,906/75,525 partial domains with
+18/24 free bits per leaf. They charge 1,335,395,670/571,525,667 affine
+XORs and still complete only one first pair each. The first v1 control had
+a malformed JSON report and is [archived separately](q1436_affine_pair/failed_v1/README.md);
+the v2 protocol was frozen before these four runs. The [result table](q1436_affine_pair/README.md)
+and ledger preserve operations, memory, failures, and claim limits. No
+successful ordinary-query cost or complete N131 `2^x` follows.
+
 ## Next goal
 
 The next solver should build a **compact target-conditioned pair-sum
-membership and witness method**. Q1434 removes many false-positive late
-span states but still leaves both ordinary targets censored. The immediate
-Q1435 experiment should extend exact completion to partial leaves with one
-or two weight units left, using a frozen candidate-count cap and charging
-enumeration, coefficients, clauses and memory. It should measure whether
-the gate fires earlier than Q1434 and changes the ordinary search pattern.
-If that extension still only prunes late states, the next method must use
-the public target to constrain both sparse pairs before completing either
-pair. The method
+membership and witness method**. Q1436 rejects partial second-pair domains
+four free bits earlier per leaf than Q1435, but spends over 1.3 billion
+affine XORs in an N53 censored prefix and still produces no ordinary
+relation or second first-pair assignment. The next method must use the public
+target to constrain both sparse pairs before completing either pair. It
 must avoid the Q1425–Q1427 reverse-root
 rejection loop and the full quotient-pair index screened by Q1416 at roughly
 `2^89.36` logical actions on the exact N131 base under its uniform-key
