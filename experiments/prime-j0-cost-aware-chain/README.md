@@ -286,3 +286,13 @@ eight paired cases: 1.94%–2.13% modeled saving on `glv-j0-32` and
 0.69%–0.87% on `j0-56`. A separate native replay matched all 32,768
 selected held-out word streams. This is an operation-count result;
 isolated CPU timing and academic novelty remain unestablished.
+
+The [exact mixed-radix tail](MIXED_RADIX_TAIL.md) lets a bounded Eisenstein
+state use τ², a single τ, or doubling, each with an exact digit from the
+existing point catalog. Its shortest-path map covers all 16,641 bounded
+states and is independently audited. On 16,384 older scalars, the full
+canonical-high-plus-mixed-tail score is 6.49%–6.66% lower on `glv-j0-32`
+and 2.47%–2.58% lower on `j0-56` than the canonical pair arm; it also beats
+the earlier first-word gate's old-data score. This is a design screen only.
+Native correctness, disjoint held-out operation results, host-isolated CPU
+timing, and academic novelty remain open.
