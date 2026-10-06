@@ -63,6 +63,30 @@ This was a shared-device correctness diagnostic, with no timing/speedup claim.
 It does not validate the table-walk's complete point-update kernel, global-table
 read path, checkpoint behavior or performance. Those gates remain pending.
 
+## Shared-device point-validation attempts
+
+All four validation copies compiled with both `ECC_PACKED_L2_PERSIST=0` and
+`ECC_PACKED_L2_POLICY=0`. For each profile, the encoded GPU `walk` instructions
+matched its cache-enabled benchmark binary exactly. This permits testing the
+same walk instructions without reserving cache on the shared device; it does
+not validate the cache-enabled host path.
+
+The point/checkpoint diagnostic did **not** pass. `gpu-point-validation.json`
+retains four failed attempts: an incompatible cache-flag combination, a run ID
+outside the 16-bit range, overflow of the default 65,536-report buffer, and a
+90-second timeout after correcting those inputs and increasing report capacity
+to 2,097,152. The last run stopped before a completed checkpoint, report-replay
+summary or matched-state comparison. Point/checkpoint correctness and
+throughput remain null. No rate from these attempts is promoted.
+
+The original production process was verified live with the same executable
+hash after the bounded job finished. No production pause or new rental was
+created. The raw final metadata checksum and exact executed controller hash
+are retained. `shared-point-validation-archival.py` is an archival copy of that
+controller, bound to this experiment's paths and production identity; it is
+not a general-purpose launcher. The dense report workload may be unsuitable
+for the shared host, but the timeout alone does not identify its cause.
+
 The earlier cache experiment reported a three-sample median of
 19.853562B/s (20.432885, 19.853562, 19.819769). Its complete raw evidence was
 lost after premature pod cleanup. Those logs are diagnostic context, not a
