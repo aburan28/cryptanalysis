@@ -86,6 +86,15 @@ streams, sampled point maps, and public fixture scalars have independent
 replays. Natural W24/m6 PDP yield, useful rank, and complete DLP costs remain
 unmeasured; this is an input activation gate, not an `IC1` result.
 
+The [degree-263 transport-cost stage](../ecc2k130-263-transport-cost-20261005/RESULT.md)
+then checked 256 point maps on that frozen workload. The primary target's
+forward and inverse route calls took 45.721 and 42.531 ms in the checked
+Sage path on an unisolated host; these are stage observations, not complete
+IC online times. Future four-policy PDP comparisons must charge the needed
+target map and independently account for factor-base transport or pullback
+construction. Source/transported and native/pullback preserve sum membership
+exactly; only two base choices offer distinct yield hypotheses.
+
 ## Code reviewed for the design axes
 
 | Stage | Existing code and evidence | What can be reused / what is missing |
