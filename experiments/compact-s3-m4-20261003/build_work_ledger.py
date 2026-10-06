@@ -5123,6 +5123,118 @@ def main():
             "cpu_isolation_receipt": None,
             "receipt_sha256": sha(receipt_path),
         })
+    q1454_dir = HERE / "q1454_phi5_conflict_cap"
+    q1454_protocol_path = q1454_dir / "protocol.json"
+    q1454_verification_path = q1454_dir / "verification.json"
+    q1454_cap_path = q1454_dir / "cap_interpretation.json"
+    q1454_protocol = json.loads(q1454_protocol_path.read_text())
+    q1454_verification = json.loads(q1454_verification_path.read_text())
+    q1454_cap = json.loads(q1454_cap_path.read_text())
+    assert q1454_protocol["proposal_id"] == q1454_verification[
+        "proposal_id"] == q1454_cap["proposal_id"] == "Q1454"
+    assert q1454_protocol["candidate_id"] is q1454_verification[
+        "candidate_id"] is q1454_cap["candidate_id"] is None
+    assert q1454_protocol["isogeny"] == q1454_verification[
+        "isogeny"] == q1454_cap["isogeny"] == "none"
+    assert q1454_protocol["point_decomposition_stage_code"] == "PDP4phi5"
+    assert q1454_verification["status"] == q1454_cap["status"] == "pass"
+    assert q1454_protocol["parent_q1452_protocol_sha256"] == sha(
+        q1452_protocol_path)
+    assert q1454_protocol["cells"]["53"] == q1452_protocol["cells"]["53"]
+    assert q1454_protocol["controls_sha256"] == sha(q1452_controls_path)
+    assert q1454_verification["protocol_sha256"] == sha(
+        q1454_protocol_path)
+    assert q1454_cap["verification_sha256"] == sha(
+        q1454_verification_path)
+    assert q1454_verification["ordinary_n53_relation_measured"] is False
+    assert q1454_cap["interpreted_outcome"] == (
+        "conflict_cap_indeterminate_no_model")
+    assert q1454_cap["native_exit_code"] == 15
+    assert q1454_cap["exact_final_conflicts"] >= 1000000
+    assert q1454_cap["exact_final_decisions"] > 0
+    assert q1454_cap["successful_decomposition_cost_measured"] is False
+    assert q1454_cap["complete_n131_log2_work"] is None
+    assert q1454_cap["challenge_run_admitted"] is False
+    q1454_cell = q1454_protocol["cells"]["53"]
+    q1454_receipt_path = (q1454_dir /
+                          "runs/n53_known_satisfiable_ordinary/receipt.json")
+    q1454_receipt = json.loads(q1454_receipt_path.read_text())
+    assert q1454_verification["rows"][0]["receipt_sha256"] == sha(
+        q1454_receipt_path)
+    assert q1454_cap["receipt_sha256"] == sha(q1454_receipt_path)
+    assert q1454_receipt["status"] == q1454_cap[
+        "raw_runner_status"] == "solver_error"
+    assert q1454_receipt["verified_relation_count"] == 0
+    assert len(q1454_receipt["attempts"]) == 1
+    q1454_attempt = q1454_receipt["attempts"][0]
+    assert q1454_attempt["exit_code"] == 15
+    assert q1454_attempt["exact_final_conflicts"] == q1454_cap[
+        "exact_final_conflicts"]
+    assert q1454_attempt["exact_final_decisions"] == q1454_cap[
+        "exact_final_decisions"]
+    q1454_matched_pair = q1445_protocol["cells"]["53"]
+    for key in ("curve_id", "factor_base_actual_B", "folded_columns_K",
+                "factor_base_enumerated_set_sha256", "public_target"):
+        assert q1454_cell[key] == q1454_matched_pair[key], key
+    assert q1445_rows[0]["verified_relation_count"] == 1
+    q1454_rows = [{
+        "proposal_id": "Q1454", "candidate_id": None,
+        "run_id": None, "isogeny": "none",
+        "point_decomposition_stage_code": "PDP4phi5",
+        "degree": 53, "curve_id": q1454_cell["curve_id"],
+        "workload_id": q1454_cell["workload_id"],
+        "factor_base_actual_B": q1454_cell["factor_base_actual_B"],
+        "folded_columns_K": q1454_cell["folded_columns_K"],
+        "factor_base_enumerated_set_sha256": q1454_cell[
+            "factor_base_enumerated_set_sha256"],
+        "public_target": q1454_cell["public_target"],
+        "matched_pair_table_proposal_id": "Q1445",
+        "matched_pair_table_workload_id": q1454_matched_pair["workload_id"],
+        "matched_pair_table_receipt_sha256": q1445_rows[0][
+            "receipt_sha256"],
+        "matched_pair_table_verified_relations": 1,
+        "matched_pair_table_speed_ratio": None,
+        "target_preimage_index": q1454_cell["target_preimage_index"],
+        "selected_raw_target_x": q1454_cell["selected_raw_target_x"],
+        "selected_slice_known_satisfiable_by_archived_witness": True,
+        "witness_leaf_values_supplied_to_solver": False,
+        "status": q1454_cap["interpreted_outcome"],
+        "raw_runner_status": q1454_receipt["status"],
+        "native_exit_code": 15,
+        "attempt_count": 1,
+        "gaussian_matrices_used": q1454_attempt[
+            "initial_gaussian_matrices_used"],
+        "exact_final_conflicts": q1454_cap["exact_final_conflicts"],
+        "exact_final_conflicts_log2": math.log2(q1454_cap[
+            "exact_final_conflicts"]),
+        "exact_final_decisions": q1454_cap["exact_final_decisions"],
+        "final_propagations_rounded_display": q1454_cap[
+            "final_propagations_rounded_display"],
+        "exact_final_field_operations": None,
+        "solver_child_user_cpu_ns": q1454_attempt[
+            "solver_child_user_cpu_ns"],
+        "solver_child_system_cpu_ns": q1454_attempt[
+            "solver_child_system_cpu_ns"],
+        "formula_build_wall_ns_exploratory": q1454_receipt[
+            "formula_build_wall_ns_exploratory"],
+        "solver_process_wall_ns_exploratory": q1454_receipt[
+            "solver_process_wall_ns_exploratory"],
+        "target_dependent_stage_wall_ns_exploratory": q1454_receipt[
+            "target_dependent_stage_wall_ns_exploratory"],
+        "archive_wall_ns_outside_stage": q1454_receipt[
+            "archive_wall_ns_outside_stage"],
+        "peak_child_rss_raw": q1454_receipt["peak_child_rss_raw"],
+        "peak_child_rss_units": q1454_receipt["peak_child_rss_units"],
+        "verified_relation_count": 0,
+        "successful_decomposition_cost_measured": False,
+        "natural_relation_yield_estimate": None,
+        "novel_rank_per_query": None,
+        "cost_per_useful_row": None,
+        "complete_n131_log2_work": None,
+        "cpu_isolation_receipt": None,
+        "receipt_sha256": sha(q1454_receipt_path),
+        "cap_interpretation_sha256": sha(q1454_cap_path),
+    }]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -6673,6 +6785,36 @@ def main():
             "controls_sha256": sha(q1453_controls_path),
             "verification_sha256": sha(q1453_verification_path),
         },
+        "q1454_phi5_conflict_cap_stage": {
+            "proposal_id": "Q1454", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4phi5",
+            "method": q1454_protocol["method"],
+            "controlled_variable": q1454_protocol["controlled_variable"],
+            "rows": q1454_rows,
+            "matched_pair_table_protocol_sha256": sha(q1445_protocol_path),
+            "matched_pair_table_curve_base_target_equal": True,
+            "matched_pair_table_speed_ratio": None,
+            "ordinary_N53_relation_measured": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "The exact Q1452 N53 known-satisfiable XCNF reaches "
+                "the one-million-conflict cap and CryptoMiniSat prints "
+                "exact final conflict and decision counts but no model. "
+                "Native exit 15 is INDETERMINATE; a supplementary audit "
+                "preserves the frozen runner's raw error label and "
+                "classifies the capped outcome. This is a censored "
+                "search prefix in SAT-event units, not a measured "
+                "successful decomposition or N131 field-operation "
+                "projection."),
+            "protocol_sha256": sha(q1454_protocol_path),
+            "verification_sha256": sha(q1454_verification_path),
+            "cap_interpretation_sha256": sha(q1454_cap_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -7101,6 +7243,10 @@ def main():
                 "Q1453 clears phi5 denominators exactly and passes "
                 "N53/N83 pinned controls, but its larger projective "
                 "circuits also time out on both ordinary cells; "
+                "Q1454 extends Q1452's exact N53 known-satisfiable "
+                "XCNF to 1,000,002 exact SAT conflicts, exits "
+                "INDETERMINATE without a model, and still supplies "
+                "no successful-solve cost; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
