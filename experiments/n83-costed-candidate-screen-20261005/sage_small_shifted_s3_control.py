@@ -168,8 +168,9 @@ def main(degree: int, arity: int, out: Path) -> None:
         "empty_slot_indices": [index for index, choices in enumerate(slots)
                                if not choices],
         "counters": counters, "first_mismatches": examples,
-        "full_locus_equivalence": not counters["chain_spurious_pairs"] and
-                                  not counters["chain_missed_pairs"],
+        "full_locus_equivalence": (None if total_tuples == 0 else
+                                   not counters["chain_spurious_pairs"] and
+                                   not counters["chain_missed_pairs"]),
         "protocol_sha256": sha(PROTOCOL), "source_sha256": sha(Path(__file__)),
         "sage_runtime_info_sha256": sha(runtime),
         "wall_ms_exploratory": (time.perf_counter_ns() - started) / 1e6,
