@@ -38,6 +38,13 @@ as a prospective speedup measurement. A native evaluator must first prove
 exact outputs, fallback behavior, and bounded memory and recoding work.
 Then freeze a new disjoint scalar fixture before prospective comparison.
 
+The [action-pool generator](make_tau3_radix27_map.py) packs each residue's
+one to nine choices into an offset array and a four-byte option array.
+Its [read-only audit](audit_tau3_radix27_map.py) regenerates the complete
+map. All correction coefficients fit signed bytes; the map uses 9,672
+compiled bytes. The source and generated table must be frozen before native
+recoder integration.
+
 This design makes no academic novelty or CPU speedup claim. Related
 endomorphism recodings and shortest-path digit selection require a separate
 prior-art review. Dynamic programming spends target-scalar-dependent CPU
