@@ -1,5 +1,18 @@
 # Agent rules for cryptanalysis experiments
 
+## Research searches must leave visual reports
+
+For every substantive search for new isogenies, curves, scalar rules,
+endomorphisms, or related ECDLP mechanisms, follow
+[the research-visuals skill](.agents/skills/research-visuals/SKILL.md).
+Deliver a source-linked report, an explanatory diagram, and a PDF
+containing the report and visual. Include negative and inconclusive findings.
+Update affected canonical graph sources and rendered figures in the same
+change as a verified finding or correction. When there is no graphable change,
+record which graphs were checked and why they remain current. Distinguish
+proposals and extrapolations from proved or measured results; keep the
+candidate, curve-identity, measurement, and Sage rules below in force.
+
 ## Index-calculus candidate names and measurements
 
 Use this convention for new elliptic-curve index-calculus (IC) candidate
