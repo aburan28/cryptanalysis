@@ -1311,7 +1311,7 @@ fn offload_min_words() -> Option<usize> {
             std::env::var("F4_F2_ECHELON_MIN_WORDS")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(1 << 22),
+                .unwrap_or(1 << 20),
         )
     })
 }
@@ -1341,9 +1341,15 @@ fn offload_backend() -> Option<&'static std::sync::Mutex<Offload>> {
         .as_ref()
 }
 
+/// Whether a matrix of `words` words would be eliminated on the backend
+/// `F4_F2_ECHELON` names (see [`offload_echelon`]); reads no device.
+pub fn offload_expected(words: u64) -> bool {
+    offload_min_words().is_some_and(|min| words >= min as u64)
+}
+
 /// Eliminate one large `f4_gf2` matrix on the backend `F4_F2_ECHELON`
 /// names, if it names one and the matrix has at least
-/// `F4_F2_ECHELON_MIN_WORDS` words (default `1 << 22`, 32 MiB); `None`
+/// `F4_F2_ECHELON_MIN_WORDS` words (default `1 << 20`, 8 MiB); `None`
 /// leaves it to the host, as does a backend error, which is reported.
 /// `matrix` is `rows × stride` words; columns `..low_start` are eliminated
 /// and the `width` columns from `low_start` are the linear block; rows set

@@ -541,10 +541,12 @@ fn build(
     // Reference rows, before cancellation: an upper bound on the count.
     let b = binom();
     let mut rows_bound = 0u64;
+    let mut candidates_bound = 0u64;
     for &(_, pdeg) in &generating {
         let k = (degree - pdeg) as usize;
         for j in 0..=k.min(v) {
             rows_bound = rows_bound.saturating_add(b[v][j].saturating_mul(upto(missing, k - j)));
+            candidates_bound = candidates_bound.saturating_add(b[v][j]);
         }
     }
     if rows_bound > caps.max_rows as u64
@@ -559,7 +561,11 @@ fn build(
     s.row_slack.clear();
     s.row_skip.clear();
     s.distinct.clear();
-    let plan = if opts.f5 {
+    // F5 only drops rows in the span of the others.  On a matrix that will
+    // be eliminated on a device its symbolic half costs more host time than
+    // the dropped rows save there, so it is skipped; the answer is the same.
+    let words_bound = candidates_bound.saturating_mul(layout.rank_space.div_ceil(64));
+    let plan = if opts.f5 && !super::f4_gpu::offload_expected(words_bound) {
         F5Plan::new(&generating, &layout, degree)
     } else {
         None
@@ -675,8 +681,13 @@ fn build(
 
     // Fill.  XOR cancels colliding products; empty rows are dropped.
     let stride = n_cols.div_ceil(64);
-    s.matrix.clear();
-    s.matrix.resize(candidates * stride, 0);
+    if candidates * stride > 1 << 22 {
+        // Fresh zeroed pages instead of writing gigabytes of zeros.
+        s.matrix = vec![0; candidates * stride];
+    } else {
+        s.matrix.clear();
+        s.matrix.resize(candidates * stride, 0);
+    }
     s.stored_slack.clear();
     let classes = degree as usize + 1;
     s.class_or.clear();
@@ -692,24 +703,40 @@ fn build(
         let dst = stored * stride;
         let (lo, hi) = (s.row_start[row] as usize, s.row_start[row + 1] as usize);
         let words = &mut s.matrix[dst..dst + stride];
-        for &key in &s.prov[lo..hi] {
-            // SAFETY: every key is at most `max_key`, inside `remap`
-            // (asserted above), and `remap` sends every key that occurs to a
-            // column `< n_cols ≤ 64 · stride`.
+        let keys = &s.prov[lo..hi];
+        // SAFETY (both loops below): every key is at most `max_key`, inside
+        // `remap` (asserted above), and `remap` sends every key that occurs
+        // to a column `< n_cols ≤ 64 · stride`.
+        let word_of = |key: u32| unsafe { *s.remap.get_unchecked(key as usize) } as usize / 64;
+        for &key in keys {
             let c = unsafe { *s.remap.get_unchecked(key as usize) } as usize;
             debug_assert!(c < n_cols);
             unsafe {
                 *words.get_unchecked_mut(c / 64) ^= 1u64 << (c % 64);
             }
         }
-        let words = &s.matrix[dst..dst + stride];
-        if words.iter().all(|&w| w == 0) {
+        // A row's nonzero words are among those its keys touched; on a
+        // wide matrix reading only those beats scanning the row.
+        let sparse = 2 * keys.len() < stride;
+        let empty = if sparse {
+            keys.iter().all(|&key| words[word_of(key)] == 0)
+        } else {
+            words.iter().all(|&w| w == 0)
+        };
+        if empty {
             continue;
         }
         let slack = s.row_slack[row];
         let class = &mut s.class_or[slack as usize * stride..(slack as usize + 1) * stride];
-        for (acc, &w) in class.iter_mut().zip(words) {
-            *acc |= w;
+        if sparse {
+            for &key in keys {
+                let w = word_of(key);
+                class[w] |= words[w];
+            }
+        } else {
+            for (acc, &w) in class.iter_mut().zip(words.iter()) {
+                *acc |= w;
+            }
         }
         s.stored_slack.push(slack);
         s.stored_skip.push(s.row_skip[row]);
