@@ -70,6 +70,9 @@ W4 base, the existing five-sum diagnostic uses unordered multisets
 `binomial(B+4,5)`. Both are divided by `r`; `min(1, count/r)` is only a support
 ceiling. The two tuple models have different symmetry assumptions and cannot
 be treated as measured coverage or compared as equal PDP costs.
+The nominal Boolean coordinate count is `m*d` for shifted slots and `5*83`
+for the unrestricted normal-mask W4 encoding; equations and auxiliaries can
+make actual SAT or Macaulay instances much larger.
 
 For a proposed *explicit* index over one distinct pair of shifted slots,
 there are `B^2` logical input pairs. If an implementation stores every pair

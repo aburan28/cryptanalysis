@@ -63,14 +63,15 @@ def ratio(numerator: int, denominator: int) -> str:
         return format(Decimal(numerator) / Decimal(denominator), ".40g")
 
 
-def main(label: str, out: Path) -> None:
+def main(label: str, out: Path, protocol_path: Path = PROTOCOL) -> None:
     out = out.resolve()
+    protocol_path = protocol_path.resolve()
     runtime = out / "sage_runtime_info.json"
     if not out.is_dir() or not runtime.is_file():
         raise FileNotFoundError("create output and save checked Sage runtime first")
     if (out / "started.json").exists() or (out / "geometry.json").exists():
         raise FileExistsError("geometry output is immutable")
-    protocol = json.loads(PROTOCOL.read_text())
+    protocol = json.loads(protocol_path.read_text())
     public = json.loads(PUBLIC.read_text())
     baseline = json.loads(BASELINE.read_text())
     options = {option["label"]: option for option in protocol["options"]}
@@ -90,7 +91,7 @@ def main(label: str, out: Path) -> None:
     save(out / "started.json", {
         "kind": "n83_shifted_subspace_geometry_start",
         "label": label, "candidate_id": None, "curve_id": protocol["curve_id"],
-        "protocol_sha256": sha(PROTOCOL), "source_sha256": sha(Path(__file__)),
+        "protocol_sha256": sha(protocol_path), "source_sha256": sha(Path(__file__)),
         "public_input_sha256": sha(PUBLIC), "sage_runtime_info_sha256": sha(runtime),
     })
 
@@ -98,7 +99,7 @@ def main(label: str, out: Path) -> None:
         "schema_version": 1, "kind": "n83_shifted_subspace_geometry",
         "status": "INCOMPLETE", "label": label, "candidate_id": None,
         "curve_id": protocol["curve_id"], "arity": m, "dimension": d,
-        "protocol_sha256": sha(PROTOCOL), "source_sha256": sha(Path(__file__)),
+        "protocol_sha256": sha(protocol_path), "source_sha256": sha(Path(__file__)),
         "public_input_sha256": sha(PUBLIC),
         "sage_runtime_info_sha256": sha(runtime),
         "claim_boundary": protocol["claim_boundary"],
@@ -203,7 +204,7 @@ def main(label: str, out: Path) -> None:
         orbit_start = time.perf_counter_ns()
         orbit_reps = set()
         orbit_sizes = {}
-        for seed in orbit_seeds.values():
+        for orbit_cursor, seed in enumerate(orbit_seeds.values(), 1):
             xx, yy = seed[0], seed[1]
             values = set()
             for _ in range(N):
@@ -215,6 +216,21 @@ def main(label: str, out: Path) -> None:
             size = len(values)
             orbit_sizes[size] = orbit_sizes.get(size, 0) + 1
             orbit_reps.add(min(values))
+            if orbit_cursor % 256 == 0:
+                elapsed = (time.perf_counter_ns() - started_ns) / 1e9
+                peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+                save(out / "progress.json", {
+                    "label": label, "processed_nonzero_x": (1 << d) - 1,
+                    "rational_x": rational_x,
+                    "usable_projected_points_so_far": len(points),
+                    "processed_frobenius_orbit_seeds": orbit_cursor,
+                    "wall_seconds_exploratory": elapsed,
+                    "peak_rss_bytes_on_macos": peak,
+                })
+                if elapsed > protocol["resource_limit_seconds_per_base"]:
+                    raise TimeoutError("frozen base wall limit exceeded during orbit fold")
+                if peak > protocol["resource_limit_peak_rss_bytes_per_base"]:
+                    raise MemoryError("frozen base RSS limit exceeded during orbit fold")
         result["orbit_fold_wall_ms_exploratory"] = \
             (time.perf_counter_ns() - orbit_start) / 1e6
         assert orbit_sizes == {2 * N: len(orbit_seeds)}
@@ -273,5 +289,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("label")
     parser.add_argument("out", type=Path)
+    parser.add_argument("--protocol", type=Path, default=PROTOCOL)
     args = parser.parse_args()
-    main(args.label, args.out)
+    main(args.label, args.out, args.protocol)
