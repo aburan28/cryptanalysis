@@ -1934,15 +1934,30 @@ constant-target substitution alone has not produced a successful
 ordinary decomposition under the frozen cap. The cost of a successful
 decomposition and complete N131 `2^x` remain unknown.
 
+### Q1453 division-free projective phi5 circuit
+
+The [Q1453 frozen stage](q1453_projective_phi5/README.md) clears the
+four leaf-inverse denominators algebraically and evaluates the same
+five-input phi invariant from sparse x coordinates. The identity is
+checked on random tuples and archived witnesses at N53/N83; pinned SAT
+controls replay exact group relations. The projective circuit has about
+70% more AND gates than the inverse-constrained baseline. Both ordinary
+cells reach the 65-second external safeguard without a model: N53 on
+its known-satisfiable preimage 201, N83 on ordinary preimage 0. The
+charged stage intervals are 65.276 and 67.119 seconds on an unisolated
+host. The complete N131 `2^x` remains unknown.
+
 ## Next goal
 
 Q1452 tested the **known-satisfiable N53 ordinary target preimage 201**
 with all four leaves unpinned, and it still reached the cap without a
-model. The next solver should introduce a solution-preserving field-level
-elimination or propagation rule that couples several sparse leaves
-before generic Boolean branching. Prove it on exhaustive small fields
-and the archived N53/N83 witnesses, then show a changed search pattern
-on unpinned ordinary queries. Q1447 excludes uniformly restarting
+model. Q1453 proved and measured a division-free representation but
+also capped at N53 and N83. The next solver needs a solution-preserving
+target-conditioned rule that constrains several sparse leaves or pair
+outputs **together** before generic Boolean branching. Prove it on
+exhaustive small fields and the archived N53/N83 witnesses, then show
+a changed search pattern on unpinned ordinary queries. Q1447 excludes
+uniformly restarting
 first-pair midpoints under the declared bases, and Q1416's pure pair-index
 model costs roughly `2^89.36` logical actions at N131; neither is a
 lower bound on target-guided algebraic search. Q1415's global native XOR
