@@ -83,6 +83,25 @@ class HalfTraceTest(unittest.TestCase):
                 solved |= scan["status"] == "solved"
             self.assertEqual(solved, R in truth)
 
+    def test_plain_certificate_refutes_iff_no_decomposition(self):
+        """A plain t-Macaulay identity sum m g_m = 1 exists at D = 4 only on branches without a solution."""
+        from certificate import certificate
+        from residual import boolean_equations, residual_systems
+
+        C = ToyCurve(19)
+        fb = FactorBase(C, "geomtraceu", 8, 1)
+        sv = HalfTraceSolver(fb)
+        truth = decomposition_lookup(fb)
+        rng = random.Random("certificate-test")
+        pts = list(truth)
+        targets = [pts[rng.randrange(len(pts))] for _ in range(5)] + [C.random_subgroup_point(rng)[1] for _ in range(5)]
+        for R in targets:
+            refuted_all = True
+            for rs in residual_systems(sv, R[0]):
+                res = certificate(rs["N"], fb.l, boolean_equations(sv.n, rs["mono"]), "t", 4)
+                refuted_all &= res["refuted"]
+            self.assertEqual(refuted_all, R not in truth, R)
+
     def test_cheaper_than_macaulay_per_attempt(self):
         import json
 

@@ -247,10 +247,25 @@ for the C enumeration. So the degree steps are 3 to 4 somewhere in `d = 10..12` 
   `columns^2 * row weight`) gives an exponent `2 H(s) d`. That is below `d` only for
   `s < 0.110`. The measured range, 1/11 to 1/7, straddles this threshold: the exponent is
   between 0.88d and 1.2d. At `s = 1/9`, `2 H(s) = 1.007`.
-- **Why even that is optimistic.** The closure that refutes is a mutant closure, not a plain
-  Macaulay matrix. At degree D the plain t-Macaulay matrix has about `(d - D + 2)/(2(D - 1))` times
-  fewer rows than columns (2.25 at `d = 21`), so it is not known to refute at the same degree, and
-  Wiedemann does not run a mutant closure.
+- **Why even that is optimistic, measured** (`certificate.py`, `results/certificate-n41.jsonl`).
+  The closure that refutes is a mutant closure, and Wiedemann cannot run one; it needs a plain
+  Macaulay matrix.
+  - **Plain degree.** The plain t-Macaulay matrix (equations times t-monomials, one explicit
+    identity `sum_m m g_m = 1`) refutes only at a higher degree. At n = 41, every target and both
+    branches:
+
+    | d | 3 | 4 | 6 | 9 | 12 | 15 |
+    |---|---|---|---|---|---|---|
+    | plain t-Macaulay degree | 3 | 4 | 4 | 5 | 5 | 6 |
+    | mutant t-closure degree | 3 | 3 | 3 | 3 | 4 | 4 |
+
+    At n = 23 the plain degree at `d = 6` is likewise 4 against 3. No degree-3 identity explains
+    the degree-3 mutant refutations (Sec. 5, lead 1).
+  - **Exponent.** The plain degree steps every 5-6 dimensions, a slope of about 1/6, so the
+    Wiedemann exponent is `2 H(1/6) d = 1.3 d`.
+  - **Size.** Already at `d = 12` and `d = 15` the plain matrix has 15087 and 98881 columns,
+    against `2^d` = 4096 and 32768 candidates. So even linear-time linear algebra on it would lose
+    to the enumeration.
 - **No crossover at cryptographic size, even so.** Take the most favourable slope, 1/11. The
   measured excess at `d = 21` is about `2^14` (`columns^2 / 2^d`, before row weight), and it
   closes at about 0.12 per dimension. A crossover would need roughly `d > 130`. At n = 131,
@@ -333,8 +348,10 @@ margin, and precomputation is equally available to generic rho.
 
 ## 5. Open leads (not yet novelty-checked)
 
-1. **Explain the degree-3 refutations.** Find which degree-3 multiples yield the refutation, and
-   turn that mechanism into a direct algorithm without a Macaulay matrix.
+1. ~~Explain the degree-3 refutations~~: there is no degree-3 identity behind them. The plain
+   t-Macaulay certificate needs degree 4-5 where the mutant closure refutes at degree 3
+   (Sec. 4c), so the mutant closure is exploiting higher-degree cancellations, not a short direct
+   mechanism.
 2. ~~Measure the degree trend beyond `d = 13`~~: done in Sec. 4b-4c with `smxl.c`. The degree is 3
    for `d <= 9`, 4 for `d = 12-18`, 5 at `d = 21` and >= 5 at `d = 24`. Sec. 4c turns this into an
    exponent bound for the whole closure family.
