@@ -1,0 +1,3 @@
+# Preflight correction before target generation
+
+The first invocation of `run.py` stopped in `check_source` before it created an output directory or ran any producer. The archived `Cargo.toml` SHA-256 was 64 hex digits (`8ca2e285ec80488674965e02d0504e499ba291c0f2a02dd11b546a975f6ed557`), but `CONFIG.json` accidentally stored a shortened 43-digit transcription (`8ca2e285ec80488674965e02dd11b546a975f6ed557`). The Rust source digests and archived lockfile matched. `CONFIG.json` now stores the full digest. The same preregistered seeds, run order, code and limits remain fixed; no held-out target was generated before this correction.
