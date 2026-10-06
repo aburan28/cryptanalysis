@@ -122,8 +122,12 @@ class UploadTest(unittest.TestCase):
             self.assertEqual(fbarchive.upload(dry_run=True, require=True), 0)
         lines = [c.args[0] for c in out.call_args_list]
         present = [r for r in fbarchive.read_index() if (HERE / r["path"]).exists()]
-        self.assertEqual(len(lines), len(present) + 1)
+        extra = ["aliases.csv", "unarchived.csv", "sweeps.csv"] + \
+            [str(p.relative_to(HERE)) for p in (HERE / "sweeps").glob("*") if p.name.endswith((".json.gz", ".points.csv"))]
+        self.assertEqual(len(lines), len(present) + 1 + len(extra))
         self.assertTrue(all("s3://bucket/prefix/factor-bases/" in s for s in lines))
+        for rel in extra:
+            self.assertTrue(any(s.endswith("/factor-bases/" + rel) for s in lines), rel)
 
     def test_rejects_a_non_s3_uri(self):
         with mock.patch.dict(os.environ, {"IC_ARCHIVE_S3_URI": "https://example.com"}):

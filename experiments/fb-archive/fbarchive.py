@@ -453,6 +453,10 @@ def upload(dry_run: bool, require: bool) -> int:
     plan = [(HERE / r["path"], f"{base}/{r['curve_id']}/{Path(r['path']).name}", r) for r in rows
             if (HERE / r["path"]).exists()]
     plan.append((INDEX, f"{base}/index.csv", None))
+    # the alias and debt lists and the sweep recipes and shard digests travel with the archive
+    extra = [HERE / "aliases.csv", HERE / "unarchived.csv", HERE / "sweeps.csv"]
+    extra += sorted((HERE / "sweeps").glob("*.json.gz")) + sorted((HERE / "sweeps").glob("*.points.csv"))
+    plan += [(p, f"{base}/{p.relative_to(HERE)}", None) for p in extra if p.exists()]
     if dry_run:
         for path, key, _ in plan:
             print(f"would upload {path.relative_to(HERE)} -> s3://{bucket}/{key}")
