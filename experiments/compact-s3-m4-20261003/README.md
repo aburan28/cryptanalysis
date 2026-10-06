@@ -1544,16 +1544,51 @@ repaired only in a separate audit; the solver, protocol, and receipts remain
 unchanged. Reachability and selected-state rejection do not show net solver
 savings, natural relation yield, or a complete N131 `2^x`.
 
+### Q1431 guarded partial-span propagator
+
+The [frozen Q1431 protocol](q1431_guarded_span/protocol.json) adds a sound
+span rejection clause guarded by every fixed bit of the second pair and its
+fixed intermediate. Its [112-case native/Sage validation](q1431_guarded_span/span_validation.json)
+matches the independent span oracle and retains verified witness completions.
+The [four-cell verification](q1431_guarded_span/verification.json) replays
+both known-witness controls and sampled ordinary rejections. Both ordinary
+N53/N83 searches still cap at 60 seconds without a relation. The filter
+uses 67,632,400 and 53,520,040 field multiplications at N53/N83 while
+reducing reverse pair-1 calls to 12,020 and 19,354. Total field
+multiplications rise to 68,182,727 and 54,467,127, compared with matched
+Q1430's 4,764,022 and 3,676,888 within the same cap. The search paths
+differ, so these are charged stage diagnostics, not a wall-time speedup or
+a relation-cost measurement. The [result table](q1431_guarded_span/README.md)
+and ledger retain failures, operation counts, and claim limits. Complete
+N131 `2^x` remains unknown.
+
+### Q1432 exact span-coefficient cache
+
+The [frozen Q1432 protocol](q1432_coefficient_cache/protocol.json) keeps
+Q1431's rejection and clause semantics while reusing pair-basis products,
+intermediate-keyed bilinear columns, and lazily computed linear columns.
+The [112-case native/Sage validation](q1432_coefficient_cache/cache_validation.json)
+matches the independent oracle and retains verified witnesses. Both controls
+verify; both ordinary N53/N83 searches still reach the 60-second cap without
+a relation. Total field multiplications fall to 1,457,636/1,296,699,
+including 905,700/349,603 filter multiplications and cache construction,
+from Q1431's 68,182,727/54,467,127. Retained cache payload lower bounds
+are 2.21/4.56 MB; the receipts also preserve peak RSS. The [result table](q1432_coefficient_cache/README.md)
+and [archive verification](q1432_coefficient_cache/verification.json) retain
+all four cells. These are different censored search prefixes on an unisolated
+host; no cost per useful relation, natural yield, or complete N131 `2^x`
+can be inferred.
+
 ## Next goal
 
-The immediate solver gate is to integrate Q1428's sound partial-span
-condition as a guarded propagator on Q1430's matched ordinary N53/N83
-targets. Charge every filter field operation, column, clause, and memory
-cost alongside saved reverse-root work; verify the archived controls and
-any ordinary relation independently. A first-16 rejection observation is
-not a speedup. If a charged filter cannot change the ordinary-query search
-economics, the next solver should build a **compact target-conditioned pair-sum
-membership and witness method**. It must avoid the Q1425–Q1427 reverse-root
+The immediate solver gate is a longer preregistered unpinned N53 ordinary
+solve attempt with Q1432's exact cache. Q1301 proves this public target
+representable. A verified return would supply a real solver-cost point;
+another timeout supplies only a lower bound. The exact Q1325 N83 ordinary
+base still needs an independently verified relation before a growth fit.
+If the cached solver remains censored, the next solver should build a
+**compact target-conditioned pair-sum membership and witness method**. It
+must avoid the Q1425–Q1427 reverse-root
 rejection loop and the full quotient-pair index screened by Q1416 at roughly
 `2^89.36` logical actions on the exact N131 base under its uniform-key
 model. This is a model for that pure-index family, not a lower bound on

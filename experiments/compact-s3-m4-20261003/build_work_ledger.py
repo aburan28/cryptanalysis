@@ -3266,6 +3266,209 @@ def main():
         1, 0, 1, 0]
     assert [row["first_snapshots_span_rejected"] for row in q1430_cells] == [
         0, 16, 0, 16]
+    q1431_dir = HERE / "q1431_guarded_span"
+    q1431_protocol_path = q1431_dir / "protocol.json"
+    q1431_verification_path = q1431_dir / "verification.json"
+    q1431_validation_path = q1431_dir / "span_validation.json"
+    q1431_protocol = json.loads(q1431_protocol_path.read_text())
+    q1431_verification = json.loads(q1431_verification_path.read_text())
+    q1431_validation = json.loads(q1431_validation_path.read_text())
+    assert q1431_protocol["proposal_id"] == q1431_verification[
+        "proposal_id"] == q1431_validation["proposal_id"] == "Q1431"
+    assert q1431_protocol["candidate_id"] is q1431_verification[
+        "candidate_id"] is q1431_validation["candidate_id"] is None
+    assert q1431_protocol["isogeny"] == q1431_validation[
+        "isogeny"] == "none"
+    assert q1431_protocol["matched_q1430_protocol_sha256"] == sha(
+        q1430_protocol_path)
+    assert q1431_protocol["span_validation_sha256"] == sha(
+        q1431_validation_path)
+    assert q1431_verification["protocol_sha256"] == sha(
+        q1431_protocol_path)
+    assert q1431_verification["verifier_source_sha256"] == sha(
+        q1431_dir / "verify_archive.py")
+    assert q1431_verification["complete"] is True
+    assert q1431_verification["missing"] == []
+    assert q1431_validation["total_cases"] == 112
+    assert q1431_validation["total_verified_witness_false_rejections"] == 0
+    q1431_cells = []
+    for key in q1431_protocol["run_order"]:
+        workload = q1431_protocol["workloads"][key]
+        receipt_path = q1431_dir / "runs" / key / "receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        check = next(row for row in q1431_verification["checks"]
+                     if row["key"] == key)
+        matched = next(row for row in q1430_cells if row["key"] == key)
+        assert check["receipt_sha256"] == sha(receipt_path)
+        assert receipt["proposal_id"] == "Q1431"
+        assert receipt["candidate_id"] is None
+        assert receipt["isogeny"] == "none"
+        assert receipt["protocol_sha256"] == sha(q1431_protocol_path)
+        assert receipt["stage_run_id"] == workload["stage_run_id"]
+        assert receipt["workload_id"] == matched["workload_id"]
+        assert receipt["curve_id"] == matched["curve_id"]
+        assert receipt["factor_base_actual_B"] == matched[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == matched["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == matched[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["matched_q1430_receipt_sha256"] == matched[
+            "receipt_sha256"]
+        assert receipt["complete_solve_work_log2"] is None
+        report = receipt["solver_report"]
+        assert report is not None
+        assert check["sampled_rejection_false_claims"] == 0
+        q1431_cells.append({
+            "key": key,
+            "degree_n": receipt["degree_n"],
+            "cell": receipt["cell"],
+            "curve_id": receipt["curve_id"],
+            "factor_base_actual_B": receipt["factor_base_actual_B"],
+            "folded_columns_K": receipt["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": receipt[
+                "factor_base_enumerated_set_sha256"],
+            "workload_id": receipt["workload_id"],
+            "stage_run_id": receipt["stage_run_id"],
+            "matched_q1430_stage_run_id": receipt[
+                "matched_q1430_stage_run_id"],
+            "solver_status": receipt["solver_status"],
+            "stop_reason": report["stop_reason"],
+            "verified_relation_count": receipt[
+                "verified_relation_count"],
+            "span_checks": report["span_checks"],
+            "span_rejections": report["span_rejections"],
+            "sampled_rejections_independently_checked": check[
+                "sampled_rejection_checks"],
+            "span_linear_columns": report["span_linear_columns"],
+            "span_bilinear_columns": report["span_bilinear_columns"],
+            "span_guard_literals": report["span_guard_literals"],
+            "span_field_mul_calls": report["span_field_mul_calls"],
+            "span_field_sqr_calls": report["span_field_sqr_calls"],
+            "span_field_inv_calls": report["span_field_inv_calls"],
+            "reverse_pair1_calls": report["reverse_pair1_calls"],
+            "field_mul_calls": report["field_mul_calls"],
+            "field_sqr_calls": report["field_sqr_calls"],
+            "field_inv_calls": report["field_inv_calls"],
+            "matched_q1430_field_mul_calls": matched["field_mul_calls"],
+            "matched_q1430_reverse_pair1_calls": matched[
+                "reverse_pair1_calls"],
+            "solver_process_wall_seconds_exploratory": receipt[
+                "solver_process_wall_seconds_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["solver_status"] for row in q1431_cells] == [
+        "sat", "censored", "sat", "censored"]
+    assert [row["verified_relation_count"] for row in q1431_cells] == [
+        1, 0, 1, 0]
+    q1432_dir = HERE / "q1432_coefficient_cache"
+    q1432_protocol_path = q1432_dir / "protocol.json"
+    q1432_verification_path = q1432_dir / "verification.json"
+    q1432_validation_path = q1432_dir / "cache_validation.json"
+    q1432_protocol = json.loads(q1432_protocol_path.read_text())
+    q1432_verification = json.loads(q1432_verification_path.read_text())
+    q1432_validation = json.loads(q1432_validation_path.read_text())
+    assert q1432_protocol["proposal_id"] == q1432_verification[
+        "proposal_id"] == q1432_validation["proposal_id"] == "Q1432"
+    assert q1432_protocol["candidate_id"] is q1432_verification[
+        "candidate_id"] is q1432_validation["candidate_id"] is None
+    assert q1432_protocol["isogeny"] == q1432_validation[
+        "isogeny"] == "none"
+    assert q1432_protocol["matched_q1431_protocol_sha256"] == sha(
+        q1431_protocol_path)
+    assert q1432_protocol["cache_validation_sha256"] == sha(
+        q1432_validation_path)
+    assert q1432_verification["protocol_sha256"] == sha(
+        q1432_protocol_path)
+    assert q1432_verification["verifier_source_sha256"] == sha(
+        q1432_dir / "verify_archive.py")
+    assert q1432_verification["complete"] is True
+    assert q1432_verification["missing"] == []
+    assert q1432_validation["total_cases"] == 112
+    assert q1432_validation["total_verified_witness_false_rejections"] == 0
+    q1432_cells = []
+    for key in q1432_protocol["run_order"]:
+        workload = q1432_protocol["workloads"][key]
+        receipt_path = q1432_dir / "runs" / key / "receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        check = next(row for row in q1432_verification["checks"]
+                     if row["key"] == key)
+        matched = next(row for row in q1431_cells if row["key"] == key)
+        assert check["receipt_sha256"] == sha(receipt_path)
+        assert receipt["proposal_id"] == "Q1432"
+        assert receipt["candidate_id"] is None
+        assert receipt["isogeny"] == "none"
+        assert receipt["protocol_sha256"] == sha(q1432_protocol_path)
+        assert receipt["stage_run_id"] == workload["stage_run_id"]
+        assert receipt["workload_id"] == matched["workload_id"]
+        assert receipt["curve_id"] == matched["curve_id"]
+        assert receipt["factor_base_actual_B"] == matched[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == matched["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == matched[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["matched_q1431_receipt_sha256"] == matched[
+            "receipt_sha256"]
+        assert receipt["complete_solve_work_log2"] is None
+        report = receipt["solver_report"]
+        assert report is not None
+        assert check["sampled_rejection_false_claims"] == 0
+        q1432_cells.append({
+            "key": key,
+            "degree_n": receipt["degree_n"],
+            "cell": receipt["cell"],
+            "curve_id": receipt["curve_id"],
+            "factor_base_actual_B": receipt["factor_base_actual_B"],
+            "folded_columns_K": receipt["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": receipt[
+                "factor_base_enumerated_set_sha256"],
+            "workload_id": receipt["workload_id"],
+            "stage_run_id": receipt["stage_run_id"],
+            "matched_q1431_stage_run_id": receipt[
+                "matched_q1431_stage_run_id"],
+            "solver_status": receipt["solver_status"],
+            "stop_reason": report["stop_reason"],
+            "verified_relation_count": receipt[
+                "verified_relation_count"],
+            "span_checks": report["span_checks"],
+            "span_rejections": report["span_rejections"],
+            "sampled_rejections_independently_checked": check[
+                "sampled_rejection_checks"],
+            "span_field_mul_calls_including_cache_build": report[
+                "span_field_mul_calls"],
+            "span_field_sqr_calls_including_cache_build": report[
+                "span_field_sqr_calls"],
+            "cache_pair_build_mul_calls": report[
+                "cache_pair_build_mul_calls"],
+            "cache_gamma_build_mul_calls": report[
+                "cache_gamma_build_mul_calls"],
+            "cache_gamma_table_builds": report[
+                "cache_gamma_table_builds"],
+            "cache_gamma_hits": report["cache_gamma_hits"],
+            "cache_linear_rows_retained": report[
+                "cache_linear_rows_retained"],
+            "cache_linear_coefficient_hits": report[
+                "cache_linear_coefficient_hits"],
+            "cache_linear_coefficient_misses": report[
+                "cache_linear_coefficient_misses"],
+            "cache_payload_bytes_lower_bound": report[
+                "cache_payload_bytes_lower_bound"],
+            "reverse_pair1_calls": report["reverse_pair1_calls"],
+            "field_mul_calls": report["field_mul_calls"],
+            "field_sqr_calls": report["field_sqr_calls"],
+            "field_inv_calls": report["field_inv_calls"],
+            "matched_q1431_field_mul_calls": matched["field_mul_calls"],
+            "matched_q1431_reverse_pair1_calls": matched[
+                "reverse_pair1_calls"],
+            "solver_process_wall_seconds_exploratory": receipt[
+                "solver_process_wall_seconds_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["solver_status"] for row in q1432_cells] == [
+        "sat", "censored", "sat", "censored"]
+    assert [row["verified_relation_count"] for row in q1432_cells] == [
+        1, 0, 1, 0]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -4201,6 +4404,76 @@ def main():
                 "ordinary N53/N83 queries."),
             "protocol_sha256": sha(q1430_protocol_path),
             "audit_verification_sha256": sha(q1430_audit_path),
+        },
+        "q1431_guarded_partial_span_stage": {
+            "proposal_id": "Q1431",
+            "candidate_id": None,
+            "isogeny": "none",
+            "controlled_variable": (
+                "a sound guarded partial-pair span propagator versus "
+                "Q1430 observation only on identical Q1426 CNF, exact "
+                "curve and base, public target, decision order, and "
+                "60-second/one-million-conflict caps"),
+            "cells": q1431_cells,
+            "native_vs_sage_validation_cases": 112,
+            "verified_witness_false_rejections": 0,
+            "is_empirical_solver_stage_measurement": True,
+            "is_controlled_cpu_wall_speedup": False,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "Both known-witness controls verify and both ordinary "
+                "N53/N83 cells hit the 60-second cap without a relation. "
+                "The filter reduces reverse pair-1 calls within those "
+                "caps but performs 67,632,400/53,520,040 field "
+                "multiplications itself at N53/N83. Total multiplication "
+                "calls rise from matched Q1430 4,764,022/3,676,888 to "
+                "68,182,727/54,467,127; the branches also explore "
+                "different search prefixes. This naive span integration "
+                "does not establish a faster solver. The next gate should "
+                "reuse bilinear columns for each fixed intermediate and "
+                "charge that cache's construction and memory. No useful "
+                "row rate, solve-growth fit, or complete N131 exponent "
+                "follows from the censored cells."),
+            "protocol_sha256": sha(q1431_protocol_path),
+            "verification_sha256": sha(q1431_verification_path),
+            "span_validation_sha256": sha(q1431_validation_path),
+        },
+        "q1432_cached_span_coefficient_stage": {
+            "proposal_id": "Q1432",
+            "candidate_id": None,
+            "isogeny": "none",
+            "controlled_variable": (
+                "exact reuse of pair-basis products, intermediate-keyed "
+                "bilinear columns, and fixed-value-keyed linear "
+                "coefficients versus Q1431 on identical CNF, curve, "
+                "base, target, decision policy, and caps"),
+            "cells": q1432_cells,
+            "cached_native_vs_sage_validation_cases": 112,
+            "verified_witness_false_rejections": 0,
+            "is_empirical_solver_stage_measurement": True,
+            "is_controlled_cpu_wall_speedup": False,
+            "natural_relation_yield_estimate": None,
+            "degree131_complete_solve_work_log2": None,
+            "decision": (
+                "Both known-witness controls verify and both ordinary "
+                "N53/N83 cells again hit the 60-second cap without a "
+                "relation. Exact coefficient reuse lowers total field "
+                "multiplications from Q1431's 68,182,727/54,467,127 to "
+                "1,457,636/1,296,699 while the filter checks "
+                "219,179/67,183 partial states. Cache construction is "
+                "included in those calls, and retained payload lower "
+                "bounds are 2,205,936/4,563,408 bytes. Q1432's "
+                "operation counts are also below Q1430's matched "
+                "censored prefixes, but search paths differ and CPU "
+                "wall times lack isolation. There is no verified "
+                "ordinary relation, natural yield, useful-row rate, "
+                "solve-growth fit, or complete N131 exponent. The next "
+                "gate is a longer frozen ordinary N53 solve attempt "
+                "or a stronger target-conditioned witness method."),
+            "protocol_sha256": sha(q1432_protocol_path),
+            "verification_sha256": sha(q1432_verification_path),
+            "cache_validation_sha256": sha(q1432_validation_path),
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
