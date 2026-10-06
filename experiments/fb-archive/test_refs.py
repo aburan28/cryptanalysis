@@ -53,6 +53,25 @@ class ScanTests(unittest.TestCase):
             self.assertEqual(refs.digests_in(root / "c.jsonl.gz"), {C})
             self.assertEqual(refs.digests_in(root / "d.json"), set())
 
+    def test_finds_point_set_digests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a.json").write_text(json.dumps({"factor_base": {"point_set_sha256": A}, "base_digest": B}))
+            (root / "b.jsonl").write_text(json.dumps({"enumerated_set_sha256": C}) + "\n")
+            (root / "c.json").write_text(json.dumps({"base_sha256": A}))
+            self.assertEqual(refs.digests_in(root / "a.json"), {A, B})
+            self.assertEqual(refs.digests_in(root / "b.jsonl"), {C})
+            self.assertEqual(refs.digests_in(root / "c.json"), set())
+
+    def test_enumerated_set_digests_count_as_archived(self):
+        import csv
+
+        with open(refs.INDEX, newline="") as fh:
+            row = next(csv.DictReader(fh))
+        have = refs.archived()
+        self.assertIn(row["factor_base_sha256"], have)
+        self.assertIn(row["enumerated_set_sha256"], have)
+
 
 if __name__ == "__main__":
     unittest.main()

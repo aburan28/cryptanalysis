@@ -109,15 +109,21 @@ The f4-gpu results cite a Rust-convention digest under `factor_base_sha256`
 (SHA-256 of sorted `"0x<x>,0x<y>"` lines), so `aliases.csv` maps each cited
 digest to its archive. `verify` recomputes every alias from the archived points.
 The Python rebuild reproduces both cited digests exactly. `test_external.py`
-checks every link against the committed receipts, manifests and candidates.
+checks every link against the committed receipts, manifests and candidates. The hamming and
+catalog runs cite their bases by `point_set_sha256`, which the citation guard
+below also checks.
 
 ## Citation guard: `refs.py`, `unarchived.csv`, `backfill.py`
 
 `refs.py check` (CI workflow `fb-refs`) reads every committed JSON / JSONL
 result under `experiments/` and `ecc2k130/research/`, including `.gz` and `.xz`,
-and collects each `factor_base_sha256`. Every cited digest must be a row of
-`index.csv`, a `cited_sha256` of `aliases.csv` whose archive is indexed, or a row
-of `unarchived.csv`, the closed list of known, not-yet-archived
+and collects each `factor_base_sha256` and each point-set digest
+(`point_set_sha256`, `enumerated_set_sha256`, `factor_base_point_set_sha256`,
+`base_digest`: SHA-256 of the canonical sorted `[[x, y], ...]` list, the
+archive's `enumerated_set_sha256` convention). Every cited digest must be the
+`factor_base_sha256` or `enumerated_set_sha256` of a row of `index.csv`, a
+`cited_sha256` of `aliases.csv` whose archive is indexed, or a row of
+`unarchived.csv`, the closed list of known, not-yet-archived
 bases. The list is exact both ways: a new unarchived citation fails, and so does
 a debt row that has since been archived or is no longer cited. It can only
 shrink. `refs.py report` prints the per-experiment counts.
@@ -131,10 +137,14 @@ and reports anything it cannot rebuild. It backfilled 2,466 bases from
 
 The remaining debt (`unarchived.csv`) is bases that no builder here can
 reproduce: a prime-field base (`bielliptic-quartic`) and a rational "fraction"
-base (`homogeneous-fraction`). The `f4-gpu-20260925` bases were cleared through
-`external.py` and `aliases.csv`. Results that record a base under
-another key (`point_set_sha256`, `base_sha256`, inline point lists) or record
-only counts are not seen by the guard; see the audit in the PR that added it.
+base (`homogeneous-fraction`), and three `ic-candidate-catalog/profiles.json`
+design-profile bases cited by point-set digest: the n = 19 shifted union
+(`649f7b…`), the n = 131 degree-7 sample (`9e160f…`) and the n = 131 ONB
+weight-2 base (`fca949…`, hashed as ONB coordinate masks, a different encoding).
+None of them is a complete-DLP result. The `f4-gpu-20260925` bases were cleared
+through `external.py` and `aliases.csv`. Results that record a base under another
+key (`base_sha256`, whose convention differs between experiments, or inline
+point lists) or record only counts are not seen by the guard.
 
 ## Linking experiment cells: `ps1.py`
 
