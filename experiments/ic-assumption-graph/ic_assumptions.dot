@@ -1,0 +1,247 @@
+digraph IC_Assumptions {
+  // Index calculus for ECDLP: algorithms and the assumptions each rests on.
+  // Source of truth for figures/ic_assumptions.svg and figures/ic_assumptions.pdf.
+  // Each cluster holds one pipeline stage (blue) with its algorithms (white)
+  // and assumptions (ellipses colored by status). See REPORT for sources.
+  // rankdir=TB lays clusters left-to-right (pipeline order); nodes flow top-down inside each.
+  rankdir=TB;
+  splines=spline;
+  nodesep=0.30;
+  ranksep=0.70;
+  compound=true;
+  fontname="Helvetica";
+  fontsize=14;
+  labelloc=t;
+  label="Index calculus for ECDLP: pipeline, algorithms, and assumptions  |  ellipses = assumptions (color = status); dashed = optional or comparison";
+  node [fontname="Helvetica"];
+  edge [fontname="Helvetica", fontsize=9];
+
+  // ---------- Legend ----------
+  subgraph cluster_legend {
+    label="Legend: assumption status";
+    style="rounded,filled";
+    fillcolor="#f9fafb";
+    legend_proved [label="proved /\nchecked per instance", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    legend_heurmeas [label="heuristic +\nmeasured on toys", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    legend_open [label="open /\nno bound", shape=ellipse, style=filled, fillcolor="#fed7aa", fontsize=12];
+    legend_refuted [label="over-optimistic /\nrefuted as stated", shape=ellipse, style=filled, fillcolor="#fecaca", fontsize=12];
+    legend_cond [label="conditional\n(GRH / smoothness)", shape=ellipse, style=filled, fillcolor="#ddd6fe", fontsize=12];
+    legend_stage [label="pipeline stage", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    legend_algo [label="concrete algorithm", shape=box, style=filled, fillcolor="white", fontsize=12];
+  }
+
+  // ---------- SETUP ----------
+  subgraph cluster_setup {
+    label="SETUP: exact instance";
+    style="rounded,filled";
+    fillcolor="#eff6ff";
+    SETUP [label="SETUP\ncurve / field /\nsubgroup (r,h,G)", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    SETUP_ALGO_EXACT [label="exact field / curve /\nsubgroup / encoding", shape=box, style=filled, fillcolor="white", fontsize=12];
+    A_EXACT_ID [label="A-SETUP1 (proved):\nEC1 ID binds\nrepresentation", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_COF_CLEAR [label="A-SETUP2 (proved):\ncofactor clearing\nto <G>", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    SETUP -> SETUP_ALGO_EXACT;
+    SETUP_ALGO_EXACT -> A_EXACT_ID;
+    SETUP_ALGO_EXACT -> A_COF_CLEAR;
+  }
+
+  // ---------- Factor base ----------
+  subgraph cluster_fb {
+    label="FB: factor-base construction";
+    style="rounded,filled";
+    fillcolor="#eff6ff";
+    FB [label="FB\nfactor base", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    FB_SUBSPACE [label="F2-subspace base\nprefix / geometric", shape=box, style=filled, fillcolor="white", fontsize=12];
+    FB_TRACEZERO [label="trace-zero base\nV in ker Tr", shape=box, style=filled, fillcolor="white", fontsize=12];
+    FB_ORBIT [label="automorphism-orbit\n{+-1} / mu4 / mu6", shape=box, style=filled, fillcolor="white", fontsize=12];
+    FB_TOWER [label="tower base (prime)\nPetit-Kosters-Messeng", shape=box, style=filled, fillcolor="white", fontsize=12];
+    FB_SUBGROUP [label="random subgroup\n[h]P sampling", shape=box, style=filled, fillcolor="white", fontsize=12];
+    A_PRODUCT [label="A-FB1 (proved):\nproduct bound\ndim V^(2)>=2l-1", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_LIFT [label="A-FB2 (heur+meas):\nlift + subgroup\n~1/2 each", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    A_ORBIT [label="A-FB3 (proved\nw/ checks): orbit fold\npi(G)=[lambda]G", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_TRACE [label="A-FB4 (proved):\ntrace-zero => 2x\nyield", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    FB -> FB_SUBSPACE;
+    FB -> FB_TRACEZERO;
+    FB -> FB_ORBIT;
+    FB -> FB_TOWER;
+    FB -> FB_SUBGROUP;
+    FB_SUBSPACE -> A_PRODUCT;
+    FB_SUBSPACE -> A_LIFT;
+    FB_TRACEZERO -> A_TRACE;
+    FB_TRACEZERO -> A_PRODUCT;
+    FB_ORBIT -> A_ORBIT;
+    FB_ORBIT -> A_LIFT;
+    FB_TOWER -> A_LIFT [label="coverage"];
+    FB_SUBGROUP -> A_LIFT;
+  }
+
+  // ---------- PDP ----------
+  subgraph cluster_pdp {
+    label="PDP_m: point decomposition";
+    style="rounded,filled";
+    fillcolor="#fffbeb";
+    PDP [label="PDP_m\nR=P1+...+Pm", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    PDP_SEMAEV [label="Semaev S_{m+1}\n(+ symmetrized)", shape=box, style=filled, fillcolor="white", fontsize=12];
+    PDP_WEIL [label="Weil descent\nto MQ / Boolean", shape=box, style=filled, fillcolor="white", fontsize=12];
+    PDP_MITM [label="pair-table /\nMITM oracle", shape=box, style=filled, fillcolor="white", fontsize=12];
+    PDP_GROEBNER [label="Groebner\nF4/F5/XL/Crossbred", shape=box, style=filled, fillcolor="white", fontsize=12];
+    PDP_SAT [label="SAT / CDCL /\nWDSat", shape=box, style=filled, fillcolor="white", fontsize=12];
+    PDP_LINEAR [label="linearized\nhalf-trace", shape=box, style=filled, fillcolor="white", fontsize=12];
+    A_SEMAEV [label="A-PDP1 (proved):\nS=0 <=> sum\nup to sign", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_WEIL [label="A-PDP2 (proved\nw/ checks): Weil sound;\nlift rejects twist", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_SMOOTH [label="A-PDP3 (heur+meas):\nP_dec ~= |F|^m/(m! r)", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    A_FFD [label="A-PDP4 (refuted):\nFFD bounds\nsolving degree", shape=ellipse, style=filled, fillcolor="#fecaca", fontsize=12];
+    A_SEMIREG [label="A-PDP5 (wrong proxy):\nsemi-regular D_reg\npredicts cost", shape=ellipse, style=filled, fillcolor="#fecaca", fontsize=12];
+    A_LASTFALL [label="A-PDP6 (open):\nlast-fall degree\nbounds cost", shape=ellipse, style=filled, fillcolor="#fed7aa", fontsize=12];
+    A_SATSCALE [label="A-PDP7 (open):\nSAT scales past\nGroebner", shape=ellipse, style=filled, fillcolor="#fed7aa", fontsize=12];
+    A_LINEAREXACT [label="A-PDP8 (proved):\nS3 linear in (e1,e2)", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    PDP -> PDP_SEMAEV;
+    PDP -> PDP_WEIL;
+    PDP -> PDP_MITM;
+    PDP -> PDP_GROEBNER;
+    PDP -> PDP_SAT;
+    PDP -> PDP_LINEAR;
+    PDP_SEMAEV -> A_SEMAEV;
+    PDP_WEIL -> A_WEIL;
+    PDP_MITM -> A_SMOOTH;
+    PDP_GROEBNER -> A_FFD [label="claimed"];
+    PDP_GROEBNER -> A_SEMIREG [label="claimed"];
+    PDP_GROEBNER -> A_LASTFALL [style=dashed];
+    PDP_GROEBNER -> A_WEIL;
+    PDP_SAT -> A_SATSCALE;
+    PDP_SAT -> A_WEIL;
+    PDP_LINEAR -> A_LINEAREXACT;
+  }
+
+  // ---------- Relation collection ----------
+  subgraph cluster_rc {
+    label="RC: relation collection";
+    style="rounded,filled";
+    fillcolor="#f0fdf4";
+    RC [label="RC\nrelations", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    RC_RANDOM [label="random sampling\n[a]G+[b]Q", shape=box, style=filled, fillcolor="white", fontsize=12];
+    RC_WALK [label="r-adding walk", shape=box, style=filled, fillcolor="white", fontsize=12];
+    RC_LP [label="single / double\nlarge-prime", shape=box, style=filled, fillcolor="white", fontsize=12];
+    A_WALK [label="A-RC1 (heur+meas):\nwalk uniform +\ntarget guard", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    A_LP [label="A-RC2 (heur+meas):\nleftover birthdays;\ngraph connects", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    A_RANKACC [label="A-RC3 (heur):\nB+eps => full\nrank", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    RC -> RC_RANDOM;
+    RC -> RC_WALK;
+    RC -> RC_LP;
+    RC_RANDOM -> A_RANKACC;
+    RC_WALK -> A_WALK;
+    RC_WALK -> A_RANKACC;
+    RC_LP -> A_LP;
+  }
+
+  // ---------- Linear algebra ----------
+  subgraph cluster_la {
+    label="LA: relation linear algebra";
+    style="rounded,filled";
+    fillcolor="#fdf2f8";
+    LA [label="LA\nmatrix solve", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    LA_GAUSS [label="structured Gauss\n+ filtering", shape=box, style=filled, fillcolor="white", fontsize=12];
+    LA_WIED [label="block Wiedemann\n/ Lanczos", shape=box, style=filled, fillcolor="white", fontsize=12];
+    LA_GRAPH [label="gain-graph\n(1-/2-term)", shape=box, style=filled, fillcolor="white", fontsize=12];
+    A_WIED [label="A-LA1 (proved prob.):\nWiedemann /\nLanczos succeeds", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_MOD [label="A-LA2 (proved):\ncomposite via\nPH+CRT+Hensel", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_FILT [label="A-LA3 (proved):\nsingleton / clique\nremoval sound", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_RANKFULL [label="A-LA4 (heur):\nmatrix full rank\n(cofactor kernel!)", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    LA -> LA_GAUSS;
+    LA -> LA_WIED;
+    LA -> LA_GRAPH;
+    LA_GAUSS -> A_FILT;
+    LA_GAUSS -> A_RANKFULL;
+    LA_WIED -> A_WIED;
+    LA_WIED -> A_MOD;
+    LA_WIED -> A_RANKFULL;
+    LA_GRAPH -> A_RANKFULL;
+  }
+
+  // ---------- Target descent ----------
+  subgraph cluster_td {
+    label="TD: target descent";
+    style="rounded,filled";
+    fillcolor="#f5f3ff";
+    TD [label="TD\ndescent", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    TD_DIRECT [label="direct recovery\n(one relation)", shape=box, style=filled, fillcolor="white", fontsize=12];
+    TD_RECURSE [label="recursive\ndescent", shape=box, style=filled, fillcolor="white", fontsize=12];
+    TD_LEARN [label="learning log\ndatabase", shape=box, style=filled, fillcolor="white", fontsize=12];
+    A_DESCTERM [label="A-TD1 (heur+meas):\ndescent terminates", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    A_LEARN [label="A-TD2 (proved w/\nchecks): learned logs\nvia [k]G=Q", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_RERAND [label="A-TD3 (heur):\nQ+[a]G uniform", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    TD -> TD_DIRECT;
+    TD -> TD_RECURSE;
+    TD -> TD_LEARN;
+    TD_DIRECT -> A_RERAND;
+    TD_RECURSE -> A_DESCTERM;
+    TD_LEARN -> A_LEARN;
+  }
+
+  // ---------- Isogeny ----------
+  subgraph cluster_iso {
+    label="ISO (optional): isogeny transport";
+    style="rounded,dashed,filled";
+    fillcolor="#eef2ff";
+    ISO [label="ISO\nE -> E'", shape=box, style="filled,bold,dashed", fillcolor="#e0e7ff", fontsize=12];
+    ISO_VELU [label="Velu / sqrt-Velu\n+ volcano walk", shape=box, style=filled, fillcolor="white", fontsize=12];
+    A_VOLCANO [label="A-ISO1 (proved):\nl-volcano\nstructure", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_KERNEL [label="A-ISO2 (per-edge):\nkernel rational\n(263 yes; 2,3 no)", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    A_TRANSPORT [label="A-ISO3 (proved w/\nchecks): DLP kept\nif l!|r", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_GRH [label="A-ISO4 (conditional\n+ blocked): GRH\nexpander", shape=ellipse, style=filled, fillcolor="#ddd6fe", fontsize=12];
+    A_VELUCOST [label="A-ISO5 (proved):\nVelu O(l)", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    ISO -> ISO_VELU;
+    ISO_VELU -> A_VOLCANO;
+    ISO_VELU -> A_KERNEL;
+    ISO_VELU -> A_TRANSPORT;
+    ISO_VELU -> A_GRH [style=dashed, label="horizontal"];
+    ISO_VELU -> A_VELUCOST;
+  }
+
+  // ---------- Verify + goal + baseline ----------
+  subgraph cluster_goal {
+    label="Outcome and baseline";
+    style="rounded,filled";
+    fillcolor="#f9fafb";
+    VERIFY [label="VERIFY\n[k]G = Q", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    GOAL [label="ECDLP solved\n(one verified target)", shape=doubleoctagon, style=filled, fillcolor="#bfdbfe", fontsize=12];
+    RHO [label="RHO baseline\npaired 1-target rho", shape=box, style="filled,dashed", fillcolor="#e5e7eb", fontsize=12];
+    RHO_TESKE [label="Teske walk +\ndistinguished points", shape=box, style=filled, fillcolor="white", fontsize=12];
+    RHO_NEG [label="negation / Aut fold\n(sqrt |Aut|)", shape=box, style=filled, fillcolor="white", fontsize=12];
+    RHO_PRECOMP [label="precomputation rho\n(Bernstein-Lange)", shape=box, style=filled, fillcolor="white", fontsize=12];
+    A_GENERIC [label="A-BASE1 (proved):\ngeneric\nOmega(sqrt(r/|Aut|))", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=12];
+    A_RHOHEU [label="A-BASE2 (heur+meas):\nrho random-walk;\nS~=1.25", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    A_CALIB [label="A-BASE3 (meas+pinned):\nGAE calibration\nstable", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=12];
+    VERIFY -> GOAL [penwidth=2.0];
+    RHO -> RHO_TESKE;
+    RHO -> RHO_NEG;
+    RHO -> RHO_PRECOMP;
+    RHO_TESKE -> A_RHOHEU;
+    RHO_NEG -> A_GENERIC;
+    RHO_PRECOMP -> A_RHOHEU [label="fair online"];
+    RHO -> GOAL [style=dashed, label="must beat"];
+    GOAL -> A_GENERIC [style=dashed];
+    GOAL -> A_CALIB [style=dashed, label="priced in"];
+    VERIFY -> A_LEARN [style=dashed, label="same check", constraint=false];
+  }
+
+  // ---------- Pipeline backbone across clusters ----------
+  SETUP -> FB [penwidth=2.0, weight=100, ltail=cluster_setup, lhead=cluster_fb];
+  FB -> PDP [penwidth=2.0, weight=100, ltail=cluster_fb, lhead=cluster_pdp];
+  PDP -> RC [penwidth=2.0, weight=100, ltail=cluster_pdp, lhead=cluster_rc];
+  RC -> LA [penwidth=2.0, weight=100, ltail=cluster_rc, lhead=cluster_la];
+  LA -> TD [penwidth=2.0, weight=100, ltail=cluster_la, lhead=cluster_td];
+  TD -> VERIFY [penwidth=2.0, weight=100, ltail=cluster_td, lhead=cluster_goal];
+  ISO -> FB [style=dashed, label="optional route", constraint=false, ltail=cluster_iso, lhead=cluster_fb];
+  ISO -> PDP [style=dashed, constraint=false, ltail=cluster_iso, lhead=cluster_pdp];
+
+  // Cross-cutting edges do not constrain layout (pipeline order dominates)
+  RC_RANDOM -> A_SMOOTH [style=dashed, constraint=false];
+  RC_WALK -> A_SMOOTH [style=dashed, constraint=false];
+  RC_LP -> A_SMOOTH [style=dashed, constraint=false];
+  TD_DIRECT -> A_SMOOTH [style=dashed, constraint=false];
+  TD_RECURSE -> A_SMOOTH [style=dashed, constraint=false];
+  PDP_WEIL -> A_SMOOTH [style=dashed, label="yield"];
+  PDP_LINEAR -> A_PRODUCT [label="3l-1<=n", constraint=false];
+  RHO_NEG -> A_ORBIT [style=dashed, label="same fold", constraint=false];
+  VERIFY -> A_TRANSPORT [style=dashed, label="if ISO1", constraint=false];
+}
