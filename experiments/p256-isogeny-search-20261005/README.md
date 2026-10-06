@@ -252,6 +252,27 @@ Per-key map evaluation was not timed for the 304 additions, and the ordinary
 host does not satisfy the repository's isolation gate for a promoted timing
 claim.
 
+## Resumed low-degree paths through depth thirteen
+
+The next extension added 176 curves at depth twelve and 192 at depth thirteen,
+again with no overlap against the prior union. The combined explicit registry
+now contains P-256 plus 1,297 distinct neighbors, all with complete ordered
+paths and transported generators.
+
+All 368 additions received matched-native measurements in 62 root-controlled
+blocks. Sixteen unadjusted short-screen hits entered a fresh 30-trial,
+two-second holdout, and none reproduced. The largest holdout point estimate
+was `1.0179x` with paired 95% interval `0.9920x-1.0445x`; all 1,297 retained
+non-root curves now have native measurements and zero reproducible
+iteration-rate improvements.
+
+The delta registry, raw blocks, holdout, transfer assessment, receipt, and
+verifier are frozen in
+[`results/sage-low-degree-depth-thirteen-20261006`](results/sage-low-degree-depth-thirteen-20261006).
+This is still a bounded degree-3/5/11/13 traversal. The exact class-group job
+remained active after more than seven hours when this stage was frozen, and
+per-key map evaluation was not timed for the 368 additions.
+
 ## Quick start
 
 Python 3.11 or newer is required.
