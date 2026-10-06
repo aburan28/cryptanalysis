@@ -1,0 +1,367 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aburan28/cryptanalysis/blob/main/experiments/ic-candidate-catalog/curve-links/link.schema.json",
+  "title": "Typed elliptic-curve representation link",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "status",
+    "source_curve_uid",
+    "target_curve_uid",
+    "map_artifact_ref",
+    "map_sha256",
+    "proof_refs",
+    "subgroup_transport"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kind": {
+      "enum": [
+        "same_field_isomorphism",
+        "twist",
+        "base_change"
+      ]
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "verified"
+      ]
+    },
+    "source_curve_uid": {
+      "type": "string",
+      "pattern": "^urn:ec-record:1:sha256:[0-9a-f]{64}$"
+    },
+    "target_curve_uid": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^urn:ec-record:1:sha256:[0-9a-f]{64}$"
+    },
+    "map_artifact_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "map_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "proof_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "subgroup_transport": {
+      "type": "object",
+      "required": [
+        "status",
+        "evidence_ref"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "unknown",
+            "verified",
+            "not_applicable"
+          ]
+        },
+        "evidence_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "same_field_isomorphism": {
+      "type": "object",
+      "required": [
+        "field_map_ref",
+        "coordinate_map_ref",
+        "inverse_map_ref",
+        "generator_relation"
+      ],
+      "properties": {
+        "field_map_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "coordinate_map_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inverse_map_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generator_relation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "twist": {
+      "type": "object",
+      "required": [
+        "twist_kind",
+        "twist_parameter",
+        "extension_degree",
+        "extension_isomorphism_ref"
+      ],
+      "properties": {
+        "twist_kind": {
+          "enum": [
+            "quadratic",
+            "quartic",
+            "sextic",
+            "other"
+          ]
+        },
+        "twist_parameter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extension_degree": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 2
+        },
+        "extension_isomorphism_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "base_change": {
+      "type": "object",
+      "required": [
+        "field_embedding_ref",
+        "extension_degree"
+      ],
+      "properties": {
+        "field_embedding_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extension_degree": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 2
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "same_field_isomorphism"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "same_field_isomorphism"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "twist"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "twist"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "base_change"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "base_change"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "verified"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "target_curve_uid": {
+            "type": "string"
+          },
+          "map_artifact_ref": {
+            "type": "string"
+          },
+          "map_sha256": {
+            "type": "string"
+          },
+          "proof_refs": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "subgroup_transport": {
+            "properties": {
+              "status": {
+                "const": "verified"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "subgroup_transport": {
+            "properties": {
+              "evidence_ref": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "twist"
+          },
+          "status": {
+            "const": "verified"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "twist": {
+            "properties": {
+              "twist_parameter": {
+                "type": "string"
+              },
+              "extension_degree": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "extension_isomorphism_ref": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "same_field_isomorphism"
+          },
+          "status": {
+            "const": "verified"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "same_field_isomorphism": {
+            "properties": {
+              "field_map_ref": {
+                "type": "string"
+              },
+              "coordinate_map_ref": {
+                "type": "string"
+              },
+              "inverse_map_ref": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "base_change"
+          },
+          "status": {
+            "const": "verified"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "base_change": {
+            "properties": {
+              "field_embedding_ref": {
+                "type": "string"
+              },
+              "extension_degree": {
+                "type": "integer",
+                "minimum": 2
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

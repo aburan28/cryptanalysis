@@ -1,7 +1,10 @@
 """Integrity gates for the generated proposal catalog and isogeny links."""
 
 import copy
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 
 import generate
 
@@ -27,10 +30,17 @@ class CatalogTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             generate.validate_routes(forged)
 
+    def test_ecc2k130_degree263_route_artifact(self):
+        verifier = (Path(__file__).resolve().parents[1] /
+                    "koblitz-polynomial-w-pair-20260925" /
+                    "verify_ecc2k130_263_route_manifest.py")
+        subprocess.run([sys.executable, str(verifier)], check=True,
+                       capture_output=True, text=True)
+
     def test_verified_route_requires_map_and_contiguous_edges(self):
         graph = generate.load_json("isogeny_routes.json")
         graph["curve_nodes"].extend([{"ref": "middle"}, {"ref": "target"}])
-        graph["edges"] = [
+        graph["edges"].extend([
             {"id": "e1", "status": "verified", "source_curve_ref": "ecc2k130/polynomial-basis-131",
              "target_curve_ref": "middle", "degree": 2, "explicit_map_sha256": "a" * 64,
              "map_artifact_ref": "map1", "kernel_certificate_sha256": "b" * 64,
@@ -39,13 +49,13 @@ class CatalogTests(unittest.TestCase):
              "target_curve_ref": "target", "degree": 3, "explicit_map_sha256": "d" * 64,
              "map_artifact_ref": "map2", "kernel_certificate_sha256": "e" * 64,
              "subgroup_transport_certificate_sha256": "f" * 64},
-        ]
+        ])
         graph["routes"].append({"id": "tested", "status": "verified",
                                 "source_curve_ref": "ecc2k130/polynomial-basis-131",
                                 "target_curve_ref": "target", "edge_ids": ["e1", "e2"],
                                 "search_prime": None})
         generate.validate_routes(graph)
-        graph["edges"][1]["source_curve_ref"] = "ecc2k130/polynomial-basis-131"
+        graph["edges"][-1]["source_curve_ref"] = "ecc2k130/polynomial-basis-131"
         with self.assertRaises(AssertionError):
             generate.validate_routes(graph)
 

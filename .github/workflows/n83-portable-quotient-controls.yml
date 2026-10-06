@@ -1,0 +1,92 @@
+name: n83 portable quotient controls
+
+on:
+  pull_request:
+    paths:
+      - "experiments/koblitz-pair-claw-20260929/**"
+      - ".github/workflows/n83-portable-quotient-controls.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  physical-x86-controls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record host and compiler
+        run: |
+          test "$(uname -m)" = x86_64
+          uname -a
+          clang++ --version
+          python3 --version
+
+      - name: Exact PCLMUL and portable fallback controls
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/verify_n83_portable_controls.py \
+            --backend x86_pclmul --spill-dir "$RUNNER_TEMP" \
+            --out "$RUNNER_TEMP/n83_x86_pclmul_controls.json"
+          python3 experiments/koblitz-pair-claw-20260929/verify_n83_portable_controls.py \
+            --backend x86_generic --spill-dir "$RUNNER_TEMP" \
+            --out "$RUNNER_TEMP/n83_x86_generic_controls.json"
+
+      - name: One bounded public-target stage chunk
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/run_n83_portable_chunk.py \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --spill-dir "$RUNNER_TEMP" --binary "$RUNNER_TEMP/ecc2k83-query" \
+            --table-log2 20 --query-reps-log2 14 \
+            --table-start 0 --query-start 1073741824 \
+            --workers 2 --rep-batch 8 --bits-per-key 20 --hashes 10 \
+            --out "$RUNNER_TEMP/n83_x86_public_M20_R14.json"
+          python3 -c 'import json, os; p=os.path.join(os.environ["RUNNER_TEMP"], "n83_x86_public_M20_R14.json"); n=json.load(open(p))["native_result"]; assert n["peak_rss_bytes"] >= n["bloom_bytes"]; assert n["bloom_positive_queries"] == 247 and n["exact_hit_queries"] == 0'
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: n83-physical-x86-controls
+          path: ${{ runner.temp }}/n83_x86_*.json
+          if-no-files-found: warn
+
+  paired-x86-scratch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Prepare frozen Q1061 round-two baseline
+        env:
+          N83_Q1061_BASE_SHA: 93e8f9d642ff23d1952903d3b088ef08f5be0eae
+        run: |
+          if ! git cat-file -e "${N83_Q1061_BASE_SHA}^{commit}"; then
+            git fetch --no-tags --depth=1 origin "$N83_Q1061_BASE_SHA" || true
+          fi
+          if ! git cat-file -e "${N83_Q1061_BASE_SHA}^{commit}"; then
+            git fetch --no-tags --unshallow origin
+          fi
+          git cat-file -e "${N83_Q1061_BASE_SHA}^{commit}"
+          git worktree add --detach "$RUNNER_TEMP/n83-q1061-r2" "$N83_Q1061_BASE_SHA"
+          mkdir "$RUNNER_TEMP/n83-paired"
+
+      - name: Paired M24/R20 ABBA scratch comparison
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/bench_n83_portable_scratch_paired.py \
+            --baseline-root "$RUNNER_TEMP/n83-q1061-r2" \
+            --current-root "$GITHUB_WORKSPACE" \
+            --out-dir "$RUNNER_TEMP/n83-paired" \
+            --spill-dir "$RUNNER_TEMP" \
+            --cpu-backend x86_pclmul --cxx clang++ \
+            --table-log2 24 --query-reps-log2 20 --workers 2 \
+            --measurement-label "native x86 Linux M24/R20 paired ABBA stage probe"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: n83-x86-scratch-abba
+          path: ${{ runner.temp }}/n83-paired/*.json
+          if-no-files-found: warn

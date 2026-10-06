@@ -1,0 +1,19 @@
+{
+  "kind": "n83_q1074_host_disk_intervention_during_active_run",
+  "observed_date_utc": "2026-10-01",
+  "proposal_id": "Q1074",
+  "curve_id": "EC1N83Ckb1h876c2921cb64",
+  "isogeny": "none",
+  "reason": "Local APFS volume approached the Q1074 reserved free-space minimum while its native process was active.",
+  "pre_action_available_gib_reported_by_df": 2.3,
+  "action": "Removed /private/tmp/f5-compact-cols-unpack-20260929/target, an idle Git-ignored Cargo build directory outside the Q1074 worktree.",
+  "safety_checks": [
+    "git check-ignore identified .gitignore:1:/target for the removed directory",
+    "lsof found no open files under that target directory",
+    "Q1074 native PID 15300 retained four open candidate spill descriptors",
+    "No Q1074 source, binary, spill descriptor, receipt, or working directory was removed"
+  ],
+  "post_action_available_gib_reported_by_df": 3.6,
+  "timing_implication": "The concurrent host disk intervention must be disclosed with Q1074 timing; no speedup comparison should treat this run as a pristine isolated benchmark.",
+  "native_run_status_at_recording": "active_uncredited"
+}

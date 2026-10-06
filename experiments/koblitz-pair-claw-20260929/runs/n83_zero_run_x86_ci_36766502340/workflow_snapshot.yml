@@ -1,0 +1,59 @@
+name: n83 zero-run keyer physical x86 screen Q1078
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/n83-zero-run-keyer-x86-q1078.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  physical-x86-pclmul:
+    # One-shot retry after resolving the checkout's factor-base path.
+    # Disable after the receipt is archived and audited.
+    if: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Freeze exact instance and host
+        run: |
+          mkdir -p "$RUNNER_TEMP/n83-zero-run-q1078"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, platform
+          root = pathlib.Path('experiments/koblitz-pair-claw-20260929')
+          screen = json.loads((root / 'n83_full_spill_screen.json').read_text())
+          assert screen['curve_id'] == 'EC1N83Ckb1h876c2921cb64'
+          assert screen['factor_base']['enumerated_set_sha256'] == '7e3c95f988225da1d586578529953ad61ae5ed62ca740eb92c2aea6d841a5a02'
+          assert screen['factor_base']['actual_usable_points_B_before_folding'] == 8000204
+          assert screen['factor_base']['signed_frobenius_columns'] == 48194
+          assert screen['isogeny'] == 'none' and screen['candidate_id'] is None
+          assert platform.machine().lower() in ('x86_64', 'amd64')
+          cpuinfo = pathlib.Path('/proc/cpuinfo').read_text().lower()
+          assert 'pclmulqdq' in cpuinfo or 'pclmul' in cpuinfo
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'n83-zero-run-q1078/host.json'
+          out.write_text(json.dumps({
+              'kind': 'n83_q1078_physical_x86_preflight',
+              'curve_id': screen['curve_id'], 'isogeny': 'none',
+              'factor_base_enumerated_set_sha256': screen['factor_base']['enumerated_set_sha256'],
+              'host_arch': platform.machine(), 'host_os': platform.platform(),
+              'cpu_pclmul_available': True,
+              'screen_sha256': hashlib.sha256((root / 'n83_full_spill_screen.json').read_bytes()).hexdigest(),
+              'workflow_sha256': hashlib.sha256(pathlib.Path('.github/workflows/n83-zero-run-keyer-x86-q1078.yml').read_bytes()).hexdigest(),
+          }, indent=2) + '\n')
+          PY
+
+      - name: Paired exact planted and public stage controls
+        run: |
+          python3 experiments/koblitz-pair-claw-20260929/bench_n83_zero_run_stage.py \
+            --cpu-backend x86_pclmul \
+            --out-dir "$RUNNER_TEMP/n83-zero-run-q1078"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: n83-q1078-zero-run-physical-x86
+          path: ${{ runner.temp }}/n83-zero-run-q1078/
+          retention-days: 7

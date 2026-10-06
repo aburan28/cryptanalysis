@@ -15,6 +15,8 @@ record, its SHA-256, the exact `field` and `curve` records, and the sorted usabl
 every archive with its digests, counts, byte size and the SHA-256 of the compressed file.
 Archives up to --max-git-bytes are committed; larger ones go to large/ (ignored by git)
 with storage `s3` and must be uploaded.  Nothing here reads or writes credentials.
+The n83 known-log base uses the separate orbit-compressed schema documented in
+README.md; verify_row checks it through orbit_base_archive.verify_doc.
 """
 
 from __future__ import annotations
@@ -174,7 +176,8 @@ def read_index() -> list[dict]:
 
 
 def write_index(rows: list[dict]) -> None:
-    rows = sorted(rows, key=lambda r: (int(r["n"]), r["curve_id"], r["family"], int(r["l"]), int(r["seed"]),
+    rows = sorted(rows, key=lambda r: (int(r["n"]), r["curve_id"], r["family"],
+                                       int(r["l"]) if r["l"] != "" else -1, int(r["seed"]),
                                        r["factor_base_sha256"]))
     with INDEX.open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=INDEX_FIELDS, lineterminator="\n")
@@ -221,6 +224,9 @@ def verify_row(row: dict, rebuild: bool, rebuild_max_points: int) -> list[str]:
     if hashlib.sha256(content).hexdigest() != row["content_sha256"]:
         errors.append(f"{row['path']}: content SHA-256 differs from the index")
     doc = json.loads(content)
+    if doc.get("schema") == "ic-factor-base-orbit-archive/1":
+        from orbit_base_archive import verify_doc
+        return errors + verify_doc(doc, row, rebuild)
     rec = doc["factor_base"]
     if sha256_hex(rec) != doc["factor_base_sha256"] or doc["factor_base_sha256"] != row["factor_base_sha256"]:
         errors.append(f"{row['path']}: factor_base record digest mismatch")
