@@ -92,3 +92,57 @@ Reproduce the design screen and audit without Sage:
 python3 experiments/prime-j0-cost-aware-chain/screen_mixed_full_digits.py --samples 4096
 python3 experiments/prime-j0-cost-aware-chain/audit_mixed_full_digits.py
 ```
+
+## Held-out native result
+
+The native implementation and old-data differential receipt were frozen at
+`27943663`. All 16,384 C action streams on old data exactly matched the
+new map; their four native operation totals matched the design screen. The
+curve suite passed 2,301,113 checks, including all bounded map states,
+generic point replay, zero and subgroup-order multiples, small-order
+inputs, and the rational τ kernel.
+
+The [new fixture](mixed-full-inputs.json) and [paired runner](check_mixed_full_panel.py)
+were frozen at `9fb9ec3a` before either comparison arm ran. The fixture
+contains 32,768 new unique scalars. Its SHA-256 is
+`fb7661410d765073239759d4e87c660d6e17c4baad345f9fd5804b41a56a6991`.
+The [fixture replay](check_mixed_full_inputs.py) confirmed its deterministic
+law, all prior-fixture exclusions, file hashes, and eight generic-reference
+output digests.
+
+The [held-out raw panel](mixed-full-native-panel.json) records all 16 arm
+statuses, output digests, operation counts, source and binary hashes, and
+exploratory timing. The [read-only panel audit](audit_mixed_full_panel.py)
+passed. All outputs were verified, and the prospective strict operation
+gate passed 8/8:
+
+| Curve | Point | Unit-restricted mixed | Full-digit mixed | Saving |
+| --- | ---: | ---: | ---: | ---: |
+| glv-j0-32 | 0 | 403,280 | 401,004 | 0.564% |
+| glv-j0-32 | 1 | 403,010 | 400,858 | 0.534% |
+| glv-j0-32 | 2 | 404,468 | 402,352 | 0.523% |
+| glv-j0-32 | 3 | 404,074 | 401,790 | 0.565% |
+| j0-56 | 0 | 1,094,450 | 1,091,990 | 0.225% |
+| j0-56 | 1 | 1,095,016 | 1,092,480 | 0.232% |
+| j0-56 | 2 | 1,094,844 | 1,092,422 | 0.221% |
+| j0-56 | 3 | 1,093,748 | 1,091,352 | 0.219% |
+
+Both selected modes use the same 726 prepared points, 23,232-byte point
+table, and 99,853 bytes of required static maps. The experiment binary
+contains both generated maps so it can run both arms; selected-map bytes are
+method accounting, not the whole executable's `.rodata` footprint. The
+old pure-tail map remains necessary for the frozen entry rule. These are
+verified operation-count gains under the fixed model. The local Mac timing
+values have no host-level isolation receipt and do not establish a CPU or
+one-target rho speedup.
+
+Reproduce the native controls and audits without Sage:
+
+```sh
+cmake -S . -B build-cost-aware -DCMAKE_BUILD_TYPE=Release -DCA_WERROR=ON -DCA_BUILD_TAU_CHAIN_BENCH=ON
+cmake --build build-cost-aware --target test_curve ca_tau_chain_bench ca_tau_chain_design64 -j 4
+build-cost-aware/test_curve
+python3 experiments/prime-j0-cost-aware-chain/check_mixed_full_inputs.py --bench build-cost-aware/ca_tau_chain_bench
+python3 experiments/prime-j0-cost-aware-chain/audit_mixed_full_digits.py
+python3 experiments/prime-j0-cost-aware-chain/audit_mixed_full_panel.py --bench build-cost-aware/ca_tau_chain_bench
+```
