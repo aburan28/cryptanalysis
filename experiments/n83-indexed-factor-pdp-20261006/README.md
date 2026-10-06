@@ -59,3 +59,10 @@ IDs independently regenerated from the selector source. Each branch has a
 10-second solver limit and the whole sequence has a 600-second process-tree
 wall limit. A found model still requires complete XCNF, group, and checked-
 Sage replay before any unpinned search is promoted.
+
+The [public-order sign run](runs/sign_enum_v1/receipt.json) found a
+CNF/XOR- and integer-group-verified model at branch 17 after 17
+solver-reported UNSAT branches, in 11.439 seconds for the complete run.
+Its SAT model and raw stdout remain local because they contain the planted
+witness; the 17 bounded failure logs are archived with hashes. An
+independent checked-Sage replay is the remaining positive-control gate.
