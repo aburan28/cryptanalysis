@@ -3,6 +3,24 @@
 
 #include "cryptanalysis/ca_group.h"
 
+/* Conventional fixed-base binary comb control for public scalars and a point
+ * in the declared subgroup. The 512 slots include identity; depth is
+ * ceil(bitlength(subgroup order - 1)/9). Variable-time table lookup. */
+#define CA_FIXED_COMB_WIDTH 9
+#define CA_FIXED_COMB_ENTRIES (1u << CA_FIXED_COMB_WIDTH)
+typedef struct ca_fixed_comb_precomp {
+    const ca_group *g;
+    ca_elem point[CA_FIXED_COMB_ENTRIES];
+    unsigned depth;
+    int identity;
+} ca_fixed_comb_precomp;
+int ca_ec_fixed_comb_prepare(const ca_group *g, const ca_elem *point,
+                             ca_fixed_comb_precomp *out, uint64_t *doubles,
+                             uint64_t *adds, uint64_t *inversions);
+int ca_ec_fixed_comb_mul_profile(const ca_group *g, const ca_fixed_comb_precomp *pre,
+                                  ca_elem *out, uint64_t k, uint64_t *doubles,
+                                  uint64_t *adds);
+
 /* Per-point width-4 table for repeated scalar multiplications within one rho
  * solve.  It is private to the C implementation and tied to its group. */
 typedef struct ca_tau4_digit {

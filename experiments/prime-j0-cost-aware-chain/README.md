@@ -293,6 +293,18 @@ existing point catalog. Its shortest-path map covers all 16,641 bounded
 states and is independently audited. On 16,384 older scalars, the full
 canonical-high-plus-mixed-tail score is 6.49%–6.66% lower on `glv-j0-32`
 and 2.47%–2.58% lower on `j0-56` than the canonical pair arm; it also beats
-the earlier first-word gate's old-data score. This is a design screen only.
-Native correctness, disjoint held-out operation results, host-isolated CPU
-timing, and academic novelty remain open.
+the earlier first-word gate's old-data score. Its later native evaluator
+matched all 16,384 old-data action streams, and the disjoint held-out panel
+passed its operation gate in all eight cases. Host-isolated CPU timing and
+academic novelty remain open.
+
+The [full-digit mixed-radix tail](MIXED_FULL_DIGITS.md) extends every bounded
+radix to all 727 already available digits. Its new disjoint panel verifies
+all eight cases and reduces the operation score 0.52%–0.57% on the smaller
+curve and 0.22%–0.23% on the larger curve against the unit-restricted map.
+The [conventional fixed-base comb control](FIXED_COMB_CONTROL.md) then replays
+the same frozen inputs. With 512 point slots and no static action map, comb
+has a 34.96% and 40.18% lower aggregate operation score than full-digit
+mixed on the two curves. The older positional tau method scores below comb
+but uses a larger prepared table. These comparisons are algorithmic
+diagnostics; controlled CPU timing and a one-target rho speedup are unknown.
