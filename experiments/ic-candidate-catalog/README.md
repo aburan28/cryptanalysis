@@ -179,6 +179,13 @@ every archived clause and XOR row, but CryptoMiniSat returned
 `INDETERMINATE` after 100,001 conflicts without a model. The ordinary
 single-target gate remained closed. This is a bounded failure of that SAT
 encoding, not a natural-yield estimate or a no-go for other PDP methods.
+The [first-leaf Frobenius-gauge follow-up](../ecc2k130-orbit-w24-m5-gauge-20261006/RESULT.md)
+added exactly eight unit clauses to the byte-matched parent XCNF. An
+independent row check confirms the archived planted witness still satisfies
+the formula, yet CryptoMiniSat recovered no unknown witness at either
+100,000 or 2,000,000 conflicts. The ordinary-query gate therefore remains
+closed; prioritize a structurally different, bounded implicit PDP screen
+over further expansion of this exact SAT encoding.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
