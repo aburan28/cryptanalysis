@@ -4,12 +4,12 @@
 //!
 //! ## Equation & invariants
 //!
-//! For genus `g`, `deg f ∈ {2g+1, 2g+2}` and `f` is squarefree.  Most
-//! cryptanalytic literature uses `deg f = 2g+1` ("imaginary"
-//! quadratic; one point at infinity).  This module supports that
-//! case primarily; `2g+2` (the "real" case, two points at infinity)
-//! is left out of the Mumford / Cantor implementation since it adds
-//! considerable bookkeeping not needed for the Phase-1 probe.
+//! For genus `g`, this module requires `f` to be monic and squarefree with
+//! `deg f = 2g+1` (the "imaginary" model with one rational point at
+//! infinity).  Degree `2g+2` (the "real" model with two geometric points at
+//! infinity) is explicitly unsupported: its Jacobian needs additional
+//! infinity bookkeeping, and using the formulas below for it would not be a
+//! valid implementation of its degree-zero divisor class group.
 //!
 //! ## Mumford representation (char `p ≠ 2`)
 //!
@@ -34,10 +34,141 @@
 //!   v_new = (−v') mod u_new
 //! ```
 
-use super::fp2::{Fp2, Fp2Ctx};
+use super::fp2::{is_prime_u64, Fp2, Fp2Ctx};
 use super::fp_poly::FpPoly;
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
+use std::fmt;
+
+pub const MAX_CHECKED_PRIME_BITS: u32 = 64;
+pub const MAX_POINT_ENUMERATION_PRIME: u64 = 1_000_000;
+pub const MAX_QUADRATIC_POINT_COUNT_PRIME: u64 = 4_096;
+
+/// A checked-construction or checked-arithmetic failure for an odd-prime
+/// hyperelliptic curve.
+///
+/// The implementation deliberately supports only the imaginary model
+/// `y^2 = f(x)` with `f` monic, squarefree, and `deg(f) = 2g + 1`.  In
+/// particular, the repository's `prime_quadratic_pullback_v1` cover has a
+/// degree-six right hand side and two rational points at infinity; it needs a
+/// real-model Jacobian representation and is rejected here.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PrimeHyperellipticError {
+    ModulusNotOddPrime,
+    UnsupportedPrimeModulusSize {
+        maximum_bits: u32,
+    },
+    CurvePolynomialFieldMismatch,
+    InvalidGenus,
+    UnsupportedEvenDegreeModel {
+        degree: usize,
+    },
+    CurveDegreeMismatch {
+        expected: usize,
+        actual: Option<usize>,
+    },
+    CurvePolynomialNotCanonical,
+    CurvePolynomialNotMonic,
+    CurvePolynomialNotSquarefree,
+    FieldTooLargeForEnumeration,
+    CoordinateOutOfRange {
+        coordinate: &'static str,
+    },
+    PointNotOnCurve,
+    DivisorPolynomialFieldMismatch {
+        component: &'static str,
+    },
+    NonCanonicalPolynomial {
+        component: &'static str,
+    },
+    DivisorUIsZero,
+    DivisorUNotMonic,
+    DivisorDegreeTooLarge {
+        degree: usize,
+        genus: usize,
+    },
+    DivisorVNotReduced {
+        v_degree: usize,
+        u_degree: usize,
+    },
+    DivisorEquationMismatch,
+    NonExactDivision {
+        stage: &'static str,
+    },
+    ReductionProducedZero,
+    ReductionDidNotDecrease,
+}
+
+impl fmt::Display for PrimeHyperellipticError {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ModulusNotOddPrime => write!(out, "modulus is not an odd prime"),
+            Self::UnsupportedPrimeModulusSize { maximum_bits } => write!(
+                out,
+                "prime modulus exceeds the deterministic {maximum_bits}-bit validation domain"
+            ),
+            Self::CurvePolynomialFieldMismatch => {
+                write!(out, "curve polynomial uses a different coefficient field")
+            }
+            Self::InvalidGenus => write!(out, "genus must be positive"),
+            Self::UnsupportedEvenDegreeModel { degree } => write!(
+                out,
+                "degree-{degree} even model has two points at infinity and is unsupported"
+            ),
+            Self::CurveDegreeMismatch { expected, actual } => write!(
+                out,
+                "curve polynomial degree mismatch: expected {expected}, got {actual:?}"
+            ),
+            Self::CurvePolynomialNotCanonical => {
+                write!(out, "curve polynomial is not canonically encoded")
+            }
+            Self::CurvePolynomialNotMonic => write!(out, "curve polynomial is not monic"),
+            Self::CurvePolynomialNotSquarefree => {
+                write!(out, "curve polynomial is not squarefree")
+            }
+            Self::FieldTooLargeForEnumeration => {
+                write!(out, "field modulus exceeds the bounded enumeration domain")
+            }
+            Self::CoordinateOutOfRange { coordinate } => {
+                write!(out, "point coordinate {coordinate} is not canonical")
+            }
+            Self::PointNotOnCurve => write!(out, "point is not on the curve"),
+            Self::DivisorPolynomialFieldMismatch { component } => write!(
+                out,
+                "divisor polynomial {component} uses a different coefficient field"
+            ),
+            Self::NonCanonicalPolynomial { component } => {
+                write!(
+                    out,
+                    "divisor polynomial {component} is not canonically encoded"
+                )
+            }
+            Self::DivisorUIsZero => write!(out, "Mumford u polynomial is zero"),
+            Self::DivisorUNotMonic => write!(out, "Mumford u polynomial is not monic"),
+            Self::DivisorDegreeTooLarge { degree, genus } => {
+                write!(out, "Mumford u degree {degree} exceeds curve genus {genus}")
+            }
+            Self::DivisorVNotReduced { v_degree, u_degree } => write!(
+                out,
+                "Mumford v degree {v_degree} is not smaller than u degree {u_degree}"
+            ),
+            Self::DivisorEquationMismatch => {
+                write!(out, "Mumford u does not divide v^2-f")
+            }
+            Self::NonExactDivision { stage } => {
+                write!(out, "non-exact polynomial division during {stage}")
+            }
+            Self::ReductionProducedZero => {
+                write!(out, "Cantor reduction produced a zero u polynomial")
+            }
+            Self::ReductionDidNotDecrease => {
+                write!(out, "Cantor reduction did not decrease the u degree")
+            }
+        }
+    }
+}
+
+impl std::error::Error for PrimeHyperellipticError {}
 
 /// `C : y² = f(x)` over `F_p`.
 #[derive(Clone, Debug)]
@@ -48,28 +179,114 @@ pub struct HyperellipticCurveP {
 }
 
 impl HyperellipticCurveP {
+    /// Checked construction for an odd-prime, one-rational-infinity model.
+    pub fn try_new(p: BigUint, f: FpPoly, genus: u32) -> Result<Self, PrimeHyperellipticError> {
+        let curve = Self { p, f, genus };
+        curve.validate()?;
+        Ok(curve)
+    }
+
+    /// Convenience constructor. Public-input callers should use
+    /// [`Self::try_new`] and preserve its structured error.
     pub fn new(p: BigUint, f: FpPoly, genus: u32) -> Self {
-        debug_assert!(!f.is_zero());
-        debug_assert_eq!(f.p, p);
-        Self { p, f, genus }
+        Self::try_new(p, f, genus).expect("invalid odd-degree hyperelliptic curve")
+    }
+
+    /// Revalidate the public field, curve-model, and smoothness data.
+    ///
+    /// The fields remain public for source compatibility. Checked arithmetic
+    /// calls this method before consuming a curve that may have been mutated
+    /// or built with a struct literal.
+    pub fn validate(&self) -> Result<(), PrimeHyperellipticError> {
+        if self.p.bits() > u64::BITS as u64 {
+            return Err(PrimeHyperellipticError::UnsupportedPrimeModulusSize {
+                maximum_bits: MAX_CHECKED_PRIME_BITS,
+            });
+        }
+        let p_u64 = self.p.to_u64_digits().first().copied().unwrap_or(0);
+        if p_u64 == 2 || !is_prime_u64(p_u64) {
+            return Err(PrimeHyperellipticError::ModulusNotOddPrime);
+        }
+        if self.f.p != self.p {
+            return Err(PrimeHyperellipticError::CurvePolynomialFieldMismatch);
+        }
+        if self.genus == 0 {
+            return Err(PrimeHyperellipticError::InvalidGenus);
+        }
+        if self
+            .f
+            .coeffs
+            .iter()
+            .any(|coefficient| coefficient >= &self.p)
+            || self.f.coeffs.last().is_some_and(Zero::is_zero)
+        {
+            return Err(PrimeHyperellipticError::CurvePolynomialNotCanonical);
+        }
+        let expected = (self.genus as usize)
+            .checked_mul(2)
+            .and_then(|degree| degree.checked_add(1))
+            .ok_or(PrimeHyperellipticError::InvalidGenus)?;
+        let actual = self.f.degree();
+        if let Some(even_degree) = expected.checked_add(1) {
+            if actual == Some(even_degree) {
+                return Err(PrimeHyperellipticError::UnsupportedEvenDegreeModel {
+                    degree: even_degree,
+                });
+            }
+        }
+        if actual != Some(expected) {
+            return Err(PrimeHyperellipticError::CurveDegreeMismatch { expected, actual });
+        }
+        if self.f.lead() != BigUint::one() {
+            return Err(PrimeHyperellipticError::CurvePolynomialNotMonic);
+        }
+        let derivative = FpPoly::from_coeffs(
+            (1..=expected)
+                .map(|i| (self.f.coeff(i) * BigUint::from(i)) % &self.p)
+                .collect(),
+            self.p.clone(),
+        );
+        if self.f.gcd(&derivative).degree() != Some(0) {
+            return Err(PrimeHyperellipticError::CurvePolynomialNotSquarefree);
+        }
+        Ok(())
+    }
+
+    pub fn checked_is_on_curve(
+        &self,
+        x: &BigUint,
+        y: &BigUint,
+    ) -> Result<bool, PrimeHyperellipticError> {
+        self.validate()?;
+        if x >= &self.p {
+            return Err(PrimeHyperellipticError::CoordinateOutOfRange { coordinate: "x" });
+        }
+        if y >= &self.p {
+            return Err(PrimeHyperellipticError::CoordinateOutOfRange { coordinate: "y" });
+        }
+        let lhs = (y * y) % &self.p;
+        let rhs = self.f.eval(x);
+        Ok(lhs == rhs)
     }
 
     /// `true` iff `(x, y) ∈ C(F_p)`.  Includes the "infinity"
     /// convention (caller is expected to handle ∞ outside).
     pub fn is_on_curve(&self, x: &BigUint, y: &BigUint) -> bool {
-        let lhs = (y * y) % &self.p;
-        let rhs = self.f.eval(x);
-        lhs == rhs
+        self.checked_is_on_curve(x, y).unwrap_or(false)
     }
 
     /// Number of affine points `(x, y) ∈ C(F_p)` plus 1 for the
     /// point at infinity (assuming `deg f = 2g+1`, one point at ∞).
-    pub fn count_affine_plus_infinity(&self) -> BigUint {
+    pub fn try_count_affine_plus_infinity(&self) -> Result<BigUint, PrimeHyperellipticError> {
+        self.validate()?;
         let mut count = BigUint::one(); // +1 for ∞
         let p_u: u64 = match self.p.to_u64_digits().as_slice() {
             [v] => *v,
-            _ => panic!("count_affine: p too big for u64 enumeration"),
+            _ => return Err(PrimeHyperellipticError::FieldTooLargeForEnumeration),
         };
+        if p_u > MAX_POINT_ENUMERATION_PRIME {
+            return Err(PrimeHyperellipticError::FieldTooLargeForEnumeration);
+        }
         for xi in 0..p_u {
             let x = BigUint::from(xi);
             let y_sq = self.f.eval(&x);
@@ -85,7 +302,12 @@ impl HyperellipticCurveP {
                 count += 2u32;
             }
         }
-        count
+        Ok(count)
+    }
+
+    pub fn count_affine_plus_infinity(&self) -> BigUint {
+        self.try_count_affine_plus_infinity()
+            .expect("invalid curve or field too large for point enumeration")
     }
 }
 
@@ -119,62 +341,138 @@ impl MumfordDivisorP {
         }
     }
 
-    /// `(u, v)` valid? (monic `u`, `deg v < deg u ≤ g`, `u | v² − f`).
-    pub fn is_reduced(&self, curve: &HyperellipticCurveP) -> bool {
+    /// Checked identity construction bound to `curve`.
+    pub fn try_identity(curve: &HyperellipticCurveP) -> Result<Self, PrimeHyperellipticError> {
+        curve.validate()?;
+        Ok(Self::identity(curve.p.clone()))
+    }
+
+    /// Checked construction from a purported reduced Mumford pair.
+    pub fn try_from_polynomials(
+        curve: &HyperellipticCurveP,
+        u: FpPoly,
+        v: FpPoly,
+    ) -> Result<Self, PrimeHyperellipticError> {
+        let divisor = Self { u, v };
+        divisor.validate(curve)?;
+        Ok(divisor)
+    }
+
+    fn validate_polynomial(
+        polynomial: &FpPoly,
+        curve: &HyperellipticCurveP,
+        component: &'static str,
+    ) -> Result<(), PrimeHyperellipticError> {
+        if polynomial.p != curve.p {
+            return Err(PrimeHyperellipticError::DivisorPolynomialFieldMismatch { component });
+        }
+        if polynomial
+            .coeffs
+            .iter()
+            .any(|coefficient| coefficient >= &curve.p)
+            || polynomial.coeffs.last().is_some_and(Zero::is_zero)
+        {
+            return Err(PrimeHyperellipticError::NonCanonicalPolynomial { component });
+        }
+        Ok(())
+    }
+
+    /// Validate the canonical reduced representative against this exact
+    /// curve. This is also the domain check used by all checked operations.
+    pub fn validate(&self, curve: &HyperellipticCurveP) -> Result<(), PrimeHyperellipticError> {
+        curve.validate()?;
+        Self::validate_polynomial(&self.u, curve, "u")?;
+        Self::validate_polynomial(&self.v, curve, "v")?;
         if self.u.is_zero() {
-            return false;
+            return Err(PrimeHyperellipticError::DivisorUIsZero);
         }
         if self.u.lead() != BigUint::one() {
-            return false;
+            return Err(PrimeHyperellipticError::DivisorUNotMonic);
         }
-        let du = self.u.degree().unwrap();
-        if du > curve.genus as usize {
-            return false;
+        let u_degree = self.u.degree().expect("nonzero u has a degree");
+        if u_degree > curve.genus as usize {
+            return Err(PrimeHyperellipticError::DivisorDegreeTooLarge {
+                degree: u_degree,
+                genus: curve.genus as usize,
+            });
         }
-        if !self.v.is_zero() && self.v.degree().unwrap() >= du {
-            return false;
+        if let Some(v_degree) = self.v.degree() {
+            if v_degree >= u_degree {
+                return Err(PrimeHyperellipticError::DivisorVNotReduced { v_degree, u_degree });
+            }
         }
-        // u | v² − f
-        let v_sq = self.v.mul(&self.v);
-        let target = v_sq.sub(&curve.f);
-        let (_q, r) = target.divrem(&self.u);
-        r.is_zero()
+        let target = self.v.mul(&self.v).sub(&curve.f);
+        if !target.divrem(&self.u).1.is_zero() {
+            return Err(PrimeHyperellipticError::DivisorEquationMismatch);
+        }
+        Ok(())
+    }
+
+    /// `(u, v)` valid? (monic `u`, `deg v < deg u ≤ g`, `u | v² − f`).
+    pub fn is_reduced(&self, curve: &HyperellipticCurveP) -> bool {
+        self.validate(curve).is_ok()
     }
 
     pub fn is_identity(&self) -> bool {
-        self.u.degree() == Some(0) && self.v.is_zero()
+        self.u.coeffs.len() == 1
+            && self.u.coeffs[0] == BigUint::one()
+            && self.v.coeffs.is_empty()
+            && self.u.p == self.v.p
     }
 
     /// Negation: `−(u, v) = (u, −v mod u)`.
-    pub fn neg(&self, _curve: &HyperellipticCurveP) -> Self {
+    pub fn checked_neg(
+        &self,
+        curve: &HyperellipticCurveP,
+    ) -> Result<Self, PrimeHyperellipticError> {
+        self.validate(curve)?;
         let v_neg = self.v.neg();
-        let v_new = if self.u.is_zero() {
-            v_neg
-        } else {
-            v_neg.rem(&self.u)
-        };
-        Self {
+        let result = Self {
             u: self.u.clone(),
-            v: v_new,
-        }
+            v: v_neg.rem(&self.u),
+        };
+        result.validate(curve)?;
+        Ok(result)
     }
 
-    /// Embed `P = (x_0, y_0)` on `C` as `[P] − [∞]`.  Returns
-    /// `None` if `y_0 = 0` (a "Weierstrass" point — order 2;
-    /// representable but doubles differently).
-    pub fn from_point(curve: &HyperellipticCurveP, x0: &BigUint, y0: &BigUint) -> Option<Self> {
-        assert!(curve.is_on_curve(x0, y0));
-        if y0.is_zero() {
-            return None;
+    pub fn neg(&self, curve: &HyperellipticCurveP) -> Self {
+        self.checked_neg(curve)
+            .expect("invalid divisor in Mumford negation")
+    }
+
+    /// Embed `P = (x_0, y_0)` on `C` as `[P] − [∞]`, including a
+    /// Weierstrass point with `y_0 = 0`.
+    pub fn try_from_point(
+        curve: &HyperellipticCurveP,
+        x0: &BigUint,
+        y0: &BigUint,
+    ) -> Result<Self, PrimeHyperellipticError> {
+        curve.validate()?;
+        if x0 >= &curve.p {
+            return Err(PrimeHyperellipticError::CoordinateOutOfRange { coordinate: "x" });
+        }
+        if y0 >= &curve.p {
+            return Err(PrimeHyperellipticError::CoordinateOutOfRange { coordinate: "y" });
+        }
+        if !curve.checked_is_on_curve(x0, y0)? {
+            return Err(PrimeHyperellipticError::PointNotOnCurve);
         }
         let p = &curve.p;
-        // u = x − x_0
         let u = FpPoly::from_coeffs(vec![(p - x0) % p, BigUint::one()], p.clone());
         let v = FpPoly::constant(y0.clone(), p.clone());
-        Some(Self { u, v })
+        Self::try_from_polynomials(curve, u, v)
     }
 
-    fn cantor_compose(&self, other: &Self, curve: &HyperellipticCurveP) -> Self {
+    /// Compatibility wrapper around [`Self::try_from_point`].
+    pub fn from_point(curve: &HyperellipticCurveP, x0: &BigUint, y0: &BigUint) -> Option<Self> {
+        Self::try_from_point(curve, x0, y0).ok()
+    }
+
+    fn cantor_compose_checked(
+        &self,
+        other: &Self,
+        curve: &HyperellipticCurveP,
+    ) -> Result<Self, PrimeHyperellipticError> {
         let (d1, e1, e2) = self.u.ext_gcd(&other.u);
         let v_sum = self.v.add(&other.v);
         let (d, c1, c2) = d1.ext_gcd(&v_sum);
@@ -184,32 +482,54 @@ impl MumfordDivisorP {
         let u_prod = self.u.mul(&other.u);
         let d_sq = d.mul(&d);
         let (u_prime, u_rem) = u_prod.divrem(&d_sq);
-        debug_assert!(u_rem.is_zero(), "u1·u2 not divisible by d²");
+        if !u_rem.is_zero() {
+            return Err(PrimeHyperellipticError::NonExactDivision {
+                stage: "Cantor composition u1*u2/d^2",
+            });
+        }
+        if u_prime.is_zero() {
+            return Err(PrimeHyperellipticError::ReductionProducedZero);
+        }
         let term1 = s1.mul(&self.u).mul(&other.v);
         let term2 = s2.mul(&other.u).mul(&self.v);
         let v1v2 = self.v.mul(&other.v);
         let term3 = s3.mul(&v1v2.add(&curve.f));
         let v_num = term1.add(&term2).add(&term3);
         let (v_div, v_div_rem) = v_num.divrem(&d);
-        debug_assert!(v_div_rem.is_zero(), "v numerator not divisible by d");
+        if !v_div_rem.is_zero() {
+            return Err(PrimeHyperellipticError::NonExactDivision {
+                stage: "Cantor composition v numerator/d",
+            });
+        }
         let v_prime = v_div.rem(&u_prime);
-        Self {
+        Ok(Self {
             u: u_prime,
             v: v_prime,
-        }
+        })
     }
 
-    fn reduce(&self, curve: &HyperellipticCurveP) -> Self {
+    fn reduce_checked(&self, curve: &HyperellipticCurveP) -> Result<Self, PrimeHyperellipticError> {
         let g = curve.genus as usize;
         let mut u = self.u.clone();
         let mut v = self.v.clone();
         while u.degree().map(|d| d > g).unwrap_or(false) {
+            let old_degree = u.degree().expect("nonzero reduction polynomial");
             // u_new = (f - v²) / u
             let v_sq = v.mul(&v);
             let num = curve.f.sub(&v_sq);
             let (u_new_raw, rem) = num.divrem(&u);
-            debug_assert!(rem.is_zero(), "Cantor reduction: non-exact division");
+            if !rem.is_zero() {
+                return Err(PrimeHyperellipticError::NonExactDivision {
+                    stage: "Cantor reduction (f-v^2)/u",
+                });
+            }
+            if u_new_raw.is_zero() {
+                return Err(PrimeHyperellipticError::ReductionProducedZero);
+            }
             let u_new = u_new_raw.monic();
+            if u_new.degree().is_some_and(|degree| degree >= old_degree) {
+                return Err(PrimeHyperellipticError::ReductionDidNotDecrease);
+            }
             // v_new = (-v) mod u_new
             let v_new = v.neg().rem(&u_new);
             u = u_new;
@@ -218,46 +538,91 @@ impl MumfordDivisorP {
         if !u.is_zero() && u.lead() != BigUint::one() {
             u = u.monic();
         }
-        Self { u, v }
+        Ok(Self { u, v })
+    }
+
+    pub fn checked_add(
+        &self,
+        other: &Self,
+        curve: &HyperellipticCurveP,
+    ) -> Result<Self, PrimeHyperellipticError> {
+        self.validate(curve)?;
+        other.validate(curve)?;
+        let result = if self.is_identity() {
+            other.clone()
+        } else if other.is_identity() {
+            self.clone()
+        } else {
+            self.cantor_compose_checked(other, curve)?
+                .reduce_checked(curve)?
+        };
+        result.validate(curve)?;
+        Ok(result)
     }
 
     pub fn add(&self, other: &Self, curve: &HyperellipticCurveP) -> Self {
-        if self.is_identity() {
-            return other.clone();
-        }
-        if other.is_identity() {
-            return self.clone();
-        }
-        let composed = self.cantor_compose(other, curve);
-        composed.reduce(curve)
+        self.checked_add(other, curve)
+            .expect("invalid divisor in Cantor addition")
+    }
+
+    pub fn checked_double(
+        &self,
+        curve: &HyperellipticCurveP,
+    ) -> Result<Self, PrimeHyperellipticError> {
+        self.checked_add(self, curve)
     }
 
     pub fn double(&self, curve: &HyperellipticCurveP) -> Self {
-        self.add(self, curve)
+        self.checked_double(curve)
+            .expect("invalid divisor in Cantor doubling")
+    }
+
+    pub fn checked_scalar_mul(
+        &self,
+        k: &BigUint,
+        curve: &HyperellipticCurveP,
+    ) -> Result<Self, PrimeHyperellipticError> {
+        self.validate(curve)?;
+        if k.is_zero() {
+            return Self::try_identity(curve);
+        }
+        let bits = k.bits();
+        let mut result = Self::try_identity(curve)?;
+        for i in (0..bits).rev() {
+            result = result.checked_double(curve)?;
+            if k.bit(i) {
+                result = result.checked_add(self, curve)?;
+            }
+        }
+        Ok(result)
     }
 
     pub fn scalar_mul(&self, k: &BigUint, curve: &HyperellipticCurveP) -> Self {
-        if k.is_zero() {
-            return Self::identity(curve.p.clone());
-        }
-        let bits = k.bits();
-        let mut result = Self::identity(curve.p.clone());
-        for i in (0..bits).rev() {
-            result = result.double(curve);
-            if k.bit(i) {
-                result = result.add(self, curve);
-            }
-        }
-        result
+        self.checked_scalar_mul(k, curve)
+            .expect("invalid divisor in scalar multiplication")
+    }
+
+    /// Equality of canonical representatives after checking that both belong
+    /// to the supplied curve.
+    pub fn checked_eq(
+        &self,
+        other: &Self,
+        curve: &HyperellipticCurveP,
+    ) -> Result<bool, PrimeHyperellipticError> {
+        self.validate(curve)?;
+        other.validate(curve)?;
+        Ok(self == other)
     }
 }
 
 // ── #Jac(C)(F_p) by brute force ──────────────────────────────────────
 
 /// Enumerate every reduced Mumford divisor on `C` and count.  Toy
-/// only — runs in `O(p^g)` time and memory.  For genus 2 at `p ≤
-/// few hundred` this is seconds.
+/// only — this naive genus-2 implementation runs in `O(p⁴)` time.
 pub fn brute_force_jac_order(curve: &HyperellipticCurveP) -> BigUint {
+    curve
+        .validate()
+        .expect("invalid curve in brute_force_jac_order");
     assert_eq!(curve.genus, 2, "brute_force_jac_order: genus 2 only");
     let p_u: u64 = match curve.p.to_u64_digits().as_slice() {
         [v] => *v,
@@ -306,13 +671,6 @@ pub fn brute_force_jac_order(curve: &HyperellipticCurveP) -> BigUint {
     //     negation, a different class.  So all 4 are distinct unless
     //     they coincide.
     //     Concretely: 2 v's for v(α) and 2 for v(β), 4 total.
-    // (2) If u is irreducible over F_p: F_p[x]/u ≅ F_{p²}.  Need
-    //     r to be a square in F_{p²}.  Count: 1 divisor if a square
-    //     and r ≠ 0; 0 otherwise.  (Wait — actually any non-zero
-    //     element of F_{p²} is a square iff its norm is a square in
-    //     F_p, which is automatic since F_{p²}^*/F_p^* has even order
-    //     ... let me think again.)
-    //
     // Simpler: just enumerate all (u, v) with deg u = 2 and deg v ≤
     // 1, check u | v² − f, and count.  O(p^4) per curve — at p =
     // 100, that's 10^8 which is ~ a minute.  Acceptable for the
@@ -358,11 +716,24 @@ pub fn brute_force_jac_order(curve: &HyperellipticCurveP) -> BigUint {
 /// `N(x) = α² − δ·β²` is a non-zero square in `F_p` (where
 /// `t² = δ` is the non-residue defining `F_{p²}`).  This replaces
 /// the `O(log p)` Euler-criterion test per F_{p²}-point with a
-/// single QR-table lookup — `~100×` speedup over the original
-/// `count_points_fp2` for `p ∈ [100, 2000]`.
+/// single QR-table lookup. The ignored benchmark fixture compares this path
+/// with `count_points_fp2`; no general speed ratio is claimed.
 ///
-/// Requires the `f`-coefficients to fit in `u32` (i.e., `p < 2³²`).
+/// The quadratic enumeration is bounded to
+/// `p <= MAX_QUADRATIC_POINT_COUNT_PRIME`.
 pub fn fast_point_counts(curve: &HyperellipticCurveP, p_u: u64) -> (u64, u64) {
+    curve
+        .validate()
+        .expect("invalid curve in fast_point_counts");
+    assert_eq!(
+        &curve.p,
+        &BigUint::from(p_u),
+        "p_u does not match curve field"
+    );
+    assert!(
+        p_u <= MAX_QUADRATIC_POINT_COUNT_PRIME,
+        "fast_point_counts supports p <= {MAX_QUADRATIC_POINT_COUNT_PRIME}"
+    );
     // Convert f's coefficients to u64 reduced mod p.
     let f_coeffs: Vec<u64> = curve
         .f
@@ -458,10 +829,12 @@ fn powmod_u64(base: u64, exp: u64, p: u64) -> u64 {
     acc
 }
 
-/// Fast `(a, b)` Frobenius coefficients via [`fast_point_counts`].
-/// Strictly faster than [`frob_ab_and_jac`] for any `p` where both
-/// work; preferred for `p > ~50`.
+/// `(a, b)` Frobenius coefficients via [`fast_point_counts`].
+/// This is the optimized path; performance outside the benchmark fixtures is
+/// not characterized here.
 pub fn fast_frob_ab(curve: &HyperellipticCurveP) -> (FrobABForJac, BigUint) {
+    curve.validate().expect("invalid curve in fast_frob_ab");
+    assert_eq!(curve.genus, 2, "fast_frob_ab: genus 2 only");
     let p_u: u64 = match curve.p.to_u64_digits().as_slice() {
         [v] => *v,
         _ => panic!("p too big for fast_frob_ab"),
@@ -480,11 +853,18 @@ pub fn fast_frob_ab(curve: &HyperellipticCurveP) -> (FrobABForJac, BigUint) {
 /// the point at infinity (assuming `deg f = 2g+1`).  Uses [`Fp2Ctx`]
 /// arithmetic; complexity `O(p²·deg f)` field operations.
 pub fn count_points_fp2(curve: &HyperellipticCurveP, ctx: &Fp2Ctx) -> u64 {
+    curve.validate().expect("invalid curve in count_points_fp2");
+    ctx.validate()
+        .expect("invalid extension context in count_points_fp2");
     let p_u: u64 = match curve.p.to_u64_digits().as_slice() {
         [v] => *v,
         _ => panic!("count_points_fp2: p too big"),
     };
-    assert_eq!(p_u, ctx.p);
+    assert_eq!(p_u, ctx.modulus());
+    assert!(
+        p_u <= MAX_QUADRATIC_POINT_COUNT_PRIME,
+        "count_points_fp2 supports p <= {MAX_QUADRATIC_POINT_COUNT_PRIME}"
+    );
     // Convert f's coefficients to Fp2.
     let f_coeffs: Vec<Fp2> = curve
         .f
@@ -505,7 +885,7 @@ pub fn count_points_fp2(curve: &HyperellipticCurveP, ctx: &Fp2Ctx) -> u64 {
     let mut count: u64 = 1; // +1 for ∞
     for a in 0..p_u {
         for b in 0..p_u {
-            let x = Fp2 { a, b };
+            let x = ctx.element(a, b);
             let y_sq = eval_f(x);
             if ctx.is_zero(y_sq) {
                 count += 1;
@@ -538,6 +918,8 @@ pub struct FrobABForJac {
 /// Compute the Frobenius `(a, b)` and `#Jac(C)(F_p)` together.  See
 /// [`jac_order_via_lpoly`] for the underlying formulas.
 pub fn frob_ab_and_jac(curve: &HyperellipticCurveP, ctx: &Fp2Ctx) -> (FrobABForJac, BigUint) {
+    curve.validate().expect("invalid curve in frob_ab_and_jac");
+    assert_eq!(curve.genus, 2, "frob_ab_and_jac: genus 2 only");
     let p_u: u64 = match curve.p.to_u64_digits().as_slice() {
         [v] => *v,
         _ => panic!("p too big"),
@@ -578,6 +960,10 @@ pub fn frob_ab_and_jac(curve: &HyperellipticCurveP, ctx: &Fp2Ctx) -> (FrobABForJ
 /// `N_2`).  Far faster than the `O(p⁴)` brute-force Mumford
 /// enumeration for `p > ~10`.
 pub fn jac_order_via_lpoly(curve: &HyperellipticCurveP, ctx: &Fp2Ctx) -> BigUint {
+    curve
+        .validate()
+        .expect("invalid curve in jac_order_via_lpoly");
+    assert_eq!(curve.genus, 2, "jac_order_via_lpoly: genus 2 only");
     let p_u: u64 = match curve.p.to_u64_digits().as_slice() {
         [v] => *v,
         _ => panic!("jac_order_via_lpoly: p too big"),
@@ -620,6 +1006,63 @@ mod tests {
 
     fn p11() -> BigUint {
         BigUint::from(11u32)
+    }
+
+    /// `C/F_3 : y^2 = x^5 + x^2 + 1`. It is squarefree, has the
+    /// Weierstrass point `(1, 0)`, and has `#Jac(C)(F_3) = 24` from the
+    /// independent genus-2 L-polynomial point-count formula.
+    fn exhaustive_curve() -> HyperellipticCurveP {
+        let p = BigUint::from(3u32);
+        let f = FpPoly::from_coeffs(
+            vec![
+                BigUint::one(),
+                BigUint::zero(),
+                BigUint::one(),
+                BigUint::zero(),
+                BigUint::zero(),
+                BigUint::one(),
+            ],
+            p.clone(),
+        );
+        HyperellipticCurveP::try_new(p, f, 2).unwrap()
+    }
+
+    fn base_p_coefficients(mut value: u64, length: usize, p: u64) -> Vec<BigUint> {
+        (0..length)
+            .map(|_| {
+                let digit = value % p;
+                value /= p;
+                BigUint::from(digit)
+            })
+            .collect()
+    }
+
+    fn all_reduced_divisors(curve: &HyperellipticCurveP) -> Vec<MumfordDivisorP> {
+        let p = curve.p.to_u64_digits()[0];
+        let mut divisors = vec![MumfordDivisorP::try_identity(curve).unwrap()];
+        for degree in 1..=curve.genus as usize {
+            let choices = p.pow(degree as u32);
+            for u_code in 0..choices {
+                let mut u_coefficients = base_p_coefficients(u_code, degree, p);
+                u_coefficients.push(BigUint::one());
+                let u = FpPoly::from_coeffs(u_coefficients, curve.p.clone());
+                for v_code in 0..choices {
+                    let v = FpPoly::from_coeffs(
+                        base_p_coefficients(v_code, degree, p),
+                        curve.p.clone(),
+                    );
+                    if let Ok(divisor) = MumfordDivisorP::try_from_polynomials(curve, u.clone(), v)
+                    {
+                        divisors.push(divisor);
+                    }
+                }
+            }
+        }
+        divisors
+    }
+
+    fn point_divisor(curve: &HyperellipticCurveP, x: u32, y: u32) -> MumfordDivisorP {
+        MumfordDivisorP::try_from_point(curve, &BigUint::from(x), &BigUint::from(y)).unwrap()
     }
 
     /// **Benchmark**: time `fast_frob_ab` vs `frob_ab_and_jac` on
@@ -769,8 +1212,8 @@ mod tests {
         // computed for f = x⁵+x+1 over F_{11}; Σ χ(f(x)) = -4,
         // #C_affine = 7, +1 for ∞).  Then a_1 = (p+1) - #C = 4,
         // so #Jac = 1 - a_1 + a_2 - p·a_1 + p² = 74 + a_2.  Hence
-        // a_2 = #Jac - 74 — must be in [-4p, 4p]
-        // (consequence of Frobenius eigenvalue bound |α_i| = √p).
+        // a_2 = #Jac - 74. In general the genus-two Weil interval is
+        // [-2p, 6p], from a_2 = 2p + 4p cos(theta_1) cos(theta_2).
         let n1 = count_points(&curve);
         let a1 = curve.p.clone() + BigUint::one() - n1.clone();
         // Sanity: a_1 here = 4
@@ -884,5 +1327,267 @@ mod tests {
         let d2_dbl = d.double(&curve);
         let d2_add = d.add(&d, &curve);
         assert_eq!(d2_dbl, d2_add);
+    }
+
+    #[test]
+    fn checked_curve_construction_rejects_wrong_models() {
+        let p5 = BigUint::from(5u32);
+        let quintic = |coefficients: Vec<u32>, modulus: &BigUint| {
+            FpPoly::from_coeffs(
+                coefficients.into_iter().map(BigUint::from).collect(),
+                modulus.clone(),
+            )
+        };
+
+        let valid = quintic(vec![1, 1, 0, 0, 0, 1], &p5);
+        assert!(HyperellipticCurveP::try_new(p5.clone(), valid, 2).is_ok());
+
+        let composite = BigUint::from(9u32);
+        let over_composite = quintic(vec![1, 1, 0, 0, 0, 1], &composite);
+        assert_eq!(
+            HyperellipticCurveP::try_new(composite, over_composite, 2).unwrap_err(),
+            PrimeHyperellipticError::ModulusNotOddPrime
+        );
+        let p2 = BigUint::from(2u32);
+        let over_p2 = quintic(vec![1, 1, 0, 0, 0, 1], &p2);
+        assert_eq!(
+            HyperellipticCurveP::try_new(p2, over_p2, 2).unwrap_err(),
+            PrimeHyperellipticError::ModulusNotOddPrime
+        );
+
+        let pseudoprime = BigUint::from(341_550_071_728_321u64);
+        let over_pseudoprime = quintic(vec![1, 1, 0, 0, 0, 1], &pseudoprime);
+        assert_eq!(
+            HyperellipticCurveP::try_new(pseudoprime, over_pseudoprime, 2).unwrap_err(),
+            PrimeHyperellipticError::ModulusNotOddPrime
+        );
+        let oversized = (BigUint::one() << 64usize) + BigUint::from(13u32);
+        let over_oversized = quintic(vec![1, 1, 0, 0, 0, 1], &oversized);
+        assert_eq!(
+            HyperellipticCurveP::try_new(oversized, over_oversized, 2).unwrap_err(),
+            PrimeHyperellipticError::UnsupportedPrimeModulusSize {
+                maximum_bits: MAX_CHECKED_PRIME_BITS
+            }
+        );
+
+        let wrong_field = quintic(vec![1, 1, 0, 0, 0, 1], &BigUint::from(7u32));
+        assert_eq!(
+            HyperellipticCurveP::try_new(p5.clone(), wrong_field, 2).unwrap_err(),
+            PrimeHyperellipticError::CurvePolynomialFieldMismatch
+        );
+        let noncanonical = FpPoly {
+            p: p5.clone(),
+            coeffs: vec![
+                p5.clone(),
+                BigUint::one(),
+                BigUint::zero(),
+                BigUint::zero(),
+                BigUint::zero(),
+                BigUint::one(),
+            ],
+        };
+        assert_eq!(
+            HyperellipticCurveP::try_new(p5.clone(), noncanonical, 2).unwrap_err(),
+            PrimeHyperellipticError::CurvePolynomialNotCanonical
+        );
+        let even_sextic = quintic(vec![1, 0, 0, 0, 0, 0, 1], &p5);
+        assert_eq!(
+            HyperellipticCurveP::try_new(p5.clone(), even_sextic, 2).unwrap_err(),
+            PrimeHyperellipticError::UnsupportedEvenDegreeModel { degree: 6 }
+        );
+        let wrong_degree = quintic(vec![1, 1, 0, 1], &p5);
+        assert_eq!(
+            HyperellipticCurveP::try_new(p5.clone(), wrong_degree, 2).unwrap_err(),
+            PrimeHyperellipticError::CurveDegreeMismatch {
+                expected: 5,
+                actual: Some(3)
+            }
+        );
+        let non_monic = quintic(vec![1, 1, 0, 0, 0, 2], &p5);
+        assert_eq!(
+            HyperellipticCurveP::try_new(p5.clone(), non_monic, 2).unwrap_err(),
+            PrimeHyperellipticError::CurvePolynomialNotMonic
+        );
+        let repeated = quintic(vec![0, 0, 0, 0, 0, 1], &p5);
+        assert_eq!(
+            HyperellipticCurveP::try_new(p5, repeated, 2).unwrap_err(),
+            PrimeHyperellipticError::CurvePolynomialNotSquarefree
+        );
+    }
+
+    #[test]
+    fn checked_divisor_construction_rejects_malformed_inputs() {
+        let curve = exhaustive_curve();
+        let wrong_p = BigUint::from(5u32);
+        let wrong_u = FpPoly::from_coeffs(vec![BigUint::zero(), BigUint::one()], wrong_p.clone());
+        let wrong_v = FpPoly::zero(wrong_p);
+        assert_eq!(
+            MumfordDivisorP::try_from_polynomials(&curve, wrong_u, wrong_v).unwrap_err(),
+            PrimeHyperellipticError::DivisorPolynomialFieldMismatch { component: "u" }
+        );
+
+        let malformed_u = FpPoly {
+            p: curve.p.clone(),
+            coeffs: vec![curve.p.clone(), BigUint::one()],
+        };
+        assert_eq!(
+            MumfordDivisorP::try_from_polynomials(
+                &curve,
+                malformed_u,
+                FpPoly::zero(curve.p.clone())
+            )
+            .unwrap_err(),
+            PrimeHyperellipticError::NonCanonicalPolynomial { component: "u" }
+        );
+
+        let invalid_u = FpPoly::x(curve.p.clone());
+        let invalid = MumfordDivisorP {
+            u: invalid_u,
+            v: FpPoly::zero(curve.p.clone()),
+        };
+        assert_eq!(
+            invalid.validate(&curve).unwrap_err(),
+            PrimeHyperellipticError::DivisorEquationMismatch
+        );
+        assert!(matches!(
+            invalid.checked_add(&MumfordDivisorP::identity(curve.p.clone()), &curve),
+            Err(PrimeHyperellipticError::DivisorEquationMismatch)
+        ));
+
+        assert_eq!(
+            MumfordDivisorP::try_from_point(&curve, &curve.p, &BigUint::zero()).unwrap_err(),
+            PrimeHyperellipticError::CoordinateOutOfRange { coordinate: "x" }
+        );
+        assert_eq!(
+            MumfordDivisorP::try_from_point(&curve, &BigUint::zero(), &BigUint::zero())
+                .unwrap_err(),
+            PrimeHyperellipticError::PointNotOnCurve
+        );
+
+        let mut changed = curve.clone();
+        changed.genus = 3;
+        assert_eq!(
+            changed.validate().unwrap_err(),
+            PrimeHyperellipticError::CurveDegreeMismatch {
+                expected: 7,
+                actual: Some(5)
+            }
+        );
+
+        let bogus_identity = MumfordDivisorP {
+            u: FpPoly::constant(BigUint::from(2u32), curve.p.clone()),
+            v: FpPoly::zero(curve.p.clone()),
+        };
+        assert!(!bogus_identity.is_identity());
+        assert_eq!(
+            bogus_identity.validate(&curve).unwrap_err(),
+            PrimeHyperellipticError::DivisorUNotMonic
+        );
+
+        let other_f = FpPoly::from_coeffs(
+            vec![
+                BigUint::from(2u32),
+                BigUint::zero(),
+                BigUint::one(),
+                BigUint::zero(),
+                BigUint::zero(),
+                BigUint::one(),
+            ],
+            curve.p.clone(),
+        );
+        let other_curve = HyperellipticCurveP::try_new(curve.p.clone(), other_f, 2).unwrap();
+        let bound_to_first = point_divisor(&curve, 0, 1);
+        assert_eq!(
+            bound_to_first.validate(&other_curve).unwrap_err(),
+            PrimeHyperellipticError::DivisorEquationMismatch
+        );
+    }
+
+    #[test]
+    fn weierstrass_and_shared_support_cases_are_checked() {
+        let curve = exhaustive_curve();
+        let p = point_divisor(&curve, 0, 1);
+        let two_torsion = point_divisor(&curve, 1, 0);
+        let r = point_divisor(&curve, 2, 1);
+
+        assert!(two_torsion.validate(&curve).is_ok());
+        assert!(two_torsion.checked_double(&curve).unwrap().is_identity());
+        assert_eq!(two_torsion.checked_neg(&curve).unwrap(), two_torsion);
+
+        let left = p.checked_add(&two_torsion, &curve).unwrap();
+        let right = p.checked_add(&r, &curve).unwrap();
+        assert_eq!(left.u.gcd(&right.u).degree(), Some(1));
+        let shared_sum = left.checked_add(&right, &curve).unwrap();
+        let expected = p
+            .checked_double(&curve)
+            .unwrap()
+            .checked_add(&two_torsion, &curve)
+            .unwrap()
+            .checked_add(&r, &curve)
+            .unwrap();
+        assert!(shared_sum.checked_eq(&expected, &curve).unwrap());
+
+        let opposite = p
+            .checked_neg(&curve)
+            .unwrap()
+            .checked_add(&r, &curve)
+            .unwrap();
+        assert_eq!(left.u.gcd(&opposite.u).degree(), Some(1));
+        let cancelled = left.checked_add(&opposite, &curve).unwrap();
+        let expected_cancelled = two_torsion.checked_add(&r, &curve).unwrap();
+        assert!(cancelled.checked_eq(&expected_cancelled, &curve).unwrap());
+    }
+
+    #[test]
+    fn exhaustive_small_field_group_law_matches_point_count_reference() {
+        let curve = exhaustive_curve();
+        let divisors = all_reduced_divisors(&curve);
+        let identity = MumfordDivisorP::try_identity(&curve).unwrap();
+        let reference_order = brute_force_jac_order_via_lpoly(&curve);
+
+        assert_eq!(reference_order, BigUint::from(24u32));
+        assert_eq!(divisors.len(), 24);
+        assert_eq!(brute_force_jac_order(&curve), reference_order);
+
+        for (i, a) in divisors.iter().enumerate() {
+            assert!(a.validate(&curve).is_ok());
+            assert!(a
+                .checked_add(&identity, &curve)
+                .unwrap()
+                .checked_eq(a, &curve)
+                .unwrap());
+            let neg = a.checked_neg(&curve).unwrap();
+            assert!(neg.validate(&curve).is_ok());
+            assert!(a.checked_add(&neg, &curve).unwrap().is_identity());
+            assert!(a
+                .checked_scalar_mul(&reference_order, &curve)
+                .unwrap()
+                .is_identity());
+
+            let mut repeated = identity.clone();
+            for scalar in 0u32..=24 {
+                let via_ladder = a
+                    .checked_scalar_mul(&BigUint::from(scalar), &curve)
+                    .unwrap();
+                assert_eq!(via_ladder, repeated, "divisor {i}, scalar {scalar}");
+                repeated = repeated.checked_add(a, &curve).unwrap();
+            }
+
+            for (j, b) in divisors.iter().enumerate() {
+                assert_eq!(a.checked_eq(b, &curve).unwrap(), i == j);
+                let sum = a.checked_add(b, &curve).unwrap();
+                assert!(sum.validate(&curve).is_ok());
+                assert!(divisors.iter().any(|candidate| candidate == &sum));
+                assert_eq!(sum, b.checked_add(a, &curve).unwrap());
+
+                for c in &divisors {
+                    let lhs = sum.checked_add(c, &curve).unwrap();
+                    let rhs = a
+                        .checked_add(&b.checked_add(c, &curve).unwrap(), &curve)
+                        .unwrap();
+                    assert_eq!(lhs, rhs, "associativity failed at ({i}, {j})");
+                }
+            }
+        }
     }
 }

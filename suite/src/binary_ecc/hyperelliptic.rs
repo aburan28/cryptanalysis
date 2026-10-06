@@ -54,14 +54,14 @@
 //!
 //! ## What this module provides
 //!
-//! - [`HyperellipticCurve`] — `(h, f, g)` over `F_{2^m}` with sanity
-//!   checks (`is_on_curve`, `genus`, leading-coefficient invariants).
+//! - [`HyperellipticCurve`] — checked odd-degree, one-rational-infinity
+//!   models `(h, f, g)` over `F_{2^m}` (`deg f = 2g + 1`).
 //! - [`MumfordDivisor`] — `(u, v)` with the invariants enforced on
 //!   construction, plus `is_reduced`, `eq` (canonical), `is_identity`.
 //! - Group law: [`MumfordDivisor::add`], [`MumfordDivisor::neg`],
 //!   [`MumfordDivisor::double`], [`MumfordDivisor::scalar_mul`].
 //! - Point-to-divisor conversion: [`MumfordDivisor::from_point`]
-//!   (the standard embedding `P ↦ [P] − [∞]` for non-Weierstrass `P`).
+//!   (the standard embedding `P ↦ [P] − [∞]`, including ramified points).
 //! - **BSGS** discrete-log solver: [`hcdlp_bsgs`] — for toy-sized
 //!   Jacobians (genus ≤ ~3, base field ≤ ~F_{2^8}).
 //! - **Pollard-ρ** discrete-log solver: [`hcdlp_pollard_rho`] —
@@ -77,15 +77,276 @@
 //!   for this educational reference.  The end-to-end test runs at
 //!   `N ∈ {6, 8, 10, 12}` where brute-force ECDLP can verify the
 //!   trapdoor's answer.
-//! - **Generic point assumption.**  `from_point` assumes the input is
-//!   not a Weierstrass point (no vertical tangent).  Trapdoor-bearing
-//!   points produced by the GHS descent are generic in practice; we
-//!   bail with `None` if a Weierstrass point is encountered.
+//! - **One rational point at infinity.**  The checked constructor in this
+//!   module deliberately supports the odd-degree model `deg f = 2g + 1`.
+//!   Even-degree models, including their different infinity bookkeeping,
+//!   need a separate implementation.
 
 use super::f2m::{F2mElement, IrreduciblePoly};
 use super::poly_f2m::F2mPoly;
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
+use std::fmt;
+
+/// Largest binary extension degree accepted by the checked constructor.
+///
+/// This is a validation/resource boundary, not a mathematical claim.  It is
+/// aligned with the catalog cover checker and comfortably includes all binary
+/// fields currently represented in this crate.
+pub const MAX_CHECKED_FIELD_DEGREE: u32 = 4096;
+
+/// Validation and arithmetic failures for the checked characteristic-two
+/// hyperelliptic API.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HyperellipticError {
+    ZeroFieldDegree,
+    FieldDegreeTooLarge {
+        degree: u32,
+        maximum: u32,
+    },
+    FieldDegreeMismatch {
+        curve_degree: u32,
+        modulus_degree: u32,
+    },
+    InvalidModulusTerm {
+        term: u32,
+        degree: u32,
+    },
+    DuplicateModulusTerm {
+        term: u32,
+    },
+    ReducibleModulus,
+    ZeroGenus,
+    GenusDegreeOverflow {
+        genus: u32,
+    },
+    PolynomialFieldMismatch {
+        polynomial: &'static str,
+        expected: u32,
+        actual: u32,
+    },
+    CoefficientFieldMismatch {
+        polynomial: &'static str,
+        coefficient: usize,
+        expected: u32,
+        actual: u32,
+    },
+    NonCanonicalPolynomial {
+        polynomial: &'static str,
+    },
+    ZeroHPolynomial,
+    ZeroFPolynomial,
+    UnsupportedInfinityConfiguration {
+        expected_f_degree: usize,
+        actual_f_degree: Option<usize>,
+    },
+    HDegreeTooLarge {
+        maximum: usize,
+        actual: usize,
+    },
+    SingularAffineModel,
+    CoordinateFieldMismatch {
+        coordinate: &'static str,
+        expected: u32,
+        actual: u32,
+    },
+    PointNotOnCurve,
+    ZeroDivisorPolynomial,
+    NonMonicDivisorPolynomial,
+    DivisorDegreeTooLarge {
+        maximum: usize,
+        actual: usize,
+    },
+    DivisorVNotReduced {
+        u_degree: usize,
+        v_degree: usize,
+    },
+    DivisorEquationNotDivisible,
+    NonExactCompositionUDivision,
+    NonExactCompositionVDivision,
+    NonExactReductionDivision,
+    ZeroReductionPolynomial,
+}
+
+impl fmt::Display for HyperellipticError {
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ZeroFieldDegree => write!(out, "binary field degree must be positive"),
+            Self::FieldDegreeTooLarge { degree, maximum } => write!(
+                out,
+                "binary field degree {degree} exceeds checked limit {maximum}"
+            ),
+            Self::FieldDegreeMismatch {
+                curve_degree,
+                modulus_degree,
+            } => write!(
+                out,
+                "curve field degree {curve_degree} does not match modulus degree {modulus_degree}"
+            ),
+            Self::InvalidModulusTerm { term, degree } => write!(
+                out,
+                "modulus term {term} is not below its leading degree {degree}"
+            ),
+            Self::DuplicateModulusTerm { term } => {
+                write!(out, "modulus term {term} occurs more than once")
+            }
+            Self::ReducibleModulus => write!(out, "binary field modulus is reducible"),
+            Self::ZeroGenus => write!(out, "hyperelliptic genus must be positive"),
+            Self::GenusDegreeOverflow { genus } => {
+                write!(out, "degree 2g+1 overflows for genus {genus}")
+            }
+            Self::PolynomialFieldMismatch {
+                polynomial,
+                expected,
+                actual,
+            } => write!(
+                out,
+                "polynomial {polynomial} declares F_(2^{actual}), expected F_(2^{expected})"
+            ),
+            Self::CoefficientFieldMismatch {
+                polynomial,
+                coefficient,
+                expected,
+                actual,
+            } => write!(
+                out,
+                "coefficient {coefficient} of {polynomial} is in F_(2^{actual}), expected F_(2^{expected})"
+            ),
+            Self::NonCanonicalPolynomial { polynomial } => write!(
+                out,
+                "polynomial {polynomial} has a noncanonical trailing zero coefficient"
+            ),
+            Self::ZeroHPolynomial => write!(
+                out,
+                "h = 0 gives an inseparable quadratic function-field model"
+            ),
+            Self::ZeroFPolynomial => write!(out, "f must be non-zero"),
+            Self::UnsupportedInfinityConfiguration {
+                expected_f_degree,
+                actual_f_degree,
+            } => write!(
+                out,
+                "checked one-infinity model requires deg f = {expected_f_degree}, got {actual_f_degree:?}"
+            ),
+            Self::HDegreeTooLarge { maximum, actual } => {
+                write!(out, "deg h = {actual} exceeds genus {maximum}")
+            }
+            Self::SingularAffineModel => write!(out, "affine curve model is singular"),
+            Self::CoordinateFieldMismatch {
+                coordinate,
+                expected,
+                actual,
+            } => write!(
+                out,
+                "point coordinate {coordinate} is in F_(2^{actual}), expected F_(2^{expected})"
+            ),
+            Self::PointNotOnCurve => write!(out, "affine point is not on the curve"),
+            Self::ZeroDivisorPolynomial => write!(out, "Mumford u polynomial must be non-zero"),
+            Self::NonMonicDivisorPolynomial => write!(out, "Mumford u polynomial must be monic"),
+            Self::DivisorDegreeTooLarge { maximum, actual } => write!(
+                out,
+                "Mumford u degree {actual} exceeds genus {maximum}"
+            ),
+            Self::DivisorVNotReduced { u_degree, v_degree } => write!(
+                out,
+                "Mumford v degree {v_degree} is not below u degree {u_degree}"
+            ),
+            Self::DivisorEquationNotDivisible => {
+                write!(out, "Mumford u does not divide v^2 + h*v + f")
+            }
+            Self::NonExactCompositionUDivision => {
+                write!(out, "Cantor composition u division is not exact")
+            }
+            Self::NonExactCompositionVDivision => {
+                write!(out, "Cantor composition v division is not exact")
+            }
+            Self::NonExactReductionDivision => {
+                write!(out, "Cantor reduction division is not exact")
+            }
+            Self::ZeroReductionPolynomial => {
+                write!(out, "Cantor reduction produced the zero u polynomial")
+            }
+        }
+    }
+}
+
+impl std::error::Error for HyperellipticError {}
+
+fn bit_rem(mut value: BigUint, modulus: &BigUint) -> BigUint {
+    while !value.is_zero() && value.bits() >= modulus.bits() {
+        let shift = (value.bits() - modulus.bits()) as usize;
+        value ^= modulus << shift;
+    }
+    value
+}
+
+fn bit_gcd(mut left: BigUint, mut right: BigUint) -> BigUint {
+    while !right.is_zero() {
+        let remainder = bit_rem(left, &right);
+        left = right;
+        right = remainder;
+    }
+    left
+}
+
+fn modulus_bits(irr: &IrreduciblePoly) -> BigUint {
+    let mut modulus = BigUint::one() << irr.degree as usize;
+    for &term in &irr.low_terms {
+        modulus ^= BigUint::one() << term as usize;
+    }
+    modulus
+}
+
+fn modulus_is_irreducible(irr: &IrreduciblePoly) -> bool {
+    // Every monic linear polynomial is irreducible.  Handling this explicitly
+    // also avoids representing the polynomial `z` as an F_2 field element.
+    if irr.degree == 1 {
+        return true;
+    }
+    let modulus = modulus_bits(irr);
+    if (&modulus & BigUint::one()).is_zero() {
+        return false;
+    }
+
+    // Rabin's criterion: z^(2^m)=z modulo q, and for every prime l|m,
+    // gcd(z^(2^(m/l))-z, q)=1.
+    let m = irr.degree;
+    let mut remaining = m;
+    let mut prime = 2u32;
+    let mut checkpoints = Vec::new();
+    while prime <= remaining / prime {
+        if remaining.is_multiple_of(prime) {
+            checkpoints.push(m / prime);
+            while remaining.is_multiple_of(prime) {
+                remaining /= prime;
+            }
+        }
+        prime += 1;
+    }
+    if remaining > 1 {
+        checkpoints.push(m / remaining);
+    }
+
+    let z = bit_rem(BigUint::from(2u32), &modulus);
+    let mut power = F2mElement::from_biguint(&z, m);
+    for exponent in 1..=m {
+        power = power.square(irr);
+        if checkpoints.contains(&exponent)
+            && bit_gcd(power.to_biguint() ^ &z, modulus.clone()) != BigUint::one()
+        {
+            return false;
+        }
+    }
+    power.to_biguint() == z
+}
+
+fn formal_derivative(poly: &F2mPoly) -> F2mPoly {
+    let mut coefficients = vec![F2mElement::zero(poly.m); poly.coeffs.len().saturating_sub(1)];
+    for degree in (1..poly.coeffs.len()).step_by(2) {
+        coefficients[degree - 1] = poly.coeffs[degree].clone();
+    }
+    F2mPoly::from_coeffs(coefficients, poly.m)
+}
 
 /// `C : y² + h(x)·y = f(x)` over `F_{2^m}` with `m`'s irreducible
 /// polynomial provided.  Stores genus and both defining polynomials.
@@ -104,35 +365,186 @@ pub struct HyperellipticCurve {
 }
 
 impl HyperellipticCurve {
-    /// Construct with explicit genus.  Sanity-checks the degree
-    /// bounds (`deg f ≤ 2g + 1`, `deg h ≤ g`).  Does **not** check
-    /// non-singularity globally — only obvious degeneracies like
-    /// `f = 0` and `h = 0`.
+    /// Construct a checked odd-degree characteristic-two model.
+    ///
+    /// This compatibility wrapper panics on invalid input.  Parsers and other
+    /// callers handling public input should use [`Self::try_new`].
     pub fn new(m: u32, irr: IrreduciblePoly, h: F2mPoly, f: F2mPoly, genus: u32) -> Self {
-        let g = genus as usize;
-        assert!(!f.is_zero(), "f must be non-zero");
-        // In char 2, h(x) = 0 makes C singular.  We allow toy curves
-        // where h is just the constant 1 (a common shortcut for
-        // demonstration), but warn the caller in debug builds.
-        debug_assert!(!h.is_zero(), "h = 0 gives a singular curve in char 2");
-        debug_assert!(f.degree().unwrap_or(0) <= 2 * g + 1);
-        debug_assert!(h.degree().unwrap_or(0) <= g);
-        Self {
+        Self::try_new(m, irr, h, f, genus).expect("invalid characteristic-two hyperelliptic curve")
+    }
+
+    /// Construct a separable, smooth odd-degree model with one rational point
+    /// at infinity.
+    ///
+    /// The supported equation is `y^2 + h(x)y = f(x)` over a validated
+    /// polynomial-basis field, with `deg f = 2g+1` and `deg h <= g`.
+    /// Smoothness on the affine chart is checked by the characteristic-two
+    /// criterion
+    /// `gcd(h, f'^2 + f h'^2) = 1`.  Exact odd degree supplies the single
+    /// smooth rational point at infinity and fixes the declared genus.
+    pub fn try_new(
+        m: u32,
+        irr: IrreduciblePoly,
+        h: F2mPoly,
+        f: F2mPoly,
+        genus: u32,
+    ) -> Result<Self, HyperellipticError> {
+        let curve = Self {
             m,
             irr,
             h,
             f,
             genus,
+        };
+        curve.validate()?;
+        Ok(curve)
+    }
+
+    fn validate_polynomial(
+        &self,
+        name: &'static str,
+        polynomial: &F2mPoly,
+    ) -> Result<(), HyperellipticError> {
+        if polynomial.m != self.m {
+            return Err(HyperellipticError::PolynomialFieldMismatch {
+                polynomial: name,
+                expected: self.m,
+                actual: polynomial.m,
+            });
         }
+        for (coefficient, value) in polynomial.coeffs.iter().enumerate() {
+            if value.m_value() != self.m {
+                return Err(HyperellipticError::CoefficientFieldMismatch {
+                    polynomial: name,
+                    coefficient,
+                    expected: self.m,
+                    actual: value.m_value(),
+                });
+            }
+        }
+        if polynomial.coeffs.last().is_some_and(F2mElement::is_zero) {
+            return Err(HyperellipticError::NonCanonicalPolynomial { polynomial: name });
+        }
+        Ok(())
+    }
+
+    /// Revalidate the field, model degrees, separability and smoothness.
+    ///
+    /// The fields remain public for source compatibility, so checked public
+    /// arithmetic calls this method before consuming a curve that may have
+    /// been mutated after construction.
+    pub fn validate(&self) -> Result<(), HyperellipticError> {
+        if self.m == 0 {
+            return Err(HyperellipticError::ZeroFieldDegree);
+        }
+        if self.m > MAX_CHECKED_FIELD_DEGREE {
+            return Err(HyperellipticError::FieldDegreeTooLarge {
+                degree: self.m,
+                maximum: MAX_CHECKED_FIELD_DEGREE,
+            });
+        }
+        if self.irr.degree != self.m {
+            return Err(HyperellipticError::FieldDegreeMismatch {
+                curve_degree: self.m,
+                modulus_degree: self.irr.degree,
+            });
+        }
+        let mut terms = self.irr.low_terms.clone();
+        for &term in &terms {
+            if term >= self.m {
+                return Err(HyperellipticError::InvalidModulusTerm {
+                    term,
+                    degree: self.m,
+                });
+            }
+        }
+        terms.sort_unstable();
+        for pair in terms.windows(2) {
+            if pair[0] == pair[1] {
+                return Err(HyperellipticError::DuplicateModulusTerm { term: pair[0] });
+            }
+        }
+        if !modulus_is_irreducible(&self.irr) {
+            return Err(HyperellipticError::ReducibleModulus);
+        }
+        if self.genus == 0 {
+            return Err(HyperellipticError::ZeroGenus);
+        }
+        let genus = self.genus as usize;
+        let expected_f_degree = genus
+            .checked_mul(2)
+            .and_then(|degree| degree.checked_add(1))
+            .ok_or(HyperellipticError::GenusDegreeOverflow { genus: self.genus })?;
+        self.validate_polynomial("h", &self.h)?;
+        self.validate_polynomial("f", &self.f)?;
+        if self.h.is_zero() {
+            return Err(HyperellipticError::ZeroHPolynomial);
+        }
+        if self.f.is_zero() {
+            return Err(HyperellipticError::ZeroFPolynomial);
+        }
+        if self.f.degree() != Some(expected_f_degree) {
+            return Err(HyperellipticError::UnsupportedInfinityConfiguration {
+                expected_f_degree,
+                actual_f_degree: self.f.degree(),
+            });
+        }
+        if let Some(actual) = self.h.degree().filter(|&degree| degree > genus) {
+            return Err(HyperellipticError::HDegreeTooLarge {
+                maximum: genus,
+                actual,
+            });
+        }
+
+        // For F(x,y)=y^2+h(x)y+f(x), a finite singular point must have
+        // h=0 and h' y+f'=0.  Squaring the latter and using y^2=f gives
+        // f'^2+f h'^2=0.  Conversely Frobenius is injective over the
+        // algebraic closure, so this gcd criterion is exact.
+        let f_derivative = formal_derivative(&self.f);
+        let h_derivative = formal_derivative(&self.h);
+        let singularity_polynomial = f_derivative.mul(&f_derivative, &self.irr).add(
+            &self
+                .f
+                .mul(&h_derivative.mul(&h_derivative, &self.irr), &self.irr),
+        );
+        let singularity_gcd = self.h.gcd(&singularity_polynomial, &self.irr);
+        if singularity_gcd.degree() != Some(0) {
+            return Err(HyperellipticError::SingularAffineModel);
+        }
+        Ok(())
     }
 
     /// `true` iff `(x, y)` satisfies `y² + h(x)·y = f(x)`.
     pub fn is_on_curve(&self, x: &F2mElement, y: &F2mElement) -> bool {
+        self.try_is_on_curve(x, y).unwrap_or(false)
+    }
+
+    /// Checked affine-point membership test.
+    pub fn try_is_on_curve(
+        &self,
+        x: &F2mElement,
+        y: &F2mElement,
+    ) -> Result<bool, HyperellipticError> {
+        self.validate()?;
+        if x.m_value() != self.m {
+            return Err(HyperellipticError::CoordinateFieldMismatch {
+                coordinate: "x",
+                expected: self.m,
+                actual: x.m_value(),
+            });
+        }
+        if y.m_value() != self.m {
+            return Err(HyperellipticError::CoordinateFieldMismatch {
+                coordinate: "y",
+                expected: self.m,
+                actual: y.m_value(),
+            });
+        }
         let lhs = y
             .square(&self.irr)
             .add(&self.h.eval(x, &self.irr).mul(y, &self.irr));
         let rhs = self.f.eval(x, &self.irr);
-        lhs == rhs
+        Ok(lhs == rhs)
     }
 }
 
@@ -165,59 +577,136 @@ impl MumfordDivisor {
         }
     }
 
+    /// Construct and validate a canonical reduced Mumford pair.
+    pub fn try_new(
+        curve: &HyperellipticCurve,
+        u: F2mPoly,
+        v: F2mPoly,
+    ) -> Result<Self, HyperellipticError> {
+        curve.validate()?;
+        let divisor = Self { u, v };
+        divisor.validate_on_valid_curve(curve)?;
+        Ok(divisor)
+    }
+
     /// Embed an affine point `P = (x_0, y_0)` on `C` into `Jac(C)` as
-    /// the class of `[P] − [∞]`.  Returns `None` if `P` is a
-    /// Weierstrass point (in char 2: `h(x_0) = 0`), since the
-    /// representation degenerates there.
+    /// the class of `[P] − [∞]`.
+    ///
+    /// This compatibility wrapper returns `None` for invalid public input.
+    /// Use [`Self::try_from_point`] to retain the structured error.  Ramified
+    /// points with `h(x_0)=0` are accepted: their pair `(x+x_0, y_0)` is a
+    /// valid reduced divisor (and is fixed by negation).
     pub fn from_point(
         curve: &HyperellipticCurve,
         x0: &F2mElement,
         y0: &F2mElement,
     ) -> Option<Self> {
-        assert!(curve.is_on_curve(x0, y0));
-        let h_at_x0 = curve.h.eval(x0, &curve.irr);
-        if h_at_x0.is_zero() {
-            // Weierstrass point: 2·y₀ + h(x₀)·y₀ = … the order-2
-            // case; the Mumford pair becomes (x − x₀, y₀) but
-            // doubling/inversion behaves differently.  Skip it.
-            return None;
+        Self::try_from_point(curve, x0, y0).ok()
+    }
+
+    /// Checked affine-point embedding `P -> [P]-[infinity]`.
+    pub fn try_from_point(
+        curve: &HyperellipticCurve,
+        x0: &F2mElement,
+        y0: &F2mElement,
+    ) -> Result<Self, HyperellipticError> {
+        curve.validate()?;
+        if x0.m_value() != curve.m {
+            return Err(HyperellipticError::CoordinateFieldMismatch {
+                coordinate: "x",
+                expected: curve.m,
+                actual: x0.m_value(),
+            });
+        }
+        if y0.m_value() != curve.m {
+            return Err(HyperellipticError::CoordinateFieldMismatch {
+                coordinate: "y",
+                expected: curve.m,
+                actual: y0.m_value(),
+            });
+        }
+        let lhs = y0
+            .square(&curve.irr)
+            .add(&curve.h.eval(x0, &curve.irr).mul(y0, &curve.irr));
+        if lhs != curve.f.eval(x0, &curve.irr) {
+            return Err(HyperellipticError::PointNotOnCurve);
         }
         // u(x) = x + x₀  (char 2; "x − x₀" = "x + x₀").
         let u = F2mPoly::from_coeffs(vec![x0.clone(), F2mElement::one(curve.m)], curve.m);
         // v(x) = y₀ (constant).
         let v = F2mPoly::constant(y0.clone());
-        Some(Self { u, v })
+        let divisor = Self { u, v };
+        divisor.validate_on_valid_curve(curve)?;
+        Ok(divisor)
     }
 
     /// `true` iff `(u, v)` already satisfies the reduced-divisor
     /// invariants: `u` monic, `deg v < deg u ≤ g`, `u | v² + h·v + f`.
-    /// Used by tests; production paths construct reduced divisors by
-    /// construction.
+    /// This is the boolean compatibility form of [`Self::validate`].
     pub fn is_reduced(&self, curve: &HyperellipticCurve) -> bool {
+        self.validate(curve).is_ok()
+    }
+
+    /// Validate this pair as the canonical reduced representative of a
+    /// divisor class on `curve`.
+    pub fn validate(&self, curve: &HyperellipticCurve) -> Result<(), HyperellipticError> {
+        curve.validate()?;
+        self.validate_on_valid_curve(curve)
+    }
+
+    /// Validate both canonical representatives and compare their divisor
+    /// classes.  Reduced Mumford representatives are unique in the supported
+    /// one-infinity model, so coefficient equality is class equality.
+    pub fn try_eq(
+        &self,
+        other: &Self,
+        curve: &HyperellipticCurve,
+    ) -> Result<bool, HyperellipticError> {
+        curve.validate()?;
+        self.validate_on_valid_curve(curve)?;
+        other.validate_on_valid_curve(curve)?;
+        Ok(self == other)
+    }
+
+    fn validate_on_valid_curve(
+        &self,
+        curve: &HyperellipticCurve,
+    ) -> Result<(), HyperellipticError> {
+        curve.validate_polynomial("u", &self.u)?;
+        curve.validate_polynomial("v", &self.v)?;
         if self.u.is_zero() {
-            return false;
+            return Err(HyperellipticError::ZeroDivisorPolynomial);
         }
         if self.u.lead() != F2mElement::one(curve.m) {
-            return false;
+            return Err(HyperellipticError::NonMonicDivisorPolynomial);
         }
         let du = self.u.degree().unwrap();
         if du > curve.genus as usize {
-            return false;
+            return Err(HyperellipticError::DivisorDegreeTooLarge {
+                maximum: curve.genus as usize,
+                actual: du,
+            });
         }
-        if !self.v.is_zero() && self.v.degree().unwrap() >= du {
-            return false;
+        if let Some(dv) = self.v.degree().filter(|&degree| degree >= du) {
+            return Err(HyperellipticError::DivisorVNotReduced {
+                u_degree: du,
+                v_degree: dv,
+            });
         }
         // u | v² + h·v + f
         let vsq = self.v.mul(&self.v, &curve.irr);
         let hv = curve.h.mul(&self.v, &curve.irr);
         let target = vsq.add(&hv).add(&curve.f);
         let (_q, r) = target.divrem(&self.u, &curve.irr);
-        r.is_zero()
+        if !r.is_zero() {
+            return Err(HyperellipticError::DivisorEquationNotDivisible);
+        }
+        Ok(())
     }
 
     /// `D + (0)`  ≡  `D` — the additive identity check.
     pub fn is_identity(&self) -> bool {
-        self.u.degree() == Some(0) && self.v.is_zero()
+        self.u == F2mPoly::one(self.u.m) && self.v.is_zero()
     }
 
     /// **Negation**: `−(u, v) = (u, (h + v) mod u)`.
@@ -225,22 +714,39 @@ impl MumfordDivisor {
     /// On the underlying curve this maps `(x_i, y_i)` to
     /// `(x_i, y_i + h(x_i))` — the "other" root of the quadratic.
     pub fn neg(&self, curve: &HyperellipticCurve) -> Self {
+        self.try_neg(curve)
+            .expect("invalid divisor or curve in Mumford negation")
+    }
+
+    /// Checked negation.
+    pub fn try_neg(&self, curve: &HyperellipticCurve) -> Result<Self, HyperellipticError> {
+        curve.validate()?;
+        self.try_neg_on_valid_curve(curve)
+    }
+
+    fn try_neg_on_valid_curve(
+        &self,
+        curve: &HyperellipticCurve,
+    ) -> Result<Self, HyperellipticError> {
+        self.validate_on_valid_curve(curve)?;
         let h_plus_v = curve.h.add(&self.v);
-        let v_new = if self.u.is_zero() {
-            h_plus_v
-        } else {
-            h_plus_v.rem(&self.u, &curve.irr)
-        };
-        Self {
+        let v_new = h_plus_v.rem(&self.u, &curve.irr);
+        let result = Self {
             u: self.u.clone(),
             v: v_new,
-        }
+        };
+        result.validate_on_valid_curve(curve)?;
+        Ok(result)
     }
 
     /// **Cantor composition**: produce a (possibly unreduced) divisor
     /// representing `self + other`.  Result has `deg u ≤ 2g`; callers
-    /// should follow with [`reduce`] to bring it back to `deg u ≤ g`.
-    fn cantor_compose(&self, other: &Self, curve: &HyperellipticCurve) -> Self {
+    /// should follow with `try_reduce` to bring it back to `deg u ≤ g`.
+    fn try_cantor_compose(
+        &self,
+        other: &Self,
+        curve: &HyperellipticCurve,
+    ) -> Result<Self, HyperellipticError> {
         let irr = &curve.irr;
         // Step 1: d1 = gcd(u1, u2) = e1·u1 + e2·u2
         let (d1, e1, e2) = self.u.ext_gcd(&other.u, irr);
@@ -255,7 +761,9 @@ impl MumfordDivisor {
         let u_prod = self.u.mul(&other.u, irr);
         let d_sq = d.mul(&d, irr);
         let (u_prime, u_rem) = u_prod.divrem(&d_sq, irr);
-        debug_assert!(u_rem.is_zero(), "u1·u2 not divisible by d²");
+        if !u_rem.is_zero() {
+            return Err(HyperellipticError::NonExactCompositionUDivision);
+        }
         // Step 5: v' = (s1·u1·v2 + s2·u2·v1 + s3·(v1·v2 + f)) / d  (mod u')
         let term1 = s1.mul(&self.u, irr).mul(&other.v, irr);
         let term2 = s2.mul(&other.u, irr).mul(&self.v, irr);
@@ -263,18 +771,20 @@ impl MumfordDivisor {
         let term3 = s3.mul(&v1v2.add(&curve.f), irr);
         let v_num = term1.add(&term2).add(&term3);
         let (v_div, v_div_rem) = v_num.divrem(&d, irr);
-        debug_assert!(v_div_rem.is_zero(), "v numerator not divisible by d");
+        if !v_div_rem.is_zero() {
+            return Err(HyperellipticError::NonExactCompositionVDivision);
+        }
         let v_prime = v_div.rem(&u_prime, irr);
-        Self {
+        Ok(Self {
             u: u_prime,
             v: v_prime,
-        }
+        })
     }
 
     /// **Cantor reduction**: bring `(u, v)` with `deg u > g` back to
     /// `deg u ≤ g` by repeated application of the standard reduction
     /// step.  Idempotent on already-reduced divisors.
-    fn reduce(&self, curve: &HyperellipticCurve) -> Self {
+    fn try_reduce(&self, curve: &HyperellipticCurve) -> Result<Self, HyperellipticError> {
         let irr = &curve.irr;
         let g = curve.genus as usize;
         let mut u = self.u.clone();
@@ -285,7 +795,12 @@ impl MumfordDivisor {
             let hv = curve.h.mul(&v, irr);
             let num = curve.f.add(&hv).add(&vsq);
             let (u_new_raw, rem) = num.divrem(&u, irr);
-            debug_assert!(rem.is_zero(), "Cantor reduction: non-exact division");
+            if !rem.is_zero() {
+                return Err(HyperellipticError::NonExactReductionDivision);
+            }
+            if u_new_raw.is_zero() {
+                return Err(HyperellipticError::ZeroReductionPolynomial);
+            }
             // Make u_new monic.
             let u_new = u_new_raw.monic(irr);
             // v_new = (h + v) mod u_new
@@ -298,20 +813,43 @@ impl MumfordDivisor {
         if !u.is_zero() && u.lead() != F2mElement::one(u.m) {
             u = u.monic(irr);
         }
-        Self { u, v }
+        Ok(Self { u, v })
     }
 
     /// **Group addition** in `Jac(C)(F_q)`.
     pub fn add(&self, other: &Self, curve: &HyperellipticCurve) -> Self {
+        self.try_add(other, curve)
+            .expect("invalid divisor or curve in Cantor addition")
+    }
+
+    /// Checked group addition in `Jac(C)(F_q)`.
+    pub fn try_add(
+        &self,
+        other: &Self,
+        curve: &HyperellipticCurve,
+    ) -> Result<Self, HyperellipticError> {
+        curve.validate()?;
+        self.try_add_on_valid_curve(other, curve)
+    }
+
+    fn try_add_on_valid_curve(
+        &self,
+        other: &Self,
+        curve: &HyperellipticCurve,
+    ) -> Result<Self, HyperellipticError> {
+        self.validate_on_valid_curve(curve)?;
+        other.validate_on_valid_curve(curve)?;
         // Short-circuit identity.
         if self.is_identity() {
-            return other.clone();
+            return Ok(other.clone());
         }
         if other.is_identity() {
-            return self.clone();
+            return Ok(self.clone());
         }
-        let composed = self.cantor_compose(other, curve);
-        composed.reduce(curve)
+        let composed = self.try_cantor_compose(other, curve)?;
+        let result = composed.try_reduce(curve)?;
+        result.validate_on_valid_curve(curve)?;
+        Ok(result)
     }
 
     /// **Doubling** — `2·self`.  Cantor's algorithm handles the
@@ -319,24 +857,43 @@ impl MumfordDivisor {
     /// `add` with `self` on both sides; a specialised doubling
     /// formula could be added for speed.
     pub fn double(&self, curve: &HyperellipticCurve) -> Self {
-        self.add(self, curve)
+        self.try_double(curve)
+            .expect("invalid divisor or curve in Cantor doubling")
+    }
+
+    /// Checked doubling.
+    pub fn try_double(&self, curve: &HyperellipticCurve) -> Result<Self, HyperellipticError> {
+        curve.validate()?;
+        self.try_add_on_valid_curve(self, curve)
     }
 
     /// **Scalar multiplication** `[k]·self` via left-to-right
     /// double-and-add.
     pub fn scalar_mul(&self, k: &BigUint, curve: &HyperellipticCurve) -> Self {
+        self.try_scalar_mul(k, curve)
+            .expect("invalid divisor or curve in scalar multiplication")
+    }
+
+    /// Checked scalar multiplication via left-to-right double-and-add.
+    pub fn try_scalar_mul(
+        &self,
+        k: &BigUint,
+        curve: &HyperellipticCurve,
+    ) -> Result<Self, HyperellipticError> {
+        curve.validate()?;
+        self.validate_on_valid_curve(curve)?;
         if k.is_zero() {
-            return Self::identity(curve.m);
+            return Ok(Self::identity(curve.m));
         }
         let bits = k.bits();
         let mut result = Self::identity(curve.m);
         for i in (0..bits).rev() {
-            result = result.double(curve);
+            result = result.try_add_on_valid_curve(&result, curve)?;
             if k.bit(i) {
-                result = result.add(self, curve);
+                result = result.try_add_on_valid_curve(self, curve)?;
             }
         }
-        result
+        Ok(result)
     }
 }
 
@@ -470,6 +1027,86 @@ pub fn hcdlp_pollard_rho(
 mod tests {
     use super::*;
     use crate::binary_ecc::f2m::IrreduciblePoly;
+    use std::collections::HashSet;
+
+    fn f8(value: u32) -> F2mElement {
+        F2mElement::from_biguint(&BigUint::from(value), 3)
+    }
+
+    /// The checker’s explicit binary cubic pullback for
+    /// E: y²+xy=x³+x²+3 over F8[z]/(z³+z+1):
+    ///
+    /// H: v²+u²v=u⁷+u⁴+7u,  (x,y)=(u³,u v+7).
+    fn binary_cubic_cover_f8() -> HyperellipticCurve {
+        let m = 3;
+        let irr = IrreduciblePoly {
+            degree: m,
+            low_terms: vec![0, 1],
+        };
+        let h = F2mPoly::monomial(F2mElement::one(m), 2);
+        let mut f_coefficients = vec![F2mElement::zero(m); 8];
+        f_coefficients[1] = f8(7); // d=sqrt(3), since 7²=3 in this basis.
+        f_coefficients[4] = F2mElement::one(m);
+        f_coefficients[7] = F2mElement::one(m);
+        HyperellipticCurve::try_new(m, irr, h, F2mPoly::from_coeffs(f_coefficients, m), 3).unwrap()
+    }
+
+    fn coefficients_from_code(
+        mut code: usize,
+        length: usize,
+        elements: &[F2mElement],
+    ) -> Vec<F2mElement> {
+        let radix = elements.len();
+        (0..length)
+            .map(|_| {
+                let coefficient = elements[code % radix].clone();
+                code /= radix;
+                coefficient
+            })
+            .collect()
+    }
+
+    fn all_reduced_f8_divisors(curve: &HyperellipticCurve) -> Vec<MumfordDivisor> {
+        curve.validate().unwrap();
+        let elements: Vec<_> = (0..8).map(f8).collect();
+        let mut divisors = vec![MumfordDivisor::identity(curve.m)];
+        for u_degree in 1..=curve.genus as usize {
+            let coefficient_vectors = elements.len().pow(u_degree as u32);
+            for u_code in 0..coefficient_vectors {
+                let mut u_coefficients = coefficients_from_code(u_code, u_degree, &elements);
+                u_coefficients.push(F2mElement::one(curve.m));
+                let u = F2mPoly::from_coeffs(u_coefficients, curve.m);
+                for v_code in 0..coefficient_vectors {
+                    let v = F2mPoly::from_coeffs(
+                        coefficients_from_code(v_code, u_degree, &elements),
+                        curve.m,
+                    );
+                    let divisor = MumfordDivisor { u: u.clone(), v };
+                    if divisor.validate_on_valid_curve(curve).is_ok() {
+                        divisors.push(divisor);
+                    }
+                }
+            }
+        }
+        divisors
+    }
+
+    fn add_prevalidated(
+        left: &MumfordDivisor,
+        right: &MumfordDivisor,
+        curve: &HyperellipticCurve,
+    ) -> MumfordDivisor {
+        if left.is_identity() {
+            return right.clone();
+        }
+        if right.is_identity() {
+            return left.clone();
+        }
+        left.try_cantor_compose(right, curve)
+            .unwrap()
+            .try_reduce(curve)
+            .unwrap()
+    }
 
     /// Genus-1 hyperelliptic curve over F_{2^8} — i.e., an elliptic
     /// curve in disguise, useful for sanity-checking the Jacobian
@@ -606,5 +1243,296 @@ mod tests {
         let q = p.scalar_mul(&k_true, &curve);
         let recovered = hcdlp_bsgs(&p, &q, &BigUint::from(2000u32), &curve);
         assert_eq!(recovered, Some(k_true));
+    }
+
+    #[test]
+    fn checked_curve_constructor_binds_field_degree_and_smoothness_errors() {
+        let curve = binary_cubic_cover_f8();
+        assert_eq!(curve.f.degree(), Some(7));
+        assert_eq!(curve.h.degree(), Some(2));
+        curve.validate().unwrap();
+
+        let reducible = IrreduciblePoly {
+            degree: 3,
+            low_terms: vec![0, 1, 2], // z³+z²+z+1=(z+1)³
+        };
+        assert!(matches!(
+            HyperellipticCurve::try_new(3, reducible, curve.h.clone(), curve.f.clone(), 3,),
+            Err(HyperellipticError::ReducibleModulus)
+        ));
+
+        let mut wrong_degree = curve.clone();
+        wrong_degree.irr.degree = 4;
+        assert!(matches!(
+            wrong_degree.validate(),
+            Err(HyperellipticError::FieldDegreeMismatch { .. })
+        ));
+
+        let mut duplicate_term = curve.clone();
+        duplicate_term.irr.low_terms.push(1);
+        assert_eq!(
+            duplicate_term.validate(),
+            Err(HyperellipticError::DuplicateModulusTerm { term: 1 })
+        );
+
+        let mut bad_coefficient_field = curve.clone();
+        bad_coefficient_field.h.coeffs[0] = F2mElement::one(2);
+        assert!(matches!(
+            bad_coefficient_field.validate(),
+            Err(HyperellipticError::CoefficientFieldMismatch {
+                polynomial: "h",
+                coefficient: 0,
+                ..
+            })
+        ));
+
+        let mut even_degree = curve.clone();
+        even_degree.f.coeffs.truncate(5);
+        assert!(matches!(
+            even_degree.validate(),
+            Err(HyperellipticError::UnsupportedInfinityConfiguration { .. })
+        ));
+
+        let mut h_too_large = curve.clone();
+        h_too_large.h = F2mPoly::monomial(F2mElement::one(3), 4);
+        assert_eq!(
+            h_too_large.validate(),
+            Err(HyperellipticError::HDegreeTooLarge {
+                maximum: 3,
+                actual: 4,
+            })
+        );
+
+        // Removing the non-zero linear term makes (0,0) singular:
+        // h(0)=f(0)=f'(0)=0.
+        let mut singular = curve.clone();
+        singular.f.coeffs[1] = F2mElement::zero(3);
+        assert_eq!(
+            singular.validate(),
+            Err(HyperellipticError::SingularAffineModel)
+        );
+    }
+
+    #[test]
+    fn explicit_f8_cubic_cover_map_holds_on_every_affine_pair() {
+        let curve = binary_cubic_cover_f8();
+        let irr = &curve.irr;
+        let a = F2mElement::one(3);
+        let b = f8(3);
+        let d = f8(7);
+        assert_eq!(d.square(irr), b);
+
+        let mut cover_points = 0usize;
+        for u_value in 0..8 {
+            let u = f8(u_value);
+            for v_value in 0..8 {
+                let v = f8(v_value);
+                if !curve.is_on_curve(&u, &v) {
+                    continue;
+                }
+                cover_points += 1;
+                let u2 = u.square(irr);
+                let x = u2.mul(&u, irr);
+                let y = u.mul(&v, irr).add(&d);
+                let lhs = y.square(irr).add(&x.mul(&y, irr));
+                let x2 = x.square(irr);
+                let rhs = x2.mul(&x, irr).add(&a.mul(&x2, irr)).add(&b);
+                assert_eq!(lhs, rhs, "cover map failed at u={u_value}, v={v_value}");
+            }
+        }
+        // Frozen direct enumeration over the declared F8 basis.  Infinity is
+        // the additional unique rational point of the smooth odd-degree model.
+        assert_eq!(cover_points, 5);
+    }
+
+    #[test]
+    fn ramified_origin_has_a_valid_mumford_pair_and_order_two() {
+        let curve = binary_cubic_cover_f8();
+        let zero = F2mElement::zero(curve.m);
+        assert!(curve.is_on_curve(&zero, &zero));
+        assert!(curve.h.eval(&zero, &curve.irr).is_zero());
+
+        let ramified = MumfordDivisor::try_from_point(&curve, &zero, &zero).unwrap();
+        assert_eq!(ramified.u, F2mPoly::x(curve.m));
+        assert!(ramified.v.is_zero());
+        assert_eq!(ramified.try_neg(&curve).unwrap(), ramified);
+        assert!(ramified.try_double(&curve).unwrap().is_identity());
+        assert!(ramified
+            .try_scalar_mul(&BigUint::from(2u32), &curve)
+            .unwrap()
+            .is_identity());
+        assert_eq!(
+            ramified
+                .try_scalar_mul(&BigUint::from(3u32), &curve)
+                .unwrap(),
+            ramified
+        );
+    }
+
+    #[test]
+    fn checked_divisor_api_rejects_malformed_public_pairs_without_debug_asserts() {
+        let curve = binary_cubic_cover_f8();
+        let zero = F2mElement::zero(curve.m);
+        let ramified = MumfordDivisor::try_from_point(&curve, &zero, &zero).unwrap();
+        assert!(ramified.try_eq(&ramified.clone(), &curve).unwrap());
+
+        let zero_u = MumfordDivisor {
+            u: F2mPoly::zero(curve.m),
+            v: F2mPoly::zero(curve.m),
+        };
+        assert_eq!(
+            zero_u.try_add(&ramified, &curve),
+            Err(HyperellipticError::ZeroDivisorPolynomial)
+        );
+        assert_eq!(
+            zero_u.try_eq(&ramified, &curve),
+            Err(HyperellipticError::ZeroDivisorPolynomial)
+        );
+
+        let non_monic = MumfordDivisor {
+            u: F2mPoly::constant(f8(2)),
+            v: F2mPoly::zero(curve.m),
+        };
+        assert_eq!(
+            non_monic.validate(&curve),
+            Err(HyperellipticError::NonMonicDivisorPolynomial)
+        );
+
+        let trailing_zero = MumfordDivisor {
+            u: F2mPoly {
+                m: curve.m,
+                coeffs: vec![F2mElement::one(curve.m), F2mElement::zero(curve.m)],
+            },
+            v: F2mPoly::zero(curve.m),
+        };
+        assert_eq!(
+            trailing_zero.validate(&curve),
+            Err(HyperellipticError::NonCanonicalPolynomial { polynomial: "u" })
+        );
+
+        let wrong_field = MumfordDivisor {
+            u: F2mPoly::one(2),
+            v: F2mPoly::zero(2),
+        };
+        assert!(matches!(
+            wrong_field.try_add(&ramified, &curve),
+            Err(HyperellipticError::PolynomialFieldMismatch {
+                polynomial: "u",
+                ..
+            })
+        ));
+
+        // The private reduction primitive now reports its formerly
+        // debug-only exact-division failure.  Public checked addition rejects
+        // malformed inputs before reaching this path.
+        let invalid_unreduced = MumfordDivisor {
+            u: F2mPoly::monomial(F2mElement::one(curve.m), 4),
+            v: F2mPoly::zero(curve.m),
+        };
+        assert_eq!(
+            invalid_unreduced.try_reduce(&curve),
+            Err(HyperellipticError::NonExactReductionDivision)
+        );
+
+        let wrong_width = F2mElement::zero(2);
+        assert!(matches!(
+            MumfordDivisor::try_from_point(&curve, &wrong_width, &wrong_width),
+            Err(HyperellipticError::CoordinateFieldMismatch { .. })
+        ));
+        assert_eq!(
+            MumfordDivisor::try_from_point(&curve, &F2mElement::one(3), &zero),
+            Err(HyperellipticError::PointNotOnCurve)
+        );
+    }
+
+    #[test]
+    fn exhaustive_f8_reduced_domain_has_closure_inverses_and_scalar_consistency() {
+        let curve = binary_cubic_cover_f8();
+        let divisors = all_reduced_f8_divisors(&curve);
+        let keys: HashSet<_> = divisors.iter().map(divisor_key).collect();
+        assert_eq!(
+            keys.len(),
+            divisors.len(),
+            "Mumford representatives must be unique"
+        );
+        assert_eq!(divisors.len(), 486, "frozen exhaustive F8 Jacobian order");
+
+        for divisor in &divisors {
+            divisor.validate_on_valid_curve(&curve).unwrap();
+            let inverse = divisor.try_neg_on_valid_curve(&curve).unwrap();
+            assert!(keys.contains(&divisor_key(&inverse)));
+            assert!(divisor
+                .try_add_on_valid_curve(&inverse, &curve)
+                .unwrap()
+                .is_identity());
+            assert_eq!(
+                divisor
+                    .try_scalar_mul(&BigUint::from(2u32), &curve)
+                    .unwrap(),
+                divisor.try_add_on_valid_curve(divisor, &curve).unwrap()
+            );
+        }
+
+        // Exhaust every unordered pair of canonical reduced representatives.
+        // This checks the shared-support and cancellation branches encountered
+        // in the complete small domain, not only point divisors.  The dedicated
+        // shared-support test below checks both operand orders.
+        for (left_index, left) in divisors.iter().enumerate() {
+            for right in divisors.iter().skip(left_index) {
+                let sum = add_prevalidated(left, right, &curve);
+                assert!(keys.contains(&divisor_key(&sum)));
+            }
+        }
+    }
+
+    #[test]
+    fn nontrivial_shared_support_divisors_cover_both_cantor_gcd_branches() {
+        let curve = binary_cubic_cover_f8();
+        let divisors = all_reduced_f8_divisors(&curve);
+        let mut retained_shared_support = None;
+        let mut cancelled_shared_support = None;
+
+        'pairs: for (left_index, left) in divisors.iter().enumerate() {
+            if left.u.degree().unwrap_or(0) < 2 {
+                continue;
+            }
+            for right in divisors.iter().skip(left_index + 1) {
+                if right.u.degree().unwrap_or(0) < 2 {
+                    continue;
+                }
+                let shared = left.u.gcd(&right.u, &curve.irr);
+                if shared.degree() != Some(1) {
+                    continue;
+                }
+                let cancellation = shared.gcd(&left.v.add(&right.v).add(&curve.h), &curve.irr);
+                match cancellation.degree() {
+                    Some(0) if retained_shared_support.is_none() => {
+                        retained_shared_support = Some((left.clone(), right.clone()));
+                    }
+                    Some(1) if cancelled_shared_support.is_none() => {
+                        cancelled_shared_support = Some((left.clone(), right.clone()));
+                    }
+                    _ => {}
+                }
+                if retained_shared_support.is_some() && cancelled_shared_support.is_some() {
+                    break 'pairs;
+                }
+            }
+        }
+
+        for (left, right) in [
+            retained_shared_support.expect("a retained shared-support pair"),
+            cancelled_shared_support.expect("a cancelling shared-support pair"),
+        ] {
+            assert_ne!(left, right);
+            let sum = left.try_add(&right, &curve).unwrap();
+            assert!(sum.is_reduced(&curve));
+            assert_eq!(sum, right.try_add(&left, &curve).unwrap());
+            assert_eq!(
+                sum.try_add(&right.try_neg(&curve).unwrap(), &curve)
+                    .unwrap(),
+                left
+            );
+        }
     }
 }
