@@ -150,6 +150,23 @@ verifier are frozen in
 [`results/sage-native-full-screen-20261006`](results/sage-native-full-screen-20261006).
 This covers the explicit 70-curve registry, not the entire isogeny class.
 
+## Attempted one-hop extension through degree 199
+
+Every ramified or split rational prime degree through 199 was then attempted
+in independent Sage panels. Degrees 59, 97, 101, and 103 completed and added
+eight explicit direct neighbors, bringing the union to 78 curves. A matched
+native screen found no significant iteration-rate advantage for any of the
+eight, so all 77 retained non-root curves now have native measurements and no
+reproducible speedup remains.
+
+This is deliberately reported as an attempted extension, not a complete scan:
+degrees 137, 149, and 151 exhausted an 8 GiB PARI stack, while the larger
+degrees failed at 4 GiB and were not all retried at 8 GiB. The successful
+registries, raw stack-overflow tracebacks, exact stopping boundary, native
+screen, receipt, and verifier are frozen in
+[`results/sage-wide-depth-one-199-20261006`](results/sage-wide-depth-one-199-20261006).
+Per-key evaluation of the new higher-degree maps was not timed.
+
 ## Quick start
 
 Python 3.11 or newer is required.

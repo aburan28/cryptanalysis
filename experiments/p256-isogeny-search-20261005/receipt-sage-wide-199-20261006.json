@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "status": "verified_exploratory_attempted_wide_199",
+  "claim": "All ramified or split prime degrees through 199 were attempted. Explicit one-hop neighbors were retained through degree 103 where Sage completed; degrees 137 and above remain unresolved. Eight new neighbors showed no significant matched-native rho iteration-rate advantage.",
+  "run_completed_at": "2026-10-06T06:33:55Z",
+  "source": {
+    "pr_parent_remote_commit": "b2a0368c6d387d3723760157e0bfc43e10ecc979",
+    "local_parent_commit": "284f818a91d4e76cd5f12b3c5f0a1eb2ede271bc",
+    "manifest": "source-sage-wide-199-20261006.sha256",
+    "manifest_sha256": "4ed2faa142203df408989baacaa2f1d801005fb9e5ebf5dd4d0fc9192a51f6ec"
+  },
+  "runtime": {
+    "sage_image": "sagemath/sagemath:10.6",
+    "sage_image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb",
+    "rust_image": "rust:1.90-bookworm",
+    "rust_image_digest": "sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f",
+    "native_release_binary_sha256": "768fb614af10bcd3990b8373194713b5406051149ea9b627c01b5e1e4f0a9e5d",
+    "host_cpu_isolation": "unverified; wall-time results are exploratory"
+  },
+  "commands": {
+    "four_gib_panel": "sage -python scripts/explore_sage_degree_panel.py --ells 59,97,101,103,137,149,151,157,163,179,181,191,197,199 --pari-stack-gib 4 --output-dir results/sage-wide-depth-one-199-20261006/degrees",
+    "eight_gib_retry": "sage -python scripts/explore_sage_degree_panel.py --ells 101,137,149,151,157,163,179,181,191,197,199 --pari-stack-gib 8 --output-dir results/sage-wide-depth-one-199-20261006/degrees-8g",
+    "assemble": "python3 scripts/assemble_sage_wide_199.py",
+    "native_screen": "p256_isogeny_native_bench --candidates EXTENDED_REGISTRY --candidate-id EIGHT_NEW_ENDPOINTS --seconds 0.5 --trials 9 --warmup-seconds 0.05 --output results/sage-wide-depth-one-199-20261006/native-screen.json"
+  },
+  "artifacts": {
+    "results/sage-wide-depth-one-199-20261006/degrees/degree-59.json": "4bba904382c8cd88e8c1ff5ca723e74eeaa19e69897624e456c149b05b58d6b8",
+    "results/sage-wide-depth-one-199-20261006/degrees/degree-97.json": "93c5577ff0dee085b6ec8c2622c80d1b1381b377aad6138970140f0640a73d56",
+    "results/sage-wide-depth-one-199-20261006/degrees/degree-103.json": "4694e0e796a24fe0a10d78d2483ae29ac679dd33c3516535caad0764f6ff1922",
+    "results/sage-wide-depth-one-199-20261006/degrees/panel-status.json": "717d4629c2b520f04dc4fb5c6108c564b865fd5be240cb1ebbd598f44f426746",
+    "results/sage-wide-depth-one-199-20261006/degrees-8g/degree-101.json": "9f0e24e15c07ce7f21e92236184e4b26a33acd5150b0b92eda497f0ec1443ac3",
+    "results/sage-wide-depth-one-199-20261006/degrees-8g/panel-status.json": "5234ee909c8aac7badc264961072a7b5dc749c213ab34066f798ab1db8671af6",
+    "results/sage-wide-depth-one-199-20261006/extended-candidates.json": "021adb47bc671f78b69e3540545f4e4cb88bbd387d5fd51101076a373eba9e31",
+    "results/sage-wide-depth-one-199-20261006/retained-union.json": "03c0ebda0b5033f9edd31b1a72e1c0de83f4706500382b633360950ecbe5882f",
+    "results/sage-wide-depth-one-199-20261006/resource-boundary.json": "5d57360801c7b08fe9b530d06d0b78d7730ca5a4abac5295a719682c05ced2a5",
+    "results/sage-wide-depth-one-199-20261006/native-screen.json": "bac83083472cf133e7cce0b0b6df7ff005e33e0b49b1fdc458f7a52306bcbea9",
+    "results/sage-wide-depth-one-199-20261006/summary.md": "e3932b07f18624748c023d793dd69f1c61841eb26b749656e65e9fb5ff3acc51"
+  },
+  "search": {
+    "attempted_ells": [3, 5, 11, 13, 17, 23, 29, 37, 41, 43, 47, 59, 97, 101, 103, 137, 149, 151, 157, 163, 179, 181, 191, 197, 199],
+    "successfully_retained_ells": [3, 5, 11, 13, 17, 23, 29, 37, 41, 43, 47, 59, 97, 101, 103],
+    "new_ells": [59, 97, 101, 103],
+    "new_neighbors": 8,
+    "extended_one_hop_curves_including_p256": 29,
+    "combined_unique_curves_including_p256": 78,
+    "explicit_paths_verified": true,
+    "exceptional_automorphisms_found": false,
+    "unresolved_ells": [137, 149, 151, 157, 163, 179, 181, 191, 197, 199]
+  },
+  "resource_boundary": {
+    "four_gib_panel_wall_seconds": 1633.0809540748596,
+    "eight_gib_retry_wall_seconds": 2532.6649701595306,
+    "measured_panel_wall_seconds_total": 4165.74592423439,
+    "successful_new_degree_wall_seconds": 661.0244386196136,
+    "failed_at_full_eight_gib": [137, 149, 151],
+    "interrupted_during_eight_gib_retry": 157,
+    "not_started_at_eight_gib": [163, 179, 181, 191, 197, 199],
+    "unretained_preliminary_attempts": "monolithic 1 GiB and 4 GiB attempts failed from PARI stack exhaustion; raw logs and timings were not retained"
+  },
+  "screening": {
+    "new_candidates": 8,
+    "degrees": [59, 59, 97, 97, 101, 101, 103, 103],
+    "seconds_per_trial": 0.5,
+    "trials_per_candidate": 9,
+    "complete_position_rotations": 1,
+    "native_elapsed_wall_seconds": 44.8294081,
+    "all_linear_relations_verified": true,
+    "significant_speedups_at_95_percent": 0,
+    "largest_point_estimate": {
+      "degree": 97,
+      "paired_relative_iteration_speed": 1.0084232111482718,
+      "paired_relative_iteration_speed_95_percent_ci": [0.9769552399784074, 1.0409047734930703]
+    }
+  },
+  "combined_native_coverage": {
+    "explicit_curves_including_p256": 78,
+    "non_root_curves_with_matched_native_measurement": 77,
+    "reproducible_speedups": 0
+  },
+  "cost_accounting": {
+    "discovery_and_reusable_precomputation": "at least 4165.75 measured panel wall-seconds, plus two unretained failed monolithic attempts",
+    "per_instance_mapping": "explicit formulas retained for P and Q; the new high-degree paths were not timed",
+    "per_instance_ecdlp": "all eight newly retained neighbors received matched native rho iteration measurements",
+    "amortization": "no end-to-end estimate because per-key mapping for the new paths was not measured"
+  },
+  "limitations": [
+    "degrees 137 and above remain unresolved, so this is not a complete one-hop enumeration through 199",
+    "the 78-curve explicit registry is not the entire P-256 isogeny class",
+    "the CPU was not isolated and frequency stability was not independently verified",
+    "the screen measures generic rho iteration cost rather than completing a full P-256 collision",
+    "per-key mapping cost was not measured for the new degree-59 through degree-103 paths"
+  ],
+  "decision": "No new candidate advances. The eight completed endpoints show no significant native iteration-rate advantage; the unresolved degree-137-and-higher boundary remains explicit."
+}
