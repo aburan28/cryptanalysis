@@ -1987,27 +1987,45 @@ in those recorded prefixes; Q1455's smaller caps admit none. This gives
 a concrete next solver variant, with no successful decomposition or N131
 work exponent yet.
 
+### Q1457 bounded joint join at cap 4,096
+
+The [Q1457 frozen stage](q1457_joint_cap4096/README.md) changes only the
+pair-candidate cap on Q1455's same binary and archived inputs. Its two
+partially freed witness controls still return independently verified group
+relations. The unpinned known-satisfiable N53 slice and full ordinary
+N53/N83 targets all reach the 60-second solver cap with no model. The exact
+joint rule fires 2, 2, and 1 times respectively, and every retained
+`no_chain` rejection is independently replayed. The full ordinary N53
+native interval spends 708,027 field multiplications, 4,315,076 squares,
+and 50,976 inversions, but this is a censored search prefix, not a
+successful-decomposition cost. Most partial states still exceed the cap:
+405/407, 298/300, and 403/404. The complete N131 `2^x` remains unknown.
+
 ## Next goal
 
-Q1452 tested the **known-satisfiable N53 ordinary target preimage 201**
-with all four leaves unpinned, and it still reached the cap without a
-model. Q1453 proved and measured a division-free representation but
-also capped at N53 and N83. Q1454 reaches 1,000,002 exact conflicts on
-the same known-satisfiable N53 slice without a model. Q1455 supplies a
-sound joint-pair rule and passing controls, but its bounded join never
-fires on the unpinned ordinary prefixes. Q1456 measures exact domain
-sizes and admits a controlled 4,096-pair cap variant at both degrees.
-Freeze and run that variant first, accounting for every root call and
-memory byte. If it changes the search but still cannot return a verified
-ordinary relation, the next method must batch or represent much larger
-pair-output domains algebraically before fixing either intermediate.
-Q1447 excludes
-uniformly restarting first-pair midpoints under the declared bases, and
-Q1416's pure pair-index
-model costs roughly `2^89.36` logical actions at N131; neither is a
-lower bound on target-guided algebraic search. Q1415's global native XOR
-Gaussian solver also capped on N53, so repeating that setting alone is
-not a new feasibility method.
+The next goal is **one independently verified four-point relation from the
+unfixed, known-satisfiable N53 preimage 201**, with exact primitive counts
+and a charged target-dependent stage interval. Q1452 and Q1454 could not
+recover that unpinned witness through the phi5/XCNF route. Q1455's joint
+rule never fired on unpinned inputs at its original cap. Q1457 activates
+the rule at N53/N83 but reaches only two N53 and one N83 joint checks in
+60 seconds, without a relation. Its N53 ordinary run spends over 4.3
+million native field squares in that censored interval. Another blind cap
+increase is not an adequate solver strategy.
+
+A concrete successor should process **large partial pair-output domains**
+without enumerating every pair combination. First derive and independently
+verify a sound target-conditioned necessary condition on partial leaves,
+then incorporate it as an incremental propagation or branching rule. Freeze
+the same N53 selected-preimage and full ordinary N53/N83 workloads, preserve
+all failures, and compare root calls and verified relations in a common
+accounting unit. If the N53 known-satisfiable slice is recovered, proceed
+to enough ordinary queries to measure natural yield and rank; a single
+control relation does not estimate those rates. Q1447 excludes uniformly
+restarting first-pair midpoints under the declared bases, and Q1416's pure
+pair-index model costs roughly `2^89.36` logical actions at N131; neither
+is a lower bound on target-guided algebraic search. The challenge stays
+closed until the complete N131 solve can be charged below `2^61`.
 
 Freeze the stage before ordinary queries. The first measurable gate is the
 unpinned archived N53 ordinary target, which Q1301 already proved

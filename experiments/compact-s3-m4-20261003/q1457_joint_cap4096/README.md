@@ -38,6 +38,40 @@ The complete N131 `2^x` and the challenge admission remain unknown until
 ordinary-query relation yield, useful rank, final matrix costs, target
 descent, and recovery checks can be charged in consistent units.
 
+## Frozen outcome
+
+The [three-cell archive audit](verification.json) regenerated each input,
+checked all source and workload hashes, and independently replayed every
+retained `no_chain` snapshot with the separate Python join. All three solver
+attempts reached their 60-second native wall cap without a model or relation.
+
+| Input | Partial states / cap skips | Joint checks / sound rejections | Native field mul / sqr / inv calls | Peak child RSS |
+| --- | ---: | ---: | ---: | ---: |
+| N53 known-satisfiable unpinned slice | 407 / 405 | 2 / 2 | 708,056 / 4,315,240 / 50,978 | 427,425,792 bytes |
+| N53 full ordinary target | 300 / 298 | 2 / 2 | 708,027 / 4,315,076 / 50,976 | 314,900,480 bytes |
+| N83 full ordinary target | 404 / 403 | 1 / 1 | 285,737 / 2,589,138 / 20,534 | 271,433,728 bytes |
+
+The cap change makes the exact joint rule fire on both ordinary targets,
+where Q1455 recorded zero such checks. It does not yield a relation in the
+frozen interval. The branch path changes after a learned rejection, so the
+Q1456 prefix's 6/6/1 prospective admissions are not a prediction of how
+many checks the new runs must reach. Most new partial states remain over
+cap. In the N53 ordinary run, the two joint checks alone account for
+252,339 field multiplications, 1,729,118 squares, and 18,953 inversions;
+the full native run uses the larger counts in the table. These are exact
+primitive-call counts for a **censored search prefix**, not cost per
+successful decomposition. The host has no isolation receipt, and no
+controlled wall-time speedup follows from the matched run.
+
+The next solver milestone is a verified relation from the unpinned
+known-satisfiable N53 slice, then ordinary N53/N83 measurements on the same
+curve/base/target records. The current evidence points to an eligibility
+problem: the solver needs sound reasoning while pair domains are much larger
+than 4,096, or a decision policy that reaches small domains with less root
+enumeration. Raising the cap again without reducing work per check would
+consume substantially more arithmetic while leaving most observed states
+untouched.
+
 Run all Sage checks and jobs through the accepted launcher:
 
 ```sh

@@ -5443,6 +5443,117 @@ def main():
             q1456_rows] == [1300, 1300, 3081]
     assert [row["eligible_unique_states_by_pair_cap"]["4096"] for row
             in q1456_rows] == [6, 6, 1]
+    q1457_dir = HERE / "q1457_joint_cap4096"
+    q1457_protocol_path = q1457_dir / "protocol.json"
+    q1457_control_path = q1457_dir / "control_result.json"
+    q1457_verification_path = q1457_dir / "verification.json"
+    q1457_protocol = json.loads(q1457_protocol_path.read_text())
+    q1457_control = json.loads(q1457_control_path.read_text())
+    q1457_verification = json.loads(q1457_verification_path.read_text())
+    assert q1457_protocol["proposal_id"] == q1457_control[
+        "proposal_id"] == q1457_verification["proposal_id"] == "Q1457"
+    assert q1457_protocol["candidate_id"] is q1457_verification[
+        "candidate_id"] is None
+    assert q1457_protocol["isogeny"] == q1457_verification[
+        "isogeny"] == "none"
+    assert q1457_protocol["point_decomposition_stage_code"] == "PDP4hybrid"
+    assert q1457_control["status"] == q1457_verification[
+        "status"] == "pass"
+    assert q1457_protocol["control_result_sha256"] == sha(q1457_control_path)
+    assert q1457_verification["protocol_sha256"] == sha(q1457_protocol_path)
+    assert q1457_protocol["parent_q1455_protocol_sha256"] == sha(
+        q1455_protocol_path)
+    assert q1457_protocol["profile_q1456_threshold_sha256"] == sha(
+        q1456_threshold_path)
+    assert q1457_protocol["run_order"] == q1456_protocol["run_order"]
+    assert len(q1457_control["rows"]) == 2
+    assert all(row["verified_relation"] for row in q1457_control["rows"])
+    q1457_rows = []
+    for name, audit in zip(q1457_protocol["run_order"],
+                           q1457_verification["rows"]):
+        cell = q1457_protocol["cells"][name]
+        receipt_path = q1457_dir / f"runs/{name}/receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        report = receipt["solver_report"]
+        assert audit["case"] == receipt["case"] == name
+        assert audit["receipt_sha256"] == sha(receipt_path)
+        assert receipt["protocol_sha256"] == sha(q1457_protocol_path)
+        assert receipt["workload_id"] == cell["workload_id"]
+        assert receipt["curve_id"] == cell["curve_id"]
+        assert receipt["factor_base_actual_B"] == cell[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == cell["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == cell[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["public_target"] == cell["public_target"]
+        assert receipt["pair_candidate_cap"] == report["pair_cap"] == 4096
+        assert receipt["solver_status"] == audit["solver_status"] == "censored"
+        assert receipt["verified_relation_count"] == 0
+        assert receipt["complete_n131_log2_work"] is None
+        assert cell["profile_unique_states_admitted"] == (
+            q1456_threshold["rows"][q1457_protocol["run_order"].index(
+                name)]["eligible_unique_states_by_pair_cap"]["4096"])
+        assert report["joint_eligible_checks"] == (
+            report["joint_no_chain_rejections"] +
+            report["joint_x_only_hits"])
+        parent_row = next(row for row in q1455_rows if row["case"] == name)
+        assert receipt["parent_receipt_sha256"] == parent_row[
+            "receipt_sha256"]
+        q1457_rows.append({
+            "proposal_id": "Q1457", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "case": name, "input_role": cell["input_role"],
+            "degree": cell["degree_n"], "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "pair_candidate_cap": cell["pair_candidate_cap"],
+            "profile_unique_states_admitted": cell[
+                "profile_unique_states_admitted"],
+            "parent_q1455_receipt_sha256": parent_row["receipt_sha256"],
+            "solver_status": receipt["solver_status"],
+            "solver_stop_reason": report["stop_reason"],
+            "sat_conflicts": report["conflicts"],
+            "sat_decisions": report["decisions"],
+            "partial_four_leaf_events": report["joint_partial_events"],
+            "joint_cap_skips": report["joint_cap_skips"],
+            "joint_eligible_checks": report["joint_eligible_checks"],
+            "joint_no_chain_rejections": report[
+                "joint_no_chain_rejections"],
+            "independently_checked_rejection_snapshots": audit[
+                "sampled_rejections_independently_checked"],
+            "joint_pair0_root_calls": report["joint_pair0_root_calls"],
+            "joint_pair1_root_calls": report["joint_pair1_root_calls"],
+            "joint_final_root_calls": report["joint_final_root_calls"],
+            "joint_field_mul_calls": report["joint_field_mul_calls"],
+            "joint_field_sqr_calls": report["joint_field_sqr_calls"],
+            "joint_field_inv_calls": report["joint_field_inv_calls"],
+            "native_field_mul_calls": report["field_mul_calls"],
+            "native_field_sqr_calls": report["field_sqr_calls"],
+            "native_field_inv_calls": report["field_inv_calls"],
+            "native_field_call_scope": (
+                "native solver and joint propagator, excludes Sage "
+                "formula construction, relation replay, and setup"),
+            "exploratory_solver_wall_ns": receipt[
+                "solver_process_wall_ns_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": 0,
+            "successful_ordinary_pdp_cost_measured": False,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["joint_eligible_checks"] for row in q1457_rows] == [2, 2, 1]
+    assert [row["independently_checked_rejection_snapshots"] for row in
+            q1457_rows] == [2, 2, 1]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -7081,6 +7192,35 @@ def main():
             "verification_sha256": sha(q1456_verification_path),
             "threshold_interpretation_sha256": sha(q1456_threshold_path),
         },
+        "q1457_joint_cap4096_stage": {
+            "proposal_id": "Q1457", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "method": q1457_protocol["method"],
+            "controlled_variable": q1457_protocol["controlled_variable"],
+            "rows": q1457_rows,
+            "verified_partial_witness_controls": 2,
+            "ordinary_eligible_joint_checks": 3,
+            "ordinary_independently_checked_no_chain_rejections": 3,
+            "ordinary_verified_relations": 0,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "The same Q1455 binary and frozen N53/N83 inputs now "
+                "activate the exact joint rule twice on each N53 cell "
+                "and once on N83. All five observed no-chain outcomes "
+                "are independently replayed. All unpinned cells still "
+                "reach 60 seconds without a relation, and most partial "
+                "states remain over cap. The native field-call vectors "
+                "measure censored search prefixes, not cost per "
+                "successful decomposition or a complete N131 solve."),
+            "protocol_sha256": sha(q1457_protocol_path),
+            "control_sha256": sha(q1457_control_path),
+            "verification_sha256": sha(q1457_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -7519,6 +7659,10 @@ def main():
                 "Q1456 independently counts those domains and finds "
                 "some states within a 4,096-pair cap at both degrees, "
                 "without measuring a successful solve; "
+                "Q1457 raises only that cap, yielding two sound "
+                "joint rejections on each unpinned N53 cell and one "
+                "on the full N83 ordinary cell, but all three still "
+                "reach the 60-second solver cap without a relation; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
