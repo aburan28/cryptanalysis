@@ -44,3 +44,25 @@ prior-art review. Dynamic programming spends target-scalar-dependent CPU
 work and memory; a group-operation saving alone does not establish a
 faster scalar multiplication. The current browser session returned an
 expired-token error, so no new literature claim is made here.
+
+## Retrospective feasibility result
+
+The [frozen screen receipt](tau3-radix27-screen.json) was replayed by the
+[read-only audit](audit_tau3_radix27_screen.py). All 32,768 coefficient paths
+terminated within the existing prepared block limits, reconstructed their
+inputs exactly, and had zero modeled fallbacks. The shortest-path search
+found fewer charged additions than the native sparse action stream in all
+eight old point cases:
+
+| Curve, four old point cases | Compact native additions | Sparse native additions | Radix-27 optimum | Saving vs sparse |
+| --- | ---: | ---: | ---: | ---: |
+| glv-j0-32 | 62,323 | 53,425 | 52,451 | 1.82% |
+| j0-56 | 134,062 | 120,896 | 113,144 | 6.41% |
+
+These are **retrospective operation counts**, including data used to train
+the hot pairs; the optimum is computed by Python rather than native point
+multiplication. The search cache ended with 41,468 states on the smaller
+curve and 254,295 states on the larger curve across four point cases. That
+shared exploratory cache is not a native online memory measurement. A
+bounded per-scalar native solver and a new disjoint fixture are still needed
+before evaluating speed or prospective operation savings.
