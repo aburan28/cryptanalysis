@@ -162,3 +162,10 @@ with exit 143 after the contended local host gave each process only about
 3% CPU. They did not produce a pass or a diagnostic; sanitizer runtime
 correctness remains unverified locally. The draft PR's CI sanitizer job is
 the pending validation gate.
+
+The older sparse native and prospective receipts retain the source hashes
+of their original execution. This descendant branch changes `ec_tau.c` and
+`bench.c`, so their read-only audits verify those historical blobs from
+commit `d952227e91e67a50516eb63fbe56a09ff6aeb7f2` and require that
+commit to be an ancestor. Both older audits pass without rewriting any raw
+result.
