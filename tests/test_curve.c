@@ -101,6 +101,19 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
     CHECK(ca_ec_tau4_pos_global_prepare(g, point, &global_pre, &global_triples));
     CHECK_EQ_U64(global_triples, prep_triples);
     CHECK(prep_triples > 0);
+    ca_tau4_pos_compact_precomp compact_pre = {0};
+    uint64_t compact_triples = 0, compact_inversions = 0;
+    CHECK(ca_ec_tau4_pos_compact_prepare(g, point, &compact_pre, &compact_triples,
+                                         &compact_inversions));
+    CHECK_EQ_U64(compact_inversions, 1);
+    CHECK(compact_triples > 0 && compact_triples <= 18 * (compact_pre.layers - 1));
+    CHECK(compact_pre.layers < CA_TAU_POS_Q);
+    for (size_t q = 0; q < compact_pre.layers; q++)
+        for (size_t slot = 0; slot < 18; slot++)
+            for (size_t word = 0; word < 4; word++)
+                CHECK_EQ_U64(compact_pre.point[q * 18 + slot].w[word],
+                             (&global_pre.point[0][0][0])[q * 18 + slot].w[word]);
+    ca_ec_tau4_pos_compact_clear(&compact_pre);
     for (size_t q = 0; q < CA_TAU_POS_Q; q++)
         for (size_t parity = 0; parity < 2; parity++)
             for (size_t j = 0; j < 9; j++) {
@@ -291,6 +304,8 @@ static void tau_atlas_recode_checks(void)
 static void tau_direct_checks(const ca_group *g, const ca_elem *point)
 {
     const uint64_t scalars[] = {0, 1, 2, 3, 17, g->order - 1, UINT64_MAX};
+    ca_tau4_pos_compact_precomp compact_pre = {0};
+    CHECK(ca_ec_tau4_pos_compact_prepare(g, point, &compact_pre, NULL, NULL));
     ca_fixed_comb_precomp comb_pre;
     uint64_t comb_doubles = 0, comb_adds = 0, comb_inversions = 0;
     CHECK(ca_ec_fixed_comb_prepare(g, point, &comb_pre, &comb_doubles, &comb_adds,
@@ -312,6 +327,11 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         ca_group_mul(g, &expected, point, k % g->order, NULL);
         CHECK(ca_ec_fixed_comb_mul_profile(g, &comb_pre, &got, k, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
+        uint64_t compact_fallbacks = UINT64_MAX;
+        CHECK(ca_ec_tau4_pos_compact_mul_profile(g, &compact_pre, &got, k, NULL, NULL,
+                                                 &compact_fallbacks));
+        CHECK(ca_group_equal(g, &got, &expected));
+        CHECK_EQ_U64(compact_fallbacks, 0);
         CHECK(ca_ec_mul_tau2(g, &got, point, k, &steps, &adds));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_mul_tau4(g, &got, point, k, &steps, &adds));
@@ -341,7 +361,23 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         CHECK(ca_ec_tau_pair_mixed_full_recode_verify_scalar(&complete_pre, k));
     }
     ca_elem identity, got;
+    size_t saved_layers = compact_pre.layers;
+    compact_pre.layers = 1;
+    uint64_t compact_fallbacks = 0;
+    uint64_t fallback_scalar = g->order / 2;
+    CHECK(ca_ec_tau4_pos_compact_mul_profile(g, &compact_pre, &got, fallback_scalar,
+                                             NULL, NULL, &compact_fallbacks));
+    ca_elem expected_fallback;
+    ca_group_mul(g, &expected_fallback, point, fallback_scalar, NULL);
+    CHECK(ca_group_equal(g, &got, &expected_fallback));
+    CHECK_EQ_U64(compact_fallbacks, 1);
+    compact_pre.layers = saved_layers;
+    ca_ec_tau4_pos_compact_clear(&compact_pre);
     ca_group_identity(g, &identity);
+    CHECK(ca_ec_tau4_pos_compact_prepare(g, &identity, &compact_pre, NULL, NULL));
+    CHECK(ca_ec_tau4_pos_compact_mul_profile(g, &compact_pre, &got, 17, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    ca_ec_tau4_pos_compact_clear(&compact_pre);
     CHECK(ca_ec_fixed_comb_prepare(g, &identity, &comb_pre, &comb_doubles, &comb_adds,
                                     &comb_inversions));
     CHECK_EQ_U64(comb_doubles, 0);
