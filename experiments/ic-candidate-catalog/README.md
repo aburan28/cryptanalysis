@@ -95,6 +95,15 @@ states, not distinct sums or an algebraic-solver lower bound. Implicit and
 target-adaptive PDP methods, natural-query yield, and full-rank recovery
 remain the active gates; `candidate_id` stays null.
 
+The [degree-263 transport-cost stage](../ecc2k130-263-transport-cost-20261005/RESULT.md)
+then checked 256 point maps on that frozen workload. The primary target's
+forward and inverse route calls took 45.721 and 42.531 ms in the checked
+Sage path on an unisolated host; these are stage observations, not complete
+IC online times. Future four-policy PDP comparisons must charge the needed
+target map and independently account for factor-base transport or pullback
+construction. Source/transported and native/pullback preserve sum membership
+exactly; only two base choices offer distinct yield hypotheses.
+
 ## Code reviewed for the design axes
 
 | Stage | Existing code and evidence | What can be reused / what is missing |
@@ -152,6 +161,16 @@ It also reserves degree-2 edges over the binary field as characteristic-prime
 isogenies without a conventional `2`-volcano up/down label.
 
 ## Choosing what to run
+
+The [exact W24 Frobenius-orbit scan](../ecc2k130-263-w24-orbit-columns-20261005/RESULT.md)
+found only 2,066 potential column savings among 8,393,232 signed columns
+of the original source base (0.0246151%). The source-transported copy has
+the same group partition. Explicitly closing W24 under Frobenius would
+instead form a different, mathematically 2,198,485,492-point base with
+8,391,166 orbit representatives. Its implicit membership and m5 PDP/rank
+costs have not been measured. The unchanged W24 quotient is deprioritized;
+the orbit-closed W24/m5 policy remains a `candidate_id: null` proposal,
+separate from both the original W24/m6 and W28/m5 policies.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
