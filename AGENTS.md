@@ -293,6 +293,13 @@ up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
 credentials into the tree, and copy the hardware from each shard's
 `status.json` into the run record.
 
+## Cross-repository curve identity in comparisons
+
+For new curve comparisons and UI exports, follow [docs/curve-identities.md](docs/curve-identities.md)
+and `tools/curve_identity.py`. Reuse EC1 aliases and full curve UIDs across IC and
+Pollard rho; keep factor-base/isogeny candidate identities separate. Preserve
+immutable historical names and never infer exact identity from field degree alone.
+
 ## CPU performance isolation gate
 
 Treat CPU timing ratios from a contended or unverified host as exploratory.
