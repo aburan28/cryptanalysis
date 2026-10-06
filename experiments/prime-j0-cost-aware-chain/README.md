@@ -274,3 +274,10 @@ streams exactly. A new disjoint, isolated CPU panel is required to learn
 whether the lower recoding overhead improves wall time.
 Its new disjoint 32,768-scalar fixture is committed before either
 comparison arm runs; no isolated CPU result exists yet.
+
+The [single-pass first-word gate](FIRSTWORD_PAIR_GATE.md) uses a 128-byte
+bitset to choose one recoder before constructing any full schedule. On
+older point-1 validation scalars, it saves modeled group-operation score
+2.21% on `glv-j0-32` and 0.77% on `j0-56` against the single-pass
+canonical arm. This is a design screen; a frozen native held-out panel and
+isolated CPU timing are still required.
