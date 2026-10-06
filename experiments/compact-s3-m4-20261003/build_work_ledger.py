@@ -6147,7 +6147,10 @@ def main():
             "pair_candidate_cap": cell["pair_candidate_cap"],
             "baseline_q1458_pair_candidate_cap": 4096,
             "baseline_q1458_joint_checks": baseline["joint_eligible_checks"],
+            "baseline_q1458_sat_conflicts": baseline["sat_conflicts"],
             "solver_status": receipt["solver_status"],
+            "sat_conflicts": report["conflicts"],
+            "sat_decisions": report["decisions"],
             "joint_checks": report["joint_eligible_checks"],
             "joint_no_chain_rejections": report[
                 "joint_no_chain_rejections"],
@@ -8079,7 +8082,11 @@ def main():
                 "with 67677 and 249719 pair candidates per side. All "
                 "three solver cells remain censored at the 60-second "
                 "native cap without a relation. Primitive operation "
-                "costs and peak memory are retained; no successful "
+                "costs and peak memory are retained. The N83 path "
+                "reports 1612 SAT conflicts versus Q1458's 43830 "
+                "while spending 92467946 field-square calls; these "
+                "divergent unisolated search prefixes are not a "
+                "controlled speed ratio. No successful "
                 "decomposition, useful-row rate, or complete N131 work "
                 "projection follows."),
             "protocol_sha256": sha(q1464_protocol_path),

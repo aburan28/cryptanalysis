@@ -40,6 +40,12 @@ Q1458's cap. Q1464 reaches more exact checks on the same inputs and under
 the same native wall limit, but the search paths diverge after those
 clauses. The zero verified-relation outcome gives no natural useful-row
 rate, cost per successful decomposition, or N53-to-N83 solve-growth fit.
+The N83 SAT report records 1,612 conflicts during Q1464's cap, versus
+43,830 for Q1458; N53 ordinary records 23,840 versus 17,320. These are
+different search prefixes on an unisolated host, so they are diagnostics
+of where the capped runs spent work, not controlled speedup ratios. The
+N83 cell spent 92,467,946 field-square calls without reaching a relation.
+Another cap increase alone has weak support from this result.
 
 ## Separate post-result audit of wide rejections
 
