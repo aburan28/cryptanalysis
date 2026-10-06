@@ -1395,28 +1395,55 @@ preserves all field calls, exploratory walls, and memory. Both ordinary
 variants are censored; neither a solve-growth fit nor a complete degree-131
 \(2^x\) follows.
 
+### Q1422 exact rational-leaf gate
+
+The [pre-registered Q1422 protocol](q1422_leaf_lift_gate/protocol.json)
+adds the sound raw-x condition \(\operatorname{Tr}(x+x^{-1})=0\) to
+Q1421's leaf-first external-root solver. Checked Sage and native code agree
+on sampled sparse/full-range x values and all archived witness leaves at
+both degrees. The [four-cell archive](q1422_leaf_lift_gate/verification.json)
+verifies both known-witness controls. Its ordinary N53 and N83 cells reject
+58 of 109 and 2,622 of 5,269 completed leaf values respectively, yet both
+reach the 60-second wall cap without a model. N83 pair-root calls fall from
+5,167 in matched Q1421 to 2,645, while conflicts remain about 22,000.
+The [Q1422 result table](q1422_leaf_lift_gate/README.md) retains all field
+calls, memory, and censored outcomes. Curve-lift feasibility alone does not
+supply an ordinary relation or a complete degree-131 \(2^x\).
+
+### Q1423 target-coupled final S3 roots
+
+The [pre-registered Q1423 protocol](q1423_target_coupled/protocol.json)
+adds sound exact roots for the last S3 link once the first pair
+intermediate and the public target-preimage selector are assigned. Both
+known-witness controls verify. The [four-cell archive](q1423_target_coupled/verification.json)
+records no ordinary N53 or N83 relation at the 60-second caps. Pair-first
+search makes 62,269 and 66,824 distinct pair assignments respectively,
+but the target-coupled final-root rule activates only once per ordinary
+query. The [Q1423 result table](q1423_target_coupled/README.md) retains
+field operations, conflicts, exploratory walls, and memory. The new rule
+is sound, but this search order reaches it too late to constrain the
+ordinary queries. A complete degree-131 `2^x` remains unknown.
+
 ## Next goal
 
-The next solver goal is a **sound earlier algebraic gate** for free-leaf
-search. Derive a necessary partial-assignment condition that combines the
-bounded-weight leaves, exact pair S3 roots, and target link before both
-leaves of a pair are fixed. Prove the condition preserves every solution on
-small exhaustive fields and archived planted controls, and meter its cost
-before integrating it into a new frozen N53/N83 comparison. The alternative
-is a target-coupled decomposition search with the same exact-base and cost
-gates; a full \(K^2n\) pair table is outside the intended compact method.
+The next solver must use the public target **before** enumerating many full
+leaf-pair assignments. Derive a compact target-coupled necessary condition
+on partial leaf pairs, prove that it preserves all four-point solutions, and
+test it against exhaustive small-field cases and the archived N53/N83 controls.
+Freeze the exact stage and use the same N53/N83 ordinary targets first, then
+a pre-registered fresh panel if a fixed target has no representation.
+Record every failed query, operation count, memory peak, and matched
+pair-table comparison. The method gates are an unpinned independently
+verified N53 relation, then one at N83 on the exact Q1325 base.
 
-First recover an unpinned N53 ordinary relation that is independently
-verified, then an N83 ordinary relation on a pre-registered target panel,
-charging every failed query. An archived fixed target might have no relation,
-so preserve its no-hit and use a frozen fresh panel rather than choosing a
-target after seeing results. After the N83 method gate, measure verified
-useful-row yield, novel rank per query, and cost per useful row. Calibrate
-field operations, conversion, hashing, and point work into a declared unit;
-add exact-base construction, collection, final matrix build/solve, descent,
-and scalar replay. Keep the complete \(2^x\) unknown until all terms are
-measured or bounded. Dispatch the challenge only if the complete degree-131
-projection is credibly below \(2^{61}\).
+Only after the N83 gate passes should a fresh ordinary-query panel measure
+verified useful-row yield, novel rank per query, and charged cost per useful
+row. Calibrate field arithmetic, conversion, hashing and point work into a
+declared common unit; add exact-base construction, relation collection, final
+matrix build/solve, target descent, and scalar replay. Keep the complete
+\(2^x\) unknown until every term is measured or bounded. Dispatch the
+challenge only if the complete degree-131 projection is credibly below
+\(2^{61}\).
 
 ## Reproduction
 
