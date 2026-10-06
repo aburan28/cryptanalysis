@@ -398,6 +398,17 @@ margin, and precomputation is equally available to generic rho.
      - **Why it cannot do better.** Beating `2^d` needs a split of the d-dimensional space U
        itself. But the root `X(u) = u HT(p(u)/u^2)` divides by u, so no functional of it separates
        over `u = u_a + u_b`. It is a preimage search, where generic collision methods give nothing.
+   - **Guided enumeration (measured, `bias.py`, `results/bias-n41.jsonl`).** Is a decomposition more
+     likely in some part of the residual space? 300 hits per cell, at n = 41 with `l = 16, 17, 18`
+     (`d = 6-7, 9-10, 12`; 143246, 38208 and 10716 targets). Each hit u was written as
+     `u0 + sum t_k f_k` in the echelon basis.
+     - **Weight.** The mean Hamming weight fraction of t is 0.509, 0.496 and 0.505 (standard error
+       about 0.01).
+     - **Order.** The mean rank in htenum's Gray-code order is 0.509, 0.493 and 0.521 of `2^d`
+       (standard error 0.017), and the decile counts are flat.
+
+     Solutions are uniform in the residual space, so no ordering or early abort beats the expected
+     `2^(d-1)` candidates of the plain enumeration.
 
 ## 6. Identifiers (AGENTS.md naming convention)
 
