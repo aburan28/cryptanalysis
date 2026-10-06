@@ -20,3 +20,15 @@ CNF/XOR, independent group, and checked Sage replay before any next stage.
 The input is fully pinned with private factor points. Even a verified SAT
 would be a positive control only; it is not ordinary-query yield, an `IC1`
 candidate, a target DLP, or a speedup.
+
+## First results
+
+Both 15,000-column variants returned `BOUNDED_UNKNOWN`. The solver logs show
+that large XOR matrices remained outside their column cap. The 60,000-column
+policy activated the roughly 50,000-column matrix and returned a SAT model on
+the fully pinned N83 input in 68.538 seconds of exploratory solver wall time.
+The runner verified the full XCNF model and group sum; independent checked
+Sage replay passed. Its sampled process-tree peak was 176.688 MiB. The
+wide-persistent variant was skipped because the first wide policy passed the
+positive-control gate. Next, the same policy must be tested with factor masks
+only and with public-only ordinary fibers before any yield inference.
