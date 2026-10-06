@@ -48,6 +48,26 @@ proves that the planted assignment satisfies this circuit. It does not prove
 that every circuit solution corresponds to a valid group decomposition;
 that ideal-equivalence control remains open.
 
+## Follow-up diagnostic: pinning intermediate values
+
+An exploratory follow-up fixed the three intermediate x rows as well as the
+five factor masks. This adds 249 unit clauses; it is deliberately easier than
+the frozen positive control and is **not** a PDP search result. The
+[diagnostic runner](run_n83_w34_sat_branch.py) then produced a SAT model in
+0.198 seconds of solver wall time, with zero reported conflicts and decisions,
+one restart, and 100,171,776 bytes peak sampled process-tree RSS. The model
+passed every CNF/XOR check and a group check. An [independent installed-Sage
+replay](sage_replay_n83_w34_sat_model.py) also passed: all five factors lie in
+the measured base, their raw sum belongs to the frozen target fiber, and
+cofactor-four projection equals the public target. That replay took 3.032
+seconds on the same unisolated host. The private masks, intermediate values,
+and model remain local.
+
+This diagnostic shows that the emitted circuit and model handling work once
+the intermediate values are supplied. It suggests that discovering those
+values is the difficult part of the current SAT formulation. It does not
+change the failed frozen gate or estimate ordinary-query cost.
+
 ## Decision
 
 The frozen pinned positive control failed its bounded search gate. Therefore
