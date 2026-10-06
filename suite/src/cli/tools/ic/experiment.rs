@@ -286,8 +286,9 @@ pub struct RunArgs {
     /// Macaulay matrices together on this backend: `cpu`, `cuda[:N]` (an
     /// NVIDIA device, through libcuda and NVRTC), or `emulate[:threads]`
     /// (the GPU kernel on the host; needs the `gpu-emulator` feature).
-    /// Relations, counters and the recovered logarithm are the same as
-    /// without it.
+    /// Lockstep implements the from-scratch engine, so the run uses it
+    /// (`KIC_F4_INHERIT=0`); relations, counters and the recovered logarithm
+    /// are that engine's without lockstep.
     #[arg(long)]
     pub f4_backend: Option<String>,
 }
