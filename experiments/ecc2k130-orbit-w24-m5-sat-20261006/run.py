@@ -418,7 +418,7 @@ def main():
                    str(xcnf)]
         report["solver_command"] = command
         solve_started = time.perf_counter()
-        stop_reason, observed_peak = None, 0
+        stop_reason, observed_peak, monitor_error = None, 0, None
         with (out / "solver.stdout.txt").open("x") as stdout, \
              (out / "solver.stderr.txt").open("x") as stderr:
             process = subprocess.Popen(command, stdout=stdout, stderr=stderr)
@@ -430,8 +430,9 @@ def main():
                         break
                     try:
                         rss = process_rss_bytes(process.pid)
-                    except (RuntimeError, subprocess.TimeoutExpired):
+                    except (RuntimeError, subprocess.TimeoutExpired, OSError) as exc:
                         stop_reason = "memory_monitor_failure"
+                        monitor_error = f"{type(exc).__name__}: {exc}"
                         process.kill()
                         break
                     if rss is not None:
@@ -445,6 +446,7 @@ def main():
                 report["solver_exit_code"] = process.wait()
         report["solver_seconds"] = time.perf_counter() - solve_started
         report["solver_peak_rss_bytes"] = observed_peak
+        report["monitor_error"] = monitor_error
         report["solver_stdout_sha256"] = digest(out / "solver.stdout.txt")
         report["solver_stderr_sha256"] = digest(out / "solver.stderr.txt")
         status, assignment = solver_output(out / "solver.stdout.txt")
