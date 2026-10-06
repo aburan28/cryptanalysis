@@ -256,4 +256,6 @@ group-operation score beats the canonical-plus-oracle schedule. On reused
 design scalars, the gated policy saves 4.40% on `glv-j0-32` and 2.72% on
 `j0-56` with about 3.6 and 13.5 atlas lookups per scalar, respectively.
 The ungated schedule regresses on both curves. Native end-to-end speed and
-academic novelty remain unproved.
+academic novelty remain unproved. The
+[prospective native protocol](PERIODIC_PAIR_NATIVE_PROTOCOL.md) fixes the
+modulus-27 gate and disjoint comparison before new inputs are generated.
