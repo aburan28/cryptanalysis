@@ -2105,6 +2105,17 @@ monomial-span rejection on those prefixes and any proper affine container
 for their bounded midpoint sets. It does not rule out a weight-aware
 nonlinear joint rule or measure a new ordinary relation.
 
+The [Q1464 wide exact join](q1464_joint_cap250k/README.md) raises only
+Q1458's pair-candidate cap to 250,000. It activates four N53 and two N83
+target-linked checks within the same 60-second native limit, versus two
+and one at cap 4,096. All checks reject their partial state; the three
+unpinned cells remain censored without a relation. A separate
+post-result serial-root audit independently confirms zero x-only chains
+in the first wide N53 and N83 ordinary rejection states, with 67,677 and
+249,719 pair candidates per side. The larger cap improves exact-state
+coverage but still supplies neither a successful N83 decomposition nor a
+natural useful-row rate.
+
 A concrete successor should process **large partial pair-output domains**
 without enumerating every pair combination. First derive and independently
 verify a sound target-conditioned necessary condition on partial leaves,
