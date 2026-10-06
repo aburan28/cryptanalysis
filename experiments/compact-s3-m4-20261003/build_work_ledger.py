@@ -5235,6 +5235,120 @@ def main():
         "receipt_sha256": sha(q1454_receipt_path),
         "cap_interpretation_sha256": sha(q1454_cap_path),
     }]
+    q1455_dir = HERE / "q1455_joint_tail"
+    q1455_protocol_path = q1455_dir / "native_protocol.json"
+    q1455_controls_path = q1455_dir / "controls.json"
+    q1455_verification_path = q1455_dir / "native_verification.json"
+    q1455_protocol = json.loads(q1455_protocol_path.read_text())
+    q1455_controls = json.loads(q1455_controls_path.read_text())
+    q1455_verification = json.loads(q1455_verification_path.read_text())
+    assert q1455_protocol["proposal_id"] == q1455_controls[
+        "proposal_id"] == q1455_verification["proposal_id"] == "Q1455"
+    assert q1455_protocol["candidate_id"] is q1455_verification[
+        "candidate_id"] is None
+    assert q1455_protocol["isogeny"] == q1455_verification[
+        "isogeny"] == "none"
+    assert q1455_protocol["point_decomposition_stage_code"] == "PDP4hybrid"
+    assert q1455_controls["status"] == q1455_verification[
+        "status"] == "pass"
+    assert q1455_verification["protocol_sha256"] == sha(
+        q1455_protocol_path)
+    assert q1455_protocol["parent_control_result_sha256"] == sha(
+        q1455_controls_path)
+    assert q1455_controls["small_field"]["complete_leaf_target_cases"] == 9072
+    assert q1455_controls["small_field"]["partial_four_leaf_cases"] == 128
+    assert [row["degree_n"] for row in q1455_controls[
+        "archived_witnesses"]] == [53, 83]
+    assert len(q1455_verification["rows"]) == len(q1455_protocol[
+        "run_order"]) == 5
+    q1455_rows = []
+    for name, audit in zip(q1455_protocol["run_order"],
+                           q1455_verification["rows"]):
+        cell = q1455_protocol["cells"][name]
+        receipt_path = q1455_dir / f"runs/{name}/receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        report = receipt["solver_report"]
+        assert audit["case"] == receipt["case"] == name
+        assert audit["receipt_sha256"] == sha(receipt_path)
+        assert receipt["protocol_sha256"] == sha(q1455_protocol_path)
+        assert receipt["workload_id"] == cell["workload_id"]
+        assert receipt["curve_id"] == cell["curve_id"]
+        assert receipt["factor_base_actual_B"] == cell[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == cell["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == cell[
+            "factor_base_enumerated_set_sha256"]
+        assert receipt["public_target"] == cell["public_target"]
+        assert report is not None
+        assert report["joint_eligible_checks"] == (
+            report["joint_no_chain_rejections"] +
+            report["joint_x_only_hits"])
+        matched_pair = None
+        if cell["input_role"] == "ordinary_full_target":
+            matched = q1445_protocol["cells"][str(cell["degree_n"])]
+            for key in ("curve_id", "factor_base_actual_B",
+                        "folded_columns_K",
+                        "factor_base_enumerated_set_sha256",
+                        "public_target"):
+                assert cell[key] == matched[key], key
+            matched_pair = q1445_rows[0 if cell["degree_n"] == 53 else 1]
+        q1455_rows.append({
+            "proposal_id": "Q1455", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "case": name, "input_role": cell["input_role"],
+            "degree": cell["degree_n"], "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "selected_target_preimage_index": cell[
+                "selected_target_preimage_index"],
+            "matched_pair_table_receipt_sha256": (
+                matched_pair["receipt_sha256"] if matched_pair else None),
+            "matched_pair_table_speed_ratio": None,
+            "solver_status": receipt["solver_status"],
+            "solver_stop_reason": report["stop_reason"],
+            "sat_conflicts": report["conflicts"],
+            "sat_decisions": report["decisions"],
+            "partial_four_leaf_events": report["joint_partial_events"],
+            "joint_cap_skips": report["joint_cap_skips"],
+            "joint_eligible_checks": report["joint_eligible_checks"],
+            "joint_no_chain_rejections": report[
+                "joint_no_chain_rejections"],
+            "independently_checked_rejection_snapshots": audit[
+                "sampled_rejections_independently_checked"],
+            "joint_pair0_root_calls": report["joint_pair0_root_calls"],
+            "joint_pair1_root_calls": report["joint_pair1_root_calls"],
+            "joint_final_root_calls": report["joint_final_root_calls"],
+            "native_field_mul_calls": report["field_mul_calls"],
+            "native_field_sqr_calls": report["field_sqr_calls"],
+            "native_field_inv_calls": report["field_inv_calls"],
+            "native_field_call_scope": (
+                "native solver and joint propagator, excludes Sage "
+                "formula construction, relation replay, and setup"),
+            "online_stage_wall_ns_exploratory": receipt[
+                "online_stage_wall_ns_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": receipt["verified_relation_count"],
+            "successful_ordinary_pdp_cost_measured": receipt[
+                "successful_ordinary_pdp_cost_measured"],
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["verified_relation_count"] for row in q1455_rows] == [
+        1, 1, 0, 0, 0]
+    assert [row["joint_eligible_checks"] for row in q1455_rows] == [
+        13, 25, 0, 0, 0]
+    assert all(row["joint_cap_skips"] == row["partial_four_leaf_events"]
+               for row in q1455_rows[2:])
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -6815,6 +6929,38 @@ def main():
             "verification_sha256": sha(q1454_verification_path),
             "cap_interpretation_sha256": sha(q1454_cap_path),
         },
+        "q1455_joint_tail_stage": {
+            "proposal_id": "Q1455", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "method": q1455_protocol["method"],
+            "controlled_variable": q1455_protocol["controlled_variable"],
+            "rows": q1455_rows,
+            "small_field_complete_cases": q1455_controls[
+                "small_field"]["complete_leaf_target_cases"],
+            "small_field_partial_cases": q1455_controls[
+                "small_field"]["partial_four_leaf_cases"],
+            "ordinary_verified_relations": 0,
+            "ordinary_eligible_joint_checks": 0,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "The unfixed-midpoint joint-tail rule passes exhaustive "
+                "small-field and N53/N83 witness controls, with sampled "
+                "native rejections independently replayed. The N53 "
+                "known-satisfiable and full ordinary N53/N83 cells all "
+                "reach the 60-second wall cap; every observed partial "
+                "state exceeds the frozen pair-domain cap, so no ordinary "
+                "joint check or verified relation is measured. Determine "
+                "actual domain sizes before raising the cap or claiming "
+                "a successful decomposition cost."),
+            "protocol_sha256": sha(q1455_protocol_path),
+            "controls_sha256": sha(q1455_controls_path),
+            "verification_sha256": sha(q1455_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -7247,6 +7393,9 @@ def main():
                 "XCNF to 1,000,002 exact SAT conflicts, exits "
                 "INDETERMINATE without a model, and still supplies "
                 "no successful-solve cost; "
+                "Q1455's exact joint-pair join passes both witness "
+                "controls but sees only over-cap partial domains on "
+                "all three unpinned N53/N83 cells; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
