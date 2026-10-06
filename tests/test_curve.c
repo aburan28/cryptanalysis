@@ -84,6 +84,8 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
     CHECK_EQ_U64(sizeof(complete_pre.exact), 23232);
     CHECK_EQ_U64(ca_ec_tau_pair_complete_static_bytes(), 33289);
     CHECK(ca_ec_tau_pair_periodic_static_bytes() > ca_ec_tau_pair_complete_static_bytes());
+    CHECK_EQ_U64(ca_ec_tau_pair_mixed_static_bytes(),
+                 ca_ec_tau_pair_complete_static_bytes() + 33282 + 33282);
     CHECK_EQ_U64(complete_seed_ops, pair_seed_ops);
     CHECK_EQ_U64(complete_prep_adds, pair_prep_adds);
     CHECK(complete_prep_rotations >= pair_prep_rotations);
@@ -182,6 +184,15 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
                                                   &complete_triples, &complete_adds,
                                                   &complete_rotations));
         CHECK(ca_ec_tau_pair_complete_recode_verify_scalar(&complete_pre, k));
+        ca_elem mixed_pair;
+        uint64_t mixed_triples = 0, mixed_tau_steps = 0, mixed_doubles = 0;
+        uint64_t mixed_adds = 0, mixed_lookups = 0, mixed_fallbacks = 0;
+        CHECK(ca_ec_tau_pair_mixed_mul_profile(g, &complete_pre, &mixed_pair, k,
+                                               &mixed_triples, &mixed_tau_steps, &mixed_doubles,
+                                               &mixed_adds, &mixed_lookups, &mixed_fallbacks));
+        CHECK(ca_ec_tau_pair_mixed_recode_verify_scalar(&complete_pre, k));
+        CHECK(ca_group_equal(g, &mixed_pair, &expected));
+        CHECK(mixed_fallbacks <= 1);
         if (i < 24) {
             ca_elem periodic_reference, periodic_candidate, periodic_firstword;
             uint64_t reference_triples = 0, reference_adds = 0;
@@ -305,6 +316,10 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
             ca_ec_tau_pair_complete_mul_profile(g, &complete_pre, &got, k, &triples, &adds, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_tau_pair_complete_recode_verify_scalar(&complete_pre, k));
+        CHECK(ca_ec_tau_pair_mixed_mul_profile(g, &complete_pre, &got, k, NULL, NULL, NULL,
+                                               NULL, NULL, NULL));
+        CHECK(ca_group_equal(g, &got, &expected));
+        CHECK(ca_ec_tau_pair_mixed_recode_verify_scalar(&complete_pre, k));
     }
     ca_elem identity, got;
     ca_group_identity(g, &identity);
@@ -316,6 +331,9 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_tau_pair_complete_prepare(g, &identity, &complete_pre, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_tau_pair_complete_prepare_verify(&complete_pre));
     CHECK(ca_ec_tau_pair_complete_mul_profile(g, &complete_pre, &got, 17, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    CHECK(ca_ec_tau_pair_mixed_mul_profile(g, &complete_pre, &got, 17, NULL, NULL, NULL,
+                                           NULL, NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
     CHECK(ca_ec_tau_pair_periodic_mul_profile(g, &complete_pre, &got, 17, 0, NULL, NULL, NULL, NULL,
                                               NULL));
@@ -775,6 +793,16 @@ static void tau_fused_small_order(void)
     CHECK(ca_group_find_generator(&g, &point, 1) == CA_OK);
     ca_tau8_fused_precomp pre = {0};
     CHECK(ca_ec_tau8_fused_prepare(&g, &point, 2, &pre, NULL, NULL, NULL, NULL));
+    ca_tau_pair_complete_precomp mixed_pre;
+    CHECK(ca_ec_tau_pair_complete_prepare(&g, &point, &mixed_pre, NULL, NULL, NULL, NULL));
+    for (uint64_t k = 0; k < 3 * g.order; k++) {
+        ca_elem got, want;
+        CHECK(ca_ec_tau_pair_mixed_mul_profile(&g, &mixed_pre, &got, k, NULL, NULL, NULL,
+                                               NULL, NULL, NULL));
+        ca_group_mul(&g, &want, &point, k % g.order, NULL);
+        CHECK(ca_group_equal(&g, &got, &want));
+        CHECK(ca_ec_tau_pair_mixed_recode_verify_scalar(&mixed_pre, k));
+    }
     ca_tau8_fused_precomp orbit = {0};
     CHECK(ca_ec_tau8_orbit_prepare(&g, &point, 2, &orbit, NULL, NULL, NULL, NULL));
     ca_tau8_fused_precomp hot = {0};
@@ -900,6 +928,20 @@ static void tau_fused_small_order(void)
     ca_ec_tau8_fused_clear(&pre);
 }
 
+static void tau_mixed_kernel(void)
+{
+    ca_group g;
+    ca_curve_info info;
+    CHECK(ca_curve_group(&g, 97, 0, 1, 3, &info) == CA_OK);
+    ca_elem point;
+    const uint64_t coordinates[4] = {0, 1, 0, 0};
+    CHECK(ca_group_encode(&g, &point, coordinates));
+    ca_elem triple;
+    ca_group_mul(&g, &triple, &point, 3, NULL);
+    CHECK(ca_group_is_identity(&g, &triple));
+    CHECK(ca_ec_tau_pair_mixed_verify_tau_kernel(&g, &point));
+}
+
 int main(void)
 {
     tau_atlas_recode_checks();
@@ -929,12 +971,14 @@ int main(void)
     /* Named curves: the two GLV families and a generic one, all solved. */
     by_name("glv-j0-26", CA_CURVE_ENDO_J0, 6, 2.2);
     tau_cost_named("glv-j0-26");
+    CHECK(ca_ec_tau_pair_mixed_verify_map());
     tau_cost_named("glv-j0-32");
     tau_cost_boundary_curves();
     tau_fused_named("glv-j0-32", 4);
     tau_fused_named("j0-56", 6);
     tau_wavefront_tables();
     tau_fused_small_order();
+    tau_mixed_kernel();
     printf("cost-aware tau point cases=%d\n", tau_cost_cases);
     by_name("glv-j1728-26", CA_CURVE_ENDO_J1728, 4, 2.5);
     by_name("generic-26", CA_CURVE_ENDO_NONE, 2, 3.0);
