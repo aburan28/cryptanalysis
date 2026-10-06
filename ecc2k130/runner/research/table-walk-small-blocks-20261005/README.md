@@ -2,8 +2,9 @@
 
 This change prepares variants for the single RTX 5090 / CUDA 13.3 objective
 of 22 billion completed point updates per second. **It does not establish
-22B/s, a GPU speedup, or a recovered discrete logarithm.** Complete point-update
-correctness and throughput remain null for the new variants.
+22B/s, a GPU speedup, or a recovered discrete logarithm.** The cache-disabled
+point/checkpoint diagnostic passed; cache-enabled host-path validation and
+sustained throughput remain pending.
 
 ## Implementation
 
@@ -91,6 +92,95 @@ The earlier cache experiment reported a three-sample median of
 19.853562B/s (20.432885, 19.853562, 19.819769). Its complete raw evidence was
 lost after premature pod cleanup. Those logs are diagnostic context, not a
 verified 22B acceptance result or evidence of these variants' performance.
+
+## Sparse-report full-population diagnostic
+
+A subsequent DP44 diagnostic kept **87,040 workers × 16 slots = 1,392,640
+walks**, with 17 steps in each of two launches. All four profiles passed 300
+CPU reference replays apiece and produced byte-identical complete checkpoints
+and identical sorted report corpora. Each profile reported 6,940 points with
+zero drops. The `hybrid128wave` split/resumed execution matched its uninterrupted
+execution at this same population, with another 48 successful reference replays.
+The total is **1,248 verified replays**. This checks the complete point-update
+and report/checkpoint paths under the declared cache-disabled configuration;
+it is not an end-to-end DLP solve or a throughput result.
+
+`gpu-point-validation-success.json` retains the exact final metadata;
+`shared-point-validation-sparse-archival.py` is the exact executed fixture.
+The 130,505,046-byte raw archive was fully downloaded, checked against SHA-256
+`abd31ab3b649f090af1e8fd5c664b37bb34b1940aa09ddf9529ad1482abfef6e`,
+and unpacked locally. All 128 members, 107 source hashes, checkpoint headers,
+checkpoint bytes, sorted corpora and report counts were independently checked
+from the transferred artifacts. `point-evidence-custody.json` records this
+receipt. The large archive and executable binaries are retained locally rather
+than committed to GitHub. Earlier failed rows remain available unchanged.
+
+The next dedicated runner, `benchmark-runner-r2.py`, repeats these full-population
+gates with DP44 and explicit report capacity, including 300 replays per profile
+and a full-population checkpoint-resume comparison. Its five sustained DP32
+samples and 22B/s acceptance boundary are unchanged. This is a saved component
+of the frozen package, requiring its maintenance guard, input/build manifests
+and an approved hardware receipt; it is not a standalone provisioning command.
+
+## Shared-device screening
+
+Twelve subsequent throughput-only cells used the cache-disabled binaries and
+the same 1,392,640 walks, with 32 launches of 1,024 steps. Each candidate had
+two samples bracketed by control samples. Production continued and the whole
+device power cap was 400 W. These rows are **exploratory**, with no controlled
+speedup or 22B/s acceptance claim.
+
+| Candidate | Candidate median B updates/s | Paired control median B updates/s | Exploratory ratio |
+| --- | ---: | ---: | ---: |
+| hybrid256 | 3.941353 | 4.086521 | 0.9645 |
+| hybrid256wave | 3.938169 | 4.089040 | 0.9631 |
+| hybrid128wave | 2.585648 | 4.085745 | 0.6328 |
+
+`shared-screen-results.json` keeps every raw cell and command. These results
+provide no measured reason to select the smaller blocks in this shared,
+cache-disabled setup. They do not establish the ranking on an idle GPU with
+cache reservation enabled. The next investigation checks the host's fixed
+shared-memory carveout hint and its occupancy query, which currently omits
+the table's dynamic shared bytes. No inference from these screens substitutes
+for the dedicated five-sample measurement.
+
+## Host-policy correction and diagnostic
+
+`apply_carveout_policy.py` patches only the frozen snapshot's host launch policy.
+It verifies the exact input header hash, exposes the optional integer
+`ECC_PACKED_SHARED_CARVEOUT` setting, preserves the original default of 16%,
+and includes the table's dynamic bytes in the occupancy calculation. CUDA's
+occupancy API defines this argument as the intended per-block dynamic shared
+memory size; the earlier call passed zero. The reported value is now explicitly
+a prediction, not a measurement of the scheduler's actual residency.
+[NVIDIA occupancy API documentation](https://docs.nvidia.com/cuda/cuda-runtime-api/cuda_runtime_api/group__CUDART__OCCUPANCY.html).
+
+Both patched variants compiled with CUDA 13.3.73. Their encoded GPU walk
+instructions matched their original variants exactly. Each passed 300 fresh
+CPU report replays, zero drops, and a complete 1,392,640-walk checkpoint/corpus
+comparison against the verified original. These are another 600 replays,
+bringing the point-diagnostic total to 1,848.
+
+The shared-device paired screens remained exploratory:
+
+| Variant | Original 16% hint median B/s | Patched policy median B/s | Exploratory ratio |
+| --- | ---: | ---: | ---: |
+| hybrid256, 64% hint | 3.940709 | 3.734168 | 0.9476 |
+| hybrid128wave, 100% hint | 2.588521 | 3.378344 | 1.3051 |
+
+The 128-thread variant improved relative to its own slow original, while
+remaining below the earlier 512-thread control at approximately 4.09B/s in
+this setup. This is not a measured improvement over the best control, not a
+controlled speedup, and not evidence of sustained 22B/s. No default is changed
+to 64% or 100% on the basis of these shared-device cells.
+
+`carveout-screen-results.json` retains all eight raw paired cells and both
+point checks. `carveout-evidence-custody.json` records the fully transferred
+65,338,399-byte archive, SHA-256
+`b0f98a6e462e0375af9599edf13916e22c35ab5da29cb30443a3d71ff609206f`.
+All 128 archive members and 107 source hashes were checked locally, including
+the exact new checkpoints and sorted corpora. The archival build and check
+controllers preserve the executed procedures and experiment-specific paths.
 
 ## Reproduction
 
