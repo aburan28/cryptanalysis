@@ -103,7 +103,8 @@ static int select_mode(const char *name)
                                   "tail-pair-periodic-gated27",
                                   "tail-pair-periodic-firstword27",
                                   "tail-pair-mixed-radix",
-                                  "tail-pair-mixed-full-digits"};
+                                  "tail-pair-mixed-full-digits",
+                                  "fixed-comb9"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -128,7 +129,7 @@ int main(int argc, char **argv)
                 "tail-double-residue|tail-pair-fused|tail-pair-complete|"
                 "tail-pair-periodic-canonical|tail-pair-periodic-gated27|"
                 "tail-pair-periodic-firstword27|tail-pair-mixed-radix|"
-                "tail-pair-mixed-full-digits "
+                "tail-pair-mixed-full-digits|fixed-comb9 "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -152,6 +153,7 @@ int main(int argc, char **argv)
     int pair_periodic = mode >= 30 && mode <= 32;
     int pair_full = mode == 34;
     int pair_mixed = mode == 33 || pair_full;
+    int comb = mode == 35;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -183,6 +185,7 @@ int main(int argc, char **argv)
     ca_tau4_precomp pre;
     ca_tau_pair_fused_precomp pair_pre;
     ca_tau_pair_complete_precomp complete_pre;
+    ca_fixed_comb_precomp comb_pre;
     ca_tau4_pos_precomp positional_pre;
     ca_tau8_fused_precomp fused_pre = {0};
     ca_tau_wide_precomp wide_pre = {0};
@@ -190,6 +193,7 @@ int main(int argc, char **argv)
     size_t fused_blocks = strcmp(argv[2], "j0-56") == 0 ? 6 : 4;
     double prep_ms = 0;
     uint64_t prep_triples = 0;
+    uint64_t prep_doubles = 0;
     uint64_t prep_layer_inversions = 0;
     uint64_t prep_adds = 0, prep_rotations = 0;
     uint64_t prep_seed_ops = 0;
@@ -197,14 +201,18 @@ int main(int argc, char **argv)
     ca_tau_wide_wavefront_stats wavefront_stats = {0};
     size_t prep_temp_heap_bytes =
         global_builder ? CA_TAU_POS_Q * 2 * 9 * (3 * sizeof(uint64_t) + sizeof(uint64_t)) : 0;
+    size_t prep_temp_stack_bytes =
+        comb ? (CA_FIXED_COMB_ENTRIES * 4 + CA_FIXED_COMB_WIDTH * 3) * sizeof(uint64_t) : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
-    size_t point_entries = pair_complete ? CA_TAU_PAIR_COMPLETE_COUNT
+    size_t point_entries = comb          ? CA_FIXED_COMB_ENTRIES
+                           : pair_complete ? CA_TAU_PAIR_COMPLETE_COUNT
                            : pair_fused  ? CA_TAU_PAIR_FUSED_REP_COUNT
                            : tapered     ? ca_ec_tau_wide_entries(wide_schedule)
                            : fused       ? fused_blocks * fused_entries
                                          : 0;
     size_t point_table_bytes = point_entries * sizeof(ca_elem);
-    size_t prep_bytes = pair_complete ? sizeof(complete_pre)
+    size_t prep_bytes = comb          ? sizeof(comb_pre)
+                        : pair_complete ? sizeof(complete_pre)
                         : pair_fused  ? sizeof(pair_pre)
                         : tapered     ? sizeof(wide_pre) + point_table_bytes
                         : fused       ? sizeof(fused_pre) + point_table_bytes
@@ -216,7 +224,13 @@ int main(int argc, char **argv)
     if (wavefront) prep_temp_heap_bytes = ca_ec_tau_wide_wavefront_temp_bytes(wide_schedule);
     if (mode != 0) {
         double t0 = ca_now();
-        if (pair_complete) {
+        if (comb) {
+            if (!ca_ec_fixed_comb_prepare(&group, &point, &comb_pre, &prep_doubles,
+                                           &prep_adds, &prep_layer_inversions)) {
+                free(outputs);
+                return 2;
+            }
+        } else if (pair_complete) {
             if (!ca_ec_tau_pair_complete_prepare(&group, &point, &complete_pre, &prep_seed_ops,
                                                  &prep_adds, &prep_rotations,
                                                  &prep_layer_inversions)) {
@@ -363,6 +377,16 @@ int main(int argc, char **argv)
                 adds += a;
                 rotations += r;
                 output_inversions += !outputs[i].w[2];
+            } else if (comb) {
+                uint64_t d = 0, a = 0;
+                if (!ca_ec_fixed_comb_mul_profile(&group, &comb_pre, &outputs[i], scalars[i],
+                                                   &d, &a)) {
+                    fprintf(stderr, "fixed-base comb evaluation failed at index %zu\n", i);
+                    free(outputs);
+                    return 1;
+                }
+                doubles += d;
+                adds += a;
             } else if (pair_mixed) {
                 uint64_t t3 = 0, tt = 0, td = 0, a = 0, lookups = 0, fallback = 0;
                 int success = pair_full
@@ -587,9 +611,10 @@ int main(int argc, char **argv)
         "curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
         " endo_lambda=%" PRIu64 " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
         " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
-        " prep_triples=%" PRIu64 " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64
+        " prep_triples=%" PRIu64 " prep_doubles=%" PRIu64
+        " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64
         " prep_seed_ops=%" PRIu64 " prep_layer_inversions=%" PRIu64
-        " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_repeats=%d"
+        " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_temp_stack_bytes=%zu prep_repeats=%d"
         " point_entries=%zu point_table_bytes=%zu"
         " triples=%" PRIu64 " tau_steps=%" PRIu64 " doubles=%" PRIu64
         " adds=%" PRIu64 " rotations=%" PRIu64 " output_inversions=%" PRIu64
@@ -607,8 +632,10 @@ int main(int argc, char **argv)
         " mixed_lookups=%" PRIu64 " mixed_fallbacks=%" PRIu64
         " mixed_checks=%" PRIu64 " mixed_action_digest=%016" PRIx64 " verified=1\n",
         argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda, input_digest,
-        output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_adds, prep_rotations,
-        prep_seed_ops, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats,
+        output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_doubles, prep_adds,
+        prep_rotations,
+        prep_seed_ops, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes,
+        prep_temp_stack_bytes, prep_repeats,
         point_entries, point_table_bytes, triples, tau_steps, doubles, adds, rotations,
         output_inversions, fallbacks,
         second_recodes, steered_blocks, static_map_bytes, recipe_bytes, prep_slot_lookups,

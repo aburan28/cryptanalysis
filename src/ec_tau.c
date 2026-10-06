@@ -216,6 +216,83 @@ static int jac_batch_to_affine_scratch(const ca_group *g, ca_elem *out, const ta
     return 1;
 }
 
+/* Fixed-base binary comb, retained as a conventional control for every
+ * prepared-point tau experiment. Column j represents 2^(j*depth) P. */
+int ca_ec_fixed_comb_prepare(const ca_group *g, const ca_elem *point,
+                             ca_fixed_comb_precomp *out, uint64_t *doubles,
+                             uint64_t *adds, uint64_t *inversions)
+{
+    if (!g || !point || !out || g->kind != CA_GROUP_EC || g->order < 2) return 0;
+    unsigned bits = 0;
+    for (uint64_t n = g->order - 1; n; n >>= 1) bits++;
+    unsigned depth = (bits + CA_FIXED_COMB_WIDTH - 1) / CA_FIXED_COMB_WIDTH;
+    if (!depth || depth > 8) return 0;
+    out->g = g;
+    out->depth = depth;
+    out->identity = point->w[2] != 0;
+    if (doubles) *doubles = 0;
+    if (adds) *adds = 0;
+    if (inversions) *inversions = 0;
+    if (out->identity) {
+        for (unsigned i = 0; i < CA_FIXED_COMB_ENTRIES; i++)
+            out->point[i] = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    tau_jac basis[CA_FIXED_COMB_WIDTH];
+    tau_jac projective[CA_FIXED_COMB_ENTRIES];
+    uint64_t prefixes[CA_FIXED_COMB_ENTRIES];
+    basis[0] = (tau_jac){point->w[0], point->w[1], g->mont.r1};
+    for (unsigned j = 1; j < CA_FIXED_COMB_WIDTH; j++) {
+        basis[j] = basis[j - 1];
+        for (unsigned i = 0; i < depth; i++) {
+            basis[j] = jac_double(g, basis[j]);
+            if (doubles) (*doubles)++;
+        }
+    }
+    projective[0] = (tau_jac){0, g->mont.r1, 0};
+    for (unsigned mask = 1; mask < CA_FIXED_COMB_ENTRIES; mask++) {
+        unsigned bit = 0;
+        while ((mask & (1u << bit)) == 0) bit++;
+        unsigned previous = mask ^ (1u << bit);
+        projective[mask] = jac_add(g, projective[previous], basis[bit]);
+        if (previous && adds) (*adds)++;
+    }
+    return jac_batch_to_affine_scratch(g, out->point, projective,
+                                       CA_FIXED_COMB_ENTRIES, prefixes, inversions);
+}
+
+int ca_ec_fixed_comb_mul_profile(const ca_group *g, const ca_fixed_comb_precomp *pre,
+                                  ca_elem *out, uint64_t k, uint64_t *doubles,
+                                  uint64_t *adds)
+{
+    if (!g || !pre || !out || pre->g != g || !pre->depth || pre->depth > 8) return 0;
+    if (doubles) *doubles = 0;
+    if (adds) *adds = 0;
+    if (pre->identity || k % g->order == 0) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    k %= g->order;
+    tau_jac acc = {0, g->mont.r1, 0};
+    for (unsigned i = pre->depth; i-- > 0;) {
+        if (acc.z) {
+            acc = jac_double(g, acc);
+            if (doubles) (*doubles)++;
+        }
+        unsigned mask = 0;
+        for (unsigned j = 0; j < CA_FIXED_COMB_WIDTH; j++) {
+            unsigned bit_index = j * pre->depth + i;
+            if (bit_index < 64) mask |= (unsigned)((k >> bit_index) & 1u) << j;
+        }
+        if (mask && !pre->point[mask].w[2]) {
+            acc = jac_add_mixed(g, acc, &pre->point[mask]);
+            if (adds) (*adds)++;
+        }
+    }
+    jac_to_affine(g, out, acc);
+    return 1;
+}
+
 int ca_ec_triple_j0(const ca_group *g, ca_elem *r, const ca_elem *a)
 {
     if (!g || !r || !a || g->kind != CA_GROUP_EC || g->a != 0 || g->b == 0 || g->p % 3 != 1)

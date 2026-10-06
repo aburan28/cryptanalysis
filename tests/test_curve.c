@@ -291,6 +291,13 @@ static void tau_atlas_recode_checks(void)
 static void tau_direct_checks(const ca_group *g, const ca_elem *point)
 {
     const uint64_t scalars[] = {0, 1, 2, 3, 17, g->order - 1, UINT64_MAX};
+    ca_fixed_comb_precomp comb_pre;
+    uint64_t comb_doubles = 0, comb_adds = 0, comb_inversions = 0;
+    CHECK(ca_ec_fixed_comb_prepare(g, point, &comb_pre, &comb_doubles, &comb_adds,
+                                    &comb_inversions));
+    CHECK_EQ_U64(comb_doubles, 8 * comb_pre.depth);
+    CHECK_EQ_U64(comb_adds, CA_FIXED_COMB_ENTRIES - 1 - CA_FIXED_COMB_WIDTH);
+    CHECK_EQ_U64(comb_inversions, 1);
     ca_tau4_precomp pre;
     CHECK(ca_ec_tau4_prepare(g, point, &pre, NULL));
     ca_tau_pair_fused_precomp pair_pre;
@@ -303,6 +310,8 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         uint64_t k = scalars[i], steps, adds, triples;
         ca_elem expected, got;
         ca_group_mul(g, &expected, point, k % g->order, NULL);
+        CHECK(ca_ec_fixed_comb_mul_profile(g, &comb_pre, &got, k, NULL, NULL));
+        CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_mul_tau2(g, &got, point, k, &steps, &adds));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_mul_tau4(g, &got, point, k, &steps, &adds));
@@ -333,6 +342,13 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     }
     ca_elem identity, got;
     ca_group_identity(g, &identity);
+    CHECK(ca_ec_fixed_comb_prepare(g, &identity, &comb_pre, &comb_doubles, &comb_adds,
+                                    &comb_inversions));
+    CHECK_EQ_U64(comb_doubles, 0);
+    CHECK_EQ_U64(comb_adds, 0);
+    CHECK_EQ_U64(comb_inversions, 0);
+    CHECK(ca_ec_fixed_comb_mul_profile(g, &comb_pre, &got, 17, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
     uint64_t setup_ops = UINT64_MAX;
     CHECK(ca_ec_tau4_prepare(g, &identity, &pre, &setup_ops));
     CHECK_EQ_U64(setup_ops, 0);
