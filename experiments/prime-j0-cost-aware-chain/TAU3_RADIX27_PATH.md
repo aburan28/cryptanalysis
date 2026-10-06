@@ -124,3 +124,33 @@ evaluation, and final affine conversion; point preparation and independent
 scalar replay are separate. CPU ratios remain exploratory without repeated
 paired runs and a host-level isolation receipt. A successful operation gate
 does not override the native old-data latency warning.
+
+## Prospective disjoint-panel result
+
+The [new fixture](tau3-radix27-inputs.json) and its [read-only
+audit](audit_tau3_radix27_inputs.py) confirm 32,768 scalars disjoint from
+the earlier fixtures and eight generic reference output digests. They were
+committed before either arm ran. The [raw paired
+receipt](tau3-radix27-panel.json) retains every exit code, timeout, stdout,
+and stderr; its [audit](audit_tau3_radix27_panel.py) passes all eight
+predeclared operation gates. All 16 arms match their generic outputs and
+the radix-27 path has zero fallbacks.
+
+| Curve, four new point cases | Sparse additions | Radix-27 additions | Addition saving | Radix-27 DP states / options |
+| --- | ---: | ---: | ---: | ---: |
+| glv-j0-32 | 53,458 | 52,402 | 1.98% | 125,286 / 242,270 |
+| j0-56 | 122,431 | 113,820 | 7.03% | 371,173 / 914,167 |
+
+The point tables remain 12,672 / 24,192 bytes on the two curves. The
+radix-27 variant adds 9,672 static action-pool bytes and uses 53,312
+bytes of online stack scratch per scalar. Local, unisolated medians over
+four point cases were 1.7405 versus 2.9075 ms for sparse versus radix-27
+on `glv-j0-32`, and 2.3620 versus 7.9785 ms on `j0-56`. These runs are
+single executions on a contended host, so they are not controlled CPU
+ratios; the receipt keeps the CPU timing claim null. The operation saving
+also appears on this disjoint panel, while the measured work suggests the
+search cost outweighs it in the current implementation. For this fixed
+action alphabet and point table, the shortest-path values also bound any
+further addition-only improvement to 1.98% / 7.03% relative to the sparse
+recoder on this workload. A faster scalar implementation must reduce
+recoding cost, improve point arithmetic, or change the action/table budget.
