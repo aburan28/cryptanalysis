@@ -66,6 +66,8 @@ closed.
 Reproduce with the checked Sage launcher for every Sage job:
 
 ```sh
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1458_batch_roots/build.py --rebuild
+c++ -std=c++17 -O2 experiments/compact-s3-m4-20261003/q1464_joint_cap250k/serial_audit.cpp -o experiments/compact-s3-m4-20261003/q1464_joint_cap250k/serial_audit
 python3 experiments/compact-s3-m4-20261003/q1464_joint_cap250k/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1464_joint_cap250k/run_controls.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1464_joint_cap250k/verify_archive.py --check
