@@ -78,3 +78,14 @@ records no private-fixture input. No model or UNSAT proof was returned. The
 four frozen ordinary raw fibers are the next bounded diagnostic, but no
 natural-yield rate or complete IC claim can follow from this failed planted
 search gate.
+
+The four frozen ordinary fibers then all returned `BOUNDED_UNKNOWN` under
+the same cap. Their complete process-tree wall times were 137.907, 134.718,
+137.244, and 218.707 seconds, with zero verified relations. They are four
+correlated raw fibers of one target, not four independent ordinary queries.
+The [paired cost comparison](COST_COMPARISON.md) and
+[exact machine ledger](COST_COMPARISON.json) reconcile this method against
+the earlier direct-mask circuit on identical public inputs and resources.
+The positional encoding changed circuit size but did not change the
+unpinned or ordinary bounded outcomes. Neither method has a measured
+relation yield, target DLP, paired rho result, or IC speedup.
