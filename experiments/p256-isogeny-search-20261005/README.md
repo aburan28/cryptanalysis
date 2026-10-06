@@ -83,6 +83,21 @@ benchmark, and claim limits are frozen in
 six-neighbor depth-one result, not an exhaustive class-group search, and path
 evaluation on each target key remains untimed.
 
+## Depth-two and depth-three follow-up
+
+The next run reached 24 curves through depth two and 56 through depth three.
+All 17 new depth-two neighbors were screened in order-balanced blocks. One
+unadjusted screening interval barely excluded `1.0`, but a fresh 20-trial,
+two-second holdout rejected it and the other two screening leaders. No holdout
+interval excluded `1.0`; no candidate advances.
+
+The 32 new depth-three curves retained verified explicit paths and exposed no
+exceptional automorphisms. They were not subjected to another non-isolated
+Python timing sweep because the complete depth-two screen and holdout found no
+reproducible effect. Raw registries, screening blocks, holdout results, costs,
+class-number computation failures, and claim limits are frozen in
+[`results/sage-depth-three-20261006`](results/sage-depth-three-20261006).
+
 ## Quick start
 
 Python 3.11 or newer is required.
