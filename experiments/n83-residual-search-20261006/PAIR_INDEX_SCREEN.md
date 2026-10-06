@@ -6,19 +6,23 @@ usable subgroup-point count in each labeled slot before orbit folding.
 All arithmetic is integer or high-precision decimal; no solver yield or
 runtime is inferred from the counts.
 
-| Geometry | `B` per slot | One distinct-slot pair entries `B²` | Remaining-summand average tuples per uniform target `B^(m-2)/r` | Full eight/seven-sum average `B^m/r` |
-| --- | ---: | ---: | ---: | ---: |
-| Seven summands | 4,036 | 16,289,296 | 0.000000442921 | 7.21487 |
-| Eight summands | 2,018 | 4,072,324 | 0.0000279317 | 113.747 |
+| Geometry | `B` per slot | One distinct-slot pair entries `B²` | Remaining-summand average tuples per uniform target `B^(m-2)/r` | Fixed prefixes necessary for 50% coverage | Full seven/eight-sum average `B^m/r` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Seven summands | 4,036 | 16,289,296 | 0.000000442921 | 1,128,870 | 7.21487 |
+| Eight summands | 2,018 | 4,072,324 | 0.0000279317 | 17,901 | 113.747 |
 
 For a uniformly chosen subgroup target after fixing one pair, the chance
 of **any** decomposition into the remaining factors is at most the
-remaining-summand average in this table. Under an additional independent
-occupancy approximation, first success would take about 2.26 million
-pair probes for seven summands or 35,802 for eight. The probes are
-correlated on a fixed target, so these are **heuristics**, not measured
-query counts or lower bounds for that point. Every failed and timed-out
-residual solver attempt would still be charged to the target.
+remaining-summand average in this table. A union bound then makes the
+listed number of distinct **fixed, target-independent** pair prefixes
+necessary for even 50% coverage of a uniformly chosen subgroup target.
+This necessary-count bound does not assume independent probes; it does
+not apply to adaptive pair selection using the target. Under the additional
+independent-occupancy approximation, first success would take about 2.26
+million pair probes for seven summands or 35,802 for eight. Those expected
+first-success counts are **heuristics**, not measured query counts or lower
+bounds for one fixed point. Every failed and timed-out residual solver
+attempt would still be charged to the target.
 
 For the eight-summand proposal, a raw 16-byte record for each pair gives
 65,157,184 bytes for one pair table before indexing or allocator overhead.

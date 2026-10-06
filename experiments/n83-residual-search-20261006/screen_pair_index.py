@@ -55,6 +55,10 @@ def main() -> None:
             "residual_ordered_tuples": str(residual_tuples),
             "exact_average_residual_tuples_per_uniform_subgroup_target": str(residual_lambda),
             "uniform_residual_support_probability_upper_bound": str(min(Decimal(1), residual_lambda)),
+            # Union bound over a target-independent ordered list of distinct
+            # projected pair sums. Correlation can only make coverage smaller.
+            "fixed_pair_prefixes_necessary_for_50pct_uniform_target_coverage":
+                (r + 2 * residual_tuples - 1) // (2 * residual_tuples),
             "full_ordered_tuples": str(full_tuples),
             "exact_average_full_tuples_per_uniform_subgroup_target": str(full_lambda),
             "first_success_pair_probes_independent_occupancy_heuristic":
@@ -63,6 +67,8 @@ def main() -> None:
             "full_four_factor_join_raw_point_bytes_at_12_bytes_per_state":
                 str(b**4 * COMPRESSED_POINT_BYTES),
             "geometry_count_is_not_solver_yield": True,
+            "fixed_prefix_bound_scope":
+                "Any fixed target-independent list of pair prefixes on a uniform subgroup target; no independence assumption. Adaptive target-dependent prefix selection is outside this bound.",
         }
         if m == 8:
             # Four pair-sum lists have pair-of-pair size B^4. Under a uniform
