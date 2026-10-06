@@ -1752,13 +1752,71 @@ sample center requires `2^65.542` in the same optimistic model.
 The selected base has **not** been enumerated: actual B, K, and its set
 digest remain null. The model is neither measured ordinary yield nor a
 field-operation or complete-solve projection. It narrows a possible future
-base choice while the target-conditioned pair solver remains the decisive
-missing measurement.
+base choice while the joint target-conditioned four-point solver remains the
+decisive missing measurement.
+
+### Q1443 residual-pair support bound
+
+The [Q1443 exact-family screen](q1443_residual_pair_bound/README.md) corrects
+the next-method requirement. At Q1442's conditional selected-W7 size, a
+uniform N131 target's residual after a target-independent first pair lies in
+the factor-base pair-sum support with probability at most `2^-63.043`. Even
+with a free exact residual-pair oracle, 95% chance of one relation needs at
+least `2^62.969` individually tested first pairs in the screen's abstract
+trial unit. For the exact W≤6 base, the corresponding necessary count is
+`2^64.704`. Under a one-row-per-trial policy, the 95%-rank trial bounds are
+far higher. These statements apply to the declared uniform-target,
+target-oblivious-first-pair family; they do not bound a joint target-guided
+search or compressed batch-pair method.
+
+Thus an isolated fixed-residual pair oracle can calibrate a kernel, but
+cannot by itself provide a plausible complete `2^x` below `2^61`. The
+next solver must couple both sparse pairs to the public target *before*
+enumerating first-pair candidates. Q1443 still records no ordinary N83
+relation, no complete-solve exponent, and no challenge permission.
+
+### Q1444 sound WDSat adapter diagnostic
+
+The [Q1444 adapter stage](q1444_wdsat_adapter/README.md) checked a dedicated
+XOR-aware SAT solver against four archived compact chained-`S3` formulas on
+the exact Q1438 N53/N83 bases. A direct input would silently drop CNF clauses
+longer than four in this upstream solver. Q1444 uses audited shared-prefix OR
+gates to preserve every clause and XOR row, fixes its ignored unit-propagation
+failure, and independently checks known-witness models. The frozen binary
+and formula hashes are in its protocol. Both known-satisfiable controls and
+both ordinary cells reached the 60-second cap without a model. The ordinary
+N53/N83 branch-counter checkpoint lower bounds are 917,504 and 524,288;
+these are search-node diagnostics, not field operations or successful solve
+costs. The Q1444 method keeps one witness or independent anchor fixed and
+does not change the joint ordinary-query search pattern. It therefore does
+not pass the target-conditioned four-point witness gate or support a complete
+N131 projection.
+
+### Q1445 pair-table control on the exact dense bases
+
+The [Q1445 matched-input control](q1445_matched_pair_table/README.md) runs
+the signed-Frobenius four-point pair table on Q1438's exact W≤4 N53 and
+W≤6 N83 bases and the same ordinary public targets as Q1444. Its frozen
+N53 cell builds 500,000 target-independent pair samples, then finds one
+independently verified four-distinct-column ordinary relation after 54,545
+target-dependent pair samples. The query interval is 6.748 exploratory
+seconds; table preparation is a separate 43.188 seconds. The N83 cell
+builds 10,000 pair samples and stops after 10,000 target-dependent samples
+with zero key hits and no relation. Its table and query intervals are 9.582
+and 10.032 exploratory seconds. Q1445's N83 sampler draws from the complete
+exact base by uniform sparse-x rejection, not from a smaller cached subset.
+
+This provides the previously missing matched-base pair-table comparator,
+but no N83 successful solve, population relation yield, novel-row rate, or
+N53-to-N83 successful-cost fit. The N53 relation is one stage witness; the
+pair-table method remains subject to Q1443's target-oblivious-first-pair
+bound. Q1445 keeps `candidate_id: null`, complete N131 `2^x: null`, and the
+challenge gate closed.
 
 ## Next goal
 
-The next solver should build a **compact target-conditioned pair-sum
-membership and witness method**. Q1436 rejects partial second-pair domains
+The next solver should build a **compact joint target-conditioned four-point
+witness method**. Q1436 rejects partial second-pair domains
 four free bits earlier per leaf than Q1435, but spends over 1.3 billion
 affine XORs in an N53 censored prefix and still produces no ordinary
 relation or second first-pair assignment. The next method must use the public
