@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aburan28/cryptanalysis/blob/main/experiments/ic-candidate-catalog/scalar-multiplication.schema.json",
+  "title": "IC candidate scalar multiplication policy v1",
+  "type": "object",
+  "required": ["schema_version", "coverage", "uses"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "coverage": {"const": "all_executed_scalar_multiplications"},
+    "uses": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/use"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "use": {
+      "type": "object",
+      "required": [
+        "role", "point_kind", "method", "algorithm_ref", "endomorphism_action_ref",
+        "recoding", "arithmetic", "precomputation", "selection", "fallback",
+        "implementation", "timing_behavior", "timing_evidence_sha256"
+      ],
+      "properties": {
+        "role": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "point_kind": {"enum": ["fixed_base", "variable_base", "multi_scalar", "batch"]},
+        "method": {"enum": [
+          "double_and_add", "montgomery_ladder", "wnaf", "sliding_window", "comb",
+          "straus", "pippenger", "glv", "gls", "tau_adic", "custom"
+        ]},
+        "algorithm_ref": {"type": "string", "minLength": 1},
+        "endomorphism_action_ref": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*$"},
+        "recoding": {
+          "type": "object",
+          "required": ["kind", "window", "decomposition_ref", "parameters"],
+          "properties": {
+            "kind": {"type": "string", "minLength": 1},
+            "window": {"type": ["integer", "null"], "minimum": 1},
+            "decomposition_ref": {"type": ["string", "null"]},
+            "parameters": {"type": "object"}
+          },
+          "additionalProperties": false
+        },
+        "arithmetic": {
+          "type": "object",
+          "required": ["coordinates", "field_backend", "inversion_rule"],
+          "properties": {
+            "coordinates": {"type": "string", "minLength": 1},
+            "field_backend": {"type": "string", "minLength": 1},
+            "inversion_rule": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        },
+        "precomputation": {
+          "type": "object",
+          "required": ["scope", "table_entries", "cache_key_rule"],
+          "properties": {
+            "scope": {"enum": ["none", "per_base", "per_target", "per_run", "shared_across_runs"]},
+            "table_entries": {"type": ["integer", "null"], "minimum": 0},
+            "cache_key_rule": {"type": ["string", "null"]}
+          },
+          "additionalProperties": false
+        },
+        "selection": {
+          "type": "object",
+          "required": ["mode", "curve_uid", "subgroup_order", "eligibility_rule", "resolved_backend_required"],
+          "properties": {
+            "mode": {"enum": ["explicit", "runtime_dispatch"]},
+            "curve_uid": {"type": "string", "pattern": "^urn:ec-record:1:sha256:[0-9a-f]{64}$"},
+            "subgroup_order": {"type": "integer", "minimum": 2},
+            "eligibility_rule": {"type": "string", "minLength": 1},
+            "resolved_backend_required": {"type": "boolean"}
+          },
+          "additionalProperties": false
+        },
+        "fallback": {
+          "oneOf": [
+            {"const": "none"},
+            {
+              "type": "object",
+              "required": ["method", "trigger", "implementation_sha256"],
+              "properties": {
+                "method": {"enum": [
+                  "double_and_add", "montgomery_ladder", "wnaf", "sliding_window",
+                  "comb", "straus", "pippenger"
+                ]},
+                "trigger": {"type": "string", "minLength": 1},
+                "implementation_sha256": {"$ref": "#/$defs/sha256"}
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "implementation": {
+          "type": "object",
+          "required": ["entry_point", "source_sha256", "flags"],
+          "properties": {
+            "entry_point": {"type": "string", "minLength": 1},
+            "source_sha256": {"$ref": "#/$defs/sha256"},
+            "flags": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+          },
+          "additionalProperties": false
+        },
+        "timing_behavior": {"enum": ["variable_time", "constant_time_claimed", "unknown"]},
+        "timing_evidence_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -38,6 +38,10 @@ keep twists, same-field isomorphisms, base changes, and isogenies distinct;
 only verified maps with subgroup/log transport may enter an IC route. Keep unresolved links and traits as
 explicit `null` plus status; never infer a factor-base or curve equivalence
 from matching field degree or ICV1 model name. The
+[scalar multiplication policy](experiments/ic-candidate-catalog/SCALAR_MULTIPLICATION.md)
+separates proved endomorphism actions from algorithm selection and is required
+for every new `ic-candidate/2` manifest. Record every scalar role, including
+fallback and runtime dispatch; retain the resolved backend in each run. The
 [IC benchmark](experiments/ic-bench/README.md) is the reference harness for
 named, fully charged, verified toy-curve runs. It holds the calibrated `rps` unit,
 candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a new
@@ -149,6 +153,7 @@ Include these fields, using explicit `null` for unknown mathematics and
 | `curve` | exact Weierstrass model and coefficients, curve order/trace when known, subgroup order `r`, cofactor, encoded generator `G`, target group, and the curve ID; omit the ID itself when hashing the curve record |
 | `isogeny` | `none` or ordered source/target curve IDs, edge degrees, directions, explicit maps or verified map artifacts, transport of `G` and `Q`, and kernel/subgroup checks; measure transport costs in runs |
 | `endomorphism` | for an ordinary curve, the endomorphism **order** conductor if proved; for each relevant prime `ell`, the volcano level `v_ell(f_End(E))` and proof/status; keep the Frobenius-order conductor separate. Use `null` if unknown, and `not_applicable` if the volcano model does not apply |
+| `scalar_multiplication` | in new `ic-candidate/2` manifests, each executed scalar role, exact curve/subgroup eligibility, method, proved endomorphism action if used, decomposition/recoding/window, arithmetic, precomputation/cache, fallback, implementation digest, and resolved-backend requirement; archived `/1` records stay immutable |
 | `factor_base` | exact construction (subspace/basis, polynomial constraint, shifted bases, seeds, subgroup filtering), enumerated-set digest, nominal dimension/bound, actual usable point count `B`, sign/Frobenius quotient rule, and effective column count |
 | `point_decomposition` | summand count `m`, summation polynomial/chain, Weil-descent encoding and equation order, solver family (`f4`, `f5`, `sat`, etc.), implementation/version/source digest, monomial order, internal matrix kernel, limits, and cache policy |
 | `relation_collection` | target/query distribution, walk or sampling rule, filtering, verification, duplicate/dependency handling, stop criterion, and source digest |
