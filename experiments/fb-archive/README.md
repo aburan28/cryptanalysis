@@ -12,6 +12,7 @@ python3 fbarchive.py export --n 131 --family geomtraceu --l 12           # ECC2K
 python3 fbarchive.py export --n 131 --family prefix --l 28 --no-points   # recipe and basis only
 python3 fbarchive.py verify [--rebuild [--rebuild-max-points 300]]      # check the index
 python3 fbarchive.py upload [--dry-run] [--require]                     # to $IC_ARCHIVE_S3_URI
+python3 sweeps.py export && python3 sweeps.py verify [--all-cells NAME]  # large sweeps, recipe only
 python3 -m pytest -q .
 ```
 
@@ -112,6 +113,45 @@ The Python rebuild reproduces both cited digests exactly. `test_external.py`
 checks every link against the committed receipts, manifests and candidates. The hamming and
 catalog runs cite their bases by `point_set_sha256`, which the citation guard
 below also checks.
+
+## Large sweeps: `sweeps.py`, `sweeps/`, `sweeps.csv`
+
+A sweep runs one factor-base rule over thousands of curves, so per-base archives
+with point lists are infeasible (volcano-m83 alone has 1,243,200 cells). A sweep
+archive (`ic-factor-base-sweep/1`, `sweeps/<name>.json.gz`, indexed in
+`sweeps.csv`) is recipe-only. It stores:
+
+- the field record;
+- every curve's `b` and EC1 curve ID, hashed from the full field and curve record
+  as `fbarchive` does, with a null generator where the experiment never fixed one;
+- every nested basis with the seed or rule that regenerates it, and its
+  dimensions;
+- the experiment's committed per-cell count files with their SHA-256.
+
+The base of cell (curve, family, k) is `{x in span(basis[:k]) : x = 0 or
+Tr(x + b/x^2) = 0}`. `B`, the point digest and the column count stay null.
+
+| sweep | curves | families x dimensions | cells | recorded cells recounted |
+|---|--:|---|--:|--:|
+| `ecc2k130/research/volcano-m83` (run 08) | 6,475 | 64 x {8, 9, 10} | 1,243,200 | 1,243,200 |
+| `ecc2k130-isogeny-class` | 789 | 4 x 1..16, 12 x {8, 10, 12, 14, 16} | 97,836 | 335 |
+| `volcano-ic` | 457 | 1 x {10} | 457 | 457 |
+
+`verify` rebuilds each manifest from the experiment's own committed inputs
+(inventory, ground truth, `isoclass19.txt`, seeds) and checks the recorded files'
+SHA-256. It then recounts sampled cells in pure Python (`--cells`, default 40)
+against the recorded counts, or every recorded cell with `--all-cells NAME`.
+Every recorded cell of all three sweeps recounts exactly; volcano-m83's 1.24M take
+about a minute.
+
+Gaps:
+- The isogeny-class per-cell counts (`raw_counts*.json`) were never committed.
+  Its recorded cells are the 263 canon k = 16 counts implied by the 4-decimal
+  `ic_density_z_k16` column (exact), E0's 60 replicate z-scores, and 12 Codex
+  fingerprints.
+- Its null curves R/S are regenerated from their seeds. The S set's
+  order-rejection step needs point counts and is not re-checked.
+- The volcano-ic tau-closure and normal-basis E0 variants are not included.
 
 ## Citation guard: `refs.py`, `unarchived.csv`, `backfill.py`
 
