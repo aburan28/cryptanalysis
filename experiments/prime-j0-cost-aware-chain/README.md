@@ -248,3 +248,12 @@ comparator. The beam also evaluates 63 and 195 trial digits per scalar on the
 two curves, plus canonical completions. A norm-greedy rule loses nearly all
 the modeled gain. These are exploratory operation counts; no native or
 isolated CPU speedup is established.
+
+The [periodic 3-adic pair atlas screen](PERIODIC_PAIR_ATLAS.md) compiles a
+bounded-oracle action into a lookup indexed by coordinate residues modulo
+`27`. A per-scalar gate selects its schedule only when the complete modeled
+group-operation score beats the canonical-plus-oracle schedule. On reused
+design scalars, the gated policy saves 4.40% on `glv-j0-32` and 2.72% on
+`j0-56` with about 3.6 and 13.5 atlas lookups per scalar, respectively.
+The ungated schedule regresses on both curves. Native end-to-end speed and
+academic novelty remain unproved.
