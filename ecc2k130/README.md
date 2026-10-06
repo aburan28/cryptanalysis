@@ -345,13 +345,55 @@ same step; work is handed out in 64-step slices of one batch so efficiency
 cores do not gate a launch.  All 14 cores give 139-159 M it/s, which is the
 package's limit rather than the scheduler's (ten workers give 136).
 
+**On x86-64 the step runs N lanes at a time.** The state is stored limb by
+limb -- lane i's limb 0 at `x0[i]`, its limb 1 at `x1[i]` -- so that N
+consecutive lanes load as three vector registers, and `src/f131x.h` is
+`f131.h` over GCC/clang vector types on the vector carry-less multiplier:
+N = 8 on AVX-512 (VPCLMULQDQ), 4 on AVX2 (VPCLMULQDQ), 2 on SSE (PCLMULQDQ),
+`-DECC_F131_LANES=1` for the scalar path.  The five products, the squaring
+and the conversion of a step are vector; so is the selection, which leaves the
+byte tables for the bit planes of the labels, as the model computes it: the
+phase from eight masked popcounts, `HW^-1` by a gather, the two reductions
+mod 131 by a reciprocal, the pivot's mask by a bitwise comparator of every
+coordinate's label with k (a majority per bit, one ternary-logic instruction
+per limb), the pivot by eight steps of a binary search down the planes, and
+the sign as that coordinate of the converted y.  The tag and the cycle rule,
+the addend's loads and the rare lane that reports stay scalar, as does the
+peel of the K = N x `ECC_F131_CHAIN_VECTORS` interleaved inversion chains.
+The vector path takes 2048 lanes per inversion by default, since the batch's
+fixed cost (the inversion, the 3(K-1) scalar products of the peel) shows
+against a shorter lane step and that much state still sits in a core's L2.
+
+Measured on a 4-vCPU Sapphire Rapids VM (AVX-512, VPCLMULQDQ, VPOPCNTDQ;
+gcc 13; `bench --steps 2048 --launches 6`, the four binaries interleaved,
+median of three).  It is an uncontrolled cloud host -- the same binaries ran
+about 30% faster earlier in the same session, with the same ratios -- so
+these figures are exploratory, not a promoted speedup; the repository's CPU
+performance isolation gate applies.
+
+| | M it/s, one worker | M it/s, four workers |
+|---|---:|---:|
+| scalar path (`main`), 512 lanes per inversion | 7.1 | 24.6 |
+| + products, squaring and conversion N = 8 lanes at a time | 18.2 | 63.1 |
+| + the selection on bit planes, N lanes at a time | 22.1 | 77.1 |
+| + 2048 lanes per inversion | 24.1 | 85.2 |
+
+Of a lane's step at 2048 lanes (one worker, the stages timed apart), the
+five products and the squaring are about 60%, the selection 27%, the tag and
+the addend's loads 10%, the conversion and weight 4%, the inversion and the
+peel 2% amortised.  The next things to look at are a byte-sliced selection
+on VBMI (`vpermi2b` lookups over 64 lanes) and the peel, which is scalar.
+
 The reports of a run do not depend on the batch size or the worker count,
 which `src/cputest.cpp` checks along with: the multiplier against a
 bit-serial product; every `f131.h` routine against its packed counterpart on
 4,000 random operands and 1,500 curve points with histories that fire the
-cycle rule, the reduction also on limbs no product produces; start points
-against the model's; and every lane and every report of a run with restarts
-re-walked on the model (28,641 checks, and again with the software product).
+cycle rule, the reduction also on limbs no product produces; on x86-64 every
+`f131x.h` routine against `f131.h` lane by lane, the selection on operands
+that reach every branch of the pivot and the reduction mod 131 on every
+16-bit input; start points against the model's; and every lane and every
+report of a run with restarts re-walked on the model (37,100 checks, and
+again with the software product, 28,600 on the scalar path).
 
 **`ec2k-metal`.** Metal Shading Language is C++14 with address spaces, so the
 kernel is not a port: `scripts/mslgen.py` inlines the headers and applies four
