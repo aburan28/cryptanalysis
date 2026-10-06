@@ -39,12 +39,13 @@ attempts, including this failure, remain in the receipt.
 
 From the repository root, `python3
 experiments/ecc2k130-w24-natural-pdp-20261005/selftest.py` checks the small
-Boolean circuits. Independently replay the archived control with
-`./sage -python
+Boolean circuits. To independently replay the archived control, copy
+`runs/v1-planted` to a fresh directory, remove only the copied
+`sage_replay.json`, then run `./sage -python
 experiments/ecc2k130-w24-natural-pdp-20261005/replay_sage.py --run-dir
-experiments/ecc2k130-w24-natural-pdp-20261005/runs/v1-planted`. The replay
-checks the decompressed XCNF and solver-log hashes without rewriting the
-archives. Every Sage invocation uses the repository's checked launcher.
+/absolute/path/to/fresh-copy`. The replay checks the decompressed XCNF and
+solver-log hashes without rewriting the archives. Every Sage invocation
+uses the repository's checked launcher.
 
 The first resource-limit preflight failed before formula construction:
 macOS rejected lowering `RLIMIT_AS` to 4 GiB with `ValueError: current limit
@@ -61,3 +62,8 @@ unconstrained search problem open. A failure would point to a circuit or
 encoding defect. Neither outcome can be substituted for natural-query PDP
 yield, useful relation rank, a recovered logarithm, or paired rho time.
 Those values, and `candidate_id`, remain `null`.
+
+The follow-up [planted-witness localization](DIAGNOSTIC_RESULT.md) produced
+a Sage-verified SAT model with both witness classes pinned. Pinning only
+inverses or only intermediates did not solve within the strict budget, so
+neither class alone explains the original search failure.

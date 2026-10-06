@@ -98,7 +98,7 @@ def build_formula(circuit, basis, half_basis, trace_positions, fibers,
         circuit.pin(s0, bool(pinned_fiber & 1))
         circuit.pin(s1, bool(pinned_fiber & 2))
 
-    mask_rows, leaf_us, leaf_ws = [], [], []
+    mask_rows, inverse_rows, leaf_us, leaf_ws = [], [], [], []
     for slot in range(6):
         row = [circuit.variable() for _ in range(24)]
         circuit.forbid_above(row, a.LAST_MASK)
@@ -113,6 +113,7 @@ def build_formula(circuit, basis, half_basis, trace_positions, fibers,
         circuit.require_zero([circuit.xor(inverse[i]
                                           for i in trace_positions)])
         mask_rows.append(row)
+        inverse_rows.append(inverse)
         leaf_us.append(u)
         leaf_ws.append(w)
 
@@ -130,7 +131,8 @@ def build_formula(circuit, basis, half_basis, trace_positions, fibers,
             (current_u, leaf_us[slot], next_u)))
         circuit.require_zero(circuit.add(lhs, rhs))
         current_u, current_w = next_u, next_w
-    return {"mask_rows": mask_rows, "selectors": [s0, s1],
+    return {"mask_rows": mask_rows, "inverse_rows": inverse_rows,
+            "selectors": [s0, s1],
             "intermediates": intermediates, "target_us": target_us}
 
 
@@ -333,7 +335,7 @@ def main():
             process = subprocess.Popen(command, stdout=stdout, stderr=stderr)
             try:
                 while process.poll() is None:
-                    if time.perf_counter() - solve_start > wall+15:
+                    if time.perf_counter() - solve_start >= wall:
                         stop_reason = "timeout"
                         process.kill()
                         break

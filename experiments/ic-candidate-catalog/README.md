@@ -42,7 +42,7 @@ have `candidate_id: null` and do not issue an `IC1` result.
 | `n131_onb_hw2_m4` | N131 | Normal-basis Hamming weight ≤2, m=4 | Construction code exists; exact base count for this proposal is unresolved. |
 | `n131_onb_hw3_m5` | N131 | Normal-basis Hamming weight ≤3, m=5 | Construction code exists; exact base count for this proposal is unresolved. |
 | `n131_poly_d28_m5` | N131 | Polynomial subspace d=28, m=5 | Illustrative large-base budget in PDP scaling; full-width factor base and end-to-end costs unmeasured. |
-| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | One exact trace-zero W24 policy has 16,786,464 source or 16,772,828 first-descendant usable points. Its [first source W24/m6 SAT stage](../ecc2k130-w24-natural-pdp-20261005/RESULT.md) hit 100,002 conflicts without solving a planted control; the natural target was not run. Natural yield and a complete IC run remain unmeasured. Other d24 bases remain unresolved. |
+| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | One exact trace-zero W24 policy has 16,786,464 source or 16,772,828 first-descendant usable points. Its [source W24/m6 SAT control](../ecc2k130-w24-natural-pdp-20261005/RESULT.md) hit 100,002 conflicts unpinned; [witness localization](../ecc2k130-w24-natural-pdp-20261005/DIAGNOSTIC_RESULT.md) verified SAT only with both inverse and intermediate values pinned. The natural target was not run. Natural yield and a complete IC run remain unmeasured. |
 | `n131_iso2_d28_m5` | N131 | Proposed degree-2 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 | `n131_iso3_d28_m5` | N131 | Proposed degree-3 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 
