@@ -273,6 +273,26 @@ This is still a bounded degree-3/5/11/13 traversal. The exact class-group job
 remained active after more than seven hours when this stage was frozen, and
 per-key map evaluation was not timed for the 368 additions.
 
+## Resumed low-degree paths through depth fifteen
+
+The next two shells added 208 curves at depth fourteen and 224 at depth
+fifteen, with no overlap against the prior union. The combined explicit
+registry now contains P-256 plus 1,729 distinct neighbors.
+
+All 432 additions received matched-native measurements in 72 root-controlled
+blocks. Seven unadjusted short-screen hits entered a fresh 30-trial,
+two-second holdout, and none reproduced. The largest holdout estimate was
+`1.0151x` with paired 95% interval `0.9878x-1.0431x`; all 1,729 retained
+non-root curves now have native measurements and zero reproducible
+iteration-rate improvements.
+
+The delta registry, raw blocks, holdout, transfer assessment, receipt, and
+verifier are frozen in
+[`results/sage-low-degree-depth-fifteen-20261006`](results/sage-low-degree-depth-fifteen-20261006).
+This is still a bounded degree-3/5/11/13 traversal. The exact class-group job
+remained active after more than eight hours when this checkpoint was frozen,
+and per-key map evaluation was not timed for the 432 additions.
+
 ## Quick start
 
 Python 3.11 or newer is required.
