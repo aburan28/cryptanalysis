@@ -334,6 +334,9 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         CHECK(ca_ec_tau3_fused_mul_profile(g, &tau3_pre, &got, k, NULL, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_tau3_fused_recode_verify_scalar(&tau3_pre, k));
+        CHECK(ca_ec_tau3_atlas_mul_profile(g, &tau3_pre, &got, k, NULL, NULL, NULL));
+        CHECK(ca_group_equal(g, &got, &expected));
+        CHECK(ca_ec_tau3_atlas_recode_verify_scalar(&tau3_pre, k));
         uint64_t compact_fallbacks = UINT64_MAX;
         CHECK(ca_ec_tau4_pos_compact_mul_profile(g, &compact_pre, &got, k, NULL, NULL,
                                                  &compact_fallbacks));
@@ -377,6 +380,11 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     ca_group_mul(g, &tau3_expected_fallback, point, g->order / 2, NULL);
     CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
     CHECK_EQ_U64(tau3_fallback, 1);
+    tau3_fallback = 0;
+    CHECK(ca_ec_tau3_atlas_mul_profile(g, &tau3_pre, &got, g->order / 2,
+                                       NULL, NULL, &tau3_fallback));
+    CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
+    CHECK_EQ_U64(tau3_fallback, 1);
     tau3_pre.blocks = tau3_saved_blocks;
     ca_ec_tau3_fused_clear(&tau3_pre);
     size_t saved_layers = compact_pre.layers;
@@ -396,6 +404,8 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
                                     NULL, NULL, NULL));
     CHECK(ca_ec_tau3_fused_prepare_verify(&tau3_pre));
     CHECK(ca_ec_tau3_fused_mul_profile(g, &tau3_pre, &got, 17, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    CHECK(ca_ec_tau3_atlas_mul_profile(g, &tau3_pre, &got, 17, NULL, NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
     ca_ec_tau3_fused_clear(&tau3_pre);
     CHECK(ca_ec_tau4_pos_compact_prepare(g, &identity, &compact_pre, NULL, NULL));
@@ -894,6 +904,9 @@ static void tau_fused_small_order(void)
         ca_group_mul(&g, &want, &point, k % g.order, NULL);
         CHECK(ca_group_equal(&g, &got, &want));
         CHECK(ca_ec_tau3_fused_recode_verify_scalar(&tau3, k));
+        CHECK(ca_ec_tau3_atlas_mul_profile(&g, &tau3, &got, k, NULL, NULL, NULL));
+        CHECK(ca_group_equal(&g, &got, &want));
+        CHECK(ca_ec_tau3_atlas_recode_verify_scalar(&tau3, k));
         CHECK(ca_ec_tau_pair_mixed_mul_profile(&g, &mixed_pre, &got, k, NULL, NULL, NULL,
                                                NULL, NULL, NULL));
         ca_group_mul(&g, &want, &point, k % g.order, NULL);
@@ -1048,6 +1061,7 @@ int main(void)
 {
     tau_atlas_recode_checks();
     CHECK(ca_ec_tau3_fused_verify_map());
+    CHECK(ca_ec_tau3_atlas_verify_map());
     /* Detection from parameters, no group handling by the caller. */
     ca_curve_info info;
     CHECK(ca_curve_detect(67108933, 0, 7, 16773703, &info) == CA_OK);

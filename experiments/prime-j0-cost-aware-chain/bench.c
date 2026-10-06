@@ -106,7 +106,8 @@ static int select_mode(const char *name)
                                   "tail-pair-mixed-full-digits",
                                   "fixed-comb9",
                                   "pos-compact",
-                                  "tau3-fused-pos"};
+                                  "tau3-fused-pos",
+                                  "tau3-atlas-pos"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -131,7 +132,8 @@ int main(int argc, char **argv)
                 "tail-double-residue|tail-pair-fused|tail-pair-complete|"
                 "tail-pair-periodic-canonical|tail-pair-periodic-gated27|"
                 "tail-pair-periodic-firstword27|tail-pair-mixed-radix|"
-                "tail-pair-mixed-full-digits|fixed-comb9|pos-compact|tau3-fused-pos "
+                "tail-pair-mixed-full-digits|fixed-comb9|pos-compact|tau3-fused-pos|"
+                "tau3-atlas-pos "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -157,7 +159,8 @@ int main(int argc, char **argv)
     int pair_mixed = mode == 33 || pair_full;
     int comb = mode == 35;
     int compact = mode == 36;
-    int tau3 = mode == 37;
+    int tau3 = mode == 37 || mode == 38;
+    int tau3_atlas = mode == 38;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -341,7 +344,8 @@ int main(int argc, char **argv)
     uint64_t periodic_lookups = 0, periodic_accepted = 0, periodic_fallbacks = 0;
     uint64_t mixed_lookups = 0, mixed_fallbacks = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
-    size_t static_map_bytes = tau3                    ? ca_ec_tau3_fused_static_bytes()
+    size_t static_map_bytes = tau3_atlas              ? ca_ec_tau3_atlas_static_bytes()
+                              : tau3                    ? ca_ec_tau3_fused_static_bytes()
                               : pair_full               ? ca_ec_tau_pair_mixed_full_static_bytes()
                               : pair_mixed            ? ca_ec_tau_pair_mixed_static_bytes()
                               : mode == 32            ? ca_ec_tau_pair_firstword_static_bytes()
@@ -407,8 +411,12 @@ int main(int argc, char **argv)
                 output_inversions += !outputs[i].w[2];
             } else if (tau3) {
                 uint64_t a = 0, r = 0, fallback = 0;
-                if (!ca_ec_tau3_fused_mul_profile(&group, &tau3_pre, &outputs[i], scalars[i],
-                                                  &a, &r, &fallback)) {
+                int success = tau3_atlas
+                                  ? ca_ec_tau3_atlas_mul_profile(&group, &tau3_pre, &outputs[i],
+                                                                  scalars[i], &a, &r, &fallback)
+                                  : ca_ec_tau3_fused_mul_profile(&group, &tau3_pre, &outputs[i],
+                                                                  scalars[i], &a, &r, &fallback);
+                if (!success) {
                     fprintf(stderr, "tau3 fused evaluation failed at index %zu\n", i);
                     free(outputs);
                     return 1;
@@ -521,8 +529,10 @@ int main(int argc, char **argv)
     uint64_t tail_complete_preparation_checks = 0;
     uint64_t tau3_preparation_checks = 0;
     if (tau3) {
-        if (!ca_ec_tau3_fused_verify_map() || !ca_ec_tau3_fused_prepare_verify(&tau3_pre)) {
-            fprintf(stderr, "tau3 fused map or point table verification failed\n");
+        if (!ca_ec_tau3_fused_verify_map() ||
+            (tau3_atlas && !ca_ec_tau3_atlas_verify_map()) ||
+            !ca_ec_tau3_fused_prepare_verify(&tau3_pre)) {
+            fprintf(stderr, "tau3 map, atlas, or point table verification failed\n");
             free(outputs);
             return 1;
         }
@@ -551,18 +561,24 @@ int main(int argc, char **argv)
     uint64_t tail_complete_checks = 0;
     uint64_t periodic_checks = 0, periodic_word_digest = FNV_OFFSET;
     uint64_t mixed_checks = 0, mixed_action_digest = FNV_OFFSET;
-    uint64_t tau3_checks = 0, tau3_action_fallbacks = 0;
+    uint64_t tau3_checks = 0, tau3_action_fallbacks = 0, tau3_atlas_checks = 0;
     uint64_t tau3_action_digest = FNV_OFFSET;
     for (size_t i = 0; i < SCALARS; i++) {
         if (mode != 0) {
             if (tau3) {
                 uint16_t actions[16];
                 size_t action_count = 0;
-                if (!ca_ec_tau3_fused_recode_actions(&tau3_pre, scalars[i], actions,
-                                                     &action_count)) {
+                int recoded = tau3_atlas
+                                  ? ca_ec_tau3_atlas_recode_actions(&tau3_pre, scalars[i], actions,
+                                                                     &action_count)
+                                  : ca_ec_tau3_fused_recode_actions(&tau3_pre, scalars[i], actions,
+                                                                     &action_count);
+                if (!recoded) {
                     tau3_action_fallbacks++;
                 } else {
-                    if (!ca_ec_tau3_fused_recode_verify_scalar(&tau3_pre, scalars[i])) {
+                    if (!ca_ec_tau3_fused_recode_verify_scalar(&tau3_pre, scalars[i]) ||
+                        (tau3_atlas &&
+                         !ca_ec_tau3_atlas_recode_verify_scalar(&tau3_pre, scalars[i]))) {
                         fprintf(stderr, "tau3 action reconstruction failed at index %zu\n", i);
                         free(outputs);
                         return 1;
@@ -577,6 +593,7 @@ int main(int argc, char **argv)
                         fputc('\n', stderr);
                     }
                     tau3_checks++;
+                    tau3_atlas_checks += tau3_atlas;
                 }
             }
             if (mode == 11 && !ca_ec_tau4_recode_compare_scalar(&pre, scalars[i])) {
@@ -720,6 +737,7 @@ int main(int argc, char **argv)
         " mixed_checks=%" PRIu64 " mixed_action_digest=%016" PRIx64
         " tau3_preparation_checks=%" PRIu64 " tau3_checks=%" PRIu64
         " tau3_action_fallbacks=%" PRIu64 " tau3_action_digest=%016" PRIx64
+        " tau3_atlas_checks=%" PRIu64
         " verified=1\n",
         argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda, input_digest,
         output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_doubles, prep_tau_steps,
@@ -737,6 +755,7 @@ int main(int argc, char **argv)
         tail_complete_checks, tail_complete_preparation_checks, periodic_lookups,
         periodic_accepted, periodic_fallbacks, periodic_checks, periodic_word_digest,
         mixed_lookups, mixed_fallbacks, mixed_checks, mixed_action_digest,
-        tau3_preparation_checks, tau3_checks, tau3_action_fallbacks, tau3_action_digest);
+        tau3_preparation_checks, tau3_checks, tau3_action_fallbacks, tau3_action_digest,
+        tau3_atlas_checks);
     return 0;
 }

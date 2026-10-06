@@ -36,3 +36,17 @@ alternating order, preserve all raw failures, and require all 16 arms to
 match the reference, zero candidate fallbacks, and exact equality of online
 addition, rotation, and inversion counts in all eight cases. CPU timing
 ratios remain exploratory without a host-level isolation receipt.
+
+## Native old-fixture controls
+
+The native map verifier exhausts all 6,561 entries and checks the exact
+six-digit correction and action against the original C recoder. The curve
+suite passes 2,306,779 checks, including identity, subgroup-order,
+small-order, and over-capacity fallback cases. On the older compact
+positional fixture, the [native differential
+receipt](tau3-atlas-native-design.json) has identical original and atlas
+action digests and group-operation counts across 32,768 scalars, with 16
+generic-verified outputs and no fallbacks. Its [read-only
+audit](audit_tau3_atlas_native_design.py) passes. The map adds exactly
+26,244 static bytes to the parent implementation. Local elapsed times in
+the receipt are exploratory and do not establish a CPU speedup.

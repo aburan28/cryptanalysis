@@ -80,10 +80,18 @@ int ca_ec_tau3_fused_prepare_verify(const ca_tau3_fused_precomp *pre);
 int ca_ec_tau3_fused_recode_actions(const ca_tau3_fused_precomp *pre, uint64_t k,
                                     uint16_t actions[16], size_t *count);
 int ca_ec_tau3_fused_recode_verify_scalar(const ca_tau3_fused_precomp *pre, uint64_t k);
+int ca_ec_tau3_atlas_verify_map(void);
+int ca_ec_tau3_atlas_recode_actions(const ca_tau3_fused_precomp *pre, uint64_t k,
+                                   uint16_t actions[16], size_t *count);
+int ca_ec_tau3_atlas_recode_verify_scalar(const ca_tau3_fused_precomp *pre, uint64_t k);
 int ca_ec_tau3_fused_mul_profile(const ca_group *g, const ca_tau3_fused_precomp *pre,
                                  ca_elem *out, uint64_t k, uint64_t *adds,
                                  uint64_t *rotations, uint64_t *fallbacks);
+int ca_ec_tau3_atlas_mul_profile(const ca_group *g, const ca_tau3_fused_precomp *pre,
+                                 ca_elem *out, uint64_t k, uint64_t *adds,
+                                 uint64_t *rotations, uint64_t *fallbacks);
 size_t ca_ec_tau3_fused_static_bytes(void);
+size_t ca_ec_tau3_atlas_static_bytes(void);
 void ca_ec_tau3_fused_clear(ca_tau3_fused_precomp *pre);
 
 int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point, ca_tau4_precomp *out,
