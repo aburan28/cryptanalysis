@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""Bound physical CPU cycles for the Q1090/Q1091 one-target run.
+
+Every scheduled CI job is charged at least its full six-hour limit, including
+queued, failed, and canceled jobs. A longer observed terminal wall interval
+is charged instead. The corrected local-host reserve spans 30 days after the
+original 24-hour assumption was contradicted by control timestamps. This is
+conditional hardware capacity, not a measured field-operation count.
+"""
+
+import argparse
+import hashlib
+import json
+import math
+from datetime import datetime, timezone
+from pathlib import Path
+
+from aggregate_n83_holdout_run import aggregate
+
+HERE = Path(__file__).resolve().parent
+Q1090_ARCHIVE = HERE / "runs/q1090_raw_ci_36891418377"
+Q1090_WORKFLOW = Q1090_ARCHIVE / "workflow_run.json"
+Q1090_AUDIT = HERE / "n83_q1090_terminal_wave_audit.json"
+Q1091_PLAN = HERE / "n83_q1091_holdout_m32_continuation_plan.json"
+RESOURCE = HERE / "n83_q1091_resource_budget.json"
+CEILING = HERE / "n83_q1091_total_resource_ceiling.json"
+REVISION = HERE / "n83_holdout_revised_30day_resource_ceiling.json"
+ASSUMED_CLOCK_HZ = 8_000_000_000
+OLD_LOCAL_SECONDS = 24 * 3600
+LOCAL_CORES = 14
+CI_VCPU = 4
+
+
+def sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def load(path):
+    return json.loads(path.read_text())
+
+
+def parse_utc(value):
+    if not value or value.startswith("0001-"):
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def charged_job_seconds(job, minimum_seconds):
+    start = parse_utc(job.get("startedAt"))
+    end = parse_utc(job.get("completedAt"))
+    observed = None
+    if job["status"] == "completed" and start and end:
+        observed = max(0.0, (end - start).total_seconds())
+    return max(minimum_seconds, observed or 0.0), observed
+
+
+def audit(workflow_path, artifact_audits, as_of=None):
+    prior_workflow = load(Q1090_WORKFLOW)
+    prior_audit = load(Q1090_AUDIT)
+    workflow = load(workflow_path)
+    plan = load(Q1091_PLAN)
+    resource = load(RESOURCE)
+    ceiling = load(CEILING)
+    revision = load(REVISION)
+    reconciliation = aggregate(workflow_path, artifact_audits)
+    assert prior_audit["workflow_run_sha256"] == sha(Q1090_WORKFLOW)
+    assert prior_workflow["status"] == "completed"
+    assert prior_workflow["conclusion"] == "success"
+    assert len(prior_workflow["jobs"]) == prior_audit["completed_jobs"] == 16
+    assert all(job["status"] == "completed" and job["conclusion"] ==
+               "success" for job in prior_workflow["jobs"])
+    assert len(workflow["jobs"]) == 64
+    assert plan["timeout_seconds_per_job"] == resource[
+        "all_80_job_timeout_seconds_per_job_including_setup"] == 21600
+    assert resource["assumed_vcpu_per_standard_ubuntu_job"] == CI_VCPU
+    assert resource["assumed_clock_hz_ceiling_per_vcpu"] == ceiling[
+        "assumed_clock_hz_ceiling_per_core"] == ASSUMED_CLOCK_HZ
+    assert ceiling["local_reserve_seconds_including_base_controls_and_replay"] == (
+        OLD_LOCAL_SECONDS)
+    assert ceiling["local_host_physical_cores"] == LOCAL_CORES
+    assert ceiling["resource_budget_sha256"] == sha(RESOURCE)
+    assert revision["legacy_24_hour_ceiling_sha256"] == sha(CEILING)
+    assert revision["legacy_24_hour_condition_refuted_by_controls"]
+    assert revision["local_host_physical_cores"] == LOCAL_CORES
+    assert revision["assumed_clock_hz_ceiling_per_core"] == ASSUMED_CLOCK_HZ
+    local_seconds = revision["local_reserve_seconds"]
+    assert local_seconds == 30 * 24 * 3600
+    reserve_start = parse_utc(revision["local_reserve_start_utc"])
+    reserve_end = parse_utc(revision["local_reserve_end_utc"])
+    as_of = as_of or datetime.now(timezone.utc)
+    assert as_of.tzinfo is not None and as_of.utcoffset().total_seconds() == 0
+    assert reserve_start <= as_of <= reserve_end, (
+        "revised local reserve interval expired; widen it before a work claim")
+    for row in (prior_audit, plan, resource, ceiling, revision,
+                reconciliation):
+        assert row["curve_id"] == plan["curve_id"]
+        assert row["isogeny"] == "none"
+        assert row["candidate_id"] == plan["candidate_id"]
+        assert row["workload_id"] == plan["workload_id"]
+        assert row["run_id"] == plan["run_id"]
+    assert reconciliation["workflow_run_id"] == workflow["databaseId"]
+    assert reconciliation["workflow_snapshot_sha256"] == sha(workflow_path)
+    jobs = []
+    charged_seconds = 0.0
+    observed_seconds = 0.0
+    observed_terminal_jobs = 0
+    for wave, inventory in (("Q1090", prior_workflow), ("Q1091", workflow)):
+        for job in inventory["jobs"]:
+            charged, observed = charged_job_seconds(
+                job, plan["timeout_seconds_per_job"])
+            charged_seconds += charged
+            observed_seconds += observed or 0.0
+            observed_terminal_jobs += int(observed is not None)
+            jobs.append({
+                "wave": wave,
+                "github_job_id": job["databaseId"],
+                "github_status": job["status"],
+                "github_conclusion": job["conclusion"],
+                "observed_job_wall_seconds": observed,
+                "charged_job_wall_seconds": charged,
+            })
+    assert len(jobs) == 80
+    observed_terminal_cycles = math.ceil(
+        observed_seconds * CI_VCPU * ASSUMED_CLOCK_HZ)
+    ci_cycles = math.ceil(charged_seconds * CI_VCPU * ASSUMED_CLOCK_HZ)
+    local_cycles = local_seconds * LOCAL_CORES * ASSUMED_CLOCK_HZ
+    total_cycles = ci_cycles + local_cycles
+    assert total_cycles >= int(revision[
+        "q1090_q1091_plus_local_cycle_capacity"])
+    verified_scalar = reconciliation["verified_fresh_target_scalar"]
+    terminal = reconciliation["status"] == "terminal_inventory_reconciled"
+    if verified_scalar is not None:
+        assert reconciliation["Q1091_verified_relations"] > 0
+    result = {
+        "kind": "n83_q1090_q1091_one_target_conditional_cpu_cycle_envelope",
+        "status": ("verified_dlp_conditional_cycle_envelope" if terminal and
+                   verified_scalar is not None else
+                   "terminal_no_verified_dlp" if terminal else
+                   "live_capacity_only"),
+        "curve_id": plan["curve_id"],
+        "isogeny": "none",
+        "candidate_id": plan["candidate_id"],
+        "workload_id": plan["workload_id"],
+        "run_id": plan["run_id"],
+        "verified_fresh_target_scalar": verified_scalar,
+        "independently_verified_relation_count": reconciliation[
+            "Q1091_verified_relations"],
+        "scheduled_ci_jobs_charged": len(jobs),
+        "observed_terminal_ci_jobs": observed_terminal_jobs,
+        "observed_terminal_ci_job_wall_seconds_sum": observed_seconds,
+        "observed_terminal_ci_job_cycle_capacity": str(
+            observed_terminal_cycles),
+        "observed_terminal_ci_job_cycle_capacity_log2": (
+            math.log2(observed_terminal_cycles)
+            if observed_terminal_cycles else None),
+        "charged_ci_job_wall_seconds_sum": charged_seconds,
+        "assumed_vcpu_per_ci_job": CI_VCPU,
+        "assumed_clock_hz_ceiling_per_vcpu": ASSUMED_CLOCK_HZ,
+        "ci_job_cycle_envelope": str(ci_cycles),
+        "local_host_physical_cores": LOCAL_CORES,
+        "local_reserved_seconds_including_base_controls_and_replay":
+            local_seconds,
+        "local_reserve_start_utc": revision["local_reserve_start_utc"],
+        "local_reserve_end_utc": revision["local_reserve_end_utc"],
+        "as_of_utc": as_of.isoformat(),
+        "local_reserved_cycle_capacity": str(local_cycles),
+        "whole_run_conditional_cycle_envelope": str(total_cycles),
+        "whole_run_conditional_cycle_envelope_log2": math.log2(total_cycles),
+        "below_2_61_under_stated_resource_assumptions": total_cycles < 1 << 61,
+        "measured_complete_field_operations_log2": None,
+        "one_target_online_wall_ms": reconciliation["one_target_online_wall_ms"],
+        "paired_rho_online_wall_ms": reconciliation["paired_rho_online_wall_ms"],
+        "Q1090_workflow_run_sha256": sha(Q1090_WORKFLOW),
+        "Q1090_terminal_audit_sha256": sha(Q1090_AUDIT),
+        "Q1091_workflow_run_sha256": sha(workflow_path),
+        "Q1091_plan_sha256": sha(Q1091_PLAN),
+        "Q1091_resource_budget_sha256": sha(RESOURCE),
+        "whole_run_ceiling_sha256": sha(CEILING),
+        "revised_30day_ceiling_sha256": sha(REVISION),
+        "reconciliation_source_sha256": reconciliation["source_sha256"],
+        "source_sha256": sha(Path(__file__)),
+        "limits": [
+            "Every one of the 80 scheduled CI jobs is charged at least its full six-hour limit, including queued, failed, and canceled jobs; longer observed terminal job walls supersede that limit.",
+            "The observed-terminal-job capacity uses recorded job elapsed wall time and the same assumed vCPU clock. It excludes active, queued, and local work and is not a measured cycle counter or complete-solve cost.",
+            "The 8 GHz per-vCPU figure is an assumed ceiling, not a measured clock or an equivalence to field operations.",
+            "The historical 24-hour local reservation was contradicted by two control timestamps 29.58 hours apart and is not used for this bound.",
+            "The corrected 30-day, 14-core reservation is conditional on all local work for this workload remaining within its declared start and end; this audit checks that its as-of time has not passed the end.",
+            "A CPU-cycle capacity below 2^61 is not a successful-solve result until a fresh scalar is independently verified and the complete terminal inventory is reconciled.",
+            "No same-point rho online comparison or calibrated complete field-operation total is inferred from this capacity envelope.",
+        ],
+        "jobs": jobs,
+    }
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--workflow-run", type=Path, required=True)
+    parser.add_argument("--artifact-audits", type=Path, required=True)
+    parser.add_argument("--as-of-utc", help="explicit UTC audit time for replay")
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args()
+    assert not args.out.exists(), "refusing to overwrite resource envelope"
+    as_of = parse_utc(args.as_of_utc) if args.as_of_utc else None
+    result = audit(args.workflow_run, args.artifact_audits, as_of=as_of)
+    args.out.write_text(json.dumps(result, indent=2) + "\n")
+    print(json.dumps({key: result[key] for key in (
+        "status", "verified_fresh_target_scalar",
+        "observed_terminal_ci_jobs",
+        "observed_terminal_ci_job_cycle_capacity_log2",
+        "whole_run_conditional_cycle_envelope_log2",
+        "below_2_61_under_stated_resource_assumptions")}))
+
+
+if __name__ == "__main__":
+    main()

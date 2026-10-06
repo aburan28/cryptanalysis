@@ -1,0 +1,38 @@
+name: Compact S3 exact-base evidence
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/compact-s3-m4-20261003/**'
+      - '.github/workflows/compact-s3-exact-base.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/compact-s3-m4-20261003/**'
+      - '.github/workflows/compact-s3-exact-base.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check exact-base and solver-gate derived receipts
+        run: |
+          python3 experiments/compact-s3-m4-20261003/derive_q1413_base_calls.py --check
+          python3 experiments/compact-s3-m4-20261003/screen_q1414_exact_uniform_query_bound.py --check
+          python3 experiments/compact-s3-m4-20261003/screen_q1416_exact_pair_index.py --check
+          python3 experiments/compact-s3-m4-20261003/build_q1415_stage_comparison.py --check
+      - name: Validate frozen source and artifact hashes
+        run: python3 experiments/compact-s3-m4-20261003/verify_q1413_q1416_archive.py
+      - name: Rebuild the work ledger exactly
+        run: |
+          python3 experiments/compact-s3-m4-20261003/build_work_ledger.py
+          git diff --exit-code -- experiments/compact-s3-m4-20261003/work_ledger.json

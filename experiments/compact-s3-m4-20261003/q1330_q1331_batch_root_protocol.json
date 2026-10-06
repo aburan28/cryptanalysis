@@ -1,0 +1,68 @@
+{
+  "kind": "bounded_native_four_summand_s3_batch_inversion_stage_protocol",
+  "schema_version": 1,
+  "status": "frozen_stage_only",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "parent_stage_protocol_sha256": "1a1b006f545df4557d130bbb38d6ce33eba38705164c5c46722f827f7ca85f9e",
+  "native_source_sha256": "e80d13020a2c4dce32a271e1eb3f55540bf26094130729b3170deba61f8b20dd",
+  "point_decomposition": {
+    "stage_code": "PDP4root",
+    "m": 4,
+    "chain": "S3(x1,x2,u), S3(u,target_x,v), S3(x3,x4,v)",
+    "index": "signed-Frobenius orbit representative pair and relative shift; both S3 x roots keyed by minimum normal-cycle rotation",
+    "target_query": "one target-seeded global Frobenius orientation per indexed state; all indexed states in frozen order until a verified relation or cap",
+    "root_kernel": "Montgomery batch inversion across up to 4096 independent S3 equations in index and target phases; one inversion and 3(k-1) charged field multiplications for k nonzero denominators",
+    "batch_policy": "consecutive indexed states in frozen order; target-dependent preparation of a complete block is charged even when a hit occurs early in the block",
+    "root_table": "open-addressing separate u128 key and u64 value arrays; first root-key witness retained",
+    "verification": "try both signed curve lifts for each of four x values; re-add all four subgroup points; independent checked-Sage replay",
+    "operation_accounting": "separate setup, index, and target counts including batch-inversion multiplications, inversions, extra prepared target states, failures, and native relation checks; no common operation-equivalent calibration",
+    "full_pipeline_stages": "unwired"
+  },
+  "profiles": [
+    {
+      "proposal_id": "Q1330",
+      "parent_factor_base_proposal_id": "Q1301",
+      "field_degree": 53,
+      "curve_id": "EC1N53Ckb1hf77aab617904",
+      "workload_id": "74f2979b3e68",
+      "factor_base_actual_B": 24062,
+      "factor_base_folded_columns_K": 227,
+      "factor_base_enumerated_set_sha256": "05b75578ee58866bc8e5d3199cc77f441fa8649ccbaf88c089e998a00ea435e5",
+      "pair_state_cap": 2731037,
+      "peak_rss_cap_mib": 1024,
+      "index_state_selection": "complete_lexicographic",
+      "input_target_kind": "same frozen ordinary public target as Q1301 and matched pair table",
+      "parent_solver_proposal_id": "Q1327",
+      "s3_batch_size": 4096,
+      "target_orientations_per_state": 1,
+      "ordinary_input_manifest_sha256": "25bd3d92e2ee2136e880f2b55f4c7ca0466f27412060c693983adf823421ad9d"
+    },
+    {
+      "proposal_id": "Q1331",
+      "parent_factor_base_proposal_id": "Q1325",
+      "field_degree": 83,
+      "curve_id": "EC1N83Ckb1h876c2921cb64",
+      "workload_id": "bab50a1e5f66",
+      "factor_base_actual_B": 30977592,
+      "factor_base_folded_columns_K": 186612,
+      "factor_base_enumerated_set_sha256": "56c951ad78cc4036d3e8ff70bcb9d7feccacc6c763220b285def056cba30afb8",
+      "pair_state_cap": 2000000,
+      "peak_rss_cap_mib": 1024,
+      "index_state_selection": "coprime_stride_without_replacement",
+      "input_target_kind": "same frozen ordinary public target as Q1325",
+      "parent_solver_proposal_id": "Q1328",
+      "s3_batch_size": 4096,
+      "target_orientations_per_state": 1,
+      "ordinary_input_manifest_sha256": "e6d6eba34f6f0d7735f6b5bea2a292cefa5d1b0a369d69389aef3d90aaaef756"
+    }
+  ],
+  "claim_gate": {
+    "n53_verified_relation_is_complete_dlp": false,
+    "n83_no_hit_proves_unsupported_target": false,
+    "unisolated_wall_ratio_is_speedup_claim": false,
+    "degree131_complete_solve_exponent": null,
+    "degree131_challenge_allowed": false
+  }
+}

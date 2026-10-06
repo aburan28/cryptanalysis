@@ -1,5 +1,10 @@
 # Index-calculus candidate catalog
 
+[Curve and artifact storage](CURVE_STORAGE.md) and
+[typed curve links](curve-links/README.md) explain the ICV1/EC1 crosswalk,
+large factor bases, exact isogeny links, and explicit unknown trait statuses.
+The [curve YAML](curves.yaml) is mirrored in crypto's `docs/curves/ic/`.
+
 This directory contains **1,000 design proposals**, not 1,000 measured attacks.
 Run `python3 experiments/ic-candidate-catalog/generate.py` to regenerate
 `candidates.jsonl`; use `--check` to verify the committed output. Each proposal
@@ -37,7 +42,7 @@ have `candidate_id: null` and do not issue an `IC1` result.
 | `n131_onb_hw2_m4` | N131 | Normal-basis Hamming weight ≤2, m=4 | Construction code exists; exact base count for this proposal is unresolved. |
 | `n131_onb_hw3_m5` | N131 | Normal-basis Hamming weight ≤3, m=5 | Construction code exists; exact base count for this proposal is unresolved. |
 | `n131_poly_d28_m5` | N131 | Polynomial subspace d=28, m=5 | Illustrative large-base budget in PDP scaling; full-width factor base and end-to-end costs unmeasured. |
-| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | Same status; the bounded materialization ledger admitted no degree-131 candidate. |
+| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | One exact trace-zero W24 policy has 16,786,464 source or 16,772,828 first-descendant usable points, but no natural m6 PDP yield or complete IC run. Other d24 bases remain unresolved. |
 | `n131_iso2_d28_m5` | N131 | Proposed degree-2 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 | `n131_iso3_d28_m5` | N131 | Proposed degree-3 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 
@@ -54,6 +59,24 @@ The N131 `fb26` count is tied to the encoded point list in
 `experiments/nonfrobenius-ic/results/ecc2k130-run01.json`.
 Neither count licenses copying that base to another curve, isogeny codomain,
 field representation, or factor-base recipe.
+
+The [exact ECC2K-130 degree-263 capacity gate](../ecc2k130-263-capacity-gate-20261004/RESULT.md)
+puts necessary actual-base thresholds next to the `n131_poly_d28_m5` and
+`n131_poly_d24_m6` proposals. At 1% one-shot uniform-target support, even
+the collision-free multiset bound requires 60,591,280 points for m5 or
+4,121,293 for m6. These are prerequisites, not actual `fb` counts or
+measured relation yields. The gate leaves both proposals unactivated and
+identifies actual `B`, orbit columns and held-out natural PDP/rank cost as
+the next measurements.
+
+The [exact paired W24 census](../ecc2k130-263-w24-exact-base-20261005/RESULT.md)
+now supplies actual `B` and sign-folded columns for one explicit trace-zero
+base on both source and first degree-263 descendant. Both pass the W24/m6
+1% *necessary* size gate; neither has a measured ordinary-query yield or
+rank. The same exact counts tighten the W24/m5 one-shot support upper bound
+to about `1.63e-5`, below the 1% objective. The records remain proposals
+with `candidate_id: null` until the missing stages and exact manifest are
+resolved.
 
 ## Code reviewed for the design axes
 
@@ -112,6 +135,16 @@ It also reserves degree-2 edges over the binary field as characteristic-prime
 isogenies without a conventional `2`-volcano up/down label.
 
 ## Choosing what to run
+
+The [exact W24 Frobenius-orbit scan](../ecc2k130-263-w24-orbit-columns-20261005/RESULT.md)
+found only 2,066 potential column savings among 8,393,232 signed columns
+of the original source base (0.0246151%). The source-transported copy has
+the same group partition. Explicitly closing W24 under Frobenius would
+instead form a different, mathematically 2,198,485,492-point base with
+8,391,166 orbit representatives. Its implicit membership and m5 PDP/rank
+costs have not been measured. The unchanged W24 quotient is deprioritized;
+the orbit-closed W24/m5 policy remains a `candidate_id: null` proposal,
+separate from both the original W24/m6 and W28/m5 policies.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
