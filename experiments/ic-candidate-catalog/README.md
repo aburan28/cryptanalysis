@@ -172,6 +172,13 @@ and 1,200 Frobenius rotations pass independent Sage replay, but the five-leaf
 front end alone costs 5,240 muxes and 49,115 direct conversion XORs. The
 exponent-range constraint and complete Boolean/Semaev solver remain absent;
 there is no ordinary PDP yield or target-online result.
+The [unknown-witness orbit-closed W24/m5 SAT gate](../ecc2k130-orbit-w24-m5-sat-20261006/RESULT.md)
+then built a complete 142,303-variable native-XOR formula from five hidden
+seed masks and exponents. The frozen planted target's known witness satisfies
+every archived clause and XOR row, but CryptoMiniSat returned
+`INDETERMINATE` after 100,001 conflicts without a model. The ordinary
+single-target gate remained closed. This is a bounded failure of that SAT
+encoding, not a natural-yield estimate or a no-go for other PDP methods.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical

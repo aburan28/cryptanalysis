@@ -26,9 +26,15 @@ def main():
     witness_path = args.witness_dir / "receipt.json"
     strict = json.loads(strict_path.read_text())
     witness = json.loads(witness_path.read_text())
-    xcnf = args.strict_run_dir / "system.xcnf"
+    raw_xcnf = args.strict_run_dir / "system.xcnf"
+    archived_xcnf = args.strict_run_dir / "system.xcnf.gz"
+    xcnf = raw_xcnf if raw_xcnf.exists() else archived_xcnf
+    if xcnf == archived_xcnf and not archived_xcnf.exists():
+        raise ValueError("missing raw or gzip-archived XCNF")
     packed_gz = args.witness_dir / "assignment.bin.gz"
-    assert digest(xcnf) == strict["xcnf_sha256"] == witness["xcnf_sha256"]
+    xcnf_raw_hash = (digest(xcnf) if xcnf == raw_xcnf else
+                     hashlib.sha256(gzip.decompress(xcnf.read_bytes())).hexdigest())
+    assert xcnf_raw_hash == strict["xcnf_sha256"] == witness["xcnf_sha256"]
     assert digest(packed_gz) == witness["compressed_assignment_sha256"]
     raw = gzip.decompress(packed_gz.read_bytes())
     assert len(raw) == witness["raw_assignment_bytes"]
@@ -45,7 +51,9 @@ def main():
     header = None
     clauses = xors = violations = 0
     first_failure = None
-    with xcnf.open(encoding="ascii") as stream:
+    xcnf_stream = (gzip.open(xcnf, "rt", encoding="ascii")
+                   if xcnf == archived_xcnf else xcnf.open(encoding="ascii"))
+    with xcnf_stream as stream:
         for line_number, line in enumerate(stream, 1):
             line = line.strip()
             if not line or line.startswith("c "):
@@ -88,7 +96,8 @@ def main():
         "candidate_id": None,
         "strict_result_sha256": digest(strict_path),
         "witness_result_sha256": digest(witness_path),
-        "xcnf_sha256": digest(xcnf),
+        "xcnf_sha256": xcnf_raw_hash,
+        "xcnf_archive_sha256": digest(xcnf) if xcnf == archived_xcnf else None,
         "assignment_sha256": hashlib.sha256(raw).hexdigest(),
         "variables": strict["variables"],
         "cnf_clauses": clauses,
