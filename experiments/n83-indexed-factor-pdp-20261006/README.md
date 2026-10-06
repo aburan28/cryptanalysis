@@ -69,3 +69,12 @@ witness; the 17 solver-reported UNSAT logs are archived with hashes. The
 all five points lie on the curve and in the measured base after projection,
 the four additions are regular, and the exact raw fiber maps to the public
 subgroup target. This clears the pinned correctness control only.
+
+The first [public-only unpinned planted attempt](runs/unpinned_planted_f0_v1/receipt.json)
+returned `BOUNDED_UNKNOWN` at the same 120-second solver limit, in 137.047
+seconds of complete process-tree wall time with 530.5 MB sampled peak RSS.
+All five positional factor choices and signs were free; the started receipt
+records no private-fixture input. No model or UNSAT proof was returned. The
+four frozen ordinary raw fibers are the next bounded diagnostic, but no
+natural-yield rate or complete IC claim can follow from this failed planted
+search gate.
