@@ -6668,6 +6668,34 @@ def main():
         (q1413_full["actual_usable_points_B_before_folding"] //
          q1413_full["signed_frobenius_columns_K"]) ** 2)
     assert n131_pair_table_entries == 21_514_403_416_657_745_244
+    q1470_dir = HERE / "q1470_n83_long_control"
+    q1470_protocol_path = q1470_dir / "protocol.json"
+    q1470_audit_path = q1470_dir / "archive_audit.json"
+    q1470_receipt_path = q1470_dir / "run/receipt.json"
+    q1470_protocol = json.loads(q1470_protocol_path.read_text())
+    q1470_audit = json.loads(q1470_audit_path.read_text())
+    assert q1470_protocol["proposal_id"] == q1470_audit[
+        "proposal_id"] == "Q1470"
+    assert q1470_protocol["candidate_id"] is q1470_audit[
+        "candidate_id"] is None
+    assert q1470_protocol["isogeny"] == q1470_audit[
+        "isogeny"] == "none"
+    assert q1470_protocol["q1467_protocol_sha256"] == sha(
+        q1467_solver_protocol_path)
+    assert q1470_protocol["curve_id"] == q1470_audit[
+        "curve_id"] == n83_q1467_base["curve_id"]
+    assert q1470_protocol["factor_base_enumerated_set_sha256"] == (
+        n83_q1467_base["enumerated_set_sha256"])
+    assert q1470_audit["status"] == "passed"
+    assert q1470_audit["protocol_sha256"] == sha(q1470_protocol_path)
+    assert q1470_audit["receipt_sha256"] == sha(q1470_receipt_path)
+    assert q1470_audit["auditor_source_sha256"] == sha(
+        q1470_dir / "audit.py")
+    assert q1470_audit["solver_status"] == "censored"
+    assert q1470_audit["stop_reason"] == "wall_cap"
+    assert q1470_audit["verified_relation_count"] == 0
+    assert q1470_audit["field_calls_equal_prior_60_second_run"] is True
+    assert q1470_audit["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -8761,6 +8789,59 @@ def main():
             "panel_audit_sha256": sha(q1469_audit_path),
             "per_target_rows": q1469_audit["rows"],
         },
+        "q1470_n83_extended_known_solution_control": {
+            "proposal_id": "Q1470", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "curve_id": q1470_protocol["curve_id"],
+            "factor_base_actual_B": q1470_protocol["factor_base_actual_B"],
+            "folded_columns_K": q1470_protocol["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": q1470_protocol[
+                "factor_base_enumerated_set_sha256"],
+            "workload_id": q1470_protocol["workload_id"],
+            "public_target": q1470_protocol["public_target"],
+            "input_role": q1470_protocol["input_role"],
+            "solver_status": q1470_audit["solver_status"],
+            "stop_reason": q1470_audit["stop_reason"],
+            "verified_relation_count": 0,
+            "prior_60_second_conflicts": q1470_audit[
+                "prior_60_second_conflicts"],
+            "extended_600_second_conflicts": q1470_audit[
+                "conflicts"],
+            "prior_60_second_field_calls": q1470_audit[
+                "prior_60_second_field_calls"],
+            "extended_600_second_field_calls": q1470_audit[
+                "field_calls"],
+            "field_calls_equal_prior_60_second_run": True,
+            "joint_eligible_checks": q1470_audit[
+                "joint_eligible_checks"],
+            "prior_60_second_solver_process_wall_ns_exploratory":
+                q1470_audit[
+                    "prior_60_second_solver_process_wall_ns_exploratory"],
+            "extended_600_second_solver_process_wall_ns_exploratory":
+                q1470_audit["solver_process_wall_ns_exploratory"],
+            "prior_60_second_peak_child_rss_raw": q1470_audit[
+                "prior_60_second_peak_child_rss_raw"],
+            "extended_600_second_peak_child_rss_raw": q1470_audit[
+                "peak_child_rss_raw"],
+            "natural_relation_yield_estimate": None,
+            "successful_N83_solve_cost": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "On Q1467's same known-representable N83 public target "
+                "and exact CNF, extending the native wall cap from 60 "
+                "to 600 seconds raises SAT conflicts from 44577 to "
+                "159108 but yields no unpinned model. The exact "
+                "joint-chain check occurs only once and field primitive "
+                "counts remain unchanged, so those counts do not "
+                "measure the dominant SAT search work. Peak child RSS "
+                "rises above 1.4 GB. This is a censored solver control, "
+                "not a natural N83 yield or successful-cost estimate."),
+            "protocol_sha256": sha(q1470_protocol_path),
+            "archive_audit_sha256": sha(q1470_audit_path),
+            "receipt_sha256": sha(q1470_receipt_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -9263,6 +9344,10 @@ def main():
                 "extrapolation already requires 2^64.22 explicit "
                 "pair entries, but this does not exclude a compact "
                 "target-guided method; "
+                "Q1470 extends Q1467's known-representable unpinned N83 "
+                "control to a 600-second wall cap with no model; SAT "
+                "conflicts rise while native field calls stay fixed, "
+                "showing that field calls alone undercharge this solver; "
                 "the N53 early-rank panel and censored N83 ordinary "
                 "runs do not measure N83 useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

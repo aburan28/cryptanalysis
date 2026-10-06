@@ -2208,6 +2208,18 @@ late-rank behavior, final matrix work, target descent, and scalar replay
 remain unknown, so the complete N131 `2^x` and challenge gate remain open
 questions.
 
+### Q1470 extended N83 known-solution control
+
+[Q1470](q1470_n83_long_control/README.md) reruns Q1467's exact
+known-representable N83 unpinned CNF with a 600-second native wall cap. It
+again stops without a model, after 159,108 SAT conflicts and one exact
+joint-chain check. Its field primitive calls are identical to the earlier
+60-second run even though conflicts and peak memory rise substantially.
+Thus field calls alone miss the dominant SAT search work in this hybrid
+solver. The result is a censored correctness control, not a natural N83
+relation yield or successful decomposition cost. The complete N131 `2^x`
+remains unknown.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
