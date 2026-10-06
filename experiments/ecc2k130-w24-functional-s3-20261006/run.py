@@ -263,8 +263,11 @@ def main():
                         break
                     try:
                         rss = parent_run.process_rss_bytes(process.pid)
-                    except (RuntimeError, subprocess.TimeoutExpired):
+                    except (RuntimeError, subprocess.TimeoutExpired,
+                            OSError) as monitor_error:
                         stop_reason = "memory_monitor_failure"
+                        report["memory_monitor_error_type"] = type(monitor_error).__name__
+                        report["memory_monitor_error"] = str(monitor_error)
                         process.kill()
                         break
                     if rss is not None:
