@@ -952,6 +952,66 @@ fn echelon(m: &mut [u64], rows: usize, stride: usize, stop: usize, s: &mut Scrat
     ops
 }
 
+/// Eliminate the built matrix over columns `..low_start` and leave in
+/// `s.low` the linear blocks of the rows reduced to zero there, the zero
+/// ones dropped; returns the number of pivots and the word XORs.  A matrix
+/// of at least `F4_F2_ECHELON_MIN_WORDS` words goes to the device named by
+/// `F4_F2_ECHELON` ([`super::f4_gpu::offload_echelon`]) when one is set;
+/// it eliminates with other pivots, so only the word count can differ.
+fn eliminate_high(
+    s: &mut Scratch,
+    rows: usize,
+    stride: usize,
+    low_start: usize,
+    width: usize,
+) -> (usize, u64) {
+    #[cfg(all(test, feature = "gpu-emulator"))]
+    if EMULATE_ECHELON.with(std::cell::Cell::get) {
+        let e = super::f4_gpu::emulate_echelon(
+            &s.matrix[..rows * stride],
+            rows,
+            stride,
+            low_start,
+            width,
+            &s.stored_skip,
+            64,
+        );
+        s.low = e.low;
+        return (e.pivots, e.word_ops);
+    }
+    if let Some(e) = super::f4_gpu::offload_echelon(
+        &s.matrix[..rows * stride],
+        rows,
+        stride,
+        low_start,
+        width,
+        &s.stored_skip,
+    ) {
+        s.low = e.low;
+        return (e.pivots, e.word_ops);
+    }
+    let mut m = std::mem::take(&mut s.matrix);
+    let ops = echelon(&mut m, rows, stride, low_start, s);
+    s.low.clear();
+    for &r in &s.low_rows {
+        let r = r as usize;
+        s.low.push(extract_bits(
+            &m[r * stride..(r + 1) * stride],
+            low_start,
+            width,
+        ));
+    }
+    s.matrix = m;
+    (s.pivots.len(), ops)
+}
+
+#[cfg(all(test, feature = "gpu-emulator"))]
+thread_local! {
+    /// Route every elimination on this thread through the emulated device
+    /// kernels, for tests that hold them to the host path.
+    pub(crate) static EMULATE_ECHELON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// Bits `start .. start + width` of `row` (`width ≤ 128`).
 fn extract_bits(row: &[u64], start: usize, width: usize) -> u128 {
     let mut out = 0u128;
@@ -1122,21 +1182,11 @@ pub fn decide_with(
         k.eliminated_cols = b.cols as u64;
 
         let t1 = std::time::Instant::now();
-        let mut m = std::mem::take(&mut s.matrix);
-        k.word_ops = echelon(&mut m, b.rows, b.stride, b.low_start, s);
         let width = b.cols - b.low_start;
-        s.low.clear();
-        for &r in &s.low_rows {
-            let r = r as usize;
-            s.low.push(extract_bits(
-                &m[r * b.stride..(r + 1) * b.stride],
-                b.low_start,
-                width,
-            ));
-        }
-        s.matrix = m;
+        let (pivots, ops) = eliminate_high(s, b.rows, b.stride, b.low_start, width);
+        k.word_ops = ops;
         let rank = rref_u128(&mut s.low, width);
-        k.rank = (s.pivots.len() + rank) as u64;
+        k.rank = (pivots + rank) as u64;
         k.reduce_ns = t1.elapsed().as_nanos();
 
         let t2 = std::time::Instant::now();
@@ -1217,23 +1267,13 @@ pub fn profile_with(
         k.eliminated_rows = b.rows as u64 - k.f5_skipped;
         k.eliminated_cols = b.cols as u64;
         let t1 = std::time::Instant::now();
-        let mut m = std::mem::take(&mut s.matrix);
-        k.word_ops = echelon(&mut m, b.rows, b.stride, b.low_start, s);
-        let width = b.cols - b.low_start;
         // Over all variables the linear block can exceed 65 columns only by
         // variables the matrix never touches; it is at most n_vars + 1 ≤ 65.
-        s.low.clear();
-        for &r in &s.low_rows {
-            let r = r as usize;
-            s.low.push(extract_bits(
-                &m[r * b.stride..(r + 1) * b.stride],
-                b.low_start,
-                width,
-            ));
-        }
-        s.matrix = m;
+        let width = b.cols - b.low_start;
+        let (pivots, ops) = eliminate_high(s, b.rows, b.stride, b.low_start, width);
+        k.word_ops = ops;
         let low_rank = rref_u128(&mut s.low, width);
-        k.rank = (s.pivots.len() + low_rank) as u64;
+        k.rank = (pivots + low_rank) as u64;
         k.reduce_ns = t1.elapsed().as_nanos();
         let low_masks = &s.col_mask[b.low_start..];
         let const_bit = match low_masks.last() {
