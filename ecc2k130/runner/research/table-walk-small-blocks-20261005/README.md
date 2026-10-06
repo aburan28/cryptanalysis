@@ -182,6 +182,36 @@ All 128 archive members and 107 source hashes were checked locally, including
 the exact new checkpoints and sorted corpora. The archival build and check
 controllers preserve the executed procedures and experiment-specific paths.
 
+## Cache-enabled package r3
+
+All four profiles were subsequently rebuilt with the corrected host policy,
+CUDA **13.3.73**, `ECC_PACKED_L2_PERSIST=1` and `ECC_PACKED_L2_POLICY=1`.
+The 512-thread control and both 256-thread profiles request the original 16%
+shared-memory hint; `hybrid128wave` requests the independently checked 100%
+hint. Every encoded GPU walk instruction hash matches its passed point
+diagnostic. This is compiler/instruction evidence: these new cached binaries
+have not executed GPU kernels or validated their cache setup yet.
+
+`cached-build-results.json` retains all four commands and raw compiler outputs.
+The complete 15,449,145-byte build archive was transferred and checked against
+SHA-256 `f8004eb6ff5086a477f175bdf47ecf76400e02cf517399d4cd32765a5bb62fce`.
+All 116 files, 107 source hashes and four binary hashes were verified locally;
+`cached-build-custody.json` records the result.
+
+The frozen r3 package keeps five fresh sustained DP32 samples, each counting
+730,144,440,320 point updates. Correctness and checkpoint-resume gates retain
+the full 1,392,640-walk population. The controller also requires a readback at
+the device's reported supported maximum power limit before it launches the
+benchmark. A denied setter is acceptable only when the readback is already at
+that maximum; a lower limit refuses the benchmark.
+
+`benchmark-package-r3.json` and `benchmark-package-verification-r3.json` record
+the complete local package hash and verified workload. `benchmark-runner-r3.py`
+and `dedicated-controller-r3.py` are its saved components, requiring the rest
+of the package and an explicit approved GPU receipt. They provision no rental.
+New rental approval, idle hardware, cache-enabled host validation and sustained
+22B/s acceptance remain pending. Earlier packages and failed rows are retained.
+
 ## Reproduction
 
 From the repository root, run the portable functional check:
