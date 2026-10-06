@@ -12,6 +12,9 @@ class NormalBarrelTests(unittest.TestCase):
 
     def test_full_rank_round_trips_and_frobenius(self):
         self.assertEqual(len(self.basis.reducer.pivots), DEGREE)
+        for bit in range(DEGREE):
+            self.assertEqual(self.basis.to_polynomial(self.basis.to_normal(1 << bit)),
+                             1 << bit)
         for word in (0, 1, 42, (1 << 130) | (1 << 31) | 1):
             code = self.basis.to_normal(word)
             self.assertEqual(self.basis.to_polynomial(code), word)

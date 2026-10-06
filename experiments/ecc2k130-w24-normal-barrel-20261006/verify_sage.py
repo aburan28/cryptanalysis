@@ -113,11 +113,16 @@ def main() -> None:
     def normal_code(value):
         return integer(inverse * vector(GF(2), bits(encode(value))))
 
+    polynomial_columns = [normal_code(decode(1 << bit)) for bit in range(DEGREE)]
+    check([str(value) for value in polynomial_columns] ==
+          result["polynomial_to_normal_columns"],
+          "full polynomial-to-normal columns mismatch")
     w24 = [field.gen()**j + (field.gen()**j).trace() for j in range(1, 25)]
     seed_columns = [normal_code(value) for value in w24]
     check([str(value) for value in seed_columns] == result["w24_to_normal_columns"],
           "W24 input-map columns mismatch")
     check(result["conversion_matrix_sha256"] == {
+        "polynomial_to_normal": column_digest(polynomial_columns),
         "w24_to_normal": column_digest(seed_columns),
         "normal_to_polynomial": column_digest([encode(value) for value in orbit]),
     }, "conversion matrix digest mismatch")

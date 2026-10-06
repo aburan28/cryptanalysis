@@ -83,6 +83,7 @@ def main() -> None:
         else:
             raise AssertionError("out-of-range exponent accepted")
     gate_counts = normal.gate_counts()
+    polynomial_to_normal = tuple(normal.to_normal(1 << bit) for bit in range(131))
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     if peak > config["peak_rss_limit_bytes"]:
         raise MemoryError("frozen producer RSS cap")
@@ -97,9 +98,11 @@ def main() -> None:
         "normal_element": str(normal.element),
         "normal_element_search_counter": normal.search_counter,
         "normal_orbit_polynomial_words": [str(value) for value in normal.orbit],
+        "polynomial_to_normal_columns": [str(value) for value in polynomial_to_normal],
         "w24_to_normal_columns": [str(value) for value in normal.w24_to_normal_columns],
         "normal_to_polynomial_columns": [str(value) for value in normal.orbit],
         "conversion_matrix_sha256": {
+            "polynomial_to_normal": column_digest(polynomial_to_normal),
             "w24_to_normal": column_digest(normal.w24_to_normal_columns),
             "normal_to_polynomial": column_digest(normal.orbit),
         },
