@@ -6004,6 +6004,70 @@ def main():
             "cpu_isolation_receipt": None,
             "receipt_sha256": sha(receipt_path),
         })
+    q1463_dir = HERE / "q1463_free_midpoint_rank"
+    q1463_protocol_path = q1463_dir / "protocol.json"
+    q1463_result_path = q1463_dir / "result.json"
+    q1463_verification_path = q1463_dir / "verification.json"
+    q1463_protocol = json.loads(q1463_protocol_path.read_text())
+    q1463_result = json.loads(q1463_result_path.read_text())
+    q1463_verification = json.loads(q1463_verification_path.read_text())
+    assert q1463_protocol["proposal_id"] == q1463_result[
+        "proposal_id"] == q1463_verification["proposal_id"] == "Q1463"
+    assert q1463_protocol["candidate_id"] is q1463_result[
+        "candidate_id"] is None
+    assert q1463_protocol["run_id"] is q1463_result["run_id"] is None
+    assert q1463_protocol["isogeny"] == q1463_result[
+        "isogeny"] == "none"
+    assert q1463_result["point_decomposition_stage_code"] == "PDP4hybrid"
+    assert q1463_result["protocol_sha256"] == sha(q1463_protocol_path)
+    assert q1463_verification["status"] == "pass"
+    assert q1463_verification["result_sha256"] == sha(q1463_result_path)
+    assert q1463_verification["protocol_sha256"] == sha(
+        q1463_protocol_path)
+    assert len(q1463_verification["independent_sage_replays"]) == 2
+    q1463_rows = []
+    for cell, measured in zip(q1463_protocol["cells"],
+                              q1463_result["cells"]):
+        n = cell["degree_n"]
+        assert measured["name"] == cell["name"]
+        for key in ("curve_id", "workload_id", "degree_n",
+                    "factor_base_actual_B", "folded_columns_K",
+                    "factor_base_enumerated_set_sha256"):
+            assert measured[key] == cell[key]
+        pair_rows = measured["pair_product_rows"]
+        exact_rows = measured["exact_midpoint_rows"]
+        assert len(pair_rows) == cell["archived_partial_state_count"]
+        assert all(row["pair_product_coefficient_ranks"] == [n, n]
+                   for row in pair_rows)
+        assert all(row["affine_ranks"] == [n, n]
+                   for row in exact_rows)
+        assert all(max(row["pair_candidates"]) <= 4096
+                   for row in exact_rows)
+        q1463_rows.append({
+            "proposal_id": "Q1463", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "diagnostic_only": True,
+            "name": cell["name"], "degree_n": n,
+            "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "archived_partial_states": len(pair_rows),
+            "all_pair_product_coefficient_ranks_full": True,
+            "exact_bounded_midpoint_states": len(exact_rows),
+            "all_exact_midpoint_affine_ranks_full": True,
+            "verified_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "successful_decomposition_cost": None,
+            "complete_n131_log2_work": None,
+        })
+    assert [row["archived_partial_states"] for row in q1463_rows] == [
+        21, 21, 23]
+    assert [row["exact_bounded_midpoint_states"]
+            for row in q1463_rows] == [6, 6, 1]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -7834,6 +7898,33 @@ def main():
             "control_result_sha256": sha(q1462_control_path),
             "verification_sha256": sha(q1462_verification_path),
         },
+        "q1463_free_midpoint_linear_span_screen": {
+            "proposal_id": "Q1463", "candidate_id": None,
+            "isogeny": "none", "point_decomposition_stage_code":
+                "PDP4hybrid",
+            "rows": q1463_rows,
+            "independent_sage_replays": q1463_verification[
+                "independent_sage_replays"],
+            "successful_N53_N83_solve_growth_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "All 65 archived free-midpoint partial-state rows have "
+                "full pair-product coefficient rank on both sides. "
+                "The exact midpoint sets in all 13 states within the "
+                "4096-pair cap also have full affine rank on both sides; "
+                "two smallest ordinary cases receive independent Sage "
+                "replay. This excludes an independent-monomial linear "
+                "span rejection and a proper affine midpoint container "
+                "on these fixed states, not weight-aware nonlinear joint "
+                "reasoning or a target-guided solve. No relation or "
+                "successful-solve cost is measured."),
+            "protocol_sha256": sha(q1463_protocol_path),
+            "result_sha256": sha(q1463_result_path),
+            "verification_sha256": sha(q1463_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -8299,6 +8390,10 @@ def main():
                 "all no-pair rejections; both ordinary queries still "
                 "reach the wall cap with no relation, so no successful "
                 "decomposition work or rank yield is measured; "
+                "Q1463 finds full pair-product coefficient rank in all "
+                "65 archived free-midpoint states and full affine rank "
+                "for both exact midpoint sets in all 13 bounded states, "
+                "but neither result supplies a nonlinear joint solver; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

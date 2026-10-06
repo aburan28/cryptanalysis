@@ -2095,6 +2095,16 @@ they cannot be used as Q1461 fixed-midpoint admissions. The next algorithm
 must couple many possible midpoint values to the public target instead of
 spending a full search prefix on one fixed midpoint at a time.
 
+The [Q1463 free-midpoint rank screen](q1463_free_midpoint_rank/README.md)
+tests a direct linear-span route on the archived Q1456 partial states.
+Both pair-product coefficient spans have full field rank in all 65 state
+rows. The exact reachable midpoint sets in all 13 states within a
+4,096-pair cap also have full affine rank on both sides; independent Sage
+replays the smallest N53 and N83 cases. This rules out an unrestricted
+monomial-span rejection on those prefixes and any proper affine container
+for their bounded midpoint sets. It does not rule out a weight-aware
+nonlinear joint rule or measure a new ordinary relation.
+
 A concrete successor should process **large partial pair-output domains**
 without enumerating every pair combination. First derive and independently
 verify a sound target-conditioned necessary condition on partial leaves,
