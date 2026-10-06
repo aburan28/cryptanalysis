@@ -8,6 +8,7 @@ places to run work:
 | An agent that *lives* on a big CPU or GPU box: long interactive work, CUDA development, warm build trees | a **Cursor worker on a Runpod pod** (`fleet.py`) | per hour while the pod runs; stops itself when idle |
 | The same, when Runpod is out of credit or more machines are needed at once | a **Cursor worker on Modal** (`modal_worker.py`) | per second at Modal's function rates; stops itself when idle |
 | One heavy command from a small VM, run next to an agent's session | `fleet.py run rp-cpu-1 -- CMD` | the pod's hourly rate (already running) |
+| One index-calculus run or benchmark on a GPU of a chosen type | `runpod_pod.py run NAME -- CMD`: a pod rented for the command and deleted after it | the pod's hourly rate while it exists |
 | Burst or fan-out: 1-100 containers, any core count, any GPU type, then back to zero | **Modal** (`modal_run.py`) | per second of sandbox time (3x the function rate) |
 
 Everything here is Python standard library plus the `modal` client, and needs
@@ -21,7 +22,7 @@ cloud agent receives them as environment variables:
 | Secret | For | Where to get it |
 | --- | --- | --- |
 | `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | `modal_run.py`, `modal_worker.py` | [modal.com/settings/tokens](https://modal.com/settings/tokens) |
-| `RUNPOD_API_KEY` | `fleet.py` | [Runpod console -> Settings -> API keys](https://console.runpod.io/user/settings) |
+| `RUNPOD_API_KEY` | `fleet.py`, `runpod_pod.py` | [Runpod console -> Settings -> API keys](https://console.runpod.io/user/settings) |
 | `CURSOR_API_KEY` (optional) | `fleet.py up`, `rekey`, `agent`; without it workers wait for a sign-in link | [cursor.com/dashboard -> API keys](https://cursor.com/dashboard) (a *user* key) |
 | `RUNPOD_SSH_PRIVATE_KEY` | `fleet.py ssh`, `logs`, `run`, `jobs` | the private half of an SSH key registered in the Runpod console |
 | `GITHUB_TOKEN` (optional) | lets agents on the pods push branches | a fine-grained token with contents and pull-request write on this repo |
@@ -138,6 +139,37 @@ On `rp-gpu-1`, `nproc` reports the host's 64 cores; the pod's share is
 filesystem: unpacking there is about 40x slower and building about 2x slower
 than on `$FLEET_SCRATCH`, so build out of tree there
 (`cmake -B $FLEET_SCRATCH/build`).
+
+## A Runpod GPU pod for one command
+
+[`runpod_pod.py`](runpod_pod.py) rents a pod, runs one command on this
+checkout there, and gives the pod back. It is the default way to put an
+index-calculus run on a GPU ([AGENTS.md](../AGENTS.md#run-index-calculus-on-a-gpu)):
+
+```sh
+cloud/runpod_pod.py run ic-gpu --out results/run.json -- \
+  'mkdir -p results && cd suite && cargo run --release --bin ca-ic -- run --degree 23 --curve-a 1 --out ../results/run.json'
+cloud/runpod_pod.py run f4 --gpu "NVIDIA GeForce RTX 5090" --keep -- 'nvidia-smi'
+cloud/runpod_pod.py ssh f4 -- 'nvidia-smi'      # or sync, fetch NAME REMOTE LOCAL_DIR
+cloud/runpod_pod.py list
+cloud/runpod_pod.py down f4
+```
+
+`run NAME` creates the pod unless one of that name exists, ships the working
+tree (uncommitted edits included, as `fleet.py run` does) to
+`/root/cryptanalysis`, installs Rust and NVRTC when they are missing, and runs
+the command there with `CA_NVRTC_LIB` set. It then copies each `--out` path
+back into the checkout and deletes the pod it created, unless `--keep`. Its
+exit status is the command's.
+
+Without `--gpu`, a pod takes the first type in stock from the RTX 5090, RTX
+4090, RTX PRO 6000 and H100, with at least `--min-vcpu` (16) vCPUs and
+`--min-ram` (32) GB per GPU; `--cpu N` asks for a CPU pod instead. The pod
+receives this machine's `~/.ssh/id_ed25519.pub` (created if missing) beside
+the account's registered keys, so `RUNPOD_API_KEY` is the only secret it
+needs. The image is `runpod/base` (`--image` names another). Every pod stops
+itself after `--max-hours` (6), in case nobody deletes it. Creating a pod
+prints its rate.
 
 ## Cursor workers on Modal
 
