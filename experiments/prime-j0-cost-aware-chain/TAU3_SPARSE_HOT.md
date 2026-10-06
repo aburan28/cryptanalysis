@@ -86,3 +86,36 @@ fused tables, and use two normalization inversions on each curve. The
 compiled static maps, including the quotient atlas and both hot maps, total
 45,550 bytes. These are correctness and stage-cost observations on older
 inputs; they are not prospective performance evidence.
+
+## Prospective disjoint panel
+
+The [frozen fixture](tau3-sparse-inputs.json) and [read-only fixture
+audit](audit_tau3_sparse_inputs.py) confirm 32,768 new scalars disjoint from
+all earlier scalar fixtures, with eight generic reference output digests.
+The [three-arm receipt](tau3-sparse-panel.json) preserves 24 raw executions;
+its [audit](audit_tau3_sparse_panel.py) passes all eight predeclared
+operation gates. All outputs match the generic references. The sparse and
+full-table action digests agree, and each extra sparse addition equals one
+counted cold pair.
+
+| Curve, four new point cases | Compact width-four additions | Full fused additions | Sparse additions | Sparse saving vs compact | Compact / sparse / full point bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| glv-j0-32 | 62,415 | 47,729 | 53,429 | 14.40% | 6,336 / 12,672 / 43,904 |
+| j0-56 | 133,894 | 97,659 | 122,501 | 8.51% | 12,096 / 24,192 / 76,832 |
+
+The sparse table also uses 45,550 bytes of compiled static maps, including
+the quotient atlas and both hot maps. The point-byte figures exclude that
+static data, stack, and heap scratch; the sparse representation is **not**
+a total-memory win over compact width-four. It reduces prepared pair-point
+work relative to the full fused table, but spends one extra mixed addition
+for each cold pair. All four new point cases per curve beat compact in
+addition count; the sparse evaluator still uses more additions than the
+full fused evaluator.
+
+The local median online times over four point cases were 1.923 / 2.797 ms
+for compact / sparse on `glv-j0-32`, and 2.940 / 2.947 ms on `j0-56`.
+These are single executions on a contended host without an isolation
+receipt or repeated paired samples. Their ratio is **not** a controlled CPU
+speedup; the receipt leaves `cpu_timing_claim` and `isolated_receipt` null.
+The present evidence supports an operation-count versus point-table-size
+tradeoff, not a faster scalar-multiplication implementation.
