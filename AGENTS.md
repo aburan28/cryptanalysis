@@ -304,6 +304,9 @@ will do:
 - `cloud/runpod_pod.py run NAME [--gpu TYPE] [--out PATH]... -- CMD` rents a
   Runpod GPU pod for one command, ships the checkout, copies the outputs
   back and deletes the pod;
+- `cloud/cairn_queue.py submit RUNNER [--out PATH]... -- CMD` queues it on a
+  Runpod GPU runner (`up RUNNER` makes one), where cairn's host agent runs
+  jobs one at a time, each to a receipt; `wait` and `fetch` bring it back;
 - `cloud/modal_run.py run --image cuda --gpu TYPE -- CMD` on Modal;
 - `cloud/fleet.py run rp-gpu-1 -- CMD` on the standing GPU pod.
 

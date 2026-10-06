@@ -9,6 +9,7 @@ places to run work:
 | The same, when Runpod is out of credit or more machines are needed at once | a **Cursor worker on Modal** (`modal_worker.py`) | per second at Modal's function rates; stops itself when idle |
 | One heavy command from a small VM, run next to an agent's session | `fleet.py run rp-cpu-1 -- CMD` | the pod's hourly rate (already running) |
 | One index-calculus run or benchmark on a GPU of a chosen type | `runpod_pod.py run NAME -- CMD`: a pod rented for the command and deleted after it | the pod's hourly rate while it exists |
+| A queue of GPU jobs, run one at a time on a runner, each to a receipt | **cairn's host agent on a Runpod pod** (`cairn_queue.py`) | the pod's hourly rate; stops itself when idle |
 | Burst or fan-out: 1-100 containers, any core count, any GPU type, then back to zero | **Modal** (`modal_run.py`) | per second of sandbox time (3x the function rate) |
 
 Everything here is Python standard library plus the `modal` client, and needs
@@ -22,9 +23,9 @@ cloud agent receives them as environment variables:
 | Secret | For | Where to get it |
 | --- | --- | --- |
 | `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | `modal_run.py`, `modal_worker.py` | [modal.com/settings/tokens](https://modal.com/settings/tokens) |
-| `RUNPOD_API_KEY` | `fleet.py`, `runpod_pod.py` | [Runpod console -> Settings -> API keys](https://console.runpod.io/user/settings) |
+| `RUNPOD_API_KEY` | `fleet.py`, `runpod_pod.py`, `cairn_queue.py` | [Runpod console -> Settings -> API keys](https://console.runpod.io/user/settings) |
 | `CURSOR_API_KEY` (optional) | `fleet.py up`, `rekey`, `agent`; without it workers wait for a sign-in link | [cursor.com/dashboard -> API keys](https://cursor.com/dashboard) (a *user* key) |
-| `RUNPOD_SSH_PRIVATE_KEY` | `fleet.py ssh`, `logs`, `run`, `jobs` | the private half of an SSH key registered in the Runpod console |
+| `RUNPOD_SSH_PRIVATE_KEY` | `fleet.py ssh`, `logs`, `run`, `jobs`; optional for `runpod_pod.py` and `cairn_queue.py`, which otherwise use a key of their own and reach only pods made from the same machine | the private half of an SSH key registered in the Runpod console |
 | `GITHUB_TOKEN` (optional) | lets agents on the pods push branches | a fine-grained token with contents and pull-request write on this repo |
 
 Install the Modal client with `pip install modal`.
@@ -155,21 +156,101 @@ cloud/runpod_pod.py list
 cloud/runpod_pod.py down f4
 ```
 
-`run NAME` creates the pod unless one of that name exists, ships the working
-tree (uncommitted edits included, as `fleet.py run` does) to
-`/root/cryptanalysis`, installs Rust and NVRTC when they are missing, and runs
-the command there with `CA_NVRTC_LIB` set. It then copies each `--out` path
-back into the checkout and deletes the pod it created, unless `--keep`. Its
-exit status is the command's.
+`run NAME` creates the pod unless one of that name exists and makes
+`/root/cryptanalysis` this checkout, uncommitted edits included. It then
+installs Rust and NVRTC when they are missing
+([`pod_env.sh`](pod_env.sh)) and runs the command there with `CA_NVRTC_LIB`
+set. Afterwards it copies each `--out` path back into the checkout and deletes
+the pod it created, unless `--keep`. Its exit status is the command's.
+
+**Getting the checkout there.** This VM uploads to a pod at about 0.8 MB/s, so
+the 288 MB checkout would take six minutes. Instead:
+- [`ship.py`](ship.py) has the pod fetch the newest commit of the checkout that
+  GitHub has (HEAD's merge base with its upstream), and sends only the changed
+  and untracked files. The pod checks the result against this checkout's file
+  names and sizes.
+- Every pod starts that fetch when its container starts, while it is still
+  coming up, and keeps a ref, so a later fetch takes about a second.
+- A checkout without an upstream on GitHub is sent whole.
+- [`install_tree.py`](install_tree.py) then rewrites only the files whose
+  content differs and removes the rest, keeping `suite/target`. Cargo
+  therefore rebuilds only what changed.
 
 Without `--gpu`, a pod takes the first type in stock from the RTX 5090, RTX
 4090, RTX PRO 6000 and H100, with at least `--min-vcpu` (16) vCPUs and
 `--min-ram` (32) GB per GPU; `--cpu N` asks for a CPU pod instead. The pod
-receives this machine's `~/.ssh/id_ed25519.pub` (created if missing) beside
-the account's registered keys, so `RUNPOD_API_KEY` is the only secret it
-needs. The image is `runpod/base` (`--image` names another). Every pod stops
-itself after `--max-hours` (6), in case nobody deletes it. Creating a pod
-prints its rate.
+receives the public half of the SSH key `fleet.py` uses
+(`RUNPOD_SSH_PRIVATE_KEY` or `RUNPOD_SSH_KEY`) when one is set, or else of
+this machine's `~/.ssh/id_ed25519` (created if missing), beside the account's
+registered keys. So `RUNPOD_API_KEY` is the only secret it needs, and with the
+fleet key a pod made in one session is reachable from the next. The image is
+`runpod/base` (`--image` names another). Every pod stops itself after
+`--max-hours` (6), in case nobody deletes it. Creating a pod prints its rate.
+
+## A cairn job queue on Runpod GPU runners
+
+[`cairn_queue.py`](cairn_queue.py) queues commands on *runners*: Runpod GPU
+pods running [cairn](https://github.com/aburan28/cairn)'s host agent, which
+runs the jobs in its spool one at a time. Use it for a series of GPU jobs
+that should wait their turn on one machine, with a receipt for each:
+
+```sh
+Q=cloud/cairn_queue.py
+$Q up gpu-1                                    # a runner: a GPU pod as runpod_pod.py rents one
+$Q submit gpu-1 --out results/a.json -- \
+  'mkdir -p results && cd suite && cargo run --release --bin ca-ic -- run --degree 23 --curve-a 1 --out ../results/a.json'
+$Q submit gpu-1 --only suite --out results/b.json -- '...'   # a tree of suite/ alone
+$Q jobs gpu-1                                  # queued, running, done, with receipts
+$Q wait gpu-1 JOB...                           # exit 0 all succeeded, 1 one failed, 3 one could not run
+$Q fetch gpu-1 JOB... [--into DIR]             # outputs into the checkout; records under .cairn-jobs/
+$Q hosts gpu-1                                 # what registered with the runner's node
+$Q logs gpu-1 [agent|node|boot|prefetch]
+$Q list
+$Q down gpu-1                                  # refuses while jobs are queued, running or unfetched
+```
+
+How a runner works:
+
+- **Boot.** [`cairn_runner.sh`](cairn_runner.sh) runs at every container start
+  and installs a pinned cairn release, checked against its sha256. It then
+  runs `cairn agent run --sandbox none --parallel 1`. The agent registers the
+  machine with a cairn node every minute: a private node on the pod's
+  loopback, unless `up --node URL` names others (the HTTP side is plaintext;
+  see cairn's `docs/fleet.md`).
+- **Submit.** `submit` puts this checkout on the runner as a tree, once per
+  distinct tree, as `runpod_pod.py` does. It then queues a cairn job spec
+  with `cairn agent submit`. The spec's command installs the tree into the
+  runner's checkout, sources `pod_env.sh`, and runs your command under
+  [`job_runner.sh`](job_runner.sh). Each job gets a timeout (`--timeout`,
+  default 4 hours) and an id (`--id`, default a timestamp); cairn runs an id
+  only once.
+- **Fetch.** `fetch` merges each job's `--out` paths into the checkout. It
+  keeps the receipt, spec, stdout, stderr, `log.txt` and `status.json` under
+  the ignored `.cairn-jobs/RUNNER/JOB`; copy what a run record needs into its
+  experiment directory.
+- **Idle stop.** A runner stops itself after `--idle-minutes` (60) with
+  nothing queued, running or unfetched and nobody logged in, and after
+  `--max-hours` (24) regardless. A stopped pod loses its disk; `up` starts it
+  again.
+- **Leases.** `--objective ID --task T` makes the agent lease the task on the
+  node while the job runs; the node must hold that objective.
+
+**Limitations.**
+
+- **Jobs declare no GPU.** A Runpod pod is a container with no engine or KVM
+  inside, so a job runs unconfined there and the pod is its only jail. cairn
+  1.17.0 hands a GPU only to a job a container engine runs, and refuses an
+  unconfined GPU job. Each spec therefore asks for `gpus: 0` and says why in
+  its `note`. The job uses the pod's GPU anyway; its `status.json` and IC
+  report record which GPU.
+- **The roster overstates the hardware.** cairn's probe reads the host's PCI
+  bus and memory, so the node's roster can list GPUs and memory the pod does
+  not have.
+- **Large output is stopped.** cairn stops a job whose stdout or stderr passes
+  64 MiB.
+
+[`experiments/cairn-runpod-queue-20261006`](../experiments/cairn-runpod-queue-20261006/README.md)
+is a run of all of this on an RTX 5090.
 
 ## Cursor workers on Modal
 
@@ -259,8 +340,12 @@ Inside a Modal sandbox, `/proc` shows the host's memory, so quote the
 
 ```sh
 python3 -m unittest discover -s cloud/tests -v
-shellcheck -x cloud/job_runner.sh cloud/worker/*.sh
+shellcheck -x cloud/job_runner.sh cloud/worker/*.sh cloud/cairn_runner.sh cloud/pod_env.sh
 ```
 
-The tests talk to no service. They run `job_runner.sh` locally and check the
-pod request `fleet.py` would send.
+The tests talk to no service. They run `job_runner.sh` and the queue's job
+script locally, ship trees against a local repository standing in for
+GitHub, and check the pod requests `fleet.py`, `runpod_pod.py` and
+`cairn_queue.py` would send. With a cairn binary (`CAIRN_BIN`, or `cairn` on
+`PATH`; CI downloads the release runners use), they also run queued jobs
+through a real cairn agent and node.
