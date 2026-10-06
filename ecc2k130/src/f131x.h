@@ -63,18 +63,22 @@ namespace f131x
 using f131::F131;
 
 // The vector of N 64-bit limbs, as the compiler's own vector type so that the
-// shifts, ands and xors of f131.h read the same over it.
+// shifts, ands and xors of f131.h read the same over it; its signed twin for
+// an arithmetic shift, and the intrinsics' type.
 template <int N> struct Limbs;
 template <> struct Limbs<2> {
     typedef uint64_t V __attribute__((vector_size(16)));
+    typedef int64_t S __attribute__((vector_size(16)));
     typedef __m128i M;
 };
 template <> struct Limbs<4> {
     typedef uint64_t V __attribute__((vector_size(32)));
+    typedef int64_t S __attribute__((vector_size(32)));
     typedef __m256i M;
 };
 template <> struct Limbs<8> {
     typedef uint64_t V __attribute__((vector_size(64)));
+    typedef int64_t S __attribute__((vector_size(64)));
     typedef __m512i M;
 };
 
@@ -119,11 +123,13 @@ template <int N> struct F131x {
     typedef typename Limbs<N>::V V;
     V w0, w1, w2;
 
+    // A scalar operand of a vector operator is broadcast, and compiles to the
+    // one broadcast instruction; an element-by-element loop compiled to N
+    // masked inserts.
     F131X_INLINE static V splat(uint64_t x)
     {
-        V v;
-        for (int i = 0; i < N; ++i) v[i] = x;
-        return v;
+        const V zero = {};
+        return zero | x;
     }
     // Lanes i..i+N-1 of a limb-sliced array (unaligned; the engine aligns its
     // arrays, and a batch that is not a multiple of N still loads correctly).
@@ -252,6 +258,204 @@ template <int N> F131X_INLINE F131x<N> fromPolynomial(const F131x<N> &a)
     const V sign = V{} - (w0 & F131X_C(1u));
     return F131x<N>{((w0 >> 1) | (w1 << 63)) ^ sign, ((w1 >> 1) | (w2 << 63)) ^ sign,
                     ((w2 >> 1) ^ sign) & F131X_C(7u)};
+#    undef F131X_C
+}
+
+/* ---- the selection, bitwise over N lanes ---------------------------------- */
+
+// f131.h's selection is table lookups: 17 bytes for the phase sum, 17 for
+// the pivot's maximum, a row of the coordinate table for the sign.  A vector
+// register has no cheap lookup, but every one of those tables is a function
+// of the labels L alone, and include/tablewalk.h's model computes the same
+// selection from the bit planes of L (plane j has coordinate e set when bit
+// j of L(e) is): the phase sum is sum_j 2^j |x & plane_j|, the mask L < k is
+// a bitwise comparison of each coordinate's label with k, the pivot is a
+// binary search down the planes for the set coordinate of largest L, and the
+// sign is that coordinate of fromPolynomial(y), by linearity the parity the
+// row would give.  That is popcounts, ands and compares, the same on every
+// lane, so the selection runs here N lanes at a time with no lookup but one
+// gather of HW^-1.
+
+// The sum of the eight bytes of each element.
+template <int N> F131X_INLINE typename Limbs<N>::V byteSum(typename Limbs<N>::V v);
+template <> F131X_INLINE Limbs<2>::V byteSum<2>(Limbs<2>::V v)
+{
+    return (Limbs<2>::V)_mm_sad_epu8((__m128i)v, _mm_setzero_si128());
+}
+#    if ECC_F131_LANES >= 4
+template <> F131X_INLINE Limbs<4>::V byteSum<4>(Limbs<4>::V v)
+{
+    return (Limbs<4>::V)_mm256_sad_epu8((__m256i)v, _mm256_setzero_si256());
+}
+#    endif
+#    if ECC_F131_LANES >= 8
+template <> F131X_INLINE Limbs<8>::V byteSum<8>(Limbs<8>::V v)
+{
+    return (Limbs<8>::V)_mm512_sad_epu8((__m512i)v, _mm512_setzero_si512());
+}
+#    endif
+
+// Population count of each 64-bit element: the instruction where there is
+// one (AVX-512 VPOPCNTDQ), else the bit-sliced count.
+template <int N> F131X_INLINE typename Limbs<N>::V popcnt(typename Limbs<N>::V v)
+{
+    v = v - ((v >> 1) & F131x<N>::splat(0x5555555555555555ull));
+    v = (v & F131x<N>::splat(0x3333333333333333ull)) +
+        ((v >> 2) & F131x<N>::splat(0x3333333333333333ull));
+    v = (v + (v >> 4)) & F131x<N>::splat(0x0f0f0f0f0f0f0f0full);
+    return byteSum<N>(v);
+}
+#    if defined(__AVX512VPOPCNTDQ__)
+#        if ECC_F131_LANES >= 8
+template <> F131X_INLINE Limbs<8>::V popcnt<8>(Limbs<8>::V v)
+{
+    return (Limbs<8>::V)_mm512_popcnt_epi64((__m512i)v);
+}
+#        endif
+#        if defined(__AVX512VL__)
+#            if ECC_F131_LANES >= 4
+template <> F131X_INLINE Limbs<4>::V popcnt<4>(Limbs<4>::V v)
+{
+    return (Limbs<4>::V)_mm256_popcnt_epi64((__m256i)v);
+}
+#            endif
+template <> F131X_INLINE Limbs<2>::V popcnt<2>(Limbs<2>::V v)
+{
+    return (Limbs<2>::V)_mm_popcnt_epi64((__m128i)v);
+}
+#        endif
+#    endif
+
+// The low 32 bits of each element of a times those of b, as a 64-bit product.
+template <int N> F131X_INLINE typename Limbs<N>::V mul32(typename Limbs<N>::V a, typename Limbs<N>::V b);
+template <> F131X_INLINE Limbs<2>::V mul32<2>(Limbs<2>::V a, Limbs<2>::V b)
+{
+    return (Limbs<2>::V)_mm_mul_epu32((__m128i)a, (__m128i)b);
+}
+#    if ECC_F131_LANES >= 4
+template <> F131X_INLINE Limbs<4>::V mul32<4>(Limbs<4>::V a, Limbs<4>::V b)
+{
+    return (Limbs<4>::V)_mm256_mul_epu32((__m256i)a, (__m256i)b);
+}
+#    endif
+#    if ECC_F131_LANES >= 8
+template <> F131X_INLINE Limbs<8>::V mul32<8>(Limbs<8>::V a, Limbs<8>::V b)
+{
+    return (Limbs<8>::V)_mm512_mul_epu32((__m512i)a, (__m512i)b);
+}
+#    endif
+
+// t[idx[i]] for each element, t a table of 32-bit words.
+template <int N> F131X_INLINE typename Limbs<N>::V gather32(const uint32_t *t, typename Limbs<N>::V idx);
+template <> F131X_INLINE Limbs<2>::V gather32<2>(const uint32_t *t, Limbs<2>::V idx)
+{
+    const Limbs<2>::V r = {t[idx[0]], t[idx[1]]};
+    return r;
+}
+#    if ECC_F131_LANES >= 4
+template <> F131X_INLINE Limbs<4>::V gather32<4>(const uint32_t *t, Limbs<4>::V idx)
+{
+    return (Limbs<4>::V)_mm256_cvtepu32_epi64(
+        _mm256_i64gather_epi32(reinterpret_cast<const int *>(t), (__m256i)idx, 4));
+}
+#    endif
+#    if ECC_F131_LANES >= 8
+template <> F131X_INLINE Limbs<8>::V gather32<8>(const uint32_t *t, Limbs<8>::V idx)
+{
+    return (Limbs<8>::V)_mm512_cvtepu32_epi64(_mm512_i64gather_epi32((__m512i)idx, t, 4));
+}
+#    endif
+
+// p mod 131 for p below 2^16: the quotient by a reciprocal multiply (64036 =
+// ceil(2^23 / 131); the error 108 p stays below 2^23 for p < 77672).
+template <int N> F131X_INLINE typename Limbs<N>::V mod131(typename Limbs<N>::V p)
+{
+    typedef typename Limbs<N>::V V;
+    const V q = mul32<N>(p, F131x<N>::splat(64036u)) >> 23;
+    return p - ((q << 7) + (q << 1) + q);
+}
+
+// The low byte of each element, to out[0..N).
+template <int N> F131X_INLINE void storeBytes(typename Limbs<N>::V v, unsigned char *out)
+{
+    for (int i = 0; i < N; ++i) out[i] = (unsigned char)v[i];
+}
+
+// The selection's constants in the form the vector stages read: the eight bit
+// planes of L, limb by limb, from the shared constant buffer's L^-1 table, and
+// its HW^-1 table in place.
+struct SelectConsts {
+    uint64_t plane[8][3];
+    const uint32_t *inv;
+
+    void build(const uint32_t *tw)
+    {
+        using namespace eccPacked131;
+        const uint8_t *linv = reinterpret_cast<const uint8_t *>(tw) + 4 * TW_LINV_OFF;
+        memset(plane, 0, sizeof(plane));
+        for (int l = 0; l < 131; ++l) {
+            const int e = linv[l];
+            for (int j = 0; j < 8; ++j)
+                if ((l >> j) & 1) plane[j][e >> 6] |= 1ull << (e & 63);
+        }
+        inv = tw + TW_INV_OFF;
+    }
+};
+
+// HW(x), the phase k and the sign eps of N lanes -- f131::weight, selectPhase
+// and coordinate(y, selectPivot(x, k)) -- from x in the normal basis and y in
+// the polynomial basis.
+template <int N>
+F131X_INLINE void select(const F131x<N> &xn, const F131x<N> &yp, const SelectConsts &c,
+                         typename Limbs<N>::V *hwOut, typename Limbs<N>::V *kOut,
+                         typename Limbs<N>::V *epsOut)
+{
+    typedef typename Limbs<N>::V V;
+#    define F131X_C(x) F131x<N>::splat(x)
+    const V hw = popcnt<N>(xn.w0) + popcnt<N>(xn.w1) + popcnt<N>(xn.w2);
+    // The phase sum, sum_e L(e) x_e = sum_j 2^j |x & plane_j|, below 131^2.
+    V s = V{};
+    for (int j = 0; j < 8; ++j)
+        s += (popcnt<N>(xn.w0 & F131X_C(c.plane[j][0])) + popcnt<N>(xn.w1 & F131X_C(c.plane[j][1])) +
+              popcnt<N>(xn.w2 & F131X_C(c.plane[j][2])))
+             << j;
+    const V k = mod131<N>(mul32<N>(mod131<N>(s), gather32<N>(c.inv, hw)));
+    // The pivot's mask, the coordinates with L(e) < k: a bitwise comparison
+    // of every coordinate's label with k, least significant bit first.  At
+    // each bit, L < k so far if bit j of k is set and of L clear, or the two
+    // agree and L < k already: the majority of (k_j, not L_j, so far), one
+    // three-input logic instruction per limb.
+    typedef typename Limbs<N>::S S;
+    V lt0 = V{}, lt1 = V{}, lt2 = V{};
+    for (int j = 0; j < 8; ++j) {
+        const V kj = (V)((S)(k << (63 - j)) >> 63);
+        const V n0 = F131X_C(~c.plane[j][0]), n1 = F131X_C(~c.plane[j][1]),
+                n2 = F131X_C(~c.plane[j][2]);
+        lt0 = (kj & n0) | (kj & lt0) | (n0 & lt0);
+        lt1 = (kj & n1) | (kj & lt1) | (n1 & lt1);
+        lt2 = (kj & n2) | (kj & lt2) | (n2 & lt2);
+    }
+    V p0 = xn.w0 & lt0, p1 = xn.w1 & lt1, p2 = xn.w2 & lt2;
+    const V any = (V)((p0 | p1 | p2) != V{});
+    p0 = (p0 & any) | (xn.w0 & ~any);
+    p1 = (p1 & any) | (xn.w1 & ~any);
+    p2 = (p2 & any) | (xn.w2 & ~any);
+    // The set coordinate of largest L: down the planes, keep the candidates
+    // with bit j of L set whenever there are any.  L is a bijection, so one
+    // coordinate is left.
+    for (int j = 7; j >= 0; --j) {
+        const V t0 = p0 & F131X_C(c.plane[j][0]), t1 = p1 & F131X_C(c.plane[j][1]),
+                t2 = p2 & F131X_C(c.plane[j][2]);
+        const V nz = (V)((t0 | t1 | t2) != V{});
+        p0 = (t0 & nz) | (p0 & ~nz);
+        p1 = (t1 & nz) | (p1 & ~nz);
+        p2 = (t2 & nz) | (p2 & ~nz);
+    }
+    // eps: that coordinate of y in the normal basis.
+    const F131x<N> yn = fromPolynomial<N>(yp);
+    *epsOut = (V)(((yn.w0 & p0) | (yn.w1 & p1) | (yn.w2 & p2)) != V{}) & F131X_C(1u);
+    *hwOut = hw;
+    *kOut = k;
 #    undef F131X_C
 }
 

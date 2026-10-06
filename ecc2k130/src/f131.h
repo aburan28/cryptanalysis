@@ -290,15 +290,19 @@ F131_INLINE int selectPivot(const F131 &x, int k, const uint32_t *tw)
     return bytes[4 * TW_LINV_OFF + pivotMax(bytes + 4 * TW_MAX_OFF, s0, s1, s2) - 1];
 }
 // Stage 3: eps is coordinate p of y in the normal basis, a parity of the
-// polynomial-basis y against row p; then the tag, the cycle rule, the history.
-F131_INLINE unsigned selectTag(const F131 &yp, int hw, int k, int p, unsigned long long *hist,
-                               const uint32_t *tw)
+// polynomial-basis y against row p ...
+F131_INLINE int coordinate(const F131 &yp, int p, const uint32_t *tw)
 {
     using namespace eccPacked131;
     const uint32_t *row = tw + TW_ROW_OFF + p * 4;
     const uint64_t rowTop = (tw[TW_ROWTOP_OFF + (p >> 3)] >> ((p & 7) * 4)) & 7u;
-    const int eps = __builtin_parityll((yp.w[0] & load64(row)) ^ (yp.w[1] & load64(row + 2)) ^
-                                       (yp.w[2] & rowTop));
+    return __builtin_parityll((yp.w[0] & load64(row)) ^ (yp.w[1] & load64(row + 2)) ^
+                              (yp.w[2] & rowTop));
+}
+// ... then the tag, the cycle rule, the history.
+F131_INLINE unsigned tagOf(int hw, int k, int eps, unsigned long long *hist)
+{
+    using namespace eccPacked131;
     int h = (hw >> 1) & (TW_H - 1);
     unsigned tag = eccTag(h, k, eps);
     const unsigned long long old = *hist;
@@ -308,6 +312,11 @@ F131_INLINE unsigned selectTag(const F131 &yp, int hw, int k, int p, unsigned lo
     }
     *hist = eccHistPush(old, tag);
     return tag;
+}
+F131_INLINE unsigned selectTag(const F131 &yp, int hw, int k, int p, unsigned long long *hist,
+                               const uint32_t *tw)
+{
+    return tagOf(hw, k, coordinate(yp, p, tw), hist);
 }
 // twSelect: x in the normal basis, yp in the polynomial basis; returns the tag
 // after the cycle rule and advances the history.

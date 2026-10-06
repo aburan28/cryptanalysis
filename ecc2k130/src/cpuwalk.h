@@ -11,8 +11,10 @@
 //     at x1[i] -- so that N consecutive lanes load as three vector registers,
 //     and on x86-64 the five products, the squaring and the conversion of a
 //     step run N lanes at a time on the vector carry-less multiplier
-//     (src/f131x.h: N = 8 on AVX-512, 4 on AVX2, 2 on SSE).  The selection,
-//     which is table lookups, and the rare lane that reports stay scalar.
+//     (src/f131x.h: N = 8 on AVX-512, 4 on AVX2, 2 on SSE), and the
+//     selection N lanes at a time on the bit planes of the labels, as the
+//     model computes it, instead of through f131.h's byte tables.  The tag,
+//     the addend's loads and the rare lane that reports stay scalar.
 //   - A batch is `batch` lanes sharing one inversion by Montgomery's trick,
 //     512 by default against the device's 16: a core has no register budget to
 //     respect, the inversion is about 700 ns against a lane's step, and 512
@@ -155,6 +157,9 @@ class CpuEngine
         }
         targetX_ = toPolynomial131(toPacked(table.Q.x));
         targetY_ = toPolynomial131(toPacked(table.Q.y));
+#if ECC_F131_LANES > 1
+        select_.build(consts_.data());
+#endif
 
         const size_t lanes = laneCount();
         x_.alloc(lanes);
@@ -257,9 +262,9 @@ class CpuEngine
         unsigned long long restarts = 0;
         bool exhausted = false;
         // The selection's intermediates for one batch: normal-basis x (limb by
-        // limb), weight, phase, pivot.
+        // limb), weight, phase, sign.
         Slab xn;
-        std::vector<unsigned char> hw, k, p;
+        std::vector<unsigned char> hw, k, eps;
         int batch = 0;
         void scratch(int b)
         {
@@ -268,7 +273,7 @@ class CpuEngine
             xn.alloc((size_t)b);
             hw.resize((size_t)b);
             k.resize((size_t)b);
-            p.resize((size_t)b);
+            eps.resize((size_t)b);
         }
     };
 
@@ -329,32 +334,63 @@ class CpuEngine
         void setXN(int i, const F131 &a) const { XN0[i] = a.w[0], XN1[i] = a.w[1], XN2[i] = a.w[2]; }
     };
 
-    // Stage 1 of a step: the normal-basis x of every lane into XN, and the
-    // weight into HW; the rare lane that reports or is overdue is revived
-    // first.  The conversion runs N lanes at a time, the weight and the test
-    // lane by lane.
+    // Stage 1 of a step: the normal-basis x of every lane into XN and its
+    // weight into HW, N lanes at a time; then, lane by lane, the test for the
+    // rare lane that reports or is overdue, which is revived in place.
     void convertBatch(const Batch &b, int B, size_t base, unsigned long long now, bool guard,
                       const unsigned long long *S, unsigned char *HW, Local *local)
     {
         int i = 0;
 #if ECC_F131_LANES > 1
         typedef f131x::F131x<kLanes> FX;
-        for (; i + kLanes <= B; i += kLanes)
-            f131x::fromPolynomial<kLanes>(FX::load(b.X0 + i, b.X1 + i, b.X2 + i))
-                .store(b.XN0 + i, b.XN1 + i, b.XN2 + i);
+        for (; i + kLanes <= B; i += kLanes) {
+            const FX xn = f131x::fromPolynomial<kLanes>(FX::load(b.X0 + i, b.X1 + i, b.X2 + i));
+            xn.store(b.XN0 + i, b.XN1 + i, b.XN2 + i);
+            f131x::storeBytes<kLanes>(f131x::popcnt<kLanes>(xn.w0) + f131x::popcnt<kLanes>(xn.w1) +
+                                          f131x::popcnt<kLanes>(xn.w2),
+                                      HW + i);
+        }
 #endif
-        for (; i < B; ++i) b.setXN(i, f131::fromPolynomial(b.X(i)));
+        for (; i < B; ++i) {
+            const F131 xn = f131::fromPolynomial(b.X(i));
+            b.setXN(i, xn);
+            HW[i] = (unsigned char)f131::weight(xn);
+        }
         for (i = 0; i < B; ++i) {
-            int hw = __builtin_popcountll(b.XN0[i]) + __builtin_popcountll(b.XN1[i]) +
-                     __builtin_popcountll(b.XN2[i] & 7u);
-            if (__builtin_expect(hw <= dpWeight_ || (guard && now - S[i] >= maxIters_), 0)) {
+            if (__builtin_expect(HW[i] <= dpWeight_ || (guard && now - S[i] >= maxIters_), 0)) {
                 revive(base + i, now, guard, local);
                 const F131 xn = f131::fromPolynomial(b.X(i));
                 b.setXN(i, xn);
-                hw = f131::weight(xn);
+                HW[i] = (unsigned char)f131::weight(xn);
             }
-            HW[i] = (unsigned char)hw;
         }
+    }
+
+    // Stages 2 to 4: the phase into KK and the sign into EPS of every lane,
+    // from XN and the polynomial-basis y.  N lanes at a time on the bit planes
+    // of L (f131x.h), lane by lane through f131.h's byte tables for the tail.
+    void selectBatch(const Batch &b, int B, const unsigned char *HW, unsigned char *KK,
+                     unsigned char *EPS) const
+    {
+        const uint32_t *tw = consts_.data();
+        int i = 0;
+#if ECC_F131_LANES > 1
+        typedef f131x::F131x<kLanes> FX;
+        for (; i + kLanes <= B; i += kLanes) {
+            typename FX::V hw, k, eps;
+            f131x::select<kLanes>(FX::load(b.XN0 + i, b.XN1 + i, b.XN2 + i),
+                                  FX::load(b.Y0 + i, b.Y1 + i, b.Y2 + i), select_, &hw, &k, &eps);
+            f131x::storeBytes<kLanes>(k, KK + i);
+            f131x::storeBytes<kLanes>(eps, EPS + i);
+        }
+#endif
+        // Stage by stage over the tail as well: one lane's selection is a
+        // dependency chain three times longer than its instruction count
+        // warrants (f131.h), so each stage gets its own loop.
+        for (int j = i; j < B; ++j) KK[j] = (unsigned char)f131::selectPhase(b.XN(j), HW[j], tw);
+        for (int j = i; j < B; ++j)
+            EPS[j] = (unsigned char)f131::coordinate(
+                b.Y(j), f131::selectPivot(b.XN(j), KK[j], tw), tw);
     }
 
     // Stages 5 and 6: Montgomery's trick over the batch as kChains interleaved
@@ -505,26 +541,19 @@ class CpuEngine
                          w_.w2 + base,      d_.w0 + base,      d_.w1 + base,     d_.w2 + base,
                          local->xn.w0,      local->xn.w1,      local->xn.w2};
         unsigned char *__restrict HW = local->hw.data(), *__restrict KK = local->k.data(),
-                                  *__restrict PP = local->p.data();
+                                  *__restrict EPS = local->eps.data();
         for (int s = 0; s < steps && !local->exhausted; ++s, ++now) {
             const bool guard = maxIters_ && now % guardPeriod_ == 0;
-            // Selection, stage by stage over the batch rather than lane by lane:
-            // one lane's selection is a dependency chain three times longer
-            // than its instruction count warrants (f131.h), so each stage gets
-            // its own loop.  First the normal-basis x, its weight, and the
-            // rare lane that reports or is overdue.
+            // The selection: the normal-basis x, its weight and the rare lane
+            // that reports or is overdue; then the phase and the sign.
             convertBatch(b, B, base, now, guard, S, HW, local);
-            for (int i = 0; i < B; ++i)
-                KK[i] = (unsigned char)f131::selectPhase(b.XN(i), HW[i], tw);
-            for (int i = 0; i < B; ++i)
-                PP[i] = (unsigned char)f131::selectPivot(b.XN(i), KK[i], tw);
-            // The tag, and with it the addend: d = x + x_T into D, e = y + y_T
-            // into W.
+            selectBatch(b, B, HW, KK, EPS);
+            // The tag, with the cycle rule and the history, and with it the
+            // addend: d = x + x_T into D, e = y + y_T into W.
             for (int i = 0; i < B; ++i) {
-                const F131 y = b.Y(i);
-                const unsigned tag = f131::selectTag(y, HW[i], KK[i], PP[i], &H[i], tw);
+                const unsigned tag = f131::tagOf(HW[i], KK[i], EPS[i], &H[i]);
                 F131 d, e;
-                f131::addend(tag, b.X(i), y, tw, &d, &e);
+                f131::addend(tag, b.X(i), b.Y(i), tw, &d, &e);
                 b.setD(i, d);
                 b.setW(i, e);
             }
@@ -534,6 +563,9 @@ class CpuEngine
     }
 
     const std::vector<uint32_t> consts_;
+#if ECC_F131_LANES > 1
+    f131x::SelectConsts select_;
+#endif
     const int dpWeight_;
     const unsigned long long maxIters_;
     const unsigned runId_;
