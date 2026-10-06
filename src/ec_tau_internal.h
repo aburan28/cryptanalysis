@@ -92,6 +92,19 @@ int ca_ec_tau_pair_periodic_mul_profile(const ca_group *g, const ca_tau_pair_com
                                         uint64_t *accepted, uint64_t *fallbacks);
 size_t ca_ec_tau_pair_periodic_static_bytes(void);
 size_t ca_ec_tau_pair_firstword_static_bytes(void);
+/* Exact bounded tail with tau^2, tau, or doubling actions. The top two
+ * action bits select the radix; the low ten bits are an existing pair word. */
+int ca_ec_tau_pair_mixed_recode_actions(const ca_tau_pair_complete_precomp *pre, uint64_t k,
+                                         uint16_t actions[128], size_t *count,
+                                         uint64_t *lookups, uint64_t *fallbacks);
+int ca_ec_tau_pair_mixed_verify_map(void);
+int ca_ec_tau_pair_mixed_verify_tau_kernel(const ca_group *g, const ca_elem *point);
+int ca_ec_tau_pair_mixed_recode_verify_scalar(const ca_tau_pair_complete_precomp *pre, uint64_t k);
+int ca_ec_tau_pair_mixed_mul_profile(const ca_group *g, const ca_tau_pair_complete_precomp *pre,
+                                     ca_elem *out, uint64_t k, uint64_t *triples,
+                                     uint64_t *tau_steps, uint64_t *doubles, uint64_t *adds,
+                                     uint64_t *lookups, uint64_t *fallbacks);
+size_t ca_ec_tau_pair_mixed_static_bytes(void);
 /* Private exhaustive/differential test hook for signed tau coordinates. */
 int ca_ec_tau4_recode_compare(int64_t x, int64_t y);
 int ca_ec_tau4_recode_compare_scalar(const ca_tau4_precomp *pre, uint64_t k);
