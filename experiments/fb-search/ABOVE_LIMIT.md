@@ -478,6 +478,47 @@ projection. That inflated IC's margin over rho by about 4x in most rows, and 88x
 
      Every route built from linear oracles therefore lands on `2^(l - 2)` per relation above the
      limit, consistent with the uniformity just measured.
+   - **Courtois's common-factor cover, measured (`gcdcover.py`, `results/gcdcover.jsonl`,
+     `test_gcdcover.py`).** For the prefix base, the pairs with `M | x1` and `M | x2`
+     (`deg M = delta`) are exactly the decompositions over the sub-base
+     `W_M = M * span{1, ..., z^(l - delta - 1)}` of V. W_M is linearizable when V is not. So
+     Courtois's GCD guess is a cover of V by `2^delta` such sub-bases. It is the both-summands
+     version of the partial oracles just above.
+     - **Exact.** Every W_M decomposition is a V decomposition (checked as a subset of the exact
+       pair table).
+     - **Yield.** The cover keeps 0.58, 0.23 and 0.12 of V's yield at n = 19, l = 8, for
+       `delta = 1, 2, 3`, close to `2^-delta`.
+     - **Against enumeration on the same V.** One-target online cost uses `2^delta` half-trace calls
+       per attempt and the walk step. The cover beats the residual enumeration on the same oversized
+       V, down to 0.43x at n = 19, l = 10, delta = 3, where `e(V) = -10`.
+     - **Against enumeration at the best l.** It never beats enumeration at the best l over the same
+       range: 4.46x against 3.95x rho at n = 19, and 3.10x against 2.70x at n = 23.
+
+     The yield `2^-delta` and the `2^delta` calls give `2^(n - 2l + 2 delta)` subject to
+     `3(l - delta) <= n + 2`, minimized at `2^(n/3)` for every delta. That matches the partial-oracle
+     bound.
+
+## 5b. Scope: k >= 3 summands
+
+The goal's other case is a k-point method past `sum_(i<=k) dim V^(i) <= n`.
+
+- **No exact linear oracle for k >= 3.** For k >= 3, `S_(k+1)` has degree `2^(k-1)` in each
+  variable and is not F_2-linear in the elementary symmetric functions. So no exact
+  linear k-point oracle exists. `../linearized-half-decomposition` prices a hypothetical one, and its
+  `k = 3, 4` rows assume it as a lower bound.
+- **Total cost, even granting that oracle.** That budget already puts the total cost at no less than
+  `2^(2n/3)`.
+- **Measured k >= 3 methods.** Beyond that, the k >= 3 decomposition methods measured in this
+  repository have the known exponents: `m` (WDSat, FES), `m - 1` (hybrid guessing) and `ceil(m/2)`
+  (meet in the middle) in the factor-base dimension.
+  - CryptoMiniSat and F4 on the descended `S_(m+1)` grow by about `2^4` (m = 3) and `2^7` (m = 4)
+    per added dimension (`../pdp-scaling`, finding 1-2).
+  - The m = 3 and m = 4 constructions built from the two-point oracle (Courtois Sec. 3; the
+    four-point sampler of `../linearized-half-decomposition`) inherit the two-point residual and its
+    `2^d`.
+
+So we found no k-point candidate above its limit that was not already measured. The m = 2 residual
+studied above is the bottleneck those constructions share.
 
 ## 6. Identifiers (AGENTS.md naming convention)
 

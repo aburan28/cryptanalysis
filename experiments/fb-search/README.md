@@ -32,6 +32,33 @@ See [`PRIOR_ART.md`](PRIOR_ART.md). Most structural results here are already kno
 What this directory adds is measurement: exact cost models, the integrated one-target pipeline,
 and verified runs. It adds no new exponent.
 
+## Above the linearization limit (search record: [`ABOVE_LIMIT.md`](ABOVE_LIMIT.md))
+
+**Question.** Is there a decomposition method that stays cheap past the linearization limit,
+`l > (n + 2)/3`? There, the linear oracle leaves a `d = 3l - n - 2` dimensional residual to
+enumerate, `2^d` candidates. That pins the online optimum to the limit.
+
+**Answer: no, among everything tried.** The record holds a literature search (Sec. 1), why the
+limit is where m = 2 IC touches the generic preprocessing curve `S T^2 = r` (Sec. 2), and exact,
+measured candidates:
+
+| Candidate | Result |
+|---|---|
+| MXL closure on the residual bilinear system (Sec. 4, 4b) | Solving degree 3 up to `d = 9`, 4 up to `d = 18`, 5 at `d = 21`, far below the generic overdetermined-bilinear degree. Still 3.6-700x costlier than enumeration at n = 41 |
+| One-block t-closure, y-XL style (Sec. 4c) | 14-100x less work than the full closure at the same degree. Cheaper than enumeration only at `d <= 9`; plain certificates give a Wiedemann exponent of about `1.3 d` |
+| CDCL with XOR reasoning (CryptoMiniSat) on the residual (Sec. 4d) | A constant 19-35x slower than the C enumeration from `d = 15` on |
+| The repository's F4 on the same above-limit base (Sec. 4d') | `PDP2ht` is 75-680x faster per attempt |
+| Meet in the middle, T-adic lifting, Möbius images, power sums, guided enumeration, partial oracles, Courtois's common-factor cover (Sec. 5) | Rejected on paper or measured break-even. The cover keeps about `2^-delta` of the yield and never beats enumeration at the best l |
+| k >= 3 summands (Sec. 5b) | No exact linear oracle exists. The measured k-point methods keep the exponents `m`, `m - 1`, `ceil(m/2)` |
+
+Online at n = 41, all in C (Sec. 4e; a prediction from measured stage costs, exploratory host):
+
+- The best one-target cost is 5.1 ms at `l = 16` (`d = 6`), 11x faster than plain rho and 6.0x
+  slower than Bernstein-Lange.
+- Past that point it roughly doubles per added dimension.
+- Every verified IC1 run with `d >= 8` is slower online than plain rho on the same target
+  (Sec. 6).
+
 ## The linear two-point oracle in the pipeline (`PDP2ht`)
 
 [`../pdp-degree-heuristics/htsolver.py`](../pdp-degree-heuristics/htsolver.py) is the
