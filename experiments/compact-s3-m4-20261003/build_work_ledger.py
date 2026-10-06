@@ -5349,6 +5349,100 @@ def main():
         13, 25, 0, 0, 0]
     assert all(row["joint_cap_skips"] == row["partial_four_leaf_events"]
                for row in q1455_rows[2:])
+    q1456_dir = HERE / "q1456_joint_domain_profile"
+    q1456_protocol_path = q1456_dir / "protocol.json"
+    q1456_verification_path = q1456_dir / "verification.json"
+    q1456_threshold_path = q1456_dir / "threshold_interpretation.json"
+    q1456_protocol = json.loads(q1456_protocol_path.read_text())
+    q1456_verification = json.loads(q1456_verification_path.read_text())
+    q1456_threshold = json.loads(q1456_threshold_path.read_text())
+    assert q1456_protocol["proposal_id"] == q1456_verification[
+        "proposal_id"] == q1456_threshold["proposal_id"] == "Q1456"
+    assert q1456_protocol["candidate_id"] is q1456_verification[
+        "candidate_id"] is q1456_threshold["candidate_id"] is None
+    assert q1456_protocol["isogeny"] == q1456_verification[
+        "isogeny"] == q1456_threshold["isogeny"] == "none"
+    assert q1456_verification["status"] == q1456_threshold[
+        "status"] == "pass"
+    assert q1456_verification["protocol_sha256"] == sha(
+        q1456_protocol_path)
+    assert q1456_threshold["verification_sha256"] == sha(
+        q1456_verification_path)
+    assert q1456_protocol["parent_q1455_protocol_sha256"] == sha(
+        q1455_protocol_path)
+    q1456_rows = []
+    for name, audit, threshold in zip(q1456_protocol["run_order"],
+                                      q1456_verification["rows"],
+                                      q1456_threshold["rows"]):
+        cell = q1456_protocol["cells"][name]
+        receipt_path = q1456_dir / f"runs/{name}/receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        report = receipt["solver_report"]
+        assert audit["case"] == threshold["case"] == receipt[
+            "case"] == name
+        assert audit["receipt_sha256"] == threshold[
+            "receipt_sha256"] == sha(receipt_path)
+        assert receipt["protocol_sha256"] == sha(q1456_protocol_path)
+        assert receipt["workload_id"] == cell["workload_id"]
+        assert receipt["curve_id"] == cell["curve_id"]
+        assert receipt["factor_base_actual_B"] == cell[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == cell["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == cell[
+            "factor_base_enumerated_set_sha256"]
+        assert report is not None
+        assert report["unique_partial_states"] == audit[
+            "all_domain_snapshots_independently_checked"]
+        assert report["min_max_pair_candidates"] == threshold[
+            "min_max_pair_candidates"]
+        q1456_rows.append({
+            "proposal_id": "Q1456", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "case": name, "input_role": cell["input_role"],
+            "degree": cell["degree_n"], "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "solver_status": receipt["solver_status"],
+            "solver_stop_reason": report["stop_reason"],
+            "diagnostic_wall_cap_seconds": cell["wall_cap_seconds"],
+            "sat_conflicts": report["conflicts"],
+            "sat_decisions": report["decisions"],
+            "partial_four_leaf_events": report["partial_events"],
+            "distinct_partial_states": report["unique_partial_states"],
+            "joint_cap_skips": report["cap_skips"],
+            "joint_eligible_checks": report["joint_checks"],
+            "minimum_max_pair_candidate_count": report[
+                "min_max_pair_candidates"],
+            "candidate_domain_log2_histogram": report[
+                "max_pair_log2_histogram"],
+            "eligible_unique_states_by_pair_cap": threshold[
+                "eligible_unique_states_by_pair_cap"],
+            "all_state_counts_independently_checked": audit[
+                "all_domain_snapshots_independently_checked"],
+            "native_field_mul_calls": report["field_mul_calls"],
+            "native_field_sqr_calls": report["field_sqr_calls"],
+            "native_field_inv_calls": report["field_inv_calls"],
+            "exploratory_solver_wall_ns": receipt[
+                "solver_process_wall_ns_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "verified_relation_count": 0,
+            "successful_ordinary_pdp_cost_measured": False,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["minimum_max_pair_candidate_count"] for row in
+            q1456_rows] == [1300, 1300, 3081]
+    assert [row["eligible_unique_states_by_pair_cap"]["4096"] for row
+            in q1456_rows] == [6, 6, 1]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -6961,6 +7055,32 @@ def main():
             "controls_sha256": sha(q1455_controls_path),
             "verification_sha256": sha(q1455_verification_path),
         },
+        "q1456_joint_domain_profile_stage": {
+            "proposal_id": "Q1456", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "method": q1456_protocol["method"],
+            "controlled_variable": q1456_protocol["controlled_variable"],
+            "rows": q1456_rows,
+            "cap_4096_admissions_in_15_second_prefixes": [6, 6, 1],
+            "ordinary_verified_relations": 0,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "Every distinct partial-state domain in the short N53 "
+                "and N83 profiles is independently recounted. The "
+                "smallest larger-pair domain is 1,300 at N53 and 3,081 "
+                "at N83; a 4,096-pair cap would activate the joint rule "
+                "on 6, 6, and 1 states in the three archived prefixes. "
+                "This motivates a frozen larger-cap solver variant, not "
+                "a successful decomposition or N131 work claim."),
+            "protocol_sha256": sha(q1456_protocol_path),
+            "verification_sha256": sha(q1456_verification_path),
+            "threshold_interpretation_sha256": sha(q1456_threshold_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -7396,6 +7516,9 @@ def main():
                 "Q1455's exact joint-pair join passes both witness "
                 "controls but sees only over-cap partial domains on "
                 "all three unpinned N53/N83 cells; "
+                "Q1456 independently counts those domains and finds "
+                "some states within a 4,096-pair cap at both degrees, "
+                "without measuring a successful solve; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

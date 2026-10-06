@@ -1975,6 +1975,18 @@ observed partial states respectively all exceed the frozen pair-domain cap,
 so the joint rule performs zero ordinary feasibility checks. This is a
 specific eligibility bottleneck, not a measured successful-solve cost.
 
+### Q1456 exact joint-domain profile
+
+The [Q1456 frozen diagnostic](q1456_joint_domain_profile/README.md)
+replays Q1455's same N53 known-satisfiable and full ordinary N53/N83
+inputs for 15 seconds while recording every distinct partial state with
+unfixed intermediates. An independent audit recomputes all completion
+counts. The smallest larger-pair domains are 1,300 on both N53 inputs and
+3,081 on N83. A cap of 4,096 would admit 6, 6, and 1 states respectively
+in those recorded prefixes; Q1455's smaller caps admit none. This gives
+a concrete next solver variant, with no successful decomposition or N131
+work exponent yet.
+
 ## Next goal
 
 Q1452 tested the **known-satisfiable N53 ordinary target preimage 201**
@@ -1983,12 +1995,13 @@ model. Q1453 proved and measured a division-free representation but
 also capped at N53 and N83. Q1454 reaches 1,000,002 exact conflicts on
 the same known-satisfiable N53 slice without a model. Q1455 supplies a
 sound joint-pair rule and passing controls, but its bounded join never
-fires on the unpinned ordinary prefixes. The next gate is to measure the
-pair-domain size distribution on those target-dependent trails, then
-develop a solution-preserving batch or algebraic representation that can
-test substantially larger domains before fixing either intermediate.
-It must change the ordinary search pattern and return a verified relation;
-another larger cap alone is only a bounded diagnostic. Q1447 excludes
+fires on the unpinned ordinary prefixes. Q1456 measures exact domain
+sizes and admits a controlled 4,096-pair cap variant at both degrees.
+Freeze and run that variant first, accounting for every root call and
+memory byte. If it changes the search but still cannot return a verified
+ordinary relation, the next method must batch or represent much larger
+pair-output domains algebraically before fixing either intermediate.
+Q1447 excludes
 uniformly restarting first-pair midpoints under the declared bases, and
 Q1416's pure pair-index
 model costs roughly `2^89.36` logical actions at N131; neither is a
