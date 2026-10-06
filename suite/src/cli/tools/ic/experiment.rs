@@ -1032,6 +1032,19 @@ pub fn run(args: RunArgs, quiet: bool) -> Result<Value, String> {
         f4_batch,
         ..KoblitzIcOptions::default()
     };
+    if args.f4_backend.is_some() && args.solver == Solver::Groebner {
+        let solve = crate::cryptanalysis::koblitz_groebner::SolveOptions {
+            engine: opts.engine,
+            ..Default::default()
+        };
+        if !crate::cryptanalysis::f4_batch::lockstep_supported(&solve) {
+            eprintln!(
+                "note: --f4-backend decides only the from-scratch engine's matrices \
+                 (KIC_F4_INHERIT=0); with this engine the searches run on the host and \
+                 f4_batch.rounds stays 0"
+            );
+        }
+    }
     let mut stages = Vec::new();
     let mut stage_start = Instant::now();
     let record = |stages: &mut Vec<Value>,

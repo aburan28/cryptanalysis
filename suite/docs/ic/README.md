@@ -160,7 +160,24 @@ Use a batch in the thousands to fill a GPU. `examples/f4_batch_bench.rs`
 replays the matrices real searches request through every backend and checks
 each answer against the host kernel. See
 [`experiments/f4-gpu-20260925`](../../../experiments/f4-gpu-20260925/RESULT.md)
-for the measurements.
+for the measurements. Lockstep implements the from-scratch engine
+(`KIC_F4_INHERIT=0`): under the default inherited engine `--f4-backend` is
+ignored and `f4_batch.rounds` stays 0. On an RTX 5090 the device decides
+these small matrices no faster than 13 host threads, and the inherited
+engine on the host is about five times faster than either
+([`experiments/f4-gpu-runpod-20261006`](../../../experiments/f4-gpu-runpod-20261006/RESULT.md)).
+
+**Large matrices on a GPU.** `F4_F2_ECHELON=cuda[:N]` eliminates every
+`f4_gf2` matrix of at least `F4_F2_ECHELON_MIN_WORDS` words (default
+`1 << 20`, 8 MiB) on the device, one 64-column panel at a time
+(`suite/cuda/f4_gf2_echelon.cuh`), and builds it without F5's symbolic
+half, which costs more host time than the rows it drops save there. These
+are the matrices of the solving- and first-fall-degree sweeps
+(`dreg_sweep`) and of `f4_degree_bench` and `f4_matrix_bench` at degree 5
+and above. Rank, refutation and pinned variables are the host's; only the
+word count differs. `F4_F2_ECHELON=emulate[:threads]` runs the same source
+on the host, `F4_F2_ECHELON_VERBOSE` prints each matrix's upload, device
+and download time, and `F4_F2_ECHELON_PROFILE` each kernel's.
 
 Not every degree/coefficient combination has a usable subgroup. A valid
 curve does not guarantee successful collection or an invertible relation
