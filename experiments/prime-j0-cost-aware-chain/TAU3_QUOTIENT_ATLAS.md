@@ -51,3 +51,27 @@ generic-verified outputs and no fallbacks. Its [read-only
 audit](audit_tau3_atlas_native_design.py) passes. The map adds exactly
 26,244 static bytes to the parent implementation. Local elapsed times in
 the receipt are exploratory and do not establish a CPU speedup.
+
+## Prospective disjoint panel
+
+The [new fixture](tau3-atlas-inputs.json) and its [read-only
+audit](audit_tau3_atlas_inputs.py) establish 32,768 new scalars disjoint
+from all earlier fixtures and eight generic reference output digests. They
+were committed before either paired arm ran. The frozen
+[runner](check_tau3_atlas_panel.py) alternated `tau3-fused-pos` and
+`tau3-atlas-pos` first position by case. Its [raw
+receipt](tau3-atlas-panel.json) and [read-only
+audit](audit_tau3_atlas_panel.py) retain all 16 arms.
+
+All 16 arms matched their generic outputs; all eight frozen operation gates
+passed with zero fallbacks. The atlas matched the original recoder's action
+digest, additions, rotations, and output inversions in every case. Across
+the four points, each mode used 47,768 additions and 32,200 rotations on
+`glv-j0-32`, and 97,713 additions and 65,911 rotations on `j0-56`.
+The atlas retains the same 43,904 and 76,832 prepared-point bytes, plus
+26,244 additional static map bytes.
+
+Local `online_ms` is highly variable: the atlas was lower in seven paired
+cases and higher in one. These are single, unisolated executions on a
+contended host and cannot establish a CPU speedup. The next performance
+gate requires a host-level isolation receipt and repeated paired runs.
