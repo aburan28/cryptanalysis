@@ -8,7 +8,8 @@ Frobenius-stable, 2071 geometric points, 45 effective columns). Here d = 10, abo
 
 - checks PDP2ht (Python half-trace solver) and the C enumeration against the exact pair table on
   ordinary targets and on planted (decomposable) targets;
-- times both per attempt on ordinary subgroup targets, for comparison with the F4 arms' recorded
+- times both per attempt on ordinary subgroup targets (the C path both with a Python projection
+  per target and as whole C attempts, ht_attempt_batch), for comparison with the F4 arms' recorded
   PDP wall per attempt in ../f4-gpu-20260925/runs.jsonl (same VM class, one core).
 
 The F4 runs drew their queries from Rust's StdRng, which is not reproduced here, so the
@@ -31,7 +32,7 @@ sys.path.insert(0, str(HERE))
 
 from factor_base import FactorBase, cyclotomic_factors, kernel_basis  # noqa: E402
 from htsolver import HalfTraceSolver  # noqa: E402
-from residual import htenum, residual_systems  # noqa: E402
+from residual import ht_attempts, htenum, residual_systems  # noqa: E402
 from search import decomposition_lookup  # noqa: E402
 from toycurve import ToyCurve  # noqa: E402
 
@@ -88,6 +89,9 @@ def main() -> None:
                 ht_c.append(t2 - t1)
                 decomp += exact
 
+    batch = ht_attempts(sv, [R[0] for R in ordinary])
+    mism_batch = sum((h > 0) != (R in truth) for R, h in zip(ordinary, batch["hits"]))
+
     f4 = {}
     for line in F4_RUNS.read_text().splitlines():
         r = json.loads(line)
@@ -128,6 +132,8 @@ def main() -> None:
         "ordinary_decomposable_fraction": round(decomp / args.targets, 3),
         "pdp2ht_python_ms_per_attempt_median": round(statistics.median(ht_py) / 1e6, 3),
         "pdp2ht_c_ms_per_attempt_median": round(statistics.median(ht_c) / 1e6, 3),
+        "pdp2ht_c_batch_ms_per_attempt": round(batch["wall_ns"] / len(ordinary) / 1e6, 4),
+        "c_batch_mismatch": mism_batch,
         "f4_ms_per_attempt": {cid: [round(v / 1e6, 2) for v in vals] for cid, vals in f4.items()},
     }
     print(json.dumps(out, indent=1, sort_keys=True))

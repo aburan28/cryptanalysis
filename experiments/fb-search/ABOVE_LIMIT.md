@@ -326,7 +326,8 @@ which `FactorBase` excludes, giving 2070. Its `dim V^(2) = 22`, so `d = 10`, abo
 
 **Exactness.** `PDP2ht`, both the Python half-trace solver and the C enumeration, agrees with
 the exact pair table on 100 planted and 300 ordinary targets (0 mismatches). Of the ordinary
-targets, 0.433 decompose, against F4's recorded 26/63 = 0.41.
+targets, 0.433 decompose, against F4's recorded 26/63 = 0.41. The whole-C path agrees on all 300 ordinary
+targets too.
 
 **Per-attempt cost**, one core, on the same VM class as the F4 records:
 
@@ -335,7 +336,8 @@ targets, 0.433 decompose, against F4's recorded 26/63 = 0.41.
 | F4, reference kernel (`...h573364f3659b`, 3 runs) | 608-614 | 0.1x |
 | F4, `f4_gf2` + F5 (`...h45c66064bdd9`, 3 runs) | 59.3-59.5 | 1x |
 | `PDP2ht`, Python (`PS1N23Cka1fb2070PDP2hth064cba3edc38`) | 21.5 | 2.8x faster |
-| `PDP2ht` + `htenum.c` (`PS1N23Cka1fb2070PDP2hth03b11d151182`) | 1.63 | 36x faster |
+| `PDP2ht`, Python projection + `htenum.c` (`PS1N23Cka1fb2070PDP2hth1432532edf77`) | 0.80 | 75x faster |
+| the same, whole attempts in C (`ht_attempt_batch`) | 0.087 | 680x faster |
 
 - **Workload.** `W4dc3a8a66d6c`; both PS1 rows are run R1 on it.
 - **What the F4 timing includes.** It covers query generation and relation checks, as the F4
@@ -559,6 +561,5 @@ verified by scalar replay). Three of them are above the limit for their base:
 past the limit; its per-run speedups are 1.25, 0.44 and 13.8. **Every run with `d >= 8` is slower
 online than plain rho on the same target.** This agrees with Sec. 2 and Sec. 4e.
 
-The n = 41 online table in Sec. 4e is a **prediction**, not a run. It combines the measured
-`PDP2ht` + `ht-c` stage cost above with the predicted `p_dec` and an assumed per-attempt linear
-solve, so it has no run ID.
+The n = 41 online table in Sec. 4e is a **prediction**, not a run. It combines whole `PDP2ht`
+attempts and the rho step, both measured in C, with the predicted `p_dec`, so it has no run ID.
