@@ -6540,6 +6540,93 @@ def main():
         1, 1, 0, 0, 0, 0]
     assert [row["joint_checks"] for row in q1467_rows] == [0, 0, 49,
                                                             1, 49, 1]
+    q1468_dir = HERE / "q1468_n53_pair_oracle"
+    q1468_protocol_path = q1468_dir / "protocol.json"
+    q1468_verification_path = q1468_dir / "archive_verification.json"
+    q1468_protocol = json.loads(q1468_protocol_path.read_text())
+    q1468_verification = json.loads(q1468_verification_path.read_text())
+    assert q1468_protocol["proposal_id"] == q1468_verification[
+        "proposal_id"] == "Q1468"
+    assert q1468_protocol["candidate_id"] is q1468_verification[
+        "candidate_id"] is None
+    assert q1468_protocol["isogeny"] == q1468_verification[
+        "isogeny"] == "none"
+    assert q1468_verification["status"] == "passed"
+    assert q1468_verification["protocol_sha256"] == sha(
+        q1468_protocol_path)
+    assert q1468_protocol["q1467_solver_protocol_sha256"] == sha(
+        q1467_solver_protocol_path)
+    assert q1468_protocol["curve_id"] == q1467_solver_protocol[
+        "cells"]["n53_ordinary"]["curve_id"]
+    assert q1468_protocol["factor_base_actual_B"] == 2756
+    assert q1468_protocol["folded_columns_K"] == 26
+    assert q1468_protocol["complete_cross_column_pair_count"] == 3651700
+    q1468_rows = []
+    for name in q1468_protocol["run_order"]:
+        receipt_path = q1468_dir / "runs" / name / "receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        verified = next(row for row in q1468_verification["rows"]
+                        if row["case"] == name)
+        assert verified["receipt_sha256"] == sha(receipt_path)
+        assert receipt["protocol_sha256"] == sha(q1468_protocol_path)
+        assert receipt["status"] == verified["status"]
+        assert receipt["candidate_id"] is None
+        assert receipt["isogeny"] == "none"
+        if name == "selftest":
+            assert verified["independent_group_additions"] == 64
+            continue
+        matched_q1467 = next(row for row in q1467_rows
+                             if row["case"] == name)
+        assert receipt["curve_id"] == matched_q1467["curve_id"]
+        assert receipt["workload_id"] == matched_q1467["workload_id"]
+        assert receipt["public_target"] == matched_q1467[
+            "public_target"]
+        assert receipt["factor_base_actual_B"] == matched_q1467[
+            "factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == matched_q1467[
+            "folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == (
+            matched_q1467["factor_base_enumerated_set_sha256"])
+        report = receipt["native_report"]
+        assert report is not None
+        assert report["complete_pair_table"] is True
+        assert report["pair_table_entries"] == 3651700
+        assert report["status"] in ("found", "absent")
+        q1468_rows.append({
+            "proposal_id": "Q1468", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4mitm",
+            "diagnostic_only": True,
+            "case": name, "curve_id": receipt["curve_id"],
+            "degree_n": 53, "workload_id": receipt["workload_id"],
+            "factor_base_actual_B": receipt["factor_base_actual_B"],
+            "folded_columns_K": receipt["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": receipt[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": receipt["public_target"],
+            "status": receipt["status"],
+            "complete_pair_table_entries": report["pair_table_entries"],
+            "query_pair_sums_examined": report[
+                "query_pair_sums_examined"],
+            "table_field_operation_calls": report["table_field_calls"],
+            "query_field_operation_calls": report["query_field_calls"],
+            "table_wall_ns_exploratory": report["table_wall_ns"],
+            "target_query_wall_ns_exploratory": report["query_wall_ns"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": verified[
+                "verified_relation_count"],
+            "q1467_solver_status": matched_q1467["solver_status"],
+            "q1467_solver_receipt_sha256": matched_q1467[
+                "receipt_sha256"],
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["status"] for row in q1468_rows] == ["found", "absent"]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -8530,6 +8617,45 @@ def main():
             "superseded_v1_protocol_sha256": q1467_solver_protocol[
                 "supersedes_protocol_sha256"],
         },
+        "q1468_n53_exact_pair_oracle": {
+            "proposal_id": "Q1468", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4mitm",
+            "controlled_variable": (
+                "point-decomposition method on the same exact N53 "
+                "curve, base, workload IDs, and public targets as "
+                "Q1467; target-independent pair-table preparation is "
+                "recorded separately from each target query"),
+            "rows": q1468_rows,
+            "native_complete_cross_column_pair_count": 3651700,
+            "independent_group_addition_samples": 64,
+            "verified_planted_relation_count": 1,
+            "ordinary_target_exact_enumeration_result": (
+                "no_four_distinct_column_sum_on_this_base"),
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "The complete N53 cross-column pair table recovers "
+                "Q1467's unpinned planted public target and independently "
+                "replays a four-distinct-column relation. It exhausts "
+                "all 3651700 admissible pair sums for the matched "
+                "ordinary public target and reports no complement hit, "
+                "so this one target has no four-distinct-column "
+                "decomposition on the exact Q1467 N53 base under the "
+                "source-bound enumeration. The Q1467 SAT timeout on "
+                "that ordinary target cannot measure solver cost; "
+                "its timeout on the matched known-representable planted "
+                "target still demonstrates a solver limit. One ordinary "
+                "target is not a yield rate, and no N83 or complete "
+                "N131 cost follows. Wall times are exploratory."),
+            "protocol_sha256": sha(q1468_protocol_path),
+            "archive_verification_sha256": sha(
+                q1468_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -9017,6 +9143,11 @@ def main():
                 "N83 W<=4 base: pinned controls verify, while both "
                 "known-representable unpinned controls and both "
                 "ordinary queries censor at 60 seconds; "
+                "Q1468's exact N53 pair oracle recovers the matched "
+                "planted target and exhaustively finds no four-distinct-"
+                "column representation of the matched ordinary target, "
+                "without supplying a multi-query natural yield or N83 "
+                "successful cost; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

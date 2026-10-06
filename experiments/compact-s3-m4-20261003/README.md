@@ -2174,6 +2174,20 @@ meet the first successful-unpinned-decomposition gate. No natural useful-row
 rate, matched pair-table result, successful N83 cost, or complete N131 `2^x`
 is available. The challenge remains closed.
 
+### Q1468 exact N53 pair-sum oracle
+
+[Q1468](q1468_n53_pair_oracle/README.md) tests `PDP4mitm` on the same exact
+N53 base and public targets as Q1467. A full table contains all 3,651,700
+cross-column pair sums. It independently verifies a four-distinct-column
+relation for Q1467's unpinned planted target, while exhaustive lookup finds
+no four-distinct-column sum for Q1467's ordinary target. The latter result
+means that one SAT timeout cannot be interpreted as a successful-solver cost;
+the planted timeout still demonstrates solver failure on a known-solution
+input. The two single-target pair-table query phases take 1.958 and 4.334
+seconds on an unisolated host, with table setup charged separately. One
+ordinary target supplies no natural yield rate or rank trend. N83 and the
+complete N131 `2^x` remain unresolved.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
