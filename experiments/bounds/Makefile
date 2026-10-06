@@ -4,7 +4,7 @@
 #
 #   make sweep      ca_bench complexity --json: one row per solved instance
 #   make records    one sealed record per (algorithm, group kind, tier)
-#   make frontier   frontier.json and FRONTIER.md, built by ecbench (ECBENCH=...)
+#   make frontier   frontier.json and FRONTIER.md, built by ecbench (ECBENCH=/abs/path)
 #   make check      the committed page matches the committed records
 #   make test       the seal round trip on real ecbench records, the adapter
 #   make list       every record's seal, id and headline
@@ -38,11 +38,17 @@ sweep: $(BUILD)/ca_bench
 records:
 	python3 emit_bounds.py emit --sweep $(SWEEP) --out records
 
+# ecbench writes the --bounds path into the page header, so the page is built
+# from the repository root with repository-relative paths, as ecbench's own
+# docs/bounds page is; give ECBENCH as an absolute path or a name on PATH.
+HERE      := experiments/bounds
+FRONTIER   = frontier build --bounds $(HERE)/records --out $(HERE)/frontier.json --markdown $(HERE)/FRONTIER.md
+
 frontier:
-	$(ECBENCH) frontier build --bounds records --out frontier.json --markdown FRONTIER.md
+	cd $(ROOT) && $(ECBENCH) $(FRONTIER)
 
 check:
-	$(ECBENCH) frontier build --bounds records --out frontier.json --markdown FRONTIER.md --check
+	cd $(ROOT) && $(ECBENCH) $(FRONTIER) --check
 
 test:
 	python3 -m pytest -q .
