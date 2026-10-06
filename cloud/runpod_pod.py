@@ -1,23 +1,36 @@
 #!/usr/bin/env python3
-"""Rent a Runpod pod for the F4 benchmarks, run commands on it, and give it back.
+"""Rent a Runpod GPU pod for one job, run it on this checkout, and give the pod back.
 
-    runpod_bench.py up f4-gpu --gpu "NVIDIA GeForce RTX 5090" --min-vcpu 16
-    runpod_bench.py up f4-cpu --cpu 32
-    runpod_bench.py sync f4-gpu                  # this checkout, edits included
-    runpod_bench.py ssh f4-gpu -- 'nvidia-smi'
-    runpod_bench.py fetch f4-gpu REMOTE_PATH LOCAL_DIR
-    runpod_bench.py down f4-gpu
+    cloud/runpod_pod.py run ic-gpu --out results/run.json -- \\
+        'cd suite && cargo run --release --bin ca-ic -- run --degree 23 \\
+         --curve-a 1 --json > ../results/run.json'
 
-Needs RUNPOD_API_KEY.  SSH uses ~/.ssh/id_ed25519: the pod receives that
-key, beside the account's registered ones, through its PUBLIC_KEY variable,
-so nothing is added to the account.  Every pod stops itself after
---max-hours (default 6) through the pod-scoped key Runpod injects, in case
-nobody runs `down`.  Pods are found by name; `up` refuses a name in use.
+`run` creates the pod NAME unless it exists, ships this checkout (edits
+included, as cloud/tree.py packs it) to /root/cryptanalysis, installs Rust
+and NVRTC when they are missing, runs CMD there with CA_NVRTC_LIB set, copies
+the --out paths back into this checkout, and deletes the pod it created
+unless --keep.  Its exit status is CMD's.  The pieces are commands too:
+
+    cloud/runpod_pod.py up NAME [--gpu TYPE ...] [--min-vcpu N] | [--cpu N]
+    cloud/runpod_pod.py sync NAME
+    cloud/runpod_pod.py ssh NAME -- 'nvidia-smi'
+    cloud/runpod_pod.py fetch NAME REMOTE_PATH LOCAL_DIR
+    cloud/runpod_pod.py down NAME
+    cloud/runpod_pod.py list
+
+Needs RUNPOD_API_KEY.  SSH uses ~/.ssh/id_ed25519 (created if missing): the
+pod receives it, beside the account's registered keys, through its
+PUBLIC_KEY variable, so nothing is added to the account.  Every pod stops
+itself after --max-hours (default 6) through the pod-scoped key Runpod
+injects, in case nobody deletes it.  Pods are found by name; `up` refuses a
+name in use.  Without --gpu, a GPU pod takes the first of DEFAULT_GPUS in
+stock with at least --min-vcpu vCPUs.
 """
 
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -25,15 +38,22 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / "cloud"))
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parent
+sys.path.insert(0, str(HERE))
 
 REST = "https://rest.runpod.io/v1"
 GRAPHQL = "https://api.runpod.io/graphql"
 KEY = Path.home() / ".ssh" / "id_ed25519"
 REMOTE = "/root/cryptanalysis"
-GPU_IMAGE = "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404"
+GPU_IMAGE = "runpod/base:1.0.2-ubuntu2404"
 CPU_IMAGE = "runpod/base:1.0.2-ubuntu2404"
+DEFAULT_GPUS = [
+    "NVIDIA GeForce RTX 5090",
+    "NVIDIA GeForce RTX 4090",
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "NVIDIA H100 80GB HBM3",
+]
 
 # PID 1: a lifetime cap that stops the pod, then the image's /start.sh, which
 # installs PUBLIC_KEY and starts sshd.
@@ -47,15 +67,32 @@ STAGE0 = r"""
 exec sleep infinity
 """.strip()
 
+# Before CMD on the pod: Rust and NVRTC when missing, and the variables the
+# suite's CUDA paths read.
+BOOTSTRAP = r"""
+set -e
+export LC_ALL=C.UTF-8 PATH="$HOME/.cargo/bin:$PATH"
+command -v cargo >/dev/null || curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs |
+  sh -s -- -y -q --profile minimal --default-toolchain stable >/dev/null
+python3 -c 'import nvidia.cuda_nvrtc' 2>/dev/null ||
+  pip3 install -q --break-system-packages nvidia-cuda-nvrtc-cu12 >/dev/null
+CA_NVRTC_LIB=$(python3 -c 'import glob, nvidia.cuda_nvrtc as m
+print(glob.glob(m.__path__[0] + "/lib/libnvrtc.so.12")[0])')
+export CA_NVRTC_LIB
+nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>/dev/null | sed 's/^/gpu: /' || true
+echo "rustc: $(rustc --version)"
+cd /root/cryptanalysis
+""".strip()
+
 
 def api(method, url, body=None, timeout=60):
     key = os.environ.get("RUNPOD_API_KEY", "").strip()
     if not key:
-        sys.exit("RUNPOD_API_KEY is not set")
+        sys.exit("RUNPOD_API_KEY is not set (add it to Cursor Dashboard > Cloud Agents > Secrets)")
     request = urllib.request.Request(
         url, data=None if body is None else json.dumps(body).encode(), method=method,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
-                 "Accept": "application/json", "User-Agent": "cryptanalysis-f4-bench/1.0"})
+                 "Accept": "application/json", "User-Agent": "cryptanalysis-runpod-pod/1.0"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             raw = response.read()
@@ -94,6 +131,26 @@ def public_keys():
     return "\n".join(kept)
 
 
+def pod_body(args, keys):
+    """The REST request that creates pod `args.name`."""
+    body = {
+        "name": args.name, "cloudType": args.cloud, "containerDiskInGb": args.disk,
+        "volumeInGb": 0, "ports": ["22/tcp"], "dockerEntrypoint": ["bash", "-c"],
+        "dockerStartCmd": [STAGE0],
+        "env": {"PUBLIC_KEY": keys, "F4_MAX_SECONDS": str(int(args.max_hours * 3600))},
+    }
+    if args.cpu:
+        body.update(computeType="CPU", imageName=args.image or CPU_IMAGE,
+                    cpuFlavorIds=args.cpu_flavor or ["cpu5c", "cpu3c"],
+                    cpuFlavorPriority="custom", vcpuCount=args.cpu)
+    else:
+        body.update(computeType="GPU", imageName=args.image or GPU_IMAGE,
+                    gpuTypeIds=args.gpu or DEFAULT_GPUS, gpuTypePriority="custom",
+                    gpuCount=args.gpu_count, minVCPUPerGPU=args.min_vcpu,
+                    minRAMPerGPU=args.min_ram, allowedCudaVersions=["13.0", "12.9", "12.8"])
+    return body
+
+
 def ssh_args(pod):
     port = (pod.get("portMappings") or {}).get("22")
     if not pod.get("publicIp") or not port:
@@ -103,63 +160,93 @@ def ssh_args(pod):
             "-o", "ServerAliveInterval=30", f"root@{pod['publicIp']}"]
 
 
-def cmd_up(args):
+def create(args):
+    """Create pod `args.name` and wait until it answers on ssh."""
     if find(args.name):
         sys.exit(f"a pod named {args.name} exists; `down` it first")
     if not KEY.exists():
+        KEY.parent.mkdir(mode=0o700, exist_ok=True)
         subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(KEY)], check=True)
-    body = {
-        "name": args.name, "cloudType": args.cloud, "containerDiskInGb": args.disk,
-        "volumeInGb": 0, "ports": ["22/tcp"], "dockerEntrypoint": ["bash", "-c"],
-        "dockerStartCmd": [STAGE0],
-        "env": {"PUBLIC_KEY": public_keys(), "F4_MAX_SECONDS": str(int(args.max_hours * 3600))},
-    }
-    if args.cpu:
-        body.update(computeType="CPU", imageName=args.image or CPU_IMAGE,
-                    cpuFlavorIds=args.cpu_flavor, cpuFlavorPriority="custom", vcpuCount=args.cpu)
-    else:
-        body.update(computeType="GPU", imageName=args.image or GPU_IMAGE, gpuTypeIds=args.gpu,
-                    gpuTypePriority="custom", gpuCount=args.gpu_count,
-                    minVCPUPerGPU=args.min_vcpu, minRAMPerGPU=args.min_ram,
-                    allowedCudaVersions=["13.0", "12.9", "12.8"])
-    pod = api("POST", f"{REST}/pods", body)
+    pod = api("POST", f"{REST}/pods", pod_body(args, public_keys()))
     print(f"created {pod['id']} ({pod.get('costPerHr')} $/hr); waiting for ssh", flush=True)
     deadline = time.time() + args.wait
     while time.time() < deadline:
         pod = api("GET", f"{REST}/pods/{pod['id']}")
         if pod.get("publicIp") and (pod.get("portMappings") or {}).get("22"):
             probe = subprocess.run([*ssh_args(pod), "-o", "ConnectTimeout=10", "true"],
-                                   capture_output=True)
+                                   capture_output=True, check=False)
             if probe.returncode == 0:
                 print(json.dumps({k: pod.get(k) for k in ("id", "name", "publicIp", "portMappings",
-                                  "vcpuCount", "memoryInGb", "costPerHr", "imageName")}))
-                return 0
+                                  "vcpuCount", "memoryInGb", "costPerHr", "imageName")}), flush=True)
+                return pod
         time.sleep(10)
     sys.exit(f"{pod['id']}: ssh not up after {args.wait} s; the pod is kept (`down` removes it)")
 
 
+def sync(pod, dest=REMOTE):
+    import tree
+    data, summary = tree.pack(REPO)
+    print(f"shipping {summary['files']} files, {summary['bytes'] / 1e6:.1f} MB to {dest}", flush=True)
+    script = f"mkdir -p {dest} && tar --no-same-owner -xzf - -C {dest}"
+    return subprocess.run([*ssh_args(pod), script], input=data, check=False).returncode
+
+
+def fetch(pod, remote, local):
+    Path(local).mkdir(parents=True, exist_ok=True)
+    parent, leaf = os.path.split(remote.rstrip("/"))
+    pack = subprocess.Popen(
+        [*ssh_args(pod), f"tar -czf - -C {shlex.quote(parent or '/')} {shlex.quote(leaf)}"],
+        stdout=subprocess.PIPE)
+    unpack = subprocess.run(["tar", "-xzf", "-", "-C", str(local)], stdin=pack.stdout,
+                            check=False)
+    pack.wait()
+    return pack.returncode or unpack.returncode
+
+
+def cmd_up(args):
+    create(args)
+    return 0
+
+
+def cmd_run(args):
+    command = " ".join(args.command)
+    if not command:
+        sys.exit("run needs a command after --")
+    pod = find(args.name)
+    created = pod is None
+    if created:
+        pod = create(args)
+    try:
+        if sync(pod) != 0:
+            return 1
+        script = f"{BOOTSTRAP}\n{command}"
+        rc = subprocess.run([*ssh_args(pod), f"bash -c {shlex.quote(script)}"],
+                            check=False).returncode
+        for path in args.out:
+            remote = f"{REMOTE}/{path}"
+            local = REPO / Path(path).parent
+            if fetch(pod, remote, local) != 0:
+                print(f"could not fetch {path}", file=sys.stderr)
+                rc = rc or 1
+        return rc
+    finally:
+        if created and not args.keep:
+            api("DELETE", f"{REST}/pods/{pod['id']}")
+            print(f"deleted {pod['id']} ({args.name})", flush=True)
+
+
 def cmd_ssh(args):
     command = " ".join(args.command) if args.command else None
-    return subprocess.run([*ssh_args(need(args.name)), *([command] if command else [])]).returncode
+    return subprocess.run([*ssh_args(need(args.name)), *([command] if command else [])],
+                          check=False).returncode
 
 
 def cmd_sync(args):
-    import tree
-    data, summary = tree.pack(REPO)
-    target = args.dest or REMOTE
-    print(f"shipping {summary['files']} files, {summary['bytes'] / 1e6:.1f} MB to {target}", flush=True)
-    script = f"mkdir -p {target} && tar --no-same-owner -xzf - -C {target}"
-    return subprocess.run([*ssh_args(need(args.name)), script], input=data).returncode
+    return sync(need(args.name), args.dest or REMOTE)
 
 
 def cmd_fetch(args):
-    Path(args.local).mkdir(parents=True, exist_ok=True)
-    pack = subprocess.Popen([*ssh_args(need(args.name)),
-                             f"tar -czf - -C $(dirname {args.remote}) $(basename {args.remote})"],
-                            stdout=subprocess.PIPE)
-    unpack = subprocess.run(["tar", "-xzf", "-", "-C", args.local], stdin=pack.stdout)
-    pack.wait()
-    return pack.returncode or unpack.returncode
+    return fetch(need(args.name), args.remote, args.local)
 
 
 def cmd_down(args):
@@ -176,46 +263,62 @@ def cmd_list(args):
     return 0
 
 
-def main():
+def add_pod_options(p):
+    p.add_argument("--gpu", action="append", default=[], metavar="GPU_TYPE_ID",
+                   help="acceptable GPU types, in order of preference (default DEFAULT_GPUS)")
+    p.add_argument("--gpu-count", type=int, default=1)
+    p.add_argument("--min-vcpu", type=int, default=16, help="vCPUs per GPU")
+    p.add_argument("--min-ram", type=int, default=32, help="GB per GPU")
+    p.add_argument("--cpu", type=int, default=0, help="a CPU pod with this many vCPUs")
+    p.add_argument("--cpu-flavor", action="append", default=[])
+    p.add_argument("--cloud", default="SECURE", choices=["SECURE", "COMMUNITY"])
+    p.add_argument("--image")
+    p.add_argument("--disk", type=int, default=60)
+    p.add_argument("--max-hours", type=float, default=6.0)
+    p.add_argument("--wait", type=int, default=900)
+
+
+def parse(argv=None):
+    """Arguments; for `run` and `ssh`, whatever follows `--` is the command."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    command = []
+    if "--" in argv:
+        cut = argv.index("--")
+        argv, command = argv[:cut], argv[cut + 1:]
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
+    run = sub.add_parser("run", help="run one command on a GPU pod")
+    run.add_argument("name")
+    add_pod_options(run)
+    run.add_argument("--out", action="append", default=[], metavar="PATH",
+                     help="a path relative to the repository to copy back")
+    run.add_argument("--keep", action="store_true", help="keep the pod afterwards")
     up = sub.add_parser("up")
     up.add_argument("name")
-    up.add_argument("--gpu", action="append", default=[], metavar="GPU_TYPE_ID",
-                    help="acceptable GPU types, in order of preference")
-    up.add_argument("--gpu-count", type=int, default=1)
-    up.add_argument("--min-vcpu", type=int, default=16, help="vCPUs per GPU")
-    up.add_argument("--min-ram", type=int, default=32, help="GB per GPU")
-    up.add_argument("--cpu", type=int, default=0, help="a CPU pod with this many vCPUs")
-    up.add_argument("--cpu-flavor", action="append", default=None)
-    up.add_argument("--cloud", default="SECURE", choices=["SECURE", "COMMUNITY"])
-    up.add_argument("--image")
-    up.add_argument("--disk", type=int, default=40)
-    up.add_argument("--max-hours", type=float, default=6.0)
-    up.add_argument("--wait", type=int, default=900)
+    add_pod_options(up)
     ssh = sub.add_parser("ssh")
     ssh.add_argument("name")
-    ssh.add_argument("command", nargs=argparse.REMAINDER)
-    sync = sub.add_parser("sync")
-    sync.add_argument("name")
-    sync.add_argument("--dest")
-    fetch = sub.add_parser("fetch")
-    fetch.add_argument("name")
-    fetch.add_argument("remote")
-    fetch.add_argument("local")
+    ssh.add_argument("words", nargs="*", help="the command, if not after --")
+    sync_p = sub.add_parser("sync")
+    sync_p.add_argument("name")
+    sync_p.add_argument("--dest")
+    fetch_p = sub.add_parser("fetch")
+    fetch_p.add_argument("name")
+    fetch_p.add_argument("remote")
+    fetch_p.add_argument("local")
     down = sub.add_parser("down")
     down.add_argument("name")
     sub.add_parser("list")
-    args = ap.parse_args()
-    if args.cmd == "up":
-        if args.cpu and args.gpu:
-            sys.exit("--cpu and --gpu are exclusive")
-        if not args.cpu and not args.gpu:
-            sys.exit("pass --gpu TYPE (repeatable) or --cpu N")
-        args.cpu_flavor = args.cpu_flavor or ["cpu5c", "cpu3c"]
-    if args.cmd == "ssh" and args.command[:1] == ["--"]:
-        args.command = args.command[1:]
-    return {"up": cmd_up, "ssh": cmd_ssh, "sync": cmd_sync, "fetch": cmd_fetch,
+    args = ap.parse_args(argv)
+    if args.cmd in ("run", "up") and args.cpu and args.gpu:
+        ap.error("--cpu and --gpu are exclusive")
+    args.command = getattr(args, "words", []) + command
+    return args
+
+
+def main(argv=None):
+    args = parse(argv)
+    return {"run": cmd_run, "up": cmd_up, "ssh": cmd_ssh, "sync": cmd_sync, "fetch": cmd_fetch,
             "down": cmd_down, "list": cmd_list}[args.cmd](args)
 
 

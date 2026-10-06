@@ -8,17 +8,14 @@ the large-matrix elimination (`F4_F2_ECHELON=cuda`,
 against the host's engines. Findings, tables and caveats are in
 [RESULT.md](RESULT.md).
 
-Reproduce on a pod rented with `../f4-gpu-20260925/runpod_bench.py`
-(needs `RUNPOD_API_KEY`):
+Reproduce on a Runpod pod with `cloud/runpod_pod.py` (needs
+`RUNPOD_API_KEY`), which rents it, ships the checkout, runs the script,
+copies the receipts back and deletes it:
 
 ```sh
-B=experiments/f4-gpu-20260925/runpod_bench.py
-python3 $B up f4 --gpu "NVIDIA GeForce RTX 5090" --min-vcpu 16 \
-    --image runpod/base:1.0.2-ubuntu2404
-python3 $B sync f4
-python3 $B ssh f4 -- 'bash /root/cryptanalysis/experiments/f4-gpu-runpod-20261006/pod_matrix.sh /root/receipts'
-python3 $B fetch f4 /root/receipts /tmp/f4-runpod
-python3 $B down f4
+cloud/runpod_pod.py run f4 --gpu "NVIDIA GeForce RTX 5090" \
+    --out experiments/f4-gpu-runpod-20261006/rerun -- \
+    'bash experiments/f4-gpu-runpod-20261006/pod_matrix.sh experiments/f4-gpu-runpod-20261006/rerun'
 ```
 
 On any CUDA host, `pod_matrix.sh OUT` alone runs the same measurements.
