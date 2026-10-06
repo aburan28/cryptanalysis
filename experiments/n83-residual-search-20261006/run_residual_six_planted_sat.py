@@ -33,11 +33,15 @@ def save(path: Path, value) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
-def main(out: Path) -> None:
+def main(out: Path, run_protocol_path: Path = PROTOCOL) -> None:
     out = out.resolve()
     if out.exists():
         raise FileExistsError("residual-six SAT output is immutable")
-    protocol = json.loads(PROTOCOL.read_text())
+    run_protocol_path = run_protocol_path.resolve()
+    if run_protocol_path not in (PROTOCOL.resolve(),
+                                 (HERE / "residual_six_long_protocol.json").resolve()):
+        raise ValueError("unfrozen residual-six run protocol")
+    protocol = json.loads(run_protocol_path.read_text())
     fixture = json.loads(FIXTURE.read_text())
     old = json.loads(OLD_PUBLIC.read_text())
     geometry_path = PRIOR / "runs/shifted_m8_d11_v1/geometry.json"
@@ -45,6 +49,11 @@ def main(out: Path) -> None:
     assert fixture["candidate_id"] is None
     assert fixture["curve_id"] == protocol["curve_id"] == geometry["curve_id"]
     assert fixture["protocol_sha256"] == sha(PROTOCOL)
+    if "public_residual_fixture_sha256" in protocol:
+        assert sha(FIXTURE) == protocol["public_residual_fixture_sha256"]
+    if "source_short_attempt_receipt_sha256" in protocol:
+        assert sha(HERE / "runs/planted_pair01_six_sat_v1/receipt.json") == \
+            protocol["source_short_attempt_receipt_sha256"]
     assert fixture["remaining_slot_indices"] == protocol["remaining_slot_indices"]
     assert fixture["source_public_fixture_sha256"] == \
         protocol["source_public_fixture_sha256"]
@@ -66,7 +75,8 @@ def main(out: Path) -> None:
         "candidate_id": None, "curve_id": protocol["curve_id"],
         "public_fixture_sha256": sha(FIXTURE),
         "geometry_sha256": sha(geometry_path),
-        "protocol_sha256": sha(PROTOCOL),
+        "protocol_sha256": sha(run_protocol_path),
+        "fixture_protocol_sha256": sha(PROTOCOL),
         "source_sha256": {
             "runner": sha(Path(__file__)),
             "solver_wrapper": sha(HERE / "run_long_unpinned_sat.py"),
@@ -105,6 +115,8 @@ def main(out: Path) -> None:
         report["xcnf_write_wall_ns"] = time.perf_counter_ns() - write_started
         report["xcnf_bytes"] = xcnf.stat().st_size
         report["xcnf_sha256"] = sha(xcnf)
+        if "source_short_attempt_xcnf_sha256" in protocol:
+            assert report["xcnf_sha256"] == protocol["source_short_attempt_xcnf_sha256"]
         parent_rss = psutil.Process().memory_info().rss
         report["parent_rss_after_encoding_bytes"] = parent_rss
         if parent_rss >= protocol["max_process_tree_rss_bytes"]:
@@ -150,7 +162,7 @@ def main(out: Path) -> None:
         raise
     finally:
         report["attempt_wall_ns"] = time.perf_counter_ns() - started_ns
-        report["protocol_sha256"] = sha(PROTOCOL)
+        report["protocol_sha256"] = sha(run_protocol_path)
         report["public_fixture_sha256"] = sha(FIXTURE)
         report["started_sha256"] = sha(out / "started.json")
         report["source_sha256"] = sha(Path(__file__))
@@ -165,6 +177,6 @@ def main(out: Path) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: run_residual_six_planted_sat.py OUTPUT_DIRECTORY")
-    main(Path(sys.argv[1]))
+    if len(sys.argv) not in (2, 3):
+        raise SystemExit("usage: run_residual_six_planted_sat.py OUTPUT_DIRECTORY [RUN_PROTOCOL]")
+    main(Path(sys.argv[1]), Path(sys.argv[2]) if len(sys.argv) == 3 else PROTOCOL)
