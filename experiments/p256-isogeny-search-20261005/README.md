@@ -98,6 +98,20 @@ reproducible effect. Raw registries, screening blocks, holdout results, costs,
 class-number computation failures, and claim limits are frozen in
 [`results/sage-depth-three-20261006`](results/sage-depth-three-20261006).
 
+## Widened one-hop result
+
+A complementary direct-neighbor scan covered every ramified or split prime
+degree through 47. It added 14 curves beyond the depth-three registry and
+brought the combined explicit total to 70 unique curves. All 14 new one-hop
+curves were screened in balanced P-256 control blocks; no paired 95% interval
+excluded `1.0`. The best estimate was `1.026x` with interval
+`0.996x–1.057x`, so no holdout was triggered.
+
+The registry, raw timing blocks, receipt, and verifier are frozen in
+[`results/sage-wide-depth-one-20261006`](results/sage-wide-depth-one-20261006).
+Across the three Sage runs, 37 distinct neighbors have now been timed. Per-key
+evaluation of the retained paths is still not measured.
+
 ## Quick start
 
 Python 3.11 or newer is required.
