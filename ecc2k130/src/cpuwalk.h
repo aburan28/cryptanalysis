@@ -7,15 +7,25 @@
 //
 //   - Elements are three 64-bit limbs, not five 32-bit words: 53 ns an
 //     iteration on an M4 Pro core against 127 on the packed routines.
+//   - The state is stored limb by limb -- lane i's limb 0 at x0[i], its limb 1
+//     at x1[i] -- so that N consecutive lanes load as three vector registers,
+//     and on x86-64 the five products, the squaring and the conversion of a
+//     step run N lanes at a time on the vector carry-less multiplier
+//     (src/f131x.h: N = 8 on AVX-512, 4 on AVX2, 2 on SSE).  The selection,
+//     which is table lookups, and the rare lane that reports stay scalar.
 //   - A batch is `batch` lanes sharing one inversion by Montgomery's trick,
 //     512 by default against the device's 16: a core has no register budget to
-//     respect, the inversion is about 700 ns against 53 ns for a lane's step,
-//     and 512 lanes of state (x, y, prefix product, denominator, history: 104
-//     bytes each) sit in L1 beside the selection tables.
+//     respect, the inversion is about 700 ns against a lane's step, and 512
+//     lanes of state (x, y, prefix product, denominator, history: 104 bytes
+//     each) sit in cache beside the selection tables.
 //   - A step is a sequence of loops over the batch, not a loop of steps over
 //     lanes: a lane's selection and its place in the inversion chain are
 //     dependency chains much longer than their instruction counts, and a core
-//     only stays full when neighbouring lanes' chains overlap.
+//     only stays full when neighbouring lanes' chains overlap.  The chain is
+//     cut into K interleaved chains (lane i in chain i mod K) so that no
+//     product waits on the lane before it; on the vector path K is N lanes
+//     times ECC_F131_CHAIN_VECTORS, and each vector register of accumulators
+//     advances N chains at once.
 //   - The denominator d = x + x_T is stored by the forward pass rather than
 //     rebuilt from the step tag (ECC_TABLE_TAG_DENOM): that knob buys back
 //     device memory traffic a cache does not charge for.
@@ -28,6 +38,9 @@
 //     advanced by one worker at a time; which worker and in what order does
 //     not change any lane's trail, which depends only on its seed.
 //
+// Every product is exact field arithmetic, so the chain count, the vector
+// width and the batch size change the order of the multiplications and
+// nothing else: a lane's trail is a function of its seed alone.
 // src/cputest.cpp holds this engine to the golden model: start points, every
 // lane's state after a run against a re-walk from its seed, every report, and
 // the independence of the reports from the geometry.
@@ -35,11 +48,22 @@
 
 #include "client.h"
 #include "f131.h"
+#include "f131x.h"
+
+#include <stdlib.h>
 
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <thread>
+
+// Vector registers of chain accumulators on the vector path: K = N lanes
+// times this.  Two keeps two independent products in flight per lane group,
+// which covers a product's latency on the cores measured so far; one is the
+// shorter prefix at small batches.
+#ifndef ECC_F131_CHAIN_VECTORS
+#    define ECC_F131_CHAIN_VECTORS 2
+#endif
 
 namespace ec2k_cpu
 {
@@ -61,6 +85,41 @@ inline P131 invPolynomial131(const P131 &a)
     return toPolynomial131(inv131(fromPolynomial131(a)));
 }
 
+// Field elements stored limb by limb: lane i is (w0[i], w1[i], w2[i]).  Each
+// limb array is 64-byte aligned, so a vector of N lanes at a multiple of N
+// loads from one cache line when the batch is a multiple of N.
+class Slab
+{
+  public:
+    uint64_t *w0 = nullptr, *w1 = nullptr, *w2 = nullptr;
+
+    Slab() {}
+    Slab(const Slab &) = delete;
+    Slab &operator=(const Slab &) = delete;
+    ~Slab() { free(mem_); }
+    void alloc(size_t lanes)
+    {
+        free(mem_);
+        const size_t stride = (lanes * sizeof(uint64_t) + 63) & ~size_t(63);
+        mem_ = aligned_alloc(64, stride ? 3 * stride : 64);
+        if (!mem_) abort();
+        memset(mem_, 0, stride ? 3 * stride : 64);
+        w0 = reinterpret_cast<uint64_t *>(mem_);
+        w1 = reinterpret_cast<uint64_t *>(reinterpret_cast<char *>(mem_) + stride);
+        w2 = reinterpret_cast<uint64_t *>(reinterpret_cast<char *>(mem_) + 2 * stride);
+    }
+    F131 get(size_t i) const { return F131{{w0[i], w1[i], w2[i]}}; }
+    void set(size_t i, const F131 &a)
+    {
+        w0[i] = a.w[0];
+        w1[i] = a.w[1];
+        w2[i] = a.w[2];
+    }
+
+  private:
+    void *mem_ = nullptr;
+};
+
 struct Geometry {
     int workers = 0;                         // 0: one per core
     int batch = 0;                           // 0: 512 lanes per inversion
@@ -72,6 +131,12 @@ struct Geometry {
 class CpuEngine
 {
   public:
+    static const int kLanes = ECC_F131_LANES; // lanes per vector register
+    // Interleaved inversion chains: on the scalar path four, whose accumulators
+    // the compiler keeps in registers; on the vector path a register of
+    // accumulators per N lanes, ECC_F131_CHAIN_VECTORS of them.
+    static const int kChains = kLanes > 1 ? kLanes * ECC_F131_CHAIN_VECTORS : 4;
+
     CpuEngine(const HostTable &table, const Options &o, bool bench, Geometry g = Geometry())
         : consts_(table.deviceConsts()), dpWeight_(bench ? -1 : o.dpWeight), maxIters_(o.maxIters),
           runId_(o.runId), guardPeriod_(g.guardPeriod ? g.guardPeriod : 1u)
@@ -92,10 +157,10 @@ class CpuEngine
         targetY_ = toPolynomial131(toPacked(table.Q.y));
 
         const size_t lanes = laneCount();
-        x_.resize(lanes);
-        y_.resize(lanes);
-        w_.resize(lanes);
-        d_.resize(lanes);
+        x_.alloc(lanes);
+        y_.alloc(lanes);
+        w_.alloc(lanes);
+        d_.alloc(lanes);
         hist_.assign(lanes, ECC_HIST_EMPTY);
         seed_.resize(lanes);
         start_.assign(lanes, 0);
@@ -109,9 +174,11 @@ class CpuEngine
     const char *name() const { return "cpu"; }
     std::string describe() const
     {
-        char buf[160];
-        snprintf(buf, sizeof(buf), ",\"workers\":%d,\"batch\":%d,\"chunks\":%d,\"hostClmul\":%d",
-                 workers_, batch_, chunks_, ECC_HOST_CLMUL);
+        char buf[200];
+        snprintf(buf, sizeof(buf),
+                 ",\"workers\":%d,\"batch\":%d,\"chunks\":%d,\"hostClmul\":%d,\"vectorLanes\":%d,"
+                 "\"chains\":%d",
+                 workers_, batch_, chunks_, ECC_HOST_CLMUL, kLanes, kChains);
         return buf;
     }
     int workers() const { return workers_; }
@@ -178,29 +245,30 @@ class CpuEngine
         DpRecord rec;
         rec.seed = seed_[lane];
         rec.iters = now_[lane / size_t(batch_)] - start_[lane];
-        memcpy(rec.x, f131::fromPolynomial(x_[lane]).w, sizeof(rec.x));
-        memcpy(rec.y, f131::fromPolynomial(y_[lane]).w, sizeof(rec.y));
+        memcpy(rec.x, f131::fromPolynomial(x_.get(lane)).w, sizeof(rec.x));
+        memcpy(rec.y, f131::fromPolynomial(y_.get(lane)).w, sizeof(rec.y));
         return rec;
     }
     bool laneReady(size_t lane) const { return ready_[lane / size_t(batch_)] != 0; }
 
   private:
-    static const int kChains = 4;
     struct Local {
         std::vector<DpRecord> reports;
         unsigned long long restarts = 0;
         bool exhausted = false;
-        // The selection's intermediates for one batch: normal-basis x, weight,
-        // phase, pivot.
-        std::vector<F131> xn;
+        // The selection's intermediates for one batch: normal-basis x (limb by
+        // limb), weight, phase, pivot.
+        Slab xn;
         std::vector<unsigned char> hw, k, p;
-        void scratch(int batch)
+        int batch = 0;
+        void scratch(int b)
         {
-            if ((int)xn.size() == batch) return;
-            xn.resize((size_t)batch);
-            hw.resize((size_t)batch);
-            k.resize((size_t)batch);
-            p.resize((size_t)batch);
+            if (batch == b) return;
+            batch = b;
+            xn.alloc((size_t)b);
+            hw.resize((size_t)b);
+            k.resize((size_t)b);
+            p.resize((size_t)b);
         }
     };
 
@@ -211,8 +279,8 @@ class CpuEngine
         hist_[lane] = ECC_HIST_EMPTY;
         P131 xp, yp;
         startPoint(seed, &xp, &yp);
-        x_[lane] = f131::fromPacked(xp);
-        y_[lane] = f131::fromPacked(yp);
+        x_.set(lane, f131::fromPacked(xp));
+        y_.set(lane, f131::fromPacked(yp));
     }
 
     // The rare path of the forward pass: the lane is at a distinguished point
@@ -222,7 +290,7 @@ class CpuEngine
     {
         using namespace eccPacked131;
         for (;;) {
-            const F131 xn = f131::fromPolynomial(x_[lane]);
+            const F131 xn = f131::fromPolynomial(x_.get(lane));
             const bool dp = f131::weight(xn) <= dpWeight_;
             if (!dp && !(guard && now - start_[lane] >= maxIters_)) return;
             if (dp) {
@@ -230,7 +298,7 @@ class CpuEngine
                 rec.seed = seed_[lane];
                 rec.iters = now - start_[lane];
                 memcpy(rec.x, xn.w, sizeof(rec.x));
-                memcpy(rec.y, f131::fromPolynomial(y_[lane]).w, sizeof(rec.y));
+                memcpy(rec.y, f131::fromPolynomial(y_.get(lane)).w, sizeof(rec.y));
                 local->reports.push_back(rec);
             } else {
                 local->restarts++;
@@ -245,13 +313,184 @@ class CpuEngine
         }
     }
 
+    // One batch's lanes, as the limb arrays of its state and scratch.
+    struct Batch {
+        uint64_t *X0, *X1, *X2, *Y0, *Y1, *Y2, *W0, *W1, *W2, *D0, *D1, *D2;
+        uint64_t *XN0, *XN1, *XN2;
+        F131 X(int i) const { return F131{{X0[i], X1[i], X2[i]}}; }
+        F131 Y(int i) const { return F131{{Y0[i], Y1[i], Y2[i]}}; }
+        F131 W(int i) const { return F131{{W0[i], W1[i], W2[i]}}; }
+        F131 D(int i) const { return F131{{D0[i], D1[i], D2[i]}}; }
+        F131 XN(int i) const { return F131{{XN0[i], XN1[i], XN2[i]}}; }
+        void setX(int i, const F131 &a) const { X0[i] = a.w[0], X1[i] = a.w[1], X2[i] = a.w[2]; }
+        void setY(int i, const F131 &a) const { Y0[i] = a.w[0], Y1[i] = a.w[1], Y2[i] = a.w[2]; }
+        void setW(int i, const F131 &a) const { W0[i] = a.w[0], W1[i] = a.w[1], W2[i] = a.w[2]; }
+        void setD(int i, const F131 &a) const { D0[i] = a.w[0], D1[i] = a.w[1], D2[i] = a.w[2]; }
+        void setXN(int i, const F131 &a) const { XN0[i] = a.w[0], XN1[i] = a.w[1], XN2[i] = a.w[2]; }
+    };
+
+    // Stage 1 of a step: the normal-basis x of every lane into XN, and the
+    // weight into HW; the rare lane that reports or is overdue is revived
+    // first.  The conversion runs N lanes at a time, the weight and the test
+    // lane by lane.
+    void convertBatch(const Batch &b, int B, size_t base, unsigned long long now, bool guard,
+                      const unsigned long long *S, unsigned char *HW, Local *local)
+    {
+        int i = 0;
+#if ECC_F131_LANES > 1
+        typedef f131x::F131x<kLanes> FX;
+        for (; i + kLanes <= B; i += kLanes)
+            f131x::fromPolynomial<kLanes>(FX::load(b.X0 + i, b.X1 + i, b.X2 + i))
+                .store(b.XN0 + i, b.XN1 + i, b.XN2 + i);
+#endif
+        for (; i < B; ++i) b.setXN(i, f131::fromPolynomial(b.X(i)));
+        for (i = 0; i < B; ++i) {
+            int hw = __builtin_popcountll(b.XN0[i]) + __builtin_popcountll(b.XN1[i]) +
+                     __builtin_popcountll(b.XN2[i] & 7u);
+            if (__builtin_expect(hw <= dpWeight_ || (guard && now - S[i] >= maxIters_), 0)) {
+                revive(base + i, now, guard, local);
+                const F131 xn = f131::fromPolynomial(b.X(i));
+                b.setXN(i, xn);
+                hw = f131::weight(xn);
+            }
+            HW[i] = (unsigned char)hw;
+        }
+    }
+
+    // Stages 5 and 6: Montgomery's trick over the batch as kChains interleaved
+    // chains (lane i in chain i mod K; W_i becomes e_i times the denominators
+    // before it in its chain, so that no product waits on the lane before it),
+    // one inversion, then lambda_i = e_i / d_i back down each chain and the
+    // additions, which depend on nothing but their own lane.
+    void chainsAndAdd(const Batch &b, int B)
+    {
+        const int K = B < kChains ? B : kChains;
+        F131 prod[kChains];
+        for (int i = 0; i < K; ++i) prod[i] = b.D(i);
+        int i = K;
+#if ECC_F131_LANES > 1
+        typedef f131x::F131x<kLanes> FX;
+        const int V = ECC_F131_CHAIN_VECTORS;
+        if (K == kChains) {
+            FX pv[V];
+            for (int v = 0; v < V; ++v)
+                pv[v] = FX::load(b.D0 + v * kLanes, b.D1 + v * kLanes, b.D2 + v * kLanes);
+            for (; i + kChains <= B; i += kChains) {
+                for (int v = 0; v < V; ++v) {
+                    const int j = i + v * kLanes;
+                    const FX w = FX::load(b.W0 + j, b.W1 + j, b.W2 + j),
+                             d = FX::load(b.D0 + j, b.D1 + j, b.D2 + j);
+                    f131x::mul<kLanes>(pv[v], w).store(b.W0 + j, b.W1 + j, b.W2 + j);
+                    pv[v] = f131x::mul<kLanes>(pv[v], d);
+                }
+            }
+            for (int v = 0; v < V; ++v)
+                for (int l = 0; l < kLanes; ++l) prod[v * kLanes + l] = pv[v].lane(l);
+        }
+#else
+        if (K == kChains) {
+            // The running products as four locals: through prod[i % K] each
+            // chain would pay a store and a load per lane on its critical
+            // path, 4.5 ns an iteration here.
+            F131 p0 = prod[0], p1 = prod[1], p2 = prod[2], p3 = prod[3];
+            for (; i + kChains <= B; i += kChains) {
+                b.setW(i, f131::mul(p0, b.W(i)));
+                p0 = f131::mul(p0, b.D(i));
+                b.setW(i + 1, f131::mul(p1, b.W(i + 1)));
+                p1 = f131::mul(p1, b.D(i + 1));
+                b.setW(i + 2, f131::mul(p2, b.W(i + 2)));
+                p2 = f131::mul(p2, b.D(i + 2));
+                b.setW(i + 3, f131::mul(p3, b.W(i + 3)));
+                p3 = f131::mul(p3, b.D(i + 3));
+            }
+            prod[0] = p0, prod[1] = p1, prod[2] = p2, prod[3] = p3;
+        }
+#endif
+        const int tail = i; // lanes from here on are the ragged end of the batch
+        for (; i < B; ++i) {
+            const F131 p = prod[i % K];
+            b.setW(i, f131::mul(p, b.W(i)));
+            prod[i % K] = f131::mul(p, b.D(i));
+        }
+        // One inversion serves the K chains: invert the product of their
+        // products and peel each chain's inverse off, 3(K - 1) products.
+        F131 inv[kChains], upTo[kChains];
+        upTo[0] = prod[0];
+        for (int j = 1; j < K; ++j) upTo[j] = f131::mul(upTo[j - 1], prod[j]);
+        F131 rest = f131::fromPacked(invPolynomial131(f131::toPacked(upTo[K - 1])));
+        for (int j = K - 1; j > 0; --j) {
+            inv[j] = f131::mul(rest, upTo[j - 1]);
+            rest = f131::mul(rest, prod[j]);
+        }
+        inv[0] = rest;
+        // Back down each chain, lambda_i = e_i / d_i into W.
+        for (i = B - 1; i >= tail; --i) {
+            const F131 v = inv[i % K];
+            b.setW(i, f131::mul(v, b.W(i)));
+            inv[i % K] = f131::mul(v, b.D(i));
+        }
+#if ECC_F131_LANES > 1
+        if (K == kChains) {
+            FX iv[V];
+            for (int v = 0; v < V; ++v)
+                for (int l = 0; l < kLanes; ++l) iv[v].setLane(l, inv[v * kLanes + l]);
+            for (i = tail - kChains; i >= K; i -= kChains) {
+                for (int v = 0; v < V; ++v) {
+                    const int j = i + v * kLanes;
+                    const FX w = FX::load(b.W0 + j, b.W1 + j, b.W2 + j),
+                             d = FX::load(b.D0 + j, b.D1 + j, b.D2 + j);
+                    f131x::mul<kLanes>(iv[v], w).store(b.W0 + j, b.W1 + j, b.W2 + j);
+                    iv[v] = f131x::mul<kLanes>(iv[v], d);
+                }
+            }
+            for (int v = 0; v < V; ++v)
+                for (int l = 0; l < kLanes; ++l) inv[v * kLanes + l] = iv[v].lane(l);
+        }
+#else
+        if (K == kChains) {
+            F131 v0 = inv[0], v1 = inv[1], v2 = inv[2], v3 = inv[3];
+            for (i = tail - kChains; i >= K; i -= kChains) {
+                b.setW(i + 3, f131::mul(v3, b.W(i + 3)));
+                v3 = f131::mul(v3, b.D(i + 3));
+                b.setW(i + 2, f131::mul(v2, b.W(i + 2)));
+                v2 = f131::mul(v2, b.D(i + 2));
+                b.setW(i + 1, f131::mul(v1, b.W(i + 1)));
+                v1 = f131::mul(v1, b.D(i + 1));
+                b.setW(i, f131::mul(v0, b.W(i)));
+                v0 = f131::mul(v0, b.D(i));
+            }
+            inv[0] = v0, inv[1] = v1, inv[2] = v2, inv[3] = v3;
+        }
+#endif
+        for (i = 0; i < K; ++i) b.setW(i, f131::mul(inv[i], b.W(i)));
+        // The additions: x' = lambda^2 + lambda + d, y' = lambda (x + x') + x' + y.
+        i = 0;
+#if ECC_F131_LANES > 1
+        for (; i + kLanes <= B; i += kLanes) {
+            const FX lambda = FX::load(b.W0 + i, b.W1 + i, b.W2 + i),
+                     d = FX::load(b.D0 + i, b.D1 + i, b.D2 + i),
+                     x = FX::load(b.X0 + i, b.X1 + i, b.X2 + i),
+                     y = FX::load(b.Y0 + i, b.Y1 + i, b.Y2 + i);
+            const FX nx = f131x::add<kLanes>(f131x::add<kLanes>(f131x::sqr<kLanes>(lambda), lambda), d);
+            const FX ny = f131x::add<kLanes>(
+                f131x::add<kLanes>(f131x::mul<kLanes>(lambda, f131x::add<kLanes>(x, nx)), nx), y);
+            nx.store(b.X0 + i, b.X1 + i, b.X2 + i);
+            ny.store(b.Y0 + i, b.Y1 + i, b.Y2 + i);
+        }
+#endif
+        for (; i < B; ++i) {
+            const F131 lambda = b.W(i), d = b.D(i), x = b.X(i);
+            const F131 nx = f131::add(f131::add(f131::sqr(lambda), lambda), d);
+            b.setY(i, f131::add(f131::add(f131::mul(lambda, f131::add(x, nx)), nx), b.Y(i)));
+            b.setX(i, nx);
+        }
+    }
+
     void runSlice(int c, int steps, Local *local)
     {
         using namespace eccPacked131;
         const size_t base = size_t(c) * size_t(batch_);
         const int B = batch_;
-        F131 *__restrict X = &x_[base], *__restrict Y = &y_[base], *__restrict W = &w_[base],
-                         *__restrict D = &d_[base];
         unsigned long long *__restrict H = &hist_[base];
         const unsigned long long *S = &start_[base];
         const uint32_t *tw = consts_.data();
@@ -260,9 +499,11 @@ class CpuEngine
             for (int i = 0; i < B; ++i) seedLane(base + i, eccSeedFor(runId_, base + i), now);
             ready_[size_t(c)] = 1;
         }
-        const int K = B < kChains ? B : kChains;
         local->scratch(B);
-        F131 *__restrict XN = local->xn.data();
+        const Batch b = {x_.w0 + base,      x_.w1 + base,      x_.w2 + base,     y_.w0 + base,
+                         y_.w1 + base,      y_.w2 + base,      w_.w0 + base,     w_.w1 + base,
+                         w_.w2 + base,      d_.w0 + base,      d_.w1 + base,     d_.w2 + base,
+                         local->xn.w0,      local->xn.w1,      local->xn.w2};
         unsigned char *__restrict HW = local->hw.data(), *__restrict KK = local->k.data(),
                                   *__restrict PP = local->p.data();
         for (int s = 0; s < steps && !local->exhausted; ++s, ++now) {
@@ -272,93 +513,22 @@ class CpuEngine
             // than its instruction count warrants (f131.h), so each stage gets
             // its own loop.  First the normal-basis x, its weight, and the
             // rare lane that reports or is overdue.
-            for (int i = 0; i < B; ++i) {
-                F131 xn = f131::fromPolynomial(X[i]);
-                int hw = f131::weight(xn);
-                if (__builtin_expect(hw <= dpWeight_ || (guard && now - S[i] >= maxIters_), 0)) {
-                    revive(base + i, now, guard, local);
-                    xn = f131::fromPolynomial(X[i]);
-                    hw = f131::weight(xn);
-                }
-                XN[i] = xn;
-                HW[i] = (unsigned char)hw;
-            }
-            for (int i = 0; i < B; ++i) KK[i] = (unsigned char)f131::selectPhase(XN[i], HW[i], tw);
-            for (int i = 0; i < B; ++i) PP[i] = (unsigned char)f131::selectPivot(XN[i], KK[i], tw);
+            convertBatch(b, B, base, now, guard, S, HW, local);
+            for (int i = 0; i < B; ++i)
+                KK[i] = (unsigned char)f131::selectPhase(b.XN(i), HW[i], tw);
+            for (int i = 0; i < B; ++i)
+                PP[i] = (unsigned char)f131::selectPivot(b.XN(i), KK[i], tw);
             // The tag, and with it the addend: d = x + x_T into D, e = y + y_T
             // into W.
             for (int i = 0; i < B; ++i) {
-                const unsigned tag = f131::selectTag(Y[i], HW[i], KK[i], PP[i], &H[i], tw);
-                f131::addend(tag, X[i], Y[i], tw, &D[i], &W[i]);
+                const F131 y = b.Y(i);
+                const unsigned tag = f131::selectTag(y, HW[i], KK[i], PP[i], &H[i], tw);
+                F131 d, e;
+                f131::addend(tag, b.X(i), y, tw, &d, &e);
+                b.setD(i, d);
+                b.setW(i, e);
             }
-            // Montgomery's trick, as K interleaved chains: lane i belongs to
-            // chain i mod K, and W_i becomes e_i times the denominators before
-            // it in its chain, so that no product waits on the lane before it.
-            F131 prod[kChains];
-            for (int i = 0; i < K; ++i) prod[i] = D[i];
-            int i = K;
-            if (K == kChains) {
-                // The running products as four locals: through prod[i % K] each
-                // chain would pay a store and a load per lane on its critical
-                // path, 4.5 ns an iteration here.
-                F131 p0 = prod[0], p1 = prod[1], p2 = prod[2], p3 = prod[3];
-                for (; i + kChains <= B; i += kChains) {
-                    W[i] = f131::mul(p0, W[i]);
-                    p0 = f131::mul(p0, D[i]);
-                    W[i + 1] = f131::mul(p1, W[i + 1]);
-                    p1 = f131::mul(p1, D[i + 1]);
-                    W[i + 2] = f131::mul(p2, W[i + 2]);
-                    p2 = f131::mul(p2, D[i + 2]);
-                    W[i + 3] = f131::mul(p3, W[i + 3]);
-                    p3 = f131::mul(p3, D[i + 3]);
-                }
-                prod[0] = p0, prod[1] = p1, prod[2] = p2, prod[3] = p3;
-            }
-            const int tail = i; // lanes from here on are the ragged end of the batch
-            for (; i < B; ++i) {
-                const F131 p = prod[i % K];
-                W[i] = f131::mul(p, W[i]);
-                prod[i % K] = f131::mul(p, D[i]);
-            }
-            // One inversion serves the K chains: invert the product of their
-            // products and peel each chain's inverse off, 3(K - 1) products.
-            F131 inv[kChains], upTo[kChains];
-            upTo[0] = prod[0];
-            for (int j = 1; j < K; ++j) upTo[j] = f131::mul(upTo[j - 1], prod[j]);
-            F131 rest = f131::fromPacked(invPolynomial131(f131::toPacked(upTo[K - 1])));
-            for (int j = K - 1; j > 0; --j) {
-                inv[j] = f131::mul(rest, upTo[j - 1]);
-                rest = f131::mul(rest, prod[j]);
-            }
-            inv[0] = rest;
-            // Back down each chain, lambda_i = e_i / d_i into W; then the
-            // additions, which depend on nothing but their own lane.
-            for (i = B - 1; i >= tail; --i) {
-                const F131 v = inv[i % K];
-                W[i] = f131::mul(v, W[i]);
-                inv[i % K] = f131::mul(v, D[i]);
-            }
-            if (K == kChains) {
-                F131 v0 = inv[0], v1 = inv[1], v2 = inv[2], v3 = inv[3];
-                for (i = tail - kChains; i >= K; i -= kChains) {
-                    W[i + 3] = f131::mul(v3, W[i + 3]);
-                    v3 = f131::mul(v3, D[i + 3]);
-                    W[i + 2] = f131::mul(v2, W[i + 2]);
-                    v2 = f131::mul(v2, D[i + 2]);
-                    W[i + 1] = f131::mul(v1, W[i + 1]);
-                    v1 = f131::mul(v1, D[i + 1]);
-                    W[i] = f131::mul(v0, W[i]);
-                    v0 = f131::mul(v0, D[i]);
-                }
-                inv[0] = v0, inv[1] = v1, inv[2] = v2, inv[3] = v3;
-            }
-            for (i = 0; i < K; ++i) W[i] = f131::mul(inv[i], W[i]);
-            for (i = 0; i < B; ++i) {
-                const F131 lambda = W[i];
-                const F131 nx = f131::add(f131::add(f131::sqr(lambda), lambda), D[i]);
-                Y[i] = f131::add(f131::add(f131::mul(lambda, f131::add(X[i], nx)), nx), Y[i]);
-                X[i] = nx;
-            }
+            chainsAndAdd(b, B);
         }
         now_[size_t(c)] = now;
     }
@@ -370,7 +540,7 @@ class CpuEngine
     const unsigned guardPeriod_;
     int workers_, batch_, chunks_, sliceSteps_;
     P131 orbitX_[128], orbitY_[128], targetX_, targetY_;
-    std::vector<F131> x_, y_, w_, d_;
+    Slab x_, y_, w_, d_;
     std::vector<unsigned long long> hist_, seed_, start_, now_;
     std::vector<char> ready_;
     std::unique_ptr<std::atomic<bool>[]> busy_;
