@@ -102,12 +102,47 @@ def main():
     assert len({profile["xcnf_sha256"], failure["xcnf_sha256"],
                 strict["xcnf_sha256"]}) == 1
     assert strict["solver_binary_sha256"] == config["solver_binary_sha256"]
-    result = {"schema": "ecc2k130-w24-functional-s3-archive-audit-v1",
+    witness_dir = RUNS / "witness"
+    witness = read(witness_dir / "receipt.json")
+    xcnf_check = read(witness_dir / "verification.json")
+    group_check = read(witness_dir / "sage_group_replay.json")
+    assert witness["xcnf_sha256"] == strict["xcnf_sha256"]
+    assert witness["packed_assignment_sha256"] == digest(
+        witness_dir / "assignment.bin.gz")
+    assert witness["sage_runtime_info_sha256"] == digest(
+        witness_dir / "runtime-info.json")
+    for name, expected in witness["source_sha256"].items():
+        assert digest(HERE / name) == expected
+    assert xcnf_check["status"] == "PASS_XCNF_WITNESS"
+    assert xcnf_check["violations"] == 0
+    assert xcnf_check["witness_receipt_sha256"] == digest(
+        witness_dir / "receipt.json")
+    assert xcnf_check["verifier_sha256"] == digest(HERE / "verify_witness.py")
+    assert group_check["status"] == "PASS_PLANTED_GROUP_WITNESS"
+    assert group_check["witness_receipt_sha256"] == digest(
+        witness_dir / "receipt.json")
+    assert group_check["xcnf_verification_sha256"] == digest(
+        witness_dir / "verification.json")
+    assert group_check["source_sha256"] == digest(HERE / "witness_sage.py")
+    published = read(HERE / "RESULT.json")
+    assert published["status"] == "planted_satisfiable_but_bounded_solver_timeout"
+    assert published["candidate_id"] is None
+    assert published["ordinary_target_attempted"] is False
+    assert published["profile"]["xcnf_sha256"] == strict["xcnf_sha256"]
+    assert published["strict_planted_control"]["status"] == strict["status"]
+    assert published["witness"]["violations"] == 0
+    assert published["witness"]["xcnf_check_status"] == xcnf_check["status"]
+    assert published["witness"]["sage_group_status"] == group_check["status"]
+    assert published["verified_logarithm"] is None
+    assert published["rho_ratio"] is None
+    result = {"schema": "ecc2k130-w24-functional-s3-archive-audit-v2",
               "status": "PASS",
               "xcnf_sha256": strict["xcnf_sha256"],
               "profile_variables": profile["variables"],
               "strict_status": strict["status"],
               "strict_sage_status": replay["status"],
+              "xcnf_witness_status": xcnf_check["status"],
+              "group_witness_status": group_check["status"],
               "invalid_attempt_preserved": True,
               "initial_source_reconstructed": True,
               "candidate_id": None}
