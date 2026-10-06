@@ -64,3 +64,23 @@ model still needs complete XCNF verification, group replay, and independent
 Sage replay. This diagnostic can determine whether five sign choices caused
 the pinned-mask solver to wander through auxiliary variables; it is not
 an unpinned factor-mask search.
+
+The [sign-enumeration receipt](runs/sign_enum_v1/receipt.json) records 18
+attempted branches in 13.915 seconds of exploratory complete-run wall time:
+CryptoMiniSat reported 17 UNSAT branches and one SAT branch. The SAT model
+passed every CNF clause and XOR row, integer-field group replay, and an
+[independent checked-Sage replay](runs/sign_enum_v1/sage_replay.json). Sage
+verified the exact factor-mask weights, all five curve points, measured
+factor-base orbits, four regular additions, raw fiber, and subgroup target.
+The branch order was fixed before execution and did not use the private sign
+witness. Solver-reported UNSAT branches have no independent proof
+certificates; their compressed raw stdout logs and hashes are archived.
+The SAT model stdout remains local because it contains the planted witness.
+
+This is a **passed pinned-mask positive control** for the direct-point
+encoding, not a solved natural PDP. It isolates a practical SAT-search
+problem: with five sign bits implicit, the same pinned-mask circuit timed
+out, while explicit sign assignments reduced each branch to a deterministic
+arithmetic check. The next gate is an unpinned planted search, followed by
+ordinary public fibers only if that search succeeds and exceptional paths
+are accounted for. No IC speedup follows from this control.
