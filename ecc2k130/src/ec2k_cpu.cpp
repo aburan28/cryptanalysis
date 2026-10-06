@@ -26,9 +26,9 @@ int usage()
     fprintf(stderr,
             "usage: ec2k-cpu <bench|walk|check> [options]\n%s"
             "  --workers N      worker threads (default: one per core)\n"
-            "  --batch B        lanes per batched inversion (default 512)\n"
+            "  --batch B        lanes per batched inversion (default %d)\n"
             "  --chunks C       batches in flight (default: two per worker)\n",
-            commonUsage());
+            commonUsage(), CpuEngine::kDefaultBatch);
     return 2;
 }
 

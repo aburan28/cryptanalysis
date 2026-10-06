@@ -16,10 +16,11 @@
 //     model computes it, instead of through f131.h's byte tables.  The tag,
 //     the addend's loads and the rare lane that reports stay scalar.
 //   - A batch is `batch` lanes sharing one inversion by Montgomery's trick,
-//     512 by default against the device's 16: a core has no register budget to
-//     respect, the inversion is about 700 ns against a lane's step, and 512
-//     lanes of state (x, y, prefix product, denominator, history: 104 bytes
-//     each) sit in cache beside the selection tables.
+//     512 by default on the scalar path and 2048 on the vector path, against
+//     the device's 16: a core has no register budget to respect, the inversion
+//     is about 700 ns against a lane's step, and a batch of state (x, y,
+//     prefix product, denominator, history: 104 bytes a lane, plus the byte
+//     scratch) sits in cache beside the selection tables.
 //   - A step is a sequence of loops over the batch, not a loop of steps over
 //     lanes: a lane's selection and its place in the inversion chain are
 //     dependency chains much longer than their instruction counts, and a core
@@ -124,7 +125,7 @@ class Slab
 
 struct Geometry {
     int workers = 0;                         // 0: one per core
-    int batch = 0;                           // 0: 512 lanes per inversion
+    int batch = 0;                           // 0: CpuEngine::kDefaultBatch lanes per inversion
     int chunks = 0;                          // 0: two batches per worker
     int sliceSteps = 64;                     // steps of one batch handed to a worker at a time
     unsigned guardPeriod = ECC_GUARD_PERIOD; // --max-iters is evaluated once in this many steps
@@ -138,6 +139,14 @@ class CpuEngine
     // the compiler keeps in registers; on the vector path a register of
     // accumulators per N lanes, ECC_F131_CHAIN_VECTORS of them.
     static const int kChains = kLanes > 1 ? kLanes * ECC_F131_CHAIN_VECTORS : 4;
+    // Lanes per inversion when neither the options nor the geometry say.  The
+    // vector path's lane step is short enough that the batch's fixed cost (the
+    // inversion and the 3(K-1) scalar products that peel the K chains) shows:
+    // 2048 lanes of state is about 270 KB, which sits in a core's L2, and on a
+    // 4-vCPU Sapphire Rapids VM the client ran 117 M it/s at 512 and 126 M at
+    // 2048 (uncontrolled host; the figures are exploratory).  The scalar path
+    // keeps the 512 it was tuned at on an M4 Pro.
+    static const int kDefaultBatch = kLanes > 1 ? 2048 : 512;
 
     CpuEngine(const HostTable &table, const Options &o, bool bench, Geometry g = Geometry())
         : consts_(table.deviceConsts()), dpWeight_(bench ? -1 : o.dpWeight), maxIters_(o.maxIters),
@@ -147,7 +156,7 @@ class CpuEngine
         const unsigned cores = std::thread::hardware_concurrency();
         workers_ =
             g.workers > 0 ? g.workers : (o.workers > 0 ? o.workers : (cores ? int(cores) : 1));
-        batch_ = g.batch > 0 ? g.batch : (o.batch > 0 ? o.batch : 512);
+        batch_ = g.batch > 0 ? g.batch : (o.batch > 0 ? o.batch : kDefaultBatch);
         chunks_ = g.chunks > 0 ? g.chunks : (o.chunks > 0 ? o.chunks : 2 * workers_);
         sliceSteps_ = g.sliceSteps > 0 ? g.sliceSteps : 64;
 
