@@ -169,6 +169,26 @@ This is complete for the classified degrees through 199, not for larger prime
 degrees or the entire isogeny class. Per-key evaluation of the new maps was not
 timed.
 
+## Low-degree paths through depth five
+
+The complementary cheap-path search now covers every curve first reached in at
+most five horizontal steps of degrees 3, 5, 11, and 13. It contains 168 curves;
+deduplication against the 98-curve prior union contributed 112 new neighbors
+and raised the combined explicit registry to P-256 plus 209 distinct neighbors.
+
+All 112 additions received root-controlled matched-native rho measurements.
+Six unadjusted 0.5-second screening intervals triggered a fresh 30-trial,
+two-second holdout. None reproduced: the largest holdout estimate was `1.0153x`
+with paired 95% interval `0.9945x–1.0366x`. Thus all 209 retained non-root
+curves have now been measured in the matched native backend, with zero
+reproducible speedups.
+
+The registry, all explicit paths, 19 screening blocks, holdout, receipt, and
+verifier are frozen in
+[`results/sage-low-degree-depth-five-20261006`](results/sage-low-degree-depth-five-20261006).
+This is a depth-five result for four low degrees, not a full class-group
+enumeration. Per-key evaluation of the added paths was not timed.
+
 ## Quick start
 
 Python 3.11 or newer is required.
