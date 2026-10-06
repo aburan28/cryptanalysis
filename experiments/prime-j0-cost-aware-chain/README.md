@@ -256,4 +256,13 @@ group-operation score beats the canonical-plus-oracle schedule. On reused
 design scalars, the gated policy saves 4.40% on `glv-j0-32` and 2.72% on
 `j0-56` with about 3.6 and 13.5 atlas lookups per scalar, respectively.
 The ungated schedule regresses on both curves. Native end-to-end speed and
-academic novelty remain unproved.
+academic novelty remain unproved. The
+[prospective native protocol](PERIODIC_PAIR_NATIVE_PROTOCOL.md) fixes the
+modulus-27 gate and disjoint comparison before new inputs are generated.
+Its native old-design controls match all 2,048 Python word streams. The
+[frozen disjoint panel](PERIODIC_PAIR_NATIVE_PROTOCOL.md#frozen-disjoint-panel-result)
+verifies 32,768 scalar-point outputs in eight paired cases and passes the
+predeclared modeled-operation gate: the score falls 4.17%–4.48% on
+`glv-j0-32` and 2.62%–2.70% on `j0-56`, with no schedule fallbacks.
+The candidate's raw local interval was longer in seven of eight pairs;
+without host isolation or repeated pairs, CPU speed remains unknown.

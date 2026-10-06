@@ -89,6 +89,7 @@ academic novelty has not been established.
 python3 experiments/prime-j0-cost-aware-chain/screen_periodic_pair_atlas.py --samples 512
 ```
 
-The script uses pure Python and does not launch Sage. Before a disjoint
-native panel, freeze the exact `M=27` selector, gate, fixture, pairing,
-correctness checks, and memory/setup accounting in a prospective protocol.
+The script uses pure Python and does not launch Sage. The
+[prospective native protocol](PERIODIC_PAIR_NATIVE_PROTOCOL.md) freezes the
+exact `M=27` selector, gate, fixture, pairing, correctness checks, and
+memory/setup accounting before any disjoint inputs are generated.

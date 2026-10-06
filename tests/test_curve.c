@@ -83,6 +83,7 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
     CHECK(ca_ec_tau_pair_complete_prepare_verify(&complete_pre));
     CHECK_EQ_U64(sizeof(complete_pre.exact), 23232);
     CHECK_EQ_U64(ca_ec_tau_pair_complete_static_bytes(), 33289);
+    CHECK(ca_ec_tau_pair_periodic_static_bytes() > ca_ec_tau_pair_complete_static_bytes());
     CHECK_EQ_U64(complete_seed_ops, pair_seed_ops);
     CHECK_EQ_U64(complete_prep_adds, pair_prep_adds);
     CHECK(complete_prep_rotations >= pair_prep_rotations);
@@ -181,6 +182,26 @@ static void tau_cost_checks(const ca_group *g, const ca_elem *point, int samples
                                                   &complete_triples, &complete_adds,
                                                   &complete_rotations));
         CHECK(ca_ec_tau_pair_complete_recode_verify_scalar(&complete_pre, k));
+        if (i < 24) {
+            ca_elem periodic_reference, periodic_candidate;
+            uint64_t reference_triples = 0, reference_adds = 0;
+            uint64_t candidate_triples = 0, candidate_adds = 0, lookups = 0;
+            uint64_t accepted = 0, fallbacks = 0;
+            CHECK(ca_ec_tau_pair_periodic_mul_profile(
+                g, &complete_pre, &periodic_reference, k, 0, &reference_triples,
+                &reference_adds, NULL, NULL, NULL));
+            CHECK(ca_ec_tau_pair_periodic_mul_profile(
+                g, &complete_pre, &periodic_candidate, k, 1, &candidate_triples,
+                &candidate_adds, &lookups, &accepted, &fallbacks));
+            CHECK(ca_ec_tau_pair_periodic_recode_verify_scalar(&complete_pre, k, 0));
+            CHECK(ca_ec_tau_pair_periodic_recode_verify_scalar(&complete_pre, k, 1));
+            CHECK(ca_group_equal(g, &periodic_reference, &expected));
+            CHECK(ca_group_equal(g, &periodic_candidate, &expected));
+            CHECK(10 * candidate_triples + 16 * candidate_adds <=
+                  10 * reference_triples + 16 * reference_adds);
+            CHECK(accepted <= 1 && fallbacks <= 1);
+            if (k % g->order == 0) CHECK_EQ_U64(lookups, 0);
+        }
         uint64_t positional_adds = UINT64_MAX, positional_rotations = UINT64_MAX;
         CHECK(ca_ec_tau4_pos_mul(g, &positional_pre, &positional, k, &positional_adds,
                                  &positional_rotations));
@@ -291,6 +312,12 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_tau_pair_complete_prepare(g, &identity, &complete_pre, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_tau_pair_complete_prepare_verify(&complete_pre));
     CHECK(ca_ec_tau_pair_complete_mul_profile(g, &complete_pre, &got, 17, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    CHECK(ca_ec_tau_pair_periodic_mul_profile(g, &complete_pre, &got, 17, 0, NULL, NULL, NULL,
+                                               NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    CHECK(ca_ec_tau_pair_periodic_mul_profile(g, &complete_pre, &got, 17, 1, NULL, NULL, NULL,
+                                               NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
     CHECK(ca_ec_tau_pair_fused_prepare(g, &identity, &pair_pre, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_tau_pair_fused_prepare_verify(&pair_pre));
