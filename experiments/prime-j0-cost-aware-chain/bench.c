@@ -104,7 +104,8 @@ static int select_mode(const char *name)
                                   "tail-pair-periodic-firstword27",
                                   "tail-pair-mixed-radix",
                                   "tail-pair-mixed-full-digits",
-                                  "fixed-comb9"};
+                                  "fixed-comb9",
+                                  "pos-compact"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -129,7 +130,7 @@ int main(int argc, char **argv)
                 "tail-double-residue|tail-pair-fused|tail-pair-complete|"
                 "tail-pair-periodic-canonical|tail-pair-periodic-gated27|"
                 "tail-pair-periodic-firstword27|tail-pair-mixed-radix|"
-                "tail-pair-mixed-full-digits|fixed-comb9 "
+                "tail-pair-mixed-full-digits|fixed-comb9|pos-compact "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -154,6 +155,7 @@ int main(int argc, char **argv)
     int pair_full = mode == 34;
     int pair_mixed = mode == 33 || pair_full;
     int comb = mode == 35;
+    int compact = mode == 36;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -186,6 +188,7 @@ int main(int argc, char **argv)
     ca_tau_pair_fused_precomp pair_pre;
     ca_tau_pair_complete_precomp complete_pre;
     ca_fixed_comb_precomp comb_pre;
+    ca_tau4_pos_compact_precomp compact_pre = {0};
     ca_tau4_pos_precomp positional_pre;
     ca_tau8_fused_precomp fused_pre = {0};
     ca_tau_wide_precomp wide_pre = {0};
@@ -204,14 +207,16 @@ int main(int argc, char **argv)
     size_t prep_temp_stack_bytes =
         comb ? (CA_FIXED_COMB_ENTRIES * 4 + CA_FIXED_COMB_WIDTH * 3) * sizeof(uint64_t) : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
-    size_t point_entries = comb          ? CA_FIXED_COMB_ENTRIES
+    size_t point_entries = compact       ? ca_ec_tau4_pos_compact_layers(&group) * 18
+                           : comb          ? CA_FIXED_COMB_ENTRIES
                            : pair_complete ? CA_TAU_PAIR_COMPLETE_COUNT
                            : pair_fused  ? CA_TAU_PAIR_FUSED_REP_COUNT
                            : tapered     ? ca_ec_tau_wide_entries(wide_schedule)
                            : fused       ? fused_blocks * fused_entries
                                          : 0;
     size_t point_table_bytes = point_entries * sizeof(ca_elem);
-    size_t prep_bytes = comb          ? sizeof(comb_pre)
+    size_t prep_bytes = compact       ? sizeof(compact_pre) + point_table_bytes
+                        : comb          ? sizeof(comb_pre)
                         : pair_complete ? sizeof(complete_pre)
                         : pair_fused  ? sizeof(pair_pre)
                         : tapered     ? sizeof(wide_pre) + point_table_bytes
@@ -220,11 +225,18 @@ int main(int argc, char **argv)
                         : mode == 0   ? 0
                                       : sizeof(pre);
     if (fused) prep_temp_heap_bytes = fused_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
+    if (compact) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (tapered) prep_temp_heap_bytes = ca_ec_tau_wide_temp_bytes(wide_schedule);
     if (wavefront) prep_temp_heap_bytes = ca_ec_tau_wide_wavefront_temp_bytes(wide_schedule);
     if (mode != 0) {
         double t0 = ca_now();
-        if (comb) {
+        if (compact) {
+            if (!ca_ec_tau4_pos_compact_prepare(&group, &point, &compact_pre, &prep_triples,
+                                                 &prep_layer_inversions)) {
+                free(outputs);
+                return 2;
+            }
+        } else if (comb) {
             if (!ca_ec_fixed_comb_prepare(&group, &point, &comb_pre, &prep_doubles,
                                            &prep_adds, &prep_layer_inversions)) {
                 free(outputs);
@@ -377,6 +389,17 @@ int main(int argc, char **argv)
                 adds += a;
                 rotations += r;
                 output_inversions += !outputs[i].w[2];
+            } else if (compact) {
+                uint64_t a = 0, r = 0, fallback = 0;
+                if (!ca_ec_tau4_pos_compact_mul_profile(&group, &compact_pre, &outputs[i],
+                                                         scalars[i], &a, &r, &fallback)) {
+                    fprintf(stderr, "compact positional evaluation failed at index %zu\n", i);
+                    free(outputs);
+                    return 1;
+                }
+                adds += a;
+                rotations += r;
+                fallbacks += fallback;
             } else if (comb) {
                 uint64_t d = 0, a = 0;
                 if (!ca_ec_fixed_comb_mul_profile(&group, &comb_pre, &outputs[i], scalars[i],
@@ -606,6 +629,7 @@ int main(int argc, char **argv)
     double verify_ms = 1000 * (ca_now() - verify_start);
     ca_ec_tau8_fused_clear(&fused_pre);
     ca_ec_tau_wide_clear(&wide_pre);
+    ca_ec_tau4_pos_compact_clear(&compact_pre);
     free(outputs);
     printf(
         "curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
