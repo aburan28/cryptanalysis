@@ -61,7 +61,11 @@ Freeze **new** disjoint scalar files before running either arm. Use the
 existing SplitMix64 rejection law with seed `0xC264D2C19474AB67`, 4,096
 public scalars for each of `P`, `37P`, `101P`, and `103P` on each curve, and
 reject every scalar appearing in the earlier periodic fixture and its
-listed predecessor fixtures. Both arms must emit identical words, outputs,
+listed predecessor fixtures. Commit and publish
+[`make_periodic_int64_inputs.py`](make_periodic_int64_inputs.py) and its
+[read-only verifier](check_periodic_int64_inputs.py) before generating
+the new files. Commit the fixture and its generic-reference output digests
+before running either candidate arm. Both arms must emit identical words, outputs,
 and operation counts. Charge recoding, group operations, conversion, and
 storage from first scalar reduction through last affine output; record
 point-table setup separately. Preserve every raw failure.
