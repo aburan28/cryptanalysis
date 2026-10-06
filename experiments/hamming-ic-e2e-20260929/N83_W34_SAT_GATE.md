@@ -68,6 +68,29 @@ the intermediate values are supplied. It suggests that discovering those
 values is the difficult part of the current SAT formulation. It does not
 change the failed frozen gate or estimate ordinary-query cost.
 
+## Small-field ideal-equivalence control
+
+The [exhaustive checked-Sage control](sage_small_s3_chain_equivalence.py)
+compared the four-equation S3 chain against every rational five-factor x
+tuple and every possible target x on the degree-three and degree-four versions
+of `y²+xy=x³+1`. It enumerated every rational lift and classified a group
+sum as *regular* only when its first two, three, and four factors all have
+nonidentity sums. These toy curves have orders four and 16, respectively;
+they are useful for exceptional-case discovery, not N83 yield estimates.
+
+| Degree | Factor x tuples | Regular-locus spurious / missed target pairs | Full-locus spurious / missed pairs | Misses possible only through an identity intermediate |
+| ---: | ---: | ---: | ---: | ---: |
+| 3 | 32 | 0 / 0 | 0 / 19 | 19 |
+| 4 | 32,768 | 0 / 0 | 0 / 7,543 | 7,543 |
+
+Thus the tested chain matched the group law exactly on the regular locus in
+both small fields, while the affine intermediate-x encoding omitted genuine
+group sums that pass through identity. It produced no spurious target pairs
+in these controls. This is a counterexample to unrestricted ideal equivalence
+for the present chain; it is not a proof of regular-locus equivalence for N83.
+An ordinary-query implementation would need explicit identity-intermediate
+branches or a projective encoding and then an N83-specific verification gate.
+
 ## Decision
 
 The frozen pinned positive control failed its bounded search gate. Therefore
@@ -80,8 +103,9 @@ solver success probability.
 
 The next solver work should first make the planted branch solve under a
 frozen limit, then independently replay any model as a five-point group sum.
-The small exhaustive S3/point-lift equivalence control must also pass before
-an ordinary query. A larger timeout alone would not establish either gate.
+The observed identity-intermediate misses must also be handled and retested
+before an ordinary query. A larger timeout alone would not establish either
+gate.
 The local immutable search and audit receipts live under
 `/Volumes/SSD990/llm/tmp/n83_w34_sat_pinned_v4` and
 `/Volumes/SSD990/llm/tmp/n83_w34_known_witness_audit_v1`; those directories
