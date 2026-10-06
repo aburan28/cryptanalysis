@@ -345,8 +345,8 @@ int main(int argc, char **argv)
     uint64_t mixed_lookups = 0, mixed_fallbacks = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
     size_t static_map_bytes = tau3_atlas              ? ca_ec_tau3_atlas_static_bytes()
-                              : tau3                    ? ca_ec_tau3_fused_static_bytes()
-                              : pair_full               ? ca_ec_tau_pair_mixed_full_static_bytes()
+                              : tau3                  ? ca_ec_tau3_fused_static_bytes()
+                              : pair_full             ? ca_ec_tau_pair_mixed_full_static_bytes()
                               : pair_mixed            ? ca_ec_tau_pair_mixed_static_bytes()
                               : mode == 32            ? ca_ec_tau_pair_firstword_static_bytes()
                               : pair_periodic         ? ca_ec_tau_pair_periodic_static_bytes()
@@ -413,9 +413,9 @@ int main(int argc, char **argv)
                 uint64_t a = 0, r = 0, fallback = 0;
                 int success = tau3_atlas
                                   ? ca_ec_tau3_atlas_mul_profile(&group, &tau3_pre, &outputs[i],
-                                                                  scalars[i], &a, &r, &fallback)
+                                                                 scalars[i], &a, &r, &fallback)
                                   : ca_ec_tau3_fused_mul_profile(&group, &tau3_pre, &outputs[i],
-                                                                  scalars[i], &a, &r, &fallback);
+                                                                 scalars[i], &a, &r, &fallback);
                 if (!success) {
                     fprintf(stderr, "tau3 fused evaluation failed at index %zu\n", i);
                     free(outputs);
@@ -529,8 +529,7 @@ int main(int argc, char **argv)
     uint64_t tail_complete_preparation_checks = 0;
     uint64_t tau3_preparation_checks = 0;
     if (tau3) {
-        if (!ca_ec_tau3_fused_verify_map() ||
-            (tau3_atlas && !ca_ec_tau3_atlas_verify_map()) ||
+        if (!ca_ec_tau3_fused_verify_map() || (tau3_atlas && !ca_ec_tau3_atlas_verify_map()) ||
             !ca_ec_tau3_fused_prepare_verify(&tau3_pre)) {
             fprintf(stderr, "tau3 map, atlas, or point table verification failed\n");
             free(outputs);
@@ -568,11 +567,10 @@ int main(int argc, char **argv)
             if (tau3) {
                 uint16_t actions[16];
                 size_t action_count = 0;
-                int recoded = tau3_atlas
-                                  ? ca_ec_tau3_atlas_recode_actions(&tau3_pre, scalars[i], actions,
-                                                                     &action_count)
-                                  : ca_ec_tau3_fused_recode_actions(&tau3_pre, scalars[i], actions,
-                                                                     &action_count);
+                int recoded = tau3_atlas ? ca_ec_tau3_atlas_recode_actions(&tau3_pre, scalars[i],
+                                                                           actions, &action_count)
+                                         : ca_ec_tau3_fused_recode_actions(&tau3_pre, scalars[i],
+                                                                           actions, &action_count);
                 if (!recoded) {
                     tau3_action_fallbacks++;
                 } else {
@@ -711,51 +709,44 @@ int main(int argc, char **argv)
     ca_ec_tau4_pos_compact_clear(&compact_pre);
     ca_ec_tau3_fused_clear(&tau3_pre);
     free(outputs);
-    printf(
-        "curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
-        " endo_lambda=%" PRIu64 " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
-        " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
-        " prep_triples=%" PRIu64 " prep_doubles=%" PRIu64 " prep_tau_steps=%" PRIu64
-        " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64
-        " prep_seed_ops=%" PRIu64 " prep_layer_inversions=%" PRIu64
-        " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_temp_stack_bytes=%zu prep_repeats=%d"
-        " point_entries=%zu point_table_bytes=%zu"
-        " triples=%" PRIu64 " tau_steps=%" PRIu64 " doubles=%" PRIu64
-        " adds=%" PRIu64 " rotations=%" PRIu64 " output_inversions=%" PRIu64
-        " fallbacks=%" PRIu64 " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
-        " static_map_bytes=%zu recipe_bytes=%zu prep_slot_lookups=%" PRIu64
-        " prep_batch_denominators=%" PRIu64 " prep_affine_exceptions=%" PRIu64
-        " prep_affine_doublings=%" PRIu64 " prep_affine_edge_mults_model=%" PRIu64
-        " prep_affine_edge_squarings_model=%" PRIu64 " online_scratch_bytes=%zu"
-        " tail_stream_checks=%" PRIu64 " tail_double_checks=%" PRIu64 " tail_pair_checks=%" PRIu64
-        " tail_pair_preparation_checks=%" PRIu64 " tail_complete_checks=%" PRIu64
-        " tail_complete_preparation_checks=%" PRIu64
-        " periodic_lookups=%" PRIu64 " periodic_accepted=%" PRIu64
-        " periodic_fallbacks=%" PRIu64 " periodic_checks=%" PRIu64
-        " periodic_word_digest=%016" PRIx64
-        " mixed_lookups=%" PRIu64 " mixed_fallbacks=%" PRIu64
-        " mixed_checks=%" PRIu64 " mixed_action_digest=%016" PRIx64
-        " tau3_preparation_checks=%" PRIu64 " tau3_checks=%" PRIu64
-        " tau3_action_fallbacks=%" PRIu64 " tau3_action_digest=%016" PRIx64
-        " tau3_atlas_checks=%" PRIu64
-        " verified=1\n",
-        argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda, input_digest,
-        output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_doubles, prep_tau_steps,
-        prep_adds,
-        prep_rotations,
-        prep_seed_ops, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes,
-        prep_temp_stack_bytes, prep_repeats,
-        point_entries, point_table_bytes, triples, tau_steps, doubles, adds, rotations,
-        output_inversions, fallbacks,
-        second_recodes, steered_blocks, static_map_bytes, recipe_bytes, prep_slot_lookups,
-        wavefront_stats.denominators, wavefront_stats.exceptional_edges,
-        wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
-        wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
-        tail_stream_checks, tail_double_checks, tail_pair_checks, tail_pair_preparation_checks,
-        tail_complete_checks, tail_complete_preparation_checks, periodic_lookups,
-        periodic_accepted, periodic_fallbacks, periodic_checks, periodic_word_digest,
-        mixed_lookups, mixed_fallbacks, mixed_checks, mixed_action_digest,
-        tau3_preparation_checks, tau3_checks, tau3_action_fallbacks, tau3_action_digest,
-        tau3_atlas_checks);
+    printf("curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
+           " endo_lambda=%" PRIu64 " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
+           " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
+           " prep_triples=%" PRIu64 " prep_doubles=%" PRIu64 " prep_tau_steps=%" PRIu64
+           " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64 " prep_seed_ops=%" PRIu64
+           " prep_layer_inversions=%" PRIu64
+           " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_temp_stack_bytes=%zu prep_repeats=%d"
+           " point_entries=%zu point_table_bytes=%zu"
+           " triples=%" PRIu64 " tau_steps=%" PRIu64 " doubles=%" PRIu64 " adds=%" PRIu64
+           " rotations=%" PRIu64 " output_inversions=%" PRIu64 " fallbacks=%" PRIu64
+           " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
+           " static_map_bytes=%zu recipe_bytes=%zu prep_slot_lookups=%" PRIu64
+           " prep_batch_denominators=%" PRIu64 " prep_affine_exceptions=%" PRIu64
+           " prep_affine_doublings=%" PRIu64 " prep_affine_edge_mults_model=%" PRIu64
+           " prep_affine_edge_squarings_model=%" PRIu64 " online_scratch_bytes=%zu"
+           " tail_stream_checks=%" PRIu64 " tail_double_checks=%" PRIu64
+           " tail_pair_checks=%" PRIu64 " tail_pair_preparation_checks=%" PRIu64
+           " tail_complete_checks=%" PRIu64 " tail_complete_preparation_checks=%" PRIu64
+           " periodic_lookups=%" PRIu64 " periodic_accepted=%" PRIu64 " periodic_fallbacks=%" PRIu64
+           " periodic_checks=%" PRIu64 " periodic_word_digest=%016" PRIx64 " mixed_lookups=%" PRIu64
+           " mixed_fallbacks=%" PRIu64 " mixed_checks=%" PRIu64 " mixed_action_digest=%016" PRIx64
+           " tau3_preparation_checks=%" PRIu64 " tau3_checks=%" PRIu64
+           " tau3_action_fallbacks=%" PRIu64 " tau3_action_digest=%016" PRIx64
+           " tau3_atlas_checks=%" PRIu64 " verified=1\n",
+           argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda,
+           input_digest, output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_doubles,
+           prep_tau_steps, prep_adds, prep_rotations, prep_seed_ops, prep_layer_inversions,
+           prep_bytes, prep_temp_heap_bytes, prep_temp_stack_bytes, prep_repeats, point_entries,
+           point_table_bytes, triples, tau_steps, doubles, adds, rotations, output_inversions,
+           fallbacks, second_recodes, steered_blocks, static_map_bytes, recipe_bytes,
+           prep_slot_lookups, wavefront_stats.denominators, wavefront_stats.exceptional_edges,
+           wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
+           wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
+           tail_stream_checks, tail_double_checks, tail_pair_checks, tail_pair_preparation_checks,
+           tail_complete_checks, tail_complete_preparation_checks, periodic_lookups,
+           periodic_accepted, periodic_fallbacks, periodic_checks, periodic_word_digest,
+           mixed_lookups, mixed_fallbacks, mixed_checks, mixed_action_digest,
+           tau3_preparation_checks, tau3_checks, tau3_action_fallbacks, tau3_action_digest,
+           tau3_atlas_checks);
     return 0;
 }

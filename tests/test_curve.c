@@ -381,8 +381,8 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
     CHECK_EQ_U64(tau3_fallback, 1);
     tau3_fallback = 0;
-    CHECK(ca_ec_tau3_atlas_mul_profile(g, &tau3_pre, &got, g->order / 2,
-                                       NULL, NULL, &tau3_fallback));
+    CHECK(
+        ca_ec_tau3_atlas_mul_profile(g, &tau3_pre, &got, g->order / 2, NULL, NULL, &tau3_fallback));
     CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
     CHECK_EQ_U64(tau3_fallback, 1);
     tau3_pre.blocks = tau3_saved_blocks;

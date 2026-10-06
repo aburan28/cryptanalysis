@@ -2541,7 +2541,7 @@ int ca_ec_tau3_fused_recode_actions(const ca_tau3_fused_precomp *pre, uint64_t k
 }
 
 int ca_ec_tau3_atlas_recode_actions(const ca_tau3_fused_precomp *pre, uint64_t k,
-                                   uint16_t actions[16], size_t *count)
+                                    uint16_t actions[16], size_t *count)
 {
     if (!pre || !pre->base.g || !actions || !count || !pre->blocks) return 0;
     const ca_group *g = pre->base.g;
@@ -2554,11 +2554,9 @@ int ca_ec_tau3_atlas_recode_actions(const ca_tau3_fused_precomp *pre, uint64_t k
     while (a || b) {
         if (*count >= pre->blocks || *count >= 16) return 0;
         const ca_tau3_atlas_entry *entry =
-            &ca_tau3_atlas[81 * (unsigned)tau3_residue(a, 81) +
-                           (unsigned)tau3_residue(b, 81)];
+            &ca_tau3_atlas[81 * (unsigned)tau3_residue(a, 81) + (unsigned)tau3_residue(b, 81)];
         unsigned id = entry->action >> 3, code = entry->action & 7;
-        if (id >= CA_TAU3_FUSED_ORBITS || code >= 6 ||
-            (a - entry->a) % 27 || (b - entry->b) % 27)
+        if (id >= CA_TAU3_FUSED_ORBITS || code >= 6 || (a - entry->a) % 27 || (b - entry->b) % 27)
             return 0;
         actions[(*count)++] = entry->action;
         a = (entry->a - a) / 27;
@@ -2573,9 +2571,9 @@ int ca_ec_tau3_atlas_recode_verify_scalar(const ca_tau3_fused_precomp *pre, uint
     size_t old_count = 0, new_count = 0;
     int old_ok = ca_ec_tau3_fused_recode_actions(pre, k, old_actions, &old_count);
     int new_ok = ca_ec_tau3_atlas_recode_actions(pre, k, new_actions, &new_count);
-    return old_ok == new_ok && (!old_ok ||
-           (old_count == new_count &&
-            memcmp(old_actions, new_actions, old_count * sizeof(uint16_t)) == 0));
+    return old_ok == new_ok &&
+           (!old_ok || (old_count == new_count &&
+                        memcmp(old_actions, new_actions, old_count * sizeof(uint16_t)) == 0));
 }
 
 int ca_ec_tau3_fused_recode_verify_scalar(const ca_tau3_fused_precomp *pre, uint64_t k)
@@ -2732,9 +2730,9 @@ int ca_ec_tau3_fused_prepare_verify(const ca_tau3_fused_precomp *pre)
     return 1;
 }
 
-static int tau3_mul_profile_impl(const ca_group *g, const ca_tau3_fused_precomp *pre,
-                                ca_elem *out, uint64_t k, uint64_t *adds,
-                                uint64_t *rotations, uint64_t *fallbacks, int atlas)
+static int tau3_mul_profile_impl(const ca_group *g, const ca_tau3_fused_precomp *pre, ca_elem *out,
+                                 uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                 uint64_t *fallbacks, int atlas)
 {
     if (!g || !pre || !out || pre->base.g != g || !pre->blocks) return 0;
     if (adds) *adds = 0;
@@ -2775,16 +2773,16 @@ static int tau3_mul_profile_impl(const ca_group *g, const ca_tau3_fused_precomp 
     return 1;
 }
 
-int ca_ec_tau3_fused_mul_profile(const ca_group *g, const ca_tau3_fused_precomp *pre,
-                                 ca_elem *out, uint64_t k, uint64_t *adds,
-                                 uint64_t *rotations, uint64_t *fallbacks)
+int ca_ec_tau3_fused_mul_profile(const ca_group *g, const ca_tau3_fused_precomp *pre, ca_elem *out,
+                                 uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                 uint64_t *fallbacks)
 {
     return tau3_mul_profile_impl(g, pre, out, k, adds, rotations, fallbacks, 0);
 }
 
-int ca_ec_tau3_atlas_mul_profile(const ca_group *g, const ca_tau3_fused_precomp *pre,
-                                 ca_elem *out, uint64_t k, uint64_t *adds,
-                                 uint64_t *rotations, uint64_t *fallbacks)
+int ca_ec_tau3_atlas_mul_profile(const ca_group *g, const ca_tau3_fused_precomp *pre, ca_elem *out,
+                                 uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                 uint64_t *fallbacks)
 {
     return tau3_mul_profile_impl(g, pre, out, k, adds, rotations, fallbacks, 1);
 }

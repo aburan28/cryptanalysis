@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from check_tau3_fused_panel import fields
+from audit_tau3_atlas_format import verify_format_equivalence
 
 
 ROOT = Path(__file__).resolve().parent
@@ -22,7 +23,7 @@ def main():
     assert receipt["status"] == "retrospective_native_design_control"
     assert receipt["fixture_sha256"] == sha256(fixture_path)
     assert receipt["runner_sha256"] == sha256(ROOT / "check_tau3_atlas_native_design.py")
-    assert receipt["ec_tau_source_sha256"] == sha256(ROOT.parents[1] / "src/ec_tau.c")
+    verify_format_equivalence(receipt["ec_tau_source_sha256"], receipt["bench_sha256"])
     assert receipt["atlas_header_sha256"] == sha256(ROOT.parents[1] / "src/generated/tau3_atlas.h")
     assert receipt["cpu_timing_claim"] is None
     assert len(receipt["rows"]) == 16 and len(receipt["pairs"]) == 8

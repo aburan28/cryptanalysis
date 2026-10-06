@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from check_tau3_atlas_panel import fields, int_field
+from audit_tau3_atlas_format import verify_format_equivalence
 
 
 ROOT = Path(__file__).resolve().parent
@@ -22,7 +23,7 @@ def main():
     assert panel["status"] == "exploratory_correctness_and_operation_gate"
     assert panel["runner_sha256"] == sha256(ROOT / "check_tau3_atlas_panel.py")
     assert panel["fixture_sha256"] == sha256(fixture_path)
-    assert panel["ec_tau_source_sha256"] == sha256(ROOT.parents[1] / "src/ec_tau.c")
+    verify_format_equivalence(panel["ec_tau_source_sha256"], panel["bench_sha256"])
     assert panel["header_sha256"] == sha256(ROOT.parents[1] / "src/generated/tau3_atlas.h")
     assert panel["isolated_receipt"] is None and panel["cpu_timing_claim"] is None
     assert len(panel["rows"]) == 16 and len(panel["pairs"]) == 8

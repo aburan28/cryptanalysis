@@ -75,3 +75,13 @@ Local `online_ms` is highly variable: the atlas was lower in seven paired
 cases and higher in one. These are single, unisolated executions on a
 contended host and cannot establish a CPU speedup. The next performance
 gate requires a host-level isolation receipt and repeated paired runs.
+
+After the panel, the repository's changed-line `clang-format` gate required
+formatting of four C files. The original panel retains the source hashes
+from its frozen execution. The [format custody
+receipt](tau3-atlas-format-equivalence.json) records before/after source
+hashes and confirms that rebuilding both the benchmark and curve test
+produced **byte-identical binaries**. The [read-only
+audit](audit_tau3_atlas_format.py) checks the historical Git blobs, current
+sources, original measured benchmark binary hash, and rebuilt binary when
+available. The formatted curve test still passes 2,306,779 checks.
