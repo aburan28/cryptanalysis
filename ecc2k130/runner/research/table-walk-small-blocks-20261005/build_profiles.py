@@ -8,6 +8,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--nvcc',default='/usr/local/cuda-13.3/bin/nvcc')
+    p.add_argument('--inverse-only',action='store_true',help='Compile the bounded inverse probe instead of the walk; still execute no GPU code')
     a=p.parse_args();out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
     m=json.loads((HERE/'snapshot-manifest.json').read_text())
     archive=HERE/'source-snapshot.tar.gz'
@@ -23,9 +24,16 @@ def main():
         if sha(source/name)!=digest:raise RuntimeError('Source checksum differs: '+name)
     compiler=subprocess.check_output([a.nvcc,'--version'],text=True)
     if 'V13.3.73' not in compiler:raise RuntimeError('Exact reproduction requires CUDA 13.3.73')
+    if a.inverse_only:
+        target=source/'research/rtx5090-structural/test_small_blocks_inverse.cu'
+        target.parent.mkdir(parents=True,exist_ok=True)
+        target.write_bytes((HERE/'test_small_blocks_inverse.cu').read_bytes())
     results=dict(compiler=compiler,profiles={},gpu_kernels_launched=False)
     for label,row in m['profiles'].items():
         command=list(row['command']);command[0]=a.nvcc
+        if a.inverse_only:
+            command[command.index('src/main.cu')]=str(target)
+            command[command.index('-o')+1]='inverse-'+label
         r=subprocess.run(command,cwd=source,capture_output=True,text=True,timeout=600)
         raw=r.stdout+r.stderr;(out/(label+'-build.log')).write_text(raw)
         result=dict(exit=r.returncode,command=command,performance_b=None,gpu_correctness=None)

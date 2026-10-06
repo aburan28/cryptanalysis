@@ -2,7 +2,7 @@
 
 This change prepares variants for the single RTX 5090 / CUDA 13.3 objective
 of 22 billion completed point updates per second. **It does not establish
-22B/s, a GPU speedup, or a recovered discrete logarithm.** Physical GPU
+22B/s, a GPU speedup, or a recovered discrete logarithm.** Complete point-update
 correctness and throughput remain null for the new variants.
 
 ## Implementation
@@ -48,6 +48,21 @@ coefficients and block-wave positions. This establishes policy/model
 correctness, not CUDA synchronization or complete point-update correctness.
 It is not a CPU performance measurement.
 
+## Inverse-only physical GPU check
+
+All four configurations subsequently passed 87,057 inverse comparisons each
+on the existing physical RTX 5090 with CUDA 13.3.73: **348,228 independent
+Euclidean-reference matches and 348,228 inverse round trips**. The fixture
+exercises all declared root-wave positions for the small blocks, zero inputs,
+the final partial block, output sentinels and consecutive shared-scratch reuse.
+Production stayed running. The check used private buffers and made no cache,
+power, device-reset or production-signalling calls. `gpu-inverse-validation.json`
+records the exact source/binary hashes and pass outputs.
+
+This was a shared-device correctness diagnostic, with no timing/speedup claim.
+It does not validate the table-walk's complete point-update kernel, global-table
+read path, checkpoint behavior or performance. Those gates remain pending.
+
 The earlier cache experiment reported a three-sample median of
 19.853562B/s (20.432885, 19.853562, 19.819769). Its complete raw evidence was
 lost after premature pod cleanup. Those logs are diagnostic context, not a
@@ -72,6 +87,10 @@ python3 ecc2k130/runner/research/table-walk-small-blocks-20261005/build_profiles
 Compilation must not substitute for the pending physical GPU gates. Do not
 enable these variants automatically or call them faster based on occupancy
 or shared-memory predictions.
+
+To rebuild the inverse-only fixture, add `--inverse-only` to the build command.
+The helper only compiles it. Running the resulting `inverse-*` executables is
+a separate GPU operation and must be scoped to authorized hardware.
 
 ## Required physical measurement
 
