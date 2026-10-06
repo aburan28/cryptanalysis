@@ -156,9 +156,22 @@ def degree_scan(system, S: int | None, limits: Limits = Limits(), stop_on_unit: 
     Caminata-Gorla solving degree).  mode "mxl": R_D is the closure of the equations under
     multiplication by variables within degree D, so polynomials that fall below D are
     multiplied again at the same degree (MutantXL; the step degree an F4 run reaches).
+
+    S may be a zero-argument callable.  It is called once, the first time the completion test
+    needs the count (after a degree that ends without refutation), so a system refuted at its
+    first degree never pays for counting its solutions.  The scan is otherwise identical;
+    out["solution_count_read"] records whether the count was used.
     """
     if mode not in MODES:
         raise ValueError(mode)
+    count_read = False
+
+    def solution_count():
+        nonlocal S, count_read
+        if callable(S):
+            S = S()
+        count_read = True
+        return S
     N = system.N
     lay = Layout.get(N)
     flat, off = system.packed()
@@ -263,7 +276,7 @@ def degree_scan(system, S: int | None, limits: Limits = Limits(), stop_on_unit: 
             out["status"] = "refuted"
             out["D_solve"] = D
             break
-        if S is not None and S >= 1:
+        if S is not None and solution_count() >= 1:
             if S == 1:
                 done = ech.pivots_from(lay.cols(0)) - ech.pivots_from(lay.cols(1)) == N
             else:
@@ -281,6 +294,7 @@ def degree_scan(system, S: int | None, limits: Limits = Limits(), stop_on_unit: 
         out["status"] = "degree_limit"
     out["xors"] = sum(r["xors"] for r in out["per_degree"])
     out["build_ops"] = sum(r["build_ops"] for r in out["per_degree"])
+    out["solution_count_read"] = count_read
     out["wall_ns"] = time.perf_counter_ns() - t_start
     last = out["per_degree"][-1] if out["per_degree"] else None
     out["final_cols"] = last["cols"] if last else 0
