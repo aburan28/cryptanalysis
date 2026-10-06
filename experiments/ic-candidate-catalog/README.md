@@ -41,7 +41,7 @@ have `candidate_id: null` and do not issue an `IC1` result.
 | `n131_poly_d7_m4` | N131 | Polynomial subspace d=7, **fb26**, m=4 | Bounded planted-query and matrix audit; no natural full-width DLP recovery. |
 | `n131_onb_hw2_m4` | N131 | Normal-basis Hamming weight ≤2, m=4 | Construction code exists; exact base count for this proposal is unresolved. |
 | `n131_onb_hw3_m5` | N131 | Normal-basis Hamming weight ≤3, m=5 | Construction code exists; exact base count for this proposal is unresolved. |
-| `n131_poly_d28_m5` | N131 | Polynomial subspace d=28, m=5 | Illustrative large-base budget in PDP scaling; full-width factor base and end-to-end costs unmeasured. |
+| `n131_poly_d28_m5` | N131 | Polynomial subspace d=28, m=5 | One exact trace-zero W28 policy has 268,436,324 source or 268,465,880 first-descendant usable points and roughly 134 million sign-folded columns; natural m5 PDP yield and end-to-end costs remain unknown. |
 | `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | One exact trace-zero W24 policy has 16,786,464 source or 16,772,828 first-descendant usable points, but no natural m6 PDP yield or complete IC run. Other d24 bases remain unresolved. |
 | `n131_iso2_d28_m5` | N131 | Proposed degree-2 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 | `n131_iso3_d28_m5` | N131 | Proposed degree-3 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
@@ -77,6 +77,15 @@ rank. The same exact counts tighten the W24/m5 one-shot support upper bound
 to about `1.63e-5`, below the 1% objective. The records remain proposals
 with `candidate_id: null` until the missing stages and exact manifest are
 resolved.
+
+The [exact paired W28 census](../ecc2k130-263-w28-exact-base-20261005/RESULT.md)
+now supplies actual `B` and sign-folded columns for the competing W28/m5
+policy. Both curves pass its 1% *necessary* size threshold; the exact
+descendant density gain is only +0.005505234 percentage points, far below
+the predeclared two-point material-gain gate. The same counts bound W28/m4
+one-shot uniform-target support near `3.18e-7`. At W28/m5, a raw
+17-byte-per-column log vector would exceed 2.28 GB before matrix or solver
+costs. These remain counting-only proposals with `candidate_id: null`.
 
 The [equal-size W24 four-policy input gate](../ecc2k130-263-equal-w24-workload-20261005/RESULT.md)
 freezes `Q1420` on the exact degree-263 route: source-prefix and native
