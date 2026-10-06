@@ -107,3 +107,29 @@ and two normalization inversions. The larger prepares 2,401 slots with
 54 triples, 105 tau steps, 2,268 additions, 1,512 rotations, and two
 inversions. The selected static map is 9,826 bytes. These preparation
 counts are separate from the online addition saving.
+
+## Prospective disjoint panel
+
+The [frozen fixture](tau3-fused-inputs.json) was committed after its
+[read-only audit](audit_tau3_fused_inputs.py) confirmed 32,768 fresh scalars,
+disjoint from every earlier fixture on each curve. It includes eight generic
+reference output digests. Only then did the frozen
+[paired runner](check_tau3_fused_panel.py) execute the 16 arms, alternating
+the mode order by point case. The [raw receipt](tau3-fused-panel.json) and
+[read-only panel audit](audit_tau3_fused_panel.py) retain and check every arm.
+All 16 arms matched their generic output digest, all eight operation gates
+passed, and there were no candidate fallbacks.
+
+| Curve, four paired points | Compact width-four additions | Fused width-three additions | Addition saving | Compact rotations | Fused rotations | Fused point bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| glv-j0-32 | 62,420 | 47,778 | 23.46% | 40,780 | 31,877 | 43,904 |
+| j0-56 | 133,989 | 97,684 | 27.10% | 87,678 | 65,901 | 76,832 |
+
+Both modes used 16,384 output inversions per curve across the four points.
+The compact table uses 6,336 and 12,096 point bytes, respectively. The fused
+mode additionally uses the 9,826-byte static action map and more costly
+preparation described above. Its unisolated local online times were **higher
+in all eight cases**; the raw values are in the receipt. Thus the measured
+operation saving has not translated into a measured CPU speedup. These local
+times are exploratory because the host lacks an isolation receipt, and no
+controlled speedup or one-target rho claim follows from this panel.
