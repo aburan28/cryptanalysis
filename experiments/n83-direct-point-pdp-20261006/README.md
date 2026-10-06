@@ -24,10 +24,11 @@ is **not** a complete point-decomposition algorithm until equal-x,
 doubling, inverse-pair, and identity paths are covered and verified.
 
 The [small-field control](test_direct_point_circuit.py) solved all four
-lift-sign combinations of a selected pair over `GF(2^5)`, decoded each SAT
-model as an independently checked group sum, and proved an unattainable
-target UNSAT for the same fixed factor x-values. This checks the exact
-XCNF arithmetic on a nontrivial toy instance, not N83 search performance.
+lift-sign combinations of a selected pair over `GF(2^5)`, verified every
+SAT model's CNF/XOR rows and group sum, and checked **every finite target**
+for that fixed x-pair: four reachable targets were SAT and all 39 other
+finite targets were UNSAT. This checks the exact XCNF arithmetic on a
+nontrivial toy instance, not N83 search performance.
 
 The first N83 gate pins only the five factor masks and chooses their correct
 raw fiber. The sign bits, point lifts, and all intermediate points remain
@@ -106,8 +107,8 @@ the same 32 public-order sign branches with every factor mask still free.
 It charges every attempted branch under a 600-second whole-run cap and a
 2 GiB process-tree RSS cap. A solved branch must pass full XCNF and group
 replay and independent checked-Sage replay before it qualifies as a planted
-control. If the bounded attempt remains unresolved, ordinary-query yield
-and a complete IC pipeline remain unmeasured.
+control. If the bounded attempt remains unresolved, a complete IC pipeline
+remains unmeasured.
 
 The [unpinned sign-enumeration receipt](runs/unpinned_sign_enum_v1/receipt.json)
 records all 32 branches in fixed public order. Every branch reached its
@@ -117,3 +118,14 @@ solver wall time, and sampled at most 307 MB process-tree RSS on this
 contended host. Each branch receipt and compressed raw solver log is
 archived. This is a bounded failure to find the known planted witness, not
 an UNSAT result or a natural-query yield estimate.
+
+The [four ordinary raw-fiber attempts](COST_ACCOUNTING.md) used the same
+previously unseen public subgroup target, source code, one-thread solver,
+120-second internal solver limit, and 2 GiB process-tree RSS cap. All four
+returned `BOUNDED_UNKNOWN`, with zero verified relations. Their sequential
+whole-run process wall times were 142.952, 191.467, 135.699, and 126.603
+seconds. They are four correlated fibers of one target, not four independent
+ordinary queries; their completion rate and cost per useful row remain
+unknown. The [exact phase ledger](COST_LEDGER.json) preserves failures,
+memory peaks, source hashes, and exclusive costs. No factor-log matrix,
+target DLP, rho pair, or IC speedup was produced.
