@@ -42,7 +42,8 @@ def main() -> None:
     verification = read(verification_path)
     require(build["status"] == "PASS_EXACT_PARENT_PLUS_EIGHT_UNIT_CLAUSES" and
             build["config_sha256"] == digest(HERE / "CONFIG.json") and
-            build["source_sha256"] == digest(HERE / "gauge.py"),
+            build["source_sha256"] == digest(HERE / "gauge.py") and
+            build["runtime_info_sha256"] == digest(primary / "runtime-info.json"),
             "build provenance failed")
     require(build["parent_receipt_sha256"] ==
             digest(PARENT / "runs/planted-r2/receipt.json") ==
@@ -62,15 +63,27 @@ def main() -> None:
             verification["config_sha256"] == digest(HERE / "CONFIG.json") and
             verification["gauged_xcnf_sha256"] == build["xcnf_sha256"] and
             verification["gauged_xcnf_archive_sha256"] == digest(xcnf_path) and
+            verification["variables"] == build["variables"] and
+            verification["cnf_clauses"] == build["cnf_clauses"] and
+            verification["xor_rows"] == build["xor_rows"] and
             verification["known_assignment_violations"] == 0 and
             verification["flipped_first_exponent_bit_violations"] > 0 and
             verification["verifier_source_sha256"] == digest(HERE / "verify.py"),
             "independent formula or witness audit failed")
     runs = {}
-    for tier, directory, limit in (("primary", primary, 100000),
-                                   ("secondary", secondary, 2000000)):
+    for tier, directory, limit, wall in (
+        ("primary", primary, config["primary_conflicts"], config["primary_wall_seconds"]),
+        ("secondary", secondary, config["secondary_conflicts"],
+         config["secondary_wall_seconds"]),
+    ):
         receipt_path = directory / "receipt.json"
         receipt = read(receipt_path)
+        command = receipt["solver_command"]
+        expected_command = [
+            config["solver_binary"], f"--maxtime={wall}",
+            f"--maxconfl={limit}", f"--threads={config['solver_threads']}",
+            f"--random={config['solver_seed']}", "--maxsol=1", "--printsol=1",
+        ]
         require(receipt["tier"] == tier and receipt["status"] == "unresolved" and
                 receipt["solver_status"] == "INDETERMINATE" and
                 receipt["solver_exit_code"] == 15 and receipt["model"] is None and
@@ -78,11 +91,21 @@ def main() -> None:
                 receipt["monitor_error"] is None and
                 0 < receipt["solver_peak_rss_bytes"] <= config["peak_rss_limit_bytes"] and
                 receipt["conflict_limit"] == limit and
+                receipt["wall_limit_seconds"] == wall and
+                len(command) == 8 and command[:7] == expected_command and
+                Path(command[7]).name == "system.xcnf" and
+                receipt["solver_binary_sha256"] == config["solver_binary_sha256"] and
                 receipt["solver_conflicts_reported"] == limit + 1 and
                 receipt["config_sha256"] == digest(HERE / "CONFIG.json") and
                 receipt["source_sha256"] == digest(HERE / "gauge.py") and
                 receipt["build_receipt_sha256"] == digest(build_path) and
                 receipt["xcnf_sha256"] == build["xcnf_sha256"] and
+                receipt["parent_ungauged_xcnf_sha256"] ==
+                config["parent_ungauged_xcnf_sha256"] and
+                receipt["public_q"] == config["public_q"] and
+                receipt["variables"] == build["variables"] and
+                receipt["cnf_clauses"] == build["cnf_clauses"] and
+                receipt["xor_rows"] == build["xor_rows"] and
                 receipt["target_online_ms"] is None and
                 receipt["natural_pdp_yield"] is None and
                 receipt["rho_ratio"] is None,
