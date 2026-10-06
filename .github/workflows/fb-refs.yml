@@ -1,0 +1,41 @@
+name: fb-refs
+
+# Every factor_base_sha256 or point-set digest (point_set_sha256, ...) cited by a
+# committed result under experiments/ or
+# ecc2k130/research/ must be archived in experiments/fb-archive (index.csv) or
+# listed in experiments/fb-archive/unarchived.csv, the closed list of known
+# debt. The list is exact both ways, so it can only shrink. See
+# experiments/fb-archive/README.md ("Citation guard").
+on:
+  pull_request:
+    paths:
+      - "experiments/**"
+      - "ecc2k130/research/**"
+      - ".github/workflows/fb-refs.yml"
+  push:
+    branches: ["**"]
+    paths:
+      - "experiments/**"
+      - "ecc2k130/research/**"
+      - ".github/workflows/fb-refs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fb-refs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refs:
+    name: cited factor bases are archived
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check citations against the archive
+        run: python experiments/fb-archive/refs.py check

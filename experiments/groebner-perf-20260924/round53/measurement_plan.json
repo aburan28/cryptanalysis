@@ -1,0 +1,37 @@
+{
+  "schema": "independent-preparation-paired-plan/1",
+  "primary": "overlap-full-metal",
+  "arms": [
+    "prior-full-cpu",
+    "prior-full-metal",
+    "prior-tile16-metal",
+    "serial-full-metal",
+    "prepared-full-metal",
+    "overlap-full-metal",
+    "overlap-tile16-metal"
+  ],
+  "confirmatory_comparators": [
+    "prior-full-metal",
+    "prior-tile16-metal",
+    "serial-full-metal",
+    "prepared-full-metal"
+  ],
+  "fixture_order": "descending nvars, then name",
+  "trials_per_input": 2,
+  "warmups": 1,
+  "measured_pairs": 7,
+  "order_seed": 202610035301,
+  "bootstrap_seed": 202610035302,
+  "bootstrap_samples": 20000,
+  "max_load_per_logical_cpu": 1,
+  "admission_wait_seconds": 20,
+  "admission_poll_seconds": 5,
+  "max_rejected_admissions": 2,
+  "primary_acceptance": "Both qualified trials on all three 27-variable frozen inputs must have lower paired 95% bootstrap median-ratio bound > 1 against every confirmatory comparator; no automatic routing promotion on a partial panel.",
+  "uncertainty": "Per-input descriptive paired bootstrap intervals; no familywise or population guarantee.",
+  "boundary": "Wrap the already loaded public coordinates in Point and execute one fresh q.solve(public_point), including native coefficient reconstruction, solving, device transfer and synchronization, complete independent original-ANF proof/root/basis checks, direct witness equation checks and signed curve replay. Reusable setup, fixture loading and evidence serialization are outside. The tiny Point wrapper allocation is charged equally to every arm. Offline Python proof replay is correctness evidence, not part of this interval.",
+  "candidate_id": null,
+  "online_speedup": null,
+  "arms_definition": "Every arm uses the unchanged round51 producer. Prior uses checker52. Serial, prepared and overlap use checker53. Prepared runs the split interface synchronously; overlap runs the same fresh coefficient preparation concurrently. Independent checks use factored_local and local partial coefficients. Complete query timing includes snapshots, input binding, worker coordination and all drains. No setup or target-answer cache enters the interval.",
+  "resource_envelope": "One host and the same Metal device; at most two CPU query threads plus the GPU for every arm. Serial arms use one thread; overlap uses one additional checker worker, started during reusable setup. No cross-target work."
+}

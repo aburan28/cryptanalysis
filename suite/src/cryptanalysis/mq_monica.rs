@@ -199,13 +199,17 @@ fn gauss_reduce_quadratic(sp: &mut [SymbolicPoly], m: usize, u: usize, v: usize)
     }
 }
 
+/// Per-equation enumeration state.  The coefficients of the `v` inner
+/// variables are bit-packed (`v ≤ 64`): bit `j` of `ac` is the constant
+/// part of `z_j`'s coefficient and bit `j` of `al[i]` its dependence on
+/// outer variable `i`, so a Gray step updates them with one XOR.
 #[derive(Clone, Debug)]
 struct EnumState {
     bq: [[bool; 66]; 65],
     bl: [bool; 65],
     bc: bool,
-    al: [[bool; 64]; 65],
-    ac: [bool; 64],
+    al: [u64; 65],
+    ac: u64,
 }
 
 impl EnumState {
@@ -214,8 +218,8 @@ impl EnumState {
             bq: [[false; 66]; 65],
             bl: [false; 65],
             bc: sp.c.c,
-            al: [[false; 64]; 65],
-            ac: [false; 64],
+            al: [0; 65],
+            ac: 0,
         };
         for i in 0..u {
             es.bl[i] = sp.c.l[i];
@@ -229,39 +233,34 @@ impl EnumState {
             es.bq[i][u + 1] = es.bq[i - 1][i];
         }
         for i in 0..v {
-            es.ac[i] = sp.l[i];
+            es.ac |= (sp.l[i] as u64) << i;
         }
         for i in 0..u {
             for j in 0..v {
-                es.al[i][j] = sp.b[j][i];
+                es.al[i] |= (sp.b[j][i] as u64) << j;
             }
         }
         es
     }
 
-    fn update(&mut self, ffs: &Ffs, v: usize) {
+    fn update(&mut self, ffs: &Ffs) {
         let k1 = ffs.k1 as usize;
         let k2 = ffs.k2 as usize;
         self.bl[k1] ^= self.bq[k1][k2];
         self.bc ^= self.bl[k1];
-        for i in 0..v {
-            self.ac[i] ^= self.al[k1][i];
-        }
+        self.ac ^= self.al[k1];
     }
 }
 
 /// Solve `A z = b` for the current enumeration slice; returns solutions in `z`.
+/// Runs once per outer assignment, so its rows live on the stack (`l ≤ 64`).
 fn solve_linear(es: &[EnumState], l: usize, v: usize, output: &mut [u64]) -> usize {
-    let mut a = vec![0u64; l];
-    let mut b = vec![false; l];
-    let mut pivot = vec![false; l];
+    let mut a = [0u64; 64];
+    let mut b = [false; 64];
+    let mut pivot = [false; 64];
     for i in 0..l {
         b[i] = es[i].bc;
-        for j in 0..v {
-            if es[i].ac[j] {
-                a[i] |= 1u64 << j;
-            }
-        }
+        a[i] = es[i].ac;
     }
     let mut r = 0usize;
     for i in 0..v {
@@ -436,7 +435,7 @@ fn monica_search(
             }
         }
         for state in &mut es {
-            state.update(&ffs, v);
+            state.update(&ffs);
         }
         ffs.step();
     }

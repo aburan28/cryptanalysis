@@ -5,6 +5,9 @@ It also issues the inverse-chain product before the slope product. Both changes
 preserve the Certicom Frobenius walk, DP weight 32, 32-byte records, batch 16,
 640-thread blocks, four-warp inversion and checkpoint version 2.
 
+The [v3 follow-up](FROBENIUS-V3.md) measures additional transform and
+denominator-cache optimizations against this v2 profile.
+
 ## Performance confirmation
 
 The exact proposed build is **2.7734% faster** by the median

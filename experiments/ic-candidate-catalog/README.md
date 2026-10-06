@@ -16,6 +16,21 @@ has a `Q` ID and `candidate_id: null`. Issue a final `IC1...h...` ID only after
 the exact curve, factor base, code snapshot, and any isogeny route satisfy
 [`AGENTS.md`](../../AGENTS.md). No `fb` number is inferred from a dimension.
 
+## Readable curve records
+
+[`curves.yaml`](curves.yaml) gives short aliases for exact curves while
+retaining the full immutable `EC1...h...` ID. For example,
+`ecc2k130_pb` identifies the polynomial-basis source and
+`ecc2k130_d263_1` identifies its cataloged degree-263 descendant at
+`V263L1`. Each entry holds the exact field representation, Weierstrass
+coefficients, subgroup and generator, endomorphism evidence, and links to
+ordered isogeny routes in [`isogeny_routes.json`](isogeny_routes.json).
+The `field` and `curve` mappings alone are hashed;
+aliases, proof references, and routes are metadata. Candidate manifests and
+run rows continue to use the full curve ID. The N19, N53, and N131
+normal-basis profiles are not registered here until their exact canonical
+curve records are pinned.
+
 The catalog is a staged design of experiments. Each of ten anchored profiles
 gets 100 combinations: five PDP methods, five witness selection policies,
 two final relation-matrix algorithms, and two per-PDP time limits. The
