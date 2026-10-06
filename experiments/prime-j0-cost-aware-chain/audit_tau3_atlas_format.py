@@ -17,10 +17,10 @@ def sha256(data):
 
 def verify_format_equivalence(source_sha, bench_sha):
     receipt = json.loads(RECEIPT.read_text())
-    assert receipt["status"] == "clang_format_only_identical_native_binaries"
+    assert receipt["status"] == "format_and_stacked_base_merge_benchmark_binary_identical"
     assert receipt["bench_binary_sha256_before"] == bench_sha
     assert receipt["bench_binary_sha256_after"] == bench_sha
-    assert receipt["test_binary_sha256_before"] == receipt["test_binary_sha256_after"]
+    assert receipt["test_output"] == "ok: 2306779 checks"
     old_commit = receipt["preformat_commit"]
     for relative, digests in receipt["sources"].items():
         old = subprocess.check_output(["git", "show", f"{old_commit}:{relative}"], cwd=ROOT)
@@ -35,7 +35,7 @@ def verify_format_equivalence(source_sha, bench_sha):
 def main():
     panel = json.loads((RECEIPT.parent / "tau3-atlas-panel.json").read_text())
     verify_format_equivalence(panel["ec_tau_source_sha256"], panel["bench_sha256"])
-    print("tau3 atlas formatting audit: PASS (frozen source bound; rebuilt binaries identical)")
+    print("tau3 atlas formatting audit: PASS (frozen source bound; benchmark binary identical)")
 
 
 if __name__ == "__main__":
