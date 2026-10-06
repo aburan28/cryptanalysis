@@ -33,7 +33,7 @@ def sampled_tree(child: psutil.Process) -> tuple[int, float]:
     members = [psutil.Process(os.getpid())]
     try:
         members += [child, *child.children(recursive=True)]
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
+    except psutil.NoSuchProcess:
         pass
     rss, cpu = 0, 0.0
     for process in members:
@@ -42,7 +42,7 @@ def sampled_tree(child: psutil.Process) -> tuple[int, float]:
                 rss += process.memory_info().rss
                 clocks = process.cpu_times()
                 cpu += clocks.user + clocks.system
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except psutil.NoSuchProcess:
             pass
     return rss, cpu
 
@@ -69,6 +69,7 @@ def main(mode: str, fiber_index: int, out: Path) -> int:
     })
     started = time.perf_counter_ns()
     guard = None
+    guard_error = None
     peak_rss, sampled_cpu = 0, 0.0
     stdout_path, stderr_path = out / "producer.stdout.txt", out / "producer.stderr.txt"
     with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
@@ -76,7 +77,18 @@ def main(mode: str, fiber_index: int, out: Path) -> int:
                                  start_new_session=True)
         root = psutil.Process(child.pid)
         while child.poll() is None:
-            rss, cpu = sampled_tree(root)
+            try:
+                rss, cpu = sampled_tree(root)
+            except (psutil.AccessDenied, PermissionError) as error:
+                # Resource inspection is part of the cap. Fail closed and
+                # kill the whole process group if the host denies it.
+                guard = "process_inspection_error"
+                guard_error = f"{type(error).__name__}: {error}"
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                break
             peak_rss = max(peak_rss, rss)
             sampled_cpu = max(sampled_cpu, cpu)
             if peak_rss >= protocol["max_process_tree_rss_bytes"]:
@@ -101,6 +113,7 @@ def main(mode: str, fiber_index: int, out: Path) -> int:
         "curve_id": protocol["curve_id"],
         "mode": mode, "fiber_index": fiber_index,
         "argv": argv, "exit_code": exit_code, "guard": guard,
+        "guard_error": guard_error,
         "outer_wall_ns": time.perf_counter_ns() - started,
         "sampled_process_tree_cpu_seconds": sampled_cpu,
         "sampled_process_tree_peak_rss_bytes": peak_rss,
