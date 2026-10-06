@@ -120,3 +120,61 @@ Reproduce the old-data screen and audit without Sage:
 python3 experiments/prime-j0-cost-aware-chain/screen_mixed_radix_tail.py --samples 4096
 python3 experiments/prime-j0-cost-aware-chain/audit_mixed_radix_tail.py
 ```
+
+## Held-out native result
+
+The native evaluator and differential controls were frozen in commit
+`3b9db27b`. The new scalar fixture and three-arm runner were frozen in
+commit `16287e02` before any pair arm ran. The fixture uses the stated seed
+and contains 32,768 new scalars. Its manifest SHA-256 is
+`adf881607a1cb3cc8b50a92b6b54265aabe8a4bc6ff9614281f2b8f8decb593f`.
+The [fixture replay](check_mixed_radix_inputs.py) confirms disjointness from
+all prior fixture scalars, the generator law, file hashes, and the eight
+generic-reference point-output digests.
+
+The [old-data native differential receipt](mixed-radix-native-design.json)
+records **16,384 exact C action streams** matching the frozen Python map.
+The C curve suite reconstructs all 16,641 bounded map states, compares mixed
+point outputs against generic multiplication, covers zero and subgroup-order
+multiples, small-order points, and directly checks the rational `τ` kernel.
+The 3-torsion kernel check exercises `τ(P)=O` directly; the complete pair
+preparation requires a subgroup where the lattice recoder is defined.
+
+The [held-out raw panel](mixed-radix-native-panel.json) retains all 24 arm
+statuses, fields, source and binary hashes, and exploratory timing values.
+The [read-only panel audit](audit_mixed_radix_panel.py) passed. Weighted
+group-operation scores use exactly `10·triples + 6·τ + 8·doubles + 16·adds`.
+All 24 outputs were independently verified against the frozen generic
+digests. The prospective gate, which required mixed to beat **both**
+comparators in every case, passed 8/8.
+
+| Curve | Point | Canonical | First-word | Mixed | Saving vs canonical | Saving vs first-word |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| glv-j0-32 | 0 | 433,986 | 424,878 | 404,502 | 6.79% | 4.80% |
+| glv-j0-32 | 1 | 432,398 | 423,484 | 403,726 | 6.63% | 4.67% |
+| glv-j0-32 | 2 | 431,800 | 424,230 | 402,866 | 6.70% | 5.04% |
+| glv-j0-32 | 3 | 433,928 | 424,452 | 405,108 | 6.64% | 4.56% |
+| j0-56 | 0 | 1,123,174 | 1,114,796 | 1,094,352 | 2.57% | 1.83% |
+| j0-56 | 1 | 1,122,268 | 1,113,542 | 1,093,680 | 2.55% | 1.78% |
+| j0-56 | 2 | 1,121,830 | 1,114,390 | 1,092,954 | 2.57% | 1.92% |
+| j0-56 | 3 | 1,121,936 | 1,114,762 | 1,093,660 | 2.52% | 1.89% |
+
+The mixed implementation uses the same 726 prepared points and 23,232-byte
+point table as the comparators. Its static maps occupy 99,853 bytes in
+total, including the old tail map needed for the frozen entry rule;
+canonical uses 68,029 bytes and first-word uses 68,157. The extra map reads,
+recoding, and heterogeneous steps are included in the recorded online
+interval, but their Mac wall times are exploratory because this host has no
+host-level isolation receipt. No CPU, rho, or academic-novelty speedup follows
+from this operation panel. A controlled CPU claim still requires the serial
+isolated service and at least five paired AB/BA repetitions.
+
+Reproduce the native controls and read-only audits without Sage:
+
+```sh
+cmake -S . -B build-cost-aware -DCMAKE_BUILD_TYPE=Release -DCA_WERROR=ON -DCA_BUILD_TAU_CHAIN_BENCH=ON
+cmake --build build-cost-aware --target test_curve ca_tau_chain_bench ca_tau_chain_design64 -j 4
+build-cost-aware/test_curve
+python3 experiments/prime-j0-cost-aware-chain/check_mixed_radix_inputs.py --bench build-cost-aware/ca_tau_chain_bench
+python3 experiments/prime-j0-cost-aware-chain/audit_mixed_radix_panel.py --bench build-cost-aware/ca_tau_chain_bench
+```
