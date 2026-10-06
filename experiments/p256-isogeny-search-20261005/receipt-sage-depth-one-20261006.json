@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "status": "verified_exploratory_depth_one",
+  "claim": "Six explicit depth-one horizontal neighbors were found and benchmarked. No statistically significant rho iteration-rate improvement was detected, and no end-to-end ECDLP speedup is claimed.",
+  "run_completed_at": "2026-10-06T01:46:25.444579+00:00",
+  "source": {
+    "pr_base_remote_commit": "b3d0b117a120a262fc99726d8b8d67a41ff69bea",
+    "manifest": "source-sage-depth-one-20261006.sha256",
+    "manifest_sha256": "07fcff3dad0ca61c0fb6729be18f872459eaa0889a13dc2bcd1c01ba9267be41"
+  },
+  "runtime": {
+    "image": "sagemath/sagemath:10.6",
+    "image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb",
+    "sage": "10.6",
+    "python": "3.12.5 (main, Apr 1 2025, 01:06:51) [GCC 11.4.0]",
+    "platform": "Linux-6.18.44-x86_64-with-glibc2.35",
+    "host_cpu_isolation": "unverified; wall-time results are exploratory"
+  },
+  "commands": {
+    "search": "sage -python scripts/explore_sage.py --ells 3,5,11,13 --depth 1 --max-nodes 12 --output runs/ci-sage/candidates.json",
+    "sequential_forward": "sage -python -m p256_isogeny_search benchmark --candidates runs/ci-sage/candidates.json --seconds 1 --trials 5 --output runs/ci-sage/benchmark-1s-5trials.json",
+    "sequential_reverse": "sage -python -m p256_isogeny_search benchmark --candidates /tmp/p256-candidates-reversed.json --seconds 1 --trials 5 --output runs/ci-sage/benchmark-1s-5trials-reversed.json",
+    "interleaved": "sage -python scripts/benchmark_interleaved.py --candidates runs/ci-sage/candidates.json --seconds 1 --trials 7 --warmup-seconds 0.1 --output runs/ci-sage/benchmark-interleaved-1s-7trials.json"
+  },
+  "artifacts": {
+    "results/sage-depth-one-20261006/candidates.json": "1c90b999993c548ecc6175263e64cb7e06c8a16a83720aff89c5cdaa8a8f1c66",
+    "results/sage-depth-one-20261006/benchmark-sequential-forward.json": "fba86bfea68f4e1afa3028e69ef5a654eed19d6bb558f96747c54dad24e07cf2",
+    "results/sage-depth-one-20261006/benchmark-sequential-reversed.json": "3866eee2c6618305bcbfacf2d778224f6bc5b25f877f4871044c6b280e0cf18b",
+    "results/sage-depth-one-20261006/benchmark-interleaved.json": "2050e6acff66b4bc1f02a57e41aa44879551fdd2b93cc8072f1a7a3e0147502b",
+    "results/sage-depth-one-20261006/summary.md": "a8408f23c8fa6335af187ba86a7e77d07534eaa70e407de7cba437e9618b7628"
+  },
+  "search": {
+    "algorithm": "breadth-first rational prime-degree isogenies",
+    "ells": [3, 5, 11, 13],
+    "depth": 1,
+    "max_nodes": 12,
+    "nodes_found": 7,
+    "path_degree_products": [1, 3, 5, 11, 11, 13, 13],
+    "explicit_paths_verified": true,
+    "elapsed_seconds": 0.995216427007108,
+    "exceptional_automorphisms_found": false
+  },
+  "order_bias_diagnostic": {
+    "p256_iterations_per_second_forward": 90806.44972849837,
+    "p256_iterations_per_second_reverse": 95618.57764406122,
+    "degree_11_example_relative_forward": 1.0560245180795125,
+    "degree_11_example_relative_reverse": 0.9682709059129309,
+    "interpretation": "The apparent sequential advantage changed with execution order, so the corrected benchmark warms candidates and rotates all seven through all seven positions."
+  },
+  "interleaved_benchmark": {
+    "seconds_per_trial": 1,
+    "trials_per_candidate": 7,
+    "warmup_seconds_per_candidate": 0.1,
+    "batch_width": 64,
+    "table_size": 16,
+    "comparison": "paired per-trial log2 iteration-rate ratio with two-sided Student-t interval",
+    "all_linear_relations_verified": true,
+    "significant_speedups_at_95_percent": 0,
+    "largest_point_estimate": {
+      "path_degree_product": 3,
+      "paired_relative_iteration_speed": 1.0281365761470311,
+      "paired_relative_iteration_speed_95_percent_ci": [
+        0.9710982126798091,
+        1.0885251413390005
+      ]
+    }
+  },
+  "cost_accounting": {
+    "discovery_and_reusable_precomputation": "measured in candidates.json",
+    "per_instance_mapping": "explicit formulas retained for P and Q; evaluation not timed",
+    "per_instance_ecdlp": "rho iteration rate measured",
+    "amortization": "no end-to-end estimate because per-key mapping was not measured"
+  },
+  "decision": "No candidate in this depth-one sample advances to a speedup claim. A larger search remains meaningful only as explicit-path horizontal exploration, followed by isolated reproduction in an optimized equal-quality backend."
+}

@@ -68,6 +68,21 @@ contract is [`protocol.json`](protocol.json), and the run accounting is
 python scripts/verify_frozen.py
 ```
 
+## Sage depth-one result
+
+A SageMath 10.6 run on 2026-10-06 retained six explicit horizontal neighbors:
+one each of degrees 3 and 5, and two each of degrees 11 and 13. All have
+geometric automorphism order 2. A seven-trial, order-balanced rho comparison
+found no significant speedup; every neighbor's paired 95% interval contained
+`1.0`. The largest point estimate was `1.028x` with interval
+`0.971x–1.089x`.
+
+The full candidate maps, raw forward/reverse order-bias diagnostics, corrected
+benchmark, and claim limits are frozen in
+[`results/sage-depth-one-20261006`](results/sage-depth-one-20261006). This is a
+six-neighbor depth-one result, not an exhaustive class-group search, and path
+evaluation on each target key remains untimed.
+
 ## Quick start
 
 Python 3.11 or newer is required.
@@ -118,10 +133,11 @@ sage -python scripts/explore_sage.py \
   --max-nodes 100 \
   --output data/candidates/generated/depth-2.json
 
-p256-isogeny benchmark \
+sage -python scripts/benchmark_interleaved.py \
   --candidates data/candidates/generated/depth-2.json \
   --seconds 2 \
-  --trials 5
+  --trials 7 \
+  --output runs/sage/benchmark.json
 ```
 
 Each candidate retains:
@@ -147,7 +163,10 @@ sqrt(pi*n/2)
 ```
 
 before automorphism quotients. Candidate speed is compared using the identical
-walk and repeated wall-clock trials. The security change attributable to a
+walk and repeated wall-clock trials. The comparative script warms every
+candidate, rotates execution order so a full block puts every curve in every
+timing position, and reports a paired Student-t interval for each per-trial
+log-rate ratio against P-256. The security change attributable to a
 constant-factor rate difference is `log2(candidate_rate / baseline_rate)` bits.
 
 The benchmark intentionally reports these cost categories separately:
