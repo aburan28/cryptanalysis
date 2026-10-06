@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/resource.h>
 
 typedef unsigned __int128 u128;
 typedef uint64_t u64;
@@ -138,6 +139,7 @@ int main(int argc, char **argv) {
     if (argc < 7) { fprintf(stderr, "usage: s4_bench nL nR W trials seed label\n"); return 2; }
     size_t nL = strtoull(argv[1], 0, 10), nR = strtoull(argv[2], 0, 10), W = strtoull(argv[3], 0, 10);
     int trials = atoi(argv[4]);
+    double t_start = now();
     rng_s = strtoull(argv[5], 0, 10) * 0x9E3779B97F4A7C15ULL + 1;
     const char *label = argv[6];
     CA = rnd(); CB = rnd();
@@ -202,6 +204,10 @@ int main(int argc, char **argv) {
         printf("%s{\"name\":\"%s\",\"precompute_ms_median\":%.4f,\"pairs_ms_median\":%.4f,\"total_ms_median\":%.4f,\"total_ms_min\":%.4f,\"ns_per_pair_total_median\":%.3f,\"ns_per_pair_loop_median\":%.3f}",
                m ? "," : "", names[m], pre * 1e3, pr * 1e3, tmed * 1e3, tmin * 1e3, tmed * 1e9 / W, pr * 1e9 / W);
     }
-    printf("]}\n");
+    struct rusage ru;
+    getrusage(RUSAGE_SELF, &ru);
+    double cpu_s = ru.ru_utime.tv_sec + 1e-6 * ru.ru_utime.tv_usec + ru.ru_stime.tv_sec + 1e-6 * ru.ru_stime.tv_usec;
+    printf("],\"process\":{\"cpu_time_s_user_plus_sys\":%.4f,\"wall_s_total\":%.4f,\"peak_rss_kB\":%ld,\"minor_faults\":%ld,\"major_faults\":%ld,\"voluntary_ctx_switches\":%ld,\"involuntary_ctx_switches\":%ld}}\n",
+           cpu_s, now() - t_start, ru.ru_maxrss, ru.ru_minflt, ru.ru_majflt, ru.ru_nvcsw, ru.ru_nivcsw);
     return ok ? 0 : 1;
 }

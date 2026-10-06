@@ -17,11 +17,14 @@ Regimes (W = 2^20 pairs unless stated):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
 import subprocess
 import sys
+
+from hardware_manifest import collect, proc_stat_snapshot, steal_delta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "s4_bench.c")
@@ -58,11 +61,14 @@ def main() -> None:
     gcc_v = subprocess.run(["gcc", "--version"], capture_output=True, text=True).stdout.splitlines()[0]
     rows = []
     for label, nL, nR, w in REGIMES:
+        before = proc_stat_snapshot()
+        load_before = os.getloadavg()
         proc = subprocess.run([BIN, str(nL), str(nR), str(w), str(TRIALS), str(SEED), label], capture_output=True, text=True)
         if proc.returncode != 0:
             print(proc.stdout, proc.stderr, file=sys.stderr)
             raise SystemExit(f"benchmark failed in regime {label}")
         row = json.loads(proc.stdout.strip())
+        row["host_during_run"] = {**steal_delta(before, proc_stat_snapshot()), "loadavg_before": load_before}
         rows.append(row)
         ev = {e["name"]: e for e in row["evaluators"]}
         tp = ev["two_product_2M"]["total_ms_median"]
@@ -75,6 +81,9 @@ def main() -> None:
     res = {
         "status": "stage diagnostic; contended shared VM; exploratory wall time; candidate_id null",
         "host": {"cpu": cpu_model(), "machine": platform.machine(), "os": platform.platform(), "logical_cpus": os.cpu_count(), "compiler": gcc_v, "flags": "-O2 -std=gnu11", "isolation_receipt": None},
+        "hardware_manifest": collect(),
+        "execution": {"threads": 1, "affinity": "inherited (not pinned)", "warmup": "none beyond trial rotation; first trial of each regime counts", "pairing": "all four evaluators run inside one process per regime on identical inputs, order rotated per trial", "censored_runs": 0},
+        "source_sha256": {os.path.basename(SRC): hashlib.sha256(open(SRC, "rb").read()).hexdigest()},
         "field": "p = 2^61 - 1, unsigned __int128 products, Mersenne reduction",
         "trials_per_regime": TRIALS,
         "statistic": "median over rotated trials of (precompute + pair loop); min also recorded",

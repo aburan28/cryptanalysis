@@ -18,6 +18,7 @@ import io
 import json
 import os
 import re
+import resource
 import sys
 import time
 
@@ -64,6 +65,7 @@ else:
     raise SystemExit(f"unknown algorithm {algorithm}")
 
 rc = 0
+cpu0 = time.process_time()
 t0 = time.perf_counter()
 try:
     with contextlib.redirect_stdout(buf):
@@ -75,6 +77,8 @@ except Exception as e:  # pragma: no cover
     rc = 2
     buf.write(f"\n[Exception {type(e).__name__}: {e}]\n")
 elapsed = time.perf_counter() - t0
+cpu_elapsed = time.process_time() - cpu0
+peak_rss_kB = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 
 text = buf.getvalue().replace("\b", "")
 m = re.search(r"Proper factors found:\s*(\d+)\s*\|\s*(\d+)", text)
@@ -85,6 +89,8 @@ with open(out_path, "w") as fh:
             "algorithm": algorithm,
             "N": N,
             "elapsed_s": elapsed,
+            "process_cpu_s": cpu_elapsed,
+            "peak_rss_kB": peak_rss_kB,
             "factors": factors,
             "returncode": rc,
             "stdout_tail": text[-600:],
