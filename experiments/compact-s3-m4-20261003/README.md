@@ -2188,6 +2188,26 @@ seconds on an unisolated host, with table setup charged separately. One
 ordinary target supplies no natural yield rate or rank trend. N83 and the
 complete N131 `2^x` remain unresolved.
 
+### Q1469 ordinary N53 yield and rank panel
+
+[Q1469](q1469_n53_yield_panel/README.md) runs that same exact pair oracle
+on 128 new seeded ordinary N53 subgroup targets, building a fresh complete
+3,651,700-pair table for each. It finds and independently replays 13
+four-distinct-column relations, proves 115 absences by complete scan, and
+obtains 13 novel rows among 26 folded columns. The observed relation yield
+is 10.156% (model-based Wilson 95% interval 6.032%–16.602%). Including all
+failed queries, the target-query work per early novel row is 163.740 million
+field multiplications, 33.151 million squarings, and 7,999 inversions; fresh
+table preparation is charged separately. Wall times are exploratory.
+
+On the exact N131 W≤6 base, this **complete-table** design requires
+21,514,403,416,657,745,244 pair entries (`2^64.222`) before a target query,
+above a `2^61` entry-materialization cap. This does not bound compact
+target-guided methods. N83 successful ordinary work and natural yield,
+late-rank behavior, final matrix work, target descent, and scalar replay
+remain unknown, so the complete N131 `2^x` and challenge gate remain open
+questions.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
