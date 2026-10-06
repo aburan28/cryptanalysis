@@ -266,3 +266,11 @@ predeclared modeled-operation gate: the score falls 4.17%–4.48% on
 `glv-j0-32` and 2.62%–2.70% on `j0-56`, with no schedule fallbacks.
 The candidate's raw local interval was longer in seven of eight pairs;
 without host isolation or repeated pairs, CPU speed remains unknown.
+
+The [bounded 64-bit recoder](PERIODIC_PAIR_INT64.md) keeps the same
+periodic-atlas words and point evaluator while replacing wide remainder
+arithmetic in the online recoder. It matches all 2,048 frozen design word
+streams exactly. A new disjoint, isolated CPU panel is required to learn
+whether the lower recoding overhead improves wall time.
+Its new disjoint 32,768-scalar fixture is committed before either
+comparison arm runs; no isolated CPU result exists yet.

@@ -1471,19 +1471,25 @@ int ca_ec_tau_pair_complete_mul_profile(const ca_group *g, const ca_tau_pair_com
     return 1;
 }
 
-static int tau_pair_periodic_bounded(ca_i128 a, ca_i128 b)
+/* In the lattice norm N(a,b)=a*a+3*a*b+3*b*b, every pair word has
+ * N(d)<=532 and N(tau^2*q)=9*N(q).  The reduced inputs satisfy
+ * |a|,|b|<2^55, so sqrt(N)<sqrt(7)*2^55 initially and remains below
+ * that bound under q=(s-d)/tau^2.  Thus |a|<2^58 and |b|<2^57 at every
+ * completed step; the intermediate sums below also fit signed int64_t.
+ * Larger reduced inputs use the existing wide canonical path. */
+static int tau_pair_periodic_bounded(int64_t a, int64_t b)
 {
     return a >= -CA_TAU_PAIR_PERIODIC_BOUND && a <= CA_TAU_PAIR_PERIODIC_BOUND &&
            b >= -CA_TAU_PAIR_PERIODIC_BOUND && b <= CA_TAU_PAIR_PERIODIC_BOUND;
 }
 
-static size_t tau_pair_periodic_tail_index(ca_i128 a, ca_i128 b)
+static size_t tau_pair_periodic_tail_index(int64_t a, int64_t b)
 {
     return (size_t)(a + CA_TAU_PAIR_PERIODIC_BOUND) * CA_TAU_PAIR_PERIODIC_SIDE +
            (size_t)(b + CA_TAU_PAIR_PERIODIC_BOUND);
 }
 
-static size_t tau_pair_periodic_atlas_index(ca_i128 a, ca_i128 b)
+static size_t tau_pair_periodic_atlas_index(int64_t a, int64_t b)
 {
     int ra = (int)((a % 27 + 27) % 27), rb = (int)((b % 27 + 27) % 27);
     if (ra > 13) ra -= 27;
@@ -1491,29 +1497,29 @@ static size_t tau_pair_periodic_atlas_index(ca_i128 a, ca_i128 b)
     return (size_t)(ra + 13) * CA_TAU_PAIR_PERIODIC_MODULUS + (size_t)(rb + 13);
 }
 
-static int tau_pair_periodic_quotient(ca_i128 a, ca_i128 b, ca_i128 da, ca_i128 db,
-                                      ca_i128 *qa, ca_i128 *qb)
+static int tau_pair_periodic_quotient(int64_t a, int64_t b, int64_t da, int64_t db,
+                                      int64_t *qa, int64_t *qb)
 {
-    ca_i128 ax = a - da, by = b - db;
+    int64_t ax = a - da, by = b - db;
     if (ax % 3 || by % 3) return 0;
     *qa = 2 * (ax / 3) + by;
     *qb = -(ax + by) / 3;
     return 1;
 }
 
-static int tau_pair_periodic_canonical_step(ca_i128 *a, ca_i128 *b,
+static int tau_pair_periodic_canonical_step(int64_t *a, int64_t *b,
                                              const ca_tau4_digit digit[81], uint16_t *word)
 {
     uint8_t slots[2] = {255, 255};
     for (size_t j = 0; j < 2; j++) {
-        if (residue3(*a)) {
+        if (*a % 3) {
             int slot = 9 * (int)((*a % 9 + 9) % 9) + (int)((*b % 9 + 9) % 9);
             if (digit[slot].seed < 0) return 0;
             slots[j] = (uint8_t)slot;
             *a -= digit[slot].a;
             *b -= digit[slot].b;
         }
-        ca_i128 old_a = *a;
+        int64_t old_a = *a;
         if (old_a % 3) return 0;
         *a += *b;
         *b = -old_a / 3;
@@ -1523,7 +1529,7 @@ static int tau_pair_periodic_canonical_step(ca_i128 *a, ca_i128 *b,
 }
 
 /* Returns 2 only for the specified 128-word periodic fallback. */
-static int tau_pair_periodic_plan(ca_i128 a, ca_i128 b, const ca_tau4_digit digit[81],
+static int tau_pair_periodic_plan(int64_t a, int64_t b, const ca_tau4_digit digit[81],
                                   int periodic, uint16_t words[128], size_t *count,
                                   uint64_t *lookups)
 {
@@ -1540,9 +1546,11 @@ static int tau_pair_periodic_plan(ca_i128 a, ca_i128 b, const ca_tau4_digit digi
         if (word == CA_TAU_PAIR_FUSED_UNREACHABLE) {
             if (!tau_pair_periodic_canonical_step(&a, &b, digit, &word)) return 0;
         } else {
-            ca_i128 da, db, qa, qb;
-            if (!tau_pair_contribution(word, &da, &db) ||
-                !tau_pair_periodic_quotient(a, b, da, db, &qa, &qb))
+            ca_i128 wide_da, wide_db;
+            int64_t qa, qb;
+            if (!tau_pair_contribution(word, &wide_da, &wide_db) ||
+                !tau_pair_periodic_quotient(a, b, (int64_t)wide_da, (int64_t)wide_db,
+                                            &qa, &qb))
                 return 0;
             if (tau_pair_periodic_bounded(a, b) &&
                 ca_tau_pair_periodic_tail[tau_pair_periodic_tail_index(a, b)] == word &&
@@ -1587,13 +1595,14 @@ int ca_ec_tau_pair_periodic_recode_words(const ca_tau_pair_complete_precomp *pre
         *count = tau_pair_canonical_words(x, y, pre->base.digit, words);
         return *count != 0;
     }
-    int status = tau_pair_periodic_plan(x, y, pre->base.digit, 0, words, count, NULL);
+    int status = tau_pair_periodic_plan((int64_t)x, (int64_t)y, pre->base.digit, 0, words,
+                                        count, NULL);
     if (status != 1) return 0;
     if (!gated) return 1;
     uint16_t periodic_words[128];
     size_t periodic_count = 0;
-    status = tau_pair_periodic_plan(x, y, pre->base.digit, 1, periodic_words, &periodic_count,
-                                    lookups);
+    status = tau_pair_periodic_plan((int64_t)x, (int64_t)y, pre->base.digit, 1,
+                                    periodic_words, &periodic_count, lookups);
     if (status == 2) {
         if (fallbacks) *fallbacks = 1;
         return 1;
