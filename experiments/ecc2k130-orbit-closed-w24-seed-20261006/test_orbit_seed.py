@@ -19,6 +19,13 @@ def square_by_monomials(word: int) -> int:
 
 
 class OrbitSeedTests(unittest.TestCase):
+    def test_131_frobenius_has_no_invariant_24_space(self) -> None:
+        # 130 = 2*5*13. These checks give ord_131(2)=130, so Phi_131
+        # is irreducible over F_2 and its nontrivial module has dimension 130.
+        self.assertEqual(pow(2, 130, 131), 1)
+        for proper_divisor in (65, 26, 10):
+            self.assertNotEqual(pow(2, proper_divisor, 131), 1)
+
     def test_square_matches_monomial_reference_and_frobenius_period(self) -> None:
         for index in range(16):
             word = int.from_bytes(hashlib.sha256(f"square:{index}".encode()).digest(),
