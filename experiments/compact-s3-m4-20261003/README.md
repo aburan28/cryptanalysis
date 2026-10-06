@@ -2001,6 +2001,21 @@ and 50,976 inversions, but this is a censored search prefix, not a
 successful-decomposition cost. Most partial states still exceed the cap:
 405/407, 298/300, and 403/404. The complete N131 `2^x` remains unknown.
 
+### Q1458 batched S3 root inversions
+
+The [Q1458 frozen stage](q1458_batch_roots/README.md) retains Q1457's
+exact inputs, cap, decision policy, and resource limits while batching
+the joint rule's S3 inversions. Deterministic N53/N83 root panels match
+every serial root; both archived partial-witness controls return verified
+group relations. A paired archive audit confirms Q1457 and Q1458 made
+the same exact joint checks on the same retained rejection states. On
+the N53 ordinary states, joint-rule inversions fall from 18,953 to 12
+and field squares from 1,729,118 to 744,186. On N83 they fall from
+12,168 to 6 inversions and 1,676,142 to 678,858 squares. All three
+unpinned cells still hit the 60-second cap without a relation, so this
+is a measured arithmetic improvement on censored prefixes, not a
+successful-decomposition cost or a controlled wall-time speedup.
+
 ## Next goal
 
 The next goal is **one independently verified four-point relation from the
@@ -2011,7 +2026,9 @@ rule never fired on unpinned inputs at its original cap. Q1457 activates
 the rule at N53/N83 but reaches only two N53 and one N83 joint checks in
 60 seconds, without a relation. Its N53 ordinary run spends over 4.3
 million native field squares in that censored interval. Another blind cap
-increase is not an adequate solver strategy.
+increase is not an adequate solver strategy. Q1458 removes nearly all
+joint-rule inversions on those same states but still recovers no unpinned
+relation, so arithmetic-only tuning also leaves the main gap.
 
 A concrete successor should process **large partial pair-output domains**
 without enumerating every pair combination. First derive and independently

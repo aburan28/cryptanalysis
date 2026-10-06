@@ -41,6 +41,35 @@ cost per successful decomposition. Natural relation yield, useful rank,
 the complete N131 `2^x`, and challenge admission remain unknown until
 ordinary successful relations and all later IC phases are measured.
 
+## Frozen outcome
+
+The [archive audit](verification.json) regenerated the three exact inputs,
+checked every raw receipt and binary hash, and recomputed all retained
+`no_chain` snapshots with the separate Python join. The
+[paired operation audit](paired_comparison.json) confirms that Q1457 and
+Q1458 encountered **the same retained joint-rejection states**, made the
+same number of pair and final `S3` root calls on those states, and reached
+the same censored outcome. It compares only the exact joint-rule calls on
+those matched states; the rest of each 60-second SAT path is not fixed by
+the snapshot match.
+
+| Input | Joint checks | Serial → batched joint inversions | Joint squares saved | Outcome |
+| --- | ---: | ---: | ---: | --- |
+| N53 known-satisfiable unpinned slice | 2 | 18,953 → 12 | 984,932 | 60 s cap; no relation |
+| N53 full ordinary target | 2 | 18,953 → 12 | 984,932 | 60 s cap; no relation |
+| N83 full ordinary target | 1 | 12,168 → 6 | 997,284 | 60 s cap; no relation |
+
+The arithmetic change is exact and large on the matched joint states. It
+does **not** increase the number of admitted joint checks within the fixed
+wall limits or recover the unpinned witness. Most partial states still
+exceed the 4,096 pair cap: 273/275 on the N53 stress slice, 240/242 on
+the full ordinary N53 target, and 404/405 on N83. The host lacks a CPU
+isolation receipt, so the elapsed times do not establish a controlled
+speedup. The successful-decomposition cost and complete N131 `2^x` remain
+unknown. The next solver change must act on large partial pair domains or
+guide branching into small domains; further arithmetic tuning alone does
+not solve the observed eligibility bottleneck.
+
 Run all Sage jobs through the accepted launcher:
 
 ```sh

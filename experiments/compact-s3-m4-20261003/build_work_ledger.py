@@ -5554,6 +5554,135 @@ def main():
     assert [row["joint_eligible_checks"] for row in q1457_rows] == [2, 2, 1]
     assert [row["independently_checked_rejection_snapshots"] for row in
             q1457_rows] == [2, 2, 1]
+    q1458_dir = HERE / "q1458_batch_roots"
+    q1458_protocol_path = q1458_dir / "protocol.json"
+    q1458_control_path = q1458_dir / "control_result.json"
+    q1458_verification_path = q1458_dir / "verification.json"
+    q1458_comparison_path = q1458_dir / "paired_comparison.json"
+    q1458_protocol = json.loads(q1458_protocol_path.read_text())
+    q1458_control = json.loads(q1458_control_path.read_text())
+    q1458_verification = json.loads(q1458_verification_path.read_text())
+    q1458_comparison = json.loads(q1458_comparison_path.read_text())
+    assert q1458_protocol["proposal_id"] == q1458_control[
+        "proposal_id"] == q1458_verification[
+            "proposal_id"] == q1458_comparison["proposal_id"] == "Q1458"
+    assert q1458_protocol["candidate_id"] is q1458_verification[
+        "candidate_id"] is q1458_comparison["candidate_id"] is None
+    assert q1458_protocol["isogeny"] == q1458_verification[
+        "isogeny"] == q1458_comparison["isogeny"] == "none"
+    assert q1458_protocol["point_decomposition_stage_code"] == "PDP4hybrid"
+    assert q1458_control["status"] == q1458_verification[
+        "status"] == q1458_comparison["status"] == "pass"
+    assert q1458_verification["protocol_sha256"] == sha(q1458_protocol_path)
+    assert q1458_comparison["protocol_sha256"] == sha(q1458_protocol_path)
+    assert q1458_comparison["verification_sha256"] == sha(
+        q1458_verification_path)
+    assert q1458_comparison["baseline_verification_sha256"] == sha(
+        q1457_verification_path)
+    assert q1458_protocol["baseline_q1457_protocol_sha256"] == sha(
+        q1457_protocol_path)
+    assert q1458_protocol["run_order"] == q1457_protocol["run_order"]
+    assert len(q1458_control["rows"]) == 2
+    assert all(row["verified_relation"] for row in q1458_control["rows"])
+    q1458_rows = []
+    for name, audit, comparison in zip(q1458_protocol["run_order"],
+                                       q1458_verification["rows"],
+                                       q1458_comparison["rows"]):
+        cell = q1458_protocol["cells"][name]
+        receipt_path = q1458_dir / f"runs/{name}/receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        report = receipt["solver_report"]
+        baseline = next(row for row in q1457_rows if row["case"] == name)
+        matched_pair = next(row for row in q1455_rows if row["case"] == name)
+        assert audit["case"] == comparison["case"] == receipt[
+            "case"] == name
+        assert audit["receipt_sha256"] == comparison[
+            "batched_receipt_sha256"] == sha(receipt_path)
+        assert comparison["baseline_receipt_sha256"] == baseline[
+            "receipt_sha256"]
+        assert receipt["protocol_sha256"] == sha(q1458_protocol_path)
+        assert receipt["workload_id"] == baseline["workload_id"] == cell[
+            "workload_id"]
+        assert receipt["curve_id"] == baseline["curve_id"] == cell[
+            "curve_id"]
+        assert receipt["factor_base_actual_B"] == baseline[
+            "factor_base_actual_B"] == cell["factor_base_actual_B"]
+        assert receipt["folded_columns_K"] == baseline[
+            "folded_columns_K"] == cell["folded_columns_K"]
+        assert receipt["factor_base_enumerated_set_sha256"] == baseline[
+            "factor_base_enumerated_set_sha256"] == cell[
+                "factor_base_enumerated_set_sha256"]
+        assert receipt["pair_candidate_cap"] == report["pair_cap"] == 4096
+        assert receipt["solver_status"] == audit[
+            "solver_status"] == "censored"
+        assert receipt["verified_relation_count"] == 0
+        assert report["joint_eligible_checks"] == comparison["joint_checks"]
+        assert report["batch_inverse_batches"] == comparison[
+            "batch_inverse_batches"]
+        assert report["batch_denominators"] == comparison[
+            "batch_denominators"]
+        q1458_rows.append({
+            "proposal_id": "Q1458", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "case": name, "input_role": cell["input_role"],
+            "degree": cell["degree_n"], "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "pair_candidate_cap": cell["pair_candidate_cap"],
+            "matched_pair_table_receipt_sha256": matched_pair[
+                "matched_pair_table_receipt_sha256"],
+            "matched_pair_table_speed_ratio": None,
+            "baseline_q1457_receipt_sha256": baseline["receipt_sha256"],
+            "same_rejection_states_sha256": comparison[
+                "same_rejection_states_sha256"],
+            "solver_status": receipt["solver_status"],
+            "solver_stop_reason": report["stop_reason"],
+            "sat_conflicts": report["conflicts"],
+            "sat_decisions": report["decisions"],
+            "partial_four_leaf_events": report["joint_partial_events"],
+            "joint_cap_skips": report["joint_cap_skips"],
+            "joint_eligible_checks": report["joint_eligible_checks"],
+            "joint_no_chain_rejections": report[
+                "joint_no_chain_rejections"],
+            "independently_checked_rejection_snapshots": audit[
+                "sampled_rejections_independently_checked"],
+            "joint_pair0_root_calls": report["joint_pair0_root_calls"],
+            "joint_pair1_root_calls": report["joint_pair1_root_calls"],
+            "joint_final_root_calls": report["joint_final_root_calls"],
+            "joint_field_mul_calls": report["joint_field_mul_calls"],
+            "joint_field_sqr_calls": report["joint_field_sqr_calls"],
+            "joint_field_inv_calls": report["joint_field_inv_calls"],
+            "paired_joint_field_calls_saved": comparison[
+                "joint_field_calls_saved"],
+            "batch_inverse_batches": report["batch_inverse_batches"],
+            "batch_denominators": report["batch_denominators"],
+            "batch_root_inputs": report["batch_root_inputs"],
+            "native_field_mul_calls": report["field_mul_calls"],
+            "native_field_sqr_calls": report["field_sqr_calls"],
+            "native_field_inv_calls": report["field_inv_calls"],
+            "native_field_call_scope": (
+                "native solver and joint propagator, excludes Sage "
+                "formula construction, relation replay, and setup"),
+            "exploratory_solver_wall_ns": receipt[
+                "solver_process_wall_ns_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": 0,
+            "successful_ordinary_pdp_cost_measured": False,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["joint_eligible_checks"] for row in q1458_rows] == [2, 2, 1]
+    assert [row["joint_field_inv_calls"] for row in q1458_rows] == [12, 12, 6]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -7221,6 +7350,40 @@ def main():
             "control_sha256": sha(q1457_control_path),
             "verification_sha256": sha(q1457_verification_path),
         },
+        "q1458_batched_s3_roots_stage": {
+            "proposal_id": "Q1458", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "method": q1458_protocol["method"],
+            "controlled_variable": q1458_protocol["controlled_variable"],
+            "rows": q1458_rows,
+            "verified_partial_witness_controls": 2,
+            "serial_root_panels_independently_matched": [53, 83],
+            "ordinary_eligible_joint_checks": 3,
+            "ordinary_independently_checked_no_chain_rejections": 3,
+            "ordinary_verified_relations": 0,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "The batched root kernel matches every serial root on "
+                "the deterministic N53/N83 panels, and both witness "
+                "controls return group-verified relations. The three "
+                "unpinned cells encounter the same audited joint "
+                "rejection states as Q1457. Joint-rule inversions fall "
+                "from 18,953 to 12 on each N53 cell and 12,168 to 6 "
+                "on N83, with fewer joint multiplications and squares. "
+                "All three cells still reach 60 seconds without a "
+                "relation; most partial states remain over cap. Exact "
+                "arithmetic savings on censored prefixes do not supply "
+                "a successful-decomposition cost or N131 exponent."),
+            "protocol_sha256": sha(q1458_protocol_path),
+            "control_sha256": sha(q1458_control_path),
+            "verification_sha256": sha(q1458_verification_path),
+            "paired_comparison_sha256": sha(q1458_comparison_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -7663,6 +7826,10 @@ def main():
                 "joint rejections on each unpinned N53 cell and one "
                 "on the full N83 ordinary cell, but all three still "
                 "reach the 60-second solver cap without a relation; "
+                "Q1458 batches exact S3 root inversions and reduces "
+                "joint-rule field calls on the same audited rejection "
+                "states, but all matched unpinned cells remain censored "
+                "and most partial pair domains exceed the cap; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
