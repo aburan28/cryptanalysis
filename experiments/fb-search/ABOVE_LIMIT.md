@@ -365,5 +365,19 @@ margin, and precomputation is equally available to generic rho.
      `D(0) = 1` the coefficients of A are fixed one by one from the low end. That is a power-series
      square root, and pruning by degree would need the low coefficients of `P(D)` to depend on few
      of the t. A valuation-echelon basis of U makes `d_j(t)` triangular. But
-     `P(D) = xi^(-2) S (HT(xi^2 D(theta)^2) + kappa)` multiplies by the target S, so every coefficient `P_k(t)` is a dense form in all of t, and no
+     `P(D) = xi^(-2) S (HT(xi^2 D(theta)^2) + kappa)`      multiplies by the target S, so every coefficient `P_k(t)` is a dense form in all of t, and no
      pruning remains. The Dickson/ONB-II basis has the same problem.
+   - **Meet-in-the-middle on the pair equation.** Write the condition as
+     `X Y + L_S(X) + L_S(Y) = c_S`, with `L_S` F_2-linear. Split `V = V_a + V_b` (each of dimension
+     `l/2`, sub-progressions). A functional in `(V_a V_b)^perp` kills the cross terms, leaving
+     `k = n - dim(V_a V_b) = n - l + 1` separable bits; the `l - d` linear conditions of U add to
+     the key.
+     - **Cost.** The lists hold `2^l` half-pairs each, and they collide about `2^(5l - 2n - 3)`
+       times. The total, about `2^l`, is above `2^d = 2^(3l - n - 2)` for every `l < (n + 2)/2`, and
+       equal only at `l = n/2`.
+     - **Splitting each candidate u instead.** Since `V = V_a + V_b`, each u in U fixes the
+       sum on each half, and a meet-in-the-middle over `x_a`, `x_b` costs `2^(l/2)` per u. The
+       half-trace solves each u in `O(1)`.
+     - **Why it cannot do better.** Beating `2^d` needs a split of the d-dimensional space U
+       itself. But the root `X(u) = u HT(p(u)/u^2)` divides by u, so no functional of it separates
+       over `u = u_a + u_b`. It is a preimage search, where generic collision methods give nothing.
