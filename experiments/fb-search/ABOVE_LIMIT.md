@@ -182,7 +182,7 @@ geomtraceu seed 1, at n = 41 unless marked. Data: `results/residual-tmxl.jsonl`.
 | 12 | 30 | 4 | 6176 / 31931 | 2.1e8 / 4.2e10 | 6.3e10 | 1.8e10 |
 | 15 | 34 | 4 | 12885 / 52956 | 1.6e9 / 2.2e11 | 4.7e11 | 1.4e11 |
 | 18 | 38 | 4 | 23808 / 82993 | 8.9e9 / 9.3e11 | 2.7e12 | 1.2e12 |
-| 21 (n = 47, l = 23) | 44 | **>= 5** (degree 4: rank 28684 of 43473, no linear pivot) | 43473 at degree 4 | 3.4e10 | — | — |
+| 21 (n = 47, l = 23) | 44 | **5** (degree 4: rank 28684 of 43473, no linear pivot; degree 5 refutes, eps = 0) | 201477 at degree 5 | 7.9e12 (110 min) | — | about 3 s (C enumeration) |
 | 24 (n = 53, l = 26) | 50 | **>= 5** (degree 4: rank 42088 of 73401) | 73401 at degree 4 | 1.3e11 | — | — |
 
 The t-only closure needs the same degree as the full closure, at 14-100x less work. The degree
@@ -201,6 +201,31 @@ the degree grows about linearly, roughly `2 + d/9`.
   `d = 9`, and about 1x against a well-optimized enumeration in raw word operations.
 
 It does not meet the goal: it does not stay cheap above the limit.
+
+**The asymptotic exponent of the closure family** (`results/residual-tmxl-deg5.jsonl`). The
+degree-5 t-closure at `d = 21` refutes: it ends with 23 linear pivots, at rank 173581 of 201477
+columns. Its cost is 7.9e12 word operations, single-threaded, against about `2^21 * 1.5 us = 3 s`
+for the C enumeration. So the degree steps are 3 to 4 somewhere in `d = 10..12` and 4 to 5 in
+`d = 19..21`. The spacing between steps is therefore between 7 and 11 dimensions, a slope
+`s = (D - 1)/d` between about 1/11 and 1/7.
+
+- **Columns.** The t-closure at degree D has about `l C(d, D - 1) ~ 2^(H(s) d)` columns.
+  At `d = 21` that is already only 0.1 of `2^d`.
+- **Best case for elimination.** Sparse elimination (block Wiedemann, cost about
+  `columns^2 * row weight`) gives an exponent `2 H(s) d`. That is below `d` only for
+  `s < 0.110`. The measured range, 1/11 to 1/7, straddles this threshold: the exponent is
+  between 0.88d and 1.2d. At `s = 1/9`, `2 H(s) = 1.007`.
+- **Why even that is optimistic.** The closure that refutes is a mutant closure, not a plain
+  Macaulay matrix. At degree D the plain t-Macaulay matrix has about `(d - D + 2)/(2(D - 1))` times
+  fewer rows than columns (2.25 at `d = 21`), so it is not known to refute at the same degree, and
+  Wiedemann does not run a mutant closure.
+- **No crossover at cryptographic size, even so.** Take the most favourable slope, 1/11. The
+  measured excess at `d = 21` is about `2^14` (`columns^2 / 2^d`, before row weight), and it
+  closes at about 0.12 per dimension. A crossover would need roughly `d > 130`. At n = 131,
+  `d <= 65` for every `l <= (n + 1)/2`.
+
+**Conclusion: the algebraic-closure family has no exponent advantage over `2^d` that is visible
+at any size, and no advantage at all at cryptographic n.**
 
 ## 4d. Candidate 3: CDCL with XOR reasoning on the residual system (tested; rejected)
 
@@ -279,7 +304,25 @@ margin, and precomputation is equally available to generic rho.
 1. **Explain the degree-3 refutations.** Find which degree-3 multiples yield the refutation, and
    turn that mechanism into a direct algorithm without a Macaulay matrix.
 2. ~~Measure the degree trend beyond `d = 13`~~: done in Sec. 4b-4c with `smxl.c`. The degree is 3
-   for `d <= 9`, 4 for `d = 12-18`, and >= 5 for `d = 21, 24`.
+   for `d <= 9`, 4 for `d = 12-18`, 5 at `d = 21` and >= 5 at `d = 24`. Sec. 4c turns this into an
+   exponent bound for the whole closure family.
 3. **Other decomposition shapes.** Pairs from two subspaces, cosets, and Frobenius twists were
    checked on paper: each needs more unknowns per pair than one subspace. Candidates that change
    the shape fundamentally (not m = 2 over one subspace) still need a literature check.
+4. **Further on-paper checks (2026-10-06), none giving a candidate:**
+   - **Möbius images of a subspace**, `x in M(V)`. Translations, scalings and the inversion
+     `x -> 1/x` all keep S_3 F_2-linear in `(e1, e2)`, for example
+     `S_3(1/f1, 1/f2, S) f1^2 f2^2 = 1 + S^2 e1^2 + S e2 + b e2^2`. The unknowns stay
+     `e1 in V`, `e2 in V V`, so the residual dimension is unchanged.
+   - **More linear consequences from power sums.** `X^3 + Y^3 = u^3 + u p(u)` lies in `V V^2`
+     and gives `n - dim(V V^2)` conditions that are quadratic in t. With `dim(V V) = 2l - 1`, V is
+     a geometric progression `xi {1, theta, ..., theta^(l-1)}` (the linear Vosper theorem of
+     Bachoc-Serra-Zémor, for `2l - 1 < n - 1`). Then `dim(V V^2) = min(n, 3l - 2)`, so above the
+     limit there are none. Any other V enlarges `V V`, and each extra dimension adds one to d. We
+     did not check whether the quadratic conditions gained could pay for that.
+   - **A coordinate in which translation is F_2-affine.** Suppose f is injective on `<G>` and
+     `f(P + R) = A_R(f(P))`, with `A_R` an affine map of `F_2^N`. Then `R -> A_R` is a homomorphism
+     `<G> -> AGL(N, 2)`. An element of odd prime order r there needs `r | 2^i - 1` for some
+     `i <= N`, so `N >= ord_r(2)`, which is typically of the order of r. So no low-degree coordinate turns
+     the m = 2 PDP into pure linear algebra. Among degree-2 functions, x is already optimal: the
+     correspondence `(f(P), f(R - P))` has bidegree (2, 2).
