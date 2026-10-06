@@ -65,8 +65,8 @@ int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_s
         const f4_u32 high = low_start - 64u * w;
         const f4_u64 mask = high >= 64u ? ~0ull : ((1ull << high) - 1ull);
         f4e_gather_thread(0u, 1u, mat, stride, w, mask, active, rows, cand, pw, counts + w);
-        f4e_panel(sh, threads, cand, pw, coeff, is_piv, counts + w, piv, ops);
-        f4e_materialise(threads, mat, stride, w, active, piv, ops);
+        f4e_panel(sh, threads, cand, pw, coeff, is_piv, counts + w, piv);
+        f4e_materialise_thread(0u, 1u, mat, stride, w, active, piv, ops);
         for (f4_u64 gid = 0; gid < 32u; ++gid)
             f4e_update_thread(gid, 32u, mat, stride, w, cand, coeff, is_piv, counts + w, piv, ops);
     }

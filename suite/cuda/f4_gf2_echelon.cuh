@@ -16,9 +16,10 @@
  *   panel        one block: per column of the word, the lowest such row is
  *                the pivot and its word is XORed into the others, which
  *                record the pivots they took as a 64-bit mask;
- *   materialise  one block: each pivot row takes the earlier pivots its
- *                mask names, across the rest of the row, and leaves the
- *                active set;
+ *   materialise  a thread per word: each pivot row becomes the
+ *                combination of original pivot rows its expanded mask
+ *                names, across the rest of the row, and leaves the active
+ *                set;
  *   update       a warp per remaining row XORs the pivots its mask names
  *                into the rest of the row.
  * Rows without a high bit in word w are untouched by panel w.
@@ -36,15 +37,21 @@ typedef struct {
     f4_u32 n;
     f4_u32 total; /* pivots of every panel so far */
     f4_u32 row[64];
-    f4_u64 hist[64]; /* earlier pivots of the panel XORed into pivot k */
+    /* Earlier pivots of the panel XORed into pivot k; once the panel is
+     * done, expanded to the original pivot rows it combines. */
+    f4_u64 hist[64];
 } F4ePivots;
+
+/* Panels with at most this many candidates keep their words in shared
+ * memory while the pivots are found. */
+#define F4E_SMEM_CAND 2048u
 
 /* Block-shared state of the panel step. */
 typedef struct {
     f4_u64 cols;
     f4_u64 best[3];
     f4_u32 n_cand;
-    f4_u32 n_piv;
+    f4_u64 pw[F4E_SMEM_CAND];
 } F4ePanelShared;
 
 /* Gather: active rows with a high bit in word w, with that word. */
@@ -64,104 +71,135 @@ F4_FN void f4e_gather_thread(f4_u64 gid, f4_u64 total, const f4_u64 *mat, f4_u64
 
 /* Panel: pivots of word w among the gathered rows, lowest row first per
  * column.  coeff[i] collects the pivot slots XORed into candidate i;
- * is_piv[i] marks the pivots. */
-F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand, f4_u64 *pw,
-                           f4_u64 *coeff, f4_u32 *is_piv, const f4_u32 *count, F4ePivots *piv,
-                           f4_u64 *ops)
+ * is_piv[i] marks the pivots.  One pass per column eliminates it and
+ * looks for the next column's pivot.  At the end each pivot's history is
+ * expanded to the original pivot rows it combines. */
+F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand, f4_u64 *pw_global,
+                           f4_u64 *coeff, f4_u32 *is_piv, const f4_u32 *count, F4ePivots *piv)
 {
     F4_SINGLE
     {
         sh->n_cand = *count;
-        sh->n_piv = 0u;
         sh->cols = 0ull;
         sh->best[0] = ~0ull;
         sh->best[1] = ~0ull;
         sh->best[2] = ~0ull;
     }
     F4_SYNC();
+    f4_u64 *pw = sh->n_cand <= F4E_SMEM_CAND ? sh->pw : pw_global;
     F4_FOR_THREADS(tid)
         f4_u64 acc = 0ull;
         for (f4_u32 i = tid; i < sh->n_cand; i += nt) {
             coeff[i] = 0ull;
             is_piv[i] = 0u;
+            pw[i] = pw_global[i];
             acc |= pw[i];
         }
         if (acc) F4_ATOMIC_OR64(&sh->cols, acc);
     F4_END_THREADS
     F4_SYNC();
     f4_u64 cols = sh->cols;
-    f4_u32 round = 0u;
-    while (cols != 0ull) {
-        const f4_u32 c = F4_CTZ(cols);
-        cols &= cols - 1ull;
-        const f4_u32 slot = round % 3u;
+    f4_u32 n_piv = 0u;
+    if (cols != 0ull) {
+        f4_u32 c = F4_CTZ(cols);
         F4_FOR_THREADS(tid)
-            if (tid == 0u) sh->best[(slot + 1u) % 3u] = ~0ull;
             f4_u64 mine = ~0ull;
             for (f4_u32 i = tid; i < sh->n_cand; i += nt) {
-                if (!is_piv[i] && ((pw[i] >> c) & 1ull)) {
+                if ((pw[i] >> c) & 1ull) {
                     f4_u64 key = ((f4_u64)cand[i] << 32) | i;
                     mine = key < mine ? key : mine;
                 }
             }
-            if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[slot], mine);
+            if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[0], mine);
         F4_END_THREADS
         F4_SYNC();
-        ++round;
-        const f4_u64 best = sh->best[slot];
-        if (best == ~0ull) continue;
-        const f4_u32 p = (f4_u32)(best & 0xffffffffull);
-        const f4_u32 k = sh->n_piv;
-        F4_FOR_THREADS(tid)
-            if (tid == 0u) {
-                piv->row[k] = cand[p];
-                piv->hist[k] = coeff[p];
-                is_piv[p] = 1u;
-            }
-            for (f4_u32 i = tid; i < sh->n_cand; i += nt) {
-                if (i == p || is_piv[i] || !((pw[i] >> c) & 1ull)) continue;
-                pw[i] ^= pw[p];
-                coeff[i] |= 1ull << k;
-            }
-        F4_END_THREADS
-        F4_SYNC();
-        F4_SINGLE { sh->n_piv = k + 1u; }
-        F4_SYNC();
+        /* Round r reads slot r % 3, reduces column r + 1 into slot
+         * (r + 1) % 3 and clears slot (r + 2) % 3, which every thread read
+         * before the barrier that ended round r - 1. */
+        for (f4_u32 round = 0;; ++round) {
+            const f4_u64 best = sh->best[round % 3u];
+            const f4_u32 p = best == ~0ull ? F4_NONE : (f4_u32)(best & 0xffffffffull);
+            const f4_u64 rest = cols & (cols - 1ull);
+            const f4_u32 next = rest ? F4_CTZ(rest) : 64u;
+            const f4_u32 k = n_piv;
+            F4_FOR_THREADS(tid)
+                if (tid == 0u) {
+                    sh->best[(round + 2u) % 3u] = ~0ull;
+                    if (p != F4_NONE) {
+                        piv->row[k] = cand[p];
+                        piv->hist[k] = coeff[p];
+                        is_piv[p] = 1u;
+                    }
+                }
+                f4_u64 mine = ~0ull;
+                for (f4_u32 i = tid; i < sh->n_cand; i += nt) {
+                    if (i == p || is_piv[i]) continue;
+                    f4_u64 word = pw[i];
+                    if (p != F4_NONE && ((word >> c) & 1ull)) {
+                        word ^= pw[p];
+                        pw[i] = word;
+                        coeff[i] |= 1ull << k;
+                    }
+                    if (next < 64u && ((word >> next) & 1ull)) {
+                        f4_u64 key = ((f4_u64)cand[i] << 32) | i;
+                        mine = key < mine ? key : mine;
+                    }
+                }
+                if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[(round + 1u) % 3u], mine);
+            F4_END_THREADS
+            F4_SYNC();
+            if (p != F4_NONE) ++n_piv;
+            if (next == 64u) break;
+            cols = rest;
+            c = next;
+        }
     }
     F4_SINGLE
     {
-        piv->n = sh->n_piv;
-        piv->total += sh->n_piv;
-        (void)ops;
+        piv->n = n_piv;
+        piv->total += n_piv;
+        /* Pivot k is its own row plus the final pivots its history names,
+         * so over the original rows it is hist[k] plus their expansions. */
+        for (f4_u32 k = 0; k < n_piv; ++k) {
+            f4_u64 h = piv->hist[k], full = h;
+            while (h != 0ull) {
+                const f4_u32 j = F4_CTZ(h);
+                h &= h - 1ull;
+                full ^= piv->hist[j];
+            }
+            piv->hist[k] = full;
+        }
     }
     F4_SYNC();
 }
 
-/* Materialise: pivot k takes the earlier pivots its history names over
- * words w .. stride, in order, so each is final when a later one reads
- * it; then it leaves the active set. */
-F4_BLOCK_FN void f4e_materialise(f4_u32 nt, f4_u64 *mat, f4_u64 stride, f4_u32 w, f4_u32 *active,
-                                 const F4ePivots *piv, f4_u64 *ops)
+/* Materialise, a thread per word: every pivot row becomes its original
+ * plus the original pivot rows its expanded history names, over words
+ * w .. stride; the originals are read before any is written.  Then the
+ * pivots leave the active set. */
+F4_FN void f4e_materialise_thread(f4_u64 gid, f4_u64 total, f4_u64 *mat, f4_u64 stride, f4_u32 w,
+                                  f4_u32 *active, const F4ePivots *piv, f4_u64 *ops)
 {
     const f4_u32 n = piv->n;
-    for (f4_u32 k = 0; k < n; ++k) {
-        f4_u64 h = piv->hist[k];
-        f4_u64 *dst = mat + (f4_u64)piv->row[k] * stride;
-        while (h != 0ull) {
-            const f4_u32 j = F4_CTZ(h);
-            h &= h - 1ull;
-            const f4_u64 *src = mat + (f4_u64)piv->row[j] * stride;
-            F4_FOR_THREADS(tid)
-                for (f4_u64 x = w + tid; x < stride; x += nt) dst[x] ^= src[x];
-                if (tid == 0u) F4_ATOMIC_ADD64(ops, stride - w);
-            F4_END_THREADS
-            F4_SYNC();
+    for (f4_u64 x = w + gid; x < stride; x += total) {
+        f4_u64 orig[64];
+        for (f4_u32 k = 0; k < n; ++k) orig[k] = mat[(f4_u64)piv->row[k] * stride + x];
+        for (f4_u32 k = 0; k < n; ++k) {
+            f4_u64 acc = orig[k], h = piv->hist[k];
+            while (h != 0ull) {
+                const f4_u32 j = F4_CTZ(h);
+                h &= h - 1ull;
+                acc ^= orig[j];
+            }
+            mat[(f4_u64)piv->row[k] * stride + x] = acc;
         }
     }
-    F4_FOR_THREADS(tid)
-        for (f4_u32 k = tid; k < n; k += nt) active[piv->row[k]] = 0u;
-    F4_END_THREADS
-    F4_SYNC();
+    for (f4_u64 k = gid; k < n; k += total) active[piv->row[k]] = 0u;
+    if (gid == 0ull) {
+        f4_u64 xors = 0ull;
+        for (f4_u32 k = 0; k < n; ++k) xors += F4_POPC(piv->hist[k]);
+        if (xors) F4_ATOMIC_ADD64(ops, xors * (stride - w));
+    }
 }
 
 /* Update: a warp per remaining candidate XORs the pivots its mask names

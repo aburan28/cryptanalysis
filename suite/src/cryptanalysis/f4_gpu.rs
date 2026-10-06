@@ -794,13 +794,17 @@ mod cuda {
         buffers: [Buffer; 19],
         /// `ECHELON_KERNELS`, when the module has them.
         echelon_fns: Option<[Handle; 5]>,
+        /// With `F4_F2_ECHELON_PROFILE` set: launches and nanoseconds per
+        /// kernel, each launch synchronised (which slows the whole run),
+        /// printed and reset after every matrix.
+        profile: Option<std::sync::Mutex<std::collections::BTreeMap<String, (u64, u128)>>>,
     }
 
     /// Entry points of `cuda/f4_gf2_echelon.cuh`, in launch order.
     const ECHELON_KERNELS: [&str; 5] = [
         "f4e_gather",
         "f4e_panel_block",
-        "f4e_materialise_block",
+        "f4e_materialise",
         "f4e_update",
         "f4e_low",
     ];
@@ -934,6 +938,8 @@ mod cuda {
                     scratch_budget,
                     buffers: Default::default(),
                     echelon_fns,
+                    profile: std::env::var_os("F4_F2_ECHELON_PROFILE")
+                        .map(|_| std::sync::Mutex::new(Default::default())),
                 })
             }
         }
@@ -990,6 +996,7 @@ mod cuda {
             params: &mut [*mut c_void],
             what: &str,
         ) -> Result<(), String> {
+            let t0 = std::time::Instant::now();
             self.driver.check(
                 (self.driver.launch_kernel)(
                     f,
@@ -1005,7 +1012,16 @@ mod cuda {
                     std::ptr::null_mut(),
                 ),
                 what,
-            )
+            )?;
+            if let Some(profile) = &self.profile {
+                self.driver
+                    .check((self.driver.ctx_synchronize)(), "cuCtxSynchronize")?;
+                let mut p = profile.lock().expect("profile poisoned");
+                let slot = p.entry(what.to_string()).or_default();
+                slot.0 += 1;
+                slot.1 += t0.elapsed().as_nanos();
+            }
+            Ok(())
         }
 
         fn download<T: Copy + Default>(&self, ptr: u64, n: usize) -> Result<Vec<T>, String> {
@@ -1107,7 +1123,6 @@ mod cuda {
                         &mut is_piv as *mut u64 as *mut c_void,
                         &mut count as *mut u64 as *mut c_void,
                         &mut piv as *mut u64 as *mut c_void,
-                        &mut ops as *mut u64 as *mut c_void,
                     ];
                     self.launch(fns[1], 1, 1024, &mut p, "f4e_panel_block")?;
                     let mut p = [
@@ -1118,7 +1133,8 @@ mod cuda {
                         &mut piv as *mut u64 as *mut c_void,
                         &mut ops as *mut u64 as *mut c_void,
                     ];
-                    self.launch(fns[2], 1, 1024, &mut p, "f4e_materialise_block")?;
+                    let words = ((stride - w).div_ceil(128) as u32).max(1);
+                    self.launch(fns[2], words, 128, &mut p, "f4e_materialise")?;
                     let mut p = [
                         &mut mat as *mut u64 as *mut c_void,
                         &mut stride64 as *mut u64 as *mut c_void,
@@ -1150,6 +1166,16 @@ mod cuda {
                     .check((self.driver.ctx_synchronize)(), "cuCtxSynchronize")?;
             }
             let device_ns = t_dev.elapsed().as_nanos();
+            if let Some(profile) = &self.profile {
+                let mut p = profile.lock().expect("profile poisoned");
+                for (kernel, (launches, ns)) in p.iter() {
+                    eprintln!(
+                        "F4_F2_ECHELON_PROFILE {kernel}: {launches} launches, {:.1} ms",
+                        *ns as f64 / 1e6
+                    );
+                }
+                p.clear();
+            }
             let t_down = std::time::Instant::now();
             let n_low = self.download::<u32>(n_low, 1)?[0] as usize;
             let pivots = self.download::<u32>(piv, 2)?[1] as usize;
