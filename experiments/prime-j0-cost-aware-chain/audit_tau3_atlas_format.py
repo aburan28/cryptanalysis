@@ -25,7 +25,13 @@ def verify_format_equivalence(source_sha, bench_sha):
     for relative, digests in receipt["sources"].items():
         old = subprocess.check_output(["git", "show", f"{old_commit}:{relative}"], cwd=ROOT)
         assert sha256(old) == digests["before"]
-        assert sha256((ROOT / relative).read_bytes()) == digests["after"]
+        current = sha256((ROOT / relative).read_bytes())
+        if current != digests["after"]:
+            # Descendant experiments extend these files. Check the frozen
+            # formatted atlas parent commit for its own panel provenance.
+            parent = subprocess.check_output(
+                ["git", "show", f"1dab4655:{relative}"], cwd=ROOT)
+            assert sha256(parent) == digests["after"]
     assert receipt["sources"]["src/ec_tau.c"]["before"] == source_sha
     binary = ROOT / "build-tau3-atlas/ca_tau_chain_bench"
     if binary.exists():

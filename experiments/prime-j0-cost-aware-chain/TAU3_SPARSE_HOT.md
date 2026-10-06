@@ -57,3 +57,19 @@ exactly 396 / 756 sparse point entries, and strictly fewer sparse mixed
 additions than compact width-four in all eight cases. Preserve every raw
 failure and timeout. Controlled CPU timing requires a host-level isolation
 receipt and repeated paired runs; local elapsed times are exploratory.
+
+## Native old-data controls
+
+The native curve suite passes 2,306,841 checks. It verifies all prepared
+half and hot points and every zero, single, hot, and cold orbit action under
+all six units on both study curves; it also covers identity, subgroup-order,
+small-order, and forced generic fallback cases. The [old-data native
+receipt](tau3-sparse-native-design.json) independently verifies 32,768
+outputs and exact action digests. Its operation counts match the corrected
+old-data screen exactly in all eight point cases; the [read-only
+audit](audit_tau3_sparse_native_design.py) passes. The sparse tables prepare
+324 / 630 hot pair additions, versus 1,296 / 2,268 additions for the full
+fused tables, and use two normalization inversions on each curve. The
+compiled static maps, including the quotient atlas and both hot maps, total
+45,550 bytes. These are correctness and stage-cost observations on older
+inputs; they are not prospective performance evidence.

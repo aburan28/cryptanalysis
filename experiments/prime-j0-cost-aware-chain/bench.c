@@ -107,7 +107,8 @@ static int select_mode(const char *name)
                                   "fixed-comb9",
                                   "pos-compact",
                                   "tau3-fused-pos",
-                                  "tau3-atlas-pos"};
+                                  "tau3-atlas-pos",
+                                  "tau3-sparse-pos"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -133,7 +134,7 @@ int main(int argc, char **argv)
                 "tail-pair-periodic-canonical|tail-pair-periodic-gated27|"
                 "tail-pair-periodic-firstword27|tail-pair-mixed-radix|"
                 "tail-pair-mixed-full-digits|fixed-comb9|pos-compact|tau3-fused-pos|"
-                "tau3-atlas-pos "
+                "tau3-atlas-pos|tau3-sparse-pos "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -161,6 +162,7 @@ int main(int argc, char **argv)
     int compact = mode == 36;
     int tau3 = mode == 37 || mode == 38;
     int tau3_atlas = mode == 38;
+    int sparse = mode == 39;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -195,6 +197,7 @@ int main(int argc, char **argv)
     ca_fixed_comb_precomp comb_pre;
     ca_tau4_pos_compact_precomp compact_pre = {0};
     ca_tau3_fused_precomp tau3_pre = {0};
+    ca_tau3_sparse_precomp sparse_pre = {0};
     ca_tau4_pos_precomp positional_pre;
     ca_tau8_fused_precomp fused_pre = {0};
     ca_tau_wide_precomp wide_pre = {0};
@@ -214,7 +217,8 @@ int main(int argc, char **argv)
     size_t prep_temp_stack_bytes =
         comb ? (CA_FIXED_COMB_ENTRIES * 4 + CA_FIXED_COMB_WIDTH * 3) * sizeof(uint64_t) : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
-    size_t point_entries = tau3            ? ca_ec_tau3_fused_blocks(&group) * 343
+    size_t point_entries = sparse          ? ca_ec_tau3_sparse_point_entries(&group)
+                           : tau3          ? ca_ec_tau3_fused_blocks(&group) * 343
                            : compact       ? ca_ec_tau4_pos_compact_layers(&group) * 18
                            : comb          ? CA_FIXED_COMB_ENTRIES
                            : pair_complete ? CA_TAU_PAIR_COMPLETE_COUNT
@@ -223,7 +227,8 @@ int main(int argc, char **argv)
                            : fused         ? fused_blocks * fused_entries
                                            : 0;
     size_t point_table_bytes = point_entries * sizeof(ca_elem);
-    size_t prep_bytes = tau3            ? sizeof(tau3_pre) + point_table_bytes
+    size_t prep_bytes = sparse          ? sizeof(sparse_pre) + point_table_bytes
+                        : tau3          ? sizeof(tau3_pre) + point_table_bytes
                         : compact       ? sizeof(compact_pre) + point_table_bytes
                         : comb          ? sizeof(comb_pre)
                         : pair_complete ? sizeof(complete_pre)
@@ -236,11 +241,19 @@ int main(int argc, char **argv)
     if (fused) prep_temp_heap_bytes = fused_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (compact) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (tau3) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
+    if (sparse) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (tapered) prep_temp_heap_bytes = ca_ec_tau_wide_temp_bytes(wide_schedule);
     if (wavefront) prep_temp_heap_bytes = ca_ec_tau_wide_wavefront_temp_bytes(wide_schedule);
     if (mode != 0) {
         double t0 = ca_now();
-        if (tau3) {
+        if (sparse) {
+            if (!ca_ec_tau3_sparse_prepare(&group, &point, &sparse_pre, &prep_seed_ops,
+                                           &prep_triples, &prep_tau_steps, &prep_adds,
+                                           &prep_rotations, &prep_layer_inversions)) {
+                free(outputs);
+                return 2;
+            }
+        } else if (tau3) {
             if (!ca_ec_tau3_fused_prepare(&group, &point, &tau3_pre, &prep_seed_ops, &prep_triples,
                                           &prep_tau_steps, &prep_adds, &prep_rotations,
                                           &prep_layer_inversions)) {
@@ -344,7 +357,9 @@ int main(int argc, char **argv)
     uint64_t periodic_lookups = 0, periodic_accepted = 0, periodic_fallbacks = 0;
     uint64_t mixed_lookups = 0, mixed_fallbacks = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
-    size_t static_map_bytes = tau3_atlas              ? ca_ec_tau3_atlas_static_bytes()
+    uint64_t sparse_cold_pairs = 0;
+    size_t static_map_bytes = sparse                  ? ca_ec_tau3_sparse_static_bytes()
+                              : tau3_atlas            ? ca_ec_tau3_atlas_static_bytes()
                               : tau3                  ? ca_ec_tau3_fused_static_bytes()
                               : pair_full             ? ca_ec_tau_pair_mixed_full_static_bytes()
                               : pair_mixed            ? ca_ec_tau_pair_mixed_static_bytes()
@@ -363,7 +378,8 @@ int main(int argc, char **argv)
     size_t recipe_bytes = packed || wavefront ? ca_ec_tau_wide_packed_recipe_bytes(wide_schedule)
                           : graph             ? ca_ec_tau_wide_graph_recipe_bytes(wide_schedule)
                                               : 0;
-    size_t online_scratch_bytes = tau3                          ? 160
+    size_t online_scratch_bytes = sparse                        ? 160
+                                  : tau3                        ? 160
                                   : pair_periodic               ? 1024
                                   : pair_mixed                  ? 384
                                   : pair_complete || pair_fused ? 512
@@ -409,6 +425,18 @@ int main(int argc, char **argv)
                 adds += a;
                 rotations += r;
                 output_inversions += !outputs[i].w[2];
+            } else if (sparse) {
+                uint64_t a = 0, r = 0, cold = 0, fallback = 0;
+                if (!ca_ec_tau3_sparse_mul_profile(&group, &sparse_pre, &outputs[i], scalars[i], &a,
+                                                   &r, &cold, &fallback)) {
+                    fprintf(stderr, "tau3 sparse evaluation failed at index %zu\n", i);
+                    free(outputs);
+                    return 1;
+                }
+                adds += a;
+                rotations += r;
+                sparse_cold_pairs += cold;
+                fallbacks += fallback;
             } else if (tau3) {
                 uint64_t a = 0, r = 0, fallback = 0;
                 int success = tau3_atlas
@@ -528,6 +556,15 @@ int main(int argc, char **argv)
     uint64_t tail_pair_preparation_checks = 0;
     uint64_t tail_complete_preparation_checks = 0;
     uint64_t tau3_preparation_checks = 0;
+    uint64_t sparse_preparation_checks = 0;
+    if (sparse) {
+        if (!ca_ec_tau3_sparse_verify_map() || !ca_ec_tau3_sparse_prepare_verify(&sparse_pre)) {
+            fprintf(stderr, "tau3 sparse map or point table verification failed\n");
+            free(outputs);
+            return 1;
+        }
+        sparse_preparation_checks = point_entries;
+    }
     if (tau3) {
         if (!ca_ec_tau3_fused_verify_map() || (tau3_atlas && !ca_ec_tau3_atlas_verify_map()) ||
             !ca_ec_tau3_fused_prepare_verify(&tau3_pre)) {
@@ -562,8 +599,39 @@ int main(int argc, char **argv)
     uint64_t mixed_checks = 0, mixed_action_digest = FNV_OFFSET;
     uint64_t tau3_checks = 0, tau3_action_fallbacks = 0, tau3_atlas_checks = 0;
     uint64_t tau3_action_digest = FNV_OFFSET;
+    uint64_t sparse_checks = 0, sparse_action_fallbacks = 0;
+    uint64_t sparse_action_digest = FNV_OFFSET;
+    ca_tau3_fused_precomp sparse_reference = {0};
+    if (sparse) {
+        sparse_reference.base = sparse_pre.base;
+        sparse_reference.blocks = sparse_pre.blocks;
+    }
     for (size_t i = 0; i < SCALARS; i++) {
         if (mode != 0) {
+            if (sparse) {
+                uint16_t actions[16], reference_actions[16];
+                size_t action_count = 0, reference_count = 0;
+                int recoded = ca_ec_tau3_sparse_recode_actions(&sparse_pre, scalars[i], actions,
+                                                               &action_count);
+                int reference_recoded = ca_ec_tau3_atlas_recode_actions(
+                    &sparse_reference, scalars[i], reference_actions, &reference_count);
+                if (recoded != reference_recoded ||
+                    (recoded &&
+                     (action_count != reference_count ||
+                      memcmp(actions, reference_actions, action_count * sizeof(uint16_t)) != 0))) {
+                    fprintf(stderr, "tau3 sparse action mismatch at index %zu\n", i);
+                    free(outputs);
+                    return 1;
+                }
+                if (!recoded) {
+                    sparse_action_fallbacks++;
+                } else {
+                    sparse_action_digest = digest_word(sparse_action_digest, action_count);
+                    for (size_t j = 0; j < action_count; j++)
+                        sparse_action_digest = digest_word(sparse_action_digest, actions[j]);
+                    sparse_checks++;
+                }
+            }
             if (tau3) {
                 uint16_t actions[16];
                 size_t action_count = 0;
@@ -708,6 +776,7 @@ int main(int argc, char **argv)
     ca_ec_tau_wide_clear(&wide_pre);
     ca_ec_tau4_pos_compact_clear(&compact_pre);
     ca_ec_tau3_fused_clear(&tau3_pre);
+    ca_ec_tau3_sparse_clear(&sparse_pre);
     free(outputs);
     printf("curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
            " endo_lambda=%" PRIu64 " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
@@ -732,7 +801,9 @@ int main(int argc, char **argv)
            " mixed_fallbacks=%" PRIu64 " mixed_checks=%" PRIu64 " mixed_action_digest=%016" PRIx64
            " tau3_preparation_checks=%" PRIu64 " tau3_checks=%" PRIu64
            " tau3_action_fallbacks=%" PRIu64 " tau3_action_digest=%016" PRIx64
-           " tau3_atlas_checks=%" PRIu64 " verified=1\n",
+           " tau3_atlas_checks=%" PRIu64 " sparse_preparation_checks=%" PRIu64
+           " sparse_checks=%" PRIu64 " sparse_action_fallbacks=%" PRIu64
+           " sparse_action_digest=%016" PRIx64 " sparse_cold_pairs=%" PRIu64 " verified=1\n",
            argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda,
            input_digest, output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_doubles,
            prep_tau_steps, prep_adds, prep_rotations, prep_seed_ops, prep_layer_inversions,
@@ -747,6 +818,7 @@ int main(int argc, char **argv)
            periodic_accepted, periodic_fallbacks, periodic_checks, periodic_word_digest,
            mixed_lookups, mixed_fallbacks, mixed_checks, mixed_action_digest,
            tau3_preparation_checks, tau3_checks, tau3_action_fallbacks, tau3_action_digest,
-           tau3_atlas_checks);
+           tau3_atlas_checks, sparse_preparation_checks, sparse_checks, sparse_action_fallbacks,
+           sparse_action_digest, sparse_cold_pairs);
     return 0;
 }

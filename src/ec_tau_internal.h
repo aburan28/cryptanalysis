@@ -92,6 +92,31 @@ size_t ca_ec_tau3_fused_static_bytes(void);
 size_t ca_ec_tau3_atlas_static_bytes(void);
 void ca_ec_tau3_fused_clear(ca_tau3_fused_precomp *pre);
 
+/* Sparse two-level six-step tau table. Selected hot pair orbits take one
+ * mixed addition; every cold pair is composed from two prepared half points.
+ * Public scalars only; over-capacity scalars use the generic multiplier. */
+typedef struct ca_tau3_sparse_precomp {
+    ca_tau4_precomp base;
+    ca_elem base_point;
+    ca_elem *point; /* per block: 18 half points, then selected hot pairs */
+    const uint16_t *hot_offsets, *hot_ids, *hot_slots;
+    size_t blocks, point_entries, hot_entries;
+} ca_tau3_sparse_precomp;
+size_t ca_ec_tau3_sparse_point_entries(const ca_group *g);
+size_t ca_ec_tau3_sparse_static_bytes(void);
+int ca_ec_tau3_sparse_verify_map(void);
+int ca_ec_tau3_sparse_prepare(const ca_group *g, const ca_elem *point, ca_tau3_sparse_precomp *out,
+                              uint64_t *seed_ops, uint64_t *triples, uint64_t *tau_steps,
+                              uint64_t *adds, uint64_t *rotations, uint64_t *inversions);
+int ca_ec_tau3_sparse_prepare_verify(const ca_tau3_sparse_precomp *pre);
+int ca_ec_tau3_sparse_verify_actions(const ca_tau3_sparse_precomp *pre);
+int ca_ec_tau3_sparse_recode_actions(const ca_tau3_sparse_precomp *pre, uint64_t k,
+                                     uint16_t actions[16], size_t *count);
+int ca_ec_tau3_sparse_mul_profile(const ca_group *g, const ca_tau3_sparse_precomp *pre,
+                                  ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                  uint64_t *cold_pairs, uint64_t *fallbacks);
+void ca_ec_tau3_sparse_clear(ca_tau3_sparse_precomp *pre);
+
 int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point, ca_tau4_precomp *out,
                        uint64_t *ops);
 int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out, uint64_t k,
