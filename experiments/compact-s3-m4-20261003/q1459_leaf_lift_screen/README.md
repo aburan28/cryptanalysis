@@ -32,9 +32,35 @@ batched root join and test the same ordinary N53/N83 public targets.
 Admission alone does not predict a verified relation, natural yield,
 rank, or a complete N131 `2^x`.
 
+## Frozen screen outcome
+
+The [result](result.json) preserves every archived state, raw and
+lift-filtered leaf count, pair count, cap decision, and skipped state. The
+[independent audit](verification.json) re-enumerates all screened leaf
+domains and checks every distinct x with Q1422's separately built native
+field and curve-lift implementation: 1,327 distinct x at N53 and 3,161
+at N83. It independently reproduces every filtered count and admission.
+
+| Input | Unique partial states | States with every leaf ≤4,096 options | Raw pair-cap admissions | After exact lift filter | New admissions |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| N53 known-satisfiable unpinned slice | 21 | 13 | 6 | 6 | 0 |
+| N53 full ordinary target | 21 | 13 | 6 | 6 | 0 |
+| N83 full ordinary target | 23 | 7 | 1 | 2 | 1 |
+
+The one new N83 state has 79 raw x options in each leaf, so both pair
+products are `79² = 6,241`. Exactly 39 x values per leaf lift to the
+curve, reducing each pair product to `39² = 1,521`, below the unchanged
+4,096 cap. The 15-second Q1456 prefixes are diagnostic snapshots; the
+same state need not be reached on a changed solver path. This screen
+does not run the joint solver or return a relation. It establishes that
+single-leaf lift filtering alone provides only one extra admission in
+these frozen prefixes, so the main solver goal still requires a stronger
+target-coupled large-domain condition or a better search policy.
+
 Use the accepted Sage launcher:
 
 ```sh
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1459_leaf_lift_screen/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1459_leaf_lift_screen/screen_lift.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1459_leaf_lift_screen/verify_archive.py --check
 ```
