@@ -95,6 +95,15 @@ streams, sampled point maps, and public fixture scalars have independent
 replays. Natural W24/m6 PDP yield, useful rank, and complete DLP costs remain
 unmeasured; this is an input activation gate, not an `IC1` result.
 
+The [exact W24/m6 tuple-capacity screen](../ecc2k130-263-w24-mitm-capacity-20261005/RESULT.md)
+parks a **full materialized raw-point** 2+4 pair index and 3+3 triple index
+for all four equal-size policies under the 4-GiB envelope. Even a fictional
+one-bit slot for each distinct-point tuple exceeds that memory by 4,094×
+for pairs and 22,888,519,604× for triples. This is a count of enumeration
+states, not distinct sums or an algebraic-solver lower bound. Implicit and
+target-adaptive PDP methods, natural-query yield, and full-rank recovery
+remain the active gates; `candidate_id` stays null.
+
 The [degree-263 transport-cost stage](../ecc2k130-263-transport-cost-20261005/RESULT.md)
 then checked 256 point maps on that frozen workload. The primary target's
 forward and inverse route calls took 45.721 and 42.531 ms in the checked
