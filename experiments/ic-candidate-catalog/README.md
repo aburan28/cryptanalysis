@@ -165,6 +165,13 @@ subgroup-point recognition and m5 PDP/rank costs remain unmeasured. The
 unchanged W24 quotient is deprioritized;
 the orbit-closed W24/m5 policy remains a `candidate_id: null` proposal,
 separate from both the original W24/m6 and W28/m5 policies.
+The [normal-basis barrel gate](../ecc2k130-w24-normal-barrel-20261006/RESULT.md)
+now supplies a checked 8-layer exponent-selector circuit and both full
+conversion matrices for that implicit W24/m5 proposal. Its 120 round trips
+and 1,200 Frobenius rotations pass independent Sage replay, but the five-leaf
+front end alone costs 5,240 muxes and 49,115 direct conversion XORs. The
+exponent-range constraint and complete Boolean/Semaev solver remain absent;
+there is no ordinary PDP yield or target-online result.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
