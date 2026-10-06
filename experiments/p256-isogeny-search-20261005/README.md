@@ -134,6 +134,22 @@ limits are frozen in
 retest closes the per-key accounting gap for four leaders; it does not make the
 70-curve traversal exhaustive over the isogeny class.
 
+## Full retained-registry native screen
+
+The same native backend then screened the remaining 65 explicitly reached
+neighbors in 11 root-controlled, position-balanced blocks. Two unadjusted
+screening intervals excluded `1.0`, for degree-17 and degree-23 paths. A fresh
+30-trial, two-second holdout rejected both: their paired estimates were
+`1.0069x` (CI `0.9923x–1.0217x`) and `1.0030x` (CI
+`0.9879x–1.0183x`).
+
+Combining this screen with the focused four-curve panel, all 69 retained
+non-root curves now have matched native measurements and none has a
+reproducible advantage. The complete block artifacts, holdout, receipt, and
+verifier are frozen in
+[`results/sage-native-full-screen-20261006`](results/sage-native-full-screen-20261006).
+This covers the explicit 70-curve registry, not the entire isogeny class.
+
 ## Quick start
 
 Python 3.11 or newer is required.
