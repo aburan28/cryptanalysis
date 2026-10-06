@@ -182,7 +182,7 @@ geomtraceu seed 1, at n = 41 unless marked. Data: `results/residual-tmxl.jsonl`.
 | 12 | 30 | 4 | 6176 / 31931 | 2.1e8 / 4.2e10 | 6.3e10 | 1.8e10 |
 | 15 | 34 | 4 | 12885 / 52956 | 1.6e9 / 2.2e11 | 4.7e11 | 1.4e11 |
 | 18 | 38 | 4 | 23808 / 82993 | 8.9e9 / 9.3e11 | 2.7e12 | 1.2e12 |
-| 21 (n = 47, l = 23) | 44 | **5** (degree 4: rank 28684 of 43473, no linear pivot; degree 5 refutes, eps = 0) | 201477 at degree 5 | 7.9e12 (110 min) | — | about 3 s (C enumeration) |
+| 21 (n = 47, l = 23) | 44 | **5** (degree 4: rank 28684 of 43473, no linear pivot; degree 5 refutes both eps branches) | 201477 at degree 5 | 7.9e12 per branch (91 min) | — | about 3 s (C enumeration) |
 | 24 (n = 53, l = 26) | 50 | **>= 5** (degree 4: rank 42088 of 73401) | 73401 at degree 4 | 1.3e11 | — | — |
 
 The t-only closure needs the same degree as the full closure, at 14-100x less work. The degree
