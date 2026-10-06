@@ -84,3 +84,8 @@ out, while explicit sign assignments reduced each branch to a deterministic
 arithmetic check. The next gate is an unpinned planted search, followed by
 ordinary public fibers only if that search succeeds and exceptional paths
 are accounted for. No IC speedup follows from this control.
+
+The unpinned planted and ordinary runner paths read only the identical
+public fixtures, measured representatives, solver binary, and protocol.
+The local private fixture is opened only for the explicitly pinned planted
+mode; an unpinned receipt records its private-fixture input as `null`.

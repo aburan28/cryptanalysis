@@ -108,20 +108,21 @@ def main(mode: str, fiber_index: int, out: Path) -> None:
     regenerated = json.loads((REGENERATED / "public_input.json").read_text())
     assert sha(PUBLIC) == sha(REGENERATED / "public_input.json") == \
         protocol["source_public_fixture_sha256"]
-    assert public == regenerated and sha(PRIVATE) == \
-        protocol["regenerated_private_fixture_sha256_local_only"]
+    assert public == regenerated
     assert public["curve_id"] == protocol["curve_id"]
     assert sha(SOURCE / "n83_w34_sat_protocol.json") == \
         protocol["source_public_fixture_protocol_sha256"]
     assert sha(REPS) == protocol["full_w34_representatives_sha256"]
     assert sha(SOLVER) == protocol["solver_binary_sha256"]
-    private = json.loads(PRIVATE.read_text())
-    assert private["public_input_sha256"] == sha(PUBLIC)
     assert mode in ("pinned_planted", "unpinned_planted", "ordinary")
     kind = "ordinary" if mode == "ordinary" else "planted"
     assert fiber_index in range(4)
     fiber = public[kind]["raw_target_fiber"][fiber_index]
+    private = None
     if mode == "pinned_planted":
+        assert sha(PRIVATE) == protocol["regenerated_private_fixture_sha256_local_only"]
+        private = json.loads(PRIVATE.read_text())
+        assert private["public_input_sha256"] == sha(PUBLIC)
         assert [fiber["x"], fiber["y"]] == private["raw_sum"]
     sources = {
         "runner": Path(__file__),
@@ -136,7 +137,7 @@ def main(mode: str, fiber_index: int, out: Path) -> None:
         "mode": mode, "fiber_index": fiber_index,
         "candidate_id": None, "curve_id": protocol["curve_id"],
         "public_fixture_sha256": sha(PUBLIC),
-        "private_fixture_sha256_local_only": sha(PRIVATE),
+        "private_fixture_sha256_local_only": sha(PRIVATE) if private is not None else None,
         "protocol_sha256": sha(PROTOCOL),
         "source_sha256": {name: sha(path) for name, path in sources.items()},
         "solver_binary_sha256": sha(SOLVER),
@@ -167,6 +168,7 @@ def main(mode: str, fiber_index: int, out: Path) -> None:
         factor_x = [circuit.linear_element(row, conjugates) for row in mask_rows]
         builder.require_sum(factor_x, signs, int(fiber["x"]), int(fiber["y"]))
         if mode == "pinned_planted":
+            assert private is not None
             for row, selected in zip(mask_rows, private["selected"]):
                 mask = set(selected["mask"])
                 for bit, wire in enumerate(row):
