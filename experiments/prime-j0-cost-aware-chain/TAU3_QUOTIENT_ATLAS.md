@@ -29,8 +29,9 @@ must check exact action-stream agreement on the older fixture and include
 identity, subgroup-order, small-order, and forced over-capacity cases.
 
 After freezing native source, generate a new disjoint 8 × 4,096-scalar
-fixture, excluding every earlier fixture including the fused positional
-panel. Commit its generic reference digests and the paired runner before
+fixture with seed `0xC06A81A219386D55`, excluding every earlier fixture
+including the fused positional panel. Commit its generic reference digests
+and the [paired runner](check_tau3_atlas_panel.py) before
 executing either arm. Compare `tau3-fused-pos` and `tau3-atlas-pos` in
 alternating order, preserve all raw failures, and require all 16 arms to
 match the reference, zero candidate fallbacks, and exact equality of online
