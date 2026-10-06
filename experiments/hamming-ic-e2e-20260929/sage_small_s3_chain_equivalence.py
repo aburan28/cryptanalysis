@@ -43,6 +43,7 @@ def main(degree: int, out: Path) -> None:
     roots = {(a, b): {c for c in elements if s3(a, b, c) == 0}
              for a, b in itertools.product(elements, repeat=2)}
     false_positive = false_negative = matching = identity_possible = 0
+    regular_spurious = regular_missed = exceptional_only_missed = 0
     examples = []
     for xs in itertools.product(rational, repeat=5):
         reach = roots[xs[0], xs[1]]
@@ -50,6 +51,7 @@ def main(degree: int, out: Path) -> None:
             reach = {next_x for middle in reach
                      for next_x in roots[middle, factor]}
         actual = set()
+        regular = set()
         has_identity = False
         for points in itertools.product(*(lifts[x] for x in xs)):
             total = sum(points, curve(0))
@@ -57,6 +59,9 @@ def main(degree: int, out: Path) -> None:
                 has_identity = True
             else:
                 actual.add(total[0])
+                if all(sum(points[:count], curve(0)) != curve(0)
+                       for count in (2, 3, 4)):
+                    regular.add(total[0])
         if has_identity:
             identity_possible += 1
         extra = reach - actual
@@ -64,6 +69,9 @@ def main(degree: int, out: Path) -> None:
         false_positive += len(extra)
         false_negative += len(missing)
         matching += len(reach & actual)
+        regular_spurious += len(reach - regular)
+        regular_missed += len(regular - reach)
+        exceptional_only_missed += len(missing - regular)
         if (extra or missing) and len(examples) < 8:
             examples.append({
                 "factor_x": [word(x) for x in xs],
@@ -85,6 +93,9 @@ def main(degree: int, out: Path) -> None:
         "chain_reachable_and_group_reachable_pairs": matching,
         "chain_spurious_pairs": false_positive,
         "chain_missed_pairs": false_negative,
+        "regular_chain_spurious_pairs": regular_spurious,
+        "regular_chain_missed_pairs": regular_missed,
+        "exceptional_only_missed_pairs": exceptional_only_missed,
         "tuples_admitting_identity_sum": identity_possible,
         "first_mismatches": examples,
         "status": "PASS" if not false_positive and not false_negative else "COUNTEREXAMPLE",
