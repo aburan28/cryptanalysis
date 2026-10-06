@@ -398,3 +398,89 @@ margin, and precomputation is equally available to generic rho.
      - **Why it cannot do better.** Beating `2^d` needs a split of the d-dimensional space U
        itself. But the root `X(u) = u HT(p(u)/u^2)` divides by u, so no functional of it separates
        over `u = u_a + u_b`. It is a preimage search, where generic collision methods give nothing.
+
+## 6. Identifiers (AGENTS.md naming convention)
+
+**What gets a PS1 label.** Every measurement above is a PDP-stage profile: an exact factor base
+and a point-decomposition solver, with no relation linear algebra or target descent. So each has
+`candidate_id: null` and a label `PS1N<n>C<tag>fb<B>PDP2ht h<12hex>`.
+
+- **Hash input.** The hash covers the factor-base record (`FactorBase.record()`: basis, enumerated-set
+  digest, B, columns) and the point-decomposition record.
+- **Solver variants.** The residual solver is part of the point-decomposition record. So the
+  Python and C enumerations, MXL, the full and t-only closures, CryptoMiniSat and the plain
+  certificate each have their own label on the same base.
+- **Workload IDs.** These hash the exact target stream: seed string, law, filter and target count.
+  The count is recovered by replaying the stream against the recorded rows.
+- **Run IDs** are `<PS1>W<workload>R<k>`.
+- **Where to find them.** `stage_ids.py` builds them; `results/stage-ids.json` holds the full
+  records and run IDs.
+- **Source hashes** are taken at the commit that last modified each results file. Rows appended to
+  a file under earlier code are attributed to that snapshot.
+- **Large factor bases.** For `l >= 26`, the `2^l` points are not enumerated here, so B and the
+  enumerated-set digest are unknown. The record stays recipe-only and the label is null, as for
+  recipe-only fb-archive entries. The workload IDs are still exact.
+
+All cells use the geomtraceu factor base with seed 1, on `EC1N<n>Ckb1` curves. Rows that share a
+workload ID were measured on the same targets.
+
+| n | l | d | residual solver | PS1 stage-config ID | workload | targets | run | results file |
+|---|---|---|---|---|---|---|---|---|
+| 23 | 9 | 3, 4 | mxl | `PS1N23Ckb1fb504PDP2hthd18f7629b0fc` | `W705b1070a327` | 20 | R1 | `residual-n23.jsonl` |
+| 23 | 10 | 6, 7 | mxl | `PS1N23Ckb1fb1074PDP2hthef5c705eed18` | `W95f7ead1817f` | 20 | R1 | `residual-n23.jsonl` |
+| 23 | 11 | 9 | mxl | `PS1N23Ckb1fb2078PDP2hth6ca69790752c` | `W0079d154b9a5` | 20 | R1 | `residual-n23.jsonl` |
+| 23 | 12 | 12 | mxl | `PS1N23Ckb1fb4130PDP2hthf333eddc0748` | `Wfb5b2059c91b` | 12 | R1 | `residual-n23.jsonl` |
+| 23 | 13 | 13 | mxl | `PS1N23Ckb1fb8182PDP2hthbe7b1d77c21d` | `W714ffffa75e5` | 12 | R1 | `residual-n23.jsonl` |
+| 41 | 15 | 3, 4 | plain-t-macaulay | `PS1N41Ckb1fb32692PDP2hth9d14580caa32` | `Wd68960d13097` | 3 | R1 | `certificate-n41.jsonl` |
+| 41 | 15 | 3, 4 | mxl | `PS1N41Ckb1fb32692PDP2hth4667a0968cd2` | `W4324f35e3cff` | 20 | R1 | `residual-n41.jsonl` |
+| 41 | 16 | 6 | plain-t-macaulay | `PS1N41Ckb1fb65818PDP2hth595840c4084b` | `W00e6c5560569` | 3 | R1 | `certificate-n41.jsonl` |
+| 41 | 16 | 6 | mxl | `PS1N41Ckb1fb65818PDP2hth4fff117d10b8` | `Wf80aba75c38f` | 20 | R1 | `residual-n41.jsonl` |
+| 41 | 17 | 9 | plain-t-macaulay | `PS1N41Ckb1fb131098PDP2hth9cbd148c34f8` | `Wcfbe8d331d15` | 3 | R1 | `certificate-n41.jsonl` |
+| 41 | 17 | 9 | cms | `PS1N41Ckb1fb131098PDP2hthb978c5a6089d` | `W34df95b0f352` | 8 | R1 | `cms-scan.jsonl` |
+| 41 | 17 | 9 | ht-c | `PS1N41Ckb1fb131098PDP2hthdbb7b90edab4` | `W34df95b0f352` | 8 | R1 | `enum-scan.jsonl` |
+| 41 | 17 | 9 | mxl | `PS1N41Ckb1fb131098PDP2hth94c3195ad62e` | `W9112ff664a1f` | 20 | R1 | `residual-n41.jsonl` |
+| 41 | 17 | 9 | tmxl | `PS1N41Ckb1fb131098PDP2htha0ff06c1638c` | `Wc4afa7744e72` | 3 | R1 | `residual-tmxl.jsonl` |
+| 41 | 18 | 12 | plain-t-macaulay | `PS1N41Ckb1fb261930PDP2hth454e894c9f32` | `W3d3733bb301b` | 3 | R1 | `certificate-n41.jsonl` |
+| 41 | 18 | 12 | cms | `PS1N41Ckb1fb261930PDP2hth6f1efef4e9f3` | `Wb1f5a3fe35c8` | 8 | R1 | `cms-scan.jsonl` |
+| 41 | 18 | 12 | ht-c | `PS1N41Ckb1fb261930PDP2hth67fbf747eb24` | `Wb1f5a3fe35c8` | 8 | R1 | `enum-scan.jsonl` |
+| 41 | 18 | 12 | smxl | `PS1N41Ckb1fb261930PDP2hth5f6ea9e4e45c` | `W723548f7a4a9` | 3 | R1 | `residual-smxl-n41.jsonl` |
+| 41 | 18 | 12 | tmxl | `PS1N41Ckb1fb261930PDP2htheee44d24f593` | `W723548f7a4a9` | 3 | R1 | `residual-tmxl.jsonl` |
+| 41 | 19 | 15 | plain-t-macaulay | `PS1N41Ckb1fb524160PDP2hth5ac3eab1f475` | `W37375c8bef23` | 1 | R1 | `certificate-n41.jsonl` |
+| 41 | 19 | 15 | cms | `PS1N41Ckb1fb524160PDP2hthe08aa31b8205` | `W0b6c54923a24` | 8 | R1 | `cms-scan.jsonl` |
+| 41 | 19 | 15 | ht-c | `PS1N41Ckb1fb524160PDP2hthd3d96555be3c` | `W0b6c54923a24` | 8 | R1 | `enum-scan.jsonl` |
+| 41 | 19 | 15 | smxl | `PS1N41Ckb1fb524160PDP2hthe22ae21401eb` | `Wb8c2d9956a58` | 2 | R1 | `residual-smxl-n41.jsonl` |
+| 41 | 19 | 15 | tmxl | `PS1N41Ckb1fb524160PDP2hth1513b985e407` | `W5dfabfe177c9` | 3 | R1 | `residual-tmxl.jsonl` |
+| 41 | 20 | 18 | cms | `PS1N41Ckb1fb1048072PDP2hthd70d24b24a36` | `W8ab1c66f139d` | 8 | R1 | `cms-scan.jsonl` |
+| 41 | 20 | 18 | ht-c | `PS1N41Ckb1fb1048072PDP2hth068d28d8c351` | `W8ab1c66f139d` | 8 | R1 | `enum-scan.jsonl` |
+| 41 | 20 | 18 | smxl | `PS1N41Ckb1fb1048072PDP2hthd97762c5468c` | `W14fe9b6e2e33` | 3 | R1 | `residual-smxl-n41.jsonl` |
+| 41 | 20 | 18 | tmxl | `PS1N41Ckb1fb1048072PDP2hth55152fd852cf` | `W14fe9b6e2e33` | 3 | R1 | `residual-tmxl.jsonl` |
+| 47 | 23 | 21 | cms | `PS1N47Ckb1fb8388932PDP2hth8251ea10efc4` | `W9d285b2ffa37` | 1 | R1 | `cms-scan.jsonl` |
+| 47 | 23 | 21 | ht-c | `PS1N47Ckb1fb8388932PDP2hth944e158f5112` | `Wcff31b74ecee` | 8 | R1 | `enum-scan.jsonl` |
+| 47 | 23 | 21 | tmxl | `PS1N47Ckb1fb8388932PDP2hthd88b05fd83a5` | `W8be3584bd6f0` | 1 | R1 | `residual-tmxl-deg5.jsonl` |
+| 47 | 23 | 21 | tmxl | `PS1N47Ckb1fb8388932PDP2hthd88b05fd83a5` | `W8be3584bd6f0` | 1 | R2 | `residual-tmxl.jsonl` |
+| 53 | 26 | 24 | tmxl | null (B not enumerated) | `W8e8dce397653` | 3 | — | `residual-tmxl.jsonl` |
+| 59 | 26 | 18 | cms | null (B not enumerated) | `W07021cb6fff8` | 6 | — | `cms-scan.jsonl` |
+| 59 | 26 | 18 | ht-c | null (B not enumerated) | `W8631a57c4bda` | 8 | — | `enum-scan.jsonl` |
+| 59 | 27 | 21 | cms | null (B not enumerated) | `W8043a91ad6be` | 6 | — | `cms-scan.jsonl` |
+| 59 | 27 | 21 | ht-c | null (B not enumerated) | `Wbf3229ebef01` | 8 | — | `enum-scan.jsonl` |
+| 59 | 28 | 24 | ht-c | null (B not enumerated) | `W7f2cc97718ba` | 8 | — | `enum-scan.jsonl` |
+| 59 | 29 | 27 | ht-c | null (B not enumerated) | `W307bfcd1d999` | 2 | — | `enum-scan.jsonl` |
+| 59 | 29 | 27 | tmxl | null (B not enumerated) | `Waa0f21e6d72c` | 2 | — | `residual-tmxl.jsonl` |
+
+**Full one-target IC runs above the limit.** None of the profiles above is an `IC1` result. The
+verified one-target IC1 runs are in `../ic-bench` (suite `online-ht`, 3 runs each, every target
+verified by scalar replay). Three of them are above the limit for their base:
+
+| IC1 candidate | d | online speedup vs rho, per run (wall, exploratory) |
+|---|---|---|
+| `IC1N19Ckb1fb562PDP2htRCsampleLAgaussTDpdpISO0h5169eba26a5b` (random, l = 9) | 8 | 0.09, 0.49, 0.34 |
+| `IC1N23Ckb1fb2120PDP2htRCsampleLAgaussTDpdpISO0hb13468522dc8` (kertrace, l = 11) | 11 | 0.46, 0.26, 0.09 |
+| `IC1N23Ckb1fb2134PDP2htRCsampleLAgaussTDpdpISO0he29be7078ab2` (random, l = 11) | 10 | 0.59, 0.17, 0.20 |
+
+`IC1N23Ckb1fb534PDP2htRCsampleLAgaussTDpdpISO0hee0f97ad04b3` (geometric, l = 9, d = 2) is just
+past the limit; its per-run speedups are 1.25, 0.44 and 13.8. **Every run with `d >= 8` is slower
+online than plain rho on the same target.** This agrees with Sec. 2 and Sec. 4e.
+
+The n = 41 online table in Sec. 4e is a **prediction**, not a run. It combines the measured
+`PDP2ht` + `ht-c` stage cost above with the predicted `p_dec` and an assumed per-attempt linear
+solve, so it has no run ID.
