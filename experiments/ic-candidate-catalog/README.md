@@ -41,8 +41,8 @@ have `candidate_id: null` and do not issue an `IC1` result.
 | `n131_poly_d7_m4` | N131 | Polynomial subspace d=7, **fb26**, m=4 | Bounded planted-query and matrix audit; no natural full-width DLP recovery. |
 | `n131_onb_hw2_m4` | N131 | Normal-basis Hamming weight ≤2, m=4 | Construction code exists; exact base count for this proposal is unresolved. |
 | `n131_onb_hw3_m5` | N131 | Normal-basis Hamming weight ≤3, m=5 | Construction code exists; exact base count for this proposal is unresolved. |
-| `n131_poly_d28_m5` | N131 | Polynomial subspace d=28, m=5 | Illustrative large-base budget in PDP scaling; full-width factor base and end-to-end costs unmeasured. |
-| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | One exact trace-zero W24 policy has 16,786,464 source or 16,772,828 first-descendant usable points. Its [source W24/m6 SAT control](../ecc2k130-w24-natural-pdp-20261005/RESULT.md) and [functional S3 follow-up](../ecc2k130-w24-functional-s3-20261006/RESULT.md) did not pass the bounded planted solver gate; the latter has an independently verified satisfying XCNF assignment. The natural target was not run. Natural yield and a complete IC run remain unmeasured. |
+| `n131_poly_d28_m5` | N131 | Polynomial subspace d=28, m=5 | One exact trace-zero W28 policy has 268,436,324 source or 268,465,880 first-descendant usable points and roughly 134 million sign-folded columns; natural m5 PDP yield and end-to-end costs remain unknown. |
+| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | One exact trace-zero W24 policy has 16,786,464 source or 16,772,828 first-descendant usable points. Its [source W24/m6 SAT control](../ecc2k130-w24-natural-pdp-20261005/RESULT.md) hit 100,002 conflicts unpinned; [witness localization](../ecc2k130-w24-natural-pdp-20261005/DIAGNOSTIC_RESULT.md) verified SAT only with both inverse and intermediate values pinned. The [functional S3 follow-up](../ecc2k130-w24-functional-s3-20261006/RESULT.md) did not pass the bounded planted solver gate and has an independently verified satisfying XCNF assignment. The natural target was not run. Natural yield and a complete IC run remain unmeasured. Other d24 bases remain unresolved. |
 | `n131_iso2_d28_m5` | N131 | Proposed degree-2 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 | `n131_iso3_d28_m5` | N131 | Proposed degree-3 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 
@@ -78,6 +78,15 @@ to about `1.63e-5`, below the 1% objective. The records remain proposals
 with `candidate_id: null` until the missing stages and exact manifest are
 resolved.
 
+The [exact paired W28 census](../ecc2k130-263-w28-exact-base-20261005/RESULT.md)
+now supplies actual `B` and sign-folded columns for the competing W28/m5
+policy. Both curves pass its 1% *necessary* size threshold; the exact
+descendant density gain is only +0.005505234 percentage points, far below
+the predeclared two-point material-gain gate. The same counts bound W28/m4
+one-shot uniform-target support near `3.18e-7`. At W28/m5, a raw
+17-byte-per-column log vector would exceed 2.28 GB before matrix or solver
+costs. These remain counting-only proposals with `candidate_id: null`.
+
 The [equal-size W24 four-policy input gate](../ecc2k130-263-equal-w24-workload-20261005/RESULT.md)
 freezes `Q1420` on the exact degree-263 route: source-prefix and native
 descendant bases each have `B=16,772,828` before sign folding, and the
@@ -92,6 +101,15 @@ full-clause/XOR certificate and Sage group replay proved that exact planted
 formula satisfiable. This is a bounded solver-stage result only. It favors
 smaller algebraic or target-adaptive PDP formulations before another N131
 ordinary-query attempt, without ranking the four frozen factor-base policies.
+
+The [degree-263 transport-cost stage](../ecc2k130-263-transport-cost-20261005/RESULT.md)
+then checked 256 point maps on that frozen workload. The primary target's
+forward and inverse route calls took 45.721 and 42.531 ms in the checked
+Sage path on an unisolated host; these are stage observations, not complete
+IC online times. Future four-policy PDP comparisons must charge the needed
+target map and independently account for factor-base transport or pullback
+construction. Source/transported and native/pullback preserve sum membership
+exactly; only two base choices offer distinct yield hypotheses.
 
 ## Code reviewed for the design axes
 
@@ -150,6 +168,16 @@ It also reserves degree-2 edges over the binary field as characteristic-prime
 isogenies without a conventional `2`-volcano up/down label.
 
 ## Choosing what to run
+
+The [exact W24 Frobenius-orbit scan](../ecc2k130-263-w24-orbit-columns-20261005/RESULT.md)
+found only 2,066 potential column savings among 8,393,232 signed columns
+of the original source base (0.0246151%). The source-transported copy has
+the same group partition. Explicitly closing W24 under Frobenius would
+instead form a different, mathematically 2,198,485,492-point base with
+8,391,166 orbit representatives. Its implicit membership and m5 PDP/rank
+costs have not been measured. The unchanged W24 quotient is deprioritized;
+the orbit-closed W24/m5 policy remains a `candidate_id: null` proposal,
+separate from both the original W24/m6 and W28/m5 policies.
 
 Screen the 1,000 proposals in stages rather than launch 1,000 complete DLPs.
 First materialize and replay factor bases, then benchmark PDPs on identical
