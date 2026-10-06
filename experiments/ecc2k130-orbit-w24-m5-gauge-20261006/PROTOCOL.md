@@ -18,6 +18,7 @@ mask, other exponent, inverse witness, S3 intermediate, or fiber selector.
 The variable count, existing clauses and XOR rows must remain identical;
 only the CNF count may rise by eight. A known planted assignment checks
 satisfiability of the gauged formula, but does not count as solver recovery.
+Cap formula reconstruction at 300 seconds and 4 GiB observed builder RSS.
 
 Run the first unknown-witness solve with CryptoMiniSat 5.14.7, one thread,
 seed zero, 100,000 conflicts, 30 seconds, and 4 GiB observed RSS. Freeze
