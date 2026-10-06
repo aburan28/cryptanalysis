@@ -154,3 +154,11 @@ action alphabet and point table, the shortest-path values also bound any
 further addition-only improvement to 1.98% / 7.03% relative to the sparse
 recoder on this workload. A faster scalar implementation must reduce
 recoding cost, improve point arithmetic, or change the action/table budget.
+
+The native code and benchmark compiled under AppleClang with
+`-DCA_SANITIZE=ON` (AddressSanitizer and UndefinedBehaviorSanitizer) and
+`-DCA_WERROR=ON`. Two optional 4,096-scalar sanitizer replays were stopped
+with exit 143 after the contended local host gave each process only about
+3% CPU. They did not produce a pass or a diagnostic; sanitizer runtime
+correctness remains unverified locally. The draft PR's CI sanitizer job is
+the pending validation gate.
