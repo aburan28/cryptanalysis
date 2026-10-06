@@ -358,3 +358,12 @@ margin, and precomputation is equally available to generic rho.
      `i <= N`, so `N >= ord_r(2)`, which is typically of the order of r. So no low-degree coordinate turns
      the m = 2 PDP into pure linear algebra. Among degree-2 functions, x is already optimal: the
      correspondence `(f(P), f(R - P))` has bidegree (2, 2).
+   - **T-adic lifting over `F_2[T]`.** For a progression `V = xi {theta^i}_(i<l)`, write
+     `X = xi A(theta)` and `Y = xi B(theta)`. Since `deg(A B) <= 2l - 2 < n`, the residual is an
+     **exact** polynomial identity: `A (A + D) = P(D)` in `F_2[T]`, with `D = A + B` in the
+     d-dimensional family U and P F_2-affine. The coefficient of `T^k` is a convolution, so with
+     `D(0) = 1` the coefficients of A are fixed one by one from the low end. That is a power-series
+     square root, and pruning by degree would need the low coefficients of `P(D)` to depend on few
+     of the t. A valuation-echelon basis of U makes `d_j(t)` triangular. But
+     `P(D) = xi^(-2) S (HT(xi^2 D(theta)^2) + kappa)` multiplies by the target S, so every coefficient `P_k(t)` is a dense form in all of t, and no
+     pruning remains. The Dickson/ONB-II basis has the same problem.
