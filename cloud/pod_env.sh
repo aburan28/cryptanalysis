@@ -11,7 +11,7 @@ if ! command -v cargo >/dev/null; then
     sh -s -- -y -q --profile minimal --default-toolchain stable >/dev/null
 fi
 if ! python3 -c 'import nvidia.cuda_nvrtc' 2>/dev/null; then
-  pip3 install -q --break-system-packages nvidia-cuda-nvrtc-cu12 >/dev/null
+  pip3 install -q --break-system-packages --root-user-action=ignore nvidia-cuda-nvrtc-cu12 >/dev/null
 fi
 CA_NVRTC_LIB=$(python3 -c 'import glob, nvidia.cuda_nvrtc as m
 print(glob.glob(m.__path__[0] + "/lib/libnvrtc.so.12")[0])')

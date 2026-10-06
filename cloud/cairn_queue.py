@@ -9,7 +9,7 @@
     cloud/cairn_queue.py wait gpu-1 JOB...         # until each one has a receipt
     cloud/cairn_queue.py fetch gpu-1 JOB...        # outputs into this checkout, records beside
     cloud/cairn_queue.py hosts gpu-1               # what registered with the runner's node
-    cloud/cairn_queue.py logs gpu-1 [agent|node|boot]
+    cloud/cairn_queue.py logs gpu-1 [agent|node|boot|prefetch]
     cloud/cairn_queue.py list                      # runner pods
     cloud/cairn_queue.py down gpu-1
 
@@ -343,7 +343,7 @@ def cmd_hosts(args):
 def cmd_logs(args):
     pod = runner(args.name)
     path = {"agent": f"{RUNNER}/agent.log", "node": f"{RUNNER}/node.log",
-            "boot": "/root/pod-boot.log"}[args.which]
+            "boot": "/root/pod-boot.log", "prefetch": "/root/ship-prefetch.log"}[args.which]
     return remote(pod, f"tail -n {args.lines} {path}").returncode
 
 
@@ -421,7 +421,8 @@ def parse(argv=None):
     fetch.add_argument("--into", help=f"records directory (default {RECORDS.name}/RUNNER)")
     logs = sub.add_parser("logs")
     logs.add_argument("name")
-    logs.add_argument("which", nargs="?", default="agent", choices=["agent", "node", "boot"])
+    logs.add_argument("which", nargs="?", default="agent",
+                      choices=["agent", "node", "boot", "prefetch"])
     logs.add_argument("-n", "--lines", type=int, default=50)
     sub.add_parser("list")
     down = sub.add_parser("down")
