@@ -5,9 +5,11 @@
         'cd suite && cargo run --release --bin ca-ic -- run --degree 23 \\
          --curve-a 1 --json > ../results/run.json'
 
-`run` creates the pod NAME unless it exists, ships this checkout (edits
-included, as cloud/tree.py packs it) to /root/cryptanalysis, installs Rust
-and NVRTC when they are missing (cloud/pod_env.sh), runs CMD there with
+`run` creates the pod NAME unless it exists, makes /root/cryptanalysis this
+checkout (edits included; cloud/ship.py sends only what GitHub lacks, and
+cloud/install_tree.py keeps the suite's build tree warm), installs Rust and
+NVRTC when they are missing
+(cloud/pod_env.sh), runs CMD there with
 CA_NVRTC_LIB set, copies the --out paths back into this checkout, and
 deletes the pod it created unless --keep.  Its exit status is CMD's.  The
 pieces are commands too:
@@ -199,11 +201,15 @@ def create(args, extra_env=None):
 
 
 def sync(pod, dest=REMOTE):
-    import tree
-    data, summary = tree.pack(REPO)
-    print(f"shipping {summary['files']} files, {summary['bytes'] / 1e6:.1f} MB to {dest}", flush=True)
-    script = f"mkdir -p {dest} && tar --no-same-owner -xzf - -C {dest}"
-    return subprocess.run([*ssh_args(pod), script], input=data, check=False).returncode
+    """Make `dest` this checkout: built beside it by cloud/ship.py, then
+    installed by cloud/install_tree.py, which keeps the suite's build tree."""
+    import ship
+    staged = f"{dest}.tree"
+    summary = ship.ship(ssh_args(pod), REPO, staged, log=lambda m: print(m, flush=True))
+    if summary["returncode"] != 0:
+        return summary["returncode"]
+    install = f"python3 {staged}/cloud/install_tree.py {staged} {dest}"
+    return subprocess.run([*ssh_args(pod), install], check=False).returncode
 
 
 def fetch(pod, remote, local):
