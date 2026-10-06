@@ -224,7 +224,12 @@ nothing in it is ever deleted. Three layers keep it:
 
 1. **Git.** `bases/`, `index.csv`, `aliases.csv`, `unarchived.csv`, `sweeps/` and
    `sweeps.csv` are committed. CI fails if an indexed archive goes missing or if a
-   cited base is not archived.
+   cited base is not archived. The archive is **append-only**: `appendonly.py`
+   (CI workflow `fb-refs`) compares every change with the base branch and fails if
+   any row of `index.csv`, `aliases.csv`, `sweeps.csv` or `sweeps/*.points.csv` is
+   removed or changed, or if any archived file is deleted or rewritten. Adding is
+   always allowed, and a correction is a new entry. `unarchived.csv`, the debt
+   list, is the one file meant to shrink.
 2. **The default branch's history cannot be rewritten.** Set this in GitHub, not in
    code: **Settings → Rules → Rulesets → New branch ruleset**, enforcement
    *Active*, target *Default branch*, with **Restrict deletions** and **Block force

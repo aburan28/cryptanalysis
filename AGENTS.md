@@ -16,7 +16,8 @@ named, fully charged, verified toy-curve runs. It holds the calibrated `rps` uni
 candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a new
 baseline there when a change is intended. Archive factor bases (record, point set,
 digests) with [fb-archive](experiments/fb-archive/README.md); a recipe-only
-archive keeps `B` null. Archive a sweep over many curves with
+archive keeps `B` null. The archive is append-only (`appendonly.py`, CI `fb-refs`): never
+remove or rewrite an archived row or file; a correction is a new entry. Archive a sweep over many curves with
 `experiments/fb-archive/sweeps.py` (recipe only: curves, bases, recorded count files). CI (`fb-refs`) fails when a committed result cites a
 `factor_base_sha256` or point-set digest (`point_set_sha256`,
 `enumerated_set_sha256`, `base_digest`) that is neither archived (directly or through
