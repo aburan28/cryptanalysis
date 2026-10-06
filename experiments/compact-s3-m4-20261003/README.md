@@ -1906,20 +1906,33 @@ matrix activation alone does not solve the ordinary query within the
 frozen cap. Natural relation yield, a successful solve trend, and the
 complete N131 `2^x` remain unknown.
 
+### Q1451 fixed public-target preimage in the phi5 stage
+
+The [Q1451 frozen stage](q1451_phi5_fixed_target/README.md) substitutes
+ordinary raw target preimage index 0 as a field constant before building
+the phi5 circuit. The N53 and N83 formulas use about 19% fewer AND gates
+than Q1450 and pass fully pinned relation controls. The ordinary cells
+activate five Gaussian matrices each, but both reach the external
+65-second safeguard without a model or verified relation. Q1451 screens
+one of 428 N53 preimages and one of four N83 preimages; a timeout on
+one slice says nothing about whole-target relation yield. Its
+target-dependent stage intervals are 66.001 and 68.361 seconds on an
+unisolated host. The successful-solve growth rate and complete N131
+`2^x` remain unknown.
+
 ## Next goal
 
-The next solver should exploit Q1448's **shared five-input field
-invariants before Boolean branching**. Q1448 supplies a compact joint
-constraint, but direct bit-blasting still caps on the known-satisfiable
-N53 ordinary target. Q1449 showed that native XOR rows alone do not
-activate Gaussian reasoning under the default cutoff; Q1450 activated
-bounded field-product matrices and still capped. A useful method must
-eliminate or propagate a target-dependent constraint across several
-sparse leaves before generic Boolean branching, then show a changed
-search pattern on unpinned ordinary
-queries. Prove solution preservation and verify it against exhaustive
-small-field cases and the archived N53/N83 witnesses. A new SAT clause
-order alone does not pass this gate. Q1447 excludes uniformly restarting
+First test Q1451's constant-target circuit on the **known-satisfiable
+N53 ordinary target preimage 201**, leaving all four leaves unpinned.
+Q1451's index-0 timeout cannot decide that question. Freeze the slice,
+solver cap, and accounting before the query. A verified relation would
+give the first unpinned ordinary phi5 success and justify a paired
+N83/fresh-target panel. If that known-satisfiable slice still caps,
+develop a solution-preserving field-level elimination or propagation
+rule that couples several sparse leaves before generic Boolean
+branching. Prove it on exhaustive small fields and the archived
+N53/N83 witnesses, then show a changed search pattern on unpinned
+ordinary queries. Q1447 excludes uniformly restarting
 first-pair midpoints under the declared bases, and Q1416's pure pair-index
 model costs roughly `2^89.36` logical actions at N131; neither is a
 lower bound on target-guided algebraic search. Q1415's global native XOR

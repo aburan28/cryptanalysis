@@ -4754,7 +4754,7 @@ def main():
         assert progress
         last_conflicts_rounded = progress[-1].split()[6]
         assert last_conflicts_rounded.endswith("K")
-        q1450_rows.append({
+    q1450_rows.append({
             "proposal_id": "Q1450", "candidate_id": None,
             "run_id": None, "isogeny": "none",
             "point_decomposition_stage_code": "PDP4phi5",
@@ -4765,6 +4765,114 @@ def main():
             "factor_base_enumerated_set_sha256": cell[
                 "factor_base_enumerated_set_sha256"],
             "public_target": cell["public_target"],
+            "status": receipt["status"],
+            "attempt_count": len(receipt["attempts"]),
+            "gaussian_matrices_used": attempt[
+                "initial_gaussian_matrices_used"],
+            "last_progress_conflicts_rounded": last_conflicts_rounded,
+            "exact_final_solver_operation_counts": None,
+            "formula_build_wall_ns_exploratory": receipt[
+                "formula_build_wall_ns_exploratory"],
+            "solver_process_wall_ns_exploratory": receipt[
+                "solver_process_wall_ns_exploratory"],
+            "target_dependent_stage_wall_ns_exploratory": receipt[
+                "target_dependent_stage_wall_ns_exploratory"],
+            "archive_wall_ns_outside_stage": receipt[
+                "archive_wall_ns_outside_stage"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
+    q1451_dir = HERE / "q1451_phi5_fixed_target"
+    q1451_protocol_path = q1451_dir / "protocol.json"
+    q1451_controls_path = q1451_dir / "controls.json"
+    q1451_verification_path = q1451_dir / "verification.json"
+    q1451_protocol = json.loads(q1451_protocol_path.read_text())
+    q1451_controls = json.loads(q1451_controls_path.read_text())
+    q1451_verification = json.loads(q1451_verification_path.read_text())
+    assert q1451_protocol["proposal_id"] == q1451_controls[
+        "proposal_id"] == q1451_verification["proposal_id"] == "Q1451"
+    assert q1451_protocol["candidate_id"] is q1451_verification[
+        "candidate_id"] is None
+    assert q1451_protocol["isogeny"] == q1451_verification[
+        "isogeny"] == "none"
+    assert q1451_protocol["point_decomposition_stage_code"] == "PDP4phi5"
+    assert q1451_controls["status"] == q1451_verification[
+        "status"] == "pass"
+    assert q1451_protocol["parent_q1450_protocol_sha256"] == sha(
+        q1450_protocol_path)
+    assert q1451_protocol["controls_sha256"] == sha(q1451_controls_path)
+    assert q1451_verification["protocol_sha256"] == sha(
+        q1451_protocol_path)
+    assert q1451_verification["ordinary_n83_relation_measured"] is False
+    assert q1451_verification["complete_n131_log2_work"] is None
+    assert q1451_verification["challenge_run_admitted"] is False
+    assert all(row["verified_relation"]["status"] ==
+               "verified_four_point_relation" for row in q1451_controls[
+                   "rows"])
+    q1451_rows = []
+    for n in (53, 83):
+        cell = q1451_protocol["cells"][str(n)]
+        matched = q1450_protocol["cells"][str(n)]
+        for name in ("curve_id", "factor_base_actual_B",
+                     "folded_columns_K",
+                     "factor_base_enumerated_set_sha256", "public_target",
+                     "workload_id"):
+            assert cell[name] == matched[name], name
+        assert cell["target_preimage_index"] == 0
+        assert cell["target_preimage_x_count"] == 1
+        assert cell["full_target_preimage_x_count"] == matched[
+            "target_preimage_x_count"]
+        assert cell["and_gates"] > 0
+        assert cell["cnf_clauses"] < matched["cnf_clauses"]
+        receipt_path = q1451_dir / f"runs/n{n}_ordinary/receipt.json"
+        stdout_path = q1451_dir / f"runs/n{n}_ordinary/attempt_000.stdout.txt"
+        receipt = json.loads(receipt_path.read_text())
+        stdout = stdout_path.read_text()
+        verified = next(row for row in q1451_verification["rows"]
+                        if row["degree_n"] == n)
+        assert verified["receipt_sha256"] == sha(receipt_path)
+        assert verified["status"] == receipt["status"] == "solver_censored"
+        assert receipt["protocol_sha256"] == sha(q1451_protocol_path)
+        assert receipt["cms_binary_sha256"] == q1451_protocol[
+            "cms_binary_sha256"]
+        assert receipt["verified_relation_count"] == 0
+        assert receipt["complete_n131_log2_work"] is None
+        assert len(receipt["attempts"]) == 1
+        attempt = receipt["attempts"][0]
+        assert attempt["solver_status"] == "external_timeout"
+        assert attempt["stdout_sha256"] == sha(stdout_path)
+        assert attempt["initial_gaussian_matrices_used"] == 5
+        progress = re.findall(r"^c rst\s+.*$", stdout, re.M)
+        assert progress
+        last_conflicts_rounded = progress[-1].split()[6]
+        assert last_conflicts_rounded.endswith("K")
+        q1451_rows.append({
+            "proposal_id": "Q1451", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4phi5",
+            "degree": n, "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "target_preimage_index": cell["target_preimage_index"],
+            "selected_raw_target_x": cell["selected_raw_target_x"],
+            "target_preimage_x_count": cell["target_preimage_x_count"],
+            "full_target_preimage_x_count": cell[
+                "full_target_preimage_x_count"],
+            "and_gates": cell["and_gates"],
+            "xcnf_variables": cell["xcnf_variables"],
+            "cnf_clauses": cell["cnf_clauses"],
+            "native_xor_rows": cell["native_xor_rows"],
             "status": receipt["status"],
             "attempt_count": len(receipt["attempts"]),
             "gaussian_matrices_used": attempt[
@@ -6257,6 +6365,33 @@ def main():
             "controls_sha256": sha(q1450_controls_path),
             "verification_sha256": sha(q1450_verification_path),
         },
+        "q1451_phi5_fixed_target_stage": {
+            "proposal_id": "Q1451", "candidate_id": None,
+            "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4phi5",
+            "method": q1451_protocol["method"],
+            "controlled_variable": q1451_protocol["controlled_variable"],
+            "rows": q1451_rows,
+            "ordinary_N83_relation_measured": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "Specializing one public-target raw preimage reduces "
+                "the phi5 Boolean circuit and passes pinned relation "
+                "controls. Both unpinned ordinary index-0 slices "
+                "nevertheless reach the external safeguard without "
+                "a model. One slice per target cannot estimate "
+                "whole-target relation yield; neither slice is known "
+                "to contain a relation. The next controlled screen "
+                "should use the known-satisfiable N53 preimage 201 "
+                "with all leaves unpinned."),
+            "protocol_sha256": sha(q1451_protocol_path),
+            "controls_sha256": sha(q1451_controls_path),
+            "verification_sha256": sha(q1451_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -6674,6 +6809,10 @@ def main():
                 "Q1450 activates bounded Gaussian matrices at both "
                 "degrees, yet both ordinary cells still reach the "
                 "external timeout without a model; "
+                "Q1451 reduces both circuits by specializing one "
+                "public-target preimage, but both ordinary index-0 "
+                "slices still time out without a model and do not "
+                "measure whole-target relation yield; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
