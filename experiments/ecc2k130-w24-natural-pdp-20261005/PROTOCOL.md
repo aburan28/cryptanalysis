@@ -57,7 +57,10 @@ run the natural target. This control does not estimate ordinary yield.
 
 If the control passes, run exactly one ordinary formula for the frozen Q
 with a 600-second and 2,000,000-conflict bound. The formula build has a
-300-second bound; the whole process and solver have a 4 GiB peak RSS limit.
+300-second bound; the builder checks its RSS at regular gate intervals and
+the solver child is polled every 500 ms and killed above a 4 GiB RSS cap.
+This host does not support lowering `RLIMIT_AS`, so the receipt must state
+the observed peak and monitor outcome; a failed monitor invalidates the run.
 Keep XCNF hash, source and binary hashes, variable/gate/clause counts,
 construction and solve durations, solver exit/status, timeout/OOM/failure,
 and any full model. For each model, independently reconstruct every mask,
