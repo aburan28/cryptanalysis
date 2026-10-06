@@ -81,7 +81,8 @@ The full candidate maps, raw forward/reverse order-bias diagnostics, corrected
 benchmark, and claim limits are frozen in
 [`results/sage-depth-one-20261006`](results/sage-depth-one-20261006). This is a
 six-neighbor depth-one result, not an exhaustive class-group search, and path
-evaluation on each target key remains untimed.
+evaluation was not timed in that run. The later mapping follow-up below measures
+it for the strongest retained candidates.
 
 ## Depth-two and depth-three follow-up
 
@@ -110,7 +111,28 @@ excluded `1.0`. The best estimate was `1.026x` with interval
 The registry, raw timing blocks, receipt, and verifier are frozen in
 [`results/sage-wide-depth-one-20261006`](results/sage-wide-depth-one-20261006).
 Across the three Sage runs, 37 distinct neighbors have now been timed. Per-key
-evaluation of the retained paths is still not measured.
+evaluation for the strongest screening candidate is included in the follow-up.
+
+## Mapping-cost and native follow-up
+
+The three depth-two holdout leaders and the strongest widened one-hop point
+estimate were evaluated end to end through their retained maps. Mapping both
+`P` and `Q` cost 0.65–0.97 ms per public key in Sage, or fewer than 681
+iterations of the measured native rho kernel. Reusable map parsing cost less
+than 0.19 seconds for each selected path.
+
+A matched native comparison then put P-256 and all four candidates on the same
+fixed-limb Montgomery field code, complete general-`a` projective formulas,
+64-way batch normalization, and native scalar-coefficient tracking. Fifteen
+one-second trials per curve found no significant speedup: every paired 95%
+interval contained `1.0`. The largest point estimate was `1.0031x`, with
+interval `0.9847x–1.0217x`.
+
+The raw mapping and native results, exact cost boundaries, receipt, and claim
+limits are frozen in
+[`results/sage-mapping-20261006`](results/sage-mapping-20261006). This focused
+retest closes the per-key accounting gap for four leaders; it does not make the
+70-curve traversal exhaustive over the isogeny class.
 
 ## Quick start
 
@@ -214,7 +236,9 @@ candidates should be reproduced in an optimized constant-quality backend.
 src/p256_isogeny_search/   exact analysis, curve arithmetic, rho harness
 data/candidates/           versioned candidate/path interchange files
 scripts/explore_sage.py    explicit horizontal path explorer
+scripts/benchmark_mapping_sage.py  retained-map P,Q cost benchmark
 tests/                     structural and collision regression tests
+../../suite/examples/p256_isogeny_native_bench.rs  matched native rho benchmark
 ../../.github/workflows/   path-scoped CI and manual Sage exploration
 ```
 

@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "protocol_id": "p256-isogeny-search-exploratory-v1",
+  "status": "verified_exploratory_mapping_and_native_panel",
+  "claim": "Explicit P,Q mapping costs were measured for four screening leaders, and an order-balanced fixed-limb native Pollard-rho comparison found no significant iteration-rate advantage over P-256.",
+  "run_completed_at": "2026-10-06T03:33:56+00:00",
+  "source": {
+    "pr_parent_remote_commit": "6b2fc8c6910d4ecd9497fb39b7c06ca9d6f6d463",
+    "local_parent_commit": "bd9ecc923dc56e8af8d22acee3e21cb1cd85cc5b",
+    "manifest": "source-sage-mapping-native-20261006.sha256",
+    "manifest_sha256": "766c87a36abf8627efdf3ad9e8d3510dc29b2b4e1fbf0f777e11c244a37218af"
+  },
+  "runtime": {
+    "sage_image": "sagemath/sagemath:10.6",
+    "sage_image_digest": "sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb",
+    "rust_image": "rust:1.90-bookworm",
+    "rust_image_digest": "sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f",
+    "rustc": "rustc 1.90.0 (1159e78c4 2025-09-14)",
+    "release_binary_sha256": "768fb614af10bcd3990b8373194713b5406051149ea9b627c01b5e1e4f0a9e5d",
+    "host_cpu_isolation": "unverified; wall-time results are exploratory"
+  },
+  "commands": {
+    "mapping": "sage -python scripts/benchmark_mapping_sage.py --candidates results/sage-depth-three-20261006/holdout-candidates.json --candidates results/sage-wide-depth-one-20261006/candidates.json --candidate-id PATH_3_11 --candidate-id PATH_3_13 --candidate-id PATH_5_13 --candidate-id BEST_PATH_47 --samples 25 --repeats 50 --warmup 10 --output results/sage-mapping-20261006/mapping-benchmark.json",
+    "native": "cargo run --release --manifest-path suite/Cargo.toml --example p256_isogeny_native_bench -- --candidates HOLDOUT_REGISTRY --candidates WIDE_REGISTRY --candidate-id PATH_3_11 --candidate-id PATH_3_13 --candidate-id PATH_5_13 --candidate-id BEST_PATH_47 --seconds 1 --trials 15 --warmup-seconds 0.2 --output NATIVE_BENCHMARK"
+  },
+  "inputs": {
+    "results/sage-depth-three-20261006/holdout-candidates.json": "c30f3396f87ddac80314f4bb2ad903c7fddbb9e9ab0296166d3626e87a9f8742",
+    "results/sage-wide-depth-one-20261006/candidates.json": "776ace7121b9e53cf2bf5e6707a366591a12c6f4e439df3aa946bfd4449221b2"
+  },
+  "artifacts": {
+    "results/sage-mapping-20261006/mapping-benchmark.json": "f7a640dddcc0c0ee1a2d1fb1141cf357fe8765f3963b91b40e0b6159397f82ac",
+    "results/sage-mapping-20261006/native-benchmark.json": "3a06644f1524977ef48e61fd0c61ea1ff3f8b7f7b46b9388a8f38330cd836277",
+    "results/sage-mapping-20261006/summary.md": "dc7f621d514f640bf8243ead1422cb461a409e85870cf20e45d95c934543d1b9"
+  },
+  "selected_candidates": [
+    {
+      "candidate_id": "p256-j-9a9303f29893ebe8d6c67489ee5bcc4a02457c35f564272747f90e74f9ccf06b",
+      "path": [3, 11],
+      "path_degree_product": 33,
+      "discovery_seconds": 1.2996084650076227,
+      "reusable_map_parsing_seconds": 0.183367611,
+      "per_key_mapping_mean_seconds": 0.0009559198384000001,
+      "per_key_mapping_mean_95_percent_ci_seconds": [0.0009400513159388274, 0.0009717883608611728],
+      "mapping_native_rho_equivalent_iterations": 670.2319751347828,
+      "paired_native_relative_speed": 1.0030570305084106,
+      "paired_native_relative_speed_95_percent_ci": [0.9847474788953862, 1.0217070142499296]
+    },
+    {
+      "candidate_id": "p256-j-ae232854587780ad911375cddae7359231214053e7b484157f36b838f9b560f3",
+      "path": [3, 13],
+      "path_degree_product": 39,
+      "discovery_seconds": 1.4725426259974483,
+      "reusable_map_parsing_seconds": 0.018276072,
+      "per_key_mapping_mean_seconds": 0.0009721141111999999,
+      "per_key_mapping_mean_95_percent_ci_seconds": [0.0009503455267803134, 0.0009938826956196864],
+      "mapping_native_rho_equivalent_iterations": 680.3029103302582,
+      "paired_native_relative_speed": 1.0010749122828544,
+      "paired_native_relative_speed_95_percent_ci": [0.9803496878744994, 1.0222382812962305]
+    },
+    {
+      "candidate_id": "p256-j-74b115b43f63d009259a723482627cd3985270a290432395adbd3adb75e3500b",
+      "path": [5, 13],
+      "path_degree_product": 65,
+      "discovery_seconds": 1.9219931150000775,
+      "reusable_map_parsing_seconds": 0.02060366,
+      "per_key_mapping_mean_seconds": 0.000954284008,
+      "per_key_mapping_mean_95_percent_ci_seconds": [0.0009355486083909518, 0.0009730194076090482],
+      "mapping_native_rho_equivalent_iterations": 669.0360413054836,
+      "paired_native_relative_speed": 1.00288238429152,
+      "paired_native_relative_speed_95_percent_ci": [0.9804022670477116, 1.0258779590044518]
+    },
+    {
+      "candidate_id": "p256-j-5453c3be7c63aaef57624824d06108e1885c50c420268e8b6050a37b34131b94",
+      "path": [47],
+      "path_degree_product": 47,
+      "discovery_seconds": 18.1779090899945,
+      "reusable_map_parsing_seconds": 0.052766369,
+      "per_key_mapping_mean_seconds": 0.0006545516432,
+      "per_key_mapping_mean_95_percent_ci_seconds": [0.0006459791330455015, 0.0006631241533544984],
+      "mapping_native_rho_equivalent_iterations": 454.0165809825639,
+      "paired_native_relative_speed": 0.9919226825858346,
+      "paired_native_relative_speed_95_percent_ci": [0.9738196074793635, 1.0103622895569278]
+    }
+  ],
+  "mapping": {
+    "source_points_per_key": 2,
+    "samples_per_candidate": 25,
+    "repetitions_per_sample": 50,
+    "retained_generators_reproduced": true,
+    "discrete_log_relations_preserved": true,
+    "largest_native_rho_equivalent_iterations": 680.3029103302582
+  },
+  "native_benchmark": {
+    "baseline_iterations_per_second": 699077.752689989,
+    "seconds_per_trial": 1,
+    "trials_per_candidate": 15,
+    "total_timed_trials": 75,
+    "complete_position_rotation_blocks": 3,
+    "all_linear_relations_verified": true,
+    "significant_speedups_at_95_percent": 0,
+    "generic_expected_steps_log2": 128.32574806456822
+  },
+  "cost_accounting": {
+    "discovery_and_reusable_precomputation": "retained search discovery plus retained-map parsing, reported per path",
+    "per_instance_mapping": "measured evaluation of each retained path on P and Q",
+    "per_instance_ecdlp": "matched fixed-limb native r-adding iteration rate with all relations checked",
+    "amortization": "discovery and map parsing can be shared across keys; the sub-millisecond P,Q transfer is paid per key"
+  },
+  "limitations": [
+    "the CPU was not isolated and frequency stability was not independently verified",
+    "the native panel contains four screening leaders rather than every retained curve",
+    "the full-size ECDLP cost is a generic-work projection, not a P-256 collision experiment",
+    "the native walk omits the negation quotient and distributed distinguished-point coordination equally for all curves"
+  ],
+  "decision": "No selected candidate advances: all matched native paired intervals contain 1.0, and the explicit per-key isogeny evaluation adds overhead without an observed ECDLP-rate benefit."
+}
