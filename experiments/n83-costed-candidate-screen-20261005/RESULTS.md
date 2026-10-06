@@ -13,6 +13,14 @@ SHA-256 of every set against its original immutable geometry receipt; the
 `.json.gz` payloads use deterministic gzip headers. Timing on this ordinary macOS
 host is exploratory and cannot support a controlled speed claim.
 
+The follow-up [shifted SAT and Hamming-transfer gate](SHIFTED_SAT_GATE.md)
+has now completed. Both shifted formulations pass pinned planted Sage replay,
+but all 16 unpinned planted/ordinary SAT fibers reached the frozen 45-second
+outer cap. Exact weight-3-or-4 restrictions give uniform-target support
+ceilings 0.0000376165353 and 0.00142000925 for the seven- and eight-summand
+geometries. The [18-branch panel](sat_panel.json) leaves one-target online
+cost, ordinary yield uncertainty, and speedup unknown.
+
 | Base and arity | Factor coordinates | Actual usable `B` per slot | Folded `K` | Exact tuple count / `r` | One explicit distinct-slot pair table, raw payload | Frozen geometry gate |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | Full W3/W4, five sum | 415 | 1,936,390 | 11,665 | 93,832.98 unordered multisets | Different root-index design; 11,293,994,675 pair-state loops in prior geometry | Exact geometry; planted SAT bounded unknown |

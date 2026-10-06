@@ -47,3 +47,8 @@ payload per table under the declared storage model. Four such tables would
 carry 260,628,736 raw bytes before indexing, duplicates, allocator overhead,
 I/O, or search. No pair table has been built or searched, so this is a design
 size, not a measured MITM cost or a solver feasibility result.
+
+The [follow-up SAT gate](SHIFTED_SAT_GATE.md) performed planted replay,
+small-field controls, and all four ordinary fibers for both geometries under
+one frozen solver envelope. It preserves the timeout rows and makes no
+end-to-end speed claim.
