@@ -9,6 +9,7 @@ import tempfile
 
 from direct_point_circuit import DirectPointCircuit
 from gf2n import Curve, GF2n, Point, modulus
+from run_n83_w34_sat_branch import verify_model
 
 
 SOLVER = Path("/opt/homebrew/bin/cryptominisat5")
@@ -54,6 +55,7 @@ def run_case(points: tuple[Point, Point], target: Point, expected_sat: bool,
                 literal = int(word)
                 if literal:
                     model[abs(literal)] = literal > 0
+    assert verify_model(circuit, model)
     field = builder.field
     curve = Curve(field, 1)
     decoded = [Point(decode(x, model), decode(y, model))
@@ -78,13 +80,20 @@ def main() -> None:
     signs = [(a, b) for a in (pair[0], curve.neg(pair[0]))
              for b in (pair[1], curve.neg(pair[1]))]
     attainable = {curve.add(a, b) for a, b in signs}
-    outside = next(point for point in rational if point not in attainable)
+    all_finite = {point for x in range(1 << 5)
+                  for point in (curve.lift_x(x),)
+                  if point is not None}
+    all_finite |= {curve.neg(point) for point in all_finite}
+    assert attainable <= all_finite
     for chosen in signs:
         target = curve.add(*chosen)
         assert not target.inf
         run_case(chosen, target, True, low_terms)
-    run_case(pair, outside, False, low_terms)
-    print(f"PASS: four sign-combination SAT group replays and one UNSAT false-lift control over GF(2^5)")
+    for target in sorted(all_finite, key=lambda point: (point.x, point.y)):
+        run_case(pair, target, target in attainable, low_terms)
+    print("PASS: four pinned-sign SAT replays and exhaustive finite-target "
+          f"false-lift controls over GF(2^5): {len(attainable)} reachable, "
+          f"{len(all_finite) - len(attainable)} unreachable")
 
 
 if __name__ == "__main__":
