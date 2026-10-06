@@ -61,6 +61,31 @@ int ca_ec_tau4_pos_compact_mul_profile(const ca_group *g,
                                        uint64_t *rotations, uint64_t *fallbacks);
 void ca_ec_tau4_pos_compact_clear(ca_tau4_pos_compact_precomp *pre);
 
+/* Public-scalar width-3 tau NAF with a complete six-step, unit-orbit point
+ * table at each prepared position. An over-capacity scalar uses generic mul. */
+typedef struct ca_tau3_fused_precomp {
+    ca_tau4_precomp base;
+    ca_elem base_point;
+    ca_elem *point; /* [blocks][CA_TAU3_FUSED_ORBITS] */
+    size_t blocks;
+} ca_tau3_fused_precomp;
+size_t ca_ec_tau3_fused_blocks(const ca_group *g);
+int ca_ec_tau3_fused_verify_map(void);
+int ca_ec_tau3_fused_prepare(const ca_group *g, const ca_elem *point,
+                             ca_tau3_fused_precomp *out, uint64_t *seed_ops,
+                             uint64_t *triples, uint64_t *tau_steps,
+                             uint64_t *adds, uint64_t *rotations,
+                             uint64_t *inversions);
+int ca_ec_tau3_fused_prepare_verify(const ca_tau3_fused_precomp *pre);
+int ca_ec_tau3_fused_recode_actions(const ca_tau3_fused_precomp *pre, uint64_t k,
+                                    uint16_t actions[16], size_t *count);
+int ca_ec_tau3_fused_recode_verify_scalar(const ca_tau3_fused_precomp *pre, uint64_t k);
+int ca_ec_tau3_fused_mul_profile(const ca_group *g, const ca_tau3_fused_precomp *pre,
+                                 ca_elem *out, uint64_t k, uint64_t *adds,
+                                 uint64_t *rotations, uint64_t *fallbacks);
+size_t ca_ec_tau3_fused_static_bytes(void);
+void ca_ec_tau3_fused_clear(ca_tau3_fused_precomp *pre);
+
 int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point, ca_tau4_precomp *out,
                        uint64_t *ops);
 int ca_ec_tau4_mul_prepared(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out, uint64_t k,

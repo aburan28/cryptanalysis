@@ -50,8 +50,15 @@ fixture; these are predictions, not a prospective native result:
 
 | Curve | Compact width-four additions, four points | Predicted fused width-three additions | Predicted saving | Prepared point bytes |
 | --- | ---: | ---: | ---: | ---: |
-| glv-j0-32 | 62,323 | 47,757 | 23.37% | 43,904 |
-| j0-56 | 134,062 | 97,715 | 27.11% | 76,832 |
+| glv-j0-32 | 62,323 | 47,705 | 23.46% | 43,904 |
+| j0-56 | 134,062 | 97,709 | 27.12% | 76,832 |
+
+The first native old-data check exposed a 14-addition discrepancy in the
+initial Python screen. The C lattice reducer uses `r − endo_lambda`; the
+screen had passed `endo_lambda` to its independent representative helper.
+The corrected screen above uses the C lattice eigenvalue. The generated
+digit and orbit map is unchanged. This correction was made before any new
+fixture was generated or prospective arm was run.
 
 The full six-step table is larger and more expensive to prepare than the
 compact width-four positional table. The screen counts one addition for
@@ -82,3 +89,21 @@ preparation and ends after the final affine output. Save every raw failure,
 timeout, and output digest. Controlled CPU timing needs host-level isolation
 and at least five paired AB/BA repetitions; the local Mac panel is
 algorithmic evidence only.
+
+## Native old-data controls
+
+The first native run exposed the lattice-eigenvalue mismatch described
+above; after correction, its addition and rotation counts match the Python
+screen exactly. The native curve suite passes 2,306,609 checks, including
+all map entries, every prepared orbit point on the tested curves, the
+identity, subgroup-order multiples, a small-order subgroup, and a forced
+over-capacity generic fallback. On the older frozen fixture, the
+[native differential receipt](tau3-fused-native-design.json) verifies all
+32,768 outputs and compares every C action stream to the Python generator.
+The [read-only audit](audit_tau3_native_design.py) replays the compressed
+native traces and passes. The smaller curve prepares 1,372 point slots with
+27 triples, 60 tau steps, 1,296 projective additions, 864 unit rotations,
+and two normalization inversions. The larger prepares 2,401 slots with
+54 triples, 105 tau steps, 2,268 additions, 1,512 rotations, and two
+inversions. The selected static map is 9,826 bytes. These preparation
+counts are separate from the online addition saving.

@@ -23,6 +23,7 @@
 #include "generated/tau_pair_firstword_gate.h"
 #include "generated/tau_pair_mixed_radix_tail.h"
 #include "generated/tau_pair_mixed_full_digits.h"
+#include "generated/tau3_fused.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -30,6 +31,7 @@
 #include "generated/tau_wide_orbits.h"
 #include "generated/tau_wide_graph.h"
 #include "generated/tau_wide_packed_graph.h"
+#include <limits.h>
 #include <stdlib.h>
 
 typedef __int128 ca_i128;
@@ -2339,6 +2341,365 @@ void ca_ec_tau4_pos_compact_clear(ca_tau4_pos_compact_precomp *pre)
     if (!pre) return;
     free(pre->point);
     *pre = (ca_tau4_pos_compact_precomp){0};
+}
+
+/* Width-three tau digits have three six-unit seed orbits. Tau^3 has the
+ * coordinate ideal (9,3), so a 27-byte residue table replaces a search. */
+static ca_i128 tau3_residue(ca_i128 value, unsigned modulus)
+{
+    ca_i128 r = value % modulus;
+    return r < 0 ? r + modulus : r;
+}
+
+static tau_vec tau3_mul_tau(tau_vec v)
+{
+    return (tau_vec){-3 * v.y, v.x + 3 * v.y};
+}
+
+static tau_vec tau3_apply_unit_coeff(tau_vec v, unsigned code)
+{
+    for (unsigned i = 0; i < code % 3; i++)
+        v = (tau_vec){v.x + 3 * v.y, -v.x - 2 * v.y};
+    if (code >= 3) v.x = -v.x, v.y = -v.y;
+    return v;
+}
+
+static tau_vec tau3_pattern_coeff(unsigned pattern)
+{
+    if (!pattern) return (tau_vec){0, 0};
+    unsigned position = (pattern - 1) / 18;
+    unsigned digit = (pattern - 1) % 18 + 1;
+    tau_vec v = {ca_tau3_digit_a[digit], ca_tau3_digit_b[digit]};
+    for (unsigned i = 0; i < position; i++) v = tau3_mul_tau(v);
+    return v;
+}
+
+static tau_vec tau3_pair_coeff(unsigned u, unsigned v)
+{
+    tau_vec a = tau3_pattern_coeff(u), b = tau3_pattern_coeff(v);
+    for (unsigned i = 0; i < 3; i++) b = tau3_mul_tau(b);
+    return (tau_vec){a.x + b.x, a.y + b.y};
+}
+
+static uint64_t tau3_coeff_scalar(const ca_group *g, tau_vec v)
+{
+    ca_i128 lambda_tau = 1 + (ca_i128)g->endo_lambda;
+    ca_i128 scalar = (v.x + v.y * lambda_tau) % (ca_i128)g->order;
+    if (scalar < 0) scalar += g->order;
+    return (uint64_t)scalar;
+}
+
+size_t ca_ec_tau3_fused_blocks(const ca_group *g)
+{
+    if (!g || g->order < 2) return 0;
+    size_t blocks = 1;
+    for (uint64_t n = g->order - 1; n; n /= 729) blocks++;
+    return blocks <= 16 ? blocks : 0;
+}
+
+size_t ca_ec_tau3_fused_static_bytes(void)
+{
+    return sizeof(ca_tau3_digit_a) + sizeof(ca_tau3_digit_b) +
+           sizeof(ca_tau3_residue) + sizeof(ca_tau3_orbit_id) +
+           sizeof(ca_tau3_orbit_unit) + sizeof(ca_tau3_rep_u) +
+           sizeof(ca_tau3_rep_v);
+}
+
+int ca_ec_tau3_fused_verify_map(void)
+{
+    for (unsigned a = 0; a < 9; a++)
+        for (unsigned b = 0; b < 3; b++) {
+            unsigned digit = ca_tau3_residue[3 * a + b];
+            if (a % 3 == 0) {
+                if (digit) return 0;
+            } else if (!digit || digit > 18 ||
+                       (unsigned)tau3_residue(ca_tau3_digit_a[digit], 9) != a ||
+                       (unsigned)tau3_residue(ca_tau3_digit_b[digit], 3) != b) {
+                return 0;
+            }
+        }
+    for (unsigned u = 0; u < 55; u++)
+        for (unsigned v = 0; v < 55; v++) {
+            size_t index = 55 * u + v;
+            int valid = !u || !v || (v - 1) / 18 >= (u - 1) / 18;
+            unsigned id = ca_tau3_orbit_id[index], code = ca_tau3_orbit_unit[index];
+            if (!valid) {
+                if (id != UINT16_MAX || code != UINT8_MAX) return 0;
+                continue;
+            }
+            if (id >= CA_TAU3_FUSED_ORBITS || code >= 6) return 0;
+            tau_vec expected = tau3_pair_coeff(u, v);
+            tau_vec actual = tau3_apply_unit_coeff(
+                tau3_pair_coeff(ca_tau3_rep_u[id], ca_tau3_rep_v[id]), code);
+            if (actual.x != expected.x || actual.y != expected.y) return 0;
+        }
+    return 1;
+}
+
+static size_t tau3_recode(ca_i128 a, ca_i128 b, uint8_t digits[128])
+{
+    size_t count = 0;
+    while (a || b) {
+        if (count == 128) return 0;
+        unsigned key = 3 * (unsigned)tau3_residue(a, 9) + (unsigned)tau3_residue(b, 3);
+        unsigned digit = ca_tau3_residue[key];
+        if (a % 3 && !digit) return 0;
+        if (digit) a -= ca_tau3_digit_a[digit], b -= ca_tau3_digit_b[digit];
+        if (a % 3) return 0;
+        digits[count++] = (uint8_t)digit;
+        ca_i128 old_a = a;
+        a += b;
+        b = -old_a / 3;
+    }
+    for (size_t i = 0; i < count; i++)
+        if (digits[i] && ((i + 1 < count && digits[i + 1]) ||
+                          (i + 2 < count && digits[i + 2])))
+            return 0;
+    return count;
+}
+
+static unsigned tau3_block_pattern(const uint8_t digits[128], size_t count, size_t start)
+{
+    unsigned pattern = 0;
+    for (unsigned position = 0; position < 3; position++) {
+        size_t index = start + position;
+        unsigned digit = index < count ? digits[index] : 0;
+        if (!digit) continue;
+        if (pattern || digit > 18) return UINT_MAX;
+        pattern = 18 * position + digit;
+    }
+    return pattern;
+}
+
+int ca_ec_tau3_fused_recode_actions(const ca_tau3_fused_precomp *pre, uint64_t k,
+                                    uint16_t actions[16], size_t *count)
+{
+    if (!pre || !pre->base.g || !actions || !count || !pre->blocks) return 0;
+    const ca_group *g = pre->base.g;
+    k %= g->order;
+    *count = 0;
+    if (!k) return 1;
+    ca_i128 a, b;
+    reduce_with_lattice((tau_vec){pre->base.v1x, pre->base.v1y},
+                        (tau_vec){pre->base.v2x, pre->base.v2y}, pre->base.det, k, &a, &b);
+    uint8_t digits[128];
+    size_t nd = tau3_recode(a, b, digits);
+    if (!nd) return 0;
+    size_t blocks = (nd + 5) / 6;
+    if (blocks > pre->blocks || blocks > 16) return 0;
+    for (size_t block = 0; block < blocks; block++) {
+        unsigned u = tau3_block_pattern(digits, nd, 6 * block);
+        unsigned v = tau3_block_pattern(digits, nd, 6 * block + 3);
+        if (u >= 55 || v >= 55) return 0;
+        size_t index = 55 * u + v;
+        unsigned id = ca_tau3_orbit_id[index], code = ca_tau3_orbit_unit[index];
+        if (id >= CA_TAU3_FUSED_ORBITS || code >= 6) return 0;
+        actions[block] = (uint16_t)((id << 3) | code);
+    }
+    *count = blocks;
+    return 1;
+}
+
+int ca_ec_tau3_fused_recode_verify_scalar(const ca_tau3_fused_precomp *pre, uint64_t k)
+{
+    if (!pre || !pre->base.g) return 0;
+    uint16_t actions[16];
+    size_t count;
+    if (!ca_ec_tau3_fused_recode_actions(pre, k, actions, &count)) return 0;
+    tau_vec total = {0, 0};
+    for (size_t block = 0; block < count; block++) {
+        unsigned id = actions[block] >> 3, code = actions[block] & 7;
+        if (id >= CA_TAU3_FUSED_ORBITS || code >= 6) return 0;
+        tau_vec value = tau3_apply_unit_coeff(
+            tau3_pair_coeff(ca_tau3_rep_u[id], ca_tau3_rep_v[id]), code);
+        for (size_t i = 0; i < 6 * block; i++) value = tau3_mul_tau(value);
+        total.x += value.x;
+        total.y += value.y;
+    }
+    return tau3_coeff_scalar(pre->base.g, total) == k % pre->base.g->order;
+}
+
+static tau_jac tau3_apply_unit_jac(const ca_group *g, tau_jac point, unsigned code,
+                                   uint64_t beta, uint64_t beta2, uint64_t *rotations)
+{
+    if (!point.z) return point;
+    unsigned power = code % 3;
+    if (power == 1) point.x = fm(g, beta, point.x);
+    if (power == 2) point.x = fm(g, beta2, point.x);
+    if (power && rotations) (*rotations)++;
+    if (code >= 3 && point.y) point.y = g->p - point.y;
+    return point;
+}
+
+static tau_jac tau3_pattern_point(const ca_group *g, tau_jac basis[6][3], unsigned pattern,
+                                  unsigned position_offset, uint64_t beta, uint64_t beta2,
+                                  uint64_t *rotations)
+{
+    if (!pattern) return (tau_jac){0, g->mont.r1, 0};
+    unsigned position = (pattern - 1) / 18 + position_offset;
+    unsigned digit = (pattern - 1) % 18;
+    return tau3_apply_unit_jac(g, basis[position][digit / 6], digit % 6,
+                                beta, beta2, rotations);
+}
+
+int ca_ec_tau3_fused_prepare(const ca_group *g, const ca_elem *point,
+                             ca_tau3_fused_precomp *out, uint64_t *seed_ops,
+                             uint64_t *triples, uint64_t *tau_steps,
+                             uint64_t *adds, uint64_t *rotations,
+                             uint64_t *inversions)
+{
+    if (!g || !point || !out) return 0;
+    if (seed_ops) *seed_ops = 0;
+    if (triples) *triples = 0;
+    if (tau_steps) *tau_steps = 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (inversions) *inversions = 0;
+    ca_tau3_fused_precomp pre = {0};
+    uint64_t nseed = 0;
+    if (!ca_ec_tau4_prepare(g, point, &pre.base, &nseed)) return 0;
+    pre.base_point = *point;
+    pre.blocks = ca_ec_tau3_fused_blocks(g);
+    if (!pre.blocks) return 0;
+    if (seed_ops) *seed_ops = nseed;
+    if (pre.base.identity) {
+        *out = pre;
+        return 1;
+    }
+    const size_t count = pre.blocks * CA_TAU3_FUSED_ORBITS;
+    pre.point = malloc(count * sizeof(*pre.point));
+    tau_jac *projective = malloc(count * sizeof(*projective));
+    uint64_t *prefixes = malloc(count * sizeof(*prefixes));
+    if (!pre.point || !projective || !prefixes) {
+        free(prefixes);
+        free(projective);
+        free(pre.point);
+        return 0;
+    }
+    uint64_t beta = pre.base.beta, beta2 = pre.base.beta2;
+    uint64_t one_minus_beta = fs(g, g->mont.r1, beta);
+    tau_jac start[3];
+    const unsigned seed_index[3] = {0, 1, 3};
+    for (unsigned seed = 0; seed < 3; seed++) {
+        const ca_elem *entry = &pre.base.seed[seed_index[seed]];
+        start[seed] = entry->w[2] ? (tau_jac){0, g->mont.r1, 0}
+                                  : (tau_jac){entry->w[0], entry->w[1], g->mont.r1};
+    }
+    uint64_t n3 = 0, nt = 0, na = 0, nr = 0;
+    for (size_t block = 0; block < pre.blocks; block++) {
+        tau_jac basis[6][3];
+        for (unsigned seed = 0; seed < 3; seed++) basis[0][seed] = start[seed];
+        for (unsigned position = 1; position < 6; position++)
+            for (unsigned seed = 0; seed < 3; seed++) {
+                basis[position][seed] = jac_tau(g, basis[position - 1][seed], one_minus_beta);
+                nt += basis[position - 1][seed].z != 0;
+            }
+        for (unsigned id = 0; id < CA_TAU3_FUSED_ORBITS; id++) {
+            tau_jac first = tau3_pattern_point(g, basis, ca_tau3_rep_u[id], 0,
+                                                beta, beta2, &nr);
+            tau_jac second = tau3_pattern_point(g, basis, ca_tau3_rep_v[id], 3,
+                                                 beta, beta2, &nr);
+            if (first.z && second.z) {
+                projective[block * CA_TAU3_FUSED_ORBITS + id] = jac_add(g, first, second);
+                na++;
+            } else {
+                projective[block * CA_TAU3_FUSED_ORBITS + id] = first.z ? first : second;
+            }
+        }
+        if (block + 1 < pre.blocks)
+            for (unsigned seed = 0; seed < 3; seed++) {
+                tau_jac next = start[seed];
+                for (unsigned i = 0; i < 3; i++) {
+                    if (next.z) n3++;
+                    next = jac_triple(g, next);
+                }
+                if (next.z && next.y) next.y = g->p - next.y;
+                start[seed] = next;
+            }
+    }
+    uint64_t table_inversions = 0;
+    int ok = jac_batch_to_affine_scratch(g, pre.point, projective, count,
+                                         prefixes, &table_inversions);
+    free(prefixes);
+    free(projective);
+    if (!ok) {
+        free(pre.point);
+        return 0;
+    }
+    if (triples) *triples = n3;
+    if (tau_steps) *tau_steps = nt;
+    if (adds) *adds = na;
+    if (rotations) *rotations = nr;
+    if (inversions) *inversions = 1 + table_inversions;
+    *out = pre;
+    return 1;
+}
+
+int ca_ec_tau3_fused_prepare_verify(const ca_tau3_fused_precomp *pre)
+{
+    if (!pre || !pre->base.g || !pre->blocks) return 0;
+    const ca_group *g = pre->base.g;
+    if (pre->base.identity) return pre->point == NULL;
+    if (!pre->point) return 0;
+    for (size_t block = 0; block < pre->blocks; block++)
+        for (unsigned id = 0; id < CA_TAU3_FUSED_ORBITS; id++) {
+            tau_vec value = tau3_pair_coeff(ca_tau3_rep_u[id], ca_tau3_rep_v[id]);
+            for (size_t i = 0; i < 6 * block; i++) value = tau3_mul_tau(value);
+            ca_elem expected;
+            ca_group_mul(g, &expected, &pre->base_point, tau3_coeff_scalar(g, value), NULL);
+            if (!ca_group_equal(g, &expected,
+                                &pre->point[block * CA_TAU3_FUSED_ORBITS + id]))
+                return 0;
+        }
+    return 1;
+}
+
+int ca_ec_tau3_fused_mul_profile(const ca_group *g, const ca_tau3_fused_precomp *pre,
+                                 ca_elem *out, uint64_t k, uint64_t *adds,
+                                 uint64_t *rotations, uint64_t *fallbacks)
+{
+    if (!g || !pre || !out || pre->base.g != g || !pre->blocks) return 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (fallbacks) *fallbacks = 0;
+    if (pre->base.identity || k % g->order == 0) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    uint16_t actions[16];
+    size_t count = 0;
+    if (!ca_ec_tau3_fused_recode_actions(pre, k, actions, &count)) {
+        if (fallbacks) *fallbacks = 1;
+        ca_group_mul(g, out, &pre->base_point, k % g->order, NULL);
+        return 1;
+    }
+    tau_jac acc = {0, g->mont.r1, 0};
+    uint64_t na = 0, nr = 0;
+    for (size_t block = count; block-- > 0;) {
+        unsigned id = actions[block] >> 3, code = actions[block] & 7;
+        if (!id) continue;
+        if (id >= CA_TAU3_FUSED_ORBITS || code >= 6) return 0;
+        ca_elem entry = pre->point[block * CA_TAU3_FUSED_ORBITS + id];
+        if (entry.w[2]) continue;
+        unsigned power = code % 3;
+        if (power == 1) entry.w[0] = fm(g, pre->base.beta, entry.w[0]);
+        if (power == 2) entry.w[0] = fm(g, pre->base.beta2, entry.w[0]);
+        nr += power != 0;
+        if (code >= 3 && entry.w[1]) entry.w[1] = g->p - entry.w[1];
+        acc = jac_add_mixed(g, acc, &entry);
+        na++;
+    }
+    jac_to_affine(g, out, acc);
+    if (adds) *adds = na;
+    if (rotations) *rotations = nr;
+    return 1;
+}
+
+void ca_ec_tau3_fused_clear(ca_tau3_fused_precomp *pre)
+{
+    if (!pre) return;
+    free(pre->point);
+    *pre = (ca_tau3_fused_precomp){0};
 }
 
 static int tau4_pos_mul_jac(const ca_group *g, const ca_tau4_pos_precomp *pre, tau_jac *out,

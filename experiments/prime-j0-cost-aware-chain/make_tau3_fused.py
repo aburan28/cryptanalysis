@@ -163,8 +163,10 @@ def screen(data, header_path, output):
     rows = []
     for case in fixture["cases"]:
         old = old_rows[(case["id"], "pos-compact")]["fields"]
-        eigenvalue = int(old["endo_lambda"])
         order = case["curve"]["order"]
+        # ec_tau.c builds its lattice with r - g->endo_lambda. The bench field
+        # is the curve automorphism eigenvalue, not the lattice eigenvalue.
+        eigenvalue = (order - int(old["endo_lambda"])) % order
         content = (ROOT / case["scalar_file"]).read_bytes()
         counts = [0, 0, 0]
         rotations = 0
