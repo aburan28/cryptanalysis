@@ -110,6 +110,16 @@ class ShipTest(unittest.TestCase):
             self.assertEqual(contents(tmp / "dest"),
                              {n: (clone / n).read_bytes() for n in tree.checkout_files(clone)})
 
+    def test_the_cache_keeps_a_ref_so_the_next_fetch_is_incremental(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            clone, remote, pushed = make_clone(tmp)
+            cache = tmp / "cache.git"
+            env = {**os.environ, "SHIP_CACHE": str(cache)}
+            self.assertEqual(ship.ship(None, clone, str(tmp / "dest"), env=env,
+                                       url=str(remote))["returncode"], 0)
+            self.assertEqual(git(cache, "rev-parse", "refs/ship/base"), pushed)
+
     def test_a_new_pod_is_told_which_commit_to_fetch(self):
         with tempfile.TemporaryDirectory() as tmp:
             clone, _, pushed = make_clone(Path(tmp))

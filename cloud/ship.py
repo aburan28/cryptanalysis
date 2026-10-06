@@ -25,6 +25,8 @@ import tree
 # `fetch_base URL COMMIT` puts COMMIT in the pod's cache repository once.  A
 # pod starts it at boot for SHIP_PREFETCH (runpod_pod.py's STAGE0), and the
 # lock makes a ship that arrives meanwhile wait for that fetch, not repeat it.
+# The ref is what the next fetch offers as already here: without one GitHub
+# sends the whole tree again (241 s against 1 s on a pod).
 FETCH = r"""
 cache=${SHIP_CACHE:-/root/.cache/checkout.git}
 fetch_base() {
@@ -33,7 +35,7 @@ fetch_base() {
     flock 9
     [ -d "$cache" ] || git init -q --bare "$cache"
     git -C "$cache" cat-file -e "$2^{commit}" 2>/dev/null ||
-      git -C "$cache" fetch -q --depth=1 "$1" "$2"
+      git -C "$cache" fetch -q --depth=1 "$1" "+$2:refs/ship/base"
   ) 9>"$cache.lock"
 }
 """.strip()
