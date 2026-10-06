@@ -2,8 +2,12 @@
 """Check that factor bases cited by committed results are archived.
 
 Every `factor_base_sha256` value in a committed JSON / JSONL result file (plain,
-.gz or .xz) under experiments/ and ecc2k130/research/ must be either a row of
-index.csv or listed in unarchived.csv, the closed list of known, not-yet-archived
+.gz or .xz) under experiments/ and ecc2k130/research/, and every point-set digest
+(`point_set_sha256`, `enumerated_set_sha256`, `factor_base_point_set_sha256`,
+`base_digest`: SHA-256 of the canonical sorted [[x, y], ...] list), must be either
+the `factor_base_sha256` or `enumerated_set_sha256` of a row of index.csv, a `cited_sha256` of aliases.csv whose archive is indexed (a digest
+cited under another convention; `fbarchive.py verify` recomputes it from the
+archived points), or listed in unarchived.csv, the closed list of known, not-yet-archived
 bases. The debt list is exact both ways: a new unarchived digest fails, and so
 does a debt entry that is now archived or no longer cited, so the list can only
 shrink.
@@ -29,9 +33,13 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 INDEX = HERE / "index.csv"
 DEBT = HERE / "unarchived.csv"
+ALIASES = HERE / "aliases.csv"
 ROOTS = ["experiments", "ecc2k130/research"]
 SUFFIXES = (".json", ".jsonl", ".json.gz", ".jsonl.gz", ".json.xz", ".jsonl.xz")
 KEY = "factor_base_sha256"
+# Keys whose value hashes the point list itself; they match index.csv's enumerated_set_sha256.
+POINT_SET_KEYS = ("point_set_sha256", "enumerated_set_sha256", "factor_base_point_set_sha256", "base_digest")
+KEYS = (KEY, *POINT_SET_KEYS)
 HEX64 = re.compile(r"[0-9a-f]{64}")
 # The archive's own records and the debt list are not citations.
 SKIP_PREFIX = ("experiments/fb-archive/",)
@@ -56,7 +64,7 @@ def read_text(path: Path) -> str:
 def walk(obj, found: set[str]) -> None:
     if isinstance(obj, dict):
         for k, v in obj.items():
-            if k == KEY and isinstance(v, str) and HEX64.fullmatch(v):
+            if k in KEYS and isinstance(v, str) and HEX64.fullmatch(v):
                 found.add(v)
             else:
                 walk(v, found)
@@ -67,7 +75,7 @@ def walk(obj, found: set[str]) -> None:
 
 def digests_in(path: Path) -> set[str]:
     text = read_text(path)
-    if KEY not in text:
+    if not any(k in text for k in KEYS):
         return set()
     found: set[str] = set()
     try:
@@ -83,7 +91,7 @@ def digests_in(path: Path) -> set[str]:
             walk(json.loads(line), found)
         except json.JSONDecodeError:
             # not JSON at all: fall back to the key/value pattern
-            found.update(re.findall(r'"%s"\s*:\s*"([0-9a-f]{64})"' % KEY, line))
+            found.update(re.findall(r'"(?:%s)"\s*:\s*"([0-9a-f]{64})"' % "|".join(KEYS), line))
     return found
 
 
@@ -97,7 +105,13 @@ def citations() -> dict[str, set[str]]:
 
 def archived() -> set[str]:
     with open(INDEX, newline="") as fh:
-        return {r["factor_base_sha256"] for r in csv.DictReader(fh)}
+        rows = list(csv.DictReader(fh))
+    have = {r["factor_base_sha256"] for r in rows}
+    have |= {r["enumerated_set_sha256"] for r in rows if r["enumerated_set_sha256"]}
+    if ALIASES.exists():
+        with open(ALIASES, newline="") as fh:
+            have |= {r["cited_sha256"] for r in csv.DictReader(fh) if r["factor_base_sha256"] in have}
+    return have
 
 
 def owner(rel: str) -> str:

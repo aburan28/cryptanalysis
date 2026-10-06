@@ -17,7 +17,9 @@ candidate/workload manifests, `history.csv`, and the CI baseline gate. Record a 
 baseline there when a change is intended. Archive factor bases (record, point set,
 digests) with [fb-archive](experiments/fb-archive/README.md); a recipe-only
 archive keeps `B` null. CI (`fb-refs`) fails when a committed result cites a
-`factor_base_sha256` that is neither archived nor listed in
+`factor_base_sha256` or point-set digest (`point_set_sha256`,
+`enumerated_set_sha256`, `base_digest`) that is neither archived (directly or through
+`experiments/fb-archive/aliases.csv`) nor listed in
 `experiments/fb-archive/unarchived.csv`; record bases under that key and archive
 them in the same change.
 
