@@ -347,39 +347,57 @@ targets, 0.433 decompose, against F4's recorded 26/63 = 0.41.
 So the residual enumeration (`2^10` candidates here) is also well ahead of the repository's best
 Gröbner oracle above the limit. That makes it the right baseline for the candidates in Sec. 4.
 
-## 4e. What the best exact oracle gives online, against rho (n = 41, exploratory)
+## 4e. What the best exact oracle gives online, against rho (n = 41, exploratory, all in C)
 
-`online_above.py` combines, for geomtraceu seed 1:
+**Method.** `online_above.py` measures every cost in C on this host, for geomtraceu seed 1. Data:
+`results/online-above-c-n41.jsonl`.
 
-- the predicted `p_dec` (psi-class formula), giving the number of attempts;
-- the per-attempt cost of the fastest exact oracle here: projection plus `htenum.c` over the
-  residual space;
-- an **assumed** 2 us for the per-target linear solve and the walk step. That part is not
-  measured; the Python version of the linear solve is slower.
+- **IC attempt.** One walk addition plus a whole `PDP2ht` attempt: the projection for both eps,
+  then the residual enumeration (`htenum.c`, `ht_attempt_batch`). It is timed over 64-20000
+  targets in one call.
+- **Attempts.** The number of attempts is `1 / p_dec`, from the psi-class prediction. The
+  measured hit rate on the same targets agrees within sampling error.
+- **Rho step.** A batched affine r-adding walk (`ec_walk_batch`: 256 walks, one Montgomery
+  inversion per round), 58 ns per addition. Plain rho is `sqrt(pi r / 2)` steps, 54 ms expected.
+  Bernstein-Lange online is `1.77 r^(1/3)` steps, 0.84 ms, with a table of about `r^(1/3) = 2^13`
+  points.
 
-It compares the result with plain rho measured on this host (`bench.rho_one_target`, two verified
-solves; the expected cost is `sqrt(pi r / 2)` times the measured time per step) and with the
-Bernstein-Lange online estimate `1.77 r^(1/3)` times the same time per step. These are wall times
-on an unisolated host, so they are exploratory (AGENTS.md CPU isolation gate). Data:
-`results/online-above-n41.jsonl`.
+So this is a prediction built from measured stage costs, not an IC1 run. The wall times come from
+an unisolated host, so it is exploratory.
 
-| l | relative to the limit (n + 2)/3 = 14.3 | d | attempts | per attempt | one-target online (estimate) | vs expected plain rho (3.3 s) | vs Bernstein-Lange (52 ms) |
+| l | vs the limit 14.3 | d | attempts | PDP per attempt | one-target online | vs plain rho | vs Bernstein-Lange |
 |---|---|---|---|---|---|---|---|
-| 13 | below | 0 | 3.3e4 | 2 us | 66 ms | 50x faster | 1.3x slower |
-| 15 | at | 3 | 2.1e3 | 75 us | 153 ms | 22x faster | 3.0x slower |
-| 16 | +1.7 | 6 | 508 | 170 us | 86 ms | 38x faster | 1.7x slower |
-| 17 | +2.7 | 9 | 128 | 0.90 ms | 116 ms | 28x faster | 2.3x slower |
-| 18 | +3.7 | 12 | 33 | 6.9 ms | 225 ms | 15x faster | 4.4x slower |
-| 19 | +4.7 | 15 | 8.5 | 55 ms | 471 ms | 7x faster | 9x slower |
-| 20 | +5.7 | 18 | 2.5 | 439 ms | 1.12 s | 3x faster | 22x slower |
+| 13 | below | 0 | 3.3e4 | 2.8 us | 94 ms | 0.57x (slower) | 112x slower |
+| 14 | below | 0 | 8.2e3 | 3.9 us | 33 ms | 1.7x faster | 39x slower |
+| 15 | +0.7 | 3 | 2.1e3 | 5.5 us | 11 ms | 4.8x faster | 13x slower |
+| 16 | +1.7 | 6 | 508 | 9.9 us | **5.1 ms** | **11x faster** | **6.0x slower** |
+| 17 | +2.7 | 9 | 128 | 57 us | 7.4 ms | 7.3x faster | 8.7x slower |
+| 18 | +3.7 | 12 | 33 | 0.44 ms | 14 ms | 3.8x faster | 17x slower |
+| 19 | +4.7 | 15 | 8.5 | 3.7 ms | 32 ms | 1.7x faster | 38x slower |
+| 20 | +5.7 | 18 | 2.5 | 28 ms | 71 ms | 0.76x (slower) | 84x slower |
 
-(At l = 14, with d = 1, the per-attempt fixed cost of the enumerator call dominates: 302 ms.)
+**Reading the table.**
 
-As Sec. 2 predicts, the online cost has its minimum near the limit. Past it, the cost roughly
-doubles per added dimension, because each step adds 8x to the residual search and cuts the
-attempts only 4x. **Nowhere is the Bernstein-Lange reference beaten.** The plain-rho margin
-shrinks from about 50x to 3x as l rises above the limit. It is the precomputation that buys that
-margin, and precomputation is equally available to generic rho.
+- **Shape.** The online cost is lowest just past the limit (`l = 16`, `d = 6`). After that it
+  roughly doubles per added dimension: each step adds 8x to the residual search and cuts the
+  attempts only 4x.
+- **Bernstein-Lange is never beaten,** even though IC stores `2^l = 2^16` logs against
+  Bernstein-Lange's `2^13` points. With equal storage, Bernstein-Lange would be faster still.
+- **Plain rho.** IC beats plain rho by up to 11x near the limit. That margin is bought by the
+  precomputed logs, which generic rho can equally buy, and it is gone by `l = 20`.
+
+**What the C changes did.** Folding the field reduction with clmul made the enumeration about
+53 ns per candidate, against 1.5 us before. `htenum.c` now also handles `u = 0` (a doubling
+`R = 2P`), which it used to skip. Doublings have probability about `2^(l - n)` per random target,
+so the earlier scans are unaffected in practice. The new test
+`test_c_attempt_and_enumeration_match_exact_table` checks both against the exact pair table.
+
+The CryptoMiniSat ratios in Sec. 4d were measured against the slower enumerator, so they
+understate the gap by about 28x.
+
+**Superseded:** the first version of this table (`results/online-above-n41.jsonl`). It priced
+rho with the Python implementation (3.5 us per step) against a C oracle, and assumed 2 us for the
+projection. That inflated IC's margin over rho by about 4x in most rows, and 88x at `l = 13`.
 
 ## 5. Open leads (not yet novelty-checked)
 
@@ -453,7 +471,8 @@ margin, and precomputation is equally available to generic rho.
        way with probability about `2^(l + l' - n)`, so each relation costs
        `2^(n - l - l') = 2^(l - 2)`. That is exactly the per-relation cost of the full residual
        enumeration, `2^(n - 2l) 2^d`.
-     - **Covering V.** Covering V by translates of such pieces takes `2^(l - l') = 2^d` oracle calls.
+     - **Covering V.** Each piece holds `2^(l')` of the `2^l` values of the restricted summand, so
+       covering V takes at least `2^(l - l') = 2^d` oracle calls.
 
      Every route built from linear oracles therefore lands on `2^(l - 2)` per relation above the
      limit, consistent with the uniformity just measured.

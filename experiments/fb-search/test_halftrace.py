@@ -102,6 +102,37 @@ class HalfTraceTest(unittest.TestCase):
                 refuted_all &= res["refuted"]
             self.assertEqual(refuted_all, R not in truth, R)
 
+    def test_c_attempt_and_enumeration_match_exact_table(self):
+        """htenum.c: ht_attempt_batch (C projection + enumeration) and ht_enum find a decomposition
+        exactly for the decomposable targets, above the limit too."""
+        from residual import ht_attempts, htenum, residual_systems
+
+        for n, l, fam, seed in ((19, 8, "geomtraceu", 1), (23, 10, "geomtraceu", 1), (23, 9, "random", 2)):
+            C = ToyCurve(n)
+            fb = FactorBase(C, fam, l, seed)
+            sv = HalfTraceSolver(fb)
+            truth = decomposition_lookup(fb)
+            rng = random.Random(f"c-attempt|{n}|{l}|{fam}")
+            pts = list(truth)
+            targets = [pts[rng.randrange(len(pts))] for _ in range(20)] + [C.random_subgroup_point(rng)[1] for _ in range(20)]
+            batch = ht_attempts(sv, [R[0] for R in targets])["hits"]
+            for R, h in zip(targets, batch):
+                one = sum(htenum(sv, rs, R[0])["hits"] for rs in residual_systems(sv, R[0]))
+                self.assertEqual(h > 0, R in truth, (n, l, fam, R))
+                self.assertEqual(one, h, (n, l, fam, R))
+
+    def test_c_walk_matches_group_law(self):
+        from residual import ec_walk
+
+        C = ToyCurve(41)
+        K = C.K
+        rng = random.Random("walk")
+        walks = [C.random_subgroup_point(rng)[1] for _ in range(16)]
+        table = [C.random_subgroup_point(rng)[1] for _ in range(8)]
+        out = ec_walk(C, walks, table, 1)["final"]
+        for P, Q in zip(walks, out):
+            self.assertEqual(K.add(P, table[P[0] % len(table)]), Q)
+
     def test_cheaper_than_macaulay_per_attempt(self):
         import json
 

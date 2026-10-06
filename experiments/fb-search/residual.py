@@ -283,13 +283,9 @@ _HTENUM = None
 _TABLES: dict = {}
 
 
-def htenum(sv: HalfTraceSolver, rs: dict, S: int) -> dict:
-    """Optimized C enumeration of the residual space of one eps branch (htenum.c)."""
+def _htlib():
     import ctypes
     import subprocess
-    import time
-
-    from factor_base import _columns_of_rows, kernel_basis
 
     global _HTENUM
     if _HTENUM is None:
@@ -300,7 +296,15 @@ def htenum(sv: HalfTraceSolver, rs: dict, S: int) -> dict:
             subprocess.run(["cc", "-O3", "-march=native", "-mpclmul", "-shared", "-fPIC", "-o", str(so), str(src)],
                            check=True)
         _HTENUM = ctypes.CDLL(str(so))
-        _HTENUM.ht_enum.restype = ctypes.c_longlong
+        for fn in ("ht_enum", "ht_attempt_batch", "ec_walk_batch"):
+            getattr(_HTENUM, fn).restype = ctypes.c_longlong
+    return _HTENUM
+
+
+def _httables(sv: HalfTraceSolver):
+    """Byte tables of HT and of the V-syndrome, the trace mask, and the parity checks of V^(2)."""
+    from factor_base import _columns_of_rows, kernel_basis
+
     K, n = sv.K, sv.n
     key = (n, tuple(sv.basis))
     if key not in _TABLES:
@@ -315,7 +319,17 @@ def htenum(sv: HalfTraceSolver, rs: dict, S: int) -> dict:
                 syn[j * 256 + b] = sum((bin(h & z).count("1") & 1) << r for r, h in enumerate(checks))
         trmask = sum(K.trace(1 << j) << j for j in range(n))
         _TABLES[key] = (ht, syn, trmask)
-    ht, syn, trmask = _TABLES[key]
+    return _TABLES[key]
+
+
+def htenum(sv: HalfTraceSolver, rs: dict, S: int) -> dict:
+    """Optimized C enumeration of the residual space of one eps branch (htenum.c)."""
+    import ctypes
+    import time
+
+    lib = _htlib()
+    K, n = sv.K, sv.n
+    ht, syn, trmask = _httables(sv)
     c0 = K.mul(sv.sqrt_b, K.inv(S))
     eps = rs["eps"]
     u0, fs = rs["u0"], rs["fs"]
@@ -330,13 +344,60 @@ def htenum(sv: HalfTraceSolver, rs: dict, S: int) -> dict:
     U = ctypes.c_uint64
     mod = sv.C.mod
     t0 = time.perf_counter_ns()
-    nh = _HTENUM.ht_enum(ctypes.c_int(n), U(mod & ((1 << n) - 1)), ctypes.c_int(d), U(u0), U(p0), U(K.sqr(u0)),
+    nh = lib.ht_enum(ctypes.c_int(n), U(mod & ((1 << n) - 1)), ctypes.c_int(d), U(u0), U(p0), U(K.sqr(u0)),
                          fa.ctypes.data_as(P(U)), pk.ctypes.data_as(P(U)), sk.ctypes.data_as(P(U)),
                          ht.ctypes.data_as(P(U)), syn.ctypes.data_as(P(U)), U(trmask),
                          hits.ctypes.data_as(P(U)), ctypes.c_int(64), ctypes.byref(cand))
     wall = time.perf_counter_ns() - t0
     return {"hits": int(nh), "candidates": int(cand.value), "wall_ns": wall,
             "u_hits": [int(h) for h in hits[: min(nh, 64)]]}
+
+
+def ht_attempts(sv: HalfTraceSolver, xs: list[int]) -> dict:
+    """Whole PDP2ht attempts in C (projection for both eps, then the residual enumeration) for the
+    target abscissae xs, in one call; per-target hits and the wall time of the call."""
+    import ctypes
+    import time
+
+    lib = _htlib()
+    K, n, l = sv.K, sv.n, sv.l
+    ht, syn, trmask = _httables(sv)
+    U, P = ctypes.c_uint64, ctypes.POINTER
+    basis = np.array(sv.basis, dtype=np.uint64)
+    ht_sq = np.array(sv.ht_sq, dtype=np.uint64)
+    checks = np.array(sv.checks or [0], dtype=np.uint64)
+    trrow = sum(K.trace(v) << j for j, v in enumerate(sv.basis))
+    Ss = np.array(xs, dtype=np.uint64)
+    hits = np.zeros(len(xs), dtype=np.int64)
+    t0 = time.perf_counter_ns()
+    cand = lib.ht_attempt_batch(ctypes.c_int(n), U(sv.C.mod & ((1 << n) - 1)), ctypes.c_int(l),
+                                basis.ctypes.data_as(P(U)), ht_sq.ctypes.data_as(P(U)),
+                                checks.ctypes.data_as(P(U)), ctypes.c_int(len(sv.checks)), U(trrow), U(sv.sqrt_b),
+                                ht.ctypes.data_as(P(U)), syn.ctypes.data_as(P(U)), U(trmask),
+                                Ss.ctypes.data_as(P(U)), ctypes.c_int(len(xs)),
+                                hits.ctypes.data_as(P(ctypes.c_longlong)))
+    wall = time.perf_counter_ns() - t0
+    return {"hits": [int(h) for h in hits], "candidates": int(cand), "wall_ns": wall}
+
+
+def ec_walk(C, walks: list[tuple[int, int]], table: list[tuple[int, int]], rounds: int) -> dict:
+    """Batched affine r-adding walks in C (htenum.c ec_walk_batch): the rho step on this host."""
+    import ctypes
+    import time
+
+    lib = _htlib()
+    U, P = ctypes.c_uint64, ctypes.POINTER
+    X = np.array([p[0] for p in walks], dtype=np.uint64)
+    Y = np.array([p[1] for p in walks], dtype=np.uint64)
+    TX = np.array([p[0] for p in table], dtype=np.uint64)
+    TY = np.array([p[1] for p in table], dtype=np.uint64)
+    t0 = time.perf_counter_ns()
+    adds = lib.ec_walk_batch(ctypes.c_int(C.n), U(C.mod & ((1 << C.n) - 1)), U(C.a2), ctypes.c_int(len(walks)),
+                             ctypes.c_int(rounds), X.ctypes.data_as(P(U)), Y.ctypes.data_as(P(U)),
+                             TX.ctypes.data_as(P(U)), TY.ctypes.data_as(P(U)), ctypes.c_int(len(table)))
+    wall = time.perf_counter_ns() - t0
+    return {"adds": int(adds), "wall_ns": wall, "ns_per_add": wall / max(1, adds),
+            "final": [(int(x), int(y)) for x, y in zip(X, Y)]}
 
 
 def bilinear_degree(nx: int, ny: int, m: int) -> int | None:
