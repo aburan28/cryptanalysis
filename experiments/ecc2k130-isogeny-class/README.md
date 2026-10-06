@@ -57,3 +57,14 @@ The figure and PDF scripts in `report/pdf/` read the scratch layout (`toy-b/`, `
 
 No attempt was made on the ECC2K-130 challenge DLP; every solved DLP is a toy instance with a
 planted logarithm.
+
+## Factor-base archive
+
+The density sweep's bases are archived recipe-only in
+`experiments/fb-archive/sweeps/ecc2k130-isogeny-class.json.gz`:
+- the 263 class curves and the R/S null curves, regenerated from their seeds;
+- `canon`, `rand1..3` and `r9101..r9112` with their seeds.
+
+The per-cell `raw_counts*.json` were never committed. `verify` recounts the cells
+the committed files pin exactly: the canon k = 16 count of every class curve,
+implied by `ic_density_z_k16`, plus E0's replicate z-scores.
