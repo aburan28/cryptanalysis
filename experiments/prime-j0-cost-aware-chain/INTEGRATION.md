@@ -319,3 +319,19 @@ against `fused-hot-steer-gated2-batch128`, but setup additions grow from
 `make_isolated_manifest.py --candidate-arm tapered-residue-orbit-batch128`;
 the host must pass its isolation gate before any wall-time claim. The table
 cost precludes a present claim about one-target rho benefit.
+
+## Unit-folded orbit graph preparation
+
+The [graph protocol](ORBIT_GRAPH_PRECOMPUTE.md) was frozen in draft PR #293
+before native evaluation. `make_tau_wide_graph.py` verifies all 99,513 orbit
+recipes and emits a predecessor graph. The graph builder constructs the same
+point table as the direct builder, using one shifted-digit addition from a
+smaller orbit point. [orbit-graph-panel.json](orbit-graph-panel.json) retains
+eight paired cases on generator, `37P`, `101P`, and `103P` for both curves.
+All 32,768 graph outputs match generic multiplication and online counters
+match the direct arm. Setup additions fall from 62,424 to 39,096 and from
+506,664 to 267,552, with 78,744 and 717,360 extra static recipe bytes.
+Setup rotations fall from 63,194 to 44,453 and from 409,586 to 248,427.
+The curve test matched all 307,287 prepared entries for generators on the
+two curves and passed 722,512 checks. The host isolation gate still controls
+any CPU wall-time claim.

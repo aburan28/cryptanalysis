@@ -168,3 +168,10 @@ dual steering. Preparation rises to 62,424 and 506,664 additions and the
 prepared point tables reach 1.26 MB and 8.57 MB. This is a reused-point
 batch diagnostic; isolated CPU speed and one-target rho benefit remain
 unmeasured.
+
+The [unit-folded orbit graph builder](ORBIT_GRAPH_PRECOMPUTE.md) constructs
+the same tapered table through exact lower-depth predecessor points. Its
+eight-point frozen panel verifies 32,768 graph outputs and reduces preparation
+additions by 37.4% and 47.2% for the two schedules. Preparation rotations
+also fall, while static recipes add 78,744 and 717,360 bytes. No controlled
+CPU timing is available.
