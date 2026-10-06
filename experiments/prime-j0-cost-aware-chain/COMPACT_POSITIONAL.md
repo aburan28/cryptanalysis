@@ -42,3 +42,38 @@ output digest, and preparation field. The ordinary Mac panel is a
 correctness and operation experiment. A CPU speedup needs the repository's
 host-level isolation receipt and repeated paired timing, so the local timing
 fields cannot satisfy this gate.
+
+## Held-out result
+
+The protocol and implementation were frozen at `7f34a6c5`. The new fixture,
+its eight generic-reference digests, and its disjointness audit were frozen
+at `bdf9ed8a` before either comparison arm ran. The fixture audit passed.
+The [raw panel](compact-pos-panel.json) records all 16 statuses, exact
+outputs, operation counts, preparation accounting, and exploratory timing.
+The [read-only panel audit](audit_compact_pos_panel.py) passed. All eight
+prospective gates passed: every arm verified, addition/rotation/output
+inversion counts matched exactly, and compact had zero fallbacks.
+
+| Curve | Prepared point slots, full → compact | Point bytes, full → compact | Prep triples, full → compact | Online additions, four cases |
+| --- | ---: | ---: | ---: | ---: |
+| glv-j0-32 | 1,152 → 198 | 36,864 → 6,336 | 1,134 → 180 | 15,546; 15,543; 15,643; 15,591 |
+| j0-56 | 1,152 → 378 | 36,864 → 12,096 | 1,134 → 360 | 33,498; 33,493; 33,524; 33,547 |
+
+The point table shrank 82.81% and 67.19%, respectively; preparation
+triples fell 84.13% and 68.25%. Both builders use one preparation inversion.
+The compact precomputation object, including its point allocation, is 7,488
+or 13,248 bytes versus 37,968 bytes for the full positional object.
+The compact builder uses 6,336 or 12,096 bytes of temporary heap versus
+36,864 bytes for the full builder. These are memory and preparation-operation
+improvements; online group-operation score is equal. There is no controlled
+CPU timing result or one-target rho claim.
+
+Reproduce the native checks and read-only audits without Sage:
+
+```sh
+cmake -S . -B build-compact-pos -DCMAKE_BUILD_TYPE=Release -DCA_WERROR=ON -DCA_BUILD_TAU_CHAIN_BENCH=ON
+cmake --build build-compact-pos --target test_curve ca_tau_chain_bench -j 4
+build-compact-pos/test_curve
+python3 experiments/prime-j0-cost-aware-chain/audit_compact_pos_inputs.py
+python3 experiments/prime-j0-cost-aware-chain/audit_compact_pos_panel.py
+```
