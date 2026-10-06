@@ -444,6 +444,19 @@ margin, and precomputation is equally available to generic rho.
 
      Solutions are uniform in the residual space, so no ordering or early abort beats the expected
      `2^(d-1)` candidates of the plain enumeration.
+   - **Polynomial-time partial oracles cost the same per relation.**
+     - **Construction.** Restrict one summand to a sub-progression `V' ⊂ V` of dimension `l'`.
+       S_3 is linear in `(x1 + x2, x1 x2)`, with unknowns in `V x V' V`, of dimension
+       `l + (l + l' - 1)`. So the oracle is linear, and polynomial-time, whenever
+       `l' <= n + 2 - 2l`, even well above the limit.
+     - **Cost.** It sees only the `2^(l + l')` pairs with a summand in V'. A target decomposes that
+       way with probability about `2^(l + l' - n)`, so each relation costs
+       `2^(n - l - l') = 2^(l - 2)`. That is exactly the per-relation cost of the full residual
+       enumeration, `2^(n - 2l) 2^d`.
+     - **Covering V.** Covering V by translates of such pieces takes `2^(l - l') = 2^d` oracle calls.
+
+     Every route built from linear oracles therefore lands on `2^(l - 2)` per relation above the
+     limit, consistent with the uniformity just measured.
 
 ## 6. Identifiers (AGENTS.md naming convention)
 
