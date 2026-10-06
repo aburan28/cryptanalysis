@@ -6,6 +6,7 @@
     python3 fbarchive.py export --n 131 --family geomtrace --l 12        # ECC2K-130, pure Python
     python3 fbarchive.py export --n 131 --family geomtraceu --l 24 --no-points   # recipe only
     python3 fbarchive.py export --n 13 --family nbweight --l 2           # weight base, l = w
+    python3 fbarchive.py export --n 23 --family kerfrob --l 11 --seed 0 --extra a2=0   # external.py
     python3 fbarchive.py verify [--rebuild]                              # check every index row
     python3 fbarchive.py upload [--dry-run] [--require]                  # to $IC_ARCHIVE_S3_URI
 
@@ -14,6 +15,8 @@ deterministic gzip (mtime 0) of canonical JSON holding the AGENTS.md `factor_bas
 record, its SHA-256, the exact `field` and `curve` records, and the sorted usable points
 [[x, y], ...] whose SHA-256 is the record's `enumerated_set_sha256`.  index.csv lists
 every archive with its digests, counts, byte size and the SHA-256 of the compressed file.
+aliases.csv maps digests that results cite under another convention (the Rust suite's
+sorted hex lines) to the archive whose points reproduce them; `verify` recomputes each.
 Archives up to --max-git-bytes are committed; larger ones go to large/ (ignored by git)
 with storage `s3` and must be uploaded.  Nothing here reads or writes credentials.
 """
@@ -41,6 +44,8 @@ from toycurve import canonical, sha256_hex  # noqa: E402
 
 SCHEMA = "ic-factor-base-archive/1"
 INDEX = HERE / "index.csv"
+ALIASES = HERE / "aliases.csv"
+ALIAS_FIELDS = ["cited_sha256", "convention", "factor_base_sha256", "experiment"]
 INDEX_FIELDS = ["factor_base_sha256", "curve_id", "n", "family", "l", "seed", "fb_points", "geometric_points",
                 "effective_columns", "strict_points", "quotient_rule", "points_included", "path", "storage",
                 "bytes", "file_sha256", "content_sha256", "enumerated_set_sha256"]
@@ -269,8 +274,16 @@ def _span(basis: list[int]):
     return out
 
 
-def build(n: int, family: str, l: int, seed: int, points: bool = True, strict_limit: int = 10_000) -> dict:
-    if family == WEIGHT_FAMILY:
+def build(n: int, family: str, l: int, seed: int, points: bool = True, strict_limit: int = 10_000,
+          extra: dict | None = None) -> dict:
+    import external
+
+    extra = dict(extra or {})
+    if family in external.FAMILIES:
+        doc = external.build(n, family, l, seed, points, extra)
+    elif extra:
+        raise ValueError(f"family {family} takes no extra recipe parameters")
+    elif family == WEIGHT_FAMILY:
         doc = weight_archive(n, l, seed, points)
     elif n <= TOY_MAX_N:
         doc = toy_archive(n, family, l, seed, points)
@@ -278,7 +291,7 @@ def build(n: int, family: str, l: int, seed: int, points: bool = True, strict_li
         doc = big_factor_base(n, family, l, seed, points, strict_limit)
     doc = {"schema": SCHEMA, **doc, "factor_base_sha256": sha256_hex(doc["factor_base"]),
            "points_encoding": "[x, y] unsigned integers in the field's element encoding, sorted",
-           "recipe": {"n": n, "family": family, "l": l, "seed": seed}}
+           "recipe": {"n": n, "family": family, "l": l, "seed": seed, **extra}}
     return doc
 
 
@@ -361,10 +374,40 @@ def verify_row(row: dict, rebuild: bool, rebuild_max_points: int) -> list[str]:
             errors.append(f"{row['path']}: point count differs from B")
     if rebuild and (doc["points"] is None or len(doc["points"]) <= rebuild_max_points):
         rc = doc["recipe"]
+        extra = {k: v for k, v in rc.items() if k not in ("n", "family", "l", "seed")}
         again = build(rc["n"], rc["family"], rc["l"], rc["seed"], doc["points"] is not None,
-                      doc.get("strict_limit", 10_000))
+                      doc.get("strict_limit", 10_000), extra)
         if canonical(again).encode() != content:
             errors.append(f"{row['path']}: rebuilding from the recipe gives different content")
+    return errors
+
+
+def read_aliases() -> list[dict]:
+    if not ALIASES.exists():
+        return []
+    with ALIASES.open(newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def verify_aliases(rows: list[dict]) -> list[str]:
+    """Each alias must point at an archive whose points give the cited digest under its convention."""
+    import external
+
+    by_digest = {r["factor_base_sha256"]: r for r in rows}
+    errors = []
+    for a in read_aliases():
+        row = by_digest.get(a["factor_base_sha256"])
+        if row is None:
+            errors.append(f"aliases.csv: {a['cited_sha256'][:12]} points at an unindexed archive")
+            continue
+        path = HERE / row["path"]
+        if not path.exists():
+            continue
+        doc = json.loads(decompress(path))
+        if a["convention"] != external.RUST_DIGEST:
+            errors.append(f"aliases.csv: unknown convention {a['convention']!r}")
+        elif doc["points"] is None or external.rust_points_digest(doc["points"]) != a["cited_sha256"]:
+            errors.append(f"aliases.csv: {a['cited_sha256'][:12]} is not the digest of {row['path']}")
     return errors
 
 
@@ -449,6 +492,8 @@ def main() -> None:
     e.add_argument("--family", required=True)
     e.add_argument("--l", type=int, required=True)
     e.add_argument("--seed", type=int, default=1)
+    e.add_argument("--extra", action="append", default=[], metavar="KEY=INT",
+                   help="extra integer recipe parameter of an external.py family (a2, stride)")
     e.add_argument("--no-points", action="store_true", help="record the recipe and basis only (B stays null)")
     e.add_argument("--codec", default="gz", choices=["gz", "xz"])
     e.add_argument("--strict-limit", type=int, default=10_000, help="n = 131: count [r]P = O only up to this many points")
@@ -463,7 +508,8 @@ def main() -> None:
     u.add_argument("--require", action="store_true", help="fail instead of skipping when S3 is unavailable")
     args = ap.parse_args()
     if args.cmd == "export":
-        doc = build(args.n, args.family, args.l, args.seed, not args.no_points, args.strict_limit)
+        extra = {k: int(v) for k, v in (kv.split("=", 1) for kv in args.extra)}
+        doc = build(args.n, args.family, args.l, args.seed, not args.no_points, args.strict_limit, extra)
         row = store(doc, args.codec, args.max_git_bytes)
         print(json.dumps(row))
     elif args.cmd == "export-suite":
@@ -480,6 +526,7 @@ def main() -> None:
     elif args.cmd == "verify":
         rows = read_index()
         errors = [err for r in rows for err in verify_row(r, args.rebuild, args.rebuild_max_points)]
+        errors += verify_aliases(rows)
         on_disk = {str(p.relative_to(HERE)) for p in (HERE / "bases").rglob("*.json.*")}
         errors += [f"{p}: not in index.csv" for p in sorted(on_disk - {r["path"] for r in rows})]
         for err in errors:

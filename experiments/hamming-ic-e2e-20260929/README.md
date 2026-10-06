@@ -37,6 +37,9 @@ queries can finish. It gives no scaling claim for degree 37, 53, or 131.
   columns. The normal element is selected by a deterministic first-match
   search; its exact value, point set, digest, and orbit representatives are
   in each immutable candidate manifest.
+  The base is archived as `nbexact` in `../fb-archive` (curve
+  `EC1N9Ckb1h58e595b4ea93`); `../fb-archive/test_external.py` checks that every
+  n9 run's `encoded_points` and `point_set_sha256` equal the archive's.
 - PDP: five weight-two normal-basis `x` inputs, three nonzero intermediate
   `x` rows, four left-associated Koblitz S3 equations, and rationality
   clauses. A single reusable CryptoMiniSat instance receives only the query

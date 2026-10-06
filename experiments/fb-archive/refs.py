@@ -3,7 +3,9 @@
 
 Every `factor_base_sha256` value in a committed JSON / JSONL result file (plain,
 .gz or .xz) under experiments/ and ecc2k130/research/ must be either a row of
-index.csv or listed in unarchived.csv, the closed list of known, not-yet-archived
+index.csv, a `cited_sha256` of aliases.csv whose archive is indexed (a digest
+cited under another convention; `fbarchive.py verify` recomputes it from the
+archived points), or listed in unarchived.csv, the closed list of known, not-yet-archived
 bases. The debt list is exact both ways: a new unarchived digest fails, and so
 does a debt entry that is now archived or no longer cited, so the list can only
 shrink.
@@ -29,6 +31,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 INDEX = HERE / "index.csv"
 DEBT = HERE / "unarchived.csv"
+ALIASES = HERE / "aliases.csv"
 ROOTS = ["experiments", "ecc2k130/research"]
 SUFFIXES = (".json", ".jsonl", ".json.gz", ".jsonl.gz", ".json.xz", ".jsonl.xz")
 KEY = "factor_base_sha256"
@@ -97,7 +100,11 @@ def citations() -> dict[str, set[str]]:
 
 def archived() -> set[str]:
     with open(INDEX, newline="") as fh:
-        return {r["factor_base_sha256"] for r in csv.DictReader(fh)}
+        have = {r["factor_base_sha256"] for r in csv.DictReader(fh)}
+    if ALIASES.exists():
+        with open(ALIASES, newline="") as fh:
+            have |= {r["cited_sha256"] for r in csv.DictReader(fh) if r["factor_base_sha256"] in have}
+    return have
 
 
 def owner(rel: str) -> str:
