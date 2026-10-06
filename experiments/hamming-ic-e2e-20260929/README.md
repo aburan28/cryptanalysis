@@ -1,5 +1,22 @@
 # FC-Hamming in a complete toy index-calculus DLP
 
+The later, separate [N53 weight-three root-index study](N53_W3_ROOT.md)
+completed three independently replayed one-target DLPs. It uses a
+four-summand root index rather than this FC-Hamming SAT method. Its Mac CPU
+timings lack an isolation receipt and are exploratory; controlled speedup is
+unknown. A prospective 512-point ordinary-query panel, committed before
+execution, completed 512/512 root-index decompositions with independent Sage
+witness replay; two earlier exploratory panels are also retained. These are
+stage observations, not full DLP speedups. An exact, independently replayed
+[N83 weight-three geometry gate](N83_W3_GEOMETRY.md) finds 89,474 usable
+points and a rigorous four-sum support ceiling of about 1.10 in a million
+uniform subgroup targets. The independent [N83 next-calculus screen](N83_NEXT_CALCULUS.md)
+measures deterministic W4 base expansions, replays a full W3 S3 pair-root
+kernel probe, and bounds the fixed-offset search cost. Its best research
+lead is a five-summand W3/W4 hybrid with a new bounded-memory PDP; the
+straightforward root-index offset paths remain too costly to promote.
+No N83 ordinary-query PDP, DLP, or speedup was measured.
+
 This experiment puts the factorized-convolution (FC) Hamming predicate from
 La Scala, Marchesin, and Tiwari's [*Hamming Ideals and Gröbner Bases for
 ISD-like Syndrome Decoding*](https://arxiv.org/abs/2609.18866) into a complete
@@ -25,6 +42,9 @@ queries can finish. It gives no scaling claim for degree 37, 53, or 131.
   columns. The normal element is selected by a deterministic first-match
   search; its exact value, point set, digest, and orbit representatives are
   in each immutable candidate manifest.
+  The base is archived as `nbexact` in `../fb-archive` (curve
+  `EC1N9Ckb1h58e595b4ea93`); `../fb-archive/test_external.py` checks that every
+  n9 run's `encoded_points` and `point_set_sha256` equal the archive's.
 - PDP: five weight-two normal-basis `x` inputs, three nonzero intermediate
   `x` rows, four left-associated Koblitz S3 equations, and rationality
   clauses. A single reusable CryptoMiniSat instance receives only the query

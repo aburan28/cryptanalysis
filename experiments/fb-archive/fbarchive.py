@@ -5,6 +5,8 @@
     python3 fbarchive.py export-suite --suite full                       # every ic-bench base
     python3 fbarchive.py export --n 131 --family geomtrace --l 12        # ECC2K-130, pure Python
     python3 fbarchive.py export --n 131 --family geomtraceu --l 24 --no-points   # recipe only
+    python3 fbarchive.py export --n 13 --family nbweight --l 2           # weight base, l = w
+    python3 fbarchive.py export --n 23 --family kerfrob --l 11 --seed 0 --extra a2=0   # external.py
     python3 fbarchive.py verify [--rebuild]                              # check every index row
     python3 fbarchive.py upload [--dry-run] [--require]                  # to $IC_ARCHIVE_S3_URI
 
@@ -13,6 +15,8 @@ deterministic gzip (mtime 0) of canonical JSON holding the AGENTS.md `factor_bas
 record, its SHA-256, the exact `field` and `curve` records, and the sorted usable points
 [[x, y], ...] whose SHA-256 is the record's `enumerated_set_sha256`.  index.csv lists
 every archive with its digests, counts, byte size and the SHA-256 of the compressed file.
+aliases.csv maps digests that results cite under another convention (the Rust suite's
+sorted hex lines) to the archive whose points reproduce them; `verify` recomputes each.
 Archives up to --max-git-bytes are committed; larger ones go to large/ (ignored by git)
 with storage `s3` and must be uploaded.  Nothing here reads or writes credentials.
 """
@@ -40,6 +44,8 @@ from toycurve import canonical, sha256_hex  # noqa: E402
 
 SCHEMA = "ic-factor-base-archive/1"
 INDEX = HERE / "index.csv"
+ALIASES = HERE / "aliases.csv"
+ALIAS_FIELDS = ["cited_sha256", "convention", "factor_base_sha256", "experiment"]
 INDEX_FIELDS = ["factor_base_sha256", "curve_id", "n", "family", "l", "seed", "fb_points", "geometric_points",
                 "effective_columns", "strict_points", "quotient_rule", "points_included", "path", "storage",
                 "bytes", "file_sha256", "content_sha256", "enumerated_set_sha256"]
@@ -137,6 +143,130 @@ def py_factor_base(C, family: str, l: int, seed: int, points: bool, strict_limit
     }
 
 
+WEIGHT_FAMILY = "nbweight"
+
+
+def weight_archive(n: int, w: int, seed: int, points: bool) -> dict:
+    """{P : 1 <= HW(x(P)) <= w}, the Hamming weight taken in a normal basis.
+
+    This is the Frobenius-stable, non-linear base of ecc2k130/runner/codegen/indexcalc.py
+    (--basis pb), built through the same curves.NormalView (normal element seeded by n)
+    and CurvePb, so the archived point set is exactly the one indexcalc.factorBase and
+    experiments/frobenius-quotient-m4/ladder.py use.  It is not a subspace, so it gets
+    its own field and curve records: NormalView chooses its own modulus, which is not
+    always ToyCurve's, and ToyCurve refuses n where r^2 divides #E.  `l` is w here.
+    Columns are x-classes under sign and Frobenius (weight is sigma-invariant); no
+    subgroup projection is applied, matching how ladder.py uses the base, so
+    strict-subgroup counts are null (unknown)."""
+    if seed != 1:
+        raise ValueError("nbweight has no seed: NormalView is seeded by n; use --seed 1")
+    if n % 2 == 0:
+        raise ValueError("nbweight needs odd n (half-trace point recovery)")
+    sys.path.insert(0, str(ROOT / "ecc2k130" / "runner" / "codegen"))
+    import curves
+
+    nv = curves.NormalView(n)
+    E = curves.CurvePb(nv.pb)
+    exps = sorted({n, 0, *[t for t in nv.taps if t >= 0]}, reverse=True)
+    mod = sum(1 << e for e in exps)
+    if mod != nv.poly:
+        raise ValueError("NormalView modulus does not match its taps")
+    field_rec = {
+        "characteristic": 2,
+        "degree": n,
+        "representation": "polynomial_basis",
+        "modulus_exponents": exps,
+        "element_encoding": "unsigned integer; bit i is the coefficient of z^i",
+        "normal_view": {"builder": "ecc2k130/runner/codegen/curves.py NormalView", "seed": n,
+                        "tries": 400, "normal_element": nv.conj[0]},
+    }
+    order = curves.curveOrder(n)
+    curve_rec = {
+        "model": "y^2 + x*y = x^3 + a2*x^2 + a6",
+        "a2": 0,
+        "a6": 1,
+        "order": order,
+        "trace": (1 << n) + 1 - order,
+        "subgroup_order": None,
+        "cofactor": None,
+        "generator": None,
+        "target_group": "full group E(F_2^n): ladder.py draws planted and uniformly random targets",
+    }
+    curve_id = f"EC1N{n}Ckb1h{sha256_hex({'field': field_rec, 'curve': curve_rec})[:12]}"
+    xs = []
+    for k in range(1, w + 1):
+        for sup in _combinations(n, k):
+            c = 0
+            for i in sup:
+                c |= 1 << i
+            xs.append(nv.fromCoords(c))
+    pts = []
+    for x in xs:
+        P = E.pointFromX(x)
+        if P is not None:
+            pts.append((P[0], P[1]))
+            pts.append((P[0], P[0] ^ P[1]))
+    pts = sorted(set(pts))
+    base_x = {x for x, _ in pts}
+    seen, orbits = set(), 0
+    for x in sorted(base_x):
+        if x in seen:
+            continue
+        orbits += 1
+        y = x
+        for _ in range(n):
+            seen.add(y)
+            y = nv.pb.sqr(y)
+    rec_points = [[x, y] for x, y in pts]
+    rec = {
+        "curve_id": curve_id,
+        "construction": {
+            "family": WEIGHT_FAMILY,
+            "basis": None,
+            "params": {"w": w, "normal_element": nv.conj[0]},
+            "polynomial_constraint": "1 <= Hamming weight of the normal-basis coordinates of x <= w",
+            "shifted_bases": "none",
+        },
+        "subgroup_policy": "none",
+        "enumerated_set_sha256": sha256_hex(rec_points) if points else None,
+        "nominal_dimension": None,
+        "geometric_point_count": len(pts) if points else None,
+        "actual_usable_point_count": len(pts) if points else None,
+        "strict_subgroup_point_count": None,
+        "quotient_rule": "sign+frobenius",
+        "effective_columns": orbits if points else None,
+        "x_classes": len(base_x) if points else None,
+    }
+    return {
+        "field": field_rec,
+        "curve": {**curve_rec, "curve_id": curve_id},
+        "factor_base": rec,
+        "points": rec_points if points else None,
+        "point_columns": None,
+        "column_representatives": None,
+        "builder": "fb-archive/fbarchive.py weight_archive via codegen curves.NormalView + CurvePb",
+    }
+
+
+def _combinations(n: int, k: int):
+    """Index subsets of size exactly k, lexicographic."""
+    if k == 0:
+        yield []
+        return
+    for first in range(n):
+        for rest in _combinations_from(first + 1, n, k - 1):
+            yield [first] + rest
+
+
+def _combinations_from(start: int, n: int, k: int):
+    if k == 0:
+        yield []
+        return
+    for i in range(start, n):
+        for rest in _combinations_from(i + 1, n, k - 1):
+            yield [i] + rest
+
+
 def _span(basis: list[int]):
     out = [0]
     for b in basis:
@@ -144,11 +274,24 @@ def _span(basis: list[int]):
     return out
 
 
-def build(n: int, family: str, l: int, seed: int, points: bool = True, strict_limit: int = 10_000) -> dict:
-    doc = toy_archive(n, family, l, seed, points) if n <= TOY_MAX_N else big_factor_base(n, family, l, seed, points, strict_limit)
+def build(n: int, family: str, l: int, seed: int, points: bool = True, strict_limit: int = 10_000,
+          extra: dict | None = None) -> dict:
+    import external
+
+    extra = dict(extra or {})
+    if family in external.FAMILIES:
+        doc = external.build(n, family, l, seed, points, extra)
+    elif extra:
+        raise ValueError(f"family {family} takes no extra recipe parameters")
+    elif family == WEIGHT_FAMILY:
+        doc = weight_archive(n, l, seed, points)
+    elif n <= TOY_MAX_N:
+        doc = toy_archive(n, family, l, seed, points)
+    else:
+        doc = big_factor_base(n, family, l, seed, points, strict_limit)
     doc = {"schema": SCHEMA, **doc, "factor_base_sha256": sha256_hex(doc["factor_base"]),
            "points_encoding": "[x, y] unsigned integers in the field's element encoding, sorted",
-           "recipe": {"n": n, "family": family, "l": l, "seed": seed}}
+           "recipe": {"n": n, "family": family, "l": l, "seed": seed, **extra}}
     return doc
 
 
@@ -231,10 +374,40 @@ def verify_row(row: dict, rebuild: bool, rebuild_max_points: int) -> list[str]:
             errors.append(f"{row['path']}: point count differs from B")
     if rebuild and (doc["points"] is None or len(doc["points"]) <= rebuild_max_points):
         rc = doc["recipe"]
+        extra = {k: v for k, v in rc.items() if k not in ("n", "family", "l", "seed")}
         again = build(rc["n"], rc["family"], rc["l"], rc["seed"], doc["points"] is not None,
-                      doc.get("strict_limit", 10_000))
+                      doc.get("strict_limit", 10_000), extra)
         if canonical(again).encode() != content:
             errors.append(f"{row['path']}: rebuilding from the recipe gives different content")
+    return errors
+
+
+def read_aliases() -> list[dict]:
+    if not ALIASES.exists():
+        return []
+    with ALIASES.open(newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def verify_aliases(rows: list[dict]) -> list[str]:
+    """Each alias must point at an archive whose points give the cited digest under its convention."""
+    import external
+
+    by_digest = {r["factor_base_sha256"]: r for r in rows}
+    errors = []
+    for a in read_aliases():
+        row = by_digest.get(a["factor_base_sha256"])
+        if row is None:
+            errors.append(f"aliases.csv: {a['cited_sha256'][:12]} points at an unindexed archive")
+            continue
+        path = HERE / row["path"]
+        if not path.exists():
+            continue
+        doc = json.loads(decompress(path))
+        if a["convention"] != external.RUST_DIGEST:
+            errors.append(f"aliases.csv: unknown convention {a['convention']!r}")
+        elif doc["points"] is None or external.rust_points_digest(doc["points"]) != a["cited_sha256"]:
+            errors.append(f"aliases.csv: {a['cited_sha256'][:12]} is not the digest of {row['path']}")
     return errors
 
 
@@ -319,6 +492,8 @@ def main() -> None:
     e.add_argument("--family", required=True)
     e.add_argument("--l", type=int, required=True)
     e.add_argument("--seed", type=int, default=1)
+    e.add_argument("--extra", action="append", default=[], metavar="KEY=INT",
+                   help="extra integer recipe parameter of an external.py family (a2, stride)")
     e.add_argument("--no-points", action="store_true", help="record the recipe and basis only (B stays null)")
     e.add_argument("--codec", default="gz", choices=["gz", "xz"])
     e.add_argument("--strict-limit", type=int, default=10_000, help="n = 131: count [r]P = O only up to this many points")
@@ -333,7 +508,8 @@ def main() -> None:
     u.add_argument("--require", action="store_true", help="fail instead of skipping when S3 is unavailable")
     args = ap.parse_args()
     if args.cmd == "export":
-        doc = build(args.n, args.family, args.l, args.seed, not args.no_points, args.strict_limit)
+        extra = {k: int(v) for k, v in (kv.split("=", 1) for kv in args.extra)}
+        doc = build(args.n, args.family, args.l, args.seed, not args.no_points, args.strict_limit, extra)
         row = store(doc, args.codec, args.max_git_bytes)
         print(json.dumps(row))
     elif args.cmd == "export-suite":
@@ -350,6 +526,7 @@ def main() -> None:
     elif args.cmd == "verify":
         rows = read_index()
         errors = [err for r in rows for err in verify_row(r, args.rebuild, args.rebuild_max_points)]
+        errors += verify_aliases(rows)
         on_disk = {str(p.relative_to(HERE)) for p in (HERE / "bases").rglob("*.json.*")}
         errors += [f"{p}: not in index.csv" for p in sorted(on_disk - {r["path"] for r in rows})]
         for err in errors:

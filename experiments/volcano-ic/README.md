@@ -112,3 +112,10 @@ All 40 logs are verified.
 
 Timing windows: the τ runs and 4 baseline runs shared one window. The other 6 baseline runs and all SAT runs ran later,
 after the external drive dropped out and remounted.
+
+## Factor-base archive
+
+The tier-A bases (457 curves, `V = span{1, ..., z^9}`) are archived recipe-only in
+`experiments/fb-archive/sweeps/volcano-ic.json.gz`, with curve IDs and the
+SHA-256 of `results/census-*.jsonl`. `python3 sweeps.py verify --all-cells
+volcano-ic` recounts every curve's `fb_size`.

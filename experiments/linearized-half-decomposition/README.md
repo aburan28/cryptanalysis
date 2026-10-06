@@ -116,6 +116,16 @@ linearization limit (`l` near `n/4` with the orbit quotient, where the
 per-attempt budget of `../frobenius-quotient-m4` is `2^31`). That is exactly where linearization
 fails and where Gröbner/SAT are measured to be exponential.
 
+## Factor bases
+
+Every cell's base is the `prefix` family of `../fb-archive`
+(`V = span{1, ..., z^(l-1)}`, the same moduli as `ToyCurve`), archived there.
+`results/factor_bases.json` (`python3 fb_manifest.py`) lists each cell's curve
+ID, `factor_base_sha256`, archive path and PS1 label, and
+`test_lhd_factor_bases.py` checks that `lhd.py` enumerates the archived usable
+set plus only 4-torsion points, which the archive's `cofactor_projection`
+policy drops.
+
 ## What this does not claim
 
 - No attack, no relation collection, no discrete logarithm, nothing run on

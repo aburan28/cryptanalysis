@@ -143,3 +143,11 @@ and renamed so running processes keep a valid mapping.
 --coefficients FILE` re-reduces and hashes a regenerated file
 (SHA-256 `ac617bd9…fcb67`, recorded in `inventory.json`).  The torsion points
 `outputs/run04-explicit-descent/*.bin` are raw tower elements (52 KB each).
+
+## Factor-base archive
+
+Every run-08 base (6,475 curves x 64 families x k in {8, 9, 10}) is archived
+recipe-only in `experiments/fb-archive/sweeps/volcano-m83.json.gz`. It holds each
+curve's `b` and curve ID, the 64 bases with their seeds, and the SHA-256 of the
+`screen-*.jsonl` and `scaling.json` counts. `python3 sweeps.py verify --all-cells
+volcano-m83` recounts all 1,243,200 cells in pure Python against `screen-*.jsonl`.
