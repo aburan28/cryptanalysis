@@ -1,0 +1,37 @@
+{{- include "ecc2k130-coordinator.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ecc2k130-coordinator.fullname" . }}
+  labels:
+    {{- include "ecc2k130-coordinator.labels" . | nindent 4 }}
+data:
+  AWS_DEFAULT_REGION: {{ .Values.campaign.awsRegion | quote }}
+  AWS_REGION: {{ .Values.campaign.awsRegion | quote }}
+  RHO_CAMPAIGN: {{ .Values.campaign.name | quote }}
+  ECC2K130_CAMPAIGN_ID: {{ .Values.campaign.contractId | quote }}
+  ECC_BUCKET: {{ .Values.campaign.bucket | quote }}
+  ECC_STATUS_BUCKET: {{ .Values.campaign.statusBucket | quote }}
+  RHO_DB_HOST: {{ .Values.rds.host | quote }}
+  RHO_DB_SECRET: {{ .Values.rds.secretId | quote }}
+  RHO_DB_NAME: {{ .Values.rds.databaseName | quote }}
+  RHO_DB_SSLMODE: {{ .Values.rds.sslMode | quote }}
+  RHO_QUEUE_BACKEND: {{ .Values.queue.backend | quote }}
+  RHO_QUEUE_CLUSTER: {{ ternary "1" "0" .Values.queue.cluster | quote }}
+  RHO_QUEUE_BLOCK_MS: {{ .Values.queue.blockMilliseconds | quote }}
+  RHO_QUEUE_BATCH_SIZE: {{ .Values.queue.batchSize | quote }}
+  RHO_QUEUE_CLAIM_IDLE_MS: {{ .Values.queue.claimIdleMilliseconds | quote }}
+  RHO_QUEUE_MAX_DELIVERIES: {{ .Values.queue.maxDeliveries | quote }}
+  RHO_QUEUE_MAX_DP_BYTES: {{ .Values.queue.maxDpBytes | quote }}
+  RHO_QUEUE_MAX_CHECKPOINT_BYTES: {{ .Values.queue.maxCheckpointBytes | quote }}
+  RHO_QUEUE_HIGH_MESSAGES: {{ .Values.queue.highMessages | quote }}
+  RHO_QUEUE_CRITICAL_MESSAGES: {{ .Values.queue.criticalMessages | quote }}
+  RHO_QUEUE_HIGH_BYTES: {{ .Values.queue.highBytes | quote }}
+  RHO_QUEUE_CRITICAL_BYTES: {{ .Values.queue.criticalBytes | quote }}
+  RHO_QUEUE_HIGH_AGE_SECONDS: {{ .Values.queue.highAgeSeconds | quote }}
+  RHO_QUEUE_CRITICAL_AGE_SECONDS: {{ .Values.queue.criticalAgeSeconds | quote }}
+  RHO_QUEUE_HIGH_MEMORY_RATIO: {{ .Values.queue.highMemoryRatio | quote }}
+  RHO_QUEUE_CRITICAL_MEMORY_RATIO: {{ .Values.queue.criticalMemoryRatio | quote }}
+  RHO_STATUS_EVERY: {{ .Values.status.publishEverySeconds | quote }}
+  RHO_QUEUE_PUBLISH_LISTEN: "0.0.0.0"
+  RHO_QUEUE_PUBLISH_PORT: {{ .Values.publisher.port | quote }}

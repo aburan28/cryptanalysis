@@ -1,0 +1,256 @@
+image:
+  repository: ghcr.io/aburan28/cryptanalysis-ecc2k130
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+campaign:
+  name: ecc2k-130
+  contractId: ""
+  awsRegion: us-west-2
+  bucket: ecc2k130-590183823895
+  statusBucket: ecc2k130-status-590183823895
+
+rds:
+  host: rho-dp.cxqyicswioh8.us-west-2.rds.amazonaws.com
+  secretId: rho/dp-rds
+  databaseName: ""
+  sslMode: require
+
+existingSecret:
+  name: ecc2k130-coordinator
+  producerRedisUrlKey: producer-redis-url
+  consumerRedisUrlKey: consumer-redis-url
+  publishTokenKey: publish-token
+  # Set to use a complete libpq URL instead of rds.host + Secrets Manager.
+  runtimeDatabaseUrlKey: ""
+  # Required when migration.enabled=true. Use a DDL-capable principal that is
+  # not exposed to the runtime containers.
+  migrationDatabaseUrlKey: migration-database-url
+
+# Change when rotating values in existingSecret or cloud identity bindings.
+rolloutNonce: ""
+
+# Cloud identity for the publisher, consumer and reconciler service accounts.
+# The data plane (S3, MemoryDB, RDS, Secrets Manager) is AWS, so every mode
+# ultimately yields AWS credentials for the pods:
+#
+#   irsa          Amazon EKS IAM Roles for Service Accounts. Renders the
+#                 eks.amazonaws.com/* annotations from serviceAccounts.*.awsRoleArn;
+#                 the EKS pod identity webhook injects the projected token and
+#                 AWS_* environment. Components without an awsRoleArn fall back to
+#                 the node instance role.
+#   gke           GKE Workload Identity Federation plus cross-cloud AWS access.
+#                 Renders iam.gke.io/gcp-service-account when
+#                 serviceAccounts.*.gcpServiceAccount is set, pins pods to node
+#                 pools running the GKE metadata server, and mounts a projected
+#                 Kubernetes token (audience identity.aws.audience) that AWS IAM
+#                 exchanges through sts:AssumeRoleWithWebIdentity for the
+#                 required serviceAccounts.*.awsRoleArn. Register the cluster's
+#                 OIDC issuer as an AWS IAM identity provider first.
+#   web-identity  The same projected-token federation for any other cluster with
+#                 a public OIDC issuer (AKS, on-prem, GKE without the metadata
+#                 server). serviceAccounts.*.awsRoleArn is required.
+#   none          Render only serviceAccounts.*.annotations. Use for EKS Pod
+#                 Identity associations, instance profiles, or externally
+#                 injected static credentials.
+identity:
+  mode: irsa
+  aws:
+    audience: sts.amazonaws.com
+    # Projected token lifetime. Kubernetes enforces a 600 second minimum;
+    # IRSA defaults to 86400 when this is unset there, so it is explicit here.
+    tokenExpirationSeconds: 3600
+    stsRegionalEndpoints: true
+    # Mount path for the projected token in gke and web-identity modes.
+    tokenMountPath: /var/run/secrets/aws/serviceaccount
+  gcp:
+    # Adds nodeSelector iam.gke.io/gke-metadata-server-enabled="true" so pods
+    # only land on Workload Identity node pools. Disable on GKE Autopilot,
+    # which rejects the selector because every node already qualifies.
+    requireMetadataServer: true
+
+queue:
+  backend: memorydb
+  cluster: true
+  blockMilliseconds: 5000
+  batchSize: 8
+  claimIdleMilliseconds: 60000
+  maxDeliveries: 8
+  maxDpBytes: 8388608
+  maxCheckpointBytes: 17179869184
+  highMessages: 10000
+  criticalMessages: 50000
+  highBytes: 2147483648
+  criticalBytes: 6442450944
+  highAgeSeconds: 300
+  criticalAgeSeconds: 1800
+  highMemoryRatio: "0.70"
+  criticalMemoryRatio: "0.85"
+
+status:
+  publishEverySeconds: 180
+
+publisher:
+  # Deployment: a small replicated admission tier behind the ClusterIP.
+  # DaemonSet: one publisher per selected node so walkers publish node-locally.
+  # Kubernetes schedules by node labels, not annotations, so target nodes with
+  # nodeSelector/affinity below. The consumer stays a Deployment because its
+  # scale is bounded by RDS connections and stream batch size, not node count.
+  kind: Deployment
+  replicaCount: 2
+  port: 8080
+  # DaemonSet only. Exposes the publisher on every selected node's IP so
+  # walkers can use http://$(HOST_IP):<hostPort> without the Service. hostPort
+  # traffic bypasses the pod NetworkPolicy on some CNIs; allow the node CIDR
+  # under networkPolicy.additionalPublisherIngress when using it.
+  hostPort: 0
+  daemonSet:
+    # maxSurge is rejected by Kubernetes when hostPort is set, so the default
+    # rolls one node at a time.
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 1
+        maxSurge: 0
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+    # "" resolves to Local for a DaemonSet publisher, which keeps walker
+    # traffic on the walker's own node, and Cluster for a Deployment.
+    internalTrafficPolicy: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  terminationGracePeriodSeconds: 30
+
+consumer:
+  # Disable together with reconciler.enabled for a publisher-only install in a
+  # walker cluster that publishes to the coordinator's MemoryDB but does not
+  # index into RDS.
+  enabled: true
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 4Gi
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  terminationGracePeriodSeconds: 45
+
+reconciler:
+  enabled: true
+  schedule: "*/10 * * * *"
+  startingDeadlineSeconds: 300
+  activeDeadlineSeconds: 1800
+  backoffLimit: 3
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 5
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+migration:
+  enabled: true
+  runOnReconciler: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+# awsRoleArn and gcpServiceAccount are rendered according to identity.mode.
+# annotations are merged verbatim for anything the modes do not cover.
+serviceAccounts:
+  publisher:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: true
+    awsRoleArn: ""
+    gcpServiceAccount: ""
+  consumer:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: true
+    awsRoleArn: ""
+    gcpServiceAccount: ""
+  reconciler:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: true
+    awsRoleArn: ""
+    gcpServiceAccount: ""
+# fsGroup must stay set: projected identity tokens are only readable by a
+# non-root user through the supplemental group.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+networkPolicy:
+  enabled: true
+  # Add TLS gateway namespace/pod selectors when exposing the ClusterIP.
+  allowSameNamespace: false
+  publisherClientPodSelector:
+    matchLabels:
+      cryptanalysis.io/ecc2k130-publisher-client: "true"
+  additionalPublisherIngress: []
+  # Optional egress rules for namespaces with default-deny egress. Kubernetes
+  # NetworkPolicy cannot express S3/MemoryDB/RDS DNS names, so supply the
+  # environment-specific CIDR/ipBlock rules here.
+  egress: []
+
+# The publisher budget is skipped when publisher.kind is DaemonSet; drains
+# ignore DaemonSet pods and the node-local design tolerates per-node loss.
+podDisruptionBudget:
+  enabled: true
+  publisher:
+    minAvailable: 1
+  consumer:
+    minAvailable: 1
+
+priorityClassName: ""
+
+tests:
+  enabled: true
