@@ -44,3 +44,23 @@ public-target fibers. Every attempted branch must retain its cap and
 failure status. No complete IC candidate ID, natural relation yield,
 factor-log matrix, one-target DLP, same-point rho comparison, or speedup is
 claimed by this design and control stage.
+
+The initial sandboxed launch is retained as a
+[harness failure](runs/pinned_planted_f0_v1/harness_failure.json): macOS
+denied the watchdog's process-tree inspection, so its orphaned solver group
+was killed and the attempt is not treated as resource-valid. The repaired
+watchdog passes a fail-closed regression control. The
+[valid pinned-mask run](runs/pinned_planted_f0_v2/receipt.json) built a
+610,956-variable, 1,766,030-CNF-clause, 22,201-XOR-row circuit in about
+1.75 seconds and returned `BOUNDED_UNKNOWN` after CryptoMiniSat's 120-second
+internal limit. The complete process-tree interval was 138.05 seconds with
+551 MB sampled peak RSS. There was no model or UNSAT proof.
+
+The next [frozen diagnostic](sign_enum_protocol.json) enumerates all 32
+lift-sign assignments in a public, fixed order on the *same pinned-mask
+circuit*. It does not use the private sign witness to choose an assignment.
+Each branch receives explicit sign-unit clauses and a bounded solve. A found
+model still needs complete XCNF verification, group replay, and independent
+Sage replay. This diagnostic can determine whether five sign choices caused
+the pinned-mask solver to wander through auxiliary variables; it is not
+an unpinned factor-mask search.
