@@ -9,19 +9,55 @@ from pathlib import Path
 def make(args):
     root = args.repo_root.resolve()
     experiment = root / "experiments" / "prime-j0-cost-aware-chain"
-    atlas = args.arm == "atlas"
-    fixture_name = "atlas-inputs.json" if atlas else "inputs.json"
-    input_dir = "atlas-inputs" if atlas else "inputs"
-    fixture = json.loads((experiment / fixture_name).read_text())
+    atlas = args.candidate_arm == "atlas"
+    orbit = args.candidate_arm == "fused-orbit-batch128"
+    fused = args.candidate_arm in ("fused-batch128", "fused-orbit-batch128")
+    default_prefix = "orbit" if orbit else "fused" if fused else "atlas" if atlas else None
+    fixture_name = (f"{default_prefix}-inputs.json"
+                    if default_prefix and args.fixture == "inputs.json"
+                    else args.fixture)
+    input_dir = (f"{default_prefix}-inputs"
+                 if default_prefix and args.input_dir == "inputs"
+                 else args.input_dir)
+    fixture_path = experiment / fixture_name
+    fixture = json.loads(fixture_path.read_text())
     bench = args.bench.resolve()
     artifacts = [root / "CMakeLists.txt", experiment / "bench.c",
-                 experiment / fixture_name]
+                 fixture_path]
+    if args.candidate_arm == "pos":
+        artifacts += [experiment / "POSITIONAL.md",
+                      experiment / "make_pos_inputs.py"]
+    if args.candidate_arm.startswith("pos-batch"):
+        artifacts += [experiment / "BATCH_OUTPUT.md",
+                      experiment / "make_batch_inputs.py",
+                      experiment / "check_batch_panel.py"]
     if atlas:
         artifacts += [experiment / "RESIDUE_ATLAS.md",
                       experiment / "make_residue_atlas.py",
                       experiment / "run.py",
                       experiment / "make_atlas_inputs.py",
                       root / "src" / "generated" / "tau4_residue_atlas.h"]
+    if fused:
+        artifacts += [experiment / "FUSED_TAU_PAIRS.md",
+                      bench.parent / "CMakeCache.txt",
+                      root / "scripts" / "isolated_bench.py",
+                      experiment / "make_isolated_manifest.py",
+                      experiment / "RESIDUE_ATLAS.md",
+                      experiment / "make_tau8_pairs.py",
+                      experiment / "make_residue_atlas.py",
+                      experiment / "make_fused_inputs.py",
+                      experiment / "make_inputs.py",
+                      experiment / "check_fused_panel.py",
+                      experiment / "check_panel.py",
+                      experiment / "run.py",
+                      root / "src" / "generated" / "tau4_residue_atlas.h",
+                      root / "src" / "generated" / "tau8_pair_map.h"]
+    if orbit:
+        artifacts += [experiment / "FUSED_TAU_ORBITS.md",
+                      experiment / "make_tau8_orbits.py",
+                      experiment / "make_orbit_inputs.py",
+                      experiment / "check_orbit_panel.py",
+                      root / "src" / "generated" / "tau8_orbit_map.h"]
     artifacts += sorted((root / "src").glob("*.c"))
     artifacts += sorted((root / "src").glob("*.h"))
     artifacts += sorted((root / "include" / "cryptanalysis").glob("*.h"))
@@ -40,8 +76,13 @@ def make(args):
                           "base_y": case["base_y"],
                           "input_digest": case["input_digest"]},
                       "expected_result": case["expected_output_digest"],
-                      "reference": [base[0], "baseline", *base[2:]],
-                      "candidate": [base[0], args.arm, *base[2:]]})
+                      "reference": [base[0],
+                                    "fused-batch128" if orbit else
+                                    "pos-batch128" if fused else
+                                    "pos-global" if args.candidate_arm.startswith(
+                                        "pos-batch") else "baseline",
+                                    *base[2:]],
+                      "candidate": [base[0], args.candidate_arm, *base[2:]]})
     manifest = {
         "schema": 1,
         "workdir": str(root),
@@ -52,7 +93,19 @@ def make(args):
         "timeout_s": 120,
         "repetitions": 5,
         "measurement_boundary": (
-            "After per-point tau seed preparation: first public scalar "
+            "After identical per-point global-batch table preparation: "
+            "first public scalar representative selection through last "
+            "affine output; includes all recoding, rotations, additions, "
+            "candidate scratch allocation and block normalization; excludes "
+            "loading, preparation, and independent replay"
+            if args.candidate_arm.startswith("pos-batch") else
+            "After each arm's per-point table preparation: first scalar "
+            "reduction through last affine output; includes atlas lookups, "
+            "all point additions, fallback work, output normalization, "
+            "scratch allocation, and storage; excludes loading, preparation, "
+            "and independent replay; setup is reported separately"
+            if fused else
+            "After all per-point preparation: first public scalar "
             "representative selection through last affine output; includes "
             "all recoding, unit rotations, tripling, additions, conversions, "
             "and output storage; excludes loading, preparation, and replay"),
@@ -78,7 +131,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, required=True)
     parser.add_argument("--bench", type=Path, required=True)
-    parser.add_argument("--arm", choices=("cost", "atlas"), default="cost")
+    parser.add_argument("--fixture", default="inputs.json")
+    parser.add_argument("--input-dir", default="inputs")
+    parser.add_argument("--candidate-arm", "--arm", choices=(
+        "cost", "pos", "pos-batch32", "pos-batch128",
+        "pos-batch512", "pos-batch4096", "atlas", "fused-batch128",
+        "fused-orbit-batch128"),
+                        default="cost")
     parser.add_argument("--cgroup", required=True)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--execution-cpu", type=int, required=True)

@@ -125,3 +125,9 @@ separate constant-time design and review.
 The stacked C integration and its exact-output receipt are documented in
 [INTEGRATION.md](INTEGRATION.md). It keeps the baseline prepared evaluator
 available and adds the cost-aware choice as an explicit opt-in function.
+The fixed-base positional τ table is a separate candidate with its own
+prospective protocol and results in [POSITIONAL.md](POSITIONAL.md).
+The one-inversion table builder and its separate preparation metric are in
+[GLOBAL_BATCH.md](GLOBAL_BATCH.md).
+The block-normalized output format for public scalar batches is in
+[BATCH_OUTPUT.md](BATCH_OUTPUT.md).
