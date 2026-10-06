@@ -28,7 +28,7 @@ def sha(path: Path) -> str:
 
 
 def main(public: Path, out: Path, branch_x: int, runtime: Path,
-         private: Path | None) -> int:
+         private: Path | None, pin_middle_private: bool = False) -> int:
     public, out, runtime = public.resolve(), out.resolve(), runtime.resolve()
     private = private.resolve() if private is not None else None
     if out.exists():
@@ -41,6 +41,10 @@ def main(public: Path, out: Path, branch_x: int, runtime: Path,
     command = [str(SAGE), "-python", str(BRANCH), str(public), str(out), str(branch_x)]
     if private is not None:
         command.extend(("--pin-private", str(private.resolve())))
+    if pin_middle_private:
+        if private is None:
+            raise ValueError("middle-pin diagnostic requires the local private fixture")
+        command.append("--pin-middle-private")
     env = os.environ.copy()
     env["N83_SAT_EXTERNAL_RSS_GUARD"] = "1"
     env["TMPDIR"] = "/Volumes/SSD990/llm/tmp"
@@ -83,7 +87,8 @@ def main(public: Path, out: Path, branch_x: int, runtime: Path,
         "kind": "bounded_n83_w34_sat_branch_execution",
         "status": status,
         "curve_id": protocol["curve_id"],
-        "mode": "pinned" if private is not None else "unpinned",
+        "mode": ("pinned_middle_diagnostic" if pin_middle_private else
+                 "pinned" if private is not None else "unpinned"),
         "branch_target_x_decimal": str(branch_x),
         "public_input_sha256": sha(public),
         "private_fixture_sha256_local_only": sha(private) if private is not None else None,
@@ -118,6 +123,8 @@ if __name__ == "__main__":
     parser.add_argument("branch_x", type=int)
     parser.add_argument("runtime_info", type=Path)
     parser.add_argument("--pin-private", type=Path)
+    parser.add_argument("--pin-middle-private", action="store_true")
     args = parser.parse_args()
     raise SystemExit(main(args.public_input, args.out, args.branch_x,
-                          args.runtime_info, args.pin_private))
+                          args.runtime_info, args.pin_private,
+                          args.pin_middle_private))

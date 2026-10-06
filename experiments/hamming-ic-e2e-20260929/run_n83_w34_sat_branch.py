@@ -38,7 +38,8 @@ def save(path: Path, record: dict) -> None:
     path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
 
 
-def build(target_x: int, conjugates: list[int], pinned_masks: list[list[int]] | None):
+def build(target_x: int, conjugates: list[int], pinned_masks: list[list[int]] | None,
+          pinned_middle_x: list[int] | None = None):
     circuit = Circuit(83, [0, 2, 4, 7])
     x_rows = [[circuit.variable() for _ in range(83)] for _ in range(5)]
     middle_rows = [[circuit.variable() for _ in range(83)] for _ in range(3)]
@@ -50,6 +51,12 @@ def build(target_x: int, conjugates: list[int], pinned_masks: list[list[int]] | 
             mask_set = set(mask)
             for bit, variable in enumerate(row):
                 circuit.clauses.append(f"{variable if bit in mask_set else -variable} 0")
+    if pinned_middle_x is not None:
+        assert pinned_masks is not None and len(pinned_middle_x) == 3
+        for row, value in zip(middle_rows, pinned_middle_x):
+            assert 0 <= value < (1 << 83)
+            for bit, variable in enumerate(row):
+                circuit.clauses.append(f"{variable if value & (1 << bit) else -variable} 0")
     xs = [circuit.linear_element(row, conjugates) for row in x_rows]
     middle = [circuit.linear_element(row, [1 << bit for bit in range(83)])
               for row in middle_rows]
@@ -160,7 +167,8 @@ def run_solver(xcnf: Path, out: Path, protocol: dict) -> dict:
     }
 
 
-def main(public_path: Path, out: Path, branch_x: int, private_path: Path | None) -> None:
+def main(public_path: Path, out: Path, branch_x: int, private_path: Path | None,
+         pin_middle_private: bool = False) -> None:
     public_path, out = public_path.resolve(), out.resolve()
     if out.exists():
         raise FileExistsError("SAT branch output is immutable")
@@ -174,7 +182,10 @@ def main(public_path: Path, out: Path, branch_x: int, private_path: Path | None)
     fiber_x = {int(point["x"]) for point in public["planted"]["raw_target_fiber"]}
     assert branch_x in fiber_x
     pinned_masks = None
+    pinned_middle_x = None
     private_sha = None
+    if pin_middle_private and private_path is None:
+        raise ValueError("middle-pin diagnostic requires the local private fixture")
     if private_path is not None:
         private_path = private_path.resolve()
         private = json.loads(private_path.read_text())
@@ -182,11 +193,22 @@ def main(public_path: Path, out: Path, branch_x: int, private_path: Path | None)
         assert branch_x == int(private["raw_sum"][0])
         pinned_masks = [row["mask"] for row in private["selected"]]
         private_sha = sha(private_path)
+        if pin_middle_private:
+            modulus = (1 << 83) | (1 << 7) | (1 << 4) | (1 << 2) | 1
+            curve = Curve(GF2n(83, modulus), 1)
+            raw = [Point(int(row["raw_point"][0]), int(row["raw_point"][1]))
+                   for row in private["selected"]]
+            assert all(curve.on_curve(point) for point in raw)
+            middle = [curve.sum(raw[:count]) for count in (2, 3, 4)]
+            assert all(not point.inf for point in middle)
+            assert curve.sum(raw).x == branch_x
+            pinned_middle_x = [point.x for point in middle]
     source_paths = [Path(__file__), HERE / "circuit.py", HERE / "weight34.py", GF2N / "gf2n.py"]
     save(out / "started.json", {
         "kind": "n83_w34_implicit_s3_sat_branch_start",
         "curve_id": protocol["curve_id"], "candidate_id": None,
-        "mode": "pinned" if pinned_masks is not None else "unpinned",
+        "mode": ("pinned_middle_diagnostic" if pin_middle_private else
+                 "pinned" if pinned_masks is not None else "unpinned"),
         "branch_target_x_decimal": str(branch_x),
         "public_input_sha256": sha(public_path),
         "private_fixture_sha256_local_only": private_sha,
@@ -203,7 +225,7 @@ def main(public_path: Path, out: Path, branch_x: int, private_path: Path | None)
         before = time.perf_counter_ns()
         conjugates = [int(value) for value in public["normal_conjugates_polynomial_bits_decimal"]]
         assert len(conjugates) == 83
-        circuit, meta = build(branch_x, conjugates, pinned_masks)
+        circuit, meta = build(branch_x, conjugates, pinned_masks, pinned_middle_x)
         report["circuit_build_ns"] = time.perf_counter_ns() - before
         report["circuit"] = {
             "variables": circuit.next_var - 1,
@@ -260,5 +282,7 @@ if __name__ == "__main__":
     parser.add_argument("out", type=Path)
     parser.add_argument("branch_x", type=int)
     parser.add_argument("--pin-private", type=Path)
+    parser.add_argument("--pin-middle-private", action="store_true")
     args = parser.parse_args()
-    main(args.public_input, args.out, args.branch_x, args.pin_private)
+    main(args.public_input, args.out, args.branch_x, args.pin_private,
+         args.pin_middle_private)
