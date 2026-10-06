@@ -41,14 +41,16 @@ def main(folder: Path) -> None:
     assert public["curve_id"] == reps_record["curve_id"] == protocol["curve_id"]
     receipt_path = folder / "receipt.json"
     receipt = json.loads(receipt_path.read_text())
-    assert receipt["status"] == "SAT_GROUP_VERIFIED_PENDING_SAGE"
+    assert receipt["status"] in ("SAT_GROUP_VERIFIED_PENDING_SAGE",
+                                 "BOOLEAN_MODEL_VERIFIED_PENDING_SAGE")
     private_path = folder / "private_model.json"
     private = json.loads(private_path.read_text())
     assert sha(private_path) == receipt["private_model_sha256_local_only"]
     assert private["verified"] and len(private["masks"]) == 5
     assert len(private["raw_factor_points"]) == 5
-    kind = receipt["target_kind"]
-    fiber = public[kind]["raw_target_fiber"][receipt["fiber_index"]]
+    kind = receipt.get("target_kind", "planted")
+    fiber_index = receipt.get("fiber_index", 0)
+    fiber = public[kind]["raw_target_fiber"][fiber_index]
     started = time.perf_counter_ns()
     base = PolynomialRing(GF(2), "u")
     u = base.gen()
@@ -109,14 +111,16 @@ def main(folder: Path) -> None:
         "kind": "n83_w34_slope_witness_sage_replay",
         "status": "PASS", "candidate_id": None,
         "curve_id": protocol["curve_id"],
-        "target_kind": kind, "fiber_index": receipt["fiber_index"],
+        "target_kind": kind, "fiber_index": fiber_index,
         "factor_count": 5,
         "all_masks_exact_weight_three_or_four": True,
         "all_five_points_on_curve": True,
         "all_projected_factors_in_measured_base_orbits": True,
         "all_four_additions_regular": True,
         "raw_fiber_and_subgroup_target_verified": True,
-        "solver_cnf_xor_model_verified_by_producer": True,
+        "full_boolean_model_verified": True,
+        "solver_cnf_xor_model_verified_by_producer":
+            receipt["status"] == "SAT_GROUP_VERIFIED_PENDING_SAGE",
         "receipt_sha256": sha(receipt_path),
         "private_model_sha256_local_only": sha(private_path),
         "public_fixture_sha256": sha(PUBLIC),
