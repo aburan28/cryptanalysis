@@ -219,8 +219,8 @@ the launch. The pieces also run by hand, e.g.
 
 - **Not a GPU measurement.** No device was available. The kernel compiles
   and the emulator agrees with the host kernel on every decision, cap,
-  F5 row and lockstep search tested; device throughput is unknown until
-  `run_modal.sh` or `gpu_bench.py` runs on one.
+  F5 row and lockstep search tested. The device measurements, on an RTX
+  5090, are in [`../f4-gpu-runpod-20261006`](../f4-gpu-runpod-20261006/RESULT.md).
 - **Not an end-to-end calibrated speedup.** The records are `kind: "stage"`
   with every operation count, the total, `S` and the rho ratios `null`, as
   `AGENTS.md` requires when phases are unpriced. The wall ratios are
