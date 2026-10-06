@@ -176,8 +176,11 @@ found only 2,066 potential column savings among 8,393,232 signed columns
 of the original source base (0.0246151%). The source-transported copy has
 the same group partition. Explicitly closing W24 under Frobenius would
 instead form a different, mathematically 2,198,485,492-point base with
-8,391,166 orbit representatives. Its implicit membership and m5 PDP/rank
-costs have not been measured. The unchanged W24 quotient is deprioritized;
+8,391,166 orbit representatives. The [seed-plus-exponent gate](../ecc2k130-orbit-closed-w24-seed-20261006/RESULT.md)
+now verifies field-coordinate membership on 120 frozen controls and eight
+cofactor-projected group controls, with exact operation counts. Arbitrary
+subgroup-point recognition and m5 PDP/rank costs remain unmeasured. The
+unchanged W24 quotient is deprioritized;
 the orbit-closed W24/m5 policy remains a `candidate_id: null` proposal,
 separate from both the original W24/m6 and W28/m5 policies.
 
