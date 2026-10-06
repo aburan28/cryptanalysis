@@ -5774,6 +5774,84 @@ def main():
         })
     assert [row["new_admissions_due_to_lift_filter"] for row in
             q1459_rows] == [0, 0, 1]
+    q1460_dir = HERE / "q1460_fixed_state_support"
+    q1460_protocol_path = q1460_dir / "protocol.json"
+    q1460_result_path = q1460_dir / "result.json"
+    q1460_verification_path = q1460_dir / "verification.json"
+    q1460_protocol = json.loads(q1460_protocol_path.read_text())
+    q1460_result = json.loads(q1460_result_path.read_text())
+    q1460_verification = json.loads(q1460_verification_path.read_text())
+    assert q1460_protocol["proposal_id"] == q1460_result[
+        "proposal_id"] == q1460_verification["proposal_id"] == "Q1460"
+    assert q1460_protocol["candidate_id"] is q1460_result[
+        "candidate_id"] is None
+    assert q1460_protocol["run_id"] is q1460_result["run_id"] is None
+    assert q1460_protocol["isogeny"] == q1460_result[
+        "isogeny"] == "none"
+    assert q1460_protocol["point_decomposition_stage_code"] == (
+        q1460_result["point_decomposition_stage_code"])
+    assert q1460_result["point_decomposition_stage_code"] == "PDP4hybrid"
+    assert q1460_verification["status"] == "pass"
+    assert q1460_result["protocol_sha256"] == sha(q1460_protocol_path)
+    assert q1460_verification["protocol_sha256"] == sha(q1460_protocol_path)
+    assert q1460_verification["result_sha256"] == sha(q1460_result_path)
+    assert q1460_protocol["parent_q1459_result_sha256"] == sha(
+        q1459_result_path)
+    assert q1460_result["parent_q1459_result_sha256"] == sha(
+        q1459_result_path)
+    assert q1460_protocol["run_order"] == q1459_protocol["run_order"]
+    assert q1460_protocol["generic_fixed_state_target_x_bound"] == 2 ** 27
+    assert len(q1460_verification["independent_sage_replays"]) == 2
+    q1460_rows = []
+    for name in q1460_protocol["run_order"]:
+        cell = q1460_protocol["cells"][name]
+        measured = q1460_result["cases"][name]
+        baseline = next(row for row in q1459_rows if row["case"] == name)
+        for key in ("curve_id", "workload_id", "factor_base_actual_B",
+                    "folded_columns_K", "factor_base_enumerated_set_sha256"):
+            assert cell[key] == measured[key] == baseline[key], (name, key)
+        stage_rows = [row for row in q1460_result["rows"]
+                      if row["cell"] == name]
+        assert measured["raw_states"] == sum(
+            row["mode"] == "raw" for row in stage_rows)
+        assert measured["lift_states"] == sum(
+            row["mode"] == "lift" for row in stage_rows)
+        assert all(row["target_x_support_upper_bound"] <= 2 ** 27
+                   for row in stage_rows)
+        q1460_rows.append({
+            "proposal_id": "Q1460", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "diagnostic_only": True,
+            "case": name, "input_role": cell["input_role"],
+            "degree": cell["degree_n"], "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "raw_states": measured["raw_states"],
+            "lift_states": measured["lift_states"],
+            "max_raw_state_target_x_support_upper_bound": measured[
+                "max_raw_state_target_x_support_upper_bound"],
+            "max_lift_state_target_x_support_upper_bound": measured[
+                "max_lift_state_target_x_support_upper_bound"],
+            "root_pair_inputs": measured["root_pair_inputs"],
+            "root_mul_calls": measured["root_mul_calls"],
+            "root_sqr_calls": measured["root_sqr_calls"],
+            "root_inv_calls": measured["root_inv_calls"],
+            "lift_inv_calls": measured["lift_inv_calls"],
+            "verified_relation_count": 0,
+            "successful_decomposition_cost_measured": False,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+        })
+    assert [(row["raw_states"], row["lift_states"]) for row in
+            q1460_rows] == [(6, 6), (6, 6), (1, 2)]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -7507,6 +7585,34 @@ def main():
             "result_sha256": sha(q1459_result_path),
             "verification_sha256": sha(q1459_verification_path),
         },
+        "q1460_fixed_state_target_x_support_screen": {
+            "proposal_id": "Q1460", "candidate_id": None,
+            "isogeny": "none", "point_decomposition_stage_code": "PDP4hybrid",
+            "method": q1460_protocol["method"],
+            "scope": q1460_protocol["scope"],
+            "diagnostic_only": True,
+            "generic_fixed_state_target_x_bound": 2 ** 27,
+            "rows": q1460_rows,
+            "independent_sage_replays": q1460_verification[
+                "independent_sage_replays"],
+            "ordinary_verified_relations": 0,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "Exact archived midpoint sets lower the 4096-pair "
+                "fixed-state raw-target-x support ceiling from the "
+                "generic 2^27 to at most 3,385,202 at N53 before lift "
+                "filtering, 781,250 at N53 after lift filtering, and "
+                "4,626,882 at N83. These are bounds for fixed partial "
+                "states, not probabilities for a target-adaptive SAT "
+                "trail, natural relation yield, or successful solver work."),
+            "protocol_sha256": sha(q1460_protocol_path),
+            "result_sha256": sha(q1460_result_path),
+            "verification_sha256": sha(q1460_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -7957,6 +8063,10 @@ def main():
                 "on archived partial states and gains zero N53 and one "
                 "N83 pair-cap admission, without running a changed "
                 "solver or measuring natural yield; "
+                "Q1460 measures actual midpoint sets on those admitted "
+                "fixed states and bounds each raw-target x support, "
+                "but does not bound target-adaptive SAT search or "
+                "measure a successful solve; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
