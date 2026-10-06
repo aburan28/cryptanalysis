@@ -167,3 +167,32 @@ python3 experiments/prime-j0-cost-aware-chain/check_firstword_pair_inputs.py --b
 python3 experiments/prime-j0-cost-aware-chain/audit_firstword_pair_panel.py --bench build-cost-aware/ca_tau_chain_bench
 python3 experiments/prime-j0-cost-aware-chain/audit_firstword_pair_native_heldout_words.py --bench build-cost-aware/ca_tau_chain_design64
 ```
+
+## Controlled CPU run when a qualifying host is available
+
+The [isolated manifest producer](make_firstword_pair_isolated_manifest.py)
+binds these eight frozen cases and both exact arms to five paired repetitions
+in the repository's [serial benchmark service](../../docs/ISOLATED_BENCHMARKS.md).
+It verifies the fixture and scalar-file hashes before writing the manifest,
+and includes the executable, build cache, runner, and relevant source files
+as hashed artifacts. It does not perform a run or claim that a host passes
+isolation. Select CPU and NUMA identifiers from that host's topology; the
+numbers below are illustrative.
+
+```sh
+cmake -S . -B /workspace/build/firstword -DCMAKE_BUILD_TYPE=Release -DCA_CUPQC=OFF -DCA_WERROR=ON -DCA_BUILD_TAU_CHAIN_BENCH=ON
+cmake --build /workspace/build/firstword --target ca_tau_chain_bench
+python3 experiments/prime-j0-cost-aware-chain/make_firstword_pair_isolated_manifest.py \
+  --repo-root /workspace/cryptanalysis \
+  --bench /workspace/build/firstword/ca_tau_chain_bench \
+  --cgroup /sys/fs/cgroup/benchmark-isolated \
+  --cpus 4-5 --execution-cpu 4 --mem-nodes 0 \
+  --output /workspace/isolated-bench/firstword-pair.json
+python3 scripts/isolated_bench.py probe /workspace/isolated-bench/firstword-pair.json
+python3 scripts/isolated_bench.py --queue-root /workspace/isolated-bench submit /workspace/isolated-bench/firstword-pair.json
+```
+
+`probe` must pass on a physical, host-controlled Linux machine before
+submission. The service alternates arm order across repeats and cases,
+serializes all work, retains every failure, and leaves aggregate speedup
+unknown if any isolation, noise, answer, or completion gate fails.
