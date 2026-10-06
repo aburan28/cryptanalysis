@@ -6317,6 +6317,140 @@ def main():
             "receipt_sha256": sha(receipt_path),
         })
     assert [row["joint_checks"] for row in q1465_rows] == [4, 4, 2]
+    q1466_dir = HERE / "q1466_leaf_rotation"
+    q1466_protocol_path = q1466_dir / "protocol.json"
+    q1466_control_path = q1466_dir / "control_result.json"
+    q1466_verification_path = q1466_dir / "verification.json"
+    q1466_serial_protocol_path = q1466_dir / "serial_audit_protocol.json"
+    q1466_protocol = json.loads(q1466_protocol_path.read_text())
+    q1466_control = json.loads(q1466_control_path.read_text())
+    q1466_verification = json.loads(q1466_verification_path.read_text())
+    q1466_serial_protocol = json.loads(
+        q1466_serial_protocol_path.read_text())
+    assert q1466_protocol["proposal_id"] == q1466_control[
+        "proposal_id"] == q1466_verification[
+            "proposal_id"] == q1466_serial_protocol[
+                "proposal_id"] == "Q1466"
+    assert q1466_protocol["candidate_id"] is q1466_control[
+        "candidate_id"] is q1466_verification[
+            "candidate_id"] is q1466_serial_protocol[
+                "candidate_id"] is None
+    assert q1466_protocol["run_id"] is q1466_serial_protocol[
+        "run_id"] is None
+    assert q1466_protocol["isogeny"] == q1466_control[
+        "isogeny"] == q1466_verification[
+            "isogeny"] == q1466_serial_protocol["isogeny"] == "none"
+    assert q1466_control["status"] == q1466_verification[
+        "status"] == "pass"
+    assert q1466_protocol["control_result_sha256"] == sha(
+        q1466_control_path)
+    assert q1466_verification["protocol_sha256"] == sha(
+        q1466_protocol_path)
+    assert q1466_protocol["q1465_protocol_sha256"] == sha(
+        q1465_protocol_path)
+    assert q1466_serial_protocol["post_result_follow_up"] is True
+    assert all(row["verified_relation"] for row in q1466_control["rows"])
+    q1466_rows = []
+    for name in q1466_protocol["run_order"]:
+        cell = q1466_protocol["cells"][name]
+        receipt_path = q1466_dir / "runs" / name / "receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        verified = next(row for row in q1466_verification["rows"]
+                        if row["case"] == name)
+        baseline_path = q1465_dir / "runs" / name / "receipt.json"
+        baseline = json.loads(baseline_path.read_text())
+        assert verified["receipt_sha256"] == sha(receipt_path)
+        assert receipt["proposal_id"] == "Q1466"
+        assert receipt["protocol_sha256"] == sha(q1466_protocol_path)
+        assert receipt["solver_status"] == verified[
+            "solver_status"] == baseline["solver_status"] == "censored"
+        assert receipt["baseline_q1465_receipt_sha256"] == cell[
+            "baseline_q1465_receipt_sha256"] == sha(baseline_path)
+        for key in ("workload_id", "curve_id", "factor_base_actual_B",
+                    "folded_columns_K", "factor_base_enumerated_set_sha256",
+                    "public_target", "pair_candidate_cap"):
+            assert receipt[key] == cell[key] == baseline[key]
+        report = receipt["solver_report"]
+        assert report is not None
+        assert report["decision_policy"] == q1466_protocol[
+            "decision_policy"] == "joint_tail_leaf_quarter_shift"
+        assert report["joint_eligible_checks"] == report[
+            "joint_no_chain_rejections"]
+        assert report["joint_x_only_hits"] == 0
+        assert report["batch_root_inputs"] == sum(
+            report["root_cache_misses"])
+        assert receipt["verified_relation_count"] == 0
+        q1466_rows.append({
+            "proposal_id": "Q1466", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "diagnostic_only": True,
+            "case": name, "degree_n": cell["degree_n"],
+            "curve_id": cell["curve_id"], "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "pair_candidate_cap": cell["pair_candidate_cap"],
+            "solver_status": receipt["solver_status"],
+            "joint_checks": report["joint_eligible_checks"],
+            "joint_no_chain_rejections": report[
+                "joint_no_chain_rejections"],
+            "baseline_q1465_joint_checks": baseline[
+                "solver_report"]["joint_eligible_checks"],
+            "cached_root_computations": report["batch_root_inputs"],
+            "baseline_q1465_cached_root_computations": baseline[
+                "solver_report"]["batch_root_inputs"],
+            "root_cache_hits": report["root_cache_hits"],
+            "root_cache_misses": report["root_cache_misses"],
+            "field_operation_calls": {key: report[f"field_{key}_calls"]
+                                      for key in ("mul", "sqr", "inv")},
+            "sat_conflicts": report["conflicts"],
+            "online_stage_wall_ns_exploratory": receipt[
+                "solver_process_wall_ns_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "novel_rank_per_query": None,
+            "cost_per_useful_row": None,
+            "successful_decomposition_cost": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
+    assert [row["joint_checks"] for row in q1466_rows] == [3, 3, 2]
+    q1466_serial_rows = []
+    for selected in q1466_serial_protocol["selections"]:
+        name = selected["case"]
+        audit_path = q1466_dir / "serial_audit_runs" / f"{name}.json"
+        audit = json.loads(audit_path.read_text())
+        assert audit["status"] == "complete"
+        assert audit["case"] == name
+        assert audit["serial_audit_protocol_sha256"] == sha(
+            q1466_serial_protocol_path)
+        assert audit["selected_solver_receipt_sha256"] == selected[
+            "receipt_sha256"]
+        assert audit["audit_binary_sha256"] == q1466_serial_protocol[
+            "audit_binary_sha256"]
+        assert audit["report"]["pair_candidates"] == selected[
+            "selected_snapshot"]["pair_candidate_counts"]
+        assert audit["report"]["x_only_chain_hits"] == 0
+        m0, m1 = audit["report"]["midpoint_cardinalities"]
+        support_bound = 2 * m0 * m1
+        q1466_serial_rows.append({
+            "case": name, "degree_n": selected["degree_n"],
+            "pair_candidates": audit["report"]["pair_candidates"],
+            "midpoint_cardinalities": [m0, m1],
+            "fixed_state_target_x_support_upper_bound": support_bound,
+            "fixed_state_raw_x_coverage_ceiling_log2":
+                math.log2(support_bound) - selected["degree_n"],
+            "serial_root_calls": audit["report"]["serial_root_calls"],
+            "x_only_chain_hits": 0,
+            "wall_ns_exploratory": audit["wall_ns_exploratory"],
+            "receipt_sha256": sha(audit_path),
+        })
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -8239,6 +8373,38 @@ def main():
             "control_result_sha256": sha(q1465_control_path),
             "verification_sha256": sha(q1465_verification_path),
         },
+        "q1466_diversified_leaf_ordinary": {
+            "proposal_id": "Q1466", "candidate_id": None,
+            "isogeny": "none", "point_decomposition_stage_code":
+                "PDP4hybrid",
+            "controlled_variable": q1466_protocol["controlled_variable"],
+            "rows": q1466_rows,
+            "planted_group_control_count": len(q1466_control["rows"]),
+            "post_result_serial_root_audit": q1466_serial_rows,
+            "ordinary_verified_relations": 0,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "Leaf-specific quarter-field coordinate offsets "
+                "diversify the early sparse supports but give only "
+                "3/3/2 exact no-chain checks on the matched frozen "
+                "N53/N53/N83 cells, versus Q1465's 4/4/2. All cells "
+                "remain censored at 60 seconds without a relation. "
+                "An independent serial-root oracle finds no x-only "
+                "chain in the first ordinary state at either degree. "
+                "Its fixed-state raw-x coverage ceiling is 2^-19.91 "
+                "at N53 and 2^-46.14 at N83; this does not bound the "
+                "target-adaptive search. No useful-row cost or complete "
+                "N131 2^x follows, so the challenge gate remains closed."),
+            "protocol_sha256": sha(q1466_protocol_path),
+            "control_result_sha256": sha(q1466_control_path),
+            "verification_sha256": sha(q1466_verification_path),
+            "serial_audit_protocol_sha256": sha(
+                q1466_serial_protocol_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -8717,6 +8883,10 @@ def main():
                 "roughly halves actual root evaluations with unchanged "
                 "4/4/2 exact checks and no relations, while N83 peak "
                 "memory rises; "
+                "Q1466 diversifies leaf decision coordinates; an "
+                "independent serial-root audit confirms the first "
+                "ordinary N53/N83 no-chain states, and all matched "
+                "cells remain censored without a relation; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
