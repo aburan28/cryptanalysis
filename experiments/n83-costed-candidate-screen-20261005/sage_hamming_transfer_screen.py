@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from decimal import Decimal, getcontext
+import gzip
 import hashlib
 import itertools
 import json
@@ -64,14 +65,31 @@ def main(label: str, out: Path) -> None:
         return sum(int(coefficient) << bit for bit, coefficient in
                    enumerate(value.polynomial().list()))
 
+    def orbit_key(point):
+        x, y = point[0], point[1]
+        values = []
+        for _ in range(N):
+            a, b = word(x), word(y)
+            values.extend(((a, b), (a, a ^ b)))
+            x, y = x**2, y**2
+        return min(values)
+
     conjugates = [element(int(value)) for value in
                   public["normal_conjugates_polynomial_bits_decimal"]]
+    representatives_path = geometry_path.parent / "representatives.json.gz"
+    raw_representatives = gzip.decompress(representatives_path.read_bytes())
+    assert hashlib.sha256(raw_representatives).hexdigest() == geometry["representatives_sha256"]
+    representatives = {tuple(row) for row in
+                       json.loads(raw_representatives)["representatives"]}
     slots = geometry["slot_normal_basis_indices"]
     d = geometry["dimension"]
     assert len(slots) == geometry["arity"] and all(len(slot) == d for slot in slots)
     rows = []
+    all_projected = set()
+    all_orbits = set()
     for slot_index, slot in enumerate(slots):
         projected = set()
+        orbits = set()
         rational_masks = 0
         projected_identity_masks = 0
         for weight in (3, 4):
@@ -89,14 +107,20 @@ def main(label: str, out: Path) -> None:
                     projected_identity_masks += 1
                     continue
                 assert images[0] != images[1]
+                key = orbit_key(images[0])
+                assert key == orbit_key(images[1]) and key in representatives
+                orbits.add(key)
                 projected.update((word(point[0]), word(point[1])) for point in images)
+        all_projected.update(projected)
+        all_orbits.update(orbits)
         # x masks in a basis are distinct, and [4] is injective across x modulo
         # possible 4-torsion fibers; use the set size rather than assuming it.
         rows.append({"slot_index": slot_index,
                      "weight_3_or_4_mask_count": sum(int(ZZ(d).binomial(w)) for w in (3, 4)),
                      "rational_masks": rational_masks,
                      "projected_identity_masks": projected_identity_masks,
-                     "actual_usable_projected_points_B": len(projected)})
+                     "actual_usable_projected_points_B": len(projected),
+                     "effective_signed_frobenius_columns_K": len(orbits)})
         save(out / "progress.json", {"completed_slots": len(rows), "rows": rows})
     tuple_count = 1
     for row in rows:
@@ -112,12 +136,13 @@ def main(label: str, out: Path) -> None:
         "rows": rows,
         "minimum_slot_usable_points_B": min(row["actual_usable_projected_points_B"] for row in rows),
         "maximum_slot_usable_points_B": max(row["actual_usable_projected_points_B"] for row in rows),
+        "actual_union_usable_projected_points_B": len(all_projected),
+        "effective_signed_frobenius_columns_K": len(all_orbits),
         "ordered_usable_projected_tuples": str(tuple_count),
         "ordered_tuples_per_uniform_subgroup_target": str(quotient),
         "uniform_target_success_probability_upper_bound": str(min(Decimal(1), quotient)),
         "unrestricted_ordered_tuples_per_target": str(unrestricted),
         "restricted_to_unrestricted_tuple_ratio": str(quotient / unrestricted),
-        "effective_signed_frobenius_columns_K": None,
         "one_frozen_ordinary_target_yield": None,
         "claim_boundary": "Exact restricted base counts and a counting upper bound for a uniformly random subgroup target. The tuple distribution and SAT cost are not measured; this does not establish N83 natural relation yield or a solver improvement.",
         "protocol_sha256": sha(PROTOCOL), "geometry_sha256": sha(geometry_path),
