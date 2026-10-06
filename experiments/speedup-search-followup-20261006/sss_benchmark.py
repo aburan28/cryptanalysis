@@ -43,6 +43,8 @@ import statistics
 
 from sympy import isprime, nextprime
 
+from hardware_manifest import collect, proc_stat_snapshot, steal_delta
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, "results", "sss")
 UPSTREAM_URL = "https://github.com/sbaresearch/smoothsubsumsearch"
@@ -102,6 +104,7 @@ def run_one(alg: str, N: int) -> dict:
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
         out_path = tf.name
     try:
+        before = proc_stat_snapshot()
         proc = subprocess.run(
             [sys.executable, os.path.join(HERE, "sss_runner.py"), CACHE, alg, str(N), out_path],
             capture_output=True,
@@ -110,6 +113,7 @@ def run_one(alg: str, N: int) -> dict:
         )
         rec = json.load(open(out_path)) if os.path.exists(out_path) and os.path.getsize(out_path) else {"algorithm": alg, "N": N, "elapsed_s": None, "factors": None, "returncode": proc.returncode}
         rec["stderr_tail"] = proc.stderr[-400:]
+        rec["host_during_run"] = steal_delta(before, proc_stat_snapshot())
     finally:
         if os.path.exists(out_path):
             os.unlink(out_path)
@@ -182,11 +186,16 @@ def main() -> None:
             "per_fixture_median_s": [round(med[alg][i], 4) for i in sorted(med[alg])],
             "per_fixture_min_s": [round(min(r["elapsed_s"] for r in rows if r["algorithm"] == alg and r["fixture_index"] == i and r["verified"]), 4) for i in range(len(Ns))],
             "per_fixture_max_s": [round(max(r["elapsed_s"] for r in rows if r["algorithm"] == alg and r["fixture_index"] == i and r["verified"]), 4) for i in range(len(Ns))],
+            "per_fixture_median_process_cpu_s": [round(statistics.median(r["process_cpu_s"] for r in rows if r["algorithm"] == alg and r["fixture_index"] == i and r["verified"]), 4) for i in range(len(Ns))],
+            "peak_rss_kB_max": max(r["peak_rss_kB"] for r in ok) if ok else None,
+            "steal_fraction_max_during_runs": max((r["host_during_run"]["steal_fraction"] or 0.0) for r in ok) if ok else None,
         }
     result = {
         "protocol": f"see module docstring; one fresh process per (algorithm, fixture, repetition), {REPS} repetitions; import excluded; order rotated per fixture and repetition; per-fixture statistic = median",
         "upstream": upstream,
         "versions": versions(),
+        "hardware_manifest": collect(),
+        "execution": {"threads": 1, "affinity": "inherited (not pinned)", "process_per_run": True, "warmup": "none; import excluded, first call timed", "pairing": "same fixtures, same host, order rotated per (fixture, repetition)", "censored_runs": 0},
         "fixtures": Ns,
         "summary": summary,
         "rows": rows,

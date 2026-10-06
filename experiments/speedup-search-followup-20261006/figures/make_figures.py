@@ -40,6 +40,9 @@ def decision_map():
     s4 = load("s4_two_product.json")
     pin = load("pinpointing.json")
     win = nfs["window_at_gamma_max"]
+    idx = next(r for r in load("s4_bench.json")["regimes"] if r["label"] == "indexed_1024")
+    ev = {e["name"]: e["total_ms_median"] for e in idx["evaluators"]}
+    r_raw, r_monic = ev["raw_fused_7M1S"] / ev["two_product_2M"], ev["monic_fused_3M1S"] / ev["two_product_2M"]
     items = [
         ("1  Selected-resieve correspondence", "lemma", CHECKED,
          f"selected sieve scores = selected entries of XY, inner dim D = sum p<=y;\nrank K = 1 + sum(p-1): checked on 5 prime sets, 40 identity trials;\n"
@@ -61,7 +64,7 @@ def decision_map():
          "N > (|H|/4)^(18/37) obstruction (derived); trace-zero kills base-field targets; cover needs r not | d"),
         ("8  Two-product S4 evaluator", "evaluator", MEASURED,
          f"R = (F-C)(UL+UR) + (E-B)(VR-VL), 2M per pair; exhaustive over F_p p<=11; Gram rank {s4['optimality']['gram_rank_in_8_features']} => 2 products optimal;\n"
-         "native 2^61-1: 1.85x raw / 1.23x monic fused in the indexed regime; loses when endpoints are not reused"),
+         f"native 2^61-1: {r_raw:.2f}x raw / {r_monic:.2f}x monic fused in the indexed regime; loses when endpoints are not reused"),
     ]
     fig, ax = plt.subplots(figsize=(13.5, 10.2))
     ax.set_xlim(0, 13.5)
