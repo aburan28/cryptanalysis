@@ -80,6 +80,9 @@ def main() -> None:
                 status = "EXECUTION_INCOMPLETE"
             else:
                 status = inner["status"]
+            if replay is not None and replay["status"] == "PASS":
+                assert status == "SAT_GROUP_VERIFIED_PENDING_SAGE"
+                status = "SAT_GROUP_VERIFIED_SAGE"
             row = {
                 "name": name, "label": label, "candidate_id": None,
                 "curve_id": protocol["curve_id"],
@@ -88,6 +91,7 @@ def main() -> None:
                 "target_Q": fixture[kind]["target_Q"],
                 "raw_fiber": fixture[kind]["raw_target_fiber"][index],
                 "status": status, "sage_replay_status": replay["status"] if replay else None,
+                "inner_status": inner["status"] if inner else None,
                 "solver_status_lines": status_lines,
                 "xcnf": xcnf_header(folder / "branch.xcnf"),
                 "circuit": inner.get("circuit") if inner else None,
@@ -116,13 +120,41 @@ def main() -> None:
     assert len({tuple(row["target_Q"]) for row in ordinary}) == 1
     for label in LABELS:
         assert len([row for row in ordinary if row["label"] == label]) == 4
+    accounts = {}
+    for label in LABELS:
+        subset = [row for row in ordinary if row["label"] == label]
+        geometry = read(RUNS / f"{label}_v1" / "geometry.json")
+        accounts[label] = {
+            "candidate_id": None,
+            "target_Q": ordinary[0]["target_Q"],
+            "actual_usable_factor_base_points_B_per_slot":
+                geometry["actual_usable_projected_points_B_per_slot"],
+            "effective_signed_frobenius_columns_K":
+                geometry["effective_signed_frobenius_columns_K"],
+            "raw_fibers_attempted": len(subset),
+            "verified_ordinary_relations_under_cap":
+                sum(row["verified_relation"] for row in subset),
+            "sum_ordinary_outer_envelope_ns_supplementary_includes_startup":
+                sum(row["outer_envelope_wall_ns"] for row in subset),
+            "T_target_query_ns": None,
+            "T_target_PDP_ns": None,
+            "T_target_relation_check_ns": None,
+            "T_target_descent_ns": None,
+            "T_target_recovery_check_ns": None,
+            "T_online_1_ns": None,
+            "rho_online_ns": None,
+            "online_speedup": None,
+            "ordinary_yield_uncertainty": None,
+            "uncertainty_reason": "Four correlated fibers of one fixed target and no unpinned planted solve; no independent ordinary-query sample.",
+            "host_isolation_receipt": None,
+        }
     report = {
         "schema_version": 1, "kind": "n83_shifted_s3_sat_panel",
         "candidate_id": None, "curve_id": protocol["curve_id"],
         "protocol_sha256": sha(PROTOCOL),
         "single_frozen_ordinary_target_Q": ordinary[0]["target_Q"],
         "branch_count": len(rows), "ordinary_branch_count": len(ordinary),
-        "rows": rows,
+        "rows": rows, "one_target_accounts": accounts,
         "claim_boundary": "Four raw fibers of one fixed ordinary target per geometry, not four independent targets. Bounded PDP diagnostic only. Timing host lacks an auditable isolation receipt. No target DLP, paired rho or speedup.",
     }
     save(HERE / "sat_panel.json", report)
