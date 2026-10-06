@@ -302,3 +302,36 @@ The temporary RunPod CPU-pod preflight in
 found cgroup v1, no isolated CPU partition, and no `nohz_full` CPUs. The pod
 was stopped and deleted before any timing panel. These operation results
 do not establish CPU speed or a complete one-target rho speedup.
+
+## Tapered complete residue-orbit follow-up
+
+The [tapered protocol](TAPERED_RESIDUE_ORBITS.md) was frozen in draft PR #287
+before its fresh inputs were generated. `make_tau_wide_orbits.py` produces a
+complete six-unit residue map for widths 8, 10, and 12. The native arm uses
+the fixed schedules `(10,10,10,10)` and `(12,12,12,8,8)` and one mixed
+addition per nonzero block. Its verified [tapered-panel.json](tapered-panel.json)
+records 16,384 generic-matching outputs, raw runs, and independent operation
+models. The new arm saves 3.76%–3.94% and 39.14%–39.16% online additions
+against `fused-hot-steer-gated2-batch128`, but setup additions grow from
+8,192 to 62,424 and 12,288 to 506,664. Prepared point tables grow from
+262,144 to 1,259,904 bytes and 393,216 to 8,573,280 bytes. The local
+`test_curve` passed 414,141 checks. Generate an isolated-host manifest using
+`make_isolated_manifest.py --candidate-arm tapered-residue-orbit-batch128`;
+the host must pass its isolation gate before any wall-time claim. The table
+cost precludes a present claim about one-target rho benefit.
+
+## Unit-folded orbit graph preparation
+
+The [graph protocol](ORBIT_GRAPH_PRECOMPUTE.md) was frozen in draft PR #293
+before native evaluation. `make_tau_wide_graph.py` verifies all 99,513 orbit
+recipes and emits a predecessor graph. The graph builder constructs the same
+point table as the direct builder, using one shifted-digit addition from a
+smaller orbit point. [orbit-graph-panel.json](orbit-graph-panel.json) retains
+eight paired cases on generator, `37P`, `101P`, and `103P` for both curves.
+All 32,768 graph outputs match generic multiplication and online counters
+match the direct arm. Setup additions fall from 62,424 to 39,096 and from
+506,664 to 267,552, with 78,744 and 717,360 extra static recipe bytes.
+Setup rotations fall from 63,194 to 44,453 and from 409,586 to 248,427.
+The curve test matched all 307,287 prepared entries for generators on the
+two curves and passed 722,512 checks. The host isolation gate still controls
+any CPU wall-time claim.

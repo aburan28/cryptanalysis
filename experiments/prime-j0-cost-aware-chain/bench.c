@@ -85,7 +85,9 @@ static int select_mode(const char *name)
                                   "fused-hot-adapt2-batch128",
                                   "fused-hot-gated-batch128",
                                   "fused-hot-steer-batch128",
-                                  "fused-hot-steer-gated2-batch128"};
+                                  "fused-hot-steer-gated2-batch128",
+                                  "tapered-residue-orbit-batch128",
+                                  "tapered-residue-graph-batch128"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -94,15 +96,18 @@ static int select_mode(const char *name)
 int main(int argc, char **argv)
 {
     int mode = argc > 1 ? select_mode(argv[1]) : -1;
-    if (argc != 5 || mode < 0 || (strcmp(argv[3], "0") != 0 && strcmp(argv[3], "1") != 0)) {
+    if (argc != 5 || mode < 0 ||
+        (strcmp(argv[3], "0") != 0 && strcmp(argv[3], "1") != 0 && strcmp(argv[3], "2") != 0 &&
+         strcmp(argv[3], "3") != 0)) {
         fprintf(stderr,
                 "usage: %s "
                 "reference|baseline|cost|pos|pos-global|pos-prep|pos-global-prep|"
                 "pos-batch32|pos-batch128|pos-batch512|pos-batch4096|atlas|"
                 "fused-batch128|fused-orbit-batch128|fused-hot-batch128|"
                 "fused-hot-adapt2-batch128|fused-hot-gated-batch128|"
-                "fused-hot-steer-batch128|fused-hot-steer-gated2-batch128 "
-                "glv-j0-32|j0-56 0|1 INPUT\n",
+                "fused-hot-steer-batch128|fused-hot-steer-gated2-batch128|"
+                "tapered-residue-orbit-batch128|tapered-residue-graph-batch128 "
+                "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
     }
@@ -117,6 +122,8 @@ int main(int argc, char **argv)
     int gated = mode == 16;
     int steer = mode == 17;
     int gated2_steer = mode == 18;
+    int tapered = mode == 19 || mode == 20;
+    int graph = mode == 20;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
     size_t block_size = mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
     uint64_t scalars[SCALARS], input_digest;
@@ -133,9 +140,10 @@ int main(int argc, char **argv)
         return 2;
     ca_elem point;
     if (ca_group_find_generator(&group, &point, 1) != CA_OK) return 2;
-    if (strcmp(argv[3], "1") == 0) {
+    if (strcmp(argv[3], "0") != 0) {
         ca_elem second;
-        ca_group_mul(&group, &second, &point, 37, NULL);
+        uint64_t multiple = strcmp(argv[3], "1") == 0 ? 37 : strcmp(argv[3], "2") == 0 ? 101 : 103;
+        ca_group_mul(&group, &second, &point, multiple, NULL);
         point = second;
     }
     uint64_t point_words[4];
@@ -145,6 +153,8 @@ int main(int argc, char **argv)
     ca_tau4_precomp pre;
     ca_tau4_pos_precomp positional_pre;
     ca_tau8_fused_precomp fused_pre = {0};
+    ca_tau_wide_precomp wide_pre = {0};
+    int wide_schedule = strcmp(argv[2], "j0-56") == 0 ? 1 : 0;
     size_t fused_blocks = strcmp(argv[2], "j0-56") == 0 ? 6 : 4;
     double prep_ms = 0;
     uint64_t prep_triples = 0;
@@ -153,14 +163,31 @@ int main(int argc, char **argv)
     size_t prep_temp_heap_bytes =
         global_builder ? CA_TAU_POS_Q * 2 * 9 * (3 * sizeof(uint64_t) + sizeof(uint64_t)) : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
-    size_t prep_bytes = fused ? sizeof(fused_pre) + fused_blocks * fused_entries * sizeof(ca_elem)
+    size_t point_entries = tapered ? ca_ec_tau_wide_entries(wide_schedule)
+                           : fused ? fused_blocks * fused_entries
+                                   : 0;
+    size_t point_table_bytes = point_entries * sizeof(ca_elem);
+    size_t prep_bytes = tapered      ? sizeof(wide_pre) + point_table_bytes
+                        : fused      ? sizeof(fused_pre) + point_table_bytes
                         : positional ? sizeof(positional_pre)
                         : mode == 0  ? 0
                                      : sizeof(pre);
     if (fused) prep_temp_heap_bytes = fused_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
+    if (tapered) prep_temp_heap_bytes = ca_ec_tau_wide_temp_bytes(wide_schedule);
     if (mode != 0) {
         double t0 = ca_now();
-        if (fused) {
+        if (tapered) {
+            int prepared = graph ? ca_ec_tau_wide_prepare_graph(
+                                       &group, &point, wide_schedule, &wide_pre, &prep_triples,
+                                       &prep_adds, &prep_rotations, &prep_layer_inversions)
+                                 : ca_ec_tau_wide_prepare(&group, &point, wide_schedule, &wide_pre,
+                                                          &prep_triples, &prep_adds,
+                                                          &prep_rotations, &prep_layer_inversions);
+            if (!prepared) {
+                free(outputs);
+                return 2;
+            }
+        } else if (fused) {
             int prepared =
                 gated2_steer
                     ? ca_ec_tau8_hot_gated2_steer_prepare(&group, &point, fused_blocks, &fused_pre,
@@ -209,10 +236,23 @@ int main(int argc, char **argv)
     }
     uint64_t triples = 0, adds = 0, rotations = 0, output_inversions = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
-    size_t static_map_bytes = steer || gated2_steer ? ca_ec_tau8_steer_static_bytes() : 0;
-    size_t online_scratch_bytes = fused ? 128 * 32 : mode >= 7 && mode <= 10 ? block_size * 32 : 0;
+    size_t static_map_bytes = tapered                 ? ca_ec_tau_wide_static_bytes(wide_schedule)
+                              : steer || gated2_steer ? ca_ec_tau8_steer_static_bytes()
+                                                      : 0;
+    size_t recipe_bytes = graph ? ca_ec_tau_wide_graph_recipe_bytes(wide_schedule) : 0;
+    size_t online_scratch_bytes = fused || tapered          ? 128 * 32
+                                  : mode >= 7 && mode <= 10 ? block_size * 32
+                                                            : 0;
     double start = ca_now();
-    if (fused) {
+    if (tapered) {
+        if (!ca_ec_tau_wide_mul_batch_profile(&group, &wide_pre, outputs, scalars, SCALARS, 128,
+                                              &adds, &rotations, &output_inversions, &fallbacks)) {
+            fprintf(stderr, "tapered batched evaluation failed\n");
+            ca_ec_tau_wide_clear(&wide_pre);
+            free(outputs);
+            return 1;
+        }
+    } else if (fused) {
         if (!ca_ec_tau8_fused_mul_batch_profile(&group, &fused_pre, outputs, scalars, SCALARS, 128,
                                                 &adds, &rotations, &output_inversions, &fallbacks,
                                                 &second_recodes, &steered_blocks)) {
@@ -271,6 +311,7 @@ int main(int argc, char **argv)
             if (!ca_group_equal(&group, &outputs[i], &expected)) {
                 fprintf(stderr, "independent replay mismatch at index %zu\n", i);
                 ca_ec_tau8_fused_clear(&fused_pre);
+                ca_ec_tau_wide_clear(&wide_pre);
                 free(outputs);
                 return 1;
             }
@@ -281,6 +322,7 @@ int main(int argc, char **argv)
     }
     double verify_ms = 1000 * (ca_now() - verify_start);
     ca_ec_tau8_fused_clear(&fused_pre);
+    ca_ec_tau_wide_clear(&wide_pre);
     free(outputs);
     printf("curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
            " endo_lambda=%" PRIu64 " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
@@ -288,14 +330,15 @@ int main(int argc, char **argv)
            " prep_triples=%" PRIu64 " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64
            " prep_layer_inversions=%" PRIu64
            " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_repeats=%d"
+           " point_entries=%zu point_table_bytes=%zu"
            " triples=%" PRIu64 " adds=%" PRIu64 " rotations=%" PRIu64 " output_inversions=%" PRIu64
            " fallbacks=%" PRIu64 " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
-           " static_map_bytes=%zu online_scratch_bytes=%zu"
+           " static_map_bytes=%zu recipe_bytes=%zu online_scratch_bytes=%zu"
            " verified=1\n",
            argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda,
            input_digest, output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_adds,
            prep_rotations, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats,
-           triples, adds, rotations, output_inversions, fallbacks, second_recodes, steered_blocks,
-           static_map_bytes, online_scratch_bytes);
+           point_entries, point_table_bytes, triples, adds, rotations, output_inversions, fallbacks,
+           second_recodes, steered_blocks, static_map_bytes, recipe_bytes, online_scratch_bytes);
     return 0;
 }

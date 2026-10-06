@@ -374,6 +374,49 @@ static void tau_fused_named(const char *name, size_t blocks)
         CHECK(gated2_recodes > 0 && gated2_recodes < 256);
         CHECK(gated2_steered_blocks > 0);
         for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_tau_wide_precomp tapered = {0};
+        int wide_schedule = strcmp(name, "j0-56") == 0 ? 1 : 0;
+        uint64_t wide_prep_adds = 0, wide_adds = 0, wide_rotations = 0;
+        uint64_t wide_inversions = 0, wide_fallbacks = 0;
+        CHECK(ca_ec_tau_wide_prepare(&g, &point, wide_schedule, &tapered, NULL, &wide_prep_adds,
+                                     NULL, NULL));
+        CHECK(tapered.point != NULL && wide_prep_adds > gated2_prep_adds);
+        CHECK_EQ_U64(tapered.point_offset[tapered.blocks], ca_ec_tau_wide_entries(wide_schedule));
+        CHECK(ca_ec_tau_wide_static_bytes(wide_schedule) > 0);
+        CHECK(ca_ec_tau_wide_mul_batch_profile(&g, &tapered, outputs, scalars, 256, 128, &wide_adds,
+                                               &wide_rotations, &wide_inversions, &wide_fallbacks));
+        CHECK(wide_adds > 0 && wide_rotations > 0);
+        CHECK_EQ_U64(wide_inversions, 2);
+        CHECK_EQ_U64(wide_fallbacks, 0);
+        for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_tau_wide_precomp graph = {0};
+        uint64_t graph_prep_adds = 0, graph_adds = 0, graph_rotations = 0;
+        uint64_t graph_inversions = 0, graph_fallbacks = 0;
+        CHECK(ca_ec_tau_wide_prepare_graph(&g, &point, wide_schedule, &graph, NULL,
+                                           &graph_prep_adds, NULL, &graph_inversions));
+        CHECK_EQ_U64(graph_prep_adds, wide_schedule ? 267552 : 39096);
+        CHECK_EQ_U64(graph_inversions, wide_schedule ? 6 : 5);
+        CHECK(graph_prep_adds < wide_prep_adds);
+        CHECK(ca_ec_tau_wide_graph_recipe_bytes(wide_schedule) > 0);
+        if (point_index == 0)
+            for (size_t i = 0; i < ca_ec_tau_wide_entries(wide_schedule); i++)
+                CHECK(ca_group_equal(&g, &graph.point[i], &tapered.point[i]));
+        CHECK(ca_ec_tau_wide_mul_batch_profile(&g, &graph, outputs, scalars, 256, 128, &graph_adds,
+                                               &graph_rotations, NULL, &graph_fallbacks));
+        CHECK_EQ_U64(graph_adds, wide_adds);
+        CHECK_EQ_U64(graph_rotations, wide_rotations);
+        CHECK_EQ_U64(graph_fallbacks, wide_fallbacks);
+        for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        ca_ec_tau_wide_clear(&graph);
+        if (point_index == 0) {
+            tapered.blocks = 1;
+            wide_fallbacks = 0;
+            CHECK(ca_ec_tau_wide_mul_batch_profile(&g, &tapered, outputs, scalars, 256, 128, NULL,
+                                                   NULL, NULL, &wide_fallbacks));
+            CHECK(wide_fallbacks > 0);
+            for (size_t i = 0; i < 256; i++) CHECK(ca_group_equal(&g, &outputs[i], &baseline[i]));
+        }
+        ca_ec_tau_wide_clear(&tapered);
         ca_ec_tau8_fused_clear(&gated2_steer);
         ca_ec_tau8_fused_clear(&steer);
         ca_ec_tau8_fused_clear(&gated);
@@ -457,6 +500,22 @@ static void tau_fused_named(const char *name, size_t blocks)
     CHECK(ca_ec_tau8_fused_mul_batch(&g, &empty, outputs, scalars, 3, 2, NULL, NULL, NULL, NULL));
     for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
     ca_ec_tau8_fused_clear(&empty);
+    for (int schedule = 0; schedule < 2; schedule++) {
+        ca_tau_wide_precomp empty_wide = {0};
+        CHECK(ca_ec_tau_wide_prepare(&g, &identity, schedule, &empty_wide, NULL, NULL, NULL, NULL));
+        CHECK(empty_wide.point == NULL);
+        CHECK(ca_ec_tau_wide_mul_batch_profile(&g, &empty_wide, outputs, scalars, 3, 2, NULL, NULL,
+                                               NULL, NULL));
+        for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
+        ca_ec_tau_wide_clear(&empty_wide);
+        CHECK(ca_ec_tau_wide_prepare_graph(&g, &identity, schedule, &empty_wide, NULL, NULL, NULL,
+                                           NULL));
+        CHECK(empty_wide.point == NULL);
+        CHECK(ca_ec_tau_wide_mul_batch_profile(&g, &empty_wide, outputs, scalars, 3, 2, NULL, NULL,
+                                               NULL, NULL));
+        for (size_t i = 0; i < 3; i++) CHECK(ca_group_is_identity(&g, &outputs[i]));
+        ca_ec_tau_wide_clear(&empty_wide);
+    }
     CHECK(ca_ec_tau8_hot_adapt2_prepare(&g, &identity, blocks, &empty, NULL, NULL, NULL, NULL));
     CHECK(empty.point == NULL && empty.selector == 1);
     CHECK(ca_ec_tau8_fused_mul_batch(&g, &empty, outputs, scalars, 3, 2, NULL, NULL, NULL, NULL));
@@ -581,6 +640,17 @@ static void tau_fused_small_order(void)
         CHECK(ca_group_equal(&g, &outputs[i], &expected));
     }
     ca_ec_tau8_fused_clear(&gated2_steer);
+    for (int schedule = 0; schedule < 2; schedule++) {
+        ca_tau_wide_precomp wide = {0};
+        CHECK(ca_ec_tau_wide_prepare(&g, &point, schedule, &wide, NULL, NULL, NULL, NULL));
+        CHECK(ca_ec_tau_wide_mul_batch_profile(&g, &wide, outputs, scalars, 27, 7, NULL, NULL, NULL,
+                                               NULL));
+        for (size_t i = 0; i < 27; i++) {
+            ca_group_mul(&g, &expected, &point, scalars[i] % 13, NULL);
+            CHECK(ca_group_equal(&g, &outputs[i], &expected));
+        }
+        ca_ec_tau_wide_clear(&wide);
+    }
     ca_ec_tau8_fused_clear(&gated);
     ca_ec_tau8_fused_clear(&adapt2);
     ca_ec_tau8_fused_clear(&hot);
