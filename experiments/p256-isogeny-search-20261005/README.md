@@ -209,6 +209,25 @@ frozen in
 This remains a bounded low-degree traversal, not the entire isogeny class, and
 per-key map evaluation was not timed for the additions.
 
+## Resumed low-degree paths through depth nine
+
+The depth-seven frontier was next extended through depths eight and nine. It
+added 240 curves—112 at depth eight and 128 at depth nine—with no overlap
+against the prior 386-curve union. The combined explicit registry now contains
+P-256 plus 625 distinct neighbors.
+
+All additions were screened on the CPU-separated matched native backend. Six
+unadjusted screening hits triggered a fresh 30-trial, two-second holdout. None
+reproduced: the largest holdout estimate was `1.0312x` with paired 95% interval
+`0.9975x–1.0660x`. All 625 retained non-root curves now have native
+measurements and zero reproducible speedups.
+
+The delta registry, 40 screening blocks, holdout, receipt, and verifier are
+frozen in
+[`results/sage-low-degree-depth-nine-20261006`](results/sage-low-degree-depth-nine-20261006).
+This remains a bounded low-degree traversal, not the entire isogeny class, and
+per-key map evaluation was not timed for the additions.
+
 ## Quick start
 
 Python 3.11 or newer is required.
