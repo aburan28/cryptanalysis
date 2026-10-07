@@ -51,3 +51,9 @@ The result retires the dense unit-digit path as a performance lead.
 Further work should use this sparse control, charge a concrete
 preparation chain, and compare native complete scalars with published
 implementations in a host-isolated environment.
+
+A later [prepared-orbit control](ORBIT_PREP_RESULT.md) implements the
+paper's nine `ω`-image preparation multiplications and removes
+on-demand digit rotations. Its evaluator count is the stronger
+published-method stage reference; this table remains the frozen
+first width-four comparison.
