@@ -227,6 +227,7 @@ typedef struct ca_tau4_joint_counts {
     uint64_t digit_rotations, gauge_transitions, final_rotations;
     uint64_t gauge_table_lookups, gauge_model_rotations;
     uint64_t free_gauge_transitions;
+    uint64_t quotient_gauge;
 } ca_tau4_joint_counts;
 
 int ca_ec_tau4_joint_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
@@ -258,6 +259,13 @@ int ca_ec_tau4_paired_two_free_gauge_mul_profile(const ca_group *g,
                                                  const ca_tau4_joint_precomp *pre,
                                                  ca_elem *out, uint64_t a, uint64_t b,
                                                  ca_tau4_joint_counts *counts);
+/* Return beta^g*(aP+bQ), with g in [0,2]. The caller must transport its
+ * scalar coefficients by the eigenvalue of psi^(4g). */
+int ca_ec_tau4_paired_two_quotient_mul_profile(const ca_group *g,
+                                               const ca_tau4_joint_precomp *pre,
+                                               ca_elem *out, uint64_t a, uint64_t b,
+                                               uint8_t *gauge,
+                                               ca_tau4_joint_counts *counts);
 int ca_ec_tau4_free_gauge_verify_map(void);
 int ca_ec_tau4_gauge_trellis_verify_map(void);
 /* Up to 32 independent pairs against one prepared P,Q table; batch-normalize
@@ -272,6 +280,12 @@ int ca_ec_tau4_paired_two_free_gauge_batch_profile(const ca_group *g,
                                                     ca_elem *out, const uint64_t *a,
                                                     const uint64_t *b, size_t count,
                                                     ca_tau4_joint_counts *counts);
+int ca_ec_tau4_paired_two_quotient_batch_profile(const ca_group *g,
+                                                 const ca_tau4_joint_precomp *pre,
+                                                 ca_elem *out, const uint64_t *a,
+                                                 const uint64_t *b, uint8_t *gauges,
+                                                 size_t count,
+                                                 ca_tau4_joint_counts *counts);
 int ca_ec_tau4_joint_plane_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
                                     ca_tau4_joint_plane_precomp *out,
                                     ca_tau4_joint_counts *counts);

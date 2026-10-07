@@ -67,6 +67,24 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
     CHECK_EQ_U64(free_cost.gauge_transitions, 0);
     CHECK(free_cost.rotations <= trellis_cost.rotations);
     CHECK(free_cost.rotations <= two_cost.rotations);
+    ca_elem quotient_point, quotient_expected = expected;
+    ca_tau4_joint_counts quotient_cost = {0};
+    uint8_t quotient_gauge = 255;
+    CHECK(ca_ec_tau4_paired_two_quotient_mul_profile(
+        g, pre, &quotient_point, a, b, &quotient_gauge, &quotient_cost));
+    CHECK(quotient_gauge < 3);
+    for (unsigned j = 0; j < 4u * quotient_gauge; j++) {
+        ca_elem next;
+        ca_ec_endo(g, &next, &quotient_expected);
+        quotient_expected = next;
+    }
+    CHECK(ca_group_equal(g, &quotient_point, &quotient_expected));
+    CHECK_EQ_U64(quotient_cost.quotient_gauge, quotient_gauge);
+    CHECK_EQ_U64(quotient_cost.tau_steps, free_cost.tau_steps);
+    CHECK_EQ_U64(quotient_cost.mixed_adds, free_cost.mixed_adds);
+    CHECK_EQ_U64(quotient_cost.final_rotations, 0);
+    CHECK_EQ_U64(quotient_cost.rotations, quotient_cost.digit_rotations);
+    CHECK(quotient_cost.rotations <= free_cost.rotations);
     if (orbit) {
         ca_tau4_joint_counts combined = {0};
         CHECK(ca_ec_tau4_orbit_mul_profile(g, orbit, &fused, a, b, &combined));
@@ -101,7 +119,7 @@ static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *p
                                 const uint64_t pairs[8][2], uint64_t expected_inversions)
 {
     uint64_t a[8], b[8];
-    ca_elem outputs[8], plane_outputs[8], free_outputs[8];
+    ca_elem outputs[8], plane_outputs[8], free_outputs[8], quotient_outputs[8];
     for (size_t i = 0; i < 8; i++) { a[i] = pairs[i][0]; b[i] = pairs[i][1]; }
     ca_tau4_joint_counts batch = {0};
     CHECK(ca_ec_tau4_paired_two_batch_profile(g, pre, outputs, a, b, 8, &batch));
@@ -115,6 +133,14 @@ static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *p
     CHECK_EQ_U64(free_batch.recode_attempts, batch.recode_attempts);
     CHECK_EQ_U64(free_batch.pair_scores, batch.pair_scores);
     CHECK(free_batch.rotations <= batch.rotations);
+    uint8_t quotient_gauges[8];
+    ca_tau4_joint_counts quotient_batch = {0};
+    CHECK(ca_ec_tau4_paired_two_quotient_batch_profile(
+        g, pre, quotient_outputs, a, b, quotient_gauges, 8, &quotient_batch));
+    CHECK_EQ_U64(quotient_batch.inversions, expected_inversions);
+    CHECK_EQ_U64(quotient_batch.tau_steps, free_batch.tau_steps);
+    CHECK_EQ_U64(quotient_batch.mixed_adds, free_batch.mixed_adds);
+    CHECK(quotient_batch.rotations <= free_batch.rotations);
     ca_tau4_joint_plane_precomp plane;
     ca_tau4_joint_counts plane_prep = {0}, plane_batch = {0};
     CHECK(ca_ec_tau4_joint_plane_prepare(g, p, q, &plane, &plane_prep));
@@ -141,6 +167,14 @@ static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *p
         CHECK(ca_group_equal(g, &outputs[i], &one));
         CHECK(ca_group_equal(g, &outputs[i], &expected));
         CHECK(ca_group_equal(g, &free_outputs[i], &expected));
+        ca_elem quotient_expected = expected;
+        CHECK(quotient_gauges[i] < 3);
+        for (unsigned j = 0; j < 4u * quotient_gauges[i]; j++) {
+            ca_elem next;
+            ca_ec_endo(g, &next, &quotient_expected);
+            quotient_expected = next;
+        }
+        CHECK(ca_group_equal(g, &quotient_outputs[i], &quotient_expected));
         CHECK(ca_group_equal(g, &plane_outputs[i], &expected));
         ca_elem plane_one;
         ca_tau4_joint_counts plane_counts = {0};

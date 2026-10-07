@@ -317,6 +317,7 @@ typedef struct glv_ctx {
     const ca_tau4_joint_precomp *joint_pre;
     const ca_tau4_joint_plane_precomp *joint_plane;
     int free_gauge;
+    int quotient_restart;
     ca_curve_startup_stats *startup;
 } glv_ctx;
 
@@ -345,8 +346,10 @@ static void glv_account_tau_startup(ca_curve_startup_stats *startup,
 }
 
 static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
-                                   uint64_t a, uint64_t b, int restart, uint64_t *ops)
+                                   uint64_t a, uint64_t b, int restart, uint64_t *ops,
+                                   uint8_t *gauge_out)
 {
+    if (gauge_out) *gauge_out = 0;
     uint64_t before = *ops;
     double start = c->startup ? ca_now() : 0.0;
     if (c->joint_pre) {
@@ -354,6 +357,9 @@ static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
         int ok = c->joint_plane
             ? ca_ec_tau4_paired_two_plane_mul_profile(c->g, c->joint_plane,
                                                         out, a, b, &one)
+            : c->quotient_restart
+            ? ca_ec_tau4_paired_two_quotient_mul_profile(c->g, c->joint_pre,
+                                                          out, a, b, gauge_out, &one)
             : c->free_gauge
             ? ca_ec_tau4_paired_two_free_gauge_mul_profile(c->g, c->joint_pre,
                                                             out, a, b, &one)
@@ -389,8 +395,14 @@ static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops
     uint64_t n = g->order;
     w->a = ca_rng_below(rng, n);
     w->b = ca_rng_below(rng, n);
-    if (!glv_startup_combination(c, &w->Y, w->a, w->b, 1, ops)) return 0;
+    uint8_t quotient_gauge = 0;
+    if (!glv_startup_combination(c, &w->Y, w->a, w->b, 1, ops,
+                                 &quotient_gauge)) return 0;
     uint32_t k = glv_class_reduce(g, &w->Y, c->m);
+    if (c->quotient_restart && quotient_gauge) {
+        k = (k + 4u * quotient_gauge) % c->m;
+        if (c->startup) c->startup->quotient_restart_nonzero_gauges++;
+    }
     if (k) {
         w->a = ca_mulmod(w->a, c->lam_pow[k], n);
         w->b = ca_mulmod(w->b, c->lam_pow[k], n);
@@ -403,7 +415,7 @@ static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops
 static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
                                uint64_t seed, uint64_t *x, ca_stats *st,
                                int paired2, int batch_table, int plane_format,
-                               int free_gauge,
+                               int free_gauge, int quotient_restart,
                                ca_curve_startup_stats *startup)
 {
     double t0 = ca_now();
@@ -433,6 +445,7 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
     c.target = *target;
     c.startup = startup;
     c.free_gauge = free_gauge;
+    c.quotient_restart = quotient_restart;
     c.m = g->aut_order;
     c.lam_pow[0] = 1 % n;
     for (uint32_t k = 1; k < c.m; k++)
@@ -501,7 +514,8 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
         c.alpha[i] = ca_rng_below(&rng, n);
         c.beta[i] = ca_rng_below(&rng, n);
         if (!batch_table && !glv_startup_combination(&c, &c.M[i],
-                                                      c.alpha[i], c.beta[i], 0, &ops)) {
+                                                      c.alpha[i], c.beta[i], 0, &ops,
+                                                      NULL)) {
             failure = CA_ERR_INTERNAL;
             goto nomem;
         }
@@ -639,7 +653,8 @@ static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
     if (mode != CA_CURVE_STARTUP_GENERIC && mode != CA_CURVE_STARTUP_TAU_PAIRED2 &&
         mode != CA_CURVE_STARTUP_TAU_PAIRED2_BATCH &&
         mode != CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH &&
-        mode != CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH)
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH &&
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_QUOTIENT_RESTART_BATCH)
         return CA_ERR_INVALID;
     if (mode != CA_CURVE_STARTUP_GENERIC &&
         (g->kind != CA_GROUP_EC || g->endo_kind != CA_CURVE_ENDO_J0))
@@ -658,9 +673,12 @@ static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
                              mode != CA_CURVE_STARTUP_GENERIC,
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_BATCH ||
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH ||
-                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH ||
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_QUOTIENT_RESTART_BATCH,
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH,
-                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH ||
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_QUOTIENT_RESTART_BATCH,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_QUOTIENT_RESTART_BATCH,
                              startup);
     ca_rho_params rp;
     ca_rho_params_default(&rp);
