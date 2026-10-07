@@ -69,9 +69,11 @@ and 256 final outputs on the fresh panel. Every per-case greedy and
 selective source count and chosen arm matched the frozen Python
 record. Each executed evaluator's operation recount matched the
 selected source cost, and **zero cached additions** took an exceptional
-branch. The native source still requires an exact action-stream
-fingerprint audit before we can claim byte-for-byte recoder
-equivalence; the point outputs and counts are verified.
+branch. A subsequent cross-language action audit, frozen in
+`d37162be`, checked the full ordered radix/digit stream on all **320
+cases** using a compact FNV-1a regression fingerprint. This is a
+noncryptographic differential check; the exact scalar outputs and
+fixture hashes are the correctness certificates.
 
 `native-mixed-radix-checks.json` retains the raw build and replay
 commands, exit codes, output, compiler/host, source and fixture
@@ -80,3 +82,11 @@ hashes, and the release binary hash. Its SHA-256 is
 the replayed macOS ARM64 binary SHA-256 is
 `0f99c3a934cf374cd8d51ab82fdf35d1b9907e22cfca46681b98a747c84dc9bc`.
 No native timing was taken, and the CPU speedup claim remains `null`.
+
+The final offline replay, including action fingerprints, is
+`native-mixed-radix-checks-v2.json` (SHA-256
+`0e8a25d14b9016840e743f7863dbbedafff201e71024f0c7b9fa852ce73609e0`).
+Its independent Python fingerprint file has SHA-256
+`ebe915ee02d7b8c07870202e7cb90fe0e4fa55aa53e8b91a2ea9de13e1c30f01`.
+The final replayed release binary SHA-256 is
+`ef6282b4fe884764ac6973528f42775857a7fc7c17e9b43e6ab268713dd6c857`.
