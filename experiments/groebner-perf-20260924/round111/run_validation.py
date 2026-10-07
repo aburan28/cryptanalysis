@@ -61,6 +61,7 @@ def main():
         run('unit-tests', [sys.executable, '-m', 'unittest', 'discover', '-s', str(HERE), '-v'])
         run('panel', [sys.executable, str(HERE/'panel.py'), '--output', str(out/'panel')])
         run('audit', [sys.executable, str(HERE/'audit.py'), str(out/'panel/report.json'), '--output', str(out/'audit.json')])
+        run('artifact-controls', [sys.executable, str(HERE/'test_artifact.py'), str(out/'panel/report.json'), str(out/'artifact-controls.json')])
     record.update(status='PASS', finished=datetime.datetime.now(datetime.timezone.utc).isoformat())
     save()
 

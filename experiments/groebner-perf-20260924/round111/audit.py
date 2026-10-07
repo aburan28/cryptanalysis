@@ -26,6 +26,12 @@ def counters(stats):
     return {k: v for k, v in stats.items() if not k.endswith('seconds')}
 
 
+def certificate(value):
+    if value is None:
+        return None
+    return {**value, 'stats': counters(value['stats'])}
+
+
 def frozen():
     path = HERE.parent/'round110/results.tar.gz'
     assert digest(path.read_bytes()) == ARCHIVE_SHA
@@ -63,7 +69,7 @@ def one(row, expected, folder):
     assert len(result['attempts']) == len(expected['attempts'])
     for actual, reference in zip(result['attempts'], expected['attempts']):
         assert actual['kind'] == reference['kind']
-        assert actual.get('certificate') == reference.get('certificate')
+        assert certificate(actual.get('certificate')) == reference.get('certificate')
         assert actual['verified'] is bool(reference.get('certificate', {}).get('verified', False))
         if actual['kind'] == 'seeded-f4':
             assert actual['stats'] == expected['native_stats']
@@ -77,7 +83,7 @@ def one(row, expected, folder):
     assert result['work'] == sum(a['stats']['work'] for a in result['attempts'])
     assert result['check_work'] == sum(a.get('certificate', {}).get('stats', {}).get('work', 0) for a in result['attempts'])
     if result['algebra_verified']:
-        assert result['basis'] == expected['basis'] and result['certificate'] == expected['certificate']
+        assert result['basis'] == expected['basis'] and certificate(result['certificate']) == expected['certificate']
         artifact = result['proof_artifact']
         assert Path(artifact['path']).name == artifact['path']
         path = Path(folder)/artifact['path']
