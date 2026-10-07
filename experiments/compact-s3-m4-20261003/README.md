@@ -2347,6 +2347,18 @@ a different membership constraint for a future compact-S3 solver test.
 N131 dimension 27 remains a `Q` design with actual `B`/`K` unknown. Q1481
 does not measure an ordinary relation or complete `2^x`.
 
+### Q1482 compact-S3 search on the exact window bases
+
+[Q1482](q1482_window_s3/README.md) uses the exact Q1481 bases and Q1480
+native solver against the same Q1438 ordinary public targets. Its four
+leaf constraints are exact cyclic-window clauses; the native theory uses
+the loose weight-`d` superset bound. Both pinned planted N53/N83 controls
+independently verify. Both unpinned planted controls and both ordinary
+queries reach the 60-second cap with no relation. The N83 ordinary prefix
+uses 317,569,291 field multiplications and 79,366,320 direct right `S3`
+evaluations, with no right support. This changed-base stage is a negative
+solver result, not successful ordinary work or a complete N131 projection.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
