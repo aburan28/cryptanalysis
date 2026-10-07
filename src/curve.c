@@ -18,6 +18,7 @@
 #include "cryptanalysis/ca_rho.h"
 #include "curve_internal.h"
 #include "dlog_internal.h"
+#include "ec_tau_internal.h"
 
 #include <math.h>
 
@@ -313,19 +314,63 @@ typedef struct glv_ctx {
     int dp_bits;
     uint64_t dp_mask;
     uint64_t abandon;
+    const ca_tau4_joint_precomp *joint_pre;
+    ca_curve_startup_stats *startup;
 } glv_ctx;
 
-static void glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
+static uint64_t glv_generic_mul_budget(uint64_t scalar)
+{
+    uint64_t ops = 0;
+    while (scalar) {
+        ops += scalar & 1;
+        scalar >>= 1;
+        ops += scalar != 0;
+    }
+    return ops;
+}
+
+static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
+                                   uint64_t a, uint64_t b, int restart, uint64_t *ops)
+{
+    uint64_t before = *ops;
+    double start = c->startup ? ca_now() : 0.0;
+    if (c->joint_pre) {
+        ca_tau4_joint_counts one = {0};
+        if (!ca_ec_tau4_paired_two_mul_profile(c->g, c->joint_pre, out, a, b, &one))
+            return 0;
+        *ops += glv_generic_mul_budget(a) + glv_generic_mul_budget(b) + 1;
+        if (c->startup) {
+            c->startup->eval_tau += one.tau_steps;
+            c->startup->eval_mixed_adds += one.mixed_adds;
+            c->startup->eval_rotations += one.rotations;
+            c->startup->eval_inversions += one.inversions;
+            c->startup->eval_recode_attempts += one.recode_attempts;
+            c->startup->eval_pair_scores += one.pair_scores;
+            c->startup->eval_lattice_points_checked += one.lattice_points_checked;
+        }
+    } else {
+        ca_elem t1, t2;
+        ca_group_mul(c->g, &t1, &c->base, a, ops);
+        ca_group_mul(c->g, &t2, &c->target, b, ops);
+        ca_group_op(c->g, out, &t1, &t2);
+        (*ops)++;
+    }
+    if (c->startup) {
+        c->startup->evaluation_seconds += ca_now() - start;
+        c->startup->budget_equivalent_group_ops += *ops - before;
+        if (restart) c->startup->restart_evaluations++;
+        else c->startup->table_evaluations++;
+    }
+    return 1;
+}
+
+static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops)
 {
     const ca_group *g = c->g;
     uint64_t n = g->order;
     w->a = ca_rng_below(rng, n);
     w->b = ca_rng_below(rng, n);
-    ca_elem t1, t2;
-    ca_group_mul(g, &t1, &c->base, w->a, ops);
-    ca_group_mul(g, &t2, &c->target, w->b, ops);
-    ca_group_op(g, &w->Y, &t1, &t2);
-    (*ops)++;
+    if (!glv_startup_combination(c, &w->Y, w->a, w->b, 1, ops)) return 0;
     uint32_t k = glv_class_reduce(g, &w->Y, c->m);
     if (k) {
         w->a = ca_mulmod(w->a, c->lam_pow[k], n);
@@ -333,10 +378,12 @@ static void glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *op
     }
     w->since_dp = 0;
     w->retry = 0;
+    return 1;
 }
 
 static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
-                               uint64_t seed, uint64_t *x, ca_stats *st)
+                               uint64_t seed, uint64_t *x, ca_stats *st,
+                               int paired2, ca_curve_startup_stats *startup)
 {
     double t0 = ca_now();
     uint64_t n = g->order;
@@ -363,10 +410,26 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
     c.g = g;
     c.base = *base;
     c.target = *target;
+    c.startup = startup;
     c.m = g->aut_order;
     c.lam_pow[0] = 1 % n;
     for (uint32_t k = 1; k < c.m; k++)
         c.lam_pow[k] = ca_mulmod(c.lam_pow[k - 1], g->endo_lambda, n);
+    ca_tau4_joint_precomp joint_pre;
+    if (paired2) {
+        ca_tau4_joint_counts prep = {0};
+        double prepare_start = ca_now();
+        if (!ca_ec_tau4_joint_prepare(g, base, target, &joint_pre, &prep))
+            return CA_ERR_INTERNAL;
+        c.joint_pre = &joint_pre;
+        if (startup) {
+            startup->prepare_tau = prep.tau_steps;
+            startup->prepare_doubles = prep.doubles;
+            startup->prepare_mixed_adds = prep.mixed_adds;
+            startup->prepare_inversions = prep.inversions;
+            startup->prepare_seconds = ca_now() - prepare_start;
+        }
+    }
 
     /* The folded search space has size n/m, so all budgets scale with
      * sqrt(n/m).  Keep the r-multiplier table and the W walk start-ups (each
@@ -404,22 +467,26 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
     ca_elem *B = calloc(W, sizeof(ca_elem));
     ca_htab tab;
     int have_tab = 0;
+    ca_status failure = CA_ERR_NOMEM;
     if (!c.M || !c.alpha || !c.beta || !scratch || !walks || !Yn || !B) goto nomem;
     for (uint32_t i = 0; i < c.r; i++) {
         c.alpha[i] = ca_rng_below(&rng, n);
         c.beta[i] = ca_rng_below(&rng, n);
-        ca_elem t1, t2;
-        ca_group_mul(g, &t1, base, c.alpha[i], &ops);
-        ca_group_mul(g, &t2, target, c.beta[i], &ops);
-        ca_group_op(g, &c.M[i], &t1, &t2);
-        ops++;
+        if (!glv_startup_combination(&c, &c.M[i], c.alpha[i], c.beta[i], 0, &ops)) {
+            failure = CA_ERR_INTERNAL;
+            goto nomem;
+        }
     }
     double exp_dps = 1.25 * (double)sqrt_nm / (double)(1ULL << dp) + 1024;
     if (ca_htab_init(&tab, (size_t)(exp_dps < 1e8 ? exp_dps : 1e8)) != CA_OK) goto nomem;
     have_tab = 1;
-    for (uint32_t w = 0; w < W; w++) glv_restart(&c, &walks[w], &rng, &ops);
-
     ca_status rc = CA_ERR_NOT_FOUND;
+    for (uint32_t w = 0; w < W; w++) {
+        if (!glv_restart(&c, &walks[w], &rng, &ops)) {
+            rc = CA_ERR_INTERNAL;
+            goto done;
+        }
+    }
     uint64_t cap = 64 * sqrt_nm * c.m + (1ULL << 20); /* runaway guard */
     while (ops < cap) {
         for (uint32_t w = 0; w < W; w++) {
@@ -463,10 +530,16 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
                         rc = CA_OK;
                         goto done;
                     }
-                    glv_restart(&c, wk, &rng, &ops);
+                    if (!glv_restart(&c, wk, &rng, &ops)) {
+                        rc = CA_ERR_INTERNAL;
+                        goto done;
+                    }
                 }
             } else if (wk->since_dp > c.abandon) {
-                glv_restart(&c, wk, &rng, &ops);
+                if (!glv_restart(&c, wk, &rng, &ops)) {
+                    rc = CA_ERR_INTERNAL;
+                    goto done;
+                }
             }
         }
     }
@@ -474,7 +547,8 @@ done:
     if (st) {
         st->group_ops += ops;
         st->table_entries = ca_max_u64(st->table_entries, tab.count);
-        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&tab) + (uint64_t)c.r * 32);
+        st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&tab) +
+                         (uint64_t)c.r * 32 + (paired2 ? sizeof(joint_pre) : 0));
         st->seconds += ca_now() - t0;
         st->threads = 1;
     }
@@ -496,12 +570,20 @@ nomem:
     free(walks);
     free(Yn);
     free(B);
-    return CA_ERR_NOMEM;
+    return failure;
 }
 
-ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
-                         uint64_t seed, uint64_t *x, ca_curve_info *info, ca_stats *st)
+static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
+                                  const ca_elem *target, uint64_t seed, uint64_t *x,
+                                  ca_curve_startup_mode mode, ca_curve_startup_stats *startup,
+                                  ca_curve_info *info, ca_stats *st)
 {
+    if (startup) memset(startup, 0, sizeof(*startup));
+    if (mode != CA_CURVE_STARTUP_GENERIC && mode != CA_CURVE_STARTUP_TAU_PAIRED2)
+        return CA_ERR_INVALID;
+    if (mode == CA_CURVE_STARTUP_TAU_PAIRED2 &&
+        (g->kind != CA_GROUP_EC || g->endo_kind != CA_CURVE_ENDO_J0))
+        return CA_ERR_UNSUPPORTED;
     if (info) {
         memset(info, 0, sizeof(*info));
         info->endo = (ca_curve_endo)g->endo_kind;
@@ -512,9 +594,25 @@ ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *
     if (g->order && !ca_check_members(g, base, target, g->order, "glv rho"))
         return CA_ERR_NOT_FOUND;
     if (g->kind == CA_GROUP_EC && g->endo_kind != 0)
-        return glv_rho_solve(g, base, target, seed, x, st);
+        return glv_rho_solve(g, base, target, seed, x, st,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2, startup);
     ca_rho_params rp;
     ca_rho_params_default(&rp);
     rp.seed = seed;
     return ca_rho_solve(g, base, target, &rp, x, st);
+}
+
+ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
+                         uint64_t seed, uint64_t *x, ca_curve_info *info, ca_stats *st)
+{
+    return curve_solve_mode(g, base, target, seed, x, CA_CURVE_STARTUP_GENERIC,
+                            NULL, info, st);
+}
+
+ca_status ca_curve_solve_startup(const ca_group *g, const ca_elem *base,
+                                 const ca_elem *target, uint64_t seed, uint64_t *x,
+                                 ca_curve_startup_mode mode, ca_curve_startup_stats *startup,
+                                 ca_curve_info *info, ca_stats *st)
+{
+    return curve_solve_mode(g, base, target, seed, x, mode, startup, info, st);
 }

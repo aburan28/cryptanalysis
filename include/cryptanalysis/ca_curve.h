@@ -71,6 +71,29 @@ CA_API ca_status ca_curve_group(ca_group *g, uint64_t p, uint64_t a, uint64_t b,
 CA_API ca_status ca_curve_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
                                 uint64_t seed, uint64_t *x, ca_curve_info *info, ca_stats *st);
 
+/* Explicit research startup backend for one-target GLV rho. The default API
+ * above retains generic multiplier construction. In paired2 mode,
+ * ca_stats.group_ops remains the exact generic-reference budget count used
+ * by the rho cap; physical startup work is recorded separately below. */
+typedef enum ca_curve_startup_mode {
+    CA_CURVE_STARTUP_GENERIC = 0,
+    CA_CURVE_STARTUP_TAU_PAIRED2 = 1,
+} ca_curve_startup_mode;
+
+typedef struct ca_curve_startup_stats {
+    uint64_t table_evaluations, restart_evaluations;
+    uint64_t budget_equivalent_group_ops;
+    uint64_t prepare_tau, prepare_doubles, prepare_mixed_adds, prepare_inversions;
+    uint64_t eval_tau, eval_mixed_adds, eval_rotations, eval_inversions;
+    uint64_t eval_recode_attempts, eval_pair_scores, eval_lattice_points_checked;
+    double prepare_seconds, evaluation_seconds;
+} ca_curve_startup_stats;
+
+CA_API ca_status ca_curve_solve_startup(const ca_group *g, const ca_elem *base,
+                                        const ca_elem *target, uint64_t seed, uint64_t *x,
+                                        ca_curve_startup_mode mode, ca_curve_startup_stats *startup,
+                                        ca_curve_info *info, ca_stats *st);
+
 #ifdef __cplusplus
 }
 #endif
