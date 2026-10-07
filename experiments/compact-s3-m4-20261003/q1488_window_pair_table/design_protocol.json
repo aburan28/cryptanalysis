@@ -1,0 +1,57 @@
+{
+  "kind": "q1488_pre_registered_matched_window_base_pair_table_design",
+  "proposal_id": "Q1488",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "claim_scope": "Matched-input signed-Frobenius pair-table stage control for Q1487's two ordinary public points on Q1481's exact full cyclic-window bases. This is not an IC candidate, successful compact solver, natural-yield estimate, or complete N131 work projection.",
+  "instances": {
+    "53": {
+      "curve_id": "EC1N53Ckb1hf77aab617904",
+      "nominal_window_dimension_d": 14,
+      "actual_usable_B": 430360,
+      "folded_K": 4060,
+      "enumerated_set_sha256": "42e746657e39ea4d07aafc873110339e314cd685b3bd8493eb3c60aed1354ba5",
+      "base_sampling": "Uniform index of every materialized subgroup-usable Q1481 N53 point, including both signs and all Frobenius powers",
+      "table_seed": 148853,
+      "query_seed": 148953,
+      "table_pair_sample_cap": 500000,
+      "query_pair_sample_cap": 1500000
+    },
+    "83": {
+      "curve_id": "EC1N83Ckb1h876c2921cb64",
+      "nominal_window_dimension_d": 23,
+      "actual_usable_B": 348006384,
+      "folded_K": 2096424,
+      "enumerated_set_sha256": "f2d7771988cbd03fa4ea3145fc3870e5a3fc44171b9a57165257f016cdeb19d4",
+      "base_sampling": "Uniform Q1481 raw long-zero-gap orbit representative, reject nonrational or identity projection, then choose Frobenius shift and sign uniformly; Q1481 proves full, collision-free projected orbits",
+      "table_seed": 148883,
+      "query_seed": 148983,
+      "table_pair_sample_cap": 10000,
+      "query_pair_sample_cap": 10000
+    }
+  },
+  "point_decomposition": {
+    "m": 4,
+    "stage_code": "PDP4mitm",
+    "method": "Target-independent signed-Frobenius quotient pair table followed by one target-dependent residual-pair lookup, using the Q1445 collision replay rule",
+    "sample_law": "Table and query pairs draw two independent uniform usable base points with replacement from the full exact Q1481 base",
+    "online_query_wall_cap_seconds": 60,
+    "distinct_folded_columns_required": 4,
+    "verify_public_target_sum": true
+  },
+  "run_order": [
+    "n53_ordinary",
+    "n83_ordinary"
+  ],
+  "controls": [
+    "Reconstruct all N53 base points from Q1481's sorted canonical projected x keys, both signs and all Frobenius powers; require B=430360 distinct points and match the packed key digest.",
+    "Validate N83 sampler certificates by direct raw-x curve lift, cofactor projection, Frobenius shift and sign; sample from all Q1481 raw orbit representatives, not a cached subset.",
+    "Verify a synthetic quotient collision with nonzero Frobenius shift and negative sign; independently replay any natural collision against base membership, subgroup order, four distinct columns and the frozen public point.",
+    "Freeze code, runtime, input hashes, caps, seeds, workload IDs and PS1 stage IDs before either ordinary run. Preserve zero-hit and timeout cells."
+  ],
+  "comparison": "Q1487 on identical curve, base digest and public target at each degree; pair-table preparation is target-independent and reported separately; stage timing ratios are exploratory without CPU isolation and neither method is a complete DLP solve.",
+  "success_gate": "One independently verified natural N53 relation is a matched-base stage comparator. N83 remains a bounded sample control; no successful N83 cost is inferred from a zero-hit cell.",
+  "complete_n131_log2_work": null,
+  "challenge_run_admitted": false
+}
