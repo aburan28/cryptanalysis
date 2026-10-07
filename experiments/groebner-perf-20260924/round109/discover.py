@@ -144,6 +144,7 @@ def worker(args):
                         else:
                             pay(view.nodes+view.rows+view.terms)
                             basis, proof = abi.export(view)
+                            r['continuation'] = dict(basis=basis, proof=proof)
                             composed = compose(seed_proof, proof, len(case['equations']),
                                                max_work=remaining, max_nodes=limits['max_nodes'])
                             remaining -= composed['stats']['work']
@@ -185,7 +186,9 @@ def main():
                   reference_build=build, reference_plan=plan, rows=[], timing_eligible=False,
                   qualified_speedup=None, purpose='untimed algorithmic discovery; Python proof bridge, existing native kernels')
     save(args.output/'report.json', record)
-    lock = Path('/private/tmp/cryptanalysis-overlap-evidence-20261003/local-heavy.lock')
+    lock = Path('/private/tmp/cryptanalysis-overlap-evidence-20261003/local-heavy.lock'
+                if sys.platform == 'darwin' else '/tmp/groebner-local-heavy.lock')
+    lock.parent.mkdir(parents=True, exist_ok=True)
     with lock.open('a') as guard:
         fcntl.flock(guard, fcntl.LOCK_EX)
         for p in HERE.glob('*.py'):

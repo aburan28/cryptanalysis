@@ -41,3 +41,10 @@ fresh portable build. Each case gets a fresh worker, a 60-second timeout and a
 record preserving process failures. The parent takes the shared local heavy lock.
 No Sage is used. CPU timing and IC speedup remain null. The small planted PDP
 fixtures are correctness controls, not natural-yield or complete DLP measurements.
+
+For a fresh local/CI build plus independent audit and artifact controls, run
+`python experiments/groebner-perf-20260924/round109/run_validation.py --output OUT`.
+The independent audit streams polynomial values as Python integers, checks every
+original-input derivation and reproduces proof composition. Exact Boolean
+zero/staircase certification and independent curve replay cover these small
+fixtures. The raw continuation proof is retained for reproducible substitution.
