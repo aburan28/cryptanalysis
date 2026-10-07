@@ -378,24 +378,9 @@ pub(super) fn benchmark_case(fixture_path: &str, index: usize, timed: bool) {
         serde_json::from_slice(&fs::read(fixture_path).expect("read scalar fixture"))
             .expect("parse scalar fixture");
     let case = &fixture["cases"].as_array().expect("cases")[index];
-    let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
-    LazyLock::force(&LATTICE);
-    LazyLock::force(&DIGIT_TABLE);
-    LazyLock::force(&LINKED_DIGIT_TABLE);
-    let start = Instant::now();
-    let scalar = big_from_hex(case["scalar_hex"].as_str().expect("scalar"));
-    let base = J::affine(
-        fe_from_hex(case["base_x_hex"].as_str().expect("base x")),
-        fe_from_hex(case["base_y_hex"].as_str().expect("base y")),
-    );
-    let (a, b) = short_representative(&scalar);
-    let plan = recode(a, b);
-    let prepared = prepare(base, beta, plan.built_mask);
-    let (point, _) = evaluate_mode(&plan.digits, &prepared, beta, false, true);
-    let actual = match point.to_affine() {
-        None => "identity".to_owned(),
-        Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
-    };
+    let base_x = case["base_x_hex"].as_str().expect("base x");
+    let base_y = case["base_y_hex"].as_str().expect("base y");
+    let scalar_hex = case["scalar_hex"].as_str().expect("scalar");
     let expected = if case["expected_identity"].as_bool().unwrap_or(false) {
         "identity".to_owned()
     } else {
@@ -405,14 +390,26 @@ pub(super) fn benchmark_case(fixture_path: &str, index: usize, timed: bool) {
             case["expected_y_hex"].as_str().expect("expected y")
         )
     };
+    let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
+    LazyLock::force(&LATTICE);
+    LazyLock::force(&DIGIT_TABLE);
+    LazyLock::force(&LINKED_DIGIT_TABLE);
+    let start = Instant::now();
+    let scalar = big_from_hex(scalar_hex);
+    let base = J::affine(fe_from_hex(base_x), fe_from_hex(base_y));
+    let (a, b) = short_representative(&scalar);
+    let plan = recode(a, b);
+    let prepared = prepare(base, beta, plan.built_mask);
+    let (point, _) = evaluate_mode(&plan.digits, &prepared, beta, false, true);
+    let actual = match point.to_affine() {
+        None => "identity".to_owned(),
+        Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
+    };
     assert_eq!(actual, expected);
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
     if timed {
-        println!("verified=1 mode=selective_mixed case={index} elapsed_ms={elapsed_ms:.6} source_M_plus_S={}", plan.total);
+        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=selective_mixed source_M_plus_S={}", plan.total);
     } else {
-        println!(
-            "verified=1 mode=selective_mixed case={index} point={actual} source_M_plus_S={}",
-            plan.total
-        );
+        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=selective_mixed source_M_plus_S={}", plan.total);
     }
 }
