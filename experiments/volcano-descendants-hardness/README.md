@@ -110,9 +110,10 @@ still retains its own `instantiated` flag. Attach exact EC1 identities and
 verified maps only when concrete curves exist, following
 [VOLCANO_NAMING.md](../ic-candidate-catalog/VOLCANO_NAMING.md).
 
-This addition supplies the navigation inventory. It does **not** search for
-exceptional relation geometry, construct P-degree neighbors, or establish
-an advantage on the uninstantiated strata. The historical conclusion above
+The navigation inventory identifies candidate strata. The bounded conductor
+search described below does **not** search for exceptional relation geometry,
+construct P-degree neighbors, or establish an advantage on uninstantiated
+strata. The historical conclusion above
 must not be used as a proof of equal DLP difficulty on those strata: the
 verified degree-263 transfers cover the constructed degree-263 neighbors.
 Conductor metadata alone proves neither equal nor different DLP cost.
@@ -122,3 +123,31 @@ The order/level relationship follows Andrew Sutherland,
 Sections 2.7 and 2.11–2.12. This change performs metadata consistency checks,
 not a new mathematical search or hardness measurement; historical graph and
 measurement artifacts are unchanged.
+
+## Bounded search for large gaps
+
+[`search_conductor_gaps.py`](search_conductor_gaps.py) scans
+`E_m: y² + xy = x³ + 1` for every extension degree from 13 through 131.
+The source End order is maximal with discriminant -7. The exact Frobenius
+recurrence gives its conductor; GNU `factor` proposes prime factors, which
+are checked deterministically below `2^64`. The output records every
+attempt, including any unresolved factorization, and ranks prime conductor
+gaps by degree. Its default bit-length threshold is 20. To reproduce in a
+fresh output file:
+
+```sh
+python3 experiments/volcano-descendants-hardness/search_conductor_gaps.py \
+  --min-degree 13 --max-degree 131 --min-gap-bits 20 \
+  --factor-timeout 2 --output /tmp/conductor-gap-reproduction.json
+```
+
+The [dated report](CONDUCTOR_GAP_SCAN_20261007.md),
+[raw scan](conductor-gap-scan-20261007.json), and
+[PDF](conductor-gap-scan-20261007.pdf) contain the results and their limits.
+Run `python3 experiments/volcano-descendants-hardness/build_conductor_gap_report.py`
+to regenerate the two SVG figures and the PDF. The largest factor in this
+bounded family occurs at `m=127`: `3293187233103900007` (62 bits, about
+`2^61.51`). The opposite order stratum is identified arithmetically; no
+curve there is constructed by the scan. The existing ECC2K-130 source
+retains its exact EC1 ID and its large conductor factor remains about
+`2^57.02`.
