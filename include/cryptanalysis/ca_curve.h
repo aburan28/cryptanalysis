@@ -79,12 +79,14 @@ typedef enum ca_curve_startup_mode {
     CA_CURVE_STARTUP_GENERIC = 0,
     CA_CURVE_STARTUP_TAU_PAIRED2 = 1,
     CA_CURVE_STARTUP_TAU_PAIRED2_BATCH = 2,
+    CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH = 3,
 } ca_curve_startup_mode;
 
 typedef struct ca_curve_startup_stats {
     uint64_t table_evaluations, restart_evaluations;
     uint64_t budget_equivalent_group_ops;
     uint64_t prepare_tau, prepare_doubles, prepare_mixed_adds, prepare_inversions;
+    uint64_t prepare_rotations, prepare_bytes;
     uint64_t eval_tau, eval_mixed_adds, eval_rotations, eval_inversions;
     uint64_t table_output_inversions, restart_output_inversions, table_batch_size;
     uint64_t eval_recode_attempts, eval_pair_scores, eval_lattice_points_checked;

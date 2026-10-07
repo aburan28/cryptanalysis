@@ -315,6 +315,7 @@ typedef struct glv_ctx {
     uint64_t dp_mask;
     uint64_t abandon;
     const ca_tau4_joint_precomp *joint_pre;
+    const ca_tau4_joint_plane_precomp *joint_plane;
     ca_curve_startup_stats *startup;
 } glv_ctx;
 
@@ -348,7 +349,12 @@ static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
     double start = c->startup ? ca_now() : 0.0;
     if (c->joint_pre) {
         ca_tau4_joint_counts one = {0};
-        if (!ca_ec_tau4_paired_two_mul_profile(c->g, c->joint_pre, out, a, b, &one))
+        int ok = c->joint_plane
+            ? ca_ec_tau4_paired_two_plane_mul_profile(c->g, c->joint_plane,
+                                                        out, a, b, &one)
+            : ca_ec_tau4_paired_two_mul_profile(c->g, c->joint_pre,
+                                                 out, a, b, &one);
+        if (!ok)
             return 0;
         *ops += glv_generic_mul_budget(a) + glv_generic_mul_budget(b) + 1;
         if (c->startup) {
@@ -391,7 +397,7 @@ static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops
 
 static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
                                uint64_t seed, uint64_t *x, ca_stats *st,
-                               int paired2, int batch_table,
+                               int paired2, int batch_table, int plane_format,
                                ca_curve_startup_stats *startup)
 {
     double t0 = ca_now();
@@ -424,18 +430,24 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
     c.lam_pow[0] = 1 % n;
     for (uint32_t k = 1; k < c.m; k++)
         c.lam_pow[k] = ca_mulmod(c.lam_pow[k - 1], g->endo_lambda, n);
-    ca_tau4_joint_precomp joint_pre;
+    ca_tau4_joint_plane_precomp plane_pre;
     if (paired2) {
         ca_tau4_joint_counts prep = {0};
         double prepare_start = ca_now();
-        if (!ca_ec_tau4_joint_prepare(g, base, target, &joint_pre, &prep))
+        int ok = plane_format
+            ? ca_ec_tau4_joint_plane_prepare(g, base, target, &plane_pre, &prep)
+            : ca_ec_tau4_joint_prepare(g, base, target, &plane_pre.base, &prep);
+        if (!ok)
             return CA_ERR_INTERNAL;
-        c.joint_pre = &joint_pre;
+        c.joint_pre = &plane_pre.base;
+        c.joint_plane = plane_format ? &plane_pre : NULL;
         if (startup) {
             startup->prepare_tau = prep.tau_steps;
             startup->prepare_doubles = prep.doubles;
             startup->prepare_mixed_adds = prep.mixed_adds;
             startup->prepare_inversions = prep.inversions;
+            startup->prepare_rotations = prep.rotations;
+            startup->prepare_bytes = plane_format ? sizeof(plane_pre) : sizeof(plane_pre.base);
             startup->prepare_seconds = ca_now() - prepare_start;
         }
     }
@@ -490,8 +502,12 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
     if (batch_table) {
         ca_tau4_joint_counts batch = {0};
         double batch_start = startup ? ca_now() : 0.0;
-        if (!ca_ec_tau4_paired_two_batch_profile(g, c.joint_pre, c.M,
-                                                  c.alpha, c.beta, c.r, &batch)) {
+        int ok = plane_format
+            ? ca_ec_tau4_paired_two_plane_batch_profile(g, c.joint_plane, c.M,
+                                                         c.alpha, c.beta, c.r, &batch)
+            : ca_ec_tau4_paired_two_batch_profile(g, c.joint_pre, c.M,
+                                                   c.alpha, c.beta, c.r, &batch);
+        if (!ok) {
             failure = CA_ERR_INTERNAL;
             goto nomem;
         }
@@ -578,7 +594,8 @@ done:
         st->group_ops += ops;
         st->table_entries = ca_max_u64(st->table_entries, tab.count);
         st->bytes_peak = ca_max_u64(st->bytes_peak, ca_htab_bytes(&tab) +
-                         (uint64_t)c.r * 32 + (paired2 ? sizeof(joint_pre) : 0));
+                         (uint64_t)c.r * 32 + (paired2
+                         ? (plane_format ? sizeof(plane_pre) : sizeof(plane_pre.base)) : 0));
         st->seconds += ca_now() - t0;
         st->threads = 1;
     }
@@ -610,7 +627,8 @@ static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
 {
     if (startup) memset(startup, 0, sizeof(*startup));
     if (mode != CA_CURVE_STARTUP_GENERIC && mode != CA_CURVE_STARTUP_TAU_PAIRED2 &&
-        mode != CA_CURVE_STARTUP_TAU_PAIRED2_BATCH)
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_BATCH &&
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH)
         return CA_ERR_INVALID;
     if (mode != CA_CURVE_STARTUP_GENERIC &&
         (g->kind != CA_GROUP_EC || g->endo_kind != CA_CURVE_ENDO_J0))
@@ -627,7 +645,9 @@ static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
     if (g->kind == CA_GROUP_EC && g->endo_kind != 0)
         return glv_rho_solve(g, base, target, seed, x, st,
                              mode != CA_CURVE_STARTUP_GENERIC,
-                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_BATCH, startup);
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_BATCH ||
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH, startup);
     ca_rho_params rp;
     ca_rho_params_default(&rp);
     rp.seed = seed;

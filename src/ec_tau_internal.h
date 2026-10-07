@@ -212,6 +212,13 @@ typedef struct ca_tau4_joint_precomp {
     uint8_t identity[2];
 } ca_tau4_joint_precomp;
 
+/* One y-coordinate and three unit-related x-coordinates per prepared seed.
+ * The base object remains unchanged for the non-plane control. */
+typedef struct ca_tau4_joint_plane_precomp {
+    ca_tau4_joint_precomp base;
+    uint64_t x_beta[2][9], x_beta2[2][9];
+} ca_tau4_joint_plane_precomp;
+
 typedef struct ca_tau4_joint_counts {
     uint64_t tau_steps, doubles, mixed_adds, full_adds, rotations, inversions;
     uint64_t overlaps, fused_hits;
@@ -247,6 +254,18 @@ int ca_ec_tau4_paired_two_batch_profile(const ca_group *g,
                                          ca_elem *out, const uint64_t *a,
                                          const uint64_t *b, size_t count,
                                          ca_tau4_joint_counts *counts);
+int ca_ec_tau4_joint_plane_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
+                                    ca_tau4_joint_plane_precomp *out,
+                                    ca_tau4_joint_counts *counts);
+int ca_ec_tau4_paired_two_plane_mul_profile(const ca_group *g,
+                                             const ca_tau4_joint_plane_precomp *pre,
+                                             ca_elem *out, uint64_t a, uint64_t b,
+                                             ca_tau4_joint_counts *counts);
+int ca_ec_tau4_paired_two_plane_batch_profile(const ca_group *g,
+                                               const ca_tau4_joint_plane_precomp *pre,
+                                               ca_elem *out, const uint64_t *a,
+                                               const uint64_t *b, size_t count,
+                                               ca_tau4_joint_counts *counts);
 
 /* Relative-unit orbit table: 9 P seeds x 9 Q seeds x 6 unit ratios. The
  * entire table is target-dependent if Q is the rho target. */
