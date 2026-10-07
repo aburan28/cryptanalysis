@@ -360,5 +360,7 @@ the complete six-step point table with selected nonadjacent three-step
 pairs. Exact matching on a new disjoint 32,768-scalar Python panel saved
 7.53% and 4.65% of mixed additions against the complete six-step table,
 with 1.82× and 2.00× its point slots. All scalar identities and 184 sampled
-group outputs passed. Native online timing, preparation cost, controlled
-speed, and one-target rho impact remain unknown.
+group outputs passed. The native C replay matched all eight Python operation
+counts and all paired point digests with zero fallbacks. It charges an extra
+1,122 and 2,401 preparation additions for the selected pairs. Controlled
+CPU speed and one-target rho impact remain unknown.

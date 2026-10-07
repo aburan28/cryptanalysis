@@ -109,7 +109,8 @@ static int select_mode(const char *name)
                                   "tau3-fused-pos",
                                   "tau3-atlas-pos",
                                   "tau3-sparse-pos",
-                                  "tau3-radix27-pos"};
+                                  "tau3-radix27-pos",
+                                  "tau3-scatter-pos"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -135,7 +136,7 @@ int main(int argc, char **argv)
                 "tail-pair-periodic-canonical|tail-pair-periodic-gated27|"
                 "tail-pair-periodic-firstword27|tail-pair-mixed-radix|"
                 "tail-pair-mixed-full-digits|fixed-comb9|pos-compact|tau3-fused-pos|"
-                "tau3-atlas-pos|tau3-sparse-pos|tau3-radix27-pos "
+                "tau3-atlas-pos|tau3-sparse-pos|tau3-radix27-pos|tau3-scatter-pos "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -165,6 +166,7 @@ int main(int argc, char **argv)
     int tau3_atlas = mode == 38;
     int sparse = mode == 39 || mode == 40;
     int radix27 = mode == 40;
+    int scatter = mode == 41;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -199,6 +201,7 @@ int main(int argc, char **argv)
     ca_fixed_comb_precomp comb_pre;
     ca_tau4_pos_compact_precomp compact_pre = {0};
     ca_tau3_fused_precomp tau3_pre = {0};
+    ca_tau3_scatter_precomp scatter_pre = {0};
     ca_tau3_sparse_precomp sparse_pre = {0};
     ca_tau4_pos_precomp positional_pre;
     ca_tau8_fused_precomp fused_pre = {0};
@@ -219,7 +222,8 @@ int main(int argc, char **argv)
     size_t prep_temp_stack_bytes =
         comb ? (CA_FIXED_COMB_ENTRIES * 4 + CA_FIXED_COMB_WIDTH * 3) * sizeof(uint64_t) : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
-    size_t point_entries = sparse          ? ca_ec_tau3_sparse_point_entries(&group)
+    size_t point_entries = scatter         ? ca_ec_tau3_scatter_point_entries(&group)
+                           : sparse        ? ca_ec_tau3_sparse_point_entries(&group)
                            : tau3          ? ca_ec_tau3_fused_blocks(&group) * 343
                            : compact       ? ca_ec_tau4_pos_compact_layers(&group) * 18
                            : comb          ? CA_FIXED_COMB_ENTRIES
@@ -229,7 +233,8 @@ int main(int argc, char **argv)
                            : fused         ? fused_blocks * fused_entries
                                            : 0;
     size_t point_table_bytes = point_entries * sizeof(ca_elem);
-    size_t prep_bytes = sparse          ? sizeof(sparse_pre) + point_table_bytes
+    size_t prep_bytes = scatter         ? sizeof(scatter_pre) + point_table_bytes
+                        : sparse        ? sizeof(sparse_pre) + point_table_bytes
                         : tau3          ? sizeof(tau3_pre) + point_table_bytes
                         : compact       ? sizeof(compact_pre) + point_table_bytes
                         : comb          ? sizeof(comb_pre)
@@ -244,11 +249,21 @@ int main(int argc, char **argv)
     if (compact) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (tau3) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (sparse) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
+    if (scatter)
+        prep_temp_heap_bytes =
+            ca_ec_tau3_fused_blocks(&group) * 343 * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (tapered) prep_temp_heap_bytes = ca_ec_tau_wide_temp_bytes(wide_schedule);
     if (wavefront) prep_temp_heap_bytes = ca_ec_tau_wide_wavefront_temp_bytes(wide_schedule);
     if (mode != 0) {
         double t0 = ca_now();
-        if (sparse) {
+        if (scatter) {
+            if (!ca_ec_tau3_scatter_prepare(&group, &point, &scatter_pre, &prep_seed_ops,
+                                            &prep_triples, &prep_tau_steps, &prep_adds,
+                                            &prep_rotations, &prep_layer_inversions)) {
+                free(outputs);
+                return 2;
+            }
+        } else if (sparse) {
             if (!ca_ec_tau3_sparse_prepare(&group, &point, &sparse_pre, &prep_seed_ops,
                                            &prep_triples, &prep_tau_steps, &prep_adds,
                                            &prep_rotations, &prep_layer_inversions)) {
@@ -360,7 +375,9 @@ int main(int argc, char **argv)
     uint64_t mixed_lookups = 0, mixed_fallbacks = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
     uint64_t sparse_cold_pairs = 0, radix27_dp_states = 0, radix27_dp_options = 0;
-    size_t static_map_bytes = radix27                 ? ca_ec_tau3_radix27_static_bytes()
+    uint64_t scatter_pairs = 0;
+    size_t static_map_bytes = scatter                 ? ca_ec_tau3_scatter_static_bytes()
+                              : radix27               ? ca_ec_tau3_radix27_static_bytes()
                               : sparse                ? ca_ec_tau3_sparse_static_bytes()
                               : tau3_atlas            ? ca_ec_tau3_atlas_static_bytes()
                               : tau3                  ? ca_ec_tau3_fused_static_bytes()
@@ -381,7 +398,8 @@ int main(int argc, char **argv)
     size_t recipe_bytes = packed || wavefront ? ca_ec_tau_wide_packed_recipe_bytes(wide_schedule)
                           : graph             ? ca_ec_tau_wide_graph_recipe_bytes(wide_schedule)
                                               : 0;
-    size_t online_scratch_bytes = radix27         ? ca_ec_tau3_radix27_online_scratch_bytes()
+    size_t online_scratch_bytes = scatter         ? 0
+                                  : radix27       ? ca_ec_tau3_radix27_online_scratch_bytes()
                                   : sparse        ? 160
                                   : tau3          ? 160
                                   : pair_periodic ? 1024
@@ -429,6 +447,20 @@ int main(int argc, char **argv)
                 adds += a;
                 rotations += r;
                 output_inversions += !outputs[i].w[2];
+            } else if (scatter) {
+                uint64_t a = 0, r = 0, fallback = 0, pairs = 0;
+                size_t scratch = 0;
+                if (!ca_ec_tau3_scatter_mul_profile(&group, &scatter_pre, &outputs[i], scalars[i],
+                                                    &a, &r, &fallback, &pairs, &scratch)) {
+                    fprintf(stderr, "tau3 scatter evaluation failed at index %zu\n", i);
+                    free(outputs);
+                    return 1;
+                }
+                adds += a;
+                rotations += r;
+                fallbacks += fallback;
+                scatter_pairs += pairs;
+                if (scratch > online_scratch_bytes) online_scratch_bytes = scratch;
             } else if (sparse) {
                 uint64_t a = 0, r = 0, cold = 0, fallback = 0;
                 uint64_t states = 0, options = 0;
@@ -569,6 +601,15 @@ int main(int argc, char **argv)
     uint64_t tail_complete_preparation_checks = 0;
     uint64_t tau3_preparation_checks = 0;
     uint64_t sparse_preparation_checks = 0;
+    uint64_t scatter_preparation_checks = 0;
+    if (scatter) {
+        if (!ca_ec_tau3_scatter_verify_map() || !ca_ec_tau3_scatter_prepare_verify(&scatter_pre)) {
+            fprintf(stderr, "tau3 scatter map or point table verification failed\n");
+            free(outputs);
+            return 1;
+        }
+        scatter_preparation_checks = point_entries;
+    }
     if (sparse) {
         if (!ca_ec_tau3_sparse_verify_map() || (radix27 && !ca_ec_tau3_radix27_verify_map()) ||
             !ca_ec_tau3_sparse_prepare_verify(&sparse_pre)) {
@@ -805,53 +846,55 @@ int main(int argc, char **argv)
     ca_ec_tau_wide_clear(&wide_pre);
     ca_ec_tau4_pos_compact_clear(&compact_pre);
     ca_ec_tau3_fused_clear(&tau3_pre);
+    ca_ec_tau3_scatter_clear(&scatter_pre);
     ca_ec_tau3_sparse_clear(&sparse_pre);
     free(outputs);
-    printf("curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
-           " endo_lambda=%" PRIu64 " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
-           " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
-           " prep_triples=%" PRIu64 " prep_doubles=%" PRIu64 " prep_tau_steps=%" PRIu64
-           " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64 " prep_seed_ops=%" PRIu64
-           " prep_layer_inversions=%" PRIu64
-           " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_temp_stack_bytes=%zu prep_repeats=%d"
-           " point_entries=%zu point_table_bytes=%zu"
-           " triples=%" PRIu64 " tau_steps=%" PRIu64 " doubles=%" PRIu64 " adds=%" PRIu64
-           " rotations=%" PRIu64 " output_inversions=%" PRIu64 " fallbacks=%" PRIu64
-           " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
-           " static_map_bytes=%zu recipe_bytes=%zu prep_slot_lookups=%" PRIu64
-           " prep_batch_denominators=%" PRIu64 " prep_affine_exceptions=%" PRIu64
-           " prep_affine_doublings=%" PRIu64 " prep_affine_edge_mults_model=%" PRIu64
-           " prep_affine_edge_squarings_model=%" PRIu64 " online_scratch_bytes=%zu"
-           " tail_stream_checks=%" PRIu64 " tail_double_checks=%" PRIu64
-           " tail_pair_checks=%" PRIu64 " tail_pair_preparation_checks=%" PRIu64
-           " tail_complete_checks=%" PRIu64 " tail_complete_preparation_checks=%" PRIu64
-           " periodic_lookups=%" PRIu64 " periodic_accepted=%" PRIu64 " periodic_fallbacks=%" PRIu64
-           " periodic_checks=%" PRIu64 " periodic_word_digest=%016" PRIx64 " mixed_lookups=%" PRIu64
-           " mixed_fallbacks=%" PRIu64 " mixed_checks=%" PRIu64 " mixed_action_digest=%016" PRIx64
-           " tau3_preparation_checks=%" PRIu64 " tau3_checks=%" PRIu64
-           " tau3_action_fallbacks=%" PRIu64 " tau3_action_digest=%016" PRIx64
-           " tau3_atlas_checks=%" PRIu64 " sparse_preparation_checks=%" PRIu64
-           " sparse_checks=%" PRIu64 " sparse_action_fallbacks=%" PRIu64
-           " sparse_action_digest=%016" PRIx64 " sparse_cold_pairs=%" PRIu64
-           " radix27_checks=%" PRIu64 " radix27_action_fallbacks=%" PRIu64
-           " radix27_action_digest=%016" PRIx64 " radix27_dp_states=%" PRIu64
-           " radix27_dp_options=%" PRIu64 " verified=1\n",
-           argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda,
-           input_digest, output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_doubles,
-           prep_tau_steps, prep_adds, prep_rotations, prep_seed_ops, prep_layer_inversions,
-           prep_bytes, prep_temp_heap_bytes, prep_temp_stack_bytes, prep_repeats, point_entries,
-           point_table_bytes, triples, tau_steps, doubles, adds, rotations, output_inversions,
-           fallbacks, second_recodes, steered_blocks, static_map_bytes, recipe_bytes,
-           prep_slot_lookups, wavefront_stats.denominators, wavefront_stats.exceptional_edges,
-           wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
-           wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
-           tail_stream_checks, tail_double_checks, tail_pair_checks, tail_pair_preparation_checks,
-           tail_complete_checks, tail_complete_preparation_checks, periodic_lookups,
-           periodic_accepted, periodic_fallbacks, periodic_checks, periodic_word_digest,
-           mixed_lookups, mixed_fallbacks, mixed_checks, mixed_action_digest,
-           tau3_preparation_checks, tau3_checks, tau3_action_fallbacks, tau3_action_digest,
-           tau3_atlas_checks, sparse_preparation_checks, sparse_checks, sparse_action_fallbacks,
-           sparse_action_digest, sparse_cold_pairs, radix27_checks, radix27_action_fallbacks,
-           radix27_action_digest, radix27_dp_states, radix27_dp_options);
+    printf(
+        "curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
+        " endo_lambda=%" PRIu64 " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
+        " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
+        " prep_triples=%" PRIu64 " prep_doubles=%" PRIu64 " prep_tau_steps=%" PRIu64
+        " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64 " prep_seed_ops=%" PRIu64
+        " prep_layer_inversions=%" PRIu64
+        " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_temp_stack_bytes=%zu prep_repeats=%d"
+        " point_entries=%zu point_table_bytes=%zu"
+        " triples=%" PRIu64 " tau_steps=%" PRIu64 " doubles=%" PRIu64 " adds=%" PRIu64
+        " rotations=%" PRIu64 " output_inversions=%" PRIu64 " fallbacks=%" PRIu64
+        " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
+        " static_map_bytes=%zu recipe_bytes=%zu prep_slot_lookups=%" PRIu64
+        " prep_batch_denominators=%" PRIu64 " prep_affine_exceptions=%" PRIu64
+        " prep_affine_doublings=%" PRIu64 " prep_affine_edge_mults_model=%" PRIu64
+        " prep_affine_edge_squarings_model=%" PRIu64 " online_scratch_bytes=%zu"
+        " tail_stream_checks=%" PRIu64 " tail_double_checks=%" PRIu64 " tail_pair_checks=%" PRIu64
+        " tail_pair_preparation_checks=%" PRIu64 " tail_complete_checks=%" PRIu64
+        " tail_complete_preparation_checks=%" PRIu64 " periodic_lookups=%" PRIu64
+        " periodic_accepted=%" PRIu64 " periodic_fallbacks=%" PRIu64 " periodic_checks=%" PRIu64
+        " periodic_word_digest=%016" PRIx64 " mixed_lookups=%" PRIu64 " mixed_fallbacks=%" PRIu64
+        " mixed_checks=%" PRIu64 " mixed_action_digest=%016" PRIx64
+        " tau3_preparation_checks=%" PRIu64 " tau3_checks=%" PRIu64
+        " tau3_action_fallbacks=%" PRIu64 " tau3_action_digest=%016" PRIx64
+        " tau3_atlas_checks=%" PRIu64 " sparse_preparation_checks=%" PRIu64
+        " sparse_checks=%" PRIu64 " sparse_action_fallbacks=%" PRIu64
+        " sparse_action_digest=%016" PRIx64 " sparse_cold_pairs=%" PRIu64 " radix27_checks=%" PRIu64
+        " radix27_action_fallbacks=%" PRIu64 " radix27_action_digest=%016" PRIx64
+        " radix27_dp_states=%" PRIu64 " radix27_dp_options=%" PRIu64 " scatter_pairs=%" PRIu64
+        " scatter_preparation_checks=%" PRIu64 " verified=1\n",
+        argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda, input_digest,
+        output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_doubles, prep_tau_steps,
+        prep_adds, prep_rotations, prep_seed_ops, prep_layer_inversions, prep_bytes,
+        prep_temp_heap_bytes, prep_temp_stack_bytes, prep_repeats, point_entries, point_table_bytes,
+        triples, tau_steps, doubles, adds, rotations, output_inversions, fallbacks, second_recodes,
+        steered_blocks, static_map_bytes, recipe_bytes, prep_slot_lookups,
+        wavefront_stats.denominators, wavefront_stats.exceptional_edges,
+        wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
+        wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
+        tail_stream_checks, tail_double_checks, tail_pair_checks, tail_pair_preparation_checks,
+        tail_complete_checks, tail_complete_preparation_checks, periodic_lookups, periodic_accepted,
+        periodic_fallbacks, periodic_checks, periodic_word_digest, mixed_lookups, mixed_fallbacks,
+        mixed_checks, mixed_action_digest, tau3_preparation_checks, tau3_checks,
+        tau3_action_fallbacks, tau3_action_digest, tau3_atlas_checks, sparse_preparation_checks,
+        sparse_checks, sparse_action_fallbacks, sparse_action_digest, sparse_cold_pairs,
+        radix27_checks, radix27_action_fallbacks, radix27_action_digest, radix27_dp_states,
+        radix27_dp_options, scatter_pairs, scatter_preparation_checks);
     return 0;
 }

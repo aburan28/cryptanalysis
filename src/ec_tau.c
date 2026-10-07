@@ -27,6 +27,7 @@
 #include "generated/tau3_atlas.h"
 #include "generated/tau3_sparse.h"
 #include "generated/tau3_radix27.h"
+#include "generated/tau3_scatter.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -2789,6 +2790,351 @@ void ca_ec_tau3_fused_clear(ca_tau3_fused_precomp *pre)
     if (!pre) return;
     free(pre->point);
     *pre = (ca_tau3_fused_precomp){0};
+}
+
+static void tau3_scatter_select(const ca_group *g, const ca_tau3_scatter_entry **entry,
+                                size_t *count)
+{
+    *entry = NULL;
+    *count = 0;
+    if (!g) return;
+    if (g->order == UINT64_C(23729779) && ca_ec_tau3_fused_blocks(g) == 4) {
+        *entry = ca_tau3_scatter_small;
+        *count = CA_TAU3_SCATTER_SMALL_COUNT;
+    } else if (g->order == UINT64_C(53624256071278747) && ca_ec_tau3_fused_blocks(g) == 7) {
+        *entry = ca_tau3_scatter_large;
+        *count = CA_TAU3_SCATTER_LARGE_COUNT;
+    }
+}
+
+size_t ca_ec_tau3_scatter_point_entries(const ca_group *g)
+{
+    const ca_tau3_scatter_entry *entry;
+    size_t count;
+    tau3_scatter_select(g, &entry, &count);
+    return ca_ec_tau3_fused_blocks(g) * CA_TAU3_FUSED_ORBITS + count;
+}
+
+size_t ca_ec_tau3_scatter_static_bytes(void)
+{
+    return ca_ec_tau3_fused_static_bytes() + sizeof(ca_tau3_scatter_unit_map) +
+           sizeof(ca_tau3_scatter_small) + sizeof(ca_tau3_scatter_large);
+}
+
+static int tau3_scatter_entry_cmp(ca_tau3_scatter_entry a, ca_tau3_scatter_entry b)
+{
+    if (a.i != b.i) return a.i < b.i ? -1 : 1;
+    if (a.j != b.j) return a.j < b.j ? -1 : 1;
+    if (a.u != b.u) return a.u < b.u ? -1 : 1;
+    return (a.v > b.v) - (a.v < b.v);
+}
+
+static int tau3_scatter_verify_entries(const ca_tau3_scatter_entry *entry, size_t count,
+                                       unsigned max_blocks)
+{
+    for (size_t n = 0; n < count; n++) {
+        ca_tau3_scatter_entry item = entry[n];
+        if (item.i >= item.j || item.j >= max_blocks || item.i / 2 == item.j / 2 || !item.u ||
+            item.u > 54 || !item.v || item.v > 54 ||
+            (n && tau3_scatter_entry_cmp(entry[n - 1], item) >= 0))
+            return 0;
+        for (unsigned code = 0; code < 6; code++) {
+            unsigned u = ca_tau3_scatter_unit_map[code][item.u];
+            unsigned v = ca_tau3_scatter_unit_map[code][item.v];
+            if (u < item.u || (u == item.u && v < item.v)) return 0;
+        }
+    }
+    return 1;
+}
+
+int ca_ec_tau3_scatter_verify_map(void)
+{
+    if (!ca_ec_tau3_fused_verify_map() ||
+        !tau3_scatter_verify_entries(ca_tau3_scatter_small, CA_TAU3_SCATTER_SMALL_COUNT, 8) ||
+        !tau3_scatter_verify_entries(ca_tau3_scatter_large, CA_TAU3_SCATTER_LARGE_COUNT, 14))
+        return 0;
+    for (unsigned code = 0; code < 6; code++)
+        for (unsigned pattern = 0; pattern < 55; pattern++) {
+            unsigned moved = ca_tau3_scatter_unit_map[code][pattern];
+            if (moved >= 55) return 0;
+            tau_vec want = tau3_apply_unit_coeff(tau3_pattern_coeff(pattern), code);
+            tau_vec actual = tau3_pattern_coeff(moved);
+            if (want.x != actual.x || want.y != actual.y) return 0;
+        }
+    return 1;
+}
+
+static int tau3_scatter_single(const ca_group *g, const ca_tau3_fused_precomp *pre, unsigned block,
+                               unsigned pattern, ca_elem *out, uint64_t *rotations)
+{
+    unsigned u = block % 2 ? 0 : pattern;
+    unsigned v = block % 2 ? pattern : 0;
+    size_t index = 55 * u + v;
+    unsigned id = ca_tau3_orbit_id[index], code = ca_tau3_orbit_unit[index];
+    if (!pattern || id >= CA_TAU3_FUSED_ORBITS || code >= 6 || block / 2 >= pre->blocks) return 0;
+    *out = pre->point[(block / 2) * CA_TAU3_FUSED_ORBITS + id];
+    if (out->w[2]) return 1;
+    unsigned power = code % 3;
+    if (power == 1) out->w[0] = fm(g, pre->base.beta, out->w[0]);
+    if (power == 2) out->w[0] = fm(g, pre->base.beta2, out->w[0]);
+    if (code >= 3 && out->w[1]) out->w[1] = g->p - out->w[1];
+    if (rotations) *rotations += power != 0;
+    return 1;
+}
+
+int ca_ec_tau3_scatter_prepare(const ca_group *g, const ca_elem *point,
+                               ca_tau3_scatter_precomp *out, uint64_t *seed_ops, uint64_t *triples,
+                               uint64_t *tau_steps, uint64_t *adds, uint64_t *rotations,
+                               uint64_t *inversions)
+{
+    if (!g || !point || !out) return 0;
+    ca_tau3_scatter_precomp pre = {0};
+    if (!ca_ec_tau3_fused_prepare(g, point, &pre.full, seed_ops, triples, tau_steps, adds,
+                                  rotations, inversions))
+        return 0;
+    tau3_scatter_select(g, &pre.entry, &pre.extra_count);
+    if (!pre.extra_count || pre.full.base.identity) {
+        *out = pre;
+        return 1;
+    }
+    pre.extra = malloc(pre.extra_count * sizeof(*pre.extra));
+    tau_jac *projective = malloc(pre.extra_count * sizeof(*projective));
+    uint64_t *prefixes = malloc(pre.extra_count * sizeof(*prefixes));
+    if (!pre.extra || !projective || !prefixes) {
+        free(prefixes);
+        free(projective);
+        ca_ec_tau3_scatter_clear(&pre);
+        return 0;
+    }
+    uint64_t extra_rotations = 0;
+    for (size_t n = 0; n < pre.extra_count; n++) {
+        ca_tau3_scatter_entry item = pre.entry[n];
+        ca_elem first, second;
+        if (!tau3_scatter_single(g, &pre.full, item.i, item.u, &first, &extra_rotations) ||
+            !tau3_scatter_single(g, &pre.full, item.j, item.v, &second, &extra_rotations)) {
+            free(prefixes);
+            free(projective);
+            ca_ec_tau3_scatter_clear(&pre);
+            return 0;
+        }
+        tau_jac left = first.w[2] ? (tau_jac){0, g->mont.r1, 0}
+                                  : (tau_jac){first.w[0], first.w[1], g->mont.r1};
+        projective[n] = second.w[2] ? left : jac_add_mixed(g, left, &second);
+    }
+    uint64_t extra_inversions = 0;
+    int ok = jac_batch_to_affine_scratch(g, pre.extra, projective, pre.extra_count, prefixes,
+                                         &extra_inversions);
+    free(prefixes);
+    free(projective);
+    if (!ok) {
+        ca_ec_tau3_scatter_clear(&pre);
+        return 0;
+    }
+    if (adds) *adds += pre.extra_count;
+    if (rotations) *rotations += extra_rotations;
+    if (inversions) *inversions += extra_inversions;
+    *out = pre;
+    return 1;
+}
+
+int ca_ec_tau3_scatter_prepare_verify(const ca_tau3_scatter_precomp *pre)
+{
+    if (!pre || !ca_ec_tau3_fused_prepare_verify(&pre->full)) return 0;
+    if (pre->full.base.identity) return pre->extra == NULL;
+    if (pre->extra_count && (!pre->entry || !pre->extra)) return 0;
+    const ca_group *g = pre->full.base.g;
+    for (size_t n = 0; n < pre->extra_count; n++) {
+        ca_tau3_scatter_entry item = pre->entry[n];
+        tau_vec first = tau3_pattern_coeff(item.u);
+        tau_vec second = tau3_pattern_coeff(item.v);
+        for (unsigned i = 0; i < 3 * item.i; i++) first = tau3_mul_tau(first);
+        for (unsigned i = 0; i < 3 * item.j; i++) second = tau3_mul_tau(second);
+        tau_vec total = {first.x + second.x, first.y + second.y};
+        ca_elem expected;
+        ca_group_mul(g, &expected, &pre->full.base_point, tau3_coeff_scalar(g, total), NULL);
+        if (!ca_group_equal(g, &expected, &pre->extra[n])) return 0;
+    }
+    return 1;
+}
+
+static size_t tau3_scatter_find(const ca_tau3_scatter_precomp *pre, ca_tau3_scatter_entry key)
+{
+    size_t low = 0, high = pre->extra_count;
+    while (low < high) {
+        size_t mid = low + (high - low) / 2;
+        int cmp = tau3_scatter_entry_cmp(pre->entry[mid], key);
+        if (cmp < 0)
+            low = mid + 1;
+        else
+            high = mid;
+    }
+    return low < pre->extra_count && !tau3_scatter_entry_cmp(pre->entry[low], key) ? low : SIZE_MAX;
+}
+
+static int tau3_scatter_edge(const ca_tau3_scatter_precomp *pre, unsigned i, unsigned j, unsigned u,
+                             unsigned v, size_t *slot, unsigned *unit)
+{
+    if (i / 2 == j / 2) {
+        *slot = SIZE_MAX;
+        unsigned index = 55 * u + v;
+        *unit = ca_tau3_orbit_unit[index];
+        return ca_tau3_orbit_id[index] < CA_TAU3_FUSED_ORBITS && *unit < 6;
+    }
+    unsigned ru = UINT_MAX, rv = UINT_MAX;
+    for (unsigned code = 0; code < 6; code++) {
+        unsigned cu = ca_tau3_scatter_unit_map[code][u];
+        unsigned cv = ca_tau3_scatter_unit_map[code][v];
+        if (cu < ru || (cu == ru && cv < rv)) ru = cu, rv = cv;
+    }
+    *slot = tau3_scatter_find(pre, (ca_tau3_scatter_entry){i, j, ru, rv});
+    if (*slot == SIZE_MAX) return 0;
+    for (unsigned code = 0; code < 6; code++)
+        if (ca_tau3_scatter_unit_map[code][ru] == u && ca_tau3_scatter_unit_map[code][rv] == v) {
+            *unit = code;
+            return 1;
+        }
+    return 0;
+}
+
+static unsigned tau3_scatter_match(uint32_t mask, const uint32_t edge[20], uint8_t *memo)
+{
+    if (!mask) return 0;
+    if (memo[mask]) return memo[mask] - 1;
+    unsigned i = (unsigned)__builtin_ctz(mask);
+    uint32_t rest = mask & ~(UINT32_C(1) << i);
+    unsigned best = tau3_scatter_match(rest, edge, memo);
+    for (uint32_t choices = edge[i] & rest; choices; choices &= choices - 1) {
+        unsigned j = (unsigned)__builtin_ctz(choices);
+        unsigned candidate = 1 + tau3_scatter_match(rest & ~(UINT32_C(1) << j), edge, memo);
+        if (candidate > best) best = candidate;
+    }
+    memo[mask] = (uint8_t)(best + 1);
+    return best;
+}
+
+static ca_elem tau3_scatter_unit_affine(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+                                        ca_elem point, unsigned code, uint64_t *rotations)
+{
+    if (point.w[2]) return point;
+    unsigned power = code % 3;
+    if (power == 1) point.w[0] = fm(g, pre->full.base.beta, point.w[0]);
+    if (power == 2) point.w[0] = fm(g, pre->full.base.beta2, point.w[0]);
+    if (code >= 3 && point.w[1]) point.w[1] = g->p - point.w[1];
+    if (rotations) *rotations += power != 0;
+    return point;
+}
+
+int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+                                   ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                   uint64_t *fallbacks, uint64_t *matched_pairs,
+                                   size_t *scratch_bytes)
+{
+    if (!g || !pre || !out || pre->full.base.g != g || !pre->full.blocks) return 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (fallbacks) *fallbacks = 0;
+    if (matched_pairs) *matched_pairs = 0;
+    if (scratch_bytes) *scratch_bytes = 0;
+    k %= g->order;
+    if (!k || pre->full.base.identity) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    ca_i128 a, b;
+    const ca_tau4_precomp *base = &pre->full.base;
+    reduce_with_lattice((tau_vec){base->v1x, base->v1y}, (tau_vec){base->v2x, base->v2y}, base->det,
+                        k, &a, &b);
+    uint8_t digits[128];
+    size_t nd = tau3_recode(a, b, digits);
+    if (!nd || (nd + 5) / 6 > pre->full.blocks) goto fallback;
+    unsigned positions[20], patterns[20], count = 0;
+    for (size_t block = 0; block < (nd + 2) / 3; block++) {
+        unsigned pattern = tau3_block_pattern(digits, nd, 3 * block);
+        if (pattern >= 55) return 0;
+        if (!pattern) continue;
+        if (count == 20) goto fallback;
+        positions[count] = (unsigned)block;
+        patterns[count++] = pattern;
+    }
+    uint32_t edge[20] = {0};
+    for (unsigned i = 0; i < count; i++)
+        for (unsigned j = i + 1; j < count; j++) {
+            size_t slot;
+            unsigned unit;
+            if (tau3_scatter_edge(pre, positions[i], positions[j], patterns[i], patterns[j], &slot,
+                                  &unit)) {
+                edge[i] |= UINT32_C(1) << j;
+                edge[j] |= UINT32_C(1) << i;
+            }
+        }
+    size_t memo_count = (size_t)1 << count;
+    uint8_t *memo = calloc(memo_count, 1);
+    if (!memo) goto fallback;
+    if (scratch_bytes) *scratch_bytes = memo_count;
+    uint32_t mask = (UINT32_C(1) << count) - 1;
+    tau3_scatter_match(mask, edge, memo);
+    tau_jac acc = {0, g->mont.r1, 0};
+    uint64_t na = 0, nr = 0, np = 0;
+    while (mask) {
+        unsigned i = (unsigned)__builtin_ctz(mask);
+        uint32_t rest = mask & ~(UINT32_C(1) << i);
+        unsigned best = tau3_scatter_match(mask, edge, memo);
+        unsigned partner = 20;
+        for (uint32_t choices = edge[i] & rest; choices; choices &= choices - 1) {
+            unsigned j = (unsigned)__builtin_ctz(choices);
+            if (1 + tau3_scatter_match(rest & ~(UINT32_C(1) << j), edge, memo) == best) {
+                partner = j;
+                break;
+            }
+        }
+        ca_elem point;
+        if (partner < count) {
+            size_t slot;
+            unsigned code;
+            if (!tau3_scatter_edge(pre, positions[i], positions[partner], patterns[i],
+                                   patterns[partner], &slot, &code)) {
+                free(memo);
+                return 0;
+            }
+            if (slot == SIZE_MAX) {
+                unsigned id = ca_tau3_orbit_id[55 * patterns[i] + patterns[partner]];
+                point = pre->full.point[(positions[i] / 2) * CA_TAU3_FUSED_ORBITS + id];
+            } else {
+                point = pre->extra[slot];
+            }
+            point = tau3_scatter_unit_affine(g, pre, point, code, &nr);
+            rest &= ~(UINT32_C(1) << partner);
+            np++;
+        } else {
+            if (!tau3_scatter_single(g, &pre->full, positions[i], patterns[i], &point, &nr)) {
+                free(memo);
+                return 0;
+            }
+        }
+        if (!point.w[2]) {
+            acc = jac_add_mixed(g, acc, &point);
+            na++;
+        }
+        mask = rest;
+    }
+    free(memo);
+    jac_to_affine(g, out, acc);
+    if (adds) *adds = na;
+    if (rotations) *rotations = nr;
+    if (matched_pairs) *matched_pairs = np;
+    return 1;
+fallback:
+    if (fallbacks) *fallbacks = 1;
+    ca_group_mul(g, out, &pre->full.base_point, k, NULL);
+    return 1;
+}
+
+void ca_ec_tau3_scatter_clear(ca_tau3_scatter_precomp *pre)
+{
+    if (!pre) return;
+    free(pre->extra);
+    ca_ec_tau3_fused_clear(&pre->full);
+    *pre = (ca_tau3_scatter_precomp){0};
 }
 
 static void tau3_sparse_select(const ca_group *g, size_t *blocks, size_t *entries,
