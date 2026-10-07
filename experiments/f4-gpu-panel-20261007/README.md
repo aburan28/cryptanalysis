@@ -22,6 +22,10 @@ Two changes were kept:
 
 Every number is a stage diagnostic of one oracle matrix, not an ECDLP cost.
 
+The commits named here are on branch `cursor/f4-gpu-parallel-panel-f26c`.
+#474 squash-merged it at `459f3c6e`, with the lazy search alone; the eager
+and lazy searches (`f5efbb8d` to `f248f913`) followed in a second PR.
+
 ## Result: device time against #119 (ms, median of 3)
 
 `pod_ab.sh` on one pod per device, old (#119) and new alternated:
