@@ -388,6 +388,22 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK_EQ_U64(joint_adds, 85 * joint_pre.positions);
     CHECK_EQ_U64(joint_rotations, 8 * joint_pre.positions);
     CHECK_EQ_U64(joint_inversions, 1);
+    CHECK(ca_ec_joint_window4_hot_verify_map());
+    ca_joint_window4_precomp hot_joint_pre = {0};
+    int hot_supported =
+        (g->p == UINT64_C(4294967377) && g->b == 15 &&
+         g->order == UINT64_C(23729779) && g->endo_lambda == UINT64_C(16027563)) ||
+        (g->p == UINT64_C(2305843009213693951) && g->b == 7 &&
+         g->order == UINT64_C(53624256071278747) &&
+         g->endo_lambda == UINT64_C(1212946466324730));
+    if (hot_supported) {
+        CHECK(ca_ec_joint_window4_hot_prepare(g, point, &hot_joint_pre, NULL, NULL, NULL,
+                                              NULL));
+        CHECK(ca_ec_joint_window4_prepare_verify(&hot_joint_pre));
+    } else {
+        CHECK(!ca_ec_joint_window4_hot_prepare(g, point, &hot_joint_pre, NULL, NULL, NULL,
+                                               NULL));
+    }
     ca_tau4_precomp pre;
     CHECK(ca_ec_tau4_prepare(g, point, &pre, NULL));
     ca_tau_pair_fused_precomp pair_pre;
@@ -411,6 +427,13 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
             ca_ec_joint_window4_mul_profile(g, &joint_pre, &got, k, NULL, NULL, &joint_fallbacks));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK_EQ_U64(joint_fallbacks, 0);
+        if (hot_supported) {
+            uint64_t hot_joint_fallbacks = UINT64_MAX;
+            CHECK(ca_ec_joint_window4_mul_profile(g, &hot_joint_pre, &got, k, NULL, NULL,
+                                                  &hot_joint_fallbacks));
+            CHECK(ca_group_equal(g, &got, &expected));
+            CHECK_EQ_U64(hot_joint_fallbacks, 0);
+        }
         CHECK(ca_ec_tau3_fused_mul_profile(g, &tau3_pre, &got, k, NULL, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_tau3_fused_recode_verify_scalar(&tau3_pre, k));
@@ -496,6 +519,7 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK_EQ_U64(joint_fallbacks, 1);
     joint_pre.positions = saved_joint_positions;
     ca_ec_joint_window4_clear(&joint_pre);
+    ca_ec_joint_window4_clear(&hot_joint_pre);
     size_t sparse_saved_blocks = sparse_pre.blocks;
     sparse_pre.blocks = 1;
     uint64_t sparse_fallback = 0;
@@ -606,6 +630,14 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_joint_window4_mul_profile(g, &joint_pre, &got, 17, NULL, NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
     ca_ec_joint_window4_clear(&joint_pre);
+    if (hot_supported) {
+        CHECK(ca_ec_joint_window4_hot_prepare(g, &identity, &hot_joint_pre, NULL, NULL, NULL,
+                                              NULL));
+        CHECK(ca_ec_joint_window4_prepare_verify(&hot_joint_pre));
+        CHECK(ca_ec_joint_window4_mul_profile(g, &hot_joint_pre, &got, 17, NULL, NULL, NULL));
+        CHECK(ca_group_is_identity(g, &got));
+    }
+    ca_ec_joint_window4_clear(&hot_joint_pre);
     uint64_t setup_ops = UINT64_MAX;
     CHECK(ca_ec_tau4_prepare(g, &identity, &pre, &setup_ops));
     CHECK_EQ_U64(setup_ops, 0);
