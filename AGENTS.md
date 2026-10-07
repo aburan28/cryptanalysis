@@ -1,5 +1,18 @@
 # Agent rules for cryptanalysis experiments
 
+## Research searches must leave visual reports
+
+For every substantive search for new isogenies, curves, scalar rules,
+endomorphisms, or related ECDLP mechanisms, follow
+[the research-visuals skill](.agents/skills/research-visuals/SKILL.md).
+Deliver a source-linked report, an explanatory diagram, and a PDF
+containing the report and visual. Include negative and inconclusive findings.
+Update affected canonical graph sources and rendered figures in the same
+change as a verified finding or correction. When there is no graphable change,
+record which graphs were checked and why they remain current. Distinguish
+proposals and extrapolations from proved or measured results; keep the
+candidate, curve-identity, measurement, and Sage rules below in force.
+
 ## Index-calculus candidate names and measurements
 
 Use this convention for new elliptic-curve index-calculus (IC) candidate
@@ -116,7 +129,10 @@ in the manifest; `PDP3eval` for Boolean evaluation with Buchberger-Moeller
 basis construction and an independently checked exact Boolean basis
 certificate; `PDP2eval` for the corresponding two-summand evaluation method,
 and `PDP2cond` for two-summand conditional linear solving with independent
-branch-count and exact Boolean basis certification;
+branch-count and exact Boolean basis certification; `PDP2ht` for the
+two-summand linearized (half-trace) oracle over an arbitrary F_2-subspace:
+the linear system in `x1 + x2` from projecting onto `F / V^(2)`, with the
+residual affine space enumerated (Courtois 2016; `linearized-half-decomposition`);
 `RCwalk`, `RCsample`, `RCdirect`, `RClp` for single-large-prime collection,
 and `RCguided` for pivot-guided relation collection; `RCstream` for verified
 relations inserted in worker-completion order until target-span recovery,
@@ -126,7 +142,9 @@ inserting rank-increasing rows until the factor-base log system is solved;
 `LAbw`, `LAwied`, `LAgauss`, `LAgraph` for exact one/two-term gain-graph
 solving, for **final sparse relation-matrix** solving;
 `TDdirect`, `TDpdp`, `TDdescent`, `TDlearn` for an ordered descent that adds
-verified differences to a shared logarithm database, for target handling;
+verified differences to a shared logarithm database, for target handling
+(`TDpdp` records its rerandomization in the manifest: uniform `Q + [a]G`, or
+the additive walk `Q + i[a0]G`);
 `ISO0` for no isogeny
 transport and `ISO1` for a specified route. A solver's internal Macaulay
 matrix reduction belongs under `PDP`, including its RREF/M4RI/GPU kernel. It
@@ -270,9 +288,11 @@ working tree and copy the results back into the checkout:
 - `cloud/fleet.py run rp-cpu-1|rp-gpu-1 [--out PATH | --changed] -- CMD`
   runs on the Runpod pods; `cloud/fleet.py status` and `up NAME` show and
   start them.
+- For whole agents on bigger machines, `cloud/modal_worker.py up NAME [--gpu
+  TYPE]` starts a Cursor worker on Modal, and `status` shows it.
 
-If `FLEET_WORKER_NAME` is set, you are already on a fleet pod: run locally,
-up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
+If `FLEET_WORKER_NAME` is set, you are already on a fleet machine (a Runpod
+pod or a Modal worker): run locally, up to `$FLEET_CPUS` wide. Stop or kill whatever you start, never write
 credentials into the tree, and copy the hardware from each shard's
 `status.json` into the run record.
 
