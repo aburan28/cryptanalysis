@@ -42,3 +42,9 @@ reconstructs its point set, and matches Q1481's archived 4,060 columns,
 N53's **exact cofactor 428**; N131's cofactor is 4. An initial unarchived
 control draft used 4 on N53 and failed its key comparison, prompting this
 correction. The N131 enumerator and frozen protocol already use 4.
+
+A supplementary [high-span N131 preflight](high_span_preflight.json) checks
+98 deterministic masks with spans 14 through 27 against direct group-law
+projection; 48 have rational lifts and all 98 checks pass. This covers mask
+shapes beyond the low-span cases in the original frozen preflight. It is a
+sampled correctness control, not an estimate of the full base size.
