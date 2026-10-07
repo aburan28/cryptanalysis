@@ -29,7 +29,11 @@ The two steered arms also match preparation counts, mixed additions,
 batch and restart inversions, recoding attempts, pair scores, and
 scalar output. The new arm substitutes one field square for one field
 multiplication on each of its 156 nonidentity τ steps, with modular
-additions and halving. This is a source-level operation model.
+additions and halving. This is a source-level operation model. In the
+current backend, `ca_mont_sqr` and `ca_mont_mul` both use the same
+Montgomery reduction of a 128-bit product. There is no specialized
+square kernel, and the extra additions and modular half make this
+substitution an uncertain performance tradeoff.
 
 Release `online_ms` in frozen order was `0.552, 0.567, 0.502, 0.517,
 0.505, 0.557`. UBSan gave `4.705, 4.655, 4.547, 4.292, 4.645, 4.805`.
