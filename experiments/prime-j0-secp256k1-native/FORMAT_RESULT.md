@@ -42,3 +42,9 @@ format choice. It would not establish a win against the fastest
 available secp256k1 implementation, secret-scalar safety, or academic
 novelty. `cpu_speedup_claim` remains `null` until a qualifying receipt
 exists.
+
+The [seed-chain bound](SEED_CHAIN_BOUND.md) proves that the existing
+nine-seed preparation has the minimum 72 `M+S` point-operation count
+within its one-result double/τ/add graph, before two unit rotations.
+Further preparation savings require a different point formula or digit
+alphabet; this proof does not limit either.
