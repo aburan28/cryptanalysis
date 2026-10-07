@@ -36,3 +36,15 @@ inversion are not in the source count. Do not claim a CPU speedup
 without a paired full-operation isolated-host receipt. The prior-art
 record must note that finite transducers for τ-adic NAFs are known;
 academic novelty is unproved.
+
+Freeze the native portfolio mode before release replay. It must compute
+the baseline short representative once, derive both alternate streams
+through small carry arithmetic, score all three streams, prepare only
+the winning seed table, and compare the final point with Sage. Its
+correctness receipt checks every translated digit stream against a
+fresh direct recoding, every selected prepared seed against Sage, each
+reported count against the Python result, and all scalar outputs on
+original, edge, earlier held-out, and new held-out panels. The isolated
+benchmark command must time reduction, baseline recoding, both carry
+translations, selection, preparation, evaluation, and final inversion
+inside the same one-use interval as the original reference.

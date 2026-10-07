@@ -460,6 +460,138 @@ fn recode_linked(a: BigInt, b: BigInt) -> Vec<Option<Digit>> {
     recode_with_table(a, b, &LINKED_DIGIT_TABLE)
 }
 
+type ResidueStep = (usize, usize, Option<Digit>);
+
+struct PortfolioPlan {
+    streams: [Vec<Option<Digit>>; 3],
+    costs: [usize; 3],
+    choice: usize,
+    active_steps: usize,
+    peak_carry_norm: i64,
+}
+
+fn baseline_residue_scan(mut a: BigInt, mut b: BigInt) -> Vec<ResidueStep> {
+    let mut states = Vec::new();
+    while !a.is_zero() || !b.is_zero() {
+        assert!(states.len() < 256, "tau expansion did not terminate");
+        let ra = signed_residue(&a, 9);
+        let rb = signed_residue(&b, 9);
+        let digit = if ra % 3 != 0 {
+            let selected = DIGIT_TABLE[ra][rb].expect("covered width-four residue");
+            a -= selected.a;
+            b -= selected.b;
+            Some(selected)
+        } else {
+            None
+        };
+        debug_assert_eq!(signed_residue(&a, 3), 0);
+        states.push((ra, rb, digit));
+        (a, b) = (&a + &b, -a / 3);
+    }
+    states
+}
+
+fn small_carry_norm((a, b): (i64, i64)) -> i64 {
+    a * a + 3 * a * b + 3 * b * b
+}
+
+fn translate_residue_stream(
+    states: &[ResidueStep], table: &[[Option<Digit>; 9]; 9],
+    changed: &[bool; 9],
+) -> (Vec<Option<Digit>>, usize, i64) {
+    let mut digits = Vec::with_capacity(states.len() + 8);
+    let mut carry = (0i64, 0i64);
+    let mut active_steps = 0usize;
+    let mut peak_norm = 0i64;
+    for &(ra, rb, old) in states {
+        if carry == (0, 0) && old.is_none_or(|digit| !changed[digit.seed]) {
+            digits.push(old);
+            continue;
+        }
+        active_steps += 1;
+        let row = (ra as i64 + carry.0).rem_euclid(9) as usize;
+        let col = (rb as i64 + carry.1).rem_euclid(9) as usize;
+        let new = if row % 3 != 0 { table[row][col] } else { None };
+        digits.push(new);
+        let (da, db) = old.map_or((0, 0), |digit| (digit.a, digit.b));
+        let (ea, eb) = new.map_or((0, 0), |digit| (digit.a, digit.b));
+        let delta_a = da + carry.0 - ea;
+        let delta_b = db + carry.1 - eb;
+        assert_eq!(delta_a % 3, 0);
+        carry = (delta_a + delta_b, -delta_a / 3);
+        peak_norm = peak_norm.max(small_carry_norm(carry));
+        assert!(peak_norm <= 896);
+    }
+    let mut tail = 0;
+    while carry != (0, 0) {
+        assert!(tail < 64, "bounded carry tail did not terminate");
+        let row = carry.0.rem_euclid(9) as usize;
+        let col = carry.1.rem_euclid(9) as usize;
+        let new = if row % 3 != 0 { table[row][col] } else { None };
+        digits.push(new);
+        let (ea, eb) = new.map_or((0, 0), |digit| (digit.a, digit.b));
+        let x = carry.0 - ea;
+        let y = carry.1 - eb;
+        assert_eq!(x % 3, 0);
+        carry = (x + y, -x / 3);
+        peak_norm = peak_norm.max(small_carry_norm(carry));
+        assert!(peak_norm <= 896);
+        tail += 1;
+    }
+    while digits.last().is_some_and(Option::is_none) { digits.pop(); }
+    (digits, active_steps, peak_norm)
+}
+
+fn source_cost(digits: &[Option<Digit>], preparation: usize) -> usize {
+    if digits.is_empty() { return preparation; }
+    let pairs = planned_pairs(digits);
+    let steps = digits.len() - 1;
+    assert!(steps >= 2 * pairs);
+    let mut nonzero = Vec::new();
+    for digit in digits.iter().flatten() { nonzero.push(digit.seed); }
+    nonzero.pop(); // Highest digit initializes the accumulator.
+    let mixed = nonzero.iter().filter(|&&seed| seed == 0).count();
+    let general = nonzero.len() - mixed;
+    let mut used = [false; 9];
+    for &seed in &nonzero { if seed > 0 { used[seed] = true; } }
+    let cache = used.into_iter().filter(|used| *used).count();
+    preparation + 10 * pairs + 6 * (steps - 2 * pairs)
+        + 11 * mixed + 14 * general + 2 * cache
+}
+
+fn recode_portfolio(a: BigInt, b: BigInt) -> PortfolioPlan {
+    let states = baseline_residue_scan(a, b);
+    let original = states.iter().map(|state| state.2).collect::<Vec<_>>();
+    let mut two_changed = [false; 9];
+    two_changed[5] = true;
+    two_changed[6] = true;
+    let mut three_changed = two_changed;
+    three_changed[7] = true;
+    let (two, active_two, norm_two) =
+        translate_residue_stream(&states, &ALTERNATE_DIGIT_TABLE, &two_changed);
+    let (three, active_three, norm_three) =
+        translate_residue_stream(&states, &LINKED_DIGIT_TABLE, &three_changed);
+    let streams = [original, two, three];
+    let costs = [source_cost(&streams[0], 83), source_cost(&streams[1], 79),
+                 source_cost(&streams[2], 75)];
+    let mut choice = 0;
+    for index in 1..3 {
+        if costs[index] < costs[choice] { choice = index; }
+    }
+    PortfolioPlan { streams, costs, choice,
+                    active_steps: active_two + active_three,
+                    peak_carry_norm: norm_two.max(norm_three) }
+}
+
+fn prepare_choice(base: J, beta: F, choice: usize) -> [J; 9] {
+    match choice {
+        0 => prepare(base, beta),
+        1 => prepare_alternate(base, beta),
+        2 => prepare_linked(base, beta),
+        _ => panic!("invalid atlas choice"),
+    }
+}
+
 fn digits_from_json(case: &Value) -> Vec<Option<Digit>> {
     case["digits"].as_array().expect("digits array").iter().map(|raw| {
         if raw.is_null() { return None; }
@@ -577,7 +709,8 @@ fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
 fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
                         timed: bool) {
     assert!(mode == "cached_projective" || mode == "all_affine" ||
-            mode == "joint_atlas" || mode == "linked_atlas");
+            mode == "joint_atlas" || mode == "linked_atlas" ||
+            mode == "portfolio");
     let raw = fs::read(fixture_path).expect("read benchmark fixture");
     let fixture: Value = serde_json::from_slice(&raw).expect("parse benchmark fixture");
     assert_eq!(fixture["schema"].as_u64(), Some(1));
@@ -594,7 +727,11 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     };
     let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
     LazyLock::force(&LATTICE);
-    if mode == "linked_atlas" {
+    if mode == "portfolio" {
+        LazyLock::force(&DIGIT_TABLE);
+        LazyLock::force(&ALTERNATE_DIGIT_TABLE);
+        LazyLock::force(&LINKED_DIGIT_TABLE);
+    } else if mode == "linked_atlas" {
         LazyLock::force(&LINKED_DIGIT_TABLE);
     } else if mode == "joint_atlas" {
         LazyLock::force(&ALTERNATE_DIGIT_TABLE);
@@ -605,20 +742,18 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     let scalar = big_from_hex(scalar_hex);
     let base = J::affine(fe_from_hex(base_x), fe_from_hex(base_y));
     let (a, b) = short_representative(&scalar);
-    let digits = if mode == "linked_atlas" {
-        recode_linked(a.clone(), b.clone())
+    let (digits, atlas_choice) = if mode == "portfolio" {
+        let plan = recode_portfolio(a.clone(), b.clone());
+        let choice = plan.choice;
+        (plan.streams.into_iter().nth(choice).expect("selected stream"), choice)
+    } else if mode == "linked_atlas" {
+        (recode_linked(a.clone(), b.clone()), 2)
     } else if mode == "joint_atlas" {
-        recode_alternate(a.clone(), b.clone())
+        (recode_alternate(a.clone(), b.clone()), 1)
     } else {
-        recode(a.clone(), b.clone())
+        (recode(a.clone(), b.clone()), 0)
     };
-    let prepared = if mode == "linked_atlas" {
-        prepare_linked(base, beta)
-    } else if mode == "joint_atlas" {
-        prepare_alternate(base, beta)
-    } else {
-        prepare(base, beta)
-    };
+    let prepared = prepare_choice(base, beta, atlas_choice);
     let seeds = if mode == "all_affine" { normalize_all(&prepared) } else { prepared };
     let (point, counts) = evaluate_mode(&digits, &seeds, beta, mode == "all_affine");
     let actual_point = match point.to_affine() {
@@ -630,7 +765,7 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     if !timed {
         assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
         assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
-        if mode != "joint_atlas" && mode != "linked_atlas" {
+        if mode != "joint_atlas" && mode != "linked_atlas" && mode != "portfolio" {
             assert_eq!(digits, digits_from_json(case));
             let expected_seeds = case["seed_affine"].as_array().expect("seeds");
             for (seed, expected) in seeds.iter().zip(expected_seeds) {
@@ -738,8 +873,114 @@ fn check_atlas_fixture(fixture_path: &str, seed_path: &str, linked: bool) {
              exceptional_adds);
 }
 
+fn check_portfolio_fixture(fixture_path: &str, seed_path: &str,
+                           score_path: &str) {
+    let fixture: Value = serde_json::from_slice(&fs::read(fixture_path)
+        .expect("read portfolio scalar fixture")).expect("parse scalar fixture");
+    let seed_fixture: Value = serde_json::from_slice(&fs::read(seed_path)
+        .expect("read portfolio Sage seed fixture")).expect("parse seed fixture");
+    let scores: Value = serde_json::from_slice(&fs::read(score_path)
+        .expect("read portfolio score fixture")).expect("parse score fixture");
+    let name = PathBuf::from(fixture_path).file_name().expect("fixture name")
+        .to_str().expect("UTF-8 fixture name").to_owned();
+    let cases = fixture["cases"].as_array().expect("scalar cases");
+    let seed_cases = seed_fixture["fixtures"][&name]["cases"].as_array()
+        .expect("Sage seeds for fixture");
+    assert_eq!(cases.len(), seed_cases.len());
+    assert_eq!(fixture["beta_hex"], seed_fixture["beta_hex"]);
+    let score_panel = scores["panels"].as_array().expect("score panels")
+        .iter().find(|panel| panel["fixture"] == name);
+    if let Some(panel) = score_panel {
+        assert_eq!(panel["cases"].as_u64(), Some(cases.len() as u64));
+    }
+    let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
+    LazyLock::force(&LATTICE);
+    LazyLock::force(&DIGIT_TABLE);
+    LazyLock::force(&ALTERNATE_DIGIT_TABLE);
+    LazyLock::force(&LINKED_DIGIT_TABLE);
+    let mut choices = [0usize; 3];
+    let mut total_cost = 0usize;
+    let mut active_steps = 0usize;
+    let mut peak_carry_norm = 0i64;
+    let mut exceptional_adds = 0usize;
+    for (index, (case, seed_case)) in cases.iter().zip(seed_cases).enumerate() {
+        assert_eq!(case["base_x_hex"], seed_case["base_x_hex"]);
+        assert_eq!(case["scalar_hex"], seed_case["scalar_hex"]);
+        let scalar = big_from_hex(case["scalar_hex"].as_str().expect("scalar"));
+        let (a, b) = short_representative(&scalar);
+        assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
+        assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
+        let plan = recode_portfolio(a.clone(), b.clone());
+        assert_eq!(plan.streams[0], recode(a.clone(), b.clone()));
+        assert_eq!(plan.streams[1], recode_alternate(a.clone(), b.clone()));
+        assert_eq!(plan.streams[2], recode_linked(a, b));
+        if let Some(panel) = score_panel {
+            let expected = &panel["rows"][index];
+            assert_eq!(expected["index"].as_u64(), Some(index as u64));
+            for choice in 0..3 {
+                assert_eq!(expected["costs"][choice].as_u64(),
+                           Some(plan.costs[choice] as u64));
+            }
+            let chosen_name = ["original", "two_orbit", "three_orbit"][plan.choice];
+            assert_eq!(expected["selected"].as_str(), Some(chosen_name));
+        }
+        choices[plan.choice] += 1;
+        total_cost += plan.costs[plan.choice];
+        active_steps += plan.active_steps;
+        peak_carry_norm = peak_carry_norm.max(plan.peak_carry_norm);
+        let base = J::affine(
+            fe_from_hex(case["base_x_hex"].as_str().expect("base x")),
+            fe_from_hex(case["base_y_hex"].as_str().expect("base y")));
+        let seeds = prepare_choice(base, beta, plan.choice);
+        let old_seeds = case["seed_affine"].as_array().expect("old Sage seeds");
+        for (slot, seed) in seeds.iter().enumerate() {
+            let expected = if plan.choice > 0 && slot == 5 {
+                &seed_case["seed5"]
+            } else if plan.choice > 0 && slot == 6 {
+                &seed_case["seed6"]
+            } else if plan.choice == 2 && slot == 7 {
+                &seed_case["seed7"]
+            } else {
+                &old_seeds[slot]
+            };
+            let (x, y) = seed.to_affine().expect("nonidentity seed");
+            assert_eq!(fe_hex(x), expected[0].as_str().expect("seed x"));
+            assert_eq!(fe_hex(y), expected[1].as_str().expect("seed y"));
+        }
+        let digits = &plan.streams[plan.choice];
+        let (point, counts) = evaluate(digits, &seeds, beta);
+        exceptional_adds += counts.exceptional_cached_adds;
+        if case["expected_identity"].as_bool().unwrap_or(false) {
+            assert!(point.is_identity());
+        } else {
+            let (x, y) = point.to_affine().expect("nonidentity output");
+            assert_eq!(fe_hex(x), case["expected_x_hex"].as_str().expect("output x"));
+            assert_eq!(fe_hex(y), case["expected_y_hex"].as_str().expect("output y"));
+        }
+        if !digits.is_empty() {
+            let prep = [83usize, 79, 75][plan.choice];
+            let solo = counts.tau_steps - 2 * counts.tau_pairs;
+            let charged = prep + 10 * counts.tau_pairs + 6 * solo
+                + 11 * counts.mixed_adds + 14 * counts.general_adds
+                + 2 * counts.cache_entries;
+            assert_eq!(charged, plan.costs[plan.choice]);
+        }
+    }
+    if let Some(panel) = score_panel {
+        assert_eq!(panel["selected_total"].as_u64(), Some(total_cost as u64));
+    }
+    println!("{{\"verified\":true,\"fixture\":\"{name}\",\"cases\":{},\"digit_stream_checks\":{},\"seed_checks\":{},\"output_checks\":{},\"choices\":[{},{},{}],\"selected_M_plus_S\":{},\"active_carry_steps\":{},\"peak_carry_norm\":{},\"exceptional_cached_adds\":{},\"cpu_speedup_claim\":null}}",
+             cases.len(), 3 * cases.len(), 9 * cases.len(), cases.len(),
+             choices[0], choices[1], choices[2], total_cost, active_steps,
+             peak_carry_norm, exceptional_adds);
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 5 && args[1] == "--check-portfolio-fixture" {
+        check_portfolio_fixture(&args[2], &args[3], &args[4]);
+        return;
+    }
     if args.len() == 4 && (args[1] == "--check-alternate-fixture" ||
                            args[1] == "--check-linked-fixture") {
         check_atlas_fixture(&args[2], &args[3],
