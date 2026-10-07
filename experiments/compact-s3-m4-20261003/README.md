@@ -2291,6 +2291,20 @@ only one exact join each. These are censored stage diagnostics; successful
 compact decomposition cost, N83 natural yield, and a complete N131 `2^x`
 remain unknown.
 
+### Q1476 trace-syndrome compact-S3 comparison
+
+[Q1476](q1476_trace_syndrome/README.md) adds the rational-point trace
+homomorphism as three exact parity constraints to Q1475's ordered CNFs,
+with the target-preimage selector gating the final equation. Independent
+Frobenius-trace and group-law checks pass at N53 and N83; both pinned SAT
+models verify. All four free-leaf cases, including the N53 and N83
+known-representable controls and both ordinary queries, again reach the
+60-second cap without a relation. On the N83 matched inputs the exact
+pair-root and target-join counts remain unchanged at one join each.
+The new one-bit target constraint does not measure successful decomposition
+work, N83 natural yield, or a complete N131 `2^x`; the challenge gate stays
+closed.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
