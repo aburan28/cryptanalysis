@@ -23,6 +23,8 @@ P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 
 def check_fixture(path, tables, options, panel):
     raw = path.read_bytes()
+    assert panel["fixture"] == path.name
+    assert panel["fixture_sha256"] == hashlib.sha256(raw).hexdigest()
     fixture = json.loads(raw)
     curve = EllipticCurve(GF(P), [0, 7])
     beta = curve.base_field()(int(fixture["beta_hex"], 16))
@@ -94,6 +96,9 @@ def main():
     tables = [digit_table(seeds) for seeds in SEEDS]
     options = make_options(tables, True)
     scores = json.loads((HERE / "coset-result.json").read_bytes())
+    assert scores["source_sha256"] == hashlib.sha256(
+        (HERE / "coset_selector.py").read_bytes()).hexdigest()
+    assert len(scores["panels"]) == len(FIXTURES)
     panels = [check_fixture(path, tables, options, panel)
               for path, panel in zip(FIXTURES, scores["panels"])]
     assert [panel["cases"] for panel in panels] == [64, 256]
