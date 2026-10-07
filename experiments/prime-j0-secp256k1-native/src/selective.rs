@@ -104,7 +104,7 @@ fn next_carry(old: Option<Digit>, carry: (i8, i8), digit: Option<Digit>) -> (i8,
      i8::try_from(successor.1).expect("carry y fits i8"))
 }
 
-pub(super) fn recode(a: BigInt, b: BigInt) -> Plan {
+pub(crate) fn recode(a: BigInt, b: BigInt) -> Plan {
     let baseline = baseline_residue_scan(a, b);
     let mut links = vec![Link {
         parent: 0,
@@ -219,7 +219,7 @@ pub(super) fn recode(a: BigInt, b: BigInt) -> Plan {
     }
 }
 
-pub(super) fn prepare(base: J, beta: F, built: u16) -> [J; 12] {
+pub(crate) fn prepare(base: J, beta: F, built: u16) -> [J; 12] {
     assert_eq!(base.z, F::ONE);
     let mut point = [J::identity(); 12];
     point[0] = base;
