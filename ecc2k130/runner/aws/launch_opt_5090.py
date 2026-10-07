@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
-"""DEPRECATED for fleet collection: ~5 B it/s sigma-fused 5090 kernel.
+"""Launch one Runpod RTX 5090 on the prebuilt sigma-fused CUDA 13.3 client.
 
-Use ``launch_goal22_pro6000.py`` instead (~22 B it/s on RTX PRO 6000).
-This script refuses to run unless ``ECC_ALLOW_SLOW_OPT=1`` is set.
+Prefer ``launch_goal22_pro6000.py`` (~22 B it/s on RTX PRO 6000) for fleet
+collection. This path is ~5 B it/s; the launcher sets ``ECC_ALLOW_SLOW_OPT=1``
+itself so intentional opt runs are not blocked.
 
 Always requires a CUDA 13 host (Runpod filter ``allowedCudaVersions=["13.0"]``,
 which is the API's CUDA-13 bucket and means driver 580+). The opt binary is
 built with nvcc 13.3.73; hosts on driver 570 fail the boot gate and are
 deleted.
+
+Usage:
+  RUNPOD_API_KEY=… AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… \\
+    python3 ecc2k130/runner/aws/launch_opt_5090.py [--count 1] [--seconds-wait 300]
+
+Credentials may also be cloned from an existing campaign pod's env when
+``--from-pod ID`` is set (values are never printed).
 """
 from __future__ import annotations
 
