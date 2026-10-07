@@ -429,7 +429,7 @@ def online_ic(st: Setup, g: GainGraph, Q: tuple, a0: int, variant: str, max_atte
             c_pdp += tc - tb
             attempts += 1
             if pairs:
-                hits = np.array([[i, R[0], R[1], *pairs[0][0], *pairs[0][1]]], dtype=object)
+                hits = np.array([[i, R[0], R[1], *P1, *P2] for P1, P2 in pairs], dtype=object)
                 scalar, index = _finish(st, g, Q, hits, a0)
                 c_chk += ns() - tc
                 if scalar is not None:
