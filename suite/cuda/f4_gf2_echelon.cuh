@@ -74,7 +74,6 @@ typedef struct {
     f4_u64 best[3];
     f4_u64 word[64]; /* pivot k's word */
     f4_u64 hist[64]; /* its history, over earlier pivots */
-    f4_u64 acc[64];  /* and the XOR of their expanded histories */
     f4_u32 col[64];  /* its column */
     f4_u32 scan[2][F4_MAX_THREADS];
     f4_u64 pw[F4_MAX_THREADS];
@@ -122,9 +121,8 @@ F4_FN void f4e_catch_up(const F4ePanelShared *sh, f4_u32 from, f4_u32 k, f4_u64 
  * the first chunk, so a round costs a chunk, not every candidate; one pass
  * at the end brings the rest up to date.  Only a panel of more than
  * F4E_EAGER_CHUNKS chunks is scanned so, rebuilding its candidates in row
- * order from prow; a smaller one is a single chunk.  Each pivot's history
- * is expanded to the original pivot rows it combines as the pivot is
- * found, a thread per earlier pivot. */
+ * order from prow; a smaller one is a single chunk.  Pivot histories are
+ * then expanded to the original pivot rows they combine. */
 F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4_u32 rows,
                            f4_u32 *cand_global, f4_u64 *pw_global, f4_u64 *coeff_global,
                            f4_u32 *is_piv_global, const f4_u32 *count, F4ePivots *piv)
@@ -143,7 +141,6 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
         sh->best[0] = ~0ull;
         sh->best[1] = ~0ull;
         sh->best[2] = ~0ull;
-        for (f4_u32 j = 0; j < 64u; ++j) sh->acc[j] = 0ull;
     }
     if (ordered) {
         /* Thread t compacts rows [t * span, (t + 1) * span): count, scan,
@@ -234,16 +231,11 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
         }
         if (p == F4_NONE) continue;
         /* Every thread records the pivot, written before the barrier, as
-         * the same values, so no barrier follows.  Earlier pivots' acc are
-         * complete, a barrier past their own rounds; p's own thread marks
-         * it. */
-        const f4_u64 h = coeff[p];
+         * the same values, so no barrier follows; p's own thread marks it. */
         sh->word[k] = pw[p];
-        sh->hist[k] = h;
+        sh->hist[k] = coeff[p];
         sh->col[k] = c;
         F4_FOR_THREADS(tid)
-            for (f4_u32 j = tid; j < k; j += nt)
-                if ((h >> j) & 1ull) F4_ATOMIC_XOR64(&sh->acc[k], sh->hist[j] ^ sh->acc[j]);
             if (tid == p % nt) {
                 piv->row[k] = cand[p];
                 is_piv[p] = F4E_PIVOT;
@@ -267,15 +259,26 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
             is_piv_global[i] = 0u;
         }
     F4_END_THREADS
-    F4_SYNC();
-    F4_FOR_THREADS(tid)
-        for (f4_u32 j = tid; j < k; j += nt) piv->hist[j] = sh->hist[j] ^ sh->acc[j];
-    F4_END_THREADS
     F4_SINGLE
     {
         piv->n = k;
         piv->total += k;
+        /* Pivot j is its own row plus the final pivots its history names,
+         * so over the original rows it is hist[j] plus their expansions. */
+        for (f4_u32 j = 0; j < k; ++j) {
+            f4_u64 h = sh->hist[j], full = h;
+            while (h != 0ull) {
+                const f4_u32 i = F4_CTZ(h);
+                h &= h - 1ull;
+                full ^= sh->hist[i];
+            }
+            sh->hist[j] = full;
+        }
     }
+    F4_SYNC();
+    F4_FOR_THREADS(tid)
+        for (f4_u32 j = tid; j < k; j += nt) piv->hist[j] = sh->hist[j];
+    F4_END_THREADS
     F4_SYNC();
 }
 
