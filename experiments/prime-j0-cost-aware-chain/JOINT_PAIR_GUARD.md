@@ -25,7 +25,33 @@ the earlier recoder's tie order.
 The [frozen design](joint-pair-guard-design.json) records the exact
 bases, thresholds, parent certificate, and training fixture hashes.
 The acceptance counts are algorithmic diagnostics, not runtime
-measurements. The new candidate will be checked on scalars disjoint
-from seventeen earlier fixtures, against its matching five-neighbor
-serial or wavefront control. A controlled CPU wall-time claim requires
-a host-level isolation receipt.
+measurements. The [fresh fixture](joint-pair-guard-inputs/inputs.json)
+excludes every scalar in seventeen earlier fixtures. The
+[release panel](joint-pair-guard-native-panel.json) and
+[warnings-as-errors UBSan panel](joint-pair-guard-ubsan-panel.json)
+each check 112 native arms: four guard modes, their four five-neighbor
+controls, four original 25-neighbor controls, a packed plane, and
+fixed comb9. Each arm independently replays all 4,096 outputs per
+case. The Python model checks 32,768 scalar identities, 184 group
+decompositions, eight subgroup-base relations, the exact guard
+inequalities, and the complete short-vector certificate. The C suite
+passes 2,313,655 checks in both builds, including zero, identity,
+forced fallback, and wave blocks of 1, 2, 7, and 128 lanes.
+
+| Curve | Fresh scalars | Guard accepts | Pair additions, all formats | Serial output inversions | Wave output inversions | Fallbacks |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `glv-j0-32` | 16,384 | 2,199 | 32,724 | 16,384 | 128 | 0 |
+| `j0-56` | 16,384 | 16,363 | 65,465 | 16,384 | 384 | 0 |
+
+All paired output digests, group additions, rotations, and unit
+actions match. The five-neighbor control and guarded candidate share
+the same center-based fallback core, so the comparison isolates the
+guard decision. The guard modes use the same prepared points and
+online scratch as their corresponding controls. The
+[isolated manifest producer](make_joint_pair_guard_isolated_manifest.py)
+validates locally for all four same-width serial or wave pairs, each
+with eight cases and 229 custody artifacts. Generate a fresh native
+panel and manifest on the Linux benchmark host. A controlled CPU
+wall-time claim requires a host-level isolation receipt; the local
+timing fields are exploratory. This is a public-scalar batch-latency
+study, not a one-target DLP speedup claim.
