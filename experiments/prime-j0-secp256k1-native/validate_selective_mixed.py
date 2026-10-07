@@ -50,7 +50,7 @@ def check_fixture(path, tables, options):
                 digit_points[a, b] = a * base + b * tau_base
             accumulator += digit_points[a, b]
             checked_digits += 1
-        if case["expected_identity"]:
+        if case.get("expected_identity", False):
             expected = curve(0)
         else:
             expected = curve(int(case["expected_x_hex"], 16),
