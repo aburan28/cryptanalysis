@@ -307,13 +307,16 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     ca_tau3_fused_precomp tau3_pre = {0};
     CHECK(ca_ec_tau3_fused_prepare(g, point, &tau3_pre, NULL, NULL, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_tau3_fused_prepare_verify(&tau3_pre));
+    ca_tau3_sparse_precomp sparse_pre = {0};
+    CHECK(ca_ec_tau3_sparse_prepare(g, point, &sparse_pre, NULL, NULL, NULL, NULL, NULL, NULL));
+    CHECK(ca_ec_tau3_sparse_prepare_verify(&sparse_pre));
     ca_tau4_pos_compact_precomp compact_pre = {0};
     CHECK(ca_ec_tau4_pos_compact_prepare(g, point, &compact_pre, NULL, NULL));
     ca_fixed_comb_precomp comb_pre;
     uint64_t comb_doubles = 0, comb_adds = 0, comb_inversions = 0;
     CHECK(ca_ec_fixed_comb_prepare(g, point, &comb_pre, &comb_doubles, &comb_adds,
                                     &comb_inversions));
-    CHECK_EQ_U64(comb_doubles, 8 * comb_pre.depth);
+    CHECK_EQ_U64(comb_doubles, (uint64_t)8 * comb_pre.depth);
     CHECK_EQ_U64(comb_adds, CA_FIXED_COMB_ENTRIES - 1 - CA_FIXED_COMB_WIDTH);
     CHECK_EQ_U64(comb_inversions, 1);
     ca_tau4_precomp pre;
@@ -336,6 +339,8 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         CHECK(ca_ec_tau3_atlas_mul_profile(g, &tau3_pre, &got, k, NULL, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_tau3_atlas_recode_verify_scalar(&tau3_pre, k));
+        CHECK(ca_ec_tau3_sparse_mul_profile(g, &sparse_pre, &got, k, NULL, NULL, NULL, NULL));
+        CHECK(ca_group_equal(g, &got, &expected));
         uint64_t compact_fallbacks = UINT64_MAX;
         CHECK(ca_ec_tau4_pos_compact_mul_profile(g, &compact_pre, &got, k, NULL, NULL,
                                                  &compact_fallbacks));
@@ -379,6 +384,15 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     ca_group_mul(g, &tau3_expected_fallback, point, g->order / 2, NULL);
     CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
     CHECK_EQ_U64(tau3_fallback, 1);
+    size_t sparse_saved_blocks = sparse_pre.blocks;
+    sparse_pre.blocks = 1;
+    uint64_t sparse_fallback = 0;
+    CHECK(ca_ec_tau3_sparse_mul_profile(g, &sparse_pre, &got, g->order / 2, NULL, NULL, NULL,
+                                        &sparse_fallback));
+    CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
+    CHECK_EQ_U64(sparse_fallback, 1);
+    sparse_pre.blocks = sparse_saved_blocks;
+    ca_ec_tau3_sparse_clear(&sparse_pre);
     tau3_fallback = 0;
     CHECK(
         ca_ec_tau3_atlas_mul_profile(g, &tau3_pre, &got, g->order / 2, NULL, NULL, &tau3_fallback));
@@ -405,6 +419,11 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_group_is_identity(g, &got));
     CHECK(ca_ec_tau3_atlas_mul_profile(g, &tau3_pre, &got, 17, NULL, NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
+    CHECK(ca_ec_tau3_sparse_prepare(g, &identity, &sparse_pre, NULL, NULL, NULL, NULL, NULL, NULL));
+    CHECK(ca_ec_tau3_sparse_prepare_verify(&sparse_pre));
+    CHECK(ca_ec_tau3_sparse_mul_profile(g, &sparse_pre, &got, 17, NULL, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    ca_ec_tau3_sparse_clear(&sparse_pre);
     ca_ec_tau3_fused_clear(&tau3_pre);
     CHECK(ca_ec_tau4_pos_compact_prepare(g, &identity, &compact_pre, NULL, NULL));
     CHECK(ca_ec_tau4_pos_compact_mul_profile(g, &compact_pre, &got, 17, NULL, NULL, NULL));
@@ -1040,6 +1059,33 @@ static void tau_fused_small_order(void)
     ca_ec_tau8_fused_clear(&pre);
 }
 
+static void tau3_sparse_action_maps(void)
+{
+    for (int curve_index = 0; curve_index < 2; curve_index++) {
+        uint64_t p, a, b, order;
+        if (curve_index) {
+            p = UINT64_C(2305843009213693951);
+            a = 0;
+            b = 7;
+            order = UINT64_C(53624256071278747);
+        } else {
+            CHECK(ca_curve_by_name("glv-j0-32", &p, &a, &b, &order) == CA_OK);
+        }
+        ca_group g;
+        ca_curve_info info;
+        CHECK(ca_curve_group(&g, p, a, b, order, &info) == CA_OK);
+        ca_elem point;
+        CHECK(ca_group_find_generator(&g, &point, 1) == CA_OK);
+        ca_tau3_sparse_precomp pre = {0};
+        CHECK(ca_ec_tau3_sparse_prepare(&g, &point, &pre, NULL, NULL, NULL, NULL, NULL, NULL));
+        CHECK_EQ_U64(pre.point_entries, curve_index ? 756 : 396);
+        CHECK_EQ_U64(pre.hot_entries, curve_index ? 630 : 324);
+        CHECK(ca_ec_tau3_sparse_prepare_verify(&pre));
+        CHECK(ca_ec_tau3_sparse_verify_actions(&pre));
+        ca_ec_tau3_sparse_clear(&pre);
+    }
+}
+
 static void tau_mixed_kernel(void)
 {
     ca_group g;
@@ -1059,6 +1105,7 @@ int main(void)
     tau_atlas_recode_checks();
     CHECK(ca_ec_tau3_fused_verify_map());
     CHECK(ca_ec_tau3_atlas_verify_map());
+    CHECK(ca_ec_tau3_sparse_verify_map());
     /* Detection from parameters, no group handling by the caller. */
     ca_curve_info info;
     CHECK(ca_curve_detect(67108933, 0, 7, 16773703, &info) == CA_OK);
@@ -1093,6 +1140,7 @@ int main(void)
     tau_fused_named("j0-56", 6);
     tau_wavefront_tables();
     tau_fused_small_order();
+    tau3_sparse_action_maps();
     tau_mixed_kernel();
     printf("cost-aware tau point cases=%d\n", tau_cost_cases);
     by_name("glv-j1728-26", CA_CURVE_ENDO_J1728, 4, 2.5);

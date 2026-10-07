@@ -334,3 +334,12 @@ passed all eight operation-equivalence gates with zero fallbacks. It keeps
 the same point table and group-operation counts as the fused width-three
 mode while adding a 26,244-byte static atlas. Local online times varied
 widely, so a controlled CPU speedup remains unknown.
+
+The [sparse hot-pair tau table](TAU3_SPARSE_HOT.md) retains the quotient
+atlas but prepares only 18 one-digit points per block plus the most frequent
+two-digit orbit pairs from older traces. Its separate disjoint 32,768-scalar
+panel verified all 24 arms and passed all eight frozen operation gates.
+Against compact width-four it saved 14.40% and 8.51% of online mixed
+additions, with point tables twice compact's size: 12,672 and 24,192 bytes.
+The compiled static maps add 45,550 bytes. Local timing did not establish a
+CPU win; controlled CPU speed and one-target rho impact remain unknown.
