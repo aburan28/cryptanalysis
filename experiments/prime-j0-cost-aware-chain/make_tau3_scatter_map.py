@@ -22,9 +22,36 @@ def render(path):
     for mapping in maps:
         lines.append('    {' + ', '.join(map(str, mapping)) + '},')
     lines += ['};', '']
+    canonical = []
+    canonical_unit = []
+    for u in range(55):
+        for v in range(55):
+            rep = min((mapping[u], mapping[v]) for mapping in maps)
+            code = next(code for code, mapping in enumerate(maps)
+                        if (mapping[rep[0]], mapping[rep[1]]) == (u, v))
+            canonical.append(55 * rep[0] + rep[1])
+            canonical_unit.append(code)
+    lines.append('static const uint16_t ca_tau3_scatter_canonical[3025] = {')
+    for start in range(0, 3025, 16):
+        lines.append('    ' + ', '.join(map(str, canonical[start:start+16])) + ',')
+    lines += ['};', '', 'static const uint8_t ca_tau3_scatter_canonical_unit[3025] = {']
+    for start in range(0, 3025, 24):
+        lines.append('    ' + ', '.join(map(str, canonical_unit[start:start+24])) + ',')
+    lines += ['};', '']
     for label, record in zip(('small', 'large'), design['records']):
         assert len(record['entries']) == record['extra_point_entries']
+        keys = [20*i+j for i,j,_,_ in record['entries']]
+        offsets = [0] * 401
+        cursor = 0
+        for key in range(401):
+            while cursor < len(keys) and keys[cursor] < key:
+                cursor += 1
+            offsets[key] = cursor
         lines += [f'#define CA_TAU3_SCATTER_{label.upper()}_COUNT {len(record["entries"])}',
+                  f'static const uint16_t ca_tau3_scatter_{label}_offsets[401] = {{']
+        for start in range(0, len(offsets), 16):
+            lines.append('    ' + ', '.join(map(str, offsets[start:start+16])) + ',')
+        lines += ['};',
                   f'static const ca_tau3_scatter_entry ca_tau3_scatter_{label}'
                   f'[CA_TAU3_SCATTER_{label.upper()}_COUNT] = {{']
         for i,j,u,v in record['entries']:

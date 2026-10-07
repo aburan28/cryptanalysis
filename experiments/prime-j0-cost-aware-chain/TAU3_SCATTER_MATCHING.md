@@ -50,10 +50,14 @@ elliptic-curve point outputs. All eight cases passed.
 
 The native implementation in `src/ec_tau.c` prepares the extra points by
 adding two affine points from the existing six-step table, then normalizes
-them in one batch inversion. It uses a binary search over the frozen extra
-table and an exact dynamic-programming matching over at most 20 nonzero
-three-step blocks. Larger recodes use the generic multiplier and are counted
-as fallbacks. This is a public-scalar, variable-time method.
+them in one batch inversion. Generated canonical-orbit and position-pair
+offset tables reduce the online extra-point lookup to a short binary search.
+It starts with the complete-table pairs, pairs available residual singles,
+then exhaustively searches simple alternating paths when more pairs may be
+possible. This finds a maximum-cardinality matching for up to 20 nonzero
+three-step blocks, without an online heap allocation. Larger recodes use the
+generic multiplier and are counted as fallbacks. This is a public-scalar,
+variable-time method.
 
 [`check_tau3_scatter_native_panel.py`](check_tau3_scatter_native_panel.py)
 replays the fresh fixture through both C modes in alternating order. All 16
@@ -64,11 +68,13 @@ Preparation used 2,418 versus 1,296 group additions on `glv-j0-32`, and
 4,669 versus 2,268 on `j0-56`, with the latter counts for the complete
 six-step table. The point table uses 32 bytes per entry, giving 79,808 and
 153,664 prepared point bytes respectively, before metadata and temporary
-storage. The largest online dynamic-programming memo allocated on the panel
-was 64 bytes for the small curve and 4,096 bytes for the large curve.
+storage. The generated static maps occupy 34,927 bytes, versus 9,826 bytes
+for the complete-table mode. The scatter mode reports zero online heap
+scratch bytes; its bounded matching state is on the stack.
 The release and UndefinedBehaviorSanitizer `test_curve` suites each passed
-2,308,720 checks after adding scalar edges, forced over-capacity fallback,
-and identity-point controls. The UndefinedBehaviorSanitizer native panel
+2,311,690 checks after adding scalar edges, forced over-capacity fallback,
+identity-point controls, and small-graph matching comparisons against an
+independent subset-DP oracle. The UndefinedBehaviorSanitizer native panel
 passed all 16 arms as well. A combined AddressSanitizer and
 UndefinedBehaviorSanitizer build passed with warnings as errors, but its
 macOS AddressSanitizer process stalled in runtime allocator initialization

@@ -101,6 +101,7 @@ typedef struct ca_tau3_scatter_precomp {
     ca_tau3_fused_precomp full;
     ca_elem *extra;
     const ca_tau3_scatter_entry *entry;
+    const uint16_t *offsets; /* [20*i+j] ranges into entry, plus sentinel */
     size_t extra_count;
 } ca_tau3_scatter_precomp;
 size_t ca_ec_tau3_scatter_point_entries(const ca_group *g);
@@ -116,6 +117,7 @@ int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_prec
                                    uint64_t *fallbacks, uint64_t *matched_pairs,
                                    size_t *scratch_bytes);
 void ca_ec_tau3_scatter_clear(ca_tau3_scatter_precomp *pre);
+unsigned ca_ec_tau3_scatter_match_graph(const uint32_t edge[20], unsigned count, int8_t mate[20]);
 
 /* Sparse two-level six-step tau table. Selected hot pair orbits take one
  * mixed addition; every cold pair is composed from two prepared half points.

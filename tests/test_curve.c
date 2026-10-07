@@ -299,6 +299,52 @@ static void tau_atlas_recode_checks(void)
     CHECK(ca_ec_tau4_recode_compare(0, 0));
 }
 
+static unsigned tau3_matching_brute(uint32_t mask, const uint32_t edge[20], uint8_t memo[4096])
+{
+    if (!mask) return 0;
+    if (memo[mask] != UINT8_MAX) return memo[mask];
+    unsigned i = (unsigned)__builtin_ctz(mask);
+    uint32_t rest = mask & ~(UINT32_C(1) << i);
+    unsigned best = tau3_matching_brute(rest, edge, memo);
+    for (uint32_t choices = edge[i] & rest; choices; choices &= choices - 1) {
+        unsigned j = (unsigned)__builtin_ctz(choices);
+        unsigned candidate = 1 + tau3_matching_brute(rest & ~(UINT32_C(1) << j), edge, memo);
+        if (candidate > best) best = candidate;
+    }
+    memo[mask] = (uint8_t)best;
+    return best;
+}
+
+static void tau3_scatter_graph_checks(void)
+{
+    ca_rng rng;
+    ca_rng_seed(&rng, UINT64_C(0x20261006));
+    for (unsigned n = 2; n <= 12; n++)
+        for (unsigned trial = 0; trial < 32; trial++) {
+            uint32_t edge[20] = {0};
+            int8_t mate[20];
+            for (unsigned i = 0; i < n; i++)
+                for (unsigned j = i + 1; j < n; j++)
+                    if (ca_rng_next(&rng) % 4 != 0) {
+                        edge[i] |= UINT32_C(1) << j;
+                        edge[j] |= UINT32_C(1) << i;
+                    }
+            uint8_t memo[4096];
+            memset(memo, UINT8_MAX, sizeof(memo));
+            unsigned want = tau3_matching_brute((UINT32_C(1) << n) - 1, edge, memo);
+            unsigned got = ca_ec_tau3_scatter_match_graph(edge, n, mate);
+            CHECK_EQ_U64(got, want);
+            unsigned matched = 0;
+            for (unsigned i = 0; i < n; i++)
+                if (mate[i] >= 0) {
+                    unsigned j = (unsigned)mate[i];
+                    CHECK(j < n && mate[j] == (int8_t)i && (edge[i] & (UINT32_C(1) << j)));
+                    matched++;
+                }
+            CHECK_EQ_U64(matched, (uint64_t)2 * want);
+        }
+}
+
 /* Exercise the three direct tau evaluators and all six profile modes against
  * independently computed points, including the identity and scalar edges. */
 static void tau_direct_checks(const ca_group *g, const ca_elem *point)
@@ -1155,6 +1201,7 @@ static void tau_mixed_kernel(void)
 int main(void)
 {
     tau_atlas_recode_checks();
+    tau3_scatter_graph_checks();
     CHECK(ca_ec_tau3_fused_verify_map());
     CHECK(ca_ec_tau3_atlas_verify_map());
     CHECK(ca_ec_tau3_sparse_verify_map());
