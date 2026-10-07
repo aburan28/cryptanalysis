@@ -565,8 +565,7 @@ int ca_ec_joint_window4_hot_verify_map(void)
                 tau_vec moved = joint_window4_unit_coeff(rep, code);
                 if (moved.x < lex.x || (moved.x == lex.x && moved.y < lex.y)) lex = moved;
             }
-            if (lex.x != ca_joint_window4_rep_x[orbit] ||
-                lex.y != ca_joint_window4_rep_y[orbit])
+            if (lex.x != ca_joint_window4_rep_x[orbit] || lex.y != ca_joint_window4_rep_y[orbit])
                 return 0;
         }
         for (unsigned index = 0; index < 256; index++) {
@@ -581,9 +580,10 @@ int ca_ec_joint_window4_hot_verify_map(void)
                 orbit != (ca_joint_window4_action[index] & 127u))
                 return 0;
             seen[orbit] = 1;
-            tau_vec actual = joint_window4_unit_coeff(
-                (tau_vec){ca_joint_window4_hot_rep_x[curve][orbit],
-                          ca_joint_window4_hot_rep_y[curve][orbit]}, code);
+            tau_vec actual =
+                joint_window4_unit_coeff((tau_vec){ca_joint_window4_hot_rep_x[curve][orbit],
+                                                   ca_joint_window4_hot_rep_y[curve][orbit]},
+                                         code);
             if (actual.x != x || actual.y != y) return 0;
         }
         for (unsigned orbit = 0; orbit < CA_JOINT_WINDOW4_ORBITS; orbit++)
@@ -650,8 +650,8 @@ static int joint_window4_prepare_impl(const ca_group *g, const ca_elem *point,
     pre.hot = hot;
     if (hot) {
         unsigned curve;
-        if (g->p == UINT64_C(4294967377) && g->b == 15 &&
-            g->order == UINT64_C(23729779) && g->endo_lambda == UINT64_C(16027563))
+        if (g->p == UINT64_C(4294967377) && g->b == 15 && g->order == UINT64_C(23729779) &&
+            g->endo_lambda == UINT64_C(16027563))
             curve = 0;
         else if (g->p == UINT64_C(2305843009213693951) && g->b == 7 &&
                  g->order == UINT64_C(53624256071278747) &&
@@ -748,8 +748,8 @@ int ca_ec_joint_window4_hot_prepare(const ca_group *g, const ca_elem *point,
 
 int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre)
 {
-    if (!pre || !pre->g || !pre->positions || pre->positions > 7 ||
-        !pre->rep_x || !pre->rep_y || !pre->action ||
+    if (!pre || !pre->g || !pre->positions || pre->positions > 7 || !pre->rep_x || !pre->rep_y ||
+        !pre->action ||
         !(pre->hot ? ca_ec_joint_window4_hot_verify_map() : ca_ec_joint_window4_verify_map()))
         return 0;
     if (pre->identity) return pre->point == NULL;
@@ -758,8 +758,7 @@ int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre)
     ca_i128 power = 1;
     for (unsigned position = 0; position < pre->positions; position++) {
         for (unsigned orbit = 0; orbit < CA_JOINT_WINDOW4_ORBITS; orbit++) {
-            ca_i128 scalar =
-                power * (pre->rep_x[orbit] + omega * pre->rep_y[orbit]);
+            ca_i128 scalar = power * (pre->rep_x[orbit] + omega * pre->rep_y[orbit]);
             scalar %= pre->g->order;
             if (scalar < 0) scalar += pre->g->order;
             ca_elem expected;
@@ -777,8 +776,7 @@ int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_pr
                                     ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
                                     uint64_t *fallbacks)
 {
-    if (!g || !pre || !out || pre->g != g || !pre->positions || pre->positions > 7 ||
-        !pre->action)
+    if (!g || !pre || !out || pre->g != g || !pre->positions || pre->positions > 7 || !pre->action)
         return 0;
     if (adds) *adds = 0;
     if (rotations) *rotations = 0;

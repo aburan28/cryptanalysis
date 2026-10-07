@@ -391,18 +391,15 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_joint_window4_hot_verify_map());
     ca_joint_window4_precomp hot_joint_pre = {0};
     int hot_supported =
-        (g->p == UINT64_C(4294967377) && g->b == 15 &&
-         g->order == UINT64_C(23729779) && g->endo_lambda == UINT64_C(16027563)) ||
+        (g->p == UINT64_C(4294967377) && g->b == 15 && g->order == UINT64_C(23729779) &&
+         g->endo_lambda == UINT64_C(16027563)) ||
         (g->p == UINT64_C(2305843009213693951) && g->b == 7 &&
-         g->order == UINT64_C(53624256071278747) &&
-         g->endo_lambda == UINT64_C(1212946466324730));
+         g->order == UINT64_C(53624256071278747) && g->endo_lambda == UINT64_C(1212946466324730));
     if (hot_supported) {
-        CHECK(ca_ec_joint_window4_hot_prepare(g, point, &hot_joint_pre, NULL, NULL, NULL,
-                                              NULL));
+        CHECK(ca_ec_joint_window4_hot_prepare(g, point, &hot_joint_pre, NULL, NULL, NULL, NULL));
         CHECK(ca_ec_joint_window4_prepare_verify(&hot_joint_pre));
     } else {
-        CHECK(!ca_ec_joint_window4_hot_prepare(g, point, &hot_joint_pre, NULL, NULL, NULL,
-                                               NULL));
+        CHECK(!ca_ec_joint_window4_hot_prepare(g, point, &hot_joint_pre, NULL, NULL, NULL, NULL));
     }
     ca_tau4_precomp pre;
     CHECK(ca_ec_tau4_prepare(g, point, &pre, NULL));
@@ -631,8 +628,8 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_group_is_identity(g, &got));
     ca_ec_joint_window4_clear(&joint_pre);
     if (hot_supported) {
-        CHECK(ca_ec_joint_window4_hot_prepare(g, &identity, &hot_joint_pre, NULL, NULL, NULL,
-                                              NULL));
+        CHECK(
+            ca_ec_joint_window4_hot_prepare(g, &identity, &hot_joint_pre, NULL, NULL, NULL, NULL));
         CHECK(ca_ec_joint_window4_prepare_verify(&hot_joint_pre));
         CHECK(ca_ec_joint_window4_mul_profile(g, &hot_joint_pre, &got, 17, NULL, NULL, NULL));
         CHECK(ca_group_is_identity(g, &got));

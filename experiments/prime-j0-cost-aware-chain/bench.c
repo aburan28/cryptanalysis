@@ -305,13 +305,14 @@ int main(int argc, char **argv)
                 return 2;
             }
         } else if (joint_window4) {
-            int prepared = joint_window4_hot
-                ? ca_ec_joint_window4_hot_prepare(&group, &point, &joint_window4_pre,
-                                                  &prep_doubles, &prep_adds, &prep_rotations,
-                                                  &prep_layer_inversions)
-                : ca_ec_joint_window4_prepare(&group, &point, &joint_window4_pre,
-                                              &prep_doubles, &prep_adds, &prep_rotations,
-                                              &prep_layer_inversions);
+            int prepared =
+                joint_window4_hot
+                    ? ca_ec_joint_window4_hot_prepare(&group, &point, &joint_window4_pre,
+                                                      &prep_doubles, &prep_adds, &prep_rotations,
+                                                      &prep_layer_inversions)
+                    : ca_ec_joint_window4_prepare(&group, &point, &joint_window4_pre, &prep_doubles,
+                                                  &prep_adds, &prep_rotations,
+                                                  &prep_layer_inversions);
             if (!prepared) {
                 free(outputs);
                 return 2;
