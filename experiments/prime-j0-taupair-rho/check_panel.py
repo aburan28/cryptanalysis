@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -120,6 +121,9 @@ def main():
         for key in TRAJECTORY:
             if len({reference[key], baseline[key], candidate[key]}) != 1:
                 raise ValueError(f"rho trajectory differs: {key}")
+        for key in ("startup_point_digest_lo", "startup_point_digest_hi"):
+            if not re.fullmatch(r"[0-9a-f]{16}", reference[key]):
+                raise ValueError(f"malformed startup point fingerprint: {key}")
         if (int(reference["startup_point_count"]) !=
                 int(reference["table_evaluations"]) +
                 int(reference["restart_evaluations"])):
@@ -151,7 +155,8 @@ def main():
             "curve": fixture["curve"], "target_x": fixture["target_x"],
             "target_y": fixture["target_y"], "scalar": fixture["expected_scalar"],
             "seed": fixture["rho_seed"],
-            "trajectory": {key: int(reference[key]) for key in TRAJECTORY},
+            "trajectory": {key: (reference[key] if key.startswith("startup_point_digest")
+                                else int(reference[key])) for key in TRAJECTORY},
             "baseline_formula_m": formula_m(baseline),
             "candidate_formula_m": formula_m(candidate),
             "formula_m_saved": m_saved,

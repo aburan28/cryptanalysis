@@ -60,8 +60,10 @@ manifest generator binds this workload to the strict isolated runner
 for a later controlled repeat.
 
 The earlier `fixture-v1-exploratory.json` and raw v1 panels precede the
-startup-point fingerprint. They are preserved only as development
-evidence; the v2 fixture and panels are the held-out gate.
+startup-point fingerprint. The v2 Release panel executed but its
+checker failed while parsing a hexadecimal fingerprint as decimal.
+Its fixture and raw failed panel are preserved as development evidence;
+the new v3 fixture and panels are the held-out gate.
 
 The mode remains opt-in. An online wall-time speedup claim requires an
 isolated host receipt and paired repetitions. Academic novelty of the
