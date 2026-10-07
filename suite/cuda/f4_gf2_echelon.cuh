@@ -47,9 +47,13 @@ typedef struct {
     f4_u64 hist[64];
 } F4ePivots;
 
-/* Panels with at most this many candidates keep their words in shared
- * memory while the pivots are found. */
-#define F4E_SMEM_CAND 2048u
+/* Panels with at most this many candidates keep everything the pivot
+ * search touches -- words, rows, masks, pivot flags -- in shared memory:
+ * each column's pass is a barrier apart from the next, so a global read in
+ * it is latency every candidate waits for.  24 bytes a candidate, within
+ * the 48 KiB a block may declare statically; most panels of the matrices
+ * measured have fewer (experiments/f4-gpu-panel-20261007). */
+#define F4E_SMEM_CAND 1920u
 
 /* Words per tile of the update: one per lane of a warp. */
 #define F4E_TILE 32u
@@ -65,6 +69,9 @@ typedef struct {
     f4_u64 best[3];
     f4_u32 n_cand;
     f4_u64 pw[F4E_SMEM_CAND];
+    f4_u64 coeff[F4E_SMEM_CAND];
+    f4_u32 cand[F4E_SMEM_CAND];
+    f4_u32 is_piv[F4E_SMEM_CAND];
 } F4ePanelShared;
 
 /* Gather: active rows with a high bit in word w, with that word. */
@@ -87,8 +94,9 @@ F4_FN void f4e_gather_thread(f4_u64 gid, f4_u64 total, const f4_u64 *mat, f4_u64
  * is_piv[i] marks the pivots.  One pass per column eliminates it and
  * looks for the next column's pivot.  At the end each pivot's history is
  * expanded to the original pivot rows it combines. */
-F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand, f4_u64 *pw_global,
-                           f4_u64 *coeff, f4_u32 *is_piv, const f4_u32 *count, F4ePivots *piv)
+F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_global,
+                           f4_u64 *pw_global, f4_u64 *coeff_global, f4_u32 *is_piv_global,
+                           const f4_u32 *count, F4ePivots *piv)
 {
     F4_SINGLE
     {
@@ -99,13 +107,20 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand, f4
         sh->best[2] = ~0ull;
     }
     F4_SYNC();
-    f4_u64 *pw = sh->n_cand <= F4E_SMEM_CAND ? sh->pw : pw_global;
+    const int staged = sh->n_cand <= F4E_SMEM_CAND;
+    f4_u64 *pw = staged ? sh->pw : pw_global;
+    f4_u64 *coeff = staged ? sh->coeff : coeff_global;
+    f4_u32 *is_piv = staged ? sh->is_piv : is_piv_global;
+    const f4_u32 *cand = staged ? sh->cand : cand_global;
     F4_FOR_THREADS(tid)
         f4_u64 acc = 0ull;
         for (f4_u32 i = tid; i < sh->n_cand; i += nt) {
             coeff[i] = 0ull;
             is_piv[i] = 0u;
-            pw[i] = pw_global[i];
+            if (staged) {
+                sh->cand[i] = cand_global[i];
+                sh->pw[i] = pw_global[i];
+            }
             acc |= pw[i];
         }
         if (acc) F4_ATOMIC_OR64(&sh->cols, acc);
@@ -166,6 +181,15 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand, f4
             cols = rest;
             c = next;
         }
+    }
+    if (staged) {
+        /* The update reads them from global memory. */
+        F4_FOR_THREADS(tid)
+            for (f4_u32 i = tid; i < sh->n_cand; i += nt) {
+                coeff_global[i] = sh->coeff[i];
+                is_piv_global[i] = sh->is_piv[i];
+            }
+        F4_END_THREADS
     }
     F4_SINGLE
     {

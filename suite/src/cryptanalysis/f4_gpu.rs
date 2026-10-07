@@ -1856,6 +1856,9 @@ mod tests {
             (300, 129, 40),
             (200, 190, 2),
             (500, 300, 65),
+            // Panels of more candidates than the panel step stages in
+            // shared memory.
+            (2500, 70, 10),
         ] {
             let cols = low_start + width;
             let stride = cols.div_ceil(64);
@@ -1909,7 +1912,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(cases, 54);
+        assert_eq!(cases, 63);
     }
 
     /// With every elimination routed through the emulated device kernels,
