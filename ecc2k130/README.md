@@ -362,14 +362,18 @@ popcounts, `HW^-1` by a gather, the reductions by a reciprocal, the pivot's
 mask by a bitwise comparator of every coordinate's label with k (a majority
 per bit, one ternary-logic instruction per limb), and the pivot by a binary
 search down the planes.  The tag and the 4-cycle rule and the addend's gathers
-are vector too, in the selection pass; only the rare lane that reports and the
-peel of the K = N x `ECC_F131_CHAIN_VECTORS` interleaved inversion chains stay
-scalar.  The backward pass of the batched inversion folds each lane's point
-addition in where its lambda is produced, so the additions no longer make a
-second pass over the batch's 48 KB of state.  The vector path takes 2048 lanes
-per inversion by default, since the batch's fixed cost (the inversion, the
-3(K-1) scalar products of the peel) shows against a shorter lane step and that
-much state still sits in a core's L2.
+are vector too, in the selection pass; only the rare lane that reports stays
+scalar.  The one inversion a batch makes is Montgomery's trick across the
+K = N x `ECC_F131_CHAIN_VECTORS` interleaved chains and then `f131x::inv`, the
+N lanes of the last vector inverted side by side by the Itoh-Tsujii chain in
+the polynomial basis, its long runs of squarings read from nibble tables of
+x -> x^(2^k).  The backward pass of the batched inversion folds each lane's
+point addition in where its lambda is produced, one group behind it so the
+addition waits on nothing, and the additions no longer make a second pass
+over the batch's 48 KB of state.  The vector path takes 2048 lanes per
+inversion by default: the batch's fixed cost (the inversion, now 0.4 ns a
+lane amortised) shows against a shorter lane step, and that much state still
+sits in a core's L2; 1024 and 4096 both measured 2% slower.
 
 Measured on a 4-vCPU Sapphire Rapids VM (AVX-512, VPCLMULQDQ, VPOPCNTDQ;
 gcc 13; `bench --steps 2048 --launches 6`, the binaries interleaved, median of
@@ -380,24 +384,36 @@ speedup; the repository's CPU performance isolation gate applies.
 
 | | M it/s, one worker | M it/s, four workers |
 |---|---:|---:|
-| scalar path (`-DECC_F131_LANES=1`) | 9.3 | 36.6 |
-| vector products, squaring and conversion, N = 8 lanes at a time | 38.8 | 150.6 |
-| + table-form selection, vector tags and addend, fused addition | 54.8 | 214.6 |
+| scalar path (`-DECC_F131_LANES=1`) | 9.4 | 37.5 |
+| vector products, squaring and conversion, N = 8 lanes at a time | 45.3 | 175.0 |
+| + table-form selection, vector tags and addend, fused addition | 72.8 | 280.8 |
+| + the inversion in vector lanes, the selection's tables a limb an array | 74.4 | 290.1 |
 
-The last row is a 1.41x gain over the vector baseline, in one worker and in
+The bench's clock used to start before the lanes were seeded, and a start
+point is 64 point additions with an inversion apiece, 50 us a lane: a fifth
+of a second over 4,096 lanes that an earlier version of this table counted
+as walking (53 M it/s on one worker for the third row, 39 for the second).
+`ec2k-cpu` now seeds the lanes before `cmdRun` starts its clock, and every
+row above was re-measured with that fix in each binary.
+
+The third row is a 1.6x gain over the vector baseline, in one worker and in
 four, from the table-form selection, the tag and addend vectorised in the
 selection pass, the reduction's quotient and tail each folded into one
 carry-less product (where f131.h spells the quotient out as sixteen truncating
 shifts and the tail as fourteen), a SWAR word test for the rare report, and the
-point addition folded into the inversion's backward pass.  Of a lane's step at
-2048 lanes (one worker, the stages timed apart), the five products and the
-squaring are about 60%, the selection with its tags and addend about 30%, the
-conversion and weight 5%, and the inversion with its peel 3% amortised.  What
-is left is almost all the multiply ports: a product is now about 1.7 ns and a
-square 1.2 a lane here, and the chain stage runs at roughly its arithmetic
-floor of five products and a square per lane, so the next gains are in the
-product itself (fewer sorts, shared Karatsuba sums) rather than in the
-scaffolding around it.
+point addition folded into the inversion's backward pass.  The fourth adds
+2-3% from the inversion in vector lanes (370 ns for the eight against a
+microsecond of dependent scalar products), the selection's gathered tables
+indexed by the value itself, and the addition pipelined one group behind its
+lambda.  Of a lane's step at 2048 lanes (one worker, the stages timed apart,
+in reference cycles of the 2.4 GHz TSC: 33 a lane, with the core at about
+3.05 GHz under this load), the five products and the squaring are 20 (61%),
+the selection with its tags and addend 11 (34%), the conversion and weight
+1.7 (5%).  What is left is the vector ports: a product is about 82 uops over
+the two ports that take 512-bit work -- 16 carry-less multiplies, 14
+unpacks, 17 shifts and 33 logic ops, half of them the reduction by the dense
+modulus this basis has -- and the chain stage runs at that floor, so what
+remains is in the product itself rather than the scaffolding around it.
 
 The reports of a run do not depend on the batch size or the worker count,
 which `src/cputest.cpp` checks along with: the multiplier against a
