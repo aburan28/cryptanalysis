@@ -251,6 +251,12 @@ nothing in it is ever deleted. Three layers keep it:
      `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_DEFAULT_REGION`.
    - Run the workflow once by hand (**Actions → fb-archive-offsite → Run workflow**).
 
+   Archives over 1 MiB (`storage=s3`, kept in the git-ignored `large/`) exist only
+   on the machine that built them. The upload job runs `upload --rebuild-missing`,
+   which regenerates each one from its recipe, checks it against the indexed
+   `content_sha256`, and only then uploads it. Today that covers six `geomtraceu`
+   bases at n = 41 (l = 16..20) and n = 47 (l = 23), 191 MB in all.
+
    Until the secrets exist, every job says in its summary that nothing was copied.
 
 ### Sweep bases, materialized: `sweep_points.py`

@@ -38,7 +38,8 @@ jobs:
   archive:
     name: upload archived bases and recipes
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # archives over 1 MiB are not in git; --rebuild-missing regenerates them (largest: n = 47, 8.4M points)
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -52,7 +53,7 @@ jobs:
         working-directory: experiments/fb-archive
         run: |
           python -m pip install --quiet boto3
-          python fbarchive.py upload --require
+          python fbarchive.py upload --require --rebuild-missing
       - name: Report a skipped upload
         if: env.IC_ARCHIVE_S3_URI == '' || env.AWS_ACCESS_KEY_ID == ''
         run: echo "IC_ARCHIVE_S3_URI or AWS credentials are not configured; nothing was copied offsite." >> "$GITHUB_STEP_SUMMARY"
