@@ -3293,6 +3293,8 @@ static int tau4_paired_two_batch_impl(const ca_group *g,
         if (!tau4_paired_lattice_mul_impl(g, pre, plane, NULL, &projective[i],
                                            a[i], b[i], &one, mode)) return 0;
         total.tau_steps += one.tau_steps;
+        total.tau_pairs += one.tau_pairs;
+        total.tau_pair_cheap_z += one.tau_pair_cheap_z;
         total.mixed_adds += one.mixed_adds;
         total.rotations += one.rotations;
         total.overlaps += one.overlaps;
@@ -3301,6 +3303,7 @@ static int tau4_paired_two_batch_impl(const ca_group *g,
         total.selected_changed += one.selected_changed;
         total.lattice_points_checked += one.lattice_points_checked;
         total.free_gauge_transitions += one.free_gauge_transitions;
+        total.gauge_table_lookups += one.gauge_table_lookups;
     }
     if (!jac_batch_to_affine_scratch(g, out, projective, count,
                                      prefixes, &total.inversions)) return 0;
@@ -3324,6 +3327,14 @@ int ca_ec_tau4_paired_two_free_gauge_batch_profile(const ca_group *g,
                                                     ca_tau4_joint_counts *counts)
 {
     return tau4_paired_two_batch_impl(g, pre, NULL, out, a, b, count, counts, 6);
+}
+
+int ca_ec_tau4_paired_two_free_gauge_tau_pair_steered_batch_profile(
+    const ca_group *g, const ca_tau4_joint_precomp *pre, ca_elem *out,
+    const uint64_t *a, const uint64_t *b, size_t count,
+    ca_tau4_joint_counts *counts)
+{
+    return tau4_paired_two_batch_impl(g, pre, NULL, out, a, b, count, counts, 12);
 }
 
 int ca_ec_tau4_paired_two_plane_batch_profile(const ca_group *g,

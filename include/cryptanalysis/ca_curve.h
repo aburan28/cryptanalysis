@@ -81,6 +81,7 @@ typedef enum ca_curve_startup_mode {
     CA_CURVE_STARTUP_TAU_PAIRED2_BATCH = 2,
     CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH = 3,
     CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH = 4,
+    CA_CURVE_STARTUP_TAU_PAIRED2_TAUPAIR_STEER_BATCH = 5,
 } ca_curve_startup_mode;
 
 typedef struct ca_curve_startup_stats {
@@ -92,6 +93,7 @@ typedef struct ca_curve_startup_stats {
     uint64_t table_output_inversions, restart_output_inversions, table_batch_size;
     uint64_t eval_recode_attempts, eval_pair_scores, eval_lattice_points_checked;
     uint64_t eval_free_gauge_transitions;
+    uint64_t eval_tau_pairs, eval_tau_pair_cheap_z, eval_gauge_table_lookups;
     double prepare_seconds, evaluation_seconds;
 } ca_curve_startup_stats;
 
