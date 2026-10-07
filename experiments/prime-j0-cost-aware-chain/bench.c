@@ -119,7 +119,9 @@ static int select_mode(const char *name)
                                   "joint-window4-xplane-pos",
                                   "joint-window4-zero-pos",
                                   "joint-pair-hex-pos",
-                                  "joint-pair-top-pos"};
+                                  "joint-pair-top-pos",
+                                  "joint-pair-top-triple-pos",
+                                  "joint-pair-top-double-pos"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -148,7 +150,8 @@ int main(int argc, char **argv)
                 "tau3-atlas-pos|tau3-sparse-pos|tau3-radix27-pos|tau3-scatter-pos|"
                 "tau3-scatter-direct-pos|tau3-scatter-atlas-pos|endo-radix8-pos|"
                 "joint-window4-pos|joint-window4-hot-pos|joint-window4-xplane-pos|"
-                "joint-window4-zero-pos|joint-pair-hex-pos|joint-pair-top-pos "
+                "joint-window4-zero-pos|joint-pair-hex-pos|joint-pair-top-pos|"
+                "joint-pair-top-triple-pos|joint-pair-top-double-pos "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -186,8 +189,10 @@ int main(int argc, char **argv)
     int joint_window4_hot = mode >= 46 && mode <= 48;
     int joint_window4_plane = mode == 47 || mode == 48;
     int joint_window4_zero = mode == 48;
-    int joint_pair_hex = mode == 49 || mode == 50;
-    int joint_pair_top = mode == 50;
+    int joint_pair_any = mode >= 49 && mode <= 52;
+    int joint_pair_top = mode >= 50 && mode <= 52;
+    int joint_pair_width = mode == 51 || mode == 52;
+    unsigned joint_pair_words = mode == 51 ? 3u : mode == 52 ? 2u : 4u;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -244,14 +249,14 @@ int main(int argc, char **argv)
     size_t prep_temp_heap_bytes =
         global_builder ? CA_TAU_POS_Q * 2 * 9 * (3 * sizeof(uint64_t) + sizeof(uint64_t)) : 0;
     size_t prep_temp_stack_bytes =
-        joint_pair_hex  ? 2 * 171 * 3 * sizeof(uint64_t)
+        joint_pair_any  ? 2 * 171 * 3 * sizeof(uint64_t)
         : joint_window4 ? (7 * 71 * 4 + 25 * 3) * sizeof(uint64_t)
         : endo_radix8   ? 4 * CA_ENDO_RADIX8_MAGNITUDES * 4 * sizeof(uint64_t)
         : comb          ? (CA_FIXED_COMB_ENTRIES * 4 + CA_FIXED_COMB_WIDTH * 3) * sizeof(uint64_t)
                         : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
     size_t point_entries = joint_pair_top   ? ca_ec_joint_pair_top_point_entries(&group)
-                           : joint_pair_hex ? ca_ec_joint_pair_point_entries(&group)
+                           : joint_pair_any ? ca_ec_joint_pair_point_entries(&group)
                            : joint_window4  ? ca_ec_joint_window4_point_entries(&group)
                            : endo_radix8    ? ca_ec_endo_radix8_point_entries(&group)
                            : scatter        ? ca_ec_tau3_scatter_point_entries(&group)
@@ -264,8 +269,9 @@ int main(int argc, char **argv)
                            : tapered        ? ca_ec_tau_wide_entries(wide_schedule)
                            : fused          ? fused_blocks * fused_entries
                                             : 0;
-    size_t point_table_bytes = point_entries * sizeof(ca_elem);
-    size_t prep_bytes = joint_pair_hex  ? sizeof(joint_pair_pre) + point_table_bytes
+    size_t point_table_bytes =
+        point_entries * (joint_pair_width ? joint_pair_words * sizeof(uint64_t) : sizeof(ca_elem));
+    size_t prep_bytes = joint_pair_any  ? sizeof(joint_pair_pre) + point_table_bytes
                         : joint_window4 ? sizeof(joint_window4_pre) + point_table_bytes
                         : endo_radix8   ? sizeof(endo_radix8_pre) + point_table_bytes
                         : scatter       ? sizeof(scatter_pre) + point_table_bytes
@@ -284,7 +290,7 @@ int main(int argc, char **argv)
     if (compact) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (tau3) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (joint_window4_plane) prep_temp_heap_bytes = point_table_bytes;
-    if (joint_pair_hex)
+    if (joint_pair_any)
         prep_temp_heap_bytes = ca_ec_joint_pair_point_entries(&group) /
                                (strcmp(argv[2], "j0-56") == 0 ? 4 : 2) *
                                (sizeof(ca_elem) + 3 * sizeof(uint64_t) + sizeof(uint64_t));
@@ -323,14 +329,19 @@ int main(int argc, char **argv)
                 free(outputs);
                 return 2;
             }
-        } else if (joint_pair_hex) {
-            int prepared = joint_pair_top
-                               ? ca_ec_joint_pair_top_prepare(
-                                     &group, &point, &joint_pair_pre, &prep_doubles, &prep_adds,
-                                     &prep_layer_inversions, &prep_plane_muls)
-                               : ca_ec_joint_pair_prepare(&group, &point, &joint_pair_pre,
-                                                          &prep_doubles, &prep_adds,
-                                                          &prep_layer_inversions, &prep_plane_muls);
+        } else if (joint_pair_any) {
+            int prepared =
+                joint_pair_width
+                    ? ca_ec_joint_pair_width_prepare(&group, &point, &joint_pair_pre,
+                                                     joint_pair_words, &prep_doubles, &prep_adds,
+                                                     &prep_layer_inversions, &prep_plane_muls)
+                : joint_pair_top
+                    ? ca_ec_joint_pair_top_prepare(&group, &point, &joint_pair_pre, &prep_doubles,
+                                                   &prep_adds, &prep_layer_inversions,
+                                                   &prep_plane_muls)
+                    : ca_ec_joint_pair_prepare(&group, &point, &joint_pair_pre, &prep_doubles,
+                                               &prep_adds, &prep_layer_inversions,
+                                               &prep_plane_muls);
             if (!prepared) {
                 free(outputs);
                 return 2;
@@ -457,7 +468,7 @@ int main(int argc, char **argv)
     uint64_t scatter_pairs = 0;
     uint64_t zero_attempts = 0, zero_feasible = 0, zero_selected = 0;
     size_t static_map_bytes = joint_pair_top          ? ca_ec_joint_pair_top_static_bytes()
-                              : joint_pair_hex        ? ca_ec_joint_pair_static_bytes()
+                              : joint_pair_any        ? ca_ec_joint_pair_static_bytes()
                               : joint_window4_hot     ? ca_ec_joint_window4_hot_static_bytes()
                               : joint_window4         ? ca_ec_joint_window4_static_bytes()
                               : scatter_atlas         ? ca_ec_tau3_scatter_atlas_static_bytes()
@@ -603,15 +614,21 @@ int main(int argc, char **argv)
                 adds += a;
                 rotations += r;
                 fallbacks += fallback;
-            } else if (joint_pair_hex) {
-                uint64_t a = 0, u = 0, fallback = 0;
-                if (!ca_ec_joint_pair_mul_profile(&group, &joint_pair_pre, &outputs[i], scalars[i],
-                                                  &a, &u, &fallback)) {
+            } else if (joint_pair_any) {
+                uint64_t a = 0, r = 0, u = 0, fallback = 0;
+                int solved =
+                    joint_pair_width
+                        ? ca_ec_joint_pair_width_mul_profile(&group, &joint_pair_pre, &outputs[i],
+                                                             scalars[i], &a, &r, &u, &fallback)
+                        : ca_ec_joint_pair_mul_profile(&group, &joint_pair_pre, &outputs[i],
+                                                       scalars[i], &a, &u, &fallback);
+                if (!solved) {
                     fprintf(stderr, "joint-pair evaluation failed at index %zu\n", i);
                     free(outputs);
                     return 1;
                 }
                 adds += a;
+                rotations += r;
                 unit_adds += u;
                 fallbacks += fallback;
             } else if (joint_window4) {
@@ -750,7 +767,7 @@ int main(int argc, char **argv)
         free(outputs);
         return 1;
     }
-    if (joint_pair_hex && !ca_ec_joint_pair_prepare_verify(&joint_pair_pre)) {
+    if (joint_pair_any && !ca_ec_joint_pair_prepare_verify(&joint_pair_pre)) {
         fprintf(stderr, "joint-pair map or point table verification failed\n");
         free(outputs);
         return 1;
@@ -1048,7 +1065,7 @@ int main(int argc, char **argv)
         output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_doubles, prep_tau_steps,
         prep_adds, prep_rotations, prep_seed_ops, prep_plane_muls, prep_layer_inversions,
         prep_bytes, prep_temp_heap_bytes, prep_temp_stack_bytes, prep_repeats, point_entries,
-        point_table_bytes, joint_window4_plane || joint_pair_hex ? point_entries : 0, triples,
+        point_table_bytes, joint_window4_plane || joint_pair_any ? point_entries : 0, triples,
         tau_steps, doubles, adds, rotations, unit_adds, output_inversions, fallbacks,
         second_recodes, steered_blocks, zero_attempts, zero_feasible, zero_selected,
         static_map_bytes, recipe_bytes, prep_slot_lookups, wavefront_stats.denominators,
