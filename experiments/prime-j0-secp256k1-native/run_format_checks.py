@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Retain paired correctness of the native projective and affine formats."""
 
+import argparse
 import hashlib
 import json
 import os
@@ -33,7 +34,11 @@ def fields(stdout):
 
 
 def main():
-    destination = HERE / "native-format-checks-v2.json"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path,
+                        default=HERE / "native-format-checks-v3.json")
+    args = parser.parse_args()
+    destination = args.output
     if destination.exists():
         raise SystemExit("native format result exists; refusing overwrite")
     panels = [("original", HERE / "fixture.json", 64),
