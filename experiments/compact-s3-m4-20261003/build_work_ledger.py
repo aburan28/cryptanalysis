@@ -7054,6 +7054,41 @@ def main():
         "rows"]] == [1, 1, 0, 0, 0, 0, 0]
     assert q1483_audit["ordinary_verified_relations"] == 0
     assert q1483_audit["complete_n131_log2_work"] is None
+    q1484_dir = HERE / "q1484_n131_window_base"
+    q1484_receipt_path = q1484_dir / "runs/r2/receipt.json"
+    q1484_audit_path = q1484_dir / "archive_audit_r2.json"
+    q1484_budget_path = q1484_dir / "uniform_query_budget_r2.json"
+    q1484_pair_path = q1484_dir / "fixed_pair_schedule_screen_r2.json"
+    q1484_receipt = json.loads(q1484_receipt_path.read_text())
+    q1484_audit = json.loads(q1484_audit_path.read_text())
+    q1484_budget = json.loads(q1484_budget_path.read_text())
+    q1484_pair = json.loads(q1484_pair_path.read_text())
+    assert all(row["proposal_id"] == "Q1484" for row in (
+        q1484_receipt, q1484_audit, q1484_budget, q1484_pair))
+    assert q1484_audit["status"] == "PASS"
+    assert q1484_audit["receipt_sha256"] == sha(q1484_receipt_path)
+    assert q1484_budget["base_receipt_sha256"] == sha(
+        q1484_receipt_path)
+    assert q1484_budget["base_audit_sha256"] == sha(q1484_audit_path)
+    assert q1484_pair["r2_receipt_sha256"] == sha(
+        q1484_receipt_path)
+    assert q1484_pair["r2_audit_sha256"] == sha(q1484_audit_path)
+    assert q1484_pair["r2_uniform_query_budget_sha256"] == sha(
+        q1484_budget_path)
+    assert q1484_pair["source_sha256"] == sha(
+        q1484_dir / "screen_fixed_pair_schedule_r2.py")
+    assert q1484_pair["design_sha256"] == sha(
+        q1484_dir / "design_pair_schedule_screen.json")
+    assert q1484_receipt["enumerated_set_sha256"] == q1484_audit[
+        "enumerated_set_sha256"] == q1484_budget[
+        "base_set_sha256"] == q1484_pair["factor_base_set_sha256"]
+    assert (q1484_receipt["actual_usable_points_B_before_folding"] ==
+            q1484_audit["actual_usable_B"] ==
+            q1484_pair["factor_base_actual_B_before_folding"])
+    assert (q1484_receipt["signed_frobenius_columns_K"] ==
+            q1484_audit["folded_K"] ==
+            q1484_pair["factor_base_folded_columns_K"])
+    assert q1484_pair["complete_solve_work_log2"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -9659,6 +9694,80 @@ def main():
             "protocol_sha256": sha(q1483_protocol_path),
             "recovery_protocol_sha256": sha(q1483_recovery_path),
             "archive_audit_sha256": sha(q1483_audit_path),
+        },
+        "q1484_exact_n131_window_base_and_uniform_query_screen": {
+            "proposal_id": "Q1484",
+            "candidate_id": None,
+            "run_id": None,
+            "curve_id": q1484_receipt["curve_id"],
+            "isogeny": "none",
+            "nominal_window_dimension_d": q1484_receipt[
+                "nominal_window_dimension_d"],
+            "raw_x_orbits_enumerated": q1484_receipt[
+                "nominal_raw_x_orbits"],
+            "r1_status": "infrastructure_error_disk_full_partial_prefix_preserved",
+            "r2_status": "complete_audited",
+            "actual_usable_points_B_before_folding": q1484_receipt[
+                "actual_usable_points_B_before_folding"],
+            "folded_columns_K": q1484_receipt[
+                "signed_frobenius_columns_K"],
+            "base_set_sha256": q1484_receipt[
+                "enumerated_set_sha256"],
+            "status_bitmap_sha256": q1484_receipt[
+                "status_bitmap_sha256"],
+            "receipt_sha256": sha(q1484_receipt_path),
+            "archive_audit_sha256": sha(q1484_audit_path),
+            "uniform_query_budget_sha256": sha(q1484_budget_path),
+            "fixed_pair_schedule_screen_sha256": sha(q1484_pair_path),
+            "projected_set_digest_independently_recomputed": q1484_audit[
+                "projected_set_digest_independently_recomputed"],
+            "mean_uniform_nonidentity_four_point_representations_upper_decimal":
+                q1484_budget[
+                    "uniform_nonidentity_target_mean_relations_upper_decimal"],
+            "rank_success_95_percent_minimum_uniform_nonidentity_queries":
+                q1484_budget["query_bounds"]["rank_success_95_percent"][
+                    "minimum_uniform_nonidentity_queries"],
+            "rank_success_95_percent_minimum_queries_log2":
+                q1484_budget["query_bounds"]["rank_success_95_percent"][
+                    "minimum_queries_log2"],
+            "zero_other_cost_per_query_ceiling_log2_under_2pow61":
+                q1484_budget["query_bounds"]["rank_success_95_percent"][
+                    "zero_other_cost_per_query_ceiling_log2_under_2pow61"],
+            "bound_scope": (
+                "Uniform nonidentity subgroup target marginal; all K "
+                "rows supplied by these queries; every representation "
+                "returned and novel; all other costs zero. Guided "
+                "nonuniform collection is outside this bound."),
+            "target_independent_pair_schedule_maximum_free_table_descriptors":
+                q1484_pair[
+                    "generous_complete_table_maximum_descriptors_M"],
+            "target_independent_pair_schedule_95_percent_full_K_rank_minimum_pair_probes":
+                q1484_pair["full_K_rank_95_percent"][
+                    "necessary_target_side_pair_descriptors"],
+            "target_independent_pair_schedule_95_percent_full_K_rank_minimum_pair_probes_log2":
+                q1484_pair["full_K_rank_95_percent"][
+                    "necessary_target_side_pair_descriptors_log2"],
+            "target_independent_pair_schedule_scope": (
+                "Each nonidentity target is uniform conditional on its "
+                "target-independent table and query pair schedules; "
+                "full K-column rank is required; target-span early "
+                "stopping and target-adaptive algebraic PDP are outside "
+                "this bound. Pair probes are not calibrated field "
+                "operations."),
+            "is_empirical_relation_yield": False,
+            "is_complete_solve_projection": False,
+            "complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "Exact base geometry and necessary per-query ceiling "
+                "established. A generous Q1488-style target-independent "
+                "full-table sweep needs more than 2^72.792 target-side "
+                "pair probes for 95% full K-column rank under its "
+                "stated conditional uniform law, exceeding a 2^61 probe "
+                "budget; target-adaptive algebraic search and target-span "
+                "early stopping remain open. Compact N83 ordinary "
+                "relation, yield, rank, final matrix, target descent, "
+                "and complete N131 work remain unmeasured."),
         },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,

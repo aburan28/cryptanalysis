@@ -2372,6 +2372,27 @@ support. This is a restricted orientation slice, not full-base relation
 yield. Successful N83 decomposition cost, novel rank, and complete N131
 `2^x` remain unknown.
 
+### Q1484 N131 window-base enumeration
+
+[Q1484](q1484_n131_window_base/README.md) completed an exact census of the
+N131 dimension-27 cyclic-window base, covering all `2^26` raw x-orbits. The
+separately frozen R2 reproduced every status in the R1 prefix after R1's
+disk-full infrastructure failure. The archived, audited R2 base has
+`B = 8,790,494,834` subgroup-usable points before folding and
+`K = 33,551,507` signed-Frobenius columns. Its sorted projected-set digest
+is `d3fa5abbd34df91d48731d283b4960f6110d8202c452a8bd349baa907bb4a331`.
+For uniform nonidentity targets, the necessary 95%-rank query count is at
+least 87,189,268 (`2^26.378`); even with all other costs zero, a sub-`2^61`
+solve would need average cost below `2^34.622` per query in a consistent
+charged unit. This is a necessary ceiling, not a measured PDP cost. Complete
+N131 work remains unknown. A second [fixed pair schedule
+screen](q1484_n131_window_base/fixed_pair_schedule_screen_r2.json) gives a
+Q1488-style target-independent pair table all `B(B+1)/2` point pairs for
+free. Under conditional uniform queries, full `K`-column rank with 95%
+probability still needs at least `2^72.792` target-side pair descriptor
+inspections, more than `2^61` by 11.792 bits in that unit. The screen does
+not bound target-adaptive algebraic PDP or early target-span recovery.
+
 ## Next goal
 
 Build and measure an exact, target-coupled **window-pair support mechanism**
