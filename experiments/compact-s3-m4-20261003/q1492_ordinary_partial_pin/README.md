@@ -33,15 +33,18 @@ repeatedly constructing partial left-pair domains, with no exact joint
 check admitted. These failures are censored search prefixes. Q1491's SAT
 model proves the target and pinned mids are compatible with a relation.
 
-The source-level next improvement is to let the partial-domain builder
-filter possible first midpoints against the current first-midpoint
-assignment before mapping them through the final S3 link. The current
-Q1480 domain cache key and guard omit first-midpoint bits, so a sound
-variant must include those bits in both the cache key and every learned
-clause guard. An exact small-field control and the Q1491 witness must
-pass before comparing ordinary search costs. Q1492 gives no successful
-unpinned PDP cost, N83 ordinary relation, natural yield, novel rank, or
-complete N131 `2^x`.
+A precise local diagnostic is to filter possible first midpoints against
+their current assignments before mapping them through the final S3 link.
+The current Q1480 domain cache key and guard omit first-midpoint bits,
+so a sound variant must include those bits in both the cache key and
+every learned-clause guard. An exact small-field control and the Q1491
+witness would be required before comparing search costs. This local
+change may have little effect on unpinned runs, where first-midpoint bits
+are assigned late. Q1485 and Q1486 already tried bounded four-leaf
+coupling without success; the main solver need is support across much
+larger domains and many windows. Q1492 gives no successful unpinned PDP
+cost, N83 ordinary relation, natural yield, novel rank, or complete
+N131 `2^x`.
 
 Reproduce the custody and replay checks with the repository launcher:
 
