@@ -2372,6 +2372,16 @@ support. This is a restricted orientation slice, not full-base relation
 yield. Successful N83 decomposition cost, novel rank, and complete N131
 `2^x` remain unknown.
 
+### Q1484 N131 window-base enumeration
+
+[Q1484](q1484_n131_window_base/README.md) froze an exhaustive census of the
+N131 dimension-27 cyclic-window base, which has `2^26` raw x-orbits. Its
+first attempt stopped when the SSD filled during a checkpoint write. The
+archived R1 checkpoint covers 19,922,944 raw orbits; it is a partial
+infrastructure-failure record, so actual usable `B`, folded `K`, point-set
+digest, and complete N131 work remain unknown. A separately frozen R2 must
+replay the checkpoint before this base can enter a named N131 solver budget.
+
 ## Next goal
 
 Build and measure an exact, target-coupled **window-pair support mechanism**
