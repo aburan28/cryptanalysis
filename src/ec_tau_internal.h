@@ -45,10 +45,15 @@ void ca_ec_endo_radix8_clear(ca_endo_radix8_precomp *pre);
 
 /* Joint balanced radix-16 digits in Z[omega], folded under the six units.
  * The table holds one affine point per orbit and prepared position. */
+typedef struct ca_joint_window4_plane_point {
+    uint64_t x, y, x_beta, identity;
+} ca_joint_window4_plane_point;
+
 typedef struct ca_joint_window4_precomp {
     const ca_group *g;
     ca_elem base_point;
     ca_elem *point; /* [positions][71 canonical joint-digit orbits] */
+    ca_joint_window4_plane_point *plane_point; /* same slots, private four-word format */
     const int8_t *rep_x, *rep_y;
     const uint16_t *action;
     uint64_t beta, beta2;
@@ -56,6 +61,7 @@ typedef struct ca_joint_window4_precomp {
     unsigned positions;
     int identity;
     int hot;
+    int plane_format;
 } ca_joint_window4_precomp;
 size_t ca_ec_joint_window4_point_entries(const ca_group *g);
 size_t ca_ec_joint_window4_static_bytes(void);
@@ -67,11 +73,19 @@ int ca_ec_joint_window4_prepare(const ca_group *g, const ca_elem *point,
 int ca_ec_joint_window4_hot_prepare(const ca_group *g, const ca_elem *point,
                                     ca_joint_window4_precomp *out, uint64_t *doubles,
                                     uint64_t *adds, uint64_t *rotations, uint64_t *inversions);
+int ca_ec_joint_window4_xplane_prepare(const ca_group *g, const ca_elem *point,
+                                       ca_joint_window4_precomp *out, uint64_t *doubles,
+                                       uint64_t *adds, uint64_t *rotations, uint64_t *inversions,
+                                       uint64_t *plane_muls);
 size_t ca_ec_joint_window4_hot_static_bytes(void);
 int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre);
 int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
                                     ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
                                     uint64_t *fallbacks);
+int ca_ec_joint_window4_xplane_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
+                                           ca_elem *out, uint64_t k, uint64_t *adds,
+                                           uint64_t *rotations, uint64_t *unit_adds,
+                                           uint64_t *fallbacks);
 void ca_ec_joint_window4_clear(ca_joint_window4_precomp *pre);
 
 /* Per-point width-4 table for repeated scalar multiplications within one rho

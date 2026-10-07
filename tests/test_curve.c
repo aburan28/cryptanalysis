@@ -401,6 +401,17 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     } else {
         CHECK(!ca_ec_joint_window4_hot_prepare(g, point, &hot_joint_pre, NULL, NULL, NULL, NULL));
     }
+    ca_joint_window4_precomp plane_joint_pre = {0};
+    if (hot_supported) {
+        uint64_t plane_muls = 0;
+        CHECK(ca_ec_joint_window4_xplane_prepare(g, point, &plane_joint_pre, NULL, NULL, NULL, NULL,
+                                                 &plane_muls));
+        CHECK_EQ_U64(plane_muls, ca_ec_joint_window4_point_entries(g));
+        CHECK(ca_ec_joint_window4_prepare_verify(&plane_joint_pre));
+    } else {
+        CHECK(!ca_ec_joint_window4_xplane_prepare(g, point, &plane_joint_pre, NULL, NULL, NULL,
+                                                  NULL, NULL));
+    }
     ca_tau4_precomp pre;
     CHECK(ca_ec_tau4_prepare(g, point, &pre, NULL));
     ca_tau_pair_fused_precomp pair_pre;
@@ -430,6 +441,11 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
                                                   &hot_joint_fallbacks));
             CHECK(ca_group_equal(g, &got, &expected));
             CHECK_EQ_U64(hot_joint_fallbacks, 0);
+            uint64_t plane_joint_fallbacks = UINT64_MAX;
+            CHECK(ca_ec_joint_window4_xplane_mul_profile(g, &plane_joint_pre, &got, k, NULL, NULL,
+                                                         NULL, &plane_joint_fallbacks));
+            CHECK(ca_group_equal(g, &got, &expected));
+            CHECK_EQ_U64(plane_joint_fallbacks, 0);
         }
         CHECK(ca_ec_tau3_fused_mul_profile(g, &tau3_pre, &got, k, NULL, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
@@ -517,6 +533,7 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     joint_pre.positions = saved_joint_positions;
     ca_ec_joint_window4_clear(&joint_pre);
     ca_ec_joint_window4_clear(&hot_joint_pre);
+    ca_ec_joint_window4_clear(&plane_joint_pre);
     size_t sparse_saved_blocks = sparse_pre.blocks;
     sparse_pre.blocks = 1;
     uint64_t sparse_fallback = 0;
@@ -633,8 +650,15 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         CHECK(ca_ec_joint_window4_prepare_verify(&hot_joint_pre));
         CHECK(ca_ec_joint_window4_mul_profile(g, &hot_joint_pre, &got, 17, NULL, NULL, NULL));
         CHECK(ca_group_is_identity(g, &got));
+        CHECK(ca_ec_joint_window4_xplane_prepare(g, &identity, &plane_joint_pre, NULL, NULL, NULL,
+                                                 NULL, NULL));
+        CHECK(ca_ec_joint_window4_prepare_verify(&plane_joint_pre));
+        CHECK(ca_ec_joint_window4_xplane_mul_profile(g, &plane_joint_pre, &got, 17, NULL, NULL,
+                                                     NULL, NULL));
+        CHECK(ca_group_is_identity(g, &got));
     }
     ca_ec_joint_window4_clear(&hot_joint_pre);
+    ca_ec_joint_window4_clear(&plane_joint_pre);
     uint64_t setup_ops = UINT64_MAX;
     CHECK(ca_ec_tau4_prepare(g, &identity, &pre, &setup_ops));
     CHECK_EQ_U64(setup_ops, 0);
@@ -664,6 +688,59 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_tau_pair_fused_mul_profile(g, &pair_pre, &got, 17, NULL, NULL, NULL));
     CHECK(ca_group_is_identity(g, &got));
     CHECK(!ca_ec_tau4_mul_prepared_profile(g, &pre, &got, 17, 8, NULL, NULL, NULL));
+}
+
+static void joint_plane_named(uint64_t p, uint64_t b, uint64_t order)
+{
+    ca_group g;
+    ca_curve_info info;
+    CHECK(ca_curve_group(&g, p, 0, b, order, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J0);
+    ca_elem generator;
+    CHECK(ca_group_find_generator(&g, &generator, 1) == CA_OK);
+    for (uint64_t multiple = 1; multiple <= 37; multiple += 36) {
+        ca_elem point;
+        ca_group_mul(&g, &point, &generator, multiple, NULL);
+        ca_joint_window4_precomp pre = {0};
+        uint64_t plane_muls = 0;
+        CHECK(ca_ec_joint_window4_xplane_prepare(&g, &point, &pre, NULL, NULL, NULL, NULL,
+                                                 &plane_muls));
+        CHECK(pre.plane_format && !pre.point && pre.plane_point);
+        CHECK_EQ_U64(plane_muls, ca_ec_joint_window4_point_entries(&g));
+        CHECK(ca_ec_joint_window4_prepare_verify(&pre));
+        pre.plane_point[0].x_beta ^= 1;
+        CHECK(!ca_ec_joint_window4_prepare_verify(&pre));
+        pre.plane_point[0].x_beta ^= 1;
+        const uint64_t scalars[] = {0, 1, 2, 3, order / 2, order - 1};
+        for (size_t i = 0; i < sizeof(scalars) / sizeof(scalars[0]); i++) {
+            ca_elem got, expected;
+            ca_group_mul(&g, &expected, &point, scalars[i], NULL);
+            CHECK(ca_ec_joint_window4_xplane_mul_profile(&g, &pre, &got, scalars[i], NULL, NULL,
+                                                         NULL, NULL));
+            CHECK(ca_group_equal(&g, &got, &expected));
+        }
+        unsigned saved_positions = pre.positions;
+        pre.positions = 1;
+        ca_elem got, expected;
+        uint64_t fallbacks = 0;
+        ca_group_mul(&g, &expected, &point, order / 2, NULL);
+        CHECK(ca_ec_joint_window4_xplane_mul_profile(&g, &pre, &got, order / 2, NULL, NULL, NULL,
+                                                     &fallbacks));
+        CHECK(ca_group_equal(&g, &got, &expected));
+        CHECK_EQ_U64(fallbacks, 1);
+        pre.positions = saved_positions;
+        ca_ec_joint_window4_clear(&pre);
+    }
+    ca_elem identity, got;
+    ca_group_identity(&g, &identity);
+    ca_joint_window4_precomp identity_pre = {0};
+    CHECK(ca_ec_joint_window4_xplane_prepare(&g, &identity, &identity_pre, NULL, NULL, NULL, NULL,
+                                             NULL));
+    CHECK(ca_ec_joint_window4_prepare_verify(&identity_pre));
+    CHECK(ca_ec_joint_window4_xplane_mul_profile(&g, &identity_pre, &got, 17, NULL, NULL, NULL,
+                                                 NULL));
+    CHECK(ca_group_is_identity(&g, &got));
+    ca_ec_joint_window4_clear(&identity_pre);
 }
 
 static void tau_cost_named(const char *name)
@@ -1355,6 +1432,8 @@ int main(void)
     CHECK(ca_ec_tau_pair_mixed_verify_map());
     CHECK(ca_ec_tau_pair_mixed_full_verify_map());
     tau_cost_named("glv-j0-32");
+    joint_plane_named(UINT64_C(4294967377), 15, UINT64_C(23729779));
+    joint_plane_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747));
     tau_cost_boundary_curves();
     tau_fused_named("glv-j0-32", 4);
     tau_fused_named("j0-56", 6);

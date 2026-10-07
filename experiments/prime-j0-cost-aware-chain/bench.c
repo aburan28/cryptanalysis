@@ -115,7 +115,8 @@ static int select_mode(const char *name)
                                   "tau3-scatter-atlas-pos",
                                   "endo-radix8-pos",
                                   "joint-window4-pos",
-                                  "joint-window4-hot-pos"};
+                                  "joint-window4-hot-pos",
+                                  "joint-window4-xplane-pos"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -143,7 +144,7 @@ int main(int argc, char **argv)
                 "tail-pair-mixed-full-digits|fixed-comb9|pos-compact|tau3-fused-pos|"
                 "tau3-atlas-pos|tau3-sparse-pos|tau3-radix27-pos|tau3-scatter-pos|"
                 "tau3-scatter-direct-pos|tau3-scatter-atlas-pos|endo-radix8-pos|"
-                "joint-window4-pos|joint-window4-hot-pos "
+                "joint-window4-pos|joint-window4-hot-pos|joint-window4-xplane-pos "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -177,8 +178,9 @@ int main(int argc, char **argv)
     int scatter_atlas = mode == 43;
     int scatter = mode == 41 || scatter_direct || scatter_atlas;
     int endo_radix8 = mode == 44;
-    int joint_window4 = mode == 45 || mode == 46;
-    int joint_window4_hot = mode == 46;
+    int joint_window4 = mode >= 45 && mode <= 47;
+    int joint_window4_hot = mode == 46 || mode == 47;
+    int joint_window4_plane = mode == 47;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -227,7 +229,7 @@ int main(int argc, char **argv)
     uint64_t prep_doubles = 0;
     uint64_t prep_tau_steps = 0;
     uint64_t prep_layer_inversions = 0;
-    uint64_t prep_adds = 0, prep_rotations = 0;
+    uint64_t prep_adds = 0, prep_rotations = 0, prep_plane_muls = 0;
     uint64_t prep_seed_ops = 0;
     uint64_t prep_slot_lookups = 0;
     ca_tau_wide_wavefront_stats wavefront_stats = {0};
@@ -269,6 +271,7 @@ int main(int argc, char **argv)
     if (fused) prep_temp_heap_bytes = fused_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (compact) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (tau3) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
+    if (joint_window4_plane) prep_temp_heap_bytes = point_table_bytes;
     if (sparse) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (scatter)
         prep_temp_heap_bytes =
@@ -306,7 +309,11 @@ int main(int argc, char **argv)
             }
         } else if (joint_window4) {
             int prepared =
-                joint_window4_hot
+                joint_window4_plane
+                    ? ca_ec_joint_window4_xplane_prepare(&group, &point, &joint_window4_pre,
+                                                         &prep_doubles, &prep_adds, &prep_rotations,
+                                                         &prep_layer_inversions, &prep_plane_muls)
+                : joint_window4_hot
                     ? ca_ec_joint_window4_hot_prepare(&group, &point, &joint_window4_pre,
                                                       &prep_doubles, &prep_adds, &prep_rotations,
                                                       &prep_layer_inversions)
@@ -409,7 +416,7 @@ int main(int argc, char **argv)
             }
         prep_ms = 1000 * (ca_now() - t0);
     }
-    uint64_t triples = 0, tau_steps = 0, doubles = 0, adds = 0, rotations = 0;
+    uint64_t triples = 0, tau_steps = 0, doubles = 0, adds = 0, rotations = 0, unit_adds = 0;
     uint64_t output_inversions = 0;
     uint64_t periodic_lookups = 0, periodic_accepted = 0, periodic_fallbacks = 0;
     uint64_t mixed_lookups = 0, mixed_fallbacks = 0;
@@ -562,15 +569,22 @@ int main(int argc, char **argv)
                 rotations += r;
                 fallbacks += fallback;
             } else if (joint_window4) {
-                uint64_t a = 0, r = 0, fallback = 0;
-                if (!ca_ec_joint_window4_mul_profile(&group, &joint_window4_pre, &outputs[i],
-                                                     scalars[i], &a, &r, &fallback)) {
+                uint64_t a = 0, r = 0, u = 0, fallback = 0;
+                int solved =
+                    joint_window4_plane
+                        ? ca_ec_joint_window4_xplane_mul_profile(&group, &joint_window4_pre,
+                                                                 &outputs[i], scalars[i], &a, &r,
+                                                                 &u, &fallback)
+                        : ca_ec_joint_window4_mul_profile(&group, &joint_window4_pre, &outputs[i],
+                                                          scalars[i], &a, &r, &fallback);
+                if (!solved) {
                     fprintf(stderr, "joint-window evaluation failed at index %zu\n", i);
                     free(outputs);
                     return 1;
                 }
                 adds += a;
                 rotations += r;
+                unit_adds += u;
                 fallbacks += fallback;
             } else if (endo_radix8) {
                 uint64_t a = 0, r = 0, fallback = 0;
@@ -945,12 +959,13 @@ int main(int argc, char **argv)
         " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
         " prep_triples=%" PRIu64 " prep_doubles=%" PRIu64 " prep_tau_steps=%" PRIu64
         " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64 " prep_seed_ops=%" PRIu64
-        " prep_layer_inversions=%" PRIu64
+        " prep_plane_muls=%" PRIu64 " prep_layer_inversions=%" PRIu64
         " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_temp_stack_bytes=%zu prep_repeats=%d"
         " point_entries=%zu point_table_bytes=%zu"
+        " plane_entries=%zu"
         " triples=%" PRIu64 " tau_steps=%" PRIu64 " doubles=%" PRIu64 " adds=%" PRIu64
-        " rotations=%" PRIu64 " output_inversions=%" PRIu64 " fallbacks=%" PRIu64
-        " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
+        " rotations=%" PRIu64 " unit_adds=%" PRIu64 " output_inversions=%" PRIu64
+        " fallbacks=%" PRIu64 " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
         " static_map_bytes=%zu recipe_bytes=%zu prep_slot_lookups=%" PRIu64
         " prep_batch_denominators=%" PRIu64 " prep_affine_exceptions=%" PRIu64
         " prep_affine_doublings=%" PRIu64 " prep_affine_edge_mults_model=%" PRIu64
@@ -971,12 +986,13 @@ int main(int argc, char **argv)
         " scatter_preparation_checks=%" PRIu64 " verified=1\n",
         argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda, input_digest,
         output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_doubles, prep_tau_steps,
-        prep_adds, prep_rotations, prep_seed_ops, prep_layer_inversions, prep_bytes,
-        prep_temp_heap_bytes, prep_temp_stack_bytes, prep_repeats, point_entries, point_table_bytes,
-        triples, tau_steps, doubles, adds, rotations, output_inversions, fallbacks, second_recodes,
-        steered_blocks, static_map_bytes, recipe_bytes, prep_slot_lookups,
-        wavefront_stats.denominators, wavefront_stats.exceptional_edges,
-        wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
+        prep_adds, prep_rotations, prep_seed_ops, prep_plane_muls, prep_layer_inversions,
+        prep_bytes, prep_temp_heap_bytes, prep_temp_stack_bytes, prep_repeats, point_entries,
+        point_table_bytes, joint_window4_plane ? point_entries : 0, triples, tau_steps, doubles,
+        adds, rotations, unit_adds, output_inversions, fallbacks, second_recodes, steered_blocks,
+        static_map_bytes, recipe_bytes, prep_slot_lookups, wavefront_stats.denominators,
+        wavefront_stats.exceptional_edges, wavefront_stats.doubling_edges,
+        5 * wavefront_stats.denominators,
         wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
         tail_stream_checks, tail_double_checks, tail_pair_checks, tail_pair_preparation_checks,
         tail_complete_checks, tail_complete_preparation_checks, periodic_lookups, periodic_accepted,

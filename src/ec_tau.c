@@ -746,14 +746,58 @@ int ca_ec_joint_window4_hot_prepare(const ca_group *g, const ca_elem *point,
     return joint_window4_prepare_impl(g, point, out, doubles, adds, rotations, inversions, 1);
 }
 
+int ca_ec_joint_window4_xplane_prepare(const ca_group *g, const ca_elem *point,
+                                       ca_joint_window4_precomp *out, uint64_t *doubles,
+                                       uint64_t *adds, uint64_t *rotations, uint64_t *inversions,
+                                       uint64_t *plane_muls)
+{
+    _Static_assert(sizeof(ca_joint_window4_plane_point) == sizeof(ca_elem),
+                   "the x-coordinate plane must use one ordinary point slot");
+    if (plane_muls) *plane_muls = 0;
+    if (!joint_window4_prepare_impl(g, point, out, doubles, adds, rotations, inversions, 1))
+        return 0;
+    if (fa(g, fa(g, out->beta2, out->beta), g->mont.r1)) {
+        ca_ec_joint_window4_clear(out);
+        return 0;
+    }
+    if (out->identity) {
+        out->plane_format = 1;
+        return 1;
+    }
+    size_t entries = ca_ec_joint_window4_point_entries(g);
+    ca_joint_window4_plane_point *packed = malloc(entries * sizeof(*packed));
+    if (!packed) {
+        ca_ec_joint_window4_clear(out);
+        return 0;
+    }
+    uint64_t multiplies = 0;
+    for (size_t i = 0; i < entries; i++) {
+        ca_elem ordinary = out->point[i];
+        packed[i].x = ordinary.w[0];
+        packed[i].y = ordinary.w[1];
+        packed[i].identity = ordinary.w[2];
+        packed[i].x_beta = ordinary.w[2] ? 0 : fm(g, out->beta, ordinary.w[0]);
+        multiplies += !ordinary.w[2];
+    }
+    free(out->point);
+    out->point = NULL;
+    out->plane_point = packed;
+    out->plane_format = 1;
+    if (plane_muls) *plane_muls = multiplies;
+    return 1;
+}
+
 int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre)
 {
     if (!pre || !pre->g || !pre->positions || pre->positions > 7 || !pre->rep_x || !pre->rep_y ||
         !pre->action ||
         !(pre->hot ? ca_ec_joint_window4_hot_verify_map() : ca_ec_joint_window4_verify_map()))
         return 0;
-    if (pre->identity) return pre->point == NULL;
-    if (!pre->point) return 0;
+    if (pre->identity) return pre->point == NULL && pre->plane_point == NULL;
+    if (pre->plane_format ? (!pre->plane_point || pre->point) : (!pre->point || pre->plane_point))
+        return 0;
+    if (pre->plane_format && fa(pre->g, fa(pre->g, pre->beta2, pre->beta), pre->g->mont.r1))
+        return 0;
     ca_i128 omega = (ca_i128)pre->g->order - pre->g->endo_lambda;
     ca_i128 power = 1;
     for (unsigned position = 0; position < pre->positions; position++) {
@@ -763,30 +807,41 @@ int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre)
             if (scalar < 0) scalar += pre->g->order;
             ca_elem expected;
             ca_group_mul(pre->g, &expected, &pre->base_point, (uint64_t)scalar, NULL);
-            if (!ca_group_equal(pre->g, &expected,
-                                &pre->point[(size_t)position * CA_JOINT_WINDOW4_ORBITS + orbit]))
-                return 0;
+            size_t index = (size_t)position * CA_JOINT_WINDOW4_ORBITS + orbit;
+            ca_elem stored;
+            if (pre->plane_format) {
+                ca_joint_window4_plane_point entry = pre->plane_point[index];
+                stored = (ca_elem){{entry.x, entry.y, entry.identity, 0}};
+                if (entry.x_beta != (entry.identity ? 0 : fm(pre->g, pre->beta, entry.x))) return 0;
+                if (!entry.identity && fs(pre->g, 0, fa(pre->g, entry.x, entry.x_beta)) !=
+                                           fm(pre->g, pre->beta2, entry.x))
+                    return 0;
+            } else {
+                stored = pre->point[index];
+            }
+            if (!ca_group_equal(pre->g, &expected, &stored)) return 0;
         }
         power *= 16;
     }
     return 1;
 }
 
-int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
-                                    ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
-                                    uint64_t *fallbacks)
+static int joint_window4_mul_impl(const ca_group *g, const ca_joint_window4_precomp *pre,
+                                  ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                  uint64_t *unit_adds, uint64_t *fallbacks)
 {
     if (!g || !pre || !out || pre->g != g || !pre->positions || pre->positions > 7 || !pre->action)
         return 0;
     if (adds) *adds = 0;
     if (rotations) *rotations = 0;
+    if (unit_adds) *unit_adds = 0;
     if (fallbacks) *fallbacks = 0;
     k %= g->order;
     if (!k || pre->identity) {
         *out = (ca_elem){{0, 0, 1, 0}};
         return 1;
     }
-    if (!pre->point) return 0;
+    if (pre->plane_format ? !pre->plane_point : !pre->point) return 0;
     ca_i128 a, b;
     reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det, k,
                         &a, &b);
@@ -808,18 +863,33 @@ int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_pr
         return 1;
     }
     tau_jac accumulator = {0, g->mont.r1, 0};
-    uint64_t na = 0, nr = 0;
+    uint64_t na = 0, nr = 0, nu = 0;
     for (unsigned position = 0; position < pre->positions; position++) {
         unsigned orbit = action[position] & 127u, code = action[position] >> 7;
         if (orbit == CA_JOINT_WINDOW4_ZERO) continue;
         if (orbit >= CA_JOINT_WINDOW4_ORBITS || code >= 6) return 0;
-        ca_elem point = pre->point[(size_t)position * CA_JOINT_WINDOW4_ORBITS + orbit];
+        size_t index = (size_t)position * CA_JOINT_WINDOW4_ORBITS + orbit;
+        ca_elem point;
+        if (pre->plane_format) {
+            ca_joint_window4_plane_point entry = pre->plane_point[index];
+            point = (ca_elem){{entry.x, entry.y, entry.identity, 0}};
+        } else {
+            point = pre->point[index];
+        }
         if (!point.w[2]) {
             unsigned power = code % 3;
-            if (power == 1) point.w[0] = fm(g, pre->beta, point.w[0]);
-            if (power == 2) point.w[0] = fm(g, pre->beta2, point.w[0]);
+            if (pre->plane_format) {
+                if (power == 1) point.w[0] = pre->plane_point[index].x_beta;
+                if (power == 2) {
+                    point.w[0] = fs(g, 0, fa(g, point.w[0], pre->plane_point[index].x_beta));
+                    nu += 2;
+                }
+            } else {
+                if (power == 1) point.w[0] = fm(g, pre->beta, point.w[0]);
+                if (power == 2) point.w[0] = fm(g, pre->beta2, point.w[0]);
+                nr += power != 0;
+            }
             if (code >= 3 && point.w[1]) point.w[1] = g->p - point.w[1];
-            nr += power != 0;
             accumulator = jac_add_mixed(g, accumulator, &point);
             na++;
         }
@@ -827,13 +897,31 @@ int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_pr
     jac_to_affine(g, out, accumulator);
     if (adds) *adds = na;
     if (rotations) *rotations = nr;
+    if (unit_adds) *unit_adds = nu;
     return 1;
+}
+
+int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
+                                    ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                    uint64_t *fallbacks)
+{
+    return joint_window4_mul_impl(g, pre, out, k, adds, rotations, NULL, fallbacks);
+}
+
+int ca_ec_joint_window4_xplane_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
+                                           ca_elem *out, uint64_t k, uint64_t *adds,
+                                           uint64_t *rotations, uint64_t *unit_adds,
+                                           uint64_t *fallbacks)
+{
+    if (!pre || !pre->plane_format) return 0;
+    return joint_window4_mul_impl(g, pre, out, k, adds, rotations, unit_adds, fallbacks);
 }
 
 void ca_ec_joint_window4_clear(ca_joint_window4_precomp *pre)
 {
     if (!pre) return;
     free(pre->point);
+    free(pre->plane_point);
     *pre = (ca_joint_window4_precomp){0};
 }
 

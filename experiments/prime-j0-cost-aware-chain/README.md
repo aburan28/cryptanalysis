@@ -401,3 +401,13 @@ prepares 284 or 497 points; its operation score is 11.67% and 26.80% below
 comb9 on the two study subgroups. The 56-bit table's seven-position capacity
 is checked at runtime and had zero fallbacks on the held-out fixture.
 Controlled CPU timing and one-target rho impact remain unknown.
+
+The [frequency-selected joint table](JOINT_WINDOW4_HOT.md) chooses the
+stored representative of each six-unit orbit from frozen training digit
+frequencies. On a separate 32,768-scalar fixture it kept the same point
+slots and online additions while reducing unit rotations by 41.9% and
+33.3% on the two study curves. The [packed two-coordinate unit plane](JOINT_WINDOW4_XPLANE.md)
+keeps that selected digit map and the same persistent point-table bytes.
+It stores `x` and `βx` and reconstructs `β²x` with field additions, removing
+all online unit field multiplications on its own fresh fixture. Release and
+UBSan correctness panels pass; controlled CPU timing remains unknown.
