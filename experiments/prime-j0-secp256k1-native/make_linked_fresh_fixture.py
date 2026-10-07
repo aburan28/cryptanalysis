@@ -77,7 +77,7 @@ def main():
     target = HERE / "linked-fresh-fixture.json"
     if target.exists():
         raise SystemExit("fresh fixture exists; refusing overwrite")
-    target.write_text(json.dumps(fixture, indent=2, sort_keys=True) + "\n")
+    target.write_text(json.dumps(fixture, sort_keys=True, separators=(",", ":")) + "\n")
     print(json.dumps({"cases": len(cases),
                       "input_sha256": fixture["input_sha256"],
                       "fixture_sha256": hashlib.sha256(target.read_bytes()).hexdigest()},
