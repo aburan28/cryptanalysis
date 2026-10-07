@@ -480,7 +480,8 @@ class CpuEngine
     // chains (lane i in chain i mod K; W_i becomes e_i times the denominators
     // before it in its chain, so that no product waits on the lane before it),
     // one inversion, then lambda_i = e_i / d_i back down each chain and the
-    // additions, which depend on nothing but their own lane.
+    // additions, which depend on nothing but their own lane and so ride along
+    // in the backward pass.
     void chainsAndAdd(const Batch &b, int B)
     {
         if (B <= 0) return;
@@ -532,29 +533,47 @@ class CpuEngine
                 rest = f131x::mul<kLanes>(rest, pv[v]);
             }
             iv[0] = rest;
-            // Back down each chain, lambda_i = e_i / d_i into W.
+            // Back down each chain, lambda_i = e_i / d_i, and the addition
+            // of that lane in the same pass: lambda goes into x' and y'
+            // without a trip through W (48 KB a batch at the default
+            // geometry, written here and read back from L2 by a separate
+            // pass), and d is loaded once for both.
             for (i = B - 1; i >= tail; --i) {
                 FX &q = iv[(i - tail) / kLanes];
                 const int l = (i - tail) % kLanes;
                 const F131 r = q.lane(l);
                 b.setW(i, f131::mul(r, b.W(i)));
                 q.setLane(l, f131::mul(r, b.D(i)));
+                addLane(b, i);
             }
+            const auto addVector = [&](int j, const FX &lambda, const FX &d) {
+                const FX x = FX::load(b.X0 + j, b.X1 + j, b.X2 + j),
+                         y = FX::load(b.Y0 + j, b.Y1 + j, b.Y2 + j);
+                const FX nx =
+                    f131x::add<kLanes>(f131x::add<kLanes>(f131x::sqr<kLanes>(lambda), lambda), d);
+                const FX ny = f131x::add<kLanes>(
+                    f131x::add<kLanes>(f131x::mul<kLanes>(lambda, f131x::add<kLanes>(x, nx)), nx),
+                    y);
+                nx.store(b.X0 + j, b.X1 + j, b.X2 + j);
+                ny.store(b.Y0 + j, b.Y1 + j, b.Y2 + j);
+            };
             for (i = tail - kChains; i >= kChains; i -= kChains) {
                 for (int v = 0; v < V; ++v) {
                     const int j = i + v * kLanes;
                     const FX w = FX::load(b.W0 + j, b.W1 + j, b.W2 + j),
                              d = FX::load(b.D0 + j, b.D1 + j, b.D2 + j);
-                    f131x::mul<kLanes>(iv[v], w).store(b.W0 + j, b.W1 + j, b.W2 + j);
+                    const FX lambda = f131x::mul<kLanes>(iv[v], w);
                     iv[v] = f131x::mul<kLanes>(iv[v], d);
+                    addVector(j, lambda, d);
                 }
             }
             for (int v = 0; v < V; ++v) {
                 const int j = v * kLanes;
-                f131x::mul<kLanes>(iv[v], FX::load(b.W0 + j, b.W1 + j, b.W2 + j))
-                    .store(b.W0 + j, b.W1 + j, b.W2 + j);
+                addVector(j, f131x::mul<kLanes>(iv[v], FX::load(b.W0 + j, b.W1 + j, b.W2 + j)),
+                          FX::load(b.D0 + j, b.D1 + j, b.D2 + j));
             }
-        } else
+            return;
+        }
 #endif
         {
             F131 prod[kChains];
@@ -610,28 +629,18 @@ class CpuEngine
 #endif
             for (i = 0; i < K; ++i) b.setW(i, f131::mul(inv[i], b.W(i)));
         }
-        // The additions: x' = lambda^2 + lambda + d, y' = lambda (x + x') + x' + y.
-        i = 0;
-#if ECC_F131_LANES > 1
-        for (; i + kLanes <= B; i += kLanes) {
-            const FX lambda = FX::load(b.W0 + i, b.W1 + i, b.W2 + i),
-                     d = FX::load(b.D0 + i, b.D1 + i, b.D2 + i),
-                     x = FX::load(b.X0 + i, b.X1 + i, b.X2 + i),
-                     y = FX::load(b.Y0 + i, b.Y1 + i, b.Y2 + i);
-            const FX nx =
-                f131x::add<kLanes>(f131x::add<kLanes>(f131x::sqr<kLanes>(lambda), lambda), d);
-            const FX ny = f131x::add<kLanes>(
-                f131x::add<kLanes>(f131x::mul<kLanes>(lambda, f131x::add<kLanes>(x, nx)), nx), y);
-            nx.store(b.X0 + i, b.X1 + i, b.X2 + i);
-            ny.store(b.Y0 + i, b.Y1 + i, b.Y2 + i);
-        }
-#endif
-        for (; i < B; ++i) {
-            const F131 lambda = b.W(i), d = b.D(i), x = b.X(i);
-            const F131 nx = f131::add(f131::add(f131::sqr(lambda), lambda), d);
-            b.setY(i, f131::add(f131::add(f131::mul(lambda, f131::add(x, nx)), nx), b.Y(i)));
-            b.setX(i, nx);
-        }
+        // The additions, lane by lane (the vector path above did its own).
+        for (i = 0; i < B; ++i) addLane(b, i);
+    }
+
+    // The addition of lane i, lambda in W: x' = lambda^2 + lambda + d,
+    // y' = lambda (x + x') + x' + y.
+    static void addLane(const Batch &b, int i)
+    {
+        const F131 lambda = b.W(i), d = b.D(i), x = b.X(i);
+        const F131 nx = f131::add(f131::add(f131::sqr(lambda), lambda), d);
+        b.setY(i, f131::add(f131::add(f131::mul(lambda, f131::add(x, nx)), nx), b.Y(i)));
+        b.setX(i, nx);
     }
 
     void runSlice(int c, int steps, Local *local)
