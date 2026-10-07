@@ -51,13 +51,14 @@ int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_s
     f4_u32 *cand = (f4_u32 *)calloc(n, sizeof(f4_u32));
     f4_u64 *pw = (f4_u64 *)calloc(n, sizeof(f4_u64));
     f4_u64 *coeff = (f4_u64 *)calloc(n, sizeof(f4_u64));
+    f4_u64 *orig = (f4_u64 *)calloc(n, sizeof(f4_u64));
     f4_u32 *is_piv = (f4_u32 *)calloc(n, sizeof(f4_u32));
     f4_u32 *counts = (f4_u32 *)calloc(hw ? hw : 1u, sizeof(f4_u32));
     F4ePivots *piv = (F4ePivots *)calloc(1, sizeof(F4ePivots));
     F4ePanelShared *sh = (F4ePanelShared *)calloc(1, sizeof(F4ePanelShared));
     F4eUpdateShared *ush = (F4eUpdateShared *)calloc(1, sizeof(F4eUpdateShared));
     int rc = 0;
-    if (!cand || !pw || !coeff || !is_piv || !counts || !piv || !sh || !ush) {
+    if (!cand || !pw || !coeff || !orig || !is_piv || !counts || !piv || !sh || !ush) {
         rc = -2;
         goto done;
     }
@@ -67,7 +68,7 @@ int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_s
         const f4_u32 high = low_start - 64u * w;
         const f4_u64 mask = high >= 64u ? ~0ull : ((1ull << high) - 1ull);
         f4e_gather_thread(0u, 1u, mat, stride, w, mask, active, rows, cand, pw, counts + w);
-        f4e_panel(sh, threads, cand, pw, coeff, is_piv, counts + w, piv);
+        f4e_panel(sh, threads, cand, pw, coeff, orig, is_piv, counts + w, piv);
         f4e_materialise_thread(0u, 1u, mat, stride, w, active, piv, ops);
         const f4_u64 tiles = (stride - w + F4E_TILE - 1u) / F4E_TILE;
         for (f4_u64 block = 0; block < 2u * tiles; ++block)
@@ -80,6 +81,7 @@ done:
     free(cand);
     free(pw);
     free(coeff);
+    free(orig);
     free(is_piv);
     free(counts);
     free(piv);
