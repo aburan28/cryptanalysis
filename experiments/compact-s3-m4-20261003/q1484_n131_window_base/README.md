@@ -17,3 +17,20 @@ This is a factor-base geometry experiment. It retains the exact curve ID
 `EC1N131Ckb1h6816f880945e`, `candidate_id: null`, `run_id: null`, and
 `isogeny: "none"`. A nominal dimension is not an `fb<B>` count. No N131
 decomposition or complete `2^x` is claimed by this work.
+
+## Frozen execution
+
+The design was committed in `5f7404ed`. Commit `dc410eb9` froze the
+enumerator, archive auditor, exact curve and field references, checked Sage
+runtime, limits, and [execution protocol](protocol.json) before the first
+exhaustive run. The [preflight](preflight.json) checked 4,096 raw-orbit
+ordinals and status encodings, including 32 direct N131 group projections.
+The enumerator writes progress and a partial bitmap every `2^20` raw orbits;
+an incomplete attempt remains an attempt and supplies no actual `B` or `K`.
+
+After a completed archive passes [independent sampled group-law
+audit](verify_archive.py), the [uniform-query budget
+screen](screen_uniform_query_budget.py) will apply Q1414's necessary
+rank-supply bound to this exact changed base. Its per-query `2^x` is an
+optimistic affordability ceiling with all other costs set to zero. It is
+separate from the still-unknown complete-solve work.
