@@ -234,6 +234,20 @@ int ca_ec_tau4_orbit_prepare(const ca_group *g, const ca_elem *p, const ca_elem 
 int ca_ec_tau4_orbit_mul_profile(const ca_group *g, const ca_tau4_orbit_precomp *pre,
                                   ca_elem *out, uint64_t a, uint64_t b,
                                   ca_tau4_joint_counts *counts);
+int ca_ec_tau4_pair_histogram(const ca_tau4_joint_precomp *pre, uint64_t a, uint64_t b,
+                               uint64_t histogram[486]);
+
+typedef struct ca_tau4_hot_precomp {
+    ca_tau4_joint_precomp base;
+    ca_elem point[64];
+    uint16_t slot_to_hot[486];
+} ca_tau4_hot_precomp;
+int ca_ec_tau4_hot_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
+                            const uint16_t selected[64], ca_tau4_hot_precomp *out,
+                            ca_tau4_joint_counts *counts);
+int ca_ec_tau4_hot_mul_profile(const ca_group *g, const ca_tau4_hot_precomp *pre,
+                                ca_elem *out, uint64_t a, uint64_t b,
+                                ca_tau4_joint_counts *counts);
 
 #define CA_TAU_POS_Q 64
 typedef struct ca_tau4_pos_precomp {

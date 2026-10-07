@@ -1,9 +1,11 @@
 #include "ec_tau_internal.h"
 #include "test_fixtures.h"
+#include "../experiments/prime-j0-hot-orbit-table/hot64_selected.h"
 #include <string.h>
 
 static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
                        const ca_tau4_orbit_precomp *orbit,
+                       const ca_tau4_hot_precomp *hot,
                        const ca_elem *p, const ca_elem *q, uint64_t a, uint64_t b,
                        uint64_t *saved_tau, uint64_t *saved_full)
 {
@@ -26,6 +28,17 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
         CHECK_EQ_U64(combined.inversions, one.inversions);
         CHECK(combined.mixed_adds <= one.mixed_adds);
         CHECK(combined.rotations <= one.rotations);
+    }
+    if (hot) {
+        ca_tau4_joint_counts sparse = {0};
+        ca_elem sparse_result;
+        CHECK(ca_ec_tau4_hot_mul_profile(g, hot, &sparse_result, a, b, &sparse));
+        CHECK(ca_group_equal(g, &sparse_result, &expected));
+        CHECK_EQ_U64(sparse.tau_steps, one.tau_steps);
+        CHECK_EQ_U64(sparse.overlaps, one.overlaps);
+        CHECK_EQ_U64(sparse.inversions, one.inversions);
+        CHECK(sparse.fused_hits <= one.overlaps);
+        CHECK(sparse.mixed_adds <= one.mixed_adds);
     }
     CHECK_EQ_U64(one.mixed_adds, two.mixed_adds);
     CHECK_EQ_U64(one.full_adds, 0);
@@ -58,6 +71,21 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
     CHECK(ca_ec_tau4_orbit_prepare(&g, &base, &other, &orbit, &orbit_prep));
     CHECK_EQ_U64(orbit_prep.mixed_adds, 8 + 486);
     CHECK_EQ_U64(orbit_prep.inversions, 2);
+    const uint16_t *selected = order == UINT64_C(23729779)
+        ? ca_hot64_j0_32 : ca_hot64_j0_56;
+    ca_tau4_hot_precomp hot;
+    ca_tau4_joint_counts hot_prep = {0};
+    CHECK(ca_ec_tau4_hot_prepare(&g, &base, &other, selected, &hot, &hot_prep));
+    CHECK_EQ_U64(hot_prep.mixed_adds, 8 + 64);
+    CHECK_EQ_U64(hot_prep.inversions, 2);
+    uint16_t duplicate[64];
+    memcpy(duplicate, selected, sizeof(duplicate));
+    duplicate[1] = duplicate[0];
+    ca_tau4_hot_precomp untouched;
+    memset(&untouched, 0x5a, sizeof(untouched));
+    ca_tau4_hot_precomp before = untouched;
+    CHECK(!ca_ec_tau4_hot_prepare(&g, &base, &other, duplicate, &untouched, NULL));
+    CHECK(memcmp(&untouched, &before, sizeof(untouched)) == 0);
 
     uint64_t saved_tau = 0, saved_full = 0;
     const uint64_t edge[][2] = {
@@ -66,13 +94,13 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
         {UINT64_MAX, UINT64_MAX}, {UINT64_MAX, order - 1},
     };
     for (size_t i = 0; i < sizeof(edge) / sizeof(edge[0]); i++)
-        check_pair(&g, &pre, &orbit, &base, &other, edge[i][0], edge[i][1],
+        check_pair(&g, &pre, &orbit, &hot, &base, &other, edge[i][0], edge[i][1],
                    &saved_tau, &saved_full);
     ca_rng rng;
     ca_rng_seed(&rng, UINT64_C(0x20261007) ^ order);
     for (int i = 0; i < 512; i++) {
         uint64_t scalar_a = ca_rng_next(&rng), scalar_b = ca_rng_next(&rng);
-        check_pair(&g, &pre, &orbit, &base, &other, scalar_a, scalar_b,
+        check_pair(&g, &pre, &orbit, &hot, &base, &other, scalar_a, scalar_b,
                    &saved_tau, &saved_full);
     }
     CHECK(saved_tau > 0);
@@ -83,23 +111,27 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
     CHECK_EQ_U64(prep.inversions, 1);
     CHECK_EQ_U64(prep.tau_steps, 1);
     CHECK(ca_ec_tau4_orbit_prepare(&g, &base, &id, &orbit, &orbit_prep));
-    check_pair(&g, &with_identity, &orbit, &base, &id, 123, 987,
+    CHECK(ca_ec_tau4_hot_prepare(&g, &base, &id, selected, &hot, &hot_prep));
+    check_pair(&g, &with_identity, &orbit, &hot, &base, &id, 123, 987,
                &saved_tau, &saved_full);
     CHECK(ca_ec_tau4_joint_prepare(&g, &id, &id, &with_identity, &prep));
     CHECK_EQ_U64(prep.inversions, 0);
     CHECK(ca_ec_tau4_orbit_prepare(&g, &id, &id, &orbit, &orbit_prep));
-    check_pair(&g, &with_identity, &orbit, &id, &id, UINT64_MAX, UINT64_MAX,
+    CHECK(ca_ec_tau4_hot_prepare(&g, &id, &id, selected, &hot, &hot_prep));
+    check_pair(&g, &with_identity, &orbit, &hot, &id, &id, UINT64_MAX, UINT64_MAX,
                &saved_tau, &saved_full);
 
     CHECK(ca_ec_tau4_joint_prepare(&g, &base, &base, &with_identity, &prep));
     CHECK(ca_ec_tau4_orbit_prepare(&g, &base, &base, &orbit, &orbit_prep));
-    check_pair(&g, &with_identity, &orbit, &base, &base, 178, 178,
+    CHECK(ca_ec_tau4_hot_prepare(&g, &base, &base, selected, &hot, &hot_prep));
+    check_pair(&g, &with_identity, &orbit, &hot, &base, &base, 178, 178,
                &saved_tau, &saved_full);
     ca_elem negative;
     ca_group_inv(&g, &negative, &base);
     CHECK(ca_ec_tau4_joint_prepare(&g, &base, &negative, &with_identity, &prep));
     CHECK(ca_ec_tau4_orbit_prepare(&g, &base, &negative, &orbit, &orbit_prep));
-    check_pair(&g, &with_identity, &orbit, &base, &negative, 178, 178,
+    CHECK(ca_ec_tau4_hot_prepare(&g, &base, &negative, selected, &hot, &hot_prep));
+    check_pair(&g, &with_identity, &orbit, &hot, &base, &negative, 178, 178,
                &saved_tau, &saved_full);
 }
 
