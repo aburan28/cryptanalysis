@@ -398,6 +398,35 @@ This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
 enumeration. The exact class-group job remained active after more than 14.0
 hours with no result file at this checkpoint.
 
+## Prospectively frozen low-degree paths through depth twenty-three
+
+The next extension was frozen in
+[`protocol-depth-twenty-three-20261007.json`](protocol-depth-twenty-three-20261007.json)
+before candidate generation. It added 336 curves at depth twenty-two and 352
+at depth twenty-three with no overlap against the prior union, raising the
+explicit registry to P-256 plus 4,097 neighbors.
+
+All 688 additions received matched-native measurements in 115 root-controlled
+blocks. Eighteen unadjusted short-screen hits, with point estimates from
+`1.0076x` through `1.0880x`, entered the mandatory fresh 30-trial, two-second
+holdout. None reproduced. The largest holdout estimate was `1.0239x` with
+paired 95% interval `0.9996x-1.0488x`; all 4,097 retained non-root curves now
+have native measurements and zero reproducible iteration-rate improvements.
+
+The depth-23 deterministic audits verify all 689 delta models and transported
+generators, exact conductor `1` and level-zero horizontal paths for every
+addition, and zero normalized-`3b` candidates passing the 32-operation gate.
+Discovery took 297.17 seconds, screening blocks 3,109.16 seconds, and the fresh
+holdout 1,171.19 seconds. Per-key evaluation of the new paths on `P` and `Q`
+remains unmeasured, and host-wide isolation remains unverified.
+
+The registry, 115 raw blocks, holdout, audits, invocation ledger, transfer
+assessment, receipt, summary, and verifier are frozen in
+[`results/sage-low-degree-depth-twenty-three-20261007`](results/sage-low-degree-depth-twenty-three-20261007).
+This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
+enumeration. The exact class-group job remained active after more than 15.4
+hours with no result file at this checkpoint.
+
 ## Full-registry normalized-coefficient audit
 
 The complete 2,226-curve retained union was reconstructed from fourteen frozen
