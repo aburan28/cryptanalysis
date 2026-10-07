@@ -497,6 +497,7 @@ class CpuEngine
             for (int v = 0; v < V; ++v)
                 pv[v] = FX::load(b.D0 + v * kLanes, b.D1 + v * kLanes, b.D2 + v * kLanes);
             for (i = kChains; i + kChains <= B; i += kChains) {
+#pragma GCC unroll 8
                 for (int v = 0; v < V; ++v) {
                     const int j = i + v * kLanes;
                     const FX w = FX::load(b.W0 + j, b.W1 + j, b.W2 + j),
@@ -562,14 +563,40 @@ class CpuEngine
                 nx.store(b.X0 + j, b.X1 + j, b.X2 + j);
                 ny.store(b.Y0 + j, b.Y1 + j, b.Y2 + j);
             };
-            for (i = tail - kChains; i >= kChains; i -= kChains) {
+            // The addition of a group runs one group behind its lambda.  In
+            // one iteration lambda, its square and the product on that are
+            // a dependency chain of some 95 cycles, and the uops of the
+            // square and the product sit in the scheduler waiting for it;
+            // with the chain's latency most of the iteration's work and the
+            // scheduler a fraction of its size, the core runs short of
+            // ready work and the ports go idle.  A group's addition, done
+            // in the next iteration, waits on nothing and keeps them fed:
+            // about 1% off the stage on one Sapphire Rapids core, which
+            // says how little was idle; the stage is at its port floor.
+            int ip = tail - kChains; // the group whose lambdas are in lam[]
+            if (ip >= kChains) {
+                FX lam[V];
+#pragma GCC unroll 8
                 for (int v = 0; v < V; ++v) {
-                    const int j = i + v * kLanes;
-                    const FX w = FX::load(b.W0 + j, b.W1 + j, b.W2 + j),
-                             d = FX::load(b.D0 + j, b.D1 + j, b.D2 + j);
-                    const FX lambda = f131x::mul<kLanes>(iv[v], w);
-                    iv[v] = f131x::mul<kLanes>(iv[v], d);
-                    addVector(j, lambda, d);
+                    const int j = ip + v * kLanes;
+                    lam[v] = f131x::mul<kLanes>(iv[v], FX::load(b.W0 + j, b.W1 + j, b.W2 + j));
+                    iv[v] = f131x::mul<kLanes>(iv[v], FX::load(b.D0 + j, b.D1 + j, b.D2 + j));
+                }
+                for (i = ip - kChains; i >= kChains; ip = i, i -= kChains) {
+#pragma GCC unroll 8
+                    for (int v = 0; v < V; ++v) {
+                        const int j = i + v * kLanes, jp = ip + v * kLanes;
+                        addVector(jp, lam[v], FX::load(b.D0 + jp, b.D1 + jp, b.D2 + jp));
+                        const FX w = FX::load(b.W0 + j, b.W1 + j, b.W2 + j),
+                                 d = FX::load(b.D0 + j, b.D1 + j, b.D2 + j);
+                        lam[v] = f131x::mul<kLanes>(iv[v], w);
+                        iv[v] = f131x::mul<kLanes>(iv[v], d);
+                    }
+                }
+#pragma GCC unroll 8
+                for (int v = 0; v < V; ++v) {
+                    const int jp = ip + v * kLanes;
+                    addVector(jp, lam[v], FX::load(b.D0 + jp, b.D1 + jp, b.D2 + jp));
                 }
             }
             for (int v = 0; v < V; ++v) {
