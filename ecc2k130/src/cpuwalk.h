@@ -230,10 +230,26 @@ class CpuEngine
     // Advance every batch by `steps` steps in total (a batch another worker
     // holds is passed over for the next free one, so under contention the
     // steps are spread unevenly; their number is exact).
+    //
+    // The slices are sliceSteps_ long until the last slice's worth, which is
+    // handed out in quarters: the workers run out of slices together at the
+    // end of a launch and the launch ends when the last slice does, so the
+    // others idle for up to a slice.  On four workers over the client's
+    // default launch of 1024 steps the quarters measured 1.3% over fourteen
+    // interleaved runs, and within the noise at 2048 steps or on one worker
+    // (uncontrolled host, exploratory).  A launch of one slice stays one
+    // slice, so that a slice the length of the launch still means every
+    // batch takes exactly the launch's steps, which the tests lean on.
     void launch(int steps, std::vector<DpRecord> *out, LaunchCounts *counts)
     {
-        const int rounds = (steps + sliceSteps_ - 1) / sliceSteps_;
-        const long total = long(chunks_) * rounds;
+        std::vector<int> lens;
+        for (int left = steps; left > 0;) {
+            int n = left > sliceSteps_ ? sliceSteps_ : left;
+            if (steps > sliceSteps_ && left <= sliceSteps_ && n >= 4) n = (left + 3) / 4;
+            lens.push_back(n);
+            left -= n;
+        }
+        const long total = long(chunks_) * long(lens.size());
         std::atomic<long> next(0);
         std::mutex mu;
         auto body = [&]() {
@@ -241,9 +257,7 @@ class CpuEngine
             for (;;) {
                 const long s = next.fetch_add(1);
                 if (s >= total) break;
-                const int round = int(s / chunks_);
-                const int len = int((long long)steps * (round + 1) / rounds -
-                                    (long long)steps * round / rounds);
+                const int len = lens[size_t(s / chunks_)];
                 int c = int(s % chunks_);
                 while (busy_[c].exchange(true)) c = c + 1 == chunks_ ? 0 : c + 1;
                 runSlice(c, len, &local);
