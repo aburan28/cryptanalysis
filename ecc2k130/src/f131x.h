@@ -326,14 +326,20 @@ template <int N> F131X_INLINE F131x<N> reduce(const typename Limbs<N>::V h[5])
     const V q1 =
         d1 ^ shr<N, 1>(r1, r2) ^ shr<N, 9>(r1, r2) ^ shr<N, 25>(r1, r2) ^ shr<N, 57>(r1, r2);
     const V q2 = d2 ^ (r2 >> 1);
+    // Q m, low 131 bits, with m = (0xd, m1, 0xd) by limb: T = Q 0xd as
+    // f131.h has it, and q0 m1 by the multiplier -- its low half is T's
+    // four shifted copies and Q << 60 of f131::reduce's limb 1, its high
+    // half (with T's top limb) the shifts into limb 2: one product and two
+    // unpacks for fourteen shifts.  Limb 2 keeps three bits, so of q1 m1
+    // only q1 times the low bits of m1 (which are 5) count there.
     const V t0 = q0 ^ (q0 << 2) ^ (q0 << 3);
     const V t1 = q1 ^ shl<N, 2>(q1, q0) ^ shl<N, 3>(q1, q0);
     const V t2 = q2 ^ shl<N, 2>(q2, q1) ^ shl<N, 3>(q2, q1);
+    const Prod<N> p = clmul<N>(q0, F131x<N>::splat(0x1d0d000d0000000dull));
     F131x<N> out;
     out.w0 = h[0] ^ t0;
-    out.w1 = h[1] ^ t1 ^ t0 ^ (t0 << 32) ^ (t0 << 48) ^ (t0 << 56) ^ (q0 << 60);
-    out.w2 = (h[2] ^ t2 ^ t1 ^ (t0 >> 32) ^ (t0 >> 16) ^ (t0 >> 8) ^ t0 ^ (q0 >> 4)) &
-             F131x<N>::splat(7u);
+    out.w1 = h[1] ^ t1 ^ lo<N>(p);
+    out.w2 = (h[2] ^ t2 ^ hi<N>(p) ^ t0 ^ q1 ^ (q1 << 2)) & F131x<N>::splat(7u);
     return out;
 }
 
