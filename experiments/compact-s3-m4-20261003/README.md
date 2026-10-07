@@ -2220,6 +2220,17 @@ solver. The result is a censored correctness control, not a natural N83
 relation yield or successful decomposition cost. The complete N131 `2^x`
 remains unknown.
 
+### Q1471 wider exact-join cap at N83
+
+[Q1471](q1471_n83_wide_join/README.md) raises the exact joint-pair
+admission cap fourfold on Q1467's matched N83 known-solution and ordinary
+targets. It admits three exact checks in each run, compared with one at the
+old cap, but both reach a 120-second wall cap without a verified relation.
+The widened check costs 19.87 million / 19.07 million field
+multiplications, respectively, and hundreds of partial states still exceed
+the new cap. No N83 successful-solve cost, natural useful-row yield, or
+complete N131 `2^x` follows.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:

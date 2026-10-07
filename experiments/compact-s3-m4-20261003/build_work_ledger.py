@@ -6696,6 +6696,37 @@ def main():
     assert q1470_audit["verified_relation_count"] == 0
     assert q1470_audit["field_calls_equal_prior_60_second_run"] is True
     assert q1470_audit["complete_n131_log2_work"] is None
+    q1471_dir = HERE / "q1471_n83_wide_join"
+    q1471_protocol_path = q1471_dir / "protocol.json"
+    q1471_audit_path = q1471_dir / "archive_audit.json"
+    q1471_protocol = json.loads(q1471_protocol_path.read_text())
+    q1471_audit = json.loads(q1471_audit_path.read_text())
+    assert q1471_protocol["proposal_id"] == q1471_audit[
+        "proposal_id"] == "Q1471"
+    assert q1471_protocol["candidate_id"] is q1471_audit[
+        "candidate_id"] is None
+    assert q1471_protocol["isogeny"] == q1471_audit[
+        "isogeny"] == "none"
+    assert q1471_protocol["q1467_protocol_sha256"] == sha(
+        q1467_solver_protocol_path)
+    assert q1471_protocol["q1470_receipt_sha256"] == sha(
+        q1470_receipt_path)
+    assert q1471_protocol["curve_id"] == q1471_audit[
+        "curve_id"] == n83_q1467_base["curve_id"]
+    assert q1471_protocol["factor_base_enumerated_set_sha256"] == (
+        n83_q1467_base["enumerated_set_sha256"])
+    assert q1471_audit["status"] == "passed"
+    assert q1471_audit["protocol_sha256"] == sha(q1471_protocol_path)
+    assert q1471_audit["auditor_source_sha256"] == sha(
+        q1471_dir / "audit.py")
+    assert [row["case"] for row in q1471_audit["rows"]] == (
+        q1471_protocol["run_order"])
+    assert all(row["native_status"] == "censored" and
+               row["stop_reason"] == "wall_cap" and
+               row["joint_eligible_checks"] == 3 and
+               row["verified_relation_count"] == 0
+               for row in q1471_audit["rows"])
+    assert q1471_audit["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -8842,6 +8873,38 @@ def main():
             "archive_audit_sha256": sha(q1470_audit_path),
             "receipt_sha256": sha(q1470_receipt_path),
         },
+        "q1471_n83_wider_exact_join": {
+            "proposal_id": "Q1471", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "curve_id": q1471_protocol["curve_id"],
+            "factor_base_actual_B": q1471_protocol["factor_base_actual_B"],
+            "folded_columns_K": q1471_protocol["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": q1471_protocol[
+                "factor_base_enumerated_set_sha256"],
+            "controlled_variable": q1471_protocol[
+                "controlled_variable"],
+            "pair_candidate_cap": q1471_protocol["pair_candidate_cap"],
+            "rows": q1471_audit["rows"],
+            "verified_ordinary_relations": 0,
+            "natural_relation_yield_estimate": None,
+            "successful_N83_solve_cost": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "On matched exact N83 CNFs and targets, raising the "
+                "per-side exact joint-pair admission cap from 250000 to "
+                "1000000 increases exact checks from one to three on "
+                "both the known-representable unpinned control and the "
+                "ordinary query. Both remain censored at the 120-second "
+                "wall cap without a verified relation. Hundreds of "
+                "partial states still exceed the wider cap, and "
+                "arithmetic work rises sharply. This cap change is "
+                "insufficient for an N83 successful-cost or natural-"
+                "yield estimate; wall comparisons are exploratory."),
+            "protocol_sha256": sha(q1471_protocol_path),
+            "archive_audit_sha256": sha(q1471_audit_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -9348,6 +9411,10 @@ def main():
                 "control to a 600-second wall cap with no model; SAT "
                 "conflicts rise while native field calls stay fixed, "
                 "showing that field calls alone undercharge this solver; "
+                "Q1471 raises the exact joint-pair admission cap fourfold "
+                "on matched N83 known-solution and ordinary targets, "
+                "admitting three checks on each but still reaching both "
+                "120-second wall caps without a relation; "
                 "the N53 early-rank panel and censored N83 ordinary "
                 "runs do not measure N83 useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
