@@ -465,3 +465,12 @@ evaluations from 25 to 5 while preserving prepared tables and group
 operation counts. A new 32,768-scalar fixture passed release and UBSan
 correctness panels in all four serial and wave formats. The isolated
 manifest is ready; controlled wall-time performance remains unknown.
+
+The [certified center guard](JOINT_PAIR_GUARD.md) tests two exact
+dominant-coordinate inequalities before the five-neighbor recoder.
+On a new disjoint 32,768-scalar fixture it accepts the rounded center
+for 16,363 of 16,384 `j0-56` scalars and 2,199 of 16,384
+`glv-j0-32` scalars; the remainder use the unchanged five-neighbor
+search. Release and UBSan correctness panels pair each guarded format
+with its same-width serial or wave control. Isolated CPU timing is
+still needed before claiming a wall-time improvement.
