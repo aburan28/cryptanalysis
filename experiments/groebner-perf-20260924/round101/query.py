@@ -9,7 +9,13 @@ HERE = Path(__file__).resolve().parent
 P = HERE.parent
 spec = importlib.util.spec_from_file_location('leased95_for101', P/'round95/query.py')
 previous = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(previous)
+_import_path = sys.path[:]
+try:
+    spec.loader.exec_module(previous)
+finally:
+    # Legacy modules prepend their own helper directories. Keep that lookup
+    # local to their import so a full checkout cannot shadow round101 helpers.
+    sys.path[:] = _import_path
 module = previous
 while module is not None:
     module.HERE = HERE

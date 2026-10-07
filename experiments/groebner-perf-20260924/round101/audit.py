@@ -8,10 +8,14 @@ import importlib.util
 import json
 import math
 from pathlib import Path
+import sys
 from build import source_paths
 HERE=Path(__file__).resolve().parent
 spec=importlib.util.spec_from_file_location('oracle95_for101',HERE.parent/'round95/audit.py')
-oracle=importlib.util.module_from_spec(spec);spec.loader.exec_module(oracle)
+oracle=importlib.util.module_from_spec(spec)
+_import_path=sys.path[:]
+try:spec.loader.exec_module(oracle)
+finally:sys.path[:]=_import_path
 
 def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 def finite(value):return type(value) in (int,float) and math.isfinite(value) and value>=0

@@ -4,6 +4,7 @@ import ctypes as C
 import json
 from pathlib import Path
 import random
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -20,6 +21,24 @@ class LeasedTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.queries = [Query(), Query(sanitizer=True)]
+
+    def test_legacy_imports_do_not_shadow_current_helpers(self):
+        # Separate interpreters exercise both import orders without sys.modules
+        # concealing the full-checkout collision that failed initial Linux CI.
+        for modules in (('query', 'audit'), ('audit', 'query')):
+            script = f'''import importlib.util, pathlib, sys
+sys.path.insert(0, {str(HERE)!r})
+before = sys.path[:]
+import {modules[0]}
+assert sys.path == before
+import {modules[1]}
+assert sys.path == before
+for name in ('common', 'panel', 'worker'):
+    assert pathlib.Path(importlib.util.find_spec(name).origin).parent == pathlib.Path({str(HERE)!r})
+import common
+assert common.Query is query.Query
+'''
+            subprocess.run([sys.executable, '-c', script], check=True)
 
     def checked(self, n, rows, result):
         self.assertTrue(result['verified'], result)
