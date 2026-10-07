@@ -101,11 +101,20 @@ static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *p
                                 const uint64_t pairs[8][2], uint64_t expected_inversions)
 {
     uint64_t a[8], b[8];
-    ca_elem outputs[8], plane_outputs[8];
+    ca_elem outputs[8], plane_outputs[8], free_outputs[8];
     for (size_t i = 0; i < 8; i++) { a[i] = pairs[i][0]; b[i] = pairs[i][1]; }
     ca_tau4_joint_counts batch = {0};
     CHECK(ca_ec_tau4_paired_two_batch_profile(g, pre, outputs, a, b, 8, &batch));
     CHECK_EQ_U64(batch.inversions, expected_inversions);
+    ca_tau4_joint_counts free_batch = {0};
+    CHECK(ca_ec_tau4_paired_two_free_gauge_batch_profile(g, pre, free_outputs,
+                                                          a, b, 8, &free_batch));
+    CHECK_EQ_U64(free_batch.inversions, expected_inversions);
+    CHECK_EQ_U64(free_batch.tau_steps, batch.tau_steps);
+    CHECK_EQ_U64(free_batch.mixed_adds, batch.mixed_adds);
+    CHECK_EQ_U64(free_batch.recode_attempts, batch.recode_attempts);
+    CHECK_EQ_U64(free_batch.pair_scores, batch.pair_scores);
+    CHECK(free_batch.rotations <= batch.rotations);
     ca_tau4_joint_plane_precomp plane;
     ca_tau4_joint_counts plane_prep = {0}, plane_batch = {0};
     CHECK(ca_ec_tau4_joint_plane_prepare(g, p, q, &plane, &plane_prep));
@@ -131,6 +140,7 @@ static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *p
         ca_group_op(g, &expected, &ap, &bq);
         CHECK(ca_group_equal(g, &outputs[i], &one));
         CHECK(ca_group_equal(g, &outputs[i], &expected));
+        CHECK(ca_group_equal(g, &free_outputs[i], &expected));
         CHECK(ca_group_equal(g, &plane_outputs[i], &expected));
         ca_elem plane_one;
         ca_tau4_joint_counts plane_counts = {0};
