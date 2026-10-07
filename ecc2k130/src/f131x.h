@@ -826,8 +826,12 @@ F131X_INLINE typename Limbs<N>::V inverseWeight(const SelectConsts &c, typename 
 // 15%; eight spilled registers and gave some of it back.  The same on an
 // AVX2 build with its sixteen registers, four best.  The table form below
 // holds fewer values live and waits on gathers instead, and takes eight:
-// 3% under four, and sixteen spills (8% over eight).
-#    if F131X_VBMI && ECC_F131_LANES >= 8
+// 3% under four, and sixteen spills (8% over eight).  With the chains'
+// forward pass inside the loop (cpuwalk.h) four and eight measure the
+// same and sixteen 4% slower; ECC_F131_SELECT_GROUP overrides.
+#    ifdef ECC_F131_SELECT_GROUP
+static const int kSelectGroup = ECC_F131_SELECT_GROUP;
+#    elif F131X_VBMI && ECC_F131_LANES >= 8
 static const int kSelectGroup = 8;
 #    else
 static const int kSelectGroup = 4;
