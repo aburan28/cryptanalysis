@@ -284,6 +284,15 @@ int ca_ec_tau4_paired_two_batch_profile(const ca_group *g,
                                          ca_elem *out, const uint64_t *a,
                                          const uint64_t *b, size_t count,
                                          ca_tau4_joint_counts *counts);
+int ca_ec_tau4_paired_two_free_gauge_batch_profile(const ca_group *g,
+                                                    const ca_tau4_joint_precomp *pre,
+                                                    ca_elem *out, const uint64_t *a,
+                                                    const uint64_t *b, size_t count,
+                                                    ca_tau4_joint_counts *counts);
+int ca_ec_tau4_paired_two_free_gauge_tau_pair_steered_batch_profile(
+    const ca_group *g, const ca_tau4_joint_precomp *pre, ca_elem *out,
+    const uint64_t *a, const uint64_t *b, size_t count,
+    ca_tau4_joint_counts *counts);
 int ca_ec_tau4_joint_plane_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
                                     ca_tau4_joint_plane_precomp *out,
                                     ca_tau4_joint_counts *counts);
