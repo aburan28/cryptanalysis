@@ -2393,6 +2393,20 @@ probability still needs at least `2^72.792` target-side pair descriptor
 inspections, more than `2^61` by 11.792 bits in that unit. The screen does
 not bound target-adaptive algebraic PDP or early target-span recovery.
 
+### Q1495 fixed-window tuple support screen
+
+[Q1495](q1495_window_tuple_screen/README.md) derives an exact per-window
+count from Q1484's audited strata: a fixed N131 length-27 window contains
+134,202,690 subgroup-usable points. The direct N53 enumeration matches
+the same span-incidence formula. For a uniform nonidentity target, one
+fixed ordered four-window tuple has support probability at most
+`4.7662349128e-7`. A target-independent schedule returning at most one
+verified relation per tuple needs at least `2^45.927` tuple inspections
+for 95% full-rank probability, leaving an optimistic `2^15.073`
+charged-operation ceiling per inspection below `2^61`. This screen does
+not cover target-adaptive or jointly coupled window searches; complete
+N131 `2^x` remains unknown.
+
 ## Next goal
 
 Build and measure an exact, target-coupled **window-pair support mechanism**
