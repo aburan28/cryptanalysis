@@ -5871,6 +5871,203 @@ def main():
         "exact_midpoint_sets_equal_by_pair"] == [True, True]
     assert q1460_overlap_result[
         "new_n83_admission_adds_midpoint_x"] is False
+    q1461_dir = HERE / "q1461_sparse_sum_inverse"
+    q1461_protocol_path = q1461_dir / "protocol.json"
+    q1461_result_path = q1461_dir / "result.json"
+    q1461_protocol = json.loads(q1461_protocol_path.read_text())
+    q1461_result = json.loads(q1461_result_path.read_text())
+    assert q1461_protocol["proposal_id"] == q1461_result[
+        "proposal_id"] == "Q1461"
+    assert q1461_protocol["candidate_id"] is q1461_result[
+        "candidate_id"] is None
+    assert q1461_protocol["isogeny"] == q1461_result[
+        "isogeny"] == "none"
+    assert q1461_result["protocol_sha256"] == sha(q1461_protocol_path)
+    q1461_rows = []
+    for n in (53, 83):
+        cell = q1461_protocol["cells"][f"n{n}_ordinary"]
+        measured = q1461_result["cells"][f"n{n}"]
+        planted = measured["positive_control"]
+        ordinary = measured["ordinary_archived_states"]
+        assert measured["curve_id"] == cell["curve_id"]
+        assert measured["ordinary_workload_id"] == cell["workload_id"]
+        assert planted["verified_pairs"] == 1
+        assert len(ordinary) == 16
+        assert all(row["verified_pairs"] == 0 and
+                   row["sum_candidate_count"] == row["sums_visited"]
+                   for row in ordinary)
+        q1461_rows.append({
+            "proposal_id": "Q1461", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "degree_n": n, "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "planted_verified_pairs": planted["verified_pairs"],
+            "ordinary_archived_state_count": len(ordinary),
+            "ordinary_pair_candidates": sum(
+                row["pair_candidates"] for row in ordinary),
+            "ordinary_sum_candidates": sum(
+                row["sum_candidate_count"] for row in ordinary),
+            "ordinary_verified_pairs": 0,
+            "is_natural_relation_yield_measurement": False,
+            "successful_decomposition_cost": None,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "complete_n131_log2_work": None,
+        })
+    q1462_dir = HERE / "q1462_sparse_sum_sat"
+    q1462_protocol_path = q1462_dir / "protocol.json"
+    q1462_control_path = q1462_dir / "control_result.json"
+    q1462_verification_path = q1462_dir / "verification.json"
+    q1462_protocol = json.loads(q1462_protocol_path.read_text())
+    q1462_control = json.loads(q1462_control_path.read_text())
+    q1462_verification = json.loads(q1462_verification_path.read_text())
+    assert q1462_protocol["proposal_id"] == q1462_control[
+        "proposal_id"] == q1462_verification["proposal_id"] == "Q1462"
+    assert q1462_protocol["candidate_id"] is q1462_control[
+        "candidate_id"] is q1462_verification["candidate_id"] is None
+    assert q1462_protocol["isogeny"] == q1462_control[
+        "isogeny"] == q1462_verification["isogeny"] == "none"
+    assert q1462_control["status"] == q1462_verification[
+        "status"] == "pass"
+    assert q1462_verification["protocol_sha256"] == sha(
+        q1462_protocol_path)
+    assert q1462_verification["verified_ordinary_relations"] == 0
+    q1462_rows = []
+    for n in (53, 83):
+        cell = q1462_protocol["cells"][str(n)]
+        receipt_path = q1462_dir / f"runs/n{n}_ordinary/receipt.json"
+        receipt = json.loads(receipt_path.read_text())
+        verified = next(row for row in q1462_verification["rows"]
+                        if row["degree_n"] == n)
+        baseline = next(row for row in q1446_rows
+                        if row["degree"] == n)
+        pair_table = next(row for row in q1445_rows
+                          if row["degree"] == n)
+        assert verified["receipt_sha256"] == sha(receipt_path)
+        assert receipt["protocol_sha256"] == sha(q1462_protocol_path)
+        assert receipt["solver_status"] == verified[
+            "solver_status"] == "censored"
+        assert receipt["workload_id"] == cell[
+            "workload_id"] == verified["workload_id"]
+        assert receipt["curve_id"] == cell[
+            "curve_id"] == baseline["curve_id"] == pair_table["curve_id"]
+        assert receipt["public_target"] == cell[
+            "public_target"] == pair_table["matched_public_target"]
+        for key in ("factor_base_actual_B", "folded_columns_K",
+                    "factor_base_enumerated_set_sha256"):
+            assert receipt[key] == cell[key] == baseline[key] == (
+                pair_table[key]), key
+        report = receipt["solver_report"]
+        assert report is not None
+        assert report["sum_checks"] == report["sum_rejections"] > 0
+        assert report["sum_x_only_hits"] == report["sum_exact_pairs"] == 0
+        assert verified["sampled_direct_pair_replays"] == 24
+        assert receipt["verified_relation_count"] == 0
+        q1462_rows.append({
+            "proposal_id": "Q1462", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "degree_n": n, "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": cell["public_target"],
+            "solver_status": receipt["solver_status"],
+            "sum_candidate_cap": cell["sum_candidate_cap"],
+            "sum_checks": report["sum_checks"],
+            "sum_rejections": report["sum_rejections"],
+            "sum_candidates_visited": report["sum_checked_sums"],
+            "direct_pair_rejection_snapshots_replayed": verified[
+                "sampled_direct_pair_replays"],
+            "field_operation_calls": {key: report[f"field_{key}_calls"]
+                                      for key in ("mul", "sqr", "inv")},
+            "sum_check_field_operation_calls": {
+                key: report[f"sum_check_{key}_calls"]
+                for key in ("mul", "sqr", "inv")},
+            "online_stage_wall_ns_exploratory": receipt[
+                "online_stage_wall_ns_exploratory"],
+            "peak_child_rss_raw": receipt["peak_child_rss_raw"],
+            "peak_child_rss_units": receipt["peak_child_rss_units"],
+            "verified_relation_count": 0,
+            "novel_rank_per_query": None,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "successful_decomposition_cost": None,
+            "complete_n131_log2_work": None,
+            "cpu_isolation_receipt": None,
+            "receipt_sha256": sha(receipt_path),
+        })
+    q1463_dir = HERE / "q1463_free_midpoint_rank"
+    q1463_protocol_path = q1463_dir / "protocol.json"
+    q1463_result_path = q1463_dir / "result.json"
+    q1463_verification_path = q1463_dir / "verification.json"
+    q1463_protocol = json.loads(q1463_protocol_path.read_text())
+    q1463_result = json.loads(q1463_result_path.read_text())
+    q1463_verification = json.loads(q1463_verification_path.read_text())
+    assert q1463_protocol["proposal_id"] == q1463_result[
+        "proposal_id"] == q1463_verification["proposal_id"] == "Q1463"
+    assert q1463_protocol["candidate_id"] is q1463_result[
+        "candidate_id"] is None
+    assert q1463_protocol["run_id"] is q1463_result["run_id"] is None
+    assert q1463_protocol["isogeny"] == q1463_result[
+        "isogeny"] == "none"
+    assert q1463_result["point_decomposition_stage_code"] == "PDP4hybrid"
+    assert q1463_result["protocol_sha256"] == sha(q1463_protocol_path)
+    assert q1463_verification["status"] == "pass"
+    assert q1463_verification["result_sha256"] == sha(q1463_result_path)
+    assert q1463_verification["protocol_sha256"] == sha(
+        q1463_protocol_path)
+    assert len(q1463_verification["independent_sage_replays"]) == 2
+    q1463_rows = []
+    for cell, measured in zip(q1463_protocol["cells"],
+                              q1463_result["cells"]):
+        n = cell["degree_n"]
+        assert measured["name"] == cell["name"]
+        for key in ("curve_id", "workload_id", "degree_n",
+                    "factor_base_actual_B", "folded_columns_K",
+                    "factor_base_enumerated_set_sha256"):
+            assert measured[key] == cell[key]
+        pair_rows = measured["pair_product_rows"]
+        exact_rows = measured["exact_midpoint_rows"]
+        assert len(pair_rows) == cell["archived_partial_state_count"]
+        assert all(row["pair_product_coefficient_ranks"] == [n, n]
+                   for row in pair_rows)
+        assert all(row["affine_ranks"] == [n, n]
+                   for row in exact_rows)
+        assert all(max(row["pair_candidates"]) <= 4096
+                   for row in exact_rows)
+        q1463_rows.append({
+            "proposal_id": "Q1463", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "diagnostic_only": True,
+            "name": cell["name"], "degree_n": n,
+            "curve_id": cell["curve_id"],
+            "workload_id": cell["workload_id"],
+            "factor_base_actual_B": cell["factor_base_actual_B"],
+            "folded_columns_K": cell["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": cell[
+                "factor_base_enumerated_set_sha256"],
+            "archived_partial_states": len(pair_rows),
+            "all_pair_product_coefficient_ranks_full": True,
+            "exact_bounded_midpoint_states": len(exact_rows),
+            "all_exact_midpoint_affine_ranks_full": True,
+            "verified_relation_count": 0,
+            "natural_relation_yield_estimate": None,
+            "successful_decomposition_cost": None,
+            "complete_n131_log2_work": None,
+        })
+    assert [row["archived_partial_states"] for row in q1463_rows] == [
+        21, 21, 23]
+    assert [row["exact_bounded_midpoint_states"]
+            for row in q1463_rows] == [6, 6, 1]
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -7646,6 +7843,88 @@ def main():
             "result_sha256": sha(q1460_result_path),
             "verification_sha256": sha(q1460_verification_path),
         },
+        "q1461_sparse_sum_inverse_fixed_midpoint_kernel": {
+            "proposal_id": "Q1461", "candidate_id": None,
+            "isogeny": "none", "point_decomposition_stage_code":
+                "PDP4hybrid",
+            "method": q1461_protocol["method"],
+            "scope": q1461_protocol["scope"],
+            "rows": q1461_rows,
+            "ordinary_verified_relations": 0,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "Exact fixed-midpoint inversion recovers a planted pair "
+                "at N53 and N83 and agrees with direct enumeration on "
+                "16 archived ordinary partial states per degree. Those "
+                "32 states contain no pair. This is a kernel correctness "
+                "and operation-count result, not ordinary relation yield "
+                "or a successful decomposition-cost measurement."),
+            "protocol_sha256": sha(q1461_protocol_path),
+            "result_sha256": sha(q1461_result_path),
+        },
+        "q1462_sparse_sum_sat_ordinary": {
+            "proposal_id": "Q1462", "candidate_id": None,
+            "isogeny": "none", "point_decomposition_stage_code":
+                "PDP4hybrid",
+            "method": q1462_protocol["method"],
+            "controlled_variable": q1462_protocol["controlled_variable"],
+            "rows": q1462_rows,
+            "matched_pair_table_proposal_id": "Q1445",
+            "matched_q1446_baseline_proposal_id": "Q1446",
+            "planted_group_control_count": len(q1462_control["rows"]),
+            "ordinary_verified_relations": 0,
+            "successful_N53_N83_solve_growth_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "The new exact guard checks 2070 N53 and 1357 N83 "
+                "fixed-midpoint partial states, including recorded "
+                "direct pair domains of 67677 and 249719, but every "
+                "checked state has zero pairs. Both one-target ordinary "
+                "cells are censored at the 60-second native cap with no "
+                "model or relation. Forty-eight sampled rejection "
+                "states agree with direct enumeration. These attempts "
+                "measure failed search prefixes, not natural relation "
+                "yield, novel rank, or work per successful decomposition. "
+                "The complete N131 work charge remains unknown; no "
+                "challenge dispatch is justified."),
+            "protocol_sha256": sha(q1462_protocol_path),
+            "control_result_sha256": sha(q1462_control_path),
+            "verification_sha256": sha(q1462_verification_path),
+        },
+        "q1463_free_midpoint_linear_span_screen": {
+            "proposal_id": "Q1463", "candidate_id": None,
+            "isogeny": "none", "point_decomposition_stage_code":
+                "PDP4hybrid",
+            "rows": q1463_rows,
+            "independent_sage_replays": q1463_verification[
+                "independent_sage_replays"],
+            "successful_N53_N83_solve_growth_measurement": False,
+            "natural_relation_yield_estimate": None,
+            "cost_per_useful_row": None,
+            "degree131_complete_solve_work_log2": None,
+            "challenge_dispatch_allowed": False,
+            "decision": (
+                "All 65 archived free-midpoint partial-state rows have "
+                "full pair-product coefficient rank on both sides. "
+                "The exact midpoint sets in all 13 states within the "
+                "4096-pair cap also have full affine rank on both sides; "
+                "two smallest ordinary cases receive independent Sage "
+                "replay. This excludes an independent-monomial linear "
+                "span rejection and a proper affine midpoint container "
+                "on these fixed states, not weight-aware nonlinear joint "
+                "reasoning or a target-guided solve. No relation or "
+                "successful-solve cost is measured."),
+            "protocol_sha256": sha(q1463_protocol_path),
+            "result_sha256": sha(q1463_result_path),
+            "verification_sha256": sha(q1463_verification_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -8102,6 +8381,19 @@ def main():
                 "midpoint set, "
                 "but does not bound target-adaptive SAT search or "
                 "measure a successful solve; "
+                "Q1461's exact fixed-midpoint sparse-sum inversion "
+                "recovers N53/N83 planted pairs and agrees with direct "
+                "enumeration on 32 archived ordinary partial states, "
+                "but none of those states contains a pair; "
+                "Q1462 installs that rule in the target-linked SAT "
+                "search and makes 2070 N53 and 1357 N83 exact checks, "
+                "all no-pair rejections; both ordinary queries still "
+                "reach the wall cap with no relation, so no successful "
+                "decomposition work or rank yield is measured; "
+                "Q1463 finds full pair-product coefficient rank in all "
+                "65 archived free-midpoint states and full affine rank "
+                "for both exact midpoint sets in all 13 bounded states, "
+                "but neither result supplies a nonlinear joint solver; "
                 "one n53 success and censored n83 ordinary "
                 "runs do not measure natural useful-row or novel-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

@@ -2047,6 +2047,28 @@ midpoint sets as an already admitted raw state. It adds no new x-only
 target support in that archived prefix, although earlier propagation on
 a changed solver trail remains unmeasured.
 
+### Q1461 sparse-sum inversion and Q1462 ordinary SAT integration
+
+The [Q1461 exact kernel](q1461_sparse_sum_inverse/README.md) fixes one
+nonzero `S3` midpoint, enumerates sparse leaf XOR sums, and recovers all
+compatible leaf pairs by binary linear algebra. It recovers a planted pair
+at N53 and N83 and matches direct enumeration on 16 archived ordinary
+partial states per degree. Those 32 states contain no pair. Its exact
+primitive counts are a fixed-midpoint stage diagnostic, not work per
+successful decomposition.
+
+The [Q1462 frozen solver](q1462_sparse_sum_sat/README.md) installs this
+rule in Q1446's target-linked mids-first SAT search under a 100,000-sum
+cap. It reaches actual ordinary states with 67,677 N53 and 249,719 N83
+direct pair completions, beyond the older 4,096-pair admission cap.
+Across the frozen 60-second ordinary cells, it checks 2,070 N53 and 1,357
+N83 partial pairs; every exact check rejects and neither cell recovers a
+relation. Forty-eight retained rejections agree with independent direct
+pair enumeration. The matched Q1445 pair table found one verified N53
+relation on the same target and base, with a different query law and
+preparation cost; its N83 cell also found none. These outcomes supply no
+successful N83 cost, natural rank yield, or complete N131 `2^x`.
+
 ## Next goal
 
 The next goal is **one independently verified four-point relation from the
@@ -2066,6 +2088,22 @@ Q1460 bounds each admitted fixed state's raw-target x support and
 quantifies why bounded admission alone is a limited search mechanism;
 the target-dependent SAT trail prevents interpreting that bound as a
 natural relation-yield estimate.
+Q1461 makes larger fixed-midpoint checks exact, and Q1462 runs thousands
+of them on ordinary N53/N83 queries, but every check rejects and both
+cells remain censored. Q1456's large-domain counts leave midpoints free;
+they cannot be used as Q1461 fixed-midpoint admissions. The next algorithm
+must couple many possible midpoint values to the public target instead of
+spending a full search prefix on one fixed midpoint at a time.
+
+The [Q1463 free-midpoint rank screen](q1463_free_midpoint_rank/README.md)
+tests a direct linear-span route on the archived Q1456 partial states.
+Both pair-product coefficient spans have full field rank in all 65 state
+rows. The exact reachable midpoint sets in all 13 states within a
+4,096-pair cap also have full affine rank on both sides; independent Sage
+replays the smallest N53 and N83 cases. This rules out an unrestricted
+monomial-span rejection on those prefixes and any proper affine container
+for their bounded midpoint sets. It does not rule out a weight-aware
+nonlinear joint rule or measure a new ordinary relation.
 
 A concrete successor should process **large partial pair-output domains**
 without enumerating every pair combination. First derive and independently
@@ -2160,6 +2198,14 @@ python3 experiments/compact-s3-m4-20261003/derive_q1400_primitive_calls.py --che
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_q1415_stage_comparison.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_q1413_q1416_archive.py
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/verify_frozen_artifacts.py
+python3 experiments/compact-s3-m4-20261003/q1461_sparse_sum_inverse/build.py --check
+python3 experiments/compact-s3-m4-20261003/q1461_sparse_sum_inverse/prepare_inputs.py --check
+python3 experiments/compact-s3-m4-20261003/q1461_sparse_sum_inverse/freeze_protocol.py --check
+python3 experiments/compact-s3-m4-20261003/q1461_sparse_sum_inverse/run.py --check
+python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/build.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/validate_controls.py --check
+python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/verify_archive.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 
