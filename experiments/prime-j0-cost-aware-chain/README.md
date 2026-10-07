@@ -380,3 +380,14 @@ It preserves exactly the same additions and prepared points, while adding
 32-arm native replay verified scalar outputs and operation equivalence.
 Controlled CPU timing is still required to determine whether the lookup
 layout pays for its larger map.
+
+The [endomorphism-folded signed radix-256 table](ENDO_RADIX8.md) takes a
+different route: it splits the scalar into two short lattice coordinates,
+prepares positive digit magnitudes once per binary window, and uses the
+`j=0` automorphism to share those points across both coordinates. A new
+disjoint 32,768-scalar fixture passed independent algebra and point checks,
+24 native arms, and an UndefinedBehaviorSanitizer replay. It uses 384 or
+512 prepared points, with zero online doublings. Against fixed comb9, its
+predeclared operation score is 0.36% lower on `glv-j0-32` and 18.97% lower
+on `j0-56`. These are operation-model results; controlled CPU timing and
+one-target rho impact remain unknown.
