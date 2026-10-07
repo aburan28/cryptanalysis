@@ -429,3 +429,10 @@ release and UBSan builds. Its prepared tables grow to 708 KB and 1.42 MB,
 and its extra preparation additions exceed the online savings in each
 4,096-scalar case. An isolated host measurement and a workload with enough
 reuse per base are needed before calling it faster.
+
+The [bounded upper-pair variant](JOINT_PAIR_TOP.md) proves that the final
+hexagonal pair needs only 756 or 210 orbit points on the two exact study
+curves. It preserves the full pair table's online addition count on a
+new disjoint fixture while cutting prepared point slots to 11,817 and
+33,393. Release and UBSan correctness panels pass. Controlled wall-time
+performance remains unknown.
