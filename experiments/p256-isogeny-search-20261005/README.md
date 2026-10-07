@@ -339,6 +339,35 @@ isogeny class. The exact class-group job remained active after more than 9.6
 hours at this checkpoint, and per-key map evaluation was not timed for the 496
 additions.
 
+## Prospectively frozen low-degree paths through depth nineteen
+
+The next extension was frozen in
+[`protocol-depth-nineteen-20261007.json`](protocol-depth-nineteen-20261007.json)
+before candidate generation. It added 272 curves at depth eighteen and 288 at
+depth nineteen with no overlap against the prior union, raising the explicit
+registry to P-256 plus 2,785 neighbors.
+
+All 560 additions received matched-native measurements in 94 root-controlled
+blocks. Seven unadjusted short-screen hits, with point estimates from `1.0522x`
+through `1.1092x`, entered the mandatory fresh 30-trial, two-second holdout.
+None reproduced. The largest holdout estimate was `1.0137x` with paired 95%
+interval `0.9919x-1.0360x`; all 2,785 retained non-root curves now have native
+measurements and zero reproducible iteration-rate improvements.
+
+The depth-19 deterministic audits verify all 561 delta models and transported
+generators, exact conductor `1` and level-zero horizontal paths for every
+addition, and zero normalized-`3b` candidates passing the 32-operation gate.
+Discovery took 249.93 seconds, screening blocks 2,534.45 seconds, and the fresh
+holdout 493.11 seconds. Per-key evaluation of the new paths on `P` and `Q`
+remains unmeasured, and host-wide isolation remains unverified.
+
+The registry, 94 raw blocks, holdout, audits, preserved command/path failures,
+transfer assessment, receipt, summary, and verifier are frozen in
+[`results/sage-low-degree-depth-nineteen-20261007`](results/sage-low-degree-depth-nineteen-20261007).
+This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
+enumeration. The exact class-group job remained active after more than 12.8
+hours with no result file at this checkpoint.
+
 ## Full-registry normalized-coefficient audit
 
 The complete 2,226-curve retained union was reconstructed from fourteen frozen
@@ -387,7 +416,8 @@ and deterministic verifier are frozen in
 [`results/conductor-audit-20261007`](results/conductor-audit-20261007). This
 class-wide conductor conclusion does not enumerate the entire isogeny class
 and does not establish an ECDLP speedup; the explicit curve registry remains
-the bounded depth-17/one-hop-through-199 search described above.
+bounded. The depth-19 extension repeats the exact conductor certificate for all
+560 additions in its own `conductor-audit.json`.
 
 Primary background for the order classification is Waterhouse,
 [*Abelian varieties over finite fields*](https://www.numdam.org/item/ASENS_1969_4_2_4_521_0/),
