@@ -2731,6 +2731,97 @@ int ca_ec_tau4_pair_histogram(const ca_tau4_joint_precomp *pre, uint64_t a, uint
     return 1;
 }
 
+int ca_ec_tau4_hot_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
+                            const uint16_t selected[64], ca_tau4_hot_precomp *out,
+                            ca_tau4_joint_counts *counts)
+{
+    if (!out || !selected) return 0;
+    ca_tau4_hot_precomp pre = {0};
+    ca_tau4_joint_counts cost = {0};
+    if (!ca_ec_tau4_joint_prepare(g, p, q, &pre.base, &cost)) return 0;
+    for (size_t i = 0; i < 486; i++) pre.slot_to_hot[i] = UINT16_MAX;
+    tau_jac projective[64];
+    uint64_t prefixes[64];
+    for (uint16_t i = 0; i < 64; i++) {
+        unsigned slot = selected[i];
+        if (slot >= 486 || pre.slot_to_hot[slot] != UINT16_MAX) return 0;
+        pre.slot_to_hot[slot] = i;
+        unsigned s = slot / 54, t = (slot / 6) % 9, relative = slot % 6;
+        const ca_elem *left = &pre.base.seed[0][s];
+        ca_elem right = tau4_apply_unit(g, &pre.base, pre.base.seed[1][t],
+                                        (int)(relative / 2), (relative & 1) ? -1 : 1);
+        if (!right.w[2] && relative / 2) cost.rotations++;
+        if (left->w[2]) {
+            projective[i] = right.w[2]
+                ? (tau_jac){0, g->mont.r1, 0}
+                : (tau_jac){right.w[0], right.w[1], g->mont.r1};
+        } else if (right.w[2]) {
+            projective[i] = (tau_jac){left->w[0], left->w[1], g->mont.r1};
+        } else {
+            projective[i] = jac_add_mixed(g,
+                (tau_jac){left->w[0], left->w[1], g->mont.r1}, &right);
+            cost.mixed_adds++;
+        }
+    }
+    uint64_t inversion = 0;
+    if (!jac_batch_to_affine_scratch(g, pre.point, projective, 64,
+                                     prefixes, &inversion)) return 0;
+    cost.inversions += inversion;
+    *out = pre;
+    if (counts) *counts = cost;
+    return 1;
+}
+
+int ca_ec_tau4_hot_mul_profile(const ca_group *g, const ca_tau4_hot_precomp *pre,
+                                ca_elem *out, uint64_t a, uint64_t b,
+                                ca_tau4_joint_counts *counts)
+{
+    if (!g || !pre || !out || pre->base.g != g) return 0;
+    const ca_tau4_joint_precomp *base = &pre->base;
+    ca_tau4_joint_counts cost = {0};
+    uint8_t digits[2][256];
+    size_t length[2];
+    if (!tau4_joint_recode(base, a, 0, digits[0], &length[0]) ||
+        !tau4_joint_recode(base, b, 1, digits[1], &length[1])) return 0;
+    uint64_t one_minus_beta = fs(g, g->mont.r1, base->beta);
+    tau_jac acc = {0, g->mont.r1, 0};
+    size_t length_max = length[0] > length[1] ? length[0] : length[1];
+    for (size_t i = length_max; i-- > 0;) {
+        if (acc.z) { acc = jac_tau(g, acc, one_minus_beta); cost.tau_steps++; }
+        int has_a = i < length[0] && digits[0][i] != 255;
+        int has_b = i < length[1] && digits[1][i] != 255;
+        if (has_a && has_b) {
+            ca_tau4_digit da = base->digit[digits[0][i]];
+            ca_tau4_digit db = base->digit[digits[1][i]];
+            int relative = 2 * ((db.power + 3 - da.power) % 3) + (da.sign != db.sign);
+            unsigned slot = (unsigned)(((int)da.seed * 9 + (int)db.seed) * 6 + relative);
+            cost.overlaps++;
+            uint16_t hot = pre->slot_to_hot[slot];
+            if (hot == UINT16_MAX) {
+                tau4_joint_add_digit(g, base, &acc, 0, digits[0][i], &cost);
+                tau4_joint_add_digit(g, base, &acc, 1, digits[1][i], &cost);
+            } else {
+                cost.fused_hits++;
+                ca_elem point = pre->point[hot];
+                if (!point.w[2]) {
+                    point = tau4_apply_unit(g, base, point, da.power, da.sign);
+                    acc = jac_add_mixed(g, acc, &point);
+                    cost.mixed_adds++;
+                    cost.rotations += da.power != 0;
+                }
+            }
+        } else if (has_a) {
+            tau4_joint_add_digit(g, base, &acc, 0, digits[0][i], &cost);
+        } else if (has_b) {
+            tau4_joint_add_digit(g, base, &acc, 1, digits[1][i], &cost);
+        }
+    }
+    jac_to_affine(g, out, acc);
+    cost.inversions = acc.z != 0;
+    if (counts) *counts = cost;
+    return 1;
+}
+
 static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
                                   uint64_t k, uint64_t *triples, uint64_t *adds,
                                   uint64_t *rotations, int recoder)

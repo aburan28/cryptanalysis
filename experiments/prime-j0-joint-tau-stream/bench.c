@@ -3,6 +3,7 @@
 #include "cryptanalysis/ca_curve.h"
 #include "ec_tau_internal.h"
 #include "ca_internal.h"
+#include "../prime-j0-hot-orbit-table/hot64_selected.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -37,8 +38,9 @@ static int load_pairs(const char *path, scalar_pair pairs[PAIRS])
 int main(int argc, char **argv)
 {
     if (argc != 4 || (strcmp(argv[1], "generic") && strcmp(argv[1], "split") &&
-                       strcmp(argv[1], "joint") && strcmp(argv[1], "orbit"))) {
-        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit glv-j0-32|j0-56 pairs.bin\n", stderr);
+                       strcmp(argv[1], "joint") && strcmp(argv[1], "orbit") &&
+                       strcmp(argv[1], "hot64"))) {
+        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit|hot64 glv-j0-32|j0-56 pairs.bin\n", stderr);
         return 2;
     }
     int large = strcmp(argv[2], "j0-56") == 0;
@@ -74,14 +76,20 @@ int main(int argc, char **argv)
 
     int mode = strcmp(argv[1], "generic") == 0 ? 0 :
                strcmp(argv[1], "split") == 0 ? 1 :
-               strcmp(argv[1], "joint") == 0 ? 2 : 3;
+               strcmp(argv[1], "joint") == 0 ? 2 :
+               strcmp(argv[1], "orbit") == 0 ? 3 : 4;
     ca_tau4_joint_precomp pre;
     ca_tau4_orbit_precomp orbit;
+    ca_tau4_hot_precomp hot;
+    const uint16_t *selected = large ? ca_hot64_j0_56 : ca_hot64_j0_32;
     ca_tau4_joint_counts prep = {0};
     double prepare_start = ca_now();
-    if (mode == 3 ?
-        !ca_ec_tau4_orbit_prepare(&g, &base, &partner, &orbit, &prep) :
-        mode && !ca_ec_tau4_joint_prepare(&g, &base, &partner, &pre, &prep)) {
+    int prepared = mode == 4
+        ? ca_ec_tau4_hot_prepare(&g, &base, &partner, selected, &hot, &prep)
+        : mode == 3
+            ? ca_ec_tau4_orbit_prepare(&g, &base, &partner, &orbit, &prep)
+            : !mode || ca_ec_tau4_joint_prepare(&g, &base, &partner, &pre, &prep);
+    if (!prepared) {
         fputs("joint preparation failed\n", stderr);
         return 2;
     }
@@ -98,7 +106,10 @@ int main(int argc, char **argv)
             ca_group_op(&g, &outputs[i], &left, &right);
         } else {
             ca_tau4_joint_counts one = {0};
-            int ok = mode == 3
+            int ok = mode == 4
+                ? ca_ec_tau4_hot_mul_profile(&g, &hot, &outputs[i],
+                                             pairs[i].a, pairs[i].b, &one)
+                : mode == 3
                 ? ca_ec_tau4_orbit_mul_profile(&g, &orbit, &outputs[i],
                                                pairs[i].a, pairs[i].b, &one)
                 : ca_ec_tau4_joint_mul_profile(&g, &pre, &outputs[i], pairs[i].a,
@@ -152,7 +163,7 @@ int main(int argc, char **argv)
            " verified=1\n",
            argv[1], argv[2], PAIRS, words[0], words[1],
            partner_words[0], partner_words[1], input_digest, output_digest,
-           mode == 3 ? sizeof(orbit) : sizeof(pre),
+           mode == 4 ? sizeof(hot) : mode == 3 ? sizeof(orbit) : sizeof(pre),
            prep_ms, online_ms, verify_ms, prep.tau_steps, prep.doubles,
            prep.mixed_adds, prep.rotations, prep.inversions,
            total.tau_steps, total.doubles, total.mixed_adds, total.full_adds,
