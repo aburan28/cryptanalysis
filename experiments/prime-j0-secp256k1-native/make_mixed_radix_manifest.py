@@ -58,7 +58,7 @@ def main():
         "make_mixed_radix_manifest.py", "mixed-radix-scalar-result.json",
         "mixed-radix-runtime-info.json", "mixed-radix-sage-replay.json",
         "mixed-radix-seed-fixture.json", "mixed-radix-action-fingerprints.json",
-        "native-mixed-radix-checks-v2.json", "mixed-radix-fixture.json")]
+        "native-mixed-radix-checks-v3.json", "mixed-radix-fixture.json")]
     artifacts += [repo / "suite/src/ct_bignum.rs",
                   repo / "suite/src/ecc/secp256k1_field.rs"]
     assert all(path.is_file() for path in artifacts)

@@ -90,3 +90,27 @@ Its independent Python fingerprint file has SHA-256
 `ebe915ee02d7b8c07870202e7cb90fe0e4fa55aa53e8b91a2ea9de13e1c30f01`.
 The final replayed release binary SHA-256 is
 `ef6282b4fe884764ac6973528f42775857a7fc7c17e9b43e6ab268713dd6c857`.
+
+## Full-operation timing handoff
+
+The final native path adds `--benchmark-mixed-radix-case`. Its timer
+starts before base/scalar decoding and includes lattice reduction,
+both recoders, the choice, point preparation, orbit/cache setup,
+evaluation, affine inversion, formatting, and expected-point
+comparison. The paired reference is the existing
+`--benchmark-selective-case` on the **same 256 frozen scalar/base/output
+triples**. Untimed paired checks covered one selective choice and one
+radix-two choice, verifying identical echoed inputs and result points.
+
+`make_mixed_radix_manifest.py` generated a 256-case paired manifest.
+The isolated runner's **structural schema** accepted it with synthetic
+CPU, NUMA, and cgroup values; the manifest SHA-256 is
+`cac280455fea4c3c33ff25f0571ec0acdae27f426a3d5b2b2ad0d642ced13401`.
+`mixed-radix-manifest-schema.json` records that structural-only check.
+The final handoff replay is `native-mixed-radix-checks-v3.json`
+(SHA-256
+`9b123a3f4a01c78aeafa5109283190696f6aa3e0c6c3b2092b47cd925b1a8a34`),
+with release binary SHA-256
+`5318299c62702e9437547bb57ce969ec5c316d4ab31813cca6b7843162391302`.
+There was **no physical-host isolation preflight or timed comparison**;
+the CPU speedup remains unknown.
