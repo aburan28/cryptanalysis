@@ -457,3 +457,11 @@ inversions fell from 16,384 to 128 on `glv-j0-32` and to 384 on
 `j0-56` for each 16,384-scalar curve panel. This batch-throughput
 experiment still needs isolated-host timing before any CPU speedup
 claim.
+
+The [certified five-neighbor recoder](JOINT_PAIR_FIVE.md) proves that the
+rounded center and four axial lattice neighbors attain the global L1
+minimum on both exact study curves. It reduces pair-recoder candidate
+evaluations from 25 to 5 while preserving prepared tables and group
+operation counts. A new 32,768-scalar fixture passed release and UBSan
+correctness panels in all four serial and wave formats. The isolated
+manifest is ready; controlled wall-time performance remains unknown.

@@ -123,7 +123,11 @@ static int select_mode(const char *name)
                                   "joint-pair-top-triple-pos",
                                   "joint-pair-top-double-pos",
                                   "joint-pair-top-triple-wave128",
-                                  "joint-pair-top-double-wave128"};
+                                  "joint-pair-top-double-wave128",
+                                  "joint-pair-top-triple-five-pos",
+                                  "joint-pair-top-double-five-pos",
+                                  "joint-pair-top-triple-five-wave128",
+                                  "joint-pair-top-double-five-wave128"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -154,7 +158,9 @@ int main(int argc, char **argv)
                 "joint-window4-pos|joint-window4-hot-pos|joint-window4-xplane-pos|"
                 "joint-window4-zero-pos|joint-pair-hex-pos|joint-pair-top-pos|"
                 "joint-pair-top-triple-pos|joint-pair-top-double-pos|"
-                "joint-pair-top-triple-wave128|joint-pair-top-double-wave128 "
+                "joint-pair-top-triple-wave128|joint-pair-top-double-wave128|"
+                "joint-pair-top-triple-five-pos|joint-pair-top-double-five-pos|"
+                "joint-pair-top-triple-five-wave128|joint-pair-top-double-five-wave128 "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -192,11 +198,14 @@ int main(int argc, char **argv)
     int joint_window4_hot = mode >= 46 && mode <= 48;
     int joint_window4_plane = mode == 47 || mode == 48;
     int joint_window4_zero = mode == 48;
-    int joint_pair_any = mode >= 49 && mode <= 54;
-    int joint_pair_top = mode >= 50 && mode <= 54;
-    int joint_pair_width = mode >= 51 && mode <= 54;
-    int joint_pair_wave = mode == 53 || mode == 54;
-    unsigned joint_pair_words = mode == 51 || mode == 53 ? 3u : mode == 52 || mode == 54 ? 2u : 4u;
+    int joint_pair_any = mode >= 49 && mode <= 58;
+    int joint_pair_top = mode >= 50 && mode <= 58;
+    int joint_pair_width = mode >= 51 && mode <= 58;
+    int joint_pair_wave = mode == 53 || mode == 54 || mode == 57 || mode == 58;
+    int joint_pair_five = mode >= 55 && mode <= 58;
+    unsigned joint_pair_words = mode == 51 || mode == 53 || mode == 55 || mode == 57   ? 3u
+                                : mode == 52 || mode == 54 || mode == 56 || mode == 58 ? 2u
+                                                                                       : 4u;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -512,9 +521,14 @@ int main(int argc, char **argv)
                                                                 : 0;
     double start = ca_now();
     if (joint_pair_wave) {
-        if (!ca_ec_joint_pair_width_mul_wave_batch_profile(
-                &group, &joint_pair_pre, outputs, scalars, SCALARS, 128, &adds, &rotations,
-                &unit_adds, &output_inversions, &fallbacks)) {
+        int solved = joint_pair_five
+                         ? ca_ec_joint_pair_width_five_mul_wave_batch_profile(
+                               &group, &joint_pair_pre, outputs, scalars, SCALARS, 128, &adds,
+                               &rotations, &unit_adds, &output_inversions, &fallbacks)
+                         : ca_ec_joint_pair_width_mul_wave_batch_profile(
+                               &group, &joint_pair_pre, outputs, scalars, SCALARS, 128, &adds,
+                               &rotations, &unit_adds, &output_inversions, &fallbacks);
+        if (!solved) {
             fprintf(stderr, "joint-pair wavefront evaluation failed\n");
             ca_ec_joint_pair_clear(&joint_pair_pre);
             free(outputs);
@@ -632,7 +646,11 @@ int main(int argc, char **argv)
             } else if (joint_pair_any) {
                 uint64_t a = 0, r = 0, u = 0, fallback = 0;
                 int solved =
-                    joint_pair_width
+                    joint_pair_five
+                        ? ca_ec_joint_pair_width_five_mul_profile(&group, &joint_pair_pre,
+                                                                  &outputs[i], scalars[i], &a, &r,
+                                                                  &u, &fallback)
+                    : joint_pair_width
                         ? ca_ec_joint_pair_width_mul_profile(&group, &joint_pair_pre, &outputs[i],
                                                              scalars[i], &a, &r, &u, &fallback)
                         : ca_ec_joint_pair_mul_profile(&group, &joint_pair_pre, &outputs[i],
