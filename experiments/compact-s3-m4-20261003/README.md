@@ -2492,24 +2492,38 @@ rank, and complete N131 `2^x` remain unknown. The N53 logs show zero
 active Gaussian matrices; N83 later uses one small matrix, while its
 large field-product components exceed the default column limit.
 
+### Q1496 bounded Gaussian elimination on the same XCNF
+
+[Q1496](q1496_full_xor_gauss_window/README.md) raises CryptoMiniSat's
+Gaussian matrix limits on Q1494's byte-identical N53/N83 formulas and
+the same ordinary targets. The solver now accepts three large matrices
+initially at each degree, including 8,586 columns at N53 and 20,916 at
+N83. Its footer reports nonzero Gaussian propagation and conflicts.
+The pinned N53 witness still verifies. The known-satisfiable unpinned N53
+cell and ordinary N53/N83 cells all censor at 60 seconds. Exact conflicts
+fall at the fixed cap while memory rises; these are bounded search
+diagnostics, not a useful-relation rate or complete N131 work estimate.
+
 ## Next goal
 
 Test a **fully coupled four-leaf search** that leaves both internal
 midpoints existential while it reasons about many cyclic windows at once.
 Q1485 through Q1487 all choose or constrain a narrow midpoint slice and
-find no unpinned relation; Q1493's Frobenius sweep and Q1494's full native
-XOR circuit also censor. Pre-register a compact
-symbolic support method, check it against direct enumeration on small
-fields, and reuse the exact Q1481/Q1482 N53/N83 curves, bases, public
-points and limits. The first gate is to recover Q1490's known-satisfiable
-ordinary N53 relation with every leaf, midpoint and target selector free.
+find no unpinned relation; Q1493's Frobenius sweep and Q1494/Q1496's full
+native-XOR circuits also censor. Pre-register a target-aware compressed
+pair-support join across many cyclic windows, check it against direct
+enumeration on small fields, and reuse the exact Q1481/Q1482 N53/N83
+curves, bases, public points and limits. The first gate is to recover
+Q1490's known-satisfiable ordinary N53 relation with every leaf, midpoint
+and target selector free.
 Then independently verify a fully unpinned known-representable N83 control,
 followed by an ordinary N83 relation, without constructing the full pair
 table. Only after those gates should a frozen ordinary-query panel estimate
 useful yield and novel rank. Count failed attempts, SAT propagation,
 field arithmetic, memory, and target-dependent wall intervals alongside
-Q1482/Q1483/Q1485/Q1486/Q1487/Q1488/Q1493/Q1494. If only controls pass, retain
-N83 ordinary cost and N131 complete work as unknown. A complete N131 `2^x`
+Q1482/Q1483/Q1485/Q1486/Q1487/Q1488/Q1493/Q1494/Q1496. If only controls
+pass, retain N83 ordinary cost and N131 complete work as unknown. A complete
+N131 `2^x`
 also requires its exact usable base, relation collection, final matrix
 solve, target descent, and independent scalar replay.
 
