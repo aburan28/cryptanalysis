@@ -554,8 +554,11 @@ fn source_cost(digits: &[Option<Digit>], preparation: usize) -> usize {
     nonzero.pop(); // Highest digit initializes the accumulator.
     let mixed = nonzero.iter().filter(|&&seed| seed == 0).count();
     let general = nonzero.len() - mixed;
-    let mut used = [false; 9];
-    for &seed in &nonzero { if seed > 0 { used[seed] = true; } }
+    let mut used = [false; 12];
+    for &seed in &nonzero {
+        assert!(seed < used.len());
+        if seed > 0 { used[seed] = true; }
+    }
     let cache = used.into_iter().filter(|used| *used).count();
     preparation + 10 * pairs + 6 * (steps - 2 * pairs)
         + 11 * mixed + 14 * general + 2 * cache
