@@ -153,3 +153,19 @@ collector if each inspection incurs at least one charged operation. It
 does not constrain target-adaptive algebraic decomposition, guided
 nonuniform queries, target-span early stopping, or a different base.
 The complete N131 solve estimate remains unknown.
+
+## Fixed-window tuple support screen
+
+[Q1495](../q1495_window_tuple_screen/README.md) uses the exact R2 span
+strata to count **134,202,690** subgroup-usable points in one fixed
+length-27 cyclic window. A direct N53 window enumeration validates the
+span-incidence formula. For one fixed ordered four-window tuple and a
+uniform nonidentity subgroup target, the support probability is at most
+`4.7662349128e-7`. A target-independent schedule needs at least 209,810
+oriented tuples before its support upper bound can reach 10%. Under the
+additional rule of at most one verified relation returned per tuple, at
+least `2^45.927` tuple inspections are necessary for 95% full-rank
+probability, leaving an optimistic `2^15.073` charged-operation ceiling
+per inspection below `2^61`. The result is conditional and does not
+bound target-adaptive or joint-window algebraic solvers. Complete N131
+work remains unknown.
