@@ -67,6 +67,22 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
     CHECK_EQ_U64(free_cost.gauge_transitions, 0);
     CHECK(free_cost.rotations <= trellis_cost.rotations);
     CHECK(free_cost.rotations <= two_cost.rotations);
+    ca_elem scored_two_point, scored_five_point;
+    ca_tau4_joint_counts scored_two = {0}, scored_five = {0};
+    CHECK(ca_ec_tau4_paired_two_free_gauge_scored_mul_profile(
+        g, pre, &scored_two_point, a, b, &scored_two));
+    CHECK(ca_ec_tau4_paired_five_free_gauge_scored_mul_profile(
+        g, pre, &scored_five_point, a, b, &scored_five));
+    CHECK(ca_group_equal(g, &scored_two_point, &expected));
+    CHECK(ca_group_equal(g, &scored_five_point, &expected));
+    CHECK_EQ_U64(scored_two.recode_attempts, free_cost.recode_attempts);
+    CHECK_EQ_U64(scored_two.pair_scores, free_cost.pair_scores);
+    CHECK_EQ_U64(scored_two.rotations, scored_two.gauge_model_rotations);
+    CHECK_EQ_U64(scored_five.rotations, scored_five.gauge_model_rotations);
+    CHECK(6 * scored_two.tau_steps + 11 * scored_two.mixed_adds + scored_two.rotations <=
+          6 * free_cost.tau_steps + 11 * free_cost.mixed_adds + free_cost.rotations);
+    CHECK(6 * scored_five.tau_steps + 11 * scored_five.mixed_adds + scored_five.rotations <=
+          6 * scored_two.tau_steps + 11 * scored_two.mixed_adds + scored_two.rotations);
     if (orbit) {
         ca_tau4_joint_counts combined = {0};
         CHECK(ca_ec_tau4_orbit_mul_profile(g, orbit, &fused, a, b, &combined));
