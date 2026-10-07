@@ -6727,6 +6727,33 @@ def main():
                row["verified_relation_count"] == 0
                for row in q1471_audit["rows"])
     assert q1471_audit["complete_n131_log2_work"] is None
+    q1472_dir = HERE / "q1472_sat_work_meter"
+    q1472_protocol_path = q1472_dir / "protocol.json"
+    q1472_audit_path = q1472_dir / "archive_audit.json"
+    q1472_protocol = json.loads(q1472_protocol_path.read_text())
+    q1472_audit = json.loads(q1472_audit_path.read_text())
+    assert q1472_protocol["proposal_id"] == q1472_audit[
+        "proposal_id"] == "Q1472"
+    assert q1472_protocol["candidate_id"] is q1472_audit[
+        "candidate_id"] is None
+    assert q1472_protocol["isogeny"] == q1472_audit[
+        "isogeny"] == "none"
+    assert q1472_protocol["q1467_protocol_sha256"] == sha(
+        q1467_solver_protocol_path)
+    assert q1472_audit["status"] == "passed"
+    assert q1472_audit["protocol_sha256"] == sha(q1472_protocol_path)
+    assert q1472_audit["auditor_source_sha256"] == sha(
+        q1472_dir / "audit.py")
+    assert [row["case"] for row in q1472_audit["rows"]] == (
+        q1472_protocol["run_order"])
+    assert [row["native_status"] for row in q1472_audit["rows"]] == [
+        "sat", "sat", "censored", "censored", "censored", "censored"]
+    assert [row["verified_relation_count"] for row in q1472_audit[
+        "rows"]] == [1, 1, 0, 0, 0, 0]
+    assert [row["sat_work"]["propagations"] for row in q1472_audit[
+        "rows"]] == [82_352, 294_580, 273_086_668, 309_788_583,
+                     297_449_277, 315_503_020]
+    assert q1472_audit["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -8905,6 +8932,37 @@ def main():
             "protocol_sha256": sha(q1471_protocol_path),
             "archive_audit_sha256": sha(q1471_audit_path),
         },
+        "q1472_exact_sat_propagation_meter": {
+            "proposal_id": "Q1472", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "controlled_variable": q1472_protocol[
+                "controlled_variable"],
+            "measurement_units": q1472_audit["measurement_units"],
+            "rows": q1472_audit["rows"],
+            "verified_planted_controls": 2,
+            "verified_ordinary_relations": 0,
+            "ordinary_n53_sat_propagations_at_cap": 297_449_277,
+            "ordinary_n83_sat_propagations_at_cap": 315_503_020,
+            "successful_N53_N83_unpinned_cost": None,
+            "natural_relation_yield_estimate": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1472 changes only the CaDiCaL propagation meter in "
+                "Q1466's native source. On six exact matched Q1467 N53 "
+                "and N83 cells, both fully pinned controls independently "
+                "replay, while both known-representable unpinned controls "
+                "and both ordinary queries censor at 60 seconds. The "
+                "ordinary queries record 297449277 and 315503020 SAT "
+                "propagations as a separate exact operation unit. SAT "
+                "propagations and field primitive calls cannot be added "
+                "without a calibrated common unit; censored counts "
+                "remain lower bounds on the work of this solver, not "
+                "successful N83 costs or a complete N131 projection."),
+            "protocol_sha256": sha(q1472_protocol_path),
+            "archive_audit_sha256": sha(q1472_audit_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -9415,6 +9473,10 @@ def main():
                 "on matched N83 known-solution and ordinary targets, "
                 "admitting three checks on each but still reaching both "
                 "120-second wall caps without a relation; "
+                "Q1472 meters exact SAT propagations on matched N53/N83 "
+                "chained-S3 cells; both pinned controls pass while "
+                "all unpinned and ordinary cells censor, so its SAT "
+                "and field operation vectors are lower bounds only; "
                 "the N53 early-rank panel and censored N83 ordinary "
                 "runs do not measure N83 useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
