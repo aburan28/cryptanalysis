@@ -75,6 +75,8 @@ Linux host receipt is required for any wall-time ratio.
 
 GLV decomposition, joint windows, and unit-orbit digit sets have prior art;
 see the [GLV/GLS scalar-multiplication study](https://www.microsoft.com/en-us/research/publication/efficient-and-secure-algorithms-for-glv-based-scalar-multiplication-and-their-implementation-on-glv-gls-curves-extended-version/)
-and [symmetric digit sets](https://eprint.iacr.org/2013/705.pdf). This is a
+and [symmetric digit sets](https://eprint.iacr.org/2013/705.pdf). The
+[Pasta curves GLV implementation](https://docs.rs/zakura-pasta-curves/latest/pasta_curves/glv/index.html)
+also describes joint Eisenstein digits quotiented by six units. This is a
 measured table-format experiment in this codebase, with no academic novelty
 claim or one-target rho speedup claim.
