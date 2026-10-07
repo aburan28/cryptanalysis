@@ -53,3 +53,8 @@ The [x-only τ feasibility screen](XZ_TAU_RESULT.md) validates an XZ τ
 map and a cheaper differential-add primitive on 1,024 controlled point
 cases. A complete x-only scalar chain has not yet been constructed or
 charged, so this is a primitive result only.
+
+The [adjacent-pair reuse screen](PAIR_REUSE_RESULT.md) finds at most 15
+repeated pair uses across the 64 distinct bases under the two simple
+disjoint pairings.  This leaves little room for a one-use pair dictionary
+to amortize its construction; combined point formulas remain open.
