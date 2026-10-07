@@ -25,7 +25,9 @@ BASE = "paired2-free-gauge-batch"
 CANDIDATE = "taupair-steered-batch"
 MODES = ("reference", BASE, CANDIDATE, CANDIDATE, BASE, "reference")
 TRAJECTORY = ("group_ops", "table_entries", "table_evaluations",
-              "restart_evaluations", "startup_budget_ops")
+              "restart_evaluations", "startup_budget_ops",
+              "startup_point_count", "startup_point_digest_lo",
+              "startup_point_digest_hi")
 PREPARATION = ("prepare_tau", "prepare_doubles", "prepare_mixed_adds",
                "prepare_inversions", "prepare_rotations", "precomp_bytes",
                "table_output_inversions", "restart_output_inversions",
@@ -118,6 +120,10 @@ def main():
         for key in TRAJECTORY:
             if len({reference[key], baseline[key], candidate[key]}) != 1:
                 raise ValueError(f"rho trajectory differs: {key}")
+        if (int(reference["startup_point_count"]) !=
+                int(reference["table_evaluations"]) +
+                int(reference["restart_evaluations"])):
+            raise ValueError("startup point count misses an evaluation")
         for key in PREPARATION:
             if baseline[key] != candidate[key]:
                 raise ValueError(f"preparation or invariant changed: {key}")

@@ -11,7 +11,7 @@ P = 4294967377
 B = 15
 ORDER = 23729779
 BASE = (481899190, 1998487369)
-LABEL = "taupair-steered-single-target-20261007-v1"
+LABEL = "taupair-steered-single-target-20261007-v2-fingerprinted"
 # Public points from the sibling square-Z and quotient-restart rho fixtures.
 OTHER_TARGETS = {(1214753992, 1398575280), (2247774444, 1906310386)}
 
@@ -50,6 +50,7 @@ def main():
     previous = [json.loads((HERE.parent / name / "fixture.json").read_text())
                 for name in ("prime-j0-paired-rho-startup", "prime-j0-batch-rho-startup",
                              "prime-j0-unit-plane-rho", "prime-j0-free-gauge-rho")]
+    previous.append(json.loads((HERE / "fixture-v1-exploratory.json").read_text()))
     scalar = int.from_bytes(hashlib.sha256((LABEL + ":target").encode()).digest(),
                             "big") % ORDER
     seed = int.from_bytes(hashlib.sha256((LABEL + ":rho-seed").encode()).digest()[:8],

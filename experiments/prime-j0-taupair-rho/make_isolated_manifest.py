@@ -61,6 +61,7 @@ def main():
             "computation after input/subgroup validation through collision "
             "recovery and internal scalar replay, including gauge-carrying paired tau "
             "preparation and paired-table batch prefix products and inversion; "
+            "includes diagnostic startup-point fingerprints; "
             "excludes process launch, "
             "curve construction, fixture generation and separately timed "
             "post-solve replay"),

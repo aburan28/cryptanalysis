@@ -332,6 +332,22 @@ static uint64_t glv_generic_mul_budget(uint64_t scalar)
     return ops;
 }
 
+/* Audit the exact affine startup points in table order and restart order.
+ * These fields are diagnostic fingerprints, not cryptographic hashes. */
+static void glv_record_startup_point(ca_curve_startup_stats *startup,
+                                      const ca_elem *point)
+{
+    if (!startup) return;
+    uint64_t index = ++startup->startup_point_count;
+    uint64_t left = ca_mix64(UINT64_C(0x55958df12b04e7c3) ^ index ^ point->w[0]);
+    left = ca_mix64(left ^ ca_mix64(point->w[1]) ^ point->w[2]);
+    uint64_t right = ca_mix64(UINT64_C(0xa34c6f1075e2d9b8) ^
+                              (index << 1) ^ point->w[1]);
+    right = ca_mix64(right ^ ca_mix64(point->w[0]) ^ point->w[2]);
+    startup->startup_point_digest_lo = ca_mix64(startup->startup_point_digest_lo ^ left);
+    startup->startup_point_digest_hi = ca_mix64(startup->startup_point_digest_hi ^ right);
+}
+
 static void glv_account_tau_startup(ca_curve_startup_stats *startup,
                                      const ca_tau4_joint_counts *one)
 {
@@ -381,6 +397,7 @@ static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
         ca_group_op(c->g, out, &t1, &t2);
         (*ops)++;
     }
+    glv_record_startup_point(c->startup, out);
     if (c->startup) {
         c->startup->evaluation_seconds += ca_now() - start;
         c->startup->budget_equivalent_group_ops += *ops - before;
@@ -532,6 +549,8 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
             failure = CA_ERR_INTERNAL;
             goto nomem;
         }
+        for (uint32_t i = 0; i < c.r; i++)
+            glv_record_startup_point(startup, &c.M[i]);
         for (uint32_t i = 0; i < c.r; i++)
             ops += glv_generic_mul_budget(c.alpha[i]) +
                    glv_generic_mul_budget(c.beta[i]) + 1;

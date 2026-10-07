@@ -2025,6 +2025,14 @@ static void paired_rho_startup_checks(void)
                   steered_startup.eval_tau_pairs);
             CHECK_EQ_U64(steered_startup.eval_gauge_table_lookups,
                          steered_startup.eval_tau_pairs);
+            CHECK_EQ_U64(ref_startup.startup_point_count,
+                         ref_startup.table_evaluations + ref_startup.restart_evaluations);
+            CHECK_EQ_U64(steered_startup.startup_point_count,
+                         ref_startup.startup_point_count);
+            CHECK_EQ_U64(steered_startup.startup_point_digest_lo,
+                         ref_startup.startup_point_digest_lo);
+            CHECK_EQ_U64(steered_startup.startup_point_digest_hi,
+                         ref_startup.startup_point_digest_hi);
         }
     }
     ca_group generic;

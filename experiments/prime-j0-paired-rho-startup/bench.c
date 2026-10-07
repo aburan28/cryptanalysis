@@ -96,6 +96,9 @@ int main(int argc, char **argv)
            " eval_tau_pairs=%" PRIu64
            " eval_tau_pair_cheap_z=%" PRIu64
            " eval_gauge_table_lookups=%" PRIu64
+           " startup_point_count=%" PRIu64
+           " startup_point_digest_lo=%016" PRIx64
+           " startup_point_digest_hi=%016" PRIx64
            " prepare_ms=%.6f startup_eval_ms=%.6f verified=1\n",
            target_x, target_y, seed, argv[1], scalar,
            1000.0 * stats.seconds, replay_ms, stats.group_ops, stats.table_entries,
@@ -112,6 +115,8 @@ int main(int argc, char **argv)
            startup.eval_free_gauge_transitions,
            startup.eval_tau_pairs, startup.eval_tau_pair_cheap_z,
            startup.eval_gauge_table_lookups,
+           startup.startup_point_count, startup.startup_point_digest_lo,
+           startup.startup_point_digest_hi,
            1000.0 * startup.prepare_seconds, 1000.0 * startup.evaluation_seconds);
     return 0;
 }

@@ -94,6 +94,7 @@ typedef struct ca_curve_startup_stats {
     uint64_t eval_recode_attempts, eval_pair_scores, eval_lattice_points_checked;
     uint64_t eval_free_gauge_transitions;
     uint64_t eval_tau_pairs, eval_tau_pair_cheap_z, eval_gauge_table_lookups;
+    uint64_t startup_point_count, startup_point_digest_lo, startup_point_digest_hi;
     double prepare_seconds, evaluation_seconds;
 } ca_curve_startup_stats;
 

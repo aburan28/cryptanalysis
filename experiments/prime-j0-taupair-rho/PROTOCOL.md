@@ -21,6 +21,10 @@ preparation, all table entries and restarts, batch-prefix products and
 inversion, walk, collision, and failed work. Process launch, curve
 construction, fixture generation, and the separately timed external
 scalar replay are excluded. Keep their timing and correctness records.
+The audited execution fingerprints each affine table and restart point
+in evaluation order inside the online interval. The point count and
+both independent 64-bit diagnostic fingerprints must match the generic
+reference; these fingerprints are not cryptographic certificates.
 
 The frozen operation diagnostic is the current nominal evaluator
 field-multiplication count
@@ -54,6 +58,10 @@ partition or NUMA isolation, so set `cpu_speedup_claim: null` and
 `isolation_receipt: null` regardless of local timing. The included
 manifest generator binds this workload to the strict isolated runner
 for a later controlled repeat.
+
+The earlier `fixture-v1-exploratory.json` and raw v1 panels precede the
+startup-point fingerprint. They are preserved only as development
+evidence; the v2 fixture and panels are the held-out gate.
 
 The mode remains opt-in. An online wall-time speedup claim requires an
 isolated host receipt and paired repetitions. Academic novelty of the
