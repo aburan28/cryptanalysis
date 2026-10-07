@@ -2448,6 +2448,17 @@ the same public four-point relation at target preimage 141. This confirms
 that the actual CNF accepts a known ordinary relation. Its pinned solver
 time is a correctness diagnostic, not successful unpinned PDP work.
 
+### Q1492 ordinary partial-pin diagnostic
+
+[Q1492](q1492_ordinary_partial_pin/README.md) keeps Q1482's exact ordinary
+N53 CNF and all four leaves free while pinning the known target preimage,
+either midpoint, or both midpoints from Q1490. All four cells censor at
+60 seconds with no verified relation. The target-only cell makes 143
+million direct right-`S3` evaluations; midpoint-pin cells make about
+14.4 million root calls while rebuilding left-pair domains. The
+fully pinned Q1491 SAT model remains a correctness witness, so these
+cells measure only capped search prefixes.
+
 ## Next goal
 
 Test a **fully coupled four-leaf search** that leaves both internal
@@ -2534,6 +2545,8 @@ python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/freeze_protocol.
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1490_ordinary_witness_bridge/bridge_v2.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1491_ordinary_cnf_witness/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1491_ordinary_cnf_witness/run.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1492_ordinary_partial_pin/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1492_ordinary_partial_pin/run_partial.py --cell target_only --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 
