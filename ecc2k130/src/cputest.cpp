@@ -192,6 +192,19 @@ void checkF131x(const HostTable &table, CheckResult *cr)
         cr->note(sqrOk, "f131x sqr == f131 sqr, lane by lane");
         cr->note(convOk, "f131x conversion == f131 conversion, lane by lane");
         cr->note(redOk, "f131x reduce == f131 reduce, lane by lane");
+        // The inverse against the packed normal-basis chain the engine used
+        // to call, and a * a^-1 = 1 (a = 0 excepted, where both give 0).
+        if (i % 10 == 0) {
+            const X ia = f131x::inv<N>(a), one = f131x::mul<N>(a, ia);
+            bool invOk = true, unitOk = true;
+            for (int l = 0; l < N; ++l) {
+                invOk &= same(ia.lane(l), f131::fromPacked(invPolynomial131(f131::toPacked(as[l]))));
+                const bool zero = (as[l].w[0] | as[l].w[1] | as[l].w[2]) == 0;
+                unitOk &= same(one.lane(l), f131::F131{{zero ? 0u : 1u, 0, 0}});
+            }
+            cr->note(invOk, "f131x inv == packed inv131, lane by lane");
+            cr->note(unitOk, "f131x inv: a * inv(a) == 1");
+        }
     }
     // mod131 is exact for every p the phase can produce (below 131^2 for the
     // sum, below 131 * 130 for the product); hold it over all of 16 bits.

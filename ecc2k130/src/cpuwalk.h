@@ -514,21 +514,18 @@ class CpuEngine
                 b.setW(i, f131::mul(q, b.W(i)));
                 p.setLane(l, f131::mul(q, b.D(i)));
             }
-            // One inversion serves the K chains, by Montgomery's trick twice
-            // more: across the V vectors, N chains at a time, then across the
-            // N lanes of the last vector in f131.h.  Chain by chain the peel
-            // would be 2(K - 1) scalar products, most of them one dependency
-            // chain (254 at the default geometry, 15 ns each here: an eighth
-            // of the step); this way it is 2(V - 1) vector products and
-            // 2(N - 1) scalar ones.
+            // One inversion serves the K chains, by Montgomery's trick once
+            // more across the V vectors, N chains at a time, and then the N
+            // lanes of the last vector are inverted side by side
+            // (f131x::inv).  Chain by chain the peel would be 2(K - 1)
+            // scalar products, most of them one dependency chain (254 at
+            // the default geometry, 15 ns each here: an eighth of the
+            // step); this way it is 2(V - 1) vector products and no scalar
+            // ones.
             FX up[V];
             up[0] = pv[0];
             for (int v = 1; v < V; ++v) up[v] = f131x::mul<kLanes>(up[v - 1], pv[v]);
-            F131 lp[kLanes], li[kLanes];
-            for (int l = 0; l < kLanes; ++l) lp[l] = up[V - 1].lane(l);
-            invertChains(lp, kLanes, li);
-            FX iv[V], rest;
-            for (int l = 0; l < kLanes; ++l) rest.setLane(l, li[l]);
+            FX iv[V], rest = f131x::inv<kLanes>(up[V - 1]);
             for (int v = V - 1; v > 0; --v) {
                 iv[v] = f131x::mul<kLanes>(rest, up[v - 1]);
                 rest = f131x::mul<kLanes>(rest, pv[v]);

@@ -403,6 +403,103 @@ template <int N> F131X_INLINE F131x<N> sqr(const F131x<N> &a)
     return reduce<N>(h);
 }
 
+// The inverse of N lanes at once, for the one inversion a batch makes.
+//
+// The engine used to hand that inversion to the packed routines: a chain of
+// scalar products across the lanes of the vector to one element, its
+// inverse by the normal-basis Itoh-Tsujii chain of include/packed131.h, and
+// the chain back.  That is 3(N - 1) dependent scalar products around an
+// inversion in 32-bit words, a microsecond at N = 8, which at 2048 lanes a
+// batch is 3% of the step on one core while the vector ports idle.  Here the
+// N lanes are inverted side by side in the polynomial basis -- no products
+// across lanes at all -- by the same addition chain, a^(2^131 - 2) as
+// 1, 2, 4, 8, 16, 32, 64, 65, 130, which is eight products and 130
+// squarings.  A squaring is a dependent chain of some 25 cycles, so the
+// long runs of them are not run: x -> x^(2^k) is linear over GF(2), and for
+// k of 8 and up it is read from a table, nibble by nibble (33 nibbles over
+// 131 bits), each nibble's sixteen possible images summed in advance.  On a
+// 512-bit register sixteen qwords are one two-table permute a limb, so a
+// multi-squaring is 99 permutes against four squarings' worth of latency
+// per power of two it skips; the tables are 51 KB, built once a process
+// and read once a batch.
+struct SqrTables {
+    static const int kCount = 4;
+    static constexpr int kExp[kCount] = {8, 16, 32, 65};
+    alignas(64) uint64_t t[kCount][33][3][16];
+
+    SqrTables()
+    {
+        memset(t, 0, sizeof(t));
+        for (int e = 0; e < kCount; ++e)
+            for (int j = 0; j < 131; ++j) {
+                F131 img = {{0, 0, 0}};
+                img.w[j >> 6] = 1ull << (j & 63);
+                for (int s = 0; s < kExp[e]; ++s) img = f131::sqr(img);
+                const int n = j >> 2, bit = 1 << (j & 3);
+                for (int v = 0; v < 16; ++v)
+                    if (v & bit)
+                        for (int l = 0; l < 3; ++l) t[e][n][l][v] ^= img.w[l];
+            }
+    }
+};
+inline const SqrTables &sqrTables()
+{
+    static const SqrTables tables;
+    return tables;
+}
+
+// x^(2^k) from its table: the two-table qword permute indexes by the low
+// four bits of each element, so a nibble's index is its limb shifted down
+// and nothing more.  Without 512-bit registers, lane by lane.
+template <int N>
+F131X_INLINE F131x<N> multiSqr(const F131x<N> &a, const uint64_t (*t)[3][16])
+{
+    typedef typename Limbs<N>::V V;
+    F131x<N> r = {V{}, V{}, V{}};
+    if constexpr (N == 8) {
+        typedef Limbs<8>::M M;
+        const auto look = [&](int n, V idx) __attribute__((always_inline))
+        {
+            r.w0 ^= (V)_mm512_permutex2var_epi64(_mm512_load_si512((const void *)t[n][0]), (M)idx,
+                                                 _mm512_load_si512((const void *)(t[n][0] + 8)));
+            r.w1 ^= (V)_mm512_permutex2var_epi64(_mm512_load_si512((const void *)t[n][1]), (M)idx,
+                                                 _mm512_load_si512((const void *)(t[n][1] + 8)));
+            r.w2 ^= (V)_mm512_permutex2var_epi64(_mm512_load_si512((const void *)t[n][2]), (M)idx,
+                                                 _mm512_load_si512((const void *)(t[n][2] + 8)));
+        };
+        for (int s = 0; s < 64; s += 4) look(s >> 2, a.w0 >> s);
+        for (int s = 0; s < 64; s += 4) look(16 + (s >> 2), a.w1 >> s);
+        look(32, a.w2);
+    } else {
+        for (int i = 0; i < N; ++i) {
+            const F131 x = a.lane(i);
+            F131 y = {{0, 0, 0}};
+            for (int n = 0; n < 33; ++n) {
+                const unsigned v = unsigned(x.w[n >> 4] >> ((n & 15) * 4)) & 15u;
+                for (int l = 0; l < 3; ++l) y.w[l] ^= t[n][l][v];
+            }
+            r.setLane(i, y);
+        }
+    }
+    return r;
+}
+
+template <int N> F131X_INLINE F131x<N> inv(const F131x<N> &a)
+{
+    const SqrTables &T = sqrTables();
+    F131x<N> b = mul<N>(sqr<N>(a), a);                 // a^(2^2 - 1)
+    b = mul<N>(sqr<N>(sqr<N>(b)), b);                  // 2^4 - 1
+    F131x<N> c = b;
+    for (int i = 0; i < 4; ++i) c = sqr<N>(c);
+    b = mul<N>(c, b);                                  // 2^8 - 1
+    b = mul<N>(multiSqr<N>(b, T.t[0]), b);             // 2^16 - 1
+    b = mul<N>(multiSqr<N>(b, T.t[1]), b);             // 2^32 - 1
+    b = mul<N>(multiSqr<N>(b, T.t[2]), b);             // 2^64 - 1
+    b = mul<N>(sqr<N>(b), a);                          // 2^65 - 1
+    b = mul<N>(multiSqr<N>(b, T.t[3]), b);             // 2^130 - 1
+    return sqr<N>(b);                                  // 2^131 - 2
+}
+
 // f131::fromPolynomial over N lanes.
 template <int N> F131X_INLINE F131x<N> fromPolynomial(const F131x<N> &a)
 {
