@@ -56,6 +56,12 @@
 #    error "ECC_F131_LANES > 1 needs x86-64 with a hardware carry-less multiplier"
 #endif
 
+// The addend's table points by row loads and a transpose (1) or by gathers
+// (0) on the 512-bit path; see addend.
+#ifndef ECC_F131_ADDEND_ROWS
+#    define ECC_F131_ADDEND_ROWS 1
+#endif
+
 #if ECC_F131_LANES > 1
 
 #    include <immintrin.h>
@@ -1087,11 +1093,16 @@ F131X_INLINE typename Limbs<N>::V tags(typename Limbs<N>::V hw, typename Limbs<N
 }
 
 // f131::addend over N lanes: d = x + x_T and e = y + y_T (+ x_T when the
-// table point is negated), the table points by five gathers from the shared
-// constant buffer -- the two limb pairs of x_T and y_T as 64-bit words, and
-// the word that holds the top limbs of four entries.  A gather a limb is
-// what the lanes' tags leave: no two lanes read the same entry, and the
-// table is 35 KB, in L1 beside the batch's lines.
+// table point is negated), the table points from the shared constant buffer
+// -- the two limb pairs of x_T and y_T as 64-bit words, and the word that
+// holds the top limbs of four entries.  No two lanes read the same entry,
+// and the table is 35 KB, in L1 beside the batch's lines.  The four full
+// limbs were a gather each, eight loads apiece; on the 512-bit path an
+// entry's 32 bytes are one 256-bit load, so the eight lanes' entries are
+// eight loads into four registers and a 4 x 8 transpose of qwords (four
+// unpacks, four two-source permutes), with the top word still gathered.
+// Measured on one Sapphire Rapids core, the tag and addend 8% faster: the
+// stage's gathers had it issuing more loads than vector instructions.
 template <int N>
 F131X_INLINE void addend(typename Limbs<N>::V tag, const F131x<N> &xp, const F131x<N> &yp,
                          const uint32_t *tw, F131x<N> *d, F131x<N> *e)
@@ -1110,12 +1121,45 @@ F131X_INLINE void addend(typename Limbs<N>::V tag, const F131x<N> &xp, const F13
                       ((h & F131X_C(3u)) << 3) &
                   F131X_C(63u);
     const V neg = V{} - ((tag >> 12) & F131X_C(1u));
-    const V tx0 = gather64<N>(tw, t), tx1 = gather64<N>(tw + 2, t), tx2 = top & F131X_C(7u);
+    V tx0, tx1, ty0, ty1;
+#    if ECC_F131_ADDEND_ROWS
+    if constexpr (N == 8) {
+        // Lane i's entry is the 32 bytes at word t[i]: x0 x1 y0 y1.  Two
+        // entries a register, z[i] holding lanes 2i and 2i + 1; the lane
+        // indices go through memory, since eight extracts would be eight
+        // more shuffles.
+        typedef Limbs<8>::M M;
+        alignas(64) uint64_t ti[8];
+        memcpy(ti, &t, sizeof(ti));
+        M z[4];
+        for (int i = 0; i < 4; ++i)
+            z[i] = _mm512_inserti64x4(
+                _mm512_castsi256_si512(_mm256_loadu_si256((const __m256i *)(tw + ti[2 * i]))),
+                _mm256_loadu_si256((const __m256i *)(tw + ti[2 * i + 1])), 1);
+        // The unpacks pair lanes two apart: a01 is x0 of lanes 0 and 2, y0
+        // of 0 and 2, x0 of 1 and 3, y0 of 1 and 3, and b01 the same of x1
+        // and y1; the permutes then pick each limb's eight lanes in order
+        // from a pair of those.
+        const M a01 = _mm512_unpacklo_epi64(z[0], z[1]), b01 = _mm512_unpackhi_epi64(z[0], z[1]),
+                a23 = _mm512_unpacklo_epi64(z[2], z[3]), b23 = _mm512_unpackhi_epi64(z[2], z[3]);
+        const M ix = _mm512_set_epi64(13, 9, 12, 8, 5, 1, 4, 0),
+                iy = _mm512_set_epi64(15, 11, 14, 10, 7, 3, 6, 2);
+        tx0 = (V)_mm512_permutex2var_epi64(a01, ix, a23);
+        ty0 = (V)_mm512_permutex2var_epi64(a01, iy, a23);
+        tx1 = (V)_mm512_permutex2var_epi64(b01, ix, b23);
+        ty1 = (V)_mm512_permutex2var_epi64(b01, iy, b23);
+    } else
+#    endif
+    {
+        tx0 = gather64<N>(tw, t), tx1 = gather64<N>(tw + 2, t);
+        ty0 = gather64<N>(tw + 4, t), ty1 = gather64<N>(tw + 6, t);
+    }
+    const V tx2 = top & F131X_C(7u);
     d->w0 = xp.w0 ^ tx0;
     d->w1 = xp.w1 ^ tx1;
     d->w2 = xp.w2 ^ tx2;
-    e->w0 = yp.w0 ^ gather64<N>(tw + 4, t) ^ (tx0 & neg);
-    e->w1 = yp.w1 ^ gather64<N>(tw + 6, t) ^ (tx1 & neg);
+    e->w0 = yp.w0 ^ ty0 ^ (tx0 & neg);
+    e->w1 = yp.w1 ^ ty1 ^ (tx1 & neg);
     e->w2 = yp.w2 ^ (top >> 3) ^ (tx2 & neg);
 #    undef F131X_C
 }
