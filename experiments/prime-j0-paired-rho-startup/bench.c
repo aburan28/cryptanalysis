@@ -21,8 +21,9 @@ static int parse_u64(const char *input, uint64_t *value)
 
 int main(int argc, char **argv)
 {
-    if (argc != 5 || (strcmp(argv[1], "reference") && strcmp(argv[1], "paired2"))) {
-        fputs("usage: ca_paired_rho_bench reference|paired2 target_x target_y seed\n", stderr);
+    if (argc != 5 || (strcmp(argv[1], "reference") && strcmp(argv[1], "paired2") &&
+                      strcmp(argv[1], "paired2-batch"))) {
+        fputs("usage: ca_paired_rho_bench reference|paired2|paired2-batch target_x target_y seed\n", stderr);
         return 2;
     }
     uint64_t target_x, target_y, seed;
@@ -45,7 +46,9 @@ int main(int argc, char **argv)
         return 2;
     }
     ca_curve_startup_mode mode = strcmp(argv[1], "paired2") == 0
-        ? CA_CURVE_STARTUP_TAU_PAIRED2 : CA_CURVE_STARTUP_GENERIC;
+        ? CA_CURVE_STARTUP_TAU_PAIRED2
+        : strcmp(argv[1], "paired2-batch") == 0
+            ? CA_CURVE_STARTUP_TAU_PAIRED2_BATCH : CA_CURVE_STARTUP_GENERIC;
     ca_stats stats = {0};
     ca_curve_startup_stats startup = {0};
     uint64_t scalar = UINT64_MAX;
@@ -74,6 +77,8 @@ int main(int argc, char **argv)
            " prepare_mixed_adds=%" PRIu64 " prepare_inversions=%" PRIu64
            " eval_tau=%" PRIu64 " eval_mixed_adds=%" PRIu64
            " eval_rotations=%" PRIu64 " eval_inversions=%" PRIu64
+           " table_output_inversions=%" PRIu64
+           " restart_output_inversions=%" PRIu64 " table_batch_size=%" PRIu64
            " eval_recode_attempts=%" PRIu64 " eval_pair_scores=%" PRIu64
            " eval_lattice_points_checked=%" PRIu64
            " prepare_ms=%.6f startup_eval_ms=%.6f verified=1\n",
@@ -84,6 +89,8 @@ int main(int argc, char **argv)
            startup.prepare_tau, startup.prepare_doubles, startup.prepare_mixed_adds,
            startup.prepare_inversions, startup.eval_tau, startup.eval_mixed_adds,
            startup.eval_rotations, startup.eval_inversions,
+           startup.table_output_inversions, startup.restart_output_inversions,
+           startup.table_batch_size,
            startup.eval_recode_attempts, startup.eval_pair_scores,
            startup.eval_lattice_points_checked,
            1000.0 * startup.prepare_seconds, 1000.0 * startup.evaluation_seconds);

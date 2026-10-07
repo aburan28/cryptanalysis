@@ -329,6 +329,18 @@ static uint64_t glv_generic_mul_budget(uint64_t scalar)
     return ops;
 }
 
+static void glv_account_tau_startup(ca_curve_startup_stats *startup,
+                                     const ca_tau4_joint_counts *one)
+{
+    startup->eval_tau += one->tau_steps;
+    startup->eval_mixed_adds += one->mixed_adds;
+    startup->eval_rotations += one->rotations;
+    startup->eval_inversions += one->inversions;
+    startup->eval_recode_attempts += one->recode_attempts;
+    startup->eval_pair_scores += one->pair_scores;
+    startup->eval_lattice_points_checked += one->lattice_points_checked;
+}
+
 static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
                                    uint64_t a, uint64_t b, int restart, uint64_t *ops)
 {
@@ -340,13 +352,9 @@ static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
             return 0;
         *ops += glv_generic_mul_budget(a) + glv_generic_mul_budget(b) + 1;
         if (c->startup) {
-            c->startup->eval_tau += one.tau_steps;
-            c->startup->eval_mixed_adds += one.mixed_adds;
-            c->startup->eval_rotations += one.rotations;
-            c->startup->eval_inversions += one.inversions;
-            c->startup->eval_recode_attempts += one.recode_attempts;
-            c->startup->eval_pair_scores += one.pair_scores;
-            c->startup->eval_lattice_points_checked += one.lattice_points_checked;
+            glv_account_tau_startup(c->startup, &one);
+            if (restart) c->startup->restart_output_inversions += one.inversions;
+            else c->startup->table_output_inversions += one.inversions;
         }
     } else {
         ca_elem t1, t2;
@@ -383,7 +391,8 @@ static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops
 
 static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
                                uint64_t seed, uint64_t *x, ca_stats *st,
-                               int paired2, ca_curve_startup_stats *startup)
+                               int paired2, int batch_table,
+                               ca_curve_startup_stats *startup)
 {
     double t0 = ca_now();
     uint64_t n = g->order;
@@ -472,9 +481,30 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
     for (uint32_t i = 0; i < c.r; i++) {
         c.alpha[i] = ca_rng_below(&rng, n);
         c.beta[i] = ca_rng_below(&rng, n);
-        if (!glv_startup_combination(&c, &c.M[i], c.alpha[i], c.beta[i], 0, &ops)) {
+        if (!batch_table && !glv_startup_combination(&c, &c.M[i],
+                                                      c.alpha[i], c.beta[i], 0, &ops)) {
             failure = CA_ERR_INTERNAL;
             goto nomem;
+        }
+    }
+    if (batch_table) {
+        ca_tau4_joint_counts batch = {0};
+        double batch_start = startup ? ca_now() : 0.0;
+        if (!ca_ec_tau4_paired_two_batch_profile(g, c.joint_pre, c.M,
+                                                  c.alpha, c.beta, c.r, &batch)) {
+            failure = CA_ERR_INTERNAL;
+            goto nomem;
+        }
+        for (uint32_t i = 0; i < c.r; i++)
+            ops += glv_generic_mul_budget(c.alpha[i]) +
+                   glv_generic_mul_budget(c.beta[i]) + 1;
+        if (startup) {
+            glv_account_tau_startup(startup, &batch);
+            startup->table_output_inversions += batch.inversions;
+            startup->table_evaluations += c.r;
+            startup->table_batch_size = c.r;
+            startup->budget_equivalent_group_ops += ops;
+            startup->evaluation_seconds += ca_now() - batch_start;
         }
     }
     double exp_dps = 1.25 * (double)sqrt_nm / (double)(1ULL << dp) + 1024;
@@ -579,9 +609,10 @@ static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
                                   ca_curve_info *info, ca_stats *st)
 {
     if (startup) memset(startup, 0, sizeof(*startup));
-    if (mode != CA_CURVE_STARTUP_GENERIC && mode != CA_CURVE_STARTUP_TAU_PAIRED2)
+    if (mode != CA_CURVE_STARTUP_GENERIC && mode != CA_CURVE_STARTUP_TAU_PAIRED2 &&
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_BATCH)
         return CA_ERR_INVALID;
-    if (mode == CA_CURVE_STARTUP_TAU_PAIRED2 &&
+    if (mode != CA_CURVE_STARTUP_GENERIC &&
         (g->kind != CA_GROUP_EC || g->endo_kind != CA_CURVE_ENDO_J0))
         return CA_ERR_UNSUPPORTED;
     if (info) {
@@ -595,7 +626,8 @@ static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
         return CA_ERR_NOT_FOUND;
     if (g->kind == CA_GROUP_EC && g->endo_kind != 0)
         return glv_rho_solve(g, base, target, seed, x, st,
-                             mode == CA_CURVE_STARTUP_TAU_PAIRED2, startup);
+                             mode != CA_CURVE_STARTUP_GENERIC,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_BATCH, startup);
     ca_rho_params rp;
     ca_rho_params_default(&rp);
     rp.seed = seed;

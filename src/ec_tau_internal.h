@@ -240,6 +240,13 @@ int ca_ec_tau4_paired_two_gauge_mul_profile(const ca_group *g,
                                              const ca_tau4_joint_precomp *pre,
                                              ca_elem *out, uint64_t a, uint64_t b,
                                              ca_tau4_joint_counts *counts);
+/* Up to 32 independent pairs against one prepared P,Q table; batch-normalize
+ * all nonidentity outputs with one inversion. */
+int ca_ec_tau4_paired_two_batch_profile(const ca_group *g,
+                                         const ca_tau4_joint_precomp *pre,
+                                         ca_elem *out, const uint64_t *a,
+                                         const uint64_t *b, size_t count,
+                                         ca_tau4_joint_counts *counts);
 
 /* Relative-unit orbit table: 9 P seeds x 9 Q seeds x 6 unit ratios. The
  * entire table is target-dependent if Q is the rho target. */

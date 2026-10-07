@@ -2740,10 +2740,11 @@ static unsigned tau4_pair_gauge_rotations(const tau4_lattice_stream *left,
 
 static int tau4_paired_lattice_mul_impl(const ca_group *g,
                                         const ca_tau4_joint_precomp *pre,
-                                        ca_elem *out, uint64_t a, uint64_t b,
+                                        ca_elem *out, tau_jac *jac_out,
+                                        uint64_t a, uint64_t b,
                                         ca_tau4_joint_counts *counts, int mode)
 {
-    if (!g || !pre || !out || pre->g != g) return 0;
+    if (!g || !pre || (!out && !jac_out) || pre->g != g) return 0;
     tau4_lattice_stream streams[2][25];
     size_t baseline[2] = {0, 0};
     ca_tau4_joint_counts cost = {0};
@@ -2800,12 +2801,15 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
         if (has_b) tau4_joint_add_digit_gauge(g, pre, &acc, 1,
                                                selected[1]->digits[i], chosen_gauge, &cost);
     }
-    jac_to_affine(g, out, acc);
-    if (chosen_gauge && !out->w[2]) {
-        out->w[0] = fm(g, chosen_gauge == 1 ? pre->beta2 : pre->beta, out->w[0]);
+    if (chosen_gauge && acc.z) {
+        acc.x = fm(g, chosen_gauge == 1 ? pre->beta2 : pre->beta, acc.x);
         cost.rotations++;
     }
-    cost.inversions = acc.z != 0;
+    if (jac_out) *jac_out = acc;
+    if (out) {
+        jac_to_affine(g, out, acc);
+        cost.inversions = acc.z != 0;
+    }
     if (counts) *counts = cost;
     return 1;
 }
@@ -2815,7 +2819,7 @@ int ca_ec_tau4_paired_lattice_mul_profile(const ca_group *g,
                                            ca_elem *out, uint64_t a, uint64_t b,
                                            ca_tau4_joint_counts *counts)
 {
-    return tau4_paired_lattice_mul_impl(g, pre, out, a, b, counts, 25);
+    return tau4_paired_lattice_mul_impl(g, pre, out, NULL, a, b, counts, 25);
 }
 
 int ca_ec_tau4_paired_five_mul_profile(const ca_group *g,
@@ -2823,7 +2827,7 @@ int ca_ec_tau4_paired_five_mul_profile(const ca_group *g,
                                         ca_elem *out, uint64_t a, uint64_t b,
                                         ca_tau4_joint_counts *counts)
 {
-    return tau4_paired_lattice_mul_impl(g, pre, out, a, b, counts, 5);
+    return tau4_paired_lattice_mul_impl(g, pre, out, NULL, a, b, counts, 5);
 }
 
 int ca_ec_tau4_paired_two_mul_profile(const ca_group *g,
@@ -2831,7 +2835,7 @@ int ca_ec_tau4_paired_two_mul_profile(const ca_group *g,
                                        ca_elem *out, uint64_t a, uint64_t b,
                                        ca_tau4_joint_counts *counts)
 {
-    return tau4_paired_lattice_mul_impl(g, pre, out, a, b, counts, 2);
+    return tau4_paired_lattice_mul_impl(g, pre, out, NULL, a, b, counts, 2);
 }
 
 int ca_ec_tau4_paired_two_gauge_mul_profile(const ca_group *g,
@@ -2839,7 +2843,37 @@ int ca_ec_tau4_paired_two_gauge_mul_profile(const ca_group *g,
                                              ca_elem *out, uint64_t a, uint64_t b,
                                              ca_tau4_joint_counts *counts)
 {
-    return tau4_paired_lattice_mul_impl(g, pre, out, a, b, counts, 3);
+    return tau4_paired_lattice_mul_impl(g, pre, out, NULL, a, b, counts, 3);
+}
+
+int ca_ec_tau4_paired_two_batch_profile(const ca_group *g,
+                                          const ca_tau4_joint_precomp *pre,
+                                          ca_elem *out, const uint64_t *a,
+                                          const uint64_t *b, size_t count,
+                                          ca_tau4_joint_counts *counts)
+{
+    if (!g || !pre || !out || !a || !b || pre->g != g || count > 32) return 0;
+    ca_tau4_joint_counts total = {0};
+    if (!count) { if (counts) *counts = total; return 1; }
+    tau_jac projective[32];
+    uint64_t prefixes[32];
+    for (size_t i = 0; i < count; i++) {
+        ca_tau4_joint_counts one = {0};
+        if (!tau4_paired_lattice_mul_impl(g, pre, NULL, &projective[i],
+                                           a[i], b[i], &one, 2)) return 0;
+        total.tau_steps += one.tau_steps;
+        total.mixed_adds += one.mixed_adds;
+        total.rotations += one.rotations;
+        total.overlaps += one.overlaps;
+        total.recode_attempts += one.recode_attempts;
+        total.pair_scores += one.pair_scores;
+        total.selected_changed += one.selected_changed;
+        total.lattice_points_checked += one.lattice_points_checked;
+    }
+    if (!jac_batch_to_affine_scratch(g, out, projective, count,
+                                     prefixes, &total.inversions)) return 0;
+    if (counts) *counts = total;
+    return 1;
 }
 
 /* Unit action is a power of (x,y)->(beta*x,y), followed by sign on y.
