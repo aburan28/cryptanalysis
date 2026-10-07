@@ -2459,6 +2459,19 @@ million direct right-`S3` evaluations; midpoint-pin cells make about
 fully pinned Q1491 SAT model remains a correctness witness, so these
 cells measure only capped search prefixes.
 
+### Q1493 Frobenius-swept first-window search
+
+[Q1493](q1493_frobenius_window_sweep/README.md) fixes only the first raw
+leaf's window to start zero and sweeps all Frobenius rotations of each
+ordinary public target. The full sweep preserves mathematical coverage
+of Q1481's Frobenius-stable base; Q1490's known N53 witness maps into
+rotation 44 and passes the rotation preflight. The native solver censors
+on that positive cell at 60 seconds. All 53 N53 and 83 N83 rotations
+then censor at their frozen 5-second caps with zero verified relations.
+The independent audit preserves the operation vectors and charged stage
+intervals. This is a bounded search failure, not a successful PDP cost
+or an N131 work exponent.
+
 ## Next goal
 
 Test a **fully coupled four-leaf search** that leaves both internal
@@ -2547,6 +2560,8 @@ python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/freeze_protocol.
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1491_ordinary_cnf_witness/run.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1492_ordinary_partial_pin/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1492_ordinary_partial_pin/run_partial.py --cell target_only --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/run.py --preflight --check
+python3 experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/audit.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 
