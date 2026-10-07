@@ -517,6 +517,28 @@ template <> F131X_INLINE Limbs<8>::V gather32<8>(const uint32_t *t, Limbs<8>::V 
 }
 #    endif
 
+// The 64 bits at t + idx[i] for each element (f131::load64 of two words).
+template <int N>
+F131X_INLINE typename Limbs<N>::V gather64(const uint32_t *t, typename Limbs<N>::V idx);
+template <> F131X_INLINE Limbs<2>::V gather64<2>(const uint32_t *t, Limbs<2>::V idx)
+{
+    const Limbs<2>::V r = {f131::load64(t + idx[0]), f131::load64(t + idx[1])};
+    return r;
+}
+#    if ECC_F131_LANES >= 4
+template <> F131X_INLINE Limbs<4>::V gather64<4>(const uint32_t *t, Limbs<4>::V idx)
+{
+    return (Limbs<4>::V)_mm256_i64gather_epi64(reinterpret_cast<const long long *>(t),
+                                               (__m256i)idx, 4);
+}
+#    endif
+#    if ECC_F131_LANES >= 8
+template <> F131X_INLINE Limbs<8>::V gather64<8>(const uint32_t *t, Limbs<8>::V idx)
+{
+    return (Limbs<8>::V)_mm512_i64gather_epi64((__m512i)idx, t, 4);
+}
+#    endif
+
 // p mod 131 for p below 2^16: the quotient by a reciprocal multiply (64036 =
 // ceil(2^23 / 131); the error 108 p stays below 2^23 for p < 77672).
 template <int N> F131X_INLINE typename Limbs<N>::V mod131(typename Limbs<N>::V p)
@@ -736,6 +758,37 @@ F131X_INLINE typename Limbs<N>::V tags(typename Limbs<N>::V hw, typename Limbs<N
     const V pushed = (old << 16) | tag;
     memcpy(hist, &pushed, sizeof(pushed));
     return tag;
+#    undef F131X_C
+}
+
+// f131::addend over N lanes: d = x + x_T and e = y + y_T (+ x_T when the
+// table point is negated), the table points by five gathers from the shared
+// constant buffer -- the two limb pairs of x_T and y_T as 64-bit words, and
+// the word that holds the top limbs of four entries.  A gather a limb is
+// what the lanes' tags leave: no two lanes read the same entry, and the
+// table is 35 KB, in L1 beside the batch's lines.
+template <int N>
+F131X_INLINE void addend(typename Limbs<N>::V tag, const F131x<N> &xp, const F131x<N> &yp,
+                         const uint32_t *tw, F131x<N> *d, F131x<N> *e)
+{
+    typedef typename Limbs<N>::V V;
+#    define F131X_C(x) F131x<N>::splat(x)
+    using namespace eccPacked131;
+    const V h = tag & F131X_C(15u), k = (tag >> 4) & F131X_C(255u);
+    const V kbase = mul32<N>(k, F131X_C(unsigned(TW_KWORDS)));
+    const V t = kbase + (h << 3); // h * TW_ENTRY, eight words an entry
+    const V top = gather32<N>(tw, kbase + F131X_C(unsigned(TW_H * TW_ENTRY)) + (h >> 2)) >>
+                      ((h & F131X_C(3u)) << 3) &
+                  F131X_C(63u);
+    const V neg = V{} - ((tag >> 12) & F131X_C(1u));
+    const V tx0 = gather64<N>(tw, t), tx1 = gather64<N>(tw, t + F131X_C(2u)),
+            tx2 = top & F131X_C(7u);
+    d->w0 = xp.w0 ^ tx0;
+    d->w1 = xp.w1 ^ tx1;
+    d->w2 = xp.w2 ^ tx2;
+    e->w0 = yp.w0 ^ gather64<N>(tw, t + F131X_C(4u)) ^ (tx0 & neg);
+    e->w1 = yp.w1 ^ gather64<N>(tw, t + F131X_C(6u)) ^ (tx1 & neg);
+    e->w2 = yp.w2 ^ (top >> 3) ^ (tx2 & neg);
 #    undef F131X_C
 }
 
