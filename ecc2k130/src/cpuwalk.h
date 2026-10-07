@@ -271,9 +271,10 @@ class CpuEngine
         unsigned long long restarts = 0;
         bool exhausted = false;
         // The selection's intermediates for one batch: normal-basis x (limb by
-        // limb), weight, phase, sign.
+        // limb), weight, phase, sign, and the tag they and the history give.
         Slab xn;
         std::vector<unsigned char> hw, k, eps;
+        std::vector<uint32_t> tag;
         int batch = 0;
         void scratch(int b)
         {
@@ -283,6 +284,7 @@ class CpuEngine
             hw.resize((size_t)b);
             k.resize((size_t)b);
             eps.resize((size_t)b);
+            tag.resize((size_t)b);
         }
     };
 
@@ -378,11 +380,13 @@ class CpuEngine
         }
     }
 
-    // Stages 2 to 4: the phase into KK and the sign into EPS of every lane,
-    // from XN and the polynomial-basis y.  N lanes at a time on the bit planes
-    // of L (f131x.h), lane by lane through f131.h's byte tables for the tail.
+    // Stages 2 to 4 and the tag: the phase and the sign of every lane from XN
+    // and the polynomial-basis y, then the tag with the cycle rule and the
+    // history H, into TAG.  N lanes at a time on the bit planes of L
+    // (f131x.h), the phase and sign never leaving the vector; lane by lane
+    // through f131.h's byte tables for the tail, by way of KK and EPS.
     void selectBatch(const Batch &b, int B, const unsigned char *HW, unsigned char *KK,
-                     unsigned char *EPS) const
+                     unsigned char *EPS, unsigned long long *H, uint32_t *TAG) const
     {
         const uint32_t *tw = consts_.data();
         int i = 0;
@@ -400,16 +404,15 @@ class CpuEngine
             }
             f131x::select<kLanes, G>(xn, yp, select_, hw, k, eps);
             for (int g = 0; g < G; ++g) {
-                f131x::storeBytes<kLanes>(k[g], KK + i + g * kLanes);
-                f131x::storeBytes<kLanes>(eps[g], EPS + i + g * kLanes);
+                const int j = i + g * kLanes;
+                f131x::storeWords<kLanes>(f131x::tags<kLanes>(hw[g], k[g], eps[g], H + j), TAG + j);
             }
         }
         for (; i + kLanes <= B; i += kLanes) {
             typename FX::V hw, k, eps;
             f131x::select<kLanes>(FX::load(b.XN0 + i, b.XN1 + i, b.XN2 + i),
                                   FX::load(b.Y0 + i, b.Y1 + i, b.Y2 + i), select_, &hw, &k, &eps);
-            f131x::storeBytes<kLanes>(k, KK + i);
-            f131x::storeBytes<kLanes>(eps, EPS + i);
+            f131x::storeWords<kLanes>(f131x::tags<kLanes>(hw, k, eps, H + i), TAG + i);
         }
 #endif
         // Stage by stage over the tail as well: one lane's selection is a
@@ -419,6 +422,7 @@ class CpuEngine
         for (int j = i; j < B; ++j)
             EPS[j] =
                 (unsigned char)f131::coordinate(b.Y(j), f131::selectPivot(b.XN(j), KK[j], tw), tw);
+        for (int j = i; j < B; ++j) TAG[j] = f131::tagOf(HW[j], KK[j], EPS[j], &H[j]);
     }
 
     // One inversion serves the K chains whose running products are prod[]:
@@ -615,18 +619,18 @@ class CpuEngine
                          d_.w1 + base, d_.w2 + base, local->xn.w0, local->xn.w1, local->xn.w2};
         unsigned char *__restrict HW = local->hw.data(), *__restrict KK = local->k.data(),
                                   *__restrict EPS = local->eps.data();
+        uint32_t *__restrict TAG = local->tag.data();
         for (int s = 0; s < steps && !local->exhausted; ++s, ++now) {
             const bool guard = maxIters_ && now % guardPeriod_ == 0;
             // The selection: the normal-basis x, its weight and the rare lane
-            // that reports or is overdue; then the phase and the sign.
+            // that reports or is overdue; then the phase, the sign and the
+            // tag, with the cycle rule and the history.
             convertBatch(b, B, base, now, guard, S, HW, local);
-            selectBatch(b, B, HW, KK, EPS);
-            // The tag, with the cycle rule and the history, and with it the
-            // addend: d = x + x_T into D, e = y + y_T into W.
+            selectBatch(b, B, HW, KK, EPS, H, TAG);
+            // The addend: d = x + x_T into D, e = y + y_T into W.
             for (int i = 0; i < B; ++i) {
-                const unsigned tag = f131::tagOf(HW[i], KK[i], EPS[i], &H[i]);
                 F131 d, e;
-                f131::addend(tag, b.X(i), b.Y(i), tw, &d, &e);
+                f131::addend(TAG[i], b.X(i), b.Y(i), tw, &d, &e);
                 b.setD(i, d);
                 b.setW(i, e);
             }

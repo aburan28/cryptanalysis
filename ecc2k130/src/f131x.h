@@ -690,6 +690,55 @@ F131X_INLINE void select(const F131x<N> &xn, const F131x<N> &yp, const SelectCon
     select<N, 1>(&xn, &yp, c, hwOut, kOut, epsOut);
 }
 
+// Whether any element of v is nonzero.
+template <int N> F131X_INLINE bool anySet(typename Limbs<N>::V v)
+{
+    typedef typename Limbs<N>::M M;
+    if constexpr (N == 8) return _mm512_test_epi64_mask((M)v, (M)v) != 0;
+    if constexpr (N == 4) return !_mm256_testz_si256((M)v, (M)v);
+    if constexpr (N == 2) return !_mm_testz_si128((M)v, (M)v);
+}
+
+// The low 32 bits of each element, to out[0..N).
+template <int N> F131X_INLINE void storeWords(typename Limbs<N>::V v, uint32_t *out)
+{
+    for (int i = 0; i < N; ++i) out[i] = (uint32_t)v[i];
+}
+
+// f131::tagOf over N lanes: the tag from the weight, the phase and the sign,
+// the cycle rule against each lane's history, the histories advanced.  The
+// rule is a compare against three slots of the history, so a lane whose tag
+// is fruitless picks the next branch and every lane is tested again; a lane
+// that passed once passes again, the test being a function of the tag and
+// the old history alone.  Lane by lane this was a fifth of the step's
+// scalar work for a dozen instructions a lane.
+template <int N>
+F131X_INLINE typename Limbs<N>::V tags(typename Limbs<N>::V hw, typename Limbs<N>::V k,
+                                       typename Limbs<N>::V eps, unsigned long long *hist)
+{
+    typedef typename Limbs<N>::V V;
+#    define F131X_C(x) F131x<N>::splat(x)
+    V old;
+    memcpy(&old, hist, sizeof(old));
+    const V rest = (k << 4) | (eps << 12);
+    V h = (hw >> 1) & F131X_C(eccPacked131::TW_H - 1);
+    V tag = h | rest;
+    const V t1 = old & F131X_C(0xffffu), t2 = (old >> 16) & F131X_C(0xffffu),
+            t3 = (old >> 32) & F131X_C(0xffffu);
+    const V undo13 = (V)((t1 ^ t3) == F131X_C(ECC_TAG_EPS));
+    for (;;) {
+        const V m = (V)((tag ^ t1) == F131X_C(ECC_TAG_EPS)) |
+                    ((V)((tag ^ t2) == F131X_C(ECC_TAG_EPS)) & undo13);
+        if (__builtin_expect(!anySet<N>(m), 1)) break;
+        h = (h + (m & F131X_C(1u))) & F131X_C(eccPacked131::TW_H - 1);
+        tag = h | rest;
+    }
+    const V pushed = (old << 16) | tag;
+    memcpy(hist, &pushed, sizeof(pushed));
+    return tag;
+#    undef F131X_C
+}
+
 #    undef F131X_INLINE
 
 } // namespace f131x
