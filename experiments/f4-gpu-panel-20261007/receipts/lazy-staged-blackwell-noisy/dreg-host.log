@@ -1,0 +1,43 @@
+# Solving degree vs first fall degree
+
+d_max = 5, trials = 8, seed = 0x5eed
+
+n=5 ell=4 m=2: vars=8 refute=Some(2.0) (0.1s)
+n=5 ell=4 m=3: vars=17 refute=None (0.2s)
+n=7 ell=3 m=2: vars=6 refute=Some(2.3333333333333335) (0.0s)
+n=7 ell=3 m=3: vars=16 refute=None (0.4s)
+n=9 ell=6 m=2: vars=12 refute=Some(2.0) (0.2s)
+n=9 ell=6 m=3: vars=27 refute=None (0.7s)
+n=11 ell=10 m=2: vars=20 refute=Some(2.0) (13.3s)
+n=11 ell=10 m=3: vars=41 refute=None (0.4s)
+n=13 ell=12 m=2: vars=24 refute=Some(2.0) (2.9s)
+n=13 ell=12 m=3: vars=49 refute=None (1.4s)
+n=15 ell=4 m=2: vars=8 refute=Some(2.375) (0.2s)
+n=15 ell=4 m=3: vars=27 refute=None (0.9s)
+n=17 ell=8 m=2: vars=16 refute=Some(4.142857142857143) (8.8s)
+n=17 ell=8 m=3: vars=41 refute=None (1.6s)
+n=21 ell=6 m=2: vars=12 refute=Some(2.125) (1.2s)
+n=21 ell=6 m=3: vars=39 refute=None (0.9s)
+| n | ℓ | m | vars | eqs | deg | FFD | D_refute | gap | ctrl(shape) | ctrl(unsat) | Dc(shape) | Dc(unsat) | refuted | pinned | unres | D_built |
+|--:|--:|--:|-----:|----:|----:|----:|---------:|----:|------------:|------------:|----------:|----------:|--------:|-------:|------:|--------:|
+| 5 | 4 | 2 | 8 | 5 | 2 | 3.00 | 2.00 | -1.00 | n/a(sat) | unres | 5 | 5 | 2 | 0 | 6/8 | 5 |
+| 5 | 4 | 3 | 17 | 10 | 3 | 2.75 | — | — | n/a(sat) | unres | 5 | 5 | 0 | 0 | 8/8 | 5 |
+| 7 | 3 | 2 | 6 | 7 | 2 | 2.50 | 2.33 | -0.17 | unres | unres | 5 | 5 | 6 | 0 | 2/8 | 5 |
+| 7 | 3 | 3 | 16 | 14 | 3 | 3.00 | — | — | n/a(sat) | unres | 5 | 5 | 0 | 0 | 8/8 | 5 |
+| 9 | 6 | 2 | 12 | 9 | 2 | 3.00 | 2.00 | -1.00 | n/a(sat) | 4.00 | 5 | 4 | 4 | 0 | 4/8 | 5 |
+| 9 | 6 | 3 | 27 | 18 | 3 | 3.00 | — | — | n/a(sat) | unres | 4 | 4 | 0 | 0 | 8/8 | 4 |
+| 11 | 10 | 2 | 20 | 11 | 2 | 2.75 | 2.00 | -0.75 | n/a(sat) | unres | 5 | 4 | 3 | 0 | 5/8 | 5 |
+| 11 | 10 | 3 | 41 | 22 | 3 | 3.00 | — | — | n/a(sat) | unres | 3 | 3 | 0 | 0 | 8/8 | 3 |
+| 13 | 12 | 2 | 24 | 13 | 2 | 2.75 | 2.00 | -0.75 | n/a(sat) | unres | 4 | 4 | 3 | 0 | 5/8 | 4 |
+| 13 | 12 | 3 | 49 | 26 | 3 | 3.00 | — | — | n/a(sat) | unres | 3 | 3 | 0 | 0 | 8/8 | 3 |
+| 15 | 4 | 2 | 8 | 15 | 2 | 2.00 | 2.38 | 0.38 | unres | unres | 5 | 5 | 8 | 0 | 0/8 | 3 |
+| 15 | 4 | 3 | 27 | 30 | 3 | 3.00 | — | — | unres | unres | 4 | 4 | 0 | 0 | 8/8 | 4 |
+| 17 | 8 | 2 | 16 | 17 | 2 | 2.50 | 4.14 | 1.64 | 5.00 | 4.00 | 5 | 4 | 7 | 0 | 1/8 | 5 |
+| 17 | 8 | 3 | 41 | 34 | 3 | 3.00 | — | — | n/a(sat) | unres | 3 | 3 | 0 | 0 | 8/8 | 3 |
+| 21 | 6 | 2 | 12 | 21 | 2 | 2.88 | 2.12 | -0.75 | unres | unres | 5 | 5 | 8 | 0 | 0/8 | 3 |
+| 21 | 6 | 3 | 39 | 42 | 3 | 3.00 | — | — | unres | unres | 3 | 3 | 0 | 0 | 8/8 | 3 |
+
+`gap` = D_solve − FFD.  `ctrl` is the mean solving degree of random
+systems of identical shape; where it matches D_solve, the Semaev
+structure is buying nothing.  `unres` counts draws that neither
+resolved by `d_max` nor fit the Macaulay size caps.
