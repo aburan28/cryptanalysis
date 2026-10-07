@@ -58,6 +58,15 @@ needs to be charged. The 64 recodings visited 27,851 distinct
 states. A shared-state implementation could reuse transitions, while
 selection and path-cost accumulation remain work to measure.
 
+`shared_mask_dag.py` implements that first step: it caches the two possible
+ring transitions at each distinct `(a, b)` and then follows each mask through
+the graph. On all 4,096 mask/case paths, its digits and complete model costs
+exactly matched the original recoder and the saved result. It computed
+27,741 distinct ring-state transitions for the 655,394 digit-position visits,
+a 23.6-fold transition reuse. The path visits, per-mask scoring, and
+preparation choice still remain; this is a structural result, not a measured
+speedup.
+
 There is substantial published prior art for combining point tripling with
 digit addition, including [Dimitrov, Imbert, and Mishra's double-base-chain
 paper](https://eprint.iacr.org/2005/069). The [Explicit-Formulas
