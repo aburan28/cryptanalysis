@@ -53,3 +53,30 @@ cheap τ pairs, caches, and final output before isolated wall timing.
 Mixed-radix chains and endomorphism recoding already have prior art;
 academic novelty remains unproved. This path is variable-time and
 must not be used for secret scalars without separate work.
+
+## Native evaluator replay
+
+The native recoder, evaluator, Sage seed generator, and replay protocol
+were frozen in `26e5f8f4` before release replay. The checked Sage
+launcher generated **96 independent twelve-orbit seed points** for
+the eight fresh bases; `mixed-radix-seed-fixture.json` has SHA-256
+`bc5f1218f64edbf827080ea0ff26c1c27ea848bf754d752f1bfde538d1bfc3b2`.
+
+The offline locked release build passed its original-path regression
+and both selected mixed-radix panels. It checked 592 prepared points
+and 64 final outputs on the design panel, then 2,381 prepared points
+and 256 final outputs on the fresh panel. Every per-case greedy and
+selective source count and chosen arm matched the frozen Python
+record. Each executed evaluator's operation recount matched the
+selected source cost, and **zero cached additions** took an exceptional
+branch. The native source still requires an exact action-stream
+fingerprint audit before we can claim byte-for-byte recoder
+equivalence; the point outputs and counts are verified.
+
+`native-mixed-radix-checks.json` retains the raw build and replay
+commands, exit codes, output, compiler/host, source and fixture
+hashes, and the release binary hash. Its SHA-256 is
+`0cca2f5c1add960d8b66f1ca001c97d53a035ee9d29d1f63360cc2b0665e5035`;
+the replayed macOS ARM64 binary SHA-256 is
+`0f99c3a934cf374cd8d51ab82fdf35d1b9907e22cfca46681b98a747c84dc9bc`.
+No native timing was taken, and the CPU speedup claim remains `null`.
