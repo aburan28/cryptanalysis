@@ -1,0 +1,104 @@
+{
+  "schema": "dense-proof-plan/1",
+  "fixture_sha256": "618bd6d141a06ce55fdeb3e6fc72f4903fc83e3d2ee317dfbcde5b25a78548cf",
+  "cases": [
+    "pdp-6-seed-1",
+    "pdp-6-seed-3",
+    "planted-dense-mq-12",
+    "pdp-9-seed-1",
+    "pdp-9-seed-2",
+    "pdp-9-seed-3",
+    "pdp-9-seed-4",
+    "pdp-9-seed-5",
+    "pdp-12-seed-1",
+    "pdp-12-seed-2",
+    "pdp-12-seed-3",
+    "pdp-12-seed-4",
+    "pdp-12-seed-5"
+  ],
+  "arms": [
+    "f4-hash",
+    "f4-dense",
+    "matrix-hash",
+    "matrix-dense"
+  ],
+  "budgets": [
+    80000000
+  ],
+  "orders": [
+    [
+      "f4-hash",
+      "f4-dense",
+      "matrix-hash",
+      "matrix-dense"
+    ],
+    [
+      "f4-hash",
+      "f4-dense",
+      "matrix-hash",
+      "matrix-dense"
+    ],
+    [
+      "f4-dense",
+      "matrix-hash",
+      "matrix-dense",
+      "f4-hash"
+    ],
+    [
+      "matrix-hash",
+      "matrix-dense",
+      "f4-hash",
+      "f4-dense"
+    ],
+    [
+      "matrix-dense",
+      "f4-hash",
+      "f4-dense",
+      "matrix-hash"
+    ]
+  ],
+  "warmup_rounds": 1,
+  "limits": {
+    "max_nodes": 2000000,
+    "max_rows": 4096,
+    "batch": 64,
+    "max_check_work": 200000000,
+    "max_terms": 2000000,
+    "matrix_cap": 20000000
+  },
+  "checker": {
+    "order": "completion-first",
+    "retention": "release-live",
+    "term_limit": "peak live polynomial terms",
+    "dense": "proof values only; term charges preserved, word and conversion charges added"
+  },
+  "worker_timeout_seconds": 60,
+  "process_policy": "One fresh worker per query; fixture/layout/library setup and artifact storage excluded from query timing; process peak RSS includes those costs.",
+  "boundary": "PDP: first target-dependent coefficient descent through native production/certification, bounded extraction, independent equations/curve replay and lease teardown; fixture/layout setup separate; materialized proof included.",
+  "audit_limits": {
+    "max_work": 1000000000,
+    "max_retained_terms": 50000000
+  },
+  "gpu": {
+    "devices": [],
+    "backend": "host"
+  },
+  "candidate_id": null,
+  "qualified_speedup": null,
+  "online_speedup": null,
+  "matrix_policy": {
+    "input_degree": {
+      "pdp": 6,
+      "algebra": 2
+    },
+    "multiplier_degree": {
+      "matrix-hash": 2,
+      "matrix-dense": 2
+    },
+    "max_layout_bytes": 67108864,
+    "matrix_cap": 20000000,
+    "fallback": "unchanged F4 with remaining producer and checker budgets"
+  },
+  "dense_byte_limit": 134217728,
+  "dense_ring_limit": 12
+}
