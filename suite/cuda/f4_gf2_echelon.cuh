@@ -60,13 +60,18 @@ typedef struct {
  * how many of the panel's pivots it has taken. */
 #define F4E_PIVOT 0x80000000u
 
-/* Block-shared state of the panel step. */
+/* Block-shared state of the panel step.  A panel of at most one chunk
+ * keeps its candidates here, every round reading each of them. */
 typedef struct {
     f4_u64 cols;
     f4_u64 best[3];
     f4_u64 word[64]; /* pivot k's word */
     f4_u32 col[64];  /* and its column */
     f4_u32 scan[2][F4_MAX_THREADS];
+    f4_u64 pw[F4_MAX_THREADS];
+    f4_u64 coeff[F4_MAX_THREADS];
+    f4_u32 cand[F4_MAX_THREADS];
+    f4_u32 is_piv[F4_MAX_THREADS];
 } F4ePanelShared;
 
 /* Gather: active rows with a high bit in word w, with that word, in any
@@ -111,10 +116,15 @@ F4_FN void f4e_catch_up(const F4ePanelShared *sh, f4_u32 from, f4_u32 k, f4_u64 
  * them from prow, a pass over every row.  Pivot histories are then
  * expanded to the original pivot rows they combine. */
 F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4_u32 rows,
-                           f4_u32 *cand, f4_u64 *pw, f4_u64 *coeff, f4_u32 *is_piv,
-                           const f4_u32 *count, F4ePivots *piv)
+                           f4_u32 *cand_global, f4_u64 *pw_global, f4_u64 *coeff_global,
+                           f4_u32 *is_piv_global, const f4_u32 *count, F4ePivots *piv)
 {
     const f4_u32 n_cand = *count;
+    const int staged = n_cand <= nt;
+    f4_u32 *cand = staged ? sh->cand : cand_global;
+    f4_u64 *pw = staged ? sh->pw : pw_global;
+    f4_u64 *coeff = staged ? sh->coeff : coeff_global;
+    f4_u32 *is_piv = staged ? sh->is_piv : is_piv_global;
     F4_SINGLE
     {
         sh->cols = 0ull;
@@ -122,7 +132,7 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
         sh->best[1] = ~0ull;
         sh->best[2] = ~0ull;
     }
-    if (n_cand > nt) {
+    if (!staged) {
         /* Thread t compacts rows [t * span, (t + 1) * span): count, scan,
          * write. */
         const f4_u32 span = (rows + nt - 1u) / nt;
@@ -157,9 +167,15 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
         F4_END_THREADS
     }
     F4_SYNC();
+    /* From here only thread i % nt writes candidate i; another thread reads
+     * it only past a barrier. */
     F4_FOR_THREADS(tid)
         f4_u64 acc = 0ull;
         for (f4_u32 i = tid; i < n_cand; i += nt) {
+            if (staged) {
+                cand[i] = cand_global[i];
+                pw[i] = pw_global[i];
+            }
             coeff[i] = 0ull;
             is_piv[i] = 0u;
             acc |= pw[i];
@@ -201,32 +217,37 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
             if (best != ~0ull) p = (f4_u32)(best & 0xffffffffull);
         }
         if (p == F4_NONE) continue;
-        F4_SINGLE
-        {
-            sh->word[k] = pw[p];
-            sh->col[k] = c;
-            piv->row[k] = cand[p];
-            piv->hist[k] = coeff[p];
-            is_piv[p] = F4E_PIVOT;
-        }
-        F4_SYNC();
+        /* Every thread records the pivot's word, written before the
+         * barrier, the same value, so no barrier follows; p's own thread
+         * marks it. */
+        sh->word[k] = pw[p];
+        sh->col[k] = c;
+        F4_FOR_THREADS(tid)
+            if (tid == p % nt) {
+                piv->row[k] = cand[p];
+                piv->hist[k] = coeff[p];
+                is_piv[p] = F4E_PIVOT;
+            }
+        F4_END_THREADS
         ++k;
     }
     F4_FOR_THREADS(tid)
         for (f4_u32 i = tid; i < n_cand; i += nt) {
             const f4_u32 st = is_piv[i];
             if (st & F4E_PIVOT) {
-                is_piv[i] = 1u;
+                is_piv_global[i] = 1u;
                 continue;
             }
+            f4_u64 mask = coeff[i];
             if (st < k) {
-                f4_u64 word = pw[i], mask = coeff[i];
+                f4_u64 word = pw[i];
                 f4e_catch_up(sh, st, k, &word, &mask);
-                coeff[i] = mask;
             }
-            is_piv[i] = 0u;
+            coeff_global[i] = mask;
+            is_piv_global[i] = 0u;
         }
     F4_END_THREADS
+    F4_SYNC();
     F4_SINGLE
     {
         piv->n = k;
