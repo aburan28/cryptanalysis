@@ -24,8 +24,9 @@ int main(int argc, char **argv)
     if (argc != 5 || (strcmp(argv[1], "reference") && strcmp(argv[1], "paired2") &&
                       strcmp(argv[1], "paired2-batch") &&
                       strcmp(argv[1], "paired2-plane-batch") &&
-                      strcmp(argv[1], "paired2-free-gauge-batch"))) {
-        fputs("usage: ca_paired_rho_bench reference|paired2|paired2-batch|paired2-plane-batch|paired2-free-gauge-batch target_x target_y seed\n", stderr);
+                      strcmp(argv[1], "paired2-free-gauge-batch") &&
+                      strcmp(argv[1], "paired2-free-gauge-square-z-batch"))) {
+        fputs("usage: ca_paired_rho_bench reference|paired2|paired2-batch|paired2-plane-batch|paired2-free-gauge-batch|paired2-free-gauge-square-z-batch target_x target_y seed\n", stderr);
         return 2;
     }
     uint64_t target_x, target_y, seed;
@@ -55,6 +56,8 @@ int main(int argc, char **argv)
                 ? CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH
                 : strcmp(argv[1], "paired2-free-gauge-batch") == 0
                     ? CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH
+                : strcmp(argv[1], "paired2-free-gauge-square-z-batch") == 0
+                    ? CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_SQUARE_Z_BATCH
                 : CA_CURVE_STARTUP_GENERIC;
     ca_stats stats = {0};
     ca_curve_startup_stats startup = {0};
@@ -90,6 +93,7 @@ int main(int argc, char **argv)
            " eval_recode_attempts=%" PRIu64 " eval_pair_scores=%" PRIu64
            " eval_lattice_points_checked=%" PRIu64
            " eval_free_gauge_transitions=%" PRIu64
+           " eval_tau_square_z_steps=%" PRIu64
            " prepare_ms=%.6f startup_eval_ms=%.6f verified=1\n",
            target_x, target_y, seed, argv[1], scalar,
            1000.0 * stats.seconds, replay_ms, stats.group_ops, stats.table_entries,
@@ -104,6 +108,7 @@ int main(int argc, char **argv)
            startup.eval_recode_attempts, startup.eval_pair_scores,
            startup.eval_lattice_points_checked,
            startup.eval_free_gauge_transitions,
+           startup.eval_tau_square_z_steps,
            1000.0 * startup.prepare_seconds, 1000.0 * startup.evaluation_seconds);
     return 0;
 }

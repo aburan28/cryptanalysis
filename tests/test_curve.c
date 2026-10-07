@@ -1918,11 +1918,12 @@ static void paired_rho_startup_checks(void)
         for (size_t j = 0; j < sizeof(seeds) / sizeof(seeds[0]); j++) {
             uint64_t reference = UINT64_MAX, candidate = UINT64_MAX, batched = UINT64_MAX;
             uint64_t plane_result = UINT64_MAX, free_result = UINT64_MAX;
+            uint64_t square_result = UINT64_MAX;
             ca_stats ref_stats = {0}, cand_stats = {0}, batch_stats = {0};
-            ca_stats plane_stats = {0}, free_stats = {0};
+            ca_stats plane_stats = {0}, free_stats = {0}, square_stats = {0};
             ca_curve_startup_stats ref_startup = {0}, cand_startup = {0};
             ca_curve_startup_stats batch_startup = {0}, plane_startup = {0};
-            ca_curve_startup_stats free_startup = {0};
+            ca_curve_startup_stats free_startup = {0}, square_startup = {0};
             CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &reference,
                   CA_CURVE_STARTUP_GENERIC, &ref_startup, NULL, &ref_stats) == CA_OK);
             CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &candidate,
@@ -1936,11 +1937,15 @@ static void paired_rho_startup_checks(void)
             CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &free_result,
                   CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH, &free_startup,
                   NULL, &free_stats) == CA_OK);
+            CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &square_result,
+                  CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_SQUARE_Z_BATCH,
+                  &square_startup, NULL, &square_stats) == CA_OK);
             CHECK_EQ_U64(reference, scalars[i]);
             CHECK_EQ_U64(candidate, reference);
             CHECK_EQ_U64(batched, reference);
             CHECK_EQ_U64(plane_result, reference);
             CHECK_EQ_U64(free_result, reference);
+            CHECK_EQ_U64(square_result, reference);
             CHECK_EQ_U64(cand_stats.group_ops, ref_stats.group_ops);
             CHECK_EQ_U64(cand_stats.table_entries, ref_stats.table_entries);
             CHECK_EQ_U64(cand_startup.budget_equivalent_group_ops,
@@ -2004,6 +2009,26 @@ static void paired_rho_startup_checks(void)
             CHECK_EQ_U64(free_startup.eval_pair_scores, batch_startup.eval_pair_scores);
             CHECK_EQ_U64(free_startup.eval_inversions, batch_startup.eval_inversions);
             CHECK(free_startup.eval_rotations <= batch_startup.eval_rotations);
+            CHECK_EQ_U64(square_stats.group_ops, free_stats.group_ops);
+            CHECK_EQ_U64(square_stats.table_entries, free_stats.table_entries);
+            CHECK_EQ_U64(square_startup.budget_equivalent_group_ops,
+                         free_startup.budget_equivalent_group_ops);
+            CHECK_EQ_U64(square_startup.table_evaluations,
+                         free_startup.table_evaluations);
+            CHECK_EQ_U64(square_startup.restart_evaluations,
+                         free_startup.restart_evaluations);
+            CHECK_EQ_U64(square_startup.eval_tau, free_startup.eval_tau);
+            CHECK_EQ_U64(square_startup.eval_tau_square_z_steps,
+                         square_startup.eval_tau);
+            CHECK_EQ_U64(free_startup.eval_tau_square_z_steps, 0);
+            CHECK_EQ_U64(square_startup.eval_mixed_adds,
+                         free_startup.eval_mixed_adds);
+            CHECK_EQ_U64(square_startup.eval_rotations,
+                         free_startup.eval_rotations);
+            CHECK_EQ_U64(square_startup.eval_free_gauge_transitions,
+                         free_startup.eval_free_gauge_transitions);
+            CHECK_EQ_U64(square_startup.eval_inversions,
+                         free_startup.eval_inversions);
         }
     }
     ca_group generic;
@@ -2018,6 +2043,9 @@ static void paired_rho_startup_checks(void)
           CA_CURVE_STARTUP_TAU_PAIRED2_BATCH, NULL, NULL, NULL) == CA_ERR_UNSUPPORTED);
     CHECK(ca_curve_solve_startup(&generic, &id, &id, 17, &output,
           CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH,
+          NULL, NULL, NULL) == CA_ERR_UNSUPPORTED);
+    CHECK(ca_curve_solve_startup(&generic, &id, &id, 17, &output,
+          CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_SQUARE_Z_BATCH,
           NULL, NULL, NULL) == CA_ERR_UNSUPPORTED);
 }
 

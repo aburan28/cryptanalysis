@@ -3160,6 +3160,7 @@ static int tau4_paired_two_batch_impl(const ca_group *g,
         total.selected_changed += one.selected_changed;
         total.lattice_points_checked += one.lattice_points_checked;
         total.free_gauge_transitions += one.free_gauge_transitions;
+        total.tau_square_z_steps += one.tau_square_z_steps;
     }
     if (!jac_batch_to_affine_scratch(g, out, projective, count,
                                      prefixes, &total.inversions)) return 0;
@@ -3183,6 +3184,15 @@ int ca_ec_tau4_paired_two_free_gauge_batch_profile(const ca_group *g,
                                                     ca_tau4_joint_counts *counts)
 {
     return tau4_paired_two_batch_impl(g, pre, NULL, out, a, b, count, counts, 6);
+}
+
+int ca_ec_tau4_paired_two_free_gauge_square_z_batch_profile(const ca_group *g,
+                                                             const ca_tau4_joint_precomp *pre,
+                                                             ca_elem *out, const uint64_t *a,
+                                                             const uint64_t *b, size_t count,
+                                                             ca_tau4_joint_counts *counts)
+{
+    return tau4_paired_two_batch_impl(g, pre, NULL, out, a, b, count, counts, 7);
 }
 
 int ca_ec_tau4_paired_two_plane_batch_profile(const ca_group *g,

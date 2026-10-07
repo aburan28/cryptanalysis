@@ -317,6 +317,7 @@ typedef struct glv_ctx {
     const ca_tau4_joint_precomp *joint_pre;
     const ca_tau4_joint_plane_precomp *joint_plane;
     int free_gauge;
+    int square_z;
     ca_curve_startup_stats *startup;
 } glv_ctx;
 
@@ -342,6 +343,7 @@ static void glv_account_tau_startup(ca_curve_startup_stats *startup,
     startup->eval_pair_scores += one->pair_scores;
     startup->eval_lattice_points_checked += one->lattice_points_checked;
     startup->eval_free_gauge_transitions += one->free_gauge_transitions;
+    startup->eval_tau_square_z_steps += one->tau_square_z_steps;
 }
 
 static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
@@ -354,6 +356,9 @@ static int glv_startup_combination(const glv_ctx *c, ca_elem *out,
         int ok = c->joint_plane
             ? ca_ec_tau4_paired_two_plane_mul_profile(c->g, c->joint_plane,
                                                         out, a, b, &one)
+            : c->square_z
+            ? ca_ec_tau4_paired_two_free_gauge_square_z_mul_profile(c->g, c->joint_pre,
+                                                                     out, a, b, &one)
             : c->free_gauge
             ? ca_ec_tau4_paired_two_free_gauge_mul_profile(c->g, c->joint_pre,
                                                             out, a, b, &one)
@@ -403,7 +408,7 @@ static int glv_restart(const glv_ctx *c, glv_walk *w, ca_rng *rng, uint64_t *ops
 static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_elem *target,
                                uint64_t seed, uint64_t *x, ca_stats *st,
                                int paired2, int batch_table, int plane_format,
-                               int free_gauge,
+                               int free_gauge, int square_z,
                                ca_curve_startup_stats *startup)
 {
     double t0 = ca_now();
@@ -433,6 +438,7 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
     c.target = *target;
     c.startup = startup;
     c.free_gauge = free_gauge;
+    c.square_z = square_z;
     c.m = g->aut_order;
     c.lam_pow[0] = 1 % n;
     for (uint32_t k = 1; k < c.m; k++)
@@ -512,6 +518,9 @@ static ca_status glv_rho_solve(const ca_group *g, const ca_elem *base, const ca_
         int ok = plane_format
             ? ca_ec_tau4_paired_two_plane_batch_profile(g, c.joint_plane, c.M,
                                                          c.alpha, c.beta, c.r, &batch)
+            : square_z
+            ? ca_ec_tau4_paired_two_free_gauge_square_z_batch_profile(g, c.joint_pre, c.M,
+                                                                        c.alpha, c.beta, c.r, &batch)
             : free_gauge
             ? ca_ec_tau4_paired_two_free_gauge_batch_profile(g, c.joint_pre, c.M,
                                                               c.alpha, c.beta, c.r, &batch)
@@ -639,7 +648,8 @@ static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
     if (mode != CA_CURVE_STARTUP_GENERIC && mode != CA_CURVE_STARTUP_TAU_PAIRED2 &&
         mode != CA_CURVE_STARTUP_TAU_PAIRED2_BATCH &&
         mode != CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH &&
-        mode != CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH)
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH &&
+        mode != CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_SQUARE_Z_BATCH)
         return CA_ERR_INVALID;
     if (mode != CA_CURVE_STARTUP_GENERIC &&
         (g->kind != CA_GROUP_EC || g->endo_kind != CA_CURVE_ENDO_J0))
@@ -658,9 +668,12 @@ static ca_status curve_solve_mode(const ca_group *g, const ca_elem *base,
                              mode != CA_CURVE_STARTUP_GENERIC,
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_BATCH ||
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH ||
-                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH ||
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_SQUARE_Z_BATCH,
                              mode == CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH,
-                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH ||
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_SQUARE_Z_BATCH,
+                             mode == CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_SQUARE_Z_BATCH,
                              startup);
     ca_rho_params rp;
     ca_rho_params_default(&rp);
