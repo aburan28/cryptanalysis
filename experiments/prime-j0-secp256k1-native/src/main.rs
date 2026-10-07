@@ -1,7 +1,8 @@
 //! Native 256-bit replay of the cached-projective tau point path.
 //!
-//! Scalar reduction and recoding come from the frozen Sage fixture. This
-//! executable checks every prepared seed, final point, and operation count.
+//! Recompute the scalar representative and width-four digits natively,
+//! then check them, every prepared seed, final point, and operation count
+//! against the frozen Sage fixture. This is variable-time research code.
 
 #[path = "../../../suite/src/ct_bignum.rs"]
 mod ct_bignum;
@@ -9,6 +10,8 @@ mod ct_bignum;
 mod secp256k1_field;
 
 use secp256k1_field::SecpFieldElement as F;
+use num_bigint::BigInt;
+use num_traits::{Signed, Zero};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
@@ -172,8 +175,140 @@ fn orbit(seed: J, beta: F) -> [J; 3] {
      J { x: x2, y: seed.y, z: seed.z }]
 }
 
-#[derive(Clone, Copy)]
-struct Digit { seed: usize, power: usize, sign: i64 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Digit { a: i64, b: i64, seed: usize, power: usize, sign: i64 }
+
+fn big_from_hex(value: &str) -> BigInt {
+    let (negative, unsigned) = if let Some(rest) = value.strip_prefix('-') {
+        (true, rest)
+    } else {
+        (false, value)
+    };
+    let hex = unsigned.strip_prefix("0x").unwrap_or(unsigned);
+    let number = BigInt::parse_bytes(hex.as_bytes(), 16).expect("valid scalar hex");
+    if negative { -number } else { number }
+}
+
+fn round_div(numerator: BigInt, denominator: BigInt) -> BigInt {
+    assert!(!denominator.is_zero());
+    let (top, bottom) = if denominator < BigInt::ZERO {
+        (-numerator, -denominator)
+    } else {
+        (numerator, denominator)
+    };
+    let half: BigInt = &bottom / BigInt::from(2);
+    if top < BigInt::ZERO {
+        -((-top + half) / bottom)
+    } else {
+        (top + half) / bottom
+    }
+}
+
+fn eisenstein_norm(a: &BigInt, b: &BigInt) -> BigInt {
+    a * a + 3 * a * b + 3 * b * b
+}
+
+fn short_representative(scalar: &BigInt) -> (BigInt, BigInt) {
+    // Frozen from the checked Sage result.json: Gauss-reduced kernel of
+    // (a+b*lambda_tau) mod n. The fixture comparison audits the choice.
+    let n = big_from_hex("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141");
+    let lambda = big_from_hex("ac9c52b33fa3cf1f5ad9e3fd77ed9ba4a880b9fc8ec739c2e0cfc810b51283d0");
+    let u0 = BigInt::parse_bytes(b"193508920647619669885755136084601127231", 10).unwrap();
+    let u1 = BigInt::parse_bytes(b"238911465918039986966665730306072050094", 10).unwrap();
+    let v0 = -u1.clone();
+    let v1 = BigInt::parse_bytes(b"303414439467246543595250775667605759171", 10).unwrap();
+    let det = &u0 * &v1 - &u1 * &v0;
+    assert_eq!(det.abs(), n);
+    let center_u = round_div(scalar * &v1, det.clone());
+    let center_v = round_div(-scalar * &u1, det);
+    let mut best: Option<(BigInt, BigInt, BigInt, BigInt)> = None;
+    for du in -2..=2 {
+        for dv in -2..=2 {
+            let u = &center_u + du;
+            let v = &center_v + dv;
+            let a: BigInt = scalar - &u * &u0 - &v * &v0;
+            let b: BigInt = -&u * &u1 - &v * &v1;
+            assert_eq!((&a + &b * &lambda - scalar) % &n, BigInt::ZERO);
+            let magnitude = std::cmp::max(a.abs(), b.abs());
+            let option = (eisenstein_norm(&a, &b), magnitude, a, b);
+            if best.as_ref().is_none_or(|old| option < *old) {
+                best = Some(option);
+            }
+        }
+    }
+    let (_, _, a, b) = best.expect("25 representative choices");
+    (a, b)
+}
+
+fn signed_residue(value: &BigInt, modulus: i64) -> usize {
+    let base = BigInt::from(modulus);
+    let residue = (value % &base + &base) % &base;
+    usize::try_from(residue).expect("small nonnegative residue")
+}
+
+fn digit_table() -> [[Option<Digit>; 9]; 9] {
+    let seeds: [(i64, i64); 9] = [(1, 0), (2, 0), (4, 0), (1, 1), (2, 2),
+                 (1, 2), (2, 4), (2, 1), (1, -2)];
+    let mut table = [[None; 9]; 9];
+    let mut entries = 0;
+    for (seed, (a0, b0)) in seeds.into_iter().enumerate() {
+        let (mut a, mut b) = (a0, b0);
+        for power in 0..3 {
+            for sign in [-1, 1] {
+                let x = sign * a;
+                let y = sign * b;
+                let row = x.rem_euclid(9) as usize;
+                let col = y.rem_euclid(9) as usize;
+                assert_ne!(row % 3, 0);
+                assert!(table[row][col].is_none(), "duplicate width-four residue");
+                table[row][col] = Some(Digit { a: x, b: y, seed, power, sign });
+                entries += 1;
+            }
+            (a, b) = (a + 3 * b, -a - 2 * b);
+        }
+    }
+    assert_eq!(entries, 54);
+    table
+}
+
+fn recode(mut a: BigInt, mut b: BigInt) -> Vec<Option<Digit>> {
+    let table = digit_table();
+    let original = (a.clone(), b.clone());
+    let mut digits = Vec::new();
+    while !a.is_zero() || !b.is_zero() {
+        assert!(digits.len() < 256, "tau expansion did not terminate");
+        let digit = if signed_residue(&a, 3) != 0 {
+            let entry = table[signed_residue(&a, 9)][signed_residue(&b, 9)]
+                .expect("covered width-four residue");
+            a -= entry.a;
+            b -= entry.b;
+            Some(entry)
+        } else {
+            None
+        };
+        assert_eq!(signed_residue(&a, 3), 0);
+        digits.push(digit);
+        (a, b) = (&a + &b, -a / 3);
+    }
+    for pair in digits.chunks(2) {
+        if pair.len() == 2 {
+            assert!(pair[0].is_none() || pair[1].is_none());
+        }
+    }
+    let (mut rebuilt_a, mut rebuilt_b) = (BigInt::ZERO, BigInt::ZERO);
+    for digit in digits.iter().rev() {
+        let next_a = -3 * &rebuilt_b;
+        let next_b = &rebuilt_a + 3 * &rebuilt_b;
+        rebuilt_a = next_a;
+        rebuilt_b = next_b;
+        if let Some(d) = digit {
+            rebuilt_a += d.a;
+            rebuilt_b += d.b;
+        }
+    }
+    assert_eq!((rebuilt_a, rebuilt_b), original);
+    digits
+}
 
 fn digits_from_json(case: &Value) -> Vec<Option<Digit>> {
     case["digits"].as_array().expect("digits array").iter().map(|raw| {
@@ -184,7 +319,9 @@ fn digits_from_json(case: &Value) -> Vec<Option<Digit>> {
         let power = word[3].as_u64().expect("power") as usize;
         let sign = word[4].as_i64().expect("sign");
         assert!(seed < 9 && power < 3 && (sign == 1 || sign == -1));
-        Some(Digit { seed, power, sign })
+        let a = word[0].as_i64().expect("digit a");
+        let b = word[1].as_i64().expect("digit b");
+        Some(Digit { a, b, seed, power, sign })
     }).collect()
 }
 
@@ -291,6 +428,8 @@ fn main() {
     let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
     assert_eq!(beta.mul(&beta).mul(&beta), F::ONE);
     let cases = fixture["cases"].as_array().expect("fixture cases");
+    let mut representative_checks = 0usize;
+    let mut digit_checks = 0usize;
     let mut seed_checks = 0usize;
     let mut output_checks = 0usize;
     for case in cases {
@@ -306,7 +445,14 @@ fn main() {
             assert_eq!(fe_hex(y), expected[1].as_str().expect("seed y"));
             seed_checks += 1;
         }
-        let digits = digits_from_json(case);
+        let scalar = big_from_hex(case["scalar_hex"].as_str().expect("scalar"));
+        let (a, b) = short_representative(&scalar);
+        assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
+        assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
+        representative_checks += 1;
+        let digits = recode(a, b);
+        assert_eq!(digits, digits_from_json(case));
+        digit_checks += 1;
         let (out, counts) = evaluate(&digits, &seeds, beta);
         if case["expected_identity"].as_bool().unwrap_or(false) {
             assert!(out.is_identity(), "expected the curve identity");
@@ -331,6 +477,6 @@ fn main() {
         }
         output_checks += 1;
     }
-    println!("{{\"verified\":true,\"cases\":{},\"seed_checks\":{},\"output_checks\":{},\"native_scope\":\"point_path_only\",\"cpu_speedup_claim\":null}}",
-             cases.len(), seed_checks, output_checks);
+    println!("{{\"verified\":true,\"cases\":{},\"representative_checks\":{},\"digit_checks\":{},\"seed_checks\":{},\"output_checks\":{},\"native_scope\":\"variable_time_scalar_input\",\"cpu_speedup_claim\":null}}",
+             cases.len(), representative_checks, digit_checks, seed_checks, output_checks);
 }
