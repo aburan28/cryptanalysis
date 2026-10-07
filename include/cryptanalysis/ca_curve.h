@@ -81,6 +81,7 @@ typedef enum ca_curve_startup_mode {
     CA_CURVE_STARTUP_TAU_PAIRED2_BATCH = 2,
     CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH = 3,
     CA_CURVE_STARTUP_TAU_PAIRED2_FREE_GAUGE_BATCH = 4,
+    CA_CURVE_STARTUP_TAU_PAIRED2_QUOTIENT_RESTART_BATCH = 5,
 } ca_curve_startup_mode;
 
 typedef struct ca_curve_startup_stats {
@@ -93,6 +94,7 @@ typedef struct ca_curve_startup_stats {
     uint64_t eval_recode_attempts, eval_pair_scores, eval_lattice_points_checked;
     uint64_t eval_free_gauge_transitions;
     double prepare_seconds, evaluation_seconds;
+    uint64_t quotient_restart_nonzero_gauges;
 } ca_curve_startup_stats;
 
 CA_API ca_status ca_curve_solve_startup(const ca_group *g, const ca_elem *base,
