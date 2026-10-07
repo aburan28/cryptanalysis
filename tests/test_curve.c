@@ -1900,8 +1900,56 @@ static void tau_mixed_kernel(void)
     CHECK(ca_ec_tau_pair_mixed_verify_tau_kernel(&g, &point));
 }
 
+static void paired_rho_startup_checks(void)
+{
+    ca_group group;
+    ca_curve_info info;
+    CHECK(ca_curve_group(&group, UINT64_C(4294967377), 0, 15,
+                         UINT64_C(23729779), &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J0);
+    const uint64_t words[4] = {UINT64_C(481899190), UINT64_C(1998487369), 0, 0};
+    ca_elem base;
+    CHECK(ca_group_encode(&group, &base, words));
+    const uint64_t scalars[] = {7, 123456, UINT64_C(23729776)};
+    const uint64_t seeds[] = {17, 29};
+    for (size_t i = 0; i < sizeof(scalars) / sizeof(scalars[0]); i++) {
+        ca_elem target;
+        ca_group_mul(&group, &target, &base, scalars[i], NULL);
+        for (size_t j = 0; j < sizeof(seeds) / sizeof(seeds[0]); j++) {
+            uint64_t reference = UINT64_MAX, candidate = UINT64_MAX;
+            ca_stats ref_stats = {0}, cand_stats = {0};
+            ca_curve_startup_stats ref_startup = {0}, cand_startup = {0};
+            CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &reference,
+                  CA_CURVE_STARTUP_GENERIC, &ref_startup, NULL, &ref_stats) == CA_OK);
+            CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &candidate,
+                  CA_CURVE_STARTUP_TAU_PAIRED2, &cand_startup, NULL, &cand_stats) == CA_OK);
+            CHECK_EQ_U64(reference, scalars[i]);
+            CHECK_EQ_U64(candidate, reference);
+            CHECK_EQ_U64(cand_stats.group_ops, ref_stats.group_ops);
+            CHECK_EQ_U64(cand_stats.table_entries, ref_stats.table_entries);
+            CHECK_EQ_U64(cand_startup.budget_equivalent_group_ops,
+                         ref_startup.budget_equivalent_group_ops);
+            CHECK_EQ_U64(cand_startup.table_evaluations, ref_startup.table_evaluations);
+            CHECK_EQ_U64(cand_startup.restart_evaluations, ref_startup.restart_evaluations);
+            CHECK(cand_startup.prepare_inversions == 1);
+            CHECK(cand_startup.eval_recode_attempts > 0);
+            CHECK(cand_startup.eval_tau > 0);
+            CHECK(cand_startup.eval_mixed_adds > 0);
+        }
+    }
+    ca_group generic;
+    CHECK(ca_group_ec_init(&generic, 97, 2, 3, 0) == CA_OK);
+    ca_elem id;
+    ca_group_identity(&generic, &id);
+    uint64_t output = UINT64_MAX;
+    CHECK(ca_curve_solve_startup(&generic, &id, &id, 17, &output,
+          CA_CURVE_STARTUP_TAU_PAIRED2, NULL, NULL, NULL) == CA_ERR_UNSUPPORTED);
+    CHECK_EQ_U64(output, UINT64_MAX);
+}
+
 int main(void)
 {
+    paired_rho_startup_checks();
     j0_orbit_checks();
     tau_atlas_recode_checks();
     tau3_scatter_graph_checks();
