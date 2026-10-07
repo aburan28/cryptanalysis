@@ -66,8 +66,11 @@ The native 12-orbit selector and selective preparation were frozen in
 failed exits are preserved in `native-selective-checks.json`. The
 fix in `2a165260` passed the replay. The final handoff source then
 aligned candidate output fields and timing boundaries with the
-paired benchmark protocol; `native-selective-checks-v4.json` records
-the final passing offline release replay.
+paired benchmark protocol. The native selector was then changed in
+`7612e6f7` to store backpointers and reconstruct only the winning
+digit stream, removing full-prefix copies from every accepted dynamic
+program transition. `native-selective-checks-v5.json` records the
+final passing offline release replay of that source.
 
 That binary checked **608 built seed points and 64 scalar outputs**
 on the design panel, plus **2,449 built seed points and 256 scalar
@@ -77,9 +80,9 @@ per-case preparation/source count and selector state count matched
 the Python result, and there were **zero exceptional cached adds**.
 The original 64-case native path and the previous portfolio selector
 both passed regression controls. The release binary SHA-256 is
-`25da6ea0e738810322ae8bfceaddccd6b074e726d0e696872fc86aa788319eea`
+`f20ee0dd124953ce086c1c4dce23c1fb712fda1a53d3a8fd14d01f07469dd4b6`
 on macOS ARM64 with `rustc 1.93.1`; the final receipt SHA-256 is
-`4467f3088d2d83a8605d963b68e191b56de709ceee8dd81a0c224e1289392a60`.
+`1801183e590be680e4b505788eaad4fcc4206d2c778025ea74ade7fd59d618e0`.
 
 `make_selective_manifest.py` generated a paired 64-case one-use
 portfolio-versus-selective manifest. Its **structural schema** passed
