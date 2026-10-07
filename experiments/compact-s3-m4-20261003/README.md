@@ -2277,6 +2277,20 @@ primitive counts and failures archived separately. This tests solver search
 on a provably representable point, but neither prefix measures a successful
 unpinning cost or supports a natural-yield or N131 `2^x` estimate.
 
+### Q1475 ordered-leaf compact-S3 comparison
+
+[Q1475](q1475_ordered_leaves/README.md) enforces a strict numeric order on
+the four raw leaf x values in the same chained-\(S_3\) CNFs. Both sorted
+pinned controls verify at N53 and N83. The N53 known-representable full
+public-target coset and the N83 known-representable unpinned control, along
+with one matched ordinary query per degree, all reach their 60-second caps
+without a relation. On the matched positive N53 point, eligible exact joins
+rise from 49 to 213 and field multiplication calls fall from 16,857,549 to
+12,090,373 during the capped interval. The N83 free-leaf cells still admit
+only one exact join each. These are censored stage diagnostics; successful
+compact decomposition cost, N83 natural yield, and a complete N131 `2^x`
+remain unknown.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:

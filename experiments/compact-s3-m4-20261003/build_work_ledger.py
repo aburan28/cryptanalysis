@@ -6873,6 +6873,33 @@ def main():
     assert [row["verified_relation_count"] for row in q1474_audit[
         "rows"]] == [1, 0, 0]
     assert q1474_audit["complete_n131_log2_work"] is None
+    q1475_dir = HERE / "q1475_ordered_leaves"
+    q1475_protocol_path = q1475_dir / "protocol.json"
+    q1475_audit_path = q1475_dir / "archive_audit.json"
+    q1475_protocol = json.loads(q1475_protocol_path.read_text())
+    q1475_audit = json.loads(q1475_audit_path.read_text())
+    assert q1475_protocol["proposal_id"] == q1475_audit[
+        "proposal_id"] == "Q1475"
+    assert q1475_protocol["candidate_id"] is q1475_audit[
+        "candidate_id"] is None
+    assert q1475_protocol["run_id"] is q1475_audit["run_id"] is None
+    assert q1475_protocol["isogeny"] == q1475_audit[
+        "isogeny"] == "none"
+    assert q1475_audit["status"] == "passed"
+    assert q1475_audit["pinned_correctness_controls_passed"]
+    assert q1475_audit["stages"] == q1475_protocol["stages"]
+    assert q1475_audit["protocol_sha256"] == sha(q1475_protocol_path)
+    assert q1475_audit["auditor_source_sha256"] == sha(
+        q1475_dir / "audit.py")
+    assert [row["case"] for row in q1475_audit["rows"]] == (
+        q1475_protocol["run_order"])
+    assert [row["native_status"] for row in q1475_audit["rows"]] == [
+        "sat", "sat", "censored", "censored", "censored", "censored"]
+    assert [row["verified_relation_count"] for row in q1475_audit[
+        "rows"]] == [1, 1, 0, 0, 0, 0]
+    assert all(row["baseline"] is not None for row in
+               q1475_audit["rows"][2:])
+    assert q1475_audit["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -9234,6 +9261,43 @@ def main():
             "protocol_sha256": sha(q1474_protocol_path),
             "archive_audit_sha256": sha(q1474_audit_path),
         },
+        "q1475_ordered_leaf_compact_stage": {
+            "proposal_id": "Q1475", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "stage_config_ids": {
+                str(n): q1475_protocol["stages"][str(n)]["stage_config_id"]
+                for n in (53, 83)},
+            "measurement_scope": q1475_protocol["measurement_scope"],
+            "measurement_units": q1475_protocol["measurement_units"],
+            "pinned_correctness_controls_passed": True,
+            "matched_free_leaf_attempts": 4,
+            "matched_free_leaf_verified_relations": 0,
+            "rows": q1475_audit["rows"],
+            "successful_unpinned_N53_cost": None,
+            "successful_unpinned_N83_cost": None,
+            "natural_relation_yield_estimate": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1475 adds a sound strict order on raw leaf x values "
+                "to the matched N53/N83 chained-S3 CNFs. Both sorted "
+                "pinned controls independently verify. All four "
+                "free-leaf cases censor at the same 60-second wall cap. "
+                "On Q1474's N53 known-representable full public-target "
+                "coset, the exact joint-check count rises from 49 to "
+                "213 and field multiplication calls fall from "
+                "16857549 to 12090373, but no relation is recovered. "
+                "The N83 known-representable and ordinary cells each "
+                "admit one exact joint check, matching the prior count. "
+                "These are censored stage diagnostics, not successful "
+                "solve costs, controlled speedups, or an N131 projection."
+            ),
+            "design_protocol_sha256": q1475_protocol[
+                "design_protocol_sha256"],
+            "protocol_sha256": sha(q1475_protocol_path),
+            "archive_audit_sha256": sha(q1475_audit_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -9759,6 +9823,11 @@ def main():
                 "control passes, while both free-leaf searches censor "
                 "at 60 seconds after about 2^28 SAT propagations each, "
                 "leaving successful compact solve cost unknown; "
+                "Q1475's strict raw-leaf ordering is sound on both "
+                "pinned controls and increases exact N53 joint checks "
+                "on the matched positive target, but all four N53/N83 "
+                "free-leaf cases still censor at 60 seconds, so no "
+                "successful solve scaling law follows; "
                 "censored N83 ordinary runs still do not measure N83 "
                 "useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
