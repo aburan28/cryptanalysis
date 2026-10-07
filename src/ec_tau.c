@@ -350,11 +350,14 @@ static int make_lattice(uint64_t n, uint64_t lambda, tau_vec *v1, tau_vec *v2, c
     return *det == (ca_i128)n || *det == -(ca_i128)n;
 }
 
-static void reduce_with_lattice(tau_vec v1, tau_vec v2, ca_i128 det, uint64_t k, ca_i128 *out_a,
-                                ca_i128 *out_b)
+static void reduce_with_lattice_eisenstein(tau_vec v1, tau_vec v2, ca_i128 det, uint64_t k,
+                                           ca_i128 *out_x, ca_i128 *out_y, ca_i128 *out_u0,
+                                           ca_i128 *out_v0)
 {
     ca_i128 u0 = round_div((ca_i128)k * v2.y, det);
     ca_i128 v0 = round_div(-(ca_i128)k * v1.y, det);
+    if (out_u0) *out_u0 = u0;
+    if (out_v0) *out_v0 = v0;
     ca_i128 best = -1, bx = 0, by = 0;
     for (int du = -2; du <= 2; du++) {
         for (int dv = -2; dv <= 2; dv++) {
@@ -369,9 +372,18 @@ static void reduce_with_lattice(tau_vec v1, tau_vec v2, ca_i128 det, uint64_t k,
             }
         }
     }
+    *out_x = bx;
+    *out_y = by;
+}
+
+static void reduce_with_lattice(tau_vec v1, tau_vec v2, ca_i128 det, uint64_t k, ca_i128 *out_a,
+                                ca_i128 *out_b)
+{
+    ca_i128 x, y;
+    reduce_with_lattice_eisenstein(v1, v2, det, k, &x, &y, NULL, NULL);
     /* omega = 1 - tau, hence x + y*omega = (x+y) - y*tau. */
-    *out_a = bx + by;
-    *out_b = -by;
+    *out_a = x + y;
+    *out_b = -y;
 }
 
 static int reduce_scalar(uint64_t n, uint64_t lambda, uint64_t k, ca_i128 *out_a, ca_i128 *out_b)
@@ -787,11 +799,40 @@ int ca_ec_joint_window4_xplane_prepare(const ca_group *g, const ca_elem *point,
     return 1;
 }
 
+static unsigned joint_window4_residue16(ca_i128 value)
+{
+    ca_i128 residue = value % 16;
+    return (unsigned)(residue < 0 ? residue + 16 : residue);
+}
+
+int ca_ec_joint_window4_zero_prepare(const ca_group *g, const ca_elem *point,
+                                     ca_joint_window4_precomp *out, uint64_t *doubles,
+                                     uint64_t *adds, uint64_t *rotations, uint64_t *inversions,
+                                     uint64_t *plane_muls)
+{
+    if (!ca_ec_joint_window4_xplane_prepare(g, point, out, doubles, adds, rotations, inversions,
+                                            plane_muls))
+        return 0;
+    unsigned determinant = joint_window4_residue16(out->det);
+    for (unsigned inverse = 1; inverse < 16; inverse += 2) {
+        if ((determinant * inverse) % 16 == 1) {
+            out->zero_mode = 1;
+            out->det_inverse16 = inverse;
+            return 1;
+        }
+    }
+    ca_ec_joint_window4_clear(out);
+    return 0;
+}
+
 int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre)
 {
     if (!pre || !pre->g || !pre->positions || pre->positions > 7 || !pre->rep_x || !pre->rep_y ||
         !pre->action ||
         !(pre->hot ? ca_ec_joint_window4_hot_verify_map() : ca_ec_joint_window4_verify_map()))
+        return 0;
+    if (pre->zero_mode && (!pre->plane_format || !pre->det_inverse16 ||
+                           (joint_window4_residue16(pre->det) * pre->det_inverse16) % 16 != 1))
         return 0;
     if (pre->identity) return pre->point == NULL && pre->plane_point == NULL;
     if (pre->plane_format ? (!pre->plane_point || pre->point) : (!pre->point || pre->plane_point))
@@ -826,27 +867,10 @@ int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre)
     return 1;
 }
 
-static int joint_window4_mul_impl(const ca_group *g, const ca_joint_window4_precomp *pre,
-                                  ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
-                                  uint64_t *unit_adds, uint64_t *fallbacks)
+static int joint_window4_recode(const ca_joint_window4_precomp *pre, ca_i128 x, ca_i128 y,
+                                uint16_t action[7], unsigned *nonzero)
 {
-    if (!g || !pre || !out || pre->g != g || !pre->positions || pre->positions > 7 || !pre->action)
-        return 0;
-    if (adds) *adds = 0;
-    if (rotations) *rotations = 0;
-    if (unit_adds) *unit_adds = 0;
-    if (fallbacks) *fallbacks = 0;
-    k %= g->order;
-    if (!k || pre->identity) {
-        *out = (ca_elem){{0, 0, 1, 0}};
-        return 1;
-    }
-    if (pre->plane_format ? !pre->plane_point : !pre->point) return 0;
-    ca_i128 a, b;
-    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det, k,
-                        &a, &b);
-    ca_i128 x = a + b, y = -b;
-    uint16_t action[7];
+    *nonzero = 0;
     for (unsigned position = 0; position < pre->positions; position++) {
         ca_i128 rx = x % 16, ry = y % 16;
         if (rx < 0) rx += 16;
@@ -854,10 +878,75 @@ static int joint_window4_mul_impl(const ca_group *g, const ca_joint_window4_prec
         int dx = (int)(rx >= 8 ? rx - 16 : rx);
         int dy = (int)(ry >= 8 ? ry - 16 : ry);
         action[position] = pre->action[(unsigned)(dx + 8) * 16 + (unsigned)(dy + 8)];
+        *nonzero += dx != 0 || dy != 0;
         x = (x - dx) / 16;
         y = (y - dy) / 16;
     }
-    if (x || y) {
+    return x == 0 && y == 0;
+}
+
+static int joint_window4_mul_impl(const ca_group *g, const ca_joint_window4_precomp *pre,
+                                  ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                  uint64_t *unit_adds, uint64_t *fallbacks, int zero_steer,
+                                  uint64_t *candidate_attempts, uint64_t *candidate_feasible,
+                                  uint64_t *candidate_selected)
+{
+    if (!g || !pre || !out || pre->g != g || !pre->positions || pre->positions > 7 || !pre->action)
+        return 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (unit_adds) *unit_adds = 0;
+    if (fallbacks) *fallbacks = 0;
+    if (candidate_attempts) *candidate_attempts = 0;
+    if (candidate_feasible) *candidate_feasible = 0;
+    if (candidate_selected) *candidate_selected = 0;
+    k %= g->order;
+    if (!k || pre->identity) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    if (pre->plane_format ? !pre->plane_point : !pre->point) return 0;
+    ca_i128 x, y, u0 = 0, v0 = 0;
+    if (zero_steer) {
+        reduce_with_lattice_eisenstein((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y},
+                                       pre->det, k, &x, &y, &u0, &v0);
+    } else {
+        ca_i128 a, b;
+        reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
+                            k, &a, &b);
+        x = a + b;
+        y = -b;
+    }
+    uint16_t action[7];
+    unsigned baseline_nonzero = 0;
+    int fits = joint_window4_recode(pre, x, y, action, &baseline_nonzero);
+    if (zero_steer) {
+        if (!pre->zero_mode || !pre->plane_format || !pre->det_inverse16) return 0;
+        if (candidate_attempts) *candidate_attempts = 1;
+        unsigned target_u = joint_window4_residue16((ca_i128)k * pre->v2y * pre->det_inverse16);
+        unsigned target_v = joint_window4_residue16(-(ca_i128)k * pre->v1y * pre->det_inverse16);
+        int du = (int)joint_window4_residue16((ca_i128)target_u - u0);
+        int dv = (int)joint_window4_residue16((ca_i128)target_v - v0);
+        if (du >= 8) du -= 16;
+        if (dv >= 8) dv -= 16;
+        ca_i128 u = u0 + du, v = v0 + dv;
+        ca_i128 candidate_x = (ca_i128)k - u * pre->v1x - v * pre->v2x;
+        ca_i128 candidate_y = -u * pre->v1y - v * pre->v2y;
+        if (joint_window4_residue16(candidate_x) || joint_window4_residue16(candidate_y)) return 0;
+        uint16_t directed_action[7];
+        unsigned directed_nonzero = 0;
+        int directed_fits =
+            joint_window4_recode(pre, candidate_x, candidate_y, directed_action, &directed_nonzero);
+        if (directed_fits) {
+            if (candidate_feasible) *candidate_feasible = 1;
+            if (!fits || directed_nonzero < baseline_nonzero) {
+                memcpy(action, directed_action, pre->positions * sizeof(action[0]));
+                fits = 1;
+                if (candidate_selected) *candidate_selected = 1;
+            }
+        }
+    }
+    if (!fits) {
         if (fallbacks) *fallbacks = 1;
         ca_group_mul(g, out, &pre->base_point, k, NULL);
         return 1;
@@ -905,7 +994,8 @@ int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_pr
                                     ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
                                     uint64_t *fallbacks)
 {
-    return joint_window4_mul_impl(g, pre, out, k, adds, rotations, NULL, fallbacks);
+    return joint_window4_mul_impl(g, pre, out, k, adds, rotations, NULL, fallbacks, 0, NULL, NULL,
+                                  NULL);
 }
 
 int ca_ec_joint_window4_xplane_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
@@ -914,7 +1004,19 @@ int ca_ec_joint_window4_xplane_mul_profile(const ca_group *g, const ca_joint_win
                                            uint64_t *fallbacks)
 {
     if (!pre || !pre->plane_format) return 0;
-    return joint_window4_mul_impl(g, pre, out, k, adds, rotations, unit_adds, fallbacks);
+    return joint_window4_mul_impl(g, pre, out, k, adds, rotations, unit_adds, fallbacks, 0, NULL,
+                                  NULL, NULL);
+}
+
+int ca_ec_joint_window4_zero_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
+                                         ca_elem *out, uint64_t k, uint64_t *adds,
+                                         uint64_t *unit_adds, uint64_t *fallbacks,
+                                         uint64_t *candidate_attempts, uint64_t *candidate_feasible,
+                                         uint64_t *candidate_selected)
+{
+    if (!pre || !pre->plane_format || !pre->zero_mode) return 0;
+    return joint_window4_mul_impl(g, pre, out, k, adds, NULL, unit_adds, fallbacks, 1,
+                                  candidate_attempts, candidate_feasible, candidate_selected);
 }
 
 void ca_ec_joint_window4_clear(ca_joint_window4_precomp *pre)
