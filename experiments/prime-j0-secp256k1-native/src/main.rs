@@ -20,6 +20,7 @@ use std::time::Instant;
 
 mod selective;
 mod mixed_radix;
+mod coset;
 
 #[derive(Clone, Copy)]
 struct J {
@@ -359,6 +360,27 @@ fn short_representative(scalar: &BigInt) -> (BigInt, BigInt) {
     }
     let (_, _, a, b) = best.expect("25 representative choices");
     (a, b)
+}
+
+fn ranked_representatives(scalar: &BigInt) -> Vec<(BigInt, BigInt)> {
+    let lattice = &*LATTICE;
+    let center_u = round_div(scalar * &lattice.v1, lattice.det.clone());
+    let center_v = round_div(-scalar * &lattice.u1, lattice.det.clone());
+    let mut ranked = Vec::with_capacity(25);
+    for du in -2..=2 {
+        for dv in -2..=2 {
+            let u = &center_u + du;
+            let v = &center_v + dv;
+            let a: BigInt = scalar - &u * &lattice.u0 - &v * &lattice.v0;
+            let b: BigInt = -&u * &lattice.u1 - &v * &lattice.v1;
+            debug_assert_eq!((&a + &b * &lattice.lambda - scalar) % &lattice.n,
+                             BigInt::ZERO);
+            let magnitude = std::cmp::max(a.abs(), b.abs());
+            ranked.push((eisenstein_norm(&a, &b), magnitude, a, b));
+        }
+    }
+    ranked.sort();
+    ranked.into_iter().take(3).map(|(_, _, a, b)| (a, b)).collect()
 }
 
 fn signed_residue(value: &BigInt, modulus: i64) -> usize {
@@ -997,6 +1019,20 @@ fn check_portfolio_fixture(fixture_path: &str, seed_path: &str,
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 4 && (args[1] == "--benchmark-coset-case" ||
+                           args[1] == "--check-coset-case") {
+        coset::benchmark_case(&args[2], args[3].parse().expect("case index"),
+                              args[1] == "--benchmark-coset-case");
+        return;
+    }
+    if args.len() == 5 && args[1] == "--check-coset-fixture" {
+        coset::check_fixture(&args[2], &args[3], &args[4]);
+        return;
+    }
+    if args.len() == 4 && args[1] == "--check-coset-streams" {
+        coset::check_streams(&args[2], &args[3]);
+        return;
+    }
     if args.len() == 4 && (args[1] == "--benchmark-zero-tau-case" ||
                            args[1] == "--check-zero-tau-case") {
         let index = args[3].parse::<usize>().expect("case index");

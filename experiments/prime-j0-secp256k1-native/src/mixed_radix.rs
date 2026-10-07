@@ -9,20 +9,20 @@ enum Radix {
 }
 
 #[derive(Clone, Copy)]
-struct Action {
+pub(super) struct Action {
     radix: Radix,
     digit: Option<Digit>,
 }
 
 #[derive(Default)]
-struct Counts {
-    tau_steps: usize,
-    tau_pairs: usize,
-    doubles: usize,
-    mixed_adds: usize,
-    general_adds: usize,
-    cache_entries: usize,
-    exceptional_cached_adds: usize,
+pub(super) struct Counts {
+    pub(super) tau_steps: usize,
+    pub(super) tau_pairs: usize,
+    pub(super) doubles: usize,
+    pub(super) mixed_adds: usize,
+    pub(super) general_adds: usize,
+    pub(super) cache_entries: usize,
+    pub(super) exceptional_cached_adds: usize,
 }
 
 fn recode(mut a: BigInt, mut b: BigInt) -> Vec<Action> {
@@ -70,7 +70,7 @@ fn recode(mut a: BigInt, mut b: BigInt) -> Vec<Action> {
     actions
 }
 
-fn recode_zero_tau(mut a: BigInt, mut b: BigInt) -> Vec<Action> {
+pub(super) fn recode_zero_tau(mut a: BigInt, mut b: BigInt) -> Vec<Action> {
     #[cfg(debug_assertions)]
     let original = (a.clone(), b.clone());
     let mut actions = Vec::new();
@@ -136,7 +136,7 @@ fn pair_count(actions: &[Action]) -> usize {
     count
 }
 
-fn source_cost(actions: &[Action]) -> usize {
+pub(super) fn source_cost(actions: &[Action]) -> usize {
     let tau_steps = actions[..actions.len() - 1].iter()
         .filter(|action| action.radix == Radix::Tau).count();
     let doubles = actions[..actions.len() - 1].iter()
@@ -162,7 +162,7 @@ fn source_cost(actions: &[Action]) -> usize {
         + 11 * mixed + 14 * general + 2 * cache
 }
 
-fn action_fingerprint(actions: &[Action]) -> u64 {
+pub(super) fn action_fingerprint(actions: &[Action]) -> u64 {
     const PRIME: u64 = 0x100000001b3;
     let mut value = 0xcbf29ce484222325u64;
     for action in actions {
@@ -235,7 +235,7 @@ pub(super) fn check_zero_tau_action_fingerprints(fixture_path: &str, fingerprint
         "action_stream_checks": cases.len(), "cpu_speedup_claim": null}));
 }
 
-fn evaluate(actions: &[Action], seeds: &[J; 9], beta: F) -> (J, Counts) {
+pub(super) fn evaluate(actions: &[Action], seeds: &[J; 9], beta: F) -> (J, Counts) {
     let mut counts = Counts::default();
     let mut images = [[J::identity(); 3]; 9];
     for seed in 0..9 {
