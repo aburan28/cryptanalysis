@@ -1,0 +1,24 @@
+{
+  "coordinate_policy": "reuse the exact minimum-L1 Eisenstein lattice representative; recover x=a+b and y=-b so k=x+y*omega modulo the subgroup order",
+  "curve_positions": {
+    "glv-j0-32": 3,
+    "j0-56": 4
+  },
+  "digit_policy": "balanced radix 256, remainders in [-128,127], least significant window first; use a checked generic fallback if either coordinate exceeds the prepared positions",
+  "endomorphism_policy": "use omega(P)=(beta*x,y) for the second coordinate; reuse the identical positive-magnitude table for both coordinates and negate the point for negative digits",
+  "online_policy": "sum all nonzero signed window points in one Jacobian accumulator, then convert one output to affine; public scalars only",
+  "preparation_policy": "for every position i prepare [d*256^i]P for d=1..128, normalize all points with one batch inversion",
+  "primary_controls": [
+    "fixed-comb9",
+    "tau3-scatter-atlas-pos"
+  ],
+  "radix": 256,
+  "status": "frozen_retrospective_design",
+  "table_entries": {
+    "glv-j0-32": 384,
+    "j0-56": 512
+  },
+  "training_basis": "tau3-scatter-atlas-inputs/inputs.json; eight cases, 32768 public scalars",
+  "training_observation": "mean nonzero signed digits were 3.88 on glv-j0-32 and 7.84 on j0-56; maximum observed window positions were 2 and 4; no CPU speedup inferred",
+  "window_width": 8
+}
