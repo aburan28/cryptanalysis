@@ -40,7 +40,7 @@ Optimized and UBSan controls: 104 calls, 52 certified algebra results, 48 equati
 
 Diagnostics including warmups: 260 calls, 130 certified algebra results, 120 verified PDP results, 130 inconclusive results, and no external process failures. There are 18 distinct independently audited mathematical certificates.
 
-Eight unit-test groups cover dense-reference equivalence, input permutation, malformed C inputs, coefficient limbs, 32/64-variable masks, small budget boundaries, failed matrix certification and fallback, lease invalidation, changed target coefficients, concurrent calls, proof artifacts and process deadlines. Thirty-two evidence mutations are rejected. Fifteen synthetic publication-admission mutations are rejected; those controls are not real remote-CI receipts.
+Nine unit-test groups cover dense-reference equivalence, input permutation, malformed C inputs, coefficient limbs, 32/64-variable masks, small budget boundaries, failed matrix certification and fallback, lease invalidation, changed target coefficients, concurrent calls, proof artifacts, process deadlines and helper-module selection in both import orders. Thirty-two evidence mutations are rejected. Fifteen synthetic publication-admission mutations are rejected; those controls are not real remote-CI receipts.
 
 The first validation attempt stopped before building because the frozen panel JSON had not been staged in the sparse checkout. Its failure is retained. The corrected source freeze completed the full predeclared panel without numerical reruns or tuning.
 
@@ -49,3 +49,9 @@ The first validation attempt stopped before building because the frozen panel JS
 Keep this path opt-in. Test a bounded dense representation for independent proof-DAG values on small Boolean rings, preserving an independently implemented sparse fallback, exact ideal-equality and Boolean completion checks, work limits and live-memory accounting. Pair it on the full completed nine-variable control and the newly completed matrix cases. A lower producer time is not an acceptance gate; complete independently verified query time is.
 
 The archive also retains complete build/source hashes, native binaries, frozen inputs, raw worker records, proof blobs, failed-attempt accounting, independent audits and all observation orders. No F6 asymptotic improvement or generic GPU speedup is claimed.
+
+## Full-checkout CI repair
+
+Initial Linux CI built all native libraries but failed while importing the unit tests: an older query dependency prepended its own directory to `sys.path`, causing a later `common` import to select round60 in a full checkout. The sparse local checkout lacked that conflicting file. The repaired query and native-free audit restore the caller's module search path after importing legacy dependencies. A separate-interpreter regression test checks both import orders and local helper selection.
+
+The repaired source snapshot is `285c9e738989b8d87cd45cf7a9f8100a3ced33ad`. It passed a fresh native build, all nine test groups, all 104 optimized/UBSan correctness calls, the independent mathematical audit and all 32 artifact corruption controls. Every non-timing result trace matches the corresponding original control. Generated native source bytes, compiler and commands match; freshly linked binary hashes differ and both builds are retained. The numerical timing panel above was not repeated and remains bound to its original source snapshot. The archive includes the actual failed Linux CI artifact and the repair-equivalence receipt.
