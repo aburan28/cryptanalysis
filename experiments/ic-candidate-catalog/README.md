@@ -42,7 +42,7 @@ have `candidate_id: null` and do not issue an `IC1` result.
 | `n131_onb_hw2_m4` | N131 | Normal-basis Hamming weight ≤2, m=4 | Construction code exists; exact base count for this proposal is unresolved. |
 | `n131_onb_hw3_m5` | N131 | Normal-basis Hamming weight ≤3, m=5 | Construction code exists; exact base count for this proposal is unresolved. |
 | `n131_poly_d28_m5` | N131 | Polynomial subspace d=28, m=5 | One exact trace-zero W28 policy has 268,436,324 source or 268,465,880 first-descendant usable points and roughly 134 million sign-folded columns; natural m5 PDP yield and end-to-end costs remain unknown. |
-| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | One exact trace-zero W24 policy has 16,786,464 source or 16,772,828 first-descendant usable points. Its [source W24/m6 SAT control](../ecc2k130-w24-natural-pdp-20261005/RESULT.md) hit 100,002 conflicts unpinned; [witness localization](../ecc2k130-w24-natural-pdp-20261005/DIAGNOSTIC_RESULT.md) verified SAT only with both inverse and intermediate values pinned. The natural target was not run. Natural yield and a complete IC run remain unmeasured. Other d24 bases remain unresolved. |
+| `n131_poly_d24_m6` | N131 | Polynomial subspace d=24, m=6 | One exact trace-zero W24 policy has 16,786,464 source or 16,772,828 first-descendant usable points. Its [source W24/m6 SAT control](../ecc2k130-w24-natural-pdp-20261005/RESULT.md) hit 100,002 conflicts unpinned; [witness localization](../ecc2k130-w24-natural-pdp-20261005/DIAGNOSTIC_RESULT.md) verified SAT only with both inverse and intermediate values pinned. The [functional S3 follow-up](../ecc2k130-w24-functional-s3-20261006/RESULT.md) did not pass the bounded planted solver gate and has an independently verified satisfying XCNF assignment. The natural target was not run. Natural yield and a complete IC run remain unmeasured. Other d24 bases remain unresolved. |
 | `n131_iso2_d28_m5` | N131 | Proposed degree-2 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 | `n131_iso3_d28_m5` | N131 | Proposed degree-3 isogeny search, codomain d=28, m=5 | Search only: no explicit map or codomain base. |
 
@@ -94,6 +94,13 @@ primary workload ID `eee7f6ee5f6b` contains exactly one target. Full mask
 streams, sampled point maps, and public fixture scalars have independent
 replays. Natural W24/m6 PDP yield, useful rank, and complete DLP costs remain
 unmeasured; this is an input activation gate, not an `IC1` result.
+The [functional W24/m6 solver gate](../ecc2k130-w24-functional-s3-20261006/RESULT.md)
+removed free inverse and S3-intermediate witnesses but enlarged the planted
+XCNF 20.448-fold; CryptoMiniSat timed out at 30 seconds while an independent
+full-clause/XOR certificate and Sage group replay proved that exact planted
+formula satisfiable. This is a bounded solver-stage result only. It favors
+smaller algebraic or target-adaptive PDP formulations before another N131
+ordinary-query attempt, without ranking the four frozen factor-base policies.
 
 The [degree-263 transport-cost stage](../ecc2k130-263-transport-cost-20261005/RESULT.md)
 then checked 256 point maps on that frozen workload. The primary target's
