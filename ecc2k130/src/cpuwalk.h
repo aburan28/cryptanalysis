@@ -517,7 +517,7 @@ class CpuEngine
             for (int v = 0; v < V; ++v)
                 pv[v] = FX::load(b.D0 + v * kLanes, b.D1 + v * kLanes, b.D2 + v * kLanes);
             for (i = kChains; i + kChains <= B; i += kChains) {
-#pragma GCC unroll 8
+#    pragma GCC unroll 8
                 for (int v = 0; v < V; ++v) {
                     const int j = i + v * kLanes;
                     const FX w = FX::load(b.W0 + j, b.W1 + j, b.W2 + j),
@@ -593,14 +593,14 @@ class CpuEngine
             int ip = tail - kChains; // the group whose lambdas are in lam[]
             if (ip >= kChains) {
                 FX lam[V];
-#pragma GCC unroll 8
+#    pragma GCC unroll 8
                 for (int v = 0; v < V; ++v) {
                     const int j = ip + v * kLanes;
                     lam[v] = f131x::mul<kLanes>(iv[v], FX::load(b.W0 + j, b.W1 + j, b.W2 + j));
                     iv[v] = f131x::mul<kLanes>(iv[v], FX::load(b.D0 + j, b.D1 + j, b.D2 + j));
                 }
                 for (i = ip - kChains; i >= kChains; ip = i, i -= kChains) {
-#pragma GCC unroll 8
+#    pragma GCC unroll 8
                     for (int v = 0; v < V; ++v) {
                         const int j = i + v * kLanes, jp = ip + v * kLanes;
                         addVector(jp, lam[v], FX::load(b.D0 + jp, b.D1 + jp, b.D2 + jp));
@@ -610,7 +610,7 @@ class CpuEngine
                         iv[v] = f131x::mul<kLanes>(iv[v], d);
                     }
                 }
-#pragma GCC unroll 8
+#    pragma GCC unroll 8
                 for (int v = 0; v < V; ++v) {
                     const int jp = ip + v * kLanes;
                     addVector(jp, lam[v], FX::load(b.D0 + jp, b.D1 + jp, b.D2 + jp));

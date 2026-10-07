@@ -457,8 +457,7 @@ inline const SqrTables &sqrTables()
 // x^(2^k) from its table: the two-table qword permute indexes by the low
 // four bits of each element, so a nibble's index is its limb shifted down
 // and nothing more.  Without 512-bit registers, lane by lane.
-template <int N>
-F131X_INLINE F131x<N> multiSqr(const F131x<N> &a, const uint64_t (*t)[3][16])
+template <int N> F131X_INLINE F131x<N> multiSqr(const F131x<N> &a, const uint64_t (*t)[3][16])
 {
     typedef typename Limbs<N>::V V;
     F131x<N> r = {V{}, V{}, V{}};
@@ -493,17 +492,17 @@ F131X_INLINE F131x<N> multiSqr(const F131x<N> &a, const uint64_t (*t)[3][16])
 template <int N> F131X_INLINE F131x<N> inv(const F131x<N> &a)
 {
     const SqrTables &T = sqrTables();
-    F131x<N> b = mul<N>(sqr<N>(a), a);                 // a^(2^2 - 1)
-    b = mul<N>(sqr<N>(sqr<N>(b)), b);                  // 2^4 - 1
+    F131x<N> b = mul<N>(sqr<N>(a), a); // a^(2^2 - 1)
+    b = mul<N>(sqr<N>(sqr<N>(b)), b);  // 2^4 - 1
     F131x<N> c = b;
     for (int i = 0; i < 4; ++i) c = sqr<N>(c);
-    b = mul<N>(c, b);                                  // 2^8 - 1
-    b = mul<N>(multiSqr<N>(b, T.t[0]), b);             // 2^16 - 1
-    b = mul<N>(multiSqr<N>(b, T.t[1]), b);             // 2^32 - 1
-    b = mul<N>(multiSqr<N>(b, T.t[2]), b);             // 2^64 - 1
-    b = mul<N>(sqr<N>(b), a);                          // 2^65 - 1
-    b = mul<N>(multiSqr<N>(b, T.t[3]), b);             // 2^130 - 1
-    return sqr<N>(b);                                  // 2^131 - 2
+    b = mul<N>(c, b);                      // 2^8 - 1
+    b = mul<N>(multiSqr<N>(b, T.t[0]), b); // 2^16 - 1
+    b = mul<N>(multiSqr<N>(b, T.t[1]), b); // 2^32 - 1
+    b = mul<N>(multiSqr<N>(b, T.t[2]), b); // 2^64 - 1
+    b = mul<N>(sqr<N>(b), a);              // 2^65 - 1
+    b = mul<N>(multiSqr<N>(b, T.t[3]), b); // 2^130 - 1
+    return sqr<N>(b);                      // 2^131 - 2
 }
 
 // f131::fromPolynomial over N lanes.
@@ -1117,8 +1116,7 @@ F131X_INLINE void addend(typename Limbs<N>::V tag, const F131x<N> &xp, const F13
     // the gather's displacement, rather than on the index, where it is an
     // add of a constant a gather (four instructions a vector; the gathers
     // set the pace here and the time did not move).
-    const V top = gather32<N>(tw + TW_H * TW_ENTRY, kbase + (h >> 2)) >>
-                      ((h & F131X_C(3u)) << 3) &
+    const V top = gather32<N>(tw + TW_H * TW_ENTRY, kbase + (h >> 2)) >> ((h & F131X_C(3u)) << 3) &
                   F131X_C(63u);
     const V neg = V{} - ((tag >> 12) & F131X_C(1u));
     V tx0, tx1, ty0, ty1;
