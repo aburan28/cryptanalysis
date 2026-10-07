@@ -2323,6 +2323,19 @@ and scalar replay for the explicit N53 pair-table comparator, not for the
 compact S3 solver. The N83 unpinned relation gate and complete N131
 `2^x` remain open.
 
+### Q1478 paired N53 Pollard-rho reference
+
+[Q1478](q1478_n53_rho_reference/README.md) runs one distinguished-point
+rho walk on Q1477's exact public point, with no cross-target table or
+amortization. A checked Sage audit independently replays the collision
+certificate and recovered scalar. The run solves after 10,732,337 walk
+steps and 10,281 walks. Its contiguous target-dependent online interval,
+including target validation and scalar replay, is 38.424 seconds on an
+unisolated host. Q1477's IC comparator has a 45.688-second narrower
+query-through-replay interval but omitted a separately timed pre-clock
+subgroup check. Consequently the strict paired online speedup is unknown.
+The N83 compact solver and complete N131 work projection remain open.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
