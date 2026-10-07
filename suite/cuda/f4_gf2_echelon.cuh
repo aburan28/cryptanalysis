@@ -63,26 +63,16 @@ typedef struct {
     f4_u64 p[64u * F4E_TILE];
 } F4eUpdateShared;
 
-/* Block-shared state of the panel step.  The next pivot's key is reduced
- * per warp, best[slot][warp]: with one shared minimum, every thread with a
- * candidate contended for the same 64-bit atomic in every pass. */
+/* Block-shared state of the panel step. */
 typedef struct {
     f4_u64 cols;
-    f4_u64 best[3][32];
+    f4_u64 best[3];
     f4_u32 n_cand;
     f4_u64 pw[F4E_SMEM_CAND];
     f4_u64 coeff[F4E_SMEM_CAND];
     f4_u32 cand[F4E_SMEM_CAND];
     f4_u32 is_piv[F4E_SMEM_CAND];
 } F4ePanelShared;
-
-/* The least of a slot's per-warp keys. */
-F4_FN f4_u64 f4e_least(const f4_u64 *slot)
-{
-    f4_u64 m = ~0ull;
-    for (f4_u32 j = 0; j < 32u; ++j) m = slot[j] < m ? slot[j] : m;
-    return m;
-}
 
 /* Gather: active rows with a high bit in word w, with that word. */
 F4_FN void f4e_gather_thread(f4_u64 gid, f4_u64 total, const f4_u64 *mat, f4_u64 stride, f4_u32 w,
@@ -112,7 +102,9 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_glo
     {
         sh->n_cand = *count;
         sh->cols = 0ull;
-        for (f4_u32 j = 0; j < 3u * 32u; ++j) sh->best[j / 32u][j % 32u] = ~0ull;
+        sh->best[0] = ~0ull;
+        sh->best[1] = ~0ull;
+        sh->best[2] = ~0ull;
     }
     F4_SYNC();
     const int staged = sh->n_cand <= F4E_SMEM_CAND;
@@ -146,21 +138,21 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_glo
                     mine = key < mine ? key : mine;
                 }
             }
-            if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[0][tid >> 5], mine);
+            if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[0], mine);
         F4_END_THREADS
         F4_SYNC();
         /* Round r reads slot r % 3, reduces column r + 1 into slot
          * (r + 1) % 3 and clears slot (r + 2) % 3, which every thread read
          * before the barrier that ended round r - 1. */
         for (f4_u32 round = 0;; ++round) {
-            const f4_u64 best = f4e_least(sh->best[round % 3u]);
+            const f4_u64 best = sh->best[round % 3u];
             const f4_u32 p = best == ~0ull ? F4_NONE : (f4_u32)(best & 0xffffffffull);
             const f4_u64 rest = cols & (cols - 1ull);
             const f4_u32 next = rest ? F4_CTZ(rest) : 64u;
             const f4_u32 k = n_piv;
             F4_FOR_THREADS(tid)
-                for (f4_u32 j = tid; j < 32u; j += nt) sh->best[(round + 2u) % 3u][j] = ~0ull;
                 if (tid == 0u) {
+                    sh->best[(round + 2u) % 3u] = ~0ull;
                     if (p != F4_NONE) {
                         piv->row[k] = cand[p];
                         piv->hist[k] = coeff[p];
@@ -181,7 +173,7 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_glo
                         mine = key < mine ? key : mine;
                     }
                 }
-                if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[(round + 1u) % 3u][tid >> 5], mine);
+                if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[(round + 1u) % 3u], mine);
             F4_END_THREADS
             F4_SYNC();
             if (p != F4_NONE) ++n_piv;
