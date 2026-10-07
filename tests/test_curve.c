@@ -1973,7 +1973,7 @@ static void paired_rho_startup_checks(void)
             CHECK_EQ_U64(plane_startup.restart_evaluations, batch_startup.restart_evaluations);
             CHECK_EQ_U64(plane_startup.prepare_bytes, sizeof(ca_tau4_joint_plane_precomp));
             CHECK_EQ_U64(batch_startup.prepare_bytes, sizeof(ca_tau4_joint_precomp));
-            CHECK_EQ_U64(plane_startup.prepare_rotations, 36);
+            CHECK_EQ_U64(plane_startup.prepare_rotations, 18);
             CHECK_EQ_U64(batch_startup.prepare_rotations, 0);
             CHECK_EQ_U64(plane_startup.eval_rotations, 0);
             CHECK_EQ_U64(plane_startup.eval_tau, batch_startup.eval_tau);

@@ -11,7 +11,7 @@ P = 4294967377
 B = 15
 ORDER = 23729779
 BASE = (481899190, 1998487369)
-LABEL = "paired2-plane-orbit-identity-single-target-20261007-v1"
+LABEL = "paired2-plane-orbit-identity-single-target-20261007-v2"
 
 
 def add(left, right):
@@ -42,12 +42,13 @@ def multiply(point, scalar):
 
 
 def main():
-    path = HERE / "fixture.json"
+    path = HERE / "fixture-v2.json"
     if path.exists():
         raise SystemExit("fixture already exists; refusing overwrite")
     previous = [json.loads((HERE.parent / name / "fixture.json").read_text())
                 for name in ("prime-j0-paired-rho-startup", "prime-j0-batch-rho-startup",
                              "prime-j0-unit-plane-rho")]
+    previous.append(json.loads((HERE / "fixture.json").read_text()))
     scalar = int.from_bytes(hashlib.sha256((LABEL + ":target").encode()).digest(),
                             "big") % ORDER
     seed = int.from_bytes(hashlib.sha256((LABEL + ":rho-seed").encode()).digest()[:8],

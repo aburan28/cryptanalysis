@@ -17,6 +17,7 @@ SOURCE = (
     "tests/test_joint_tau.c", "experiments/prime-j0-paired-rho-startup/bench.c",
     "experiments/prime-j0-plane-orbit-identity/make_fixture.py",
     "experiments/prime-j0-plane-orbit-identity/check_panel.py",
+    "experiments/prime-j0-plane-orbit-identity/make_isolated_manifest.py",
     "experiments/prime-j0-plane-orbit-identity/PROTOCOL.md",
 )
 MODES = ("reference", "paired2-batch", "paired2-plane-batch",
@@ -62,7 +63,7 @@ def main():
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     bench = args.bench.resolve()
-    fixture_path = HERE / "fixture.json"
+    fixture_path = HERE / "fixture-v2.json"
     fixture = json.loads(fixture_path.read_text())
     result = {
         "schema": 1, "kind": "one-target-rho-correctness-and-exploratory-timing",
@@ -77,6 +78,7 @@ def main():
                     for name in ("prime-j0-paired-rho-startup",
                                  "prime-j0-batch-rho-startup",
                                  "prime-j0-unit-plane-rho")]
+        previous.append(json.loads((HERE / "fixture.json").read_text()))
         if (fixture.get("schema") != 1 or fixture.get("curve") != "glv-j0-32" or
                 fixture.get("target_input_law") != "one_previously_unseen_public_point" or
                 any((fixture["target_x"], fixture["target_y"]) ==

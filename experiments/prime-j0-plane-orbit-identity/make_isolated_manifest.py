@@ -35,7 +35,7 @@ def main():
 
     root = args.workdir
     folder = root / EXPERIMENT
-    fixture = json.loads((folder / "fixture.json").read_text())
+    fixture = json.loads((folder / "fixture-v2.json").read_text())
     if fixture.get("schema") != 1 or fixture.get("curve") != "glv-j0-32":
         parser.error("unexpected frozen target fixture")
     source = [root / "CMakeLists.txt", root / "AGENTS.md",

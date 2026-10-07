@@ -22,10 +22,13 @@ verification, along with separate replay timing and exclusive operation
 counts. Compare serial `reference,paired2-batch,paired2-plane-batch,
 paired2-plane-batch,paired2-batch,reference` runs with fresh rho tables.
 
-Freeze implementation, unit tests, fixture generator, and checker in a
-commit before deriving the new point with the independent affine Python
-oracle. Freeze the fixture in a second commit before invoking the solver.
-Preserve every raw success or failure and source/binary hashes. The old
-unit-plane point may be used only for development. CPU wall-time ratios
+The first fixture in this directory exposed a stale expectation in the
+full `test_curve` suite: it still asserted 36 preparation multiplications.
+Retain that fixture and its panels as development evidence. Freeze the
+corrected implementation, full unit tests, fixture generator, and checker
+in a commit before deriving `fixture-v2.json` with the independent affine
+Python oracle. Freeze the v2 fixture in a second commit before invoking
+the solver. Preserve every raw success or failure and source/binary
+hash. The old unit-plane point may be used only for development. CPU wall-time ratios
 from this unisolated host remain exploratory; the AGENTS.md isolation
 receipt is required for any controlled speedup claim or automatic routing.
