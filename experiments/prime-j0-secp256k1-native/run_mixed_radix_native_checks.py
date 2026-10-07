@@ -53,6 +53,12 @@ def main():
         scores = json.loads((HERE / "mixed-radix-scalar-result.json").read_text())
         expected = {panel["fixture"]: panel for panel in scores["panels"]}
         for name, seed_name, count in PANELS:
+            actions = run([str(BINARY), "--check-mixed-radix-actions",
+                           str(HERE / name),
+                           str(HERE / "mixed-radix-action-fingerprints.json")])
+            runs.append(actions)
+            if actions["exit_code"] != 0:
+                failures.append(f"action fingerprint replay failed: {name}")
             replay = run([str(BINARY), "--check-mixed-radix-fixture",
                           str(HERE / name), str(HERE / seed_name),
                           str(HERE / "mixed-radix-scalar-result.json")])
@@ -75,6 +81,8 @@ def main():
         "Cargo.toml", "Cargo.lock", "src/main.rs", "src/selective.rs",
         "src/mixed_radix.rs", "MIXED_RADIX_NATIVE_PROTOCOL.md",
         "MIXED_RADIX_SCALAR_PROTOCOL.md", "mixed_radix_scalar.py",
+        "make_mixed_radix_action_fingerprints.py",
+        "mixed-radix-action-fingerprints.json",
         "make_mixed_radix_fixture.py", "make_mixed_radix_seed_fixture.py",
         "run_mixed_radix_native_checks.py", "fixture.json",
         "mixed-radix-fixture.json", "mixed-radix-scalar-result.json",

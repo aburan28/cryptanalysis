@@ -997,6 +997,10 @@ fn check_portfolio_fixture(fixture_path: &str, seed_path: &str,
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 4 && args[1] == "--check-mixed-radix-actions" {
+        mixed_radix::check_action_fingerprints(&args[2], &args[3]);
+        return;
+    }
     if args.len() == 5 && args[1] == "--check-mixed-radix-fixture" {
         mixed_radix::check_fixture(&args[2], &args[3], &args[4]);
         return;

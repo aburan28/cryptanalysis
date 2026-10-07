@@ -114,6 +114,52 @@ fn source_cost(actions: &[Action]) -> usize {
         + 11 * mixed + 14 * general + 2 * cache
 }
 
+fn action_fingerprint(actions: &[Action]) -> u64 {
+    const PRIME: u64 = 0x100000001b3;
+    let mut value = 0xcbf29ce484222325u64;
+    for action in actions {
+        let radix = if action.radix == Radix::Tau { 1u8 } else { 2u8 };
+        for byte in [radix, u8::from(action.digit.is_some())] {
+            value = (value ^ u64::from(byte)).wrapping_mul(PRIME);
+        }
+        if let Some(digit) = action.digit {
+            for byte in digit.a.to_le_bytes().into_iter()
+                .chain(digit.b.to_le_bytes())
+                .chain([digit.seed as u8])
+            {
+                value = (value ^ u64::from(byte)).wrapping_mul(PRIME);
+            }
+        }
+    }
+    value
+}
+
+pub(super) fn check_action_fingerprints(fixture_path: &str, fingerprint_path: &str) {
+    let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
+        .expect("fixture JSON");
+    let expected: Value = serde_json::from_slice(&fs::read(fingerprint_path).expect("fingerprints"))
+        .expect("fingerprint JSON");
+    let name = PathBuf::from(fixture_path).file_name().expect("fixture name")
+        .to_str().expect("UTF-8 name").to_owned();
+    let panel = expected["panels"].as_array().expect("panels").iter()
+        .find(|item| item["fixture"] == name).expect("matching panel");
+    let cases = fixture["cases"].as_array().expect("cases");
+    let rows = panel["rows"].as_array().expect("rows");
+    assert_eq!(cases.len(), rows.len());
+    LazyLock::force(&LATTICE);
+    LazyLock::force(&DIGIT_TABLE);
+    for (case, row) in cases.iter().zip(rows) {
+        assert_eq!(case["index"], row["index"]);
+        let scalar = big_from_hex(case["scalar_hex"].as_str().expect("scalar"));
+        let (a, b) = short_representative(&scalar);
+        let actions = recode(a, b);
+        assert_eq!(row["actions"].as_u64(), Some(actions.len() as u64));
+        assert_eq!(row["fnv64"].as_str(), Some(format!("{:016x}", action_fingerprint(&actions)).as_str()));
+    }
+    println!("{}", serde_json::json!({"verified": true, "fixture": name,
+        "action_stream_checks": cases.len(), "cpu_speedup_claim": null}));
+}
+
 fn evaluate(actions: &[Action], seeds: &[J; 9], beta: F) -> (J, Counts) {
     let mut counts = Counts::default();
     let mut images = [[J::identity(); 3]; 9];

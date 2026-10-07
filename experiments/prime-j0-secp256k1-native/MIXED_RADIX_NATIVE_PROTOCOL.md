@@ -11,7 +11,11 @@ point coordinates for the eight fresh bases. Build the Rust crate with
 `cargo build --offline --locked --release`. For every case, recompute
 the short scalar representative and both candidate paths natively.
 Compare per-case greedy, selective, and chosen source costs and arm
-choice to `mixed-radix-scalar-result.json`.
+choice to `mixed-radix-scalar-result.json`. Use the same compact FNV-1a
+byte encoding in Python and Rust to check the complete greedy action
+sequence for every case. The fingerprint is a cross-language
+regression control, not a cryptographic commitment; the frozen scalar
+fixture and point output checks remain authoritative.
 
 For a chosen radix-two path, verify all nine prepared original seeds
 against the fixture, execute the exact interleaved double/τ/Jacobian
