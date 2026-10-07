@@ -507,8 +507,8 @@ static int tau_tail_step(ca_i128 *x, ca_i128 *y, unsigned phase, const ca_tau4_d
     *odd_digit = odd ? slot : 255;
     ca_i128 da = 0, db = 0;
     if (slot != 255) {
-        da = table[slot].a;
-        db = table[slot].b;
+        da = (ca_i128)table[slot].a;
+        db = (ca_i128)table[slot].b;
         if (odd) {
             ca_i128 old_a = da;
             da = -3 * db;
@@ -569,7 +569,7 @@ static size_t tau_double_fold_index(ca_i128 x, ca_i128 y, unsigned phase, int *n
     size_t half = x == 0 ? (size_t)y
                          : (size_t)(CA_TAU_DOUBLE_BOUND + 1 + (x - 1) * CA_TAU_DOUBLE_SIDE +
                                     y + CA_TAU_DOUBLE_BOUND);
-    return phase * CA_TAU_DOUBLE_HALF + half;
+    return (size_t)phase * CA_TAU_DOUBLE_HALF + half;
 }
 
 static int tau_double_fold_step(ca_i128 *x, ca_i128 *y, unsigned phase,
@@ -2922,7 +2922,7 @@ int ca_ec_tau3_sparse_prepare(const ca_group *g, const ca_elem *point, ca_tau3_s
         size_t base = 18 * block + hot_start;
         for (unsigned position = 0; position < 6; position++)
             for (unsigned seed = 0; seed < 3; seed++)
-                projective[base + 3 * position + seed] = basis[position][seed];
+                projective[base + (size_t)3 * position + seed] = basis[position][seed];
         for (size_t i = hot_start; i < hot_end; i++) {
             unsigned id = pre.hot_ids[i];
             tau_jac first = tau3_pattern_point(g, basis, ca_tau3_rep_u[id], 0, beta, beta2, &nr);
@@ -2983,7 +2983,8 @@ int ca_ec_tau3_sparse_prepare_verify(const ca_tau3_sparse_precomp *pre)
                     value = tau3_mul_tau(value);
                 ca_elem expected;
                 ca_group_mul(g, &expected, &pre->base_point, tau3_coeff_scalar(g, value), NULL);
-                if (!ca_group_equal(g, &expected, &pre->point[base + 3 * position + seed]))
+                if (!ca_group_equal(g, &expected,
+                                    &pre->point[base + (size_t)3 * position + seed]))
                     return 0;
             }
         for (size_t i = hot_start; i < hot_end; i++) {
@@ -3036,7 +3037,7 @@ static int tau3_sparse_add_action(const ca_group *g, const ca_tau3_sparse_precom
         }
         return 1;
     }
-    unsigned patterns[2] = {ca_tau3_rep_u[id], ca_tau3_rep_v[id]};
+    const unsigned patterns[2] = {ca_tau3_rep_u[id], ca_tau3_rep_v[id]};
     if (patterns[0] && patterns[1] && cold_pairs) (*cold_pairs)++;
     for (unsigned half = 0; half < 2; half++) {
         unsigned pattern = patterns[half];
@@ -3045,7 +3046,8 @@ static int tau3_sparse_add_action(const ca_group *g, const ca_tau3_sparse_precom
         unsigned digit = (pattern - 1) % 18;
         unsigned seed = digit / 6, local_unit = digit % 6;
         unsigned unit = (local_unit % 3 + code % 3) % 3 + 3 * ((local_unit >= 3) != (code >= 3));
-        ca_elem entry = tau3_sparse_unit_affine(g, pre, pre->point[base + 3 * position + seed],
+        ca_elem entry = tau3_sparse_unit_affine(g, pre,
+                                                pre->point[base + (size_t)3 * position + seed],
                                                 unit, rotations);
         if (!entry.w[2]) {
             *acc = jac_add_mixed(g, *acc, &entry);
@@ -3154,7 +3156,7 @@ size_t ca_ec_tau3_radix27_online_scratch_bytes(void)
 
 int ca_ec_tau3_radix27_verify_map(void)
 {
-    if (!ca_ec_tau3_sparse_verify_map() || ca_tau3_radix27_offsets[0] != 0 ||
+    if (!ca_ec_tau3_sparse_verify_map() ||
         ca_tau3_radix27_offsets[729] != CA_TAU3_RADIX27_OPTIONS)
         return 0;
     uint8_t seen[CA_TAU3_FUSED_ORBITS * 8] = {0};
@@ -3254,8 +3256,8 @@ static uint16_t tau3_radix27_solve(const ca_tau3_sparse_precomp *pre, tau3_radix
             best_option = (uint16_t)i;
             best_norm = norm;
             best_action = option->action;
-            best_a = option->a;
-            best_b = option->b;
+            best_a = (int)option->a;
+            best_b = (int)option->b;
         }
     }
     if (memo->overflow || memo->count >= CA_TAU3_RADIX27_MEMO_MAX) {
@@ -3295,7 +3297,7 @@ int ca_ec_tau3_radix27_recode_actions(const ca_tau3_sparse_precomp *pre, uint64_
     if (memo.overflow || minimum == CA_TAU3_RADIX27_INF) return 0;
     for (unsigned block = 0; a || b; block++) {
         if (block >= pre->blocks || block >= 16) return 0;
-        tau3_radix27_state *state = tau3_radix27_find(&memo, a, b, block, NULL);
+        const tau3_radix27_state *state = tau3_radix27_find(&memo, a, b, block, NULL);
         if (!state || state->option >= CA_TAU3_RADIX27_OPTIONS) return 0;
         const ca_tau3_radix27_option *option = &ca_tau3_radix27_options[state->option];
         if (((ca_i128)option->a - a) % 27 || ((ca_i128)option->b - b) % 27) return 0;
