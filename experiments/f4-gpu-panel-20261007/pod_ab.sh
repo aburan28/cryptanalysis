@@ -7,6 +7,8 @@
 #       --out experiments/f4-gpu-panel-20261007/receipts -- \
 #       'bash experiments/f4-gpu-panel-20261007/pod_ab.sh experiments/f4-gpu-panel-20261007/receipts'
 #
+# REPS (default 3) sets the timed repeats and PROFILE_CELLS the
+# a:n:m:x:d cells profiled per kernel (default the two D=6 cells).
 # Needs Rust and NVRTC (cloud/pod_env.sh), git and network to fetch BASE.
 set -euo pipefail
 
@@ -45,7 +47,7 @@ OLD=$base_dir/suite/target/release/examples
 # One process per matrix: F4_F2_ECHELON_VERBOSE prints the device's own
 # upload, elimination and download, after the one-time start-up.
 CELLS="0:13:2:1234:5 0:9:3:77:5 1:11:2:301:5 1:11:2:301:6 0:13:2:1234:6"
-for rep in 1 2 3; do
+for rep in $(seq "${REPS:-3}"); do
   for cell in $CELLS; do
     IFS=: read -r a n m x d <<<"$cell"
     tag="k${a}n${n}m${m}d${d}"
@@ -60,7 +62,7 @@ for rep in 1 2 3; do
 done | tee "$OUT/walls.txt"
 
 # Where the device time goes, each launch synchronised.
-for cell in 1:11:2:301:6 0:13:2:1234:6; do
+for cell in ${PROFILE_CELLS:-1:11:2:301:6 0:13:2:1234:6}; do
   IFS=: read -r a n m x d <<<"$cell"
   tag="k${a}n${n}m${m}d${d}"
   for side in old new; do

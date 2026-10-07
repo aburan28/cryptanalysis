@@ -9,6 +9,7 @@
 #       --out experiments/f4-gpu-panel-20261007/receipts/NAME -- \
 #       'bash experiments/f4-gpu-panel-20261007/pod_variants.sh \
 #        experiments/f4-gpu-panel-20261007/receipts/NAME name=path.cuh ...'
+# REPS and PROFILE_CELLS as in pod_ab.sh.
 set -euo pipefail
 
 OUT=${1:?usage: pod_variants.sh OUT NAME=CUH...}
@@ -44,7 +45,7 @@ cp "$BIN/checkout.cuh" "$CUH"
   echo "}"
 } >"$OUT/host.json"
 
-for rep in 1 2 3; do
+for rep in $(seq "${REPS:-3}"); do
   for cell in 0:13:2:1234:5 0:9:3:77:5 1:11:2:301:5; do
     IFS=: read -r a n m x d <<<"$cell"
     tag="k${a}n${n}m${m}d${d}"
@@ -56,7 +57,7 @@ for rep in 1 2 3; do
   done
 done | tee "$OUT/walls.txt"
 
-for cell in 1:11:2:301:6 0:13:2:1234:6; do
+for cell in ${PROFILE_CELLS:-1:11:2:301:6 0:13:2:1234:6}; do
   IFS=: read -r a n m x d <<<"$cell"
   tag="k${a}n${n}m${m}d${d}"
   for name in "${NAMES[@]}"; do
