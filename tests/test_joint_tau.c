@@ -3,10 +3,11 @@
 #include <string.h>
 
 static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
+                       const ca_tau4_orbit_precomp *orbit,
                        const ca_elem *p, const ca_elem *q, uint64_t a, uint64_t b,
                        uint64_t *saved_tau, uint64_t *saved_full)
 {
-    ca_elem ap, bq, expected, separate, joint;
+    ca_elem ap, bq, expected, separate, joint, fused;
     ca_group_mul(g, &ap, p, a % g->order, NULL);
     ca_group_mul(g, &bq, q, b % g->order, NULL);
     ca_group_op(g, &expected, &ap, &bq);
@@ -15,6 +16,17 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
     CHECK(ca_ec_tau4_joint_mul_profile(g, pre, &joint, a, b, 1, &one));
     CHECK(ca_group_equal(g, &separate, &expected));
     CHECK(ca_group_equal(g, &joint, &expected));
+    if (orbit) {
+        ca_tau4_joint_counts combined = {0};
+        CHECK(ca_ec_tau4_orbit_mul_profile(g, orbit, &fused, a, b, &combined));
+        CHECK(ca_group_equal(g, &fused, &expected));
+        CHECK_EQ_U64(combined.tau_steps, one.tau_steps);
+        CHECK_EQ_U64(combined.overlaps, one.overlaps);
+        CHECK_EQ_U64(combined.fused_hits, one.overlaps);
+        CHECK_EQ_U64(combined.inversions, one.inversions);
+        CHECK(combined.mixed_adds <= one.mixed_adds);
+        CHECK(combined.rotations <= one.rotations);
+    }
     CHECK_EQ_U64(one.mixed_adds, two.mixed_adds);
     CHECK_EQ_U64(one.full_adds, 0);
     CHECK_EQ_U64(one.inversions, two.inversions);
@@ -41,6 +53,11 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
     CHECK_EQ_U64(prep.doubles, 10);
     CHECK_EQ_U64(prep.mixed_adds, 8);
     CHECK_EQ_U64(prep.inversions, 1);
+    ca_tau4_orbit_precomp orbit;
+    ca_tau4_joint_counts orbit_prep = {0};
+    CHECK(ca_ec_tau4_orbit_prepare(&g, &base, &other, &orbit, &orbit_prep));
+    CHECK_EQ_U64(orbit_prep.mixed_adds, 8 + 486);
+    CHECK_EQ_U64(orbit_prep.inversions, 2);
 
     uint64_t saved_tau = 0, saved_full = 0;
     const uint64_t edge[][2] = {
@@ -49,13 +66,14 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
         {UINT64_MAX, UINT64_MAX}, {UINT64_MAX, order - 1},
     };
     for (size_t i = 0; i < sizeof(edge) / sizeof(edge[0]); i++)
-        check_pair(&g, &pre, &base, &other, edge[i][0], edge[i][1],
+        check_pair(&g, &pre, &orbit, &base, &other, edge[i][0], edge[i][1],
                    &saved_tau, &saved_full);
     ca_rng rng;
     ca_rng_seed(&rng, UINT64_C(0x20261007) ^ order);
     for (int i = 0; i < 512; i++) {
         uint64_t scalar_a = ca_rng_next(&rng), scalar_b = ca_rng_next(&rng);
-        check_pair(&g, &pre, &base, &other, scalar_a, scalar_b, &saved_tau, &saved_full);
+        check_pair(&g, &pre, &orbit, &base, &other, scalar_a, scalar_b,
+                   &saved_tau, &saved_full);
     }
     CHECK(saved_tau > 0);
     CHECK(saved_full > 0);
@@ -64,19 +82,24 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
     CHECK(ca_ec_tau4_joint_prepare(&g, &base, &id, &with_identity, &prep));
     CHECK_EQ_U64(prep.inversions, 1);
     CHECK_EQ_U64(prep.tau_steps, 1);
-    check_pair(&g, &with_identity, &base, &id, 123, 987, &saved_tau, &saved_full);
+    CHECK(ca_ec_tau4_orbit_prepare(&g, &base, &id, &orbit, &orbit_prep));
+    check_pair(&g, &with_identity, &orbit, &base, &id, 123, 987,
+               &saved_tau, &saved_full);
     CHECK(ca_ec_tau4_joint_prepare(&g, &id, &id, &with_identity, &prep));
     CHECK_EQ_U64(prep.inversions, 0);
-    check_pair(&g, &with_identity, &id, &id, UINT64_MAX, UINT64_MAX,
+    CHECK(ca_ec_tau4_orbit_prepare(&g, &id, &id, &orbit, &orbit_prep));
+    check_pair(&g, &with_identity, &orbit, &id, &id, UINT64_MAX, UINT64_MAX,
                &saved_tau, &saved_full);
 
     CHECK(ca_ec_tau4_joint_prepare(&g, &base, &base, &with_identity, &prep));
-    check_pair(&g, &with_identity, &base, &base, 178, 178,
+    CHECK(ca_ec_tau4_orbit_prepare(&g, &base, &base, &orbit, &orbit_prep));
+    check_pair(&g, &with_identity, &orbit, &base, &base, 178, 178,
                &saved_tau, &saved_full);
     ca_elem negative;
     ca_group_inv(&g, &negative, &base);
     CHECK(ca_ec_tau4_joint_prepare(&g, &base, &negative, &with_identity, &prep));
-    check_pair(&g, &with_identity, &base, &negative, 178, 178,
+    CHECK(ca_ec_tau4_orbit_prepare(&g, &base, &negative, &orbit, &orbit_prep));
+    check_pair(&g, &with_identity, &orbit, &base, &negative, 178, 178,
                &saved_tau, &saved_full);
 }
 

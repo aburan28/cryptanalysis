@@ -214,12 +214,25 @@ typedef struct ca_tau4_joint_precomp {
 
 typedef struct ca_tau4_joint_counts {
     uint64_t tau_steps, doubles, mixed_adds, full_adds, rotations, inversions;
+    uint64_t overlaps, fused_hits;
 } ca_tau4_joint_counts;
 
 int ca_ec_tau4_joint_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
                               ca_tau4_joint_precomp *out, ca_tau4_joint_counts *counts);
 int ca_ec_tau4_joint_mul_profile(const ca_group *g, const ca_tau4_joint_precomp *pre,
                                   ca_elem *out, uint64_t a, uint64_t b, int joint,
+                                  ca_tau4_joint_counts *counts);
+
+/* Relative-unit orbit table: 9 P seeds x 9 Q seeds x 6 unit ratios. The
+ * entire table is target-dependent if Q is the rho target. */
+typedef struct ca_tau4_orbit_precomp {
+    ca_tau4_joint_precomp base;
+    ca_elem pair[9][9][6];
+} ca_tau4_orbit_precomp;
+int ca_ec_tau4_orbit_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
+                              ca_tau4_orbit_precomp *out, ca_tau4_joint_counts *counts);
+int ca_ec_tau4_orbit_mul_profile(const ca_group *g, const ca_tau4_orbit_precomp *pre,
+                                  ca_elem *out, uint64_t a, uint64_t b,
                                   ca_tau4_joint_counts *counts);
 
 #define CA_TAU_POS_Q 64

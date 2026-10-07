@@ -2595,6 +2595,8 @@ int ca_ec_tau4_joint_mul_profile(const ca_group *g, const ca_tau4_joint_precomp 
         size_t length_max = length[0] > length[1] ? length[0] : length[1];
         for (size_t i = length_max; i-- > 0;) {
             if (acc.z) { acc = jac_tau(g, acc, one_minus_beta); cost.tau_steps++; }
+            if (i < length[0] && i < length[1] &&
+                digits[0][i] != 255 && digits[1][i] != 255) cost.overlaps++;
             for (int point_index = 0; point_index < 2; point_index++)
                 if (i < length[point_index] && digits[point_index][i] != 255)
                     tau4_joint_add_digit(g, pre, &acc, point_index,
@@ -2607,6 +2609,101 @@ int ca_ec_tau4_joint_mul_profile(const ca_group *g, const ca_tau4_joint_precomp 
                                              one_minus_beta, &cost);
         cost.full_adds = left.z && right.z;
         acc = jac_add(g, left, right);
+    }
+    jac_to_affine(g, out, acc);
+    cost.inversions = acc.z != 0;
+    if (counts) *counts = cost;
+    return 1;
+}
+
+/* Unit action is a power of (x,y)->(beta*x,y), followed by sign on y.
+ * It commutes with the group law on the j=0 curve. */
+static ca_elem tau4_apply_unit(const ca_group *g, const ca_tau4_joint_precomp *pre,
+                               ca_elem point, int power, int sign)
+{
+    if (point.w[2]) return point;
+    if (power == 1) point.w[0] = fm(g, pre->beta, point.w[0]);
+    else if (power == 2) point.w[0] = fm(g, pre->beta2, point.w[0]);
+    if (sign < 0 && point.w[1]) point.w[1] = g->p - point.w[1];
+    return point;
+}
+
+int ca_ec_tau4_orbit_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
+                              ca_tau4_orbit_precomp *out, ca_tau4_joint_counts *counts)
+{
+    if (!out) return 0;
+    ca_tau4_joint_counts cost = {0};
+    if (!ca_ec_tau4_joint_prepare(g, p, q, &out->base, &cost)) return 0;
+    tau_jac projective[486];
+    uint64_t prefixes[486];
+    size_t index = 0;
+    for (int s = 0; s < 9; s++) {
+        const ca_elem *left = &out->base.seed[0][s];
+        for (int t = 0; t < 9; t++) {
+            for (int relative = 0; relative < 6; relative++) {
+                ca_elem right = tau4_apply_unit(g, &out->base,
+                    out->base.seed[1][t], relative / 2,
+                    (relative & 1) ? -1 : 1);
+                if (!right.w[2] && relative / 2) cost.rotations++;
+                if (left->w[2]) {
+                    projective[index++] = right.w[2]
+                        ? (tau_jac){0, g->mont.r1, 0}
+                        : (tau_jac){right.w[0], right.w[1], g->mont.r1};
+                } else if (right.w[2]) {
+                    projective[index++] = (tau_jac){left->w[0], left->w[1], g->mont.r1};
+                } else {
+                    projective[index++] = jac_add_mixed(g,
+                        (tau_jac){left->w[0], left->w[1], g->mont.r1}, &right);
+                    cost.mixed_adds++;
+                }
+            }
+        }
+    }
+    uint64_t inversion = 0;
+    if (!jac_batch_to_affine_scratch(g, &out->pair[0][0][0], projective, 486,
+                                     prefixes, &inversion)) return 0;
+    cost.inversions += inversion;
+    if (counts) *counts = cost;
+    return 1;
+}
+
+int ca_ec_tau4_orbit_mul_profile(const ca_group *g, const ca_tau4_orbit_precomp *pre,
+                                  ca_elem *out, uint64_t a, uint64_t b,
+                                  ca_tau4_joint_counts *counts)
+{
+    if (!g || !pre || !out || pre->base.g != g) return 0;
+    const ca_tau4_joint_precomp *base = &pre->base;
+    ca_tau4_joint_counts cost = {0};
+    uint8_t digits[2][256];
+    size_t length[2];
+    if (!tau4_joint_recode(base, a, 0, digits[0], &length[0]) ||
+        !tau4_joint_recode(base, b, 1, digits[1], &length[1])) return 0;
+    uint64_t one_minus_beta = fs(g, g->mont.r1, base->beta);
+    tau_jac acc = {0, g->mont.r1, 0};
+    size_t length_max = length[0] > length[1] ? length[0] : length[1];
+    for (size_t i = length_max; i-- > 0;) {
+        if (acc.z) { acc = jac_tau(g, acc, one_minus_beta); cost.tau_steps++; }
+        int has_a = i < length[0] && digits[0][i] != 255;
+        int has_b = i < length[1] && digits[1][i] != 255;
+        if (has_a && has_b) {
+            ca_tau4_digit da = base->digit[digits[0][i]];
+            ca_tau4_digit db = base->digit[digits[1][i]];
+            int relative_power = (db.power + 3 - da.power) % 3;
+            int relative = 2 * relative_power + (da.sign != db.sign);
+            ca_elem point = pre->pair[(int)da.seed][(int)db.seed][relative];
+            cost.overlaps++;
+            cost.fused_hits++;
+            if (!point.w[2]) {
+                point = tau4_apply_unit(g, base, point, da.power, da.sign);
+                acc = jac_add_mixed(g, acc, &point);
+                cost.mixed_adds++;
+                cost.rotations += da.power != 0;
+            }
+        } else if (has_a) {
+            tau4_joint_add_digit(g, base, &acc, 0, digits[0][i], &cost);
+        } else if (has_b) {
+            tau4_joint_add_digit(g, base, &acc, 1, digits[1][i], &cost);
+        }
     }
     jac_to_affine(g, out, acc);
     cost.inversions = acc.z != 0;
