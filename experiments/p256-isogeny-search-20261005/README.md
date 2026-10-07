@@ -526,6 +526,39 @@ transfer assessment, receipt, summary, and verifier are frozen in
 This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
 enumeration.
 
+## Prospectively frozen low-degree paths through depth thirty-one
+
+The next extension was frozen in
+[`protocol-depth-thirty-one-20261007.json`](protocol-depth-thirty-one-20261007.json)
+before candidate generation. It added 464 curves at depth thirty and 480 at
+depth thirty-one with no overlap against the prior union, raising the explicit
+registry to P-256 plus 7,489 neighbors.
+
+All 944 additions received matched-native measurements in 158 root-controlled
+blocks. Ten unadjusted short-screen hits, with point estimates from `1.0234x`
+through `1.0717x`, entered the mandatory fresh 30-trial, two-second holdout.
+None reproduced. The largest holdout estimate was `1.0074x` with paired 95%
+interval `0.9749x-1.0411x`. No new P,Q path evaluation was triggered; the
+separate depth-25 exploratory positive and its charged mapping cost remain open
+for isolated replay.
+
+The depth-31 deterministic audits verify all 945 delta models and transported
+generators, exact conductor `1` and level-zero horizontal paths for every
+addition, and zero normalized-`3b` candidates passing the 32-operation gate.
+The best new coefficient bounds were 240 operations lower and 354 upper.
+Discovery took 419.27 seconds, screening blocks 4,278.83 seconds, and the fresh
+holdout 678.76 seconds. The exact class-group job remained active after more
+than 22.26 hours with no result file at this checkpoint.
+
+The 182,657,444-byte working registry is preserved as a deterministic
+72,521,111-byte gzip archive with both hashes and a byte-identical repack
+certificate. The archive and manifest, 158 raw blocks, holdout, failed
+isolation probe, audits, complete invocation ledger, transfer assessment,
+receipt, summary, and verifier are frozen in
+[`results/sage-low-degree-depth-thirty-one-20261007`](results/sage-low-degree-depth-thirty-one-20261007).
+This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
+enumeration.
+
 Registries that would exceed GitHub's single-blob limit are frozen with
 [`scripts/freeze_large_json.py`](scripts/freeze_large_json.py). It emits a
 deterministic level-9 gzip archive plus a manifest binding both compressed and
@@ -556,9 +589,9 @@ paths, or unknown algorithms.
 
 ## Full-registry conductor audit
 
-Yes: the endomorphism-ring conductor is now attached explicitly to all 6,546
+Yes: the endomorphism-ring conductor is now attached explicitly to all 7,490
 curves in the current retained registry. This is an exact derivation rather
-than 6,546 independent numeric measurements. Each record recomputes
+than 7,490 independent numeric measurements. Each record recomputes
 `t = p + 1 - n` and `D_pi = t^2 - 4p`; the complete certificate-verified
 factorization shows that `D_pi` is fundamental. For every ordinary curve `E`
 in the class,
@@ -571,7 +604,7 @@ therefore End(E) = O_K and f_End(E) = 1.
 
 Consequently `v_l(f_End(E)) = 0` for every rational prime `l`. The audit also
 checks the continuity and endpoint of each retained explicit path and labels
-all 129,970 stored path-edge occurrences horizontal, with both endpoints at
+all 158,770 stored path-edge occurrences horizontal, with both endpoints at
 level zero. There are no vertical edges or alternate conductor levels to
 search in this isogeny class.
 
@@ -580,11 +613,12 @@ hashes, receipt, summary, and deterministic verifier are frozen in
 [`results/conductor-audit-20261007`](results/conductor-audit-20261007). This
 class-wide conductor conclusion does not enumerate the entire isogeny class
 and does not establish an ECDLP speedup; the explicit curve registry remains
-bounded. The depth-19, depth-21, depth-23, depth-25, depth-27, and depth-29
-extension directories repeat the exact certificate and retain explicit rows
-for their respective 560, 624, 688, 752, 816, and 880 additions. Together with
-the consolidated snapshot, these incremental audits cover the current
-registry without implying that the older snapshot itself contains later rows.
+bounded. The depth-19, depth-21, depth-23, depth-25, depth-27, depth-29, and
+depth-31 extension directories repeat the exact certificate and retain
+explicit rows for their respective 560, 624, 688, 752, 816, 880, and 944
+additions. Together with the consolidated snapshot, these incremental audits
+cover the current registry without implying that the older snapshot itself
+contains later rows.
 
 Primary background for the order classification is Waterhouse,
 [*Abelian varieties over finite fields*](https://www.numdam.org/item/ASENS_1969_4_2_4_521_0/),
