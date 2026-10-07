@@ -12,12 +12,11 @@
  * the pinned variables, is the same.
  *
  * Panel w (word w of every row) runs four steps:
- *   gather       word w of every row still active, by row;
- *   panel        one block: the rows with a high bit there, in row order,
- *                are the candidates; per column of the word, the lowest
- *                candidate is the pivot and its word is XORed into the
- *                others, which record the pivots they took as a 64-bit
- *                mask;
+ *   gather       rows still active with a high bit in word w;
+ *   panel        one block: per column of the word, the lowest such row is
+ *                the pivot and its word is XORed into the others, which
+ *                record the pivots they took as a 64-bit mask; the rows
+ *                are reduced lazily, as far as the pivot search reads;
  *   materialise  a thread per word: each pivot row becomes the
  *                combination of original pivot rows its expanded mask
  *                names, across the rest of the row, and leaves the active
@@ -70,13 +69,20 @@ typedef struct {
     f4_u32 scan[2][F4_MAX_THREADS];
 } F4ePanelShared;
 
-/* Gather: each row's word w within the high columns, or zero for a row
- * that has left the active set. */
+/* Gather: active rows with a high bit in word w, with that word, in any
+ * order; and each row's word in prow, zero for the rest. */
 F4_FN void f4e_gather_thread(f4_u64 gid, f4_u64 total, const f4_u64 *mat, f4_u64 stride, f4_u32 w,
-                             f4_u64 mask, const f4_u32 *active, f4_u32 rows, f4_u64 *prow)
+                             f4_u64 mask, const f4_u32 *active, f4_u32 rows, f4_u32 *cand,
+                             f4_u64 *pw, f4_u32 *count, f4_u64 *prow)
 {
-    for (f4_u64 r = gid; r < rows; r += total)
-        prow[r] = active[r] ? mat[r * stride + w] & mask : 0ull;
+    for (f4_u64 r = gid; r < rows; r += total) {
+        const f4_u64 word = active[r] ? mat[r * stride + w] & mask : 0ull;
+        prow[r] = word;
+        if (word == 0ull) continue;
+        f4_u32 i = F4_ATOMIC_ADD32(count, 1u);
+        cand[i] = (f4_u32)r;
+        pw[i] = word;
+    }
 }
 
 /* Brings a candidate's word and mask from pivot `from` up to pivot k:
@@ -91,23 +97,24 @@ F4_FN void f4e_catch_up(const F4ePanelShared *sh, f4_u32 from, f4_u32 k, f4_u64 
     }
 }
 
-/* Panel: pivots of word w, lowest row first per column.  The rows with a
- * nonzero word become the candidates, in row order; coeff[i] collects the
- * pivot slots XORed into candidate i, and is_piv[i] ends as 1 for the
- * pivots, 0 for the rest.
+/* Panel: pivots of word w among the gathered rows, lowest row first per
+ * column.  coeff[i] collects the pivot slots XORed into candidate i, and
+ * is_piv[i] ends as 1 for the pivots, 0 for the rest.
  *
  * A column's pivot is its lowest candidate that has the column once
  * reduced by the earlier pivots, so the candidates are reduced lazily: per
  * column, a block-wide chunk at a time in row order, each brought up to
  * date as it is read, until a chunk has the column.  Most columns stop in
  * the first chunk, so a round costs a chunk, not every candidate; one pass
- * at the end brings the rest up to date.  Pivot histories are then
+ * at the end brings the rest up to date.  Only a panel of more than one
+ * chunk needs its candidates in row order, so only such a panel rebuilds
+ * them from prow, a pass over every row.  Pivot histories are then
  * expanded to the original pivot rows they combine. */
 F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4_u32 rows,
-                           f4_u32 *cand, f4_u64 *pw, f4_u64 *coeff, f4_u32 *is_piv, f4_u32 *count,
-                           F4ePivots *piv)
+                           f4_u32 *cand, f4_u64 *pw, f4_u64 *coeff, f4_u32 *is_piv,
+                           const f4_u32 *count, F4ePivots *piv)
 {
-    const f4_u32 span = (rows + nt - 1u) / nt;
+    const f4_u32 n_cand = *count;
     F4_SINGLE
     {
         sh->cols = 0ull;
@@ -115,46 +122,51 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
         sh->best[1] = ~0ull;
         sh->best[2] = ~0ull;
     }
-    F4_SYNC();
-    /* Thread t compacts rows [t * span, (t + 1) * span): count, scan, write. */
-    F4_FOR_THREADS(tid)
-        const f4_u64 lo = (f4_u64)tid * span < rows ? (f4_u64)tid * span : rows;
-        const f4_u64 hi = lo + span < rows ? lo + span : rows;
-        f4_u32 n = 0u;
-        f4_u64 acc = 0ull;
-        for (f4_u64 r = lo; r < hi; ++r) {
-            const f4_u64 word = prow[r];
-            n += word != 0ull;
-            acc |= word;
+    if (n_cand > nt) {
+        /* Thread t compacts rows [t * span, (t + 1) * span): count, scan,
+         * write. */
+        const f4_u32 span = (rows + nt - 1u) / nt;
+        F4_FOR_THREADS(tid)
+            const f4_u64 lo = (f4_u64)tid * span < rows ? (f4_u64)tid * span : rows;
+            const f4_u64 hi = lo + span < rows ? lo + span : rows;
+            f4_u32 n = 0u;
+            for (f4_u64 r = lo; r < hi; ++r) n += prow[r] != 0ull;
+            sh->scan[0][tid] = n;
+        F4_END_THREADS
+        F4_SYNC();
+        f4_u32 src = 0u;
+        for (f4_u32 d = 1u; d < nt; d <<= 1u) {
+            F4_FOR_THREADS(tid)
+                sh->scan[src ^ 1u][tid] =
+                    sh->scan[src][tid] + (tid >= d ? sh->scan[src][tid - d] : 0u);
+            F4_END_THREADS
+            F4_SYNC();
+            src ^= 1u;
         }
-        sh->scan[0][tid] = n;
+        F4_FOR_THREADS(tid)
+            const f4_u64 lo = (f4_u64)tid * span < rows ? (f4_u64)tid * span : rows;
+            const f4_u64 hi = lo + span < rows ? lo + span : rows;
+            f4_u32 at = tid ? sh->scan[src][tid - 1u] : 0u;
+            for (f4_u64 r = lo; r < hi; ++r) {
+                const f4_u64 word = prow[r];
+                if (word == 0ull) continue;
+                cand[at] = (f4_u32)r;
+                pw[at] = word;
+                ++at;
+            }
+        F4_END_THREADS
+    }
+    F4_SYNC();
+    F4_FOR_THREADS(tid)
+        f4_u64 acc = 0ull;
+        for (f4_u32 i = tid; i < n_cand; i += nt) {
+            coeff[i] = 0ull;
+            is_piv[i] = 0u;
+            acc |= pw[i];
+        }
         if (acc) F4_ATOMIC_OR64(&sh->cols, acc);
     F4_END_THREADS
     F4_SYNC();
-    f4_u32 src = 0u;
-    for (f4_u32 d = 1u; d < nt; d <<= 1u) {
-        F4_FOR_THREADS(tid)
-            sh->scan[src ^ 1u][tid] = sh->scan[src][tid] + (tid >= d ? sh->scan[src][tid - d] : 0u);
-        F4_END_THREADS
-        F4_SYNC();
-        src ^= 1u;
-    }
-    F4_FOR_THREADS(tid)
-        const f4_u64 lo = (f4_u64)tid * span < rows ? (f4_u64)tid * span : rows;
-        const f4_u64 hi = lo + span < rows ? lo + span : rows;
-        f4_u32 at = tid ? sh->scan[src][tid - 1u] : 0u;
-        for (f4_u64 r = lo; r < hi; ++r) {
-            const f4_u64 word = prow[r];
-            if (word == 0ull) continue;
-            cand[at] = (f4_u32)r;
-            pw[at] = word;
-            coeff[at] = 0ull;
-            is_piv[at] = 0u;
-            ++at;
-        }
-    F4_END_THREADS
-    F4_SYNC();
-    const f4_u32 n_cand = sh->scan[src][nt - 1u];
     f4_u64 cols = sh->cols;
     f4_u32 k = 0u;
     /* Chunk g reduces into best[g % 3] and clears best[(g + 1) % 3], which
@@ -179,13 +191,14 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
                             coeff[i] = mask;
                             is_piv[i] = k;
                         }
-                        if ((word >> c) & 1ull) F4_ATOMIC_MIN64(&sh->best[g % 3u], i);
+                        if ((word >> c) & 1ull)
+                            F4_ATOMIC_MIN64(&sh->best[g % 3u], ((f4_u64)cand[i] << 32) | i);
                     }
                 }
             F4_END_THREADS
             F4_SYNC();
             const f4_u64 best = sh->best[g % 3u];
-            if (best != ~0ull) p = (f4_u32)best;
+            if (best != ~0ull) p = (f4_u32)(best & 0xffffffffull);
         }
         if (p == F4_NONE) continue;
         F4_SINGLE
@@ -216,7 +229,6 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
     F4_END_THREADS
     F4_SINGLE
     {
-        *count = n_cand;
         piv->n = k;
         piv->total += k;
         /* Pivot k is its own row plus the final pivots its history names,

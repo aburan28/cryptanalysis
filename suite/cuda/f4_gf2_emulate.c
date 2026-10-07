@@ -67,7 +67,11 @@ int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_s
     for (f4_u32 w = 0; w < hw; ++w) {
         const f4_u32 high = low_start - 64u * w;
         const f4_u64 mask = high >= 64u ? ~0ull : ((1ull << high) - 1ull);
-        f4e_gather_thread(0u, 1u, mat, stride, w, mask, active, rows, prow);
+        /* Three interleaved gather threads leave the candidates out of row
+         * order, as the device's may be. */
+        for (f4_u64 gid = 0; gid < 3u; ++gid)
+            f4e_gather_thread(gid, 3u, mat, stride, w, mask, active, rows, cand, pw, counts + w,
+                              prow);
         f4e_panel(sh, threads, prow, rows, cand, pw, coeff, is_piv, counts + w, piv);
         f4e_materialise_thread(0u, 1u, mat, stride, w, active, piv, ops);
         const f4_u64 tiles = (stride - w + F4E_TILE - 1u) / F4E_TILE;
