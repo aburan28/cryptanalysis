@@ -2698,6 +2698,7 @@ static size_t tau4_lattice_streams(const ca_tau4_joint_precomp *pre, uint64_t sc
     size_t n = 0;
     static const int axial[5][2] = {{-1, 0}, {0, -1}, {0, 0}, {0, 1}, {1, 0}};
     unsigned two[2] = {0, 1};
+    unsigned shortlist[4] = {0, 1, 2, 3};
     if (mode == 2 || mode == 3 || mode == 4 || mode == 6 || mode == 8) {
         ca_i128 smallest = -1, second = -1;
         for (unsigned i = 0; i < 5; i++) {
@@ -2716,11 +2717,31 @@ static size_t tau4_lattice_streams(const ca_tau4_joint_precomp *pre, uint64_t sc
             }
         }
     }
-    size_t candidates = mode == 25 ? 25 : (mode == 5 || mode == 9) ? 5 : 2;
+    if (mode == 11 || mode == 12) {
+        ca_i128 l1[5];
+        int used[5] = {0};
+        for (unsigned i = 0; i < 5; i++) {
+            ca_i128 u = u0 + axial[i][0], v = v0 + axial[i][1];
+            ca_i128 x = (ca_i128)scalar - u * v1.x - v * v2.x;
+            ca_i128 y = -u * v1.y - v * v2.y;
+            l1[i] = iabs128(x) + iabs128(y);
+        }
+        for (unsigned j = 0; j < 4; j++) {
+            unsigned best = 0;
+            while (used[best]) best++;
+            for (unsigned i = best + 1; i < 5; i++)
+                if (!used[i] && l1[i] < l1[best]) best = i;
+            shortlist[j] = best;
+            used[best] = 1;
+        }
+    }
+    size_t candidates = mode == 25 ? 25 : (mode == 5 || mode == 9) ? 5
+                      : mode == 11 ? 3 : mode == 12 ? 4 : 2;
     counts->lattice_points_checked += mode == 25 ? 25 : 5;
     for (size_t index = 0; index < candidates; index++) {
         unsigned axial_index = (mode == 2 || mode == 3 || mode == 4 || mode == 6 || mode == 8)
-            ? two[index] : (unsigned)index;
+            ? two[index] : (mode == 11 || mode == 12)
+            ? shortlist[index] : (unsigned)index;
         int du = mode == 25 ? (int)(index / 5) - 2 : axial[axial_index][0];
         int dv = mode == 25 ? (int)(index % 5) - 2 : axial[axial_index][1];
         ca_i128 u = u0 + du, v = v0 + dv;
@@ -2987,11 +3008,12 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
             unsigned adds = left->weight + right->weight;
             unsigned base_score = 6 * steps + 11 * adds;
             cost.pair_scores++;
-            if ((mode == 8 || mode == 9) && base_score > best_score) continue;
+            if ((mode == 8 || mode == 9 || mode == 11 || mode == 12) &&
+                base_score > best_score) continue;
             unsigned gauge = 0;
             unsigned rotations = mode == 3
                 ? tau4_pair_gauge_rotations(left, right, &gauge)
-                : (mode == 8 || mode == 9)
+                : (mode == 8 || mode == 9 || mode == 11 || mode == 12)
                 ? tau4_pair_free_gauge_rotations(pre, left, right)
                 : left->rotations + right->rotations;
             unsigned score = base_score + rotations;
@@ -3018,7 +3040,8 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
         tau4_pair_trellis_schedule(pre, selected[0], selected[1], gauge_at, &cost);
     uint64_t one_minus_beta = fs(g, g->mont.r1, pre->beta);
     uint64_t tau_constant[3] = {one_minus_beta, 0, 0};
-    int free_gauge = mode == 6 || mode == 8 || mode == 9;
+    int free_gauge = mode == 6 || mode == 8 || mode == 9 ||
+                     mode == 11 || mode == 12;
     if (free_gauge) {
         tau_constant[1] = fa(g, g->mont.r1, f2(g, pre->beta));
         tau_constant[2] = fs(g, pre->beta2, g->mont.r1);
@@ -3162,6 +3185,22 @@ int ca_ec_tau4_paired_five_free_gauge_scored_mul_profile(const ca_group *g,
                                                           ca_tau4_joint_counts *counts)
 {
     return tau4_paired_lattice_mul_impl(g, pre, NULL, out, NULL, a, b, counts, 9);
+}
+
+int ca_ec_tau4_paired_three_free_gauge_scored_mul_profile(const ca_group *g,
+                                                           const ca_tau4_joint_precomp *pre,
+                                                           ca_elem *out, uint64_t a, uint64_t b,
+                                                           ca_tau4_joint_counts *counts)
+{
+    return tau4_paired_lattice_mul_impl(g, pre, NULL, out, NULL, a, b, counts, 11);
+}
+
+int ca_ec_tau4_paired_four_free_gauge_scored_mul_profile(const ca_group *g,
+                                                          const ca_tau4_joint_precomp *pre,
+                                                          ca_elem *out, uint64_t a, uint64_t b,
+                                                          ca_tau4_joint_counts *counts)
+{
+    return tau4_paired_lattice_mul_impl(g, pre, NULL, out, NULL, a, b, counts, 12);
 }
 
 int ca_ec_tau4_paired_two_plane_mul_profile(const ca_group *g,
