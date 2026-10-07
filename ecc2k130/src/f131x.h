@@ -310,22 +310,34 @@ F131X_INLINE typename Limbs<N>::V tinyProduct(typename Limbs<N>::V a2, typename 
            ((b2 << 2) & (V{} - ((a2 >> 2) & F131x<N>::splat(1u))));
 }
 
-// f131::reduce, limb for limb, over N lanes: every shift that crosses a limb
-// is a funnel shift here, and the compiler folds the xor chains into
-// three-input logic.
+// The quotient's constant.  f131::reduce forms Q from D = H >> 131 as D plus
+// D shifted right by 1, 2, 4, 9, 10, 12, 25, 26, 28, 57, 58, 60, 121, 122
+// and 124 -- the sixteen taps of the Barrett constant, factored into two
+// shift chains -- and every one of those is a truncating shift, so together
+// they are the top of one carry-less product: Q = (D mu) >> 124 with mu the
+// sum of z^(124 - t) over the taps.  The first thirteen taps are mu's high
+// limb, 0x1d0d000d0000000d (which is also the middle limb of m); the last
+// three are its low limb, 0xd, and since D 0xd >> 124 sees only the top nine
+// bits of D they are three shifts of one funnel shift.  D is 130 bits and
+// mu's high limb 61, so their product fits three limbs; the 2-bit top limb's
+// product is a four-entry table.
+static const uint64_t kMuTop[8] = {
+    0, 0x1d0d000d0000000dull, 0x3a1a001a0000001aull, 0x2717001700000017ull, 0, 0, 0, 0};
+
+// f131::reduce, limb for limb, over N lanes: the quotient from the multiplier
+// as above where f131.h shifts, the shifts that remain funnel shifts, and the
+// compiler folds the xor chains into three-input logic.
 template <int N> F131X_INLINE F131x<N> reduce(const typename Limbs<N>::V h[5])
 {
     typedef typename Limbs<N>::V V;
+    const V mu = F131x<N>::splat(0x1d0d000d0000000dull);
     const V d0 = shr<N, 3>(h[2], h[3]), d1 = shr<N, 3>(h[3], h[4]),
             d2 = (h[4] >> 3) & F131x<N>::splat(3u);
-    const V r0 = d0 ^ shr<N, 1>(d0, d1) ^ shr<N, 3>(d0, d1);
-    const V r1 = d1 ^ shr<N, 1>(d1, d2) ^ shr<N, 3>(d1, d2);
-    const V r2 = d2 ^ (d2 >> 1);
-    const V q0 = d0 ^ shr<N, 1>(r0, r1) ^ shr<N, 9>(r0, r1) ^ shr<N, 25>(r0, r1) ^
-                 shr<N, 57>(r0, r1) ^ shr<N, 57>(r1, r2);
-    const V q1 =
-        d1 ^ shr<N, 1>(r1, r2) ^ shr<N, 9>(r1, r2) ^ shr<N, 25>(r1, r2) ^ shr<N, 57>(r1, r2);
-    const V q2 = d2 ^ (r2 >> 1);
+    const Prod<N> e0 = clmul<N>(d0, mu), e1 = clmul<N>(d1, mu);
+    const V p0 = lo<N>(e0), p1 = hi<N>(e0) ^ lo<N>(e1), p2 = hi<N>(e1) ^ lookup8<N>(kMuTop, d2);
+    const V v = shr<N, 57>(d1, d2); // D >> 121
+    const V q0 = shr<N, 60>(p0, p1) ^ v ^ (v >> 1) ^ (v >> 3), q1 = shr<N, 60>(p1, p2),
+            q2 = p2 >> 60;
     // Q m, low 131 bits, with m = (0xd, m1, 0xd) by limb: T = Q 0xd as
     // f131.h has it, and q0 m1 by the multiplier -- its low half is T's
     // four shifted copies and Q << 60 of f131::reduce's limb 1, its high
