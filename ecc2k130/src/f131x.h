@@ -691,17 +691,18 @@ struct SelectConsts {
     // nibble p of a limb when its value is v, for the two full limbs and
     // the low and high nibble of each byte -- the phase sum of its set
     // coordinates mod 131, and 1 + the largest L among them (0 for v = 0).
-    // maxTop is the latter for the 3-bit limb, by its value.  maskLt[k] is
-    // {e : L(e) < k}; rowL[l] is the row of the polynomial -> normal basis
-    // map that gives coordinate L^-1(l), so that the sign is one dot product
-    // with the pivot's row instead of the whole conversion.  Both are read
-    // by gathers (four words a row, so the index is a shift), and rowL is
-    // padded to every index a byte can hold.
+    // maxTop is the latter for the 3-bit limb, by its value.  maskLt[l][k]
+    // is limb l of {e : L(e) < k}; rowL[l][b] is limb l of the row of the
+    // polynomial -> normal basis map that gives coordinate L^-1(b - 1), so
+    // that the sign is one dot product with the pivot's row instead of the
+    // whole conversion, indexed by 1 + the pivot's L as the search leaves
+    // it.  Both are read by gathers, a limb an array so that the index is
+    // the value itself.
     alignas(64) uint8_t phaseNib[2][2][128];
     alignas(64) uint8_t maxNib[2][2][128];
     alignas(64) uint64_t maxTop[8];
-    alignas(64) uint64_t maskLt[131][4];
-    alignas(64) uint64_t rowL[256][4];
+    alignas(64) uint64_t maskLt[3][136];
+    alignas(64) uint64_t rowL[3][136];
 
     void build(const uint32_t *tw)
     {
@@ -749,7 +750,7 @@ struct SelectConsts {
         }
         memset(maskLt, 0, sizeof(maskLt));
         for (int e = 0; e < 131; ++e)
-            for (int k = L[e] + 1; k < 131; ++k) maskLt[k][e >> 6] |= 1ull << (e & 63);
+            for (int k = L[e] + 1; k < 131; ++k) maskLt[e >> 6][k] |= 1ull << (e & 63);
         // Row e of the conversion: bit e of the image of each unit vector.
         uint64_t rowE[131][3];
         memset(rowE, 0, sizeof(rowE));
@@ -762,7 +763,7 @@ struct SelectConsts {
         }
         memset(rowL, 0, sizeof(rowL));
         for (int l = 0; l < 131; ++l)
-            for (int w = 0; w < 3; ++w) rowL[l][w] = rowE[linv[l]][w];
+            for (int w = 0; w < 3; ++w) rowL[w][l + 1] = rowE[linv[l]][w];
     }
 };
 
@@ -884,13 +885,13 @@ F131X_INLINE void selectTables(const F131x<8> *xn, const F131x<8> *yp, const Sel
     for (int g = 0; g < G; ++g) {
         const V p = mul32<8>(s[g], inverseWeight<8>(c, hw[g]));
         const V q = mul32<8>(p, F131X_C(32786010u)) >> 32;
-        k[g] = p - ((q << 7) + (q << 1) + q);
+        k[g] = p - mul32<8>(q, F131X_C(131u));
     }
     // The candidates: the set coordinates with L < k, else all of them.
     V p0[G], p1[G], p2[G];
     for (int g = 0; g < G; ++g) {
-        const V m0 = gatherQ(&c.maskLt[0][0], k[g] << 2), m1 = gatherQ(&c.maskLt[0][1], k[g] << 2),
-                m2 = gatherQ(&c.maskLt[0][2], k[g] << 2);
+        const V m0 = gatherQ(c.maskLt[0], k[g]), m1 = gatherQ(c.maskLt[1], k[g]),
+                m2 = gatherQ(c.maskLt[2], k[g]);
         p0[g] = xn[g].w0 & m0, p1[g] = xn[g].w1 & m1, p2[g] = xn[g].w2 & m2;
         const M any3 = (M)(p0[g] | p1[g] | p2[g]);
         const __mmask8 any = _mm512_test_epi64_mask(any3, any3);
@@ -912,11 +913,10 @@ F131X_INLINE void selectTables(const F131x<8> *xn, const F131x<8> *yp, const Sel
         best[g] = (V)_mm512_max_epu64((M)((V)m & F131X_C(0xffu)), (M)lookup8<8>(c.maxTop, p2[g]));
     }
     // eps: coordinate L^-1(best - 1) of y in the normal basis, the parity of
-    // y against that row of the conversion.
+    // y against that row of the conversion (rowL is indexed by best itself).
     for (int g = 0; g < G; ++g) {
-        const V l = (best[g] - F131X_C(1u)) & F131X_C(0xffu);
-        const V r0 = gatherQ(&c.rowL[0][0], l << 2), r1 = gatherQ(&c.rowL[0][1], l << 2),
-                r2 = gatherQ(&c.rowL[0][2], l << 2);
+        const V r0 = gatherQ(c.rowL[0], best[g]), r1 = gatherQ(c.rowL[1], best[g]),
+                r2 = gatherQ(c.rowL[2], best[g]);
         epsOut[g] = popcnt<8>((yp[g].w0 & r0) ^ (yp[g].w1 & r1) ^ (yp[g].w2 & r2)) & F131X_C(1u);
         hwOut[g] = hw[g];
         kOut[g] = k[g];
@@ -1073,17 +1073,20 @@ F131X_INLINE void addend(typename Limbs<N>::V tag, const F131x<N> &xp, const F13
     const V h = tag & F131X_C(15u), k = (tag >> 4) & F131X_C(255u);
     const V kbase = mul32<N>(k, F131X_C(unsigned(TW_KWORDS)));
     const V t = kbase + (h << 3); // h * TW_ENTRY, eight words an entry
-    const V top = gather32<N>(tw, kbase + F131X_C(unsigned(TW_H * TW_ENTRY)) + (h >> 2)) >>
+    // A word offset within the entry goes on the table pointer, where it is
+    // the gather's displacement, rather than on the index, where it is an
+    // add of a constant a gather (four instructions a vector; the gathers
+    // set the pace here and the time did not move).
+    const V top = gather32<N>(tw + TW_H * TW_ENTRY, kbase + (h >> 2)) >>
                       ((h & F131X_C(3u)) << 3) &
                   F131X_C(63u);
     const V neg = V{} - ((tag >> 12) & F131X_C(1u));
-    const V tx0 = gather64<N>(tw, t), tx1 = gather64<N>(tw, t + F131X_C(2u)),
-            tx2 = top & F131X_C(7u);
+    const V tx0 = gather64<N>(tw, t), tx1 = gather64<N>(tw + 2, t), tx2 = top & F131X_C(7u);
     d->w0 = xp.w0 ^ tx0;
     d->w1 = xp.w1 ^ tx1;
     d->w2 = xp.w2 ^ tx2;
-    e->w0 = yp.w0 ^ gather64<N>(tw, t + F131X_C(4u)) ^ (tx0 & neg);
-    e->w1 = yp.w1 ^ gather64<N>(tw, t + F131X_C(6u)) ^ (tx1 & neg);
+    e->w0 = yp.w0 ^ gather64<N>(tw + 4, t) ^ (tx0 & neg);
+    e->w1 = yp.w1 ^ gather64<N>(tw + 6, t) ^ (tx1 & neg);
     e->w2 = yp.w2 ^ (top >> 3) ^ (tx2 & neg);
 #    undef F131X_C
 }
