@@ -12,6 +12,7 @@ builds optimized and UBSan libraries, checks bounded prefixes and proof
 semantics, runs the frozen controls, rejects corrupted artifacts, and records
 the full diagnostic panel only after correctness passes.
 
+See [RESULTS.md](RESULTS.md) for the full frozen observations, including regressions.
 See [PROTOCOL.md](PROTOCOL.md) for the algebraic argument and resource contract.
 This is a proof-representation experiment. It does not establish a new general
 Gröbner algorithm, GPU benefit, world-fastest F4/F5 result or IC/rho speedup.
