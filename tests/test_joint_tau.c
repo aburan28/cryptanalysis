@@ -84,6 +84,14 @@ static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *p
     ca_tau4_joint_plane_precomp plane;
     ca_tau4_joint_counts plane_prep = {0}, plane_batch = {0};
     CHECK(ca_ec_tau4_joint_plane_prepare(g, p, q, &plane, &plane_prep));
+    for (int point_index = 0; point_index < 2; point_index++) {
+        for (int seed = 0; seed < 9; seed++) {
+            ca_elem point = plane.base.seed[point_index][seed];
+            if (point.w[2]) continue;
+            CHECK_EQ_U64(plane.x_beta2[point_index][seed],
+                         ca_mont_mul(&g->mont, plane.base.beta2, point.w[0]));
+        }
+    }
     CHECK(ca_ec_tau4_paired_two_plane_batch_profile(g, &plane,
                                                       plane_outputs, a, b, 8,
                                                       &plane_batch));
