@@ -117,7 +117,8 @@ static int select_mode(const char *name)
                                   "joint-window4-pos",
                                   "joint-window4-hot-pos",
                                   "joint-window4-xplane-pos",
-                                  "joint-window4-zero-pos"};
+                                  "joint-window4-zero-pos",
+                                  "joint-pair-hex-pos"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -146,7 +147,7 @@ int main(int argc, char **argv)
                 "tau3-atlas-pos|tau3-sparse-pos|tau3-radix27-pos|tau3-scatter-pos|"
                 "tau3-scatter-direct-pos|tau3-scatter-atlas-pos|endo-radix8-pos|"
                 "joint-window4-pos|joint-window4-hot-pos|joint-window4-xplane-pos|"
-                "joint-window4-zero-pos "
+                "joint-window4-zero-pos|joint-pair-hex-pos "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -184,6 +185,7 @@ int main(int argc, char **argv)
     int joint_window4_hot = mode >= 46 && mode <= 48;
     int joint_window4_plane = mode == 47 || mode == 48;
     int joint_window4_zero = mode == 48;
+    int joint_pair_hex = mode == 49;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -218,6 +220,7 @@ int main(int argc, char **argv)
     ca_fixed_comb_precomp comb_pre;
     ca_endo_radix8_precomp endo_radix8_pre = {0};
     ca_joint_window4_precomp joint_window4_pre = {0};
+    ca_joint_pair_precomp joint_pair_pre = {0};
     ca_tau4_pos_compact_precomp compact_pre = {0};
     ca_tau3_fused_precomp tau3_pre = {0};
     ca_tau3_scatter_precomp scatter_pre = {0};
@@ -239,12 +242,14 @@ int main(int argc, char **argv)
     size_t prep_temp_heap_bytes =
         global_builder ? CA_TAU_POS_Q * 2 * 9 * (3 * sizeof(uint64_t) + sizeof(uint64_t)) : 0;
     size_t prep_temp_stack_bytes =
-        joint_window4 ? (7 * 71 * 4 + 25 * 3) * sizeof(uint64_t)
-        : endo_radix8 ? 4 * CA_ENDO_RADIX8_MAGNITUDES * 4 * sizeof(uint64_t)
-        : comb        ? (CA_FIXED_COMB_ENTRIES * 4 + CA_FIXED_COMB_WIDTH * 3) * sizeof(uint64_t)
-                      : 0;
+        joint_pair_hex  ? 2 * 171 * 3 * sizeof(uint64_t)
+        : joint_window4 ? (7 * 71 * 4 + 25 * 3) * sizeof(uint64_t)
+        : endo_radix8   ? 4 * CA_ENDO_RADIX8_MAGNITUDES * 4 * sizeof(uint64_t)
+        : comb          ? (CA_FIXED_COMB_ENTRIES * 4 + CA_FIXED_COMB_WIDTH * 3) * sizeof(uint64_t)
+                        : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
-    size_t point_entries = joint_window4   ? ca_ec_joint_window4_point_entries(&group)
+    size_t point_entries = joint_pair_hex  ? ca_ec_joint_pair_point_entries(&group)
+                           : joint_window4 ? ca_ec_joint_window4_point_entries(&group)
                            : endo_radix8   ? ca_ec_endo_radix8_point_entries(&group)
                            : scatter       ? ca_ec_tau3_scatter_point_entries(&group)
                            : sparse        ? ca_ec_tau3_sparse_point_entries(&group)
@@ -257,7 +262,8 @@ int main(int argc, char **argv)
                            : fused         ? fused_blocks * fused_entries
                                            : 0;
     size_t point_table_bytes = point_entries * sizeof(ca_elem);
-    size_t prep_bytes = joint_window4   ? sizeof(joint_window4_pre) + point_table_bytes
+    size_t prep_bytes = joint_pair_hex  ? sizeof(joint_pair_pre) + point_table_bytes
+                        : joint_window4 ? sizeof(joint_window4_pre) + point_table_bytes
                         : endo_radix8   ? sizeof(endo_radix8_pre) + point_table_bytes
                         : scatter       ? sizeof(scatter_pre) + point_table_bytes
                         : sparse        ? sizeof(sparse_pre) + point_table_bytes
@@ -275,6 +281,10 @@ int main(int argc, char **argv)
     if (compact) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (tau3) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (joint_window4_plane) prep_temp_heap_bytes = point_table_bytes;
+    if (joint_pair_hex)
+        prep_temp_heap_bytes = ca_ec_joint_pair_point_entries(&group) /
+                               (strcmp(argv[2], "j0-56") == 0 ? 4 : 2) *
+                               (sizeof(ca_elem) + 3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (sparse) prep_temp_heap_bytes = point_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (scatter)
         prep_temp_heap_bytes =
@@ -307,6 +317,12 @@ int main(int argc, char **argv)
         } else if (compact) {
             if (!ca_ec_tau4_pos_compact_prepare(&group, &point, &compact_pre, &prep_triples,
                                                  &prep_layer_inversions)) {
+                free(outputs);
+                return 2;
+            }
+        } else if (joint_pair_hex) {
+            if (!ca_ec_joint_pair_prepare(&group, &point, &joint_pair_pre, &prep_doubles,
+                                          &prep_adds, &prep_layer_inversions, &prep_plane_muls)) {
                 free(outputs);
                 return 2;
             }
@@ -431,7 +447,8 @@ int main(int argc, char **argv)
     uint64_t sparse_cold_pairs = 0, radix27_dp_states = 0, radix27_dp_options = 0;
     uint64_t scatter_pairs = 0;
     uint64_t zero_attempts = 0, zero_feasible = 0, zero_selected = 0;
-    size_t static_map_bytes = joint_window4_hot       ? ca_ec_joint_window4_hot_static_bytes()
+    size_t static_map_bytes = joint_pair_hex          ? ca_ec_joint_pair_static_bytes()
+                              : joint_window4_hot     ? ca_ec_joint_window4_hot_static_bytes()
                               : joint_window4         ? ca_ec_joint_window4_static_bytes()
                               : scatter_atlas         ? ca_ec_tau3_scatter_atlas_static_bytes()
                               : scatter               ? ca_ec_tau3_scatter_static_bytes()
@@ -576,6 +593,17 @@ int main(int argc, char **argv)
                 adds += a;
                 rotations += r;
                 fallbacks += fallback;
+            } else if (joint_pair_hex) {
+                uint64_t a = 0, u = 0, fallback = 0;
+                if (!ca_ec_joint_pair_mul_profile(&group, &joint_pair_pre, &outputs[i], scalars[i],
+                                                  &a, &u, &fallback)) {
+                    fprintf(stderr, "joint-pair evaluation failed at index %zu\n", i);
+                    free(outputs);
+                    return 1;
+                }
+                adds += a;
+                unit_adds += u;
+                fallbacks += fallback;
             } else if (joint_window4) {
                 uint64_t a = 0, r = 0, u = 0, fallback = 0;
                 uint64_t attempt = 0, feasible = 0, selected = 0;
@@ -709,6 +737,11 @@ int main(int argc, char **argv)
     uint64_t scatter_preparation_checks = 0;
     if (joint_window4 && !ca_ec_joint_window4_prepare_verify(&joint_window4_pre)) {
         fprintf(stderr, "joint-window map or point table verification failed\n");
+        free(outputs);
+        return 1;
+    }
+    if (joint_pair_hex && !ca_ec_joint_pair_prepare_verify(&joint_pair_pre)) {
+        fprintf(stderr, "joint-pair map or point table verification failed\n");
         free(outputs);
         return 1;
     }
@@ -967,6 +1000,7 @@ int main(int argc, char **argv)
     ca_ec_tau3_sparse_clear(&sparse_pre);
     ca_ec_endo_radix8_clear(&endo_radix8_pre);
     ca_ec_joint_window4_clear(&joint_window4_pre);
+    ca_ec_joint_pair_clear(&joint_pair_pre);
     free(outputs);
     printf(
         "curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
@@ -1004,11 +1038,12 @@ int main(int argc, char **argv)
         output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_doubles, prep_tau_steps,
         prep_adds, prep_rotations, prep_seed_ops, prep_plane_muls, prep_layer_inversions,
         prep_bytes, prep_temp_heap_bytes, prep_temp_stack_bytes, prep_repeats, point_entries,
-        point_table_bytes, joint_window4_plane ? point_entries : 0, triples, tau_steps, doubles,
-        adds, rotations, unit_adds, output_inversions, fallbacks, second_recodes, steered_blocks,
-        zero_attempts, zero_feasible, zero_selected, static_map_bytes, recipe_bytes,
-        prep_slot_lookups, wavefront_stats.denominators, wavefront_stats.exceptional_edges,
-        wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
+        point_table_bytes, joint_window4_plane || joint_pair_hex ? point_entries : 0, triples,
+        tau_steps, doubles, adds, rotations, unit_adds, output_inversions, fallbacks,
+        second_recodes, steered_blocks, zero_attempts, zero_feasible, zero_selected,
+        static_map_bytes, recipe_bytes, prep_slot_lookups, wavefront_stats.denominators,
+        wavefront_stats.exceptional_edges, wavefront_stats.doubling_edges,
+        5 * wavefront_stats.denominators,
         wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
         tail_stream_checks, tail_double_checks, tail_pair_checks, tail_pair_preparation_checks,
         tail_complete_checks, tail_complete_preparation_checks, periodic_lookups, periodic_accepted,

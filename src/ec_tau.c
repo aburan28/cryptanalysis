@@ -31,6 +31,7 @@
 #include "generated/tau3_scatter_atlas.h"
 #include "generated/joint_window4.h"
 #include "generated/joint_window4_hot.h"
+#include "generated/joint_pair_map.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -1025,6 +1026,260 @@ void ca_ec_joint_window4_clear(ca_joint_window4_precomp *pre)
     free(pre->point);
     free(pre->plane_point);
     *pre = (ca_joint_window4_precomp){0};
+}
+
+size_t ca_ec_joint_pair_static_bytes(void)
+{
+    return sizeof(ca_joint_pair_digit_x) + sizeof(ca_joint_pair_digit_y) +
+           sizeof(ca_joint_pair_rep_x) + sizeof(ca_joint_pair_rep_y) + sizeof(ca_joint_pair_action);
+}
+
+size_t ca_ec_joint_pair_point_entries(const ca_group *g)
+{
+    if (!g || g->kind != CA_GROUP_EC) return 0;
+    if (g->p == UINT64_C(4294967377) && g->b == 15 && g->order == UINT64_C(23729779) &&
+        g->endo_lambda == UINT64_C(16027563))
+        return 2 * CA_JOINT_PAIR_ORBITS;
+    if (g->p == UINT64_C(2305843009213693951) && g->b == 7 &&
+        g->order == UINT64_C(53624256071278747) && g->endo_lambda == UINT64_C(1212946466324730))
+        return 4 * CA_JOINT_PAIR_ORBITS;
+    return 0;
+}
+
+int ca_ec_joint_pair_verify_map(void)
+{
+    uint8_t seen[CA_JOINT_PAIR_ORBITS] = {0};
+    for (unsigned orbit = 0; orbit < CA_JOINT_PAIR_ORBITS; orbit++) {
+        tau_vec rep = {ca_joint_pair_rep_x[orbit], ca_joint_pair_rep_y[orbit]};
+        if (!rep.x && !rep.y) return 0;
+        if (orbit &&
+            (rep.x < ca_joint_pair_rep_x[orbit - 1] ||
+             (rep.x == ca_joint_pair_rep_x[orbit - 1] && rep.y <= ca_joint_pair_rep_y[orbit - 1])))
+            return 0;
+        for (unsigned code = 0; code < 6; code++) {
+            tau_vec moved = joint_window4_unit_coeff(rep, code);
+            if (moved.x < rep.x || (moved.x == rep.x && moved.y < rep.y)) return 0;
+        }
+    }
+    for (unsigned residue = 0; residue < 256; residue++) {
+        int x = ca_joint_pair_digit_x[residue], y = ca_joint_pair_digit_y[residue];
+        if (joint_window4_residue16(x) != residue / 16 ||
+            joint_window4_residue16(y) != residue % 16)
+            return 0;
+    }
+    for (unsigned first = 0; first < 256; first++) {
+        for (unsigned second = 0; second < 256; second++) {
+            unsigned packed = ca_joint_pair_action[(first << 8) | second];
+            unsigned orbit = packed & CA_JOINT_PAIR_ZERO, code = packed >> CA_JOINT_PAIR_ORBIT_BITS;
+            tau_vec pair = {
+                ca_joint_pair_digit_x[first] + 16 * (ca_i128)ca_joint_pair_digit_x[second],
+                ca_joint_pair_digit_y[first] + 16 * (ca_i128)ca_joint_pair_digit_y[second]};
+            if (!pair.x && !pair.y) {
+                if (orbit != CA_JOINT_PAIR_ZERO || code) return 0;
+                continue;
+            }
+            if (orbit >= CA_JOINT_PAIR_ORBITS || code >= 6) return 0;
+            seen[orbit] = 1;
+            tau_vec actual = joint_window4_unit_coeff(
+                (tau_vec){ca_joint_pair_rep_x[orbit], ca_joint_pair_rep_y[orbit]}, code);
+            if (actual.x != pair.x || actual.y != pair.y) return 0;
+        }
+    }
+    for (unsigned orbit = 0; orbit < CA_JOINT_PAIR_ORBITS; orbit++)
+        if (!seen[orbit]) return 0;
+    return 1;
+}
+
+int ca_ec_joint_pair_prepare(const ca_group *g, const ca_elem *point, ca_joint_pair_precomp *out,
+                             uint64_t *doubles, uint64_t *adds, uint64_t *inversions,
+                             uint64_t *plane_muls)
+{
+    if (!g || !point || !out || g->kind != CA_GROUP_EC || g->endo_kind != 1 || g->a != 0 ||
+        g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda || !ca_ec_joint_pair_verify_map())
+        return 0;
+    size_t entries = ca_ec_joint_pair_point_entries(g);
+    if (!entries) return 0;
+    ca_joint_pair_precomp pre = {0};
+    pre.g = g;
+    pre.base_point = *point;
+    pre.pairs = (unsigned)(entries / CA_JOINT_PAIR_ORBITS);
+    pre.beta = g->endo_c_mont;
+    pre.beta2 = fm(g, pre.beta, pre.beta);
+    pre.identity = point->w[2] != 0;
+    if (fa(g, fa(g, pre.beta2, pre.beta), g->mont.r1)) return 0;
+    tau_vec v1, v2;
+    if (!make_lattice(g->order, g->order - g->endo_lambda, &v1, &v2, &pre.det)) return 0;
+    pre.v1x = v1.x;
+    pre.v1y = v1.y;
+    pre.v2x = v2.x;
+    pre.v2y = v2.y;
+    if (doubles) *doubles = 0;
+    if (adds) *adds = 0;
+    if (inversions) *inversions = 0;
+    if (plane_muls) *plane_muls = 0;
+    if (pre.identity) {
+        *out = pre;
+        return 1;
+    }
+    pre.plane_point = malloc(entries * sizeof(*pre.plane_point));
+    tau_jac *projective = malloc(CA_JOINT_PAIR_ORBITS * sizeof(*projective));
+    ca_elem *affine = malloc(CA_JOINT_PAIR_ORBITS * sizeof(*affine));
+    uint64_t *prefixes = malloc(CA_JOINT_PAIR_ORBITS * sizeof(*prefixes));
+    if (!pre.plane_point || !projective || !affine || !prefixes) {
+        free(pre.plane_point);
+        free(projective);
+        free(affine);
+        free(prefixes);
+        return 0;
+    }
+    tau_jac basis = {point->w[0], point->w[1], g->mont.r1};
+    for (unsigned pair_position = 0; pair_position < pre.pairs; pair_position++) {
+        tau_jac x_multiple[171], y_multiple[171];
+        tau_jac omega_basis = basis;
+        omega_basis.x = fm(g, pre.beta, basis.x);
+        x_multiple[0] = y_multiple[0] = (tau_jac){0, g->mont.r1, 0};
+        x_multiple[1] = basis;
+        y_multiple[1] = omega_basis;
+        for (unsigned magnitude = 2; magnitude <= 170; magnitude++) {
+            x_multiple[magnitude] = jac_add(g, x_multiple[magnitude - 1], basis);
+            y_multiple[magnitude] = jac_add(g, y_multiple[magnitude - 1], omega_basis);
+            if (adds) (*adds) += 2;
+        }
+        for (unsigned orbit = 0; orbit < CA_JOINT_PAIR_ORBITS; orbit++) {
+            int x = ca_joint_pair_rep_x[orbit], y = ca_joint_pair_rep_y[orbit];
+            unsigned ax = (unsigned)(x < 0 ? -x : x), ay = (unsigned)(y < 0 ? -y : y);
+            if (ax > 170 || ay > 170) goto failure;
+            tau_jac left = x_multiple[ax], right = y_multiple[ay];
+            if (x < 0 && left.z && left.y) left.y = g->p - left.y;
+            if (y < 0 && right.z && right.y) right.y = g->p - right.y;
+            projective[orbit] = jac_add(g, left, right);
+            if (adds && ax && ay) (*adds)++;
+        }
+        uint64_t current_inversions = 0;
+        if (!jac_batch_to_affine_scratch(g, affine, projective, CA_JOINT_PAIR_ORBITS, prefixes,
+                                         &current_inversions))
+            goto failure;
+        if (inversions) *inversions += current_inversions;
+        for (unsigned orbit = 0; orbit < CA_JOINT_PAIR_ORBITS; orbit++) {
+            ca_elem ordinary = affine[orbit];
+            size_t index = (size_t)pair_position * CA_JOINT_PAIR_ORBITS + orbit;
+            pre.plane_point[index] = (ca_joint_window4_plane_point){
+                ordinary.w[0], ordinary.w[1], ordinary.w[2] ? 0 : fm(g, pre.beta, ordinary.w[0]),
+                ordinary.w[2]};
+            if (plane_muls) (*plane_muls) += !ordinary.w[2];
+        }
+        if (pair_position + 1 < pre.pairs)
+            for (unsigned bit = 0; bit < 8; bit++) {
+                basis = jac_double(g, basis);
+                if (doubles) (*doubles)++;
+            }
+    }
+    free(projective);
+    free(affine);
+    free(prefixes);
+    *out = pre;
+    return 1;
+failure:
+    free(pre.plane_point);
+    free(projective);
+    free(affine);
+    free(prefixes);
+    return 0;
+}
+
+int ca_ec_joint_pair_prepare_verify(const ca_joint_pair_precomp *pre)
+{
+    if (!pre || !pre->g || !pre->pairs || pre->pairs > 4 || !ca_ec_joint_pair_verify_map())
+        return 0;
+    if (pre->identity) return pre->plane_point == NULL;
+    if (!pre->plane_point) return 0;
+    const ca_group *g = pre->g;
+    ca_i128 omega = (ca_i128)g->order - g->endo_lambda;
+    ca_i128 power = 1;
+    for (unsigned pair_position = 0; pair_position < pre->pairs; pair_position++) {
+        for (unsigned orbit = 0; orbit < CA_JOINT_PAIR_ORBITS; orbit++) {
+            ca_i128 scalar =
+                power * (ca_joint_pair_rep_x[orbit] + omega * ca_joint_pair_rep_y[orbit]);
+            scalar %= g->order;
+            if (scalar < 0) scalar += g->order;
+            ca_elem expected;
+            ca_group_mul(g, &expected, &pre->base_point, (uint64_t)scalar, NULL);
+            ca_joint_window4_plane_point packed =
+                pre->plane_point[(size_t)pair_position * CA_JOINT_PAIR_ORBITS + orbit];
+            ca_elem actual = (ca_elem){{packed.x, packed.y, packed.identity, 0}};
+            if (!ca_group_equal(g, &expected, &actual)) return 0;
+            if (packed.x_beta != (packed.identity ? 0 : fm(g, pre->beta, packed.x))) return 0;
+        }
+        power *= 256;
+    }
+    return 1;
+}
+
+int ca_ec_joint_pair_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre, ca_elem *out,
+                                 uint64_t k, uint64_t *adds, uint64_t *unit_adds,
+                                 uint64_t *fallbacks)
+{
+    if (!g || !pre || !out || pre->g != g || !pre->pairs || pre->pairs > 4) return 0;
+    if (adds) *adds = 0;
+    if (unit_adds) *unit_adds = 0;
+    if (fallbacks) *fallbacks = 0;
+    k %= g->order;
+    if (!k || pre->identity) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    if (!pre->plane_point) return 0;
+    ca_i128 a, b;
+    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det, k,
+                        &a, &b);
+    ca_i128 x = a + b, y = -b;
+    uint32_t action[4];
+    for (unsigned pair_position = 0; pair_position < pre->pairs; pair_position++) {
+        unsigned residues[2];
+        for (unsigned digit = 0; digit < 2; digit++) {
+            unsigned rx = joint_window4_residue16(x), ry = joint_window4_residue16(y);
+            residues[digit] = (rx << 4) | ry;
+            x = (x - ca_joint_pair_digit_x[residues[digit]]) / 16;
+            y = (y - ca_joint_pair_digit_y[residues[digit]]) / 16;
+        }
+        action[pair_position] = ca_joint_pair_action[(residues[0] << 8) | residues[1]];
+    }
+    if (x || y) {
+        if (fallbacks) *fallbacks = 1;
+        ca_group_mul(g, out, &pre->base_point, k, NULL);
+        return 1;
+    }
+    tau_jac accumulator = {0, g->mont.r1, 0};
+    uint64_t na = 0, nu = 0;
+    for (unsigned pair_position = 0; pair_position < pre->pairs; pair_position++) {
+        unsigned orbit = action[pair_position] & CA_JOINT_PAIR_ZERO;
+        unsigned code = action[pair_position] >> CA_JOINT_PAIR_ORBIT_BITS;
+        if (orbit == CA_JOINT_PAIR_ZERO) continue;
+        if (orbit >= CA_JOINT_PAIR_ORBITS || code >= 6) return 0;
+        ca_joint_window4_plane_point packed =
+            pre->plane_point[(size_t)pair_position * CA_JOINT_PAIR_ORBITS + orbit];
+        ca_elem point = (ca_elem){{packed.x, packed.y, packed.identity, 0}};
+        if (point.w[2]) continue;
+        if (code % 3 == 1) point.w[0] = packed.x_beta;
+        if (code % 3 == 2) {
+            point.w[0] = fs(g, 0, fa(g, packed.x, packed.x_beta));
+            nu += 2;
+        }
+        if (code >= 3 && point.w[1]) point.w[1] = g->p - point.w[1];
+        accumulator = jac_add_mixed(g, accumulator, &point);
+        na++;
+    }
+    jac_to_affine(g, out, accumulator);
+    if (adds) *adds = na;
+    if (unit_adds) *unit_adds = nu;
+    return 1;
+}
+
+void ca_ec_joint_pair_clear(ca_joint_pair_precomp *pre)
+{
+    if (!pre) return;
+    free(pre->plane_point);
+    *pre = (ca_joint_pair_precomp){0};
 }
 
 static unsigned residue3(ca_i128 x)
