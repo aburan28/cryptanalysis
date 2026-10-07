@@ -293,6 +293,52 @@ This is still a bounded degree-3/5/11/13 traversal. The exact class-group job
 remained active after more than eight hours when this checkpoint was frozen,
 and per-key map evaluation was not timed for the 432 additions.
 
+## Class-wide model eligibility audit
+
+A deterministic follow-up closes several standard arithmetic-model loopholes.
+Every curve in the class has the same odd prime group order, with no rational
+two- or three-torsion. Consequently no member has an `F_p` Montgomery or twisted
+Edwards model, and exceptional short-Weierstrass coefficients would require the
+already-excluded `j = 0` or `j = 1728`.
+
+Because `p = 3 mod 4`, every nonzero short-Weierstrass `a` is `F_p`-isomorphic
+to a model with `a = 1` or `a = 3`. P-256 itself has a verified map from
+`a = -3` to `a = 1`, so small-`a` specialization is not a neighbor-only
+advantage. Replaying the normalization over the depth-seventeen delta verified
+all 497 models and transported generators: 245 map to `a = 1` and 252 to
+`a = 3`.
+
+The unchanged native benchmark also has no candidate-dependent formula branch:
+each timed complete addition performs the same three full multiplications by
+`a` and two by `3b`. The certificate, source hash, typed obligations, and claim
+limits are frozen in
+[`results/model-eligibility-20261006`](results/model-eligibility-20261006).
+This rules out those standard model shortcuts, not unknown formula families or
+non-generic ECDLP algorithms.
+
+## Resumed low-degree paths through depth seventeen
+
+The next extension added 240 curves at depth sixteen and 256 at depth seventeen,
+with no overlap against the prior union. The combined explicit registry now
+contains P-256 plus 2,225 distinct neighbors, each with its ordered path, edge
+maps, model isomorphisms, and transported generator.
+
+All 496 additions received matched-native measurements in 83 root-controlled
+blocks. Eight unadjusted short-screen hits entered a fresh 30-trial, two-second
+holdout. None reproduced. The largest holdout point estimate was `1.0097x` with
+paired 95% interval `0.9899x-1.0300x`; all 2,225 retained non-root curves now
+have native measurements and zero reproducible iteration-rate improvements.
+
+The registry, 83 raw screening blocks, holdout, candidate-model audit, failure
+ledger, transfer assessment, receipt, and verifier are frozen in
+[`results/sage-low-degree-depth-seventeen-20261006`](results/sage-low-degree-depth-seventeen-20261006).
+The first launch failed before Sage import because Docker `vfs` storage filled
+the writable layer; the exact traceback and successful CPU-separated recovery
+are retained. This remains a bounded degree-3/5/11/13 traversal, not the whole
+isogeny class. The exact class-group job remained active after more than 9.6
+hours at this checkpoint, and per-key map evaluation was not timed for the 496
+additions.
+
 ## Quick start
 
 Python 3.11 or newer is required.

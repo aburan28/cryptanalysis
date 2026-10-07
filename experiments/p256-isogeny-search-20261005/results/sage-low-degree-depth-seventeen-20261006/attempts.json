@@ -1,0 +1,65 @@
+{
+  "attempts": [
+    {
+      "command": "docker run -d --name p256-depth17 --cpuset-cpus 2 --mount type=bind,src=/workspace/cryptanalysis,dst=/repo -w /repo sagemath/sagemath@sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb sage -python experiments/p256-isogeny-search-20261005/scripts/extend_sage_low_degree.py --input experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-fifteen-20261006/candidates-delta.json --ells 3,5,11,13 --target-depth 17 --max-new-nodes 2000 --output experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json",
+      "container_id": "c11fd65c0fc75884dcd3d80d37320564111e01cc180f22a45764f8352206fc03",
+      "exit_code": 1,
+      "failure": "OSError: [Errno 28] No space left on device while Sage created /tmp/sage_d46ge0f7 during import",
+      "image": "sagemath/sagemath@sha256:19995db6194f4a4bab18ce9a88556fd15b9ed5e916b4504fefe618a7796ddbdb",
+      "result_status": "failed before traversal; no candidate output created",
+      "storage_diagnosis": "The Docker vfs driver duplicated the approximately 3.14 GB Sage image for a second container and exhausted the 32 GB writable layer.",
+      "superseded_by": "CPU-2-pinned docker exec in the existing Sage container, whose primary class-group process is pinned to CPU 4",
+      "traceback": [
+        "Traceback (most recent call last):",
+        "  File /repo/experiments/p256-isogeny-search-20261005/scripts/extend_sage_low_degree.py, line 17, in <module>",
+        "    from sage.all import EllipticCurve, GF",
+        "  File /home/sage/sage/local/var/lib/sage/venv-python3.12.5/lib/python3.12/site-packages/sage/misc/temporary_file.py, line 37, in <module>",
+        "    TMP_DIR_FILENAME_BASE = tempfile.TemporaryDirectory(prefix='sage_')",
+        "  File /home/sage/sage/local/var/lib/sage/venv-python3.12.5/lib/python3.12/tempfile.py, line 384, in mkdtemp",
+        "    _os.mkdir(file, 0o700)",
+        "OSError: [Errno 28] No space left on device: '/tmp/sage_d46ge0f7'"
+      ]
+    },
+    {
+      "command": "python3 scripts/finalize_sage_low_degree_depth_seventeen.py --pr-parent-remote-commit fa864162deb918b6c0d1bca99a979d4e273bec8a",
+      "exit_code": 1,
+      "failure": "ValueError while formatting suite source paths with pathlib.Path.relative_to",
+      "result_status": "raw search, screen, holdout, model audit, assessment, and summary remained intact; no source manifest or receipt was emitted",
+      "superseded_by": "use os.path.relpath for source files outside the experiment directory",
+      "traceback_tail": "ValueError: /workspace/cryptanalysis/suite/examples/p256_isogeny_native_bench.rs is not in the subpath of /workspace/cryptanalysis/experiments/p256-isogeny-search-20261005"
+    },
+    {
+      "command": "python3 scripts/verify_sage_low_degree_depth_seventeen.py",
+      "exit_code": 1,
+      "failure": "FileNotFoundError while replaying the search input hash from the recorded /repo container mount",
+      "result_status": "all preceding model certificates reproduced; depth-17 verification stopped before evaluating the registry",
+      "superseded_by": "map an unavailable absolute /repo path to the current repository root before hashing",
+      "traceback_tail": "FileNotFoundError: /repo/experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-fifteen-20261006/candidates-delta.json"
+    },
+    {
+      "command": "python3 scripts/verify_sage_low_degree_depth_seventeen.py",
+      "exit_code": 1,
+      "failure": "AssertionError because the verifier expected exactly one failed attempt after later failures had been preserved",
+      "result_status": "registry and path checks passed through the failure-ledger gate; screen and holdout checks had not yet run",
+      "superseded_by": "validate failure contents and nonzero exit codes without fixing the ledger length",
+      "traceback_tail": "AssertionError at len(attempts['attempts']) == 1"
+    },
+    {
+      "command": "python3 scripts/audit_candidate_models.py --candidates results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json --output results/sage-low-degree-depth-seventeen-20261006/candidate-model-audit.json --verify",
+      "exit_code": 1,
+      "failure": "AssertionError because the frozen input path string depended on the working directory even though its SHA-256 and replayed certificates matched",
+      "result_status": "the 497 model transformations recomputed, but exact JSON comparison rejected the path spelling",
+      "superseded_by": "resolve the input and store its canonical path relative to the experiment root",
+      "traceback_tail": "AssertionError: candidate model audit does not reproduce"
+    },
+    {
+      "command": "python3 /tmp/upload_p256_depth17_blob.py",
+      "exit_code": 1,
+      "failure": "GitHub Git Data blob API rejected the base64 request as too large (HTTP 422)",
+      "result_status": "no standalone remote blob was created; local Git blob acceea98885217f768c7c697e4cba23a533d1a99 remains intact",
+      "superseded_by": "publish a remote-parent commit through Git's pack protocol",
+      "stderr": "gh: Sorry, your input was too large to process. Consider creating the blob in a local clone of the repository and then pushing it to GitHub. (HTTP 422)"
+    }
+  ],
+  "schema_version": 1
+}

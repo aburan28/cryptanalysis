@@ -32,6 +32,27 @@ jobs:
       - run: python -m pip install -e .
       - run: python -m unittest discover -s tests -v
       - run: python scripts/verify_frozen.py
+      - name: Verify all frozen Sage and native evidence
+        if: matrix.python-version == '3.12'
+        run: |
+          python scripts/verify_sage_depth_one.py
+          python scripts/verify_sage_depth_three.py
+          python scripts/verify_sage_wide_depth_one.py
+          python scripts/verify_sage_mapping_native.py
+          python scripts/verify_sage_native_full_screen.py
+          python scripts/verify_sage_wide_199.py
+          python scripts/verify_sage_low_degree_depth_five.py
+          python scripts/verify_sage_low_degree_depth_seven.py
+          python scripts/verify_sage_low_degree_depth_nine.py
+          python scripts/verify_sage_low_degree_depth_eleven.py
+          python scripts/verify_sage_low_degree_depth_thirteen.py
+          python scripts/verify_sage_low_degree_depth_fifteen.py
+          python scripts/verify_sage_low_degree_depth_seventeen.py
+          python scripts/verify_model_eligibility.py
+          python scripts/audit_candidate_models.py \
+            --candidates results/sage-low-degree-depth-seventeen-20261006/candidates-delta.json \
+            --output results/sage-low-degree-depth-seventeen-20261006/candidate-model-audit.json \
+            --verify
       - name: Run reproducible control experiment
         run: p256-isogeny run --output-dir runs/ci --seconds 0.1 --trials 2
       - uses: actions/upload-artifact@v4
