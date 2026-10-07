@@ -1,55 +1,41 @@
 #!/usr/bin/env python3
-"""Read-only audit of every raw arm in the prospective sparse-tau3 panel."""
+"""Read-only replay of all prospective radix-27 panel rows and gates."""
 
 import hashlib
 import json
 from pathlib import Path
-import subprocess
 
 from check_tau3_atlas_panel import fields
-from check_tau3_sparse_panel import MODES, ORDERS, pair_result
+from check_tau3_radix27_panel import MODES, pair_result
 
 
 ROOT = Path(__file__).resolve().parent
-SPARSE_PANEL_COMMIT = "d952227e91e67a50516eb63fbe56a09ff6aeb7f2"
 
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def sparse_source_sha256(path):
-    repository = ROOT.parents[1]
-    subprocess.run(["git", "merge-base", "--is-ancestor", SPARSE_PANEL_COMMIT, "HEAD"],
-                   cwd=repository, check=True, capture_output=True)
-    content = subprocess.check_output(["git", "show", f"{SPARSE_PANEL_COMMIT}:{path}"],
-                                      cwd=repository)
-    return hashlib.sha256(content).hexdigest()
-
-
-def audit():
-    panel = json.loads((ROOT / "tau3-sparse-panel.json").read_text())
-    fixture_path = ROOT / "tau3-sparse-inputs.json"
+def main():
+    panel = json.loads((ROOT / "tau3-radix27-panel.json").read_text())
+    fixture_path = ROOT / "tau3-radix27-inputs.json"
     fixture = json.loads(fixture_path.read_text())
-    assert panel["status"] == "prospective_sparse_operation_gate"
-    assert panel["protocol"] == "TAU3_SPARSE_HOT.md"
-    assert fixture["status"] == "frozen_tau3_sparse_disjoint_fixture"
-    assert panel["runner_sha256"] == sha256(ROOT / "check_tau3_sparse_panel.py")
+    assert panel["status"] == "prospective_radix27_operation_gate"
+    assert panel["protocol"] == "TAU3_RADIX27_PATH.md"
+    assert fixture["status"] == "frozen_tau3_radix27_disjoint_fixture"
+    assert panel["runner_sha256"] == sha256(ROOT / "check_tau3_radix27_panel.py")
     assert panel["arm_runner_sha256"] == sha256(ROOT / "check_tau3_atlas_panel.py")
     assert panel["fixture_sha256"] == sha256(fixture_path)
-    assert panel["bench_source_sha256"] == sparse_source_sha256(
-        "experiments/prime-j0-cost-aware-chain/bench.c")
-    assert panel["ec_tau_source_sha256"] == sparse_source_sha256("src/ec_tau.c")
-    assert panel["atlas_header_sha256"] == sha256(
-        ROOT.parents[1] / "src/generated/tau3_atlas.h")
-    assert panel["sparse_header_sha256"] == sha256(
-        ROOT.parents[1] / "src/generated/tau3_sparse.h")
+    assert panel["bench_source_sha256"] == sha256(ROOT / "bench.c")
+    assert panel["ec_tau_source_sha256"] == sha256(ROOT.parents[1] / "src/ec_tau.c")
+    assert panel["map_header_sha256"] == sha256(ROOT.parents[1] / "src/generated/tau3_radix27.h")
     assert panel["isolated_receipt"] is None and panel["cpu_timing_claim"] is None
     assert len(fixture["cases"]) == 8
-    assert len(panel["rows"]) == 24 and len(panel["pairs"]) == 8
+    assert len(panel["rows"]) == 16 and len(panel["pairs"]) == 8
     for index, (case, pair) in enumerate(zip(fixture["cases"], panel["pairs"])):
-        rows = panel["rows"][3 * index:3 * index + 3]
-        assert [row["mode"] for row in rows] == list(ORDERS[index % len(ORDERS)])
+        rows = panel["rows"][2 * index:2 * index + 2]
+        order = MODES if index % 2 == 0 else tuple(reversed(MODES))
+        assert [row["mode"] for row in rows] == list(order)
         assert all(row["case_id"] == case["id"] for row in rows)
         arms = {row["mode"]: row for row in rows}
         assert set(arms) == set(MODES)
@@ -70,8 +56,8 @@ def audit():
             assert row["verified"] == verified
         assert pair == pair_result(case, arms)
     gates = sum(pair["gate_pass"] for pair in panel["pairs"])
-    print(f"tau3 sparse panel audit: PASS (24 raw arms, {gates}/8 operation gates)")
+    print(f"tau3 radix-27 panel audit: PASS (16 raw arms, {gates}/8 operation gates)")
 
 
 if __name__ == "__main__":
-    audit()
+    main()

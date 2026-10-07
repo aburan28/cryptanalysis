@@ -343,3 +343,24 @@ Against compact width-four it saved 14.40% and 8.51% of online mixed
 additions, with point tables twice compact's size: 12,672 and 24,192 bytes.
 The compiled static maps add 45,550 bytes. Local timing did not establish a
 CPU win; controlled CPU speed and one-target rho impact remain unknown.
+
+The [direct radix-27 shortest-path recoder](TAU3_RADIX27_PATH.md) searches
+the 1–9 valid six-step actions in each of 729 coefficient residue classes
+for the minimum additions under the sparse table's fixed block budget.
+Python and native agree exactly on 32,768 older design scalars. A separate
+disjoint 32,768-scalar panel then passed all eight prospective operation
+gates: additions fell by 1.98% and 7.03% beyond the sparse recoder, with
+zero fallback and verified generic outputs. The native per-scalar search
+uses 53,312 bytes of scratch and had substantially higher exploratory local
+latency. This is an exact operation-bound result; no CPU speedup or academic
+novelty is claimed.
+
+The [scattered width-three pair table](TAU3_SCATTER_MATCHING.md) combines
+the complete six-step point table with selected nonadjacent three-step
+pairs. Exact matching on a new disjoint 32,768-scalar Python panel saved
+7.53% and 4.65% of mixed additions against the complete six-step table,
+with 1.82× and 2.00× its point slots. All scalar identities and 184 sampled
+group outputs passed. The native C replay matched all eight Python operation
+counts and all paired point digests with zero fallbacks. It charges an extra
+1,122 and 2,401 preparation additions for the selected pairs. Controlled
+CPU speed and one-target rho impact remain unknown.
