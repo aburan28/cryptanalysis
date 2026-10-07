@@ -116,3 +116,40 @@ measured PDP costs or an estimate of the complete N131 solve. Natural
 relation yield, novel rank, final sparse matrix cost, target descent, and
 independent scalar replay remain unmeasured. Consequently the complete
 N131 `2^x` remains `null`, and this result does not admit a challenge run.
+
+## Fixed pair schedule screen
+
+The separately [pre-registered design](design_pair_schedule_screen.json)
+extends Q1402's counting theorem to the exact R2 base and a full
+`K`-column log system. The [source](screen_fixed_pair_schedule_r2.py) was
+committed before the [result](fixed_pair_schedule_screen_r2.json). It gives
+a target-independent pair table every unordered pair of the `B` usable
+points, including repeats, for free. This generous cap is
+`M = B(B+1)/2 = 38,636,399,717,685,591,195` descriptors (`2^65.067`).
+
+One table descriptor and one target-side descriptor have at most `(2n)^2`
+signed-Frobenius oriented sums. If each nonidentity query target is uniform
+conditional on the table and its target-side pair schedule, expected
+oriented matches over all queries are at most
+`4n² M ΣRᵢ/(r−1)`. Novel rank cannot exceed the number of matches, so
+Markov's inequality bounds the chance of attaining rank `K` by that
+expectation divided by `K`. No independence among the query targets is
+needed beyond the stated conditional law.
+
+| Necessary condition with the free complete table | Target-side pair descriptors |
+| --- | ---: |
+| One query has at least 10% support | 25,660,800,930,709 (`2^44.545`) |
+| One query has at least 50% support | 128,304,004,653,541 (`2^46.867`) |
+| Full `K` rank with at least 95% probability | **8,179,106,149,496,453,502,880** total (`2^72.792`) |
+
+The screen requires the pair sweep itself to supply all `K` independent
+rows; pre-supplied logs or rows from another collector are outside it.
+The full-rank lower bound exceeds `2^61` by **11.792 bits** even when
+table construction, query generation, verification, final matrix solving,
+and descent cost zero. Its unit is one target-side pair descriptor
+inspection, not a calibrated field operation or wall time. It excludes the
+Q1488-style target-independent pair sweep from a sub-`2^61` **full-rank**
+collector if each inspection incurs at least one charged operation. It
+does not constrain target-adaptive algebraic decomposition, guided
+nonuniform queries, target-span early stopping, or a different base.
+The complete N131 solve estimate remains unknown.

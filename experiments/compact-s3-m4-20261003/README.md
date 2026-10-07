@@ -2385,7 +2385,13 @@ For uniform nonidentity targets, the necessary 95%-rank query count is at
 least 87,189,268 (`2^26.378`); even with all other costs zero, a sub-`2^61`
 solve would need average cost below `2^34.622` per query in a consistent
 charged unit. This is a necessary ceiling, not a measured PDP cost. Complete
-N131 work remains unknown.
+N131 work remains unknown. A second [fixed pair schedule
+screen](q1484_n131_window_base/fixed_pair_schedule_screen_r2.json) gives a
+Q1488-style target-independent pair table all `B(B+1)/2` point pairs for
+free. Under conditional uniform queries, full `K`-column rank with 95%
+probability still needs at least `2^72.792` target-side pair descriptor
+inspections, more than `2^61` by 11.792 bits in that unit. The screen does
+not bound target-adaptive algebraic PDP or early target-span recovery.
 
 ## Next goal
 
