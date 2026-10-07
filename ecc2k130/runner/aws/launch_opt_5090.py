@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-"""Launch one Runpod RTX 5090 on the prebuilt sigma-fused CUDA 13.3 client.
+"""DEPRECATED for fleet collection: ~5 B it/s sigma-fused 5090 kernel.
+
+Use ``launch_goal22_pro6000.py`` instead (~22 B it/s on RTX PRO 6000).
+This script refuses to run unless ``ECC_ALLOW_SLOW_OPT=1`` is set.
 
 Always requires a CUDA 13 host (Runpod filter ``allowedCudaVersions=["13.0"]``,
 which is the API's CUDA-13 bucket and means driver 580+). The opt binary is
 built with nvcc 13.3.73; hosts on driver 570 fail the boot gate and are
 deleted.
-
-Usage:
-  RUNPOD_API_KEY=… AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… \\
-    python3 ecc2k130/runner/aws/launch_opt_5090.py [--count 1] [--seconds-wait 300]
-
-Credentials may also be cloned from an existing campaign pod's env when
-``--from-pod ID`` is set (values are never printed).
 """
 from __future__ import annotations
 
@@ -223,6 +219,12 @@ def main() -> int:
     parser.add_argument("--max-attempts", type=int, default=30)
     parser.add_argument("--receipt", type=Path, default=None)
     args = parser.parse_args()
+    if os.environ.get("ECC_ALLOW_SLOW_OPT") != "1":
+        die(
+            "refusing sigma-fused ~5 B it/s launch; use "
+            "ecc2k130/runner/aws/launch_goal22_pro6000.py (~22 B). "
+            "Set ECC_ALLOW_SLOW_OPT=1 only for explicit slow-kernel tests."
+        )
     if "RUNPOD_API_KEY" not in os.environ:
         die("set RUNPOD_API_KEY")
     if not 1 <= args.count <= 4:

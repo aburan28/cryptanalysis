@@ -8,11 +8,14 @@ its 22.101 billion updates/sec measurement applies to a different walk and is
 not the production fleet's speed. See [SOURCE.md](SOURCE.md)
 for provenance and [ENGINE.md](ENGINE.md) for the archived engine notes.
 
-Production GPU builds and the prebuilt sigma-fused opt client always use
-**CUDA 13.3 or newer** (`deploy/Dockerfile` is `nvidia/cuda:13.3.1-devel`; the
-opt binary is nvcc 13.3.73). On Runpod, launch with
-`aws/launch_opt_5090.py`, which sets `allowedCudaVersions=["13.0"]` (Runpod's
-CUDA 13 family name) and rejects drivers below 580. Do not place opt workers on
+Production GPU builds and fleet clients always use **CUDA 13.3 or newer**
+(`deploy/Dockerfile` is `nvidia/cuda:13.3.1-devel`). For the measured
+~22 B it/s table-walk profile on RTX PRO 6000, launch with
+`aws/launch_goal22_pro6000.py` (`make gpu-rtx-pro6000-22b` / goal22;
+campaign `ecc2k130-table8-22b-v1`). That launcher sets
+`allowedCudaVersions=["13.0"]` (Runpod's CUDA 13 family name) and rejects
+drivers below 580. The older `aws/launch_opt_5090.py` sigma-fused path is
+~5 B it/s and is refused unless `ECC_ALLOW_SLOW_OPT=1`. Do not place workers on
 CUDA 12 / driver 570 hosts.
 
 For cloud collection, use **`cloud.py`**, **`modal_worker.py`**, and
