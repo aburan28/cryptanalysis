@@ -70,6 +70,54 @@ fn recode(mut a: BigInt, mut b: BigInt) -> Vec<Action> {
     actions
 }
 
+fn recode_zero_tau(mut a: BigInt, mut b: BigInt) -> Vec<Action> {
+    #[cfg(debug_assertions)]
+    let original = (a.clone(), b.clone());
+    let mut actions = Vec::new();
+    while !a.is_zero() || !b.is_zero() {
+        assert!(actions.len() < 512, "zero-tau expansion did not terminate");
+        let both_even = signed_residue(&a, 2) == 0 && signed_residue(&b, 2) == 0;
+        // A tau step has zero digit when a is divisible by three; prefer it
+        // to a double, allowing the existing tau-pair evaluator to fuse it.
+        if both_even && signed_residue(&a, 3) != 0 {
+            actions.push(Action { radix: Radix::Two, digit: None });
+            a /= 2;
+            b /= 2;
+        } else {
+            let digit = if signed_residue(&a, 3) == 0 {
+                None
+            } else {
+                let entry = DIGIT_TABLE[signed_residue(&a, 9)][signed_residue(&b, 9)]
+                    .expect("original width-four residue");
+                a -= entry.a;
+                b -= entry.b;
+                Some(entry)
+            };
+            assert_eq!(signed_residue(&a, 3), 0);
+            actions.push(Action { radix: Radix::Tau, digit });
+            (a, b) = (&a + &b, -a / 3);
+        }
+    }
+    assert!(actions.last().is_some_and(|action| action.digit.is_some()));
+    #[cfg(debug_assertions)]
+    {
+        let (mut x, mut y) = (BigInt::ZERO, BigInt::ZERO);
+        for action in actions.iter().rev() {
+            (x, y) = if action.radix == Radix::Two {
+                (2 * x, 2 * y)
+            } else {
+                (-3 * &y, &x + 3 * &y)
+            };
+            if let Some(digit) = action.digit {
+                x += digit.a;
+                y += digit.b;
+            }
+        }
+        assert_eq!((x, y), original);
+    }
+    actions
+}
+
 fn pair_count(actions: &[Action]) -> usize {
     let mut index = actions.len() as isize - 2;
     let mut count = 0;
@@ -155,6 +203,33 @@ pub(super) fn check_action_fingerprints(fixture_path: &str, fingerprint_path: &s
         let actions = recode(a, b);
         assert_eq!(row["actions"].as_u64(), Some(actions.len() as u64));
         assert_eq!(row["fnv64"].as_str(), Some(format!("{:016x}", action_fingerprint(&actions)).as_str()));
+    }
+    println!("{}", serde_json::json!({"verified": true, "fixture": name,
+        "action_stream_checks": cases.len(), "cpu_speedup_claim": null}));
+}
+
+pub(super) fn check_zero_tau_action_fingerprints(fixture_path: &str, fingerprint_path: &str) {
+    let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
+        .expect("fixture JSON");
+    let expected: Value = serde_json::from_slice(&fs::read(fingerprint_path).expect("fingerprints"))
+        .expect("fingerprint JSON");
+    let name = PathBuf::from(fixture_path).file_name().expect("fixture name")
+        .to_str().expect("UTF-8 name").to_owned();
+    let panel = expected["panels"].as_array().expect("panels").iter()
+        .find(|item| item["fixture"] == name).expect("matching panel");
+    let cases = fixture["cases"].as_array().expect("cases");
+    let rows = panel["rows"].as_array().expect("rows");
+    assert_eq!(cases.len(), rows.len());
+    LazyLock::force(&LATTICE);
+    LazyLock::force(&DIGIT_TABLE);
+    for (case, row) in cases.iter().zip(rows) {
+        assert_eq!(case["index"], row["index"]);
+        let scalar = big_from_hex(case["scalar_hex"].as_str().expect("scalar"));
+        let (a, b) = short_representative(&scalar);
+        let actions = recode_zero_tau(a, b);
+        assert_eq!(row["actions"].as_u64(), Some(actions.len() as u64));
+        assert_eq!(row["fnv64"].as_str(), Some(format!("{:016x}",
+            action_fingerprint(&actions)).as_str()));
     }
     println!("{}", serde_json::json!({"verified": true, "fixture": name,
         "action_stream_checks": cases.len(), "cpu_speedup_claim": null}));
@@ -332,6 +407,101 @@ pub(super) fn check_fixture(fixture_path: &str, seed_path: &str, score_path: &st
         "cpu_speedup_claim": null}));
 }
 
+pub(super) fn check_zero_tau_fixture(fixture_path: &str, seed_path: &str, score_path: &str) {
+    let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
+        .expect("fixture JSON");
+    let seed_fixture: Value = serde_json::from_slice(&fs::read(seed_path).expect("seed fixture"))
+        .expect("seed JSON");
+    let scores: Value = serde_json::from_slice(&fs::read(score_path).expect("scores"))
+        .expect("score JSON");
+    let name = PathBuf::from(fixture_path).file_name().expect("fixture name")
+        .to_str().expect("UTF-8 name").to_owned();
+    let panel = scores["panels"].as_array().expect("score panels").iter()
+        .find(|item| item["fixture"] == name).expect("matching score panel");
+    let cases = fixture["cases"].as_array().expect("cases");
+    let rows = panel["rows"].as_array().expect("score rows");
+    assert_eq!(cases.len(), rows.len());
+    assert_eq!(fixture["beta_hex"], seed_fixture["beta_hex"]);
+    let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
+    LazyLock::force(&LATTICE);
+    LazyLock::force(&DIGIT_TABLE);
+    LazyLock::force(&LINKED_DIGIT_TABLE);
+    let mut total = 0usize;
+    let mut zero_tau_choices = 0usize;
+    let mut seed_checks = 0usize;
+    let mut exceptional_adds = 0usize;
+    for (case, row) in cases.iter().zip(rows) {
+        assert_eq!(case["index"], row["index"]);
+        assert_eq!(row["status"].as_str(), Some("verified"));
+        let scalar = big_from_hex(case["scalar_hex"].as_str().expect("scalar"));
+        let (a, b) = short_representative(&scalar);
+        assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
+        assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
+        let actions = recode_zero_tau(a.clone(), b.clone());
+        let policy_cost = source_cost(&actions);
+        let selective = selective::recode(a, b);
+        let choose_policy = policy_cost < selective.total;
+        assert_eq!(row["policy_M_plus_S"].as_u64(), Some(policy_cost as u64));
+        assert_eq!(row["selective_M_plus_S"].as_u64(), Some(selective.total as u64));
+        assert_eq!(row["selected"].as_str(),
+            Some(if choose_policy { "zero_tau" } else { "selective" }));
+        let chosen_cost = if choose_policy { policy_cost } else { selective.total };
+        assert_eq!(row["selected_M_plus_S"].as_u64(), Some(chosen_cost as u64));
+        let x = case["base_x_hex"].as_str().expect("base x");
+        let y = case["base_y_hex"].as_str().expect("base y");
+        let base = J::affine(fe_from_hex(x), fe_from_hex(y));
+        let (point, exceptional) = if choose_policy {
+            zero_tau_choices += 1;
+            let seeds = prepare(base, beta);
+            for (seed, expected) in seeds.iter().zip(case["seed_affine"].as_array().expect("original seeds")) {
+                let (sx, sy) = seed.to_affine().expect("seed nonidentity");
+                assert_eq!(fe_hex(sx), expected[0].as_str().expect("seed x"));
+                assert_eq!(fe_hex(sy), expected[1].as_str().expect("seed y"));
+                seed_checks += 1;
+            }
+            let (point, counts) = evaluate(&actions, &seeds, beta);
+            let recount = 83 + 6 * counts.tau_steps + 7 * counts.doubles
+                - 2 * counts.tau_pairs + 11 * counts.mixed_adds
+                + 14 * counts.general_adds + 2 * counts.cache_entries;
+            assert_eq!(recount, policy_cost);
+            (point, counts.exceptional_cached_adds)
+        } else {
+            let seeds = selective::prepare(base, beta, selective.built_mask);
+            let expected = seed_row(&seed_fixture, &name, x, y);
+            for (index, seed) in seeds.iter().enumerate() {
+                if selective.built_mask & (1 << index) == 0 { continue; }
+                let (sx, sy) = seed.to_affine().expect("seed nonidentity");
+                assert_eq!(fe_hex(sx), expected["seeds"][index][0].as_str().expect("seed x"));
+                assert_eq!(fe_hex(sy), expected["seeds"][index][1].as_str().expect("seed y"));
+                seed_checks += 1;
+            }
+            let (point, counts) = evaluate_mode(&selective.digits, &seeds, beta, false, true);
+            let recount = selective.preparation + 10 * counts.tau_pairs
+                + 6 * (counts.tau_steps - 2 * counts.tau_pairs)
+                + 11 * counts.mixed_adds + 14 * counts.general_adds
+                + 2 * counts.cache_entries;
+            assert_eq!(recount, selective.total);
+            (point, counts.exceptional_cached_adds)
+        };
+        exceptional_adds += exceptional;
+        if case["expected_identity"].as_bool().unwrap_or(false) {
+            assert!(point.is_identity());
+        } else {
+            let (px, py) = point.to_affine().expect("scalar output");
+            assert_eq!(fe_hex(px), case["expected_x_hex"].as_str().expect("expected x"));
+            assert_eq!(fe_hex(py), case["expected_y_hex"].as_str().expect("expected y"));
+        }
+        total += chosen_cost;
+    }
+    assert_eq!(panel["selected_total"].as_u64(), Some(total as u64));
+    assert_eq!(panel["zero_tau_choices"].as_u64(), Some(zero_tau_choices as u64));
+    println!("{}", serde_json::json!({"verified": true, "fixture": name,
+        "cases": cases.len(), "zero_tau_choices": zero_tau_choices,
+        "output_checks": cases.len(), "seed_checks": seed_checks,
+        "selected_M_plus_S": total, "exceptional_cached_adds": exceptional_adds,
+        "cpu_speedup_claim": null}));
+}
+
 pub(super) fn benchmark_case(fixture_path: &str, index: usize, timed: bool) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
         .expect("fixture JSON");
@@ -382,5 +552,58 @@ pub(super) fn benchmark_case(fixture_path: &str, index: usize, timed: bool) {
         println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=mixed_radix arm={arm} source_M_plus_S={cost} exceptional_cached_adds={exceptional}");
     } else {
         println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=mixed_radix arm={arm} source_M_plus_S={cost} exceptional_cached_adds={exceptional}");
+    }
+}
+
+pub(super) fn benchmark_zero_tau_case(fixture_path: &str, index: usize, timed: bool) {
+    let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
+        .expect("fixture JSON");
+    let case = &fixture["cases"].as_array().expect("cases")[index];
+    let base_x = case["base_x_hex"].as_str().expect("base x");
+    let base_y = case["base_y_hex"].as_str().expect("base y");
+    let scalar_hex = case["scalar_hex"].as_str().expect("scalar");
+    let expected = if case["expected_identity"].as_bool().unwrap_or(false) {
+        "identity".to_owned()
+    } else {
+        format!("{}:{}", case["expected_x_hex"].as_str().expect("expected x"),
+                case["expected_y_hex"].as_str().expect("expected y"))
+    };
+    let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
+    LazyLock::force(&LATTICE);
+    LazyLock::force(&DIGIT_TABLE);
+    LazyLock::force(&LINKED_DIGIT_TABLE);
+    let start = Instant::now();
+    let scalar = big_from_hex(scalar_hex);
+    let base = J::affine(fe_from_hex(base_x), fe_from_hex(base_y));
+    let (a, b) = short_representative(&scalar);
+    let actions = recode_zero_tau(a.clone(), b.clone());
+    let policy_cost = source_cost(&actions);
+    let selective = selective::recode(a.clone(), b.clone());
+    let choose_policy = policy_cost < selective.total;
+    let (point, exceptional) = if choose_policy {
+        let seeds = prepare(base, beta);
+        let (point, counts) = evaluate(&actions, &seeds, beta);
+        (point, counts.exceptional_cached_adds)
+    } else {
+        let seeds = selective::prepare(base, beta, selective.built_mask);
+        let (point, counts) = evaluate_mode(&selective.digits, &seeds, beta, false, true);
+        (point, counts.exceptional_cached_adds)
+    };
+    let actual = match point.to_affine() {
+        None => "identity".to_owned(),
+        Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
+    };
+    assert_eq!(actual, expected, "benchmark output mismatch");
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    if !timed {
+        assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
+        assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
+    }
+    let arm = if choose_policy { "zero_tau" } else { "selective" };
+    let cost = if choose_policy { policy_cost } else { selective.total };
+    if timed {
+        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=zero_tau arm={arm} source_M_plus_S={cost} exceptional_cached_adds={exceptional}");
+    } else {
+        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=zero_tau arm={arm} source_M_plus_S={cost} exceptional_cached_adds={exceptional}");
     }
 }
