@@ -45,17 +45,17 @@ extern "C" __global__ void f4_gf2_decide_batch(const f4_u64 *terms, const f4_u32
 #define F4E_TOTAL ((f4_u64)gridDim.x * blockDim.x)
 
 extern "C" __global__ void f4e_gather(const f4_u64 *mat, f4_u64 stride, f4_u32 w, f4_u64 mask,
-                                      const f4_u32 *active, f4_u32 rows, f4_u32 *cand, f4_u64 *pw,
-                                      f4_u32 *count)
+                                      const f4_u32 *active, f4_u32 rows, f4_u64 *prow)
 {
-    f4e_gather_thread(F4E_GID, F4E_TOTAL, mat, stride, w, mask, active, rows, cand, pw, count);
+    f4e_gather_thread(F4E_GID, F4E_TOTAL, mat, stride, w, mask, active, rows, prow);
 }
 
-extern "C" __global__ void f4e_panel_block(const f4_u32 *cand, f4_u64 *pw, f4_u64 *coeff,
-                                           f4_u32 *is_piv, const f4_u32 *count, F4ePivots *piv)
+extern "C" __global__ void f4e_panel_block(const f4_u64 *prow, f4_u32 rows, f4_u32 *cand,
+                                           f4_u64 *pw, f4_u64 *coeff, f4_u32 *is_piv, f4_u32 *count,
+                                           F4ePivots *piv)
 {
     __shared__ F4ePanelShared sh;
-    f4e_panel(&sh, blockDim.x, cand, pw, coeff, is_piv, count, piv);
+    f4e_panel(&sh, blockDim.x, prow, rows, cand, pw, coeff, is_piv, count, piv);
 }
 
 extern "C" __global__ void f4e_materialise(f4_u64 *mat, f4_u64 stride, f4_u32 w, f4_u32 *active,

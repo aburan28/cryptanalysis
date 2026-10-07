@@ -829,7 +829,7 @@ mod cuda {
         pub blocks_per_sm: u32,
         /// Device scratch budget over all blocks, in bytes.
         pub scratch_budget: usize,
-        buffers: [Buffer; 19],
+        buffers: [Buffer; 20],
         /// `ECHELON_KERNELS`, when the module has them.
         echelon_fns: Option<[Handle; 5]>,
         /// With `F4_F2_ECHELON_PROFILE` set: launches and nanoseconds per
@@ -1124,6 +1124,7 @@ mod cuda {
             let mut ops = self.upload(16, &[0u64])?;
             let mut low = self.ensure(17, n * 16)?;
             let mut n_low = self.upload(18, &[0u32])?;
+            let mut prow = self.ensure(19, n * 8)?;
             let upload_ns = t_up.elapsed().as_nanos();
             let t_dev = std::time::Instant::now();
             let (mut stride64, mut rows32) = (stride as u64, rows as u32);
@@ -1148,12 +1149,12 @@ mod cuda {
                         &mut mask as *mut u64 as *mut c_void,
                         &mut active as *mut u64 as *mut c_void,
                         &mut rows32 as *mut u32 as *mut c_void,
-                        &mut cand as *mut u64 as *mut c_void,
-                        &mut pw as *mut u64 as *mut c_void,
-                        &mut count as *mut u64 as *mut c_void,
+                        &mut prow as *mut u64 as *mut c_void,
                     ];
                     self.launch(fns[0], row_grid, 256, &mut p, "f4e_gather")?;
                     let mut p = [
+                        &mut prow as *mut u64 as *mut c_void,
+                        &mut rows32 as *mut u32 as *mut c_void,
                         &mut cand as *mut u64 as *mut c_void,
                         &mut pw as *mut u64 as *mut c_void,
                         &mut coeff as *mut u64 as *mut c_void,
@@ -1856,8 +1857,8 @@ mod tests {
             (300, 129, 40),
             (200, 190, 2),
             (500, 300, 65),
-            // Panels of more candidates than the panel step stages in
-            // shared memory.
+            // Panels whose pivot search runs past many chunks of
+            // candidates.
             (2500, 70, 10),
         ] {
             let cols = low_start + width;

@@ -48,6 +48,7 @@ int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_s
     if (threads == 0u || threads > F4_MAX_THREADS || width > 128u) return -1;
     const f4_u32 hw = (low_start + 63u) / 64u;
     const f4_u64 n = rows ? rows : 1u;
+    f4_u64 *prow = (f4_u64 *)calloc(n, sizeof(f4_u64));
     f4_u32 *cand = (f4_u32 *)calloc(n, sizeof(f4_u32));
     f4_u64 *pw = (f4_u64 *)calloc(n, sizeof(f4_u64));
     f4_u64 *coeff = (f4_u64 *)calloc(n, sizeof(f4_u64));
@@ -57,7 +58,7 @@ int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_s
     F4ePanelShared *sh = (F4ePanelShared *)calloc(1, sizeof(F4ePanelShared));
     F4eUpdateShared *ush = (F4eUpdateShared *)calloc(1, sizeof(F4eUpdateShared));
     int rc = 0;
-    if (!cand || !pw || !coeff || !is_piv || !counts || !piv || !sh || !ush) {
+    if (!prow || !cand || !pw || !coeff || !is_piv || !counts || !piv || !sh || !ush) {
         rc = -2;
         goto done;
     }
@@ -66,8 +67,8 @@ int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_s
     for (f4_u32 w = 0; w < hw; ++w) {
         const f4_u32 high = low_start - 64u * w;
         const f4_u64 mask = high >= 64u ? ~0ull : ((1ull << high) - 1ull);
-        f4e_gather_thread(0u, 1u, mat, stride, w, mask, active, rows, cand, pw, counts + w);
-        f4e_panel(sh, threads, cand, pw, coeff, is_piv, counts + w, piv);
+        f4e_gather_thread(0u, 1u, mat, stride, w, mask, active, rows, prow);
+        f4e_panel(sh, threads, prow, rows, cand, pw, coeff, is_piv, counts + w, piv);
         f4e_materialise_thread(0u, 1u, mat, stride, w, active, piv, ops);
         const f4_u64 tiles = (stride - w + F4E_TILE - 1u) / F4E_TILE;
         for (f4_u64 block = 0; block < 2u * tiles; ++block)
@@ -77,6 +78,7 @@ int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_s
     f4e_low_thread(0u, 1u, mat, stride, low_start, width, active, rows, low, n_low);
     *pivots = piv->total;
 done:
+    free(prow);
     free(cand);
     free(pw);
     free(coeff);
