@@ -87,7 +87,7 @@ def main():
     files = [HERE / name for name in (
         "Cargo.toml", "Cargo.lock", "src/main.rs", "src/selective.rs",
         "SELECTIVE_NATIVE_PROTOCOL.md", "SELECTIVE_MIXED_PROTOCOL.md",
-        "SELECTIVE_MIXED_RESULT.md", "selective_mixed_atlas.py",
+        "selective_mixed_atlas.py",
         "mixed_atlas_screen.py", "selective-mixed-result.json",
         "selective-seed-fixture.json", "selective-runtime-info.json",
         "selective-sage-replay.json", "make_selective_fixture.py",
