@@ -37,8 +37,8 @@ static int load_pairs(const char *path, scalar_pair pairs[PAIRS])
 int main(int argc, char **argv)
 {
     if (argc != 4 || (strcmp(argv[1], "generic") && strcmp(argv[1], "split") &&
-                       strcmp(argv[1], "joint"))) {
-        fputs("usage: ca_joint_tau_bench generic|split|joint glv-j0-32|j0-56 pairs.bin\n", stderr);
+                       strcmp(argv[1], "joint") && strcmp(argv[1], "orbit"))) {
+        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit glv-j0-32|j0-56 pairs.bin\n", stderr);
         return 2;
     }
     int large = strcmp(argv[2], "j0-56") == 0;
@@ -73,12 +73,15 @@ int main(int argc, char **argv)
     ca_group_mul(&g, &partner, &base, 37, NULL);
 
     int mode = strcmp(argv[1], "generic") == 0 ? 0 :
-               strcmp(argv[1], "split") == 0 ? 1 : 2;
+               strcmp(argv[1], "split") == 0 ? 1 :
+               strcmp(argv[1], "joint") == 0 ? 2 : 3;
     ca_tau4_joint_precomp pre;
+    ca_tau4_orbit_precomp orbit;
     ca_tau4_joint_counts prep = {0};
     double prepare_start = ca_now();
-    if (mode &&
-        !ca_ec_tau4_joint_prepare(&g, &base, &partner, &pre, &prep)) {
+    if (mode == 3 ?
+        !ca_ec_tau4_orbit_prepare(&g, &base, &partner, &orbit, &prep) :
+        mode && !ca_ec_tau4_joint_prepare(&g, &base, &partner, &pre, &prep)) {
         fputs("joint preparation failed\n", stderr);
         return 2;
     }
@@ -95,9 +98,12 @@ int main(int argc, char **argv)
             ca_group_op(&g, &outputs[i], &left, &right);
         } else {
             ca_tau4_joint_counts one = {0};
-            if (!ca_ec_tau4_joint_mul_profile(&g, &pre, &outputs[i], pairs[i].a,
-                                               pairs[i].b, mode == 2,
-                                               &one)) {
+            int ok = mode == 3
+                ? ca_ec_tau4_orbit_mul_profile(&g, &orbit, &outputs[i],
+                                               pairs[i].a, pairs[i].b, &one)
+                : ca_ec_tau4_joint_mul_profile(&g, &pre, &outputs[i], pairs[i].a,
+                                                pairs[i].b, mode == 2, &one);
+            if (!ok) {
                 fprintf(stderr, "evaluation failed at pair %zu\n", i);
                 return 1;
             }
@@ -107,6 +113,8 @@ int main(int argc, char **argv)
             total.full_adds += one.full_adds;
             total.rotations += one.rotations;
             total.inversions += one.inversions;
+            total.overlaps += one.overlaps;
+            total.fused_hits += one.fused_hits;
         }
     }
     double online_ms = 1000.0 * (ca_now() - start);
@@ -135,15 +143,19 @@ int main(int argc, char **argv)
            " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
            " precomp_bytes=%zu prep_ms=%.6f online_ms=%.6f verify_ms=%.6f"
            " prep_tau=%" PRIu64 " prep_doubles=%" PRIu64
-           " prep_mixed_adds=%" PRIu64 " prep_inversions=%" PRIu64
+           " prep_mixed_adds=%" PRIu64 " prep_rotations=%" PRIu64
+           " prep_inversions=%" PRIu64
            " tau_steps=%" PRIu64 " doubles=%" PRIu64
            " mixed_adds=%" PRIu64 " full_adds=%" PRIu64
            " rotations=%" PRIu64 " output_inversions=%" PRIu64
+           " overlaps=%" PRIu64 " fused_hits=%" PRIu64
            " verified=1\n",
            argv[1], argv[2], PAIRS, words[0], words[1],
            partner_words[0], partner_words[1], input_digest, output_digest,
-           sizeof(pre), prep_ms, online_ms, verify_ms, prep.tau_steps, prep.doubles,
-           prep.mixed_adds, prep.inversions, total.tau_steps, total.doubles,
-           total.mixed_adds, total.full_adds, total.rotations, total.inversions);
+           mode == 3 ? sizeof(orbit) : sizeof(pre),
+           prep_ms, online_ms, verify_ms, prep.tau_steps, prep.doubles,
+           prep.mixed_adds, prep.rotations, prep.inversions,
+           total.tau_steps, total.doubles, total.mixed_adds, total.full_adds,
+           total.rotations, total.inversions, total.overlaps, total.fused_hits);
     return 0;
 }
