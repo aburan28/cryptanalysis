@@ -420,3 +420,12 @@ saves a mixed point addition. On a new disjoint fixture it saved 3,867 of
 had too little slack for a material gain. The candidate requires an extra
 online recode, so a controlled host measurement is still needed to learn
 whether it runs faster.
+
+The [unit-closed hexagonal pair-table experiment](JOINT_PAIR_HEX.md) groups
+adjacent radix-16 Eisenstein digits under one six-unit orbit point. On a
+new disjoint 32,768-scalar fixture, it reduced online table additions by
+40.48% on `glv-j0-32` and 42.71% on `j0-56`, with exact scalar replay in
+release and UBSan builds. Its prepared tables grow to 708 KB and 1.42 MB,
+and its extra preparation additions exceed the online savings in each
+4,096-scalar case. An isolated host measurement and a workload with enough
+reuse per base are needed before calling it faster.

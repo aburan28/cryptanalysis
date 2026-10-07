@@ -98,6 +98,29 @@ int ca_ec_joint_window4_zero_mul_profile(const ca_group *g, const ca_joint_windo
                                          uint64_t *candidate_selected);
 void ca_ec_joint_window4_clear(ca_joint_window4_precomp *pre);
 
+/* Unit-closed Eisenstein digits, grouped two radix-16 windows at a time.
+ * This public-scalar mode uses one packed affine point per pair orbit. */
+typedef struct ca_joint_pair_precomp {
+    const ca_group *g;
+    ca_elem base_point;
+    ca_joint_window4_plane_point *plane_point;
+    uint64_t beta, beta2;
+    __int128 v1x, v1y, v2x, v2y, det;
+    unsigned pairs;
+    int identity;
+} ca_joint_pair_precomp;
+size_t ca_ec_joint_pair_static_bytes(void);
+size_t ca_ec_joint_pair_point_entries(const ca_group *g);
+int ca_ec_joint_pair_verify_map(void);
+int ca_ec_joint_pair_prepare(const ca_group *g, const ca_elem *point, ca_joint_pair_precomp *out,
+                             uint64_t *doubles, uint64_t *adds, uint64_t *inversions,
+                             uint64_t *plane_muls);
+int ca_ec_joint_pair_prepare_verify(const ca_joint_pair_precomp *pre);
+int ca_ec_joint_pair_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre, ca_elem *out,
+                                 uint64_t k, uint64_t *adds, uint64_t *unit_adds,
+                                 uint64_t *fallbacks);
+void ca_ec_joint_pair_clear(ca_joint_pair_precomp *pre);
+
 /* Per-point width-4 table for repeated scalar multiplications within one rho
  * solve.  It is private to the C implementation and tied to its group. */
 typedef struct ca_tau4_digit {
