@@ -371,33 +371,41 @@ the polynomial basis, its long runs of squarings read from nibble tables of
 x -> x^(2^k).  The backward pass of the batched inversion folds each lane's
 point addition in where its lambda is produced, one group behind it so the
 addition waits on nothing, and the additions no longer make a second pass
-over the batch's 48 KB of state.  The vector path takes 2048 lanes per
-inversion by default: the batch's fixed cost (the inversion, now 0.4 ns a
-lane amortised) shows against a shorter lane step, and that much state still
-sits in a core's L2; 1024 and 4096 both measured 2% slower.
+over the batch's 48 KB of state.  The vector path takes 4096 lanes per
+inversion by default: the batch's fixed cost (the inversion and each pass's
+run-up and drain, under a microsecond together) shows against a lane step of
+13 ns, and 540 KB of state, two batches a worker, still sits in a core's
+L2.  2048 was the default while the inversion was scalar and the step
+longer, when 1024 and 4096 both measured 2% slower; with the step as it is
+now 4096 measured 1.4% over 2048 on one worker and 3 to 5% on four, over
+sixteen interleaved runs, and 8192 (whose two batches a worker overrun a
+2 MB L2) the same as 4096.
 
 Measured on a 4-vCPU Sapphire Rapids VM (AVX-512, VPCLMULQDQ, VPOPCNTDQ;
 gcc 13; `bench --steps 2048 --launches 6`, the binaries interleaved, median of
-six, 2048 lanes per inversion).  It is an uncontrolled cloud host whose clock
-drifts across a session -- the same binaries ran about 30% slower in a louder
-phase, with the same ratios -- so these figures are exploratory, not a promoted
-speedup; the repository's CPU performance isolation gate applies.
+six, each binary at its default batch: 512 lanes per inversion on the scalar
+path, 2048 on the vector path and 4096 in the last row).  It is an
+uncontrolled cloud host whose clock drifts across a session -- the same
+binaries ran about 30% slower in a louder phase, with the same ratios -- so
+these figures are exploratory, not a promoted speedup; the repository's CPU
+performance isolation gate applies.
 
 | | M it/s, one worker | M it/s, four workers |
 |---|---:|---:|
-| scalar path (`-DECC_F131_LANES=1`) | 9.5 | 35.6 |
-| vector products, squaring and conversion, N = 8 lanes at a time | 44.8 | 171.4 |
-| + table-form selection, vector tags and addend, fused addition | 72.1 | 274.2 |
-| + the inversion in vector lanes, the selection's tables a limb an array | 73.7 | 281.5 |
-| + 3-bit limbs by permutes, the addend by row loads, the forward pass in the selection's loop | 76.5 | 286.3 |
+| scalar path (`-DECC_F131_LANES=1`) | 9.6 | 36.5 |
+| vector products, squaring and conversion, N = 8 lanes at a time | 45.2 | 171.8 |
+| + table-form selection, vector tags and addend, fused addition | 72.2 | 277.6 |
+| + the inversion in vector lanes, the selection's tables a limb an array | 74.5 | 283.0 |
+| + 3-bit limbs by permutes, the addend by row loads, the forward pass in the selection's loop | 76.8 | 293.1 |
+| + 4096 lanes per inversion | 78.2 | 300.4 |
 
 The bench's clock used to start before the lanes were seeded, and a start
 point is 64 point additions with an inversion apiece, 50 us a lane: a fifth
 of a second over 4,096 lanes that an earlier version of this table counted
 as walking (53 M it/s on one worker for the third row, 39 for the second).
 `ec2k-cpu` now seeds the lanes before `cmdRun` starts its clock, and every
-row above was re-measured with that fix in each binary, all five in one
-session (a quieter one had the fourth row at 74.4 and 290.1).
+row above was re-measured with that fix in each binary, all six in one
+session (a louder one had the fifth row at 76.5 and 286.3).
 
 The third row is a 1.6x gain over the vector baseline, in one worker and in
 four, from the table-form selection, the tag and addend vectorised in the
@@ -439,7 +447,9 @@ and clang 18 for gcc 13.  The representation itself was costed and not
 tried: in the palindromic form of the normal basis a squaring is a bit
 spread and the conversion and the sign row go away, but a product is then
 two 131-bit products and two 262-bit mirrors, about 107 uops against 82,
-and there are five of those a step to one squaring.
+and there are five of those a step to one squaring.  The sixth row is
+the default batch, 4096 lanes per inversion for 2048, as above: the same
+step with its fixed cost over twice the lanes.
 
 The reports of a run do not depend on the batch size or the worker count,
 which `src/cputest.cpp` checks along with: the multiplier against a
