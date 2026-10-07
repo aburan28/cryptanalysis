@@ -1,0 +1,60 @@
+{
+  "kind": "q1487_pre_registered_inverse_s3_partner_stage_design",
+  "proposal_id": "Q1487",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "claim_scope": "Test exact inverse-S3 partner support on Q1481's full cyclic-window factor bases and Q1482's frozen public points. The first solver gate is a fully unpinned known-satisfiable N83 four-point relation; only an independently verified ordinary N83 relation supplies a successful ordinary PDP-stage cost. This is not a complete IC solve or N131 2^x.",
+  "parent_inputs": "Q1482 byte-identical six CNFs, target-preimage lists, public points and planted fixtures; Q1486's byte-identical window-selector sidecars and exact Q1481 N53/N83 bases",
+  "instances": {
+    "53": {
+      "curve_id": "EC1N53Ckb1hf77aab617904",
+      "nominal_window_dimension_d": 14,
+      "actual_usable_B": 430360,
+      "folded_K": 4060,
+      "enumerated_set_sha256": "42e746657e39ea4d07aafc873110339e314cd685b3bd8493eb3c60aed1354ba5"
+    },
+    "83": {
+      "curve_id": "EC1N83Ckb1h876c2921cb64",
+      "nominal_window_dimension_d": 23,
+      "actual_usable_B": 348006384,
+      "folded_K": 2096424,
+      "enumerated_set_sha256": "f2d7771988cbd03fa4ea3145fc3870e5a3fc44171b9a57165257f016cdeb19d4"
+    }
+  },
+  "point_decomposition": {
+    "m": 4,
+    "stage_code": "PDP4hybrid",
+    "chain": "balanced three-S3 chain, unchanged Q1482 CNF",
+    "solver_family": "CaDiCaL plus exact inverse-S3 partner support over cyclic-window leaf domains",
+    "theory_delta": "For a fixed nonzero midpoint u and one nonzero leaf x, compute the at-most-two roots y of S3(x,y,u)=0 by the existing exact batched root kernel, then test each y against the other leaf's full partial cyclic-window domain without enumerating that domain. For u=0, test the unique partner y=1/x. Scan the smaller leaf domain as the anchor, up to 4096 actual distinct x values. Derive the first midpoint roots from the fixed second midpoint and target x, and apply the same partner oracle on both leaf pairs. Guard an unsupported-state clause by the assigned target selector, both midpoint rows, all assigned leaf coordinates and window selectors. Preserve Q1482 CNF and the inherited exact root/model checks; omit Q1486's bounded left/right pair-domain enumeration in this variant.",
+    "soundness_basis": "S3 is symmetric in its three x variables. For fixed nonzero x and u, solving S3(x,u,y)=0 returns every possible y in the full field; intersecting those roots with the other leaf's exact existential cyclic-window completion rule is equivalent to exhaustive pair enumeration. When u=0 and x is nonzero, S3(x,y,0)=0 exactly when y=1/x. A guarded rejection therefore excludes no valid completion of the current SAT trail.",
+    "decision_order": "target selector; one positive cyclic-window selector per leaf; second midpoint; coordinates of one anchor leaf per pair until each has at most 4096 distinct nonzero completions; remaining coordinates and first midpoint",
+    "anchor_option_cap": 4096,
+    "solver_wall_cap_seconds": 60,
+    "external_process_safeguard_seconds": 75,
+    "solver_conflict_cap": 1000000
+  },
+  "run_order": [
+    "n53_planted_pinned",
+    "n83_planted_pinned",
+    "n53_planted_unpinned",
+    "n83_planted_unpinned",
+    "n53_ordinary",
+    "n83_ordinary"
+  ],
+  "controls": [
+    "Exhaustively compare the inverse-partner oracle to direct S3 pair enumeration over a small binary field for partial affine windows, assigned selector states, zero and nonzero midpoints, and nonzero leaves.",
+    "Compare native inverse-partner support to direct S3 enumeration on deterministic N53/N83 partial domains, including a large unrestricted partner domain.",
+    "Both pinned N53/N83 public-point controls must independently replay as four-distinct-column relations."
+  ],
+  "success_gates": [
+    "Commit this design and open its stacked PR before implementing or running the variant.",
+    "Freeze source, binary, checked Sage runtime, exact input and sidecar hashes, limits, small-field and native equivalence controls, and PS1 stage IDs before the six runs.",
+    "Archive all six statuses, including failures and timeouts, with anchor counts, inverse root calls, membership checks, SAT operations, field arithmetic, stage wall intervals, peak RSS and independent public-point replay.",
+    "A planted success is a correctness control. Only a verified ordinary N83 relation supports a successful N83 PDP-stage cost; a frozen ordinary panel is still needed for yield and rank.",
+    "Keep complete N131 2^x null and the challenge gate closed until all IC phases are charged in one named unit."
+  ],
+  "complete_n131_log2_work": null,
+  "challenge_run_admitted": false
+}
