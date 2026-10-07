@@ -2231,6 +2231,17 @@ multiplications, respectively, and hundreds of partial states still exceed
 the new cap. No N83 successful-solve cost, natural useful-row yield, or
 complete N131 `2^x` follows.
 
+### Q1472 exact SAT propagation meter
+
+[Q1472](q1472_sat_work_meter/README.md) adds only CaDiCaL's exact
+propagation counter to the native chained-\(S_3\) solver and reruns all six
+matched Q1467 N53/N83 cells. Both pinned controls independently verify;
+the four unpinned and ordinary cells censor again. The ordinary N53/N83
+queries make 297,449,277 / 315,503,020 SAT propagations before their
+60-second caps, alongside separately recorded field primitive calls.
+These are censored-stage operation counts in different units. They do not
+measure successful unpinned N83 work or produce a complete N131 `2^x`.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
