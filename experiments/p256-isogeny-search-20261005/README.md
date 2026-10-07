@@ -427,6 +427,12 @@ This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
 enumeration. The exact class-group job remained active after more than 15.4
 hours with no result file at this checkpoint.
 
+Registries that would exceed GitHub's single-blob limit are frozen with
+[`scripts/freeze_large_json.py`](scripts/freeze_large_json.py). It emits a
+deterministic level-9 gzip archive plus a manifest binding both compressed and
+uncompressed byte counts and SHA-256 hashes. Its verifier can replay the gzip
+bytes or materialize the exact original JSON for Sage and native benchmarking.
+
 ## Full-registry normalized-coefficient audit
 
 The complete 2,226-curve retained union was reconstructed from fourteen frozen
