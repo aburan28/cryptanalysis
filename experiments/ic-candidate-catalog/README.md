@@ -191,6 +191,27 @@ subgroup-point recognition and m5 PDP/rank costs remain unmeasured. The
 unchanged W24 quotient is deprioritized;
 the orbit-closed W24/m5 policy remains a `candidate_id: null` proposal,
 separate from both the original W24/m6 and W28/m5 policies.
+The [normal-basis barrel gate](../ecc2k130-w24-normal-barrel-20261006/RESULT.md)
+now supplies a checked 8-layer exponent-selector circuit and both full
+conversion matrices for that implicit W24/m5 proposal. Its 120 round trips
+and 1,200 Frobenius rotations pass independent Sage replay, but the five-leaf
+front end alone costs 5,240 muxes and 49,115 direct conversion XORs. The
+exponent-range constraint and complete Boolean/Semaev solver remain absent;
+there is no ordinary PDP yield or target-online result.
+The [unknown-witness orbit-closed W24/m5 SAT gate](../ecc2k130-orbit-w24-m5-sat-20261006/RESULT.md)
+then built a complete 142,303-variable native-XOR formula from five hidden
+seed masks and exponents. The frozen planted target's known witness satisfies
+every archived clause and XOR row, but CryptoMiniSat returned
+`INDETERMINATE` after 100,001 conflicts without a model. The ordinary
+single-target gate remained closed. This is a bounded failure of that SAT
+encoding, not a natural-yield estimate or a no-go for other PDP methods.
+The [first-leaf Frobenius-gauge follow-up](../ecc2k130-orbit-w24-m5-gauge-20261006/RESULT.md)
+added exactly eight unit clauses to the byte-matched parent XCNF. An
+independent row check confirms the archived planted witness still satisfies
+the formula, yet CryptoMiniSat recovered no unknown witness at either
+100,000 or 2,000,000 conflicts. The ordinary-query gate therefore remains
+closed; prioritize a structurally different, bounded implicit PDP screen
+over further expansion of this exact SAT encoding.
 
 The [preregistered cold full-rank one-target control](../ecc2k130-cold-fullrank-20261006/RESULT.md)
 assigns canonical `IC1`/workload/run IDs to independently replayed n37 and n41
