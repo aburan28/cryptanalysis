@@ -22,13 +22,13 @@ mismatch. The full compiler, OS, source/fixture/binary hashes, build
 command, raw stdout/stderr, exit codes, and replay summary are in
 `native-replay-result.json`.
 
-This verifies the **native point path on these nonzero cases**. Sage
-still supplies the short `a+bτ` representative and digit stream, so
-the binary does not yet implement the complete scalar-input method.
-`EDGE_RESULT.md` separately verifies zero and order-boundary outputs.
+This historical receipt verifies the **native point path on these
+nonzero cases**. `EDGE_RESULT.md` separately verifies zero and
+order-boundary outputs. `FULL_NATIVE_RESULT.md` records the subsequent
+native scalar reduction and recoder, checked on 350 scalar inputs.
 Exceptional-addition and secret-scalar safety controls still need
 coverage before production use. The local
 host has no isolation receipt; no native CPU speedup was measured or
-claimed. A full native recoder, stronger baselines, isolated timing,
-and independent prior-art review remain required for the research
+claimed. Stronger baselines, isolated timing, and independent prior-art
+review remain required for the research
 goal. `cpu_speedup_claim` and `academic_novelty_claim` are `null`.
