@@ -215,6 +215,7 @@ typedef struct ca_tau4_joint_precomp {
 typedef struct ca_tau4_joint_counts {
     uint64_t tau_steps, doubles, mixed_adds, full_adds, rotations, inversions;
     uint64_t overlaps, fused_hits;
+    uint64_t recode_attempts, pair_scores, selected_changed, lattice_points_checked;
 } ca_tau4_joint_counts;
 
 int ca_ec_tau4_joint_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
@@ -222,6 +223,18 @@ int ca_ec_tau4_joint_prepare(const ca_group *g, const ca_elem *p, const ca_elem 
 int ca_ec_tau4_joint_mul_profile(const ca_group *g, const ca_tau4_joint_precomp *pre,
                                   ca_elem *out, uint64_t a, uint64_t b, int joint,
                                   ca_tau4_joint_counts *counts);
+int ca_ec_tau4_paired_lattice_mul_profile(const ca_group *g,
+                                           const ca_tau4_joint_precomp *pre,
+                                           ca_elem *out, uint64_t a, uint64_t b,
+                                           ca_tau4_joint_counts *counts);
+int ca_ec_tau4_paired_five_mul_profile(const ca_group *g,
+                                        const ca_tau4_joint_precomp *pre,
+                                        ca_elem *out, uint64_t a, uint64_t b,
+                                        ca_tau4_joint_counts *counts);
+int ca_ec_tau4_paired_two_mul_profile(const ca_group *g,
+                                       const ca_tau4_joint_precomp *pre,
+                                       ca_elem *out, uint64_t a, uint64_t b,
+                                       ca_tau4_joint_counts *counts);
 
 /* Relative-unit orbit table: 9 P seeds x 9 Q seeds x 6 unit ratios. The
  * entire table is target-dependent if Q is the rho target. */

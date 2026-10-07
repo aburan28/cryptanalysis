@@ -9,7 +9,7 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
                        const ca_elem *p, const ca_elem *q, uint64_t a, uint64_t b,
                        uint64_t *saved_tau, uint64_t *saved_full)
 {
-    ca_elem ap, bq, expected, separate, joint, fused;
+    ca_elem ap, bq, expected, separate, joint, fused, paired, paired_five, paired_two;
     ca_group_mul(g, &ap, p, a % g->order, NULL);
     ca_group_mul(g, &bq, q, b % g->order, NULL);
     ca_group_op(g, &expected, &ap, &bq);
@@ -18,6 +18,22 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
     CHECK(ca_ec_tau4_joint_mul_profile(g, pre, &joint, a, b, 1, &one));
     CHECK(ca_group_equal(g, &separate, &expected));
     CHECK(ca_group_equal(g, &joint, &expected));
+    ca_tau4_joint_counts paired_cost = {0};
+    CHECK(ca_ec_tau4_paired_lattice_mul_profile(g, pre, &paired, a, b, &paired_cost));
+    CHECK(ca_group_equal(g, &paired, &expected));
+    CHECK(paired_cost.recode_attempts <= 50);
+    CHECK(paired_cost.pair_scores <= 625);
+    CHECK(paired_cost.selected_changed <= 1);
+    ca_tau4_joint_counts five_cost = {0};
+    CHECK(ca_ec_tau4_paired_five_mul_profile(g, pre, &paired_five, a, b, &five_cost));
+    CHECK(ca_group_equal(g, &paired_five, &expected));
+    CHECK(five_cost.recode_attempts <= 10);
+    CHECK(five_cost.pair_scores <= 25);
+    ca_tau4_joint_counts two_cost = {0};
+    CHECK(ca_ec_tau4_paired_two_mul_profile(g, pre, &paired_two, a, b, &two_cost));
+    CHECK(ca_group_equal(g, &paired_two, &expected));
+    CHECK(two_cost.recode_attempts <= 4);
+    CHECK(two_cost.pair_scores <= 4);
     if (orbit) {
         ca_tau4_joint_counts combined = {0};
         CHECK(ca_ec_tau4_orbit_mul_profile(g, orbit, &fused, a, b, &combined));

@@ -28,6 +28,27 @@ then enumeration order. The chosen streams enter exactly the same prepared
 Count the extra scalar reductions/recodings and all scored pairs; do not
 hide their work in a point-operation claim.
 
+## Development refinement, frozen before held-out generation
+
+An exploratory run on the old PR #419 fixture showed that 25 neighbors per
+scalar save point work but spend heavily on recoding. Before making the new
+held-out fixture, add two explicitly named constrained searches with the
+same score and prepared points:
+
+- `paired5`: rounded lattice center and four axial neighbors. Recode all
+  five representatives per nonzero scalar and score all pairs.
+- `paired2`: inspect the coordinate L1 lengths of those five axial choices;
+  recode only the best two per nonzero scalar and score at most four pairs.
+  Ties use the fixed axial order `(-1,0),(0,-1),(0,0),(0,1),(1,0)`.
+
+All three use the existing four-decision τ residue atlas, whose output is
+checked against the canonical digit generator. The `paired` arm retains
+the original 25-by-25 search. The three searches are an adaptive design
+family motivated by old-fixture development, so they require a **new**
+held-out fixture for evaluation. Do not use old-fixture local wall times
+as a result. The held-out paired order is `joint, paired2, paired5,
+paired, paired, paired5, paired2, joint` on each curve.
+
 ## Gates
 
 Test exact `aP+bQ` versus the generic group operation and existing joint
@@ -42,6 +63,8 @@ rotations, output inversions and exact replay.
 The evaluation question is whether lower point work survives the recoding
 overhead; report both. Local CPU wall time is exploratory without the
 host-level isolation receipt. This is an opt-in research candidate, not
-automatic rho routing or a claim of academic novelty. Joint τ recoding
-has prior work on binary Koblitz curves, and cost-aware lattice-rep
-selection already exists elsewhere in this repository for single scalars.
+automatic rho routing or a claim of academic novelty.
+[Joint τ recoding on binary Koblitz curves](https://arxiv.org/abs/1801.08589)
+and [endomorphism lattice decomposition](https://arxiv.org/abs/1310.5250)
+have prior work; cost-aware lattice-rep selection already exists elsewhere
+in this repository for single scalars.
