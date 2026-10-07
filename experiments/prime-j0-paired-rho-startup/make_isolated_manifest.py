@@ -28,7 +28,7 @@ def main():
         parser.error("binary and workdir must exist on the benchmark host")
     if not 1 <= args.repetitions <= 1000 or not 0 < args.timeout_s <= 86400:
         parser.error("repetitions or timeout outside isolated runner limits")
-    if args.binary.parent.joinpath("CMakeCache.txt").is_file() is False:
+    if not args.binary.parent.joinpath("CMakeCache.txt").is_file():
         parser.error("binary build directory must contain CMakeCache.txt")
 
     root = args.workdir
@@ -41,6 +41,7 @@ def main():
     point_and_seed = [str(fixture[key]) for key in
                       ("target_x", "target_y", "rho_seed")]
     sources = [root / "CMakeLists.txt", root / "AGENTS.md",
+               root / "docs/ISOLATED_BENCHMARKS.md", root / "tests/test_curve.c",
                root / "scripts/isolated_bench.py",
                args.binary.parent / "CMakeCache.txt"]
     for location in (root / "src", root / "include/cryptanalysis", folder):
