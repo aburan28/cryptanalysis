@@ -199,6 +199,26 @@ class CpuEngine
     int batch() const { return batch_; }
     int chunks() const { return chunks_; }
 
+    // Seed every batch that has not been seeded, the workers a batch each.  A
+    // launch seeds the batches it finds unseeded itself, so this is optional;
+    // but a start point is some 64 point additions with an inversion apiece,
+    // 50 us a lane here, and a first launch over 4,096 lanes spends a fifth
+    // of a second seeding before it steps.  A bench that starts its clock
+    // and then launches clocks that as walking: at 2048 steps and six
+    // launches it read 53 M it/s on one core here where the walk itself ran
+    // 70, and every row of a table of such figures leans the same way.
+    void prepare()
+    {
+        std::atomic<int> next(0);
+        auto body = [&]() {
+            for (int c; (c = next.fetch_add(1)) < chunks_;) seedChunk(c);
+        };
+        std::vector<std::thread> pool;
+        for (int i = 1; i < workers_ && i < chunks_; ++i) pool.emplace_back(body);
+        body();
+        for (std::thread &t : pool) t.join();
+    }
+
     // Advance every batch by `steps` steps in total (a batch another worker
     // holds is passed over for the next free one, so under contention the
     // steps are spread unevenly; their number is exact).
@@ -672,6 +692,16 @@ class CpuEngine
         b.setX(i, nx);
     }
 
+    // Batch c's lanes from their first seeds, once.
+    void seedChunk(int c)
+    {
+        if (ready_[size_t(c)]) return;
+        const size_t base = size_t(c) * size_t(batch_);
+        for (int i = 0; i < batch_; ++i)
+            seedLane(base + i, eccSeedFor(runId_, base + i), now_[size_t(c)]);
+        ready_[size_t(c)] = 1;
+    }
+
     void runSlice(int c, int steps, Local *local)
     {
         using namespace eccPacked131;
@@ -680,10 +710,7 @@ class CpuEngine
         unsigned long long *__restrict H = &hist_[base];
         const unsigned long long *S = &start_[base];
         unsigned long long now = now_[size_t(c)];
-        if (!ready_[size_t(c)]) {
-            for (int i = 0; i < B; ++i) seedLane(base + i, eccSeedFor(runId_, base + i), now);
-            ready_[size_t(c)] = 1;
-        }
+        seedChunk(c);
         local->scratch(B);
         const Batch b = {x_.w0 + base, x_.w1 + base, x_.w2 + base, y_.w0 + base, y_.w1 + base,
                          y_.w2 + base, w_.w0 + base, w_.w1 + base, w_.w2 + base, d_.w0 + base,

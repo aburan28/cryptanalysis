@@ -39,6 +39,7 @@ int cmdWalk(const Options &o, const HostTable &table, bool bench)
            ECC_HOST_CLMUL ? "hardware" : "software");
     printf("walks: %d batches x %d lanes = %zu, %d steps per launch, dp weight %d, run id %u\n",
            e.chunks(), e.batch(), e.laneCount(), o.steps, bench ? -1 : o.dpWeight, o.runId);
+    e.prepare(); // the lanes' start points before cmdRun starts its clock
     return cmdRun(o, table, e, bench);
 }
 

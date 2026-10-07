@@ -281,6 +281,10 @@ void checkEngine(const HostTable &table, CheckResult *cr)
     g.sliceSteps = 7;
     g.guardPeriod = 16;
     CpuEngine e(table, o, false, g);
+    e.prepare();
+    int seeded = 0;
+    for (size_t lane = 0; lane < e.laneCount(); ++lane) seeded += e.laneReady(lane) ? 1 : 0;
+    cr->note(seeded == (int)e.laneCount(), "prepare seeds every batch");
     std::vector<DpRecord> reports;
     LaunchCounts counts;
     for (int l = 0; l < 3; ++l) e.launch(50, &reports, &counts);
