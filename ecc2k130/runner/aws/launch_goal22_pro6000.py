@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""DEPRECATED for fleet collection: ~5 B it/s sigma-fused 5090 kernel.
+"""Launch one Runpod RTX PRO 6000 on the goal22 (~22 B it/s) table-walk client.
 
-Use ``launch_goal22_pro6000.py`` instead (~22 B it/s on RTX PRO 6000).
-This script refuses to run unless ``ECC_ALLOW_SLOW_OPT=1`` is set.
+This is the fast kernel path. Do not use ``launch_opt_5090.py`` (sigma-fused
+~5 B it/s) for collection. Requires CUDA 13 hosts
+(``allowedCudaVersions=["13.0"]`` = driver 580+). Builds with nvcc 13.3.73 on
+first boot if no prebuilt binary is in S3, then walks
+``campaigns/ecc2k130-table8-22b-v1`` (DP34; separate from Certicom DP32).
 
-Always requires a CUDA 13 host (Runpod filter ``allowedCudaVersions=["13.0"]``,
-which is the API's CUDA-13 bucket and means driver 580+). The opt binary is
-built with nvcc 13.3.73; hosts on driver 570 fail the boot gate and are
-deleted.
+Usage:
+  RUNPOD_API_KEY=… AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… \\
+    python3 ecc2k130/runner/aws/launch_goal22_pro6000.py [--from-pod ID]
 """
 from __future__ import annotations
 
@@ -22,20 +24,23 @@ import urllib.request
 from pathlib import Path
 
 REST = "https://rest.runpod.io/v1"
-GRAPHQL = "https://api.runpod.io/graphql"
 UA = "Mozilla/5.0 cryptanalysis-fleet/1.0"
-# Runpod's schema accepts "13.0" for the CUDA 13 family (not "13.3").
-# That selects driver 580+ hosts capable of running the nvcc 13.3.73 binary.
 CUDA13_VERSIONS = ["13.0"]
 MIN_DRIVER_MAJOR = 580
-KERNEL_PREFIX = "opt/5090-sigma-fused"
+KERNEL_PREFIX = "opt/pro6000-goal22"
+ECC_PREFIX = "campaigns/ecc2k130-table8-22b-v1"
+GPU_TYPE_IDS = [
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+]
 START_WRAPPER = (
     "set -uo pipefail\n"
     'export DEBIAN_FRONTEND=noninteractive ECC_ROOT=/opt/ecc2k130 '
     'ECC_BUCKET="${ECC_BUCKET:-ecc2k130-590183823895}" '
-    'AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-west-2}" PYTHONUNBUFFERED=1\n'
+    'AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-west-2}" PYTHONUNBUFFERED=1 '
+    f'ECC_PREFIX="{ECC_PREFIX}"\n'
     "LOG=/tmp/ecc2k130-boot.log; touch \"$LOG\"; exec > >(tee -a \"$LOG\") 2>&1\n"
-    'echo "wrapper $(date -u +%FT%TZ) host=$(hostname)"\n'
+    'echo "wrapper $(date -u +%FT%TZ) host=$(hostname) kernel=pro6000-goal22"\n'
     "if ! command -v aws >/dev/null 2>&1; then "
     "apt-get update -qq || true; "
     "apt-get install -y -qq python3 python3-pip unzip curl ca-certificates || true; "
@@ -43,9 +48,9 @@ START_WRAPPER = (
     "if ! command -v aws >/dev/null 2>&1; then "
     "curl -sS https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip; "
     "unzip -q /tmp/awscliv2.zip -d /tmp; /tmp/aws/install; fi\n"
-    'aws s3 cp "s3://$ECC_BUCKET/opt/5090-sigma-fused/bootstrap.sh" '
-    "/tmp/opt-bootstrap.sh --only-show-errors\n"
-    "bash /tmp/opt-bootstrap.sh\n"
+    f'aws s3 cp "s3://$ECC_BUCKET/{KERNEL_PREFIX}/bootstrap.sh" '
+    "/tmp/goal22-bootstrap.sh --only-show-errors\n"
+    "bash /tmp/goal22-bootstrap.sh\n"
 )
 
 
@@ -74,22 +79,6 @@ def runpod(method: str, path: str, body=None):
         return exc.code, exc.read().decode()
 
 
-def graphql(query: str, variables=None):
-    payload = {"query": query, "variables": variables or {}}
-    req = urllib.request.Request(
-        GRAPHQL,
-        data=json.dumps(payload).encode(),
-        method="POST",
-        headers={
-            "Authorization": "Bearer " + os.environ["RUNPOD_API_KEY"],
-            "Content-Type": "application/json",
-            "User-Agent": UA,
-        },
-    )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.load(resp)
-
-
 def aws_env_from_pod(pod_id: str) -> dict:
     code, pod = runpod("GET", f"/pods/{pod_id}")
     if code >= 400 or not isinstance(pod, dict):
@@ -114,7 +103,7 @@ def s3_cp(uri: str, dest: Path) -> None:
 
 def parse_driver(boot_text: str) -> str | None:
     for line in boot_text.splitlines():
-        if line.startswith("NVIDIA GeForce RTX 5090,") or line.startswith("NVIDIA RTX"):
+        if line.startswith("NVIDIA GeForce RTX") or line.startswith("NVIDIA RTX"):
             parts = [p.strip() for p in line.split(",")]
             if len(parts) >= 2 and parts[1][:1].isdigit():
                 return parts[1]
@@ -130,13 +119,13 @@ def driver_ok(driver: str | None) -> bool:
         return False
 
 
-def create_pod(env: dict, name: str, country_codes=None):
+def create_pod(env: dict, name: str, country_codes=None, cloud_type: str = "SECURE"):
     body = {
         "name": name,
         "computeType": "GPU",
         "imageName": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
-        "cloudType": "COMMUNITY",
-        "containerDiskInGb": 50,
+        "cloudType": cloud_type,
+        "containerDiskInGb": 80,
         "volumeInGb": 0,
         "volumeMountPath": "/workspace",
         "ports": ["22/tcp"],
@@ -151,12 +140,13 @@ def create_pod(env: dict, name: str, country_codes=None):
             "ECC_ALL_GPUS": "1",
             "ECC_CLAIM_NEW": "1",
             "ECC_SKIP_KERNEL_PIN": "1",
+            "ECC_PREFIX": ECC_PREFIX,
             "ECC_ROOT": "/opt/ecc2k130",
             "ECC_BUCKET": env.get("ECC_BUCKET", "ecc2k130-590183823895"),
             "AWS_DEFAULT_REGION": env.get("AWS_DEFAULT_REGION", "us-west-2"),
             "PYTHONUNBUFFERED": "1",
         },
-        "gpuTypeIds": ["NVIDIA GeForce RTX 5090"],
+        "gpuTypeIds": list(GPU_TYPE_IDS),
         "gpuTypePriority": "custom",
         "gpuCount": 1,
         "allowedCudaVersions": list(CUDA13_VERSIONS),
@@ -172,7 +162,6 @@ def delete_pod(pod_id: str) -> None:
 
 
 def wait_boot(bucket: str, pod_id: str, known_hosts: set[str], timeout: int):
-    """Return (ok, host, driver, log_key, text) once the CUDA 13.3 gate decides."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         code, meta = runpod("GET", f"/pods/{pod_id}")
@@ -189,25 +178,26 @@ def wait_boot(bucket: str, pod_id: str, known_hosts: set[str], timeout: int):
             host = keypath.split("/")[1].replace("runpod-", "")
             if host in known_hosts:
                 continue
-            dest = Path("/tmp/opt-launch-boot.log")
+            dest = Path("/tmp/goal22-launch-boot.log")
             try:
                 s3_cp(f"s3://{bucket}/{keypath}", dest)
             except subprocess.CalledProcessError:
                 continue
             text = dest.read_text(errors="replace")
-            if "sigma-fused-512x1-prebuilt" not in text and "opt-boot" not in text:
+            if "goal22-boot" not in text and "pro6000-goal22" not in text:
                 continue
-            if "CUDA 13.3" not in text and "driver" not in text and "NVIDIA" not in text:
+            if "NVIDIA" not in text and "driver" not in text:
                 continue
             driver = parse_driver(text)
-            print(f"  host={host} driver={driver} machine={meta.get('machineId')}")
+            print(f"  host={host} driver={driver} machine={(meta or {}).get('machineId')}")
             if "insufficient" in text or "driver below" in text:
                 return False, host, driver, keypath, text
             if driver and not driver_ok(driver):
                 return False, host, driver, keypath, text
             if driver_ok(driver):
+                # Accept once CUDA gate passes; build may still be in progress.
                 return True, host, driver, keypath, text
-        time.sleep(8)
+        time.sleep(10)
     return False, None, None, None, ""
 
 
@@ -215,16 +205,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--count", type=int, default=1)
     parser.add_argument("--from-pod", default="", help="clone AWS/ECC env from this pod id")
-    parser.add_argument("--seconds-wait", type=int, default=300)
-    parser.add_argument("--max-attempts", type=int, default=30)
+    parser.add_argument("--seconds-wait", type=int, default=600)
+    parser.add_argument("--max-attempts", type=int, default=40)
+    parser.add_argument("--cloud-type", default="SECURE", choices=["SECURE", "COMMUNITY"])
     parser.add_argument("--receipt", type=Path, default=None)
     args = parser.parse_args()
-    if os.environ.get("ECC_ALLOW_SLOW_OPT") != "1":
-        die(
-            "refusing sigma-fused ~5 B it/s launch; use "
-            "ecc2k130/runner/aws/launch_goal22_pro6000.py (~22 B). "
-            "Set ECC_ALLOW_SLOW_OPT=1 only for explicit slow-kernel tests."
-        )
     if "RUNPOD_API_KEY" not in os.environ:
         die("set RUNPOD_API_KEY")
     if not 1 <= args.count <= 4:
@@ -241,11 +226,13 @@ def main() -> int:
 
     receipt = {
         "kernel": KERNEL_PREFIX,
+        "campaign_prefix": ECC_PREFIX,
+        "profile": "rtx-pro6000-22b / goal22",
+        "expected_rate_billion": 22.1,
         "cuda_policy": {
             "nvcc_min": "13.3",
             "runpod_allowedCudaVersions": CUDA13_VERSIONS,
             "min_driver_major": MIN_DRIVER_MAJOR,
-            "note": "Runpod names the CUDA 13 family as 13.0; the binary is nvcc 13.3.73",
         },
         "launched": [],
     }
@@ -254,17 +241,22 @@ def main() -> int:
     attempt = 0
     while launched < args.count and attempt < args.max_attempts:
         attempt += 1
-        name = f"ecc2k-5090-opt-cu13-{int(time.time())}"
+        name = f"ecc2k-pro6000-goal22-{int(time.time())}"
         extras_cycle = [
+            {"countryCodes": ["US", "CA"]},
             {"countryCodes": ["FR", "NL", "DE", "SE", "GB", "BE"]},
-            {"countryCodes": ["FR"]},
             {},
         ][(attempt - 1) % 3]
-        print(f"attempt {attempt}: create {name} extras={extras_cycle}")
-        code, resp = create_pod(env, name, extras_cycle.get("countryCodes"))
+        cloud = args.cloud_type if attempt <= 6 else (
+            "COMMUNITY" if args.cloud_type == "SECURE" else "SECURE"
+        )
+        print(f"attempt {attempt}: create {name} cloud={cloud} extras={extras_cycle}")
+        code, resp = create_pod(
+            env, name, extras_cycle.get("countryCodes"), cloud_type=cloud
+        )
         if code >= 400 or not isinstance(resp, dict) or not resp.get("id"):
-            print(f"  create failed: {code} {str(resp)[:200]}")
-            time.sleep(6)
+            print(f"  create failed: {code} {str(resp)[:300]}")
+            time.sleep(8)
             continue
         pod_id = resp["id"]
         time.sleep(4)
@@ -291,15 +283,17 @@ def main() -> int:
             "costPerHr": resp.get("costPerHr"),
             "log": logkey,
             "allowedCudaVersions": CUDA13_VERSIONS,
+            "ecc_prefix": ECC_PREFIX,
+            "cloudType": cloud,
         }
         receipt["launched"].append(row)
         launched += 1
 
     if launched < args.count:
-        die(f"only launched {launched}/{args.count} CUDA 13.3-capable workers", 2)
+        die(f"only launched {launched}/{args.count} CUDA 13.3-capable PRO 6000 workers", 2)
     out = args.receipt or Path(
         f"ecc2k130/runner/research/production/"
-        f"{time.strftime('%Y-%m-%d')}-opt-sigma-fused-launch.json"
+        f"{time.strftime('%Y-%m-%d')}-goal22-pro6000-launch.json"
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(receipt, indent=2) + "\n")
