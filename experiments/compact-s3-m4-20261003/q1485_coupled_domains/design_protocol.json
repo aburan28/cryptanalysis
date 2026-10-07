@@ -1,0 +1,60 @@
+{
+  "kind": "q1485_pre_registered_coupled_pair_domain_stage_design",
+  "proposal_id": "Q1485",
+  "candidate_id": null,
+  "run_id": null,
+  "isogeny": "none",
+  "claim_scope": "Test whether exact intersection of the target-conditioned left-pair midpoint domain and the right-pair midpoint domain reduces unsupported compact-S3 search on Q1481's exact full N53/N83 window-orbit bases. This is a PDP stage diagnostic, not a complete IC solver or N131 2^x.",
+  "parent_inputs": "Q1482 byte-identical six-cell CNFs, variable maps, target files, planted fixtures, and ordinary public points",
+  "instances": {
+    "53": {
+      "curve_id": "EC1N53Ckb1hf77aab617904",
+      "nominal_window_dimension_d": 14,
+      "actual_usable_B": 430360,
+      "folded_K": 4060,
+      "enumerated_set_sha256": "42e746657e39ea4d07aafc873110339e314cd685b3bd8493eb3c60aed1354ba5"
+    },
+    "83": {
+      "curve_id": "EC1N83Ckb1h876c2921cb64",
+      "nominal_window_dimension_d": 23,
+      "actual_usable_B": 348006384,
+      "folded_K": 2096424,
+      "enumerated_set_sha256": "f2d7771988cbd03fa4ea3145fc3870e5a3fc44171b9a57165257f016cdeb19d4"
+    }
+  },
+  "point_decomposition": {
+    "m": 4,
+    "stage_code": "PDP4hybrid",
+    "chain": "balanced three-S3 chain, same Q1482 CNF",
+    "solver_family": "CaDiCaL plus external exact F2^n root and finite-domain theory",
+    "theory_delta": "Before deciding a complete second midpoint, bound each partial leaf pair by at most 4096 weight-d superset completions. Build the target-conditioned left second-midpoint domain as in Q1480, build the right second-midpoint domain from exact S3 roots of all right pair completions, and intersect the sorted domains under assigned midpoint bits. An empty intersection emits a clause guarded by every assigned target selector, leaf bit and second-midpoint bit; common intersection bits imply midpoint literals. Retain Q1480's final conditioned join when the midpoint is fixed.",
+    "soundness_basis": "The weight-d completion sets contain every Q1482 cyclic-window-valid completion. Both domains are exact over that superset; an empty intersection therefore excludes no valid window relation.",
+    "decision_order": "target selector; left leaves until at most 4096 pair completions; right leaves until at most 4096 pair completions; second midpoint; remaining leaves and first midpoint",
+    "left_pair_domain_cap": 4096,
+    "right_pair_domain_cap": 4096,
+    "final_conditioned_pair_cap": 16384,
+    "solver_wall_cap_seconds": 60,
+    "external_process_safeguard_seconds": 75,
+    "solver_conflict_cap": 1000000
+  },
+  "run_order": [
+    "n53_planted_pinned",
+    "n83_planted_pinned",
+    "n53_planted_unpinned",
+    "n83_planted_unpinned",
+    "n53_ordinary",
+    "n83_ordinary"
+  ],
+  "controls": [
+    "Exhaustive small-field validation must show no false rejection of an x-only S3 chain under partial pair and midpoint assignments.",
+    "Both pinned N53/N83 public-point controls must replay as independently verified four-distinct-column relations.",
+    "Both unpinned planted targets have known solutions but do not estimate ordinary yield."
+  ],
+  "success_gates": [
+    "Report every cell, including timeouts and failures, with exact SAT and field-operation counts, exclusive charged stage wall intervals, peak RSS, and source/runtime receipts.",
+    "Only an independently verified unpinned ordinary N83 relation supplies successful N83 stage cost; a frozen ordinary panel is still required for natural yield and rank.",
+    "Keep complete N131 2^x null and the challenge gate closed until all IC phases are charged in one unit."
+  ],
+  "complete_n131_log2_work": null,
+  "challenge_run_admitted": false
+}

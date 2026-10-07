@@ -2372,6 +2372,20 @@ support. This is a restricted orientation slice, not full-base relation
 yield. Successful N83 decomposition cost, novel rank, and complete N131
 `2^x` remain unknown.
 
+### Q1485 target-coupled pair-domain intersection
+
+[Q1485](q1485_coupled_domains/README.md) retains Q1482's exact N53/N83
+window-orbit bases, public targets, and six byte-identical inputs. Its
+native solver intersects a target-conditioned left second-midpoint domain
+with the exact right-pair domain before committing the midpoint. The
+small-field domain check and both pinned public-point controls pass. Both
+unpinned planted and both ordinary cells censor at 60 seconds with no
+relation. The N83 ordinary prefix rejects 2,240 empty pair-domain
+intersections, but incurs 8,570,128 `S3` root calls, 119,998,624 field
+multiplications, 763,105,558 squarings, and 4,482 inversions. Q1485
+therefore does not supply a successful decomposition cost, natural yield,
+rank, or a complete N131 work exponent.
+
 ## Next goal
 
 Build and measure an exact, target-coupled **window-pair support mechanism**
@@ -2380,7 +2394,7 @@ verified, fully unpinned known-satisfiable N83 relation on the exact Q1481
 base without constructing the full pair table. The next gate is one ordinary
 N83 relation, followed by a frozen ordinary-query panel to measure useful
 relation yield and rank. Pair N53/N83 inputs and operation-count boundaries
-with Q1482/Q1483. Count failed attempts, SAT propagation, field arithmetic,
+with Q1482/Q1483/Q1485. Count failed attempts, SAT propagation, field arithmetic,
 memory, and target-dependent wall intervals. If only the planted control
 passes, retain ordinary cost and N131 complete work as unknown. A complete
 N131 `2^x` also requires its exact usable base, relation collection, final

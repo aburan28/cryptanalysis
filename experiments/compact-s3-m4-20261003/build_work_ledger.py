@@ -7054,6 +7054,31 @@ def main():
         "rows"]] == [1, 1, 0, 0, 0, 0, 0]
     assert q1483_audit["ordinary_verified_relations"] == 0
     assert q1483_audit["complete_n131_log2_work"] is None
+    q1485_dir = HERE / "q1485_coupled_domains"
+    q1485_protocol_path = q1485_dir / "protocol.json"
+    q1485_audit_path = q1485_dir / "archive_audit.json"
+    q1485_protocol = json.loads(q1485_protocol_path.read_text())
+    q1485_audit = json.loads(q1485_audit_path.read_text())
+    assert q1485_protocol["proposal_id"] == q1485_audit[
+        "proposal_id"] == "Q1485"
+    assert q1485_protocol["candidate_id"] is q1485_audit[
+        "candidate_id"] is None
+    assert q1485_protocol["run_id"] is q1485_audit["run_id"] is None
+    assert q1485_protocol["isogeny"] == q1485_audit[
+        "isogeny"] == "none"
+    assert q1485_protocol["parent_q1482_protocol_sha256"] == sha(
+        q1482_protocol_path)
+    assert q1485_audit["status"] == "passed"
+    assert q1485_audit["protocol_sha256"] == sha(q1485_protocol_path)
+    assert q1485_audit["pinned_correctness_controls_passed"]
+    assert [row["case"] for row in q1485_audit["rows"]] == q1485_protocol[
+        "run_order"]
+    assert [row["status"] for row in q1485_audit["rows"]] == [
+        "sat", "sat", "censored", "censored", "censored", "censored"]
+    assert [row["verified_relation_count"] for row in q1485_audit[
+        "rows"]] == [1, 1, 0, 0, 0, 0]
+    assert q1485_audit["ordinary_verified_relations"] == 0
+    assert q1485_audit["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -9660,6 +9685,39 @@ def main():
             "recovery_protocol_sha256": sha(q1483_recovery_path),
             "archive_audit_sha256": sha(q1483_audit_path),
         },
+        "q1485_coupled_domain_compact_s3_stage": {
+            "proposal_id": "Q1485", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "stage_config_ids": {
+                key: row["stage_config_id"]
+                for key, row in q1485_protocol["stages"].items()},
+            "pinned_correctness_controls_passed": True,
+            "known_witness_unpinned_attempts": 2,
+            "known_witness_unpinned_verified_relations": 0,
+            "ordinary_attempts": 2,
+            "ordinary_verified_relations": 0,
+            "rows": q1485_audit["rows"],
+            "successful_unpinned_N53_cost": None,
+            "successful_unpinned_N83_cost": None,
+            "natural_relation_yield_estimate": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1485 intersects exact pair midpoint domains on the "
+                "Q1482 full window-orbit inputs. Small-field controls "
+                "and both pinned relations verify. The two unpinned "
+                "planted and two ordinary cells censor at 60 seconds. "
+                "N83 ordinary rejects 2240 empty intersections while "
+                "using 8570128 S3 root calls, 119998624 field mul, "
+                "763105558 sqr, and 4482 inv. Changed operation mix "
+                "is not a solved-relation speedup; successful work, "
+                "natural yield, rank, and N131 complete 2^x remain unknown."
+            ),
+            "design_protocol_sha256": q1485_protocol["design_sha256"],
+            "protocol_sha256": sha(q1485_protocol_path),
+            "archive_audit_sha256": sha(q1485_audit_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -10216,6 +10274,11 @@ def main():
                 "failure, and censors its frozen R2 plus N83 unpinned and "
                 "both ordinary cells without a relation; the restricted "
                 "slice does not measure full-base yield; "
+                "Q1485's coupled domains verify both pinned controls "
+                "and reject unsupported partial states, but all four "
+                "unpinned and ordinary cells censor without a relation "
+                "and the increased squaring/inversion mix does not "
+                "establish a faster solve; "
                 "censored N83 ordinary runs still do not measure N83 "
                 "useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
