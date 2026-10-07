@@ -67,19 +67,28 @@ typedef struct {
 #    define F4E_EAGER_CHUNKS 2u
 #endif
 
-/* Block-shared state of the panel step.  A panel of at most one chunk
- * keeps its candidates here, every round reading each of them. */
+/* A panel of one chunk and at most this many candidates keeps them in
+ * shared memory, since every round reads each of them: 24 bytes a
+ * candidate, within the 48 KiB a block may declare statically. */
+#define F4E_SMEM_CAND 1920u
+
+/* Block-shared state of the panel step.  Only a panel in row order
+ * compacts, and only a single-chunk one is staged, so the two share. */
 typedef struct {
     f4_u64 cols;
     f4_u64 best[3];
     f4_u64 word[64]; /* pivot k's word */
     f4_u64 hist[64]; /* its history, over earlier pivots */
     f4_u32 col[64];  /* its column */
-    f4_u32 scan[2][F4_MAX_THREADS];
-    f4_u64 pw[F4_MAX_THREADS];
-    f4_u64 coeff[F4_MAX_THREADS];
-    f4_u32 cand[F4_MAX_THREADS];
-    f4_u32 is_piv[F4_MAX_THREADS];
+    union {
+        f4_u32 scan[2][F4_MAX_THREADS];
+        struct {
+            f4_u64 pw[F4E_SMEM_CAND];
+            f4_u64 coeff[F4E_SMEM_CAND];
+            f4_u32 cand[F4E_SMEM_CAND];
+            f4_u32 is_piv[F4E_SMEM_CAND];
+        } stage;
+    } u;
 } F4ePanelShared;
 
 /* Gather: active rows with a high bit in word w, with that word, in any
@@ -128,13 +137,13 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
                            f4_u32 *is_piv_global, const f4_u32 *count, F4ePivots *piv)
 {
     const f4_u32 n_cand = *count;
-    const int staged = n_cand <= nt;
     const int ordered = n_cand > F4E_EAGER_CHUNKS * nt;
+    const int staged = !ordered && n_cand <= F4E_SMEM_CAND;
     const f4_u32 chunk = ordered ? nt : (n_cand ? n_cand : 1u);
-    f4_u32 *cand = staged ? sh->cand : cand_global;
-    f4_u64 *pw = staged ? sh->pw : pw_global;
-    f4_u64 *coeff = staged ? sh->coeff : coeff_global;
-    f4_u32 *is_piv = staged ? sh->is_piv : is_piv_global;
+    f4_u32 *cand = staged ? sh->u.stage.cand : cand_global;
+    f4_u64 *pw = staged ? sh->u.stage.pw : pw_global;
+    f4_u64 *coeff = staged ? sh->u.stage.coeff : coeff_global;
+    f4_u32 *is_piv = staged ? sh->u.stage.is_piv : is_piv_global;
     F4_SINGLE
     {
         sh->cols = 0ull;
@@ -151,14 +160,14 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
             const f4_u64 hi = lo + span < rows ? lo + span : rows;
             f4_u32 n = 0u;
             for (f4_u64 r = lo; r < hi; ++r) n += prow[r] != 0ull;
-            sh->scan[0][tid] = n;
+            sh->u.scan[0][tid] = n;
         F4_END_THREADS
         F4_SYNC();
         f4_u32 src = 0u;
         for (f4_u32 d = 1u; d < nt; d <<= 1u) {
             F4_FOR_THREADS(tid)
-                sh->scan[src ^ 1u][tid] =
-                    sh->scan[src][tid] + (tid >= d ? sh->scan[src][tid - d] : 0u);
+                sh->u.scan[src ^ 1u][tid] =
+                    sh->u.scan[src][tid] + (tid >= d ? sh->u.scan[src][tid - d] : 0u);
             F4_END_THREADS
             F4_SYNC();
             src ^= 1u;
@@ -166,7 +175,7 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u64 *prow, f4
         F4_FOR_THREADS(tid)
             const f4_u64 lo = (f4_u64)tid * span < rows ? (f4_u64)tid * span : rows;
             const f4_u64 hi = lo + span < rows ? lo + span : rows;
-            f4_u32 at = tid ? sh->scan[src][tid - 1u] : 0u;
+            f4_u32 at = tid ? sh->u.scan[src][tid - 1u] : 0u;
             for (f4_u64 r = lo; r < hi; ++r) {
                 const f4_u64 word = prow[r];
                 if (word == 0ull) continue;
