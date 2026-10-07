@@ -60,6 +60,12 @@ The same cases, run directly here (`results/ic-rho-exploratory.jsonl`, `"control
   (Sec. 4e of `ABOVE_LIMIT.md`).
 - Single targets vary by over an order of magnitude, in both directions.
 
+**With both sides in C**, see [`../ic-online-c`](../ic-online-c/README.md). It runs the same comparison
+at n = 41 with a batched C `PDP2ht` oracle and gain-graph logs. There, the
+`IC1N41Ckb1fb32692PDP2htRCwalkLAgraphTDpdpISO0hcf3a61dd7ea0` candidate (geomtraceu, l = 15) takes a median
+of 1.75 ms online, against 20.6 ms for C rho on the same 64 targets: rho/IC = 13.9x [10.4, 18.9]. The run
+is exploratory, on an unisolated host. The Koblitz-folded rho estimate is about even with it.
+
 ## Above the linearization limit (search record: [`ABOVE_LIMIT.md`](ABOVE_LIMIT.md))
 
 **Question.** Is there a decomposition method that stays cheap past the linearization limit,
