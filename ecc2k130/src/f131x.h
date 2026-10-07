@@ -528,8 +528,8 @@ template <> F131X_INLINE Limbs<2>::V gather64<2>(const uint32_t *t, Limbs<2>::V 
 #    if ECC_F131_LANES >= 4
 template <> F131X_INLINE Limbs<4>::V gather64<4>(const uint32_t *t, Limbs<4>::V idx)
 {
-    return (Limbs<4>::V)_mm256_i64gather_epi64(reinterpret_cast<const long long *>(t),
-                                               (__m256i)idx, 4);
+    return (Limbs<4>::V)_mm256_i64gather_epi64(reinterpret_cast<const long long *>(t), (__m256i)idx,
+                                               4);
 }
 #    endif
 #    if ECC_F131_LANES >= 8
