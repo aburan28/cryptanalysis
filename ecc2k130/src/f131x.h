@@ -571,10 +571,29 @@ struct SelectConsts {
     const uint32_t *inv;
     alignas(64) uint8_t inv8[192]; // the same 132 entries as bytes, for the byte permutes
 
+    // The nibble tables of the 512-bit path (selectTables), where a byte
+    // permute looks 128 entries up at once: entry (p << 4 | v) is about
+    // nibble p of a limb when its value is v, for the two full limbs and
+    // the low and high nibble of each byte -- the phase sum of its set
+    // coordinates mod 131, and 1 + the largest L among them (0 for v = 0).
+    // maxTop is the latter for the 3-bit limb, by its value.  maskLt[k] is
+    // {e : L(e) < k}; rowL[l] is the row of the polynomial -> normal basis
+    // map that gives coordinate L^-1(l), so that the sign is one dot product
+    // with the pivot's row instead of the whole conversion.  Both are read
+    // by gathers (four words a row, so the index is a shift), and rowL is
+    // padded to every index a byte can hold.
+    alignas(64) uint8_t phaseNib[2][2][128];
+    alignas(64) uint8_t maxNib[2][2][128];
+    alignas(64) uint64_t maxTop[8];
+    alignas(64) uint64_t maskLt[131][4];
+    alignas(64) uint64_t rowL[256][4];
+
     void build(const uint32_t *tw)
     {
         using namespace eccPacked131;
         const uint8_t *linv = reinterpret_cast<const uint8_t *>(tw) + 4 * TW_LINV_OFF;
+        int L[131];
+        for (int l = 0; l < 131; ++l) L[linv[l]] = l;
         memset(plane, 0, sizeof(plane));
         memset(top, 0, sizeof(top));
         for (int l = 0; l < 131; ++l) {
@@ -591,6 +610,44 @@ struct SelectConsts {
         inv = tw + TW_INV_OFF;
         memset(inv8, 0, sizeof(inv8));
         for (int w = 0; w < 132; ++w) inv8[w] = uint8_t(inv[w]);
+
+        for (int limb = 0; limb < 2; ++limb)
+            for (int half = 0; half < 2; ++half)
+                for (int p = 0; p < 8; ++p)
+                    for (int v = 0; v < 16; ++v) {
+                        unsigned s = 0;
+                        int best = -1;
+                        for (int t = 0; t < 4; ++t)
+                            if ((v >> t) & 1) {
+                                const int l = L[64 * limb + 8 * p + 4 * half + t];
+                                s += unsigned(l);
+                                if (l > best) best = l;
+                            }
+                        phaseNib[limb][half][p << 4 | v] = uint8_t(s % 131u);
+                        maxNib[limb][half][p << 4 | v] = uint8_t(best + 1);
+                    }
+        for (int v = 0; v < 8; ++v) {
+            int best = -1;
+            for (int t = 0; t < 3; ++t)
+                if ((v >> t) & 1 && L[128 + t] > best) best = L[128 + t];
+            maxTop[v] = uint64_t(best + 1);
+        }
+        memset(maskLt, 0, sizeof(maskLt));
+        for (int e = 0; e < 131; ++e)
+            for (int k = L[e] + 1; k < 131; ++k) maskLt[k][e >> 6] |= 1ull << (e & 63);
+        // Row e of the conversion: bit e of the image of each unit vector.
+        uint64_t rowE[131][3];
+        memset(rowE, 0, sizeof(rowE));
+        for (int j = 0; j < 131; ++j) {
+            F131 unit = {{0, 0, 0}};
+            unit.w[j >> 6] = 1ull << (j & 63);
+            const F131 image = f131::fromPolynomial(unit);
+            for (int e = 0; e < 131; ++e)
+                if ((image.w[e >> 6] >> (e & 63)) & 1) rowE[e][j >> 6] |= 1ull << (j & 63);
+        }
+        memset(rowL, 0, sizeof(rowL));
+        for (int l = 0; l < 131; ++l)
+            for (int w = 0; w < 3; ++w) rowL[l][w] = rowE[linv[l]][w];
     }
 };
 
@@ -632,8 +689,126 @@ F131X_INLINE typename Limbs<N>::V inverseWeight(const SelectConsts &c, typename 
 // the instruction stream puts G chains inside the window: measured on one
 // Sapphire Rapids core, two vectors took 8% off the time a lane and four
 // 15%; eight spilled registers and gave some of it back.  The same on an
-// AVX2 build with its sixteen registers, four best.
+// AVX2 build with its sixteen registers, four best.  The table form below
+// holds fewer values live and waits on gathers instead, and takes eight:
+// 3% under four, and sixteen spills (8% over eight).
+#    if F131X_VBMI && ECC_F131_LANES >= 8
+static const int kSelectGroup = 8;
+#    else
 static const int kSelectGroup = 4;
+#    endif
+
+#    if F131X_VBMI && ECC_F131_LANES >= 8
+// t[idx[i]] for each element, t a table of 64-bit words.
+F131X_INLINE Limbs<8>::V gatherQ(const uint64_t *t, Limbs<8>::V idx)
+{
+    return (Limbs<8>::V)_mm512_i64gather_epi64((__m512i)idx, reinterpret_cast<const long long *>(t),
+                                               8);
+}
+
+// The 128-entry byte table t[0..127] at the low seven bits of each byte of
+// idx.
+F131X_INLINE Limbs<8>::V permute128(const uint8_t *t, Limbs<8>::V idx)
+{
+    return (Limbs<8>::V)_mm512_permutex2var_epi8(_mm512_load_si512((const void *)t), (__m512i)idx,
+                                                 _mm512_load_si512((const void *)(t + 64)));
+}
+
+// The selection of eight lanes by table, the form packedtablewalk.cuh gives
+// the device, where the bit-plane form below costs some 250 instructions a
+// vector on the two ports that take 512-bit work:
+//
+//   - the phase sum from the nibble tables: each byte of a limb, low and
+//     high nibble apart, indexes a 128-entry permute by (position, value)
+//     and reads its coordinates' L mod 131; a byte sum per lookup (16
+//     masked popcounts before, 4 permutes and 4 sums now);
+//   - k in one multiply and one reduction, s * HW^-1 being below 2^19 and
+//     the 32-bit reciprocal exact to 2^25 (two reductions before);
+//   - the mask {L < k} gathered from its 131 rows (the comparator ran on 8
+//     planes, 5 instructions a plane a limb);
+//   - the pivot by the same nibble permute over 1 + max L, a byte max down
+//     to one byte, and the 3-bit limb's eight values (eight rounds of mask
+//     and blend before);
+//   - the sign as the parity of y against the pivot's row of the conversion
+//     map, three gathers and one popcount, where converting all of y to
+//     read one bit was 40 instructions.
+//
+// A gather here is eight loads from a table in L1 and about three cycles
+// on the vector ports, which is cheaper than any of the stages it stands
+// in for.  Measured on one Sapphire Rapids core, the selection stage (with
+// the tag and the addend, which did not change) went from 6.4 to 4.4 ns a
+// lane, the step from 17.2 to 15.2.
+template <int G>
+F131X_INLINE void selectTables(const F131x<8> *xn, const F131x<8> *yp, const SelectConsts &c,
+                               Limbs<8>::V *hwOut, Limbs<8>::V *kOut, Limbs<8>::V *epsOut)
+{
+    typedef Limbs<8>::V V;
+    typedef Limbs<8>::M M;
+#        define F131X_C(x) F131x<8>::splat(x)
+    // Byte p of a limb indexes entries p << 4 | v: the position in bits 4
+    // to 6, the nibble below.
+    const V pos = F131X_C(0x7060504030201000ull), nib = F131X_C(0x0f0f0f0f0f0f0f0full);
+    V top[G], hw[G], s[G], k[G];
+    V i00[G], i01[G], i10[G], i11[G]; // limb, half
+    for (int g = 0; g < G; ++g) {
+        i00[g] = (xn[g].w0 & nib) | pos;
+        i01[g] = ((xn[g].w0 >> 4) & nib) | pos;
+        i10[g] = (xn[g].w1 & nib) | pos;
+        i11[g] = ((xn[g].w1 >> 4) & nib) | pos;
+    }
+    for (int g = 0; g < G; ++g) top[g] = lookup8<8>(c.top, xn[g].w2);
+    for (int g = 0; g < G; ++g) hw[g] = popcnt<8>(xn[g].w0) + popcnt<8>(xn[g].w1) + (top[g] >> 32);
+    for (int g = 0; g < G; ++g)
+        s[g] = (top[g] & F131X_C(0xffffffffu)) + byteSum<8>(permute128(c.phaseNib[0][0], i00[g])) +
+               byteSum<8>(permute128(c.phaseNib[0][1], i01[g])) +
+               byteSum<8>(permute128(c.phaseNib[1][0], i10[g])) +
+               byteSum<8>(permute128(c.phaseNib[1][1], i11[g]));
+    // k = s * HW^-1 mod 131: s is below 32 * 130 + 3 * 130 and the inverse
+    // below 131, so the product is below 2^20; the quotient by
+    // ceil(2^32 / 131) is exact below 2^25.
+    for (int g = 0; g < G; ++g) {
+        const V p = mul32<8>(s[g], inverseWeight<8>(c, hw[g]));
+        const V q = mul32<8>(p, F131X_C(32786010u)) >> 32;
+        k[g] = p - ((q << 7) + (q << 1) + q);
+    }
+    // The candidates: the set coordinates with L < k, else all of them.
+    V p0[G], p1[G], p2[G];
+    for (int g = 0; g < G; ++g) {
+        const V m0 = gatherQ(&c.maskLt[0][0], k[g] << 2), m1 = gatherQ(&c.maskLt[0][1], k[g] << 2),
+                m2 = gatherQ(&c.maskLt[0][2], k[g] << 2);
+        p0[g] = xn[g].w0 & m0, p1[g] = xn[g].w1 & m1, p2[g] = xn[g].w2 & m2;
+        const M any3 = (M)(p0[g] | p1[g] | p2[g]);
+        const __mmask8 any = _mm512_test_epi64_mask(any3, any3);
+        p0[g] = (V)_mm512_mask_blend_epi64(any, (M)xn[g].w0, (M)p0[g]);
+        p1[g] = (V)_mm512_mask_blend_epi64(any, (M)xn[g].w1, (M)p1[g]);
+        p2[g] = (V)_mm512_mask_blend_epi64(any, (M)xn[g].w2, (M)p2[g]);
+    }
+    // 1 + the largest L among them, the byte max of the nibble lookups.
+    V best[G];
+    for (int g = 0; g < G; ++g) {
+        const M a = _mm512_max_epu8((M)permute128(c.maxNib[0][0], (p0[g] & nib) | pos),
+                                    (M)permute128(c.maxNib[0][1], ((p0[g] >> 4) & nib) | pos));
+        const M b = _mm512_max_epu8((M)permute128(c.maxNib[1][0], (p1[g] & nib) | pos),
+                                    (M)permute128(c.maxNib[1][1], ((p1[g] >> 4) & nib) | pos));
+        M m = _mm512_max_epu8(a, b);
+        m = _mm512_max_epu8(m, _mm512_srli_epi64(m, 32));
+        m = _mm512_max_epu8(m, _mm512_srli_epi64(m, 16));
+        m = _mm512_max_epu8(m, _mm512_srli_epi64(m, 8));
+        best[g] = (V)_mm512_max_epu64((M)((V)m & F131X_C(0xffu)), (M)lookup8<8>(c.maxTop, p2[g]));
+    }
+    // eps: coordinate L^-1(best - 1) of y in the normal basis, the parity of
+    // y against that row of the conversion.
+    for (int g = 0; g < G; ++g) {
+        const V l = (best[g] - F131X_C(1u)) & F131X_C(0xffu);
+        const V r0 = gatherQ(&c.rowL[0][0], l << 2), r1 = gatherQ(&c.rowL[0][1], l << 2),
+                r2 = gatherQ(&c.rowL[0][2], l << 2);
+        epsOut[g] = popcnt<8>((yp[g].w0 & r0) ^ (yp[g].w1 & r1) ^ (yp[g].w2 & r2)) & F131X_C(1u);
+        hwOut[g] = hw[g];
+        kOut[g] = k[g];
+    }
+#        undef F131X_C
+}
+#    endif
 
 template <int N, int G>
 F131X_INLINE void select(const F131x<N> *xn, const F131x<N> *yp, const SelectConsts &c,
@@ -641,6 +816,12 @@ F131X_INLINE void select(const F131x<N> *xn, const F131x<N> *yp, const SelectCon
                          typename Limbs<N>::V *epsOut)
 {
     typedef typename Limbs<N>::V V;
+#    if F131X_VBMI && ECC_F131_LANES >= 8
+    if constexpr (N == 8) {
+        selectTables<G>(xn, yp, c, hwOut, kOut, epsOut);
+        return;
+    }
+#    endif
 #    define F131X_C(x)    F131x<N>::splat(x)
 #    define F131X_P(j, l) (*reinterpret_cast<const V *>(c.planeV[j][l]))
     // The 3-bit limb's share of the weight and of the phase sum, from its table.
