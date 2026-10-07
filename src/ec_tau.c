@@ -40,6 +40,7 @@
 #include "generated/tau_wide_orbits.h"
 #include "generated/tau_wide_graph.h"
 #include "generated/tau_wide_packed_graph.h"
+#include "generated/tau_gauge_trellis.h"
 #include <float.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -2588,6 +2589,7 @@ static void tau4_joint_add_digit_gauge(const ca_group *g,
     *acc = jac_add_mixed(g, *acc, &point);
     counts->mixed_adds++;
     counts->rotations += power != 0;
+    counts->digit_rotations += power != 0;
 }
 
 static void tau4_joint_add_digit_plane(const ca_group *g,
@@ -2693,7 +2695,7 @@ static size_t tau4_lattice_streams(const ca_tau4_joint_precomp *pre, uint64_t sc
     size_t n = 0;
     static const int axial[5][2] = {{-1, 0}, {0, -1}, {0, 0}, {0, 1}, {1, 0}};
     unsigned two[2] = {0, 1};
-    if (mode == 2 || mode == 3) {
+    if (mode == 2 || mode == 3 || mode == 4) {
         ca_i128 smallest = -1, second = -1;
         for (unsigned i = 0; i < 5; i++) {
             ca_i128 u = u0 + axial[i][0], v = v0 + axial[i][1];
@@ -2714,7 +2716,8 @@ static size_t tau4_lattice_streams(const ca_tau4_joint_precomp *pre, uint64_t sc
     size_t candidates = mode == 25 ? 25 : mode == 5 ? 5 : 2;
     counts->lattice_points_checked += mode == 25 ? 25 : 5;
     for (size_t index = 0; index < candidates; index++) {
-        unsigned axial_index = (mode == 2 || mode == 3) ? two[index] : (unsigned)index;
+        unsigned axial_index = (mode == 2 || mode == 3 || mode == 4)
+            ? two[index] : (unsigned)index;
         int du = mode == 25 ? (int)(index / 5) - 2 : axial[axial_index][0];
         int dv = mode == 25 ? (int)(index % 5) - 2 : axial[axial_index][1];
         ca_i128 u = u0 + du, v = v0 + dv;
@@ -2775,6 +2778,97 @@ static unsigned tau4_pair_gauge_rotations(const tau4_lattice_stream *left,
     return best;
 }
 
+/* Independent recurrence check for every encoded state and input pattern.
+ * Test code calls this before evaluating the table-driven schedule. */
+int ca_ec_tau4_gauge_trellis_verify_map(void)
+{
+    for (unsigned first = 0; first < 2; first++) {
+        for (unsigned state = 0; state < (first ? 1u : 64u); state++) {
+            for (unsigned pattern = 0; pattern < 12; pattern++) {
+                unsigned next[3], predecessor[3];
+                unsigned minimum = UINT_MAX;
+                for (unsigned gauge = 0; gauge < 3; gauge++) {
+                    unsigned best = UINT_MAX, previous_best = 0;
+                    if (first) best = 0;
+                    else for (unsigned previous = 0; previous < 3; previous++) {
+                        unsigned candidate = ((state >> (2 * previous)) & 3u) +
+                                             (previous != gauge);
+                        if (candidate < best) {
+                            best = candidate;
+                            previous_best = previous;
+                        }
+                    }
+                    unsigned power_a = pattern < 3 ? pattern : (pattern - 3) / 3;
+                    unsigned local = (power_a + gauge) % 3 != 0;
+                    if (pattern >= 3)
+                        local += ((pattern - 3) % 3 + gauge) % 3 != 0;
+                    next[gauge] = best + local;
+                    predecessor[gauge] = previous_best;
+                    if (next[gauge] < minimum) minimum = next[gauge];
+                }
+                unsigned expected = minimum << 6;
+                for (unsigned gauge = 0; gauge < 3; gauge++) {
+                    expected |= (next[gauge] - minimum) << (2 * gauge);
+                    expected |= predecessor[gauge] << (9 + 2 * gauge);
+                }
+                unsigned actual = first ? ca_tau_gauge_start[pattern]
+                                        : ca_tau_gauge_step[state][pattern];
+                if (actual != expected) return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+/* The exact shortest-path recurrence has only 64 normalized cost states.
+ * Each input encodes one or two digit powers, so schedule search is a single
+ * frozen-table lookup per nonempty position.  The first orientation is free
+ * because the accumulator starts at the identity. */
+static void tau4_pair_trellis_schedule(const ca_tau4_joint_precomp *pre,
+                                        const tau4_lattice_stream *left,
+                                        const tau4_lattice_stream *right,
+                                        uint8_t gauge_at[256],
+                                        ca_tau4_joint_counts *counts)
+{
+    uint8_t back[256] = {0};
+    uint8_t state = 0;
+    unsigned minimum = 0;
+    size_t length = left->length > right->length ? left->length : right->length;
+    int started = 0;
+    for (size_t i = length; i-- > 0;) {
+        int has_left = i < left->length && left->digits[i] != 255;
+        int has_right = i < right->length && right->digits[i] != 255;
+        if (!has_left && !has_right) continue;
+        unsigned left_power = has_left ? pre->digit[left->digits[i]].power : 0;
+        unsigned right_power = has_right ? pre->digit[right->digits[i]].power : 0;
+        unsigned pattern = has_left && has_right ? 3 + 3 * left_power + right_power
+                         : has_left ? left_power : right_power;
+        uint16_t entry = started ? ca_tau_gauge_step[state][pattern]
+                                 : ca_tau_gauge_start[pattern];
+        state = (uint8_t)(entry & 63u);
+        minimum += (entry >> 6) & 7u;
+        back[i] = (uint8_t)(entry >> 9);
+        counts->gauge_table_lookups++;
+        started = 1;
+    }
+    memset(gauge_at, 0, 256);
+    if (!started) return;
+    unsigned chosen = 0, best = UINT_MAX;
+    for (unsigned gauge = 0; gauge < 3; gauge++) {
+        unsigned score = minimum + ((state >> (2 * gauge)) & 3u) + (gauge != 0);
+        if (score < best) { best = score; chosen = gauge; }
+    }
+    counts->gauge_model_rotations = best;
+    for (size_t i = 0; i < length; i++) {
+        int has_left = i < left->length && left->digits[i] != 255;
+        int has_right = i < right->length && right->digits[i] != 255;
+        if (!has_left && !has_right) continue;
+        gauge_at[i] = (uint8_t)chosen;
+        counts->gauge_selected |= chosen != 0;
+        chosen = (back[i] >> (2 * chosen)) & 3u;
+    }
+}
+
 static int tau4_paired_lattice_mul_impl(const ca_group *g,
                                         const ca_tau4_joint_precomp *pre,
                                         const ca_tau4_joint_plane_precomp *plane,
@@ -2783,7 +2877,7 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
                                         ca_tau4_joint_counts *counts, int mode)
 {
     if (!g || !pre || (!out && !jac_out) || pre->g != g ||
-        (plane && &plane->base != pre)) return 0;
+        (plane && (&plane->base != pre || mode != 2))) return 0;
     tau4_lattice_stream streams[2][25];
     size_t baseline[2] = {0, 0};
     ca_tau4_joint_counts cost = {0};
@@ -2826,8 +2920,13 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
     cost.selected_changed = chosen_a != baseline[0] || chosen_b != baseline[1];
     cost.gauge_selected = chosen_gauge != 0;
     const tau4_lattice_stream *selected[2] = {&streams[0][chosen_a], &streams[1][chosen_b]};
+    uint8_t gauge_at[256] = {0};
+    if (mode == 4)
+        tau4_pair_trellis_schedule(pre, selected[0], selected[1], gauge_at, &cost);
     uint64_t one_minus_beta = fs(g, g->mont.r1, pre->beta);
     tau_jac acc = {0, g->mont.r1, 0};
+    unsigned current_gauge = 0;
+    int gauge_started = 0;
     size_t length_max = selected[0]->length > selected[1]->length
         ? selected[0]->length : selected[1]->length;
     for (size_t i = length_max; i-- > 0;) {
@@ -2835,22 +2934,36 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
         int has_a = i < selected[0]->length && selected[0]->digits[i] != 255;
         int has_b = i < selected[1]->length && selected[1]->digits[i] != 255;
         cost.overlaps += has_a && has_b;
+        if (mode == 4 && (has_a || has_b)) {
+            unsigned next_gauge = gauge_at[i];
+            if (gauge_started && next_gauge != current_gauge && acc.z) {
+                unsigned power = (next_gauge + 3 - current_gauge) % 3;
+                acc.x = fm(g, power == 1 ? pre->beta : pre->beta2, acc.x);
+                cost.rotations++;
+                cost.gauge_transitions++;
+            }
+            current_gauge = next_gauge;
+            gauge_started = 1;
+        }
+        unsigned digit_gauge = mode == 4 ? current_gauge : chosen_gauge;
         if (has_a) {
             if (plane) tau4_joint_add_digit_plane(g, plane, &acc, 0,
                                                    selected[0]->digits[i], &cost);
             else tau4_joint_add_digit_gauge(g, pre, &acc, 0,
-                                            selected[0]->digits[i], chosen_gauge, &cost);
+                                            selected[0]->digits[i], digit_gauge, &cost);
         }
         if (has_b) {
             if (plane) tau4_joint_add_digit_plane(g, plane, &acc, 1,
                                                    selected[1]->digits[i], &cost);
             else tau4_joint_add_digit_gauge(g, pre, &acc, 1,
-                                            selected[1]->digits[i], chosen_gauge, &cost);
+                                            selected[1]->digits[i], digit_gauge, &cost);
         }
     }
-    if (chosen_gauge && acc.z) {
-        acc.x = fm(g, chosen_gauge == 1 ? pre->beta2 : pre->beta, acc.x);
+    unsigned final_gauge = mode == 4 ? current_gauge : chosen_gauge;
+    if (final_gauge && acc.z) {
+        acc.x = fm(g, final_gauge == 1 ? pre->beta2 : pre->beta, acc.x);
         cost.rotations++;
+        cost.final_rotations++;
     }
     if (jac_out) *jac_out = acc;
     if (out) {
@@ -2891,6 +3004,14 @@ int ca_ec_tau4_paired_two_gauge_mul_profile(const ca_group *g,
                                              ca_tau4_joint_counts *counts)
 {
     return tau4_paired_lattice_mul_impl(g, pre, NULL, out, NULL, a, b, counts, 3);
+}
+
+int ca_ec_tau4_paired_two_trellis_mul_profile(const ca_group *g,
+                                               const ca_tau4_joint_precomp *pre,
+                                               ca_elem *out, uint64_t a, uint64_t b,
+                                               ca_tau4_joint_counts *counts)
+{
+    return tau4_paired_lattice_mul_impl(g, pre, NULL, out, NULL, a, b, counts, 4);
 }
 
 int ca_ec_tau4_paired_two_plane_mul_profile(const ca_group *g,
