@@ -54,11 +54,47 @@ The raw selector result SHA-256 is
 the successful Sage replay receipt SHA-256 is
 `c155049fd03e79f734b615da868dda52881a890212c11778986a58926ad3aa00`.
 
-The selective point preparation and 12-orbit evaluator have **not yet
-been implemented in the native release path**. A native correctness
-replay, then a paired full-operation run on an isolated physical host,
-must charge the dynamic program and all conversion/point work before
-any CPU speedup claim. This variable-time experiment is not ready for
-secret scalars. Finite τ-adic transducers have
+## Native point path and timing gate
+
+The independent Sage seed generator frozen in `d27975c0` computed all
+**864 seed points** for 12 coefficient orbits across 72 distinct
+bases. Its fixture SHA-256 is
+`032fa99964f2c97ee519c59b92cd23907d14f869f87179071f2e972d7e1cd2ce`.
+The native 12-orbit selector and selective preparation were frozen in
+`c0d776f7` before release replay. The first replay found a real
+9-entry cache-mask bound in the shared source-count helper; the
+failed exits are preserved in `native-selective-checks.json`. The
+fix in `2a165260` passed the replay. The final handoff source then
+aligned candidate output fields and timing boundaries with the
+paired benchmark protocol; `native-selective-checks-v4.json` records
+the final passing offline release replay.
+
+That binary checked **608 built seed points and 64 scalar outputs**
+on the design panel, plus **2,449 built seed points and 256 scalar
+outputs** on the fresh panel. Every seed matched independent Sage
+coordinates, each final point matched the scalar fixture, every
+per-case preparation/source count and selector state count matched
+the Python result, and there were **zero exceptional cached adds**.
+The original 64-case native path and the previous portfolio selector
+both passed regression controls. The release binary SHA-256 is
+`25da6ea0e738810322ae8bfceaddccd6b074e726d0e696872fc86aa788319eea`
+on macOS ARM64 with `rustc 1.93.1`; the final receipt SHA-256 is
+`4467f3088d2d83a8605d963b68e191b56de709ceee8dd81a0c224e1289392a60`.
+
+`make_selective_manifest.py` generated a paired 64-case one-use
+portfolio-versus-selective manifest. Its **structural schema** passed
+`isolated_bench.require_manifest` with synthetic CPU, NUMA, and
+cgroup values; no physical-host preflight or timing ran. Its manifest
+SHA-256 is
+`ea3a9d3c466ba4dc52acdc9964c8920829a62e95d36eabafbcfed276d93b47dd`.
+The 64 workload entries match the original scalar fixture, and an
+untimed paired check of case zero exposed identical curve, base,
+scalar, and output-point fields. `selective-manifest-schema.json`
+keeps this structural-only receipt.
+A full-operation isolated run must charge the dynamic program,
+reduction, selective preparation, orbit/cache setup, evaluation, and
+final inversion before any CPU speedup claim. The present source
+counts may be overwhelmed by search CPU work. This variable-time
+experiment is not ready for secret scalars. Finite τ-adic transducers have
 [prior art](https://eprint.iacr.org/2008/153.pdf); academic novelty
 is unproved.
