@@ -323,8 +323,8 @@ template <int N> F131X_INLINE F131x<N> reduce(const typename Limbs<N>::V h[5])
     const V r2 = d2 ^ (d2 >> 1);
     const V q0 = d0 ^ shr<N, 1>(r0, r1) ^ shr<N, 9>(r0, r1) ^ shr<N, 25>(r0, r1) ^
                  shr<N, 57>(r0, r1) ^ shr<N, 57>(r1, r2);
-    const V q1 = d1 ^ shr<N, 1>(r1, r2) ^ shr<N, 9>(r1, r2) ^ shr<N, 25>(r1, r2) ^
-                 shr<N, 57>(r1, r2);
+    const V q1 =
+        d1 ^ shr<N, 1>(r1, r2) ^ shr<N, 9>(r1, r2) ^ shr<N, 25>(r1, r2) ^ shr<N, 57>(r1, r2);
     const V q2 = d2 ^ (r2 >> 1);
     const V t0 = q0 ^ (q0 << 2) ^ (q0 << 3);
     const V t1 = q1 ^ shl<N, 2>(q1, q0) ^ shl<N, 3>(q1, q0);
@@ -421,8 +421,9 @@ template <int N> F131X_INLINE F131x<N> fromPolynomial(const F131x<N> &a)
 // binary search down the planes for the set coordinate of largest L, and the
 // sign is that coordinate of fromPolynomial(y), by linearity the parity the
 // row would give.  That is popcounts, ands and compares, the same on every
-// lane, so the selection runs here N lanes at a time with no lookup but one
-// gather of HW^-1.
+// lane, so the selection runs here N lanes at a time with no lookup but the
+// 132 entries of HW^-1, from registers where there are byte permutes and by
+// one gather where there are not.
 
 // The sum of the eight bytes of each element.
 template <int N> F131X_INLINE typename Limbs<N>::V byteSum(typename Limbs<N>::V v);
@@ -538,8 +539,15 @@ template <int N> F131X_INLINE void storeBytes(typename Limbs<N>::V v, unsigned c
 // place.
 struct SelectConsts {
     uint64_t plane[8][3];
+    // The planes again, each broadcast to a vector's width: loaded as vectors
+    // they are plain loads, where a broadcast of the scalar goes through a
+    // general register and port 5 (gcc 13 does that for all 24 of them, with
+    // the complement taken in the scalar, and that is a quarter of the
+    // selection's port-5 work).
+    alignas(64) uint64_t planeV[8][3][8];
     uint64_t top[8];
     const uint32_t *inv;
+    alignas(64) uint8_t inv8[192]; // the same 132 entries as bytes, for the byte permutes
 
     void build(const uint32_t *tw)
     {
@@ -555,66 +563,131 @@ struct SelectConsts {
                 for (int v = 0; v < 8; ++v)
                     if ((v >> (e - 128)) & 1) top[v] += uint64_t(l) + (1ull << 32);
         }
+        for (int j = 0; j < 8; ++j)
+            for (int l = 0; l < 3; ++l)
+                for (int i = 0; i < 8; ++i) planeV[j][l][i] = plane[j][l];
         inv = tw + TW_INV_OFF;
+        memset(inv8, 0, sizeof(inv8));
+        for (int w = 0; w < 132; ++w) inv8[w] = uint8_t(inv[w]);
     }
 };
 
+// HW^-1 mod 131 of each element, HW in [0, 131].  A gather is the one memory
+// operation in the selection and the slowest instruction in it (a dozen uops,
+// on k's dependency chain), so where there are byte permutes the table is
+// read from registers instead: the two-table permute covers entries 0 to 127
+// by the low seven bits of the index, and a permute over a third table the
+// four above, blended in where bit 7 is set.  The other seven bytes of each
+// element are zero and read entry 0, which the mask drops.
+template <int N>
+F131X_INLINE typename Limbs<N>::V inverseWeight(const SelectConsts &c, typename Limbs<N>::V hw)
+{
+    typedef typename Limbs<N>::V V;
+    typedef typename Limbs<N>::M M;
+#    if F131X_VBMI
+    if constexpr (N == 8) {
+        const M lo = _mm512_permutex2var_epi8(_mm512_load_si512((const void *)c.inv8), (M)hw,
+                                              _mm512_load_si512((const void *)(c.inv8 + 64)));
+        const M hi =
+            _mm512_permutexvar_epi8((M)hw, _mm512_load_si512((const void *)(c.inv8 + 128)));
+        const M r = _mm512_mask_blend_epi8(_mm512_movepi8_mask((M)hw), lo, hi);
+        return (V)r & F131x<N>::splat(0xffu);
+    }
+#    endif
+    return gather32<N>(c.inv, hw);
+}
+
 // HW(x), the phase k and the sign eps of N lanes -- f131::weight, selectPhase
 // and coordinate(y, selectPivot(x, k)) -- from x in the normal basis and y in
-// the polynomial basis.
-template <int N>
-F131X_INLINE void select(const F131x<N> &xn, const F131x<N> &yp, const SelectConsts &c,
+// the polynomial basis; G vectors at once, statement by statement.
+//
+// One vector's selection is some 420 instructions on a dependency chain of
+// a hundred cycles or so: the phase sum, k, eight planes of the comparison
+// and eight of the search, each waiting on the one before.  A core whose
+// reorder window is about that many instructions overlaps little of the
+// next vector's chain with this one's, so vector by vector the selection
+// runs at the chain's pace and not the ports'.  Interleaving G vectors in
+// the instruction stream puts G chains inside the window: measured on one
+// Sapphire Rapids core, two vectors took 8% off the time a lane and four
+// 15%; eight spilled registers and gave some of it back.  The same on an
+// AVX2 build with its sixteen registers, four best.
+static const int kSelectGroup = 4;
+
+template <int N, int G>
+F131X_INLINE void select(const F131x<N> *xn, const F131x<N> *yp, const SelectConsts &c,
                          typename Limbs<N>::V *hwOut, typename Limbs<N>::V *kOut,
                          typename Limbs<N>::V *epsOut)
 {
     typedef typename Limbs<N>::V V;
-#    define F131X_C(x) F131x<N>::splat(x)
+#    define F131X_C(x)    F131x<N>::splat(x)
+#    define F131X_P(j, l) (*reinterpret_cast<const V *>(c.planeV[j][l]))
     // The 3-bit limb's share of the weight and of the phase sum, from its table.
-    const V top = lookup8<N>(c.top, xn.w2);
-    const V hw = popcnt<N>(xn.w0) + popcnt<N>(xn.w1) + (top >> 32);
+    V top[G], hw[G], s[G], k[G];
+    for (int g = 0; g < G; ++g) top[g] = lookup8<N>(c.top, xn[g].w2);
+    for (int g = 0; g < G; ++g) hw[g] = popcnt<N>(xn[g].w0) + popcnt<N>(xn[g].w1) + (top[g] >> 32);
     // The phase sum, sum_e L(e) x_e = sum_j 2^j |x & plane_j|, below 131^2.
-    V s = top & F131X_C(0xffffffffu);
+    for (int g = 0; g < G; ++g) s[g] = top[g] & F131X_C(0xffffffffu);
     for (int j = 0; j < 8; ++j)
-        s += (popcnt<N>(xn.w0 & F131X_C(c.plane[j][0])) + popcnt<N>(xn.w1 & F131X_C(c.plane[j][1])))
-             << j;
-    const V k = mod131<N>(mul32<N>(mod131<N>(s), gather32<N>(c.inv, hw)));
+        for (int g = 0; g < G; ++g)
+            s[g] += (popcnt<N>(xn[g].w0 & F131X_P(j, 0)) + popcnt<N>(xn[g].w1 & F131X_P(j, 1)))
+                    << j;
+    for (int g = 0; g < G; ++g)
+        k[g] = mod131<N>(mul32<N>(mod131<N>(s[g]), inverseWeight<N>(c, hw[g])));
     // The pivot's mask, the coordinates with L(e) < k: a bitwise comparison
     // of every coordinate's label with k, least significant bit first.  At
     // each bit, L < k so far if bit j of k is set and of L clear, or the two
     // agree and L < k already: the majority of (k_j, not L_j, so far), one
     // three-input logic instruction per limb.
     typedef typename Limbs<N>::S S;
-    V lt0 = V{}, lt1 = V{}, lt2 = V{};
+    V lt0[G], lt1[G], lt2[G];
+    for (int g = 0; g < G; ++g) lt0[g] = lt1[g] = lt2[g] = V{};
     for (int j = 0; j < 8; ++j) {
-        const V kj = (V)((S)(k << (63 - j)) >> 63);
-        const V n0 = F131X_C(~c.plane[j][0]), n1 = F131X_C(~c.plane[j][1]),
-                n2 = F131X_C(~c.plane[j][2]);
-        lt0 = (kj & n0) | (kj & lt0) | (n0 & lt0);
-        lt1 = (kj & n1) | (kj & lt1) | (n1 & lt1);
-        lt2 = (kj & n2) | (kj & lt2) | (n2 & lt2);
+        const V n0 = ~F131X_P(j, 0), n1 = ~F131X_P(j, 1), n2 = ~F131X_P(j, 2);
+        for (int g = 0; g < G; ++g) {
+            const V kj = (V)((S)(k[g] << (63 - j)) >> 63);
+            lt0[g] = (kj & n0) | (kj & lt0[g]) | (n0 & lt0[g]);
+            lt1[g] = (kj & n1) | (kj & lt1[g]) | (n1 & lt1[g]);
+            lt2[g] = (kj & n2) | (kj & lt2[g]) | (n2 & lt2[g]);
+        }
     }
-    V p0 = xn.w0 & lt0, p1 = xn.w1 & lt1, p2 = xn.w2 & lt2;
-    const V any = (V)((p0 | p1 | p2) != V{});
-    p0 = (p0 & any) | (xn.w0 & ~any);
-    p1 = (p1 & any) | (xn.w1 & ~any);
-    p2 = (p2 & any) | (xn.w2 & ~any);
+    V p0[G], p1[G], p2[G];
+    for (int g = 0; g < G; ++g) {
+        p0[g] = xn[g].w0 & lt0[g], p1[g] = xn[g].w1 & lt1[g], p2[g] = xn[g].w2 & lt2[g];
+        const V any = (V)((p0[g] | p1[g] | p2[g]) != V{});
+        p0[g] = (p0[g] & any) | (xn[g].w0 & ~any);
+        p1[g] = (p1[g] & any) | (xn[g].w1 & ~any);
+        p2[g] = (p2[g] & any) | (xn[g].w2 & ~any);
+    }
     // The set coordinate of largest L: down the planes, keep the candidates
     // with bit j of L set whenever there are any.  L is a bijection, so one
     // coordinate is left.
-    for (int j = 7; j >= 0; --j) {
-        const V t0 = p0 & F131X_C(c.plane[j][0]), t1 = p1 & F131X_C(c.plane[j][1]),
-                t2 = p2 & F131X_C(c.plane[j][2]);
-        const V nz = (V)((t0 | t1 | t2) != V{});
-        p0 = (t0 & nz) | (p0 & ~nz);
-        p1 = (t1 & nz) | (p1 & ~nz);
-        p2 = (t2 & nz) | (p2 & ~nz);
-    }
+    for (int j = 7; j >= 0; --j)
+        for (int g = 0; g < G; ++g) {
+            const V t0 = p0[g] & F131X_P(j, 0), t1 = p1[g] & F131X_P(j, 1),
+                    t2 = p2[g] & F131X_P(j, 2);
+            const V nz = (V)((t0 | t1 | t2) != V{});
+            p0[g] = (t0 & nz) | (p0[g] & ~nz);
+            p1[g] = (t1 & nz) | (p1[g] & ~nz);
+            p2[g] = (t2 & nz) | (p2[g] & ~nz);
+        }
     // eps: that coordinate of y in the normal basis.
-    const F131x<N> yn = fromPolynomial<N>(yp);
-    *epsOut = (V)(((yn.w0 & p0) | (yn.w1 & p1) | (yn.w2 & p2)) != V{}) & F131X_C(1u);
-    *hwOut = hw;
-    *kOut = k;
+    for (int g = 0; g < G; ++g) {
+        const F131x<N> yn = fromPolynomial<N>(yp[g]);
+        epsOut[g] = (V)(((yn.w0 & p0[g]) | (yn.w1 & p1[g]) | (yn.w2 & p2[g])) != V{}) & F131X_C(1u);
+        hwOut[g] = hw[g];
+        kOut[g] = k[g];
+    }
+#    undef F131X_P
 #    undef F131X_C
+}
+
+// One vector's selection.
+template <int N>
+F131X_INLINE void select(const F131x<N> &xn, const F131x<N> &yp, const SelectConsts &c,
+                         typename Limbs<N>::V *hwOut, typename Limbs<N>::V *kOut,
+                         typename Limbs<N>::V *epsOut)
+{
+    select<N, 1>(&xn, &yp, c, hwOut, kOut, epsOut);
 }
 
 #    undef F131X_INLINE

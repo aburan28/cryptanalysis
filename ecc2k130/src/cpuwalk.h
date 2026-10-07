@@ -388,6 +388,22 @@ class CpuEngine
         int i = 0;
 #if ECC_F131_LANES > 1
         typedef f131x::F131x<kLanes> FX;
+        // G vectors a call, interleaved (f131x.h), then one at a time.
+        const int G = f131x::kSelectGroup;
+        for (; i + G * kLanes <= B; i += G * kLanes) {
+            FX xn[G], yp[G];
+            typename FX::V hw[G], k[G], eps[G];
+            for (int g = 0; g < G; ++g) {
+                const int j = i + g * kLanes;
+                xn[g] = FX::load(b.XN0 + j, b.XN1 + j, b.XN2 + j);
+                yp[g] = FX::load(b.Y0 + j, b.Y1 + j, b.Y2 + j);
+            }
+            f131x::select<kLanes, G>(xn, yp, select_, hw, k, eps);
+            for (int g = 0; g < G; ++g) {
+                f131x::storeBytes<kLanes>(k[g], KK + i + g * kLanes);
+                f131x::storeBytes<kLanes>(eps[g], EPS + i + g * kLanes);
+            }
+        }
         for (; i + kLanes <= B; i += kLanes) {
             typename FX::V hw, k, eps;
             f131x::select<kLanes>(FX::load(b.XN0 + i, b.XN1 + i, b.XN2 + i),
