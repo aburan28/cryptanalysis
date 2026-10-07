@@ -2305,6 +2305,24 @@ The new one-bit target constraint does not measure successful decomposition
 work, N83 natural yield, or a complete N131 `2^x`; the challenge gate stays
 closed.
 
+### Q1477 one-target N53 online accounting comparator
+
+[Q1477](q1477_n53_online_target/README.md) uses Q1473's independently
+replayed factor-base logs and a Q1468-style complete N53 pair table to
+recover one previously unseen public target. Its 11 target-dependent
+attempts include ten complete absences and one independently verified
+four-point relation. The contiguous native online interval is 45.688
+seconds, with 184,937,528 field multiplications, 37,478,830 squarings,
+and 9,731 inversions; five exclusive phase clocks sum exactly to the
+query-through-replay interval. The table build is reported separately as
+reusable preparation. A target subgroup check occurred before the clock
+and lacks a separate timing, so this is not yet a fully charged primary
+online interval. These unisolated host timings are exploratory, with no
+paired same-point rho speedup claim. This experiment measures target descent
+and scalar replay for the explicit N53 pair-table comparator, not for the
+compact S3 solver. The N83 unpinned relation gate and complete N131
+`2^x` remain open.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
