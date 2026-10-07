@@ -1,0 +1,100 @@
+{
+  "base_guard_design_sha256": "5f6700b52245dcaa6ec4aaab9712d2ccf05d0860fd12252f875b737af05019ca",
+  "bounds": {
+    "binary64_gate": "FLT_RADIX == 2 and DBL_MANT_DIG >= 53; otherwise use exact integer division",
+    "multiplier_strict_upper": "2^28",
+    "numerator_strict_upper": "2^84",
+    "scalar_strict_upper": "2^56"
+  },
+  "correctness": "For positive numerator N and denominator d, the correction stops exactly when -d <= 2(N-qd) < d, which is equivalent to q=floor((N+floor(d/2))/d) for odd d and the original positive round_div tie rule. Estimate accuracy affects work, never the returned integer. A non-binary64 platform uses the integer-division fallback.",
+  "measurement_gate": "fresh disjoint correctness and operation panel first; CPU timing only with a host-level isolation receipt",
+  "method": "estimate each positive GLV lattice quotient with binary64, then correct by exact signed 128-bit remainder comparisons until the original nearest-integer quotient is reached",
+  "records": [
+    {
+      "boundary_challenges": [
+        {
+          "estimate_corrections": 0,
+          "exact_quotient": 310,
+          "multiplier": 2323,
+          "scalar": 3161587,
+          "two_numerator_mod_order": 1
+        },
+        {
+          "estimate_corrections": 0,
+          "exact_quotient": 2013,
+          "multiplier": 2323,
+          "scalar": 20568192,
+          "two_numerator_mod_order": 23729778
+        },
+        {
+          "estimate_corrections": 0,
+          "exact_quotient": 1591,
+          "multiplier": 3275,
+          "scalar": 11524340,
+          "two_numerator_mod_order": 1
+        },
+        {
+          "estimate_corrections": 0,
+          "exact_quotient": 1684,
+          "multiplier": 3275,
+          "scalar": 12205439,
+          "two_numerator_mod_order": 23729778
+        }
+      ],
+      "curve": "glv-j0-32",
+      "multipliers": [
+        2323,
+        3275
+      ],
+      "order": 23729779,
+      "training_corrections": 0,
+      "training_quotients": 32768
+    },
+    {
+      "boundary_challenges": [
+        {
+          "estimate_corrections": 0,
+          "exact_quotient": 93969,
+          "multiplier": 140057,
+          "scalar": 35978143945921710,
+          "two_numerator_mod_order": 1
+        },
+        {
+          "estimate_corrections": 1,
+          "exact_quotient": 46088,
+          "multiplier": 140057,
+          "scalar": 17646112125357037,
+          "two_numerator_mod_order": 53624256071278746
+        },
+        {
+          "estimate_corrections": 0,
+          "exact_quotient": 98892494,
+          "multiplier": 231499057,
+          "scalar": 22907377955199485,
+          "two_numerator_mod_order": 1
+        },
+        {
+          "estimate_corrections": 1,
+          "exact_quotient": 132606563,
+          "multiplier": 231499057,
+          "scalar": 30716878116079262,
+          "two_numerator_mod_order": 53624256071278746
+        }
+      ],
+      "curve": "j0-56",
+      "multipliers": [
+        140057,
+        231499057
+      ],
+      "order": 53624256071278747,
+      "training_corrections": 0,
+      "training_quotients": 32768
+    }
+  ],
+  "schema": 1,
+  "scope": "variable-time public-scalar GLV pair reduction on two exact j=0 study curves",
+  "source_sha256": "29a09aa70b55ed1f6fb3a13a0933c1fe95dc65947fb7e2acbcd46a1951685bdd",
+  "status": "frozen_exact_correction_design",
+  "training_inputs_sha256": "848fd4132d94c212ffbd20b21c979cfa4b003ee4421dd02d9cfcef14aa2e8dfd",
+  "training_panel_sha256": "84ba330f0f4a65c015a813ea6b5875b66911d9893693cae74c8463dfff4cc24f"
+}

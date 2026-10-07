@@ -474,3 +474,12 @@ for 16,363 of 16,384 `j0-56` scalars and 2,199 of 16,384
 search. Release and UBSan correctness panels pair each guarded format
 with its same-width serial or wave control. Isolated CPU timing is
 still needed before claiming a wall-time improvement.
+
+The [exact-corrected quotient variant](JOINT_PAIR_QCORR.md) replaces
+two online signed 128-bit GLV lattice divisions with binary64 quotient
+estimates and exact integer-remainder correction. Its fresh fixture
+includes near-halfway quotients, two of which require corrections on
+`j0-56`. Release and UBSan correctness panels pass 144 arms with
+matching outputs and group operation counts. A portable integer path
+remains available when the floating capability is absent. Isolated
+CPU timing is required to learn whether the quotient change helps.
