@@ -4,7 +4,10 @@
     python3 appendonly.py --base origin/<default-branch>     # CI on pull requests
     python3 appendonly.py --base <sha-before-push>            # CI on pushes
 
-Compares the working tree with the archive as of --base and fails on any:
+Compares the working tree with the archive as of the merge-base of HEAD and
+--base (so rows added on the base after the branch forked never read as
+removals; a removal of such a row still fails on the base's own push run) and
+fails on any:
   - row of index.csv, aliases.csv, sweeps.csv or sweeps/<name>.points.csv that is
     missing or changed (rows are matched by their key column);
   - archive file (bases/... of an index row, sweeps/<name>.json.gz) that is missing
@@ -105,10 +108,13 @@ def main() -> int:
     if set(args.base) <= {"0"} or git("rev-parse", "--verify", "--quiet", f"{args.base}^{{commit}}").returncode:
         print(f"base {args.base!r} is not a commit here (new branch or shallow clone); nothing to compare")
         return 0
-    errors = check(args.base)
+    mb = git("merge-base", "HEAD", args.base)
+    base = mb.stdout.decode().strip() if mb.returncode == 0 and mb.stdout.strip() else args.base
+    errors = check(base)
     for err in errors:
         print(err)
-    print(f"append-only check against {args.base}: {len(errors)} problems")
+    print(f"append-only check against {base}" + (f" (merge-base with {args.base})" if base != args.base else "")
+          + f": {len(errors)} problems")
     return 1 if errors else 0
 
 

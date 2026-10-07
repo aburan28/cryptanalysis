@@ -54,6 +54,25 @@ class AppendOnlyTest(unittest.TestCase):
             errors = appendonly.check("BASE")
         self.assertTrue(any(e.startswith("index.csv: row ") and e.endswith(" changed") for e in errors), errors)
 
+    def test_rows_added_on_the_base_after_forking_are_not_removals(self):
+        # the failure mode of PR #352: the base gained archives after the branch forked,
+        # so a base-tip comparison read them as deletions; main() must use the merge-base
+        calls = []
+        real_git = appendonly.git
+
+        def git(*args):
+            calls.append(args)
+            if args[0] == "merge-base":
+                return mock.Mock(returncode=0, stdout=b"MERGEBASE\n")
+            return real_git(*args)
+
+        with mock.patch.object(appendonly, "git", git), \
+                mock.patch.object(appendonly, "check", return_value=[]) as chk, \
+                mock.patch.object(sys, "argv", ["appendonly.py", "--base", "HEAD"]):
+            self.assertEqual(appendonly.main(), 0)
+        chk.assert_called_once_with("MERGEBASE")
+        self.assertIn(("merge-base", "HEAD", "HEAD"), calls)
+
     def test_new_branch_is_skipped(self):
         with mock.patch.object(sys, "argv", ["appendonly.py", "--base", "0" * 40]):
             self.assertEqual(appendonly.main(), 0)
