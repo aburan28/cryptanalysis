@@ -354,3 +354,11 @@ zero fallback and verified generic outputs. The native per-scalar search
 uses 53,312 bytes of scratch and had substantially higher exploratory local
 latency. This is an exact operation-bound result; no CPU speedup or academic
 novelty is claimed.
+
+The [scattered width-three pair table](TAU3_SCATTER_MATCHING.md) combines
+the complete six-step point table with selected nonadjacent three-step
+pairs. Exact matching on a new disjoint 32,768-scalar Python panel saved
+7.53% and 4.65% of mixed additions against the complete six-step table,
+with 1.82× and 2.00× its point slots. All scalar identities and 184 sampled
+group outputs passed. Native online timing, preparation cost, controlled
+speed, and one-target rho impact remain unknown.
