@@ -63,14 +63,10 @@ typedef struct {
     f4_u64 p[64u * F4E_TILE];
 } F4eUpdateShared;
 
-/* Block-shared state of the panel step.  The pivots are built here and
- * copied to F4ePivots at the end: expanding the histories reads each one
- * just written, a dependent round trip that global memory makes long. */
+/* Block-shared state of the panel step. */
 typedef struct {
     f4_u64 cols;
     f4_u64 best[3];
-    f4_u64 hist[64];
-    f4_u32 row[64];
     f4_u32 n_cand;
     f4_u64 pw[F4E_SMEM_CAND];
     f4_u64 coeff[F4E_SMEM_CAND];
@@ -158,8 +154,8 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_glo
                 if (tid == 0u) {
                     sh->best[(round + 2u) % 3u] = ~0ull;
                     if (p != F4_NONE) {
-                        sh->row[k] = cand[p];
-                        sh->hist[k] = coeff[p];
+                        piv->row[k] = cand[p];
+                        piv->hist[k] = coeff[p];
                         is_piv[p] = 1u;
                     }
                 }
@@ -202,22 +198,15 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_glo
         /* Pivot k is its own row plus the final pivots its history names,
          * so over the original rows it is hist[k] plus their expansions. */
         for (f4_u32 k = 0; k < n_piv; ++k) {
-            f4_u64 h = sh->hist[k], full = h;
+            f4_u64 h = piv->hist[k], full = h;
             while (h != 0ull) {
                 const f4_u32 j = F4_CTZ(h);
                 h &= h - 1ull;
-                full ^= sh->hist[j];
+                full ^= piv->hist[j];
             }
-            sh->hist[k] = full;
+            piv->hist[k] = full;
         }
     }
-    F4_SYNC();
-    F4_FOR_THREADS(tid)
-        for (f4_u32 k = tid; k < n_piv; k += nt) {
-            piv->row[k] = sh->row[k];
-            piv->hist[k] = sh->hist[k];
-        }
-    F4_END_THREADS
     F4_SYNC();
 }
 
