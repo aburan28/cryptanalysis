@@ -388,6 +388,30 @@ static void reduce_with_lattice(tau_vec v1, tau_vec v2, ca_i128 det, uint64_t k,
     *out_b = -y;
 }
 
+/* For the two exact bounded-pair study lattices, the design certificate
+ * proves only the four axial vectors can improve on rounded Babai. */
+static void reduce_with_lattice_five(tau_vec v1, tau_vec v2, ca_i128 det, uint64_t k,
+                                     ca_i128 *out_a, ca_i128 *out_b)
+{
+    static const int offsets[5][2] = {{-1, 0}, {0, -1}, {0, 0}, {0, 1}, {1, 0}};
+    ca_i128 u0 = round_div((ca_i128)k * v2.y, det);
+    ca_i128 v0 = round_div(-(ca_i128)k * v1.y, det);
+    ca_i128 best = -1, bx = 0, by = 0;
+    for (unsigned i = 0; i < 5; i++) {
+        ca_i128 u = u0 + offsets[i][0], v = v0 + offsets[i][1];
+        ca_i128 x = (ca_i128)k - u * v1.x - v * v2.x;
+        ca_i128 y = -u * v1.y - v * v2.y;
+        ca_i128 score = iabs128(x) + iabs128(y);
+        if (best < 0 || score < best) {
+            best = score;
+            bx = x;
+            by = y;
+        }
+    }
+    *out_a = bx + by;
+    *out_b = -by;
+}
+
 static int reduce_scalar(uint64_t n, uint64_t lambda, uint64_t k, ca_i128 *out_a, ca_i128 *out_b)
 {
     tau_vec v1, v2;
@@ -1054,6 +1078,19 @@ static int joint_pair_curve_index(const ca_group *g)
     return -1;
 }
 
+static int joint_pair_five_supported(const ca_joint_pair_precomp *pre)
+{
+    if (!pre || !pre->g || !pre->top_compressed) return 0;
+    int curve = joint_pair_curve_index(pre->g);
+    if (curve == 0)
+        return pre->v1x == 2323 && pre->v1y == -3275 && pre->v2x == 5598 && pre->v2y == 2323 &&
+               pre->det == UINT64_C(23729779);
+    if (curve == 1)
+        return pre->v1x == 140057 && pre->v1y == -231499057 && pre->v2x == 231639114 &&
+               pre->v2y == 140057 && pre->det == UINT64_C(53624256071278747);
+    return 0;
+}
+
 size_t ca_ec_joint_pair_point_entries(const ca_group *g)
 {
     int curve = joint_pair_curve_index(g);
@@ -1371,7 +1408,7 @@ int ca_ec_joint_pair_prepare_verify(const ca_joint_pair_precomp *pre)
 
 static int joint_pair_mul_impl(const ca_group *g, const ca_joint_pair_precomp *pre, ca_elem *out,
                                uint64_t k, uint64_t *adds, uint64_t *rotations, uint64_t *unit_adds,
-                               uint64_t *fallbacks)
+                               uint64_t *fallbacks, int five_reduce)
 {
     if (!g || !pre || !out || pre->g != g || !pre->pairs || pre->pairs > 4) return 0;
     if (adds) *adds = 0;
@@ -1389,8 +1426,12 @@ static int joint_pair_mul_impl(const ca_group *g, const ca_joint_pair_precomp *p
         (pre->point_words != 4 && pre->point_words != 3 && pre->point_words != 2))
         return 0;
     ca_i128 a, b;
-    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det, k,
-                        &a, &b);
+    if (five_reduce)
+        reduce_with_lattice_five((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y},
+                                 pre->det, k, &a, &b);
+    else
+        reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det,
+                            k, &a, &b);
     ca_i128 x = a + b, y = -b;
     uint32_t action[4];
     for (unsigned pair_position = 0; pair_position < pre->pairs; pair_position++) {
@@ -1476,7 +1517,7 @@ int ca_ec_joint_pair_mul_profile(const ca_group *g, const ca_joint_pair_precomp 
                                  uint64_t *fallbacks)
 {
     if (!pre || pre->point_words != 4) return 0;
-    return joint_pair_mul_impl(g, pre, out, k, adds, NULL, unit_adds, fallbacks);
+    return joint_pair_mul_impl(g, pre, out, k, adds, NULL, unit_adds, fallbacks, 0);
 }
 
 int ca_ec_joint_pair_width_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre,
@@ -1485,15 +1526,24 @@ int ca_ec_joint_pair_width_mul_profile(const ca_group *g, const ca_joint_pair_pr
                                        uint64_t *fallbacks)
 {
     if (!pre || (pre->point_words != 3 && pre->point_words != 2)) return 0;
-    return joint_pair_mul_impl(g, pre, out, k, adds, rotations, unit_adds, fallbacks);
+    return joint_pair_mul_impl(g, pre, out, k, adds, rotations, unit_adds, fallbacks, 0);
 }
 
-int ca_ec_joint_pair_width_mul_wave_batch_profile(const ca_group *g,
-                                                  const ca_joint_pair_precomp *pre, ca_elem *out,
-                                                  const uint64_t *scalars, size_t count,
-                                                  size_t block_size, uint64_t *adds,
-                                                  uint64_t *rotations, uint64_t *unit_adds,
-                                                  uint64_t *output_inversions, uint64_t *fallbacks)
+int ca_ec_joint_pair_width_five_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre,
+                                            ca_elem *out, uint64_t k, uint64_t *adds,
+                                            uint64_t *rotations, uint64_t *unit_adds,
+                                            uint64_t *fallbacks)
+{
+    if (!joint_pair_five_supported(pre) || (pre->point_words != 3 && pre->point_words != 2))
+        return 0;
+    return joint_pair_mul_impl(g, pre, out, k, adds, rotations, unit_adds, fallbacks, 1);
+}
+
+static int joint_pair_width_mul_wave_impl(const ca_group *g, const ca_joint_pair_precomp *pre,
+                                          ca_elem *out, const uint64_t *scalars, size_t count,
+                                          size_t block_size, uint64_t *adds, uint64_t *rotations,
+                                          uint64_t *unit_adds, uint64_t *output_inversions,
+                                          uint64_t *fallbacks, int five_reduce)
 {
     if (adds) *adds = 0;
     if (rotations) *rotations = 0;
@@ -1525,8 +1575,12 @@ int ca_ec_joint_pair_width_mul_wave_batch_profile(const ca_group *g,
             active[i] = k && !pre->identity;
             if (!active[i]) continue;
             ca_i128 a, b;
-            reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y},
-                                pre->det, k, &a, &b);
+            if (five_reduce)
+                reduce_with_lattice_five((tau_vec){pre->v1x, pre->v1y},
+                                         (tau_vec){pre->v2x, pre->v2y}, pre->det, k, &a, &b);
+            else
+                reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y},
+                                    pre->det, k, &a, &b);
             ca_i128 x = a + b, y = -b;
             for (unsigned position = 0; position < pre->pairs; position++) {
                 unsigned residues[2];
@@ -1612,6 +1666,27 @@ failure:
     free(queries);
     free(actions);
     return 0;
+}
+
+int ca_ec_joint_pair_width_mul_wave_batch_profile(const ca_group *g,
+                                                  const ca_joint_pair_precomp *pre, ca_elem *out,
+                                                  const uint64_t *scalars, size_t count,
+                                                  size_t block_size, uint64_t *adds,
+                                                  uint64_t *rotations, uint64_t *unit_adds,
+                                                  uint64_t *output_inversions, uint64_t *fallbacks)
+{
+    return joint_pair_width_mul_wave_impl(g, pre, out, scalars, count, block_size, adds, rotations,
+                                          unit_adds, output_inversions, fallbacks, 0);
+}
+
+int ca_ec_joint_pair_width_five_mul_wave_batch_profile(
+    const ca_group *g, const ca_joint_pair_precomp *pre, ca_elem *out, const uint64_t *scalars,
+    size_t count, size_t block_size, uint64_t *adds, uint64_t *rotations, uint64_t *unit_adds,
+    uint64_t *output_inversions, uint64_t *fallbacks)
+{
+    if (!joint_pair_five_supported(pre)) return 0;
+    return joint_pair_width_mul_wave_impl(g, pre, out, scalars, count, block_size, adds, rotations,
+                                          unit_adds, output_inversions, fallbacks, 1);
 }
 
 void ca_ec_joint_pair_clear(ca_joint_pair_precomp *pre)

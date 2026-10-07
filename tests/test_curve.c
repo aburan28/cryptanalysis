@@ -893,6 +893,17 @@ static void joint_pair_width_named(uint64_t p, uint64_t b, uint64_t order, unsig
         CHECK(ca_ec_joint_pair_width_mul_profile(&g, &pre, &got, scalars[i], &adds, &rotations,
                                                  &unit_adds, &fallbacks));
         CHECK(ca_group_equal(&g, &got, &expected));
+        ca_elem five_got;
+        uint64_t five_adds = UINT64_MAX, five_rotations = UINT64_MAX;
+        uint64_t five_unit_adds = UINT64_MAX, five_fallbacks = UINT64_MAX;
+        CHECK(ca_ec_joint_pair_width_five_mul_profile(&g, &pre, &five_got, scalars[i], &five_adds,
+                                                      &five_rotations, &five_unit_adds,
+                                                      &five_fallbacks));
+        CHECK(ca_group_equal(&g, &five_got, &expected));
+        CHECK_EQ_U64(five_adds, adds);
+        CHECK_EQ_U64(five_rotations, rotations);
+        CHECK_EQ_U64(five_unit_adds, unit_adds);
+        CHECK_EQ_U64(five_fallbacks, fallbacks);
         serial_adds += adds;
         serial_rotations += rotations;
         serial_unit_adds += unit_adds;
@@ -921,9 +932,30 @@ static void joint_pair_width_named(uint64_t p, uint64_t b, uint64_t order, unsig
             ca_group_mul(&g, &expected, &point, scalars[i], NULL);
             CHECK(ca_group_equal(&g, &wave_outputs[i], &expected));
         }
+        CHECK(ca_ec_joint_pair_width_five_mul_wave_batch_profile(
+            &g, &pre, wave_outputs, scalars, 7, blocks[j], &adds, &rotations, &unit_adds,
+            &wave_inversions, &fallbacks));
+        CHECK_EQ_U64(adds, serial_adds);
+        CHECK_EQ_U64(rotations, serial_rotations);
+        CHECK_EQ_U64(unit_adds, serial_unit_adds);
+        CHECK_EQ_U64(fallbacks, 0);
+        for (size_t i = 0; i < 7; i++) {
+            ca_elem expected;
+            ca_group_mul(&g, &expected, &point, scalars[i], NULL);
+            CHECK(ca_group_equal(&g, &wave_outputs[i], &expected));
+        }
     }
     CHECK(!ca_ec_joint_pair_width_mul_wave_batch_profile(&g, &pre, wave_outputs, scalars, 7, 0,
                                                          NULL, NULL, NULL, NULL, NULL));
+    CHECK(!ca_ec_joint_pair_width_five_mul_wave_batch_profile(&g, &pre, wave_outputs, scalars, 7, 0,
+                                                              NULL, NULL, NULL, NULL, NULL));
+    __int128 saved_v1x = pre.v1x;
+    pre.v1x++;
+    CHECK(!ca_ec_joint_pair_width_five_mul_profile(&g, &pre, &wave_outputs[0], 17, NULL, NULL, NULL,
+                                                   NULL));
+    CHECK(!ca_ec_joint_pair_width_five_mul_wave_batch_profile(&g, &pre, wave_outputs, scalars, 7, 7,
+                                                              NULL, NULL, NULL, NULL, NULL));
+    pre.v1x = saved_v1x;
     unsigned saved_pairs = pre.pairs;
     pre.pairs = 1;
     ca_elem got, expected;
@@ -934,8 +966,18 @@ static void joint_pair_width_named(uint64_t p, uint64_t b, uint64_t order, unsig
     CHECK(ca_group_equal(&g, &got, &expected));
     CHECK_EQ_U64(fallbacks, 1);
     fallbacks = 0;
+    CHECK(ca_ec_joint_pair_width_five_mul_profile(&g, &pre, &got, order / 2, NULL, NULL, NULL,
+                                                  &fallbacks));
+    CHECK(ca_group_equal(&g, &got, &expected));
+    CHECK_EQ_U64(fallbacks, 1);
+    fallbacks = 0;
     CHECK(ca_ec_joint_pair_width_mul_wave_batch_profile(&g, &pre, &got, (uint64_t[]){order / 2}, 1,
                                                         1, NULL, NULL, NULL, NULL, &fallbacks));
+    CHECK(ca_group_equal(&g, &got, &expected));
+    CHECK_EQ_U64(fallbacks, 1);
+    fallbacks = 0;
+    CHECK(ca_ec_joint_pair_width_five_mul_wave_batch_profile(
+        &g, &pre, &got, (uint64_t[]){order / 2}, 1, 1, NULL, NULL, NULL, NULL, &fallbacks));
     CHECK(ca_group_equal(&g, &got, &expected));
     CHECK_EQ_U64(fallbacks, 1);
     pre.pairs = saved_pairs;
@@ -946,8 +988,13 @@ static void joint_pair_width_named(uint64_t p, uint64_t b, uint64_t order, unsig
     CHECK(ca_ec_joint_pair_prepare_verify(&pre));
     CHECK(ca_ec_joint_pair_width_mul_profile(&g, &pre, &got, 17, NULL, NULL, NULL, NULL));
     CHECK(ca_group_is_identity(&g, &got));
+    CHECK(ca_ec_joint_pair_width_five_mul_profile(&g, &pre, &got, 17, NULL, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(&g, &got));
     CHECK(ca_ec_joint_pair_width_mul_wave_batch_profile(&g, &pre, &got, (uint64_t[]){17}, 1, 1,
                                                         NULL, NULL, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(&g, &got));
+    CHECK(ca_ec_joint_pair_width_five_mul_wave_batch_profile(&g, &pre, &got, (uint64_t[]){17}, 1, 1,
+                                                             NULL, NULL, NULL, NULL, NULL));
     CHECK(ca_group_is_identity(&g, &got));
     ca_ec_joint_pair_clear(&pre);
 }

@@ -147,12 +147,20 @@ int ca_ec_joint_pair_width_mul_profile(const ca_group *g, const ca_joint_pair_pr
                                        ca_elem *out, uint64_t k, uint64_t *adds,
                                        uint64_t *rotations, uint64_t *unit_adds,
                                        uint64_t *fallbacks);
+int ca_ec_joint_pair_width_five_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre,
+                                            ca_elem *out, uint64_t k, uint64_t *adds,
+                                            uint64_t *rotations, uint64_t *unit_adds,
+                                            uint64_t *fallbacks);
 int ca_ec_joint_pair_width_mul_wave_batch_profile(const ca_group *g,
                                                   const ca_joint_pair_precomp *pre, ca_elem *out,
                                                   const uint64_t *scalars, size_t count,
                                                   size_t block_size, uint64_t *adds,
                                                   uint64_t *rotations, uint64_t *unit_adds,
                                                   uint64_t *output_inversions, uint64_t *fallbacks);
+int ca_ec_joint_pair_width_five_mul_wave_batch_profile(
+    const ca_group *g, const ca_joint_pair_precomp *pre, ca_elem *out, const uint64_t *scalars,
+    size_t count, size_t block_size, uint64_t *adds, uint64_t *rotations, uint64_t *unit_adds,
+    uint64_t *output_inversions, uint64_t *fallbacks);
 void ca_ec_joint_pair_clear(ca_joint_pair_precomp *pre);
 
 /* Per-point width-4 table for repeated scalar multiplications within one rho
