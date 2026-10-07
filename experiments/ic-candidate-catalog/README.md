@@ -95,6 +95,14 @@ streams, sampled point maps, and public fixture scalars have independent
 replays. Natural W24/m6 PDP yield, useful rank, and complete DLP costs remain
 unmeasured; this is an input activation gate, not an `IC1` result.
 
+The [equal-size W24 orbit-column audit](../ecc2k130-equal-w24-orbit-columns-20261005/RESULT.md)
+restricts the full source Frobenius partition to the separately frozen
+8,386,414-class source prefix. It saves only 2,066 potential columns
+(0.0246351%). Checked Sage confirms the degree-263 native codomain has
+`j != j²`, so direct coordinate Frobenius is not its endomorphism; any
+transport-induced quotient still needs a priced implementation. This is
+matrix geometry for proposal `Q1420`, not a PDP or IC speed result.
+
 The [exact W24/m6 tuple-capacity screen](../ecc2k130-263-w24-mitm-capacity-20261005/RESULT.md)
 parks a **full materialized raw-point** 2+4 pair index and 3+3 triple index
 for all four equal-size policies under the 4-GiB envelope. Even a fictional
