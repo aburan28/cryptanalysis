@@ -10,7 +10,10 @@ preparation.
 
 The native selector must independently compute the short scalar
 representative, original baseline residues, and finite dynamic
-program. Reproduce the saved per-case total, preparation cost, used
+program. Store candidate paths as arena backpointers and reconstruct
+only the winning stream, without cloning an entire digit prefix on
+every accepted state transition. Reproduce the saved per-case total,
+preparation cost, used
 and built seed sets, selected digit count, and state count. Verify the
 carry bound and compare every built seed point with Sage. Evaluate
 every selected digit stream with the native 12-seed path; compare all

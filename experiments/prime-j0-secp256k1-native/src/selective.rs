@@ -31,7 +31,12 @@ struct State {
 
 struct Record {
     cost: usize,
-    path: Vec<Option<Digit>>,
+    link: usize,
+}
+
+struct Link {
+    parent: usize,
+    digit: Option<Digit>,
 }
 
 pub(super) struct Plan {
@@ -99,6 +104,10 @@ fn next_carry(old: Option<Digit>, carry: (i64, i64), digit: Option<Digit>) -> (i
 
 pub(super) fn recode(a: BigInt, b: BigInt) -> Plan {
     let baseline = baseline_residue_scan(a, b);
+    let mut links = vec![Link {
+        parent: 0,
+        digit: None,
+    }];
     let mut current = vec![(
         State {
             carry: (0, 0),
@@ -107,10 +116,7 @@ pub(super) fn recode(a: BigInt, b: BigInt) -> Plan {
             cache_mask: 0,
             used_mask: 0,
         },
-        Record {
-            cost: 0,
-            path: Vec::new(),
-        },
+        Record { cost: 0, link: 0 },
     )];
     let mut peak_states = 1;
     let mut peak_carry_norm = 0;
@@ -154,22 +160,28 @@ pub(super) fn recode(a: BigInt, b: BigInt) -> Plan {
                 let value = record.cost + extra;
                 if let Some(&location) = locations.get(&next) {
                     if value < following[location].1.cost {
-                        let mut path = record.path.clone();
-                        path.push(digit);
-                        following[location].1 = Record { cost: value, path };
+                        let link = links.len();
+                        links.push(Link {
+                            parent: record.link,
+                            digit,
+                        });
+                        following[location].1 = Record { cost: value, link };
                     }
                 } else {
-                    let mut path = record.path.clone();
-                    path.push(digit);
+                    let link = links.len();
+                    links.push(Link {
+                        parent: record.link,
+                        digit,
+                    });
                     locations.insert(next, following.len());
-                    following.push((next, Record { cost: value, path }));
+                    following.push((next, Record { cost: value, link }));
                 }
             }
         }
         current = following;
         peak_states = peak_states.max(current.len());
     }
-    let mut best: Option<(usize, usize, State, Vec<Option<Digit>>)> = None;
+    let mut best: Option<(usize, usize, State, usize)> = None;
     for (state, record) in current {
         if state.carry != (0, 0) {
             continue;
@@ -177,10 +189,16 @@ pub(super) fn recode(a: BigInt, b: BigInt) -> Plan {
         let total = record.cost + preparation_cost(state.used_mask).0;
         let key = (total, record.cost, state);
         if best.as_ref().is_none_or(|old| key < (old.0, old.1, old.2)) {
-            best = Some((total, record.cost, state, record.path));
+            best = Some((total, record.cost, state, record.link));
         }
     }
-    let (total, evaluator, state, mut digits) = best.expect("bounded carry solution");
+    let (total, evaluator, state, mut link) = best.expect("bounded carry solution");
+    let mut digits = Vec::with_capacity(baseline.len() + TAIL_HORIZON);
+    while link != 0 {
+        digits.push(links[link].digit);
+        link = links[link].parent;
+    }
+    digits.reverse();
     while digits.last().is_some_and(Option::is_none) {
         digits.pop();
     }
