@@ -2672,6 +2672,8 @@ typedef struct tau4_lattice_stream {
     size_t length;
     unsigned weight, rotations;
     unsigned power_histogram[3];
+    uint64_t power_mask[3][4];
+    unsigned lowest_nonzero;
     ca_i128 l1;
 } tau4_lattice_stream;
 
@@ -2685,6 +2687,7 @@ static size_t tau4_lattice_streams(const ca_tau4_joint_precomp *pre, uint64_t sc
     scalar %= pre->g->order;
     if (!scalar || pre->identity[point_index]) {
         streams[0] = (tau4_lattice_stream){0};
+        streams[0].lowest_nonzero = 256;
         *baseline_index = 0;
         return 1;
     }
@@ -2695,7 +2698,7 @@ static size_t tau4_lattice_streams(const ca_tau4_joint_precomp *pre, uint64_t sc
     size_t n = 0;
     static const int axial[5][2] = {{-1, 0}, {0, -1}, {0, 0}, {0, 1}, {1, 0}};
     unsigned two[2] = {0, 1};
-    if (mode == 2 || mode == 3 || mode == 4 || mode == 6) {
+    if (mode == 2 || mode == 3 || mode == 4 || mode == 6 || mode == 8) {
         ca_i128 smallest = -1, second = -1;
         for (unsigned i = 0; i < 5; i++) {
             ca_i128 u = u0 + axial[i][0], v = v0 + axial[i][1];
@@ -2713,10 +2716,10 @@ static size_t tau4_lattice_streams(const ca_tau4_joint_precomp *pre, uint64_t sc
             }
         }
     }
-    size_t candidates = mode == 25 ? 25 : mode == 5 ? 5 : 2;
+    size_t candidates = mode == 25 ? 25 : (mode == 5 || mode == 9) ? 5 : 2;
     counts->lattice_points_checked += mode == 25 ? 25 : 5;
     for (size_t index = 0; index < candidates; index++) {
-        unsigned axial_index = (mode == 2 || mode == 3 || mode == 4 || mode == 6)
+        unsigned axial_index = (mode == 2 || mode == 3 || mode == 4 || mode == 6 || mode == 8)
             ? two[index] : (unsigned)index;
         int du = mode == 25 ? (int)(index / 5) - 2 : axial[axial_index][0];
         int dv = mode == 25 ? (int)(index % 5) - 2 : axial[axial_index][1];
@@ -2730,11 +2733,15 @@ static size_t tau4_lattice_streams(const ca_tau4_joint_precomp *pre, uint64_t sc
         if (!stream->length) return 0;
         stream->weight = stream->rotations = 0;
         memset(stream->power_histogram, 0, sizeof(stream->power_histogram));
+        memset(stream->power_mask, 0, sizeof(stream->power_mask));
+        stream->lowest_nonzero = 256;
         for (size_t i = 0; i < stream->length; i++) {
             if (stream->digits[i] == 255) continue;
             stream->weight++;
             unsigned power = (unsigned)pre->digit[stream->digits[i]].power;
             stream->power_histogram[power]++;
+            stream->power_mask[power][i >> 6] |= UINT64_C(1) << (i & 63);
+            if (i < stream->lowest_nonzero) stream->lowest_nonzero = (unsigned)i;
             stream->rotations += power != 0;
         }
         if (best_l1 < 0 || stream->l1 < best_l1) {
@@ -2903,6 +2910,54 @@ int ca_ec_tau4_free_gauge_verify_map(void)
     return 1;
 }
 
+static unsigned tau4_popcount64(uint64_t word)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    return (unsigned)__builtin_popcountll(word);
+#else
+    unsigned count = 0;
+    while (word) { word &= word - 1; count++; }
+    return count;
+#endif
+}
+
+/* Score the coordinate rotations the free-gauge evaluator will actually
+ * perform, including its final correction.  Gauge transitions themselves
+ * are absorbed by the existing tau Z multiplication. A position contributes
+ * only when both streams have different unit powers; the low live position
+ * adds its final-correction cost. Bitsets make 25-pair search affordable. */
+static unsigned tau4_pair_free_gauge_rotations(const ca_tau4_joint_precomp *pre,
+                                               const tau4_lattice_stream *left,
+                                               const tau4_lattice_stream *right)
+{
+    size_t length = left->length > right->length ? left->length : right->length;
+    unsigned last_nonempty = left->lowest_nonzero < right->lowest_nonzero
+        ? left->lowest_nonzero : right->lowest_nonzero;
+    if (last_nonempty == 256) return 0;
+    unsigned rotations = 0;
+    for (size_t word = 0; word < (length + 63) / 64; word++) {
+        for (unsigned a = 0; a < 3; a++) {
+            for (unsigned b = 0; b < 3; b++) {
+                if (a != b)
+                    rotations += tau4_popcount64(left->power_mask[a][word] &
+                                                 right->power_mask[b][word]);
+            }
+        }
+    }
+    int has_left = last_nonempty < left->length && left->digits[last_nonempty] != 255;
+    int has_right = last_nonempty < right->length && right->digits[last_nonempty] != 255;
+    unsigned left_power = has_left ? pre->digit[left->digits[last_nonempty]].power : 0;
+    unsigned right_power = has_right ? pre->digit[right->digits[last_nonempty]].power : 0;
+    unsigned pattern = has_left && has_right ? 3 + 3 * left_power + right_power
+                     : has_left ? left_power : right_power;
+    unsigned gauge = tau4_free_gauge_choice[pattern][1];
+    rotations -= has_left && has_right && left_power != right_power;
+    if (has_left) rotations += (left_power + gauge) % 3 != 0;
+    if (has_right) rotations += (right_power + gauge) % 3 != 0;
+    rotations += gauge != 0;
+    return rotations;
+}
+
 static int tau4_paired_lattice_mul_impl(const ca_group *g,
                                         const ca_tau4_joint_precomp *pre,
                                         const ca_tau4_joint_plane_precomp *plane,
@@ -2930,13 +2985,17 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
             size_t length_max = left->length > right->length ? left->length : right->length;
             unsigned steps = length_max ? (unsigned)(length_max - 1) : 0;
             unsigned adds = left->weight + right->weight;
+            unsigned base_score = 6 * steps + 11 * adds;
+            cost.pair_scores++;
+            if ((mode == 8 || mode == 9) && base_score > best_score) continue;
             unsigned gauge = 0;
             unsigned rotations = mode == 3
                 ? tau4_pair_gauge_rotations(left, right, &gauge)
+                : (mode == 8 || mode == 9)
+                ? tau4_pair_free_gauge_rotations(pre, left, right)
                 : left->rotations + right->rotations;
-            unsigned score = 6 * steps + 11 * adds + rotations;
+            unsigned score = base_score + rotations;
             ca_i128 l1 = left->l1 + right->l1;
-            cost.pair_scores++;
             if (tau4_pair_score_better(score, steps, adds, rotations, l1,
                                        best_score, best_steps, best_adds,
                                        best_rotations, best_l1)) {
@@ -2959,7 +3018,8 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
         tau4_pair_trellis_schedule(pre, selected[0], selected[1], gauge_at, &cost);
     uint64_t one_minus_beta = fs(g, g->mont.r1, pre->beta);
     uint64_t tau_constant[3] = {one_minus_beta, 0, 0};
-    if (mode == 6) {
+    int free_gauge = mode == 6 || mode == 8 || mode == 9;
+    if (free_gauge) {
         tau_constant[1] = fa(g, g->mont.r1, f2(g, pre->beta));
         tau_constant[2] = fs(g, pre->beta2, g->mont.r1);
     }
@@ -2969,7 +3029,7 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
     size_t length_max = selected[0]->length > selected[1]->length
         ? selected[0]->length : selected[1]->length;
     size_t last_nonempty = length_max;
-    if (mode == 6) {
+    if (free_gauge) {
         for (size_t i = 0; i < length_max; i++) {
             if ((i < selected[0]->length && selected[0]->digits[i] != 255) ||
                 (i < selected[1]->length && selected[1]->digits[i] != 255)) {
@@ -2982,7 +3042,7 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
         int has_a = i < selected[0]->length && selected[0]->digits[i] != 255;
         int has_b = i < selected[1]->length && selected[1]->digits[i] != 255;
         unsigned next_gauge = current_gauge;
-        if (mode == 6 && (has_a || has_b)) {
+        if (free_gauge && (has_a || has_b)) {
             unsigned power_a = has_a ? pre->digit[selected[0]->digits[i]].power : 0;
             unsigned power_b = has_b ? pre->digit[selected[1]->digits[i]].power : 0;
             unsigned pattern = has_a && has_b ? 3 + 3 * power_a + power_b
@@ -2992,9 +3052,9 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
         }
         if (acc.z) {
             unsigned change = (next_gauge + 3 - current_gauge) % 3;
-            acc = jac_tau(g, acc, mode == 6 ? tau_constant[change] : one_minus_beta);
+            acc = jac_tau(g, acc, free_gauge ? tau_constant[change] : one_minus_beta);
             cost.tau_steps++;
-            if (mode == 6) cost.free_gauge_transitions += change != 0;
+            if (free_gauge) cost.free_gauge_transitions += change != 0;
         }
         cost.overlaps += has_a && has_b;
         if (mode == 4 && (has_a || has_b)) {
@@ -3008,8 +3068,8 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
             current_gauge = planned_gauge;
             gauge_started = 1;
         }
-        if (mode == 6 && (has_a || has_b)) current_gauge = next_gauge;
-        unsigned digit_gauge = mode == 4 || mode == 6 ? current_gauge : chosen_gauge;
+        if (free_gauge && (has_a || has_b)) current_gauge = next_gauge;
+        unsigned digit_gauge = mode == 4 || free_gauge ? current_gauge : chosen_gauge;
         if (has_a) {
             if (plane) tau4_joint_add_digit_plane(g, plane, &acc, 0,
                                                    selected[0]->digits[i], &cost);
@@ -3023,8 +3083,8 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
                                             selected[1]->digits[i], digit_gauge, &cost);
         }
     }
-    unsigned final_gauge = mode == 4 || mode == 6 ? current_gauge : chosen_gauge;
-    if (mode == 6)
+    unsigned final_gauge = mode == 4 || free_gauge ? current_gauge : chosen_gauge;
+    if (free_gauge)
         cost.gauge_model_rotations = cost.digit_rotations + (final_gauge != 0);
     if (final_gauge && acc.z) {
         acc.x = fm(g, final_gauge == 1 ? pre->beta2 : pre->beta, acc.x);
@@ -3086,6 +3146,22 @@ int ca_ec_tau4_paired_two_free_gauge_mul_profile(const ca_group *g,
                                                  ca_tau4_joint_counts *counts)
 {
     return tau4_paired_lattice_mul_impl(g, pre, NULL, out, NULL, a, b, counts, 6);
+}
+
+int ca_ec_tau4_paired_two_free_gauge_scored_mul_profile(const ca_group *g,
+                                                         const ca_tau4_joint_precomp *pre,
+                                                         ca_elem *out, uint64_t a, uint64_t b,
+                                                         ca_tau4_joint_counts *counts)
+{
+    return tau4_paired_lattice_mul_impl(g, pre, NULL, out, NULL, a, b, counts, 8);
+}
+
+int ca_ec_tau4_paired_five_free_gauge_scored_mul_profile(const ca_group *g,
+                                                          const ca_tau4_joint_precomp *pre,
+                                                          ca_elem *out, uint64_t a, uint64_t b,
+                                                          ca_tau4_joint_counts *counts)
+{
+    return tau4_paired_lattice_mul_impl(g, pre, NULL, out, NULL, a, b, counts, 9);
 }
 
 int ca_ec_tau4_paired_two_plane_mul_profile(const ca_group *g,
