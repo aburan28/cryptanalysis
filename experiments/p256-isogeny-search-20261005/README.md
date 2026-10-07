@@ -339,6 +339,28 @@ isogeny class. The exact class-group job remained active after more than 9.6
 hours at this checkpoint, and per-key map evaluation was not timed for the 496
 additions.
 
+## Full-registry normalized-coefficient audit
+
+The complete 2,226-curve retained union was reconstructed from fourteen frozen
+candidate registries and normalized to the certified `a = 1` or `a = 3` models.
+Every fourth-root certificate and transported generator verified. The audit then
+ranked the normalized `3b` constant used twice by each complete addition.
+
+P-256's normalized coefficient has 251 bits, popcount 125, and a binary
+double-and-add bound of 374 field additions/doublings. The smallest retained
+coefficient still has 243 bits, giving an unavoidable addition-chain lower bound
+of 242 operations. The best binary bound is 352 operations, and the minimum
+popcount is 100. Consequently zero curves pass the conservative 32-operation
+gate for implementing a coefficient-specialized native formula.
+
+The full metrics, input hashes, cost model, receipt, summary, and verifier are
+frozen in
+[`results/coefficient-cost-audit-20261007`](results/coefficient-cost-audit-20261007).
+No wall-time speedup is claimed: this is a deterministic eligibility screen, and
+no candidate advanced to a native benchmark. It closes the retained-registry
+small-constant route, not other coordinate systems, formula families, deeper
+paths, or unknown algorithms.
+
 ## Quick start
 
 Python 3.11 or newer is required.
