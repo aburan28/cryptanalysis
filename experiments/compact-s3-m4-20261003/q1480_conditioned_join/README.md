@@ -74,6 +74,12 @@ right-pair and target support together without visiting local windows one
 at a time. This observation is specific to the frozen Q1480 policy and cap,
 not a lower bound on every compact solver.
 
+Q1425 already tested exact reverse roots after one leaf and a midpoint were
+fixed, and Q1436 tested affine feasibility while a pair was still partial;
+their ordinary cells also censored. A successor must address the global
+target-linked support question those checks leave open, rather than only
+move the same fixed-midpoint test to a different decision depth.
+
 ## Reproduce custody checks
 
 ```sh
