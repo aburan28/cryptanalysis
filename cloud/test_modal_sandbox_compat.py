@@ -1,10 +1,16 @@
 """No network or billed resources: constructor and post-creation tag APIs."""
 from types import SimpleNamespace
 import unittest
-from modal_run import create_tagged_sandbox
+from modal_run import create_tagged_sandbox, detach_sandbox
 
 
 class SandboxCompatTests(unittest.TestCase):
+    def test_optional_detach_api(self):
+        calls = []
+        detach_sandbox(SimpleNamespace(detach=lambda: calls.append('detached')))
+        detach_sandbox(SimpleNamespace())
+        self.assertEqual(calls, ['detached'])
+
     def test_constructor_tag_api(self):
         calls = []
         class Sandbox:

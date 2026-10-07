@@ -221,6 +221,13 @@ def create_tagged_sandbox(module, *args, tags, **kwargs):
     return sandbox
 
 
+def detach_sandbox(sandbox):
+    """Older SDK sandboxes already outlive their creating client process."""
+    detach = getattr(sandbox, "detach", None)
+    if detach is not None:
+        detach()
+
+
 def cmd_run(args):
     m = modal()
     command = shlex.join(args.command) if len(args.command) > 1 else args.command[0]
@@ -264,7 +271,7 @@ def cmd_run(args):
 
     if args.detach:
         for sb in sandboxes:
-            sb.detach()
+            detach_sandbox(sb)
         me = "cloud/modal_run.py"
         print(f"started {job}\n  {me} status {job}\n  {me} logs {job} -f\n"
               f"  {me} fetch {job}   (once it finishes)\n  {me} kill {job}")
