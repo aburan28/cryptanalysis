@@ -244,11 +244,16 @@ def summarize(path: Path) -> None:
     print("|---|---|---|---|" + "---|" * len(VARIANTS))
     for key in sorted({(r["n"], r["l"], r["d"]) for r in rows}):
         g = [r for r in rows if (r["n"], r["l"], r["d"]) == key]
+        targets = {(r["target_x"], r["eps"]) for r in g}
         cells = []
         for k in VARIANTS:
-            c = Counter(str(r["degree"].get(k, "-")) for r in g)
-            cells.append(", ".join(f"{v}: {c[v]}" for v in sorted(c)))
-        print(f"| {key[0]} | {key[1]} | {key[2]} | {len(g)} | " + " | ".join(cells) + " |")
+            seen: dict[tuple, str] = {}
+            for r in g:
+                if k in r["degree"]:
+                    seen[(r["target_x"], r["eps"])] = str(r["degree"][k])
+            c = Counter(seen.values())
+            cells.append(", ".join(f"{v}: {c[v]}" for v in sorted(c)) or "-")
+        print(f"| {key[0]} | {key[1]} | {key[2]} | {len(targets)} | " + " | ".join(cells) + " |")
 
 
 def main() -> None:
