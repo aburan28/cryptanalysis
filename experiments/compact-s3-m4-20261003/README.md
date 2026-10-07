@@ -2386,15 +2386,34 @@ multiplications, 763,105,558 squarings, and 4,482 inversions. Q1485
 therefore does not supply a successful decomposition cost, natural yield,
 rank, or a complete N131 work exponent.
 
+### Q1486 exact cyclic-window pair-domain search
+
+[Q1486](q1486_window_aware_pair/README.md) exposes the window-selector
+variables already present in Q1482's byte-identical six CNFs. A small-field
+check exhausts partial window completions and both pinned N53/N83 public
+relations verify. Both unpinned planted and both ordinary cells censor at
+60 seconds. The N83 ordinary prefix still makes 8,456,687 `S3` root calls,
+118,442,341 field multiplications, 752,979,922 squarings and 4,130
+inversions, with zero supported midpoint intersections. This exact local
+restriction does not measure successful PDP work or N131 complete `2^x`.
+The post-run [fixed-left coverage diagnostic](q1486_window_aware_pair/coverage_diagnostic.json)
+shows that each ordinary run built only one left domain. Under a stated
+independent uniform `x`-root model, the observed right-pair prefixes have
+expected-intersection scales below `2^-16.16` at N53 and `2^-46.91` at
+N83, even counting two roots per pair. SAT choices are target-dependent,
+so those scales are neither probability bounds nor measured relation yield.
+
 ## Next goal
 
-Build and measure an exact, target-coupled **window-pair support mechanism**
-for the compact four-summand solver. Its first gate is one independently
+Build and measure an **algebraic batched pair-support mechanism** that reasons
+about many factor-base completions together on both sides of the join,
+beyond Q1485/Q1486's single-left, bounded 4,096-completion local domains.
+Its first gate is one independently
 verified, fully unpinned known-satisfiable N83 relation on the exact Q1481
 base without constructing the full pair table. The next gate is one ordinary
 N83 relation, followed by a frozen ordinary-query panel to measure useful
 relation yield and rank. Pair N53/N83 inputs and operation-count boundaries
-with Q1482/Q1483/Q1485. Count failed attempts, SAT propagation, field arithmetic,
+with Q1482/Q1483/Q1485/Q1486. Count failed attempts, SAT propagation, field arithmetic,
 memory, and target-dependent wall intervals. If only the planted control
 passes, retain ordinary cost and N131 complete work as unknown. A complete
 N131 `2^x` also requires its exact usable base, relation collection, final

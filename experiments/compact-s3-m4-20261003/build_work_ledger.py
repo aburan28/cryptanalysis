@@ -7079,6 +7079,44 @@ def main():
         "rows"]] == [1, 1, 0, 0, 0, 0]
     assert q1485_audit["ordinary_verified_relations"] == 0
     assert q1485_audit["complete_n131_log2_work"] is None
+    q1486_dir = HERE / "q1486_window_aware_pair"
+    q1486_protocol_path = q1486_dir / "protocol.json"
+    q1486_audit_path = q1486_dir / "archive_audit.json"
+    q1486_coverage_path = q1486_dir / "coverage_diagnostic.json"
+    q1486_protocol = json.loads(q1486_protocol_path.read_text())
+    q1486_audit = json.loads(q1486_audit_path.read_text())
+    q1486_coverage = json.loads(q1486_coverage_path.read_text())
+    assert q1486_protocol["proposal_id"] == q1486_audit[
+        "proposal_id"] == "Q1486"
+    assert q1486_protocol["candidate_id"] is q1486_audit[
+        "candidate_id"] is None
+    assert q1486_protocol["run_id"] is q1486_audit["run_id"] is None
+    assert q1486_protocol["isogeny"] == q1486_audit[
+        "isogeny"] == "none"
+    assert q1486_protocol["parent_q1482_protocol_sha256"] == sha(
+        q1482_protocol_path)
+    assert q1486_audit["status"] == "passed"
+    assert q1486_audit["protocol_sha256"] == sha(q1486_protocol_path)
+    assert q1486_audit["pinned_correctness_controls_passed"]
+    assert [row["case"] for row in q1486_audit["rows"]] == q1486_protocol[
+        "run_order"]
+    assert [row["status"] for row in q1486_audit["rows"]] == [
+        "sat", "sat", "censored", "censored", "censored", "censored"]
+    assert [row["verified_relation_count"] for row in q1486_audit[
+        "rows"]] == [1, 1, 0, 0, 0, 0]
+    assert q1486_audit["ordinary_verified_relations"] == 0
+    assert q1486_audit["complete_n131_log2_work"] is None
+    assert q1486_coverage["kind"] == (
+        "q1486_postrun_fixed_left_coverage_diagnostic")
+    assert q1486_coverage["protocol_sha256"] == sha(q1486_protocol_path)
+    assert q1486_coverage["archive_audit_sha256"] == sha(q1486_audit_path)
+    assert [row["case"] for row in q1486_coverage["rows"]] == [
+        "n53_ordinary", "n83_ordinary"]
+    assert all(row["left_domain_builds"] == 1 for row in
+               q1486_coverage["rows"])
+    assert q1486_coverage["is_probability_bound"] is False
+    assert q1486_coverage["is_empirical_relation_yield"] is False
+    assert q1486_coverage["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -9718,6 +9756,46 @@ def main():
             "protocol_sha256": sha(q1485_protocol_path),
             "archive_audit_sha256": sha(q1485_audit_path),
         },
+        "q1486_window_aware_pair_compact_s3_stage": {
+            "proposal_id": "Q1486", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "stage_config_ids": {
+                key: row["stage_config_id"]
+                for key, row in q1486_protocol["stages"].items()},
+            "pinned_correctness_controls_passed": True,
+            "known_witness_unpinned_attempts": 2,
+            "known_witness_unpinned_verified_relations": 0,
+            "ordinary_attempts": 2,
+            "ordinary_verified_relations": 0,
+            "rows": q1486_audit["rows"],
+            "postrun_fixed_left_coverage_diagnostic": q1486_coverage,
+            "successful_unpinned_N53_cost": None,
+            "successful_unpinned_N83_cost": None,
+            "natural_relation_yield_estimate": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1486 makes Q1485 pair domains respect exact cyclic "
+                "window selectors on Q1482's unchanged full-base inputs. "
+                "Small-field controls and both pinned relations verify. "
+                "The two unpinned planted and two ordinary cells censor "
+                "at 60 seconds with no relation. N83 ordinary rejects "
+                "2064 empty intersections while using 8456687 S3 root "
+                "calls, 118442341 field mul, 752979922 sqr, and 4130 "
+                "inv. The operation-vector reduction does not establish "
+                "a successful solver cost; natural yield, rank, and N131 "
+                "complete 2^x remain unknown. A retrospective uniform-x "
+                "model shows very small expected intersection scale for "
+                "the one-left-domain ordinary prefixes, but target-coupled "
+                "SAT choices mean this is neither a probability bound nor "
+                "a relation-yield estimate."
+            ),
+            "design_protocol_sha256": q1486_protocol["design_sha256"],
+            "protocol_sha256": sha(q1486_protocol_path),
+            "archive_audit_sha256": sha(q1486_audit_path),
+            "postrun_coverage_diagnostic_sha256": sha(q1486_coverage_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -10279,6 +10357,10 @@ def main():
                 "unpinned and ordinary cells censor without a relation "
                 "and the increased squaring/inversion mix does not "
                 "establish a faster solve; "
+                "Q1486's exact cyclic-window pair domains also verify "
+                "both pinned controls but censor all four unpinned and "
+                "ordinary cells with no relation; their smaller operation "
+                "vector does not measure successful relation work; "
                 "censored N83 ordinary runs still do not measure N83 "
                 "useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
