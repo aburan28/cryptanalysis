@@ -34,7 +34,7 @@ Install the Modal client with `pip install modal`.
 | Worker | Hardware | $/hr | Stops after | Extras |
 | --- | --- | --- | --- | --- |
 | `rp-cpu-1` | 32 vCPU (compute-optimized), 64 GB | 1.12 | 240 idle minutes | SageMath 10.9, msolve 0.10.1 |
-| `rp-gpu-1` | 1x RTX PRO 4500 Blackwell (sm_120, 32 GB), 8 vCPU, 62 GB | 0.72 | 60 idle minutes | CUDA 12.8 and the CUDA 13.3 compiler at `$CUDA13_HOME` |
+| `rp-gpu-1` | 1x RTX PRO 4500 Blackwell (sm_120, 32 GB), 8 vCPU, 62 GB | 0.72 | 60 idle minutes | CUDA 13 hosts only (`allowedCudaVersions: ["13.0"]`); CUDA 13.3 compiler at `$CUDA13_HOME` |
 
 Both pods also have gcc 13, cmake, Rust stable, Go, clang-tidy, cppcheck,
 valgrind, iverilog, verilator, yosys, and a Python venv with pycryptosat,
