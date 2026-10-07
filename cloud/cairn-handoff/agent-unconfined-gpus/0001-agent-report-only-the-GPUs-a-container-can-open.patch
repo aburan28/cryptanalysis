@@ -1,0 +1,139 @@
+From 02cb1d8bf8454d877ac3681d303bedd075bbd390 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Wed, 7 Oct 2026 00:25:13 +0000
+Subject: [PATCH 1/2] agent: report only the GPUs a container can open
+
+Inside a container /sys/bus/pci is the host's bus. On a Runpod pod given one
+RTX 5090 on an eight-card host, the probe listed all eight cards and the
+host's BMC display, so a node summing registrations counted capacity nobody
+there could use. Once nvidia-smi has answered -- it lists only the GPUs this
+process can open -- an NVIDIA GPU it does not list is left out, and "No
+devices were found" leaves out every one. A host where nvidia-smi is missing
+or fails otherwise reports the bus as before.
+---
+ docs/agent.md      |  7 +++++
+ src/agent/probe.rs | 72 +++++++++++++++++++++++++++++++++++++++++-----
+ 2 files changed, 72 insertions(+), 7 deletions(-)
+
+diff --git a/docs/agent.md b/docs/agent.md
+index e195d11..d3e52d1 100644
+--- a/docs/agent.md
++++ b/docs/agent.md
+@@ -84,6 +84,13 @@ about -- AVX-512, SHA, carry-less multiply, SVE -- not the whole flags line.
+ `cgroup` is what the agent's own cgroup caps it to, so a unit with
+ `CPUQuota=` shows the quota, not the socket count.
+ 
++Inside a container, `/sys/bus/pci` is the host's bus, so it lists the cards
++rented to the container's neighbours as well as its own. Once `nvidia-smi`
++has answered, an NVIDIA GPU it does not list is left out -- this host cannot
++open it, and a node summing it would count capacity nobody here can use --
++and `No devices were found` leaves out every one. A host where `nvidia-smi`
++is missing or fails otherwise reports the bus as it is.
++
+ Every sandbox is **probed, not assumed**: `runsc do /bin/true`, `bwrap …
+ /bin/true`, and the engine's runtime list. A binary on `PATH` that cannot
+ start a sandbox is the common case -- no user namespaces in this container,
+diff --git a/src/agent/probe.rs b/src/agent/probe.rs
+index 4fd6d5b..81e6d7e 100644
+--- a/src/agent/probe.rs
++++ b/src/agent/probe.rs
+@@ -327,17 +327,22 @@ fn gpus() -> Vec<Gpu> {
+             ])
+             .output()
+         {
+-            if output.status.success() {
+-                let rows = parse_nvidia_smi_csv(&String::from_utf8_lossy(&output.stdout));
+-                for (bus, name, memory_mb, driver) in rows {
++            let stdout = String::from_utf8_lossy(&output.stdout);
++            let none_here = !output.status.success()
++                && format!("{stdout}{}", String::from_utf8_lossy(&output.stderr))
++                    .contains("No devices were found");
++            if output.status.success() || none_here {
++                let rows = parse_nvidia_smi_csv(&stdout);
++                for (bus, name, memory_mb, driver) in &rows {
+                     if let Some(gpu) = found.iter_mut().find(|gpu| {
+-                        gpu.bus.as_deref().map(normalise_bus) == Some(normalise_bus(&bus))
++                        gpu.bus.as_deref().map(normalise_bus) == Some(normalise_bus(bus))
+                     }) {
+-                        gpu.model.get_or_insert(name);
+-                        gpu.memory_mb = memory_mb;
+-                        gpu.driver = Some(driver);
++                        gpu.model.get_or_insert(name.clone());
++                        gpu.memory_mb = *memory_mb;
++                        gpu.driver = Some(driver.clone());
+                     }
+                 }
++                found = reachable_gpus(found, &rows);
+             }
+         }
+     }
+@@ -438,6 +443,28 @@ pub fn parse_nvidia_smi_csv(text: &str) -> Vec<(String, String, Option<u64>, Str
+         .collect()
+ }
+ 
++/// The GPUs to report once `nvidia-smi` has answered: every one from another
++/// vendor, and the NVIDIA ones it listed. Inside a container `/sys/bus/pci`
++/// is the host's, so the cards rented to the container's neighbours are on
++/// it too; `nvidia-smi` lists only the ones this container can open, and a
++/// node summing the others would count capacity nobody here can use.
++pub fn reachable_gpus(
++    found: Vec<Gpu>,
++    smi_rows: &[(String, String, Option<u64>, String)],
++) -> Vec<Gpu> {
++    let listed: BTreeSet<String> = smi_rows.iter().map(|row| normalise_bus(&row.0)).collect();
++    found
++        .into_iter()
++        .filter(|gpu| {
++            gpu.vendor != "nvidia"
++                || gpu
++                    .bus
++                    .as_deref()
++                    .is_none_or(|bus| listed.contains(&normalise_bus(bus)))
++        })
++        .collect()
++}
++
+ /// `nvidia-smi` prints `00000000:17:00.0`; sysfs names the device
+ /// `0000:17:00.0`. Compare on the last three segments, lower-cased.
+ fn normalise_bus(bus: &str) -> String {
+@@ -512,6 +539,37 @@ mod tests {
+         assert_eq!(classify_pci("0x10de", "0x0c0330"), None);
+     }
+ 
++    #[test]
++    fn a_container_reports_only_the_gpus_nvidia_smi_lists() {
++        let gpu = |vendor: &str, bus: &str| Gpu {
++            index: 0,
++            vendor: vendor.to_string(),
++            model: None,
++            memory_mb: None,
++            bus: Some(bus.to_string()),
++            driver: None,
++        };
++        // A rented pod on a two-card host, as measured on Runpod: the PCI bus
++        // shows both cards and the host's BMC display, `nvidia-smi` only the
++        // card the pod was given.
++        let found = vec![
++            gpu("nvidia", "0000:4a:00.0"),
++            gpu("nvidia", "0000:ca:00.0"),
++            gpu("pci:1a03", "0000:cc:00.0"),
++        ];
++        let rows =
++            parse_nvidia_smi_csv("00000000:CA:00.0, NVIDIA GeForce RTX 5090, 32607, 570.195.03\n");
++        let kept: Vec<String> = reachable_gpus(found.clone(), &rows)
++            .into_iter()
++            .filter_map(|gpu| gpu.bus)
++            .collect();
++        assert_eq!(kept, ["0000:ca:00.0", "0000:cc:00.0"]);
++        // `No devices were found`: none of the cards is this container's.
++        let kept = reachable_gpus(found, &[]);
++        assert_eq!(kept.len(), 1);
++        assert_eq!(kept[0].vendor, "pci:1a03");
++    }
++
+     #[test]
+     fn nvidia_files_and_smi_rows_parse() {
+         let info = "Model: \t NVIDIA A100-SXM4-80GB\nIRQ:   \t 0\nBus Location: \t 0000:17:00.0\n";
+-- 
+2.43.0
+

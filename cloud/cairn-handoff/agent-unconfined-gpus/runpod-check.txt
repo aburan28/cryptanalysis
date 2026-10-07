@@ -1,0 +1,76 @@
+cairn-v1.17.0-x86_64-unknown-linux-musl.tar.gz: OK
+== nvidia-smi (what this pod was given)
+00000000:D8:00.0, NVIDIA GeForce RTX 5090, 32607 MiB
+== cairn 1.17.0 probe
+cairn-agent/1.17.0 on 94ea2e919717
+  linux/x86_64 kernel 6.8.0-101-generic
+  cpus: 13 (INTEL(R) XEON(R) GOLD 6530; 2 socket(s), 2 numa node(s)) [adx aes avx avx2 avx512bw avx512f avx512ifma avx512vl bmi2 fma pclmulqdq sha_ni]
+  memory: 1031695 MiB (cgroup caps: 13 cpus, 119209 MiB)
+  gpu 0: pci:1a03 ? 0000:02:00.0
+  gpu 1: nvidia NVIDIA GeForce RTX 5090 0000:27:00.0
+  gpu 2: nvidia NVIDIA GeForce RTX 5090 0000:38:00.0
+  gpu 3: nvidia NVIDIA GeForce RTX 5090 0000:49:00.0
+  gpu 4: nvidia NVIDIA GeForce RTX 5090 0000:5a:00.0
+  gpu 5: nvidia NVIDIA GeForce RTX 5090 0000:98:00.0
+  gpu 6: nvidia NVIDIA GeForce RTX 5090 0000:a8:00.0
+  gpu 7: nvidia NVIDIA GeForce RTX 5090 0000:c8:00.0
+== branch probe
+cairn-agent/1.17.0 on 94ea2e919717
+  linux/x86_64 kernel 6.8.0-101-generic
+  cpus: 13 (INTEL(R) XEON(R) GOLD 6530; 2 socket(s), 2 numa node(s)) [adx aes avx avx2 avx512bw avx512f avx512ifma avx512vl bmi2 fma pclmulqdq sha_ni]
+  memory: 1031695 MiB (cgroup caps: 13 cpus, 119209 MiB)
+  gpu 0: pci:1a03 ? 0000:02:00.0
+  gpu 1: nvidia NVIDIA GeForce RTX 5090 32607 MiB 0000:d8:00.0
+  kvm: no
+sandboxes:
+  kata   unusable no containerd-shim-kata-v2 or kata-runtime on PATH
+  runsc  unusable unavailable on this host: runsc is not on PATH
+  bwrap  unusable unavailable on this host: bwrap is not on PATH
+== cairn 1.17.0: a GPU job under none
+{"agent":"cairn-agent/1.17.0","error":"invalid: a GPU job needs an engine to pass the device, so it cannot run unconfined; name a sandbox","exit_status":null,"finished":"2026-10-07T00:24:12+00:00","gpus_requested":1,"host":"94ea2e919717","job_id":"release","limit_exceeded":false,"note":"A fact about this host: what ran, in which jail, with what exit status. Never a verdict on what it produced; a pinned verifier decides that.","notes":[],"out":"/root/agent-release/jobs/done/release/out","sandbox":"none","sandbox_version":null,"started":"2026-10-07T00:24:12+00:00","stderr":"/root/agent-release/jobs/done/release/stderr","stdout":"/root/agent-release/jobs/done/release/stdout","succeeded":false,"timed_out":false,"unenforced":[],"via":"","wall_ms":0}
+exit 3
+== branch, without --unconfined-gpus
+{"agent":"cairn-agent/1.17.0","error":"invalid: a GPU job needs an engine to pass the device, so it cannot run unconfined unless the operator lets unconfined jobs use this host's GPUs (--unconfined-gpus); name a sandbox","exit_status":null,"finished":"2026-10-07T00:24:13+00:00","gpus_requested":1,"host":"94ea2e919717","job_id":"without","limit_exceeded":false,"note":"A fact about this host: what ran, in which jail, with what exit status. Never a verdict on what it produced; a pinned verifier decides that.","notes":[],"out":"/root/agent/jobs/done/without/out","sandbox":"none","sandbox_version":null,"started":"2026-10-07T00:24:13+00:00","stderr":"/root/agent/jobs/done/without/stderr","stdout":"/root/agent/jobs/done/without/stdout","succeeded":false,"timed_out":false,"unenforced":[],"via":"","wall_ms":0}
+exit 3
+== branch, --unconfined-gpus on a host that jails its jobs
+cairn agent: --unconfined-gpus is for a host whose operator runs jobs unconfined (--sandbox none); this one runs them under at least `auto`
+
+run `cairn agent help` for usage
+exit 2
+== branch, a queued GPU job with --unconfined-gpus, registered with the node
+queued job gpu-job at /root/agent/jobs/queue/gpu-job.json
+2026-10-07T00:24:13+00:00 INFO  cairn::agent::cli agent: cairn-agent/1.17.0 as "runpod-check" (executor), 13 cpus, 1031695 MiB, 2 gpu(s); sandboxes: NONE (jobs will be refused unless they ask for `none`); data /root/agent
+2026-10-07T00:24:13+00:00 INFO  cairn::agent::cli agent: jobs that run unconfined may use this host's 2 gpu(s) (--unconfined-gpus)
+2026-10-07T00:24:13+00:00 INFO  cairn::agent::cli agent: starting job gpu-job (rootfs /)
+2026-10-07T00:24:14+00:00 INFO  cairn::agent::cli agent: job gpu-job completed under none in 101 ms
+registered with 1 node(s); 1 completed, 1 failed
+exit 0
+-- receipt
+{"agent":"cairn-agent/1.17.0","error":null,"exit_status":0,"finished":"2026-10-07T00:24:13+00:00","gpus_requested":1,"host":"runpod-check","job_id":"gpu-job","limit_exceeded":false,"note":"A fact about this host: what ran, in which jail, with what exit status. Never a verdict on what it produced; a pinned verifier decides that.","notes":["unconfined: mounts are host paths, exported as CAIRN_LAB_MOUNT_<TARGET>; CAIRN_LAB_OUT is the host output directory","gpus: no engine passed a device; the operator lets unconfined jobs use this host's GPUs (--unconfined-gpus)"],"out":"/root/agent/jobs/running/gpu-job/out","sandbox":"none","sandbox_version":null,"started":"2026-10-07T00:24:13+00:00","stderr":"/root/agent/jobs/running/gpu-job/stderr","stdout":"/root/agent/jobs/running/gpu-job/stdout","succeeded":true,"timed_out":false,"unenforced":["isolation: unconfined run on the host","gpus: unconfined, the job could use every GPU this host has; it asked for 1"],"via":"native","wall_ms":101}
+
+-- stdout
+GPU 0: NVIDIA GeForce RTX 5090 (UUID: GPU-3c26e002-ffe2-b671-bb0f-a3e09aa3efe2)
+-- the node's roster
+{
+ "host": "runpod-check",
+ "jobs": {
+  "capacity": 1,
+  "completed": 1,
+  "failed": 1,
+  "running": 0,
+  "sandbox": "none",
+  "unconfined_gpus": true
+ },
+ "gpus": [
+  [
+   "pci:1a03",
+   null,
+   "0000:02:00.0"
+  ],
+  [
+   "nvidia",
+   "NVIDIA GeForce RTX 5090",
+   "0000:d8:00.0"
+  ]
+ ]
+}
