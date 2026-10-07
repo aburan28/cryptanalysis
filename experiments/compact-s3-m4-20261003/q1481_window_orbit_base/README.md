@@ -28,3 +28,43 @@ The N131 row is a design, with actual `B`, folded `K`, set digest, and complete
 and independent group-law checks. A follow-on point-decomposition stage must
 freeze its source, formula, target workload, and resource cap separately and
 receive a `PS1...fb<B>...` ID using the *measured* base size.
+
+## Frozen exact-base result
+
+The design was published in commit `989153b6`; source, reference artifacts,
+the checked Sage runtime, and the [frozen protocol](protocol.json) were
+published in commit `3bebb9a2`, before enumeration. The exact projected
+point-set archives store one sorted canonical `x` key per signed-Frobenius
+column. Expanding each key by both signs and all `n` Frobenius powers gives
+the full subgroup-usable base. In both measured degrees, projection produced
+no identity or duplicate orbit.
+
+| Degree and window | Raw `x` orbits | Rational orbits | Actual `B` before folding | Folded `K` | Exact set SHA-256 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| N53 `d=14` | 8,192 | 4,060 | **430,360** | **4,060** | `42e746657e39ea4d07aafc873110339e314cd685b3bd8493eb3c60aed1354ba5` |
+| N83 `d=23` | 4,194,304 | 2,096,424 | **348,006,384** | **2,096,424** | `f2d7771988cbd03fa4ea3145fc3870e5a3fc44171b9a57165257f016cdeb19d4` |
+
+The [N53 receipt](n53_d14_base.json), [N83 receipt](n83_d23_base.json),
+and corresponding packed key archives retain the exact point sets, strata,
+source/runtime provenance, exploratory construction wall times, and peak memory.
+The [archive audit](archive_audit.json) checks the full packed-key digests and
+uses separate curve group operations on 68 N53 and 121 N83 raw masks,
+including independently chosen masks from every span. The
+[small-field check](window_validation.json) exhaustively confirms the
+representative formula on four `(n,d)` cases. Q1481's N53 base has 1.33×
+Q1438 W≤4's usable `B`; the N83 base has 0.85× Q1438 W≤6's. This is an
+explicit **factor-base change**, so a future solver comparison must say so.
+
+These rows contain no ordinary query, verified relation, natural yield,
+cost per useful row, or N131 full-solve work. The N131 window base has not
+been enumerated, so its actual `B`, folded `K`, and set digest remain null.
+
+## Reproduce archive checks
+
+```sh
+python3 experiments/compact-s3-m4-20261003/q1481_window_orbit_base/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1481_window_orbit_base/validate_window.py
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1481_window_orbit_base/verify_base.py --check
+```
+
+The enumerator refuses to overwrite the archived base and point-set files.
