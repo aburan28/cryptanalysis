@@ -364,3 +364,11 @@ group outputs passed. The native C replay matched all eight Python operation
 counts and all paired point digests with zero fallbacks. It charges an extra
 1,122 and 2,401 preparation additions for the selected pairs. Controlled
 CPU speed and one-target rho impact remain unknown.
+
+The [direct residual-pair selector](TAU3_SCATTER_DIRECT.md) uses the same
+scattered table but skips graph augmentation. On a new fixture disjoint from
+five earlier scalar panels it retained 99.13% and 91.38% of exact matching's
+addition savings, while native C verified all three modes' point outputs and
+operation counts. An isolated benchmark manifest can pair the direct mode
+with either exact matching or the complete-table control. CPU speed remains
+unknown until a qualifying host receipt exists.

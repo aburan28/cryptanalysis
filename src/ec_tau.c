@@ -3066,10 +3066,10 @@ static ca_elem tau3_scatter_unit_affine(const ca_group *g, const ca_tau3_scatter
     return point;
 }
 
-int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+static int tau3_scatter_mul_policy(const ca_group *g, const ca_tau3_scatter_precomp *pre,
                                    ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
                                    uint64_t *fallbacks, uint64_t *matched_pairs,
-                                   size_t *scratch_bytes)
+                                   size_t *scratch_bytes, int rematch)
 {
     if (!g || !pre || !out || pre->full.base.g != g || !pre->full.blocks) return 0;
     if (adds) *adds = 0;
@@ -3123,7 +3123,7 @@ int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_prec
             }
         }
     }
-    if (baseline_pairs < count / 2) {
+    if (rematch && baseline_pairs < count / 2) {
         uint32_t edge[20] = {0};
         for (unsigned i = 0; i < count; i++)
             for (unsigned j = i + 1; j < count; j++) {
@@ -3182,6 +3182,24 @@ fallback:
     if (fallbacks) *fallbacks = 1;
     ca_group_mul(g, out, &pre->full.base_point, k, NULL);
     return 1;
+}
+
+int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+                                   ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                   uint64_t *fallbacks, uint64_t *matched_pairs,
+                                   size_t *scratch_bytes)
+{
+    return tau3_scatter_mul_policy(g, pre, out, k, adds, rotations, fallbacks, matched_pairs,
+                                   scratch_bytes, 1);
+}
+
+int ca_ec_tau3_scatter_direct_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+                                          ca_elem *out, uint64_t k, uint64_t *adds,
+                                          uint64_t *rotations, uint64_t *fallbacks,
+                                          uint64_t *matched_pairs, size_t *scratch_bytes)
+{
+    return tau3_scatter_mul_policy(g, pre, out, k, adds, rotations, fallbacks, matched_pairs,
+                                   scratch_bytes, 0);
 }
 
 void ca_ec_tau3_scatter_clear(ca_tau3_scatter_precomp *pre)

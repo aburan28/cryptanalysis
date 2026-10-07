@@ -386,9 +386,14 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         CHECK(ca_ec_tau3_fused_mul_profile(g, &tau3_pre, &got, k, NULL, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_tau3_fused_recode_verify_scalar(&tau3_pre, k));
-        CHECK(
-            ca_ec_tau3_scatter_mul_profile(g, &scatter_pre, &got, k, NULL, NULL, NULL, NULL, NULL));
+        uint64_t scatter_exact_adds = 0, scatter_direct_adds = 0;
+        CHECK(ca_ec_tau3_scatter_mul_profile(g, &scatter_pre, &got, k, &scatter_exact_adds, NULL,
+                                             NULL, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
+        CHECK(ca_ec_tau3_scatter_direct_mul_profile(g, &scatter_pre, &got, k, &scatter_direct_adds,
+                                                    NULL, NULL, NULL, NULL));
+        CHECK(ca_group_equal(g, &got, &expected));
+        CHECK(scatter_direct_adds >= scatter_exact_adds);
         CHECK(ca_ec_tau3_atlas_mul_profile(g, &tau3_pre, &got, k, NULL, NULL, NULL));
         CHECK(ca_group_equal(g, &got, &expected));
         CHECK(ca_ec_tau3_atlas_recode_verify_scalar(&tau3_pre, k));
@@ -468,6 +473,11 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
                                          &scatter_fallback, NULL, NULL));
     CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
     CHECK_EQ_U64(scatter_fallback, 1);
+    scatter_fallback = 0;
+    CHECK(ca_ec_tau3_scatter_direct_mul_profile(g, &scatter_pre, &got, g->order / 2, NULL, NULL,
+                                                &scatter_fallback, NULL, NULL));
+    CHECK(ca_group_equal(g, &got, &tau3_expected_fallback));
+    CHECK_EQ_U64(scatter_fallback, 1);
     scatter_pre.full.blocks = scatter_saved_blocks;
     ca_ec_tau3_scatter_clear(&scatter_pre);
     size_t saved_layers = compact_pre.layers;
@@ -493,6 +503,9 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
         ca_ec_tau3_scatter_prepare(g, &identity, &scatter_pre, NULL, NULL, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_tau3_scatter_prepare_verify(&scatter_pre));
     CHECK(ca_ec_tau3_scatter_mul_profile(g, &scatter_pre, &got, 17, NULL, NULL, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(g, &got));
+    CHECK(ca_ec_tau3_scatter_direct_mul_profile(g, &scatter_pre, &got, 17, NULL, NULL, NULL, NULL,
+                                                NULL));
     CHECK(ca_group_is_identity(g, &got));
     ca_ec_tau3_scatter_clear(&scatter_pre);
     CHECK(ca_ec_tau3_sparse_prepare(g, &identity, &sparse_pre, NULL, NULL, NULL, NULL, NULL, NULL));

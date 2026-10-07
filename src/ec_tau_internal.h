@@ -116,6 +116,10 @@ int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_prec
                                    ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
                                    uint64_t *fallbacks, uint64_t *matched_pairs,
                                    size_t *scratch_bytes);
+int ca_ec_tau3_scatter_direct_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+                                          ca_elem *out, uint64_t k, uint64_t *adds,
+                                          uint64_t *rotations, uint64_t *fallbacks,
+                                          uint64_t *matched_pairs, size_t *scratch_bytes);
 void ca_ec_tau3_scatter_clear(ca_tau3_scatter_precomp *pre);
 unsigned ca_ec_tau3_scatter_match_graph(const uint32_t edge[20], unsigned count, int8_t mate[20]);
 
