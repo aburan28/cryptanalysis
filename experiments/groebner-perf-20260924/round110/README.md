@@ -23,3 +23,8 @@ fresh source-bound reference/native build, then run `python -m unittest discover
 -s experiments/groebner-perf-20260924/round110 -v`. Local numerical jobs must take
 the repository's shared heavy lock. Qualified timing ratios remain null without
 an auditable CPU isolation receipt. No new GPU or asymptotic F6 claim is made.
+
+The independent audit binds the archived round109 reference to its original
+source commit. Shallow checkouts must first fetch that commit, as the CI workflow
+does: `git fetch --no-tags --depth=1 origin 5c2aed25be6663b27577e45c303d03ed40580861`.
+This fetch supplies Git objects without changing the checked-out source tree.
