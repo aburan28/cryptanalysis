@@ -696,13 +696,18 @@ struct SelectConsts {
     // polynomial -> normal basis map that gives coordinate L^-1(b - 1), so
     // that the sign is one dot product with the pivot's row instead of the
     // whole conversion, indexed by 1 + the pivot's L as the search leaves
-    // it.  Both are read by gathers, a limb an array so that the index is
-    // the value itself.
+    // it.  The two full limbs of each are read by gathers, a limb an array
+    // so that the index is the value itself; the 3-bit limb is a byte, and
+    // 132 bytes are a register permute over the first 128 and a 64-byte
+    // permute over the rest, blended by bit 7 of the index -- a gather is
+    // eight loads, and the selection's loads outnumber its arithmetic.
     alignas(64) uint8_t phaseNib[2][2][128];
     alignas(64) uint8_t maxNib[2][2][128];
     alignas(64) uint64_t maxTop[8];
-    alignas(64) uint64_t maskLt[3][136];
-    alignas(64) uint64_t rowL[3][136];
+    alignas(64) uint64_t maskLt[2][136];
+    alignas(64) uint64_t rowL[2][136];
+    alignas(64) uint8_t maskLt2[192]; // limb 2 of maskLt[k]: [0, 128) then [128, 132) at 128
+    alignas(64) uint8_t rowL2[192];   // limb 2 of rowL[b], the same way
 
     void build(const uint32_t *tw)
     {
@@ -749,8 +754,14 @@ struct SelectConsts {
             maxTop[v] = uint64_t(best + 1);
         }
         memset(maskLt, 0, sizeof(maskLt));
+        memset(maskLt2, 0, sizeof(maskLt2));
         for (int e = 0; e < 131; ++e)
-            for (int k = L[e] + 1; k < 131; ++k) maskLt[e >> 6][k] |= 1ull << (e & 63);
+            for (int k = L[e] + 1; k < 131; ++k) {
+                if (e < 128)
+                    maskLt[e >> 6][k] |= 1ull << (e & 63);
+                else
+                    maskLt2[k] |= uint8_t(1u << (e - 128));
+            }
         // Row e of the conversion: bit e of the image of each unit vector.
         uint64_t rowE[131][3];
         memset(rowE, 0, sizeof(rowE));
@@ -762,8 +773,11 @@ struct SelectConsts {
                 if ((image.w[e >> 6] >> (e & 63)) & 1) rowE[e][j >> 6] |= 1ull << (j & 63);
         }
         memset(rowL, 0, sizeof(rowL));
-        for (int l = 0; l < 131; ++l)
-            for (int w = 0; w < 3; ++w) rowL[w][l + 1] = rowE[linv[l]][w];
+        memset(rowL2, 0, sizeof(rowL2));
+        for (int l = 0; l < 131; ++l) {
+            for (int w = 0; w < 2; ++w) rowL[w][l + 1] = rowE[linv[l]][w];
+            rowL2[l + 1] = uint8_t(rowE[linv[l]][2]);
+        }
     }
 };
 
@@ -830,6 +844,18 @@ F131X_INLINE Limbs<8>::V permute128(const uint8_t *t, Limbs<8>::V idx)
                                                  _mm512_load_si512((const void *)(t + 64)));
 }
 
+// A byte table of up to 192 entries at each element of idx, idx below 192
+// with t[0] = 0: the 128-entry permute by the low seven bits, a 64-entry
+// one over t + 128 by the low six, the latter where bit 7 of the byte is
+// set.  The element's seven high bytes are zero and read t[0].
+F131X_INLINE Limbs<8>::V permute192(const uint8_t *t, Limbs<8>::V idx)
+{
+    const __m512i lo = (__m512i)permute128(t, idx);
+    const __m512i hi =
+        _mm512_permutexvar_epi8((__m512i)idx, _mm512_load_si512((const void *)(t + 128)));
+    return (Limbs<8>::V)_mm512_mask_blend_epi8(_mm512_movepi8_mask((__m512i)idx), lo, hi);
+}
+
 // The selection of eight lanes by table, the form packedtablewalk.cuh gives
 // the device, where the bit-plane form below costs some 250 instructions a
 // vector on the two ports that take 512-bit work:
@@ -840,20 +866,23 @@ F131X_INLINE Limbs<8>::V permute128(const uint8_t *t, Limbs<8>::V idx)
 //     masked popcounts before, 4 permutes and 4 sums now);
 //   - k in one multiply and one reduction, s * HW^-1 being below 2^19 and
 //     the 32-bit reciprocal exact to 2^25 (two reductions before);
-//   - the mask {L < k} gathered from its 131 rows (the comparator ran on 8
-//     planes, 5 instructions a plane a limb);
+//   - the mask {L < k} gathered from its 131 rows, a limb a gather (the
+//     comparator ran on 8 planes, 5 instructions a plane a limb);
 //   - the pivot by the same nibble permute over 1 + max L, a byte max down
 //     to one byte, and the 3-bit limb's eight values (eight rounds of mask
 //     and blend before);
 //   - the sign as the parity of y against the pivot's row of the conversion
-//     map, three gathers and one popcount, where converting all of y to
+//     map, a gather a limb and one popcount, where converting all of y to
 //     read one bit was 40 instructions.
 //
 // A gather here is eight loads from a table in L1 and about three cycles
 // on the vector ports, which is cheaper than any of the stages it stands
 // in for.  Measured on one Sapphire Rapids core, the selection stage (with
 // the tag and the addend, which did not change) went from 6.4 to 4.4 ns a
-// lane, the step from 17.2 to 15.2.
+// lane, the step from 17.2 to 15.2.  The 3-bit limbs of the mask and the
+// row are bytes, and read by register permutes (permute192) rather than
+// gathers: with eleven gathers a vector between this and the addend, the
+// stage issues more loads than vector instructions.
 template <int G>
 F131X_INLINE void selectTables(const F131x<8> *xn, const F131x<8> *yp, const SelectConsts &c,
                                Limbs<8>::V *hwOut, Limbs<8>::V *kOut, Limbs<8>::V *epsOut)
@@ -891,7 +920,7 @@ F131X_INLINE void selectTables(const F131x<8> *xn, const F131x<8> *yp, const Sel
     V p0[G], p1[G], p2[G];
     for (int g = 0; g < G; ++g) {
         const V m0 = gatherQ(c.maskLt[0], k[g]), m1 = gatherQ(c.maskLt[1], k[g]),
-                m2 = gatherQ(c.maskLt[2], k[g]);
+                m2 = permute192(c.maskLt2, k[g]);
         p0[g] = xn[g].w0 & m0, p1[g] = xn[g].w1 & m1, p2[g] = xn[g].w2 & m2;
         const M any3 = (M)(p0[g] | p1[g] | p2[g]);
         const __mmask8 any = _mm512_test_epi64_mask(any3, any3);
@@ -916,7 +945,7 @@ F131X_INLINE void selectTables(const F131x<8> *xn, const F131x<8> *yp, const Sel
     // y against that row of the conversion (rowL is indexed by best itself).
     for (int g = 0; g < G; ++g) {
         const V r0 = gatherQ(c.rowL[0], best[g]), r1 = gatherQ(c.rowL[1], best[g]),
-                r2 = gatherQ(c.rowL[2], best[g]);
+                r2 = permute192(c.rowL2, best[g]);
         epsOut[g] = popcnt<8>((yp[g].w0 & r0) ^ (yp[g].w1 & r1) ^ (yp[g].w2 & r2)) & F131X_C(1u);
         hwOut[g] = hw[g];
         kOut[g] = k[g];
