@@ -25,7 +25,8 @@ the box after a unit rotation; their maximum coordinate magnitude is 54
 or 28, which the preparation builder must support.
 
 The [frozen design](joint-pair-top-design.json) used the previous
-pair-table fixture as training and was committed before drawing the new
+pair-table fixture as training and was committed as `5c711be8` before
+drawing the [new disjoint fixture](joint-pair-top-inputs/inputs.json). It
 fixture. It predicts the **same** online addition counts as the full
 pair table, with fewer prepared points:
 
@@ -34,8 +35,33 @@ pair table, with fewer prepared points:
 | `glv-j0-32` | 22,122 | 11,817 | 707,904 | 378,144 | 12,261 |
 | `j0-56` | 44,244 | 33,393 | 1,415,808 | 1,068,576 | 34,461 |
 
+The [release panel](joint-pair-top-native-panel.json) and
+[warnings-as-errors UBSan panel](joint-pair-top-ubsan-panel.json) each
+passed 32 arms in rotating order: bounded-top, full-pair, packed
+single-window plane, and fixed comb9. All native arms replayed their
+4,096 outputs per case and verified their prepared point tables. An
+independent model checked 32,768 scalar identities and 184 group
+decompositions. The C suite passed 2,312,331 checks in both builds.
+
+| Curve | Packed-plane online adds | Full-pair and bounded-top online adds | Saved online | Bounded point slots | Bounded preparation adds per base |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `glv-j0-32` | 54,954 | 32,725 | 22,229 (40.45%) | 11,817 | 12,261 |
+| `j0-56` | 114,239 | 65,453 | 48,786 (42.71%) | 33,393 | 34,461 |
+
+Each curve has 16,384 fresh public scalars over four base points. Both
+pair modes had exactly the same online addition and unit-action counts,
+with zero fallbacks. Compared with the packed single-window control,
+the extra preparation-add count would break even at about 8,811 or
+11,386 scalars per fixed base at the observed per-scalar addition rate.
+These are addition-call diagnostics, not wall-time break-even points.
+The [isolated manifest producer](make_joint_pair_top_isolated_manifest.py)
+passes local schema validation with 168 source and fixture artifacts,
+eight cases, and 24 paired repetitions.
+
 The proof concerns the two exact study curves, their recorded GLV
-lattices, and the frozen digit rule. Correctness, preparation cost,
-cache behavior, and wall time still require native and isolated-host
-measurements. This public-scalar variant is not a one-target rho or IC
-speedup claim.
+lattices, and the frozen digit rule. Correctness and preparation
+operation counts are verified locally; cache behavior and wall time
+still require a qualifying isolated-host measurement. Local macOS
+timing fields are exploratory and do not show a
+reliable speedup. This public-scalar variant is not a one-target rho or
+IC speedup claim.

@@ -793,23 +793,32 @@ static void joint_zero_named(uint64_t p, uint64_t b, uint64_t order, uint64_t wi
     ca_ec_joint_window4_clear(&pre);
 }
 
-static void joint_pair_hex_named(uint64_t p, uint64_t b, uint64_t order, unsigned pairs)
+static void joint_pair_hex_named(uint64_t p, uint64_t b, uint64_t order, unsigned pairs,
+                                 int top_compressed)
 {
     ca_group g;
     ca_curve_info info;
     CHECK(ca_curve_group(&g, p, 0, b, order, &info) == CA_OK);
     CHECK(info.endo == CA_CURVE_ENDO_J0);
-    CHECK(ca_ec_joint_pair_verify_map());
-    CHECK_EQ_U64(ca_ec_joint_pair_static_bytes(), 306900);
-    CHECK_EQ_U64(ca_ec_joint_pair_point_entries(&g), (uint64_t)pairs * 11061);
+    CHECK(top_compressed ? ca_ec_joint_pair_top_verify_map() : ca_ec_joint_pair_verify_map());
+    CHECK_EQ_U64(top_compressed ? ca_ec_joint_pair_top_static_bytes()
+                                : ca_ec_joint_pair_static_bytes(),
+                 top_compressed ? 353076 : 306900);
+    size_t entries = top_compressed ? ca_ec_joint_pair_top_point_entries(&g)
+                                    : ca_ec_joint_pair_point_entries(&g);
+    CHECK_EQ_U64(entries, (uint64_t)(pairs - 1) * 11061 +
+                              (top_compressed ? (pairs == 2 ? 756 : 210) : 11061));
     ca_elem point;
     CHECK(ca_group_find_generator(&g, &point, 1) == CA_OK);
     ca_joint_pair_precomp pre = {0};
     uint64_t inversions = 0, plane_muls = 0;
-    CHECK(ca_ec_joint_pair_prepare(&g, &point, &pre, NULL, NULL, &inversions, &plane_muls));
+    CHECK(top_compressed
+              ? ca_ec_joint_pair_top_prepare(&g, &point, &pre, NULL, NULL, &inversions, &plane_muls)
+              : ca_ec_joint_pair_prepare(&g, &point, &pre, NULL, NULL, &inversions, &plane_muls));
     CHECK_EQ_U64(pre.pairs, pairs);
+    CHECK_EQ_U64(pre.top_compressed, top_compressed);
     CHECK_EQ_U64(inversions, pairs);
-    CHECK_EQ_U64(plane_muls, ca_ec_joint_pair_point_entries(&g));
+    CHECK_EQ_U64(plane_muls, entries);
     CHECK(ca_ec_joint_pair_prepare_verify(&pre));
     pre.plane_point[0].x_beta ^= 1;
     CHECK(!ca_ec_joint_pair_prepare_verify(&pre));
@@ -835,7 +844,8 @@ static void joint_pair_hex_named(uint64_t p, uint64_t b, uint64_t order, unsigne
     ca_ec_joint_pair_clear(&pre);
     ca_elem identity;
     ca_group_identity(&g, &identity);
-    CHECK(ca_ec_joint_pair_prepare(&g, &identity, &pre, NULL, NULL, NULL, NULL));
+    CHECK(top_compressed ? ca_ec_joint_pair_top_prepare(&g, &identity, &pre, NULL, NULL, NULL, NULL)
+                         : ca_ec_joint_pair_prepare(&g, &identity, &pre, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_joint_pair_prepare_verify(&pre));
     CHECK(ca_ec_joint_pair_mul_profile(&g, &pre, &got, 17, NULL, NULL, NULL));
     CHECK(ca_group_is_identity(&g, &got));
@@ -1536,8 +1546,10 @@ int main(void)
     joint_zero_named(UINT64_C(4294967377), 15, UINT64_C(23729779), UINT64_C(5233680));
     joint_zero_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747),
                      UINT64_C(3880360191224661));
-    joint_pair_hex_named(UINT64_C(4294967377), 15, UINT64_C(23729779), 2);
-    joint_pair_hex_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747), 4);
+    joint_pair_hex_named(UINT64_C(4294967377), 15, UINT64_C(23729779), 2, 0);
+    joint_pair_hex_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747), 4, 0);
+    joint_pair_hex_named(UINT64_C(4294967377), 15, UINT64_C(23729779), 2, 1);
+    joint_pair_hex_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747), 4, 1);
     tau_cost_boundary_curves();
     tau_fused_named("glv-j0-32", 4);
     tau_fused_named("j0-56", 6);
