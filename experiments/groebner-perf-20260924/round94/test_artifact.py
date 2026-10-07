@@ -34,6 +34,8 @@ def test(path):
         'wrong_retention_policy':lambda r:row(r)['result'].__setitem__('retention_policy','baseline'),
         'wrong_released_terms':lambda r:row(r)['result']['attempts'][0]['certificate']['liveness'].__setitem__('released_terms',999),
         'wrong_peak':lambda r:row(r)['result']['attempts'][0]['certificate']['liveness'].__setitem__('peak_terms',99999999),
+        'understated_peak':lambda r:row(r)['result']['attempts'][0]['certificate']['liveness'].__setitem__('peak_terms',0),
+        'wrong_released_nodes':lambda r:row(r)['result']['attempts'][0]['certificate']['liveness'].__setitem__('released_nodes',0),
         'wrong_liveness_plan':lambda r:row(r)['result']['attempts'][0]['certificate']['liveness'].__setitem__('planning_work',0),
         'wrong_arm': lambda r:r['rows'][0].__setitem__('arm', 'evaluation'),
         'missing_preparation': lambda r:r['preparation'].pop(),

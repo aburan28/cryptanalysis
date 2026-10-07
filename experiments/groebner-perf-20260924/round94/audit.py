@@ -19,6 +19,36 @@ def producer_trace(result):
     return dict(verified=result['verified'],status=result['status'],basis=result.get('basis'),proof=result.get('proof'),
         work=result['work'],attempts=[dict(kind=a['kind'],verified=a['verified'],stats=counters(a['stats'])) for a in result['attempts']])
 
+def expected_liveness(rows,nodes,outputs):
+    # Independent set-based lifetime simulation over the public DAG encoding.
+    uses=[0]*len(nodes)
+    for node in nodes:
+        if node[0]=='mul':uses[node[1]]+=1
+        if node[0]=='xor':uses[node[1]]+=1;uses[node[2]]+=1
+    for i in outputs:uses[i]+=1
+    values={};live=peak=total=released=freed=0
+    def canonical(terms):
+        result=set()
+        for term in terms:result.symmetric_difference_update([term])
+        return result
+    def release(i):
+        nonlocal live,released,freed
+        size=len(values.pop(i));live-=size;released+=size;freed+=1
+    def consume(i):
+        uses[i]-=1
+        if not uses[i]:release(i)
+    for i,node in enumerate(nodes):
+        if node[0]=='input':value=canonical(rows[node[1]])
+        elif node[0]=='mul':value=canonical(term|node[2] for term in values[node[1]])
+        else:value=values[node[1]]^values[node[2]]
+        values[i]=value;live+=len(value);total+=len(value);peak=max(peak,live)
+        if node[0]=='mul':consume(node[1])
+        if node[0]=='xor':consume(node[1]);consume(node[2])
+        if not uses[i]:release(i)
+    for i in outputs:consume(i)
+    return dict(planning_work=len(nodes)+len(outputs),metadata_bytes=4*len(nodes),live_terms=live,
+        peak_terms=peak,released_terms=released,released_nodes=freed),total
+
 def audit(report,*,current_sources=True):
     plan=json.loads((HERE/'panel.json').read_text())
     assert report['schema']=='proof-liveness-evidence/1' and report['plan']==plan and report['plan_sha256']==digest(plan)
@@ -36,7 +66,7 @@ def audit(report,*,current_sources=True):
             assert p.is_relative_to(HERE.parents[2]) and hashlib.sha256(p.read_bytes()).hexdigest()==sha,name
     assert type(report['controls']) is bool
     modes=[False,True] if report['controls'] else [False]
-    preparations=iter(report['preparation']);rows=iter(report['rows']);proofs=set();last_end=None
+    preparations=iter(report['preparation']);rows=iter(report['rows']);proofs=set();lifetimes={};last_end=None
     counts=dict(verified_records=0,unsupported_records=0,other_unsuccessful_records=0,exact_producer_pairs=0,
         successful_checker_counter_pairs=0,early_matrix_rejections=0,verified_lifetimes=0,matrix_baseline_accepted=0,matrix_cumulative_accepted=0,matrix_live_accepted=0)
     for sanitized in modes:
@@ -92,7 +122,7 @@ def audit(report,*,current_sources=True):
                                 if attempt['verified']:
                                     assert attempt['stats']['status']==0
                                     cert=attempt['certificate'];assert cert['status']=='verified' and cert['ideal_equality'] and cert['reduced_groebner_basis']
-                            if policy!='baseline' and attempt['verified']:
+                                if policy!='baseline' and attempt['verified']:
                                     assert live['live_terms']==0 and live['released_nodes']==cert['stats']['proof_nodes']
                                     assert live['metadata_bytes']==4*cert['stats']['proof_nodes']
                                     counts['verified_lifetimes']+=1
@@ -115,6 +145,12 @@ def audit(report,*,current_sources=True):
                                     assert checked['verified'],checked
                                 if n<=20:assert certify_boolean_basis(n,equations,result['basis'],monomial_cache=n<=12)['verified']
                                 proofs.add(key)
+                            if algebra and policy!='baseline':
+                                if key not in lifetimes:
+                                    lifetimes[key]=expected_liveness(equations,result['proof']['nodes'],result['proof']['outputs'])
+                                expected,total=lifetimes[key]
+                                assert result['attempts'][-1]['certificate']['liveness']==expected
+                                assert result['attempts'][-1]['certificate']['stats']['retained_terms']==total
                             basis=canonical(result['basis'])
                             if reference is None:reference=basis
                             assert basis==reference,(family['name'],target,arm)
