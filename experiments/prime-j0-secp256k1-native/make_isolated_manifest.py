@@ -26,6 +26,7 @@ def main():
     repo = args.repo_root.resolve(strict=True)
     binary = args.binary.resolve(strict=True)
     here = repo / "experiments/prime-j0-secp256k1-native"
+    assert Path(__file__).resolve() == here / "make_isolated_manifest.py"
     workload_path = here / "bench-workload.json"
     workload = json.loads(workload_path.read_text())
     assert workload["schema"] == 1 and len(workload["cases"]) == 64
@@ -49,7 +50,7 @@ def main():
     artifacts = [
         here / "Cargo.toml", here / "Cargo.lock", here / "src/main.rs",
         here / "FORMAT_PROTOCOL.md", here / "make_bench_workload.py",
-        Path(__file__).resolve(), workload_path,
+        here / "make_isolated_manifest.py", workload_path,
         repo / "suite/src/ct_bignum.rs",
         repo / "suite/src/ecc/secp256k1_field.rs",
     ]
