@@ -6837,6 +6837,42 @@ def main():
             for row in q1473_prior_collection_rows)
         + q1473_audit["target_independent_table_wall_ns_exploratory"]
         + q1473_prefix_wall_ns)
+    q1474_dir = HERE / "q1474_n53_positive_compact"
+    q1474_protocol_path = q1474_dir / "protocol.json"
+    q1474_audit_path = q1474_dir / "archive_audit.json"
+    q1474_protocol = json.loads(q1474_protocol_path.read_text())
+    q1474_audit = json.loads(q1474_audit_path.read_text())
+    assert q1474_protocol["proposal_id"] == q1474_audit[
+        "proposal_id"] == "Q1474"
+    assert q1474_protocol["candidate_id"] is q1474_audit[
+        "candidate_id"] is None
+    assert q1474_protocol["run_id"] is q1474_audit["run_id"] is None
+    assert q1474_protocol["isogeny"] == q1474_audit[
+        "isogeny"] == "none"
+    assert q1474_protocol["stage_config_id"] == q1474_audit[
+        "stage_config_id"]
+    assert q1474_protocol["curve_id"] == q1474_audit[
+        "curve_id"] == q1473_protocol["curve_id"]
+    assert q1474_protocol["factor_base_actual_B"] == q1474_audit[
+        "factor_base_actual_B"] == 2756
+    assert q1474_protocol["folded_columns_K"] == q1474_audit[
+        "folded_columns_K"] == 26
+    assert q1474_protocol["factor_base_enumerated_set_sha256"] == (
+        q1474_audit["factor_base_enumerated_set_sha256"])
+    assert q1474_protocol["factor_base_enumerated_set_sha256"] == (
+        q1473_protocol["factor_base_enumerated_set_sha256"])
+    assert q1474_audit["status"] == "passed"
+    assert q1474_audit["pinned_correctness_control_passed"]
+    assert q1474_audit["protocol_sha256"] == sha(q1474_protocol_path)
+    assert q1474_audit["auditor_source_sha256"] == sha(
+        q1474_dir / "audit.py")
+    assert [row["case"] for row in q1474_audit["rows"]] == (
+        q1474_protocol["run_order"])
+    assert [row["native_status"] for row in q1474_audit["rows"]] == [
+        "sat", "censored", "censored"]
+    assert [row["verified_relation_count"] for row in q1474_audit[
+        "rows"]] == [1, 0, 0]
+    assert q1474_audit["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -9154,6 +9190,50 @@ def main():
             "verification_sha256": sha(q1473_verification_path),
             "receipt_sha256": sha(q1473_receipt_path),
         },
+        "q1474_n53_matched_positive_compact_control": {
+            "proposal_id": "Q1474", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "stage_config_id": q1474_protocol["stage_config_id"],
+            "measurement_scope": q1474_protocol["measurement_scope"],
+            "measurement_units": q1474_protocol["measurement_units"],
+            "curve_id": q1474_protocol["curve_id"],
+            "factor_base_actual_B": 2756,
+            "folded_columns_K": 26,
+            "factor_base_enumerated_set_sha256": q1474_protocol[
+                "factor_base_enumerated_set_sha256"],
+            "public_target": q1474_audit["public_target"],
+            "matched_q1469_workload_id": q1474_audit[
+                "matched_q1469_workload_id"],
+            "matched_pair_oracle_query_field_calls": q1474_audit[
+                "matched_pair_oracle_query_field_calls"],
+            "matched_pair_oracle_query_wall_ns_exploratory": q1474_audit[
+                "matched_pair_oracle_query_wall_ns_exploratory"],
+            "pinned_correctness_control_passed": True,
+            "known_representable_unpinned_attempts": 2,
+            "known_representable_unpinned_verified_relations": 0,
+            "rows": q1474_audit["rows"],
+            "successful_unpinned_cost": None,
+            "natural_relation_yield_estimate": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1474 tests the same seeded ordinary N53 public target "
+                "whose four-point pair-table witness was independently "
+                "verified in Q1469, on the exact same 2756-point, "
+                "26-column selected base. The pinned raw-witness control "
+                "passes. The free-leaf selected-preimage and full "
+                "428-preimage searches both reach the 60-second wall cap "
+                "without a relation after 288547216 and 274677429 "
+                "exact SAT propagations, respectively. Those are "
+                "censored stage costs in one operation unit, not "
+                "successful-solve exponents. The target was selected "
+                "after its witness was known, so this control supplies "
+                "no natural yield estimate or N131 work projection."
+            ),
+            "protocol_sha256": sha(q1474_protocol_path),
+            "archive_audit_sha256": sha(q1474_audit_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -9674,6 +9754,11 @@ def main():
                 "the archived cache policies; this explicit-table lane "
                 "already exceeds the N131 2^61 entry cap and does not "
                 "measure a successful N83 compact decomposition; "
+                "Q1474 matches one Q1469 known-representable ordinary "
+                "N53 point against the compact S3 solver: the pinned "
+                "control passes, while both free-leaf searches censor "
+                "at 60 seconds after about 2^28 SAT propagations each, "
+                "leaving successful compact solve cost unknown; "
                 "censored N83 ordinary runs still do not measure N83 "
                 "useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
