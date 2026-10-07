@@ -2843,7 +2843,7 @@ static int tau3_scatter_verify_entries(const ca_tau3_scatter_entry *entry,
     for (unsigned key = 0; key < 400; key++) {
         if (offsets[key] > offsets[key + 1]) return 0;
         for (size_t n = offsets[key]; n < offsets[key + 1]; n++)
-            if (20 * entry[n].i + entry[n].j != key) return 0;
+            if (20u * entry[n].i + entry[n].j != key) return 0;
     }
     for (size_t n = 0; n < count; n++) {
         ca_tau3_scatter_entry item = entry[n];
