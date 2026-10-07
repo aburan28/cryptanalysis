@@ -49,17 +49,25 @@ typedef struct ca_joint_window4_precomp {
     const ca_group *g;
     ca_elem base_point;
     ca_elem *point; /* [positions][71 canonical joint-digit orbits] */
+    const int8_t *rep_x, *rep_y;
+    const uint16_t *action;
     uint64_t beta, beta2;
     __int128 v1x, v1y, v2x, v2y, det;
     unsigned positions;
     int identity;
+    int hot;
 } ca_joint_window4_precomp;
 size_t ca_ec_joint_window4_point_entries(const ca_group *g);
 size_t ca_ec_joint_window4_static_bytes(void);
 int ca_ec_joint_window4_verify_map(void);
+int ca_ec_joint_window4_hot_verify_map(void);
 int ca_ec_joint_window4_prepare(const ca_group *g, const ca_elem *point,
                                 ca_joint_window4_precomp *out, uint64_t *doubles, uint64_t *adds,
                                 uint64_t *rotations, uint64_t *inversions);
+int ca_ec_joint_window4_hot_prepare(const ca_group *g, const ca_elem *point,
+                                    ca_joint_window4_precomp *out, uint64_t *doubles,
+                                    uint64_t *adds, uint64_t *rotations, uint64_t *inversions);
+size_t ca_ec_joint_window4_hot_static_bytes(void);
 int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre);
 int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
                                     ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
