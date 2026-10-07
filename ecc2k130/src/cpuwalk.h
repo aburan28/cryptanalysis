@@ -67,6 +67,11 @@
 #ifndef ECC_F131_CHAIN_VECTORS
 #    define ECC_F131_CHAIN_VECTORS 2
 #endif
+// The chains' forward pass inside the selection's loop (1) or as its own
+// pass over the batch (0); see selectBatch.
+#ifndef ECC_F131_FUSE_FORWARD
+#    define ECC_F131_FUSE_FORWARD 1
+#endif
 
 namespace ec2k_cpu
 {
@@ -294,6 +299,12 @@ class CpuEngine
         // limb), weight, phase, sign.
         Slab xn;
         std::vector<unsigned char> hw, k, eps;
+#if ECC_F131_LANES > 1
+        // The chain accumulators as the selection's fused forward pass
+        // leaves them, and the lanes it covered (chainsAndAdd).
+        alignas(64) uint64_t fwd[ECC_F131_CHAIN_VECTORS][3][ECC_F131_LANES];
+        int fused = 0;
+#endif
         int batch = 0;
         void scratch(int b)
         {
@@ -427,10 +438,11 @@ class CpuEngine
     // and tag never leaving the vector; lane by lane through f131.h's byte
     // tables for the tail, by way of KK and EPS.
     void selectBatch(const Batch &b, int B, const unsigned char *HW, unsigned char *KK,
-                     unsigned char *EPS, unsigned long long *H) const
+                     unsigned char *EPS, unsigned long long *H, Local *local) const
     {
         const uint32_t *tw = consts_.data();
         int i = 0;
+        (void)local;
 #if ECC_F131_LANES > 1
         typedef f131x::F131x<kLanes> FX;
         const auto addendVector = [&](int j, typename FX::V tag, const FX &yp) {
@@ -441,6 +453,20 @@ class CpuEngine
         };
         // G vectors a call, interleaved (f131x.h), then one at a time.
         const int G = f131x::kSelectGroup;
+        // The chains' forward pass rides along, a group at a time, where
+        // the groups line up with the chain vectors (ECC_F131_FUSE_FORWARD):
+        // vector g of a group is chain vector g mod V, since G is a multiple
+        // of V, and the first group's d is where each chain starts.  The
+        // selection is permutes, gathers and the loads behind them, and
+        // the multiplier's ports have room while those wait; as its own
+        // pass over the batch the forward half of the chains kept the
+        // multiplier full and the load ports idle.  Measured on one
+        // Sapphire Rapids core, 3% on the step (whole binary, interleaved
+        // runs); the stage harness cannot see it, since it times the
+        // stages apart.
+        constexpr int V = ECC_F131_CHAIN_VECTORS;
+        constexpr bool fuse = ECC_F131_FUSE_FORWARD && G % V == 0;
+        FX pv[V];
         for (; i + G * kLanes <= B; i += G * kLanes) {
             FX xn[G], yp[G];
             typename FX::V hw[G], k[G], eps[G];
@@ -450,10 +476,45 @@ class CpuEngine
                 yp[g] = FX::load(b.Y0 + j, b.Y1 + j, b.Y2 + j);
             }
             f131x::select<kLanes, G>(xn, yp, select_, hw, k, eps);
-            for (int g = 0; g < G; ++g) {
-                const int j = i + g * kLanes;
-                addendVector(j, f131x::tags<kLanes>(hw[g], k[g], eps[g], H + j), yp[g]);
+            if constexpr (!fuse) {
+                for (int g = 0; g < G; ++g) {
+                    const int j = i + g * kLanes;
+                    addendVector(j, f131x::tags<kLanes>(hw[g], k[g], eps[g], H + j), yp[g]);
+                }
+            } else {
+                for (int g = 0; g < G; ++g) {
+                    const int j = i + g * kLanes;
+                    addendVector(j, f131x::tags<kLanes>(hw[g], k[g], eps[g], H + j), yp[g]);
+                }
+                // The group's forward pass after its addends, through D
+                // and W as before: a product straight from the addend's
+                // registers measured 5% slower than this, and the
+                // accumulators must be indexed by a constant, so the first
+                // group, which starts the chains, is peeled.
+                const auto forward = [&](int g) __attribute__((always_inline))
+                {
+                    const int j = i + g * kLanes;
+                    FX &p = pv[g % V];
+                    const FX w = FX::load(b.W0 + j, b.W1 + j, b.W2 + j),
+                             d = FX::load(b.D0 + j, b.D1 + j, b.D2 + j);
+                    f131x::mul<kLanes>(p, w).store(b.W0 + j, b.W1 + j, b.W2 + j);
+                    p = f131x::mul<kLanes>(p, d);
+                };
+                if (i == 0) {
+                    for (int v = 0; v < V; ++v)
+                        pv[v] = FX::load(b.D0 + v * kLanes, b.D1 + v * kLanes, b.D2 + v * kLanes);
+#    pragma GCC unroll 8
+                    for (int g = V; g < G; ++g) forward(g);
+                } else {
+#    pragma GCC unroll 8
+                    for (int g = 0; g < G; ++g) forward(g);
+                }
             }
+        }
+        if constexpr (fuse) {
+            local->fused = i;
+            for (int v = 0; i > 0 && v < V; ++v)
+                pv[v].store(local->fwd[v][0], local->fwd[v][1], local->fwd[v][2]);
         }
         for (; i + kLanes <= B; i += kLanes) {
             typename FX::V hw, k, eps;
@@ -502,7 +563,7 @@ class CpuEngine
     // one inversion, then lambda_i = e_i / d_i back down each chain and the
     // additions, which depend on nothing but their own lane and so ride along
     // in the backward pass.
-    void chainsAndAdd(const Batch &b, int B)
+    void chainsAndAdd(const Batch &b, int B, const Local *local = nullptr)
     {
         if (B <= 0) return;
         const int K = B < kChains ? B : kChains;
@@ -513,10 +574,20 @@ class CpuEngine
         if (K == kChains) {
             // Chain c runs in lane c % N of vector c / N, and stays there: the
             // ragged end of the batch and the peel work on the lanes in place.
+            // The selection's pass may have carried the chains some way
+            // already (selectBatch), a whole number of groups.
             FX pv[V];
-            for (int v = 0; v < V; ++v)
-                pv[v] = FX::load(b.D0 + v * kLanes, b.D1 + v * kLanes, b.D2 + v * kLanes);
-            for (i = kChains; i + kChains <= B; i += kChains) {
+            const int fused = local ? local->fused : 0;
+            if (fused) {
+                for (int v = 0; v < V; ++v)
+                    pv[v] = FX::load(local->fwd[v][0], local->fwd[v][1], local->fwd[v][2]);
+                i = fused;
+            } else {
+                for (int v = 0; v < V; ++v)
+                    pv[v] = FX::load(b.D0 + v * kLanes, b.D1 + v * kLanes, b.D2 + v * kLanes);
+                i = kChains;
+            }
+            for (; i + kChains <= B; i += kChains) {
 #    pragma GCC unroll 8
                 for (int v = 0; v < V; ++v) {
                     const int j = i + v * kLanes;
@@ -723,8 +794,8 @@ class CpuEngine
             // that reports or is overdue; then the phase, the sign, the tag
             // with the cycle rule and the history, and the addend.
             convertBatch(b, B, base, now, guard, S, HW, local);
-            selectBatch(b, B, HW, KK, EPS, H);
-            chainsAndAdd(b, B);
+            selectBatch(b, B, HW, KK, EPS, H, local);
+            chainsAndAdd(b, B, local);
         }
         now_[size_t(c)] = now;
     }
