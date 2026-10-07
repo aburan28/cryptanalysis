@@ -24,7 +24,8 @@ exit codes.
 This extends **point-path correctness** only. The native binary still
 consumes Sage-produced short representatives and digits. Its cached
 Jacobian addition explicitly rejects an exceptional equal-X input; the
-control set did not exercise that branch. Secret-scalar safety and a full
-scalar-input API are not established. The local host has no isolation
+control set did not exercise that branch; `EXCEPTION_RESULT.md` records
+the subsequent direct branch control. Secret-scalar safety and a full
+scalar-input API were not established by this edge panel. The local host has no isolation
 receipt, so `cpu_speedup_claim` remains `null`; there is no CPU speedup or
 academic novelty claim.

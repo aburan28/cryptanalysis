@@ -26,6 +26,7 @@ is `73d0e94aa439d48dbba79fb9b88b460fbca7c0982e814c66c6387e5dfa9a6bce`.
 This establishes correctness for these **350 scalar inputs** on physical
 ARM64 macOS. The implementation is variable time, exposes its scalar
 input through a replay executable, and has not undergone secret-scalar
-review. Exceptional cached additions still require a control. The host
+review. `EXCEPTION_RESULT.md` records the subsequent direct control
+for exceptional cached additions. The host
 has no isolation receipt and no native operation was timed; both
 `cpu_speedup_claim` and `academic_novelty_claim` remain `null`.

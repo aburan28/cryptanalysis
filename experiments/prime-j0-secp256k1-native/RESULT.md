@@ -26,8 +26,9 @@ This historical receipt verifies the **native point path on these
 nonzero cases**. `EDGE_RESULT.md` separately verifies zero and
 order-boundary outputs. `FULL_NATIVE_RESULT.md` records the subsequent
 native scalar reduction and recoder, checked on 350 scalar inputs.
-Exceptional-addition and secret-scalar safety controls still need
-coverage before production use. The local
+`EXCEPTION_RESULT.md` records the subsequent exceptional-addition
+control. Secret-scalar safety still needs review before production
+use. The local
 host has no isolation receipt; no native CPU speedup was measured or
 claimed. Stronger baselines, isolated timing, and independent prior-art
 review remain required for the research
