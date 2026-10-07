@@ -1,0 +1,127 @@
+{
+  "schema": "minimal-macaulay-plan/1",
+  "fixture_sha256": "618bd6d141a06ce55fdeb3e6fc72f4903fc83e3d2ee317dfbcde5b25a78548cf",
+  "cases": [
+    "pdp-6-seed-1",
+    "pdp-6-seed-3",
+    "planted-dense-mq-12",
+    "pdp-9-seed-1",
+    "pdp-9-seed-2",
+    "pdp-9-seed-3",
+    "pdp-9-seed-4",
+    "pdp-9-seed-5",
+    "pdp-12-seed-1",
+    "pdp-12-seed-2",
+    "pdp-12-seed-3",
+    "pdp-12-seed-4",
+    "pdp-12-seed-5"
+  ],
+  "arms": [
+    "f4-quotient",
+    "matrix-quotient",
+    "matrix-minimal"
+  ],
+  "budgets": [
+    80000000
+  ],
+  "orders": [
+    [
+      "f4-quotient",
+      "matrix-quotient",
+      "matrix-minimal"
+    ],
+    [
+      "f4-quotient",
+      "matrix-quotient",
+      "matrix-minimal"
+    ],
+    [
+      "matrix-quotient",
+      "matrix-minimal",
+      "f4-quotient"
+    ],
+    [
+      "matrix-minimal",
+      "f4-quotient",
+      "matrix-quotient"
+    ],
+    [
+      "f4-quotient",
+      "matrix-quotient",
+      "matrix-minimal"
+    ]
+  ],
+  "warmup_rounds": 1,
+  "limits": {
+    "max_nodes": 2000000,
+    "max_rows": 4096,
+    "batch": 64,
+    "max_check_work": 200000000,
+    "max_terms": 2000000,
+    "matrix_cap": 20000000
+  },
+  "checker": {
+    "order": "completion-first",
+    "retention": "release-live",
+    "term_limit": "peak live polynomial terms",
+    "dense": "proof values only; term charges preserved, word and conversion charges added"
+  },
+  "worker_timeout_seconds": 60,
+  "process_policy": "One fresh worker per query; fixture/layout/library setup and artifact storage excluded from query timing; process peak RSS includes those costs.",
+  "boundary": "PDP: first target-dependent coefficient descent through native production/certification, bounded extraction, independent equations/curve replay and lease teardown; fixture/layout setup separate; materialized proof included.",
+  "audit_limits": {
+    "max_work": 1000000000,
+    "max_retained_terms": 50000000
+  },
+  "gpu": {
+    "devices": [],
+    "backend": "host"
+  },
+  "candidate_id": null,
+  "qualified_speedup": null,
+  "online_speedup": null,
+  "matrix_policy": {
+    "input_degree": {
+      "pdp": 6,
+      "algebra": 2
+    },
+    "multiplier_degree": {
+      "matrix-quotient": 2,
+      "matrix-minimal": 2
+    },
+    "max_layout_bytes": 67108864,
+    "matrix_cap": 20000000,
+    "fallback": "unchanged F4 with remaining producer and checker budgets"
+  },
+  "dense_byte_limit": 134217728,
+  "dense_ring_limit": 12,
+  "proof_transport": {
+    "matrix_arms": "owned binary proof; unchanged round103 transport and separately timed decoding",
+    "f4_arms": "unchanged Python-list proof output",
+    "profile": "both paired arms use identical output API and include materialization inside query"
+  },
+  "buffer_reuse": {
+    "candidate": "move a distinct last-use operand buffer for dense XOR; output pins count as uses",
+    "work": "preserve the reference conservative term/word budget charges including avoided initialization",
+    "bytes": "reserved value/use metadata plus owned payload buffers; moved source payload is empty",
+    "policies": "production uses release-live; keep and cumulative retention also tested",
+    "default": "opt-in; unchanged CPU checker remains available"
+  },
+  "normal_form_contract": {
+    "mode": "automatic-bounded-full-map",
+    "max_variables": 12,
+    "max_standard_monomials": 64,
+    "min_input_terms_per_universe": 2,
+    "map_payload_byte_limit": 1048576,
+    "cache_scope": "one fresh basis-dependent map per query",
+    "fallback": "unchanged hash remainder with all attempted map work retained",
+    "claimed_speedup": null
+  },
+  "back_substitution": {
+    "baseline": "all pivot rows, right to left",
+    "candidate": "minimal leading rows only; later pivots cleared left to right",
+    "selection_flag_bytes": "one byte per layout column, at most 262144; charged initialization; separate from peak row payload words",
+    "work": "declared software charges, audited with Python integer-row replay",
+    "default": "opt-in"
+  }
+}
