@@ -33,7 +33,7 @@ def fields(stdout):
 
 
 def main():
-    destination = HERE / "native-format-checks.json"
+    destination = HERE / "native-format-checks-v2.json"
     if destination.exists():
         raise SystemExit("native format result exists; refusing overwrite")
     panels = [("original", HERE / "fixture.json", 64),

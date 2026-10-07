@@ -450,12 +450,14 @@ fn evaluate_mode(digits: &[Option<Digit>], seeds: &[J; 9], beta: F,
     if digits.is_empty() { return (J::identity(), counts); }
     let images: [[J; 3]; 9] = std::array::from_fn(|i| orbit(seeds[i], beta));
     let mut cache: [Option<(F, F)>; 9] = [None; 9];
-    for digit in digits.iter().take(digits.len() - 1).flatten() {
-        if !all_affine && digit.seed > 0 && cache[digit.seed].is_none() {
-            let z = seeds[digit.seed].z;
-            let z2 = z.sqr();
-            cache[digit.seed] = Some((z2, z2.mul(&z)));
-            counts.cache_entries += 1;
+    if !all_affine {
+        for digit in digits.iter().take(digits.len() - 1).flatten() {
+            if digit.seed > 0 && cache[digit.seed].is_none() {
+                let z = seeds[digit.seed].z;
+                let z2 = z.sqr();
+                cache[digit.seed] = Some((z2, z2.mul(&z)));
+                counts.cache_entries += 1;
+            }
         }
     }
     let pairs = planned_pairs(digits);
