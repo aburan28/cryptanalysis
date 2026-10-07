@@ -259,6 +259,11 @@ nothing in it is ever deleted. Three layers keep it:
 
    Until the secrets exist, every job says in its summary that nothing was copied.
 
+   `setup_permanent_archive.sh` does all of the above and the ruleset in item 2 in
+   one go (`BUCKET=<new-bucket-name> ./setup_permanent_archive.sh`, with the `aws`
+   CLI, `gh` as a repository admin, and `jq`). It asks for confirmation before
+   creating the irreversible compliance retention.
+
 ### Sweep bases, materialized: `sweep_points.py`
 
 The sweep manifests are recipes. `sweep_points.py` turns each one into the bases
