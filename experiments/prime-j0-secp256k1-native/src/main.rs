@@ -213,6 +213,24 @@ fn prepare(base: J, beta: F) -> [J; 9] {
      two_four_tau, two_tau, one_minus_two_tau]
 }
 
+// Joint digit-atlas variant: slots 5 and 6 are 2 and 4 times slot 8.
+// This uses five doubles and three mixed additions, versus four of each
+// in prepare(), with the same two unit rotations.
+fn prepare_alternate(base: J, beta: F) -> [J; 9] {
+    assert!(base.z == F::ONE);
+    let twice_base = base.double();
+    let four_base = twice_base.double();
+    let omega_x = beta.mul(&base.x);
+    let one_tau = twice_base.add_mixed(omega_x, base.y.neg());
+    let two_two_tau = one_tau.double();
+    let two_tau = one_tau.add_mixed(base.x, base.y);
+    let one_minus_two_tau = twice_base.omega(beta).add_mixed(base.x, base.y.neg());
+    let two_minus_four_tau = one_minus_two_tau.double();
+    let four_minus_eight_tau = two_minus_four_tau.double();
+    [base, twice_base, four_base, one_tau, two_two_tau,
+     two_minus_four_tau, four_minus_eight_tau, two_tau, one_minus_two_tau]
+}
+
 fn normalize_all(seeds: &[J; 9]) -> [J; 9] {
     let mut normalized = *seeds;
     let mut prefix = [F::ONE; 8];
@@ -329,9 +347,14 @@ fn signed_residue(value: &BigInt, modulus: i64) -> usize {
     usize::try_from(residue).expect("small nonnegative residue")
 }
 
-fn digit_table() -> [[Option<Digit>; 9]; 9] {
-    let seeds: [(i64, i64); 9] = [(1, 0), (2, 0), (4, 0), (1, 1), (2, 2),
-                 (1, 2), (2, 4), (2, 1), (1, -2)];
+fn digit_table_for(alternate: bool) -> [[Option<Digit>; 9]; 9] {
+    let seeds: [(i64, i64); 9] = if alternate {
+        [(1, 0), (2, 0), (4, 0), (1, 1), (2, 2),
+         (2, -4), (4, -8), (2, 1), (1, -2)]
+    } else {
+        [(1, 0), (2, 0), (4, 0), (1, 1), (2, 2),
+         (1, 2), (2, 4), (2, 1), (1, -2)]
+    };
     let mut table = [[None; 9]; 9];
     let mut entries = 0;
     for (seed, (a0, b0)) in seeds.into_iter().enumerate() {
@@ -355,10 +378,12 @@ fn digit_table() -> [[Option<Digit>; 9]; 9] {
 }
 
 static DIGIT_TABLE: LazyLock<[[Option<Digit>; 9]; 9]> =
-    LazyLock::new(digit_table);
+    LazyLock::new(|| digit_table_for(false));
+static ALTERNATE_DIGIT_TABLE: LazyLock<[[Option<Digit>; 9]; 9]> =
+    LazyLock::new(|| digit_table_for(true));
 
-fn recode(mut a: BigInt, mut b: BigInt) -> Vec<Option<Digit>> {
-    let table = &*DIGIT_TABLE;
+fn recode_with_table(mut a: BigInt, mut b: BigInt,
+                     table: &[[Option<Digit>; 9]; 9]) -> Vec<Option<Digit>> {
     #[cfg(debug_assertions)]
     let original = (a.clone(), b.clone());
     let mut digits = Vec::new();
@@ -398,6 +423,14 @@ fn recode(mut a: BigInt, mut b: BigInt) -> Vec<Option<Digit>> {
         assert_eq!((rebuilt_a, rebuilt_b), original);
     }
     digits
+}
+
+fn recode(a: BigInt, b: BigInt) -> Vec<Option<Digit>> {
+    recode_with_table(a, b, &DIGIT_TABLE)
+}
+
+fn recode_alternate(a: BigInt, b: BigInt) -> Vec<Option<Digit>> {
+    recode_with_table(a, b, &ALTERNATE_DIGIT_TABLE)
 }
 
 fn digits_from_json(case: &Value) -> Vec<Option<Digit>> {
@@ -516,7 +549,8 @@ fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
 
 fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
                         timed: bool) {
-    assert!(mode == "cached_projective" || mode == "all_affine");
+    assert!(mode == "cached_projective" || mode == "all_affine" ||
+            mode == "joint_atlas");
     let raw = fs::read(fixture_path).expect("read benchmark fixture");
     let fixture: Value = serde_json::from_slice(&raw).expect("parse benchmark fixture");
     assert_eq!(fixture["schema"].as_u64(), Some(1));
@@ -533,13 +567,25 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     };
     let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
     LazyLock::force(&LATTICE);
-    LazyLock::force(&DIGIT_TABLE);
+    if mode == "joint_atlas" {
+        LazyLock::force(&ALTERNATE_DIGIT_TABLE);
+    } else {
+        LazyLock::force(&DIGIT_TABLE);
+    }
     let start = Instant::now();
     let scalar = big_from_hex(scalar_hex);
     let base = J::affine(fe_from_hex(base_x), fe_from_hex(base_y));
     let (a, b) = short_representative(&scalar);
-    let digits = recode(a.clone(), b.clone());
-    let prepared = prepare(base, beta);
+    let digits = if mode == "joint_atlas" {
+        recode_alternate(a.clone(), b.clone())
+    } else {
+        recode(a.clone(), b.clone())
+    };
+    let prepared = if mode == "joint_atlas" {
+        prepare_alternate(base, beta)
+    } else {
+        prepare(base, beta)
+    };
     let seeds = if mode == "all_affine" { normalize_all(&prepared) } else { prepared };
     let (point, counts) = evaluate_mode(&digits, &seeds, beta, mode == "all_affine");
     let actual_point = match point.to_affine() {
@@ -551,12 +597,14 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     if !timed {
         assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
         assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
-        assert_eq!(digits, digits_from_json(case));
-        let expected_seeds = case["seed_affine"].as_array().expect("seeds");
-        for (seed, expected) in seeds.iter().zip(expected_seeds) {
-            let (x, y) = seed.to_affine().expect("prepared seed");
-            assert_eq!(fe_hex(x), expected[0].as_str().expect("seed x"));
-            assert_eq!(fe_hex(y), expected[1].as_str().expect("seed y"));
+        if mode != "joint_atlas" {
+            assert_eq!(digits, digits_from_json(case));
+            let expected_seeds = case["seed_affine"].as_array().expect("seeds");
+            for (seed, expected) in seeds.iter().zip(expected_seeds) {
+                let (x, y) = seed.to_affine().expect("prepared seed");
+                assert_eq!(fe_hex(x), expected[0].as_str().expect("seed x"));
+                assert_eq!(fe_hex(y), expected[1].as_str().expect("seed y"));
+            }
         }
         if mode == "cached_projective" {
             let expected = &case["expected_counts"];
@@ -585,8 +633,75 @@ fn check_count(expected: &Value, key: &str, actual: usize) {
     assert_eq!(actual, want, "count {key}");
 }
 
+fn check_alternate_fixture(fixture_path: &str, seed_path: &str) {
+    let raw = fs::read(fixture_path).expect("read scalar fixture");
+    let fixture: Value = serde_json::from_slice(&raw).expect("parse scalar fixture");
+    let seed_raw = fs::read(seed_path).expect("read alternate Sage seed fixture");
+    let seed_fixture: Value = serde_json::from_slice(&seed_raw)
+        .expect("parse alternate Sage seed fixture");
+    let name = PathBuf::from(fixture_path).file_name().expect("fixture name")
+        .to_str().expect("UTF-8 fixture name").to_owned();
+    let seed_cases = seed_fixture["fixtures"][&name]["cases"].as_array()
+        .expect("Sage alternate seeds for this fixture");
+    let cases = fixture["cases"].as_array().expect("scalar cases");
+    assert_eq!(cases.len(), seed_cases.len());
+    assert_eq!(fixture["beta_hex"], seed_fixture["beta_hex"]);
+    let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
+    LazyLock::force(&LATTICE);
+    LazyLock::force(&ALTERNATE_DIGIT_TABLE);
+    let mut total_m_plus_s = 0usize;
+    let mut exceptional_adds = 0usize;
+    for (case, seed_case) in cases.iter().zip(seed_cases) {
+        assert_eq!(case["base_x_hex"], seed_case["base_x_hex"]);
+        assert_eq!(case["scalar_hex"], seed_case["scalar_hex"]);
+        let base = J::affine(
+            fe_from_hex(case["base_x_hex"].as_str().expect("base x")),
+            fe_from_hex(case["base_y_hex"].as_str().expect("base y")));
+        let seeds = prepare_alternate(base, beta);
+        let old_seeds = case["seed_affine"].as_array().expect("Sage old seeds");
+        for (index, seed) in seeds.iter().enumerate() {
+            let expected = if index == 5 {
+                &seed_case["seed5"]
+            } else if index == 6 {
+                &seed_case["seed6"]
+            } else {
+                &old_seeds[index]
+            };
+            let (x, y) = seed.to_affine().expect("nonidentity seed");
+            assert_eq!(fe_hex(x), expected[0].as_str().expect("seed x"));
+            assert_eq!(fe_hex(y), expected[1].as_str().expect("seed y"));
+        }
+        let scalar = big_from_hex(case["scalar_hex"].as_str().expect("scalar"));
+        let (a, b) = short_representative(&scalar);
+        assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
+        assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
+        let digits = recode_alternate(a, b);
+        let (point, counts) = evaluate(&digits, &seeds, beta);
+        if case["expected_identity"].as_bool().unwrap_or(false) {
+            assert!(point.is_identity());
+        } else {
+            let (x, y) = point.to_affine().expect("nonidentity output");
+            assert_eq!(fe_hex(x), case["expected_x_hex"].as_str().expect("output x"));
+            assert_eq!(fe_hex(y), case["expected_y_hex"].as_str().expect("output y"));
+        }
+        assert_eq!(counts.tau_steps + usize::from(!digits.is_empty()), digits.len());
+        let solo = counts.tau_steps - 2 * counts.tau_pairs;
+        total_m_plus_s += 79 + 10 * counts.tau_pairs + 6 * solo
+            + 11 * counts.mixed_adds + 14 * counts.general_adds
+            + 2 * counts.cache_entries;
+        exceptional_adds += counts.exceptional_cached_adds;
+    }
+    println!("{{\"verified\":true,\"fixture\":\"{name}\",\"cases\":{},\"seed_checks\":{},\"output_checks\":{},\"source_M_plus_S\":{},\"exceptional_cached_adds\":{},\"cpu_speedup_claim\":null}}",
+             cases.len(), 9 * cases.len(), cases.len(), total_m_plus_s,
+             exceptional_adds);
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 4 && args[1] == "--check-alternate-fixture" {
+        check_alternate_fixture(&args[2], &args[3]);
+        return;
+    }
     if args.len() == 5 && (args[1] == "--benchmark-case" ||
                            args[1] == "--check-benchmark-case") {
         let index = args[4].parse::<usize>().expect("case index");
