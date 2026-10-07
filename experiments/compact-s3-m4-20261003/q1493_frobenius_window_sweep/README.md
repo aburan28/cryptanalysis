@@ -35,8 +35,15 @@ rotation in the full sweeps, with a separate 60-second positive control.
 The [known-witness preflight](known_witness_preflight.json) verifies that
 rotation 44 maps Q1490's ordinary N53 raw witness into the first-window-zero
 cell, selects the correctly rotated raw target preimage, and transports the
-public relation back. That cell is demonstrably satisfiable. The solver
-still reached its 60-second native cap there without a model.
+public relation back. After the search runs, a separately [frozen rotated-CNF
+control](control_protocol.json) then pins that exact witness into the
+Q1493 rotation-44 CNF. Its [SAT receipt](control/r1/receipt.json) records
+zero conflicts, 51,155 propagations, and an independently replayed
+four-distinct-column relation after inverse Frobenius transport. This
+proves the actual rotated CNF accepts the ordinary witness. The same
+formula with leaf, midpoint and target-choice pins removed reached its
+60-second native cap without a model. The pinned result is a correctness
+control, not an unpinned cost observation.
 
 ## Frozen ordinary results
 
@@ -75,6 +82,8 @@ alone has not crossed the unpinned correctness gate.
 ```sh
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/run.py --preflight --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/freeze_control.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/run_control.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/run.py --cell n53_known_rotation_44 --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/run.py --cell n53_sweep --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/run.py --cell n83_sweep --check
