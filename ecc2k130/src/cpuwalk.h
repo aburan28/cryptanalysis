@@ -405,6 +405,23 @@ class CpuEngine
                 (unsigned char)f131::coordinate(b.Y(j), f131::selectPivot(b.XN(j), KK[j], tw), tw);
     }
 
+    // One inversion serves the K chains whose running products are prod[]:
+    // invert the product of their products and peel each chain's inverse off,
+    // 3(K - 1) products.
+    static void invertChains(const F131 *prod, int K, F131 *inv)
+    {
+        using namespace eccPacked131;
+        F131 upTo[kChains];
+        upTo[0] = prod[0];
+        for (int j = 1; j < K; ++j) upTo[j] = f131::mul(upTo[j - 1], prod[j]);
+        F131 rest = f131::fromPacked(invPolynomial131(f131::toPacked(upTo[K - 1])));
+        for (int j = K - 1; j > 0; --j) {
+            inv[j] = f131::mul(rest, upTo[j - 1]);
+            rest = f131::mul(rest, prod[j]);
+        }
+        inv[0] = rest;
+    }
+
     // Stages 5 and 6: Montgomery's trick over the batch as kChains interleaved
     // chains (lane i in chain i mod K; W_i becomes e_i times the denominators
     // before it in its chain, so that no product waits on the lane before it),
@@ -414,17 +431,17 @@ class CpuEngine
     {
         if (B <= 0) return;
         const int K = B < kChains ? B : kChains;
-        F131 prod[kChains];
-        for (int i = 0; i < K; ++i) prod[i] = b.D(i);
-        int i = K;
+        int i = 0;
 #if ECC_F131_LANES > 1
         typedef f131x::F131x<kLanes> FX;
         const int V = ECC_F131_CHAIN_VECTORS;
         if (K == kChains) {
+            // Chain c runs in lane c % N of vector c / N, and stays there: the
+            // ragged end of the batch and the peel work on the lanes in place.
             FX pv[V];
             for (int v = 0; v < V; ++v)
                 pv[v] = FX::load(b.D0 + v * kLanes, b.D1 + v * kLanes, b.D2 + v * kLanes);
-            for (; i + kChains <= B; i += kChains) {
+            for (i = kChains; i + kChains <= B; i += kChains) {
                 for (int v = 0; v < V; ++v) {
                     const int j = i + v * kLanes;
                     const FX w = FX::load(b.W0 + j, b.W1 + j, b.W2 + j),
@@ -433,57 +450,43 @@ class CpuEngine
                     pv[v] = f131x::mul<kLanes>(pv[v], d);
                 }
             }
-            for (int v = 0; v < V; ++v)
-                for (int l = 0; l < kLanes; ++l) prod[v * kLanes + l] = pv[v].lane(l);
-        }
-#else
-        if (K == kChains) {
-            // The running products as four locals: through prod[i % K] each
-            // chain would pay a store and a load per lane on its critical
-            // path, 4.5 ns an iteration here.
-            F131 p0 = prod[0], p1 = prod[1], p2 = prod[2], p3 = prod[3];
-            for (; i + kChains <= B; i += kChains) {
-                b.setW(i, f131::mul(p0, b.W(i)));
-                p0 = f131::mul(p0, b.D(i));
-                b.setW(i + 1, f131::mul(p1, b.W(i + 1)));
-                p1 = f131::mul(p1, b.D(i + 1));
-                b.setW(i + 2, f131::mul(p2, b.W(i + 2)));
-                p2 = f131::mul(p2, b.D(i + 2));
-                b.setW(i + 3, f131::mul(p3, b.W(i + 3)));
-                p3 = f131::mul(p3, b.D(i + 3));
+            const int tail = i; // lanes from here on are the ragged end of the batch
+            for (; i < B; ++i) {
+                FX &p = pv[(i - tail) / kLanes];
+                const int l = (i - tail) % kLanes;
+                const F131 q = p.lane(l);
+                b.setW(i, f131::mul(q, b.W(i)));
+                p.setLane(l, f131::mul(q, b.D(i)));
             }
-            prod[0] = p0, prod[1] = p1, prod[2] = p2, prod[3] = p3;
-        }
-#endif
-        const int tail = i; // lanes from here on are the ragged end of the batch
-        for (; i < B; ++i) {
-            const F131 p = prod[i % K];
-            b.setW(i, f131::mul(p, b.W(i)));
-            prod[i % K] = f131::mul(p, b.D(i));
-        }
-        // One inversion serves the K chains: invert the product of their
-        // products and peel each chain's inverse off, 3(K - 1) products.
-        F131 inv[kChains], upTo[kChains];
-        upTo[0] = prod[0];
-        for (int j = 1; j < K; ++j) upTo[j] = f131::mul(upTo[j - 1], prod[j]);
-        F131 rest = f131::fromPacked(invPolynomial131(f131::toPacked(upTo[K - 1])));
-        for (int j = K - 1; j > 0; --j) {
-            inv[j] = f131::mul(rest, upTo[j - 1]);
-            rest = f131::mul(rest, prod[j]);
-        }
-        inv[0] = rest;
-        // Back down each chain, lambda_i = e_i / d_i into W.
-        for (i = B - 1; i >= tail; --i) {
-            const F131 v = inv[i % K];
-            b.setW(i, f131::mul(v, b.W(i)));
-            inv[i % K] = f131::mul(v, b.D(i));
-        }
-#if ECC_F131_LANES > 1
-        if (K == kChains) {
-            FX iv[V];
-            for (int v = 0; v < V; ++v)
-                for (int l = 0; l < kLanes; ++l) iv[v].setLane(l, inv[v * kLanes + l]);
-            for (i = tail - kChains; i >= K; i -= kChains) {
+            // One inversion serves the K chains, by Montgomery's trick twice
+            // more: across the V vectors, N chains at a time, then across the
+            // N lanes of the last vector in f131.h.  Chain by chain the peel
+            // would be 2(K - 1) scalar products, most of them one dependency
+            // chain (254 at the default geometry, 15 ns each here: an eighth
+            // of the step); this way it is 2(V - 1) vector products and
+            // 2(N - 1) scalar ones.
+            FX up[V];
+            up[0] = pv[0];
+            for (int v = 1; v < V; ++v) up[v] = f131x::mul<kLanes>(up[v - 1], pv[v]);
+            F131 lp[kLanes], li[kLanes];
+            for (int l = 0; l < kLanes; ++l) lp[l] = up[V - 1].lane(l);
+            invertChains(lp, kLanes, li);
+            FX iv[V], rest;
+            for (int l = 0; l < kLanes; ++l) rest.setLane(l, li[l]);
+            for (int v = V - 1; v > 0; --v) {
+                iv[v] = f131x::mul<kLanes>(rest, up[v - 1]);
+                rest = f131x::mul<kLanes>(rest, pv[v]);
+            }
+            iv[0] = rest;
+            // Back down each chain, lambda_i = e_i / d_i into W.
+            for (i = B - 1; i >= tail; --i) {
+                FX &q = iv[(i - tail) / kLanes];
+                const int l = (i - tail) % kLanes;
+                const F131 r = q.lane(l);
+                b.setW(i, f131::mul(r, b.W(i)));
+                q.setLane(l, f131::mul(r, b.D(i)));
+            }
+            for (i = tail - kChains; i >= kChains; i -= kChains) {
                 for (int v = 0; v < V; ++v) {
                     const int j = i + v * kLanes;
                     const FX w = FX::load(b.W0 + j, b.W1 + j, b.W2 + j),
@@ -492,26 +495,67 @@ class CpuEngine
                     iv[v] = f131x::mul<kLanes>(iv[v], d);
                 }
             }
-            for (int v = 0; v < V; ++v)
-                for (int l = 0; l < kLanes; ++l) inv[v * kLanes + l] = iv[v].lane(l);
-        }
-#else
-        if (K == kChains) {
-            F131 v0 = inv[0], v1 = inv[1], v2 = inv[2], v3 = inv[3];
-            for (i = tail - kChains; i >= K; i -= kChains) {
-                b.setW(i + 3, f131::mul(v3, b.W(i + 3)));
-                v3 = f131::mul(v3, b.D(i + 3));
-                b.setW(i + 2, f131::mul(v2, b.W(i + 2)));
-                v2 = f131::mul(v2, b.D(i + 2));
-                b.setW(i + 1, f131::mul(v1, b.W(i + 1)));
-                v1 = f131::mul(v1, b.D(i + 1));
-                b.setW(i, f131::mul(v0, b.W(i)));
-                v0 = f131::mul(v0, b.D(i));
+            for (int v = 0; v < V; ++v) {
+                const int j = v * kLanes;
+                f131x::mul<kLanes>(iv[v], FX::load(b.W0 + j, b.W1 + j, b.W2 + j))
+                    .store(b.W0 + j, b.W1 + j, b.W2 + j);
             }
-            inv[0] = v0, inv[1] = v1, inv[2] = v2, inv[3] = v3;
-        }
+        } else
 #endif
-        for (i = 0; i < K; ++i) b.setW(i, f131::mul(inv[i], b.W(i)));
+        {
+            F131 prod[kChains];
+            for (i = 0; i < K; ++i) prod[i] = b.D(i);
+#if ECC_F131_LANES == 1
+            if (K == kChains) {
+                // The running products as four locals: through prod[i % K]
+                // each chain would pay a store and a load per lane on its
+                // critical path, 4.5 ns an iteration here.
+                F131 p0 = prod[0], p1 = prod[1], p2 = prod[2], p3 = prod[3];
+                for (; i + kChains <= B; i += kChains) {
+                    b.setW(i, f131::mul(p0, b.W(i)));
+                    p0 = f131::mul(p0, b.D(i));
+                    b.setW(i + 1, f131::mul(p1, b.W(i + 1)));
+                    p1 = f131::mul(p1, b.D(i + 1));
+                    b.setW(i + 2, f131::mul(p2, b.W(i + 2)));
+                    p2 = f131::mul(p2, b.D(i + 2));
+                    b.setW(i + 3, f131::mul(p3, b.W(i + 3)));
+                    p3 = f131::mul(p3, b.D(i + 3));
+                }
+                prod[0] = p0, prod[1] = p1, prod[2] = p2, prod[3] = p3;
+            }
+#endif
+            const int tail = i; // lanes from here on are the ragged end of the batch
+            for (; i < B; ++i) {
+                const F131 p = prod[i % K];
+                b.setW(i, f131::mul(p, b.W(i)));
+                prod[i % K] = f131::mul(p, b.D(i));
+            }
+            F131 inv[kChains];
+            invertChains(prod, K, inv);
+            // Back down each chain, lambda_i = e_i / d_i into W.
+            for (i = B - 1; i >= tail; --i) {
+                const F131 v = inv[i % K];
+                b.setW(i, f131::mul(v, b.W(i)));
+                inv[i % K] = f131::mul(v, b.D(i));
+            }
+#if ECC_F131_LANES == 1
+            if (K == kChains) {
+                F131 v0 = inv[0], v1 = inv[1], v2 = inv[2], v3 = inv[3];
+                for (i = tail - kChains; i >= K; i -= kChains) {
+                    b.setW(i + 3, f131::mul(v3, b.W(i + 3)));
+                    v3 = f131::mul(v3, b.D(i + 3));
+                    b.setW(i + 2, f131::mul(v2, b.W(i + 2)));
+                    v2 = f131::mul(v2, b.D(i + 2));
+                    b.setW(i + 1, f131::mul(v1, b.W(i + 1)));
+                    v1 = f131::mul(v1, b.D(i + 1));
+                    b.setW(i, f131::mul(v0, b.W(i)));
+                    v0 = f131::mul(v0, b.D(i));
+                }
+                inv[0] = v0, inv[1] = v1, inv[2] = v2, inv[3] = v3;
+            }
+#endif
+            for (i = 0; i < K; ++i) b.setW(i, f131::mul(inv[i], b.W(i)));
+        }
         // The additions: x' = lambda^2 + lambda + d, y' = lambda (x + x') + x' + y.
         i = 0;
 #if ECC_F131_LANES > 1
