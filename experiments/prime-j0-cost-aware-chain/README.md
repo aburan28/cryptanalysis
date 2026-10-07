@@ -391,3 +391,13 @@ disjoint 32,768-scalar fixture passed independent algebra and point checks,
 predeclared operation score is 0.36% lower on `glv-j0-32` and 18.97% lower
 on `j0-56`. These are operation-model results; controlled CPU timing and
 one-target rho impact remain unknown.
+
+The [joint Eisenstein radix-16 orbit table](JOINT_WINDOW4.md) uses one
+prepared point per nonzero two-coordinate window. Six unit actions reduce
+255 nonzero digit pairs to 71 point orbits. A fresh fixture disjoint from
+eight earlier scalar panels passed 32,768 algebra checks, 184 independent
+point checks, 24 native arms, and a warnings-as-errors UBSan replay. It
+prepares 284 or 497 points; its operation score is 11.67% and 26.80% below
+comb9 on the two study subgroups. The 56-bit table's seven-position capacity
+is checked at runtime and had zero fallbacks on the held-out fixture.
+Controlled CPU timing and one-target rho impact remain unknown.

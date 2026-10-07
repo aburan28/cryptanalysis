@@ -43,6 +43,29 @@ int ca_ec_endo_radix8_mul_profile(const ca_group *g, const ca_endo_radix8_precom
                                   uint64_t *fallbacks);
 void ca_ec_endo_radix8_clear(ca_endo_radix8_precomp *pre);
 
+/* Joint balanced radix-16 digits in Z[omega], folded under the six units.
+ * The table holds one affine point per orbit and prepared position. */
+typedef struct ca_joint_window4_precomp {
+    const ca_group *g;
+    ca_elem base_point;
+    ca_elem *point; /* [positions][71 canonical joint-digit orbits] */
+    uint64_t beta, beta2;
+    __int128 v1x, v1y, v2x, v2y, det;
+    unsigned positions;
+    int identity;
+} ca_joint_window4_precomp;
+size_t ca_ec_joint_window4_point_entries(const ca_group *g);
+size_t ca_ec_joint_window4_static_bytes(void);
+int ca_ec_joint_window4_verify_map(void);
+int ca_ec_joint_window4_prepare(const ca_group *g, const ca_elem *point,
+                                ca_joint_window4_precomp *out, uint64_t *doubles, uint64_t *adds,
+                                uint64_t *rotations, uint64_t *inversions);
+int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre);
+int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
+                                    ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                    uint64_t *fallbacks);
+void ca_ec_joint_window4_clear(ca_joint_window4_precomp *pre);
+
 /* Per-point width-4 table for repeated scalar multiplications within one rho
  * solve.  It is private to the C implementation and tied to its group. */
 typedef struct ca_tau4_digit {

@@ -29,6 +29,7 @@
 #include "generated/tau3_radix27.h"
 #include "generated/tau3_scatter.h"
 #include "generated/tau3_scatter_atlas.h"
+#include "generated/joint_window4.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
 #include "generated/tau8_pair_map.h"
@@ -527,6 +528,229 @@ void ca_ec_endo_radix8_clear(ca_endo_radix8_precomp *pre)
     if (!pre) return;
     free(pre->point);
     *pre = (ca_endo_radix8_precomp){0};
+}
+
+static tau_vec joint_window4_unit_coeff(tau_vec value, unsigned code)
+{
+    for (unsigned power = 0; power < code % 3; power++)
+        value = (tau_vec){-value.y, value.x - value.y};
+    if (code >= 3) value = (tau_vec){-value.x, -value.y};
+    return value;
+}
+
+size_t ca_ec_joint_window4_static_bytes(void)
+{
+    return sizeof(ca_joint_window4_rep_x) + sizeof(ca_joint_window4_rep_y) +
+           sizeof(ca_joint_window4_action);
+}
+
+int ca_ec_joint_window4_verify_map(void)
+{
+    uint8_t seen[CA_JOINT_WINDOW4_ORBITS] = {0};
+    for (unsigned orbit = 0; orbit < CA_JOINT_WINDOW4_ORBITS; orbit++) {
+        tau_vec rep = {ca_joint_window4_rep_x[orbit], ca_joint_window4_rep_y[orbit]};
+        if (!rep.x && !rep.y) return 0;
+        if (orbit && (rep.x < ca_joint_window4_rep_x[orbit - 1] ||
+                      (rep.x == ca_joint_window4_rep_x[orbit - 1] &&
+                       rep.y <= ca_joint_window4_rep_y[orbit - 1])))
+            return 0;
+        for (unsigned code = 0; code < 6; code++) {
+            tau_vec moved = joint_window4_unit_coeff(rep, code);
+            if (moved.x < rep.x || (moved.x == rep.x && moved.y < rep.y)) return 0;
+        }
+    }
+    for (unsigned index = 0; index < 256; index++) {
+        int x = (int)(index / 16) - 8, y = (int)(index % 16) - 8;
+        unsigned packed = ca_joint_window4_action[index];
+        unsigned orbit = packed & 127u, code = packed >> 7;
+        if (!x && !y) {
+            if (orbit != CA_JOINT_WINDOW4_ZERO || code) return 0;
+            continue;
+        }
+        if (orbit >= CA_JOINT_WINDOW4_ORBITS || code >= 6) return 0;
+        seen[orbit] = 1;
+        tau_vec actual = joint_window4_unit_coeff(
+            (tau_vec){ca_joint_window4_rep_x[orbit], ca_joint_window4_rep_y[orbit]}, code);
+        if (actual.x != x || actual.y != y) return 0;
+    }
+    for (unsigned orbit = 0; orbit < CA_JOINT_WINDOW4_ORBITS; orbit++)
+        if (!seen[orbit]) return 0;
+    return 1;
+}
+
+size_t ca_ec_joint_window4_point_entries(const ca_group *g)
+{
+    if (!g || g->order < 2) return 0;
+    unsigned bits = 0;
+    for (uint64_t n = g->order - 1; n; n >>= 1) bits++;
+    return (bits <= 32 ? 4u : 7u) * CA_JOINT_WINDOW4_ORBITS;
+}
+
+int ca_ec_joint_window4_prepare(const ca_group *g, const ca_elem *point,
+                                ca_joint_window4_precomp *out, uint64_t *doubles, uint64_t *adds,
+                                uint64_t *rotations, uint64_t *inversions)
+{
+    if (!g || !point || !out || g->kind != CA_GROUP_EC || g->endo_kind != 1 || g->a != 0 ||
+        g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
+        return 0;
+    size_t entries = ca_ec_joint_window4_point_entries(g);
+    if (!entries || entries > 7 * CA_JOINT_WINDOW4_ORBITS) return 0;
+    ca_joint_window4_precomp pre = {0};
+    pre.g = g;
+    pre.base_point = *point;
+    pre.beta = g->endo_c_mont;
+    pre.beta2 = fm(g, pre.beta, pre.beta);
+    pre.positions = (unsigned)(entries / CA_JOINT_WINDOW4_ORBITS);
+    pre.identity = point->w[2] != 0;
+    tau_vec v1, v2;
+    if (!make_lattice(g->order, g->order - g->endo_lambda, &v1, &v2, &pre.det)) return 0;
+    pre.v1x = v1.x;
+    pre.v1y = v1.y;
+    pre.v2x = v2.x;
+    pre.v2y = v2.y;
+    if (doubles) *doubles = 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (inversions) *inversions = 0;
+    if (pre.identity) {
+        *out = pre;
+        return 1;
+    }
+    pre.point = malloc(entries * sizeof(*pre.point));
+    if (!pre.point) return 0;
+    tau_jac projective[7 * CA_JOINT_WINDOW4_ORBITS];
+    uint64_t prefixes[7 * CA_JOINT_WINDOW4_ORBITS];
+    tau_jac basis = {point->w[0], point->w[1], g->mont.r1};
+    for (unsigned position = 0; position < pre.positions; position++) {
+        tau_jac multiple[16], omega_multiple[9];
+        multiple[0] = (tau_jac){0, g->mont.r1, 0};
+        multiple[1] = basis;
+        for (unsigned magnitude = 2; magnitude < 16; magnitude++) {
+            multiple[magnitude] = jac_add(g, multiple[magnitude - 1], basis);
+            if (adds) (*adds)++;
+        }
+        omega_multiple[0] = multiple[0];
+        for (unsigned magnitude = 1; magnitude <= 8; magnitude++) {
+            omega_multiple[magnitude] = multiple[magnitude];
+            omega_multiple[magnitude].x = fm(g, pre.beta, omega_multiple[magnitude].x);
+            if (rotations) (*rotations)++;
+        }
+        for (unsigned orbit = 0; orbit < CA_JOINT_WINDOW4_ORBITS; orbit++) {
+            int x = ca_joint_window4_rep_x[orbit], y = ca_joint_window4_rep_y[orbit];
+            unsigned ux = (unsigned)(x < 0 ? -x : x), uy = (unsigned)(y < 0 ? -y : y);
+            if (ux >= 16 || uy > 8) {
+                free(pre.point);
+                return 0;
+            }
+            tau_jac left = multiple[ux], right = omega_multiple[uy];
+            if (x < 0 && left.z && left.y) left.y = g->p - left.y;
+            if (y < 0 && right.z && right.y) right.y = g->p - right.y;
+            projective[(size_t)position * CA_JOINT_WINDOW4_ORBITS + orbit] =
+                jac_add(g, left, right);
+            if (adds && ux && uy) (*adds)++;
+        }
+        if (position + 1 < pre.positions)
+            for (unsigned bit = 0; bit < 4; bit++) {
+                basis = jac_double(g, basis);
+                if (doubles) (*doubles)++;
+            }
+    }
+    if (!jac_batch_to_affine_scratch(g, pre.point, projective, entries, prefixes, inversions)) {
+        free(pre.point);
+        return 0;
+    }
+    *out = pre;
+    return 1;
+}
+
+int ca_ec_joint_window4_prepare_verify(const ca_joint_window4_precomp *pre)
+{
+    if (!pre || !pre->g || !pre->positions || pre->positions > 7 ||
+        !ca_ec_joint_window4_verify_map())
+        return 0;
+    if (pre->identity) return pre->point == NULL;
+    if (!pre->point) return 0;
+    ca_i128 omega = (ca_i128)pre->g->order - pre->g->endo_lambda;
+    ca_i128 power = 1;
+    for (unsigned position = 0; position < pre->positions; position++) {
+        for (unsigned orbit = 0; orbit < CA_JOINT_WINDOW4_ORBITS; orbit++) {
+            ca_i128 scalar =
+                power * (ca_joint_window4_rep_x[orbit] + omega * ca_joint_window4_rep_y[orbit]);
+            scalar %= pre->g->order;
+            if (scalar < 0) scalar += pre->g->order;
+            ca_elem expected;
+            ca_group_mul(pre->g, &expected, &pre->base_point, (uint64_t)scalar, NULL);
+            if (!ca_group_equal(pre->g, &expected,
+                                &pre->point[(size_t)position * CA_JOINT_WINDOW4_ORBITS + orbit]))
+                return 0;
+        }
+        power *= 16;
+    }
+    return 1;
+}
+
+int ca_ec_joint_window4_mul_profile(const ca_group *g, const ca_joint_window4_precomp *pre,
+                                    ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                    uint64_t *fallbacks)
+{
+    if (!g || !pre || !out || pre->g != g || !pre->positions || pre->positions > 7) return 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (fallbacks) *fallbacks = 0;
+    k %= g->order;
+    if (!k || pre->identity) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    if (!pre->point) return 0;
+    ca_i128 a, b;
+    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det, k,
+                        &a, &b);
+    ca_i128 x = a + b, y = -b;
+    uint16_t action[7];
+    for (unsigned position = 0; position < pre->positions; position++) {
+        ca_i128 rx = x % 16, ry = y % 16;
+        if (rx < 0) rx += 16;
+        if (ry < 0) ry += 16;
+        int dx = (int)(rx >= 8 ? rx - 16 : rx);
+        int dy = (int)(ry >= 8 ? ry - 16 : ry);
+        action[position] = ca_joint_window4_action[(unsigned)(dx + 8) * 16 + (unsigned)(dy + 8)];
+        x = (x - dx) / 16;
+        y = (y - dy) / 16;
+    }
+    if (x || y) {
+        if (fallbacks) *fallbacks = 1;
+        ca_group_mul(g, out, &pre->base_point, k, NULL);
+        return 1;
+    }
+    tau_jac accumulator = {0, g->mont.r1, 0};
+    uint64_t na = 0, nr = 0;
+    for (unsigned position = 0; position < pre->positions; position++) {
+        unsigned orbit = action[position] & 127u, code = action[position] >> 7;
+        if (orbit == CA_JOINT_WINDOW4_ZERO) continue;
+        if (orbit >= CA_JOINT_WINDOW4_ORBITS || code >= 6) return 0;
+        ca_elem point = pre->point[(size_t)position * CA_JOINT_WINDOW4_ORBITS + orbit];
+        if (!point.w[2]) {
+            unsigned power = code % 3;
+            if (power == 1) point.w[0] = fm(g, pre->beta, point.w[0]);
+            if (power == 2) point.w[0] = fm(g, pre->beta2, point.w[0]);
+            if (code >= 3 && point.w[1]) point.w[1] = g->p - point.w[1];
+            nr += power != 0;
+            accumulator = jac_add_mixed(g, accumulator, &point);
+            na++;
+        }
+    }
+    jac_to_affine(g, out, accumulator);
+    if (adds) *adds = na;
+    if (rotations) *rotations = nr;
+    return 1;
+}
+
+void ca_ec_joint_window4_clear(ca_joint_window4_precomp *pre)
+{
+    if (!pre) return;
+    free(pre->point);
+    *pre = (ca_joint_window4_precomp){0};
 }
 
 static unsigned residue3(ca_i128 x)
