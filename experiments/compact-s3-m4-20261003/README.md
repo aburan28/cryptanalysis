@@ -2517,35 +2517,40 @@ The new formula has many more XOR rows; its large Gaussian components
 exceed the frozen 512-row limit, so its ordinary runs have zero active
 matrices. The audit retains these failed rows and leaves N131 work unknown.
 
-## Next goal
+### Q1498 active Gaussian elimination on Karatsuba XCNF
 
-First isolate Q1497's 512-row Gaussian limit on its byte-identical
-Karatsuba formulas. A separately frozen row-limit comparison must show
-whether CryptoMiniSat actually admits the large N53/N83 XOR matrices;
-the pinned controls and all censored ordinary rows stay in the ledger.
-This is a representation check, not a claim that the smaller circuit
-solves decomposition.
+[Q1498](q1498_karatsuba_gauss_rows/README.md) reruns Q1497's
+byte-identical N53/N83 formulas while raising only CryptoMiniSat's
+Gaussian row limit from 512 to 16,384. The logs now show seven active
+matrices initially at ordinary N53 and N83, including a 12,137-row
+N83 component with nonzero Gaussian propagation. Both pinned controls
+pass; all four unpinned cells censor at 60 seconds. Memory rises and
+the fixed-cap conflict count falls. There is no verified unpinned
+decomposition cost or complete N131 work estimate.
+
+## Next goal
 
 Test a **fully coupled four-leaf search** that leaves both internal
 midpoints existential while it reasons about many cyclic windows at once.
 Q1485 through Q1487 all choose or constrain a narrow midpoint slice and
-find no unpinned relation; Q1493's Frobenius sweep and Q1494/Q1496's full
-native-XOR circuits also censor. Pre-register a target-aware compressed
-pair-support join across many cyclic windows, check it against direct
-enumeration on small fields, and reuse the exact Q1481/Q1482 N53/N83
-curves, bases, public points and limits. The first gate is to recover
+find no unpinned relation; Q1493's Frobenius sweep and Q1494/Q1496/Q1497/
+Q1498's full native-XOR circuits also censor. Pre-register a target-adaptive
+algebraic join that shares constraints across many cyclic windows without
+enumerating a generic pair table. Check it against direct enumeration on
+small fields, and reuse the exact Q1481/Q1482 N53/N83 curves, bases,
+public points and limits. The first gate is to recover
 Q1490's known-satisfiable ordinary N53 relation with every leaf, midpoint
-and target selector free.
-Then independently verify a fully unpinned known-representable N83 control,
+and target selector free. Then independently verify a fully unpinned
+known-representable N83 control,
 followed by an ordinary N83 relation, without constructing the full pair
 table. Only after those gates should a frozen ordinary-query panel estimate
 useful yield and novel rank. Count failed attempts, SAT propagation,
 field arithmetic, memory, and target-dependent wall intervals alongside
-Q1482/Q1483/Q1485/Q1486/Q1487/Q1488/Q1493/Q1494/Q1496. If only controls
-pass, retain N83 ordinary cost and N131 complete work as unknown. A complete
-N131 `2^x`
-also requires its exact usable base, relation collection, final matrix
-solve, target descent, and independent scalar replay.
+Q1482/Q1483/Q1485/Q1486/Q1487/Q1488/Q1493/Q1494/Q1496/Q1497/Q1498.
+If only controls pass, retain N83 ordinary cost and N131 complete work
+as unknown. A complete N131 `2^x` also requires its exact usable base,
+relation collection, final matrix solve, target descent, and independent
+scalar replay.
 
 ## Reproduction
 
