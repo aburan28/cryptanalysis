@@ -2319,6 +2319,21 @@ guarded midpoint implications but no exact joint check or relation. These
 fixed-cap counts do not measure successful N83 decomposition work, natural
 yield/rank, or the complete N131 `2^x`.
 
+### Q1480 midpoint-conditioned pair feasibility on dense bases
+
+[Q1480](q1480_conditioned_join/README.md) tests Q1438's exact N53 W≤4 and
+N83 W≤6 production bases on their archived free-partner controls and
+ordinary targets. It replaces Q1479's broad pair-root join with direct
+`S3` feasibility checks against a fixed target-linked midpoint, capped at
+16,384 pair completions per side. An exhaustive small-field guard check
+passes, both supplementary pinned controls pass, and both Q1438
+free-partner controls return independently verified public relations. The
+ordinary N53 and N83 cells again censor at 60 seconds with no relation.
+N83 makes 35,598 conditioned checks and 69,847,082 direct right-pair `S3`
+evaluations, with no supported right midpoint in those tested states. This
+is a costed failed search on the production base, not a successful N83
+solve, natural-yield estimate, or complete N131 `2^x`.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:

@@ -6953,6 +6953,34 @@ def main():
     assert [row["verified_relation_count"] for row in q1479_audit[
         "rows"]] == [1, 1, 0, 0, 0, 0]
     assert q1479_audit["complete_n131_log2_work"] is None
+    q1480_dir = HERE / "q1480_conditioned_join"
+    q1480_protocol_path = q1480_dir / "protocol.json"
+    q1480_audit_path = q1480_dir / "archive_audit.json"
+    q1480_protocol = json.loads(q1480_protocol_path.read_text())
+    q1480_audit = json.loads(q1480_audit_path.read_text())
+    assert q1480_protocol["proposal_id"] == q1480_audit[
+        "proposal_id"] == "Q1480"
+    assert q1480_protocol["candidate_id"] is q1480_audit[
+        "candidate_id"] is None
+    assert q1480_protocol["run_id"] is q1480_audit["run_id"] is None
+    assert q1480_protocol["isogeny"] == q1480_audit[
+        "isogeny"] == "none"
+    assert q1480_audit["status"] == "passed"
+    assert q1480_audit["pinned_correctness_controls_passed"]
+    assert q1480_audit["protocol_sha256"] == sha(q1480_protocol_path)
+    assert q1480_audit["conditioned_validation_sha256"] == sha(
+        q1480_dir / "conditioned_validation.json")
+    assert q1480_protocol["parent_q1479_protocol_sha256"] == sha(
+        q1479_protocol_path)
+    assert q1480_protocol["solver_binary_sha256"] == sha(
+        q1480_dir / "native_solver")
+    assert [row["case"] for row in q1480_audit["rows"]] == (
+        q1480_protocol["run_order"])
+    assert [row["status"] for row in q1480_audit["rows"]] == [
+        "sat", "sat", "sat", "sat", "censored", "censored"]
+    assert [row["verified_relation_count"] for row in q1480_audit[
+        "rows"]] == [1, 1, 1, 1, 0, 0]
+    assert q1480_audit["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -9423,6 +9451,44 @@ def main():
             "protocol_sha256": sha(q1479_protocol_path),
             "archive_audit_sha256": sha(q1479_audit_path),
         },
+        "q1480_midpoint_conditioned_dense_base_stage": {
+            "proposal_id": "Q1480", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "stage_config_ids": {
+                key: row["stage_config_id"]
+                for key, row in q1480_protocol["stages"].items()},
+            "measurement_scope": q1480_protocol["measurement_scope"],
+            "measurement_units": q1480_protocol["measurement_units"],
+            "pinned_correctness_controls_passed": True,
+            "known_witness_free_partner_controls_verified": 2,
+            "production_base_ordinary_attempts": 2,
+            "production_base_ordinary_verified_relations": 0,
+            "rows": q1480_audit["rows"],
+            "successful_unpinned_N53_cost": None,
+            "successful_unpinned_N83_cost": None,
+            "natural_relation_yield_estimate": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1480 tests exact Q1438 W<=4 N53 and W<=6 N83 bases "
+                "with midpoint-conditioned direct S3 pair feasibility. "
+                "Both supplementary pinned controls and both known-witness "
+                "free-partner controls independently verify. Both ordinary "
+                "cells censor at 60 seconds without a relation. The N83 "
+                "ordinary cell makes 35598 conditioned checks and 69847082 "
+                "direct right-pair S3 evaluations, with no right support "
+                "in the tested states. This is a failed capped search, not "
+                "a successful cost, natural-yield estimate, controlled "
+                "speedup, or full N131 projection."
+            ),
+            "design_protocol_sha256": q1480_protocol[
+                "design_protocol_sha256"],
+            "conditioned_validation_sha256": q1480_protocol[
+                "conditioned_validation_sha256"],
+            "protocol_sha256": sha(q1480_protocol_path),
+            "archive_audit_sha256": sha(q1480_audit_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -9963,6 +10029,11 @@ def main():
                 "relation; N53 exact joins consume roughly fourteen "
                 "million S3 roots on the ordinary case while N83 midpoint "
                 "implications do not produce a verified row; "
+                "Q1480 moves to Q1438's exact dense N53/N83 bases and "
+                "conditions each direct pair test on a fixed midpoint; "
+                "both free-partner controls verify, but the ordinary "
+                "cells censor and N83 checks 69847082 right-pair S3 "
+                "equations with no supported midpoint; "
                 "censored N83 ordinary runs still do not measure N83 "
                 "useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
