@@ -71,6 +71,39 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
     *saved_full += two.full_adds;
 }
 
+static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *pre,
+                                const ca_elem *p, const ca_elem *q,
+                                const uint64_t pairs[8][2], uint64_t expected_inversions)
+{
+    uint64_t a[8], b[8];
+    ca_elem outputs[8];
+    for (size_t i = 0; i < 8; i++) { a[i] = pairs[i][0]; b[i] = pairs[i][1]; }
+    ca_tau4_joint_counts batch = {0};
+    CHECK(ca_ec_tau4_paired_two_batch_profile(g, pre, outputs, a, b, 8, &batch));
+    CHECK_EQ_U64(batch.inversions, expected_inversions);
+    ca_tau4_joint_counts separate = {0};
+    for (size_t i = 0; i < 8; i++) {
+        ca_elem one, ap, bq, expected;
+        ca_tau4_joint_counts counts = {0};
+        CHECK(ca_ec_tau4_paired_two_mul_profile(g, pre, &one, a[i], b[i], &counts));
+        ca_group_mul(g, &ap, p, a[i] % g->order, NULL);
+        ca_group_mul(g, &bq, q, b[i] % g->order, NULL);
+        ca_group_op(g, &expected, &ap, &bq);
+        CHECK(ca_group_equal(g, &outputs[i], &one));
+        CHECK(ca_group_equal(g, &outputs[i], &expected));
+        separate.tau_steps += counts.tau_steps;
+        separate.mixed_adds += counts.mixed_adds;
+        separate.rotations += counts.rotations;
+        separate.recode_attempts += counts.recode_attempts;
+        separate.pair_scores += counts.pair_scores;
+    }
+    CHECK_EQ_U64(batch.tau_steps, separate.tau_steps);
+    CHECK_EQ_U64(batch.mixed_adds, separate.mixed_adds);
+    CHECK_EQ_U64(batch.rotations, separate.rotations);
+    CHECK_EQ_U64(batch.recode_attempts, separate.recode_attempts);
+    CHECK_EQ_U64(batch.pair_scores, separate.pair_scores);
+}
+
 static void check_curve(uint64_t p, uint64_t b, uint64_t order,
                         uint64_t base_x, uint64_t base_y)
 {
@@ -117,6 +150,7 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
         {order - 1, order - 1}, {order, 2 * order},
         {UINT64_MAX, UINT64_MAX}, {UINT64_MAX, order - 1},
     };
+    check_paired_batch(&g, &pre, &base, &other, edge, 1);
     for (size_t i = 0; i < sizeof(edge) / sizeof(edge[0]); i++)
         check_pair(&g, &pre, &orbit, &hot, &base, &other, edge[i][0], edge[i][1],
                    &saved_tau, &saved_full);
@@ -144,12 +178,14 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
     CHECK(ca_ec_tau4_hot_prepare(&g, &id, &id, selected, &hot, &hot_prep));
     check_pair(&g, &with_identity, &orbit, &hot, &id, &id, UINT64_MAX, UINT64_MAX,
                &saved_tau, &saved_full);
+    check_paired_batch(&g, &with_identity, &id, &id, edge, 0);
 
     CHECK(ca_ec_tau4_joint_prepare(&g, &base, &base, &with_identity, &prep));
     CHECK(ca_ec_tau4_orbit_prepare(&g, &base, &base, &orbit, &orbit_prep));
     CHECK(ca_ec_tau4_hot_prepare(&g, &base, &base, selected, &hot, &hot_prep));
     check_pair(&g, &with_identity, &orbit, &hot, &base, &base, 178, 178,
                &saved_tau, &saved_full);
+    check_paired_batch(&g, &with_identity, &base, &base, edge, 1);
     ca_elem negative;
     ca_group_inv(&g, &negative, &base);
     CHECK(ca_ec_tau4_joint_prepare(&g, &base, &negative, &with_identity, &prep));
@@ -157,6 +193,12 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
     CHECK(ca_ec_tau4_hot_prepare(&g, &base, &negative, selected, &hot, &hot_prep));
     check_pair(&g, &with_identity, &orbit, &hot, &base, &negative, 178, 178,
                &saved_tau, &saved_full);
+    const uint64_t cancel[8][2] = {
+        {178, 178}, {1, 1}, {0, 0}, {2, 3},
+        {order - 1, order - 1}, {UINT64_MAX, UINT64_MAX},
+        {1, 0}, {0, 1},
+    };
+    check_paired_batch(&g, &with_identity, &base, &negative, cancel, 1);
 }
 
 int main(void)

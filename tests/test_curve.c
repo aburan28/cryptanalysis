@@ -1916,15 +1916,20 @@ static void paired_rho_startup_checks(void)
         ca_elem target;
         ca_group_mul(&group, &target, &base, scalars[i], NULL);
         for (size_t j = 0; j < sizeof(seeds) / sizeof(seeds[0]); j++) {
-            uint64_t reference = UINT64_MAX, candidate = UINT64_MAX;
-            ca_stats ref_stats = {0}, cand_stats = {0};
+            uint64_t reference = UINT64_MAX, candidate = UINT64_MAX, batched = UINT64_MAX;
+            ca_stats ref_stats = {0}, cand_stats = {0}, batch_stats = {0};
             ca_curve_startup_stats ref_startup = {0}, cand_startup = {0};
+            ca_curve_startup_stats batch_startup = {0};
             CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &reference,
                   CA_CURVE_STARTUP_GENERIC, &ref_startup, NULL, &ref_stats) == CA_OK);
             CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &candidate,
                   CA_CURVE_STARTUP_TAU_PAIRED2, &cand_startup, NULL, &cand_stats) == CA_OK);
+            CHECK(ca_curve_solve_startup(&group, &base, &target, seeds[j], &batched,
+                  CA_CURVE_STARTUP_TAU_PAIRED2_BATCH, &batch_startup,
+                  NULL, &batch_stats) == CA_OK);
             CHECK_EQ_U64(reference, scalars[i]);
             CHECK_EQ_U64(candidate, reference);
+            CHECK_EQ_U64(batched, reference);
             CHECK_EQ_U64(cand_stats.group_ops, ref_stats.group_ops);
             CHECK_EQ_U64(cand_stats.table_entries, ref_stats.table_entries);
             CHECK_EQ_U64(cand_startup.budget_equivalent_group_ops,
@@ -1935,6 +1940,25 @@ static void paired_rho_startup_checks(void)
             CHECK(cand_startup.eval_recode_attempts > 0);
             CHECK(cand_startup.eval_tau > 0);
             CHECK(cand_startup.eval_mixed_adds > 0);
+            CHECK_EQ_U64(batch_stats.group_ops, ref_stats.group_ops);
+            CHECK_EQ_U64(batch_stats.table_entries, ref_stats.table_entries);
+            CHECK_EQ_U64(batch_startup.budget_equivalent_group_ops,
+                         cand_startup.budget_equivalent_group_ops);
+            CHECK_EQ_U64(batch_startup.table_evaluations, cand_startup.table_evaluations);
+            CHECK_EQ_U64(batch_startup.restart_evaluations, cand_startup.restart_evaluations);
+            CHECK_EQ_U64(batch_startup.eval_tau, cand_startup.eval_tau);
+            CHECK_EQ_U64(batch_startup.eval_mixed_adds, cand_startup.eval_mixed_adds);
+            CHECK_EQ_U64(batch_startup.eval_rotations, cand_startup.eval_rotations);
+            CHECK_EQ_U64(batch_startup.eval_recode_attempts,
+                         cand_startup.eval_recode_attempts);
+            CHECK_EQ_U64(batch_startup.eval_pair_scores, cand_startup.eval_pair_scores);
+            CHECK_EQ_U64(batch_startup.table_batch_size, batch_startup.table_evaluations);
+            CHECK_EQ_U64(batch_startup.table_output_inversions, 1);
+            CHECK_EQ_U64(batch_startup.restart_output_inversions,
+                         cand_startup.restart_output_inversions);
+            CHECK_EQ_U64(batch_startup.eval_inversions,
+                         batch_startup.table_output_inversions +
+                         batch_startup.restart_output_inversions);
         }
     }
     ca_group generic;
@@ -1945,6 +1969,8 @@ static void paired_rho_startup_checks(void)
     CHECK(ca_curve_solve_startup(&generic, &id, &id, 17, &output,
           CA_CURVE_STARTUP_TAU_PAIRED2, NULL, NULL, NULL) == CA_ERR_UNSUPPORTED);
     CHECK_EQ_U64(output, UINT64_MAX);
+    CHECK(ca_curve_solve_startup(&generic, &id, &id, 17, &output,
+          CA_CURVE_STARTUP_TAU_PAIRED2_BATCH, NULL, NULL, NULL) == CA_ERR_UNSUPPORTED);
 }
 
 int main(void)
