@@ -2488,7 +2488,9 @@ censor. The N53 formula has 795 XOR rows, and N83 has 1,245. The audit
 preserves exact conflicts and raw rounded propagation displays. This
 tests one solver representation on three bounded cells, not a full
 target-orbit sweep or successful decomposition cost. N83 yield, novel
-rank, and complete N131 `2^x` remain unknown.
+rank, and complete N131 `2^x` remain unknown. The N53 logs show zero
+active Gaussian matrices; N83 later uses one small matrix, while its
+large field-product components exceed the default column limit.
 
 ## Next goal
 

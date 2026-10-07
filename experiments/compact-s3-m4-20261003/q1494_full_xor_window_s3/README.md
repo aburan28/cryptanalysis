@@ -49,6 +49,15 @@ tokens above are **approximate**, not exact arithmetic operation counts.
 Peak RSS uses Darwin bytes. Wall times are exploratory without an isolated
 host receipt.
 
+The raw solver logs show a narrower XOR result than the XCNF format alone
+suggests. CryptoMiniSat used **zero Gaussian matrices** at every recorded
+N53 matrix initialization: its 8,586- and 6,519-column field-product
+components exceeded the default limit. N83 initially used zero matrices
+and later used one smaller matrix, while 20,916- and 15,936-column
+components remained excluded. Q1494 therefore tests native XOR input
+under default Gaussian limits; it does not test full Gaussian elimination
+on the large field-product components.
+
 These two rotation-zero cells are slices of the target orbit, not full
 Frobenius sweeps. The rotation-44 cell is known satisfiable from the Q1490
 ordinary witness and the pinned control. Q1494 measures bounded failed
@@ -58,8 +67,9 @@ The challenge gate stays closed. Q1488 found a relation on the matched N53
 base with a separately charged pair-table setup; Q1494 returned no
 unpinned relation, so no per-relation speed ratio can be formed.
 
-The next solver experiment needs a structural four-leaf support/join across
-window domains. Switching from the native theory callback to a full native
+The next representation check should explicitly admit those Gaussian
+components on the same frozen formulas. A structural four-leaf support/join
+across window domains remains the larger solver goal. The default native
 XOR circuit has not crossed the known-satisfiable unpinned N53 gate.
 
 ## Reproduce custody checks
