@@ -30,4 +30,45 @@ reconstructs 430,360 distinct subgroup points from Q1481's exact packed
 keys and records the separate setup cost. The [pre-run control](validation.json)
 checks the raw-orbit sampler mapping, a nontrivial quotient shift and
 negative sign, 64 direct N83 sample certificates, subgroup membership,
-and exact N83 key-set membership. No ordinary query has been run yet.
+and exact N83 key-set membership.
+
+## Frozen ordinary results
+
+Commit `9d5cd120` froze the source, runtime, materialized N53 point set,
+sample laws, seeds, limits, and stage IDs before either run. The
+[archive audit](archive_audit.json) independently replayed the N53
+collision, exact base membership, subgroup membership, four distinct
+folded columns, and the frozen public target sum. It retained the N83
+zero-hit sample-cap row.
+
+| Cell | Table preparation | Target-dependent query | Result | Verified relations |
+| --- | --- | --- | --- | ---: |
+| N53 ordinary | 500,000 pair samples; 24.422 s | 184,366 pair samples; 14.230 s | four-point relation | 1 |
+| N83 ordinary | 10,000 pair samples; 6.886 s | 10,000 pair samples; 7.343 s | sample cap, zero key hits | 0 |
+
+The [N53 receipt](runs/n53_ordinary.json) counts 500,000 table-phase
+and 368,736 query-phase public curve `add` calls. The N83
+[receipt](runs/n83_ordinary.json) counts full-base sampling and point
+construction separately; its two samplers drew 80,305 raw orbit
+representatives to accept 40,000 usable points. These are API call counts,
+not calibrated field-operation equivalents. Both runs overlapped the Q1484
+N131 census and lack a CPU-isolation receipt, so wall times are exploratory.
+
+This is the missing matched-base comparison for Q1487. The compact
+inverse-`S3` search passed its pinned controls but censored at 60 seconds
+on this exact N53 ordinary target; Q1488 found one relation with its
+separately charged pair-table setup. The different algorithms and
+precomputation policies do not yield a controlled speed ratio. One N53
+success does not estimate population relation yield or cost per novel
+matrix row, and the N83 zero-hit cap does not measure successful N83
+cost. The N131 full pair table remains outside the affordable path; no
+complete N131 `2^x` or challenge permission follows.
+
+## Reproduce
+
+```sh
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1488_window_pair_table/build_n53_base.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1488_window_pair_table/validate_control.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1488_window_pair_table/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1488_window_pair_table/audit.py --check
+```

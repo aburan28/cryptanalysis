@@ -2416,6 +2416,19 @@ The selected right domains still cover too little of a fixed midpoint's
 possible preimages. Q1487 does not measure cost per successful relation,
 natural yield, rank, or N131 complete `2^x`.
 
+### Q1488 matched Q1481 pair-table control
+
+[Q1488](q1488_window_pair_table/README.md) runs Q1445's signed-Frobenius
+pair-table rule on Q1481's **exact same** N53/N83 bases and Q1482 public
+targets used by Q1487. It reconstructed all 430,360 N53 points from the
+4,060 archived projected x keys and validated full-base N83 sampling.
+The N53 ordinary query independently verifies one four-distinct-column
+relation after 500,000 target-independent table pairs and 184,366 query
+pairs. Q1487 censored on that same target. N83 uses 10,000 table and
+10,000 query pairs and finds no key hit. The Q1488 archive preserves
+operation counts and separate setup/query costs; one N53 success is not a
+natural-yield estimate, and N83 successful cost remains unknown.
+
 ## Next goal
 
 Test a **fully coupled four-leaf search** that leaves both internal
@@ -2430,7 +2443,7 @@ N83 relation without constructing the full pair table. The next gate is
 one ordinary N83 relation, followed by a frozen ordinary-query panel for
 useful yield and novel rank. Count failed attempts, SAT propagation,
 field arithmetic, memory, and target-dependent wall intervals alongside
-Q1482/Q1483/Q1485/Q1486/Q1487. If only the planted control passes, retain
+Q1482/Q1483/Q1485/Q1486/Q1487/Q1488. If only the planted control passes, retain
 ordinary cost and N131 complete work as unknown. A complete N131 `2^x`
 also requires its exact usable base, relation collection, final matrix
 solve, target descent, and independent scalar replay.
