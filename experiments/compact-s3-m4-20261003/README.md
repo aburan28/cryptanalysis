@@ -2374,13 +2374,18 @@ yield. Successful N83 decomposition cost, novel rank, and complete N131
 
 ### Q1484 N131 window-base enumeration
 
-[Q1484](q1484_n131_window_base/README.md) froze an exhaustive census of the
-N131 dimension-27 cyclic-window base, which has `2^26` raw x-orbits. Its
-first attempt stopped when the SSD filled during a checkpoint write. The
-archived R1 checkpoint covers 19,922,944 raw orbits; it is a partial
-infrastructure-failure record, so actual usable `B`, folded `K`, point-set
-digest, and complete N131 work remain unknown. A separately frozen R2 must
-replay the checkpoint before this base can enter a named N131 solver budget.
+[Q1484](q1484_n131_window_base/README.md) completed an exact census of the
+N131 dimension-27 cyclic-window base, covering all `2^26` raw x-orbits. The
+separately frozen R2 reproduced every status in the R1 prefix after R1's
+disk-full infrastructure failure. The archived, audited R2 base has
+`B = 8,790,494,834` subgroup-usable points before folding and
+`K = 33,551,507` signed-Frobenius columns. Its sorted projected-set digest
+is `d3fa5abbd34df91d48731d283b4960f6110d8202c452a8bd349baa907bb4a331`.
+For uniform nonidentity targets, the necessary 95%-rank query count is at
+least 87,189,268 (`2^26.378`); even with all other costs zero, a sub-`2^61`
+solve would need average cost below `2^34.622` per query in a consistent
+charged unit. This is a necessary ceiling, not a measured PDP cost. Complete
+N131 work remains unknown.
 
 ## Next goal
 
