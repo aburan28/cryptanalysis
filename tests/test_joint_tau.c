@@ -1,0 +1,100 @@
+#include "ec_tau_internal.h"
+#include "test_fixtures.h"
+#include <string.h>
+
+static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
+                       const ca_elem *p, const ca_elem *q, uint64_t a, uint64_t b,
+                       uint64_t *saved_tau, uint64_t *saved_full)
+{
+    ca_elem ap, bq, expected, separate, joint;
+    ca_group_mul(g, &ap, p, a % g->order, NULL);
+    ca_group_mul(g, &bq, q, b % g->order, NULL);
+    ca_group_op(g, &expected, &ap, &bq);
+    ca_tau4_joint_counts two = {0}, one = {0};
+    CHECK(ca_ec_tau4_joint_mul_profile(g, pre, &separate, a, b, 0, &two));
+    CHECK(ca_ec_tau4_joint_mul_profile(g, pre, &joint, a, b, 1, &one));
+    CHECK(ca_group_equal(g, &separate, &expected));
+    CHECK(ca_group_equal(g, &joint, &expected));
+    CHECK_EQ_U64(one.mixed_adds, two.mixed_adds);
+    CHECK_EQ_U64(one.full_adds, 0);
+    CHECK_EQ_U64(one.inversions, two.inversions);
+    if (two.tau_steps > one.tau_steps) *saved_tau += two.tau_steps - one.tau_steps;
+    *saved_full += two.full_adds;
+}
+
+static void check_curve(uint64_t p, uint64_t b, uint64_t order,
+                        uint64_t base_x, uint64_t base_y)
+{
+    ca_group g;
+    ca_curve_info info;
+    CHECK(ca_curve_group(&g, p, 0, b, order, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J0);
+    uint64_t words[4] = {base_x, base_y, 0, 0};
+    ca_elem base, other, id;
+    CHECK(ca_group_encode(&g, &base, words));
+    ca_group_mul(&g, &other, &base, 37, NULL);
+    ca_group_identity(&g, &id);
+    ca_tau4_joint_precomp pre;
+    ca_tau4_joint_counts prep = {0};
+    CHECK(ca_ec_tau4_joint_prepare(&g, &base, &other, &pre, &prep));
+    CHECK_EQ_U64(prep.tau_steps, 2);
+    CHECK_EQ_U64(prep.doubles, 10);
+    CHECK_EQ_U64(prep.mixed_adds, 8);
+    CHECK_EQ_U64(prep.inversions, 1);
+
+    uint64_t saved_tau = 0, saved_full = 0;
+    const uint64_t edge[][2] = {
+        {0, 0}, {1, 0}, {0, 1}, {1, 1}, {2, 3},
+        {order - 1, order - 1}, {order, 2 * order},
+        {UINT64_MAX, UINT64_MAX}, {UINT64_MAX, order - 1},
+    };
+    for (size_t i = 0; i < sizeof(edge) / sizeof(edge[0]); i++)
+        check_pair(&g, &pre, &base, &other, edge[i][0], edge[i][1],
+                   &saved_tau, &saved_full);
+    ca_rng rng;
+    ca_rng_seed(&rng, UINT64_C(0x20261007) ^ order);
+    for (int i = 0; i < 512; i++) {
+        uint64_t scalar_a = ca_rng_next(&rng), scalar_b = ca_rng_next(&rng);
+        check_pair(&g, &pre, &base, &other, scalar_a, scalar_b, &saved_tau, &saved_full);
+    }
+    CHECK(saved_tau > 0);
+    CHECK(saved_full > 0);
+
+    ca_tau4_joint_precomp with_identity;
+    CHECK(ca_ec_tau4_joint_prepare(&g, &base, &id, &with_identity, &prep));
+    CHECK_EQ_U64(prep.inversions, 1);
+    CHECK_EQ_U64(prep.tau_steps, 1);
+    check_pair(&g, &with_identity, &base, &id, 123, 987, &saved_tau, &saved_full);
+    CHECK(ca_ec_tau4_joint_prepare(&g, &id, &id, &with_identity, &prep));
+    CHECK_EQ_U64(prep.inversions, 0);
+    check_pair(&g, &with_identity, &id, &id, UINT64_MAX, UINT64_MAX,
+               &saved_tau, &saved_full);
+
+    CHECK(ca_ec_tau4_joint_prepare(&g, &base, &base, &with_identity, &prep));
+    check_pair(&g, &with_identity, &base, &base, 178, 178,
+               &saved_tau, &saved_full);
+    ca_elem negative;
+    ca_group_inv(&g, &negative, &base);
+    CHECK(ca_ec_tau4_joint_prepare(&g, &base, &negative, &with_identity, &prep));
+    check_pair(&g, &with_identity, &base, &negative, 178, 178,
+               &saved_tau, &saved_full);
+}
+
+int main(void)
+{
+    check_curve(UINT64_C(4294967377), 15, UINT64_C(23729779),
+                UINT64_C(481899190), UINT64_C(1998487369));
+    check_curve(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747),
+                UINT64_C(1839617427631136375), UINT64_C(725584580046817702));
+
+    ca_group generic;
+    CHECK(ca_group_ec_init(&generic, 97, 2, 3, 0) == CA_OK);
+    ca_elem id;
+    ca_group_identity(&generic, &id);
+    ca_tau4_joint_precomp invalid = {0};
+    CHECK(!ca_ec_tau4_joint_prepare(&generic, &id, &id, &invalid, NULL));
+    ca_elem sentinel = {{11, 12, 13, 14}}, output = sentinel;
+    CHECK(!ca_ec_tau4_joint_mul_profile(&generic, &invalid, &output, 1, 2, 1, NULL));
+    CHECK(memcmp(&output, &sentinel, sizeof(output)) == 0);
+    TEST_MAIN_END();
+}
