@@ -122,7 +122,7 @@ int ca_ec_tau_pair_fused_recode_verify_scalar(const ca_tau_pair_fused_precomp *p
 int ca_ec_tau_pair_fused_prepare_verify(const ca_tau_pair_fused_precomp *pre);
 size_t ca_ec_tau_pair_fused_static_bytes(void);
 /* Expand each pair orbit into all six signed unit images for direct lookup. */
-#define CA_TAU_PAIR_COMPLETE_COUNT (6 * CA_TAU_PAIR_FUSED_REP_COUNT)
+#define CA_TAU_PAIR_COMPLETE_COUNT ((size_t)6 * CA_TAU_PAIR_FUSED_REP_COUNT)
 typedef struct ca_tau_pair_complete_precomp {
     ca_tau4_precomp base;
     ca_elem exact[CA_TAU_PAIR_COMPLETE_COUNT];
