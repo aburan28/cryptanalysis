@@ -434,7 +434,12 @@ see because it times the stages apart.  Three things measured within the
 noise of ten interleaved runs and were not kept: stage 1 fused the same
 way (a group's x converted straight into the registers the selection
 reads), four or one chain vectors instead of two with the fused forward
-pass, and clang 18 for gcc 13.
+pass, the selection four or sixteen vectors at a time instead of eight,
+and clang 18 for gcc 13.  The representation itself was costed and not
+tried: in the palindromic form of the normal basis a squaring is a bit
+spread and the conversion and the sign row go away, but a product is then
+two 131-bit products and two 262-bit mirrors, about 107 uops against 82,
+and there are five of those a step to one squaring.
 
 The reports of a run do not depend on the batch size or the worker count,
 which `src/cputest.cpp` checks along with: the multiplier against a
