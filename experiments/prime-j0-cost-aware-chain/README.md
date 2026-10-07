@@ -317,3 +317,12 @@ positional table, zero fallbacks, and verified generic outputs. The point
 table shrank from 36,864 bytes to 6,336 and 12,096 bytes on the two curves;
 preparation triples fell from 1,134 to 180 and 360. Controlled CPU speed and
 one-target rho impact remain unknown.
+
+The [width-three fused positional tau experiment](TAU3_FUSED_POSITIONAL.md)
+combines a 27-slot tau-cubed residue atlas with a six-step, six-unit-orbit
+point table. Its new disjoint 32,768-scalar panel verified all 16 arms and
+passed all eight frozen operation gates. It saved 23.46% and 27.10% of online
+mixed additions against compact width-four positional tau on the two curves,
+with no fallbacks, but used 43,904 and 76,832 point-table bytes plus a
+9,826-byte static map. Unisolated local online timing was slower in every
+case; controlled CPU speed and one-target rho impact remain unknown.
