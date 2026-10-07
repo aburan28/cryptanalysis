@@ -1149,6 +1149,9 @@ mod cuda {
                         &mut mask as *mut u64 as *mut c_void,
                         &mut active as *mut u64 as *mut c_void,
                         &mut rows32 as *mut u32 as *mut c_void,
+                        &mut cand as *mut u64 as *mut c_void,
+                        &mut pw as *mut u64 as *mut c_void,
+                        &mut count as *mut u64 as *mut c_void,
                         &mut prow as *mut u64 as *mut c_void,
                     ];
                     self.launch(fns[0], row_grid, 256, &mut p, "f4e_gather")?;
@@ -1901,7 +1904,11 @@ mod tests {
                     })
                 };
                 let want = rref_rows(work.iter().map(|r| low(r)).collect(), width);
-                for threads in [1, 7, 64] {
+                // One thread takes every panel's candidates in row order,
+                // 1024 mostly in gather order; the pivots, hence the word
+                // count, are the lowest rows either way.
+                let mut word_ops = None;
+                for threads in [1, 7, 64, 1024] {
                     let e = emulate_echelon(&m, rows, stride, low_start, width, &skip, threads);
                     assert_eq!(e.pivots, pivots, "pivots: {rows}x{cols} density {density}");
                     assert_eq!(
@@ -1909,11 +1916,16 @@ mod tests {
                         want,
                         "linear block: {rows}x{cols} density {density}"
                     );
+                    assert_eq!(
+                        *word_ops.get_or_insert(e.word_ops),
+                        e.word_ops,
+                        "word ops: {rows}x{cols} density {density}, {threads} threads"
+                    );
                     cases += 1;
                 }
             }
         }
-        assert_eq!(cases, 63);
+        assert_eq!(cases, 84);
     }
 
     /// With every elimination routed through the emulated device kernels,
