@@ -92,6 +92,33 @@ size_t ca_ec_tau3_fused_static_bytes(void);
 size_t ca_ec_tau3_atlas_static_bytes(void);
 void ca_ec_tau3_fused_clear(ca_tau3_fused_precomp *pre);
 
+/* Public-scalar scattered pair table over the complete six-step orbit table.
+ * Each selected cross-block pair has one additional prepared affine point. */
+typedef struct ca_tau3_scatter_entry {
+    uint8_t i, j, u, v;
+} ca_tau3_scatter_entry;
+typedef struct ca_tau3_scatter_precomp {
+    ca_tau3_fused_precomp full;
+    ca_elem *extra;
+    const ca_tau3_scatter_entry *entry;
+    const uint16_t *offsets; /* [20*i+j] ranges into entry, plus sentinel */
+    size_t extra_count;
+} ca_tau3_scatter_precomp;
+size_t ca_ec_tau3_scatter_point_entries(const ca_group *g);
+size_t ca_ec_tau3_scatter_static_bytes(void);
+int ca_ec_tau3_scatter_verify_map(void);
+int ca_ec_tau3_scatter_prepare(const ca_group *g, const ca_elem *point,
+                               ca_tau3_scatter_precomp *out, uint64_t *seed_ops, uint64_t *triples,
+                               uint64_t *tau_steps, uint64_t *adds, uint64_t *rotations,
+                               uint64_t *inversions);
+int ca_ec_tau3_scatter_prepare_verify(const ca_tau3_scatter_precomp *pre);
+int ca_ec_tau3_scatter_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+                                   ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                   uint64_t *fallbacks, uint64_t *matched_pairs,
+                                   size_t *scratch_bytes);
+void ca_ec_tau3_scatter_clear(ca_tau3_scatter_precomp *pre);
+unsigned ca_ec_tau3_scatter_match_graph(const uint32_t edge[20], unsigned count, int8_t mate[20]);
+
 /* Sparse two-level six-step tau table. Selected hot pair orbits take one
  * mixed addition; every cold pair is composed from two prepared half points.
  * Public scalars only; over-capacity scalars use the generic multiplier. */
