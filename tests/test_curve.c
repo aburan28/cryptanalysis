@@ -743,6 +743,56 @@ static void joint_plane_named(uint64_t p, uint64_t b, uint64_t order)
     ca_ec_joint_window4_clear(&identity_pre);
 }
 
+static void joint_zero_named(uint64_t p, uint64_t b, uint64_t order, uint64_t witness)
+{
+    ca_group g;
+    ca_curve_info info;
+    CHECK(ca_curve_group(&g, p, 0, b, order, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J0);
+    ca_elem point;
+    CHECK(ca_group_find_generator(&g, &point, 1) == CA_OK);
+    ca_joint_window4_precomp pre = {0};
+    CHECK(ca_ec_joint_window4_zero_prepare(&g, &point, &pre, NULL, NULL, NULL, NULL, NULL));
+    CHECK(pre.zero_mode && pre.plane_format && pre.det_inverse16);
+    CHECK(ca_ec_joint_window4_prepare_verify(&pre));
+    pre.det_inverse16 ^= 2;
+    CHECK(!ca_ec_joint_window4_prepare_verify(&pre));
+    pre.det_inverse16 ^= 2;
+    const uint64_t scalars[] = {0, 1, 2, witness, order / 2, order - 1};
+    for (size_t i = 0; i < sizeof(scalars) / sizeof(scalars[0]); i++) {
+        ca_elem got, expected;
+        uint64_t attempts = UINT64_MAX, feasible = 0, selected = 0;
+        ca_group_mul(&g, &expected, &point, scalars[i], NULL);
+        CHECK(ca_ec_joint_window4_zero_mul_profile(&g, &pre, &got, scalars[i], NULL, NULL, NULL,
+                                                   &attempts, &feasible, &selected));
+        CHECK(ca_group_equal(&g, &got, &expected));
+        CHECK_EQ_U64(attempts, scalars[i] != 0);
+        if (i == 3) {
+            CHECK_EQ_U64(feasible, 1);
+            CHECK_EQ_U64(selected, 1);
+        }
+    }
+    unsigned saved_positions = pre.positions;
+    pre.positions = 1;
+    ca_elem got, expected;
+    uint64_t fallback = 0;
+    ca_group_mul(&g, &expected, &point, order / 2, NULL);
+    CHECK(ca_ec_joint_window4_zero_mul_profile(&g, &pre, &got, order / 2, NULL, NULL, &fallback,
+                                               NULL, NULL, NULL));
+    CHECK(ca_group_equal(&g, &got, &expected));
+    CHECK_EQ_U64(fallback, 1);
+    pre.positions = saved_positions;
+    ca_ec_joint_window4_clear(&pre);
+    ca_elem identity;
+    ca_group_identity(&g, &identity);
+    CHECK(ca_ec_joint_window4_zero_prepare(&g, &identity, &pre, NULL, NULL, NULL, NULL, NULL));
+    CHECK(ca_ec_joint_window4_prepare_verify(&pre));
+    CHECK(ca_ec_joint_window4_zero_mul_profile(&g, &pre, &got, 17, NULL, NULL, NULL, NULL, NULL,
+                                               NULL));
+    CHECK(ca_group_is_identity(&g, &got));
+    ca_ec_joint_window4_clear(&pre);
+}
+
 static void tau_cost_named(const char *name)
 {
     uint64_t p, a, b, order;
@@ -1434,6 +1484,9 @@ int main(void)
     tau_cost_named("glv-j0-32");
     joint_plane_named(UINT64_C(4294967377), 15, UINT64_C(23729779));
     joint_plane_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747));
+    joint_zero_named(UINT64_C(4294967377), 15, UINT64_C(23729779), UINT64_C(5233680));
+    joint_zero_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747),
+                     UINT64_C(3880360191224661));
     tau_cost_boundary_curves();
     tau_fused_named("glv-j0-32", 4);
     tau_fused_named("j0-56", 6);
