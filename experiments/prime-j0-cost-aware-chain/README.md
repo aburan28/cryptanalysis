@@ -372,3 +372,11 @@ addition savings, while native C verified all three modes' point outputs and
 operation counts. An isolated benchmark manifest can pair the direct mode
 with either exact matching or the complete-table control. CPU speed remains
 unknown until a qualifying host receipt exists.
+
+The [orbit-indexed scattered action atlas](TAU3_SCATTER_ATLAS.md) replaces
+direct selection's binary pair search with a 505-orbit dense slot lookup.
+It preserves exactly the same additions and prepared points, while adding
+76,540 bytes of static maps. A third disjoint 32,768-scalar fixture and a
+32-arm native replay verified scalar outputs and operation equivalence.
+Controlled CPU timing is still required to determine whether the lookup
+layout pays for its larger map.
