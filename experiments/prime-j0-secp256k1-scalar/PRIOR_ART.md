@@ -18,8 +18,14 @@ change makes that scale a negation, while other changes multiply by a
 nontrivial constant. Digit representatives are rotated into the
 current orientation. The local policy in `validate_scalar.py` chooses
 among these transitions; its complete 256-bit output is checked against
-Sage. We have not established that this particular projective-state
-method is absent from earlier work, so **academic novelty is unknown**.
+Sage. Algebraically, `τ²=-3ω`, so choosing an orientation change of two
+gives `ω²τ²=-3`. The resulting cheap paired stride is therefore a
+signed tripling, matching the mechanism underlying Xu et al.'s
+Algorithm 3. Its equation (14) absorbs powers of `-ω` into
+unit-invariant digits to use tripling. The projective-state notation
+may only be another implementation of that existing method. We have
+not established a distinct algorithmic contribution, so **academic
+novelty is unknown and currently looks unlikely**.
 
 The 128-case stage diagnostic in `STAGE_RESULT.md` compares this
 candidate with the same unit-digit evaluator using free gauge and
