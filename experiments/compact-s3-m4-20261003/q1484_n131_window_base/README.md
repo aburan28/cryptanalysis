@@ -48,3 +48,19 @@ A supplementary [high-span N131 preflight](high_span_preflight.json) checks
 projection; 48 have rational lifts and all 98 checks pass. This covers mask
 shapes beyond the low-span cases in the original frozen preflight. It is a
 sampled correctness control, not an estimate of the full base size.
+
+## R1 infrastructure failure
+
+The first exhaustive attempt, `Q1484R1`, stopped with `OSError: [Errno 28]
+No space left on device` while writing a progress bitmap. The durable
+[postmortem record](runs/r1/failure.json) identifies the failure site and
+hashes the saved [progress](runs/r1/progress.jsonl) and
+[partial bitmap](runs/r1/status_flags.partial). The last complete checkpoint
+covers 19,922,944 of 67,108,864 raw orbits and contains 9,963,049 distinct
+projected orbit keys **so far**. The attempt did not finish and does not
+establish the final `B`, `K`, point-set digest, or any solve cost.
+
+An R2 execution must have its own frozen recovery protocol and preserve this
+R1 failure. Reconstruct the checkpoint's key set by replaying the frozen
+prefix and checking each two-bit status before continuing. Do not treat the
+partial key count as a final base measurement.
