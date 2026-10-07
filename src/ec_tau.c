@@ -1488,6 +1488,132 @@ int ca_ec_joint_pair_width_mul_profile(const ca_group *g, const ca_joint_pair_pr
     return joint_pair_mul_impl(g, pre, out, k, adds, rotations, unit_adds, fallbacks);
 }
 
+int ca_ec_joint_pair_width_mul_wave_batch_profile(const ca_group *g,
+                                                  const ca_joint_pair_precomp *pre, ca_elem *out,
+                                                  const uint64_t *scalars, size_t count,
+                                                  size_t block_size, uint64_t *adds,
+                                                  uint64_t *rotations, uint64_t *unit_adds,
+                                                  uint64_t *output_inversions, uint64_t *fallbacks)
+{
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (unit_adds) *unit_adds = 0;
+    if (output_inversions) *output_inversions = 0;
+    if (fallbacks) *fallbacks = 0;
+    if (!count) return 1;
+    if (!g || !pre || !out || !scalars || pre->g != g || !pre->top_compressed || !pre->top_rank ||
+        !pre->pairs || pre->pairs > 4 || (pre->point_words != 3 && pre->point_words != 2) ||
+        (!pre->identity && ((pre->point_words == 3 && !pre->triple_point) ||
+                            (pre->point_words == 2 && !pre->double_point))) ||
+        !block_size || block_size > 4096)
+        return 0;
+
+    uint32_t *actions = malloc(block_size * 4 * sizeof(*actions));
+    ca_elem *queries = malloc(block_size * sizeof(*queries));
+    uint64_t *scratch = malloc(block_size * 2 * sizeof(*scratch));
+    uint8_t *active = malloc(block_size * sizeof(*active));
+    if (!actions || !queries || !scratch || !active) goto failure;
+
+    uint64_t na = 0, nr = 0, nu = 0, ni = 0, nf = 0;
+    const ca_elem identity = {{0, 0, 1, 0}};
+    for (size_t offset = 0; offset < count;) {
+        size_t n = count - offset;
+        if (n > block_size) n = block_size;
+        for (size_t i = 0; i < n; i++) {
+            uint64_t k = scalars[offset + i] % g->order;
+            out[offset + i] = identity;
+            active[i] = k && !pre->identity;
+            if (!active[i]) continue;
+            ca_i128 a, b;
+            reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y},
+                                pre->det, k, &a, &b);
+            ca_i128 x = a + b, y = -b;
+            for (unsigned position = 0; position < pre->pairs; position++) {
+                unsigned residues[2];
+                for (unsigned digit = 0; digit < 2; digit++) {
+                    unsigned rx = joint_window4_residue16(x), ry = joint_window4_residue16(y);
+                    residues[digit] = (rx << 4) | ry;
+                    x = (x - ca_joint_pair_digit_x[residues[digit]]) / 16;
+                    y = (y - ca_joint_pair_digit_y[residues[digit]]) / 16;
+                }
+                actions[4 * i + position] = ca_joint_pair_action[(residues[0] << 8) | residues[1]];
+            }
+            unsigned top_orbit = actions[4 * i + pre->pairs - 1] & CA_JOINT_PAIR_ZERO;
+            if (x || y ||
+                (top_orbit != CA_JOINT_PAIR_ZERO &&
+                 (top_orbit >= CA_JOINT_PAIR_ORBITS ||
+                  pre->top_rank[top_orbit] == CA_JOINT_PAIR_TOP_MISSING))) {
+                ca_group_mul(g, &out[offset + i], &pre->base_point, k, NULL);
+                active[i] = 0;
+                nf++;
+            }
+        }
+        for (unsigned position = 0; position < pre->pairs; position++) {
+            int any_query = 0, need_inverse = 0;
+            for (size_t i = 0; i < n; i++) {
+                ca_elem point = identity;
+                if (active[i]) {
+                    unsigned packed_action = actions[4 * i + position];
+                    unsigned orbit = packed_action & CA_JOINT_PAIR_ZERO;
+                    unsigned code = packed_action >> CA_JOINT_PAIR_ORBIT_BITS;
+                    if (orbit != CA_JOINT_PAIR_ZERO) {
+                        if (orbit >= CA_JOINT_PAIR_ORBITS || code >= 6) goto failure;
+                        if (position + 1 == pre->pairs) orbit = pre->top_rank[orbit];
+                        size_t index = (size_t)position * CA_JOINT_PAIR_ORBITS + orbit;
+                        if (pre->point_words == 3) {
+                            ca_joint_pair_triple_point stored = pre->triple_point[index];
+                            point = (ca_elem){{stored.x, stored.y, 0, 0}};
+                            if (code % 3 == 1) point.w[0] = stored.x_beta;
+                            if (code % 3 == 2) {
+                                point.w[0] = fs(g, 0, fa(g, stored.x, stored.x_beta));
+                                nu += 2;
+                            }
+                        } else {
+                            ca_joint_pair_double_point stored = pre->double_point[index];
+                            point = (ca_elem){{stored.x, stored.y, 0, 0}};
+                            if (code % 3 == 1) point.w[0] = fm(g, pre->beta, stored.x);
+                            if (code % 3 == 2) point.w[0] = fm(g, pre->beta2, stored.x);
+                            nr += code % 3 != 0;
+                        }
+                        if (code >= 3 && point.w[1]) point.w[1] = g->p - point.w[1];
+                        na++;
+                    }
+                }
+                queries[i] = point;
+                if (!point.w[2]) {
+                    any_query = 1;
+                    need_inverse |= !out[offset + i].w[2];
+                }
+            }
+            if (!any_query) continue;
+            if (need_inverse) {
+                ca_group_batch_op(g, out + offset, out + offset, queries, n, scratch);
+                ni++;
+            } else {
+                for (size_t i = 0; i < n; i++)
+                    if (out[offset + i].w[2]) out[offset + i] = queries[i];
+            }
+        }
+        offset += n;
+    }
+    free(active);
+    free(scratch);
+    free(queries);
+    free(actions);
+    if (adds) *adds = na;
+    if (rotations) *rotations = nr;
+    if (unit_adds) *unit_adds = nu;
+    if (output_inversions) *output_inversions = ni;
+    if (fallbacks) *fallbacks = nf;
+    return 1;
+failure:
+    free(active);
+    free(scratch);
+    free(queries);
+    free(actions);
+    return 0;
+}
+
 void ca_ec_joint_pair_clear(ca_joint_pair_precomp *pre)
 {
     if (!pre) return;
