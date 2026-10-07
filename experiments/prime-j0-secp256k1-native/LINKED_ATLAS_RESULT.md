@@ -2,6 +2,9 @@
 
 The candidate, protocol, fresh-input generator, and native mode were
 frozen in `527af3ac` before generating the new 256-case Sage panel.
+The serializer was frozen in `e2ab3281` before the final compact
+fixture was regenerated; its semantic contents exactly match the
+first generation, and its input digest is unchanged.
 Slots 5, 6, and 7 of the width-four digit table are `(2,-4)`, `(4,-8)`,
 and `(4,4)` in the `a+bτ` coefficient basis. They are doubles of
 existing slot 8, the new slot 5, and existing slot 4, respectively.
@@ -35,13 +38,13 @@ The held-out paired mean saving is **6.55 `M+S` per scalar**. A
 per scalar. This is input variation, not CPU timing uncertainty. Every
 case's operation counts, including negative deltas, are retained in
 `linked-atlas-result.json`. Its fixture SHA-256 is
-`19c14b3766c23f3c21fcb36cf8d85a8111eb5c29af28a79231d6e609692c3eb4`.
+`188baa1cfe4ab49afe148ae6a28961833eb31efd5cfa2de9ced2dcc38191bef1`.
 
 The checked repository Sage launcher wrote `linked-runtime-info.json`
 with `status: verified` before the new scalar and seed jobs. Sage
 independently computed all three new seed points and scalar outputs;
 the seed fixture SHA-256 is
-`669aaefee15a503ce9a3b0eda3988957ed4244f0f00cba09b512e3dd6ae0417f`.
+`2ed0bd59385569d16173fd21d3f3b927b3cac4f5554aa5f4b6c736414c59a0d7`.
 The offline release binary on macOS ARM64 (`rustc 1.93.1`) has SHA-256
 `3fe97d084cebd2dde170eaaf7c7187013cd8ad6635172106edb8e907475a32e4`.
 It matched **3,150 prepared seed points and 350 final scalar points**
