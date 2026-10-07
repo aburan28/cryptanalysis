@@ -2396,12 +2396,19 @@ relations verify. Both unpinned planted and both ordinary cells censor at
 118,442,341 field multiplications, 752,979,922 squarings and 4,130
 inversions, with zero supported midpoint intersections. This exact local
 restriction does not measure successful PDP work or N131 complete `2^x`.
+The post-run [fixed-left coverage diagnostic](q1486_window_aware_pair/coverage_diagnostic.json)
+shows that each ordinary run built only one left domain. Under a stated
+independent uniform `x`-root model, the observed right-pair prefixes have
+expected-intersection scales below `2^-16.16` at N53 and `2^-46.91` at
+N83, even counting two roots per pair. SAT choices are target-dependent,
+so those scales are neither probability bounds nor measured relation yield.
 
 ## Next goal
 
 Build and measure an **algebraic batched pair-support mechanism** that reasons
-about many factor-base completions together, beyond Q1485/Q1486's bounded
-4,096-completion local domains. Its first gate is one independently
+about many factor-base completions together on both sides of the join,
+beyond Q1485/Q1486's single-left, bounded 4,096-completion local domains.
+Its first gate is one independently
 verified, fully unpinned known-satisfiable N83 relation on the exact Q1481
 base without constructing the full pair table. The next gate is one ordinary
 N83 relation, followed by a frozen ordinary-query panel to measure useful

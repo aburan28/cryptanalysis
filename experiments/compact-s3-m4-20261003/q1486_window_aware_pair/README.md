@@ -65,6 +65,23 @@ The next solver needs a mechanism that reasons about many leaf-pair
 completions together. Merely pruning the same 4,096-completion local
 domains did not cross the unpinned N83 correctness gate.
 
+## Post-run fixed-left coverage diagnostic
+
+The [retrospective diagnostic](coverage_diagnostic.json) reads the archived
+ordinary receipts. Each run built **one** target-conditioned left domain.
+N53 then examined 14,434,304 right-pair inputs across 3,524 domain builds;
+N83 examined 8,454,144 across 2,064. Both found zero supported
+intersections. Under an explicitly hypothetical model in which each right
+`S3` root is independent and uniform over field `x` values relative to the
+fixed left set, even allowing two roots per pair gives expected-intersection
+scales below `2^-16.16` at N53 and `2^-46.91` at N83 for the observed
+prefixes. The model does not describe target-conditioned SAT decisions or
+algebraic correlations, so these are **neither probability bounds nor
+empirical relation-yield estimates**. They explain why faster evaluation
+of the same narrow join is not enough evidence for a scalable solver.
+The next method must couple or cover substantially more left and right
+completions while retaining exact witnesses.
+
 ## Reproduce custody checks
 
 ```sh
@@ -72,4 +89,5 @@ python3 experiments/compact-s3-m4-20261003/q1486_window_aware_pair/build.py --ch
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1486_window_aware_pair/prepare_window_maps.py --check
 python3 experiments/compact-s3-m4-20261003/q1486_window_aware_pair/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1486_window_aware_pair/audit.py --check
+python3 experiments/compact-s3-m4-20261003/q1486_window_aware_pair/coverage_diagnostic.py --check
 ```
