@@ -44,3 +44,50 @@ recorded separately. Pinned controls do not estimate natural yield; one
 ordinary query per degree cannot establish a yield rate. Without successful
 free-leaf N83 work and the remaining IC stages, no complete N131 `2^x` or
 sub-`2^61` claim follows.
+
+## Measured result
+
+The [independent audit](archive_audit.json) regenerates the six CNFs,
+verifies every frozen hash and run receipt, and replays both pinned SAT
+models against the CNF, ordered leaves, S3 roots, exact base policy,
+distinct columns, raw target preimage, and public group point.
+
+| Frozen case | Native result | Verified relation | SAT propagations | Field mul / sqr / inv calls | Eligible exact joins |
+| --- | --- | ---: | ---: | ---: | ---: |
+| N53 sorted pinned control | SAT | 1 | 82,667 | 209 / 1,236 / 18 | 0 |
+| N83 sorted pinned control | SAT | 1 | 218,650 | 258 / 2,180 / 20 | 0 |
+| N53 known-representable full coset | 60 s wall cap | 0 | 328,558,707 | 12,090,373 / 51,150,158 / 9,795 | 213 |
+| N83 known-representable unpinned | 60 s wall cap | 0 | 360,690,656 | 382,810 / 2,573,942 / 7,691 | 1 |
+| N53 ordinary | 60 s wall cap | 0 | 338,294,876 | 12,267,189 / 51,886,018 / 9,439 | 214 |
+| N83 ordinary | 60 s wall cap | 0 | 318,703,689 | 382,810 / 2,573,942 / 7,691 | 1 |
+
+All four free-leaf cases are censored, so each reported work vector is a
+prefix of this solver's search, not a successful decomposition cost. The
+matched Q1474 N53 full-coset baseline made 49 eligible exact joins and
+16,857,549 field multiplications at its 60-second cap; Q1475 made 213 joins
+and 12,090,373 multiplications on that same public point. The matched Q1472
+N53 ordinary baseline made 49 joins and 17,049,276 multiplications; Q1475
+made 214 joins and 12,267,189 multiplications. At N83, both ordered
+free-leaf cases still reached only one eligible exact join, the same count
+as their Q1472 baselines. The altered prefixes establish a search-behavior
+change, not a solved-query or CPU speedup. Wall intervals are exploratory
+because the host has no isolation receipt.
+
+The immediate method gate remains a verified free-leaf N53 relation on the
+known-representable full public-target coset, followed by a successful N83
+control and an ordinary N83 panel. Restricting permutation symmetry alone
+does not meet it. A useful next variant must condition both pair domains on
+the target earlier than the existing 250,000-pair exact-join admission point.
+
+## Reproduce the audit
+
+```sh
+python3 experiments/compact-s3-m4-20261003/q1475_ordered_leaves/prepare_inputs.py --check
+python3 experiments/compact-s3-m4-20261003/q1475_ordered_leaves/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1475_ordered_leaves/audit.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
+```
+
+These checks replay the archived evidence; they do not rerun the native
+60-second cases. Each case's raw stdout, stderr, model when SAT, and
+source-bound receipt are retained under `runs/`.
