@@ -331,3 +331,56 @@ pub(super) fn check_fixture(fixture_path: &str, seed_path: &str, score_path: &st
         "selected_M_plus_S": total, "exceptional_cached_adds": exceptional_adds,
         "cpu_speedup_claim": null}));
 }
+
+pub(super) fn benchmark_case(fixture_path: &str, index: usize, timed: bool) {
+    let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
+        .expect("fixture JSON");
+    let case = &fixture["cases"].as_array().expect("cases")[index];
+    let base_x = case["base_x_hex"].as_str().expect("base x");
+    let base_y = case["base_y_hex"].as_str().expect("base y");
+    let scalar_hex = case["scalar_hex"].as_str().expect("scalar");
+    let expected = if case["expected_identity"].as_bool().unwrap_or(false) {
+        "identity".to_owned()
+    } else {
+        format!("{}:{}", case["expected_x_hex"].as_str().expect("expected x"),
+                case["expected_y_hex"].as_str().expect("expected y"))
+    };
+    let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
+    LazyLock::force(&LATTICE);
+    LazyLock::force(&DIGIT_TABLE);
+    LazyLock::force(&LINKED_DIGIT_TABLE);
+    let start = Instant::now();
+    let scalar = big_from_hex(scalar_hex);
+    let base = J::affine(fe_from_hex(base_x), fe_from_hex(base_y));
+    let (a, b) = short_representative(&scalar);
+    let actions = recode(a.clone(), b.clone());
+    let greedy_cost = source_cost(&actions);
+    let selective = selective::recode(a.clone(), b.clone());
+    let choose_greedy = greedy_cost < selective.total;
+    let (point, exceptional) = if choose_greedy {
+        let seeds = prepare(base, beta);
+        let (point, counts) = evaluate(&actions, &seeds, beta);
+        (point, counts.exceptional_cached_adds)
+    } else {
+        let seeds = selective::prepare(base, beta, selective.built_mask);
+        let (point, counts) = evaluate_mode(&selective.digits, &seeds, beta, false, true);
+        (point, counts.exceptional_cached_adds)
+    };
+    let actual = match point.to_affine() {
+        None => "identity".to_owned(),
+        Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
+    };
+    assert_eq!(actual, expected, "benchmark output mismatch");
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    if !timed {
+        assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
+        assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
+    }
+    let arm = if choose_greedy { "radix_two" } else { "selective" };
+    let cost = if choose_greedy { greedy_cost } else { selective.total };
+    if timed {
+        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=mixed_radix arm={arm} source_M_plus_S={cost} exceptional_cached_adds={exceptional}");
+    } else {
+        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=mixed_radix arm={arm} source_M_plus_S={cost} exceptional_cached_adds={exceptional}");
+    }
+}

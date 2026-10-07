@@ -31,3 +31,11 @@ This is a correctness/source-accounting gate only. The selected path
 computes two recoders and must be timed in full on a physical host
 that passes the repository isolation preflight before any CPU
 performance claim. It remains variable-time research code.
+
+The benchmark handoff pairs `--benchmark-selective-case` and
+`--benchmark-mixed-radix-case` on each frozen scalar/base/output point.
+Both timers start before target input decoding and end after the
+expected-point comparison. The candidate timer includes both recoders,
+selection, preparation, evaluation, and final inversion. Validate the
+manifest schema with synthetic topology values, labeling it
+**structural only**; this is not a host-isolation preflight or timing.

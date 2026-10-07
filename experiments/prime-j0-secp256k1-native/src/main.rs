@@ -997,6 +997,13 @@ fn check_portfolio_fixture(fixture_path: &str, seed_path: &str,
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 4 && (args[1] == "--benchmark-mixed-radix-case" ||
+                           args[1] == "--check-mixed-radix-case") {
+        let index = args[3].parse::<usize>().expect("case index");
+        mixed_radix::benchmark_case(&args[2], index,
+                                    args[1] == "--benchmark-mixed-radix-case");
+        return;
+    }
     if args.len() == 4 && args[1] == "--check-mixed-radix-actions" {
         mixed_radix::check_action_fingerprints(&args[2], &args[3]);
         return;

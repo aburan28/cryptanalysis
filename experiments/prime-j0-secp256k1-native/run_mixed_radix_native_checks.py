@@ -77,11 +77,32 @@ def main():
                     failures.append(f"mixed-radix summary mismatch: {name}")
             except (KeyError, ValueError) as error:
                 failures.append(f"mixed-radix parse error: {name}: {error}")
+        for index, arm in ((0, "selective"), (1, "radix_two")):
+            reference = run([str(BINARY), "--check-selective-case",
+                             str(HERE / "mixed-radix-fixture.json"), str(index)])
+            candidate = run([str(BINARY), "--check-mixed-radix-case",
+                             str(HERE / "mixed-radix-fixture.json"), str(index)])
+            runs.extend((reference, candidate))
+            if (reference["exit_code"] != 0 or candidate["exit_code"] != 0
+                    or "verified=1" not in reference["stdout"]
+                    or f"arm={arm}" not in candidate["stdout"]
+                    or "verified=1" not in candidate["stdout"]):
+                failures.append(f"paired one-case handoff failed: {index}")
+            else:
+                def fields(output):
+                    return dict(token.split("=", 1) for token in output.split()
+                                if "=" in token)
+                left = fields(reference["stdout"])
+                right = fields(candidate["stdout"])
+                if any(left[key] != right[key] for key in
+                       ("curve", "base_x", "base_y", "scalar", "point")):
+                    failures.append(f"paired one-case fields differ: {index}")
     files = [HERE / name for name in (
         "Cargo.toml", "Cargo.lock", "src/main.rs", "src/selective.rs",
         "src/mixed_radix.rs", "MIXED_RADIX_NATIVE_PROTOCOL.md",
         "MIXED_RADIX_SCALAR_PROTOCOL.md", "mixed_radix_scalar.py",
         "make_mixed_radix_action_fingerprints.py",
+        "make_mixed_radix_manifest.py",
         "mixed-radix-action-fingerprints.json",
         "make_mixed_radix_fixture.py", "make_mixed_radix_seed_fixture.py",
         "run_mixed_radix_native_checks.py", "fixture.json",
