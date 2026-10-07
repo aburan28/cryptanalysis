@@ -111,7 +111,8 @@ static int select_mode(const char *name)
                                   "tau3-sparse-pos",
                                   "tau3-radix27-pos",
                                   "tau3-scatter-pos",
-                                  "tau3-scatter-direct-pos"};
+                                  "tau3-scatter-direct-pos",
+                                  "tau3-scatter-atlas-pos"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -138,7 +139,7 @@ int main(int argc, char **argv)
                 "tail-pair-periodic-firstword27|tail-pair-mixed-radix|"
                 "tail-pair-mixed-full-digits|fixed-comb9|pos-compact|tau3-fused-pos|"
                 "tau3-atlas-pos|tau3-sparse-pos|tau3-radix27-pos|tau3-scatter-pos|"
-                "tau3-scatter-direct-pos "
+                "tau3-scatter-direct-pos|tau3-scatter-atlas-pos "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -169,7 +170,8 @@ int main(int argc, char **argv)
     int sparse = mode == 39 || mode == 40;
     int radix27 = mode == 40;
     int scatter_direct = mode == 42;
-    int scatter = mode == 41 || scatter_direct;
+    int scatter_atlas = mode == 43;
+    int scatter = mode == 41 || scatter_direct || scatter_atlas;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -379,7 +381,8 @@ int main(int argc, char **argv)
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0;
     uint64_t sparse_cold_pairs = 0, radix27_dp_states = 0, radix27_dp_options = 0;
     uint64_t scatter_pairs = 0;
-    size_t static_map_bytes = scatter                 ? ca_ec_tau3_scatter_static_bytes()
+    size_t static_map_bytes = scatter_atlas           ? ca_ec_tau3_scatter_atlas_static_bytes()
+                              : scatter               ? ca_ec_tau3_scatter_static_bytes()
                               : radix27               ? ca_ec_tau3_radix27_static_bytes()
                               : sparse                ? ca_ec_tau3_sparse_static_bytes()
                               : tau3_atlas            ? ca_ec_tau3_atlas_static_bytes()
@@ -453,13 +456,18 @@ int main(int argc, char **argv)
             } else if (scatter) {
                 uint64_t a = 0, r = 0, fallback = 0, pairs = 0;
                 size_t scratch = 0;
-                int success = scatter_direct
-                                  ? ca_ec_tau3_scatter_direct_mul_profile(
-                                        &group, &scatter_pre, &outputs[i], scalars[i], &a, &r,
-                                        &fallback, &pairs, &scratch)
-                                  : ca_ec_tau3_scatter_mul_profile(&group, &scatter_pre,
-                                                                   &outputs[i], scalars[i], &a, &r,
-                                                                   &fallback, &pairs, &scratch);
+                int success =
+                    scatter_atlas
+                        ? ca_ec_tau3_scatter_atlas_mul_profile(&group, &scatter_pre, &outputs[i],
+                                                               scalars[i], &a, &r, &fallback,
+                                                               &pairs, &scratch)
+                    : scatter_direct
+                        ? ca_ec_tau3_scatter_direct_mul_profile(&group, &scatter_pre, &outputs[i],
+                                                                scalars[i], &a, &r, &fallback,
+                                                                &pairs, &scratch)
+                        : ca_ec_tau3_scatter_mul_profile(&group, &scatter_pre, &outputs[i],
+                                                         scalars[i], &a, &r, &fallback, &pairs,
+                                                         &scratch);
                 if (!success) {
                     fprintf(stderr, "tau3 scatter evaluation failed at index %zu\n", i);
                     free(outputs);
@@ -612,7 +620,9 @@ int main(int argc, char **argv)
     uint64_t sparse_preparation_checks = 0;
     uint64_t scatter_preparation_checks = 0;
     if (scatter) {
-        if (!ca_ec_tau3_scatter_verify_map() || !ca_ec_tau3_scatter_prepare_verify(&scatter_pre)) {
+        if (!ca_ec_tau3_scatter_verify_map() ||
+            (scatter_atlas && !ca_ec_tau3_scatter_atlas_verify_map()) ||
+            !ca_ec_tau3_scatter_prepare_verify(&scatter_pre)) {
             fprintf(stderr, "tau3 scatter map or point table verification failed\n");
             free(outputs);
             return 1;

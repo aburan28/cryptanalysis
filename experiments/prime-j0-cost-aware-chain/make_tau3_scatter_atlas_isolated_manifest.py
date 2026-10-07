@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""Bind orbit-atlas versus prior τ modes to the isolated benchmark service."""
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+
+
+EXPERIMENT = Path("experiments/prime-j0-cost-aware-chain")
+
+
+def sha256(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--binary", type=Path, required=True)
+    parser.add_argument("--workdir", type=Path, required=True)
+    parser.add_argument("--cgroup", type=Path, required=True)
+    parser.add_argument("--cpus", required=True)
+    parser.add_argument("--execution-cpu", type=int, required=True)
+    parser.add_argument("--mem-nodes", required=True)
+    parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--timeout-s", type=int, default=60)
+    parser.add_argument("--reference-mode", choices=("tau3-fused-pos", "tau3-scatter-pos",
+                                                      "tau3-scatter-direct-pos"),
+                        default="tau3-scatter-direct-pos")
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    if any(not path.is_absolute() for path in
+           (args.binary, args.workdir, args.cgroup, args.output)):
+        parser.error("all paths must be absolute paths on the benchmark host")
+    if not args.binary.is_file() or not args.workdir.is_dir():
+        parser.error("binary and workdir must exist on the benchmark host")
+    if not 1 <= args.repetitions <= 1000 or not 0 < args.timeout_s <= 86400:
+        parser.error("repetitions or timeout outside isolated runner limits")
+
+    root = args.workdir
+    folder = root / EXPERIMENT
+    design = folder / "tau3-scatter-design.json"
+    policy = folder / "tau3-scatter-direct-design.json"
+    layout = folder / "tau3-scatter-atlas-design.json"
+    inputs_path = folder / "tau3-scatter-atlas-inputs/inputs.json"
+    exact_model = folder / "tau3-scatter-atlas-exact-panel.json"
+    model = folder / "tau3-scatter-atlas-direct-panel.json"
+    native_panel = folder / "tau3-scatter-atlas-native-panel.json"
+    inputs = json.loads(inputs_path.read_text())
+    if inputs.get("status") != "fresh_disjoint_fixture" or inputs.get("schema") != 1:
+        parser.error("expected the frozen fresh scalar fixture")
+    if sha256(design) != inputs.get("design_sha256"):
+        parser.error("design hash differs from the frozen input manifest")
+    if sha256(policy) != inputs.get("policy_sha256"):
+        parser.error("direct policy hash differs from the frozen input manifest")
+    if sha256(layout) != inputs.get("layout_sha256"):
+        parser.error("atlas layout hash differs from the frozen input manifest")
+    expected = json.loads(model.read_text())
+    exact = json.loads(exact_model.read_text())
+    if len(inputs["cases"]) != 8 or len(expected["rows"]) != 8 or len(exact["rows"]) != 8:
+        parser.error("expected the eight frozen scalar cases")
+    if not all(row.get("verified") for row in expected["rows"]):
+        parser.error("the frozen model has an unverified case")
+    if not all(row.get("verified") for row in exact["rows"]):
+        parser.error("the exact control model has an unverified case")
+    case_ids = {case["id"] for case in inputs["cases"]}
+    if ({row["case_id"] for row in expected["rows"]} != case_ids or
+        {row["case_id"] for row in exact["rows"]} != case_ids or
+        expected["exact_panel_sha256"] != sha256(exact_model)):
+        parser.error("model cases differ from the frozen fixture")
+    native = json.loads(native_panel.read_text())
+    if native.get("status") != "pass" or len(native.get("rows", [])) != 32:
+        parser.error("expected the verified 32-arm native panel")
+    provenance = {"design_sha256": design, "inputs_sha256": inputs_path,
+                  "policy_sha256": policy, "layout_sha256": layout,
+                  "exact_panel_sha256": exact_model,
+                  "direct_panel_sha256": model,
+                  "bench_source_sha256": folder / "bench.c",
+                  "ec_tau_source_sha256": root / "src/ec_tau.c",
+                  "map_header_sha256": root / "src/generated/tau3_scatter.h",
+                  "atlas_header_sha256": root / "src/generated/tau3_scatter_atlas.h",
+                  "source_sha256": folder / "check_tau3_scatter_atlas_native_panel.py"}
+    if any(native.get(field) != sha256(path) for field, path in provenance.items()):
+        parser.error("native panel source or fixture hashes differ")
+    native_rows = {(row["case_id"], row["mode"]): row for row in native["rows"]}
+    if len(native_rows) != 32:
+        parser.error("native panel has duplicate case/mode rows")
+    pair_fields = ["curve", "point_index", "count", "base_x", "base_y",
+                   "endo_lambda", "input_digest", "output_digest"]
+
+    cases = []
+    artifacts = [root / "CMakeLists.txt", root / "src/ec_tau.c",
+                 root / "src/ec_tau_internal.h", root / "src/generated/tau3_fused.h",
+                 root / "src/generated/tau3_scatter.h",
+                 root / "src/generated/tau3_scatter_atlas.h", folder / "bench.c",
+                 folder / "make_tau3_scatter_atlas_isolated_manifest.py",
+                 folder / "make_tau3_scatter_atlas.py",
+                 folder / "make_tau3_scatter_atlas_inputs.py",
+                 folder / "check_tau3_scatter_panel.py",
+                 folder / "check_tau3_scatter_direct_panel.py",
+                 folder / "check_tau3_scatter_atlas_native_panel.py", design, policy, layout,
+                 inputs_path, exact_model, model, native_panel, args.binary,
+                 args.binary.parent / "CMakeCache.txt"]
+    for case in inputs["cases"]:
+        scalar_file = folder / "tau3-scatter-atlas-inputs" / case["scalar_file"]
+        if sha256(scalar_file) != case["scalar_file_sha256"]:
+            parser.error("scalar-file hash differs for " + case["id"])
+        artifacts.append(scalar_file)
+        point_index = case["id"].rsplit("point", 1)[1]
+        common = [case["curve"]["name"], point_index, str(scalar_file)]
+        control = native_rows[(case["id"], args.reference_mode)]
+        scatter = native_rows[(case["id"], "tau3-scatter-atlas-pos")]
+        if not control.get("gate_pass") or not scatter.get("gate_pass"):
+            parser.error("native panel rejected " + case["id"])
+        fields = control["fields"]
+        if any(fields.get(field) != scatter["fields"].get(field) for field in pair_fields):
+            parser.error("native paired fields differ for " + case["id"])
+        if (fields["curve"] != case["curve"]["name"] or
+            fields["point_index"] != point_index or
+            fields["count"] != str(case["count"]) or
+            fields["base_x"] != case["base_x"] or
+            fields["base_y"] != case["base_y"]):
+            parser.error("native panel differs from frozen fixture for " + case["id"])
+        cases.append({"id": case["id"],
+                      "reference": [str(args.binary), args.reference_mode] + common,
+                      "candidate": [str(args.binary), "tau3-scatter-atlas-pos"] + common,
+                      "expected_fields": {field: fields[field] for field in pair_fields},
+                      "expected_result": fields["output_digest"]})
+
+    if any(not path.is_file() for path in artifacts):
+        parser.error("a source, build, or fixture artifact is missing")
+    manifest = {
+        "schema": 1, "name": "tau3-scatter-atlas-vs-" + args.reference_mode,
+        "workdir": str(root),
+        "isolation": {"cgroup": str(args.cgroup), "cpus": args.cpus,
+                      "execution_cpu": args.execution_cpu, "mem_nodes": args.mem_nodes},
+        "build": {"binary_sha256": sha256(args.binary),
+                  "same_binary_for_both_modes": True,
+                  "reference_mode": args.reference_mode,
+                  "candidate_mode": "tau3-scatter-atlas-pos"},
+        "fixture": {"design_sha256": sha256(design),
+                    "policy_sha256": sha256(policy),
+                    "layout_sha256": sha256(layout),
+                    "inputs_sha256": sha256(inputs_path),
+                    "exact_model_sha256": sha256(exact_model),
+                    "model_sha256": sha256(model),
+                    "native_panel_sha256": sha256(native_panel),
+                    "case_count": len(cases), "scalars_per_case": 4096},
+        "artifacts": [str(path) for path in artifacts],
+        "timeout_s": args.timeout_s, "repetitions": args.repetitions,
+        "measurement_boundary": "bench.c online_ms: sequential scalar multiplications over one frozen 4096-scalar case, after input loading and point-table preparation, before independent scalar replay; result is batch latency, not one-target DLP latency",
+        "pair_fields": pair_fields, "result_field": "output_digest",
+        "cases": cases,
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n")
+    print(json.dumps({"cases": len(cases), "pairs": len(cases) * args.repetitions,
+                      "manifest_sha256": sha256(args.output)}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

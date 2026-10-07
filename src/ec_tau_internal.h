@@ -102,11 +102,15 @@ typedef struct ca_tau3_scatter_precomp {
     ca_elem *extra;
     const ca_tau3_scatter_entry *entry;
     const uint16_t *offsets; /* [20*i+j] ranges into entry, plus sentinel */
+    const uint8_t *atlas_pair;  /* [20*i+j] -> dense position-pair index or 255 */
+    const uint16_t *atlas_slot; /* [pair index][canonical pair-orbit rank] */
     size_t extra_count;
 } ca_tau3_scatter_precomp;
 size_t ca_ec_tau3_scatter_point_entries(const ca_group *g);
 size_t ca_ec_tau3_scatter_static_bytes(void);
+size_t ca_ec_tau3_scatter_atlas_static_bytes(void);
 int ca_ec_tau3_scatter_verify_map(void);
+int ca_ec_tau3_scatter_atlas_verify_map(void);
 int ca_ec_tau3_scatter_prepare(const ca_group *g, const ca_elem *point,
                                ca_tau3_scatter_precomp *out, uint64_t *seed_ops, uint64_t *triples,
                                uint64_t *tau_steps, uint64_t *adds, uint64_t *rotations,
@@ -120,6 +124,10 @@ int ca_ec_tau3_scatter_direct_mul_profile(const ca_group *g, const ca_tau3_scatt
                                           ca_elem *out, uint64_t k, uint64_t *adds,
                                           uint64_t *rotations, uint64_t *fallbacks,
                                           uint64_t *matched_pairs, size_t *scratch_bytes);
+int ca_ec_tau3_scatter_atlas_mul_profile(const ca_group *g, const ca_tau3_scatter_precomp *pre,
+                                         ca_elem *out, uint64_t k, uint64_t *adds,
+                                         uint64_t *rotations, uint64_t *fallbacks,
+                                         uint64_t *matched_pairs, size_t *scratch_bytes);
 void ca_ec_tau3_scatter_clear(ca_tau3_scatter_precomp *pre);
 unsigned ca_ec_tau3_scatter_match_graph(const uint32_t edge[20], unsigned count, int8_t mate[20]);
 
