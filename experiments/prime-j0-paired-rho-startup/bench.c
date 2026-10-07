@@ -22,8 +22,9 @@ static int parse_u64(const char *input, uint64_t *value)
 int main(int argc, char **argv)
 {
     if (argc != 5 || (strcmp(argv[1], "reference") && strcmp(argv[1], "paired2") &&
-                      strcmp(argv[1], "paired2-batch"))) {
-        fputs("usage: ca_paired_rho_bench reference|paired2|paired2-batch target_x target_y seed\n", stderr);
+                      strcmp(argv[1], "paired2-batch") &&
+                      strcmp(argv[1], "paired2-plane-batch"))) {
+        fputs("usage: ca_paired_rho_bench reference|paired2|paired2-batch|paired2-plane-batch target_x target_y seed\n", stderr);
         return 2;
     }
     uint64_t target_x, target_y, seed;
@@ -48,7 +49,10 @@ int main(int argc, char **argv)
     ca_curve_startup_mode mode = strcmp(argv[1], "paired2") == 0
         ? CA_CURVE_STARTUP_TAU_PAIRED2
         : strcmp(argv[1], "paired2-batch") == 0
-            ? CA_CURVE_STARTUP_TAU_PAIRED2_BATCH : CA_CURVE_STARTUP_GENERIC;
+            ? CA_CURVE_STARTUP_TAU_PAIRED2_BATCH
+            : strcmp(argv[1], "paired2-plane-batch") == 0
+                ? CA_CURVE_STARTUP_TAU_PAIRED2_PLANE_BATCH
+                : CA_CURVE_STARTUP_GENERIC;
     ca_stats stats = {0};
     ca_curve_startup_stats startup = {0};
     uint64_t scalar = UINT64_MAX;
@@ -75,6 +79,7 @@ int main(int argc, char **argv)
            " startup_budget_ops=%" PRIu64
            " prepare_tau=%" PRIu64 " prepare_doubles=%" PRIu64
            " prepare_mixed_adds=%" PRIu64 " prepare_inversions=%" PRIu64
+           " prepare_rotations=%" PRIu64 " precomp_bytes=%" PRIu64
            " eval_tau=%" PRIu64 " eval_mixed_adds=%" PRIu64
            " eval_rotations=%" PRIu64 " eval_inversions=%" PRIu64
            " table_output_inversions=%" PRIu64
@@ -87,7 +92,8 @@ int main(int argc, char **argv)
            startup.table_evaluations, startup.restart_evaluations,
            startup.budget_equivalent_group_ops,
            startup.prepare_tau, startup.prepare_doubles, startup.prepare_mixed_adds,
-           startup.prepare_inversions, startup.eval_tau, startup.eval_mixed_adds,
+           startup.prepare_inversions, startup.prepare_rotations,
+           startup.prepare_bytes, startup.eval_tau, startup.eval_mixed_adds,
            startup.eval_rotations, startup.eval_inversions,
            startup.table_output_inversions, startup.restart_output_inversions,
            startup.table_batch_size,

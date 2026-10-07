@@ -76,11 +76,26 @@ static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *p
                                 const uint64_t pairs[8][2], uint64_t expected_inversions)
 {
     uint64_t a[8], b[8];
-    ca_elem outputs[8];
+    ca_elem outputs[8], plane_outputs[8];
     for (size_t i = 0; i < 8; i++) { a[i] = pairs[i][0]; b[i] = pairs[i][1]; }
     ca_tau4_joint_counts batch = {0};
     CHECK(ca_ec_tau4_paired_two_batch_profile(g, pre, outputs, a, b, 8, &batch));
     CHECK_EQ_U64(batch.inversions, expected_inversions);
+    ca_tau4_joint_plane_precomp plane;
+    ca_tau4_joint_counts plane_prep = {0}, plane_batch = {0};
+    CHECK(ca_ec_tau4_joint_plane_prepare(g, p, q, &plane, &plane_prep));
+    CHECK(ca_ec_tau4_paired_two_plane_batch_profile(g, &plane,
+                                                      plane_outputs, a, b, 8,
+                                                      &plane_batch));
+    CHECK_EQ_U64(plane_batch.inversions, expected_inversions);
+    CHECK_EQ_U64(plane_batch.rotations, 0);
+    CHECK_EQ_U64(plane_batch.tau_steps, batch.tau_steps);
+    CHECK_EQ_U64(plane_batch.mixed_adds, batch.mixed_adds);
+    CHECK_EQ_U64(plane_batch.recode_attempts, batch.recode_attempts);
+    CHECK_EQ_U64(plane_batch.pair_scores, batch.pair_scores);
+    if (ca_group_is_identity(g, p) && ca_group_is_identity(g, q))
+        CHECK_EQ_U64(plane_prep.rotations, 0);
+    else CHECK(plane_prep.rotations > 0);
     ca_tau4_joint_counts separate = {0};
     for (size_t i = 0; i < 8; i++) {
         ca_elem one, ap, bq, expected;
@@ -91,6 +106,14 @@ static void check_paired_batch(const ca_group *g, const ca_tau4_joint_precomp *p
         ca_group_op(g, &expected, &ap, &bq);
         CHECK(ca_group_equal(g, &outputs[i], &one));
         CHECK(ca_group_equal(g, &outputs[i], &expected));
+        CHECK(ca_group_equal(g, &plane_outputs[i], &expected));
+        ca_elem plane_one;
+        ca_tau4_joint_counts plane_counts = {0};
+        CHECK(ca_ec_tau4_paired_two_plane_mul_profile(g, &plane,
+                                                       &plane_one, a[i], b[i],
+                                                       &plane_counts));
+        CHECK(ca_group_equal(g, &plane_one, &expected));
+        CHECK_EQ_U64(plane_counts.rotations, 0);
         separate.tau_steps += counts.tau_steps;
         separate.mixed_adds += counts.mixed_adds;
         separate.rotations += counts.rotations;
