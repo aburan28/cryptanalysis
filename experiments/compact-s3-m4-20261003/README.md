@@ -2403,21 +2403,37 @@ expected-intersection scales below `2^-16.16` at N53 and `2^-46.91` at
 N83, even counting two roots per pair. SAT choices are target-dependent,
 so those scales are neither probability bounds nor measured relation yield.
 
+### Q1487 inverse S3 partner support
+
+[Q1487](q1487_inverse_partner/README.md) replaces bounded pair-product
+enumeration with exact inverse-`S3` partner tests. It keeps Q1482's six
+CNFs, Q1486's selector maps, and Q1481's exact N53/N83 bases. Exhaustive
+small-field and native direct-scan controls pass, and both pinned public
+relations replay. The two unpinned planted and two ordinary cells all
+censor at 60 seconds. N83 ordinary performs 20,470 inverse checks and
+5,845,120 actual `S3` root evaluations with **zero right-pair supports**.
+The selected right domains still cover too little of a fixed midpoint's
+possible preimages. Q1487 does not measure cost per successful relation,
+natural yield, rank, or N131 complete `2^x`.
+
 ## Next goal
 
-Build and measure an **algebraic batched pair-support mechanism** that reasons
-about many factor-base completions together on both sides of the join,
-beyond Q1485/Q1486's single-left, bounded 4,096-completion local domains.
-Its first gate is one independently
-verified, fully unpinned known-satisfiable N83 relation on the exact Q1481
-base without constructing the full pair table. The next gate is one ordinary
-N83 relation, followed by a frozen ordinary-query panel to measure useful
-relation yield and rank. Pair N53/N83 inputs and operation-count boundaries
-with Q1482/Q1483/Q1485/Q1486. Count failed attempts, SAT propagation, field arithmetic,
-memory, and target-dependent wall intervals. If only the planted control
-passes, retain ordinary cost and N131 complete work as unknown. A complete
-N131 `2^x` also requires its exact usable base, relation collection, final
-matrix solve, target descent, and independent scalar replay.
+Test a **fully coupled four-leaf search** that leaves both internal
+midpoints existential while it reasons about many cyclic windows at once.
+Q1485 through Q1487 all choose or constrain a narrow midpoint slice and
+find no unpinned relation; another faster fixed-midpoint oracle is unlikely
+to answer the solve-cost question. Pre-register a compact symbolic support
+method, check it against direct enumeration on small fields, and reuse the
+exact Q1481/Q1482 N53/N83 curves, bases, public points and limits. Its
+first gate is one independently verified, fully unpinned known-satisfiable
+N83 relation without constructing the full pair table. The next gate is
+one ordinary N83 relation, followed by a frozen ordinary-query panel for
+useful yield and novel rank. Count failed attempts, SAT propagation,
+field arithmetic, memory, and target-dependent wall intervals alongside
+Q1482/Q1483/Q1485/Q1486/Q1487. If only the planted control passes, retain
+ordinary cost and N131 complete work as unknown. A complete N131 `2^x`
+also requires its exact usable base, relation collection, final matrix
+solve, target descent, and independent scalar replay.
 
 ## Reproduction
 
