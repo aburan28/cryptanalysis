@@ -386,15 +386,18 @@ speedup; the repository's CPU performance isolation gate applies.
 
 The last row is a 1.41x gain over the vector baseline, in one worker and in
 four, from the table-form selection, the tag and addend vectorised in the
-selection pass, the reduction's tail folded into one carry-less product, a
-SWAR word test for the rare report, and the point addition folded into the
-inversion's backward pass.  Of a lane's step at 2048 lanes (one worker, the
-stages timed apart), the five products and the squaring are about 60%, the
-selection with its tags and addend about 30%, the conversion and weight 5%,
-and the inversion with its peel 3% amortised.  What is left is almost all the
-multiply ports: the step is close to its carry-less-multiply floor, so the
-next gains are in the product itself (fewer sorts, shared Karatsuba sums)
-rather than in the scaffolding around it.
+selection pass, the reduction's quotient and tail each folded into one
+carry-less product (where f131.h spells the quotient out as sixteen truncating
+shifts and the tail as fourteen), a SWAR word test for the rare report, and the
+point addition folded into the inversion's backward pass.  Of a lane's step at
+2048 lanes (one worker, the stages timed apart), the five products and the
+squaring are about 60%, the selection with its tags and addend about 30%, the
+conversion and weight 5%, and the inversion with its peel 3% amortised.  What
+is left is almost all the multiply ports: a product is now about 1.7 ns and a
+square 1.2 a lane here, and the chain stage runs at roughly its arithmetic
+floor of five products and a square per lane, so the next gains are in the
+product itself (fewer sorts, shared Karatsuba sums) rather than in the
+scaffolding around it.
 
 The reports of a run do not depend on the batch size or the worker count,
 which `src/cputest.cpp` checks along with: the multiplier against a
