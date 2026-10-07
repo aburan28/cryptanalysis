@@ -537,7 +537,10 @@ class CpuEngine
             // of that lane in the same pass: lambda goes into x' and y'
             // without a trip through W (48 KB a batch at the default
             // geometry, written here and read back from L2 by a separate
-            // pass), and d is loaded once for both.
+            // pass), and d is loaded once for both.  The addition is forced
+            // inline: left to itself gcc 13 outlines it, and since no vector
+            // register survives a call that spills every chain's accumulator
+            // around it and passes lambda and d through the stack.
             for (i = B - 1; i >= tail; --i) {
                 FX &q = iv[(i - tail) / kLanes];
                 const int l = (i - tail) % kLanes;
@@ -546,7 +549,9 @@ class CpuEngine
                 q.setLane(l, f131::mul(r, b.D(i)));
                 addLane(b, i);
             }
-            const auto addVector = [&](int j, const FX &lambda, const FX &d) {
+            const auto addVector = [&](int j, const FX &lambda, const FX &d)
+                __attribute__((always_inline))
+            {
                 const FX x = FX::load(b.X0 + j, b.X1 + j, b.X2 + j),
                          y = FX::load(b.Y0 + j, b.Y1 + j, b.Y2 + j);
                 const FX nx =
