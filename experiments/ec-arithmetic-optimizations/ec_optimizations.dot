@@ -1,0 +1,151 @@
+digraph EC_Optimizations {
+  // Elliptic-curve arithmetic optimizations across the C core, GPU, FPGA,
+  // and Sage batch stacks. Source of truth for figures/ec_optimizations.svg/.pdf.
+  // White boxes = techniques; green ellipses = measured effects (this tree);
+  // yellow = conditional/off-by-default; red = rejected or not-a-measurement.
+  // rankdir=TB lays clusters left-to-right; nodes flow top-down inside each.
+  rankdir=TB;
+  splines=spline;
+  nodesep=0.30;
+  ranksep=0.70;
+  compound=true;
+  fontname="Helvetica";
+  fontsize=14;
+  labelloc=t;
+  label="Elliptic-curve arithmetic optimizations  |  boxes = techniques; green = measured; yellow = conditional; red = rejected / not-a-measurement";
+  node [fontname="Helvetica"];
+  edge [fontname="Helvetica", fontsize=9];
+
+  subgraph cluster_legend {
+    label="Legend";
+    style="rounded,filled";
+    fillcolor="#f9fafb";
+    legend_tech [label="technique", shape=box, style=filled, fillcolor="white", fontsize=11];
+    legend_meas [label="measured effect", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    legend_cond [label="conditional /\noff by default", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=11];
+    legend_neg [label="rejected /\nnot-a-measurement", shape=ellipse, style=filled, fillcolor="#fecaca", fontsize=11];
+  }
+
+  subgraph cluster_field {
+    label="FIELD: GF(p), p < 2^64 (modarith.c)";
+    style="rounded,filled";
+    fillcolor="#eff6ff";
+    FIELD [label="FIELD", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    F_MONT [label="64-bit Montgomery\nmultiplication", shape=box, style=filled, fillcolor="white", fontsize=11];
+    F_MONT_RES [label="all point arithmetic\nin Montgomery form", shape=box, style=filled, fillcolor="white", fontsize=11];
+    F_SQRT [label="isqrt via float\n+ fixup", shape=box, style=filled, fillcolor="white", fontsize=11];
+    M_MUL [label="M-FIELD1 (measured):\n5.9 ns / mult\n169 Mops/s", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    FIELD -> F_MONT;
+    FIELD -> F_MONT_RES;
+    FIELD -> F_SQRT;
+    F_MONT -> M_MUL;
+    F_MONT_RES -> M_MUL [style=dashed];
+  }
+
+  subgraph cluster_point {
+    label="POINT: affine Weierstrass (group_ec.c)";
+    style="rounded,filled";
+    fillcolor="#eff6ff";
+    POINT [label="POINT", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    P_BATCH [label="Montgomery simultaneous\ninversion (batch 256)", shape=box, style=filled, fillcolor="white", fontsize=11];
+    P_BRANCH [label="branch-light special\ncases inline", shape=box, style=filled, fillcolor="white", fontsize=11];
+    P_POD [label="32-byte POD values\n+ canonical negation", shape=box, style=filled, fillcolor="white", fontsize=11];
+    M_BATCH [label="M-POINT1 (measured):\n232 -> 21.8 ns/add\n10.6x", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    POINT -> P_BATCH;
+    POINT -> P_BRANCH;
+    POINT -> P_POD;
+    P_BATCH -> M_BATCH;
+  }
+
+  subgraph cluster_scalar {
+    label="SCALAR: multiplication + endomorphisms (curve.c, precomp.c)";
+    style="rounded,filled";
+    fillcolor="#fffbeb";
+    SCALAR [label="SCALAR", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    S_FIXBASE [label="fixed-base doubling\ntable (walk starts)", shape=box, style=filled, fillcolor="white", fontsize=11];
+    S_NEG [label="negation-map fold\n(sqrt 2)", shape=box, style=filled, fillcolor="white", fontsize=11];
+    S_GLV [label="GLV automorphism fold\n(j0 x6, j1728 x4)", shape=box, style=filled, fillcolor="white", fontsize=11];
+    S_BLS [label="fruitless-cycle handling\n(look-ahead + escape)", shape=box, style=filled, fillcolor="white", fontsize=11];
+    M_GLV0 [label="M-SCALAR1 (measured):\nj0 1.71x over neg-rho\n(32-bit row)", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    M_GLV1 [label="M-SCALAR2 (measured):\nj1728 1.34x over neg-rho\n(26-bit row)", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    C_TAU [label="C-SCALAR1 (absent here):\ntau-adic mult discussed\nin literature, not in tree", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=11];
+    SCALAR -> S_FIXBASE;
+    SCALAR -> S_NEG;
+    SCALAR -> S_GLV;
+    SCALAR -> S_BLS;
+    S_GLV -> M_GLV0;
+    S_GLV -> M_GLV1;
+    S_FIXBASE -> C_TAU [style=dashed, label="see open\nchecks"];
+  }
+
+  subgraph cluster_engine {
+    label="ENGINE: DLP algorithms (rho/bsgs/kangaroo/grumpy/precomp/indexcalc/cheon)";
+    style="rounded,filled";
+    fillcolor="#f0fdf4";
+    ENGINE [label="ENGINE", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    E_TESKE [label="Teske r-adding walk\n+ auto (r,W,dp) sizing", shape=box, style=filled, fillcolor="white", fontsize=11];
+    E_DP [label="distinguished-point\ntable (cap 2^24)", shape=box, style=filled, fillcolor="white", fontsize=11];
+    E_BSGS [label="64-bit fingerprint\nBSGS table", shape=box, style=filled, fillcolor="white", fontsize=11];
+    E_KANG [label="auto jump sizing\n+ same-herd reseed", shape=box, style=filled, fillcolor="white", fontsize=11];
+    E_GRUMPY [label="grumpy alpha=0.7\nby exact simulation", shape=box, style=filled, fillcolor="white", fontsize=11];
+    E_PRECOMP [label="precomp: batched inv +\nBloom + compact table", shape=box, style=filled, fillcolor="white", fontsize=11];
+    E_SIEVE [label="linear sieve +\nauto (B,C) + Lanczos", shape=box, style=filled, fillcolor="white", fontsize=11];
+    E_CHEON [label="Cheon best-divisor\nselection", shape=box, style=filled, fillcolor="white", fontsize=11];
+    M_PRECOMP [label="M-ENGINE1 (measured):\nbuild 2.26s -> 0.44s\n5x, +3.9x threads", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    M_GRUMPY [label="M-ENGINE2 (measured):\nS 1.18 whole-group\nvs 1.33 BSGS", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    M_CHEON [label="M-ENGINE3 (measured):\n1.9x / 4.2x / 18.6x\nat 32/40/48 bits", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    M_SIEVE [label="M-ENGINE4 (measured):\nIC/rho crossover\nnear 56 bits", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    C_BLOOM [label="C-ENGINE1 (conditional):\nBloom early-abort pays\nonly at coverage >> 1", shape=ellipse, style=filled, fillcolor="#fef9c3", fontsize=11];
+    ENGINE -> E_TESKE;
+    ENGINE -> E_DP;
+    ENGINE -> E_BSGS;
+    ENGINE -> E_KANG;
+    ENGINE -> E_GRUMPY;
+    ENGINE -> E_PRECOMP;
+    ENGINE -> E_SIEVE;
+    ENGINE -> E_CHEON;
+    E_PRECOMP -> M_PRECOMP;
+    E_GRUMPY -> M_GRUMPY;
+    E_CHEON -> M_CHEON;
+    E_SIEVE -> M_SIEVE;
+    E_PRECOMP -> C_BLOOM [style=dashed];
+  }
+
+  subgraph cluster_fleet {
+    label="FLEET: GPU / FPGA / Sage batch / ECC2K-130 client";
+    style="rounded,filled";
+    fillcolor="#f5f3ff";
+    FLEET [label="FLEET", shape=box, style="filled,bold", fillcolor="#dbeafe", fontsize=12];
+    L_GPU [label="8 walks/thread share\n1 Fermat inversion", shape=box, style=filled, fillcolor="white", fontsize=11];
+    L_SINGLE [label="single-source .cuh\n(CUDA + C11)", shape=box, style=filled, fillcolor="white", fontsize=11];
+    L_DP [label="atomicAdd DP protocol\nhost-side verify", shape=box, style=filled, fillcolor="white", fontsize=11];
+    L_ONB [label="type-II optimal normal\nbasis (FPGA/ECC2K)", shape=box, style=filled, fillcolor="white", fontsize=11];
+    L_SAGE [label="Sage batch APIs\n+ Cython/NTL loop", shape=box, style=filled, fillcolor="white", fontsize=11];
+    M_GPU [label="M-FLEET1 (measured):\n99 -> 18 mults/step\n5.5x; 0 spills", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    M_SAGE [label="M-FLEET2 (measured):\n1.61x / 1.56x / 2.15x\nper accepted step", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    M_EC2K [label="M-FLEET3 (measured):\n20.08 B iters/s\nRTX PRO 6000", shape=ellipse, style=filled, fillcolor="#bbf7d0", fontsize=11];
+    C_EMU [label="C-FLEET1 (not device):\nrows are host-emulator\nop counts, not GPU s", shape=ellipse, style=filled, fillcolor="#fecaca", fontsize=11];
+    C_FPGA [label="C-FLEET2 (no fmax):\nsimulation + yosys LUTs\nonly; needs P&R", shape=ellipse, style=filled, fillcolor="#fecaca", fontsize=11];
+    C_UNROLL [label="C-FLEET3 (rejected):\nforce-unroll 72->168 regs\ncosts occupancy", shape=ellipse, style=filled, fillcolor="#fecaca", fontsize=11];
+    FLEET -> L_GPU;
+    FLEET -> L_SINGLE;
+    FLEET -> L_DP;
+    FLEET -> L_ONB;
+    FLEET -> L_SAGE;
+    L_GPU -> M_GPU;
+    L_SAGE -> M_SAGE;
+    L_ONB -> M_EC2K;
+    L_SINGLE -> C_EMU [style=dashed];
+    L_ONB -> C_FPGA [style=dashed];
+    L_GPU -> C_UNROLL [style=dashed];
+  }
+
+  FIELD -> POINT [penwidth=2.0, weight=100, ltail=cluster_field, lhead=cluster_point];
+  POINT -> SCALAR [penwidth=2.0, weight=100, ltail=cluster_point, lhead=cluster_scalar];
+  SCALAR -> ENGINE [penwidth=2.0, weight=100, ltail=cluster_scalar, lhead=cluster_engine];
+  ENGINE -> FLEET [penwidth=2.0, weight=100, ltail=cluster_engine, lhead=cluster_fleet];
+  P_BATCH -> E_TESKE [style=dashed, constraint=false, label="walks step\nin batches"];
+  S_FIXBASE -> E_PRECOMP [style=dashed, constraint=false];
+  S_NEG -> E_TESKE [style=dashed, constraint=false, label="folded\nwalk"];
+  E_DP -> L_DP [style=dashed, constraint=false, label="same\nprotocol"];
+}
