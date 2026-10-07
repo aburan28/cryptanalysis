@@ -14,6 +14,7 @@ independently audits their proofs and work counters, rejects corrupted
 artifacts, and optionally records the entire diagnostic panel. It retains a
 failed attempt and never selectively retries timing cells.
 
+See [RESULTS.md](RESULTS.md) for the frozen observations and retained failures.
 See [PROTOCOL.md](PROTOCOL.md) for the equivalence argument, limits and frozen
 comparison. This is a Macaulay component study, not a complete IC pipeline or
 a new F6 asymptotic result. CPU timing ratios remain unknown without the
