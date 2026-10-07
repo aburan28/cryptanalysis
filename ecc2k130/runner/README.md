@@ -15,8 +15,9 @@ Production GPU builds and fleet clients always use **CUDA 13.3 or newer**
 campaign `ecc2k130-table8-22b-v1`). That launcher sets
 `allowedCudaVersions=["13.0"]` (Runpod's CUDA 13 family name) and rejects
 drivers below 580. The older `aws/launch_opt_5090.py` sigma-fused path is
-~5 B it/s and is refused unless `ECC_ALLOW_SLOW_OPT=1`. Do not place workers on
-CUDA 12 / driver 570 hosts.
+~5 B it/s; that launcher sets `ECC_ALLOW_SLOW_OPT=1` itself when required.
+Prefer goal22 for fleet collection. Do not place workers on CUDA 12 / driver
+570 hosts.
 
 For cloud collection, use **`cloud.py`**, **`modal_worker.py`**, and
 **`deploy/Dockerfile`**. Both providers run the same supervisor:
