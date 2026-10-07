@@ -436,3 +436,14 @@ curves. It preserves the full pair table's online addition count on a
 new disjoint fixture while cutting prepared point slots to 11,817 and
 33,393. Release and UBSan correctness panels pass. Controlled wall-time
 performance remains unknown.
+
+The [pair point-width experiment](JOINT_PAIR_WIDTH.md) proves that no
+prepared pair orbit point is the identity on these two subgroups. It
+uses that fact to store each bounded-table point in three field words
+instead of four, or in two words with one online field multiplication
+for each nontrivial unit rotation. On a fresh disjoint 32,768-scalar
+fixture, all formats matched outputs and online group-add counts in
+release and UBSan builds. The 24-byte format cuts the point table by
+25%; the 16-byte format cuts it by 50% and adds 22,368 or 44,944
+online field multiplications per 16,384 scalars on the two curves.
+Controlled wall-time performance remains unknown.

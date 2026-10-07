@@ -852,6 +852,70 @@ static void joint_pair_hex_named(uint64_t p, uint64_t b, uint64_t order, unsigne
     ca_ec_joint_pair_clear(&pre);
 }
 
+static void joint_pair_width_named(uint64_t p, uint64_t b, uint64_t order, unsigned pairs,
+                                   unsigned words)
+{
+    CHECK_EQ_U64(sizeof(ca_joint_pair_triple_point), 3 * sizeof(uint64_t));
+    CHECK_EQ_U64(sizeof(ca_joint_pair_double_point), 2 * sizeof(uint64_t));
+    ca_group g;
+    ca_curve_info info;
+    CHECK(ca_curve_group(&g, p, 0, b, order, &info) == CA_OK);
+    CHECK(info.endo == CA_CURVE_ENDO_J0);
+    ca_elem point;
+    CHECK(ca_group_find_generator(&g, &point, 1) == CA_OK);
+    ca_joint_pair_precomp pre = {0};
+    uint64_t inversions = 0, plane_muls = UINT64_MAX;
+    CHECK(!ca_ec_joint_pair_width_prepare(&g, &point, &pre, 1, NULL, NULL, NULL, NULL));
+    CHECK(ca_ec_joint_pair_width_prepare(&g, &point, &pre, words, NULL, NULL, &inversions,
+                                         &plane_muls));
+    size_t entries = ca_ec_joint_pair_top_point_entries(&g);
+    CHECK_EQ_U64(pre.point_words, words);
+    CHECK_EQ_U64(pre.pairs, pairs);
+    CHECK_EQ_U64(inversions, pairs);
+    CHECK_EQ_U64(plane_muls, words == 3 ? entries : 0);
+    CHECK(ca_ec_joint_pair_prepare_verify(&pre));
+    if (words == 3) {
+        pre.triple_point[0].x_beta ^= 1;
+        CHECK(!ca_ec_joint_pair_prepare_verify(&pre));
+        pre.triple_point[0].x_beta ^= 1;
+    } else {
+        pre.double_point[0].x ^= 1;
+        CHECK(!ca_ec_joint_pair_prepare_verify(&pre));
+        pre.double_point[0].x ^= 1;
+    }
+    const uint64_t scalars[] = {0, 1, 2, 3, 17, order / 2, order - 1};
+    for (size_t i = 0; i < sizeof(scalars) / sizeof(scalars[0]); i++) {
+        ca_elem got, expected;
+        uint64_t rotations = UINT64_MAX, unit_adds = UINT64_MAX, fallbacks = UINT64_MAX;
+        ca_group_mul(&g, &expected, &point, scalars[i], NULL);
+        CHECK(ca_ec_joint_pair_width_mul_profile(&g, &pre, &got, scalars[i], NULL, &rotations,
+                                                 &unit_adds, &fallbacks));
+        CHECK(ca_group_equal(&g, &got, &expected));
+        CHECK_EQ_U64(fallbacks, 0);
+        if (words == 3) CHECK_EQ_U64(rotations, 0);
+        if (words == 2) CHECK_EQ_U64(unit_adds, 0);
+        CHECK(!ca_ec_joint_pair_mul_profile(&g, &pre, &got, scalars[i], NULL, NULL, NULL));
+    }
+    unsigned saved_pairs = pre.pairs;
+    pre.pairs = 1;
+    ca_elem got, expected;
+    uint64_t fallbacks = 0;
+    ca_group_mul(&g, &expected, &point, order / 2, NULL);
+    CHECK(ca_ec_joint_pair_width_mul_profile(&g, &pre, &got, order / 2, NULL, NULL, NULL,
+                                             &fallbacks));
+    CHECK(ca_group_equal(&g, &got, &expected));
+    CHECK_EQ_U64(fallbacks, 1);
+    pre.pairs = saved_pairs;
+    ca_ec_joint_pair_clear(&pre);
+    ca_elem identity;
+    ca_group_identity(&g, &identity);
+    CHECK(ca_ec_joint_pair_width_prepare(&g, &identity, &pre, words, NULL, NULL, NULL, NULL));
+    CHECK(ca_ec_joint_pair_prepare_verify(&pre));
+    CHECK(ca_ec_joint_pair_width_mul_profile(&g, &pre, &got, 17, NULL, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(&g, &got));
+    ca_ec_joint_pair_clear(&pre);
+}
+
 static void tau_cost_named(const char *name)
 {
     uint64_t p, a, b, order;
@@ -1550,6 +1614,10 @@ int main(void)
     joint_pair_hex_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747), 4, 0);
     joint_pair_hex_named(UINT64_C(4294967377), 15, UINT64_C(23729779), 2, 1);
     joint_pair_hex_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747), 4, 1);
+    joint_pair_width_named(UINT64_C(4294967377), 15, UINT64_C(23729779), 2, 3);
+    joint_pair_width_named(UINT64_C(4294967377), 15, UINT64_C(23729779), 2, 2);
+    joint_pair_width_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747), 4, 3);
+    joint_pair_width_named(UINT64_C(2305843009213693951), 7, UINT64_C(53624256071278747), 4, 2);
     tau_cost_boundary_curves();
     tau_fused_named("glv-j0-32", 4);
     tau_fused_named("j0-56", 6);

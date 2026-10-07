@@ -49,6 +49,14 @@ typedef struct ca_joint_window4_plane_point {
     uint64_t x, y, x_beta, identity;
 } ca_joint_window4_plane_point;
 
+typedef struct ca_joint_pair_triple_point {
+    uint64_t x, y, x_beta;
+} ca_joint_pair_triple_point;
+
+typedef struct ca_joint_pair_double_point {
+    uint64_t x, y;
+} ca_joint_pair_double_point;
+
 typedef struct ca_joint_window4_precomp {
     const ca_group *g;
     ca_elem base_point;
@@ -104,6 +112,8 @@ typedef struct ca_joint_pair_precomp {
     const ca_group *g;
     ca_elem base_point;
     ca_joint_window4_plane_point *plane_point;
+    ca_joint_pair_triple_point *triple_point;
+    ca_joint_pair_double_point *double_point;
     uint64_t beta, beta2;
     __int128 v1x, v1y, v2x, v2y, det;
     unsigned pairs;
@@ -111,6 +121,7 @@ typedef struct ca_joint_pair_precomp {
     const uint16_t *top_orbit, *top_rank;
     int identity;
     int top_compressed;
+    unsigned point_words;
 } ca_joint_pair_precomp;
 size_t ca_ec_joint_pair_static_bytes(void);
 size_t ca_ec_joint_pair_top_static_bytes(void);
@@ -124,10 +135,18 @@ int ca_ec_joint_pair_prepare(const ca_group *g, const ca_elem *point, ca_joint_p
 int ca_ec_joint_pair_top_prepare(const ca_group *g, const ca_elem *point,
                                  ca_joint_pair_precomp *out, uint64_t *doubles, uint64_t *adds,
                                  uint64_t *inversions, uint64_t *plane_muls);
+int ca_ec_joint_pair_width_prepare(const ca_group *g, const ca_elem *point,
+                                   ca_joint_pair_precomp *out, unsigned point_words,
+                                   uint64_t *doubles, uint64_t *adds, uint64_t *inversions,
+                                   uint64_t *plane_muls);
 int ca_ec_joint_pair_prepare_verify(const ca_joint_pair_precomp *pre);
 int ca_ec_joint_pair_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre, ca_elem *out,
                                  uint64_t k, uint64_t *adds, uint64_t *unit_adds,
                                  uint64_t *fallbacks);
+int ca_ec_joint_pair_width_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre,
+                                       ca_elem *out, uint64_t k, uint64_t *adds,
+                                       uint64_t *rotations, uint64_t *unit_adds,
+                                       uint64_t *fallbacks);
 void ca_ec_joint_pair_clear(ca_joint_pair_precomp *pre);
 
 /* Per-point width-4 table for repeated scalar multiplications within one rho

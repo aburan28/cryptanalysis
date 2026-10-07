@@ -1161,10 +1161,13 @@ int ca_ec_joint_pair_top_verify_map(void)
 
 static int joint_pair_prepare_impl(const ca_group *g, const ca_elem *point,
                                    ca_joint_pair_precomp *out, uint64_t *doubles, uint64_t *adds,
-                                   uint64_t *inversions, uint64_t *plane_muls, int top_compressed)
+                                   uint64_t *inversions, uint64_t *plane_muls, int top_compressed,
+                                   unsigned point_words)
 {
     if (!g || !point || !out || g->kind != CA_GROUP_EC || g->endo_kind != 1 || g->a != 0 ||
         g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda ||
+        (point_words != 4 && point_words != 3 && point_words != 2) ||
+        (!top_compressed && point_words != 4) ||
         !(top_compressed ? ca_ec_joint_pair_top_verify_map() : ca_ec_joint_pair_verify_map()))
         return 0;
     int curve = joint_pair_curve_index(g);
@@ -1176,6 +1179,7 @@ static int joint_pair_prepare_impl(const ca_group *g, const ca_elem *point,
     pre.base_point = *point;
     pre.pairs = curve ? 4 : 2;
     pre.top_compressed = top_compressed;
+    pre.point_words = point_words;
     if (top_compressed) {
         pre.top_count = curve ? CA_JOINT_PAIR_TOP_LARGE_ORBITS : CA_JOINT_PAIR_TOP_SMALL_ORBITS;
         pre.top_orbit = curve ? ca_joint_pair_top_large_orbit : ca_joint_pair_top_small_orbit;
@@ -1199,12 +1203,20 @@ static int joint_pair_prepare_impl(const ca_group *g, const ca_elem *point,
         *out = pre;
         return 1;
     }
-    pre.plane_point = malloc(entries * sizeof(*pre.plane_point));
+    if (point_words == 4)
+        pre.plane_point = malloc(entries * sizeof(*pre.plane_point));
+    else if (point_words == 3)
+        pre.triple_point = malloc(entries * sizeof(*pre.triple_point));
+    else
+        pre.double_point = malloc(entries * sizeof(*pre.double_point));
     tau_jac *projective = malloc(CA_JOINT_PAIR_ORBITS * sizeof(*projective));
     ca_elem *affine = malloc(CA_JOINT_PAIR_ORBITS * sizeof(*affine));
     uint64_t *prefixes = malloc(CA_JOINT_PAIR_ORBITS * sizeof(*prefixes));
-    if (!pre.plane_point || !projective || !affine || !prefixes) {
+    if (!(pre.plane_point || pre.triple_point || pre.double_point) || !projective || !affine ||
+        !prefixes) {
         free(pre.plane_point);
+        free(pre.triple_point);
+        free(pre.double_point);
         free(projective);
         free(affine);
         free(prefixes);
@@ -1245,10 +1257,22 @@ static int joint_pair_prepare_impl(const ca_group *g, const ca_elem *point,
         for (unsigned orbit = 0; orbit < current_orbits; orbit++) {
             ca_elem ordinary = affine[orbit];
             size_t index = (size_t)pair_position * CA_JOINT_PAIR_ORBITS + orbit;
-            pre.plane_point[index] = (ca_joint_window4_plane_point){
-                ordinary.w[0], ordinary.w[1], ordinary.w[2] ? 0 : fm(g, pre.beta, ordinary.w[0]),
-                ordinary.w[2]};
-            if (plane_muls) (*plane_muls) += !ordinary.w[2];
+            if (point_words == 4) {
+                pre.plane_point[index] = (ca_joint_window4_plane_point){
+                    ordinary.w[0], ordinary.w[1],
+                    ordinary.w[2] ? 0 : fm(g, pre.beta, ordinary.w[0]), ordinary.w[2]};
+                if (plane_muls) (*plane_muls) += !ordinary.w[2];
+            } else {
+                if (ordinary.w[2]) goto failure;
+                if (point_words == 3) {
+                    pre.triple_point[index] = (ca_joint_pair_triple_point){
+                        ordinary.w[0], ordinary.w[1], fm(g, pre.beta, ordinary.w[0])};
+                    if (plane_muls) (*plane_muls)++;
+                } else {
+                    pre.double_point[index] =
+                        (ca_joint_pair_double_point){ordinary.w[0], ordinary.w[1]};
+                }
+            }
         }
         if (pair_position + 1 < pre.pairs)
             for (unsigned bit = 0; bit < 8; bit++) {
@@ -1263,6 +1287,8 @@ static int joint_pair_prepare_impl(const ca_group *g, const ca_elem *point,
     return 1;
 failure:
     free(pre.plane_point);
+    free(pre.triple_point);
+    free(pre.double_point);
     free(projective);
     free(affine);
     free(prefixes);
@@ -1273,14 +1299,24 @@ int ca_ec_joint_pair_prepare(const ca_group *g, const ca_elem *point, ca_joint_p
                              uint64_t *doubles, uint64_t *adds, uint64_t *inversions,
                              uint64_t *plane_muls)
 {
-    return joint_pair_prepare_impl(g, point, out, doubles, adds, inversions, plane_muls, 0);
+    return joint_pair_prepare_impl(g, point, out, doubles, adds, inversions, plane_muls, 0, 4);
 }
 
 int ca_ec_joint_pair_top_prepare(const ca_group *g, const ca_elem *point,
                                  ca_joint_pair_precomp *out, uint64_t *doubles, uint64_t *adds,
                                  uint64_t *inversions, uint64_t *plane_muls)
 {
-    return joint_pair_prepare_impl(g, point, out, doubles, adds, inversions, plane_muls, 1);
+    return joint_pair_prepare_impl(g, point, out, doubles, adds, inversions, plane_muls, 1, 4);
+}
+
+int ca_ec_joint_pair_width_prepare(const ca_group *g, const ca_elem *point,
+                                   ca_joint_pair_precomp *out, unsigned point_words,
+                                   uint64_t *doubles, uint64_t *adds, uint64_t *inversions,
+                                   uint64_t *plane_muls)
+{
+    if (point_words != 2 && point_words != 3) return 0;
+    return joint_pair_prepare_impl(g, point, out, doubles, adds, inversions, plane_muls, 1,
+                                   point_words);
 }
 
 int ca_ec_joint_pair_prepare_verify(const ca_joint_pair_precomp *pre)
@@ -1290,8 +1326,14 @@ int ca_ec_joint_pair_prepare_verify(const ca_joint_pair_precomp *pre)
     if (pre->top_compressed && (!pre->top_orbit || !pre->top_rank || !pre->top_count ||
                                 !ca_ec_joint_pair_top_verify_map()))
         return 0;
-    if (pre->identity) return pre->plane_point == NULL;
-    if (!pre->plane_point) return 0;
+    if (pre->identity)
+        return (pre->point_words == 4 || pre->point_words == 3 || pre->point_words == 2) &&
+               !pre->plane_point && !pre->triple_point && !pre->double_point;
+    if ((pre->point_words == 4 && (!pre->plane_point || pre->triple_point || pre->double_point)) ||
+        (pre->point_words == 3 && (!pre->triple_point || pre->plane_point || pre->double_point)) ||
+        (pre->point_words == 2 && (!pre->double_point || pre->plane_point || pre->triple_point)) ||
+        (pre->point_words != 4 && pre->point_words != 3 && pre->point_words != 2))
+        return 0;
     const ca_group *g = pre->g;
     ca_i128 omega = (ca_i128)g->order - g->endo_lambda;
     ca_i128 power = 1;
@@ -1306,23 +1348,34 @@ int ca_ec_joint_pair_prepare_verify(const ca_joint_pair_precomp *pre)
             if (scalar < 0) scalar += g->order;
             ca_elem expected;
             ca_group_mul(g, &expected, &pre->base_point, (uint64_t)scalar, NULL);
-            ca_joint_window4_plane_point packed =
-                pre->plane_point[(size_t)pair_position * CA_JOINT_PAIR_ORBITS + orbit];
-            ca_elem actual = (ca_elem){{packed.x, packed.y, packed.identity, 0}};
+            size_t index = (size_t)pair_position * CA_JOINT_PAIR_ORBITS + orbit;
+            ca_elem actual;
+            if (pre->point_words == 4) {
+                ca_joint_window4_plane_point packed = pre->plane_point[index];
+                actual = (ca_elem){{packed.x, packed.y, packed.identity, 0}};
+                if (packed.x_beta != (packed.identity ? 0 : fm(g, pre->beta, packed.x))) return 0;
+            } else if (pre->point_words == 3) {
+                ca_joint_pair_triple_point packed = pre->triple_point[index];
+                actual = (ca_elem){{packed.x, packed.y, 0, 0}};
+                if (packed.x_beta != fm(g, pre->beta, packed.x)) return 0;
+            } else {
+                ca_joint_pair_double_point packed = pre->double_point[index];
+                actual = (ca_elem){{packed.x, packed.y, 0, 0}};
+            }
             if (!ca_group_equal(g, &expected, &actual)) return 0;
-            if (packed.x_beta != (packed.identity ? 0 : fm(g, pre->beta, packed.x))) return 0;
         }
         power *= 256;
     }
     return 1;
 }
 
-int ca_ec_joint_pair_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre, ca_elem *out,
-                                 uint64_t k, uint64_t *adds, uint64_t *unit_adds,
-                                 uint64_t *fallbacks)
+static int joint_pair_mul_impl(const ca_group *g, const ca_joint_pair_precomp *pre, ca_elem *out,
+                               uint64_t k, uint64_t *adds, uint64_t *rotations, uint64_t *unit_adds,
+                               uint64_t *fallbacks)
 {
     if (!g || !pre || !out || pre->g != g || !pre->pairs || pre->pairs > 4) return 0;
     if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
     if (unit_adds) *unit_adds = 0;
     if (fallbacks) *fallbacks = 0;
     k %= g->order;
@@ -1330,7 +1383,11 @@ int ca_ec_joint_pair_mul_profile(const ca_group *g, const ca_joint_pair_precomp 
         *out = (ca_elem){{0, 0, 1, 0}};
         return 1;
     }
-    if (!pre->plane_point) return 0;
+    if ((pre->point_words == 4 && !pre->plane_point) ||
+        (pre->point_words == 3 && !pre->triple_point) ||
+        (pre->point_words == 2 && !pre->double_point) ||
+        (pre->point_words != 4 && pre->point_words != 3 && pre->point_words != 2))
+        return 0;
     ca_i128 a, b;
     reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det, k,
                         &a, &b);
@@ -1363,21 +1420,45 @@ int ca_ec_joint_pair_mul_profile(const ca_group *g, const ca_joint_pair_precomp 
         }
     }
     tau_jac accumulator = {0, g->mont.r1, 0};
-    uint64_t na = 0, nu = 0;
+    uint64_t na = 0, nr = 0, nu = 0;
     for (unsigned pair_position = 0; pair_position < pre->pairs; pair_position++) {
         unsigned orbit = action[pair_position] & CA_JOINT_PAIR_ZERO;
         unsigned code = action[pair_position] >> CA_JOINT_PAIR_ORBIT_BITS;
         if (orbit == CA_JOINT_PAIR_ZERO) continue;
         if (orbit >= CA_JOINT_PAIR_ORBITS || code >= 6) return 0;
         if (pre->top_compressed && pair_position + 1 == pre->pairs) orbit = pre->top_rank[orbit];
-        ca_joint_window4_plane_point packed =
-            pre->plane_point[(size_t)pair_position * CA_JOINT_PAIR_ORBITS + orbit];
-        ca_elem point = (ca_elem){{packed.x, packed.y, packed.identity, 0}};
-        if (point.w[2]) continue;
-        if (code % 3 == 1) point.w[0] = packed.x_beta;
-        if (code % 3 == 2) {
-            point.w[0] = fs(g, 0, fa(g, packed.x, packed.x_beta));
-            nu += 2;
+        size_t index = (size_t)pair_position * CA_JOINT_PAIR_ORBITS + orbit;
+        ca_elem point;
+        if (pre->point_words == 4) {
+            ca_joint_window4_plane_point packed = pre->plane_point[index];
+            point = (ca_elem){{packed.x, packed.y, packed.identity, 0}};
+            if (point.w[2]) continue;
+            if (code % 3 == 1) point.w[0] = packed.x_beta;
+            if (code % 3 == 2) {
+                point.w[0] = fs(g, 0, fa(g, packed.x, packed.x_beta));
+                nu += 2;
+            }
+        } else if (pre->point_words == 3) {
+            ca_joint_pair_triple_point packed = pre->triple_point[index];
+            point = (ca_elem){{packed.x, packed.y, 0, 0}};
+            if (code % 3 == 1) point.w[0] = packed.x_beta;
+            if (code % 3 == 2) {
+                point.w[0] = fs(g, 0, fa(g, packed.x, packed.x_beta));
+                nu += 2;
+            }
+        } else if (pre->point_words == 2) {
+            ca_joint_pair_double_point packed = pre->double_point[index];
+            point = (ca_elem){{packed.x, packed.y, 0, 0}};
+            if (code % 3 == 1) {
+                point.w[0] = fm(g, pre->beta, packed.x);
+                nr++;
+            }
+            if (code % 3 == 2) {
+                point.w[0] = fm(g, pre->beta2, packed.x);
+                nr++;
+            }
+        } else {
+            return 0;
         }
         if (code >= 3 && point.w[1]) point.w[1] = g->p - point.w[1];
         accumulator = jac_add_mixed(g, accumulator, &point);
@@ -1385,14 +1466,34 @@ int ca_ec_joint_pair_mul_profile(const ca_group *g, const ca_joint_pair_precomp 
     }
     jac_to_affine(g, out, accumulator);
     if (adds) *adds = na;
+    if (rotations) *rotations = nr;
     if (unit_adds) *unit_adds = nu;
     return 1;
+}
+
+int ca_ec_joint_pair_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre, ca_elem *out,
+                                 uint64_t k, uint64_t *adds, uint64_t *unit_adds,
+                                 uint64_t *fallbacks)
+{
+    if (!pre || pre->point_words != 4) return 0;
+    return joint_pair_mul_impl(g, pre, out, k, adds, NULL, unit_adds, fallbacks);
+}
+
+int ca_ec_joint_pair_width_mul_profile(const ca_group *g, const ca_joint_pair_precomp *pre,
+                                       ca_elem *out, uint64_t k, uint64_t *adds,
+                                       uint64_t *rotations, uint64_t *unit_adds,
+                                       uint64_t *fallbacks)
+{
+    if (!pre || (pre->point_words != 3 && pre->point_words != 2)) return 0;
+    return joint_pair_mul_impl(g, pre, out, k, adds, rotations, unit_adds, fallbacks);
 }
 
 void ca_ec_joint_pair_clear(ca_joint_pair_precomp *pre)
 {
     if (!pre) return;
     free(pre->plane_point);
+    free(pre->triple_point);
+    free(pre->double_point);
     *pre = (ca_joint_pair_precomp){0};
 }
 

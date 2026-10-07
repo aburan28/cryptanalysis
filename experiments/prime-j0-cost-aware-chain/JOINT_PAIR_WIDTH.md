@@ -30,7 +30,40 @@ predictions are:
 
 Removing the identity flag is exact for these two subgroup tables. The
 two-word format trades a smaller random-access table for online field
-work. The comparison requires native correctness and matched inputs;
-local CPU timings remain exploratory until a qualifying isolated-host
-receipt exists. This is a public-scalar table-format experiment, not a
-one-target rho or IC speedup claim.
+work. The three-word format retains the same online arithmetic as the
+four-word format and removes 25% of its point-table bytes. The two-word
+format removes 50% of those bytes, but its extra field multiplication
+could outweigh the cache benefit.
+
+The [fresh fixture](joint-pair-width-inputs/inputs.json) excludes every
+scalar in fourteen earlier fixtures. The [release panel](joint-pair-width-native-panel.json)
+and [warnings-as-errors UBSan panel](joint-pair-width-ubsan-panel.json)
+each passed 40 native arms in rotating order over eight cases: the
+three pair formats, packed single-window plane, and fixed comb9. Every
+native arm verified the full prepared table and replayed all 4,096
+outputs per case. The independent Python model checked 32,768 scalar
+identities and 184 group decompositions. The C suite passed 2,312,551
+checks in both builds, including corrupted-table detection and forced
+fallback for each new format.
+
+| Curve | Scalars | Pair additions, all formats | Online field rotations, two-word only | Three-word table bytes | Two-word table bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `glv-j0-32` | 16,384 | 32,721 | 22,368 | 283,608 | 189,072 |
+| `j0-56` | 16,384 | 65,450 | 44,944 | 801,432 | 534,288 |
+
+The 32- and 24-byte formats also matched in unit-action additions:
+20,898 and 41,140, respectively. The 16-byte format replaced these
+with the counted field rotations. All modes had zero fallbacks and the
+same output digest for each paired case. These are operation and memory
+measurements, not a wall-time speedup.
+
+The [isolated manifest producer](make_joint_pair_width_isolated_manifest.py)
+can compare either new format against the 32-byte pair format or the
+packed single-window plane. Each generated manifest passed the local
+runner schema check with 183 custody artifacts, eight cases, and 24
+paired repetitions. A real Linux host must supply the CPU partition,
+NUMA node, frequency and IRQ controls required by
+[the isolation gate](../../docs/ISOLATED_BENCHMARKS.md). The local
+macOS timing fields are exploratory; no isolated receipt or controlled
+wall-time ratio exists yet. This is a public-scalar table-format
+experiment, not a one-target rho or IC speedup claim.
