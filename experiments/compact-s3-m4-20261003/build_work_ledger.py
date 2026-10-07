@@ -8944,6 +8944,14 @@ def main():
             "verified_ordinary_relations": 0,
             "ordinary_n53_sat_propagations_at_cap": 297_449_277,
             "ordinary_n83_sat_propagations_at_cap": 315_503_020,
+            "ordinary_n53_sat_propagations_log2_at_cap": math.log2(
+                297_449_277),
+            "ordinary_n83_sat_propagations_log2_at_cap": math.log2(
+                315_503_020),
+            "log2_scope": (
+                "censored per-query SAT propagation count; separate "
+                "from field work and not a successful or complete solve "
+                "projection"),
             "successful_N53_N83_unpinned_cost": None,
             "natural_relation_yield_estimate": None,
             "complete_n131_log2_work": None,
