@@ -15,6 +15,8 @@ use num_traits::{Signed, Zero};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::LazyLock;
+use std::time::Instant;
 
 #[derive(Clone, Copy)]
 struct J {
@@ -211,6 +213,32 @@ fn prepare(base: J, beta: F) -> [J; 9] {
      two_four_tau, two_tau, one_minus_two_tau]
 }
 
+fn normalize_all(seeds: &[J; 9]) -> [J; 9] {
+    let mut normalized = *seeds;
+    let mut prefix = [F::ONE; 8];
+    let mut product = seeds[1].z;
+    assert!(product != F::ZERO);
+    for index in 2..9 {
+        assert!(seeds[index].z != F::ZERO);
+        prefix[index - 1] = product;
+        product = product.mul(&seeds[index].z);
+    }
+    let mut inverse_product = product.inv();
+    let mut inverse_z = [F::ZERO; 8];
+    for index in (2..9).rev() {
+        inverse_z[index - 1] = inverse_product.mul(&prefix[index - 1]);
+        inverse_product = inverse_product.mul(&seeds[index].z);
+    }
+    inverse_z[0] = inverse_product;
+    for index in 1..9 {
+        let square = inverse_z[index - 1].sqr();
+        let cube = square.mul(&inverse_z[index - 1]);
+        normalized[index] = J::affine(seeds[index].x.mul(&square),
+                                      seeds[index].y.mul(&cube));
+    }
+    normalized
+}
+
 fn orbit(seed: J, beta: F) -> [J; 3] {
     let x1 = beta.mul(&seed.x);
     let x2 = seed.x.neg().sub(&x1);
@@ -252,7 +280,12 @@ fn eisenstein_norm(a: &BigInt, b: &BigInt) -> BigInt {
     a * a + 3 * a * b + 3 * b * b
 }
 
-fn short_representative(scalar: &BigInt) -> (BigInt, BigInt) {
+struct Lattice {
+    n: BigInt, lambda: BigInt,
+    u0: BigInt, u1: BigInt, v0: BigInt, v1: BigInt, det: BigInt,
+}
+
+static LATTICE: LazyLock<Lattice> = LazyLock::new(|| {
     // Frozen from the checked Sage result.json: Gauss-reduced kernel of
     // (a+b*lambda_tau) mod n. The fixture comparison audits the choice.
     let n = big_from_hex("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141");
@@ -263,16 +296,22 @@ fn short_representative(scalar: &BigInt) -> (BigInt, BigInt) {
     let v1 = BigInt::parse_bytes(b"303414439467246543595250775667605759171", 10).unwrap();
     let det = &u0 * &v1 - &u1 * &v0;
     assert_eq!(det.abs(), n);
-    let center_u = round_div(scalar * &v1, det.clone());
-    let center_v = round_div(-scalar * &u1, det);
+    Lattice { n, lambda, u0, u1, v0, v1, det }
+});
+
+fn short_representative(scalar: &BigInt) -> (BigInt, BigInt) {
+    let lattice = &*LATTICE;
+    let center_u = round_div(scalar * &lattice.v1, lattice.det.clone());
+    let center_v = round_div(-scalar * &lattice.u1, lattice.det.clone());
     let mut best: Option<(BigInt, BigInt, BigInt, BigInt)> = None;
     for du in -2..=2 {
         for dv in -2..=2 {
             let u = &center_u + du;
             let v = &center_v + dv;
-            let a: BigInt = scalar - &u * &u0 - &v * &v0;
-            let b: BigInt = -&u * &u1 - &v * &v1;
-            assert_eq!((&a + &b * &lambda - scalar) % &n, BigInt::ZERO);
+            let a: BigInt = scalar - &u * &lattice.u0 - &v * &lattice.v0;
+            let b: BigInt = -&u * &lattice.u1 - &v * &lattice.v1;
+            debug_assert_eq!((&a + &b * &lattice.lambda - scalar) % &lattice.n,
+                             BigInt::ZERO);
             let magnitude = std::cmp::max(a.abs(), b.abs());
             let option = (eisenstein_norm(&a, &b), magnitude, a, b);
             if best.as_ref().is_none_or(|old| option < *old) {
@@ -315,8 +354,12 @@ fn digit_table() -> [[Option<Digit>; 9]; 9] {
     table
 }
 
+static DIGIT_TABLE: LazyLock<[[Option<Digit>; 9]; 9]> =
+    LazyLock::new(digit_table);
+
 fn recode(mut a: BigInt, mut b: BigInt) -> Vec<Option<Digit>> {
-    let table = digit_table();
+    let table = &*DIGIT_TABLE;
+    #[cfg(debug_assertions)]
     let original = (a.clone(), b.clone());
     let mut digits = Vec::new();
     while !a.is_zero() || !b.is_zero() {
@@ -330,27 +373,30 @@ fn recode(mut a: BigInt, mut b: BigInt) -> Vec<Option<Digit>> {
         } else {
             None
         };
-        assert_eq!(signed_residue(&a, 3), 0);
+        debug_assert_eq!(signed_residue(&a, 3), 0);
         digits.push(digit);
         (a, b) = (&a + &b, -a / 3);
     }
-    for pair in digits.chunks(2) {
-        if pair.len() == 2 {
-            assert!(pair[0].is_none() || pair[1].is_none());
+    #[cfg(debug_assertions)]
+    {
+        for pair in digits.chunks(2) {
+            if pair.len() == 2 {
+                assert!(pair[0].is_none() || pair[1].is_none());
+            }
         }
-    }
-    let (mut rebuilt_a, mut rebuilt_b) = (BigInt::ZERO, BigInt::ZERO);
-    for digit in digits.iter().rev() {
-        let next_a = -3 * &rebuilt_b;
-        let next_b = &rebuilt_a + 3 * &rebuilt_b;
-        rebuilt_a = next_a;
-        rebuilt_b = next_b;
-        if let Some(d) = digit {
-            rebuilt_a += d.a;
-            rebuilt_b += d.b;
+        let (mut rebuilt_a, mut rebuilt_b) = (BigInt::ZERO, BigInt::ZERO);
+        for digit in digits.iter().rev() {
+            let next_a = -3 * &rebuilt_b;
+            let next_b = &rebuilt_a + 3 * &rebuilt_b;
+            rebuilt_a = next_a;
+            rebuilt_b = next_b;
+            if let Some(d) = digit {
+                rebuilt_a += d.a;
+                rebuilt_b += d.b;
+            }
         }
+        assert_eq!((rebuilt_a, rebuilt_b), original);
     }
-    assert_eq!((rebuilt_a, rebuilt_b), original);
     digits
 }
 
@@ -398,13 +444,14 @@ struct Counts {
     cache_entries: usize,
 }
 
-fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
+fn evaluate_mode(digits: &[Option<Digit>], seeds: &[J; 9], beta: F,
+                 all_affine: bool) -> (J, Counts) {
     let mut counts = Counts::default();
     if digits.is_empty() { return (J::identity(), counts); }
     let images: [[J; 3]; 9] = std::array::from_fn(|i| orbit(seeds[i], beta));
     let mut cache: [Option<(F, F)>; 9] = [None; 9];
     for digit in digits.iter().take(digits.len() - 1).flatten() {
-        if digit.seed > 0 && cache[digit.seed].is_none() {
+        if !all_affine && digit.seed > 0 && cache[digit.seed].is_none() {
             let z = seeds[digit.seed].z;
             let z2 = z.sqr();
             cache[digit.seed] = Some((z2, z2.mul(&z)));
@@ -441,7 +488,7 @@ fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
             if accumulator.is_identity() {
                 accumulator = q;
                 counts.first_insertions += 1;
-            } else if d.seed == 0 {
+            } else if all_affine || d.seed == 0 {
                 assert_eq!(q.z, F::ONE);
                 accumulator = accumulator.add_mixed(q.x, q.y);
                 counts.mixed_adds += 1;
@@ -461,12 +508,90 @@ fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
     (accumulator, counts)
 }
 
+fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
+    evaluate_mode(digits, seeds, beta, false)
+}
+
+fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
+                        timed: bool) {
+    assert!(mode == "cached_projective" || mode == "all_affine");
+    let raw = fs::read(fixture_path).expect("read benchmark fixture");
+    let fixture: Value = serde_json::from_slice(&raw).expect("parse benchmark fixture");
+    assert_eq!(fixture["schema"].as_u64(), Some(1));
+    let case = &fixture["cases"].as_array().expect("benchmark cases")[index];
+    let base_x = case["base_x_hex"].as_str().expect("base x");
+    let base_y = case["base_y_hex"].as_str().expect("base y");
+    let scalar_hex = case["scalar_hex"].as_str().expect("scalar");
+    let expected_identity = case["expected_identity"].as_bool().unwrap_or(false);
+    let expected_point = if expected_identity {
+        "identity".to_owned()
+    } else {
+        format!("{}:{}", case["expected_x_hex"].as_str().expect("output x"),
+                case["expected_y_hex"].as_str().expect("output y"))
+    };
+    let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
+    LazyLock::force(&LATTICE);
+    LazyLock::force(&DIGIT_TABLE);
+    let start = Instant::now();
+    let scalar = big_from_hex(scalar_hex);
+    let base = J::affine(fe_from_hex(base_x), fe_from_hex(base_y));
+    let (a, b) = short_representative(&scalar);
+    let digits = recode(a.clone(), b.clone());
+    let prepared = prepare(base, beta);
+    let seeds = if mode == "all_affine" { normalize_all(&prepared) } else { prepared };
+    let (point, counts) = evaluate_mode(&digits, &seeds, beta, mode == "all_affine");
+    let actual_point = match point.to_affine() {
+        None => "identity".to_owned(),
+        Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
+    };
+    assert_eq!(actual_point, expected_point, "benchmark output mismatch");
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    if !timed {
+        assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
+        assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
+        assert_eq!(digits, digits_from_json(case));
+        let expected_seeds = case["seed_affine"].as_array().expect("seeds");
+        for (seed, expected) in seeds.iter().zip(expected_seeds) {
+            let (x, y) = seed.to_affine().expect("prepared seed");
+            assert_eq!(fe_hex(x), expected[0].as_str().expect("seed x"));
+            assert_eq!(fe_hex(y), expected[1].as_str().expect("seed y"));
+        }
+        if mode == "cached_projective" {
+            let expected = &case["expected_counts"];
+            for (key, actual) in [
+                ("tau_steps", counts.tau_steps),
+                ("tau_pairs", counts.tau_pairs),
+                ("cheap_z_pairs", counts.cheap_z_pairs),
+                ("mixed_adds", counts.mixed_adds),
+                ("general_adds", counts.general_adds),
+                ("first_insertions", counts.first_insertions),
+                ("cache_entries", counts.cache_entries),
+            ] {
+                check_count(expected, key, actual);
+            }
+        }
+    }
+    if timed {
+        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual_point} mode={mode}");
+    } else {
+        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual_point} mode={mode}");
+    }
+}
+
 fn check_count(expected: &Value, key: &str, actual: usize) {
     let want = expected[key].as_u64().expect("expected count") as usize;
     assert_eq!(actual, want, "count {key}");
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 5 && (args[1] == "--benchmark-case" ||
+                           args[1] == "--check-benchmark-case") {
+        let index = args[4].parse::<usize>().expect("case index");
+        check_benchmark_case(&args[2], &args[3], index,
+                             args[1] == "--benchmark-case");
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some("--check-exceptions") {
         check_exceptional_additions();
         return;
