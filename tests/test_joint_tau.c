@@ -10,6 +10,7 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
                        uint64_t *saved_tau, uint64_t *saved_full)
 {
     ca_elem ap, bq, expected, separate, joint, fused, paired, paired_five, paired_two;
+    ca_elem paired_gauge;
     ca_group_mul(g, &ap, p, a % g->order, NULL);
     ca_group_mul(g, &bq, q, b % g->order, NULL);
     ca_group_op(g, &expected, &ap, &bq);
@@ -34,6 +35,13 @@ static void check_pair(const ca_group *g, const ca_tau4_joint_precomp *pre,
     CHECK(ca_group_equal(g, &paired_two, &expected));
     CHECK(two_cost.recode_attempts <= 4);
     CHECK(two_cost.pair_scores <= 4);
+    ca_tau4_joint_counts gauge_cost = {0};
+    CHECK(ca_ec_tau4_paired_two_gauge_mul_profile(g, pre, &paired_gauge,
+                                                   a, b, &gauge_cost));
+    CHECK(ca_group_equal(g, &paired_gauge, &expected));
+    CHECK_EQ_U64(gauge_cost.recode_attempts, two_cost.recode_attempts);
+    CHECK_EQ_U64(gauge_cost.pair_scores, two_cost.pair_scores);
+    CHECK(gauge_cost.gauge_selected <= 1);
     if (orbit) {
         ca_tau4_joint_counts combined = {0};
         CHECK(ca_ec_tau4_orbit_mul_profile(g, orbit, &fused, a, b, &combined));
