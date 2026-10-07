@@ -342,8 +342,10 @@ multiplies 1.4; the reduction is the next thing to look at.  The engine keeps
 512 lanes per batched inversion, as four interleaved chains, because a core
 has L1 where the device has registers; a lane that reports restarts in the
 same step; work is handed out in 64-step slices of one batch so efficiency
-cores do not gate a launch.  All 14 cores give 139-159 M it/s, which is the
-package's limit rather than the scheduler's (ten workers give 136).
+cores do not gate a launch, the last slice's worth in quarters so the workers
+that run out of slices first wait on a short one (1.3% on four x86-64 workers
+at the default 1024 steps a launch).  All 14 cores give 139-159 M it/s, which
+is the package's limit rather than the scheduler's (ten workers give 136).
 
 **On x86-64 the step runs N lanes at a time.** The state is stored limb by
 limb -- lane i's limb 0 at `x0[i]`, its limb 1 at `x1[i]` -- so that N
