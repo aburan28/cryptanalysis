@@ -37,7 +37,9 @@ equality or group-operation count alone cannot prove the two paths are
 mathematically equivalent, so tests also reconstruct both scalar identities.
 
 The implementation is variable-time and restricted to public research
-scalars. It must reject unsupported curves without changing the output.
+scalars. The caller establishes subgroup membership for both points;
+preparation checks that both are on the curve. It must reject unsupported
+curves without changing the output.
 Identity points, zero scalars, maximal 64-bit scalar inputs, equal inputs,
 and overlapping nonzero digit positions are required cases.
 
@@ -46,9 +48,11 @@ and overlapping nonzero digit positions are required cases.
 The first gate is exact output versus ordinary `aP+bQ`, the shared-table
 control, and independent scalar replay on both named j=0 study subgroups.
 Record preparation additions, doublings, τ maps, inversions and bytes;
-online scalar reductions, recoding, τ maps, mixed and full additions,
-rotations, output inversions, and any fallback. Keep all failures. A fresh
-fixture must be frozen before the prospective panel is run.
+online τ maps, mixed and full additions, rotations and output inversions.
+The implementation uses the same scalar reduction and recoder in both arms,
+with no fallback. These first counters do not resolve the internal cost of
+scalar reduction or digit recoding. Keep all failures. A fresh fixture must
+be frozen before the prospective panel is run.
 
 For a rho integration, charge the target-dependent joint preparation,
 all multiplier evaluations, walk, collision recovery, and scalar replay to

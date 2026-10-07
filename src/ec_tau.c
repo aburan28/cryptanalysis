@@ -2488,6 +2488,132 @@ int ca_ec_tau4_prepare(const ca_group *g, const ca_elem *point, ca_tau4_precomp 
     return 1;
 }
 
+int ca_ec_tau4_joint_prepare(const ca_group *g, const ca_elem *p, const ca_elem *q,
+                              ca_tau4_joint_precomp *out, ca_tau4_joint_counts *counts)
+{
+    if (!g || !p || !q || !out || g->kind != CA_GROUP_EC || g->endo_kind != 1 ||
+        g->a != 0 || g->p % 3 != 1 || g->order < 2 || g->order % 3 != 1 ||
+        !g->endo_lambda || !ca_group_is_valid(g, p) || !ca_group_is_valid(g, q))
+        return 0;
+    ca_tau4_joint_precomp pre = {0};
+    ca_tau4_joint_counts cost = {0};
+    pre.g = g;
+    pre.beta = g->endo_c_mont;
+    pre.beta2 = fm(g, pre.beta, pre.beta);
+    if (!make_tau4_table(pre.digit)) return 0;
+    tau_vec v1, v2;
+    if (!make_lattice(g->order, g->order - g->endo_lambda, &v1, &v2, &pre.det)) return 0;
+    pre.v1x = v1.x;
+    pre.v1y = v1.y;
+    pre.v2x = v2.x;
+    pre.v2y = v2.y;
+
+    const ca_elem *base[2] = {p, q};
+    tau_jac projective[18];
+    uint64_t one_minus_beta = fs(g, g->mont.r1, pre.beta);
+    int nonidentity = 0;
+    for (int i = 0; i < 2; i++) {
+        pre.identity[i] = !!base[i]->w[2];
+        if (pre.identity[i]) {
+            for (int j = 0; j < 9; j++)
+                projective[9 * i + j] = (tau_jac){0, g->mont.r1, 0};
+        } else {
+            tau4_seed_jac(g, base[i], one_minus_beta, &projective[9 * i]);
+            cost.tau_steps++;
+            cost.doubles += 5;
+            cost.mixed_adds += 4;
+            nonidentity = 1;
+        }
+    }
+    if (nonidentity) {
+        ca_elem affine[18];
+        jac_batch_to_affine(g, affine, projective, 18);
+        for (int i = 0; i < 2; i++)
+            for (int j = 0; j < 9; j++) pre.seed[i][j] = affine[9 * i + j];
+        cost.inversions = 1;
+    } else {
+        for (int i = 0; i < 2; i++)
+            for (int j = 0; j < 9; j++) pre.seed[i][j] = (ca_elem){{0, 0, 1, 0}};
+    }
+    *out = pre;
+    if (counts) *counts = cost;
+    return 1;
+}
+
+static int tau4_joint_recode(const ca_tau4_joint_precomp *pre, uint64_t scalar,
+                              int point_index, uint8_t digits[256], size_t *length)
+{
+    scalar %= pre->g->order;
+    if (!scalar || pre->identity[point_index]) { *length = 0; return 1; }
+    ca_i128 x, y;
+    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y},
+                        pre->det, scalar, &x, &y);
+    *length = gen_tau4_digits(x, y, pre->digit, digits);
+    return *length > 0;
+}
+
+static void tau4_joint_add_digit(const ca_group *g, const ca_tau4_joint_precomp *pre,
+                                   tau_jac *acc, int point_index, uint8_t slot,
+                                   ca_tau4_joint_counts *counts)
+{
+    ca_tau4_digit d = pre->digit[slot];
+    ca_elem point = pre->seed[point_index][d.seed];
+    if (d.power == 1) point.w[0] = fm(g, pre->beta, point.w[0]);
+    else if (d.power == 2) point.w[0] = fm(g, pre->beta2, point.w[0]);
+    if (d.sign < 0 && point.w[1]) point.w[1] = g->p - point.w[1];
+    *acc = jac_add_mixed(g, *acc, &point);
+    counts->mixed_adds++;
+    counts->rotations += d.power != 0;
+}
+
+static tau_jac tau4_joint_eval_one(const ca_group *g, const ca_tau4_joint_precomp *pre,
+                                    const uint8_t digits[256], size_t length, int point_index,
+                                    uint64_t one_minus_beta, ca_tau4_joint_counts *counts)
+{
+    tau_jac acc = {0, g->mont.r1, 0};
+    for (size_t i = length; i-- > 0;) {
+        if (acc.z) { acc = jac_tau(g, acc, one_minus_beta); counts->tau_steps++; }
+        if (digits[i] != 255) tau4_joint_add_digit(g, pre, &acc, point_index, digits[i], counts);
+    }
+    return acc;
+}
+
+int ca_ec_tau4_joint_mul_profile(const ca_group *g, const ca_tau4_joint_precomp *pre,
+                                  ca_elem *out, uint64_t a, uint64_t b, int joint,
+                                  ca_tau4_joint_counts *counts)
+{
+    if (!g || !pre || !out || pre->g != g || (joint != 0 && joint != 1)) return 0;
+    ca_tau4_joint_counts cost = {0};
+    uint8_t digits[2][256];
+    size_t length[2];
+    if (!tau4_joint_recode(pre, a, 0, digits[0], &length[0]) ||
+        !tau4_joint_recode(pre, b, 1, digits[1], &length[1])) return 0;
+    uint64_t one_minus_beta = fs(g, g->mont.r1, pre->beta);
+    tau_jac acc;
+    if (joint) {
+        acc = (tau_jac){0, g->mont.r1, 0};
+        size_t length_max = length[0] > length[1] ? length[0] : length[1];
+        for (size_t i = length_max; i-- > 0;) {
+            if (acc.z) { acc = jac_tau(g, acc, one_minus_beta); cost.tau_steps++; }
+            for (int point_index = 0; point_index < 2; point_index++)
+                if (i < length[point_index] && digits[point_index][i] != 255)
+                    tau4_joint_add_digit(g, pre, &acc, point_index,
+                                         digits[point_index][i], &cost);
+        }
+    } else {
+        tau_jac left = tau4_joint_eval_one(g, pre, digits[0], length[0], 0,
+                                            one_minus_beta, &cost);
+        tau_jac right = tau4_joint_eval_one(g, pre, digits[1], length[1], 1,
+                                             one_minus_beta, &cost);
+        cost.full_adds = left.z && right.z;
+        acc = jac_add(g, left, right);
+    }
+    jac_to_affine(g, out, acc);
+    cost.inversions = acc.z != 0;
+    if (counts) *counts = cost;
+    return 1;
+}
+
 static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
                                   uint64_t k, uint64_t *triples, uint64_t *adds,
                                   uint64_t *rotations, int recoder)
