@@ -75,7 +75,8 @@ def main():
                         and observed["output_checks"] == count
                         and observed["seed_checks"] == expected_seed_checks
                         and observed["selected_M_plus_S"] == panel["selective_total"]
-                        and observed["peak_carry_norm"] <= 896):
+                        and observed["state_bytes"] == 10
+                        and observed["peak_carry_norm"] <= 432):
                     failures.append(f"selective replay summary mismatch: {name}")
             except (KeyError, ValueError) as error:
                 failures.append(f"selective replay parse error: {name}: {error}")
@@ -87,6 +88,8 @@ def main():
     files = [HERE / name for name in (
         "Cargo.toml", "Cargo.lock", "src/main.rs", "src/selective.rs",
         "SELECTIVE_NATIVE_PROTOCOL.md", "SELECTIVE_MIXED_PROTOCOL.md",
+        "CARRY_CLOSURE_PROTOCOL.md", "carry_closure.py",
+        "carry-closure-result.json",
         "selective_mixed_atlas.py",
         "mixed_atlas_screen.py", "selective-mixed-result.json",
         "selective-seed-fixture.json", "selective-runtime-info.json",

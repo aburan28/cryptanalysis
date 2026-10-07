@@ -98,6 +98,14 @@ A full-operation isolated run must charge the dynamic program,
 reduction, selective preparation, orbit/cache setup, evaluation, and
 final inversion before any CPU speedup claim. The present source
 counts may be overwhelmed by search CPU work. This variable-time
-experiment is not ready for secret scalars. Finite τ-adic transducers have
-[prior art](https://eprint.iacr.org/2008/153.pdf); academic novelty
-is unproved.
+experiment is not ready for secret scalars. The subsequent
+[exhaustive carry-closure audit](CARRY_CLOSURE_RESULT.md) proved a
+715-state, norm-432 global bound and reduced the native carry key
+to signed bytes, then replayed all 320 selected outputs. Finite
+τ-adic transducers have [prior art](https://eprint.iacr.org/2008/153.pdf).
+Symmetric digit sets for ordinary `j=0` curves are also established
+[prior art](https://eprint.iacr.org/2013/705.pdf), and
+[dynamic programming for optimal double-base chains](https://eprint.iacr.org/2017/037.pdf)
+precedes this work. The precise combination of selective table
+preparation and mixed τ digits needs a broader comparison;
+academic novelty is unproved.

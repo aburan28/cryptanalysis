@@ -22,7 +22,8 @@ const POINT_COST: [usize; 12] = [0, 7, 7, 11, 7, 11, 7, 11, 11, 7, 7, 7];
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct State {
-    carry: (i64, i64),
+    // The exhaustive 715-state residue closure bounds each coordinate by 36.
+    carry: (i8, i8),
     last: i16,
     high: i16,
     cache_mask: u16,
@@ -91,15 +92,16 @@ fn preparation_cost(used: u16) -> (usize, u16) {
     (points + rotations + orbit_images, required)
 }
 
-fn next_carry(old: Option<Digit>, carry: (i64, i64), digit: Option<Digit>) -> (i64, i64) {
+fn next_carry(old: Option<Digit>, carry: (i8, i8), digit: Option<Digit>) -> (i8, i8) {
     let (da, db) = old.map_or((0, 0), |d| (d.a, d.b));
     let (ea, eb) = digit.map_or((0, 0), |d| (d.a, d.b));
-    let x = da + carry.0 - ea;
-    let y = db + carry.1 - eb;
+    let x = da + i64::from(carry.0) - ea;
+    let y = db + i64::from(carry.1) - eb;
     assert_eq!(x % 3, 0);
     let successor = (x + y, -x / 3);
-    assert!(small_carry_norm(successor) <= 896);
-    successor
+    assert!(small_carry_norm(successor) <= 432);
+    (i8::try_from(successor.0).expect("carry x fits i8"),
+     i8::try_from(successor.1).expect("carry y fits i8"))
 }
 
 pub(super) fn recode(a: BigInt, b: BigInt) -> Plan {
@@ -125,12 +127,13 @@ pub(super) fn recode(a: BigInt, b: BigInt) -> Plan {
         let mut following: Vec<(State, Record)> = Vec::new();
         let mut locations: HashMap<State, usize> = HashMap::new();
         for (state, record) in current {
-            let row = (ra as i64 + state.carry.0).rem_euclid(9) as usize;
-            let col = (rb as i64 + state.carry.1).rem_euclid(9) as usize;
+            let row = (ra as i64 + i64::from(state.carry.0)).rem_euclid(9) as usize;
+            let col = (rb as i64 + i64::from(state.carry.1)).rem_euclid(9) as usize;
             let (choices, count) = options(row, col);
             for digit in choices.into_iter().take(count) {
                 let carry = next_carry(old, state.carry, digit);
-                peak_carry_norm = peak_carry_norm.max(small_carry_norm(carry));
+                peak_carry_norm = peak_carry_norm.max(small_carry_norm(
+                    (i64::from(carry.0), i64::from(carry.1))));
                 let mut next = state;
                 next.carry = carry;
                 let extra = if let Some(digit) = digit {
@@ -387,8 +390,8 @@ pub(super) fn check_fixture(fixture_path: &str, seed_path: &str, result_path: &s
         peak_carry_norm = peak_carry_norm.max(plan.peak_carry_norm);
     }
     assert_eq!(panel["selective_total"].as_u64(), Some(total as u64));
-    println!("{{\"verified\":true,\"fixture\":\"{name}\",\"cases\":{},\"seed_checks\":{seed_checks},\"output_checks\":{},\"selected_M_plus_S\":{total},\"peak_dp_states\":{peak_states},\"peak_carry_norm\":{peak_carry_norm},\"exceptional_cached_adds\":{exceptional_adds},\"cpu_speedup_claim\":null}}",
-             cases.len(), cases.len());
+    println!("{{\"verified\":true,\"fixture\":\"{name}\",\"cases\":{},\"seed_checks\":{seed_checks},\"output_checks\":{},\"selected_M_plus_S\":{total},\"peak_dp_states\":{peak_states},\"peak_carry_norm\":{peak_carry_norm},\"state_bytes\":{},\"exceptional_cached_adds\":{exceptional_adds},\"cpu_speedup_claim\":null}}",
+             cases.len(), cases.len(), std::mem::size_of::<State>());
 }
 
 pub(super) fn benchmark_case(fixture_path: &str, index: usize, timed: bool) {
