@@ -23,7 +23,7 @@ def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True,separato
 def finite(value):return type(value) in (int,float) and math.isfinite(value) and value>=0
 def trace(value):
     if isinstance(value,dict):return {k:trace(v) for k,v in value.items() if not k.endswith(('seconds','_ns')) and k not in ('macaulay_policy','layout_policy')}
-    if isinstance(value,list):return [trace(v) for v in value]
+    if isinstance(value,(list,tuple)):return [trace(v) for v in value]
     return value
 
 def layout_shape(case,arm):return [case['nvars'],len(case['equations']),min(case['nvars'],6 if case['boundary']=='pdp' else 2),3 if arm=='reused3' else 2]
