@@ -234,6 +234,8 @@ int ca_ec_tau4_orbit_prepare(const ca_group *g, const ca_elem *p, const ca_elem 
 int ca_ec_tau4_orbit_mul_profile(const ca_group *g, const ca_tau4_orbit_precomp *pre,
                                   ca_elem *out, uint64_t a, uint64_t b,
                                   ca_tau4_joint_counts *counts);
+int ca_ec_tau4_pair_histogram(const ca_tau4_joint_precomp *pre, uint64_t a, uint64_t b,
+                               uint64_t histogram[486]);
 
 #define CA_TAU_POS_Q 64
 typedef struct ca_tau4_pos_precomp {

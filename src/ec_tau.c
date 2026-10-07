@@ -2711,6 +2711,26 @@ int ca_ec_tau4_orbit_mul_profile(const ca_group *g, const ca_tau4_orbit_precomp 
     return 1;
 }
 
+int ca_ec_tau4_pair_histogram(const ca_tau4_joint_precomp *pre, uint64_t a, uint64_t b,
+                               uint64_t histogram[486])
+{
+    if (!pre || !pre->g || !histogram) return 0;
+    uint8_t digits[2][256];
+    size_t length[2];
+    if (!tau4_joint_recode(pre, a, 0, digits[0], &length[0]) ||
+        !tau4_joint_recode(pre, b, 1, digits[1], &length[1])) return 0;
+    size_t length_min = length[0] < length[1] ? length[0] : length[1];
+    for (size_t i = 0; i < length_min; i++) {
+        if (digits[0][i] == 255 || digits[1][i] == 255) continue;
+        ca_tau4_digit da = pre->digit[digits[0][i]];
+        ca_tau4_digit db = pre->digit[digits[1][i]];
+        int relative = 2 * ((db.power + 3 - da.power) % 3) + (da.sign != db.sign);
+        size_t slot = (size_t)(((int)da.seed * 9 + (int)db.seed) * 6 + relative);
+        histogram[slot]++;
+    }
+    return 1;
+}
+
 static int tau4_mul_prepared_impl(const ca_group *g, const ca_tau4_precomp *pre, ca_elem *out,
                                   uint64_t k, uint64_t *triples, uint64_t *adds,
                                   uint64_t *rotations, int recoder)
