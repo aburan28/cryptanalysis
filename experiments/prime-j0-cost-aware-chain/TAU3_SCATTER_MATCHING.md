@@ -104,6 +104,33 @@ python3 experiments/prime-j0-cost-aware-chain/check_tau3_scatter_native_panel.py
   experiments/prime-j0-cost-aware-chain/tau3-scatter-native-panel.json
 ```
 
+## Isolated CPU replay
+
+On a qualifying Linux host, build `ca_tau_chain_bench` from this source and
+generate a manifest with
+[`make_tau3_scatter_isolated_manifest.py`](make_tau3_scatter_isolated_manifest.py):
+
+```sh
+python3 experiments/prime-j0-cost-aware-chain/make_tau3_scatter_isolated_manifest.py \
+  --binary /workspace/build/scatter/ca_tau_chain_bench \
+  --workdir /workspace/cryptanalysis \
+  --cgroup /sys/fs/cgroup/benchmark-isolated \
+  --cpus 4-5 --execution-cpu 4 --mem-nodes 0 \
+  --output /workspace/isolated-bench/tau3-scatter-panel.json
+python3 scripts/isolated_bench.py probe /workspace/isolated-bench/tau3-scatter-panel.json
+python3 scripts/isolated_bench.py --queue-root /workspace/isolated-bench submit \
+  /workspace/isolated-bench/tau3-scatter-panel.json
+```
+
+The CPU IDs and paths are examples. The manifest uses one binary for both
+modes, freezes the eight input files by SHA-256, pairs the same curve, point,
+scalar batch, and output digest, and asks the serial service for three
+alternating-order repetitions. The timed quantity is the online latency of
+each 4,096-scalar batch after preparation and before independent replay. It
+is a scalar-multiplication throughput comparison, not a one-target DLP or
+rho result. Inspect the raw per-run fields, including `fallbacks` and
+`scatter_pairs`, before interpreting an accepted receipt.
+
 An isolated host receipt is still required before any wall-time comparison
 is promotable. The format is an experimental design; its relationship to
 prior scattered precomputation literature has not yet been established as
