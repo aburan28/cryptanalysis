@@ -505,8 +505,8 @@ static int tau_tail_step(ca_i128 *x, ca_i128 *y, unsigned phase, const ca_tau4_d
     *odd_digit = odd ? slot : 255;
     ca_i128 da = 0, db = 0;
     if (slot != 255) {
-        da = table[slot].a;
-        db = table[slot].b;
+        da = (ca_i128)table[slot].a;
+        db = (ca_i128)table[slot].b;
         if (odd) {
             ca_i128 old_a = da;
             da = -3 * db;
@@ -567,7 +567,7 @@ static size_t tau_double_fold_index(ca_i128 x, ca_i128 y, unsigned phase, int *n
     size_t half = x == 0 ? (size_t)y
                          : (size_t)(CA_TAU_DOUBLE_BOUND + 1 + (x - 1) * CA_TAU_DOUBLE_SIDE +
                                     y + CA_TAU_DOUBLE_BOUND);
-    return phase * CA_TAU_DOUBLE_HALF + half;
+    return (size_t)phase * CA_TAU_DOUBLE_HALF + half;
 }
 
 static int tau_double_fold_step(ca_i128 *x, ca_i128 *y, unsigned phase,

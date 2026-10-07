@@ -313,7 +313,7 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     uint64_t comb_doubles = 0, comb_adds = 0, comb_inversions = 0;
     CHECK(ca_ec_fixed_comb_prepare(g, point, &comb_pre, &comb_doubles, &comb_adds,
                                     &comb_inversions));
-    CHECK_EQ_U64(comb_doubles, 8 * comb_pre.depth);
+    CHECK_EQ_U64(comb_doubles, (uint64_t)8 * comb_pre.depth);
     CHECK_EQ_U64(comb_adds, CA_FIXED_COMB_ENTRIES - 1 - CA_FIXED_COMB_WIDTH);
     CHECK_EQ_U64(comb_inversions, 1);
     ca_tau4_precomp pre;
