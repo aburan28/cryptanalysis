@@ -463,7 +463,10 @@ class CpuEngine
         // multiplier full and the load ports idle.  Measured on one
         // Sapphire Rapids core, 3% on the step (whole binary, interleaved
         // runs); the stage harness cannot see it, since it times the
-        // stages apart.
+        // stages apart.  Stage 1 brought in the same way, a group's x
+        // converted into the registers the selection reads and the report
+        // test on the vector's weights, measured within the noise (under
+        // 1% over ten interleaved runs) and stays a pass of its own.
         constexpr int V = ECC_F131_CHAIN_VECTORS;
         constexpr bool fuse = ECC_F131_FUSE_FORWARD && G % V == 0;
         FX pv[V];
