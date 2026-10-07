@@ -43,3 +43,20 @@ gain.  A full x-only τ/differential chain, exact edge handling, complete
 online arithmetic count, and isolated CPU benchmark remain open.
 Existing x-only Weierstrass differential arithmetic has prior art; this
 screen makes no academic novelty or CPU speedup claim.
+[Costello, Hisil, and Smith](https://eprint.iacr.org/2013/692.pdf)
+already develop endomorphism-driven two-dimensional x-only differential
+chains, and [Chung et al.](https://eprint.iacr.org/2015/983.pdf)
+describe recovering full group outputs from x-only pseudomultiplication.
+Any future claim would need to identify a specific secp256k1 chain and
+prove how it differs from those methods.
+
+Chung et al.'s published generic two-dimensional short-Weierstrass
+algorithm uses `(14β+12)M+(9β+3)S+2I` plus constant multiplications
+for two `β`-bit coefficients (Theorem 3).  At `β=128`, its field-operation
+expression is **2,959 `M+S` plus two inversions** before constants.  The
+frozen width-four τ source count is **88,656/64 = 1,385.25 `M+S` per
+case**, excluding its common final inversion.  The workloads and setup
+boundaries differ, so this is only a coarse feasibility screen; it
+does rule out simply substituting that generic chain as an obvious win.
+The remaining x-only opportunity would require a τ-specific differential
+state transition that maintains its known differences cheaply.
