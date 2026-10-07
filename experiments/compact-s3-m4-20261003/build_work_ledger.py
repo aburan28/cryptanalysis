@@ -7020,6 +7020,40 @@ def main():
     assert [row["verified_relation_count"] for row in q1482_audit[
         "rows"]] == [1, 1, 0, 0, 0, 0]
     assert q1482_audit["complete_n131_log2_work"] is None
+    q1483_dir = HERE / "q1483_fixed_window_s3"
+    q1483_protocol_path = q1483_dir / "protocol.json"
+    q1483_recovery_path = q1483_dir / "recovery_protocol.json"
+    q1483_audit_path = q1483_dir / "archive_audit.json"
+    q1483_protocol = json.loads(q1483_protocol_path.read_text())
+    q1483_recovery = json.loads(q1483_recovery_path.read_text())
+    q1483_audit = json.loads(q1483_audit_path.read_text())
+    assert q1483_protocol["proposal_id"] == q1483_audit[
+        "proposal_id"] == q1483_recovery["proposal_id"] == "Q1483"
+    assert q1483_protocol["candidate_id"] is q1483_audit[
+        "candidate_id"] is None
+    assert q1483_protocol["run_id"] is q1483_audit["run_id"] is None
+    assert q1483_protocol["isogeny"] == q1483_audit[
+        "isogeny"] == "none"
+    assert q1483_audit["status"] == "passed"
+    assert q1483_audit["pinned_correctness_controls_passed"]
+    assert q1483_audit["protocol_sha256"] == sha(q1483_protocol_path)
+    assert q1483_audit["recovery_protocol_sha256"] == sha(
+        q1483_recovery_path)
+    assert q1483_recovery["parent_protocol_sha256"] == sha(
+        q1483_protocol_path)
+    assert q1483_protocol["parent_q1482_protocol_sha256"] == sha(
+        q1482_protocol_path)
+    assert [row["case"] for row in q1483_audit["rows"]] == [
+        "n53_planted_pinned", "n83_planted_pinned",
+        "n53_planted_unpinned", "n53_planted_unpinned",
+        "n83_planted_unpinned", "n53_ordinary", "n83_ordinary"]
+    assert [row["status"] for row in q1483_audit["rows"]] == [
+        "sat", "sat", "infrastructure_error", "censored",
+        "censored", "censored", "censored"]
+    assert [row["verified_relation_count"] for row in q1483_audit[
+        "rows"]] == [1, 1, 0, 0, 0, 0, 0]
+    assert q1483_audit["ordinary_verified_relations"] == 0
+    assert q1483_audit["complete_n131_log2_work"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -9589,6 +9623,43 @@ def main():
             "protocol_sha256": sha(q1482_protocol_path),
             "archive_audit_sha256": sha(q1482_audit_path),
         },
+        "q1483_fixed_window_compact_s3_stage": {
+            "proposal_id": "Q1483", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4hybrid",
+            "stage_config_ids": {
+                key: row["stage_config_id"]
+                for key, row in q1483_protocol["stages"].items()},
+            "measurement_scope": q1483_protocol["measurement_scope"],
+            "measurement_units": q1483_protocol["measurement_units"],
+            "restricted_orientation_slice": True,
+            "pinned_correctness_controls_passed": True,
+            "known_witness_unpinned_valid_attempts": 2,
+            "known_witness_unpinned_infrastructure_errors": 1,
+            "known_witness_unpinned_verified_relations": 0,
+            "ordinary_attempts": 2,
+            "ordinary_verified_relations": 0,
+            "rows": q1483_audit["rows"],
+            "successful_unpinned_N53_cost": None,
+            "successful_unpinned_N83_cost": None,
+            "natural_relation_yield_estimate": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1483 forces all four leaves into the start-zero window "
+                "of Q1481's exact N53/N83 bases. Both pinned controls "
+                "verify. The first N53 unpinned R1 lost its output to "
+                "disk full and remains an infrastructure error; the "
+                "separately frozen R2 censored. N83 unpinned and both "
+                "ordinary cells also censored at 60 seconds with no "
+                "relation. This restricted slice cannot measure full-base "
+                "yield, successful N83 cost, rank, or complete N131 2^x."
+            ),
+            "design_protocol_sha256": q1483_protocol["design_sha256"],
+            "protocol_sha256": sha(q1483_protocol_path),
+            "recovery_protocol_sha256": sha(q1483_recovery_path),
+            "archive_audit_sha256": sha(q1483_audit_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -10140,6 +10211,11 @@ def main():
                 "Q1482's compact S3 search verifies both pinned controls "
                 "but all four unpinned and ordinary window-base cells "
                 "censor without a relation; "
+                "Q1483's fixed-window slice verifies both pinned controls, "
+                "records the N53 unpinned disk-full R1 as infrastructure "
+                "failure, and censors its frozen R2 plus N83 unpinned and "
+                "both ordinary cells without a relation; the restricted "
+                "slice does not measure full-base yield; "
                 "censored N83 ordinary runs still do not measure N83 "
                 "useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
