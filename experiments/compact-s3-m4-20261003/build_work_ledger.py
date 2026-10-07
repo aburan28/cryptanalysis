@@ -6754,6 +6754,89 @@ def main():
         "rows"]] == [82_352, 294_580, 273_086_668, 309_788_583,
                      297_449_277, 315_503_020]
     assert q1472_audit["complete_n131_log2_work"] is None
+    q1473_dir = HERE / "q1473_n53_rank_collection"
+    q1473_protocol_path = q1473_dir / "protocol.json"
+    q1473_audit_path = q1473_dir / "audit_result.json"
+    q1473_verification_path = q1473_dir / "verification.json"
+    q1473_receipt_path = q1473_dir / "runs/primary/receipt.json"
+    q1473_protocol = json.loads(q1473_protocol_path.read_text())
+    q1473_audit = json.loads(q1473_audit_path.read_text())
+    q1473_verification = json.loads(q1473_verification_path.read_text())
+    assert q1473_protocol["proposal_id"] == q1473_audit[
+        "proposal_id"] == "Q1473"
+    assert q1473_protocol["candidate_id"] is q1473_audit[
+        "candidate_id"] is None
+    assert q1473_protocol["isogeny"] == q1473_audit[
+        "isogeny"] == "none"
+    assert q1473_protocol["curve_id"] == q1473_audit[
+        "curve_id"] == q1469_protocol["curve_id"]
+    assert q1473_protocol["factor_base_enumerated_set_sha256"] == (
+        q1473_audit["factor_base_enumerated_set_sha256"])
+    assert q1473_protocol["factor_base_enumerated_set_sha256"] == (
+        q1469_protocol["factor_base_enumerated_set_sha256"])
+    assert q1473_protocol["panel_workload_id"] == q1473_audit[
+        "panel_workload_id"]
+    assert q1473_audit["status"] == "passed"
+    assert q1473_audit["protocol_sha256"] == sha(q1473_protocol_path)
+    assert q1473_audit["auditor_source_sha256"] == sha(
+        q1473_dir / "audit.py")
+    assert q1473_audit["receipt_sha256"] == sha(q1473_receipt_path)
+    assert q1473_verification["status"] == "passed"
+    assert q1473_verification["audit_result_sha256"] == sha(
+        q1473_audit_path)
+    assert q1473_verification["protocol_sha256"] == sha(
+        q1473_protocol_path)
+    assert q1473_verification["receipt_sha256"] == sha(
+        q1473_receipt_path)
+    assert q1473_verification["verifier_source_sha256"] == sha(
+        q1473_dir / "verify_result.py")
+    assert q1473_verification["combined_rank"] == q1473_audit[
+        "combined_rank"]
+    assert q1473_audit["target_count"] == len(q1473_audit["rows"]) == 256
+    assert sum(q1473_audit["status_counts"].values()) == 256
+    assert q1473_audit["prior_q1469_rank_excluding_held_out"] == 12
+    assert q1473_audit["combined_rank"] == (
+        12 + q1473_audit["new_novel_rank"])
+    assert 12 <= q1473_audit["combined_rank"] <= 26
+    assert q1473_audit["complete_n131_log2_work"] is None
+    q1473_full_rank_prefix = next(
+        (index + 1 for index, row in enumerate(q1473_audit["rows"])
+         if row["rank_after_query"] == 26), None)
+    q1473_prefix_rows = q1473_audit["rows"][:q1473_full_rank_prefix]
+    q1473_prefix_calls = {
+        name: sum(row["query_field_calls"][name]
+                  for row in q1473_prefix_rows)
+        for name in ("mul", "sqr", "inv")
+    }
+    q1473_prefix_wall_ns = sum(
+        row["query_wall_ns_exploratory"] for row in q1473_prefix_rows)
+    q1473_prior_collection_rows = [
+        row for row in q1469_audit["rows"]
+        if row["index"] != q1473_protocol["held_out_q1469_index"]]
+    assert len(q1473_prior_collection_rows) == 127
+    q1469_table_calls_each = {}
+    for name in ("mul", "sqr", "inv"):
+        total = q1469_audit[
+            "target_independent_table_field_calls_total"][name]
+        assert total % 128 == 0
+        q1469_table_calls_each[name] = total // 128
+        assert q1469_table_calls_each[name] == q1473_audit[
+            "target_independent_table_field_calls"][name]
+    q1473_collection_to_rank_calls = {
+        name: (
+            sum(row["query_field_calls"][name] +
+                q1469_table_calls_each[name]
+                for row in q1473_prior_collection_rows)
+            + q1473_audit["target_independent_table_field_calls"][name]
+            + q1473_prefix_calls[name])
+        for name in ("mul", "sqr", "inv")
+    }
+    q1473_collection_to_rank_wall_ns = (
+        sum(row["query_wall_ns_exploratory"] +
+            row["table_wall_ns_exploratory"]
+            for row in q1473_prior_collection_rows)
+        + q1473_audit["target_independent_table_wall_ns_exploratory"]
+        + q1473_prefix_wall_ns)
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -8971,6 +9054,106 @@ def main():
             "protocol_sha256": sha(q1472_protocol_path),
             "archive_audit_sha256": sha(q1472_audit_path),
         },
+        "q1473_n53_warm_table_rank_collection": {
+            "proposal_id": "Q1473", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "point_decomposition_stage_code": "PDP4mitm",
+            "measurement_scope": q1473_protocol["measurement_scope"],
+            "curve_id": q1473_protocol["curve_id"],
+            "factor_base_actual_B": q1473_protocol[
+                "factor_base_actual_B"],
+            "folded_columns_K": q1473_protocol["folded_columns_K"],
+            "factor_base_enumerated_set_sha256": q1473_protocol[
+                "factor_base_enumerated_set_sha256"],
+            "panel_workload_id": q1473_protocol["panel_workload_id"],
+            "target_count": 256,
+            "status_counts": q1473_audit["status_counts"],
+            "natural_relation_yield": q1473_audit[
+                "natural_relation_yield"],
+            "prior_rank_excluding_holdout": q1473_audit[
+                "prior_q1469_rank_excluding_held_out"],
+            "new_novel_rank": q1473_audit["new_novel_rank"],
+            "combined_rank": q1473_audit["combined_rank"],
+            "new_panel_queries_until_combined_full_rank":
+                q1473_full_rank_prefix,
+            "new_panel_query_field_calls_until_combined_full_rank":
+                q1473_prefix_calls if q1473_full_rank_prefix else None,
+            "new_panel_query_wall_ns_until_combined_full_rank_exploratory":
+                q1473_prefix_wall_ns if q1473_full_rank_prefix else None,
+            "measured_native_relation_collection_to_rank26_field_calls":
+                q1473_collection_to_rank_calls
+                if q1473_full_rank_prefix else None,
+            "measured_native_relation_collection_to_rank26_wall_ns_exploratory":
+                q1473_collection_to_rank_wall_ns
+                if q1473_full_rank_prefix else None,
+            "measured_native_collection_scope": (
+                "127 Q1469 prior ordinary queries with their fresh "
+                "table per target, one Q1473 shared table, and the first "
+                "152 Q1473 ordinary queries through rank 26; excludes "
+                "fixture generation, factor-base construction, relation "
+                "checks, matrix work, and target recovery"),
+            "held_out_known_representable_target_scalar_recovered":
+                q1473_audit["held_out_scalar_recovered"] is not None,
+            "target_independent_table_field_calls": q1473_audit[
+                "target_independent_table_field_calls"],
+            "target_independent_table_wall_ns_exploratory": q1473_audit[
+                "target_independent_table_wall_ns_exploratory"],
+            "target_query_field_calls_total": q1473_audit[
+                "target_query_field_calls_total"],
+            "target_query_field_calls_per_verified_relation": (
+                {name: format(value / q1473_audit["status_counts"]["found"],
+                              ".6f")
+                 for name, value in q1473_audit[
+                     "target_query_field_calls_total"].items()}
+                if q1473_audit["status_counts"]["found"] else None),
+            "target_query_field_calls_per_new_novel_row": (
+                {name: format(value / q1473_audit["new_novel_rank"],
+                              ".6f")
+                 for name, value in q1473_audit[
+                     "target_query_field_calls_total"].items()}
+                if q1473_audit["new_novel_rank"] else None),
+            "target_query_wall_ns_total_exploratory": q1473_audit[
+                "target_query_wall_ns_total_exploratory"],
+            "target_query_wall_ns_per_new_novel_row_exploratory": (
+                format(q1473_audit[
+                    "target_query_wall_ns_total_exploratory"] /
+                    q1473_audit["new_novel_rank"], ".6f")
+                if q1473_audit["new_novel_rank"] else None),
+            "matrix_build_rank_wall_ns_exploratory": q1473_audit[
+                "matrix_build_rank_wall_ns_exploratory"],
+            "matrix_solve_wall_ns_exploratory": q1473_audit[
+                "matrix_solve_wall_ns_exploratory"],
+            "scalar_replay_wall_ns_exploratory": q1473_audit[
+                "scalar_replay_wall_ns_exploratory"],
+            "peak_child_rss_global_raw": q1473_audit[
+                "peak_child_rss_global_raw"],
+            "peak_child_rss_units": q1473_audit[
+                "peak_child_rss_units"],
+            "per_target_rows": q1473_audit["rows"],
+            "complete_n53_cold_work": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "Q1473 reuses one exact N53 cross-column pair table "
+                "across 256 fresh seeded ordinary targets, charges every "
+                "query including complete absences and caps, and checks "
+                "each witness and rank increment independently. It "
+                "combines these rows with Q1469 after excluding a "
+                "predeclared known-representable holdout. The measured "
+                f"combined rank is {q1473_audit['combined_rank']}/26; "
+                + ("all 26 canonical base logs and the holdout scalar "
+                   "independently replay. " if q1473_audit[
+                       "held_out_scalar_recovered"] is not None else
+                   "the base-log system remains incomplete. ")
+                + "The batch is a secondary pair-table comparator, not "
+                "a compact N83 decomposition cost, a controlled CPU "
+                "speedup, or a fully charged N131 2^x."
+            ),
+            "protocol_sha256": sha(q1473_protocol_path),
+            "audit_sha256": sha(q1473_audit_path),
+            "verification_sha256": sha(q1473_verification_path),
+            "receipt_sha256": sha(q1473_receipt_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -9485,8 +9668,14 @@ def main():
                 "chained-S3 cells; both pinned controls pass while "
                 "all unpinned and ordinary cells censor, so its SAT "
                 "and field operation vectors are lower bounds only; "
-                "the N53 early-rank panel and censored N83 ordinary "
-                "runs do not measure N83 useful-row or late-rank rates; "
+                "Q1473's exact N53 pair-table comparator independently "
+                "reaches 26/26 rank and recovers a predeclared held-out "
+                "scalar, charging native collection to full rank under "
+                "the archived cache policies; this explicit-table lane "
+                "already exceeds the N131 2^61 entry cap and does not "
+                "measure a successful N83 compact decomposition; "
+                "censored N83 ordinary runs still do not measure N83 "
+                "useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "
                 "but conversions, hashing, memory and arithmetic types still "
                 "lack a common calibrated unit; complete relation collection, "
