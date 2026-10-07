@@ -28,6 +28,15 @@ python3 -m pytest -q .
   of the JSON content and of the point set.
 - `large/`: archives above `--max-git-bytes` (1 MiB) get `storage` `s3`. They
   are git-ignored and must be uploaded; `verify` skips them when absent.
+- An explicit `--chunk-bytes 33554432` stores an oversized archive as bounded
+  Git parts with `storage` `git-chunks`. A `.chunks.json` manifest and ordered
+  `.part-0000`, `.part-0001`, ... files retain the original compressed bytes.
+  The index's byte count and file SHA-256 still identify the complete compressed
+  payload. Each part has its own size and digest; verification checks those,
+  reassembly, content, record, point-set digest, and point count. Missing or
+  altered parts fail verification. The current format supports at most 1 GiB
+  per complete payload, 80 MiB per part, and 4,096 parts. Plain gzip/xz and the
+  default S3 behavior are unchanged. The upload command includes all parts.
 
 `verify` rechecks every digest and count, and flags files that are not in the index.
 `--rebuild` also regenerates each base from its recipe and requires byte-identical
