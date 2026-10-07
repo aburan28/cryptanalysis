@@ -46,8 +46,9 @@ int main(int argc, char **argv)
                        strcmp(argv[1], "paired2-free-gauge") &&
                        strcmp(argv[1], "paired2-free-gauge-scored") &&
                        strcmp(argv[1], "paired5-free-gauge-scored") &&
-                       strcmp(argv[1], "paired2-free-gauge-taupair"))) {
-        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit|hot64|paired|paired5|paired2|paired2-gauge|paired2-trellis|paired2-free-gauge|paired2-free-gauge-scored|paired5-free-gauge-scored|paired2-free-gauge-taupair glv-j0-32|j0-56 pairs.bin\n", stderr);
+                       strcmp(argv[1], "paired2-free-gauge-taupair") &&
+                       strcmp(argv[1], "paired2-free-gauge-taupair-steered"))) {
+        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit|hot64|paired|paired5|paired2|paired2-gauge|paired2-trellis|paired2-free-gauge|paired2-free-gauge-scored|paired5-free-gauge-scored|paired2-free-gauge-taupair|paired2-free-gauge-taupair-steered glv-j0-32|j0-56 pairs.bin\n", stderr);
         return 2;
     }
     int large = strcmp(argv[2], "j0-56") == 0;
@@ -93,7 +94,8 @@ int main(int argc, char **argv)
                strcmp(argv[1], "paired2-trellis") == 0 ? 9 :
                strcmp(argv[1], "paired2-free-gauge") == 0 ? 10 :
                strcmp(argv[1], "paired2-free-gauge-scored") == 0 ? 11 :
-               strcmp(argv[1], "paired5-free-gauge-scored") == 0 ? 12 : 13;
+               strcmp(argv[1], "paired5-free-gauge-scored") == 0 ? 12 :
+               strcmp(argv[1], "paired2-free-gauge-taupair") == 0 ? 13 : 14;
     ca_tau4_joint_precomp pre;
     ca_tau4_orbit_precomp orbit;
     ca_tau4_hot_precomp hot;
@@ -122,7 +124,10 @@ int main(int argc, char **argv)
             ca_group_op(&g, &outputs[i], &left, &right);
         } else {
             ca_tau4_joint_counts one = {0};
-            int ok = mode == 13
+            int ok = mode == 14
+                ? ca_ec_tau4_paired_two_free_gauge_tau_pair_steered_mul_profile(
+                    &g, &pre, &outputs[i], pairs[i].a, pairs[i].b, &one)
+                : mode == 13
                 ? ca_ec_tau4_paired_two_free_gauge_tau_pair_mul_profile(
                     &g, &pre, &outputs[i], pairs[i].a, pairs[i].b, &one)
                 : mode == 12
