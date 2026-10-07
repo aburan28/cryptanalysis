@@ -44,3 +44,6 @@ the primary one-target question or against paired2 to isolate the table
 normalization change. A qualifying physical Linux host receipt is still
 required before promoting wall-time comparisons. This opt-in research
 mode does not change automatic routing; academic novelty is unproved.
+Batch inversion in elliptic-curve multi-scalar precomputation was already
+studied by [Okeya and Sakurai (2003)](https://globals.ieice.org/en_transactions/fundamentals/10.1587/e86-a_1_98/_p);
+this PR tests its use with the paired τ rho startup path.
