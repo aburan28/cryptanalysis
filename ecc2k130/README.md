@@ -356,8 +356,9 @@ byte tables for the bit planes of the labels, as the model computes it.  On
 AVX-512 with VBMI it is a table form: the nibbles of the 132-bit label vector
 index `vpermi2b` lookups (128 bytes, position in the high nibble of the index)
 that `vpsadbw` sums, one 32-bit reciprocal does both reductions mod 131, and
-the phase mask, the pivot and the sign row are gathered by the resulting
-index.  Without VBMI it is the bitwise form: the phase from eight masked
+the phase mask and the sign row are gathered by the resulting index, a limb
+an array (their 3-bit limbs by byte permutes), and the pivot is a byte max
+over the same nibble lookups.  Without VBMI it is the bitwise form: the phase from eight masked
 popcounts, `HW^-1` by a gather, the reductions by a reciprocal, the pivot's
 mask by a bitwise comparator of every coordinate's label with k (a majority
 per bit, one ternary-logic instruction per limb), and the pivot by a binary
@@ -377,24 +378,26 @@ sits in a core's L2; 1024 and 4096 both measured 2% slower.
 
 Measured on a 4-vCPU Sapphire Rapids VM (AVX-512, VPCLMULQDQ, VPOPCNTDQ;
 gcc 13; `bench --steps 2048 --launches 6`, the binaries interleaved, median of
-three, 2048 lanes per inversion).  It is an uncontrolled cloud host whose clock
+six, 2048 lanes per inversion).  It is an uncontrolled cloud host whose clock
 drifts across a session -- the same binaries ran about 30% slower in a louder
 phase, with the same ratios -- so these figures are exploratory, not a promoted
 speedup; the repository's CPU performance isolation gate applies.
 
 | | M it/s, one worker | M it/s, four workers |
 |---|---:|---:|
-| scalar path (`-DECC_F131_LANES=1`) | 9.4 | 37.5 |
-| vector products, squaring and conversion, N = 8 lanes at a time | 45.3 | 175.0 |
-| + table-form selection, vector tags and addend, fused addition | 72.8 | 280.8 |
-| + the inversion in vector lanes, the selection's tables a limb an array | 74.4 | 290.1 |
+| scalar path (`-DECC_F131_LANES=1`) | 9.5 | 35.6 |
+| vector products, squaring and conversion, N = 8 lanes at a time | 44.8 | 171.4 |
+| + table-form selection, vector tags and addend, fused addition | 72.1 | 274.2 |
+| + the inversion in vector lanes, the selection's tables a limb an array | 73.7 | 281.5 |
+| + 3-bit limbs by permutes, the addend by row loads, the forward pass in the selection's loop | 76.5 | 286.3 |
 
 The bench's clock used to start before the lanes were seeded, and a start
 point is 64 point additions with an inversion apiece, 50 us a lane: a fifth
 of a second over 4,096 lanes that an earlier version of this table counted
 as walking (53 M it/s on one worker for the third row, 39 for the second).
 `ec2k-cpu` now seeds the lanes before `cmdRun` starts its clock, and every
-row above was re-measured with that fix in each binary.
+row above was re-measured with that fix in each binary, all five in one
+session (a quieter one had the fourth row at 74.4 and 290.1).
 
 The third row is a 1.6x gain over the vector baseline, in one worker and in
 four, from the table-form selection, the tag and addend vectorised in the
@@ -414,6 +417,24 @@ the two ports that take 512-bit work -- 16 carry-less multiplies, 14
 unpacks, 17 shifts and 33 logic ops, half of them the reduction by the dense
 modulus this basis has -- and the chain stage runs at that floor, so what
 remains is in the product itself rather than the scaffolding around it.
+
+The fifth row is the selection's loads and the ports' idle time.  With
+eleven gathers a vector between the selection and the addend, the stage
+issued more loads than vector instructions: the 3-bit limbs of the phase
+mask and the sign row are bytes now, read by register permutes (4-6% off
+the selection proper), and the addend's table point is its 32-byte row,
+eight row loads and a qword transpose for the four limbs where four
+gathers were thirty-two loads (9-10% off the tag and addend).  Then the
+forward half of Montgomery's trick moved inside the selection's loop, a
+group of eight vectors at a time after their addends: the selection waits
+on permutes, gathers and loads with room on the multiplier, and as a pass
+of its own the forward pass had kept the multiplier full and the load
+ports idle -- 3% on the step, whole binary, which the stage harness cannot
+see because it times the stages apart.  Three things measured within the
+noise of ten interleaved runs and were not kept: stage 1 fused the same
+way (a group's x converted straight into the registers the selection
+reads), four or one chain vectors instead of two with the fused forward
+pass, and clang 18 for gcc 13.
 
 The reports of a run do not depend on the batch size or the worker count,
 which `src/cputest.cpp` checks along with: the multiplier against a
