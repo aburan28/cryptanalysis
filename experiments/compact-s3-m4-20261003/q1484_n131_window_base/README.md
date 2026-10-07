@@ -34,3 +34,11 @@ screen](screen_uniform_query_budget.py) will apply Q1414's necessary
 rank-supply bound to this exact changed base. Its per-query `2^x` is an
 optimistic affordability ceiling with all other costs set to zero. It is
 separate from the still-unknown complete-solve work.
+
+The [full N53 encoding replay](n53_encoding_replay.json) independently
+iterates all 8,192 Q1481 raw window orbits, constructs the two-bit archive,
+reconstructs its point set, and matches Q1481's archived 4,060 columns,
+430,360 usable points, and packed-key file byte for byte. This control uses
+N53's **exact cofactor 428**; N131's cofactor is 4. An initial unarchived
+control draft used 4 on N53 and failed its key comparison, prompting this
+correction. The N131 enumerator and frozen protocol already use 4.
