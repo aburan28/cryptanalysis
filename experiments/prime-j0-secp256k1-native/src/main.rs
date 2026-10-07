@@ -18,6 +18,8 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::time::Instant;
 
+mod selective;
+
 #[derive(Clone, Copy)]
 struct J {
     x: F,
@@ -636,12 +638,25 @@ struct Counts {
     cache_entries: usize,
 }
 
-fn evaluate_mode(digits: &[Option<Digit>], seeds: &[J; 9], beta: F,
-                 all_affine: bool) -> (J, Counts) {
+fn evaluate_mode<const N: usize>(digits: &[Option<Digit>], seeds: &[J; N], beta: F,
+                                 all_affine: bool, used_orbits_only: bool) -> (J, Counts) {
     let mut counts = Counts::default();
     if digits.is_empty() { return (J::identity(), counts); }
-    let images: [[J; 3]; 9] = std::array::from_fn(|i| orbit(seeds[i], beta));
-    let mut cache: [Option<(F, F)>; 9] = [None; 9];
+    let mut images = [[J::identity(); 3]; N];
+    let mut orbit_ready = [false; N];
+    if used_orbits_only {
+        for digit in digits.iter().flatten() {
+            if !orbit_ready[digit.seed] {
+                images[digit.seed] = orbit(seeds[digit.seed], beta);
+                orbit_ready[digit.seed] = true;
+            }
+        }
+    } else {
+        for seed in 0..N {
+            images[seed] = orbit(seeds[seed], beta);
+        }
+    }
+    let mut cache: [Option<(F, F)>; N] = [None; N];
     if !all_affine {
         for digit in digits.iter().take(digits.len() - 1).flatten() {
             if digit.seed > 0 && cache[digit.seed].is_none() {
@@ -703,7 +718,7 @@ fn evaluate_mode(digits: &[Option<Digit>], seeds: &[J; 9], beta: F,
 }
 
 fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
-    evaluate_mode(digits, seeds, beta, false)
+    evaluate_mode(digits, seeds, beta, false, false)
 }
 
 fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
@@ -755,7 +770,8 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     };
     let prepared = prepare_choice(base, beta, atlas_choice);
     let seeds = if mode == "all_affine" { normalize_all(&prepared) } else { prepared };
-    let (point, counts) = evaluate_mode(&digits, &seeds, beta, mode == "all_affine");
+    let (point, counts) = evaluate_mode(&digits, &seeds, beta,
+                                        mode == "all_affine", false);
     let actual_point = match point.to_affine() {
         None => "identity".to_owned(),
         Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
@@ -977,6 +993,17 @@ fn check_portfolio_fixture(fixture_path: &str, seed_path: &str,
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 5 && args[1] == "--check-selective-fixture" {
+        selective::check_fixture(&args[2], &args[3], &args[4]);
+        return;
+    }
+    if args.len() == 4 && (args[1] == "--benchmark-selective-case" ||
+                           args[1] == "--check-selective-case") {
+        let index = args[3].parse::<usize>().expect("case index");
+        selective::benchmark_case(&args[2], index,
+                                  args[1] == "--benchmark-selective-case");
+        return;
+    }
     if args.len() == 5 && args[1] == "--check-portfolio-fixture" {
         check_portfolio_fixture(&args[2], &args[3], &args[4]);
         return;
