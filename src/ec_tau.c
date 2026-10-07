@@ -114,6 +114,20 @@ static tau_jac jac_triple(const ca_group *g, tau_jac p)
     return r;
 }
 
+/* tau^2 = -3*omega.  jac_triple computes the same X and Y as two tau
+ * steps, but its Z gives [3]P.  Scaling Z by -omega^(change+1) gives
+ * tau followed by omega^change*tau, including the free-gauge transition.
+ * The x/y change is already represented by the Jacobian Z scale. */
+static tau_jac jac_tau_pair(const ca_group *g, tau_jac p,
+                             uint64_t beta, uint64_t beta2, unsigned change)
+{
+    tau_jac r = jac_triple(g, p);
+    if (!r.z) return r;
+    if (change == 2) r.z = fs(g, 0, r.z);
+    else r.z = fs(g, 0, fm(g, change == 0 ? beta : beta2, r.z));
+    return r;
+}
+
 static tau_jac jac_add_mixed(const ca_group *g, tau_jac p, const ca_elem *q)
 {
     if (!p.z) return (tau_jac){q->w[0], q->w[1], g->mont.r1};
@@ -2698,7 +2712,8 @@ static size_t tau4_lattice_streams(const ca_tau4_joint_precomp *pre, uint64_t sc
     size_t n = 0;
     static const int axial[5][2] = {{-1, 0}, {0, -1}, {0, 0}, {0, 1}, {1, 0}};
     unsigned two[2] = {0, 1};
-    if (mode == 2 || mode == 3 || mode == 4 || mode == 6 || mode == 8) {
+    if (mode == 2 || mode == 3 || mode == 4 || mode == 6 || mode == 8 ||
+        mode == 11) {
         ca_i128 smallest = -1, second = -1;
         for (unsigned i = 0; i < 5; i++) {
             ca_i128 u = u0 + axial[i][0], v = v0 + axial[i][1];
@@ -2719,7 +2734,8 @@ static size_t tau4_lattice_streams(const ca_tau4_joint_precomp *pre, uint64_t sc
     size_t candidates = mode == 25 ? 25 : (mode == 5 || mode == 9) ? 5 : 2;
     counts->lattice_points_checked += mode == 25 ? 25 : 5;
     for (size_t index = 0; index < candidates; index++) {
-        unsigned axial_index = (mode == 2 || mode == 3 || mode == 4 || mode == 6 || mode == 8)
+        unsigned axial_index = (mode == 2 || mode == 3 || mode == 4 ||
+                                mode == 6 || mode == 8 || mode == 11)
             ? two[index] : (unsigned)index;
         int du = mode == 25 ? (int)(index / 5) - 2 : axial[axial_index][0];
         int dv = mode == 25 ? (int)(index % 5) - 2 : axial[axial_index][1];
@@ -2987,11 +3003,12 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
             unsigned adds = left->weight + right->weight;
             unsigned base_score = 6 * steps + 11 * adds;
             cost.pair_scores++;
-            if ((mode == 8 || mode == 9) && base_score > best_score) continue;
+            if ((mode == 8 || mode == 9 || mode == 11) && base_score > best_score)
+                continue;
             unsigned gauge = 0;
             unsigned rotations = mode == 3
                 ? tau4_pair_gauge_rotations(left, right, &gauge)
-                : (mode == 8 || mode == 9)
+                : (mode == 8 || mode == 9 || mode == 11)
                 ? tau4_pair_free_gauge_rotations(pre, left, right)
                 : left->rotations + right->rotations;
             unsigned score = base_score + rotations;
@@ -3018,7 +3035,8 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
         tau4_pair_trellis_schedule(pre, selected[0], selected[1], gauge_at, &cost);
     uint64_t one_minus_beta = fs(g, g->mont.r1, pre->beta);
     uint64_t tau_constant[3] = {one_minus_beta, 0, 0};
-    int free_gauge = mode == 6 || mode == 8 || mode == 9;
+    int free_gauge = mode == 6 || mode == 8 || mode == 9 || mode == 11;
+    int paired_tau = mode == 11;
     if (free_gauge) {
         tau_constant[1] = fa(g, g->mont.r1, f2(g, pre->beta));
         tau_constant[2] = fs(g, pre->beta2, g->mont.r1);
@@ -3041,6 +3059,15 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
     for (size_t i = length_max; i-- > 0;) {
         int has_a = i < selected[0]->length && selected[0]->digits[i] != 255;
         int has_b = i < selected[1]->length && selected[1]->digits[i] != 255;
+        /* The current position has no addition, so two adjacent tau maps
+         * can be evaluated together.  The second position may have digits;
+         * its gauge choice must be applied by the fused Z scale. */
+        int pair = paired_tau && acc.z && !has_a && !has_b && i > 0;
+        if (pair) {
+            i--;
+            has_a = i < selected[0]->length && selected[0]->digits[i] != 255;
+            has_b = i < selected[1]->length && selected[1]->digits[i] != 255;
+        }
         unsigned next_gauge = current_gauge;
         if (free_gauge && (has_a || has_b)) {
             unsigned power_a = has_a ? pre->digit[selected[0]->digits[i]].power : 0;
@@ -3052,8 +3079,12 @@ static int tau4_paired_lattice_mul_impl(const ca_group *g,
         }
         if (acc.z) {
             unsigned change = (next_gauge + 3 - current_gauge) % 3;
-            acc = jac_tau(g, acc, free_gauge ? tau_constant[change] : one_minus_beta);
-            cost.tau_steps++;
+            acc = pair ? jac_tau_pair(g, acc, pre->beta, pre->beta2, change)
+                       : jac_tau(g, acc, free_gauge ? tau_constant[change]
+                                                     : one_minus_beta);
+            cost.tau_steps += pair ? 2 : 1;
+            cost.tau_pairs += pair;
+            cost.tau_pair_cheap_z += pair && change == 2;
             if (free_gauge) cost.free_gauge_transitions += change != 0;
         }
         cost.overlaps += has_a && has_b;
@@ -3162,6 +3193,14 @@ int ca_ec_tau4_paired_five_free_gauge_scored_mul_profile(const ca_group *g,
                                                           ca_tau4_joint_counts *counts)
 {
     return tau4_paired_lattice_mul_impl(g, pre, NULL, out, NULL, a, b, counts, 9);
+}
+
+int ca_ec_tau4_paired_two_free_gauge_tau_pair_mul_profile(const ca_group *g,
+                                                           const ca_tau4_joint_precomp *pre,
+                                                           ca_elem *out, uint64_t a, uint64_t b,
+                                                           ca_tau4_joint_counts *counts)
+{
+    return tau4_paired_lattice_mul_impl(g, pre, NULL, out, NULL, a, b, counts, 11);
 }
 
 int ca_ec_tau4_paired_two_plane_mul_profile(const ca_group *g,

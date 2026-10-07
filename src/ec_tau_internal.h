@@ -221,6 +221,7 @@ typedef struct ca_tau4_joint_plane_precomp {
 
 typedef struct ca_tau4_joint_counts {
     uint64_t tau_steps, doubles, mixed_adds, full_adds, rotations, inversions;
+    uint64_t tau_pairs, tau_pair_cheap_z;
     uint64_t overlaps, fused_hits;
     uint64_t recode_attempts, pair_scores, selected_changed, lattice_points_checked;
     uint64_t gauge_selected;
@@ -266,6 +267,10 @@ int ca_ec_tau4_paired_five_free_gauge_scored_mul_profile(const ca_group *g,
                                                           const ca_tau4_joint_precomp *pre,
                                                           ca_elem *out, uint64_t a, uint64_t b,
                                                           ca_tau4_joint_counts *counts);
+int ca_ec_tau4_paired_two_free_gauge_tau_pair_mul_profile(const ca_group *g,
+                                                           const ca_tau4_joint_precomp *pre,
+                                                           ca_elem *out, uint64_t a, uint64_t b,
+                                                           ca_tau4_joint_counts *counts);
 int ca_ec_tau4_free_gauge_verify_map(void);
 int ca_ec_tau4_gauge_trellis_verify_map(void);
 /* Up to 32 independent pairs against one prepared P,Q table; batch-normalize
