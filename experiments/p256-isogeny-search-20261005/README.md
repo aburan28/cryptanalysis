@@ -361,6 +361,39 @@ no candidate advanced to a native benchmark. It closes the retained-registry
 small-constant route, not other coordinate systems, formula families, deeper
 paths, or unknown algorithms.
 
+## Full-registry conductor audit
+
+Yes: the endomorphism-ring conductor is now attached explicitly to every one
+of the 2,226 retained curve records. This is an exact derivation rather than
+2,226 independent numeric measurements. Each record recomputes
+`t = p + 1 - n` and `D_pi = t^2 - 4p`; the complete certificate-verified
+factorization shows that `D_pi` is fundamental. For every ordinary curve `E`
+in the class,
+
+```text
+Z[pi] subseteq End(E) subseteq O_K,
+Z[pi] = O_K,
+therefore End(E) = O_K and f_End(E) = 1.
+```
+
+Consequently `v_l(f_End(E)) = 0` for every rational prime `l`. The audit also
+checks the continuity and endpoint of each retained explicit path and labels
+all 26,162 stored path-edge occurrences horizontal, with both endpoints at
+level zero. There are no vertical edges or alternate conductor levels to
+search in this isogeny class.
+
+The per-curve rows, per-edge classifications, input hashes, receipt, summary,
+and deterministic verifier are frozen in
+[`results/conductor-audit-20261007`](results/conductor-audit-20261007). This
+class-wide conductor conclusion does not enumerate the entire isogeny class
+and does not establish an ECDLP speedup; the explicit curve registry remains
+the bounded depth-17/one-hop-through-199 search described above.
+
+Primary background for the order classification is Waterhouse,
+[*Abelian varieties over finite fields*](https://www.numdam.org/item/ASENS_1969_4_2_4_521_0/),
+and for the horizontal/vertical isogeny-volcano interpretation, Sutherland,
+[*Isogeny volcanoes*](https://doi.org/10.2140/obs.2013.1.507).
+
 ## Quick start
 
 Python 3.11 or newer is required.
