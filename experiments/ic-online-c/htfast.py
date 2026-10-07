@@ -20,6 +20,7 @@ from htsolver import HalfTraceSolver  # noqa: E402
 from toycurve import ToyCurve  # noqa: E402
 
 SOURCE = HERE / "htfast.c"
+CC = os.environ.get("HTFAST_CC", "gcc")
 CFLAGS = ["-O3", "-march=native", "-mpclmul", "-shared", "-fPIC", "-std=gnu11"]
 HIT_WORDS = 7
 U64, P = ctypes.c_uint64, ctypes.POINTER
@@ -33,11 +34,11 @@ def source_sha256() -> str:
 def lib() -> ctypes.CDLL:
     global _LIB
     if _LIB is None:
-        out = HERE / "build" / source_sha256()[:16] / "libhtfast.so"
+        out = HERE / "build" / hashlib.sha256((source_sha256() + CC + " ".join(CFLAGS)).encode()).hexdigest()[:16] / "libhtfast.so"
         if not out.exists():
             out.parent.mkdir(parents=True, exist_ok=True)
             tmp = out.with_suffix(f".{os.getpid()}.so")
-            subprocess.run([os.environ.get("CC", "cc"), *CFLAGS, "-o", str(tmp), str(SOURCE)], check=True)
+            subprocess.run([CC, *CFLAGS, "-o", str(tmp), str(SOURCE)], check=True)
             os.replace(tmp, out)
         L = ctypes.CDLL(str(out))
         L.htf_init.restype = ctypes.c_void_p

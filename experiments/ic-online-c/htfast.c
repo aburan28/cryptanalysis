@@ -167,7 +167,7 @@ static u64 pi_slow(const ctx_t *c, u64 z)
 void *htf_init(int n, u64 mod, u64 a2, u64 b, u64 sqrt_b, int l, const u64 *basis, int nchk, const u64 *checks,
                u64 trmask, const u64 *ht_tab, const u64 *syn_tab, int cap)
 {
-    if (n > 63 || n % 2 == 0 || l + 1 > 64 || nchk + 1 > 64) return NULL;
+    if (n > 63 || n % 2 == 0 || l + 1 > 32 || nchk + 1 > 32) return NULL;
     ctx_t *c = calloc(1, sizeof(ctx_t));
     c->n = n; c->nb = (n + 7) / 8; c->l = l; c->nchk = nchk;
     c->mod = mod; c->a2 = a2; c->b = b; c->sqrt_b = sqrt_b; c->trmask = trmask;
@@ -422,6 +422,8 @@ int htf_run(void *p, int W, u64 *Rx, u64 *Ry, unsigned char *Rinf, u64 sx, u64 s
             stats[4]++;
             u64 S = Rx[w];
             u64 c0 = gf_mul(c->sqrt_b, inv[w]);
+            /* V in ker Tr forces Tr(u) = 0, so Tr(c0) = 1 has no solution: reject before the system */
+            if (!c->trrow && tr(c, c0)) continue;
             u64 rf = gf_mul(S, apply_tab(c->ht_tab, nb, gf_sqr(c0)));
             u64 rhs = apply_tab(c->pi_tab, nb, rf) | ((u64)tr(c, c0) << nchk);
             u64 col[64];
@@ -434,28 +436,23 @@ int htf_run(void *p, int W, u64 *Rx, u64 *Ry, unsigned char *Rinf, u64 sx, u64 s
             /* column elimination kept in reduced echelon form (each pivot vector is zero at the other
              * pivot bits), so reductions are branch-free passes over the pivots; combination masks
              * over the l + 1 unknowns */
-            u64 pv[64], pc[64], ker[64];
+            /* each word holds the column bits (low 32) and its combination mask (high 32) */
+            u64 pv[64], ker[64];
             int ph[64], np = 0, nk = 0;
             for (int j = 0; j <= l; j++) {
-                u64 v = col[j], cm = (u64)1 << j;
-                for (int q = 0; q < np; q++) {
-                    u64 msk = -((v >> ph[q]) & 1);
-                    v ^= pv[q] & msk; cm ^= pc[q] & msk;
-                }
-                if (!v) { ker[nk++] = cm; continue; }
-                int h = 63 - __builtin_clzll(v);
-                for (int q = 0; q < np; q++) {
-                    u64 msk = -((pv[q] >> h) & 1);
-                    pv[q] ^= v & msk; pc[q] ^= cm & msk;
-                }
-                pv[np] = v; pc[np] = cm; ph[np] = h; np++;
+                u64 v = col[j] | ((u64)1 << (32 + j));
+                u64 orig = v;
+                for (int q = 0; q < np; q++) v ^= pv[q] & -((orig >> ph[q]) & 1);
+                u64 lo = v & 0xffffffffu;
+                if (!lo) { ker[nk++] = v >> 32; continue; }
+                int h = 63 - __builtin_clzll(lo);
+                for (int q = 0; q < np; q++) pv[q] ^= v & -((pv[q] >> h) & 1);
+                pv[np] = v; ph[np] = h; np++;
             }
-            u64 v = rhs, sol = 0;
-            for (int q = 0; q < np; q++) {
-                u64 msk = -((v >> ph[q]) & 1);
-                v ^= pv[q] & msk; sol ^= pc[q] & msk;
-            }
-            if (v) continue;
+            u64 v = rhs;
+            for (int q = 0; q < np; q++) v ^= pv[q] & -((rhs >> ph[q]) & 1);
+            if (v & 0xffffffffu) continue;
+            u64 sol = v >> 32;
             stats[6]++;
             u64 u, s, hs, du[64], ds[64], dp[64];
             expand(c, sol, &u, &s, &hs);

@@ -57,6 +57,7 @@ SOURCES = [HERE / "htfast.c", HERE / "htfast.py", HERE / "pipeline.py"] + [
     ROOT / "experiments" / "pdp-degree-heuristics" / f for f in
     ("factor_base.py", "htsolver.py", "toycurve.py", "kernel.py", "pdpkernel.c", "gf2n.py")]
 VARIANTS = ("v1", "v0", "py")
+COLLECTION_LAW = "ic-online-c RCwalk/1: W = 256 walks, every verified decomposition kept, first ratio x columns rows"
 WALK_ONLINE = 32
 WALK_COLLECT = 256
 
@@ -233,7 +234,7 @@ def collect(st: Setup, query_seed: int, ratio: float, W: int = WALK_COLLECT) -> 
 
 def cache_path(st: Setup, query_seed: int, ratio: float) -> Path:
     key = sha256_hex({"fb": st.fb.digest, "curve": st.C.curve_id, "query_seed": query_seed, "ratio": str(ratio),
-                      "kernel": htfast.source_sha256()})[:16]
+                      "collection_law": COLLECTION_LAW})[:16]
     return CACHE / f"n{st.C.n}-{st.family}-l{st.l}-s{st.seed}-q{query_seed}-{key}.json.gz"
 
 
@@ -264,7 +265,8 @@ def prepare(st: Setup, query_seed: int, ratio: float, verbose: bool = True) -> t
     rec = {
         "schema": "ic-online-c-precompute/1",
         "curve_id": st.C.curve_id, "factor_base_sha256": st.fb.digest, "query_seed": query_seed,
-        "relation_ratio": str(ratio), "walls_ns": {**st.walls, "relation_collection": col["wall_ns"],
+        "relation_ratio": str(ratio), "collection_law": COLLECTION_LAW, "collection_kernel_sha256": htfast.source_sha256(),
+        "walls_ns": {**st.walls, "relation_collection": col["wall_ns"],
                                                      "relation_la": t_la, "log_recovery_check": t_rc},
         "collection": {k: v for k, v in col.items() if k != "rows"},
         "graph": summ, "logs_verified": summ["solved_columns"],
@@ -577,6 +579,10 @@ def cmd_panel(args) -> None:
                     "rho_ns_per_step": None if rho is None else rho["ns_per_step"],
                     "rho_scalar": None if rho is None else rho["scalar"], "rho_verified": rho_ok,
                     "online_speedup": (rho["online_ns"] / ic["online_ns"]) if (ok and rho_ok) else None,
+                    "rho_floor_estimate_ns": None if rho is None else
+                    rho["ns_per_step"] * math.sqrt(math.pi * C.r / (4 * C.n)),
+                    "rho_floor_rule": "supplementary prediction, not a run: measured ns per rho step x "
+                                      "sqrt(pi r / (4 n)) steps on {+-tau^j P} classes, class canonicalization free",
                     "precompute": {k: pre[k] for k in ("walls_ns", "collection", "graph", "cache") if k in pre},
                     "host": hw,
                 }
@@ -588,9 +594,10 @@ def cmd_panel(args) -> None:
 
 def summarize(path: Path) -> None:
     rows = [json.loads(x) for x in path.open() if x.strip()]
-    print("| candidate | variant | n | l | verified | IC online ms, median [IQR] | rho online ms, median | "
-          "rho/IC, geometric mean [bootstrap 95%] | attempts, median |")
-    print("|---|---|---|---|---|---|---|---|---|")
+    print("| candidate | variant | n | l | verified | IC online ms, median [IQR] | IC online ms, mean | "
+          "rho online ms, median | rho/IC, geometric mean [bootstrap 95%] | floor estimate / IC mean | "
+          "attempts, median |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|")
     groups: dict[tuple, list] = {}
     for r in rows:
         groups.setdefault((r["candidate_id"], r["variant"]), []).append(r)
@@ -608,9 +615,12 @@ def summarize(path: Path) -> None:
             gm = "-"
         q = lambda xs, f: xs[min(len(xs) - 1, int(f * len(xs)))] if xs else float("nan")  # noqa: E731
         att = sorted(r["ic_attempts"] for r in ok)
+        fl = [r["rho_floor_estimate_ns"] / 1e6 for r in g if r.get("rho_floor_estimate_ns")]
+        floor = f"{statistics.fmean(fl) / statistics.fmean(ic):.2f}" if fl and ic else "-"
         print(f"| `{cid}` | {v} | {g[0]['n']} | {g[0]['l']} | {len(ok)}/{len(g)} | "
-              f"{statistics.median(ic):.3f} [{q(ic, .25):.3f}, {q(ic, .75):.3f}] | "
-              f"{statistics.median(rh) if rh else float('nan'):.2f} | {gm} | {statistics.median(att) if att else '-'} |")
+              f"{statistics.median(ic):.3f} [{q(ic, .25):.3f}, {q(ic, .75):.3f}] | {statistics.fmean(ic):.3f} | "
+              f"{statistics.median(rh) if rh else float('nan'):.2f} | {gm} | {floor} | "
+              f"{statistics.median(att) if att else '-'} |")
 
 
 def main() -> None:
