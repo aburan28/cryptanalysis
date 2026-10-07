@@ -884,18 +884,46 @@ static void joint_pair_width_named(uint64_t p, uint64_t b, uint64_t order, unsig
         pre.double_point[0].x ^= 1;
     }
     const uint64_t scalars[] = {0, 1, 2, 3, 17, order / 2, order - 1};
+    uint64_t serial_adds = 0, serial_rotations = 0, serial_unit_adds = 0;
     for (size_t i = 0; i < sizeof(scalars) / sizeof(scalars[0]); i++) {
         ca_elem got, expected;
-        uint64_t rotations = UINT64_MAX, unit_adds = UINT64_MAX, fallbacks = UINT64_MAX;
+        uint64_t adds = UINT64_MAX, rotations = UINT64_MAX;
+        uint64_t unit_adds = UINT64_MAX, fallbacks = UINT64_MAX;
         ca_group_mul(&g, &expected, &point, scalars[i], NULL);
-        CHECK(ca_ec_joint_pair_width_mul_profile(&g, &pre, &got, scalars[i], NULL, &rotations,
+        CHECK(ca_ec_joint_pair_width_mul_profile(&g, &pre, &got, scalars[i], &adds, &rotations,
                                                  &unit_adds, &fallbacks));
         CHECK(ca_group_equal(&g, &got, &expected));
+        serial_adds += adds;
+        serial_rotations += rotations;
+        serial_unit_adds += unit_adds;
         CHECK_EQ_U64(fallbacks, 0);
         if (words == 3) CHECK_EQ_U64(rotations, 0);
         if (words == 2) CHECK_EQ_U64(unit_adds, 0);
         CHECK(!ca_ec_joint_pair_mul_profile(&g, &pre, &got, scalars[i], NULL, NULL, NULL));
     }
+    CHECK(ca_ec_joint_pair_width_mul_wave_batch_profile(NULL, NULL, NULL, NULL, 0, 0, NULL, NULL,
+                                                        NULL, NULL, NULL));
+    ca_elem wave_outputs[7];
+    const size_t blocks[] = {1, 2, 7, 128};
+    for (size_t j = 0; j < sizeof(blocks) / sizeof(blocks[0]); j++) {
+        uint64_t adds = UINT64_MAX, rotations = UINT64_MAX, unit_adds = UINT64_MAX;
+        uint64_t wave_inversions = UINT64_MAX, fallbacks = UINT64_MAX;
+        CHECK(ca_ec_joint_pair_width_mul_wave_batch_profile(
+            &g, &pre, wave_outputs, scalars, 7, blocks[j], &adds, &rotations, &unit_adds,
+            &wave_inversions, &fallbacks));
+        CHECK_EQ_U64(adds, serial_adds);
+        CHECK_EQ_U64(rotations, serial_rotations);
+        CHECK_EQ_U64(unit_adds, serial_unit_adds);
+        CHECK_EQ_U64(fallbacks, 0);
+        CHECK(wave_inversions <= (pairs - 1) * ((7 + blocks[j] - 1) / blocks[j]));
+        for (size_t i = 0; i < 7; i++) {
+            ca_elem expected;
+            ca_group_mul(&g, &expected, &point, scalars[i], NULL);
+            CHECK(ca_group_equal(&g, &wave_outputs[i], &expected));
+        }
+    }
+    CHECK(!ca_ec_joint_pair_width_mul_wave_batch_profile(&g, &pre, wave_outputs, scalars, 7, 0,
+                                                         NULL, NULL, NULL, NULL, NULL));
     unsigned saved_pairs = pre.pairs;
     pre.pairs = 1;
     ca_elem got, expected;
@@ -905,6 +933,11 @@ static void joint_pair_width_named(uint64_t p, uint64_t b, uint64_t order, unsig
                                              &fallbacks));
     CHECK(ca_group_equal(&g, &got, &expected));
     CHECK_EQ_U64(fallbacks, 1);
+    fallbacks = 0;
+    CHECK(ca_ec_joint_pair_width_mul_wave_batch_profile(&g, &pre, &got, (uint64_t[]){order / 2}, 1,
+                                                        1, NULL, NULL, NULL, NULL, &fallbacks));
+    CHECK(ca_group_equal(&g, &got, &expected));
+    CHECK_EQ_U64(fallbacks, 1);
     pre.pairs = saved_pairs;
     ca_ec_joint_pair_clear(&pre);
     ca_elem identity;
@@ -912,6 +945,9 @@ static void joint_pair_width_named(uint64_t p, uint64_t b, uint64_t order, unsig
     CHECK(ca_ec_joint_pair_width_prepare(&g, &identity, &pre, words, NULL, NULL, NULL, NULL));
     CHECK(ca_ec_joint_pair_prepare_verify(&pre));
     CHECK(ca_ec_joint_pair_width_mul_profile(&g, &pre, &got, 17, NULL, NULL, NULL, NULL));
+    CHECK(ca_group_is_identity(&g, &got));
+    CHECK(ca_ec_joint_pair_width_mul_wave_batch_profile(&g, &pre, &got, (uint64_t[]){17}, 1, 1,
+                                                        NULL, NULL, NULL, NULL, NULL));
     CHECK(ca_group_is_identity(&g, &got));
     ca_ec_joint_pair_clear(&pre);
 }

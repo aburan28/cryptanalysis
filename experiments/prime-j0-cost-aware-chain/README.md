@@ -447,3 +447,13 @@ release and UBSan builds. The 24-byte format cuts the point table by
 25%; the 16-byte format cuts it by 50% and adds 22,368 or 44,944
 online field multiplications per 16,384 scalars on the two curves.
 Controlled wall-time performance remains unknown.
+
+The [affine pair wavefront](JOINT_PAIR_WAVE.md) evaluates 128 independent
+public scalars at each pair position using one shared affine inversion
+per active wave. On a fresh disjoint 32,768-scalar fixture, the 24- and
+16-byte wave modes matched their serial controls in outputs, group
+additions, and unit actions in both release and UBSan builds. Output
+inversions fell from 16,384 to 128 on `glv-j0-32` and to 384 on
+`j0-56` for each 16,384-scalar curve panel. This batch-throughput
+experiment still needs isolated-host timing before any CPU speedup
+claim.
