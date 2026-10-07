@@ -82,7 +82,7 @@ impl J {
         Self { x: rx, y: ry, z: rz }
     }
 
-    fn add_cached(self, q: Self, qz2: F, qz3: F) -> Self {
+    fn add_cached(self, q: Self, qz2: F, qz3: F) -> (Self, bool) {
         assert!(!self.is_identity() && !q.is_identity());
         let z1_squared = self.z.sqr();
         let u1 = self.x.mul(&qz2);
@@ -91,14 +91,16 @@ impl J {
         let s2 = q.y.mul(&self.z).mul(&z1_squared);
         let h = u2.sub(&u1);
         let r = s2.sub(&s1);
-        assert!(h != F::ZERO, "exceptional cached addition");
+        if h == F::ZERO {
+            return (if r == F::ZERO { self.double() } else { Self::identity() }, true);
+        }
         let hh = h.sqr();
         let hhh = h.mul(&hh);
         let v = u1.mul(&hh);
         let rx = r.sqr().sub(&hhh).sub(&twice(v));
         let ry = r.mul(&v.sub(&rx)).sub(&s1.mul(&hhh));
         let rz = self.z.mul(&q.z).mul(&h);
-        Self { x: rx, y: ry, z: rz }
+        (Self { x: rx, y: ry, z: rz }, false)
     }
 
     fn tau(self, one_minus_beta: F) -> Self {
@@ -135,6 +137,48 @@ impl J {
         let cube = square.mul(&inverse);
         Some((self.x.mul(&square), self.y.mul(&cube)))
     }
+}
+
+fn scaled(point: J, z: F) -> J {
+    let z2 = z.sqr();
+    J { x: point.x.mul(&z2), y: point.y.mul(&z2.mul(&z)), z }
+}
+
+fn check_exceptional_additions() {
+    let generator = J::affine(
+        fe_from_hex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"),
+        fe_from_hex("483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"));
+    let seven = F::ONE.add(&F::ONE).add(&F::ONE).add(&F::ONE)
+        .add(&F::ONE).add(&F::ONE).add(&F::ONE);
+    assert_eq!(generator.y.sqr(), generator.x.sqr().mul(&generator.x).add(&seven));
+    let twice_generator = generator.double();
+    let thrice_generator = twice_generator.add_mixed(generator.x, generator.y);
+    let bases = [generator, twice_generator, thrice_generator];
+    let mut checks = 0usize;
+    for base in bases {
+        let (x, y) = base.to_affine().expect("nonidentity control point");
+        let affine_base = J::affine(x, y);
+        for left_z in [F::ONE, F::ONE.add(&F::ONE).add(&F::ONE)] {
+            for right_z in [F::ONE, F::ONE.add(&F::ONE)] {
+                let left = scaled(affine_base, left_z);
+                let right = scaled(affine_base, right_z);
+                let right_z2 = right.z.sqr();
+                let right_z3 = right_z2.mul(&right.z);
+                let (doubled, doubled_exception) =
+                    left.add_cached(right, right_z2, right_z3);
+                assert!(doubled_exception);
+                assert_eq!(doubled.to_affine(), left.double().to_affine());
+                checks += 1;
+                let (canceled, canceled_exception) =
+                    left.add_cached(right.neg(), right_z2, right_z3);
+                assert!(canceled_exception);
+                assert!(canceled.is_identity());
+                checks += 1;
+            }
+        }
+    }
+    assert_eq!(checks, 24);
+    println!("{{\"verified\":true,\"exception_cases\":24,\"cpu_speedup_claim\":null}}");
 }
 
 fn twice(a: F) -> F { a.add(&a) }
@@ -349,6 +393,7 @@ struct Counts {
     cheap_z_pairs: usize,
     mixed_adds: usize,
     general_adds: usize,
+    exceptional_cached_adds: usize,
     first_insertions: usize,
     cache_entries: usize,
 }
@@ -402,8 +447,10 @@ fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
                 counts.mixed_adds += 1;
             } else {
                 let (z2, z3) = cache[d.seed].expect("cached seed powers");
-                accumulator = accumulator.add_cached(q, z2, z3);
+                let (sum, exceptional) = accumulator.add_cached(q, z2, z3);
+                accumulator = sum;
                 counts.general_adds += 1;
+                counts.exceptional_cached_adds += usize::from(exceptional);
             }
         }
         index -= 1;
@@ -420,6 +467,10 @@ fn check_count(expected: &Value, key: &str, actual: usize) {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--check-exceptions") {
+        check_exceptional_additions();
+        return;
+    }
     let fixture_path = std::env::args_os().nth(1).map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("fixture.json"));
     let raw = fs::read(&fixture_path).expect("read frozen fixture");
@@ -432,6 +483,7 @@ fn main() {
     let mut digit_checks = 0usize;
     let mut seed_checks = 0usize;
     let mut output_checks = 0usize;
+    let mut exceptional_cached_adds = 0usize;
     for case in cases {
         let base = J::affine(
             fe_from_hex(case["base_x_hex"].as_str().expect("base x")),
@@ -475,8 +527,12 @@ fn main() {
         ] {
             check_count(expected_counts, key, value);
         }
+        assert_eq!(counts.exceptional_cached_adds,
+                   expected_counts["exceptional_cached_adds"].as_u64().unwrap_or(0) as usize);
+        exceptional_cached_adds += counts.exceptional_cached_adds;
         output_checks += 1;
     }
-    println!("{{\"verified\":true,\"cases\":{},\"representative_checks\":{},\"digit_checks\":{},\"seed_checks\":{},\"output_checks\":{},\"native_scope\":\"variable_time_scalar_input\",\"cpu_speedup_claim\":null}}",
-             cases.len(), representative_checks, digit_checks, seed_checks, output_checks);
+    println!("{{\"verified\":true,\"cases\":{},\"representative_checks\":{},\"digit_checks\":{},\"seed_checks\":{},\"output_checks\":{},\"exceptional_cached_adds\":{},\"native_scope\":\"variable_time_scalar_input\",\"cpu_speedup_claim\":null}}",
+             cases.len(), representative_checks, digit_checks, seed_checks, output_checks,
+             exceptional_cached_adds);
 }
