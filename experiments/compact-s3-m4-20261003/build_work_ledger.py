@@ -6981,6 +6981,23 @@ def main():
     assert [row["verified_relation_count"] for row in q1480_audit[
         "rows"]] == [1, 1, 1, 1, 0, 0]
     assert q1480_audit["complete_n131_log2_work"] is None
+    q1481_dir = HERE / "q1481_window_orbit_base"
+    q1481_protocol_path = q1481_dir / "protocol.json"
+    q1481_audit_path = q1481_dir / "archive_audit.json"
+    q1481_protocol = json.loads(q1481_protocol_path.read_text())
+    q1481_audit = json.loads(q1481_audit_path.read_text())
+    assert q1481_protocol["proposal_id"] == q1481_audit[
+        "proposal_id"] == "Q1481"
+    assert q1481_protocol["candidate_id"] is q1481_audit[
+        "candidate_id"] is None
+    assert q1481_protocol["isogeny"] == q1481_audit[
+        "isogeny"] == "none"
+    assert q1481_audit["status"] == "PASS"
+    assert q1481_audit["protocol_sha256"] == sha(q1481_protocol_path)
+    assert [(row["n"], row["actual_usable_B"], row["folded_K"])
+            for row in q1481_audit["rows"]] == [
+        (53, 430360, 4060), (83, 348006384, 2096424)]
+    assert q1481_audit["complete_solve_work_log2"] is None
     ledger = {
         "kind": "compact_s3_m4_go_no_go_work_ledger",
         "schema_version": 1,
@@ -9489,6 +9506,32 @@ def main():
             "protocol_sha256": sha(q1480_protocol_path),
             "archive_audit_sha256": sha(q1480_audit_path),
         },
+        "q1481_exact_window_orbit_base_geometry": {
+            "proposal_id": "Q1481", "candidate_id": None,
+            "run_id": None, "isogeny": "none",
+            "base_family": "Frobenius orbit union of cyclic linear windows",
+            "rows": q1481_audit["rows"],
+            "n131_nominal_window_dimension": 27,
+            "n131_actual_usable_B": None,
+            "n131_folded_K": None,
+            "n131_enumerated_set_sha256": None,
+            "ordinary_relation_yield": None,
+            "successful_n83_pdp_cost": None,
+            "complete_n131_log2_work": None,
+            "challenge_run_admitted": False,
+            "decision": (
+                "The exact N53 and N83 window-orbit bases have 430360/4060 "
+                "and 348006384/2096424 usable points/folded columns. "
+                "Their packed subgroup-key sets and sampled independent "
+                "group-law checks pass. This is a different factor-base "
+                "policy with comparable sizes to Q1438 W<=4/W<=6, but it "
+                "does not yet measure an ordinary four-point decomposition "
+                "or complete N131 work."
+            ),
+            "design_protocol_sha256": q1481_protocol["design_sha256"],
+            "protocol_sha256": sha(q1481_protocol_path),
+            "archive_audit_sha256": sha(q1481_audit_path),
+        },
         "q1410_q1415_named_solver_only_method_gate": {
             "candidate_id": None,
             "curve_id": q1415_comparison["curve_id"],
@@ -10034,6 +10077,9 @@ def main():
                 "both free-partner controls verify, but the ordinary "
                 "cells censor and N83 checks 69847082 right-pair S3 "
                 "equations with no supported midpoint; "
+                "Q1481 enumerates exact window-orbit bases with comparable "
+                "N53/N83 B and K and verifies their compressed point sets, "
+                "but has no ordinary PDP result or N131 complete work; "
                 "censored N83 ordinary runs still do not measure N83 "
                 "useful-row or late-rank rates; "
                 "exact primitive mul/sqr call vectors now include inversions "

@@ -2334,6 +2334,19 @@ evaluations, with no supported right midpoint in those tested states. This
 is a costed failed search on the production base, not a successful N83
 solve, natural-yield estimate, or complete N131 `2^x`.
 
+### Q1481 exact Frobenius window-orbit bases
+
+[Q1481](q1481_window_orbit_base/README.md) enumerates a different
+Frobenius-stable base on the same exact N53 and N83 curves: the union of
+cyclic normal-basis coordinate windows. The nominal dimensions are 14 and
+23, but the subgroup-usable counts come from exact projection: N53 has
+`B=430,360`, `K=4,060`; N83 has `B=348,006,384`, `K=2,096,424`. The
+packed projected-key sets and sampled independent group-law checks pass the
+archive audit. These bases are comparable in size to Q1438 W≤4/W≤6, with
+a different membership constraint for a future compact-S3 solver test.
+N131 dimension 27 remains a `Q` design with actual `B`/`K` unknown. Q1481
+does not measure an ordinary relation or complete `2^x`.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
