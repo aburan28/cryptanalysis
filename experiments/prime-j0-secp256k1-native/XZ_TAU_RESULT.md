@@ -60,3 +60,14 @@ boundaries differ, so this is only a coarse feasibility screen; it
 does rule out simply substituting that generic chain as an obvious win.
 The remaining x-only opportunity would require a τ-specific differential
 state transition that maintains its known differences cheaply.
+
+There is a concrete obstruction to the simplest such transition.  If a
+companion pair represents `(R, R+D)` and both entries pass through τ,
+their difference becomes `τD`, whose Eisenstein norm is `3N(D)`.
+Every current width-four digit seed has norm prime to 3, as audited in
+`SEED_CHAIN_BOUND.md`; sign and ω rotation do not change that norm.
+Thus a companion obtained solely by applying τ cannot become the next
+nonzero digit difference within this **formal integer coefficient**
+alphabet.  A viable τ-specific x-only chain must reset or transform its
+companion, or choose a different alphabet.  This statement does not rule
+out subgroup-order equivalences or more elaborate differential states.
