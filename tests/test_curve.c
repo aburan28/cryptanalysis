@@ -1,4 +1,5 @@
 #include "ec_tau_internal.h"
+#include "curve_internal.h"
 #include "generated/tau4_residue_atlas.h"
 #include "generated/tau8_orbit_map.h"
 #include "generated/tau8_hot_map.h"
@@ -6,6 +7,120 @@
 #include "test_fixtures.h"
 
 static int tau_cost_cases;
+
+static uint32_t j0_hash_reference(const ca_group *g, ca_elem *point)
+{
+    ca_elem cur = *point, best = *point;
+    uint64_t best_hash = ca_group_hash(g, point);
+    uint32_t best_k = 0;
+    for (uint32_t k = 1; k < 6; k++) {
+        ca_elem next;
+        ca_ec_endo(g, &next, &cur);
+        cur = next;
+        uint64_t h = ca_group_hash(g, &cur);
+        if (h < best_hash) {
+            best_hash = h;
+            best = cur;
+            best_k = k;
+        }
+    }
+    *point = best;
+    return best_k;
+}
+
+static void j0_orbit_checks(void)
+{
+    const char *names[] = {"glv-j0-26", "glv-j0-32", "pf-j0-twist-b27"};
+    for (size_t t = 0; t < sizeof(names) / sizeof(names[0]); t++) {
+        uint64_t p, a, b, order;
+        CHECK(ca_curve_by_name(names[t], &p, &a, &b, &order) == CA_OK);
+        ca_group g;
+        CHECK(ca_curve_group(&g, p, a, b, order, NULL) == CA_OK);
+        CHECK(g.endo_kind == CA_CURVE_ENDO_J0 && g.aut_order == 6);
+        ca_elem gen;
+        CHECK(ca_group_find_generator(&g, &gen, 1) == CA_OK);
+        ca_elem id;
+        ca_group_identity(&g, &id);
+        CHECK_EQ_U64(ca_j0_coordinate_class_reduce(&g, &id), 0);
+        CHECK_EQ_U64(ca_j0_factored_hash_class_reduce(&g, &id), 0);
+        CHECK(ca_group_is_identity(&g, &id));
+
+        ca_rng rng;
+        ca_rng_seed(&rng, UINT64_C(0x20261007) ^ order);
+        for (int i = 0; i < 128; i++) {
+            uint64_t scalar = i < 5 ? (uint64_t[]){1, 2, 3, order - 2, order - 1}[i]
+                                    : 1 + ca_rng_below(&rng, order - 1);
+            ca_elem point, rotated, expected;
+            ca_group_mul(&g, &point, &gen, scalar, NULL);
+            rotated = point;
+            for (uint32_t h = 0; h < 6; h++) {
+                ca_elem reference = rotated, factored = rotated;
+                uint32_t ref_k = j0_hash_reference(&g, &reference);
+                uint32_t factored_k = ca_j0_factored_hash_class_reduce(&g, &factored);
+                CHECK_EQ_U64(factored_k, ref_k);
+                for (size_t word = 0; word < 4; word++)
+                    CHECK_EQ_U64(factored.w[word], reference.w[word]);
+                ca_elem got = rotated, replay = rotated;
+                uint32_t k = ca_j0_coordinate_class_reduce(&g, &got);
+                CHECK(k < 6);
+                for (uint32_t q = 0; q < k; q++) {
+                    ca_elem next;
+                    ca_ec_endo(&g, &next, &replay);
+                    replay = next;
+                }
+                CHECK(ca_group_equal(&g, &got, &replay));
+                CHECK(ca_group_is_valid(&g, &got));
+                if (h == 0) expected = got;
+                else CHECK(ca_group_equal(&g, &got, &expected));
+
+                uint64_t input_coeff = ca_mulmod(scalar, ca_powmod(g.endo_lambda, h, order), order);
+                uint64_t output_coeff = ca_mulmod(input_coeff, ca_powmod(g.endo_lambda, k, order), order);
+                ca_elem coeff_point;
+                ca_group_mul(&g, &coeff_point, &gen, output_coeff, NULL);
+                CHECK(ca_group_equal(&g, &coeff_point, &got));
+                ca_elem next;
+                ca_ec_endo(&g, &next, &rotated);
+                rotated = next;
+            }
+        }
+    }
+
+    /* The orbit can have fewer than six distinct points outside the prime
+     * subgroup. The same rule must also cover x=0 and y=0. */
+    ca_group tiny;
+    CHECK(ca_group_ec_init(&tiny, 7, 0, 1, 0) == CA_OK);
+    tiny.endo_kind = CA_CURVE_ENDO_J0;
+    tiny.aut_order = 6;
+    tiny.endo_c_mont = ca_mont_to(&tiny.mont, 2); /* 2^3=1 mod 7 */
+    const uint64_t words[][4] = {{0, 1, 0, 0}, {3, 0, 0, 0}};
+    for (size_t i = 0; i < 2; i++) {
+        ca_elem point, rotated, expected;
+        CHECK(ca_group_encode(&tiny, &point, words[i]));
+        rotated = point;
+        for (uint32_t h = 0; h < 6; h++) {
+            ca_elem reference = rotated, factored = rotated;
+            uint32_t ref_k = j0_hash_reference(&tiny, &reference);
+            uint32_t factored_k = ca_j0_factored_hash_class_reduce(&tiny, &factored);
+            CHECK_EQ_U64(factored_k, ref_k);
+            for (size_t word = 0; word < 4; word++)
+                CHECK_EQ_U64(factored.w[word], reference.w[word]);
+            ca_elem got = rotated, replay = rotated;
+            uint32_t k = ca_j0_coordinate_class_reduce(&tiny, &got);
+            CHECK(k < 6);
+            for (uint32_t q = 0; q < k; q++) {
+                ca_elem next;
+                ca_ec_endo(&tiny, &next, &replay);
+                replay = next;
+            }
+            CHECK(ca_group_equal(&tiny, &got, &replay));
+            if (h == 0) expected = got;
+            else CHECK(ca_group_equal(&tiny, &got, &expected));
+            ca_elem next;
+            ca_ec_endo(&tiny, &next, &rotated);
+            rotated = next;
+        }
+    }
+}
 
 /* Solve `reps` random logs on the group with ca_curve_solve and return the
  * mean group operations / sqrt(n). */
@@ -1787,6 +1902,7 @@ static void tau_mixed_kernel(void)
 
 int main(void)
 {
+    j0_orbit_checks();
     tau_atlas_recode_checks();
     tau3_scatter_graph_checks();
     CHECK(ca_ec_tau3_fused_verify_map());

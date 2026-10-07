@@ -16,6 +16,7 @@
  */
 #include "cryptanalysis/ca_curve.h"
 #include "cryptanalysis/ca_rho.h"
+#include "curve_internal.h"
 #include "dlog_internal.h"
 
 #include <math.h>
@@ -243,6 +244,14 @@ ca_status ca_curve_group(ca_group *g, uint64_t p, uint64_t a, uint64_t b, uint64
  * psi applied, so the caller can multiply the exponents by lambda^k. */
 static uint32_t glv_class_reduce(const ca_group *g, ca_elem *Y, uint32_t m)
 {
+#ifdef CA_RHO_J0_COORDINATE_ORBIT
+    if (g->endo_kind == CA_CURVE_ENDO_J0 && m == 6)
+        return ca_j0_coordinate_class_reduce(g, Y);
+#elif defined(CA_RHO_J0_FACTORED_HASH)
+    if (g->endo_kind == CA_CURVE_ENDO_J0 && m == 6)
+        return ca_j0_factored_hash_class_reduce(g, Y);
+#endif
+
     ca_elem cur = *Y, best = *Y;
     uint64_t best_h = ca_group_hash(g, Y);
     uint32_t best_k = 0;

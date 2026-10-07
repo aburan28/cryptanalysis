@@ -483,3 +483,14 @@ includes near-halfway quotients, two of which require corrections on
 matching outputs and group operation counts. A portable integer path
 remains available when the floating capability is absent. Isolated
 CPU timing is required to learn whether the quotient change helps.
+
+The [j=0 rho orbit reducer study](RHO_J0_ORBIT_RESULTS.md) moves the
+experiment from scalar-table setup to the repeated rho walk. A coordinate
+representative uses fewer field operations per reduction but changes the
+walk path; its 32-seed operation diagnostic was weaker than the legacy
+hash representative on the frozen small target. A factored hash preserves
+the exact legacy path while reusing the orbit's three x and two y words.
+It recovered and independently verified a full `j0-56` target with the
+same 255,104,119 group operations as the reference. Both variants are off
+by default. A paired isolated-host receipt is still required for any CPU
+wall-time conclusion.
