@@ -6,29 +6,23 @@
  * as `f4_gf2`'s host `echelon`: every row either becomes the pivot of a
  * high column or is reduced to zero there, and what the reduced rows keep
  * of the linear block (at most 65 columns from `low_start`) is returned.
- * The pivot rows of a panel are the lexicographically first basis of its
- * candidates' words -- a row is a pivot when its word is independent of the
- * lower-numbered candidates' -- so the elimination and its word count are
- * deterministic, but they are not the host kernel's: only the row space,
- * hence the rank, the refutation and the pinned variables, is the same.
+ * The pivot of a column is the lowest-numbered row leading there, so the
+ * elimination and its word count are deterministic, but they are not the
+ * host kernel's: only the row space, hence the rank, the refutation and
+ * the pinned variables, is the same.
  *
  * Panel w (word w of every row) runs four steps:
- *   local        a thread per chunk of consecutive rows gathers the chunk's
- *                active rows with a high bit in word w and keeps, as the
- *                chunk's basis, those independent of its earlier ones;
- *   merge        one block merges adjacent bases pairwise, log2(chunks)
- *                rounds, into the panel's; one thread then puts it in
- *                reduced echelon form, each pivot a combination of the basis
- *                rows, with a pivot column no other pivot has;
- *   materialise  a thread per word: each pivot row becomes its combination
- *                of the original basis rows, across the rest of the row, and
- *                leaves the active set;
- *   update       a warp per remaining candidate reads which pivots it needs
- *                off its own word's pivot columns and XORs them into the
- *                rest of its row.
- * Rows without a high bit in word w are untouched by panel w.  The only
- * sequential work is merging bases of at most 64 words, so a panel with
- * many candidates is spread over the whole grid rather than one block.
+ *   gather       rows still active with a high bit in word w;
+ *   panel        one block: per column of the word, the lowest such row is
+ *                the pivot and its word is XORed into the others, which
+ *                record the pivots they took as a 64-bit mask;
+ *   materialise  a thread per word: each pivot row becomes the
+ *                combination of original pivot rows its expanded mask
+ *                names, across the rest of the row, and leaves the active
+ *                set;
+ *   update       a warp per remaining row XORs the pivots its mask names
+ *                into the rest of the row.
+ * Rows without a high bit in word w are untouched by panel w.
  *
  * Written in the common subset of C11 and CUDA, after f4_gf2_device.cuh:
  * single-block steps are barrier-separated phases, and grid steps are
@@ -43,155 +37,146 @@ typedef struct {
     f4_u32 n;
     f4_u32 total; /* pivots of every panel so far */
     f4_u32 row[64];
-    /* The basis rows, by index into row[], whose original words XOR to
-     * pivot k. */
-    f4_u64 comb[64];
-    f4_u64 cols;     /* the panel's pivot columns */
-    f4_u32 slot[64]; /* the pivot whose column is c, for each c in cols */
+    /* Earlier pivots of the panel XORed into pivot k; once the panel is
+     * done, expanded to the original pivot rows it combines. */
+    f4_u64 hist[64];
 } F4ePivots;
 
-/* A basis is up to 64 slots at chunk * 64: the row, its word in the panel,
- * and that word reduced by the slots before it, so that no two slots'
- * reduced words share a lowest bit. */
+/* Panels with at most this many candidates keep their words in shared
+ * memory while the pivots are found. */
+#define F4E_SMEM_CAND 2048u
 
-/* x reduced by the echelon whose element with lowest bit b is ech[b], for
- * each b in have: zero when x is in its span, else x's lowest bit is a
- * column the echelon has no element for. */
-F4_FN f4_u64 f4e_reduce(f4_u64 x, const f4_u64 *ech, f4_u64 have)
+/* Block-shared state of the panel step. */
+typedef struct {
+    f4_u64 cols;
+    f4_u64 best[3];
+    f4_u32 n_cand;
+    f4_u64 pw[F4E_SMEM_CAND];
+} F4ePanelShared;
+
+/* Gather: active rows with a high bit in word w, with that word. */
+F4_FN void f4e_gather_thread(f4_u64 gid, f4_u64 total, const f4_u64 *mat, f4_u64 stride, f4_u32 w,
+                             f4_u64 mask, const f4_u32 *active, f4_u32 rows, f4_u32 *cand,
+                             f4_u64 *pw, f4_u32 *count)
 {
-    while (x != 0ull) {
-        const f4_u32 b = F4_CTZ(x);
-        if (((have >> b) & 1ull) == 0ull) break;
-        x ^= ech[b];
+    for (f4_u64 r = gid; r < rows; r += total) {
+        if (!active[r]) continue;
+        f4_u64 word = mat[r * stride + w] & mask;
+        if (word == 0ull) continue;
+        f4_u32 i = F4_ATOMIC_ADD32(count, 1u);
+        cand[i] = (f4_u32)r;
+        pw[i] = word;
     }
-    return x;
 }
 
-/* Local: per chunk of chunk_rows consecutive rows, its candidates -- the
- * active rows with a high bit in word w -- appended to cand/pw for the
- * update, and its basis, kept in row order. */
-F4_FN void f4e_local_thread(f4_u64 gid, f4_u64 total, const f4_u64 *mat, f4_u64 stride, f4_u32 w,
-                            f4_u64 mask, const f4_u32 *active, f4_u32 rows, f4_u32 chunk_rows,
-                            f4_u32 *cand, f4_u64 *pw, f4_u32 *count, f4_u32 *brow, f4_u64 *bword,
-                            f4_u64 *bred, f4_u32 *bn)
+/* Panel: pivots of word w among the gathered rows, lowest row first per
+ * column.  coeff[i] collects the pivot slots XORed into candidate i;
+ * is_piv[i] marks the pivots.  One pass per column eliminates it and
+ * looks for the next column's pivot.  At the end each pivot's history is
+ * expanded to the original pivot rows it combines. */
+F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand, f4_u64 *pw_global,
+                           f4_u64 *coeff, f4_u32 *is_piv, const f4_u32 *count, F4ePivots *piv)
 {
-    const f4_u64 chunks = ((f4_u64)rows + chunk_rows - 1u) / chunk_rows;
-    for (f4_u64 c = gid; c < chunks; c += total) {
-        f4_u64 ech[64];
-        f4_u64 have = 0ull;
-        f4_u32 n = 0u;
-        const f4_u64 end = (c + 1u) * chunk_rows < rows ? (c + 1u) * chunk_rows : rows;
-        for (f4_u64 r = c * chunk_rows; r < end; ++r) {
-            if (!active[r]) continue;
-            const f4_u64 word = mat[r * stride + w] & mask;
-            if (word == 0ull) continue;
-            const f4_u32 i = F4_ATOMIC_ADD32(count, 1u);
-            cand[i] = (f4_u32)r;
-            pw[i] = word;
-            if (n == 64u) continue;
-            const f4_u64 x = f4e_reduce(word, ech, have);
-            if (x == 0ull) continue;
-            const f4_u32 b = F4_CTZ(x);
-            ech[b] = x;
-            have |= 1ull << b;
-            brow[c * 64u + n] = (f4_u32)r;
-            bword[c * 64u + n] = word;
-            bred[c * 64u + n] = x;
-            ++n;
+    F4_SINGLE
+    {
+        sh->n_cand = *count;
+        sh->cols = 0ull;
+        sh->best[0] = ~0ull;
+        sh->best[1] = ~0ull;
+        sh->best[2] = ~0ull;
+    }
+    F4_SYNC();
+    f4_u64 *pw = sh->n_cand <= F4E_SMEM_CAND ? sh->pw : pw_global;
+    F4_FOR_THREADS(tid)
+        f4_u64 acc = 0ull;
+        for (f4_u32 i = tid; i < sh->n_cand; i += nt) {
+            coeff[i] = 0ull;
+            is_piv[i] = 0u;
+            pw[i] = pw_global[i];
+            acc |= pw[i];
         }
-        bn[c] = n;
-    }
-}
-
-/* The basis of chunk `right` appended to that of chunk `left`, keeping only
- * the words independent of everything before them. */
-F4_FN void f4e_merge_pair(f4_u32 *brow, f4_u64 *bword, f4_u64 *bred, f4_u32 *bn, f4_u32 left,
-                          f4_u32 right)
-{
-    f4_u64 ech[64];
-    f4_u64 have = 0ull;
-    f4_u32 n = bn[left];
-    for (f4_u32 s = 0; s < n; ++s) {
-        const f4_u64 x = bred[(f4_u64)left * 64u + s];
-        ech[F4_CTZ(x)] = x;
-        have |= 1ull << F4_CTZ(x);
-    }
-    const f4_u32 m = bn[right];
-    for (f4_u32 s = 0; s < m && n < 64u; ++s) {
-        const f4_u64 at = (f4_u64)right * 64u + s;
-        const f4_u64 x = f4e_reduce(bword[at], ech, have);
-        if (x == 0ull) continue;
-        ech[F4_CTZ(x)] = x;
-        have |= 1ull << F4_CTZ(x);
-        const f4_u64 to = (f4_u64)left * 64u + n;
-        brow[to] = brow[at];
-        bword[to] = bword[at];
-        bred[to] = x;
-        ++n;
-    }
-    bn[left] = n;
-}
-
-/* Merge: the chunks' bases pairwise until chunk 0 holds the panel's, then
- * its reduced echelon form as the panel's pivots.  Basis word k is reduced
- * by the earlier ones (comb[k] records which), then, highest pivot column
- * first, each pivot column is cleared from every other pivot. */
-F4_BLOCK_FN void f4e_merge(f4_u32 nt, f4_u32 chunks, f4_u32 *brow, f4_u64 *bword, f4_u64 *bred,
-                           f4_u32 *bn, F4ePivots *piv)
-{
-    for (f4_u32 step = 1u; step < chunks; step *= 2u) {
+        if (acc) F4_ATOMIC_OR64(&sh->cols, acc);
+    F4_END_THREADS
+    F4_SYNC();
+    f4_u64 cols = sh->cols;
+    f4_u32 n_piv = 0u;
+    if (cols != 0ull) {
+        f4_u32 c = F4_CTZ(cols);
         F4_FOR_THREADS(tid)
-            for (f4_u64 left = 2ull * step * tid; left < chunks; left += 2ull * step * nt) {
-                if (left + step < chunks)
-                    f4e_merge_pair(brow, bword, bred, bn, (f4_u32)left, (f4_u32)(left + step));
+            f4_u64 mine = ~0ull;
+            for (f4_u32 i = tid; i < sh->n_cand; i += nt) {
+                if ((pw[i] >> c) & 1ull) {
+                    f4_u64 key = ((f4_u64)cand[i] << 32) | i;
+                    mine = key < mine ? key : mine;
+                }
             }
+            if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[0], mine);
         F4_END_THREADS
         F4_SYNC();
+        /* Round r reads slot r % 3, reduces column r + 1 into slot
+         * (r + 1) % 3 and clears slot (r + 2) % 3, which every thread read
+         * before the barrier that ended round r - 1. */
+        for (f4_u32 round = 0;; ++round) {
+            const f4_u64 best = sh->best[round % 3u];
+            const f4_u32 p = best == ~0ull ? F4_NONE : (f4_u32)(best & 0xffffffffull);
+            const f4_u64 rest = cols & (cols - 1ull);
+            const f4_u32 next = rest ? F4_CTZ(rest) : 64u;
+            const f4_u32 k = n_piv;
+            F4_FOR_THREADS(tid)
+                if (tid == 0u) {
+                    sh->best[(round + 2u) % 3u] = ~0ull;
+                    if (p != F4_NONE) {
+                        piv->row[k] = cand[p];
+                        piv->hist[k] = coeff[p];
+                        is_piv[p] = 1u;
+                    }
+                }
+                f4_u64 mine = ~0ull;
+                for (f4_u32 i = tid; i < sh->n_cand; i += nt) {
+                    if (i == p || is_piv[i]) continue;
+                    f4_u64 word = pw[i];
+                    if (p != F4_NONE && ((word >> c) & 1ull)) {
+                        word ^= pw[p];
+                        pw[i] = word;
+                        coeff[i] |= 1ull << k;
+                    }
+                    if (next < 64u && ((word >> next) & 1ull)) {
+                        f4_u64 key = ((f4_u64)cand[i] << 32) | i;
+                        mine = key < mine ? key : mine;
+                    }
+                }
+                if (mine != ~0ull) F4_ATOMIC_MIN64(&sh->best[(round + 1u) % 3u], mine);
+            F4_END_THREADS
+            F4_SYNC();
+            if (p != F4_NONE) ++n_piv;
+            if (next == 64u) break;
+            cols = rest;
+            c = next;
+        }
     }
     F4_SINGLE
     {
-        const f4_u32 n = chunks ? bn[0] : 0u;
-        f4_u64 red[64], comb[64];
-        f4_u32 at[64];
-        f4_u64 have = 0ull;
-        for (f4_u32 k = 0; k < n; ++k) {
-            f4_u64 x = bword[k], t = 1ull << k;
-            while (x != 0ull && ((have >> F4_CTZ(x)) & 1ull) != 0ull) {
-                const f4_u32 j = at[F4_CTZ(x)];
-                x ^= red[j];
-                t ^= comb[j];
+        piv->n = n_piv;
+        piv->total += n_piv;
+        /* Pivot k is its own row plus the final pivots its history names,
+         * so over the original rows it is hist[k] plus their expansions. */
+        for (f4_u32 k = 0; k < n_piv; ++k) {
+            f4_u64 h = piv->hist[k], full = h;
+            while (h != 0ull) {
+                const f4_u32 j = F4_CTZ(h);
+                h &= h - 1ull;
+                full ^= piv->hist[j];
             }
-            red[k] = x;
-            comb[k] = t;
-            at[F4_CTZ(x)] = k;
-            have |= 1ull << F4_CTZ(x);
-        }
-        for (f4_u32 c = 64u; c-- > 0u;) {
-            if (((have >> c) & 1ull) == 0ull) continue;
-            const f4_u32 k = at[c];
-            for (f4_u32 j = 0; j < n; ++j) {
-                if (j != k && ((red[j] >> c) & 1ull) != 0ull) {
-                    red[j] ^= red[k];
-                    comb[j] ^= comb[k];
-                }
-            }
-        }
-        piv->n = n;
-        piv->total += n;
-        piv->cols = have;
-        for (f4_u32 k = 0; k < n; ++k) {
-            piv->row[k] = brow[k];
-            piv->comb[k] = comb[k];
-            piv->slot[F4_CTZ(red[k])] = k;
+            piv->hist[k] = full;
         }
     }
     F4_SYNC();
 }
 
-/* Materialise, a thread per word: every pivot row becomes the combination
- * of original basis rows its comb names, over words w .. stride; the
- * originals are read before any is written.  Then the pivots leave the
- * active set. */
+/* Materialise, a thread per word: every pivot row becomes its original
+ * plus the original pivot rows its expanded history names, over words
+ * w .. stride; the originals are read before any is written.  Then the
+ * pivots leave the active set. */
 F4_FN void f4e_materialise_thread(f4_u64 gid, f4_u64 total, f4_u64 *mat, f4_u64 stride, f4_u32 w,
                                   f4_u32 *active, const F4ePivots *piv, f4_u64 *ops)
 {
@@ -200,7 +185,7 @@ F4_FN void f4e_materialise_thread(f4_u64 gid, f4_u64 total, f4_u64 *mat, f4_u64 
         f4_u64 orig[64];
         for (f4_u32 k = 0; k < n; ++k) orig[k] = mat[(f4_u64)piv->row[k] * stride + x];
         for (f4_u32 k = 0; k < n; ++k) {
-            f4_u64 acc = 0ull, h = piv->comb[k];
+            f4_u64 acc = orig[k], h = piv->hist[k];
             while (h != 0ull) {
                 const f4_u32 j = F4_CTZ(h);
                 h &= h - 1ull;
@@ -212,35 +197,29 @@ F4_FN void f4e_materialise_thread(f4_u64 gid, f4_u64 total, f4_u64 *mat, f4_u64 
     for (f4_u64 k = gid; k < n; k += total) active[piv->row[k]] = 0u;
     if (gid == 0ull) {
         f4_u64 xors = 0ull;
-        for (f4_u32 k = 0; k < n; ++k) xors += F4_POPC(piv->comb[k]) - 1u;
+        for (f4_u32 k = 0; k < n; ++k) xors += F4_POPC(piv->hist[k]);
         if (xors) F4_ATOMIC_ADD64(ops, xors * (stride - w));
     }
 }
 
-/* Update: a warp per candidate that is not a pivot.  Its word is in the
- * span of the reduced pivots, so it is the sum of those whose pivot column
- * it has; XORing them into words w .. stride clears the panel.  Pivot rows
- * are only read. */
+/* Update: a warp per remaining candidate XORs the pivots its mask names
+ * into words w .. stride of its row.  Pivot rows are only read. */
 F4_FN void f4e_update_thread(f4_u64 gid, f4_u64 total, f4_u64 *mat, f4_u64 stride, f4_u32 w,
-                             const f4_u32 *cand, const f4_u64 *pw, const f4_u32 *count,
-                             const f4_u32 *active, const F4ePivots *piv, f4_u64 *ops)
+                             const f4_u32 *cand, const f4_u64 *coeff, const f4_u32 *is_piv,
+                             const f4_u32 *count, const F4ePivots *piv, f4_u64 *ops)
 {
     const f4_u32 n = *count;
     const f4_u64 lane = gid & 31ull, warp = gid >> 5, warps = total >> 5;
     f4_u64 ops_here = 0ull;
     for (f4_u64 i = warp; i < n; i += warps) {
-        if (!active[cand[i]]) continue;
-        f4_u64 m = 0ull, h = pw[i] & piv->cols;
-        while (h != 0ull) {
-            m |= 1ull << piv->slot[F4_CTZ(h)];
-            h &= h - 1ull;
-        }
+        if (is_piv[i]) continue;
+        const f4_u64 m = coeff[i];
         f4_u64 *dst = mat + (f4_u64)cand[i] * stride;
         for (f4_u64 x = w + lane; x < stride; x += 32ull) {
-            f4_u64 acc = 0ull, b = m;
-            while (b != 0ull) {
-                const f4_u32 j = F4_CTZ(b);
-                b &= b - 1ull;
+            f4_u64 acc = 0ull, h = m;
+            while (h != 0ull) {
+                const f4_u32 j = F4_CTZ(h);
+                h &= h - 1ull;
                 acc ^= mat[(f4_u64)piv->row[j] * stride + x];
             }
             dst[x] ^= acc;
