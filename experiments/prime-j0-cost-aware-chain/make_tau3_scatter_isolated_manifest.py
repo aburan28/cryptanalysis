@@ -50,10 +50,22 @@ def main():
         parser.error("expected the eight frozen scalar cases")
     if not all(row.get("verified") for row in expected["rows"]):
         parser.error("the frozen model has an unverified case")
+    case_ids = {case["id"] for case in inputs["cases"]}
+    if {row["case_id"] for row in expected["rows"]} != case_ids:
+        parser.error("model cases differ from the frozen fixture")
     native = json.loads(native_panel.read_text())
     if native.get("status") != "pass" or len(native.get("rows", [])) != 16:
         parser.error("expected the verified 16-arm native panel")
+    provenance = {"design_sha256": design, "inputs_sha256": inputs_path,
+                  "model_sha256": model, "bench_source_sha256": folder / "bench.c",
+                  "ec_tau_source_sha256": root / "src/ec_tau.c",
+                  "map_header_sha256": root / "src/generated/tau3_scatter.h",
+                  "source_sha256": folder / "check_tau3_scatter_native_panel.py"}
+    if any(native.get(field) != sha256(path) for field, path in provenance.items()):
+        parser.error("native panel source or fixture hashes differ")
     native_rows = {(row["case_id"], row["mode"]): row for row in native["rows"]}
+    if len(native_rows) != 16:
+        parser.error("native panel has duplicate case/mode rows")
     pair_fields = ["curve", "point_index", "count", "base_x", "base_y",
                    "endo_lambda", "input_digest", "output_digest"]
 
