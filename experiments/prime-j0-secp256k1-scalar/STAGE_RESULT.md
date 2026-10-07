@@ -34,6 +34,15 @@ input law. These intervals describe scalar-input variation; they are
 not CPU timing uncertainty. `summarize_stage.py` reproduces the
 intervals from the committed per-case rows.
 
+**Broader arithmetic check:** [ARITHMETIC_AUDIT.md](ARITHMETIC_AUDIT.md)
+charges the squarings in these exact source formulas and removes each
+free first addition from infinity. Under `S=M`, the paired saving is
+8,434 out of 269,540 multiplication equivalents, or **3.129%**. The
+unit-digit stream averages 105.96 additions per scalar, far denser
+than the roughly 36-addition width-four estimate in the supplied
+paper. The earlier 4.446% stage figure must not be presented as a
+full-scalar speedup or as evidence of competitiveness.
+
 The formula count excludes field squarings, exceptional additions,
 short-lattice reduction, τ-adic recoding, digit preparation, table
 lookups, branch costs, normalization and inversion, and all Sage/Python
