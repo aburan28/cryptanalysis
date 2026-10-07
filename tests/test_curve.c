@@ -490,8 +490,8 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_endo_radix8_prepare(g, point, &endo_pre, &endo_doubles, &endo_adds,
                                     &endo_inversions));
     CHECK(ca_ec_endo_radix8_prepare_verify(&endo_pre));
-    CHECK_EQ_U64(endo_doubles, 8 * (endo_pre.positions - 1));
-    CHECK_EQ_U64(endo_adds, 127 * endo_pre.positions);
+    CHECK_EQ_U64(endo_doubles, UINT64_C(8) * (endo_pre.positions - 1));
+    CHECK_EQ_U64(endo_adds, UINT64_C(127) * endo_pre.positions);
     CHECK_EQ_U64(endo_inversions, 1);
     CHECK(ca_ec_joint_window4_verify_map());
     ca_joint_window4_precomp joint_pre = {0};
@@ -499,9 +499,9 @@ static void tau_direct_checks(const ca_group *g, const ca_elem *point)
     CHECK(ca_ec_joint_window4_prepare(g, point, &joint_pre, &joint_doubles, &joint_adds,
                                       &joint_rotations, &joint_inversions));
     CHECK(ca_ec_joint_window4_prepare_verify(&joint_pre));
-    CHECK_EQ_U64(joint_doubles, 4 * (joint_pre.positions - 1));
-    CHECK_EQ_U64(joint_adds, 85 * joint_pre.positions);
-    CHECK_EQ_U64(joint_rotations, 8 * joint_pre.positions);
+    CHECK_EQ_U64(joint_doubles, UINT64_C(4) * (joint_pre.positions - 1));
+    CHECK_EQ_U64(joint_adds, UINT64_C(85) * joint_pre.positions);
+    CHECK_EQ_U64(joint_rotations, UINT64_C(8) * joint_pre.positions);
     CHECK_EQ_U64(joint_inversions, 1);
     CHECK(ca_ec_joint_window4_hot_verify_map());
     ca_joint_window4_precomp hot_joint_pre = {0};

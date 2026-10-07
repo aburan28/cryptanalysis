@@ -205,7 +205,7 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
     ca_curve_info info;
     CHECK(ca_curve_group(&g, p, 0, b, order, &info) == CA_OK);
     CHECK(info.endo == CA_CURVE_ENDO_J0);
-    uint64_t words[4] = {base_x, base_y, 0, 0};
+    const uint64_t words[4] = {base_x, base_y, 0, 0};
     ca_elem base, other, id;
     CHECK(ca_group_encode(&g, &base, words));
     ca_group_mul(&g, &other, &base, 37, NULL);
@@ -236,7 +236,11 @@ static void check_curve(uint64_t p, uint64_t b, uint64_t order,
     memset(&untouched, 0x5a, sizeof(untouched));
     ca_tau4_hot_precomp before = untouched;
     CHECK(!ca_ec_tau4_hot_prepare(&g, &base, &other, duplicate, &untouched, NULL));
-    CHECK(memcmp(&untouched, &before, sizeof(untouched)) == 0);
+    /* The failed prepare must leave every byte, including padding, intact. */
+    const unsigned char *after_bytes = (const unsigned char *)&untouched;
+    const unsigned char *before_bytes = (const unsigned char *)&before;
+    for (size_t i = 0; i < sizeof(untouched); i++)
+        CHECK(after_bytes[i] == before_bytes[i]);
 
     uint64_t saved_tau = 0, saved_full = 0;
     const uint64_t edge[][2] = {

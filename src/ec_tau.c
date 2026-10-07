@@ -517,7 +517,7 @@ size_t ca_ec_endo_radix8_point_entries(const ca_group *g)
     if (!g || g->order < 2) return 0;
     unsigned bits = 0;
     for (uint64_t n = g->order - 1; n; n >>= 1) bits++;
-    return (bits <= 32 ? 3u : 4u) * CA_ENDO_RADIX8_MAGNITUDES;
+    return (size_t)(bits <= 32 ? 3u : 4u) * CA_ENDO_RADIX8_MAGNITUDES;
 }
 
 int ca_ec_endo_radix8_prepare(const ca_group *g, const ca_elem *point, ca_endo_radix8_precomp *out,
@@ -527,7 +527,7 @@ int ca_ec_endo_radix8_prepare(const ca_group *g, const ca_elem *point, ca_endo_r
         g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
         return 0;
     size_t entries = ca_ec_endo_radix8_point_entries(g);
-    if (!entries || entries > 4 * CA_ENDO_RADIX8_MAGNITUDES) return 0;
+    if (!entries || entries > (size_t)4 * CA_ENDO_RADIX8_MAGNITUDES) return 0;
     ca_endo_radix8_precomp pre = {0};
     pre.g = g;
     pre.base_point = *point;
@@ -760,7 +760,7 @@ size_t ca_ec_joint_window4_point_entries(const ca_group *g)
     if (!g || g->order < 2) return 0;
     unsigned bits = 0;
     for (uint64_t n = g->order - 1; n; n >>= 1) bits++;
-    return (bits <= 32 ? 4u : 7u) * CA_JOINT_WINDOW4_ORBITS;
+    return (size_t)(bits <= 32 ? 4u : 7u) * CA_JOINT_WINDOW4_ORBITS;
 }
 
 static int joint_window4_prepare_impl(const ca_group *g, const ca_elem *point,
@@ -772,7 +772,7 @@ static int joint_window4_prepare_impl(const ca_group *g, const ca_elem *point,
         g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
         return 0;
     size_t entries = ca_ec_joint_window4_point_entries(g);
-    if (!entries || entries > 7 * CA_JOINT_WINDOW4_ORBITS) return 0;
+    if (!entries || entries > (size_t)7 * CA_JOINT_WINDOW4_ORBITS) return 0;
     ca_joint_window4_precomp pre = {0};
     pre.g = g;
     pre.base_point = *point;
@@ -834,7 +834,8 @@ static int joint_window4_prepare_impl(const ca_group *g, const ca_elem *point,
             if (rotations) (*rotations)++;
         }
         for (unsigned orbit = 0; orbit < CA_JOINT_WINDOW4_ORBITS; orbit++) {
-            int x = pre.rep_x[orbit], y = pre.rep_y[orbit];
+            /* Coefficients are signed; preserve their negative values. */
+            int x = (int)pre.rep_x[orbit], y = (int)pre.rep_y[orbit];
             unsigned ux = (unsigned)(x < 0 ? -x : x), uy = (unsigned)(y < 0 ? -y : y);
             if (ux >= 16 || uy > 8) {
                 free(pre.point);
@@ -1212,7 +1213,8 @@ int ca_ec_joint_pair_verify_map(void)
         }
     }
     for (unsigned residue = 0; residue < 256; residue++) {
-        int x = ca_joint_pair_digit_x[residue], y = ca_joint_pair_digit_y[residue];
+        int x = (int)ca_joint_pair_digit_x[residue];
+        int y = (int)ca_joint_pair_digit_y[residue];
         if (joint_window4_residue16(x) != residue / 16 ||
             joint_window4_residue16(y) != residue % 16)
             return 0;
@@ -2533,7 +2535,7 @@ int ca_ec_tau4_joint_prepare(const ca_group *g, const ca_elem *p, const ca_elem 
             for (int j = 0; j < 9; j++)
                 projective[9 * i + j] = (tau_jac){0, g->mont.r1, 0};
         } else {
-            tau4_seed_jac(g, base[i], one_minus_beta, &projective[9 * i]);
+            tau4_seed_jac(g, base[i], one_minus_beta, &projective[(size_t)9 * (size_t)i]);
             cost.tau_steps++;
             cost.doubles += 5;
             cost.mixed_adds += 4;
@@ -3456,7 +3458,7 @@ int ca_ec_tau4_pair_histogram(const ca_tau4_joint_precomp *pre, uint64_t a, uint
         ca_tau4_digit da = pre->digit[digits[0][i]];
         ca_tau4_digit db = pre->digit[digits[1][i]];
         int relative = 2 * ((db.power + 3 - da.power) % 3) + (da.sign != db.sign);
-        size_t slot = (size_t)(((int)da.seed * 9 + (int)db.seed) * 6 + relative);
+        size_t slot = ((size_t)da.seed * 9 + (size_t)db.seed) * 6 + (size_t)relative;
         histogram[slot]++;
     }
     return 1;
