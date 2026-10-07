@@ -64,3 +64,16 @@ An R2 execution must have its own frozen recovery protocol and preserve this
 R1 failure. Reconstruct the checkpoint's key set by replaying the frozen
 prefix and checking each two-bit status before continuing. Do not treat the
 partial key count as a final base measurement.
+
+## Frozen R2 recovery
+
+The [R2 design](design_recovery.json) was committed in `24f61f34` before
+implementation. The [recovery protocol](recovery_protocol.json) binds R1's
+failure, progress and bitmap hashes, the original source, the R2 enumerator
+and auditor sources, the checked Sage runtime, and the resource limits. The
+[R2 preflight](r2_preflight.json) recomputed 4,356 archived status ordinals
+and checked 64 point projections with the direct group law. R2 will
+recompute **every** R1-prefix status and require the same distinct-key count
+at ordinal 19,922,944 before proceeding. It writes into a separate scratch
+directory and will be archived under `runs/r2/` after completion. R1 remains
+an infrastructure failure regardless of R2's outcome.
