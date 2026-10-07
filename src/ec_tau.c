@@ -2553,8 +2553,11 @@ int ca_ec_tau4_joint_plane_prepare(const ca_group *g, const ca_elem *p, const ca
             ca_elem point = plane.base.seed[point_index][seed];
             if (point.w[2]) continue;
             plane.x_beta[point_index][seed] = fm(g, plane.base.beta, point.w[0]);
-            plane.x_beta2[point_index][seed] = fm(g, plane.base.beta2, point.w[0]);
-            cost.rotations += 2;
+            /* beta^2 = -1-beta: finish the orbit with one addition and
+             * subtraction rather than a second Montgomery multiply. */
+            plane.x_beta2[point_index][seed] =
+                fs(g, 0, fa(g, point.w[0], plane.x_beta[point_index][seed]));
+            cost.rotations++;
         }
     }
     *out = plane;
