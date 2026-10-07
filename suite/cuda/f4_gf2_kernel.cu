@@ -38,24 +38,25 @@ extern "C" __global__ void f4_gf2_decide_batch(const f4_u64 *terms, const f4_u32
                          skip_start, sys, max_rows, max_cols, mine, scratch_words, &results[sys]);
 }
 
-/* One large matrix (f4_gf2_echelon.cuh): per panel, f4e_gather on a grid,
- * f4e_panel_block on one block, then f4e_materialise and f4e_update on
+/* One large matrix (f4_gf2_echelon.cuh): per panel, f4e_local on a grid,
+ * f4e_merge_block on one block, then f4e_materialise and f4e_update on
  * grids, the latter's size a multiple of 32; f4e_low at the end. */
 #define F4E_GID   ((f4_u64)blockIdx.x * blockDim.x + threadIdx.x)
 #define F4E_TOTAL ((f4_u64)gridDim.x * blockDim.x)
 
-extern "C" __global__ void f4e_gather(const f4_u64 *mat, f4_u64 stride, f4_u32 w, f4_u64 mask,
-                                      const f4_u32 *active, f4_u32 rows, f4_u32 *cand, f4_u64 *pw,
-                                      f4_u32 *count)
+extern "C" __global__ void f4e_local(const f4_u64 *mat, f4_u64 stride, f4_u32 w, f4_u64 mask,
+                                     const f4_u32 *active, f4_u32 rows, f4_u32 chunk_rows,
+                                     f4_u32 *cand, f4_u64 *pw, f4_u32 *count, f4_u32 *brow,
+                                     f4_u64 *bword, f4_u64 *bred, f4_u32 *bn)
 {
-    f4e_gather_thread(F4E_GID, F4E_TOTAL, mat, stride, w, mask, active, rows, cand, pw, count);
+    f4e_local_thread(F4E_GID, F4E_TOTAL, mat, stride, w, mask, active, rows, chunk_rows, cand, pw,
+                     count, brow, bword, bred, bn);
 }
 
-extern "C" __global__ void f4e_panel_block(const f4_u32 *cand, f4_u64 *pw, f4_u64 *coeff,
-                                           f4_u32 *is_piv, const f4_u32 *count, F4ePivots *piv)
+extern "C" __global__ void f4e_merge_block(f4_u32 chunks, f4_u32 *brow, f4_u64 *bword, f4_u64 *bred,
+                                           f4_u32 *bn, F4ePivots *piv)
 {
-    __shared__ F4ePanelShared sh;
-    f4e_panel(&sh, blockDim.x, cand, pw, coeff, is_piv, count, piv);
+    f4e_merge(blockDim.x, chunks, brow, bword, bred, bn, piv);
 }
 
 extern "C" __global__ void f4e_materialise(f4_u64 *mat, f4_u64 stride, f4_u32 w, f4_u32 *active,
@@ -65,10 +66,10 @@ extern "C" __global__ void f4e_materialise(f4_u64 *mat, f4_u64 stride, f4_u32 w,
 }
 
 extern "C" __global__ void f4e_update(f4_u64 *mat, f4_u64 stride, f4_u32 w, const f4_u32 *cand,
-                                      const f4_u64 *coeff, const f4_u32 *is_piv,
-                                      const f4_u32 *count, const F4ePivots *piv, f4_u64 *ops)
+                                      const f4_u64 *pw, const f4_u32 *count, const f4_u32 *active,
+                                      const F4ePivots *piv, f4_u64 *ops)
 {
-    f4e_update_thread(F4E_GID, F4E_TOTAL, mat, stride, w, cand, coeff, is_piv, count, piv, ops);
+    f4e_update_thread(F4E_GID, F4E_TOTAL, mat, stride, w, cand, pw, count, active, piv, ops);
 }
 
 extern "C" __global__ void f4e_low(const f4_u64 *mat, f4_u64 stride, f4_u32 low_start, f4_u32 width,

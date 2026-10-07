@@ -316,6 +316,13 @@ fn low_pairs(words: &[u64], n: usize) -> Vec<u128> {
         .collect()
 }
 
+/// Rows per chunk of the large-matrix elimination's local step: a thread
+/// per chunk, at most 4096 chunks, so the single-block merge of their
+/// bases stays a dozen rounds of a few merges per thread.
+fn echelon_chunk_rows(rows: usize) -> usize {
+    rows.div_ceil(4096).max(32)
+}
+
 /// The device elimination of one large matrix run on the host
 /// (`f4_gf2_emulate_echelon`): `matrix` is `rows × stride` words, columns
 /// `..low_start` are eliminated and the `width` columns from `low_start`
@@ -329,6 +336,31 @@ pub fn emulate_echelon(
     width: usize,
     skip: &[bool],
     threads: u32,
+) -> Echelon {
+    emulate_echelon_in_chunks(
+        matrix,
+        rows,
+        stride,
+        low_start,
+        width,
+        skip,
+        threads,
+        echelon_chunk_rows(rows),
+    )
+}
+
+/// [`emulate_echelon`] with the rows per chunk of the local step given.
+#[cfg(feature = "gpu-emulator")]
+#[allow(clippy::too_many_arguments)]
+fn emulate_echelon_in_chunks(
+    matrix: &[u64],
+    rows: usize,
+    stride: usize,
+    low_start: usize,
+    width: usize,
+    skip: &[bool],
+    threads: u32,
+    chunk_rows: usize,
 ) -> Echelon {
     let mut m = matrix[..rows * stride].to_vec();
     let mut active = active_rows(rows, skip);
@@ -345,6 +377,7 @@ pub fn emulate_echelon(
             width as u32,
             active.as_mut_ptr(),
             threads,
+            chunk_rows as u32,
             low.as_mut_ptr(),
             &mut n_low,
             &mut pivots,
@@ -373,6 +406,7 @@ mod emulator_ffi {
             width: u32,
             active: *mut u32,
             threads: u32,
+            chunk_rows: u32,
             low: *mut u64,
             n_low: *mut u32,
             pivots: *mut u32,
@@ -829,7 +863,7 @@ mod cuda {
         pub blocks_per_sm: u32,
         /// Device scratch budget over all blocks, in bytes.
         pub scratch_budget: usize,
-        buffers: [Buffer; 19],
+        buffers: [Buffer; 21],
         /// `ECHELON_KERNELS`, when the module has them.
         echelon_fns: Option<[Handle; 5]>,
         /// With `F4_F2_ECHELON_PROFILE` set: launches and nanoseconds per
@@ -839,15 +873,16 @@ mod cuda {
     }
 
     /// Entry points of `cuda/f4_gf2_echelon.cuh`, in launch order.
-    const ECHELON_KERNELS: [&str; 5] = [
-        "f4e_gather",
-        "f4e_panel_block",
+    pub(super) const ECHELON_KERNELS: [&str; 5] = [
+        "f4e_local",
+        "f4e_merge_block",
         "f4e_materialise",
         "f4e_update",
         "f4e_low",
     ];
-    /// `sizeof(F4ePivots)`: two `u32`, 64 `u32` rows and 64 `u64` masks.
-    const PIVOTS_BYTES: usize = 8 + 64 * 4 + 64 * 8;
+    /// `sizeof(F4ePivots)`: two `u32`, 64 `u32` rows, 64 `u64` masks, the
+    /// `u64` column set and 64 `u32` slots.
+    const PIVOTS_BYTES: usize = 8 + 64 * 4 + 64 * 8 + 8 + 64 * 4;
 
     // SAFETY: the handles are process-wide driver objects; every call makes
     // the context current on the calling thread first.
@@ -1112,23 +1147,30 @@ mod cuda {
             }
             let n = rows.max(1);
             let hw = low_start.div_ceil(64);
+            let chunk_rows = super::echelon_chunk_rows(rows);
+            let chunks = rows.div_ceil(chunk_rows);
+            let slots = 64 * chunks.max(1);
             let t_up = std::time::Instant::now();
             let mut mat = self.upload(8, &matrix[..rows * stride])?;
             let mut active = self.upload(9, &active_rows(rows, skip))?;
             let mut cand = self.ensure(10, n * 4)?;
             let mut pw = self.ensure(11, n * 8)?;
-            let mut coeff = self.ensure(12, n * 8)?;
-            let mut is_piv = self.ensure(13, n * 4)?;
+            let mut bword = self.ensure(12, slots * 8)?;
+            let mut brow = self.ensure(13, slots * 4)?;
             let counts = self.upload(14, &vec![0u32; hw.max(1)])?;
             let mut piv = self.upload(15, &[0u8; PIVOTS_BYTES])?;
             let mut ops = self.upload(16, &[0u64])?;
             let mut low = self.ensure(17, n * 16)?;
             let mut n_low = self.upload(18, &[0u32])?;
+            let mut bred = self.ensure(19, slots * 8)?;
+            let mut bn = self.ensure(20, chunks.max(1) * 4)?;
             let upload_ns = t_up.elapsed().as_nanos();
             let t_dev = std::time::Instant::now();
             let (mut stride64, mut rows32) = (stride as u64, rows as u32);
             let (mut low_start32, mut width32) = (low_start as u32, width as u32);
+            let (mut chunk_rows32, mut chunks32) = (chunk_rows as u32, chunks as u32);
             let row_grid = (rows.div_ceil(256) as u32).min(self.sm_count * 8);
+            let chunk_grid = chunks.div_ceil(128) as u32;
             let warp_grid = self.sm_count * 8;
             for w in 0..hw {
                 let mut w32 = w as u32;
@@ -1149,20 +1191,25 @@ mod cuda {
                         &mut mask as *mut u64 as *mut c_void,
                         &mut active as *mut u64 as *mut c_void,
                         &mut rows32 as *mut u32 as *mut c_void,
+                        &mut chunk_rows32 as *mut u32 as *mut c_void,
                         &mut cand as *mut u64 as *mut c_void,
                         &mut pw as *mut u64 as *mut c_void,
                         &mut count as *mut u64 as *mut c_void,
+                        &mut brow as *mut u64 as *mut c_void,
+                        &mut bword as *mut u64 as *mut c_void,
+                        &mut bred as *mut u64 as *mut c_void,
+                        &mut bn as *mut u64 as *mut c_void,
                     ];
-                    self.launch(fns[0], row_grid, 256, &mut p, "f4e_gather")?;
+                    self.launch(fns[0], chunk_grid, 128, &mut p, "f4e_local")?;
                     let mut p = [
-                        &mut cand as *mut u64 as *mut c_void,
-                        &mut pw as *mut u64 as *mut c_void,
-                        &mut coeff as *mut u64 as *mut c_void,
-                        &mut is_piv as *mut u64 as *mut c_void,
-                        &mut count as *mut u64 as *mut c_void,
+                        &mut chunks32 as *mut u32 as *mut c_void,
+                        &mut brow as *mut u64 as *mut c_void,
+                        &mut bword as *mut u64 as *mut c_void,
+                        &mut bred as *mut u64 as *mut c_void,
+                        &mut bn as *mut u64 as *mut c_void,
                         &mut piv as *mut u64 as *mut c_void,
                     ];
-                    self.launch(fns[1], 1, 1024, &mut p, "f4e_panel_block")?;
+                    self.launch(fns[1], 1, 1024, &mut p, "f4e_merge_block")?;
                     let mut p = [
                         &mut mat as *mut u64 as *mut c_void,
                         &mut stride64 as *mut u64 as *mut c_void,
@@ -1178,9 +1225,9 @@ mod cuda {
                         &mut stride64 as *mut u64 as *mut c_void,
                         &mut w32 as *mut u32 as *mut c_void,
                         &mut cand as *mut u64 as *mut c_void,
-                        &mut coeff as *mut u64 as *mut c_void,
-                        &mut is_piv as *mut u64 as *mut c_void,
+                        &mut pw as *mut u64 as *mut c_void,
                         &mut count as *mut u64 as *mut c_void,
+                        &mut active as *mut u64 as *mut c_void,
                         &mut piv as *mut u64 as *mut c_void,
                         &mut ops as *mut u64 as *mut c_void,
                     ];
@@ -1780,7 +1827,15 @@ mod tests {
     fn the_kernel_source_is_self_contained() {
         let src = kernel_source();
         assert!(src.contains("f4_gf2_decide_batch"));
-        assert!(src.contains("f4e_panel_block"));
+        for kernel in [
+            "f4e_local",
+            "f4e_merge_block",
+            "f4e_materialise",
+            "f4e_update",
+            "f4e_low",
+        ] {
+            assert!(src.contains(kernel), "{kernel} is not in the kernel source");
+        }
         // NVRTC resolves no include path: every #include is guarded out by
         // the header that precedes it.  (clang-format indents directives
         // after the '#'.)
@@ -1892,8 +1947,12 @@ mod tests {
                     })
                 };
                 let want = rref_rows(work.iter().map(|r| low(r)).collect(), width);
-                for threads in [1, 7, 64] {
-                    let e = emulate_echelon(&m, rows, stride, low_start, width, &skip, threads);
+                // Chunks of 1 and 3 rows make many small bases to merge, the
+                // default few large ones.
+                for (threads, chunk_rows) in [(1, 1), (7, 3), (64, echelon_chunk_rows(rows))] {
+                    let e = emulate_echelon_in_chunks(
+                        &m, rows, stride, low_start, width, &skip, threads, chunk_rows,
+                    );
                     assert_eq!(e.pivots, pivots, "pivots: {rows}x{cols} density {density}");
                     assert_eq!(
                         rref_rows(e.low, width),
@@ -1959,10 +2018,15 @@ mod tests {
         match compile_kernel_ptx(75) {
             Ok(ptx) => {
                 let text = String::from_utf8_lossy(&ptx);
-                assert!(
-                    text.contains(".entry f4_gf2_decide_batch"),
-                    "no entry point"
-                );
+                for entry in ["f4_gf2_decide_batch"]
+                    .iter()
+                    .chain(cuda::ECHELON_KERNELS.iter())
+                {
+                    assert!(
+                        text.contains(&format!(".entry {entry}")),
+                        "no entry point {entry}"
+                    );
+                }
                 assert_eq!(ptx.last(), Some(&0), "PTX must be NUL-terminated");
             }
             Err(e) => assert!(e.starts_with("none of"), "NVRTC was found but failed: {e}"),
