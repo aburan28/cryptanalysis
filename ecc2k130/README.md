@@ -352,37 +352,49 @@ consecutive lanes load as three vector registers, and `src/f131x.h` is
 N = 8 on AVX-512 (VPCLMULQDQ), 4 on AVX2 (VPCLMULQDQ), 2 on SSE (PCLMULQDQ),
 `-DECC_F131_LANES=1` for the scalar path.  The five products, the squaring
 and the conversion of a step are vector; so is the selection, which leaves the
-byte tables for the bit planes of the labels, as the model computes it: the
-phase from eight masked popcounts, `HW^-1` by a gather, the two reductions
-mod 131 by a reciprocal, the pivot's mask by a bitwise comparator of every
-coordinate's label with k (a majority per bit, one ternary-logic instruction
-per limb), the pivot by eight steps of a binary search down the planes, and
-the sign as that coordinate of the converted y.  The tag and the cycle rule,
-the addend's loads and the rare lane that reports stay scalar, as does the
-peel of the K = N x `ECC_F131_CHAIN_VECTORS` interleaved inversion chains.
-The vector path takes 2048 lanes per inversion by default, since the batch's
-fixed cost (the inversion, the 3(K-1) scalar products of the peel) shows
-against a shorter lane step and that much state still sits in a core's L2.
+byte tables for the bit planes of the labels, as the model computes it.  On
+AVX-512 with VBMI it is a table form: the nibbles of the 132-bit label vector
+index `vpermi2b` lookups (128 bytes, position in the high nibble of the index)
+that `vpsadbw` sums, one 32-bit reciprocal does both reductions mod 131, and
+the phase mask, the pivot and the sign row are gathered by the resulting
+index.  Without VBMI it is the bitwise form: the phase from eight masked
+popcounts, `HW^-1` by a gather, the reductions by a reciprocal, the pivot's
+mask by a bitwise comparator of every coordinate's label with k (a majority
+per bit, one ternary-logic instruction per limb), and the pivot by a binary
+search down the planes.  The tag and the 4-cycle rule and the addend's gathers
+are vector too, in the selection pass; only the rare lane that reports and the
+peel of the K = N x `ECC_F131_CHAIN_VECTORS` interleaved inversion chains stay
+scalar.  The backward pass of the batched inversion folds each lane's point
+addition in where its lambda is produced, so the additions no longer make a
+second pass over the batch's 48 KB of state.  The vector path takes 2048 lanes
+per inversion by default, since the batch's fixed cost (the inversion, the
+3(K-1) scalar products of the peel) shows against a shorter lane step and that
+much state still sits in a core's L2.
 
 Measured on a 4-vCPU Sapphire Rapids VM (AVX-512, VPCLMULQDQ, VPOPCNTDQ;
-gcc 13; `bench --steps 2048 --launches 6`, the four binaries interleaved,
-median of three).  It is an uncontrolled cloud host -- the same binaries ran
-about 30% faster earlier in the same session, with the same ratios -- so
-these figures are exploratory, not a promoted speedup; the repository's CPU
-performance isolation gate applies.
+gcc 13; `bench --steps 2048 --launches 6`, the binaries interleaved, median of
+three, 2048 lanes per inversion).  It is an uncontrolled cloud host whose clock
+drifts across a session -- the same binaries ran about 30% slower in a louder
+phase, with the same ratios -- so these figures are exploratory, not a promoted
+speedup; the repository's CPU performance isolation gate applies.
 
 | | M it/s, one worker | M it/s, four workers |
 |---|---:|---:|
-| scalar path (`main`), 512 lanes per inversion | 7.1 | 24.6 |
-| + products, squaring and conversion N = 8 lanes at a time | 18.2 | 63.1 |
-| + the selection on bit planes, N lanes at a time | 22.1 | 77.1 |
-| + 2048 lanes per inversion | 24.1 | 85.2 |
+| scalar path (`-DECC_F131_LANES=1`) | 9.3 | 36.6 |
+| vector products, squaring and conversion, N = 8 lanes at a time | 38.8 | 150.6 |
+| + table-form selection, vector tags and addend, fused addition | 54.8 | 214.6 |
 
-Of a lane's step at 2048 lanes (one worker, the stages timed apart), the
-five products and the squaring are about 60%, the selection 27%, the tag and
-the addend's loads 10%, the conversion and weight 4%, the inversion and the
-peel 2% amortised.  The next things to look at are a byte-sliced selection
-on VBMI (`vpermi2b` lookups over 64 lanes) and the peel, which is scalar.
+The last row is a 1.41x gain over the vector baseline, in one worker and in
+four, from the table-form selection, the tag and addend vectorised in the
+selection pass, the reduction's tail folded into one carry-less product, a
+SWAR word test for the rare report, and the point addition folded into the
+inversion's backward pass.  Of a lane's step at 2048 lanes (one worker, the
+stages timed apart), the five products and the squaring are about 60%, the
+selection with its tags and addend about 30%, the conversion and weight 5%,
+and the inversion with its peel 3% amortised.  What is left is almost all the
+multiply ports: the step is close to its carry-less-multiply floor, so the
+next gains are in the product itself (fewer sorts, shared Karatsuba sums)
+rather than in the scaffolding around it.
 
 The reports of a run do not depend on the batch size or the worker count,
 which `src/cputest.cpp` checks along with: the multiplier against a
