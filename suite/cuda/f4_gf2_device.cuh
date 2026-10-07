@@ -94,6 +94,7 @@ typedef struct {
 #    define F4_POPC(x)            ((f4_u32)__popcll(x))
 #    define F4_CTZ(x)             ((f4_u32)(__ffsll((long long)(x)) - 1))
 #    define F4_ATOMIC_OR64(p, x)  atomicOr((p), (x))
+#    define F4_ATOMIC_XOR64(p, x) atomicXor((p), (x))
 #    define F4_ATOMIC_ADD64(p, x) atomicAdd((p), (x))
 #    define F4_ATOMIC_MIN64(p, x) atomicMin((p), (x))
 #    define F4_ATOMIC_ADD32(p, x) atomicAdd((p), (x))
@@ -112,6 +113,12 @@ static inline f4_u64 f4_host_or64(f4_u64 *p, f4_u64 x)
 {
     f4_u64 old = *p;
     *p = old | x;
+    return old;
+}
+static inline f4_u64 f4_host_xor64(f4_u64 *p, f4_u64 x)
+{
+    f4_u64 old = *p;
+    *p = old ^ x;
     return old;
 }
 static inline f4_u64 f4_host_add64(f4_u64 *p, f4_u64 x)
@@ -133,6 +140,7 @@ static inline f4_u32 f4_host_add32(f4_u32 *p, f4_u32 x)
     return old;
 }
 #    define F4_ATOMIC_OR64(p, x)  f4_host_or64((p), (x))
+#    define F4_ATOMIC_XOR64(p, x) f4_host_xor64((p), (x))
 #    define F4_ATOMIC_ADD64(p, x) f4_host_add64((p), (x))
 #    define F4_ATOMIC_MIN64(p, x) f4_host_min64((p), (x))
 #    define F4_ATOMIC_ADD32(p, x) f4_host_add32((p), (x))
