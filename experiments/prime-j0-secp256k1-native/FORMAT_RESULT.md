@@ -48,3 +48,8 @@ nine-seed preparation has the minimum 72 `M+S` point-operation count
 within its one-result double/τ/add graph, before two unit rotations.
 Further preparation savings require a different point formula or digit
 alphabet; this proof does not limit either.
+
+The [x-only τ feasibility screen](XZ_TAU_RESULT.md) validates an XZ τ
+map and a cheaper differential-add primitive on 1,024 controlled point
+cases. A complete x-only scalar chain has not yet been constructed or
+charged, so this is a primitive result only.
