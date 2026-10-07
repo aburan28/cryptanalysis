@@ -23,6 +23,7 @@ fn main() {
         println!("cargo:rustc-cfg=suite_avx512");
     }
     println!("cargo:rerun-if-changed=cuda/f4_gf2_device.cuh");
+    println!("cargo:rerun-if-changed=cuda/f4_gf2_echelon.cuh");
     println!("cargo:rerun-if-changed=cuda/f4_gf2_emulate.c");
     println!("cargo:rerun-if-env-changed=CC");
     println!("cargo:rerun-if-env-changed=AR");

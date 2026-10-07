@@ -1,6 +1,9 @@
 name: cloud
-# The Runpod worker fleet and the Modal job runner (cloud/).  Nothing here
-# talks to Runpod, Modal or Cursor; the tests run the job runner locally.
+# The Runpod worker fleet, the Modal job runner, the Modal workers and the
+# cairn job queue (cloud/).  Nothing here talks to Runpod, Modal or Cursor; the
+# tests run the job runner locally and the queue's jobs through a cairn agent
+# and node on the runner, and the Modal client is installed only so its
+# definitions import.
 on:
   push:
     paths: ['cloud/**', 'ecc2k130/scripts/fetch_cuda.sh', '.github/workflows/cloud.yml']
@@ -17,11 +20,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Modal client
+        run: pip install 'modal>=1.0'
+      - name: cairn, the release the runners install
+        run: |
+          ver=$(python -c 'import sys; sys.path.insert(0, "cloud"); import cairn_queue; print(cairn_queue.CAIRN_VERSION)')
+          t=cairn-v$ver-x86_64-unknown-linux-musl.tar.gz
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "https://github.com/aburan28/cairn/releases/download/v$ver/$t"
+          curl -fsSLO "https://github.com/aburan28/cairn/releases/download/v$ver/$t.sha256"
+          sha256sum -c "$t.sha256"
+          tar -xzf "$t"
+          echo "CAIRN_BIN=$RUNNER_TEMP/cairn" >> "$GITHUB_ENV"
       - name: Unit tests
         run: python -m unittest discover -s cloud/tests -v
       - name: shellcheck
         run: |
-          shellcheck -x cloud/job_runner.sh cloud/worker/*.sh
+          shellcheck -x cloud/job_runner.sh cloud/worker/*.sh cloud/cairn_runner.sh cloud/pod_env.sh
           python -c 'import sys; sys.path.insert(0, "cloud"); import fleet; print(fleet.STAGE0)' \
             > "$RUNNER_TEMP/stage0.sh"
           shellcheck -s bash "$RUNNER_TEMP/stage0.sh"
+          for v in runpod_pod.STAGE0 runpod_pod.BOOTSTRAP ship.SCRIPT cairn_queue.JOB_SCRIPT cairn_queue.LEFT_SCRIPT; do
+            python -c "import sys; sys.path.insert(0, 'cloud'); import ${v%%.*}; print($v)" \
+              > "$RUNNER_TEMP/$v.sh"
+            shellcheck -x -s bash "$RUNNER_TEMP/$v.sh"
+          done

@@ -4,20 +4,23 @@
 boot.sh runs this in the tmux session `fleet-idle` when the limit is positive.
 A minute counts as busy when any of these hold:
 
-* the container's cgroup used more than BUSY_CORES of CPU,
+* the Cursor worker has an agent session (its own /metrics on the
+  management address),
+* the container used more than BUSY_CORES of CPU,
 * a GPU was more than BUSY_GPU_PERCENT utilized,
 * someone is logged in over SSH,
 * a `cloud/fleet.py run` job is still running,
-* a file in the agents' checkout (or one of its worktrees) changed recently,
-* Cursor reports this worker in use.
+* a file in the agents' checkout (or one of its worktrees) changed recently.
 
 The pod is stopped, not terminated, and `cloud/fleet.py up <name>` starts it
 again.  On a pod whose /workspace is the container disk (Runpod CPU pods have
 no volume) a stop wipes the checkout, so uncommitted changes or unpushed
 commits there also count as busy.  The current state is written to
 /workspace/fleet/idle.json every minute.
+
+cloud/modal_worker.py imports the probes below for its Modal workers, with
+FLEET_WORKDIR pointing at their checkout.
 """
-import base64
 import json
 import os
 import shlex
@@ -29,15 +32,18 @@ import urllib.request
 from pathlib import Path
 
 FLEET = Path("/workspace/fleet")
-WORKDIR = Path("/workspace/cryptanalysis")
+WORKDIR = Path(os.environ.get("FLEET_WORKDIR", "/workspace/cryptanalysis"))
 JOBS = Path("/workspace/jobs")
+MANAGEMENT = os.environ.get("FLEET_MANAGEMENT_ADDR", "127.0.0.1:8787")
 # Runpod's API sits behind Cloudflare, which refuses urllib's default User-Agent.
 USER_AGENT = "cryptanalysis-fleet-idle/1"
 BUSY_CORES = 0.25
 BUSY_GPU_PERCENT = 5
 EDIT_WINDOW_SECONDS = 600
-CURSOR_POLL_SECONDS = 300
 PRUNE = {".git", "node_modules", "target", "__pycache__", ".venv"}
+METRICS = {"cursor_self_hosted_worker_connected": "connected",
+           "cursor_self_hosted_worker_session_active": "session_active",
+           "cursor_self_hosted_worker_last_activity_unix_seconds": "last_activity"}
 
 
 def log(message):
@@ -59,6 +65,33 @@ def secret(name):
         return (FLEET / "secrets" / name).read_text().strip()
     except OSError:
         return ""
+
+
+def parse_metrics(text):
+    """The worker's connected / session_active / last_activity gauges."""
+    out = {}
+    for line in text.splitlines():
+        name, _, value = line.rpartition(" ")
+        if name in METRICS:
+            try:
+                out[METRICS[name]] = float(value)
+            except ValueError:
+                pass
+    return out
+
+
+def worker_metrics(address=MANAGEMENT):
+    try:
+        with urllib.request.urlopen(f"http://{address}/metrics", timeout=10) as response:
+            return parse_metrics(response.read().decode(errors="replace"))
+    except (OSError, ValueError):
+        return {}
+
+
+def agent_busy(metrics):
+    # last_activity moves with the server's heartbeat frames every 30 s, so it
+    # says nothing about agents; only an open session does.
+    return "agent session" if metrics.get("session_active") else None
 
 
 def cpu_seconds():
@@ -117,10 +150,11 @@ def job_running():
     return False
 
 
-def worktrees():
-    roots = [WORKDIR]
+def worktrees(root=None):
+    root = Path(root or WORKDIR)
+    roots = [root]
     try:
-        out = subprocess.run(["git", "-C", str(WORKDIR), "worktree", "list", "--porcelain"],
+        out = subprocess.run(["git", "-C", str(root), "worktree", "list", "--porcelain"],
                              capture_output=True, text=True, timeout=30).stdout
         roots += [Path(line[9:]) for line in out.splitlines() if line.startswith("worktree ")]
     except (OSError, subprocess.SubprocessError):
@@ -128,11 +162,16 @@ def worktrees():
     return {r for r in roots if r.is_dir()}
 
 
-def recent_edit(limit=50000):
-    cutoff = time.time() - EDIT_WINDOW_SECONDS
+def recent_edit(root=None, since=0.0, limit=50000):
+    """A file changed in the last EDIT_WINDOW_SECONDS, and after `since`.
+
+    `since` excludes the checkout's own creation: a fresh clone stamps every
+    file with the time it was written.
+    """
+    cutoff = max(time.time() - EDIT_WINDOW_SECONDS, since)
     seen = 0
-    for root in worktrees():
-        for dirpath, dirnames, filenames in os.walk(root):
+    for tree in worktrees(root):
+        for dirpath, dirnames, filenames in os.walk(tree):
             dirnames[:] = [d for d in dirnames if d not in PRUNE and not d.startswith("build")]
             for name in filenames:
                 seen += 1
@@ -146,21 +185,6 @@ def recent_edit(limit=50000):
     return False
 
 
-def cursor_in_use(key, name):
-    if not key:
-        return None
-    request = urllib.request.Request(
-        "https://api.cursor.com/v0/private-workers?scope=personal&limit=100",
-        headers={"Authorization": "Basic " + base64.b64encode(f"{key}:".encode()).decode(),
-                 "User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            workers = json.load(response).get("workers", [])
-    except (OSError, ValueError, urllib.error.URLError):
-        return None
-    return any(w.get("name") == name and w.get("isInUse") for w in workers)
-
-
 def volume_backed():
     """False when /workspace is the container disk, which a stop wipes (Runpod CPU pods)."""
     try:
@@ -169,13 +193,13 @@ def volume_backed():
         return False
 
 
-def unsaved_work():
+def unsaved_work(root=None):
     """Uncommitted changes or unpushed commits in the agents' checkout or its worktrees."""
-    for root in worktrees():
+    for tree in worktrees(root):
         try:
-            dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+            dirty = subprocess.run(["git", "-C", str(tree), "status", "--porcelain"],
                                    capture_output=True, text=True, timeout=60).stdout.strip()
-            ahead = subprocess.run(["git", "-C", str(root), "log", "--oneline", "-1",
+            ahead = subprocess.run(["git", "-C", str(tree), "log", "--oneline", "-1",
                                     "--branches", "--not", "--remotes"],
                                    capture_output=True, text=True, timeout=60).stdout.strip()
         except (OSError, subprocess.SubprocessError):
@@ -217,13 +241,11 @@ def main():
     if limit <= 0:
         log("idle stop disabled")
         return 0
-    name = config.get("FLEET_WORKER_NAME", "")
     keep_unsaved = not volume_backed()
     log(f"stopping this pod after {limit} idle minutes"
         + (" (never while the checkout has unsaved work: a stop wipes /workspace here)"
            if keep_unsaved else ""))
-    last_busy = time.time()
-    in_use, in_use_checked = None, 0.0
+    started = last_busy = time.time()
     before_cpu, before = cpu_seconds(), time.monotonic()
     while True:
         time.sleep(60)
@@ -231,9 +253,8 @@ def main():
         cores = max(0.0, (cpu - before_cpu) / max(1e-6, now - before))
         before_cpu, before = cpu, now
         gpu = gpu_percent()
-        if time.time() - in_use_checked >= CURSOR_POLL_SECONDS:
-            in_use, in_use_checked = cursor_in_use(secret("cursor-api-key"), name), time.time()
-        reasons = []
+        metrics = worker_metrics()
+        reasons = [r for r in (agent_busy(metrics),) if r]
         if cores > BUSY_CORES:
             reasons.append(f"cpu {cores:.2f} cores")
         if gpu is not None and gpu > BUSY_GPU_PERCENT:
@@ -242,9 +263,7 @@ def main():
             reasons.append("ssh session")
         if job_running():
             reasons.append("fleet job")
-        if in_use:
-            reasons.append("cursor agent")
-        if not reasons and recent_edit():
+        if not reasons and recent_edit(since=started):
             reasons.append("recent edits")
         if not reasons and keep_unsaved and unsaved_work():
             reasons.append("unsaved work in the checkout")
@@ -252,7 +271,8 @@ def main():
             last_busy = time.time()
         idle = (time.time() - last_busy) / 60
         state = {"limit_minutes": limit, "idle_minutes": round(idle, 1), "busy": reasons,
-                 "cores": round(cores, 3), "gpu_percent": gpu, "cursor_in_use": in_use,
+                 "cores": round(cores, 3), "gpu_percent": gpu,
+                 "worker": metrics or None,
                  "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
         (FLEET / "idle.json").write_text(json.dumps(state, indent=1) + "\n")
         if idle >= limit:
