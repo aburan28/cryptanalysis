@@ -39,8 +39,9 @@ int main(int argc, char **argv)
 {
     if (argc != 4 || (strcmp(argv[1], "generic") && strcmp(argv[1], "split") &&
                        strcmp(argv[1], "joint") && strcmp(argv[1], "orbit") &&
-                       strcmp(argv[1], "hot64"))) {
-        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit|hot64 glv-j0-32|j0-56 pairs.bin\n", stderr);
+                       strcmp(argv[1], "hot64") && strcmp(argv[1], "paired") &&
+                       strcmp(argv[1], "paired5") && strcmp(argv[1], "paired2"))) {
+        fputs("usage: ca_joint_tau_bench generic|split|joint|orbit|hot64|paired|paired5|paired2 glv-j0-32|j0-56 pairs.bin\n", stderr);
         return 2;
     }
     int large = strcmp(argv[2], "j0-56") == 0;
@@ -77,7 +78,10 @@ int main(int argc, char **argv)
     int mode = strcmp(argv[1], "generic") == 0 ? 0 :
                strcmp(argv[1], "split") == 0 ? 1 :
                strcmp(argv[1], "joint") == 0 ? 2 :
-               strcmp(argv[1], "orbit") == 0 ? 3 : 4;
+               strcmp(argv[1], "orbit") == 0 ? 3 :
+               strcmp(argv[1], "hot64") == 0 ? 4 :
+               strcmp(argv[1], "paired") == 0 ? 5 :
+               strcmp(argv[1], "paired5") == 0 ? 6 : 7;
     ca_tau4_joint_precomp pre;
     ca_tau4_orbit_precomp orbit;
     ca_tau4_hot_precomp hot;
@@ -106,7 +110,16 @@ int main(int argc, char **argv)
             ca_group_op(&g, &outputs[i], &left, &right);
         } else {
             ca_tau4_joint_counts one = {0};
-            int ok = mode == 4
+            int ok = mode == 7
+                ? ca_ec_tau4_paired_two_mul_profile(&g, &pre, &outputs[i],
+                                                    pairs[i].a, pairs[i].b, &one)
+                : mode == 6
+                ? ca_ec_tau4_paired_five_mul_profile(&g, &pre, &outputs[i],
+                                                     pairs[i].a, pairs[i].b, &one)
+                : mode == 5
+                ? ca_ec_tau4_paired_lattice_mul_profile(&g, &pre, &outputs[i],
+                                                        pairs[i].a, pairs[i].b, &one)
+                : mode == 4
                 ? ca_ec_tau4_hot_mul_profile(&g, &hot, &outputs[i],
                                              pairs[i].a, pairs[i].b, &one)
                 : mode == 3
@@ -126,6 +139,10 @@ int main(int argc, char **argv)
             total.inversions += one.inversions;
             total.overlaps += one.overlaps;
             total.fused_hits += one.fused_hits;
+            total.recode_attempts += one.recode_attempts;
+            total.pair_scores += one.pair_scores;
+            total.selected_changed += one.selected_changed;
+            total.lattice_points_checked += one.lattice_points_checked;
         }
     }
     double online_ms = 1000.0 * (ca_now() - start);
@@ -160,6 +177,8 @@ int main(int argc, char **argv)
            " mixed_adds=%" PRIu64 " full_adds=%" PRIu64
            " rotations=%" PRIu64 " output_inversions=%" PRIu64
            " overlaps=%" PRIu64 " fused_hits=%" PRIu64
+           " recode_attempts=%" PRIu64 " pair_scores=%" PRIu64
+           " selected_changed=%" PRIu64 " lattice_points_checked=%" PRIu64
            " verified=1\n",
            argv[1], argv[2], PAIRS, words[0], words[1],
            partner_words[0], partner_words[1], input_digest, output_digest,
@@ -167,6 +186,8 @@ int main(int argc, char **argv)
            prep_ms, online_ms, verify_ms, prep.tau_steps, prep.doubles,
            prep.mixed_adds, prep.rotations, prep.inversions,
            total.tau_steps, total.doubles, total.mixed_adds, total.full_adds,
-           total.rotations, total.inversions, total.overlaps, total.fused_hits);
+           total.rotations, total.inversions, total.overlaps, total.fused_hits,
+           total.recode_attempts, total.pair_scores, total.selected_changed,
+           total.lattice_points_checked);
     return 0;
 }
