@@ -2439,12 +2439,19 @@ attempt preserved a packed-point-key versus x-only-key preflight failure;
 the separately frozen R2 conversion passes. This is a known-witness
 correctness control, not an unpinned solve or a cost observation.
 
+### Q1491 exact ordinary CNF witness
+
+[Q1491](q1491_ordinary_cnf_witness/README.md) appends 327 unit clauses
+for Q1490's witness to Q1482's byte-identical ordinary N53 CNF body.
+The frozen native solver returns SAT, and independent model replay verifies
+the same public four-point relation at target preimage 141. This confirms
+that the actual CNF accepts a known ordinary relation. Its pinned solver
+time is a correctness diagnostic, not successful unpinned PDP work.
+
 ## Next goal
 
-First pin Q1490's exact ordinary N53 raw witness into Q1482's unchanged
-CNF and verify a satisfying assignment. Then test a **fully coupled
-four-leaf search** that leaves both internal midpoints existential while
-it reasons about many cyclic windows at once.
+Test a **fully coupled four-leaf search** that leaves both internal
+midpoints existential while it reasons about many cyclic windows at once.
 Q1485 through Q1487 all choose or constrain a narrow midpoint slice and
 find no unpinned relation; another faster fixed-midpoint oracle is unlikely
 to answer the solve-cost question. Pre-register a compact symbolic support
@@ -2525,6 +2532,8 @@ python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/freeze_protocol.
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/verify_archive.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1490_ordinary_witness_bridge/freeze_recovery.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1490_ordinary_witness_bridge/bridge_v2.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1491_ordinary_cnf_witness/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1491_ordinary_cnf_witness/run.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 
