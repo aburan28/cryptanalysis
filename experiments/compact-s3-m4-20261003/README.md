@@ -2429,10 +2429,22 @@ pairs. Q1487 censored on that same target. N83 uses 10,000 table and
 operation counts and separate setup/query costs; one N53 success is not a
 natural-yield estimate, and N83 successful cost remains unknown.
 
+### Q1490 ordinary relation witness bridge
+
+[Q1490](q1490_ordinary_witness_bridge/README.md) reconstructs Q1488's
+verified N53 ordinary relation as four exact Q1481 raw cyclic-window
+points. Their raw sum is preimage 141 of Q1482's 428 frozen target
+preimages, and all three chained `S3` equations hold. The first frozen
+attempt preserved a packed-point-key versus x-only-key preflight failure;
+the separately frozen R2 conversion passes. This is a known-witness
+correctness control, not an unpinned solve or a cost observation.
+
 ## Next goal
 
-Test a **fully coupled four-leaf search** that leaves both internal
-midpoints existential while it reasons about many cyclic windows at once.
+First pin Q1490's exact ordinary N53 raw witness into Q1482's unchanged
+CNF and verify a satisfying assignment. Then test a **fully coupled
+four-leaf search** that leaves both internal midpoints existential while
+it reasons about many cyclic windows at once.
 Q1485 through Q1487 all choose or constrain a narrow midpoint slice and
 find no unpinned relation; another faster fixed-midpoint oracle is unlikely
 to answer the solve-cost question. Pre-register a compact symbolic support
@@ -2511,6 +2523,8 @@ python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/build.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/validate_controls.py --check
 python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/verify_archive.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1490_ordinary_witness_bridge/freeze_recovery.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1490_ordinary_witness_bridge/bridge_v2.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 
