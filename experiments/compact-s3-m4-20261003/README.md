@@ -2459,22 +2459,41 @@ million direct right-`S3` evaluations; midpoint-pin cells make about
 fully pinned Q1491 SAT model remains a correctness witness, so these
 cells measure only capped search prefixes.
 
+### Q1493 Frobenius-swept first-window search
+
+[Q1493](q1493_frobenius_window_sweep/README.md) fixes only the first raw
+leaf's window to start zero and sweeps all Frobenius rotations of each
+ordinary public target. The full sweep preserves mathematical coverage
+of Q1481's Frobenius-stable base; Q1490's known N53 witness maps into
+rotation 44 and passes the rotation preflight. The native solver censors
+on that positive cell at 60 seconds. A separately frozen, post-search
+control pins the known witness into the rotation-44 CNF; the native solver
+returns SAT, and inverse-Frobenius replay verifies the ordinary relation.
+This establishes that the rotated encoding accepts the witness, without
+measuring unpinned solve cost. All 53 N53 and 83 N83 rotations
+then censor at their frozen 5-second caps with zero verified relations.
+The independent audit preserves the operation vectors and charged stage
+intervals. This is a bounded search failure, not a successful PDP cost
+or an N131 work exponent.
+
 ## Next goal
 
 Test a **fully coupled four-leaf search** that leaves both internal
 midpoints existential while it reasons about many cyclic windows at once.
 Q1485 through Q1487 all choose or constrain a narrow midpoint slice and
-find no unpinned relation; another faster fixed-midpoint oracle is unlikely
-to answer the solve-cost question. Pre-register a compact symbolic support
-method, check it against direct enumeration on small fields, and reuse the
-exact Q1481/Q1482 N53/N83 curves, bases, public points and limits. Its
-first gate is one independently verified, fully unpinned known-satisfiable
-N83 relation without constructing the full pair table. The next gate is
-one ordinary N83 relation, followed by a frozen ordinary-query panel for
+find no unpinned relation; Q1493 shows that rotating through every first
+window does not make the current search finish. Pre-register a compact
+symbolic support method, check it against direct enumeration on small
+fields, and reuse the exact Q1481/Q1482 N53/N83 curves, bases, public
+points and limits. The first gate is to recover Q1490's known-satisfiable
+ordinary N53 relation with every leaf, midpoint and target selector free.
+Then independently verify a fully unpinned known-representable N83 control,
+followed by an ordinary N83 relation, without constructing the full pair
+table. Only after those gates should a frozen ordinary-query panel estimate
 useful yield and novel rank. Count failed attempts, SAT propagation,
 field arithmetic, memory, and target-dependent wall intervals alongside
-Q1482/Q1483/Q1485/Q1486/Q1487/Q1488. If only the planted control passes, retain
-ordinary cost and N131 complete work as unknown. A complete N131 `2^x`
+Q1482/Q1483/Q1485/Q1486/Q1487/Q1488/Q1493. If only controls pass, retain
+N83 ordinary cost and N131 complete work as unknown. A complete N131 `2^x`
 also requires its exact usable base, relation collection, final matrix
 solve, target descent, and independent scalar replay.
 
@@ -2547,6 +2566,8 @@ python3 experiments/compact-s3-m4-20261003/q1462_sparse_sum_sat/freeze_protocol.
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1491_ordinary_cnf_witness/run.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1492_ordinary_partial_pin/freeze_protocol.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1492_ordinary_partial_pin/run_partial.py --cell target_only --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/run.py --preflight --check
+python3 experiments/compact-s3-m4-20261003/q1493_frobenius_window_sweep/audit.py --check
 /Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
 ```
 
