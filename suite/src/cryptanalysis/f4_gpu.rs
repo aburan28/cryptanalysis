@@ -1117,9 +1117,7 @@ mod cuda {
             let mut active = self.upload(9, &active_rows(rows, skip))?;
             let mut cand = self.ensure(10, n * 4)?;
             let mut pw = self.ensure(11, n * 8)?;
-            // coeff, then the panel's sums over original pivot rows.
-            let mut coeff = self.ensure(12, n * 16)?;
-            let mut orig = coeff + n as u64 * 8;
+            let mut coeff = self.ensure(12, n * 8)?;
             let mut is_piv = self.ensure(13, n * 4)?;
             let counts = self.upload(14, &vec![0u32; hw.max(1)])?;
             let mut piv = self.upload(15, &[0u8; PIVOTS_BYTES])?;
@@ -1159,7 +1157,6 @@ mod cuda {
                         &mut cand as *mut u64 as *mut c_void,
                         &mut pw as *mut u64 as *mut c_void,
                         &mut coeff as *mut u64 as *mut c_void,
-                        &mut orig as *mut u64 as *mut c_void,
                         &mut is_piv as *mut u64 as *mut c_void,
                         &mut count as *mut u64 as *mut c_void,
                         &mut piv as *mut u64 as *mut c_void,

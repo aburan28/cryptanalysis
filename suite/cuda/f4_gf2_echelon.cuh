@@ -42,17 +42,18 @@ typedef struct {
     f4_u32 n;
     f4_u32 total; /* pivots of every panel so far */
     f4_u32 row[64];
-    /* The original rows of the panel's earlier pivots that pivot k adds
-     * to its own. */
+    /* Earlier pivots of the panel XORed into pivot k; once the panel is
+     * done, expanded to the original pivot rows it combines. */
     f4_u64 hist[64];
 } F4ePivots;
 
 /* Panels with at most this many candidates keep everything the pivot
- * search touches -- words, rows, masks, pivot flags -- in shared memory.
- * 32 bytes a candidate, within the 48 KiB a block may declare statically;
- * most panels of the matrices measured have fewer
- * (experiments/f4-gpu-panel-20261007). */
-#define F4E_SMEM_CAND 1520u
+ * search touches -- words, rows, masks, pivot flags -- in shared memory:
+ * each column's pass is a barrier apart from the next, so a global read in
+ * it is latency every candidate waits for.  24 bytes a candidate, within
+ * the 48 KiB a block may declare statically; most panels of the matrices
+ * measured have fewer (experiments/f4-gpu-panel-20261007). */
+#define F4E_SMEM_CAND 1920u
 
 /* Words per tile of the update: one per lane of a warp. */
 #define F4E_TILE 32u
@@ -69,7 +70,6 @@ typedef struct {
     f4_u32 n_cand;
     f4_u64 pw[F4E_SMEM_CAND];
     f4_u64 coeff[F4E_SMEM_CAND];
-    f4_u64 orig[F4E_SMEM_CAND];
     f4_u32 cand[F4E_SMEM_CAND];
     f4_u32 is_piv[F4E_SMEM_CAND];
 } F4ePanelShared;
@@ -90,14 +90,13 @@ F4_FN void f4e_gather_thread(f4_u64 gid, f4_u64 total, const f4_u64 *mat, f4_u64
 }
 
 /* Panel: pivots of word w among the gathered rows, lowest row first per
- * column.  coeff[i] collects the pivot slots XORed into candidate i, and
- * orig[i] the same sum over the pivots' original rows; is_piv[i] marks the
- * pivots.  One pass per column eliminates it and looks for the next
- * column's pivot.  A pivot's orig is its history for materialise, kept
- * per elimination because expanding coeff afterwards is a serial pass. */
+ * column.  coeff[i] collects the pivot slots XORed into candidate i;
+ * is_piv[i] marks the pivots.  One pass per column eliminates it and
+ * looks for the next column's pivot.  At the end each pivot's history is
+ * expanded to the original pivot rows it combines. */
 F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_global,
-                           f4_u64 *pw_global, f4_u64 *coeff_global, f4_u64 *orig_global,
-                           f4_u32 *is_piv_global, const f4_u32 *count, F4ePivots *piv)
+                           f4_u64 *pw_global, f4_u64 *coeff_global, f4_u32 *is_piv_global,
+                           const f4_u32 *count, F4ePivots *piv)
 {
     F4_SINGLE
     {
@@ -111,14 +110,12 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_glo
     const int staged = sh->n_cand <= F4E_SMEM_CAND;
     f4_u64 *pw = staged ? sh->pw : pw_global;
     f4_u64 *coeff = staged ? sh->coeff : coeff_global;
-    f4_u64 *orig = staged ? sh->orig : orig_global;
     f4_u32 *is_piv = staged ? sh->is_piv : is_piv_global;
     const f4_u32 *cand = staged ? sh->cand : cand_global;
     F4_FOR_THREADS(tid)
         f4_u64 acc = 0ull;
         for (f4_u32 i = tid; i < sh->n_cand; i += nt) {
             coeff[i] = 0ull;
-            orig[i] = 0ull;
             is_piv[i] = 0u;
             if (staged) {
                 sh->cand[i] = cand_global[i];
@@ -158,7 +155,7 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_glo
                     sh->best[(round + 2u) % 3u] = ~0ull;
                     if (p != F4_NONE) {
                         piv->row[k] = cand[p];
-                        piv->hist[k] = orig[p];
+                        piv->hist[k] = coeff[p];
                         is_piv[p] = 1u;
                     }
                 }
@@ -170,7 +167,6 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_glo
                         word ^= pw[p];
                         pw[i] = word;
                         coeff[i] |= 1ull << k;
-                        orig[i] ^= orig[p] ^ (1ull << k);
                     }
                     if (next < 64u && ((word >> next) & 1ull)) {
                         f4_u64 key = ((f4_u64)cand[i] << 32) | i;
@@ -199,12 +195,23 @@ F4_BLOCK_FN void f4e_panel(F4ePanelShared *sh, f4_u32 nt, const f4_u32 *cand_glo
     {
         piv->n = n_piv;
         piv->total += n_piv;
+        /* Pivot k is its own row plus the final pivots its history names,
+         * so over the original rows it is hist[k] plus their expansions. */
+        for (f4_u32 k = 0; k < n_piv; ++k) {
+            f4_u64 h = piv->hist[k], full = h;
+            while (h != 0ull) {
+                const f4_u32 j = F4_CTZ(h);
+                h &= h - 1ull;
+                full ^= piv->hist[j];
+            }
+            piv->hist[k] = full;
+        }
     }
     F4_SYNC();
 }
 
 /* Materialise, a thread per word: every pivot row becomes its original
- * plus the original pivot rows its history names, over words
+ * plus the original pivot rows its expanded history names, over words
  * w .. stride; the originals are read before any is written.  Then the
  * pivots leave the active set. */
 F4_FN void f4e_materialise_thread(f4_u64 gid, f4_u64 total, f4_u64 *mat, f4_u64 stride, f4_u32 w,
