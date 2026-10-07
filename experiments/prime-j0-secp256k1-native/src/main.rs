@@ -231,6 +231,23 @@ fn prepare_alternate(base: J, beta: F) -> [J; 9] {
      two_minus_four_tau, four_minus_eight_tau, two_tau, one_minus_two_tau]
 }
 
+// Linked three-orbit atlas: two mixed additions and six doubles.
+fn prepare_linked(base: J, beta: F) -> [J; 9] {
+    assert!(base.z == F::ONE);
+    let twice_base = base.double();
+    let four_base = twice_base.double();
+    let omega_x = beta.mul(&base.x);
+    let one_tau = twice_base.add_mixed(omega_x, base.y.neg());
+    let two_two_tau = one_tau.double();
+    let one_minus_two_tau = twice_base.omega(beta).add_mixed(base.x, base.y.neg());
+    let two_minus_four_tau = one_minus_two_tau.double();
+    let four_minus_eight_tau = two_minus_four_tau.double();
+    let four_four_tau = two_two_tau.double();
+    [base, twice_base, four_base, one_tau, two_two_tau,
+     two_minus_four_tau, four_minus_eight_tau, four_four_tau,
+     one_minus_two_tau]
+}
+
 fn normalize_all(seeds: &[J; 9]) -> [J; 9] {
     let mut normalized = *seeds;
     let mut prefix = [F::ONE; 8];
@@ -347,11 +364,15 @@ fn signed_residue(value: &BigInt, modulus: i64) -> usize {
     usize::try_from(residue).expect("small nonnegative residue")
 }
 
-fn digit_table_for(alternate: bool) -> [[Option<Digit>; 9]; 9] {
-    let seeds: [(i64, i64); 9] = if alternate {
+fn digit_table_for(mode: u8) -> [[Option<Digit>; 9]; 9] {
+    let seeds: [(i64, i64); 9] = if mode == 2 {
+        [(1, 0), (2, 0), (4, 0), (1, 1), (2, 2),
+         (2, -4), (4, -8), (4, 4), (1, -2)]
+    } else if mode == 1 {
         [(1, 0), (2, 0), (4, 0), (1, 1), (2, 2),
          (2, -4), (4, -8), (2, 1), (1, -2)]
     } else {
+        assert_eq!(mode, 0);
         [(1, 0), (2, 0), (4, 0), (1, 1), (2, 2),
          (1, 2), (2, 4), (2, 1), (1, -2)]
     };
@@ -378,9 +399,11 @@ fn digit_table_for(alternate: bool) -> [[Option<Digit>; 9]; 9] {
 }
 
 static DIGIT_TABLE: LazyLock<[[Option<Digit>; 9]; 9]> =
-    LazyLock::new(|| digit_table_for(false));
+    LazyLock::new(|| digit_table_for(0));
 static ALTERNATE_DIGIT_TABLE: LazyLock<[[Option<Digit>; 9]; 9]> =
-    LazyLock::new(|| digit_table_for(true));
+    LazyLock::new(|| digit_table_for(1));
+static LINKED_DIGIT_TABLE: LazyLock<[[Option<Digit>; 9]; 9]> =
+    LazyLock::new(|| digit_table_for(2));
 
 fn recode_with_table(mut a: BigInt, mut b: BigInt,
                      table: &[[Option<Digit>; 9]; 9]) -> Vec<Option<Digit>> {
@@ -431,6 +454,10 @@ fn recode(a: BigInt, b: BigInt) -> Vec<Option<Digit>> {
 
 fn recode_alternate(a: BigInt, b: BigInt) -> Vec<Option<Digit>> {
     recode_with_table(a, b, &ALTERNATE_DIGIT_TABLE)
+}
+
+fn recode_linked(a: BigInt, b: BigInt) -> Vec<Option<Digit>> {
+    recode_with_table(a, b, &LINKED_DIGIT_TABLE)
 }
 
 fn digits_from_json(case: &Value) -> Vec<Option<Digit>> {
@@ -550,7 +577,7 @@ fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
 fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
                         timed: bool) {
     assert!(mode == "cached_projective" || mode == "all_affine" ||
-            mode == "joint_atlas");
+            mode == "joint_atlas" || mode == "linked_atlas");
     let raw = fs::read(fixture_path).expect("read benchmark fixture");
     let fixture: Value = serde_json::from_slice(&raw).expect("parse benchmark fixture");
     assert_eq!(fixture["schema"].as_u64(), Some(1));
@@ -567,7 +594,9 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     };
     let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
     LazyLock::force(&LATTICE);
-    if mode == "joint_atlas" {
+    if mode == "linked_atlas" {
+        LazyLock::force(&LINKED_DIGIT_TABLE);
+    } else if mode == "joint_atlas" {
         LazyLock::force(&ALTERNATE_DIGIT_TABLE);
     } else {
         LazyLock::force(&DIGIT_TABLE);
@@ -576,12 +605,16 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     let scalar = big_from_hex(scalar_hex);
     let base = J::affine(fe_from_hex(base_x), fe_from_hex(base_y));
     let (a, b) = short_representative(&scalar);
-    let digits = if mode == "joint_atlas" {
+    let digits = if mode == "linked_atlas" {
+        recode_linked(a.clone(), b.clone())
+    } else if mode == "joint_atlas" {
         recode_alternate(a.clone(), b.clone())
     } else {
         recode(a.clone(), b.clone())
     };
-    let prepared = if mode == "joint_atlas" {
+    let prepared = if mode == "linked_atlas" {
+        prepare_linked(base, beta)
+    } else if mode == "joint_atlas" {
         prepare_alternate(base, beta)
     } else {
         prepare(base, beta)
@@ -597,7 +630,7 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     if !timed {
         assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
         assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
-        if mode != "joint_atlas" {
+        if mode != "joint_atlas" && mode != "linked_atlas" {
             assert_eq!(digits, digits_from_json(case));
             let expected_seeds = case["seed_affine"].as_array().expect("seeds");
             for (seed, expected) in seeds.iter().zip(expected_seeds) {
@@ -633,7 +666,7 @@ fn check_count(expected: &Value, key: &str, actual: usize) {
     assert_eq!(actual, want, "count {key}");
 }
 
-fn check_alternate_fixture(fixture_path: &str, seed_path: &str) {
+fn check_atlas_fixture(fixture_path: &str, seed_path: &str, linked: bool) {
     let raw = fs::read(fixture_path).expect("read scalar fixture");
     let fixture: Value = serde_json::from_slice(&raw).expect("parse scalar fixture");
     let seed_raw = fs::read(seed_path).expect("read alternate Sage seed fixture");
@@ -648,7 +681,11 @@ fn check_alternate_fixture(fixture_path: &str, seed_path: &str) {
     assert_eq!(fixture["beta_hex"], seed_fixture["beta_hex"]);
     let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
     LazyLock::force(&LATTICE);
-    LazyLock::force(&ALTERNATE_DIGIT_TABLE);
+    if linked {
+        LazyLock::force(&LINKED_DIGIT_TABLE);
+    } else {
+        LazyLock::force(&ALTERNATE_DIGIT_TABLE);
+    }
     let mut total_m_plus_s = 0usize;
     let mut exceptional_adds = 0usize;
     for (case, seed_case) in cases.iter().zip(seed_cases) {
@@ -657,13 +694,16 @@ fn check_alternate_fixture(fixture_path: &str, seed_path: &str) {
         let base = J::affine(
             fe_from_hex(case["base_x_hex"].as_str().expect("base x")),
             fe_from_hex(case["base_y_hex"].as_str().expect("base y")));
-        let seeds = prepare_alternate(base, beta);
+        let seeds = if linked { prepare_linked(base, beta) }
+                    else { prepare_alternate(base, beta) };
         let old_seeds = case["seed_affine"].as_array().expect("Sage old seeds");
         for (index, seed) in seeds.iter().enumerate() {
             let expected = if index == 5 {
                 &seed_case["seed5"]
             } else if index == 6 {
                 &seed_case["seed6"]
+            } else if linked && index == 7 {
+                &seed_case["seed7"]
             } else {
                 &old_seeds[index]
             };
@@ -675,7 +715,8 @@ fn check_alternate_fixture(fixture_path: &str, seed_path: &str) {
         let (a, b) = short_representative(&scalar);
         assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
         assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
-        let digits = recode_alternate(a, b);
+        let digits = if linked { recode_linked(a, b) }
+                     else { recode_alternate(a, b) };
         let (point, counts) = evaluate(&digits, &seeds, beta);
         if case["expected_identity"].as_bool().unwrap_or(false) {
             assert!(point.is_identity());
@@ -686,7 +727,8 @@ fn check_alternate_fixture(fixture_path: &str, seed_path: &str) {
         }
         assert_eq!(counts.tau_steps + usize::from(!digits.is_empty()), digits.len());
         let solo = counts.tau_steps - 2 * counts.tau_pairs;
-        total_m_plus_s += 79 + 10 * counts.tau_pairs + 6 * solo
+        total_m_plus_s += (if linked { 75 } else { 79 })
+            + 10 * counts.tau_pairs + 6 * solo
             + 11 * counts.mixed_adds + 14 * counts.general_adds
             + 2 * counts.cache_entries;
         exceptional_adds += counts.exceptional_cached_adds;
@@ -698,8 +740,10 @@ fn check_alternate_fixture(fixture_path: &str, seed_path: &str) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() == 4 && args[1] == "--check-alternate-fixture" {
-        check_alternate_fixture(&args[2], &args[3]);
+    if args.len() == 4 && (args[1] == "--check-alternate-fixture" ||
+                           args[1] == "--check-linked-fixture") {
+        check_atlas_fixture(&args[2], &args[3],
+                            args[1] == "--check-linked-fixture");
         return;
     }
     if args.len() == 5 && (args[1] == "--benchmark-case" ||
