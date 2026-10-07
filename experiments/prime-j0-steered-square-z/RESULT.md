@@ -21,6 +21,11 @@ gauge corrections have equal counters in the two arms. The source-level
 operation model replaces one field multiplication with one field square
 per nonidentity τ step, plus modular additions and a half operation.
 It is an operation substitution, not a measured full-operation saving.
+In this backend, `ca_mont_sqr` and `ca_mont_mul` both call the same
+`ca_mont_redc` on a 128-bit product; there is no dedicated faster square
+kernel. The alternate formula also adds field additions and modular
+halving, so this source model supplies no speedup prediction for the
+current implementation.
 
 The Release `online_ms` values in frozen ABBA order were:
 
