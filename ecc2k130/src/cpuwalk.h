@@ -368,8 +368,30 @@ class CpuEngine
             b.setXN(i, xn);
             HW[i] = (unsigned char)f131::weight(xn);
         }
-        for (i = 0; i < B; ++i) {
-            if (__builtin_expect(HW[i] <= dpWeight_ || (guard && now - S[i] >= maxIters_), 0)) {
+        // The report test, eight weights a word: a byte below the threshold
+        // leaves a borrow in its top bit, exact as a predicate for a
+        // threshold up to 128 (a weight of 128 or more cannot be flagged,
+        // and need not be).  Lane by lane it was a compare and a branch per
+        // lane per step, a twentieth of the step; the word that holds a
+        // report, one in thousands, is checked lane by lane.  The overdue
+        // test on the guard step stays lane by lane, as it is 64-bit.
+        const int dp = dpWeight_;
+        const uint64_t ones = 0x0101010101010101ull, highs = 0x8080808080808080ull;
+        const uint64_t below = ones * uint64_t(dp + 1);
+        for (i = 0; i + 8 <= B && !guard; i += 8) {
+            uint64_t w;
+            memcpy(&w, HW + i, 8);
+            if (__builtin_expect(((w - below) & ~w & highs) == 0, 1)) continue;
+            for (int j = i; j < i + 8; ++j)
+                if (HW[j] <= dp) {
+                    revive(base + j, now, guard, local);
+                    const F131 xn = f131::fromPolynomial(b.X(j));
+                    b.setXN(j, xn);
+                    HW[j] = (unsigned char)f131::weight(xn);
+                }
+        }
+        for (; i < B; ++i) {
+            if (__builtin_expect(HW[i] <= dp || (guard && now - S[i] >= maxIters_), 0)) {
                 revive(base + i, now, guard, local);
                 const F131 xn = f131::fromPolynomial(b.X(i));
                 b.setXN(i, xn);
