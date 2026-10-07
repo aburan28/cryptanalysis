@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Optional
 
 from build_formula import HERE, build_cnf
 from prepare_inputs import prepare
@@ -15,7 +16,7 @@ from verify_model import model_relation
 
 
 def audit_one(case: str, protocol: dict,
-              recovery: dict | None = None) -> dict:
+              recovery: Optional[dict] = None) -> dict:
     entry = protocol["cases"][case]
     assert prepare(case, True)["status"] == "checked"
     output = HERE / (recovery["output_dir"] if recovery else "runs/" + case)
