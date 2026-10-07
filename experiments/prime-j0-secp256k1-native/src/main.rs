@@ -308,9 +308,15 @@ fn main() {
         }
         let digits = digits_from_json(case);
         let (out, counts) = evaluate(&digits, &seeds, beta);
-        let (x, y) = out.to_affine().expect("nonidentity output");
-        assert_eq!(fe_hex(x), case["expected_x_hex"].as_str().expect("output x"));
-        assert_eq!(fe_hex(y), case["expected_y_hex"].as_str().expect("output y"));
+        if case["expected_identity"].as_bool().unwrap_or(false) {
+            assert!(out.is_identity(), "expected the curve identity");
+            assert!(case["expected_x_hex"].is_null());
+            assert!(case["expected_y_hex"].is_null());
+        } else {
+            let (x, y) = out.to_affine().expect("nonidentity output");
+            assert_eq!(fe_hex(x), case["expected_x_hex"].as_str().expect("output x"));
+            assert_eq!(fe_hex(y), case["expected_y_hex"].as_str().expect("output y"));
+        }
         let expected_counts = &case["expected_counts"];
         for (key, value) in [
             ("tau_steps", counts.tau_steps),
