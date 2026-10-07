@@ -29,6 +29,11 @@ available. Source `M+S` counts include chosen one-use seed preparation
 and point operations. They do **not** price the 25-pair ranking or the
 four recoders, so they are not CPU timing estimates.
 
+Each of the eight held-out base-point groups of 32 scalars improved:
+their source savings were 317, 152, 199, 259, 115, 214, 168, and 248
+`M+S`, respectively. This is a complete description of the frozen
+fixture, not a confidence interval for other scalar distributions.
+
 Independent Sage group replay recovered all 320 expected points from
 the selected streams. The native release build matched all four
 cross-language action streams for all 320 cases (1,280 stream checks),
