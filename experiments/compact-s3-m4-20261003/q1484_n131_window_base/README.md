@@ -77,3 +77,12 @@ recompute **every** R1-prefix status and require the same distinct-key count
 at ordinal 19,922,944 before proceeding. It writes into a separate scratch
 directory and will be archived under `runs/r2/` after completion. R1 remains
 an infrastructure failure regardless of R2's outcome.
+
+The [R2 uniform-query screen](screen_uniform_query_budget_r2.py) is prepared
+before the R2 census finishes. It will read only a completed `runs/r2/`
+receipt and its independent `archive_audit_r2.json`, then apply Q1414's
+Markov argument to R2's exact `B` and `K`. Its `2^x` is a necessary
+per-query affordability ceiling under a uniform nonidentity target law with
+all other costs set to zero. It is neither a measured PDP cost nor a complete
+solve projection. The screen remains unexecuted until the R2 archive passes
+audit; R1's partial counts supply no inputs to it.
