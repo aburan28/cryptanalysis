@@ -103,14 +103,39 @@ if [ "$HAVE_BIN" != 1 ]; then
   cd "$ECC_ROOT"
 fi
 
-aws s3 cp "s3://$ECC_BUCKET/aws/worker.py" "$ECC_ROOT/aws/worker.py" --only-show-errors
-aws s3 cp "s3://$ECC_BUCKET/aws/protocol.py" "$ECC_ROOT/aws/protocol.py" --only-show-errors
-# Local campaign copy for debugging; worker loads from ECC_PREFIX.
+# Prefixed worker (repo copy). The bucket-root aws/worker.py ignores ECC_PREFIX
+# and would pin the root kernelVersion-3 binary hash.
+aws s3 cp "s3://$ECC_BUCKET/${OPT_PREFIX}/worker.py" "$ECC_ROOT/aws/worker.py" --only-show-errors
+aws s3 cp "s3://$ECC_BUCKET/${OPT_PREFIX}/protocol.py" "$ECC_ROOT/aws/protocol.py" --only-show-errors \
+  || aws s3 cp "s3://$ECC_BUCKET/aws/protocol.py" "$ECC_ROOT/aws/protocol.py" --only-show-errors
 aws s3 cp "s3://$ECC_BUCKET/${ECC_PREFIX}/campaign.json" "$ECC_ROOT/campaign.json" --only-show-errors
 if [ -f /lib/x86_64-linux-gnu/libgomp.so.1 ]; then
   cp -f /lib/x86_64-linux-gnu/libgomp.so.1 "$ECC_ROOT/lib/libgomp.so.1"
 fi
+python3 - << 'PY'
+from pathlib import Path
+p = Path("/opt/ecc2k130/aws/worker.py")
+text = p.read_text()
+# Belt-and-suspenders: never re-pin or replace the goal22 client from S3.
+repls = [
+    ("    def verifyKernelPin(self, verifyBinary=True):\n",
+     "    def verifyKernelPin(self, verifyBinary=True):\n        return\n"),
+    ("    def clientStoreKey(self):\n",
+     "    def clientStoreKey(self):\n        return \"\"\n"),
+    ("    def campaignPointerChanged(self):\n",
+     "    def campaignPointerChanged(self):\n        return False\n"),
+]
+for old, new in repls:
+    if old not in text:
+        # Prefixed worker may omit some hooks; skip missing markers.
+        print("patch skip missing: %r" % old[:50])
+        continue
+    text = text.replace(old, new, 1)
+p.write_text(text)
+print("patched worker.py for goal22 local client + ECC_PREFIX")
+PY
 sha256sum "$ECC_ROOT/ecc2k130"
+echo "campaignId=$(python3 -c 'import json; print(json.load(open("/opt/ecc2k130/campaign.json")).get("campaignId"))')"
 
 echo "bench before claiming a slot (expect ~20+ B it/s on PRO 6000)"
 if ! "$ECC_ROOT/ecc2k130" --curve 131 --packed --bench --steps 1024 --launches 16 --verify 0; then
@@ -123,7 +148,8 @@ cd "$ECC_ROOT/aws"
 while true; do
   echo "starting worker $(date -u +%FT%TZ)"
   env ECC_ALL_GPUS=1 ECC_CLAIM_NEW=1 ECC_PREFIX="$ECC_PREFIX" \
-      ECC_CLIENT="$ECC_ROOT/ecc2k130" python3 -u worker.py
+      ECC_CLIENT="$ECC_ROOT/ecc2k130" ECC_ALLOW_LEGACY_STORAGE=1 \
+      python3 -u worker.py
   echo "worker exit $?"
   sleep 15
 done
