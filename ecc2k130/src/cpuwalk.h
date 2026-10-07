@@ -16,7 +16,7 @@
 //     model computes it, instead of through f131.h's byte tables.  The tag,
 //     the addend's loads and the rare lane that reports stay scalar.
 //   - A batch is `batch` lanes sharing one inversion by Montgomery's trick,
-//     512 by default on the scalar path and 2048 on the vector path, against
+//     512 by default on the scalar path and 4096 on the vector path, against
 //     the device's 16: a core has no register budget to respect, the inversion
 //     is about 700 ns against a lane's step, and a batch of state (x, y,
 //     prefix product, denominator, history: 104 bytes a lane, plus the byte
@@ -146,12 +146,15 @@ class CpuEngine
     static const int kChains = kLanes > 1 ? kLanes *ECC_F131_CHAIN_VECTORS : 4;
     // Lanes per inversion when neither the options nor the geometry say.  The
     // vector path's lane step is short enough that the batch's fixed cost (the
-    // inversion and the 3(K-1) scalar products that peel the K chains) shows:
-    // 2048 lanes of state is about 270 KB, which sits in a core's L2, and on a
-    // 4-vCPU Sapphire Rapids VM the client ran 117 M it/s at 512 and 126 M at
-    // 2048 (uncontrolled host; the figures are exploratory).  The scalar path
-    // keeps the 512 it was tuned at on an M4 Pro.
-    static const int kDefaultBatch = kLanes > 1 ? 2048 : 512;
+    // inversion, and each pass's run-up and drain) shows: on a 4-vCPU Sapphire
+    // Rapids VM the client ran 117 M it/s at 512 and 126 M at 2048 when the
+    // inversion was scalar, and with the step as it is now 2048 against 4096
+    // measured 1.4% apart on one worker and 3 to 5% on four over sixteen
+    // interleaved runs, 8192 the same as 4096 (uncontrolled host; the figures
+    // are exploratory).  4096 lanes of state is about 540 KB, and the two
+    // batches a worker holds sit in a 2 MB L2 where 8192's would not.  The
+    // scalar path keeps the 512 it was tuned at on an M4 Pro.
+    static const int kDefaultBatch = kLanes > 1 ? 4096 : 512;
 
     CpuEngine(const HostTable &table, const Options &o, bool bench, Geometry g = Geometry())
         : consts_(table.deviceConsts()), dpWeight_(bench ? -1 : o.dpWeight), maxIters_(o.maxIters),
