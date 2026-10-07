@@ -131,7 +131,11 @@ static int select_mode(const char *name)
                                   "joint-pair-top-triple-guard-pos",
                                   "joint-pair-top-double-guard-pos",
                                   "joint-pair-top-triple-guard-wave128",
-                                  "joint-pair-top-double-guard-wave128"};
+                                  "joint-pair-top-double-guard-wave128",
+                                  "joint-pair-top-triple-qcorr-pos",
+                                  "joint-pair-top-double-qcorr-pos",
+                                  "joint-pair-top-triple-qcorr-wave128",
+                                  "joint-pair-top-double-qcorr-wave128"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -166,7 +170,9 @@ int main(int argc, char **argv)
                 "joint-pair-top-triple-five-pos|joint-pair-top-double-five-pos|"
                 "joint-pair-top-triple-five-wave128|joint-pair-top-double-five-wave128|"
                 "joint-pair-top-triple-guard-pos|joint-pair-top-double-guard-pos|"
-                "joint-pair-top-triple-guard-wave128|joint-pair-top-double-guard-wave128 "
+                "joint-pair-top-triple-guard-wave128|joint-pair-top-double-guard-wave128|"
+                "joint-pair-top-triple-qcorr-pos|joint-pair-top-double-qcorr-pos|"
+                "joint-pair-top-triple-qcorr-wave128|joint-pair-top-double-qcorr-wave128 "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -204,17 +210,19 @@ int main(int argc, char **argv)
     int joint_window4_hot = mode >= 46 && mode <= 48;
     int joint_window4_plane = mode == 47 || mode == 48;
     int joint_window4_zero = mode == 48;
-    int joint_pair_any = mode >= 49 && mode <= 62;
-    int joint_pair_top = mode >= 50 && mode <= 62;
-    int joint_pair_width = mode >= 51 && mode <= 62;
-    int joint_pair_wave =
-        mode == 53 || mode == 54 || mode == 57 || mode == 58 || mode == 61 || mode == 62;
+    int joint_pair_any = mode >= 49 && mode <= 66;
+    int joint_pair_top = mode >= 50 && mode <= 66;
+    int joint_pair_width = mode >= 51 && mode <= 66;
+    int joint_pair_wave = mode == 53 || mode == 54 || mode == 57 || mode == 58 || mode == 61 ||
+                          mode == 62 || mode == 65 || mode == 66;
     int joint_pair_five = mode >= 55 && mode <= 58;
     int joint_pair_guard = mode >= 59 && mode <= 62;
-    unsigned joint_pair_words =
-        mode == 51 || mode == 53 || mode == 55 || mode == 57 || mode == 59 || mode == 61 ? 3u
-        : joint_pair_width                                                               ? 2u
-                                                                                         : 4u;
+    int joint_pair_qcorr = mode >= 63 && mode <= 66;
+    unsigned joint_pair_words = mode == 51 || mode == 53 || mode == 55 || mode == 57 ||
+                                        mode == 59 || mode == 61 || mode == 63 || mode == 65
+                                    ? 3u
+                                : joint_pair_width ? 2u
+                                                   : 4u;
     int periodic_policy = mode == 32 ? 2 : (mode == 31 ? 1 : 0);
     int pair_complete = mode == 29 || pair_periodic || pair_mixed;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
@@ -486,6 +494,8 @@ int main(int argc, char **argv)
     uint64_t periodic_lookups = 0, periodic_accepted = 0, periodic_fallbacks = 0;
     uint64_t mixed_lookups = 0, mixed_fallbacks = 0;
     uint64_t fallbacks = 0, second_recodes = 0, steered_blocks = 0, guard_hits = 0;
+    uint64_t quotient_corrections = 0;
+    int quotient_float_enabled = joint_pair_qcorr && ca_ec_joint_pair_qcorr_available();
     uint64_t sparse_cold_pairs = 0, radix27_dp_states = 0, radix27_dp_options = 0;
     uint64_t scatter_pairs = 0;
     uint64_t zero_attempts = 0, zero_feasible = 0, zero_selected = 0;
@@ -530,7 +540,11 @@ int main(int argc, char **argv)
                                                                 : 0;
     double start = ca_now();
     if (joint_pair_wave) {
-        int solved = joint_pair_guard
+        int solved = joint_pair_qcorr ? ca_ec_joint_pair_width_qcorr_mul_wave_batch_profile(
+                                            &group, &joint_pair_pre, outputs, scalars, SCALARS, 128,
+                                            &adds, &rotations, &unit_adds, &output_inversions,
+                                            &fallbacks, &guard_hits, &quotient_corrections)
+                     : joint_pair_guard
                          ? ca_ec_joint_pair_width_guard_mul_wave_batch_profile(
                                &group, &joint_pair_pre, outputs, scalars, SCALARS, 128, &adds,
                                &rotations, &unit_adds, &output_inversions, &fallbacks, &guard_hits)
@@ -658,9 +672,13 @@ int main(int argc, char **argv)
                 fallbacks += fallback;
             } else if (joint_pair_any) {
                 uint64_t a = 0, r = 0, u = 0, fallback = 0;
-                uint64_t hit = 0;
+                uint64_t hit = 0, corrected = 0;
                 int solved =
-                    joint_pair_guard
+                    joint_pair_qcorr
+                        ? ca_ec_joint_pair_width_qcorr_mul_profile(&group, &joint_pair_pre,
+                                                                   &outputs[i], scalars[i], &a, &r,
+                                                                   &u, &fallback, &hit, &corrected)
+                    : joint_pair_guard
                         ? ca_ec_joint_pair_width_guard_mul_profile(&group, &joint_pair_pre,
                                                                    &outputs[i], scalars[i], &a, &r,
                                                                    &u, &fallback, &hit)
@@ -683,6 +701,7 @@ int main(int argc, char **argv)
                 unit_adds += u;
                 fallbacks += fallback;
                 guard_hits += hit;
+                quotient_corrections += corrected;
             } else if (joint_window4) {
                 uint64_t a = 0, r = 0, u = 0, fallback = 0;
                 uint64_t attempt = 0, feasible = 0, selected = 0;
@@ -1093,7 +1112,8 @@ int main(int argc, char **argv)
         " plane_entries=%zu"
         " triples=%" PRIu64 " tau_steps=%" PRIu64 " doubles=%" PRIu64 " adds=%" PRIu64
         " rotations=%" PRIu64 " unit_adds=%" PRIu64 " output_inversions=%" PRIu64
-        " fallbacks=%" PRIu64 " guard_hits=%" PRIu64 " second_recodes=%" PRIu64
+        " fallbacks=%" PRIu64 " guard_hits=%" PRIu64
+        " quotient_float_enabled=%d quotient_corrections=%" PRIu64 " second_recodes=%" PRIu64
         " steered_blocks=%" PRIu64 " zero_attempts=%" PRIu64 " zero_feasible=%" PRIu64
         " zero_selected=%" PRIu64
         " static_map_bytes=%zu recipe_bytes=%zu prep_slot_lookups=%" PRIu64
@@ -1120,10 +1140,10 @@ int main(int argc, char **argv)
         prep_bytes, prep_temp_heap_bytes, prep_temp_stack_bytes, prep_repeats, point_entries,
         point_table_bytes, joint_window4_plane || joint_pair_any ? point_entries : 0, triples,
         tau_steps, doubles, adds, rotations, unit_adds, output_inversions, fallbacks, guard_hits,
-        second_recodes, steered_blocks, zero_attempts, zero_feasible, zero_selected,
-        static_map_bytes, recipe_bytes, prep_slot_lookups, wavefront_stats.denominators,
-        wavefront_stats.exceptional_edges, wavefront_stats.doubling_edges,
-        5 * wavefront_stats.denominators,
+        quotient_float_enabled, quotient_corrections, second_recodes, steered_blocks, zero_attempts,
+        zero_feasible, zero_selected, static_map_bytes, recipe_bytes, prep_slot_lookups,
+        wavefront_stats.denominators, wavefront_stats.exceptional_edges,
+        wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
         wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes,
         tail_stream_checks, tail_double_checks, tail_pair_checks, tail_pair_preparation_checks,
         tail_complete_checks, tail_complete_preparation_checks, periodic_lookups, periodic_accepted,
