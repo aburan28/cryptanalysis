@@ -45,3 +45,43 @@ single-target DLP speedup follows from this stage control.
 The target and input cases were constructed before the protocol was committed,
 so this control is explicitly retrospective. The run protocol and source
 snapshot are committed before the solver runs.
+
+## Measured result
+
+The [independent audit](archive_audit.json) recomputes the frozen input and
+source hashes and replays the SAT model against the CNF, S3 roots, four
+distinct projected columns, raw group sum, and public subgroup point.
+
+| Case | Result | Verified relation | SAT propagations | Conflicts | Field mul / sqr / inv calls | Native process wall, exploratory |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Pinned control | SAT | 1 | 91,974 | 0 | 238 / 1,400 / 20 | 0.237 s |
+| Selected preimage, free leaves | 60 s wall cap | 0 | 288,547,216 | 76,019 | 17,186,636 / 72,664,624 / 8,377 | 60.365 s |
+| Full 428-preimage coset, free leaves | 60 s wall cap | 0 | 274,677,429 | 68,259 | 16,857,549 / 71,272,264 / 8,373 | 60.381 s |
+
+The free-leaf rows record `2^28.104` and `2^28.033` exact SAT
+propagations **through the caps**. Their successful-solve cost is unknown.
+The pair-table oracle's matched successful target query used 1,188,334
+field multiplications, 240,743 squarings, and 61 inversions; its table setup
+is separate and expensive. SAT propagations and field calls have no declared
+common calibration, and these wall intervals lack CPU isolation. No
+controlled speedup ratio follows.
+
+The next solver gate is an independently verified free-leaf result on this
+same public N53 point, with all target-dependent attempts charged, followed
+by a comparable N83 known-representable control and fresh ordinary-query
+panel. A new method needs target-guided pruning or a compact pair index that
+changes the measured search cost; extending the same capped run alone will
+not establish a scaling law.
+
+## Reproduce the audit
+
+```sh
+python3 experiments/compact-s3-m4-20261003/q1474_n53_positive_compact/prepare_inputs.py --check
+python3 experiments/compact-s3-m4-20261003/q1474_n53_positive_compact/freeze_protocol.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/q1474_n53_positive_compact/audit.py --check
+/Volumes/SSD990/cryptanalysis/sage -python experiments/compact-s3-m4-20261003/build_work_ledger.py
+```
+
+The frozen native solver runs and their full stdout, stderr, model when
+available, and source-bound receipts are under `runs/`. Reproduction checks
+do not rerun the 60-second cases.
