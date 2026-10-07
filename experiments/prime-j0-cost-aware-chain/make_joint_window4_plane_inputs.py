@@ -9,7 +9,7 @@ import struct
 import sys
 
 
-SEED = 202610070435
+SEED = 202610070612
 COUNT = 4096
 PRIOR = (
     "compact-pos-inputs.json",

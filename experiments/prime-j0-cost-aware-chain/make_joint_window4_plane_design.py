@@ -27,7 +27,9 @@ def make(output):
         "base_hot_map_sha256": sha256(hot_map),
         "base_mode": "joint-window4-hot-pos",
         "candidate_mode": "joint-window4-xplane-pos",
-        "table_rule": "for every affine table point (x,y), store the extra Montgomery-field element x_beta=beta*x; retain (x,y) and the same orbit/action map",
+        "table_rule": "replace each private four-word ca_elem table entry with four explicit uint64 words (x,y,x_beta,identity), where x_beta=beta*x in Montgomery representation; retain the same orbit/action map and decode to a canonical ca_elem before group operations",
+        "persistent_table_bytes_per_entry": 32,
+        "temporary_preparation_policy": "normalize into a temporary canonical ca_elem table, copy into the private packed table, then free the temporary table before online evaluation",
         "online_unit_rule": {
             "power_0": "x",
             "power_1": "x_beta",

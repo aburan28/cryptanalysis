@@ -16,10 +16,12 @@
     "power_1": "x_beta",
     "power_2": "-(x+x_beta) mod p"
   },
+  "persistent_table_bytes_per_entry": 32,
   "preparation_field_operation_model": "one extra field multiplication for each finite prepared table point",
   "schema": 1,
   "scope": "variable-time fixed-base multiplication of public scalars on the two exact frozen j=0 curves",
-  "source_sha256": "5cc5921b8f7d5db06047da6fbfc815a389b5b6aa05b8b9b5ea36a6f71c505acc",
+  "source_sha256": "bfdc5140721d46c6aedb34687c9aac0b91c3afd298c11633b558d4c3ab2bc28f",
   "status": "frozen_algebraic_design",
-  "table_rule": "for every affine table point (x,y), store the extra Montgomery-field element x_beta=beta*x; retain (x,y) and the same orbit/action map"
+  "table_rule": "replace each private four-word ca_elem table entry with four explicit uint64 words (x,y,x_beta,identity), where x_beta=beta*x in Montgomery representation; retain the same orbit/action map and decode to a canonical ca_elem before group operations",
+  "temporary_preparation_policy": "normalize into a temporary canonical ca_elem table, copy into the private packed table, then free the temporary table before online evaluation"
 }
