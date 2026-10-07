@@ -37,9 +37,10 @@ int f4_gf2_emulate_batch(const f4_u64 *terms, const f4_u32 *poly_start,
 }
 
 /* The large-matrix elimination of f4_gf2_echelon.cuh, panel by panel as
- * the CUDA driver launches it: single-block steps with `threads` emulated
- * threads, grid steps as one emulated warp.  `mat` is eliminated in place;
- * `low` receives up to `rows` (lo, hi) pairs. */
+ * the CUDA driver launches it: the panel with `threads` emulated threads,
+ * the other grid steps as one emulated thread, and the update as every
+ * block of a grid of two parts per tile, two warps each.  `mat` is
+ * eliminated in place; `low` receives up to `rows` (lo, hi) pairs. */
 int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_start, f4_u32 width,
                            f4_u32 *active, f4_u32 threads, f4_u64 *low, f4_u32 *n_low,
                            f4_u32 *pivots, f4_u64 *ops)
@@ -54,8 +55,9 @@ int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_s
     f4_u32 *counts = (f4_u32 *)calloc(hw ? hw : 1u, sizeof(f4_u32));
     F4ePivots *piv = (F4ePivots *)calloc(1, sizeof(F4ePivots));
     F4ePanelShared *sh = (F4ePanelShared *)calloc(1, sizeof(F4ePanelShared));
+    F4eUpdateShared *ush = (F4eUpdateShared *)calloc(1, sizeof(F4eUpdateShared));
     int rc = 0;
-    if (!cand || !pw || !coeff || !is_piv || !counts || !piv || !sh) {
+    if (!cand || !pw || !coeff || !is_piv || !counts || !piv || !sh || !ush) {
         rc = -2;
         goto done;
     }
@@ -67,8 +69,10 @@ int f4_gf2_emulate_echelon(f4_u64 *mat, f4_u32 rows, f4_u64 stride, f4_u32 low_s
         f4e_gather_thread(0u, 1u, mat, stride, w, mask, active, rows, cand, pw, counts + w);
         f4e_panel(sh, threads, cand, pw, coeff, is_piv, counts + w, piv);
         f4e_materialise_thread(0u, 1u, mat, stride, w, active, piv, ops);
-        for (f4_u64 gid = 0; gid < 32u; ++gid)
-            f4e_update_thread(gid, 32u, mat, stride, w, cand, coeff, is_piv, counts + w, piv, ops);
+        const f4_u64 tiles = (stride - w + F4E_TILE - 1u) / F4E_TILE;
+        for (f4_u64 block = 0; block < 2u * tiles; ++block)
+            f4e_update_block(ush, 64u, block, 2u, mat, stride, w, cand, coeff, is_piv, counts + w,
+                             piv, ops);
     }
     f4e_low_thread(0u, 1u, mat, stride, low_start, width, active, rows, low, n_low);
     *pivots = piv->total;
@@ -80,6 +84,7 @@ done:
     free(counts);
     free(piv);
     free(sh);
+    free(ush);
     return rc;
 }
 

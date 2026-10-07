@@ -20,9 +20,14 @@
  *                combination of original pivot rows its expanded mask
  *                names, across the rest of the row, and leaves the active
  *                set;
- *   update       a warp per remaining row XORs the pivots its mask names
- *                into the rest of the row.
- * Rows without a high bit in word w are untouched by panel w.
+ *   update       a block per 32-word tile of the rest of the rows (and per
+ *                share of the candidates) loads the pivots' words of its
+ *                tile into shared memory, then a warp per remaining row
+ *                XORs in the pivots its mask names, a word per lane.
+ * Rows without a high bit in word w are untouched by panel w.  The update
+ * is most of the work: every remaining row takes about half the pivots,
+ * and reading them from shared memory rather than global memory leaves
+ * global traffic at one read and one write of each row's words.
  *
  * Written in the common subset of C11 and CUDA, after f4_gf2_device.cuh:
  * single-block steps are barrier-separated phases, and grid steps are
@@ -45,6 +50,14 @@ typedef struct {
 /* Panels with at most this many candidates keep their words in shared
  * memory while the pivots are found. */
 #define F4E_SMEM_CAND 2048u
+
+/* Words per tile of the update: one per lane of a warp. */
+#define F4E_TILE 32u
+
+/* Block-shared pivot words of one update tile, pivot-major. */
+typedef struct {
+    f4_u64 p[64u * F4E_TILE];
+} F4eUpdateShared;
 
 /* Block-shared state of the panel step. */
 typedef struct {
@@ -202,31 +215,49 @@ F4_FN void f4e_materialise_thread(f4_u64 gid, f4_u64 total, f4_u64 *mat, f4_u64 
     }
 }
 
-/* Update: a warp per remaining candidate XORs the pivots its mask names
- * into words w .. stride of its row.  Pivot rows are only read. */
-F4_FN void f4e_update_thread(f4_u64 gid, f4_u64 total, f4_u64 *mat, f4_u64 stride, f4_u32 w,
-                             const f4_u32 *cand, const f4_u64 *coeff, const f4_u32 *is_piv,
-                             const f4_u32 *count, const F4ePivots *piv, f4_u64 *ops)
+/* Update, block `block` of a grid of tiles × parts: tile block / parts
+ * covers words w + 32 * tile .. of every row, and part block % parts takes
+ * every parts-th warp's share of the candidates.  The tile's pivot words
+ * are loaded once; then a warp per remaining candidate XORs the pivots its
+ * mask names into its row, lane l on word l of the tile.  Pivot rows are
+ * only read, so blocks never write what another reads.  nt is a multiple
+ * of 32. */
+F4_BLOCK_FN void f4e_update_block(F4eUpdateShared *sh, f4_u32 nt, f4_u64 block, f4_u64 parts,
+                                  f4_u64 *mat, f4_u64 stride, f4_u32 w, const f4_u32 *cand,
+                                  const f4_u64 *coeff, const f4_u32 *is_piv, const f4_u32 *count,
+                                  const F4ePivots *piv, f4_u64 *ops)
 {
-    const f4_u32 n = *count;
-    const f4_u64 lane = gid & 31ull, warp = gid >> 5, warps = total >> 5;
-    f4_u64 ops_here = 0ull;
-    for (f4_u64 i = warp; i < n; i += warps) {
-        if (is_piv[i]) continue;
-        const f4_u64 m = coeff[i];
-        f4_u64 *dst = mat + (f4_u64)cand[i] * stride;
-        for (f4_u64 x = w + lane; x < stride; x += 32ull) {
-            f4_u64 acc = 0ull, h = m;
-            while (h != 0ull) {
-                const f4_u32 j = F4_CTZ(h);
-                h &= h - 1ull;
-                acc ^= mat[(f4_u64)piv->row[j] * stride + x];
-            }
-            dst[x] ^= acc;
+    const f4_u32 n = *count, k = piv->n;
+    const f4_u64 tile = block / parts, part = block % parts;
+    const f4_u64 x0 = w + tile * F4E_TILE;
+    const f4_u64 width = stride - x0 < F4E_TILE ? stride - x0 : F4E_TILE;
+    F4_FOR_THREADS(tid)
+        for (f4_u32 e = tid; e < k * F4E_TILE; e += nt) {
+            const f4_u32 j = e / F4E_TILE, x = e % F4E_TILE;
+            sh->p[e] = x < width ? mat[(f4_u64)piv->row[j] * stride + x0 + x] : 0ull;
         }
-        if (lane == 0ull) ops_here += (f4_u64)F4_POPC(m) * (stride - w);
-    }
-    if (ops_here) F4_ATOMIC_ADD64(ops, ops_here);
+    F4_END_THREADS
+    F4_SYNC();
+    F4_FOR_THREADS(tid)
+        const f4_u32 lane = tid & 31u, warps = nt >> 5;
+        f4_u64 ops_here = 0ull;
+        for (f4_u64 i = part * warps + (tid >> 5); i < n; i += parts * warps) {
+            if (is_piv[i]) continue;
+            const f4_u64 m = coeff[i];
+            if (lane < width) {
+                f4_u64 acc = 0ull, h = m;
+                while (h != 0ull) {
+                    const f4_u32 j = F4_CTZ(h);
+                    h &= h - 1ull;
+                    acc ^= sh->p[j * F4E_TILE + lane];
+                }
+                mat[(f4_u64)cand[i] * stride + x0 + lane] ^= acc;
+            }
+            if (lane == 0u && tile == 0u) ops_here += (f4_u64)F4_POPC(m) * (stride - w);
+        }
+        if (ops_here) F4_ATOMIC_ADD64(ops, ops_here);
+    F4_END_THREADS
+    F4_SYNC();
 }
 
 /* Linear blocks of the active rows: bits low_start .. low_start + width
