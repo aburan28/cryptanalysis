@@ -8,6 +8,13 @@ its 22.101 billion updates/sec measurement applies to a different walk and is
 not the production fleet's speed. See [SOURCE.md](SOURCE.md)
 for provenance and [ENGINE.md](ENGINE.md) for the archived engine notes.
 
+Production GPU builds and the prebuilt sigma-fused opt client always use
+**CUDA 13.3 or newer** (`deploy/Dockerfile` is `nvidia/cuda:13.3.1-devel`; the
+opt binary is nvcc 13.3.73). On Runpod, launch with
+`aws/launch_opt_5090.py`, which sets `allowedCudaVersions=["13.0"]` (Runpod's
+CUDA 13 family name) and rejects drivers below 580. Do not place opt workers on
+CUDA 12 / driver 570 hosts.
+
 For cloud collection, use **`cloud.py`**, **`modal_worker.py`**, and
 **`deploy/Dockerfile`**. Both providers run the same supervisor:
 
