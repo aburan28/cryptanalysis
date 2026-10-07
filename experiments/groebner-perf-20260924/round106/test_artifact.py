@@ -71,7 +71,8 @@ def test(path):
         try:audit(candidate,path.parent)
         except errors:rejected.append(name)
         else:raise AssertionError('corrupted evidence accepted: '+name)
-    with tempfile.TemporaryDirectory() as temp:
+    # Hard links require one filesystem even when TMPDIR points elsewhere.
+    with tempfile.TemporaryDirectory(dir=path.parent) as temp:
         root=Path(temp);shutil.copytree(path.parent/'proofs',root/'proofs',copy_function=os.link)
         candidate=copy.deepcopy(original);old=solved(candidate)['result']['proof_sha256']
         encoded=bytearray((root/'proofs'/(old+'.pbin')).read_bytes())
