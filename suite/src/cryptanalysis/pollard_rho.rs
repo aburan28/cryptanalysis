@@ -1815,8 +1815,11 @@ mod tests {
     /// `2^64`, zero budgets (`max_iterations`, `max_walkers`,
     /// `max_steps_per_walker`), up to six targets with repeats, and every
     /// `dp_bits` boundary of the byte rule.  With an `n` unrelated to the
-    /// group, the Floyd walk returns whatever its first non-degenerate
-    /// collision gives, unverified, so equal answers pin the steps too.
+    /// group, the first non-degenerate Floyd collision fails the
+    /// `g^x = h` check and is refused with `ERR_NOT_A_LOG`, so equal
+    /// outcomes there pin only whether and when a collision comes; the
+    /// planted runs on the primes pin the logarithm and the iteration
+    /// count.
     #[test]
     fn rho_public_walks_match_the_original_code_at_the_edges() {
         let mut rng = StdRng::seed_from_u64(0xed6e50fc0de);
