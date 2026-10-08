@@ -88,7 +88,8 @@ static int select_mode(const char *name)
                                   "fused-hot-steer-gated2-batch128",
                                   "tapered-residue-orbit-batch128",
                                   "tapered-residue-graph-batch128",
-                                  "tapered-residue-packed-batch128"};
+                                  "tapered-residue-packed-batch128",
+                                  "tapered-residue-wavefront-batch128"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
         if (strcmp(name, names[i]) == 0) return (int)i;
     return -1;
@@ -108,7 +109,7 @@ int main(int argc, char **argv)
                 "fused-hot-adapt2-batch128|fused-hot-gated-batch128|"
                 "fused-hot-steer-batch128|fused-hot-steer-gated2-batch128|"
                 "tapered-residue-orbit-batch128|tapered-residue-graph-batch128|"
-                "tapered-residue-packed-batch128 "
+                "tapered-residue-packed-batch128|tapered-residue-wavefront-batch128 "
                 "glv-j0-32|j0-56 0|1|2|3 INPUT\n",
                 argv[0]);
         return 2;
@@ -124,9 +125,10 @@ int main(int argc, char **argv)
     int gated = mode == 16;
     int steer = mode == 17;
     int gated2_steer = mode == 18;
-    int tapered = mode >= 19 && mode <= 21;
+    int tapered = mode >= 19 && mode <= 22;
     int graph = mode == 20;
     int packed = mode == 21;
+    int wavefront = mode == 22;
     int prep_repeats = mode == 5 || mode == 6 ? 256 : 1;
     size_t block_size = mode >= 7 && mode <= 10 ? (size_t[]){32, 128, 512, 4096}[mode - 7] : 1;
     uint64_t scalars[SCALARS], input_digest;
@@ -164,6 +166,7 @@ int main(int argc, char **argv)
     uint64_t prep_layer_inversions = 0;
     uint64_t prep_adds = 0, prep_rotations = 0;
     uint64_t prep_slot_lookups = 0;
+    ca_tau_wide_wavefront_stats wavefront_stats = {0};
     size_t prep_temp_heap_bytes =
         global_builder ? CA_TAU_POS_Q * 2 * 9 * (3 * sizeof(uint64_t) + sizeof(uint64_t)) : 0;
     size_t fused_entries = hot ? 2048 : orbit ? 4933 : 29593;
@@ -178,23 +181,29 @@ int main(int argc, char **argv)
                                      : sizeof(pre);
     if (fused) prep_temp_heap_bytes = fused_entries * (3 * sizeof(uint64_t) + sizeof(uint64_t));
     if (tapered) prep_temp_heap_bytes = ca_ec_tau_wide_temp_bytes(wide_schedule);
+    if (wavefront) prep_temp_heap_bytes = ca_ec_tau_wide_wavefront_temp_bytes(wide_schedule);
     if (mode != 0) {
         double t0 = ca_now();
         if (tapered) {
             int prepared =
-                packed  ? ca_ec_tau_wide_prepare_packed(&group, &point, wide_schedule, &wide_pre,
-                                                        &prep_triples, &prep_adds, &prep_rotations,
-                                                        &prep_layer_inversions, &prep_slot_lookups)
-                : graph ? ca_ec_tau_wide_prepare_graph(&group, &point, wide_schedule, &wide_pre,
+                wavefront
+                    ? ca_ec_tau_wide_prepare_wavefront(&group, &point, wide_schedule, &wide_pre,
                                                        &prep_triples, &prep_adds, &prep_rotations,
-                                                       &prep_layer_inversions)
-                        : ca_ec_tau_wide_prepare(&group, &point, wide_schedule, &wide_pre,
-                                                 &prep_triples, &prep_adds, &prep_rotations,
-                                                 &prep_layer_inversions);
+                                                       &prep_layer_inversions, &wavefront_stats)
+                : packed ? ca_ec_tau_wide_prepare_packed(&group, &point, wide_schedule, &wide_pre,
+                                                         &prep_triples, &prep_adds, &prep_rotations,
+                                                         &prep_layer_inversions, &prep_slot_lookups)
+                : graph  ? ca_ec_tau_wide_prepare_graph(&group, &point, wide_schedule, &wide_pre,
+                                                        &prep_triples, &prep_adds, &prep_rotations,
+                                                        &prep_layer_inversions)
+                         : ca_ec_tau_wide_prepare(&group, &point, wide_schedule, &wide_pre,
+                                                  &prep_triples, &prep_adds, &prep_rotations,
+                                                  &prep_layer_inversions);
             if (!prepared) {
                 free(outputs);
                 return 2;
             }
+            if (wavefront) prep_slot_lookups = wavefront_stats.slot_lookups;
         } else if (fused) {
             int prepared =
                 gated2_steer
@@ -247,9 +256,9 @@ int main(int argc, char **argv)
     size_t static_map_bytes = tapered                 ? ca_ec_tau_wide_static_bytes(wide_schedule)
                               : steer || gated2_steer ? ca_ec_tau8_steer_static_bytes()
                                                       : 0;
-    size_t recipe_bytes = packed  ? ca_ec_tau_wide_packed_recipe_bytes(wide_schedule)
-                          : graph ? ca_ec_tau_wide_graph_recipe_bytes(wide_schedule)
-                                  : 0;
+    size_t recipe_bytes = packed || wavefront ? ca_ec_tau_wide_packed_recipe_bytes(wide_schedule)
+                          : graph             ? ca_ec_tau_wide_graph_recipe_bytes(wide_schedule)
+                                              : 0;
     size_t online_scratch_bytes = fused || tapered          ? 128 * 32
                                   : mode >= 7 && mode <= 10 ? block_size * 32
                                                             : 0;
@@ -334,22 +343,27 @@ int main(int argc, char **argv)
     ca_ec_tau8_fused_clear(&fused_pre);
     ca_ec_tau_wide_clear(&wide_pre);
     free(outputs);
-    printf(
-        "curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
-        " endo_lambda=%" PRIu64 " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
-        " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
-        " prep_triples=%" PRIu64 " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64
-        " prep_layer_inversions=%" PRIu64 " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_repeats=%d"
-        " point_entries=%zu point_table_bytes=%zu"
-        " triples=%" PRIu64 " adds=%" PRIu64 " rotations=%" PRIu64 " output_inversions=%" PRIu64
-        " fallbacks=%" PRIu64 " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
-        " static_map_bytes=%zu recipe_bytes=%zu prep_slot_lookups=%" PRIu64
-        " online_scratch_bytes=%zu"
-        " verified=1\n",
-        argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda, input_digest,
-        output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_adds, prep_rotations,
-        prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats, point_entries,
-        point_table_bytes, triples, adds, rotations, output_inversions, fallbacks, second_recodes,
-        steered_blocks, static_map_bytes, recipe_bytes, prep_slot_lookups, online_scratch_bytes);
+    printf("curve=%s point_index=%s count=%d base_x=%" PRIu64 " base_y=%" PRIu64
+           " endo_lambda=%" PRIu64 " input_digest=%016" PRIx64 " output_digest=%016" PRIx64
+           " online_ms=%.6f prep_ms=%.6f verify_ms=%.6f"
+           " prep_triples=%" PRIu64 " prep_adds=%" PRIu64 " prep_rotations=%" PRIu64
+           " prep_layer_inversions=%" PRIu64
+           " prep_bytes=%zu prep_temp_heap_bytes=%zu prep_repeats=%d"
+           " point_entries=%zu point_table_bytes=%zu"
+           " triples=%" PRIu64 " adds=%" PRIu64 " rotations=%" PRIu64 " output_inversions=%" PRIu64
+           " fallbacks=%" PRIu64 " second_recodes=%" PRIu64 " steered_blocks=%" PRIu64
+           " static_map_bytes=%zu recipe_bytes=%zu prep_slot_lookups=%" PRIu64
+           " prep_batch_denominators=%" PRIu64 " prep_affine_exceptions=%" PRIu64
+           " prep_affine_doublings=%" PRIu64 " prep_affine_edge_mults_model=%" PRIu64
+           " prep_affine_edge_squarings_model=%" PRIu64 " online_scratch_bytes=%zu"
+           " verified=1\n",
+           argv[2], argv[3], SCALARS, point_words[0], point_words[1], group.endo_lambda,
+           input_digest, output_digest, online_ms, prep_ms, verify_ms, prep_triples, prep_adds,
+           prep_rotations, prep_layer_inversions, prep_bytes, prep_temp_heap_bytes, prep_repeats,
+           point_entries, point_table_bytes, triples, adds, rotations, output_inversions, fallbacks,
+           second_recodes, steered_blocks, static_map_bytes, recipe_bytes, prep_slot_lookups,
+           wavefront_stats.denominators, wavefront_stats.exceptional_edges,
+           wavefront_stats.doubling_edges, 5 * wavefront_stats.denominators,
+           wavefront_stats.denominators + wavefront_stats.doubling_edges, online_scratch_bytes);
     return 0;
 }
