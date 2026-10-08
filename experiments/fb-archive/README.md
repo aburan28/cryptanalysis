@@ -170,10 +170,13 @@ shrink. `refs.py report` prints the per-experiment counts.
 
 `backfill.py <experiment-dir> ...` archives cited bases from the recipe recorded
 beside each citation (a `cell` or `recipe` object with n, family, l, seed). It
-stores a base only when the rebuilt `factor_base_sha256` equals the cited one,
-and reports anything it cannot rebuild. It backfilled 2,466 bases from
+stores a base only when the rebuilt `factor_base_sha256` or
+`enumerated_set_sha256` equals a cited digest for that recipe, and reports
+anything it cannot rebuild. It backfilled 2,466 bases from
 `fb-search` (scans and trace-equation runs) and `pdp-degree-heuristics`
-(per-attempt profiling), all of them byte-exact.
+(per-attempt profiling), all of them byte-exact, plus 103 archives for 105
+`fb-search` online-prediction and stage-ids citations (94 record digests and 11
+point-set digests, 0 rebuild mismatches).
 
 The remaining debt (`unarchived.csv`) is bases that no builder here can
 reproduce: a prime-field base (`bielliptic-quartic`) and a rational "fraction"
