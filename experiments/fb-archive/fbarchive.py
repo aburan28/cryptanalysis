@@ -41,6 +41,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "pdp-degree-heuristics"))
 
 from toycurve import canonical, sha256_hex  # noqa: E402
+import chunked_archive  # noqa: E402
 
 SCHEMA = "ic-factor-base-archive/1"
 INDEX = HERE / "index.csv"
@@ -304,9 +305,19 @@ def compress(data: bytes, codec: str) -> bytes:
     raise ValueError(codec)
 
 
-def decompress(path: Path) -> bytes:
-    raw = path.read_bytes()
-    return gzip.decompress(raw) if path.suffix == ".gz" else lzma.decompress(raw)
+def archive_bytes(path: Path) -> bytes:
+    return chunked_archive.read(path) if path.name.endswith(chunked_archive.SUFFIX) else path.read_bytes()
+
+
+def archive_paths(path: Path) -> list[Path]:
+    return chunked_archive.paths(path) if path.name.endswith(chunked_archive.SUFFIX) else [path]
+
+
+def decompress(path: Path, raw: bytes | None = None) -> bytes:
+    if raw is None:
+        raw = archive_bytes(path)
+    codec = chunked_archive.metadata(path)["codec"] if path.name.endswith(chunked_archive.SUFFIX) else path.suffix[1:]
+    return gzip.decompress(raw) if codec == "gz" else lzma.decompress(raw)
 
 
 def read_index() -> list[dict]:
@@ -325,16 +336,25 @@ def write_index(rows: list[dict]) -> None:
         w.writerows(rows)
 
 
-def store(doc: dict, codec: str = "gz", max_git_bytes: int = MAX_GIT_BYTES) -> dict:
+def store(doc: dict, codec: str = "gz", max_git_bytes: int = MAX_GIT_BYTES, chunk_bytes: int = 0) -> dict:
     content = canonical(doc).encode()
     blob = compress(content, codec)
     rec, recipe = doc["factor_base"], doc["recipe"]
     name = f"{recipe['family']}-l{recipe['l']}-s{recipe['seed']}-{doc['factor_base_sha256'][:12]}.json.{codec}"
     storage = "git" if len(blob) <= max_git_bytes else "s3"
-    rel = Path("bases" if storage == "git" else "large") / rec["curve_id"] / name
+    if chunk_bytes:
+        if type(chunk_bytes) is not int or not 1 <= chunk_bytes <= chunked_archive.MAX_PART:
+            raise ValueError("invalid chunk byte limit")
+        if storage == "s3":
+            storage = "git-chunks"
+            name += chunked_archive.SUFFIX
+    rel = Path("large" if storage == "s3" else "bases") / rec["curve_id"] / name
     path = HERE / rel
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(blob)
+    if storage == "git-chunks":
+        chunked_archive.write(path, blob, codec, chunk_bytes)
+    else:
+        path.write_bytes(blob)
     row = {
         "factor_base_sha256": doc["factor_base_sha256"], "curve_id": rec["curve_id"], "n": recipe["n"],
         "family": recipe["family"], "l": recipe["l"], "seed": recipe["seed"],
@@ -357,10 +377,15 @@ def verify_row(row: dict, rebuild: bool, rebuild_max_points: int) -> list[str]:
     path = HERE / row["path"]
     if not path.exists():
         return [] if row["storage"] == "s3" else [f"{row['path']}: missing"]
-    blob = path.read_bytes()
+    try:
+        blob = archive_bytes(path)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return [f"{row['path']}: invalid archive parts: {error}"]
+    if len(blob) != int(row["bytes"]):
+        errors.append(f"{row['path']}: compressed byte count differs from the index")
     if hashlib.sha256(blob).hexdigest() != row["file_sha256"]:
         errors.append(f"{row['path']}: file SHA-256 differs from the index")
-    content = decompress(path)
+    content = decompress(path, blob)
     if hashlib.sha256(content).hexdigest() != row["content_sha256"]:
         errors.append(f"{row['path']}: content SHA-256 differs from the index")
     doc = json.loads(content)
@@ -450,8 +475,15 @@ def upload(dry_run: bool, require: bool) -> int:
         return 1 if require else 0
     bucket, prefix = target
     base = f"{prefix}/factor-bases" if prefix else "factor-bases"
-    plan = [(HERE / r["path"], f"{base}/{r['curve_id']}/{Path(r['path']).name}", r) for r in rows
-            if (HERE / r["path"]).exists()]
+    plan = []
+    for row in rows:
+        path = HERE / row["path"]
+        if not path.exists():
+            continue
+        for item in archive_paths(path):
+            physical = row if row["storage"] != "git-chunks" else {
+                **row, "file_sha256": hashlib.sha256(item.read_bytes()).hexdigest()}
+            plan.append((item, f"{base}/{row['curve_id']}/{item.name}", physical))
     plan.append((INDEX, f"{base}/index.csv", None))
     if dry_run:
         for path, key, _ in plan:
@@ -498,6 +530,8 @@ def main() -> None:
     e.add_argument("--codec", default="gz", choices=["gz", "xz"])
     e.add_argument("--strict-limit", type=int, default=10_000, help="n = 131: count [r]P = O only up to this many points")
     e.add_argument("--max-git-bytes", type=int, default=MAX_GIT_BYTES)
+    e.add_argument("--chunk-bytes", type=int, default=0,
+                   help="opt in to bounded Git parts for oversized archives; zero keeps S3 behavior")
     s = sub.add_parser("export-suite", help="archive every factor base of an ic-bench suite")
     s.add_argument("--suite", default="full")
     v = sub.add_parser("verify", help="check every archive against the index")
@@ -510,7 +544,7 @@ def main() -> None:
     if args.cmd == "export":
         extra = {k: int(v) for k, v in (kv.split("=", 1) for kv in args.extra)}
         doc = build(args.n, args.family, args.l, args.seed, not args.no_points, args.strict_limit, extra)
-        row = store(doc, args.codec, args.max_git_bytes)
+        row = store(doc, args.codec, args.max_git_bytes, args.chunk_bytes)
         print(json.dumps(row))
     elif args.cmd == "export-suite":
         sys.path.insert(0, str(HERE.parent / "ic-bench"))
@@ -528,7 +562,15 @@ def main() -> None:
         errors = [err for r in rows for err in verify_row(r, args.rebuild, args.rebuild_max_points)]
         errors += verify_aliases(rows)
         on_disk = {str(p.relative_to(HERE)) for p in (HERE / "bases").rglob("*.json.*")}
-        errors += [f"{p}: not in index.csv" for p in sorted(on_disk - {r["path"] for r in rows})]
+        indexed = {r["path"] for r in rows}
+        for row in rows:
+            path = HERE / row["path"]
+            if path.exists() and path.name.endswith(chunked_archive.SUFFIX):
+                try:
+                    indexed.update(str(p.relative_to(HERE)) for p in archive_paths(path))
+                except (OSError, ValueError, KeyError, TypeError) as error:
+                    errors.append(f"{row['path']}: invalid archive parts: {error}")
+        errors += [f"{p}: not in index.csv" for p in sorted(on_disk - indexed)]
         for err in errors:
             print(err)
         print(f"{len(rows)} archives, {len(errors)} problems")
