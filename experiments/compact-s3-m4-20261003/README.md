@@ -2069,7 +2069,7 @@ relation on the same target and base, with a different query law and
 preparation cost; its N83 cell also found none. These outcomes supply no
 successful N83 cost, natural rank yield, or complete N131 `2^x`.
 
-## Next goal
+## Prior solver gate
 
 The next goal is **one independently verified four-point relation from the
 unfixed, known-satisfiable N53 preimage 201**, with exact primitive counts
@@ -2346,6 +2346,45 @@ archive audit. These bases are comparable in size to Q1438 W≤4/W≤6, with
 a different membership constraint for a future compact-S3 solver test.
 N131 dimension 27 remains a `Q` design with actual `B`/`K` unknown. Q1481
 does not measure an ordinary relation or complete `2^x`.
+
+### Q1482 compact-S3 search on the exact window bases
+
+[Q1482](q1482_window_s3/README.md) uses the exact Q1481 bases and Q1480
+native solver against the same Q1438 ordinary public targets. Its four
+leaf constraints are exact cyclic-window clauses; the native theory uses
+the loose weight-`d` superset bound. Both pinned planted N53/N83 controls
+independently verify. Both unpinned planted controls and both ordinary
+queries reach the 60-second cap with no relation. The N83 ordinary prefix
+uses 317,569,291 field multiplications and 79,366,320 direct right `S3`
+evaluations, with no right support. This changed-base stage is a negative
+solver result, not successful ordinary work or a complete N131 projection.
+
+### Q1483 fixed-window compact-S3 search
+
+[Q1483](q1483_fixed_window_s3/README.md) fixes the start-zero cyclic window
+for all four leaves on the same exact Q1481 bases and Q1482 public targets.
+Both pinned controls independently verify. The first N53 unpinned planted
+attempt lost its solver output to a disk-full infrastructure error; its
+separately frozen R2 and the N83 unpinned planted cell both reach the 60-second
+cap without a relation. Both ordinary cells also censor. The N83 ordinary
+prefix performs 83,755,008 direct right-pair `S3` evaluations and finds no
+support. This is a restricted orientation slice, not full-base relation
+yield. Successful N83 decomposition cost, novel rank, and complete N131
+`2^x` remain unknown.
+
+## Next goal
+
+Build and measure an exact, target-coupled **window-pair support mechanism**
+for the compact four-summand solver. Its first gate is one independently
+verified, fully unpinned known-satisfiable N83 relation on the exact Q1481
+base without constructing the full pair table. The next gate is one ordinary
+N83 relation, followed by a frozen ordinary-query panel to measure useful
+relation yield and rank. Pair N53/N83 inputs and operation-count boundaries
+with Q1482/Q1483. Count failed attempts, SAT propagation, field arithmetic,
+memory, and target-dependent wall intervals. If only the planted control
+passes, retain ordinary cost and N131 complete work as unknown. A complete
+N131 `2^x` also requires its exact usable base, relation collection, final
+matrix solve, target descent, and independent scalar replay.
 
 ## Reproduction
 
