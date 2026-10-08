@@ -8,6 +8,23 @@
 mod ct_bignum;
 #[path = "../../../suite/src/ecc/secp256k1_field.rs"]
 mod secp256k1_field;
+#[cfg(test)]
+mod utils {
+    // The imported bignum tests expect the suite's modular-inverse helper.
+    // Keep this small test-only adapter instead of pulling in suite binaries.
+    use num_bigint::{BigInt, BigUint};
+    use num_integer::Integer;
+
+    pub fn mod_inverse(a: &BigUint, modulus: &BigUint) -> Option<BigUint> {
+        let modulus_i = BigInt::from(modulus.clone());
+        let result = BigInt::from(a.clone()).extended_gcd(&modulus_i);
+        if result.gcd != BigInt::from(1) {
+            None
+        } else {
+            ((result.x % &modulus_i + &modulus_i) % &modulus_i).to_biguint()
+        }
+    }
+}
 
 use secp256k1_field::SecpFieldElement as F;
 use num_bigint::BigInt;
@@ -139,6 +156,16 @@ impl J {
             return None;
         }
         let inverse = self.z.inv();
+        let square = inverse.sqr();
+        let cube = square.mul(&inverse);
+        Some((self.x.mul(&square), self.y.mul(&cube)))
+    }
+
+    fn to_affine_fast(self) -> Option<(F, F)> {
+        if self.is_identity() {
+            return None;
+        }
+        let inverse = self.z.inv_chain();
         let square = inverse.sqr();
         let cube = square.mul(&inverse);
         Some((self.x.mul(&square), self.y.mul(&cube)))
@@ -1019,10 +1046,20 @@ fn check_portfolio_fixture(fixture_path: &str, seed_path: &str,
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 3 && args[1] == "--check-coset-fastinv-fixture" {
+        coset::check_fastinv_fixture(&args[2]);
+        return;
+    }
+    if args.len() == 4 && (args[1] == "--benchmark-coset-fastinv-case" ||
+                           args[1] == "--check-coset-fastinv-case") {
+        coset::benchmark_case(&args[2], args[3].parse().expect("case index"),
+                              args[1] == "--benchmark-coset-fastinv-case", true);
+        return;
+    }
     if args.len() == 4 && (args[1] == "--benchmark-coset-case" ||
                            args[1] == "--check-coset-case") {
         coset::benchmark_case(&args[2], args[3].parse().expect("case index"),
-                              args[1] == "--benchmark-coset-case");
+                              args[1] == "--benchmark-coset-case", false);
         return;
     }
     if args.len() == 5 && args[1] == "--check-coset-fixture" {

@@ -48,8 +48,9 @@ fn run(base: J, beta: F, selection: &Selection) -> (J, usize, usize) {
     }
 }
 
-fn checked_output(point: J, case: &Value) -> String {
-    let actual = match point.to_affine() {
+fn checked_output(point: J, case: &Value, fast_inversion: bool) -> String {
+    let affine = if fast_inversion { point.to_affine_fast() } else { point.to_affine() };
+    let actual = match affine {
         None => "identity".to_owned(),
         Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
     };
@@ -188,7 +189,7 @@ pub(super) fn check_fixture(fixture_path: &str, seed_path: &str, score_path: &st
             }
         }
         let (point, exceptional, _) = run(base, beta, &selection);
-        checked_output(point, case);
+        checked_output(point, case, false);
         choices[selection.choice] += 1;
         exceptional_adds += exceptional;
         total += selection.costs[selection.choice];
@@ -200,7 +201,29 @@ pub(super) fn check_fixture(fixture_path: &str, seed_path: &str, score_path: &st
         "exceptional_cached_adds":exceptional_adds, "cpu_speedup_claim":null}));
 }
 
-pub(super) fn benchmark_case(fixture_path: &str, index: usize, timed: bool) {
+pub(super) fn check_fastinv_fixture(fixture_path: &str) {
+    let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
+        .expect("fixture JSON");
+    let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
+    let cases = fixture["cases"].as_array().expect("cases");
+    for case in cases {
+        let scalar = big_from_hex(case["scalar_hex"].as_str().expect("scalar"));
+        let x = case["base_x_hex"].as_str().expect("base x");
+        let y = case["base_y_hex"].as_str().expect("base y");
+        let base = J::affine(fe_from_hex(x), fe_from_hex(y));
+        let selection = select(&scalar);
+        let (point, exceptional, _) = run(base, beta, &selection);
+        assert_eq!(exceptional, 0);
+        assert_eq!(point.to_affine_fast(), point.to_affine());
+        checked_output(point, case, true);
+    }
+    println!("{}", serde_json::json!({"verified":true,
+        "cases":cases.len(), "fast_inverse_checks":cases.len(),
+        "scalar_output_checks":cases.len(), "cpu_speedup_claim":null}));
+}
+
+pub(super) fn benchmark_case(fixture_path: &str, index: usize,
+                             timed: bool, fast_inversion: bool) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
         .expect("fixture JSON");
     let case = &fixture["cases"].as_array().expect("cases")[index];
@@ -216,13 +239,14 @@ pub(super) fn benchmark_case(fixture_path: &str, index: usize, timed: bool) {
     let base = J::affine(fe_from_hex(x), fe_from_hex(y));
     let selection = select(&scalar);
     let (point, exceptional, _) = run(base, beta, &selection);
-    let actual = checked_output(point, case);
+    let actual = checked_output(point, case, fast_inversion);
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let mode = if fast_inversion { "coset_fastinv" } else { "coset" };
     if timed {
-        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={x} base_y={y} scalar={scalar_hex} point={actual} mode=coset choice={} source_M_plus_S={} exceptional_cached_adds={exceptional}",
+        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={x} base_y={y} scalar={scalar_hex} point={actual} mode={mode} choice={} source_M_plus_S={} exceptional_cached_adds={exceptional}",
                  selection.choice, selection.costs[selection.choice]);
     } else {
-        println!("verified=1 curve=secp256k1 base_x={x} base_y={y} scalar={scalar_hex} point={actual} mode=coset choice={} source_M_plus_S={} exceptional_cached_adds={exceptional}",
+        println!("verified=1 curve=secp256k1 base_x={x} base_y={y} scalar={scalar_hex} point={actual} mode={mode} choice={} source_M_plus_S={} exceptional_cached_adds={exceptional}",
                  selection.choice, selection.costs[selection.choice]);
     }
 }
