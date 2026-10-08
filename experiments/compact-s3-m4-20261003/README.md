@@ -2291,6 +2291,34 @@ only one exact join each. These are censored stage diagnostics; successful
 compact decomposition cost, N83 natural yield, and a complete N131 `2^x`
 remain unknown.
 
+### Q1476 trace-syndrome compact-S3 comparison
+
+[Q1476](q1476_trace_syndrome/README.md) adds the rational-point trace
+homomorphism as three exact parity constraints to Q1475's ordered CNFs,
+with the target-preimage selector gating the final equation. Independent
+Frobenius-trace and group-law checks pass at N53 and N83; both pinned SAT
+models verify. All four free-leaf cases, including the N53 and N83
+known-representable controls and both ordinary queries, again reach the
+60-second cap without a relation. On the N83 matched inputs the exact
+pair-root and target-join counts remain unchanged at one join each.
+The new one-bit target constraint does not measure successful decomposition
+work, N83 natural yield, or a complete N131 `2^x`; the challenge gate stays
+closed.
+
+### Q1479 target-conditioned partial midpoint domains
+
+[Q1479](q1479_target_mid_domain/README.md) adds a guarded necessary domain
+constraint between an unfinished first pair and the second `S3` midpoint,
+using the same six Q1476 inputs and exact N53/N83 curve and base records.
+Exhaustive `F_8` guard checks pass and both pinned four-point controls
+independently verify. The known-representable unpinned and ordinary cells at
+both degrees still censor at the 60-second cap with zero verified relations.
+The N53 free-leaf cells spend roughly fourteen million `S3` root calls each
+and fill the two-million-entry cache; the N83 ordinary cell emits 1,599
+guarded midpoint implications but no exact joint check or relation. These
+fixed-cap counts do not measure successful N83 decomposition work, natural
+yield/rank, or the complete N131 `2^x`.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
