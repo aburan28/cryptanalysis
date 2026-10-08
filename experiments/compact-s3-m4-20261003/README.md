@@ -2220,6 +2220,28 @@ solver. The result is a censored correctness control, not a natural N83
 relation yield or successful decomposition cost. The complete N131 `2^x`
 remains unknown.
 
+### Q1471 wider exact-join cap at N83
+
+[Q1471](q1471_n83_wide_join/README.md) raises the exact joint-pair
+admission cap fourfold on Q1467's matched N83 known-solution and ordinary
+targets. It admits three exact checks in each run, compared with one at the
+old cap, but both reach a 120-second wall cap without a verified relation.
+The widened check costs 19.87 million / 19.07 million field
+multiplications, respectively, and hundreds of partial states still exceed
+the new cap. No N83 successful-solve cost, natural useful-row yield, or
+complete N131 `2^x` follows.
+
+### Q1472 exact SAT propagation meter
+
+[Q1472](q1472_sat_work_meter/README.md) adds only CaDiCaL's exact
+propagation counter to the native chained-\(S_3\) solver and reruns all six
+matched Q1467 N53/N83 cells. Both pinned controls independently verify;
+the four unpinned and ordinary cells censor again. The ordinary N53/N83
+queries make 297,449,277 / 315,503,020 SAT propagations before their
+60-second caps, alongside separately recorded field primitive calls.
+These are censored-stage operation counts in different units. They do not
+measure successful unpinned N83 work or produce a complete N131 `2^x`.
+
 ## Reproduction
 
 From this repository worktree, first save checked runtime information:
