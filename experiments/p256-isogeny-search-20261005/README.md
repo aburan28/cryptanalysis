@@ -593,6 +593,49 @@ are frozen in
 This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
 enumeration.
 
+## Prospectively frozen low-degree paths through depth thirty-five
+
+The next extension was frozen in
+[`protocol-depth-thirty-five-20261008.json`](protocol-depth-thirty-five-20261008.json)
+before candidate generation. It added 528 curves at depth thirty-four and 544 at
+depth thirty-five with no overlap against the prior union, raising the explicit
+registry to P-256 plus 9,569 neighbors.
+
+All 1,072 additions received matched-native measurements in 179 root-controlled
+blocks. Sixteen unadjusted short-screen hits, with point estimates from
+`1.0278x` through `1.0910x`, entered the mandatory fresh 30-trial, two-second
+holdout. One reproduced: `p256-j-69e859…d189e` measured `1.0219x` with paired
+95% interval `1.0012x-1.0431x`. This is a small exploratory effect, not a
+dramatic or controlled speedup. The complete 34-edge path was replayed on both
+ECDLP points: reusable map parsing took 0.5334 seconds and per-key P,Q mapping
+averaged 0.014246 seconds with 95% interval 0.014042-0.014450 seconds. The
+endpoint generator and discrete-log relation verified.
+
+The depth-35 deterministic audits verify all 1,073 delta models and transported
+generators, exact conductor `1` and level-zero horizontal paths for every
+addition, and zero normalized-`3b` candidates passing the 32-operation gate.
+The best new coefficient bounds were 243 operations lower and 345 upper.
+Discovery took 460.68 seconds, accepted screening blocks 4,842.21 seconds, and
+the fresh holdout 1,047.34 seconds. The local host failed the isolation gate, so
+the positive timing requires replay on a qualifying host.
+
+An execution-environment restart interrupted an earlier screen after 155 blocks
+and stopped the exact class-group process after 128,200.21 seconds without a
+result or checkpoint. Those failed artifacts and costs are preserved and
+excluded from accepted timing evidence. A clean full screen replaced the
+partial run, and the exact class-group computation restarted from its original
+configuration; its depth-35 checkpoint was running after 6,225.22 seconds.
+
+The 234,925,716-byte working registry is preserved as a deterministic
+93,239,950-byte gzip archive with both hashes and a byte-identical repack
+certificate. The archive and manifest, 179 accepted raw blocks, 155 excluded
+interrupted blocks, holdout, mapping benchmark, failed isolation probe, audits,
+complete invocation ledger, transfer assessment, receipt, summary, and verifier
+are frozen in
+[`results/sage-low-degree-depth-thirty-five-20261008`](results/sage-low-degree-depth-thirty-five-20261008).
+This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
+enumeration.
+
 Registries that would exceed GitHub's single-blob limit are frozen with
 [`scripts/freeze_large_json.py`](scripts/freeze_large_json.py). It emits a
 deterministic level-9 gzip archive plus a manifest binding both compressed and
@@ -623,9 +666,9 @@ paths, or unknown algorithms.
 
 ## Full-registry conductor audit
 
-Yes: the endomorphism-ring conductor is now attached explicitly to all 8,498
+Yes: the endomorphism-ring conductor is now attached explicitly to all 9,570
 curves in the current retained registry. This is an exact derivation rather
-than 8,498 independent numeric measurements. Each record recomputes
+than 9,570 independent numeric measurements. Each record recomputes
 `t = p + 1 - n` and `D_pi = t^2 - 4p`; the complete certificate-verified
 factorization shows that `D_pi` is fundamental. For every ordinary curve `E`
 in the class,
@@ -638,7 +681,7 @@ therefore End(E) = O_K and f_End(E) = 1.
 
 Consequently `v_l(f_End(E)) = 0` for every rational prime `l`. The audit also
 checks the continuity and endpoint of each retained explicit path and labels
-all 191,538 stored path-edge occurrences horizontal, with both endpoints at
+all 228,530 stored path-edge occurrences horizontal, with both endpoints at
 level zero. There are no vertical edges or alternate conductor levels to
 search in this isogeny class.
 
@@ -648,9 +691,9 @@ hashes, receipt, summary, and deterministic verifier are frozen in
 class-wide conductor conclusion does not enumerate the entire isogeny class
 and does not establish an ECDLP speedup; the explicit curve registry remains
 bounded. The depth-19, depth-21, depth-23, depth-25, depth-27, depth-29,
-depth-31, and depth-33 extension directories repeat the exact certificate and
+depth-31, depth-33, and depth-35 extension directories repeat the exact certificate and
 retain explicit rows for their respective 560, 624, 688, 752, 816, 880, 944,
-and 1,008 additions. Together with the consolidated snapshot, these incremental
+1,008, and 1,072 additions. Together with the consolidated snapshot, these incremental
 audits cover the current registry without implying that the older snapshot
 itself contains later rows.
 
