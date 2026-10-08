@@ -90,6 +90,7 @@
 //! curve; the point of the module is the measurement.
 
 use std::cell::Cell;
+use std::collections::hash_map::Entry;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
@@ -1647,6 +1648,64 @@ impl DecompState {
     }
 }
 
+/// The residual table's copy of a [`DecompState`]: `(a, b)` inline and the
+/// two index multisets as one run of words in a [`StateArena`].  Every
+/// accepted residual is stored and only the few that collide are read
+/// back, so this saves an allocation per stored residual (and its free
+/// when the table is dropped) at the price of one per collision.
+#[derive(Clone, Copy)]
+struct StoredState {
+    a: u64,
+    b: u64,
+    at: usize,
+    tuple_len: u32,
+    minus_len: u32,
+}
+
+/// Backing store for [`StoredState`]s; grows by `tuple + minus` words
+/// per stored state and is freed in one piece.
+#[derive(Default)]
+struct StateArena(Vec<u32>);
+
+impl StateArena {
+    fn store(&mut self, s: &DecompState) -> StoredState {
+        let at = self.0.len();
+        self.0.extend_from_slice(&s.tuple);
+        self.0.extend_from_slice(&s.minus);
+        StoredState {
+            a: s.a,
+            b: s.b,
+            at,
+            tuple_len: s.tuple.len() as u32,
+            minus_len: s.minus.len() as u32,
+        }
+    }
+
+    fn parts(&self, st: &StoredState) -> (&[u32], &[u32]) {
+        let mid = st.at + st.tuple_len as usize;
+        (
+            &self.0[st.at..mid],
+            &self.0[mid..mid + st.minus_len as usize],
+        )
+    }
+
+    /// `load(st) == s`, without building the state.
+    fn is(&self, st: &StoredState, s: &DecompState) -> bool {
+        let (tuple, minus) = self.parts(st);
+        st.a == s.a && st.b == s.b && tuple == &s.tuple[..] && minus == &s.minus[..]
+    }
+
+    fn load(&self, st: &StoredState) -> DecompState {
+        let (tuple, minus) = self.parts(st);
+        DecompState {
+            a: st.a,
+            b: st.b,
+            tuple: tuple.to_vec(),
+            minus: minus.to_vec(),
+        }
+    }
+}
+
 // ── Semaev S₃ pair-decomposition oracle ────────────────────────────────
 
 /// Semaev's third summation polynomial for `y² = x³ + ax + b` as a
@@ -1854,7 +1913,12 @@ fn fold_mode(inst: &Instance, opts: &WalkOptions) -> Fold {
 /// factor-base point, with `c` centred.
 fn fold_lookup(inst: &Instance, fb: &FactorBase, mode: Fold, pt: &Pt) -> Option<(usize, i64)> {
     let (canon, f) = fold(inst, mode, pt);
-    let (i, sign) = fb.lookup(&canon)?;
+    folded_lookup(inst, fb, &canon, f)
+}
+
+/// [`fold_lookup`] for a point already folded to `(canon, f)`.
+fn folded_lookup(inst: &Instance, fb: &FactorBase, canon: &Pt, f: u64) -> Option<(usize, i64)> {
+    let (i, sign) = fb.lookup(canon)?;
     let c = if sign == 1 {
         f
     } else {
@@ -1888,7 +1952,8 @@ fn run_explicit(
     let start = Instant::now();
     let mut col = Collector::new(inst, fb, strategy, opts);
     let mode = fold_mode(inst, opts);
-    let mut table: FxMap<Pt, (DecompState, u64)> = FxMap::default();
+    let mut table: FxMap<Pt, (StoredState, u64)> = FxMap::default();
+    let mut arena = StateArena::default();
 
     // Optional seeding with every signed pair sum.  A seed is a residual
     // of the state `(0, 0, tuple, minus)` whose decomposition is known;
@@ -1923,12 +1988,14 @@ fn run_explicit(
                         col.push_full(state.full_relation(Some(hit)));
                     }
                     let (key, f) = fold(inst, mode, &pt);
-                    match table.get(&key) {
-                        Some((prev, prev_f)) => {
-                            col.push_collision(state.relation_scaled(f, prev, *prev_f, n));
+                    match table.entry(key) {
+                        Entry::Occupied(slot) => {
+                            let (prev, prev_f) = slot.get();
+                            let prev = arena.load(prev);
+                            col.push_collision(state.relation_scaled(f, &prev, *prev_f, n));
                         }
-                        None => {
-                            table.insert(key, (state, f));
+                        Entry::Vacant(slot) => {
+                            slot.insert((arena.store(&state), f));
                             col.report.seeded_points += 1;
                         }
                     }
@@ -1966,9 +2033,12 @@ fn run_explicit(
             None => true,
         };
         if passes_filter {
+            // The fold class of `L` decides both the complete-decomposition
+            // test and the table key: fold once.
+            let (key, f) = fold(inst, mode, &l);
             if l.inf {
                 col.push_full(state.full_relation(None));
-            } else if let Some(hit) = fold_lookup(inst, fb, mode, &l) {
+            } else if let Some(hit) = folded_lookup(inst, fb, &key, f) {
                 col.push_full(state.full_relation(Some(hit)));
             }
             if opts.s3_oracle {
@@ -2025,8 +2095,9 @@ fn run_explicit(
                             } else {
                                 col.report.neighbour_collisions += 1;
                             }
-                            if *prev != zs {
-                                col.push_collision(zs.relation_scaled(zf, prev, *prev_f, n));
+                            if !arena.is(prev, &zs) {
+                                let prev = arena.load(prev);
+                                col.push_collision(zs.relation_scaled(zf, &prev, *prev_f, n));
                             }
                         }
                     }
@@ -2034,21 +2105,22 @@ fn run_explicit(
                 col.charge_group_ops(before);
             }
             col.report.accepted += 1;
-            let (key, f) = fold(inst, mode, &l);
-            match table.get(&key) {
-                Some((prev, prev_f)) => {
-                    if *prev == state {
+            match table.entry(key) {
+                Entry::Occupied(slot) => {
+                    let (prev, prev_f) = slot.get();
+                    if arena.is(prev, &state) {
                         // Same state: a revisit, or `f·L = f'·L` with
                         // `f ≠ f'`, i.e. `L = O`, already reported as a
                         // complete decomposition.  Neither is progress.
                         col.count_collision(CollisionKind::Trivial);
                     } else {
-                        col.push_collision(state.relation_scaled(f, prev, *prev_f, n));
+                        let prev = arena.load(prev);
+                        col.push_collision(state.relation_scaled(f, &prev, *prev_f, n));
                     }
                     restart = true;
                 }
-                None => {
-                    table.insert(key, (state.clone(), f));
+                Entry::Vacant(slot) => {
+                    slot.insert((arena.store(&state), f));
                 }
             }
         }
@@ -2977,6 +3049,46 @@ mod tests {
             }
             assert!(shoup.rank() > 0 && shoup.ops() > 0);
         }
+    }
+
+    #[test]
+    fn state_arena_round_trips_and_compares_like_the_state() {
+        let mut rng = StdRng::seed_from_u64(0xA7E);
+        let mut arena = StateArena::default();
+        let mut states = Vec::new();
+        for t in 0..500 {
+            // Walked states (empty `minus`), seeds (`a = b = 0`) and
+            // neighbours (both multisets non-empty), of several lengths.
+            let mut s = DecompState::random(&mut rng, 1_000_003, 64, 1 + t % 5);
+            if t % 3 == 0 {
+                s.minus = (0..t % 4).map(|_| rng.gen_range(0..64)).collect();
+            }
+            if t % 7 == 0 {
+                (s.a, s.b) = (0, 0);
+            }
+            states.push(s.canonical());
+        }
+        let stored: Vec<StoredState> = states.iter().map(|s| arena.store(s)).collect();
+        for (i, st) in stored.iter().enumerate() {
+            assert_eq!(arena.load(st), states[i]);
+            for j in [i, (i + 1) % states.len(), (i * 7) % states.len()] {
+                assert_eq!(arena.is(st, &states[j]), states[i] == states[j]);
+            }
+        }
+        // Equal up to the split between `tuple` and `minus` is not equal.
+        let a = DecompState {
+            a: 1,
+            b: 2,
+            tuple: vec![3, 4],
+            minus: vec![5],
+        };
+        let b = DecompState {
+            tuple: vec![3],
+            minus: vec![4, 5],
+            ..a.clone()
+        };
+        let st = arena.store(&a);
+        assert!(arena.is(&st, &a) && !arena.is(&st, &b));
     }
 
     #[test]
