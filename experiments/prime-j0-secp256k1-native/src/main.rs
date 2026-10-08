@@ -279,6 +279,49 @@ fn prepare_linked(base: J, beta: F) -> [J; 9] {
      one_minus_two_tau]
 }
 
+// Construct (2P - omega(P), omega(2P) - P) together. Both mixed additions
+// have the same projective Z and Y input and the same affine addend Y, so
+// Z^2, Z^3, the Y difference, and its square are computed only once.
+fn prepare_linked_twinned(base: J, beta: F) -> [J; 9] {
+    assert_eq!(base.z, F::ONE);
+    let twice_base = base.double();
+    let four_base = twice_base.double();
+    let z2 = twice_base.z.sqr();
+    let z3 = twice_base.z.mul(&z2);
+    let v = base.y.neg().mul(&z3).sub(&twice_base.y);
+    let v2 = v.sqr();
+    let u = base.x.mul(&z2);
+    let beta_u = beta.mul(&u);
+    let beta_x = beta.mul(&twice_base.x);
+
+    fn finish(x: F, y: F, z: F, u: F, v: F, v2: F) -> J {
+        let h = u.sub(&x);
+        // On the declared prime-order secp256k1 subgroup these additions
+        // cannot be a doubling or cancellation: 2P != +/-omega(P) and
+        // omega(2P) != +/-P for nonidentity P.
+        assert_ne!(h, F::ZERO);
+        let hh = h.sqr();
+        let hhh = h.mul(&hh);
+        let xhh = x.mul(&hh);
+        let rx = v2.sub(&hhh).sub(&twice(xhh));
+        let ry = v.mul(&xhh.sub(&rx)).sub(&y.mul(&hhh));
+        let rz = z.mul(&h);
+        J { x: rx, y: ry, z: rz }
+    }
+
+    let one_tau = finish(twice_base.x, twice_base.y, twice_base.z,
+                         beta_u, v, v2);
+    let one_minus_two_tau = finish(beta_x, twice_base.y, twice_base.z,
+                                   u, v, v2);
+    let two_two_tau = one_tau.double();
+    let four_four_tau = two_two_tau.double();
+    let two_minus_four_tau = one_minus_two_tau.double();
+    let four_minus_eight_tau = two_minus_four_tau.double();
+    [base, twice_base, four_base, one_tau, two_two_tau,
+     two_minus_four_tau, four_minus_eight_tau, four_four_tau,
+     one_minus_two_tau]
+}
+
 fn normalize_all(seeds: &[J; 9]) -> [J; 9] {
     let mut normalized = *seeds;
     let mut prefix = [F::ONE; 8];
@@ -778,6 +821,7 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
                         timed: bool) {
     assert!(mode == "cached_projective" || mode == "all_affine" ||
             mode == "joint_atlas" || mode == "linked_atlas" ||
+            mode == "linked_twin" ||
             mode == "portfolio");
     let raw = fs::read(fixture_path).expect("read benchmark fixture");
     let fixture: Value = serde_json::from_slice(&raw).expect("parse benchmark fixture");
@@ -799,7 +843,7 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
         LazyLock::force(&DIGIT_TABLE);
         LazyLock::force(&ALTERNATE_DIGIT_TABLE);
         LazyLock::force(&LINKED_DIGIT_TABLE);
-    } else if mode == "linked_atlas" {
+    } else if mode == "linked_atlas" || mode == "linked_twin" {
         LazyLock::force(&LINKED_DIGIT_TABLE);
     } else if mode == "joint_atlas" {
         LazyLock::force(&ALTERNATE_DIGIT_TABLE);
@@ -814,14 +858,18 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
         let plan = recode_portfolio(a.clone(), b.clone());
         let choice = plan.choice;
         (plan.streams.into_iter().nth(choice).expect("selected stream"), choice)
-    } else if mode == "linked_atlas" {
+    } else if mode == "linked_atlas" || mode == "linked_twin" {
         (recode_linked(a.clone(), b.clone()), 2)
     } else if mode == "joint_atlas" {
         (recode_alternate(a.clone(), b.clone()), 1)
     } else {
         (recode(a.clone(), b.clone()), 0)
     };
-    let prepared = prepare_choice(base, beta, atlas_choice);
+    let prepared = if mode == "linked_twin" {
+        prepare_linked_twinned(base, beta)
+    } else {
+        prepare_choice(base, beta, atlas_choice)
+    };
     let seeds = if mode == "all_affine" { normalize_all(&prepared) } else { prepared };
     let (point, counts) = evaluate_mode(&digits, &seeds, beta,
                                         mode == "all_affine", false);
@@ -834,7 +882,8 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     if !timed {
         assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
         assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
-        if mode != "joint_atlas" && mode != "linked_atlas" && mode != "portfolio" {
+        if mode != "joint_atlas" && mode != "linked_atlas" &&
+           mode != "linked_twin" && mode != "portfolio" {
             assert_eq!(digits, digits_from_json(case));
             let expected_seeds = case["seed_affine"].as_array().expect("seeds");
             for (seed, expected) in seeds.iter().zip(expected_seeds) {
@@ -870,7 +919,9 @@ fn check_count(expected: &Value, key: &str, actual: usize) {
     assert_eq!(actual, want, "count {key}");
 }
 
-fn check_atlas_fixture(fixture_path: &str, seed_path: &str, linked: bool) {
+fn check_atlas_fixture(fixture_path: &str, seed_path: &str,
+                       linked: bool, twin: bool) {
+    assert!(!twin || linked);
     let raw = fs::read(fixture_path).expect("read scalar fixture");
     let fixture: Value = serde_json::from_slice(&raw).expect("parse scalar fixture");
     let seed_raw = fs::read(seed_path).expect("read alternate Sage seed fixture");
@@ -898,7 +949,8 @@ fn check_atlas_fixture(fixture_path: &str, seed_path: &str, linked: bool) {
         let base = J::affine(
             fe_from_hex(case["base_x_hex"].as_str().expect("base x")),
             fe_from_hex(case["base_y_hex"].as_str().expect("base y")));
-        let seeds = if linked { prepare_linked(base, beta) }
+        let seeds = if twin { prepare_linked_twinned(base, beta) }
+                    else if linked { prepare_linked(base, beta) }
                     else { prepare_alternate(base, beta) };
         let old_seeds = case["seed_affine"].as_array().expect("Sage old seeds");
         for (index, seed) in seeds.iter().enumerate() {
@@ -931,7 +983,7 @@ fn check_atlas_fixture(fixture_path: &str, seed_path: &str, linked: bool) {
         }
         assert_eq!(counts.tau_steps + usize::from(!digits.is_empty()), digits.len());
         let solo = counts.tau_steps - 2 * counts.tau_pairs;
-        total_m_plus_s += (if linked { 75 } else { 79 })
+        total_m_plus_s += (if twin { 70 } else if linked { 75 } else { 79 })
             + 10 * counts.tau_pairs + 6 * solo
             + 11 * counts.mixed_adds + 14 * counts.general_adds
             + 2 * counts.cache_entries;
@@ -1116,9 +1168,11 @@ fn main() {
         return;
     }
     if args.len() == 4 && (args[1] == "--check-alternate-fixture" ||
-                           args[1] == "--check-linked-fixture") {
+                           args[1] == "--check-linked-fixture" ||
+                           args[1] == "--check-linked-twin-fixture") {
         check_atlas_fixture(&args[2], &args[3],
-                            args[1] == "--check-linked-fixture");
+                            args[1] != "--check-alternate-fixture",
+                            args[1] == "--check-linked-twin-fixture");
         return;
     }
     if args.len() == 5 && (args[1] == "--benchmark-case" ||
