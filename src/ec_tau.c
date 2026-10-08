@@ -381,6 +381,154 @@ static int reduce_scalar(uint64_t n, uint64_t lambda, uint64_t k, ca_i128 *out_a
     return 1;
 }
 
+size_t ca_ec_endo_radix8_point_entries(const ca_group *g)
+{
+    if (!g || g->order < 2) return 0;
+    unsigned bits = 0;
+    for (uint64_t n = g->order - 1; n; n >>= 1) bits++;
+    return (bits <= 32 ? 3u : 4u) * CA_ENDO_RADIX8_MAGNITUDES;
+}
+
+int ca_ec_endo_radix8_prepare(const ca_group *g, const ca_elem *point, ca_endo_radix8_precomp *out,
+                              uint64_t *doubles, uint64_t *adds, uint64_t *inversions)
+{
+    if (!g || !point || !out || g->kind != CA_GROUP_EC || g->endo_kind != 1 || g->a != 0 ||
+        g->p % 3 != 1 || g->order % 3 != 1 || !g->endo_lambda)
+        return 0;
+    size_t entries = ca_ec_endo_radix8_point_entries(g);
+    if (!entries || entries > 4 * CA_ENDO_RADIX8_MAGNITUDES) return 0;
+    ca_endo_radix8_precomp pre = {0};
+    pre.g = g;
+    pre.base_point = *point;
+    pre.beta = g->endo_c_mont;
+    pre.positions = (unsigned)(entries / CA_ENDO_RADIX8_MAGNITUDES);
+    pre.identity = point->w[2] != 0;
+    tau_vec v1, v2;
+    if (!make_lattice(g->order, g->order - g->endo_lambda, &v1, &v2, &pre.det)) return 0;
+    pre.v1x = v1.x;
+    pre.v1y = v1.y;
+    pre.v2x = v2.x;
+    pre.v2y = v2.y;
+    if (doubles) *doubles = 0;
+    if (adds) *adds = 0;
+    if (inversions) *inversions = 0;
+    if (pre.identity) {
+        *out = pre;
+        return 1;
+    }
+    pre.point = malloc(entries * sizeof(*pre.point));
+    if (!pre.point) return 0;
+    tau_jac projective[4 * CA_ENDO_RADIX8_MAGNITUDES];
+    uint64_t prefixes[4 * CA_ENDO_RADIX8_MAGNITUDES];
+    tau_jac basis = {point->w[0], point->w[1], g->mont.r1};
+    for (unsigned position = 0; position < pre.positions; position++) {
+        tau_jac multiple = basis;
+        for (unsigned magnitude = 1; magnitude <= CA_ENDO_RADIX8_MAGNITUDES; magnitude++) {
+            projective[(size_t)position * CA_ENDO_RADIX8_MAGNITUDES + magnitude - 1] = multiple;
+            if (magnitude < CA_ENDO_RADIX8_MAGNITUDES) {
+                multiple = jac_add(g, multiple, basis);
+                if (adds) (*adds)++;
+            }
+        }
+        if (position + 1 < pre.positions)
+            for (unsigned bit = 0; bit < 8; bit++) {
+                basis = jac_double(g, basis);
+                if (doubles) (*doubles)++;
+            }
+    }
+    if (!jac_batch_to_affine_scratch(g, pre.point, projective, entries, prefixes, inversions)) {
+        free(pre.point);
+        return 0;
+    }
+    *out = pre;
+    return 1;
+}
+
+int ca_ec_endo_radix8_prepare_verify(const ca_endo_radix8_precomp *pre)
+{
+    if (!pre || !pre->g || !pre->positions || pre->positions > 4) return 0;
+    if (pre->identity) return pre->point == NULL;
+    if (!pre->point) return 0;
+    uint64_t power = 1;
+    for (unsigned position = 0; position < pre->positions; position++) {
+        for (unsigned magnitude = 1; magnitude <= CA_ENDO_RADIX8_MAGNITUDES; magnitude++) {
+            ca_elem expected;
+            ca_group_mul(pre->g, &expected, &pre->base_point, power * magnitude, NULL);
+            if (!ca_group_equal(
+                    pre->g, &expected,
+                    &pre->point[(size_t)position * CA_ENDO_RADIX8_MAGNITUDES + magnitude - 1]))
+                return 0;
+        }
+        power *= 256;
+    }
+    return 1;
+}
+
+int ca_ec_endo_radix8_mul_profile(const ca_group *g, const ca_endo_radix8_precomp *pre,
+                                  ca_elem *out, uint64_t k, uint64_t *adds, uint64_t *rotations,
+                                  uint64_t *fallbacks)
+{
+    if (!g || !pre || !out || pre->g != g || !pre->positions || pre->positions > 4) return 0;
+    if (adds) *adds = 0;
+    if (rotations) *rotations = 0;
+    if (fallbacks) *fallbacks = 0;
+    k %= g->order;
+    if (!k || pre->identity) {
+        *out = (ca_elem){{0, 0, 1, 0}};
+        return 1;
+    }
+    if (!pre->point) return 0;
+    ca_i128 a, b;
+    reduce_with_lattice((tau_vec){pre->v1x, pre->v1y}, (tau_vec){pre->v2x, pre->v2y}, pre->det, k,
+                        &a, &b);
+    ca_i128 coordinate[2] = {a + b, -b};
+    int16_t digits[2][4] = {{0}};
+    for (unsigned axis = 0; axis < 2; axis++) {
+        for (unsigned position = 0; position < pre->positions; position++) {
+            ca_i128 remainder = coordinate[axis] % 256;
+            if (remainder < 0) remainder += 256;
+            int16_t digit = (int16_t)(remainder >= 128 ? remainder - 256 : remainder);
+            digits[axis][position] = digit;
+            coordinate[axis] = (coordinate[axis] - digit) / 256;
+        }
+        if (coordinate[axis]) {
+            if (fallbacks) *fallbacks = 1;
+            ca_group_mul(g, out, &pre->base_point, k, NULL);
+            return 1;
+        }
+    }
+    tau_jac accumulator = {0, g->mont.r1, 0};
+    uint64_t na = 0, nr = 0;
+    for (unsigned position = 0; position < pre->positions; position++)
+        for (unsigned axis = 0; axis < 2; axis++) {
+            int digit = digits[axis][position];
+            if (!digit) continue;
+            unsigned magnitude = (unsigned)(digit < 0 ? -digit : digit);
+            ca_elem point =
+                pre->point[(size_t)position * CA_ENDO_RADIX8_MAGNITUDES + magnitude - 1];
+            if (axis && !point.w[2]) {
+                point.w[0] = fm(g, pre->beta, point.w[0]);
+                nr++;
+            }
+            if (digit < 0 && !point.w[2] && point.w[1]) point.w[1] = g->p - point.w[1];
+            if (!point.w[2]) {
+                accumulator = jac_add_mixed(g, accumulator, &point);
+                na++;
+            }
+        }
+    jac_to_affine(g, out, accumulator);
+    if (adds) *adds = na;
+    if (rotations) *rotations = nr;
+    return 1;
+}
+
+void ca_ec_endo_radix8_clear(ca_endo_radix8_precomp *pre)
+{
+    if (!pre) return;
+    free(pre->point);
+    *pre = (ca_endo_radix8_precomp){0};
+}
+
 static unsigned residue3(ca_i128 x)
 {
     ca_i128 r = x % 3;
