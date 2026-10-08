@@ -174,49 +174,54 @@ fn main() {
     let mut rows = Vec::new();
     let mut reference_digest: Option<String> = None;
     for mode in &modes {
+        // A backend's setup (for CUDA: driver, NVRTC compile, module load)
+        // is timed apart from the mode's wall.
+        let setup = Instant::now();
+        let mut decider = match mode.strip_prefix("lockstep:").map(decider_from_spec) {
+            Some(Ok(d)) => Some(d),
+            Some(Err(e)) => {
+                println!("| {mode} | skipped: {e} |");
+                continue;
+            }
+            None => None,
+        };
+        let setup_seconds = setup.elapsed().as_secs_f64();
         f4_profile_reset();
         let t0 = Instant::now();
-        let (results, rounds, requests): (Vec<_>, usize, usize) = match mode.as_str() {
-            "sequential" => (
-                points
-                    .iter()
-                    .map(|p| groebner_decompose(&kc, &fb, &index_of, &st, p, 2, engine, budget))
-                    .collect(),
-                0,
-                0,
-            ),
-            "rayon" => (
-                points
-                    .par_iter()
-                    .map(|p| groebner_decompose(&kc, &fb, &index_of, &st, p, 2, engine, budget))
-                    .collect(),
-                0,
-                0,
-            ),
-            spec if spec.starts_with("lockstep:") => {
-                let backend = &spec["lockstep:".len()..];
-                let mut decider = match decider_from_spec(backend) {
-                    Ok(d) => d,
-                    Err(e) => {
-                        println!("| {mode} | skipped: {e} |");
-                        continue;
-                    }
-                };
-                let (r, report) = groebner_decompose_batch(
-                    &kc,
-                    &fb,
-                    &index_of,
-                    &st,
-                    &points,
-                    2,
-                    engine,
-                    budget,
-                    decider.as_mut(),
-                );
-                (r, report.rounds, report.requests)
-            }
-            other => panic!("unknown mode {other}"),
-        };
+        let (results, rounds, requests): (Vec<_>, usize, usize) =
+            match (mode.as_str(), decider.as_mut()) {
+                (_, Some(decider)) => {
+                    let (r, report) = groebner_decompose_batch(
+                        &kc,
+                        &fb,
+                        &index_of,
+                        &st,
+                        &points,
+                        2,
+                        engine,
+                        budget,
+                        decider.as_mut(),
+                    );
+                    (r, report.rounds, report.requests)
+                }
+                ("sequential", None) => (
+                    points
+                        .iter()
+                        .map(|p| groebner_decompose(&kc, &fb, &index_of, &st, p, 2, engine, budget))
+                        .collect(),
+                    0,
+                    0,
+                ),
+                ("rayon", None) => (
+                    points
+                        .par_iter()
+                        .map(|p| groebner_decompose(&kc, &fb, &index_of, &st, p, 2, engine, budget))
+                        .collect(),
+                    0,
+                    0,
+                ),
+                (other, None) => panic!("unknown mode {other}"),
+            };
         let wall = t0.elapsed().as_secs_f64();
         let profile = f4_profile();
         let (digest, totals, decomposed) = digest_of(&results);
@@ -238,6 +243,7 @@ fn main() {
         );
         rows.push(json!({
             "mode": mode, "wall_seconds": wall, "decomposed": decomposed, "digest": digest,
+            "decider": decider.as_ref().map(|d| d.name()), "setup_seconds": setup_seconds,
             "reductions": totals.reductions, "infeasible_branches": totals.infeasible,
             "propagations": totals.propagations, "splits": totals.splits,
             "exhausted": totals.exhausted, "f4_calls": profile.calls,
@@ -295,25 +301,30 @@ fn main() {
         }
     }
     for backend in backends {
-        let t0 = Instant::now();
-        let got: Vec<Option<Decision>> = if backend == "host-1-thread" {
-            requests
-                .iter()
-                .map(|r| f4_gf2::decide(r.polys, r.n_vars, r.degree, caps).0)
-                .collect()
+        let setup = Instant::now();
+        let mut decider = if backend == "host-1-thread" {
+            None
         } else {
-            let mut decider = match decider_from_spec(&backend) {
-                Ok(d) => d,
+            match decider_from_spec(&backend) {
+                Ok(d) => Some(d),
                 Err(e) => {
                     println!("| {backend} | skipped: {e} |");
                     continue;
                 }
-            };
-            requests
+            }
+        };
+        let setup_seconds = setup.elapsed().as_secs_f64();
+        let t0 = Instant::now();
+        let got: Vec<Option<Decision>> = match decider.as_mut() {
+            None => requests
+                .iter()
+                .map(|r| f4_gf2::decide(r.polys, r.n_vars, r.degree, caps).0)
+                .collect(),
+            Some(decider) => requests
                 .chunks(replay_batch.max(1))
                 .flat_map(|chunk| decider.decide(chunk, caps))
                 .map(|(d, _)| d)
-                .collect()
+                .collect(),
         };
         let wall = t0.elapsed().as_secs_f64();
         assert_eq!(
@@ -325,10 +336,11 @@ fn main() {
             "| {backend} | {wall:.3} | {rate:.0} | {:.2} |",
             1e6 * wall / requests.len().max(1) as f64
         );
-        replays.push(
-            json!({"backend": backend, "wall_seconds": wall, "decisions": requests.len(),
-            "decisions_per_second": rate}),
-        );
+        replays.push(json!({
+            "backend": backend, "decider": decider.as_ref().map(|d| d.name()),
+            "setup_seconds": setup_seconds, "wall_seconds": wall,
+            "decisions": requests.len(), "decisions_per_second": rate,
+        }));
     }
     println!();
     println!("Stage diagnostic only: the decomposition oracle, not an end-to-end ECDLP cost.");

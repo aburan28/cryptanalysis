@@ -145,7 +145,7 @@ class UploadTest(unittest.TestCase):
         present = [r for r in fbarchive.read_index() if (HERE / r["path"]).exists()]
         extra = ["aliases.csv", "unarchived.csv", "sweeps.csv"] + \
             [str(p.relative_to(HERE)) for p in (HERE / "sweeps").glob("*") if p.name.endswith((".json.gz", ".points.csv"))]
-        self.assertEqual(len(lines), len(present) + 1 + len(extra))
+        self.assertEqual(len(lines), sum(len(fbarchive.archive_paths(HERE / r["path"])) for r in present) + 1 + len(extra))
         self.assertTrue(all("s3://bucket/prefix/factor-bases/" in s for s in lines))
         for rel in extra:
             self.assertTrue(any(s.endswith("/factor-bases/" + rel) for s in lines), rel)

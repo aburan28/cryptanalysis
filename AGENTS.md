@@ -296,6 +296,28 @@ pod or a Modal worker): run locally, up to `$FLEET_CPUS` wide. Stop or kill what
 credentials into the tree, and copy the hardware from each shard's
 `status.json` into the run record.
 
+## Run index calculus on a GPU
+
+Index-calculus runs, benchmarks and measurements execute on a CUDA GPU host.
+The cloud-agent VM is for editing, building and unit tests. Any of these
+will do:
+
+- `cloud/runpod_pod.py run NAME [--gpu TYPE] [--out PATH]... -- CMD` rents a
+  Runpod GPU pod for one command, ships the checkout, copies the outputs
+  back and deletes the pod;
+- `cloud/cairn_queue.py submit RUNNER [--out PATH]... -- CMD` queues it on a
+  Runpod GPU runner (`up RUNNER` makes one), where cairn's host agent runs
+  jobs one at a time, each to a receipt; `wait` and `fetch` bring it back;
+- `cloud/modal_run.py run --image cuda --gpu TYPE -- CMD` on Modal;
+- `cloud/fleet.py run rp-gpu-1 -- CMD` on the standing GPU pod.
+
+`ca-ic` and the F4 benchmarks use the GPU without flags: every large F4
+matrix goes to CUDA device 0 when one opens (`F4_F2_ECHELON`, default
+`auto`). Keep each report's `gpu` block in the run record. A report whose
+`gpu.devices` is empty is a CPU-only measurement and must be labeled as one;
+a host-only control sets `F4_F2_ECHELON=host` and says so. Delete or stop
+every pod you start.
+
 ## CPU performance isolation gate
 
 Treat CPU timing ratios from a contended or unverified host as exploratory.

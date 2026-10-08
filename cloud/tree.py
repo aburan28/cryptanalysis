@@ -55,10 +55,12 @@ def _expand(root, paths):
     return out
 
 
-def pack(root, include=(), max_file_bytes=MAX_FILE_BYTES):
-    """Return (tar.gz bytes, summary) for the checkout at root."""
+def pack(root, include=(), max_file_bytes=MAX_FILE_BYTES, names=None):
+    """Return (tar.gz bytes, summary) for the checkout at root, or for just
+    `names` (relative to root) when they are given."""
     root = Path(root)
-    names = sorted(set(checkout_files(root)) | set(_expand(root, include)))
+    base = checkout_files(root) if names is None else names
+    names = sorted(set(base) | set(_expand(root, include)))
     skipped = []
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=6) as tar:

@@ -32,6 +32,7 @@ MODAL_TOKEN_SECRET, or a profile from `modal token set`.
 import argparse
 import calendar
 import io
+import inspect
 import json
 import os
 import shlex
@@ -204,6 +205,29 @@ def exit_code(statuses, returncodes):
     return 0
 
 
+def create_tagged_sandbox(module, *args, tags, **kwargs):
+    """Support SDKs that set tags after creation, without leaving an orphan."""
+    if "tags" in inspect.signature(module.Sandbox.create).parameters:
+        return module.Sandbox.create(*args, tags=tags, **kwargs)
+    if not hasattr(module.Sandbox, "set_tags"):
+        raise RuntimeError("Modal SDK has neither constructor tags nor Sandbox.set_tags")
+    sandbox = module.Sandbox.create(*args, **kwargs)
+    try:
+        sandbox.set_tags(tags)
+    except BaseException:
+        # Allocation succeeded. Stop it if the follow-up metadata call fails.
+        sandbox.terminate()
+        raise
+    return sandbox
+
+
+def detach_sandbox(sandbox):
+    """Older SDK sandboxes already outlive their creating client process."""
+    detach = getattr(sandbox, "detach", None)
+    if detach is not None:
+        detach()
+
+
 def cmd_run(args):
     m = modal()
     command = shlex.join(args.command) if len(args.command) > 1 else args.command[0]
@@ -236,7 +260,7 @@ def cmd_run(args):
     sandboxes = []
     with m.enable_output():
         for shard in range(args.shards):
-            sandboxes.append(m.Sandbox.create(
+            sandboxes.append(create_tagged_sandbox(m,
                 "bash", "-c", runner, app=app, image=image, cpu=cpu, memory=int(memory * 1024),
                 gpu=gpu, timeout=timeout, volumes={MOUNT: vol}, secrets=secrets, workdir="/",
                 env=shard_env(job, shard, args.shards, command, args.out, args.changed, extra,
@@ -247,7 +271,7 @@ def cmd_run(args):
 
     if args.detach:
         for sb in sandboxes:
-            sb.detach()
+            detach_sandbox(sb)
         me = "cloud/modal_run.py"
         print(f"started {job}\n  {me} status {job}\n  {me} logs {job} -f\n"
               f"  {me} fetch {job}   (once it finishes)\n  {me} kill {job}")

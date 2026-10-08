@@ -1,0 +1,322 @@
+{
+  "checks": [
+    {
+      "check": "stage ladder verdicts equal the committed receipts",
+      "detail": "",
+      "ok": false
+    },
+    {
+      "check": "f4_batch_bench k1-n23: every mode decided identically, every replayed decision matched the host kernel",
+      "detail": "exit 0",
+      "ok": true
+    },
+    {
+      "check": "f4_batch_bench k0-n23: every mode decided identically, every replayed decision matched the host kernel",
+      "detail": "exit 0",
+      "ok": true
+    },
+    {
+      "check": "e2e batch 64: every backend verified the same logarithm with the same trials, relations and reductions",
+      "detail": "",
+      "ok": true
+    },
+    {
+      "check": "e2e batch 1024: every backend verified the same logarithm with the same trials, relations and reductions",
+      "detail": "",
+      "ok": true
+    }
+  ],
+  "failures": 1,
+  "finished_unix": 1791301204.174148,
+  "host": {
+    "cgroup_cpu_max": "1360000 100000",
+    "cpu_model": "INTEL(R) XEON(R) GOLD 6530",
+    "cpus": 128,
+    "cpus_schedulable": 128,
+    "gpus": "NVIDIA GeForce RTX 5090, 12.0, 32607 MiB, 580.126.09",
+    "hostname": "7e4ed9c4122c",
+    "kernel": "6.8.0-107-generic",
+    "memory_kb": "791181176",
+    "omp_num_threads_env": null,
+    "rayon_num_threads_env": null
+  },
+  "started_unix": 1791301054.470453,
+  "steps": {
+    "batch": {
+      "k0-n23": {
+        "cmd": [
+          "/root/cryptanalysis/suite/target/release/examples/f4_batch_bench",
+          "--degree",
+          "23",
+          "--curve-a",
+          "0",
+          "--targets",
+          "1024",
+          "--modes",
+          "rayon,lockstep:cpu,lockstep:cuda",
+          "--replay-cap",
+          "200000",
+          "--replay-batch",
+          "16384",
+          "--out",
+          "/root/gpu-bench-inherit0/batch/k0-n23"
+        ],
+        "exit": 0,
+        "log": "batch-k0-n23.txt",
+        "modes": {
+          "lockstep:cpu": {
+            "decider": "cpu",
+            "requests": 757061,
+            "rounds": 1144,
+            "setup_seconds": 1.048e-06,
+            "wall_seconds": 8.356463602
+          },
+          "lockstep:cuda": {
+            "decider": "cuda:NVIDIA GeForce RTX 5090 sm_120 x170 code=sm_120",
+            "requests": 757061,
+            "rounds": 1144,
+            "setup_seconds": 0.273751276,
+            "wall_seconds": 7.50985119
+          },
+          "rayon": {
+            "decider": null,
+            "requests": 0,
+            "rounds": 0,
+            "setup_seconds": 3.27e-07,
+            "wall_seconds": 6.555476008
+          }
+        },
+        "rayon_threads": 13,
+        "replay": {
+          "cpu": {
+            "decider": "cpu",
+            "decisions_per_second": 111252.94836027634,
+            "setup_seconds": 1.227e-06
+          },
+          "cuda": {
+            "decider": "cuda:NVIDIA GeForce RTX 5090 sm_120 x170 code=sm_120",
+            "decisions_per_second": 106994.68990275769,
+            "setup_seconds": 0.166444666
+          },
+          "host-1-thread": {
+            "decider": null,
+            "decisions_per_second": 9148.6980242405,
+            "setup_seconds": 2.69e-07
+          }
+        },
+        "wall_seconds": 59.92022118298337
+      },
+      "k1-n23": {
+        "cmd": [
+          "/root/cryptanalysis/suite/target/release/examples/f4_batch_bench",
+          "--degree",
+          "23",
+          "--curve-a",
+          "1",
+          "--targets",
+          "1024",
+          "--modes",
+          "rayon,lockstep:cpu,lockstep:cuda",
+          "--replay-cap",
+          "200000",
+          "--replay-batch",
+          "16384",
+          "--out",
+          "/root/gpu-bench-inherit0/batch/k1-n23"
+        ],
+        "exit": 0,
+        "log": "batch-k1-n23.txt",
+        "modes": {
+          "lockstep:cpu": {
+            "decider": "cpu",
+            "requests": 764236,
+            "rounds": 1024,
+            "setup_seconds": 7.89e-07,
+            "wall_seconds": 8.433016388
+          },
+          "lockstep:cuda": {
+            "decider": "cuda:NVIDIA GeForce RTX 5090 sm_120 x170 code=sm_120",
+            "requests": 764236,
+            "rounds": 1024,
+            "setup_seconds": 0.271776796,
+            "wall_seconds": 7.383879786
+          },
+          "rayon": {
+            "decider": null,
+            "requests": 0,
+            "rounds": 0,
+            "setup_seconds": 2.52e-07,
+            "wall_seconds": 6.612364929
+          }
+        },
+        "rayon_threads": 13,
+        "replay": {
+          "cpu": {
+            "decider": "cpu",
+            "decisions_per_second": 113047.99372705274,
+            "setup_seconds": 6.19e-07
+          },
+          "cuda": {
+            "decider": "cuda:NVIDIA GeForce RTX 5090 sm_120 x170 code=sm_120",
+            "decisions_per_second": 107977.9185480503,
+            "setup_seconds": 0.155768507
+          },
+          "host-1-thread": {
+            "decider": null,
+            "decisions_per_second": 9124.801189823998,
+            "setup_seconds": 4.27e-07
+          }
+        },
+        "wall_seconds": 60.21321542887017
+      }
+    },
+    "e2e": {
+      "batch1024-cores": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": null,
+          "decide_seconds": 0.0,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 0,
+          "rounds": 0,
+          "setup_seconds": 1.01e-07
+        },
+        "f4_reductions": 378367,
+        "process_cpu_seconds": 87.21803700000001,
+        "process_wall_seconds": 6.893830377142876,
+        "recovered": "53",
+        "relation_collection_seconds": 6.877172156,
+        "relations": 407,
+        "status": "complete",
+        "trials": 1024,
+        "verified": true
+      },
+      "batch1024-cpu": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": "cpu",
+          "decide_seconds": 7.58516237,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 756733,
+          "rounds": 1024,
+          "setup_seconds": 9.558e-06
+        },
+        "f4_reductions": 378367,
+        "process_cpu_seconds": 110.681393,
+        "process_wall_seconds": 9.676874449942261,
+        "recovered": "53",
+        "relation_collection_seconds": 9.646199206,
+        "relations": 407,
+        "status": "complete",
+        "trials": 1024,
+        "verified": true
+      },
+      "batch1024-cuda": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": "cuda:NVIDIA GeForce RTX 5090 sm_120 x170 code=sm_120",
+          "decide_seconds": 6.027272953,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 756733,
+          "rounds": 1024,
+          "setup_seconds": 0.30438869
+        },
+        "f4_reductions": 378367,
+        "process_cpu_seconds": 23.021087,
+        "process_wall_seconds": 8.638430836144835,
+        "recovered": "53",
+        "relation_collection_seconds": 8.183954839,
+        "relations": 407,
+        "status": "complete",
+        "trials": 1024,
+        "verified": true
+      },
+      "batch64-cores": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": null,
+          "decide_seconds": 0.0,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 0,
+          "rounds": 0,
+          "setup_seconds": 9.7e-08
+        },
+        "f4_reductions": 23351,
+        "process_cpu_seconds": 5.490075,
+        "process_wall_seconds": 0.5299420128576458,
+        "recovered": "53",
+        "relation_collection_seconds": 0.504353645,
+        "relations": 27,
+        "status": "complete",
+        "trials": 64,
+        "verified": true
+      },
+      "batch64-cpu": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": "cpu",
+          "decide_seconds": 0.631733295,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 46702,
+          "rounds": 1024,
+          "setup_seconds": 7.384e-06
+        },
+        "f4_reductions": 23351,
+        "process_cpu_seconds": 8.939014,
+        "process_wall_seconds": 0.8449683389626443,
+        "recovered": "53",
+        "relation_collection_seconds": 0.828937499,
+        "relations": 27,
+        "status": "complete",
+        "trials": 64,
+        "verified": true
+      },
+      "batch64-cuda": {
+        "exit": 0,
+        "f4_batch": {
+          "backend": "cuda:NVIDIA GeForce RTX 5090 sm_120 x170 code=sm_120",
+          "decide_seconds": 0.811220863,
+          "f5": true,
+          "kernel": "Fast",
+          "requests": 46702,
+          "rounds": 1024,
+          "setup_seconds": 0.279867376
+        },
+        "f4_reductions": 23351,
+        "process_cpu_seconds": 3.440879,
+        "process_wall_seconds": 1.519990830682218,
+        "recovered": "53",
+        "relation_collection_seconds": 1.100357872,
+        "relations": 27,
+        "status": "complete",
+        "trials": 64,
+        "verified": true
+      }
+    },
+    "stage": {
+      "cmd": [
+        "/root/cryptanalysis/suite/target/release/examples/groebner_stage_bench",
+        "--label",
+        "gpu-host",
+        "--out",
+        "/root/gpu-bench-inherit0/stage"
+      ],
+      "exit": 0,
+      "log": "stage.txt",
+      "wall_seconds": 1.4558029980398715,
+      "wall_seconds_by_rung": {
+        "K_0/2^13 m=2": 0.100204999,
+        "K_0/2^9 m=2": 0.011917924,
+        "K_0/2^9 m=3": 0.030847534,
+        "K_1/2^15 m=2": 0.001767267,
+        "K_1/2^17 m=2": 0.174574886,
+        "K_1/2^23 m=2": 1.119761441
+      }
+    }
+  }
+}
