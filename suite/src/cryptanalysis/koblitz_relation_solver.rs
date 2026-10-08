@@ -472,6 +472,61 @@ mod tests {
         }
     }
 
+    /// Every scalar and operand pair for every modulus up to a few hundred
+    /// (both reduction widths, since the one-word form holds below 2^63),
+    /// then every modulus within 40 of 2^63 and of 2^64 against the
+    /// operands where the quotient estimate is closest to a unit short.
+    /// The sampled test above takes primes and random moduli; this one
+    /// leaves no residue of a small modulus and no neighbour of a word
+    /// boundary to chance.
+    #[test]
+    fn scalar_mul_is_exact_for_every_small_modulus_and_at_the_word_edges() {
+        let check = |m: u64, w: u64, x: u64| {
+            let scalar = Scalar::new(w, m);
+            let expected = mulmod(w % m, x, m);
+            assert_eq!(scalar.mul::<true>(x, m), expected, "wide w={w} x={x} m={m}");
+            if m < 1 << 63 {
+                assert_eq!(scalar.mul::<false>(x, m), expected, "w={w} x={x} m={m}");
+            }
+        };
+        for m in 1..=257u64 {
+            for w in 0..m + 2 {
+                for x in (0..3 * m + 3).chain([u64::MAX - 1, u64::MAX]) {
+                    check(m, w, x);
+                }
+            }
+        }
+        for m in (-40i64..=40)
+            .map(|d| (1u64 << 63).wrapping_add_signed(d))
+            .chain(u64::MAX - 40..=u64::MAX)
+        {
+            let words = [
+                0,
+                1,
+                2,
+                3,
+                m / 2,
+                m / 2 + 1,
+                m - 3,
+                m - 2,
+                m - 1,
+                m,
+                m.wrapping_add(1),
+                1 << 62,
+                (1 << 63) - 1,
+                1 << 63,
+                (1 << 63) + 1,
+                u64::MAX - 1,
+                u64::MAX,
+            ];
+            for &w in &words {
+                for &x in &words {
+                    check(m, w, x);
+                }
+            }
+        }
+    }
+
     /// The elimination as it was written with a `u128 %` per product and
     /// branching subtraction, kept as the reference the solver must match
     /// bit for bit.
