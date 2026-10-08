@@ -48,6 +48,14 @@ regenerates the protocol, builds the Rust binary, runs all six paired
 measurements, and checks every cross-mode invariant. The frozen runner uses
 fixed result filenames, so running it in this directory would replace these
 receipts.
+
+The PR includes the three frozen parent inputs used by that runner:
+`../adaptive_all_orientations_20261004/all83_ordinary_manifest.json`,
+`../adaptive_all_orientations_20261004/inputs/n83_onb_poly_bridge.json`, and
+`../adaptive_all_orientations_20261004/inputs/n83_x_representatives.bin`.
+The captured build also depends on the sibling Rust checkout at
+`/Volumes/SSD990/crypto`; its source tree hash is recorded in the protocol.
+
 The build receipt records the physical host description, Rust toolchain,
 binary hash, and missing isolation receipt; the protocol records the runner
 and library source tree hashes.
