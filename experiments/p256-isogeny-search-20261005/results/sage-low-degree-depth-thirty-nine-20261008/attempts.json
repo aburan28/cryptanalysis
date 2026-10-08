@@ -1,0 +1,155 @@
+{
+  "attempts": [
+    {
+      "attempt_id": "depth-39-protocol-publication",
+      "remote_commit": "b282532b49d1dae94196181e337d34612134d374",
+      "status": "completed",
+      "note": "The protocol commit was published before depth-38/39 candidate generation began."
+    },
+    {
+      "attempt_id": "depth-39-prospective-command",
+      "command": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-thirty-seven-20261008/candidates-delta.json --ells 3,5,11,13 --target-depth 39 --max-new-nodes 2000 --output results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json",
+      "elapsed_seconds": 546.7926802940019,
+      "exit_code": 0,
+      "generated_candidates": 1200,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "deterministic-registry-sharded-freeze",
+      "command": "taskset -c 1 python3 scripts/freeze_large_json_sharded.py pack --source results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json --archive-prefix results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json.gz --manifest results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.freeze.json --shard-bytes 50331648",
+      "archive_bytes": 116559133,
+      "archive_sha256": "e74499d12539ee54250b66e2c7588300f22bd0bfd49403680dc37a28ca303fb9",
+      "archive_shards": 3,
+      "exit_code": 0,
+      "status": "completed",
+      "uncompressed_bytes": 293766035,
+      "uncompressed_sha256": "06cf2a41056a6eb7966c9db4cad00d10c66d34e5188eb9d94b9e7878c1d3b97c"
+    },
+    {
+      "attempt_id": "deterministic-registry-sharded-repack-verification",
+      "command": "taskset -c 1 python3 scripts/freeze_large_json_sharded.py verify --archive-prefix results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json.gz --manifest results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.freeze.json --source results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json --repack",
+      "byte_identical_repack": true,
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "candidate-model-audit",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_models.py --candidates results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json --output results/sage-low-degree-depth-thirty-nine-20261008/candidate-model-audit.json",
+      "curves_including_p256": 1201,
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "coefficient-audit-depth-label-correction",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_coefficients_depth_thirty_nine.py --candidates results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json --output results/sage-low-degree-depth-thirty-nine-20261008/coefficient-audit.json",
+      "correction_scope": "Replayed the generic audit and corrected only its hard-coded depth-nineteen publication_status and finding labels.",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "conductor-audit-depth-label-correction",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_conductors_depth_thirty_nine.py --candidates results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json --output results/sage-low-degree-depth-thirty-nine-20261008/conductor-audit.json",
+      "correction_scope": "Replayed the generic audit and corrected only its hard-coded depth-nineteen publication_status label.",
+      "endomorphism_ring_conductor": 1,
+      "exit_code": 0,
+      "frobenius_order_conductor": 1,
+      "status": "completed",
+      "unknown_conductors": 0
+    },
+    {
+      "attempt_id": "native-screen-depth-39",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-thirty-nine-20261008/native-screen",
+      "block_artifact_hashes_verified": true,
+      "blocks": 200,
+      "candidate_trials": 8400,
+      "elapsed_wall_seconds_sum": 5442.269132576,
+      "exit_code": 0,
+      "linear_relations_verified_every_trial": true,
+      "screened_candidates": 1200,
+      "status": "completed",
+      "unadjusted_hits": 27,
+      "working_directory": "."
+    },
+    {
+      "attempt_id": "native-holdout-depth-39",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_holdout.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-thirty-nine-20261008/candidates-delta.json --screening experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-thirty-nine-20261008/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-thirty-nine-20261008/holdout.json",
+      "all_linear_relations_verified": true,
+      "curve_trials": 840,
+      "elapsed_wall_seconds": 1726.637121515,
+      "exit_code": 0,
+      "holdout_candidates_excluding_root": 27,
+      "reproduced_speedups": 0,
+      "status": "completed",
+      "working_directory": "."
+    },
+    {
+      "attempt_id": "local-isolation-probe",
+      "command": "python3 scripts/isolated_bench.py probe-host",
+      "exit_code": 0,
+      "qualification": "not_qualified",
+      "reasons": [
+        "no isolated cgroup CPU partition",
+        "no nohz_full CPUs",
+        "numactl unavailable",
+        "CPU quota is 400000/100000 rather than unlimited",
+        "container virtualization does not establish physical-host exclusivity"
+      ],
+      "status": "completed"
+    },
+    {
+      "attempt_id": "exact-class-group-status-checkpoint-wrong-working-directory",
+      "command": "python3 experiments/p256-isogeny-search-20261005/scripts/record_class_group_status.py --result results/sage-class-group-20261006/class-group.json --output results/sage-class-group-20261006/status-depth-thirty-nine.json",
+      "exit_code": 0,
+      "failure": "The command was launched from the repository root, so its relative output path was outside the experiment directory. The incorrect output was removed and excluded; the read-only checkpoint was repeated from the correct working directory.",
+      "status": "excluded"
+    },
+    {
+      "attempt_id": "exact-class-group-prior-infrastructure-interruption",
+      "artifact": "results/sage-class-group-20261006/status-infrastructure-interruption-20261008.json",
+      "elapsed_lower_bound_seconds": 128200.207058,
+      "exit_code": 255,
+      "failure": "The earlier managed environment restart stopped the original exact class-group attempt without an output or checkpoint. This cost remains excluded from mathematical evidence.",
+      "output_present": false,
+      "status": "failed"
+    },
+    {
+      "attempt_id": "exact-class-group-status-checkpoint",
+      "command": "python3 scripts/record_class_group_status.py --result results/sage-class-group-20261006/class-group.json --output results/sage-class-group-20261006/status-depth-thirty-nine.json",
+      "elapsed_lower_bound_seconds": 23924.006601,
+      "exit_code": 0,
+      "output_present": false,
+      "status": "running"
+    },
+    {
+      "attempt_id": "full-verifier-suite-initial-missing-materialization",
+      "commands": [
+        "python3 scripts/verify_sage_low_degree_depth_thirty_nine.py",
+        "python3 scripts/verify_sage_low_degree_depth_thirty_seven.py",
+        "python3 scripts/verify_sage_low_degree_depth_thirty_five.py"
+      ],
+      "exit_code": 1,
+      "failure": "The depth-39 and depth-37 verifiers passed, then the depth-35 verifier could not find its archived depth-33 input because that working JSON had not yet been materialized. No evidence check failed; the archive was materialized and the verifier was rerun successfully.",
+      "status": "failed"
+    },
+    {
+      "attempt_id": "full-verifier-and-unit-suite-final",
+      "commands": [
+        "all 28 scripts/verify_*.py with archived frontier materialization as required",
+        "PYTHONPATH=src python3 -m unittest discover -s tests -p test_*.py"
+      ],
+      "exit_code": 0,
+      "frozen_result_verifiers_passed": 28,
+      "status": "completed",
+      "unit_tests_passed": 13
+    },
+    {
+      "attempt_id": "final-receipt-verifier-missing-materialized-input",
+      "command": "python3 scripts/verify_sage_low_degree_depth_thirty_nine.py",
+      "exit_code": 1,
+      "failure": "The verifier could not find the recoverable uncompressed depth-37 input after it had been removed for disk management. The hash-bound depth-37 shards were materialized again before the final verification pass.",
+      "status": "failed"
+    }
+  ],
+  "description": "Complete invocation ledger for the prospective depth-thirty-nine extension, including successful work, excluded invocation mistakes, and prior infrastructure loss.",
+  "schema_version": 1
+}

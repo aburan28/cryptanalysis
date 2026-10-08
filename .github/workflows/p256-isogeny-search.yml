@@ -45,6 +45,10 @@ jobs:
             --archive results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json.gz \
             --manifest results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.freeze.json \
             --output results/sage-low-degree-depth-thirty-five-20261008/candidates-delta.json
+          python scripts/freeze_large_json_sharded.py materialize \
+            --archive-prefix results/sage-low-degree-depth-thirty-seven-20261008/candidates-delta.json.gz \
+            --manifest results/sage-low-degree-depth-thirty-seven-20261008/candidates-delta.freeze.json \
+            --output results/sage-low-degree-depth-thirty-seven-20261008/candidates-delta.json
       - name: Verify all frozen Sage and native evidence
         if: matrix.python-version == '3.12'
         run: |
@@ -71,6 +75,7 @@ jobs:
           python scripts/verify_sage_low_degree_depth_thirty_three.py
           python scripts/verify_sage_low_degree_depth_thirty_five.py
           python scripts/verify_sage_low_degree_depth_thirty_seven.py
+          python scripts/verify_sage_low_degree_depth_thirty_nine.py
           python scripts/verify_model_eligibility.py
           python scripts/verify_retained_coefficient_audit.py
           python scripts/verify_retained_conductor_audit.py

@@ -677,6 +677,39 @@ verifier are frozen in
 This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
 enumeration.
 
+## Prospectively frozen low-degree paths through depth thirty-nine
+
+The depth-thirty-nine extension was frozen in
+[`protocol-depth-thirty-nine-20261008.json`](protocol-depth-thirty-nine-20261008.json)
+before candidate generation. It added 592 curves at depth thirty-eight and 608
+at depth thirty-nine with no overlap against the prior union, raising the
+explicit registry to P-256 plus 11,905 neighbors.
+
+All 1,200 additions received matched-native measurements in 200 root-controlled
+blocks. Twenty-seven unadjusted short-screen hits, with point estimates from
+`1.0267x` through `1.1079x`, entered the mandatory fresh 30-trial, two-second
+holdout. None reproduced a positive paired 95% interval, so no new candidate
+advanced to path-mapping or isolated-host follow-up.
+
+The deterministic audits verify all 1,201 delta models and transported
+generators, Frobenius-order conductor `1`, endomorphism-ring conductor `1`, and
+level-zero horizontal paths for every addition. Zero normalized-`3b` candidates
+passed the 32-operation gate. Discovery took 546.79 seconds, screening blocks
+5,442.27 seconds, and the fresh holdout 1,726.64 seconds. The replacement exact
+class-group calculation remained active after 23,924.01 seconds with no result
+file; the earlier 128,200.21-second infrastructure loss remains recorded
+separately.
+
+The 293,766,035-byte working registry compresses to one deterministic
+116,559,133-byte gzip stream, published as three ordered sub-50 MiB shards with
+per-shard, concatenated-stream, and uncompressed hashes plus a byte-identical
+repack certificate. The shards and manifest, 200 raw blocks, holdout, failed
+isolation probe, audits, invocation ledger, transfer assessment, receipt,
+summary, and verifier are frozen in
+[`results/sage-low-degree-depth-thirty-nine-20261008`](results/sage-low-degree-depth-thirty-nine-20261008).
+This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
+enumeration.
+
 Registries whose compressed form fits GitHub's single-blob limit are frozen with
 [`scripts/freeze_large_json.py`](scripts/freeze_large_json.py). Larger registries
 use [`scripts/freeze_large_json_sharded.py`](scripts/freeze_large_json_sharded.py),
@@ -710,9 +743,9 @@ paths, or unknown algorithms.
 
 ## Full-registry conductor audit
 
-Yes: the endomorphism-ring conductor is now attached explicitly to all 10,706
+Yes: the endomorphism-ring conductor is now attached explicitly to all 11,906
 curves in the current retained registry. This is an exact derivation rather
-than 10,706 independent numeric measurements. Each record recomputes
+than 11,906 independent numeric measurements. Each record recomputes
 `t = p + 1 - n` and `D_pi = t^2 - 4p`; the complete certificate-verified
 factorization shows that `D_pi` is fundamental. For every ordinary curve `E`
 in the class,
@@ -725,7 +758,7 @@ therefore End(E) = O_K and f_End(E) = 1.
 
 Consequently `v_l(f_End(E)) = 0` for every rational prime `l`. The audit also
 checks the continuity and endpoint of each retained explicit path and labels
-all 270,002 stored path-edge occurrences horizontal, with both endpoints at
+all 316,210 stored path-edge occurrences horizontal, with both endpoints at
 level zero. There are no vertical edges or alternate conductor levels to
 search in this isogeny class.
 
