@@ -364,3 +364,19 @@ group outputs passed. The native C replay matched all eight Python operation
 counts and all paired point digests with zero fallbacks. It charges an extra
 1,122 and 2,401 preparation additions for the selected pairs. Controlled
 CPU speed and one-target rho impact remain unknown.
+
+The [direct residual-pair selector](TAU3_SCATTER_DIRECT.md) uses the same
+scattered table but skips graph augmentation. On a new fixture disjoint from
+five earlier scalar panels it retained 99.13% and 91.38% of exact matching's
+addition savings, while native C verified all three modes' point outputs and
+operation counts. An isolated benchmark manifest can pair the direct mode
+with either exact matching or the complete-table control. CPU speed remains
+unknown until a qualifying host receipt exists.
+
+The [orbit-indexed scattered action atlas](TAU3_SCATTER_ATLAS.md) replaces
+direct selection's binary pair search with a 505-orbit dense slot lookup.
+It preserves exactly the same additions and prepared points, while adding
+76,540 bytes of static maps. A third disjoint 32,768-scalar fixture and a
+32-arm native replay verified scalar outputs and operation equivalence.
+Controlled CPU timing is still required to determine whether the lookup
+layout pays for its larger map.
