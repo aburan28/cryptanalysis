@@ -3051,6 +3051,145 @@ mod tests {
         }
     }
 
+    /// [`RelationSystem::insert`] as first written: a `u128` remainder per
+    /// product, and every column tested for every pivot row the new row
+    /// updates.  Its arithmetic wraps where the original's did in release
+    /// builds, so moduli above 2^63 compare too.
+    fn insert_first_form(sys: &mut RelationSystem, mut row: Vec<u64>, mut rhs: u64) -> bool {
+        let mul = |a: u64, b: u64, n: u64| ((a as u128 * b as u128) % n as u128) as u64;
+        let sub = |a: u64, b: u64, n: u64| {
+            if a >= b {
+                a - b
+            } else {
+                a.wrapping_add(n).wrapping_sub(b)
+            }
+        };
+        assert_eq!(row.len(), sys.cols);
+        let n = sys.n;
+        for (col, prow, prhs) in &sys.pivots {
+            let f = row[*col];
+            if f != 0 {
+                for c in 0..sys.cols {
+                    if prow[c] != 0 {
+                        row[c] = sub(row[c], mul(f, prow[c], n), n);
+                        sys.ops += 1;
+                    }
+                }
+                rhs = sub(rhs, mul(f, *prhs, n), n);
+                sys.ops += 1;
+            }
+        }
+        let Some(col) = row.iter().position(|&v| v != 0) else {
+            return false;
+        };
+        let inv = inv_mod_i128(row[col], n);
+        for v in row.iter_mut() {
+            *v = mul(*v, inv, n);
+        }
+        rhs = mul(rhs, inv, n);
+        sys.ops += sys.cols as u64 + 1;
+        for (_, prow, prhs) in sys.pivots.iter_mut() {
+            let f = prow[col];
+            if f != 0 {
+                for c in 0..sys.cols {
+                    if row[c] != 0 {
+                        prow[c] = sub(prow[c], mul(f, row[c], n), n);
+                        sys.ops += 1;
+                    }
+                }
+                *prhs = sub(*prhs, mul(f, rhs, n), n);
+                sys.ops += 1;
+            }
+        }
+        sys.pivots.push((col, row, rhs));
+        true
+    }
+
+    /// The two routes of `insert` are checked against each other above;
+    /// this checks the one `insert` picks against the original body, so a
+    /// change shared by both routes (the support-only back-substitution)
+    /// cannot hide.  `ops` is compared after every row: the perfbench
+    /// fingerprint does not see it, and `gaudry_cubic` reports it.
+    #[test]
+    fn relation_system_matches_the_first_insert() {
+        let mut rng = StdRng::seed_from_u64(0x1_5E27);
+        let moduli = [
+            2u64,
+            3,
+            65_521,
+            1_000_003,
+            4_294_967_291,
+            (1 << 61) - 1,
+            SHOUP_MAX_MODULUS - 25,
+            SHOUP_MAX_MODULUS + 29, // the least prime above 2^63: the `mul_mod` route
+            u64::MAX - 58,
+        ];
+        let mut inserted = 0u32;
+        for &n in &moduli {
+            // Column counts on both sides of a word, and sparse to dense
+            // rows, so the new row's support ranges from one entry to all.
+            for cols in [1usize, 2, 7, 64, 65, 90] {
+                for density in [5u32, 30, 90] {
+                    for unreduced in [false, true] {
+                        // Unreduced entries (and so non-units, which trip
+                        // the debug assertion in `inv_mod`) in release
+                        // builds only.
+                        if unreduced && cfg!(debug_assertions) {
+                            continue;
+                        }
+                        let mut new = RelationSystem::new(n, cols);
+                        let mut first = RelationSystem::new(n, cols);
+                        let mut rows: Vec<(Vec<u64>, u64)> = Vec::new();
+                        for t in 0..2 * cols + 4 {
+                            let (row, rhs): (Vec<u64>, u64) = if t % 4 == 3 && rows.len() >= 2 {
+                                // A combination of two earlier rows: dependent,
+                                // or inconsistent once the right-hand side moves.
+                                let i = rng.gen_range(0..rows.len());
+                                let j = rng.gen_range(0..rows.len());
+                                let f = rng.gen_range(0..n);
+                                let comb = |x: u64, y: u64| {
+                                    ((x as u128 % n as u128 + f as u128 * (y as u128 % n as u128))
+                                        % n as u128) as u64
+                                };
+                                let row = (0..cols)
+                                    .map(|c| comb(rows[i].0[c], rows[j].0[c]))
+                                    .collect();
+                                let rhs = comb(rows[i].1, rows[j].1);
+                                (row, if t % 8 == 3 { rhs } else { (rhs + 1) % n })
+                            } else {
+                                let entry = |rng: &mut StdRng| {
+                                    if unreduced && rng.gen_range(0..4) == 0 {
+                                        rng.gen()
+                                    } else {
+                                        rng.gen_range(0..n)
+                                    }
+                                };
+                                let row = (0..cols)
+                                    .map(|_| {
+                                        if rng.gen_range(0..100) < density {
+                                            entry(&mut rng)
+                                        } else {
+                                            0
+                                        }
+                                    })
+                                    .collect();
+                                (row, entry(&mut rng))
+                            };
+                            rows.push((row.clone(), rhs));
+                            let a = new.insert(row.clone(), rhs);
+                            let b = insert_first_form(&mut first, row, rhs);
+                            assert_eq!(a, b, "n = {n}, cols = {cols}, row {t}");
+                            assert_eq!(new.ops, first.ops, "n = {n}, cols = {cols}, row {t}");
+                            assert_eq!(new.pivots, first.pivots, "n = {n}, cols = {cols}");
+                            inserted += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(inserted > 2_000);
+    }
+
     #[test]
     fn state_arena_round_trips_and_compares_like_the_state() {
         let mut rng = StdRng::seed_from_u64(0xA7E);
