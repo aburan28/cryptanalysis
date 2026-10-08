@@ -32,6 +32,15 @@ jobs:
       - run: python -m pip install -e .
       - run: python -m unittest discover -s tests -v
       - run: python scripts/verify_frozen.py
+      - name: Materialize archived frontiers for chained verifiers
+        if: matrix.python-version == '3.12'
+        run: |
+          for stage in twenty-five twenty-seven twenty-nine thirty-one; do
+            python scripts/freeze_large_json.py materialize \
+              --archive "results/sage-low-degree-depth-${stage}-20261007/candidates-delta.json.gz" \
+              --manifest "results/sage-low-degree-depth-${stage}-20261007/candidates-delta.freeze.json" \
+              --output "results/sage-low-degree-depth-${stage}-20261007/candidates-delta.json"
+          done
       - name: Verify all frozen Sage and native evidence
         if: matrix.python-version == '3.12'
         run: |

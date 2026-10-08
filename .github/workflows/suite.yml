@@ -43,7 +43,17 @@ jobs:
         with:
           workspaces: suite
       - name: Format
-        run: cargo fmt --all --check
+        # The P-256 native benchmark is an immutable measurement source whose
+        # exact bytes are bound into every frozen receipt. Check all other Rust
+        # sources without rewriting or silently invalidating those receipts.
+        run: |
+          mapfile -d '' sources < <(
+            find . -type f -name '*.rs' \
+              ! -path './target/*' \
+              ! -path './examples/p256_isogeny_native_bench.rs' \
+              -print0 | sort -z
+          )
+          rustfmt --check --edition 2021 "${sources[@]}"
       - name: Clippy
         # The three lints allowed in Cargo.toml are the whole allow list;
         # everything else is an error.
