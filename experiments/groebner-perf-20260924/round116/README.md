@@ -6,10 +6,11 @@ rows and 31 original equations one at a time. This opt-in experiment puts
 eight or more initial rows through one proof-carrying Macaulay elimination
 before starting the usual S-pair queue. Smaller inputs retain the original
 serial path. The matrix starts with an empty basis, so it performs linear
-row operations on exactly the supplied generators. Replacing a generator
-list with a row-echelon basis of the same GF(2) span preserves the generated
-ideal. Each XOR remains a derivation node, and the normal F4 completion and
-final interreduction still run.
+row operations on exactly the supplied generators. Each matrix output is
+then normalized against the incrementally installed basis. Replacing a
+generator list with a row-echelon basis of the same GF(2) span preserves the
+generated ideal. Each XOR remains a derivation node, and the normal F4
+completion and final interreduction still run.
 
 This transformation changes the proof trace and logical work counts.
 Validation therefore compares the final reduced Boolean basis, assignment,

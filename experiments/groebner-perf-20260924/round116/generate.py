@@ -22,7 +22,11 @@ def batched_engine(source):
             if (initial.size() > max_rows) throw Budget("native initial matrix row budget");
             if (!initial.empty()) {
                 auto reduced=matrix(std::move(initial));
-                for (auto& row:reduced) if (!row.terms.empty()) install(std::move(row));
+                for (auto& row:reduced) {
+                    Row candidate=normal(std::move(row),basis);
+                    if (!candidate.terms.empty()) install(std::move(candidate));
+                    if (unit()) break;
+                }
             }
         } else {
             for (uint32_t i=0;i<input.size();++i) {
