@@ -4,12 +4,13 @@ The ultimate objective remains a verified one-target ECC2K-130 discrete
 logarithm with lower isolated online wall time than same-point rho. The next
 **algorithm gate** is narrower and falsifiable:
 
-> Find a fresh, unpinned ordinary N41 eight-point row on the frozen
-> same-rotation W6 public target using a solver that propagates the target
-> equation into at least two exact pair domains before all leaves are fixed,
-> without building the 4+4 pair-sum index. Then provide a source-bound
-> operation and memory projection for the corresponding N131 W18 method
-> under 600 seconds and 4 GiB before attempting an ordinary N131 target.
+> Preserve an unpinned ordinary N41 eight-point row on the frozen
+> same-rotation W6 public target while propagating the target equation into
+> at least two still-free exact pair domains. Represent pair states implicitly
+> instead of materializing full pair-state vectors or the 4+4 pair-sum index.
+> Then provide a source-bound operation and memory projection for the
+> corresponding N131 W18 method under 600 seconds and 4 GiB before
+> attempting an ordinary N131 target.
 
 The [exact two-free-pair census](n41_two_free_pair_occupancy_20261009/README.md)
 now fixes the smaller-field completion oracle for this gate. The last two
@@ -18,9 +19,16 @@ public point, 19 first-two-pair residuals hit that support and 12 complete
 an eight-column relation. Independent Sage arithmetic recounted every
 suffix assignment and prefix residual. The reference materializes a
 quadratic suffix index and spends 173.704 seconds in the target-dependent
-scan, so the constructive 120-second gate still requires a different
-target-conditioned method. Record how many prefix families that method
-rejects *before* both remaining pair domains are enumerated.
+scan. The earlier [compact lookup](n41_two_free_pair_compact_lookup_20261009/RESULT.md)
+already recovered an ordinary row in 32.222 seconds and passed independent
+Sage replay, but a literal N131 W18 pair-state vector exceeds 4 GiB even
+at one bit per state. The exact census filters cross-pair column repeats
+before constructing suffix support (3,167,136 assignments); the compact
+lookup counted all 3,825,936 assignments and checked repeats after a hit.
+The constructive gate now requires implicit pair-state generation and
+target pruning with a credible N131 resource projection. Record how many
+prefix families that method rejects *before* both remaining pair domains
+are enumerated.
 
 The [source-bound W18 calculation](n41_two_free_pair_occupancy_20261009/result.json)
 also sharpens the N131 transfer test. For a uniform nonidentity target

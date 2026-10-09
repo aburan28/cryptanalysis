@@ -38,6 +38,17 @@ from the frozen geometry, recounts all 3,167,136 suffix assignments and all
 replays every saved group sum and column set. It returned
 `PASS_FULL_EXACT_RECOUNT_AND_GROUP_REPLAY`.
 
+The earlier [compact two-free-pair lookup](../n41_two_free_pair_compact_lookup_20261009/RESULT.md)
+counts all `1,956² = 3,825,936` last-two-pair assignments before checking
+whether the two pairs reuse a folded column. This census applies that
+cross-pair column condition when building the suffix support, leaving
+3,167,136 assignments. The counts therefore measure different, explicit
+support policies. The earlier target-conditioned lookup already found an
+ordinary row in 32.222 seconds with its exact-table reference and passed
+checked-Sage replay. Its literal N131 W18 transfer requires more than
+4 GiB for even one bit per pair state, before group coordinates or indexes;
+an implicit representation remains the missing method component.
+
 | Local diagnostic stage | Wall (s) | Process peak RSS |
 | --- | ---: | ---: |
 | Target-independent suffix index and pair setup | 180.516 | — |
@@ -48,8 +59,8 @@ replays every saved group sum and column set. It returned
 These wall times are exploratory because the host lacks an isolation
 receipt. The counts and group equations are exact. The reference query
 exceeds the 120-second N41 constructive gate and materializes a quadratic
-suffix index, so it serves as a falsifier and correctness oracle for a
-different compact method.
+suffix index. Its purpose is an exact filtered completion oracle for a
+method that can also pass the N131 work and memory projection.
 
 The same source-bound union-bound calculation quantifies the N131
 fixed-prefix frontier for two distinct policies. The frozen W18 four-pair
@@ -72,14 +83,17 @@ two pairs have completion probability at most `1.715783×10⁻²⁴`.
 [The source-bound calculation](d13_fixed_prefix_bound.json) requires at
 least `291,412,179,145,627,003,543,092` fixed four-pair prefixes for 50%
 success by the union bound, more than `4.857×10²⁰` probes per second under
-the 600-second budget. The result binds snapshots of both the exact pair
-count and the candidate curve/subgroup manifest.
+the 600-second budget. This independently agrees with the
+[full d13 prefix frontier](../n131_d13_six_pair_prefix_frontier_20261009/RESULT.md),
+which also quantifies the four-free-pair case after two fixed pairs. The
+result here binds snapshots of both the exact pair count and the candidate
+curve/subgroup manifest.
 
 These bounds apply to fixed prefixes chosen independently of the uniform
 target. They leave target-adaptive generation and symbolic elimination
-open. A successor N41 method should use the public target to reject whole
-partial pair families while multiple domains remain free, then recover an
-ordinary row without the quadratic index. Its N131 work projection must
+open. A successor should preserve the existing N41 ordinary-row control
+while using the public target to reject whole partial pair families before
+materializing large pair-state vectors. Its N131 work projection must
 charge that generation or elimination; accelerating only the final pair
 membership check cannot overcome the fixed-prefix density frontier.
 
