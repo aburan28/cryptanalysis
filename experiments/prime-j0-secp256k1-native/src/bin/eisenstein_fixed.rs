@@ -23,8 +23,10 @@ mod utils {
 
 use ct_bignum::{Uint, U256};
 use num_bigint::{BigInt, Sign};
+use num_traits::{Signed as NumSigned, ToPrimitive, Zero};
 use serde_json::json;
 use std::io::{self, BufRead};
+use std::sync::LazyLock;
 
 type U512 = Uint<8>;
 
@@ -246,6 +248,30 @@ struct Pair {
 }
 
 impl Pair {
+    const ZERO: Self = Self {
+        a: Signed::ZERO,
+        b: Signed::ZERO,
+    };
+
+    fn one() -> Self {
+        // The balanced Eisenstein representative of 2^128 mod pi.
+        Self {
+            a: Signed::from_u128(27635046095514636760461213597371256793).neg(),
+            b: Signed::from_u128(64502973549206556628585045361533709078).neg(),
+        }
+    }
+
+    fn is_zero(self) -> bool {
+        bool::from(self.a.magnitude.ct_is_zero()) && bool::from(self.b.magnitude.ct_is_zero())
+    }
+
+    fn neg(self) -> Self {
+        Self {
+            a: self.a.neg(),
+            b: self.b.neg(),
+        }
+    }
+
     fn add(self, rhs: Self) -> Self {
         Self {
             a: self.a.add(rhs.a),
@@ -425,6 +451,26 @@ impl Pair {
         self.sub(rhs).balance()
     }
 
+    fn times_field(self, factor: i32) -> Self {
+        let mut result = Self::ZERO;
+        let mut multiple = self;
+        let mut bits = factor.unsigned_abs();
+        while bits != 0 {
+            if bits & 1 != 0 {
+                result = result.add_field(multiple);
+            }
+            bits >>= 1;
+            if bits != 0 {
+                multiple = multiple.add_field(multiple);
+            }
+        }
+        if factor < 0 {
+            result.neg()
+        } else {
+            result
+        }
+    }
+
     fn tau_constant(self) -> Self {
         self.sub(self.omega()).balance()
     }
@@ -434,14 +480,340 @@ impl Pair {
     }
 }
 
+#[derive(Clone, Copy)]
+struct Jacobian {
+    x: Pair,
+    y: Pair,
+    z: Pair,
+}
+
+impl Jacobian {
+    fn identity() -> Self {
+        Self {
+            x: Pair::ZERO,
+            y: Pair::one(),
+            z: Pair::ZERO,
+        }
+    }
+
+    fn generator() -> Self {
+        // Balanced Montgomery images of the standard secp256k1 generator.
+        Self {
+            x: Pair {
+                a: Signed::from_u128(36713677126845979282297855717777403654),
+                b: Signed::from_u128(87079531165150581469645078969800828225),
+            },
+            y: Pair {
+                a: Signed::from_u128(83247705229065749111051759197514429994).neg(),
+                b: Signed::from_u128(151881601418534134653426678717536693985).neg(),
+            },
+            z: Pair::one(),
+        }
+    }
+
+    fn is_identity(self) -> bool {
+        self.z.is_zero()
+    }
+
+    fn neg(self) -> Self {
+        Self {
+            x: self.x,
+            y: self.y.neg(),
+            z: self.z,
+        }
+    }
+
+    fn omega(self) -> Self {
+        Self {
+            x: self.x.omega().balance(),
+            y: self.y,
+            z: self.z,
+        }
+    }
+
+    fn tau(self) -> Self {
+        if self.is_identity() || self.x.is_zero() {
+            return Self::identity();
+        }
+        let [x, y, z] = Pair::tau_step(self.x, self.y, self.z);
+        Self { x, y, z }
+    }
+
+    fn double(self) -> Self {
+        if self.is_identity() || self.y.is_zero() {
+            return Self::identity();
+        }
+        let a = self.x.mul(self.x);
+        let b = self.y.mul(self.y);
+        let c = b.mul(b);
+        let xb = self.x.add_field(b);
+        let d = xb.mul(xb).sub_field(a).sub_field(c).times_field(2);
+        let e = a.times_field(3);
+        let rx = e.mul(e).sub_field(d.times_field(2));
+        let ry = e.mul(d.sub_field(rx)).sub_field(c.times_field(8));
+        let rz = self.y.mul(self.z).times_field(2);
+        Self {
+            x: rx,
+            y: ry,
+            z: rz,
+        }
+    }
+
+    fn add_mixed(self, q: Self) -> Self {
+        debug_assert!(
+            !q.is_identity()
+                && q.z.a.decimal() == Pair::one().a.decimal()
+                && q.z.b.decimal() == Pair::one().b.decimal()
+        );
+        if self.is_identity() {
+            return q;
+        }
+        let zz = self.z.mul(self.z);
+        let u = q.x.mul(zz);
+        let s = q.y.mul(self.z).mul(zz);
+        let h = u.sub_field(self.x);
+        let v = s.sub_field(self.y);
+        if h.is_zero() {
+            return if v.is_zero() {
+                self.double()
+            } else {
+                Self::identity()
+            };
+        }
+        let hh = h.mul(h);
+        let hhh = h.mul(hh);
+        let xhh = self.x.mul(hh);
+        let rx = v.mul(v).sub_field(hhh).sub_field(xhh.times_field(2));
+        let ry = v.mul(xhh.sub_field(rx)).sub_field(self.y.mul(hhh));
+        let rz = self.z.mul(h);
+        Self {
+            x: rx,
+            y: ry,
+            z: rz,
+        }
+    }
+
+    fn strings(self) -> [[String; 2]; 3] {
+        [self.x.strings(), self.y.strings(), self.z.strings()]
+    }
+}
+
+fn scalar_from_hex(value: &str) -> BigInt {
+    let (negative, unsigned) = value
+        .strip_prefix('-')
+        .map_or((false, value), |s| (true, s));
+    let hex = unsigned.strip_prefix("0x").unwrap_or(unsigned);
+    let scalar = BigInt::parse_bytes(hex.as_bytes(), 16).expect("valid scalar hex");
+    if negative {
+        -scalar
+    } else {
+        scalar
+    }
+}
+
+fn round_div(numerator: BigInt, denominator: BigInt) -> BigInt {
+    assert!(!denominator.is_zero());
+    let (top, bottom) = if denominator < BigInt::ZERO {
+        (-numerator, -denominator)
+    } else {
+        (numerator, denominator)
+    };
+    let half = &bottom / BigInt::from(2);
+    if top < BigInt::ZERO {
+        -((-top + half) / bottom)
+    } else {
+        (top + half) / bottom
+    }
+}
+
+fn tau_norm(a: &BigInt, b: &BigInt) -> BigInt {
+    a * a + 3 * a * b + 3 * b * b
+}
+
+struct ScalarLattice {
+    n: BigInt,
+    lambda_tau: BigInt,
+    u0: BigInt,
+    u1: BigInt,
+    v0: BigInt,
+    v1: BigInt,
+    det: BigInt,
+}
+
+static SCALAR_LATTICE: LazyLock<ScalarLattice> = LazyLock::new(|| {
+    let n = scalar_from_hex("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141");
+    let lambda_tau =
+        scalar_from_hex("ac9c52b33fa3cf1f5ad9e3fd77ed9ba4a880b9fc8ec739c2e0cfc810b51283d0");
+    let u0 = BigInt::parse_bytes(b"193508920647619669885755136084601127231", 10).unwrap();
+    let u1 = BigInt::parse_bytes(b"238911465918039986966665730306072050094", 10).unwrap();
+    let v0 = -u1.clone();
+    let v1 = BigInt::parse_bytes(b"303414439467246543595250775667605759171", 10).unwrap();
+    let det = &u0 * &v1 - &u1 * &v0;
+    assert_eq!(det.abs(), n);
+    for (x, y) in [(&u0, &u1), (&v0, &v1)] {
+        assert_eq!((x + y * &lambda_tau) % &n, BigInt::ZERO);
+    }
+    ScalarLattice {
+        n,
+        lambda_tau,
+        u0,
+        u1,
+        v0,
+        v1,
+        det,
+    }
+});
+
+fn short_representative(scalar: &BigInt) -> (BigInt, BigInt) {
+    let lattice = &*SCALAR_LATTICE;
+    let center_u = round_div(scalar * &lattice.v1, lattice.det.clone());
+    let center_v = round_div(-scalar * &lattice.u1, lattice.det.clone());
+    let mut best: Option<(BigInt, BigInt, BigInt, BigInt)> = None;
+    for du in -2..=2 {
+        for dv in -2..=2 {
+            let u = &center_u + du;
+            let v = &center_v + dv;
+            let a = scalar - &u * &lattice.u0 - &v * &lattice.v0;
+            let b = -&u * &lattice.u1 - &v * &lattice.v1;
+            let candidate = (tau_norm(&a, &b), std::cmp::max(a.abs(), b.abs()), a, b);
+            if best.as_ref().is_none_or(|old| candidate < *old) {
+                best = Some(candidate);
+            }
+        }
+    }
+    let (_, _, a, b) = best.expect("25 lattice candidates");
+    assert_eq!(
+        (&a + &b * &lattice.lambda_tau - scalar) % &lattice.n,
+        BigInt::ZERO
+    );
+    (a, b)
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Unit {
+    sign: i8,
+    omega_power: usize,
+}
+
+fn unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
+    match (a.to_i64(), b.to_i64()) {
+        (Some(1), Some(0)) => Some(Unit {
+            sign: 1,
+            omega_power: 0,
+        }),
+        (Some(1), Some(-1)) => Some(Unit {
+            sign: 1,
+            omega_power: 1,
+        }),
+        (Some(-2), Some(1)) => Some(Unit {
+            sign: 1,
+            omega_power: 2,
+        }),
+        (Some(-1), Some(0)) => Some(Unit {
+            sign: -1,
+            omega_power: 0,
+        }),
+        (Some(-1), Some(1)) => Some(Unit {
+            sign: -1,
+            omega_power: 1,
+        }),
+        (Some(2), Some(-1)) => Some(Unit {
+            sign: -1,
+            omega_power: 2,
+        }),
+        _ => None,
+    }
+}
+
+fn recode_tau(mut a: BigInt, mut b: BigInt) -> (Vec<i8>, Option<Unit>) {
+    let mut digits = Vec::new();
+    while !a.is_zero() || !b.is_zero() {
+        if let Some(terminal) = unit(&a, &b) {
+            return (digits, Some(terminal));
+        }
+        // In the basis (1,tau), divisibility by tau is exactly a=0 mod 3.
+        let residue: BigInt = ((&a % 3) + 3) % 3;
+        let digit: i8 = if residue.is_zero() {
+            0
+        } else if residue == BigInt::from(1) {
+            1
+        } else {
+            -1
+        };
+        let reduced_a: BigInt = &a - BigInt::from(digit);
+        let next_a = &reduced_a + &b;
+        let next_b = -reduced_a / 3;
+        debug_assert!(tau_norm(&next_a, &next_b) < tau_norm(&a, &b));
+        a = next_a;
+        b = next_b;
+        digits.push(digit);
+        assert!(digits.len() <= 512, "tau expansion did not terminate");
+    }
+    (digits, None)
+}
+
+fn unit_point(unit: Unit, generator: Jacobian) -> Jacobian {
+    let mut point = generator;
+    for _ in 0..unit.omega_power {
+        point = point.omega();
+    }
+    if unit.sign < 0 {
+        point.neg()
+    } else {
+        point
+    }
+}
+
+fn scalar_multiply(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (a, b) = short_representative(&residue);
+    let (digits, terminal) = recode_tau(a.clone(), b.clone());
+    let generator = Jacobian::generator();
+    let mut point = terminal.map_or_else(Jacobian::identity, |u| unit_point(u, generator));
+    for &digit in digits.iter().rev() {
+        point = point.tau();
+        if digit != 0 {
+            point = point.add_mixed(if digit > 0 {
+                generator
+            } else {
+                generator.neg()
+            });
+        }
+    }
+    let nonzero_digits = digits.iter().filter(|&&digit| digit != 0).count();
+    (point, a, b, digits.len(), nonzero_digits)
+}
+
 fn main() {
-    let tau_mode = std::env::args().any(|arg| arg == "--tau");
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    assert!(
+        args.is_empty() || args == ["--tau"] || args == ["--scalar"],
+        "usage: eisenstein_fixed [--tau|--scalar]"
+    );
+    let tau_mode = args == ["--tau"];
+    let scalar_mode = args == ["--scalar"];
     for line in io::stdin().lock().lines() {
         let line = line.expect("input line");
         if line.trim().is_empty() {
             continue;
         }
         let fields: Vec<&str> = line.split_whitespace().collect();
+        if scalar_mode {
+            assert_eq!(fields.len(), 1, "expected one hexadecimal scalar");
+            let (point, a, b, tau_steps, nonzero_digits) =
+                scalar_multiply(&scalar_from_hex(fields[0]));
+            println!(
+                "{}",
+                json!({
+                    "point": if point.is_identity() { None } else { Some(point.strings()) },
+                    "representative": [a.to_string(), b.to_string()],
+                    "tau_steps": tau_steps,
+                    "nonzero_digits": nonzero_digits,
+                })
+            );
+            continue;
+        }
         if tau_mode {
             assert_eq!(fields.len(), 6, "expected six Jacobian coefficients");
             let coordinates: Vec<Signed> = fields.iter().map(|x| Signed::from_decimal(x)).collect();
@@ -522,5 +894,67 @@ mod eisenstein_tau_tests {
             }
         }
         assert_eq!(adjusted, 119);
+    }
+
+    fn same_point(left: Jacobian, right: Jacobian) -> bool {
+        if left.is_identity() || right.is_identity() {
+            return left.is_identity() && right.is_identity();
+        }
+        let lz2 = left.z.mul(left.z);
+        let rz2 = right.z.mul(right.z);
+        let x_equal = left.x.mul(rz2).sub_field(right.x.mul(lz2)).is_zero();
+        let y_equal = left
+            .y
+            .mul(rz2.mul(right.z))
+            .sub_field(right.y.mul(lz2.mul(left.z)))
+            .is_zero();
+        x_equal && y_equal
+    }
+
+    #[test]
+    fn point_addition_handles_equal_inverse_and_tau_unit_cases() {
+        let generator = Jacobian::generator();
+        assert!(same_point(
+            Jacobian::identity().add_mixed(generator),
+            generator
+        ));
+        assert!(same_point(
+            generator.add_mixed(generator),
+            generator.double()
+        ));
+        assert!(generator.add_mixed(generator.neg()).is_identity());
+        assert!(same_point(
+            generator.tau().add_mixed(generator.omega()),
+            generator
+        ));
+    }
+
+    #[test]
+    fn signed_tau_digits_reconstruct_small_eisenstein_pairs() {
+        for a in -40..=40 {
+            for b in -40..=40 {
+                let (digits, terminal) = recode_tau(a.into(), b.into());
+                let (mut x, mut y) = match terminal {
+                    None => (0i64, 0i64),
+                    Some(Unit {
+                        sign,
+                        omega_power: 0,
+                    }) => (i64::from(sign), 0),
+                    Some(Unit {
+                        sign,
+                        omega_power: 1,
+                    }) => (i64::from(sign), -i64::from(sign)),
+                    Some(Unit {
+                        sign,
+                        omega_power: 2,
+                    }) => (-2 * i64::from(sign), i64::from(sign)),
+                    _ => unreachable!(),
+                };
+                for digit in digits.into_iter().rev() {
+                    (x, y) = (-3 * y + i64::from(digit), x + 3 * y);
+                }
+                assert_eq!((x, y), (a, b));
+            }
+        }
     }
 }
