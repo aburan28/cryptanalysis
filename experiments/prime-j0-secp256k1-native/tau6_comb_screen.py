@@ -16,7 +16,7 @@ import width6_tau_screen as atlas
 
 
 HERE = Path(__file__).resolve().parent
-ROWS = (1, 2, 3, 4, 6, 8)
+ROWS = (1, 2, 3, 4, 6, 8, 9, 10, 11, 12)
 U = (193508920647619669885755136084601127231,
      238911465918039986966665730306072050094)
 V = (-U[1], 303414439467246543595250775667605759171)
@@ -106,7 +106,7 @@ def check_native(result_path, binary_path):
     reference_points = [curve.point_multiply(scalar % curve.ORDER)
                         for scalar in scalars]
     request = "".join(scalar_text(scalar) + "\n" for scalar in scalars)
-    for rows in (4, 8):
+    for rows in (4, 8, 12):
         mode = f"orbit-w6-comb{rows}-fixed"
         process = subprocess.run(
             [str(binary_path), f"--scalar-w6-comb{rows}-fixed"],
@@ -126,7 +126,7 @@ def check_native(result_path, binary_path):
             assert affine_from_native(output["point"]) == point, (rows, index)
     print(json.dumps({"schema": 1, "status": "passed",
                       "scalar_cases_per_mode": len(cases),
-                      "native_modes": [4, 8],
+                      "native_modes": [4, 8, 12],
                       "binary_sha256": sha(binary_path),
                       "native_source_sha256": sha(HERE / "src/bin/eisenstein_fixed.rs"),
                       "screen_sha256": sha(Path(__file__)),

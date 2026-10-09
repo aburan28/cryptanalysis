@@ -1,10 +1,10 @@
 # Fixed-generator prime-field tau-six comb
 
-A four-row and an eight-row tau-six comb share the point endomorphism across
-several frozen digit streams. On 128 held-out scalars, the four-row path uses
-**59,222** source field-product units and the eight-row path uses **46,737**,
-versus **135,392** for the one-row tau-six evaluator. All 214 frozen output
-points match an independent secp256k1 reference in both native modes.
+The 12-row tau-six comb uses **972 stored affine seed points** and **42,417**
+source field-product units on 128 held-out scalars. The 4-row and 8-row
+paths use 324 and 648 points with 59,222 and 46,737 units respectively;
+the one-row evaluator uses 135,392 units. All 214 frozen output points
+match an independent secp256k1 reference in all three native modes.
 
 ## Construction and bound
 
@@ -21,8 +21,9 @@ mixed-addition calls, with the point formula handling equal-point edges.
 All `81r` seed outputs are normalized with a second batch inversion. The
 native table stores one affine point per orbit; the other positive unit
 images use the Eisenstein `omega` coordinate map at lookup, and signs use
-point negation. The setup requires 123 or 147 shifted-base tau maps, 320 or
-640 seed-graph addition calls, and two batch inversions respectively.
+point negation. The 4-, 8-, and 12-row setups require 123, 147, and 154
+shifted-base tau maps; 320, 640, and 960 seed-graph addition calls; and
+two batch inversions each.
 
 The 164-position span covers every scalar reduced by the frozen
 `short_representative` lattice rule. Center rounding places a candidate in
@@ -51,6 +52,13 @@ at position 163.
 | 4 | 41 | 324 | 5,009 | 3,107 | 59,222 | 56.3% |
 | 6 | 28 | 486 | 3,390 | 3,107 | 51,127 | 62.2% |
 | 8 | 21 | 648 | 2,512 | 3,107 | 46,737 | 65.5% |
+| 9 | 19 | 729 | 2,221 | 3,107 | 45,282 | 66.6% |
+| 10 | 17 | 810 | 2,023 | 3,107 | 44,292 | 67.3% |
+| 11 | 15 | 891 | 1,764 | 3,107 | 42,997 | 68.2% |
+| 12 | 14 | 972 | 1,648 | 3,107 | 42,417 | 68.7% |
+
+Rows 9–11 are algebraic source-operation screens. Native point replay covers
+rows 4, 8, and 12.
 
 The source proxy charges five field-product units per tau map and eleven
 per mixed addition. The count starts at the first nonzero precomputed point
@@ -72,17 +80,19 @@ target/release/eisenstein_fixed --check-scalar-w6-comb4-fixed-case \
   eisenstein-pair-fixture.json 85
 target/release/eisenstein_fixed --check-scalar-w6-comb8-fixed-case \
   eisenstein-pair-fixture.json 85
+target/release/eisenstein_fixed --check-scalar-w6-comb12-fixed-case \
+  eisenstein-pair-fixture.json 85
 ```
 
 The screen independently reconstructs each Eisenstein integer and checks
-the subgroup scalar congruence. The native replay checks both modes on all
+the subgroup scalar congruence. The native replay checks all three modes on all
 214 scalars: every representative, tau/addition count, and affine point.
 The 41 release tests, including shifted-table and GLV subset point checks,
-and both fixture entrypoints pass. The result JSON
+and all three fixture entrypoints pass. The result JSON
 SHA-256 is
-`0d8dbd38ad11f7225bd70105ee671d5d201e69f493c4d2e231d50e1c0d679130`;
+`ea4493ae381dff300716830de691182c4d201c80bcc971bb5ae7fd14378b95f9`;
 the native binary SHA-256 is
-`834dc6202261916bb9817b1c92e78fe620e66e262bac23487b268e4dd3ff78b2`.
+`b0d1e7245baa68b1856c7799c88501f8721207ff8d2c48b8a38cfaf7c77ab4d9`.
 
 [Hanser and Wagner](https://tugraz.elsevierpure.com/files/86425778/koblitzfb.pdf)
 studied a tau-comb for binary Koblitz curves. This
