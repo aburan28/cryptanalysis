@@ -791,6 +791,42 @@ verifier are frozen in
 This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
 enumeration or an established dramatic ECDLP speedup.
 
+## Prospectively frozen low-degree paths through depth forty-five
+
+The depth-forty-five extension was frozen in
+[`protocol-depth-forty-five-20261009.json`](protocol-depth-forty-five-20261009.json)
+before candidate generation. It added 688 curves at depth forty-four and 704 at
+depth forty-five with no overlap against the prior union, raising the explicit
+registry to P-256 plus 15,889 neighbors.
+
+All 1,392 additions received matched-native measurements in 232 root-controlled
+blocks. Thirty-two unadjusted short-screen hits, with point estimates from
+`1.022163x` through `1.128068x`, entered the mandatory fresh 30-trial,
+two-second holdout. None reproduced a positive paired 95% interval. The largest
+holdout estimate was `1.038682x`, with interval `0.991236x-1.088400x`, so no new
+candidate triggered per-key `P,Q` path evaluation. The six earlier exploratory
+positives remain open for isolated replay.
+
+The deterministic audits verify all 1,393 delta models and transported
+generators, Frobenius-order conductor `1`, endomorphism-ring conductor `1`, and
+level-zero horizontal paths for every addition. Across the full 15,890-curve
+union, all 485,810 retained path-edge occurrences are therefore horizontal.
+Zero normalized-`3b` candidates passed the 32-operation gate. Discovery took
+637.88 seconds, screening took 6,337.46 seconds, and the fresh holdout took
+2,038.82 seconds. No native blocks were excluded. The exact class-group restart
+remained active after 30,237.89 seconds with no result file; 153,833.21 seconds
+of earlier infrastructure-lost work remains charged separately.
+
+The 394,347,398-byte working registry compresses to one deterministic
+156,413,918-byte gzip stream, published as four ordered sub-50 MiB shards with
+per-shard, concatenated-stream, and uncompressed hashes plus a byte-identical
+repack certificate. The shards and manifest, 232 accepted raw blocks, holdout,
+failed isolation probe, audits, invocation ledger, transfer assessment, receipt,
+summary, and verifier are frozen in
+[`results/sage-low-degree-depth-forty-five-20261009`](results/sage-low-degree-depth-forty-five-20261009).
+This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
+enumeration or an established dramatic ECDLP speedup.
+
 Registries whose compressed form fits GitHub's single-blob limit are frozen with
 [`scripts/freeze_large_json.py`](scripts/freeze_large_json.py). Larger registries
 use [`scripts/freeze_large_json_sharded.py`](scripts/freeze_large_json_sharded.py),

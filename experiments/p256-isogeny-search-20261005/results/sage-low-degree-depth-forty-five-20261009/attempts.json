@@ -1,0 +1,180 @@
+{
+  "attempts": [
+    {
+      "attempt_id": "depth-45-protocol-publication",
+      "remote_commit": "ab1545dd459744a43ce4297e4d422a93a6a30900",
+      "status": "completed",
+      "note": "The protocol commit was published before depth-44/45 candidate generation began."
+    },
+    {
+      "attempt_id": "depth-45-prospective-command",
+      "command": "docker exec --workdir /repo/experiments/p256-isogeny-search-20261005 p256-classgroup-default taskset -c 2 sage -python scripts/extend_sage_low_degree.py --input results/sage-low-degree-depth-forty-three-20261009/candidates-delta.json --ells 3,5,11,13 --target-depth 45 --max-new-nodes 2000 --output results/sage-low-degree-depth-forty-five-20261009/candidates-delta.json",
+      "elapsed_seconds": 637.8843373359996,
+      "exit_code": 0,
+      "generated_candidates": 1392,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "deterministic-registry-sharded-freeze",
+      "command": "taskset -c 1 python3 scripts/freeze_large_json_sharded.py pack --source results/sage-low-degree-depth-forty-five-20261009/candidates-delta.json --archive-prefix results/sage-low-degree-depth-forty-five-20261009/candidates-delta.json.gz --manifest results/sage-low-degree-depth-forty-five-20261009/candidates-delta.freeze.json",
+      "archive_bytes": 156413918,
+      "archive_sha256": "790b75c5103e2beb400d77e99483c540beb921eeac9388eea88dbf24d498f3a3",
+      "archive_shards": 4,
+      "exit_code": 0,
+      "status": "completed",
+      "uncompressed_bytes": 394347398,
+      "uncompressed_sha256": "b443cc78a72b52242f9e79a180989e06323797f655e63657a29e48bc47632f78"
+    },
+    {
+      "attempt_id": "deterministic-registry-sharded-repack-verification",
+      "command": "taskset -c 1 python3 scripts/freeze_large_json_sharded.py verify --archive-prefix results/sage-low-degree-depth-forty-five-20261009/candidates-delta.json.gz --manifest results/sage-low-degree-depth-forty-five-20261009/candidates-delta.freeze.json --source results/sage-low-degree-depth-forty-five-20261009/candidates-delta.json --repack",
+      "byte_identical_repack": true,
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "candidate-model-audit",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_models.py --candidates results/sage-low-degree-depth-forty-five-20261009/candidates-delta.json --output results/sage-low-degree-depth-forty-five-20261009/candidate-model-audit.json",
+      "curves_including_p256": 1393,
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "coefficient-audit-depth-label-correction",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_coefficients_depth_forty_five.py --candidates results/sage-low-degree-depth-forty-five-20261009/candidates-delta.json --output results/sage-low-degree-depth-forty-five-20261009/coefficient-audit.json",
+      "correction_scope": "Replayed the generic audit and corrected only its hard-coded depth-nineteen publication_status and finding labels.",
+      "eligible_candidates": 0,
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "conductor-audit-depth-label-correction",
+      "command": "taskset -c 1 python3 scripts/audit_candidate_conductors_depth_forty_five.py --candidates results/sage-low-degree-depth-forty-five-20261009/candidates-delta.json --output results/sage-low-degree-depth-forty-five-20261009/conductor-audit.json",
+      "correction_scope": "Replayed the generic audit and corrected only its hard-coded depth-nineteen publication_status label.",
+      "endomorphism_ring_conductor": 1,
+      "exit_code": 0,
+      "frobenius_order_conductor": 1,
+      "status": "completed",
+      "unknown_conductors": 0
+    },
+    {
+      "attempt_id": "native-screen-depth-45",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_screen.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-forty-five-20261009/candidates-delta.json --block-size 6 --seconds 0.5 --rotations 1 --warmup-seconds 0.05 --output-dir results/sage-low-degree-depth-forty-five-20261009/native-screen",
+      "accepted_blocks": 232,
+      "block_artifact_hashes_verified": true,
+      "blocks": 232,
+      "candidate_trials": 9744,
+      "elapsed_seconds": 6337.46266901,
+      "elapsed_wall_seconds_sum": 6337.46266901,
+      "excluded_blocks": 0,
+      "exit_code": 0,
+      "linear_relations_verified_every_trial": true,
+      "screened_candidates": 1392,
+      "status": "completed",
+      "unadjusted_hits": 32,
+      "unadjusted_screening_hits": 32,
+      "working_directory": "."
+    },
+    {
+      "attempt_id": "native-holdout-depth-45",
+      "command": "taskset -c 0 python3 experiments/p256-isogeny-search-20261005/scripts/run_native_holdout.py --binary suite/target/release/examples/p256_isogeny_native_bench --candidates experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-forty-five-20261009/candidates-delta.json --screening experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-forty-five-20261009/native-screen/screening-summary.json --seconds 2 --trials 30 --warmup-seconds 0.2 --output experiments/p256-isogeny-search-20261005/results/sage-low-degree-depth-forty-five-20261009/holdout.json",
+      "all_linear_relations_verified": true,
+      "curve_trials": 990,
+      "elapsed_wall_seconds": 2038.822853542,
+      "exit_code": 0,
+      "holdout_candidates_excluding_root": 32,
+      "reproduced_speedups": 0,
+      "status": "completed",
+      "working_directory": "."
+    },
+    {
+      "attempt_id": "exact-class-group-prior-infrastructure-interruption",
+      "artifact": "results/sage-class-group-20261006/status-infrastructure-interruption-20261008.json",
+      "elapsed_lower_bound_seconds": 128200.207058,
+      "exit_code": 255,
+      "failure": "The earlier managed environment restart stopped the original exact class-group attempt without an output or checkpoint. This cost remains excluded from mathematical evidence.",
+      "output_present": false,
+      "status": "failed"
+    },
+    {
+      "attempt_id": "exact-class-group-second-infrastructure-interruption",
+      "artifact": "results/sage-class-group-20261006/status-infrastructure-interruption-20261009.json",
+      "elapsed_lower_bound_seconds": 25633,
+      "failure": "A second managed environment rollover stopped the restarted exact class-group attempt without an output or checkpoint. This cost remains excluded from mathematical evidence.",
+      "output_present": false,
+      "status": "failed"
+    },
+    {
+      "attempt_id": "exact-class-group-restart-depth-45-checkpoint",
+      "command": "python3 scripts/record_class_group_status.py --container p256-classgroup-default --attempt-id pari-quadclassunit-default-restart-20261009 --result results/sage-class-group-20261006/class-group.json --output results/sage-class-group-20261006/status-depth-forty-five.json",
+      "cpu_affinity": "CPU 4",
+      "cpu_percent_observed": 101.01,
+      "elapsed_lower_bound_seconds_at_checkpoint": 30237.893574,
+      "last_observed_at": "2026-10-09T12:53:02Z",
+      "memory_observed": "737.1MiB",
+      "output_present_at_checkpoint": false,
+      "started_at": "2026-10-09T04:29:04.199416144Z",
+      "status": "running"
+    },
+    {
+      "attempt_id": "local-isolation-probe",
+      "command": "python3 scripts/isolated_bench.py probe-host",
+      "exit_code": 0,
+      "qualification": "not_qualified",
+      "reasons": [
+        "no isolated cgroup CPU partition",
+        "no nohz_full CPUs",
+        "numactl unavailable",
+        "CPU quota is 400000/100000 rather than unlimited",
+        "container virtualization does not establish physical-host exclusivity"
+      ],
+      "status": "completed"
+    },
+    {
+      "attempt_id": "unit-tests-missing-time-wrapper",
+      "command": "taskset -c 1 /usr/bin/time -f elapsed_seconds=%e python3 -m unittest discover -s tests -v",
+      "exit_code": 127,
+      "failure": "/usr/bin/time is not installed in the managed image; the test runner was not entered. The direct retry is recorded separately.",
+      "status": "failed_setup"
+    },
+    {
+      "attempt_id": "unit-tests-missing-source-path",
+      "command": "taskset -c 1 python3 -m unittest discover -s tests -v",
+      "exit_code": 1,
+      "failure": "The package is not installed in the managed image and src was absent from PYTHONPATH. Two storage tests passed; five test modules failed import before execution. The explicit-source-path retry is recorded separately.",
+      "status": "failed_test_prerequisite"
+    },
+    {
+      "attempt_id": "unit-tests-explicit-source-path",
+      "command": "env PYTHONPATH=src taskset -c 1 python3 -m unittest discover -s tests -v",
+      "exit_code": 0,
+      "status": "completed",
+      "tests_passed": 13
+    },
+    {
+      "attempt_id": "depth-45-script-compilation",
+      "command": "python3 -m py_compile scripts/assemble_sage_low_degree_depth_forty_five.py scripts/audit_candidate_coefficients_depth_forty_five.py scripts/audit_candidate_conductors_depth_forty_five.py scripts/finalize_sage_low_degree_depth_forty_five.py scripts/verify_sage_low_degree_depth_forty_five.py",
+      "exit_code": 0,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "depth-45-verifier-pre-final",
+      "command": "taskset -c 1 python3 scripts/verify_sage_low_degree_depth_forty_five.py",
+      "combined_unique_curves": 15890,
+      "exit_code": 0,
+      "reproduced_speedups": 0,
+      "screening_hits": 32,
+      "status": "completed"
+    },
+    {
+      "attempt_id": "all-frozen-verifiers-through-depth-45",
+      "command": "Run all staged Sage/native verifiers through depth forty-five plus verify_frozen.py, verify_model_eligibility.py, verify_retained_coefficient_audit.py, and verify_retained_conductor_audit.py with fail-fast execution and one-at-a-time archived frontier materialization.",
+      "exit_code": 0,
+      "frozen_verifiers_passed": 31,
+      "status": "completed",
+      "temporary_materializations_removed_after_success": true
+    }
+  ],
+  "description": "Complete invocation ledger for the prospective depth-forty-five extension, including successful work and any failures.",
+  "schema_version": 1
+}
