@@ -7,6 +7,21 @@ canonicalization. For this complete pair index, the gate is built from its
 The filter occupies 38,955,008 bytes for this index and is prepared before
 the relation-collection clock.
 
+Both frozen streams reached rank five with identical ordered witnesses and
+weighted rows in the reference and filtered runs. The filter avoided
+7,918,512 of 8,115,360 orbit-key calculations across the two streams
+(97.574%).
+
+| Stream | Queries to rank five | Exact hit incidences | Reference orbit keys | Filtered orbit keys | Avoided | Filter build + check |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Primary | 429 | 21 | 5,456,880 | 132,623 | 97.570% | 3.092 s |
+| Disjoint | 209 | 15 | 2,658,480 | 64,225 | 97.584% | 3.005 s |
+
+The checked Sage replay independently verifies all 36 exact-index
+incidences, 12 weighted rows, point equations, and rank-five results.
+Collection walls were recorded but remain exploratory under the repository's
+CPU-isolation gate.
+
 `PROTOCOL.md` fixes the paired primary and disjoint relation-query streams,
 the off/on order, semantic checks, and claim boundary. `results/summary.json`
 is produced by `validate.py` after the runs. The source inputs copied from
@@ -35,6 +50,13 @@ cd ..
 python3 run_panel.py --binary collector/target/release/a1-packed-collector
 python3 validate.py
 ```
+
+The archived `validate.py` run uses only the included source, index, export,
+workloads, raw run receipts, checked-Sage runtime receipt, and Sage replay
+receipt. It does not need the path to the local binary recorded in the launch
+receipts. Rebuild against the stated clean `crypto` revision to attest the
+executable bytes and repeat measurements on another machine. CPU wall times
+in these receipts are exploratory.
 
 The separate `make_disjoint.py` command regenerates the second frozen
 workload in a clean copy where `inputs/disjoint.json` is absent. It refuses
