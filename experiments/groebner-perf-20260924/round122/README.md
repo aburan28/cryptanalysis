@@ -1,4 +1,4 @@
-# Cached bitset eligibility for certified F4 normalization
+# Cached basis metadata for certified F4 normalization
 
 The bounded 4096-bit grevlex F4 path in round119 scans every term of every
 installed reducer on each call to `normal()` before using the bitset kernel.
@@ -6,14 +6,19 @@ This opt-in candidate counts installed rows with a term outside the low 12
 variables. Installation and final interreduction update that count; every
 query still checks its fresh value row. A nonzero count selects the original
 sparse path. The existing fallback for a non-basis reducer vector remains a
-full scan. No target coefficient, proof node, or answer is cached.
+full scan. The second candidate also caches the stable reducer priority order
+and uses the existing basis-leading-monomial vector by reference during
+ordinary basis reductions. Installation and final interreduction refresh the
+priority order. No target coefficient, proof node, or answer is cached.
 
 The semantic invariant is
 `basis_wide_rows == number of rows in basis containing a term outside 0..4095`.
 The counter changes only when `install()` appends a row or final
-interreduction erases/replaces one. Reducer priority, arithmetic operations,
-proof-node order, work charges, resource caps, and final independent
-certification remain unchanged.
+interreduction erases/replaces one. The cached priority is the stable sort of
+all basis indices by row term count, refreshed after each basis mutation.
+Calls with a skipped reducer or a non-basis reducer vector still construct
+their local priority order. Arithmetic operations, proof-node order, work
+charges, resource caps, and final independent certification remain unchanged.
 
 The frozen comparison is the five `pdp-12-seed-{1..5}` queries from the
 round112 independently audited panel, with the round119 bitset engine as the

@@ -60,4 +60,60 @@ def fitcache_engine(source):
                     basis[i]=std::move(row);
                 }
 ''')
+    source = once(source, "    size_t basis_wide_rows=0;\n",
+                  "    size_t basis_wide_rows=0;\n"
+                  "    std::vector<size_t> basis_priority;\n")
+    source = once(source, "    void initialize_bitset() {\n", '''    void refresh_basis_priority() {
+        basis_priority.clear();
+        for (size_t i=0;i<basis.size();++i) basis_priority.push_back(i);
+        std::stable_sort(basis_priority.begin(),basis_priority.end(),
+            [&](size_t a,size_t b){return basis[a].terms.size()<basis[b].terms.size();});
+    }
+    void initialize_bitset() {
+''')
+    source = once(source, '''        std::vector<Mask> leads;
+        if (&reducers==&basis) leads=basis_leads;
+        else for (const auto& g:reducers) leads.push_back(lead(g.terms));
+        std::vector<size_t> choices;
+        for (size_t i=0;i<reducers.size();++i) if(i!=skip) choices.push_back(i);
+        std::stable_sort(choices.begin(),choices.end(),[&](size_t a,size_t b){return reducers[a].terms.size()<reducers[b].terms.size();});
+        if (fits_bitset(value,reducers))
+''', '''        std::vector<Mask> local_leads;
+        const std::vector<Mask>* active_leads=&basis_leads;
+        if (&reducers!=&basis) {
+            for (const auto& g:reducers) local_leads.push_back(lead(g.terms));
+            active_leads=&local_leads;
+        }
+        const std::vector<Mask>& leads=*active_leads;
+        std::vector<size_t> local_choices;
+        const std::vector<size_t>* active_choices=&basis_priority;
+        if (&reducers!=&basis || skip!=SIZE_MAX) {
+            for (size_t i=0;i<reducers.size();++i) if(i!=skip) local_choices.push_back(i);
+            std::stable_sort(local_choices.begin(),local_choices.end(),
+                [&](size_t a,size_t b){return reducers[a].terms.size()<reducers[b].terms.size();});
+            active_choices=&local_choices;
+        }
+        const std::vector<size_t>& choices=*active_choices;
+        if (fits_bitset(value,reducers))
+''')
+    source = once(source, '''        basis.push_back(std::move(row));
+    }
+''', '''        basis.push_back(std::move(row));
+        refresh_basis_priority();
+    }
+''')
+    source = once(source, '''                    basis[i]=std::move(row);
+                }
+                changed=true;break;
+''', '''                    basis[i]=std::move(row);
+                }
+                refresh_basis_priority();
+                changed=true;break;
+''')
+    source = once(source, '''        for (const auto& row:basis) basis_leads.push_back(lead(row.terms));
+    }
+''', '''        for (const auto& row:basis) basis_leads.push_back(lead(row.terms));
+        refresh_basis_priority();
+    }
+''')
     return source
