@@ -1330,6 +1330,9 @@ fn main() {
         return;
     }
     if args.len() == 4 && (args[1] == "--check-shared-z-degree-seven-case" ||
+                           args[1] == "--check-shared-z-linked-degree-seven-case" ||
+                           args[1] == "--check-shared-z-linked-degree-seven-tail-case" ||
+                           args[1] == "--benchmark-shared-z-linked-degree-seven-tail-case" ||
                            args[1] == "--check-shared-z-degree-seven-tail-case" ||
                            args[1] == "--check-shared-z-degree-seven-tail65536-case" ||
                            args[1] == "--benchmark-shared-z-degree-seven-case" ||
@@ -1340,7 +1343,8 @@ fn main() {
                          else { 0 };
         mixed_radix::check_degree_seven_case(&args[2],
             args[3].parse::<usize>().expect("case index"),
-            tail_limit, args[1].starts_with("--benchmark-"));
+            tail_limit, args[1].starts_with("--benchmark-"),
+            args[1].contains("linked-degree-seven"));
         return;
     }
     if args.len() == 5 && args[1] == "--check-zero-tau-fixture" {
