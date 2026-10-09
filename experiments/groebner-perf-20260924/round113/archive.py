@@ -21,9 +21,11 @@ DIRECTORIES = (
     'f4-gpu-query-host-v4',
     'f4-gpu-query-host-v5',
     'f4-gpu-query-host-v6',
+    'f4-gpu-query-host-v7',
     'f5-gpu-query-host-v1',
     'f5-gpu-query-host-v2',
     'f5-gpu-query-host-v3',
+    'f5-gpu-query-host-v4',
     'f4-gpu-query-scan-v1',
 )
 FILES = (
@@ -37,6 +39,7 @@ FILES = (
     'f4-f5-cross-engine-host-v1.json',
     'f4-f5-cross-engine-host-v2.json',
     'f4-f5-cross-engine-host-v3.json',
+    'f4-f5-cross-engine-host-v4.json',
 )
 
 
@@ -62,9 +65,9 @@ def main():
     phase = json.loads((evidence/'continuation-phase-panel-v3/report.json').read_text())
     repeated = json.loads((evidence/'continuation-phase-profile-v2/report.json').read_text())
     scan = json.loads((evidence/'f4-gpu-query-scan-v1/report.json').read_text())
-    host = json.loads((evidence/'f4-gpu-query-host-v6/report.json').read_text())
-    f5_host = json.loads((evidence/'f5-gpu-query-host-v3/report.json').read_text())
-    cross = json.loads((evidence/'f4-f5-cross-engine-host-v3.json').read_text())
+    host = json.loads((evidence/'f4-gpu-query-host-v7/report.json').read_text())
+    f5_host = json.loads((evidence/'f5-gpu-query-host-v4/report.json').read_text())
+    cross = json.loads((evidence/'f4-f5-cross-engine-host-v4.json').read_text())
     chain = json.loads((evidence/'f6-s3-chain-profile-v3.json').read_text())
     assert (phase['status'] == repeated['status'] == scan['status'] == host['status']
             == f5_host['status'] == cross['status'] == 'PASS')
@@ -107,9 +110,9 @@ def main():
         phase_commit=phase['source_commit'], profile_commit=repeated['source_commit'],
         phase='continuation-phase-panel-v3/report.json',
         profile='continuation-phase-profile-v2/report.json',
-        gpu_f4_host='f4-gpu-query-host-v6/report.json',
-        gpu_f5_host='f5-gpu-query-host-v3/report.json',
-        gpu_cross_engine='f4-f5-cross-engine-host-v3.json',
+        gpu_f4_host='f4-gpu-query-host-v7/report.json',
+        gpu_f5_host='f5-gpu-query-host-v4/report.json',
+        gpu_cross_engine='f4-f5-cross-engine-host-v4.json',
         gpu_scan='f4-gpu-query-scan-v1/report.json',
         separator='f6-s3-chain-profile-v3.json', logical=logical)
     target = HERE/'results.tar.gz'

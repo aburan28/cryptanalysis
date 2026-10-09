@@ -105,4 +105,4 @@ The archive includes the first interrupted/failed phase and emulator attempts,
 all raw successful phase and query records, proof bytes, code and binary
 receipts, the S3 support record, and the host preflight. The archive was
 stream-verified byte for byte after content-addressed deduplication. Its SHA-256
-is `9cd12c998a0fe81d4a605bf030d9e027bb0a2b22d33fd0f3258241f4e5c8ccab`.
+is `5a85c7080479496e6ec4e517973247972dba6ed5a3d1a9ca8a4fc86cf0b3cc3b`.
