@@ -29,4 +29,8 @@ GROEBNER_F4_REFERENCE_ROOT=/absolute/source-matched/reference \
   python3 experiments/groebner-perf-20260924/round115/panel.py \
   --reference-report /absolute/audited/round112/panel/report.json \
   --output /absolute/new/inner-panel
+python3 experiments/groebner-perf-20260924/round115/profile.py \
+  --reference-root /absolute/source-matched/reference \
+  --reference-report /absolute/audited/round112/panel/report.json \
+  --output /absolute/new/inner-profile --reps 5
 ```
