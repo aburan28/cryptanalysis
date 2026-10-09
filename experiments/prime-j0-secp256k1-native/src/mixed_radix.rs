@@ -236,19 +236,32 @@ pub(super) fn check_zero_tau_action_fingerprints(fixture_path: &str, fingerprint
 }
 
 pub(super) fn evaluate(actions: &[Action], seeds: &[J; 9], beta: F) -> (J, Counts) {
+    evaluate_inner(actions, seeds, beta, false)
+}
+
+pub(super) fn evaluate_shared_z(actions: &[Action], seeds: &[J; 9], beta: F) -> (J, Counts) {
+    evaluate_inner(actions, seeds, beta, true)
+}
+
+fn evaluate_inner(actions: &[Action], seeds: &[J; 9], beta: F,
+                  shared_z: bool) -> (J, Counts) {
+    let aligned = shared_z.then(|| align_common_z(seeds));
+    let seeds = aligned.as_ref().map_or(seeds, |(_, points)| points);
     let mut counts = Counts::default();
     let mut images = [[J::identity(); 3]; 9];
     for seed in 0..9 {
         images[seed] = orbit(seeds[seed], beta);
     }
     let mut cache: [Option<(F, F)>; 9] = [None; 9];
-    for action in actions.iter().take(actions.len() - 1) {
-        if let Some(digit) = action.digit {
-            if digit.seed > 0 && cache[digit.seed].is_none() {
-                let z = seeds[digit.seed].z;
-                let z2 = z.sqr();
-                cache[digit.seed] = Some((z2, z2.mul(&z)));
-                counts.cache_entries += 1;
+    if !shared_z {
+        for action in actions.iter().take(actions.len() - 1) {
+            if let Some(digit) = action.digit {
+                if digit.seed > 0 && cache[digit.seed].is_none() {
+                    let z = seeds[digit.seed].z;
+                    let z2 = z.sqr();
+                    cache[digit.seed] = Some((z2, z2.mul(&z)));
+                    counts.cache_entries += 1;
+                }
             }
         }
     }
@@ -289,7 +302,7 @@ pub(super) fn evaluate(actions: &[Action], seeds: &[J; 9], beta: F) -> (J, Count
             }
             if accumulator.is_identity() {
                 accumulator = point;
-            } else if digit.seed == 0 {
+            } else if shared_z || digit.seed == 0 {
                 assert_eq!(point.z, F::ONE);
                 accumulator = accumulator.add_mixed(point.x, point.y);
                 counts.mixed_adds += 1;
@@ -305,6 +318,9 @@ pub(super) fn evaluate(actions: &[Action], seeds: &[J; 9], beta: F) -> (J, Count
     }
     assert_eq!(counts.tau_pairs, pairs);
     assert_eq!(gauge, 0);
+    if let Some((common_z, _)) = aligned {
+        accumulator.z = accumulator.z.mul(&common_z);
+    }
     (accumulator, counts)
 }
 
@@ -555,7 +571,8 @@ pub(super) fn benchmark_case(fixture_path: &str, index: usize, timed: bool) {
     }
 }
 
-pub(super) fn benchmark_zero_tau_case(fixture_path: &str, index: usize, timed: bool) {
+pub(super) fn benchmark_zero_tau_case(fixture_path: &str, index: usize,
+                                      timed: bool, shared_z: bool) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
         .expect("fixture JSON");
     let case = &fixture["cases"].as_array().expect("cases")[index];
@@ -578,16 +595,29 @@ pub(super) fn benchmark_zero_tau_case(fixture_path: &str, index: usize, timed: b
     let (a, b) = short_representative(&scalar);
     let actions = recode_zero_tau(a.clone(), b.clone());
     let policy_cost = source_cost(&actions);
-    let selective = selective::recode(a.clone(), b.clone());
-    let choose_policy = policy_cost < selective.total;
-    let (point, exceptional) = if choose_policy {
+    let selective = (!shared_z).then(|| selective::recode(a.clone(), b.clone()));
+    let choose_policy = selective.as_ref().is_none_or(|plan| policy_cost < plan.total);
+    let (point, exceptional, cost) = if choose_policy {
         let seeds = prepare(base, beta);
-        let (point, counts) = evaluate(&actions, &seeds, beta);
-        (point, counts.exceptional_cached_adds)
+        let (point, counts) = if shared_z {
+            evaluate_shared_z(&actions, &seeds, beta)
+        } else {
+            evaluate(&actions, &seeds, beta)
+        };
+        let cost = if shared_z {
+            assert_eq!(counts.cache_entries, 0);
+            assert_eq!(counts.general_adds, 0);
+            83 + 57 + 6 * counts.tau_steps + 7 * counts.doubles
+                - 2 * counts.tau_pairs + 11 * counts.mixed_adds
+        } else {
+            policy_cost
+        };
+        (point, counts.exceptional_cached_adds, cost)
     } else {
+        let selective = selective.expect("selective plan");
         let seeds = selective::prepare(base, beta, selective.built_mask);
         let (point, counts) = evaluate_mode(&selective.digits, &seeds, beta, false, true);
-        (point, counts.exceptional_cached_adds)
+        (point, counts.exceptional_cached_adds, selective.total)
     };
     let actual = match point.to_affine() {
         None => "identity".to_owned(),
@@ -600,10 +630,10 @@ pub(super) fn benchmark_zero_tau_case(fixture_path: &str, index: usize, timed: b
         assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
     }
     let arm = if choose_policy { "zero_tau" } else { "selective" };
-    let cost = if choose_policy { policy_cost } else { selective.total };
+    let mode = if shared_z { "shared_z_zero_tau" } else { "zero_tau" };
     if timed {
-        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=zero_tau arm={arm} source_M_plus_S={cost} exceptional_cached_adds={exceptional}");
+        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode={mode} arm={arm} source_M_plus_S={cost} exceptional_cached_adds={exceptional}");
     } else {
-        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=zero_tau arm={arm} source_M_plus_S={cost} exceptional_cached_adds={exceptional}");
+        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode={mode} arm={arm} source_M_plus_S={cost} exceptional_cached_adds={exceptional}");
     }
 }
