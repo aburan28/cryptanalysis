@@ -5,9 +5,13 @@ integer-radix windows as the verified unit-orbit multiplier. Its table stores
 one point for a selected residue seed. A lookup may use that point after a
 unit action and zero, one, or two applications of the nonunit endomorphism
 `tau = 1 - omega`. Selected points are accumulated in three buckets by tau
-exponent; tau is applied to the completed buckets, so its online cost is
-bounded by one `tau` and one `tau^2` point map per scalar rather than one map
-per table lookup. This is a public-scalar, fixed-generator experiment.
+exponent. Linearity folds the completed buckets as
+`B0 + tau*(B1 + tau*B2)`, so its online cost is bounded by two tau point
+maps per scalar rather than one map per table lookup. This is a public-scalar,
+fixed-generator experiment. This Horner fold replaced the initial separate
+`tau(B1) + tau^2(B2)` fold after the residue screen and before the final
+native verification receipt; it leaves the digit cover and termination gates
+unchanged.
 
 ## Frozen instance and mathematical gate
 
@@ -56,7 +60,7 @@ fixture points and 128 fresh points against independent binary multiplication
 in the native evaluator. Preserve failures, table-build time, and peak memory.
 Only after those gates, generate a same-binary paired U14/candidate manifest
 whose timer includes scalar reduction, recoding, lookups, unit maps, bucket
-accumulation, tau and tau-squared bucket maps, final point addition, affine
+accumulation, the two tau bucket maps, projective bucket merges, affine
 conversion, and expected-point verification. Run CPU timing only on a host
 passing `docs/ISOLATED_BENCHMARKS.md` and preserve all preflight/noise rows.
 Prior-art review must cover tau-adic precomputation and endomorphism digit

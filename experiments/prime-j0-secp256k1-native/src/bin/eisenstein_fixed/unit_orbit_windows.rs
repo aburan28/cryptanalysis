@@ -15,6 +15,11 @@ const CAP_BYTES: usize = 90 * (1 << 20);
 const RADIX13: usize = 943;
 const RADIX13_WINDOWS: usize = 13;
 const RADIX13_CAP_BYTES: usize = 140 * (1 << 20);
+const TAU_BUCKET_RADIX: usize = 1021;
+const TAU_BUCKET_CAP_BYTES: usize = 90 * (1 << 20);
+const TAU_BUCKET_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau-bucket-orbits-20261009/atlas.bin"
+);
 
 fn norm((a, b): (i32, i32)) -> i64 {
     let (a, b) = (i64::from(a), i64::from(b));
@@ -71,25 +76,30 @@ impl Signed192 {
         }
     }
 
-    fn div_rem_radix13(self) -> (Self, i32, usize) {
-        // A 32-bit chunk leaves the trial dividend below 943*2^32,
+    fn div_rem_small_radix(self, radix: u64) -> (Self, i32, usize) {
+        assert!((2..=i32::MAX as u64).contains(&radix));
+        // A 32-bit chunk leaves the trial dividend below radix*2^32,
         // so each step uses constant 64-bit division instead of u128 division.
         let mut rem = 0u64;
         let mut limbs = [0u64; 3];
         for index in (0..3).rev() {
             let high = self.limbs[index] >> 32;
             let value_high = (rem << 32) | high;
-            let quotient_high = value_high / RADIX13 as u64;
-            rem = value_high % RADIX13 as u64;
+            let quotient_high = value_high / radix;
+            rem = value_high % radix;
             let low = self.limbs[index] & u64::from(u32::MAX);
             let value_low = (rem << 32) | low;
-            let quotient_low = value_low / RADIX13 as u64;
-            rem = value_low % RADIX13 as u64;
+            let quotient_low = value_low / radix;
+            rem = value_low % radix;
             limbs[index] = (quotient_high << 32) | quotient_low;
         }
         let signed_rem = if self.negative { -(rem as i32) } else { rem as i32 };
         let quotient = Self { negative: self.negative && limbs != [0; 3], limbs };
-        (quotient, signed_rem, signed_rem.rem_euclid(RADIX13 as i32) as usize)
+        (quotient, signed_rem, signed_rem.rem_euclid(radix as i32) as usize)
+    }
+
+    fn div_rem_radix13(self) -> (Self, i32, usize) {
+        self.div_rem_small_radix(RADIX13 as u64)
     }
 
     #[cfg(test)]
@@ -105,9 +115,13 @@ impl Signed192 {
     }
 
     fn adjust_radix13_quotient(self, signed_rem: i32, digit: i32) -> Self {
+        self.adjust_small_radix_quotient(signed_rem, digit, RADIX13 as i32)
+    }
+
+    fn adjust_small_radix_quotient(self, signed_rem: i32, digit: i32, radix: i32) -> Self {
         let adjustment = signed_rem - digit;
-        assert_eq!(adjustment % RADIX13 as i32, 0);
-        self.add(Self::from_i32(adjustment / RADIX13 as i32))
+        assert_eq!(adjustment % radix, 0);
+        self.add(Self::from_i32(adjustment / radix))
     }
 }
 
@@ -243,24 +257,22 @@ fn affine_multiples(base: Jacobian, max_abs: usize) -> Vec<Jacobian> {
     result
 }
 
-fn build_window(atlas: &OrbitAtlas, base: Jacobian) -> Box<[CompactPairPoint]> {
+fn build_window(digits: &[(i16, i16)], base: Jacobian) -> Box<[CompactPairPoint]> {
     let tau_base = base.tau();
-    let max_a = atlas
-        .digits
+    let max_a = digits
         .iter()
         .map(|d| d.0.unsigned_abs() as usize)
         .max()
         .unwrap();
-    let max_b = atlas
-        .digits
+    let max_b = digits
         .iter()
         .map(|d| d.1.unsigned_abs() as usize)
         .max()
         .unwrap();
     let a_multiples = affine_multiples(base, max_a);
     let b_multiples = affine_multiples(tau_base, max_b);
-    let mut projective = Vec::with_capacity(atlas.digits.len() - 1);
-    for &(a, b) in atlas.digits.iter().skip(1) {
+    let mut projective = Vec::with_capacity(digits.len() - 1);
+    for &(a, b) in digits.iter().skip(1) {
         let first = if a >= 0 {
             a_multiples[a as usize]
         } else {
@@ -286,7 +298,7 @@ fn build_window(atlas: &OrbitAtlas, base: Jacobian) -> Box<[CompactPairPoint]> {
         limbs: [[0; 2]; 4],
         signs: 0,
     };
-    let mut packed = Vec::with_capacity(atlas.digits.len());
+    let mut packed = Vec::with_capacity(digits.len());
     packed.push(identity_slot);
     packed.extend(affine.into_iter().map(CompactPairPoint::from_affine));
     packed.into_boxed_slice()
@@ -322,7 +334,7 @@ impl Tables {
         let mut base = Jacobian::generator();
         for &width in widths {
             let atlas = atlases[usize::from(width - 8)].as_ref().unwrap();
-            windows.push(build_window(atlas, base));
+            windows.push(build_window(&atlas.digits, base));
             for _ in 0..width {
                 base = base.double();
             }
@@ -380,7 +392,7 @@ impl Radix13Tables {
         let mut windows = Vec::with_capacity(RADIX13_WINDOWS);
         let mut base = Jacobian::generator();
         for index in 0..RADIX13_WINDOWS {
-            windows.push(build_window(&atlas, base));
+            windows.push(build_window(&atlas.digits, base));
             if index + 1 < RADIX13_WINDOWS {
                 base = affine_multiples(base, RADIX13).pop().unwrap();
             }
@@ -398,6 +410,96 @@ impl Radix13Tables {
 }
 
 static RADIX13_TABLES: LazyLock<Radix13Tables> = LazyLock::new(Radix13Tables::new);
+
+struct TauBucketAtlas {
+    codes: &'static [u8],
+    digits: &'static [u8],
+    seed_count: usize,
+}
+
+impl TauBucketAtlas {
+    fn new() -> Self {
+        let bytes = TAU_BUCKET_ATLAS;
+        assert_eq!(&bytes[..4], b"TBO1");
+        let read_u32 = |offset: usize| {
+            u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize
+        };
+        assert_eq!(read_u32(4), TAU_BUCKET_RADIX);
+        let code_count = read_u32(8);
+        let seed_count = read_u32(12);
+        assert_eq!(code_count, TAU_BUCKET_RADIX * TAU_BUCKET_RADIX);
+        assert_eq!(seed_count, 78_104);
+        assert_eq!(bytes.len(), 16 + 4 * code_count + 4 * seed_count);
+        let codes = &bytes[16..16 + 4 * code_count];
+        let digits = &bytes[16 + 4 * code_count..];
+        assert_eq!(&digits[..4], &[0, 0, 0, 0]);
+        let atlas = Self { codes, digits, seed_count };
+        for residue in 0..code_count {
+            let (digit, _, _, _) = atlas.digit_residue(residue / TAU_BUCKET_RADIX,
+                                                        residue % TAU_BUCKET_RADIX);
+            assert!(norm(digit) <= 840 * 840);
+        }
+        atlas
+    }
+
+    fn seed_digits(&self) -> Vec<(i16, i16)> {
+        self.digits.chunks_exact(4).map(|chunk| {
+            (i16::from_le_bytes(chunk[..2].try_into().unwrap()),
+             i16::from_le_bytes(chunk[2..].try_into().unwrap()))
+        }).collect()
+    }
+
+    fn digit_residue(&self, ra: usize, rb: usize) -> ((i32, i32), usize, usize, usize) {
+        let offset = 4 * (ra * TAU_BUCKET_RADIX + rb);
+        let code = u32::from_le_bytes(self.codes[offset..offset + 4].try_into().unwrap()) as usize;
+        let (seed_id, exponent, unit_code) = (code >> 5, (code >> 3) & 3, code & 7);
+        assert!(seed_id < self.seed_count && exponent <= 2 && unit_code < 6);
+        let offset = 4 * seed_id;
+        let seed = &self.digits[offset..offset + 4];
+        let (a, b) = (i16::from_le_bytes(seed[..2].try_into().unwrap()),
+                      i16::from_le_bytes(seed[2..].try_into().unwrap()));
+        let mut digit = (i32::from(a), i32::from(b));
+        for _ in 0..exponent {
+            digit = (-3 * digit.1, digit.0 + 3 * digit.1);
+        }
+        digit = unit_images(digit)[unit_code];
+        assert_eq!((digit.0.rem_euclid(TAU_BUCKET_RADIX as i32) as usize,
+                    digit.1.rem_euclid(TAU_BUCKET_RADIX as i32) as usize),
+                   (ra, rb));
+        (digit, seed_id, exponent, unit_code)
+    }
+}
+
+struct TauBucketTables {
+    atlas: TauBucketAtlas,
+    windows: Vec<Box<[CompactPairPoint]>>,
+    retained_bytes: usize,
+}
+
+impl TauBucketTables {
+    fn new() -> Self {
+        let atlas = TauBucketAtlas::new();
+        let seed_digits = atlas.seed_digits();
+        let mut windows = Vec::with_capacity(RADIX13_WINDOWS);
+        let mut base = Jacobian::generator();
+        for index in 0..RADIX13_WINDOWS {
+            windows.push(build_window(&seed_digits, base));
+            if index + 1 < RADIX13_WINDOWS {
+                base = affine_multiples(base, TAU_BUCKET_RADIX).pop().unwrap();
+            }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 1_015_352);
+        let retained_bytes = entries * size_of::<CompactPairPoint>()
+            + TAU_BUCKET_ATLAS.len()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[CompactPairPoint]>>();
+        assert!(retained_bytes < TAU_BUCKET_CAP_BYTES);
+        Self { atlas, windows, retained_bytes }
+    }
+}
+
+static TAU_BUCKET_TABLES: LazyLock<TauBucketTables> = LazyLock::new(TauBucketTables::new);
 
 fn multiply_radix13(
     scalar: &BigInt,
@@ -465,6 +567,59 @@ fn multiply_word_radix13(
     (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
 }
 
+fn multiply_tau_bucket(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (start_a, start_b) = hexagonal_four_corner_choices(&residue).remove(0);
+    let mut a = Signed192::from_bigint(&start_a);
+    let mut b = Signed192::from_bigint(&start_b);
+    let tables = &*TAU_BUCKET_TABLES;
+    let mut buckets = [Jacobian::identity(); 3];
+    let mut nonidentity = 0usize;
+    for row in &tables.windows {
+        let (quotient_a, signed_rem_a, residue_a) =
+            a.div_rem_small_radix(TAU_BUCKET_RADIX as u64);
+        let (quotient_b, signed_rem_b, residue_b) =
+            b.div_rem_small_radix(TAU_BUCKET_RADIX as u64);
+        let (digit, seed_id, exponent, unit_code) =
+            tables.atlas.digit_residue(residue_a, residue_b);
+        a = quotient_a.adjust_small_radix_quotient(
+            signed_rem_a, digit.0, TAU_BUCKET_RADIX as i32);
+        b = quotient_b.adjust_small_radix_quotient(
+            signed_rem_b, digit.1, TAU_BUCKET_RADIX as i32);
+        if seed_id == 0 {
+            continue;
+        }
+        let mut addend = row[seed_id].into_affine();
+        for _ in 0..(unit_code / 2) {
+            addend = addend.omega();
+        }
+        if unit_code & 1 != 0 {
+            addend = addend.neg();
+        }
+        buckets[exponent] = buckets[exponent].add_mixed(addend);
+        nonidentity += 1;
+    }
+    assert!(a.is_zero() && b.is_zero(), "tau-bucket recoding did not terminate");
+    let merge = |left: Jacobian, right: Jacobian| {
+        if left.is_identity() {
+            return right;
+        }
+        if right.is_identity() {
+            return left;
+        }
+        let z_squared = right.z.mul(right.z);
+        let z_cubed = z_squared.mul(right.z);
+        left.add_cached(right, z_squared, z_cubed)
+    };
+    // Linearity folds the exponent buckets with two tau maps:
+    // B0 + tau*B1 + tau^2*B2 = B0 + tau*(B1 + tau*B2).
+    let result = merge(buckets[0], merge(buckets[1], buckets[2].tau()).tau());
+    (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
+}
+
 fn selected(format: u8) -> &'static Tables {
     match format {
         14 => &TABLES,
@@ -475,6 +630,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 17 {
+        return TAU_BUCKET_TABLES.retained_bytes;
+    }
     if format == 13 || format == 113 {
         return RADIX13_TABLES.retained_bytes;
     }
@@ -531,6 +689,9 @@ pub(super) fn multiply_word_format(
     scalar: &BigInt,
     format: u8,
 ) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    if format == 17 {
+        return multiply_tau_bucket(scalar);
+    }
     if format == 13 {
         return multiply_word_radix13(scalar);
     }
@@ -676,6 +837,45 @@ mod tests {
             if (7..135).contains(&index) {
                 let reduced = &scalar % &SCALAR_LATTICE.n;
                 assert_eq!(point.affine_hex(), independent_binary_point(&reduced).affine_hex(),
+                           "independent fresh {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn tau_bucket_replays_fixture_and_fresh_points() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tau6-comb13-bench-fixture.json"
+        )).unwrap();
+        let cases = fixture["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 129);
+        for (index, case) in cases.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(case["scalar_hex"].as_str().unwrap().as_bytes(), 16)
+                .unwrap();
+            let candidate = multiply_tau_bucket(&scalar);
+            let expected = if case["expected_identity"].as_bool() == Some(true) {
+                "identity".to_owned()
+            } else {
+                format!("{}:{}", case["expected_x_hex"].as_str().unwrap(),
+                        case["expected_y_hex"].as_str().unwrap())
+            };
+            assert_eq!(candidate.0.affine_hex(), expected, "fixture {index}");
+            assert!(candidate.4 < TAU_BUCKET_CAP_BYTES);
+        }
+        let input: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix943-word-20261009/inputs.json"
+        )).unwrap();
+        let scalars = input["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 519);
+        for (index, hex) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(hex.as_str().unwrap().as_bytes(), 16).unwrap();
+            let candidate = multiply_tau_bucket(&scalar);
+            let reference = multiply_word_radix13(&scalar);
+            assert_eq!(candidate.0.affine_hex(), reference.0.affine_hex(), "fresh {index}");
+            if (7..135).contains(&index) {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0.affine_hex(),
+                           independent_binary_point(&reduced).affine_hex(),
                            "independent fresh {index}");
             }
         }
@@ -1010,5 +1210,53 @@ mod tests {
             }
         }
         assert_eq!(checked, 1_926_717);
+    }
+
+    #[test]
+    fn tau_bucket_all_window_points_match_independent_group_sums() {
+        let tables = &*TAU_BUCKET_TABLES;
+        let digits = tables.atlas.seed_digits();
+        let mut base = Jacobian::generator();
+        let mut checked = 0usize;
+        for (window, row) in tables.windows.iter().enumerate() {
+            let tau_base = base.tau();
+            let max_a = digits.iter().map(|d| d.0.unsigned_abs() as usize).max().unwrap();
+            let max_b = digits.iter().map(|d| d.1.unsigned_abs() as usize).max().unwrap();
+            let a_points = binary_multiples(base, max_a);
+            let b_projective = binary_multiples(tau_base, max_b);
+            let mut b_points = vec![Jacobian::identity()];
+            b_points.extend(batch_to_affine(&b_projective[1..]));
+            for (seed_id, &(a, b)) in digits.iter().enumerate() {
+                let first = if a < 0 {
+                    a_points[a.unsigned_abs() as usize].neg()
+                } else {
+                    a_points[a as usize]
+                };
+                let second = if b < 0 {
+                    b_points[b.unsigned_abs() as usize].neg()
+                } else {
+                    b_points[b as usize]
+                };
+                let expected = if first.is_identity() {
+                    second
+                } else if second.is_identity() {
+                    first
+                } else {
+                    first.add_mixed(second)
+                };
+                if seed_id == 0 {
+                    assert_eq!((a, b), (0, 0));
+                    assert!(expected.is_identity());
+                } else {
+                    assert!(same_point(expected, row[seed_id].into_affine()),
+                            "window {window}, seed {seed_id}");
+                }
+                checked += 1;
+            }
+            if window + 1 < RADIX13_WINDOWS {
+                base = affine_multiples(base, TAU_BUCKET_RADIX).pop().unwrap();
+            }
+        }
+        assert_eq!(checked, 1_015_352);
     }
 }
