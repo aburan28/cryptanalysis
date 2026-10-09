@@ -8,6 +8,16 @@ step, and native Jacobian mixed addition. The independent replay verified
 all 73 supplied scalars, including 48 seeded full-width random scalars,
 against affine secp256k1 multiplication.
 
+Xu, Yu, Han, and Lu's supplied manuscript, *On Efficient Computations of
+`y^2=x^3+b/Fp` for Primes `p≡1 (mod 3)`*, establishes the `tau=1-omega`
+point map, window `tau`-NAF, and unit-invariant precomputation for this curve
+family. Earlier work also studies Eisenstein-integer scalar expansions.
+The implementation contribution here is the complete coupling of a native
+Eisenstein Montgomery field, deferred field normalization in the `tau` map,
+and a verified scalar loop. The signed width-one loop is a correctness
+control for that field representation; integrating the manuscript's sparse
+window digits and unit-invariant precomputation is the next recoding step.
+
 ## Scalar expansion
 
 Let `tau = 1 - omega`, so `tau^2 - 3*tau + 3 = 0`. In the basis `(1,tau)`,
