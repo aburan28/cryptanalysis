@@ -48,3 +48,8 @@ Pod's rejected host preflight cannot supply that measurement.
 The six-unit table symmetry and Eisenstein expansions have prior art in the
 paper supplied for this project. Academic priority for the specific
 thirteen-window fixed-base layout remains to be assessed.
+
+The follow-up [complex-radix capacity screen](../prime-j0-complex-radix-20261009/RESULT.md)
+proves that changing radices within the same thirteen-window norm-covering
+certificate can save at most 67,248 affine point bytes. It also gives the
+exact twelve-slot capacity requirement under the 140 MiB table target.
