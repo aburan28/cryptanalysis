@@ -50,6 +50,15 @@ def matrix(encoded, mode):
         packed_masks=list(dict.fromkeys(m for row in c['equations'] for m in row)))
 
 
+@lru_cache(maxsize=16)
+def ordinary_size(encoded):
+    c = json.loads(encoded)
+    raw = oracle.raw_model(c['nvars'], c['equations'],
+        min(c['nvars'], 6 if c['boundary'] == 'pdp' else 2), 2,
+        minimal=True, block=True, max_work=100000000)
+    return len(raw['proof']['nodes'])
+
+
 def one(row, expected, folder):
     c, r = row['fixture'], row['result']
     mode = row['early_mode']
@@ -80,13 +89,9 @@ def one(row, expected, folder):
             assert a['kind'] == b['kind']
             assert deterministic(a.get('certificate')) == b.get('certificate')
     if first['early']['bound_selected']:
-        ordinary = matrix(json.dumps(c, sort_keys=True), 0)
         # A complete late-parity model may exhaust its final rewrite budget.
         # Independently recover the ordinary pruned graph at a generous cap.
-        raw = oracle.raw_model(c['nvars'], c['equations'],
-            min(c['nvars'], 6 if c['boundary'] == 'pdp' else 2), 2,
-            minimal=True, block=True, max_work=100000000)
-        assert len(exact['proof']['nodes']) < first['early']['active_nodes'] <= len(raw['proof']['nodes'])
+        assert len(exact['proof']['nodes']) < first['early']['active_nodes'] <= ordinary_size(json.dumps(c, sort_keys=True))
         assert first['early']['prune_visits'] == 0 and first['parity']['selected'] == 1
     if r['algebra_verified']:
         assert r['certificate']['verified'] is True
