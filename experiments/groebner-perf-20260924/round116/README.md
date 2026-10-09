@@ -49,3 +49,9 @@ GROEBNER_F4_REFERENCE_ROOT=/absolute/source-matched/reference \
 Any local timing is a diagnostic. A controlled CPU gain needs matched
 complete-query replay on an isolated host with the repository's required
 receipt.
+
+The measured work and exact proof results are in [RESULTS.md](RESULTS.md).
+To preserve a local run after generating the ordered and batched profiles,
+pass its evidence paths to `archive.py`. It writes `results.tar.gz` and a
+SHA-256 receipt in `archive.json`, then checks every archived byte against
+the source file.
