@@ -791,6 +791,38 @@ impl Jacobian {
         }
     }
 
+    fn add_cached(self, q: Self, qz2: Pair, qz3: Pair) -> Self {
+        assert!(!q.is_identity());
+        if self.is_identity() {
+            return q;
+        }
+        let z1_squared = self.z.mul(self.z);
+        let u1 = self.x.mul(qz2);
+        let u2 = q.x.mul(z1_squared);
+        let s1 = self.y.mul(qz3);
+        let s2 = q.y.mul(self.z).mul(z1_squared);
+        let h = u2.sub_field(u1);
+        let r = s2.sub_field(s1);
+        if h.is_zero() {
+            return if r.is_zero() {
+                self.double()
+            } else {
+                Self::identity()
+            };
+        }
+        let hh = h.mul(h);
+        let hhh = h.mul(hh);
+        let v = u1.mul(hh);
+        let rx = r.mul(r).sub_field(hhh).sub_field(v.times_field(2));
+        let ry = r.mul(v.sub_field(rx)).sub_field(s1.mul(hhh));
+        let rz = self.z.mul(q.z).mul(h);
+        Self {
+            x: rx,
+            y: ry,
+            z: rz,
+        }
+    }
+
     fn strings(self) -> [[String; 2]; 3] {
         [self.x.strings(), self.y.strings(), self.z.strings()]
     }
@@ -917,6 +949,30 @@ impl Unit {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct WidthThreeDigit {
+    orbit: usize,
+    unit: Unit,
+}
+
+impl WidthThreeDigit {
+    fn coefficients(self) -> (i8, i8) {
+        let (a, b) = match self.orbit {
+            0 => (1, 0),
+            1 => (2, 0),
+            2 => (1, 1),
+            _ => unreachable!(),
+        };
+        let (a, b) = match self.unit.omega_power {
+            0 => (a, b),
+            1 => (a + 3 * b, -a - 2 * b),
+            2 => (-2 * a - 3 * b, a + b),
+            _ => unreachable!(),
+        };
+        (self.unit.sign * a, self.unit.sign * b)
+    }
+}
+
 fn unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
     match (a.to_i64(), b.to_i64()) {
         (Some(1), Some(0)) => Some(Unit {
@@ -977,6 +1033,75 @@ fn recode_tau(mut a: BigInt, mut b: BigInt) -> (Vec<i8>, Option<Unit>) {
 fn mod_three(value: &BigInt) -> u8 {
     let residue: BigInt = ((value % 3) + 3) % 3;
     residue.to_u8().expect("residue in 0..3")
+}
+
+fn mod_nine(value: &BigInt) -> u8 {
+    let residue: BigInt = ((value % 9) + 9) % 9;
+    residue.to_u8().expect("residue in 0..9")
+}
+
+fn width_three_digit(a: &BigInt, b: &BigInt) -> Option<WidthThreeDigit> {
+    let residue = (mod_nine(a), mod_three(b));
+    let (orbit, sign, omega_power) = match residue {
+        (0 | 3 | 6, _) => return None,
+        (1, 0) => (0, 1, 0),
+        (8, 0) => (0, -1, 0),
+        (1, 2) => (0, 1, 1),
+        (8, 1) => (0, -1, 1),
+        (7, 1) => (0, 1, 2),
+        (2, 2) => (0, -1, 2),
+        (2, 0) => (1, 1, 0),
+        (7, 0) => (1, -1, 0),
+        (2, 1) => (1, 1, 1),
+        (7, 2) => (1, -1, 1),
+        (5, 2) => (1, 1, 2),
+        (4, 1) => (1, -1, 2),
+        (1, 1) => (2, 1, 0),
+        (8, 2) => (2, -1, 0),
+        (4, 0) => (2, 1, 1),
+        (5, 0) => (2, -1, 1),
+        (4, 2) => (2, 1, 2),
+        (5, 1) => (2, -1, 2),
+        _ => unreachable!(),
+    };
+    Some(WidthThreeDigit {
+        orbit,
+        unit: Unit { sign, omega_power },
+    })
+}
+
+fn recode_tau_width_three(
+    mut a: BigInt,
+    mut b: BigInt,
+) -> (Vec<Option<WidthThreeDigit>>, Option<WidthThreeDigit>) {
+    let mut digits = Vec::new();
+    while !a.is_zero() || !b.is_zero() {
+        let digit = width_three_digit(&a, &b);
+        if let Some(d) = digit {
+            let (da, db) = d.coefficients();
+            if a == BigInt::from(da) && b == BigInt::from(db) {
+                return (digits, Some(d));
+            }
+        }
+        let (da, db) = digit.map_or((0, 0), WidthThreeDigit::coefficients);
+        let reduced_a = &a - BigInt::from(da);
+        let reduced_b = &b - BigInt::from(db);
+        assert_eq!(mod_three(&reduced_a), 0);
+        if digit.is_some() {
+            assert_eq!(mod_nine(&reduced_a), 0);
+            assert_eq!(mod_three(&reduced_b), 0);
+        }
+        let next_a = &reduced_a + &reduced_b;
+        let next_b = -reduced_a / 3;
+        a = next_a;
+        b = next_b;
+        digits.push(digit);
+        assert!(
+            digits.len() <= 512,
+            "width-three tau expansion did not terminate"
+        );
+    }
+    (digits, None)
 }
 
 fn width_two_unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
@@ -1099,7 +1224,49 @@ fn scalar_multiply_width_two(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, usiz
     (point, a, b, digits.len(), nonzero_digits)
 }
 
-fn check_generator_case(fixture_path: &str, index: usize, timed: bool) {
+fn scalar_multiply_width_three(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, usize, [usize; 3]) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (a, b) = short_representative(&residue);
+    let (digits, terminal) = recode_tau_width_three(a.clone(), b.clone());
+    let generator = Jacobian::generator();
+    let doubled = generator.double();
+    // (1+tau)G = (2-omega)G; one doubling and one mixed add prepare
+    // all three width-three digit orbits.
+    let degree_seven = doubled.add_mixed(generator.omega().neg());
+    let bases = [generator, doubled, degree_seven];
+    let orbits = bases.map(|base| [base, base.omega(), base.omega().omega()]);
+    let caches = [doubled, degree_seven].map(|base| {
+        let z2 = base.z.mul(base.z);
+        (z2, z2.mul(base.z))
+    });
+    let point_for = |d: WidthThreeDigit| {
+        let point = orbits[d.orbit][d.unit.omega_power];
+        if d.unit.sign < 0 {
+            point.neg()
+        } else {
+            point
+        }
+    };
+    let mut point = terminal.map_or_else(Jacobian::identity, point_for);
+    let mut orbit_counts = [0usize; 3];
+    for &digit in digits.iter().rev() {
+        point = point.tau();
+        if let Some(d) = digit {
+            let q = point_for(d);
+            point = if d.orbit == 0 {
+                point.add_mixed(q)
+            } else {
+                let (z2, z3) = caches[d.orbit - 1];
+                point.add_cached(q, z2, z3)
+            };
+            orbit_counts[d.orbit] += 1;
+        }
+    }
+    (point, a, b, digits.len(), orbit_counts)
+}
+
+fn check_generator_case(fixture_path: &str, index: usize, timed: bool, width_three: bool) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
     assert_eq!(fixture["schema"].as_u64(), Some(1));
@@ -1122,33 +1289,55 @@ fn check_generator_case(fixture_path: &str, index: usize, timed: bool) {
     LazyLock::force(&DECODE_CONSTANTS);
     let start = Instant::now();
     let scalar = scalar_from_hex(scalar_hex);
-    let (point, _, _, _, _) = scalar_multiply_width_two(&scalar);
+    let point = if width_three {
+        scalar_multiply_width_three(&scalar).0
+    } else {
+        scalar_multiply_width_two(&scalar).0
+    };
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    if timed {
-        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=eisenstein_w2");
+    let mode = if width_three {
+        "eisenstein_w3"
     } else {
-        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=eisenstein_w2");
+        "eisenstein_w2"
+    };
+    if timed {
+        println!("online_ms={elapsed_ms:.6} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode={mode}");
+    } else {
+        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode={mode}");
     }
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() == 3
-        && (args[0] == "--benchmark-scalar-w2-case" || args[0] == "--check-scalar-w2-case")
+        && (args[0] == "--benchmark-scalar-w2-case"
+            || args[0] == "--check-scalar-w2-case"
+            || args[0] == "--benchmark-scalar-w3-case"
+            || args[0] == "--check-scalar-w3-case")
     {
         let index = args[2].parse::<usize>().expect("case index");
-        check_generator_case(&args[1], index, args[0] == "--benchmark-scalar-w2-case");
+        check_generator_case(
+            &args[1],
+            index,
+            args[0].starts_with("--benchmark-"),
+            args[0].ends_with("w3-case"),
+        );
         return;
     }
     assert!(
-        args.is_empty() || args == ["--tau"] || args == ["--scalar"] || args == ["--scalar-w2"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2]"
+        args.is_empty()
+            || args == ["--tau"]
+            || args == ["--scalar"]
+            || args == ["--scalar-w2"]
+            || args == ["--scalar-w3"],
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3]"
     );
     let tau_mode = args == ["--tau"];
-    let scalar_mode = args == ["--scalar"] || args == ["--scalar-w2"];
+    let scalar_mode = args == ["--scalar"] || args == ["--scalar-w2"] || args == ["--scalar-w3"];
     let width_two = args == ["--scalar-w2"];
+    let width_three = args == ["--scalar-w3"];
     for line in io::stdin().lock().lines() {
         let line = line.expect("input line");
         if line.trim().is_empty() {
@@ -1158,10 +1347,22 @@ fn main() {
         if scalar_mode {
             assert_eq!(fields.len(), 1, "expected one hexadecimal scalar");
             let scalar = scalar_from_hex(fields[0]);
-            let (point, a, b, tau_steps, nonzero_digits) = if width_two {
-                scalar_multiply_width_two(&scalar)
+            let (point, a, b, tau_steps, nonzero_digits, orbit_counts) = if width_three {
+                let (point, a, b, tau_steps, orbit_counts) = scalar_multiply_width_three(&scalar);
+                (
+                    point,
+                    a,
+                    b,
+                    tau_steps,
+                    orbit_counts.iter().sum(),
+                    Some(orbit_counts),
+                )
+            } else if width_two {
+                let (point, a, b, tau_steps, nonzero_digits) = scalar_multiply_width_two(&scalar);
+                (point, a, b, tau_steps, nonzero_digits, None)
             } else {
-                scalar_multiply(&scalar)
+                let (point, a, b, tau_steps, nonzero_digits) = scalar_multiply(&scalar);
+                (point, a, b, tau_steps, nonzero_digits, None)
             };
             println!(
                 "{}",
@@ -1170,7 +1371,8 @@ fn main() {
                     "representative": [a.to_string(), b.to_string()],
                     "tau_steps": tau_steps,
                     "nonzero_digits": nonzero_digits,
-                    "radix": if width_two { "unit-w2" } else { "signed-w1" },
+                    "orbit_counts": orbit_counts,
+                    "radix": if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -1446,6 +1648,45 @@ mod eisenstein_tau_tests {
             generator.tau().add_mixed(generator.omega()),
             generator
         ));
+        let doubled = generator.double();
+        let z2 = doubled.z.mul(doubled.z);
+        let z3 = z2.mul(doubled.z);
+        assert!(same_point(
+            Jacobian::identity().add_cached(doubled, z2, z3),
+            doubled
+        ));
+        assert!(same_point(
+            doubled.add_cached(doubled, z2, z3),
+            doubled.double()
+        ));
+        assert!(doubled.add_cached(doubled.neg(), z2, z3).is_identity());
+        assert!(same_point(
+            generator.add_cached(doubled, z2, z3),
+            doubled.add_mixed(generator)
+        ));
+    }
+
+    #[test]
+    fn width_three_digits_cover_residues_and_reconstruct_small_pairs() {
+        for a in -40..=40 {
+            for b in -40..=40 {
+                let (digits, terminal) = recode_tau_width_three(a.into(), b.into());
+                for adjacent in digits.windows(3) {
+                    assert!(
+                        adjacent[0].is_none() || (adjacent[1].is_none() && adjacent[2].is_none())
+                    );
+                }
+                let (mut x, mut y) = terminal.map_or((0i64, 0i64), |d| {
+                    let (x, y) = d.coefficients();
+                    (i64::from(x), i64::from(y))
+                });
+                for digit in digits.into_iter().rev() {
+                    let (da, db) = digit.map_or((0, 0), WidthThreeDigit::coefficients);
+                    (x, y) = (-3 * y + i64::from(da), x + 3 * y + i64::from(db));
+                }
+                assert_eq!((x, y), (a, b));
+            }
+        }
     }
 
     #[test]
