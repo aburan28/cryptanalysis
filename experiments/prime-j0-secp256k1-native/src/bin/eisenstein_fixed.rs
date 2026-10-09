@@ -1003,6 +1003,30 @@ fn short_representative_choices(scalar: &BigInt, count: usize) -> Vec<(BigInt, B
     choices.into_iter().map(|(_, _, a, b)| (a, b)).collect()
 }
 
+// W = U - 2V gives an equilateral Eisenstein lattice basis:
+// N(W) = N(V) = N(W+V) = n, so 2< W,V > = -n. The nearest point is among
+// the four floor/ceiling corners in these coordinates; the centered
+// 3-by-3 neighborhood also contains those four corners.
+fn hexagonal_representative_choices(scalar: &BigInt) -> Vec<(BigInt, BigInt)> {
+    let lattice = &*SCALAR_LATTICE;
+    let w0 = &lattice.u0 - 2 * &lattice.v0;
+    let w1 = &lattice.u1 - 2 * &lattice.v1;
+    let center_w = round_div(scalar * &lattice.v1, lattice.det.clone());
+    let center_v = round_div(-scalar * &w1, lattice.det.clone());
+    let mut choices = Vec::with_capacity(9);
+    for dw in -1..=1 {
+        for dv in -1..=1 {
+            let i = &center_w + dw;
+            let j = &center_v + dv;
+            let a = scalar - &i * &w0 - &j * &lattice.v0;
+            let b = -&i * &w1 - &j * &lattice.v1;
+            choices.push((tau_norm(&a, &b), std::cmp::max(a.abs(), b.abs()), a, b));
+        }
+    }
+    choices.sort();
+    choices.into_iter().map(|(_, _, a, b)| (a, b)).collect()
+}
+
 // Nearby lattice representatives occupy at most 130 bits per coordinate.
 // Keep each tau recoding in three stack limbs instead of repeated BigInt division.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2571,6 +2595,28 @@ fn scalar_multiply_width_six_comb13_cover25(
     (point, a, b, tau_steps, orbit_counts, repaired, rank, valid)
 }
 
+fn scalar_multiply_width_six_comb13_hex9(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let table = &*WIDTH_SIX_COMB13_POINTS;
+    let mut best: Option<(usize, usize, BigInt, BigInt, PackedTauSixStream)> = None;
+    let mut valid = 0;
+    for (rank, (a, b)) in hexagonal_representative_choices(&residue).into_iter().enumerate() {
+        let Some(stream) = recode_tau_width_six_packed(&a, &b) else { continue; };
+        let Some(cost) = stream.cover_score(table) else { continue; };
+        valid += 1;
+        if best.as_ref().is_none_or(|entry| cost < entry.0) {
+            best = Some((cost, rank, a, b, stream));
+        }
+    }
+    let (_, rank, a, b, stream) = best.expect("nearest lattice representative is valid");
+    let (point, a, b, tau_steps, orbit_counts, repaired) =
+        evaluate_width_six_comb13_sparse(a, b, stream.digits(), true);
+    (point, a, b, tau_steps, orbit_counts, repaired, rank, valid)
+}
+
 fn scalar_multiply_width_six_comb13_coset3(
     scalar: &BigInt,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize) {
@@ -2677,6 +2723,7 @@ fn check_generator_case(
     coset_three: bool,
     cover_top: bool,
     cover_twentyfive: bool,
+    hex_nine: bool,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -2723,7 +2770,9 @@ fn check_generator_case(
     }
     let scalar = scalar_from_hex(scalar_hex);
     let start = Instant::now();
-    let point = if cover_twentyfive {
+    let point = if hex_nine {
+        scalar_multiply_width_six_comb13_hex9(&scalar).0
+    } else if cover_twentyfive {
         scalar_multiply_width_six_comb13_cover25(&scalar).0
     } else if cover_top {
         scalar_multiply_width_six_comb13_cover(&scalar).0
@@ -2747,7 +2796,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if cover_twentyfive {
+    let mode = if hex_nine {
+        "eisenstein_w6_comb13_hex9_fixed"
+    } else if cover_twentyfive {
         "eisenstein_w6_comb13_cover25_fixed"
     } else if cover_top {
         "eisenstein_w6_comb13_cover_fixed"
@@ -2814,6 +2865,8 @@ fn main() {
             || args[0] == "--check-scalar-w6-comb13-cover-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb13-cover25-fixed-case"
             || args[0] == "--check-scalar-w6-comb13-cover25-fixed-case"
+            || args[0] == "--benchmark-scalar-w6-comb13-hex9-fixed-case"
+            || args[0] == "--check-scalar-w6-comb13-hex9-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb8-fixed-case"
             || args[0] == "--check-scalar-glv-comb8-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb10-fixed-case"
@@ -2850,6 +2903,7 @@ fn main() {
             args[0].contains("w6-comb13-coset3"),
             args[0].contains("w6-comb13-cover-fixed"),
             args[0].contains("w6-comb13-cover25"),
+            args[0].contains("w6-comb13-hex9"),
         );
         return;
     }
@@ -2870,9 +2924,10 @@ fn main() {
             || args == ["--scalar-w6-comb13-coset3-fixed"]
             || args == ["--scalar-w6-comb13-cover-fixed"]
             || args == ["--scalar-w6-comb13-cover25-fixed"]
+            || args == ["--scalar-w6-comb13-hex9-fixed"]
             || args == ["--scalar-glv-comb8-fixed"]
             || args == ["--scalar-glv-comb10-fixed"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-w6-comb13-sparse-fixed|--scalar-w6-comb13-coset3-fixed|--scalar-w6-comb13-cover-fixed|--scalar-w6-comb13-cover25-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-w6-comb13-sparse-fixed|--scalar-w6-comb13-coset3-fixed|--scalar-w6-comb13-cover-fixed|--scalar-w6-comb13-cover25-fixed|--scalar-w6-comb13-hex9-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
     );
     let tau_mode = args == ["--tau"];
     let scalar_mode = args == ["--scalar"]
@@ -2889,6 +2944,7 @@ fn main() {
         || args == ["--scalar-w6-comb13-coset3-fixed"]
         || args == ["--scalar-w6-comb13-cover-fixed"]
         || args == ["--scalar-w6-comb13-cover25-fixed"]
+        || args == ["--scalar-w6-comb13-hex9-fixed"]
         || args == ["--scalar-glv-comb8-fixed"]
         || args == ["--scalar-glv-comb10-fixed"];
     let width_two = args == ["--scalar-w2"];
@@ -2903,7 +2959,7 @@ fn main() {
         8
     } else if args == ["--scalar-w6-comb12-fixed"] {
         12
-    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] || args == ["--scalar-w6-comb13-cover25-fixed"] {
+    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] || args == ["--scalar-w6-comb13-cover25-fixed"] || args == ["--scalar-w6-comb13-hex9-fixed"] {
         13
     } else {
         0
@@ -2950,7 +3006,14 @@ fn main() {
                 orbit_counts,
                 alternate_uses,
                 recoding_work,
-            ) = if args == ["--scalar-w6-comb13-cover25-fixed"] {
+            ) = if args == ["--scalar-w6-comb13-hex9-fixed"] {
+                let (point, a, b, tau_steps, orbit_counts, repaired, rank, valid) =
+                    scalar_multiply_width_six_comb13_hex9(&scalar);
+                (point, a, b, tau_steps, orbit_counts.iter().sum(),
+                 Some(json!(orbit_counts.to_vec())), None,
+                 Some(json!({"top_repaired": repaired, "coset_rank": rank,
+                             "valid_representatives": valid, "attempted_representatives": 9})))
+            } else if args == ["--scalar-w6-comb13-cover25-fixed"] {
                 let (point, a, b, tau_steps, orbit_counts, repaired, rank, valid) =
                     scalar_multiply_width_six_comb13_cover25(&scalar);
                 (point, a, b, tau_steps, orbit_counts.iter().sum(),
@@ -3071,7 +3134,7 @@ fn main() {
                     "orbit_counts": orbit_counts,
                     "alternate_uses": alternate_uses,
                     "recoding_work": recoding_work,
-                    "radix": if args == ["--scalar-w6-comb13-cover25-fixed"] { "orbit-w6-comb13-cover25-fixed" } else if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "radix": if args == ["--scalar-w6-comb13-hex9-fixed"] { "orbit-w6-comb13-hex9-fixed" } else if args == ["--scalar-w6-comb13-cover25-fixed"] { "orbit-w6-comb13-cover25-fixed" } else if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -3679,6 +3742,42 @@ mod eisenstein_tau_tests {
             let chosen_cost = 5 * chosen.3 + 11 * chosen.4.iter().sum::<usize>();
             let nearest_cost = 5 * nearest.3 + 11 * nearest.4.iter().sum::<usize>();
             assert!(chosen_cost <= nearest_cost);
+        }
+    }
+
+    #[test]
+    fn hexagonal_four_corners_contain_nearest_and_hex9_preserves_points() {
+        use num_integer::Integer;
+        let lattice = &*SCALAR_LATTICE;
+        let w0 = &lattice.u0 - 2 * &lattice.v0;
+        let w1 = &lattice.u1 - 2 * &lattice.v1;
+        assert_eq!(tau_norm(&w0, &w1), lattice.n);
+        assert_eq!(tau_norm(&lattice.v0, &lattice.v1), lattice.n);
+        let w_plus_v = (&w0 + &lattice.v0, &w1 + &lattice.v1);
+        assert_eq!(tau_norm(&w_plus_v.0, &w_plus_v.1), lattice.n);
+        for scalar in [BigInt::ZERO, BigInt::from(1), &lattice.n - 1,
+                       BigInt::from(1) << 255,
+                       scalar_from_hex("291a4b1cec292deb928a94385017b681693459cc424b1a9be19f9511ff968bc7")] {
+            let residue = ((&scalar % &lattice.n) + &lattice.n) % &lattice.n;
+            let floor_w = (&residue * &lattice.v1).div_floor(&lattice.n);
+            let floor_v = (-&residue * &w1).div_floor(&lattice.n);
+            let old_nearest = short_representative(&residue);
+            let corner_norm = (0..=1).flat_map(|di| (0..=1).map(move |dj| (di, dj)))
+                .map(|(di, dj)| {
+                    let i = &floor_w + di;
+                    let j = &floor_v + dj;
+                    let a = &residue - &i * &w0 - &j * &lattice.v0;
+                    let b = -&i * &w1 - &j * &lattice.v1;
+                    tau_norm(&a, &b)
+                }).min().unwrap();
+            assert_eq!(corner_norm, tau_norm(&old_nearest.0, &old_nearest.1));
+            assert_eq!(hexagonal_representative_choices(&residue).len(), 9);
+            let chosen = scalar_multiply_width_six_comb13_hex9(&scalar);
+            let nearest = scalar_multiply_width_six_comb13_cover(&scalar);
+            assert!(same_point(chosen.0, nearest.0));
+            assert!(chosen.6 < 9 && (1..=9).contains(&chosen.7));
+            assert!(5 * chosen.3 + 11 * chosen.4.iter().sum::<usize>()
+                    <= 5 * nearest.3 + 11 * nearest.4.iter().sum::<usize>());
         }
     }
 
