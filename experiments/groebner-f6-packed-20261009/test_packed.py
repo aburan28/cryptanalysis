@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import random
 
-from chain_fixture import fixture
+from chain_fixture import fixture, retarget
 from packed_separator import HERE, solve
 
 
@@ -39,6 +39,14 @@ def main():
                        max_states=100_000_000, sanitized=sanitized)
         assert result['status'] == 'satisfiable'
         assert result['width'] == 21 and result['independently_verified'] is True
+        spurious = solve(chain['nvars'], retarget(chain, 2), max_bag=21,
+                         max_states=100_000_000, sanitized=sanitized)
+        constrained = solve(chain['nvars'], retarget(chain, 2, require_liftable=True),
+                            max_bag=21, max_states=100_000_000,
+                            sanitized=sanitized)
+        assert spurious['status'] == 'satisfiable'
+        assert constrained['status'] == 'unsatisfiable'
+        assert constrained['width'] == 21
     print('F6_PACKED_EXACT_PASS', controls, 'random systems and n9 m4 S3 chain', flush=True)
 
 

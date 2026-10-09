@@ -44,3 +44,34 @@ def fixture(n, m, ell, seed):
                 modulus=field.mod, curve_b=1, target_x=target_x,
                 planted_assignment=planted, equations=rows,
                 structural_profile=expected)
+
+
+def liftability_equation(curve, offset, width):
+    """ANF of the indicator that a block is not a curve abscissa."""
+    values = [int(curve.lift_x(x) is None) for x in range(1 << width)]
+    coefficients = values.copy()
+    for bit in range(width):
+        for mask in range(1 << width):
+            if mask >> bit & 1:
+                coefficients[mask] ^= coefficients[mask ^ (1 << bit)]
+    terms = [sum(1 << (offset + bit) for bit in range(width) if mask >> bit & 1)
+             for mask, value in enumerate(coefficients) if value]
+    assert all((not satisfies(canonical(terms), x << offset)) == bool(values[x])
+               for x in range(1 << width))
+    return terms
+
+
+def retarget(case, target_x, *, require_liftable=False):
+    n, m, ell = case['n'], case['m'], case['ell']
+    field = GF2n(n)
+    curve = Curve(field, case['curve_b'])
+    auxiliary = coordinate(m * ell + (m - 3) * n, n)
+    summand = coordinate((m - 1) * ell, ell)
+    final = equations(field, s3(field, case['curve_b'], auxiliary,
+                                summand, {0: target_x}))
+    rows = case['equations'][:-n] + final
+    if require_liftable:
+        rows += [liftability_equation(curve, i * ell, ell) for i in range(m)]
+        rows += [liftability_equation(curve, m * ell + i * n, n)
+                 for i in range(m - 2)]
+    return rows
