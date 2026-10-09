@@ -10,6 +10,8 @@ kernel launches, synchronization and download. Curve and factor-base setup is
 recorded as reusable setup outside the online interval; JSON artifact writing
 is outside it as well. The work is a stage query and does not substitute for
 the repository's single-target IC/rho metric.
+Each JSON result records the field modulus, curve and subgroup orders, cofactor,
+actual factor-base point count, dimension and basis, engine, target, and limits.
 The four exclusive `phase_ns` fields sum exactly to `online_ns`: target
 conversion, system construction, solve including independent callbacks, and
 offload bookkeeping. Callback time is also reported as a subset of solve time.

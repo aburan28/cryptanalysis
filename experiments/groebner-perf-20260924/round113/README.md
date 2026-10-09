@@ -1,5 +1,8 @@
 # Native continuation timing for verified F4 queries
 
+The [measured phase and query results](RESULTS.md) include the raw evidence
+archive, GPU replay boundary, and structural separator width study.
+
 This experiment adds observation-only clocks to the seeded continuation.
 `preparation_ns` covers input scanning, row transfer, and engine construction;
 `f4_ns` covers the unchanged F4 charges, compute, compaction, and counters;
