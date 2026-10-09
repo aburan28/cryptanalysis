@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""Check all fixed-width unit-orbit benchmark outputs without using timings."""
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+
+
+HERE = Path(__file__).resolve().parent
+INDICES = (0, 16, 32, 48, 64, 80, 96, 112, 128)
+RETAINED = {14: 78_470_184, 15: 34_561_176, 16: 16_473_352}
+
+
+def sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def fields(line):
+    return dict(item.split("=", 1) for item in line.split() if "=" in item)
+
+
+def run(command):
+    process = subprocess.run(command, capture_output=True, text=True,
+                             check=True, timeout=1200)
+    return [fields(line) for line in process.stdout.splitlines() if line.strip()]
+
+
+def verify(row, output, mode, retained):
+    expected = ("identity" if row["expected_identity"] else
+                row["expected_x_hex"] + ":" + row["expected_y_hex"])
+    assert output["verified"] == "1"
+    assert output["curve"] == "secp256k1"
+    assert output["base_x"] == row["base_x_hex"]
+    assert output["base_y"] == row["base_y_hex"]
+    assert output["scalar"] == row["scalar_hex"]
+    assert output["point"] == expected
+    assert output["mode"] == mode
+    if retained is not None:
+        assert int(output["retained_bytes"]) == retained
+        assert float(output["preparation_ms"]) >= 0
+    assert float(output["online_ms"]) > 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--binary", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    if args.output.exists():
+        raise SystemExit("output exists")
+    binary = args.binary.resolve(strict=True)
+    fixture_path = HERE / "tau6-comb13-bench-fixture.json"
+    fixture = json.loads(fixture_path.read_text())
+    assert fixture["schema"] == 1 and len(fixture["cases"]) == 129
+    for fmt in (14, 15, 16):
+        outputs = run([str(binary), f"--benchmark-scalar-unit-orbit-word{fmt}-fixed-fixture",
+                       str(fixture_path)])
+        assert len(outputs) == len(fixture["cases"])
+        for row, output in zip(fixture["cases"], outputs):
+            verify(row, output, f"unit_orbit_word{fmt}_fixed", RETAINED[fmt])
+        for flag, mode in ((f"word{fmt}", f"unit_orbit_word{fmt}_fixed"),
+                           (f"windows{fmt}", f"unit_orbit_windows{fmt}_fixed")):
+            output = run([str(binary),
+                          f"--benchmark-scalar-unit-orbit-{flag}-fixed-case",
+                          str(fixture_path), str(INDICES[0])])
+            assert len(output) == 1
+            verify(fixture["cases"][INDICES[0]], output[0], mode, RETAINED[fmt])
+    receipt = {
+        "schema": 1,
+        "status": "passed",
+        "formats": [14, 15, 16],
+        "fixture_cases_per_format": len(fixture["cases"]),
+        "single_case_dispatch_per_format": 1,
+        "baseline_case_dispatch_per_format": 1,
+        "paired_panel_indices": list(INDICES),
+        "retained_bytes": RETAINED,
+        "binary_sha256": sha(binary),
+        "main_source_sha256": sha(HERE / "src/bin/eisenstein_fixed.rs"),
+        "multiply_source_sha256": sha(HERE / "src/bin/eisenstein_fixed/unit_orbit_windows.rs"),
+        "fixture_sha256": sha(fixture_path),
+        "protocol_sha256": sha(HERE / "UNIT_ORBIT_WORD_PROTOCOL.md"),
+        "checker_sha256": sha(Path(__file__)),
+        "local_online_timing_used": False,
+    }
+    args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+    print(json.dumps({"status": receipt["status"],
+                      "fixture_cases_per_format": receipt["fixture_cases_per_format"],
+                      "local_online_timing_used": False}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
