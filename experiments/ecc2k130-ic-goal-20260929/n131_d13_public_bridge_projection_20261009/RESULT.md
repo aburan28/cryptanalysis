@@ -47,3 +47,25 @@ target-dependent exact transformations. Their costs must be included in a
 complete single-target online measurement. Initial matrix fit is a useful
 solver-input property; ordinary relation yield, rank, factor logs, target
 scalar, and paired rho timing remain to be measured.
+
+The [first public-Q solver attempt](public_q_stage_R1/result.json) began
+after the d10 control's terminal result and process drain. It ended
+`CENSORED_TIME` at the 580-second parent wall cap with zero model/status
+lines and 965,967,872 bytes sampled peak combined RSS. Its
+[independent terminal audit](public_q_stage_R1/independent_terminal_audit.json)
+matches the frozen protocol and code, solver and formula hashes, output,
+resource guard, and drained process identity. Across seven matrix
+initializations the largest reported matrix was 3,038 rows by 4,834 columns;
+there were zero rediscovered XORs and zero oversized matrices. CryptoMiniSat
+logged 167 automatic poor-performance matrix disables. The solver accrued at
+least 145.77 CPU seconds within 580.12 seconds of stage wall time on the
+contended host.
+
+The representation and solver policy therefore preserved the intended
+component geometry throughout this bounded public-point query, but the
+query returned no relation at the cap. The earlier projected-Q attempt on
+the same point and seed also ended censored under a different 540-second
+limit. Neither row establishes a timing ranking or a natural relation-yield
+rate. The next algorithmic step needs target-dependent pruning across free
+summand or pair domains; another static matrix-size reduction alone has no
+measured search benefit here.
