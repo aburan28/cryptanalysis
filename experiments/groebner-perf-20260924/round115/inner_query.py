@@ -25,7 +25,10 @@ class PhaseStats(C.Structure):
 class InnerStats(C.Structure):
     _fields_ = [(name, abi.U64) for name in
                 ("initial_ns", "pairs_ns", "matrix_ns", "candidate_ns", "final_ns",
-                 "compute_ns", "compact_ns", "symbolic_ns", "column_ns", "packed_ns")]
+                 "compute_ns", "compact_ns", "symbolic_ns", "column_ns", "packed_ns",
+                 "initial_work", "pairs_work", "matrix_work", "candidate_work",
+                 "final_work", "compute_work", "symbolic_work", "column_work",
+                 "packed_work")]
 
 
 class InnerNative(Native):
@@ -62,6 +65,10 @@ class InnerNative(Native):
             assert inner["matrix_ns"] >= inner["symbolic_ns"] + inner["column_ns"]
             assert inner["column_ns"] >= inner["packed_ns"]
             assert phases["f4_ns"] >= inner["compute_ns"] + inner["compact_ns"]
+            assert inner["compute_work"] == sum(inner[name] for name in
+                   ("initial_work", "pairs_work", "matrix_work", "candidate_work", "final_work"))
+            assert inner["matrix_work"] == inner["symbolic_work"] + inner["column_work"]
+            assert inner["column_work"] >= inner["packed_work"]
             self._local.samples.append((phases, inner))
             return handle
 

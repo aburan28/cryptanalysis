@@ -14,6 +14,9 @@ def engine(source):
     uint64_t initial_ns=0, pairs_ns=0, matrix_ns=0, candidate_ns=0,
              final_ns=0, compute_ns=0, compact_ns=0, symbolic_ns=0,
              column_ns=0, packed_ns=0;
+    uint64_t initial_work=0, pairs_work=0, matrix_work=0,
+             candidate_work=0, final_work=0, compute_work=0,
+             symbolic_work=0, column_work=0, packed_work=0;
 };
 static thread_local F4InnerStats f4_inner{};
 struct F4Timer {
@@ -29,27 +32,43 @@ struct F4Timer {
     }
     ~F4Timer(){stop();}
 };
+struct F4WorkMeter {
+    uint64_t &slot;
+    const uint64_t &work;
+    uint64_t start;
+    bool active=true;
+    F4WorkMeter(uint64_t &target,const uint64_t &current)
+        :slot(target),work(current),start(current){}
+    void stop(){if(active){slot+=work-start;active=false;}}
+    ~F4WorkMeter(){stop();}
+};
 '''
     source = once(source, 'class Engine {', header + 'class Engine {')
     source = once(source, 'std::vector<Row> packed_column_matrix(std::vector<Row> rows, const std::vector<Mask> &columns,\n'
                          '                                      const std::set<Mask> &reducer_heads, size_t width)\n{',
                   'std::vector<Row> packed_column_matrix(std::vector<Row> rows, const std::vector<Mask> &columns,\n'
                   '                                      const std::set<Mask> &reducer_heads, size_t width)\n{\n'
-                  '    F4Timer timer(f4_inner.packed_ns);')
+                  '    F4Timer timer(f4_inner.packed_ns);\n'
+                  '    F4WorkMeter meter(f4_inner.packed_work,work);')
     source = once(source, '    std::vector<Row> matrix(std::vector<Row> rows) {\n'
                           '        std::set<Mask> reducer_heads;',
                   '    std::vector<Row> matrix(std::vector<Row> rows) {\n'
                   '        F4Timer symbolic_timer(f4_inner.symbolic_ns);\n'
+                  '        F4WorkMeter symbolic_meter(f4_inner.symbolic_work,work);\n'
                   '        std::set<Mask> reducer_heads;')
     source = once(source, '        ++matrices;matrix_rows+=rows.size();peak_rows=std::max<uint64_t>(peak_rows,rows.size());',
                   '        symbolic_timer.stop();\n'
+                  '        symbolic_meter.stop();\n'
                   '        F4Timer column_timer(f4_inner.column_ns);\n'
+                  '        F4WorkMeter column_meter(f4_inner.column_work,work);\n'
                   '        ++matrices;matrix_rows+=rows.size();peak_rows=std::max<uint64_t>(peak_rows,rows.size());')
     source = once(source, '    void compute(const std::vector<Poly>& input) {\n'
                           '        for (uint32_t i=0;i<input.size();++i) {',
                   '    void compute(const std::vector<Poly>& input) {\n'
                   '        F4Timer compute_timer(f4_inner.compute_ns);\n'
+                  '        F4WorkMeter compute_meter(f4_inner.compute_work,work);\n'
                   '        { F4Timer timer(f4_inner.initial_ns);\n'
+                  '          F4WorkMeter meter(f4_inner.initial_work,work);\n'
                   '        for (uint32_t i=0;i<input.size();++i) {')
     source = once(source, '            if (unit()) break;\n        }\n        while (!queue.empty() && !unit()) {',
                   '            if (unit()) break;\n        }\n        }\n        while (!queue.empty() && !unit()) {')
@@ -59,6 +78,7 @@ struct F4Timer {
                   '        while (!queue.empty() && !unit()) {\n'
                   '            std::vector<Row> batch;\n'
                   '            { F4Timer timer(f4_inner.pairs_ns);\n'
+                  '              F4WorkMeter meter(f4_inner.pairs_work,work);\n'
                   '            unsigned degree=queue.top().degree;')
     source = once(source, '            if (batch.empty()) continue;\n'
                           '            if (batch.size()>max_rows) throw Budget("native batch row budget");\n'
@@ -67,11 +87,14 @@ struct F4Timer {
                   '            if (batch.empty()) continue;\n'
                   '            if (batch.size()>max_rows) throw Budget("native batch row budget");\n'
                   '            auto reduced=[&](){F4Timer timer(f4_inner.matrix_ns);\n'
+                  '                F4WorkMeter meter(f4_inner.matrix_work,work);\n'
                   '                return matrix(std::move(batch));}();\n'
-                  '            { F4Timer timer(f4_inner.candidate_ns);')
+                  '            { F4Timer timer(f4_inner.candidate_ns);\n'
+                  '              F4WorkMeter meter(f4_inner.candidate_work,work);')
     source = once(source, '                if (unit()) break;\n            }\n        }\n        bool changed=true;',
                   '                if (unit()) break;\n            }\n            }\n        }\n'
                   '        { F4Timer timer(f4_inner.final_ns);\n'
+                  '          F4WorkMeter meter(f4_inner.final_work,work);\n'
                   '        bool changed=true;')
     source = once(source, '        for (const auto& row:basis) basis_leads.push_back(lead(row.terms));\n'
                           '    }\n    void compact() {',

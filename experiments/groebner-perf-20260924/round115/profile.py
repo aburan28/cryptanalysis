@@ -13,6 +13,8 @@ HERE = Path(__file__).resolve().parent
 CASES = [f'pdp-12-seed-{seed}' for seed in range(1, 6)]
 PHASES = ('initial_ns', 'pairs_ns', 'matrix_ns', 'candidate_ns', 'final_ns',
           'compute_ns', 'compact_ns', 'symbolic_ns', 'column_ns', 'packed_ns')
+WORK = ('initial_work', 'pairs_work', 'matrix_work', 'candidate_work',
+        'final_work', 'compute_work', 'symbolic_work', 'column_work', 'packed_work')
 
 
 def sha(path):
@@ -106,8 +108,11 @@ def main():
                        for field in PHASES}
             mads = {field: statistics.median(abs(r['phase'][field]/1e6-medians[field])
                     for r in rows) for field in PHASES}
+            work = {field: rows[0]['phase'][field] for field in WORK}
+            assert all(all(row['phase'][field] == work[field] for field in WORK)
+                       for row in rows)
             report['summary'][name] = dict(n=len(rows), median_ms=medians,
-                mad_ms=mads, median_matrix_fraction=statistics.median(
+                mad_ms=mads, work=work, median_matrix_fraction=statistics.median(
                     r['phase']['matrix_ns']/r['phase']['compute_ns'] for r in rows),
                 median_initial_fraction=statistics.median(
                     r['phase']['initial_ns']/r['phase']['compute_ns'] for r in rows),

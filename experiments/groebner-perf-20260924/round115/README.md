@@ -14,6 +14,10 @@ ranking and conversion or the sparse fallback. `f4_ns` also includes the
 seeded producer's existing logical decode charges and counter export. Every
 completed worker checks these nesting relations. The clocks do not alter row
 order, work charges, proof operations, or resource limits.
+The parallel `*_work` counters partition the engine's deterministic logical
+work charges across the same phases; a repeated panel requires these counts
+to agree exactly across runs. They remain useful when host preemption distorts
+wall-clock phase shares.
 
 The opt-in library is built from the exact round108 generated engine SHA-256
 and the frozen round110/113 native phase source. Both optimized and undefined
