@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import statistics
 import subprocess
+import tempfile
 
 from packed_query import HERE, PackedContext
 from chain_fixture import fixture
@@ -52,7 +53,7 @@ def main():
                   timing_eligible=False, qualified_speedup=None)
     path = args.output / 'report.json'
     save(path, report)
-    lock = Path('/private/tmp/f6-packed-target-complete-query.lock')
+    lock = Path(tempfile.gettempdir()) / 'f6-packed-target-complete-query.lock'
     with lock.open('a') as guard:
         fcntl.flock(guard, fcntl.LOCK_EX)
         context = PackedContext(fixture(9, 4, 3, 1))
