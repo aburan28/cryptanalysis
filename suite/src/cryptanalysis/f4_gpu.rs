@@ -829,7 +829,7 @@ mod cuda {
         pub blocks_per_sm: u32,
         /// Device scratch budget over all blocks, in bytes.
         pub scratch_budget: usize,
-        buffers: [Buffer; 19],
+        buffers: [Buffer; 20],
         /// `ECHELON_KERNELS`, when the module has them.
         echelon_fns: Option<[Handle; 5]>,
         /// With `F4_F2_ECHELON_PROFILE` set: launches and nanoseconds per
@@ -839,7 +839,7 @@ mod cuda {
     }
 
     /// Entry points of `cuda/f4_gf2_echelon.cuh`, in launch order.
-    const ECHELON_KERNELS: [&str; 5] = [
+    pub(super) const ECHELON_KERNELS: [&str; 5] = [
         "f4e_gather",
         "f4e_panel_block",
         "f4e_materialise",
@@ -1124,12 +1124,12 @@ mod cuda {
             let mut ops = self.upload(16, &[0u64])?;
             let mut low = self.ensure(17, n * 16)?;
             let mut n_low = self.upload(18, &[0u32])?;
+            let mut prow = self.ensure(19, n * 8)?;
             let upload_ns = t_up.elapsed().as_nanos();
             let t_dev = std::time::Instant::now();
             let (mut stride64, mut rows32) = (stride as u64, rows as u32);
             let (mut low_start32, mut width32) = (low_start as u32, width as u32);
             let row_grid = (rows.div_ceil(256) as u32).min(self.sm_count * 8);
-            let warp_grid = self.sm_count * 8;
             for w in 0..hw {
                 let mut w32 = w as u32;
                 let high = low_start - 64 * w;
@@ -1152,9 +1152,12 @@ mod cuda {
                         &mut cand as *mut u64 as *mut c_void,
                         &mut pw as *mut u64 as *mut c_void,
                         &mut count as *mut u64 as *mut c_void,
+                        &mut prow as *mut u64 as *mut c_void,
                     ];
                     self.launch(fns[0], row_grid, 256, &mut p, "f4e_gather")?;
                     let mut p = [
+                        &mut prow as *mut u64 as *mut c_void,
+                        &mut rows32 as *mut u32 as *mut c_void,
                         &mut cand as *mut u64 as *mut c_void,
                         &mut pw as *mut u64 as *mut c_void,
                         &mut coeff as *mut u64 as *mut c_void,
@@ -1173,10 +1176,16 @@ mod cuda {
                     ];
                     let words = ((stride - w).div_ceil(128) as u32).max(1);
                     self.launch(fns[2], words, 128, &mut p, "f4e_materialise")?;
+                    // A block per 32-word tile and part of the candidates,
+                    // about four blocks per multiprocessor, and never so many
+                    // parts that a narrow tail is reloaded by idle blocks.
+                    let tiles = (stride - w).div_ceil(32) as u32;
+                    let mut parts = (4 * self.sm_count).div_ceil(tiles).clamp(1, 32);
                     let mut p = [
                         &mut mat as *mut u64 as *mut c_void,
                         &mut stride64 as *mut u64 as *mut c_void,
                         &mut w32 as *mut u32 as *mut c_void,
+                        &mut parts as *mut u32 as *mut c_void,
                         &mut cand as *mut u64 as *mut c_void,
                         &mut coeff as *mut u64 as *mut c_void,
                         &mut is_piv as *mut u64 as *mut c_void,
@@ -1184,7 +1193,7 @@ mod cuda {
                         &mut piv as *mut u64 as *mut c_void,
                         &mut ops as *mut u64 as *mut c_void,
                     ];
-                    self.launch(fns[3], warp_grid, 256, &mut p, "f4e_update")?;
+                    self.launch(fns[3], tiles * parts, 256, &mut p, "f4e_update")?;
                 }
             }
             // SAFETY: as above, for f4e_low.
@@ -1851,6 +1860,9 @@ mod tests {
             (300, 129, 40),
             (200, 190, 2),
             (500, 300, 65),
+            // Panels whose pivot search runs past many chunks of
+            // candidates.
+            (2500, 70, 10),
         ] {
             let cols = low_start + width;
             let stride = cols.div_ceil(64);
@@ -1892,7 +1904,11 @@ mod tests {
                     })
                 };
                 let want = rref_rows(work.iter().map(|r| low(r)).collect(), width);
-                for threads in [1, 7, 64] {
+                // One thread takes every panel's candidates in row order,
+                // 1024 mostly in gather order; the pivots, hence the word
+                // count, are the lowest rows either way.
+                let mut word_ops = None;
+                for threads in [1, 7, 64, 1024] {
                     let e = emulate_echelon(&m, rows, stride, low_start, width, &skip, threads);
                     assert_eq!(e.pivots, pivots, "pivots: {rows}x{cols} density {density}");
                     assert_eq!(
@@ -1900,11 +1916,16 @@ mod tests {
                         want,
                         "linear block: {rows}x{cols} density {density}"
                     );
+                    assert_eq!(
+                        *word_ops.get_or_insert(e.word_ops),
+                        e.word_ops,
+                        "word ops: {rows}x{cols} density {density}, {threads} threads"
+                    );
                     cases += 1;
                 }
             }
         }
-        assert_eq!(cases, 54);
+        assert_eq!(cases, 84);
     }
 
     /// With every elimination routed through the emulated device kernels,
@@ -1959,10 +1980,15 @@ mod tests {
         match compile_kernel_ptx(75) {
             Ok(ptx) => {
                 let text = String::from_utf8_lossy(&ptx);
-                assert!(
-                    text.contains(".entry f4_gf2_decide_batch"),
-                    "no entry point"
-                );
+                for entry in ["f4_gf2_decide_batch"]
+                    .iter()
+                    .chain(cuda::ECHELON_KERNELS.iter())
+                {
+                    assert!(
+                        text.contains(&format!(".entry {entry}")),
+                        "no entry point {entry}"
+                    );
+                }
                 assert_eq!(ptx.last(), Some(&0), "PTX must be NUL-terminated");
             }
             Err(e) => assert!(e.starts_with("none of"), "NVRTC was found but failed: {e}"),
