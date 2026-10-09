@@ -885,10 +885,12 @@ pub(super) fn benchmark_zero_tau_case(fixture_path: &str, index: usize,
 }
 
 pub(super) fn check_degree_seven_case(fixture_path: &str, index: usize,
-                                      use_tail: bool) {
+                                      use_tail: bool, timed: bool) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
         .expect("fixture JSON");
     let case = &fixture["cases"].as_array().expect("cases")[index];
+    let base_x = case["base_x_hex"].as_str().expect("base x");
+    let base_y = case["base_y_hex"].as_str().expect("base y");
     let scalar_hex = case["scalar_hex"].as_str().expect("scalar");
     let expected = if case["expected_identity"].as_bool().unwrap_or(false) {
         "identity".to_owned()
@@ -899,31 +901,40 @@ pub(super) fn check_degree_seven_case(fixture_path: &str, index: usize,
     let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
     LazyLock::force(&LATTICE);
     LazyLock::force(&DIGIT_TABLE);
+    let start = Instant::now();
     let scalar = big_from_hex(scalar_hex);
     let base = J::affine(
-        fe_from_hex(case["base_x_hex"].as_str().expect("base x")),
-        fe_from_hex(case["base_y_hex"].as_str().expect("base y")));
+        fe_from_hex(base_x), fe_from_hex(base_y));
     let (a, b) = short_representative(&scalar);
-    assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
-    assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
-    let actions = recode_degree_seven(a, b, use_tail);
+    let actions = recode_degree_seven(a.clone(), b.clone(), use_tail);
     let seeds = prepare(base, beta);
     let (point, counts) = evaluate_shared_z(&actions, &seeds, beta);
-    let actual = match point.to_affine() {
-        None => "identity".to_owned(),
-        Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
-    };
-    assert_eq!(actual, expected, "degree-seven output mismatch");
     assert_eq!(counts.cache_entries, 0);
     assert_eq!(counts.general_adds, 0);
     let source = 83 + 57 + 6 * counts.tau_steps + 7 * counts.doubles
         + 13 * (counts.rho_steps + counts.bar_rho_steps)
         - 2 * counts.tau_pairs + 11 * counts.mixed_adds;
+    let actual = match point.to_affine() {
+        None => "identity".to_owned(),
+        Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
+    };
+    assert_eq!(actual, expected, "degree-seven output mismatch");
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    if !timed {
+        assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
+        assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
+    }
     let mode = if use_tail { "shared_z_degree_seven_tail" }
                else { "shared_z_degree_seven" };
-    println!("verified=1 mode={mode} curve=secp256k1 scalar={scalar_hex} point={actual} source_M_plus_S={source} rho_steps={} bar_rho_steps={} tau_steps={} doubles={} mixed_adds={} cpu_speedup_claim=null",
-             counts.rho_steps, counts.bar_rho_steps, counts.tau_steps,
-             counts.doubles, counts.mixed_adds);
+    if timed {
+        println!("online_ms={elapsed_ms:.6} verified=1 mode={mode} curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} source_M_plus_S={source} rho_steps={} bar_rho_steps={} tau_steps={} doubles={} mixed_adds={} cpu_speedup_claim=null",
+                 counts.rho_steps, counts.bar_rho_steps, counts.tau_steps,
+                 counts.doubles, counts.mixed_adds);
+    } else {
+        println!("verified=1 mode={mode} curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} source_M_plus_S={source} rho_steps={} bar_rho_steps={} tau_steps={} doubles={} mixed_adds={} cpu_speedup_claim=null",
+                 counts.rho_steps, counts.bar_rho_steps, counts.tau_steps,
+                 counts.doubles, counts.mixed_adds);
+    }
 }
 
 #[cfg(test)]

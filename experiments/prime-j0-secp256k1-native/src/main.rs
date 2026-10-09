@@ -1330,10 +1330,12 @@ fn main() {
         return;
     }
     if args.len() == 4 && (args[1] == "--check-shared-z-degree-seven-case" ||
-                           args[1] == "--check-shared-z-degree-seven-tail-case") {
+                           args[1] == "--check-shared-z-degree-seven-tail-case" ||
+                           args[1] == "--benchmark-shared-z-degree-seven-case" ||
+                           args[1] == "--benchmark-shared-z-degree-seven-tail-case") {
         mixed_radix::check_degree_seven_case(&args[2],
             args[3].parse::<usize>().expect("case index"),
-            args[1] == "--check-shared-z-degree-seven-tail-case");
+            args[1].contains("-tail-case"), args[1].starts_with("--benchmark-"));
         return;
     }
     if args.len() == 5 && args[1] == "--check-zero-tau-fixture" {
