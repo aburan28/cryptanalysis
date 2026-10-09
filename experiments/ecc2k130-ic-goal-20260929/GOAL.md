@@ -1,45 +1,40 @@
 # ECC2K-130 single-target index-calculus goal
 
-**Current method gate (2026-10-09 20:58 UTC):** the [N131 exact second-link
-table](n131_d13_second_link_lookup_20261009/RESULT.md) enumerates both finite
-S3 roots for every one of the 4,134 valid third-leaf codes on each frozen
-first-link branch. Independent checked-Sage arithmetic and XCNF audits pass;
-each branch's 8,268 output masks are distinct. The [paired N41 ordinary
-control](n41_phi_second_link_control_20261009/RESULT.md) qualified the same
-lookup construction on a public target, but both source and lookup queries
-ended `CENSORED_TIME` at 120 seconds with zero models. A corrected
-[target-conditioned two-leaf suffix](n41_phi_suffix2_corrected_20261009/RESULT.md)
-passed its planted semantic control and full public-target encoding audit;
-its ordinary query ended `CENSORED_TIME` at 240 seconds. These are exact
-propagation and target-support results, with ordinary-query yield still to
-measure.
+**Current method gate (2026-10-09 21:17 UTC):** an [exact target-coupled
+group join](n41_phi_target_coupled_pair_join_20261009/RESULT.md) found and
+independently replayed an ordinary 12-leaf relation on the same frozen N41
+public target and first-link branch used by the censored SAT controls.
+Its witness satisfies every saved record in the source, [N41 second-link
+lookup](n41_phi_second_link_control_20261009/RESULT.md), and corrected
+[target-conditioned suffix](n41_phi_suffix2_corrected_20261009/RESULT.md)
+XCNFs. The reusable five-leaf index took 185.304 seconds to build; the
+target-dependent join took 256.384 seconds through exact hit verification
+and peaked at 540,753,920 bytes. The complete d6 base has B=2,132 points
+and K=26 sign/Frobenius columns; this target equation has nine nonzero
+folded columns. These times come from a contended host and are stage
+observations, while the relation and source replay are exact.
 
-The next method gate is an **exact target-coupled group join** with a
-reusable adjacent two-leaf sum index. First obtain and independently replay
-an unpinned relation on the same frozen N41 public point, charging the full
-target-dependent index query and failed attempts. Before promoting an N131
-query, show that the reusable index fits 4 GiB combined RSS and the full
-target-dependent join fits one worker and 600 seconds on the frozen d13
-base. A nonadaptive prefix followed by one final-pair lookup is an
-unpromising search rule: on this base, at most
-`C(1,083,108,2) = 586,560,928,278` subgroup points can be two distinct
-leaves' sum. For uniformly sampled targets and prefixes chosen independently
-of the target, even 600 billion final-pair probes (one nanosecond each for
-600 seconds) have a union-bound success probability at most `5.18e-16`.
-This screen does not bound the fixed public
-point or an adaptive join; the prior [exact W2 pair-domain
-analysis](N131_W2_MACRO_PAIR_RESIDUAL_BOUND_RESULT.md) gives a sharper
-instance of the same test. The N131
-ordinary relation, useful-rank, factor-log, fresh-target DLP, and matched
-same-point rho measurements remain the subsequent gates.
+The next N131 method must **use the target to restrict multiple pair
+choices before building a five-leaf index**. Directly copying the N41
+sample counts to the degree-131 subgroup has a uniform-target union-bound
+success probability at most `1.058e-26`; even an idealized 600 billion
+right-side probes raise it only to `3.174e-21`. That screen does not bound
+the fixed published point or an adaptive method. The [N131 exact
+second-link table](n131_d13_second_link_lookup_20261009/RESULT.md) remains
+available as a verified propagation primitive. Freeze the adaptive method,
+prove or measure its 4-GiB index and 600-second one-worker target-dependent
+query, then obtain and independently replay an ordinary relation on the
+exact d13 public target. Useful rank, factor logs, fresh-target DLP, and
+matched same-point rho timing follow from that gate.
 
-**Live exact-field gate (2026-10-09 18:06 UTC):** the frozen N131 d10/m15
+**Live exact-field gate (2026-10-09 21:17 UTC):** the frozen N131 d10/m15
 candidate `IC1N131Ckb1fb139384PDP15satRCdirectLAgaussTDdirectISO0h91f3d222e01b`
 is executing its first target-independent precomputation query under the
 checked-Sage parent and 4-GiB combined-RSS guard. The
 [v3 run progress](n131_phi_torsion_frobenius_domains_20261005/m15_d10_static/single_target_runs/IC1N131Ckb1fb139384PDP15satRCdirectLAgaussTDdirectISO0h91f3d222e01bW3c1992b7c92fR1/precompute_progress.json)
-is `RUNNING`, rank 0/532, with zero completed attempts; the saved PID and
-current process identity confirm the solver is live. The
+is `RUNNING`, rank 0/532, with zero completed attempts; the exact solver PID
+60681 and creation time 1791568857.490002 were rechecked with 3,889.791
+seconds of accumulated CPU, confirming that this process is still live. The
 [correctness-fix record](n131_phi_torsion_frobenius_domains_20261005/m15_d10_static/ROOT_COUNT_AND_RSS_FIX_20261009.md)
 explains the preserved v1 formula-root count failure and v2 RSS-monitor
 class-name failure. V3 passed exact root-count regression, a real
