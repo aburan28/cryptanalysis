@@ -9,6 +9,8 @@ use std::mem::size_of;
 use std::sync::LazyLock;
 
 const WIDTHS: [u8; 14] = [10, 10, 10, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9];
+const WIDTHS15: [u8; 15] = [8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9];
+const WIDTHS16: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
 const CAP_BYTES: usize = 90 * (1 << 20);
 
 fn norm((a, b): (i32, i32)) -> i64 {
@@ -189,68 +191,105 @@ fn build_window(atlas: &OrbitAtlas, base: Jacobian) -> Box<[CompactPairPoint]> {
 }
 
 struct Tables {
-    large: OrbitAtlas,
-    small: OrbitAtlas,
+    widths: &'static [u8],
+    atlases: [Option<OrbitAtlas>; 3],
     windows: Vec<Box<[CompactPairPoint]>>,
     retained_bytes: usize,
 }
 
 impl Tables {
     fn new() -> Self {
+        Self::with_widths(&WIDTHS)
+    }
+
+    fn with_widths(widths: &'static [u8]) -> Self {
         assert_eq!(size_of::<CompactPairPoint>(), 72);
-        let large = OrbitAtlas::new(10);
-        let small = OrbitAtlas::new(9);
-        let mut windows = Vec::with_capacity(WIDTHS.len());
+        assert!(widths.iter().all(|width| (8..=10).contains(width)));
+        assert_eq!(
+            widths
+                .iter()
+                .map(|&width| usize::from(width))
+                .sum::<usize>(),
+            129
+        );
+        let atlases: [Option<OrbitAtlas>; 3] = std::array::from_fn(|index| {
+            let width = 8 + index as u8;
+            widths.contains(&width).then(|| OrbitAtlas::new(width))
+        });
+        let mut windows = Vec::with_capacity(widths.len());
         let mut base = Jacobian::generator();
-        for width in WIDTHS {
-            windows.push(build_window(
-                if width == 10 { &large } else { &small },
-                base,
-            ));
+        for &width in widths {
+            let atlas = atlases[usize::from(width - 8)].as_ref().unwrap();
+            windows.push(build_window(atlas, base));
             for _ in 0..width {
                 base = base.double();
             }
         }
         let entries: usize = windows.iter().map(|row| row.len()).sum();
-        assert_eq!(entries, 1_004_904);
+        assert_eq!(
+            entries,
+            widths
+                .iter()
+                .map(|&width| {
+                    let base = 1usize << width;
+                    (base * base + 8) / 6
+                })
+                .sum::<usize>()
+        );
         let retained_bytes = entries * size_of::<CompactPairPoint>()
-            + (large.codes.len() + small.codes.len()) * size_of::<u32>()
-            + (large.digits.len() + small.digits.len()) * size_of::<(i16, i16)>()
+            + atlases
+                .iter()
+                .flatten()
+                .map(|atlas| {
+                    atlas.codes.len() * size_of::<u32>()
+                        + atlas.digits.len() * size_of::<(i16, i16)>()
+                })
+                .sum::<usize>()
             + size_of::<Self>()
             + windows.capacity() * size_of::<Box<[CompactPairPoint]>>();
         assert!(retained_bytes < CAP_BYTES);
         Self {
-            large,
-            small,
+            widths,
+            atlases,
             windows,
             retained_bytes,
         }
     }
 
     fn atlas(&self, width: u8) -> &OrbitAtlas {
-        if width == 10 {
-            &self.large
-        } else {
-            &self.small
-        }
+        self.atlases[usize::from(width - 8)].as_ref().unwrap()
     }
 }
 
 static TABLES: LazyLock<Tables> = LazyLock::new(Tables::new);
+static TABLES15: LazyLock<Tables> = LazyLock::new(|| Tables::with_widths(&WIDTHS15));
+static TABLES16: LazyLock<Tables> = LazyLock::new(|| Tables::with_widths(&WIDTHS16));
 
-pub(super) fn warm() -> usize {
-    TABLES.retained_bytes
+fn selected(format: u8) -> &'static Tables {
+    match format {
+        14 => &TABLES,
+        15 => &TABLES15,
+        16 => &TABLES16,
+        _ => panic!("unsupported unit-orbit window format"),
+    }
 }
 
-pub(super) fn multiply(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, usize, usize) {
+pub(super) fn warm_format(format: u8) -> usize {
+    selected(format).retained_bytes
+}
+
+pub(super) fn multiply_format(
+    scalar: &BigInt,
+    format: u8,
+) -> (Jacobian, BigInt, BigInt, usize, usize) {
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
     let (mut a, mut b) = hexagonal_four_corner_choices(&residue).remove(0);
     let (start_a, start_b) = (a.clone(), b.clone());
-    let tables = &*TABLES;
+    let tables = selected(format);
     let mut result = Jacobian::identity();
     let mut nonidentity: usize = 0;
-    for (index, width) in WIDTHS.into_iter().enumerate() {
+    for (index, &width) in tables.widths.iter().enumerate() {
         let atlas = tables.atlas(width);
         let (digit, orbit_id, unit_code) = atlas.digit(&a, &b);
         let base = BigInt::from(atlas.base());
@@ -318,7 +357,7 @@ mod tests {
 
     #[test]
     fn unit_orbit_maps_cover_every_residue_with_bounded_digits() {
-        for width in [9, 10] {
+        for width in [8, 9, 10] {
             let atlas = OrbitAtlas::new(width);
             let base = atlas.base() as i32;
             for a in 0..base {
@@ -332,91 +371,101 @@ mod tests {
     }
 
     #[test]
-    fn fourteen_windows_reconstruct_boundaries() {
+    fn all_schedules_reconstruct_boundaries() {
         let large = OrbitAtlas::new(10);
         let small = OrbitAtlas::new(9);
+        let tiny = OrbitAtlas::new(8);
         let n = &SCALAR_LATTICE.n;
-        for scalar in [BigInt::ZERO, BigInt::from(1), BigInt::from(2), n - 2, n - 1] {
-            let (mut a, mut b) = hexagonal_four_corner_choices(&scalar).remove(0);
-            let start = (a.clone(), b.clone());
-            let mut factor = BigInt::from(1);
-            let mut rebuilt = (BigInt::ZERO, BigInt::ZERO);
-            for width in WIDTHS {
-                let atlas = if width == 10 { &large } else { &small };
-                let ((da, db), _, _) = atlas.digit(&a, &b);
-                rebuilt.0 += &factor * da;
-                rebuilt.1 += &factor * db;
-                let base = BigInt::from(atlas.base());
-                a = (a - da) / &base;
-                b = (b - db) / &base;
-                factor *= base;
+        for widths in [&WIDTHS[..], &WIDTHS15[..], &WIDTHS16[..]] {
+            for scalar in [BigInt::ZERO, BigInt::from(1), BigInt::from(2), n - 2, n - 1] {
+                let (mut a, mut b) = hexagonal_four_corner_choices(&scalar).remove(0);
+                let start = (a.clone(), b.clone());
+                let mut factor = BigInt::from(1);
+                let mut rebuilt = (BigInt::ZERO, BigInt::ZERO);
+                for &width in widths {
+                    let atlas = match width {
+                        8 => &tiny,
+                        9 => &small,
+                        10 => &large,
+                        _ => unreachable!(),
+                    };
+                    let ((da, db), _, _) = atlas.digit(&a, &b);
+                    rebuilt.0 += &factor * da;
+                    rebuilt.1 += &factor * db;
+                    let base = BigInt::from(atlas.base());
+                    a = (a - da) / &base;
+                    b = (b - db) / &base;
+                    factor *= base;
+                }
+                assert_eq!((a, b), (BigInt::ZERO, BigInt::ZERO));
+                assert_eq!(rebuilt, start);
             }
-            assert_eq!((a, b), (BigInt::ZERO, BigInt::ZERO));
-            assert_eq!(rebuilt, start);
         }
     }
 
     #[test]
     fn all_window_points_match_independent_group_sums() {
-        let tables = &*TABLES;
-        let mut base = Jacobian::generator();
-        let mut checked = 0;
-        for (window, width) in WIDTHS.into_iter().enumerate() {
-            let atlas = tables.atlas(width);
-            let tau_base = base.tau();
-            let max_a = atlas
-                .digits
-                .iter()
-                .map(|d| d.0.unsigned_abs() as usize)
-                .max()
-                .unwrap();
-            let max_b = atlas
-                .digits
-                .iter()
-                .map(|d| d.1.unsigned_abs() as usize)
-                .max()
-                .unwrap();
-            let a_points = binary_multiples(base, max_a);
-            let b_projective = binary_multiples(tau_base, max_b);
-            let mut b_points = vec![Jacobian::identity()];
-            b_points.extend(batch_to_affine(&b_projective[1..]));
-            for (orbit, &(a, b)) in atlas.digits.iter().enumerate() {
-                let first = if a < 0 {
-                    a_points[a.unsigned_abs() as usize].neg()
-                } else {
-                    a_points[a as usize]
-                };
-                let second = if b < 0 {
-                    b_points[b.unsigned_abs() as usize].neg()
-                } else {
-                    b_points[b as usize]
-                };
-                let expected = if first.is_identity() {
-                    second
-                } else if second.is_identity() {
-                    first
-                } else {
-                    first.add_mixed(second)
-                };
-                let packed = tables.windows[window][orbit];
-                if orbit == 0 {
-                    assert_eq!((a, b), (0, 0));
-                    assert!(expected.is_identity());
-                    assert_eq!(packed.limbs, [[0; 2]; 4]);
-                    assert_eq!(packed.signs, 0);
-                } else {
-                    let stored = packed.into_affine();
-                    assert!(
-                        same_point(expected, stored),
-                        "window {window}, orbit {orbit}"
-                    );
+        for (format, expected_slots) in [(14, 1_004_904), (15, 458_772), (16, 207_552)] {
+            let tables = selected(format);
+            let mut base = Jacobian::generator();
+            let mut checked = 0;
+            for (window, &width) in tables.widths.iter().enumerate() {
+                let atlas = tables.atlas(width);
+                let tau_base = base.tau();
+                let max_a = atlas
+                    .digits
+                    .iter()
+                    .map(|d| d.0.unsigned_abs() as usize)
+                    .max()
+                    .unwrap();
+                let max_b = atlas
+                    .digits
+                    .iter()
+                    .map(|d| d.1.unsigned_abs() as usize)
+                    .max()
+                    .unwrap();
+                let a_points = binary_multiples(base, max_a);
+                let b_projective = binary_multiples(tau_base, max_b);
+                let mut b_points = vec![Jacobian::identity()];
+                b_points.extend(batch_to_affine(&b_projective[1..]));
+                for (orbit, &(a, b)) in atlas.digits.iter().enumerate() {
+                    let first = if a < 0 {
+                        a_points[a.unsigned_abs() as usize].neg()
+                    } else {
+                        a_points[a as usize]
+                    };
+                    let second = if b < 0 {
+                        b_points[b.unsigned_abs() as usize].neg()
+                    } else {
+                        b_points[b as usize]
+                    };
+                    let expected = if first.is_identity() {
+                        second
+                    } else if second.is_identity() {
+                        first
+                    } else {
+                        first.add_mixed(second)
+                    };
+                    let packed = tables.windows[window][orbit];
+                    if orbit == 0 {
+                        assert_eq!((a, b), (0, 0));
+                        assert!(expected.is_identity());
+                        assert_eq!(packed.limbs, [[0; 2]; 4]);
+                        assert_eq!(packed.signs, 0);
+                    } else {
+                        let stored = packed.into_affine();
+                        assert!(
+                            same_point(expected, stored),
+                            "window {window}, orbit {orbit}"
+                        );
+                    }
+                    checked += 1;
                 }
-                checked += 1;
+                for _ in 0..width {
+                    base = base.double();
+                }
             }
-            for _ in 0..width {
-                base = base.double();
-            }
+            assert_eq!(checked, expected_slots);
         }
-        assert_eq!(checked, 1_004_904);
     }
 }
