@@ -27,14 +27,14 @@ output = balance(RX), balance(RY), balance(RZ)
 ```
 
 This evaluates five raw field products and three final balances. In the
-current fixed-width source, a raw product uses six `U256::mul_wide` calls
-for its ring product and Montgomery cancellation; a balance uses three
-more for `u*conjugate(pi)`. Thus the tau path uses 39 such wide-product
-calls, plus 15 low-128-bit wrapping products for cancellation. Balancing
-each of its five product outputs alone would use 45 wide-product calls;
-the deferred schedule saves six before counting additive intermediates.
-These are source-operation counts, not CPU timings. The generic wide
-products still process four limbs even when the coefficients are shorter.
+current fixed-width source, a raw product uses six signed three-by-three-
+limb products for its ring product and Montgomery cancellation; a balance
+uses three more for `u*conjugate(pi)`. Thus the tau path uses 39 signed
+products, or 351 fixed 64-bit partial products, plus 15 low-128-bit
+wrapping products for cancellation. Balancing each of its five product
+outputs alone would use 45 signed products; the deferred schedule saves
+six before counting additive intermediates. These are source-operation
+counts, not CPU timings.
 
 The normalizer checks the width precondition derived in the earlier proof:
 each `t=u*conjugate(pi)` coordinate must be below `22*2^256`. If it is not,
@@ -62,7 +62,7 @@ point with independent `P-omega(P)` group addition. The Rust suite passed
 25 tests, including 246 constructed quotient-boundary cases, 119 of which
 needed the one-step correction. The earlier five-operation field replay
 still passed on 10,121 input pairs. The checked release binary SHA-256 was
-`472becac3a29cf1aadfd619d377d525cd02ef18d31563e007b6e9250fd6e281a`.
+`579502f45c83c32230ab19dd555133cbf650d486179bb57cd29eabbd2cd8dcbd`.
 
 The next step is to implement the same bounded schedule for rho and the
 remaining point operations, then wire it into a full scalar multiplication

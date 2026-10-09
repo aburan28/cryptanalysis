@@ -157,14 +157,30 @@ impl Signed {
     }
 
     fn mul(self, rhs: Self) -> Self {
-        assert!(self.magnitude.0[4..].iter().all(|&x| x == 0));
-        assert!(rhs.magnitude.0[4..].iter().all(|&x| x == 0));
-        let a = Uint(self.magnitude.0[..4].try_into().unwrap());
-        let b = Uint(rhs.magnitude.0[..4].try_into().unwrap());
-        let (low, high) = U256::mul_wide(&a, &b);
+        // The balanced field inputs and one-step tau width bound keep every
+        // multiplicand below 2^192. A fixed 3x3 schoolbook product uses nine
+        // u64 multiplications rather than U256::mul_wide's sixteen.
+        assert!(self.magnitude.0[3..].iter().all(|&x| x == 0));
+        assert!(rhs.magnitude.0[3..].iter().all(|&x| x == 0));
         let mut words = [0u64; 8];
-        words[..4].copy_from_slice(&low.0);
-        words[4..].copy_from_slice(&high.0);
+        for i in 0..3 {
+            let mut carry = 0u64;
+            for j in 0..3 {
+                let index = i + j;
+                let sum = (self.magnitude.0[j] as u128) * (rhs.magnitude.0[i] as u128)
+                    + (words[index] as u128)
+                    + (carry as u128);
+                words[index] = sum as u64;
+                carry = (sum >> 64) as u64;
+            }
+            let mut overflow = carry;
+            for word in words.iter_mut().skip(i + 3) {
+                let sum = (*word as u128) + (overflow as u128);
+                *word = sum as u64;
+                overflow = (sum >> 64) as u64;
+            }
+            assert_eq!(overflow, 0, "three-limb product overflow");
+        }
         Self {
             negative: self.negative ^ rhs.negative,
             magnitude: Uint(words),
