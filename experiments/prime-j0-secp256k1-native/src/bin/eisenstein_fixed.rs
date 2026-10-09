@@ -1341,6 +1341,9 @@ static WIDTH_SIX_COMB4_POINTS: LazyLock<Vec<[Jacobian; 81]>> =
 static WIDTH_SIX_COMB8_POINTS: LazyLock<Vec<[Jacobian; 81]>> =
     LazyLock::new(|| width_six_comb_tables(8, 21));
 
+static WIDTH_SIX_COMB12_POINTS: LazyLock<Vec<[Jacobian; 81]>> =
+    LazyLock::new(|| width_six_comb_tables(12, 14));
+
 fn glv_comb_table(rows: usize, width: usize) -> Vec<Jacobian> {
     let mut bases = Vec::with_capacity(rows);
     let mut point = Jacobian::generator();
@@ -2034,12 +2037,14 @@ fn scalar_multiply_width_six_comb(
     let width = match rows {
         4 => 41,
         8 => 21,
+        12 => 14,
         _ => panic!("unsupported width-six comb row count"),
     };
-    let tables = if rows == 4 {
-        &*WIDTH_SIX_COMB4_POINTS
-    } else {
-        &*WIDTH_SIX_COMB8_POINTS
+    let tables = match rows {
+        4 => &*WIDTH_SIX_COMB4_POINTS,
+        8 => &*WIDTH_SIX_COMB8_POINTS,
+        12 => &*WIDTH_SIX_COMB12_POINTS,
+        _ => unreachable!(),
     };
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
@@ -2188,11 +2193,12 @@ fn check_generator_case(
     }
     if comb_rows != 0 {
         LazyLock::force(&WIDTH_SIX_DIGITS);
-        if comb_rows == 4 {
-            LazyLock::force(&WIDTH_SIX_COMB4_POINTS);
-        } else {
-            LazyLock::force(&WIDTH_SIX_COMB8_POINTS);
-        }
+        match comb_rows {
+            4 => LazyLock::force(&WIDTH_SIX_COMB4_POINTS),
+            8 => LazyLock::force(&WIDTH_SIX_COMB8_POINTS),
+            12 => LazyLock::force(&WIDTH_SIX_COMB12_POINTS),
+            _ => unreachable!(),
+        };
     }
     if glv_rows == 8 {
         LazyLock::force(&GLV_COMB8_POINTS);
@@ -2225,6 +2231,8 @@ fn check_generator_case(
         "eisenstein_w6_comb4_fixed"
     } else if comb_rows == 8 {
         "eisenstein_w6_comb8_fixed"
+    } else if comb_rows == 12 {
+        "eisenstein_w6_comb12_fixed"
     } else if width_six {
         "eisenstein_w6_fixed"
     } else if coalescent_four {
@@ -2264,6 +2272,8 @@ fn main() {
             || args[0] == "--check-scalar-w6-comb4-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb8-fixed-case"
             || args[0] == "--check-scalar-w6-comb8-fixed-case"
+            || args[0] == "--benchmark-scalar-w6-comb12-fixed-case"
+            || args[0] == "--check-scalar-w6-comb12-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb8-fixed-case"
             || args[0] == "--check-scalar-glv-comb8-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb10-fixed-case"
@@ -2283,6 +2293,8 @@ fn main() {
                 4
             } else if args[0].contains("w6-comb8") {
                 8
+            } else if args[0].contains("w6-comb12") {
+                12
             } else {
                 0
             },
@@ -2308,9 +2320,10 @@ fn main() {
             || args == ["--scalar-w6-fixed"]
             || args == ["--scalar-w6-comb4-fixed"]
             || args == ["--scalar-w6-comb8-fixed"]
+            || args == ["--scalar-w6-comb12-fixed"]
             || args == ["--scalar-glv-comb8-fixed"]
             || args == ["--scalar-glv-comb10-fixed"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
     );
     let tau_mode = args == ["--tau"];
     let scalar_mode = args == ["--scalar"]
@@ -2322,6 +2335,7 @@ fn main() {
         || args == ["--scalar-w6-fixed"]
         || args == ["--scalar-w6-comb4-fixed"]
         || args == ["--scalar-w6-comb8-fixed"]
+        || args == ["--scalar-w6-comb12-fixed"]
         || args == ["--scalar-glv-comb8-fixed"]
         || args == ["--scalar-glv-comb10-fixed"];
     let width_two = args == ["--scalar-w2"];
@@ -2334,6 +2348,8 @@ fn main() {
         4
     } else if args == ["--scalar-w6-comb8-fixed"] {
         8
+    } else if args == ["--scalar-w6-comb12-fixed"] {
+        12
     } else {
         0
     };
@@ -2453,7 +2469,7 @@ fn main() {
                     "orbit_counts": orbit_counts,
                     "alternate_uses": alternate_uses,
                     "recoding_work": recoding_work,
-                    "radix": if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "radix": if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -2948,6 +2964,7 @@ mod eisenstein_tau_tests {
         for (rows, width, tables) in [
             (4, 41, &*WIDTH_SIX_COMB4_POINTS),
             (8, 21, &*WIDTH_SIX_COMB8_POINTS),
+            (12, 14, &*WIDTH_SIX_COMB12_POINTS),
         ] {
             assert_eq!(tables.len(), rows);
             for row in 0..rows {
