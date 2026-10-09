@@ -5,8 +5,8 @@
 
 use cryptanalysis_suite::binary_ecc::{BinaryPoint, F2mElement};
 use cryptanalysis_suite::cryptanalysis::koblitz_groebner::{
-    build_decomposition_system, solve_boolean_system_filtered, FieldStructure, SolveOptions,
-    SolverEngine, SplitRule,
+    build_decomposition_system, f4_profile, f4_profile_reset, solve_boolean_system_filtered,
+    FieldStructure, SolveOptions, SolverEngine, SplitRule,
 };
 use cryptanalysis_suite::cryptanalysis::koblitz_index_calculus::{
     build_frobenius_factor_base, points_with_x, KoblitzCurve,
@@ -69,6 +69,7 @@ fn main() {
         split_rule: SplitRule::LowestFree,
     };
 
+    f4_profile_reset();
     let start = Instant::now();
     let x_r = F2mElement::from_biguint(&BigUint::from(raw), n);
     let targets = points_with_x(&kc.curve, &x_r);
@@ -104,6 +105,7 @@ fn main() {
             good
         });
     let solved = Instant::now();
+    let algebra_profile = f4_profile();
     let summary = cryptanalysis_suite::cryptanalysis::f4_gpu::offload_summary();
     let summarized = Instant::now();
     let phase_ns = [
@@ -137,6 +139,7 @@ fn main() {
             "infeasible_branches": stats.infeasible_branches,
             "propagations": stats.propagations, "max_degree_built": stats.max_degree_built,
             "oversize": stats.oversize},
+        "algebra": algebra_profile,
         "gpu": {"mode": summary.mode, "device": summary.device,
             "matrices": summary.matrices, "words": summary.words,
             "upload_eliminate_download_seconds": summary.seconds},

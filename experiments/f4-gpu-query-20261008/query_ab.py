@@ -98,6 +98,9 @@ def main():
                         and host['result']['target_points'] == cuda['result']['target_points']
                         and phases_exact)
                     pair['same_verified_result'] = same
+                    pair['same_algebra_shape'] = all(
+                        host['algebra'][key] == cuda['algebra'][key]
+                        for key in ('calls', 'rows', 'cols', 'f5_skipped', 'rows_pruned'))
                     pair['gpu_executed'] = cuda['gpu']['matrices'] > 0 and cuda['gpu']['device'] is not None
                     if (same and pair['gpu_executed'] and host['status'] == 'verified-decomposition'
                             and host['result']['accepted_assignment'] is not None

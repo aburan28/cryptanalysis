@@ -13,6 +13,10 @@ the repository's single-target IC/rho metric.
 The four exclusive `phase_ns` fields sum exactly to `online_ns`: target
 conversion, system construction, solve including independent callbacks, and
 offload bookkeeping. Callback time is also reported as a subset of solve time.
+The `algebra` snapshot records Macaulay build, reduction, readback, matrix
+shape, and F5 criterion work for the same query. This exposes whether the
+next F4/F5 optimization belongs in symbolic construction, elimination, or
+signature filtering.
 
 The panel uses the same compiled binary, engine, and input law for host and CUDA arms,
 alternates AB/BA order, retains failures and timeouts, requires identical
