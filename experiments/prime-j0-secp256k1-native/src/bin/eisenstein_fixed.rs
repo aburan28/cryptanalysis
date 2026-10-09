@@ -1244,9 +1244,13 @@ static WIDTH_SIX_DIGITS: LazyLock<[Option<WidthSixDigit>; 729]> = LazyLock::new(
     table
 });
 
-static WIDTH_SIX_POINTS: LazyLock<[[Jacobian; 3]; 81]> = LazyLock::new(|| {
-    let generator = Jacobian::generator();
+fn width_six_projective_row(generator: Jacobian) -> [Jacobian; 81] {
     assert_eq!(WIDTH_SIX_SEEDS[0], (-2, 1));
+    assert_eq!(
+        generator.z.strings(),
+        Pair::one().strings(),
+        "unit-edge seed graph requires an affine base"
+    );
     let mut projective = [None; 81];
     projective[0] = Some(generator.omega().omega());
     let mut queue = vec![0usize];
@@ -1276,26 +1280,70 @@ static WIDTH_SIX_POINTS: LazyLock<[[Jacobian; 3]; 81]> = LazyLock::new(|| {
         81,
         "width-six seeds must form a unit-edge tree"
     );
-    let projective = projective.map(Option::unwrap);
-    let mut prefix = Vec::with_capacity(82);
+    projective.map(Option::unwrap)
+}
+
+fn batch_to_affine(points: &[Jacobian]) -> Vec<Jacobian> {
+    let mut prefix = Vec::with_capacity(points.len() + 1);
     prefix.push(Pair::one());
-    for point in &projective {
+    for point in points {
         assert!(!point.is_identity());
         prefix.push(prefix.last().expect("prefix").mul(point.z));
     }
-    let mut suffix_inverse = prefix[81].invert_chain();
-    let mut affine = [Jacobian::identity(); 81];
-    for index in (0..81).rev() {
-        let inverse = suffix_inverse.mul(prefix[index]);
-        suffix_inverse = suffix_inverse.mul(projective[index].z);
-        affine[index] = projective[index].into_affine_with_inverse(inverse);
+    let mut suffix_inverse = prefix[points.len()].invert_chain();
+    let mut affine = vec![Jacobian::identity(); points.len()];
+    for flat in (0..points.len()).rev() {
+        let point = points[flat];
+        let inverse = suffix_inverse.mul(prefix[flat]);
+        suffix_inverse = suffix_inverse.mul(point.z);
+        affine[flat] = point.into_affine_with_inverse(inverse);
     }
     assert_eq!(suffix_inverse.strings(), Pair::one().strings());
-    std::array::from_fn(|index| {
-        let point = affine[index];
-        [point, point.omega(), point.omega().omega()]
-    })
+    affine
+}
+
+fn width_six_affine_tables(bases: &[Jacobian]) -> Vec<[[Jacobian; 3]; 81]> {
+    let projective: Vec<Jacobian> = bases
+        .iter()
+        .copied()
+        .flat_map(width_six_projective_row)
+        .collect();
+    batch_to_affine(&projective)
+        .chunks_exact(81)
+        .map(|chunk| {
+            std::array::from_fn(|index| {
+                let point = chunk[index];
+                [point, point.omega(), point.omega().omega()]
+            })
+        })
+        .collect()
+}
+
+fn width_six_comb_tables(rows: usize, width: usize) -> Vec<[[Jacobian; 3]; 81]> {
+    let mut bases = Vec::with_capacity(rows);
+    let mut point = Jacobian::generator();
+    for row in 0..rows {
+        bases.push(point);
+        if row + 1 < rows {
+            for _ in 0..width {
+                point = point.tau();
+            }
+        }
+    }
+    width_six_affine_tables(&batch_to_affine(&bases))
+}
+
+static WIDTH_SIX_POINTS: LazyLock<[[Jacobian; 3]; 81]> = LazyLock::new(|| {
+    width_six_affine_tables(&[Jacobian::generator()])
+        .pop()
+        .expect("one width-six row")
 });
+
+static WIDTH_SIX_COMB4_POINTS: LazyLock<Vec<[[Jacobian; 3]; 81]>> =
+    LazyLock::new(|| width_six_comb_tables(4, 43));
+
+static WIDTH_SIX_COMB8_POINTS: LazyLock<Vec<[[Jacobian; 3]; 81]>> =
+    LazyLock::new(|| width_six_comb_tables(8, 22));
 
 fn unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
     match (a.to_i64(), b.to_i64()) {
@@ -1952,6 +2000,56 @@ fn scalar_multiply_width_six(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, usiz
     (point, a, b, digits.len(), orbit_counts)
 }
 
+fn scalar_multiply_width_six_comb(
+    scalar: &BigInt,
+    rows: usize,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 81]) {
+    let width = match rows {
+        4 => 43,
+        8 => 22,
+        _ => panic!("unsupported width-six comb row count"),
+    };
+    let tables = if rows == 4 {
+        &*WIDTH_SIX_COMB4_POINTS
+    } else {
+        &*WIDTH_SIX_COMB8_POINTS
+    };
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (a, b) = short_representative(&residue);
+    let (mut digits, terminal) = recode_tau_width_six(a.clone(), b.clone());
+    if let Some(digit) = terminal {
+        digits.push(Some(digit));
+    }
+    assert!(digits.len() <= rows * width, "comb digit span exceeded");
+    let mut point = Jacobian::identity();
+    let mut started = false;
+    let mut tau_steps = 0;
+    let mut orbit_counts = [0usize; 81];
+    for column in (0..width).rev() {
+        if started {
+            point = point.tau();
+            tau_steps += 1;
+        }
+        for row in 0..rows {
+            if let Some(Some(digit)) = digits.get(row * width + column) {
+                let mut addend = tables[row][digit.orbit][digit.unit.omega_power];
+                if digit.unit.sign < 0 {
+                    addend = addend.neg();
+                }
+                if started {
+                    point = point.add_mixed(addend);
+                    orbit_counts[digit.orbit] += 1;
+                } else {
+                    point = addend;
+                    started = true;
+                }
+            }
+        }
+    }
+    (point, a, b, tau_steps, orbit_counts)
+}
+
 fn check_generator_case(
     fixture_path: &str,
     index: usize,
@@ -1961,6 +2059,7 @@ fn check_generator_case(
     redundant_four: bool,
     coalescent_four: bool,
     width_six: bool,
+    comb_rows: usize,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -1990,9 +2089,19 @@ fn check_generator_case(
         LazyLock::force(&WIDTH_SIX_DIGITS);
         LazyLock::force(&WIDTH_SIX_POINTS);
     }
+    if comb_rows != 0 {
+        LazyLock::force(&WIDTH_SIX_DIGITS);
+        if comb_rows == 4 {
+            LazyLock::force(&WIDTH_SIX_COMB4_POINTS);
+        } else {
+            LazyLock::force(&WIDTH_SIX_COMB8_POINTS);
+        }
+    }
     let scalar = scalar_from_hex(scalar_hex);
     let start = Instant::now();
-    let point = if width_six {
+    let point = if comb_rows != 0 {
+        scalar_multiply_width_six_comb(&scalar, comb_rows).0
+    } else if width_six {
         scalar_multiply_width_six(&scalar).0
     } else if redundant_four || coalescent_four {
         scalar_multiply_width_four_redundant(&scalar, coalescent_four).0
@@ -2004,7 +2113,11 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if width_six {
+    let mode = if comb_rows == 4 {
+        "eisenstein_w6_comb4_fixed"
+    } else if comb_rows == 8 {
+        "eisenstein_w6_comb8_fixed"
+    } else if width_six {
         "eisenstein_w6_fixed"
     } else if coalescent_four {
         "eisenstein_w4_coalescent"
@@ -2038,7 +2151,11 @@ fn main() {
             || args[0] == "--benchmark-scalar-w4-coalescent-case"
             || args[0] == "--check-scalar-w4-coalescent-case"
             || args[0] == "--benchmark-scalar-w6-fixed-case"
-            || args[0] == "--check-scalar-w6-fixed-case")
+            || args[0] == "--check-scalar-w6-fixed-case"
+            || args[0] == "--benchmark-scalar-w6-comb4-fixed-case"
+            || args[0] == "--check-scalar-w6-comb4-fixed-case"
+            || args[0] == "--benchmark-scalar-w6-comb8-fixed-case"
+            || args[0] == "--check-scalar-w6-comb8-fixed-case")
     {
         let index = args[2].parse::<usize>().expect("case index");
         check_generator_case(
@@ -2050,6 +2167,13 @@ fn main() {
             args[0].ends_with("w4-redundant-case"),
             args[0].ends_with("w4-coalescent-case"),
             args[0].ends_with("w6-fixed-case"),
+            if args[0].contains("w6-comb4") {
+                4
+            } else if args[0].contains("w6-comb8") {
+                8
+            } else {
+                0
+            },
         );
         return;
     }
@@ -2062,8 +2186,10 @@ fn main() {
             || args == ["--scalar-w3-fixed"]
             || args == ["--scalar-w4-redundant"]
             || args == ["--scalar-w4-coalescent"]
-            || args == ["--scalar-w6-fixed"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed]"
+            || args == ["--scalar-w6-fixed"]
+            || args == ["--scalar-w6-comb4-fixed"]
+            || args == ["--scalar-w6-comb8-fixed"],
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed]"
     );
     let tau_mode = args == ["--tau"];
     let scalar_mode = args == ["--scalar"]
@@ -2072,13 +2198,22 @@ fn main() {
         || args == ["--scalar-w3-fixed"]
         || args == ["--scalar-w4-redundant"]
         || args == ["--scalar-w4-coalescent"]
-        || args == ["--scalar-w6-fixed"];
+        || args == ["--scalar-w6-fixed"]
+        || args == ["--scalar-w6-comb4-fixed"]
+        || args == ["--scalar-w6-comb8-fixed"];
     let width_two = args == ["--scalar-w2"];
     let affine_fixed = args == ["--scalar-w3-fixed"];
     let width_three = args == ["--scalar-w3"] || affine_fixed;
     let redundant_four = args == ["--scalar-w4-redundant"];
     let coalescent_four = args == ["--scalar-w4-coalescent"];
     let width_six = args == ["--scalar-w6-fixed"];
+    let comb_rows = if args == ["--scalar-w6-comb4-fixed"] {
+        4
+    } else if args == ["--scalar-w6-comb8-fixed"] {
+        8
+    } else {
+        0
+    };
     for line in io::stdin().lock().lines() {
         let line = line.expect("input line");
         if line.trim().is_empty() {
@@ -2097,7 +2232,20 @@ fn main() {
                 orbit_counts,
                 alternate_uses,
                 recoding_work,
-            ) = if width_six {
+            ) = if comb_rows != 0 {
+                let (point, a, b, tau_steps, orbit_counts) =
+                    scalar_multiply_width_six_comb(&scalar, comb_rows);
+                (
+                    point,
+                    a,
+                    b,
+                    tau_steps,
+                    orbit_counts.iter().sum(),
+                    Some(json!(orbit_counts.to_vec())),
+                    None,
+                    None,
+                )
+            } else if width_six {
                 let (point, a, b, tau_steps, orbit_counts) = scalar_multiply_width_six(&scalar);
                 (
                     point,
@@ -2158,7 +2306,7 @@ fn main() {
                     "orbit_counts": orbit_counts,
                     "alternate_uses": alternate_uses,
                     "recoding_work": recoding_work,
-                    "radix": if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "radix": if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -2645,6 +2793,28 @@ mod eisenstein_tau_tests {
                 WIDTH_SIX_POINTS[index][0],
                 scalar_multiply(&scalar).0
             ));
+        }
+    }
+
+    #[test]
+    fn width_six_comb_shifted_tables_match_tau_images() {
+        for (rows, width, tables) in [
+            (4, 43, &*WIDTH_SIX_COMB4_POINTS),
+            (8, 22, &*WIDTH_SIX_COMB8_POINTS),
+        ] {
+            assert_eq!(tables.len(), rows);
+            for row in 0..rows {
+                for seed in [0, 1, 17, 40, 80] {
+                    let mut expected = WIDTH_SIX_POINTS[seed][0];
+                    for _ in 0..row * width {
+                        expected = expected.tau();
+                    }
+                    assert!(
+                        same_point(tables[row][seed][0], expected),
+                        "rows={rows} row={row} seed={seed}"
+                    );
+                }
+            }
         }
     }
 
