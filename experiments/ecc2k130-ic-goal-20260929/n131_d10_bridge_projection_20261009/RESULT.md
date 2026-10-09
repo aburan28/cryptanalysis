@@ -41,3 +41,21 @@ XCNFs, then independent installed-Sage point, subgroup, factor-base, and
 folded-row replay. This run is scheduled after the active bridge-only trial
 drains, with each timeout or failure retained separately. The original d10
 candidate and queued d13/m12 public-Q probe keep their frozen sequence.
+
+The [bounded combined attempt](ordinary_precompute_R1/result.json) ended
+`CENSORED_TIME` at its 580-second parent wall cap with zero solver status or
+model lines and a sampled parent-plus-solver peak RSS of 556,204,032 bytes.
+The [independent terminal audit](ordinary_precompute_R1/independent_terminal_audit.json)
+verified the frozen command and hashes, raw solver output, drained process,
+and censored classification. Its initial CryptoMiniSat log selected ten
+Gaussian matrices of approximately 622×4,799; the 2,645-row components were
+within the declared limits but not selected under the ten-matrix policy.
+This one contended-host solver-stage result does not measure an ordinary
+relation yield or a controlled timing improvement. The same-point
+[fill-limited-only](../n131_d10_projected_probe_20261009/RESULT.md) and
+[bridge-only](../n131_d10_xor_bridge_20261009/RESULT.md) attempts also have
+separate terminal `CENSORED_TIME` rows. Their exact input reductions and
+matrix-selection changes did not clear the first-relation gate at this cap;
+the next method must make the public query constrain multiple leaf or pair
+choices earlier in search, then pass a smaller-field ordinary-relation check
+before N131 promotion.
