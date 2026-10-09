@@ -8,6 +8,8 @@ The source is in [`candidate.rs`](candidate.rs); [`reference.rs`](reference.rs)
 is the same-dependency rotation reference. The algorithm came from
 `crypto/examples/koblitz_orbit_dlp_slice_ic_fastindex4.rs` at SHA-256
 `723a80e87d66dee9b947cff19cf0a555bb4a9d01723a6e5f6bec5abe4b073fb0`.
+The sibling dependency's tracked sources match `crypto` revision
+`8ab924b935923df9faac25915ed7d9849974de0b`.
 This copy guards precomputation levels whose rotation length would exceed
 the degree, covering small-degree debug builds as well as N53.
 
@@ -46,19 +48,19 @@ Release tests passed for both binaries. The candidate tests compare exact
 `(canonical key, shift)` over every binary word of degrees 1 through 13,
 50,000 deterministic N53 words plus edge patterns, and 6,330 roots sampled
 across the actual N53 S3 index. The shared-inversion and sharded-index tests
-also pass. The [validator](validate.py) checks source and binary bindings,
-each raw output, all five exclusive online phase sums, semantic equality,
-and Sage runtime identity. Peak RSS was unavailable from the existing
+also pass. The [validator](validate.py) checks source and binary bindings in
+the frozen workspace. Its [archive mode](REPRODUCE.md) verifies the published
+source, raw outputs, all five exclusive online phase sums, semantic equality,
+and Sage receipt without the original binary files. Peak RSS was unavailable from the existing
 in-process sampler on this host; it remains an explicit `null` in every row.
 The separate Cargo target uses about 303 MiB. Free space on `/Volumes/SSD990`
 was about 2.3 GiB before this build and 1.7 GiB after the final runs, with
 concurrent work also using the volume.
 
-An earlier exploratory panel used the unguarded sparse routine copied from
+An earlier exploratory screen used the unguarded sparse routine copied from
 the sibling example. Its N53 semantics matched, but its fixed precomputation
-could calculate `n-k` with `k>=n` at small degrees. That source, binary, raw
-rows, and receipts are retained locally in the ignored `prior_v1/` archive;
-the table above uses only the corrected, re-frozen source and new runs.
+could calculate `n-k` with `k>=n` at small degrees. The published panel uses
+only the corrected, re-frozen source and new runs.
 
 The panel is an unisolated CPU timing diagnostic. Controlled online speedup
 remains `null` pending a disjoint supplied-point panel on the repository's
