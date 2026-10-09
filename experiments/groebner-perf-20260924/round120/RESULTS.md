@@ -8,6 +8,11 @@ returned `verified=1`. Each worker emits the target-dependent complete-query
 interval and separate matrix, native-F4, and checker phases. The manifest
 generator refuses a dirty checkout, stale panel commit, mismatched certificate,
 or binary hash drift.
+The committed `test_manifest.py` replay also passed all ten workers and
+preserved their raw output. When one candidate's expected proof digest was
+deliberately corrupted, it recorded both attempted arms, marked the pair
+`INCOMPLETE`, and exited unsuccessfully. CI now runs this replay on both Ubuntu
+and macOS after its exact certificate panels.
 
 The frozen local manifest SHA-256 is
 `7811d76136fe39437933af9d6fd402cc1ea7a354485ae00e62b1d455793a62f8`.
