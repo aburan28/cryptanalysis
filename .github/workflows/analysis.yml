@@ -158,9 +158,17 @@ jobs:
 
       - name: actionlint
         # Also runs shellcheck over every `run:` block in these workflows.
-        uses: docker://rhysd/actionlint:1.7.7
-        with:
-          args: -color
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.7.7 --repo rhysd/actionlint \
+            --pattern actionlint_1.7.7_linux_amd64.tar.gz --dir "$RUNNER_TEMP"
+          printf '%s  %s\n' \
+            023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757 \
+            "$RUNNER_TEMP/actionlint_1.7.7_linux_amd64.tar.gz" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/actionlint_1.7.7_linux_amd64.tar.gz" \
+            -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
 
   # ----------------------------------------------------------- coverage ----
   coverage:
