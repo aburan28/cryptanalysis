@@ -57,4 +57,6 @@ balanced XYZZ, and deferred XYZZ for the 129 known-point fixtures, four
 boundary scalars, and 512 frozen additional scalars. The same binary exposes
 `--scalar-unit-orbit-u14-xyzz-deferred-fixed` and
 `--benchmark-scalar-unit-orbit-u14-xyzz-deferred-fixed-case` for the eventual
-strictly isolated paired panel.
+strictly isolated paired panel. The [isolated panel procedure](ISOLATED_PANEL.md)
+generates source-bound Jacobian/deferred and balanced/deferred manifests from
+a correctness receipt built on the selected host.

@@ -52,8 +52,8 @@ Build the release binary offline. Recheck every scalar in the existing
 including their selected representative and generic-addition count. Compare
 the fixture outputs to the upstream Jacobian mode on the same points. Preserve
 the exact input, source, executable, and output hashes and all raw output.
-Check the single-case benchmark dispatch for the deferred mode against the
-fixture, with its preparation and online interval boundaries matching the
-balanced mode. Local wall times are diagnostic only under the repository CPU
+Check the single-case benchmark dispatch for Jacobian, balanced XYZZ, and
+deferred XYZZ against the fixture, with matching preparation and online
+interval boundaries. Local wall times are diagnostic only under the repository CPU
 isolation gate. Make a paired timing claim only after a strict host preflight
 and the full same-binary, alternating-order panel.

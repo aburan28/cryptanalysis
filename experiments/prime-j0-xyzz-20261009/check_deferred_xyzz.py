@@ -88,17 +88,23 @@ def main():
     assert sum(row["generic_additions"] for row in first[:len(cases)]) == 1677
 
     benchmark_paths = {}
-    for name, flag in (
-        ("balanced", "--benchmark-scalar-unit-orbit-u14-xyzz-fixed-case"),
-        ("deferred", "--benchmark-scalar-unit-orbit-u14-xyzz-deferred-fixed-case"),
+    for name, flag, benchmark_mode in (
+        ("jacobian", "--benchmark-scalar-unit-orbit-windows14-fixed-case",
+         "unit_orbit_windows14_fixed"),
+        ("balanced", "--benchmark-scalar-unit-orbit-u14-xyzz-fixed-case",
+         "unit_orbit_u14_xyzz_fixed"),
+        ("deferred", "--benchmark-scalar-unit-orbit-u14-xyzz-deferred-fixed-case",
+         "unit_orbit_u14_xyzz_deferred_fixed"),
     ):
         path = output.with_name(output.stem + "-" + name + "-benchmark.txt")
         raw = run(binary, [flag, str(fixture_path), "0"], "", path)
         fields_out = dict(part.split("=", 1) for part in raw.split() if "=" in part)
         assert fields_out["verified"] == "1"
         assert fields_out["curve"] == "secp256k1"
-        assert fields_out["mode"] == MODES[name][1]
+        assert fields_out["mode"] == benchmark_mode
         assert fields_out["scalar"] == cases[0]["scalar_hex"]
+        assert fields_out["base_x"] == cases[0]["base_x_hex"]
+        assert fields_out["base_y"] == cases[0]["base_y_hex"]
         assert fields_out["point"] == first[0]["point"]
         assert int(fields_out["retained_bytes"]) == first[0]["retained_bytes"]
         assert float(fields_out["online_ms"]) > 0
@@ -120,7 +126,7 @@ def main():
         "total_cases": len(scalars),
         "generic_additions_fixture_total": 1677,
         "retained_bytes": first[0]["retained_bytes"],
-        "benchmark_dispatch_cases_per_xyzz_mode": 1,
+        "benchmark_dispatch_cases_per_mode": 1,
         "binary_sha256": sha(binary),
         "fixture_sha256": sha(fixture_path),
         "input_sha256": sha(input_path),
