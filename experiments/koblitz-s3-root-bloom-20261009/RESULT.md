@@ -8,6 +8,8 @@ uses the unchanged exact lookup and four-point group check. The filter build
 checks every occupied key before target-dependent work. Its implementation is
 [`candidate.rs`](candidate.rs), copied from the previously validated
 shared-inversion source except for this screen and its setup accounting.
+The [review and replay instructions](REPRODUCE.md) include the factor-base
+data needed to check the archived Sage result from this PR checkout.
 
 The [source-bound protocol](PROTOCOL.md) pairs it with the exact-table
 [`reference.rs`](reference.rs) on workload `Wc3929365e014`: Koblitz
@@ -70,10 +72,10 @@ summary are in [`freeze_receipt.json`](freeze_receipt.json),
 
 | Path | Decision |
 | --- | --- |
-| A1 three-summand pair-index target scan | The [24-target conjugate-x Bloom replay](../ecdlp-leads-investigation-20261008-r1/A1_ORBIT_BLOOM_REPLICATION_RESULT.md) already validates raw-conjugate rejection before 52 field squarings. The newer [direct aligned loader](../ecdlp-leads-investigation-20261008-r1/A1_DIRECT_ALIGNED_BLOOM_RESULT.md) retains the verified scan while reducing transient load memory. Keep its exact-index binding and witness checks. |
+| A1 three-summand pair-index target scan | The separate local 24-target conjugate-x Bloom replay validates raw-conjugate rejection before 52 field squarings. Its direct aligned loader retains the verified scan while reducing transient load memory. Bind any transfer to its exact index and recheck witness order. That experiment is outside this PR. |
 | N53 indexed four-summand S3 root lookup | This candidate screens the **canonical** root key after normal-basis conversion, adding 4 MiB instead of expanding all 53 raw conjugates. Retain as an opt-in candidate for a disjoint one-target panel and isolated CPU run. |
 | N83 indexed S3 root lookup | An N83/K600 run has 29,878,182 distinct root keys; a canonical-key filter would require its own measured memory and hit-rate design. The existing N83 orbit-query work already has a different Bloom screen on canonical 83-bit keys. |
-| Boolean F4/F5 | [`solve.py`](../pdp-scaling/solve.py) and the sibling repo's [`koblitz_groebner.rs`](../../../crypto/src/cryptanalysis/koblitz_groebner.rs) reduce polynomial rows and signatures. They do not perform this S3 root-table lookup inside the matrix kernel, so this filter has no direct insertion point there. |
+| Boolean F4/F5 | [`solve.py`](../pdp-scaling/solve.py) and the sibling `crypto/src/cryptanalysis/koblitz_groebner.rs` reduce polynomial rows and signatures. They do not perform this S3 root-table lookup inside the matrix kernel, so this filter has no direct insertion point there. |
 
 The next promotion experiment is a disjoint public-point panel with the same
 candidate manifests, explicit per-run timeout, complete one-target phase and
