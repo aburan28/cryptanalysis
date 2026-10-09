@@ -980,6 +980,29 @@ fn short_representative(scalar: &BigInt) -> (BigInt, BigInt) {
     (a, b)
 }
 
+fn short_representative_choices(scalar: &BigInt, count: usize) -> Vec<(BigInt, BigInt)> {
+    assert!((1..=25).contains(&count));
+    let lattice = &*SCALAR_LATTICE;
+    let center_u = round_div(scalar * &lattice.v1, lattice.det.clone());
+    let center_v = round_div(-scalar * &lattice.u1, lattice.det.clone());
+    let mut choices = Vec::with_capacity(count);
+    for du in -2..=2 {
+        for dv in -2..=2 {
+            let u = &center_u + du;
+            let v = &center_v + dv;
+            let a = scalar - &u * &lattice.u0 - &v * &lattice.v0;
+            let b = -&u * &lattice.u1 - &v * &lattice.v1;
+            let candidate = (tau_norm(&a, &b), std::cmp::max(a.abs(), b.abs()), a, b);
+            if choices.len() < count || candidate < *choices.last().unwrap() {
+                choices.push(candidate);
+                choices.sort();
+                choices.truncate(count);
+            }
+        }
+    }
+    choices.into_iter().map(|(_, _, a, b)| (a, b)).collect()
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Unit {
     sign: i8,
@@ -2157,17 +2180,39 @@ fn width_six_row_zero_fallback(
     (point, tau_steps, orbit_counts)
 }
 
-fn scalar_multiply_width_six_comb13_sparse(
-    scalar: &BigInt,
+fn width_six_comb13_sparse_score(digits: &[Option<WidthSixDigit>], table: &SparseComb13) -> Option<usize> {
+    if digits.len() > 162 {
+        return None;
+    }
+    let mut top_count = 0;
+    let mut fallback = false;
+    let mut nonzero = 0usize;
+    let mut last_index = 0;
+    let mut max_column = 0;
+    for (index, digit) in digits.iter().enumerate() {
+        if let Some(digit) = digit {
+            nonzero += 1;
+            last_index = index;
+            max_column = max_column.max(index % 13);
+            if index >= 156 {
+                top_count += 1;
+                fallback |= table.top_slots[digit.orbit] == u8::MAX;
+            }
+        }
+    }
+    if top_count > 1 {
+        return None;
+    }
+    let tau_steps = if fallback { last_index } else { max_column };
+    Some(5 * tau_steps + 11 * nonzero.saturating_sub(1))
+}
+
+fn evaluate_width_six_comb13_sparse(
+    a: BigInt,
+    b: BigInt,
+    digits: Vec<Option<WidthSixDigit>>,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool) {
     let table = &*WIDTH_SIX_COMB13_POINTS;
-    let lattice = &*SCALAR_LATTICE;
-    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
-    let (a, b) = short_representative(&residue);
-    let (mut digits, terminal) = recode_tau_width_six(a.clone(), b.clone());
-    if let Some(digit) = terminal {
-        digits.push(Some(digit));
-    }
     assert!(digits.len() <= 162, "comb digit span exceeded");
     let top_digits: Vec<_> = digits.iter().skip(156).flatten().collect();
     assert!(top_digits.len() <= 1, "top row must contain at most one terminal digit");
@@ -2207,6 +2252,45 @@ fn scalar_multiply_width_six_comb13_sparse(
         }
     }
     (point, a, b, tau_steps, orbit_counts, false)
+}
+
+fn scalar_multiply_width_six_comb13_sparse(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (a, b) = short_representative(&residue);
+    let (mut digits, terminal) = recode_tau_width_six(a.clone(), b.clone());
+    if let Some(digit) = terminal {
+        digits.push(Some(digit));
+    }
+    evaluate_width_six_comb13_sparse(a, b, digits)
+}
+
+fn scalar_multiply_width_six_comb13_coset3(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let table = &*WIDTH_SIX_COMB13_POINTS;
+    let mut best: Option<(usize, usize, BigInt, BigInt, Vec<Option<WidthSixDigit>>)> = None;
+    let mut valid = 0;
+    for (rank, (a, b)) in short_representative_choices(&residue, 3).into_iter().enumerate() {
+        let (mut digits, terminal) = recode_tau_width_six(a.clone(), b.clone());
+        if let Some(digit) = terminal {
+            digits.push(Some(digit));
+        }
+        if let Some(cost) = width_six_comb13_sparse_score(&digits, table) {
+            valid += 1;
+            if best.as_ref().is_none_or(|entry| cost < entry.0) {
+                best = Some((cost, rank, a, b, digits));
+            }
+        }
+    }
+    let (_, rank, a, b, digits) = best.expect("nearest lattice representative is valid");
+    let (point, a, b, tau_steps, orbit_counts, fallback) =
+        evaluate_width_six_comb13_sparse(a, b, digits);
+    (point, a, b, tau_steps, orbit_counts, fallback, rank, valid)
 }
 
 fn scalar_multiply_glv_comb(
@@ -2286,6 +2370,7 @@ fn check_generator_case(
     width_six: bool,
     comb_rows: usize,
     glv_rows: usize,
+    coset_three: bool,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -2332,7 +2417,9 @@ fn check_generator_case(
     }
     let scalar = scalar_from_hex(scalar_hex);
     let start = Instant::now();
-    let point = if glv_rows != 0 {
+    let point = if coset_three {
+        scalar_multiply_width_six_comb13_coset3(&scalar).0
+    } else if glv_rows != 0 {
         scalar_multiply_glv_comb(&scalar, glv_rows).0
     } else if comb_rows == 13 {
         scalar_multiply_width_six_comb13_sparse(&scalar).0
@@ -2350,7 +2437,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if glv_rows == 8 {
+    let mode = if coset_three {
+        "eisenstein_w6_comb13_coset3_fixed"
+    } else if glv_rows == 8 {
         "glv_comb8_fixed"
     } else if glv_rows == 10 {
         "glv_comb10_fixed"
@@ -2405,6 +2494,8 @@ fn main() {
             || args[0] == "--check-scalar-w6-comb12-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb13-sparse-fixed-case"
             || args[0] == "--check-scalar-w6-comb13-sparse-fixed-case"
+            || args[0] == "--benchmark-scalar-w6-comb13-coset3-fixed-case"
+            || args[0] == "--check-scalar-w6-comb13-coset3-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb8-fixed-case"
             || args[0] == "--check-scalar-glv-comb8-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb10-fixed-case"
@@ -2438,6 +2529,7 @@ fn main() {
             } else {
                 0
             },
+            args[0].contains("w6-comb13-coset3"),
         );
         return;
     }
@@ -2455,9 +2547,10 @@ fn main() {
             || args == ["--scalar-w6-comb8-fixed"]
             || args == ["--scalar-w6-comb12-fixed"]
             || args == ["--scalar-w6-comb13-sparse-fixed"]
+            || args == ["--scalar-w6-comb13-coset3-fixed"]
             || args == ["--scalar-glv-comb8-fixed"]
             || args == ["--scalar-glv-comb10-fixed"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-w6-comb13-sparse-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-w6-comb13-sparse-fixed|--scalar-w6-comb13-coset3-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
     );
     let tau_mode = args == ["--tau"];
     let scalar_mode = args == ["--scalar"]
@@ -2471,6 +2564,7 @@ fn main() {
         || args == ["--scalar-w6-comb8-fixed"]
         || args == ["--scalar-w6-comb12-fixed"]
         || args == ["--scalar-w6-comb13-sparse-fixed"]
+        || args == ["--scalar-w6-comb13-coset3-fixed"]
         || args == ["--scalar-glv-comb8-fixed"]
         || args == ["--scalar-glv-comb10-fixed"];
     let width_two = args == ["--scalar-w2"];
@@ -2485,7 +2579,7 @@ fn main() {
         8
     } else if args == ["--scalar-w6-comb12-fixed"] {
         12
-    } else if args == ["--scalar-w6-comb13-sparse-fixed"] {
+    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] {
         13
     } else {
         0
@@ -2532,7 +2626,21 @@ fn main() {
                 orbit_counts,
                 alternate_uses,
                 recoding_work,
-            ) = if comb_rows == 13 {
+            ) = if args == ["--scalar-w6-comb13-coset3-fixed"] {
+                let (point, a, b, tau_steps, orbit_counts, fallback, rank, valid) =
+                    scalar_multiply_width_six_comb13_coset3(&scalar);
+                (
+                    point,
+                    a,
+                    b,
+                    tau_steps,
+                    orbit_counts.iter().sum(),
+                    Some(json!(orbit_counts.to_vec())),
+                    None,
+                    Some(json!({"sparse_fallback": fallback, "coset_rank": rank,
+                                "valid_representatives": valid, "attempted_representatives": 3})),
+                )
+            } else if comb_rows == 13 {
                 let (point, a, b, tau_steps, orbit_counts, fallback) =
                     scalar_multiply_width_six_comb13_sparse(&scalar);
                 (
@@ -2619,7 +2727,7 @@ fn main() {
                     "orbit_counts": orbit_counts,
                     "alternate_uses": alternate_uses,
                     "recoding_work": recoding_work,
-                    "radix": if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "radix": if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -3147,6 +3255,31 @@ mod eisenstein_tau_tests {
         let fallback = scalar_multiply_width_six_comb13_sparse(&scalar);
         assert!(fallback.5);
         assert!(same_point(fallback.0, scalar_multiply(&scalar).0));
+    }
+
+    #[test]
+    fn coset3_comb13_preserves_points_and_never_increases_point_proxy() {
+        let n = SCALAR_LATTICE.n.clone();
+        let miss = BigInt::parse_bytes(
+            b"291a4b1cec292deb928a94385017b681693459cc424b1a9be19f9511ff968bc7",
+            16,
+        )
+        .unwrap();
+        for scalar in [BigInt::ZERO, BigInt::from(1), n.clone() - 1, n + 1,
+                       BigInt::from(1) << 255, miss] {
+            let original = scalar_multiply_width_six_comb13_sparse(&scalar);
+            let chosen = scalar_multiply_width_six_comb13_coset3(&scalar);
+            assert!(same_point(original.0, chosen.0));
+            assert_eq!(
+                (&chosen.1 + &chosen.2 * &SCALAR_LATTICE.lambda_tau - &scalar)
+                    % &SCALAR_LATTICE.n,
+                BigInt::ZERO
+            );
+            assert!(chosen.6 < 3 && (1..=3).contains(&chosen.7));
+            let original_cost = 5 * original.3 + 11 * original.4.iter().sum::<usize>();
+            let chosen_cost = 5 * chosen.3 + 11 * chosen.4.iter().sum::<usize>();
+            assert!(chosen_cost <= original_cost);
+        }
     }
 
     #[test]
