@@ -1646,8 +1646,42 @@ static WIDTH_SIX_COMB13_POINTS: LazyLock<SparseComb13> = LazyLock::new(|| {
 
 const PAIR_COMB13_ENTRIES_PER_PAIR: usize = 81 * 81 * 6;
 
+#[derive(Clone, Copy)]
+struct CompactPairPoint {
+    limbs: [[u64; 3]; 4],
+    signs: u8,
+}
+
+impl CompactPairPoint {
+    fn from_affine(point: Jacobian) -> Self {
+        assert!(!point.is_identity());
+        let coordinates = [point.x.a, point.x.b, point.y.a, point.y.b];
+        let mut limbs = [[0u64; 3]; 4];
+        let mut signs = 0u8;
+        for (index, coordinate) in coordinates.into_iter().enumerate() {
+            assert!(coordinate.magnitude.0[3..].iter().all(|&word| word == 0),
+                    "affine pair-table coefficient exceeds three limbs");
+            limbs[index].copy_from_slice(&coordinate.magnitude.0[..3]);
+            signs |= u8::from(coordinate.negative) << index;
+        }
+        Self { limbs, signs }
+    }
+
+    fn into_affine(self) -> Jacobian {
+        let coordinates: [Signed; 4] = std::array::from_fn(|index| {
+            let mut words = [0u64; 8];
+            words[..3].copy_from_slice(&self.limbs[index]);
+            Signed { negative: self.signs & (1 << index) != 0,
+                     magnitude: Uint(words) }.normalized()
+        });
+        Jacobian { x: Pair { a: coordinates[0], b: coordinates[1] },
+                   y: Pair { a: coordinates[2], b: coordinates[3] },
+                   z: Pair::one() }
+    }
+}
+
 struct PairComb13 {
-    rows: Vec<Box<[Jacobian]>>,
+    rows: Vec<Box<[CompactPairPoint]>>,
 }
 
 static PAIR_COMB13_POINTS: LazyLock<PairComb13> = LazyLock::new(|| {
@@ -1668,7 +1702,8 @@ static PAIR_COMB13_POINTS: LazyLock<PairComb13> = LazyLock::new(|| {
             }
         }
         assert_eq!(projective.len(), PAIR_COMB13_ENTRIES_PER_PAIR);
-        rows.push(batch_to_affine(&projective).into_boxed_slice());
+        rows.push(batch_to_affine(&projective).into_iter()
+                  .map(CompactPairPoint::from_affine).collect::<Vec<_>>().into_boxed_slice());
     }
     PairComb13 { rows }
 });
@@ -1679,7 +1714,7 @@ fn pair_comb13_point(table: &PairComb13, pair: usize,
     let relative_power = (second.unit.omega_power + 3 - first.unit.omega_power) % 3;
     let unit_code = relative_power * 2 + usize::from(relative_sign < 0);
     let index = (first.orbit * 81 + second.orbit) * 6 + unit_code;
-    table.rows[pair][index]
+    table.rows[pair][index].into_affine()
 }
 
 fn glv_comb_table(rows: usize, width: usize) -> Vec<Jacobian> {
@@ -3033,7 +3068,7 @@ fn main() {
                  start.elapsed().as_secs_f64() * 1000.0,
                  pairs.rows.iter().map(|row| row.len()).sum::<usize>(),
                  pairs.rows.iter().map(|row| row.len()).sum::<usize>()
-                     * std::mem::size_of::<Jacobian>());
+                     * std::mem::size_of::<CompactPairPoint>());
         return;
     }
     if args.len() == 3
@@ -4064,7 +4099,7 @@ mod eisenstein_tau_tests {
     fn orbit_pair_comb_matches_direct_sums_and_hex9_points() {
         let pair_table = &*PAIR_COMB13_POINTS;
         let base = &*WIDTH_SIX_COMB13_POINTS;
-        assert_eq!(std::mem::size_of::<Jacobian>(), 432);
+        assert_eq!(std::mem::size_of::<CompactPairPoint>(), 104);
         assert_eq!(pair_table.rows.len(), 6);
         assert!(pair_table.rows.iter().all(|row| row.len() == PAIR_COMB13_ENTRIES_PER_PAIR));
         for pair in 0..6 {
