@@ -20,6 +20,9 @@ membership, Buchberger pairs, and Boolean field pairs. The matrix and
 continuation budgets remain shared and unchanged; any failure or cap stays
 in the panel. The optimized and undefined-behavior-sanitized builds both
 participate.
+`test_large.py` exercises eight-equation systems at 21, 32, and 64 variables,
+compares the final bases, accepts exact certificates without enumerating
+assignments, and rejects a changed output reference.
 
 The build accepts only the source-matched reference engine SHA-256 in
 `generate.py` and records source, compiler, architecture, and binary hashes.
@@ -38,6 +41,9 @@ python3 experiments/groebner-perf-20260924/round116/profile.py \
   --reference-root /absolute/source-matched/reference \
   --reference-report /absolute/audited/round112/panel/report.json \
   --output /absolute/new/paired-profile --reps 5
+GROEBNER_F4_REFERENCE_ROOT=/absolute/source-matched/reference \
+  python3 experiments/groebner-perf-20260924/round116/test_large.py \
+  --output /absolute/new/large-proof.json
 ```
 
 Any local timing is a diagnostic. A controlled CPU gain needs matched
