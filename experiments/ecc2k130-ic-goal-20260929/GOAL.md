@@ -48,6 +48,17 @@ x inverse or equivalent target-bound elimination while multiple blocks
 remain free. The N41 exact x table supplies a control, not an N131 memory
 or work projection.
 
+The [seed-conditioned affine x screen](n41_two_pair_seed_conditioned_affine_20261009/RESULT.md)
+now closes the linear version of that inverse on the exact N41 control:
+all `63²=3,969` fixed two-pair seed-sum bins have full affine rank
+`41/41` in the 40 free completion-x bits plus the constant. Independent
+Sage replayed all 162,729 valid rank witnesses, 41 per bin. Thus even
+knowing both free seed sums yields no nontrivial affine x equation for
+early residual rejection, and no global affine x map recovers a varying
+seed-sum bit. The next method must use nonlinear pair realizability or
+joint target elimination across more blocks; this N41 result is not an
+N131 rank certificate.
+
 For the current N131 d13 six-pair policy, a final-two-pair completion check
 after **four target-independent fixed pairs** has uniform-target hit
 probability at most `1.716e-24` per prefix. The
