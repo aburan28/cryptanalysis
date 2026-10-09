@@ -747,6 +747,50 @@ ledger, transfer assessment, receipt, summary, and verifier are frozen in
 This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
 enumeration.
 
+## Prospectively frozen low-degree paths through depth forty-three
+
+The depth-forty-three extension was frozen in
+[`protocol-depth-forty-three-20261009.json`](protocol-depth-forty-three-20261009.json)
+before candidate generation. It added 656 curves at depth forty-two and 672 at
+depth forty-three with no overlap against the prior union, raising the explicit
+registry to P-256 plus 14,497 neighbors.
+
+All 1,328 additions received matched-native measurements in 222 root-controlled
+blocks. Thirty-three unadjusted short-screen hits, with point estimates from
+`1.031881x` through `1.133536x`, entered the mandatory fresh 30-trial,
+two-second holdout. Two reproduced positive paired 95% intervals:
+`p256-j-45f3…0c00` measured `1.027571x` (`1.006283x-1.049309x`) and
+`p256-j-01f5…f063` measured `1.024525x` (`1.000520x-1.049106x`). Both
+remain exploratory because the local host failed the isolation gate.
+
+The complete retained 42-edge paths were evaluated on both `P` and `Q` for
+the two holdout positives. Mean per-key transfer costs were `0.019692` and
+`0.019670` seconds; endpoint models, retained maps, transported generators,
+and discrete-log relations all reproduced.
+
+The deterministic audits verify all 1,329 delta models and transported
+generators, Frobenius-order conductor `1`, endomorphism-ring conductor `1`, and
+level-zero horizontal paths for every addition. Across the full 14,498-curve
+union, all 423,858 retained path-edge occurrences are therefore horizontal.
+Zero normalized-`3b` candidates passed the 32-operation gate. Discovery took
+648.55 seconds, accepted screening blocks 6,053.06 seconds, and the fresh
+holdout 2,096.51 seconds. Five relation-valid CPU-2 blocks totaling 135.97
+seconds were preserved but excluded because the frozen native resource was host
+CPU 0. The exact class-group restart remained active after 20,173.64 seconds
+with no result file; 153,833.21 seconds of earlier infrastructure-lost work
+remains charged separately.
+
+The 359,177,314-byte working registry compresses to one deterministic
+142,479,244-byte gzip stream, published as three ordered sub-50 MiB shards with
+per-shard, concatenated-stream, and uncompressed hashes plus a byte-identical
+repack certificate. The shards and manifest, 222 accepted raw blocks, five
+excluded wrong-resource blocks, holdout, two path mappings, failed isolation
+probe, audits, invocation ledger, transfer assessment, receipt, summary, and
+verifier are frozen in
+[`results/sage-low-degree-depth-forty-three-20261009`](results/sage-low-degree-depth-forty-three-20261009).
+This remains a bounded degree-3/5/11/13 traversal, not a complete class-group
+enumeration or an established dramatic ECDLP speedup.
+
 Registries whose compressed form fits GitHub's single-blob limit are frozen with
 [`scripts/freeze_large_json.py`](scripts/freeze_large_json.py). Larger registries
 use [`scripts/freeze_large_json_sharded.py`](scripts/freeze_large_json_sharded.py),
