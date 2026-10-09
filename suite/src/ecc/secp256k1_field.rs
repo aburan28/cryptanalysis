@@ -424,8 +424,12 @@ mod tests {
             if a.is_zero() {
                 assert_eq!(chain, SecpFieldElement::ZERO);
             } else {
-                assert_eq!(fa.mul(&chain), SecpFieldElement::ONE,
-                           "a * chain(a) != 1 for a={:#x}", a);
+                assert_eq!(
+                    fa.mul(&chain),
+                    SecpFieldElement::ONE,
+                    "a * chain(a) != 1 for a={:#x}",
+                    a
+                );
             }
         }
         // Deterministic full-width residues, independent of the chain's
