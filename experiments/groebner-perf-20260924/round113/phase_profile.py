@@ -34,6 +34,10 @@ def main():
         ['git', 'show', 'HEAD:'+str((HERE/'phase_profile.py').relative_to(root))], cwd=root)
     baseline = json.loads(args.reference_report.read_text())
     assert baseline['status'] == 'RECORDED_PENDING_AUDIT'
+    audit_path = args.reference_report.parent.parent/'audit.json'
+    audit = json.loads(audit_path.read_text())
+    assert audit['status'] == 'PASS' and audit['rows'] == 52
+    assert audit['native_binaries_loaded'] is False
     references = {}
     for entry in baseline['rows']:
         if entry['name'] in CASES and entry['early_mode'] == 1 and not entry['sanitized']:
@@ -41,13 +45,19 @@ def main():
             assert sha(source) == entry['sha256']
             references[entry['name']] = source
     assert set(references) == set(CASES)
+    build = json.loads((HERE/'build/receipt.json').read_text())
+    for name, digest in build['sources'].items():
+        assert sha(HERE/name) == digest, name
+    for name, digest in build['binaries'].items():
+        assert sha(HERE/'build'/name) == digest, name
+    assert sha(HERE/'build/seeded_phases.cpp') == build['generated_sha256']
     args.output.mkdir(parents=True, exist_ok=False)
     report = dict(status='RUNNING',
         source_commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
         source_sha256=sha(HERE/'phase_profile.py'),
         reference_report=str(args.reference_report),
         reference_sha256=sha(args.reference_report),
-        build=json.loads((HERE/'build/receipt.json').read_text()),
+        reference_audit_sha256=sha(audit_path), build=build,
         repetitions=args.reps, rows=[], summary={},
         timing_eligible=False, qualified_speedup=None)
     save(args.output/'report.json', report)
