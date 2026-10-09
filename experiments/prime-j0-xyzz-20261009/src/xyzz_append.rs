@@ -59,6 +59,37 @@ impl Xyzz {
         Self { x, y, zz, zzz, identity: false }
     }
 
+    fn add_mixed_deferred(self, addend: Jacobian) -> Self {
+        assert!(!addend.is_identity());
+        if self.identity {
+            return Self::from_affine(addend);
+        }
+        // DEFERRED_PROTOCOL.md proves the coefficient bounds at each stage.
+        let u = self.zz.mul_raw_balanced(addend.x);
+        let s = self.zzz.mul_raw_balanced(addend.y);
+        let h = u.sub(self.x).balance_add_output();
+        let r = s.sub(self.y).balance_add_output();
+        if h.is_zero() {
+            return if r.is_zero() { self.double() } else { Self::identity() };
+        }
+        let hh = h.mul_raw_balanced(h);
+        let hhh = hh.mul_raw_wide(h);
+        let v = hh.mul_raw_wide(self.x);
+        let x_raw = r.mul_raw_balanced(r).sub(hhh).sub(v.times_i32(2));
+        let y_raw = r
+            .mul_raw_wide_wide(v.sub(x_raw))
+            .sub(hhh.mul_raw_wide(self.y));
+        let zz_raw = hh.mul_raw_wide(self.zz);
+        let zzz_raw = hhh.mul_raw_wide(self.zzz);
+        Self {
+            x: x_raw.balance_add_output(),
+            y: y_raw.balance_add_output(),
+            zz: zz_raw.balance_add_output(),
+            zzz: zzz_raw.balance_add_output(),
+            identity: false,
+        }
+    }
+
     fn affine_hex(self) -> String {
         if self.identity {
             return "identity".to_owned();
@@ -72,7 +103,7 @@ impl Xyzz {
     }
 }
 
-fn check_xyzz_fixture_case(fixture_path: &str, index: usize, timed: bool) {
+fn check_xyzz_fixture_case(fixture_path: &str, index: usize, timed: bool, deferred: bool) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
     assert_eq!(fixture["schema"].as_u64(), Some(1));
@@ -95,14 +126,20 @@ fn check_xyzz_fixture_case(fixture_path: &str, index: usize, timed: bool) {
     let scalar = scalar_from_hex(scalar_hex);
     let preparation_ms = preparation_start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let point = unit_orbit_windows::multiply_xyzz_format(&scalar, 14).0;
+    let point = if deferred {
+        unit_orbit_windows::multiply_xyzz_deferred_format(&scalar, 14).0
+    } else {
+        unit_orbit_windows::multiply_xyzz_format(&scalar, 14).0
+    };
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "XYZZ fixture mismatch");
     let online_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let mode = if deferred { "unit_orbit_u14_xyzz_deferred_fixed" }
+               else { "unit_orbit_u14_xyzz_fixed" };
     if timed {
-        println!("online_ms={online_ms:.6} preparation_ms={preparation_ms:.6} retained_bytes={retained_bytes} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=unit_orbit_u14_xyzz_fixed");
+        println!("online_ms={online_ms:.6} preparation_ms={preparation_ms:.6} retained_bytes={retained_bytes} verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode={mode}");
     } else {
-        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode=unit_orbit_u14_xyzz_fixed");
+        println!("verified=1 curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} mode={mode}");
     }
 }
 
@@ -110,13 +147,18 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() == 3
         && (args[0] == "--benchmark-scalar-unit-orbit-u14-xyzz-fixed-case"
-            || args[0] == "--check-scalar-unit-orbit-u14-xyzz-fixed-case")
+            || args[0] == "--check-scalar-unit-orbit-u14-xyzz-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-u14-xyzz-deferred-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-u14-xyzz-deferred-fixed-case")
     {
         let index = args[2].parse::<usize>().expect("case index");
-        check_xyzz_fixture_case(&args[1], index, args[0].starts_with("--benchmark-"));
+        check_xyzz_fixture_case(&args[1], index, args[0].starts_with("--benchmark-"),
+                                args[0].contains("-deferred-"));
         return;
     }
-    if args != ["--scalar-unit-orbit-u14-xyzz-fixed"] {
+    let deferred = args == ["--scalar-unit-orbit-u14-xyzz-deferred-fixed"];
+    let jacobian_control = args == ["--scalar-unit-orbit-u14-jacobian-affine-control"];
+    if !deferred && !jacobian_control && args != ["--scalar-unit-orbit-u14-xyzz-fixed"] {
         upstream_main();
         return;
     }
@@ -127,14 +169,52 @@ fn main() {
             continue;
         }
         let scalar = scalar_from_hex(line.trim());
-        let (point, a, b, additions, retained_bytes) =
-            unit_orbit_windows::multiply_xyzz_format(&scalar, 14);
+        if jacobian_control {
+            let (point, a, b, additions, retained_bytes) =
+                unit_orbit_windows::multiply_format(&scalar, 14);
+            println!("{}", json!({
+                "point": point.affine_hex(),
+                "representative": [a.to_string(), b.to_string()],
+                "generic_additions": additions,
+                "retained_bytes": retained_bytes,
+                "mode": "unit_orbit_u14_jacobian_control",
+            }));
+            continue;
+        }
+        let (point, a, b, additions, retained_bytes) = if deferred {
+            unit_orbit_windows::multiply_xyzz_deferred_format(&scalar, 14)
+        } else {
+            unit_orbit_windows::multiply_xyzz_format(&scalar, 14)
+        };
         println!("{}", json!({
             "point": point.affine_hex(),
             "representative": [a.to_string(), b.to_string()],
             "generic_additions": additions,
             "retained_bytes": retained_bytes,
-            "mode": "unit_orbit_u14_xyzz_fixed",
+            "mode": if deferred { "unit_orbit_u14_xyzz_deferred_fixed" }
+                    else { "unit_orbit_u14_xyzz_fixed" },
         }));
+    }
+}
+
+#[cfg(test)]
+mod deferred_xyzz_tests {
+    use super::*;
+
+    #[test]
+    fn exceptional_addends_after_affine_and_nonaffine_accumulation() {
+        let p = Jacobian::generator();
+        let two_p = p.double().into_affine();
+        let initial = Xyzz::identity().add_mixed_deferred(p);
+        assert_eq!(initial.affine_hex(), p.affine_hex());
+        assert_eq!(initial.add_mixed_deferred(p).affine_hex(), two_p.affine_hex());
+        assert!(initial.add_mixed_deferred(p.neg()).identity);
+
+        let three_p = p.add_mixed(two_p).into_affine();
+        let nonaffine = initial.add_mixed_deferred(two_p);
+        assert_eq!(nonaffine.affine_hex(), three_p.affine_hex());
+        assert_eq!(nonaffine.add_mixed_deferred(three_p).affine_hex(),
+                   three_p.double().affine_hex());
+        assert!(nonaffine.add_mixed_deferred(three_p.neg()).identity);
     }
 }
