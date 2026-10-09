@@ -30,12 +30,14 @@ uses one three-product ring multiplication by the fixed conjugate of `pi`;
 it does not evaluate a norm or divide by `p` for every candidate.
 
 For one general field multiplication, the current fixed-width source makes
-three ring products, each expressed as three `U256::mul_wide` calls, plus
-three low-128-bit wrapping products for Montgomery cancellation. The final
-small correction is addition-only. The generic `U256::mul_wide` currently
-processes four limbs even when a coefficient occupies two or three, so
-specialized limb multiplication and complete point formulas are the next
-implementation steps. The `omega` action itself is swaps, subtraction,
+three ring products, each expressed as three signed three-by-three-limb
+products, plus three low-128-bit wrapping products for Montgomery
+cancellation. Each signed product has nine fixed 64-bit partial products,
+so the nine signed products account for 81 partial products. The final
+small correction is addition-only. The native tau follow-up replaced the
+initial generic four-limb multiplication helper and revalidated this field
+replay; complete scalar integration remains the next step. The `omega`
+action itself is swaps, subtraction,
 and sign changes; `1-omega` then needs the same normalization as addition.
 
 ## Reproducible check

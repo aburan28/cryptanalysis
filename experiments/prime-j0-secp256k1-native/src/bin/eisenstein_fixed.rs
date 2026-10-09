@@ -32,6 +32,19 @@ const PI_A: u128 = 0x3086_d221_a7d4_6bcd_e86c_90e4_9284_eb16;
 const PI_B_MAG: u128 = 0xe443_7ed6_010e_8828_6f54_7fa9_0abf_e4c3;
 const INV_A: u128 = 0x6ada_d963_1dfe_0bc2_e092_294e_9a6f_4a77;
 const INV_B: u128 = 0x0461_c2cb_62a4_16f6_8ab5_d4f0_30b9_d7ad;
+const P_SIGNED: Signed = Signed {
+    negative: false,
+    magnitude: Uint([
+        0xffff_fffe_ffff_fc2f,
+        u64::MAX,
+        u64::MAX,
+        u64::MAX,
+        0,
+        0,
+        0,
+        0,
+    ]),
+};
 
 #[derive(Clone, Copy, Debug)]
 struct Signed {
@@ -144,14 +157,30 @@ impl Signed {
     }
 
     fn mul(self, rhs: Self) -> Self {
-        assert!(self.magnitude.0[4..].iter().all(|&x| x == 0));
-        assert!(rhs.magnitude.0[4..].iter().all(|&x| x == 0));
-        let a = Uint(self.magnitude.0[..4].try_into().unwrap());
-        let b = Uint(rhs.magnitude.0[..4].try_into().unwrap());
-        let (low, high) = U256::mul_wide(&a, &b);
+        // The balanced field inputs and one-step tau width bound keep every
+        // multiplicand below 2^192. A fixed 3x3 schoolbook product uses nine
+        // u64 multiplications rather than U256::mul_wide's sixteen.
+        assert!(self.magnitude.0[3..].iter().all(|&x| x == 0));
+        assert!(rhs.magnitude.0[3..].iter().all(|&x| x == 0));
         let mut words = [0u64; 8];
-        words[..4].copy_from_slice(&low.0);
-        words[4..].copy_from_slice(&high.0);
+        for i in 0..3 {
+            let mut carry = 0u64;
+            for j in 0..3 {
+                let index = i + j;
+                let sum = (self.magnitude.0[j] as u128) * (rhs.magnitude.0[i] as u128)
+                    + (words[index] as u128)
+                    + (carry as u128);
+                words[index] = sum as u64;
+                carry = (sum >> 64) as u64;
+            }
+            let mut overflow = carry;
+            for word in words.iter_mut().skip(i + 3) {
+                let sum = (*word as u128) + (overflow as u128);
+                *word = sum as u64;
+                overflow = (sum >> 64) as u64;
+            }
+            assert_eq!(overflow, 0, "three-limb product overflow");
+        }
         Self {
             negative: self.negative ^ rhs.negative,
             magnitude: Uint(words),
@@ -179,6 +208,35 @@ impl Signed {
         }
         .normalized()
     }
+
+    fn floor_div_radix_squared(self) -> i32 {
+        // A tau output has |t_i| < 22*2^256.
+        assert!(self.magnitude.0[5..].iter().all(|&x| x == 0));
+        assert!(self.magnitude.0[4] < 22);
+        let whole = self.magnitude.0[4] as i32;
+        if self.negative {
+            let remainder = self.magnitude.0[..4].iter().any(|&x| x != 0);
+            -whole - i32::from(remainder)
+        } else {
+            whole
+        }
+    }
+
+    fn floor_div_prime_near_radix(self) -> i32 {
+        let mut quotient = self.floor_div_radix_squared();
+        let residue = self.sub(P_SIGNED.times_i32(quotient));
+        if residue.negative {
+            quotient -= 1;
+        } else if !bool::from(residue.magnitude.ct_lt(&P_SIGNED.magnitude)) {
+            quotient += 1;
+        }
+        let exact_residue = self.sub(P_SIGNED.times_i32(quotient));
+        assert!(!exact_residue.negative);
+        assert!(bool::from(
+            exact_residue.magnitude.ct_lt(&P_SIGNED.magnitude)
+        ));
+        quotient
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -199,6 +257,13 @@ impl Pair {
         Self {
             a: self.a.sub(rhs.a),
             b: self.b.sub(rhs.b),
+        }
+    }
+
+    fn times_i32(self, factor: i32) -> Self {
+        Self {
+            a: self.a.times_i32(factor),
+            b: self.b.times_i32(factor),
         }
     }
 
@@ -255,19 +320,7 @@ impl Pair {
             b: pi.b.neg(),
         };
         let t = self.product(conjugate_pi);
-        let p = Signed {
-            negative: false,
-            magnitude: Uint([
-                0xffff_fffe_ffff_fc2f,
-                u64::MAX,
-                u64::MAX,
-                u64::MAX,
-                0,
-                0,
-                0,
-                0,
-            ]),
-        };
+        let p = P_SIGNED;
         let twice_a_minus_b = t.a.add(t.a).sub(t.b);
         let twice_b_minus_a = t.b.add(t.b).sub(t.a);
         let a_plus_b = t.a.add(t.b);
@@ -282,6 +335,34 @@ impl Pair {
         panic!("no Eisenstein correction inside the proved finite set")
     }
 
+    fn balance_tau_output(self) -> Self {
+        let pi = Self::pi();
+        let t = self.product(Self {
+            a: pi.a.sub(pi.b),
+            b: pi.b.neg(),
+        });
+        let floor_a = t.a.floor_div_prime_near_radix();
+        let floor_b = t.b.floor_div_prime_near_radix();
+        let twice_a_minus_b = t.a.add(t.a).sub(t.b);
+        let twice_b_minus_a = t.b.add(t.b).sub(t.a);
+        let a_plus_b = t.a.add(t.b);
+        for a in floor_a..=floor_a + 1 {
+            for b in floor_b..=floor_b + 1 {
+                if twice_a_minus_b
+                    .sub(P_SIGNED.times_i32(2 * a - b))
+                    .abs_le(P_SIGNED)
+                    && twice_b_minus_a
+                        .sub(P_SIGNED.times_i32(2 * b - a))
+                        .abs_le(P_SIGNED)
+                    && a_plus_b.sub(P_SIGNED.times_i32(a + b)).abs_le(P_SIGNED)
+                {
+                    return self.sub(Self::small_pi_multiple(a, b, pi));
+                }
+            }
+        }
+        panic!("tau output has no nearest correction among its four corners")
+    }
+
     fn pi() -> Self {
         Self {
             a: Signed::from_u128(PI_A),
@@ -289,7 +370,7 @@ impl Pair {
         }
     }
 
-    fn montgomery_reduce(self) -> Self {
+    fn montgomery_reduce_raw(self) -> Self {
         let za = self.a.low_u128();
         let zb = self.b.low_u128();
         let ac = za.wrapping_mul(INV_A);
@@ -309,11 +390,31 @@ impl Pair {
             a: numerator.a.exact_shr_128(),
             b: numerator.b.exact_shr_128(),
         }
-        .balance()
+    }
+
+    fn montgomery_reduce(self) -> Self {
+        self.montgomery_reduce_raw().balance()
     }
 
     fn mul(self, rhs: Self) -> Self {
         self.product(rhs).montgomery_reduce()
+    }
+
+    fn mul_raw(self, rhs: Self) -> Self {
+        self.product(rhs).montgomery_reduce_raw()
+    }
+
+    fn tau_step(x: Self, y: Self, z: Self) -> [Self; 3] {
+        let x3 = x.mul_raw(x).mul_raw(x);
+        let rx = y.mul_raw(y).times_i32(4).sub(x3.times_i32(3));
+        let inner = x3.times_i32(3).sub(rx.times_i32(2));
+        let ry = y.mul_raw(inner);
+        let rz = x.sub(x.omega()).mul_raw(z);
+        [
+            rx.balance_tau_output(),
+            ry.balance_tau_output(),
+            rz.balance_tau_output(),
+        ]
     }
 
     fn add_field(self, rhs: Self) -> Self {
@@ -334,12 +435,35 @@ impl Pair {
 }
 
 fn main() {
+    let tau_mode = std::env::args().any(|arg| arg == "--tau");
     for line in io::stdin().lock().lines() {
         let line = line.expect("input line");
         if line.trim().is_empty() {
             continue;
         }
         let fields: Vec<&str> = line.split_whitespace().collect();
+        if tau_mode {
+            assert_eq!(fields.len(), 6, "expected six Jacobian coefficients");
+            let coordinates: Vec<Signed> = fields.iter().map(|x| Signed::from_decimal(x)).collect();
+            let x = Pair {
+                a: coordinates[0],
+                b: coordinates[1],
+            };
+            let y = Pair {
+                a: coordinates[2],
+                b: coordinates[3],
+            };
+            let z = Pair {
+                a: coordinates[4],
+                b: coordinates[5],
+            };
+            let tau = Pair::tau_step(x, y, z);
+            println!(
+                "{}",
+                json!({"tau": [tau[0].strings(), tau[1].strings(), tau[2].strings()]})
+            );
+            continue;
+        }
         assert_eq!(fields.len(), 4, "expected four decimal coefficients");
         let x = Pair {
             a: Signed::from_decimal(fields[0]),
@@ -359,5 +483,44 @@ fn main() {
                 "tau_constant": x.tau_constant().strings(),
             })
         );
+    }
+}
+
+#[cfg(test)]
+mod eisenstein_tau_tests {
+    use super::*;
+    use num_integer::Integer;
+
+    #[test]
+    fn radix_floor_one_correction_matches_prime_division_at_boundaries() {
+        let p = BigInt::from(P_SIGNED.magnitude.to_biguint());
+        let offsets = [
+            -p.clone(),
+            BigInt::from(-1),
+            BigInt::from(0),
+            BigInt::from(1),
+            &p - 1,
+            p.clone(),
+        ];
+        let mut adjusted = 0;
+        for multiple in -20..=20 {
+            for offset in &offsets {
+                let value: BigInt = &p * BigInt::from(multiple) + offset;
+                let (sign, magnitude) = value.clone().into_parts();
+                let signed = Signed {
+                    negative: sign == Sign::Minus,
+                    magnitude: U512::from_biguint(&magnitude),
+                }
+                .normalized();
+                let shifted = signed.floor_div_radix_squared();
+                let exact = signed.floor_div_prime_near_radix();
+                assert_eq!(
+                    exact,
+                    value.div_floor(&p).to_string().parse::<i32>().unwrap()
+                );
+                adjusted += usize::from(shifted != exact);
+            }
+        }
+        assert_eq!(adjusted, 119);
     }
 }
