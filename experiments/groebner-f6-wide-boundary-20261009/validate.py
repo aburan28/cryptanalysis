@@ -126,8 +126,25 @@ def main():
             expected, base_size = reachable_x(case, runtime)
             expected_set = set(expected)
             for sanitized in (False, True):
-                context = WideContext(case, runtime, max_bag=max_bag,
-                                      max_states=MAX_STATES, sanitized=sanitized)
+                try:
+                    context = WideContext(case, runtime, max_bag=max_bag,
+                                          max_states=MAX_STATES,
+                                          sanitized=sanitized)
+                except Exception as error:
+                    record = dict(n=n, m=m, ell=ell, seed=seed,
+                                  max_bag=max_bag, max_states=MAX_STATES,
+                                  sanitized=sanitized, nvars=case['nvars'],
+                                  base_points=base_size, reachable_x=expected,
+                                  status='FAIL', phase='setup',
+                                  error=repr(error), rows=[])
+                    report['cases'].append(record)
+                    journal.write(json.dumps(record, sort_keys=True) + '\n')
+                    journal.flush()
+                    save(report_path, report)
+                    print('F6_WIDE_CASE', m, ell, max_bag,
+                          'ubsan' if sanitized else 'optimized', 'FAIL_SETUP',
+                          flush=True)
+                    continue
                 rows = []
                 try:
                     for target_x in range(1 << n):
@@ -152,9 +169,11 @@ def main():
                         match = all(
                             answer['execution'] == 'completed' and
                             answer['status'] == expected_status and
-                            (answer['assignment'] is None or
-                             (answer['equation_verified'] is True and
-                              answer['point_verified'] is True))
+                            ((answer['assignment'] is not None and
+                              answer['equation_verified'] is True and
+                              answer['point_verified'] is True)
+                             if expected_status == 'satisfiable' else
+                             answer['assignment'] is None)
                             for answer in (left, right))
                         rows.append(dict(target_x=target_x,
                                          expected_status=expected_status,
