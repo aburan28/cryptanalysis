@@ -2,6 +2,7 @@
 
 use super::*;
 use num_traits::ToPrimitive;
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Radix {
@@ -371,6 +372,164 @@ fn recode_degree_seven(mut a: BigInt, mut b: BigInt, tail_limit: i64,
             }
         }
         assert_eq!((x, y), original);
+    }
+    actions
+}
+
+type RolloutState = (BigInt, BigInt, bool);
+
+fn rollout_step(state: RolloutState, action: Action) -> (RolloutState, usize) {
+    let (mut a, mut b, pending_tau) = state;
+    if let Some(digit) = action.digit {
+        a -= digit.a;
+        b -= digit.b;
+    }
+    (a, b) = match action.radix {
+        Radix::Tau => {
+            assert_eq!(signed_residue(&a, 3), 0);
+            (&a + &b, -a / 3)
+        }
+        Radix::Two => {
+            assert_eq!(signed_residue(&a, 2), 0);
+            assert_eq!(signed_residue(&b, 2), 0);
+            (a / 2, b / 2)
+        }
+        Radix::Rho => {
+            assert_eq!(signed_residue(&(&a - &b), 7), 0);
+            ((4 * &a + 3 * &b) / 7, (&b - &a) / 7)
+        }
+        Radix::BarRho => {
+            assert_eq!(signed_residue(&(&a - 3 * &b), 7), 0);
+            ((&a - 3 * &b) / 7, (&a + 4 * &b) / 7)
+        }
+    };
+    let terminal = a.is_zero() && b.is_zero();
+    let pair = pending_tau && action.radix == Radix::Tau
+        && action.digit.is_none() && !terminal;
+    let charge = if terminal { 0 } else {
+        let radix = match action.radix {
+            Radix::Tau => 6,
+            Radix::Two => 7,
+            Radix::Rho | Radix::BarRho => 13,
+        };
+        radix + if action.digit.is_some() { 11 } else { 0 }
+            - if pair { 2 } else { 0 }
+    };
+    ((a, b, action.radix == Radix::Tau && !pair && !terminal), charge)
+}
+
+fn greedy_high_action(a: &BigInt, b: &BigInt, pending_tau: bool) -> Action {
+    let even = signed_residue(a, 2) == 0 && signed_residue(b, 2) == 0;
+    let has_digit = signed_residue(a, 3) != 0;
+    if has_digit {
+        if even {
+            return Action { radix: Radix::Two, digit: None };
+        }
+        if signed_residue(&(a - b), 7) == 0 {
+            return Action { radix: Radix::Rho, digit: None };
+        }
+        if signed_residue(&(a - 3 * b), 7) == 0 {
+            return Action { radix: Radix::BarRho, digit: None };
+        }
+        let digit = LINKED_DIGIT_TABLE[signed_residue(a, 9)][signed_residue(b, 9)]
+            .expect("linked width-four residue");
+        Action { radix: Radix::Tau, digit: Some(digit) }
+    } else if even && !pending_tau && half_exit_wins(a, b) {
+        Action { radix: Radix::Two, digit: None }
+    } else {
+        Action { radix: Radix::Tau, digit: None }
+    }
+}
+
+fn greedy_rollout_cost(state: RolloutState,
+                       cache: &mut HashMap<RolloutState, usize>) -> usize {
+    if state.0.is_zero() && state.1.is_zero() {
+        return 0;
+    }
+    if let Some(value) = cache.get(&state) {
+        return *value;
+    }
+    let value = if eisenstein_norm(&state.0, &state.1) <= BigInt::from(4_096) {
+        let tail = tail_actions(state.0.to_i64().expect("tail a"),
+                                state.1.to_i64().expect("tail b"),
+                                state.2, false, true);
+        let mut cursor = state.clone();
+        let mut sum = 0;
+        for action in tail {
+            let (next, charge) = rollout_step(cursor, action);
+            cursor = next;
+            sum += charge;
+        }
+        assert!(cursor.0.is_zero() && cursor.1.is_zero());
+        sum
+    } else {
+        let action = greedy_high_action(&state.0, &state.1, state.2);
+        let (next, charge) = rollout_step(state.clone(), action);
+        charge + greedy_rollout_cost(next, cache)
+    };
+    cache.insert(state, value);
+    value
+}
+
+fn unit_exit_actions(a: &BigInt, b: &BigInt) -> Vec<Action> {
+    let parity = (signed_residue(a, 2), signed_residue(b, 2));
+    let rho_residue = signed_residue(&(a - b), 7);
+    let bar_residue = signed_residue(&(a - 3 * b), 7);
+    let mut actions = Vec::with_capacity(4);
+    for (x, y) in UNITS {
+        if (x.rem_euclid(2) as usize, y.rem_euclid(2) as usize) == parity {
+            actions.push(Action { radix: Radix::Two,
+                                  digit: Some(digit_for(x, y, true)) });
+        }
+    }
+    for (x, y) in UNITS {
+        if (x - y).rem_euclid(7) as usize == rho_residue {
+            actions.push(Action { radix: Radix::Rho,
+                                  digit: Some(digit_for(x, y, true)) });
+        }
+    }
+    for (x, y) in UNITS {
+        if (x - 3 * y).rem_euclid(7) as usize == bar_residue {
+            actions.push(Action { radix: Radix::BarRho,
+                                  digit: Some(digit_for(x, y, true)) });
+        }
+    }
+    actions
+}
+
+// One-step policy improvement. Each alternative is scored by its immediate
+// source cost plus the frozen greedy continuation. Repeating the choice at
+// every state cannot cost more than the greedy stream in this source model.
+fn recode_degree_seven_unit_rollout(a: BigInt, b: BigInt) -> Vec<Action> {
+    let mut state = (a, b, false);
+    let mut cache = HashMap::new();
+    let mut actions = Vec::new();
+    while !state.0.is_zero() || !state.1.is_zero() {
+        assert!(actions.len() < 222, "unit rollout exceeded proved action bound");
+        if eisenstein_norm(&state.0, &state.1) <= BigInt::from(4_096) {
+            actions.extend(tail_actions(state.0.to_i64().expect("tail a"),
+                                        state.1.to_i64().expect("tail b"),
+                                        state.2, false, true));
+            break;
+        }
+        let baseline = greedy_high_action(&state.0, &state.1, state.2);
+        let (next, charge) = rollout_step(state.clone(), baseline);
+        let mut best = charge + greedy_rollout_cost(next, &mut cache);
+        let mut choice = baseline;
+        for alternative in unit_exit_actions(&state.0, &state.1) {
+            let (next, charge) = rollout_step(state.clone(), alternative);
+            if eisenstein_norm(&next.0, &next.1)
+                >= eisenstein_norm(&state.0, &state.1) {
+                continue;
+            }
+            let score = charge + greedy_rollout_cost(next, &mut cache);
+            if score < best {
+                best = score;
+                choice = alternative;
+            }
+        }
+        state = rollout_step(state, choice).0;
+        actions.push(choice);
     }
     actions
 }
@@ -916,7 +1075,8 @@ pub(super) fn benchmark_zero_tau_case(fixture_path: &str, index: usize,
 }
 
 pub(super) fn check_degree_seven_case(fixture_path: &str, index: usize,
-                                      tail_limit: i64, timed: bool, linked: bool) {
+                                      tail_limit: i64, timed: bool, linked: bool,
+                                      unit_rollout: bool) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
         .expect("fixture JSON");
     let case = &fixture["cases"].as_array().expect("cases")[index];
@@ -935,12 +1095,17 @@ pub(super) fn check_degree_seven_case(fixture_path: &str, index: usize,
     if linked { LazyLock::force(&LINKED_DIGIT_TABLE); }
     assert!(!linked || tail_limit != 65_536,
             "linked extended tail table has not been generated");
+    assert!(!unit_rollout || (linked && tail_limit == 4_096));
     let start = Instant::now();
     let scalar = big_from_hex(scalar_hex);
     let base = J::affine(
         fe_from_hex(base_x), fe_from_hex(base_y));
     let (a, b) = short_representative(&scalar);
-    let actions = recode_degree_seven(a.clone(), b.clone(), tail_limit, linked);
+    let actions = if unit_rollout {
+        recode_degree_seven_unit_rollout(a.clone(), b.clone())
+    } else {
+        recode_degree_seven(a.clone(), b.clone(), tail_limit, linked)
+    };
     let seeds = if linked { prepare_linked_conjugate_rho(base, beta) }
                 else { prepare(base, beta) };
     let (point, counts) = evaluate_shared_z(&actions, &seeds, beta);
@@ -961,7 +1126,8 @@ pub(super) fn check_degree_seven_case(fixture_path: &str, index: usize,
         assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
     }
     let mode = if linked {
-        if tail_limit == 4_096 { "shared_z_linked_degree_seven_tail" }
+        if unit_rollout { "shared_z_linked_unit_rollout" }
+        else if tail_limit == 4_096 { "shared_z_linked_degree_seven_tail" }
         else { "shared_z_linked_degree_seven" }
     } else { match tail_limit {
         0 => "shared_z_degree_seven",
@@ -985,7 +1151,18 @@ mod tail_tests {
     use super::*;
 
     #[test]
+    fn unit_rollout_matches_frozen_curve_points() {
+        for fixture in ["fixture.json", "fresh-fixture.json",
+                        "coset-fixture.json", "linked-fresh-fixture.json",
+                        "zero-tau-fixture.json"] {
+            let path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), fixture);
+            check_degree_seven_case(&path, 0, 4_096, false, true, true);
+        }
+    }
+
+    #[test]
     fn degree_seven_zero_scalar_has_empty_action_stream() {
+        assert!(recode_degree_seven_unit_rollout(BigInt::ZERO, BigInt::ZERO).is_empty());
         for limit in [0, 4_096, 65_536] {
             assert!(recode_degree_seven(BigInt::ZERO, BigInt::ZERO, limit, false).is_empty());
         }
