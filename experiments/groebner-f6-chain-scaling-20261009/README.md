@@ -12,7 +12,7 @@ curve-point replay.
 The frozen panel has four chains with three-bit summand coordinates and one
 three-summand chain with four-bit coordinates. All 512 abscissae are tested
 for each chain. The four-bit, four- through six-summand cases are retained as
-explicit expected state-cap controls at the current 21-variable local bag
+explicit expected width-cap controls at the current 21-variable local bag
 limit. The test will fail if a capped case is silently accepted, a candidate
 status differs from either independent comparator, or a satisfiable witness
 fails either replay.

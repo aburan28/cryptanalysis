@@ -74,9 +74,10 @@ def main():
     sys.path.insert(0, str(experiments / 'groebner-f6-bitplane-target-20261009'))
     sys.path.insert(0, str(experiments / 'groebner-f6-packed-20261009'))
     sys.path.insert(0, str(experiments / 'pdp-scaling'))
-    from bitplane_query import BitplaneContext
+    from bitplane_query import BitplaneContext, STATUS
     from chain_fixture import fixture
     from gf2n import Curve, GF2n
+    assert STATUS[3] == 'width-cap'
 
     report = dict(schema='f6-bitplane-chain-scaling/1', status='RUNNING',
                   source_commit=commit, runtime_build=build, sources=sources,
@@ -122,15 +123,16 @@ def main():
         try:
             context = BitplaneContext(case)
         except RuntimeError as error:
-            status = 'EXPECTED_STATE_CAP' if 'prepared factor setup failed: 3' in str(error) else 'FAIL'
+            status = 'EXPECTED_WIDTH_CAP' if 'prepared factor setup failed: 3' in str(error) else 'FAIL'
             report['cap_controls'].append(dict(m=m, ell=4, nvars=case['nvars'],
-                                               status=status, error=str(error)))
+                                               status=status, native_status_code=3,
+                                               native_status=STATUS[3], error=str(error)))
         else:
             context.close()
             report['cap_controls'].append(dict(m=m, ell=4, nvars=case['nvars'],
                                                status='UNEXPECTED_SUCCESS'))
     report['status'] = ('PASS' if all(case['status'] == 'PASS' for case in report['cases'])
-                        and all(case['status'] == 'EXPECTED_STATE_CAP'
+                        and all(case['status'] == 'EXPECTED_WIDTH_CAP'
                                 for case in report['cap_controls']) else 'FAIL')
     data = (json.dumps(report, sort_keys=True, separators=(',', ':')) + '\n').encode()
     args.output.parent.mkdir(parents=True, exist_ok=True)
