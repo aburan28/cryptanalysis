@@ -295,6 +295,8 @@ extern "C" int prepared_separator_run(const void* opaque, uint64_t dynamic_equat
                        layout->static_factors.begin() + layout->insert_after,
                        layout->static_factors.end());
         out->copy_ns += elapsed(suffix_copy);
+        out->result.peak_factor_words =
+            std::max(out->result.peak_factor_words, factor_words(factors));
         const auto reduction_start = Clock::now();
         const int code = eliminate(layout->nvars, layout->max_bag, max_states,
                                    std::move(factors), out->result);

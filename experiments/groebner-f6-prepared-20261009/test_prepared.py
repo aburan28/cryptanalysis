@@ -53,7 +53,9 @@ def main():
                         prepared['point_verified']) == (
                             cold['status'], cold['assignment'], cold['point_verified'])
                 for key in ('width', 'factor_states', 'elimination_states',
-                            'transform_xors', 'membership_tests'):
+                            'transform_xors', 'membership_tests',
+                            'peak_factor_words', 'witness_words', 'eliminated',
+                            'bag_variables', 'stage'):
                     assert prepared['solver'][key] == cold['solver'][key], key
                 assert prepared['solver']['reused_factor_states'] > 0
         finally:

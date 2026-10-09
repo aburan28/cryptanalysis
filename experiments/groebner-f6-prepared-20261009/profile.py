@@ -86,7 +86,9 @@ def main():
                                     'equation_verified'):
                             assert cold[key] == prepared[key], key
                         for key in ('width', 'factor_states', 'elimination_states',
-                                    'transform_xors', 'membership_tests'):
+                                    'transform_xors', 'membership_tests',
+                                    'peak_factor_words', 'witness_words',
+                                    'eliminated', 'bag_variables', 'stage'):
                             assert cold['solver'][key] == prepared['solver'][key], key
                     else:
                         report['status'] = 'INCOMPLETE'
