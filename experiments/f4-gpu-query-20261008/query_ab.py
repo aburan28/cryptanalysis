@@ -85,12 +85,22 @@ def main():
                     outputs = {row['side']: json.loads((args.output/row['result']).read_text())
                                for row in (left,right)}
                     host, cuda = outputs['host'], outputs['cuda']
+                    phases_exact = all(sum(result['phase_ns'][key] for key in (
+                        'target_conversion', 'system_build', 'solve_including_callback',
+                        'offload_summary')) == result['online_ns'] and
+                        result['phase_ns']['independent_equation_and_curve_callback_subset']
+                        <= result['phase_ns']['solve_including_callback']
+                        for result in (host, cuda))
                     same = (host['input'] == cuda['input'] and host['status'] == cuda['status']
                         and host['result']['accepted_assignment'] == cuda['result']['accepted_assignment']
-                        and host['result']['target_points'] == cuda['result']['target_points'])
+                        and host['result']['target_points'] == cuda['result']['target_points']
+                        and phases_exact)
                     pair['same_verified_result'] = same
                     pair['gpu_executed'] = cuda['gpu']['matrices'] > 0 and cuda['gpu']['device'] is not None
-                    if same and pair['gpu_executed'] and host['status'] == 'verified-decomposition':
+                    if (same and pair['gpu_executed'] and host['status'] == 'verified-decomposition'
+                            and host['result']['accepted_assignment'] is not None
+                            and host['result']['independent_equation_checks'] > 0
+                            and cuda['result']['independent_equation_checks'] > 0):
                         pair.update(status='EXPLORATORY_VALID_PAIR',
                                     ratio=host['online_ns']/cuda['online_ns'])
                 report['matched_pairs'].append(pair)

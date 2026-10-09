@@ -66,13 +66,17 @@ fn main() {
     let start = Instant::now();
     let x_r = F2mElement::from_biguint(&BigUint::from(raw), n);
     let targets = points_with_x(&kc.curve, &x_r);
+    let converted = Instant::now();
     let sys = build_decomposition_system(&fb.subspace_basis, &x_r, &kc.curve.b, m, &st)
         .expect("decomposition system exceeds variable limit");
+    let built = Instant::now();
     let mut independent_checks = 0usize;
     let mut curve_lifts = 0usize;
     let mut accepted = None;
+    let mut callback_ns = 0u128;
     let (roots, stats) =
         solve_boolean_system_filtered(&sys.equations, sys.n_vars, &opts, |point| {
+            let callback_start = Instant::now();
             independent_checks += 1;
             // Re-evaluate each original Boolean equation without the solver's
             // polynomial-evaluation method or its reduced matrix rows.
@@ -90,10 +94,21 @@ fn main() {
             if good {
                 accepted = Some(point);
             }
+            callback_ns += callback_start.elapsed().as_nanos();
             good
         });
+    let solved = Instant::now();
     let summary = cryptanalysis_suite::cryptanalysis::f4_gpu::offload_summary();
-    let online_ns = start.elapsed().as_nanos();
+    let summarized = Instant::now();
+    let phase_ns = [
+        converted.duration_since(start).as_nanos(),
+        built.duration_since(converted).as_nanos(),
+        solved.duration_since(built).as_nanos(),
+        summarized.duration_since(solved).as_nanos(),
+    ];
+    let online_ns = summarized.duration_since(start).as_nanos();
+    assert_eq!(phase_ns.iter().sum::<u128>(), online_ns);
+    assert!(callback_ns <= phase_ns[2]);
     let status = if accepted.is_some() {
         "verified-decomposition"
     } else if stats.exhausted {
@@ -119,6 +134,9 @@ fn main() {
         "gpu": {"mode": summary.mode, "device": summary.device,
             "matrices": summary.matrices, "words": summary.words,
             "upload_eliminate_download_seconds": summary.seconds},
+        "phase_ns": {"target_conversion": phase_ns[0], "system_build": phase_ns[1],
+            "solve_including_callback": phase_ns[2], "offload_summary": phase_ns[3],
+            "independent_equation_and_curve_callback_subset": callback_ns},
         "online_ns": online_ns,
         "timing_boundary": "target conversion through independent equations and curve replay, including all F4 calls and CUDA transfers/synchronization",
         "qualified_speedup": null

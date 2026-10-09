@@ -36,3 +36,29 @@ jobs:
           name: groebner-continuation-phases-${{ matrix.os }}
           path: groebner-phase-evidence
           if-no-files-found: warn
+  gpu-query-host:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build complete-query F4 benchmark
+        run: cargo build --manifest-path suite/Cargo.toml --release --locked --example f4_query_bench
+      - name: Verify the three completed host queries
+        run: python experiments/f4-gpu-query-20261008/query_ab.py --binary suite/target/release/examples/f4_query_bench --output groebner-gpu-query-host-evidence --sides host --reps 1
+      - name: Check query completion and independent replay
+        run: python -c "import json; from pathlib import Path; p=Path('groebner-gpu-query-host-evidence'); r=json.loads((p/'report.json').read_text()); assert r['status']=='PASS' and len(r['rows'])==3; assert all(row['status']=='verified-decomposition' for row in r['rows']); assert all(json.loads((p/row['result']).read_text())['result']['independent_equation_checks']>0 for row in r['rows'])"
+      - name: Retain successes and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groebner-gpu-query-host-${{ matrix.os }}
+          path: groebner-gpu-query-host-evidence
+          if-no-files-found: warn

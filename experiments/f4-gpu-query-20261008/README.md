@@ -9,6 +9,9 @@ kernel launches, synchronization and download. Curve and factor-base setup is
 recorded as reusable setup outside the online interval; JSON artifact writing
 is outside it as well. The work is a stage query and does not substitute for
 the repository's single-target IC/rho metric.
+The four exclusive `phase_ns` fields sum exactly to `online_ns`: target
+conversion, system construction, solve including independent callbacks, and
+offload bookkeeping. Callback time is also reported as a subset of solve time.
 
 The panel uses the same compiled binary and input law for host and CUDA arms,
 alternates AB/BA order, retains failures and timeouts, requires identical
@@ -18,6 +21,10 @@ matrices to the device so the one-query transfer and launch cost is visible.
 `qualified_speedup` stays null until a full matched device and host resource
 receipt satisfies the relevant gate. Queries with a node or solution cap are
 recorded under that status and do not enter a speedup ratio.
+The default `0:9:2` cells use target abscissae `12`, `14`, and `22`, the first
+three verified-positive points in a deterministic scan from `0` to `40`.
+This selection makes the GPU path exercise completed decompositions; it is a
+correctness control rather than a relation-yield sample.
 
 On a CUDA host:
 
