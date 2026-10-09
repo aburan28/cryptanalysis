@@ -151,6 +151,39 @@ impl J {
         Self { x: rx, y: ry, z: rz }
     }
 
+    // (2-omega)P or its conjugate (2-omega^2)P. The formulas are
+    // homogeneous in Jacobian coordinates and also work on the scaled
+    // curve used by the shared-Z evaluator.
+    fn rho(self, beta: F, conjugate: bool) -> Self {
+        if self.is_identity() {
+            return self;
+        }
+        let x2 = self.x.sqr();
+        let x3 = x2.mul(&self.x);
+        let y2 = self.y.sqr();
+        let a = triple(x3);
+        let b = times_four(y2);
+        let aa = a.sqr();
+        let bb = b.sqr();
+        let c = beta.mul(&a);
+        let d = beta.mul(&b);
+        let (c, d) = if conjugate {
+            (a.add(&c).neg(), b.add(&d).neg())
+        } else {
+            (c, d)
+        };
+        let x_term = triple(aa).neg().sub(
+            &b.add(&triple(d)).mul(&twice(a).sub(&b).add(&c)));
+        let y_left = triple(aa).mul(
+            &a.sub(&times_four(c)).add(&times_eight(d).sub(&d)));
+        let y_right = bb.mul(
+            &b.sub(&triple(a)).sub(&times_eight(c).add(&c)));
+        let z_term = twice(a).sub(&b).add(&c).sub(&d);
+        Self { x: self.x.mul(&x_term),
+               y: self.y.mul(&y_left.add(&y_right)),
+               z: self.z.mul(&z_term) }
+    }
+
     fn to_affine(self) -> Option<(F, F)> {
         if self.is_identity() {
             return None;
@@ -1119,6 +1152,37 @@ mod shared_z_tests {
             mixed_radix::benchmark_zero_tau_case(fixture, index, false, true);
         }
     }
+
+    #[test]
+    fn rho_conjugates_match_group_addition_across_gauges() {
+        let raw = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"),
+                                               "/fresh-fixture.json"))
+            .expect("frozen fixture");
+        let fixture: Value = serde_json::from_str(&raw).expect("fixture JSON");
+        let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
+        let two = F::ONE.add(&F::ONE);
+        let seven = times_eight(F::ONE).sub(&F::ONE);
+        for case in fixture["cases"].as_array().expect("cases").iter().take(3) {
+            let base = J::affine(
+                fe_from_hex(case["base_x_hex"].as_str().expect("base x")),
+                fe_from_hex(case["base_y_hex"].as_str().expect("base y")));
+            let (_, aligned) = align_common_z(&prepare(base, beta));
+            for seed in [base, aligned[0], aligned[3]] {
+                for z in [F::ONE, two, seven] {
+                    let point = scaled(seed, z);
+                    let twice = point.double();
+                    let omega = point.omega(beta).neg();
+                    let omega2 = point.omega(beta).omega(beta).neg();
+                    let (rho, _) = twice.add_cached(omega, omega.z.sqr(),
+                                                    omega.z.sqr().mul(&omega.z));
+                    let (bar_rho, _) = twice.add_cached(omega2, omega2.z.sqr(),
+                        omega2.z.sqr().mul(&omega2.z));
+                    assert_eq!(point.rho(beta, false).to_affine(), rho.to_affine());
+                    assert_eq!(point.rho(beta, true).to_affine(), bar_rho.to_affine());
+                }
+            }
+        }
+    }
 }
 
 fn check_portfolio_fixture(fixture_path: &str, seed_path: &str,
@@ -1263,6 +1327,13 @@ fn main() {
     }
     if args.len() == 4 && args[1] == "--check-zero-tau-actions" {
         mixed_radix::check_zero_tau_action_fingerprints(&args[2], &args[3]);
+        return;
+    }
+    if args.len() == 4 && (args[1] == "--check-shared-z-degree-seven-case" ||
+                           args[1] == "--check-shared-z-degree-seven-tail-case") {
+        mixed_radix::check_degree_seven_case(&args[2],
+            args[3].parse::<usize>().expect("case index"),
+            args[1] == "--check-shared-z-degree-seven-tail-case");
         return;
     }
     if args.len() == 5 && args[1] == "--check-zero-tau-fixture" {
