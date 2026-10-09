@@ -1,5 +1,26 @@
 # ECC2K-130 single-target index-calculus goal
 
+**Exact N131 pair-inverse gate (2026-10-09 21:27 UTC):** the
+[same-rotation d13 proposal](n131_d13_same_rotation_pairs_20261009/RESULT.md)
+orders twelve leaves as six pairs at Frobenius rotations
+`[0,0,22,22,44,44,66,66,88,88,110,110]`, retaining the audited
+1,083,108-point base and 4,134 folded columns. For each of the 8,191
+nonzero seed sums, the exact S3 pair equation reduces to a rank-12 binary
+map with only the pair-swap kernel. A 1,974,044-byte pivot index inverts all
+those maps; the local producer enumerated 4,134 usable selectors and
+8,542,911 unordered pairs, passed positive and negative controls, and
+recovered an independently checked pair after scanning all sums. The
+[independent full-index audit](n131_d13_same_rotation_pairs_20261009/audit.json)
+reconstructed all 98,292 pivot rows, while the
+[rotation audit](n131_d13_same_rotation_pairs_20261009/rotation_audit.json)
+checked signed group outputs at all six rotations. Index construction took
+1.076 seconds after 6.145 seconds of selector/pair geometry, with 45.3 MB
+peak process RSS on an exploratory host. This is an exact pair primitive;
+the next method gate is to generate compatible pair-sum and pair-output
+inputs from the public target in a six-pair solver. Test an ordinary
+same-rotation N41 relation first, then freeze and run the N131 public-Q
+query under 600 seconds and 4 GiB, including independent point replay.
+
 **Current method gate (2026-10-09 21:17 UTC):** an [exact target-coupled
 group join](n41_phi_target_coupled_pair_join_20261009/RESULT.md) found and
 independently replayed an ordinary 12-leaf relation on the same frozen N41
@@ -15,7 +36,8 @@ folded columns. These times come from a contended host and are stage
 observations, while the relation and source replay are exact.
 
 The next N131 method must **use the target to restrict multiple pair
-choices before building a five-leaf index**. Directly copying the N41
+choices before building a five-leaf index or applying the compact pair
+inverse**. Directly copying the N41
 sample counts to the degree-131 subgroup has a uniform-target union-bound
 success probability at most `1.058e-26`; even an idealized 600 billion
 right-side probes raise it only to `3.174e-21`. That screen does not bound
