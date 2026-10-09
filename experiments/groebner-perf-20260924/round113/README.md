@@ -32,3 +32,17 @@ python3 experiments/groebner-perf-20260924/round113/panel.py \
   --reference-report /absolute/validated/round112/panel/report.json \
   --output /absolute/new/phase-panel
 ```
+
+The isolated benchmark adapter is `isolated_worker.py` plus
+`make_isolated_manifest.py`. The worker times the complete target-dependent
+`Context.run` interval, including native proof checking, original-equation
+evaluation, and curve replay. It checks the serialized proof and assignment
+against a freshly independently audited validation before emitting
+`verified=1`. The manifest generator retains all incomplete cases in its
+`excluded_validation_cases` field and selects only pairs for which both
+variants completed and verified. Its output is accepted by
+`scripts/isolated_bench.py`; that runner will reject a host that fails the
+physical isolation preflight. A qualifying Linux host first runs the complete
+round112 validation locally, then generates the manifest using its own
+absolute repository, Python, cgroup, CPU, and NUMA paths. See
+`docs/ISOLATED_BENCHMARKS.md` for host preparation and dispatch.

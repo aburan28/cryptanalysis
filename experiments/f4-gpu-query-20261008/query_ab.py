@@ -28,7 +28,9 @@ def main():
     parser.add_argument('--min-words', type=int, default=1)
     args = parser.parse_args()
     assert args.reps > 0 and args.timeout > 0 and args.min_words >= 0
-    cells = args.cell or ['0:9:2:77:5', '0:9:3:77:5', '1:11:2:301:5']
+    # First three verified-positive x values in the frozen 0:9:2 scan.
+    # These are correctness controls; the panel does not estimate relation yield.
+    cells = args.cell or ['0:9:2:12:5', '0:9:2:14:5', '0:9:2:22:5']
     for cell in cells:
         values = cell.split(':')
         assert len(values) == 5 and all(value.isdecimal() for value in values)

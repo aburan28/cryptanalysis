@@ -79,10 +79,27 @@ def choose(factors, remaining):
 def solve(n, equations, *, max_bag=12, max_states=1_000_000):
     if not 0 <= n <= 64 or not 0 <= max_bag <= 64:
         raise ValueError('invalid Boolean ring or width cap')
-    factors = [equation_factor(n, eq, max_bag) for eq in equations]
+    if max_states < 0:
+        raise ValueError('invalid state cap')
+    factors = []
+    work = 0
+    for equation in equations:
+        terms = canonical(equation)
+        if any(mask < 0 or mask >= 1 << n for mask in terms):
+            raise ValueError('monomial outside declared Boolean ring')
+        scope = scope_of(terms)
+        if len(scope) > max_bag:
+            raise WidthCap(len(scope), scope)
+        states = 1 << len(scope)
+        if work + states > max_states:
+            return dict(status='state-cap', assignment=None, width=len(scope),
+                        enumerated_states=work, factor_states=work,
+                        eliminated=0, stage='factor-construction')
+        factors.append(equation_factor(n, terms, max_bag))
+        work += states
+    factor_states = work
     remaining = set(range(n))
     history = []
-    work = 0
     width = max((len(f.scope) for f in factors), default=0)
     while remaining:
         x = choose(factors, remaining)
@@ -95,7 +112,8 @@ def solve(n, equations, *, max_bag=12, max_states=1_000_000):
         states = 1 << len(bag)
         if work + states > max_states:
             return dict(status='state-cap', assignment=None, width=width,
-                        enumerated_states=work, eliminated=n-len(remaining))
+                        enumerated_states=work, factor_states=factor_states,
+                        eliminated=n-len(remaining), stage='elimination')
         keep = tuple(v for v in bag if v != x)
         projections = [(factor, tuple(bag.index(v) for v in factor.scope))
                        for factor in bucket]
@@ -111,17 +129,19 @@ def solve(n, equations, *, max_bag=12, max_states=1_000_000):
         remaining.remove(x)
         if not witness:
             return dict(status='unsatisfiable', assignment=None, width=width,
-                        enumerated_states=work, eliminated=n-len(remaining))
+                        enumerated_states=work, factor_states=factor_states,
+                        eliminated=n-len(remaining))
     if any(0 not in factor.allowed for factor in factors):
         return dict(status='unsatisfiable', assignment=None, width=width,
-                    enumerated_states=work, eliminated=n)
+                    enumerated_states=work, factor_states=factor_states,
+                    eliminated=n)
     assignment = 0
     for x, keep, witness in reversed(history):
         key = restrict(assignment, tuple(range(n)), keep)
         assignment |= witness[key] << x
     assert all(satisfies(canonical(eq), assignment) for eq in equations)
     return dict(status='satisfiable', assignment=assignment, width=width,
-                enumerated_states=work, eliminated=n)
+                enumerated_states=work, factor_states=factor_states, eliminated=n)
 
 
 def main():

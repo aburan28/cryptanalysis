@@ -1,0 +1,38 @@
+name: Groebner native continuation phases
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build and independently audit frozen early queries
+        env:
+          CXX: clang++
+        run: python experiments/groebner-perf-20260924/round112/run_validation.py --output groebner-phase-evidence/reference
+      - name: Build optimized and sanitized phase instrumentation
+        env:
+          CXX: clang++
+        run: python experiments/groebner-perf-20260924/round113/build.py --reference-root .
+      - name: Match all phase results to independent audited proofs
+        run: python experiments/groebner-perf-20260924/round113/panel.py --reference-report groebner-phase-evidence/reference/panel/report.json --output groebner-phase-evidence/phases
+      - name: Verify separator exactness and width caps
+        run: python -m unittest discover -s experiments/groebner-f6-20261008 -p 'test_*.py' -v
+      - name: Retain successes and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groebner-continuation-phases-${{ matrix.os }}
+          path: groebner-phase-evidence
+          if-no-files-found: warn

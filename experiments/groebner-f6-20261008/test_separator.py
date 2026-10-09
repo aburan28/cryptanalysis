@@ -2,6 +2,7 @@ import random
 import unittest
 
 from separator import WidthCap, canonical, satisfies, solve
+from chain_profile import profile
 
 
 class SeparatorTests(unittest.TestCase):
@@ -28,7 +29,8 @@ class SeparatorTests(unittest.TestCase):
         result = solve(n, equations, max_bag=4)
         self.assertEqual(result['status'], 'satisfiable')
         self.assertEqual(result['width'], 4)
-        self.assertLess(result['enumerated_states'], 16*n)
+        self.assertEqual(result['factor_states'], 16*(n-3))
+        self.assertLess(result['enumerated_states'], 32*n)
 
     def test_global_constraint_reaches_width_cap(self):
         with self.assertRaises(WidthCap):
@@ -43,6 +45,17 @@ class SeparatorTests(unittest.TestCase):
         result = solve(10, [[(1 << 10)-1]], max_bag=10, max_states=100)
         self.assertEqual(result['status'], 'state-cap')
         self.assertIsNone(result['assignment'])
+        self.assertEqual(result['stage'], 'factor-construction')
+        self.assertEqual(result['enumerated_states'], 0)
+
+    def test_exact_s3_chain_support_growth(self):
+        first = profile(9, 3, 3, 1)
+        second = profile(9, 4, 3, 1)
+        self.assertEqual(first['status'], 'PLANTED_CHAIN_EQUATIONS_VERIFIED')
+        self.assertEqual(second['status'], 'PLANTED_CHAIN_EQUATIONS_VERIFIED')
+        self.assertEqual((first['nvars'], first['induced_width']), (18, 15))
+        self.assertEqual((second['nvars'], second['induced_width']), (30, 21))
+        self.assertEqual(second['max_equation_support'], 21)
 
 
 if __name__ == '__main__':

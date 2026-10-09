@@ -17,6 +17,11 @@ CASES = [f'pdp-12-seed-{seed}' for seed in range(1, 6)]
 
 
 def assert_reference(row, baseline):
+    def counters(value):
+        if value is None:
+            return None
+        return {key: item for key, item in value.items() if not key.endswith('_seconds')}
+
     actual, expected = row['result'], baseline['result']
     for key in ('status', 'verified', 'complete', 'basis', 'work', 'check_work',
                 'assignment', 'curve_replay', 'reference_equations_and_curve_replay'):
@@ -26,8 +31,10 @@ def assert_reference(row, baseline):
     assert actual['proof_artifact']['outputs'] == expected['proof_artifact']['outputs']
     assert len(actual['attempts']) == len(expected['attempts'])
     for a, b in zip(actual['attempts'], expected['attempts']):
-        for key in ('kind', 'verified', 'stats', 'producer', 'composition'):
+        for key in ('kind', 'verified', 'composition'):
             assert a.get(key) == b.get(key), (a['kind'], key)
+        for key in ('stats', 'producer'):
+            assert counters(a.get(key)) == counters(b.get(key)), (a['kind'], key)
         if a['kind'] == 'seeded-f4':
             phase = a['native_phases']
             assert phase['completed'] == 1 and phase['stage_at_exit'] == 4
