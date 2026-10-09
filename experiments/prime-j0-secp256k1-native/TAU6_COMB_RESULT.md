@@ -16,13 +16,13 @@ evaluation over columns computes
 `zG = sum_c tau^c (sum_j d_(c+jL) tau^(jL) G)`.
 
 The shifted bases use `(r-1)L` tau maps. Their projective coordinates are
-batch-normalized, then each row's connected unit-edge seed graph needs 80
-mixed additions. All `81r` seed outputs are normalized with a second batch
+batch-normalized, then each row's connected unit-edge seed graph makes 80
+mixed-addition calls, with the point formula handling equal-point edges. All `81r` seed outputs are normalized with a second batch
 inversion. The three positive unit images per seed are materialized; signs
 use point negation. Thus the four-row table has 324 seed orbits and 972
 materialized unit images, while the eight-row table has 648 seed orbits and
 1,944 images. The setup requires 129 or 154 shifted-base tau maps, 320 or
-640 seed-graph additions, and two batch inversions respectively.
+640 seed-graph addition calls, and two batch inversions respectively.
 
 The 169-position span covers every scalar reduced by the frozen
 `short_representative` lattice rule. Center rounding places a candidate in
@@ -71,13 +71,14 @@ target/release/eisenstein_fixed --check-scalar-w6-comb8-fixed-case \
 The screen independently reconstructs each Eisenstein integer and checks
 the subgroup scalar congruence. The native replay checks both modes on all
 214 scalars: every representative, tau/addition count, and affine point.
-The 39 release tests and both fixture entrypoints pass. The result JSON
+The 40 release tests, including shifted-table point checks, and both fixture entrypoints pass. The result JSON
 SHA-256 is
 `eaa89aab4b50c405d03f4152beb838173124f66f6d6a7d3b815367389ff69a43`;
 the native binary SHA-256 is
-`45db7f7a62ff7044127aac3cca5f2a9514808af5df60dba46004f4177ada54e5`.
+`5d07da14c5e7528cfcabf05f4cddda43d8bbf47f5a4e60cc890fe528100b0447`.
 
-Hanser and Wagner studied a tau-comb for binary Koblitz curves. This
+[Hanser and Wagner](https://tugraz.elsevierpure.com/files/86425778/koblitzfb.pdf)
+studied a tau-comb for binary Koblitz curves. This
 implementation applies the comb arrangement to the prime-field tau map
 and the minimum-norm Eisenstein width-six orbit atlas. A comparison with
 fixed-base GLV/comb implementations at equal table budgets is the next

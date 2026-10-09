@@ -1246,6 +1246,11 @@ static WIDTH_SIX_DIGITS: LazyLock<[Option<WidthSixDigit>; 729]> = LazyLock::new(
 
 fn width_six_projective_row(generator: Jacobian) -> [Jacobian; 81] {
     assert_eq!(WIDTH_SIX_SEEDS[0], (-2, 1));
+    assert_eq!(
+        generator.z.strings(),
+        Pair::one().strings(),
+        "unit-edge seed graph requires an affine base"
+    );
     let mut projective = [None; 81];
     projective[0] = Some(generator.omega().omega());
     let mut queue = vec![0usize];
@@ -2788,6 +2793,28 @@ mod eisenstein_tau_tests {
                 WIDTH_SIX_POINTS[index][0],
                 scalar_multiply(&scalar).0
             ));
+        }
+    }
+
+    #[test]
+    fn width_six_comb_shifted_tables_match_tau_images() {
+        for (rows, width, tables) in [
+            (4, 43, &*WIDTH_SIX_COMB4_POINTS),
+            (8, 22, &*WIDTH_SIX_COMB8_POINTS),
+        ] {
+            assert_eq!(tables.len(), rows);
+            for row in 0..rows {
+                for seed in [0, 1, 17, 40, 80] {
+                    let mut expected = WIDTH_SIX_POINTS[seed][0];
+                    for _ in 0..row * width {
+                        expected = expected.tau();
+                    }
+                    assert!(
+                        same_point(tables[row][seed][0], expected),
+                        "rows={rows} row={row} seed={seed}"
+                    );
+                }
+            }
         }
     }
 
