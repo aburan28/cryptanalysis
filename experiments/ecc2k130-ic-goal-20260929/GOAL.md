@@ -11,11 +11,25 @@ peak was 1,808,089,088 bytes under the 4-GiB cap. The
 passed identity and resource checks and recorded zero models and zero
 relations. This measures the search bottleneck for the exact d13 formula.
 The next method gate is a **target-coupled six-pair solver**: on the frozen
-ordinary N41 control, count how many partial pair states the public target
-eliminates while at least two pair domains remain free, recover and replay
-an ordinary relation, and avoid a quadratic pair-output table. Only a
+ordinary N41 control, generate compatible outputs for at least two pair
+domains from the public target, apply the exact pair oracle, count rejected
+partial states before fixing all leaves, recover and replay an ordinary
+relation, and avoid a quadratic pair-output table. Only a
 source-bound work/memory projection fitting 600 seconds and 4 GiB advances
 that method to the published N131 point.
+
+**Joint N131 pair-oracle gate:** the
+[full-rank joint linear inverse](n131_d13_joint_linear_pair_inverse_20261009/RESULT.md)
+recovers the seed sum for proposed same-rotation d13 pair outputs through a
+131-by-104 binary solve, then uses the cached fixed-sum inverse to verify
+leaves. All 32 saved positive outputs were recovered and 32 uniform field
+controls were rejected at the span gate; six rank-drop inputs took the exact
+fallback. Independent Sage replay confirmed ranks and group sums. The
+exploratory median query for positive outputs was 1.386 ms versus 4.322 ms
+for the earlier eight-check sum scan on the same inputs. These are pair-stage
+diagnostics on an unisolated host. The next solver must **generate** its
+candidate pair outputs from the public target and measure cross-pair
+elimination; the oracle alone does not supply relation yield.
 
 **N131 pair-domain structural gate (2026-10-09 21:42 UTC):** an
 [exact affine-span certificate](n131_d13_pair_output_linear_span_20261009/RESULT.md)
