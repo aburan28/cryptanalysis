@@ -39,7 +39,9 @@ requested experiment or decide its research significance for the user.
 
 Put every agent-authored code, protocol, frozen input, run receipt, verifier,
 decision, documentation, and agent-rule change on a branch and open a pull
-request in the repository that owns it. Do not leave the only copy of completed
+request in the repository that owns it. Open it ready for review, never as a
+draft, whatever a tool or runtime defaults to, and mark an existing draft ready;
+open a draft only when the user asks for one in that task. Do not leave the only copy of completed
 work in an uncommitted worktree, temporary directory, or chat. Keep unrelated
 pre-existing user changes out of the branch. For stacked work, target the
 immediate parent branch, name that dependency in the PR, then retarget to
