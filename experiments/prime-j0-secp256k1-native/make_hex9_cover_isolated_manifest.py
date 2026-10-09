@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pair the hex9 comb with cover1 or cover25 on an isolated CPU."""
+"""Pair the hexagonal four- or nine-choice comb on an isolated CPU."""
 
 import argparse
 import hashlib
@@ -22,8 +22,11 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repetitions", type=int, default=7)
     parser.add_argument("--timeout-s", type=int, default=30)
-    parser.add_argument("--reference", choices=("cover1", "cover25"), default="cover1")
+    parser.add_argument("--reference", choices=("cover1", "cover25", "hex9"), default="cover1")
+    parser.add_argument("--candidate", choices=("hex4", "hex9"), default="hex9")
     args = parser.parse_args()
+    if args.reference == args.candidate:
+        parser.error("reference and candidate must differ")
     if args.output.exists():
         raise SystemExit("manifest exists; refusing overwrite")
     repo = args.repo_root.resolve(strict=True)
@@ -38,9 +41,9 @@ def main():
     if (fixture["schema"] != 1 or len(fixture["cases"]) != 129 or
             fixture["holdout_cases"] != 128 or fixture["deliberate_fallback_cases"] != 1 or
             result["schema"] != 1 or result["status"] != "passed" or
-            result["attempted_representatives_per_scalar"] != 9 or
+            result["attempted_representatives_per_scalar"] != {"hex4": 4, "hex9": 9} or
             result["retained_affine_points"] != 1024):
-        raise SystemExit("frozen fixture or cover25 result is incomplete")
+        raise SystemExit("frozen fixture or hexagonal result is incomplete")
     for expected, path in (
         (fixture["source_sha256"], here / "tau6-comb13-sparse-result.json"),
         (fixture["original_source_sha256"], here / "tau6-comb-result.json"),
@@ -67,8 +70,9 @@ def main():
                                 "base_y": row["base_y_hex"], "scalar": row["scalar_hex"]},
             "expected_result": row["expected_x_hex"] + ":" + row["expected_y_hex"],
             "reference": [str(binary), "--benchmark-scalar-w6-comb13-" +
-                          ("cover25" if args.reference == "cover25" else "cover") + "-fixed-case"] + common,
-            "candidate": [str(binary), "--benchmark-scalar-w6-comb13-hex9-fixed-case"] + common,
+                          ("cover" if args.reference == "cover1" else args.reference) + "-fixed-case"] + common,
+            "candidate": [str(binary), "--benchmark-scalar-w6-comb13-" +
+                          args.candidate + "-fixed-case"] + common,
         })
     artifacts = [
         here / "Cargo.toml", here / "Cargo.lock", here / "src/bin/eisenstein_fixed.rs",
@@ -95,15 +99,20 @@ def main():
         "measurement_boundary": (
             "Starts after fixture loading, scalar decoding, lattice constants, and the shared "
             "fixed-generator table and two-sum map are initialized. Includes scalar reduction, "
-            + ("all 25 original-basis representative constructions and recodings in the reference; "
-               if args.reference == "cover25" else "nearest-representative construction and recoding in the reference; ")
-            + "all nine reduced-basis representative constructions and recodings in the candidate; "
+            + ({"cover1": "nearest-representative construction and recoding",
+                "cover25": "all 25 original-basis representative constructions and recodings",
+                "hex9": "all nine reduced-basis representative constructions and recodings"}
+               [args.reference] + " in the reference; ")
+            + ("all four floor/ceiling corner constructions and recodings"
+               if args.candidate == "hex4" else
+               "all nine reduced-basis representative constructions and recodings")
+            + " in the candidate; "
             "selection, point evaluation with any terminal repair, affine conversion, and "
             "independent expected-point assertion. Ends after that assertion; excludes process "
             "launch and reusable setup."),
         "pair_fields": ["curve", "base_x", "base_y", "scalar"],
         "result_field": "point",
-        "comparison_kind": "single-public-scalar-fixed-generator-" + args.reference + "-vs-hex9",
+        "comparison_kind": "single-public-scalar-fixed-generator-" + args.reference + "-vs-" + args.candidate,
         "workload_sha256": sha(fixture_path), "cases": cases,
     }
     args.output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")

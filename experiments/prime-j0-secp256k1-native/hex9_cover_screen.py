@@ -18,7 +18,7 @@ from width6_tau_screen import build_width_six_table
 
 HERE = Path(__file__).resolve().parent
 W = (U[0] - 2 * V[0], U[1] - 2 * V[1])
-SEED = 2026100961
+SEED = 2026100971
 COUNT = 10_000
 NATIVE_RANDOM = 256
 NATIVE_REPAIRS = 64
@@ -47,11 +47,16 @@ def hex_choices(scalar):
     return sorted(rows)
 
 
-def four_corner_norm(scalar):
+def four_choices(scalar):
     floor_w = scalar * V[1] // N
     floor_v = -scalar * W[1] // N
-    return min(norm((scalar - i * W[0] - j * V[0], -i * W[1] - j * V[1]))
-               for i in (floor_w, floor_w + 1) for j in (floor_v, floor_v + 1))
+    rows = []
+    for i in (floor_w, floor_w + 1):
+        for j in (floor_v, floor_v + 1):
+            a, b = scalar - i * W[0] - j * V[0], -i * W[1] - j * V[1]
+            assert (a + b * LAMBDA_TAU - scalar) % N == 0
+            rows.append((norm((a, b)), max(abs(a), abs(b)), a, b))
+    return sorted(rows)
 
 
 def score_pair(a, b, table, selected):
@@ -70,10 +75,10 @@ def score_pair(a, b, table, selected):
 
 def score(scalar, table, selected):
     old = candidates(scalar)
+    four_rows = four_choices(scalar)
     hex_rows = hex_choices(scalar)
-    assert len(old) == 25 and len(hex_rows) == 9
-    assert norm((old[0][2], old[0][3])) == hex_rows[0][0]
-    assert four_corner_norm(scalar) == old[0][0]
+    assert len(old) == 25 and len(four_rows) == 4 and len(hex_rows) == 9
+    assert old[0][0] == four_rows[0][0] == hex_rows[0][0]
     cache = {}
 
     def evaluate(rows):
@@ -89,20 +94,21 @@ def score(scalar, table, selected):
         return attempts[0], min(attempts, key=lambda item: (item["field_product_proxy"], item["rank"])), len(attempts)
 
     nearest, cover25, _ = evaluate(old)
-    _, hex9, valid = evaluate(hex_rows)
-    assert hex9["field_product_proxy"] <= nearest["field_product_proxy"]
-    return nearest, cover25, hex9, valid
+    _, hex4, valid4 = evaluate(four_rows)
+    _, hex9, valid9 = evaluate(hex_rows)
+    assert hex9["field_product_proxy"] <= hex4["field_product_proxy"] <= nearest["field_product_proxy"]
+    return nearest, cover25, hex4, hex9, valid4, valid9
 
 
-def check_native(binary, scalars, expected):
+def check_native(binary, scalars, expected, mode):
     request = "".join(scalar_text(value) + "\n" for value in scalars)
-    process = subprocess.run([str(binary), "--scalar-w6-comb13-hex9-fixed"],
+    process = subprocess.run([str(binary), f"--scalar-w6-comb13-{mode}-fixed"],
                              input=request, text=True, capture_output=True,
                              check=True, timeout=300)
     rows = [json.loads(line) for line in process.stdout.splitlines()]
     assert len(rows) == len(scalars)
     for index, (scalar, (winner, valid), row) in enumerate(zip(scalars, expected, rows)):
-        assert row["radix"] == "orbit-w6-comb13-hex9-fixed", index
+        assert row["radix"] == f"orbit-w6-comb13-{mode}-fixed", index
         assert affine_from_native(row["point"]) == curve.point_multiply(scalar % N), index
         assert list(map(int, row["representative"])) == winner["representative"], index
         assert row["tau_steps"] == winner["tau_steps"], index
@@ -111,7 +117,7 @@ def check_native(binary, scalars, expected):
         assert work["top_repaired"] == winner["top_repaired"], index
         assert work["coset_rank"] == winner["rank"], index
         assert work["valid_representatives"] == valid, index
-        assert work["attempted_representatives"] == 9, index
+        assert work["attempted_representatives"] == (4 if mode == "hex4" else 9), index
 
 
 def main():
@@ -134,49 +140,63 @@ def main():
     frozen = Counter()
     frozen_rows = []
     native_scalars = []
-    native_expected = []
+    native_expected = {"hex4": [], "hex9": []}
     for row in source["frozen"]["rows"]:
         scalar = int(row["scalar_hex"], 16)
-        nearest, cover25, winner, valid = score(scalar, table, selected)
+        nearest, cover25, hex4, hex9, valid4, valid9 = score(scalar, table, selected)
         assert nearest["field_product_proxy"] == row["nearest_cover_proxy"]
         assert cover25["field_product_proxy"] == row["selected"]["field_product_proxy"]
         frozen.update({"cases": 1, "nearest_cover_proxy": nearest["field_product_proxy"],
                        "cover25_proxy": cover25["field_product_proxy"],
-                       "hex9_proxy": winner["field_product_proxy"],
-                       "hex9_repairs": int(winner["top_repaired"])})
+                       "hex4_proxy": hex4["field_product_proxy"],
+                       "hex9_proxy": hex9["field_product_proxy"],
+                       "hex4_repairs": int(hex4["top_repaired"]),
+                       "hex9_repairs": int(hex9["top_repaired"])})
         frozen_rows.append({"scalar_hex": row["scalar_hex"], "panel": row["panel"],
-                            "hex9": winner, "valid_representatives": valid})
+                            "hex4": hex4, "hex9": hex9,
+                            "valid_representatives": {"hex4": valid4, "hex9": valid9}})
         native_scalars.append(scalar)
-        native_expected.append((winner, valid))
+        native_expected["hex4"].append((hex4, valid4))
+        native_expected["hex9"].append((hex9, valid9))
 
     deliberate = int(source["deliberate_fallback"]["scalar_hex"], 16)
-    deliberate_nearest, deliberate_cover25, deliberate_hex9, deliberate_valid = score(
+    deliberate_nearest, deliberate_cover25, deliberate_hex4, deliberate_hex9, deliberate_valid4, deliberate_valid9 = score(
         deliberate, table, selected)
     native_scalars.append(deliberate)
-    native_expected.append((deliberate_hex9, deliberate_valid))
+    native_expected["hex4"].append((deliberate_hex4, deliberate_valid4))
+    native_expected["hex9"].append((deliberate_hex9, deliberate_valid9))
 
     rng = random.Random(SEED)
     holdout = Counter()
-    ranks = Counter()
+    ranks = {"hex4": Counter(), "hex9": Counter()}
     repaired_native = 0
     for index in range(COUNT):
         scalar = rng.randrange(N)
-        nearest, cover25, winner, valid = score(scalar, table, selected)
+        nearest, cover25, hex4, hex9, valid4, valid9 = score(scalar, table, selected)
         holdout.update({"cases": 1, "nearest_cover_proxy": nearest["field_product_proxy"],
                         "cover25_proxy": cover25["field_product_proxy"],
-                        "hex9_proxy": winner["field_product_proxy"],
-                        "hex9_repairs": int(winner["top_repaired"]),
-                        "hex9_non_nearest": int(winner["rank"] != 0),
-                        "valid_representatives": valid})
-        ranks[winner["rank"]] += 1
-        if index < NATIVE_RANDOM or (winner["top_repaired"] and repaired_native < NATIVE_REPAIRS):
+                        "hex4_proxy": hex4["field_product_proxy"],
+                        "hex9_proxy": hex9["field_product_proxy"],
+                        "hex4_repairs": int(hex4["top_repaired"]),
+                        "hex9_repairs": int(hex9["top_repaired"]),
+                        "hex4_non_nearest": int(hex4["rank"] != 0),
+                        "hex9_non_nearest": int(hex9["rank"] != 0),
+                        "hex4_valid_representatives": valid4,
+                        "hex9_valid_representatives": valid9})
+        ranks["hex4"][hex4["rank"]] += 1
+        ranks["hex9"][hex9["rank"]] += 1
+        if index < NATIVE_RANDOM or ((hex4["top_repaired"] or hex9["top_repaired"])
+                                      and repaired_native < NATIVE_REPAIRS):
             native_scalars.append(scalar)
-            native_expected.append((winner, valid))
+            native_expected["hex4"].append((hex4, valid4))
+            native_expected["hex9"].append((hex9, valid9))
             if index >= NATIVE_RANDOM:
                 repaired_native += 1
-    check_native(binary, native_scalars, native_expected)
-    result = {"schema": 1, "status": "passed", "scheme": "reduced-hexagonal-lattice-hex9-cover",
-              "retained_affine_points": 1024, "attempted_representatives_per_scalar": 9,
+    for mode in ("hex4", "hex9"):
+        check_native(binary, native_scalars, native_expected[mode], mode)
+    result = {"schema": 1, "status": "passed", "scheme": "reduced-hexagonal-lattice-corner-cover",
+              "retained_affine_points": 1024,
+              "attempted_representatives_per_scalar": {"hex4": 4, "hex9": 9},
               "basis": {"W": list(map(str, W)), "V": list(map(str, V)),
                         "norm_W": str(norm(W)), "norm_V": str(norm(V)),
                         "norm_W_plus_V": str(norm((W[0] + V[0], W[1] + V[1])))},
@@ -184,11 +204,15 @@ def main():
               "deliberate_fallback": {"scalar_hex": hex(deliberate),
                                       "nearest_cover": deliberate_nearest,
                                       "cover25": deliberate_cover25,
+                                      "hex4": deliberate_hex4,
                                       "hex9": deliberate_hex9,
-                                      "valid_representatives": deliberate_valid},
+                                      "valid_representatives": {"hex4": deliberate_valid4,
+                                                                "hex9": deliberate_valid9}},
               "disjoint_holdout": {"seed": SEED, **dict(holdout),
-                                   "chosen_rank_counts": dict(ranks)},
+                                   "chosen_rank_counts": {mode: dict(counts)
+                                                          for mode, counts in ranks.items()}},
               "native_verified_cases": len(native_scalars),
+              "native_verified_outputs": 2 * len(native_scalars),
               "source_result_sha256": sha(source_path), "source_sha256": sha(Path(__file__)),
               "native_source_sha256": sha(HERE / "src/bin/eisenstein_fixed.rs"),
               "binary_sha256": sha(binary),
