@@ -45,14 +45,30 @@ ms respectively. That large variation reinforces the exploratory status of
 the local wall times. The full context and native static-elimination costs
 are retained in both raw panel artifacts.
 
-For boundary width `b`, field-equation count `e`, target-bit count `t`, and
-`W = ceil(2^b/64)`, this layout adds `O((t+1)e 2^b)` setup evaluations and
-`O((t+1)eW)` words beyond the reusable static elimination. A fresh target
-uses at most `O(eW(1+popcount(target)))` word operations before witness
-reconstruction and verification. The 16-variable boundary and 31-bit target
-gates are explicit. Dense cross-links can make `b` grow with the full system;
-nonaffine target equations do not enter this path. Neither case supports an
-asymptotic claim for general Gröbner basis computation.
+The exactness condition is explicit. Let `S` be the set of boundary assignments
+with a valid static witness, and suppose each target equation has the form
+`f_j(x,u) = a_j,0(x) + sum_k u_k a_j,k(x)` over GF(2), where `x` contains
+only boundary variables. The setup stores the truth plane of each `a_j,k`
+and the bitset of `S`. For a fresh target `u`, bitwise XOR gives exactly the
+truth plane of `f_j(x,u)`; intersecting its complement for every `j` with
+`S` therefore gives precisely the feasible boundary assignments. A selected
+bit reconstructs the stored static witness, and the original equations and
+curve point are checked again. This proves the returned satisfiable answer;
+an empty intersection proves unsatisfiability under the stated static-witness
+and affine-target preconditions.
+
+For boundary width `b`, equation count `e`, target-bit count `t`, total
+template monomial occurrences `L`, `R` residual static factors, and
+`W = ceil(2^b/64)`, the current direct evaluator adds
+`O((L+R) 2^b + teW)` setup operations and
+`O((t+1)eW + W)` words beyond reusable static elimination and witnesses.
+A fresh target uses at most `O(eW(1+popcount(u)))` word operations before
+witness reconstruction and verification. The explicit caps are 16 boundary
+variables and 31 target bits. A dense dynamic equation with support on all
+`n` variables makes `b=n` for this layout, so its table grows as `2^n`;
+a target term such as `u_0 u_1 x_0` violates the affine-target precondition.
+These are concrete structural counterexamples to extending this bound to
+general Gröbner basis computation, irrespective of degree of regularity.
 
 Reproduce from this checkout with the predecessor builds in the workflow,
 then run `build.py`, `test_bitplane.py`, `semantic_replay.py`, and `profile.py`
