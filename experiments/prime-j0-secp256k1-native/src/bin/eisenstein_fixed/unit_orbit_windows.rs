@@ -12,6 +12,9 @@ const WIDTHS: [u8; 14] = [10, 10, 10, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const WIDTHS15: [u8; 15] = [8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9];
 const WIDTHS16: [u8; 16] = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9];
 const CAP_BYTES: usize = 90 * (1 << 20);
+const RADIX13: usize = 943;
+const RADIX13_WINDOWS: usize = 13;
+const RADIX13_CAP_BYTES: usize = 140 * (1 << 20);
 
 fn norm((a, b): (i32, i32)) -> i64 {
     let (a, b) = (i64::from(a), i64::from(b));
@@ -92,13 +95,22 @@ fn nearest_digit((a, b): (i32, i32), base: i32) -> (i16, i16) {
 
 struct OrbitAtlas {
     width: u8,
+    base: usize,
     codes: Box<[u32]>,
     digits: Box<[(i16, i16)]>,
 }
 
 impl OrbitAtlas {
     fn new(width: u8) -> Self {
-        let base = 1usize << width;
+        Self::with_base(width, 1usize << width)
+    }
+
+    fn new_radix(base: usize) -> Self {
+        assert_eq!(base, RADIX13);
+        Self::with_base(0, base)
+    }
+
+    fn with_base(width: u8, base: usize) -> Self {
         let mut codes = vec![u32::MAX; base * base];
         let mut digits = Vec::with_capacity((base * base + 8) / 6);
         for index in 0..base * base {
@@ -130,13 +142,14 @@ impl OrbitAtlas {
         assert_eq!(digits[0], (0, 0));
         Self {
             width,
+            base,
             codes: codes.into_boxed_slice(),
             digits: digits.into_boxed_slice(),
         }
     }
 
     fn base(&self) -> usize {
-        1usize << self.width
+        self.base
     }
 
     fn digit(&self, a: &BigInt, b: &BigInt) -> ((i32, i32), usize, usize) {
@@ -309,6 +322,70 @@ static TABLES: LazyLock<Tables> = LazyLock::new(Tables::new);
 static TABLES15: LazyLock<Tables> = LazyLock::new(|| Tables::with_widths(&WIDTHS15));
 static TABLES16: LazyLock<Tables> = LazyLock::new(|| Tables::with_widths(&WIDTHS16));
 
+struct Radix13Tables {
+    atlas: OrbitAtlas,
+    windows: Vec<Box<[CompactPairPoint]>>,
+    retained_bytes: usize,
+}
+
+impl Radix13Tables {
+    fn new() -> Self {
+        let atlas = OrbitAtlas::new_radix(RADIX13);
+        assert_eq!(atlas.digits.len(), 148_209);
+        let mut windows = Vec::with_capacity(RADIX13_WINDOWS);
+        let mut base = Jacobian::generator();
+        for index in 0..RADIX13_WINDOWS {
+            windows.push(build_window(&atlas, base));
+            if index + 1 < RADIX13_WINDOWS {
+                base = affine_multiples(base, RADIX13).pop().unwrap();
+            }
+        }
+        let entries = windows.iter().map(|row| row.len()).sum::<usize>();
+        assert_eq!(entries, 1_926_717);
+        let retained_bytes = entries * size_of::<CompactPairPoint>()
+            + atlas.codes.len() * size_of::<u32>()
+            + atlas.digits.len() * size_of::<(i16, i16)>()
+            + size_of::<Self>()
+            + windows.capacity() * size_of::<Box<[CompactPairPoint]>>();
+        assert!(retained_bytes < RADIX13_CAP_BYTES);
+        Self { atlas, windows, retained_bytes }
+    }
+}
+
+static RADIX13_TABLES: LazyLock<Radix13Tables> = LazyLock::new(Radix13Tables::new);
+
+fn multiply_radix13(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (mut a, mut b) = hexagonal_four_corner_choices(&residue).remove(0);
+    let (start_a, start_b) = (a.clone(), b.clone());
+    let tables = &*RADIX13_TABLES;
+    let base = BigInt::from(RADIX13);
+    let mut result = Jacobian::identity();
+    let mut nonidentity = 0usize;
+    for row in &tables.windows {
+        let (digit, orbit_id, unit_code) = tables.atlas.digit(&a, &b);
+        a = (a - digit.0) / &base;
+        b = (b - digit.1) / &base;
+        if orbit_id == 0 {
+            continue;
+        }
+        let mut addend = row[orbit_id].into_affine();
+        for _ in 0..(unit_code / 2) {
+            addend = addend.omega();
+        }
+        if unit_code & 1 != 0 {
+            addend = addend.neg();
+        }
+        result = result.add_mixed(addend);
+        nonidentity += 1;
+    }
+    assert!(a.is_zero() && b.is_zero(), "radix-943 recoding did not terminate");
+    (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
+}
+
 fn selected(format: u8) -> &'static Tables {
     match format {
         14 => &TABLES,
@@ -319,6 +396,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 13 {
+        return RADIX13_TABLES.retained_bytes;
+    }
     selected(format).retained_bytes
 }
 
@@ -326,6 +406,9 @@ pub(super) fn multiply_format(
     scalar: &BigInt,
     format: u8,
 ) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    if format == 13 {
+        return multiply_radix13(scalar);
+    }
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
     let (mut a, mut b) = hexagonal_four_corner_choices(&residue).remove(0);
@@ -402,6 +485,42 @@ pub(super) fn multiply_word_format(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn radix943_atlas_covers_all_residues_and_fixture_points() {
+        let tables = &*RADIX13_TABLES;
+        assert_eq!(tables.windows.len(), RADIX13_WINDOWS);
+        assert!(tables.retained_bytes >= 1_926_717 * size_of::<CompactPairPoint>());
+        assert!(tables.retained_bytes < RADIX13_CAP_BYTES);
+        for ra in 0..RADIX13 {
+            for rb in 0..RADIX13 {
+                let (digit, orbit_id, unit_code) = tables.atlas.digit_residue(ra, rb);
+                assert_eq!((digit.0.rem_euclid(RADIX13 as i32) as usize,
+                            digit.1.rem_euclid(RADIX13 as i32) as usize), (ra, rb));
+                assert!(3 * norm(digit) <= (RADIX13 * RADIX13) as i64);
+                assert!(orbit_id < tables.atlas.digits.len() && unit_code < 6);
+            }
+        }
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tau6-comb13-bench-fixture.json"
+        )).unwrap();
+        for (case_index, case) in fixture["cases"].as_array().unwrap().iter().enumerate() {
+            let scalar = BigInt::parse_bytes(case["scalar_hex"].as_str().unwrap().as_bytes(), 16)
+                .unwrap();
+            let (point, a, b, additions, retained) = multiply_radix13(&scalar);
+            assert_eq!(retained, tables.retained_bytes);
+            assert!(additions <= 12);
+            assert_eq!((&a + &b * &SCALAR_LATTICE.lambda_tau - &scalar) % &SCALAR_LATTICE.n,
+                       BigInt::ZERO);
+            let expected = if case["expected_identity"].as_bool() == Some(true) {
+                "identity".to_owned()
+            } else {
+                format!("{}:{}", case["expected_x_hex"].as_str().unwrap(),
+                        case["expected_y_hex"].as_str().unwrap())
+            };
+            assert_eq!(point.affine_hex(), expected, "case {case_index}");
+        }
+    }
 
     fn binary_multiples(base: Jacobian, max: usize) -> Vec<Jacobian> {
         let mut powers = Vec::new();
@@ -643,5 +762,58 @@ mod tests {
             }
             assert_eq!(checked, expected_slots);
         }
+    }
+
+    #[test]
+    fn radix943_all_window_points_match_independent_group_sums() {
+        let tables = &*RADIX13_TABLES;
+        let atlas = &tables.atlas;
+        let mut base = Jacobian::generator();
+        let mut checked = 0usize;
+        for (window, row) in tables.windows.iter().enumerate() {
+            let tau_base = base.tau();
+            let max_a = atlas.digits.iter()
+                .map(|d| d.0.unsigned_abs() as usize).max().unwrap();
+            let max_b = atlas.digits.iter()
+                .map(|d| d.1.unsigned_abs() as usize).max().unwrap();
+            let a_points = binary_multiples(base, max_a);
+            let b_projective = binary_multiples(tau_base, max_b);
+            let mut b_points = vec![Jacobian::identity()];
+            b_points.extend(batch_to_affine(&b_projective[1..]));
+            for (orbit, &(a, b)) in atlas.digits.iter().enumerate() {
+                let first = if a < 0 {
+                    a_points[a.unsigned_abs() as usize].neg()
+                } else {
+                    a_points[a as usize]
+                };
+                let second = if b < 0 {
+                    b_points[b.unsigned_abs() as usize].neg()
+                } else {
+                    b_points[b as usize]
+                };
+                let expected = if first.is_identity() {
+                    second
+                } else if second.is_identity() {
+                    first
+                } else {
+                    first.add_mixed(second)
+                };
+                let packed = row[orbit];
+                if orbit == 0 {
+                    assert_eq!((a, b), (0, 0));
+                    assert!(expected.is_identity());
+                    assert_eq!(packed.limbs, [[0; 2]; 4]);
+                    assert_eq!(packed.signs, 0);
+                } else {
+                    assert!(same_point(expected, packed.into_affine()),
+                            "window {window}, orbit {orbit}");
+                }
+                checked += 1;
+            }
+            if window + 1 < RADIX13_WINDOWS {
+                base = affine_multiples(base, RADIX13).pop().unwrap();
+            }
+        }
+        assert_eq!(checked, 1_926_717);
     }
 }

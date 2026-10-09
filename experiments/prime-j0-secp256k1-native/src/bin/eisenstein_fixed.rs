@@ -3275,6 +3275,8 @@ fn check_generator_case(
         "unit_orbit_word15_fixed"
     } else if unit_orbit_format == 116 {
         "unit_orbit_word16_fixed"
+    } else if unit_orbit_format == 13 {
+        "unit_orbit_radix943_fixed"
     } else if unit_orbit_format == 14 {
         "unit_orbit_windows14_fixed"
     } else if unit_orbit_format == 15 {
@@ -3354,10 +3356,14 @@ fn main() {
         && (args[0].starts_with("--check-scalar-unit-orbit-windows")
             || args[0].starts_with("--benchmark-scalar-unit-orbit-windows")
             || args[0].starts_with("--check-scalar-unit-orbit-word")
-            || args[0].starts_with("--benchmark-scalar-unit-orbit-word"))
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-word")
+            || args[0].starts_with("--check-scalar-unit-orbit-radix943")
+            || args[0].starts_with("--benchmark-scalar-unit-orbit-radix943"))
         && args[0].ends_with("-fixed-fixture")
     {
-        let format = if args[0].contains("unit-orbit-word14-fixed-fixture") {
+        let format = if args[0].contains("unit-orbit-radix943-fixed-fixture") {
+            13
+        } else if args[0].contains("unit-orbit-word14-fixed-fixture") {
             114
         } else if args[0].contains("unit-orbit-word15-fixed-fixture") {
             115
@@ -3477,7 +3483,9 @@ fn main() {
             || args[0] == "--benchmark-scalar-unit-orbit-word15-fixed-case"
             || args[0] == "--check-scalar-unit-orbit-word15-fixed-case"
             || args[0] == "--benchmark-scalar-unit-orbit-word16-fixed-case"
-            || args[0] == "--check-scalar-unit-orbit-word16-fixed-case")
+            || args[0] == "--check-scalar-unit-orbit-word16-fixed-case"
+            || args[0] == "--benchmark-scalar-unit-orbit-radix943-fixed-case"
+            || args[0] == "--check-scalar-unit-orbit-radix943-fixed-case")
     {
         let index = args[2].parse::<usize>().expect("case index");
         check_generator_case(
@@ -3517,7 +3525,9 @@ fn main() {
             args[0].contains("w6-comb13-hex9-radius2"),
             args[0].contains("w6-comb13-hex9-graph33"),
             args[0].contains("w6-comb13-hex9-graphaware33"),
-            if args[0].contains("unit-orbit-word14") {
+            if args[0].contains("unit-orbit-radix943") {
+                13
+            } else if args[0].contains("unit-orbit-word14") {
                 114
             } else if args[0].contains("unit-orbit-word15") {
                 115
@@ -3561,6 +3571,7 @@ fn main() {
             || args == ["--scalar-unit-orbit-windows-fixed"]
             || args == ["--scalar-unit-orbit-windows15-fixed"]
             || args == ["--scalar-unit-orbit-windows16-fixed"]
+            || args == ["--scalar-unit-orbit-radix943-fixed"]
             || args == ["--scalar-w6-comb13-hex4-fixed"]
             || args == ["--scalar-glv-comb8-fixed"]
             || args == ["--scalar-glv-comb10-fixed"],
@@ -3590,6 +3601,7 @@ fn main() {
         || args == ["--scalar-unit-orbit-windows-fixed"]
         || args == ["--scalar-unit-orbit-windows15-fixed"]
         || args == ["--scalar-unit-orbit-windows16-fixed"]
+        || args == ["--scalar-unit-orbit-radix943-fixed"]
         || args == ["--scalar-w6-comb13-hex4-fixed"]
         || args == ["--scalar-glv-comb8-fixed"]
         || args == ["--scalar-glv-comb10-fixed"];
@@ -3617,7 +3629,9 @@ fn main() {
     } else {
         0
     };
-    let unit_orbit_format = if args == ["--scalar-unit-orbit-windows-fixed"] {
+    let unit_orbit_format = if args == ["--scalar-unit-orbit-radix943-fixed"] {
+        13
+    } else if args == ["--scalar-unit-orbit-windows-fixed"] {
         14
     } else if args == ["--scalar-unit-orbit-windows15-fixed"] {
         15
@@ -3647,7 +3661,8 @@ fn main() {
                     "tau_steps": 0,
                     "nonzero_digits": additions,
                     "retained_bytes": retained_bytes,
-                    "radix": if unit_orbit_format == 14 { "unit-orbit-windows-fixed" }
+                    "radix": if unit_orbit_format == 13 { "unit-orbit-radix943-fixed" }
+                        else if unit_orbit_format == 14 { "unit-orbit-windows-fixed" }
                         else if unit_orbit_format == 15 { "unit-orbit-windows15-fixed" }
                         else { "unit-orbit-windows16-fixed" },
                 }));
