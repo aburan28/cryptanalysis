@@ -20,6 +20,10 @@ const TAU_BUCKET_CAP_BYTES: usize = 90 * (1 << 20);
 const TAU_BUCKET_ATLAS: &[u8] = include_bytes!(
     "../../../../prime-j0-tau-bucket-orbits-20261009/atlas.bin"
 );
+const TAU_PAIR_CAP_BYTES: usize = 90 * (1 << 20);
+const TAU_PAIR_ATLAS: &[u8] = include_bytes!(
+    "../../../../prime-j0-tau-pair-buckets-20261009/atlas.bin"
+);
 
 fn norm((a, b): (i32, i32)) -> i64 {
     let (a, b) = (i64::from(a), i64::from(b));
@@ -415,12 +419,13 @@ struct TauBucketAtlas {
     codes: &'static [u8],
     digits: &'static [u8],
     seed_count: usize,
+    max_exponent: usize,
 }
 
 impl TauBucketAtlas {
-    fn new() -> Self {
-        let bytes = TAU_BUCKET_ATLAS;
-        assert_eq!(&bytes[..4], b"TBO1");
+    fn from_bytes(bytes: &'static [u8], magic: &[u8; 4],
+                  expected_seeds: usize, max_exponent: usize) -> Self {
+        assert_eq!(&bytes[..4], magic);
         let read_u32 = |offset: usize| {
             u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize
         };
@@ -428,12 +433,12 @@ impl TauBucketAtlas {
         let code_count = read_u32(8);
         let seed_count = read_u32(12);
         assert_eq!(code_count, TAU_BUCKET_RADIX * TAU_BUCKET_RADIX);
-        assert_eq!(seed_count, 78_104);
+        assert_eq!(seed_count, expected_seeds);
         assert_eq!(bytes.len(), 16 + 4 * code_count + 4 * seed_count);
         let codes = &bytes[16..16 + 4 * code_count];
         let digits = &bytes[16 + 4 * code_count..];
         assert_eq!(&digits[..4], &[0, 0, 0, 0]);
-        let atlas = Self { codes, digits, seed_count };
+        let atlas = Self { codes, digits, seed_count, max_exponent };
         for residue in 0..code_count {
             let (digit, _, _, _) = atlas.digit_residue(residue / TAU_BUCKET_RADIX,
                                                         residue % TAU_BUCKET_RADIX);
@@ -453,7 +458,7 @@ impl TauBucketAtlas {
         let offset = 4 * (ra * TAU_BUCKET_RADIX + rb);
         let code = u32::from_le_bytes(self.codes[offset..offset + 4].try_into().unwrap()) as usize;
         let (seed_id, exponent, unit_code) = (code >> 5, (code >> 3) & 3, code & 7);
-        assert!(seed_id < self.seed_count && exponent <= 2 && unit_code < 6);
+        assert!(seed_id < self.seed_count && exponent <= self.max_exponent && unit_code < 6);
         let offset = 4 * seed_id;
         let seed = &self.digits[offset..offset + 4];
         let (a, b) = (i16::from_le_bytes(seed[..2].try_into().unwrap()),
@@ -478,7 +483,16 @@ struct TauBucketTables {
 
 impl TauBucketTables {
     fn new() -> Self {
-        let atlas = TauBucketAtlas::new();
+        Self::from_bytes(TAU_BUCKET_ATLAS, b"TBO1", 78_104, 2, TAU_BUCKET_CAP_BYTES)
+    }
+
+    fn new_pair() -> Self {
+        Self::from_bytes(TAU_PAIR_ATLAS, b"TBP1", 93_777, 1, TAU_PAIR_CAP_BYTES)
+    }
+
+    fn from_bytes(bytes: &'static [u8], magic: &[u8; 4],
+                  expected_seeds: usize, max_exponent: usize, cap: usize) -> Self {
+        let atlas = TauBucketAtlas::from_bytes(bytes, magic, expected_seeds, max_exponent);
         let seed_digits = atlas.seed_digits();
         let mut windows = Vec::with_capacity(RADIX13_WINDOWS);
         let mut base = Jacobian::generator();
@@ -489,17 +503,18 @@ impl TauBucketTables {
             }
         }
         let entries = windows.iter().map(|row| row.len()).sum::<usize>();
-        assert_eq!(entries, 1_015_352);
+        assert_eq!(entries, RADIX13_WINDOWS * expected_seeds);
         let retained_bytes = entries * size_of::<CompactPairPoint>()
-            + TAU_BUCKET_ATLAS.len()
+            + bytes.len()
             + size_of::<Self>()
             + windows.capacity() * size_of::<Box<[CompactPairPoint]>>();
-        assert!(retained_bytes < TAU_BUCKET_CAP_BYTES);
+        assert!(retained_bytes < cap);
         Self { atlas, windows, retained_bytes }
     }
 }
 
 static TAU_BUCKET_TABLES: LazyLock<TauBucketTables> = LazyLock::new(TauBucketTables::new);
+static TAU_PAIR_TABLES: LazyLock<TauBucketTables> = LazyLock::new(TauBucketTables::new_pair);
 
 fn multiply_radix13(
     scalar: &BigInt,
@@ -570,12 +585,24 @@ fn multiply_word_radix13(
 fn multiply_tau_bucket(
     scalar: &BigInt,
 ) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    multiply_tau_orbit(scalar, &TAU_BUCKET_TABLES)
+}
+
+fn multiply_tau_pair(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    multiply_tau_orbit(scalar, &TAU_PAIR_TABLES)
+}
+
+fn multiply_tau_orbit(
+    scalar: &BigInt,
+    tables: &TauBucketTables,
+) -> (Jacobian, BigInt, BigInt, usize, usize) {
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
     let (start_a, start_b) = hexagonal_four_corner_choices(&residue).remove(0);
     let mut a = Signed192::from_bigint(&start_a);
     let mut b = Signed192::from_bigint(&start_b);
-    let tables = &*TAU_BUCKET_TABLES;
     let mut buckets = [Jacobian::identity(); 3];
     let mut nonidentity = 0usize;
     for row in &tables.windows {
@@ -614,9 +641,14 @@ fn multiply_tau_bucket(
         let z_cubed = z_squared.mul(right.z);
         left.add_cached(right, z_squared, z_cubed)
     };
-    // Linearity folds the exponent buckets with two tau maps:
-    // B0 + tau*B1 + tau^2*B2 = B0 + tau*(B1 + tau*B2).
-    let result = merge(buckets[0], merge(buckets[1], buckets[2].tau()).tau());
+    // The two-bucket format uses one tau map. The three-bucket format
+    // folds B0 + tau*B1 + tau^2*B2 = B0 + tau*(B1 + tau*B2).
+    let inner = if tables.atlas.max_exponent == 1 {
+        buckets[1]
+    } else {
+        merge(buckets[1], buckets[2].tau())
+    };
+    let result = merge(buckets[0], inner.tau());
     (result, start_a, start_b, nonidentity.saturating_sub(1), tables.retained_bytes)
 }
 
@@ -630,6 +662,9 @@ fn selected(format: u8) -> &'static Tables {
 }
 
 pub(super) fn warm_format(format: u8) -> usize {
+    if format == 18 {
+        return TAU_PAIR_TABLES.retained_bytes;
+    }
     if format == 17 {
         return TAU_BUCKET_TABLES.retained_bytes;
     }
@@ -689,6 +724,9 @@ pub(super) fn multiply_word_format(
     scalar: &BigInt,
     format: u8,
 ) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    if format == 18 {
+        return multiply_tau_pair(scalar);
+    }
     if format == 17 {
         return multiply_tau_bucket(scalar);
     }
@@ -872,6 +910,48 @@ mod tests {
             let candidate = multiply_tau_bucket(&scalar);
             let reference = multiply_word_radix13(&scalar);
             assert_eq!(candidate.0.affine_hex(), reference.0.affine_hex(), "fresh {index}");
+            if (7..135).contains(&index) {
+                let reduced = &scalar % &SCALAR_LATTICE.n;
+                assert_eq!(candidate.0.affine_hex(),
+                           independent_binary_point(&reduced).affine_hex(),
+                           "independent fresh {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn tau_pair_replays_fixture_and_fresh_points() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tau6-comb13-bench-fixture.json"
+        )).unwrap();
+        let cases = fixture["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 129);
+        for (index, case) in cases.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(case["scalar_hex"].as_str().unwrap().as_bytes(), 16)
+                .unwrap();
+            let candidate = multiply_tau_pair(&scalar);
+            let expected = if case["expected_identity"].as_bool() == Some(true) {
+                "identity".to_owned()
+            } else {
+                format!("{}:{}", case["expected_x_hex"].as_str().unwrap(),
+                        case["expected_y_hex"].as_str().unwrap())
+            };
+            assert_eq!(candidate.0.affine_hex(), expected, "fixture {index}");
+            assert!(candidate.3 <= 12 && candidate.4 < TAU_PAIR_CAP_BYTES);
+        }
+        let input: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../prime-j0-radix943-word-20261009/inputs.json"
+        )).unwrap();
+        let scalars = input["scalars_hex"].as_array().unwrap();
+        assert_eq!(scalars.len(), 519);
+        for (index, hex) in scalars.iter().enumerate() {
+            let scalar = BigInt::parse_bytes(hex.as_str().unwrap().as_bytes(), 16).unwrap();
+            let candidate = multiply_tau_pair(&scalar);
+            let reference = multiply_format(&scalar, 14);
+            let three_bucket = multiply_tau_bucket(&scalar);
+            assert_eq!(candidate.0.affine_hex(), reference.0.affine_hex(), "U14 fresh {index}");
+            assert_eq!(candidate.0.affine_hex(), three_bucket.0.affine_hex(),
+                       "three-bucket fresh {index}");
             if (7..135).contains(&index) {
                 let reduced = &scalar % &SCALAR_LATTICE.n;
                 assert_eq!(candidate.0.affine_hex(),
@@ -1212,9 +1292,7 @@ mod tests {
         assert_eq!(checked, 1_926_717);
     }
 
-    #[test]
-    fn tau_bucket_all_window_points_match_independent_group_sums() {
-        let tables = &*TAU_BUCKET_TABLES;
+    fn check_tau_orbit_window_points(tables: &TauBucketTables, expected_entries: usize) {
         let digits = tables.atlas.seed_digits();
         let mut base = Jacobian::generator();
         let mut checked = 0usize;
@@ -1257,6 +1335,16 @@ mod tests {
                 base = affine_multiples(base, TAU_BUCKET_RADIX).pop().unwrap();
             }
         }
-        assert_eq!(checked, 1_015_352);
+        assert_eq!(checked, expected_entries);
+    }
+
+    #[test]
+    fn tau_bucket_all_window_points_match_independent_group_sums() {
+        check_tau_orbit_window_points(&TAU_BUCKET_TABLES, 1_015_352);
+    }
+
+    #[test]
+    fn tau_pair_all_window_points_match_independent_group_sums() {
+        check_tau_orbit_window_points(&TAU_PAIR_TABLES, 1_219_101);
     }
 }
