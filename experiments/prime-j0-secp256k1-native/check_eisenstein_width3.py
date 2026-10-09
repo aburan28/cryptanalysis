@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay paired width-two and width-three scalar paths without CPU timings."""
+"""Replay width-two and both width-three scalar paths without CPU timings."""
 
 import argparse
 import hashlib
@@ -89,18 +89,24 @@ def main():
     scalars += [rng.randrange(1, curve.ORDER) for _ in range(args.random_scalars)]
     w2 = replay(binary, "--scalar-w2", scalars)
     w3 = replay(binary, "--scalar-w3", scalars)
+    w3_fixed = replay(binary, "--scalar-w3-fixed", scalars)
     sums = {"w2_tau_steps": 0, "w2_additions": 0,
             "w3_tau_steps": 0, "w3_mixed_additions": 0,
             "w3_cached_additions": 0}
-    for index, (scalar, row2, row3) in enumerate(zip(scalars, w2, w3)):
+    for index, (scalar, row2, row3, row_fixed) in enumerate(
+            zip(scalars, w2, w3, w3_fixed)):
         expected = curve.point_multiply(scalar % curve.ORDER)
         assert row2["radix"] == "unit-w2" and row3["radix"] == "orbit-w3"
-        assert row2["representative"] == row3["representative"]
+        assert row_fixed["radix"] == "orbit-w3-fixed"
+        assert row2["representative"] == row3["representative"] == row_fixed["representative"]
         a, b = map(int, row3["representative"])
         assert (a + b * LAMBDA_TAU - scalar) % curve.ORDER == 0
         assert affine_from_native(row2["point"]) == expected, (index, "w2")
         assert affine_from_native(row3["point"]) == expected, (index, "w3")
+        assert affine_from_native(row_fixed["point"]) == expected, (index, "w3-fixed")
         assert sum(row3["orbit_counts"]) == row3["nonzero_digits"]
+        assert row_fixed["orbit_counts"] == row3["orbit_counts"]
+        assert row_fixed["tau_steps"] == row3["tau_steps"]
         if index < len(fixture["cases"]):
             frozen = fixture["cases"][index]
             assert expected == (int(frozen["expected_x_hex"], 16),
@@ -117,15 +123,20 @@ def main():
                    + 11 * sums["w3_mixed_additions"]
                    + 14 * sums["w3_cached_additions"]
                    + 22 * len(fixture["cases"]))
+    w3_fixed_products = (5 * sums["w3_tau_steps"]
+                         + 11 * (sums["w3_mixed_additions"]
+                                 + sums["w3_cached_additions"]))
     print(json.dumps({
         "schema": 1, "status": "passed", "frozen_cases": len(fixture["cases"]),
         "random_cases": args.random_scalars,
-        "verified_outputs": 2 * len(scalars),
+        "verified_outputs": 3 * len(scalars),
         "small_state_audit": small_state_audit,
         "frozen_counts": sums,
         "w2_field_product_proxy": w2_products,
         "w3_field_product_proxy": w3_products,
+        "w3_fixed_field_product_proxy": w3_fixed_products,
         "proxy_saving": w2_products - w3_products,
+        "fixed_proxy_saving": w2_products - w3_fixed_products,
         "binary_sha256": digest(binary),
         "fixture_sha256": digest(fixture_path),
         "checker_sha256": digest(Path(__file__)),
