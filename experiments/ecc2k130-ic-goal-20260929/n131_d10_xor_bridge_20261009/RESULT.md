@@ -46,3 +46,17 @@ against both saved XCNFs and an installed-Sage point, subgroup, factor-base,
 and folded-row replay before it counts as a relation. The original d10
 candidate and the queued public-Q d13/m12 probe retain their frozen run
 order; this proposal has its own run record.
+
+The frozen [bridge attempt](ordinary_precompute_R1/result.json) ended
+`CENSORED_TIME` at its 580-second parent wall cap with zero solver status or
+model lines. Its sampled peak combined RSS was 1,495,334,912 bytes. The raw
+CryptoMiniSat log selected ten 9,543×13,720 Gaussian matrices at
+initialization, confirming that the exact CNF bridges cleared the original
+matrix-size rejection under unchanged solver limits. The
+[independent terminal audit](ordinary_precompute_R1/independent_terminal_audit.json)
+checked the frozen command, raw log hashes, drained solver, and censored
+classification. This is one contended-host solver-stage result; it does not
+establish a useful-relation rate or a CPU timing advantage. The
+[bridge-plus-projection follow-up](../n131_d10_bridge_projection_20261009/RESULT.md)
+has separately passed exactness and component audits and is measured under
+its own frozen 580-second/4-GiB envelope.
