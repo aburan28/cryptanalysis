@@ -80,7 +80,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 glv_comb_comparison.py \
 ```
 
 The frozen comparison JSON SHA-256 is
-`8f19966af31c573887a60168c2dbc91e19635c7120d3f31342878f840600208b`.
+`521baeaf3d5c2905358d9bb0d13d45c75178b0691e53fd2c6949fed29d4150f8`.
 The binary SHA-256 is
 `b0d1e7245baa68b1856c7799c88501f8721207ff8d2c48b8a38cfaf7c77ab4d9`;
 the native source SHA-256 is
