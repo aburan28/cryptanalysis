@@ -17,6 +17,13 @@ parent/
   crypto/
 ```
 
+The tracked `crypto` sources used for the frozen run match published revision
+`8ab924b935923df9faac25915ed7d9849974de0b`. Check out that revision in
+the sibling repository for a source-matched rebuild. The experiment's own
+`Cargo.lock` controls dependency resolution. The manifest also records the
+hash of a locally generated sibling `crypto/Cargo.lock`; that file is not
+tracked in the sibling repository and is not used by this crate's Cargo build.
+
 From `cryptanalysis/experiments/koblitz-s3-root-bloom-20261009`, run
 `cargo test --release --offline` after the sibling dependency is available.
 The component hashes in `bloom_manifest.json` identify the exact `crypto`
