@@ -12,11 +12,12 @@ def dynamic_rows(template, nbits, target_x):
     base = template[:nbits]
     result = []
     for row in range(nbits):
-        terms = set(base[row])
+        terms = set(canonical(base[row]))
         for bit in range(nbits):
             if target_x >> bit & 1:
-                terms.symmetric_difference_update(base[row])
-                terms.symmetric_difference_update(template[(bit + 1) * nbits + row])
+                terms.symmetric_difference_update(canonical(base[row]))
+                terms.symmetric_difference_update(
+                    canonical(template[(bit + 1) * nbits + row]))
         result.append(sorted(terms))
     return result
 
