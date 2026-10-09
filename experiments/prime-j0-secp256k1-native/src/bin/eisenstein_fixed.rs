@@ -144,8 +144,16 @@ impl Signed {
 
     fn times_i32(self, factor: i32) -> Self {
         let mut result = Self::ZERO;
-        for _ in 0..factor.unsigned_abs() {
-            result = result.add(self);
+        let mut multiple = self;
+        let mut bits = factor.unsigned_abs();
+        while bits != 0 {
+            if bits & 1 != 0 {
+                result = result.add(multiple);
+            }
+            bits >>= 1;
+            if bits != 0 {
+                multiple = multiple.add(multiple);
+            }
         }
         if factor < 0 {
             result.neg()
@@ -215,10 +223,9 @@ impl Signed {
         .normalized()
     }
 
-    fn floor_div_radix_squared(self) -> i32 {
-        // A tau output has |t_i| < 22*2^256.
+    fn floor_div_radix_squared_with_bound(self, max_high_word: u64) -> i32 {
         assert!(self.magnitude.0[5..].iter().all(|&x| x == 0));
-        assert!(self.magnitude.0[4] < 22);
+        assert!(self.magnitude.0[4] < max_high_word);
         let whole = self.magnitude.0[4] as i32;
         if self.negative {
             let remainder = self.magnitude.0[..4].iter().any(|&x| x != 0);
@@ -228,8 +235,13 @@ impl Signed {
         }
     }
 
-    fn floor_div_prime_near_radix(self) -> i32 {
-        let mut quotient = self.floor_div_radix_squared();
+    #[cfg(test)]
+    fn floor_div_radix_squared(self) -> i32 {
+        self.floor_div_radix_squared_with_bound(22)
+    }
+
+    fn floor_div_prime_near_radix_with_bound(self, max_high_word: u64) -> i32 {
+        let mut quotient = self.floor_div_radix_squared_with_bound(max_high_word);
         let residue = self.sub(P_SIGNED.times_i32(quotient));
         if residue.negative {
             quotient -= 1;
@@ -242,6 +254,12 @@ impl Signed {
             exact_residue.magnitude.ct_lt(&P_SIGNED.magnitude)
         ));
         quotient
+    }
+
+    #[cfg(test)]
+    fn floor_div_prime_near_radix(self) -> i32 {
+        // A tau output has |t_i| < 22*2^256.
+        self.floor_div_prime_near_radix_with_bound(22)
     }
 }
 
@@ -388,13 +406,23 @@ impl Pair {
     }
 
     fn balance_tau_output(self) -> Self {
+        self.balance_corners(22)
+    }
+
+    fn balance_add_output(self) -> Self {
+        // The deferred mixed-add schedule bounds the conjugate-pi product
+        // coefficient by 38,020,959 * 2^256, below 2^26 * 2^256.
+        self.balance_corners(1 << 26)
+    }
+
+    fn balance_corners(self, max_high_word: u64) -> Self {
         let pi = Self::pi();
         let t = self.product(Self {
             a: pi.a.sub(pi.b),
             b: pi.b.neg(),
         });
-        let floor_a = t.a.floor_div_prime_near_radix();
-        let floor_b = t.b.floor_div_prime_near_radix();
+        let floor_a = t.a.floor_div_prime_near_radix_with_bound(max_high_word);
+        let floor_b = t.b.floor_div_prime_near_radix_with_bound(max_high_word);
         let twice_a_minus_b = t.a.add(t.a).sub(t.b);
         let twice_b_minus_a = t.b.add(t.b).sub(t.a);
         let a_plus_b = t.a.add(t.b);
@@ -412,7 +440,7 @@ impl Pair {
                 }
             }
         }
-        panic!("tau output has no nearest correction among its four corners")
+        panic!("field output has no nearest correction among its four corners")
     }
 
     fn pi() -> Self {
@@ -458,6 +486,10 @@ impl Pair {
 
     fn mul_raw_wide(self, rhs: Self) -> Self {
         self.product_wide_balanced(rhs).montgomery_reduce_raw()
+    }
+
+    fn mul_raw_wide_wide(self, rhs: Self) -> Self {
+        self.product(rhs).montgomery_reduce_raw()
     }
 
     fn tau_step(x: Self, y: Self, z: Self) -> [Self; 3] {
@@ -598,28 +630,34 @@ impl Jacobian {
         if self.is_identity() {
             return q;
         }
-        let zz = self.z.mul(self.z);
-        let u = q.x.mul(zz);
-        let s = q.y.mul(self.z).mul(zz);
-        let h = u.sub_field(self.x);
-        let v = s.sub_field(self.y);
+        // Keep Montgomery quotients unbalanced through the projective
+        // polynomial. Balance h to detect equal/inverse points and bound the
+        // remaining products; then balance only the three output coordinates.
+        let zz = self.z.mul_raw_balanced(self.z);
+        let u = zz.mul_raw_wide(q.x);
+        let yz = q.y.mul_raw_balanced(self.z);
+        let s = yz.mul_raw_wide_wide(zz);
+        let h = u.sub(self.x).balance_add_output();
+        let v = s.sub(self.y);
         if h.is_zero() {
-            return if v.is_zero() {
+            return if v.balance_add_output().is_zero() {
                 self.double()
             } else {
                 Self::identity()
             };
         }
-        let hh = h.mul(h);
-        let hhh = h.mul(hh);
-        let xhh = self.x.mul(hh);
-        let rx = v.mul(v).sub_field(hhh).sub_field(xhh.times_field(2));
-        let ry = v.mul(xhh.sub_field(rx)).sub_field(self.y.mul(hhh));
-        let rz = self.z.mul(h);
+        let hh = h.mul_raw_balanced(h);
+        let hhh = hh.mul_raw_wide(h);
+        let xhh = hh.mul_raw_wide(self.x);
+        let rx = v.mul_raw_wide_wide(v).sub(hhh).sub(xhh.times_i32(2));
+        let ry = v
+            .mul_raw_wide_wide(xhh.sub(rx))
+            .sub(hhh.mul_raw_wide(self.y));
+        let rz = h.mul_raw_balanced(self.z);
         Self {
-            x: rx,
-            y: ry,
-            z: rz,
+            x: rx.balance_add_output(),
+            y: ry.balance_add_output(),
+            z: rz.balance_add_output(),
         }
     }
 
@@ -1045,6 +1083,23 @@ mod eisenstein_tau_tests {
                 let got = signed(left, false).mul_rect::<2, 2>(signed(right, false));
                 assert_eq!(got.decimal(), (left * right).to_string());
             }
+        }
+    }
+
+    #[test]
+    fn wide_add_output_balances_large_lattice_offsets() {
+        let base = Pair::one();
+        let pi = Pair::pi();
+        for (a, b) in [
+            (0, 0),
+            (1, -1),
+            (12_673_653, 0),
+            (0, -12_673_653),
+            (12_673_653, -12_673_653),
+            (-12_673_653, 12_673_653),
+        ] {
+            let shifted = base.add(Pair::small_pi_multiple(a, b, pi));
+            assert_eq!(shifted.balance_add_output().strings(), base.strings());
         }
     }
 
