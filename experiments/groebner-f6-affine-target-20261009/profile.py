@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import statistics
 import subprocess
+import tempfile
 
 from affine_query import HERE, AffineContext
 from chain_fixture import fixture
@@ -48,7 +49,7 @@ def main():
                   timing_eligible=False, qualified_speedup=None)
     target = args.output / 'report.json'
     save(target, report)
-    lock = Path('/private/tmp/f6-affine-complete-query.lock')
+    lock = Path(tempfile.gettempdir()) / 'f6-affine-complete-query.lock'
     with lock.open('a') as guard:
         fcntl.flock(guard, fcntl.LOCK_EX)
         context = AffineContext(fixture(9, 4, 3, 1))
