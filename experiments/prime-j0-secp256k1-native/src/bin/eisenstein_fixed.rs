@@ -1648,7 +1648,7 @@ const PAIR_COMB13_ENTRIES_PER_PAIR: usize = 81 * 81 * 6;
 
 #[derive(Clone, Copy)]
 struct CompactPairPoint {
-    limbs: [[u64; 3]; 4],
+    limbs: [[u64; 2]; 4],
     signs: u8,
 }
 
@@ -1656,12 +1656,12 @@ impl CompactPairPoint {
     fn from_affine(point: Jacobian) -> Self {
         assert!(!point.is_identity());
         let coordinates = [point.x.a, point.x.b, point.y.a, point.y.b];
-        let mut limbs = [[0u64; 3]; 4];
+        let mut limbs = [[0u64; 2]; 4];
         let mut signs = 0u8;
         for (index, coordinate) in coordinates.into_iter().enumerate() {
-            assert!(coordinate.magnitude.0[3..].iter().all(|&word| word == 0),
-                    "affine pair-table coefficient exceeds three limbs");
-            limbs[index].copy_from_slice(&coordinate.magnitude.0[..3]);
+            assert!(coordinate.magnitude.0[2..].iter().all(|&word| word == 0),
+                    "balanced affine pair-table coefficient exceeds two limbs");
+            limbs[index].copy_from_slice(&coordinate.magnitude.0[..2]);
             signs |= u8::from(coordinate.negative) << index;
         }
         Self { limbs, signs }
@@ -1670,7 +1670,7 @@ impl CompactPairPoint {
     fn into_affine(self) -> Jacobian {
         let coordinates: [Signed; 4] = std::array::from_fn(|index| {
             let mut words = [0u64; 8];
-            words[..3].copy_from_slice(&self.limbs[index]);
+            words[..2].copy_from_slice(&self.limbs[index]);
             Signed { negative: self.signs & (1 << index) != 0,
                      magnitude: Uint(words) }.normalized()
         });
@@ -1735,6 +1735,63 @@ static RADIUS2_MATCHINGS: LazyLock<Box<[RowMatching]>> = LazyLock::new(|| {
         let mut best = entries[rest];
         for second in first + 1..=(first + 2).min(11) {
             if rest & (1 << second) == 0 {
+                continue;
+            }
+            let tail = entries[rest ^ (1 << second)];
+            let mut proposal = RowMatching::default();
+            proposal.edge_codes[0] = (first * 12 + second) as u8;
+            proposal.edge_codes[1..1 + tail.count as usize]
+                .copy_from_slice(&tail.edge_codes[..tail.count as usize]);
+            proposal.count = tail.count + 1;
+            if proposal.count > best.count ||
+                (proposal.count == best.count &&
+                 proposal.edge_codes[..proposal.count as usize]
+                    < best.edge_codes[..best.count as usize]) {
+                best = proposal;
+            }
+        }
+        entries[mask] = best;
+    }
+    entries.into_boxed_slice()
+});
+
+// The three long edges were selected by the frozen design-panel greedy rule.
+const GRAPH33_EDGES: [(usize, usize); 33] = [
+    (0, 1), (0, 2), (0, 3), (0, 8), (0, 11),
+    (1, 2), (1, 3), (1, 4), (1, 11),
+    (2, 3), (2, 4), (2, 5),
+    (3, 4), (3, 5), (3, 6),
+    (4, 5), (4, 6), (4, 7),
+    (5, 6), (5, 7), (5, 8),
+    (6, 7), (6, 8), (6, 9),
+    (7, 8), (7, 9), (7, 10),
+    (8, 9), (8, 10), (8, 11),
+    (9, 10), (9, 11), (10, 11),
+];
+
+static GRAPH33_EDGE_SLOTS: LazyLock<[[u8; 12]; 12]> = LazyLock::new(|| {
+    let mut slots = [[u8::MAX; 12]; 12];
+    for (index, &(left, right)) in GRAPH33_EDGES.iter().enumerate() {
+        assert!(left < right && right < 12 && slots[left][right] == u8::MAX);
+        slots[left][right] = u8::try_from(index).unwrap();
+    }
+    slots
+});
+
+static GRAPH33_PAIR_COMB13_POINTS: LazyLock<PairComb13> = LazyLock::new(|| PairComb13 {
+    rows: GRAPH33_EDGES.iter()
+        .map(|&(left, right)| build_pair_comb13_edge(left, right)).collect(),
+});
+
+static GRAPH33_MATCHINGS: LazyLock<Box<[RowMatching]>> = LazyLock::new(|| {
+    let slots = &*GRAPH33_EDGE_SLOTS;
+    let mut entries = vec![RowMatching::default(); 1 << 12];
+    for mask in 1usize..(1 << 12) {
+        let first = mask.trailing_zeros() as usize;
+        let rest = mask ^ (1 << first);
+        let mut best = entries[rest];
+        for second in first + 1..12 {
+            if rest & (1 << second) == 0 || slots[first][second] == u8::MAX {
                 continue;
             }
             let tail = entries[rest ^ (1 << second)];
@@ -2710,11 +2767,13 @@ fn evaluate_width_six_comb13_matched(
     digits: Vec<Option<WidthSixDigit>>,
     matching_radius: u8,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize) {
-    assert!(matching_radius <= 2);
+    assert!(matching_radius <= 3);
     let table = &*WIDTH_SIX_COMB13_POINTS;
-    let pairs = &*PAIR_COMB13_POINTS;
-    let odd_pairs = (matching_radius >= 1).then(|| &*ODD_PAIR_COMB13_POINTS);
+    let pairs = (matching_radius < 3).then(|| &*PAIR_COMB13_POINTS);
+    let odd_pairs = (matching_radius >= 1 && matching_radius < 3)
+        .then(|| &*ODD_PAIR_COMB13_POINTS);
     let distance_two = (matching_radius == 2).then(|| &*DISTANCE_TWO_PAIR_COMB13_POINTS);
+    let graph33 = (matching_radius == 3).then(|| &*GRAPH33_PAIR_COMB13_POINTS);
     assert!(digits.len() <= 162, "comb digit span exceeded");
     assert!(digits.iter().skip(156).flatten().count() <= 1);
     let mut point = Jacobian::identity();
@@ -2728,24 +2787,31 @@ fn evaluate_width_six_comb13_matched(
             point = point.tau();
             tau_steps += 1;
         }
-        if matching_radius == 2 {
+        if matching_radius >= 2 {
             let mut active = 0usize;
             for row in 0..12 {
                 if digits.get(row * 13 + column).copied().flatten().is_some() {
                     active |= 1 << row;
                 }
             }
-            let matching = RADIUS2_MATCHINGS[active];
+            let matching = if matching_radius == 3 {
+                GRAPH33_MATCHINGS[active]
+            } else {
+                RADIUS2_MATCHINGS[active]
+            };
             let mut matched = 0usize;
             for &code in &matching.edge_codes[..matching.count as usize] {
                 let left_row = usize::from(code) / 12;
                 let right_row = usize::from(code) % 12;
                 let first = digits[left_row * 13 + column].unwrap();
                 let second = digits[right_row * 13 + column].unwrap();
-                let (edge_table, edge_index) = if right_row - left_row == 2 {
+                let (edge_table, edge_index) = if matching_radius == 3 {
+                    (graph33.unwrap(),
+                     usize::from(GRAPH33_EDGE_SLOTS[left_row][right_row]))
+                } else if right_row - left_row == 2 {
                     (distance_two.unwrap(), left_row)
                 } else if left_row % 2 == 0 {
-                    (pairs, left_row / 2)
+                    (pairs.unwrap(), left_row / 2)
                 } else {
                     (odd_pairs.unwrap(), left_row / 2)
                 };
@@ -2770,7 +2836,7 @@ fn evaluate_width_six_comb13_matched(
                 }).flatten();
                 if let (Some(first), Some(second)) = (first, second) {
                     if matching_radius == 1 || row % 2 == 0 {
-                        let edge_table = if row % 2 == 0 { pairs } else { odd_pairs.unwrap() };
+                        let edge_table = if row % 2 == 0 { pairs.unwrap() } else { odd_pairs.unwrap() };
                         let addend = pair_comb13_point(edge_table, row / 2, first, second);
                         add_comb13_digit(&mut point, &mut started, &mut orbit_counts, first, addend);
                         fusions += 1;
@@ -2915,6 +2981,12 @@ fn scalar_multiply_width_six_comb13_hex9_radius2(
     scalar_multiply_width_six_comb13_hex9_matched(scalar, 2)
 }
 
+fn scalar_multiply_width_six_comb13_hex9_graph33(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize, usize) {
+    scalar_multiply_width_six_comb13_hex9_matched(scalar, 3)
+}
+
 fn scalar_multiply_width_six_comb13_hex4(
     scalar: &BigInt,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize) {
@@ -3048,6 +3120,7 @@ fn check_generator_case(
     hex_nine_paired: bool,
     hex_nine_path: bool,
     hex_nine_radius2: bool,
+    hex_nine_graph33: bool,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -3097,6 +3170,10 @@ fn check_generator_case(
         LazyLock::force(&DISTANCE_TWO_PAIR_COMB13_POINTS);
         LazyLock::force(&RADIUS2_MATCHINGS);
     }
+    if hex_nine_graph33 {
+        LazyLock::force(&GRAPH33_PAIR_COMB13_POINTS);
+        LazyLock::force(&GRAPH33_MATCHINGS);
+    }
     if glv_rows == 8 {
         LazyLock::force(&GLV_COMB8_POINTS);
     } else if glv_rows == 10 {
@@ -3104,7 +3181,9 @@ fn check_generator_case(
     }
     let scalar = scalar_from_hex(scalar_hex);
     let start = Instant::now();
-    let point = if hex_nine_radius2 {
+    let point = if hex_nine_graph33 {
+        scalar_multiply_width_six_comb13_hex9_graph33(&scalar).0
+    } else if hex_nine_radius2 {
         scalar_multiply_width_six_comb13_hex9_radius2(&scalar).0
     } else if hex_nine_path {
         scalar_multiply_width_six_comb13_hex9_path(&scalar).0
@@ -3138,7 +3217,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if hex_nine_radius2 {
+    let mode = if hex_nine_graph33 {
+        "eisenstein_w6_comb13_hex9_graph33_fixed"
+    } else if hex_nine_radius2 {
         "eisenstein_w6_comb13_hex9_radius2_fixed"
     } else if hex_nine_path {
         "eisenstein_w6_comb13_hex9_path_fixed"
@@ -3223,6 +3304,17 @@ fn main() {
                  RADIUS2_MATCHINGS.len() * std::mem::size_of::<RowMatching>());
         return;
     }
+    if args == ["--prepare-w6-comb13-hex9-graph33"] {
+        let start = Instant::now();
+        let pairs = &*GRAPH33_PAIR_COMB13_POINTS;
+        LazyLock::force(&GRAPH33_MATCHINGS);
+        let entries = pairs.rows.iter().map(|row| row.len()).sum::<usize>();
+        println!("preparation_ms={:.6} entries={} table_bytes={} atlas_bytes={}",
+                 start.elapsed().as_secs_f64() * 1000.0, entries,
+                 entries * std::mem::size_of::<CompactPairPoint>(),
+                 GRAPH33_MATCHINGS.len() * std::mem::size_of::<RowMatching>());
+        return;
+    }
     if args.len() == 3
         && (args[0] == "--benchmark-scalar-w2-case"
             || args[0] == "--check-scalar-w2-case"
@@ -3258,6 +3350,8 @@ fn main() {
             || args[0] == "--check-scalar-w6-comb13-hex9-path-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb13-hex9-radius2-fixed-case"
             || args[0] == "--check-scalar-w6-comb13-hex9-radius2-fixed-case"
+            || args[0] == "--benchmark-scalar-w6-comb13-hex9-graph33-fixed-case"
+            || args[0] == "--check-scalar-w6-comb13-hex9-graph33-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb13-hex4-fixed-case"
             || args[0] == "--check-scalar-w6-comb13-hex4-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb8-fixed-case"
@@ -3301,6 +3395,7 @@ fn main() {
             args[0].contains("w6-comb13-hex9-paired"),
             args[0].contains("w6-comb13-hex9-path"),
             args[0].contains("w6-comb13-hex9-radius2"),
+            args[0].contains("w6-comb13-hex9-graph33"),
         );
         return;
     }
@@ -3325,6 +3420,7 @@ fn main() {
             || args == ["--scalar-w6-comb13-hex9-paired-fixed"]
             || args == ["--scalar-w6-comb13-hex9-path-fixed"]
             || args == ["--scalar-w6-comb13-hex9-radius2-fixed"]
+            || args == ["--scalar-w6-comb13-hex9-graph33-fixed"]
             || args == ["--scalar-w6-comb13-hex4-fixed"]
             || args == ["--scalar-glv-comb8-fixed"]
             || args == ["--scalar-glv-comb10-fixed"],
@@ -3349,6 +3445,7 @@ fn main() {
         || args == ["--scalar-w6-comb13-hex9-paired-fixed"]
         || args == ["--scalar-w6-comb13-hex9-path-fixed"]
         || args == ["--scalar-w6-comb13-hex9-radius2-fixed"]
+        || args == ["--scalar-w6-comb13-hex9-graph33-fixed"]
         || args == ["--scalar-w6-comb13-hex4-fixed"]
         || args == ["--scalar-glv-comb8-fixed"]
         || args == ["--scalar-glv-comb10-fixed"];
@@ -3364,7 +3461,7 @@ fn main() {
         8
     } else if args == ["--scalar-w6-comb12-fixed"] {
         12
-    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] || args == ["--scalar-w6-comb13-cover25-fixed"] || args == ["--scalar-w6-comb13-hex9-fixed"] || args == ["--scalar-w6-comb13-hex9-paired-fixed"] || args == ["--scalar-w6-comb13-hex9-path-fixed"] || args == ["--scalar-w6-comb13-hex9-radius2-fixed"] || args == ["--scalar-w6-comb13-hex4-fixed"] {
+    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] || args == ["--scalar-w6-comb13-cover25-fixed"] || args == ["--scalar-w6-comb13-hex9-fixed"] || args == ["--scalar-w6-comb13-hex9-paired-fixed"] || args == ["--scalar-w6-comb13-hex9-path-fixed"] || args == ["--scalar-w6-comb13-hex9-radius2-fixed"] || args == ["--scalar-w6-comb13-hex9-graph33-fixed"] || args == ["--scalar-w6-comb13-hex4-fixed"] {
         13
     } else {
         0
@@ -3411,10 +3508,11 @@ fn main() {
                 orbit_counts,
                 alternate_uses,
                 recoding_work,
-            ) = if args == ["--scalar-w6-comb13-hex9-radius2-fixed"] || args == ["--scalar-w6-comb13-hex9-path-fixed"] || args == ["--scalar-w6-comb13-hex9-paired-fixed"] {
+            ) = if args == ["--scalar-w6-comb13-hex9-graph33-fixed"] || args == ["--scalar-w6-comb13-hex9-radius2-fixed"] || args == ["--scalar-w6-comb13-hex9-path-fixed"] || args == ["--scalar-w6-comb13-hex9-paired-fixed"] {
                 let (point, a, b, tau_steps, orbit_counts, repaired, rank, valid, fusions) =
                     scalar_multiply_width_six_comb13_hex9_matched(
-                        &scalar, if args == ["--scalar-w6-comb13-hex9-radius2-fixed"] { 2 }
+                        &scalar, if args == ["--scalar-w6-comb13-hex9-graph33-fixed"] { 3 }
+                                 else if args == ["--scalar-w6-comb13-hex9-radius2-fixed"] { 2 }
                                  else if args == ["--scalar-w6-comb13-hex9-path-fixed"] { 1 }
                                  else { 0 });
                 (point, a, b, tau_steps, orbit_counts.iter().sum(),
@@ -3557,7 +3655,7 @@ fn main() {
                     "orbit_counts": orbit_counts,
                     "alternate_uses": alternate_uses,
                     "recoding_work": recoding_work,
-                    "radix": if args == ["--scalar-w6-comb13-hex9-radius2-fixed"] { "orbit-w6-comb13-hex9-radius2-fixed" } else if args == ["--scalar-w6-comb13-hex9-path-fixed"] { "orbit-w6-comb13-hex9-path-fixed" } else if args == ["--scalar-w6-comb13-hex9-paired-fixed"] { "orbit-w6-comb13-hex9-paired-fixed" } else if args == ["--scalar-w6-comb13-hex4-fixed"] { "orbit-w6-comb13-hex4-fixed" } else if args == ["--scalar-w6-comb13-hex9-fixed"] { "orbit-w6-comb13-hex9-fixed" } else if args == ["--scalar-w6-comb13-cover25-fixed"] { "orbit-w6-comb13-cover25-fixed" } else if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "radix": if args == ["--scalar-w6-comb13-hex9-graph33-fixed"] { "orbit-w6-comb13-hex9-graph33-fixed" } else if args == ["--scalar-w6-comb13-hex9-radius2-fixed"] { "orbit-w6-comb13-hex9-radius2-fixed" } else if args == ["--scalar-w6-comb13-hex9-path-fixed"] { "orbit-w6-comb13-hex9-path-fixed" } else if args == ["--scalar-w6-comb13-hex9-paired-fixed"] { "orbit-w6-comb13-hex9-paired-fixed" } else if args == ["--scalar-w6-comb13-hex4-fixed"] { "orbit-w6-comb13-hex4-fixed" } else if args == ["--scalar-w6-comb13-hex9-fixed"] { "orbit-w6-comb13-hex9-fixed" } else if args == ["--scalar-w6-comb13-cover25-fixed"] { "orbit-w6-comb13-cover25-fixed" } else if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -4264,7 +4362,7 @@ mod eisenstein_tau_tests {
     fn orbit_pair_comb_matches_direct_sums_and_hex9_points() {
         let pair_table = &*PAIR_COMB13_POINTS;
         let base = &*WIDTH_SIX_COMB13_POINTS;
-        assert_eq!(std::mem::size_of::<CompactPairPoint>(), 104);
+        assert_eq!(std::mem::size_of::<CompactPairPoint>(), 72);
         assert_eq!(pair_table.rows.len(), 6);
         assert!(pair_table.rows.iter().all(|row| row.len() == PAIR_COMB13_ENTRIES_PER_PAIR));
         for pair in 0..6 {
@@ -4399,6 +4497,58 @@ mod eisenstein_tau_tests {
         for scalar in [BigInt::ZERO, BigInt::from(1), &n - 1, n + 1] {
             let old = scalar_multiply_width_six_comb13_hex9_path(&scalar);
             let new = scalar_multiply_width_six_comb13_hex9_radius2(&scalar);
+            assert_eq!(old.0.affine_hex(), new.0.affine_hex());
+            assert_eq!((&old.1, &old.2, old.3, old.5, old.6, old.7),
+                       (&new.1, &new.2, new.3, new.5, new.6, new.7));
+            assert!(new.8 >= old.8);
+            assert_eq!(old.4.iter().sum::<usize>() + old.8,
+                       new.4.iter().sum::<usize>() + new.8);
+        }
+    }
+
+    #[test]
+    fn balanced_graph33_tables_and_matching_preserve_points() {
+        assert_eq!(std::mem::size_of::<CompactPairPoint>(), 72);
+        let atlas = &*GRAPH33_MATCHINGS;
+        let slots = &*GRAPH33_EDGE_SLOTS;
+        assert_eq!(atlas.len(), 1 << 12);
+        assert_eq!(GRAPH33_EDGES.len(), 33);
+        for (mask, entry) in atlas.iter().enumerate() {
+            let mut used = 0usize;
+            for &code in &entry.edge_codes[..entry.count as usize] {
+                let left = usize::from(code) / 12;
+                let right = usize::from(code) % 12;
+                assert!(left < right && slots[left][right] != u8::MAX);
+                let bits = (1 << left) | (1 << right);
+                assert_eq!(mask & bits, bits);
+                assert_eq!(used & bits, 0);
+                used |= bits;
+            }
+        }
+        let pairs = &*GRAPH33_PAIR_COMB13_POINTS;
+        let base = &*WIDTH_SIX_COMB13_POINTS;
+        assert_eq!(pairs.rows.len(), 33);
+        assert!(pairs.rows.iter().all(|row| row.len() == PAIR_COMB13_ENTRIES_PER_PAIR));
+        for (edge_index, &(left_row, right_row)) in GRAPH33_EDGES.iter().enumerate() {
+            if right_row - left_row <= 2 { continue; }
+            for first_orbit in [0, 40, 80] {
+                for second_orbit in [0, 40, 80] {
+                    let first = WidthSixDigit { orbit: first_orbit,
+                        unit: Unit { sign: -1, omega_power: 2 } };
+                    let second = WidthSixDigit { orbit: second_orbit,
+                        unit: Unit { sign: 1, omega_power: 1 } };
+                    let direct = width_six_unit_image(base.full_rows[left_row][first_orbit], first)
+                        .add_mixed(width_six_unit_image(base.full_rows[right_row][second_orbit], second));
+                    let paired = width_six_unit_image(
+                        pair_comb13_point(pairs, edge_index, first, second), first);
+                    assert_eq!(direct.affine_hex(), paired.affine_hex());
+                }
+            }
+        }
+        let n = SCALAR_LATTICE.n.clone();
+        for scalar in [BigInt::ZERO, BigInt::from(1), &n - 1, n + 1] {
+            let old = scalar_multiply_width_six_comb13_hex9_radius2(&scalar);
+            let new = scalar_multiply_width_six_comb13_hex9_graph33(&scalar);
             assert_eq!(old.0.affine_hex(), new.0.affine_hex());
             assert_eq!((&old.1, &old.2, old.3, old.5, old.6, old.7),
                        (&new.1, &new.2, new.3, new.5, new.6, new.7));
