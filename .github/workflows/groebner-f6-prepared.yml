@@ -1,0 +1,54 @@
+name: Groebner F6 prepared-factor exactness
+on:
+  push:
+    paths:
+      - '.github/workflows/groebner-f6-prepared.yml'
+      - 'experiments/groebner-f6-prepared-20261009/**'
+      - 'experiments/groebner-f6-packed-20261009/**'
+      - 'experiments/groebner-f6-20261008/**'
+      - 'experiments/pdp-scaling/gf2n.py'
+  pull_request:
+    paths:
+      - '.github/workflows/groebner-f6-prepared.yml'
+      - 'experiments/groebner-f6-prepared-20261009/**'
+      - 'experiments/groebner-f6-packed-20261009/**'
+      - 'experiments/groebner-f6-20261008/**'
+      - 'experiments/pdp-scaling/gf2n.py'
+permissions:
+  contents: read
+jobs:
+  exact:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build frozen baseline and prepared factors
+        run: |
+          python experiments/groebner-f6-packed-20261009/build.py
+          python experiments/groebner-f6-prepared-20261009/build.py
+      - name: Exhaustive, UBSan, and complete target replay
+        run: |
+          mkdir -p f6-prepared-evidence
+          python experiments/groebner-f6-prepared-20261009/test_prepared.py | tee f6-prepared-evidence/tests.log
+          python experiments/groebner-f6-prepared-20261009/semantic_replay.py --output f6-prepared-evidence/semantic.json
+      - name: Matched complete Boolean-query panel
+        run: python experiments/groebner-f6-prepared-20261009/profile.py --output f6-prepared-evidence/profile --reps 5
+      - name: Retain build receipts, target statuses, and raw timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groebner-f6-prepared-${{ matrix.os }}
+          path: |
+            f6-prepared-evidence
+            experiments/groebner-f6-packed-20261009/build/receipt.json
+            experiments/groebner-f6-prepared-20261009/build/receipt.json
+          if-no-files-found: warn
