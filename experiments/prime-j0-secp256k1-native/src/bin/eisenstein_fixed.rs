@@ -1644,6 +1644,44 @@ static WIDTH_SIX_COMB13_POINTS: LazyLock<SparseComb13> = LazyLock::new(|| {
     }
 });
 
+const PAIR_COMB13_ENTRIES_PER_PAIR: usize = 81 * 81 * 6;
+
+struct PairComb13 {
+    rows: Vec<Box<[Jacobian]>>,
+}
+
+static PAIR_COMB13_POINTS: LazyLock<PairComb13> = LazyLock::new(|| {
+    let base = &*WIDTH_SIX_COMB13_POINTS;
+    let mut rows = Vec::with_capacity(6);
+    for pair in 0..6 {
+        let left = &base.full_rows[2 * pair];
+        let right = &base.full_rows[2 * pair + 1];
+        let mut projective = Vec::with_capacity(PAIR_COMB13_ENTRIES_PER_PAIR);
+        for &first in left {
+            for &second in right {
+                for omega_power in 0..3 {
+                    for sign in [1, -1] {
+                        let unit = Unit { sign, omega_power };
+                        projective.push(first.add_mixed(unit_point(unit, second)));
+                    }
+                }
+            }
+        }
+        assert_eq!(projective.len(), PAIR_COMB13_ENTRIES_PER_PAIR);
+        rows.push(batch_to_affine(&projective).into_boxed_slice());
+    }
+    PairComb13 { rows }
+});
+
+fn pair_comb13_point(table: &PairComb13, pair: usize,
+                     first: WidthSixDigit, second: WidthSixDigit) -> Jacobian {
+    let relative_sign = first.unit.sign * second.unit.sign;
+    let relative_power = (second.unit.omega_power + 3 - first.unit.omega_power) % 3;
+    let unit_code = relative_power * 2 + usize::from(relative_sign < 0);
+    let index = (first.orbit * 81 + second.orbit) * 6 + unit_code;
+    table.rows[pair][index]
+}
+
 fn glv_comb_table(rows: usize, width: usize) -> Vec<Jacobian> {
     let mut bases = Vec::with_capacity(rows);
     let mut point = Jacobian::generator();
@@ -2584,6 +2622,62 @@ fn evaluate_width_six_comb13_sparse(
     (point, a, b, tau_steps, orbit_counts, repaired)
 }
 
+fn evaluate_width_six_comb13_paired(
+    a: BigInt,
+    b: BigInt,
+    digits: Vec<Option<WidthSixDigit>>,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize) {
+    let table = &*WIDTH_SIX_COMB13_POINTS;
+    let pairs = &*PAIR_COMB13_POINTS;
+    assert!(digits.len() <= 162, "comb digit span exceeded");
+    assert!(digits.iter().skip(156).flatten().count() <= 1);
+    let mut point = Jacobian::identity();
+    let mut started = false;
+    let mut tau_steps = 0;
+    let mut orbit_counts = [0usize; 81];
+    let mut repaired = false;
+    let mut fusions = 0;
+    for column in (0..13).rev() {
+        if started {
+            point = point.tau();
+            tau_steps += 1;
+        }
+        for pair in 0..6 {
+            let left = digits.get(2 * pair * 13 + column).copied().flatten();
+            let right = digits.get((2 * pair + 1) * 13 + column).copied().flatten();
+            match (left, right) {
+                (Some(first), Some(second)) => {
+                    let addend = pair_comb13_point(pairs, pair, first, second);
+                    add_comb13_digit(&mut point, &mut started, &mut orbit_counts, first, addend);
+                    fusions += 1;
+                }
+                (Some(digit), None) | (None, Some(digit)) => {
+                    let row = if left.is_some() { 2 * pair } else { 2 * pair + 1 };
+                    let seed = table.full_rows[row][digit.orbit];
+                    add_comb13_digit(&mut point, &mut started, &mut orbit_counts, digit, seed);
+                }
+                (None, None) => {}
+            }
+        }
+        if let Some(Some(digit)) = digits.get(12 * 13 + column) {
+            if table.top_slots[digit.orbit] == u8::MAX {
+                let (left_code, right_code) = table.top_repair[digit.orbit];
+                assert_ne!((left_code, right_code), NO_TOP_REPAIR);
+                for part in [left_code, right_code] {
+                    let part = apply_width_six_unit(unpack_width_six_digit(part), digit.unit);
+                    let seed = table.top_points[usize::from(table.top_slots[part.orbit])];
+                    add_comb13_digit(&mut point, &mut started, &mut orbit_counts, part, seed);
+                }
+                repaired = true;
+            } else {
+                let seed = table.top_points[usize::from(table.top_slots[digit.orbit])];
+                add_comb13_digit(&mut point, &mut started, &mut orbit_counts, *digit, seed);
+            }
+        }
+    }
+    (point, a, b, tau_steps, orbit_counts, repaired, fusions)
+}
+
 fn scalar_multiply_width_six_comb13_sparse(
     scalar: &BigInt,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool) {
@@ -2652,6 +2746,28 @@ fn scalar_multiply_width_six_comb13_hex9(
     let (point, a, b, tau_steps, orbit_counts, repaired) =
         evaluate_width_six_comb13_sparse(a, b, stream.digits(), true);
     (point, a, b, tau_steps, orbit_counts, repaired, rank, valid)
+}
+
+fn scalar_multiply_width_six_comb13_hex9_paired(
+    scalar: &BigInt,
+) -> (Jacobian, BigInt, BigInt, usize, [usize; 81], bool, usize, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let table = &*WIDTH_SIX_COMB13_POINTS;
+    let mut best: Option<(usize, usize, BigInt, BigInt, PackedTauSixStream)> = None;
+    let mut valid = 0;
+    for (rank, (a, b)) in hexagonal_representative_choices(&residue).into_iter().enumerate() {
+        let Some(stream) = recode_tau_width_six_packed(&a, &b) else { continue; };
+        let Some(cost) = stream.cover_score(table) else { continue; };
+        valid += 1;
+        if best.as_ref().is_none_or(|entry| cost < entry.0) {
+            best = Some((cost, rank, a, b, stream));
+        }
+    }
+    let (_, rank, a, b, stream) = best.expect("nearest lattice representative is valid");
+    let (point, a, b, tau_steps, orbit_counts, repaired, fusions) =
+        evaluate_width_six_comb13_paired(a, b, stream.digits());
+    (point, a, b, tau_steps, orbit_counts, repaired, rank, valid, fusions)
 }
 
 fn scalar_multiply_width_six_comb13_hex4(
@@ -2784,6 +2900,7 @@ fn check_generator_case(
     cover_twentyfive: bool,
     hex_nine: bool,
     hex_four: bool,
+    hex_nine_paired: bool,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -2823,6 +2940,9 @@ fn check_generator_case(
             _ => unreachable!(),
         };
     }
+    if hex_nine_paired {
+        LazyLock::force(&PAIR_COMB13_POINTS);
+    }
     if glv_rows == 8 {
         LazyLock::force(&GLV_COMB8_POINTS);
     } else if glv_rows == 10 {
@@ -2830,7 +2950,9 @@ fn check_generator_case(
     }
     let scalar = scalar_from_hex(scalar_hex);
     let start = Instant::now();
-    let point = if hex_four {
+    let point = if hex_nine_paired {
+        scalar_multiply_width_six_comb13_hex9_paired(&scalar).0
+    } else if hex_four {
         scalar_multiply_width_six_comb13_hex4(&scalar).0
     } else if hex_nine {
         scalar_multiply_width_six_comb13_hex9(&scalar).0
@@ -2858,7 +2980,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if hex_four {
+    let mode = if hex_nine_paired {
+        "eisenstein_w6_comb13_hex9_paired_fixed"
+    } else if hex_four {
         "eisenstein_w6_comb13_hex4_fixed"
     } else if hex_nine {
         "eisenstein_w6_comb13_hex9_fixed"
@@ -2902,6 +3026,16 @@ fn check_generator_case(
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args == ["--prepare-w6-comb13-hex9-paired"] {
+        let start = Instant::now();
+        let pairs = &*PAIR_COMB13_POINTS;
+        println!("preparation_ms={:.6} entries={} table_bytes={}",
+                 start.elapsed().as_secs_f64() * 1000.0,
+                 pairs.rows.iter().map(|row| row.len()).sum::<usize>(),
+                 pairs.rows.iter().map(|row| row.len()).sum::<usize>()
+                     * std::mem::size_of::<Jacobian>());
+        return;
+    }
     if args.len() == 3
         && (args[0] == "--benchmark-scalar-w2-case"
             || args[0] == "--check-scalar-w2-case"
@@ -2931,6 +3065,8 @@ fn main() {
             || args[0] == "--check-scalar-w6-comb13-cover25-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb13-hex9-fixed-case"
             || args[0] == "--check-scalar-w6-comb13-hex9-fixed-case"
+            || args[0] == "--benchmark-scalar-w6-comb13-hex9-paired-fixed-case"
+            || args[0] == "--check-scalar-w6-comb13-hex9-paired-fixed-case"
             || args[0] == "--benchmark-scalar-w6-comb13-hex4-fixed-case"
             || args[0] == "--check-scalar-w6-comb13-hex4-fixed-case"
             || args[0] == "--benchmark-scalar-glv-comb8-fixed-case"
@@ -2971,6 +3107,7 @@ fn main() {
             args[0].contains("w6-comb13-cover25"),
             args[0].contains("w6-comb13-hex9"),
             args[0].contains("w6-comb13-hex4"),
+            args[0].contains("w6-comb13-hex9-paired"),
         );
         return;
     }
@@ -2992,10 +3129,11 @@ fn main() {
             || args == ["--scalar-w6-comb13-cover-fixed"]
             || args == ["--scalar-w6-comb13-cover25-fixed"]
             || args == ["--scalar-w6-comb13-hex9-fixed"]
+            || args == ["--scalar-w6-comb13-hex9-paired-fixed"]
             || args == ["--scalar-w6-comb13-hex4-fixed"]
             || args == ["--scalar-glv-comb8-fixed"]
             || args == ["--scalar-glv-comb10-fixed"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-w6-comb13-sparse-fixed|--scalar-w6-comb13-coset3-fixed|--scalar-w6-comb13-cover-fixed|--scalar-w6-comb13-cover25-fixed|--scalar-w6-comb13-hex4-fixed|--scalar-w6-comb13-hex9-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent|--scalar-w6-fixed|--scalar-w6-comb4-fixed|--scalar-w6-comb8-fixed|--scalar-w6-comb12-fixed|--scalar-w6-comb13-sparse-fixed|--scalar-w6-comb13-coset3-fixed|--scalar-w6-comb13-cover-fixed|--scalar-w6-comb13-cover25-fixed|--scalar-w6-comb13-hex4-fixed|--scalar-w6-comb13-hex9-fixed|--scalar-w6-comb13-hex9-paired-fixed|--scalar-glv-comb8-fixed|--scalar-glv-comb10-fixed]"
     );
     let tau_mode = args == ["--tau"];
     let scalar_mode = args == ["--scalar"]
@@ -3013,6 +3151,7 @@ fn main() {
         || args == ["--scalar-w6-comb13-cover-fixed"]
         || args == ["--scalar-w6-comb13-cover25-fixed"]
         || args == ["--scalar-w6-comb13-hex9-fixed"]
+        || args == ["--scalar-w6-comb13-hex9-paired-fixed"]
         || args == ["--scalar-w6-comb13-hex4-fixed"]
         || args == ["--scalar-glv-comb8-fixed"]
         || args == ["--scalar-glv-comb10-fixed"];
@@ -3028,7 +3167,7 @@ fn main() {
         8
     } else if args == ["--scalar-w6-comb12-fixed"] {
         12
-    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] || args == ["--scalar-w6-comb13-cover25-fixed"] || args == ["--scalar-w6-comb13-hex9-fixed"] || args == ["--scalar-w6-comb13-hex4-fixed"] {
+    } else if args == ["--scalar-w6-comb13-sparse-fixed"] || args == ["--scalar-w6-comb13-coset3-fixed"] || args == ["--scalar-w6-comb13-cover-fixed"] || args == ["--scalar-w6-comb13-cover25-fixed"] || args == ["--scalar-w6-comb13-hex9-fixed"] || args == ["--scalar-w6-comb13-hex9-paired-fixed"] || args == ["--scalar-w6-comb13-hex4-fixed"] {
         13
     } else {
         0
@@ -3075,7 +3214,15 @@ fn main() {
                 orbit_counts,
                 alternate_uses,
                 recoding_work,
-            ) = if args == ["--scalar-w6-comb13-hex4-fixed"] {
+            ) = if args == ["--scalar-w6-comb13-hex9-paired-fixed"] {
+                let (point, a, b, tau_steps, orbit_counts, repaired, rank, valid, fusions) =
+                    scalar_multiply_width_six_comb13_hex9_paired(&scalar);
+                (point, a, b, tau_steps, orbit_counts.iter().sum(),
+                 Some(json!(orbit_counts.to_vec())), None,
+                 Some(json!({"top_repaired": repaired, "coset_rank": rank,
+                             "valid_representatives": valid, "attempted_representatives": 9,
+                             "pair_fusions": fusions})))
+            } else if args == ["--scalar-w6-comb13-hex4-fixed"] {
                 let (point, a, b, tau_steps, orbit_counts, repaired, rank, valid) =
                     scalar_multiply_width_six_comb13_hex4(&scalar);
                 (point, a, b, tau_steps, orbit_counts.iter().sum(),
@@ -3210,7 +3357,7 @@ fn main() {
                     "orbit_counts": orbit_counts,
                     "alternate_uses": alternate_uses,
                     "recoding_work": recoding_work,
-                    "radix": if args == ["--scalar-w6-comb13-hex4-fixed"] { "orbit-w6-comb13-hex4-fixed" } else if args == ["--scalar-w6-comb13-hex9-fixed"] { "orbit-w6-comb13-hex9-fixed" } else if args == ["--scalar-w6-comb13-cover25-fixed"] { "orbit-w6-comb13-cover25-fixed" } else if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "radix": if args == ["--scalar-w6-comb13-hex9-paired-fixed"] { "orbit-w6-comb13-hex9-paired-fixed" } else if args == ["--scalar-w6-comb13-hex4-fixed"] { "orbit-w6-comb13-hex4-fixed" } else if args == ["--scalar-w6-comb13-hex9-fixed"] { "orbit-w6-comb13-hex9-fixed" } else if args == ["--scalar-w6-comb13-cover25-fixed"] { "orbit-w6-comb13-cover25-fixed" } else if args == ["--scalar-w6-comb13-cover-fixed"] { "orbit-w6-comb13-cover-fixed" } else if args == ["--scalar-w6-comb13-coset3-fixed"] { "orbit-w6-comb13-coset3-fixed" } else if comb_rows == 4 { "orbit-w6-comb4-fixed" } else if comb_rows == 8 { "orbit-w6-comb8-fixed" } else if comb_rows == 12 { "orbit-w6-comb12-fixed" } else if comb_rows == 13 { "orbit-w6-comb13-sparse-fixed" } else if width_six { "orbit-w6-fixed" } else if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -3910,6 +4057,53 @@ mod eisenstein_tau_tests {
                 };
                 assert_eq!(actual, expected);
             }
+        }
+    }
+
+    #[test]
+    fn orbit_pair_comb_matches_direct_sums_and_hex9_points() {
+        let pair_table = &*PAIR_COMB13_POINTS;
+        let base = &*WIDTH_SIX_COMB13_POINTS;
+        assert_eq!(std::mem::size_of::<Jacobian>(), 432);
+        assert_eq!(pair_table.rows.len(), 6);
+        assert!(pair_table.rows.iter().all(|row| row.len() == PAIR_COMB13_ENTRIES_PER_PAIR));
+        for pair in 0..6 {
+            for first_orbit in [0, 40, 80] {
+                for second_orbit in [0, 40, 80] {
+                    let first = WidthSixDigit { orbit: first_orbit,
+                        unit: Unit { sign: -1, omega_power: 2 } };
+                    for second_power in 0..3 {
+                        for second_sign in [1, -1] {
+                            let second = WidthSixDigit { orbit: second_orbit,
+                                unit: Unit { sign: second_sign, omega_power: second_power } };
+                            let direct = width_six_unit_image(base.full_rows[2 * pair][first_orbit], first)
+                                .add_mixed(width_six_unit_image(base.full_rows[2 * pair + 1][second_orbit], second));
+                            let paired = width_six_unit_image(pair_comb13_point(pair_table, pair, first, second), first);
+                            assert_eq!(direct.affine_hex(), paired.affine_hex());
+                        }
+                    }
+                }
+            }
+        }
+        let n = SCALAR_LATTICE.n.clone();
+        let mut state = 0x8a5cd7890f2b34d1u64;
+        for scalar in [BigInt::ZERO, BigInt::from(1), &n - 1]
+            .into_iter().chain((0..16).map(|_| {
+                let mut value = BigInt::ZERO;
+                for _ in 0..4 {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    value = (value << 64) + BigInt::from(state);
+                }
+                value % &n
+            })) {
+            let old = scalar_multiply_width_six_comb13_hex9(&scalar);
+            let new = scalar_multiply_width_six_comb13_hex9_paired(&scalar);
+            assert_eq!(old.0.affine_hex(), new.0.affine_hex());
+            assert_eq!((&old.1, &old.2, old.3, old.5, old.6, old.7),
+                       (&new.1, &new.2, new.3, new.5, new.6, new.7));
+            assert_eq!(old.4.iter().sum::<usize>(), new.4.iter().sum::<usize>() + new.8);
         }
     }
 
