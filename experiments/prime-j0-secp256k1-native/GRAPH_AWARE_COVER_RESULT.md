@@ -88,3 +88,7 @@ NUMA, and cgroup values are placeholders for a future qualified host.
 The next experiment is the complete paired online panel on a host
 passing `docs/ISOLATED_BENCHMARKS.md`, followed by a broader prior-art
 review of joint recoding and precomputed matching selection.
+
+The subsequent [joint graph screen](JOINT_GRAPH_RESULT.md) tested a
+greedy redesign of the three long edges and recorded a stopped
+holdout result plus a complete-graph point-proxy ceiling.
