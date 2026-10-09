@@ -34,6 +34,20 @@ vectors fail the N131 W18 4-GiB memory gate. The exact censuses differ in
 their column policy: this reference removes cross-pair column repeats
 before building suffix support; the earlier lookup checks them after a hit.
 
+The [exact N41 sign-orbit certificate](n41_two_pair_sign_orbit_x_support_20261009/RESULT.md)
+partitions those 3,167,136 valid suffix assignments into 1,583,568
+negation pairs. The prior independently audited collision-free group sums
+make every pair's x coordinate unique; an x hit therefore identifies both
+free pair seed sums and folded columns up to global sign. Independent Sage
+verified every source-point and pair-state involution and recounted all
+valid assignments. For this sign-closed completion domain, y adds no
+feasibility rejection after x is known; it selects the recovered sign.
+An x-only mixed-cubic filter was separately ruled out by exact full rank,
+so the next solver should seek a compact nonlinear seed-conditioned
+x inverse or equivalent target-bound elimination while multiple blocks
+remain free. The N41 exact x table supplies a control, not an N131 memory
+or work projection.
+
 For the current N131 d13 six-pair policy, a final-two-pair completion check
 after **four target-independent fixed pairs** has uniform-target hit
 probability at most `1.716e-24` per prefix. The
