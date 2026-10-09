@@ -1279,9 +1279,15 @@ fn width_four_block_quotient(a: &BigInt, b: &BigInt, digit: WidthFourDigit) -> (
     result
 }
 
+type EisensteinState = (BigInt, BigInt);
+
+fn width_four_is_terminal(z: &EisensteinState) -> bool {
+    z.0.is_zero() && z.1.is_zero() || width_four_terminal(&z.0, &z.1).is_some()
+}
+
 #[derive(Default)]
 struct WidthFourPolicy {
-    base: HashMap<(BigInt, BigInt), usize>,
+    base: HashMap<EisensteinState, usize>,
     look: HashMap<(BigInt, BigInt, u8), usize>,
 }
 
@@ -1331,27 +1337,127 @@ impl WidthFourPolicy {
     }
 }
 
+#[derive(Default, Clone, Copy)]
+struct WidthFourCompareCounts {
+    base_transitions: usize,
+    look_zero_steps: usize,
+    look_blocks: usize,
+}
+
+#[derive(Default)]
+struct WidthFourComparator {
+    counts: WidthFourCompareCounts,
+}
+
+impl WidthFourComparator {
+    fn base_step(&mut self, z: &EisensteinState) -> (EisensteinState, i64) {
+        self.counts.base_transitions += 1;
+        if let Some(choices) = width_four_choices(&z.0, &z.1) {
+            (width_four_block_quotient(&z.0, &z.1, choices[0]), 31)
+        } else {
+            (width_four_zero_quotient(&z.0, &z.1), 5)
+        }
+    }
+
+    // B(u)-B(v) for the deterministic first-digit continuation. Its two
+    // decreasing paths may meet before either reaches a terminal digit.
+    fn base_delta(&mut self, mut u: EisensteinState, mut v: EisensteinState) -> i64 {
+        if u == v {
+            return 0;
+        }
+        let mut u_cost = 0i64;
+        let mut v_cost = 0i64;
+        let mut u_seen = vec![(u.clone(), u_cost)];
+        let mut v_seen = vec![(v.clone(), v_cost)];
+        loop {
+            if width_four_is_terminal(&u) && width_four_is_terminal(&v) {
+                return u_cost - v_cost;
+            }
+            if !width_four_is_terminal(&u) {
+                let (next, step_cost) = self.base_step(&u);
+                u = next;
+                u_cost += step_cost;
+                if let Some((_, seen_cost)) = v_seen.iter().find(|(state, _)| *state == u) {
+                    return u_cost - seen_cost;
+                }
+                u_seen.push((u.clone(), u_cost));
+            }
+            if !width_four_is_terminal(&v) {
+                let (next, step_cost) = self.base_step(&v);
+                v = next;
+                v_cost += step_cost;
+                if let Some((_, seen_cost)) = u_seen.iter().find(|(state, _)| *state == v) {
+                    return seen_cost - v_cost;
+                }
+                v_seen.push((v.clone(), v_cost));
+            }
+        }
+    }
+
+    // Expand through zero steps and one nonzero block. A terminal gives one
+    // outcome; otherwise the two digit choices give two outcomes.
+    fn one_block(&mut self, mut z: EisensteinState) -> Vec<(i64, EisensteinState)> {
+        let mut prefix = 0;
+        while !width_four_is_terminal(&z) && mod_three(&z.0) == 0 {
+            z = width_four_zero_quotient(&z.0, &z.1);
+            prefix += 5;
+            self.counts.look_zero_steps += 1;
+        }
+        if width_four_is_terminal(&z) {
+            return vec![(prefix, z)];
+        }
+        self.counts.look_blocks += 1;
+        width_four_choices(&z.0, &z.1)
+            .expect("nonterminal block")
+            .map(|digit| (prefix + 31, width_four_block_quotient(&z.0, &z.1, digit)))
+            .into_iter()
+            .collect()
+    }
+
+    fn choose(&mut self, quotients: [EisensteinState; 2]) -> usize {
+        let outcomes = quotients.map(|z| self.one_block(z));
+        let reference = outcomes[0][0].1.clone();
+        let scores = outcomes.map(|choices| {
+            choices
+                .into_iter()
+                .map(|(prefix, z)| prefix + self.base_delta(z, reference.clone()))
+                .min()
+                .expect("one or two outcomes")
+        });
+        usize::from(scores[1] < scores[0])
+    }
+}
+
 fn recode_tau_width_four_redundant(
     mut a: BigInt,
     mut b: BigInt,
-) -> (Vec<Option<WidthFourDigit>>, Option<WidthFourDigit>, usize) {
+    coalescent: bool,
+) -> (
+    Vec<Option<WidthFourDigit>>,
+    Option<WidthFourDigit>,
+    usize,
+    WidthFourCompareCounts,
+) {
+    let mut comparator = WidthFourComparator::default();
     let mut policy = WidthFourPolicy::default();
     let mut digits = Vec::new();
     let mut alternate_uses = 0;
     while !a.is_zero() || !b.is_zero() {
         if let Some(terminal) = width_four_terminal(&a, &b) {
-            return (digits, Some(terminal), alternate_uses);
+            return (digits, Some(terminal), alternate_uses, comparator.counts);
         }
         if let Some(choices) = width_four_choices(&a, &b) {
-            let values = choices.map(|digit| {
-                let (qa, qb) = width_four_block_quotient(&a, &b, digit);
-                policy.look_value(&qa, &qb, 1)
-            });
-            let choice = usize::from(values[1] < values[0]);
+            let quotients = choices.map(|digit| width_four_block_quotient(&a, &b, digit));
+            let choice = if coalescent {
+                comparator.choose(quotients.clone())
+            } else {
+                let values = quotients
+                    .clone()
+                    .map(|(qa, qb)| policy.look_value(&qa, &qb, 1));
+                usize::from(values[1] < values[0])
+            };
             let digit = choices[choice];
-            let (next_a, next_b) = width_four_block_quotient(&a, &b, digit);
-            a = next_a;
-            b = next_b;
+            (a, b) = quotients[choice].clone();
             digits.extend([Some(digit), None, None, None]);
             alternate_uses += choice;
         } else {
@@ -1363,7 +1469,7 @@ fn recode_tau_width_four_redundant(
             "width-four expansion did not terminate"
         );
     }
-    (digits, None, alternate_uses)
+    (digits, None, alternate_uses, comparator.counts)
 }
 
 fn width_two_unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
@@ -1545,11 +1651,21 @@ fn scalar_multiply_width_three(
 
 fn scalar_multiply_width_four_redundant(
     scalar: &BigInt,
-) -> (Jacobian, BigInt, BigInt, usize, [usize; 18], usize) {
+    coalescent: bool,
+) -> (
+    Jacobian,
+    BigInt,
+    BigInt,
+    usize,
+    [usize; 18],
+    usize,
+    WidthFourCompareCounts,
+) {
     let lattice = &*SCALAR_LATTICE;
     let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
     let (a, b) = short_representative(&residue);
-    let (digits, terminal, alternate_uses) = recode_tau_width_four_redundant(a.clone(), b.clone());
+    let (digits, terminal, alternate_uses, compare_counts) =
+        recode_tau_width_four_redundant(a.clone(), b.clone(), coalescent);
     let point_for = |digit: WidthFourDigit| {
         let point = WIDTH_FOUR_POINTS[digit.orbit][digit.unit.omega_power];
         if digit.unit.sign < 0 {
@@ -1567,7 +1683,15 @@ fn scalar_multiply_width_four_redundant(
             orbit_counts[d.orbit] += 1;
         }
     }
-    (point, a, b, digits.len(), orbit_counts, alternate_uses)
+    (
+        point,
+        a,
+        b,
+        digits.len(),
+        orbit_counts,
+        alternate_uses,
+        compare_counts,
+    )
 }
 
 fn check_generator_case(
@@ -1577,6 +1701,7 @@ fn check_generator_case(
     width_three: bool,
     affine_fixed: bool,
     redundant_four: bool,
+    coalescent_four: bool,
 ) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("read fixture"))
         .expect("parse fixture");
@@ -1598,14 +1723,14 @@ fn check_generator_case(
     };
     LazyLock::force(&SCALAR_LATTICE);
     LazyLock::force(&DECODE_CONSTANTS);
-    if redundant_four {
+    if redundant_four || coalescent_four {
         LazyLock::force(&WIDTH_FOUR_DIGITS);
         LazyLock::force(&WIDTH_FOUR_POINTS);
     }
     let scalar = scalar_from_hex(scalar_hex);
     let start = Instant::now();
-    let point = if redundant_four {
-        scalar_multiply_width_four_redundant(&scalar).0
+    let point = if redundant_four || coalescent_four {
+        scalar_multiply_width_four_redundant(&scalar, coalescent_four).0
     } else if width_three {
         scalar_multiply_width_three(&scalar, affine_fixed).0
     } else {
@@ -1614,7 +1739,9 @@ fn check_generator_case(
     let actual = point.affine_hex();
     assert_eq!(actual, expected, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    let mode = if redundant_four {
+    let mode = if coalescent_four {
+        "eisenstein_w4_coalescent"
+    } else if redundant_four {
         "eisenstein_w4_redundant"
     } else if affine_fixed {
         "eisenstein_w3_fixed"
@@ -1640,7 +1767,9 @@ fn main() {
             || args[0] == "--benchmark-scalar-w3-fixed-case"
             || args[0] == "--check-scalar-w3-fixed-case"
             || args[0] == "--benchmark-scalar-w4-redundant-case"
-            || args[0] == "--check-scalar-w4-redundant-case")
+            || args[0] == "--check-scalar-w4-redundant-case"
+            || args[0] == "--benchmark-scalar-w4-coalescent-case"
+            || args[0] == "--check-scalar-w4-coalescent-case")
     {
         let index = args[2].parse::<usize>().expect("case index");
         check_generator_case(
@@ -1650,6 +1779,7 @@ fn main() {
             args[0].contains("w3-"),
             args[0].ends_with("w3-fixed-case"),
             args[0].ends_with("w4-redundant-case"),
+            args[0].ends_with("w4-coalescent-case"),
         );
         return;
     }
@@ -1660,19 +1790,22 @@ fn main() {
             || args == ["--scalar-w2"]
             || args == ["--scalar-w3"]
             || args == ["--scalar-w3-fixed"]
-            || args == ["--scalar-w4-redundant"],
-        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant]"
+            || args == ["--scalar-w4-redundant"]
+            || args == ["--scalar-w4-coalescent"],
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2|--scalar-w3|--scalar-w3-fixed|--scalar-w4-redundant|--scalar-w4-coalescent]"
     );
     let tau_mode = args == ["--tau"];
     let scalar_mode = args == ["--scalar"]
         || args == ["--scalar-w2"]
         || args == ["--scalar-w3"]
         || args == ["--scalar-w3-fixed"]
-        || args == ["--scalar-w4-redundant"];
+        || args == ["--scalar-w4-redundant"]
+        || args == ["--scalar-w4-coalescent"];
     let width_two = args == ["--scalar-w2"];
     let affine_fixed = args == ["--scalar-w3-fixed"];
     let width_three = args == ["--scalar-w3"] || affine_fixed;
     let redundant_four = args == ["--scalar-w4-redundant"];
+    let coalescent_four = args == ["--scalar-w4-coalescent"];
     for line in io::stdin().lock().lines() {
         let line = line.expect("input line");
         if line.trim().is_empty() {
@@ -1682,39 +1815,54 @@ fn main() {
         if scalar_mode {
             assert_eq!(fields.len(), 1, "expected one hexadecimal scalar");
             let scalar = scalar_from_hex(fields[0]);
-            let (point, a, b, tau_steps, nonzero_digits, orbit_counts, alternate_uses) =
-                if redundant_four {
-                    let (point, a, b, tau_steps, orbit_counts, alternate_uses) =
-                        scalar_multiply_width_four_redundant(&scalar);
-                    (
-                        point,
-                        a,
-                        b,
-                        tau_steps,
-                        orbit_counts.iter().sum(),
-                        Some(json!(orbit_counts)),
-                        Some(alternate_uses),
-                    )
-                } else if width_three {
-                    let (point, a, b, tau_steps, orbit_counts) =
-                        scalar_multiply_width_three(&scalar, affine_fixed);
-                    (
-                        point,
-                        a,
-                        b,
-                        tau_steps,
-                        orbit_counts.iter().sum(),
-                        Some(json!(orbit_counts)),
-                        None,
-                    )
-                } else if width_two {
-                    let (point, a, b, tau_steps, nonzero_digits) =
-                        scalar_multiply_width_two(&scalar);
-                    (point, a, b, tau_steps, nonzero_digits, None, None)
-                } else {
-                    let (point, a, b, tau_steps, nonzero_digits) = scalar_multiply(&scalar);
-                    (point, a, b, tau_steps, nonzero_digits, None, None)
-                };
+            let (
+                point,
+                a,
+                b,
+                tau_steps,
+                nonzero_digits,
+                orbit_counts,
+                alternate_uses,
+                recoding_work,
+            ) = if redundant_four || coalescent_four {
+                let (point, a, b, tau_steps, orbit_counts, alternate_uses, work) =
+                    scalar_multiply_width_four_redundant(&scalar, coalescent_four);
+                (
+                    point,
+                    a,
+                    b,
+                    tau_steps,
+                    orbit_counts.iter().sum(),
+                    Some(json!(orbit_counts)),
+                    Some(alternate_uses),
+                    coalescent_four.then(|| {
+                        json!({
+                            "base_transitions": work.base_transitions,
+                            "look_zero_steps": work.look_zero_steps,
+                            "look_blocks": work.look_blocks,
+                        })
+                    }),
+                )
+            } else if width_three {
+                let (point, a, b, tau_steps, orbit_counts) =
+                    scalar_multiply_width_three(&scalar, affine_fixed);
+                (
+                    point,
+                    a,
+                    b,
+                    tau_steps,
+                    orbit_counts.iter().sum(),
+                    Some(json!(orbit_counts)),
+                    None,
+                    None,
+                )
+            } else if width_two {
+                let (point, a, b, tau_steps, nonzero_digits) = scalar_multiply_width_two(&scalar);
+                (point, a, b, tau_steps, nonzero_digits, None, None, None)
+            } else {
+                let (point, a, b, tau_steps, nonzero_digits) = scalar_multiply(&scalar);
+                (point, a, b, tau_steps, nonzero_digits, None, None, None)
+            };
             println!(
                 "{}",
                 json!({
@@ -1724,7 +1872,8 @@ fn main() {
                     "nonzero_digits": nonzero_digits,
                     "orbit_counts": orbit_counts,
                     "alternate_uses": alternate_uses,
-                    "radix": if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
+                    "recoding_work": recoding_work,
+                    "radix": if coalescent_four { "orbit-w4-coalescent" } else if redundant_four { "orbit-w4-redundant" } else if affine_fixed { "orbit-w3-fixed" } else if width_three { "orbit-w3" } else if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -2070,8 +2219,8 @@ mod eisenstein_tau_tests {
     fn redundant_width_four_digits_reconstruct_small_pairs() {
         for a in -12..=12 {
             for b in -12..=12 {
-                let (digits, terminal, alternate_uses) =
-                    recode_tau_width_four_redundant(a.into(), b.into());
+                let (digits, terminal, alternate_uses, _) =
+                    recode_tau_width_four_redundant(a.into(), b.into(), true);
                 for chunk in digits.windows(4) {
                     if chunk[0].is_some() {
                         assert!(chunk[1..].iter().all(Option::is_none));
@@ -2090,6 +2239,73 @@ mod eisenstein_tau_tests {
                     (x, y) = (-3 * y + i64::from(da), x + 3 * y + i64::from(db));
                 }
                 assert_eq!((x, y), (a, b));
+            }
+        }
+    }
+
+    #[test]
+    fn coalescent_comparison_matches_full_continuation_on_small_pairs() {
+        fn base_cost(mut z: EisensteinState) -> i64 {
+            let mut cost = 0;
+            while !width_four_is_terminal(&z) {
+                if let Some(choices) = width_four_choices(&z.0, &z.1) {
+                    z = width_four_block_quotient(&z.0, &z.1, choices[0]);
+                    cost += 31;
+                } else {
+                    z = width_four_zero_quotient(&z.0, &z.1);
+                    cost += 5;
+                }
+            }
+            cost
+        }
+        fn one_block_cost(mut z: EisensteinState) -> i64 {
+            let mut prefix = 0;
+            while !width_four_is_terminal(&z) && mod_three(&z.0) == 0 {
+                z = width_four_zero_quotient(&z.0, &z.1);
+                prefix += 5;
+            }
+            if width_four_is_terminal(&z) {
+                return prefix;
+            }
+            prefix
+                + 31
+                + width_four_choices(&z.0, &z.1)
+                    .expect("nonterminal block")
+                    .map(|digit| base_cost(width_four_block_quotient(&z.0, &z.1, digit)))
+                    .into_iter()
+                    .min()
+                    .unwrap()
+        }
+        let sample = [-8, -4, -1, 0, 1, 3, 7];
+        for &a in &sample {
+            for &b in &sample {
+                for &c in &sample {
+                    for &d in &sample {
+                        let left = (BigInt::from(a), BigInt::from(b));
+                        let right = (BigInt::from(c), BigInt::from(d));
+                        assert_eq!(
+                            WidthFourComparator::default().base_delta(left.clone(), right.clone()),
+                            base_cost(left) - base_cost(right)
+                        );
+                    }
+                }
+            }
+        }
+        for a in -12..=12 {
+            for b in -12..=12 {
+                let z = (BigInt::from(a), BigInt::from(b));
+                if width_four_is_terminal(&z) {
+                    continue;
+                }
+                if let Some(choices) = width_four_choices(&z.0, &z.1) {
+                    let quotients = choices.map(|d| width_four_block_quotient(&z.0, &z.1, d));
+                    let values = quotients.clone().map(one_block_cost);
+                    assert_eq!(
+                        WidthFourComparator::default().choose(quotients),
+                        usize::from(values[1] < values[0]),
+                        "state ({a},{b})"
+                    );
+                }
             }
         }
     }
