@@ -11,6 +11,27 @@ logarithm with lower isolated online wall time than same-point rho. The next
 > operation and memory projection for the corresponding N131 W18 method
 > under 600 seconds and 4 GiB before attempting an ordinary N131 target.
 
+The [exact two-free-pair census](n41_two_free_pair_occupancy_20261009/README.md)
+now fixes the smaller-field completion oracle for this gate. The last two
+W6 pair domains produce 3,167,136 distinct group sums; on the frozen
+public point, 19 first-two-pair residuals hit that support and 12 complete
+an eight-column relation. Independent Sage arithmetic recounted every
+suffix assignment and prefix residual. The reference materializes a
+quadratic suffix index and spends 173.704 seconds in the target-dependent
+scan, so the constructive 120-second gate still requires a different
+target-conditioned method. Record how many prefix families that method
+rejects *before* both remaining pair domains are enumerated.
+
+The [source-bound W18 calculation](n41_two_free_pair_occupancy_20261009/result.json)
+also sharpens the N131 transfer test. For a uniform nonidentity target
+independent of a fixed first-two-pair prefix, the last two W18 pair
+domains can cover at most `1.747185e-18` of the subgroup. The union bound
+requires at least `286,174,705,817,677,085` such fixed prefixes for 50%
+success, more than `4.769e14` probes per second in 600 seconds. A public
+target may guide prefixes adaptively; the next method must specify and
+measure that guidance or eliminate many prefixes symbolically. A faster
+terminal pair-membership oracle alone does not meet this work bound.
+
 The natural representation is one seed sum `s_i`, one still-free seed
 `a_i`, a parity bit, and pair-output coordinate `z_i` per pair. Preserve the
 exact relation `a_i b_i=a_i^2+s_i a_i` with `b_i=s_i+a_i`; propagate the four

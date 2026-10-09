@@ -11,12 +11,37 @@ peak was 1,808,089,088 bytes under the 4-GiB cap. The
 passed identity and resource checks and recorded zero models and zero
 relations. This measures the search bottleneck for the exact d13 formula.
 The next method gate is a **target-coupled six-pair solver**: on the frozen
-ordinary N41 control, generate compatible outputs for at least two pair
-domains from the public target, apply the exact pair oracle, count rejected
-partial states before fixing all leaves, recover and replay an ordinary
-relation, and avoid a quadratic pair-output table. Only a
+ordinary N41 control, let the public target restrict prefix choices before
+four pair outputs are fixed, generate compatible outputs for at least two
+still-free pair domains, apply the exact pair oracle, count rejected partial
+states, recover and replay an ordinary relation, and avoid a quadratic
+pair-output table. Only a
 source-bound work/memory projection fitting 600 seconds and 4 GiB advances
 that method to the published N131 point.
+
+**Exact completion-density gate (2026-10-09):** an
+[independently recounted N41 four-pair census](n41_two_free_pair_occupancy_20261009/README.md)
+has 3,167,136 distinct last-two-pair group sums. On its fixed public
+point, 19 of 3,167,136 first-two-pair residuals hit that support and 12
+pass the full eight-column condition. The checked-Sage audit rebuilt every
+suffix sum and prefix residual and replayed all 12 rows. Its quadratic
+suffix index took 180.516 seconds of reusable setup; the target-dependent
+full prefix scan took 173.704 seconds on an unisolated host. This exact
+reference gives a correctness oracle for a compact propagator, not a
+method that passes the 120-second N41 acceptance gate.
+
+For the current N131 d13 six-pair policy, a final-two-pair completion check
+after **four target-independent fixed pairs** has uniform-target hit
+probability at most `1.716e-24` per prefix. The
+[source-bound calculation](n41_two_free_pair_occupancy_20261009/d13_fixed_prefix_bound.json)
+requires at least `291,412,179,145,627,003,543,092` fixed prefixes for
+50% success by the union bound, exceeding `4.857e20` probes per second
+within 600 seconds. The different W18 four-pair policy has an analogous
+`2.862e17` fixed-two-pair-prefix lower bound. These laws leave adaptive
+target-guided prefix generation and symbolic family elimination open. A
+successor should show that the target changes the prefix search before
+the final two-pair oracle is invoked, rather than merely accelerating that
+oracle.
 
 **Joint N131 pair-oracle gate:** the
 [full-rank joint linear inverse](n131_d13_joint_linear_pair_inverse_20261009/RESULT.md)
