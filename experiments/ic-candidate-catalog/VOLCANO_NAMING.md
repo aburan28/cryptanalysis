@@ -68,9 +68,25 @@ require `ell != 2`. The catalog's proposed degree-2 search can remain an
 isogeny search, but a degree-2 edge receives `p` and **no** `V2L...` or
 up/down/horizontal claim. It must record separability separately; `p` only
 states that the degree equals the field characteristic. The degree-3 search
-could receive `V3L...` and `d`/`u`/`h` labels after the source and codomain
-levels and explicit maps are verified. Neither search currently has those
-proofs, so no actual position alias or verified walk ID is issued.
+has an exact no-kernel result over `GF(2^131)`.
+
+The maximal-order source has conductor 1, hence `V263L0`; the verified
+degree-263 descent in `isogeny_routes.json` has an explicit map, kernel, and
+subgroup-transport certificate. Its codomain has conductor 263 and lies at
+`V263L1`. The target curve ID is `EC1N131Cbinh833014327b07`, and the
+ordered walk ID is `IW1E263d1hadee4e69fa3d`.
+
+The [pinned conductor profile](volcano_profiles_20261008.json) is imported
+from `crypto` at commit `014fce0c24eaa3b5d4ac490667f29bbe5cfd1f85`.
+`isogeny_routes.json` records its SHA-256 and the n=131 Frobenius-conductor
+prime depths beside each constructed curve. Run
+`python3 experiments/ic-candidate-catalog/validate_volcano_manifest.py` to
+check the import digest, class order, conductor divisibility, every proved
+level, and the explicit route to the known floor curve. A profile entry's
+`reachable_by` field is a construction-cost category from the source model;
+only a verified edge establishes a `reachable_via` claim here. The checker
+verifies the certificates' presence and route consistency; independent curve
+arithmetic remains in the linked route artifact.
 
 The mathematical level and direction convention follows Andrew Sutherland's
 [Isogeny volcanoes](https://msp.org/obs/2013/1-1/obs-v1-n1-p25-s.pdf),
