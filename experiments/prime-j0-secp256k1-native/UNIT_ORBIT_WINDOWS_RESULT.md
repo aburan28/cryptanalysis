@@ -28,12 +28,24 @@ The radix-1024 map has 174,764 unit orbits, and the radix-512 map has
 affine format, the points need 72,353,088 bytes. The two four-byte
 residue maps need 5,242,880 bytes. Their declared total is
 **77,595,968 bytes**, leaving 16,775,872 bytes under 90 MiB for
-metadata and alignment. The native build must verify its actual
-retained allocation and all stored points.
+metadata and alignment. The native implementation reports **78,470,128
+retained payload bytes**, including its orbit digits, table pointer
+array, and metadata. This is the exact size of its retained Rust
+allocations before allocator rounding and page mapping.
 
-The next gate is a native implementation that independently checks
-point outputs, complete orbit tables, identity/equal/inverse cases,
-and the frozen panels against the parent. This screen counts point
-operations and does not include scalar decomposition, residue-map
-lookups, unit action, table traffic, or final affine conversion.
-A verified online CPU speedup requires a paired isolated-host receipt.
+The native implementation's full-table test checked all **1,004,904**
+slots against independently built group sums, including the fourteen
+identity placeholders. The separate [native verification
+receipt](unit-orbit-windows-verify.json) records 6,492 point outputs
+matched to the frozen graph-aware parent, 261 independently multiplied
+points, all 129 expected fixture points, and exact agreement with both
+screening panel totals. The Rust point-addition tests cover identity,
+equal, and inverse inputs.
+
+The screening proxy counts point operations and excludes scalar
+decomposition, residue-map lookups, unit action, table traffic, and
+final affine conversion. The RunPod CPU Pod's strict preflight rejected
+the timing job because its Docker allocation lacks a host-level isolated
+partition, fixed frequency, and IRQ routing. The next measurement is a
+paired online wall-time run on a host that passes that preflight; until
+then the wall-time speedup is unknown.
