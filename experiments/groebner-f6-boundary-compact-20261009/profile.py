@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import statistics
 import subprocess
+import tempfile
 
 from compact_query import HERE, CompactContext
 from chain_fixture import fixture
@@ -47,7 +48,7 @@ def main():
                   timing_eligible=False, qualified_speedup=None)
     target = args.output / 'report.json'
     save(target, report)
-    lock = Path('/private/tmp/f6-compact-complete-query.lock')
+    lock = Path(tempfile.gettempdir()) / 'f6-compact-complete-query.lock'
     with lock.open('a') as guard:
         fcntl.flock(guard, fcntl.LOCK_EX)
         context = CompactContext(fixture(9, 4, 3, 1))
