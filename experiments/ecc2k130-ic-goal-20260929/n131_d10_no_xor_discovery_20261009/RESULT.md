@@ -36,3 +36,18 @@ lifting and then pass an independent installed-Sage group, factor-base, and
 folded-row replay before it counts as a relation. The solver-stage clock
 excludes source formula construction and the two exact transforms, so it is
 not a one-target online IC time.
+
+The subsequent [full same-query attempt](full/result.json) ended
+`CENSORED_TIME` at its 580-second parent wall cap with zero model/status
+lines and 459,964,416 bytes sampled peak combined RSS. Its
+[independent terminal audit](full/independent_terminal_audit.json) matched
+the committed protocol, formula, solver and runner hashes, raw logs, and
+drained process identity. Across six matrix initializations the solver
+reported zero XOR rediscoveries, zero oversized components, at most 2,645
+rows and 5,097 columns, and 117 automatic poor-performance matrix disables.
+The saved CPU sample reached at least 107.48 seconds over 580.03 seconds of
+solver-stage wall time on this contended host. The exact bridge remained
+effective as an input representation, while this bounded search returned
+no verified relation. The next method gate remains target-dependent search
+progress and an unpinned independently replayed row, rather than another
+component-size reduction alone.
