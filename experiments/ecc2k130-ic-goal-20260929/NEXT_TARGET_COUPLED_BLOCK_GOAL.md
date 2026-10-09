@@ -261,16 +261,16 @@ The [exact two-free-pair completion experiment](n41_two_free_pair_s3_norm_202610
 now supplies the sharper method boundary. Its native batched-inversion
 predicate classifies a known positive and a checked negative residual by
 using the public target in the S3 condition while two pair domains remain
-free. Its unpinned N41 search tested 75,264 residuals within the 120-second
-cap and ended `ONLINE_TIME_CAP`; the N131 transfer receipt proves that even
-one bit per explicit W18 pair state needs 4,306,081,758 bytes, above the
-4-GiB cap before any coordinates or witnesses. The Q1448 bitmap produced an
-independently replayed N41 row through early pruning, but its literal N131
-builder needs at least 1,186,709,766,821,143,716,096 group sums. These
-receipts make an *implicit* pair-domain representation the next concrete
-algorithm target: eliminate or generate two still-free pair domains from
-their W18 seed equations and the target-dependent S3 link without storing or
-scanning the full pair-output lists.
+free. Its unpinned N41 search tested 75,264 residuals, ending
+`ONLINE_TIME_CAP` after 120.154 seconds. The N131 transfer receipt proves
+that even one bit per explicit W18 pair state needs 4,306,081,758 bytes,
+above the 4-GiB cap before any coordinates or witnesses. The Q1448 bitmap
+produced an independently replayed N41 row through early pruning. Its
+literal N131 builder needs at least 1,186,709,766,821,143,716,096 group
+sums. These receipts set the next concrete algorithm target: represent the
+pair domains implicitly, then eliminate or generate two still-free domains
+from their W18 seed equations and the target-dependent S3 link without
+storing or scanning the full pair-output lists.
 
 Freeze an N41 implementation of that implicit completion operator before
 its public-Q search. Validate a known positive residual, independently
