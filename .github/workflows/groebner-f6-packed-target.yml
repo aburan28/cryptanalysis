@@ -1,0 +1,70 @@
+name: Groebner F6 packed target exactness
+on:
+  push:
+    paths:
+      - '.github/workflows/groebner-f6-packed-target.yml'
+      - 'experiments/groebner-f6-packed-target-20261009/**'
+      - 'experiments/groebner-f6-affine-target-20261009/**'
+      - 'experiments/groebner-f6-boundary-compact-20261009/**'
+      - 'experiments/groebner-f6-message-20261009/**'
+      - 'experiments/groebner-f6-prepared-20261009/**'
+      - 'experiments/groebner-f6-packed-20261009/**'
+      - 'experiments/groebner-f6-20261008/**'
+      - 'experiments/pdp-scaling/gf2n.py'
+  pull_request:
+    paths:
+      - '.github/workflows/groebner-f6-packed-target.yml'
+      - 'experiments/groebner-f6-packed-target-20261009/**'
+      - 'experiments/groebner-f6-affine-target-20261009/**'
+      - 'experiments/groebner-f6-boundary-compact-20261009/**'
+      - 'experiments/groebner-f6-message-20261009/**'
+      - 'experiments/groebner-f6-prepared-20261009/**'
+      - 'experiments/groebner-f6-packed-20261009/**'
+      - 'experiments/groebner-f6-20261008/**'
+      - 'experiments/pdp-scaling/gf2n.py'
+permissions:
+  contents: read
+jobs:
+  exact:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build source-bound separator chain
+        run: |
+          python experiments/groebner-f6-packed-20261009/build.py
+          python experiments/groebner-f6-prepared-20261009/build.py
+          python experiments/groebner-f6-message-20261009/build.py
+          python experiments/groebner-f6-boundary-compact-20261009/build.py
+          python experiments/groebner-f6-affine-target-20261009/build.py
+          python experiments/groebner-f6-packed-target-20261009/build.py
+      - name: Direct ANF, UBSan, and 512-target exactness
+        run: |
+          mkdir -p f6-packed-target-evidence
+          python experiments/groebner-f6-packed-target-20261009/test_packed.py | tee f6-packed-target-evidence/tests.log
+          python experiments/groebner-f6-packed-target-20261009/semantic_replay.py --output f6-packed-target-evidence/semantic.json
+      - name: Three-arm complete-query panel
+        run: python experiments/groebner-f6-packed-target-20261009/profile.py --output f6-packed-target-evidence/profile --reps 6
+      - name: Retain exact outputs and build receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: groebner-f6-packed-target-${{ matrix.os }}
+          path: |
+            f6-packed-target-evidence
+            experiments/groebner-f6-packed-20261009/build/receipt.json
+            experiments/groebner-f6-prepared-20261009/build/receipt.json
+            experiments/groebner-f6-message-20261009/build/receipt.json
+            experiments/groebner-f6-boundary-compact-20261009/build/receipt.json
+            experiments/groebner-f6-affine-target-20261009/build/receipt.json
+            experiments/groebner-f6-packed-target-20261009/build/receipt.json
+          if-no-files-found: warn
