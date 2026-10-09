@@ -1,12 +1,12 @@
 # Complete Eisenstein tau scalar evaluator on secp256k1
 
-The native evaluator now computes `[k]G` entirely in the balanced
+The native evaluator computes `[k]G` entirely in the balanced
 `Z[omega]/(pi)` Montgomery field after scalar recoding. It combines a short
-two-dimensional subgroup-lattice representative, a terminating signed
-base-`tau` expansion, the five-product deferred-normalization `tau` point
-step, and native Jacobian mixed addition. The independent replay verified
-all 73 supplied scalars, including 48 seeded full-width random scalars,
-against affine secp256k1 multiplication.
+two-dimensional subgroup-lattice representative, terminating signed
+base-`tau` digits, the five-product deferred-normalization `tau` point step,
+and native Jacobian mixed addition. A width-two unit digit set reduced mixed
+additions from 5,106 to 3,068 over the same 48 full-width random scalars
+while preserving the exact point in all 73 replay cases.
 
 Xu, Yu, Han, and Lu's supplied manuscript, *On Efficient Computations of
 `y^2=x^3+b/Fp` for Primes `p≡1 (mod 3)`*, establishes the `tau=1-omega`
@@ -15,8 +15,9 @@ family. Earlier work also studies Eisenstein-integer scalar expansions.
 The implementation contribution here is the complete coupling of a native
 Eisenstein Montgomery field, deferred field normalization in the `tau` map,
 and a verified scalar loop. The signed width-one loop is a correctness
-control for that field representation; integrating the manuscript's sparse
-window digits and unit-invariant precomputation is the next recoding step.
+control for that field representation. The width-two mode uses the
+three-point unit orbit; larger window sets and their unit-invariant
+precomputation remain the next recoding step.
 
 ## Scalar expansion
 
@@ -40,6 +41,15 @@ The six norm-one terminal pairs represent `+/-1`, `+/-omega`, and
 `(x,y) -> (beta*x,y)`; each digit is then replayed in reverse with one
 `tau` point step and, for a nonzero digit, a mixed addition of `+/-G`.
 The loop includes the equal-point and inverse-point cases.
+
+The width-two mode chooses one of the six units as its nonzero digit. Since
+`tau^2` is a unit multiple of `3`, reduction modulo `tau^2` is reduction of
+both `(a,b)` coefficients modulo three. The six units give exactly the six
+residue pairs with `a` nonzero modulo three. Subtracting the matching unit
+makes both coefficients divisible by three, so the following `tau` quotient
+has a zero digit. The mode prepares the three affine points
+`G`, `omega G`, and `omega^2 G`; a sign change supplies their negatives.
+Every two adjacent digits contain at most one nonzero digit.
 
 This radix terminates for every integer pair. Outside zero and the six
 units, an Eisenstein norm is at least three. Division gives
@@ -70,22 +80,33 @@ Run from this directory:
 cargo build --release --bin eisenstein_fixed
 cargo test --release --bin eisenstein_fixed
 cargo test --bin eisenstein_fixed signed_tau_digits_reconstruct_small_eisenstein_pairs
-python3 check_eisenstein_scalar_fixed.py
+cargo test --bin eisenstein_fixed unit_width_two_digits_are_sparse_and_reconstruct_small_pairs
+python3 check_eisenstein_scalar_fixed.py --radix w1
+python3 check_eisenstein_scalar_fixed.py --radix w2
 python3 check_eisenstein_tau_fixed.py
 python3 check_eisenstein_fixed.py --random-pairs 10000
 ```
 
 The scalar verifier (seed `20261011`) checked 25 boundary/structured
-scalars and 48 random scalars. It checked lattice congruence, balanced output
-coordinates, the affine curve equation, and the exact point from an
-independent Python double-and-add oracle. The random scalars used 7,662
-`tau` steps and 5,106 nonzero digits in total: means of 159.625 steps and
-106.375 additions per scalar. Across all 73 cases, the maxima were 161
-steps and 119 nonzero digits. The release Rust test suite passed 27 tests;
+scalars and 48 random scalars in each mode. It checked lattice congruence,
+balanced output coordinates, the affine curve equation, and the exact point
+from an independent Python double-and-add oracle. The paired random panel
+gave:
+
+| Radix | Total tau steps | Total mixed additions | Mean additions/scalar |
+| --- | ---: | ---: | ---: |
+| Signed width one | 7,662 | 5,106 | 106.375 |
+| Unit width two | 7,671 | 3,068 | 63.917 |
+
+The width-two mode removes 2,038 mixed additions, or 39.9%, on this frozen
+panel. Its maximum over all 73 cases was 161 tau steps and 70 mixed
+additions. These are point-operation counts; the width-two path also prepares
+a three-point orbit before its loop. The counts are not a CPU wall-time ratio. The release
+Rust test suite passed 28 tests;
 the existing field and `tau` replays passed 10,121 input pairs times five
 operations and 6,111 output coordinates, respectively. The release binary
 SHA-256 for this replay was
-`af2c30ca18e871b5a88848b307545a23df6d2dac9c805e146a3f10faaa73b881`.
+`9de1ac039b1b52ba0b1dbb8457915559f504067edfb79fdd2b8624d7023c7c03`.
 
 The next implementation step is to reduce the eleven balanced products and
 repeated normalization in mixed addition. A paired wall-time comparison

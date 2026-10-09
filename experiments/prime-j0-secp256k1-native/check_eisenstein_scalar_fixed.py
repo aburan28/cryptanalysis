@@ -47,6 +47,7 @@ def main():
     parser.add_argument("--binary", type=Path,
                         default=directory / "target/release/eisenstein_fixed")
     parser.add_argument("--random-scalars", type=int, default=48)
+    parser.add_argument("--radix", choices=("w1", "w2"), default="w2")
     args = parser.parse_args()
     if args.random_scalars < 0:
         parser.error("random-scalars must be nonnegative")
@@ -60,7 +61,8 @@ def main():
     edge_count = len(scalars)
     scalars.extend(rng.randrange(n) for _ in range(args.random_scalars))
     request = "".join(scalar_text(scalar) + "\n" for scalar in scalars)
-    process = subprocess.run([str(binary), "--scalar"], input=request,
+    mode = "--scalar-w2" if args.radix == "w2" else "--scalar"
+    process = subprocess.run([str(binary), mode], input=request,
                              text=True, capture_output=True, check=True,
                              timeout=max(120, 10 * len(scalars)))
     rows = [json.loads(line) for line in process.stdout.splitlines()]
@@ -73,6 +75,7 @@ def main():
         assert (a + b * LAMBDA_TAU - scalar) % n == 0, index
         assert max(abs(a), abs(b)).bit_length() <= 129, index
         steps, nonzero = row["tau_steps"], row["nonzero_digits"]
+        assert row["radix"] == ("unit-w2" if args.radix == "w2" else "signed-w1")
         assert 0 <= nonzero <= steps <= 512, (index, steps, nonzero)
         actual = affine_from_native(row["point"])
         expected = curve.point_multiply(scalar % n)
@@ -85,7 +88,7 @@ def main():
             random_steps += steps
             random_nonzero += nonzero
     print(json.dumps({
-        "schema": 1, "status": "passed", "seed": 20261011,
+        "schema": 1, "status": "passed", "seed": 20261011, "radix": args.radix,
         "scalar_cases": len(scalars), "random_scalars": args.random_scalars,
         "max_tau_steps": max_steps, "max_nonzero_digits": max_nonzero,
         "total_tau_steps": total_steps, "total_nonzero_digits": total_nonzero,

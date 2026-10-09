@@ -695,6 +695,18 @@ struct Unit {
     omega_power: usize,
 }
 
+impl Unit {
+    fn coefficients(self) -> (i8, i8) {
+        let (a, b) = match self.omega_power {
+            0 => (1, 0),
+            1 => (1, -1),
+            2 => (-2, 1),
+            _ => unreachable!(),
+        };
+        (self.sign * a, self.sign * b)
+    }
+}
+
 fn unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
     match (a.to_i64(), b.to_i64()) {
         (Some(1), Some(0)) => Some(Unit {
@@ -752,6 +764,72 @@ fn recode_tau(mut a: BigInt, mut b: BigInt) -> (Vec<i8>, Option<Unit>) {
     (digits, None)
 }
 
+fn mod_three(value: &BigInt) -> u8 {
+    let residue: BigInt = ((value % 3) + 3) % 3;
+    residue.to_u8().expect("residue in 0..3")
+}
+
+fn width_two_unit(a: &BigInt, b: &BigInt) -> Option<Unit> {
+    let residue = (mod_three(a), mod_three(b));
+    match residue {
+        (0, _) => None,
+        (1, 0) => Some(Unit {
+            sign: 1,
+            omega_power: 0,
+        }),
+        (2, 0) => Some(Unit {
+            sign: -1,
+            omega_power: 0,
+        }),
+        (1, 2) => Some(Unit {
+            sign: 1,
+            omega_power: 1,
+        }),
+        (2, 1) => Some(Unit {
+            sign: -1,
+            omega_power: 1,
+        }),
+        (1, 1) => Some(Unit {
+            sign: 1,
+            omega_power: 2,
+        }),
+        (2, 2) => Some(Unit {
+            sign: -1,
+            omega_power: 2,
+        }),
+        _ => unreachable!(),
+    }
+}
+
+fn recode_tau_width_two(mut a: BigInt, mut b: BigInt) -> (Vec<Option<Unit>>, Option<Unit>) {
+    let mut digits = Vec::new();
+    while !a.is_zero() || !b.is_zero() {
+        if let Some(terminal) = unit(&a, &b) {
+            return (digits, Some(terminal));
+        }
+        let digit = width_two_unit(&a, &b);
+        let (da, db) = digit.map_or((0, 0), Unit::coefficients);
+        let reduced_a = &a - BigInt::from(da);
+        let reduced_b = &b - BigInt::from(db);
+        assert_eq!(mod_three(&reduced_a), 0);
+        if digit.is_some() {
+            // Matching both coefficients modulo 3 makes the next digit zero.
+            assert_eq!(mod_three(&reduced_b), 0);
+        }
+        let next_a = &reduced_a + &reduced_b;
+        let next_b = -reduced_a / 3;
+        debug_assert!(tau_norm(&next_a, &next_b) < tau_norm(&a, &b));
+        a = next_a;
+        b = next_b;
+        digits.push(digit);
+        assert!(
+            digits.len() <= 512,
+            "width-two tau expansion did not terminate"
+        );
+    }
+    (digits, None)
+}
+
 fn unit_point(unit: Unit, generator: Jacobian) -> Jacobian {
     let mut point = generator;
     for _ in 0..unit.omega_power {
@@ -785,14 +863,41 @@ fn scalar_multiply(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, usize, usize) 
     (point, a, b, digits.len(), nonzero_digits)
 }
 
+fn scalar_multiply_width_two(scalar: &BigInt) -> (Jacobian, BigInt, BigInt, usize, usize) {
+    let lattice = &*SCALAR_LATTICE;
+    let residue = ((scalar % &lattice.n) + &lattice.n) % &lattice.n;
+    let (a, b) = short_representative(&residue);
+    let (digits, terminal) = recode_tau_width_two(a.clone(), b.clone());
+    let generator = Jacobian::generator();
+    let orbit = [generator, generator.omega(), generator.omega().omega()];
+    let point_for = |u: Unit| {
+        let point = orbit[u.omega_power];
+        if u.sign < 0 {
+            point.neg()
+        } else {
+            point
+        }
+    };
+    let mut point = terminal.map_or_else(Jacobian::identity, point_for);
+    for &digit in digits.iter().rev() {
+        point = point.tau();
+        if let Some(u) = digit {
+            point = point.add_mixed(point_for(u));
+        }
+    }
+    let nonzero_digits = digits.iter().filter(|digit| digit.is_some()).count();
+    (point, a, b, digits.len(), nonzero_digits)
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     assert!(
-        args.is_empty() || args == ["--tau"] || args == ["--scalar"],
-        "usage: eisenstein_fixed [--tau|--scalar]"
+        args.is_empty() || args == ["--tau"] || args == ["--scalar"] || args == ["--scalar-w2"],
+        "usage: eisenstein_fixed [--tau|--scalar|--scalar-w2]"
     );
     let tau_mode = args == ["--tau"];
-    let scalar_mode = args == ["--scalar"];
+    let scalar_mode = args == ["--scalar"] || args == ["--scalar-w2"];
+    let width_two = args == ["--scalar-w2"];
     for line in io::stdin().lock().lines() {
         let line = line.expect("input line");
         if line.trim().is_empty() {
@@ -801,8 +906,12 @@ fn main() {
         let fields: Vec<&str> = line.split_whitespace().collect();
         if scalar_mode {
             assert_eq!(fields.len(), 1, "expected one hexadecimal scalar");
-            let (point, a, b, tau_steps, nonzero_digits) =
-                scalar_multiply(&scalar_from_hex(fields[0]));
+            let scalar = scalar_from_hex(fields[0]);
+            let (point, a, b, tau_steps, nonzero_digits) = if width_two {
+                scalar_multiply_width_two(&scalar)
+            } else {
+                scalar_multiply(&scalar)
+            };
             println!(
                 "{}",
                 json!({
@@ -810,6 +919,7 @@ fn main() {
                     "representative": [a.to_string(), b.to_string()],
                     "tau_steps": tau_steps,
                     "nonzero_digits": nonzero_digits,
+                    "radix": if width_two { "unit-w2" } else { "signed-w1" },
                 })
             );
             continue;
@@ -952,6 +1062,30 @@ mod eisenstein_tau_tests {
                 };
                 for digit in digits.into_iter().rev() {
                     (x, y) = (-3 * y + i64::from(digit), x + 3 * y);
+                }
+                assert_eq!((x, y), (a, b));
+            }
+        }
+    }
+
+    #[test]
+    fn unit_width_two_digits_are_sparse_and_reconstruct_small_pairs() {
+        for a in -40..=40 {
+            for b in -40..=40 {
+                let (digits, terminal) = recode_tau_width_two(a.into(), b.into());
+                for adjacent in digits.windows(2) {
+                    assert!(adjacent[0].is_none() || adjacent[1].is_none());
+                }
+                if terminal.is_some() {
+                    assert!(digits.last().is_none_or(Option::is_none));
+                }
+                let (mut x, mut y) = terminal.map_or((0i64, 0i64), |u| {
+                    let (x, y) = u.coefficients();
+                    (i64::from(x), i64::from(y))
+                });
+                for digit in digits.into_iter().rev() {
+                    let (da, db) = digit.map_or((0, 0), Unit::coefficients);
+                    (x, y) = (-3 * y + i64::from(da), x + 3 * y + i64::from(db));
                 }
                 assert_eq!((x, y), (a, b));
             }
