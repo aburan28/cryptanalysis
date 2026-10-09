@@ -202,6 +202,72 @@ impl Signed {
         .normalized()
     }
 
+    fn low_two_unsigned(self) -> Self {
+        let mut words = [0u64; 8];
+        words[..2].copy_from_slice(&self.magnitude.0[..2]);
+        Self {
+            negative: false,
+            magnitude: Uint(words),
+        }
+    }
+
+    fn shift_left_128_unsigned(self) -> Self {
+        assert!(self.magnitude.0[6..].iter().all(|&x| x == 0));
+        let mut words = [0u64; 8];
+        words[2..].copy_from_slice(&self.magnitude.0[..6]);
+        Self {
+            negative: false,
+            magnitude: Uint(words),
+        }
+    }
+
+    fn mul_two_small_tops(self, rhs: Self) -> Self {
+        // Each input is the signed sum of two coefficients below 2^128.
+        // Its third limb is a carry bit, so only the low 2x2 needs products.
+        assert!(self.magnitude.0[3..].iter().all(|&x| x == 0));
+        assert!(rhs.magnitude.0[3..].iter().all(|&x| x == 0));
+        assert!(self.magnitude.0[2] <= 1 && rhs.magnitude.0[2] <= 1);
+        let left = self.low_two_unsigned();
+        let right = rhs.low_two_unsigned();
+        let mut result = left.mul_rect::<2, 2>(right);
+        if self.magnitude.0[2] != 0 {
+            result = result.add(right.shift_left_128_unsigned());
+        }
+        if rhs.magnitude.0[2] != 0 {
+            result = result.add(left.shift_left_128_unsigned());
+        }
+        if self.magnitude.0[2] != 0 && rhs.magnitude.0[2] != 0 {
+            let mut words = [0u64; 8];
+            words[4] = 1;
+            result = result.add(Self {
+                negative: false,
+                magnitude: Uint(words),
+            });
+        }
+        result.negative = self.negative ^ rhs.negative;
+        result.normalized()
+    }
+
+    fn mul_right_small_top<const LEFT: usize>(self, rhs: Self, max_top: u64) -> Self {
+        // rhs = low_128 + top*2^128, where top is at most two.
+        assert!((1..=3).contains(&LEFT) && max_top <= 2);
+        assert!(self.magnitude.0[LEFT..].iter().all(|&x| x == 0));
+        assert!(rhs.magnitude.0[3..].iter().all(|&x| x == 0));
+        let top = rhs.magnitude.0[2];
+        assert!(top <= max_top);
+        let mut result = Self {
+            negative: false,
+            magnitude: self.magnitude,
+        }
+        .mul_rect::<LEFT, 2>(rhs.low_two_unsigned());
+        if top != 0 {
+            let shifted = self.shift_left_128_unsigned();
+            result = result.add(shifted.times_i32(top as i32));
+        }
+        result.negative = self.negative ^ rhs.negative;
+        result.normalized()
+    }
+
     fn low_u128(self) -> u128 {
         let low = (self.magnitude.0[0] as u128) | ((self.magnitude.0[1] as u128) << 64);
         if self.negative {
@@ -323,11 +389,11 @@ impl Pair {
     }
 
     fn product_balanced(self, rhs: Self) -> Self {
-        // Individual balanced coefficients fit two limbs; their sums can
-        // need a third limb. 4+4+9 replaces three 3x3 products (27).
+        // Individual balanced coefficients fit two limbs; the top limb of
+        // each coefficient sum is only one carry bit. Use 4+4+4 products.
         let ac = self.a.mul_rect::<2, 2>(rhs.a);
         let bd = self.b.mul_rect::<2, 2>(rhs.b);
-        let cross = self.a.add(self.b).mul_rect::<3, 3>(rhs.a.add(rhs.b));
+        let cross = self.a.add(self.b).mul_two_small_tops(rhs.a.add(rhs.b));
         Self::from_ring_products(ac, bd, cross)
     }
 
@@ -336,7 +402,25 @@ impl Pair {
         // and the right pair balanced under two limbs.
         let ac = self.a.mul_rect::<3, 2>(rhs.a);
         let bd = self.b.mul_rect::<3, 2>(rhs.b);
-        let cross = self.a.add(self.b).mul_rect::<3, 3>(rhs.a.add(rhs.b));
+        let cross = self
+            .a
+            .add(self.b)
+            .mul_right_small_top::<3>(rhs.a.add(rhs.b), 1);
+        Self::from_ring_products(ac, bd, cross)
+    }
+
+    fn product_conjugate_pi(self) -> Self {
+        let pi = Self::pi();
+        let conjugate_a = pi.a.sub(pi.b);
+        let conjugate_b = pi.b.neg();
+        // conjugate_a/R has top limb one, and the cross constant
+        // (conjugate_a+conjugate_b)/R has top limb at most two.
+        let ac = self.a.mul_right_small_top::<3>(conjugate_a, 1);
+        let bd = self.b.mul_rect::<3, 2>(conjugate_b);
+        let cross = self
+            .a
+            .add(self.b)
+            .mul_right_small_top::<3>(conjugate_a.add(conjugate_b), 2);
         Self::from_ring_products(ac, bd, cross)
     }
 
@@ -385,11 +469,7 @@ impl Pair {
             (2, 1),
         ];
         let pi = Self::pi();
-        let conjugate_pi = Self {
-            a: pi.a.sub(pi.b),
-            b: pi.b.neg(),
-        };
-        let t = self.product(conjugate_pi);
+        let t = self.product_conjugate_pi();
         let p = P_SIGNED;
         let twice_a_minus_b = t.a.add(t.a).sub(t.b);
         let twice_b_minus_a = t.b.add(t.b).sub(t.a);
@@ -417,10 +497,7 @@ impl Pair {
 
     fn balance_corners(self, max_high_word: u64) -> Self {
         let pi = Self::pi();
-        let t = self.product(Self {
-            a: pi.a.sub(pi.b),
-            b: pi.b.neg(),
-        });
+        let t = self.product_conjugate_pi();
         let floor_a = t.a.floor_div_prime_near_radix_with_bound(max_high_word);
         let floor_b = t.b.floor_div_prime_near_radix_with_bound(max_high_word);
         let twice_a_minus_b = t.a.add(t.a).sub(t.b);
@@ -1083,6 +1160,87 @@ mod eisenstein_tau_tests {
                 let got = signed(left, false).mul_rect::<2, 2>(signed(right, false));
                 assert_eq!(got.decimal(), (left * right).to_string());
             }
+        }
+    }
+
+    #[test]
+    fn carry_bit_products_and_fixed_conjugate_match_big_integers() {
+        fn signed(value: &BigUint, negative: bool) -> Signed {
+            Signed {
+                negative,
+                magnitude: U512::from_biguint(value),
+            }
+            .normalized()
+        }
+        let radix: BigUint = BigUint::from(1u8) << 128usize;
+        let sums = [
+            BigUint::from(0u8),
+            BigUint::from(1u8),
+            &radix - 1u8,
+            radix.clone(),
+            &radix + 1u8,
+            (&radix << 1) - 1u8,
+        ];
+        for left in &sums {
+            for right in &sums {
+                for left_negative in [false, true] {
+                    for right_negative in [false, true] {
+                        let got = signed(left, left_negative)
+                            .mul_two_small_tops(signed(right, right_negative));
+                        let mut expected = BigInt::from_biguint(Sign::Plus, left * right);
+                        if left_negative ^ right_negative {
+                            expected = -expected;
+                        }
+                        assert_eq!(got.decimal(), expected.to_string());
+                    }
+                }
+            }
+        }
+        let wide = [
+            BigUint::from(0u8),
+            BigUint::from(1u8),
+            &radix - 1u8,
+            radix.clone(),
+            (BigUint::from(1u8) << 154) - 1u8,
+        ];
+        let right = [
+            BigUint::from(0u8),
+            &radix - 1u8,
+            radix.clone(),
+            (&radix << 1) - 1u8,
+            &radix << 1,
+            (&radix * 3u8) - 1u8,
+        ];
+        for left in &wide {
+            for right in &right {
+                for left_negative in [false, true] {
+                    for right_negative in [false, true] {
+                        let got = signed(left, left_negative)
+                            .mul_right_small_top::<3>(signed(right, right_negative), 2);
+                        let mut expected = BigInt::from_biguint(Sign::Plus, left * right);
+                        if left_negative ^ right_negative {
+                            expected = -expected;
+                        }
+                        assert_eq!(got.decimal(), expected.to_string());
+                    }
+                }
+            }
+        }
+        let pi = Pair::pi();
+        let conjugate_pi = Pair {
+            a: pi.a.sub(pi.b),
+            b: pi.b.neg(),
+        };
+        for (a, b) in [
+            (signed(&wide[4], false), signed(&wide[4], true)),
+            (signed(&wide[4], true), signed(&radix, false)),
+            (Signed::ZERO, signed(&wide[3], true)),
+        ] {
+            let value = Pair { a, b };
+            assert_eq!(
+                value.product_conjugate_pi().strings(),
+                value.product(conjugate_pi).strings()
+            );
         }
     }
 
