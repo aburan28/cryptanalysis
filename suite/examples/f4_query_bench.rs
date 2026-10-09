@@ -61,6 +61,17 @@ fn main() {
     // Curve and factor-base preparation is reusable across target points.
     let kc = KoblitzCurve::new(a, n).expect("unsupported Koblitz curve");
     let fb = build_frobenius_factor_base(&kc, 0).expect("factor-base construction failed");
+    let field_modulus = (1u64 << kc.curve.irreducible.degree)
+        | kc.curve
+            .irreducible
+            .low_terms
+            .iter()
+            .fold(0u64, |bits, &degree| bits | (1u64 << degree));
+    let basis_coordinates: Vec<String> = fb
+        .subspace_basis
+        .iter()
+        .map(|coordinate| coordinate.to_biguint().to_string())
+        .collect();
     let st = FieldStructure::new(kc.n, &kc.curve.irreducible);
     let opts = SolveOptions {
         engine,
@@ -130,7 +141,14 @@ fn main() {
         "harness": "f4_query_bench", "status": status,
         "input": {"curve_a": a, "field_degree": n, "summands": m,
             "target_x": raw, "max_degree": degree, "node_budget": node_budget,
-            "max_solutions": max_solutions, "engine": engine_name},
+            "max_solutions": max_solutions, "engine": engine_name,
+            "field_modulus": field_modulus,
+            "curve_b": kc.curve.b.to_biguint().to_string(),
+            "curve_order": kc.group_order.to_string(),
+            "subgroup_order": kc.subgroup_order.to_string(),
+            "cofactor": kc.cofactor.to_string(),
+            "factor_base_points": fb.points.len(), "factor_base_dimension": fb.ell,
+            "factor_base_basis": basis_coordinates},
         "system": {"variables": sys.n_vars, "equations": sys.equations.len()},
         "result": {"accepted_assignment": accepted, "roots_recorded": roots.len(),
             "independent_equation_checks": independent_checks, "curve_lifts": curve_lifts,
