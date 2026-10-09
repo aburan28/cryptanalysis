@@ -1,0 +1,165 @@
+{
+  "academic_novelty_claim": null,
+  "artifacts_sha256": {
+    "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay": "685ba7c97b7cfc17cbc0cf789d6e11634591f4d038211279586dc0bf5aec55f5",
+    "experiments/prime-j0-secp256k1-native/Cargo.lock": "c31dcbed43a3410e0ee3a440ee7165b221a304804ab9cbb9d7532f2a6ffa482f",
+    "experiments/prime-j0-secp256k1-native/Cargo.toml": "438235eda97f13312fbb34ad9728be1292a0765b34aae8cdaa082db0dfc3b85b",
+    "experiments/prime-j0-secp256k1-native/TWIN_ORBIT_SEEDS_PROTOCOL.md": "23a2dfa1ec461bbd1e0e3378604aa395c8f37a1ae011bf1ddb827382bcbb7a39",
+    "experiments/prime-j0-secp256k1-native/edge-fixture.json": "5b375ae82f5b24ce433ae1787374bb6ed064c3c958184312f4cd799ebe62732f",
+    "experiments/prime-j0-secp256k1-native/fixture.json": "2e8da438343ecf650c9d8d9b2a593f5d603027c4c1f81485f2456c38028491d4",
+    "experiments/prime-j0-secp256k1-native/linked-fresh-fixture.json": "188baa1cfe4ab49afe148ae6a28961833eb31efd5cfa2de9ced2dcc38191bef1",
+    "experiments/prime-j0-secp256k1-native/linked-seed-fixture.json": "2ed0bd59385569d16173fd21d3f3b927b3cac4f5554aa5f4b6c736414c59a0d7",
+    "experiments/prime-j0-secp256k1-native/run_linked_twin_checks.py": "23601ba25be081c8b4443528ca1779dc139edf92aa1b1086db85fbe6fb25ff5f",
+    "experiments/prime-j0-secp256k1-native/src/coset.rs": "bcee97748adf373c03ea6f648775817a13132cfda30ab6bee0f0c3f93a06867a",
+    "experiments/prime-j0-secp256k1-native/src/main.rs": "e43fcef7343c2fa13bcd65d849e2467d5fb6eef309ce484a50f05553e27b51e3",
+    "experiments/prime-j0-secp256k1-native/src/mixed_radix.rs": "c7f3013ab56fc575c220218fe621d531ef9ea741cc176c5d1bb621010d85d08f",
+    "experiments/prime-j0-secp256k1-native/src/selective.rs": "247b36fb0daa009f78d402ae6e3c4af237fb0ed0793614d5444a1d1f0bb58346",
+    "suite/src/ct_bignum.rs": "72c264a7424ec4d09964f9bc92dd64aa363d92bfdf41fccc4b219deda0767e0d",
+    "suite/src/ecc/secp256k1_field.rs": "afbd18cd4f6a6a9ad3104acb27b1266812032b7c9fbc25330b23b4cb5d60730d"
+  },
+  "compiler": "rustc 1.93.1 (01f6ddf75 2026-02-11) (Homebrew)",
+  "cpu_speedup_claim": null,
+  "failures": [],
+  "host": {
+    "machine": "arm64",
+    "release": "25.6.0",
+    "system": "Darwin"
+  },
+  "panels": [
+    {
+      "cases": 64,
+      "fixture": "fixture.json",
+      "linked_M_plus_S": 88089,
+      "twin_M_plus_S": 87769
+    },
+    {
+      "cases": 256,
+      "fixture": "linked-fresh-fixture.json",
+      "linked_M_plus_S": 352827,
+      "twin_M_plus_S": 351547
+    },
+    {
+      "cases": 30,
+      "fixture": "edge-fixture.json",
+      "linked_M_plus_S": 2481,
+      "twin_M_plus_S": 2331
+    }
+  ],
+  "runs": [
+    {
+      "command": [
+        "cargo",
+        "build",
+        "--offline",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/Cargo.toml"
+      ],
+      "exit_code": 0,
+      "stderr": "warning: associated items `from_biguint`, `to_biguint`, `ct_lt`, `ct_is_zero`, `cswap`, and `mul_wide` are never used\n   --> src/../../../suite/src/ct_bignum.rs:68:12\n    |\n 54 | impl<const LIMBS: usize> Uint<LIMBS> {\n    | ------------------------------------ associated items in this implementation\n...\n 68 |     pub fn from_biguint(v: &BigUint) -> Self {\n    |            ^^^^^^^^^^^^\n...\n 88 |     pub fn to_biguint(&self) -> BigUint {\n    |            ^^^^^^^^^^\n...\n117 |     pub fn ct_lt(&self, other: &Self) -> Choice {\n    |            ^^^^^\n...\n123 |     pub fn ct_is_zero(&self) -> Choice {\n    |            ^^^^^^^^^^\n...\n141 |     pub fn cswap(a: &mut Self, b: &mut Self, choice: Choice) {\n    |            ^^^^^\n...\n221 |     pub fn mul_wide(a: &Self, b: &Self) -> (Self, Self) {\n    |            ^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: struct `MontgomeryContext` is never constructed\n   --> src/../../../suite/src/ct_bignum.rs:435:12\n    |\n435 | pub struct MontgomeryContext<const LIMBS: usize> {\n    |            ^^^^^^^^^^^^^^^^^\n\nwarning: associated items `new`, `mont_mul`, `mont_sqr`, `to_montgomery`, and `from_montgomery` are never used\n   --> src/../../../suite/src/ct_bignum.rs:460:12\n    |\n451 | impl<const LIMBS: usize> MontgomeryContext<LIMBS> {\n    | ------------------------------------------------- associated items in this implementation\n...\n460 |     pub fn new(n: Uint<LIMBS>) -> Option<Self> {\n    |            ^^^\n...\n481 |     pub fn mont_mul(&self, a: &Uint<LIMBS>, b: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^\n...\n486 |     pub fn mont_sqr(&self, a: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^\n...\n491 |     pub fn to_montgomery(&self, a: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^^^^^^\n...\n497 |     pub fn from_montgomery(&self, a_mont: &Uint<LIMBS>) -> Uint<LIMBS> {\n    |            ^^^^^^^^^^^^^^^\n\nwarning: function `mont_pow_ct` is never used\n   --> src/../../../suite/src/ct_bignum.rs:525:8\n    |\n525 | pub fn mont_pow_ct<const LIMBS: usize>(\n    |        ^^^^^^^^^^^\n\nwarning: associated items `from_biguint`, `to_biguint`, `ct_is_zero`, `as_montgomery`, and `from_montgomery_unchecked` are never used\n   --> src/../../../suite/src/ecc/secp256k1_field.rs:86:12\n    |\n 59 | impl SecpFieldElement {\n    | --------------------- associated items in this implementation\n...\n 86 |     pub fn from_biguint(v: &BigUint) -> Self {\n    |            ^^^^^^^^^^^^\n...\n 94 |     pub fn to_biguint(&self) -> BigUint {\n    |            ^^^^^^^^^^\n...\n216 |     pub fn ct_is_zero(&self) -> Choice {\n    |            ^^^^^^^^^^\n...\n230 |     pub fn as_montgomery(&self) -> &U256 {\n    |            ^^^^^^^^^^^^^\n...\n244 |     pub const fn from_montgomery_unchecked(limbs: U256) -> Self {\n    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: `prime-j0-secp256k1-native-replay` (bin \"prime-j0-secp256k1-native-replay\") generated 5 warnings\n    Finished `release` profile [optimized] target(s) in 0.25s\n",
+      "stdout": ""
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/fixture.json"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "{\"verified\":true,\"cases\":64,\"representative_checks\":64,\"digit_checks\":64,\"seed_checks\":576,\"output_checks\":64,\"exceptional_cached_adds\":0,\"native_scope\":\"variable_time_scalar_input\",\"cpu_speedup_claim\":null}\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-linked-fixture",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/fixture.json",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/linked-seed-fixture.json"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "{\"verified\":true,\"fixture\":\"fixture.json\",\"cases\":64,\"seed_checks\":576,\"output_checks\":64,\"source_M_plus_S\":88089,\"exceptional_cached_adds\":0,\"cpu_speedup_claim\":null}\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-linked-twin-fixture",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/fixture.json",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/linked-seed-fixture.json"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "{\"verified\":true,\"fixture\":\"fixture.json\",\"cases\":64,\"seed_checks\":576,\"output_checks\":64,\"source_M_plus_S\":87769,\"exceptional_cached_adds\":0,\"cpu_speedup_claim\":null}\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-linked-fixture",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/linked-fresh-fixture.json",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/linked-seed-fixture.json"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "{\"verified\":true,\"fixture\":\"linked-fresh-fixture.json\",\"cases\":256,\"seed_checks\":2304,\"output_checks\":256,\"source_M_plus_S\":352827,\"exceptional_cached_adds\":0,\"cpu_speedup_claim\":null}\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-linked-twin-fixture",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/linked-fresh-fixture.json",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/linked-seed-fixture.json"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "{\"verified\":true,\"fixture\":\"linked-fresh-fixture.json\",\"cases\":256,\"seed_checks\":2304,\"output_checks\":256,\"source_M_plus_S\":351547,\"exceptional_cached_adds\":0,\"cpu_speedup_claim\":null}\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-linked-fixture",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/edge-fixture.json",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/linked-seed-fixture.json"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "{\"verified\":true,\"fixture\":\"edge-fixture.json\",\"cases\":30,\"seed_checks\":270,\"output_checks\":30,\"source_M_plus_S\":2481,\"exceptional_cached_adds\":0,\"cpu_speedup_claim\":null}\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-linked-twin-fixture",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/edge-fixture.json",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/linked-seed-fixture.json"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "{\"verified\":true,\"fixture\":\"edge-fixture.json\",\"cases\":30,\"seed_checks\":270,\"output_checks\":30,\"source_M_plus_S\":2331,\"exceptional_cached_adds\":0,\"cpu_speedup_claim\":null}\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-benchmark-case",
+        "linked_atlas",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/linked-fresh-fixture.json",
+        "0"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "verified=1 curve=secp256k1 base_x=bfba35ff07e5214b118036b9465bebba5c2fed46a4891cb67412298b7f02706f base_y=46cca645c1cd0fed1571d8372540cd16c9381489701a44c6384b4440c589615a scalar=2d0164305d5c14820de4d8a452f7f1de22e0f8974e782b3a744f595ad4db0261 point=82e5a3b09903e3d88d504c1972611020389f67503faf862089cafc472f6139c7:7afcb102285e43dfd9fcad62f15a3c2b658d659d2164039c61cb001b3bc9b94d mode=linked_atlas\n"
+    },
+    {
+      "command": [
+        "/Volumes/SSD990/crypto/cryptanalysis-exact-radix-target/release/prime-j0-secp256k1-native-replay",
+        "--check-benchmark-case",
+        "linked_twin",
+        "/private/tmp/prime-j0-mixed-radix-commit/experiments/prime-j0-secp256k1-native/linked-fresh-fixture.json",
+        "0"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "verified=1 curve=secp256k1 base_x=bfba35ff07e5214b118036b9465bebba5c2fed46a4891cb67412298b7f02706f base_y=46cca645c1cd0fed1571d8372540cd16c9381489701a44c6384b4440c589615a scalar=2d0164305d5c14820de4d8a452f7f1de22e0f8974e782b3a744f595ad4db0261 point=82e5a3b09903e3d88d504c1972611020389f67503faf862089cafc472f6139c7:7afcb102285e43dfd9fcad62f15a3c2b658d659d2164039c61cb001b3bc9b94d mode=linked_twin\n"
+    }
+  ],
+  "schema": 1,
+  "verified": true
+}
