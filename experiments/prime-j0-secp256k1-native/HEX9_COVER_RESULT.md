@@ -1,7 +1,10 @@
 # Hexagonal four-corner reduction and nine-representative tau comb
 
-The endomorphism lattice has an exact equilateral basis. Replacing its
-original vector `U` by `W=U-2V` gives
+The [earlier tau-comb result](TAU6_COMB_RESULT.md) established the
+equilateral geometry and `n/3` covering-radius bound for this
+endomorphism lattice. This experiment uses that geometry for an exact
+four-corner nearest-point rule and a nine-representative scalar selector.
+Replacing the original vector `U` by `W=U-2V` gives
 
 `N(W) = N(V) = N(W+V) = n`,
 
@@ -21,7 +24,7 @@ integer lattice arithmetic, and table lookup are charged by the native case
 timer, but excluded from this point proxy. A qualifying isolated-host run is
 needed to determine the online CPU wall-time tradeoff.
 
-## Four-corner theorem
+## Four-corner selection rule
 
 Let `c=(c_w,c_v)` be the exact real coordinates of the scalar in the
 `(W,V)` basis, and let the residual after choosing a lattice point be
