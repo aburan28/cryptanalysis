@@ -41,5 +41,6 @@ a controlled speedup requires the isolated physical-host receipt described
 in [the benchmark contract](../../../docs/ISOLATED_BENCHMARKS.md).
 
 The reference worktree must have the source-matched round119 optimized and
-UBSan builds. Reproduction commands, frozen hashes and raw outcomes will be
-recorded with the completed experiment.
+UBSan builds. [RESULTS.md](RESULTS.md) records both committed candidates,
+the paired outcomes, the byte-verified evidence archive, and the physical-host
+measurement gate.
