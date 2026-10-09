@@ -13,8 +13,8 @@ supplied secp256k1 fixture points, `0`, `1`, `n`, `n+1`, and 512 frozen
 SHA-256-derived scalars. For every scalar, Jacobian, balanced XYZZ, and
 deferred XYZZ returned the same affine point, Eisenstein representative,
 generic-addition count, and retained table bytes. The fixture contributed
-1,677 generic additions. One single-case benchmark dispatch in each XYZZ
-mode verified its expected point and timing-field schema. Those local timer
+1,677 generic additions. One single-case benchmark dispatch in each of the
+three modes verified its expected point and timing-field schema. Those local timer
 values are retained as raw output and excluded from the result comparison.
 
 The machine-readable [receipt](xyzz-deferred-check.json) records the release
