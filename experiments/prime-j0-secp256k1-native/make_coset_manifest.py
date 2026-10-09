@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a paired selective-vs-mixed-radix one-scalar isolated manifest."""
+"""Build a paired shortest-selector-vs-three-representative isolated manifest."""
 
 import argparse
 import hashlib
@@ -26,11 +26,11 @@ def main():
     repo = args.repo_root.resolve(strict=True)
     binary = args.binary.resolve(strict=True)
     here = repo / "experiments/prime-j0-secp256k1-native"
-    assert Path(__file__).resolve() == here / "make_mixed_radix_manifest.py"
-    workload_path = here / "mixed-radix-fixture.json"
+    assert Path(__file__).resolve() == here / "make_coset_manifest.py"
+    workload_path = here / "coset-fixture.json"
     fixture = json.loads(workload_path.read_text())
     assert fixture["schema"] == 1 and len(fixture["cases"]) == 256
-    scores = json.loads((here / "mixed-radix-scalar-result.json").read_text())
+    scores = json.loads((here / "coset-result.json").read_text())
     panel = next(item for item in scores["panels"] if item["fixture"] == workload_path.name)
     assert panel["fixture_sha256"] == sha(workload_path)
     cases = []
@@ -39,28 +39,32 @@ def main():
         assert row["expected_identity"] is False
         point = row["expected_x_hex"] + ":" + row["expected_y_hex"]
         cases.append({
-            "id": f"fresh-single-scalar-{index}",
+            "id": f"coset-single-scalar-{index}",
             "expected_fields": {
                 "curve": "secp256k1", "base_x": row["base_x_hex"],
                 "base_y": row["base_y_hex"], "scalar": row["scalar_hex"],
             },
             "expected_result": point,
-            "reference": [str(binary), "--benchmark-selective-case",
+            "reference": [str(binary), "--benchmark-zero-tau-case",
                           str(workload_path), str(index)],
-            "candidate": [str(binary), "--benchmark-mixed-radix-case",
+            "candidate": [str(binary), "--benchmark-coset-case",
                           str(workload_path), str(index)],
         })
     artifacts = [here / name for name in (
         "Cargo.toml", "Cargo.lock", "src/main.rs", "src/selective.rs",
-        "src/mixed_radix.rs", "MIXED_RADIX_SCALAR_PROTOCOL.md",
-        "MIXED_RADIX_NATIVE_PROTOCOL.md", "MIXED_RADIX_SCALAR_RESULT.md",
-        "mixed_radix_scalar.py", "make_mixed_radix_fixture.py",
-        "make_mixed_radix_manifest.py", "mixed-radix-scalar-result.json",
-        "mixed-radix-runtime-info.json", "mixed-radix-sage-replay.json",
-        "mixed-radix-seed-fixture.json", "mixed-radix-action-fingerprints.json",
-        "native-mixed-radix-checks-v3.json", "mixed-radix-fixture.json")]
+        "src/mixed_radix.rs", "src/coset.rs", "COSET_SELECTOR_PROTOCOL.md",
+        "COSET_SELECTOR_RESULT.md", "screen_coset_representatives.py",
+        "screen_radix_policy.py", "zero_tau_rule.py", "coset_selector.py",
+        "make_coset_fixture.py", "make_coset_seed_fixture.py",
+        "make_coset_fingerprints.py", "run_coset_native_checks.py",
+        "make_coset_manifest.py", "coset-fixture.json", "coset-result.json",
+        "coset-runtime-info.json", "coset-sage-replay.json",
+        "coset-seed-fixture.json", "coset-fingerprints.json",
+        "native-coset-checks.json",
+        "MIXED_RADIX_SCALAR_PROTOCOL.md", "mixed_radix_scalar.py")]
     artifacts += [repo / "suite/src/ct_bignum.rs",
-                  repo / "suite/src/ecc/secp256k1_field.rs"]
+                  repo / "suite/src/ecc/secp256k1_field.rs",
+                  repo / "scripts/isolated_bench.py"]
     assert all(path.is_file() for path in artifacts)
     manifest = {
         "schema": 1, "workdir": str(repo),
@@ -74,12 +78,13 @@ def main():
         "measurement_boundary": (
             "Before base/scalar decoding through independent expected-point "
             "comparison; both arms include native lattice reduction, recoding, "
-            "selector work where applicable, seed preparation, orbit/cache "
-            "setup, point evaluation, affine inversion, and formatting; "
+            "selector work, seed preparation, orbit/cache setup, point "
+            "evaluation, affine inversion, and formatting. The candidate "
+            "charges ranking 25 representatives and all four recoders; "
             "excludes process launch, JSON loading, and curve-wide constants"),
         "pair_fields": ["curve", "base_x", "base_y", "scalar"],
         "result_field": "point",
-        "comparison_kind": "conditional-radix-two-vs-selective-mixed-tau-one-scalar",
+        "comparison_kind": "three-representative-vs-shortest-selector-one-scalar",
         "workload_sha256": sha(workload_path),
         "cases": cases,
     }

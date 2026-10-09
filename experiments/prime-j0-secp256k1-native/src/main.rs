@@ -8,6 +8,23 @@
 mod ct_bignum;
 #[path = "../../../suite/src/ecc/secp256k1_field.rs"]
 mod secp256k1_field;
+#[cfg(test)]
+mod utils {
+    // The imported bignum tests expect the suite's modular-inverse helper.
+    // Keep this small test-only adapter instead of pulling in suite binaries.
+    use num_bigint::{BigInt, BigUint};
+    use num_integer::Integer;
+
+    pub fn mod_inverse(a: &BigUint, modulus: &BigUint) -> Option<BigUint> {
+        let modulus_i = BigInt::from(modulus.clone());
+        let result = BigInt::from(a.clone()).extended_gcd(&modulus_i);
+        if result.gcd != BigInt::from(1) {
+            None
+        } else {
+            ((result.x % &modulus_i + &modulus_i) % &modulus_i).to_biguint()
+        }
+    }
+}
 
 use secp256k1_field::SecpFieldElement as F;
 use num_bigint::BigInt;
@@ -20,6 +37,7 @@ use std::time::Instant;
 
 mod selective;
 mod mixed_radix;
+mod coset;
 
 #[derive(Clone, Copy)]
 struct J {
@@ -133,11 +151,54 @@ impl J {
         Self { x: rx, y: ry, z: rz }
     }
 
+    // (2-omega)P or its conjugate (2-omega^2)P. The formulas are
+    // homogeneous in Jacobian coordinates and also work on the scaled
+    // curve used by the shared-Z evaluator.
+    fn rho(self, beta: F, conjugate: bool) -> Self {
+        if self.is_identity() {
+            return self;
+        }
+        let x2 = self.x.sqr();
+        let x3 = x2.mul(&self.x);
+        let y2 = self.y.sqr();
+        let a = triple(x3);
+        let b = times_four(y2);
+        let aa = a.sqr();
+        let bb = b.sqr();
+        let c = beta.mul(&a);
+        let d = beta.mul(&b);
+        let (c, d) = if conjugate {
+            (a.add(&c).neg(), b.add(&d).neg())
+        } else {
+            (c, d)
+        };
+        let x_term = triple(aa).neg().sub(
+            &b.add(&triple(d)).mul(&twice(a).sub(&b).add(&c)));
+        let y_left = triple(aa).mul(
+            &a.sub(&times_four(c)).add(&times_eight(d).sub(&d)));
+        let y_right = bb.mul(
+            &b.sub(&triple(a)).sub(&times_eight(c).add(&c)));
+        let z_term = twice(a).sub(&b).add(&c).sub(&d);
+        Self { x: self.x.mul(&x_term),
+               y: self.y.mul(&y_left.add(&y_right)),
+               z: self.z.mul(&z_term) }
+    }
+
     fn to_affine(self) -> Option<(F, F)> {
         if self.is_identity() {
             return None;
         }
         let inverse = self.z.inv();
+        let square = inverse.sqr();
+        let cube = square.mul(&inverse);
+        Some((self.x.mul(&square), self.y.mul(&cube)))
+    }
+
+    fn to_affine_fast(self) -> Option<(F, F)> {
+        if self.is_identity() {
+            return None;
+        }
+        let inverse = self.z.inv_chain();
         let square = inverse.sqr();
         let cube = square.mul(&inverse);
         Some((self.x.mul(&square), self.y.mul(&cube)))
@@ -251,6 +312,100 @@ fn prepare_linked(base: J, beta: F) -> [J; 9] {
      one_minus_two_tau]
 }
 
+// Construct (2P - omega(P), omega(2P) - P) together. Both mixed additions
+// have the same projective Z and Y input and the same affine addend Y, so
+// Z^2, Z^3, the Y difference, and its square are computed only once.
+fn prepare_linked_twinned(base: J, beta: F) -> [J; 9] {
+    assert_eq!(base.z, F::ONE);
+    let twice_base = base.double();
+    let four_base = twice_base.double();
+    let z2 = twice_base.z.sqr();
+    let z3 = twice_base.z.mul(&z2);
+    let v = base.y.neg().mul(&z3).sub(&twice_base.y);
+    let v2 = v.sqr();
+    let u = base.x.mul(&z2);
+    let beta_u = beta.mul(&u);
+    let beta_x = beta.mul(&twice_base.x);
+
+    fn finish(x: F, y: F, z: F, u: F, v: F, v2: F) -> J {
+        let h = u.sub(&x);
+        // On the declared prime-order secp256k1 subgroup these additions
+        // cannot be a doubling or cancellation: 2P != +/-omega(P) and
+        // omega(2P) != +/-P for nonidentity P.
+        assert_ne!(h, F::ZERO);
+        let hh = h.sqr();
+        let hhh = h.mul(&hh);
+        let xhh = x.mul(&hh);
+        let rx = v2.sub(&hhh).sub(&twice(xhh));
+        let ry = v.mul(&xhh.sub(&rx)).sub(&y.mul(&hhh));
+        let rz = z.mul(&h);
+        J { x: rx, y: ry, z: rz }
+    }
+
+    let one_tau = finish(twice_base.x, twice_base.y, twice_base.z,
+                         beta_u, v, v2);
+    let one_minus_two_tau = finish(beta_x, twice_base.y, twice_base.z,
+                                   u, v, v2);
+    let two_two_tau = one_tau.double();
+    let four_four_tau = two_two_tau.double();
+    let two_minus_four_tau = one_minus_two_tau.double();
+    let four_minus_eight_tau = two_minus_four_tau.double();
+    [base, twice_base, four_base, one_tau, two_two_tau,
+     two_minus_four_tau, four_minus_eight_tau, four_four_tau,
+     one_minus_two_tau]
+}
+
+// Simultaneously form (2-omega)P, omega(2-omega^2)P, and 2P from the
+// shared degree-seven inputs in Xu et al., Proposition 3.2. The two
+// conjugates reuse X^3, Y^2, A^2, B^2, beta*A, and beta*B.
+fn prepare_linked_conjugate_rho(base: J, beta: F) -> [J; 9] {
+    assert_eq!(base.z, F::ONE);
+    let x2 = base.x.sqr();
+    let x3 = x2.mul(&base.x);
+    let y2 = base.y.sqr();
+    let a = triple(x3);
+    let b = times_four(y2);
+    let aa = a.sqr();
+    let bb = b.sqr();
+    let c = beta.mul(&a);
+    let d = beta.mul(&b);
+
+    fn rho(x: F, y: F, z: F, a: F, b: F, aa: F, bb: F,
+           c: F, d: F) -> J {
+        let x_term = triple(aa).neg().sub(
+            &b.add(&triple(d)).mul(&twice(a).sub(&b).add(&c)));
+        let y_left = triple(aa).mul(
+            &a.sub(&times_four(c)).add(&times_eight(d).sub(&d)));
+        let y_right = bb.mul(
+            &b.sub(&triple(a)).sub(&times_eight(c).add(&c)));
+        let z_term = twice(a).sub(&b).add(&c).sub(&d);
+        J { x: x.mul(&x_term),
+            y: y.mul(&y_left.add(&y_right)),
+            z: z.mul(&z_term) }
+    }
+
+    let one_tau = rho(base.x, base.y, base.z, a, b, aa, bb, c, d);
+    let c_conjugate = a.add(&c).neg();
+    let d_conjugate = b.add(&d).neg();
+    let conjugate = rho(base.x, base.y, base.z, a, b, aa, bb,
+                        c_conjugate, d_conjugate);
+    let one_minus_two_tau = conjugate.omega(beta);
+    let y4 = y2.sqr();
+    let twice_base = J {
+        x: base.x.mul(&triple(a).sub(&twice(b))),
+        y: triple(a).mul(&b.sub(&a)).sub(&times_eight(y4)),
+        z: twice(base.y).mul(&base.z),
+    };
+    let four_base = twice_base.double();
+    let two_two_tau = one_tau.double();
+    let four_four_tau = two_two_tau.double();
+    let two_minus_four_tau = one_minus_two_tau.double();
+    let four_minus_eight_tau = two_minus_four_tau.double();
+    [base, twice_base, four_base, one_tau, two_two_tau,
+     two_minus_four_tau, four_minus_eight_tau, four_four_tau,
+     one_minus_two_tau]
+}
+
 fn normalize_all(seeds: &[J; 9]) -> [J; 9] {
     let mut normalized = *seeds;
     let mut prefix = [F::ONE; 8];
@@ -275,6 +430,39 @@ fn normalize_all(seeds: &[J; 9]) -> [J; 9] {
                                       seeds[index].y.mul(&cube));
     }
     normalized
+}
+
+// Represent all nine seeds with one Jacobian Z without a field inversion.
+// The returned Z maps a point (X,Y,z) on the scaled curve back to
+// (X,Y,common_z*z) on the original curve. All point formulas used here
+// are independent of b, so evaluation can use mixed additions on the
+// scaled curve and multiply the final Z by common_z once.
+fn align_common_z(seeds: &[J; 9]) -> (F, [J; 9]) {
+    assert_eq!(seeds[0].z, F::ONE);
+    let mut prefix = [F::ONE; 8];
+    prefix[0] = seeds[1].z;
+    assert_ne!(prefix[0], F::ZERO);
+    for index in 1..8 {
+        assert_ne!(seeds[index + 1].z, F::ZERO);
+        prefix[index] = prefix[index - 1].mul(&seeds[index + 1].z);
+    }
+    let common_z = prefix[7];
+    let mut complements = [F::ONE; 8];
+    let mut suffix = F::ONE;
+    for index in (1..8).rev() {
+        complements[index] = prefix[index - 1].mul(&suffix);
+        suffix = suffix.mul(&seeds[index + 1].z);
+    }
+    complements[0] = suffix;
+    let mut aligned = *seeds;
+    for index in 0..9 {
+        let scale = if index == 0 { common_z } else { complements[index - 1] };
+        let square = scale.sqr();
+        let cube = square.mul(&scale);
+        aligned[index] = J::affine(seeds[index].x.mul(&square),
+                                   seeds[index].y.mul(&cube));
+    }
+    (common_z, aligned)
 }
 
 fn orbit(seed: J, beta: F) -> [J; 3] {
@@ -359,6 +547,27 @@ fn short_representative(scalar: &BigInt) -> (BigInt, BigInt) {
     }
     let (_, _, a, b) = best.expect("25 representative choices");
     (a, b)
+}
+
+fn ranked_representatives(scalar: &BigInt) -> Vec<(BigInt, BigInt)> {
+    let lattice = &*LATTICE;
+    let center_u = round_div(scalar * &lattice.v1, lattice.det.clone());
+    let center_v = round_div(-scalar * &lattice.u1, lattice.det.clone());
+    let mut ranked = Vec::with_capacity(25);
+    for du in -2..=2 {
+        for dv in -2..=2 {
+            let u = &center_u + du;
+            let v = &center_v + dv;
+            let a: BigInt = scalar - &u * &lattice.u0 - &v * &lattice.v0;
+            let b: BigInt = -&u * &lattice.u1 - &v * &lattice.v1;
+            debug_assert_eq!((&a + &b * &lattice.lambda - scalar) % &lattice.n,
+                             BigInt::ZERO);
+            let magnitude = std::cmp::max(a.abs(), b.abs());
+            ranked.push((eisenstein_norm(&a, &b), magnitude, a, b));
+        }
+    }
+    ranked.sort();
+    ranked.into_iter().take(3).map(|(_, _, a, b)| (a, b)).collect()
 }
 
 fn signed_residue(value: &BigInt, modulus: i64) -> usize {
@@ -728,7 +937,9 @@ fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
 fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
                         timed: bool) {
     assert!(mode == "cached_projective" || mode == "all_affine" ||
+            mode == "shared_z" ||
             mode == "joint_atlas" || mode == "linked_atlas" ||
+            mode == "linked_twin" || mode == "linked_rho" ||
             mode == "portfolio");
     let raw = fs::read(fixture_path).expect("read benchmark fixture");
     let fixture: Value = serde_json::from_slice(&raw).expect("parse benchmark fixture");
@@ -750,7 +961,8 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
         LazyLock::force(&DIGIT_TABLE);
         LazyLock::force(&ALTERNATE_DIGIT_TABLE);
         LazyLock::force(&LINKED_DIGIT_TABLE);
-    } else if mode == "linked_atlas" {
+    } else if mode == "linked_atlas" || mode == "linked_twin" ||
+              mode == "linked_rho" {
         LazyLock::force(&LINKED_DIGIT_TABLE);
     } else if mode == "joint_atlas" {
         LazyLock::force(&ALTERNATE_DIGIT_TABLE);
@@ -765,17 +977,34 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
         let plan = recode_portfolio(a.clone(), b.clone());
         let choice = plan.choice;
         (plan.streams.into_iter().nth(choice).expect("selected stream"), choice)
-    } else if mode == "linked_atlas" {
+    } else if mode == "linked_atlas" || mode == "linked_twin" ||
+              mode == "linked_rho" {
         (recode_linked(a.clone(), b.clone()), 2)
     } else if mode == "joint_atlas" {
         (recode_alternate(a.clone(), b.clone()), 1)
     } else {
         (recode(a.clone(), b.clone()), 0)
     };
-    let prepared = prepare_choice(base, beta, atlas_choice);
-    let seeds = if mode == "all_affine" { normalize_all(&prepared) } else { prepared };
-    let (point, counts) = evaluate_mode(&digits, &seeds, beta,
-                                        mode == "all_affine", false);
+    let prepared = if mode == "linked_rho" {
+        prepare_linked_conjugate_rho(base, beta)
+    } else if mode == "linked_twin" {
+        prepare_linked_twinned(base, beta)
+    } else {
+        prepare_choice(base, beta, atlas_choice)
+    };
+    let (common_z, seeds) = if mode == "shared_z" {
+        let (z, aligned) = align_common_z(&prepared);
+        (Some(z), aligned)
+    } else if mode == "all_affine" {
+        (None, normalize_all(&prepared))
+    } else {
+        (None, prepared)
+    };
+    let (mut point, counts) = evaluate_mode(&digits, &seeds, beta,
+                                            mode == "all_affine" || mode == "shared_z", false);
+    if let Some(z) = common_z {
+        point.z = point.z.mul(&z);
+    }
     let actual_point = match point.to_affine() {
         None => "identity".to_owned(),
         Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
@@ -785,7 +1014,19 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     if !timed {
         assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
         assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
-        if mode != "joint_atlas" && mode != "linked_atlas" && mode != "portfolio" {
+        if mode == "shared_z" {
+            let z = common_z.expect("shared projective Z");
+            for (seed, expected) in seeds.iter().zip(
+                case["seed_affine"].as_array().expect("expected seeds")) {
+                let original = J { x: seed.x, y: seed.y, z };
+                let (x, y) = original.to_affine().expect("nonidentity aligned seed");
+                assert_eq!(fe_hex(x), expected[0].as_str().expect("seed x"));
+                assert_eq!(fe_hex(y), expected[1].as_str().expect("seed y"));
+            }
+        }
+        if mode != "shared_z" && mode != "joint_atlas" && mode != "linked_atlas" &&
+           mode != "linked_twin" && mode != "linked_rho" &&
+           mode != "portfolio" {
             assert_eq!(digits, digits_from_json(case));
             let expected_seeds = case["seed_affine"].as_array().expect("seeds");
             for (seed, expected) in seeds.iter().zip(expected_seeds) {
@@ -821,7 +1062,10 @@ fn check_count(expected: &Value, key: &str, actual: usize) {
     assert_eq!(actual, want, "count {key}");
 }
 
-fn check_atlas_fixture(fixture_path: &str, seed_path: &str, linked: bool) {
+fn check_atlas_fixture(fixture_path: &str, seed_path: &str,
+                       linked: bool, twin: bool, conjugate_rho: bool) {
+    assert!(!(twin && conjugate_rho));
+    assert!((!twin && !conjugate_rho) || linked);
     let raw = fs::read(fixture_path).expect("read scalar fixture");
     let fixture: Value = serde_json::from_slice(&raw).expect("parse scalar fixture");
     let seed_raw = fs::read(seed_path).expect("read alternate Sage seed fixture");
@@ -849,7 +1093,9 @@ fn check_atlas_fixture(fixture_path: &str, seed_path: &str, linked: bool) {
         let base = J::affine(
             fe_from_hex(case["base_x_hex"].as_str().expect("base x")),
             fe_from_hex(case["base_y_hex"].as_str().expect("base y")));
-        let seeds = if linked { prepare_linked(base, beta) }
+        let seeds = if conjugate_rho { prepare_linked_conjugate_rho(base, beta) }
+                    else if twin { prepare_linked_twinned(base, beta) }
+                    else if linked { prepare_linked(base, beta) }
                     else { prepare_alternate(base, beta) };
         let old_seeds = case["seed_affine"].as_array().expect("Sage old seeds");
         for (index, seed) in seeds.iter().enumerate() {
@@ -882,7 +1128,8 @@ fn check_atlas_fixture(fixture_path: &str, seed_path: &str, linked: bool) {
         }
         assert_eq!(counts.tau_steps + usize::from(!digits.is_empty()), digits.len());
         let solo = counts.tau_steps - 2 * counts.tau_pairs;
-        total_m_plus_s += (if linked { 75 } else { 79 })
+        total_m_plus_s += (if conjugate_rho { 68 } else if twin { 70 }
+                           else if linked { 75 } else { 79 })
             + 10 * counts.tau_pairs + 6 * solo
             + 11 * counts.mixed_adds + 14 * counts.general_adds
             + 2 * counts.cache_entries;
@@ -891,6 +1138,51 @@ fn check_atlas_fixture(fixture_path: &str, seed_path: &str, linked: bool) {
     println!("{{\"verified\":true,\"fixture\":\"{name}\",\"cases\":{},\"seed_checks\":{},\"output_checks\":{},\"source_M_plus_S\":{},\"exceptional_cached_adds\":{},\"cpu_speedup_claim\":null}}",
              cases.len(), 9 * cases.len(), cases.len(), total_m_plus_s,
              exceptional_adds);
+}
+
+#[cfg(test)]
+mod shared_z_tests {
+    use super::*;
+
+    #[test]
+    fn shared_z_matches_frozen_scalar_outputs() {
+        let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/fresh-fixture.json");
+        for index in [0, 31, 255] {
+            check_benchmark_case("shared_z", fixture, index, false);
+            mixed_radix::benchmark_zero_tau_case(fixture, index, false, true);
+        }
+    }
+
+    #[test]
+    fn rho_conjugates_match_group_addition_across_gauges() {
+        let raw = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"),
+                                               "/fresh-fixture.json"))
+            .expect("frozen fixture");
+        let fixture: Value = serde_json::from_str(&raw).expect("fixture JSON");
+        let beta = fe_from_hex(fixture["beta_hex"].as_str().expect("beta"));
+        let two = F::ONE.add(&F::ONE);
+        let seven = times_eight(F::ONE).sub(&F::ONE);
+        for case in fixture["cases"].as_array().expect("cases").iter().take(3) {
+            let base = J::affine(
+                fe_from_hex(case["base_x_hex"].as_str().expect("base x")),
+                fe_from_hex(case["base_y_hex"].as_str().expect("base y")));
+            let (_, aligned) = align_common_z(&prepare(base, beta));
+            for seed in [base, aligned[0], aligned[3]] {
+                for z in [F::ONE, two, seven] {
+                    let point = scaled(seed, z);
+                    let twice = point.double();
+                    let omega = point.omega(beta).neg();
+                    let omega2 = point.omega(beta).omega(beta).neg();
+                    let (rho, _) = twice.add_cached(omega, omega.z.sqr(),
+                                                    omega.z.sqr().mul(&omega.z));
+                    let (bar_rho, _) = twice.add_cached(omega2, omega2.z.sqr(),
+                        omega2.z.sqr().mul(&omega2.z));
+                    assert_eq!(point.rho(beta, false).to_affine(), rho.to_affine());
+                    assert_eq!(point.rho(beta, true).to_affine(), bar_rho.to_affine());
+                }
+            }
+        }
+    }
 }
 
 fn check_portfolio_fixture(fixture_path: &str, seed_path: &str,
@@ -997,6 +1289,59 @@ fn check_portfolio_fixture(fixture_path: &str, seed_path: &str,
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 3 && args[1] == "--check-coset-fastinv-fixture" {
+        coset::check_fastinv_fixture(&args[2]);
+        return;
+    }
+    if args.len() == 4 && (args[1] == "--benchmark-coset-fastinv-case" ||
+                           args[1] == "--check-coset-fastinv-case") {
+        coset::benchmark_case(&args[2], args[3].parse().expect("case index"),
+                              args[1] == "--benchmark-coset-fastinv-case", true);
+        return;
+    }
+    if args.len() == 4 && (args[1] == "--benchmark-coset-case" ||
+                           args[1] == "--check-coset-case") {
+        coset::benchmark_case(&args[2], args[3].parse().expect("case index"),
+                              args[1] == "--benchmark-coset-case", false);
+        return;
+    }
+    if args.len() == 5 && args[1] == "--check-coset-fixture" {
+        coset::check_fixture(&args[2], &args[3], &args[4]);
+        return;
+    }
+    if args.len() == 4 && args[1] == "--check-coset-streams" {
+        coset::check_streams(&args[2], &args[3]);
+        return;
+    }
+    if args.len() == 4 && (args[1] == "--benchmark-zero-tau-case" ||
+                           args[1] == "--check-zero-tau-case" ||
+                           args[1] == "--benchmark-shared-z-zero-tau-case" ||
+                           args[1] == "--check-shared-z-zero-tau-case") {
+        let index = args[3].parse::<usize>().expect("case index");
+        mixed_radix::benchmark_zero_tau_case(&args[2], index,
+            args[1] == "--benchmark-zero-tau-case" ||
+            args[1] == "--benchmark-shared-z-zero-tau-case",
+            args[1] == "--benchmark-shared-z-zero-tau-case" ||
+            args[1] == "--check-shared-z-zero-tau-case");
+        return;
+    }
+    if args.len() == 4 && args[1] == "--check-zero-tau-actions" {
+        mixed_radix::check_zero_tau_action_fingerprints(&args[2], &args[3]);
+        return;
+    }
+    if args.len() == 4 && (args[1] == "--check-shared-z-degree-seven-case" ||
+                           args[1] == "--check-shared-z-degree-seven-tail-case" ||
+                           args[1] == "--benchmark-shared-z-degree-seven-case" ||
+                           args[1] == "--benchmark-shared-z-degree-seven-tail-case") {
+        mixed_radix::check_degree_seven_case(&args[2],
+            args[3].parse::<usize>().expect("case index"),
+            args[1].contains("-tail-case"), args[1].starts_with("--benchmark-"));
+        return;
+    }
+    if args.len() == 5 && args[1] == "--check-zero-tau-fixture" {
+        mixed_radix::check_zero_tau_fixture(&args[2], &args[3], &args[4]);
+        return;
+    }
     if args.len() == 4 && (args[1] == "--benchmark-mixed-radix-case" ||
                            args[1] == "--check-mixed-radix-case") {
         let index = args[3].parse::<usize>().expect("case index");
@@ -1028,9 +1373,13 @@ fn main() {
         return;
     }
     if args.len() == 4 && (args[1] == "--check-alternate-fixture" ||
-                           args[1] == "--check-linked-fixture") {
+                           args[1] == "--check-linked-fixture" ||
+                           args[1] == "--check-linked-twin-fixture" ||
+                           args[1] == "--check-linked-rho-fixture") {
         check_atlas_fixture(&args[2], &args[3],
-                            args[1] == "--check-linked-fixture");
+                            args[1] != "--check-alternate-fixture",
+                            args[1] == "--check-linked-twin-fixture",
+                            args[1] == "--check-linked-rho-fixture");
         return;
     }
     if args.len() == 5 && (args[1] == "--benchmark-case" ||
