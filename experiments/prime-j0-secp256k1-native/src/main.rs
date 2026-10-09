@@ -35,6 +35,9 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::time::Instant;
 
+const GENERATOR_X_HEX: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+const GENERATOR_Y_HEX: &str = "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
+
 mod selective;
 mod mixed_radix;
 mod coset;
@@ -935,7 +938,7 @@ fn evaluate(digits: &[Option<Digit>], seeds: &[J; 9], beta: F) -> (J, Counts) {
 }
 
 fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
-                        timed: bool) {
+                        timed: bool, fixed_generator: bool) {
     assert!(mode == "cached_projective" || mode == "all_affine" ||
             mode == "shared_z" ||
             mode == "joint_atlas" || mode == "linked_atlas" ||
@@ -947,6 +950,13 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     let case = &fixture["cases"].as_array().expect("benchmark cases")[index];
     let base_x = case["base_x_hex"].as_str().expect("base x");
     let base_y = case["base_y_hex"].as_str().expect("base y");
+    let fixed_base = if fixed_generator {
+        assert_eq!(base_x, GENERATOR_X_HEX);
+        assert_eq!(base_y, GENERATOR_Y_HEX);
+        Some(J::affine(fe_from_hex(base_x), fe_from_hex(base_y)))
+    } else {
+        None
+    };
     let scalar_hex = case["scalar_hex"].as_str().expect("scalar");
     let expected_identity = case["expected_identity"].as_bool().unwrap_or(false);
     let expected_point = if expected_identity {
@@ -971,7 +981,7 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     }
     let start = Instant::now();
     let scalar = big_from_hex(scalar_hex);
-    let base = J::affine(fe_from_hex(base_x), fe_from_hex(base_y));
+    let base = fixed_base.unwrap_or_else(|| J::affine(fe_from_hex(base_x), fe_from_hex(base_y)));
     let (a, b) = short_representative(&scalar);
     let (digits, atlas_choice) = if mode == "portfolio" {
         let plan = recode_portfolio(a.clone(), b.clone());
@@ -1005,13 +1015,14 @@ fn check_benchmark_case(mode: &str, fixture_path: &str, index: usize,
     if let Some(z) = common_z {
         point.z = point.z.mul(&z);
     }
-    let actual_point = match point.to_affine() {
+    let affine = if fixed_generator { point.to_affine_fast() } else { point.to_affine() };
+    let actual_point = match affine {
         None => "identity".to_owned(),
         Some((x, y)) => format!("{}:{}", fe_hex(x), fe_hex(y)),
     };
     assert_eq!(actual_point, expected_point, "benchmark output mismatch");
     let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-    if !timed {
+    if !timed && !fixed_generator {
         assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
         assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
         if mode == "shared_z" {
@@ -1148,7 +1159,7 @@ mod shared_z_tests {
     fn shared_z_matches_frozen_scalar_outputs() {
         let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/fresh-fixture.json");
         for index in [0, 31, 255] {
-            check_benchmark_case("shared_z", fixture, index, false);
+            check_benchmark_case("shared_z", fixture, index, false, false);
             mixed_radix::benchmark_zero_tau_case(fixture, index, false, true);
         }
     }
@@ -1397,10 +1408,15 @@ fn main() {
         return;
     }
     if args.len() == 5 && (args[1] == "--benchmark-case" ||
-                           args[1] == "--check-benchmark-case") {
+                           args[1] == "--check-benchmark-case" ||
+                           args[1] == "--benchmark-generator-case" ||
+                           args[1] == "--check-generator-case") {
         let index = args[4].parse::<usize>().expect("case index");
         check_benchmark_case(&args[2], &args[3], index,
-                             args[1] == "--benchmark-case");
+                             args[1] == "--benchmark-case" ||
+                             args[1] == "--benchmark-generator-case",
+                             args[1] == "--benchmark-generator-case" ||
+                             args[1] == "--check-generator-case");
         return;
     }
     if std::env::args().nth(1).as_deref() == Some("--check-exceptions") {
