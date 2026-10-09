@@ -1331,6 +1331,8 @@ fn main() {
     }
     if args.len() == 4 && (args[1] == "--check-shared-z-degree-seven-case" ||
                            args[1] == "--check-shared-z-linked-degree-seven-case" ||
+                           args[1] == "--check-shared-z-linked-unit-rollout-case" ||
+                           args[1] == "--benchmark-shared-z-linked-unit-rollout-case" ||
                            args[1] == "--check-shared-z-linked-degree-seven-tail-case" ||
                            args[1] == "--benchmark-shared-z-linked-degree-seven-tail-case" ||
                            args[1] == "--check-shared-z-degree-seven-tail-case" ||
@@ -1339,12 +1341,15 @@ fn main() {
                            args[1] == "--benchmark-shared-z-degree-seven-tail-case" ||
                            args[1] == "--benchmark-shared-z-degree-seven-tail65536-case") {
         let tail_limit = if args[1].contains("tail65536") { 65_536 }
-                         else if args[1].contains("-tail-case") { 4_096 }
+                         else if args[1].contains("-tail-case") ||
+                                 args[1].contains("unit-rollout") { 4_096 }
                          else { 0 };
         mixed_radix::check_degree_seven_case(&args[2],
             args[3].parse::<usize>().expect("case index"),
             tail_limit, args[1].starts_with("--benchmark-"),
-            args[1].contains("linked-degree-seven"));
+            args[1].contains("linked-degree-seven") ||
+                args[1].contains("linked-unit-rollout"),
+            args[1].contains("unit-rollout"));
         return;
     }
     if args.len() == 5 && args[1] == "--check-zero-tau-fixture" {
