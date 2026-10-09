@@ -1336,10 +1336,10 @@ static WIDTH_SIX_POINTS: LazyLock<[[Jacobian; 3]; 81]> = LazyLock::new(|| {
 });
 
 static WIDTH_SIX_COMB4_POINTS: LazyLock<Vec<[Jacobian; 81]>> =
-    LazyLock::new(|| width_six_comb_tables(4, 43));
+    LazyLock::new(|| width_six_comb_tables(4, 41));
 
 static WIDTH_SIX_COMB8_POINTS: LazyLock<Vec<[Jacobian; 81]>> =
-    LazyLock::new(|| width_six_comb_tables(8, 22));
+    LazyLock::new(|| width_six_comb_tables(8, 21));
 
 fn glv_comb_table(rows: usize, width: usize) -> Vec<Jacobian> {
     let mut bases = Vec::with_capacity(rows);
@@ -2032,8 +2032,8 @@ fn scalar_multiply_width_six_comb(
     rows: usize,
 ) -> (Jacobian, BigInt, BigInt, usize, [usize; 81]) {
     let width = match rows {
-        4 => 43,
-        8 => 22,
+        4 => 41,
+        8 => 21,
         _ => panic!("unsupported width-six comb row count"),
     };
     let tables = if rows == 4 {
@@ -2946,8 +2946,8 @@ mod eisenstein_tau_tests {
     #[test]
     fn width_six_comb_shifted_tables_match_tau_images() {
         for (rows, width, tables) in [
-            (4, 43, &*WIDTH_SIX_COMB4_POINTS),
-            (8, 22, &*WIDTH_SIX_COMB8_POINTS),
+            (4, 41, &*WIDTH_SIX_COMB4_POINTS),
+            (8, 21, &*WIDTH_SIX_COMB8_POINTS),
         ] {
             assert_eq!(tables.len(), rows);
             for row in 0..rows {

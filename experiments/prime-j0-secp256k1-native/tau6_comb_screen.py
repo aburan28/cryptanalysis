@@ -2,9 +2,7 @@
 """Certify a bounded-width, fixed-generator tau-six comb on frozen scalars."""
 
 import argparse
-from functools import cache
 import hashlib
-from math import isqrt
 import json
 from pathlib import Path
 import subprocess
@@ -28,25 +26,31 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def universal_span():
+def universal_span(table):
     # Center rounding puts one candidate in the closed half-basis square.
     # The Eisenstein norm is convex, so a vertex maximizes it there.
     bound = (max(ring.norm((U[0] + V[0], U[1] + V[1])),
                  ring.norm((U[0] - V[0], U[1] - V[1]))) + 3) // 4
 
-    @cache
-    def remaining(n):
-        if n <= 1:
-            return 0
-        # sqrt(n) < isqrt(n)+1 and sqrt(217) < 15. The actual nonzero
-        # six-step quotient norm is at most this integer upper bound.
-        quotient = ((isqrt(n) + 16) ** 2) // 729
-        assert quotient < n
-        return max(1 + remaining(n // 3), 6 + remaining(quotient))
+    # N >= a^2/4 and N >= 3b^2/4. These bounds enclose every
+    # nondivisible state with N < 196 in the enumerated rectangle.
+    checked = 0
+    for a in range(-27, 28):
+        for b in range(-16, 17):
+            if a % 3 and ring.norm((a, b)) < 196:
+                assert table[(a % 27, b % 27)][0] == (a, b)
+                checked += 1
+    assert checked == 462
 
-    steps = remaining(bound)
-    assert steps == 168
-    return steps + 1, bound, remaining.cache_info().currsize
+    # Let psi(N)=sqrt(N)-sqrt(217)/26. A zero tau step scales psi by
+    # at most 1/sqrt(3); a nonzero six-step block by at most 1/27.
+    # Since sqrt(217)/26 < 15/26, the exact integer inequalities below
+    # exclude a nonzero nonterminal state at step 158 and any
+    # nonterminal state at step 162. A last six-step block can finish
+    # at step 163, so the terminal digit fits in position 163.
+    assert bound * 26**2 < 349**2 * 3**158
+    assert bound * 78**2 < 85**2 * 3**162
+    return 164, bound, checked
 
 
 def digit_stream(start, table, span):
@@ -150,8 +154,8 @@ def main():
     assert len(source["cases"]) == 214
     table, seeds, max_norm = atlas.build_width_six_table()
     assert len(seeds) == 81 and max_norm == 217
-    span, norm_bound, bound_states = universal_span()
-    assert span == 169
+    span, norm_bound, checked_small_states = universal_span(table)
+    assert span == 164
     panels = ("frozen_edges", "frozen_random", "holdout_random")
     totals = {panel: {str(rows): {"tau_steps": 0, "mixed_additions": 0,
                                 "field_product_proxy": 0} for rows in ROWS}
@@ -186,7 +190,7 @@ def main():
               "base": "standard-generator", "algorithm": "tau6-unit-orbit-comb",
               "rows": ROWS, "universal_digit_span": span,
               "short_representative_norm_upper_bound": str(norm_bound),
-              "bound_recurrence_states": bound_states,
+              "digit_complete_small_states": checked_small_states,
               "digit_orbits_per_row": 81,
               "totals": totals, "cases": cases,
               "input_sha256": sha(input_path),
