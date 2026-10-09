@@ -136,6 +136,7 @@ fn half_exit_wins(a: &BigInt, b: &BigInt) -> bool {
 }
 
 const SHARED_Z_TAIL: &[u8; 5_329] = include_bytes!("../shared-z-tail4096.bin");
+const SHARED_Z_TAIL65536: &[u8; 81_286] = include_bytes!("../shared-z-tail65536.bin");
 const UNITS: [(i64, i64); 6] =
     [(-2, 1), (-1, 0), (-1, 1), (1, -1), (1, 0), (2, -1)];
 const UNIT_INVERSES: [(i64, i64); 6] =
@@ -213,24 +214,38 @@ fn decode_tail_action(a: i64, b: i64, code: u8) -> (Radix, Option<(i64, i64)>, i
     (radix, digit, quotient.0, quotient.1)
 }
 
-fn tail_actions(mut a: i64, mut b: i64, mut pending_tau: bool) -> Vec<Action> {
-    assert!((0..=4_096).contains(&small_norm(a, b)));
-    let mut actions = Vec::with_capacity(7);
+fn tail_actions(mut a: i64, mut b: i64, mut pending_tau: bool,
+                extended: bool) -> Vec<Action> {
+    let limit = if extended { 65_536 } else { 4_096 };
+    assert!((0..=limit).contains(&small_norm(a, b)));
+    let mut actions = Vec::with_capacity(if extended { 10 } else { 7 });
+    let (table, edge, offset_start, minimum_start): (&[u8], i64, usize, usize) =
+        if extended {
+            (SHARED_Z_TAIL65536, 512, 79_242, 80_264)
+        } else {
+            (SHARED_Z_TAIL, 128, 4_948, 5_202)
+        };
     while a != 0 || b != 0 {
-        assert!(actions.len() < 7, "tail table did not terminate");
+        assert!(actions.len() < if extended { 10 } else { 7 },
+                "tail table did not terminate");
         let ((ca, cb), unit_index) = UNITS.into_iter().enumerate()
             .map(|(index, unit)| (ring_product((a, b), unit), index))
             .min().expect("six unit images");
-        assert!((-128..=-2).contains(&ca));
-        let row = (ca + 128) as usize;
+        assert!((-edge..=-2).contains(&ca));
+        let row = (ca + edge) as usize;
         let offset = u16::from_le_bytes([
-            SHARED_Z_TAIL[4_948 + 2 * row], SHARED_Z_TAIL[4_949 + 2 * row]]) as usize;
-        let minimum = i64::from(SHARED_Z_TAIL[5_202 + row]);
+            table[offset_start + 2 * row], table[offset_start + 2 * row + 1]]) as usize;
+        let minimum = if extended {
+            i64::from(u16::from_le_bytes([
+                table[minimum_start + 2 * row], table[minimum_start + 2 * row + 1]]))
+        } else {
+            i64::from(table[minimum_start + row])
+        };
         assert!(cb >= minimum);
         let index = (offset + (cb - minimum) as usize) * 2 + usize::from(pending_tau);
-        assert!(index < 4_948);
+        assert!(index < offset_start);
         let (radix, canonical_digit, x, y) = decode_tail_action(
-            ca, cb, SHARED_Z_TAIL[index]);
+            ca, cb, table[index]);
         let inverse = UNIT_INVERSES[unit_index];
         let (next_a, next_b) = ring_product((x, y), inverse);
         let digit = canonical_digit.map(|d| {
@@ -249,18 +264,24 @@ fn tail_actions(mut a: i64, mut b: i64, mut pending_tau: bool) -> Vec<Action> {
 
 // Closed-form mixed τ/2/ρ/conjugate-ρ policy. The norm cutoff makes a
 // zero-digit τ step preferable to a double near the end of the chain.
-fn recode_degree_seven(mut a: BigInt, mut b: BigInt, use_tail: bool) -> Vec<Action> {
+fn recode_degree_seven(mut a: BigInt, mut b: BigInt, tail_limit: i64) -> Vec<Action> {
     #[cfg(debug_assertions)]
     let original = (a.clone(), b.clone());
     let mut actions = Vec::new();
     let mut pending_tau = false;
     while !a.is_zero() || !b.is_zero() {
         assert!(actions.len() < 256, "degree-seven expansion did not terminate");
-        if use_tail {
+        if tail_limit != 0 {
             if let (Some(x), Some(y)) = (a.to_i64(), b.to_i64()) {
-                if (-128..=128).contains(&x) && (-73..=73).contains(&y)
-                    && small_norm(x, y) <= 4_096 {
-                    actions.extend(tail_actions(x, y, pending_tau));
+                let (a_bound, b_bound) = if tail_limit == 65_536 {
+                    (512, 296)
+                } else {
+                    assert_eq!(tail_limit, 4_096);
+                    (128, 73)
+                };
+                if (-a_bound..=a_bound).contains(&x) && (-b_bound..=b_bound).contains(&y)
+                    && small_norm(x, y) <= tail_limit {
+                    actions.extend(tail_actions(x, y, pending_tau, tail_limit == 65_536));
                     break;
                 }
             }
@@ -323,7 +344,7 @@ fn recode_degree_seven(mut a: BigInt, mut b: BigInt, use_tail: bool) -> Vec<Acti
         pending_tau = radix == Radix::Tau && !pair && !terminal;
         actions.push(Action { radix, digit: used_digit });
     }
-    assert!(actions.last().is_some_and(|action| action.digit.is_some()));
+    assert!(actions.is_empty() || actions.last().is_some_and(|action| action.digit.is_some()));
     #[cfg(debug_assertions)]
     {
         let (mut x, mut y) = (BigInt::ZERO, BigInt::ZERO);
@@ -885,7 +906,7 @@ pub(super) fn benchmark_zero_tau_case(fixture_path: &str, index: usize,
 }
 
 pub(super) fn check_degree_seven_case(fixture_path: &str, index: usize,
-                                      use_tail: bool, timed: bool) {
+                                      tail_limit: i64, timed: bool) {
     let fixture: Value = serde_json::from_slice(&fs::read(fixture_path).expect("fixture"))
         .expect("fixture JSON");
     let case = &fixture["cases"].as_array().expect("cases")[index];
@@ -906,7 +927,7 @@ pub(super) fn check_degree_seven_case(fixture_path: &str, index: usize,
     let base = J::affine(
         fe_from_hex(base_x), fe_from_hex(base_y));
     let (a, b) = short_representative(&scalar);
-    let actions = recode_degree_seven(a.clone(), b.clone(), use_tail);
+    let actions = recode_degree_seven(a.clone(), b.clone(), tail_limit);
     let seeds = prepare(base, beta);
     let (point, counts) = evaluate_shared_z(&actions, &seeds, beta);
     assert_eq!(counts.cache_entries, 0);
@@ -924,8 +945,12 @@ pub(super) fn check_degree_seven_case(fixture_path: &str, index: usize,
         assert_eq!(a, big_from_hex(case["short_a_hex"].as_str().expect("short a")));
         assert_eq!(b, big_from_hex(case["short_b_hex"].as_str().expect("short b")));
     }
-    let mode = if use_tail { "shared_z_degree_seven_tail" }
-               else { "shared_z_degree_seven" };
+    let mode = match tail_limit {
+        0 => "shared_z_degree_seven",
+        4_096 => "shared_z_degree_seven_tail",
+        65_536 => "shared_z_degree_seven_tail65536",
+        _ => panic!("unknown tail limit"),
+    };
     if timed {
         println!("online_ms={elapsed_ms:.6} verified=1 mode={mode} curve=secp256k1 base_x={base_x} base_y={base_y} scalar={scalar_hex} point={actual} source_M_plus_S={source} rho_steps={} bar_rho_steps={} tau_steps={} doubles={} mixed_adds={} cpu_speedup_claim=null",
                  counts.rho_steps, counts.bar_rho_steps, counts.tau_steps,
@@ -942,6 +967,13 @@ mod tail_tests {
     use super::*;
 
     #[test]
+    fn degree_seven_zero_scalar_has_empty_action_stream() {
+        for limit in [0, 4_096, 65_536] {
+            assert!(recode_degree_seven(BigInt::ZERO, BigInt::ZERO, limit).is_empty());
+        }
+    }
+
+    #[test]
     fn compact_tail_reconstructs_every_state_and_pending_pair() {
         LazyLock::force(&DIGIT_TABLE);
         let mut checked = 0;
@@ -951,7 +983,7 @@ mod tail_tests {
                     continue;
                 }
                 for pending_tau in [false, true] {
-                    let actions = tail_actions(a, b, pending_tau);
+                    let actions = tail_actions(a, b, pending_tau, false);
                     assert!(actions.len() <= 7);
                     let (mut x, mut y) = (0, 0);
                     for action in actions.into_iter().rev() {
@@ -972,5 +1004,38 @@ mod tail_tests {
             }
         }
         assert_eq!(checked, 29_688);
+    }
+
+    #[test]
+    fn extended_tail_reconstructs_every_state_and_pending_pair() {
+        LazyLock::force(&DIGIT_TABLE);
+        let mut checked = 0;
+        for a in -512..=512 {
+            for b in -296..=296 {
+                if !(1..=65_536).contains(&small_norm(a, b)) {
+                    continue;
+                }
+                for pending_tau in [false, true] {
+                    let actions = tail_actions(a, b, pending_tau, true);
+                    assert!(actions.len() <= 10);
+                    let (mut x, mut y) = (0, 0);
+                    for action in actions.into_iter().rev() {
+                        (x, y) = match action.radix {
+                            Radix::Tau => (-3 * y, x + 3 * y),
+                            Radix::Two => (2 * x, 2 * y),
+                            Radix::Rho => (x - 3 * y, x + 4 * y),
+                            Radix::BarRho => (4 * x + 3 * y, y - x),
+                        };
+                        if let Some(digit) = action.digit {
+                            x += digit.a;
+                            y += digit.b;
+                        }
+                    }
+                    assert_eq!((x, y), (a, b), "state ({a}, {b}, {pending_tau})");
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(checked, 475_452);
     }
 }
