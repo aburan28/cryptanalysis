@@ -6,9 +6,10 @@ generator workload, it replaces 4,420 width-two mixed additions with
 1,040 mixed and 2,085 cached-projective additions. Its charged
 field-product proxy falls from **104,305 to 98,117**, a saving of
 **6,188 products (5.93%)** after charging seed preparation for every
-scalar. Independent affine replay verified both paths on the 86 frozen
-scalars and 128 additional deterministic random scalars: 428 exact
-outputs in all. These are operation counts and correctness results;
+scalar. Independent affine replay verified width two, projective width
+three, and fixed-generator affine width three on the 86 frozen scalars
+and 128 additional deterministic random scalars: 642 exact outputs
+in all. These are operation counts and correctness results;
 isolated full-operation wall time remains to be measured.
 
 ## Digit construction and termination
@@ -55,6 +56,7 @@ doubling, mixed addition, and two Z caches. It also charges every
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Unit width two | 11,137 | 4,420 | 0 | 0 | 104,305 |
 | Three-orbit width three | 11,119 | 1,040 | 2,085 | 22 | 98,117 |
+| Fixed-generator affine width three | 11,119 | 3,125 | 0 | 0 field products | 89,970 |
 
 This proxy counts calls to field multiplication or squaring in the
 point formulas. It does not count integer recoding, `omega` coordinate
@@ -64,6 +66,20 @@ both complete-operation benchmark commands and can decide CPU speed.
 The projective seeds are rebuilt for each scalar, including the first
 one in each process. The implementation is variable time and intended
 for public scalars.
+
+For the standard generator, the affine coordinates of `2G` and
+`(1+tau)G` can be computed once and compiled into the binary. Their
+balanced Eisenstein Montgomery encodings were derived from independent
+affine group arithmetic and checked against the native projective
+construction. This fixed-base path performs all 3,125 additions with
+the mixed formula and saves **14,335 field products (13.74%)** against
+width two on the frozen panel. The table's zero online setup denotes
+the reusable affine constants; both width-two and fixed width-three
+paths still construct their signed `omega` orbits inside each timed
+scalar operation. The source includes a separate projective-seed path
+that charges their construction for each scalar. The affine constants'
+derivation is reproducible from
+`lazy_tau_screen.py` and `eisenstein_montgomery.py`.
 
 ## Reproduction
 
@@ -78,6 +94,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 check_eisenstein_width3.py
 The complete-operation commands are
 `eisenstein_fixed --benchmark-scalar-w2-case FIXTURE INDEX` and
 `eisenstein_fixed --benchmark-scalar-w3-case FIXTURE INDEX`.
+The fixed-base candidate uses
+`eisenstein_fixed --benchmark-scalar-w3-fixed-case FIXTURE INDEX`.
 Their `--check-` counterparts emit the same verified affine point
 without a timing field. A controlled CPU ratio requires the
 [isolated host receipt](../../docs/ISOLATED_BENCHMARKS.md).
@@ -91,6 +109,7 @@ python3 make_eisenstein_width3_manifest.py \
   --binary /workspace/cryptanalysis/experiments/prime-j0-secp256k1-native/target/release/eisenstein_fixed \
   --cgroup /sys/fs/cgroup/benchmark-isolated \
   --cpus 4-5 --execution-cpu 4 --mem-node 0 \
+  --candidate-kind fixed-affine \
   --output /workspace/isolated-bench/eisenstein-width3.json
 python3 /workspace/cryptanalysis/scripts/isolated_bench.py probe /workspace/isolated-bench/eisenstein-width3.json
 python3 /workspace/cryptanalysis/scripts/isolated_bench.py --queue-root /workspace/isolated-bench submit /workspace/isolated-bench/eisenstein-width3.json
@@ -100,3 +119,5 @@ The manifest hashes the exact executable and source artifacts, pairs
 both arms on every frozen scalar and point, and requests five serial
 repetitions per case. The CPU IDs in the command are examples; the
 runner rejects a host that lacks their exclusive isolation evidence.
+Omit `--candidate-kind fixed-affine` to measure the one-use projective
+width-three path instead.
