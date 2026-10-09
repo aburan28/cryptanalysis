@@ -16,20 +16,25 @@ CANDIDATE = "--benchmark-shared-z-degree-seven-tail-case"
 
 
 def manifest(args):
+    linked = getattr(args, "linked_atlas", False)
     fixture = json.loads(args.fixture.read_text())
     if fixture.get("curve") != "secp256k1":
         raise ValueError("the frozen fixture must identify secp256k1")
     rows = fixture["cases"]
     if not rows:
         raise ValueError("the frozen fixture has no scalar cases")
+    reference = ("--benchmark-shared-z-degree-seven-tail-case"
+                 if linked else REFERENCE)
+    candidate = ("--benchmark-shared-z-linked-degree-seven-tail-case"
+                 if linked else CANDIDATE)
     cases = []
     for index, row in enumerate(rows):
         point = ("identity" if row.get("expected_identity") else
                  row["expected_x_hex"] + ":" + row["expected_y_hex"])
         cases.append({
             "id": f"secp256k1-scalar-{index}",
-            "reference": [str(args.binary), REFERENCE, str(args.fixture), str(index)],
-            "candidate": [str(args.binary), CANDIDATE, str(args.fixture), str(index)],
+            "reference": [str(args.binary), reference, str(args.fixture), str(index)],
+            "candidate": [str(args.binary), candidate, str(args.fixture), str(index)],
             "expected_fields": {
                 "curve": "secp256k1",
                 "base_x": row["base_x_hex"],
@@ -46,9 +51,15 @@ def manifest(args):
         args.workdir / "experiments/prime-j0-secp256k1-native/shared-z-tail4096.bin",
         args.workdir / "experiments/prime-j0-secp256k1-native/generate_shared_z_tail.py",
     ]
+    if linked:
+        artifacts.extend([
+            args.workdir / "experiments/prime-j0-secp256k1-native/linked-shared-z-tail4096.bin",
+            args.workdir / "experiments/prime-j0-secp256k1-native/generate_linked_shared_z_tail.py",
+        ])
     return {
         "schema": 1,
-        "name": "secp256k1-shared-z-degree-seven-tail-v1",
+        "name": ("secp256k1-shared-z-linked-degree-seven-tail-v1"
+                 if linked else "secp256k1-shared-z-degree-seven-tail-v1"),
         "workdir": str(args.workdir),
         "isolation": {
             "cgroup": str(args.cgroup),
@@ -57,7 +68,7 @@ def manifest(args):
             "mem_nodes": args.mem_nodes,
         },
         "build": {"profile": "release", "crate": "prime-j0-secp256k1-native-replay",
-                  "reference_mode": REFERENCE, "candidate_mode": CANDIDATE},
+                  "reference_mode": reference, "candidate_mode": candidate},
         "artifacts": [str(path) for path in artifacts],
         "timeout_s": args.timeout_s,
         "repetitions": args.repetitions,
@@ -83,6 +94,8 @@ def main():
     parser.add_argument("--mem-nodes", required=True)
     parser.add_argument("--timeout-s", type=int, default=30)
     parser.add_argument("--repetitions", type=int, default=5)
+    parser.add_argument("--linked-atlas", action="store_true",
+                        help="compare the original and linked exact-tail digit atlases")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if any(not path.is_absolute() for path in (args.binary, args.fixture, args.workdir,
